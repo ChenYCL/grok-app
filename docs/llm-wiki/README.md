@@ -1,0 +1,22 @@
+# Grok App · llm-wiki
+
+Agent 与贡献者的**可执行知识库**。改产品行为或 UI 文案前，先读本目录对应条目。
+
+| 文档 | 用途 |
+|------|------|
+| [i18n.md](./i18n.md) | **多语言强制规则**：所有 UI 文案、增改键、双语同步 |
+| [catalog.md](./catalog.md) | 与 Grok Build CLI 对齐的模型 / 推理强度 / 权限（含 YOLO） |
+| [automations.md](./automations.md) | 自动化任务设计（Build `/loop` / scheduler；不阻塞 P0） |
+
+## 原则
+
+1. **可检索**：一条知识一个文件，标题即意图。  
+2. **可执行**：写清路径、键名、禁止事项，而不是空泛建议。  
+3. **变更同步**：改代码必改 wiki；改 wiki 后实现要跟上。  
+4. **跨 Agent**：后续 Agent 接手时以本目录为准，不靠会话记忆。
+
+## 相关源码
+
+- i18n：`src/i18n/`
+- Build 目录：`src/lib/grokCatalog.ts`
+- UI 入口：`src/App.tsx`

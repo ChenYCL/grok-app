@@ -1,0 +1,49 @@
+import { describe, expect, it } from "vitest";
+import {
+  DEFAULT_LAYOUT,
+  loadLayout,
+  parseLayout,
+  saveLayout,
+  clampAsideWidth,
+  ASIDE_WIDTH_MIN,
+  ASIDE_WIDTH_MAX,
+  LAYOUT_STORAGE_KEY,
+} from "./layout";
+
+describe("layout prefs", () => {
+  it("defaults right pane collapsed", () => {
+    expect(DEFAULT_LAYOUT.asideCollapsed).toBe(true);
+  });
+
+  it("round-trips persistence", () => {
+    const data: Record<string, string> = {};
+    const storage = {
+      getItem: (k: string) => data[k] ?? null,
+      setItem: (k: string, v: string) => {
+        data[k] = v;
+      },
+    };
+    saveLayout(storage, {
+      sidebarWidth: 280,
+      asideWidth: 320,
+      asideCollapsed: false,
+      sidebarCollapsed: true,
+    });
+    expect(data[LAYOUT_STORAGE_KEY]).toBeTruthy();
+    const loaded = loadLayout(storage);
+    expect(loaded.asideCollapsed).toBe(false);
+    expect(loaded.sidebarWidth).toBe(280);
+    expect(loaded.sidebarCollapsed).toBe(true);
+  });
+
+  it("parseLayout falls back safely", () => {
+    expect(parseLayout(null).asideCollapsed).toBe(true);
+    expect(parseLayout(null).sidebarCollapsed).toBe(false);
+  });
+
+  it("clamps aside width", () => {
+    expect(clampAsideWidth(100)).toBe(ASIDE_WIDTH_MIN);
+    expect(clampAsideWidth(9999)).toBe(ASIDE_WIDTH_MAX);
+    expect(clampAsideWidth(400)).toBe(400);
+  });
+});
