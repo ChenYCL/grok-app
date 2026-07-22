@@ -245,11 +245,32 @@ pub async fn session_auto_title(
 #[tauri::command]
 pub async fn secrets_get_masked() -> Result<serde_json::Value, String> {
     let s = store::load_secrets();
+    let providers = crate::providers::list_custom_providers().unwrap_or_else(|_| {
+        crate::providers::ProvidersListResult {
+            providers: vec![],
+            default_model: None,
+            active_source: "official".into(),
+            active_provider_id: None,
+            config_path: String::new(),
+            agent_home: String::new(),
+        }
+    });
+    let has_provider_key = providers.providers.iter().any(|p| p.has_api_key);
+    let relay_base = providers
+        .providers
+        .iter()
+        .find(|p| p.is_default)
+        .or(providers.providers.first())
+        .map(|p| p.base_url.clone())
+        .or(s.relay_base_url.clone());
     Ok(serde_json::json!({
         "hasOfficialKey": s.official_api_key.as_ref().map(|k| !k.is_empty()).unwrap_or(false),
-        "hasRelayKey": s.relay_api_key.as_ref().map(|k| !k.is_empty()).unwrap_or(false),
-        "relayBaseUrl": s.relay_base_url,
-        "defaultModel": s.default_model,
+        "hasRelayKey": has_provider_key
+            || s.relay_api_key.as_ref().map(|k| !k.is_empty()).unwrap_or(false),
+        "relayBaseUrl": relay_base,
+        "defaultModel": providers.default_model.or(s.default_model),
+        "providerCount": providers.providers.len(),
+        "agentHome": providers.agent_home,
     }))
 }
 
@@ -689,4 +710,179 @@ pub async fn project_add_dialog(trust: bool) -> Result<Option<Project>, String> 
     };
     let p = store::add_project(path.display().to_string(), trust)?;
     Ok(Some(p))
+}
+
+// ── Official Grok Build account ─────────────────────────────────────────────
+
+#[tauri::command]
+pub async fn account_status(
+    refresh_billing: Option<bool>,
+    manual_cli_path: Option<String>,
+) -> Result<crate::account::AccountStatus, String> {
+    let settings = store::load_settings();
+    let manual = manual_cli_path
+        .or(settings.manual_cli_path)
+        .filter(|s| !s.is_empty());
+    Ok(crate::account::account_status(manual.as_deref(), refresh_billing.unwrap_or(true)).await)
+}
+
+#[tauri::command]
+pub async fn account_login(
+    method: Option<String>,
+    manual_cli_path: Option<String>,
+) -> Result<crate::account::LoginResult, String> {
+    let settings = store::load_settings();
+    let manual = manual_cli_path
+        .or(settings.manual_cli_path)
+        .filter(|s| !s.is_empty());
+    let method = method.unwrap_or_else(|| "oauth".into());
+    Ok(crate::account::account_login(&method, manual.as_deref()).await)
+}
+
+#[tauri::command]
+pub async fn account_logout(
+    manual_cli_path: Option<String>,
+) -> Result<crate::account::AccountProfile, String> {
+    let settings = store::load_settings();
+    let manual = manual_cli_path
+        .or(settings.manual_cli_path)
+        .filter(|s| !s.is_empty());
+    crate::account::account_logout(manual.as_deref()).await
+}
+
+#[tauri::command]
+pub async fn account_open_usage() -> Result<(), String> {
+    crate::account::open_usage_manage().await
+}
+
+#[tauri::command]
+pub async fn account_open_subscribe() -> Result<(), String> {
+    crate::account::open_subscribe().await
+}
+
+// ── Custom providers (agent-home config.toml) ───────────────────────────────
+
+#[tauri::command]
+pub async fn providers_list() -> Result<crate::providers::ProvidersListResult, String> {
+    // One-time migration of legacy single relay secrets → multi-provider config.
+    let secrets = store::load_secrets();
+    let _ = crate::providers::maybe_migrate_legacy_relay(
+        secrets.relay_base_url.as_deref(),
+        secrets.relay_api_key.as_deref(),
+        secrets.default_model.as_deref(),
+    );
+    // Seed 云翼 preset if the user has not configured it yet.
+    let _ = crate::providers::ensure_preset_yunyi();
+    // Fix bases saved without /v1 (causes silent multi-minute inference retries).
+    let _ = crate::providers::repair_custom_base_urls();
+    crate::providers::list_custom_providers()
+}
+
+/// Activate official Grok Build or a custom provider; returns updated list.
+#[tauri::command]
+pub async fn providers_activate(
+    source: String,
+    provider_id: Option<String>,
+) -> Result<crate::providers::ProvidersListResult, String> {
+    let result =
+        crate::providers::activate_provider(&source, provider_id.as_deref())?;
+    let mut settings = store::load_settings();
+    if let Some(ref d) = result.default_model {
+        settings.model_id = Some(d.clone());
+        let _ = store::save_settings(&settings);
+    }
+    Ok(result)
+}
+
+#[tauri::command]
+pub async fn providers_upsert(
+    id: String,
+    model: String,
+    base_url: String,
+    name: Option<String>,
+    api_key: Option<String>,
+    api_backend: Option<String>,
+    set_as_default: Option<bool>,
+    create_only: Option<bool>,
+) -> Result<crate::providers::ProvidersListResult, String> {
+    let result = crate::providers::upsert_custom_provider(crate::providers::UpsertProviderInput {
+        id,
+        model,
+        base_url,
+        name,
+        api_key,
+        api_backend,
+        set_as_default,
+        create_only,
+    })?;
+    // Keep legacy secrets in sync for Doctor / account channel display.
+    if let Some(p) = result.providers.iter().find(|p| p.is_default).or(result.providers.first())
+    {
+        let mut secrets = store::load_secrets();
+        secrets.relay_base_url = Some(p.base_url.clone());
+        secrets.default_model = result.default_model.clone();
+        // Do not copy api_key into secrets (stays only in config.toml).
+        let _ = store::save_secrets(&secrets);
+        let mut settings = store::load_settings();
+        if let Some(ref d) = result.default_model {
+            settings.model_id = Some(d.clone());
+            let _ = store::save_settings(&settings);
+        }
+    }
+    Ok(result)
+}
+
+#[tauri::command]
+pub async fn providers_remove(id: String) -> Result<crate::providers::ProvidersListResult, String> {
+    crate::providers::remove_custom_provider(&id)
+}
+
+#[tauri::command]
+pub async fn providers_set_default(
+    model_id: String,
+) -> Result<crate::providers::ProvidersListResult, String> {
+    let result = crate::providers::set_default_model_id(&model_id)?;
+    let mut settings = store::load_settings();
+    settings.model_id = Some(model_id);
+    let _ = store::save_settings(&settings);
+    Ok(result)
+}
+
+#[tauri::command]
+pub async fn providers_ping(
+    base_url: Option<String>,
+    api_key: Option<String>,
+    provider_id: Option<String>,
+) -> Result<crate::providers::ProviderPingResult, String> {
+    crate::providers::ping_provider(base_url, api_key, provider_id).await
+}
+
+#[tauri::command]
+pub async fn providers_list_models(
+    base_url: String,
+    api_key: Option<String>,
+    provider_id: Option<String>,
+) -> Result<crate::providers::RemoteModelsResult, String> {
+    crate::providers::list_remote_models(base_url, api_key, provider_id).await
+}
+
+// ── Editors ─────────────────────────────────────────────────────────────────
+
+#[tauri::command]
+pub async fn editors_list() -> Result<serde_json::Value, String> {
+    let editors = crate::editors::detect_editors();
+    Ok(serde_json::json!({ "editors": editors }))
+}
+
+#[tauri::command]
+pub async fn open_in_editor(
+    path: String,
+    line: Option<u32>,
+    editor: Option<String>,
+) -> Result<(), String> {
+    let settings = store::load_settings();
+    let target = editor
+        .filter(|s| !s.trim().is_empty())
+        .unwrap_or_else(|| settings.default_open_target.clone());
+    crate::editors::open_in_editor(&path, line, Some(target.as_str()))
 }

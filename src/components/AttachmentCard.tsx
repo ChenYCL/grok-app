@@ -1,12 +1,16 @@
 /**
- * File / folder card for chat history and (optionally) composer.
- * Click → open with OS default; right-click → context menu.
+ * File / folder card for chat history and composer.
+ * Images: square thumb, click → lightbox, context menu includes copy image.
+ * Other files: click → OS open; right-click → context menu.
  */
 
 import { useEffect, useRef, useState } from "react";
 import type { Attachment } from "@/lib/attachments";
 import { isImagePath } from "@/lib/attachments";
 import * as api from "@/lib/api";
+import { resolveImageSrc } from "@/lib/imageSrc";
+import { copyImageFromPath } from "@/lib/copyImage";
+import { useImageViewerOptional } from "@/components/ImageViewer";
 import {
   IconClose,
   IconCopy,
@@ -19,8 +23,10 @@ export interface AttachmentCardLabels {
   open: string;
   reveal: string;
   copyPath: string;
+  copyImage: string;
   addToComposer: string;
   remove?: string;
+  viewImage?: string;
 }
 
 interface AttachmentCardProps {
@@ -30,6 +36,11 @@ interface AttachmentCardProps {
   variant?: "card" | "chip";
   onAddToComposer?: (a: Attachment) => void;
   onRemove?: (a: Attachment) => void;
+  /**
+   * Sibling image paths for lightbox prev/next.
+   * When omitted, only the current image is shown.
+   */
+  galleryPaths?: string[];
 }
 
 export function AttachmentCard({
@@ -38,10 +49,27 @@ export function AttachmentCard({
   variant = "card",
   onAddToComposer,
   onRemove,
+  galleryPaths,
 }: AttachmentCardProps) {
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
+  const [thumbSrc, setThumbSrc] = useState<string | null>(null);
   const rootRef = useRef<HTMLDivElement>(null);
+  const viewer = useImageViewerOptional();
   const isImg = !attachment.isDir && isImagePath(attachment.path);
+
+  useEffect(() => {
+    if (!isImg) {
+      setThumbSrc(null);
+      return;
+    }
+    let cancelled = false;
+    void resolveImageSrc(attachment.path).then((src) => {
+      if (!cancelled) setThumbSrc(src);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [attachment.path, isImg]);
 
   useEffect(() => {
     if (!menu) return;
@@ -81,12 +109,35 @@ export function AttachmentCard({
     }
   };
 
+  const copyImage = async () => {
+    await copyImageFromPath(attachment.path);
+  };
+
+  const openInViewer = () => {
+    const gallery =
+      galleryPaths && galleryPaths.length > 0
+        ? galleryPaths
+        : [attachment.path];
+    const idx = Math.max(0, gallery.indexOf(attachment.path));
+    viewer.open(
+      gallery.map((p) => ({ src: p, title: p.split(/[/\\]/).pop() })),
+      idx,
+    );
+  };
+
+  const onPrimaryClick = () => {
+    if (isImg) openInViewer();
+    else void openPath();
+  };
+
   if (variant === "chip") {
     return (
       <span
         ref={rootRef as unknown as React.RefObject<HTMLSpanElement>}
         className={
-          "attach-chip" + (attachment.isDir ? " attach-chip--dir" : "")
+          "attach-chip" +
+          (attachment.isDir ? " attach-chip--dir" : "") +
+          (isImg ? " attach-chip--image" : "")
         }
         title={attachment.path}
         onContextMenu={(e) => {
@@ -98,18 +149,27 @@ export function AttachmentCard({
         <button
           type="button"
           className="attach-chip__main"
-          onClick={() => void openPath()}
+          onClick={onPrimaryClick}
         >
-          <span className="attach-chip__icon" aria-hidden>
-            {attachment.isDir ? (
-              <IconFolder size={14} />
-            ) : isImg ? (
-              <IconPaperclip size={14} />
-            ) : (
-              <IconFileText size={14} />
-            )}
-          </span>
-          <span className="attach-chip__name">{attachment.name}</span>
+          {isImg && thumbSrc ? (
+            <img
+              className="attach-chip__thumb"
+              src={thumbSrc}
+              alt={attachment.name}
+              draggable={false}
+            />
+          ) : (
+            <>
+              <span className="attach-chip__icon" aria-hidden>
+                {attachment.isDir ? (
+                  <IconFolder size={14} />
+                ) : (
+                  <IconFileText size={14} />
+                )}
+              </span>
+              <span className="attach-chip__name">{attachment.name}</span>
+            </>
+          )}
         </button>
         {onRemove && (
           <button
@@ -128,17 +188,23 @@ export function AttachmentCard({
             y={menu.y}
             labels={labels}
             showAdd={!!onAddToComposer}
+            showCopyImage={isImg}
             onOpen={() => {
               setMenu(null);
-              void openPath();
+              if (isImg) openInViewer();
+              else void openPath();
             }}
             onReveal={() => {
               setMenu(null);
               void revealPath();
             }}
-            onCopy={() => {
+            onCopyPath={() => {
               setMenu(null);
               void copyPath();
+            }}
+            onCopyImage={() => {
+              setMenu(null);
+              void copyImage();
             }}
             onAdd={() => {
               setMenu(null);
@@ -167,20 +233,37 @@ export function AttachmentCard({
     >
       <button
         type="button"
-        className="att-card__btn"
-        onClick={() => void openPath()}
+        className={"att-card__btn" + (isImg ? " att-card__btn--image" : "")}
+        onClick={onPrimaryClick}
       >
-        <span className="att-card__icon" aria-hidden>
-          {attachment.isDir ? (
-            <IconFolder size={20} />
+        {isImg ? (
+          thumbSrc ? (
+            <img
+              className="att-card__thumb"
+              src={thumbSrc}
+              alt={attachment.name}
+              draggable={false}
+            />
           ) : (
-            <IconFileText size={20} />
-          )}
-        </span>
-        <span className="att-card__meta">
-          <span className="att-card__name">{attachment.name}</span>
-          <span className="att-card__path">{attachment.path}</span>
-        </span>
+            <span className="att-card__thumb att-card__thumb--placeholder">
+              <IconPaperclip size={18} />
+            </span>
+          )
+        ) : (
+          <>
+            <span className="att-card__icon" aria-hidden>
+              {attachment.isDir ? (
+                <IconFolder size={20} />
+              ) : (
+                <IconFileText size={20} />
+              )}
+            </span>
+            <span className="att-card__meta">
+              <span className="att-card__name">{attachment.name}</span>
+              <span className="att-card__path">{attachment.path}</span>
+            </span>
+          </>
+        )}
       </button>
       {menu && (
         <AttachmentContextMenu
@@ -188,17 +271,23 @@ export function AttachmentCard({
           y={menu.y}
           labels={labels}
           showAdd={!!onAddToComposer}
+          showCopyImage={isImg}
           onOpen={() => {
             setMenu(null);
-            void openPath();
+            if (isImg) openInViewer();
+            else void openPath();
           }}
           onReveal={() => {
             setMenu(null);
             void revealPath();
           }}
-          onCopy={() => {
+          onCopyPath={() => {
             setMenu(null);
             void copyPath();
+          }}
+          onCopyImage={() => {
+            setMenu(null);
+            void copyImage();
           }}
           onAdd={() => {
             setMenu(null);
@@ -215,23 +304,26 @@ function AttachmentContextMenu({
   y,
   labels,
   showAdd,
+  showCopyImage,
   onOpen,
   onReveal,
-  onCopy,
+  onCopyPath,
+  onCopyImage,
   onAdd,
 }: {
   x: number;
   y: number;
   labels: AttachmentCardLabels;
   showAdd: boolean;
+  showCopyImage: boolean;
   onOpen: () => void;
   onReveal: () => void;
-  onCopy: () => void;
+  onCopyPath: () => void;
+  onCopyImage: () => void;
   onAdd: () => void;
 }) {
-  // Keep menu inside viewport
   const left = Math.min(x, window.innerWidth - 200);
-  const top = Math.min(y, window.innerHeight - 160);
+  const top = Math.min(y, window.innerHeight - 200);
   return (
     <div
       className="att-menu"
@@ -240,12 +332,22 @@ function AttachmentContextMenu({
       onMouseDown={(e) => e.stopPropagation()}
     >
       <button type="button" className="att-menu__item" role="menuitem" onClick={onOpen}>
-        {labels.open}
+        {showCopyImage && labels.viewImage ? labels.viewImage : labels.open}
       </button>
       <button type="button" className="att-menu__item" role="menuitem" onClick={onReveal}>
         {labels.reveal}
       </button>
-      <button type="button" className="att-menu__item" role="menuitem" onClick={onCopy}>
+      {showCopyImage && (
+        <button
+          type="button"
+          className="att-menu__item"
+          role="menuitem"
+          onClick={onCopyImage}
+        >
+          <IconCopy size={14} /> {labels.copyImage}
+        </button>
+      )}
+      <button type="button" className="att-menu__item" role="menuitem" onClick={onCopyPath}>
         <IconCopy size={14} /> {labels.copyPath}
       </button>
       {showAdd && (

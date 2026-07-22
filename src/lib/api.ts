@@ -148,11 +148,15 @@ export interface FsEntry {
 export interface FsReadResult {
   relativePath: string;
   name: string;
+  /** Absolute path for convertFileSrc streaming (video/audio/large images). */
+  absolutePath: string;
   size: number;
   kind: string;
   mime: string;
   text: string | null;
   base64: string | null;
+  /** Prefer asset-protocol stream instead of base64 embed. */
+  stream: boolean;
   truncated: boolean;
   error: string | null;
 }
@@ -264,6 +268,7 @@ export async function settingsGet() {
     mode: string;
     onboardingDone: boolean;
     setupSkipped: boolean;
+    defaultOpenTarget?: string;
   }>("settings_get");
 }
 
@@ -314,6 +319,310 @@ export async function importGrokGo() {
 
 export async function doctorReport() {
   return invoke<Record<string, unknown>>("doctor_report");
+}
+
+// ── Official Grok Build account ─────────────────────────────────────────────
+
+export interface AccountProfile {
+  signedIn: boolean;
+  authMode: string | null;
+  email: string | null;
+  displayName: string | null;
+  userId: string | null;
+  teamId: string | null;
+  principalType: string | null;
+  expiresAt: string | null;
+  expired: boolean;
+  hasRefresh: boolean;
+  oidcIssuer: string | null;
+}
+
+export interface QuotaProduct {
+  productId: number;
+  label: string;
+  usedPercent: number;
+}
+
+export interface BillingSnapshot {
+  available: boolean;
+  source: string;
+  message: string | null;
+  subscriptionTier: string | null;
+  creditUsagePercent: number | null;
+  remainingPercent: number | null;
+  monthlyLimit: number | null;
+  includedUsed: number | null;
+  totalUsed: number | null;
+  prepaidBalance: number | null;
+  onDemandEnabled: boolean | null;
+  onDemandCap: number | null;
+  onDemandUsed: number | null;
+  billingPeriodStart: string | null;
+  billingPeriodEnd: string | null;
+  resetsAt: string | null;
+  isUnifiedBillingUser: boolean | null;
+  products: QuotaProduct[];
+  manageUrl: string;
+  subscribeUrl: string;
+  fetchedAt: string | null;
+}
+
+export interface HeatmapDay {
+  date: string;
+  requests: number;
+  tokens: number;
+  costUsd: number;
+}
+
+export interface CallLogEntry {
+  id: string;
+  title: string;
+  model: string | null;
+  projectPath: string | null;
+  startedAt: string | null;
+  durationSecs: number | null;
+  turns: number;
+  toolCalls: number;
+  contextTokens: number;
+  errors: number;
+}
+
+export interface AccountStatus {
+  profile: AccountProfile;
+  hasOfficialKey: boolean;
+  hasRelayKey: boolean;
+  relayBaseUrl: string | null;
+  cliAuthPresent: boolean;
+  cliFound: boolean;
+  cliPath: string | null;
+  channel: string;
+  billing: BillingSnapshot;
+  heatmap: HeatmapDay[];
+  callLogs: CallLogEntry[];
+  usageManageUrl: string;
+  subscribeUrl: string;
+}
+
+export interface LoginResult {
+  ok: boolean;
+  method: string;
+  message: string;
+  deviceUrl: string | null;
+  deviceCode: string | null;
+  profile: AccountProfile | null;
+}
+
+export async function accountStatus(opts?: {
+  refreshBilling?: boolean;
+  manualCliPath?: string | null;
+}) {
+  if (!isTauri()) {
+    return {
+      profile: {
+        signedIn: false,
+        authMode: null,
+        email: null,
+        displayName: null,
+        userId: null,
+        teamId: null,
+        principalType: null,
+        expiresAt: null,
+        expired: false,
+        hasRefresh: false,
+        oidcIssuer: null,
+      },
+      hasOfficialKey: false,
+      hasRelayKey: false,
+      relayBaseUrl: null,
+      cliAuthPresent: false,
+      cliFound: false,
+      cliPath: null,
+      channel: "none",
+      billing: {
+        available: false,
+        source: "browser",
+        message: "Account requires Tauri desktop runtime",
+        subscriptionTier: null,
+        creditUsagePercent: null,
+        remainingPercent: null,
+        monthlyLimit: null,
+        includedUsed: null,
+        totalUsed: null,
+        prepaidBalance: null,
+        onDemandEnabled: null,
+        onDemandCap: null,
+        onDemandUsed: null,
+        billingPeriodStart: null,
+        billingPeriodEnd: null,
+        resetsAt: null,
+        isUnifiedBillingUser: null,
+        products: [],
+        manageUrl: "https://grok.com/?_s=usage",
+        subscribeUrl: "https://grok.com/supergrok?referrer=grok-build",
+        fetchedAt: null,
+      },
+      heatmap: [],
+      callLogs: [],
+      usageManageUrl: "https://grok.com/?_s=usage",
+      subscribeUrl: "https://grok.com/supergrok?referrer=grok-build",
+    } satisfies AccountStatus;
+  }
+  return invoke<AccountStatus>("account_status", {
+    refreshBilling: opts?.refreshBilling ?? true,
+    manualCliPath: opts?.manualCliPath ?? null,
+  });
+}
+
+export async function accountLogin(method: "oauth" | "device" = "oauth") {
+  return invoke<LoginResult>("account_login", { method });
+}
+
+export async function accountLogout() {
+  return invoke<AccountProfile>("account_logout");
+}
+
+export async function accountOpenUsage() {
+  if (!isTauri()) {
+    window.open("https://grok.com/?_s=usage", "_blank");
+    return;
+  }
+  return invoke<void>("account_open_usage");
+}
+
+export async function accountOpenSubscribe() {
+  if (!isTauri()) {
+    window.open(
+      "https://grok.com/supergrok?referrer=grok-build",
+      "_blank",
+    );
+    return;
+  }
+  return invoke<void>("account_open_subscribe");
+}
+
+// ── Custom providers (agent-home config.toml) ───────────────────────────────
+
+export interface CustomProvider {
+  id: string;
+  model: string;
+  baseUrl: string;
+  name: string;
+  hasApiKey: boolean;
+  apiBackend: string;
+  isDefault: boolean;
+}
+
+export interface ProvidersListResult {
+  providers: CustomProvider[];
+  defaultModel: string | null;
+  /** `official` | `custom` */
+  activeSource: string;
+  activeProviderId: string | null;
+  configPath: string;
+  agentHome: string;
+}
+
+export async function providersList() {
+  return invoke<ProvidersListResult>("providers_list");
+}
+
+/** Switch to official Grok Build or a custom provider (writes config.toml default). */
+export async function providersActivate(
+  source: "official" | "custom",
+  providerId?: string | null,
+) {
+  return invoke<ProvidersListResult>("providers_activate", {
+    source,
+    providerId: providerId ?? null,
+  });
+}
+
+export async function providersUpsert(body: {
+  id: string;
+  model: string;
+  baseUrl: string;
+  name?: string;
+  apiKey?: string;
+  apiBackend?: string;
+  setAsDefault?: boolean;
+  createOnly?: boolean;
+}) {
+  return invoke<ProvidersListResult>("providers_upsert", {
+    id: body.id,
+    model: body.model,
+    baseUrl: body.baseUrl,
+    name: body.name ?? null,
+    apiKey: body.apiKey ?? null,
+    apiBackend: body.apiBackend ?? null,
+    setAsDefault: body.setAsDefault ?? null,
+    createOnly: body.createOnly ?? null,
+  });
+}
+
+export async function providersRemove(id: string) {
+  return invoke<ProvidersListResult>("providers_remove", { id });
+}
+
+export async function providersSetDefault(modelId: string) {
+  return invoke<ProvidersListResult>("providers_set_default", { modelId });
+}
+
+export async function providersPing(opts?: {
+  baseUrl?: string;
+  apiKey?: string;
+  providerId?: string;
+}) {
+  return invoke<{
+    ok: boolean;
+    latencyMs: number;
+    endpoint: string;
+    status?: number;
+    error?: string;
+  }>("providers_ping", {
+    baseUrl: opts?.baseUrl ?? null,
+    apiKey: opts?.apiKey ?? null,
+    providerId: opts?.providerId ?? null,
+  });
+}
+
+export async function providersListModels(opts: {
+  baseUrl: string;
+  apiKey?: string;
+  providerId?: string;
+}) {
+  return invoke<{
+    endpoint: string;
+    models: Array<{ id: string; ownedBy?: string }>;
+  }>("providers_list_models", {
+    baseUrl: opts.baseUrl,
+    apiKey: opts.apiKey ?? null,
+    providerId: opts.providerId ?? null,
+  });
+}
+
+// ── Editors ─────────────────────────────────────────────────────────────────
+
+export interface DetectedEditor {
+  id: string;
+  label: string;
+  command: string;
+  available: boolean;
+}
+
+export async function editorsList() {
+  return invoke<{ editors: DetectedEditor[] }>("editors_list");
+}
+
+export async function openInEditor(opts: {
+  path: string;
+  line?: number;
+  editor?: string;
+}) {
+  return invoke<void>("open_in_editor", {
+    path: opts.path,
+    line: opts.line ?? null,
+    editor: opts.editor ?? null,
+  });
 }
 
 export async function listen<T>(

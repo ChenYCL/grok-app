@@ -220,3 +220,80 @@ export function errorCopy(code: AgentErrorCode, locale: "zh" | "en" = "zh"): str
   };
   return (locale === "en" ? en : zh)[code];
 }
+
+const AGENT_ERROR_CODE_RE =
+  /^(CLI_NOT_FOUND|AUTH_FAILED|NETWORK_PROVIDER|AGENT_CRASHED)(?::\s*|\s+)([\s\S]*)$/;
+
+/** Strip ANSI SGR sequences from CLI/MCP stderr dumps. */
+export function stripAnsi(text: string): string {
+  return text.replace(/\u001b\[[0-9;]*m/g, "").replace(/\x1b\[[0-9;]*m/g, "");
+}
+
+/**
+ * Compact banner copy: short user-facing summary by default;
+ * put raw RPC/MCP dumps behind a Details toggle.
+ */
+export function presentErrorBanner(
+  error: AgentError | null,
+  localError: string | null,
+  locale: "zh" | "en" = "zh",
+): {
+  code: string | null;
+  summary: string;
+  detail: string | null;
+  reconnectHint: boolean;
+} | null {
+  if (error) {
+    const raw = stripAnsi(error.message || "").trim();
+    const summary = errorCopy(error.code, locale);
+    const detail =
+      raw && raw !== summary && raw !== error.code ? raw : null;
+    return {
+      code: error.code,
+      summary,
+      detail,
+      reconnectHint: true,
+    };
+  }
+  if (!localError?.trim()) return null;
+
+  const cleaned = stripAnsi(localError).trim();
+  const coded = cleaned.match(AGENT_ERROR_CODE_RE);
+  if (coded) {
+    const code = coded[1] as AgentErrorCode;
+    const rest = (coded[2] || "").trim();
+    return {
+      code,
+      summary: errorCopy(code, locale),
+      detail: rest && rest !== errorCopy(code, locale) ? rest : null,
+      reconnectHint: true,
+    };
+  }
+
+  // Heuristic: long / multi-line dumps (timeouts, stack-ish) → collapse
+  const firstLine = cleaned.split(/\r?\n/).find((l) => l.trim())?.trim() ?? cleaned;
+  const isBulky =
+    cleaned.includes("\n") ||
+    cleaned.length > 160 ||
+    /rpc timeout|stderr:|Connection refused|Transport channel/i.test(cleaned);
+  if (isBulky) {
+    const summary =
+      firstLine.length > 120 ? `${firstLine.slice(0, 120)}…` : firstLine;
+    return {
+      code: null,
+      summary,
+      detail: cleaned,
+      reconnectHint:
+        /AGENT_CRASHED|NETWORK_PROVIDER|rpc timeout|Connection refused/i.test(
+          cleaned,
+        ),
+    };
+  }
+
+  return {
+    code: null,
+    summary: cleaned,
+    detail: null,
+    reconnectHint: false,
+  };
+}

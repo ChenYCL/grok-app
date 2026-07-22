@@ -26,9 +26,8 @@ import {
   canSend,
   canStop,
   canType,
-  errorCopy,
+  presentErrorBanner,
   IDLE_SNAPSHOT,
-  statusPresentation,
   type ChatMessage,
   type PermissionPayload,
   type SessionSnapshot,
@@ -48,11 +47,14 @@ import { redact } from "@/lib/redact";
 import { mapPermissionButtons } from "@/lib/permissionOptions";
 import {
   buildAgentPrompt,
+  isImagePath,
   mergeAttachments,
   parseAttachmentsFromContent,
   type Attachment,
 } from "@/lib/attachments";
 import { AttachmentCard } from "@/components/AttachmentCard";
+import { ImageViewerProvider } from "@/components/ImageViewer";
+import { OverlayScroll } from "@/components/OverlayScroll";
 import { GrokLogo } from "@/components/GrokLogo";
 import {
   IconChevronDown,
@@ -74,12 +76,9 @@ import {
   IconMic,
   IconPanel,
   IconFiles,
-  IconCopy,
-  IconExportMd,
   IconArchive,
   IconMinimize,
   IconMaximize,
-  IconPlan,
   IconPin,
 } from "@/components/icons";
 import {
@@ -87,12 +86,17 @@ import {
   ComposerModelMenu,
 } from "@/components/ComposerModelMenu";
 import { ResourceViewer } from "@/components/ResourceViewer";
-import { MarkdownBody } from "@/components/MarkdownBody";
-import { UserMenu } from "@/components/UserMenu";
+import { ConversationThread } from "@/components/chat/ConversationThread";
+import { UserMenu, remainingPercent } from "@/components/UserMenu";
 import {
   SettingsPage,
   type SettingsSectionId,
 } from "@/components/SettingsPage";
+import {
+  accountDisplayName,
+  accountInitials,
+  isAccountConnected,
+} from "@/lib/accountUi";
 
 interface Project {
   id: string;
@@ -152,6 +156,7 @@ export default function App() {
     gap: 8,
   });
   const [sessionDataMode, setSessionDataMode] = useState("independent");
+  const [defaultOpenTarget, setDefaultOpenTarget] = useState("finder");
   const [showUserMenu, setShowUserMenu] = useState(false);
   /** Hash route: workbench | settings/:section */
   const [appView, setAppView] = useState<"workbench" | "settings">("workbench");
@@ -215,8 +220,10 @@ export default function App() {
   const dragPathsRef = useRef<string[]>([]);
   const layoutRef = useRef(layout);
   layoutRef.current = layout;
-  const [setup, setSetup] = useState({ cli: false, auth: false, project: false });
+  const [, setSetup] = useState({ cli: false, auth: false, project: false });
   const [localError, setLocalError] = useState<string | null>(null);
+  /** Expand technical dump under the compact error banner. */
+  const [errorDetailOpen, setErrorDetailOpen] = useState(false);
   const [pingMsg, setPingMsg] = useState<string | null>(null);
   const [cliInfo, setCliInfo] = useState<{
     found: boolean;
@@ -228,6 +235,9 @@ export default function App() {
   const [manualCliPath, setManualCliPath] = useState("");
   const [connecting, setConnecting] = useState(false);
   const [resizingAside, setResizingAside] = useState(false);
+  const [account, setAccount] = useState<api.AccountStatus | null>(null);
+  const [accountLoading, setAccountLoading] = useState(false);
+  const [accountBusy, setAccountBusy] = useState(false);
   const platform = useMemo(() => {
     const ua = navigator.userAgent.toLowerCase();
     if (ua.includes("mac")) return "mac" as const;
@@ -290,6 +300,10 @@ export default function App() {
         setModelId(settings.modelId);
       }
       setSessionDataMode(settings.sessionDataMode || "independent");
+      setDefaultOpenTarget(
+        (settings as { defaultOpenTarget?: string }).defaultOpenTarget ||
+          "finder",
+      );
       setManualCliPath(settings.manualCliPath || cli.path || "");
       setCliInfo({
         found: cli.found,
@@ -415,8 +429,6 @@ export default function App() {
     };
   }, []);
 
-  const status = statusPresentation(session.state);
-
   const toggleThemeBtn = () => {
     setTheme((t) => {
       const n = toggleTheme(t);
@@ -458,6 +470,7 @@ export default function App() {
           "general",
           "appearance",
           "account",
+          "runtime",
           "about",
         ];
         setSettingsSection(
@@ -828,8 +841,10 @@ export default function App() {
       open: tr("attach.open"),
       reveal: tr("attach.reveal"),
       copyPath: tr("attach.copyPath"),
+      copyImage: tr("attach.copyImage"),
       addToComposer: tr("attach.addToComposer"),
       remove: tr("composer.attachRemove"),
+      viewImage: tr("image.view"),
     }),
     [tr],
   );
@@ -1178,6 +1193,89 @@ export default function App() {
   };
 
   const error = session.lastError;
+  const errorBanner = useMemo(
+    () => presentErrorBanner(error, localError, locale),
+    [error, localError, locale],
+  );
+  // Collapse technical dump whenever the visible error changes.
+  useEffect(() => {
+    setErrorDetailOpen(false);
+  }, [errorBanner?.code, errorBanner?.summary, errorBanner?.detail]);
+
+  const refreshAccount = useCallback(
+    async (opts?: { refreshBilling?: boolean }) => {
+      if (!api.isTauri()) return;
+      setAccountLoading(true);
+      try {
+        const st = await api.accountStatus({
+          refreshBilling: opts?.refreshBilling ?? true,
+          manualCliPath: manualCliPath || null,
+        });
+        setAccount(st);
+        setSetup((s) => ({
+          ...s,
+          auth: isAccountConnected(st),
+          cli: st.cliFound || s.cli,
+        }));
+      } catch (e) {
+        console.warn("account status failed", e);
+      } finally {
+        setAccountLoading(false);
+      }
+    },
+    [manualCliPath],
+  );
+
+  const runAccountLogin = useCallback(
+    async (method: "oauth" | "device" = "oauth") => {
+      if (!api.isTauri()) {
+        setToast(tr("error.needTauri"));
+        return;
+      }
+      setAccountBusy(true);
+      try {
+        const res = await api.accountLogin(method);
+        setToast(res.ok ? tr("account.loginOk") : res.message || tr("account.loginFailed"));
+        if (res.deviceUrl) {
+          setPingMsg(
+            [res.deviceUrl, res.deviceCode ? `code: ${res.deviceCode}` : ""]
+              .filter(Boolean)
+              .join("\n"),
+          );
+        }
+        await refreshAccount({ refreshBilling: true });
+      } catch (e) {
+        setToast(String(e));
+      } finally {
+        setAccountBusy(false);
+      }
+    },
+    [refreshAccount, tr],
+  );
+
+  const runAccountLogout = useCallback(async () => {
+    if (!api.isTauri()) return;
+    setAccountBusy(true);
+    try {
+      await api.accountLogout();
+      await refreshAccount({ refreshBilling: false });
+    } catch (e) {
+      setToast(String(e));
+    } finally {
+      setAccountBusy(false);
+    }
+  }, [refreshAccount]);
+
+  useEffect(() => {
+    if (!api.isTauri()) return;
+    void refreshAccount({ refreshBilling: true });
+  }, [refreshAccount]);
+
+  useEffect(() => {
+    if (appView === "settings" && settingsSection === "account") {
+      void refreshAccount({ refreshBilling: true });
+    }
+  }, [appView, settingsSection, refreshAccount]);
 
   const settingsLabels = useMemo(() => {
     const keys = [
@@ -1188,6 +1286,7 @@ export default function App() {
       "settings.nav.general",
       "settings.nav.appearance",
       "settings.nav.account",
+      "settings.nav.runtime",
       "settings.nav.about",
       "settings.section.permissions",
       "settings.section.general",
@@ -1214,7 +1313,68 @@ export default function App() {
       "policy.always_approve",
       "settings.modeIndependent",
       "settings.modeShared",
+      "settings.tabOfficial",
+      "settings.tabProviders",
+      "settings.tabOfficialHint",
+      "settings.tabProvidersHint",
+      "settings.openTarget",
+      "settings.openTargetDesc",
+      "settings.openFinder",
+      "settings.sharedConfirm",
       "doctor.title",
+      "common.local",
+      "common.close",
+      "common.cancel",
+      "account.section.profile",
+      "account.section.runtime",
+      "account.signedIn",
+      "account.signedOut",
+      "account.loginOauth",
+      "account.loginDevice",
+      "account.loginBusy",
+      "account.logout",
+      "account.refresh",
+      "account.refreshing",
+      "account.manageUsage",
+      "account.subscribe",
+      "account.channel",
+      "account.channel.oauth",
+      "account.channel.key",
+      "account.channel.relay",
+      "account.channel.none",
+      "account.subscription",
+      "account.weeklyTitle",
+      "account.quota",
+      "account.quotaRemaining",
+      "account.quotaUsed",
+      "account.quotaUnknown",
+      "account.period",
+      "account.prepaid",
+      "account.onDemand",
+      "account.resetsAt",
+      "account.fetchedAt",
+      "account.products",
+      "account.heatmap",
+      "account.heatmapHint",
+      "account.heatmap.less",
+      "account.heatmap.more",
+      "account.heatmap.noData",
+      "account.heatmap.aria",
+      "account.heatmap.requests",
+      "account.heatmap.tokens",
+      "account.callLogs",
+      "account.callLogsEmpty",
+      "account.col.session",
+      "account.col.model",
+      "account.col.turns",
+      "account.col.tokens",
+      "account.col.duration",
+      "account.col.when",
+      "account.expired",
+      "account.team",
+      "account.billingUnavailable",
+      "account.cliAuthOk",
+      "account.cliAuthMissing",
     ] as const;
     const out: Record<string, string> = {};
     for (const k of keys) out[k] = tr(k);
@@ -1222,6 +1382,7 @@ export default function App() {
   }, [tr]);
 
   return (
+    <ImageViewerProvider locale={locale}>
     <div className={`app-shell platform-${platform}`} data-testid="app-shell">
       {appView === "settings" ? (
         <SettingsPage
@@ -1292,6 +1453,37 @@ export default function App() {
           cliInfo={cliInfo}
           onDoctor={() => void openDoctor()}
           versionFooter={tr("app.versionFooter")}
+          account={account}
+          accountLoading={accountLoading}
+          accountBusy={accountBusy}
+          onAccountLoginOauth={() => void runAccountLogin("oauth")}
+          onAccountLoginDevice={() => void runAccountLogin("device")}
+          onAccountLogout={() => void runAccountLogout()}
+          onAccountRefresh={() => void refreshAccount({ refreshBilling: true })}
+          onAccountManageUsage={() => void api.accountOpenUsage()}
+          onAccountSubscribe={() => void api.accountOpenSubscribe()}
+          defaultOpenTarget={defaultOpenTarget}
+          onDefaultOpenTarget={(v) => {
+            setDefaultOpenTarget(v);
+            void api.settingsGet().then((s) =>
+              api.settingsSet({ ...s, defaultOpenTarget: v }),
+            );
+          }}
+          onProviderActivated={() => {
+            // Hot-reload Grok Build: drop live ACP so next send re-spawns with new GROK_HOME config.
+            void (async () => {
+              try {
+                if (api.isTauri()) {
+                  await api.sessionDisconnect();
+                  setSession({ ...IDLE_SNAPSHOT });
+                }
+                setToast(tr("prov.switchedHotReload"));
+                window.setTimeout(() => setToast(null), 3200);
+              } catch (e) {
+                setToast(String(e));
+              }
+            })();
+          }}
         />
       ) : (
       <div className="workbench">
@@ -1385,7 +1577,7 @@ export default function App() {
             </button>
           </div>
 
-          <div className="sidebar__scroll">
+          <OverlayScroll className="sidebar__scroll" viewportClassName="sidebar__scroll-inner">
             {/* L1 — Projects section */}
             <div className="tree-l1">
               <button
@@ -1617,26 +1809,32 @@ export default function App() {
                   </span>
                 </div>
               ))}
-
-          </div>
+          </OverlayScroll>
 
           <UserMenu
             open={showUserMenu}
             onClose={() => setShowUserMenu(false)}
             theme={theme}
-            cliOk={setup.cli}
-            authOk={setup.auth}
+            t={(k) => tr(k as Parameters<typeof tr>[0])}
+            account={account}
+            accountBusy={accountBusy}
             labels={{
               settings: tr("sidebar.settings"),
               theme: tr("user.theme"),
               themeLight: tr("user.themeLight"),
               themeDark: tr("user.themeDark"),
-              doctor: tr("sidebar.doctor"),
               local: tr("common.local"),
+              signedIn: tr("account.signedIn"),
+              signedOut: tr("account.signedOut"),
+              login: tr("account.login"),
+              logout: tr("account.logout"),
+              remaining: tr("account.quotaRemaining"),
             }}
             onSettings={() => navigateSettings("general")}
+            onAccountSettings={() => navigateSettings("account")}
             onToggleTheme={toggleThemeBtn}
-            onDoctor={() => void openDoctor()}
+            onLogin={() => void runAccountLogin("oauth")}
+            onLogout={() => void runAccountLogout()}
           >
             <button
               type="button"
@@ -1646,13 +1844,28 @@ export default function App() {
               aria-haspopup="menu"
               aria-expanded={showUserMenu}
               title={tr("user.menu")}
-              onClick={() => setShowUserMenu((v) => !v)}
+              onClick={() => {
+                setShowUserMenu((v) => !v);
+                if (!showUserMenu) void refreshAccount({ refreshBilling: true });
+              }}
             >
               <div className="user-avatar" aria-hidden>
-                G
+                {account?.profile
+                  ? accountInitials(account.profile)
+                  : "G"}
               </div>
               <div className="user-meta">
-                <span className="user-meta__name">{tr("common.local")}</span>
+                <span className="user-meta__name">
+                  {account?.profile
+                    ? accountDisplayName(account.profile, tr("common.local"))
+                    : tr("common.local")}
+                </span>
+                {(() => {
+                  const rem = remainingPercent(account);
+                  return rem != null ? (
+                    <span className="user-meta__quota">{rem.toFixed(0)}%</span>
+                  ) : null;
+                })()}
               </div>
             </button>
           </UserMenu>
@@ -1792,35 +2005,49 @@ export default function App() {
             </div>
           )}
 
-          {(error || localError) && (
+          {errorBanner && (
             <div className="error-banner" role="alert">
-              {error && (
-                <>
-                  <div className="error-banner__code">{error.code}</div>
-                  <div>{errorCopy(error.code, locale)}</div>
-                  <div style={{ opacity: 0.8, marginTop: 4 }}>{error.message}</div>
-                </>
+              {errorBanner.code && (
+                <div className="error-banner__code">{errorBanner.code}</div>
               )}
-              {localError && !error && <div>{localError}</div>}
-              {(error ||
-                localError?.includes("AGENT_CRASHED") ||
-                localError?.includes("NETWORK_PROVIDER") ||
-                localError?.includes("rpc timeout") ||
+              <div className="error-banner__summary">{errorBanner.summary}</div>
+              {(errorBanner.detail ||
+                errorBanner.reconnectHint ||
                 session.state === "disconnected") && (
-                <button
-                  type="button"
-                  className="btn btn--ghost"
-                  style={{ marginTop: 8, height: 28, fontSize: 12 }}
-                  disabled={connecting}
-                  onClick={() => {
-                    setLocalError(null);
-                    void ensureConnected(true).then((sid) => {
-                      if (sid) setLocalError(null);
-                    });
-                  }}
-                >
-                  {tr("main.reconnect")}
-                </button>
+                <div className="error-banner__actions">
+                  {errorBanner.detail && (
+                    <button
+                      type="button"
+                      className="error-banner__details-btn"
+                      aria-expanded={errorDetailOpen}
+                      onClick={() => setErrorDetailOpen((v) => !v)}
+                    >
+                      {errorDetailOpen
+                        ? tr("error.hideDetails")
+                        : tr("error.details")}
+                    </button>
+                  )}
+                  {(errorBanner.reconnectHint ||
+                    session.state === "disconnected") && (
+                    <button
+                      type="button"
+                      className="btn btn--ghost error-banner__reconnect"
+                      disabled={connecting}
+                      onClick={() => {
+                        setLocalError(null);
+                        setErrorDetailOpen(false);
+                        void ensureConnected(true).then((sid) => {
+                          if (sid) setLocalError(null);
+                        });
+                      }}
+                    >
+                      {tr("main.reconnect")}
+                    </button>
+                  )}
+                </div>
+              )}
+              {errorBanner.detail && errorDetailOpen && (
+                <pre className="error-banner__detail">{errorBanner.detail}</pre>
               )}
             </div>
           )}
@@ -1865,153 +2092,25 @@ export default function App() {
             </div>
           )}
 
-          <div className="messages">
-            <div className="messages__col">
-              {messages.some((m) => m.thought) && (
-                <details className="fold">
-                  <summary className="fold__summary">
-                    <IconChevronDown size={14} className="fold__chev" />{" "}
-                    {tr("main.reasoning")}
-                  </summary>
-                  <div className="fold__body">
-                    {messages.map((m) => m.thought).filter(Boolean).join("")}
-                  </div>
-                </details>
-              )}
-
-              {messages.map((m) => (
-                <article key={m.id} className={`message message--${m.role}`}>
-                  {m.role === "user" ? (
-                    <div className="message__user-stack">
-                      {m.content.trim() ? (
-                        <div className="message__bubble message__bubble--user">
-                          {m.content}
-                        </div>
-                      ) : null}
-                      {m.attachments && m.attachments.length > 0 && (
-                        <div className="message__atts">
-                          {m.attachments.map((a) => (
-                            <AttachmentCard
-                              key={a.path}
-                              attachment={a}
-                              labels={attachLabels}
-                              onAddToComposer={(att) =>
-                                setAttachments((prev) =>
-                                  mergeAttachments(prev, [att]),
-                                )
-                              }
-                            />
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  ) : (
-                    <div className="message__assistant">
-                      <MarkdownBody streaming={m.streaming}>
-                        {m.content}
-                      </MarkdownBody>
-                      {m.attachments && m.attachments.length > 0 && (
-                        <div className="message__atts message__atts--assistant">
-                          {m.attachments.map((a) => (
-                            <AttachmentCard
-                              key={a.path}
-                              attachment={a}
-                              labels={attachLabels}
-                              onAddToComposer={(att) =>
-                                setAttachments((prev) =>
-                                  mergeAttachments(prev, [att]),
-                                )
-                              }
-                            />
-                          ))}
-                        </div>
-                      )}
-                      {!m.streaming && m.content.trim() && (
-                        <div className="message__toolbar">
-                          <button
-                            type="button"
-                            className="message__tool message__tool--icon"
-                            title={tr("message.copy")}
-                            aria-label={tr("message.copy")}
-                            onClick={() =>
-                              void navigator.clipboard.writeText(m.content)
-                            }
-                          >
-                            <IconCopy size={15} />
-                          </button>
-                          <button
-                            type="button"
-                            className="message__tool message__tool--icon"
-                            title={tr("message.exportMd")}
-                            aria-label={tr("message.exportMd")}
-                            onClick={() => {
-                              const blob = new Blob([m.content], {
-                                type: "text/markdown;charset=utf-8",
-                              });
-                              const url = URL.createObjectURL(blob);
-                              const a = document.createElement("a");
-                              a.href = url;
-                              a.download = `grok-${m.id.slice(0, 8)}.md`;
-                              a.click();
-                              URL.revokeObjectURL(url);
-                            }}
-                          >
-                            <IconExportMd size={15} />
-                          </button>
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </article>
-              ))}
-
-              {(session.state === "streaming" || status.dot === "info") && (
-                <div className="working">
-                  <span className="working__dot" /> {tr("main.working")}
-                </div>
-              )}
-
-              {/* Plan card only when Agent sends plan (or not dismissed) */}
-              {plan.visible && (
-                <div className="plan-card">
-                  <div className="plan-card__badge">
-                    <IconPlan size={14} />{" "}
-                    {plan.waiting ? tr("plan.waiting") : tr("plan.ready")}
-                  </div>
-                  <h3 className="plan-card__title">{plan.title}</h3>
-                  <div className="plan-card__h">{tr("plan.context")}</div>
-                  <div className="plan-card__body">
-                    {Array.isArray(plan.entries) && plan.entries.length
-                      ? JSON.stringify(plan.entries, null, 2)
-                      : plan.body || tr("plan.empty")}
-                  </div>
-                  <div className="plan-card__actions">
-                    <button type="button" className="btn btn--primary" disabled={plan.waiting}>
-                      {tr("plan.approve")}
-                    </button>
-                    <button type="button" className="btn btn--ghost" disabled={plan.waiting}>
-                      {tr("plan.changes")}
-                    </button>
-                    <button
-                      type="button"
-                      className="btn btn--ghost"
-                      onClick={() =>
-                        setPlan((p) => ({
-                          ...p,
-                          visible: false,
-                          waiting: true,
-                          entries: [],
-                          body: "",
-                        }))
-                      }
-                    >
-                      {tr("plan.dismiss")}
-                    </button>
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
+          <ConversationThread
+            locale={locale}
+            messages={messages}
+            sessionState={session.state}
+            plan={plan}
+            onDismissPlan={() =>
+              setPlan((p) => ({
+                ...p,
+                visible: false,
+                waiting: true,
+                entries: [],
+                body: "",
+              }))
+            }
+            onAddAttachmentToComposer={(att) =>
+              setAttachments((prev) => mergeAttachments(prev, [att]))
+            }
+            attachLabels={attachLabels}
+          />
 
           <div className="composer-wrap">
             <div
@@ -2033,6 +2132,9 @@ export default function App() {
                       attachment={a}
                       variant="chip"
                       labels={attachLabels}
+                      galleryPaths={attachments
+                        .filter((x) => !x.isDir && isImagePath(x.path))
+                        .map((x) => x.path)}
                       onRemove={(att) =>
                         setAttachments((prev) =>
                           prev.filter((x) => x.path !== att.path),
@@ -2118,9 +2220,7 @@ export default function App() {
                 )}
               <textarea
                 className="composer__input"
-                placeholder={
-                  tr("composer.placeholder")
-                }
+                placeholder={tr("composer.placeholder")}
                 value={draft}
                 disabled={!canType(session.state)}
                 rows={1}
@@ -2309,21 +2409,7 @@ export default function App() {
             <ResourceViewer
               projectPath={activeProject?.path ?? null}
               projectName={activeProject?.name ?? null}
-              labels={{
-                title: tr("resources.title"),
-                noProject: tr("main.noProject"),
-                empty: tr("resources.empty"),
-                search: tr("resources.search"),
-                refresh: tr("resources.refresh"),
-                loading: tr("resources.loading"),
-                truncated: tr("resources.truncated"),
-                binary: tr("resources.binary"),
-                close: tr("common.close"),
-                files: tr("resources.files"),
-                preview: tr("resources.preview"),
-                back: tr("resources.back"),
-                openFailed: tr("resources.openFailed"),
-              }}
+              locale={locale}
               onClose={() =>
                 setLayout((l) => {
                   const n = { ...l, asideCollapsed: true };
@@ -2346,17 +2432,26 @@ export default function App() {
               <button
                 type="button"
                 className="entry-card"
+                onClick={() => void runAccountLogin("oauth")}
+              >
+                <div className="entry-card__t">{tr("onboarding.officialOauth")}</div>
+                <div className="entry-card__d">{tr("onboarding.officialHint")}</div>
+              </button>
+              <button
+                type="button"
+                className="entry-card"
                 onClick={() => {
                   const key = window.prompt("Official API Key");
                   if (key) {
                     void api.secretsSet({ officialApiKey: key }).then(() => {
                       setSetup((s) => ({ ...s, auth: true }));
                       setPingMsg("OK");
+                      void refreshAccount({ refreshBilling: false });
                     });
                   }
                 }}
               >
-                <div className="entry-card__t">{tr("onboarding.official")}</div>
+                <div className="entry-card__t">{tr("onboarding.officialKey")}</div>
                 <div className="entry-card__d">{tr("onboarding.officialHint")}</div>
               </button>
               <button
@@ -2688,5 +2783,6 @@ export default function App() {
 
       <span hidden data-layout-default={JSON.stringify(DEFAULT_LAYOUT)} />
     </div>
+    </ImageViewerProvider>
   );
 }

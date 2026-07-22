@@ -1,13 +1,18 @@
 //! Grok App Host — real ACP default (`grok agent stdio`).
 
+mod account;
 mod acp_client;
+mod supergrok_quota;
 mod cli_probe;
 mod commands;
+mod editors;
 mod error;
 mod fs_browser;
+mod media_protocol;
 mod mock_acp;
 mod paths;
 mod permission;
+mod providers;
 mod session_title;
 #[cfg(test)]
 mod permission_host_test;
@@ -37,6 +42,13 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_store::Builder::new().build())
         .manage(session_mgr)
+        // Range-capable media streaming (video/audio/pdf) — never loads multi‑GB into RAM.
+        .register_asynchronous_uri_scheme_protocol("media", |_ctx, request, responder| {
+            std::thread::spawn(move || {
+                let response = media_protocol::handle_request(request);
+                responder.respond(response);
+            });
+        })
         .setup(|app| {
             use tauri::Manager;
             if let Some(window) = app.get_webview_window("main") {
@@ -99,6 +111,20 @@ pub fn run() {
             commands::fs_list_dir,
             commands::fs_read_file,
             commands::session_auto_title,
+            commands::account_status,
+            commands::account_login,
+            commands::account_logout,
+            commands::account_open_usage,
+            commands::account_open_subscribe,
+            commands::providers_list,
+            commands::providers_upsert,
+            commands::providers_remove,
+            commands::providers_set_default,
+            commands::providers_activate,
+            commands::providers_ping,
+            commands::providers_list_models,
+            commands::editors_list,
+            commands::open_in_editor,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Grok App");

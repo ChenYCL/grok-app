@@ -3,7 +3,7 @@
  * Back control returns to the workbench ("返回应用").
  */
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Select } from "@/components/Select";
 import {
   IconAppearance,
@@ -19,11 +19,17 @@ import {
 import type { Theme } from "@/lib/theme";
 import type { PermissionPolicyId } from "@/lib/grokCatalog";
 import { PERMISSION_POLICIES } from "@/lib/grokCatalog";
+import type { AccountStatus, DetectedEditor } from "@/lib/api";
+import * as api from "@/lib/api";
+import { AccountPanel } from "@/components/AccountPanel";
+import { ProvidersPanel } from "@/components/ProvidersPanel";
+import { resolveLocale } from "@/i18n";
 
 export type SettingsSectionId =
   | "general"
   | "appearance"
   | "account"
+  | "runtime"
   | "about";
 
 export interface SettingsPageProps {
@@ -51,17 +57,33 @@ export interface SettingsPageProps {
   };
   onDoctor: () => void;
   versionFooter: string;
+  /** Official Grok Build account (membership / usage). */
+  account: AccountStatus | null;
+  accountLoading: boolean;
+  accountBusy: boolean;
+  onAccountLoginOauth: () => void;
+  onAccountLoginDevice: () => void;
+  onAccountLogout: () => void;
+  onAccountRefresh: () => void;
+  onAccountManageUsage: () => void;
+  onAccountSubscribe: () => void;
+  /** Default open target: finder | editor id */
+  defaultOpenTarget?: string;
+  onDefaultOpenTarget?: (v: string) => void;
+  /** After switching official/custom provider — reconnect Grok Build agent. */
+  onProviderActivated?: () => void;
 }
 
 const NAV: {
   id: SettingsSectionId;
-  icon: "settings" | "appearance" | "user" | "info";
+  icon: "settings" | "appearance" | "user" | "doctor" | "info";
   labelKey: string;
   group: "personal" | "system";
 }[] = [
   { id: "general", icon: "settings", labelKey: "settings.nav.general", group: "personal" },
   { id: "appearance", icon: "appearance", labelKey: "settings.nav.appearance", group: "personal" },
   { id: "account", icon: "user", labelKey: "settings.nav.account", group: "personal" },
+  { id: "runtime", icon: "doctor", labelKey: "settings.nav.runtime", group: "system" },
   { id: "about", icon: "info", labelKey: "settings.nav.about", group: "system" },
 ];
 
@@ -74,6 +96,7 @@ function NavIcon({
 }) {
   if (name === "appearance") return <IconAppearance size={size} />;
   if (name === "user") return <IconUser size={size} />;
+  if (name === "doctor") return <IconDoctor size={size} />;
   if (name === "info") return <IconInfo size={size} />;
   return <IconSettings size={size} />;
 }
@@ -97,9 +120,30 @@ export function SettingsPage({
   cliInfo,
   onDoctor,
   versionFooter,
+  account,
+  accountLoading,
+  accountBusy,
+  onAccountLoginOauth,
+  onAccountLoginDevice,
+  onAccountLogout,
+  onAccountRefresh,
+  onAccountManageUsage,
+  onAccountSubscribe,
+  defaultOpenTarget = "finder",
+  onDefaultOpenTarget,
+  onProviderActivated,
 }: SettingsPageProps) {
   const [query, setQuery] = useState("");
+  const [accountTab, setAccountTab] = useState<"official" | "providers">(
+    "official",
+  );
+  const [editors, setEditors] = useState<DetectedEditor[]>([]);
   const t = (k: string) => labels[k] ?? k;
+
+  useEffect(() => {
+    if (!api.isTauri()) return;
+    void api.editorsList().then((r) => setEditors(r.editors ?? [])).catch(() => {});
+  }, []);
 
   const nav = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -114,7 +158,9 @@ export function SettingsPage({
         ? t("settings.nav.appearance")
         : section === "account"
           ? t("settings.nav.account")
-          : t("settings.nav.about");
+          : section === "runtime"
+            ? t("settings.nav.runtime")
+            : t("settings.nav.about");
 
   return (
     <div className="settings-page" data-testid="settings-page">
@@ -267,6 +313,29 @@ export function SettingsPage({
                   ]}
                 />
               </div>
+              {onDefaultOpenTarget && (
+                <div className="settings-row">
+                  <div className="settings-row__text">
+                    <div className="settings-row__label">
+                      {t("settings.openTarget")}
+                    </div>
+                    <div className="settings-row__desc">
+                      {t("settings.openTargetDesc")}
+                    </div>
+                  </div>
+                  <Select
+                    value={defaultOpenTarget}
+                    onChange={onDefaultOpenTarget}
+                    options={[
+                      { value: "finder", label: t("settings.openFinder") },
+                      ...editors.map((e) => ({
+                        value: e.id,
+                        label: e.label,
+                      })),
+                    ]}
+                  />
+                </div>
+              )}
             </div>
           </>
         )}
@@ -308,6 +377,108 @@ export function SettingsPage({
         )}
 
         {section === "account" && (
+          <>
+            <div className="settings-account-tabs" role="tablist">
+              <div className="settings-seg settings-seg--lg" role="presentation">
+                <button
+                  type="button"
+                  role="tab"
+                  className={
+                    "settings-seg__btn" +
+                    (accountTab === "official" ? " is-on" : "")
+                  }
+                  aria-selected={accountTab === "official"}
+                  onClick={() => setAccountTab("official")}
+                >
+                  {t("settings.tabOfficial")}
+                </button>
+                <button
+                  type="button"
+                  role="tab"
+                  className={
+                    "settings-seg__btn" +
+                    (accountTab === "providers" ? " is-on" : "")
+                  }
+                  aria-selected={accountTab === "providers"}
+                  onClick={() => setAccountTab("providers")}
+                >
+                  {t("settings.tabProviders")}
+                </button>
+              </div>
+              <p className="settings-account-tabs__hint">
+                {accountTab === "official"
+                  ? t("settings.tabOfficialHint")
+                  : t("settings.tabProvidersHint")}
+              </p>
+            </div>
+            {accountTab === "providers" ? (
+              <ProvidersPanel
+                locale={resolveLocale(locale)}
+                onProviderActivated={onProviderActivated}
+              />
+            ) : (
+          <AccountPanel
+            status={account}
+            loading={accountLoading}
+            busy={accountBusy}
+            locale={locale}
+            t={t}
+            labels={{
+              signedIn: t("account.signedIn"),
+              signedOut: t("account.signedOut"),
+              loginOauth: t("account.loginOauth"),
+              loginDevice: t("account.loginDevice"),
+              logout: t("account.logout"),
+              refresh: t("account.refresh"),
+              refreshing: t("account.refreshing"),
+              manageUsage: t("account.manageUsage"),
+              subscribe: t("account.subscribe"),
+              channel: t("account.channel"),
+              subscription: t("account.subscription"),
+              quota: t("account.quota"),
+              quotaRemaining: t("account.quotaRemaining"),
+              quotaUsed: t("account.quotaUsed"),
+              quotaUnknown: t("account.quotaUnknown"),
+              period: t("account.period"),
+              prepaid: t("account.prepaid"),
+              onDemand: t("account.onDemand"),
+              heatmap: t("account.heatmap"),
+              heatmapHint: t("account.heatmapHint"),
+              callLogs: t("account.callLogs"),
+              callLogsEmpty: t("account.callLogsEmpty"),
+              colSession: t("account.col.session"),
+              colModel: t("account.col.model"),
+              colTurns: t("account.col.turns"),
+              colTokens: t("account.col.tokens"),
+              colDuration: t("account.col.duration"),
+              colWhen: t("account.col.when"),
+              less: t("account.heatmap.less"),
+              more: t("account.heatmap.more"),
+              expired: t("account.expired"),
+              team: t("account.team"),
+              billingUnavailable: t("account.billingUnavailable"),
+              loginBusy: t("account.loginBusy"),
+              resetsAt: t("account.resetsAt"),
+              fetchedAt: t("account.fetchedAt"),
+              products: t("account.products"),
+              heatmapNoData: t("account.heatmap.noData"),
+              heatmapAria: t("account.heatmap.aria"),
+              heatmapRequests: t("account.heatmap.requests"),
+              heatmapTokens: t("account.heatmap.tokens"),
+              weeklyTitle: t("account.weeklyTitle"),
+            }}
+            onLoginOauth={onAccountLoginOauth}
+            onLoginDevice={onAccountLoginDevice}
+            onLogout={onAccountLogout}
+            onRefresh={onAccountRefresh}
+            onManageUsage={onAccountManageUsage}
+            onSubscribe={onAccountSubscribe}
+          />
+            )}
+          </>
+        )}
+
+        {section === "runtime" && (
           <div className="settings-card">
             <div className="settings-row settings-row--stack">
               <div className="settings-row__text">
@@ -333,8 +504,8 @@ export function SettingsPage({
                   {cliInfo.version}
                   {cliInfo.path ? ` · ${cliInfo.path}` : ""}
                   {cliInfo.cliAuthPresent
-                    ? " · auth.json ok"
-                    : " · no CLI auth.json"}
+                    ? ` · ${t("account.cliAuthOk")}`
+                    : ` · ${t("account.cliAuthMissing")}`}
                 </div>
               )}
             </div>

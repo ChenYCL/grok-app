@@ -1,18 +1,24 @@
 /**
- * Personal center entry — upward popover with settings / theme / doctor.
- * Menu is portaled to body so sidebar overflow never clips it.
+ * Personal center — compact upward menu: account card · settings · theme · logout.
  */
 
 import { useRef, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import {
-  IconDoctor,
   IconSettings,
   IconThemeMoon,
   IconThemeSun,
 } from "@/components/icons";
 import type { Theme } from "@/lib/theme";
 import { useFloatingMenu } from "@/lib/floatingMenu";
+import type { AccountStatus } from "@/lib/api";
+import {
+  accountDisplayName,
+  accountInitials,
+  channelLabelKey,
+  tierLabel,
+  usagePercent,
+} from "@/lib/accountUi";
 
 export interface UserMenuProps {
   open: boolean;
@@ -23,16 +29,33 @@ export interface UserMenuProps {
     theme: string;
     themeLight: string;
     themeDark: string;
-    doctor: string;
     local: string;
+    signedIn: string;
+    signedOut: string;
+    login: string;
+    logout: string;
+    remaining: string;
   };
-  cliOk: boolean;
-  authOk: boolean;
+  t: (key: string) => string;
+  account: AccountStatus | null;
+  accountBusy: boolean;
   onSettings: () => void;
+  onAccountSettings: () => void;
   onToggleTheme: () => void;
-  onDoctor: () => void;
-  /** Anchor: render menu above this footer row */
+  onLogin: () => void;
+  onLogout: () => void;
   children: ReactNode;
+}
+
+export function remainingPercent(account: AccountStatus | null): number | null {
+  if (!account?.billing) return null;
+  const billing = account.billing;
+  if (billing.remainingPercent != null && Number.isFinite(billing.remainingPercent)) {
+    return Math.max(0, Math.min(100, billing.remainingPercent));
+  }
+  const used = usagePercent(billing);
+  if (used == null) return null;
+  return Math.max(0, Math.min(100, 100 - used));
 }
 
 export function UserMenu({
@@ -40,11 +63,14 @@ export function UserMenu({
   onClose,
   theme,
   labels,
-  cliOk,
-  authOk,
+  t,
+  account,
+  accountBusy,
   onSettings,
+  onAccountSettings,
   onToggleTheme,
-  onDoctor,
+  onLogin,
+  onLogout,
   children,
 }: UserMenuProps) {
   const rootRef = useRef<HTMLDivElement>(null);
@@ -59,28 +85,89 @@ export function UserMenu({
     onClose,
     placement: "up",
     matchTriggerWidth: true,
-    minWidth: 200,
-    width: 220,
-    estHeight: 200,
+    minWidth: 240,
+    width: 260,
+    estHeight: 260,
     gap: 6,
   });
+
+  const profile = account?.profile;
+  const signedIn = !!profile?.signedIn;
+  const name = profile
+    ? accountDisplayName(profile, labels.local)
+    : labels.local;
+  const initials = profile ? accountInitials(profile) : "G";
+  const channel = account?.channel ?? "none";
+  const billing = account?.billing;
+  const usedPct = billing ? usagePercent(billing) : null;
+  const remaining = remainingPercent(account);
+  const tier = billing
+    ? tierLabel(billing, channel)
+    : signedIn
+      ? "Grok Build"
+      : "—";
 
   const panel =
     open && pos && typeof document !== "undefined"
       ? createPortal(
           <div
             ref={panelRef}
-            className="user-menu__pop user-menu__pop--portal"
+            className="user-menu__pop user-menu__pop--portal user-menu__pop--account"
             role="menu"
             style={style}
           >
-            <div className="user-menu__status">
-              <span>{labels.local}</span>
-              <span className="user-menu__status-meta">
-                {cliOk ? "CLI ✓" : "CLI —"}
-                {authOk ? " · Auth ✓" : " · Auth —"}
-              </span>
-            </div>
+            <button
+              type="button"
+              className="user-menu__account"
+              role="menuitem"
+              onClick={() => {
+                onClose();
+                onAccountSettings();
+              }}
+            >
+              <div className="user-menu__account-top">
+                <div className="account-avatar account-avatar--sm" aria-hidden>
+                  {initials}
+                </div>
+                <div className="user-menu__account-text">
+                  <div className="user-menu__account-name">{name}</div>
+                  <div className="user-menu__account-sub">
+                    {signedIn ? labels.signedIn : labels.signedOut}
+                    {" · "}
+                    {t(channelLabelKey(channel))}
+                  </div>
+                </div>
+              </div>
+              <div className="user-menu__quota">
+                <div className="user-menu__quota-row">
+                  <span className="user-menu__tier">{tier}</span>
+                  <span className="user-menu__remain">
+                    {remaining != null
+                      ? `${remaining.toFixed(0)}% ${labels.remaining}`
+                      : "—"}
+                  </span>
+                </div>
+                {remaining != null && (
+                  <div
+                    className="account-quota-bar account-quota-bar--sm"
+                    aria-hidden
+                  >
+                    <div
+                      className={
+                        "account-quota-bar__fill" +
+                        (usedPct != null && usedPct >= 90
+                          ? " is-danger"
+                          : usedPct != null && usedPct >= 70
+                            ? " is-warn"
+                            : "")
+                      }
+                      style={{ width: `${Math.min(100, usedPct ?? 0)}%` }}
+                    />
+                  </div>
+                )}
+              </div>
+            </button>
+
             <button
               type="button"
               className="user-menu__item"
@@ -93,6 +180,7 @@ export function UserMenu({
               <IconSettings size={16} />
               <span>{labels.settings}</span>
             </button>
+
             <button
               type="button"
               className="user-menu__item"
@@ -113,18 +201,34 @@ export function UserMenu({
                 </em>
               </span>
             </button>
-            <button
-              type="button"
-              className="user-menu__item"
-              role="menuitem"
-              onClick={() => {
-                onClose();
-                onDoctor();
-              }}
-            >
-              <IconDoctor size={16} />
-              <span>{labels.doctor}</span>
-            </button>
+
+            {signedIn ? (
+              <button
+                type="button"
+                className="user-menu__item user-menu__item--danger"
+                role="menuitem"
+                disabled={accountBusy}
+                onClick={() => {
+                  onClose();
+                  onLogout();
+                }}
+              >
+                <span>{labels.logout}</span>
+              </button>
+            ) : (
+              <button
+                type="button"
+                className="user-menu__item user-menu__item--primary"
+                role="menuitem"
+                disabled={accountBusy}
+                onClick={() => {
+                  onClose();
+                  onLogin();
+                }}
+              >
+                <span>{labels.login}</span>
+              </button>
+            )}
           </div>,
           document.body,
         )

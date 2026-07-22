@@ -1,0 +1,56 @@
+/* Progressive Tailwind layer — maps to existing design tokens in tokens.css */
+@import "tailwindcss";
+
+@theme inline {
+  --font-sans: var(--font-sans);
+  --font-mono: var(--font-mono);
+  --radius-sm: var(--radius-sm);
+  --radius-md: var(--radius-md);
+  --radius-lg: var(--radius-lg);
+  --color-background: var(--bg-main);
+  --color-foreground: var(--text-primary);
+  --color-card: var(--bg-card);
+  --color-card-foreground: var(--text-primary);
+  --color-muted: var(--bg-hover);
+  --color-muted-foreground: var(--text-secondary);
+  --color-border: var(--border-subtle);
+  --color-input: var(--bg-input);
+  --color-ring: var(--border-focus);
+  --color-primary: var(--text-primary);
+  --color-primary-foreground: var(--bg-main);
+  --color-secondary: var(--bg-elevated);
+  --color-secondary-foreground: var(--text-primary);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--text-inverse);
+  --color-destructive: var(--danger);
+  --color-destructive-foreground: #fff;
+}
+
+/* shadcn-style shimmer for streaming status text */
+@keyframes shimmer {
+  0% {
+    background-position: 100% 0;
+  }
+  100% {
+    background-position: -100% 0;
+  }
+}
+
+@utility shimmer {
+  background: linear-gradient(
+    90deg,
+    var(--text-tertiary) 0%,
+    var(--text-primary) 40%,
+    var(--text-tertiary) 80%
+  );
+  background-size: 200% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: shimmer 1.6s ease-in-out infinite;
+}
+
+/* Conversation surface helpers (work with existing app chrome) */
+@utility chat-surface {
+  color: var(--text-primary);
+}

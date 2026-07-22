@@ -102,6 +102,16 @@ impl AcpClient {
         cli_path: PathBuf,
         cwd: PathBuf,
     ) -> Result<(Arc<Self>, mpsc::UnboundedReceiver<AcpEvent>), AgentError> {
+        let settings = crate::store::load_settings();
+        Self::spawn_with_home(cli_path, cwd, &settings.session_data_mode)
+    }
+
+    /// Spawn `grok agent stdio` with GROK_HOME from session_data_mode.
+    pub fn spawn_with_home(
+        cli_path: PathBuf,
+        cwd: PathBuf,
+        session_data_mode: &str,
+    ) -> Result<(Arc<Self>, mpsc::UnboundedReceiver<AcpEvent>), AgentError> {
         if !cli_path.exists() {
             return Err(AgentError::new(
                 AgentErrorCode::CliNotFound,
@@ -123,6 +133,15 @@ impl AcpClient {
         if let Some(path) = enriched_path_env() {
             cmd.env("PATH", path);
         }
+        // Independent profile: agent reads App agent-home/config.toml for custom providers.
+        let grok_home = crate::paths::resolve_agent_grok_home(session_data_mode);
+        let _ = std::fs::create_dir_all(&grok_home);
+        cmd.env("GROK_HOME", &grok_home);
+        tracing::info!(
+            "acp: spawn GROK_HOME={} mode={}",
+            grok_home.display(),
+            session_data_mode
+        );
 
         let mut child = cmd.spawn().map_err(|e| {
             AgentError::new(

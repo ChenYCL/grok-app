@@ -79,7 +79,11 @@
   --info: #6cb6ff;
   --info-muted: rgba(108, 182, 255, 0.14);
 
-  --scrollbar-thumb: rgba(255, 255, 255, 0.14);
+  /* Overlay scrollbar: track always transparent; floating thumb on hover */
+  --scrollbar-size: 8px;
+  --scrollbar-thumb-width: 6px;
+  --scrollbar-thumb: rgba(255, 255, 255, 0.3);
+  --scrollbar-thumb-hover: rgba(255, 255, 255, 0.45);
   --scrollbar-track: transparent;
   --shadow-window: 0 16px 48px rgba(0, 0, 0, 0.55);
   --shadow-pop: 0 8px 28px rgba(0, 0, 0, 0.45);
@@ -129,7 +133,10 @@
   --info: #2a7ed4;
   --info-muted: rgba(42, 126, 212, 0.1);
 
-  --scrollbar-thumb: rgba(0, 0, 0, 0.18);
+  --scrollbar-size: 8px;
+  --scrollbar-thumb-width: 6px;
+  --scrollbar-thumb: rgba(0, 0, 0, 0.24);
+  --scrollbar-thumb-hover: rgba(0, 0, 0, 0.38);
   --scrollbar-track: transparent;
   --shadow-window: 0 12px 40px rgba(0, 0, 0, 0.12);
   --shadow-pop: 0 8px 24px rgba(0, 0, 0, 0.1);

@@ -53,6 +53,13 @@ pub struct AppSettings {
     pub mode: String,
     pub onboarding_done: bool,
     pub setup_skipped: bool,
+    /// Default “open path” target: `finder` / `explorer` / editor id (`code`, `cursor`, …).
+    #[serde(default = "default_open_target")]
+    pub default_open_target: String,
+}
+
+fn default_open_target() -> String {
+    "finder".into()
 }
 
 impl Default for AppSettings {
@@ -68,6 +75,7 @@ impl Default for AppSettings {
             mode: "agent".into(),
             onboarding_done: false,
             setup_skipped: false,
+            default_open_target: default_open_target(),
         }
     }
 }

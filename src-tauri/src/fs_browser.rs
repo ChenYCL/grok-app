@@ -10,6 +10,8 @@ use serde::Serialize;
 
 const MAX_TEXT_BYTES: u64 = 2 * 1024 * 1024; // 2 MiB text preview
 const MAX_BINARY_BYTES: u64 = 8 * 1024 * 1024; // 8 MiB image / pdf
+/// Office packages streamed to the UI for rich render (docx-preview / xlsx / pdf).
+const MAX_OFFICE_STREAM_BYTES: u64 = 40 * 1024 * 1024;
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -26,13 +28,45 @@ pub struct FsEntry {
 pub struct FsReadResult {
     pub relative_path: String,
     pub name: String,
+    /// Absolute filesystem path for stream preview (video/audio/image via asset protocol).
+    pub absolute_path: String,
     pub size: u64,
     pub kind: String,
     pub mime: String,
     pub text: Option<String>,
     pub base64: Option<String>,
+    /// Prefer streaming the file path instead of embedding base64 (media / large files).
+    pub stream: bool,
     pub truncated: bool,
     pub error: Option<String>,
+}
+
+fn ok_result(
+    path: &Path,
+    relative_path: String,
+    name: String,
+    size: u64,
+    kind: String,
+    mime: String,
+    text: Option<String>,
+    base64: Option<String>,
+    stream: bool,
+    truncated: bool,
+    error: Option<String>,
+) -> FsReadResult {
+    FsReadResult {
+        relative_path,
+        name,
+        absolute_path: path.to_string_lossy().to_string(),
+        size,
+        kind,
+        mime,
+        text,
+        base64,
+        stream,
+        truncated,
+        error,
+    }
 }
 
 fn normalize_rel(relative: &str) -> String {
@@ -412,119 +446,150 @@ pub fn read_file(project_root: &str, relative: &str) -> Result<FsReadResult, Str
     let mut kind = guess_kind(&ext, false).to_string();
     let mime = mime_of(&ext, &kind);
 
-    // Office documents: extract plain text from package XML
+    // Office OOXML: stream path to frontend rich preview (docx-preview / SheetJS).
+    // Keep original kind (docx|xlsx|pptx) so the UI can pick the right renderer.
     if matches!(kind.as_str(), "docx" | "xlsx" | "pptx" | "odf") {
-        if size > MAX_BINARY_BYTES {
-            return Ok(FsReadResult {
-                relative_path: rel_in,
-                name,
-                size,
-                kind: "office".into(),
-                mime,
-                text: None,
-                base64: None,
-                truncated: true,
-                error: Some(format!("file too large for preview (>{MAX_BINARY_BYTES} bytes)")),
-            });
-        }
-        match extract_office_text(&path, &kind) {
-            Ok(text) => {
-                let truncated = text.len() as u64 > MAX_TEXT_BYTES;
-                let text = if truncated {
-                    text.chars().take(MAX_TEXT_BYTES as usize).collect()
-                } else {
-                    text
-                };
-                return Ok(FsReadResult {
-                    relative_path: rel_in,
-                    name,
-                    size,
-                    kind: "office".into(),
-                    mime,
-                    text: Some(text),
-                    base64: None,
-                    truncated,
-                    error: None,
-                });
-            }
-            Err(e) => {
-                return Ok(FsReadResult {
-                    relative_path: rel_in,
-                    name,
-                    size,
-                    kind: "office".into(),
-                    mime,
-                    text: None,
-                    base64: None,
-                    truncated: false,
-                    error: Some(e),
-                });
-            }
-        }
-    }
-
-    if kind == "office_legacy" {
-        return Ok(FsReadResult {
-            relative_path: rel_in,
-            name,
-            size,
-            kind: "binary".into(),
-            mime,
-            text: None,
-            base64: None,
-            truncated: false,
-            error: Some(
-                "legacy .doc/.xls/.ppt is not supported — save as .docx/.xlsx/.pptx to preview"
-                    .into(),
-            ),
-        });
-    }
-
-    // Binary-ish kinds
-    if matches!(
-        kind.as_str(),
-        "image" | "pdf" | "audio" | "video" | "font" | "archive"
-    ) {
-        if size > MAX_BINARY_BYTES {
-            return Ok(FsReadResult {
-                relative_path: rel_in,
+        if size > MAX_OFFICE_STREAM_BYTES {
+            return Ok(ok_result(
+                &path,
+                rel_in,
                 name,
                 size,
                 kind,
                 mime,
-                text: None,
-                base64: None,
-                truncated: true,
-                error: Some(format!("file too large for preview (>{MAX_BINARY_BYTES} bytes)")),
-            });
+                None,
+                None,
+                true,
+                true,
+                Some(format!(
+                    "file too large for in-app office preview (>{MAX_OFFICE_STREAM_BYTES} bytes)"
+                )),
+            ));
         }
-        if ext == "svg" {
-            let text = fs::read_to_string(&path).unwrap_or_default();
-            return Ok(FsReadResult {
-                relative_path: rel_in,
-                name,
-                size,
-                kind: "image".into(),
-                mime,
-                text: Some(text),
-                base64: None,
-                truncated: false,
-                error: None,
-            });
-        }
-        let bytes = fs::read(&path).map_err(|e| format!("read: {e}"))?;
-        let b64 = base64::engine::general_purpose::STANDARD.encode(&bytes);
-        return Ok(FsReadResult {
-            relative_path: rel_in,
+        // Optional plain-text fallback for tiny extract failures in UI
+        let text_fallback = extract_office_text(&path, &kind).ok().map(|t| {
+            if t.len() as u64 > MAX_TEXT_BYTES {
+                t.chars().take(MAX_TEXT_BYTES as usize).collect()
+            } else {
+                t
+            }
+        });
+        return Ok(ok_result(
+            &path,
+            rel_in,
             name,
             size,
             kind,
             mime,
-            text: None,
-            base64: Some(b64),
-            truncated: false,
-            error: None,
-        });
+            text_fallback,
+            None,
+            true, // stream → frontend fetches binary via asset/media URL
+            false,
+            None,
+        ));
+    }
+
+    if kind == "office_legacy" {
+        return Ok(ok_result(
+            &path,
+            rel_in,
+            name,
+            size,
+            "binary".into(),
+            mime,
+            None,
+            None,
+            false,
+            false,
+            Some(
+                "legacy .doc/.xls/.ppt is not supported — save as .docx/.xlsx/.pptx to preview"
+                    .into(),
+            ),
+        ));
+    }
+
+    // Video / audio — always stream via absolute path (no base64; supports multi‑GB files)
+    if matches!(kind.as_str(), "video" | "audio") {
+        return Ok(ok_result(
+            &path,
+            rel_in,
+            name,
+            size,
+            kind,
+            mime,
+            None,
+            None,
+            true,
+            false,
+            None,
+        ));
+    }
+
+    // Image / PDF — stream path for large files; small images may embed as base64
+    if matches!(kind.as_str(), "image" | "pdf") {
+        if ext == "svg" && size <= MAX_TEXT_BYTES {
+            let text = fs::read_to_string(&path).unwrap_or_default();
+            return Ok(ok_result(
+                &path,
+                rel_in,
+                name,
+                size,
+                "image".into(),
+                mime,
+                Some(text),
+                None,
+                false,
+                false,
+                None,
+            ));
+        }
+        // Prefer stream for anything over 2 MiB (webview loads via asset protocol)
+        if size > 2 * 1024 * 1024 {
+            return Ok(ok_result(
+                &path,
+                rel_in,
+                name,
+                size,
+                kind,
+                mime,
+                None,
+                None,
+                true,
+                false,
+                None,
+            ));
+        }
+        let bytes = fs::read(&path).map_err(|e| format!("read: {e}"))?;
+        let b64 = base64::engine::general_purpose::STANDARD.encode(&bytes);
+        return Ok(ok_result(
+            &path,
+            rel_in,
+            name,
+            size,
+            kind,
+            mime,
+            None,
+            Some(b64),
+            false,
+            false,
+            None,
+        ));
+    }
+
+    if matches!(kind.as_str(), "font" | "archive") {
+        return Ok(ok_result(
+            &path,
+            rel_in,
+            name,
+            size,
+            kind,
+            mime,
+            None,
+            None,
+            false,
+            false,
+            Some("no inline preview for this format".into()),
+        ));
     }
 
     // Text-like (incl. unknown → try as text)
@@ -542,31 +607,35 @@ pub fn read_file(project_root: &str, relative: &str) -> Result<FsReadResult, Str
     let nulls = bytes.iter().filter(|b| **b == 0).count();
     if !bytes.is_empty() && nulls > bytes.len() / 50 {
         kind = "binary".into();
-        return Ok(FsReadResult {
-            relative_path: rel_in,
+        return Ok(ok_result(
+            &path,
+            rel_in,
             name,
             size,
             kind,
-            mime: "application/octet-stream".into(),
-            text: None,
-            base64: None,
-            truncated: false,
-            error: Some("binary file (no text preview)".into()),
-        });
+            "application/octet-stream".into(),
+            None,
+            None,
+            false,
+            false,
+            Some("binary file (no text preview)".into()),
+        ));
     }
 
     let text = String::from_utf8_lossy(&bytes).into_owned();
-    Ok(FsReadResult {
-        relative_path: rel_in,
+    Ok(ok_result(
+        &path,
+        rel_in,
         name,
         size,
         kind,
         mime,
-        text: Some(text),
-        base64: None,
+        Some(text),
+        None,
+        false,
         truncated,
-        error: None,
-    })
+        None,
+    ))
 }
 
 #[cfg(test)]
