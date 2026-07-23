@@ -1,8 +1,8 @@
 //! Install / update Grok Build CLI with multi-mirror download fallback.
 //!
-//! Mirrors mirror the official installer (`https://x.ai/cli/install.sh`):
-//! 1. Cloudflare-fronted `https://x.ai/cli`
-//! 2. Direct GCS `https://storage.googleapis.com/grok-build-public-artifacts/cli`
+//! Mirrors (preference order — GCS first: more reliable in CN / restricted networks):
+//! 1. Direct GCS `https://storage.googleapis.com/grok-build-public-artifacts/cli`
+//! 2. Cloudflare-fronted `https://x.ai/cli`
 //!
 //! Each mirror is retried a few times before falling through. Progress is emitted
 //! on `setup://cli-install-progress` for the setup wizard UI.
@@ -20,10 +20,11 @@ use tracing::{info, warn};
 use crate::cli_probe;
 use crate::process_util::{self, user_home};
 
-/// Official artifact bases (order = preference). Keep in sync with xAI install.sh.
+/// Official artifact bases (order = preference).
+/// GCS first: x.ai often fails or stalls in CN; fallback to Cloudflare-fronted x.ai.
 const MIRROR_BASES: &[&str] = &[
-    "https://x.ai/cli",
     "https://storage.googleapis.com/grok-build-public-artifacts/cli",
+    "https://x.ai/cli",
 ];
 
 const CHANNEL: &str = "stable";
@@ -286,13 +287,24 @@ fn format_bytes(n: u64) -> String {
 }
 
 fn verify_binary(path: &Path) -> Result<String, String> {
-    if !process_util::looks_runnable(path) {
-        return Err(format!("not a runnable file: {}", path.display()));
+    // Fresh downloads are not yet "looks_runnable":
+    // - Windows temp names used to end in `.part` (rejected by extension check)
+    // - Unix files from File::create have no +x until we chmod
+    // Real gate is a successful `--version` after we fix permissions / naming.
+    if !path.is_file() {
+        return Err(format!("not a file: {}", path.display()));
+    }
+    let meta = fs::metadata(path).map_err(|e| format!("stat {}: {e}", path.display()))?;
+    if meta.len() < 1024 {
+        return Err(format!(
+            "downloaded file too small ({} bytes): {}",
+            meta.len(),
+            path.display()
+        ));
     }
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
-        let meta = fs::metadata(path).map_err(|e| e.to_string())?;
         let mut perms = meta.permissions();
         perms.set_mode(0o755);
         fs::set_permissions(path, perms).map_err(|e| e.to_string())?;
@@ -405,11 +417,18 @@ async fn try_download_all_mirrors(
 
     let tmp_dir = user_home().join(".grok").join("downloads");
     fs::create_dir_all(&tmp_dir).map_err(|e| e.to_string())?;
+    // Windows: keep a trailing `.exe` so CreateProcess / probe can run the partial file
+    // after a successful download (extension must not be bare `.part`).
     let tmp_path = tmp_dir.join(format!(
-        "grok-{}-{}-{}.part",
+        "grok-{}-{}-{}.part{}",
         version,
         platform,
-        std::process::id()
+        std::process::id(),
+        if cfg!(target_os = "windows") {
+            ".exe"
+        } else {
+            ""
+        }
     ));
 
     let mut errors = Vec::new();

@@ -1,27 +1,32 @@
 /**
  * Settings → Account → Custom providers.
- * Visual language matches settings-card / account-panel (not a third-party port).
+ * Left list + right detail/form.
  */
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  type MouseEvent,
+} from "react";
 import * as api from "@/lib/api";
 import { createT, type Locale } from "@/i18n";
 import { Select } from "@/components/Select";
-import { Tip } from "@/components/ui/tooltip";
+import { GlassModal } from "@/components/GlassModal";
 import {
   IconCheck,
   IconClose,
-  IconCopy,
   IconEdit,
   IconPlus,
   IconRefresh,
-  IconShare,
-  IconSkills,
   IconTrash,
 } from "@/components/icons";
 
 export interface ProvidersPanelProps {
   locale: Locale;
+  /** Official OAuth / CLI auth / official API key present. */
+  officialAvailable?: boolean;
   /** Called after switching official/custom so host can reconnect Grok Build. */
   onProviderActivated?: () => void;
 }
@@ -36,12 +41,8 @@ type FormState = {
   setAsDefault: boolean;
 };
 
-type PingState = {
-  status: "idle" | "loading" | "ok" | "fail";
-  ms?: number;
-  detail?: string;
-  httpStatus?: number;
-};
+type RightMode = "empty" | "create" | "edit" | "official";
+type Selection = null | "official" | string;
 
 const emptyForm = (): FormState => ({
   id: "",
@@ -49,7 +50,7 @@ const emptyForm = (): FormState => ({
   baseUrl: "",
   model: "",
   apiKey: "",
-  apiBackend: "chat_completions",
+  apiBackend: "responses",
   setAsDefault: true,
 });
 
@@ -72,31 +73,34 @@ function hostOf(url: string): string {
 
 export function ProvidersPanel({
   locale,
+  officialAvailable = false,
   onProviderActivated,
 }: ProvidersPanelProps) {
   const tr = useMemo(() => createT(locale), [locale]);
   const [list, setList] = useState<api.ProvidersListResult | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [formOpen, setFormOpen] = useState(false);
+  const [selection, setSelection] = useState<Selection>(null);
+  const [rightMode, setRightMode] = useState<RightMode>("empty");
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState<FormState>(emptyForm);
   const [busy, setBusy] = useState(false);
   const [showKey, setShowKey] = useState(false);
-  const [pingMap, setPingMap] = useState<Record<string, PingState>>({});
   const [remoteModels, setRemoteModels] = useState<string[]>([]);
   const [hint, setHint] = useState<string | null>(null);
   const [hintTone, setHintTone] = useState<"ok" | "err" | "muted">("muted");
-  const [copied, setCopied] = useState(false);
-  const [switchHint, setSwitchHint] = useState<string | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<{
+    id: string;
+    name: string;
+  } | null>(null);
 
   const protocolOptions = useMemo(
     () => [
+      { value: "responses", label: tr("prov.protocol.responses") },
       {
         value: "chat_completions",
         label: tr("prov.protocol.chatCompletions"),
       },
-      { value: "responses", label: tr("prov.protocol.responses") },
       { value: "messages", label: tr("prov.protocol.messages") },
     ],
     [tr],
@@ -130,16 +134,39 @@ export function ProvidersPanel({
     void reload();
   }, [reload]);
 
+  // Drop official selection if auth disappears.
+  useEffect(() => {
+    if (!officialAvailable && selection === "official") {
+      setSelection(null);
+      setRightMode("empty");
+    }
+  }, [officialAvailable, selection]);
+
+  const providers = list?.providers ?? [];
+  const activeSource = list?.activeSource ?? "official";
+  const activeProviderId = list?.activeProviderId ?? null;
+  const officialActive = activeSource === "official";
+
   const openCreate = () => {
+    setSelection(null);
     setEditingId(null);
     setForm(emptyForm());
     setRemoteModels([]);
     setHint(null);
     setShowKey(false);
-    setFormOpen(true);
+    setRightMode("create");
+  };
+
+  const openOfficial = () => {
+    if (!officialAvailable) return;
+    setSelection("official");
+    setEditingId(null);
+    setRightMode("official");
+    setHint(null);
   };
 
   const openEdit = (p: api.CustomProvider) => {
+    setSelection(p.id);
     setEditingId(p.id);
     setForm({
       id: p.id,
@@ -147,17 +174,19 @@ export function ProvidersPanel({
       baseUrl: p.baseUrl,
       model: p.model,
       apiKey: "",
-      apiBackend: p.apiBackend || "chat_completions",
+      apiBackend: p.apiBackend || "responses",
       setAsDefault: p.isDefault,
     });
     setRemoteModels([]);
     setHint(null);
     setShowKey(false);
-    setFormOpen(true);
+    setRightMode("edit");
   };
 
-  const closeForm = () => {
-    setFormOpen(false);
+  const closeRight = () => {
+    setRightMode("empty");
+    setSelection(null);
+    setEditingId(null);
     setHint(null);
     setRemoteModels([]);
   };
@@ -181,7 +210,7 @@ export function ProvidersPanel({
         editingId ??
         (slugify(form.id || form.name || form.baseUrl) ||
           `provider-${Date.now().toString(36)}`);
-      await api.providersUpsert({
+      const r = await api.providersUpsert({
         id,
         model: form.model.trim() || id,
         baseUrl: form.baseUrl.trim(),
@@ -191,9 +220,18 @@ export function ProvidersPanel({
         setAsDefault: form.setAsDefault,
         createOnly: !editingId,
       });
-      setFormOpen(false);
+      setList(r);
+      const saved = r.providers.find((p) => p.id === id);
+      if (saved) {
+        openEdit(saved);
+      } else {
+        setRightMode("empty");
+        setSelection(null);
+      }
       setHint(null);
-      await reload();
+      if (form.setAsDefault) {
+        onProviderActivated?.();
+      }
     } catch (e) {
       setHint(String(e));
       setHintTone("err");
@@ -202,17 +240,17 @@ export function ProvidersPanel({
     }
   };
 
-  const remove = async (id: string, name: string) => {
-    if (
-      !window.confirm(tr("prov.confirmDelete", { id: name || id }))
-    ) {
-      return;
-    }
+  const confirmRemove = async () => {
+    if (!deleteTarget) return;
+    const { id } = deleteTarget;
     setBusy(true);
+    setDeleteTarget(null);
     try {
-      await api.providersRemove(id);
-      if (editingId === id) closeForm();
-      await reload();
+      const r = await api.providersRemove(id);
+      setList(r);
+      if (editingId === id || selection === id) {
+        closeRight();
+      }
     } catch (e) {
       setError(String(e));
     } finally {
@@ -220,68 +258,31 @@ export function ProvidersPanel({
     }
   };
 
-  const setDefault = async (id: string) => {
+  const activateOfficial = async (e?: MouseEvent) => {
+    e?.stopPropagation();
     setBusy(true);
-    try {
-      await api.providersActivate("custom", id);
-      await reload();
-      onProviderActivated?.();
-      setSwitchHint(tr("prov.switchedCustom"));
-    } catch (e) {
-      setError(String(e));
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const activateOfficial = async () => {
-    setBusy(true);
-    setSwitchHint(null);
     try {
       const r = await api.providersActivate("official");
       setList(r);
       onProviderActivated?.();
-      setSwitchHint(tr("prov.switchedOfficial"));
-    } catch (e) {
-      setError(String(e));
+    } catch (err) {
+      setError(String(err));
     } finally {
       setBusy(false);
     }
   };
 
-  const activateCustom = async (id: string) => {
+  const activateCustom = async (id: string, e?: MouseEvent) => {
+    e?.stopPropagation();
     setBusy(true);
-    setSwitchHint(null);
     try {
       const r = await api.providersActivate("custom", id);
       setList(r);
       onProviderActivated?.();
-      setSwitchHint(tr("prov.switchedCustom"));
-    } catch (e) {
-      setError(String(e));
+    } catch (err) {
+      setError(String(err));
     } finally {
       setBusy(false);
-    }
-  };
-
-  const ping = async (id: string) => {
-    setPingMap((m) => ({ ...m, [id]: { status: "loading" } }));
-    try {
-      const r = await api.providersPing({ providerId: id });
-      setPingMap((m) => ({
-        ...m,
-        [id]: {
-          status: r.ok ? "ok" : "fail",
-          ms: r.latencyMs,
-          detail: r.error,
-          httpStatus: r.status,
-        },
-      }));
-    } catch (e) {
-      setPingMap((m) => ({
-        ...m,
-        [id]: { status: "fail", detail: String(e) },
-      }));
     }
   };
 
@@ -316,560 +317,442 @@ export function ProvidersPanel({
     }
   };
 
-  const copyPath = async (path: string) => {
-    try {
-      await navigator.clipboard.writeText(path);
-      setCopied(true);
-      window.setTimeout(() => setCopied(false), 1600);
-    } catch {
-      /* ignore */
-    }
-  };
-
   if (loading) {
     return (
-      <div className="settings-card">
-        <div className="settings-row">
-          <div className="settings-row__text">
-            <div className="settings-row__label">{tr("prov.loading")}</div>
-            <div className="settings-row__desc">{tr("prov.loadingHint")}</div>
-          </div>
-        </div>
+      <div className="prov-panel" data-testid="providers-panel">
+        <div className="prov-loading">{tr("prov.loading")}</div>
       </div>
     );
   }
 
-  const providers = list?.providers ?? [];
-  const count = providers.length;
-  const activeSource = list?.activeSource ?? "official";
-  const activeProviderId = list?.activeProviderId ?? null;
+  const listEmpty = !officialAvailable && providers.length === 0;
 
   return (
     <div className="prov-panel" data-testid="providers-panel">
-      {/* Active route switcher — official + custom providers */}
-      <h2 className="settings-page__h2">{tr("prov.switchTitle")}</h2>
-      <div className="prov-switcher" role="listbox" aria-label={tr("prov.switchTitle")}>
-        <button
-          type="button"
-          role="option"
-          aria-selected={activeSource === "official"}
-          className={
-            "prov-switch" + (activeSource === "official" ? " is-active" : "")
-          }
-          disabled={busy}
-          onClick={() => void activateOfficial()}
-        >
-          <div className="prov-switch__avatar" aria-hidden>
-            G
-          </div>
-          <div className="prov-switch__text">
-            <div className="prov-switch__name">{tr("prov.officialName")}</div>
-            <div className="prov-switch__desc">{tr("prov.officialDesc")}</div>
-          </div>
-          {activeSource === "official" ? (
-            <span className="account-badge account-badge--ok">
-              {tr("prov.active")}
-            </span>
-          ) : (
-            <span className="prov-switch__go">{tr("prov.useThis")}</span>
-          )}
-        </button>
-
-        {providers.map((p) => {
-          const active =
-            activeSource === "custom" && activeProviderId === p.id;
-          return (
-            <button
-              key={p.id}
-              type="button"
-              role="option"
-              aria-selected={active}
-              className={"prov-switch" + (active ? " is-active" : "")}
-              disabled={busy}
-              onClick={() => void activateCustom(p.id)}
-            >
-              <div className="prov-switch__avatar" aria-hidden>
-                {(p.name || p.id).slice(0, 1).toUpperCase()}
-              </div>
-              <div className="prov-switch__text">
-                <div className="prov-switch__name">{p.name || p.id}</div>
-                <Tip label={p.baseUrl}>
-                  <div className="prov-switch__desc">
-                    {hostOf(p.baseUrl)}
-                    {p.model ? ` · ${p.model}` : ""}
-                  </div>
-                </Tip>
-              </div>
-              {active ? (
-                <span className="account-badge account-badge--ok">
-                  {tr("prov.active")}
-                </span>
-              ) : (
-                <span className="prov-switch__go">{tr("prov.useThis")}</span>
-              )}
-            </button>
-          );
-        })}
-      </div>
-      {switchHint ? (
-        <div className="prov-switch-hint" role="status">
-          {switchHint}
-        </div>
-      ) : (
-        <div className="prov-switch-hint prov-switch-hint--muted">
-          {tr("prov.switchHint")}
+      {error && (
+        <div className="prov-alert" role="alert">
+          <span>{error}</span>
+          <button
+            type="button"
+            className="btn btn--ghost btn--sm"
+            onClick={() => setError(null)}
+          >
+            {tr("common.dismiss")}
+          </button>
         </div>
       )}
 
-      {/* Intro */}
-      <div className="settings-card prov-intro">
-        <div className="settings-row settings-row--stack">
-          <div className="prov-intro__top">
-            <div className="prov-intro__icon" aria-hidden>
-              <IconSkills size={20} />
-            </div>
-            <div className="prov-intro__text">
-              <div className="settings-row__label">{tr("prov.configuredTitle")}</div>
-              <div className="settings-row__desc">{tr("prov.lead")}</div>
-            </div>
-            {!formOpen && (
-              <button
-                type="button"
-                className="btn btn--solid"
-                onClick={openCreate}
-                disabled={busy}
+      <div className="prov-split">
+        {/* ── Left: list ───────────────────────────────────────────── */}
+        <aside className="prov-split__list">
+          <button
+            type="button"
+            className="btn btn--solid prov-add-btn"
+            onClick={openCreate}
+            disabled={busy}
+          >
+            <IconPlus size={16} />
+            {tr("prov.new")}
+          </button>
+
+          <div className="prov-rail" role="list">
+            {officialAvailable && (
+              <div
+                role="listitem"
+                className={
+                  "prov-item" +
+                  (selection === "official" ? " is-selected" : "") +
+                  (officialActive ? " is-active" : "")
+                }
               >
-                <IconPlus size={16} />
-                {tr("prov.new")}
-              </button>
-            )}
-          </div>
-          {list?.agentHome ? (
-            <div className="prov-intro__meta">
-              <div className="prov-intro__meta-row">
-                <span className="prov-intro__meta-k">{tr("prov.agentHome")}</span>
-                <Tip label={list.agentHome}>
-                  <code className="prov-intro__meta-v">
-                    {list.agentHome}
-                  </code>
-                </Tip>
-                <Tip label={tr("prov.copyPath")}>
+                <button
+                  type="button"
+                  className="prov-item__main"
+                  onClick={openOfficial}
+                >
+                  <span className="prov-item__avatar" aria-hidden>
+                    G
+                  </span>
+                  <span className="prov-item__text">
+                    <span className="prov-item__name">
+                      {tr("prov.officialName")}
+                    </span>
+                  </span>
+                </button>
+                {!officialActive ? (
                   <button
                     type="button"
-                    className="chrome-btn"
-                    onClick={() => void copyPath(list.agentHome)}
+                    className="btn btn--ghost btn--sm prov-item__use"
+                    disabled={busy}
+                    onClick={(e) => void activateOfficial(e)}
                   >
-                    {copied ? <IconCheck size={14} /> : <IconCopy size={14} />}
+                    {tr("prov.useThis")}
                   </button>
-                </Tip>
+                ) : (
+                  <span
+                    className="prov-item__using"
+                    title={tr("prov.active")}
+                    aria-label={tr("prov.active")}
+                  >
+                    <IconCheck size={14} />
+                  </span>
+                )}
               </div>
-              {list.configPath ? (
-                <div className="prov-intro__meta-row">
-                  <span className="prov-intro__meta-k">{tr("prov.configFile")}</span>
-                  <Tip label={list.configPath}>
-                    <code className="prov-intro__meta-v">
-                      config.toml
-                    </code>
-                  </Tip>
-                </div>
-              ) : null}
-              <div className="prov-intro__meta-row">
-                <span className="prov-intro__meta-k">{tr("prov.count")}</span>
-                <span className="prov-intro__meta-v-plain">
-                  {tr("prov.countValue", { n: count })}
-                </span>
-              </div>
-            </div>
-          ) : null}
-        </div>
-      </div>
+            )}
 
-      {error && (
-        <div className="settings-card prov-alert" role="alert">
-          <div className="settings-row">
-            <div className="settings-row__text">
-              <div className="settings-row__label">{tr("prov.errorTitle")}</div>
-              <div className="settings-row__desc">{error}</div>
-            </div>
-            <button
-              type="button"
-              className="btn btn--ghost"
-              onClick={() => setError(null)}
-            >
-              {tr("common.dismiss")}
-            </button>
+            {providers.map((p) => {
+              const active =
+                activeSource === "custom" && activeProviderId === p.id;
+              const selected = selection === p.id;
+              return (
+                <div
+                  key={p.id}
+                  role="listitem"
+                  className={
+                    "prov-item" +
+                    (selected ? " is-selected" : "") +
+                    (active ? " is-active" : "")
+                  }
+                >
+                  <button
+                    type="button"
+                    className="prov-item__main"
+                    onClick={() => openEdit(p)}
+                  >
+                    <span className="prov-item__avatar" aria-hidden>
+                      {(p.name || p.id).slice(0, 1).toUpperCase()}
+                    </span>
+                    <span className="prov-item__text">
+                      <span className="prov-item__name">{p.name || p.id}</span>
+                      <span className="prov-item__sub">
+                        {hostOf(p.baseUrl)}
+                        {p.model ? ` · ${p.model}` : ""}
+                      </span>
+                    </span>
+                  </button>
+                  {!active ? (
+                    <button
+                      type="button"
+                      className="btn btn--ghost btn--sm prov-item__use"
+                      disabled={busy}
+                      onClick={(e) => void activateCustom(p.id, e)}
+                    >
+                      {tr("prov.useThis")}
+                    </button>
+                  ) : (
+                    <span
+                      className="prov-item__using"
+                      title={tr("prov.active")}
+                      aria-label={tr("prov.active")}
+                    >
+                      <IconCheck size={14} />
+                    </span>
+                  )}
+                </div>
+              );
+            })}
+
+            {listEmpty && (
+              <div className="prov-rail-empty">{tr("prov.emptyTitle")}</div>
+            )}
           </div>
-        </div>
-      )}
+        </aside>
 
-      {/* List */}
-      {!formOpen && (
-        <>
-          <h2 className="settings-page__h2">{tr("prov.listTitle")}</h2>
-          {count === 0 ? (
-            <div className="settings-card prov-empty">
-              <div className="settings-row settings-row--stack">
-                <div className="prov-empty__icon" aria-hidden>
-                  <IconShare size={28} />
+        {/* ── Right: detail / form ─────────────────────────────────── */}
+        <section className="prov-split__detail">
+          {rightMode === "empty" && (
+            <div className="prov-detail-empty">
+              <p>{tr("prov.detailEmpty")}</p>
+            </div>
+          )}
+
+          {rightMode === "official" && (
+            <div className="prov-detail settings-card">
+              <div className="prov-detail__head">
+                <div>
+                  <h3 className="prov-detail__title">
+                    {tr("prov.officialName")}
+                  </h3>
+                  <p className="prov-detail__sub">
+                    {tr("prov.officialDesc")}
+                  </p>
                 </div>
-                <div className="settings-row__label">{tr("prov.emptyTitle")}</div>
-                <div className="settings-row__desc">{tr("prov.empty")}</div>
-                <div className="prov-empty__actions">
+                {officialActive ? (
+                  <span className="account-badge account-badge--ok">
+                    {tr("prov.active")}
+                  </span>
+                ) : (
                   <button
                     type="button"
                     className="btn btn--solid"
-                    onClick={openCreate}
+                    disabled={busy}
+                    onClick={() => void activateOfficial()}
                   >
-                    <IconPlus size={16} />
-                    {tr("prov.new")}
+                    {tr("prov.useThis")}
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
+
+          {(rightMode === "create" || rightMode === "edit") && (
+            <div
+              className="prov-detail settings-card prov-form"
+              data-testid="provider-form"
+            >
+              <div className="prov-form__head">
+                <h3 className="prov-detail__title">
+                  {editingId ? tr("prov.editTitle") : tr("prov.addTitle")}
+                </h3>
+                <button
+                  type="button"
+                  className="chrome-btn"
+                  onClick={closeRight}
+                  aria-label={tr("common.close")}
+                >
+                  <IconClose size={16} />
+                </button>
+              </div>
+
+              <div className="prov-form__grid">
+                <label className="prov-field">
+                  <span className="prov-field__label">{tr("prov.name")}</span>
+                  <input
+                    className="settings-input"
+                    value={form.name}
+                    onChange={(e) => {
+                      const name = e.target.value;
+                      setForm((f) => ({
+                        ...f,
+                        name,
+                        id: editingId ? f.id : slugify(name) || f.id,
+                      }));
+                    }}
+                    placeholder={tr("prov.namePh")}
+                    autoComplete="off"
+                  />
+                </label>
+
+                {!editingId && (
+                  <label className="prov-field">
+                    <span className="prov-field__label">
+                      {tr("prov.displayName")}
+                    </span>
+                    <input
+                      className="settings-input"
+                      value={form.id}
+                      onChange={(e) =>
+                        setForm((f) => ({
+                          ...f,
+                          id: slugify(e.target.value),
+                        }))
+                      }
+                      placeholder={tr("prov.idPh")}
+                      autoComplete="off"
+                      spellCheck={false}
+                    />
+                  </label>
+                )}
+
+                <label className="prov-field prov-field--full">
+                  <span className="prov-field__label">{tr("prov.baseUrl")}</span>
+                  <input
+                    className="settings-input"
+                    value={form.baseUrl}
+                    onChange={(e) =>
+                      setForm((f) => ({ ...f, baseUrl: e.target.value }))
+                    }
+                    placeholder={tr("prov.baseUrlPh")}
+                    autoComplete="off"
+                    spellCheck={false}
+                  />
+                </label>
+
+                <div className="prov-field">
+                  <span className="prov-field__label">{tr("prov.protocol")}</span>
+                  <Select
+                    value={form.apiBackend}
+                    onChange={(v) =>
+                      setForm((f) => ({ ...f, apiBackend: v }))
+                    }
+                    options={protocolOptions}
+                    aria-label={tr("prov.protocol")}
+                  />
+                </div>
+
+                <label className="prov-field">
+                  <span className="prov-field__label">{tr("prov.apiKey")}</span>
+                  <div className="prov-key-row">
+                    <input
+                      className="settings-input"
+                      type={showKey ? "text" : "password"}
+                      value={form.apiKey}
+                      onChange={(e) =>
+                        setForm((f) => ({ ...f, apiKey: e.target.value }))
+                      }
+                      placeholder={
+                        editingId ? tr("prov.keyKeep") : tr("prov.keyPh")
+                      }
+                      autoComplete="new-password"
+                      spellCheck={false}
+                    />
+                    <button
+                      type="button"
+                      className="btn btn--ghost btn--sm"
+                      onClick={() => setShowKey((v) => !v)}
+                    >
+                      {showKey ? tr("prov.keyHide") : tr("prov.keyShow")}
+                    </button>
+                  </div>
+                </label>
+
+                <label className="prov-field prov-field--full">
+                  <span className="prov-field__label-row">
+                    <span className="prov-field__label">
+                      {tr("prov.requestModel")}
+                    </span>
+                    <button
+                      type="button"
+                      className="btn btn--ghost btn--sm"
+                      onClick={() => void fetchModels()}
+                      disabled={busy}
+                    >
+                      <IconRefresh size={14} />
+                      {tr("prov.fetchModels")}
+                    </button>
+                  </span>
+                  <input
+                    className="settings-input"
+                    value={form.model}
+                    onChange={(e) =>
+                      setForm((f) => ({ ...f, model: e.target.value }))
+                    }
+                    placeholder={tr("prov.modelPh")}
+                    list="prov-model-suggestions"
+                    autoComplete="off"
+                    spellCheck={false}
+                  />
+                  <datalist id="prov-model-suggestions">
+                    {remoteModels.map((m) => (
+                      <option key={m} value={m} />
+                    ))}
+                  </datalist>
+                </label>
+              </div>
+
+              <label className="prov-check">
+                <input
+                  type="checkbox"
+                  checked={form.setAsDefault}
+                  onChange={(e) =>
+                    setForm((f) => ({
+                      ...f,
+                      setAsDefault: e.target.checked,
+                    }))
+                  }
+                />
+                <span className="prov-check__title">
+                  {tr("prov.setDefault")}
+                </span>
+              </label>
+
+              {hint && (
+                <div
+                  className={
+                    "prov-form__hint" +
+                    (hintTone === "ok"
+                      ? " is-ok"
+                      : hintTone === "err"
+                        ? " is-err"
+                        : "")
+                  }
+                >
+                  {hint}
+                </div>
+              )}
+
+              <div className="prov-form__actions">
+                {editingId && (
+                  <button
+                    type="button"
+                    className="btn btn--danger"
+                    disabled={busy}
+                    onClick={() =>
+                      setDeleteTarget({
+                        id: editingId,
+                        name: form.name || editingId,
+                      })
+                    }
+                  >
+                    <IconTrash size={14} />
+                    {tr("prov.delete")}
+                  </button>
+                )}
+                <div className="prov-form__actions-end">
+                  <button
+                    type="button"
+                    className="btn btn--ghost"
+                    onClick={closeRight}
+                    disabled={busy}
+                  >
+                    {tr("common.cancel")}
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn--solid"
+                    onClick={() => void save()}
+                    disabled={busy}
+                  >
+                    {editingId ? (
+                      <>
+                        <IconEdit size={14} />
+                        {tr("prov.save")}
+                      </>
+                    ) : (
+                      <>
+                        <IconPlus size={14} />
+                        {tr("prov.add")}
+                      </>
+                    )}
                   </button>
                 </div>
               </div>
             </div>
-          ) : (
-            <div className="prov-list">
-              {providers.map((p) => {
-                const pingState = pingMap[p.id] ?? { status: "idle" as const };
-                const protocolLabel =
-                  protocolOptions.find((o) => o.value === p.apiBackend)
-                    ?.label ?? p.apiBackend;
-                return (
-                  <article
-                    key={p.id}
-                    className={
-                      "settings-card prov-card" +
-                      (p.isDefault ? " is-default" : "")
-                    }
-                  >
-                    <div className="prov-card__body">
-                      <div className="prov-card__head">
-                        <div className="prov-card__identity">
-                          <div className="prov-card__avatar" aria-hidden>
-                            {(p.name || p.id).slice(0, 1).toUpperCase()}
-                          </div>
-                          <div className="prov-card__titles">
-                            <div className="prov-card__name-row">
-                              <h3 className="prov-card__name">
-                                {p.name || p.id}
-                              </h3>
-                              {p.isDefault && (
-                                <span className="account-badge account-badge--ok">
-                                  {tr("prov.default")}
-                                </span>
-                              )}
-                              {p.hasApiKey ? (
-                                <span className="account-badge account-badge--muted">
-                                  {tr("prov.hasKey")}
-                                </span>
-                              ) : (
-                                <span className="account-badge account-badge--warn">
-                                  {tr("prov.noKey")}
-                                </span>
-                              )}
-                            </div>
-                            <div className="prov-card__sub">
-                              <code>{p.id}</code>
-                              <span className="prov-card__dot">·</span>
-                              <span>{protocolLabel}</span>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-
-                      <div className="prov-card__facts">
-                        <div className="prov-fact">
-                          <span className="prov-fact__k">{tr("prov.factModel")}</span>
-                          <code className="prov-fact__v">{p.model}</code>
-                        </div>
-                        <div className="prov-fact">
-                          <span className="prov-fact__k">{tr("prov.factEndpoint")}</span>
-                          <Tip label={p.baseUrl}>
-                            <span className="prov-fact__v">
-                              {hostOf(p.baseUrl)}
-                            </span>
-                          </Tip>
-                        </div>
-                      </div>
-
-                      {pingState.status !== "idle" && (
-                        <div
-                          className={
-                            "prov-card__ping" +
-                            (pingState.status === "ok"
-                              ? " is-ok"
-                              : pingState.status === "fail"
-                                ? " is-fail"
-                                : " is-loading")
-                          }
-                        >
-                          {pingState.status === "loading"
-                            ? tr("prov.pinging")
-                            : pingState.status === "ok"
-                              ? tr("prov.pingOk", {
-                                  ms: String(pingState.ms ?? 0),
-                                }) +
-                                (pingState.httpStatus
-                                  ? ` · HTTP ${pingState.httpStatus}`
-                                  : "")
-                              : tr("prov.pingFail", {
-                                  ms: String(pingState.ms ?? 0),
-                                }) +
-                                (pingState.detail
-                                  ? ` · ${pingState.detail}`
-                                  : "")}
-                        </div>
-                      )}
-                    </div>
-
-                    <div className="prov-card__actions">
-                      {!p.isDefault && (
-                        <Tip label={tr("prov.enable")}>
-                          <button
-                            type="button"
-                            className="btn btn--ghost"
-                            onClick={() => void setDefault(p.id)}
-                            disabled={busy}
-                          >
-                            <IconCheck size={14} />
-                            {tr("prov.enable")}
-                          </button>
-                        </Tip>
-                      )}
-                      <Tip label={tr("prov.ping")}>
-                        <button
-                          type="button"
-                          className="btn btn--ghost"
-                          onClick={() => void ping(p.id)}
-                          disabled={pingState.status === "loading"}
-                        >
-                          <IconRefresh size={14} />
-                          {tr("prov.ping")}
-                        </button>
-                      </Tip>
-                      <Tip label={tr("prov.edit")}>
-                        <button
-                          type="button"
-                          className="btn btn--ghost"
-                          onClick={() => openEdit(p)}
-                        >
-                          <IconEdit size={14} />
-                          {tr("prov.edit")}
-                        </button>
-                      </Tip>
-                      <Tip label={tr("prov.delete")}>
-                        <button
-                          type="button"
-                          className="btn btn--danger"
-                          onClick={() => void remove(p.id, p.name || p.id)}
-                          disabled={busy}
-                        >
-                          <IconTrash size={14} />
-                          {tr("prov.delete")}
-                        </button>
-                      </Tip>
-                    </div>
-                  </article>
-                );
-              })}
-            </div>
           )}
-        </>
-      )}
+        </section>
+      </div>
 
-      {/* Form */}
-      {formOpen && (
-        <div className="settings-card prov-form" data-testid="provider-form">
-          <div className="prov-form__head">
-            <div>
-              <div className="settings-row__label">
-                {editingId ? tr("prov.editTitle") : tr("prov.addTitle")}
-              </div>
-              <div className="settings-row__desc">{tr("prov.formLead")}</div>
-            </div>
-            <Tip label={tr("common.close")}>
-              <button
-                type="button"
-                className="chrome-btn"
-                onClick={closeForm}
-                aria-label={tr("common.close")}
-              >
-                <IconClose size={16} />
-              </button>
-            </Tip>
-          </div>
-
-          <div className="prov-form__grid">
-            <label className="prov-field">
-              <span className="prov-field__label">{tr("prov.name")}</span>
-              <input
-                className="settings-input"
-                value={form.name}
-                onChange={(e) => {
-                  const name = e.target.value;
-                  setForm((f) => ({
-                    ...f,
-                    name,
-                    id: editingId ? f.id : slugify(name) || f.id,
-                  }));
-                }}
-                placeholder={tr("prov.namePh")}
-                autoComplete="off"
-              />
-              <span className="prov-field__hint">{tr("prov.nameHint")}</span>
-            </label>
-
-            {!editingId && (
-              <label className="prov-field">
-                <span className="prov-field__label">{tr("prov.displayName")}</span>
-                <input
-                  className="settings-input"
-                  value={form.id}
-                  onChange={(e) =>
-                    setForm((f) => ({ ...f, id: slugify(e.target.value) }))
-                  }
-                  placeholder={tr("prov.idPh")}
-                  autoComplete="off"
-                  spellCheck={false}
-                />
-                <span className="prov-field__hint">{tr("prov.idHint")}</span>
-              </label>
-            )}
-
-            <label className="prov-field prov-field--full">
-              <span className="prov-field__label">{tr("prov.baseUrl")}</span>
-              <input
-                className="settings-input"
-                value={form.baseUrl}
-                onChange={(e) =>
-                  setForm((f) => ({ ...f, baseUrl: e.target.value }))
-                }
-                placeholder={tr("prov.baseUrlPh")}
-                autoComplete="off"
-                spellCheck={false}
-              />
-              <span className="prov-field__hint">{tr("prov.baseHint")}</span>
-            </label>
-
-            <div className="prov-field">
-              <span className="prov-field__label">{tr("prov.protocol")}</span>
-              <Select
-                value={form.apiBackend}
-                onChange={(v) => setForm((f) => ({ ...f, apiBackend: v }))}
-                options={protocolOptions}
-                aria-label={tr("prov.protocol")}
-              />
-              <span className="prov-field__hint">{tr("prov.protocolHint")}</span>
-            </div>
-
-            <label className="prov-field">
-              <span className="prov-field__label">{tr("prov.apiKey")}</span>
-              <div className="prov-key-row">
-                <input
-                  className="settings-input"
-                  type={showKey ? "text" : "password"}
-                  value={form.apiKey}
-                  onChange={(e) =>
-                    setForm((f) => ({ ...f, apiKey: e.target.value }))
-                  }
-                  placeholder={
-                    editingId ? tr("prov.keyKeep") : tr("prov.keyPh")
-                  }
-                  autoComplete="new-password"
-                  spellCheck={false}
-                />
-                <button
-                  type="button"
-                  className="btn btn--ghost"
-                  onClick={() => setShowKey((v) => !v)}
-                >
-                  {showKey ? tr("prov.keyHide") : tr("prov.keyShow")}
-                </button>
-              </div>
-              <span className="prov-field__hint">{tr("prov.keyHint")}</span>
-            </label>
-
-            <label className="prov-field prov-field--full">
-              <span className="prov-field__label-row">
-                <span className="prov-field__label">{tr("prov.requestModel")}</span>
-                <button
-                  type="button"
-                  className="btn btn--ghost btn--sm"
-                  onClick={() => void fetchModels()}
-                  disabled={busy}
-                >
-                  <IconRefresh size={14} />
-                  {tr("prov.fetchModels")}
-                </button>
-              </span>
-              <input
-                className="settings-input"
-                value={form.model}
-                onChange={(e) =>
-                  setForm((f) => ({ ...f, model: e.target.value }))
-                }
-                placeholder={tr("prov.modelPh")}
-                list="prov-model-suggestions"
-                autoComplete="off"
-                spellCheck={false}
-              />
-              <datalist id="prov-model-suggestions">
-                {remoteModels.map((m) => (
-                  <option key={m} value={m} />
-                ))}
-              </datalist>
-              <span className="prov-field__hint">{tr("prov.modelHint")}</span>
-            </label>
-          </div>
-
-          <label className="prov-check">
-            <input
-              type="checkbox"
-              checked={form.setAsDefault}
-              onChange={(e) =>
-                setForm((f) => ({ ...f, setAsDefault: e.target.checked }))
-              }
-            />
-            <span>
-              <span className="prov-check__title">{tr("prov.setDefault")}</span>
-              <span className="prov-check__desc">{tr("prov.setDefaultHint")}</span>
-            </span>
-          </label>
-
-          {hint && (
-            <div
-              className={
-                "prov-form__hint" +
-                (hintTone === "ok"
-                  ? " is-ok"
-                  : hintTone === "err"
-                    ? " is-err"
-                    : "")
-              }
-            >
-              {hint}
-            </div>
-          )}
-
-          <div className="prov-form__actions">
+      <GlassModal
+        open={!!deleteTarget}
+        onClose={() => setDeleteTarget(null)}
+        title={tr("prov.delete")}
+        size="sm"
+        closeLabel={tr("common.close")}
+        footer={
+          <>
             <button
               type="button"
               className="btn btn--ghost"
-              onClick={closeForm}
-              disabled={busy}
+              onClick={() => setDeleteTarget(null)}
             >
               {tr("common.cancel")}
             </button>
             <button
               type="button"
-              className="btn btn--solid"
-              onClick={() => void save()}
-              disabled={busy}
+              className="btn btn--danger"
+              onClick={() => void confirmRemove()}
             >
-              {editingId ? tr("prov.save") : tr("prov.add")}
+              {tr("prov.delete")}
             </button>
-          </div>
-        </div>
-      )}
+          </>
+        }
+      >
+        <p className="prov-delete-msg">
+          {tr("prov.confirmDelete", {
+            id: deleteTarget?.name || deleteTarget?.id || "",
+          })}
+        </p>
+      </GlassModal>
     </div>
   );
 }

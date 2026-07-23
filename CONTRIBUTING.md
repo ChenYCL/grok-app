@@ -1,0 +1,66 @@
+# Contributing to Grok App
+
+感谢关注 **Grok App**！欢迎 Issue、PR 与使用反馈。
+
+Thanks for your interest in contributing.
+
+## 开发环境 / Development
+
+```bash
+pnpm install
+pnpm dev          # Tauri + Vite
+```
+
+Frontend only:
+
+```bash
+pnpm dev:ui
+```
+
+Checks:
+
+```bash
+pnpm typecheck
+pnpm test
+pnpm build:ui
+cd src-tauri && cargo test
+```
+
+Optional mock agent (no real CLI):
+
+```bash
+GROK_APP_ACP=mock pnpm dev
+```
+
+Default is the real **Grok Build** CLI (`grok agent stdio`).
+
+## 贡献流程 / Workflow
+
+1. Fork 本仓库并创建分支
+2. 做尽量小而清晰的改动
+3. 本地通过 `pnpm typecheck`、`pnpm test` 与 `cargo test`（`src-tauri`）
+4. 用户可见文案走 `src/i18n/messages.ts`（`en` / `zh` 同键）
+5. 禁止在 UI 使用 `window.confirm` / `prompt` / `alert`（见 `docs/llm-wiki/dialogs.md`）
+6. 提交 PR，说明动机、改动与验证方式
+
+## 约定 / Guidelines
+
+- 产品名：**Grok App**（窗口 / 安装包名多为 **Grok**）
+- 会话与设置数据在 App data root（可用 `GROK_APP_HOME` 覆盖）
+- Agent 产品规则以 [`docs/llm-wiki/`](./docs/llm-wiki/) 为准
+- 不要提交 `node_modules`、`target`、`dist`、本地 token / `secrets.json` / `auth.json`
+- 安全相关问题请走 [SECURITY.md](./SECURITY.md)
+
+## 交流 / Contact
+
+- X: [@cgnot996](https://x.com/cgnot996)
+- GitHub Issues: https://github.com/RongleCat/grok-app/issues
+
+## Releases
+
+1. Write bilingual notes under `## [X.Y.Z] - YYYY-MM-DD` in `CHANGELOG.md`.
+2. Commit on a clean `main`.
+3. Run `./scripts/release-tag.sh X.Y.Z` (optionally `--push`).
+4. CI builds installers and sets the **GitHub Release body** from that CHANGELOG section via `scripts/changelog-for-release.py`.
+
+Do not tag without a matching CHANGELOG section — the release job will fail.

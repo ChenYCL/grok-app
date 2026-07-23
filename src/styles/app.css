@@ -1849,18 +1849,22 @@ html.platform-mac[data-theme="light"] .settings-page__content {
   gap: 4px;
 }
 
+/*
+ * Account card layout:
+ *   [avatar]  Name                    重置 MM-DD HH:mm   ← top-right
+ *             SuperGrok Heavy         72% 剩余           ← remain beside tier
+ *             ████████░░░░░░░░
+ */
 .user-menu__account {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
+  display: block;
   width: 100%;
-  padding: 10px;
+  padding: 9px 10px;
   border: 1px solid var(--border-subtle);
   border-radius: 10px;
   background: var(--bg-hover);
   text-align: left;
   color: inherit;
-  margin-bottom: 4px;
+  margin-bottom: 2px;
 }
 
 .user-menu__account:hover {
@@ -1869,13 +1873,24 @@ html.platform-mac[data-theme="light"] .settings-page__content {
 
 .user-menu__account-top {
   display: flex;
-  align-items: center;
-  gap: 10px;
+  align-items: flex-start;
+  gap: 9px;
 }
 
 .user-menu__account-text {
   min-width: 0;
   flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.user-menu__account-name-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
 }
 
 .user-menu__account-name {
@@ -1885,34 +1900,41 @@ html.platform-mac[data-theme="light"] .settings-page__content {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  min-width: 0;
+  line-height: 1.3;
 }
 
 .user-menu__account-sub {
   font-size: 11px;
   color: var(--text-tertiary);
-  margin-top: 2px;
+  line-height: 1.3;
 }
 
 .user-menu__quota {
   display: flex;
   flex-direction: column;
   gap: 4px;
+  min-width: 0;
 }
 
+/* Top-right: reset time beside display name */
 .user-menu__quota-reset {
-  font-size: 11px;
+  flex-shrink: 0;
+  font-size: 10px;
   line-height: 1.3;
   color: var(--text-tertiary);
   font-variant-numeric: tabular-nums;
   letter-spacing: 0.01em;
+  white-space: nowrap;
 }
 
+/* Tier left, remaining % right of Heavy */
 .user-menu__quota-row {
   display: flex;
+  align-items: baseline;
   justify-content: space-between;
   gap: 8px;
-  font-size: 11px;
-  color: var(--text-secondary);
+  min-width: 0;
 }
 
 .user-menu__quota-meta {
@@ -1940,18 +1962,36 @@ html.platform-mac[data-theme="light"] .settings-page__content {
   text-overflow: ellipsis;
   white-space: nowrap;
   min-width: 0;
+  font-size: 11px;
   font-weight: 600;
+  line-height: 1.3;
   color: var(--text-primary);
 }
 
 .user-menu__remain {
   flex-shrink: 0;
+  font-size: 11px;
+  font-weight: 600;
   font-variant-numeric: tabular-nums;
   color: var(--text-secondary);
+  letter-spacing: -0.01em;
+  line-height: 1.3;
+  white-space: nowrap;
 }
 
 .user-menu__quota-meta {
   display: none;
+}
+
+/* Optical align avatar with first text line */
+.user-menu__account-top > .account-avatar--sm {
+  margin-top: 1px;
+}
+
+/* Progress bar slightly tighter under tier row */
+.user-menu__quota .account-quota-bar--sm {
+  margin-top: 0;
+  height: 3px;
 }
 
 .user-menu__status-meta {
@@ -2693,15 +2733,25 @@ html.platform-mac[data-theme="light"] .settings-page__content {
   font-weight: 600;
 }
 
-/* Content fills remaining width; column centered inside */
+/*
+ * Content column — sole vertical scrollport for every settings section.
+ *
+ * CRITICAL (WebKit / Tauri): do NOT make this a flex container.
+ * When overflow-y:auto AND display:flex are combined, WebKit omits the
+ * container's padding-bottom (and flex items' padding-bottom) from the
+ * scrollable overflow height. max scrollTop ends flush with the last
+ * child's border box → every section looks glued to the window bottom.
+ *
+ * Center the column with margin:auto on .settings-page__main instead.
+ */
 .settings-page__content {
   flex: 1;
   min-width: 0;
+  min-height: 0;
   overflow-x: hidden;
   overflow-y: auto;
   background: var(--bg-main);
-  display: flex;
-  justify-content: center;
+  display: block;
   /* Clear drag band so title is not under traffic lights / drag strip */
   padding-top: var(--titlebar-height, 40px);
   box-sizing: border-box;
@@ -2713,7 +2763,12 @@ html.platform-mac[data-theme="light"] .settings-page__content {
   width: 100%;
   /* ~53 weeks × (cell+gap) + labels needs ≥ ~860px content for a full year heatmap */
   max-width: 960px;
-  padding: 16px 36px 48px;
+  margin: 0 auto;
+  /*
+   * Bottom inset is real content-box padding on a block child of a block
+   * scrollport — included in scroll height in WebKit (unlike flex).
+   */
+  padding: 16px 36px 96px;
   box-sizing: border-box;
   -webkit-app-region: no-drag;
   app-region: no-drag;
@@ -4523,57 +4578,99 @@ html.platform-mac[data-theme="light"] .settings-page__content {
   line-height: 1.3;
 }
 
-/* Markdown inline images */
-/* Stable placeholders — avoid scroll flicker when local media fails to load */
-.md-body__img-pending {
-  display: inline-block;
-  width: min(100%, 280px);
-  height: 120px;
-  max-width: 100%;
-  border-radius: 10px;
+/* Markdown inline images — RATIO-AWARE FRAME
+ *
+ * Frame always has a non-zero size (default 4:3, then natural ratio from JS)
+ * so scrollHeight never collapses to 0 mid-decode. Width/height follow the
+ * image; max 280×280. Inline style sets width + aspect-ratio per image.
+ */
+.md-body__img-frame {
+  display: block;
+  position: relative;
+  box-sizing: border-box;
+  margin: 10px 0;
+  overflow: hidden;
   background: color-mix(in srgb, var(--bg-hover) 80%, transparent);
   vertical-align: middle;
+  /* Height comes from aspect-ratio (set inline); never leave empty box */
+  height: auto;
 }
-.md-body__img-broken {
-  display: inline-flex;
+
+.md-body__img-frame--card {
+  max-width: min(100%, 280px);
+  max-height: 280px;
+  border-radius: 12px;
+  border: 1px solid var(--border-subtle);
+  box-shadow: 0 1px 0 rgba(0, 0, 0, 0.04);
+}
+
+/* Resource sidebar / full-width previews — no chat 280 cap */
+.md-body__img-frame--pane {
+  width: 100%;
+  max-width: 100%;
+  max-height: none;
+  margin: 0;
+  border-radius: 8px;
+  border: none;
+  box-shadow: none;
+  background: transparent;
+}
+
+.md-body__img-frame__el {
+  display: block;
+  /* Absolute fill: % height of aspect-ratio boxes is unreliable in WebKit */
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  /* Box matches natural ratio → contain fills without crop or letterbox */
+  object-fit: contain;
+  object-position: center;
+  border: none;
+  margin: 0;
+  padding: 0;
+  border-radius: inherit;
+  cursor: zoom-in;
+  opacity: 1;
+}
+
+.md-body__img-frame.is-pending {
+  background: color-mix(in srgb, var(--bg-hover) 80%, transparent);
+}
+
+.md-body__img-frame.is-broken {
+  border-style: dashed;
+  background: color-mix(in srgb, var(--bg-hover) 60%, transparent);
+}
+
+.md-body__img-frame__fallback {
+  display: flex;
   align-items: center;
   justify-content: center;
-  width: min(100%, 280px);
-  min-height: 72px;
-  max-width: 100%;
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
   padding: 8px 12px;
-  border-radius: 10px;
-  border: 1px dashed var(--border-subtle);
-  background: color-mix(in srgb, var(--bg-hover) 60%, transparent);
+  box-sizing: border-box;
   color: var(--text-tertiary);
   font-size: 12px;
   text-align: center;
   word-break: break-all;
-  vertical-align: middle;
-  box-sizing: border-box;
 }
 
-.md-body__img {
-  max-width: 100%;
-  height: auto;
-  border-radius: 8px;
-  display: block;
-  margin: 8px 0;
+/* Legacy class names still applied via ImageUi className props */
+.md-body__img-pending,
+.md-body__img-broken {
+  /* Kept as no-ops if any external CSS still references them */
+  display: none;
 }
 
-/* Path-in-place image card (replaces `images/1.jpg` code spans) */
+.md-body__img,
 .md-body__img--card {
-  display: block;
-  max-width: min(100%, 280px);
-  max-height: 280px;
-  width: auto;
-  height: auto;
-  object-fit: cover;
-  border-radius: 12px;
-  border: 1px solid var(--border-subtle);
-  box-shadow: 0 1px 0 rgba(0, 0, 0, 0.04);
-  margin: 10px 0;
-  vertical-align: middle;
+  /* Size lives on .md-body__img-frame--card; bare img rules must not fight it */
+  max-width: 100%;
 }
 
 /* Path-in-place video card (replaces `videos/1.mp4` / links) */
@@ -4627,10 +4724,14 @@ html.platform-mac[data-theme="light"] .settings-page__content {
   cursor: pointer;
 }
 
-/* Streamdown may wrap replaced code/link in p — keep card block */
+/* Streamdown / markdown may wrap replaced code/link in p — keep card block */
 .sd-body p:has(> .md-body__img--card),
+.sd-body p:has(> .md-body__img-frame),
 .sd-body p:has(> .md-body__video-card),
-.sd-body p:has(> .file-path-card) {
+.sd-body p:has(> .file-path-card),
+.chat-md p:has(> .md-body__img-frame),
+.chat-md p:has(> .md-body__video-card),
+.chat-md p:has(> .file-path-card) {
   margin-block: 0.35em;
 }
 
@@ -6206,12 +6307,14 @@ html.platform-mac[data-theme="light"] .settings-page__content {
   line-height: 1.65;
 }
 
+.rv-preview__img.md-body__img-frame,
 .rv-preview__img {
-  max-width: 100%;
-  max-height: 100%;
-  object-fit: contain;
-  margin: 8px auto;
   display: block;
+  width: 100%;
+  max-width: 100%;
+  height: auto;
+  max-height: none;
+  margin: 8px auto;
   border-radius: 6px;
   cursor: zoom-in;
 }
@@ -6499,268 +6602,205 @@ textarea::-webkit-scrollbar-thumb:active,
   max-width: 52ch;
 }
 
-/* ── Providers panel (settings language) ─────────────────────────────────── */
-.prov-switcher {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  margin-bottom: 8px;
-}
-
-.prov-switch {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  width: 100%;
-  text-align: left;
-  padding: 12px 14px;
-  border-radius: var(--radius-lg, 10px);
-  border: 1px solid var(--border-subtle);
-  background: var(--bg-elevated);
-  color: inherit;
-  cursor: pointer;
-  transition: border-color 120ms ease, background 120ms ease;
-}
-
-.prov-switch:hover:not(:disabled) {
-  background: var(--bg-hover);
-}
-
-.prov-switch.is-active {
-  border-color: color-mix(in srgb, var(--accent) 55%, var(--border-subtle));
-  background: var(--accent-muted);
-}
-
-.prov-switch:disabled {
-  opacity: 0.6;
-  cursor: wait;
-}
-
-.prov-switch__avatar {
-  width: 36px;
-  height: 36px;
-  border-radius: 10px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-  font-weight: 700;
-  font-size: 14px;
-  background: var(--bg-hover);
-  color: var(--text-primary);
-  border: 1px solid var(--border-subtle);
-}
-
-.prov-switch.is-active .prov-switch__avatar {
-  background: var(--accent-muted);
-  color: var(--accent);
-  border-color: transparent;
-}
-
-.prov-switch__text {
-  min-width: 0;
-  flex: 1;
-}
-
-.prov-switch__name {
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--text-primary);
-}
-
-.prov-switch__desc {
-  margin-top: 2px;
-  font-size: 12px;
-  color: var(--text-tertiary);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.prov-switch__go {
-  flex-shrink: 0;
-  font-size: 12px;
-  font-weight: 500;
-  color: var(--accent);
-}
-
-.prov-switch-hint {
-  margin: 0 0 16px;
-  font-size: 12px;
-  color: var(--success);
-}
-
-.prov-switch-hint--muted {
-  color: var(--text-tertiary);
-}
-
+/* ── Providers panel: left list + right detail/form ──────────────────────── */
 .prov-panel {
   display: flex;
   flex-direction: column;
-  gap: 0;
+  gap: 12px;
+  min-height: 360px;
 }
 
-.prov-intro .settings-row {
-  border-bottom: none;
+.prov-loading {
+  padding: 24px 8px;
+  font-size: 13px;
+  color: var(--text-tertiary);
 }
 
-.prov-intro__top {
+.prov-alert {
   display: flex;
-  align-items: flex-start;
-  gap: 14px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  border-radius: var(--radius-md);
+  background: var(--danger-muted, color-mix(in srgb, var(--danger) 12%, transparent));
+  color: var(--danger);
+  font-size: 12.5px;
 }
 
-.prov-intro__icon {
-  width: 40px;
-  height: 40px;
-  border-radius: 12px;
+.prov-split {
+  display: grid;
+  grid-template-columns: minmax(220px, 280px) minmax(0, 1fr);
+  gap: 16px;
+  align-items: stretch;
+  min-height: 420px;
+}
+
+.prov-split__list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+
+.prov-add-btn {
+  width: 100%;
+  height: 34px;
+  justify-content: center;
+}
+
+.prov-rail {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding-right: 2px;
+}
+
+.prov-rail-empty {
+  padding: 20px 12px;
+  text-align: center;
+  font-size: 13px;
+  color: var(--text-tertiary);
+}
+
+.prov-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--bg-elevated);
+  overflow: hidden;
+  transition:
+    border-color 120ms ease,
+    background 120ms ease;
+}
+
+.prov-item:hover {
+  background: var(--bg-hover);
+}
+
+.prov-item.is-selected {
+  border-color: color-mix(in srgb, var(--accent) 50%, var(--border-subtle));
+  background: var(--accent-muted);
+}
+
+.prov-item.is-active:not(.is-selected) {
+  border-color: color-mix(in srgb, var(--success) 40%, var(--border-subtle));
+}
+
+.prov-item__main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 10px 10px 12px;
+  text-align: left;
+  background: transparent;
+  border: none;
+  color: inherit;
+  cursor: pointer;
+}
+
+.prov-item__avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 9px;
+  flex-shrink: 0;
   display: flex;
   align-items: center;
   justify-content: center;
-  flex-shrink: 0;
-  background: color-mix(in srgb, var(--warning) 16%, transparent);
+  font-size: 13px;
+  font-weight: 700;
+  background: var(--bg-hover);
+  border: 1px solid var(--border-subtle);
   color: var(--text-primary);
 }
 
-.prov-intro__text {
-  flex: 1;
+.prov-item.is-selected .prov-item__avatar {
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+  border-color: transparent;
+  color: var(--accent);
+}
+
+.prov-item__text {
   min-width: 0;
-}
-
-.prov-intro__top .btn {
-  flex-shrink: 0;
-  margin-top: 2px;
-}
-
-.prov-intro__meta {
-  margin-top: 14px;
-  padding-top: 12px;
-  border-top: 1px solid var(--border-subtle);
+  flex: 1;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 2px;
 }
 
-.prov-intro__meta-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-width: 0;
-  font-size: 12px;
-}
-
-.prov-intro__meta-k {
-  flex: 0 0 auto;
-  color: var(--text-tertiary);
-  min-width: 7.5em;
-}
-
-.prov-intro__meta-v {
-  flex: 1;
-  min-width: 0;
+.prov-item__name {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--text-primary);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-family: var(--font-mono);
+}
+
+.prov-item__sub {
   font-size: 11.5px;
-  color: var(--text-secondary);
-  background: var(--bg-input);
-  border-radius: 6px;
-  padding: 4px 8px;
-}
-
-.prov-intro__meta-v-plain {
-  color: var(--text-secondary);
-  font-variant-numeric: tabular-nums;
-}
-
-.prov-alert .settings-row__label {
-  color: var(--danger);
-}
-
-.prov-empty .settings-row {
-  align-items: center;
-  text-align: center;
-  padding: 28px 20px;
-  border-bottom: none;
-}
-
-.prov-empty__icon {
-  width: 56px;
-  height: 56px;
-  margin: 0 auto 8px;
-  border-radius: 16px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: var(--bg-hover);
-  color: var(--text-secondary);
-}
-
-.prov-empty__actions {
-  margin-top: 14px;
-  display: flex;
-  justify-content: center;
-}
-
-.prov-list {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  margin-bottom: 8px;
-}
-
-.prov-card {
+  color: var(--text-tertiary);
   overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.prov-card.is-default {
-  border-color: color-mix(in srgb, var(--warning) 45%, var(--border-subtle));
-  box-shadow: 0 0 0 1px color-mix(in srgb, var(--warning) 18%, transparent);
-}
-
-.prov-card__body {
-  padding: 14px 16px 10px;
-}
-
-.prov-card__head {
-  margin-bottom: 12px;
-}
-
-.prov-card__identity {
-  display: flex;
-  gap: 12px;
-  align-items: flex-start;
-  min-width: 0;
-}
-
-.prov-card__avatar {
-  width: 36px;
-  height: 36px;
-  border-radius: 10px;
+.prov-item__use {
   flex-shrink: 0;
+  margin-right: 8px;
+  color: var(--accent) !important;
+  border-color: transparent !important;
+}
+
+.prov-item__using {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  margin-right: 8px;
+  color: var(--success);
+}
+
+.prov-split__detail {
+  min-width: 0;
+  min-height: 0;
+}
+
+.prov-detail-empty {
+  height: 100%;
+  min-height: 280px;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 14px;
-  font-weight: 650;
-  background: var(--bg-hover);
-  color: var(--text-primary);
+  border: 1px dashed var(--border-subtle);
+  border-radius: var(--radius-lg);
+  color: var(--text-tertiary);
+  font-size: 13px;
+  padding: 24px;
+  text-align: center;
 }
 
-.prov-card__titles {
-  min-width: 0;
-  flex: 1;
+.prov-detail {
+  height: 100%;
+  padding: 16px 18px;
 }
 
-.prov-card__name-row {
+.prov-detail__head {
   display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
 }
 
-.prov-card__name {
+.prov-detail__title {
   margin: 0;
   font-size: 15px;
   font-weight: 600;
@@ -6768,107 +6808,26 @@ textarea::-webkit-scrollbar-thumb:active,
   letter-spacing: -0.01em;
 }
 
-.prov-card__sub {
-  margin-top: 4px;
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 6px;
-  font-size: 12px;
-  color: var(--text-tertiary);
-}
-
-.prov-card__sub code {
-  font-family: var(--font-mono);
-  font-size: 11.5px;
-  color: var(--text-secondary);
-}
-
-.prov-card__dot {
-  opacity: 0.5;
-}
-
-.prov-card__facts {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 8px 12px;
-  padding: 10px 12px;
-  border-radius: 10px;
-  background: color-mix(in srgb, var(--bg-hover) 80%, transparent);
-}
-
-.prov-fact {
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-}
-
-.prov-fact__k {
-  font-size: 11px;
-  font-weight: 500;
-  color: var(--text-tertiary);
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-}
-
-.prov-fact__v {
+.prov-detail__sub {
+  margin: 6px 0 0;
   font-size: 13px;
-  color: var(--text-primary);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.prov-fact__v code,
-code.prov-fact__v {
-  font-family: var(--font-mono);
-  font-size: 12.5px;
-}
-
-.prov-card__ping {
-  margin-top: 10px;
-  font-size: 12.5px;
   color: var(--text-secondary);
+  line-height: 1.4;
 }
 
-.prov-card__ping.is-ok {
-  color: #3d9a5f;
-}
-
-.prov-card__ping.is-fail {
-  color: var(--danger);
-}
-
-.prov-card__ping.is-loading {
-  color: var(--text-tertiary);
-}
-
-.prov-card__actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  padding: 10px 12px 12px;
-  border-top: 1px solid var(--border-subtle);
-  background: color-mix(in srgb, var(--bg-card) 70%, var(--bg-hover));
-}
-
-.prov-card__actions .btn,
 .prov-panel .btn {
   height: 30px;
   padding: 0 10px;
   font-size: 12.5px;
 }
 
-.prov-intro__top .btn--solid,
-.prov-empty__actions .btn--solid,
-.prov-form__actions .btn--solid {
+.prov-panel .btn--solid {
   height: 32px;
   padding: 0 14px;
   font-size: 13px;
 }
 
-/* Keep provider actions monochrome — no warning-colored CTA in this surface */
+/* Keep provider actions monochrome — no warning-colored CTA */
 .prov-panel .btn--primary {
   background: var(--text-primary);
   color: var(--bg-main);
@@ -6881,13 +6840,14 @@ code.prov-fact__v {
 }
 
 .prov-form {
-  margin-top: 4px;
-  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
 }
 
 .prov-form__head {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
   gap: 12px;
   margin-bottom: 16px;
@@ -6898,7 +6858,7 @@ code.prov-fact__v {
 .prov-form__grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 14px 16px;
+  gap: 12px 14px;
 }
 
 .prov-field {
@@ -6913,9 +6873,9 @@ code.prov-fact__v {
 }
 
 .prov-field__label {
-  font-size: 13px;
+  font-size: 12.5px;
   font-weight: 500;
-  color: var(--text-primary);
+  color: var(--text-secondary);
 }
 
 .prov-field__label-row {
@@ -6923,12 +6883,6 @@ code.prov-fact__v {
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-}
-
-.prov-field__hint {
-  font-size: 12px;
-  line-height: 1.4;
-  color: var(--text-tertiary);
 }
 
 .prov-key-row {
@@ -6943,40 +6897,31 @@ code.prov-fact__v {
 
 .prov-check {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   gap: 10px;
-  margin: 16px 0 12px;
-  padding: 12px 14px;
-  border-radius: 12px;
+  margin: 14px 0 10px;
+  padding: 10px 12px;
+  border-radius: 10px;
   background: var(--bg-hover);
   cursor: pointer;
 }
 
 .prov-check input {
-  margin-top: 3px;
   flex-shrink: 0;
 }
 
 .prov-check__title {
-  display: block;
-  font-size: 13.5px;
+  font-size: 13px;
   font-weight: 500;
   color: var(--text-primary);
 }
 
-.prov-check__desc {
-  display: block;
-  margin-top: 3px;
-  font-size: 12px;
-  color: var(--text-tertiary);
-}
-
 .prov-form__hint {
-  margin-bottom: 12px;
-  padding: 10px 12px;
-  border-radius: 10px;
+  margin-bottom: 10px;
+  padding: 8px 10px;
+  border-radius: 8px;
   font-size: 12.5px;
-  line-height: 1.45;
+  line-height: 1.4;
   background: var(--bg-hover);
   color: var(--text-secondary);
 }
@@ -6993,9 +6938,23 @@ code.prov-fact__v {
 
 .prov-form__actions {
   display: flex;
-  justify-content: flex-end;
+  align-items: center;
+  justify-content: space-between;
   gap: 8px;
   padding-top: 4px;
+}
+
+.prov-form__actions-end {
+  display: flex;
+  gap: 8px;
+  margin-left: auto;
+}
+
+.prov-delete-msg {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--text-secondary);
 }
 
 .btn--sm {
@@ -7004,12 +6963,13 @@ code.prov-fact__v {
   font-size: 12px;
 }
 
-@media (max-width: 720px) {
-  .prov-intro__top {
-    flex-wrap: wrap;
-  }
-  .prov-card__facts {
+@media (max-width: 860px) {
+  .prov-split {
     grid-template-columns: 1fr;
+    min-height: 0;
+  }
+  .prov-split__list {
+    max-height: 280px;
   }
   .prov-form__grid {
     grid-template-columns: 1fr;
@@ -7432,9 +7392,15 @@ code.prov-fact__v {
   color: var(--text-tertiary);
 }
 
+/* Pane ImageUi root — width follows sidebar; ratio from natural size */
+.rp-preview__img.md-body__img-frame,
 .rp-preview__img {
+  display: block;
+  width: 100%;
   max-width: 100%;
   height: auto;
+  max-height: none;
+  margin: 0 auto;
   border-radius: 8px;
 }
 

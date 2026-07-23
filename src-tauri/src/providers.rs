@@ -51,6 +51,18 @@ pub struct ProvidersListResult {
 /// Built-in model id used when routing back to official Grok Build / SuperGrok.
 pub const OFFICIAL_DEFAULT_MODEL: &str = "grok";
 
+/// Catalog model preferred for composer / official spawn when none is set.
+pub const OFFICIAL_CATALOG_MODEL: &str = "grok-4.5";
+
+/// Which inference channel the agent should use.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ActiveRoute {
+    /// Built-in xAI / SuperGrok (OIDC via auth.json).
+    Official,
+    /// OpenAI-compatible relay section id in config.toml (`[model.<id>]`).
+    Custom { id: String },
+}
+
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ProviderPingResult {
@@ -127,8 +139,7 @@ fn normalize_backend(v: Option<&str>) -> String {
 /// Grok Build joins `{base_url}/chat/completions` (or `/responses`).
 /// OpenAI-compatible relays almost always expect `…/v1` as the base.
 /// Without it, requests hit `https://host/chat/completions` (404/HTML) and the
-/// agent retries for minutes with no user-visible progress — the hang we saw
-/// with 云翼 when base was `https://api.yunyi.ai`.
+/// agent may retry for minutes with no user-visible progress.
 pub fn normalize_openai_base_url(raw: &str, api_backend: &str) -> String {
     let mut base = raw.trim().trim_end_matches('/').to_string();
     if base.is_empty() {
@@ -414,7 +425,7 @@ pub fn maybe_migrate_legacy_relay(
         base_url: base.into(),
         name: Some("Imported relay".into()),
         api_key: Some(key.into()),
-        api_backend: Some("chat_completions".into()),
+        api_backend: Some("responses".into()),
         set_as_default: Some(true),
         create_only: Some(true),
     })?;
@@ -476,33 +487,6 @@ fn set_models_u32_field(text: &str, key: &str, value: u32) -> String {
     }
 }
 
-/// Seed user-requested relay (云翼 / yunyi) once if missing.
-/// Credentials live only in agent-home/config.toml (never logged).
-pub fn ensure_preset_yunyi() -> Result<(), String> {
-    let _ = ensure_models_retry_cap();
-    let list = list_custom_providers()?;
-    if list.providers.iter().any(|p| p.id == "yunyi") {
-        return Ok(());
-    }
-    // Must include /v1 — Grok joins `{base}/chat/completions`.
-    let _ = upsert_custom_provider(UpsertProviderInput {
-        id: "yunyi".into(),
-        model: "grok-4.5".into(),
-        base_url: "https://api.yunyi.ai/v1".into(),
-        name: Some("云翼 yunyi.ai".into()),
-        api_key: Some(
-            "sk-pJjdjs5tEorCfUP93c588b7c044847A38f32107a8691E8F2".into(),
-        ),
-        // Prefer Responses: yunyi chat_completions streams omit `delta` on the
-        // final chunk, which breaks Grok Build's SSE deserializer.
-        api_backend: Some("responses".into()),
-        // Do not force default — user picks via switcher.
-        set_as_default: Some(false),
-        create_only: Some(true),
-    })?;
-    Ok(())
-}
-
 fn route_from_default(def: Option<&str>, providers: &[CustomProvider]) -> (String, Option<String>) {
     if let Some(d) = def {
         if providers.iter().any(|p| p.id == d) {
@@ -562,7 +546,82 @@ pub fn list_custom_providers() -> Result<ProvidersListResult, String> {
     Ok(build_list_result(home, path, &text))
 }
 
+/// Current channel from `[models].default` vs custom provider sections.
+pub fn active_route() -> ActiveRoute {
+    match list_custom_providers() {
+        Ok(list) if list.active_source == "custom" => {
+            if let Some(id) = list
+                .active_provider_id
+                .filter(|s| !s.trim().is_empty())
+            {
+                return ActiveRoute::Custom { id };
+            }
+            ActiveRoute::Official
+        }
+        _ => ActiveRoute::Official,
+    }
+}
+
+/// Whether `id` is a configured custom provider route (not an official catalog model).
+pub fn is_custom_provider_id(id: &str) -> bool {
+    let id = id.trim();
+    if id.is_empty() {
+        return false;
+    }
+    list_custom_providers()
+        .map(|list| list.providers.iter().any(|p| p.id == id))
+        .unwrap_or(false)
+}
+
+/// Model flag for `grok agent --model`.
+///
+/// Grok Build behavior (verified 0.2.111):
+/// - Custom route: must pass the **provider section id** (e.g. `yunyi`) and
+///   **must not** have OIDC `auth.json` in GROK_HOME (else Auth:Oidc hits the
+///   relay base_url → 401).
+/// - Official route: pass a catalog id (`grok-4.5`); needs `auth.json`.
+pub fn agent_spawn_model_id(composer_model: &str) -> String {
+    match active_route() {
+        ActiveRoute::Custom { id } => id,
+        ActiveRoute::Official => {
+            let m = composer_model.trim();
+            if m.is_empty() || is_custom_provider_id(m) || m == OFFICIAL_DEFAULT_MODEL {
+                OFFICIAL_CATALOG_MODEL.into()
+            } else {
+                m.into()
+            }
+        }
+    }
+}
+
+/// Prepare agent-home auth material for the active route.
+///
+/// Custom: strip agent-home `auth.json` so inference uses `api_key` only.
+/// Official: mirror `~/.grok/auth.json` into agent-home for OAuth.
+pub fn prepare_route_auth_for_agent() {
+    match active_route() {
+        ActiveRoute::Custom { ref id } => {
+            crate::account::clear_agent_home_auth();
+            tracing::info!(
+                target: "providers",
+                "custom route `{id}`: cleared agent-home auth.json (api_key only)"
+            );
+        }
+        ActiveRoute::Official => {
+            if let Err(e) = crate::account::sync_cli_auth_to_agent_home() {
+                tracing::warn!(
+                    target: "providers",
+                    "official route: auth sync failed: {e}"
+                );
+            }
+        }
+    }
+}
+
 /// Switch active route: `official` or `custom` (+ provider_id).
+///
+/// Completely rebinds agent-home credentials so the next ACP spawn cannot
+/// mix OIDC with a custom relay (or leave a relay as default when going official).
 pub fn activate_provider(
     source: &str,
     provider_id: Option<&str>,
@@ -571,9 +630,14 @@ pub fn activate_provider(
     match source.as_str() {
         "official" => {
             let result = set_default_model_id(OFFICIAL_DEFAULT_MODEL)?;
-            // Clear legacy relay display so account channel flips away from relay.
+            // Restore official OAuth into agent-home; drop relay display fields.
+            if let Err(e) = crate::account::sync_cli_auth_to_agent_home() {
+                tracing::warn!(target: "providers", "activate official: auth sync: {e}");
+            }
             let mut secrets = crate::store::load_secrets();
             secrets.relay_base_url = None;
+            // Prefer catalog id for composer, not the synthetic "grok" default key.
+            secrets.default_model = Some(OFFICIAL_CATALOG_MODEL.into());
             let _ = crate::store::save_secrets(&secrets);
             Ok(result)
         }
@@ -587,10 +651,12 @@ pub fn activate_provider(
                 return Err(format!("unknown provider `{id}`"));
             }
             let result = set_default_model_id(id)?;
+            // Critical: remove OIDC so Grok Build uses [model.<id>].api_key.
+            crate::account::clear_agent_home_auth();
             if let Some(p) = result.providers.iter().find(|p| p.id == id) {
                 let mut secrets = crate::store::load_secrets();
                 secrets.relay_base_url = Some(p.base_url.clone());
-                // Route id (`yunyi`), not upstream model name (`grok-4.5`).
+                // Route id selects the channel; upstream model lives in config.toml.
                 secrets.default_model = Some(id.to_string());
                 let _ = crate::store::save_secrets(&secrets);
             }
@@ -665,7 +731,12 @@ pub fn upsert_custom_provider(input: UpsertProviderInput) -> Result<ProvidersLis
     }
 
     write_text(&path, &text)?;
-    list_custom_providers()
+    let result = list_custom_providers()?;
+    if input.set_as_default.unwrap_or(false) {
+        // Newly defaulted custom channel must not inherit OIDC.
+        crate::account::clear_agent_home_auth();
+    }
+    Ok(result)
 }
 
 pub fn remove_custom_provider(id: &str) -> Result<ProvidersListResult, String> {
@@ -674,11 +745,16 @@ pub fn remove_custom_provider(id: &str) -> Result<ProvidersListResult, String> {
     let mut text = read_text(&path);
     let def = get_models_default(&text);
     text = remove_section(&text, &id);
-    if def.as_deref() == Some(id.as_str()) {
+    let fell_back_official = def.as_deref() == Some(id.as_str());
+    if fell_back_official {
         text = set_models_default(&text, OFFICIAL_DEFAULT_MODEL);
     }
     write_text(&path, &text)?;
-    list_custom_providers()
+    let result = list_custom_providers()?;
+    if fell_back_official {
+        prepare_route_auth_for_agent();
+    }
+    Ok(result)
 }
 
 pub fn set_default_model_id(model_id: &str) -> Result<ProvidersListResult, String> {

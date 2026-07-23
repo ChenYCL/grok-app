@@ -131,49 +131,52 @@ export function UserMenu({
                   {initials}
                 </div>
                 <div className="user-menu__account-text">
-                  <div className="user-menu__account-name">{name}</div>
+                  <div className="user-menu__account-name-row">
+                    <div className="user-menu__account-name">{name}</div>
+                    {signedIn && resetTime ? (
+                      <span className="user-menu__quota-reset">
+                        {labels.resetsAt} {resetTime}
+                      </span>
+                    ) : null}
+                  </div>
                   {!signedIn ? (
                     <div className="user-menu__account-sub">
                       {labels.signedOut}
                     </div>
-                  ) : null}
-                </div>
-              </div>
-              {signedIn ? (
-                <div className="user-menu__quota">
-                  <div className="user-menu__quota-row">
-                    <span className="user-menu__tier">{tier}</span>
-                    <span className="user-menu__remain">
-                      {remaining != null
-                        ? `${remaining.toFixed(0)}% ${labels.remaining}`
-                        : "—"}
-                    </span>
-                  </div>
-                  {remaining != null && (
-                    <div
-                      className="account-quota-bar account-quota-bar--sm"
-                      aria-hidden
-                    >
-                      <div
-                        className={
-                          "account-quota-bar__fill" +
-                          (usedPct != null && usedPct >= 90
-                            ? " is-danger"
-                            : usedPct != null && usedPct >= 70
-                              ? " is-warn"
-                              : "")
-                        }
-                        style={{ width: `${Math.min(100, usedPct ?? 0)}%` }}
-                      />
+                  ) : (
+                    <div className="user-menu__quota">
+                      <div className="user-menu__quota-row">
+                        <span className="user-menu__tier">{tier}</span>
+                        <span className="user-menu__remain">
+                          {remaining != null
+                            ? `${remaining.toFixed(0)}% ${labels.remaining}`
+                            : "—"}
+                        </span>
+                      </div>
+                      {remaining != null && (
+                        <div
+                          className="account-quota-bar account-quota-bar--sm"
+                          aria-hidden
+                        >
+                          <div
+                            className={
+                              "account-quota-bar__fill" +
+                              (usedPct != null && usedPct >= 90
+                                ? " is-danger"
+                                : usedPct != null && usedPct >= 70
+                                  ? " is-warn"
+                                  : "")
+                            }
+                            style={{
+                              width: `${Math.min(100, usedPct ?? 0)}%`,
+                            }}
+                          />
+                        </div>
+                      )}
                     </div>
                   )}
-                  {resetTime ? (
-                    <div className="user-menu__quota-reset">
-                      {labels.resetsAt} {resetTime}
-                    </div>
-                  ) : null}
                 </div>
-              ) : null}
+              </div>
             </button>
 
             <button

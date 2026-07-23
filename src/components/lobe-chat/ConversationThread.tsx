@@ -3,7 +3,7 @@
  * Replaces AI Elements / previous ConversationThread.
  */
 
-import { useMemo } from "react";
+import { memo, useMemo } from "react";
 import type { Locale } from "@/i18n";
 import { createT } from "@/i18n";
 import {
@@ -19,6 +19,7 @@ import {
   isMediaPath,
 } from "@/lib/attachments";
 import { AttachmentCard } from "@/components/AttachmentCard";
+import type { ResourceOpenTarget } from "@/components/ResourceViewer";
 import {
   IconArrowsMinimize,
   IconClock,
@@ -57,6 +58,98 @@ function formatTokenCount(n: number): string {
   if (n >= 1000) return `${(n / 1000).toFixed(1)}k`;
   return String(n);
 }
+
+type AttachLabels = {
+  open: string;
+  reveal: string;
+  copyPath: string;
+  copyImage: string;
+  addToComposer: string;
+  remove: string;
+};
+
+/**
+ * Assistant markdown + attachment cards.
+ * Memoized so parent re-renders (showBack, live tool pulse, etc.) do not
+ * rebuild imagePathMap / remount ImageUi frames mid-scroll.
+ */
+const AssistantMessageBody = memo(function AssistantMessageBody({
+  content,
+  attachments,
+  streaming,
+  locale,
+  projectPath,
+  onOpenResource,
+  onAddAttachmentToComposer,
+  attachLabels,
+}: {
+  content: string;
+  attachments?: Attachment[];
+  streaming?: boolean;
+  locale: Locale;
+  projectPath?: string | null;
+  onOpenResource?: (target: ResourceOpenTarget) => void;
+  onAddAttachmentToComposer?: (att: Attachment) => void;
+  attachLabels: AttachLabels;
+}) {
+  // Never show silent grok-automation fences in the transcript.
+  const displayContent = content?.trim()
+    ? extractAutomationPayload(content).cleanText
+    : content;
+  const imagePathMap = useMemo(
+    () => buildInlineMediaPathMap(attachments),
+    [attachments],
+  );
+  const bottomAtts = useMemo(
+    () =>
+      filterAttachmentsNotInlined(displayContent || content, attachments),
+    [displayContent, content, attachments],
+  );
+  const pathMapProp = useMemo(() => {
+    return Object.keys(imagePathMap).length ? imagePathMap : undefined;
+  }, [imagePathMap]);
+  const galleryPaths = useMemo(
+    () =>
+      (bottomAtts ?? [])
+        .filter((x) => !x.isDir && isImagePath(x.path))
+        .map((x) => x.path),
+    [bottomAtts],
+  );
+
+  if (!(displayContent || "").trim() && !(bottomAtts && bottomAtts.length)) {
+    return null;
+  }
+
+  return (
+    <>
+      {(displayContent || "").trim() ? (
+        <MarkdownChat
+          locale={locale}
+          streaming={!!streaming}
+          imagePathMap={pathMapProp}
+          projectPath={projectPath}
+          onOpenResource={onOpenResource}
+        >
+          {displayContent}
+        </MarkdownChat>
+      ) : null}
+      {bottomAtts && bottomAtts.length > 0 ? (
+        <div className="lobe-chat-atts">
+          {bottomAtts.map((a) => (
+            <AttachmentCard
+              key={a.path}
+              attachment={a}
+              variant={!a.isDir && isMediaPath(a.path) ? "card" : "chip"}
+              labels={attachLabels}
+              galleryPaths={galleryPaths}
+              onAddToComposer={onAddAttachmentToComposer}
+            />
+          ))}
+        </div>
+      ) : null}
+    </>
+  );
+});
 
 /** Render skill chips / plain text for the user bubble body. */
 function UserPlainOrSkills({ content }: { content: string }) {
@@ -128,9 +221,12 @@ export interface ConversationThreadProps {
   editingUserMessageId?: string | null;
   /** True while edit-resend is in flight (rewind + send). */
   editSubmitting?: boolean;
+  /** Editable attachments for the open inline edit (reloaded from the message). */
+  editAttachments?: Attachment[];
   onEditUserMessage?: (message: ChatMessage) => void;
   onCancelEditUserMessage?: () => void;
   onSubmitEditUserMessage?: (message: ChatMessage, content: string) => void;
+  onRemoveEditAttachment?: (att: Attachment) => void;
   onOpenResource?: (
     target: import("@/components/ResourceViewer").ResourceOpenTarget,
   ) => void;
@@ -169,9 +265,11 @@ export function ConversationThread({
   lastUserMessageId = null,
   editingUserMessageId = null,
   editSubmitting = false,
+  editAttachments = [],
   onEditUserMessage,
   onCancelEditUserMessage,
   onSubmitEditUserMessage,
+  onRemoveEditAttachment,
   onOpenResource,
   plan,
   onDismissPlan,
@@ -345,9 +443,16 @@ export function ConversationThread({
                   showAvatar={false}
                   showTitle={false}
                   message={
-                    <div className="lobe-chat-user-stack">
-                      {/* Attachments above the bubble (ref: user message layout) */}
-                      {m.attachments && m.attachments.length > 0 ? (
+                    <div
+                      className={
+                        "lobe-chat-user-stack" +
+                        (isEditing ? " lobe-chat-user-stack--editing" : "")
+                      }
+                    >
+                      {/* Read-only attachments above bubble; edit mode reloads them inside the form */}
+                      {!isEditing &&
+                      m.attachments &&
+                      m.attachments.length > 0 ? (
                         <div className="lobe-chat-atts lobe-chat-atts--user">
                           {m.attachments.map((a) => (
                             <AttachmentCard
@@ -366,6 +471,8 @@ export function ConversationThread({
                       {isEditing ? (
                         <InlineUserEdit
                           content={m.content}
+                          attachments={editAttachments}
+                          attachLabels={attachLabels}
                           busy={editSubmitting}
                           cancelLabel={tr("message.editCancel")}
                           resendLabel={tr("message.editResend")}
@@ -374,6 +481,7 @@ export function ConversationThread({
                           onSubmit={(stored) =>
                             onSubmitEditUserMessage?.(m, stored)
                           }
+                          onRemoveAttachment={onRemoveEditAttachment}
                         />
                       ) : m.content.trim() ? (
                         <div className="lobe-chat-bubble">
@@ -477,60 +585,18 @@ export function ConversationThread({
                     />
                   ) : null
                 }
-                message={(() => {
-                  // Never show silent grok-automation fences in the transcript.
-                  const displayContent = m.content?.trim()
-                    ? extractAutomationPayload(m.content).cleanText
-                    : m.content;
-                  const imagePathMap = buildInlineMediaPathMap(m.attachments);
-                  const bottomAtts = filterAttachmentsNotInlined(
-                    displayContent || m.content,
-                    m.attachments,
-                  );
-                  if (
-                    !(displayContent || "").trim() &&
-                    !(bottomAtts && bottomAtts.length)
-                  ) {
-                    return null;
-                  }
-                  return (
-                    <>
-                      {(displayContent || "").trim() ? (
-                        <MarkdownChat
-                          locale={locale}
-                          streaming={!!m.streaming}
-                          imagePathMap={
-                            Object.keys(imagePathMap).length
-                              ? imagePathMap
-                              : undefined
-                          }
-                          projectPath={projectPath}
-                          onOpenResource={onOpenResource}
-                        >
-                          {displayContent}
-                        </MarkdownChat>
-                      ) : null}
-                      {bottomAtts && bottomAtts.length > 0 ? (
-                        <div className="lobe-chat-atts">
-                          {bottomAtts.map((a) => (
-                            <AttachmentCard
-                              key={a.path}
-                              attachment={a}
-                              variant={
-                                !a.isDir && isMediaPath(a.path) ? "card" : "chip"
-                              }
-                              labels={attachLabels}
-                              galleryPaths={bottomAtts
-                                .filter((x) => !x.isDir && isImagePath(x.path))
-                                .map((x) => x.path)}
-                              onAddToComposer={onAddAttachmentToComposer}
-                            />
-                          ))}
-                        </div>
-                      ) : null}
-                    </>
-                  );
-                })()}
+                message={
+                  <AssistantMessageBody
+                    content={m.content}
+                    attachments={m.attachments}
+                    streaming={!!m.streaming}
+                    locale={locale}
+                    projectPath={projectPath}
+                    onOpenResource={onOpenResource}
+                    onAddAttachmentToComposer={onAddAttachmentToComposer}
+                    attachLabels={attachLabels}
+                  />
+                }
                 belowMessage={
                   showLiveToolBelow && liveTool ? (
                     <LiveToolText message={liveTool} locale={locale} />

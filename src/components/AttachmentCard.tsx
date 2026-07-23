@@ -8,7 +8,7 @@ import { useEffect, useRef, useState } from "react";
 import type { Attachment } from "@/lib/attachments";
 import { isImagePath } from "@/lib/attachments";
 import * as api from "@/lib/api";
-import { resolveImageSrc } from "@/lib/imageSrc";
+import { resolveImageSrcSync } from "@/lib/imageSrc";
 import { copyImageFromPath } from "@/lib/copyImage";
 import { useImageViewerOptional } from "@/components/ImageViewer";
 import {
@@ -55,23 +55,20 @@ export function AttachmentCard({
   galleryPaths,
 }: AttachmentCardProps) {
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
-  const [thumbSrc, setThumbSrc] = useState<string | null>(null);
+  const isImg = !attachment.isDir && isImagePath(attachment.path);
+  const [thumbSrc, setThumbSrc] = useState<string | null>(() =>
+    isImg ? resolveImageSrcSync(attachment.path) : null,
+  );
   const rootRef = useRef<HTMLDivElement>(null);
   const viewer = useImageViewerOptional();
-  const isImg = !attachment.isDir && isImagePath(attachment.path);
 
   useEffect(() => {
     if (!isImg) {
       setThumbSrc(null);
       return;
     }
-    let cancelled = false;
-    void resolveImageSrc(attachment.path).then((src) => {
-      if (!cancelled) setThumbSrc(src);
-    });
-    return () => {
-      cancelled = true;
-    };
+    // Sync resolve + cache: avoid empty→thumb height flash in the thread.
+    setThumbSrc(resolveImageSrcSync(attachment.path));
   }, [attachment.path, isImg]);
 
   const openPath = async () => {

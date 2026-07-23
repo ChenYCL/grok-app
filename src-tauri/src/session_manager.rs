@@ -614,8 +614,12 @@ impl SessionManager {
 
         let cli_path = std::path::PathBuf::from(probe.path.unwrap());
 
+        // Channel-aware model: custom provider → route id; official → catalog id.
+        let agent_model =
+            crate::providers::agent_spawn_model_id(&prefs.model_id);
+
         let spawn_opts = crate::acp_client::SpawnOptions {
-            model_id: Some(prefs.model_id.clone()),
+            model_id: Some(agent_model.clone()),
             effort: Some(prefs.effort.clone()),
             permission_policy: Some(prefs.permission_policy.clone()),
         };
@@ -657,8 +661,8 @@ impl SessionManager {
             .await
         {
             Ok((agent_sid, resumed)) => {
-                // Align live agent model / product mode with resolved prefs.
-                if let Err(e) = client.set_model(&prefs.model_id).await {
+                // Align live agent model / product mode with active channel.
+                if let Err(e) = client.set_model(&agent_model).await {
                     tracing::warn!("acp set_model after session open soft-fail: {e}");
                 }
                 if let Err(e) = client.set_mode(&prefs.mode).await {
@@ -1689,6 +1693,8 @@ impl SessionManager {
         if model_id.is_empty() {
             return Err("model id empty".into());
         }
+        // Store composer preference; agent receives channel-resolved id.
+        let agent_model = crate::providers::agent_spawn_model_id(&model_id);
         let acp = {
             let mut guard = self.inner.lock();
             if let Some(s) = guard.as_mut() {
@@ -1701,7 +1707,7 @@ impl SessionManager {
             }
         };
         if let Some(acp) = acp {
-            acp.set_model(&model_id).await?;
+            acp.set_model(&agent_model).await?;
         }
         Ok(())
     }

@@ -705,6 +705,7 @@ export function ResourceViewer({
         }
         return src ? (
           <ImageUi
+            layout="pane"
             className="rp-preview__img"
             src={src}
             alt={preview.name}

@@ -5,6 +5,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { GrokLogo } from "@/components/GrokLogo";
+import { Select } from "@/components/Select";
 import { Spinner } from "@/components/ui/spinner";
 import * as api from "@/lib/api";
 import type { createT } from "@/i18n";
@@ -68,6 +69,20 @@ export function SetupWizard({
   const [officialKey, setOfficialKey] = useState("");
   const [relayBase, setRelayBase] = useState("");
   const [relayKey, setRelayKey] = useState("");
+  /** Default: OpenAI Responses — preferred for modern gateways. */
+  const [relayBackend, setRelayBackend] = useState("responses");
+
+  const protocolOptions = useMemo(
+    () => [
+      { value: "responses", label: tr("prov.protocol.responses") },
+      {
+        value: "chat_completions",
+        label: tr("prov.protocol.chatCompletions"),
+      },
+      { value: "messages", label: tr("prov.protocol.messages") },
+    ],
+    [tr],
+  );
 
   useEffect(() => {
     void api.cliInstallCommands().then(setInstallCmds).catch(() => null);
@@ -253,8 +268,18 @@ export function SetupWizard({
     setAccountBusy(true);
     setError(null);
     try {
+      // Write agent-home config with chosen message format (default Responses).
+      await api.providersUpsert({
+        id: "relay",
+        model: "default",
+        baseUrl: base,
+        name: "Custom relay",
+        apiKey: key,
+        apiBackend: relayBackend || "responses",
+        setAsDefault: true,
+      });
       await api.secretsSet({ relayBaseUrl: base, relayApiKey: key });
-      const ping = await api.providerPing();
+      const ping = await api.providersPing({ baseUrl: base, apiKey: key });
       if (ping && (ping as { ok?: boolean }).ok === false) {
         setStatusMsg(String((ping as { message?: string }).message || "ping failed"));
       } else {
@@ -268,7 +293,7 @@ export function SetupWizard({
     } finally {
       setAccountBusy(false);
     }
-  }, [relayBase, relayKey, tr]);
+  }, [relayBase, relayKey, relayBackend, tr]);
 
   const runOauth = useCallback(async () => {
     setAccountBusy(true);
@@ -611,6 +636,17 @@ export function SetupWizard({
                     value={relayKey}
                     onChange={(e) => setRelayKey(e.target.value)}
                   />
+                  <label className="setup-field">
+                    <span className="setup-field__label">
+                      {tr("setup.account.protocol")}
+                    </span>
+                    <Select
+                      value={relayBackend}
+                      onChange={setRelayBackend}
+                      options={protocolOptions}
+                      aria-label={tr("setup.account.protocol")}
+                    />
+                  </label>
                   <div className="setup-actions__row">
                     <button
                       type="button"

@@ -12,7 +12,9 @@
    - [setup.md](docs/llm-wiki/setup.md) — first-run gate (CLI required, account optional)  
    - [icons.md](docs/llm-wiki/icons.md) — app dock icons vs tray/status-bar icons (never mix)
 
-1b. **Release platforms** — [docs/BUILD.md](docs/BUILD.md). mac arm/intel + Windows via CI. Window chrome: `tauri.macos.conf.json` (Overlay) vs `tauri.windows.conf.json` (frameless + self-drawn controls).
+1b. **Release platforms** — [docs/BUILD.md](docs/BUILD.md). mac arm/intel + Windows via CI. Window chrome: `tauri.macos.conf.json` (Overlay) vs `tauri.windows.conf.json` (frameless + self-drawn controls). Tag only after a matching `CHANGELOG.md` section; CI body from `scripts/changelog-for-release.py` (same pattern as grok-go).
+
+1c. **Open-source surface** — public docs: `README.md` / `README_EN.md`, `LICENSE`, `CONTRIBUTING.md`, `SECURITY.md`, `CODE_OF_CONDUCT.md`, `CHANGELOG.md`. Do not commit secrets, `auth.json`, or local agent homes.
 
 2. Do **not** hardcode user-facing English/Chinese. Use `createT(locale)` / `t()`.
 

@@ -29,8 +29,8 @@ boot → probe CLI
 
 Mirrors (order):
 
-1. `https://x.ai/cli`
-2. `https://storage.googleapis.com/grok-build-public-artifacts/cli`
+1. `https://storage.googleapis.com/grok-build-public-artifacts/cli` (preferred — more reliable in CN)
+2. `https://x.ai/cli`
 
 Each mirror is tried multiple times before failing over.
 

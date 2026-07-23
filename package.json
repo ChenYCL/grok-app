@@ -2,6 +2,17 @@
   "name": "grok-app",
   "private": true,
   "version": "0.1.0",
+  "description": "Desktop workbench for Grok Build CLI",
+  "author": "RongleCat",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/RongleCat/grok-app.git"
+  },
+  "homepage": "https://github.com/RongleCat/grok-app",
+  "bugs": {
+    "url": "https://github.com/RongleCat/grok-app/issues"
+  },
   "type": "module",
   "scripts": {
     "dev": "tauri dev",
@@ -11,7 +22,8 @@
     "build:mac-arm": "tauri build --target aarch64-apple-darwin",
     "build:mac-intel": "tauri build --target x86_64-apple-darwin",
     "build:mac-all": "bash scripts/build-local.sh all-mac",
-    "build:win": "tauri build --target x86_64-pc-windows-msvc",
+    "build:win": "bash scripts/build-local.sh win",
+    "build:all": "bash scripts/build-local.sh all",
     "setup:cross": "bash scripts/setup-cross-compile.sh",
     "release:tag": "bash scripts/release-tag.sh",
     "preview": "vite preview",

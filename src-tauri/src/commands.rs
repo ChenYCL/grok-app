@@ -1588,8 +1588,6 @@ pub async fn providers_list() -> Result<crate::providers::ProvidersListResult, S
         secrets.relay_api_key.as_deref(),
         secrets.default_model.as_deref(),
     );
-    // Seed 云翼 preset if the user has not configured it yet.
-    let _ = crate::providers::ensure_preset_yunyi();
     // Cap agent transport retries (host still circuit-breaks at 5 via retry_state).
     let _ = crate::providers::ensure_models_retry_cap();
     // Fix bases saved without /v1 (causes silent multi-minute inference retries).
@@ -1605,10 +1603,39 @@ pub async fn providers_activate(
 ) -> Result<crate::providers::ProvidersListResult, String> {
     let result =
         crate::providers::activate_provider(&source, provider_id.as_deref())?;
+    // Composer model stays a catalog id (UI). Channel is `[models].default`.
+    // When leaving a custom route, drop stale provider ids from settings.
     let mut settings = store::load_settings();
-    if let Some(ref d) = result.default_model {
-        settings.model_id = Some(d.clone());
-        let _ = store::save_settings(&settings);
+    let cur = settings.model_id.clone().unwrap_or_default();
+    if result.active_source == "official" {
+        if cur.is_empty()
+            || crate::providers::is_custom_provider_id(&cur)
+            || cur == crate::providers::OFFICIAL_DEFAULT_MODEL
+        {
+            settings.model_id =
+                Some(crate::providers::OFFICIAL_CATALOG_MODEL.into());
+            let _ = store::save_settings(&settings);
+        }
+    } else if result.active_source == "custom" {
+        // Keep catalog model in settings for the model picker; spawn resolves route id.
+        if cur.is_empty() || crate::providers::is_custom_provider_id(&cur) {
+            if let Some(p) = result
+                .active_provider_id
+                .as_ref()
+                .and_then(|id| result.providers.iter().find(|x| x.id == *id))
+            {
+                let upstream = p.model.trim();
+                settings.model_id = Some(if upstream.is_empty() {
+                    crate::providers::OFFICIAL_CATALOG_MODEL.into()
+                } else {
+                    upstream.to_string()
+                });
+            } else {
+                settings.model_id =
+                    Some(crate::providers::OFFICIAL_CATALOG_MODEL.into());
+            }
+            let _ = store::save_settings(&settings);
+        }
     }
     Ok(result)
 }
@@ -1626,7 +1653,7 @@ pub async fn providers_upsert(
 ) -> Result<crate::providers::ProvidersListResult, String> {
     let result = crate::providers::upsert_custom_provider(crate::providers::UpsertProviderInput {
         id,
-        model,
+        model: model.clone(),
         base_url,
         name,
         api_key,
@@ -1642,9 +1669,15 @@ pub async fn providers_upsert(
         secrets.default_model = result.default_model.clone();
         // Do not copy api_key into secrets (stays only in config.toml).
         let _ = store::save_secrets(&secrets);
-        let mut settings = store::load_settings();
-        if let Some(ref d) = result.default_model {
-            settings.model_id = Some(d.clone());
+        if set_as_default.unwrap_or(false) {
+            let mut settings = store::load_settings();
+            // Composer shows upstream request model, not the route slug.
+            let upstream = p.model.trim();
+            settings.model_id = Some(if upstream.is_empty() {
+                crate::providers::OFFICIAL_CATALOG_MODEL.into()
+            } else {
+                upstream.to_string()
+            });
             let _ = store::save_settings(&settings);
         }
     }
@@ -1660,9 +1693,31 @@ pub async fn providers_remove(id: String) -> Result<crate::providers::ProvidersL
 pub async fn providers_set_default(
     model_id: String,
 ) -> Result<crate::providers::ProvidersListResult, String> {
-    let result = crate::providers::set_default_model_id(&model_id)?;
+    // Prefer activate_provider so auth material is rebound correctly.
+    let id = model_id.trim();
+    let list = crate::providers::list_custom_providers()?;
+    let result = if list.providers.iter().any(|p| p.id == id) {
+        crate::providers::activate_provider("custom", Some(id))?
+    } else {
+        crate::providers::activate_provider("official", None)?
+    };
     let mut settings = store::load_settings();
-    settings.model_id = Some(model_id);
+    if result.active_source == "custom" {
+        if let Some(p) = result
+            .active_provider_id
+            .as_ref()
+            .and_then(|pid| result.providers.iter().find(|x| x.id == *pid))
+        {
+            let upstream = p.model.trim();
+            settings.model_id = Some(if upstream.is_empty() {
+                crate::providers::OFFICIAL_CATALOG_MODEL.into()
+            } else {
+                upstream.to_string()
+            });
+        }
+    } else {
+        settings.model_id = Some(crate::providers::OFFICIAL_CATALOG_MODEL.into());
+    }
     let _ = store::save_settings(&settings);
     Ok(result)
 }

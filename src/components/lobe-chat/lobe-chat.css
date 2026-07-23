@@ -866,17 +866,39 @@
 }
 
 /* ── Inline edit (last user message) ── */
+/* Stretch user row to full transcript column while editing */
+.lobe-chat-item--user:has(.lobe-inline-edit) {
+  align-items: stretch;
+  width: 100%;
+}
+.lobe-chat-item--user:has(.lobe-inline-edit) .lobe-chat-item__body {
+  width: 100%;
+  max-width: 100%;
+}
+.lobe-chat-user-stack--editing {
+  align-items: stretch;
+  width: 100%;
+  max-width: 100%;
+}
+
 .lobe-inline-edit {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  width: min(100%, 28rem);
+  width: 100%;
   max-width: 100%;
   padding: 10px 12px;
   border-radius: var(--chat-r-lg);
   border: 1px solid var(--chat-code-border);
   background: var(--chat-bubble);
   box-sizing: border-box;
+}
+.lobe-inline-edit__atts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  width: 100%;
+  justify-content: flex-start;
 }
 .lobe-inline-edit__skills {
   display: flex;
@@ -886,8 +908,8 @@
 }
 .lobe-inline-edit__textarea {
   width: 100%;
-  min-height: 2.75rem;
-  max-height: 220px;
+  min-height: 3.25rem;
+  max-height: 280px;
   resize: none;
   border: 1px solid var(--chat-code-border);
   border-radius: var(--chat-r-sm);

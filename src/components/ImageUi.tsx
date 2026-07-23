@@ -1,13 +1,23 @@
 /**
  * Shared image UI: click → lightbox; right-click menu aligned with AttachmentCard
  * (view, reveal, copy image, copy path when a local path is known).
- * Local absolute paths are resolved via convertFileSrc automatically.
+ *
+ * Frame keeps a non-zero reserved size (default 4:3, then natural ratio) so chat
+ * scrollHeight never collapses to 0 mid-decode — that thrash + overflow-anchor:none
+ * was the jump-to-top bug. Container aspect follows the image once known.
  */
 
-import { useEffect, useState, type CSSProperties, type ReactNode } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type CSSProperties,
+  type ReactNode,
+} from "react";
 import * as api from "@/lib/api";
 import { copyImageFromSrc } from "@/lib/copyImage";
-import { resolveImageSrc, isViewableSrc } from "@/lib/imageSrc";
+import { resolveImageSrcSync, isViewableSrc } from "@/lib/imageSrc";
 import { useImageViewerOptional } from "@/components/ImageViewer";
 import { IconCopy, IconExternalLink, IconFolder } from "@/components/icons";
 import { ContextMenu, type ContextMenuItem } from "@/components/ContextMenu";
@@ -22,6 +32,12 @@ export interface ImageUiLabels {
   copyPath: string;
   open?: string;
 }
+
+/**
+ * - `card` — chat inline cards (max 280×280, ratio-aware).
+ * - `pane` — resource sidebar: full pane width, natural ratio, no chat caps.
+ */
+export type ImageUiLayout = "card" | "pane";
 
 interface ImageUiProps {
   src: string;
@@ -39,7 +55,20 @@ interface ImageUiProps {
   /** Optional extra menu items at the end */
   extraMenu?: ReactNode;
   draggable?: boolean;
+  /**
+   * Sizing mode. Defaults to `card` for chat; resource pane must pass `pane`.
+   */
+  layout?: ImageUiLayout;
 }
+
+/** Chat card outer cap (px). */
+const CARD_MAX_W = 280;
+const CARD_MAX_H = 280;
+/** Placeholder ratio before natural size is known. */
+const DEFAULT_AR = 4 / 3;
+
+/** Remember natural ratios so remounts don't re-reserve the wrong box. */
+const aspectCache = new Map<string, number>();
 
 /** True when path looks like a local absolute path we can reveal/copy. */
 function isLocalFsPath(path: string | undefined): path is string {
@@ -52,6 +81,70 @@ function isLocalFsPath(path: string | undefined): path is string {
   return path.startsWith("/") || /^[A-Za-z]:[\\/]/.test(path);
 }
 
+function initialResolvedSrc(src: string): string | null {
+  if (isViewableSrc(src)) return src;
+  return resolveImageSrcSync(src);
+}
+
+function cacheKey(src: string, path?: string): string {
+  return path || src;
+}
+
+function readCachedAr(src: string, path?: string): number | null {
+  const k = cacheKey(src, path);
+  return aspectCache.get(k) ?? aspectCache.get(src) ?? null;
+}
+
+/** Fit natural ratio into max box; returns width px + aspect ratio. */
+function fitCardBox(ar: number): { widthPx: number; ar: number } {
+  const ratio = ar > 0 && Number.isFinite(ar) ? ar : DEFAULT_AR;
+  // Prefer full card width; shrink width if height would exceed cap.
+  let widthPx = CARD_MAX_W;
+  let heightPx = widthPx / ratio;
+  if (heightPx > CARD_MAX_H) {
+    heightPx = CARD_MAX_H;
+    widthPx = heightPx * ratio;
+  }
+  return { widthPx, ar: ratio };
+}
+
+function resolveLayout(
+  layout: ImageUiLayout | undefined,
+  className: string | undefined,
+): ImageUiLayout {
+  if (layout === "pane" || layout === "card") return layout;
+  // Resource pane legacy class names
+  if (
+    className &&
+    (/\brp-preview__img\b/.test(className) ||
+      /\brv-preview__img\b/.test(className))
+  ) {
+    return "pane";
+  }
+  return "card";
+}
+
+function frameClassName(
+  className: string | undefined,
+  state: "pending" | "ready" | "broken",
+  layout: ImageUiLayout,
+): string {
+  const base = (className || "").replace(/\bmd-body__img\b/g, "").trim();
+  const layoutClass =
+    layout === "pane"
+      ? "md-body__img-frame--pane"
+      : "md-body__img-frame--card";
+  const parts = [
+    "md-body__img-frame",
+    layoutClass,
+    state === "pending" ? "is-pending" : "",
+    state === "broken" ? "is-broken" : "",
+    state === "ready" ? "is-ready" : "",
+    base,
+  ];
+  return parts.filter(Boolean).join(" ");
+}
+
 export function ImageUi({
   src,
   alt = "",
@@ -62,61 +155,72 @@ export function ImageUi({
   labels,
   extraMenu,
   draggable = false,
+  layout: layoutProp,
 }: ImageUiProps) {
+  const layout = resolveLayout(layoutProp, className);
   const viewer = useImageViewerOptional();
+  const imgRef = useRef<HTMLImageElement | null>(null);
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
   const [resolvedSrc, setResolvedSrc] = useState<string | null>(() =>
-    isViewableSrc(src) ? src : null,
+    initialResolvedSrc(src),
   );
   /** Once load fails, keep a stable broken state — never re-fetch on re-render. */
   const [loadFailed, setLoadFailed] = useState(false);
+  /**
+   * Natural width/height ratio. Seeded from cache so remounts keep the right
+   * box; defaults to 4:3 until the bitmap reports size.
+   */
+  const [aspectRatio, setAspectRatio] = useState<number>(
+    () => readCachedAr(src, path) ?? DEFAULT_AR,
+  );
+  const [ratioKnown, setRatioKnown] = useState(
+    () => readCachedAr(src, path) != null,
+  );
+
   const localPath = isLocalFsPath(path)
     ? path
     : isLocalFsPath(src)
       ? src
       : undefined;
 
+  const applyNaturalSize = useCallback(
+    (nw: number, nh: number) => {
+      if (!(nw > 0 && nh > 0)) return;
+      const ar = nw / nh;
+      aspectCache.set(cacheKey(src, path), ar);
+      aspectCache.set(src, ar);
+      if (localPath) aspectCache.set(localPath, ar);
+      setAspectRatio(ar);
+      setRatioKnown(true);
+    },
+    [src, path, localPath],
+  );
+
   useEffect(() => {
-    let cancelled = false;
+    const next = initialResolvedSrc(src);
+    setResolvedSrc(next);
     setLoadFailed(false);
-    if (isViewableSrc(src)) {
-      setResolvedSrc(src);
-      return;
+    const cached = readCachedAr(src, path);
+    if (cached != null) {
+      setAspectRatio(cached);
+      setRatioKnown(true);
+    } else {
+      setAspectRatio(DEFAULT_AR);
+      setRatioKnown(false);
     }
-    void resolveImageSrc(src).then((r) => {
-      if (!cancelled) setResolvedSrc(r);
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [src]);
+  }, [src, path]);
 
-  // Resolving: reserved box so layout doesn't jump while src is pending
-  if (!resolvedSrc && !loadFailed) {
-    return (
-      <span
-        className={(className || "") + " md-body__img-pending"}
-        style={style}
-        aria-hidden
-      />
-    );
-  }
-
-  if (loadFailed || !resolvedSrc) {
-    return (
-      <span
-        className={(className || "") + " md-body__img-broken"}
-        style={style}
-        title={localPath || src}
-        role="img"
-        aria-label={alt || "image"}
-      >
-        {alt || "image"}
-      </span>
-    );
-  }
+  // Recover size if decode finished before onLoad bound (disk cache).
+  useEffect(() => {
+    const el = imgRef.current;
+    if (!el || !resolvedSrc || loadFailed) return;
+    if (el.complete && el.naturalWidth > 0 && el.naturalHeight > 0) {
+      applyNaturalSize(el.naturalWidth, el.naturalHeight);
+    }
+  }, [resolvedSrc, loadFailed, applyNaturalSize]);
 
   const openViewer = () => {
+    if (!resolvedSrc) return;
     const slides =
       gallery && gallery.length > 0
         ? gallery
@@ -141,6 +245,7 @@ export function ImageUi({
   };
 
   const copyImage = async () => {
+    if (!resolvedSrc) return;
     await copyImageFromSrc(resolvedSrc);
   };
 
@@ -168,6 +273,7 @@ export function ImageUi({
       label: labels.viewImage,
       icon: <IconExternalLink size={16} />,
       onClick: () => openViewer(),
+      disabled: !resolvedSrc || loadFailed,
     },
   ];
   if (localPath) {
@@ -187,6 +293,7 @@ export function ImageUi({
     onClick: () => {
       void copyImage();
     },
+    disabled: !resolvedSrc || loadFailed,
   });
   if (localPath) {
     menuItems.push({
@@ -199,33 +306,88 @@ export function ImageUi({
     });
   }
 
+  const state: "pending" | "ready" | "broken" = loadFailed
+    ? "broken"
+    : resolvedSrc && ratioKnown
+      ? "ready"
+      : "pending";
+
+  const ar =
+    aspectRatio > 0 && Number.isFinite(aspectRatio)
+      ? aspectRatio
+      : DEFAULT_AR;
+
+  // Chat cards: cap at 280×280. Resource pane: fill width, natural ratio.
+  const frameStyle: CSSProperties =
+    layout === "pane"
+      ? {
+          ...style,
+          width: "100%",
+          maxWidth: "100%",
+          height: "auto",
+          maxHeight: "none",
+          aspectRatio: `${ar}`,
+          ["--img-ar" as string]: String(ar),
+        }
+      : (() => {
+          const box = fitCardBox(ar);
+          return {
+            ...style,
+            width: box.widthPx,
+            maxWidth: "100%",
+            aspectRatio: `${box.ar}`,
+            ["--img-ar" as string]: String(box.ar),
+          };
+        })();
+
   return (
     <>
-      <img
-        className={className}
-        style={{ ...style, cursor: "zoom-in" }}
-        src={resolvedSrc}
-        alt={alt}
-        draggable={draggable}
-        // Avoid browser / React re-decoding loops on scroll
-        loading="lazy"
-        decoding="async"
-        onError={() => {
-          // Stop retry spam: keep placeholder, do not clear src back to null
-          setLoadFailed(true);
-          setResolvedSrc(null);
-        }}
-        onClick={(e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          openViewer();
-        }}
+      <span
+        className={frameClassName(className, state, layout)}
+        style={frameStyle}
+        role={loadFailed ? "img" : undefined}
+        aria-label={loadFailed ? alt || "image" : undefined}
+        title={loadFailed ? localPath || src : undefined}
         onContextMenu={(e) => {
           e.preventDefault();
           e.stopPropagation();
           setMenu({ x: e.clientX, y: e.clientY });
         }}
-      />
+      >
+        {loadFailed ? (
+          <span className="md-body__img-frame__fallback">
+            {alt || "image"}
+          </span>
+        ) : resolvedSrc ? (
+          <img
+            ref={imgRef}
+            className="md-body__img-frame__el"
+            src={resolvedSrc}
+            alt={alt}
+            draggable={draggable}
+            // Eager: lazy + nested chat scroller unloads/reloads and collapses
+            // height mid-scroll (especially WKWebView / Tauri).
+            loading="eager"
+            decoding="async"
+            onLoad={(e) => {
+              const el = e.currentTarget;
+              applyNaturalSize(el.naturalWidth, el.naturalHeight);
+            }}
+            onError={() => {
+              setLoadFailed(true);
+            }}
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              openViewer();
+            }}
+          />
+        ) : (
+          <span className="md-body__img-frame__fallback" aria-hidden>
+            {alt || ""}
+          </span>
+        )}
+      </span>
       <ContextMenu
         open={!!menu}
         x={menu?.x ?? 0}

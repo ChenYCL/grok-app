@@ -487,15 +487,22 @@ export function SettingsPage({
                   {t("settings.tabProviders")}
                 </button>
               </div>
-              <p className="settings-account-tabs__hint">
-                {accountTab === "official"
-                  ? t("settings.tabOfficialHint")
-                  : t("settings.tabProvidersHint")}
-              </p>
+              {accountTab === "official" ? (
+                <p className="settings-account-tabs__hint">
+                  {t("settings.tabOfficialHint")}
+                </p>
+              ) : null}
             </div>
             {accountTab === "providers" ? (
               <ProvidersPanel
                 locale={resolveLocale(locale)}
+                officialAvailable={
+                  !!(
+                    account?.profile?.signedIn ||
+                    account?.cliAuthPresent ||
+                    account?.hasOfficialKey
+                  )
+                }
                 onProviderActivated={onProviderActivated}
               />
             ) : (

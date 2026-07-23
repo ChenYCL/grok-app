@@ -260,6 +260,10 @@ export default function App() {
   const [editingUserMessageId, setEditingUserMessageId] = useState<
     string | null
   >(null);
+  /** Attachments for the open inline edit (reloaded from the message, editable). */
+  const [editAttachments, setEditAttachments] = useState<Attachment[]>([]);
+  const editingUserMessageIdRef = useRef<string | null>(null);
+  editingUserMessageIdRef.current = editingUserMessageId;
   const [editSubmitting, setEditSubmitting] = useState(false);
   const [projects, setProjects] = useState<Project[]>([]);
   const [sessions, setSessions] = useState<SessionRow[]>([]);
@@ -1259,6 +1263,7 @@ export default function App() {
     openingSessionIdRef.current = s.id;
     viewingSessionIdRef.current = s.id;
     setEditingUserMessageId(null);
+    setEditAttachments([]);
 
     try {
       const stored = await api.sessionMessages(s.id);
@@ -2224,7 +2229,10 @@ export default function App() {
     const cacheKey = sendTargetId ?? "__draft__";
 
     // New composer send is never edit-resend (edit is inline on the message).
-    if (editingUserMessageId) setEditingUserMessageId(null);
+    if (editingUserMessageId) {
+      setEditingUserMessageId(null);
+      setEditAttachments([]);
+    }
 
     setDraft("");
     setSlashQuery(null);
@@ -2361,9 +2369,12 @@ export default function App() {
         setLocalError(tr("attach.droppedNone"));
         return;
       }
+      // While inline-editing a sent message, drops target the edit form — not the composer.
+      const intoEdit = !!editingUserMessageIdRef.current;
+      const mergeInto = intoEdit ? setEditAttachments : setAttachments;
       try {
         if (!api.isTauri()) {
-          setAttachments((prev) =>
+          mergeInto((prev) =>
             mergeAttachments(
               prev,
               paths.map((p) => ({
@@ -2387,7 +2398,7 @@ export default function App() {
           setLocalError(tr("attach.droppedNone"));
           return;
         }
-        setAttachments((prev) => mergeAttachments(prev, next));
+        mergeInto((prev) => mergeAttachments(prev, next));
         setLocalError(null);
       } catch (e) {
         setLocalError(String(e));
@@ -2892,6 +2903,23 @@ export default function App() {
   // welcome logo paints immediately — the SVG itself is inline, not a fetch.
   const [cachedBrandKind, setCachedBrandKind] =
     useState<SuperGrokBrandKind | null>(() => loadCachedSuperGrokBrand());
+  /** Active inference channel: custom relay must not show SuperGrok Heavy. */
+  const [customRouteActive, setCustomRouteActive] = useState(false);
+  const refreshProviderRoute = useCallback(async () => {
+    if (!api.isTauri()) {
+      setCustomRouteActive(false);
+      return;
+    }
+    try {
+      const list = await api.providersList();
+      setCustomRouteActive(list.activeSource === "custom");
+    } catch {
+      /* keep previous */
+    }
+  }, []);
+  useEffect(() => {
+    void refreshProviderRoute();
+  }, [refreshProviderRoute]);
   const liveBrandKind = useMemo(
     () =>
       superGrokBrandKind(
@@ -2901,6 +2929,8 @@ export default function App() {
     [account?.billing, account?.profile?.signedIn],
   );
   useEffect(() => {
+    // Do not cache Heavy while on a custom route — welcome mark is always SuperGrok.
+    if (customRouteActive) return;
     if (liveBrandKind) {
       saveCachedSuperGrokBrand(liveBrandKind);
       setCachedBrandKind(liveBrandKind);
@@ -2910,14 +2940,15 @@ export default function App() {
       saveCachedSuperGrokBrand(null);
       setCachedBrandKind(null);
     }
-  }, [liveBrandKind, account]);
+  }, [liveBrandKind, account, customRouteActive]);
   const welcomeBrandKind = useMemo(
     () =>
       resolveWelcomeBrandKind(liveBrandKind, cachedBrandKind, {
         accountReady: account != null,
         signedIn: !!account?.profile?.signedIn,
+        customRoute: customRouteActive,
       }),
-    [liveBrandKind, cachedBrandKind, account],
+    [liveBrandKind, cachedBrandKind, account, customRouteActive],
   );
 
   // Floating composer height → chat bottom pad so messages can scroll under it.
@@ -3171,6 +3202,14 @@ export default function App() {
         return;
       }
       // Inline only — do not move content into the main composer.
+      // Reload original attachments into editable chips.
+      setEditAttachments(
+        (msg.attachments ?? []).map((a) => ({
+          path: a.path,
+          name: a.name,
+          isDir: a.isDir,
+        })),
+      );
       setEditingUserMessageId(msg.id);
     },
     [lastUserMessageId, canEditLastUser, showToast, tr],
@@ -3179,6 +3218,7 @@ export default function App() {
   const cancelEditUser = useCallback(() => {
     if (editSubmitting) return;
     setEditingUserMessageId(null);
+    setEditAttachments([]);
   }, [editSubmitting]);
 
   /**
@@ -3196,7 +3236,8 @@ export default function App() {
         return;
       }
       const segments = parseStoredContent(storedDisplay);
-      const att: Attachment[] = (msg.attachments ?? []).map((a) => ({
+      // Live editable set is the source of truth (may have added/removed files).
+      const att: Attachment[] = editAttachments.map((a) => ({
         path: a.path,
         name: a.name,
         isDir: a.isDir,
@@ -3242,6 +3283,7 @@ export default function App() {
         return next;
       });
       setEditingUserMessageId(null);
+      setEditAttachments([]);
       setRetryStatus(null);
       setSession((prev) =>
         prev.state === "streaming" || prev.state === "awaiting_permission"
@@ -3341,6 +3383,7 @@ export default function App() {
       lastUserMessageId,
       canEditLastUser,
       editSubmitting,
+      editAttachments,
       showToast,
       tr,
       goalMode,
@@ -3736,6 +3779,7 @@ export default function App() {
                   await api.sessionDisconnect();
                   setSession({ ...IDLE_SNAPSHOT });
                 }
+                await refreshProviderRoute();
                 setToast(tr("prov.switchedHotReload"));
                 window.setTimeout(() => setToast(null), 3200);
               } catch (e) {
@@ -4487,11 +4531,17 @@ export default function App() {
             lastUserMessageId={lastUserMessageId}
             editingUserMessageId={editingUserMessageId}
             editSubmitting={editSubmitting}
+            editAttachments={editAttachments}
             onEditUserMessage={beginEditLastUser}
             onCancelEditUserMessage={cancelEditUser}
             onSubmitEditUserMessage={(msg, content) => {
               void submitEditLastUser(msg, content);
             }}
+            onRemoveEditAttachment={(att) =>
+              setEditAttachments((prev) =>
+                prev.filter((x) => x.path !== att.path),
+              )
+            }
             turnStartedAt={turnStartedAt}
             onOpenResource={(target) => {
               setLayout((l) => {
@@ -4532,10 +4582,12 @@ export default function App() {
                 <SuperGrokMark
                   kind={welcomeBrandKind}
                   title={
-                    account?.billing?.subscriptionTier?.trim() ||
-                    (welcomeBrandKind === "heavy"
-                      ? "SuperGrok Heavy"
-                      : "SuperGrok")
+                    customRouteActive
+                      ? "SuperGrok"
+                      : account?.billing?.subscriptionTier?.trim() ||
+                        (welcomeBrandKind === "heavy"
+                          ? "SuperGrok Heavy"
+                          : "SuperGrok")
                   }
                 />
               </div>

@@ -133,12 +133,23 @@ export function saveCachedSuperGrokBrand(
 /**
  * Live billing result wins; fall back to cache while account is still loading
  * so welcome logo is not blocked by quota network.
+ *
+ * Custom relay route: always show the plain SuperGrok mark (never Heavy).
+ * Heavy is an official SuperGrok membership brand and does not apply to relays.
  */
 export function resolveWelcomeBrandKind(
   live: SuperGrokBrandKind | null,
   cached: SuperGrokBrandKind | null,
-  opts?: { accountReady?: boolean; signedIn?: boolean },
+  opts?: {
+    accountReady?: boolean;
+    signedIn?: boolean;
+    /** Active inference channel is a custom OpenAI-compatible provider. */
+    customRoute?: boolean;
+  },
 ): SuperGrokBrandKind | null {
+  if (opts?.customRoute) {
+    return "supergrok";
+  }
   if (live) return live;
   // Once we know the user is signed out, never flash a stale SuperGrok mark.
   if (opts?.accountReady && opts.signedIn === false) return null;

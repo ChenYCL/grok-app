@@ -33,10 +33,37 @@ Custom providers are written to **`$GROK_HOME/config.toml`** as `[model.<id>]` s
 | `baseUrl` | OpenAI-compatible root, usually ends with `/v1` |
 | `apiKey` | Required for custom relay; never returned plaintext to UI |
 | `model` | Request body model id |
-| `apiBackend` | `chat_completions` \| `responses` \| `messages` |
+| `apiBackend` | Message format: `responses` (default) \| `chat_completions` \| `messages` |
 | `isDefault` | Maps to `[models].default` |
 
 CPA / sub2api / grok-go are **not special-cased** — any compatible base URL works.
+No bundled third-party presets (e.g. yunyi) ship with the app; users add relays themselves.
+
+## Settings UI (Account → Custom providers)
+
+Left / right split (`ProvidersPanel`):
+
+| Side | Content |
+|------|---------|
+| Left | **Add provider** on top; list of cards. Official Grok card first **only if** signed in / CLI auth / official key; otherwise list starts empty. |
+| Right | Create/edit form when adding or selecting a custom card; official detail when selecting the official card; empty placeholder otherwise. |
+
+Each card has **Use** to activate that route (`providers_activate`). Click card opens detail/edit. No long intro copy, agent-home path, or separate “active route” switcher.
+
+## Route switching (auth isolation)
+
+Grok Build 0.2.x will send **OIDC** when `auth.json` is present — even if the request URL is a custom relay. That produces:
+
+`Unauthorized (401) from https://api.example.com/v1/responses` with `Auth: Oidc`.
+
+Verified working combinations:
+
+| Route | `[models].default` | agent `--model` | agent-home `auth.json` |
+|-------|--------------------|-----------------|------------------------|
+| Custom relay | provider id (`yunyi`) | **provider id** | **removed** (api_key only) |
+| Official | `grok` | catalog id (`grok-4.5`) | **synced** from `~/.grok` |
+
+Host must rebind both sides on every switch and before each ACP spawn (`prepare_route_auth_for_agent` + `agent_spawn_model_id`). Composer model stays a catalog id for the UI; spawn resolves the channel id separately.
 
 ## Host commands
 

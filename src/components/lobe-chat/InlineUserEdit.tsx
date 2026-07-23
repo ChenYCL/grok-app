@@ -1,5 +1,6 @@
 /**
  * Inline edit for the last user bubble — simple local form, not the main composer.
+ * Full-width of the transcript column; hosts editable attachment chips + drop target.
  */
 
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -9,25 +10,35 @@ import {
   plainTextOf,
   serializeStored,
 } from "@/lib/draftDoc";
+import type { Attachment } from "@/lib/attachments";
+import { isImagePath } from "@/lib/attachments";
+import { AttachmentCard } from "@/components/AttachmentCard";
+import type { AttachmentCardLabels } from "@/components/AttachmentCard";
 import { SkillChip } from "@/components/SkillChip";
 import { cn } from "@/lib/utils";
 
 export function InlineUserEdit({
   content,
+  attachments = [],
+  attachLabels,
   busy,
   cancelLabel,
   resendLabel,
   placeholder,
   onCancel,
   onSubmit,
+  onRemoveAttachment,
 }: {
   content: string;
+  attachments?: Attachment[];
+  attachLabels: AttachmentCardLabels;
   busy?: boolean;
   cancelLabel: string;
   resendLabel: string;
   placeholder?: string;
   onCancel: () => void;
   onSubmit: (storedContent: string) => void;
+  onRemoveAttachment?: (a: Attachment) => void;
 }) {
   const skills = useMemo(() => {
     return parseUserMessageContent(content)
@@ -54,15 +65,16 @@ export function InlineUserEdit({
     el.selectionEnd = el.value.length;
     // Grow to content
     el.style.height = "auto";
-    el.style.height = `${Math.min(el.scrollHeight, 220)}px`;
+    el.style.height = `${Math.min(el.scrollHeight, 280)}px`;
   }, []);
 
   const canSubmit =
     !busy &&
-    !isDraftEmpty([
+    (!isDraftEmpty([
       ...skills.map((name) => ({ type: "skill" as const, name })),
       { type: "text" as const, text },
-    ]);
+    ]) ||
+      attachments.length > 0);
 
   const submit = () => {
     if (!canSubmit) return;
@@ -73,8 +85,30 @@ export function InlineUserEdit({
     onSubmit(serializeStored(segs));
   };
 
+  const galleryPaths = attachments
+    .filter((x) => !x.isDir && isImagePath(x.path))
+    .map((x) => x.path);
+
   return (
     <div className="lobe-inline-edit" data-testid="inline-user-edit">
+      {attachments.length > 0 ? (
+        <div className="lobe-inline-edit__atts" aria-label="attachments">
+          {attachments.map((a) => (
+            <AttachmentCard
+              key={a.path}
+              attachment={a}
+              variant="chip"
+              labels={attachLabels}
+              galleryPaths={galleryPaths}
+              onRemove={
+                busy || !onRemoveAttachment
+                  ? undefined
+                  : (att) => onRemoveAttachment(att)
+              }
+            />
+          ))}
+        </div>
+      ) : null}
       {skills.length > 0 ? (
         <div className="lobe-inline-edit__skills">
           {skills.map((name) => (
@@ -88,7 +122,7 @@ export function InlineUserEdit({
         value={text}
         disabled={busy}
         placeholder={placeholder}
-        rows={2}
+        rows={3}
         // Textarea is plain-text by default; still strip just in case of OS rich paste.
         onPaste={(e) => {
           e.preventDefault();
@@ -110,14 +144,14 @@ export function InlineUserEdit({
             el.selectionStart = pos;
             el.selectionEnd = pos;
             el.style.height = "auto";
-            el.style.height = `${Math.min(el.scrollHeight, 220)}px`;
+            el.style.height = `${Math.min(el.scrollHeight, 280)}px`;
           });
         }}
         onChange={(e) => {
           setText(e.target.value);
           const el = e.target;
           el.style.height = "auto";
-          el.style.height = `${Math.min(el.scrollHeight, 220)}px`;
+          el.style.height = `${Math.min(el.scrollHeight, 280)}px`;
         }}
         onKeyDown={(e) => {
           if (e.key === "Escape") {

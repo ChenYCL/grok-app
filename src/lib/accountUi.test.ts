@@ -84,6 +84,19 @@ describe("resolveWelcomeBrandKind", () => {
       }),
     ).toBeNull();
   });
+
+  it("forces SuperGrok (not Heavy) on custom relay route", () => {
+    expect(
+      resolveWelcomeBrandKind("heavy", "heavy", {
+        accountReady: true,
+        signedIn: true,
+        customRoute: true,
+      }),
+    ).toBe("supergrok");
+    expect(
+      resolveWelcomeBrandKind(null, null, { customRoute: true }),
+    ).toBe("supergrok");
+  });
 });
 
 describe("cached SuperGrok brand", () => {

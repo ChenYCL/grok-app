@@ -1,4 +1,4 @@
-# PR / push smoke: typecheck, unit tests, and compile the Rust host.
+# PR / push smoke: typecheck, unit tests, UI build, and Rust tests.
 name: ci
 
 on:
@@ -25,6 +25,7 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm typecheck
       - run: pnpm test
+      - run: pnpm build:ui
 
   rust:
     strategy:

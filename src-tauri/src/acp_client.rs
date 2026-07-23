@@ -185,13 +185,29 @@ impl AcpClient {
         //   Flags after `stdio` are rejected (`unexpected argument '--model'`).
         //   `--permission-mode` is top-level `grok` only — not accepted by `grok agent`;
         //   Host enforces permission policy on session/request_permission; YOLO uses --always-approve.
+        let grok_home = crate::paths::resolve_agent_grok_home(session_data_mode);
+        let _ = std::fs::create_dir_all(&grok_home);
+        if session_data_mode != "shared" {
+            // Official → sync OIDC; custom → strip auth.json (api_key only).
+            crate::providers::prepare_route_auth_for_agent();
+            if let Some(ref pol) = opts.permission_policy {
+                let _ = crate::agent_prefs::sync_permission_to_agent_profile(
+                    session_data_mode,
+                    pol,
+                );
+            }
+        }
+
+        // Composer may hold a catalog id while the active channel is a custom
+        // provider — resolve to the route id Grok Build actually understands.
+        let spawn_model = crate::providers::agent_spawn_model_id(
+            opts.model_id.as_deref().unwrap_or(""),
+        );
+
         let mut cmd = Command::new(&cli_path);
         cmd.arg("agent");
-        if let Some(ref m) = opts.model_id {
-            let m = m.trim();
-            if !m.is_empty() {
-                cmd.args(["--model", m]);
-            }
+        if !spawn_model.is_empty() {
+            cmd.args(["--model", &spawn_model]);
         }
         if let Some(ref e) = opts.effort {
             let e = e.trim();
@@ -212,42 +228,22 @@ impl AcpClient {
             .stderr(Stdio::piped())
             .kill_on_drop(true);
         crate::process_util::apply_no_window_tokio(&mut cmd);
+        if let Some(path) = crate::process_util::enriched_path_env() {
+            cmd.env("PATH", path);
+        }
+        cmd.env("GROK_HOME", &grok_home);
         tracing::info!(
-            "acp: spawn args model={:?} effort={:?} yolo={}",
+            "acp: spawn GROK_HOME={} mode={} auth_present={} route={:?} composer_model={:?} spawn_model={} yolo={}",
+            grok_home.display(),
+            session_data_mode,
+            grok_home.join("auth.json").is_file(),
+            crate::providers::active_route(),
             opts.model_id.as_deref(),
-            opts.effort.as_deref(),
+            spawn_model,
             opts.permission_policy
                 .as_deref()
                 .map(cli_permission_mode)
                 == Some("bypassPermissions")
-        );
-        if let Some(path) = crate::process_util::enriched_path_env() {
-            cmd.env("PATH", path);
-        }
-        // Independent profile: agent reads App agent-home/config.toml for custom providers
-        // and permission_mode / yolo (synced by agent_prefs before spawn).
-        // Official OAuth lives in ~/.grok/auth.json — mirror into agent-home so the child
-        // process has credentials (otherwise auth_kind=none → 401).
-        let grok_home = crate::paths::resolve_agent_grok_home(session_data_mode);
-        let _ = std::fs::create_dir_all(&grok_home);
-        if session_data_mode != "shared" {
-            if let Err(e) = crate::account::sync_cli_auth_to_agent_home() {
-                tracing::warn!("acp: auth sync to agent-home failed: {e}");
-            }
-            // Ensure permission keys exist even if connect forgot to sync.
-            if let Some(ref pol) = opts.permission_policy {
-                let _ = crate::agent_prefs::sync_permission_to_agent_profile(
-                    session_data_mode,
-                    pol,
-                );
-            }
-        }
-        cmd.env("GROK_HOME", &grok_home);
-        tracing::info!(
-            "acp: spawn GROK_HOME={} mode={} auth_present={}",
-            grok_home.display(),
-            session_data_mode,
-            grok_home.join("auth.json").is_file()
         );
 
         let mut child = cmd.spawn().map_err(|e| {

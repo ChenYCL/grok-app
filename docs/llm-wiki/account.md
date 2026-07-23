@@ -72,6 +72,7 @@ Never invent `"SuperGrok"` for paywall bodies (GrowthBook whitelist uses officia
 
 - `subscriptionTier` → `BillingSnapshot.subscriptionTier` (display label)
 - Empty-session brand: `SuperGrokMark` (`supergrok` \| `heavy`) above the floating composer
+- **Custom relay active** (`providers` `activeSource === "custom"`): always show plain **SuperGrok**, never Heavy (Heavy is official membership branding only)
 - Assets: `docs/svg/SuperGrok.svg`, `docs/svg/SuperGrokHeavy.svg` (Heavy badge via CSS `data-theme`, not Tailwind `dark:`)
 
 UI shows **remaining %** (100 − used), product tags, reset time — same semantics as grok-go Accounts.

@@ -13,7 +13,11 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
-# `unstable` required for multi-webview (resource pane embedded browser)
+# `unstable` — multi-webview (resource pane embedded browser)
+# `macos-private-api` — required by tauri.macos.conf.json `macOSPrivateApi: true`
+#   (transparent titlebar + window-vibrancy). Keep the feature on all targets so
+#   cargo-xwin Windows cross-builds pass tauri-build feature allowlist checks;
+#   runtime effect is macOS-only.
 tauri = { version = "2", features = ["protocol-asset", "macos-private-api", "tray-icon", "image-png", "unstable"] }
 tauri-plugin-store = "2"
 serde = { version = "1", features = ["derive"] }

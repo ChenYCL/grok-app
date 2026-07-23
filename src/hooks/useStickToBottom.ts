@@ -294,7 +294,8 @@ export function useStickToBottom(
       const difference = height - (previousHeight ?? height);
       resizeDifferenceRef.current = difference;
 
-      // Browser can leave scrollTop past max after a shrink — clamp.
+      // Browser can leave scrollTop past max after a shrink — clamp without
+      // treating it as a user scroll (would thrash pin / jump to top).
       const maxTop = bottomScrollTop(el.scrollHeight, el.clientHeight);
       if (el.scrollTop > maxTop + 1) {
         applyScrollTop(maxTop);
@@ -316,6 +317,10 @@ export function useStickToBottom(
       }
 
       // Grow, shrink, or viewport-only resize: follow only while pinned.
+      // Do NOT compensate scrollTop while escaped — stream growth is almost
+      // always at the bottom; adding the full height delta would yank the
+      // user down. Image cards use fixed-aspect frames so residual media
+      // reflow (the old jump-to-top cause) should be ~0.
       followIfPinned();
 
       previousHeight = height;
