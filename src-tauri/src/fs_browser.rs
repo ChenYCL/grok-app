@@ -1294,7 +1294,8 @@ mod tests {
         let docx = dir.join("sample.docx");
         write_minimal_docx(&docx, "Hello DOCX preview");
         let r = read_file(dir.to_str().unwrap(), "sample.docx").unwrap();
-        assert_eq!(r.kind, "office");
+        // UI picks renderer by concrete kind (docx|xlsx|pptx), not a generic "office".
+        assert_eq!(r.kind, "docx");
         assert!(
             r.text.as_ref().unwrap().contains("Hello DOCX preview"),
             "{:?}",
