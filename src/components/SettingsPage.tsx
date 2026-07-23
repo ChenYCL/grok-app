@@ -179,18 +179,18 @@ export function SettingsPage({
 
   return (
     <div className="settings-page" data-testid="settings-page">
+      {/* Full-width overlay drag band (does not break glass nav continuity) */}
+      <div
+        className="settings-page__chrome"
+        data-tauri-drag-region
+        aria-hidden
+        onDoubleClick={() => {
+          void import("@tauri-apps/api/window")
+            .then(({ getCurrentWindow }) => getCurrentWindow().toggleMaximize())
+            .catch(() => {});
+        }}
+      />
       <aside className="settings-page__nav">
-        {/* Traffic-light / titlebar clearance only — not left padding on whole rail */}
-        <div
-          className="settings-page__titlebar"
-          data-tauri-drag-region
-          aria-hidden
-          onDoubleClick={() => {
-            void import("@tauri-apps/api/window")
-              .then(({ getCurrentWindow }) => getCurrentWindow().toggleMaximize())
-              .catch(() => {});
-          }}
-        />
         <div className="settings-page__nav-inner">
         <button
           type="button"

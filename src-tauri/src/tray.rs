@@ -13,11 +13,14 @@ use tauri::{
 };
 
 use crate::store;
+use crate::tray_i18n::{self, TrayStrings};
 
 const TRAY_ID: &str = "grok-main-tray";
 
 /// Build ChatGPT-style tray menu: Recent · More · Usage · New Chat · Open · Quit.
+/// Labels follow `settings.locale` (zh / en).
 pub fn build_menu(app: &AppHandle) -> Result<Menu<Wry>, tauri::Error> {
+    let tr: &TrayStrings = tray_i18n::t();
     let sessions = store::load_sessions_index();
     let projects = store::load_projects();
     let project_name = |id: &Option<String>| -> String {
@@ -33,7 +36,7 @@ pub fn build_menu(app: &AppHandle) -> Result<Menu<Wry>, tauri::Error> {
     builder = builder.item(&MenuItem::with_id(
         app,
         "recent_header",
-        "Recent",
+        tr.recent,
         false,
         None::<&str>,
     )?);
@@ -44,7 +47,7 @@ pub fn build_menu(app: &AppHandle) -> Result<Menu<Wry>, tauri::Error> {
             break;
         }
         let title = if s.title.trim().is_empty() {
-            "Untitled".to_string()
+            tr.untitled.to_string()
         } else {
             s.title.clone()
         };
@@ -63,7 +66,7 @@ pub fn build_menu(app: &AppHandle) -> Result<Menu<Wry>, tauri::Error> {
         builder = builder.item(&MenuItem::with_id(
             app,
             "recent_empty",
-            "No recent chats",
+            tr.no_recent,
             false,
             None::<&str>,
         )?);
@@ -72,26 +75,26 @@ pub fn build_menu(app: &AppHandle) -> Result<Menu<Wry>, tauri::Error> {
     builder = builder.separator();
 
     // More ▸ Settings / Doctor / Account
-    let more = SubmenuBuilder::new(app, "More")
+    let more = SubmenuBuilder::new(app, tr.more)
         .id("more")
         .item(&MenuItem::with_id(
             app,
             "more_settings",
-            "Settings…",
+            tr.settings,
             true,
             None::<&str>,
         )?)
         .item(&MenuItem::with_id(
             app,
             "more_doctor",
-            "Doctor",
+            tr.doctor,
             true,
             None::<&str>,
         )?)
         .item(&MenuItem::with_id(
             app,
             "more_account",
-            "Account",
+            tr.account,
             true,
             None::<&str>,
         )?)
@@ -99,7 +102,7 @@ pub fn build_menu(app: &AppHandle) -> Result<Menu<Wry>, tauri::Error> {
     builder = builder.item(&more);
 
     // Usage status line (disabled, like ChatGPT "1 week 96%")
-    let usage_label = usage_status_label();
+    let usage_label = usage_status_label(tr);
     builder = builder.item(&MenuItem::with_id(
         app,
         "usage",
@@ -112,14 +115,14 @@ pub fn build_menu(app: &AppHandle) -> Result<Menu<Wry>, tauri::Error> {
     builder = builder.item(&MenuItem::with_id(
         app,
         "new_chat",
-        "New Chat",
+        tr.new_chat,
         true,
         None::<&str>,
     )?);
     builder = builder.item(&MenuItem::with_id(
         app,
         "open_app",
-        "Open Grok",
+        tr.open_app,
         true,
         None::<&str>,
     )?);
@@ -127,7 +130,7 @@ pub fn build_menu(app: &AppHandle) -> Result<Menu<Wry>, tauri::Error> {
     builder = builder.item(&MenuItem::with_id(
         app,
         "quit",
-        "Quit Grok",
+        tr.quit,
         true,
         None::<&str>,
     )?);
@@ -135,7 +138,33 @@ pub fn build_menu(app: &AppHandle) -> Result<Menu<Wry>, tauri::Error> {
     builder.build()
 }
 
-fn usage_status_label() -> String {
+/// Format quota refresh ISO → local `MM-DD HH:mm` (same as in-app user menu).
+fn format_reset_mm_dd_hm(iso: &str) -> Option<String> {
+    let s = iso.trim();
+    if s.is_empty() {
+        return None;
+    }
+    // Prefer RFC3339 (what BillingSnapshot writes).
+    if let Ok(dt) = chrono::DateTime::parse_from_rfc3339(s) {
+        return Some(
+            dt.with_timezone(&chrono::Local)
+                .format("%m-%d %H:%M")
+                .to_string(),
+        );
+    }
+    // Fallback: UTC Z without offset, or naive local.
+    if let Ok(ndt) = chrono::NaiveDateTime::parse_from_str(s, "%Y-%m-%dT%H:%M:%S%.fZ") {
+        let dt = ndt.and_utc().with_timezone(&chrono::Local);
+        return Some(dt.format("%m-%d %H:%M").to_string());
+    }
+    if let Ok(ndt) = chrono::NaiveDateTime::parse_from_str(s, "%Y-%m-%dT%H:%M:%SZ") {
+        let dt = ndt.and_utc().with_timezone(&chrono::Local);
+        return Some(dt.format("%m-%d %H:%M").to_string());
+    }
+    None
+}
+
+fn usage_status_label(tr: &TrayStrings) -> String {
     if let Ok(cache) =
         std::fs::read_to_string(crate::paths::app_data_root().join("account_billing_cache.json"))
     {
@@ -145,19 +174,31 @@ fn usage_status_label() -> String {
                 .or_else(|| v.pointer("/remaining_percent"))
                 .and_then(|x| x.as_f64())
                 .or_else(|| {
+                    v.pointer("/creditUsagePercent")
+                        .or_else(|| v.pointer("/credit_usage_percent"))
+                        .and_then(|x| x.as_f64())
+                        .map(|u| (100.0_f64 - u).clamp(0.0, 100.0))
+                })
+                .or_else(|| {
                     v.pointer("/usedPercent")
                         .or_else(|| v.pointer("/used_percent"))
                         .and_then(|x| x.as_f64())
                         .map(|u| (100.0_f64 - u).clamp(0.0, 100.0))
                 });
+            let reset = v
+                .pointer("/resetsAt")
+                .or_else(|| v.pointer("/resets_at"))
+                .and_then(|x| x.as_str())
+                .and_then(format_reset_mm_dd_hm);
             if let Some(r) = rem {
-                let now = chrono::Local::now();
-                // Avoid platform-specific %-d (Unix-only); pad day is fine on all OSes.
-                return format!("Usage  ·  {:.0}% left  ·  {}", r, now.format("%b %d"));
+                return match reset.as_deref() {
+                    Some(t) => tray_i18n::format_usage(tr.usage_with_reset, Some(r), Some(t)),
+                    None => tray_i18n::format_usage(tr.usage_pct, Some(r), None),
+                };
             }
         }
     }
-    "Usage  ·  —".into()
+    tr.usage_unknown.to_string()
 }
 
 /// Hide main window to tray only: no Dock (macOS) / no taskbar button (Windows).
@@ -259,10 +300,11 @@ pub fn setup_tray(app: &AppHandle) -> Result<(), String> {
     #[cfg(not(target_os = "macos"))]
     let show_menu_on_left = false;
 
+    let tooltip = tray_i18n::t().tooltip;
     let mut builder = TrayIconBuilder::with_id(TRAY_ID)
         .icon(icon)
         .menu(&menu)
-        .tooltip("Grok")
+        .tooltip(tooltip)
         .show_menu_on_left_click(show_menu_on_left)
         .on_menu_event(|app, event| handle_menu_event(app, event))
         .on_tray_icon_event(|tray, event| {

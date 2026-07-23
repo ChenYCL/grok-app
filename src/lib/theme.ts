@@ -27,6 +27,24 @@ export function applyThemeToDocument(theme: Theme, root: HTMLElement = document.
   root.setAttribute("data-theme", theme);
 }
 
+/**
+ * Sync Tauri / macOS native chrome (NSAppearance + vibrancy) with app theme.
+ * Without this, light UI still sits on dark Sidebar vibrancy → dirty gray rail + black edges.
+ * No-op outside Tauri.
+ */
+export async function applyNativeWindowTheme(theme: Theme): Promise<void> {
+  try {
+    const isTauri =
+      typeof window !== "undefined" &&
+      ("__TAURI_INTERNALS__" in window || "__TAURI__" in window);
+    if (!isTauri) return;
+    const { setTheme } = await import("@tauri-apps/api/app");
+    await setTheme(theme);
+  } catch {
+    /* permissions / older runtime — CSS still applies */
+  }
+}
+
 export interface ThemeStorage {
   getItem(key: string): string | null;
   setItem(key: string, value: string): void;

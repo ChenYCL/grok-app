@@ -57,20 +57,19 @@ App history still shows full prior bubbles; the banner signals that **agent cont
 
 Presentation rules (non-intrusive):
 
-1. **Only the latest tool** for the active turn is shown externally — one line.
-2. Tool line always sits **above the current turn’s reply** (not interleaved as a historical stack).
-3. While the tool line has **motion** (live pulse), do **not** show a separate “Working / progress” bar.
-4. Historical `tool_step` rows are kept in the journal for resume/debug but **not** rendered in the transcript after the turn ends.
-5. Quiet “thinking” only when the turn is busy and there is not yet a live tool or streaming assistant.
+1. Historical `tool_step` rows stay in the journal but are **not** stacked in the transcript.
+2. Live UI is a **single plain text line** (e.g. `Listing files in private persona folder`) under the current assistant bubble (or at the live edge if no assistant yet).
+3. Only the **running** tool is shown (`pickRunningTurnTool`); successive tools **replace** the line; when the tool completes (content can resume) the line **disappears**; the next tool call shows again.
+4. Quiet “thinking” only when busy with no running tool and no streaming assistant.
 
 | Piece | Behavior |
 |-------|----------|
 | Live tools | Host emits `session://tool`; UI upserts `tool_step` messages in state |
-| Visible UI | Single `LiveToolLine` (title + pulse) above the active assistant bubble |
+| Visible UI | `LiveToolText` — one muted title line, no card / no “tool” chrome |
 | Cancel / abort | `turn_cancelled` marker + toast |
 | Session UUID hint | Host injects a narrow search hint when user asks to resume a session by UUID |
 
-Docs peer: Codex activity feed — never leave long tool loops as a silent spinner, never spam a multi-row tool stack.
+Docs peer: Codex-style mid-stream tool title — never multi-row stack, never heavy tool card.
 
 ## Acceptance
 

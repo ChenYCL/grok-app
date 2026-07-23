@@ -529,10 +529,11 @@ impl SessionManager {
                 .into_iter()
                 .find(|s| s.id == id)
                 .unwrap_or_else(|| {
-                    store::create_session(None, Some("New chat".into())).expect("create session")
+                    store::create_session(None, Some("New chat".into()), false)
+                        .expect("create session")
                 })
         } else {
-            store::create_session(None, Some("New chat".into())).map_err(|e| e)?
+            store::create_session(None, Some("New chat".into()), false).map_err(|e| e)?
         };
 
         // Resolve model / effort / permission / mode for this project+session scope.

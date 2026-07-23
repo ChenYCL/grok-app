@@ -466,17 +466,66 @@ pub fn read_absolute_file(absolute: &str) -> Result<FsReadResult, String> {
 
 /// Open a path for chat cards: absolute file, project-relative, sibling under
 /// project parent (e.g. `知识库/...` next to `ai-center/`), or suffix search.
+/// Strip agent ellipsis truncation: `.../a/b/c.jpg` → `a/b/c.jpg`.
+/// Does **not** strip a leading `/` from real absolute paths.
+fn strip_path_ellipsis(path: &str) -> String {
+    let mut t = path.trim().replace('\\', "/");
+    let mut stripped_ellipsis = false;
+    // Leading .../ or …/
+    while t.starts_with("...") || t.starts_with('…') {
+        stripped_ellipsis = true;
+        if let Some(rest) = t.strip_prefix("...") {
+            t = rest.trim_start_matches('/').to_string();
+        } else if let Some(rest) = t.strip_prefix('…') {
+            t = rest.trim_start_matches('/').to_string();
+        } else {
+            break;
+        }
+    }
+    // Mid-path /.../
+    if t.contains("/.../") {
+        stripped_ellipsis = true;
+        if let Some(tail) = t.rsplit("/.../").next() {
+            t = tail.to_string();
+        }
+    }
+    if t.contains("/…/") {
+        stripped_ellipsis = true;
+        if let Some(tail) = t.rsplit("/…/").next() {
+            t = tail.to_string();
+        }
+    }
+    t = t.trim_start_matches("./").to_string();
+    // Only drop a leftover leading slash when we actually removed ellipsis
+    // (absolute paths like `/Users/...` must stay absolute).
+    if stripped_ellipsis {
+        t = t.trim_start_matches('/').to_string();
+    }
+    t
+}
+
 pub fn open_path_smart(project_root: Option<&str>, path: &str) -> Result<FsReadResult, String> {
-    let raw = path.trim();
-    if raw.is_empty() {
+    let raw_in = path.trim();
+    if raw_in.is_empty() {
         return Err("empty path".into());
     }
-    if raw.contains('\0') {
+    if raw_in.contains('\0') {
         return Err("invalid path".into());
     }
+    // Normalize ellipsis-truncated agent paths before any lookup.
+    let raw = {
+        let stripped = strip_path_ellipsis(raw_in);
+        if stripped.is_empty() {
+            raw_in.to_string()
+        } else if stripped != raw_in.trim().replace('\\', "/") {
+            stripped
+        } else {
+            raw_in.replace('\\', "/")
+        }
+    };
 
     // 1) Absolute path that exists
-    let as_path = PathBuf::from(raw);
+    let as_path = PathBuf::from(&raw);
     if as_path.is_absolute() {
         if as_path.is_file() {
             let canon = as_path
@@ -489,7 +538,7 @@ pub fn open_path_smart(project_root: Option<&str>, path: &str) -> Result<FsReadR
             return read_path(canon, name);
         }
         // Absolute but missing — try suffix under project / parent
-        if let Some(found) = search_under_project_and_parent(project_root, raw) {
+        if let Some(found) = search_under_project_and_parent(project_root, &raw) {
             let name = found
                 .file_name()
                 .map(|s| s.to_string_lossy().to_string())
@@ -516,7 +565,7 @@ pub fn open_path_smart(project_root: Option<&str>, path: &str) -> Result<FsReadR
                 return read_path(canon, name);
             }
 
-            // 3) Sibling of project root — common for shared KB next to a repo:
+            // 3) Sibling *path* under parent — e.g. path already starts with `知识库/…`
             //    project = .../document/ai-center
             //    path    = 知识库/wiki/.../x.md
             //    real    = .../document/知识库/wiki/.../x.md
@@ -533,11 +582,37 @@ pub fn open_path_smart(project_root: Option<&str>, path: &str) -> Result<FsReadR
                             .unwrap_or_else(|| raw.to_string());
                         return read_path(canon, name);
                     }
+
+                    // 3b) Path is relative to a *sibling folder* of the project
+                    //    (shared knowledge base layout):
+                    //    project = .../document/ai-center
+                    //    path    = raw/articles/x/foo/README.md
+                    //    real    = .../document/知识库/raw/articles/x/foo/README.md
+                    //    Only exact join under each sibling — no recursive scan.
+                    if let Ok(rd) = fs::read_dir(parent) {
+                        for ent in rd.flatten() {
+                            let p = ent.path();
+                            if p == root_pb || !p.is_dir() {
+                                continue;
+                            }
+                            let joined = p.join(rel);
+                            if joined.is_file() {
+                                let canon = joined
+                                    .canonicalize()
+                                    .map_err(|e| format!("path not found: {e}"))?;
+                                let name = canon
+                                    .file_name()
+                                    .map(|s| s.to_string_lossy().to_string())
+                                    .unwrap_or_else(|| raw.to_string());
+                                return read_path(canon, name);
+                            }
+                        }
+                    }
                 }
             }
 
             // 4) Suffix search under project (monorepo subfolder paths)
-            if let Some(found) = find_file_by_suffix(&root_pb, raw) {
+            if let Some(found) = find_file_by_suffix(&root_pb, &raw) {
                 let name = found
                     .file_name()
                     .map(|s| s.to_string_lossy().to_string())
@@ -545,20 +620,48 @@ pub fn open_path_smart(project_root: Option<&str>, path: &str) -> Result<FsReadR
                 return read_path(found, name);
             }
 
-            // 5) Cheap suffix under parent: only if first path segment is a
-            //    direct child of parent (avoids scanning huge trees blindly).
+            // 5) Suffix under parent when first segment is a direct child of parent
+            //    (e.g. first segment `知识库` under `document/`).
             if let Some(parent) = root_pb.parent() {
                 if parent.is_dir() {
                     if let Some(first) = Path::new(rel).components().next() {
                         let first_name = first.as_os_str();
                         let candidate_root = parent.join(first_name);
                         if candidate_root.is_dir() {
-                            if let Some(found) = find_file_by_suffix(&candidate_root, raw) {
+                            if let Some(found) = find_file_by_suffix(&candidate_root, &raw) {
                                 let name = found
                                     .file_name()
                                     .map(|s| s.to_string_lossy().to_string())
                                     .unwrap_or_else(|| raw.to_string());
                                 return read_path(found, name);
+                            }
+                        }
+                    }
+
+                    // 5b) Multi-segment relative path: suffix-search under each
+                    //     sibling when the path has enough structure (≥2 segs)
+                    //     so bare `README.md` does not scan all siblings.
+                    let segs: Vec<_> = Path::new(rel)
+                        .components()
+                        .filter_map(|c| match c {
+                            std::path::Component::Normal(s) => Some(s.to_string_lossy().into_owned()),
+                            _ => None,
+                        })
+                        .collect();
+                    if segs.len() >= 2 {
+                        if let Ok(rd) = fs::read_dir(parent) {
+                            for ent in rd.flatten() {
+                                let p = ent.path();
+                                if p == root_pb || !p.is_dir() {
+                                    continue;
+                                }
+                                if let Some(found) = find_file_by_suffix(&p, &raw) {
+                                    let name = found
+                                        .file_name()
+                                        .map(|s| s.to_string_lossy().to_string())
+                                        .unwrap_or_else(|| raw.to_string());
+                                    return read_path(found, name);
+                                }
                             }
                         }
                     }
@@ -1104,6 +1207,54 @@ mod tests {
         let r = open_path_smart(Some(dir.to_str().unwrap()), name);
         assert!(r.is_ok(), "{r:?}");
         assert_eq!(r.unwrap().name, name);
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn open_path_smart_ellipsis_truncated_under_kb() {
+        // Agent writes: .../MANISH/2071/img_000.jpg
+        // Real: document/知识库/operations/.../MANISH/2071/img_000.jpg
+        let dir = tempfile_dir();
+        let project = dir.join("document").join("ai-center");
+        let nested = dir
+            .join("document")
+            .join("知识库")
+            .join("operations")
+            .join("2026-07-04")
+            .join("images")
+            .join("MANISH1027512")
+            .join("2071078312290791476");
+        fs::create_dir_all(&project).unwrap();
+        fs::create_dir_all(&nested).unwrap();
+        fs::write(nested.join("img_000.jpg"), b"fakejpg").unwrap();
+        let truncated = ".../MANISH1027512/2071078312290791476/img_000.jpg";
+        let r = open_path_smart(Some(project.to_str().unwrap()), truncated);
+        assert!(r.is_ok(), "{r:?}");
+        assert_eq!(r.unwrap().name, "img_000.jpg");
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn open_path_smart_under_sibling_knowledge_base() {
+        // project = <tmp>/document/ai-center
+        // file    = <tmp>/document/知识库/raw/articles/x/demo/README.md
+        // agent writes: raw/articles/x/demo/README.md  (relative to 知识库)
+        let dir = tempfile_dir();
+        let project = dir.join("document").join("ai-center");
+        let nested = dir
+            .join("document")
+            .join("知识库")
+            .join("raw")
+            .join("articles")
+            .join("x")
+            .join("demo");
+        fs::create_dir_all(&project).unwrap();
+        fs::create_dir_all(&nested).unwrap();
+        fs::write(nested.join("README.md"), b"# demo\n").unwrap();
+        let rel = "raw/articles/x/demo/README.md";
+        let r = open_path_smart(Some(project.to_str().unwrap()), rel);
+        assert!(r.is_ok(), "{r:?}");
+        assert_eq!(r.unwrap().name, "README.md");
         let _ = fs::remove_dir_all(&dir);
     }
 

@@ -252,8 +252,17 @@ pub async fn sessions_list() -> Result<Vec<SessionMeta>, String> {
 pub async fn session_create(
     project_id: Option<String>,
     title: Option<String>,
+    scheduled: Option<bool>,
 ) -> Result<SessionMeta, String> {
-    store::create_session(project_id, title)
+    store::create_session(project_id, title, scheduled.unwrap_or(false))
+}
+
+#[tauri::command]
+pub async fn session_set_scheduled(
+    id: String,
+    scheduled: bool,
+) -> Result<SessionMeta, String> {
+    store::set_session_scheduled(&id, scheduled)
 }
 
 #[tauri::command]
@@ -445,6 +454,10 @@ pub async fn settings_set(
         .await
     {
         tracing::warn!("settings_set apply_permission: {e}");
+    }
+    // Rebuild tray so locale / recent list match settings immediately.
+    if let Err(e) = crate::tray::refresh_menu(&app) {
+        tracing::warn!("settings_set tray refresh: {e}");
     }
     Ok(settings)
 }

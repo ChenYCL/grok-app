@@ -6,10 +6,17 @@ import "./styles/tailwind.css";
 import "streamdown/styles.css";
 import "./styles/app.css";
 import "./styles/setup-wizard.css";
-import { applyThemeToDocument, loadTheme } from "./lib/theme";
+import {
+  applyNativeWindowTheme,
+  applyThemeToDocument,
+  loadTheme,
+} from "./lib/theme";
 
 // Apply persisted theme before first paint of React tree.
-applyThemeToDocument(loadTheme(localStorage));
+const bootTheme = loadTheme(localStorage);
+applyThemeToDocument(bootTheme);
+// Sync macOS NSAppearance / vibrancy with app theme (avoids dark glass under light UI).
+void applyNativeWindowTheme(bootTheme);
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>

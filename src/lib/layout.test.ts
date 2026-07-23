@@ -15,7 +15,7 @@ describe("layout prefs", () => {
     expect(DEFAULT_LAYOUT.asideCollapsed).toBe(true);
   });
 
-  it("round-trips persistence", () => {
+  it("round-trips widths; right pane always starts collapsed", () => {
     const data: Record<string, string> = {};
     const storage = {
       getItem: (k: string) => data[k] ?? null,
@@ -31,8 +31,10 @@ describe("layout prefs", () => {
     });
     expect(data[LAYOUT_STORAGE_KEY]).toBeTruthy();
     const loaded = loadLayout(storage);
-    expect(loaded.asideCollapsed).toBe(false);
+    // Open state is not restored across app launches.
+    expect(loaded.asideCollapsed).toBe(true);
     expect(loaded.sidebarWidth).toBe(280);
+    expect(loaded.asideWidth).toBe(320);
     expect(loaded.sidebarCollapsed).toBe(true);
   });
 

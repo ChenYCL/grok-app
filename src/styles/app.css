@@ -46,14 +46,12 @@ button:disabled {
   max-width: min(280px, calc(100vw - 16px));
   padding: 5px 8px;
   border-radius: 6px;
-  background: rgba(36, 36, 38, 0.94);
-  color: rgba(255, 255, 255, 0.92);
-  border: 0.5px solid rgba(255, 255, 255, 0.1);
-  box-shadow:
-    0 4px 16px rgba(0, 0, 0, 0.35),
-    0 0 0 0.5px rgba(0, 0, 0, 0.2);
-  backdrop-filter: blur(12px) saturate(1.4);
-  -webkit-backdrop-filter: blur(12px) saturate(1.4);
+  background: var(--glass-surface-solid);
+  color: var(--text-primary);
+  border: 0.5px solid var(--glass-border);
+  box-shadow: var(--glass-shadow);
+  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
   font-size: 12px;
   font-weight: 450;
   line-height: 1.3;
@@ -63,15 +61,6 @@ button:disabled {
   text-overflow: ellipsis;
   pointer-events: none;
   animation: ui-tip-in 100ms ease-out;
-}
-
-[data-theme="light"] .ui-tip {
-  background: rgba(255, 255, 255, 0.96);
-  color: rgba(20, 20, 24, 0.9);
-  border-color: rgba(0, 0, 0, 0.08);
-  box-shadow:
-    0 4px 14px rgba(0, 0, 0, 0.1),
-    0 0 0 0.5px rgba(0, 0, 0, 0.06);
 }
 
 @keyframes ui-tip-in {
@@ -87,13 +76,13 @@ button:disabled {
   color: var(--success, #3ecf8e);
 }
 
-button:focus-visible,
-input:focus-visible {
-  outline: 2px solid var(--border-focus);
-  outline-offset: 1px;
+/* Global: no focus outline rings — chrome uses hover / active instead */
+:focus,
+:focus-visible {
+  outline: none;
 }
 
-/* Composer textarea: no focus ring (Codex-like quiet field) */
+/* Composer textarea: no focus ring / border flash (Codex-like quiet field) */
 textarea:focus-visible,
 .composer__input:focus,
 .composer__input:focus-visible {
@@ -106,8 +95,11 @@ textarea:focus-visible,
   display: flex;
   flex-direction: column;
   height: 100%;
-  /* Solid theme surface — workbench glass sidebar sits on top */
-  background: var(--bg-app);
+  /*
+   * macOS: keep transparent so native Sidebar vibrancy + CSS sidebar blur
+   * show through. Win/other paint solid via .platform-win rules below.
+   */
+  background: transparent;
   color: var(--text-primary);
   border-radius: var(--radius-window);
   overflow: hidden;
@@ -115,6 +107,26 @@ textarea:focus-visible,
   /* UI chrome is not selectable; opt back in for chat + resource preview */
   -webkit-user-select: none;
   user-select: none;
+}
+
+/* Tauri window drag regions (mac Overlay + frameless Win) */
+[data-tauri-drag-region] {
+  -webkit-app-region: drag;
+  app-region: drag;
+}
+
+/* Interactive controls inside drag regions stay clickable */
+button,
+a,
+input,
+textarea,
+select,
+[role="button"],
+[role="menuitem"],
+[role="option"],
+[contenteditable="true"] {
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
 }
 
 /* Chat transcript (messages / reasoning / tools) may be copied */
@@ -196,10 +208,19 @@ textarea:focus-visible,
   color: #fff;
 }
 
-/* Solid shell on Windows (no vibrancy); mac keeps transparent glass */
+/*
+ * Solid shell on Windows / non-mac (no native vibrancy).
+ * mac keeps transparent shell so NSVisualEffectMaterial::Sidebar shows through.
+ */
 .platform-win .app-shell,
 .platform-other .app-shell,
 .has-custom-chrome.app-shell {
+  background: var(--bg-app);
+}
+
+.platform-win .workbench,
+.platform-other .workbench,
+.has-custom-chrome .workbench {
   background: var(--bg-app);
 }
 
@@ -221,27 +242,112 @@ textarea:focus-visible,
   flex: 1;
   min-height: 0;
   position: relative;
-  background: var(--bg-app);
+  /* Transparent on mac so sidebar vibrancy is not covered by solid paint */
+  background: transparent;
 }
 
-/* ===== Left sidebar — frosted glass 98% + real blur ===== */
+/*
+ * Left sidebar — frosted glass rail.
+ * mac: native Sidebar vibrancy + translucent CSS tint (one material layer).
+ * Light: airy white glass + soft inward edge shade (ChatGPT-style).
+ * Win: solid via .platform-win .sidebar.
+ */
 .sidebar {
   position: relative;
   width: 268px;
   min-width: 268px;
   max-width: 300px;
   background: var(--bg-sidebar);
-  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate, 1.4));
-  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate, 1.4));
-  transform: translateZ(0);
-  isolation: isolate;
   border-right: 1px solid var(--border-subtle);
+  box-shadow: none;
   display: flex;
   flex-direction: column;
   /* No outer padding — chrome / brand / scroll / footer own their insets */
   padding: 0;
   gap: 0;
   transition: width 160ms ease, min-width 160ms ease, opacity 160ms ease;
+  z-index: 1;
+}
+
+/* mac: tint only — native vibrancy provides blur */
+.platform-mac .sidebar {
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  box-shadow: none;
+}
+
+/*
+ * ── Light theme chrome (reference: ChatGPT settings) ─────────────────────
+ * Sidebar: translucent white glass (more open than solid main).
+ * Main / aside / settings content: pure solid white, slightly elevated.
+ * Edge: soft inward shade on rail right (not a hard double hairline).
+ * Requires setTheme('light') so native vibrancy is light.
+ */
+html.platform-mac[data-theme="light"] .app-shell {
+  /* Fully transparent shell so glass rail samples vibrancy; soft rim only */
+  background: transparent;
+  box-shadow: inset 0 0 0 0.5px rgba(0, 0, 0, 0.04);
+}
+
+html.platform-mac[data-theme="light"] .workbench {
+  background: transparent;
+}
+
+html.platform-mac[data-theme="light"] .sidebar,
+.platform-mac[data-theme="light"] .sidebar {
+  background: var(--bg-sidebar);
+  /* Edge treated by box-shadow only — no border-right (avoids double line) */
+  border-right: none;
+  box-shadow: var(--sidebar-edge-inset);
+}
+
+/* Solid elevated content columns — pure white, sit above glass rail */
+html.platform-mac[data-theme="light"] .main {
+  background: #ffffff;
+  border-left: none;
+  /* Barely-there lift; rail inset carries the edge hierarchy */
+  box-shadow: -4px 0 12px rgba(0, 0, 0, 0.02);
+  z-index: 2;
+}
+
+html.platform-mac[data-theme="light"] .aside {
+  background: #ffffff;
+  border-left: 1px solid rgba(0, 0, 0, 0.05);
+  z-index: 2;
+}
+
+/*
+ * Settings page chrome must match workbench:
+ * transparent page → glass nav samples native vibrancy (same as .sidebar).
+ * Solid white parent under nav would make glass look opaque/dirty.
+ */
+.platform-mac .settings-page {
+  background: transparent;
+}
+
+.platform-mac .settings-page__nav {
+  background: var(--bg-sidebar);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  /* same default edge as workbench rail */
+  border-right: 1px solid var(--border-subtle);
+  box-shadow: none;
+}
+
+.platform-mac .settings-page__content {
+  background: var(--bg-main);
+  z-index: 2;
+}
+
+/* Light: same edge inset + no hard border + soft content lift as .main */
+html.platform-mac[data-theme="light"] .settings-page__nav {
+  border-right: none;
+  box-shadow: var(--sidebar-edge-inset);
+}
+
+html.platform-mac[data-theme="light"] .settings-page__content {
+  background: #ffffff;
+  box-shadow: -4px 0 12px rgba(0, 0, 0, 0.02);
 }
 
 /* Fully closed left pane (no icon rail) — reopen from main top icons */
@@ -594,10 +700,27 @@ textarea:focus-visible,
 .tree-l3__title {
   flex: 1;
   min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  overflow: hidden;
+  line-height: 30px;
+}
+
+.tree-l3__kind {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  color: var(--text-tertiary);
+  opacity: 0.9;
+}
+
+.tree-l3__name {
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  line-height: 30px;
 }
 
 /* In-progress session: always-visible spinner on the right (replaces hover actions). */
@@ -644,14 +767,13 @@ textarea:focus-visible,
   width: min(520px, 92vw);
   max-height: min(70vh, 560px);
   margin: 12vh auto 0;
-  background: var(--bg-elevated);
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-lg, 12px);
-  box-shadow: var(--shadow-pop);
+  /* Material from unified glass surface */
+  border-radius: var(--modal-radius, 16px);
   display: flex;
   flex-direction: column;
   overflow: hidden;
   color: var(--text-primary);
+  box-sizing: border-box;
 }
 
 .search-panel__head {
@@ -670,6 +792,14 @@ textarea:focus-visible,
   color: var(--text-primary);
   font-size: 14px;
   outline: none;
+  box-shadow: none;
+}
+
+/* Palette owns focus; no global input focus ring inside the search field */
+.search-panel__input:focus,
+.search-panel__input:focus-visible {
+  outline: none !important;
+  box-shadow: none;
 }
 
 .search-panel__section {
@@ -683,16 +813,19 @@ textarea:focus-visible,
 .search-panel__row {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: var(--menu-item-gap, 10px);
   width: 100%;
-  padding: 9px 14px;
+  margin: 0 2px;
+  padding: var(--menu-item-pad-y, 8px) var(--menu-item-pad-x, 12px);
+  border-radius: var(--menu-item-radius, 8px);
   text-align: left;
   color: var(--text-secondary);
-  font-size: 13px;
+  font-size: var(--menu-font, 13px);
+  box-sizing: border-box;
 }
 
 .search-panel__row:hover {
-  background: var(--bg-hover);
+  background: var(--menu-hover);
   color: var(--text-primary);
 }
 
@@ -721,10 +854,31 @@ textarea:focus-visible,
 }
 
 /*
- * ===== Global floating menus (Codex glass) =====
- * Shared surface for: context menus, open-location, select, composer +,
- * user sheet, attachment menu, automation menus, resource open menu.
+ * ===== Unified frosted glass surface =====
+ * Modals, search, effort/model pops, drawers, drop cards, glass popovers.
+ * Context / right-click menus are solid (see block below) — not glass.
  */
+.glass-surface,
+.composer-plus,
+.c-select__menu,
+.user-menu__pop,
+.slash-palette,
+.modal,
+.search-panel,
+.effort-panel__pop,
+.cmm__pop,
+.auto-panel,
+.drop-overlay__card {
+  background: var(--glass-surface);
+  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--glass-shadow);
+  transform: translateZ(0);
+  isolation: isolate;
+}
+
+/* Floating menu chrome (dropdown reference: radius / pad / type) */
 .menu-panel,
 .ctx-menu,
 .open-loc-menu,
@@ -734,13 +888,9 @@ textarea:focus-visible,
 .att-menu,
 .rp-open-menu,
 .auto-page__create-menu,
-.auto-row__menu {
-  background: var(--menu-surface);
-  backdrop-filter: blur(var(--menu-blur)) saturate(var(--menu-saturate));
-  -webkit-backdrop-filter: blur(var(--menu-blur)) saturate(var(--menu-saturate));
-  border: 1px solid var(--menu-border);
+.auto-row__menu,
+.project-menu {
   border-radius: var(--menu-radius);
-  box-shadow: var(--menu-shadow);
   padding: var(--menu-pad);
   font-size: var(--menu-font);
   font-weight: var(--menu-font-weight);
@@ -752,20 +902,53 @@ textarea:focus-visible,
   min-width: 0;
 }
 
+/*
+ * Context / right-click menus — solid opaque (no glass / blur).
+ * Unified component: .context-menu (chat att-menu baseline).
+ * Legacy .ctx-menu / .att-menu aliases kept for any residual markup.
+ */
+.context-menu,
+.ctx-menu,
+.att-menu,
+.open-loc-menu,
+.rp-open-menu,
+.auto-page__create-menu,
+.auto-row__menu,
+.project-menu,
+.menu-panel.context-menu,
+.menu-panel.ctx-menu,
+.menu-panel.att-menu,
+.menu-panel.open-loc-menu,
+.menu-panel.rp-open-menu,
+.menu-panel.auto-page__create-menu,
+.menu-panel.auto-row__menu {
+  background: var(--menu-context-bg);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  border: 1px solid var(--menu-context-border);
+  box-shadow: var(--menu-context-shadow);
+  border-radius: var(--menu-context-radius, 10px);
+  padding: var(--menu-context-pad, 4px);
+  transform: none;
+  isolation: auto;
+  gap: var(--menu-context-gap, 1px);
+}
+
 @supports not (
   (backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))
 ) {
-  .menu-panel,
-  .ctx-menu,
-  .open-loc-menu,
+  .glass-surface,
   .composer-plus,
   .c-select__menu,
   .user-menu__pop,
-  .att-menu,
-  .rp-open-menu,
-  .auto-page__create-menu,
-  .auto-row__menu {
-    background: var(--menu-surface-solid);
+  .slash-palette,
+  .modal,
+  .search-panel,
+  .effort-panel__pop,
+  .cmm__pop,
+  .auto-panel,
+  .drop-overlay__card {
+    background: var(--glass-surface-solid);
   }
 }
 
@@ -793,6 +976,54 @@ textarea:focus-visible,
   cursor: pointer;
   box-sizing: border-box;
   white-space: nowrap;
+}
+
+/* Context menu rows — tighter L/R pad (unified + legacy) */
+.context-menu__item,
+.ctx-menu button,
+.att-menu__item,
+.open-loc-menu__item,
+.rp-open-menu__item,
+.auto-row__menu button,
+.auto-page__create-menu button {
+  padding: var(--menu-context-item-pad-y, 6px) var(--menu-context-item-pad-x, 8px);
+  gap: var(--menu-context-item-gap, 6px);
+  border-radius: var(--menu-context-item-radius, 6px);
+}
+
+.context-menu__item.is-danger,
+.context-menu__item.is-danger .context-menu__ico {
+  color: var(--danger);
+}
+
+.context-menu__item.is-danger:hover {
+  background: color-mix(in srgb, var(--danger) 12%, transparent);
+  color: var(--danger);
+}
+
+.context-menu__item:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.context-menu__ico {
+  width: var(--menu-icon);
+  height: var(--menu-icon);
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-tertiary);
+}
+
+.context-menu {
+  position: fixed;
+  z-index: 13000;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--menu-context-gap, 1px);
+  pointer-events: auto;
 }
 
 /* Leading icon slot in context / item menus (app-picker open-loc keeps its own ico) */
@@ -877,7 +1108,7 @@ textarea:focus-visible,
   list-style: none;
   display: flex;
   flex-direction: column;
-  gap: var(--menu-gap);
+  gap: var(--menu-context-gap, 1px);
   pointer-events: auto;
 }
 
@@ -1169,29 +1400,27 @@ textarea:focus-visible,
   top: calc(100% - 2px);
   z-index: 40;
   min-width: 160px;
-  padding: 4px;
   margin: 0;
   list-style: none;
-  background: var(--bg-elevated);
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-md);
-  box-shadow: var(--shadow-pop);
+  display: flex;
+  flex-direction: column;
+  gap: var(--menu-gap);
 }
 
 .project-menu button {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--menu-item-gap);
   width: 100%;
-  padding: 8px 10px;
-  border-radius: var(--radius-sm);
-  font-size: var(--text-sm);
-  color: var(--text-secondary);
+  padding: var(--menu-item-pad-y) var(--menu-item-pad-x);
+  border-radius: var(--menu-item-radius);
+  font-size: var(--menu-font);
+  color: var(--text-primary);
   text-align: left;
 }
 
 .project-menu button:hover {
-  background: var(--bg-hover);
+  background: var(--menu-hover);
   color: var(--text-primary);
 }
 
@@ -1456,15 +1685,11 @@ textarea:focus-visible,
   color: var(--text-primary);
 }
 
+/* Match session row selection (.tree-l3--active / .session-row--active) */
 .nav-item--active {
-  background: var(--warning-muted);
-  color: var(--warning);
+  background: var(--bg-active);
+  color: var(--text-primary);
   font-weight: 500;
-}
-
-[data-theme="light"] .nav-item--active {
-  background: var(--warning-muted);
-  color: var(--warning);
 }
 
 .nav-item--soon {
@@ -1573,6 +1798,8 @@ textarea:focus-visible,
   flex-direction: column;
   gap: var(--menu-gap);
   overflow-y: auto;
+  /* Denser than shared glass — sits over the session list; reduce bleed-through */
+  background: var(--glass-surface-solid);
 }
 
 .user-menu__pop--portal {
@@ -1670,6 +1897,14 @@ textarea:focus-visible,
   display: flex;
   flex-direction: column;
   gap: 4px;
+}
+
+.user-menu__quota-reset {
+  font-size: 11px;
+  line-height: 1.3;
+  color: var(--text-tertiary);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.01em;
 }
 
 .user-menu__quota-row {
@@ -2191,36 +2426,53 @@ textarea:focus-visible,
   color: var(--text-tertiary);
 }
 
+/* Portaled to document.body (fixed) — not clipped by heatmap overflow parents */
 .gh-heatmap__tip {
-  position: absolute;
-  z-index: 30;
+  position: fixed;
+  z-index: 10060;
   width: 200px;
-  transform: translateY(-100%);
+  box-sizing: border-box;
   padding: 8px 12px;
   border-radius: 8px;
-  background: #161b22;
-  color: #fff;
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  box-shadow: var(--shadow-pop, 0 8px 24px rgba(0, 0, 0, 0.35));
+  background: var(--glass-surface-solid, var(--bg-elevated, #fff));
+  color: var(--text-primary);
+  border: 1px solid var(--glass-border, var(--border-subtle));
+  box-shadow: var(
+    --glass-shadow,
+    var(--shadow-pop, 0 8px 24px rgba(0, 0, 0, 0.18))
+  );
+  backdrop-filter: blur(var(--glass-blur, 24px))
+    saturate(var(--glass-saturate, 1.4));
+  -webkit-backdrop-filter: blur(var(--glass-blur, 24px))
+    saturate(var(--glass-saturate, 1.4));
   font-size: 12px;
   pointer-events: none;
+}
+
+.gh-heatmap__tip--above {
+  transform: translateY(-100%);
+}
+
+.gh-heatmap__tip--below {
+  transform: none;
 }
 
 .gh-heatmap__tip-date {
   font-weight: 600;
   margin-bottom: 6px;
+  color: var(--text-primary);
 }
 
 .gh-heatmap__tip-row {
   display: flex;
   justify-content: space-between;
   gap: 12px;
-  color: rgba(255, 255, 255, 0.72);
+  color: var(--text-secondary);
   margin-top: 2px;
 }
 
 .gh-heatmap__tip-row span:last-child {
-  color: #fff;
+  color: var(--text-primary);
   font-variant-numeric: tabular-nums;
 }
 
@@ -2297,12 +2549,32 @@ textarea:focus-visible,
 /* ===== Settings full page (ChatGPT-desktop style) ===== */
 .settings-page {
   display: flex;
+  flex-direction: row;
   flex: 1;
   min-height: 0;
   height: 100%;
   width: 100%;
   background: var(--bg-main);
   color: var(--text-primary);
+  position: relative;
+}
+
+/*
+ * Full-width drag overlay — sits on top of nav + content so the whole
+ * titlebar band can move the window (mac Overlay traffic lights ok).
+ */
+.settings-page__chrome {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: var(--titlebar-height, 40px);
+  z-index: 30;
+  user-select: none;
+  -webkit-app-region: drag;
+  app-region: drag;
+  background: transparent;
+  pointer-events: auto;
 }
 
 .settings-page__nav {
@@ -2311,17 +2583,28 @@ textarea:focus-visible,
   max-width: 240px;
   flex-shrink: 0;
   border-right: 1px solid var(--border-subtle);
-  background: var(--bg-sidebar-solid);
+  /*
+   * Same token as workbench .sidebar. On mac, parent .settings-page is
+   * transparent so glass samples vibrancy. Win keeps solid shell + this fill.
+   */
+  background: var(--bg-sidebar);
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  /* Clear traffic-light / drag band */
+  padding-top: var(--titlebar-height, 40px);
+  box-sizing: border-box;
 }
 
-/* Only top strip for traffic lights / drag — do NOT pad whole rail left */
+/* Win / non-mac: no vibrancy — use solid rail like workbench */
+.platform-win .settings-page__nav,
+.platform-other .settings-page__nav {
+  background: var(--bg-sidebar-solid, var(--bg-sidebar));
+}
+
+/* Legacy class kept for any residual selectors */
 .settings-page__titlebar {
-  height: var(--titlebar-height, 40px);
-  flex-shrink: 0;
-  user-select: none;
+  display: none;
 }
 
 .settings-page__nav-inner {
@@ -2332,6 +2615,8 @@ textarea:focus-visible,
   display: flex;
   flex-direction: column;
   gap: 2px;
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
 }
 
 .settings-page__back {
@@ -2417,18 +2702,25 @@ textarea:focus-visible,
   background: var(--bg-main);
   display: flex;
   justify-content: center;
+  /* Clear drag band so title is not under traffic lights / drag strip */
+  padding-top: var(--titlebar-height, 40px);
+  box-sizing: border-box;
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
 }
 
 .settings-page__main {
   width: 100%;
   /* ~53 weeks × (cell+gap) + labels needs ≥ ~860px content for a full year heatmap */
   max-width: 960px;
-  padding: 24px 36px 48px;
+  padding: 16px 36px 48px;
   box-sizing: border-box;
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
 }
 
 .platform-mac .settings-page__main {
-  padding-top: max(20px, calc(var(--titlebar-height, 40px) - 8px));
+  padding-top: 16px;
 }
 
 .settings-page__title {
@@ -2610,15 +2902,9 @@ textarea:focus-visible,
   gap: 8px;
   max-width: 300px;
   padding: 20px 24px;
-  border-radius: 16px;
+  border-radius: var(--modal-radius, 16px);
   text-align: center;
-  background: color-mix(in srgb, var(--bg-elevated) 92%, transparent);
-  border: 1px solid var(--border-subtle);
-  box-shadow:
-    0 4px 6px rgba(0, 0, 0, 0.04),
-    0 16px 40px rgba(0, 0, 0, 0.12);
-  backdrop-filter: blur(16px) saturate(1.2);
-  -webkit-backdrop-filter: blur(16px) saturate(1.2);
+  /* Material from unified .drop-overlay__card glass surface */
   animation: drop-card-in 220ms cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 
@@ -2722,14 +3008,17 @@ textarea:focus-visible,
   position: absolute;
   top: 56px;
   left: 50%;
-  transform: translateX(-50%);
+  transform: translateX(-50%) translateZ(0);
   z-index: 60;
   max-width: min(420px, 90%);
   padding: 8px 14px;
-  border-radius: 10px;
-  background: var(--bg-elevated);
-  border: 1px solid var(--border-subtle);
-  box-shadow: var(--shadow-pop, 0 8px 24px rgba(0, 0, 0, 0.2));
+  border-radius: var(--menu-radius, 12px);
+  background: var(--glass-surface);
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--glass-shadow);
+  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+  isolation: isolate;
   font-size: 12px;
   color: var(--text-primary);
   pointer-events: none;
@@ -2745,6 +3034,7 @@ textarea:focus-visible,
   background: var(--bg-main);
   position: relative;
   border-radius: 0;
+  z-index: 2;
 }
 
 /* Center title bar — same height as sidebar-chrome + rv__head so dividers align */
@@ -2765,6 +3055,9 @@ textarea:focus-visible,
 .platform-win .main__top,
 .platform-other .main__top,
 .has-custom-chrome .main__top,
+.platform-win .settings-page__chrome,
+.platform-other .settings-page__chrome,
+.has-custom-chrome .settings-page__chrome,
 .platform-win .settings-page__titlebar,
 .platform-other .settings-page__titlebar,
 .has-custom-chrome .settings-page__titlebar,
@@ -2775,10 +3068,17 @@ textarea:focus-visible,
   padding-right: 138px; /* 46px × 3 window controls */
 }
 
-/* Settings full-page: top strip clears Win controls */
-.platform-win .settings-page__main,
-.has-custom-chrome .settings-page__main {
-  padding-top: max(20px, calc(var(--titlebar-height, 40px) - 8px));
+/* Settings content already clears chrome via .settings-page__content padding-top */
+
+/* Ensure buttons/inputs inside settings stay interactive under drag CSS */
+.settings-page__nav-inner button,
+.settings-page__nav-inner input,
+.settings-page__main button,
+.settings-page__main input,
+.settings-page__main select,
+.settings-page__main textarea {
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
 }
 
 .main__title-row {
@@ -3323,12 +3623,11 @@ textarea:focus-visible,
   min-width: 200px;
   max-width: var(--menu-max-width);
   padding: 12px 14px 10px;
-  background: var(--bg-elevated);
-  border: 1px solid var(--border-subtle);
-  border-radius: 12px;
-  box-shadow: var(--shadow-pop);
+  border-radius: var(--menu-radius);
+  /* Material from unified glass surface */
   box-sizing: border-box;
   overflow-y: auto;
+  color: var(--text-primary);
 }
 
 .effort-panel__pop--portal {
@@ -3550,12 +3849,14 @@ textarea:focus-visible,
   max-width: 42rem;
   margin: 0 auto;
   padding: 10px 12px;
-  border-radius: 14px;
-  background: var(--bg-elevated);
-  border: 1px solid var(--border-strong);
-  box-shadow:
-    0 1px 0 rgba(0, 0, 0, 0.04),
-    0 8px 24px rgba(0, 0, 0, 0.18);
+  border-radius: var(--modal-radius, 16px);
+  background: var(--glass-surface);
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--glass-shadow);
+  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+  transform: translateZ(0);
+  isolation: isolate;
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -3563,9 +3864,7 @@ textarea:focus-visible,
 }
 
 [data-theme="light"] .perm-bar {
-  box-shadow:
-    0 1px 0 rgba(0, 0, 0, 0.04),
-    0 8px 22px rgba(0, 0, 0, 0.08);
+  box-shadow: var(--glass-shadow);
 }
 
 .perm-bar__head {
@@ -4225,6 +4524,35 @@ textarea:focus-visible,
 }
 
 /* Markdown inline images */
+/* Stable placeholders — avoid scroll flicker when local media fails to load */
+.md-body__img-pending {
+  display: inline-block;
+  width: min(100%, 280px);
+  height: 120px;
+  max-width: 100%;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--bg-hover) 80%, transparent);
+  vertical-align: middle;
+}
+.md-body__img-broken {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: min(100%, 280px);
+  min-height: 72px;
+  max-width: 100%;
+  padding: 8px 12px;
+  border-radius: 10px;
+  border: 1px dashed var(--border-subtle);
+  background: color-mix(in srgb, var(--bg-hover) 60%, transparent);
+  color: var(--text-tertiary);
+  font-size: 12px;
+  text-align: center;
+  word-break: break-all;
+  vertical-align: middle;
+  box-sizing: border-box;
+}
+
 .md-body__img {
   max-width: 100%;
   height: auto;
@@ -4465,7 +4793,7 @@ textarea:focus-visible,
   z-index: 12000;
   display: flex;
   flex-direction: column;
-  gap: var(--menu-gap);
+  gap: var(--menu-context-gap, 1px);
 }
 
 .att-menu__item {
@@ -4585,11 +4913,6 @@ textarea:focus-visible,
 .icon-btn:hover:not(:disabled) {
   color: var(--text-primary);
   background: var(--bg-active);
-}
-
-.icon-btn:focus-visible {
-  outline: 2px solid color-mix(in srgb, var(--text-primary) 35%, transparent);
-  outline-offset: 2px;
 }
 
 .icon-btn--plus {
@@ -4757,12 +5080,12 @@ textarea:focus-visible,
 }
 
 /* ==========================================================================
- * Modals / overlays
- * Shared shell for Doctor, Status, MCP, Compact, App dialog, Search palette.
- * Structure: .overlay > .modal[.status-modal|.mcp-modal|…]
+ * Modals / overlays — GlassModal shell template
+ * Structure: .overlay > .modal[.status-modal|.mcp-modal|glass-modal--*]
  *            .modal-head / .doctor-modal__head  → title + close
- *            body content
+ *            .modal-body (optional) / content
  *            .modal-actions / .doctor-modal__foot → footer CTAs
+ * Material: unified frosted glass (--glass-*). Layout tokens: --modal-*.
  * ========================================================================== */
 .overlay {
   position: fixed;
@@ -4777,24 +5100,32 @@ textarea:focus-visible,
 }
 
 .modal {
-  width: min(520px, 100%);
+  width: min(var(--modal-width-md, 480px), 100%);
   max-height: min(90vh, 720px);
   display: flex;
   flex-direction: column;
-  gap: var(--space-3);
+  gap: var(--modal-gap, 16px);
   overflow: hidden;
-  background: var(--bg-elevated);
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-pop);
-  padding: var(--space-4) var(--space-5);
+  /* Material from unified glass surface */
+  border-radius: var(--modal-radius, 16px);
+  padding: var(--modal-pad-y, 20px) var(--modal-pad-x, 24px);
   box-sizing: border-box;
   color: var(--text-primary);
 }
 
+.modal.glass-modal--sm,
+.modal.app-dialog {
+  width: min(var(--modal-width-sm, 420px), 100%);
+}
+
+.modal.glass-modal--lg,
+.modal.doctor-modal {
+  width: min(var(--modal-width-lg, 560px), 100%);
+}
+
 .modal h2 {
   margin: 0;
-  font-size: 17px;
+  font-size: var(--modal-title-size, 16px);
   font-weight: 600;
   color: var(--text-primary);
   line-height: 1.3;
@@ -4805,6 +5136,15 @@ textarea:focus-visible,
   color: var(--text-secondary);
   font-size: var(--text-sm);
   line-height: 1.5;
+}
+
+.modal-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--modal-body-gap, 12px);
+  min-height: 0;
+  flex: 1;
+  overflow: auto;
 }
 
 /* Shared head: title + close */
@@ -4822,7 +5162,7 @@ textarea:focus-visible,
 .doctor-modal__title,
 .doctor-modal__title-row h2 {
   margin: 0;
-  font-size: 17px;
+  font-size: var(--modal-title-size, 16px);
   font-weight: 600;
   color: var(--text-primary);
   min-width: 0;
@@ -4842,17 +5182,17 @@ textarea:focus-visible,
   flex-shrink: 0;
 }
 
-/* Shared footer actions */
+/* Shared footer actions — right-aligned cancel + primary (ref dialog) */
 .modal-actions {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   justify-content: flex-end;
-  gap: 8px;
+  gap: var(--modal-actions-gap, 8px);
   flex-shrink: 0;
   margin-top: auto;
-  padding-top: 12px;
-  border-top: 1px solid var(--border-subtle);
+  padding-top: var(--space-3, 12px);
+  border-top: 1px solid color-mix(in srgb, var(--glass-border) 70%, transparent);
 }
 
 /* Body status lines (loading / error / empty) */
@@ -4881,7 +5221,6 @@ textarea:focus-visible,
 }
 
 .doctor-modal {
-  width: min(560px, 100%);
   max-height: min(90vh, 720px);
 }
 
@@ -5034,9 +5373,9 @@ textarea:focus-visible,
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 8px;
-  padding-top: 4px;
-  border-top: 1px solid var(--border-subtle);
+  gap: var(--modal-actions-gap, 8px);
+  padding-top: var(--space-3, 12px);
+  border-top: 1px solid color-mix(in srgb, var(--glass-border) 70%, transparent);
 }
 
 .doctor-modal__foot .btn {
@@ -5050,10 +5389,6 @@ textarea:focus-visible,
 /* Compact confirm / rename dialogs (project remove, session rename, …) */
 .app-dialog-overlay {
   z-index: 14000;
-}
-
-.app-dialog {
-  width: min(420px, 100%);
 }
 
 .app-dialog__msg {
@@ -5075,9 +5410,9 @@ textarea:focus-visible,
   width: 100%;
   box-sizing: border-box;
   padding: 10px 12px;
-  border-radius: var(--radius-md);
-  border: 1px solid var(--border-subtle);
-  background: var(--bg-code, var(--bg-app));
+  border-radius: var(--menu-item-radius, 8px);
+  border: 1px solid var(--glass-border);
+  background: color-mix(in srgb, var(--bg-code, var(--bg-app)) 70%, transparent);
   color: var(--text-primary);
   font-size: var(--text-sm);
   outline: none;
@@ -5515,14 +5850,13 @@ textarea:focus-visible,
   width: max-content;
   min-width: 200px;
   max-width: var(--menu-max-width);
-  padding: 6px;
-  background: var(--bg-elevated);
-  border: 1px solid var(--border-subtle);
-  border-radius: 14px;
-  box-shadow: var(--shadow-pop);
+  padding: var(--menu-pad);
+  border-radius: var(--menu-radius);
+  /* Material from unified glass surface */
   max-height: min(480px, calc(100vh - 24px));
   overflow-y: auto;
   box-sizing: border-box;
+  color: var(--text-primary);
 }
 
 /* Portaled to body — escapes all overflow parents */
@@ -5928,9 +6262,9 @@ textarea:focus-visible,
 .file-media .plyr {
   --plyr-color-main: var(--accent);
   --plyr-video-background: var(--bg-code);
-  --plyr-audio-controls-background: var(--bg-elevated);
+  --plyr-audio-controls-background: var(--glass-surface-solid);
   --plyr-audio-control-color: var(--text-primary);
-  --plyr-menu-background: var(--bg-elevated);
+  --plyr-menu-background: var(--glass-surface-solid);
   --plyr-menu-color: var(--text-primary);
   border-radius: 10px;
   overflow: hidden;
@@ -7129,6 +7463,10 @@ code.prov-fact__v {
   background: #fff;
 }
 
+.rp-preview-browser--url {
+  background: var(--bg-card);
+}
+
 .rp-preview-browser--msg {
   align-items: center;
   justify-content: center;
@@ -7145,6 +7483,82 @@ code.prov-fact__v {
   border-radius: 0;
   display: block;
   background: #fff;
+}
+
+/* Embedded URL browser (native webview host + chrome bar) */
+.embedded-browser {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  width: 100%;
+  height: 100%;
+  background: var(--bg-card);
+}
+
+.embedded-browser__bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  min-height: 36px;
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--border-subtle);
+  background: var(--bg-elevated);
+}
+
+.embedded-browser__url {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  color: var(--text-secondary);
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+.embedded-browser__host {
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-main);
+}
+
+.embedded-browser__host-fill {
+  width: 100%;
+  height: 100%;
+  /* Native Webview paints over this rectangle */
+  background: transparent;
+}
+
+.embedded-browser__hint {
+  flex-shrink: 0;
+  padding: 6px 10px;
+  font-size: 11px;
+  color: var(--text-tertiary);
+  border-top: 1px solid var(--border-subtle);
+  background: var(--bg-elevated);
+}
+
+.embedded-browser__err {
+  margin: 8px 0 12px;
+  font-size: 12px;
+  color: var(--text-tertiary);
+  word-break: break-all;
+  max-width: 90%;
+}
+
+.embedded-browser--native .embedded-browser__host {
+  /* Leave space for native child webview; don't clip overflow */
+  overflow: hidden;
 }
 
 /* Tree search */
@@ -7447,29 +7861,108 @@ code.prov-fact__v {
   height: auto !important;
 }
 
-.office-docx-host {
-  max-width: 816px;
-  margin: 0 auto;
+/*
+ * DOCX preview (docx-preview + ignoreWidth):
+ * - Full pane width so titles/tables reflow (WPS-like readability in a narrow side panel)
+ * - Avoid flex+center+wide-child (clips both sides with no scroll to the left)
+ */
+.office-preview__docx-scroll {
+  display: block;
+  box-sizing: border-box;
+  overflow-x: hidden;
+  overflow-y: auto;
+  padding: 12px 12px 28px;
+  background: color-mix(in srgb, var(--bg-hover) 55%, var(--bg-card));
 }
 
-/* docx-preview injects its own classes */
-.office-docx-host .docx-wrapper {
+.office-docx-host {
+  width: 100%;
+  max-width: 100%;
+  margin: 0 auto;
+  box-sizing: border-box;
+}
+
+/* docx-preview injects .docx-wrapper / section.docx with inline widths — override */
+.office-docx-host .docx-wrapper,
+.office-docx-host .office-docx-body {
   background: transparent !important;
   padding: 0 !important;
+  margin: 0 auto !important;
+  width: 100% !important;
+  max-width: 100% !important;
+  min-width: 0 !important;
+  box-sizing: border-box !important;
 }
 
-.office-docx-host .docx-wrapper > section.docx {
+.office-docx-host .docx-wrapper > section.docx,
+.office-docx-host section.docx {
+  width: 100% !important;
+  max-width: 100% !important;
+  min-width: 0 !important;
+  box-sizing: border-box !important;
+  margin: 0 auto 14px !important;
+  padding: 40px 32px 48px !important;
+  background: #fff !important;
+  color: #1a1a1a !important;
   box-shadow: 0 2px 16px rgba(0, 0, 0, 0.12);
-  margin-bottom: 16px !important;
-  background: #fff;
-  color: #111;
+  border-radius: 2px;
+  /* Readable reflow */
+  overflow-wrap: break-word;
+  word-wrap: break-word;
+  word-break: break-word;
+  line-height: 1.6;
+  font-size: 14px;
 }
 
-[data-theme="dark"] .office-docx-host .docx-wrapper > section.docx,
-:root:not([data-theme="light"]) .office-docx-host .docx-wrapper > section.docx {
-  /* keep page white for fidelity like Word */
-  background: #fff;
-  color: #111;
+/* Headings / paragraphs should wrap fully */
+.office-docx-host section.docx p,
+.office-docx-host section.docx h1,
+.office-docx-host section.docx h2,
+.office-docx-host section.docx h3,
+.office-docx-host section.docx h4,
+.office-docx-host section.docx h5,
+.office-docx-host section.docx h6,
+.office-docx-host section.docx li,
+.office-docx-host section.docx span {
+  max-width: 100% !important;
+  white-space: normal !important;
+  overflow-wrap: break-word;
+  word-break: break-word;
+}
+
+.office-docx-host section.docx table {
+  max-width: 100% !important;
+  width: 100% !important;
+  table-layout: fixed !important;
+  border-collapse: collapse;
+  word-break: break-word;
+}
+
+.office-docx-host section.docx td,
+.office-docx-host section.docx th {
+  word-break: break-word;
+  overflow-wrap: break-word;
+  white-space: normal !important;
+}
+
+.office-docx-host section.docx img,
+.office-docx-host section.docx svg,
+.office-docx-host section.docx video {
+  max-width: 100% !important;
+  height: auto !important;
+}
+
+/* Highlight runs often use background spans — keep them wrapping */
+.office-docx-host section.docx mark,
+.office-docx-host section.docx [style*="background"] {
+  white-space: normal !important;
+}
+
+[data-theme="dark"] .office-docx-host section.docx,
+:root:not([data-theme="light"]) .office-docx-host section.docx {
+  /* keep page white for print fidelity */
+  background: #fff !important;
+  color: #1a1a1a !important;
 }
 
 .office-preview__sheets {
@@ -7771,14 +8264,34 @@ code.prov-fact__v {
   padding: 10px 12px;
   border-radius: 12px;
   position: relative;
+  /* Keep stacking flat so row menus can paint above siblings */
+  z-index: 0;
 }
 
 .auto-row:hover {
   background: var(--bg-hover);
 }
 
-.auto-row--paused {
-  opacity: 0.72;
+/* Open menu: lift whole row above neighbors (avoids sibling paint-over). */
+.auto-row--menu-open {
+  z-index: 40;
+  background: var(--bg-hover);
+}
+
+/*
+ * Mute paused rows with color, not opacity — opacity creates a stacking
+ * context that traps the dropdown under the next list item (穿透).
+ */
+.auto-row--paused .auto-row__title {
+  color: var(--text-secondary, var(--text-tertiary));
+}
+
+.auto-row--paused .auto-row__meta {
+  color: color-mix(in srgb, var(--text-tertiary) 85%, transparent);
+}
+
+.auto-row--paused .auto-row__dot {
+  opacity: 0.75;
 }
 
 .auto-row__dot {
@@ -7835,16 +8348,19 @@ code.prov-fact__v {
 .auto-row__actions {
   position: relative;
   flex-shrink: 0;
+  z-index: 1;
 }
 
 .auto-row__menu {
   position: absolute;
-  top: 100%;
+  top: calc(100% + 4px);
   right: 0;
-  z-index: 30;
+  z-index: 50;
   display: flex;
   flex-direction: column;
-  gap: var(--menu-gap);
+  gap: var(--menu-context-gap, 1px);
+  /* Solid context surface (see context-menu block above) */
+  pointer-events: auto;
 }
 
 /* Manual create / edit side panel */
@@ -7856,10 +8372,15 @@ code.prov-fact__v {
   width: min(380px, 100%);
   display: flex;
   flex-direction: column;
-  background: var(--bg-elevated, var(--bg-card));
-  border-left: 1px solid var(--border-subtle);
-  box-shadow: -12px 0 40px rgba(0, 0, 0, 0.25);
+  /* Material from unified glass surface; left edge only */
+  border-radius: 0;
+  border-top: none;
+  border-right: none;
+  border-bottom: none;
+  border-left: 1px solid var(--glass-border);
+  box-shadow: -12px 0 40px rgba(0, 0, 0, 0.28);
   z-index: 20;
+  color: var(--text-primary);
 }
 
 .auto-panel__head {
@@ -8034,12 +8555,13 @@ div.composer__input:empty::before {
   overflow-y: auto;
   display: flex;
   flex-direction: column;
-  gap: 1px;
+  gap: var(--menu-gap);
   box-sizing: border-box;
   /* Width set by floatingStyle (matchTriggerWidth); soft viewport cap only */
   max-width: calc(100vw - 16px) !important;
-  padding: 6px;
-  border-radius: 14px;
+  padding: var(--menu-pad);
+  border-radius: var(--menu-radius);
+  color: var(--text-primary);
 }
 .slash-palette__section {
   padding: 6px 10px 4px;
@@ -8127,10 +8649,6 @@ div.composer__input:empty::before {
 }
 
 /* Status modal */
-.status-modal {
-  width: min(480px, 100%);
-}
-
 .status-modal__dl {
   margin: 0;
   display: flex;
@@ -8166,10 +8684,6 @@ div.composer__input:empty::before {
 }
 
 /* MCP status modal */
-.mcp-modal {
-  width: min(520px, 100%);
-}
-
 .mcp-modal__hint {
   font-size: 12px;
   color: var(--text-tertiary);
@@ -8222,8 +8736,8 @@ div.composer__input:empty::before {
 
 /* Compact confirm */
 .compact-modal {
-  width: min(440px, 100%);
-  gap: var(--space-3);
+  width: min(var(--modal-width-sm, 420px), 100%);
+  gap: var(--modal-gap, 16px);
 }
 
 .compact-modal__msg {
@@ -8237,9 +8751,9 @@ div.composer__input:empty::before {
   width: 100%;
   margin: 0;
   padding: 10px 12px;
-  border-radius: var(--radius-md);
-  border: 1px solid var(--border-subtle);
-  background: var(--bg-code);
+  border-radius: var(--menu-item-radius, 8px);
+  border: 1px solid var(--glass-border);
+  background: color-mix(in srgb, var(--bg-code) 70%, transparent);
   color: var(--text-primary);
   font-size: 13px;
   box-sizing: border-box;

@@ -213,6 +213,9 @@ const en = {
   "video.open": "Open video",
   "resources.openInPanel": "Open in panel",
   "resources.openExternal": "Open externally",
+  "resources.browserReload": "Reload",
+  "resources.browserFailed": "Could not load this page in the built-in browser.",
+  "resources.browserIframeHint": "Some sites block iframe embedding. Use “Open externally”, or run the desktop app for a real webview.",
 
   // Catalog labels
   "effort.high": "High",
@@ -711,7 +714,30 @@ const en = {
   "automations.next.unknown": "Not scheduled",
   "automations.runningToast": "Started scheduled task: {title}",
   "automations.aiComposerHint":
-    "Describe the recurring task — when done, use Create → manual form or say the final JSON config.",
+    "Describe what to run and how often — Grok will schedule it for you when ready.",
+  "automations.createdToast": "Scheduled: {title}",
+  "automations.createFailed": "Could not create the scheduled task. Try again in chat.",
+  "automations.emptySession":
+    "No messages in this session yet (the agent may have failed to connect). Delete it or start a new chat.",
+  "automations.connectFailed":
+    "Scheduled task could not connect to the agent: {detail}",
+  "automations.msgTag": "Scheduled",
+
+  // System tray / menu-bar (native; Rust mirror in tray_i18n.rs — keep in sync)
+  "tray.recent": "Recent",
+  "tray.noRecent": "No recent chats",
+  "tray.untitled": "Untitled",
+  "tray.more": "More",
+  "tray.settings": "Settings…",
+  "tray.doctor": "Doctor",
+  "tray.account": "Account",
+  "tray.newChat": "New Chat",
+  "tray.openApp": "Open Grok",
+  "tray.quit": "Quit Grok",
+  "tray.tooltip": "Grok",
+  "tray.usageWithReset": "Usage  ·  {pct}% left  ·  {time}",
+  "tray.usagePct": "Usage  ·  {pct}% left",
+  "tray.usageUnknown": "Usage  ·  —",
 } as const;
 
 const zh: Record<MessageKey, string> = {
@@ -915,6 +941,9 @@ const zh: Record<MessageKey, string> = {
   "video.open": "打开视频",
   "resources.openInPanel": "在资源面板打开",
   "resources.openExternal": "用系统应用打开",
+  "resources.browserReload": "刷新",
+  "resources.browserFailed": "内置浏览器无法加载此页面。",
+  "resources.browserIframeHint": "部分网站禁止 iframe 嵌入。请用「用系统应用打开」，或在桌面端用原生 WebView 浏览。",
 
   "effort.high": "高",
   "effort.medium": "中",
@@ -1394,7 +1423,29 @@ const zh: Record<MessageKey, string> = {
   "automations.next.unknown": "未排程",
   "automations.runningToast": "已启动已安排任务：{title}",
   "automations.aiComposerHint":
-    "描述你要周期执行的任务——完成后可用「创建 → 手动表单」或让 AI 输出最终 JSON 配置。",
+    "用自然语言描述要做什么、多久一次——准备好后 Grok 会自动创建已安排任务。",
+  "automations.createdToast": "已安排：{title}",
+  "automations.createFailed": "创建已安排任务失败，请在对话里再试一次。",
+  "automations.emptySession":
+    "此会话暂无消息（可能创建后连接 Agent 失败）。可删除后重试，或新建会话。",
+  "automations.connectFailed": "已安排任务无法连接 Agent：{detail}",
+  "automations.msgTag": "已安排",
+
+  // System tray / menu-bar (native; Rust mirror in tray_i18n.rs — keep in sync)
+  "tray.recent": "最近",
+  "tray.noRecent": "暂无最近会话",
+  "tray.untitled": "未命名",
+  "tray.more": "更多",
+  "tray.settings": "设置…",
+  "tray.doctor": "Doctor",
+  "tray.account": "账户",
+  "tray.newChat": "新对话",
+  "tray.openApp": "打开 Grok",
+  "tray.quit": "退出 Grok",
+  "tray.tooltip": "Grok",
+  "tray.usageWithReset": "额度  ·  剩余 {pct}%  ·  {time}",
+  "tray.usagePct": "额度  ·  剩余 {pct}%",
+  "tray.usageUnknown": "额度  ·  —",
 };
 
 export const messages: Record<Locale, Record<MessageKey, string>> = {

@@ -4,6 +4,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import * as api from "@/lib/api";
 import {
   computeNextRunAt,
@@ -92,8 +93,12 @@ export function AutomationsPage({
   );
   const [createMenu, setCreateMenu] = useState(false);
   const [rowMenuId, setRowMenuId] = useState<string | null>(null);
+  /** Pending delete — never use window.confirm in Tauri WebView. */
+  const [deleteTarget, setDeleteTarget] = useState<Automation | null>(null);
+  const [deleting, setDeleting] = useState(false);
   const createBtnRef = useRef<HTMLButtonElement>(null);
   const createMenuRef = useRef<HTMLDivElement>(null);
+  const deleteConfirmBtnRef = useRef<HTMLButtonElement>(null);
   const [, setTick] = useState(0);
 
   const refresh = useCallback(async () => {
@@ -141,7 +146,15 @@ export function AutomationsPage({
 
   useEffect(() => {
     if (!rowMenuId) return;
-    const onDoc = () => setRowMenuId(null);
+    // Close on outside mousedown, but ignore presses inside the open menu
+    // (otherwise menu unmounts before click fires → items do nothing).
+    const onDoc = (e: MouseEvent) => {
+      const el = e.target as Element | null;
+      if (el?.closest?.(`[data-auto-row-menu="${rowMenuId}"]`)) return;
+      // Keep open when pressing the same row's ⋯ trigger (toggle handled there).
+      if (el?.closest?.(`[data-auto-row-trigger="${rowMenuId}"]`)) return;
+      setRowMenuId(null);
+    };
     const timer = window.setTimeout(
       () => document.addEventListener("mousedown", onDoc),
       0,
@@ -267,18 +280,31 @@ export function AutomationsPage({
     }
   };
 
-  const remove = async (auto: Automation) => {
+  const requestRemove = (auto: Automation) => {
     setRowMenuId(null);
-    if (!window.confirm(t("automations.deleteConfirm", { title: auto.title }))) {
-      return;
-    }
+    setDeleteTarget(auto);
+  };
+
+  const confirmRemove = async () => {
+    const auto = deleteTarget;
+    if (!auto || deleting) return;
+    setDeleting(true);
     try {
       await api.automationDelete(auto.id);
+      setDeleteTarget(null);
       await refresh();
     } catch (e) {
       setError(String(e));
+    } finally {
+      setDeleting(false);
     }
   };
+
+  useEffect(() => {
+    if (!deleteTarget) return;
+    const t = window.setTimeout(() => deleteConfirmBtnRef.current?.focus(), 0);
+    return () => window.clearTimeout(t);
+  }, [deleteTarget]);
 
   const scheduleLabels = {
     daily: t("automations.freq.daily"),
@@ -481,7 +507,9 @@ export function AutomationsPage({
                 <li
                   key={auto.id}
                   className={
-                    "auto-row" + (!auto.enabled ? " auto-row--paused" : "")
+                    "auto-row" +
+                    (!auto.enabled ? " auto-row--paused" : "") +
+                    (rowMenuId === auto.id ? " auto-row--menu-open" : "")
                   }
                 >
                   <span
@@ -511,6 +539,7 @@ export function AutomationsPage({
                       <button
                         type="button"
                         className="tree-icon-btn"
+                        data-auto-row-trigger={auto.id}
                         onClick={(e) => {
                           e.stopPropagation();
                           setRowMenuId((id) =>
@@ -522,7 +551,12 @@ export function AutomationsPage({
                       </button>
                     </Tip>
                     {rowMenuId === auto.id && (
-                      <div className="menu-panel auto-row__menu" role="menu">
+                      <div
+                        className="menu-panel auto-row__menu"
+                        role="menu"
+                        data-auto-row-menu={auto.id}
+                        onMouseDown={(e) => e.stopPropagation()}
+                      >
                         <button
                           type="button"
                           role="menuitem"
@@ -533,7 +567,10 @@ export function AutomationsPage({
                         <button
                           type="button"
                           role="menuitem"
-                          onClick={() => void toggleEnabled(auto)}
+                          onClick={() => {
+                            setRowMenuId(null);
+                            void toggleEnabled(auto);
+                          }}
                         >
                           {auto.enabled
                             ? t("automations.pause")
@@ -555,7 +592,7 @@ export function AutomationsPage({
                           type="button"
                           role="menuitem"
                           className="is-danger"
-                          onClick={() => void remove(auto)}
+                          onClick={() => requestRemove(auto)}
                         >
                           {t("automations.delete")}
                         </button>
@@ -568,6 +605,75 @@ export function AutomationsPage({
           </ul>
         )}
       </div>
+
+      {deleteTarget &&
+        typeof document !== "undefined" &&
+        createPortal(
+          <div
+            className="overlay app-dialog-overlay"
+            role="presentation"
+            onMouseDown={(e) => {
+              if (e.target === e.currentTarget && !deleting) {
+                setDeleteTarget(null);
+              }
+            }}
+          >
+            <div
+              className="modal app-dialog"
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="auto-delete-title"
+              onMouseDown={(e) => e.stopPropagation()}
+            >
+              <header className="modal-head">
+                <h2 id="auto-delete-title" className="modal-title">
+                  {t("automations.delete")}
+                </h2>
+                <button
+                  type="button"
+                  className="icon-btn modal-close"
+                  disabled={deleting}
+                  onClick={() => setDeleteTarget(null)}
+                  aria-label={t("common.close")}
+                >
+                  <IconClose size={16} />
+                </button>
+              </header>
+              <form
+                className="app-dialog__form"
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  void confirmRemove();
+                }}
+              >
+                <p className="app-dialog__msg">
+                  {t("automations.deleteConfirm", {
+                    title: deleteTarget.title,
+                  })}
+                </p>
+                <div className="app-dialog__actions modal-actions">
+                  <button
+                    type="button"
+                    className="btn btn--ghost"
+                    disabled={deleting}
+                    onClick={() => setDeleteTarget(null)}
+                  >
+                    {t("common.cancel")}
+                  </button>
+                  <button
+                    ref={deleteConfirmBtnRef}
+                    type="submit"
+                    className="btn btn--danger"
+                    disabled={deleting}
+                  >
+                    {t("automations.delete")}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>,
+          document.body,
+        )}
 
       {panelOpen && (
         <aside className="auto-panel" aria-label={t("automations.formTitle")}>

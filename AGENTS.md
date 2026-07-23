@@ -4,6 +4,7 @@
 
 1. **`docs/llm-wiki/`** — product rules for agents (i18n, Grok Build catalog).  
    - [i18n.md](docs/llm-wiki/i18n.md) — all UI strings via `src/i18n/`  
+   - [dialogs.md](docs/llm-wiki/dialogs.md) — **no `window.confirm` / `prompt` / `alert`**; use in-app dialogs  
    - [catalog.md](docs/llm-wiki/catalog.md) — models / effort / YOLO  
    - [automations.md](docs/llm-wiki/automations.md) — automation design (Build `/loop` / scheduler; non-blocking)  
    - [account.md](docs/llm-wiki/account.md) — official login, membership, quota, heatmap  
@@ -14,6 +15,8 @@
 1b. **Release platforms** — [docs/BUILD.md](docs/BUILD.md). mac arm/intel + Windows via CI. Window chrome: `tauri.macos.conf.json` (Overlay) vs `tauri.windows.conf.json` (frameless + self-drawn controls).
 
 2. Do **not** hardcode user-facing English/Chinese. Use `createT(locale)` / `t()`.
+
+2b. **Dialogs** — never use `window.confirm` / `window.prompt` / `window.alert` in Tauri UI. Use App `setAppDialog`, `GlassModal`, or the same in-app portal + glass CSS. All floating panels share frosted glass tokens. Details: [docs/llm-wiki/dialogs.md](docs/llm-wiki/dialogs.md).
 
 3. When adding models or permission modes, update `src/lib/grokCatalog.ts` **and** `docs/llm-wiki/catalog.md`.
 

@@ -109,6 +109,9 @@ pub struct SessionMeta {
     pub mode: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub permission_policy: Option<String>,
+    /// Created by shell scheduled automation (`runAutomation`).
+    #[serde(default)]
+    pub scheduled: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -345,7 +348,11 @@ pub fn save_sessions_index(list: &[SessionMeta]) -> Result<(), String> {
     write_json(&sessions_index_file(), &list)
 }
 
-pub fn create_session(project_id: Option<String>, title: Option<String>) -> Result<SessionMeta, String> {
+pub fn create_session(
+    project_id: Option<String>,
+    title: Option<String>,
+    scheduled: bool,
+) -> Result<SessionMeta, String> {
     let id = Uuid::new_v4().to_string();
     let now = Utc::now();
     let meta = SessionMeta {
@@ -360,6 +367,7 @@ pub fn create_session(project_id: Option<String>, title: Option<String>) -> Resu
         effort: None,
         mode: None,
         permission_policy: None,
+        scheduled,
     };
     let mut list = load_sessions_index();
     list.insert(0, meta.clone());
@@ -400,6 +408,19 @@ pub fn rename_session(id: &str, title: &str) -> Result<SessionMeta, String> {
         .find(|s| s.id == id)
         .ok_or_else(|| "session not found".to_string())?;
     s.title = title.to_string();
+    s.updated_at = Utc::now();
+    let clone = s.clone();
+    save_sessions_index(&list)?;
+    Ok(clone)
+}
+
+pub fn set_session_scheduled(id: &str, scheduled: bool) -> Result<SessionMeta, String> {
+    let mut list = load_sessions_index();
+    let s = list
+        .iter_mut()
+        .find(|s| s.id == id)
+        .ok_or_else(|| "session not found".to_string())?;
+    s.scheduled = scheduled;
     s.updated_at = Utc::now();
     let clone = s.clone();
     save_sessions_index(&list)?;

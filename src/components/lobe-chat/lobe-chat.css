@@ -164,6 +164,61 @@
   box-shadow: none;
 }
 
+/* Scheduled automation user card: clock tag + body */
+.lobe-chat-user-msg {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  white-space: normal;
+}
+
+.lobe-chat-user-msg__body {
+  white-space: pre-wrap;
+  word-break: break-word;
+  width: 100%;
+}
+
+.lobe-scheduled-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  max-width: 100%;
+  padding: 3px 9px 3px 7px;
+  border-radius: 999px;
+  font-size: 12px;
+  line-height: 1.35;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  color: var(--chat-text-2, var(--text-secondary, #a1a1aa));
+  background: color-mix(in srgb, var(--chat-text, #fff) 10%, transparent);
+  border: 1px solid color-mix(in srgb, var(--chat-text, #fff) 12%, transparent);
+  white-space: nowrap;
+}
+
+.lobe-scheduled-tag__icon {
+  flex-shrink: 0;
+  opacity: 0.9;
+}
+
+.lobe-scheduled-tag__kind {
+  flex-shrink: 0;
+  opacity: 0.85;
+}
+
+.lobe-scheduled-tag__sep {
+  flex-shrink: 0;
+  opacity: 0.45;
+}
+
+.lobe-scheduled-tag__title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--chat-text, inherit);
+  font-weight: 550;
+}
+
 /* Hover actions */
 .lobe-chat-item__actions {
   display: flex;
@@ -565,7 +620,26 @@
   background: transparent;
 }
 
-/* ── Codex-style live tool line (one row, above reply) ── */
+/* ── Mid-stream tool text (plain one line under reply, replace-only) ── */
+.lobe-chat-tool-text {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+  margin: 10px 0 4px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--chat-text-3, var(--lobe-color-text-tertiary, #8e8e93));
+  font-size: var(--chat-fs-sm, 13px);
+  font-weight: 400;
+  line-height: 1.45;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Quiet thinking / cancel rows (shared chrome) */
 .lobe-chat-live-tool {
   display: flex;
   align-items: center;

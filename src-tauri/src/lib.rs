@@ -26,6 +26,7 @@ mod session_fsm;
 mod session_manager;
 mod store;
 mod tray;
+mod tray_i18n;
 
 use std::sync::Arc;
 
@@ -120,6 +121,7 @@ pub fn run() {
             commands::session_delete,
             commands::session_rename,
             commands::session_set_archived,
+            commands::session_set_scheduled,
             commands::session_messages,
             commands::session_media_root,
             commands::session_resolve_relative_media,

@@ -21,6 +21,7 @@ import {
 import { AttachmentCard } from "@/components/AttachmentCard";
 import {
   IconArrowsMinimize,
+  IconClock,
   IconExportMd,
   IconPlan,
   IconRename,
@@ -39,10 +40,12 @@ import { BackBottom } from "./BackBottom";
 import { InlineUserEdit } from "./InlineUserEdit";
 import { SkillChip } from "@/components/SkillChip";
 import { hydrateDisplayContent, parseStoredContent } from "@/lib/draftDoc";
+import { parseScheduledUserContent } from "@/lib/automations";
+import { extractAutomationPayload } from "@/lib/automationSetup";
 import {
   isToolStepMessage,
-  LiveToolLine,
-  pickLatestTurnTool,
+  LiveToolText,
+  pickRunningTurnTool,
   TurnCancelledRow,
 } from "./AgentActivity";
 import "./lobe-chat.css";
@@ -55,8 +58,8 @@ function formatTokenCount(n: number): string {
   return String(n);
 }
 
-/** User bubble: inline skill chips (`[[skill:name]]` or agent-form `/name` history). */
-function UserMessageBody({ content }: { content: string }) {
+/** Render skill chips / plain text for the user bubble body. */
+function UserPlainOrSkills({ content }: { content: string }) {
   const hydrated = hydrateDisplayContent(content);
   const segs = parseStoredContent(hydrated);
   if (!segs.some((s) => s.type === "skill")) {
@@ -73,6 +76,41 @@ function UserMessageBody({ content }: { content: string }) {
       )}
     </span>
   );
+}
+
+/**
+ * User bubble: skill chips + scheduled-task header as a clock tag
+ * (`[Scheduled: title]` → label, not raw brackets).
+ */
+function UserMessageBody({
+  content,
+  scheduledLabel,
+}: {
+  content: string;
+  /** Short badge word, e.g. 已安排 / Scheduled */
+  scheduledLabel: string;
+}) {
+  const scheduled = parseScheduledUserContent(content);
+  if (scheduled) {
+    return (
+      <div className="lobe-chat-user-msg">
+        <span className="lobe-scheduled-tag" title={scheduled.title}>
+          <IconClock size={13} className="lobe-scheduled-tag__icon" />
+          <span className="lobe-scheduled-tag__kind">{scheduledLabel}</span>
+          <span className="lobe-scheduled-tag__sep" aria-hidden>
+            ·
+          </span>
+          <span className="lobe-scheduled-tag__title">{scheduled.title}</span>
+        </span>
+        {scheduled.body.trim() ? (
+          <div className="lobe-chat-user-msg__body">
+            <UserPlainOrSkills content={scheduled.body} />
+          </div>
+        ) : null}
+      </div>
+    );
+  }
+  return <UserPlainOrSkills content={content} />;
 }
 
 export interface ConversationThreadProps {
@@ -115,8 +153,7 @@ export interface ConversationThreadProps {
   };
   /**
    * Epoch ms when current agent turn started.
-   * Retained for callers; Codex-style UI no longer shows a separate elapsed bar
-   * when tool motion is present.
+   * Retained for callers; not rendered in the transcript.
    */
   turnStartedAt?: number | null;
 }
@@ -165,13 +202,16 @@ export function ConversationThread({
   const turnBusy =
     sessionState === "streaming" || sessionState === "awaiting_permission";
 
-  /** Codex: only surface the latest tool for the active turn; hide when idle. */
+  /**
+   * Live tool: only while a tool is running in this turn.
+   * Completing a tool (or content resuming) clears it; next tool replaces.
+   */
   const liveTool = useMemo(() => {
     if (!turnBusy) return null;
-    return pickLatestTurnTool(messages);
+    return pickRunningTurnTool(messages);
   }, [messages, turnBusy]);
 
-  /** Index of the streaming (or last) assistant message after the last user. */
+  /** Last assistant bubble after the latest user (anchor for mid-stream tool text). */
   const activeAssistantId = useMemo(() => {
     let lastUser = -1;
     for (let i = messages.length - 1; i >= 0; i--) {
@@ -195,8 +235,7 @@ export function ConversationThread({
     (m) => m.role === "assistant" && m.streaming,
   );
 
-  // Quiet thinking only when busy, no live tool motion, and no assistant yet.
-  // Live tool animation replaces a separate progress / working bar.
+  // Quiet thinking when busy, no tool motion, no assistant yet.
   const showQuietThinking =
     turnBusy && !liveTool && !hasStreamingAssistant;
 
@@ -232,8 +271,7 @@ export function ConversationThread({
               );
             }
 
-            // Codex: never render historical tool stacks in the transcript.
-            // Live latest tool is injected above the active assistant reply.
+            // Historical tool_step: never stack in transcript; live line is injected below.
             if (isToolStepMessage(m)) {
               return null;
             }
@@ -339,7 +377,10 @@ export function ConversationThread({
                         />
                       ) : m.content.trim() ? (
                         <div className="lobe-chat-bubble">
-                          <UserMessageBody content={m.content} />
+                          <UserMessageBody
+                            content={m.content}
+                            scheduledLabel={tr("automations.msgTag")}
+                          />
                         </div>
                       ) : null}
                     </div>
@@ -402,17 +443,16 @@ export function ConversationThread({
             const hasThought = !!(m.thought && m.thought.trim());
             const thoughtStreaming =
               !!m.streaming && !m.content.trim() && hasThought;
+            const isActiveAssistant = activeAssistantId === m.id;
+            const showLiveToolBelow = !!liveTool && isActiveAssistant;
+            // Tool motion already signals work — skip empty thinking placeholder.
             const showThinkingPlaceholder =
               !!m.streaming &&
               !m.content.trim() &&
               !hasThought &&
-              // When a live tool is animating above this reply, skip the
-              // empty “thinking” placeholder — motion already signals work.
-              !(liveTool && activeAssistantId === m.id);
+              !showLiveToolBelow;
             const showReasoning =
               thoughtStreaming || hasThought || showThinkingPlaceholder;
-            const showLiveToolAbove =
-              !!liveTool && activeAssistantId === m.id;
 
             return (
               <ChatItem
@@ -422,44 +462,40 @@ export function ConversationThread({
                 showAvatar={false}
                 loading={!!m.streaming}
                 aboveMessage={
-                  <>
-                    {showLiveToolAbove && liveTool ? (
-                      <LiveToolLine
-                        message={liveTool}
-                        locale={locale}
-                      />
-                    ) : null}
-                    {showReasoning ? (
-                      <Thinking
-                        locale={locale}
-                        thinking={
-                          thoughtStreaming || showThinkingPlaceholder
-                        }
-                        content={hasThought ? m.thought : undefined}
-                        streamingLabel={tr("chat.thinking")}
-                        doneLabel={tr("chat.thoughtDone")}
-                        thoughtForLabel={(n) =>
-                          tr("chat.thoughtFor", { n })
-                        }
-                      />
-                    ) : null}
-                  </>
+                  showReasoning ? (
+                    <Thinking
+                      locale={locale}
+                      thinking={
+                        thoughtStreaming || showThinkingPlaceholder
+                      }
+                      content={hasThought ? m.thought : undefined}
+                      streamingLabel={tr("chat.thinking")}
+                      doneLabel={tr("chat.thoughtDone")}
+                      thoughtForLabel={(n) =>
+                        tr("chat.thoughtFor", { n })
+                      }
+                    />
+                  ) : null
                 }
                 message={(() => {
+                  // Never show silent grok-automation fences in the transcript.
+                  const displayContent = m.content?.trim()
+                    ? extractAutomationPayload(m.content).cleanText
+                    : m.content;
                   const imagePathMap = buildInlineMediaPathMap(m.attachments);
                   const bottomAtts = filterAttachmentsNotInlined(
-                    m.content,
+                    displayContent || m.content,
                     m.attachments,
                   );
                   if (
-                    !m.content.trim() &&
+                    !(displayContent || "").trim() &&
                     !(bottomAtts && bottomAtts.length)
                   ) {
                     return null;
                   }
                   return (
                     <>
-                      {m.content.trim() ? (
+                      {(displayContent || "").trim() ? (
                         <MarkdownChat
                           locale={locale}
                           streaming={!!m.streaming}
@@ -471,7 +507,7 @@ export function ConversationThread({
                           projectPath={projectPath}
                           onOpenResource={onOpenResource}
                         >
-                          {m.content}
+                          {displayContent}
                         </MarkdownChat>
                       ) : null}
                       {bottomAtts && bottomAtts.length > 0 ? (
@@ -495,6 +531,11 @@ export function ConversationThread({
                     </>
                   );
                 })()}
+                belowMessage={
+                  showLiveToolBelow && liveTool ? (
+                    <LiveToolText message={liveTool} locale={locale} />
+                  ) : null
+                }
                 actions={
                   !m.streaming && m.content.trim() ? (
                     <>
@@ -526,12 +567,9 @@ export function ConversationThread({
             );
           })}
 
-          {/*
-            Live tool / quiet thinking when no assistant bubble yet for this turn.
-            Tool motion replaces an explicit progress bar.
-          */}
+          {/* Tool before any assistant bubble exists for this turn. */}
           {liveTool && !activeAssistantId ? (
-            <LiveToolLine message={liveTool} locale={locale} />
+            <LiveToolText message={liveTool} locale={locale} />
           ) : null}
 
           {showQuietThinking ? (

@@ -1,9 +1,11 @@
 /**
  * Contribution-style activity heatmap — adapted from sister project grok-go.
  * Levels use GitHub-green palette; layout stretches cells to fill width.
+ * Day detail tip is portaled (fixed) so overflow parents cannot clip it.
  */
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import type { HeatmapDay } from "@/lib/api";
 import { Tip } from "@/components/ui/tooltip";
 
@@ -159,12 +161,14 @@ export function Heatmap({
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [containerWidth, setContainerWidth] = useState(0);
+  /** Viewport coords for fixed portal tip (not clipped by overflow parents). */
   const [tip, setTip] = useState<{
     date: string;
     requests: number;
     tokens: number;
-    x: number;
-    y: number;
+    left: number;
+    top: number;
+    placeAbove: boolean;
   } | null>(null);
 
   const { weeks, monthLabels } = useMemo(
@@ -192,8 +196,19 @@ export function Heatmap({
         return;
       setTip(null);
     };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setTip(null);
+    };
+    const onScroll = () => setTip(null);
     document.addEventListener("pointerdown", onDown, true);
-    return () => document.removeEventListener("pointerdown", onDown, true);
+    document.addEventListener("keydown", onKey);
+    // Any scroll (heatmap body / modal / window) can move the anchor — dismiss.
+    window.addEventListener("scroll", onScroll, true);
+    return () => {
+      document.removeEventListener("pointerdown", onDown, true);
+      document.removeEventListener("keydown", onKey);
+      window.removeEventListener("scroll", onScroll, true);
+    };
   }, [tip]);
 
   const cell = useMemo(() => {
@@ -314,18 +329,35 @@ export function Heatmap({
                       }}
                       onClick={(e) => {
                         if (!cellItem.date || cellItem.empty) return;
+                        // Toggle off if same cell already open
+                        if (tip?.date === cellItem.date) {
+                          setTip(null);
+                          return;
+                        }
                         const rect = (
                           e.currentTarget as HTMLElement
                         ).getBoundingClientRect();
-                        const parent =
-                          containerRef.current?.getBoundingClientRect();
-                        if (!parent) return;
+                        const tipW = 200;
+                        const tipH = 78; // approx date + 2 rows
+                        const gap = 8;
+                        const pad = 8;
+                        // Prefer above the cell; flip below if not enough room
+                        const placeAbove = rect.top - tipH - gap >= pad;
+                        let left = rect.left + rect.width / 2 - tipW / 2;
+                        left = Math.min(
+                          Math.max(pad, left),
+                          Math.max(pad, window.innerWidth - tipW - pad),
+                        );
+                        const top = placeAbove
+                          ? rect.top - gap
+                          : rect.bottom + gap;
                         setTip({
                           date: cellItem.date,
                           requests: cellItem.day?.requests ?? 0,
                           tokens: cellItem.day?.tokens ?? 0,
-                          x: rect.left - parent.left + rect.width / 2,
-                          y: rect.top - parent.top,
+                          left,
+                          top,
+                          placeAbove,
                         });
                       }}
                     />
@@ -353,26 +385,35 @@ export function Heatmap({
         </div>
       </div>
 
-      {tip && (
-        <div
-          data-heatmap-tip
-          className="gh-heatmap__tip"
-          style={{
-            left: Math.max(8, tip.x - 100),
-            top: Math.max(8, tip.y - 8),
-          }}
-        >
-          <div className="gh-heatmap__tip-date">{tip.date}</div>
-          <div className="gh-heatmap__tip-row">
-            <span>{labels.requests}</span>
-            <span>{tip.requests}</span>
-          </div>
-          <div className="gh-heatmap__tip-row">
-            <span>{labels.tokens}</span>
-            <span>{tip.tokens.toLocaleString()}</span>
-          </div>
-        </div>
-      )}
+      {tip &&
+        typeof document !== "undefined" &&
+        createPortal(
+          <div
+            data-heatmap-tip
+            className={
+              "gh-heatmap__tip" +
+              (tip.placeAbove
+                ? " gh-heatmap__tip--above"
+                : " gh-heatmap__tip--below")
+            }
+            role="tooltip"
+            style={{
+              left: tip.left,
+              top: tip.top,
+            }}
+          >
+            <div className="gh-heatmap__tip-date">{tip.date}</div>
+            <div className="gh-heatmap__tip-row">
+              <span>{labels.requests}</span>
+              <span>{tip.requests}</span>
+            </div>
+            <div className="gh-heatmap__tip-row">
+              <span>{labels.tokens}</span>
+              <span>{tip.tokens.toLocaleString()}</span>
+            </div>
+          </div>,
+          document.body,
+        )}
     </div>
   );
 }

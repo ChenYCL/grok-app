@@ -1,6 +1,7 @@
 import { describe, expect, it, beforeEach } from "vitest";
 import {
   formatMessageTime,
+  formatQuotaResetTime,
   loadCachedSuperGrokBrand,
   resolveWelcomeBrandKind,
   saveCachedSuperGrokBrand,
@@ -130,5 +131,16 @@ describe("formatMessageTime", () => {
     expect(zh.length).toBeGreaterThan(4);
     expect(en.length).toBeGreaterThan(4);
     expect(formatMessageTime(null, "zh")).toBe("");
+  });
+});
+
+describe("formatQuotaResetTime", () => {
+  it("formats MM-DD HH:mm in local time", () => {
+    // Fixed local instant via Date components
+    const d = new Date(2026, 3, 15, 9, 5); // Apr 15 09:05
+    const iso = d.toISOString();
+    expect(formatQuotaResetTime(iso)).toBe("04-15 09:05");
+    expect(formatQuotaResetTime(null)).toBe("");
+    expect(formatQuotaResetTime("not-a-date")).toBe("");
   });
 });

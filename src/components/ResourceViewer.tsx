@@ -12,11 +12,11 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { createPortal } from "react-dom";
 import * as api from "@/lib/api";
 import { createT, type Locale } from "@/i18n";
 import { resolvePreviewSrc } from "@/lib/filePreviewSrc";
 import { HtmlBrowser } from "@/components/HtmlBrowser";
+import { EmbeddedBrowser } from "@/components/EmbeddedBrowser";
 import { MarkdownBody } from "@/components/MarkdownBody";
 import { OverlayScroll } from "@/components/OverlayScroll";
 import { FileMediaPlayer } from "@/components/FileMediaPlayer";
@@ -36,6 +36,7 @@ import { CodePreview } from "@/components/CodePreview";
 import { isOfficeKind } from "@/lib/filePreviewSrc";
 import { OpenLocationButton } from "@/components/OpenLocationButton";
 import { Tip } from "@/components/ui/tooltip";
+import { ContextMenu, type ContextMenuItem } from "@/components/ContextMenu";
 
 const TREE_WIDTH_KEY = "grok-app.resourceTreeWidth";
 const TREE_WIDTH_DEFAULT = 220;
@@ -77,6 +78,11 @@ export interface ResourceViewerProps {
   /** When set, open the file/url then call onOpenRequestConsumed. */
   openRequest?: ResourceOpenTarget | null;
   onOpenRequestConsumed?: () => void;
+  /**
+   * Whether the right pane is currently shown.
+   * When it becomes false, the file tree collapses and is not remembered.
+   */
+  paneActive?: boolean;
 }
 
 interface TreeNode {
@@ -163,6 +169,7 @@ export function ResourceViewer({
   onClose,
   openRequest,
   onOpenRequestConsumed,
+  paneActive = true,
 }: ResourceViewerProps) {
   const tr = useMemo(() => createT(locale), [locale]);
   const [root, setRoot] = useState<TreeNode[]>([]);
@@ -174,7 +181,8 @@ export function ResourceViewer({
   const [loadingTree, setLoadingTree] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
-  const [treeVisible, setTreeVisible] = useState(true);
+  // Default closed; session-only — not persisted; reset when pane hides.
+  const [treeVisible, setTreeVisible] = useState(false);
   const [treeWidth, setTreeWidth] = useState(loadTreeWidth);
   const [resizingTree, setResizingTree] = useState(false);
   const splitRef = useRef<HTMLDivElement>(null);
@@ -188,6 +196,11 @@ export function ResourceViewer({
   });
 
   const activeTab = tabs.find((t) => t.id === activeId) ?? null;
+
+  // Closing the right pane always collapses the tree (not remembered).
+  useEffect(() => {
+    if (!paneActive) setTreeVisible(false);
+  }, [paneActive]);
 
   // Drag-resize preview | file-tree split
   useEffect(() => {
@@ -481,12 +494,25 @@ export function ResourceViewer({
     onOpenRequestConsumed?.();
   }, [openRequest, openAbsoluteFile, openUrl, onOpenRequestConsumed]);
 
+  /** Last tab gone → collapse the right pane (user can still re-open it manually). */
+  const closePaneIfNoTabs = useCallback(
+    (remaining: number) => {
+      if (remaining === 0) onClose?.();
+    },
+    [onClose],
+  );
+
   const closeTab = useCallback(
     (id: string) => {
+      let remaining = -1;
       setTabs((prev) => {
         const idx = prev.findIndex((t) => t.id === id);
-        if (idx < 0) return prev;
+        if (idx < 0) {
+          remaining = prev.length;
+          return prev;
+        }
         const next = prev.filter((t) => t.id !== id);
+        remaining = next.length;
         if (activeId === id) {
           // Prefer neighbor on the left (newer), else right
           const neighbor = next[Math.max(0, idx - 1)] ?? next[0] ?? null;
@@ -494,8 +520,9 @@ export function ResourceViewer({
         }
         return next;
       });
+      if (remaining === 0) closePaneIfNoTabs(0);
     },
-    [activeId],
+    [activeId, closePaneIfNoTabs],
   );
 
   /** Chrome-style: close every tab except `id`. */
@@ -510,59 +537,58 @@ export function ResourceViewer({
   /** Close tabs visually to the right of `id` (higher index; older tabs). */
   const closeTabsToRight = useCallback(
     (id: string) => {
+      let remaining = -1;
       setTabs((prev) => {
         const idx = prev.findIndex((t) => t.id === id);
-        if (idx < 0) return prev;
+        if (idx < 0) {
+          remaining = prev.length;
+          return prev;
+        }
         const next = prev.slice(0, idx + 1);
+        remaining = next.length;
         if (activeId && !next.some((t) => t.id === activeId)) {
           setActiveId(id);
         }
         return next;
       });
+      if (remaining === 0) closePaneIfNoTabs(0);
     },
-    [activeId],
+    [activeId, closePaneIfNoTabs],
   );
 
   /** Close tabs visually to the left of `id` (lower index; newer tabs). */
   const closeTabsToLeft = useCallback(
     (id: string) => {
+      let remaining = -1;
       setTabs((prev) => {
         const idx = prev.findIndex((t) => t.id === id);
-        if (idx < 0) return prev;
+        if (idx < 0) {
+          remaining = prev.length;
+          return prev;
+        }
         const next = prev.slice(idx);
+        remaining = next.length;
         if (activeId && !next.some((t) => t.id === activeId)) {
           setActiveId(id);
         }
         return next;
       });
+      if (remaining === 0) closePaneIfNoTabs(0);
     },
-    [activeId],
+    [activeId, closePaneIfNoTabs],
   );
 
   const closeAllTabs = useCallback(() => {
     setTabs([]);
     setActiveId(null);
-  }, []);
+    closePaneIfNoTabs(0);
+  }, [closePaneIfNoTabs]);
 
   const [tabMenu, setTabMenu] = useState<{
     x: number;
     y: number;
     tabId: string;
   } | null>(null);
-
-  useEffect(() => {
-    if (!tabMenu) return;
-    const close = () => setTabMenu(null);
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") close();
-    };
-    document.addEventListener("mousedown", close);
-    document.addEventListener("keydown", onKey);
-    return () => {
-      document.removeEventListener("mousedown", close);
-      document.removeEventListener("keydown", onKey);
-    };
-  }, [tabMenu]);
 
   const absPath = activeTab?.absolutePath || "";
 
@@ -623,17 +649,10 @@ export function ResourceViewer({
       });
 
   const previewBody = useMemo(() => {
-    // Web URL tab — edge-to-edge browser
+    // URL tabs render via EmbeddedBrowser below (native Webview host).
+    // Keep other kinds here so useMemo deps stay correct.
     if (activeTab?.tabKind === "url" && activeTab.url) {
-      return (
-        <iframe
-          className="rp-preview__frame rp-preview__frame--browser"
-          title={activeTab.name}
-          src={activeTab.url}
-          referrerPolicy="no-referrer"
-          allow="fullscreen"
-        />
-      );
+      return null;
     }
     const preview = activeTab?.preview;
     if (!preview) {
@@ -995,9 +1014,17 @@ export function ResourceViewer({
             <div className="rp__empty-state">
               <div className="rp__empty-desc">{tr("resources.loading")}</div>
             </div>
-          ) : activeTab.tabKind === "url" ||
-            activeTab.preview?.kind === "html" ? (
-            /* Built-in browser: zero padding, iframe fills the pane */
+          ) : activeTab.tabKind === "url" && activeTab.url ? (
+            /* Native child Webview over host (GitHub etc. block iframe) */
+            <div className="rp-preview-browser rp-preview-browser--url">
+              <EmbeddedBrowser
+                url={activeTab.url}
+                title={activeTab.name}
+                locale={locale}
+                active
+              />
+            </div>
+          ) : activeTab.preview?.kind === "html" ? (
             <div className="rp-preview-browser">{previewBody}</div>
           ) : activeTab.preview &&
             isOfficeKind(activeTab.preview.kind) &&
@@ -1079,89 +1106,55 @@ export function ResourceViewer({
       </div>
 
       {/* Chrome-style tab context menu */}
-      {tabMenu &&
-        typeof document !== "undefined" &&
-        createPortal(
-          <div
-            className="menu-panel att-menu rp-tab-menu"
-            style={{
-              left: Math.min(tabMenu.x, window.innerWidth - 220),
-              top: Math.min(tabMenu.y, window.innerHeight - 260),
-            }}
-            role="menu"
-            onMouseDown={(e) => e.stopPropagation()}
-          >
-            {(() => {
-              const idx = tabs.findIndex((t) => t.id === tabMenu.tabId);
-              const hasLeft = idx > 0;
-              const hasRight = idx >= 0 && idx < tabs.length - 1;
-              const hasOthers = tabs.length > 1;
-              return (
-                <>
-                  <button
-                    type="button"
-                    className="att-menu__item"
-                    role="menuitem"
-                    onClick={() => {
-                      setTabMenu(null);
-                      closeTab(tabMenu.tabId);
-                    }}
-                  >
-                    {tr("resources.tabClose")}
-                  </button>
-                  <button
-                    type="button"
-                    className="att-menu__item"
-                    role="menuitem"
-                    disabled={!hasOthers}
-                    onClick={() => {
-                      setTabMenu(null);
-                      closeOtherTabs(tabMenu.tabId);
-                    }}
-                  >
-                    {tr("resources.tabCloseOthers")}
-                  </button>
-                  <button
-                    type="button"
-                    className="att-menu__item"
-                    role="menuitem"
-                    disabled={!hasRight}
-                    onClick={() => {
-                      setTabMenu(null);
-                      closeTabsToRight(tabMenu.tabId);
-                    }}
-                  >
-                    {tr("resources.tabCloseRight")}
-                  </button>
-                  <button
-                    type="button"
-                    className="att-menu__item"
-                    role="menuitem"
-                    disabled={!hasLeft}
-                    onClick={() => {
-                      setTabMenu(null);
-                      closeTabsToLeft(tabMenu.tabId);
-                    }}
-                  >
-                    {tr("resources.tabCloseLeft")}
-                  </button>
-                  <button
-                    type="button"
-                    className="att-menu__item"
-                    role="menuitem"
-                    onClick={() => {
-                      setTabMenu(null);
-                      closeAllTabs();
-                    }}
-                  >
-                    {tr("resources.tabCloseAll")}
-                  </button>
-                </>
-              );
-            })()}
-          </div>,
-          document.body,
-        )}
+      {(() => {
+        const idx = tabMenu
+          ? tabs.findIndex((t) => t.id === tabMenu.tabId)
+          : -1;
+        const hasLeft = idx > 0;
+        const hasRight = idx >= 0 && idx < tabs.length - 1;
+        const hasOthers = tabs.length > 1;
+        const tabId = tabMenu?.tabId ?? "";
+        const items: ContextMenuItem[] = [
+          {
+            id: "close",
+            label: tr("resources.tabClose"),
+            onClick: () => closeTab(tabId),
+          },
+          {
+            id: "close-others",
+            label: tr("resources.tabCloseOthers"),
+            disabled: !hasOthers,
+            onClick: () => closeOtherTabs(tabId),
+          },
+          {
+            id: "close-right",
+            label: tr("resources.tabCloseRight"),
+            disabled: !hasRight,
+            onClick: () => closeTabsToRight(tabId),
+          },
+          {
+            id: "close-left",
+            label: tr("resources.tabCloseLeft"),
+            disabled: !hasLeft,
+            onClick: () => closeTabsToLeft(tabId),
+          },
+          {
+            id: "close-all",
+            label: tr("resources.tabCloseAll"),
+            onClick: () => closeAllTabs(),
+          },
+        ];
+        return (
+          <ContextMenu
+            open={!!tabMenu}
+            x={tabMenu?.x ?? 0}
+            y={tabMenu?.y ?? 0}
+            onClose={() => setTabMenu(null)}
+            items={items}
+            className="rp-tab-menu"
+          />
+        );
+      })()}
     </div>
   );
 }

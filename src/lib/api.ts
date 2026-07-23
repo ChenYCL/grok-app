@@ -296,15 +296,30 @@ export async function sessionsList() {
       updatedAt: string;
       modelId: string | null;
       archived?: boolean;
+      /** Shell automation run */
+      scheduled?: boolean;
     }>
   >("sessions_list");
 }
 
-export async function sessionCreate(projectId?: string, title?: string) {
+export async function sessionCreate(
+  projectId?: string,
+  title?: string,
+  opts?: { scheduled?: boolean },
+) {
   return invoke("session_create", {
     projectId: projectId ?? null,
     title: title ?? null,
+    scheduled: opts?.scheduled ?? false,
   });
+}
+
+export async function sessionSetScheduled(id: string, scheduled: boolean) {
+  return invoke<{
+    id: string;
+    title: string;
+    scheduled?: boolean;
+  }>("session_set_scheduled", { id, scheduled });
 }
 
 export async function sessionRename(id: string, title: string) {

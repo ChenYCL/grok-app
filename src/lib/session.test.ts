@@ -14,6 +14,8 @@ import {
   parseCompactContent,
   parseToolStepContent,
   pickLatestTurnTool,
+  pickRunningTurnTool,
+  toolStepDisplayTitle,
   preferSessionMessages,
   presentErrorBanner,
   stripAnsi,
@@ -302,5 +304,51 @@ describe("tool activity", () => {
     const latest = pickLatestTurnTool(m);
     expect(latest?.toolCallId).toBe("t2");
     expect(latest?.streaming).toBe(true);
+  });
+
+  it("pickRunningTurnTool only returns in-flight tool (hide when done)", () => {
+    let m = applyToolEvent(
+      [
+        {
+          id: "u1",
+          role: "user",
+          content: "hi",
+          createdAt: new Date().toISOString(),
+        },
+      ],
+      {
+        toolCallId: "t1",
+        title: "Listing files in private persona folder",
+        kind: "list",
+        status: "in_progress",
+      },
+    );
+    expect(pickRunningTurnTool(m)?.content).toContain("Listing files");
+    m = applyToolEvent(m, {
+      toolCallId: "t1",
+      title: "Listing files in private persona folder",
+      kind: "list",
+      status: "completed",
+    });
+    expect(pickRunningTurnTool(m)).toBeNull();
+  });
+
+  it("toolStepDisplayTitle prefers plain content title", () => {
+    expect(
+      toolStepDisplayTitle({
+        id: "tool-1",
+        role: "tool",
+        content: "Listing files in private persona folder",
+        marker: "tool_step",
+      }),
+    ).toBe("Listing files in private persona folder");
+    expect(
+      toolStepDisplayTitle({
+        id: "tool-2",
+        role: "tool",
+        content: "tool_step|completed|read|Read foo",
+        marker: "tool_step",
+      }),
+    ).toBe("Read foo");
   });
 });

@@ -23,6 +23,7 @@ import {
   isAbsoluteFsPath,
   isHttpUrl,
   looksLikeFilePath,
+  normalizePathToken,
   resolveFileToken,
 } from "@/lib/pathRefs";
 import { useSmoothStream } from "@/hooks/useSmoothStream";
@@ -106,13 +107,16 @@ export const MarkdownChat = memo(function MarkdownChat({
   );
 
   const renderPathOrUrl = (token: string, linkText?: string) => {
-    const raw = token.trim().replace(/^<|>$/g, "");
-    if (!raw) return null;
+    const rawIn = token.trim().replace(/^<|>$/g, "");
+    if (!rawIn) return null;
+    // Prefer ellipsis-stripped form for open/search; keep original for display map
+    const raw = normalizePathToken(rawIn) || rawIn;
 
-    if (isHttpUrl(raw)) {
+    if (isHttpUrl(rawIn) || isHttpUrl(raw)) {
+      const url = isHttpUrl(rawIn) ? rawIn : raw;
       return (
         <FilePathCard
-          path={raw}
+          path={url}
           kind="url"
           projectPath={projectPath}
           labels={fileLabels}
@@ -125,7 +129,9 @@ export const MarkdownChat = memo(function MarkdownChat({
       );
     }
 
-    const mediaAbs = resolveInlineMediaToken(raw, imagePathMap);
+    const mediaAbs =
+      resolveInlineMediaToken(raw, imagePathMap) ||
+      resolveInlineMediaToken(rawIn, imagePathMap);
     if (mediaAbs && isImagePath(mediaAbs)) {
       return (
         <ImageUi
@@ -149,17 +155,34 @@ export const MarkdownChat = memo(function MarkdownChat({
       );
     }
 
-    if (!looksLikeFilePath(raw) && !mediaAbs) return null;
+    if (!looksLikeFilePath(rawIn) && !looksLikeFilePath(raw) && !mediaAbs) {
+      return null;
+    }
 
     // No naive projectRoot+relative join — FilePathCard uses host smart open.
     const resolved =
       mediaAbs ||
-      resolveFileToken(raw, { projectPath, pathMap: imagePathMap });
-    if (!resolved && !looksLikeFilePath(raw)) return null;
+      resolveFileToken(raw, { projectPath, pathMap: imagePathMap }) ||
+      resolveFileToken(rawIn, { projectPath, pathMap: imagePathMap });
+    if (
+      !resolved &&
+      !looksLikeFilePath(raw) &&
+      !looksLikeFilePath(rawIn)
+    ) {
+      return null;
+    }
 
-    const pathToken = resolved || raw;
+    // Prefer multi-segment relative after ellipsis strip for smart open
+    const pathToken = resolved || raw || rawIn;
     const kind = classifyPathRef(pathToken);
-    if (kind === "image" && resolved && isImagePath(resolved)) {
+    // Only inline media when we already have an absolute path; relative
+    // tokens go through FilePathCard → host smart open (sibling KB / suffix).
+    if (
+      kind === "image" &&
+      resolved &&
+      isAbsoluteFsPath(resolved) &&
+      isImagePath(resolved)
+    ) {
       return (
         <ImageUi
           className="md-body__img md-body__img--card"
@@ -171,7 +194,12 @@ export const MarkdownChat = memo(function MarkdownChat({
         />
       );
     }
-    if (kind === "video" && resolved && isVideoPath(resolved)) {
+    if (
+      kind === "video" &&
+      resolved &&
+      isAbsoluteFsPath(resolved) &&
+      isVideoPath(resolved)
+    ) {
       return (
         <VideoUi
           src={resolved}
@@ -184,13 +212,13 @@ export const MarkdownChat = memo(function MarkdownChat({
 
     return (
       <FilePathCard
-        path={raw}
+        path={pathToken}
         absolutePath={
           resolved && isAbsoluteFsPath(resolved) ? resolved : undefined
         }
         projectPath={projectPath}
         kind="file"
-        subtitle={fileSubtitle(raw, locale === "en" ? "en" : "zh")}
+        subtitle={fileSubtitle(pathToken, locale === "en" ? "en" : "zh")}
         labels={fileLabels}
         onOpenInPanel={(t) => {
           if (t.type === "file" && t.path) {

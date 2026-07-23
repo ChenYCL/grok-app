@@ -15,6 +15,7 @@ import type { AccountStatus } from "@/lib/api";
 import {
   accountDisplayName,
   accountInitials,
+  formatQuotaResetTime,
   tierLabel,
   usagePercent,
 } from "@/lib/accountUi";
@@ -34,6 +35,8 @@ export interface UserMenuProps {
     login: string;
     logout: string;
     remaining: string;
+    /** Prefix for quota refresh time, e.g. 重置 / Resets */
+    resetsAt: string;
   };
   account: AccountStatus | null;
   accountBusy: boolean;
@@ -98,6 +101,7 @@ export function UserMenu({
   const billing = account?.billing;
   const usedPct = billing ? usagePercent(billing) : null;
   const remaining = remainingPercent(account);
+  const resetTime = formatQuotaResetTime(billing?.resetsAt);
   const tier = billing
     ? tierLabel(billing, channel)
     : signedIn
@@ -163,6 +167,11 @@ export function UserMenu({
                       />
                     </div>
                   )}
+                  {resetTime ? (
+                    <div className="user-menu__quota-reset">
+                      {labels.resetsAt} {resetTime}
+                    </div>
+                  ) : null}
                 </div>
               ) : null}
             </button>

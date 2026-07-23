@@ -20,6 +20,7 @@ import {
   IconPaperclip,
 } from "@/components/icons";
 import { Tip } from "@/components/ui/tooltip";
+import { ContextMenu, type ContextMenuItem } from "@/components/ContextMenu";
 
 export interface AttachmentCardLabels {
   open: string;
@@ -73,20 +74,6 @@ export function AttachmentCard({
     };
   }, [attachment.path, isImg]);
 
-  useEffect(() => {
-    if (!menu) return;
-    const close = () => setMenu(null);
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") close();
-    };
-    document.addEventListener("mousedown", close);
-    document.addEventListener("keydown", onKey);
-    return () => {
-      document.removeEventListener("mousedown", close);
-      document.removeEventListener("keydown", onKey);
-    };
-  }, [menu]);
-
   const openPath = async () => {
     try {
       if (api.isTauri()) await api.pathOpen(attachment.path);
@@ -131,6 +118,52 @@ export function AttachmentCard({
     if (isImg) openInViewer();
     else void openPath();
   };
+
+  const menuItems: ContextMenuItem[] = [
+    {
+      id: "open",
+      label: isImg && labels.viewImage ? labels.viewImage : labels.open,
+      icon: isImg ? <IconFileText size={16} /> : <IconExternalLink size={16} />,
+      onClick: () => {
+        if (isImg) openInViewer();
+        else void openPath();
+      },
+    },
+    {
+      id: "reveal",
+      label: labels.reveal,
+      icon: <IconFolder size={16} />,
+      onClick: () => {
+        void revealPath();
+      },
+    },
+  ];
+  if (isImg) {
+    menuItems.push({
+      id: "copy-image",
+      label: labels.copyImage,
+      icon: <IconCopy size={16} />,
+      onClick: () => {
+        void copyImage();
+      },
+    });
+  }
+  menuItems.push({
+    id: "copy-path",
+    label: labels.copyPath,
+    icon: <IconCopy size={16} />,
+    onClick: () => {
+      void copyPath();
+    },
+  });
+  if (onAddToComposer) {
+    menuItems.push({
+      id: "add",
+      label: labels.addToComposer,
+      icon: <IconPaperclip size={16} />,
+      onClick: () => onAddToComposer(attachment),
+    });
+  }
 
   if (variant === "chip") {
     return (
@@ -194,36 +227,13 @@ export function AttachmentCard({
               <IconClose size={12} />
             </button>
           ) : null}
-          {menu && (
-            <AttachmentContextMenu
-              x={menu.x}
-              y={menu.y}
-              labels={labels}
-              showAdd={!!onAddToComposer}
-              showCopyImage={isImg}
-              onOpen={() => {
-                setMenu(null);
-                if (isImg) openInViewer();
-                else void openPath();
-              }}
-              onReveal={() => {
-                setMenu(null);
-                void revealPath();
-              }}
-              onCopyPath={() => {
-                setMenu(null);
-                void copyPath();
-              }}
-              onCopyImage={() => {
-                setMenu(null);
-                void copyImage();
-              }}
-              onAdd={() => {
-                setMenu(null);
-                onAddToComposer?.(attachment);
-              }}
-            />
-          )}
+          <ContextMenu
+            open={!!menu}
+            x={menu?.x ?? 0}
+            y={menu?.y ?? 0}
+            onClose={() => setMenu(null)}
+            items={menuItems}
+          />
         </span>
       </Tip>
     );
@@ -279,112 +289,14 @@ export function AttachmentCard({
           </>
         )}
       </button>
-      {menu && (
-        <AttachmentContextMenu
-          x={menu.x}
-          y={menu.y}
-          labels={labels}
-          showAdd={!!onAddToComposer}
-          showCopyImage={isImg}
-          onOpen={() => {
-            setMenu(null);
-            if (isImg) openInViewer();
-            else void openPath();
-          }}
-          onReveal={() => {
-            setMenu(null);
-            void revealPath();
-          }}
-          onCopyPath={() => {
-            setMenu(null);
-            void copyPath();
-          }}
-          onCopyImage={() => {
-            setMenu(null);
-            void copyImage();
-          }}
-          onAdd={() => {
-            setMenu(null);
-            onAddToComposer?.(attachment);
-          }}
-        />
-      )}
+      <ContextMenu
+        open={!!menu}
+        x={menu?.x ?? 0}
+        y={menu?.y ?? 0}
+        onClose={() => setMenu(null)}
+        items={menuItems}
+      />
     </div>
     </Tip>
-  );
-}
-
-function AttachmentContextMenu({
-  x,
-  y,
-  labels,
-  showAdd,
-  showCopyImage,
-  onOpen,
-  onReveal,
-  onCopyPath,
-  onCopyImage,
-  onAdd,
-}: {
-  x: number;
-  y: number;
-  labels: AttachmentCardLabels;
-  showAdd: boolean;
-  showCopyImage: boolean;
-  onOpen: () => void;
-  onReveal: () => void;
-  onCopyPath: () => void;
-  onCopyImage: () => void;
-  onAdd: () => void;
-}) {
-  const left = Math.min(x, window.innerWidth - 200);
-  const top = Math.min(y, window.innerHeight - 200);
-  return (
-    <div
-      className="menu-panel att-menu"
-      style={{ left, top }}
-      role="menu"
-      onMouseDown={(e) => e.stopPropagation()}
-    >
-      <button type="button" className="att-menu__item" role="menuitem" onClick={onOpen}>
-        <span className="att-menu__ico" aria-hidden>
-          {showCopyImage ? <IconFileText size={16} /> : <IconExternalLink size={16} />}
-        </span>
-        {showCopyImage && labels.viewImage ? labels.viewImage : labels.open}
-      </button>
-      <button type="button" className="att-menu__item" role="menuitem" onClick={onReveal}>
-        <span className="att-menu__ico" aria-hidden>
-          <IconFolder size={16} />
-        </span>
-        {labels.reveal}
-      </button>
-      {showCopyImage && (
-        <button
-          type="button"
-          className="att-menu__item"
-          role="menuitem"
-          onClick={onCopyImage}
-        >
-          <span className="att-menu__ico" aria-hidden>
-            <IconCopy size={16} />
-          </span>
-          {labels.copyImage}
-        </button>
-      )}
-      <button type="button" className="att-menu__item" role="menuitem" onClick={onCopyPath}>
-        <span className="att-menu__ico" aria-hidden>
-          <IconCopy size={16} />
-        </span>
-        {labels.copyPath}
-      </button>
-      {showAdd && (
-        <button type="button" className="att-menu__item" role="menuitem" onClick={onAdd}>
-          <span className="att-menu__ico" aria-hidden>
-            <IconPaperclip size={16} />
-          </span>
-          {labels.addToComposer}
-        </button>
-      )}
-    </div>
   );
 }

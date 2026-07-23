@@ -230,6 +230,45 @@ export function pickLatestTurnTool(
   return latestRunning || latest;
 }
 
+/**
+ * Only a still-running tool in the current turn.
+ * Used for mid-stream one-line UI: show while running, hide when done / content resumes.
+ */
+export function pickRunningTurnTool(
+  messages: ChatMessage[],
+): ChatMessage | null {
+  let lastUser = -1;
+  for (let i = messages.length - 1; i >= 0; i--) {
+    if (messages[i]!.role === "user") {
+      lastUser = i;
+      break;
+    }
+  }
+  let latestRunning: ChatMessage | null = null;
+  for (let i = lastUser + 1; i < messages.length; i++) {
+    const m = messages[i]!;
+    if (!isToolStepMessage(m)) continue;
+    if (m.streaming) latestRunning = m;
+  }
+  return latestRunning;
+}
+
+/** One-line title for live tool text (Image-style plain status). */
+export function toolStepDisplayTitle(m: ChatMessage): string {
+  const fromContent = m.content?.trim() || "";
+  if (fromContent && !fromContent.startsWith("tool_step|")) return fromContent;
+  const parsed = fromContent.startsWith("tool_step|")
+    ? parseToolStepContent(fromContent)
+    : null;
+  return (
+    parsed?.title?.trim() ||
+    m.toolKind?.trim() ||
+    m.toolDetail?.trim() ||
+    m.toolPath?.trim() ||
+    "tool"
+  );
+}
+
 /** Parse persisted tool_step journal lines. */
 export function parseToolStepContent(content: string): {
   status: string;

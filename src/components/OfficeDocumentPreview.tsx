@@ -60,6 +60,28 @@ export function OfficeDocumentPreview({
   const [activeSheet, setActiveSheet] = useState(0);
   const [sheetHtml, setSheetHtml] = useState("");
   const docxRef = useRef<HTMLDivElement>(null);
+  const docxScrollRef = useRef<HTMLDivElement>(null);
+
+  /**
+   * Force pages to use the pane width so text/tables reflow instead of
+   * clipping (docx-preview writes fixed page widths as inline styles).
+   */
+  const relaxDocxPageWidths = () => {
+    const host = docxRef.current;
+    if (!host) return;
+    host.querySelectorAll<HTMLElement>("section.docx").forEach((sec) => {
+      sec.style.setProperty("width", "100%", "important");
+      sec.style.setProperty("max-width", "100%", "important");
+      sec.style.setProperty("min-width", "0", "important");
+      sec.style.setProperty("box-sizing", "border-box", "important");
+    });
+    const wrap = host.querySelector<HTMLElement>(".docx-wrapper");
+    if (wrap) {
+      wrap.style.setProperty("width", "100%", "important");
+      wrap.style.setProperty("max-width", "100%", "important");
+      wrap.style.setProperty("padding", "0", "important");
+    }
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -103,31 +125,68 @@ export function OfficeDocumentPreview({
     };
   }, [absolutePath, kind, errorFromHost, tr]);
 
-  // DOCX render
+  // DOCX render — reflow to pane width (full text, no side clip)
   useEffect(() => {
     if (load.status !== "ready") return;
     if (kind !== "docx" && kind !== "office") return;
     const el = docxRef.current;
     if (!el) return;
     el.innerHTML = "";
+    el.style.zoom = "";
+    el.style.transform = "";
     let cancelled = false;
+    let ro: ResizeObserver | null = null;
+
     void renderAsync(load.buffer, el, undefined, {
       className: "office-docx-body",
       inWrapper: true,
-      ignoreWidth: false,
-      ignoreHeight: false,
+      // Critical: ignore fixed page width so content uses the container
+      // (otherwise Chinese titles / tables overflow and get clipped).
+      ignoreWidth: true,
+      ignoreHeight: true,
       breakPages: true,
+      renderHeaders: true,
+      renderFooters: true,
+      renderFootnotes: true,
       useBase64URL: true,
-    }).catch((e) => {
-      if (!cancelled) {
-        setLoad({
-          status: "error",
-          message: e instanceof Error ? e.message : String(e),
+      experimental: true,
+    })
+      .then(() => {
+        if (cancelled) return;
+        relaxDocxPageWidths();
+        requestAnimationFrame(() => {
+          if (!cancelled) relaxDocxPageWidths();
         });
-      }
-    });
+        // Images can change layout after load
+        el.querySelectorAll("img").forEach((img) => {
+          if (img.complete) return;
+          img.addEventListener(
+            "load",
+            () => {
+              if (!cancelled) relaxDocxPageWidths();
+            },
+            { once: true },
+          );
+        });
+        const scroll = docxScrollRef.current;
+        if (scroll && typeof ResizeObserver !== "undefined") {
+          ro = new ResizeObserver(() => {
+            if (!cancelled) relaxDocxPageWidths();
+          });
+          ro.observe(scroll);
+        }
+      })
+      .catch((e) => {
+        if (!cancelled) {
+          setLoad({
+            status: "error",
+            message: e instanceof Error ? e.message : String(e),
+          });
+        }
+      });
     return () => {
       cancelled = true;
+      ro?.disconnect();
     };
   }, [load, kind]);
 
@@ -328,7 +387,10 @@ export function OfficeDocumentPreview({
             </div>
           </div>
         )}
-        <div className="office-preview__docx-scroll">
+        <div
+          ref={docxScrollRef}
+          className="office-preview__docx-scroll"
+        >
           <div ref={docxRef} className="office-docx-host" />
         </div>
       </div>

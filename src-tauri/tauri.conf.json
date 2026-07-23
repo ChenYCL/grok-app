@@ -29,7 +29,20 @@
       "csp": null,
       "assetProtocol": {
         "enable": true,
-        "scope": ["**"]
+        "scope": {
+          "allow": [
+            "**",
+            "$HOME/**",
+            "$DOCUMENT/**",
+            "$DOWNLOAD/**",
+            "$DESKTOP/**",
+            "$APPDATA/**",
+            "$RESOURCE/**",
+            "$TEMP/**",
+            "$CACHE/**"
+          ],
+          "deny": []
+        }
       }
     }
   },

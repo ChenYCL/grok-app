@@ -166,7 +166,21 @@ export function formatNextRunRelative(
   return labels.inDays.replace("{n}", String(days));
 }
 
-/** Seed prompt for AI-assisted create (Codex-style). */
-export function aiCreateSeedPrompt(productName = "Grok"): string {
-  return `我们一起来设置一个已安排任务吧。首先，说明已安排任务在 ${productName} 中的工作方式。然后询问我需要安排什么，以及应该在什么时候运行。设置完成后，请用以下 JSON 格式输出最终配置（放在代码块中），方便我一键创建：\n\`\`\`json\n{\n  "title": "任务标题",\n  "prompt": "每次运行时 Agent 要做的事",\n  "frequency": "daily|weekly|weekdays|once",\n  "time": "HH:MM",\n  "weekdays": [],\n  "enabled": true\n}\n\`\`\``;
+/** Seed prompt for AI-assisted create — natural language only (no JSON schema). */
+export { aiCreateSeedPrompt } from "./automationSetup";
+
+/** Header written by shell when a scheduled task fires (user bubble first line). */
+export const SCHEDULED_USER_HEADER_RE =
+  /^\[Scheduled:\s*([^\]]+)\](?:\r?\n)+(.*)$/s;
+
+/** Parse `[Scheduled: title]\\n\\nbody` from automation runs. */
+export function parseScheduledUserContent(content: string): {
+  title: string;
+  body: string;
+} | null {
+  const m = SCHEDULED_USER_HEADER_RE.exec(content || "");
+  if (!m) return null;
+  const title = (m[1] || "").trim();
+  if (!title) return null;
+  return { title, body: (m[2] || "").replace(/^\r?\n/, "") };
 }

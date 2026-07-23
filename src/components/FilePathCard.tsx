@@ -9,14 +9,20 @@ import { useCallback, useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import * as api from "@/lib/api";
 import { pathBasename, pathExt } from "@/lib/attachments";
-import { isAbsoluteFsPath, isHttpUrl } from "@/lib/pathRefs";
+import {
+  isAbsoluteFsPath,
+  isHttpUrl,
+  normalizePathToken,
+} from "@/lib/pathRefs";
 import {
   IconClose,
   IconCopy,
   IconExternalLink,
   IconFileText,
   IconFolder,
+  IconInfo,
 } from "@/components/icons";
+import { ContextMenu, type ContextMenuItem } from "@/components/ContextMenu";
 
 export type FilePathCardKind = "file" | "url" | "dir";
 
@@ -70,10 +76,11 @@ function kindLabel(path: string, kind: FilePathCardKind): string {
 }
 
 function relativeToken(path: string): string | null {
-  const t = path.trim().replace(/\\/g, "/");
+  // Strip agent ellipsis (`.../a/b.jpg` → `a/b.jpg`) before open/search
+  const t = normalizePathToken(path);
   if (!t || isHttpUrl(t) || isAbsoluteFsPath(t)) return null;
   if (!(t.includes("/") || t.includes("\\"))) return null;
-  return t.replace(/^\.\//, "");
+  return t;
 }
 
 export function FilePathCard({
@@ -182,20 +189,6 @@ export function FilePathCard({
   }, [path, projectPath, absolutePath, kind]);
 
   useEffect(() => {
-    if (!menu) return;
-    const close = () => setMenu(null);
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") close();
-    };
-    document.addEventListener("mousedown", close);
-    document.addEventListener("keydown", onKey);
-    return () => {
-      document.removeEventListener("mousedown", close);
-      document.removeEventListener("keydown", onKey);
-    };
-  }, [menu]);
-
-  useEffect(() => {
     if (!detailsOpen) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") setDetailsOpen(false);
@@ -286,10 +279,53 @@ export function FilePathCard({
       ? labels.typeDir || "Folder"
       : labels.typeFile || "File";
 
-  const left = menu ? Math.min(menu.x, window.innerWidth - 220) : 0;
-  const top = menu ? Math.min(menu.y, window.innerHeight - 260) : 0;
   // Prefer resolved abs in details; fall back to original token.
   const detailsPath = resolvedAbs || path;
+
+  const menuItems: ContextMenuItem[] = [
+    {
+      id: "open-panel",
+      label: labels.openInPanel || labels.open,
+      icon: <IconFileText size={16} />,
+      onClick: () => {
+        void openInPanel();
+      },
+    },
+    {
+      id: "open-external",
+      label: labels.openExternal || labels.open,
+      icon: <IconExternalLink size={16} />,
+      onClick: () => {
+        void openExternal();
+      },
+    },
+  ];
+  if (!isUrl) {
+    menuItems.push({
+      id: "reveal",
+      label: labels.reveal,
+      icon: <IconFolder size={16} />,
+      onClick: () => {
+        void reveal();
+      },
+    });
+  }
+  menuItems.push(
+    {
+      id: "copy-path",
+      label: labels.copyPath,
+      icon: <IconCopy size={16} />,
+      onClick: () => {
+        void copy();
+      },
+    },
+    {
+      id: "details",
+      label: labels.details || "Details",
+      icon: <IconInfo size={16} />,
+      onClick: () => setDetailsOpen(true),
+    },
+  );
 
   return (
     <>
@@ -328,75 +364,13 @@ export function FilePathCard({
         </button>
       </div>
 
-      {menu &&
-        typeof document !== "undefined" &&
-        createPortal(
-          <div
-            className="menu-panel att-menu"
-            style={{ left, top }}
-            role="menu"
-            onMouseDown={(e) => e.stopPropagation()}
-          >
-            <button
-              type="button"
-              className="att-menu__item"
-              role="menuitem"
-              onClick={() => {
-                setMenu(null);
-                void openInPanel();
-              }}
-            >
-              {labels.openInPanel || labels.open}
-            </button>
-            <button
-              type="button"
-              className="att-menu__item"
-              role="menuitem"
-              onClick={() => {
-                setMenu(null);
-                void openExternal();
-              }}
-            >
-              {labels.openExternal || labels.open}
-            </button>
-            {!isUrl && (
-              <button
-                type="button"
-                className="att-menu__item"
-                role="menuitem"
-                onClick={() => {
-                  setMenu(null);
-                  void reveal();
-                }}
-              >
-                {labels.reveal}
-              </button>
-            )}
-            <button
-              type="button"
-              className="att-menu__item"
-              role="menuitem"
-              onClick={() => {
-                setMenu(null);
-                void copy();
-              }}
-            >
-              <IconCopy size={14} /> {labels.copyPath}
-            </button>
-            <button
-              type="button"
-              className="att-menu__item"
-              role="menuitem"
-              onClick={() => {
-                setMenu(null);
-                setDetailsOpen(true);
-              }}
-            >
-              {labels.details || "Details"}
-            </button>
-          </div>,
-          document.body,
-        )}
+      <ContextMenu
+        open={!!menu}
+        x={menu?.x ?? 0}
+        y={menu?.y ?? 0}
+        onClose={() => setMenu(null)}
+        items={menuItems}
+      />
 
       {detailsOpen &&
         typeof document !== "undefined" &&

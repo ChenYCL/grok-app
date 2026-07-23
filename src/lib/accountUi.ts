@@ -232,6 +232,21 @@ export function formatRelativeTime(
   return rtf.format(-day, "day");
 }
 
+/** Quota refresh time for menus: `MM-DD HH:mm` (local). */
+export function formatQuotaResetTime(
+  iso: string | null | undefined,
+): string {
+  if (!iso) return "";
+  const t = Date.parse(iso);
+  if (Number.isNaN(t)) return "";
+  const d = new Date(t);
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
+  const hh = String(d.getHours()).padStart(2, "0");
+  const min = String(d.getMinutes()).padStart(2, "0");
+  return `${mm}-${dd} ${hh}:${min}`;
+}
+
 export function isAccountConnected(status: AccountStatus | null): boolean {
   if (!status) return false;
   return (

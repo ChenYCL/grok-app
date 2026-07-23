@@ -4,11 +4,11 @@
  */
 
 import { useEffect, useState, type CSSProperties, type ReactNode } from "react";
-import { createPortal } from "react-dom";
 import * as api from "@/lib/api";
 import { pathToPreviewUrl } from "@/lib/filePreviewSrc";
-import { IconCopy } from "@/components/icons";
+import { IconCopy, IconExternalLink, IconFolder } from "@/components/icons";
 import { Tip } from "@/components/ui/tooltip";
+import { ContextMenu, type ContextMenuItem } from "@/components/ContextMenu";
 import { createT, type Locale } from "@/i18n";
 import { pathBasename } from "@/lib/attachments";
 
@@ -87,20 +87,6 @@ export function VideoUi({
     };
   }, [src]);
 
-  useEffect(() => {
-    if (!menu) return;
-    const close = () => setMenu(null);
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") close();
-    };
-    document.addEventListener("mousedown", close);
-    document.addEventListener("keydown", onKey);
-    return () => {
-      document.removeEventListener("mousedown", close);
-      document.removeEventListener("keydown", onKey);
-    };
-  }, [menu]);
-
   const openExternal = async () => {
     if (!localPath || !api.isTauri()) return;
     try {
@@ -128,9 +114,37 @@ export function VideoUi({
     }
   };
 
-  const left = menu ? Math.min(menu.x, window.innerWidth - 200) : 0;
-  const top = menu ? Math.min(menu.y, window.innerHeight - 220) : 0;
   const displayTitle = title || (localPath ? pathBasename(localPath) : "");
+
+  const menuItems: ContextMenuItem[] = [];
+  if (localPath) {
+    menuItems.push(
+      {
+        id: "open",
+        label: labels.open,
+        icon: <IconExternalLink size={16} />,
+        onClick: () => {
+          void openExternal();
+        },
+      },
+      {
+        id: "reveal",
+        label: labels.reveal,
+        icon: <IconFolder size={16} />,
+        onClick: () => {
+          void revealPath();
+        },
+      },
+      {
+        id: "copy-path",
+        label: labels.copyPath,
+        icon: <IconCopy size={16} />,
+        onClick: () => {
+          void copyPath();
+        },
+      },
+    );
+  }
 
   if (!resolvedSrc) {
     return (
@@ -187,58 +201,14 @@ export function VideoUi({
           </Tip>
         ) : null}
       </div>
-      {menu &&
-        typeof document !== "undefined" &&
-        createPortal(
-          <div
-            className="menu-panel att-menu"
-            style={{ left, top }}
-            role="menu"
-            onMouseDown={(e) => e.stopPropagation()}
-          >
-            {localPath && (
-              <button
-                type="button"
-                className="att-menu__item"
-                role="menuitem"
-                onClick={() => {
-                  setMenu(null);
-                  void openExternal();
-                }}
-              >
-                {labels.open}
-              </button>
-            )}
-            {localPath && (
-              <button
-                type="button"
-                className="att-menu__item"
-                role="menuitem"
-                onClick={() => {
-                  setMenu(null);
-                  void revealPath();
-                }}
-              >
-                {labels.reveal}
-              </button>
-            )}
-            {localPath && (
-              <button
-                type="button"
-                className="att-menu__item"
-                role="menuitem"
-                onClick={() => {
-                  setMenu(null);
-                  void copyPath();
-                }}
-              >
-                <IconCopy size={14} /> {labels.copyPath}
-              </button>
-            )}
-            {extraMenu}
-          </div>,
-          document.body,
-        )}
+      <ContextMenu
+        open={!!menu}
+        x={menu?.x ?? 0}
+        y={menu?.y ?? 0}
+        onClose={() => setMenu(null)}
+        items={menuItems}
+        extra={extraMenu}
+      />
     </>
   );
 }

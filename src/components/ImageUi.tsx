@@ -5,12 +5,12 @@
  */
 
 import { useEffect, useState, type CSSProperties, type ReactNode } from "react";
-import { createPortal } from "react-dom";
 import * as api from "@/lib/api";
 import { copyImageFromSrc } from "@/lib/copyImage";
 import { resolveImageSrc, isViewableSrc } from "@/lib/imageSrc";
 import { useImageViewerOptional } from "@/components/ImageViewer";
 import { IconCopy, IconExternalLink, IconFolder } from "@/components/icons";
+import { ContextMenu, type ContextMenuItem } from "@/components/ContextMenu";
 import { createT, type Locale } from "@/i18n";
 
 export interface ImageUiLabels {
@@ -68,6 +68,8 @@ export function ImageUi({
   const [resolvedSrc, setResolvedSrc] = useState<string | null>(() =>
     isViewableSrc(src) ? src : null,
   );
+  /** Once load fails, keep a stable broken state — never re-fetch on re-render. */
+  const [loadFailed, setLoadFailed] = useState(false);
   const localPath = isLocalFsPath(path)
     ? path
     : isLocalFsPath(src)
@@ -76,6 +78,7 @@ export function ImageUi({
 
   useEffect(() => {
     let cancelled = false;
+    setLoadFailed(false);
     if (isViewableSrc(src)) {
       setResolvedSrc(src);
       return;
@@ -88,21 +91,30 @@ export function ImageUi({
     };
   }, [src]);
 
-  useEffect(() => {
-    if (!menu) return;
-    const close = () => setMenu(null);
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") close();
-    };
-    document.addEventListener("mousedown", close);
-    document.addEventListener("keydown", onKey);
-    return () => {
-      document.removeEventListener("mousedown", close);
-      document.removeEventListener("keydown", onKey);
-    };
-  }, [menu]);
+  // Resolving: reserved box so layout doesn't jump while src is pending
+  if (!resolvedSrc && !loadFailed) {
+    return (
+      <span
+        className={(className || "") + " md-body__img-pending"}
+        style={style}
+        aria-hidden
+      />
+    );
+  }
 
-  if (!resolvedSrc) return null;
+  if (loadFailed || !resolvedSrc) {
+    return (
+      <span
+        className={(className || "") + " md-body__img-broken"}
+        style={style}
+        title={localPath || src}
+        role="img"
+        aria-label={alt || "image"}
+      >
+        {alt || "image"}
+      </span>
+    );
+  }
 
   const openViewer = () => {
     const slides =
@@ -150,8 +162,42 @@ export function ImageUi({
     }
   };
 
-  const left = menu ? Math.min(menu.x, window.innerWidth - 200) : 0;
-  const top = menu ? Math.min(menu.y, window.innerHeight - 200) : 0;
+  const menuItems: ContextMenuItem[] = [
+    {
+      id: "view",
+      label: labels.viewImage,
+      icon: <IconExternalLink size={16} />,
+      onClick: () => openViewer(),
+    },
+  ];
+  if (localPath) {
+    menuItems.push({
+      id: "reveal",
+      label: labels.reveal,
+      icon: <IconFolder size={16} />,
+      onClick: () => {
+        void revealPath();
+      },
+    });
+  }
+  menuItems.push({
+    id: "copy-image",
+    label: labels.copyImage,
+    icon: <IconCopy size={16} />,
+    onClick: () => {
+      void copyImage();
+    },
+  });
+  if (localPath) {
+    menuItems.push({
+      id: "copy-path",
+      label: labels.copyPath,
+      icon: <IconCopy size={16} />,
+      onClick: () => {
+        void copyPath();
+      },
+    });
+  }
 
   return (
     <>
@@ -161,6 +207,14 @@ export function ImageUi({
         src={resolvedSrc}
         alt={alt}
         draggable={draggable}
+        // Avoid browser / React re-decoding loops on scroll
+        loading="lazy"
+        decoding="async"
+        onError={() => {
+          // Stop retry spam: keep placeholder, do not clear src back to null
+          setLoadFailed(true);
+          setResolvedSrc(null);
+        }}
         onClick={(e) => {
           e.preventDefault();
           e.stopPropagation();
@@ -172,80 +226,14 @@ export function ImageUi({
           setMenu({ x: e.clientX, y: e.clientY });
         }}
       />
-      {menu &&
-        typeof document !== "undefined" &&
-        createPortal(
-          <div
-            className="menu-panel att-menu"
-            style={{ left, top }}
-            role="menu"
-            onMouseDown={(e) => e.stopPropagation()}
-          >
-            {/* Order matches AttachmentCard image menu */}
-            <button
-              type="button"
-              className="att-menu__item"
-              role="menuitem"
-              onClick={() => {
-                setMenu(null);
-                openViewer();
-              }}
-            >
-              <span className="att-menu__ico" aria-hidden>
-                <IconExternalLink size={16} />
-              </span>
-              {labels.viewImage}
-            </button>
-            {localPath && (
-              <button
-                type="button"
-                className="att-menu__item"
-                role="menuitem"
-                onClick={() => {
-                  setMenu(null);
-                  void revealPath();
-                }}
-              >
-                <span className="att-menu__ico" aria-hidden>
-                  <IconFolder size={16} />
-                </span>
-                {labels.reveal}
-              </button>
-            )}
-            <button
-              type="button"
-              className="att-menu__item"
-              role="menuitem"
-              onClick={() => {
-                setMenu(null);
-                void copyImage();
-              }}
-            >
-              <span className="att-menu__ico" aria-hidden>
-                <IconCopy size={16} />
-              </span>
-              {labels.copyImage}
-            </button>
-            {localPath && (
-              <button
-                type="button"
-                className="att-menu__item"
-                role="menuitem"
-                onClick={() => {
-                  setMenu(null);
-                  void copyPath();
-                }}
-              >
-                <span className="att-menu__ico" aria-hidden>
-                  <IconCopy size={16} />
-                </span>
-                {labels.copyPath}
-              </button>
-            )}
-            {extraMenu}
-          </div>,
-          document.body,
-        )}
+      <ContextMenu
+        open={!!menu}
+        x={menu?.x ?? 0}
+        y={menu?.y ?? 0}
+        onClose={() => setMenu(null)}
+        items={menuItems}
+        extra={extraMenu}
+      />
     </>
   );
 }

@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { computeNextRunAt, isDue, formatScheduleSummary } from "./automations";
+import {
+  computeNextRunAt,
+  isDue,
+  formatScheduleSummary,
+  parseScheduledUserContent,
+} from "./automations";
 
 describe("automations schedule helpers", () => {
   it("computes next daily run after now", () => {
@@ -59,5 +64,14 @@ describe("automations schedule helpers", () => {
     );
     expect(s).toContain("Daily");
     expect(s).toContain("07:00");
+  });
+
+  it("parses scheduled user header into title + body", () => {
+    const raw =
+      "[Scheduled: cgnot996 动态快检（对话 JSON 承接）]\n\n作为已安排任务：打开 X";
+    const p = parseScheduledUserContent(raw);
+    expect(p?.title).toBe("cgnot996 动态快检（对话 JSON 承接）");
+    expect(p?.body).toContain("打开 X");
+    expect(parseScheduledUserContent("普通消息")).toBeNull();
   });
 });

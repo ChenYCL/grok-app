@@ -41,10 +41,8 @@ export function parseLayout(raw: unknown): LayoutPrefs {
       typeof o.asideWidth === "number"
         ? clampAsideWidth(o.asideWidth)
         : DEFAULT_LAYOUT.asideWidth,
-    asideCollapsed:
-      typeof o.asideCollapsed === "boolean"
-        ? o.asideCollapsed
-        : DEFAULT_LAYOUT.asideCollapsed,
+    // Cold start always closed; open state is session-only (not restored).
+    asideCollapsed: DEFAULT_LAYOUT.asideCollapsed,
     sidebarCollapsed:
       typeof o.sidebarCollapsed === "boolean"
         ? o.sidebarCollapsed

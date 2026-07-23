@@ -22,16 +22,39 @@ export function isHttpUrl(s: string): boolean {
   return /^https?:\/\//i.test(s.trim());
 }
 
+/**
+ * Agent prose often truncates long paths with a leading ellipsis:
+ *   `.../MANISH1027512/2071…/img_000.jpg`
+ * Strip that prefix so the remaining multi-segment suffix can be resolved
+ * via host smart open (project + sibling knowledge bases).
+ */
+export function normalizePathToken(s: string): string {
+  let t = s.trim().replace(/\\/g, "/");
+  if (!t) return t;
+  // Leading "..." / "…" / ".../" (ASCII or fullwidth)
+  t = t.replace(/^(?:\.\.\.|…)+\/*/u, "");
+  // Mid-path ellipsis (rare): keep the longest trailing segment run
+  if (t.includes("/.../") || t.includes("/…/")) {
+    const parts = t.split(/\/(?:\.\.\.|…)+\//u);
+    t = parts[parts.length - 1] || t;
+  }
+  return t.replace(/^\.\//, "").replace(/^\/+/, "");
+}
+
 export function looksLikeFilePath(s: string): boolean {
-  const t = s.trim();
+  const t = normalizePathToken(s);
   if (!t || t.length > 800) return false;
   if (isHttpUrl(t)) return false;
   if (t.includes("://")) return false;
+  // Still-broken truncation (nothing usable left)
+  if (t.startsWith("...") || t.startsWith("…")) return false;
   // Absolute
   if (t.startsWith("/") || /^[A-Za-z]:[\\/]/.test(t)) {
     return FILE_EXT_RE.test(t) || /\/[^/]+$/.test(t);
   }
-  // Relative with slash + extension (project paths)
+  // Relative with slash + extension (project / KB paths)
+  // Prefer ≥2 segments after normalize so bare `img_000.jpg` stays out
+  // of path-card conversion unless it has a directory prefix.
   if (
     (t.includes("/") || t.includes("\\")) &&
     FILE_EXT_RE.test(t) &&
@@ -75,15 +98,21 @@ export function resolveFileToken(
     pathMap?: Record<string, string> | null;
   },
 ): string | null {
-  const t = token.trim().replace(/^<|>$/g, "");
+  const raw = token.trim().replace(/^<|>$/g, "");
+  if (!raw) return null;
+  if (opts?.pathMap?.[raw]) return opts.pathMap[raw]!;
+  // Prefer normalized form (strip agent ellipsis) for map + relative open
+  const t = normalizePathToken(raw);
   if (!t) return null;
   if (opts?.pathMap?.[t]) return opts.pathMap[t]!;
   const norm = t.replace(/\\/g, "/");
   if (opts?.pathMap?.[norm]) return opts.pathMap[norm]!;
-  if (isAbsoluteFsPath(t)) return t;
+  if (isAbsoluteFsPath(t) || isAbsoluteFsPath(raw)) {
+    return isAbsoluteFsPath(raw) ? raw.replace(/\\/g, "/") : norm;
+  }
   // Relative: keep as relative token (do not join project root)
-  if (looksLikeFilePath(t) && !isHttpUrl(t)) {
-    if (t.includes("/") || t.includes("\\")) return norm;
+  if (looksLikeFilePath(raw) && !isHttpUrl(raw)) {
+    if (norm.includes("/") || norm.includes("\\")) return norm;
     // bare filename only — too ambiguous without pathMap
     return null;
   }
