@@ -14,10 +14,12 @@ import { useImageViewerOptional } from "@/components/ImageViewer";
 import {
   IconClose,
   IconCopy,
+  IconExternalLink,
   IconFileText,
   IconFolder,
   IconPaperclip,
 } from "@/components/icons";
+import { Tip } from "@/components/ui/tooltip";
 
 export interface AttachmentCardLabels {
   open: string;
@@ -132,91 +134,103 @@ export function AttachmentCard({
 
   if (variant === "chip") {
     return (
-      <span
-        ref={rootRef as unknown as React.RefObject<HTMLSpanElement>}
-        className={
-          "attach-chip" +
-          (attachment.isDir ? " attach-chip--dir" : "") +
-          (isImg ? " attach-chip--image" : "")
-        }
-        title={attachment.path}
-        onContextMenu={(e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          setMenu({ x: e.clientX, y: e.clientY });
-        }}
-      >
-        <button
-          type="button"
-          className="attach-chip__main"
-          onClick={onPrimaryClick}
+      <Tip label={attachment.path}>
+        <span
+          ref={rootRef as unknown as React.RefObject<HTMLSpanElement>}
+          className={
+            "attach-chip" +
+            (attachment.isDir ? " attach-chip--dir" : "") +
+            (isImg ? " attach-chip--image" : "")
+          }
+          onContextMenu={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            setMenu({ x: e.clientX, y: e.clientY });
+          }}
         >
-          {isImg && thumbSrc ? (
-            <img
-              className="attach-chip__thumb"
-              src={thumbSrc}
-              alt={attachment.name}
-              draggable={false}
-            />
-          ) : (
-            <>
-              <span className="attach-chip__icon" aria-hidden>
-                {attachment.isDir ? (
-                  <IconFolder size={14} />
-                ) : (
-                  <IconFileText size={14} />
-                )}
-              </span>
-              <span className="attach-chip__name">{attachment.name}</span>
-            </>
-          )}
-        </button>
-        {onRemove && (
           <button
             type="button"
-            className="attach-chip__x"
-            title={labels.remove}
-            aria-label={labels.remove}
-            onClick={() => onRemove(attachment)}
+            className="attach-chip__main"
+            onClick={onPrimaryClick}
           >
-            <IconClose size={12} />
+            {isImg && thumbSrc ? (
+              <img
+                className="attach-chip__thumb"
+                src={thumbSrc}
+                alt={attachment.name}
+                draggable={false}
+              />
+            ) : (
+              <>
+                <span className="attach-chip__icon" aria-hidden>
+                  {attachment.isDir ? (
+                    <IconFolder size={14} />
+                  ) : (
+                    <IconFileText size={14} />
+                  )}
+                </span>
+                <span className="attach-chip__name">{attachment.name}</span>
+              </>
+            )}
           </button>
-        )}
-        {menu && (
-          <AttachmentContextMenu
-            x={menu.x}
-            y={menu.y}
-            labels={labels}
-            showAdd={!!onAddToComposer}
-            showCopyImage={isImg}
-            onOpen={() => {
-              setMenu(null);
-              if (isImg) openInViewer();
-              else void openPath();
-            }}
-            onReveal={() => {
-              setMenu(null);
-              void revealPath();
-            }}
-            onCopyPath={() => {
-              setMenu(null);
-              void copyPath();
-            }}
-            onCopyImage={() => {
-              setMenu(null);
-              void copyImage();
-            }}
-            onAdd={() => {
-              setMenu(null);
-              onAddToComposer?.(attachment);
-            }}
-          />
-        )}
-      </span>
+          {onRemove && labels.remove ? (
+            <Tip label={labels.remove}>
+              <button
+                type="button"
+                className="attach-chip__x"
+                aria-label={labels.remove}
+                onClick={() => onRemove(attachment)}
+              >
+                <IconClose size={12} />
+              </button>
+            </Tip>
+          ) : onRemove ? (
+            <button
+              type="button"
+              className="attach-chip__x"
+              aria-label={labels.remove}
+              onClick={() => onRemove(attachment)}
+            >
+              <IconClose size={12} />
+            </button>
+          ) : null}
+          {menu && (
+            <AttachmentContextMenu
+              x={menu.x}
+              y={menu.y}
+              labels={labels}
+              showAdd={!!onAddToComposer}
+              showCopyImage={isImg}
+              onOpen={() => {
+                setMenu(null);
+                if (isImg) openInViewer();
+                else void openPath();
+              }}
+              onReveal={() => {
+                setMenu(null);
+                void revealPath();
+              }}
+              onCopyPath={() => {
+                setMenu(null);
+                void copyPath();
+              }}
+              onCopyImage={() => {
+                setMenu(null);
+                void copyImage();
+              }}
+              onAdd={() => {
+                setMenu(null);
+                onAddToComposer?.(attachment);
+              }}
+            />
+          )}
+        </span>
+      </Tip>
     );
   }
 
   return (
+    <Tip label={attachment.path}>
     <div
       ref={rootRef}
       className={
@@ -224,7 +238,6 @@ export function AttachmentCard({
         (attachment.isDir ? " att-card--dir" : "") +
         (isImg ? " att-card--image" : "")
       }
-      title={attachment.path}
       onContextMenu={(e) => {
         e.preventDefault();
         e.stopPropagation();
@@ -253,14 +266,15 @@ export function AttachmentCard({
           <>
             <span className="att-card__icon" aria-hidden>
               {attachment.isDir ? (
-                <IconFolder size={20} />
+                <IconFolder size={18} />
               ) : (
-                <IconFileText size={20} />
+                <IconFileText size={18} />
               )}
             </span>
             <span className="att-card__meta">
-              <span className="att-card__name">{attachment.name}</span>
-              <span className="att-card__path">{attachment.path}</span>
+              <span className="att-card__name">
+                {attachment.name}
+              </span>
             </span>
           </>
         )}
@@ -296,6 +310,7 @@ export function AttachmentCard({
         />
       )}
     </div>
+    </Tip>
   );
 }
 
@@ -326,15 +341,21 @@ function AttachmentContextMenu({
   const top = Math.min(y, window.innerHeight - 200);
   return (
     <div
-      className="att-menu"
+      className="menu-panel att-menu"
       style={{ left, top }}
       role="menu"
       onMouseDown={(e) => e.stopPropagation()}
     >
       <button type="button" className="att-menu__item" role="menuitem" onClick={onOpen}>
+        <span className="att-menu__ico" aria-hidden>
+          {showCopyImage ? <IconFileText size={16} /> : <IconExternalLink size={16} />}
+        </span>
         {showCopyImage && labels.viewImage ? labels.viewImage : labels.open}
       </button>
       <button type="button" className="att-menu__item" role="menuitem" onClick={onReveal}>
+        <span className="att-menu__ico" aria-hidden>
+          <IconFolder size={16} />
+        </span>
         {labels.reveal}
       </button>
       {showCopyImage && (
@@ -344,15 +365,24 @@ function AttachmentContextMenu({
           role="menuitem"
           onClick={onCopyImage}
         >
-          <IconCopy size={14} /> {labels.copyImage}
+          <span className="att-menu__ico" aria-hidden>
+            <IconCopy size={16} />
+          </span>
+          {labels.copyImage}
         </button>
       )}
       <button type="button" className="att-menu__item" role="menuitem" onClick={onCopyPath}>
-        <IconCopy size={14} /> {labels.copyPath}
+        <span className="att-menu__ico" aria-hidden>
+          <IconCopy size={16} />
+        </span>
+        {labels.copyPath}
       </button>
       {showAdd && (
         <button type="button" className="att-menu__item" role="menuitem" onClick={onAdd}>
-          <IconPaperclip size={14} /> {labels.addToComposer}
+          <span className="att-menu__ico" aria-hidden>
+            <IconPaperclip size={16} />
+          </span>
+          {labels.addToComposer}
         </button>
       )}
     </div>

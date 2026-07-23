@@ -50,6 +50,21 @@ pub enum AcpEvent {
     PromptComplete {
         stop_reason: String,
     },
+    /// Provider/API retry loop (sessionUpdate = retry_state). Host caps retries.
+    RetryState {
+        attempt: u32,
+        max_retries: u32,
+        reason: String,
+        status: String,
+    },
+    /// Context compaction (auto or manual `/compact`).
+    ContextCompact {
+        trigger: String,
+        tokens_before: Option<u64>,
+        tokens_after: Option<u64>,
+        summary_preview: Option<String>,
+        note: Option<String>,
+    },
     Error {
         error: AgentError,
     },
@@ -60,6 +75,10 @@ pub enum AcpEvent {
         code: Option<i32>,
     },
 }
+
+/// Host circuit-breaker: after this many provider retries, cancel the turn
+/// (Codex-like). Agent may advertise a higher max (e.g. 15); we still stop at 5.
+pub const HOST_PROVIDER_MAX_RETRIES: u32 = 5;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum StreamKind {
@@ -75,6 +94,10 @@ struct Pending {
 const HANDSHAKE_TIMEOUT_SECS: u64 = 45;
 const AUTH_TIMEOUT_SECS: u64 = 12;
 const PROMPT_TIMEOUT_SECS: u64 = 600;
+/// After `_x.ai/session/prompt_complete`, wait this long for the real JSON-RPC
+/// `session/prompt` result/error before treating the turn as successfully done.
+/// Official subscription failures often emit prompt_complete first, then error.
+const PROMPT_COMPLETE_FALLBACK_GRACE_MS: u64 = 3000;
 
 pub struct AcpClient {
     child: AsyncMutex<Option<Child>>,
@@ -91,6 +114,30 @@ pub struct AcpClient {
     stderr_tail: ParkingMutex<Vec<String>>,
 }
 
+/// Options applied at agent process start (CLI flags).
+#[derive(Debug, Clone, Default)]
+pub struct SpawnOptions {
+    pub model_id: Option<String>,
+    pub effort: Option<String>,
+    /// App permission policy id (ask / accept_edits / …).
+    pub permission_policy: Option<String>,
+}
+
+/// Map App policy → CLI `--permission-mode` value.
+pub fn cli_permission_mode(policy: &str) -> &'static str {
+    use crate::permission::PermissionPolicy;
+    match PermissionPolicy::parse(policy) {
+        PermissionPolicy::AcceptEdits => "acceptEdits",
+        PermissionPolicy::DontAsk => "dontAsk",
+        PermissionPolicy::AlwaysApprove => "bypassPermissions",
+        // Host session allow-list is applied in-process; CLI still asks.
+        PermissionPolicy::AllowForSession
+        | PermissionPolicy::AllowOnce
+        | PermissionPolicy::Deny
+        | PermissionPolicy::Ask => "default",
+    }
+}
+
 impl AcpClient {
     pub fn use_mock() -> bool {
         std::env::var("GROK_APP_ACP")
@@ -102,8 +149,16 @@ impl AcpClient {
         cli_path: PathBuf,
         cwd: PathBuf,
     ) -> Result<(Arc<Self>, mpsc::UnboundedReceiver<AcpEvent>), AgentError> {
+        Self::spawn_with_options(cli_path, cwd, SpawnOptions::default())
+    }
+
+    pub fn spawn_with_options(
+        cli_path: PathBuf,
+        cwd: PathBuf,
+        opts: SpawnOptions,
+    ) -> Result<(Arc<Self>, mpsc::UnboundedReceiver<AcpEvent>), AgentError> {
         let settings = crate::store::load_settings();
-        Self::spawn_with_home(cli_path, cwd, &settings.session_data_mode)
+        Self::spawn_with_home(cli_path, cwd, &settings.session_data_mode, opts)
     }
 
     /// Spawn `grok agent stdio` with GROK_HOME from session_data_mode.
@@ -111,6 +166,7 @@ impl AcpClient {
         cli_path: PathBuf,
         cwd: PathBuf,
         session_data_mode: &str,
+        opts: SpawnOptions,
     ) -> Result<(Arc<Self>, mpsc::UnboundedReceiver<AcpEvent>), AgentError> {
         if !cli_path.exists() {
             return Err(AgentError::new(
@@ -123,24 +179,75 @@ impl AcpClient {
 
         // GUI apps often inherit a sparse PATH; keep absolute cli_path but enrich PATH
         // so nested tools (npx, node, git) resolve when the agent shells out.
+        //
+        // Flag placement (CLI 0.2.x):
+        //   `grok agent [OPTIONS] stdio`  — model / effort / always-approve are **agent** options
+        //   Flags after `stdio` are rejected (`unexpected argument '--model'`).
+        //   `--permission-mode` is top-level `grok` only — not accepted by `grok agent`;
+        //   Host enforces permission policy on session/request_permission; YOLO uses --always-approve.
         let mut cmd = Command::new(&cli_path);
-        cmd.args(["agent", "stdio"])
-            .current_dir(&cwd)
+        cmd.arg("agent");
+        if let Some(ref m) = opts.model_id {
+            let m = m.trim();
+            if !m.is_empty() {
+                cmd.args(["--model", m]);
+            }
+        }
+        if let Some(ref e) = opts.effort {
+            let e = e.trim();
+            if matches!(e, "high" | "medium" | "low") {
+                cmd.args(["--reasoning-effort", e]);
+            }
+        }
+        if let Some(ref pol) = opts.permission_policy {
+            // Only always-approve maps to an agent flag; other modes are Host-side.
+            if cli_permission_mode(pol) == "bypassPermissions" {
+                cmd.arg("--always-approve");
+            }
+        }
+        cmd.arg("stdio");
+        cmd.current_dir(&cwd)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .kill_on_drop(true);
-        if let Some(path) = enriched_path_env() {
+        crate::process_util::apply_no_window_tokio(&mut cmd);
+        tracing::info!(
+            "acp: spawn args model={:?} effort={:?} yolo={}",
+            opts.model_id.as_deref(),
+            opts.effort.as_deref(),
+            opts.permission_policy
+                .as_deref()
+                .map(cli_permission_mode)
+                == Some("bypassPermissions")
+        );
+        if let Some(path) = crate::process_util::enriched_path_env() {
             cmd.env("PATH", path);
         }
-        // Independent profile: agent reads App agent-home/config.toml for custom providers.
+        // Independent profile: agent reads App agent-home/config.toml for custom providers
+        // and permission_mode / yolo (synced by agent_prefs before spawn).
+        // Official OAuth lives in ~/.grok/auth.json — mirror into agent-home so the child
+        // process has credentials (otherwise auth_kind=none → 401).
         let grok_home = crate::paths::resolve_agent_grok_home(session_data_mode);
         let _ = std::fs::create_dir_all(&grok_home);
+        if session_data_mode != "shared" {
+            if let Err(e) = crate::account::sync_cli_auth_to_agent_home() {
+                tracing::warn!("acp: auth sync to agent-home failed: {e}");
+            }
+            // Ensure permission keys exist even if connect forgot to sync.
+            if let Some(ref pol) = opts.permission_policy {
+                let _ = crate::agent_prefs::sync_permission_to_agent_profile(
+                    session_data_mode,
+                    pol,
+                );
+            }
+        }
         cmd.env("GROK_HOME", &grok_home);
         tracing::info!(
-            "acp: spawn GROK_HOME={} mode={}",
+            "acp: spawn GROK_HOME={} mode={} auth_present={}",
             grok_home.display(),
-            session_data_mode
+            session_data_mode,
+            grok_home.join("auth.json").is_file()
         );
 
         let mut child = cmd.spawn().map_err(|e| {
@@ -190,7 +297,7 @@ impl AcpClient {
                             if trimmed.is_empty() {
                                 continue;
                             }
-                            c.handle_line(trimmed).await;
+                            Arc::clone(&c).handle_line(trimmed).await;
                         }
                         Err(e) => {
                             error!("acp stdout read error: {e}");
@@ -267,7 +374,7 @@ impl AcpClient {
         }
     }
 
-    async fn handle_line(&self, line: &str) {
+    async fn handle_line(self: Arc<Self>, line: &str) {
         let msg: Value = match serde_json::from_str(line) {
             Ok(v) => v,
             Err(e) => {
@@ -281,27 +388,26 @@ impl AcpClient {
             if msg.get("result").is_some() || msg.get("error").is_some() {
                 if let Some(p) = self.pending.lock().remove(&id) {
                     if let Some(err) = msg.get("error") {
-                        let code = err.get("code").and_then(|c| c.as_i64()).unwrap_or(0);
-                        let message = err
-                            .get("message")
-                            .and_then(|m| m.as_str())
-                            .unwrap_or("rpc error")
-                            .to_string();
-                        let data = err
-                            .get("data")
-                            .map(|d| d.to_string())
-                            .filter(|s| s != "null" && !s.is_empty());
-                        let full = match data {
-                            Some(d) => format!("{message} (code {code}, data: {d})"),
-                            None => format!("{message} (code {code})"),
-                        };
+                        let full = format_jsonrpc_error(err);
+                        warn!("acp ← {} id={id} error: {}", p.method, full);
                         let _ = p.tx.send(Err(full));
                     } else {
                         let _ = p.tx.send(Ok(msg.get("result").cloned().unwrap_or(Value::Null)));
                     }
-                } else {
+                } else if let Some(err) = msg.get("error") {
+                    // Race: prompt_complete fallback already resolved pending, but the
+                    // real RPC error arrived later (official subscription / provider fails).
+                    // Must still surface the error — do not drop as "unknown id".
+                    let full = format_jsonrpc_error(err);
                     warn!(
-                        "acp response for unknown id={id} (no pending); method keys={:?}",
+                        "acp late error response id={id} (pending already resolved): {full}"
+                    );
+                    let _ = self.event_tx.send(AcpEvent::Error {
+                        error: classify_rpc_error(&full),
+                    });
+                } else {
+                    debug!(
+                        "acp late ok response id={id} (pending already resolved); keys={:?}",
                         msg.as_object().map(|o| o.keys().cloned().collect::<Vec<_>>())
                     );
                 }
@@ -357,20 +463,24 @@ impl AcpClient {
 
             // True notifications: no id. (If id is present, must reply — never swallow.)
             if req_id.is_none() {
-                if method == "session/update" {
+                // Official + xAI-extended session updates (retry_state, chunks, tools…).
+                if method == "session/update" || method == "_x.ai/session/update" {
                     self.handle_session_update(msg.get("params").unwrap_or(&Value::Null));
                 } else if method == "_x.ai/session/prompt_complete" {
-                    // Fallback completion signal if JSON-RPC result is delayed/missing.
+                    // UI signal only — do NOT immediately Ok-complete session/prompt.
+                    // Official path may still send a JSON-RPC *error* for the same id
+                    // shortly after prompt_complete; completing early swallows that error.
                     let stop = msg
                         .pointer("/params/stopReason")
                         .or_else(|| msg.pointer("/params/stop_reason"))
                         .and_then(|v| v.as_str())
                         .unwrap_or("end_turn")
                         .to_string();
-                    self.complete_pending_prompt_fallback(&stop);
                     let _ = self.event_tx.send(AcpEvent::PromptComplete {
-                        stop_reason: stop,
+                        stop_reason: stop.clone(),
                     });
+                    // Grace period: free waiters only if the RPC result never arrives.
+                    self.schedule_prompt_complete_fallback(stop);
                 } else {
                     debug!("acp notification ignored method={method}");
                 }
@@ -394,7 +504,19 @@ impl AcpClient {
         }
     }
 
-    /// If agent emitted prompt_complete notification but never the RPC result, free waiters.
+    /// Wait briefly for the real session/prompt JSON-RPC result; only then Ok-complete.
+    fn schedule_prompt_complete_fallback(self: &Arc<Self>, stop_reason: String) {
+        let this = Arc::clone(self);
+        tokio::spawn(async move {
+            tokio::time::sleep(std::time::Duration::from_millis(
+                PROMPT_COMPLETE_FALLBACK_GRACE_MS,
+            ))
+            .await;
+            this.complete_pending_prompt_fallback(&stop_reason);
+        });
+    }
+
+    /// If agent never returned a session/prompt result after prompt_complete, free waiters.
     fn complete_pending_prompt_fallback(&self, stop_reason: &str) {
         let mut pending = self.pending.lock();
         let prompt_ids: Vec<u64> = pending
@@ -404,7 +526,9 @@ impl AcpClient {
             .collect();
         for id in prompt_ids {
             if let Some(p) = pending.remove(&id) {
-                info!("acp completing session/prompt id={id} via prompt_complete fallback");
+                info!(
+                    "acp completing session/prompt id={id} via delayed prompt_complete fallback (no RPC result yet)"
+                );
                 let _ = p.tx.send(Ok(json!({ "stopReason": stop_reason })));
             }
         }
@@ -474,6 +598,22 @@ impl AcpClient {
                     .and_then(|v| v.as_str())
                     .unwrap_or("")
                     .to_string();
+                // compact_conversation / similar tools
+                let title_l = title.to_ascii_lowercase();
+                let kind_l = k.to_ascii_lowercase();
+                if status == "completed"
+                    && (title_l.contains("compact")
+                        || kind_l.contains("compact")
+                        || tool_call_id.to_ascii_lowercase().contains("compact"))
+                {
+                    let _ = self.event_tx.send(AcpEvent::ContextCompact {
+                        trigger: "manual".into(),
+                        tokens_before: None,
+                        tokens_after: None,
+                        summary_preview: None,
+                        note: Some(title.clone()),
+                    });
+                }
                 let _ = self.event_tx.send(AcpEvent::ToolCall {
                     tool_call_id,
                     title,
@@ -482,7 +622,102 @@ impl AcpClient {
                     raw: update.clone(),
                 });
             }
+            "retry_state" => {
+                let attempt = update
+                    .get("attempt")
+                    .and_then(|v| v.as_u64())
+                    .unwrap_or(0) as u32;
+                let max_retries = update
+                    .get("max_retries")
+                    .or_else(|| update.get("maxRetries"))
+                    .and_then(|v| v.as_u64())
+                    .unwrap_or(HOST_PROVIDER_MAX_RETRIES as u64)
+                    as u32;
+                let reason = update
+                    .get("reason")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string();
+                let status = update
+                    .get("type")
+                    .or_else(|| update.get("status"))
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("retrying")
+                    .to_string();
+                info!(
+                    "acp retry_state attempt={attempt}/{max_retries} status={status} reason={}",
+                    reason.chars().take(160).collect::<String>()
+                );
+                let _ = self.event_tx.send(AcpEvent::RetryState {
+                    attempt,
+                    max_retries,
+                    reason,
+                    status,
+                });
+            }
+            // Grok auto/manual context compaction
+            "tokens_used"
+            | "compaction"
+            | "compaction_completed"
+            | "context_compact"
+            | "auto_compact"
+            | "compaction_checkpoint" => {
+                if let Some((trigger, before, after, summary, note)) =
+                    parse_context_compact_update(kind, update)
+                {
+                    info!(
+                        "acp context compact trigger={trigger} before={before:?} after={after:?}"
+                    );
+                    let _ = self.event_tx.send(AcpEvent::ContextCompact {
+                        trigger,
+                        tokens_before: before,
+                        tokens_after: after,
+                        summary_preview: summary,
+                        note,
+                    });
+                }
+            }
             _ => {
+                if update.get("tokens_before").is_some()
+                    || update.get("tokensBefore").is_some()
+                    || update.get("tokens_after").is_some()
+                    || update.get("tokensAfter").is_some()
+                {
+                    if let Some((trigger, before, after, summary, note)) =
+                        parse_context_compact_update(kind, update)
+                    {
+                        let _ = self.event_tx.send(AcpEvent::ContextCompact {
+                            trigger,
+                            tokens_before: before,
+                            tokens_after: after,
+                            summary_preview: summary,
+                            note,
+                        });
+                        return;
+                    }
+                }
+                let title = update
+                    .get("title")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_ascii_lowercase();
+                if title.contains("compact") {
+                    let _ = self.event_tx.send(AcpEvent::ContextCompact {
+                        trigger: if title.contains("auto") {
+                            "auto".into()
+                        } else {
+                            "manual".into()
+                        },
+                        tokens_before: None,
+                        tokens_after: None,
+                        summary_preview: None,
+                        note: update
+                            .get("title")
+                            .and_then(|v| v.as_str())
+                            .map(|s| s.to_string()),
+                    });
+                    return;
+                }
                 debug!("acp session/update ignored kind={kind}");
             }
         }
@@ -500,7 +735,81 @@ impl AcpClient {
         stdin.flush().await.map_err(|e| e.to_string())?;
         Ok(())
     }
+}
 
+/// Parse compact-related sessionUpdate → (trigger, before, after, summary, note)
+fn parse_context_compact_update(
+    kind: &str,
+    update: &Value,
+) -> Option<(
+    String,
+    Option<u64>,
+    Option<u64>,
+    Option<String>,
+    Option<String>,
+)> {
+    let tokens_before = update
+        .get("tokens_before")
+        .or_else(|| update.get("tokensBefore"))
+        .and_then(|v| v.as_u64());
+    let tokens_after = update
+        .get("tokens_after")
+        .or_else(|| update.get("tokensAfter"))
+        .and_then(|v| v.as_u64());
+    let summary_preview = update
+        .get("summary_preview")
+        .or_else(|| update.get("summaryPreview"))
+        .or_else(|| update.get("summary"))
+        .and_then(|v| v.as_str())
+        .map(|s| s.chars().take(500).collect::<String>());
+    let note = update
+        .get("note")
+        .or_else(|| update.get("message"))
+        .or_else(|| update.get("reason"))
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string());
+
+    let trigger_raw = update
+        .get("trigger")
+        .or_else(|| update.get("trigger_type"))
+        .or_else(|| update.get("triggerType"))
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
+    let trigger = if trigger_raw.eq_ignore_ascii_case("manual") || kind.contains("manual")
+    {
+        "manual".to_string()
+    } else if trigger_raw.eq_ignore_ascii_case("auto")
+        || kind.contains("auto")
+        || kind == "tokens_used"
+        || kind == "compaction_checkpoint"
+    {
+        "auto".to_string()
+    } else if !trigger_raw.is_empty() {
+        trigger_raw.to_string()
+    } else {
+        "auto".to_string()
+    };
+
+    if tokens_before.is_some()
+        || tokens_after.is_some()
+        || summary_preview.is_some()
+        || kind.contains("compact")
+        || kind == "tokens_used"
+        || kind == "compaction_checkpoint"
+    {
+        Some((
+            trigger,
+            tokens_before,
+            tokens_after,
+            summary_preview,
+            note,
+        ))
+    } else {
+        None
+    }
+}
+
+impl AcpClient {
     async fn request(&self, method: &str, params: Value) -> Result<Value, String> {
         self.request_timeout(method, params, HANDSHAKE_TIMEOUT_SECS)
             .await
@@ -539,21 +848,30 @@ impl AcpClient {
             return Err(format!("write {method} failed: {e}"));
         }
         match tokio::time::timeout(std::time::Duration::from_secs(timeout_secs), rx).await {
-            Ok(Ok(r)) => {
-                info!("acp ← {method} id={id} ok");
-                r
+            Ok(Ok(r)) => match r {
+                Ok(v) => {
+                    info!("acp ← {method} id={id} ok");
+                    Ok(v)
+                }
+                Err(e) => {
+                    warn!("acp ← {method} id={id} error: {e}");
+                    Err(e)
+                }
+            },
+            Ok(Err(_)) => {
+                let head =
+                    format!("rpc channel closed while waiting for {method} (id={id})");
+                error!("{}", self.format_exit_detail(&head));
+                Err(head)
             }
-            Ok(Err(_)) => Err(format!(
-                "rpc channel closed while waiting for {method} (id={id}); {}",
-                self.format_exit_detail("channel closed")
-            )),
             Err(_) => {
                 self.pending.lock().remove(&id);
-                let detail = self.format_exit_detail(&format!(
-                    "rpc timeout on {method} (id={id}) after {timeout_secs}s"
-                ));
-                error!("{detail}");
-                Err(detail)
+                // Keep user-facing error short; log stderr separately (MCP noise must not
+                // surface as NETWORK_PROVIDER detail in the chat).
+                let head = format!("rpc timeout on {method} (id={id}) after {timeout_secs}s");
+                let logged = self.format_exit_detail(&head);
+                error!("{logged}");
+                Err(head)
             }
         }
     }
@@ -567,7 +885,14 @@ impl AcpClient {
         self.write_line(&msg).await
     }
 
-    pub async fn initialize_and_new_session(&self) -> Result<String, AgentError> {
+    /// Initialize + auth, then open a session.
+    /// Prefer `session/load` when `resume_session_id` is set (Grok persists agent
+    /// sessions under GROK_HOME). Fall back to `session/new`.
+    /// Returns `(session_id, resumed)`.
+    pub async fn initialize_and_open_session(
+        &self,
+        resume_session_id: Option<&str>,
+    ) -> Result<(String, bool), AgentError> {
         // Do not advertise client fs methods we do not implement — avoids agent
         // hanging on fs/readTextFile while we never reply.
         let init = self
@@ -584,9 +909,11 @@ impl AcpClient {
             .map_err(|e| self.map_handshake_err("initialize", e))?;
 
         info!(
-            "acp initialized agentVersion={:?}",
+            "acp initialized agentVersion={:?} loadSession={:?}",
             init.pointer("/_meta/agentVersion")
-                .or_else(|| init.pointer("/agentVersion"))
+                .or_else(|| init.pointer("/agentVersion")),
+            init.pointer("/agentCapabilities/loadSession")
+                .or_else(|| init.pointer("/capabilities/loadSession"))
         );
 
         // Best-effort cached auth — short timeout so a hung auth cannot burn 120s.
@@ -608,6 +935,45 @@ impl AcpClient {
                 AgentErrorCode::AgentCrashed,
                 format!("project cwd is not a directory: {cwd}"),
             ));
+        }
+
+        // Prefer resuming the previous agent session for full native context.
+        if let Some(rid) = resume_session_id.map(str::trim).filter(|s| !s.is_empty()) {
+            match self
+                .request_timeout(
+                    "session/load",
+                    json!({
+                        "sessionId": rid,
+                        "cwd": cwd,
+                        "mcpServers": []
+                    }),
+                    HANDSHAKE_TIMEOUT_SECS,
+                )
+                .await
+            {
+                Ok(result) => {
+                    let sid = result
+                        .get("sessionId")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or(rid)
+                        .to_string();
+                    info!("acp session/load ok sessionId={sid}");
+                    *self.agent_session_id.lock() = Some(sid.clone());
+                    let model_id = result
+                        .pointer("/models/currentModelId")
+                        .and_then(|v| v.as_str())
+                        .map(|s| s.to_string());
+                    let _ = self.event_tx.send(AcpEvent::State {
+                        backend: "grok_agent_stdio".into(),
+                        agent_session_id: Some(sid.clone()),
+                        model_id,
+                    });
+                    return Ok((sid, true));
+                }
+                Err(e) => {
+                    warn!("acp session/load failed ({e}); falling back to session/new");
+                }
+            }
         }
 
         let result = self
@@ -648,7 +1014,90 @@ impl AcpClient {
             model_id,
         });
 
-        Ok(sid)
+        Ok((sid, false))
+    }
+
+    /// Back-compat: always create a new session.
+    pub async fn initialize_and_new_session(&self) -> Result<String, AgentError> {
+        self.initialize_and_open_session(None)
+            .await
+            .map(|(sid, _)| sid)
+    }
+
+    /// Switch model on the live agent session (`session/set_model`).
+    pub async fn set_model(&self, model_id: &str) -> Result<(), String> {
+        let model_id = model_id.trim();
+        if model_id.is_empty() {
+            return Err("model id empty".into());
+        }
+        let sid = self
+            .agent_session_id
+            .lock()
+            .clone()
+            .ok_or_else(|| "no agent session".to_string())?;
+        // ACP SetSessionModelRequest: sessionId + modelId (+ optional meta).
+        let result = self
+            .request(
+                "session/set_model",
+                json!({
+                    "sessionId": sid,
+                    "modelId": model_id,
+                }),
+            )
+            .await
+            .map_err(|e| format!("session/set_model: {e}"))?;
+        // Best-effort: some agents echo currentModelId.
+        if let Some(mid) = result
+            .pointer("/models/currentModelId")
+            .or_else(|| result.get("modelId"))
+            .and_then(|v| v.as_str())
+        {
+            let _ = self.event_tx.send(AcpEvent::State {
+                backend: "grok_agent_stdio".into(),
+                agent_session_id: Some(sid),
+                model_id: Some(mid.to_string()),
+            });
+        } else {
+            let _ = self.event_tx.send(AcpEvent::State {
+                backend: "grok_agent_stdio".into(),
+                agent_session_id: Some(sid),
+                model_id: Some(model_id.to_string()),
+            });
+        }
+        Ok(())
+    }
+
+    /// Switch product session mode (`session/set_mode`). Tries candidate modeIds.
+    pub async fn set_mode(&self, product_mode: &str) -> Result<String, String> {
+        let sid = self
+            .agent_session_id
+            .lock()
+            .clone()
+            .ok_or_else(|| "no agent session".to_string())?;
+        let candidates = crate::agent_prefs::product_mode_candidates(product_mode);
+        let mut last_err = String::from("no mode candidates");
+        for mode_id in candidates {
+            match self
+                .request(
+                    "session/set_mode",
+                    json!({
+                        "sessionId": sid,
+                        "modeId": mode_id,
+                    }),
+                )
+                .await
+            {
+                Ok(_) => {
+                    tracing::info!("acp session/set_mode ok modeId={mode_id}");
+                    return Ok(mode_id.to_string());
+                }
+                Err(e) => {
+                    last_err = e;
+                    tracing::debug!("acp session/set_mode {mode_id} soft-fail: {last_err}");
+                }
+            }
+        }
+        Err(format!("session/set_mode: {last_err}"))
     }
 
     fn map_handshake_err(&self, phase: &str, e: String) -> AgentError {
@@ -722,6 +1171,64 @@ impl AcpClient {
             .await
     }
 
+    /// List rewind points (one per user prompt). Grok extension `x.ai/rewind/points`.
+    pub async fn rewind_points(&self) -> Result<Value, String> {
+        let sid = self
+            .agent_session_id
+            .lock()
+            .clone()
+            .ok_or_else(|| "no session".to_string())?;
+        self.request(
+            "x.ai/rewind/points",
+            json!({ "sessionId": sid }),
+        )
+        .await
+    }
+
+    /// Truncate agent conversation to a user-prompt index (and optionally restore files).
+    /// Grok extension `x.ai/rewind/execute` — `targetPromptIndex` is 0-based user turn index.
+    ///
+    /// Semantics (TUI `/rewind`): discard everything **after** the selected turn.
+    /// For "edit last user message", pass the **previous** user-turn index, or when
+    /// editing the only user message use index `0` with a full clear via host journal.
+    pub async fn rewind_execute(
+        &self,
+        target_prompt_index: u32,
+        restore_files: bool,
+    ) -> Result<Value, String> {
+        let sid = self
+            .agent_session_id
+            .lock()
+            .clone()
+            .ok_or_else(|| "no session".to_string())?;
+        // Prefer conversation truncate; file restore is optional (edit-resend usually false).
+        let mut params = json!({
+            "sessionId": sid,
+            "targetPromptIndex": target_prompt_index,
+        });
+        if let Some(obj) = params.as_object_mut() {
+            obj.insert("restoreFiles".into(), Value::Bool(restore_files));
+            // Some builds accept this camelCase alias.
+            obj.insert("restore_files".into(), Value::Bool(restore_files));
+        }
+        self.request("x.ai/rewind/execute", params).await
+    }
+
+    /// Unblock a waiting `session/prompt` RPC (e.g. after host circuit-breaker cancel).
+    pub fn abort_pending_prompts(&self, message: &str) {
+        let mut pending = self.pending.lock();
+        let ids: Vec<u64> = pending
+            .iter()
+            .filter(|(_, p)| p.method == "session/prompt")
+            .map(|(id, _)| *id)
+            .collect();
+        for id in ids {
+            if let Some(p) = pending.remove(&id) {
+                let _ = p.tx.send(Err(message.to_string()));
+            }
+        }
+    }
+
     pub async fn respond_permission(
         &self,
         rpc_id: u64,
@@ -764,22 +1271,112 @@ pub enum PermissionOutcome {
     Cancelled,
 }
 
+fn format_jsonrpc_error(err: &Value) -> String {
+    let code = err.get("code").and_then(|c| c.as_i64()).unwrap_or(0);
+    let message = err
+        .get("message")
+        .and_then(|m| m.as_str())
+        .unwrap_or("rpc error")
+        .to_string();
+    let data = err
+        .get("data")
+        .map(|d| d.to_string())
+        .filter(|s| s != "null" && !s.is_empty());
+    match data {
+        Some(d) => format!("{message} (code {code}, data: {d})"),
+        None => format!("{message} (code {code})"),
+    }
+}
+
 fn classify_rpc_error(e: &str) -> AgentError {
     let lower = e.to_lowercase();
-    if lower.contains("401") || lower.contains("auth") || lower.contains("unauthor") || lower.contains("login") {
+    if lower.contains("401")
+        || lower.contains("auth")
+        || lower.contains("unauthor")
+        || lower.contains("login")
+        || lower.contains("subscription")
+        || lower.contains("not entitled")
+        || lower.contains("quota")
+        || lower.contains("billing")
+        || lower.contains("payment")
+    {
+        // Auth / subscription entitlement failures (official SuperGrok path)
+        if lower.contains("subscription")
+            || lower.contains("not entitled")
+            || lower.contains("quota")
+            || lower.contains("billing")
+            || lower.contains("payment")
+            || lower.contains("401")
+            || lower.contains("unauthor")
+        {
+            // Prefer AUTH for true auth; NETWORK for quota/billing when clearly provider-side
+            if lower.contains("401")
+                || lower.contains("unauthor")
+                || lower.contains("login")
+                || lower.contains("auth")
+            {
+                return AgentError::new(AgentErrorCode::AuthFailed, e);
+            }
+            return AgentError::new(AgentErrorCode::NetworkProvider, e);
+        }
         AgentError::new(AgentErrorCode::AuthFailed, e)
     } else if lower.contains("dns")
         || lower.contains("timeout")
         || lower.contains("network")
         || lower.contains("5xx")
+        || lower.contains("503")
         || lower.contains("rpc channel closed")
+        || lower.contains("shell_api_error")
+        || lower.contains("no available channels")
+        || lower.contains("provider retries")
+        || lower.contains("service unavailable")
     {
-        // Timeouts are usually model/network hangs, not a hard process crash.
+        // Timeouts / provider 503 / channel-empty are network-provider, not process crash.
         AgentError::new(AgentErrorCode::NetworkProvider, e)
     } else if lower.contains("not found") && lower.contains("cli") {
         AgentError::new(AgentErrorCode::CliNotFound, e)
     } else {
         AgentError::new(AgentErrorCode::AgentCrashed, e)
+    }
+}
+
+/// Whether host should stop waiting and fail the turn (Codex-like 5-retry cap).
+pub fn should_abort_provider_retry(attempt: u32, max_retries: u32, status: &str) -> bool {
+    let status = status.to_lowercase();
+    if status.contains("fail")
+        || status.contains("exhaust")
+        || status.contains("gave_up")
+        || status.contains("give_up")
+        || status == "error"
+    {
+        return true;
+    }
+    let cap = max_retries.min(HOST_PROVIDER_MAX_RETRIES).max(1);
+    attempt >= cap
+}
+
+#[cfg(test)]
+mod retry_tests {
+    use super::*;
+
+    #[test]
+    fn abort_at_host_cap_even_if_agent_allows_more() {
+        assert!(!should_abort_provider_retry(1, 15, "retrying"));
+        assert!(!should_abort_provider_retry(4, 15, "retrying"));
+        assert!(should_abort_provider_retry(5, 15, "retrying"));
+        assert!(should_abort_provider_retry(6, 15, "retrying"));
+    }
+
+    #[test]
+    fn abort_on_failed_status() {
+        assert!(should_abort_provider_retry(1, 15, "failed"));
+        assert!(should_abort_provider_retry(1, 15, "exhausted"));
+    }
+
+    #[test]
+    fn respect_lower_agent_max() {
+        assert!(!should_abort_provider_retry(1, 3, "retrying"));
+        assert!(should_abort_provider_retry(3, 3, "retrying"));
     }
 }
 
@@ -799,39 +1396,6 @@ fn json_id_u64(v: Option<&Value>) -> Option<u64> {
     None
 }
 
-/// Build a PATH suitable for GUI-spawned agent processes (macOS sparse env).
-fn enriched_path_env() -> Option<String> {
-    let mut parts: Vec<String> = Vec::new();
-    let push = |parts: &mut Vec<String>, p: &str| {
-        if p.is_empty() {
-            return;
-        }
-        if !parts.iter().any(|x| x == p) {
-            parts.push(p.to_string());
-        }
-    };
-    if let Ok(cur) = std::env::var("PATH") {
-        for p in cur.split(':') {
-            push(&mut parts, p);
-        }
-    }
-    if let Ok(home) = std::env::var("HOME") {
-        push(&mut parts, &format!("{home}/.grok/bin"));
-        push(&mut parts, &format!("{home}/.local/bin"));
-        push(&mut parts, &format!("{home}/.cargo/bin"));
-        push(&mut parts, &format!("{home}/.bun/bin"));
-    }
-    push(&mut parts, "/opt/homebrew/bin");
-    push(&mut parts, "/usr/local/bin");
-    push(&mut parts, "/usr/bin");
-    push(&mut parts, "/bin");
-    if parts.is_empty() {
-        None
-    } else {
-        Some(parts.join(":"))
-    }
-}
-
 #[cfg(test)]
 mod live_handshake_tests {
     use super::*;
@@ -844,8 +1408,17 @@ mod live_handshake_tests {
             return;
         }
         let cli = which::which("grok").or_else(|_| {
-            let p = PathBuf::from(std::env::var("HOME").unwrap()).join(".grok/bin/grok");
-            if p.exists() { Ok(p) } else { Err(which::Error::CannotFindBinaryPath) }
+            let p = crate::process_util::user_home().join(".grok/bin/grok");
+            if p.exists() {
+                Ok(p)
+            } else {
+                let p2 = crate::process_util::user_home().join(r".grok\bin\grok.exe");
+                if p2.exists() {
+                    Ok(p2)
+                } else {
+                    Err(which::Error::CannotFindBinaryPath)
+                }
+            }
         }).expect("grok cli");
         let cwd = std::env::current_dir().unwrap();
         let t0 = std::time::Instant::now();

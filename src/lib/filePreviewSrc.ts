@@ -2,13 +2,15 @@
  * Resolve a previewable URL for local files.
  * Video / audio / large binary use the custom `media://` protocol (HTTP Range,
  * bounded chunks) so multi‑GB files never load fully into memory.
+ * HTML is rendered via HtmlBrowser (srcDoc) — not via this URL helper —
+ * because `file://` is blocked inside Tauri's main webview iframes.
  * Small images may use asset protocol or data URLs.
  */
 
 import type { FsReadResult } from "@/lib/api";
 import { isTauri } from "@/lib/api";
 
-/** Prefer Range-capable media protocol for streaming kinds. */
+/** Prefer Range-capable media protocol for streaming kinds (not HTML). */
 function useMediaProtocol(kind: string): boolean {
   return (
     kind === "video" ||
@@ -31,8 +33,30 @@ export function isOfficeKind(kind: string): boolean {
 }
 
 /**
+ * Absolute filesystem path → `file://` URL (encode segments; keep `/`).
+ * Used for local HTML so relative CSS/JS resolve like a real browser tab.
+ */
+export function pathToFileUrl(absolutePath: string): string {
+  let p = absolutePath.trim().replace(/\\/g, "/");
+  if (!p) return "";
+  // Windows drive → file:///C:/...
+  const win = p.match(/^([A-Za-z]:)(\/.*)?$/);
+  if (win) {
+    const drive = win[1]!;
+    const rest = win[2] || "/";
+    const segs = rest.split("/").map((s) => (s ? encodeURIComponent(s) : ""));
+    return `file:///${drive}${segs.join("/")}`;
+  }
+  if (!p.startsWith("/")) p = `/${p}`;
+  const segs = p.split("/").map((s, i) => (i === 0 || !s ? "" : encodeURIComponent(s)));
+  // segs[0] is empty before first / → join gives leading /
+  return `file://${segs.join("/")}`;
+}
+
+/**
  * Convert absolute path → URL the webview can load.
  * `media` protocol: range streaming (video/audio/pdf/large image).
+ * `file` protocol: local HTML.
  * `asset` protocol: fallback for everything else.
  */
 export async function pathToPreviewUrl(
@@ -40,7 +64,11 @@ export async function pathToPreviewUrl(
   kind?: string,
 ): Promise<string | null> {
   if (!absolutePath) return null;
-  if (!isTauri()) return null;
+  // HTML is handled by HtmlBrowser (srcDoc); asset URL is only a fetch fallback
+  if (!isTauri()) {
+    if (kind === "html") return pathToFileUrl(absolutePath);
+    return null;
+  }
   try {
     const { convertFileSrc } = await import("@tauri-apps/api/core");
     if (kind && useMediaProtocol(kind)) {
@@ -55,6 +83,11 @@ export async function pathToPreviewUrl(
 export async function resolvePreviewSrc(
   preview: FsReadResult,
 ): Promise<string | null> {
+  // HTML: don't put file:// into iframe src (blank). HtmlBrowser uses text/srcDoc.
+  if (preview.kind === "html") {
+    return null;
+  }
+
   // Prefer stream path for video/audio/pdf/large image
   if (preview.stream && preview.absolutePath && isTauri()) {
     const url = await pathToPreviewUrl(preview.absolutePath, preview.kind);

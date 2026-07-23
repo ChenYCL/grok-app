@@ -45,7 +45,7 @@
 
 ## 3. 色板 · Dark（主视觉，贴合参考图采样）
 
-参考图主底约 `#0d0d0d`–`#151515`，几乎无彩色大面积；强调色建议 **冷灰白 + 极低饱和蓝**（行动）与 **琥珀**（警告/权限），避免赛博霓虹。
+参考图主底约 `#0d0d0d`–`#151515`，几乎无彩色大面积；强调色建议 **冷灰白 + 极低饱和蓝**（行动）与 **橙色**（警告/信任/权限），避免金色与赛博霓虹。
 
 | Token | Dark 值 | 用途 |
 |-------|---------|------|
@@ -71,8 +71,9 @@
 | `--accent-hover` | `#a0b6ff` | hover |
 | `--success` | `#3ecf8e` | 成功、已连接 |
 | `--success-muted` | `rgba(62,207,142,0.14)` | |
-| `--warning` | `#e6b84d` | 警告、权限待批 |
-| `--warning-muted` | `rgba(230,184,77,0.14)` | 权限条背景 |
+| `--warning` | `#f0993d` | 警告、信任、权限待批（橙，非金） |
+| `--warning-muted` | `rgba(240,153,61,0.16)` | 权限条 / 信任条背景 |
+| `--warning-fg` | `#1a1008` | 橙色实心按钮上的字 |
 | `--danger` | `#f07178` | 错误、拒绝、关闭悬停 |
 | `--danger-muted` | `rgba(240,113,120,0.14)` | |
 | `--info` | `#6cb6ff` | 信息提示 |
@@ -112,8 +113,9 @@
 | `--accent-hover` | `#2f4fc4` | |
 | `--success` | `#1a9f63` | |
 | `--success-muted` | `rgba(26,159,99,0.12)` | |
-| `--warning` | `#b58100` | |
-| `--warning-muted` | `rgba(181,129,0,0.12)` | |
+| `--warning` | `#e07020` | 橙（非金） |
+| `--warning-muted` | `rgba(224,112,32,0.12)` | |
+| `--warning-fg` | `#ffffff` | 橙色实心按钮上的字 |
 | `--danger` | `#d13b45` | |
 | `--danger-muted` | `rgba(209,59,69,0.10)` | |
 | `--info` | `#2a7ed4` | |
@@ -142,7 +144,7 @@
 | 对话框 | `--bg-elevated`, `--shadow-pop`, `--radius-lg` |
 | 滚动条 | `--scrollbar-*`（宽 8–10px） |
 | 空状态插画区 | 线框/单色 icon，`--text-tertiary` |
-| 连接状态点 | 绿 `--success` / 黄 `--warning` / 红 `--danger` / 灰 tertiary |
+| 连接状态点 | 绿 `--success` / 橙 `--warning` / 红 `--danger` / 灰 tertiary |
 | 代码块 | `--font-mono`, `--bg-code`, `--text-secondary` 行号 |
 | 设置表单 label | `--text-secondary`；值 `--text-primary` |
 | 分割线 | `1px solid var(--border-subtle)` |

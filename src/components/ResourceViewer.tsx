@@ -7,7 +7,6 @@
 import {
   useCallback,
   useEffect,
-  useId,
   useMemo,
   useRef,
   useState,
@@ -17,29 +16,67 @@ import { createPortal } from "react-dom";
 import * as api from "@/lib/api";
 import { createT, type Locale } from "@/i18n";
 import { resolvePreviewSrc } from "@/lib/filePreviewSrc";
+import { HtmlBrowser } from "@/components/HtmlBrowser";
 import { MarkdownBody } from "@/components/MarkdownBody";
 import { OverlayScroll } from "@/components/OverlayScroll";
 import { FileMediaPlayer } from "@/components/FileMediaPlayer";
 import { ImageUi } from "@/components/ImageUi";
-import { useFloatingMenu } from "@/lib/floatingMenu";
 import {
   IconChevronDown,
   IconChevronRight,
   IconClose,
-  IconCopy,
   IconFolder,
   IconFiles,
+  IconListTree,
   IconRefresh,
   IconSearch,
 } from "@/components/icons";
 import { OfficeDocumentPreview } from "@/components/OfficeDocumentPreview";
+import { CodePreview } from "@/components/CodePreview";
 import { isOfficeKind } from "@/lib/filePreviewSrc";
+import { OpenLocationButton } from "@/components/OpenLocationButton";
+import { Tip } from "@/components/ui/tooltip";
+
+const TREE_WIDTH_KEY = "grok-app.resourceTreeWidth";
+const TREE_WIDTH_DEFAULT = 220;
+const TREE_WIDTH_MIN = 140;
+const TREE_WIDTH_MAX = 420;
+
+function loadTreeWidth(): number {
+  try {
+    const n = Number(localStorage.getItem(TREE_WIDTH_KEY));
+    if (Number.isFinite(n) && n >= TREE_WIDTH_MIN && n <= TREE_WIDTH_MAX) {
+      return Math.round(n);
+    }
+  } catch {
+    /* ignore */
+  }
+  return TREE_WIDTH_DEFAULT;
+}
+
+function clampTreeWidth(w: number, containerWidth: number): number {
+  const maxByContainer = Math.max(
+    TREE_WIDTH_MIN,
+    Math.floor(containerWidth * 0.55),
+  );
+  const max = Math.min(TREE_WIDTH_MAX, maxByContainer);
+  if (!Number.isFinite(w)) return TREE_WIDTH_DEFAULT;
+  return Math.min(max, Math.max(TREE_WIDTH_MIN, Math.round(w)));
+}
+
+/** Request from chat (or elsewhere) to open a path/URL in this pane. */
+export type ResourceOpenTarget =
+  | { type: "file"; path: string; title?: string }
+  | { type: "url"; url: string; title?: string };
 
 export interface ResourceViewerProps {
   projectPath: string | null;
   projectName: string | null;
   locale: Locale;
   onClose?: () => void;
+  /** When set, open the file/url then call onOpenRequestConsumed. */
+  openRequest?: ResourceOpenTarget | null;
+  onOpenRequestConsumed?: () => void;
 }
 
 interface TreeNode {
@@ -61,6 +98,9 @@ interface FileTab {
   mediaSrc: string | null;
   error: string | null;
   loading: boolean;
+  /** External URL tab (web page). */
+  url?: string;
+  tabKind?: "file" | "url";
 }
 
 function formatSize(n: number): string {
@@ -81,10 +121,6 @@ function guessOfficeKind(name: string): string {
   if (lower.endsWith(".pptx") || lower.endsWith(".pptm")) return "pptx";
   if (lower.endsWith(".pdf")) return "pdf";
   return "docx";
-}
-
-function breadcrumbSegs(relativePath: string): string[] {
-  return relativePath.replace(/\\/g, "/").split("/").filter(Boolean);
 }
 
 /** Lightweight file-kind chip for tree rows */
@@ -125,6 +161,8 @@ export function ResourceViewer({
   projectName,
   locale,
   onClose,
+  openRequest,
+  onOpenRequestConsumed,
 }: ResourceViewerProps) {
   const tr = useMemo(() => createT(locale), [locale]);
   const [root, setRoot] = useState<TreeNode[]>([]);
@@ -137,34 +175,52 @@ export function ResourceViewer({
   const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [treeVisible, setTreeVisible] = useState(true);
-  const [editors, setEditors] = useState<api.DetectedEditor[]>([]);
-  const [openMenu, setOpenMenu] = useState(false);
-  const openBtnRef = useRef<HTMLButtonElement>(null);
-  const openMenuRef = useRef<HTMLDivElement>(null);
-  const openRootRef = useRef<HTMLDivElement>(null);
-  const listId = useId();
+  const [treeWidth, setTreeWidth] = useState(loadTreeWidth);
+  const [resizingTree, setResizingTree] = useState(false);
+  const splitRef = useRef<HTMLDivElement>(null);
+  /** Open-with target for the location button (finder / editor id). */
+  const [openWithTarget, setOpenWithTarget] = useState(() => {
+    try {
+      return localStorage.getItem("grok-app.openTarget") || "finder";
+    } catch {
+      return "finder";
+    }
+  });
 
   const activeTab = tabs.find((t) => t.id === activeId) ?? null;
 
-  const { pos, style } = useFloatingMenu({
-    open: openMenu,
-    triggerRef: openBtnRef,
-    panelRef: openMenuRef,
-    roots: [openRootRef],
-    onClose: () => setOpenMenu(false),
-    placement: "down",
-    minWidth: 200,
-    width: 220,
-    estHeight: 280,
-  });
-
+  // Drag-resize preview | file-tree split
   useEffect(() => {
-    if (!api.isTauri()) return;
-    void api
-      .editorsList()
-      .then((r) => setEditors(r.editors ?? []))
-      .catch(() => setEditors([]));
-  }, []);
+    if (!resizingTree) return;
+    const onMove = (e: PointerEvent) => {
+      const box = splitRef.current?.getBoundingClientRect();
+      if (!box) return;
+      // Tree is on the right → width from pointer to container right edge
+      const next = clampTreeWidth(box.right - e.clientX, box.width);
+      setTreeWidth(next);
+    };
+    const onUp = () => {
+      setResizingTree(false);
+      setTreeWidth((w) => {
+        try {
+          localStorage.setItem(TREE_WIDTH_KEY, String(w));
+        } catch {
+          /* ignore */
+        }
+        return w;
+      });
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+    };
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+    return () => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+    };
+  }, [resizingTree]);
 
   const loadDir = useCallback(
     async (relative: string): Promise<TreeNode[]> => {
@@ -229,6 +285,30 @@ export function ResourceViewer({
     }
   };
 
+  const applyReadResult = (
+    id: string,
+    r: api.FsReadResult,
+    src: string | null,
+    relativePath: string,
+  ) => {
+    setTabs((prev) =>
+      prev.map((t) =>
+        t.id === id
+          ? {
+              ...t,
+              preview: r,
+              mediaSrc: src,
+              absolutePath: r.absolutePath || "",
+              relativePath: relativePath || r.relativePath || t.relativePath,
+              name: r.name || baseName(relativePath || r.absolutePath || "file"),
+              loading: false,
+              tabKind: "file" as const,
+            }
+          : t,
+      ),
+    );
+  };
+
   const openFile = async (relativePath: string) => {
     if (!projectPath) {
       setError(tr("main.noProject"));
@@ -238,8 +318,15 @@ export function ResourceViewer({
       setError(tr("resources.openFailed"));
       return;
     }
-    const existing = tabs.find((t) => t.relativePath === relativePath);
+    const existing = tabs.find(
+      (t) => t.tabKind !== "url" && t.relativePath === relativePath,
+    );
     if (existing) {
+      setTabs((prev) => {
+        const hit = prev.find((t) => t.id === existing.id);
+        if (!hit) return prev;
+        return [hit, ...prev.filter((t) => t.id !== existing.id)];
+      });
       setActiveId(existing.id);
       return;
     }
@@ -253,26 +340,15 @@ export function ResourceViewer({
       mediaSrc: null,
       error: null,
       loading: true,
+      tabKind: "file",
     };
-    setTabs((prev) => [...prev, tab]);
+    // Newest tab on the left
+    setTabs((prev) => [tab, ...prev]);
     setActiveId(id);
     try {
       const r = await api.fsReadFile(projectPath, relativePath);
       const src = await resolvePreviewSrc(r);
-      setTabs((prev) =>
-        prev.map((t) =>
-          t.id === id
-            ? {
-                ...t,
-                preview: r,
-                mediaSrc: src,
-                absolutePath: r.absolutePath || "",
-                name: r.name || baseName(relativePath),
-                loading: false,
-              }
-            : t,
-        ),
-      );
+      applyReadResult(id, r, src, relativePath);
     } catch (e) {
       setTabs((prev) =>
         prev.map((t) =>
@@ -288,55 +364,207 @@ export function ResourceViewer({
     }
   };
 
-  const closeTab = (id: string) => {
-    setTabs((prev) => {
-      const idx = prev.findIndex((t) => t.id === id);
-      if (idx < 0) return prev;
-      const next = prev.filter((t) => t.id !== id);
-      if (activeId === id) {
-        const neighbor = next[idx] ?? next[idx - 1] ?? null;
-        setActiveId(neighbor?.id ?? null);
+  /**
+   * Open path from chat cards. Uses smart host resolver:
+   * absolute → project-relative → suffix search under project root
+   * (handles monorepo: agent writes `05-handoff/next.md` under a subfolder).
+   */
+  const openAbsoluteFile = useCallback(
+    async (absolutePath: string, title?: string) => {
+      if (!api.isTauri()) {
+        setError(tr("resources.openFailed"));
+        return;
       }
-      return next;
-    });
-  };
+      const norm = absolutePath.trim();
+      if (!norm) return;
+      const existing = tabs.find(
+        (t) =>
+          t.tabKind !== "url" &&
+          (t.absolutePath === norm || t.relativePath === norm),
+      );
+      if (existing) {
+        // Move existing to front + activate (Chrome-like focus)
+        setTabs((prev) => {
+          const hit = prev.find((t) => t.id === existing.id);
+          if (!hit) return prev;
+          return [hit, ...prev.filter((t) => t.id !== existing.id)];
+        });
+        setActiveId(existing.id);
+        return;
+      }
+      const id = `tab_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+      const tab: FileTab = {
+        id,
+        relativePath: norm,
+        name: title || baseName(norm),
+        absolutePath: norm,
+        preview: null,
+        mediaSrc: null,
+        error: null,
+        loading: true,
+        tabKind: "file",
+      };
+      setTabs((prev) => [tab, ...prev]);
+      setActiveId(id);
+      try {
+        const r = await api.fsOpenPath(norm, projectPath);
+        const src = await resolvePreviewSrc(r);
+        // Prefer project-relative tab key when file is under project
+        let relKey = r.relativePath || baseName(norm);
+        if (projectPath && r.absolutePath) {
+          const root = projectPath.replace(/[/\\]+$/, "").replace(/\\/g, "/");
+          const absN = r.absolutePath.replace(/\\/g, "/");
+          if (absN.startsWith(root + "/")) {
+            relKey = absN.slice(root.length + 1);
+          }
+        }
+        applyReadResult(id, r, src, relKey);
+      } catch (e) {
+        setTabs((prev) =>
+          prev.map((t) =>
+            t.id === id
+              ? {
+                  ...t,
+                  loading: false,
+                  error: `${tr("resources.openFailed")}: ${String(e)}`,
+                }
+              : t,
+          ),
+        );
+      }
+    },
+    [projectPath, tabs, tr],
+  );
+
+  const openUrl = useCallback(
+    (url: string, title?: string) => {
+      const u = url.trim();
+      if (!u) return;
+      const existing = tabs.find((t) => t.tabKind === "url" && t.url === u);
+      if (existing) {
+        setActiveId(existing.id);
+        return;
+      }
+      const id = `tab_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+      let name = title || u;
+      try {
+        name = title || new URL(u).hostname || u;
+      } catch {
+        /* keep */
+      }
+      const tab: FileTab = {
+        id,
+        relativePath: u,
+        name,
+        absolutePath: "",
+        preview: null,
+        mediaSrc: null,
+        error: null,
+        loading: false,
+        url: u,
+        tabKind: "url",
+      };
+      setTabs((prev) => [tab, ...prev]);
+      setActiveId(id);
+    },
+    [tabs],
+  );
+
+  // External open requests (from chat file/url cards)
+  useEffect(() => {
+    if (!openRequest) return;
+    if (openRequest.type === "file") {
+      void openAbsoluteFile(openRequest.path, openRequest.title);
+    } else if (openRequest.type === "url") {
+      openUrl(openRequest.url, openRequest.title);
+    }
+    onOpenRequestConsumed?.();
+  }, [openRequest, openAbsoluteFile, openUrl, onOpenRequestConsumed]);
+
+  const closeTab = useCallback(
+    (id: string) => {
+      setTabs((prev) => {
+        const idx = prev.findIndex((t) => t.id === id);
+        if (idx < 0) return prev;
+        const next = prev.filter((t) => t.id !== id);
+        if (activeId === id) {
+          // Prefer neighbor on the left (newer), else right
+          const neighbor = next[Math.max(0, idx - 1)] ?? next[0] ?? null;
+          setActiveId(neighbor?.id ?? null);
+        }
+        return next;
+      });
+    },
+    [activeId],
+  );
+
+  /** Chrome-style: close every tab except `id`. */
+  const closeOtherTabs = useCallback(
+    (id: string) => {
+      setTabs((prev) => prev.filter((t) => t.id === id));
+      setActiveId(id);
+    },
+    [],
+  );
+
+  /** Close tabs visually to the right of `id` (higher index; older tabs). */
+  const closeTabsToRight = useCallback(
+    (id: string) => {
+      setTabs((prev) => {
+        const idx = prev.findIndex((t) => t.id === id);
+        if (idx < 0) return prev;
+        const next = prev.slice(0, idx + 1);
+        if (activeId && !next.some((t) => t.id === activeId)) {
+          setActiveId(id);
+        }
+        return next;
+      });
+    },
+    [activeId],
+  );
+
+  /** Close tabs visually to the left of `id` (lower index; newer tabs). */
+  const closeTabsToLeft = useCallback(
+    (id: string) => {
+      setTabs((prev) => {
+        const idx = prev.findIndex((t) => t.id === id);
+        if (idx < 0) return prev;
+        const next = prev.slice(idx);
+        if (activeId && !next.some((t) => t.id === activeId)) {
+          setActiveId(id);
+        }
+        return next;
+      });
+    },
+    [activeId],
+  );
+
+  const closeAllTabs = useCallback(() => {
+    setTabs([]);
+    setActiveId(null);
+  }, []);
+
+  const [tabMenu, setTabMenu] = useState<{
+    x: number;
+    y: number;
+    tabId: string;
+  } | null>(null);
+
+  useEffect(() => {
+    if (!tabMenu) return;
+    const close = () => setTabMenu(null);
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") close();
+    };
+    document.addEventListener("mousedown", close);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", close);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [tabMenu]);
 
   const absPath = activeTab?.absolutePath || "";
-
-  const openWithEditor = async (editorId?: string) => {
-    if (!absPath) return;
-    setOpenMenu(false);
-    try {
-      if (editorId) {
-        await api.openInEditor({ path: absPath, editor: editorId });
-      } else {
-        await api.pathOpen(absPath);
-      }
-    } catch (e) {
-      setError(String(e));
-    }
-  };
-
-  const revealActive = async () => {
-    if (!absPath) return;
-    setOpenMenu(false);
-    try {
-      await api.pathReveal(absPath);
-    } catch (e) {
-      setError(String(e));
-    }
-  };
-
-  const copyPath = async () => {
-    const p = absPath || activeTab?.relativePath;
-    if (!p) return;
-    try {
-      await navigator.clipboard.writeText(p);
-    } catch {
-      /* ignore */
-    }
-    setOpenMenu(false);
-  };
 
   const filterMatch = useCallback(
     (name: string, path: string) => {
@@ -355,35 +583,36 @@ export function ResourceViewer({
         const active = activeTab?.relativePath === n.relativePath;
         return (
           <div key={n.relativePath || n.name}>
-            <button
-              type="button"
-              className={
-                "rp-tree__row" +
-                (active ? " is-active" : "") +
-                (n.isDir ? " is-dir" : "")
-              }
-              style={{ paddingLeft: 8 + depth * 12 }}
-              onClick={(e) => {
-                e.preventDefault();
-                if (n.isDir) void toggleDir(n);
-                else void openFile(n.relativePath);
-              }}
-              title={n.relativePath}
-            >
-              <span className="rp-tree__chev">
-                {n.isDir ? (
-                  isOpen ? (
-                    <IconChevronDown size={12} />
+            <Tip label={n.relativePath}>
+              <button
+                type="button"
+                className={
+                  "rp-tree__row" +
+                  (active ? " is-active" : "") +
+                  (n.isDir ? " is-dir" : "")
+                }
+                style={{ paddingLeft: 8 + depth * 12 }}
+                onClick={(e) => {
+                  e.preventDefault();
+                  if (n.isDir) void toggleDir(n);
+                  else void openFile(n.relativePath);
+                }}
+              >
+                <span className="rp-tree__chev">
+                  {n.isDir ? (
+                    isOpen ? (
+                      <IconChevronDown size={12} />
+                    ) : (
+                      <IconChevronRight size={12} />
+                    )
                   ) : (
-                    <IconChevronRight size={12} />
-                  )
-                ) : (
-                  <span className="rp-tree__gap" />
-                )}
-              </span>
-              <FileKindMark name={n.name} isDir={n.isDir} />
-              <span className="rp-tree__name">{n.name}</span>
-            </button>
+                    <span className="rp-tree__gap" />
+                  )}
+                </span>
+                <FileKindMark name={n.name} isDir={n.isDir} />
+                <span className="rp-tree__name">{n.name}</span>
+              </button>
+            </Tip>
             {n.isDir && isOpen && n.children && n.children.length > 0 && (
               <div className="rp-tree__kids">
                 {renderTree(n.children, depth + 1)}
@@ -394,8 +623,25 @@ export function ResourceViewer({
       });
 
   const previewBody = useMemo(() => {
+    // Web URL tab — edge-to-edge browser
+    if (activeTab?.tabKind === "url" && activeTab.url) {
+      return (
+        <iframe
+          className="rp-preview__frame rp-preview__frame--browser"
+          title={activeTab.name}
+          src={activeTab.url}
+          referrerPolicy="no-referrer"
+          allow="fullscreen"
+        />
+      );
+    }
     const preview = activeTab?.preview;
-    if (!preview) return null;
+    if (!preview) {
+      if (activeTab?.error) {
+        return <div className="rp-preview__msg">{activeTab.error}</div>;
+      }
+      return null;
+    }
     if (preview.error && !preview.text && !preview.base64 && !preview.stream) {
       return <div className="rp-preview__msg">{preview.error}</div>;
     }
@@ -420,6 +666,7 @@ export function ResourceViewer({
           locale={locale}
           textFallback={preview.text}
           errorFromHost={preview.error}
+          embedded
         />
       );
     }
@@ -489,32 +736,43 @@ export function ResourceViewer({
           </div>
         );
       case "html":
+        // Do not use file:// in iframe — WKWebView/Tauri blocks it (blank page).
+        // HtmlBrowser uses srcDoc (host text) or asset fetch; scripts work, full-bleed.
         return (
-          <iframe
-            className="rp-preview__frame"
+          <HtmlBrowser
             title={preview.name}
-            sandbox=""
-            srcDoc={preview.text ?? ""}
+            absolutePath={preview.absolutePath || null}
+            html={preview.text}
           />
         );
-      case "json":
+      case "json": {
+        let body = preview.text ?? "";
         try {
-          const pretty = JSON.stringify(
-            JSON.parse(preview.text ?? "{}"),
-            null,
-            2,
-          );
-          return <pre className="rp-preview__code">{pretty}</pre>;
+          body = JSON.stringify(JSON.parse(body), null, 2);
         } catch {
-          return <pre className="rp-preview__code">{preview.text}</pre>;
+          /* keep raw */
         }
+        return (
+          <CodePreview
+            code={body}
+            fileName={preview.name.endsWith(".json") ? preview.name : "data.json"}
+            language="json"
+            footer={
+              preview.truncated ? tr("resources.truncated") : null
+            }
+          />
+        );
+      }
       default:
         if (preview.text) {
           return (
-            <pre className="rp-preview__code">
-              {preview.text}
-              {preview.truncated ? `\n\n… ${tr("resources.truncated")}` : ""}
-            </pre>
+            <CodePreview
+              code={preview.text}
+              fileName={preview.name}
+              footer={
+                preview.truncated ? tr("resources.truncated") : null
+              }
+            />
           );
         }
         return (
@@ -528,26 +786,22 @@ export function ResourceViewer({
     }
   }, [activeTab, tr, locale]);
 
-  const crumbs = activeTab
-    ? breadcrumbSegs(activeTab.relativePath)
-    : projectName
-      ? [projectName]
-      : [];
-
-  if (!projectPath) {
+  // No project and no open tabs → empty; allow absolute/url tabs without a project.
+  if (!projectPath && tabs.length === 0) {
     return (
       <div className="rp" data-testid="resource-viewer">
         <div className="rp__chrome">
           <div className="rp__chrome-title">{tr("resources.title")}</div>
           {onClose && (
-            <button
-              type="button"
-              className="chrome-btn"
-              onClick={onClose}
-              title={tr("common.close")}
-            >
-              <IconClose size={14} />
-            </button>
+            <Tip label={tr("common.close")}>
+              <button
+                type="button"
+                className="chrome-btn"
+                onClick={onClose}
+              >
+                <IconClose size={14} />
+              </button>
+            </Tip>
           )}
         </div>
         <div className="rp__empty-state">
@@ -558,208 +812,160 @@ export function ResourceViewer({
     );
   }
 
-  const openMenuEl =
-    openMenu && pos && typeof document !== "undefined"
-      ? createPortal(
-          <div
-            ref={openMenuRef}
-            className="rp-open-menu"
-            role="menu"
-            id={listId}
-            style={style}
-          >
-            {editors.length === 0 ? (
-              <div className="rp-open-menu__empty">{tr("resources.noEditors")}</div>
-            ) : (
-              editors.map((ed) => (
-                <button
-                  key={ed.id}
-                  type="button"
-                  className="rp-open-menu__item"
-                  role="menuitem"
-                  onClick={() => void openWithEditor(ed.id)}
-                >
-                  <span className="rp-open-menu__ico" aria-hidden>
-                    ⌥
-                  </span>
-                  <span>{ed.label}</span>
-                </button>
-              ))
-            )}
-            <button
-              type="button"
-              className="rp-open-menu__item"
-              role="menuitem"
-              onClick={() => void openWithEditor(undefined)}
-            >
-              <span className="rp-open-menu__ico" aria-hidden>
-                ↗
-              </span>
-              <span>{tr("resources.openDefault")}</span>
-            </button>
-            <div className="rp-open-menu__sep" />
-            <button
-              type="button"
-              className="rp-open-menu__item"
-              role="menuitem"
-              onClick={() => void revealActive()}
-            >
-              <span className="rp-open-menu__ico" aria-hidden>
-                ⌁
-              </span>
-              <span>{tr("resources.revealFolder")}</span>
-            </button>
-            <button
-              type="button"
-              className="rp-open-menu__item"
-              role="menuitem"
-              onClick={() => void copyPath()}
-            >
-              <span className="rp-open-menu__ico" aria-hidden>
-                <IconCopy size={14} />
-              </span>
-              <span>{tr("attach.copyPath")}</span>
-            </button>
-          </div>,
-          document.body,
-        )
-      : null;
-
+  /**
+   * Single chrome row (Grok Desktop / Codex):
+   *   [ file tabs … ] [ 打开位置 ] [ tree ] [ close ]
+   * No breadcrumb title row — basename lives only in the tab.
+   * Nested path is available via tab title attribute.
+   */
   return (
-    <div className="rp" data-testid="resource-viewer">
-      {/* Tabs */}
-      <div className="rp-tabs">
-        <div className="rp-tabs__scroll">
-          {tabs.length === 0 ? (
-            <div className="rp-tabs__placeholder">
-              <IconFiles size={14} />
-              <span>{projectName || tr("resources.files")}</span>
-            </div>
-          ) : (
-            tabs.map((t) => (
-              <button
-                key={t.id}
-                type="button"
-                className={"rp-tab" + (t.id === activeId ? " is-active" : "")}
-                onClick={() => setActiveId(t.id)}
-                title={t.relativePath}
-              >
-                <FileKindMark name={t.name} isDir={false} />
-                <span className="rp-tab__name">{t.name}</span>
-                <span
-                  className="rp-tab__x"
-                  role="button"
-                  tabIndex={0}
-                  title={tr("resources.tabClose")}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    closeTab(t.id);
-                  }}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" || e.key === " ") {
-                      e.stopPropagation();
-                      closeTab(t.id);
+    <div
+      className="rp"
+      data-testid="resource-viewer"
+      aria-label={projectName ?? tr("resources.title")}
+    >
+      <div className="rp-chrome">
+        <div className="rp-tabs" role="tablist" aria-label={tr("resources.files")}>
+          <div className="rp-tabs__scroll">
+            {tabs.length === 0 ? (
+              <div className="rp-tabs__placeholder">
+                <span className="rp-tabs__hint">{tr("resources.emptyPreview")}</span>
+              </div>
+            ) : (
+              tabs.map((t) => {
+                const active = t.id === activeId;
+                return (
+                  <Tip
+                    key={t.id}
+                    label={
+                      active
+                        ? t.relativePath || t.name
+                        : `${t.name}\n${t.relativePath || ""}`
                     }
-                  }}
-                >
-                  ×
-                </span>
-              </button>
-            ))
-          )}
+                  >
+                    <button
+                      type="button"
+                      role="tab"
+                      aria-selected={active}
+                      title={t.relativePath || t.name}
+                      className={
+                        "rp-tab" +
+                        (active ? " is-active" : " is-inactive") +
+                        (t.tabKind === "url" ? " rp-tab--url" : "")
+                      }
+                      onClick={() => setActiveId(t.id)}
+                      onContextMenu={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        setTabMenu({
+                          x: e.clientX,
+                          y: e.clientY,
+                          tabId: t.id,
+                        });
+                      }}
+                    >
+                      <FileKindMark
+                        name={t.tabKind === "url" ? "web.html" : t.name}
+                        isDir={false}
+                      />
+                      {active ? (
+                        <>
+                          <span className="rp-tab__name">{t.name}</span>
+                          <span
+                            className="rp-tab__x"
+                            role="button"
+                            tabIndex={0}
+                            title={tr("resources.tabClose")}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              closeTab(t.id);
+                            }}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter" || e.key === " ") {
+                                e.stopPropagation();
+                                closeTab(t.id);
+                              }
+                            }}
+                          >
+                            ×
+                          </span>
+                        </>
+                      ) : null}
+                    </button>
+                  </Tip>
+                );
+              })
+            )}
+          </div>
         </div>
-        <div className="rp-tabs__actions">
-          <button
-            type="button"
-            className="chrome-btn"
-            title={
+        <div className="rp-chrome__actions">
+          {absPath ? (
+            <OpenLocationButton
+              path={absPath}
+              target={openWithTarget}
+              onTargetChange={(t) => {
+                setOpenWithTarget(t);
+                try {
+                  localStorage.setItem("grok-app.openTarget", t);
+                } catch {
+                  /* ignore */
+                }
+              }}
+              onOpenError={(e) => setError(e)}
+              compact
+              labels={{
+                openLocation: tr("main.openLocation"),
+                openHint: tr("main.openLocationHint"),
+                openMenu: tr("main.openLocationMenu"),
+                finder: tr("resources.revealFolder"),
+                systemDefault: tr("resources.openDefault"),
+                copyPath: tr("attach.copyPath"),
+              }}
+            />
+          ) : null}
+          <Tip
+            label={
               treeVisible
                 ? tr("resources.collapseTree")
                 : tr("resources.expandTree")
             }
-            onClick={() => setTreeVisible((v) => !v)}
           >
-            {treeVisible ? "⟩" : "⟨"}
-          </button>
+            <button
+              type="button"
+              className={
+                "chrome-btn main__pane-toggle" + (treeVisible ? " is-on" : "")
+              }
+              onClick={() => setTreeVisible((v) => !v)}
+            >
+              <IconListTree size={16} />
+            </button>
+          </Tip>
           {onClose && (
-            <button
-              type="button"
-              className="chrome-btn"
-              title={tr("common.close")}
-              onClick={onClose}
-            >
-              <IconClose size={14} />
-            </button>
+            <Tip label={tr("common.close")}>
+              <button
+                type="button"
+                className="chrome-btn"
+                onClick={onClose}
+              >
+                <IconClose size={14} />
+              </button>
+            </Tip>
           )}
-        </div>
-      </div>
-
-      {/* Toolbar */}
-      <div className="rp-toolbar">
-        <div className="rp-breadcrumb" title={activeTab?.relativePath || ""}>
-          {crumbs.length === 0 ? (
-            <span className="rp-breadcrumb__muted">
-              {tr("resources.preview")}
-            </span>
-          ) : (
-            crumbs.map((seg, i) => (
-              <span key={`${seg}-${i}`} className="rp-breadcrumb__seg">
-                {i > 0 && <span className="rp-breadcrumb__sep">›</span>}
-                <span
-                  className={
-                    i === crumbs.length - 1
-                      ? "rp-breadcrumb__cur"
-                      : "rp-breadcrumb__part"
-                  }
-                >
-                  {seg}
-                </span>
-              </span>
-            ))
-          )}
-        </div>
-        <div className="rp-toolbar__actions">
-          <button
-            type="button"
-            className="rp-tool-btn"
-            disabled={!absPath}
-            title={tr("attach.copyPath")}
-            onClick={() => void copyPath()}
-          >
-            <IconCopy size={14} />
-            <span className="rp-tool-btn__label">
-              {tr("resources.copyPathShort")}
-            </span>
-          </button>
-          <div className="rp-open" ref={openRootRef}>
-            <button
-              type="button"
-              ref={openBtnRef}
-              className="rp-open__btn"
-              disabled={!absPath}
-              aria-haspopup="menu"
-              aria-expanded={openMenu}
-              aria-controls={listId}
-              onClick={() => setOpenMenu((v) => !v)}
-            >
-              <span>{tr("resources.open")}</span>
-              <IconChevronDown size={14} />
-            </button>
-          </div>
         </div>
       </div>
 
       {error && (
         <div className="rp__error" role="alert">
           {error}
-          <button
-            type="button"
-            className="chrome-btn"
-            onClick={() => setError(null)}
-            title={tr("common.dismiss")}
-          >
-            <IconClose size={12} />
-          </button>
+          <Tip label={tr("common.dismiss")}>
+            <button
+              type="button"
+              className="chrome-btn"
+              onClick={() => setError(null)}
+            >
+              <IconClose size={12} />
+            </button>
+          </Tip>
         </div>
       )}
       {activeTab?.error && (
@@ -768,8 +974,15 @@ export function ResourceViewer({
         </div>
       )}
 
-      {/* Split: preview | tree */}
-      <div className={"rp-split" + (treeVisible ? "" : " rp-split--solo")}>
+      {/* Split: preview | resizer | tree */}
+      <div
+        ref={splitRef}
+        className={
+          "rp-split" +
+          (treeVisible ? "" : " rp-split--solo") +
+          (resizingTree ? " is-resizing" : "")
+        }
+      >
         <div className="rp-split__preview">
           {!activeTab ? (
             <div className="rp__empty-state">
@@ -782,10 +995,24 @@ export function ResourceViewer({
             <div className="rp__empty-state">
               <div className="rp__empty-desc">{tr("resources.loading")}</div>
             </div>
+          ) : activeTab.tabKind === "url" ||
+            activeTab.preview?.kind === "html" ? (
+            /* Built-in browser: zero padding, iframe fills the pane */
+            <div className="rp-preview-browser">{previewBody}</div>
           ) : activeTab.preview &&
             isOfficeKind(activeTab.preview.kind) &&
             activeTab.preview.kind !== "image" ? (
             <div className="rp-preview-office">{previewBody}</div>
+          ) : activeTab.preview?.text &&
+            (activeTab.preview.kind === "json" ||
+              activeTab.preview.kind === "text" ||
+              activeTab.preview.kind === "code" ||
+              // host may classify source as generic text
+              (!["markdown", "html", "image", "audio", "video"].includes(
+                activeTab.preview.kind,
+              ) &&
+                !!activeTab.preview.text)) ? (
+            <div className="rp-preview-code-host">{previewBody}</div>
           ) : (
             <OverlayScroll className="rp-preview-scroll">
               <div className="rp-preview-body">{previewBody}</div>
@@ -794,42 +1021,147 @@ export function ResourceViewer({
         </div>
 
         {treeVisible && (
-          <div className="rp-split__tree">
-            <div className="rp-tree-search">
-              <IconSearch size={14} />
-              <input
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                placeholder={tr("resources.filterPh")}
-                aria-label={tr("resources.filterPh")}
-              />
-              <button
-                type="button"
-                className="chrome-btn"
-                title={tr("resources.refresh")}
-                onClick={() => void refresh()}
-              >
-                <IconRefresh size={14} />
-              </button>
+          <>
+            <div
+              className="rp-split__resizer"
+              role="separator"
+              aria-orientation="vertical"
+              aria-label={tr("resources.resizeTree")}
+              aria-valuenow={treeWidth}
+              onPointerDown={(e) => {
+                e.preventDefault();
+                setResizingTree(true);
+              }}
+            />
+            <div
+              className="rp-split__tree"
+              style={{
+                width: treeWidth,
+                flex: `0 0 ${treeWidth}px`,
+                maxWidth: treeWidth,
+                minWidth: TREE_WIDTH_MIN,
+              }}
+            >
+              <div className="rp-tree-search">
+                <IconSearch size={14} />
+                <input
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                  placeholder={tr("resources.filterPh")}
+                  aria-label={tr("resources.filterPh")}
+                />
+                <Tip label={tr("resources.refresh")}>
+                  <button
+                    type="button"
+                    className="chrome-btn"
+                    onClick={() => void refresh()}
+                  >
+                    <IconRefresh size={14} />
+                  </button>
+                </Tip>
+              </div>
+              <OverlayScroll className="rp-tree-scroll">
+                {loadingTree ? (
+                  <div className="rp__empty-state rp__empty-state--sm">
+                    {tr("resources.loading")}
+                  </div>
+                ) : root.length === 0 ? (
+                  <div className="rp__empty-state rp__empty-state--sm">
+                    {tr("resources.empty")}
+                  </div>
+                ) : (
+                  renderTree(root, 0)
+                )}
+              </OverlayScroll>
             </div>
-            <OverlayScroll className="rp-tree-scroll">
-              {loadingTree ? (
-                <div className="rp__empty-state rp__empty-state--sm">
-                  {tr("resources.loading")}
-                </div>
-              ) : root.length === 0 ? (
-                <div className="rp__empty-state rp__empty-state--sm">
-                  {tr("resources.empty")}
-                </div>
-              ) : (
-                renderTree(root, 0)
-              )}
-            </OverlayScroll>
-          </div>
+          </>
         )}
       </div>
 
-      {openMenuEl}
+      {/* Chrome-style tab context menu */}
+      {tabMenu &&
+        typeof document !== "undefined" &&
+        createPortal(
+          <div
+            className="menu-panel att-menu rp-tab-menu"
+            style={{
+              left: Math.min(tabMenu.x, window.innerWidth - 220),
+              top: Math.min(tabMenu.y, window.innerHeight - 260),
+            }}
+            role="menu"
+            onMouseDown={(e) => e.stopPropagation()}
+          >
+            {(() => {
+              const idx = tabs.findIndex((t) => t.id === tabMenu.tabId);
+              const hasLeft = idx > 0;
+              const hasRight = idx >= 0 && idx < tabs.length - 1;
+              const hasOthers = tabs.length > 1;
+              return (
+                <>
+                  <button
+                    type="button"
+                    className="att-menu__item"
+                    role="menuitem"
+                    onClick={() => {
+                      setTabMenu(null);
+                      closeTab(tabMenu.tabId);
+                    }}
+                  >
+                    {tr("resources.tabClose")}
+                  </button>
+                  <button
+                    type="button"
+                    className="att-menu__item"
+                    role="menuitem"
+                    disabled={!hasOthers}
+                    onClick={() => {
+                      setTabMenu(null);
+                      closeOtherTabs(tabMenu.tabId);
+                    }}
+                  >
+                    {tr("resources.tabCloseOthers")}
+                  </button>
+                  <button
+                    type="button"
+                    className="att-menu__item"
+                    role="menuitem"
+                    disabled={!hasRight}
+                    onClick={() => {
+                      setTabMenu(null);
+                      closeTabsToRight(tabMenu.tabId);
+                    }}
+                  >
+                    {tr("resources.tabCloseRight")}
+                  </button>
+                  <button
+                    type="button"
+                    className="att-menu__item"
+                    role="menuitem"
+                    disabled={!hasLeft}
+                    onClick={() => {
+                      setTabMenu(null);
+                      closeTabsToLeft(tabMenu.tabId);
+                    }}
+                  >
+                    {tr("resources.tabCloseLeft")}
+                  </button>
+                  <button
+                    type="button"
+                    className="att-menu__item"
+                    role="menuitem"
+                    onClick={() => {
+                      setTabMenu(null);
+                      closeAllTabs();
+                    }}
+                  >
+                    {tr("resources.tabCloseAll")}
+                  </button>
+                </>
+              );
+            })()}
+          </div>,
+          document.body,
+        )}
     </div>
   );
 }

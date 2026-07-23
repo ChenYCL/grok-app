@@ -1,14 +1,16 @@
 /**
  * Shared image UI: click → lightbox; right-click menu aligned with AttachmentCard
  * (view, reveal, copy image, copy path when a local path is known).
+ * Local absolute paths are resolved via convertFileSrc automatically.
  */
 
 import { useEffect, useState, type CSSProperties, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import * as api from "@/lib/api";
 import { copyImageFromSrc } from "@/lib/copyImage";
+import { resolveImageSrc, isViewableSrc } from "@/lib/imageSrc";
 import { useImageViewerOptional } from "@/components/ImageViewer";
-import { IconCopy } from "@/components/icons";
+import { IconCopy, IconExternalLink, IconFolder } from "@/components/icons";
 import { createT, type Locale } from "@/i18n";
 
 export interface ImageUiLabels {
@@ -63,7 +65,28 @@ export function ImageUi({
 }: ImageUiProps) {
   const viewer = useImageViewerOptional();
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
-  const localPath = isLocalFsPath(path) ? path : undefined;
+  const [resolvedSrc, setResolvedSrc] = useState<string | null>(() =>
+    isViewableSrc(src) ? src : null,
+  );
+  const localPath = isLocalFsPath(path)
+    ? path
+    : isLocalFsPath(src)
+      ? src
+      : undefined;
+
+  useEffect(() => {
+    let cancelled = false;
+    if (isViewableSrc(src)) {
+      setResolvedSrc(src);
+      return;
+    }
+    void resolveImageSrc(src).then((r) => {
+      if (!cancelled) setResolvedSrc(r);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [src]);
 
   useEffect(() => {
     if (!menu) return;
@@ -79,17 +102,21 @@ export function ImageUi({
     };
   }, [menu]);
 
+  if (!resolvedSrc) return null;
+
   const openViewer = () => {
     const slides =
       gallery && gallery.length > 0
         ? gallery
         : localPath
           ? [localPath]
-          : [src];
-    const want = localPath ?? src;
+          : [resolvedSrc];
+    const want = localPath ?? resolvedSrc;
     const idx = Math.max(
       0,
-      slides.findIndex((s) => s === want || s === src || s === localPath),
+      slides.findIndex(
+        (s) => s === want || s === resolvedSrc || s === localPath || s === src,
+      ),
     );
     viewer.open(
       slides.map((s) => ({
@@ -102,7 +129,7 @@ export function ImageUi({
   };
 
   const copyImage = async () => {
-    await copyImageFromSrc(src);
+    await copyImageFromSrc(resolvedSrc);
   };
 
   const copyPath = async () => {
@@ -131,7 +158,7 @@ export function ImageUi({
       <img
         className={className}
         style={{ ...style, cursor: "zoom-in" }}
-        src={src}
+        src={resolvedSrc}
         alt={alt}
         draggable={draggable}
         onClick={(e) => {
@@ -149,7 +176,7 @@ export function ImageUi({
         typeof document !== "undefined" &&
         createPortal(
           <div
-            className="att-menu"
+            className="menu-panel att-menu"
             style={{ left, top }}
             role="menu"
             onMouseDown={(e) => e.stopPropagation()}
@@ -164,6 +191,9 @@ export function ImageUi({
                 openViewer();
               }}
             >
+              <span className="att-menu__ico" aria-hidden>
+                <IconExternalLink size={16} />
+              </span>
               {labels.viewImage}
             </button>
             {localPath && (
@@ -176,6 +206,9 @@ export function ImageUi({
                   void revealPath();
                 }}
               >
+                <span className="att-menu__ico" aria-hidden>
+                  <IconFolder size={16} />
+                </span>
                 {labels.reveal}
               </button>
             )}
@@ -188,7 +221,10 @@ export function ImageUi({
                 void copyImage();
               }}
             >
-              <IconCopy size={14} /> {labels.copyImage}
+              <span className="att-menu__ico" aria-hidden>
+                <IconCopy size={16} />
+              </span>
+              {labels.copyImage}
             </button>
             {localPath && (
               <button
@@ -200,7 +236,10 @@ export function ImageUi({
                   void copyPath();
                 }}
               >
-                <IconCopy size={14} /> {labels.copyPath}
+                <span className="att-menu__ico" aria-hidden>
+                  <IconCopy size={16} />
+                </span>
+                {labels.copyPath}
               </button>
             )}
             {extraMenu}

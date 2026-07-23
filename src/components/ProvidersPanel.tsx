@@ -7,6 +7,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import * as api from "@/lib/api";
 import { createT, type Locale } from "@/i18n";
 import { Select } from "@/components/Select";
+import { Tip } from "@/components/ui/tooltip";
 import {
   IconCheck,
   IconClose,
@@ -392,10 +393,12 @@ export function ProvidersPanel({
               </div>
               <div className="prov-switch__text">
                 <div className="prov-switch__name">{p.name || p.id}</div>
-                <div className="prov-switch__desc" title={p.baseUrl}>
-                  {hostOf(p.baseUrl)}
-                  {p.model ? ` · ${p.model}` : ""}
-                </div>
+                <Tip label={p.baseUrl}>
+                  <div className="prov-switch__desc">
+                    {hostOf(p.baseUrl)}
+                    {p.model ? ` · ${p.model}` : ""}
+                  </div>
+                </Tip>
               </div>
               {active ? (
                 <span className="account-badge account-badge--ok">
@@ -445,24 +448,29 @@ export function ProvidersPanel({
             <div className="prov-intro__meta">
               <div className="prov-intro__meta-row">
                 <span className="prov-intro__meta-k">{tr("prov.agentHome")}</span>
-                <code className="prov-intro__meta-v" title={list.agentHome}>
-                  {list.agentHome}
-                </code>
-                <button
-                  type="button"
-                  className="chrome-btn"
-                  title={tr("prov.copyPath")}
-                  onClick={() => void copyPath(list.agentHome)}
-                >
-                  {copied ? <IconCheck size={14} /> : <IconCopy size={14} />}
-                </button>
+                <Tip label={list.agentHome}>
+                  <code className="prov-intro__meta-v">
+                    {list.agentHome}
+                  </code>
+                </Tip>
+                <Tip label={tr("prov.copyPath")}>
+                  <button
+                    type="button"
+                    className="chrome-btn"
+                    onClick={() => void copyPath(list.agentHome)}
+                  >
+                    {copied ? <IconCheck size={14} /> : <IconCopy size={14} />}
+                  </button>
+                </Tip>
               </div>
               {list.configPath ? (
                 <div className="prov-intro__meta-row">
                   <span className="prov-intro__meta-k">{tr("prov.configFile")}</span>
-                  <code className="prov-intro__meta-v" title={list.configPath}>
-                    config.toml
-                  </code>
+                  <Tip label={list.configPath}>
+                    <code className="prov-intro__meta-v">
+                      config.toml
+                    </code>
+                  </Tip>
                 </div>
               ) : null}
               <div className="prov-intro__meta-row">
@@ -575,9 +583,11 @@ export function ProvidersPanel({
                         </div>
                         <div className="prov-fact">
                           <span className="prov-fact__k">{tr("prov.factEndpoint")}</span>
-                          <span className="prov-fact__v" title={p.baseUrl}>
-                            {hostOf(p.baseUrl)}
-                          </span>
+                          <Tip label={p.baseUrl}>
+                            <span className="prov-fact__v">
+                              {hostOf(p.baseUrl)}
+                            </span>
+                          </Tip>
                         </div>
                       </div>
 
@@ -613,46 +623,50 @@ export function ProvidersPanel({
 
                     <div className="prov-card__actions">
                       {!p.isDefault && (
+                        <Tip label={tr("prov.enable")}>
+                          <button
+                            type="button"
+                            className="btn btn--ghost"
+                            onClick={() => void setDefault(p.id)}
+                            disabled={busy}
+                          >
+                            <IconCheck size={14} />
+                            {tr("prov.enable")}
+                          </button>
+                        </Tip>
+                      )}
+                      <Tip label={tr("prov.ping")}>
                         <button
                           type="button"
                           className="btn btn--ghost"
-                          onClick={() => void setDefault(p.id)}
-                          disabled={busy}
-                          title={tr("prov.enable")}
+                          onClick={() => void ping(p.id)}
+                          disabled={pingState.status === "loading"}
                         >
-                          <IconCheck size={14} />
-                          {tr("prov.enable")}
+                          <IconRefresh size={14} />
+                          {tr("prov.ping")}
                         </button>
-                      )}
-                      <button
-                        type="button"
-                        className="btn btn--ghost"
-                        onClick={() => void ping(p.id)}
-                        disabled={pingState.status === "loading"}
-                        title={tr("prov.ping")}
-                      >
-                        <IconRefresh size={14} />
-                        {tr("prov.ping")}
-                      </button>
-                      <button
-                        type="button"
-                        className="btn btn--ghost"
-                        onClick={() => openEdit(p)}
-                        title={tr("prov.edit")}
-                      >
-                        <IconEdit size={14} />
-                        {tr("prov.edit")}
-                      </button>
-                      <button
-                        type="button"
-                        className="btn btn--danger"
-                        onClick={() => void remove(p.id, p.name || p.id)}
-                        disabled={busy}
-                        title={tr("prov.delete")}
-                      >
-                        <IconTrash size={14} />
-                        {tr("prov.delete")}
-                      </button>
+                      </Tip>
+                      <Tip label={tr("prov.edit")}>
+                        <button
+                          type="button"
+                          className="btn btn--ghost"
+                          onClick={() => openEdit(p)}
+                        >
+                          <IconEdit size={14} />
+                          {tr("prov.edit")}
+                        </button>
+                      </Tip>
+                      <Tip label={tr("prov.delete")}>
+                        <button
+                          type="button"
+                          className="btn btn--danger"
+                          onClick={() => void remove(p.id, p.name || p.id)}
+                          disabled={busy}
+                        >
+                          <IconTrash size={14} />
+                          {tr("prov.delete")}
+                        </button>
+                      </Tip>
                     </div>
                   </article>
                 );
@@ -672,15 +686,16 @@ export function ProvidersPanel({
               </div>
               <div className="settings-row__desc">{tr("prov.formLead")}</div>
             </div>
-            <button
-              type="button"
-              className="chrome-btn"
-              onClick={closeForm}
-              title={tr("common.close")}
-              aria-label={tr("common.close")}
-            >
-              <IconClose size={16} />
-            </button>
+            <Tip label={tr("common.close")}>
+              <button
+                type="button"
+                className="chrome-btn"
+                onClick={closeForm}
+                aria-label={tr("common.close")}
+              >
+                <IconClose size={16} />
+              </button>
+            </Tip>
           </div>
 
           <div className="prov-form__grid">

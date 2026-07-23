@@ -62,15 +62,21 @@ export function mapPermissionButtons(
     deny: labels?.deny ?? "Deny",
   };
 
+  // Always show short i18n labels (agent option names are often long English).
+  // optionId still comes from the real ACP option when present.
   const out: MappedPermButton[] = [];
   if (once && oid(once)) {
     out.push({
       decision: "allow_once",
       optionId: oid(once),
-      label: once.name || once.label || L.allowOnce,
+      label: L.allowOnce,
     });
   } else {
-    out.push({ decision: "allow_once", optionId: "allow-once", label: L.allowOnce });
+    out.push({
+      decision: "allow_once",
+      optionId: "allow-once",
+      label: L.allowOnce,
+    });
   }
   // Map "Allow for session" to allow_always kind when present (session scope in our Host)
   if (always && oid(always)) {
@@ -90,7 +96,7 @@ export function mapPermissionButtons(
     out.push({
       decision: "deny",
       optionId: oid(reject),
-      label: reject.name || reject.label || L.deny,
+      label: L.deny,
     });
   } else {
     out.push({ decision: "deny", optionId: "reject-once", label: L.deny });

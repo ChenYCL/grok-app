@@ -1,6 +1,9 @@
 /**
  * Viewport-aware floating menus.
  * Always pair with createPortal(..., document.body) so overflow parents never clip.
+ *
+ * Default width is content-sized (`fitContent`). Pass `matchTriggerWidth` when the
+ * panel should be at least as wide as the trigger (e.g. account sheet).
  */
 
 import {
@@ -16,18 +19,30 @@ export type FloatingPlacement = "up" | "down" | "auto";
 export interface FloatingPos {
   left: number;
   top: number;
+  /** Fixed width when not fit-content; 0 means content-sized. */
   width: number;
   placeAbove: boolean;
   maxHeight: number;
+  /** Viewport clamp for content-sized panels. */
+  maxWidth: number;
+  fitContent: boolean;
 }
 
 export interface ComputeFloatingOptions {
-  /** Preferred panel width (px). Default 240. */
+  /**
+   * Preferred fixed panel width (px). Ignored when `fitContent` is true
+   * (unless used as a soft estimate for left clamping).
+   */
   width?: number;
   /** Minimum width; if matchTriggerWidth, at least trigger width. */
   minWidth?: number;
-  /** Stretch to trigger width when wider than `width`. */
+  /** Stretch to at least trigger width (still allows content to grow when fitContent). */
   matchTriggerWidth?: boolean;
+  /**
+   * Size panel to item content + padding (no fixed width). Default true.
+   * Set false only when an explicit fixed `width` is required.
+   */
+  fitContent?: boolean;
   /** Estimated panel height for flip heuristics. */
   estHeight?: number;
   placement?: FloatingPlacement;
@@ -43,18 +58,31 @@ export function computeFloatingPos(
   const margin = opts.margin ?? 8;
   const estHeight = opts.estHeight ?? 240;
   const placement = opts.placement ?? "auto";
+  const fitContent = opts.fitContent !== false;
 
-  let width = opts.width ?? 240;
-  if (opts.matchTriggerWidth) {
-    width = Math.max(width, trigger.width, opts.minWidth ?? 0);
-  } else if (opts.minWidth) {
-    width = Math.max(width, opts.minWidth);
-  }
   const g = globalThis as { innerWidth?: number; innerHeight?: number };
   const vw = typeof g.innerWidth === "number" ? g.innerWidth : 1024;
   const vh = typeof g.innerHeight === "number" ? g.innerHeight : 768;
+  const maxWidth = Math.max(120, vw - margin * 2);
 
-  width = Math.min(width, vw - margin * 2);
+  let width = 0;
+  if (!fitContent) {
+    width = opts.width ?? 240;
+    if (opts.matchTriggerWidth) {
+      width = Math.max(width, trigger.width, opts.minWidth ?? 0);
+    } else if (opts.minWidth) {
+      width = Math.max(width, opts.minWidth);
+    }
+    width = Math.min(width, maxWidth);
+  } else if (opts.matchTriggerWidth) {
+    // Soft floor for positioning estimates only (style uses max-content + minWidth).
+    width = Math.min(
+      Math.max(trigger.width, opts.minWidth ?? 0, opts.width ?? 0),
+      maxWidth,
+    );
+  } else {
+    width = Math.min(opts.width ?? opts.minWidth ?? 160, maxWidth);
+  }
 
   const spaceAbove = trigger.top - margin;
   const spaceBelow = vh - trigger.bottom - margin;
@@ -69,6 +97,7 @@ export function computeFloatingPos(
     Math.min(estHeight + 80, placeAbove ? spaceAbove - gap : spaceBelow - gap),
   );
 
+  // Prefer trigger left edge; clamp so estimated panel stays in viewport.
   let left = trigger.left;
   left = Math.max(margin, Math.min(left, vw - width - margin));
 
@@ -76,48 +105,54 @@ export function computeFloatingPos(
     return {
       left,
       top: trigger.top - gap,
-      width,
+      width: fitContent ? 0 : width,
       placeAbove: true,
       maxHeight,
+      maxWidth,
+      fitContent,
     };
   }
   return {
     left,
     top: trigger.bottom + gap,
-    width,
+    width: fitContent ? 0 : width,
     placeAbove: false,
     maxHeight,
+    maxWidth,
+    fitContent,
   };
 }
 
-export function floatingStyle(pos: FloatingPos | null): CSSProperties | undefined {
+export function floatingStyle(
+  pos: FloatingPos | null,
+  extras?: { minWidth?: number },
+): CSSProperties | undefined {
   if (!pos) return undefined;
-  if (pos.placeAbove) {
-    return {
-      position: "fixed",
-      left: pos.left,
-      top: pos.top,
-      width: pos.width,
-      maxHeight: pos.maxHeight,
-      transform: "translateY(-100%)",
-      zIndex: 10000,
-    };
-  }
-  return {
+  const base: CSSProperties = {
     position: "fixed",
     left: pos.left,
     top: pos.top,
-    width: pos.width,
     maxHeight: pos.maxHeight,
+    maxWidth: pos.maxWidth,
     zIndex: 10000,
   };
+  if (pos.fitContent) {
+    base.width = "max-content";
+    if (extras?.minWidth) base.minWidth = extras.minWidth;
+  } else {
+    base.width = pos.width;
+  }
+  if (pos.placeAbove) {
+    base.transform = "translateY(-100%)";
+  }
+  return base;
 }
 
 export interface UseFloatingMenuOptions {
   open: boolean;
   /** Trigger element used for positioning. */
   triggerRef: RefObject<HTMLElement | null>;
-  /** Panel element (for outside-click + ignore). */
+  /** Panel element (for outside-click + ignore + overflow clamp). */
   panelRef: RefObject<HTMLElement | null>;
   /** Optional extra roots that count as "inside" (e.g. trigger wrapper). */
   roots?: Array<RefObject<HTMLElement | null>>;
@@ -126,6 +161,8 @@ export interface UseFloatingMenuOptions {
   width?: number;
   minWidth?: number;
   matchTriggerWidth?: boolean;
+  /** Default true — panel width follows content. */
+  fitContent?: boolean;
   estHeight?: number;
   gap?: number;
   /** Extra deps that should recompute position (e.g. nested content). */
@@ -145,6 +182,7 @@ export function useFloatingMenu({
   width,
   minWidth,
   matchTriggerWidth,
+  fitContent = true,
   estHeight = 240,
   gap = 6,
   deps = [],
@@ -153,15 +191,19 @@ export function useFloatingMenu({
   style: CSSProperties | undefined;
 } {
   const [pos, setPos] = useState<FloatingPos | null>(null);
+  const [triggerW, setTriggerW] = useState(0);
 
   const update = () => {
     const el = triggerRef.current;
     if (!el) return;
+    const r = el.getBoundingClientRect();
+    setTriggerW(r.width);
     setPos(
-      computeFloatingPos(el.getBoundingClientRect(), {
+      computeFloatingPos(r, {
         width,
         minWidth,
         matchTriggerWidth,
+        fitContent,
         estHeight,
         placement,
         gap,
@@ -184,7 +226,34 @@ export function useFloatingMenu({
       window.removeEventListener("scroll", onScroll, true);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, placement, width, minWidth, matchTriggerWidth, estHeight, gap, ...deps]);
+  }, [
+    open,
+    placement,
+    width,
+    minWidth,
+    matchTriggerWidth,
+    fitContent,
+    estHeight,
+    gap,
+    ...deps,
+  ]);
+
+  // After paint: if content-sized panel overflows the right edge, shift left.
+  useLayoutEffect(() => {
+    if (!open || !pos?.fitContent) return;
+    const panel = panelRef.current;
+    if (!panel) return;
+    const margin = 8;
+    const vw =
+      typeof globalThis.innerWidth === "number" ? globalThis.innerWidth : 1024;
+    const r = panel.getBoundingClientRect();
+    if (r.right > vw - margin) {
+      const nextLeft = Math.max(margin, vw - margin - r.width);
+      if (Math.abs(nextLeft - pos.left) > 0.5) {
+        setPos((p) => (p ? { ...p, left: nextLeft } : p));
+      }
+    }
+  }, [open, pos, panelRef]);
 
   useEffect(() => {
     if (!open) return;
@@ -208,5 +277,13 @@ export function useFloatingMenu({
     };
   }, [open, onClose, triggerRef, panelRef, roots]);
 
-  return { pos, style: floatingStyle(pos) };
+  const styleMin =
+    matchTriggerWidth && triggerW > 0
+      ? Math.max(triggerW, minWidth ?? 0)
+      : minWidth;
+
+  return {
+    pos,
+    style: floatingStyle(pos, { minWidth: styleMin }),
+  };
 }

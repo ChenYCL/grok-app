@@ -8,6 +8,7 @@ import { createPortal } from "react-dom";
 import type { EffortOption } from "@/lib/grokCatalog";
 import { GROK_BUILD_EFFORTS } from "@/lib/grokCatalog";
 import { IconChevronDown } from "@/components/icons";
+import { Tip } from "@/components/ui/tooltip";
 import { useFloatingMenu } from "@/lib/floatingMenu";
 
 type EffortId = EffortOption["id"];
@@ -169,32 +170,36 @@ export function EffortPanel({
         )
       : null;
 
+  const tipLabel = title ?? ariaLabel;
+  const chip = (
+    <button
+      ref={triggerRef}
+      type="button"
+      className="effort-panel__chip"
+      aria-haspopup="dialog"
+      aria-expanded={open}
+      aria-controls={listId}
+      aria-label={ariaLabel}
+      onClick={() => setOpen((v) => !v)}
+    >
+      <span className="effort-panel__chip-dots" aria-hidden>
+        {[0, 1, 2].map((i) => (
+          <i key={i} className={i <= idx ? "is-on" : undefined} />
+        ))}
+      </span>
+      {label}
+      <span className="effort-panel__chev" aria-hidden>
+        <IconChevronDown size={12} />
+      </span>
+    </button>
+  );
+
   return (
     <div
       ref={rootRef}
       className={`effort-panel ${open ? "is-open" : ""}`}
     >
-      <button
-        ref={triggerRef}
-        type="button"
-        className="effort-panel__chip"
-        aria-haspopup="dialog"
-        aria-expanded={open}
-        aria-controls={listId}
-        aria-label={ariaLabel}
-        title={title}
-        onClick={() => setOpen((v) => !v)}
-      >
-        <span className="effort-panel__chip-dots" aria-hidden>
-          {[0, 1, 2].map((i) => (
-            <i key={i} className={i <= idx ? "is-on" : undefined} />
-          ))}
-        </span>
-        {label}
-        <span className="effort-panel__chev" aria-hidden>
-          <IconChevronDown size={12} />
-        </span>
-      </button>
+      {tipLabel ? <Tip label={tipLabel}>{chip}</Tip> : chip}
       {panel}
     </div>
   );

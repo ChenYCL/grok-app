@@ -8,8 +8,63 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::paths::{
-    ensure_app_dirs, projects_file, secrets_file, session_dir, sessions_index_file, settings_file,
+    automations_file, ensure_app_dirs, projects_file, secrets_file, session_dir,
+    sessions_index_file, settings_file,
 };
+
+/// Where composer model / effort / mode / permission choices are remembered.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ComposerPrefsScope {
+    Global,
+    Project,
+    Session,
+}
+
+impl ComposerPrefsScope {
+    pub fn parse(s: &str) -> Self {
+        match s.trim().to_ascii_lowercase().as_str() {
+            "project" => Self::Project,
+            "session" => Self::Session,
+            _ => Self::Global,
+        }
+    }
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Global => "global",
+            Self::Project => "project",
+            Self::Session => "session",
+        }
+    }
+}
+
+/// Effective composer prefs resolved for the current context.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ComposerPrefs {
+    pub model_id: String,
+    pub effort: String,
+    pub mode: String,
+    pub permission_policy: String,
+    /// Scope that was used when resolving (after reading settings).
+    pub scope: String,
+    /// Which layer actually supplied the values (global | project | session).
+    pub source: String,
+}
+
+impl Default for ComposerPrefs {
+    fn default() -> Self {
+        Self {
+            model_id: "grok-4.5".into(),
+            effort: "high".into(),
+            mode: "agent".into(),
+            permission_policy: "ask".into(),
+            scope: "global".into(),
+            source: "global".into(),
+        }
+    }
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -23,6 +78,15 @@ pub struct Project {
     /// Pinned projects float to the top of the sidebar.
     #[serde(default)]
     pub pinned: bool,
+    /// Per-project composer prefs (used when scope = project).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub model_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub effort: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mode: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub permission_policy: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -38,6 +102,13 @@ pub struct SessionMeta {
     /// Archived chats stay on disk but hide from the default tree.
     #[serde(default)]
     pub archived: bool,
+    /// Per-session composer prefs (used when scope = session).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub effort: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mode: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub permission_policy: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -53,9 +124,22 @@ pub struct AppSettings {
     pub mode: String,
     pub onboarding_done: bool,
     pub setup_skipped: bool,
+    /// First-run setup wizard finished (CLI gate + optional auth step).
+    #[serde(default)]
+    pub setup_wizard_completed: bool,
+    /// User skipped account/provider configuration during setup.
+    #[serde(default)]
+    pub auth_setup_deferred: bool,
     /// Default “open path” target: `finder` / `explorer` / editor id (`code`, `cursor`, …).
     #[serde(default = "default_open_target")]
     pub default_open_target: String,
+    /// Remember model / effort / mode / permission at global | project | session.
+    #[serde(default = "default_composer_prefs_scope")]
+    pub composer_prefs_scope: String,
+}
+
+fn default_composer_prefs_scope() -> String {
+    "global".into()
 }
 
 fn default_open_target() -> String {
@@ -75,7 +159,10 @@ impl Default for AppSettings {
             mode: "agent".into(),
             onboarding_done: false,
             setup_skipped: false,
+            setup_wizard_completed: false,
+            auth_setup_deferred: false,
             default_open_target: default_open_target(),
+            composer_prefs_scope: default_composer_prefs_scope(),
         }
     }
 }
@@ -90,6 +177,16 @@ pub struct SecretsFile {
     pub default_model: Option<String>,
 }
 
+/// File/image card persisted with a chat message (user attach or agent image_gen).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MessageAttachmentStored {
+    pub path: String,
+    pub name: String,
+    #[serde(default)]
+    pub is_dir: bool,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ChatMessageStored {
@@ -98,6 +195,15 @@ pub struct ChatMessageStored {
     pub content: String,
     pub thought: Option<String>,
     pub created_at: DateTime<Utc>,
+    /// True when this assistant row records a turn failure (retries exhausted, etc.).
+    #[serde(default)]
+    pub is_error: bool,
+    /// Local file cards (e.g. image_gen output paths).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub attachments: Option<Vec<MessageAttachmentStored>>,
+    /// UI marker type, e.g. `context_compact` for agent auto/manual compaction.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub marker: Option<String>,
 }
 
 fn read_json<T: for<'de> Deserialize<'de> + Default>(path: &PathBuf) -> T {
@@ -169,6 +275,10 @@ pub fn add_project(path: String, trust: bool) -> Result<Project, String> {
         last_opened_at: Utc::now(),
         path_ok: true,
         pinned: false,
+        model_id: None,
+        effort: None,
+        mode: None,
+        permission_policy: None,
     };
     list.push(p.clone());
     save_projects(&list)?;
@@ -247,6 +357,9 @@ pub fn create_session(project_id: Option<String>, title: Option<String>) -> Resu
         updated_at: now,
         model_id: None,
         archived: false,
+        effort: None,
+        mode: None,
+        permission_policy: None,
     };
     let mut list = load_sessions_index();
     list.insert(0, meta.clone());
@@ -335,6 +448,206 @@ pub fn append_message(session_id: &str, msg: ChatMessageStored) -> Result<(), St
     save_messages(session_id, &msgs)
 }
 
+// ─── Automations (scheduled tasks shell) ───────────────────────────────────
+
+/// Host-side scheduled automation. Execution is driven by the UI when the app is open
+/// (or later by CLI headless); this store is the source of truth for the list.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Automation {
+    pub id: String,
+    pub title: String,
+    /// Natural-language prompt / instructions for the agent when the task runs.
+    pub prompt: String,
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+    pub project_id: Option<String>,
+    pub model_id: Option<String>,
+    pub effort: Option<String>,
+    /// `daily` | `weekly` | `weekdays` | `once`
+    #[serde(default = "default_frequency")]
+    pub frequency: String,
+    /// Local wall-clock time `HH:MM` (24h).
+    #[serde(default = "default_time")]
+    pub time: String,
+    /// For `weekly`: 0=Sun … 6=Sat (JS Date convention).
+    #[serde(default)]
+    pub weekdays: Vec<u8>,
+    /// `all` | `failures` | `none`
+    #[serde(default = "default_notify")]
+    pub notify: String,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+    pub last_run_at: Option<DateTime<Utc>>,
+    pub next_run_at: Option<DateTime<Utc>>,
+}
+
+fn default_true() -> bool {
+    true
+}
+fn default_frequency() -> String {
+    "daily".into()
+}
+fn default_time() -> String {
+    "09:00".into()
+}
+fn default_notify() -> String {
+    "all".into()
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AutomationInput {
+    pub title: String,
+    pub prompt: String,
+    pub enabled: Option<bool>,
+    pub project_id: Option<String>,
+    pub model_id: Option<String>,
+    pub effort: Option<String>,
+    pub frequency: Option<String>,
+    pub time: Option<String>,
+    pub weekdays: Option<Vec<u8>>,
+    pub notify: Option<String>,
+    pub next_run_at: Option<DateTime<Utc>>,
+}
+
+pub fn load_automations() -> Vec<Automation> {
+    let _ = ensure_app_dirs();
+    let mut list: Vec<Automation> = read_json(&automations_file());
+    list.sort_by(|a, b| b.updated_at.cmp(&a.updated_at));
+    list
+}
+
+pub fn save_automations(list: &[Automation]) -> Result<(), String> {
+    let _ = ensure_app_dirs();
+    write_json(&automations_file(), &list)
+}
+
+pub fn create_automation(input: AutomationInput) -> Result<Automation, String> {
+    let title = input.title.trim().to_string();
+    if title.is_empty() {
+        return Err("title empty".into());
+    }
+    let prompt = input.prompt.trim().to_string();
+    if prompt.is_empty() {
+        return Err("prompt empty".into());
+    }
+    let now = Utc::now();
+    let auto = Automation {
+        id: Uuid::new_v4().to_string(),
+        title,
+        prompt,
+        enabled: input.enabled.unwrap_or(true),
+        project_id: input.project_id,
+        model_id: input.model_id,
+        effort: input.effort,
+        frequency: input
+            .frequency
+            .unwrap_or_else(default_frequency)
+            .trim()
+            .to_string(),
+        time: input.time.unwrap_or_else(default_time).trim().to_string(),
+        weekdays: input.weekdays.unwrap_or_default(),
+        notify: input
+            .notify
+            .unwrap_or_else(default_notify)
+            .trim()
+            .to_string(),
+        created_at: now,
+        updated_at: now,
+        last_run_at: None,
+        next_run_at: input.next_run_at,
+    };
+    let mut list = load_automations();
+    list.insert(0, auto.clone());
+    save_automations(&list)?;
+    Ok(auto)
+}
+
+pub fn update_automation(id: &str, input: AutomationInput) -> Result<Automation, String> {
+    let mut list = load_automations();
+    let auto = list
+        .iter_mut()
+        .find(|a| a.id == id)
+        .ok_or_else(|| "automation not found".to_string())?;
+    let title = input.title.trim();
+    if title.is_empty() {
+        return Err("title empty".into());
+    }
+    let prompt = input.prompt.trim();
+    if prompt.is_empty() {
+        return Err("prompt empty".into());
+    }
+    auto.title = title.to_string();
+    auto.prompt = prompt.to_string();
+    if let Some(e) = input.enabled {
+        auto.enabled = e;
+    }
+    auto.project_id = input.project_id;
+    auto.model_id = input.model_id;
+    auto.effort = input.effort;
+    if let Some(f) = input.frequency {
+        auto.frequency = f.trim().to_string();
+    }
+    if let Some(t) = input.time {
+        auto.time = t.trim().to_string();
+    }
+    if let Some(w) = input.weekdays {
+        auto.weekdays = w;
+    }
+    if let Some(n) = input.notify {
+        auto.notify = n.trim().to_string();
+    }
+    if input.next_run_at.is_some() {
+        auto.next_run_at = input.next_run_at;
+    }
+    auto.updated_at = Utc::now();
+    let clone = auto.clone();
+    save_automations(&list)?;
+    Ok(clone)
+}
+
+pub fn set_automation_enabled(id: &str, enabled: bool) -> Result<Automation, String> {
+    let mut list = load_automations();
+    let auto = list
+        .iter_mut()
+        .find(|a| a.id == id)
+        .ok_or_else(|| "automation not found".to_string())?;
+    auto.enabled = enabled;
+    auto.updated_at = Utc::now();
+    let clone = auto.clone();
+    save_automations(&list)?;
+    Ok(clone)
+}
+
+pub fn mark_automation_run(
+    id: &str,
+    last_run_at: DateTime<Utc>,
+    next_run_at: Option<DateTime<Utc>>,
+) -> Result<Automation, String> {
+    let mut list = load_automations();
+    let auto = list
+        .iter_mut()
+        .find(|a| a.id == id)
+        .ok_or_else(|| "automation not found".to_string())?;
+    auto.last_run_at = Some(last_run_at);
+    auto.next_run_at = next_run_at;
+    auto.updated_at = Utc::now();
+    let clone = auto.clone();
+    save_automations(&list)?;
+    Ok(clone)
+}
+
+pub fn delete_automation(id: &str) -> Result<(), String> {
+    let mut list = load_automations();
+    let before = list.len();
+    list.retain(|a| a.id != id);
+    if list.len() == before {
+        return Err("automation not found".into());
+    }
+    save_automations(&list)
+}
+
 pub fn load_secrets() -> SecretsFile {
     let _ = ensure_app_dirs();
     read_json(&secrets_file())
@@ -382,6 +695,258 @@ pub fn redact_text(input: &str) -> String {
         cleaned.push(' ');
     }
     cleaned
+}
+
+fn global_prefs(settings: &AppSettings) -> (String, String, String, String) {
+    (
+        settings
+            .model_id
+            .clone()
+            .filter(|s| !s.trim().is_empty())
+            .unwrap_or_else(|| "grok-4.5".into()),
+        settings
+            .effort
+            .clone()
+            .filter(|s| !s.trim().is_empty())
+            .unwrap_or_else(|| "high".into()),
+        if settings.mode.trim().is_empty() {
+            "agent".into()
+        } else {
+            settings.mode.clone()
+        },
+        if settings.permission_policy.trim().is_empty() {
+            "ask".into()
+        } else {
+            settings.permission_policy.clone()
+        },
+    )
+}
+
+/// Resolve effective composer prefs for the active project/session + configured scope.
+pub fn resolve_composer_prefs(
+    project_id: Option<&str>,
+    session_id: Option<&str>,
+) -> ComposerPrefs {
+    let settings = load_settings();
+    let scope = ComposerPrefsScope::parse(&settings.composer_prefs_scope);
+    let (g_model, g_effort, g_mode, g_policy) = global_prefs(&settings);
+
+    match scope {
+        ComposerPrefsScope::Global => ComposerPrefs {
+            model_id: g_model,
+            effort: g_effort,
+            mode: g_mode,
+            permission_policy: g_policy,
+            scope: scope.as_str().into(),
+            source: "global".into(),
+        },
+        ComposerPrefsScope::Project => {
+            let proj = project_id
+                .and_then(|id| load_projects().into_iter().find(|p| p.id == id));
+            if let Some(p) = proj {
+                ComposerPrefs {
+                    model_id: p.model_id.filter(|s| !s.is_empty()).unwrap_or(g_model),
+                    effort: p.effort.filter(|s| !s.is_empty()).unwrap_or(g_effort),
+                    mode: p.mode.filter(|s| !s.is_empty()).unwrap_or(g_mode),
+                    permission_policy: p
+                        .permission_policy
+                        .filter(|s| !s.is_empty())
+                        .unwrap_or(g_policy),
+                    scope: scope.as_str().into(),
+                    source: "project".into(),
+                }
+            } else {
+                ComposerPrefs {
+                    model_id: g_model,
+                    effort: g_effort,
+                    mode: g_mode,
+                    permission_policy: g_policy,
+                    scope: scope.as_str().into(),
+                    source: "global".into(),
+                }
+            }
+        }
+        ComposerPrefsScope::Session => {
+            let sess = session_id.and_then(|id| {
+                load_sessions_index()
+                    .into_iter()
+                    .find(|s| s.id == id)
+            });
+            let proj = sess
+                .as_ref()
+                .and_then(|s| s.project_id.as_deref())
+                .or(project_id)
+                .and_then(|id| load_projects().into_iter().find(|p| p.id == id));
+
+            // Fallback chain: session → project → global
+            let p_model = proj
+                .as_ref()
+                .and_then(|p| p.model_id.clone())
+                .filter(|s| !s.is_empty())
+                .unwrap_or(g_model.clone());
+            let p_effort = proj
+                .as_ref()
+                .and_then(|p| p.effort.clone())
+                .filter(|s| !s.is_empty())
+                .unwrap_or(g_effort.clone());
+            let p_mode = proj
+                .as_ref()
+                .and_then(|p| p.mode.clone())
+                .filter(|s| !s.is_empty())
+                .unwrap_or(g_mode.clone());
+            let p_policy = proj
+                .as_ref()
+                .and_then(|p| p.permission_policy.clone())
+                .filter(|s| !s.is_empty())
+                .unwrap_or(g_policy.clone());
+
+            if let Some(s) = sess {
+                ComposerPrefs {
+                    model_id: s.model_id.filter(|x| !x.is_empty()).unwrap_or(p_model),
+                    effort: s.effort.filter(|x| !x.is_empty()).unwrap_or(p_effort),
+                    mode: s.mode.filter(|x| !x.is_empty()).unwrap_or(p_mode),
+                    permission_policy: s
+                        .permission_policy
+                        .filter(|x| !x.is_empty())
+                        .unwrap_or(p_policy),
+                    scope: scope.as_str().into(),
+                    source: "session".into(),
+                }
+            } else {
+                ComposerPrefs {
+                    model_id: p_model,
+                    effort: p_effort,
+                    mode: p_mode,
+                    permission_policy: p_policy,
+                    scope: scope.as_str().into(),
+                    source: if proj.is_some() { "project" } else { "global" }.into(),
+                }
+            }
+        }
+    }
+}
+
+/// Persist a partial composer prefs update at the configured scope.
+pub fn save_composer_prefs(
+    project_id: Option<&str>,
+    session_id: Option<&str>,
+    model_id: Option<String>,
+    effort: Option<String>,
+    mode: Option<String>,
+    permission_policy: Option<String>,
+) -> Result<ComposerPrefs, String> {
+    let settings = load_settings();
+    let scope = ComposerPrefsScope::parse(&settings.composer_prefs_scope);
+
+    match scope {
+        ComposerPrefsScope::Global => {
+            let mut s = settings;
+            if let Some(v) = model_id {
+                s.model_id = Some(v);
+            }
+            if let Some(v) = effort {
+                s.effort = Some(v);
+            }
+            if let Some(v) = mode {
+                s.mode = v;
+            }
+            if let Some(v) = permission_policy {
+                s.permission_policy = v;
+            }
+            save_settings(&s)?;
+        }
+        ComposerPrefsScope::Project => {
+            let pid = project_id.filter(|s| !s.is_empty());
+            if let Some(pid) = pid {
+                let mut list = load_projects();
+                if let Some(p) = list.iter_mut().find(|p| p.id == pid) {
+                    if let Some(v) = model_id.clone() {
+                        p.model_id = Some(v);
+                    }
+                    if let Some(v) = effort.clone() {
+                        p.effort = Some(v);
+                    }
+                    if let Some(v) = mode.clone() {
+                        p.mode = Some(v);
+                    }
+                    if let Some(v) = permission_policy.clone() {
+                        p.permission_policy = Some(v);
+                    }
+                    save_projects(&list)?;
+                }
+            }
+            // Always mirror to global so orphan UIs / new projects still have a default.
+            let mut s = load_settings();
+            if let Some(v) = model_id {
+                s.model_id = Some(v);
+            }
+            if let Some(v) = effort {
+                s.effort = Some(v);
+            }
+            if let Some(v) = mode {
+                s.mode = v;
+            }
+            if let Some(v) = permission_policy {
+                s.permission_policy = v;
+            }
+            save_settings(&s)?;
+        }
+        ComposerPrefsScope::Session => {
+            let sid = session_id.filter(|s| !s.is_empty());
+            if let Some(sid) = sid {
+                let mut list = load_sessions_index();
+                if let Some(sess) = list.iter_mut().find(|s| s.id == sid) {
+                    if let Some(v) = model_id {
+                        sess.model_id = Some(v);
+                    }
+                    if let Some(v) = effort {
+                        sess.effort = Some(v);
+                    }
+                    if let Some(v) = mode {
+                        sess.mode = Some(v);
+                    }
+                    if let Some(v) = permission_policy {
+                        sess.permission_policy = Some(v);
+                    }
+                    sess.updated_at = Utc::now();
+                    save_sessions_index(&list)?;
+                } else {
+                    // No session row yet — fall back to global so the chip still sticks.
+                    let mut s = load_settings();
+                    if let Some(v) = model_id {
+                        s.model_id = Some(v);
+                    }
+                    if let Some(v) = effort {
+                        s.effort = Some(v);
+                    }
+                    if let Some(v) = mode {
+                        s.mode = v;
+                    }
+                    if let Some(v) = permission_policy {
+                        s.permission_policy = v;
+                    }
+                    save_settings(&s)?;
+                }
+            } else {
+                let mut s = load_settings();
+                if let Some(v) = model_id {
+                    s.model_id = Some(v);
+                }
+                if let Some(v) = effort {
+                    s.effort = Some(v);
+                }
+                if let Some(v) = mode {
+                    s.mode = v;
+                }
+                if let Some(v) = permission_policy {
+                    s.permission_policy = v;
+                }
+                save_settings(&s)?;
+            }
+        }
+    }
+
+    Ok(resolve_composer_prefs(project_id, session_id))
 }
 
 #[cfg(test)]

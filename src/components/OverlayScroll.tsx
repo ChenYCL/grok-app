@@ -10,6 +10,7 @@ import {
   useState,
   type CSSProperties,
   type ReactNode,
+  type Ref,
   type UIEvent,
 } from "react";
 
@@ -21,7 +22,15 @@ type OverlayScrollProps = {
   style?: CSSProperties;
   /** Forward scroll events */
   onScroll?: (e: UIEvent<HTMLDivElement>) => void;
+  /** Optional external ref to the scrolling viewport element. */
+  viewportRef?: Ref<HTMLDivElement | null>;
 };
+
+function assignRef<T>(ref: Ref<T> | undefined, value: T) {
+  if (!ref) return;
+  if (typeof ref === "function") ref(value);
+  else (ref as { current: T }).current = value;
+}
 
 export function OverlayScroll({
   children,
@@ -29,9 +38,18 @@ export function OverlayScroll({
   viewportClassName = "",
   style,
   onScroll,
+  viewportRef: viewportRefProp,
 }: OverlayScrollProps) {
-  const viewportRef = useRef<HTMLDivElement>(null);
+  const viewportRef = useRef<HTMLDivElement | null>(null);
   const hideTimer = useRef<number | null>(null);
+
+  const setViewportNode = useCallback(
+    (node: HTMLDivElement | null) => {
+      viewportRef.current = node;
+      assignRef(viewportRefProp, node);
+    },
+    [viewportRefProp],
+  );
   const [thumb, setThumb] = useState({
     top: 0,
     height: 0,
@@ -105,7 +123,7 @@ export function OverlayScroll({
       }}
     >
       <div
-        ref={viewportRef}
+        ref={setViewportNode}
         className={
           "overlay-scroll__viewport" +
           (viewportClassName ? ` ${viewportClassName}` : "")

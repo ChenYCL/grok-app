@@ -7,7 +7,27 @@ use tauri::State;
 
 use crate::cli_probe::{self, CliProbeResult};
 use crate::session_manager::{SessionManager, SessionSnapshot};
-use crate::store::{self, AppSettings, Project, SecretsFile, SessionMeta};
+use crate::store::{self, AppSettings, Project, SessionMeta};
+
+fn windows_grok_go_config_candidates() -> Option<Vec<String>> {
+    #[cfg(target_os = "windows")]
+    {
+        let mut out = Vec::new();
+        if let Ok(appdata) = std::env::var("APPDATA") {
+            out.push(format!(r"{appdata}\com.grokgo.desktop\config.json"));
+            out.push(format!(r"{appdata}\GrokGo\config.json"));
+        }
+        if let Ok(local) = std::env::var("LOCALAPPDATA") {
+            out.push(format!(r"{local}\com.grokgo.desktop\config.json"));
+            out.push(format!(r"{local}\GrokGo\config.json"));
+        }
+        return if out.is_empty() { None } else { Some(out) };
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        None
+    }
+}
 
 #[tauri::command]
 pub async fn session_get_state(
@@ -27,13 +47,25 @@ pub async fn session_connect(
     mgr.connect(app, project_path, session_id, mode).await
 }
 
+/// Send a turn. `text` goes to the agent; optional `display_text` is stored in the journal
+/// (skill chips as `[[skill:name]]`) so history can re-render tags.
 #[tauri::command]
 pub async fn session_send(
     app: tauri::AppHandle,
     mgr: State<'_, Arc<SessionManager>>,
     text: String,
+    display_text: Option<String>,
 ) -> Result<SessionSnapshot, String> {
-    mgr.send_message(app, text).await
+    mgr.send_message(app, text, display_text).await
+}
+
+/// Drop last user turn on agent + local journal (edit & resend).
+#[tauri::command]
+pub async fn session_rewind_drop_last_user(
+    app: tauri::AppHandle,
+    mgr: State<'_, Arc<SessionManager>>,
+) -> Result<SessionSnapshot, String> {
+    mgr.rewind_drop_last_user_turn(app).await
 }
 
 #[tauri::command]
@@ -76,6 +108,70 @@ pub async fn session_resolve_permission(
 #[tauri::command]
 pub async fn probe_cli(manual_path: Option<String>) -> Result<CliProbeResult, String> {
     Ok(cli_probe::probe_cli(manual_path.as_deref()))
+}
+
+/// Download + install latest Grok Build (multi-mirror, progress via `setup://cli-install-progress`).
+#[tauri::command]
+pub async fn cli_install_latest(app: tauri::AppHandle) -> Result<crate::cli_install::CliInstallResult, String> {
+    crate::cli_install::install_cli_latest(app).await
+}
+
+/// Platform install command + docs URL for manual fallback.
+#[tauri::command]
+pub async fn cli_install_commands() -> Result<serde_json::Value, String> {
+    Ok(crate::cli_install::install_commands())
+}
+
+/// Native file picker for a Grok Build binary (manual path).
+#[tauri::command]
+pub async fn pick_cli_binary() -> Result<Option<String>, String> {
+    let file = tauri::async_runtime::spawn_blocking(|| {
+        let mut dlg = rfd::FileDialog::new().set_title("Select Grok Build binary / 选择 Grok Build 可执行文件");
+        #[cfg(target_os = "windows")]
+        {
+            dlg = dlg.add_filter("Executable", &["exe", "cmd", "bat"]);
+        }
+        dlg.pick_file()
+    })
+    .await
+    .map_err(|e| e.to_string())?;
+    Ok(file.map(|p| p.display().to_string()))
+}
+
+/// Open a URL in the system browser (docs, install pages).
+#[tauri::command]
+pub async fn open_external_url(url: String) -> Result<(), String> {
+    let url = url.trim();
+    if url.is_empty() {
+        return Err("empty url".into());
+    }
+    if !(url.starts_with("https://") || url.starts_with("http://")) {
+        return Err("only http(s) URLs allowed".into());
+    }
+    #[cfg(target_os = "macos")]
+    {
+        std::process::Command::new("open")
+            .arg(url)
+            .status()
+            .map_err(|e| e.to_string())?;
+        return Ok(());
+    }
+    #[cfg(target_os = "windows")]
+    {
+        std::process::Command::new("cmd")
+            .args(["/C", "start", "", url])
+            .status()
+            .map_err(|e| e.to_string())?;
+        return Ok(());
+    }
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+    {
+        std::process::Command::new("xdg-open")
+            .arg(url)
+            .status()
+            .map_err(|e| e.to_string())?;
+        Ok(())
+    }
 }
 
 #[tauri::command]
@@ -166,8 +262,16 @@ pub async fn session_delete(id: String) -> Result<(), String> {
 }
 
 #[tauri::command]
-pub async fn session_rename(id: String, title: String) -> Result<SessionMeta, String> {
-    store::rename_session(&id, &title)
+pub async fn session_rename(
+    app: tauri::AppHandle,
+    mgr: State<'_, Arc<SessionManager>>,
+    id: String,
+    title: String,
+) -> Result<SessionMeta, String> {
+    let meta = store::rename_session(&id, &title)?;
+    // Sync live session so streaming state events do not revive the old title.
+    let _ = mgr.apply_title(&app, &meta.id, &meta.title);
+    Ok(meta)
 }
 
 #[tauri::command]
@@ -182,6 +286,147 @@ pub async fn session_messages(
     Ok(store::load_messages(&id))
 }
 
+/// Absolute path of the agent session folder under GROK_HOME (images/, etc.).
+/// Used to resolve short relative paths like `images/1.jpg` into image cards.
+#[tauri::command]
+pub async fn session_media_root(id: String) -> Result<Option<String>, String> {
+    Ok(resolve_session_media_root(&id))
+}
+
+/// Resolve relative media refs to absolute paths that exist on disk.
+/// Tries (1) agent session dir under GROK_HOME (`images/1.jpg`),
+/// then (2) project cwd (skill outputs like `outputs/xhx-media-gen/foo.png`).
+/// Skips missing / unsafe paths.
+#[tauri::command]
+pub async fn session_resolve_relative_media(
+    id: String,
+    relatives: Vec<String>,
+) -> Result<Vec<store::MessageAttachmentStored>, String> {
+    let (session_root, project_root) = resolve_media_search_roots(&id);
+    if session_root.is_none() && project_root.is_none() {
+        return Ok(vec![]);
+    }
+    let mut out = Vec::new();
+    let mut seen = std::collections::HashSet::new();
+    for rel in relatives {
+        let full = session_root
+            .as_ref()
+            .and_then(|r| crate::paths::resolve_session_relative_media(r, &rel))
+            .or_else(|| {
+                project_root
+                    .as_ref()
+                    .and_then(|r| crate::paths::resolve_session_relative_media(r, &rel))
+            });
+        let Some(full) = full else {
+            continue;
+        };
+        let path = full.to_string_lossy().to_string();
+        if !seen.insert(path.clone()) {
+            continue;
+        }
+        let name = full
+            .file_name()
+            .map(|s| s.to_string_lossy().to_string())
+            .unwrap_or_else(|| path.clone());
+        out.push(store::MessageAttachmentStored {
+            path,
+            name,
+            is_dir: false,
+        });
+    }
+    Ok(out)
+}
+
+fn resolve_media_search_roots(
+    session_id: &str,
+) -> (Option<std::path::PathBuf>, Option<std::path::PathBuf>) {
+    let meta = store::load_sessions_index()
+        .into_iter()
+        .find(|s| s.id == session_id);
+    let Some(meta) = meta else {
+        return (None, None);
+    };
+    let project_root = meta.project_id.as_ref().and_then(|pid| {
+        store::load_projects()
+            .into_iter()
+            .find(|p| &p.id == pid)
+            .map(|p| std::path::PathBuf::from(p.path))
+    });
+    let session_root = meta.agent_session_id.as_deref().and_then(|agent_sid| {
+        let settings = store::load_settings();
+        crate::paths::find_agent_session_dir(
+            agent_sid,
+            project_root
+                .as_ref()
+                .map(|p| p.to_string_lossy().to_string())
+                .as_deref(),
+            &settings.session_data_mode,
+        )
+    });
+    (session_root, project_root)
+}
+
+fn resolve_session_media_root(session_id: &str) -> Option<String> {
+    resolve_media_search_roots(session_id)
+        .0
+        .map(|p| p.to_string_lossy().to_string())
+}
+
+// ─── Automations ───────────────────────────────────────────────────────────
+
+#[tauri::command]
+pub async fn automations_list() -> Result<Vec<store::Automation>, String> {
+    Ok(store::load_automations())
+}
+
+#[tauri::command]
+pub async fn automation_create(
+    input: store::AutomationInput,
+) -> Result<store::Automation, String> {
+    store::create_automation(input)
+}
+
+#[tauri::command]
+pub async fn automation_update(
+    id: String,
+    input: store::AutomationInput,
+) -> Result<store::Automation, String> {
+    store::update_automation(&id, input)
+}
+
+#[tauri::command]
+pub async fn automation_set_enabled(
+    id: String,
+    enabled: bool,
+) -> Result<store::Automation, String> {
+    store::set_automation_enabled(&id, enabled)
+}
+
+#[tauri::command]
+pub async fn automation_mark_run(
+    id: String,
+    last_run_at: String,
+    next_run_at: Option<String>,
+) -> Result<store::Automation, String> {
+    let last = chrono::DateTime::parse_from_rfc3339(&last_run_at)
+        .map(|d| d.with_timezone(&chrono::Utc))
+        .map_err(|e| e.to_string())?;
+    let next = match next_run_at {
+        Some(s) if !s.is_empty() => Some(
+            chrono::DateTime::parse_from_rfc3339(&s)
+                .map(|d| d.with_timezone(&chrono::Utc))
+                .map_err(|e| e.to_string())?,
+        ),
+        _ => None,
+    };
+    store::mark_automation_run(&id, last, next)
+}
+
+#[tauri::command]
+pub async fn automation_delete(id: String) -> Result<(), String> {
+    store::delete_automation(&id)
+}
+
 #[tauri::command]
 pub async fn settings_get() -> Result<AppSettings, String> {
     Ok(store::load_settings())
@@ -189,28 +434,128 @@ pub async fn settings_get() -> Result<AppSettings, String> {
 
 #[tauri::command]
 pub async fn settings_set(
+    app: tauri::AppHandle,
     mgr: State<'_, Arc<SessionManager>>,
     settings: AppSettings,
 ) -> Result<AppSettings, String> {
     store::save_settings(&settings)?;
-    // Apply permission policy to live session immediately (chip / settings)
-    mgr.set_permission_policy(crate::permission::PermissionPolicy::parse(
-        &settings.permission_policy,
-    ));
+    // Full permission apply: Host + agent-home + soft-respawn if needed
+    if let Err(e) = mgr
+        .apply_permission_policy(&app, &settings.permission_policy)
+        .await
+    {
+        tracing::warn!("settings_set apply_permission: {e}");
+    }
     Ok(settings)
 }
 
 #[tauri::command]
+pub async fn models_list_available() -> Result<crate::models_catalog::AvailableModelsResult, String> {
+    Ok(crate::models_catalog::list_available_models())
+}
+
+#[tauri::command]
+pub async fn composer_prefs_resolve(
+    project_id: Option<String>,
+    session_id: Option<String>,
+) -> Result<store::ComposerPrefs, String> {
+    Ok(store::resolve_composer_prefs(
+        project_id.as_deref(),
+        session_id.as_deref(),
+    ))
+}
+
+/// Persist composer fields at the configured memory scope + apply live.
+#[tauri::command]
+pub async fn composer_prefs_set(
+    app: tauri::AppHandle,
+    mgr: State<'_, Arc<SessionManager>>,
+    project_id: Option<String>,
+    session_id: Option<String>,
+    model_id: Option<String>,
+    effort: Option<String>,
+    mode: Option<String>,
+    permission_policy: Option<String>,
+) -> Result<store::ComposerPrefs, String> {
+    // Prefer explicit ids; fall back to live session context.
+    let (live_proj, live_sess) = mgr.current_context_ids();
+    let project_id = project_id.or(live_proj);
+    let session_id = session_id.or(live_sess);
+
+    let prefs = store::save_composer_prefs(
+        project_id.as_deref(),
+        session_id.as_deref(),
+        model_id.clone(),
+        effort.clone(),
+        mode.clone(),
+        permission_policy.clone(),
+    )?;
+
+    if let Some(ref pol) = permission_policy {
+        if let Err(e) = mgr.apply_permission_policy(&app, pol).await {
+            tracing::warn!("composer_prefs_set apply_permission: {e}");
+        }
+    }
+    if let Some(mid) = model_id {
+        if let Err(e) = mgr.set_model(mid).await {
+            tracing::warn!("composer_prefs_set set_model soft-fail: {e}");
+        }
+    }
+    if let Some(eff) = effort {
+        if let Err(e) = mgr.set_effort_and_respawn_needed(&app, eff).await {
+            tracing::warn!("composer_prefs_set set_effort soft-fail: {e}");
+        }
+    }
+    if let Some(m) = mode {
+        if let Err(e) = mgr.apply_product_mode(&app, m).await {
+            tracing::warn!("composer_prefs_set apply_mode soft-fail: {e}");
+        }
+    }
+    Ok(prefs)
+}
+
+#[tauri::command]
 pub async fn session_set_policy(
+    app: tauri::AppHandle,
     mgr: State<'_, Arc<SessionManager>>,
     policy: String,
-) -> Result<(), String> {
+    project_id: Option<String>,
+    session_id: Option<String>,
+) -> Result<store::ComposerPrefs, String> {
     let p = crate::permission::PermissionPolicy::parse(&policy);
-    mgr.set_permission_policy(p);
-    let mut s = store::load_settings();
-    s.permission_policy = p.as_str().into();
-    store::save_settings(&s)?;
-    Ok(())
+    let (live_proj, live_sess) = mgr.current_context_ids();
+    let prefs = store::save_composer_prefs(
+        project_id.or(live_proj).as_deref(),
+        session_id.or(live_sess).as_deref(),
+        None,
+        None,
+        None,
+        Some(p.as_str().into()),
+    )?;
+    mgr.apply_permission_policy(&app, p.as_str()).await?;
+    Ok(prefs)
+}
+
+#[tauri::command]
+pub async fn session_set_model(
+    mgr: State<'_, Arc<SessionManager>>,
+    model_id: String,
+    project_id: Option<String>,
+    session_id: Option<String>,
+) -> Result<store::ComposerPrefs, String> {
+    let (live_proj, live_sess) = mgr.current_context_ids();
+    let prefs = store::save_composer_prefs(
+        project_id.or(live_proj).as_deref(),
+        session_id.or(live_sess).as_deref(),
+        Some(model_id.clone()),
+        None,
+        None,
+        None,
+    )?;
+    if let Err(e) = mgr.set_model(model_id).await {
+        tracing::warn!("session_set_model soft-fail: {e}");
+    }
+    Ok(prefs)
 }
 
 #[tauri::command]
@@ -229,16 +574,37 @@ pub async fn fs_read_file(
     crate::fs_browser::read_file(&project_path, &relative)
 }
 
+/// Read an absolute path for resource-pane preview (chat file cards, agent outputs).
+#[tauri::command]
+pub async fn fs_read_absolute(
+    path: String,
+) -> Result<crate::fs_browser::FsReadResult, String> {
+    crate::fs_browser::read_absolute_file(&path)
+}
+
+/// Smart open for chat cards: absolute / project-relative / suffix search under project.
+#[tauri::command]
+pub async fn fs_open_path(
+    path: String,
+    project_path: Option<String>,
+) -> Result<crate::fs_browser::FsReadResult, String> {
+    crate::fs_browser::open_path_smart(project_path.as_deref(), &path)
+}
+
 /// Auto-name a session from the first user message.
 /// Returns heuristic title immediately; low-effort CLI refine emits `session://title`.
 #[tauri::command]
 pub async fn session_auto_title(
     app: tauri::AppHandle,
+    mgr: State<'_, Arc<SessionManager>>,
     id: String,
     first_message: String,
 ) -> Result<store::SessionMeta, String> {
     let meta = crate::session_title::auto_title_session_fast(&id, &first_message)?;
-    crate::session_title::refine_title_in_background(app, id, first_message);
+    // Keep Host live meta aligned so mid-stream session://state does not wipe the title.
+    let _ = mgr.apply_title(&app, &meta.id, &meta.title);
+    let mgr_arc = Arc::clone(&*mgr);
+    crate::session_title::refine_title_in_background(app, mgr_arc, id, first_message);
     Ok(meta)
 }
 
@@ -368,8 +734,7 @@ pub async fn provider_ping() -> Result<serde_json::Value, String> {
     }
 
     // CLI auth present?
-    let home = std::env::var("HOME").unwrap_or_default();
-    let auth = std::path::PathBuf::from(home).join(".grok/auth.json");
+    let auth = crate::process_util::user_home().join(".grok").join("auth.json");
     if auth.is_file() {
         Ok(serde_json::json!({
             "ok": true,
@@ -393,9 +758,9 @@ pub async fn provider_ping() -> Result<serde_json::Value, String> {
 
 #[tauri::command]
 pub async fn import_grok_cli_config() -> Result<serde_json::Value, String> {
-    let home = std::env::var("HOME").map_err(|e| e.to_string())?;
-    let auth = std::path::PathBuf::from(&home).join(".grok/auth.json");
-    let config = std::path::PathBuf::from(&home).join(".grok/config.toml");
+    let home = crate::process_util::user_home();
+    let auth = home.join(".grok").join("auth.json");
+    let config = home.join(".grok").join("config.toml");
     let mut msg = Vec::new();
     if auth.is_file() {
         msg.push("Found ~/.grok/auth.json (CLI will use cached_token)".to_string());
@@ -417,12 +782,17 @@ pub async fn import_grok_cli_config() -> Result<serde_json::Value, String> {
 #[tauri::command]
 pub async fn import_grok_go_config() -> Result<serde_json::Value, String> {
     // Common grok-go config locations (read-only)
-    let home = std::env::var("HOME").unwrap_or_default();
-    let candidates = [
-        format!("{home}/Library/Application Support/com.grokgo.desktop/config.json"),
-        format!("{home}/.grok-go/config.json"),
-        format!("{home}/Library/Application Support/GrokGo/config.json"),
+    let home = crate::process_util::user_home();
+    let home_s = home.to_string_lossy();
+    let mut candidates: Vec<String> = vec![
+        format!("{home_s}/.grok-go/config.json"),
+        format!("{home_s}/Library/Application Support/com.grokgo.desktop/config.json"),
+        format!("{home_s}/Library/Application Support/GrokGo/config.json"),
     ];
+    // Windows app-data layouts (cfg-gated; mut used only on Windows).
+    if let Some(extra) = windows_grok_go_config_candidates() {
+        candidates.extend(extra);
+    }
     for c in candidates {
         let p = std::path::PathBuf::from(&c);
         if p.is_file() {
@@ -461,6 +831,33 @@ pub async fn import_grok_go_config() -> Result<serde_json::Value, String> {
     Err("grok-go config not found in known locations".into())
 }
 
+/// Structured Doctor check row (UI consumes `checks`; `raw` is for copy/export).
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct DoctorCheck {
+    id: String,
+    level: String,
+    title: String,
+    detail: String,
+    meta: serde_json::Value,
+}
+
+fn doctor_check(
+    id: &str,
+    level: &str,
+    title: &str,
+    detail: String,
+    meta: serde_json::Value,
+) -> DoctorCheck {
+    DoctorCheck {
+        id: id.into(),
+        level: level.into(),
+        title: title.into(),
+        detail,
+        meta,
+    }
+}
+
 #[tauri::command]
 pub async fn doctor_report() -> Result<serde_json::Value, String> {
     let settings = store::load_settings();
@@ -468,16 +865,26 @@ pub async fn doctor_report() -> Result<serde_json::Value, String> {
     let projects = store::load_projects();
     let sessions = store::load_sessions_index();
     let secrets = store::load_secrets();
-    let home = std::env::var("HOME").unwrap_or_default();
-    let auth_path = format!("{home}/.grok/auth.json");
-    let auth_ok = std::path::Path::new(&auth_path).is_file();
-    let data_root = crate::paths::app_data_root().display().to_string();
-    let log_dir = crate::paths::app_data_root()
-        .join("logs")
-        .display()
-        .to_string();
+    let auth_path_buf = crate::process_util::user_home()
+        .join(".grok")
+        .join("auth.json");
+    let auth_ok = auth_path_buf.is_file();
+    let auth_path = auth_path_buf.display().to_string();
+    let data_root_path = crate::paths::app_data_root();
+    let data_root = data_root_path.display().to_string();
+    let log_dir_path = data_root_path.join("logs");
+    let log_dir = log_dir_path.display().to_string();
+    let log_dir_exists = log_dir_path.is_dir();
+    let backend_default = if crate::acp_client::AcpClient::use_mock() {
+        "mock_acp"
+    } else {
+        "grok_agent_stdio"
+    };
+    let has_official_key = secrets.official_api_key.is_some();
+    let has_relay = secrets.relay_base_url.is_some() && secrets.relay_api_key.is_some();
 
-    let report = serde_json::json!({
+    // Flat snapshot for clipboard / legacy consumers (no secret values).
+    let raw = serde_json::json!({
         "cli": {
             "found": probe.found,
             "path": probe.path,
@@ -486,8 +893,9 @@ pub async fn doctor_report() -> Result<serde_json::Value, String> {
         },
         "auth": {
             "cliAuthJson": auth_ok,
-            "hasOfficialKey": secrets.official_api_key.is_some(),
-            "hasRelay": secrets.relay_base_url.is_some() && secrets.relay_api_key.is_some(),
+            "authPath": auth_path,
+            "hasOfficialKey": has_official_key,
+            "hasRelay": has_relay,
         },
         "workspace": {
             "projectCount": projects.len(),
@@ -495,15 +903,410 @@ pub async fn doctor_report() -> Result<serde_json::Value, String> {
             "dataRoot": data_root,
             "sessionDataMode": settings.session_data_mode,
         },
-        "logs": { "dir": log_dir },
+        "logs": {
+            "dir": log_dir,
+            "exists": log_dir_exists,
+        },
         "app": {
             "version": env!("CARGO_PKG_VERSION"),
-            "backendDefault": if crate::acp_client::AcpClient::use_mock() { "mock_acp" } else { "grok_agent_stdio" },
+            "backendDefault": backend_default,
             "nonOfficial": true,
             "license": "MIT",
         }
     });
-    Ok(report)
+
+    let mut checks: Vec<DoctorCheck> = Vec::with_capacity(5);
+
+    // 1) CLI
+    if probe.found {
+        let ver = probe.version.as_deref().unwrap_or("unknown");
+        let path = probe.path.as_deref().unwrap_or("—");
+        checks.push(doctor_check(
+            "cli",
+            "ok",
+            "Grok Build CLI",
+            format!("Found {ver} ({}) at {path}", probe.source),
+            serde_json::json!({
+                "found": true,
+                "path": probe.path,
+                "version": probe.version,
+                "source": probe.source,
+            }),
+        ));
+    } else {
+        checks.push(doctor_check(
+            "cli",
+            "fail",
+            "Grok Build CLI",
+            "Grok Build CLI not found. Install from Settings → Runtime or the setup wizard."
+                .into(),
+            serde_json::json!({
+                "found": false,
+                "path": probe.path,
+                "version": probe.version,
+                "source": probe.source,
+                "candidatesTried": probe.candidates_tried,
+            }),
+        ));
+    }
+
+    // 2) Auth — warn if no CLI auth, official key, or relay
+    let auth_sources: Vec<&str> = [
+        auth_ok.then_some("cliAuthJson"),
+        has_official_key.then_some("officialKey"),
+        has_relay.then_some("relay"),
+    ]
+    .into_iter()
+    .flatten()
+    .collect();
+    if auth_sources.is_empty() {
+        checks.push(doctor_check(
+            "auth",
+            "warn",
+            "Authentication",
+            format!(
+                "No CLI auth (~/.grok/auth.json), official API key, or relay configured. Path: {auth_path}"
+            ),
+            serde_json::json!({
+                "cliAuthJson": auth_ok,
+                "authPath": auth_path,
+                "hasOfficialKey": has_official_key,
+                "hasRelay": has_relay,
+            }),
+        ));
+    } else {
+        checks.push(doctor_check(
+            "auth",
+            "ok",
+            "Authentication",
+            format!("Auth available via: {}", auth_sources.join(", ")),
+            serde_json::json!({
+                "cliAuthJson": auth_ok,
+                "authPath": auth_path,
+                "hasOfficialKey": has_official_key,
+                "hasRelay": has_relay,
+            }),
+        ));
+    }
+
+    // 3) Workspace
+    let data_root_ok = data_root_path.is_dir() || data_root_path.parent().is_some();
+    let workspace_level = if data_root_path.exists() || data_root_ok {
+        "ok"
+    } else {
+        "warn"
+    };
+    checks.push(doctor_check(
+        "workspace",
+        workspace_level,
+        "Workspace",
+        format!(
+            "{} projects · {} sessions · dataRoot {data_root} · mode {}",
+            projects.len(),
+            sessions.len(),
+            settings.session_data_mode
+        ),
+        serde_json::json!({
+            "projectCount": projects.len(),
+            "sessionCount": sessions.len(),
+            "dataRoot": data_root,
+            "sessionDataMode": settings.session_data_mode,
+        }),
+    ));
+
+    // 4) Backend
+    let (backend_level, backend_detail) = if backend_default == "mock_acp" {
+        (
+            "warn",
+            "Using mock ACP backend (dev). Production uses grok_agent_stdio.".to_string(),
+        )
+    } else {
+        (
+            "ok",
+            format!("Agent backend: {backend_default}"),
+        )
+    };
+    checks.push(doctor_check(
+        "backend",
+        backend_level,
+        "Backend",
+        backend_detail,
+        serde_json::json!({
+            "backendDefault": backend_default,
+            "version": env!("CARGO_PKG_VERSION"),
+        }),
+    ));
+
+    // 5) Logs dir
+    let (logs_level, logs_detail) = if log_dir_exists {
+        ("ok", format!("Logs directory: {log_dir}"))
+    } else {
+        (
+            "warn",
+            format!("Logs directory not created yet: {log_dir}"),
+        )
+    };
+    checks.push(doctor_check(
+        "logs",
+        logs_level,
+        "Logs",
+        logs_detail,
+        serde_json::json!({
+            "dir": log_dir,
+            "exists": log_dir_exists,
+        }),
+    ));
+
+    let mut ok = 0u32;
+    let mut warn = 0u32;
+    let mut fail = 0u32;
+    for c in &checks {
+        match c.level.as_str() {
+            "ok" => ok += 1,
+            "warn" => warn += 1,
+            "fail" => fail += 1,
+            _ => {}
+        }
+    }
+
+    Ok(serde_json::json!({
+        "generatedAt": chrono::Utc::now().to_rfc3339(),
+        "summary": { "ok": ok, "warn": warn, "fail": fail },
+        "checks": checks,
+        "raw": raw,
+    }))
+}
+
+// ── Skills / MCP via `grok inspect --json` ──────────────────────────────────
+
+const INSPECT_TIMEOUT_SECS: u64 = 12;
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SkillDto {
+    pub name: String,
+    pub description: String,
+    /// Normalized source type string (e.g. "user", "project", "plugin").
+    pub source: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub path: Option<String>,
+    #[serde(default)]
+    pub user_invocable: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct McpDto {
+    pub name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub transport: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub target: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub vendor: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub compatibility_status: Option<String>,
+}
+
+/// Run probed CLI: `grok inspect --json` with optional project cwd.
+/// Returns (parsed JSON, error message). Never panics; empty on failure.
+fn run_grok_inspect(project_path: Option<&str>) -> (Option<serde_json::Value>, Option<String>) {
+    let settings = store::load_settings();
+    let probe = cli_probe::probe_cli(settings.manual_cli_path.as_deref());
+    let Some(cli_path) = probe.path.filter(|_| probe.found) else {
+        return (None, Some("Grok Build CLI not found".into()));
+    };
+
+    let cwd = project_path
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(std::path::PathBuf::from);
+
+    let (tx, rx) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        let mut cmd = std::process::Command::new(&cli_path);
+        cmd.arg("inspect").arg("--json");
+        if let Some(dir) = cwd {
+            cmd.current_dir(dir);
+        }
+        crate::process_util::apply_no_window_std(&mut cmd);
+        if let Some(path_env) = crate::process_util::enriched_path_env() {
+            cmd.env("PATH", path_env);
+        }
+        let result = cmd.output();
+        let _ = tx.send(result);
+    });
+
+    match rx.recv_timeout(std::time::Duration::from_secs(INSPECT_TIMEOUT_SECS)) {
+        Ok(Ok(output)) => {
+            if !output.status.success() {
+                let err = String::from_utf8_lossy(&output.stderr).trim().to_string();
+                let msg = if err.is_empty() {
+                    format!("grok inspect exited with {}", output.status)
+                } else {
+                    // Truncate; never log secrets (inspect should not print keys)
+                    err.chars().take(400).collect()
+                };
+                return (None, Some(msg));
+            }
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            match serde_json::from_str::<serde_json::Value>(stdout.trim()) {
+                Ok(v) => (Some(v), None),
+                Err(e) => (None, Some(format!("Failed to parse grok inspect JSON: {e}"))),
+            }
+        }
+        Ok(Err(e)) => (None, Some(format!("Failed to run grok inspect: {e}"))),
+        Err(_) => (None, Some(format!(
+            "grok inspect timed out after {INSPECT_TIMEOUT_SECS}s"
+        ))),
+    }
+}
+
+fn normalize_skill_source(source: &serde_json::Value) -> (String, Option<String>) {
+    if let Some(s) = source.as_str() {
+        return (s.to_string(), None);
+    }
+    if let Some(obj) = source.as_object() {
+        let ty = obj
+            .get("type")
+            .and_then(|x| x.as_str())
+            .unwrap_or("unknown")
+            .to_string();
+        let path = obj
+            .get("path")
+            .and_then(|x| x.as_str())
+            .map(|s| s.to_string());
+        return (ty, path);
+    }
+    ("unknown".into(), None)
+}
+
+fn parse_skills(v: &serde_json::Value) -> Vec<SkillDto> {
+    let Some(arr) = v.get("skills").and_then(|x| x.as_array()) else {
+        return Vec::new();
+    };
+    let mut out = Vec::with_capacity(arr.len());
+    for item in arr {
+        let name = item
+            .get("name")
+            .and_then(|x| x.as_str())
+            .unwrap_or("")
+            .trim()
+            .to_string();
+        if name.is_empty() {
+            continue;
+        }
+        let description = item
+            .get("description")
+            .and_then(|x| x.as_str())
+            .unwrap_or("")
+            .to_string();
+        let (source, path_from_source) =
+            normalize_skill_source(item.get("source").unwrap_or(&serde_json::Value::Null));
+        let path = item
+            .get("path")
+            .and_then(|x| x.as_str())
+            .map(|s| s.to_string())
+            .or(path_from_source);
+        let user_invocable = item
+            .get("userInvocable")
+            .or_else(|| item.get("user_invocable"))
+            .and_then(|x| x.as_bool())
+            .unwrap_or(false);
+        out.push(SkillDto {
+            name,
+            description,
+            source,
+            path,
+            user_invocable,
+        });
+    }
+    out
+}
+
+fn parse_mcp_servers(v: &serde_json::Value) -> Vec<McpDto> {
+    let Some(arr) = v
+        .get("mcpServers")
+        .or_else(|| v.get("mcp"))
+        .and_then(|x| x.as_array())
+    else {
+        return Vec::new();
+    };
+    let mut out = Vec::with_capacity(arr.len());
+    for item in arr {
+        let name = item
+            .get("name")
+            .and_then(|x| x.as_str())
+            .unwrap_or("")
+            .trim()
+            .to_string();
+        if name.is_empty() {
+            continue;
+        }
+        let transport = item
+            .get("transport")
+            .and_then(|x| x.as_str())
+            .map(|s| s.to_string());
+        let target = item
+            .get("target")
+            .and_then(|x| x.as_str())
+            .map(|s| s.to_string());
+        let vendor = item
+            .get("vendor")
+            .and_then(|x| x.as_str())
+            .map(|s| s.to_string());
+        let compatibility_status = item
+            .get("compatibilityStatus")
+            .or_else(|| item.get("compatibility_status"))
+            .and_then(|x| x.as_str())
+            .map(|s| s.to_string());
+        out.push(McpDto {
+            name,
+            transport,
+            target,
+            vendor,
+            compatibility_status,
+        });
+    }
+    out
+}
+
+/// List invocable skills from `grok inspect --json`.
+/// Always returns Ok; on CLI missing / timeout, `skills` is empty and `error` is set.
+#[tauri::command]
+pub async fn skills_list(project_path: Option<String>) -> Result<serde_json::Value, String> {
+    let path = project_path.clone();
+    let (parsed, error) = tauri::async_runtime::spawn_blocking(move || {
+        run_grok_inspect(path.as_deref())
+    })
+    .await
+    .map_err(|e| e.to_string())?;
+
+    let skills = parsed.as_ref().map(parse_skills).unwrap_or_default();
+    let mut out = serde_json::json!({ "skills": skills });
+    if let Some(err) = error {
+        out["error"] = serde_json::Value::String(err);
+    }
+    Ok(out)
+}
+
+/// List MCP servers from `grok inspect --json`.
+/// Always returns Ok; on CLI missing / timeout, `servers` is empty and `error` is set.
+#[tauri::command]
+pub async fn inspect_mcp(project_path: Option<String>) -> Result<serde_json::Value, String> {
+    let path = project_path.clone();
+    let (parsed, error) = tauri::async_runtime::spawn_blocking(move || {
+        run_grok_inspect(path.as_deref())
+    })
+    .await
+    .map_err(|e| e.to_string())?;
+
+    let servers = parsed.as_ref().map(parse_mcp_servers).unwrap_or_default();
+    let mut out = serde_json::json!({ "servers": servers });
+    if let Some(err) = error {
+        out["error"] = serde_json::Value::String(err);
+    }
+    Ok(out)
 }
 
 #[tauri::command]
@@ -675,6 +1478,7 @@ pub async fn path_reveal(path: String) -> Result<(), String> {
     }
     #[cfg(target_os = "windows")]
     {
+        // explorer /select,<path> — works with spaces on modern Windows.
         std::process::Command::new("explorer")
             .arg(format!("/select,{p}"))
             .spawn()
@@ -773,6 +1577,8 @@ pub async fn providers_list() -> Result<crate::providers::ProvidersListResult, S
     );
     // Seed 云翼 preset if the user has not configured it yet.
     let _ = crate::providers::ensure_preset_yunyi();
+    // Cap agent transport retries (host still circuit-breaks at 5 via retry_state).
+    let _ = crate::providers::ensure_models_retry_cap();
     // Fix bases saved without /v1 (causes silent multi-minute inference retries).
     let _ = crate::providers::repair_custom_base_urls();
     crate::providers::list_custom_providers()
@@ -869,9 +1675,8 @@ pub async fn providers_list_models(
 // ── Editors ─────────────────────────────────────────────────────────────────
 
 #[tauri::command]
-pub async fn editors_list() -> Result<serde_json::Value, String> {
-    let editors = crate::editors::detect_editors();
-    Ok(serde_json::json!({ "editors": editors }))
+pub async fn editors_list() -> Result<crate::editors::EditorsListResult, String> {
+    Ok(crate::editors::list_editors_with_icons())
 }
 
 #[tauri::command]

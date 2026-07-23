@@ -18,7 +18,6 @@ pub enum AgentErrorCode {
 }
 
 impl AgentErrorCode {
-    #[allow(dead_code)]
     pub fn as_str(self) -> &'static str {
         match self {
             Self::CliNotFound => "CLI_NOT_FOUND",

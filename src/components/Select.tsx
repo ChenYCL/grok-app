@@ -1,6 +1,7 @@
 import { useId, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { IconChevronDown } from "@/components/icons";
+import { Tip } from "@/components/ui/tooltip";
 import { useFloatingMenu, type FloatingPlacement } from "@/lib/floatingMenu";
 
 export interface SelectOption {
@@ -51,9 +52,9 @@ export function Select({
     roots: [rootRef],
     onClose: () => setOpen(false),
     placement: menuPlacement,
+    fitContent: true,
+    // At least as wide as the trigger; grow when option labels are longer.
     matchTriggerWidth: true,
-    minWidth: variant === "chip" ? 140 : 160,
-    width: 160,
     estHeight: Math.min(280, 40 + options.length * 36),
   });
 
@@ -62,7 +63,7 @@ export function Select({
       ? createPortal(
           <ul
             ref={panelRef}
-            className="c-select__menu c-select__menu--portal"
+            className="menu-panel c-select__menu c-select__menu--portal"
             role="listbox"
             id={listId}
             style={style}
@@ -92,28 +93,31 @@ export function Select({
         )
       : null;
 
+  const trigger = (
+    <button
+      ref={triggerRef}
+      type="button"
+      className="c-select__trigger"
+      disabled={disabled}
+      aria-haspopup="listbox"
+      aria-expanded={open}
+      aria-controls={listId}
+      aria-label={ariaLabel}
+      onClick={() => !disabled && setOpen((v) => !v)}
+    >
+      <span className="c-select__value">{selected?.label ?? value}</span>
+      <span className="c-select__chev" aria-hidden>
+        <IconChevronDown size={14} />
+      </span>
+    </button>
+  );
+
   return (
     <div
       ref={rootRef}
       className={`c-select c-select--${variant} ${open ? "is-open" : ""} ${className}`}
     >
-      <button
-        ref={triggerRef}
-        type="button"
-        className="c-select__trigger"
-        disabled={disabled}
-        aria-haspopup="listbox"
-        aria-expanded={open}
-        aria-controls={listId}
-        aria-label={ariaLabel}
-        title={title}
-        onClick={() => !disabled && setOpen((v) => !v)}
-      >
-        <span className="c-select__value">{selected?.label ?? value}</span>
-        <span className="c-select__chev" aria-hidden>
-          <IconChevronDown size={14} />
-        </span>
-      </button>
+      {title ? <Tip label={title}>{trigger}</Tip> : trigger}
       {menu}
     </div>
   );

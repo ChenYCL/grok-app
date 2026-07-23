@@ -5,16 +5,23 @@
 
 import type { ComponentType } from "react";
 import {
+  IconActivity as TbActivity,
   IconAlertTriangle as TbAlertTriangle,
   IconArchive as TbArchive,
   IconArrowLeft as TbArrowLeft,
+  IconArrowsMinimize as TbArrowsMinimize,
   IconBolt as TbBolt,
+  IconBox as TbBox,
   IconBrush as TbBrush,
+  IconCalendarTime as TbCalendarTime,
   IconCheck as TbCheck,
+  IconClipboardList as TbClipboardList,
+  IconClock as TbClock,
   IconChevronDown as TbChevronDown,
   IconChevronLeft as TbChevronLeft,
   IconChevronRight as TbChevronRight,
   IconChevronsLeft as TbChevronsLeft,
+  IconCircleDashed as TbCircleDashed,
   IconCopy as TbCopy,
   IconDots as TbDots,
   IconEdit as TbEdit,
@@ -26,9 +33,12 @@ import {
   IconHandStop as TbHandStop,
   IconInfoCircle as TbInfoCircle,
   IconLanguage as TbLanguage,
+  IconExternalLink as TbExternalLink,
   IconLayoutSidebar as TbLayoutSidebar,
+  IconLayoutSidebarRight as TbLayoutSidebarRight,
   IconLink as TbLink,
   IconList as TbList,
+  IconListTree as TbListTree,
   IconMarkdown as TbMarkdown,
   IconMessage as TbMessage,
   IconMicrophone as TbMicrophone,
@@ -38,8 +48,11 @@ import {
   IconPaperclip as TbPaperclip,
   IconPencil as TbPencil,
   IconPinned as TbPinned,
+  IconPinnedOff as TbPinnedOff,
   IconPlayerStop as TbPlayerStop,
+  IconPlug as TbPlug,
   IconPlus as TbPlus,
+  IconPuzzle as TbPuzzle,
   IconRefresh as TbRefresh,
   IconRobot as TbRobot,
   IconSearch as TbSearch,
@@ -47,8 +60,10 @@ import {
   IconSettings as TbSettings,
   IconShield as TbShield,
   IconShieldCheck as TbShieldCheck,
+  IconSparkles as TbSparkles,
   IconSquare as TbSquare,
   IconSun as TbSun,
+  IconTarget as TbTarget,
   IconThumbDown as TbThumbDown,
   IconThumbUp as TbThumbUp,
   IconTool as TbTool,
@@ -176,6 +191,9 @@ export const IconEdit = wrap(TbEdit);
 export const IconNotes = wrap(TbNotes);
 export const IconImagine = wrap(TbWand);
 export const IconAutomations = wrap(TbBolt);
+/** Scheduled / “已安排” nav — calendar clock. */
+export const IconScheduled = wrap(TbCalendarTime);
+export const IconClock = wrap(TbClock);
 export const IconSkills = wrap(TbTool);
 export const IconChevronDown = wrap(TbChevronDown);
 export const IconChevronLeft = wrap(TbChevronLeft);
@@ -193,6 +211,10 @@ export const IconClose = wrap(TbX);
 export const IconSend = wrap(TbSend);
 export const IconMic = wrap(TbMicrophone);
 export const IconPanel = wrap(TbLayoutSidebar);
+/** Right files / context pane (Codex-style top bar). */
+export const IconPanelRight = wrap(TbLayoutSidebarRight);
+/** Open project in Finder / external app. */
+export const IconExternalLink = wrap(TbExternalLink);
 export const IconList = wrap(TbList);
 export const IconInstructions = wrap(TbFileText);
 export const IconSettings = wrap(TbSettings);
@@ -203,6 +225,8 @@ export const IconStop = wrap(TbPlayerStop);
 export const IconHistory = wrap(TbRefresh);
 export const IconUpload = wrap(TbUpload);
 export const IconFiles = wrap(TbFiles);
+/** File tree panel toggle (resource viewer). */
+export const IconListTree = wrap(TbListTree);
 export const IconFileUp = wrap(TbUpload);
 export const IconCart = wrap(TbBolt);
 export const IconThumbsUp = wrap(TbThumbUp);
@@ -218,6 +242,7 @@ export const IconMinimize = wrap(TbMinus);
 export const IconMaximize = wrap(TbSquare);
 export const IconPlan = wrap(TbList);
 export const IconPin = wrap(TbPinned);
+export const IconPinOff = wrap(TbPinnedOff);
 export const IconHandStop = wrap(TbHandStop);
 export const IconShield = wrap(TbShield);
 export const IconShieldCheck = wrap(TbShieldCheck);
@@ -229,3 +254,13 @@ export const IconUser = wrap(TbUser);
 export const IconAppearance = wrap(TbBrush);
 export const IconLanguage = wrap(TbLanguage);
 export const IconInfo = wrap(TbInfoCircle);
+/** Slash palette / goal mode */
+export const IconTarget = wrap(TbTarget);
+export const IconClipboardList = wrap(TbClipboardList);
+export const IconArrowsMinimize = wrap(TbArrowsMinimize);
+export const IconCircleDashed = wrap(TbCircleDashed);
+export const IconPlug = wrap(TbPlug);
+export const IconActivity = wrap(TbActivity);
+export const IconSparkles = wrap(TbSparkles);
+export const IconBox = wrap(TbBox);
+export const IconPuzzle = wrap(TbPuzzle);

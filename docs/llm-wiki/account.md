@@ -21,6 +21,15 @@ Product rules for **official login, membership, quota, and usage** in Grok App.
 
 CLI auth is shared with Grok Build TUI (hot-reload of `auth.json` is CLI-side).
 
+### Independent mode gotcha (fixed)
+
+| Step | Path |
+|------|------|
+| `grok login` / App login | writes `~/.grok/auth.json` |
+| Agent spawn (`session_data_mode=independent`) | `GROK_HOME=~/.grok-app/agent-home` |
+
+Host **must** sync `auth.json` into agent-home on login and before each ACP spawn; otherwise the UI shows signed-in while the agent reports `auth_kind=none` → HTTP 401. Logout clears both copies.
+
 ## Host commands
 
 | Command | Role |
@@ -48,6 +57,22 @@ Fallback (confirmed live JSON):
 
 - `GET https://cli-chat-proxy.grok.com/v1/billing?format=credits` with `x-grok-client-mode: cli`
 - Nested `config.creditUsagePercent`, `productUsage[]`, period start/end
+
+### Subscription tier (brand-facing)
+
+Quota endpoints **do not** return SuperGrok vs SuperGrok Heavy. Fetch in parallel with quota:
+
+| Source | Field | Example |
+|--------|-------|---------|
+| `GET …/v1/settings` | `subscription_tier_display` | `"SuperGrok Heavy"` (preferred UI string) |
+| `GET …/v1/user?include=subscription` | `subscriptionTier` | `"SuperGrokPro"` (API enum → Heavy) |
+| JWT claim `tier` | numeric | soft fallback only (`≥5` → Heavy, `≥2` → SuperGrok) |
+
+Never invent `"SuperGrok"` for paywall bodies (GrowthBook whitelist uses official enums). Map enums only for **display** / brand SVG selection.
+
+- `subscriptionTier` → `BillingSnapshot.subscriptionTier` (display label)
+- Empty-session brand: `SuperGrokMark` (`supergrok` \| `heavy`) above the floating composer
+- Assets: `docs/svg/SuperGrok.svg`, `docs/svg/SuperGrokHeavy.svg` (Heavy badge via CSS `data-theme`, not Tailwind `dark:`)
 
 UI shows **remaining %** (100 − used), product tags, reset time — same semantics as grok-go Accounts.
 

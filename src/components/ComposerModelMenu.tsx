@@ -20,8 +20,10 @@ import {
   PERMISSION_POLICIES,
   SESSION_MODES,
   type EffortOption,
+  type ModelOption,
   type PermissionPolicyId,
 } from "@/lib/grokCatalog";
+import { Tip } from "@/components/ui/tooltip";
 import {
   IconAlertTriangle,
   IconBolt,
@@ -39,7 +41,7 @@ import { useFloatingMenu, type FloatingPos } from "@/lib/floatingMenu";
 type EffortId = EffortOption["id"];
 type Nested = "model" | "effort" | null;
 
-function usePortalMenu(estHeight = 220, width = 300, nestedKey?: string) {
+function usePortalMenu(estHeight = 220, _width = 300, nestedKey?: string) {
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
@@ -53,7 +55,8 @@ function usePortalMenu(estHeight = 220, width = 300, nestedKey?: string) {
     roots: [rootRef],
     onClose: () => setOpen(false),
     placement: "auto",
-    width,
+    fitContent: true,
+    minWidth: 200,
     estHeight,
     gap: 8,
     deps: [nestedKey],
@@ -127,45 +130,49 @@ function MenuShell({
         )
       : null;
 
+  const tipLabel = title ?? ariaLabel;
+  const trigger = (
+    <button
+      ref={triggerRef}
+      type="button"
+      className="cmm__trigger"
+      aria-haspopup="dialog"
+      aria-expanded={open}
+      aria-controls={popId}
+      aria-label={ariaLabel}
+      onClick={() => {
+        setOpen((v) => {
+          const next = !v;
+          onOpenChange?.(next);
+          return next;
+        });
+      }}
+    >
+      {triggerIcon ? (
+        <span className="cmm__icon" aria-hidden>
+          {triggerIcon}
+        </span>
+      ) : null}
+      <span className="cmm__trigger-text cmm__trigger-text--full">
+        {triggerText}
+      </span>
+      {triggerShort != null && (
+        <span className="cmm__trigger-text cmm__trigger-text--short">
+          {triggerShort}
+        </span>
+      )}
+      <span className="cmm__chev" aria-hidden>
+        <IconChevronDown size={12} />
+      </span>
+    </button>
+  );
+
   return (
     <div
       ref={rootRef}
       className={`cmm ${open ? "is-open" : ""} ${danger ? "cmm--danger" : ""} ${className}`.trim()}
     >
-      <button
-        ref={triggerRef}
-        type="button"
-        className="cmm__trigger"
-        aria-haspopup="dialog"
-        aria-expanded={open}
-        aria-controls={popId}
-        aria-label={ariaLabel}
-        title={title ?? ariaLabel}
-        onClick={() => {
-          setOpen((v) => {
-            const next = !v;
-            onOpenChange?.(next);
-            return next;
-          });
-        }}
-      >
-        {triggerIcon ? (
-          <span className="cmm__icon" aria-hidden>
-            {triggerIcon}
-          </span>
-        ) : null}
-        <span className="cmm__trigger-text cmm__trigger-text--full">
-          {triggerText}
-        </span>
-        {triggerShort != null && (
-          <span className="cmm__trigger-text cmm__trigger-text--short">
-            {triggerShort}
-          </span>
-        )}
-        <span className="cmm__chev" aria-hidden>
-          <IconChevronDown size={12} />
-        </span>
-      </button>
+      {tipLabel ? <Tip label={tipLabel}>{trigger}</Tip> : trigger}
       {panel}
     </div>
   );
@@ -176,6 +183,8 @@ function MenuShell({
 export interface ComposerModelMenuProps {
   modelId: string;
   effort: string;
+  /** Live selectable models only (from Host catalog). */
+  models?: ModelOption[];
   labels: {
     model: string;
     effort: string;
@@ -204,12 +213,14 @@ function effortShort(id: string, labels: ComposerModelMenuProps["labels"]): stri
 export function ComposerModelMenu({
   modelId,
   effort,
+  models = GROK_BUILD_MODELS,
   labels,
   onModel,
   onEffort,
 }: ComposerModelMenuProps) {
   const [nested, setNested] = useState<Nested>(null);
   const menu = usePortalMenu(240, 280, nested ?? "root");
+  const modelList = models.length > 0 ? models : GROK_BUILD_MODELS;
 
   useEffect(() => {
     if (!menu.open) setNested(null);
@@ -228,7 +239,7 @@ export function ComposerModelMenu({
   }, [menu.open, nested]);
 
   const modelLabel =
-    GROK_BUILD_MODELS.find((m) => m.id === modelId)?.label ?? modelId;
+    modelList.find((m) => m.id === modelId)?.label ?? modelId;
   const eLabel = effortLabel(effort, labels);
   const triggerText = `${modelLabel} · ${eLabel}`;
   const title = `${labels.model}: ${modelLabel} · ${labels.effort}: ${eLabel}`;
@@ -281,27 +292,35 @@ export function ComposerModelMenu({
             {nested === "model" ? labels.model : labels.effort}
           </button>
           {nested === "model" &&
-            GROK_BUILD_MODELS.map((m) => (
-              <button
-                key={m.id}
-                type="button"
-                className={
-                  "cmm__opt" + (m.id === modelId ? " is-active" : "")
-                }
-                onClick={() => {
-                  onModel(m.id);
-                  setNested(null);
-                }}
-              >
+            (modelList.length === 0 ? (
+              <div className="cmm__opt cmm__opt--muted" role="status">
                 <span className="cmm__opt-main">
-                  <span className="cmm__opt-title">{m.label}</span>
+                  <span className="cmm__opt-title">{modelId || "—"}</span>
                 </span>
-                {m.id === modelId && (
-                  <span className="cmm__opt-check" aria-hidden>
-                    <IconCheck size={16} />
+              </div>
+            ) : (
+              modelList.map((m) => (
+                <button
+                  key={m.id}
+                  type="button"
+                  className={
+                    "cmm__opt" + (m.id === modelId ? " is-active" : "")
+                  }
+                  onClick={() => {
+                    onModel(m.id);
+                    setNested(null);
+                  }}
+                >
+                  <span className="cmm__opt-main">
+                    <span className="cmm__opt-title">{m.label}</span>
                   </span>
-                )}
-              </button>
+                  {m.id === modelId && (
+                    <span className="cmm__opt-check" aria-hidden>
+                      <IconCheck size={16} />
+                    </span>
+                  )}
+                </button>
+              ))
             ))}
           {nested === "effort" &&
             GROK_BUILD_EFFORTS.map((e) => (

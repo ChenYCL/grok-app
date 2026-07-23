@@ -83,11 +83,15 @@ fn llm_title_via_cli(message: &str) -> Option<String> {
         .arg("low")
         .arg("--max-turns")
         .arg("1")
+        .arg("--always-approve")
         .arg("--disallowed-tools")
         .arg(
             "run_terminal_cmd,run_terminal_command,web_search,web_fetch,search_replace,write,Agent,spawn_subagent,bash",
-        )
-        .arg("--no-auto-update");
+        );
+    crate::process_util::apply_no_window_std(&mut cmd);
+    if let Some(path_env) = crate::process_util::enriched_path_env() {
+        cmd.env("PATH", path_env);
+    }
 
     let output = std::thread::spawn(move || cmd.output())
         .join()
@@ -123,7 +127,12 @@ pub fn auto_title_session_fast(id: &str, first_message: &str) -> Result<SessionM
 }
 
 /// Background refine via low-effort CLI; emits `session://title` when improved.
-pub fn refine_title_in_background(app: AppHandle, id: String, first_message: String) {
+pub fn refine_title_in_background(
+    app: AppHandle,
+    mgr: std::sync::Arc<crate::session_manager::SessionManager>,
+    id: String,
+    first_message: String,
+) {
     std::thread::spawn(move || {
         let (tx, rx) = std::sync::mpsc::channel();
         let msg = first_message.clone();
@@ -132,8 +141,19 @@ pub fn refine_title_in_background(app: AppHandle, id: String, first_message: Str
         });
         let refined = rx.recv_timeout(Duration::from_secs(20)).ok().flatten();
         if let Some(title) = refined {
-            // Only overwrite if still auto-ish (placeholder or previous heuristic)
+            // Do not clobber a manual rename: only replace placeholder / prior heuristic.
+            let list = store::load_sessions_index();
+            let Some(current) = list.iter().find(|s| s.id == id) else {
+                return;
+            };
+            let heuristic = heuristic_title(&first_message);
+            let can_overwrite =
+                is_placeholder_title(&current.title) || current.title == heuristic;
+            if !can_overwrite {
+                return;
+            }
             if let Ok(meta) = store::rename_session(&id, &title) {
+                let _ = mgr.apply_title(&app, &meta.id, &meta.title);
                 let _ = app.emit(
                     "session://title",
                     serde_json::json!({

@@ -10,8 +10,10 @@
 → initialize { protocolVersion: 1, clientInfo, capabilities }
 ← result { protocolVersion: 1, agentCapabilities, authMethods, _meta.agentVersion }
 → session/new { cwd, mcpServers: [] }
+  or session/load { sessionId, cwd, mcpServers: [] }  // App: resume prior agentSessionId when possible
 ← result { sessionId, models }
 → session/prompt { sessionId, prompt: [{type:"text", text}] }
+  // App: if load failed and journal has turns, first prompt may be prefixed with history bootstrap
 ← session/update agent_thought_chunk* + agent_message_chunk*
 ← result { stopReason: "end_turn", ... }
 ```

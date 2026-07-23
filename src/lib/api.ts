@@ -42,8 +42,25 @@ export async function sessionConnect(opts?: {
   });
 }
 
-export async function sessionSend(text: string): Promise<SessionSnapshot> {
-  return invoke("session_send", { text });
+/**
+ * Send a turn to the agent.
+ * @param text Agent prompt (skills as `/name`, attachments as `@path`, etc.)
+ * @param displayText Optional user-bubble text for journal (e.g. `[[skill:name]]` chips).
+ *                    When omitted, journal stores `text`.
+ */
+export async function sessionSend(
+  text: string,
+  displayText?: string | null,
+): Promise<SessionSnapshot> {
+  return invoke("session_send", {
+    text,
+    displayText: displayText ?? null,
+  });
+}
+
+/** Drop last user turn (agent rewind + local journal) before edit-resend. */
+export async function sessionRewindDropLastUser(): Promise<SessionSnapshot> {
+  return invoke("session_rewind_drop_last_user");
 }
 
 export async function sessionStop(): Promise<SessionSnapshot> {
@@ -81,6 +98,48 @@ export async function probeCli(manualPath?: string) {
     cliAuthPresent?: boolean;
     candidatesTried?: string[];
   }>("probe_cli", { manualPath: manualPath ?? null });
+}
+
+export interface CliInstallProgress {
+  phase: string;
+  message: string;
+  percent?: number | null;
+  bytesDownloaded?: number | null;
+  totalBytes?: number | null;
+  mirror?: string | null;
+  version?: string | null;
+}
+
+export interface CliInstallResult {
+  ok: boolean;
+  path: string | null;
+  version: string | null;
+  mirrorUsed: string | null;
+  message: string;
+}
+
+export interface CliInstallCommands {
+  primary: string;
+  shell: string;
+  docsUrl: string;
+  mirrors: string[];
+}
+
+/** Download + install latest Grok Build (multi-mirror). Progress via setup://cli-install-progress. */
+export async function cliInstallLatest() {
+  return invoke<CliInstallResult>("cli_install_latest");
+}
+
+export async function cliInstallCommands() {
+  return invoke<CliInstallCommands>("cli_install_commands");
+}
+
+export async function pickCliBinary() {
+  return invoke<string | null>("pick_cli_binary");
+}
+
+export async function openExternalUrl(url: string) {
+  return invoke<void>("open_external_url", { url });
 }
 
 export async function projectsList() {
@@ -177,6 +236,22 @@ export async function fsReadFile(projectPath: string, relative: string) {
   });
 }
 
+/** Read absolute filesystem path for chat → resource pane preview. */
+export async function fsReadAbsolute(path: string) {
+  return invoke<FsReadResult>("fs_read_absolute", { path });
+}
+
+/**
+ * Smart open for chat file cards: absolute path, project-relative, or
+ * suffix search under project (e.g. `05-handoff/next.md` in a subfolder).
+ */
+export async function fsOpenPath(path: string, projectPath?: string | null) {
+  return invoke<FsReadResult>("fs_open_path", {
+    path,
+    projectPath: projectPath ?? null,
+  });
+}
+
 /** Auto-title session from first user message (heuristic + optional low-effort CLI). */
 export async function sessionAutoTitle(id: string, firstMessage: string) {
   return invoke<{
@@ -252,34 +327,145 @@ export async function sessionMessages(id: string) {
       content: string;
       thought?: string | null;
       createdAt: string;
+      isError?: boolean;
+      marker?: string | null;
+      attachments?: Array<{
+        path: string;
+        name: string;
+        isDir?: boolean;
+      }> | null;
     }>
   >("session_messages", { id });
 }
 
+/** Agent session folder under GROK_HOME (contains images/, etc.). */
+export async function sessionMediaRoot(id: string) {
+  return invoke<string | null>("session_media_root", { id });
+}
+
+/**
+ * Resolve short session-relative paths (`images/1.jpg`) to absolute files
+ * that exist under the agent session directory.
+ */
+export async function sessionResolveRelativeMedia(
+  id: string,
+  relatives: string[],
+) {
+  if (!relatives.length) return [];
+  return invoke<
+    Array<{ path: string; name: string; isDir?: boolean }>
+  >("session_resolve_relative_media", { id, relatives });
+}
+
+export type ComposerPrefsScope = "global" | "project" | "session";
+
+export interface AppSettings {
+  theme: string;
+  locale: string;
+  sessionDataMode: string;
+  manualCliPath: string | null;
+  permissionPolicy: string;
+  modelId: string | null;
+  effort: string | null;
+  mode: string;
+  onboardingDone: boolean;
+  setupSkipped: boolean;
+  /** First-run wizard finished (CLI gate + optional auth). */
+  setupWizardCompleted?: boolean;
+  /** User skipped account/provider step during setup. */
+  authSetupDeferred?: boolean;
+  defaultOpenTarget?: string;
+  /** global | project | session — where model/permission chips are remembered */
+  composerPrefsScope?: ComposerPrefsScope | string;
+}
+
+export interface AvailableModel {
+  id: string;
+  label: string;
+  source: string;
+  isDefault?: boolean;
+}
+
+export interface AvailableModelsResult {
+  models: AvailableModel[];
+  defaultModelId: string;
+  origin?: string | null;
+  fetchedAt?: string | null;
+}
+
+export interface ComposerPrefs {
+  modelId: string;
+  effort: string;
+  mode: string;
+  permissionPolicy: string;
+  scope: string;
+  source: string;
+}
+
 export async function settingsGet() {
-  return invoke<{
-    theme: string;
-    locale: string;
-    sessionDataMode: string;
-    manualCliPath: string | null;
-    permissionPolicy: string;
-    modelId: string | null;
-    effort: string | null;
-    mode: string;
-    onboardingDone: boolean;
-    setupSkipped: boolean;
-    defaultOpenTarget?: string;
-  }>("settings_get");
+  return invoke<AppSettings>("settings_get");
+}
+
+export async function modelsListAvailable() {
+  return invoke<AvailableModelsResult>("models_list_available");
+}
+
+export async function composerPrefsResolve(opts?: {
+  projectId?: string | null;
+  sessionId?: string | null;
+}) {
+  return invoke<ComposerPrefs>("composer_prefs_resolve", {
+    projectId: opts?.projectId ?? null,
+    sessionId: opts?.sessionId ?? null,
+  });
+}
+
+export async function composerPrefsSet(body: {
+  projectId?: string | null;
+  sessionId?: string | null;
+  modelId?: string | null;
+  effort?: string | null;
+  mode?: string | null;
+  permissionPolicy?: string | null;
+}) {
+  return invoke<ComposerPrefs>("composer_prefs_set", {
+    projectId: body.projectId ?? null,
+    sessionId: body.sessionId ?? null,
+    modelId: body.modelId ?? null,
+    effort: body.effort ?? null,
+    mode: body.mode ?? null,
+    permissionPolicy: body.permissionPolicy ?? null,
+  });
 }
 
 export async function settingsSet(settings: Record<string, unknown>) {
   return invoke("settings_set", { settings });
 }
 
-/** Update live Host permission policy + persist (mid-session chip). */
-export async function sessionSetPolicy(policy: string) {
-  if (!isTauri()) return;
-  return invoke("session_set_policy", { policy });
+/** Update live Host permission policy + persist at configured prefs scope. */
+export async function sessionSetPolicy(
+  policy: string,
+  opts?: { projectId?: string | null; sessionId?: string | null },
+) {
+  if (!isTauri()) return null;
+  return invoke<ComposerPrefs>("session_set_policy", {
+    policy,
+    projectId: opts?.projectId ?? null,
+    sessionId: opts?.sessionId ?? null,
+  });
+}
+
+/** Switch live agent model + persist at configured prefs scope. */
+export async function sessionSetModel(
+  modelId: string,
+  opts?: { projectId?: string | null; sessionId?: string | null },
+) {
+  if (!isTauri()) return null;
+  return invoke<ComposerPrefs>("session_set_model", {
+    modelId,
+    projectId: opts?.projectId ?? null,
+    sessionId: opts?.sessionId ?? null,
+  });
 }
 
 export async function secretsGetMasked() {
@@ -317,8 +503,75 @@ export async function importGrokGo() {
   return invoke("import_grok_go_config");
 }
 
+// ── Doctor / skills / MCP ───────────────────────────────────────────────────
+
+export type DoctorLevel = "ok" | "warn" | "fail";
+
+export interface DoctorCheck {
+  id: string;
+  level: DoctorLevel;
+  title: string;
+  detail: string;
+  meta?: Record<string, unknown>;
+}
+
+export interface DoctorSummary {
+  ok: number;
+  warn: number;
+  fail: number;
+}
+
+export interface DoctorReport {
+  generatedAt: string;
+  summary: DoctorSummary;
+  checks: DoctorCheck[];
+  /** Flat snapshot for copy/export (no secrets). */
+  raw: Record<string, unknown>;
+}
+
+export interface SkillDto {
+  name: string;
+  description: string;
+  /** Normalized source type (e.g. user, project, plugin). */
+  source: string;
+  path?: string | null;
+  userInvocable: boolean;
+}
+
+export interface McpDto {
+  name: string;
+  transport?: string | null;
+  target?: string | null;
+  vendor?: string | null;
+  compatibilityStatus?: string | null;
+}
+
+export interface SkillsListResult {
+  skills: SkillDto[];
+  error?: string;
+}
+
+export interface InspectMcpResult {
+  servers: McpDto[];
+  error?: string;
+}
+
 export async function doctorReport() {
-  return invoke<Record<string, unknown>>("doctor_report");
+  return invoke<DoctorReport>("doctor_report");
+}
+
+/** List skills via `grok inspect --json` (optional project cwd). */
+export async function skillsList(projectPath?: string | null) {
+  return invoke<SkillsListResult>("skills_list", {
+    projectPath: projectPath ?? null,
+  });
+}
+
+/** List MCP servers via `grok inspect --json` (optional project cwd). */
+export async function inspectMcp(projectPath?: string | null) {
+  return invoke<InspectMcpResult>("inspect_mcp", {
+    projectPath: projectPath ?? null,
+  });
 }
 
 // ── Official Grok Build account ─────────────────────────────────────────────
@@ -500,6 +753,12 @@ export async function accountOpenSubscribe() {
   return invoke<void>("account_open_subscribe");
 }
 
+/** Rebuild system-tray / menu-bar menu (Recent list + Usage). */
+export async function trayRefresh() {
+  if (!isTauri()) return;
+  return invoke<void>("tray_refresh");
+}
+
 // ── Custom providers (agent-home config.toml) ───────────────────────────────
 
 export interface CustomProvider {
@@ -607,10 +866,18 @@ export interface DetectedEditor {
   label: string;
   command: string;
   available: boolean;
+  /** `data:image/png;base64,...` from host-extracted app icon when available. */
+  iconDataUrl?: string | null;
+}
+
+export interface EditorsListResult {
+  editors: DetectedEditor[];
+  finderIcon?: string | null;
+  systemIcon?: string | null;
 }
 
 export async function editorsList() {
-  return invoke<{ editors: DetectedEditor[] }>("editors_list");
+  return invoke<EditorsListResult>("editors_list");
 }
 
 export async function openInEditor(opts: {
@@ -633,4 +900,193 @@ export async function listen<T>(
   const { listen } = await import("@tauri-apps/api/event");
   const un = await listen<T>(event, (e) => handler(e.payload));
   return un;
+}
+
+// ── Automations (scheduled tasks) ───────────────────────────────────────────
+
+export interface AutomationDto {
+  id: string;
+  title: string;
+  prompt: string;
+  enabled: boolean;
+  projectId: string | null;
+  modelId: string | null;
+  effort: string | null;
+  frequency: string;
+  time: string;
+  weekdays: number[];
+  notify: string;
+  createdAt: string;
+  updatedAt: string;
+  lastRunAt?: string | null;
+  nextRunAt?: string | null;
+}
+
+export interface AutomationInputDto {
+  title: string;
+  prompt: string;
+  enabled?: boolean;
+  projectId?: string | null;
+  modelId?: string | null;
+  effort?: string | null;
+  frequency?: string;
+  time?: string;
+  weekdays?: number[];
+  notify?: string;
+  nextRunAt?: string | null;
+}
+
+export async function automationsList(): Promise<AutomationDto[]> {
+  if (!isTauri()) {
+    const { loadAutomationsLocal } = await import("./automations");
+    return loadAutomationsLocal() as AutomationDto[];
+  }
+  return invoke<AutomationDto[]>("automations_list");
+}
+
+export async function automationCreate(
+  input: AutomationInputDto,
+): Promise<AutomationDto> {
+  if (!isTauri()) {
+    const mod = await import("./automations");
+    const list = mod.loadAutomationsLocal();
+    const now = new Date().toISOString();
+    const draft = {
+      id: crypto.randomUUID(),
+      title: input.title.trim(),
+      prompt: input.prompt.trim(),
+      enabled: input.enabled ?? true,
+      projectId: input.projectId ?? null,
+      modelId: input.modelId ?? null,
+      effort: input.effort ?? null,
+      frequency: input.frequency ?? "daily",
+      time: input.time ?? "09:00",
+      weekdays: input.weekdays ?? [],
+      notify: input.notify ?? "all",
+      createdAt: now,
+      updatedAt: now,
+      lastRunAt: null as string | null,
+      nextRunAt:
+        input.nextRunAt ??
+        mod.computeNextRunAt({
+          frequency: input.frequency ?? "daily",
+          time: input.time ?? "09:00",
+          weekdays: input.weekdays ?? [],
+          enabled: input.enabled ?? true,
+        }),
+    };
+    list.unshift(draft);
+    mod.saveAutomationsLocal(list);
+    return draft as AutomationDto;
+  }
+  return invoke<AutomationDto>("automation_create", { input });
+}
+
+export async function automationUpdate(
+  id: string,
+  input: AutomationInputDto,
+): Promise<AutomationDto> {
+  if (!isTauri()) {
+    const {
+      loadAutomationsLocal,
+      saveAutomationsLocal,
+      computeNextRunAt,
+    } = await import("./automations");
+    const list = loadAutomationsLocal();
+    const idx = list.findIndex((a) => a.id === id);
+    if (idx < 0) throw new Error("automation not found");
+    const prev = list[idx];
+    const next = {
+      ...prev,
+      title: input.title.trim(),
+      prompt: input.prompt.trim(),
+      enabled: input.enabled ?? prev.enabled,
+      projectId: input.projectId !== undefined ? input.projectId : prev.projectId,
+      modelId: input.modelId !== undefined ? input.modelId : prev.modelId,
+      effort: input.effort !== undefined ? input.effort : prev.effort,
+      frequency: input.frequency ?? prev.frequency,
+      time: input.time ?? prev.time,
+      weekdays: input.weekdays ?? prev.weekdays,
+      notify: input.notify ?? prev.notify,
+      updatedAt: new Date().toISOString(),
+      nextRunAt:
+        input.nextRunAt !== undefined
+          ? input.nextRunAt
+          : computeNextRunAt({
+              frequency: input.frequency ?? prev.frequency,
+              time: input.time ?? prev.time,
+              weekdays: input.weekdays ?? prev.weekdays,
+              enabled: input.enabled ?? prev.enabled,
+            }),
+    };
+    list[idx] = next;
+    saveAutomationsLocal(list);
+    return next as AutomationDto;
+  }
+  return invoke<AutomationDto>("automation_update", { id, input });
+}
+
+export async function automationSetEnabled(
+  id: string,
+  enabled: boolean,
+): Promise<AutomationDto> {
+  if (!isTauri()) {
+    const { loadAutomationsLocal, saveAutomationsLocal, computeNextRunAt } =
+      await import("./automations");
+    const list = loadAutomationsLocal();
+    const idx = list.findIndex((a) => a.id === id);
+    if (idx < 0) throw new Error("automation not found");
+    const prev = list[idx];
+    const next = {
+      ...prev,
+      enabled,
+      updatedAt: new Date().toISOString(),
+      nextRunAt: enabled
+        ? computeNextRunAt({ ...prev, enabled: true })
+        : null,
+    };
+    list[idx] = next;
+    saveAutomationsLocal(list);
+    return next as AutomationDto;
+  }
+  return invoke<AutomationDto>("automation_set_enabled", { id, enabled });
+}
+
+export async function automationMarkRun(
+  id: string,
+  lastRunAt: string,
+  nextRunAt: string | null,
+): Promise<AutomationDto> {
+  if (!isTauri()) {
+    const { loadAutomationsLocal, saveAutomationsLocal } =
+      await import("./automations");
+    const list = loadAutomationsLocal();
+    const idx = list.findIndex((a) => a.id === id);
+    if (idx < 0) throw new Error("automation not found");
+    const next = {
+      ...list[idx],
+      lastRunAt,
+      nextRunAt,
+      updatedAt: new Date().toISOString(),
+    };
+    list[idx] = next;
+    saveAutomationsLocal(list);
+    return next as AutomationDto;
+  }
+  return invoke<AutomationDto>("automation_mark_run", {
+    id,
+    lastRunAt,
+    nextRunAt,
+  });
+}
+
+export async function automationDelete(id: string): Promise<void> {
+  if (!isTauri()) {
+    const { loadAutomationsLocal, saveAutomationsLocal } =
+      await import("./automations");
+    const list = loadAutomationsLocal().filter((a) => a.id !== id);
+    saveAutomationsLocal(list);
+    return;
+  }
+  return invoke<void>("automation_delete", { id });
 }

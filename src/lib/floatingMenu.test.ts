@@ -41,6 +41,7 @@ describe("computeFloatingPos", () => {
     const pos = computeFloatingPos(r, {
       placement: "auto",
       estHeight: 200,
+      fitContent: false,
       width: 200,
     });
     expect(pos.placeAbove).toBe(true);
@@ -49,25 +50,42 @@ describe("computeFloatingPos", () => {
 
   it("honors placement down", () => {
     const r = rect({ top: 100, left: 40, width: 80, height: 28 });
-    const pos = computeFloatingPos(r, { placement: "down", width: 160 });
+    const pos = computeFloatingPos(r, {
+      placement: "down",
+      fitContent: false,
+      width: 160,
+    });
     expect(pos.placeAbove).toBe(false);
     expect(pos.top).toBeGreaterThan(r.bottom);
   });
 
-  it("clamps left within viewport", () => {
+  it("clamps left within viewport for fixed width", () => {
     const r = rect({ top: 100, left: 9000, width: 80, height: 28 });
-    const pos = computeFloatingPos(r, { width: 200, placement: "down" });
+    const pos = computeFloatingPos(r, {
+      width: 200,
+      fitContent: false,
+      placement: "down",
+    });
     expect(pos.left + pos.width).toBeLessThanOrEqual(1024);
   });
 
-  it("matchTriggerWidth expands panel", () => {
+  it("matchTriggerWidth expands fixed panel", () => {
     const r = rect({ top: 100, left: 20, width: 280, height: 32 });
     const pos = computeFloatingPos(r, {
       width: 100,
       matchTriggerWidth: true,
+      fitContent: false,
       placement: "down",
     });
     expect(pos.width).toBeGreaterThanOrEqual(280);
+  });
+
+  it("fitContent leaves width 0 (CSS max-content)", () => {
+    const r = rect({ top: 100, left: 40, width: 80, height: 28 });
+    const pos = computeFloatingPos(r, { placement: "down", fitContent: true });
+    expect(pos.fitContent).toBe(true);
+    expect(pos.width).toBe(0);
+    expect(pos.maxWidth).toBeGreaterThan(100);
   });
 });
 
@@ -79,8 +97,29 @@ describe("floatingStyle", () => {
       width: 200,
       placeAbove: true,
       maxHeight: 200,
+      maxWidth: 1000,
+      fitContent: false,
     });
     expect(s?.transform).toBe("translateY(-100%)");
     expect(s?.position).toBe("fixed");
+    expect(s?.width).toBe(200);
+  });
+
+  it("uses max-content when fitContent", () => {
+    const s = floatingStyle(
+      {
+        left: 10,
+        top: 100,
+        width: 0,
+        placeAbove: false,
+        maxHeight: 200,
+        maxWidth: 800,
+        fitContent: true,
+      },
+      { minWidth: 120 },
+    );
+    expect(s?.width).toBe("max-content");
+    expect(s?.minWidth).toBe(120);
+    expect(s?.maxWidth).toBe(800);
   });
 });

@@ -129,6 +129,22 @@ impl SessionFsm {
         self.fail_with(AgentError::new(AgentErrorCode::AgentCrashed, message))
     }
 
+    /// Drop live agent without surfacing an error (e.g. prefs changed → respawn).
+    pub fn soft_disconnect(&mut self) {
+        match self.state {
+            SessionState::Ready
+            | SessionState::Streaming
+            | SessionState::AwaitingPermission
+            | SessionState::Connecting => {
+                self.state = SessionState::Disconnected;
+                self.last_error = None;
+            }
+            SessionState::Idle | SessionState::Disconnected => {
+                self.last_error = None;
+            }
+        }
+    }
+
     /// Disconnect with a classified error (timeout → NETWORK, auth → AUTH, etc.).
     pub fn fail_with(&mut self, err: AgentError) -> Result<(), FsmError> {
         match self.state {

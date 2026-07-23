@@ -50,6 +50,7 @@ mod host_permission_e2e {
                 Some(&root),
                 &inside.to_string_lossy(),
                 "write",
+                "",
             ),
             "H05: Ask + session cache + in-project → auto"
         );
@@ -65,6 +66,7 @@ mod host_permission_e2e {
                 Some(&root),
                 outside,
                 "write",
+                "",
             ),
             "H05/§17.3: outside never session-allowed"
         );
@@ -109,6 +111,7 @@ mod host_permission_e2e {
             Some(&PathBuf::from("/tmp")),
             "/tmp/x",
             "write",
+            "",
         ));
     }
 }

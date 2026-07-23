@@ -13,6 +13,7 @@ import * as XLSX from "xlsx";
 import { fetchPreviewArrayBuffer } from "@/lib/filePreviewSrc";
 import { createT, type Locale } from "@/i18n";
 import { openInEditor, pathOpen, pathReveal } from "@/lib/api";
+import { Tip } from "@/components/ui/tooltip";
 import pdfWorkerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
 
 import "react-pdf/dist/Page/AnnotationLayer.css";
@@ -28,6 +29,12 @@ export interface OfficeDocumentPreviewProps {
   /** Plain-text extract from host (pptx / fallback). */
   textFallback?: string | null;
   errorFromHost?: string | null;
+  /**
+   * When true (ResourceViewer embed), hide the filename title bar so the host
+   * chrome is the only place that shows the file name / open actions.
+   * PDF still shows page/zoom controls without a title.
+   */
+  embedded?: boolean;
 }
 
 type LoadState =
@@ -42,6 +49,7 @@ export function OfficeDocumentPreview({
   locale,
   textFallback,
   errorFromHost,
+  embedded = false,
 }: OfficeDocumentPreviewProps) {
   const tr = useMemo(() => createT(locale), [locale]);
   const [load, setLoad] = useState<LoadState>({ status: "loading" });
@@ -175,7 +183,9 @@ export function OfficeDocumentPreview({
     return (
       <div className="office-preview office-preview--center">
         <div className="office-preview__status">{tr("office.loading")}</div>
-        <div className="office-preview__sub">{name}</div>
+        {!embedded ? (
+          <div className="office-preview__sub">{name}</div>
+        ) : null}
       </div>
     );
   }
@@ -200,14 +210,20 @@ export function OfficeDocumentPreview({
     );
   }
 
-  // PDF
+  // PDF — page/zoom chrome only; filename/open live in host when embedded
   if (kind === "pdf") {
     return (
       <div className="office-preview office-preview--pdf">
-        <div className="office-preview__bar">
-          <span className="office-preview__bar-title" title={name}>
-            {name}
-          </span>
+        <div className="office-preview__bar office-preview__bar--controls">
+          {!embedded ? (
+            <Tip label={name}>
+              <span className="office-preview__bar-title">
+                {name}
+              </span>
+            </Tip>
+          ) : (
+            <span className="office-preview__bar-spacer" />
+          )}
           <div className="office-preview__bar-actions">
             <button
               type="button"
@@ -246,13 +262,15 @@ export function OfficeDocumentPreview({
             >
               +
             </button>
-            <button
-              type="button"
-              className="btn btn--ghost btn--sm"
-              onClick={() => void openExternal()}
-            >
-              {tr("office.openExternal")}
-            </button>
+            {!embedded && (
+              <button
+                type="button"
+                className="btn btn--ghost btn--sm"
+                onClick={() => void openExternal()}
+              >
+                {tr("office.openExternal")}
+              </button>
+            )}
           </div>
         </div>
         <div className="office-preview__pdf-scroll">
@@ -283,24 +301,33 @@ export function OfficeDocumentPreview({
     );
   }
 
-  // DOCX
+  // DOCX — pure document body when embedded (no filename bar)
   if (kind === "docx" || kind === "office") {
     return (
-      <div className="office-preview office-preview--docx">
-        <div className="office-preview__bar">
-          <span className="office-preview__bar-title" title={name}>
-            {name}
-          </span>
-          <div className="office-preview__bar-actions">
-            <button
-              type="button"
-              className="btn btn--ghost btn--sm"
-              onClick={() => void openExternal()}
-            >
-              {tr("office.openExternal")}
-            </button>
+      <div
+        className={
+          "office-preview office-preview--docx" +
+          (embedded ? " office-preview--embedded" : "")
+        }
+      >
+        {!embedded && (
+          <div className="office-preview__bar">
+            <Tip label={name}>
+              <span className="office-preview__bar-title">
+                {name}
+              </span>
+            </Tip>
+            <div className="office-preview__bar-actions">
+              <button
+                type="button"
+                className="btn btn--ghost btn--sm"
+                onClick={() => void openExternal()}
+              >
+                {tr("office.openExternal")}
+              </button>
+            </div>
           </div>
-        </div>
+        )}
         <div className="office-preview__docx-scroll">
           <div ref={docxRef} className="office-docx-host" />
         </div>
@@ -308,24 +335,33 @@ export function OfficeDocumentPreview({
     );
   }
 
-  // XLSX
+  // XLSX — sheet tabs only when embedded; no filename title
   if (kind === "xlsx") {
     return (
-      <div className="office-preview office-preview--xlsx">
-        <div className="office-preview__bar">
-          <span className="office-preview__bar-title" title={name}>
-            {name}
-          </span>
-          <div className="office-preview__bar-actions">
-            <button
-              type="button"
-              className="btn btn--ghost btn--sm"
-              onClick={() => void openExternal()}
-            >
-              {tr("office.openExternal")}
-            </button>
+      <div
+        className={
+          "office-preview office-preview--xlsx" +
+          (embedded ? " office-preview--embedded" : "")
+        }
+      >
+        {!embedded && (
+          <div className="office-preview__bar">
+            <Tip label={name}>
+              <span className="office-preview__bar-title">
+                {name}
+              </span>
+            </Tip>
+            <div className="office-preview__bar-actions">
+              <button
+                type="button"
+                className="btn btn--ghost btn--sm"
+                onClick={() => void openExternal()}
+              >
+                {tr("office.openExternal")}
+              </button>
+            </div>
           </div>
-        </div>
+        )}
         {sheetNames.length > 1 && (
           <div className="office-preview__sheets" role="tablist">
             {sheetNames.map((sn, i) => (

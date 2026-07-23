@@ -15,7 +15,6 @@ import type { AccountStatus } from "@/lib/api";
 import {
   accountDisplayName,
   accountInitials,
-  channelLabelKey,
   tierLabel,
   usagePercent,
 } from "@/lib/accountUi";
@@ -36,7 +35,6 @@ export interface UserMenuProps {
     logout: string;
     remaining: string;
   };
-  t: (key: string) => string;
   account: AccountStatus | null;
   accountBusy: boolean;
   onSettings: () => void;
@@ -63,7 +61,6 @@ export function UserMenu({
   onClose,
   theme,
   labels,
-  t,
   account,
   accountBusy,
   onSettings,
@@ -84,9 +81,9 @@ export function UserMenu({
     roots: [rootRef],
     onClose,
     placement: "up",
+    fitContent: true,
     matchTriggerWidth: true,
-    minWidth: 240,
-    width: 260,
+    minWidth: 220,
     estHeight: 260,
     gap: 6,
   });
@@ -112,7 +109,7 @@ export function UserMenu({
       ? createPortal(
           <div
             ref={panelRef}
-            className="user-menu__pop user-menu__pop--portal user-menu__pop--account"
+            className="menu-panel user-menu__pop user-menu__pop--portal user-menu__pop--account"
             role="menu"
             style={style}
           >
@@ -131,41 +128,43 @@ export function UserMenu({
                 </div>
                 <div className="user-menu__account-text">
                   <div className="user-menu__account-name">{name}</div>
-                  <div className="user-menu__account-sub">
-                    {signedIn ? labels.signedIn : labels.signedOut}
-                    {" · "}
-                    {t(channelLabelKey(channel))}
-                  </div>
+                  {!signedIn ? (
+                    <div className="user-menu__account-sub">
+                      {labels.signedOut}
+                    </div>
+                  ) : null}
                 </div>
               </div>
-              <div className="user-menu__quota">
-                <div className="user-menu__quota-row">
-                  <span className="user-menu__tier">{tier}</span>
-                  <span className="user-menu__remain">
-                    {remaining != null
-                      ? `${remaining.toFixed(0)}% ${labels.remaining}`
-                      : "—"}
-                  </span>
-                </div>
-                {remaining != null && (
-                  <div
-                    className="account-quota-bar account-quota-bar--sm"
-                    aria-hidden
-                  >
+              {signedIn ? (
+                <div className="user-menu__quota">
+                  <div className="user-menu__quota-row">
+                    <span className="user-menu__tier">{tier}</span>
+                    <span className="user-menu__remain">
+                      {remaining != null
+                        ? `${remaining.toFixed(0)}% ${labels.remaining}`
+                        : "—"}
+                    </span>
+                  </div>
+                  {remaining != null && (
                     <div
-                      className={
-                        "account-quota-bar__fill" +
-                        (usedPct != null && usedPct >= 90
-                          ? " is-danger"
-                          : usedPct != null && usedPct >= 70
-                            ? " is-warn"
-                            : "")
-                      }
-                      style={{ width: `${Math.min(100, usedPct ?? 0)}%` }}
-                    />
-                  </div>
-                )}
-              </div>
+                      className="account-quota-bar account-quota-bar--sm"
+                      aria-hidden
+                    >
+                      <div
+                        className={
+                          "account-quota-bar__fill" +
+                          (usedPct != null && usedPct >= 90
+                            ? " is-danger"
+                            : usedPct != null && usedPct >= 70
+                              ? " is-warn"
+                              : "")
+                        }
+                        style={{ width: `${Math.min(100, usedPct ?? 0)}%` }}
+                      />
+                    </div>
+                  )}
+                </div>
+              ) : null}
             </button>
 
             <button
@@ -218,7 +217,7 @@ export function UserMenu({
             ) : (
               <button
                 type="button"
-                className="user-menu__item user-menu__item--primary"
+                className="user-menu__item"
                 role="menuitem"
                 disabled={accountBusy}
                 onClick={() => {

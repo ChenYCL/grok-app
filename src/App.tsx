@@ -4,6 +4,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type CSSProperties,
   type MouseEvent as ReactMouseEvent,
 } from "react";
 import { createPortal } from "react-dom";
@@ -22,40 +23,84 @@ import {
   saveLayout,
 } from "@/lib/layout";
 import {
+  hitDragZoneFromRects,
+  querySidebarEl,
+  toClientDragPoint,
+} from "@/lib/dragZone";
+import {
+  applyContextCompact,
+  applyGeneratedImage,
   applyStreamChunk,
+  applyToolEvent,
+  applyTurnError,
+  applyTurnMarker,
+  parseCompactContent,
+  parseToolStepContent,
   canSend,
   canStop,
   canType,
+  isSessionBusy,
+  preferSessionMessages,
   presentErrorBanner,
+  truncateBeforeLastUser,
   IDLE_SNAPSHOT,
   type ChatMessage,
+  type GeneratedImagePayload,
   type PermissionPayload,
   type SessionSnapshot,
   type StreamPayload,
+  type TurnErrorPayload,
 } from "@/lib/session";
 import * as api from "@/lib/api";
 import { createT, resolveLocale, type Locale } from "@/i18n";
 import {
   DEFAULT_EFFORT,
   DEFAULT_MODEL_ID,
+  GROK_BUILD_MODELS,
   isValidEffort,
   isValidModelId,
   isValidPolicy,
+  isValidPrefsScope,
+  pickDefaultModelId,
+  type ComposerPrefsScope,
+  type ModelOption,
   type PermissionPolicyId,
 } from "@/lib/grokCatalog";
-import { redact } from "@/lib/redact";
 import { mapPermissionButtons } from "@/lib/permissionOptions";
+import { DoctorModal } from "@/components/DoctorModal";
 import {
+  applyResolvedSessionMedia,
   buildAgentPrompt,
+  collectSessionRelativeMediaRefs,
   isImagePath,
   mergeAttachments,
+  mergeMessageAttachments,
   parseAttachmentsFromContent,
   type Attachment,
 } from "@/lib/attachments";
+import {
+  applySkillAtSlash,
+  isDraftEmpty,
+  hydrateDisplayContent,
+  parseStoredContent,
+  serializeForAgent,
+} from "@/lib/draftDoc";
+import {
+  buildSlashCatalog,
+  flattenFilteredCatalog,
+  type SlashItem,
+  type SkillInfo,
+} from "@/lib/slashCatalog";
+import type { MessageKey } from "@/i18n";
 import { AttachmentCard } from "@/components/AttachmentCard";
 import { ImageViewerProvider } from "@/components/ImageViewer";
 import { OverlayScroll } from "@/components/OverlayScroll";
 import { GrokLogo } from "@/components/GrokLogo";
+import { SetupWizard, type SetupCliInfo } from "@/components/SetupWizard";
+import { ComposerEditor } from "@/components/ComposerEditor";
+import { SlashPalette } from "@/components/SlashPalette";
+import { StatusModal } from "@/components/StatusModal";
+import { McpStatusModal } from "@/components/McpStatusModal";
 import {
   IconChevronDown,
   IconChevronRight,
@@ -69,24 +114,39 @@ import {
   IconFolderPlus,
   IconClose,
   IconNewChat as IconSquarePen,
-  IconCollapse,
+  IconNewChat,
   IconImagine,
   IconSkills,
   IconAutomations,
-  IconMic,
+  IconScheduled,
   IconPanel,
-  IconFiles,
+  IconPanelRight,
   IconArchive,
-  IconMinimize,
-  IconMaximize,
   IconPin,
+  IconPinOff,
+  IconRename,
+  IconCopy,
+  IconTrash,
+  IconExternalLink,
 } from "@/components/icons";
+import { AutomationsPage } from "@/components/AutomationsPage";
+import { OpenLocationButton } from "@/components/OpenLocationButton";
+import {
+  aiCreateSeedPrompt,
+  computeNextRunAt,
+  isDue,
+  type Automation,
+} from "@/lib/automations";
 import {
   ComposerAccessMenu,
   ComposerModelMenu,
 } from "@/components/ComposerModelMenu";
-import { ResourceViewer } from "@/components/ResourceViewer";
-import { ConversationThread } from "@/components/chat/ConversationThread";
+import {
+  ResourceViewer,
+  type ResourceOpenTarget,
+} from "@/components/ResourceViewer";
+import { ConversationThread } from "@/components/lobe-chat";
+import { Spinner } from "@/components/ui/spinner";
 import { UserMenu, remainingPercent } from "@/components/UserMenu";
 import {
   SettingsPage,
@@ -96,7 +156,20 @@ import {
   accountDisplayName,
   accountInitials,
   isAccountConnected,
+  loadCachedSuperGrokBrand,
+  resolveWelcomeBrandKind,
+  saveCachedSuperGrokBrand,
+  superGrokBrandKind,
 } from "@/lib/accountUi";
+import {
+  SuperGrokMark,
+  type SuperGrokBrandKind,
+} from "@/components/SuperGrokMark";
+import { Tip } from "@/components/ui/tooltip";
+import {
+  WindowControls,
+  toggleMaximizeFromTitlebar,
+} from "@/components/WindowControls";
 
 interface Project {
   id: string;
@@ -120,6 +193,25 @@ type ContextMenuState =
   | { kind: "session"; id: string; x: number; y: number }
   | null;
 
+/** In-app dialogs — window.prompt/confirm are unreliable in Tauri WebView. */
+type AppDialog =
+  | {
+      kind: "confirm";
+      title: string;
+      message: string;
+      confirmLabel?: string;
+      danger?: boolean;
+      onConfirm: () => void | Promise<void>;
+    }
+  | {
+      kind: "prompt";
+      title: string;
+      initial: string;
+      placeholder?: string;
+      onSubmit: (value: string) => void | Promise<void>;
+    }
+  | null;
+
 interface PlanState {
   title: string;
   body: string;
@@ -131,37 +223,89 @@ export default function App() {
   const [theme, setTheme] = useState<Theme>(() => loadTheme(localStorage));
   const [layout, setLayout] = useState(() => loadLayout(localStorage));
   const [session, setSession] = useState<SessionSnapshot>(IDLE_SNAPSHOT);
+  /** Host live agent (may differ from the session currently viewed in the UI). */
+  const [liveHost, setLiveHost] = useState<SessionSnapshot>(IDLE_SNAPSHOT);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
+  /** Composer stored form (may include [[skill:name]] tokens). */
   const [draft, setDraft] = useState("");
+  const [goalMode, setGoalMode] = useState(false);
+  const [skillInfos, setSkillInfos] = useState<SkillInfo[]>([]);
+  const [skillsLoading, setSkillsLoading] = useState(false);
+  const [slashQuery, setSlashQuery] = useState<{
+    start: number;
+    query: string;
+    end: number;
+  } | null>(null);
+  const [slashActiveIndex, setSlashActiveIndex] = useState(0);
+  const [showStatusModal, setShowStatusModal] = useState(false);
+  const [showMcpModal, setShowMcpModal] = useState(false);
+  const [mcpServers, setMcpServers] = useState<api.McpDto[]>([]);
+  const [mcpError, setMcpError] = useState<string | null>(null);
+  const [mcpLoading, setMcpLoading] = useState(false);
+  const [showCompactModal, setShowCompactModal] = useState(false);
+  const [compactNote, setCompactNote] = useState("");
+  const compactNoteRef = useRef<HTMLInputElement>(null);
+  /** Last user message open in inline edit (not main composer). */
+  const [editingUserMessageId, setEditingUserMessageId] = useState<
+    string | null
+  >(null);
+  const [editSubmitting, setEditSubmitting] = useState(false);
   const [projects, setProjects] = useState<Project[]>([]);
   const [sessions, setSessions] = useState<SessionRow[]>([]);
   const [activeProject, setActiveProject] = useState<Project | null>(null);
+  /** Per-session message cache so switching away mid-turn does not drop the UI. */
+  const messagesBySessionRef = useRef<Map<string, ChatMessage[]>>(new Map());
+  const viewingSessionIdRef = useRef<string | null>(null);
+  const liveHostRef = useRef<SessionSnapshot>(IDLE_SNAPSHOT);
+  const messagesRef = useRef<ChatMessage[]>([]);
   const [expandedProjects, setExpandedProjects] = useState<Record<string, boolean>>({});
   const [projectsOpen, setProjectsOpen] = useState(true);
   const [historyOpen, setHistoryOpen] = useState(true);
   const [ctxMenu, setCtxMenu] = useState<ContextMenuState>(null);
+  const [appDialog, setAppDialog] = useState<AppDialog>(null);
+  const [dialogInput, setDialogInput] = useState("");
+  const dialogInputRef = useRef<HTMLInputElement>(null);
+  const confirmBtnRef = useRef<HTMLButtonElement>(null);
+  /** Latest dialog for Enter/Escape handlers (avoids stale chained confirms). */
+  const appDialogRef = useRef<AppDialog>(null);
+  appDialogRef.current = appDialog;
   const [showSearch, setShowSearch] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [showComposerPlus, setShowComposerPlus] = useState(false);
   const composerPlusTriggerRef = useRef<HTMLButtonElement>(null);
   const composerPlusPanelRef = useRef<HTMLDivElement>(null);
+  const composerInputRef = useRef<HTMLDivElement>(null);
+  /** Actual input card (.composer) — slash palette anchors here, not the wrap (which includes SuperGrok mark). */
+  const composerShellRef = useRef<HTMLDivElement>(null);
+  const slashPanelRef = useRef<HTMLDivElement>(null);
+  /** Floating composer shell — height drives chat bottom padding. */
+  const composerWrapRef = useRef<HTMLDivElement>(null);
+  const [composerFloatPad, setComposerFloatPad] = useState(168);
+  /** Set by newChat; applied after chat pane + textarea mount. */
+  const pendingComposerFocus = useRef(false);
   const { pos: composerPlusPos, style: composerPlusStyle } = useFloatingMenu({
     open: showComposerPlus,
     triggerRef: composerPlusTriggerRef,
     panelRef: composerPlusPanelRef,
     onClose: () => setShowComposerPlus(false),
     placement: "up",
-    width: 320,
+    fitContent: true,
+    minWidth: 280,
     estHeight: 280,
     gap: 8,
   });
   const [sessionDataMode, setSessionDataMode] = useState("independent");
   const [defaultOpenTarget, setDefaultOpenTarget] = useState("finder");
   const [showUserMenu, setShowUserMenu] = useState(false);
-  /** Hash route: workbench | settings/:section */
+  /** Hash route: workbench | settings/:section | automations */
   const [appView, setAppView] = useState<"workbench" | "settings">("workbench");
+  /** Inside workbench: chat thread vs scheduled tasks list. */
+  const [mainPane, setMainPane] = useState<"chat" | "automations">("chat");
   const [settingsSection, setSettingsSection] =
     useState<SettingsSectionId>("general");
+  /** Prevent overlapping automation runs. */
+  const automationRunLock = useRef(false);
+  const firedAutomationIds = useRef<Set<string>>(new Set());
 
   useEffect(() => {
     if (!ctxMenu) return;
@@ -187,6 +331,71 @@ export default function App() {
   }, [ctxMenu]);
 
   useEffect(() => {
+    if (!appDialog) return;
+    if (appDialog.kind === "prompt") {
+      setDialogInput(appDialog.initial);
+      const t = window.setTimeout(() => {
+        dialogInputRef.current?.focus();
+        dialogInputRef.current?.select();
+      }, 0);
+      return () => window.clearTimeout(t);
+    }
+    // Confirm: focus primary action so keyboard users land on Confirm.
+    // Enter is also handled globally below so it still confirms if focus
+    // sits on Cancel / close (needed for multi-step YOLO Enter spam).
+    if (appDialog.kind === "confirm") {
+      const t = window.setTimeout(() => {
+        confirmBtnRef.current?.focus();
+      }, 0);
+      return () => window.clearTimeout(t);
+    }
+  }, [appDialog]);
+
+  useEffect(() => {
+    if (!appDialog) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        setAppDialog(null);
+        return;
+      }
+      // Confirm dialogs: Enter always accepts (including chained YOLO steps).
+      // Capture phase + preventDefault so we don't double-fire with a focused
+      // submit button's native activation.
+      if (e.key !== "Enter" && e.key !== "NumpadEnter") return;
+      if (e.isComposing || e.altKey || e.ctrlKey || e.metaKey) return;
+      const dialog = appDialogRef.current;
+      if (!dialog || dialog.kind !== "confirm") return;
+      e.preventDefault();
+      e.stopPropagation();
+      const run = dialog.onConfirm;
+      setAppDialog(null);
+      void run();
+    };
+    document.addEventListener("keydown", onKey, true);
+    return () => document.removeEventListener("keydown", onKey, true);
+  }, [appDialog]);
+
+  // Compact context modal: focus note field on open; Escape dismisses.
+  useEffect(() => {
+    if (!showCompactModal) return;
+    const t = window.setTimeout(() => {
+      compactNoteRef.current?.focus();
+    }, 0);
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        setShowCompactModal(false);
+        setCompactNote("");
+      }
+    };
+    document.addEventListener("keydown", onKey);
+    return () => {
+      window.clearTimeout(t);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [showCompactModal]);
+
+  useEffect(() => {
     if (!showSearch) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") setShowSearch(false);
@@ -194,9 +403,12 @@ export default function App() {
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
   }, [showSearch]);
-  const [showOnboarding, setShowOnboarding] = useState(false);
+  /** First-run gate: loading → setup wizard → ready (home). */
+  const [appGate, setAppGate] = useState<"loading" | "setup" | "ready">(
+    "loading",
+  );
+  const [setupCliSeed, setSetupCliSeed] = useState<SetupCliInfo | null>(null);
   const [showDoctor, setShowDoctor] = useState(false);
-  const [doctor, setDoctor] = useState<Record<string, unknown> | null>(null);
   const [perm, setPerm] = useState<PermissionPayload | null>(null);
   const [plan, setPlan] = useState<PlanState & { visible: boolean }>({
     title: "Plan ready for review",
@@ -207,13 +419,24 @@ export default function App() {
     visible: false,
   });
   const [locale, setLocale] = useState<Locale>("zh");
+  const localeRef = useRef(locale);
+  localeRef.current = locale;
   const tr = useMemo(() => createT(locale), [locale]);
   const [modelId, setModelId] = useState(DEFAULT_MODEL_ID);
   const [effort, setEffort] = useState(DEFAULT_EFFORT);
   const [mode, setMode] = useState("agent");
   const [policy, setPolicy] = useState("ask");
+  /** Live selectable models from Host (official CLI catalog only; not providers). */
+  const [availableModels, setAvailableModels] =
+    useState<ModelOption[]>(GROK_BUILD_MODELS);
+  /** Where model/permission chips are remembered. */
+  const [prefsScope, setPrefsScope] =
+    useState<ComposerPrefsScope>("global");
   /** Files/folders attached for next send (@path to agent). */
   const [attachments, setAttachments] = useState<Attachment[]>([]);
+  /** Chat file/url card → open in right resource pane. */
+  const [resourceOpenTarget, setResourceOpenTarget] =
+    useState<ResourceOpenTarget | null>(null);
   /** Live drag-drop target for zone overlays (null = not dragging). */
   const [dragZone, setDragZone] = useState<"sidebar" | "main" | null>(null);
   const [toast, setToast] = useState<string | null>(null);
@@ -224,7 +447,6 @@ export default function App() {
   const [localError, setLocalError] = useState<string | null>(null);
   /** Expand technical dump under the compact error banner. */
   const [errorDetailOpen, setErrorDetailOpen] = useState(false);
-  const [pingMsg, setPingMsg] = useState<string | null>(null);
   const [cliInfo, setCliInfo] = useState<{
     found: boolean;
     path: string | null;
@@ -234,6 +456,14 @@ export default function App() {
   }>({ found: false, path: null, version: null, source: "", cliAuthPresent: false });
   const [manualCliPath, setManualCliPath] = useState("");
   const [connecting, setConnecting] = useState(false);
+  /** Live provider retry progress (session://retry); cleared on success/stop/error. */
+  const [retryStatus, setRetryStatus] = useState<{
+    attempt: number;
+    maxRetries: number;
+    reason: string;
+  } | null>(null);
+  /** Epoch ms when the current agent turn became busy (for elapsed UI). */
+  const [turnStartedAt, setTurnStartedAt] = useState<number | null>(null);
   const [resizingAside, setResizingAside] = useState(false);
   const [account, setAccount] = useState<api.AccountStatus | null>(null);
   const [accountLoading, setAccountLoading] = useState(false);
@@ -244,25 +474,97 @@ export default function App() {
     if (ua.includes("win")) return "win" as const;
     return "other" as const;
   }, []);
+  /** Self-drawn chrome when OS title bar is disabled (Windows release config). */
+  const useCustomWindowChrome = platform === "win" || platform === "other";
+  const [windowMaximized, setWindowMaximized] = useState(false);
 
   useEffect(() => {
     applyThemeToDocument(theme);
   }, [theme]);
 
   useEffect(() => {
-    document.documentElement.classList.remove("platform-mac", "platform-win");
+    document.documentElement.classList.remove(
+      "platform-mac",
+      "platform-win",
+      "platform-other",
+    );
     if (platform === "mac") document.documentElement.classList.add("platform-mac");
     if (platform === "win") document.documentElement.classList.add("platform-win");
+    if (platform === "other") document.documentElement.classList.add("platform-other");
   }, [platform]);
 
+  useEffect(() => {
+    if (!useCustomWindowChrome || !api.isTauri()) return;
+    let unlisten: (() => void) | undefined;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const { getCurrentWindow } = await import("@tauri-apps/api/window");
+        const w = getCurrentWindow();
+        const sync = async () => {
+          try {
+            setWindowMaximized(await w.isMaximized());
+          } catch {
+            /* ignore */
+          }
+        };
+        await sync();
+        unlisten = await w.onResized(() => {
+          void sync();
+        });
+        if (cancelled) unlisten?.();
+      } catch {
+        /* ignore */
+      }
+    })();
+    return () => {
+      cancelled = true;
+      unlisten?.();
+    };
+  }, [useCustomWindowChrome]);
+
+  const applyComposerPrefs = useCallback(
+    (prefs: api.ComposerPrefs, catalog: ModelOption[]) => {
+      const models = catalog.length > 0 ? catalog : GROK_BUILD_MODELS;
+      if (prefs.modelId && isValidModelId(prefs.modelId, models)) {
+        setModelId(prefs.modelId);
+      } else {
+        setModelId(pickDefaultModelId(models));
+      }
+      setEffort(
+        isValidEffort(prefs.effort) ? prefs.effort : DEFAULT_EFFORT,
+      );
+      setMode(prefs.mode || "agent");
+      setPolicy(
+        isValidPolicy(prefs.permissionPolicy) ? prefs.permissionPolicy : "ask",
+      );
+      if (isValidPrefsScope(prefs.scope)) {
+        setPrefsScope(prefs.scope);
+      }
+    },
+    [],
+  );
+
   const refreshLists = useCallback(async () => {
-    if (!api.isTauri()) return;
+    if (!api.isTauri()) {
+      // Browser/Vite-only preview: skip Host gate.
+      setAppGate("ready");
+      setSetupCliSeed({
+        found: true,
+        path: null,
+        version: "browser",
+        source: "browser",
+        cliAuthPresent: false,
+      });
+      return;
+    }
     try {
-      const [p, s, settings, cli] = await Promise.all([
+      const [p, s, settings, cli, modelsRes] = await Promise.all([
         api.projectsList(),
         api.sessionsList(),
         api.settingsGet(),
         api.probeCli(),
+        api.modelsListAvailable().catch(() => null),
       ]);
       setProjects(
         (p as Project[]).map((x) => ({
@@ -281,23 +583,52 @@ export default function App() {
           archived: !!x.archived,
         })),
       );
-      if (!settings.onboardingDone && !settings.setupSkipped) {
-        setShowOnboarding(true);
-      }
+      void api.trayRefresh();
       setLocale(resolveLocale(settings.locale));
-      setPolicy(
-        isValidPolicy(settings.permissionPolicy || "")
-          ? settings.permissionPolicy
-          : "ask",
-      );
-      setEffort(
-        isValidEffort(settings.effort || "")
-          ? (settings.effort as typeof effort)
-          : DEFAULT_EFFORT,
-      );
-      setMode(settings.mode || "agent");
-      if (settings.modelId && isValidModelId(settings.modelId)) {
-        setModelId(settings.modelId);
+      const catalog: ModelOption[] =
+        modelsRes?.models?.length
+          ? modelsRes.models.map((m) => ({
+              id: m.id,
+              label: m.label || m.id,
+              source: m.source,
+              isDefault: m.isDefault,
+            }))
+          : GROK_BUILD_MODELS;
+      setAvailableModels(catalog);
+      if (
+        settings.composerPrefsScope &&
+        isValidPrefsScope(settings.composerPrefsScope)
+      ) {
+        setPrefsScope(settings.composerPrefsScope);
+      }
+      // Bootstrap: global-effective prefs (context re-resolved when project/session changes).
+      const prefs = await api
+        .composerPrefsResolve({ projectId: null, sessionId: null })
+        .catch(() => null);
+      if (prefs) {
+        applyComposerPrefs(prefs, catalog);
+      } else {
+        setPolicy(
+          isValidPolicy(settings.permissionPolicy || "")
+            ? settings.permissionPolicy
+            : "ask",
+        );
+        setEffort(
+          isValidEffort(settings.effort || "")
+            ? (settings.effort as typeof effort)
+            : DEFAULT_EFFORT,
+        );
+        setMode(settings.mode || "agent");
+        if (settings.modelId && isValidModelId(settings.modelId, catalog)) {
+          setModelId(settings.modelId);
+        } else {
+          setModelId(
+            modelsRes?.defaultModelId &&
+              isValidModelId(modelsRes.defaultModelId, catalog)
+              ? modelsRes.defaultModelId
+              : pickDefaultModelId(catalog),
+          );
+        }
       }
       setSessionDataMode(settings.sessionDataMode || "independent");
       setDefaultOpenTarget(
@@ -322,6 +653,40 @@ export default function App() {
         auth: authOk,
         project: p.some((x) => (x as Project).trusted) || p.length > 0,
       });
+
+      // ── Setup gate: CLI is hard-required; account may be deferred ──
+      const cliSeed: SetupCliInfo = {
+        found: cli.found,
+        path: cli.path,
+        version: cli.version,
+        source: cli.source || "",
+        cliAuthPresent: !!cli.cliAuthPresent,
+      };
+      setSetupCliSeed(cliSeed);
+
+      const wizardCompleted = !!settings.setupWizardCompleted;
+      const legacyDone =
+        !!settings.onboardingDone || !!settings.setupSkipped;
+
+      if (cli.found && !wizardCompleted && legacyDone) {
+        // Migrate older installs that already finished the account modal.
+        try {
+          await api.settingsSet({
+            ...settings,
+            setupWizardCompleted: true,
+            authSetupDeferred: !!settings.setupSkipped && !authOk,
+          });
+        } catch {
+          /* ignore */
+        }
+        setAppGate("ready");
+      } else if (!cli.found || !wizardCompleted) {
+        // No CLI → always wizard. First launch with CLI → account step.
+        setAppGate("setup");
+      } else {
+        setAppGate("ready");
+      }
+
       // Prefer first trusted project; keep selection if still present
       setActiveProject((prev) => {
         if (prev && (p as Project[]).some((x) => x.id === prev.id)) {
@@ -342,6 +707,17 @@ export default function App() {
       });
     } catch (e) {
       setLocalError(String(e));
+      // Still surface setup if Tauri partially works
+      setSetupCliSeed((prev) =>
+        prev ?? {
+          found: false,
+          path: null,
+          version: null,
+          source: "error",
+          cliAuthPresent: false,
+        },
+      );
+      setAppGate((g) => (g === "loading" ? "setup" : g));
     }
   }, []);
 
@@ -349,6 +725,69 @@ export default function App() {
   useEffect(() => {
     void refreshLists();
   }, [refreshLists]);
+
+  // Re-resolve model/permission when project or chat changes (project/session scope).
+  useEffect(() => {
+    if (!api.isTauri()) return;
+    if (prefsScope === "global") return;
+    let cancelled = false;
+    void api
+      .composerPrefsResolve({
+        projectId: activeProject?.id ?? null,
+        sessionId: session.sessionId ?? null,
+      })
+      .then((prefs) => {
+        if (!cancelled) applyComposerPrefs(prefs, availableModels);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    activeProject?.id,
+    session.sessionId,
+    prefsScope,
+    applyComposerPrefs,
+    availableModels,
+  ]);
+
+  // Keep refs aligned for event handlers (avoid stale closures).
+  useEffect(() => {
+    viewingSessionIdRef.current = session.sessionId;
+  }, [session.sessionId]);
+
+  useEffect(() => {
+    liveHostRef.current = liveHost;
+  }, [liveHost]);
+
+  // Mirror viewed-session messages into the cache on every change.
+  useEffect(() => {
+    messagesRef.current = messages;
+    const id = session.sessionId;
+    if (!id) return;
+    messagesBySessionRef.current.set(id, messages);
+  }, [messages, session.sessionId]);
+
+  /** Apply a message reducer to the viewed session or only to the cache. */
+  const patchSessionMessages = useCallback(
+    (
+      targetSessionId: string | undefined | null,
+      reduce: (prev: ChatMessage[]) => ChatMessage[],
+    ) => {
+      if (!targetSessionId) return;
+      if (viewingSessionIdRef.current === targetSessionId) {
+        setMessages((prev) => {
+          const next = reduce(prev);
+          messagesBySessionRef.current.set(targetSessionId, next);
+          return next;
+        });
+      } else {
+        const prev = messagesBySessionRef.current.get(targetSessionId) ?? [];
+        messagesBySessionRef.current.set(targetSessionId, reduce(prev));
+      }
+    },
+    [],
+  );
 
   // Event listeners: StrictMode-safe (cleanup cancels pending + live unsubs)
   useEffect(() => {
@@ -368,11 +807,78 @@ export default function App() {
     void (async () => {
       try {
         const snap = await api.sessionGetState();
-        if (!cancelled) setSession(snap);
+        if (!cancelled) {
+          setLiveHost(snap);
+          liveHostRef.current = snap;
+          // Only bind the viewed session when Host already has a live row.
+          if (snap.sessionId) {
+            setSession(snap);
+            viewingSessionIdRef.current = snap.sessionId;
+          }
+        }
 
         await track(
           api.listen<SessionSnapshot>("session://state", (s) => {
-            if (!cancelled) setSession(s);
+            if (cancelled) return;
+            setLiveHost(s);
+            liveHostRef.current = s;
+            // Only update the workbench session when the user is viewing it.
+            // Otherwise switching sessions would yank selection back to the live agent.
+            if (
+              s.sessionId &&
+              s.sessionId === viewingSessionIdRef.current
+            ) {
+              setSession(s);
+              // Clear retry chip / turn timer when turn ends or errors out
+              if (s.state !== "streaming" && s.state !== "awaiting_permission") {
+                setRetryStatus(null);
+                setTurnStartedAt(null);
+              } else if (
+                (s.state === "streaming" || s.state === "awaiting_permission") &&
+                s.sessionId === viewingSessionIdRef.current
+              ) {
+                setTurnStartedAt((prev) => prev ?? Date.now());
+              }
+              // After a turn, resolve `images/N.jpg` short paths into image cards
+              if (s.state === "ready") {
+                const sid = s.sessionId;
+                setMessages((prev) => {
+                  const rels = collectSessionRelativeMediaRefs(prev);
+                  if (!rels.length) return prev;
+                  void api
+                    .sessionResolveRelativeMedia(sid, rels)
+                    .then((list) => {
+                      if (
+                        cancelled ||
+                        !list.length ||
+                        viewingSessionIdRef.current !== sid
+                      ) {
+                        return;
+                      }
+                      const resolved = list.map((a) => ({
+                        path: a.path,
+                        name:
+                          a.name ||
+                          a.path.split(/[/\\]/).pop() ||
+                          a.path,
+                        isDir: !!a.isDir,
+                      }));
+                      setMessages((cur) =>
+                        applyResolvedSessionMedia(cur, resolved),
+                      );
+                    })
+                    .catch(() => {
+                      /* ignore */
+                    });
+                  return prev;
+                });
+              }
+            } else if (
+              !isSessionBusy(s.state) &&
+              viewingSessionIdRef.current === s.sessionId
+            ) {
+              setRetryStatus(null);
+            }
           }),
         );
         await track(
@@ -380,25 +886,166 @@ export default function App() {
             if (cancelled) return;
             // Ignore empty terminal ticks that only flip done
             if (!chunk.text && !chunk.done) return;
-            setMessages((prev) => applyStreamChunk(prev, chunk));
+            if (
+              chunk.text &&
+              chunk.sessionId === viewingSessionIdRef.current
+            ) {
+              setRetryStatus(null);
+            }
+            patchSessionMessages(chunk.sessionId, (prev) =>
+              applyStreamChunk(prev, chunk),
+            );
+          }),
+        );
+        await track(
+          api.listen<GeneratedImagePayload>(
+            "session://generated_image",
+            (p) => {
+              if (cancelled || !p?.path) return;
+              patchSessionMessages(p.sessionId, (prev) =>
+                applyGeneratedImage(prev, p),
+              );
+            },
+          ),
+        );
+        await track(
+          api.listen<{
+            sessionId?: string;
+            messageId?: string;
+            trigger?: string;
+            tokensBefore?: number;
+            tokensAfter?: number;
+            summaryPreview?: string;
+            note?: string;
+            content?: string;
+          }>("session://context_compact", (p) => {
+            if (cancelled || !p) return;
+            const sid = p.sessionId;
+            if (!sid) return;
+            patchSessionMessages(sid, (prev) => applyContextCompact(prev, p));
+            if (sid === viewingSessionIdRef.current) {
+              const auto = (p.trigger || "auto").toLowerCase() !== "manual";
+              setToast(
+                auto
+                  ? tr("compact.toastAuto")
+                  : tr("compact.toastManual"),
+              );
+              window.setTimeout(() => setToast(null), 3200);
+            }
+          }),
+        );
+        await track(
+          api.listen<{
+            sessionId?: string;
+            toolCallId?: string;
+            title?: string;
+            kind?: string;
+            status?: string;
+            path?: string | null;
+            detail?: string | null;
+          }>("session://tool", (p) => {
+            if (cancelled || !p?.toolCallId) return;
+            const sid = p.sessionId || viewingSessionIdRef.current;
+            if (!sid) return;
+            patchSessionMessages(sid, (prev) => applyToolEvent(prev, p));
+            if (sid === viewingSessionIdRef.current) {
+              setTurnStartedAt((t) => t ?? Date.now());
+            }
+          }),
+        );
+        await track(
+          api.listen<{
+            sessionId?: string;
+            messageId?: string;
+            marker?: string;
+            reason?: string;
+            content?: string;
+          }>("session://turn_marker", (p) => {
+            if (cancelled || !p) return;
+            const sid = p.sessionId;
+            if (!sid) return;
+            patchSessionMessages(sid, (prev) => applyTurnMarker(prev, p));
+            if (sid === viewingSessionIdRef.current) {
+              setTurnStartedAt(null);
+              if (p.marker === "turn_cancelled") {
+                setToast(tr("activity.cancelledToast"));
+                window.setTimeout(() => setToast(null), 2800);
+              }
+            }
+          }),
+        );
+        await track(
+          api.listen<{
+            attempt?: number;
+            maxRetries?: number;
+            reason?: string;
+            aborting?: boolean;
+            sessionId?: string;
+          }>("session://retry", (p) => {
+            if (cancelled) return;
+            // Retry chip is only meaningful on the viewed live session.
+            if (
+              p.sessionId &&
+              p.sessionId !== viewingSessionIdRef.current
+            ) {
+              return;
+            }
+            if (
+              liveHostRef.current.sessionId &&
+              liveHostRef.current.sessionId !== viewingSessionIdRef.current
+            ) {
+              return;
+            }
+            const attempt = p.attempt ?? 0;
+            const maxRetries = p.maxRetries ?? 5;
+            const reason = (p.reason || "").trim();
+            setRetryStatus({ attempt, maxRetries, reason });
+          }),
+        );
+        await track(
+          api.listen<TurnErrorPayload>("session://turn_error", (p) => {
+            if (cancelled) return;
+            if (p.sessionId === viewingSessionIdRef.current) {
+              setRetryStatus(null);
+            }
+            patchSessionMessages(p.sessionId, (prev) =>
+              applyTurnError(prev, p, localeRef.current),
+            );
           }),
         );
         await track(
           api.listen<PermissionPayload>("session://permission", (p) => {
-            if (!cancelled) setPerm(p);
+            if (cancelled) return;
+            // Only surface the bar when viewing the session that needs it.
+            if (
+              p.sessionId &&
+              p.sessionId !== viewingSessionIdRef.current
+            ) {
+              return;
+            }
+            setPerm(p);
           }),
         );
         await track(
-          api.listen<{ entries: unknown[] }>("session://plan", (p) => {
-            if (cancelled) return;
-            setPlan({
-              title: "Plan ready for review",
-              body: "Agent plan",
-              entries: p.entries || [],
-              waiting: false,
-              visible: true,
-            });
-          }),
+          api.listen<{ entries: unknown[]; sessionId?: string }>(
+            "session://plan",
+            (p) => {
+              if (cancelled) return;
+              if (
+                p.sessionId &&
+                p.sessionId !== viewingSessionIdRef.current
+              ) {
+                return;
+              }
+              setPlan({
+                title: "Plan ready for review",
+                body: "Agent plan",
+                entries: p.entries || [],
+                waiting: false,
+                visible: true,
+              });
+            },
+          ),
         );
         await track(
           api.listen<{ sessionId?: string; title?: string }>(
@@ -415,6 +1062,11 @@ export default function App() {
                   ? { ...prev, title: p.title! }
                   : prev,
               );
+              setLiveHost((prev) =>
+                prev.sessionId === p.sessionId
+                  ? { ...prev, title: p.title! }
+                  : prev,
+              );
             },
           ),
         );
@@ -427,7 +1079,7 @@ export default function App() {
       cancelled = true;
       cleanups.forEach((u) => u());
     };
-  }, []);
+  }, [patchSessionMessages]);
 
   const toggleThemeBtn = () => {
     setTheme((t) => {
@@ -446,9 +1098,31 @@ export default function App() {
 
   const navigateWorkbench = useCallback(() => {
     setAppView("workbench");
+    setMainPane("chat");
     if (typeof window !== "undefined" && window.location.hash) {
       window.history.replaceState(null, "", window.location.pathname + window.location.search);
     }
+  }, []);
+
+  const navigateAutomations = useCallback(() => {
+    setAppView("workbench");
+    setMainPane("automations");
+    setShowUserMenu(false);
+    if (typeof window !== "undefined") {
+      window.location.hash = "#/automations";
+    }
+  }, []);
+
+  const persistOpenTarget = useCallback((target: string) => {
+    setDefaultOpenTarget(target);
+    try {
+      localStorage.setItem("grok-app.openTarget", target);
+    } catch {
+      /* ignore */
+    }
+    void api.settingsGet().then((s) =>
+      api.settingsSet({ ...s, defaultOpenTarget: target }),
+    );
   }, []);
 
   const navigateSettings = useCallback((section: SettingsSectionId = "general") => {
@@ -460,7 +1134,7 @@ export default function App() {
     }
   }, []);
 
-  // Hash route: #/settings[/section]
+  // Hash route: #/settings[/section] | #/automations | #/workbench
   useEffect(() => {
     const syncFromHash = () => {
       const raw = (window.location.hash || "").replace(/^#\/?/, "");
@@ -477,8 +1151,12 @@ export default function App() {
           part && allowed.includes(part) ? part : "general",
         );
         setAppView("settings");
+      } else if (raw === "automations" || raw.startsWith("automations")) {
+        setAppView("workbench");
+        setMainPane("automations");
       } else if (raw === "" || raw === "workbench" || raw === "home") {
         setAppView("workbench");
+        setMainPane("chat");
       }
     };
     syncFromHash();
@@ -491,26 +1169,112 @@ export default function App() {
     const proj =
       project ||
       projects.find((p) => p.id === s.projectId) ||
-      activeProject;
+      null;
+    setMainPane("chat");
+    setAppView("workbench");
+
+    // Snapshot the outgoing thread so a mid-turn switch does not lose the user bubble.
+    const leavingId = viewingSessionIdRef.current;
+    if (leavingId) {
+      messagesBySessionRef.current.set(leavingId, messagesRef.current);
+    }
+
+    // Point viewing id immediately so late stream chunks land in the right cache.
+    viewingSessionIdRef.current = s.id;
+    setEditingUserMessageId(null);
+
     try {
       const stored = await api.sessionMessages(s.id);
-      const mapped = stored.map((m) => {
+      let mapped: ChatMessage[] = stored.map((m) => {
         const parsed = parseAttachmentsFromContent(m.content);
+        const storedAtts: Attachment[] = (m.attachments ?? []).map((a) => ({
+          path: a.path,
+          name: a.name || a.path.split(/[/\\]/).pop() || a.path,
+          isDir: !!a.isDir,
+        }));
+        // @path lines (user) + persisted image_gen cards + absolute paths in text
+        const attachments = mergeMessageAttachments(
+          mergeAttachments(parsed.attachments, storedAtts),
+          m.content,
+        );
+        const rawContent =
+          parsed.text || (parsed.attachments.length ? "" : m.content);
+        // User turns: restore [[skill:]] chips from agent-form `/name` history.
+        const content =
+          m.role === "user" ? hydrateDisplayContent(rawContent) : rawContent;
+        const rawMarker = (m as { marker?: string }).marker || undefined;
+        const marker =
+          rawMarker ||
+          (m.role === "tool" && content.startsWith("context_compact")
+            ? "context_compact"
+            : m.role === "tool" && content.startsWith("tool_step|")
+              ? "tool_step"
+              : m.role === "tool" && content.startsWith("turn_cancelled")
+                ? "turn_cancelled"
+                : undefined);
+        const compactMeta =
+          marker === "context_compact"
+            ? parseCompactContent(content) || undefined
+            : undefined;
+        const toolParsed =
+          marker === "tool_step" ? parseToolStepContent(content) : null;
         return {
           id: m.id,
           role: m.role as "user" | "assistant" | "tool",
-          content: parsed.text || (parsed.attachments.length ? "" : m.content),
+          content: toolParsed?.title || content,
           thought: m.thought ?? undefined,
-          attachments: parsed.attachments.length
-            ? parsed.attachments
-            : undefined,
+          isError: m.isError || undefined,
+          attachments,
+          createdAt: m.createdAt || undefined,
+          marker,
+          compactMeta: compactMeta ?? undefined,
+          toolCallId: m.id.startsWith("tool-") ? m.id.slice(5) : undefined,
+          toolKind: toolParsed?.kind,
+          toolStatus: toolParsed?.status,
+          toolDetail: toolParsed?.detail,
+          toolPath: toolParsed?.path,
+          streaming: false,
         };
       });
-      setMessages(mapped);
+      // Short paths like `images/1.jpg` → agent session dir → image cards
+      if (api.isTauri()) {
+        const rels = collectSessionRelativeMediaRefs(mapped);
+        if (rels.length) {
+          try {
+            const list = await api.sessionResolveRelativeMedia(s.id, rels);
+            if (list.length) {
+              mapped = applyResolvedSessionMedia(
+                mapped,
+                list.map((a) => ({
+                  path: a.path,
+                  name:
+                    a.name || a.path.split(/[/\\]/).pop() || a.path,
+                  isDir: !!a.isDir,
+                })),
+              );
+            }
+          } catch {
+            /* ignore */
+          }
+        }
+      }
+      // Prefer in-memory cache (optimistic user msg + partial stream) over disk.
+      const chosen = preferSessionMessages(
+        messagesBySessionRef.current.get(s.id),
+        mapped,
+      );
+      if (viewingSessionIdRef.current !== s.id) {
+        // User switched again while we were loading — keep cache warm, skip UI write.
+        messagesBySessionRef.current.set(s.id, chosen);
+        return;
+      }
+      messagesBySessionRef.current.set(s.id, chosen);
+      setMessages(chosen);
       // Refine isDir via classify when possible
-      const allPaths = mapped.flatMap((m) => m.attachments?.map((a) => a.path) ?? []);
+      const allPaths = chosen.flatMap((m) => m.attachments?.map((a) => a.path) ?? []);
       if (allPaths.length && api.isTauri()) {
         void api.pathsClassify(allPaths).then((list) => {
+          if (viewingSessionIdRef.current !== s.id) return;
           const byPath = new Map(list.map((c) => [c.path, c]));
           setMessages((prev) =>
             prev.map((msg) => {
@@ -529,38 +1293,119 @@ export default function App() {
         });
       }
     } catch {
-      setMessages([]);
+      if (viewingSessionIdRef.current !== s.id) return;
+      const cached = messagesBySessionRef.current.get(s.id);
+      setMessages(cached ?? []);
     }
-    if (proj) setActiveProject(proj);
+    if (viewingSessionIdRef.current !== s.id) return;
+    // Orphan sessions clear project context; project sessions select their folder.
+    setActiveProject(proj);
     setAttachments([]);
-    setSession({
-      ...IDLE_SNAPSHOT,
-      sessionId: s.id,
-      title: s.title || "Untitled",
-      state: "idle",
-      backend: "grok_agent_stdio",
-    });
+    // Reattach live host snapshot when reopening the session that is still running.
+    const live = liveHostRef.current;
+    if (live.sessionId === s.id) {
+      setSession({
+        ...live,
+        title: s.title || live.title || "Untitled",
+      });
+    } else {
+      setSession({
+        ...IDLE_SNAPSHOT,
+        sessionId: s.id,
+        title: s.title || "Untitled",
+        state: "idle",
+        backend: "grok_agent_stdio",
+      });
+    }
     setLocalError(null);
+    // Permission / retry chrome only apply to the live viewed session.
+    if (live.sessionId !== s.id) {
+      setPerm(null);
+      setRetryStatus(null);
+    }
   };
+
+  /**
+   * Focus composer after React commit. Retries until the textarea is mounted
+   * (e.g. switching from automations → chat) or attempts run out.
+   * Must be called after any await so state updates have been scheduled.
+   */
+  const requestComposerFocus = useCallback(() => {
+    pendingComposerFocus.current = true;
+    const tryFocus = (attemptsLeft: number) => {
+      const el = composerInputRef.current;
+      if (el && el.getAttribute("contenteditable") !== "false") {
+        el.focus({ preventScroll: true });
+        resizeComposer(el);
+        try {
+          const sel = window.getSelection();
+          if (sel) {
+            const range = document.createRange();
+            range.selectNodeContents(el);
+            range.collapse(false);
+            sel.removeAllRanges();
+            sel.addRange(range);
+          }
+        } catch {
+          /* ignore */
+        }
+        if (document.activeElement === el) {
+          pendingComposerFocus.current = false;
+          return;
+        }
+      }
+      if (attemptsLeft <= 0) {
+        pendingComposerFocus.current = false;
+        return;
+      }
+      requestAnimationFrame(() => tryFocus(attemptsLeft - 1));
+    };
+    // macOS: button click keeps focus on the button until the next tick.
+    window.setTimeout(() => tryFocus(12), 0);
+  }, []);
 
   /**
    * Draft new chat (Codex-style): clear UI only.
    * No store row / CLI until first successful send via ensureConnected.
+   * Pass `null` for a project-less session (listed under “其他会话”).
+   * Omit / pass undefined to use the active project (requires one).
    */
-  const newChat = async (project?: Project | null) => {
-    const proj = project || activeProject;
-    if (!proj) {
+  const newChat = async (
+    project?: Project | null,
+    opts?: { seedDraft?: string; switchToChat?: boolean },
+  ) => {
+    // Explicit null → orphan; undefined → fall back to active project.
+    const wantOrphan = project === null;
+    const proj = wantOrphan ? null : project || activeProject;
+    if (!wantOrphan && !proj) {
       setLocalError(tr("project.addSelectFirst"));
       return;
     }
-    if (!proj.trusted) {
+    if (proj && !proj.trusted) {
       setLocalError(tr("project.trustFirst", { name: proj.name }));
       return;
     }
+    if (opts?.switchToChat !== false) {
+      setMainPane("chat");
+      setAppView("workbench");
+    }
     setActiveProject(proj);
-    setExpandedProjects((e) => ({ ...e, [proj.id]: true }));
+    if (proj) {
+      setExpandedProjects((e) => ({ ...e, [proj.id]: true }));
+    } else {
+      setHistoryOpen(true);
+    }
+    // Preserve outgoing thread in cache before clearing the draft UI.
+    const leavingId = viewingSessionIdRef.current;
+    if (leavingId) {
+      const cachedLeaving = messagesBySessionRef.current.get(leavingId);
+      if (cachedLeaving) {
+        messagesBySessionRef.current.set(leavingId, cachedLeaving);
+      }
+    }
+    viewingSessionIdRef.current = null;
     setMessages([]);
-    setDraft("");
+    setDraft(opts?.seedDraft ?? "");
     setAttachments([]);
     setPlan({
       title: "Plan ready for review",
@@ -570,6 +1415,7 @@ export default function App() {
       visible: false,
     });
     setPerm(null);
+    setRetryStatus(null);
     setSession({
       ...IDLE_SNAPSHOT,
       sessionId: null,
@@ -582,17 +1428,16 @@ export default function App() {
     if (api.isTauri()) {
       try {
         await api.sessionDisconnect();
+        const idle = { ...IDLE_SNAPSHOT };
+        setLiveHost(idle);
+        liveHostRef.current = idle;
       } catch {
         /* ignore */
       }
     }
-  };
-
-  const selectProject = async (proj: Project) => {
-    setActiveProject(proj);
-    setExpandedProjects((e) => ({ ...e, [proj.id]: true }));
-    setLocalError(null);
-    // No eager CLI connect — wait until first send (silent).
+    // Focus explicitly — do not rely only on useEffect: after await, effects may
+    // already have run, and identical draft/sessionId can skip a re-render.
+    requestComposerFocus();
   };
 
   const sessionsForProject = (projectId: string) =>
@@ -603,6 +1448,12 @@ export default function App() {
       (!s.projectId || !projects.some((p) => p.id === s.projectId)) &&
       !s.archived,
   );
+
+  /** Session id currently running on the Host (for sidebar spinner). */
+  const busySessionId =
+    liveHost.sessionId && isSessionBusy(liveHost.state)
+      ? liveHost.sessionId
+      : null;
 
   const refreshSessions = async () => {
     try {
@@ -616,10 +1467,166 @@ export default function App() {
           archived: !!s.archived,
         })),
       );
+      void api.trayRefresh();
     } catch {
       /* ignore */
     }
   };
+
+  /**
+   * Run a scheduled automation now: open chat under its project (or orphan),
+   * connect, and send the stored prompt.
+   */
+  const runAutomation = useCallback(
+    async (auto: Automation, opts?: { fromScheduler?: boolean }) => {
+      if (automationRunLock.current) return;
+      if (opts?.fromScheduler && (session.state === "streaming" || connecting)) {
+        return;
+      }
+      automationRunLock.current = true;
+      try {
+        const proj = auto.projectId
+          ? projects.find((p) => p.id === auto.projectId) ?? null
+          : null;
+        if (proj && !proj.trusted) {
+          setLocalError(tr("project.trustFirst", { name: proj.name }));
+          return;
+        }
+        setMainPane("chat");
+        setAppView("workbench");
+        setActiveProject(proj);
+        if (proj) {
+          setExpandedProjects((e) => ({ ...e, [proj.id]: true }));
+        } else {
+          setHistoryOpen(true);
+        }
+        viewingSessionIdRef.current = null;
+        setMessages([]);
+        setAttachments([]);
+        setPerm(null);
+        setRetryStatus(null);
+        setLocalError(null);
+        setDraft("");
+        if (api.isTauri()) {
+          try {
+            await api.sessionDisconnect();
+          } catch {
+            /* ignore */
+          }
+        }
+        setSession({
+          ...IDLE_SNAPSHOT,
+          sessionId: null,
+          title: auto.title || tr("session.new"),
+          state: "idle",
+          backend: "grok_agent_stdio",
+        });
+        {
+          const idle = { ...IDLE_SNAPSHOT };
+          setLiveHost(idle);
+          liveHostRef.current = idle;
+        }
+
+        let sessionId: string | null = null;
+        if (api.isTauri()) {
+          const meta = (await api.sessionCreate(
+            proj?.id,
+            auto.title || tr("session.new"),
+          )) as { id: string; title?: string };
+          sessionId = meta.id;
+          viewingSessionIdRef.current = meta.id;
+          setSession((prev) => ({
+            ...prev,
+            sessionId: meta.id,
+            title: meta.title || auto.title,
+          }));
+          await refreshSessions();
+        }
+
+        const snap = await api.sessionConnect({
+          projectPath: proj?.path,
+          sessionId: sessionId ?? undefined,
+          mode: "agent",
+        });
+        setLiveHost(snap);
+        liveHostRef.current = snap;
+        if (snap.sessionId) {
+          viewingSessionIdRef.current = snap.sessionId;
+        }
+        setSession(snap);
+        if (snap.lastError || snap.state !== "ready") {
+          const code = snap.lastError?.code ?? "AGENT_CRASHED";
+          const msg = snap.lastError?.message ?? "connect failed";
+          setLocalError(`${code}: ${msg}`);
+          return;
+        }
+
+        const header = `[Scheduled: ${auto.title}]\n\n`;
+        const autoMsgs: ChatMessage[] = [
+          {
+            id: `u-auto-${Date.now()}`,
+            role: "user",
+            content: header + auto.prompt,
+          },
+        ];
+        if (snap.sessionId) {
+          messagesBySessionRef.current.set(snap.sessionId, autoMsgs);
+        }
+        setMessages(autoMsgs);
+        await api.sessionSend(header + auto.prompt);
+
+        const lastRunAt = new Date().toISOString();
+        const nextRunAt =
+          auto.frequency === "once"
+            ? null
+            : computeNextRunAt(
+                { ...auto, enabled: auto.frequency !== "once" },
+                new Date(Date.now() + 60_000),
+              );
+        await api.automationMarkRun(auto.id, lastRunAt, nextRunAt);
+        if (auto.frequency === "once") {
+          await api.automationSetEnabled(auto.id, false);
+        }
+        setToast(tr("automations.runningToast", { title: auto.title }));
+        window.setTimeout(() => setToast(null), 3200);
+      } catch (e) {
+        setLocalError(String(e));
+      } finally {
+        automationRunLock.current = false;
+      }
+    },
+    [projects, session.state, connecting, tr],
+  );
+
+  // Shell scheduler: poll enabled automations while app is open.
+  useEffect(() => {
+    if (!api.isTauri() && typeof window === "undefined") return;
+    const tick = async () => {
+      if (automationRunLock.current || connecting) return;
+      if (session.state === "streaming") return;
+      try {
+        const rows = await api.automationsList();
+        const due = rows.find(
+          (r) =>
+            r.enabled &&
+            isDue(r as Automation) &&
+            !firedAutomationIds.current.has(`${r.id}:${r.nextRunAt ?? ""}`),
+        );
+        if (!due) return;
+        firedAutomationIds.current.add(`${due.id}:${due.nextRunAt ?? ""}`);
+        await runAutomation(due as Automation, { fromScheduler: true });
+      } catch {
+        /* ignore tick errors */
+      }
+    };
+    const id = window.setInterval(() => void tick(), 30_000);
+    // First check shortly after mount.
+    const boot = window.setTimeout(() => void tick(), 8_000);
+    return () => {
+      window.clearInterval(id);
+      window.clearTimeout(boot);
+    };
+  }, [runAutomation, connecting, session.state]);
 
   const refreshProjects = async () => {
     try {
@@ -635,60 +1642,92 @@ export default function App() {
     }
   };
 
-  const renameProject = async (proj: Project) => {
+  const applySessionTitle = useCallback(
+    (sessionId: string, title: string) => {
+      setSessions((list) =>
+        list.map((s) => (s.id === sessionId ? { ...s, title } : s)),
+      );
+      setSession((prev) =>
+        prev.sessionId === sessionId ? { ...prev, title } : prev,
+      );
+      void api.trayRefresh();
+    },
+    [],
+  );
+
+  const renameProject = (proj: Project) => {
     setCtxMenu(null);
-    const name = window.prompt(
-      tr("project.rename"),
-      proj.name,
-    );
-    if (!name?.trim()) return;
-    try {
-      await api.projectRename(proj.id, name.trim());
-      await refreshProjects();
-    } catch (e) {
-      setLocalError(String(e));
-    }
+    setAppDialog({
+      kind: "prompt",
+      title: tr("project.rename"),
+      initial: proj.name,
+      onSubmit: async (name) => {
+        const next = name.trim();
+        if (!next || next === proj.name) return;
+        try {
+          await api.projectRename(proj.id, next);
+          await refreshProjects();
+          void api.trayRefresh();
+          if (activeProject?.id === proj.id) {
+            setActiveProject((p) => (p ? { ...p, name: next } : p));
+          }
+        } catch (e) {
+          setLocalError(String(e));
+        }
+      },
+    });
   };
 
-  const removeProjectFromApp = async (proj: Project) => {
-    // Confirm before closing menu so Tauri focus / portal unmount does not swallow the click.
-    const ok = window.confirm(
-      tr("project.removeConfirm", { name: proj.name }),
-    );
+  /** Remove project from app list only (disk folder + chats kept). */
+  const removeProjectFromApp = (proj: Project) => {
     setCtxMenu(null);
-    if (!ok) return;
-    try {
-      if (!api.isTauri()) {
-        setLocalError(tr("error.needTauri"));
-        return;
-      }
-      await api.projectRemove(proj.id);
-      if (activeProject?.id === proj.id) {
-        setActiveProject(null);
-        setSession(IDLE_SNAPSHOT);
-        setMessages([]);
-      }
-      await refreshProjects();
-      await refreshSessions();
-      setLocalError(null);
-    } catch (e) {
-      setLocalError(String(e));
-    }
+    setAppDialog({
+      kind: "confirm",
+      title: tr("project.removeTitle"),
+      message: tr("project.removeConfirmDetail", { name: proj.name }),
+      confirmLabel: tr("project.remove"),
+      danger: true,
+      onConfirm: async () => {
+        try {
+          if (!api.isTauri()) {
+            setLocalError(tr("error.needTauri"));
+            return;
+          }
+          await api.projectRemove(proj.id);
+          if (activeProject?.id === proj.id) {
+            setActiveProject(null);
+            setSession(IDLE_SNAPSHOT);
+            setMessages([]);
+          }
+          await refreshProjects();
+          await refreshSessions();
+          setLocalError(null);
+        } catch (e) {
+          setLocalError(String(e));
+        }
+      },
+    });
   };
 
-  const renameSession = async (s: SessionRow) => {
+  const renameSession = (s: SessionRow) => {
     setCtxMenu(null);
-    const title = window.prompt(
-      tr("session.renamePrompt"),
-      s.title || "Untitled",
-    );
-    if (!title?.trim()) return;
-    try {
-      await api.sessionRename(s.id, title.trim());
-      await refreshSessions();
-    } catch (e) {
-      setLocalError(String(e));
-    }
+    setAppDialog({
+      kind: "prompt",
+      title: tr("session.renamePrompt"),
+      initial: s.title || tr("session.untitled"),
+      placeholder: tr("session.renamePlaceholder"),
+      onSubmit: async (title) => {
+        const next = title.trim();
+        if (!next) return;
+        try {
+          await api.sessionRename(s.id, next);
+          applySessionTitle(s.id, next);
+          await refreshSessions();
+        } catch (e) {
+          setLocalError(String(e));
+        }
+      },
+    });
   };
 
   const archiveSession = async (s: SessionRow, archived = true) => {
@@ -770,13 +1809,13 @@ export default function App() {
    * Reconnects when disconnected / crashed. Pass force to tear down a "ready"
    * session that may be wedged (e.g. after a timeout).
    * Returns the live session id when ready, else null.
+   *
+   * Does not yank the UI if the user already switched to another session while
+   * connect is in flight; still updates liveHost so the sidebar spinner tracks work.
    */
   const ensureConnected = async (force = false): Promise<string | null> => {
-    if (!activeProject) {
-      setLocalError(tr("project.selectFirst"));
-      return null;
-    }
-    if (!activeProject.trusted) {
+    // Project-less (orphan) sessions are allowed: cwd falls back on Host.
+    if (activeProject && !activeProject.trusted) {
       setLocalError(tr("project.trustFirst", { name: activeProject.name }));
       return null;
     }
@@ -785,56 +1824,85 @@ export default function App() {
     }
     if (connecting) return null;
     setConnecting(true);
+    // Capture draft identity before awaits (may still be null).
+    const viewedBefore = viewingSessionIdRef.current;
     try {
       let sessionId = session.sessionId;
-      // First send: materialize draft into a real session under the project.
+      // First send: materialize draft into a real session (project or orphan).
       if (!sessionId && api.isTauri()) {
         const meta = (await api.sessionCreate(
-          activeProject.id,
+          activeProject?.id,
           tr("session.new"),
         )) as { id: string; title?: string };
         sessionId = meta.id;
-        setSession((prev) => ({
-          ...prev,
-          sessionId: meta.id,
-          title: meta.title || tr("session.new"),
-        }));
-        setExpandedProjects((e) => ({ ...e, [activeProject.id]: true }));
+        // Bind draft messages cache to the new id (was under null / unkeyed).
+        const draftMsgs = messagesBySessionRef.current.get("__draft__");
+        if (draftMsgs?.length) {
+          messagesBySessionRef.current.set(meta.id, draftMsgs);
+          messagesBySessionRef.current.delete("__draft__");
+        }
+        // Only take over the workbench if still on this draft / same session.
+        if (
+          viewingSessionIdRef.current === viewedBefore ||
+          viewingSessionIdRef.current === null ||
+          viewingSessionIdRef.current === meta.id
+        ) {
+          viewingSessionIdRef.current = meta.id;
+          setSession((prev) => ({
+            ...prev,
+            sessionId: meta.id,
+            title: meta.title || tr("session.new"),
+          }));
+        }
+        if (activeProject) {
+          setExpandedProjects((e) => ({ ...e, [activeProject.id]: true }));
+        } else {
+          setHistoryOpen(true);
+        }
         await refreshSessions();
       }
       const snap = await api.sessionConnect({
-        projectPath: activeProject.path,
+        projectPath: activeProject?.path,
         sessionId: sessionId ?? undefined,
         mode,
       });
-      setSession(snap);
+      setLiveHost(snap);
+      liveHostRef.current = snap;
+      // Only rebind viewed session when the user is still on it (or its draft).
+      if (
+        snap.sessionId &&
+        (viewingSessionIdRef.current === snap.sessionId ||
+          viewingSessionIdRef.current === viewedBefore ||
+          (viewedBefore === null &&
+            viewingSessionIdRef.current === snap.sessionId))
+      ) {
+        viewingSessionIdRef.current = snap.sessionId;
+        setSession(snap);
+      }
       if (snap.lastError || snap.state !== "ready") {
         const code = snap.lastError?.code ?? "AGENT_CRASHED";
         const msg = snap.lastError?.message ?? "connect failed";
-        setLocalError(`${code}: ${msg}`);
+        if (viewingSessionIdRef.current === (snap.sessionId || sessionId)) {
+          setLocalError(`${code}: ${msg}`);
+        }
         return null;
       }
-      setLocalError(null);
+      if (viewingSessionIdRef.current === (snap.sessionId || sessionId)) {
+        setLocalError(null);
+      }
       return snap.sessionId || sessionId || null;
     } catch (e) {
-      setLocalError(String(e));
+      if (
+        viewingSessionIdRef.current === viewedBefore ||
+        viewingSessionIdRef.current === session.sessionId
+      ) {
+        setLocalError(String(e));
+      }
       return null;
     } finally {
       setConnecting(false);
     }
   };
-
-  const applySessionTitle = useCallback(
-    (sessionId: string, title: string) => {
-      setSessions((list) =>
-        list.map((s) => (s.id === sessionId ? { ...s, title } : s)),
-      );
-      setSession((prev) =>
-        prev.sessionId === sessionId ? { ...prev, title } : prev,
-      );
-    },
-    [],
-  );
 
   const attachLabels = useMemo(
     () => ({
@@ -849,37 +1917,140 @@ export default function App() {
     [tr],
   );
 
+  const lastUserMessageId = useMemo(() => {
+    for (let i = messages.length - 1; i >= 0; i--) {
+      if (messages[i]?.role === "user") return messages[i]!.id;
+    }
+    return null;
+  }, [messages]);
+
+  const canEditLastUser =
+    !!lastUserMessageId &&
+    canSend(session.state) &&
+    !connecting &&
+    session.state !== "streaming" &&
+    session.state !== "awaiting_permission";
+
   const send = async () => {
-    const text = draft.trim();
+    const segments = parseStoredContent(draft);
+    const storedDisplay = draft; // keep skill tokens in UI history
     const att = attachments;
-    if ((!text && !att.length) || !canSend(session.state) || connecting) return;
-    const agentText = buildAgentPrompt(text, att);
+    if (
+      (isDraftEmpty(segments) && !att.length) ||
+      !canSend(session.state) ||
+      connecting
+    ) {
+      return;
+    }
+    const agentBody = serializeForAgent(segments, { goalMode });
+    const agentText = buildAgentPrompt(agentBody, att);
+    const titleSeed =
+      serializeForAgent(segments).replace(/\n/g, " ").trim() ||
+      att.map((a) => a.name).join(", ");
     const shouldAutoTitle = isPlaceholderTitle(session.title) || !session.sessionId;
+    const pendingAssistantId = `a-pending-${Date.now()}`;
+    const sendTargetId = session.sessionId;
+    const cacheKey = sendTargetId ?? "__draft__";
+
+    // New composer send is never edit-resend (edit is inline on the message).
+    if (editingUserMessageId) setEditingUserMessageId(null);
+
     setDraft("");
+    setSlashQuery(null);
     setAttachments([]);
-    // Reset textarea height after clear
+    setRetryStatus(null);
+    // Reset editor height after clear
     requestAnimationFrame(() => {
-      const el = document.querySelector<HTMLTextAreaElement>(".composer__input");
+      const el = document.querySelector<HTMLElement>(".composer__input");
       if (el) {
         el.style.height = "auto";
       }
     });
-    setMessages((m) => [
-      ...m,
-      {
-        id: `u-${Date.now()}`,
-        role: "user",
-        content: text,
-        attachments: att.length ? att : undefined,
-      },
-    ]);
+    // Optimistic: user bubble + chat thinking; connection stays silent (no top-bar chip)
+    // Write cache immediately so a fast session switch does not drop the user turn.
+    const nowIso = new Date().toISOString();
+    setMessages((m) => {
+      const next: ChatMessage[] = [
+        ...m,
+        {
+          id: `u-${Date.now()}`,
+          role: "user",
+          content: storedDisplay,
+          attachments: att.length ? att : undefined,
+          createdAt: nowIso,
+        },
+        {
+          id: pendingAssistantId,
+          role: "assistant",
+          content: "",
+          streaming: true,
+        },
+      ];
+      messagesBySessionRef.current.set(cacheKey, next);
+      return next;
+    });
+    setSession((prev) =>
+      prev.state === "streaming" || prev.state === "awaiting_permission"
+        ? prev
+        : { ...prev, state: "streaming", lastError: null },
+    );
+    setTurnStartedAt(Date.now());
+    // Reflect optimistic busy on live host for sidebar spinner (until real state arrives).
+    setLiveHost((prev) => {
+      if (sendTargetId && prev.sessionId && prev.sessionId !== sendTargetId) {
+        return prev;
+      }
+      const next = {
+        ...prev,
+        sessionId: sendTargetId ?? prev.sessionId,
+        state: "streaming" as const,
+        lastError: null,
+      };
+      liveHostRef.current = next;
+      return next;
+    });
     try {
       const sessionId = await ensureConnected();
-      if (!sessionId) return;
-      await api.sessionSend(agentText);
+      if (!sessionId) {
+        // Keep user message; drop optimistic thinking bubble
+        patchSessionMessages(sendTargetId ?? viewingSessionIdRef.current, (m) =>
+          m.filter((x) => x.id !== pendingAssistantId),
+        );
+        // Also clear draft cache key if we never got an id
+        if (!sendTargetId) {
+          const draft = messagesBySessionRef.current.get("__draft__");
+          if (draft) {
+            messagesBySessionRef.current.set(
+              "__draft__",
+              draft.filter((x) => x.id !== pendingAssistantId),
+            );
+          }
+        }
+        if (
+          viewingSessionIdRef.current === sendTargetId ||
+          (!sendTargetId && viewingSessionIdRef.current === null)
+        ) {
+          setSession((prev) =>
+            prev.state === "streaming"
+              ? { ...prev, state: prev.sessionId ? "ready" : prev.state }
+              : prev,
+          );
+        }
+        return;
+      }
+      // Move draft cache onto the real session id if this was first send.
+      if (!sendTargetId) {
+        const draftMsgs = messagesBySessionRef.current.get("__draft__");
+        if (draftMsgs?.length) {
+          messagesBySessionRef.current.set(sessionId, draftMsgs);
+          messagesBySessionRef.current.delete("__draft__");
+        }
+      }
+      // Journal stores display form (skill chips); agent receives serialized prompt.
+      await api.sessionSend(agentText, storedDisplay);
       if (shouldAutoTitle && api.isTauri()) {
         void api
-          .sessionAutoTitle(sessionId, text || att.map((a) => a.name).join(", "))
+          .sessionAutoTitle(sessionId, titleSeed)
           .then((meta) => {
             if (meta?.title) applySessionTitle(sessionId, meta.title);
           })
@@ -888,7 +2059,21 @@ export default function App() {
           });
       }
     } catch (e) {
-      setLocalError(String(e));
+      const errTarget = sendTargetId ?? viewingSessionIdRef.current;
+      patchSessionMessages(errTarget, (m) =>
+        m.filter((x) => x.id !== pendingAssistantId),
+      );
+      if (
+        viewingSessionIdRef.current === sendTargetId ||
+        viewingSessionIdRef.current === errTarget
+      ) {
+        setSession((prev) =>
+          prev.state === "streaming"
+            ? { ...prev, state: prev.sessionId ? "ready" : prev.state }
+            : prev,
+        );
+        setLocalError(String(e));
+      }
     }
   };
 
@@ -963,23 +2148,22 @@ export default function App() {
     [tr],
   );
 
-  /** Hit-test drag position → sidebar (project) vs main content (attach). */
+  /**
+   * Hit-test CSS client point against the live sidebar box.
+   * Only the real left rail is "sidebar" (add project); rest of workbench is attach.
+   */
   const hitDragZone = useCallback(
-    (clientX: number, clientY: number): "sidebar" | "main" | null => {
-      const el = document.elementFromPoint(clientX, clientY);
-      if (!el) return null;
-      if (
-        !layoutRef.current.sidebarCollapsed &&
-        el.closest(".sidebar")
-      ) {
-        return "sidebar";
-      }
-      if (el.closest(".main") || el.closest(".aside") || el.closest(".shell")) {
-        // Prefer main/aside; shell fallback still treats as attach (not project)
-        if (el.closest(".sidebar")) return "sidebar";
-        return "main";
-      }
-      return "main";
+    (clientX: number, clientY: number): "sidebar" | "main" => {
+      const collapsed = layoutRef.current.sidebarCollapsed;
+      if (collapsed) return "main";
+      const el = querySidebarEl();
+      if (!el) return "main";
+      return hitDragZoneFromRects(
+        clientX,
+        clientY,
+        el.getBoundingClientRect(),
+        false,
+      );
     },
     [],
   );
@@ -1012,14 +2196,21 @@ export default function App() {
             return;
           }
           if (payload.type === "enter" || payload.type === "over") {
-            const x = payload.position.x / factor;
-            const y = payload.position.y / factor;
+            // macOS: coords are already view points; win: physical → / factor
+            const { x, y } = toClientDragPoint(
+              payload.position,
+              factor,
+              platform,
+            );
             setDragZone(hitDragZone(x, y));
             return;
           }
           if (payload.type === "drop") {
-            const x = payload.position.x / factor;
-            const y = payload.position.y / factor;
+            const { x, y } = toClientDragPoint(
+              payload.position,
+              factor,
+              platform,
+            );
             const zone = hitDragZone(x, y);
             const paths = payload.paths?.length
               ? payload.paths
@@ -1047,7 +2238,13 @@ export default function App() {
       cancelled = true;
       unlisten?.();
     };
-  }, [addAttachmentsFromPaths, addProjectsFromPaths, hitDragZone, tr]);
+  }, [
+    addAttachmentsFromPaths,
+    addProjectsFromPaths,
+    hitDragZone,
+    platform,
+    tr,
+  ]);
 
   // HTML5 fallback: some image drags only expose File list in the webview.
   // Prefer Tauri paths; use File.path when present (Tauri webview).
@@ -1111,7 +2308,7 @@ export default function App() {
     };
   }, [resizingAside]);
 
-  const resizeComposer = (el: HTMLTextAreaElement) => {
+  const resizeComposer = (el: HTMLElement) => {
     const line = 22; // ~line-height
     const min = line * 1;
     const max = line * 10;
@@ -1119,10 +2316,362 @@ export default function App() {
     el.style.height = `${Math.min(Math.max(el.scrollHeight, min), max)}px`;
   };
 
+  /** Programmatic draft / layout changes: recompute height after paint. */
+  const syncComposerHeight = useCallback(() => {
+    // Double rAF: wait for React commit + layout after mainPane switch.
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        const node = composerInputRef.current;
+        if (node) resizeComposer(node);
+      });
+    });
+  }, []);
+
+  // Load skills catalog for slash palette (Grok inspect).
+  useEffect(() => {
+    if (!api.isTauri()) return;
+    let cancelled = false;
+    setSkillsLoading(true);
+    void api
+      .skillsList(activeProject?.path ?? null)
+      .then((res) => {
+        if (cancelled) return;
+        setSkillInfos(
+          (res.skills ?? []).map((s) => ({
+            name: s.name,
+            description: s.description ?? "",
+            source: s.source,
+            userInvocable: s.userInvocable,
+          })),
+        );
+      })
+      .catch(() => {
+        if (!cancelled) setSkillInfos([]);
+      })
+      .finally(() => {
+        if (!cancelled) setSkillsLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [activeProject?.path]);
+
+  const slashCatalog = useMemo(
+    () => buildSlashCatalog(skillInfos),
+    [skillInfos],
+  );
+  const slashFiltered = useMemo(
+    () =>
+      flattenFilteredCatalog(
+        slashCatalog,
+        slashQuery?.query ?? "",
+      ),
+    [slashCatalog, slashQuery?.query],
+  );
+
+  /** Codex-style: pin above composer card; width locked to input card (not grow with text). */
+  const { pos: slashPos, style: slashFloatStyle } = useFloatingMenu({
+    open: !!slashQuery,
+    triggerRef: composerShellRef,
+    panelRef: slashPanelRef,
+    roots: [composerInputRef, composerShellRef],
+    onClose: () => setSlashQuery(null),
+    placement: "up",
+    fitContent: false,
+    matchTriggerWidth: true,
+    minWidth: 280,
+    estHeight: 360,
+    gap: 8,
+    deps: [slashQuery?.query, slashFiltered.flat.length],
+  });
+
+  useEffect(() => {
+    setSlashActiveIndex(0);
+  }, [slashQuery?.query, slashQuery?.start]);
+
+  const resolveSlashTitle = useCallback(
+    (item: SlashItem) => {
+      if (item.titleKey) {
+        try {
+          return tr(item.titleKey as MessageKey);
+        } catch {
+          /* fall through */
+        }
+      }
+      return item.displayTitle || item.name;
+    },
+    [tr],
+  );
+  const resolveSlashDescription = useCallback(
+    (item: SlashItem) => {
+      if (item.descriptionKey) {
+        try {
+          return tr(item.descriptionKey as MessageKey);
+        } catch {
+          /* fall through */
+        }
+      }
+      return item.displayDescription || "";
+    },
+    [tr],
+  );
+
+  const openMcpModal = useCallback(async () => {
+    setShowMcpModal(true);
+    setMcpLoading(true);
+    setMcpError(null);
+    try {
+      const res = await api.inspectMcp(activeProject?.path ?? null);
+      setMcpServers(res.servers ?? []);
+      if (res.error) setMcpError(res.error);
+    } catch (e) {
+      setMcpServers([]);
+      setMcpError(String(e));
+    } finally {
+      setMcpLoading(false);
+    }
+  }, [activeProject?.path]);
+
+  const showToast = useCallback((msg: string, ms = 3200) => {
+    setToast(msg);
+    window.setTimeout(() => {
+      setToast((cur) => (cur === msg ? null : cur));
+    }, ms);
+  }, []);
+
+  /**
+   * Apply permission policy (incl. YOLO). Never use window.confirm in Tauri —
+   * it is unreliable in the WebView and blocks YOLO enable/disable.
+   */
+  const applyPermissionPolicy = useCallback(
+    (next: PermissionPolicyId, opts?: { toastYoloToggle?: boolean }) => {
+      if (!isValidPolicy(next)) return;
+
+      const commit = () => {
+        setPolicy(next);
+        void api
+          .sessionSetPolicy(next, {
+            projectId: activeProject?.id ?? null,
+            sessionId: session.sessionId ?? null,
+          })
+          .catch((e) => showToast(String(e), 4000));
+        if (opts?.toastYoloToggle) {
+          showToast(
+            next === "always_approve"
+              ? tr("slash.yoloOn")
+              : tr("slash.yoloOff"),
+            2500,
+          );
+        }
+      };
+
+      if (next !== "always_approve") {
+        commit();
+        return;
+      }
+
+      // Two-step in-app confirm (dangerous YOLO).
+      setAppDialog({
+        kind: "confirm",
+        title: tr("policy.always_approve"),
+        message: tr("policy.yoloConfirm"),
+        confirmLabel: tr("common.confirm"),
+        danger: true,
+        onConfirm: () => {
+          setAppDialog({
+            kind: "confirm",
+            title: tr("policy.always_approve"),
+            message: tr("policy.yoloConfirm2"),
+            confirmLabel: tr("policy.short.always_approve"),
+            danger: true,
+            onConfirm: commit,
+          });
+        },
+      });
+    },
+    [activeProject?.id, session.sessionId, showToast, tr],
+  );
+
+  const applySlashItem = useCallback(
+    (item: SlashItem) => {
+      const q = slashQuery;
+      setSlashQuery(null);
+
+      if (item.kind === "skill") {
+        if (q) {
+          setDraft((d) => applySkillAtSlash(d, q.start, q.end, item.name));
+        } else {
+          setDraft((d) => {
+            const needsSpace = d.length > 0 && !/\s$/.test(d);
+            return `${d}${needsSpace ? " " : ""}[[skill:${item.name}]] `;
+          });
+        }
+        return;
+      }
+
+      // Remove the /query from draft for mode/action
+      if (q) {
+        setDraft((d) => d.slice(0, q.start) + d.slice(q.end));
+      }
+
+      if (item.kind === "mode") {
+        if (item.mode === "goal") {
+          setGoalMode(true);
+          if (mode === "plan") setMode("agent");
+          return;
+        }
+        if (item.mode === "plan") {
+          setGoalMode(false);
+          setMode("plan");
+          void api
+            .composerPrefsSet({
+              projectId: activeProject?.id ?? null,
+              sessionId: session.sessionId ?? null,
+              mode: "plan",
+            })
+            .catch((e) => showToast(String(e), 4000));
+          return;
+        }
+      }
+
+      if (item.kind === "action") {
+        switch (item.action) {
+          case "doctor":
+            openDoctor();
+            return;
+          case "status":
+            setShowStatusModal(true);
+            return;
+          case "mcp":
+            void openMcpModal();
+            return;
+          case "compact":
+            setCompactNote("");
+            setShowCompactModal(true);
+            return;
+          case "newChat":
+            void newChat();
+            return;
+          case "automations":
+            navigateAutomations();
+            return;
+          case "settings":
+            navigateSettings("general");
+            return;
+          case "yolo": {
+            const next: PermissionPolicyId =
+              policy === "always_approve" ? "ask" : "always_approve";
+            applyPermissionPolicy(next, { toastYoloToggle: true });
+            return;
+          }
+          default:
+            return;
+        }
+      }
+    },
+    // many deps — intentionally broad for stable handlers used in render
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [
+      slashQuery,
+      mode,
+      policy,
+      activeProject?.id,
+      session.sessionId,
+      tr,
+      openMcpModal,
+      applyPermissionPolicy,
+      showToast,
+    ],
+  );
+
+  // Seed draft / clear / pane switch: grow textarea. If a focus request is still
+  // pending (e.g. textarea just remounted), retry focus here as a backstop.
+  useEffect(() => {
+    if (mainPane !== "chat") return;
+    if (pendingComposerFocus.current) {
+      requestComposerFocus();
+      return;
+    }
+    syncComposerHeight();
+  }, [draft, mainPane, session.sessionId, requestComposerFocus, syncComposerHeight]);
+
+  /** New empty chat: lift composer and show SuperGrok brand mark. */
+  const welcomeSession =
+    mainPane === "chat" &&
+    messages.length === 0 &&
+    session.state !== "streaming";
+  // Live billing can take seconds (quota network). Cache last mark so the
+  // welcome logo paints immediately — the SVG itself is inline, not a fetch.
+  const [cachedBrandKind, setCachedBrandKind] =
+    useState<SuperGrokBrandKind | null>(() => loadCachedSuperGrokBrand());
+  const liveBrandKind = useMemo(
+    () =>
+      superGrokBrandKind(
+        account?.billing,
+        !!account?.profile?.signedIn,
+      ),
+    [account?.billing, account?.profile?.signedIn],
+  );
+  useEffect(() => {
+    if (liveBrandKind) {
+      saveCachedSuperGrokBrand(liveBrandKind);
+      setCachedBrandKind(liveBrandKind);
+      return;
+    }
+    if (account && !account.profile.signedIn) {
+      saveCachedSuperGrokBrand(null);
+      setCachedBrandKind(null);
+    }
+  }, [liveBrandKind, account]);
+  const welcomeBrandKind = useMemo(
+    () =>
+      resolveWelcomeBrandKind(liveBrandKind, cachedBrandKind, {
+        accountReady: account != null,
+        signedIn: !!account?.profile?.signedIn,
+      }),
+    [liveBrandKind, cachedBrandKind, account],
+  );
+
+  // Floating composer height → chat bottom pad so messages can scroll under it.
+  useEffect(() => {
+    if (mainPane !== "chat") return;
+    const el = composerWrapRef.current;
+    if (!el) return;
+    const measure = () => {
+      const h = Math.ceil(el.getBoundingClientRect().height);
+      if (h <= 0) return;
+      // Ignore 1px subpixel flicker — pad thrash reflows chat scrollHeight
+      // and looks like the transcript bouncing while you type/scroll.
+      setComposerFloatPad((prev) => (Math.abs(prev - h) <= 1 ? prev : h));
+    };
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [
+    mainPane,
+    attachments.length,
+    draft,
+    showComposerPlus,
+    messages.length,
+    welcomeSession,
+    welcomeBrandKind,
+  ]);
+
   const stop = async () => {
     try {
       await api.sessionStop();
-      setMessages((m) => m.map((x) => ({ ...x, streaming: false })));
+      setRetryStatus(null);
+      setTurnStartedAt(null);
+      setTurnStartedAt(null);
+      const liveId = liveHostRef.current.sessionId;
+      if (liveId) {
+        patchSessionMessages(liveId, (m) =>
+          m.map((x) => ({ ...x, streaming: false })),
+        );
+      } else {
+        setMessages((m) => m.map((x) => ({ ...x, streaming: false })));
+      }
     } catch (e) {
       setLocalError(String(e));
     }
@@ -1171,31 +2720,123 @@ export default function App() {
     }
   };
 
-  const winChrome = async (action: "minimize" | "toggleMaximize" | "close") => {
-    try {
-      const { getCurrentWindow } = await import("@tauri-apps/api/window");
-      const w = getCurrentWindow();
-      if (action === "minimize") await w.minimize();
-      if (action === "toggleMaximize") await w.toggleMaximize();
-      if (action === "close") await w.close();
-    } catch {
-      /* ignore */
-    }
+  const openDoctor = () => {
+    setShowDoctor(true);
   };
 
-  const openDoctor = async () => {
-    setShowDoctor(true);
-    try {
-      setDoctor(await api.doctorReport());
-    } catch (e) {
-      setLocalError(String(e));
-    }
+  // Keep tray menu actions on latest closures (listeners registered once).
+  const trayHandlersRef = useRef({
+    newChat: () => {},
+    openSessionById: (_id: string) => {},
+    openSettings: (_section: SettingsSectionId = "general") => {},
+    openDoctor: () => {},
+  });
+  trayHandlersRef.current = {
+    newChat: () => {
+      void newChat();
+    },
+    openSessionById: (id: string) => {
+      void (async () => {
+        let row = sessions.find((s) => s.id === id) ?? null;
+        if (!row) {
+          try {
+            const list = await api.sessionsList();
+            const hit = list.find((s) => s.id === id);
+            if (hit) {
+              row = {
+                id: hit.id,
+                title: hit.title,
+                projectId: hit.projectId,
+                updatedAt: hit.updatedAt,
+                archived: !!hit.archived,
+              };
+              setSessions(
+                list.map((s) => ({
+                  id: s.id,
+                  title: s.title,
+                  projectId: s.projectId,
+                  updatedAt: s.updatedAt,
+                  archived: !!s.archived,
+                })),
+              );
+            }
+          } catch {
+            /* ignore */
+          }
+        }
+        if (!row) return;
+        const proj =
+          projects.find((p) => p.id === row!.projectId) ?? null;
+        await openSession(row, proj);
+      })();
+    },
+    openSettings: (section: SettingsSectionId = "general") => {
+      navigateSettings(section);
+    },
+    openDoctor: () => {
+      void openDoctor();
+    },
   };
+
+  // System tray / menu-bar (Codex-style): Recent · More · Usage · New Chat · Open · Quit
+  useEffect(() => {
+    if (!api.isTauri()) return;
+    let cancelled = false;
+    const unsubs: Array<() => void> = [];
+    void (async () => {
+      try {
+        const { listen } = await import("@tauri-apps/api/event");
+        if (cancelled) return;
+        unsubs.push(
+          await listen("tray://new-chat", () => {
+            trayHandlersRef.current.newChat();
+          }),
+        );
+        unsubs.push(
+          await listen<{ sessionId?: string }>("tray://open-session", (ev) => {
+            const id = ev.payload?.sessionId;
+            if (id) trayHandlersRef.current.openSessionById(id);
+          }),
+        );
+        unsubs.push(
+          await listen<{ section?: string }>("tray://open-settings", (ev) => {
+            const raw = (ev.payload?.section || "general") as SettingsSectionId;
+            const allowed: SettingsSectionId[] = [
+              "general",
+              "appearance",
+              "account",
+              "runtime",
+              "about",
+            ];
+            trayHandlersRef.current.openSettings(
+              allowed.includes(raw) ? raw : "general",
+            );
+          }),
+        );
+        unsubs.push(
+          await listen("tray://open-doctor", () => {
+            trayHandlersRef.current.openDoctor();
+          }),
+        );
+      } catch (e) {
+        console.warn("tray listeners failed", e);
+      }
+    })();
+    return () => {
+      cancelled = true;
+      for (const u of unsubs) u();
+    };
+  }, []);
 
   const error = session.lastError;
   const errorBanner = useMemo(
     () => presentErrorBanner(error, localError, locale),
     [error, localError, locale],
+  );
+  /** Prefer in-thread turn error; avoid stacking with the top error banner. */
+  const hasChatTurnError = useMemo(
+    () => messages.some((m) => m.isError),
+    [messages],
   );
   // Collapse technical dump whenever the visible error changes.
   useEffect(() => {
@@ -1217,6 +2858,8 @@ export default function App() {
           auth: isAccountConnected(st),
           cli: st.cliFound || s.cli,
         }));
+        // Usage line on tray menu (Codex-style)
+        void api.trayRefresh();
       } catch (e) {
         console.warn("account status failed", e);
       } finally {
@@ -1226,31 +2869,237 @@ export default function App() {
     [manualCliPath],
   );
 
-  const runAccountLogin = useCallback(
-    async (method: "oauth" | "device" = "oauth") => {
-      if (!api.isTauri()) {
-        setToast(tr("error.needTauri"));
+  const beginEditLastUser = useCallback(
+    (msg: ChatMessage) => {
+      if (msg.role !== "user") return;
+      if (msg.id !== lastUserMessageId) {
+        showToast(tr("message.editOnlyLast"));
         return;
+      }
+      if (!canEditLastUser) {
+        showToast(tr("message.editBusy"));
+        return;
+      }
+      // Inline only — do not move content into the main composer.
+      setEditingUserMessageId(msg.id);
+    },
+    [lastUserMessageId, canEditLastUser, showToast, tr],
+  );
+
+  const cancelEditUser = useCallback(() => {
+    if (editSubmitting) return;
+    setEditingUserMessageId(null);
+  }, [editSubmitting]);
+
+  /**
+   * Edit last user turn: commit UI immediately (edited bubble + thinking),
+   * then connect / rewind / send while the thinking row is already visible.
+   */
+  const submitEditLastUser = useCallback(
+    async (msg: ChatMessage, storedDisplay: string) => {
+      if (msg.role !== "user" || msg.id !== lastUserMessageId) {
+        showToast(tr("message.editOnlyLast"));
+        return;
+      }
+      if (!canEditLastUser || editSubmitting) {
+        showToast(tr("message.editBusy"));
+        return;
+      }
+      const segments = parseStoredContent(storedDisplay);
+      const att: Attachment[] = (msg.attachments ?? []).map((a) => ({
+        path: a.path,
+        name: a.name,
+        isDir: a.isDir,
+      }));
+      if (isDraftEmpty(segments) && !att.length) return;
+
+      const agentBody = serializeForAgent(segments, { goalMode });
+      const agentText = buildAgentPrompt(agentBody, att);
+      const titleSeed =
+        serializeForAgent(segments).replace(/\n/g, " ").trim() ||
+        att.map((a) => a.name).join(", ");
+      const shouldAutoTitle =
+        isPlaceholderTitle(session.title) || !session.sessionId;
+      const pendingAssistantId = `a-pending-${Date.now()}`;
+      // May still be a draft id; ensureConnected materializes it later.
+      let sendTargetId = session.sessionId;
+      let cacheKey = sendTargetId ?? "__draft__";
+      const nowIso = new Date().toISOString();
+
+      setEditSubmitting(true);
+
+      // 1) Instant UI commit — same as normal send: user bubble + thinking.
+      //    Connect/rewind wait happens under this thinking row, not the edit form.
+      setMessages((m) => {
+        const kept = truncateBeforeLastUser(m);
+        const next: ChatMessage[] = [
+          ...kept,
+          {
+            id: `u-${Date.now()}`,
+            role: "user",
+            content: storedDisplay,
+            attachments: att.length ? att : undefined,
+            createdAt: nowIso,
+          },
+          {
+            id: pendingAssistantId,
+            role: "assistant",
+            content: "",
+            streaming: true,
+          },
+        ];
+        messagesBySessionRef.current.set(cacheKey, next);
+        return next;
+      });
+      setEditingUserMessageId(null);
+      setRetryStatus(null);
+      setSession((prev) =>
+        prev.state === "streaming" || prev.state === "awaiting_permission"
+          ? prev
+          : { ...prev, state: "streaming", lastError: null },
+      );
+      setLiveHost((prev) => {
+        if (sendTargetId && prev.sessionId && prev.sessionId !== sendTargetId) {
+          return prev;
+        }
+        const next = {
+          ...prev,
+          sessionId: sendTargetId ?? prev.sessionId,
+          state: "streaming" as const,
+          lastError: null,
+        };
+        liveHostRef.current = next;
+        return next;
+      });
+
+      const failPending = (errText?: string) => {
+        const errTarget = sendTargetId ?? viewingSessionIdRef.current;
+        patchSessionMessages(errTarget, (m) =>
+          applyTurnError(
+            m,
+            {
+              messageId: pendingAssistantId,
+              content: errText || tr("message.editConnectFailed"),
+            },
+            localeRef.current,
+          ),
+        );
+        if (
+          viewingSessionIdRef.current === sendTargetId ||
+          viewingSessionIdRef.current === errTarget ||
+          (!sendTargetId && viewingSessionIdRef.current === null)
+        ) {
+          setSession((prev) =>
+            prev.state === "streaming"
+              ? { ...prev, state: prev.sessionId ? "ready" : prev.state }
+              : prev,
+          );
+        }
+      };
+
+      // 2) Background: connect → rewind journal → send (thinking already shown).
+      try {
+        const sessionId = await ensureConnected();
+        if (!sessionId) {
+          failPending(tr("message.editConnectFailed"));
+          return;
+        }
+        // Draft / id migrate after materialize.
+        if (sessionId !== cacheKey) {
+          const prevCache = messagesBySessionRef.current.get(cacheKey);
+          if (prevCache?.length) {
+            messagesBySessionRef.current.set(sessionId, prevCache);
+            messagesBySessionRef.current.delete(cacheKey);
+          }
+          sendTargetId = sessionId;
+          cacheKey = sessionId;
+        }
+
+        if (api.isTauri()) {
+          try {
+            await api.sessionRewindDropLastUser();
+          } catch (e) {
+            console.warn("session rewind before edit failed", e);
+            // Continue: UI already replaced the turn; resend still proceeds.
+          }
+        }
+
+        await api.sessionSend(agentText, storedDisplay);
+        if (shouldAutoTitle && api.isTauri()) {
+          void api
+            .sessionAutoTitle(sessionId, titleSeed)
+            .then((meta) => {
+              if (meta?.title) applySessionTitle(sessionId, meta.title);
+            })
+            .catch(() => {
+              /* ignore */
+            });
+        }
+      } catch (e) {
+        failPending(String(e));
+        if (
+          viewingSessionIdRef.current === sendTargetId ||
+          viewingSessionIdRef.current === null
+        ) {
+          setLocalError(String(e));
+        }
+      } finally {
+        setEditSubmitting(false);
+      }
+    },
+    [
+      lastUserMessageId,
+      canEditLastUser,
+      editSubmitting,
+      showToast,
+      tr,
+      goalMode,
+      session.title,
+      session.sessionId,
+      // ensureConnected / patchSessionMessages / applySessionTitle via closure
+    ],
+  );
+
+  const runAccountLogin = useCallback(
+    async (method: "oauth" | "device" = "oauth"): Promise<boolean> => {
+      if (!api.isTauri()) {
+        showToast(tr("error.needTauri"));
+        return false;
       }
       setAccountBusy(true);
       try {
         const res = await api.accountLogin(method);
-        setToast(res.ok ? tr("account.loginOk") : res.message || tr("account.loginFailed"));
+        showToast(
+          res.ok ? tr("account.loginOk") : res.message || tr("account.loginFailed"),
+          res.ok ? 2800 : 4500,
+        );
         if (res.deviceUrl) {
-          setPingMsg(
+          showToast(
             [res.deviceUrl, res.deviceCode ? `code: ${res.deviceCode}` : ""]
               .filter(Boolean)
-              .join("\n"),
+              .join(" · "),
+            8000,
           );
         }
         await refreshAccount({ refreshBilling: true });
+        // Drop live agent so next send re-spawns with synced auth.json in agent-home.
+        if (res.ok && api.isTauri()) {
+          try {
+            await api.sessionDisconnect();
+            setSession({ ...IDLE_SNAPSHOT });
+          } catch {
+            /* ignore */
+          }
+        }
+        return !!res.ok;
       } catch (e) {
-        setToast(String(e));
+        showToast(String(e), 4500);
+        return false;
       } finally {
         setAccountBusy(false);
       }
     },
-    [refreshAccount, tr],
+    [refreshAccount, showToast, tr],
   );
 
   const runAccountLogout = useCallback(async () => {
@@ -1259,16 +3108,33 @@ export default function App() {
     try {
       await api.accountLogout();
       await refreshAccount({ refreshBilling: false });
+      try {
+        await api.sessionDisconnect();
+        setSession({ ...IDLE_SNAPSHOT });
+      } catch {
+        /* ignore */
+      }
     } catch (e) {
-      setToast(String(e));
+      showToast(String(e), 4500);
     } finally {
       setAccountBusy(false);
     }
-  }, [refreshAccount]);
+  }, [refreshAccount, showToast]);
 
+  // Account boot: paint fast from disk cache first, then refresh quota on network.
+  // Welcome SuperGrok logo depends on billing tier — waiting only on the slow
+  // path made the mark look like a "slow image" even though it is inline SVG.
   useEffect(() => {
     if (!api.isTauri()) return;
-    void refreshAccount({ refreshBilling: true });
+    let cancelled = false;
+    void (async () => {
+      await refreshAccount({ refreshBilling: false });
+      if (cancelled) return;
+      await refreshAccount({ refreshBilling: true });
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, [refreshAccount]);
 
   useEffect(() => {
@@ -1289,6 +3155,7 @@ export default function App() {
       "settings.nav.runtime",
       "settings.nav.about",
       "settings.section.permissions",
+      "settings.section.composer",
       "settings.section.general",
       "settings.language",
       "settings.languageDesc",
@@ -1298,6 +3165,15 @@ export default function App() {
       "settings.cliPathDesc",
       "settings.cliNotFound",
       "settings.permissionDeep",
+      "settings.permissionDeepDesc",
+      "settings.prefsScope",
+      "settings.prefsScopeDesc",
+      "settings.prefsScope.global",
+      "settings.prefsScope.project",
+      "settings.prefsScope.session",
+      "settings.availableModels",
+      "settings.availableModelsDesc",
+      "settings.availableModelsEmpty",
       "settings.theme",
       "settings.themeDesc",
       "settings.themeLight",
@@ -1322,6 +3198,23 @@ export default function App() {
       "settings.openFinder",
       "settings.sharedConfirm",
       "doctor.title",
+      "doctor.close",
+      "doctor.rerun",
+      "doctor.copy",
+      "doctor.copied",
+      "doctor.loading",
+      "doctor.error",
+      "doctor.empty",
+      "doctor.summary",
+      "doctor.generatedAt",
+      "doctor.level.ok",
+      "doctor.level.warn",
+      "doctor.level.fail",
+      "doctor.check.cli",
+      "doctor.check.auth",
+      "doctor.check.workspace",
+      "doctor.check.backend",
+      "doctor.check.logs",
       "common.local",
       "common.close",
       "common.cancel",
@@ -1383,8 +3276,76 @@ export default function App() {
 
   return (
     <ImageViewerProvider locale={locale}>
-    <div className={`app-shell platform-${platform}`} data-testid="app-shell">
-      {appView === "settings" ? (
+    <div
+      className={
+        `app-shell platform-${platform}` +
+        (windowMaximized ? " is-maximized" : "") +
+        (useCustomWindowChrome ? " has-custom-chrome" : "")
+      }
+      data-testid="app-shell"
+    >
+      <WindowControls
+        visible={useCustomWindowChrome}
+        labels={{
+          minimize: tr("window.minimize"),
+          maximize: tr("window.maximize"),
+          restore: tr("window.restore"),
+          close: tr("window.close"),
+        }}
+      />
+
+      {appGate === "loading" && (
+        <div className="setup-gate" data-testid="setup-booting">
+          <div className="setup-gate__drag" data-tauri-drag-region />
+          <div className="setup-gate__center">
+            <div className="setup-hero">
+              <div className="setup-logo setup-logo--spin">
+                <GrokLogo size={44} />
+              </div>
+              <h1 className="setup-title">{tr("setup.title")}</h1>
+              <p className="setup-subtitle">{tr("setup.detecting")}</p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {appGate === "setup" && (
+        <SetupWizard
+          tr={tr}
+          platform={platform}
+          useCustomWindowChrome={useCustomWindowChrome}
+          initialCli={
+            setupCliSeed ?? {
+              found: false,
+              path: null,
+              version: null,
+              source: "",
+              cliAuthPresent: false,
+            }
+          }
+          onAccountLoginOauth={() => runAccountLogin("oauth")}
+          onComplete={(cli) => {
+            setCliInfo({
+              found: cli.found,
+              path: cli.path,
+              version: cli.version,
+              source: cli.source,
+              cliAuthPresent: cli.cliAuthPresent,
+            });
+            if (cli.path) setManualCliPath(cli.path);
+            setSetup((s) => ({
+              ...s,
+              cli: cli.found,
+              auth: s.auth || cli.cliAuthPresent,
+            }));
+            setAppGate("ready");
+            void refreshLists();
+            void refreshAccount({ refreshBilling: false });
+          }}
+        />
+      )}
+
+      {appGate === "ready" && (appView === "settings" ? (
         <SettingsPage
           section={settingsSection}
           onSection={(id) => {
@@ -1417,18 +3378,24 @@ export default function App() {
           policy={policy}
           onPolicy={(v) => {
             if (!isValidPolicy(v)) return;
-            if (v === "always_approve") {
-              const ok1 = window.confirm(tr("policy.yoloConfirm"));
-              if (!ok1) return;
-              const ok2 = window.confirm(tr("policy.yoloConfirm2"));
-              if (!ok2) return;
-            }
-            setPolicy(v);
-            void api.sessionSetPolicy(v);
-            void api.settingsGet().then((s) =>
-              api.settingsSet({ ...s, permissionPolicy: v }),
-            );
+            applyPermissionPolicy(v);
           }}
+          prefsScope={prefsScope}
+          onPrefsScope={(v) => {
+            if (!isValidPrefsScope(v)) return;
+            setPrefsScope(v);
+            void api.settingsGet().then((s) =>
+              api.settingsSet({ ...s, composerPrefsScope: v }),
+            );
+            void api
+              .composerPrefsResolve({
+                projectId: activeProject?.id ?? null,
+                sessionId: session.sessionId ?? null,
+              })
+              .then((prefs) => applyComposerPrefs(prefs, availableModels))
+              .catch(() => {});
+          }}
+          availableModels={availableModels}
           manualCliPath={manualCliPath}
           onManualCliPath={setManualCliPath}
           onCliBlur={(v) => {
@@ -1487,37 +3454,6 @@ export default function App() {
         />
       ) : (
       <div className="workbench">
-        {platform === "win" && (
-          <div className="window-controls">
-            <button
-              type="button"
-              className="window-controls__btn"
-              title="Minimize"
-              aria-label="Minimize"
-              onClick={() => void winChrome("minimize")}
-            >
-              <IconMinimize size={14} />
-            </button>
-            <button
-              type="button"
-              className="window-controls__btn"
-              title="Maximize"
-              aria-label="Maximize"
-              onClick={() => void winChrome("toggleMaximize")}
-            >
-              <IconMaximize size={14} />
-            </button>
-            <button
-              type="button"
-              className="window-controls__btn window-controls__btn--close"
-              title="Close"
-              aria-label="Close"
-              onClick={() => void winChrome("close")}
-            >
-              <IconClose size={14} />
-            </button>
-          </div>
-        )}
         {/* LEFT — fully hideable (not icon-rail); open via top-bar icon when closed */}
         <aside
           className={
@@ -1539,22 +3475,29 @@ export default function App() {
               </div>
             </div>
           )}
-          {/* Row 1: traffic-light height — only collapse, vertically aligned */}
-          <div className="sidebar-chrome" data-tauri-drag-region>
-            <button
-              type="button"
-              className="chrome-btn chrome-btn--traffic"
-              title={tr("main.leftPaneHide")}
-              onClick={() =>
-                setLayout((l) => {
-                  const n = { ...l, sidebarCollapsed: true };
-                  saveLayout(localStorage, n);
-                  return n;
-                })
-              }
-            >
-              <IconCollapse size={16} />
-            </button>
+          {/* Row 1: traffic-light height — panel toggle sits just right of traffic lights */}
+          <div
+            className="sidebar-chrome"
+            data-tauri-drag-region
+            onDoubleClick={() => {
+              if (useCustomWindowChrome) void toggleMaximizeFromTitlebar();
+            }}
+          >
+            <Tip label={tr("main.leftPaneHide")}>
+              <button
+                type="button"
+                className="chrome-btn chrome-btn--traffic main__pane-toggle is-on"
+                onClick={() =>
+                  setLayout((l) => {
+                    const n = { ...l, sidebarCollapsed: true };
+                    saveLayout(localStorage, n);
+                    return n;
+                  })
+                }
+              >
+                <IconPanel size={16} />
+              </button>
+            </Tip>
             <div className="sidebar-chrome__drag" data-tauri-drag-region />
           </div>
 
@@ -1564,16 +3507,44 @@ export default function App() {
               <GrokLogo size={20} />
               <span>Grok</span>
             </div>
+            <Tip label={tr("sidebar.search")}>
+              <button
+                type="button"
+                className="chrome-btn"
+                onClick={() => {
+                  setShowSearch(true);
+                  setSearchQuery("");
+                }}
+              >
+                <IconSearch size={16} />
+              </button>
+            </Tip>
+          </div>
+
+          {/* Primary nav — new orphan session + scheduled tasks (Codex parity) */}
+          <div className="sidebar-nav">
             <button
               type="button"
-              className="chrome-btn"
-              title={tr("sidebar.search")}
-              onClick={() => {
-                setShowSearch(true);
-                setSearchQuery("");
-              }}
+              className="nav-new"
+              onClick={() => void newChat(null)}
             >
-              <IconSearch size={16} />
+              <span className="nav-item__icon">
+                <IconNewChat size={16} />
+              </span>
+              {tr("sidebar.newSession")}
+            </button>
+            <button
+              type="button"
+              className={
+                "nav-item" +
+                (mainPane === "automations" ? " nav-item--active" : "")
+              }
+              onClick={() => navigateAutomations()}
+            >
+              <span className="nav-item__icon">
+                <IconScheduled size={16} />
+              </span>
+              {tr("sidebar.scheduled")}
             </button>
           </div>
 
@@ -1594,14 +3565,15 @@ export default function App() {
                   {tr("sidebar.projects")}
                 </span>
               </button>
-              <button
-                type="button"
-                className="tree-l1__action"
-                title={tr("sidebar.addProject")}
-                onClick={() => void addProject(false)}
-              >
-                <IconPlus size={15} />
-              </button>
+              <Tip label={tr("sidebar.addProject")}>
+                <button
+                  type="button"
+                  className="tree-l1__action"
+                  onClick={() => void addProject(false)}
+                >
+                  <IconPlus size={15} />
+                </button>
+              </Tip>
             </div>
 
             {projectsOpen && projects.length === 0 && (
@@ -1614,22 +3586,19 @@ export default function App() {
               projects.map((proj) => {
                 const open = expandedProjects[proj.id] !== false;
                 const projSessions = sessionsForProject(proj.id);
-                const isActive = activeProject?.id === proj.id;
                 return (
                   <div key={proj.id} className="tree-project">
-                    {/* L2 — project folder */}
+                    {/* L2 — project folder: expand/collapse only (not selectable) */}
                     <div
-                      className={
-                        "tree-l2" + (isActive ? " tree-l2--active" : "")
-                      }
+                      className="tree-l2"
                       role="button"
                       tabIndex={0}
+                      aria-expanded={open}
                       onClick={() => {
                         setExpandedProjects((e) => ({
                           ...e,
                           [proj.id]: !open,
                         }));
-                        void selectProject(proj);
                       }}
                       onContextMenu={(e) => openProjectMenu(e, proj)}
                       onKeyDown={(e) => {
@@ -1639,47 +3608,48 @@ export default function App() {
                             ...ex,
                             [proj.id]: !open,
                           }));
-                          void selectProject(proj);
                         }
                       }}
                     >
                       <span className="tree-l2__icon">
                         <IconFolder size={15} />
                       </span>
-                      <span className="tree-l2__name" title={proj.path}>
-                        {proj.pinned ? (
-                          <IconPin size={12} className="tree-l2__pin" />
-                        ) : null}
-                        {proj.name}
-                      </span>
+                      <Tip label={proj.path}>
+                        <span className="tree-l2__name">
+                          {proj.pinned ? (
+                            <IconPin size={12} className="tree-l2__pin" />
+                          ) : null}
+                          {proj.name}
+                        </span>
+                      </Tip>
                       {!proj.trusted && (
                         <span className="project-row__badge">
                           {tr("sidebar.untrusted")}
                         </span>
                       )}
                       <span className="tree-l2__actions">
-                        <button
-                          type="button"
-                          className="tree-icon-btn"
-                          title={
-                            tr("sidebar.newConversation")
-                          }
-                          disabled={!proj.trusted}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            void newChat(proj);
-                          }}
-                        >
-                          <IconSquarePen size={14} />
-                        </button>
-                        <button
-                          type="button"
-                          className="tree-icon-btn"
-                          title={tr("sidebar.menu")}
-                          onClick={(e) => openProjectMenu(e, proj)}
-                        >
-                          <IconMore size={14} />
-                        </button>
+                        <Tip label={tr("sidebar.newConversation")}>
+                          <button
+                            type="button"
+                            className="tree-icon-btn"
+                            disabled={!proj.trusted}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              void newChat(proj);
+                            }}
+                          >
+                            <IconSquarePen size={14} />
+                          </button>
+                        </Tip>
+                        <Tip label={tr("sidebar.menu")}>
+                          <button
+                            type="button"
+                            className="tree-icon-btn"
+                            onClick={(e) => openProjectMenu(e, proj)}
+                          >
+                            <IconMore size={14} />
+                          </button>
+                        </Tip>
                       </span>
                     </div>
 
@@ -1697,7 +3667,9 @@ export default function App() {
                             {tr("sidebar.trustProject")}
                           </button>
                         )}
-                        {projSessions.map((s) => (
+                        {projSessions.map((s) => {
+                          const working = busySessionId === s.id;
+                          return (
                           <div
                             key={s.id}
                             className={
@@ -1705,7 +3677,8 @@ export default function App() {
                               (session.sessionId === s.id
                                 ? " tree-l3--active"
                                 : "") +
-                              (s.archived ? " tree-l3--archived" : "")
+                              (s.archived ? " tree-l3--archived" : "") +
+                              (working ? " tree-l3--working" : "")
                             }
                             role="button"
                             tabIndex={0}
@@ -1718,33 +3691,52 @@ export default function App() {
                             <span className="tree-l3__title">
                               {s.title || "Untitled"}
                             </span>
+                            {working ? (
+                              <Tip label={tr("sidebar.sessionWorking")}>
+                                <span
+                                  className="tree-l3__status"
+                                  aria-label={tr("sidebar.sessionWorking")}
+                                >
+                                  <Spinner
+                                    size={14}
+                                    className="tree-l3__spinner"
+                                  />
+                                </span>
+                              </Tip>
+                            ) : (
                             <span className="tree-l3__actions">
-                              <button
-                                type="button"
-                                className="tree-icon-btn"
-                                title={
+                              <Tip
+                                label={
                                   s.archived
                                     ? tr("sidebar.unarchive")
                                     : tr("sidebar.archive")
                                 }
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  void archiveSession(s, !s.archived);
-                                }}
                               >
-                                <IconArchive size={13} />
-                              </button>
-                              <button
-                                type="button"
-                                className="tree-icon-btn"
-                                title={tr("sidebar.menu")}
-                                onClick={(e) => openSessionMenu(e, s)}
-                              >
-                                <IconMore size={13} />
-                              </button>
+                                <button
+                                  type="button"
+                                  className="tree-icon-btn"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    void archiveSession(s, !s.archived);
+                                  }}
+                                >
+                                  <IconArchive size={13} />
+                                </button>
+                              </Tip>
+                              <Tip label={tr("sidebar.menu")}>
+                                <button
+                                  type="button"
+                                  className="tree-icon-btn"
+                                  onClick={(e) => openSessionMenu(e, s)}
+                                >
+                                  <IconMore size={13} />
+                                </button>
+                              </Tip>
                             </span>
+                            )}
                           </div>
-                        ))}
+                          );
+                        })}
                         {projSessions.length === 0 && proj.trusted && (
                           <div className="sidebar-empty" style={{ padding: "4px 10px" }}>
                             {tr("sidebar.noChats")}
@@ -1774,12 +3766,15 @@ export default function App() {
               </button>
             </div>
             {historyOpen &&
-              orphanSessions.map((s) => (
+              orphanSessions.map((s) => {
+                const working = busySessionId === s.id;
+                return (
                 <div
                   key={s.id}
                   className={
                     "tree-l3 tree-l3--orphan" +
-                    (session.sessionId === s.id ? " tree-l3--active" : "")
+                    (session.sessionId === s.id ? " tree-l3--active" : "") +
+                    (working ? " tree-l3--working" : "")
                   }
                   role="button"
                   tabIndex={0}
@@ -1787,18 +3782,29 @@ export default function App() {
                   onContextMenu={(e) => openSessionMenu(e, s)}
                 >
                   <span className="tree-l3__title">{s.title || "Untitled"}</span>
+                  {working ? (
+                    <Tip label={tr("sidebar.sessionWorking")}>
+                      <span
+                        className="tree-l3__status"
+                        aria-label={tr("sidebar.sessionWorking")}
+                      >
+                        <Spinner size={14} className="tree-l3__spinner" />
+                      </span>
+                    </Tip>
+                  ) : (
                   <span className="tree-l3__actions">
-                    <button
-                      type="button"
-                      className="tree-icon-btn"
-                      title={tr("sidebar.archive")}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        void archiveSession(s, !s.archived);
-                      }}
-                    >
-                      <IconArchive size={13} />
-                    </button>
+                    <Tip label={tr("sidebar.archive")}>
+                      <button
+                        type="button"
+                        className="tree-icon-btn"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          void archiveSession(s, !s.archived);
+                        }}
+                      >
+                        <IconArchive size={13} />
+                      </button>
+                    </Tip>
                     <button
                       type="button"
                       className="tree-icon-btn"
@@ -1807,15 +3813,16 @@ export default function App() {
                       <IconMore size={13} />
                     </button>
                   </span>
+                  )}
                 </div>
-              ))}
+                );
+              })}
           </OverlayScroll>
 
           <UserMenu
             open={showUserMenu}
             onClose={() => setShowUserMenu(false)}
             theme={theme}
-            t={(k) => tr(k as Parameters<typeof tr>[0])}
             account={account}
             accountBusy={accountBusy}
             labels={{
@@ -1836,6 +3843,7 @@ export default function App() {
             onLogin={() => void runAccountLogin("oauth")}
             onLogout={() => void runAccountLogout()}
           >
+            <Tip label={tr("user.menu")}>
             <button
               type="button"
               className={
@@ -1843,7 +3851,6 @@ export default function App() {
               }
               aria-haspopup="menu"
               aria-expanded={showUserMenu}
-              title={tr("user.menu")}
               onClick={() => {
                 setShowUserMenu((v) => !v);
                 if (!showUserMenu) void refreshAccount({ refreshBilling: true });
@@ -1861,6 +3868,8 @@ export default function App() {
                     : tr("common.local")}
                 </span>
                 {(() => {
+                  // Only show SuperGrok remaining when officially signed in.
+                  if (!account?.profile?.signedIn) return null;
                   const rem = remainingPercent(account);
                   return rem != null ? (
                     <span className="user-meta__quota">{rem.toFixed(0)}%</span>
@@ -1868,6 +3877,7 @@ export default function App() {
                 })()}
               </div>
             </button>
+            </Tip>
           </UserMenu>
         </aside>
 
@@ -1896,102 +3906,171 @@ export default function App() {
               {toast}
             </div>
           )}
-          <div className="main__top" data-tauri-drag-region>
+          <div
+            className="main__top"
+            data-tauri-drag-region
+            onDoubleClick={() => {
+              if (useCustomWindowChrome) void toggleMaximizeFromTitlebar();
+            }}
+          >
             <div className="main__title-row" data-tauri-drag-region>
+              {/* When left rail is hidden, reopen control sits next to traffic lights */}
               {layout.sidebarCollapsed && (
+                <Tip label={tr("main.leftPaneShow")}>
+                  <button
+                    type="button"
+                    className="chrome-btn chrome-btn--traffic main__pane-toggle"
+                    onClick={() =>
+                      setLayout((l) => {
+                        const n = { ...l, sidebarCollapsed: false };
+                        saveLayout(localStorage, n);
+                        return n;
+                      })
+                    }
+                  >
+                    <IconPanel size={16} />
+                  </button>
+                </Tip>
+              )}
+              {mainPane === "automations" ? (
+                <>
+                  <span className="main__title-icon">
+                    <IconScheduled size={16} />
+                  </span>
+                  <h1 className="main__title" data-tauri-drag-region>
+                    {tr("automations.title")}
+                  </h1>
+                </>
+              ) : (
+                (() => {
+                  const cur = sessions.find((s) => s.id === session.sessionId);
+                  const title =
+                    cur?.title ||
+                    session.title ||
+                    activeProject?.name ||
+                    tr("session.new");
+                  return (
+                    <>
+                      <span className="main__title-icon">
+                        <IconFolder size={16} />
+                      </span>
+                      <Tip label={title}>
+                        <h1 className="main__title" data-tauri-drag-region>
+                          {title}
+                        </h1>
+                      </Tip>
+                      {cur && (
+                        <Tip label={tr("session.menu")}>
+                          <button
+                            type="button"
+                            className="chrome-btn main__title-menu"
+                            onClick={(e) => openSessionMenu(e, cur)}
+                          >
+                            <IconMore size={16} />
+                          </button>
+                        </Tip>
+                      )}
+                    </>
+                  );
+                })()
+              )}
+            </div>
+            <div className="main__top-actions">
+              {/* Retry progress only — connection is silent; thinking lives in chat */}
+              {retryStatus && (
+                <Tip
+                  label={retryStatus.reason || ""}
+                  disabled={!retryStatus.reason}
+                >
+                  <span className="main__sub main__sub--retry">
+                    {retryStatus.reason
+                      ? tr("main.retryingWithReason", {
+                          attempt: String(retryStatus.attempt),
+                          max: String(retryStatus.maxRetries),
+                          reason:
+                            retryStatus.reason.length > 72
+                              ? `${retryStatus.reason.slice(0, 72)}…`
+                              : retryStatus.reason,
+                        })
+                      : tr("main.retrying", {
+                          attempt: String(retryStatus.attempt),
+                          max: String(retryStatus.maxRetries),
+                        })}
+                  </span>
+                </Tip>
+              )}
+              {activeProject && mainPane === "chat" && (
+                <OpenLocationButton
+                  path={activeProject.path}
+                  target={defaultOpenTarget || "finder"}
+                  onTargetChange={persistOpenTarget}
+                  onOpenError={(e) => setLocalError(e)}
+                  onCopied={() => {
+                    setToast(tr("attach.copyPath") + " ✓");
+                    window.setTimeout(() => setToast(null), 1600);
+                  }}
+                  platform={platform === "win" ? "win" : platform === "mac" ? "mac" : "other"}
+                  labels={{
+                    openLocation: tr("main.openLocation"),
+                    openHint: tr("main.openLocationHint"),
+                    openMenu: tr("main.openLocationMenu"),
+                    finder:
+                      platform === "win"
+                        ? tr("main.openInExplorer")
+                        : tr("main.openInFinder"),
+                    systemDefault: tr("main.openSystemDefault"),
+                    copyPath: tr("attach.copyPath"),
+                  }}
+                />
+              )}
+              <Tip
+                label={
+                  layout.asideCollapsed
+                    ? tr("main.rightPaneShow")
+                    : tr("main.rightPaneHide")
+                }
+              >
                 <button
                   type="button"
-                  className="chrome-btn main__pane-toggle"
-                  title={tr("main.leftPaneShow")}
+                  className={
+                    "chrome-btn main__pane-toggle" +
+                    (!layout.asideCollapsed ? " is-on" : "")
+                  }
                   onClick={() =>
                     setLayout((l) => {
-                      const n = { ...l, sidebarCollapsed: false };
+                      const n = { ...l, asideCollapsed: !l.asideCollapsed };
                       saveLayout(localStorage, n);
                       return n;
                     })
                   }
                 >
-                  <IconPanel size={16} />
+                  <IconPanelRight size={16} />
                 </button>
-              )}
-              {(() => {
-                const cur = sessions.find((s) => s.id === session.sessionId);
-                const title =
-                  cur?.title ||
-                  session.title ||
-                  activeProject?.name ||
-                  (tr("session.new"));
-                return (
-                  <>
-                    <span className="main__title-icon">
-                      <IconFolder size={16} />
-                    </span>
-                    <h1 className="main__title" data-tauri-drag-region title={title}>
-                      {title}
-                    </h1>
-                    {cur && (
-                      <button
-                        type="button"
-                        className="chrome-btn main__title-menu"
-                        title={tr("session.menu")}
-                        onClick={(e) => openSessionMenu(e, cur)}
-                      >
-                        <IconMore size={16} />
-                      </button>
-                    )}
-                  </>
-                );
-              })()}
-            </div>
-            <div className="main__top-actions">
-              {connecting && (
-                <span className="main__sub">{tr("main.connecting")}</span>
-              )}
-              <button
-                type="button"
-                className={
-                  "chrome-btn main__pane-toggle" +
-                  (!layout.sidebarCollapsed ? " is-on" : "")
-                }
-                title={
-                  layout.sidebarCollapsed
-                    ? tr("main.leftPaneShow")
-                    : tr("main.leftPaneHide")
-                }
-                onClick={() =>
-                  setLayout((l) => {
-                    const n = { ...l, sidebarCollapsed: !l.sidebarCollapsed };
-                    saveLayout(localStorage, n);
-                    return n;
-                  })
-                }
-              >
-                <IconPanel size={16} />
-              </button>
-              <button
-                type="button"
-                className={
-                  "chrome-btn main__pane-toggle" +
-                  (!layout.asideCollapsed ? " is-on" : "")
-                }
-                title={
-                  layout.asideCollapsed
-                    ? tr("main.rightPaneShow")
-                    : tr("main.rightPaneHide")
-                }
-                onClick={() =>
-                  setLayout((l) => {
-                    const n = { ...l, asideCollapsed: !l.asideCollapsed };
-                    saveLayout(localStorage, n);
-                    return n;
-                  })
-                }
-              >
-                <IconFiles size={16} />
-              </button>
+              </Tip>
             </div>
           </div>
 
+          {mainPane === "automations" ? (
+            <AutomationsPage
+              t={(k, vars) =>
+                tr(k as Parameters<typeof tr>[0], vars as Record<string, string | number>)
+              }
+              projects={projects.map((p) => ({ id: p.id, name: p.name }))}
+              defaultModelId={modelId}
+              defaultEffort={effort}
+              models={availableModels}
+              onAiCreate={() => {
+                void newChat(null, {
+                  seedDraft: aiCreateSeedPrompt("Grok"),
+                  switchToChat: true,
+                });
+                setToast(tr("automations.aiComposerHint"));
+                window.setTimeout(() => setToast(null), 4200);
+              }}
+              onRunNow={(auto) => void runAutomation(auto)}
+            />
+          ) : (
+          <>
           {activeProject && !activeProject.trusted && (
             <div className="conn-bar">
               <button
@@ -2005,11 +4084,9 @@ export default function App() {
             </div>
           )}
 
-          {errorBanner && (
+          {/* One surface only: turn failures live in chat; banner is for pre-turn/local errors */}
+          {errorBanner && !hasChatTurnError && (
             <div className="error-banner" role="alert">
-              {errorBanner.code && (
-                <div className="error-banner__code">{errorBanner.code}</div>
-              )}
               <div className="error-banner__summary">{errorBanner.summary}</div>
               {(errorBanner.detail ||
                 errorBanner.reconnectHint ||
@@ -2052,50 +4129,42 @@ export default function App() {
             </div>
           )}
 
-          {perm && (
-            <div className="perm-bar" role="dialog" aria-label="Permission">
-              <div className="perm-bar__title">
-                {perm.title || perm.toolName} · {perm.toolName}
-              </div>
-              <div className="perm-bar__preview">{perm.preview}</div>
-              <div className="perm-bar__actions">
-                {mapPermissionButtons(perm.options, {
-                  allowOnce: tr("perm.allowOnce"),
-                  allowSession: tr("perm.allowSession"),
-                  deny: tr("perm.deny"),
-                }).map((btn) => (
-                  <button
-                    key={btn.decision + btn.optionId}
-                    type="button"
-                    className={
-                      btn.decision === "allow_once"
-                        ? "btn btn--primary"
-                        : btn.decision === "deny"
-                          ? "btn btn--danger"
-                          : "btn btn--ghost"
-                    }
-                    onClick={() =>
-                      void api
-                        .sessionResolvePermission({
-                          rpcId: perm.rpcId,
-                          decision: btn.decision,
-                          optionId: btn.optionId,
-                          scopeKey: perm.scopeKey,
-                        })
-                        .then(() => setPerm(null))
-                    }
-                  >
-                    {btn.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-
+          <div
+            className="main__stage"
+            style={
+              {
+                ["--composer-float-pad"]: `${composerFloatPad}px`,
+              } as CSSProperties
+            }
+          >
           <ConversationThread
             locale={locale}
             messages={messages}
             sessionState={session.state}
+            sessionKey={session.sessionId ?? `draft-${session.title ?? "new"}`}
+            projectPath={activeProject?.path ?? null}
+            suppressEmptyCopy={welcomeSession}
+            canEditLastUser={canEditLastUser}
+            lastUserMessageId={lastUserMessageId}
+            editingUserMessageId={editingUserMessageId}
+            editSubmitting={editSubmitting}
+            onEditUserMessage={beginEditLastUser}
+            onCancelEditUserMessage={cancelEditUser}
+            onSubmitEditUserMessage={(msg, content) => {
+              void submitEditLastUser(msg, content);
+            }}
+            turnStartedAt={turnStartedAt}
+            onOpenResource={(target) => {
+              setLayout((l) => {
+                if (l.asideCollapsed) {
+                  const n = { ...l, asideCollapsed: false };
+                  saveLayout(localStorage, n);
+                  return n;
+                }
+                return l;
+              });
+              setResourceOpenTarget(target);
+            }}
             plan={plan}
             onDismissPlan={() =>
               setPlan((p) => ({
@@ -2112,8 +4181,77 @@ export default function App() {
             attachLabels={attachLabels}
           />
 
-          <div className="composer-wrap">
+          <div
+            ref={composerWrapRef}
+            className={
+              "composer-wrap composer-wrap--float" +
+              (welcomeSession ? " composer-wrap--welcome" : "")
+            }
+          >
+            {welcomeSession && welcomeBrandKind ? (
+              <div className="composer-welcome-mark">
+                <SuperGrokMark
+                  kind={welcomeBrandKind}
+                  title={
+                    account?.billing?.subscriptionTier?.trim() ||
+                    (welcomeBrandKind === "heavy"
+                      ? "SuperGrok Heavy"
+                      : "SuperGrok")
+                  }
+                />
+              </div>
+            ) : null}
+            {perm ? (
+              <div
+                className="perm-bar"
+                role="dialog"
+                aria-label={tr("perm.title")}
+              >
+                <div className="perm-bar__head">
+                  <span className="perm-bar__badge">{tr("perm.title")}</span>
+                  <span className="perm-bar__tool">
+                    {perm.title || perm.toolName}
+                  </span>
+                </div>
+                {perm.preview?.trim() ? (
+                  <pre className="perm-bar__preview">{perm.preview.trim()}</pre>
+                ) : null}
+                <div className="perm-bar__actions">
+                  {mapPermissionButtons(perm.options, {
+                    allowOnce: tr("perm.allowOnce"),
+                    allowSession: tr("perm.allowSession"),
+                    deny: tr("perm.deny"),
+                  }).map((btn) => (
+                    <button
+                      key={btn.decision + btn.optionId}
+                      type="button"
+                      className={
+                        "perm-bar__btn" +
+                        (btn.decision === "allow_once"
+                          ? " perm-bar__btn--allow"
+                          : btn.decision === "deny"
+                            ? " perm-bar__btn--deny"
+                            : " perm-bar__btn--session")
+                      }
+                      onClick={() =>
+                        void api
+                          .sessionResolvePermission({
+                            rpcId: perm.rpcId,
+                            decision: btn.decision,
+                            optionId: btn.optionId,
+                            scopeKey: perm.scopeKey,
+                          })
+                          .then(() => setPerm(null))
+                      }
+                    >
+                      {btn.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ) : null}
             <div
+              ref={composerShellRef}
               className={
                 "composer" +
                 (dragZone === "main" ? " composer--drop-ready" : "")
@@ -2153,7 +4291,7 @@ export default function App() {
                 createPortal(
                   <div
                     ref={composerPlusPanelRef}
-                    className="composer-plus composer-plus--portal"
+                    className="menu-panel composer-plus composer-plus--portal"
                     role="menu"
                     style={composerPlusStyle}
                   >
@@ -2178,6 +4316,7 @@ export default function App() {
                       className="composer-plus__item"
                       onClick={() => {
                         setShowComposerPlus(false);
+                        setGoalMode(false);
                         setMode("plan");
                       }}
                     >
@@ -2190,23 +4329,60 @@ export default function App() {
                     <div className="composer-plus__section">
                       {tr("composer.skills")}
                     </div>
-                    <button
-                      type="button"
-                      className="composer-plus__item"
-                      disabled
-                    >
-                      <IconSkills size={16} />
-                      <span>
-                        <strong>MCP / Skills</strong>
-                        <em>{tr("common.comingSoon")}</em>
-                      </span>
-                    </button>
+                    {skillsLoading && (
+                      <div className="composer-plus__item" style={{ opacity: 0.6 }}>
+                        <IconSkills size={16} />
+                        <span>
+                          <strong>{tr("composer.skillsLoading")}</strong>
+                        </span>
+                      </div>
+                    )}
+                    {!skillsLoading && skillInfos.length === 0 && (
+                      <div className="composer-plus__item" style={{ opacity: 0.6 }}>
+                        <IconSkills size={16} />
+                        <span>
+                          <strong>{tr("composer.skillsEmpty")}</strong>
+                        </span>
+                      </div>
+                    )}
+                    {!skillsLoading &&
+                      skillInfos.slice(0, 8).map((s) => (
+                        <button
+                          key={s.name}
+                          type="button"
+                          className="composer-plus__item"
+                          onClick={() => {
+                            setShowComposerPlus(false);
+                            setDraft((d) => {
+                              const needsSpace =
+                                d.length > 0 && !/\s$/.test(d);
+                              return (
+                                d +
+                                (needsSpace ? " " : "") +
+                                `[[skill:${s.name}]] `
+                              );
+                            });
+                          }}
+                        >
+                          <IconSkills size={16} />
+                          <span>
+                            <strong>{s.name}</strong>
+                            {s.description ? (
+                              <em>
+                                {s.description.length > 80
+                                  ? s.description.slice(0, 80) + "…"
+                                  : s.description}
+                              </em>
+                            ) : null}
+                          </span>
+                        </button>
+                      ))}
                     <button
                       type="button"
                       className="composer-plus__item"
                       onClick={() => {
                         setShowComposerPlus(false);
-                        setLocalError(tr("automations.menuHint"));
+                        navigateAutomations();
                       }}
                     >
                       <IconAutomations size={16} />
@@ -2218,22 +4394,89 @@ export default function App() {
                   </div>,
                   document.body,
                 )}
-              <textarea
+              {slashQuery &&
+                slashPos &&
+                slashFloatStyle &&
+                typeof document !== "undefined" &&
+                createPortal(
+                  <SlashPalette
+                    open
+                    panelRef={slashPanelRef}
+                    locale={locale}
+                    commands={slashFiltered.commands}
+                    skills={slashFiltered.skills}
+                    activeIndex={slashActiveIndex}
+                    onActiveIndexChange={setSlashActiveIndex}
+                    onSelect={applySlashItem}
+                    resolveTitle={resolveSlashTitle}
+                    resolveDescription={resolveSlashDescription}
+                    style={{
+                      ...slashFloatStyle,
+                      zIndex: 10050,
+                    }}
+                  />,
+                  document.body,
+                )}
+              <ComposerEditor
+                editorRef={composerInputRef}
                 className="composer__input"
-                placeholder={tr("composer.placeholder")}
                 value={draft}
                 disabled={!canType(session.state)}
-                rows={1}
-                onChange={(e) => {
-                  setDraft(e.target.value);
-                  resizeComposer(e.target);
-                }}
+                placeholder={
+                  goalMode
+                    ? tr("composer.goalPlaceholder")
+                    : tr("composer.placeholder")
+                }
+                onChange={setDraft}
+                onSlashQueryChange={setSlashQuery}
                 onKeyDown={(e) => {
+                  if (
+                    e.nativeEvent.isComposing ||
+                    (e.nativeEvent as KeyboardEvent).keyCode === 229
+                  ) {
+                    return;
+                  }
+                  if (slashQuery) {
+                    const flat = slashFiltered.flat;
+                    if (e.key === "ArrowDown") {
+                      e.preventDefault();
+                      setSlashActiveIndex((i) =>
+                        flat.length ? (i + 1) % flat.length : 0,
+                      );
+                      return;
+                    }
+                    if (e.key === "ArrowUp") {
+                      e.preventDefault();
+                      setSlashActiveIndex((i) =>
+                        flat.length
+                          ? (i - 1 + flat.length) % flat.length
+                          : 0,
+                      );
+                      return;
+                    }
+                    if (e.key === "Enter" && !e.shiftKey) {
+                      e.preventDefault();
+                      const item = flat[slashActiveIndex];
+                      if (item) applySlashItem(item);
+                      return;
+                    }
+                    if (e.key === "Escape") {
+                      e.preventDefault();
+                      setSlashQuery(null);
+                      return;
+                    }
+                    if (e.key === "Tab" && flat[slashActiveIndex]) {
+                      e.preventDefault();
+                      applySlashItem(flat[slashActiveIndex]!);
+                      return;
+                    }
+                  }
                   if (e.key === "Enter" && !e.shiftKey) {
                     e.preventDefault();
                     if (
                       canSend(session.state) &&
-                      (draft.trim() || attachments.length > 0) &&
+                      (!isDraftEmpty(parseStoredContent(draft)) ||
+                        attachments.length > 0) &&
                       !connecting
                     ) {
                       void send();
@@ -2243,28 +4486,49 @@ export default function App() {
                 }}
               />
               <div className="composer__row">
-                <button
-                  ref={composerPlusTriggerRef}
-                  type="button"
-                  className={
-                    "icon-btn icon-btn--plus" +
-                    (showComposerPlus ? " is-open" : "")
-                  }
-                  title={tr("composer.add")}
-                  onClick={() => setShowComposerPlus((v) => !v)}
+                <Tip label={tr("composer.add")}>
+                  <button
+                    ref={composerPlusTriggerRef}
+                    type="button"
+                    className={
+                      "icon-btn icon-btn--plus" +
+                      (showComposerPlus ? " is-open" : "")
+                    }
+                    onClick={() => setShowComposerPlus((v) => !v)}
+                  >
+                    <IconPlus size={18} />
+                  </button>
+                </Tip>
+                <Tip
+                  label={activeProject?.path || ""}
+                  disabled={!activeProject?.path}
                 >
-                  <IconPlus size={18} />
-                </button>
-                <span className="chip" title={activeProject?.path}>
-                  <IconFolder size={14} />
-                  <span className="chip__label">
-                    {activeProject?.name ??
-                      (tr("composer.noProject"))}
+                  <span className="chip">
+                    <IconFolder size={14} />
+                    <span className="chip__label">
+                      {activeProject?.name ??
+                        (tr("composer.noProject"))}
+                    </span>
                   </span>
-                </span>
+                </Tip>
+                {goalMode ? (
+                  <Tip label={tr("composer.goalHint")}>
+                    <button
+                      type="button"
+                      className="chip chip--goal"
+                      onClick={() => setGoalMode(false)}
+                      aria-label={tr("composer.goalClear")}
+                    >
+                      <IconImagine size={14} />
+                      <span className="chip__label">{tr("composer.goal")}</span>
+                      <IconClose size={12} />
+                    </button>
+                  </Tip>
+                ) : null}
                 <ComposerModelMenu
                   modelId={modelId}
                   effort={effort}
+                  models={availableModels}
                   labels={{
                     model: tr("composer.model"),
                     effort: tr("composer.effort"),
@@ -2273,18 +4537,26 @@ export default function App() {
                     effortLow: tr("effort.low"),
                   }}
                   onModel={(v) => {
-                    if (!isValidModelId(v)) return;
+                    if (!isValidModelId(v, availableModels)) return;
                     setModelId(v);
-                    void api.settingsGet().then((s) =>
-                      api.settingsSet({ ...s, modelId: v }),
-                    );
+                    void api
+                      .composerPrefsSet({
+                        projectId: activeProject?.id ?? null,
+                        sessionId: session.sessionId ?? null,
+                        modelId: v,
+                      })
+                      .catch((e) => showToast(String(e), 4000));
                   }}
                   onEffort={(v) => {
                     if (!isValidEffort(v)) return;
                     setEffort(v);
-                    void api.settingsGet().then((s) =>
-                      api.settingsSet({ ...s, effort: v }),
-                    );
+                    void api
+                      .composerPrefsSet({
+                        projectId: activeProject?.id ?? null,
+                        sessionId: session.sessionId ?? null,
+                        effort: v,
+                      })
+                      .catch((e) => showToast(String(e), 4000));
                   }}
                 />
                 <ComposerAccessMenu
@@ -2319,61 +4591,55 @@ export default function App() {
                   }}
                   onMode={(v) => {
                     setMode(v);
-                    void api.settingsGet().then((s) =>
-                      api.settingsSet({ ...s, mode: v }),
-                    );
+                    if (v === "plan") setGoalMode(false);
+                    void api
+                      .composerPrefsSet({
+                        projectId: activeProject?.id ?? null,
+                        sessionId: session.sessionId ?? null,
+                        mode: v,
+                      })
+                      .catch((e) => showToast(String(e), 4000));
                   }}
                   onPolicy={(v: PermissionPolicyId) => {
-                    if (!isValidPolicy(v)) return;
-                    if (v === "always_approve") {
-                      const ok1 = window.confirm(tr("policy.yoloConfirm"));
-                      if (!ok1) return;
-                      const ok2 = window.confirm(tr("policy.yoloConfirm2"));
-                      if (!ok2) return;
-                    }
-                    setPolicy(v);
-                    void api.sessionSetPolicy(v);
-                    void api.settingsGet().then((s) =>
-                      api.settingsSet({ ...s, permissionPolicy: v }),
-                    );
+                    applyPermissionPolicy(v);
                   }}
                 />
                 <span className="composer__spacer" />
-                <button
-                  type="button"
-                  className="icon-btn"
-                  title={tr("composer.voiceSoon")}
-                  disabled
-                >
-                  <IconMic size={16} />
-                </button>
                 {canStop(session.state) ? (
-                  <button
-                    type="button"
-                    className="icon-btn icon-btn--danger"
-                    onClick={() => void stop()}
-                    title="Stop"
-                  >
-                    <IconStop size={14} />
-                  </button>
+                  <Tip label={tr("composer.stop")}>
+                    <button
+                      type="button"
+                      className="icon-btn icon-btn--danger"
+                      onClick={() => void stop()}
+                      aria-label={tr("composer.stop")}
+                    >
+                      <IconStop size={14} />
+                    </button>
+                  </Tip>
                 ) : (
-                  <button
-                    type="button"
-                    className="icon-btn icon-btn--primary"
-                    disabled={
-                      !canSend(session.state) ||
-                      (!draft.trim() && attachments.length === 0) ||
-                      connecting
-                    }
-                    onClick={() => void send()}
-                    title={tr("composer.send")}
-                  >
-                    <IconSend size={16} />
-                  </button>
+                  <Tip label={tr("composer.send")}>
+                    <button
+                      type="button"
+                      className="icon-btn icon-btn--primary"
+                      disabled={
+                        !canSend(session.state) ||
+                        (isDraftEmpty(parseStoredContent(draft)) &&
+                          attachments.length === 0) ||
+                        connecting
+                      }
+                      onClick={() => void send()}
+                      aria-label={tr("composer.send")}
+                    >
+                      <IconSend size={16} />
+                    </button>
+                  </Tip>
                 )}
               </div>
             </div>
           </div>
+          </div>
+          </>
+          )}
         </main>
 
         {/* RIGHT — session-linked project resource viewer (fully hideable + resizable) */}
@@ -2410,6 +4676,8 @@ export default function App() {
               projectPath={activeProject?.path ?? null}
               projectName={activeProject?.name ?? null}
               locale={locale}
+              openRequest={resourceOpenTarget}
+              onOpenRequestConsumed={() => setResourceOpenTarget(null)}
               onClose={() =>
                 setLayout((l) => {
                   const n = { ...l, asideCollapsed: true };
@@ -2421,135 +4689,112 @@ export default function App() {
           </div>
         </aside>
       </div>
-      )}
+      ))}
 
-      {showOnboarding && (
-        <div className="overlay">
-          <div className="modal">
-            <h2>{tr("onboarding.welcome")}</h2>
-            <p>{tr("onboarding.body")}</p>
-            <div className="entry-grid">
-              <button
-                type="button"
-                className="entry-card"
-                onClick={() => void runAccountLogin("oauth")}
-              >
-                <div className="entry-card__t">{tr("onboarding.officialOauth")}</div>
-                <div className="entry-card__d">{tr("onboarding.officialHint")}</div>
-              </button>
-              <button
-                type="button"
-                className="entry-card"
-                onClick={() => {
-                  const key = window.prompt("Official API Key");
-                  if (key) {
-                    void api.secretsSet({ officialApiKey: key }).then(() => {
-                      setSetup((s) => ({ ...s, auth: true }));
-                      setPingMsg("OK");
-                      void refreshAccount({ refreshBilling: false });
-                    });
-                  }
-                }}
-              >
-                <div className="entry-card__t">{tr("onboarding.officialKey")}</div>
-                <div className="entry-card__d">{tr("onboarding.officialHint")}</div>
-              </button>
-              <button
-                type="button"
-                className="entry-card"
-                onClick={() => {
-                  const base = window.prompt("Relay base_url");
-                  const key = window.prompt("Relay API key");
-                  if (base && key) {
-                    void api
-                      .secretsSet({ relayBaseUrl: base, relayApiKey: key })
-                      .then(async () => {
-                        setSetup((s) => ({ ...s, auth: true }));
-                        const r = await api.providerPing();
-                        setPingMsg(`${r.class}: ${r.message}`);
-                      });
-                  }
-                }}
-              >
-                <div className="entry-card__t">{tr("onboarding.relay")}</div>
-                <div className="entry-card__d">{tr("onboarding.relayHint")}</div>
-              </button>
-              <button
-                type="button"
-                className="entry-card"
-                onClick={() =>
-                  void api.importGrokGo().then((r) => setPingMsg(JSON.stringify(r))).catch((e) => setPingMsg(String(e)))
+      <DoctorModal
+        open={showDoctor}
+        onClose={() => setShowDoctor(false)}
+        locale={locale}
+      />
+      <StatusModal
+        open={showStatusModal}
+        locale={locale}
+        sessionId={session.sessionId}
+        agentSessionId={session.agentSessionId}
+        modelId={modelId}
+        effort={effort}
+        mode={mode}
+        policy={policy}
+        projectPath={activeProject?.path}
+        messageCount={messages.length}
+        onClose={() => setShowStatusModal(false)}
+      />
+      <McpStatusModal
+        open={showMcpModal}
+        locale={locale}
+        servers={mcpServers}
+        error={mcpError}
+        loading={mcpLoading}
+        onClose={() => setShowMcpModal(false)}
+      />
+      {showCompactModal && (
+        <div
+          className="overlay"
+          role="presentation"
+          onClick={() => {
+            setShowCompactModal(false);
+            setCompactNote("");
+          }}
+        >
+          <form
+            className="modal compact-modal"
+            onClick={(e) => e.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="compact-modal-title"
+            onSubmit={(e) => {
+              e.preventDefault();
+              const note = compactNote;
+              setShowCompactModal(false);
+              setCompactNote("");
+              void (async () => {
+                const cmd = note.trim()
+                  ? `/compact ${note.trim()}`
+                  : "/compact";
+                try {
+                  const sid = await ensureConnected();
+                  if (!sid) return;
+                  await api.sessionSend(cmd);
+                } catch (err) {
+                  setLocalError(String(err));
                 }
-              >
-                <div className="entry-card__t">{tr("onboarding.importGo")}</div>
-                <div className="entry-card__d">{tr("onboarding.importGoHint")}</div>
-              </button>
+              })();
+            }}
+          >
+            <header className="modal-head">
+              <h2 id="compact-modal-title" className="modal-title">
+                {tr("slash.compact")}
+              </h2>
               <button
                 type="button"
-                className="entry-card"
-                onClick={() =>
-                  void api.importGrokCli().then((r) => {
-                    setPingMsg(JSON.stringify(r));
-                    setSetup((s) => ({ ...s, auth: true }));
-                  })
-                }
+                className="icon-btn modal-close"
+                onClick={() => {
+                  setShowCompactModal(false);
+                  setCompactNote("");
+                }}
+                aria-label={tr("common.close")}
               >
-                <div className="entry-card__t">{tr("onboarding.importCli")}</div>
-                <div className="entry-card__d">{tr("onboarding.importCliHint")}</div>
+                <IconClose size={16} />
               </button>
-            </div>
-            {pingMsg && <p style={{ fontFamily: "var(--font-mono)", fontSize: 12 }}>{pingMsg}</p>}
-            <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+            </header>
+            <p className="compact-modal__msg">
+              {tr("slash.compactConfirm")}
+            </p>
+            <input
+              ref={compactNoteRef}
+              className="compact-modal__field"
+              value={compactNote}
+              onChange={(e) => setCompactNote(e.target.value)}
+              placeholder={tr("slash.compactNote")}
+              autoFocus
+              autoComplete="off"
+            />
+            <div className="modal-actions">
               <button
                 type="button"
                 className="btn btn--ghost"
                 onClick={() => {
-                  void api.settingsGet().then((s) =>
-                    api.settingsSet({ ...s, setupSkipped: true }),
-                  );
-                  setShowOnboarding(false);
+                  setShowCompactModal(false);
+                  setCompactNote("");
                 }}
               >
-                {tr("onboarding.skip")}
+                {tr("slash.compactConfirmCancel")}
               </button>
-              <button
-                type="button"
-                className="btn btn--primary"
-                onClick={() => {
-                  void api.settingsGet().then((s) =>
-                    api.settingsSet({ ...s, onboardingDone: true }),
-                  );
-                  setShowOnboarding(false);
-                }}
-              >
-                {tr("onboarding.continue")}
+              <button type="submit" className="btn btn--solid">
+                {tr("slash.compactConfirmOk")}
               </button>
             </div>
-          </div>
-        </div>
-      )}
-
-      {showDoctor && (
-        <div className="overlay" onClick={() => setShowDoctor(false)}>
-          <div className="modal" onClick={(e) => e.stopPropagation()}>
-            <h2>{tr("doctor.title")}</h2>
-            <pre
-              style={{
-                fontSize: 12,
-                whiteSpace: "pre-wrap",
-                background: "var(--bg-code)",
-                padding: 12,
-                borderRadius: 8,
-                maxHeight: 360,
-                overflow: "auto",
-              }}
-            >
-              {redact(JSON.stringify(doctor, null, 2))}
-            </pre>
-            <button type="button" className="btn btn--ghost" onClick={() => setShowDoctor(false)}>
-              {tr("doctor.close")}
-            </button>
-          </div>
+          </form>
         </div>
       )}
 
@@ -2578,10 +4823,11 @@ export default function App() {
               />
               <button
                 type="button"
-                className="chrome-btn"
+                className="icon-btn modal-close"
                 onClick={() => setShowSearch(false)}
+                aria-label={tr("common.close")}
               >
-                <IconClose size={14} />
+                <IconClose size={16} />
               </button>
             </div>
             {searchHits.matchedProjects.length > 0 && (
@@ -2596,7 +4842,8 @@ export default function App() {
                     className="search-panel__row"
                     onClick={() => {
                       setShowSearch(false);
-                      void selectProject(p);
+                      // Project is a folder: expand only; selection is for sessions.
+                      setProjectsOpen(true);
                       setExpandedProjects((e) => ({ ...e, [p.id]: true }));
                     }}
                   >
@@ -2670,12 +4917,113 @@ export default function App() {
         </div>
       )}
 
+      {/* In-app confirm / prompt (Tauri WebView has no reliable window.prompt/confirm) */}
+      {appDialog &&
+        typeof document !== "undefined" &&
+        createPortal(
+          <div
+            className="overlay app-dialog-overlay"
+            role="presentation"
+            onMouseDown={(e) => {
+              if (e.target === e.currentTarget) setAppDialog(null);
+            }}
+          >
+            <div
+              className="modal app-dialog"
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="app-dialog-title"
+              onMouseDown={(e) => e.stopPropagation()}
+            >
+              <header className="modal-head">
+                <h2 id="app-dialog-title" className="modal-title">
+                  {appDialog.title}
+                </h2>
+                <button
+                  type="button"
+                  className="icon-btn modal-close"
+                  onClick={() => setAppDialog(null)}
+                  aria-label={tr("common.close")}
+                >
+                  <IconClose size={16} />
+                </button>
+              </header>
+              {appDialog.kind === "confirm" ? (
+                <form
+                  className="app-dialog__form"
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    // Prefer the keyboard path's latest ref so chained
+                    // dialogs (YOLO step1 → step2) stay consistent.
+                    const dialog = appDialogRef.current;
+                    if (!dialog || dialog.kind !== "confirm") return;
+                    const run = dialog.onConfirm;
+                    setAppDialog(null);
+                    void run();
+                  }}
+                >
+                  <p className="app-dialog__msg">{appDialog.message}</p>
+                  <div className="app-dialog__actions modal-actions">
+                    <button
+                      type="button"
+                      className="btn btn--ghost"
+                      onClick={() => setAppDialog(null)}
+                    >
+                      {tr("common.cancel")}
+                    </button>
+                    <button
+                      ref={confirmBtnRef}
+                      type="submit"
+                      className={`btn ${appDialog.danger ? "btn--danger" : "btn--solid"}`}
+                    >
+                      {appDialog.confirmLabel || tr("common.confirm")}
+                    </button>
+                  </div>
+                </form>
+              ) : (
+                <form
+                  className="app-dialog__form"
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    const value = dialogInput;
+                    const submit = appDialog.onSubmit;
+                    setAppDialog(null);
+                    void submit(value);
+                  }}
+                >
+                  <input
+                    ref={dialogInputRef}
+                    className="app-dialog__input"
+                    value={dialogInput}
+                    placeholder={appDialog.placeholder}
+                    onChange={(e) => setDialogInput(e.target.value)}
+                    autoComplete="off"
+                  />
+                  <div className="app-dialog__actions modal-actions">
+                    <button
+                      type="button"
+                      className="btn btn--ghost"
+                      onClick={() => setAppDialog(null)}
+                    >
+                      {tr("common.cancel")}
+                    </button>
+                    <button type="submit" className="btn btn--solid">
+                      {tr("common.save")}
+                    </button>
+                  </div>
+                </form>
+              )}
+            </div>
+          </div>,
+          document.body,
+        )}
+
       {/* Floating context menu (project / session) — fixed + portal to body */}
       {ctxMenu &&
         typeof document !== "undefined" &&
         createPortal(
         <ul
-          className="ctx-menu"
+          className="menu-panel ctx-menu"
           style={{ left: ctxMenu.x, top: ctxMenu.y }}
           role="menu"
           onMouseDown={(e) => e.stopPropagation()}
@@ -2696,6 +5044,13 @@ export default function App() {
                           .then(() => refreshProjects());
                       }}
                     >
+                      <span className="ctx-menu__ico" aria-hidden>
+                        {proj.pinned ? (
+                          <IconPinOff size={16} />
+                        ) : (
+                          <IconPin size={16} />
+                        )}
+                      </span>
                       {proj.pinned
                         ? tr("project.unpin")
                         : tr("project.pin")}
@@ -2711,11 +5066,17 @@ export default function App() {
                         );
                       }}
                     >
+                      <span className="ctx-menu__ico" aria-hidden>
+                        <IconExternalLink size={16} />
+                      </span>
                       {tr("project.reveal")}
                     </button>
                   </li>
                   <li>
-                    <button type="button" onClick={() => void renameProject(proj)}>
+                    <button type="button" onClick={() => renameProject(proj)}>
+                      <span className="ctx-menu__ico" aria-hidden>
+                        <IconRename size={16} />
+                      </span>
                       {tr("project.rename")}
                     </button>
                   </li>
@@ -2729,6 +5090,9 @@ export default function App() {
                           .then(() => refreshSessions());
                       }}
                     >
+                      <span className="ctx-menu__ico" aria-hidden>
+                        <IconArchive size={16} />
+                      </span>
                       {tr("project.archiveChats")}
                     </button>
                   </li>
@@ -2739,9 +5103,12 @@ export default function App() {
                       onClick={(e) => {
                         e.preventDefault();
                         e.stopPropagation();
-                        void removeProjectFromApp(proj);
+                        removeProjectFromApp(proj);
                       }}
                     >
+                      <span className="ctx-menu__ico" aria-hidden>
+                        <IconTrash size={16} />
+                      </span>
                       {tr("project.remove")}
                     </button>
                   </li>
@@ -2755,12 +5122,18 @@ export default function App() {
               return (
                 <>
                   <li>
-                    <button type="button" onClick={() => void renameSession(s)}>
+                    <button type="button" onClick={() => renameSession(s)}>
+                      <span className="ctx-menu__ico" aria-hidden>
+                        <IconRename size={16} />
+                      </span>
                       {tr("session.rename")}
                     </button>
                   </li>
                   <li>
                     <button type="button" onClick={() => void copySessionId(s)}>
+                      <span className="ctx-menu__ico" aria-hidden>
+                        <IconCopy size={16} />
+                      </span>
                       {tr("session.copyId")}
                     </button>
                   </li>
@@ -2769,6 +5142,9 @@ export default function App() {
                       type="button"
                       onClick={() => void archiveSession(s, !s.archived)}
                     >
+                      <span className="ctx-menu__ico" aria-hidden>
+                        <IconArchive size={16} />
+                      </span>
                       {s.archived
                         ? tr("sidebar.unarchive")
                         : tr("sidebar.archive")}

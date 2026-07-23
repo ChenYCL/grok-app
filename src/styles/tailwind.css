@@ -26,29 +26,7 @@
   --color-destructive-foreground: #fff;
 }
 
-/* shadcn-style shimmer for streaming status text */
-@keyframes shimmer {
-  0% {
-    background-position: 100% 0;
-  }
-  100% {
-    background-position: -100% 0;
-  }
-}
-
-@utility shimmer {
-  background: linear-gradient(
-    90deg,
-    var(--text-tertiary) 0%,
-    var(--text-primary) 40%,
-    var(--text-tertiary) 80%
-  );
-  background-size: 200% 100%;
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
-  animation: shimmer 1.6s ease-in-out infinite;
-}
+/* Streaming status highlight disabled — plain text only. */
 
 /* Conversation surface helpers (work with existing app chrome) */
 @utility chat-surface {

@@ -1,6 +1,7 @@
 /**
  * Catalogs aligned with Grok Build CLI (`grok models`, reasoning effort, permission).
- * Update when `grok models` or Build docs change; keep llm-wiki/i18n notes in sync.
+ * Live selectable models come from `models_list_available` (CLI cache + custom providers).
+ * Update docs/llm-wiki/catalog.md when defaults change.
  */
 
 export interface ModelOption {
@@ -9,6 +10,8 @@ export interface ModelOption {
   label: string;
   /** True if CLI lists as default */
   isDefault?: boolean;
+  /** Catalog source; composer only shows official model IDs (not providers). */
+  source?: string;
 }
 
 export interface EffortOption {
@@ -35,14 +38,22 @@ export type PermissionPolicyId =
   | "dont_ask"
   | "always_approve";
 
+/** Where composer model / permission choices are remembered. */
+export type ComposerPrefsScope = "global" | "project" | "session";
+
+export const COMPOSER_PREFS_SCOPES: ComposerPrefsScope[] = [
+  "global",
+  "project",
+  "session",
+];
+
 /**
- * Live `grok models` (2026-07) reports only grok-4.5 as available for this install.
- * `grok-build` remains listed as the classic agent alias from Build docs — still selectable
- * for profiles that expose it; Host may fall back if CLI rejects.
+ * Fallback catalog when Host has not returned live models yet.
+ * Official OAuth currently exposes grok-4.5 only (2026-07 probe).
+ * `grok-build` is NOT listed — CLI rejects it as unknown model id.
  */
 export const GROK_BUILD_MODELS: ModelOption[] = [
-  { id: "grok-4.5", label: "Grok 4.5", isDefault: true },
-  { id: "grok-build", label: "Grok Build" },
+  { id: "grok-4.5", label: "Grok 4.5", isDefault: true, source: "official" },
 ];
 
 export const DEFAULT_MODEL_ID =
@@ -79,8 +90,11 @@ export const PERMISSION_POLICIES: {
   { id: "always_approve", dangerous: true },
 ];
 
-export function isValidModelId(id: string): boolean {
-  return GROK_BUILD_MODELS.some((m) => m.id === id);
+export function isValidModelId(
+  id: string,
+  catalog: ModelOption[] = GROK_BUILD_MODELS,
+): boolean {
+  return catalog.some((m) => m.id === id);
 }
 
 export function isValidEffort(id: string): id is EffortOption["id"] {
@@ -89,4 +103,16 @@ export function isValidEffort(id: string): id is EffortOption["id"] {
 
 export function isValidPolicy(id: string): id is PermissionPolicyId {
   return PERMISSION_POLICIES.some((p) => p.id === id);
+}
+
+export function isValidPrefsScope(id: string): id is ComposerPrefsScope {
+  return COMPOSER_PREFS_SCOPES.includes(id as ComposerPrefsScope);
+}
+
+export function pickDefaultModelId(catalog: ModelOption[]): string {
+  return (
+    catalog.find((m) => m.isDefault)?.id ??
+    catalog[0]?.id ??
+    DEFAULT_MODEL_ID
+  );
 }

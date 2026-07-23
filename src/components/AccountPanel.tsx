@@ -9,7 +9,6 @@ import type { AccountStatus } from "@/lib/api";
 import {
   accountDisplayName,
   accountInitials,
-  channelLabelKey,
   formatCompactNumber,
   formatDuration,
   formatRelativeTime,
@@ -17,6 +16,7 @@ import {
   usagePercent,
 } from "@/lib/accountUi";
 import { Heatmap } from "@/components/Heatmap";
+import { Tip } from "@/components/ui/tooltip";
 
 export interface AccountPanelLabels {
   signedIn: string;
@@ -115,7 +115,8 @@ export function AccountPanel({
     (p) => p.usedPercent > 0 || p.productId === 1 || p.productId === 2,
   );
   const plan = billing ? tierLabel(billing, channel) : "—";
-  const hasQuota = !!billing?.available && remaining != null;
+  /** Only show SuperGrok quota when the official account is signed in. */
+  const hasQuota = signedIn && !!billing?.available && remaining != null;
 
   return (
     <div
@@ -131,32 +132,21 @@ export function AccountPanel({
           <div className="account-hero__id">
             <div className="account-hero__name-row">
               <span className="account-hero__name">{name}</span>
-              <span
-                className={
-                  "account-badge" +
-                  (signedIn ? " account-badge--ok" : " account-badge--muted")
-                }
-              >
-                {signedIn ? labels.signedIn : labels.signedOut}
-              </span>
+              {!signedIn ? (
+                <span className="account-badge account-badge--muted">
+                  {labels.signedOut}
+                </span>
+              ) : profile?.expired ? (
+                <span className="account-badge account-badge--muted account-hero__warn">
+                  {labels.expired}
+                </span>
+              ) : null}
             </div>
-            <div className="account-hero__meta">
-              {profile?.email && profile.email !== name ? (
+            {profile?.email && profile.email !== name ? (
+              <div className="account-hero__meta">
                 <span className="account-hero__email">{profile.email}</span>
-              ) : null}
-              {profile?.email && profile.email !== name ? (
-                <span className="account-hero__sep">·</span>
-              ) : null}
-              <span>{t(channelLabelKey(channel))}</span>
-              <span className="account-hero__sep">·</span>
-              <span>{plan}</span>
-              {profile?.expired ? (
-                <>
-                  <span className="account-hero__sep">·</span>
-                  <span className="account-hero__warn">{labels.expired}</span>
-                </>
-              ) : null}
-            </div>
+              </div>
+            ) : null}
           </div>
           <div className="account-hero__actions">
             {signedIn ? (
@@ -182,7 +172,7 @@ export function AccountPanel({
               <>
                 <button
                   type="button"
-                  className="btn btn--primary"
+                  className="btn btn--solid"
                   disabled={busy}
                   onClick={onLoginOauth}
                 >
@@ -201,80 +191,96 @@ export function AccountPanel({
           </div>
         </div>
 
-        <div className="account-hero__quota">
-          {hasQuota ? (
-            <>
-              <div className="account-hero__quota-line">
-                <span className="account-hero__quota-main">
-                  {remaining!.toFixed(0)}%
-                  <em>{labels.quotaRemaining}</em>
-                </span>
-                <span className="account-hero__quota-side">
-                  {labels.quotaUsed} {(usedPct ?? 0).toFixed(0)}%
-                  {billing?.resetsAt
-                    ? ` · ${labels.resetsAt} ${formatRelativeTime(billing.resetsAt, locale)}`
-                    : ""}
-                </span>
-              </div>
-              <div className="account-quota-bar" aria-hidden>
-                <div
-                  className={
-                    "account-quota-bar__fill" +
-                    ((usedPct ?? 0) >= 90
-                      ? " is-danger"
-                      : (usedPct ?? 0) >= 70
-                        ? " is-warn"
-                        : "")
-                  }
-                  style={{ width: `${Math.min(100, usedPct ?? 0)}%` }}
-                />
-              </div>
-              {products.length > 0 && (
-                <div className="account-products">
-                  {products.map((p) => (
-                    <span
-                      key={`${p.productId}-${p.label}`}
-                      className="account-product-tag"
-                    >
-                      {p.label} {p.usedPercent.toFixed(0)}%
+        {signedIn ? (
+          <>
+            <div className="account-hero__quota">
+              {hasQuota ? (
+                <>
+                  {/* Compact: plan + remaining on one row (same as user menu) */}
+                  <div className="account-hero__quota-line account-hero__quota-line--compact">
+                    <span className="account-hero__plan">{plan}</span>
+                    <span className="account-hero__remain">
+                      {remaining!.toFixed(0)}% {labels.quotaRemaining}
                     </span>
-                  ))}
+                  </div>
+                  <div className="account-quota-bar" aria-hidden>
+                    <div
+                      className={
+                        "account-quota-bar__fill" +
+                        ((usedPct ?? 0) >= 90
+                          ? " is-danger"
+                          : (usedPct ?? 0) >= 70
+                            ? " is-warn"
+                            : "")
+                      }
+                      style={{ width: `${Math.min(100, usedPct ?? 0)}%` }}
+                    />
+                  </div>
+                  <div className="account-hero__quota-side account-hero__quota-side--below">
+                    {labels.quotaUsed} {(usedPct ?? 0).toFixed(0)}%
+                    {billing?.resetsAt
+                      ? ` · ${labels.resetsAt} ${formatRelativeTime(billing.resetsAt, locale)}`
+                      : ""}
+                  </div>
+                  {products.length > 0 && (
+                    <div className="account-products">
+                      {products.map((p) => (
+                        <span
+                          key={`${p.productId}-${p.label}`}
+                          className="account-product-tag"
+                        >
+                          {p.label} {p.usedPercent.toFixed(0)}%
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </>
+              ) : (
+                <div className="account-hero__quota-empty">
+                  <div className="account-hero__quota-line account-hero__quota-line--compact">
+                    <span className="account-hero__plan">{plan}</span>
+                  </div>
+                  <span>{billing?.message || labels.quotaUnknown}</span>
+                  <button
+                    type="button"
+                    className="btn btn--ghost"
+                    disabled={busy || loading}
+                    onClick={onRefresh}
+                  >
+                    {loading ? labels.refreshing : labels.refresh}
+                  </button>
                 </div>
               )}
-            </>
-          ) : (
-            <div className="account-hero__quota-empty">
-              <span>{billing?.message || labels.quotaUnknown}</span>
-              {signedIn ? (
+            </div>
+
+            <div className="account-hero__links">
+              <button
+                type="button"
+                className="account-link"
+                onClick={onManageUsage}
+              >
+                {labels.manageUsage}
+              </button>
+              <button
+                type="button"
+                className="account-link"
+                onClick={onSubscribe}
+              >
+                {labels.subscribe}
+              </button>
+              {compact && onOpenSettings ? (
                 <button
                   type="button"
-                  className="btn btn--ghost"
-                  disabled={busy || loading}
-                  onClick={onRefresh}
+                  className="account-link"
+                  onClick={onOpenSettings}
                 >
-                  {loading ? labels.refreshing : labels.refresh}
+                  {t("settings.nav.account")}
                 </button>
               ) : null}
             </div>
-          )}
-        </div>
-
-        <div className="account-hero__links">
-          <button
-            type="button"
-            className="account-link"
-            onClick={onManageUsage}
-          >
-            {labels.manageUsage}
-          </button>
-          <button
-            type="button"
-            className="account-link"
-            onClick={onSubscribe}
-          >
-            {labels.subscribe}
-          </button>
-          {compact && onOpenSettings ? (
+          </>
+        ) : compact && onOpenSettings ? (
+          <div className="account-hero__links">
             <button
               type="button"
               className="account-link"
@@ -282,8 +288,8 @@ export function AccountPanel({
             >
               {t("settings.nav.account")}
             </button>
-          ) : null}
-        </div>
+          </div>
+        ) : null}
       </div>
 
       {!compact && (
@@ -328,12 +334,11 @@ export function AccountPanel({
                   </div>
                   {status.callLogs.map((row) => (
                     <div key={row.id} className="account-logs__row">
-                      <span
-                        className="account-logs__title"
-                        title={row.projectPath ?? row.title}
-                      >
-                        {row.title}
-                      </span>
+                      <Tip label={row.projectPath ?? row.title}>
+                        <span className="account-logs__title">
+                          {row.title}
+                        </span>
+                      </Tip>
                       <span className="account-logs__mono">
                         {row.model || "—"}
                       </span>

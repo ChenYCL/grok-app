@@ -17,8 +17,15 @@ import {
   IconUser,
 } from "@/components/icons";
 import type { Theme } from "@/lib/theme";
-import type { PermissionPolicyId } from "@/lib/grokCatalog";
-import { PERMISSION_POLICIES } from "@/lib/grokCatalog";
+import type {
+  ComposerPrefsScope,
+  ModelOption,
+  PermissionPolicyId,
+} from "@/lib/grokCatalog";
+import {
+  COMPOSER_PREFS_SCOPES,
+  PERMISSION_POLICIES,
+} from "@/lib/grokCatalog";
 import type { AccountStatus, DetectedEditor } from "@/lib/api";
 import * as api from "@/lib/api";
 import { AccountPanel } from "@/components/AccountPanel";
@@ -45,6 +52,11 @@ export interface SettingsPageProps {
   onSessionDataMode: (v: string) => void;
   policy: string;
   onPolicy: (v: PermissionPolicyId) => void;
+  /** Where model / permission choices are remembered. */
+  prefsScope?: ComposerPrefsScope | string;
+  onPrefsScope?: (v: ComposerPrefsScope) => void;
+  /** Live valid models (for display only in settings). */
+  availableModels?: ModelOption[];
   manualCliPath: string;
   onManualCliPath: (v: string) => void;
   onCliBlur: (v: string) => void;
@@ -114,6 +126,9 @@ export function SettingsPage({
   onSessionDataMode,
   policy,
   onPolicy,
+  prefsScope = "global",
+  onPrefsScope,
+  availableModels = [],
   manualCliPath,
   onManualCliPath,
   onCliBlur,
@@ -170,6 +185,11 @@ export function SettingsPage({
           className="settings-page__titlebar"
           data-tauri-drag-region
           aria-hidden
+          onDoubleClick={() => {
+            void import("@tauri-apps/api/window")
+              .then(({ getCurrentWindow }) => getCurrentWindow().toggleMaximize())
+              .catch(() => {});
+          }}
         />
         <div className="settings-page__nav-inner">
         <button
@@ -238,6 +258,68 @@ export function SettingsPage({
 
         {section === "general" && (
           <>
+            <h2 className="settings-page__h2">{t("settings.section.composer")}</h2>
+            <div className="settings-card">
+              {onPrefsScope && (
+                <div className="settings-row settings-row--stack">
+                  <div className="settings-row__text">
+                    <div className="settings-row__label">
+                      {t("settings.prefsScope")}
+                    </div>
+                    <div className="settings-row__desc">
+                      {t("settings.prefsScopeDesc")}
+                    </div>
+                  </div>
+                  <Select
+                    value={prefsScope}
+                    onChange={(v) => onPrefsScope(v as ComposerPrefsScope)}
+                    options={COMPOSER_PREFS_SCOPES.map((s) => ({
+                      value: s,
+                      label: t(
+                        (
+                          {
+                            global: "settings.prefsScope.global",
+                            project: "settings.prefsScope.project",
+                            session: "settings.prefsScope.session",
+                          } as const
+                        )[s],
+                      ),
+                    }))}
+                  />
+                </div>
+              )}
+              <div className="settings-row settings-row--stack">
+                <div className="settings-row__text">
+                  <div className="settings-row__label">
+                    {t("settings.availableModels")}
+                  </div>
+                  <div className="settings-row__desc">
+                    {t("settings.availableModelsDesc")}
+                  </div>
+                </div>
+                <div className="settings-models-list" role="list">
+                  {availableModels.length === 0 ? (
+                    <span className="settings-row__desc">
+                      {t("settings.availableModelsEmpty")}
+                    </span>
+                  ) : (
+                    availableModels.map((m) => (
+                      <div
+                        key={m.id}
+                        className="settings-models-list__item"
+                        role="listitem"
+                      >
+                        <span className="settings-models-list__name">
+                          {m.label}
+                        </span>
+                        <span className="settings-models-list__id">{m.id}</span>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+            </div>
+
             <h2 className="settings-page__h2">{t("settings.section.permissions")}</h2>
             <div className="settings-card">
               <div className="settings-row settings-row--stack">
@@ -247,7 +329,7 @@ export function SettingsPage({
                     {t("settings.permissionDeep")}
                   </div>
                   <div className="settings-row__desc">
-                    {t("composer.permissionTitle")}
+                    {t("settings.permissionDeepDesc")}
                   </div>
                 </div>
                 <Select

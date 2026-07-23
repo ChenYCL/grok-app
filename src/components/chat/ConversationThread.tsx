@@ -1,19 +1,29 @@
 /**
- * Chat thread: Message + Marker based UI.
- * Reasoning is collapsed after stream completes; click to expand full thought.
+ * Chat thread — Vercel AI Elements / shadcn Message + Streamdown streaming.
+ * StickToBottom for stream-follow; Reasoning auto open/close.
  */
 
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import type { Locale } from "@/i18n";
 import { createT } from "@/i18n";
-import type { ChatMessage, SessionState } from "@/lib/session";
+import {
+  formatTurnErrorBody,
+  type ChatMessage,
+  type SessionState,
+} from "@/lib/session";
 import type { Attachment } from "@/lib/attachments";
-import { isImagePath } from "@/lib/attachments";
-import { MarkdownBody } from "@/components/MarkdownBody";
+import {
+  buildInlineMediaPathMap,
+  filterAttachmentsNotInlined,
+  isImagePath,
+  isMediaPath,
+} from "@/lib/attachments";
 import { AttachmentCard } from "@/components/AttachmentCard";
 import {
   Conversation,
   ConversationContent,
+  ConversationEmptyState,
+  ConversationScrollButton,
 } from "@/components/ui/conversation";
 import {
   Message,
@@ -21,27 +31,53 @@ import {
   MessageContent,
   MessageToolbar,
 } from "@/components/ui/message";
-import { Marker, MarkerContent, MarkerIcon } from "@/components/ui/marker";
+import { MessageResponse } from "@/components/ui/message-response";
+import {
+  Reasoning,
+  ReasoningContent,
+  ReasoningTrigger,
+} from "@/components/ui/reasoning";
 import { Spinner } from "@/components/ui/spinner";
 import { Button } from "@/components/ui/button";
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from "@/components/ui/collapsible";
+import { Tip } from "@/components/ui/tooltip";
 import {
   IconCheck,
-  IconChevronDown,
   IconCopy,
   IconExportMd,
   IconPlan,
 } from "@/components/icons";
 import { cn } from "@/lib/utils";
+import { SkillChip } from "@/components/SkillChip";
+import { hydrateDisplayContent, parseStoredContent } from "@/lib/draftDoc";
+
+/** Render user message text with inline skill chips. */
+function UserMessageBody({ content }: { content: string }) {
+  const segs = parseStoredContent(hydrateDisplayContent(content));
+  const hasSkill = segs.some((s) => s.type === "skill");
+  if (!hasSkill) {
+    return <>{content}</>;
+  }
+  return (
+    <span className="user-msg-body">
+      {segs.map((s, i) =>
+        s.type === "skill" ? (
+          <SkillChip key={`sk-${i}-${s.name}`} name={s.name} size="sm" />
+        ) : (
+          <span key={`t-${i}`}>{s.text}</span>
+        ),
+      )}
+    </span>
+  );
+}
 
 export interface ConversationThreadProps {
   locale: Locale;
   messages: ChatMessage[];
   sessionState: SessionState;
+  /** Remount scroll surface when switching sessions. */
+  sessionKey?: string;
+  projectPath?: string | null;
+  onOpenResource?: (target: import("@/components/ResourceViewer").ResourceOpenTarget) => void;
   plan?: {
     visible: boolean;
     waiting: boolean;
@@ -61,80 +97,6 @@ export interface ConversationThreadProps {
   };
 }
 
-function ReasoningBlock({
-  text,
-  streaming,
-  locale,
-}: {
-  text: string;
-  streaming: boolean;
-  locale: Locale;
-}) {
-  const tr = useMemo(() => createT(locale), [locale]);
-  const [open, setOpen] = useState(false);
-  const trimmed = text.trim();
-  if (!trimmed && !streaming) return null;
-
-  // While streaming: status marker with shimmer only (no dump of text at top)
-  if (streaming) {
-    return (
-      <Marker role="status" className="pl-0.5">
-        <MarkerIcon>
-          <Spinner size={14} />
-        </MarkerIcon>
-        <MarkerContent className="shimmer">{tr("chat.thinking")}</MarkerContent>
-      </Marker>
-    );
-  }
-
-  // Done: collapsed by default — click to view full reasoning
-  return (
-    <Collapsible open={open} onOpenChange={setOpen} className="w-full">
-      <Marker variant="border" className="!border-b-0 py-0">
-        <CollapsibleTrigger asChild>
-          <button
-            type="button"
-            className={cn(
-              "flex w-full items-center gap-2 rounded-md px-1 py-1.5 text-left",
-              "text-[13px] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]",
-              "transition-colors",
-            )}
-          >
-            <MarkerIcon className="mt-0">
-              <IconCheck size={14} />
-            </MarkerIcon>
-            <MarkerContent className="!flex-none">
-              {tr("chat.thoughtDone")}
-            </MarkerContent>
-            <span className="text-[12px] text-[var(--text-tertiary)]">
-              {open ? tr("chat.hideThought") : tr("chat.showThought")}
-            </span>
-            <IconChevronDown
-              size={14}
-              className={cn(
-                "ml-auto text-[var(--text-tertiary)] transition-transform",
-                open && "rotate-180",
-              )}
-            />
-          </button>
-        </CollapsibleTrigger>
-      </Marker>
-      <CollapsibleContent>
-        <div
-          className={cn(
-            "mt-1 mb-2 rounded-xl border border-[var(--border-subtle)]",
-            "bg-[var(--bg-elevated)] px-3.5 py-3",
-            "text-[13px] leading-relaxed text-[var(--text-secondary)]",
-            "whitespace-pre-wrap max-h-[min(40vh,22rem)] overflow-y-auto",
-          )}
-        >
-          {trimmed}
-        </div>
-      </CollapsibleContent>
-    </Collapsible>
-  );
-}
-
 function ToolMarker({
   message,
   locale,
@@ -145,20 +107,25 @@ function ToolMarker({
   const tr = useMemo(() => createT(locale), [locale]);
   const running = message.streaming || message.toolStatus === "running";
   return (
-    <Marker
-      variant="border"
+    <div
       role={running ? "status" : undefined}
-      className="py-1.5"
+      className="flex items-center gap-2 py-1 pl-0.5 text-[13px] text-[var(--text-secondary)]"
     >
-      <MarkerIcon>
-        {running ? <Spinner size={14} /> : <IconCheck size={14} />}
-      </MarkerIcon>
-      <MarkerContent className={running ? "shimmer" : undefined}>
-        {message.content?.trim() ||
-          message.toolStatus ||
-          (running ? tr("chat.toolRunning") : tr("chat.toolDone"))}
-      </MarkerContent>
-    </Marker>
+      {running ? (
+        <Spinner size={14} />
+      ) : (
+        <IconCheck size={14} className="text-[var(--text-tertiary)]" />
+      )}
+      <span>
+        {running
+          ? message.content?.trim() ||
+            message.toolStatus ||
+            tr("chat.toolRunning")
+          : message.content?.trim() ||
+            message.toolStatus ||
+            tr("chat.toolDone")}
+      </span>
+    </div>
   );
 }
 
@@ -166,6 +133,9 @@ export function ConversationThread({
   locale,
   messages,
   sessionState,
+  sessionKey,
+  projectPath,
+  onOpenResource,
   plan,
   onDismissPlan,
   onAddAttachmentToComposer,
@@ -175,11 +145,20 @@ export function ConversationThread({
 
   const showWorking =
     sessionState === "streaming" &&
-    !messages.some((m) => m.role === "assistant" && m.streaming && m.content);
+    !messages.some((m) => m.role === "assistant" && m.streaming);
+
+  const empty = messages.length === 0 && !showWorking && !plan?.visible;
 
   return (
-    <Conversation>
+    <Conversation key={sessionKey ?? "chat"}>
       <ConversationContent>
+        {empty ? (
+          <ConversationEmptyState
+            title={tr("main.startTitle")}
+            description={tr("main.startHint")}
+          />
+        ) : null}
+
         {messages.map((m) => {
           if (m.role === "tool") {
             return <ToolMarker key={m.id} message={m} locale={locale} />;
@@ -189,10 +168,12 @@ export function ConversationThread({
             return (
               <Message key={m.id} from="user">
                 {m.content.trim() ? (
-                  <MessageContent>{m.content}</MessageContent>
+                  <MessageContent>
+                    <UserMessageBody content={m.content} />
+                  </MessageContent>
                 ) : null}
                 {m.attachments && m.attachments.length > 0 ? (
-                  <div className="flex max-w-[min(100%,42rem)] flex-wrap justify-end gap-2">
+                  <div className="flex max-w-[min(100%,36rem)] flex-wrap justify-end gap-2">
                     {m.attachments.map((a) => (
                       <AttachmentCard
                         key={a.path}
@@ -211,51 +192,104 @@ export function ConversationThread({
             );
           }
 
-          // assistant — reasoning sits above the answer, collapsed once answer starts / stream ends
+          // Turn failure — friendly copy only (no raw RPC/MCP dumps)
+          if (m.isError) {
+            const friendly = formatTurnErrorBody(
+              { content: m.content, code: undefined, message: undefined },
+              locale === "en" ? "en" : "zh",
+            );
+            return (
+              <div
+                key={m.id}
+                className="chat-turn-error"
+                role="alert"
+                data-testid="chat-turn-error"
+              >
+                <div className="chat-turn-error__label">
+                  {tr("chat.turnFailed")}
+                </div>
+                <div className="chat-turn-error__body">{friendly}</div>
+              </div>
+            );
+          }
+
           const hasThought = !!(m.thought && m.thought.trim());
-          const thoughtStillStreaming =
+          const thoughtStreaming =
             !!m.streaming && !m.content.trim() && hasThought;
-          const showThoughtCollapsed =
-            hasThought && (!m.streaming || !!m.content.trim());
           const showThinkingPlaceholder =
             !!m.streaming && !m.content.trim() && !hasThought;
 
           return (
-            <div key={m.id} className="flex w-full flex-col gap-1.5">
-              {thoughtStillStreaming ? (
-                <ReasoningBlock text="" streaming locale={locale} />
-              ) : null}
-              {showThoughtCollapsed ? (
-                <ReasoningBlock
-                  text={m.thought ?? ""}
-                  streaming={false}
-                  locale={locale}
-                />
-              ) : null}
+            <div key={m.id} className="flex w-full flex-col gap-2">
+              {(thoughtStreaming || hasThought) && (
+                <Reasoning
+                  isStreaming={thoughtStreaming}
+                  defaultOpen={thoughtStreaming}
+                >
+                  <ReasoningTrigger
+                    streamingLabel={tr("chat.thinking")}
+                    doneLabel={(d) =>
+                      d != null
+                        ? tr("chat.thoughtFor", { n: String(d) })
+                        : tr("chat.thoughtDone")
+                    }
+                  />
+                  {hasThought ? (
+                    <ReasoningContent>{m.thought}</ReasoningContent>
+                  ) : null}
+                </Reasoning>
+              )}
+
               {showThinkingPlaceholder ? (
-                <ReasoningBlock text="" streaming locale={locale} />
+                <div
+                  role="status"
+                  className="flex items-center gap-2 py-1 pl-0.5 text-[13px] text-[var(--text-secondary)]"
+                >
+                  <span className="inline-flex size-3.5 shrink-0 animate-spin rounded-full border-2 border-[var(--text-tertiary)] border-t-transparent" />
+                  <span>{tr("chat.thinking")}</span>
+                </div>
               ) : null}
 
-              {(m.content.trim() ||
-                (m.attachments && m.attachments.length > 0)) && (
+              {(() => {
+                const imagePathMap = buildInlineMediaPathMap(m.attachments);
+                const bottomAtts = filterAttachmentsNotInlined(
+                  m.content,
+                  m.attachments,
+                );
+                const showBody =
+                  !!m.content.trim() || !!(bottomAtts && bottomAtts.length);
+                if (!showBody) return null;
+                return (
                 <Message from="assistant">
                   {m.content.trim() ? (
                     <MessageContent>
-                      <MarkdownBody streaming={m.streaming} locale={locale}>
+                      <MessageResponse
+                        isAnimating={!!m.streaming}
+                        locale={locale}
+                        imagePathMap={
+                          Object.keys(imagePathMap).length
+                            ? imagePathMap
+                            : undefined
+                        }
+                        projectPath={projectPath}
+                        onOpenResource={onOpenResource}
+                      >
                         {m.content}
-                      </MarkdownBody>
+                      </MessageResponse>
                     </MessageContent>
                   ) : null}
-                  {m.attachments && m.attachments.length > 0 ? (
-                    <div className="flex flex-wrap gap-2">
-                      {m.attachments.map((a) => (
+                  {bottomAtts && bottomAtts.length > 0 ? (
+                    <div className="flex flex-wrap gap-2 pt-1">
+                      {bottomAtts.map((a) => (
                         <AttachmentCard
                           key={a.path}
                           attachment={a}
-                          variant="chip"
+                          variant={
+                            !a.isDir && isMediaPath(a.path) ? "card" : "chip"
+                          }
                           labels={attachLabels}
-                          galleryPaths={m.attachments
-                            ?.filter((x) => !x.isDir && isImagePath(x.path))
+                          galleryPaths={bottomAtts
+                            .filter((x) => !x.isDir && isImagePath(x.path))
                             .map((x) => x.path)}
                           onAddToComposer={onAddAttachmentToComposer}
                         />
@@ -265,56 +299,58 @@ export function ConversationThread({
                   {!m.streaming && m.content.trim() ? (
                     <MessageToolbar>
                       <MessageActions className="opacity-100">
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon"
-                          title={tr("message.copy")}
-                          aria-label={tr("message.copy")}
-                          onClick={() =>
-                            void navigator.clipboard.writeText(m.content)
-                          }
-                        >
-                          <IconCopy size={15} />
-                        </Button>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon"
-                          title={tr("message.exportMd")}
-                          aria-label={tr("message.exportMd")}
-                          onClick={() => {
-                            const blob = new Blob([m.content], {
-                              type: "text/markdown;charset=utf-8",
-                            });
-                            const url = URL.createObjectURL(blob);
-                            const a = document.createElement("a");
-                            a.href = url;
-                            a.download = `grok-${m.id.slice(0, 8)}.md`;
-                            a.click();
-                            URL.revokeObjectURL(url);
-                          }}
-                        >
-                          <IconExportMd size={15} />
-                        </Button>
+                        <Tip label={tr("message.copy")}>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            aria-label={tr("message.copy")}
+                            onClick={() =>
+                              void navigator.clipboard.writeText(m.content)
+                            }
+                          >
+                            <IconCopy size={15} />
+                          </Button>
+                        </Tip>
+                        <Tip label={tr("message.exportMd")}>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            aria-label={tr("message.exportMd")}
+                            onClick={() => {
+                              const blob = new Blob([m.content], {
+                                type: "text/markdown;charset=utf-8",
+                              });
+                              const url = URL.createObjectURL(blob);
+                              const a = document.createElement("a");
+                              a.href = url;
+                              a.download = `grok-${m.id.slice(0, 8)}.md`;
+                              a.click();
+                              URL.revokeObjectURL(url);
+                            }}
+                          >
+                            <IconExportMd size={15} />
+                          </Button>
+                        </Tip>
                       </MessageActions>
                     </MessageToolbar>
                   ) : null}
                 </Message>
-              )}
+                );
+              })()}
             </div>
           );
         })}
 
         {showWorking ? (
-          <Marker role="status" className="pl-0.5">
-            <MarkerIcon>
-              <Spinner size={14} />
-            </MarkerIcon>
-            <MarkerContent className="shimmer">
-              {tr("main.working")}
-            </MarkerContent>
-          </Marker>
+          <div
+            role="status"
+            className="flex items-center gap-2 py-1 pl-0.5 text-[13px] text-[var(--text-secondary)]"
+          >
+            <span className="inline-flex size-3.5 shrink-0 animate-spin rounded-full border-2 border-[var(--text-tertiary)] border-t-transparent" />
+            <span>{tr("chat.thinking")}</span>
+          </div>
         ) : null}
 
         {plan?.visible ? (
@@ -324,14 +360,12 @@ export function ConversationThread({
               "bg-[var(--bg-card)] p-4 shadow-sm",
             )}
           >
-            <Marker className="mb-2">
-              <MarkerIcon>
-                <IconPlan size={14} />
-              </MarkerIcon>
-              <MarkerContent className="font-medium text-[var(--text-primary)]">
+            <div className="mb-2 flex items-center gap-2 text-[13px] text-[var(--text-secondary)]">
+              <IconPlan size={14} />
+              <span className="font-medium text-[var(--text-primary)]">
                 {plan.waiting ? tr("plan.waiting") : tr("plan.ready")}
-              </MarkerContent>
-            </Marker>
+              </span>
+            </div>
             <h3 className="mb-2 text-[15px] font-semibold text-[var(--text-primary)]">
               {plan.title}
             </h3>
@@ -350,17 +384,14 @@ export function ConversationThread({
               <Button type="button" variant="ghost" disabled={plan.waiting}>
                 {tr("plan.changes")}
               </Button>
-              <Button
-                type="button"
-                variant="ghost"
-                onClick={onDismissPlan}
-              >
+              <Button type="button" variant="ghost" onClick={onDismissPlan}>
                 {tr("plan.dismiss")}
               </Button>
             </div>
           </div>
         ) : null}
       </ConversationContent>
+      <ConversationScrollButton label={tr("chat.scrollBottom")} />
     </Conversation>
   );
 }

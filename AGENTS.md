@@ -8,6 +8,10 @@
    - [automations.md](docs/llm-wiki/automations.md) — automation design (Build `/loop` / scheduler; non-blocking)  
    - [account.md](docs/llm-wiki/account.md) — official login, membership, quota, heatmap  
    - [providers.md](docs/llm-wiki/providers.md) — custom relays, agent `GROK_HOME`, editors  
+   - [setup.md](docs/llm-wiki/setup.md) — first-run gate (CLI required, account optional)  
+   - [icons.md](docs/llm-wiki/icons.md) — app dock icons vs tray/status-bar icons (never mix)
+
+1b. **Release platforms** — [docs/BUILD.md](docs/BUILD.md). mac arm/intel + Windows via CI. Window chrome: `tauri.macos.conf.json` (Overlay) vs `tauri.windows.conf.json` (frameless + self-drawn controls).
 
 2. Do **not** hardcode user-facing English/Chinese. Use `createT(locale)` / `t()`.
 

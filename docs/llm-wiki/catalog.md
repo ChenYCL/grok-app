@@ -1,36 +1,72 @@
-# Grok Build 对齐：模型 / 推理 / 权限
+# Grok Build 对齐：模型 / 推理 / 权限 / 模式
 
-源码：`src/lib/grokCatalog.ts`。
+源码：`src/lib/grokCatalog.ts`（静态兜底）、`src-tauri/src/models_catalog.rs`、`src-tauri/src/agent_prefs.rs`。
 
 ## 模型
 
-以本机 `grok models` 为准。当前默认：
+**UI 只展示官方真正可用的模型。服务商是后端渠道，只在设置 → 账户 → 自定义提供商切换。**
 
-| ID | 说明 |
-|----|------|
-| `grok-4.5` | 默认（CLI default） |
-| `grok-build` | 文档与 agent 配置中的经典别名，可选 |
+| 来源 | 说明 |
+|------|------|
+| `models_cache.json` | CLI 官方目录 |
+| 静态兜底 | `grok-4.5` |
 
-更新方式：跑 `grok models`，改 `GROK_BUILD_MODELS`，并在本文件记一笔日期。
+探测：`scripts/probe-models.sh`。Host：`models_list_available`。
+
+Spawn 顺序（CLI 0.2.x）：
+
+```text
+grok agent --model <id> --reasoning-effort <e> [--always-approve] stdio
+```
+
+Flags **必须在** `stdio` 之前。连接后 `session/set_model` 再对齐一次。
 
 ## 推理强度（effort）
 
-对应 CLI `--reasoning-effort` / `--effort`：`high` | `medium` | `low`。
+`high` | `medium` | `low` → `--reasoning-effort`。
 
-## 会话模式（mode）
+中途修改：soft-disconnect agent → 下一条消息重连。无 `session/set_effort` RPC。
 
-桌面壳：`agent` | `plan` | `ask`。
+## 会话模式（mode）— 产品态
 
-## 权限（含 YOLO）— 对齐 Grok Build permission modes
+| App | 作用 |
+|-----|------|
+| `agent` | 默认编码 agent |
+| `plan` | 计划模式（ACP `session/set_mode`） |
+| `ask` | 询问 / 偏只读协作 |
 
-| App ID | Grok Build 模式 | 含义 | CLI / 配置 |
-|--------|-----------------|------|------------|
-| `ask` | `default` | 默认询问 | 默认 |
-| `accept_edits` | `acceptEdits` | 自动批准文件编辑类工具 | `defaultMode` |
-| `allow_for_session` | （Host 会话缓存） | 本会话内允许已批 scope | session cache |
-| `dont_ask` | `dontAsk` | 未预批则拒绝（不弹窗） | headless / 高安全 |
-| `always_approve` | `bypassPermissions` | **YOLO 无限制** | `--always-approve` / yolo |
+实现：
 
-YOLO 必须在 UI 二次确认后才可启用（composer + 设置）。
+1. 连接成功后 `session/set_mode`（尝试 `plan` / `ask` / `agent` 等候选 modeId）。  
+2. 中途切换：优先 `set_mode`；失败则 soft-respawn。  
+3. 按 `composerPrefsScope` 记忆。
 
-Host：`PermissionPolicy`（`src-tauri/src/permission.rs`）。
+## 权限（含 YOLO）
+
+| App ID | Agent 配置 `[ui] permission_mode` | Claude `defaultMode` | Spawn |
+|--------|-----------------------------------|----------------------|-------|
+| `ask` | `default` | `default` | — |
+| `accept_edits` | `acceptEdits` | `acceptEdits` | — |
+| `allow_for_session` | `default` + Host 会话缓存 | `default` | — |
+| `dont_ask` | `dontAsk` | `dontAsk` | — |
+| `always_approve` | `always-approve` + `yolo=true` | `bypassPermissions` | `--always-approve` |
+
+**Independent 模式**（默认）：写入 `~/.grok-app/agent-home/config.toml` 与 `agent-home/.claude/settings.json`，agent 进程侧真正按策略执行。
+
+**Shared 模式**：不改写用户 `~/.grok/config.toml`；Host 策略 + YOLO 时的 `--always-approve`。
+
+中途改权限：同步配置 + soft-respawn（含 YOLO 降级）。Host 在收到 `session/request_permission` 时仍按 live policy 自动放行/拒绝。
+
+注意：读工具与部分只读 shell 在 agent 内建白名单下仍可能不弹窗（Grok Build 设计）。
+
+**下载默认放行（Host）**：`curl -o/-O`、`wget`、`aria2c` 等把资源写到**项目目录内**的 shell，Host 在非 `dont_ask`/`deny` 策略下自动批准，避免生图后 `curl` 落盘卡在权限弹窗直至 600s 超时。项目外路径仍须审批（仅 `always_approve` 例外）。
+
+## 偏好记忆范围
+
+`composerPrefsScope` = `global` | `project` | `session`。
+
+覆盖 model / effort / mode / permission。切换 chip → `composer_prefs_set` / `session_set_policy` / `session_set_model`。
+
+## 服务商
+
+自定义提供商 = 渠道路由，**不进**模型选择器。在 Providers 面板切换。

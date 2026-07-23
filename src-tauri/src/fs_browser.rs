@@ -436,6 +436,357 @@ pub fn read_file(project_root: &str, relative: &str) -> Result<FsReadResult, Str
     if !path.is_file() {
         return Err(format!("not a file: {rel_in}"));
     }
+    read_path(path, rel_in)
+}
+
+/// Read any absolute filesystem path for chat → resource pane preview.
+/// Not limited to a project root (agent outputs, session media, etc.).
+pub fn read_absolute_file(absolute: &str) -> Result<FsReadResult, String> {
+    let raw = absolute.trim();
+    if raw.is_empty() {
+        return Err("empty path".into());
+    }
+    if raw.contains('\0') {
+        return Err("invalid path".into());
+    }
+    let path = PathBuf::from(raw);
+    let path = path
+        .canonicalize()
+        .map_err(|e| format!("path not found: {e}"))?;
+    if !path.is_file() {
+        return Err(format!("not a file: {raw}"));
+    }
+    let name = path
+        .file_name()
+        .map(|s| s.to_string_lossy().to_string())
+        .unwrap_or_else(|| raw.to_string());
+    // relative_path field carries the absolute path for absolute opens
+    read_path(path, name)
+}
+
+/// Open a path for chat cards: absolute file, project-relative, sibling under
+/// project parent (e.g. `知识库/...` next to `ai-center/`), or suffix search.
+pub fn open_path_smart(project_root: Option<&str>, path: &str) -> Result<FsReadResult, String> {
+    let raw = path.trim();
+    if raw.is_empty() {
+        return Err("empty path".into());
+    }
+    if raw.contains('\0') {
+        return Err("invalid path".into());
+    }
+
+    // 1) Absolute path that exists
+    let as_path = PathBuf::from(raw);
+    if as_path.is_absolute() {
+        if as_path.is_file() {
+            let canon = as_path
+                .canonicalize()
+                .map_err(|e| format!("path not found: {e}"))?;
+            let name = canon
+                .file_name()
+                .map(|s| s.to_string_lossy().to_string())
+                .unwrap_or_else(|| raw.to_string());
+            return read_path(canon, name);
+        }
+        // Absolute but missing — try suffix under project / parent
+        if let Some(found) = search_under_project_and_parent(project_root, raw) {
+            let name = found
+                .file_name()
+                .map(|s| s.to_string_lossy().to_string())
+                .unwrap_or_else(|| raw.to_string());
+            return read_path(found, name);
+        }
+        return Err(format!("not a file: {raw}"));
+    }
+
+    // 2) Relative: project_root/rel, then parent(project)/rel, then suffix
+    let rel = raw.trim_start_matches("./");
+    if let Some(root) = project_root {
+        let root_pb = PathBuf::from(root);
+        if root_pb.is_dir() {
+            let joined = root_pb.join(rel);
+            if joined.is_file() {
+                let canon = joined
+                    .canonicalize()
+                    .map_err(|e| format!("path not found: {e}"))?;
+                let name = canon
+                    .file_name()
+                    .map(|s| s.to_string_lossy().to_string())
+                    .unwrap_or_else(|| raw.to_string());
+                return read_path(canon, name);
+            }
+
+            // 3) Sibling of project root — common for shared KB next to a repo:
+            //    project = .../document/ai-center
+            //    path    = 知识库/wiki/.../x.md
+            //    real    = .../document/知识库/wiki/.../x.md
+            if let Some(parent) = root_pb.parent() {
+                if parent.is_dir() {
+                    let sibling = parent.join(rel);
+                    if sibling.is_file() {
+                        let canon = sibling
+                            .canonicalize()
+                            .map_err(|e| format!("path not found: {e}"))?;
+                        let name = canon
+                            .file_name()
+                            .map(|s| s.to_string_lossy().to_string())
+                            .unwrap_or_else(|| raw.to_string());
+                        return read_path(canon, name);
+                    }
+                }
+            }
+
+            // 4) Suffix search under project (monorepo subfolder paths)
+            if let Some(found) = find_file_by_suffix(&root_pb, raw) {
+                let name = found
+                    .file_name()
+                    .map(|s| s.to_string_lossy().to_string())
+                    .unwrap_or_else(|| raw.to_string());
+                return read_path(found, name);
+            }
+
+            // 5) Cheap suffix under parent: only if first path segment is a
+            //    direct child of parent (avoids scanning huge trees blindly).
+            if let Some(parent) = root_pb.parent() {
+                if parent.is_dir() {
+                    if let Some(first) = Path::new(rel).components().next() {
+                        let first_name = first.as_os_str();
+                        let candidate_root = parent.join(first_name);
+                        if candidate_root.is_dir() {
+                            if let Some(found) = find_file_by_suffix(&candidate_root, raw) {
+                                let name = found
+                                    .file_name()
+                                    .map(|s| s.to_string_lossy().to_string())
+                                    .unwrap_or_else(|| raw.to_string());
+                                return read_path(found, name);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    Err(format!("not a file: {raw}"))
+}
+
+fn search_under_project_and_parent(
+    project_root: Option<&str>,
+    path_or_suffix: &str,
+) -> Option<PathBuf> {
+    let root = project_root?;
+    let root_pb = PathBuf::from(root);
+    if root_pb.is_dir() {
+        if let Some(found) = find_file_by_suffix(&root_pb, path_or_suffix) {
+            return Some(found);
+        }
+        if let Some(parent) = root_pb.parent() {
+            if parent.is_dir() {
+                // Prefer exact join of path tail under parent children
+                let candidates = suffix_candidates(path_or_suffix);
+                for suf in candidates {
+                    let joined = parent.join(&suf);
+                    if joined.is_file() {
+                        return Some(joined);
+                    }
+                }
+            }
+        }
+    }
+    None
+}
+
+/// Walk project (skip heavy dirs) looking for a path ending with `suffix`.
+/// Tries longest suffix first: `05-handoff/next.md` before `next.md`.
+///
+/// Safety:
+/// - Multi-segment suffixes (`a/b/c.md`) are specific enough → first BFS hit.
+/// - Bare basenames (`README.md`) only succeed when **exactly one** match exists
+///   under the walk — never pick an arbitrary homonym.
+fn find_file_by_suffix(root: &Path, path_or_suffix: &str) -> Option<PathBuf> {
+    let candidates = suffix_candidates(path_or_suffix);
+    for suf in candidates {
+        if let Some(found) = find_one_suffix(root, &suf) {
+            return Some(found);
+        }
+    }
+    None
+}
+
+fn find_one_suffix(root: &Path, suffix: &str) -> Option<PathBuf> {
+    use std::collections::VecDeque;
+
+    if suffix.is_empty() {
+        return None;
+    }
+    let skip = [
+        "node_modules",
+        ".git",
+        "target",
+        "dist",
+        "build",
+        ".next",
+        "vendor",
+        ".cache",
+        "repos",
+        ".venv",
+        "venv",
+        "__pycache__",
+        ".turbo",
+        "coverage",
+        "out",
+    ];
+    // Prefer monorepo-ish roots so handoff/research files are visited early.
+    let priority = [
+        "projects",
+        "docs",
+        "src",
+        "playbook",
+        "programs",
+        "memory",
+        "ops",
+        "wiki",
+        "knowledge",
+        "05-handoff",
+        "01-research",
+        "02-plan",
+        "03-build",
+        "04-review",
+    ];
+    let is_basename = !suffix.contains('/') && !suffix.contains('\\');
+    let needle = format!("/{suffix}");
+    // Bare names: wider scan + uniqueness check. Multi-segment: smaller budget.
+    let max_visits: usize = if is_basename { 50_000 } else { 15_000 };
+
+    let is_priority = |name: &str| priority.iter().any(|p| *p == name);
+
+    let matches_file = |path: &Path, file_name: &str| -> bool {
+        if is_basename {
+            return file_name == suffix;
+        }
+        let s = path.to_string_lossy().replace('\\', "/");
+        s.ends_with(&needle) || s.ends_with(suffix)
+    };
+
+    let mut queue: VecDeque<PathBuf> = VecDeque::new();
+    let mut hits: Vec<PathBuf> = Vec::new();
+
+    // Seed: priority children of root first (true BFS), then the rest.
+    if let Ok(rd) = fs::read_dir(root) {
+        let mut rest = Vec::new();
+        for ent in rd.flatten() {
+            let name = ent.file_name();
+            let name_str = name.to_string_lossy();
+            if skip.iter().any(|s| *s == name_str.as_ref()) {
+                continue;
+            }
+            let p = ent.path();
+            let is_dir = ent.file_type().map(|t| t.is_dir()).unwrap_or(false);
+            if is_dir {
+                if is_priority(name_str.as_ref()) {
+                    queue.push_back(p);
+                } else {
+                    rest.push(p);
+                }
+            } else if matches_file(&p, name_str.as_ref()) {
+                if !is_basename {
+                    // Specific multi-segment (or root-level exact): take first hit.
+                    return Some(p);
+                }
+                hits.push(p);
+            }
+        }
+        for p in rest {
+            queue.push_back(p);
+        }
+    }
+
+    let mut visits = 0usize;
+    while let Some(dir) = queue.pop_front() {
+        if visits >= max_visits {
+            break;
+        }
+        let rd = match fs::read_dir(&dir) {
+            Ok(r) => r,
+            Err(_) => continue,
+        };
+        let mut later_dirs = Vec::new();
+        for ent in rd.flatten() {
+            visits += 1;
+            if visits >= max_visits {
+                break;
+            }
+            let name = ent.file_name();
+            let name_str = name.to_string_lossy();
+            if skip.iter().any(|s| *s == name_str.as_ref()) {
+                continue;
+            }
+            let p = ent.path();
+            let is_dir = ent.file_type().map(|t| t.is_dir()).unwrap_or(false);
+            if is_dir {
+                if is_priority(name_str.as_ref()) {
+                    queue.push_front(p);
+                } else {
+                    later_dirs.push(p);
+                }
+                continue;
+            }
+            if matches_file(&p, name_str.as_ref()) {
+                if !is_basename {
+                    // Path-like suffix is specific enough (e.g. `05-handoff/foo.md`).
+                    return Some(p);
+                }
+                hits.push(p);
+                // Keep scanning bare names so we can reject ambiguous homonyms.
+            }
+        }
+        for p in later_dirs {
+            queue.push_back(p);
+        }
+    }
+
+    if !is_basename {
+        return None;
+    }
+
+    // Bare basename: only auto-open when unique under the scanned tree.
+    match hits.len() {
+        1 => hits.pop(),
+        _ => None, // 0 or many → do not guess
+    }
+}
+
+/// Build suffix search keys from a path: full rel, then shorter tails.
+fn suffix_candidates(path: &str) -> Vec<String> {
+    let t = path
+        .trim()
+        .trim_start_matches("./")
+        .replace('\\', "/");
+    let t = t.trim_start_matches('/');
+    if t.is_empty() {
+        return Vec::new();
+    }
+    let mut parts: Vec<&str> = t.split('/').filter(|s| !s.is_empty()).collect();
+    // If absolute-looking leftover, keep all components
+    if parts.is_empty() {
+        return Vec::new();
+    }
+    // Drop drive-like first component on windows-ish absolute tails
+    if parts[0].ends_with(':') {
+        parts.remove(0);
+    }
+    let mut out = Vec::new();
+    let max = parts.len().min(5);
+    for n in (1..=max).rev() {
+        let suf = parts[parts.len() - n..].join("/");
+        if !out.iter().any(|x: &String| x == &suf) {
+            out.push(suf);
+        }
+    }
+    out
+}
+
+fn read_path(path: PathBuf, rel_in: String) -> Result<FsReadResult, String> {
     let name = path
         .file_name()
         .map(|s| s.to_string_lossy().to_string())
@@ -699,6 +1050,86 @@ mod tests {
     }
 
     #[test]
+    fn open_path_smart_sibling_under_parent() {
+        // project = <tmp>/document/ai-center
+        // file    = <tmp>/document/知识库/wiki/x.md
+        // agent writes relative: 知识库/wiki/x.md
+        let dir = tempfile_dir();
+        let project = dir.join("document").join("ai-center");
+        let kb = dir
+            .join("document")
+            .join("知识库")
+            .join("wiki")
+            .join("concepts");
+        fs::create_dir_all(&project).unwrap();
+        fs::create_dir_all(&kb).unwrap();
+        let name = "AI超级员工多角色Agent边界架构.md";
+        let file = kb.join(name);
+        fs::write(&file, b"# boundary\n").unwrap();
+        let rel = format!("知识库/wiki/concepts/{name}");
+        let r = open_path_smart(Some(project.to_str().unwrap()), &rel);
+        assert!(r.is_ok(), "{r:?}");
+        assert_eq!(r.unwrap().name, name);
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn open_path_smart_absolute_exists() {
+        let dir = tempfile_dir();
+        let f = dir.join("abs.md");
+        fs::write(&f, b"ok").unwrap();
+        let r = open_path_smart(None, f.to_str().unwrap());
+        assert!(r.is_ok(), "{r:?}");
+        assert_eq!(r.unwrap().name, "abs.md");
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn open_path_smart_bare_filename_under_projects() {
+        // Agent often writes just `continuation-handoff.md` after citing the full path.
+        let dir = tempfile_dir();
+        let nested = dir
+            .join("projects")
+            .join("2026-07-demo")
+            .join("05-handoff");
+        fs::create_dir_all(&nested).unwrap();
+        // noise that would exhaust a shallow/unprioritized walk
+        for i in 0..40 {
+            let noise = dir.join("noise").join(format!("pkg{i}")).join("src");
+            fs::create_dir_all(&noise).unwrap();
+            let _ = fs::File::create(noise.join("index.js"));
+        }
+        let name = "continuation-handoff.md";
+        fs::write(nested.join(name), b"# handoff\n").unwrap();
+        let r = open_path_smart(Some(dir.to_str().unwrap()), name);
+        assert!(r.is_ok(), "{r:?}");
+        assert_eq!(r.unwrap().name, name);
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn open_path_smart_bare_filename_rejects_ambiguous() {
+        let dir = tempfile_dir();
+        let a = dir.join("projects").join("a").join("05-handoff");
+        let b = dir.join("projects").join("b").join("05-handoff");
+        fs::create_dir_all(&a).unwrap();
+        fs::create_dir_all(&b).unwrap();
+        let name = "continuation-handoff.md";
+        fs::write(a.join(name), b"a\n").unwrap();
+        fs::write(b.join(name), b"b\n").unwrap();
+        // Two same basenames → must not pick either arbitrarily.
+        let r = open_path_smart(Some(dir.to_str().unwrap()), name);
+        assert!(r.is_err(), "expected ambiguous bare name to fail, got {r:?}");
+        // Multi-segment still works.
+        let r2 = open_path_smart(
+            Some(dir.to_str().unwrap()),
+            &format!("projects/a/05-handoff/{name}"),
+        );
+        assert!(r2.is_ok(), "{r2:?}");
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
     fn xml_to_plain_strips_tags() {
         let xml = r#"<w:document><w:p><w:t>小猪去买菜</w:t></w:p><w:p><w:t>第二段</w:t></w:p></w:document>"#;
         let t = xml_to_plain(xml);
@@ -750,3 +1181,4 @@ mod tests {
         p
     }
 }
+

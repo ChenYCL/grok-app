@@ -5,6 +5,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { HeatmapDay } from "@/lib/api";
+import { Tip } from "@/components/ui/tooltip";
 
 type Metric = "requests" | "tokens";
 
@@ -283,48 +284,54 @@ export function Heatmap({
             }}
           >
             {weeks.map((week, wi) =>
-              week.map((cellItem, di) => (
-                <button
-                  key={`${wi}-${di}`}
-                  type="button"
-                  role="gridcell"
-                  disabled={cellItem.empty || !cellItem.date}
-                  className={
-                    "gh-heatmap__cell" +
-                    (cellItem.empty ? " is-empty" : "") +
-                    (tip?.date === cellItem.date ? " is-selected" : "")
-                  }
-                  style={{
-                    gridColumn: wi + 1,
-                    gridRow: di + 1,
-                    width: cell,
-                    height: cell,
-                    backgroundColor: cellItem.empty
-                      ? "transparent"
-                      : LEVEL_COLORS[cellItem.level],
-                  }}
-                  title={
-                    cellItem.date
-                      ? `${cellItem.date}: ${cellItem.value}`
-                      : undefined
-                  }
-                  onClick={(e) => {
-                    if (!cellItem.date || cellItem.empty) return;
-                    const rect = (
-                      e.currentTarget as HTMLElement
-                    ).getBoundingClientRect();
-                    const parent = containerRef.current?.getBoundingClientRect();
-                    if (!parent) return;
-                    setTip({
-                      date: cellItem.date,
-                      requests: cellItem.day?.requests ?? 0,
-                      tokens: cellItem.day?.tokens ?? 0,
-                      x: rect.left - parent.left + rect.width / 2,
-                      y: rect.top - parent.top,
-                    });
-                  }}
-                />
-              )),
+              week.map((cellItem, di) => {
+                const hoverLabel = cellItem.date
+                  ? `${cellItem.date}: ${cellItem.value}`
+                  : "";
+                return (
+                  <Tip
+                    key={`${wi}-${di}`}
+                    label={hoverLabel}
+                    disabled={!hoverLabel}
+                  >
+                    <button
+                      type="button"
+                      role="gridcell"
+                      disabled={cellItem.empty || !cellItem.date}
+                      className={
+                        "gh-heatmap__cell" +
+                        (cellItem.empty ? " is-empty" : "") +
+                        (tip?.date === cellItem.date ? " is-selected" : "")
+                      }
+                      style={{
+                        gridColumn: wi + 1,
+                        gridRow: di + 1,
+                        width: cell,
+                        height: cell,
+                        backgroundColor: cellItem.empty
+                          ? "transparent"
+                          : LEVEL_COLORS[cellItem.level],
+                      }}
+                      onClick={(e) => {
+                        if (!cellItem.date || cellItem.empty) return;
+                        const rect = (
+                          e.currentTarget as HTMLElement
+                        ).getBoundingClientRect();
+                        const parent =
+                          containerRef.current?.getBoundingClientRect();
+                        if (!parent) return;
+                        setTip({
+                          date: cellItem.date,
+                          requests: cellItem.day?.requests ?? 0,
+                          tokens: cellItem.day?.tokens ?? 0,
+                          x: rect.left - parent.left + rect.width / 2,
+                          y: rect.top - parent.top,
+                        });
+                      }}
+                    />
+                  </Tip>
+                );
+              }),
             )}
           </div>
         </div>

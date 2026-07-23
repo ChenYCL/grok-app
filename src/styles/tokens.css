@@ -41,13 +41,13 @@
 
   /* Solid window base — never leave transparent or theme switches flash white */
   --bg-app: #0d0d0d;
-  /* Frosted glass for workbench left rail (over --bg-app) */
-  --bg-sidebar: rgba(16, 16, 16, 0.98);
+  /* Frosted glass for workbench left rail (~90% opacity + stronger blur) */
+  --bg-sidebar: rgba(16, 16, 16, 0.9);
   --bg-sidebar-solid: #101010;
   --bg-main: #151515;
   --bg-aside: #101010;
-  --glass-blur: 40px;
-  --glass-saturate: 1.4;
+  --glass-blur: 56px;
+  --glass-saturate: 1.55;
   --bg-elevated: #1a1a1a;
   --bg-overlay: rgba(0, 0, 0, 0.55);
   --bg-hover: rgba(255, 255, 255, 0.05);
@@ -72,8 +72,10 @@
 
   --success: #3ecf8e;
   --success-muted: rgba(62, 207, 142, 0.14);
-  --warning: #e6b84d;
-  --warning-muted: rgba(230, 184, 77, 0.14);
+  /* Warning / trust / pending — orange (not gold/amber) */
+  --warning: #f0993d;
+  --warning-muted: rgba(240, 153, 61, 0.16);
+  --warning-fg: #1a1008;
   --danger: #f07178;
   --danger-muted: rgba(240, 113, 120, 0.14);
   --info: #6cb6ff;
@@ -88,6 +90,37 @@
   --shadow-window: 0 16px 48px rgba(0, 0, 0, 0.55);
   --shadow-pop: 0 8px 28px rgba(0, 0, 0, 0.45);
 
+  /*
+   * Floating menus (Codex-style frosted panels):
+   * dropdowns, context menus, composer +, select, user sheet.
+   * ~90% opacity + stronger blur to match window glass.
+   */
+  --menu-surface: rgba(38, 38, 40, 0.9);
+  --menu-surface-solid: rgba(42, 42, 44, 0.96);
+  --menu-border: rgba(255, 255, 255, 0.1);
+  --menu-blur: 56px;
+  --menu-saturate: 1.7;
+  --menu-shadow:
+    0 12px 40px rgba(0, 0, 0, 0.48),
+    0 0 0 0.5px rgba(255, 255, 255, 0.06) inset;
+  --menu-radius: 12px;
+  --menu-pad: 6px;
+  --menu-gap: 2px;
+  --menu-item-pad-y: 8px;
+  --menu-item-pad-x: 12px;
+  --menu-item-radius: 8px;
+  --menu-item-gap: 10px;
+  --menu-font: 13px;
+  --menu-font-weight: 400;
+  --menu-icon: 18px;
+  --menu-sep-margin-y: 5px;
+  --menu-sep-margin-x: 8px;
+  --menu-hover: rgba(255, 255, 255, 0.08);
+  --menu-active: rgba(255, 255, 255, 0.1);
+  /* Soft floor only — panels size to content; avoid large fixed widths */
+  --menu-min-width: 0px;
+  --menu-max-width: min(360px, calc(100vw - 16px));
+
   /* mac traffic-light safe inset */
   --titlebar-safe-left: 78px;
 }
@@ -96,12 +129,12 @@
   color-scheme: light;
 
   --bg-app: #f4f4f6;
-  --bg-sidebar: rgba(243, 243, 245, 0.98);
+  --bg-sidebar: rgba(243, 243, 245, 0.9);
   --bg-sidebar-solid: #ececef;
   --bg-main: #fafafa;
   --bg-aside: #f0f0f3;
-  --glass-blur: 40px;
-  --glass-saturate: 1.4;
+  --glass-blur: 56px;
+  --glass-saturate: 1.55;
   --bg-elevated: #ffffff;
   --bg-overlay: rgba(20, 20, 24, 0.4);
   --bg-hover: rgba(0, 0, 0, 0.04);
@@ -118,6 +151,17 @@
   --text-primary: rgba(0, 0, 0, 0.88);
   --text-secondary: rgba(0, 0, 0, 0.55);
   --text-tertiary: rgba(0, 0, 0, 0.36);
+
+  --menu-surface: rgba(255, 255, 255, 0.9);
+  --menu-surface-solid: rgba(255, 255, 255, 0.97);
+  --menu-border: rgba(0, 0, 0, 0.08);
+  --menu-blur: 56px;
+  --menu-saturate: 1.55;
+  --menu-shadow:
+    0 12px 36px rgba(0, 0, 0, 0.14),
+    0 0 0 0.5px rgba(0, 0, 0, 0.04) inset;
+  --menu-hover: rgba(0, 0, 0, 0.05);
+  --menu-active: rgba(0, 0, 0, 0.07);
   --text-inverse: #ffffff;
 
   --accent: #3d5fd9;
@@ -126,8 +170,10 @@
 
   --success: #1a9f63;
   --success-muted: rgba(26, 159, 99, 0.12);
-  --warning: #b58100;
-  --warning-muted: rgba(181, 129, 0, 0.12);
+  /* Warning / trust / pending — orange (not gold/amber) */
+  --warning: #e07020;
+  --warning-muted: rgba(224, 112, 32, 0.12);
+  --warning-fg: #ffffff;
   --danger: #d13b45;
   --danger-muted: rgba(209, 59, 69, 0.1);
   --info: #2a7ed4;

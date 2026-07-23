@@ -421,9 +421,65 @@ pub fn maybe_migrate_legacy_relay(
     Ok(())
 }
 
+/// Cap CLI transport retries (Codex-like). Host also circuit-breaks at 5 via retry_state.
+pub const PROVIDER_MAX_RETRIES: u32 = 5;
+
+/// Ensure `[models] max_retries = 5` so the agent does not spin 15× on 503.
+pub fn ensure_models_retry_cap() -> Result<(), String> {
+    let _ = ensure_agent_home()?;
+    let path = agent_config_toml();
+    let text = read_text(&path);
+    let next = set_models_u32_field(&text, "max_retries", PROVIDER_MAX_RETRIES);
+    if next != text {
+        write_text(&path, &next)?;
+        tracing::info!(
+            target: "providers",
+            "set [models].max_retries = {PROVIDER_MAX_RETRIES}"
+        );
+    }
+    Ok(())
+}
+
+fn set_models_u32_field(text: &str, key: &str, value: u32) -> String {
+    let mut lines: Vec<String> = text.lines().map(|s| s.to_string()).collect();
+    let mut in_models = false;
+    let mut models_start: Option<usize> = None;
+    for i in 0..lines.len() {
+        let trimmed = lines[i].trim().to_string();
+        if trimmed.starts_with('[') {
+            if trimmed == "[models]" {
+                in_models = true;
+                models_start = Some(i);
+            } else if in_models {
+                lines.insert(i, format!("{key} = {value}"));
+                return lines.join("\n");
+            } else {
+                in_models = false;
+            }
+            continue;
+        }
+        if in_models && trimmed.starts_with(key) && trimmed.contains('=') {
+            lines[i] = format!("{key} = {value}");
+            return lines.join("\n");
+        }
+    }
+    if let Some(start) = models_start {
+        lines.insert(start + 1, format!("{key} = {value}"));
+        return lines.join("\n");
+    }
+    let block = format!("\n[models]\n{key} = {value}\n");
+    let base = text.trim_end();
+    if base.is_empty() {
+        block.trim_start().to_string()
+    } else {
+        format!("{base}{block}")
+    }
+}
+
 /// Seed user-requested relay (云翼 / yunyi) once if missing.
 /// Credentials live only in agent-home/config.toml (never logged).
 pub fn ensure_preset_yunyi() -> Result<(), String> {
+    let _ = ensure_models_retry_cap();
     let list = list_custom_providers()?;
     if list.providers.iter().any(|p| p.id == "yunyi") {
         return Ok(());

@@ -140,14 +140,92 @@ fn grok_home() -> PathBuf {
     if let Ok(h) = std::env::var("GROK_HOME") {
         return PathBuf::from(h);
     }
-    let home = std::env::var("HOME")
-        .or_else(|_| std::env::var("USERPROFILE"))
-        .unwrap_or_else(|_| ".".into());
-    PathBuf::from(home).join(".grok")
+    crate::process_util::user_home().join(".grok")
 }
 
 fn auth_json_path() -> PathBuf {
     grok_home().join("auth.json")
+}
+
+/// Canonical CLI auth path (`~/.grok/auth.json`), ignoring process `GROK_HOME`.
+/// Login writes here; independent-mode agents use a different GROK_HOME and need a copy.
+fn cli_default_auth_json_path() -> PathBuf {
+    crate::process_util::user_home()
+        .join(".grok")
+        .join("auth.json")
+}
+
+fn agent_home_auth_json_path() -> PathBuf {
+    paths::agent_home_dir().join("auth.json")
+}
+
+/// Copy official OAuth credentials into App agent-home so independent-mode
+/// agents (`GROK_HOME=~/.grok-app/agent-home`) can authenticate.
+///
+/// Without this, UI shows "signed in" (reads `~/.grok/auth.json`) while the
+/// agent process sees `auth_kind=none` and fails with 401.
+pub fn sync_cli_auth_to_agent_home() -> Result<(), String> {
+    let src = {
+        // Prefer the path account/login actually use, then hard default ~/.grok.
+        let primary = auth_json_path();
+        if primary.is_file() {
+            primary
+        } else {
+            cli_default_auth_json_path()
+        }
+    };
+    if !src.is_file() {
+        return Ok(());
+    }
+    let dest = agent_home_auth_json_path();
+    if src == dest {
+        return Ok(());
+    }
+    let dest_dir = paths::agent_home_dir();
+    fs::create_dir_all(&dest_dir).map_err(|e| e.to_string())?;
+
+    let need_copy = match (src.metadata(), dest.metadata()) {
+        (Ok(sm), Ok(dm)) => {
+            let src_m = sm.modified().ok();
+            let dst_m = dm.modified().ok();
+            match (src_m, dst_m) {
+                (Some(a), Some(b)) => a > b || sm.len() != dm.len(),
+                _ => true,
+            }
+        }
+        (Ok(_), Err(_)) => true,
+        _ => false,
+    };
+    if !need_copy {
+        return Ok(());
+    }
+
+    fs::copy(&src, &dest).map_err(|e| {
+        format!(
+            "failed to sync auth.json → agent-home: {e} (src={}, dest={})",
+            src.display(),
+            dest.display()
+        )
+    })?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let _ = fs::set_permissions(&dest, fs::Permissions::from_mode(0o600));
+    }
+    info!(
+        "account: synced auth.json to agent-home ({})",
+        dest.display()
+    );
+    Ok(())
+}
+
+/// Remove agent-home copy of auth (logout / wipe).
+pub fn clear_agent_home_auth() {
+    let p = agent_home_auth_json_path();
+    if p.is_file() {
+        let _ = fs::remove_file(&p);
+        info!("account: cleared agent-home auth.json");
+    }
 }
 
 fn sessions_root() -> PathBuf {
@@ -520,7 +598,8 @@ fn billing_from_quota_snap(snap: &crate::supergrok_quota::AccountQuotaSnapshot) 
         available,
         source: snap.source.clone(),
         message: snap.last_error.clone(),
-        subscription_tier: Some("SuperGrok / Grok Build".into()),
+        // Filled by merge_subscription_into_billing after /v1/settings (or JWT fallback).
+        subscription_tier: None,
         credit_usage_percent: Some(f64::from(snap.used_percent)),
         remaining_percent: Some(f64::from(snap.remaining_percent)),
         monthly_limit: None,
@@ -547,6 +626,164 @@ fn billing_from_quota_snap(snap: &crate::supergrok_quota::AccountQuotaSnapshot) 
         subscribe_url: SUBSCRIBE_URL.into(),
         fetched_at: Some(snap.fetched_at.to_rfc3339()),
     }
+}
+
+/// Brand-facing subscription label from cli-chat-proxy (not invented client-side).
+#[derive(Debug, Clone, Default)]
+struct SubscriptionMeta {
+    /// e.g. "SuperGrok Heavy" from settings.subscription_tier_display
+    display: Option<String>,
+    /// e.g. "SuperGrokPro" from user.subscriptionTier
+    code: Option<String>,
+}
+
+/// Map API enum / short codes → user-facing plan name (official wording).
+fn display_from_subscription_code(code: &str) -> Option<String> {
+    let c = code.trim();
+    if c.is_empty() {
+        return None;
+    }
+    let lower = c.to_ascii_lowercase().replace(['_', ' '], "");
+    match lower.as_str() {
+        "supergrokpro" | "supergrokheavy" | "heavy" => Some("SuperGrok Heavy".into()),
+        "supergrok" | "supergroklite" | "grokpro" => Some("SuperGrok".into()),
+        "xpremiumplus" | "x_premium_plus" | "premiumplus" => Some("X Premium+".into()),
+        "xpremium" | "premium" => Some("X Premium".into()),
+        "free" | "basic" | "none" | "null" | "anonymous" => None,
+        // Already a display string from settings (keep as-is).
+        _ if c.contains(' ') || c.starts_with("Super") || c.starts_with("X ") => Some(c.into()),
+        _ => Some(c.into()),
+    }
+}
+
+fn resolve_subscription_display(meta: &SubscriptionMeta) -> Option<String> {
+    if let Some(d) = meta.display.as_ref().map(|s| s.trim()).filter(|s| !s.is_empty()) {
+        return Some(d.to_string());
+    }
+    meta.code
+        .as_deref()
+        .and_then(display_from_subscription_code)
+}
+
+/// Unverified JWT payload (claims only — never used for security decisions).
+fn jwt_payload_unverified(token: &str) -> Option<Value> {
+    let parts: Vec<&str> = token.split('.').collect();
+    if parts.len() < 2 {
+        return None;
+    }
+    let payload_b64 = parts[1];
+    let mut s = payload_b64.replace('-', "+").replace('_', "/");
+    while s.len() % 4 != 0 {
+        s.push('=');
+    }
+    use base64::Engine;
+    let bytes = base64::engine::general_purpose::STANDARD.decode(s).ok()?;
+    serde_json::from_slice(&bytes).ok()
+}
+
+/// Soft fallback when remote subscription endpoints fail (JWT `tier` is numeric).
+fn display_from_jwt_tier(tier: i64) -> Option<String> {
+    // Observed: paid SuperGrok-capable accounts ≥ 2; Heavy-class accounts observed at 5.
+    // Prefer live `subscription_tier_display` when available.
+    if tier >= 5 {
+        Some("SuperGrok Heavy".into())
+    } else if tier >= 2 {
+        Some("SuperGrok".into())
+    } else {
+        None
+    }
+}
+
+fn merge_subscription_into_billing(billing: &mut BillingSnapshot, meta: &SubscriptionMeta, token: &str) {
+    if let Some(display) = resolve_subscription_display(meta) {
+        billing.subscription_tier = Some(display);
+        return;
+    }
+    if billing.subscription_tier.is_some() {
+        return;
+    }
+    if let Some(tier) = jwt_payload_unverified(token)
+        .and_then(|p| p.get("tier").and_then(|v| v.as_i64()))
+        .and_then(display_from_jwt_tier)
+    {
+        billing.subscription_tier = Some(tier);
+    }
+}
+
+/// Fetch brand-facing plan name.
+/// Primary: GET /v1/settings → subscription_tier_display ("SuperGrok Heavy")
+/// Fallback: GET /v1/user?include=subscription → subscriptionTier ("SuperGrokPro")
+async fn fetch_subscription_meta(token: &str) -> SubscriptionMeta {
+    let client = match reqwest::Client::builder()
+        .timeout(Duration::from_secs(8))
+        .user_agent("GrokApp/0.1 (desktop; unofficial)")
+        .build()
+    {
+        Ok(c) => c,
+        Err(_) => return SubscriptionMeta::default(),
+    };
+
+    let mut meta = SubscriptionMeta::default();
+
+    // 1) settings — human display string (best for brand UI)
+    let settings_url = "https://cli-chat-proxy.grok.com/v1/settings";
+    match client
+        .get(settings_url)
+        .header("Authorization", format!("Bearer {token}"))
+        .header("x-grok-client-mode", "cli")
+        .header("Accept", "application/json")
+        .send()
+        .await
+    {
+        Ok(r) if r.status().is_success() => {
+            if let Ok(v) = r.json::<Value>().await {
+                meta.display = v
+                    .get("subscription_tier_display")
+                    .or_else(|| v.get("subscriptionTierDisplay"))
+                    .and_then(|x| x.as_str())
+                    .map(|s| s.trim().to_string())
+                    .filter(|s| !s.is_empty());
+            }
+        }
+        Ok(r) => {
+            warn!(
+                "account: subscription settings → HTTP {}",
+                r.status().as_u16()
+            );
+        }
+        Err(e) => warn!("account: subscription settings failed: {e}"),
+    }
+
+    // 2) user profile — API enum (always useful; fills gaps)
+    let user_url = "https://cli-chat-proxy.grok.com/v1/user?include=subscription";
+    match client
+        .get(user_url)
+        .header("Authorization", format!("Bearer {token}"))
+        .header("x-grok-client-mode", "cli")
+        .header("Accept", "application/json")
+        .send()
+        .await
+    {
+        Ok(r) if r.status().is_success() => {
+            if let Ok(v) = r.json::<Value>().await {
+                meta.code = v
+                    .get("subscriptionTier")
+                    .or_else(|| v.get("subscription_tier"))
+                    .and_then(|x| x.as_str())
+                    .map(|s| s.trim().to_string())
+                    .filter(|s| !s.is_empty());
+            }
+        }
+        Ok(r) => {
+            warn!(
+                "account: subscription user → HTTP {}",
+                r.status().as_u16()
+            );
+        }
+        Err(e) => warn!("account: subscription user failed: {e}"),
+    }
+
+    meta
 }
 
 async fn fetch_billing_remote(token: &str) -> BillingSnapshot {
@@ -869,12 +1106,36 @@ pub async fn account_status(manual_cli: Option<&str>, refresh_billing: bool) -> 
 
     let billing = if refresh_billing {
         if let Some(token) = read_access_token() {
-            let snap = crate::supergrok_quota::fetch_quota_best_effort(&token).await;
+            // Quota + subscription in parallel (settings/user are cheap vs gRPC billing).
+            let (snap, sub_meta) = tokio::join!(
+                crate::supergrok_quota::fetch_quota_best_effort(&token),
+                fetch_subscription_meta(&token),
+            );
             let mut b = billing_from_quota_snap(&snap);
-            if b.available {
-                save_billing_cache(&b);
+            merge_subscription_into_billing(&mut b, &sub_meta, &token);
+            if b.available || b.subscription_tier.is_some() {
+                // Cache even when only tier resolved (brand UI still works offline briefly).
+                if b.available {
+                    save_billing_cache(&b);
+                } else if let Some(mut cached) = load_billing_cache() {
+                    if cached.available {
+                        // Keep quota numbers; overlay fresh tier if we got one.
+                        if b.subscription_tier.is_some() {
+                            cached.subscription_tier = b.subscription_tier.clone();
+                        }
+                        cached.message = Some(format!(
+                            "Cached · {}",
+                            b.message.unwrap_or_else(|| "quota refresh failed".into())
+                        ));
+                        b = cached;
+                    } else {
+                        save_billing_cache(&b);
+                    }
+                } else if b.subscription_tier.is_some() {
+                    save_billing_cache(&b);
+                }
             } else if let Some(mut cached) = load_billing_cache() {
-                if cached.available {
+                if cached.available || cached.subscription_tier.is_some() {
                     cached.message = Some(format!(
                         "Cached · {}",
                         b.message.unwrap_or_else(|| "refresh failed".into())
@@ -970,12 +1231,14 @@ pub async fn account_login(method: &str, manual_cli: Option<&str>) -> LoginResul
         let cli = cli.clone();
         let arg = arg.to_string();
         move || {
-            Command::new(&cli)
-                .arg("login")
+            let mut cmd = Command::new(&cli);
+            cmd.arg("login")
                 .arg(&arg)
                 .stdout(Stdio::piped())
-                .stderr(Stdio::piped())
-                .output()
+                .stderr(Stdio::piped());
+            // Login may open a browser; still hide the console flash on Windows.
+            crate::process_util::apply_no_window_std(&mut cmd);
+            cmd.output()
         }
     })
     .await;
@@ -1048,6 +1311,13 @@ pub async fn account_login(method: &str, manual_cli: Option<&str>) -> LoginResul
     let profile = read_auth_profile();
     let ok = profile.signed_in;
 
+    // Independent mode agents read GROK_HOME=agent-home — mirror credentials there.
+    if ok {
+        if let Err(e) = sync_cli_auth_to_agent_home() {
+            warn!("account: post-login auth sync failed: {e}");
+        }
+    }
+
     let message = if profile.signed_in {
         format!(
             "Signed in as {}",
@@ -1092,11 +1362,12 @@ pub async fn account_login(method: &str, manual_cli: Option<&str>) -> LoginResul
 pub async fn account_logout(manual_cli: Option<&str>) -> Result<AccountProfile, String> {
     if let Some(cli) = resolve_cli_path(manual_cli) {
         let res = tokio::task::spawn_blocking(move || {
-            Command::new(&cli)
-                .arg("logout")
+            let mut cmd = Command::new(&cli);
+            cmd.arg("logout")
                 .stdout(Stdio::null())
-                .stderr(Stdio::null())
-                .status()
+                .stderr(Stdio::null());
+            crate::process_util::apply_no_window_std(&mut cmd);
+            cmd.status()
         })
         .await
         .map_err(|e| e.to_string())?;
@@ -1108,16 +1379,21 @@ pub async fn account_logout(manual_cli: Option<&str>) -> Result<AccountProfile, 
             Ok(st) => {
                 warn!("account: grok logout exit {st}; clearing auth.json fallback");
                 let _ = fs::remove_file(auth_json_path());
+                let _ = fs::remove_file(cli_default_auth_json_path());
             }
             Err(e) => {
                 warn!("account: grok logout spawn failed: {e}");
                 let _ = fs::remove_file(auth_json_path());
+                let _ = fs::remove_file(cli_default_auth_json_path());
             }
         }
     } else {
         // No CLI — best-effort wipe of local CLI auth cache only.
         let _ = fs::remove_file(auth_json_path());
+        let _ = fs::remove_file(cli_default_auth_json_path());
     }
+    // Always drop independent-mode copy so agent cannot keep using old tokens.
+    clear_agent_home_auth();
 
     Ok(read_auth_profile())
 }
@@ -1227,5 +1503,28 @@ mod tests {
     fn profile_without_auth_is_signed_out() {
         // Just ensure function is callable; may be signed in on developer machines.
         let _ = read_auth_profile();
+    }
+
+    #[test]
+    fn maps_subscription_codes_to_display() {
+        assert_eq!(
+            display_from_subscription_code("SuperGrokPro").as_deref(),
+            Some("SuperGrok Heavy")
+        );
+        assert_eq!(
+            display_from_subscription_code("SuperGrok").as_deref(),
+            Some("SuperGrok")
+        );
+        assert_eq!(
+            resolve_subscription_display(&SubscriptionMeta {
+                display: Some("SuperGrok Heavy".into()),
+                code: Some("SuperGrokPro".into()),
+            })
+            .as_deref(),
+            Some("SuperGrok Heavy")
+        );
+        assert_eq!(display_from_jwt_tier(5).as_deref(), Some("SuperGrok Heavy"));
+        assert_eq!(display_from_jwt_tier(3).as_deref(), Some("SuperGrok"));
+        assert_eq!(display_from_jwt_tier(0), None);
     }
 }

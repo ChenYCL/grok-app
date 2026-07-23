@@ -8,6 +8,7 @@ import { useEffect, useRef, useState } from "react";
 import Plyr from "plyr";
 import "plyr/dist/plyr.css";
 import * as api from "@/lib/api";
+import { Tip } from "@/components/ui/tooltip";
 
 export interface FileMediaPlayerProps {
   /** media:// / asset:// / http(s) / data: URL */
@@ -95,7 +96,6 @@ export function FileMediaPlayer({
     el.setAttribute("playsinline", "true");
     el.setAttribute("preload", "metadata");
     el.controls = true;
-    if (title) el.title = title;
     // Set src directly on the element (no <source type=…>) so a wrong MIME
     // never blocks the browser from trying to play the stream.
     el.src = src;
@@ -166,7 +166,7 @@ export function FileMediaPlayer({
       playerRef.current = null;
       host.innerHTML = "";
     };
-  }, [src, kind, title]);
+  }, [src, kind]);
 
   const openExternal = async () => {
     if (!absolutePath || !api.isTauri()) return;
@@ -180,7 +180,7 @@ export function FileMediaPlayer({
   const loadError = labels?.loadError ?? "Failed to load media";
   const openExternalLabel = labels?.openExternal ?? "Open with system player";
 
-  return (
+  const body = (
     <div
       className={
         `file-media file-media--${kind}` +
@@ -217,4 +217,6 @@ export function FileMediaPlayer({
       )}
     </div>
   );
+
+  return title ? <Tip label={title}>{body}</Tip> : body;
 }

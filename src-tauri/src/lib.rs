@@ -2,15 +2,19 @@
 
 mod account;
 mod acp_client;
+mod agent_prefs;
 mod supergrok_quota;
 mod cli_probe;
+mod cli_install;
 mod commands;
 mod editors;
 mod error;
 mod fs_browser;
 mod media_protocol;
 mod mock_acp;
+mod models_catalog;
 mod paths;
+mod process_util;
 mod permission;
 mod providers;
 mod session_title;
@@ -21,6 +25,7 @@ mod integration_test;
 mod session_fsm;
 mod session_manager;
 mod store;
+mod tray;
 
 use std::sync::Arc;
 
@@ -49,14 +54,22 @@ pub fn run() {
                 responder.respond(response);
             });
         })
+        // Close button / Alt+F4 → hide to tray only (no Dock / taskbar icon).
+        // Full exit: tray "Quit Grok" or Cmd+Q.
+        .on_window_event(|window, event| {
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                use tauri::Manager;
+                api.prevent_close();
+                tray::hide_to_tray(window.app_handle());
+            }
+        })
         .setup(|app| {
             use tauri::Manager;
             if let Some(window) = app.get_webview_window("main") {
-                // Transparent layers so CSS backdrop-filter / native vibrancy show through.
-                // Transparent window + webview so native vibrancy / CSS blur can show.
-                let _ = window.set_background_color(Some(tauri::window::Color(0, 0, 0, 0)));
                 #[cfg(target_os = "macos")]
                 {
+                    // Transparent layers so CSS backdrop-filter / native vibrancy show through.
+                    let _ = window.set_background_color(Some(tauri::window::Color(0, 0, 0, 0)));
                     // Frosted glass under transparent regions (sidebar). Solid main CSS covers the rest.
                     use window_vibrancy::{apply_vibrancy, NSVisualEffectMaterial};
                     if let Err(e) = apply_vibrancy(
@@ -68,6 +81,15 @@ pub fn run() {
                         tracing::warn!("window vibrancy: {e}");
                     }
                 }
+                // Windows / others: solid base matching dark theme (avoids white flash / WebView2 glitches).
+                #[cfg(not(target_os = "macos"))]
+                {
+                    let _ = window.set_background_color(Some(tauri::window::Color(13, 13, 13, 255)));
+                }
+            }
+            // Menu-bar / system tray — logo.svg tray icon (not dock app icon)
+            if let Err(e) = tray::setup_tray(app.handle()) {
+                tracing::warn!("tray setup: {e}");
             }
             Ok(())
         })
@@ -80,6 +102,10 @@ pub fn run() {
             commands::session_reattach,
             commands::session_resolve_permission,
             commands::probe_cli,
+            commands::cli_install_latest,
+            commands::cli_install_commands,
+            commands::pick_cli_binary,
+            commands::open_external_url,
             commands::projects_list,
             commands::project_add,
             commands::project_add_dialog,
@@ -95,22 +121,40 @@ pub fn run() {
             commands::session_rename,
             commands::session_set_archived,
             commands::session_messages,
+            commands::session_media_root,
+            commands::session_resolve_relative_media,
             commands::settings_get,
             commands::settings_set,
+            commands::models_list_available,
+            commands::composer_prefs_resolve,
+            commands::composer_prefs_set,
             commands::session_set_policy,
+            commands::session_set_model,
+            commands::session_rewind_drop_last_user,
             commands::secrets_get_masked,
             commands::secrets_set,
             commands::provider_ping,
             commands::import_grok_cli_config,
             commands::import_grok_go_config,
             commands::doctor_report,
+            commands::skills_list,
+            commands::inspect_mcp,
             commands::pick_directory,
             commands::paths_classify,
             commands::path_open,
             commands::path_reveal,
             commands::fs_list_dir,
             commands::fs_read_file,
+            tray::tray_refresh,
+            commands::fs_read_absolute,
+            commands::fs_open_path,
             commands::session_auto_title,
+            commands::automations_list,
+            commands::automation_create,
+            commands::automation_update,
+            commands::automation_set_enabled,
+            commands::automation_mark_run,
+            commands::automation_delete,
             commands::account_status,
             commands::account_login,
             commands::account_logout,
@@ -126,6 +170,20 @@ pub fn run() {
             commands::editors_list,
             commands::open_in_editor,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running Grok App");
+        .build(tauri::generate_context!())
+        .expect("error while building Grok App")
+        .run(|app, event| {
+            // macOS: click Dock icon when all windows hidden → show main window again.
+            #[cfg(target_os = "macos")]
+            if let tauri::RunEvent::Reopen {
+                has_visible_windows,
+                ..
+            } = event
+            {
+                if !has_visible_windows {
+                    tray::show_main_window(app);
+                }
+            }
+            let _ = (app, &event);
+        });
 }

@@ -1,6 +1,7 @@
 //! App data roots: independent default `~/.grok-app` (Win: %APPDATA%/grok-app).
 
-use std::path::PathBuf;
+use std::fs;
+use std::path::{Path, PathBuf};
 
 use directories::ProjectDirs;
 
@@ -22,8 +23,7 @@ fn dirs_fallback() -> PathBuf {
             return PathBuf::from(appdata).join("grok-app");
         }
     }
-    let home = std::env::var("HOME").unwrap_or_else(|_| ".".into());
-    PathBuf::from(home).join(".grok-app")
+    crate::process_util::user_home().join(".grok-app")
 }
 
 pub fn ensure_app_dirs() -> std::io::Result<PathBuf> {
@@ -48,10 +48,7 @@ pub fn agent_config_toml() -> PathBuf {
 /// Resolve GROK_HOME for a spawned agent process.
 pub fn resolve_agent_grok_home(session_data_mode: &str) -> PathBuf {
     if session_data_mode == "shared" {
-        let home = std::env::var("HOME")
-            .or_else(|_| std::env::var("USERPROFILE"))
-            .unwrap_or_else(|_| ".".into());
-        return PathBuf::from(home).join(".grok");
+        return crate::process_util::user_home().join(".grok");
     }
     let _ = ensure_app_dirs();
     agent_home_dir()
@@ -78,6 +75,108 @@ pub fn session_dir(session_id: &str) -> PathBuf {
     app_data_root().join("sessions").join(session_id)
 }
 
+/// Host-side scheduled automations (shell list; execution via agent sessions).
+pub fn automations_file() -> PathBuf {
+    app_data_root().join("automations.json")
+}
+
+/// Percent-encode a path the way Grok Build names session folders under
+/// `GROK_HOME/sessions/` (encodeURIComponent of the absolute cwd).
+pub fn percent_encode_path_component(s: &str) -> String {
+    let mut out = String::with_capacity(s.len() * 3);
+    for &b in s.as_bytes() {
+        match b {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
+                out.push(b as char);
+            }
+            _ => {
+                out.push('%');
+                out.push(char::from(b"0123456789ABCDEF"[(b >> 4) as usize]));
+                out.push(char::from(b"0123456789ABCDEF"[(b & 0xf) as usize]));
+            }
+        }
+    }
+    out
+}
+
+/// Locate the on-disk agent session directory for a given agent session id.
+/// Layout: `{GROK_HOME}/sessions/{percent-encoded-cwd}/{agent_session_id}/`
+///
+/// `cwd_hint` (project path) avoids a directory scan when known.
+pub fn find_agent_session_dir(
+    agent_session_id: &str,
+    cwd_hint: Option<&str>,
+    session_data_mode: &str,
+) -> Option<PathBuf> {
+    if agent_session_id.is_empty() {
+        return None;
+    }
+    let home = resolve_agent_grok_home(session_data_mode);
+    let sessions = home.join("sessions");
+    if !sessions.is_dir() {
+        return None;
+    }
+
+    if let Some(cwd) = cwd_hint.filter(|s| !s.is_empty()) {
+        let encoded = percent_encode_path_component(cwd);
+        let candidate = sessions.join(encoded).join(agent_session_id);
+        if candidate.is_dir() {
+            return Some(candidate);
+        }
+    }
+
+    // Fallback: scan cwd folders for this agent session id
+    let Ok(entries) = fs::read_dir(&sessions) else {
+        return None;
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if !path.is_dir() {
+            continue;
+        }
+        let candidate = path.join(agent_session_id);
+        if candidate.is_dir() {
+            return Some(candidate);
+        }
+    }
+    None
+}
+
+/// Join agent session root + relative path like `images/1.jpg`.
+/// Rejects `..` segments. Returns None if the resolved file is missing.
+pub fn resolve_session_relative_media(
+    session_root: &Path,
+    relative: &str,
+) -> Option<PathBuf> {
+    let rel = relative.trim().trim_start_matches("./");
+    if rel.is_empty() {
+        return None;
+    }
+    if Path::new(rel).is_absolute() {
+        return None;
+    }
+    let mut clean = PathBuf::new();
+    for comp in Path::new(rel).components() {
+        use std::path::Component;
+        match comp {
+            Component::Normal(s) => clean.push(s),
+            Component::CurDir => {}
+            Component::ParentDir | Component::RootDir | Component::Prefix(_) => {
+                return None;
+            }
+        }
+    }
+    if clean.as_os_str().is_empty() {
+        return None;
+    }
+    let full = session_root.join(clean);
+    if full.is_file() {
+        Some(full)
+    } else {
+        None
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -86,5 +185,21 @@ mod tests {
     fn app_data_root_is_absolute_or_relative_path() {
         let p = app_data_root();
         assert!(!p.as_os_str().is_empty());
+    }
+
+    #[test]
+    fn percent_encode_matches_encode_uri_component_style() {
+        let cwd = "/Users/me/Downloads/5 天 course";
+        let enc = percent_encode_path_component(cwd);
+        assert!(enc.starts_with("%2FUsers%2Fme%2FDownloads%2F5%20"));
+        assert!(enc.contains("%E5%A4%A9") || enc.contains("%"));
+        assert!(!enc.contains('/'));
+    }
+
+    #[test]
+    fn resolve_session_relative_rejects_parent() {
+        let root = PathBuf::from("/tmp/session");
+        assert!(resolve_session_relative_media(&root, "../etc/passwd").is_none());
+        assert!(resolve_session_relative_media(&root, "/etc/passwd").is_none());
     }
 }
