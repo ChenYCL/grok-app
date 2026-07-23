@@ -5,8 +5,16 @@ Usage:
   python3 scripts/changelog-for-release.py 0.1.0
   python3 scripts/changelog-for-release.py v0.1.0
 
-Output: Markdown to stdout (assets table + changelog section + install notes).
+Output: Markdown to stdout:
+  - title
+  - downloads table
+  - CHANGELOG section for that version (update list)
+  - install notes (macOS Gatekeeper / damaged app + Windows + CLI)
+
 Exit 1 if the version section is missing (fail the release job intentionally).
+
+Maintainer rule (AI): edit INSTALL_NOTES / ASSETS_TABLE here for all future
+releases; do not hand-edit a single GitHub Release body.
 """
 from __future__ import annotations
 
@@ -19,24 +27,57 @@ CHANGELOG = ROOT / "CHANGELOG.md"
 
 ASSETS_TABLE = """## Downloads / 下载
 
-| Platform | File (typical) |
-|----------|----------------|
-| macOS Apple Silicon | `*.dmg` (aarch64) |
-| macOS Intel | `*.dmg` (x64) |
-| Windows x64 | `*-setup.exe` / `*.msi` |
+| Platform / 平台 | File (typical) / 文件 |
+|-----------------|------------------------|
+| macOS Apple Silicon | `Grok_*_aarch64.dmg` |
+| macOS Intel | `Grok_*_x64.dmg` |
+| Windows x64 | `Grok_*_x64-setup.exe` |
 
-Full notes below (from `CHANGELOG.md`). 完整说明见下方更新日志。
+Product name in installers is **Grok**. 安装包产品名为 **Grok**。
 """
 
 INSTALL_NOTES = """
 ---
 
-### Install notes / 安装说明
+## Install notes / 安装说明
 
-- **macOS** (unsigned / not notarized): if Gatekeeper blocks the app, run `xattr -cr /Applications/Grok.app`, or right-click → Open. See README.
-- **Windows**: SmartScreen may warn until code signing is configured.
-- Requires **Grok Build CLI** (`grok`) on the machine for real agent sessions.
-- Changelog source: [`CHANGELOG.md`](https://github.com/RongleCat/grok-app/blob/main/CHANGELOG.md)
+### macOS — “App is damaged” / 提示已损坏、无法打开
+
+Release builds are **not Apple-notarized** (unsigned). Gatekeeper may block the app after download. This is **expected**.
+
+未做 Apple 公证时，下载后可能提示「已损坏」「无法验证开发者」等，**属预期**。
+
+**Recommended / 推荐：**
+
+```bash
+# After dragging Grok.app into Applications / 拖到「应用程序」后
+xattr -cr /Applications/Grok.app
+open /Applications/Grok.app
+```
+
+**Also works / 其他方式：**
+
+1. Finder: **right-click** the app → **Open** → confirm again  
+   （右键 App → **打开** → 再次确认）
+2. **System Settings → Privacy & Security** → **Open Anyway**  
+   （**系统设置 → 隐私与安全性** → **仍要打开**）
+
+Only download from this repo’s official Releases.
+
+### Windows
+
+- SmartScreen may warn until code signing is configured → **More info** → **Run anyway**.  
+  SmartScreen 可能提示未知发布者 → **更多信息** → **仍要运行**。
+- Needs **WebView2** (usually preinstalled on Windows 10/11).
+
+### Grok Build CLI
+
+Real agent sessions need a local **Grok Build** CLI (`grok` / `grok.exe`) installed and signed in.  
+真 Agent 能力依赖本机已安装并可登录的 Grok Build CLI。
+
+### Changelog source
+
+Full history: [`CHANGELOG.md`](https://github.com/RongleCat/grok-app/blob/main/CHANGELOG.md)
 """
 
 
@@ -49,7 +90,7 @@ def normalize_version(raw: str) -> str:
 
 def extract_section(text: str, version: str) -> str | None:
     """Return body under ## [version] ... until next ## [ or EOF."""
-    # Allow optional date suffix: ## [0.1.0] - 2026-07-23
+    # Allow optional date suffix: ## [0.1.0] - 2026-07-24
     pat = re.compile(
         rf"^## \[{re.escape(version)}\][^\n]*\n(.*?)(?=^## \[|\Z)",
         re.MULTILINE | re.DOTALL,
@@ -84,7 +125,7 @@ def main() -> int:
         header
         + ASSETS_TABLE
         + "\n"
-        + f"## Changelog / 更新日志 — v{version}\n\n"
+        + f"## What's new / 更新内容 — v{version}\n\n"
         + section
         + "\n"
         + INSTALL_NOTES

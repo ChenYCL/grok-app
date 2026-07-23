@@ -5,39 +5,67 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+**Maintainer rule (AI):** before every `vX.Y.Z` tag, complete `## [X.Y.Z]` below.  
+CI Release body = this section + install notes from `scripts/changelog-for-release.py`.  
+See `docs/llm-wiki/release.md`.
+
 ## [Unreleased]
 
-## [0.1.0] - 2026-07-23
+## [0.1.0] - 2026-07-24
 
 > 中英文对照 / Bilingual notes. English first (Keep a Changelog), then 中文摘要 under each section.
 >
-> **Highlight:** first open-source-ready desktop workbench for **Grok Build** CLI — sessions, media previews, automations, account UI, and multi-platform packaging.
+> **Highlight:** first public release — Grok Build desktop workbench, open-source packaging for macOS ARM / Intel + Windows.
 
 ### Added
 
-- **Desktop workbench** for Grok Build (`grok agent stdio` ACP): projects, sessions, streaming chat, tool activity line, permission bar (Ask / session approve / YOLO).
-- **First-run setup wizard**: CLI install (multi-mirror), optional account / API key / custom relay; hard-gate on CLI presence.
-- **Account panel**: official login surface, SuperGrok quota + heatmap, usage-oriented status.
-- **Custom providers**: independent agent home (`GROK_HOME`) so relays stay out of the default `~/.grok` profile when desired.
-- **Rich media & files**: image / video / office / PDF / code previews, path cards, resource pane with embedded browser (multi-webview).
-- **Automations**: scheduled tasks list + silent create-from-chat (`grok-automation` fence); shell polling without blocking the main conversation.
-- **i18n**: English / 中文 UI strings via `src/i18n/`; tray menu localization.
-- **In-app glass dialogs**: no `window.confirm` / `prompt` / `alert` for product UX.
-- **Packaging**: GitHub Actions release for macOS ARM64, macOS Intel, Windows x64; local build scripts aligned with sister project GrokGo.
+- **Desktop workbench** for Grok Build (`grok agent stdio` ACP): projects, multi-session sidebar, streaming chat, live tool activity line, permission bar (Ask / allow once / session / YOLO).
+- **First-run setup wizard**: multi-mirror CLI install, optional official account / API key / custom relay; CLI is a hard gate, account is skippable.
+- **Account UI**: login surface, SuperGrok quota + usage heatmap, membership-oriented status.
+- **Custom providers**: independent agent home (`GROK_HOME` / `agent-home`) so relays do not have to pollute `~/.grok`.
+- **Rich media & files**: image / video / PDF / Office / code previews; path cards with smart open (ellipsis / sibling KB paths); resource pane + embedded multi-webview browser.
+- **Automations (“已安排”)**: task list + silent create-from-chat (`grok-automation` fence stripped from bubbles); shell polling without blocking the main conversation.
+- **i18n**: EN / 中文 UI via `src/i18n/`; tray menu follows locale.
+- **In-app glass dialogs**: product UX never uses `window.confirm` / `prompt` / `alert`.
+- **Packaging & open source**
+  - GitHub Actions release matrix: macOS ARM64, macOS Intel, Windows x64.
+  - Local cross-build: `cargo-xwin` + NSIS on macOS (`pnpm build:win`).
+  - CHANGELOG-driven Release body (`scripts/changelog-for-release.py`) including macOS Gatekeeper / “damaged app” steps.
+  - MIT license, bilingual README, CONTRIBUTING / SECURITY / CoC, issue & PR templates.
+
+### Fixed
+
+- Chat image cards: synchronous path resolve + cache to avoid zero-height flash / scroll jump while browsing history.
+- Path open: strip agent `.../` ellipsis truncation; resolve files under project sibling folders (shared knowledge-base layout).
+- Tauri feature allowlist: keep `macos-private-api` aligned for Windows cross-builds via cargo-xwin.
+- Automation connect failures: do not leave empty “ghost” sessions in the sidebar.
+
+### Changed
+
+- Session continuity UX: single plain-text running tool line (not multi-row tool stack).
+- Release process documented for AI maintainers: `docs/llm-wiki/release.md` + `docs/BUILD.md`.
 
 ### Notes
 
-- **Not an official xAI product.** Requires a working [Grok Build](https://x.ai) CLI on the machine for real agent sessions.
-- Sister project: [GrokGo](https://github.com/RongleCat/grok-go) (local gateway for Codex / OpenAI-compatible clients) — Grok App can import config but does not embed the gateway UI.
+- **Not an official xAI product.** Real agents need a working [Grok Build](https://x.ai) CLI on the machine.
+- macOS downloads are **unsigned / not notarized** — use `xattr -cr /Applications/Grok.app` if Gatekeeper blocks (see Release install notes).
 
 **中文 · 新增**
 
-- **Grok Build 桌面指挥台**：项目 / 会话 / 流式对话 / 工具行 / 权限条。
-- **首次向导**：CLI 安装（多镜像）、账户可跳过；CLI 为硬门禁。
-- **账号与额度**、自定义中转（独立 `GROK_HOME`）、富媒体与资源预览、已安排自动化（含对话静默创建）。
-- **中英 UI**、托盘文案、应用内毛玻璃弹窗。
-- **打包发布**：macOS ARM / Intel + Windows CI；与 GrokGo 对齐的发版脚本。
+- **Grok Build 桌面指挥台**：项目 / 多会话 / 流式对话 / 工具活动行 / 权限条（Ask · YOLO）。
+- **首次向导**：CLI 多镜像安装（硬门禁）；账号 / Key / 中转可跳过。
+- **账号与额度**、自定义中转（独立 `GROK_HOME`）、富媒体与资源预览、已安排自动化（对话静默创建，气泡不露 JSON）。
+- **中英 UI + 托盘**、应用内毛玻璃弹窗（禁用系统 confirm/prompt/alert）。
+- **开源与打包**：Actions 三端；本机 cargo-xwin 打 Windows；CHANGELOG 驱动 Release（含 macOS「已损坏」处理）；MIT 与双语 README。
+
+**中文 · 修复**
+
+- 聊天图片同步解析防滚动跳动；路径省略号 / 旁路知识库打开；Windows 交叉编译 private-api 白名单；自动化连接失败不留空壳会话。
+
+**中文 · 变更**
+
+- 工具活动改为单行纯文本；发版流程写入 `docs/llm-wiki/release.md` 供后续 AI 接手。
 
 **中文 · 说明**
 
-- **非 xAI 官方**；真 Agent 需本机 Grok Build CLI。姐妹项目 [GrokGo](https://github.com/RongleCat/grok-go)。
+- **非 xAI 官方**；真 Agent 需本机 Grok Build CLI。macOS 未公证，遇 Gatekeeper 用 `xattr -cr`。

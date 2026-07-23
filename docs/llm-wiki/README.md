@@ -13,6 +13,7 @@ Agent 与贡献者的**可执行知识库**。改产品行为或 UI 文案前，
 | [account.md](./account.md) | 官方登录 / 会员额度 / 热力图 / 调用日志 |
 | [providers.md](./providers.md) | 自定义中转、agent GROK_HOME、编辑器探测 |
 | [setup.md](./setup.md) | 首次初始化门禁：CLI 必装、账户可跳过、多镜像安装 |
+| [release.md](./release.md) | **发版 / Release 强制流程**：CHANGELOG、tag、三端 CI、macOS 损坏处理 |
 
 ## 原则
 

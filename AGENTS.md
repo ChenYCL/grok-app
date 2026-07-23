@@ -12,7 +12,10 @@
    - [setup.md](docs/llm-wiki/setup.md) — first-run gate (CLI required, account optional)  
    - [icons.md](docs/llm-wiki/icons.md) — app dock icons vs tray/status-bar icons (never mix)
 
-1b. **Release platforms** — [docs/BUILD.md](docs/BUILD.md). mac arm/intel + Windows via CI. Window chrome: `tauri.macos.conf.json` (Overlay) vs `tauri.windows.conf.json` (frameless + self-drawn controls). Tag only after a matching `CHANGELOG.md` section; CI body from `scripts/changelog-for-release.py` (same pattern as grok-go).
+1b. **Release (AI handoff)** — **[docs/llm-wiki/release.md](docs/llm-wiki/release.md)** is the single source for ship steps. Platforms / local build: [docs/BUILD.md](docs/BUILD.md). Window chrome: `tauri.macos.conf.json` (Overlay) vs `tauri.windows.conf.json` (frameless).  
+   - Never tag without `## [X.Y.Z]` in `CHANGELOG.md`.  
+   - GitHub Release body = `scripts/changelog-for-release.py` (must include update list + macOS “damaged app” / `xattr`).  
+   - Do not hand-edit Release notes only on GitHub; change the script + CHANGELOG.
 
 1c. **Open-source surface** — public docs: `README.md` / `README_EN.md`, `LICENSE`, `CONTRIBUTING.md`, `SECURITY.md`, `CODE_OF_CONDUCT.md`, `CHANGELOG.md`. Do not commit secrets, `auth.json`, or local agent homes.
 
