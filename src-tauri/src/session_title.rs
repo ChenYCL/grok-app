@@ -82,6 +82,9 @@ fn title_prompt(snippet: &str, locale: Locale) -> String {
         Locale::Zh => format!(
             "为下面这条用户消息起一个简短会话标题。要求：最多16个汉字或8个英文单词；只输出标题；不要引号、标点前缀、解释。\n\n用户消息：\n{snippet}"
         ),
+        Locale::ZhTw => format!(
+            "為下面這則使用者訊息起一個簡短對話標題。要求：最多16個漢字或8個英文單詞；只輸出標題；不要引號、標點前綴、解釋。\n\n使用者訊息：\n{snippet}"
+        ),
     }
 }
 
