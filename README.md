@@ -86,18 +86,19 @@
 | 类别 | 说明 |
 |------|------|
 | **真 Build 会话** | 默认 `grok agent stdio`（ACP）；Host 独占会话 FSM；可选远程 ACP |
-| **项目与会话** | 多项目信任目录、侧栏虚拟列表、归档 / orphan、会话分叉与回退 |
-| **Git 工作树** | 项目 chip 列出 linked worktree，一键切换会话 cwd |
+| **项目与会话** | 多项目信任目录、侧栏虚拟列表、归档 / orphan、分叉与回退；**shared 模式导入 CLI 会话** |
+| **多会话流式** | 切换聊天时后台继续流式 / 权限；并发上限与闲置回收 |
+| **Git 工作树** | 项目 chip 列出 linked worktree，一键切换会话 cwd（非 git 不展示） |
 | **权限** | 默认 Ask；Allow once / session / Deny；YOLO；**按项目**默认权限阶梯 |
 | **Plan / Goal** | 顶部执行进度；资源面板 Markdown 审阅与步骤；Goal 入口 |
 | **斜杠 · 扩展** | 斜杠面板、Skills；设置 → 扩展管理 MCP / Plugins |
 | **Composer** | 忙时后续消息队列；粘贴截图附件；上下文用量芯片 |
 | **媒体与文件** | 图 / 视频 / PDF / Office / 代码预览；资源窗可**编辑保存**文本；Changes（会话 diff + 工作区 git） |
-| **Agent 运行时** | 并发上限与闲置回收；卡顿取消；结构化错误卡（CLI / 鉴权 / 网络 / 崩溃） |
+| **Agent 运行时** | 卡顿取消；结构化错误卡；会话**诊断包**导出；工具/权限未完不提前「就绪」 |
 | **自动化** | 已安排任务列表；对话里自然语言创建（静默 fence，不展示 JSON） |
 | **账号与额度** | 多账号切换、官方登录、SuperGrok 额度与热力图、自定义中转本地用量 |
 | **自定义中转** | 独立 `GROK_HOME` agent 配置，避免污染默认 `~/.grok` |
-| **安全** | API Key 可选系统钥匙串（默认 `secrets.json` 0600）；应用内确认框 |
+| **安全** | API Key 可选系统钥匙串（默认 `secrets.json` 0600）；store 写锁；应用内确认框 |
 | **i18n** | 简体中文 / 繁體中文 / English 与托盘 |
 | **跨平台打包** | macOS ARM / Intel · Windows x64（安装版 + 绿色版）· Linux x64（AppImage / deb / rpm） |
 
@@ -250,18 +251,35 @@ pnpm build
 
 ## 贡献者
 
-感谢所有为 Grok App 做出贡献的人！社区 PR 与 Issue 让产品更快成型。
+感谢所有为 Grok App 做出贡献的人！数据来自 GitHub Contributors（2026-07-24 拉取）。
 
-| 贡献者 | 代表贡献（节选） |
-|--------|------------------|
-| [sonnemusk](https://github.com/sonnemusk) | 会话 Changes / 分叉回退、扩展 MCP·Plugins、权限阶梯、worktree、资源编辑、粘贴截图、错误卡等大量功能与修复 |
-| [Sdefendre](https://github.com/Sdefendre) | 会话标题跟随语言、Grok Build 权限 optionId 修正 |
-| [jason920612](https://github.com/jason920612) | 远程 ACP（API 模式）、繁體中文 locale |
-| [shiaho777](https://github.com/shiaho777) | 登录可取消、切换历史会话不再重播流式回复 |
-| [2530185073](https://github.com/2530185073) | 自定义中转账户与本地用量展示 |
-| [tisrop](https://github.com/tisrop) | Composer 忙时后续消息队列 |
+<p align="center">
+  <a href="https://github.com/RongleCat"><img src="https://github.com/RongleCat.png?size=80" width="80" height="80" alt="RongleCat" /></a>
+  &nbsp;&nbsp;
+  <a href="https://github.com/sonnemusk"><img src="https://github.com/sonnemusk.png?size=80" width="80" height="80" alt="sonnemusk" /></a>
+  &nbsp;&nbsp;
+  <a href="https://github.com/Sdefendre"><img src="https://github.com/Sdefendre.png?size=80" width="80" height="80" alt="Sdefendre" /></a>
+  &nbsp;&nbsp;
+  <a href="https://github.com/jason920612"><img src="https://github.com/jason920612.png?size=80" width="80" height="80" alt="jason920612" /></a>
+  &nbsp;&nbsp;
+  <a href="https://github.com/shiaho777"><img src="https://github.com/shiaho777.png?size=80" width="80" height="80" alt="shiaho777" /></a>
+  &nbsp;&nbsp;
+  <a href="https://github.com/2530185073"><img src="https://github.com/2530185073.png?size=80" width="80" height="80" alt="2530185073" /></a>
+  &nbsp;&nbsp;
+  <a href="https://github.com/tisrop"><img src="https://github.com/tisrop.png?size=80" width="80" height="80" alt="tisrop" /></a>
+</p>
 
-完整列表与贡献图：
+| | 贡献者 | Commits | 代表贡献（节选） |
+|:---:|:---|:---:|:---|
+| <img src="https://github.com/RongleCat.png?size=48" width="48" height="48" alt="RongleCat" /> | [**RongleCat**](https://github.com/RongleCat) · 维护者 | 59 | 产品架构、发版与社区合入 |
+| <img src="https://github.com/sonnemusk.png?size=48" width="48" height="48" alt="sonnemusk" /> | [**sonnemusk**](https://github.com/sonnemusk) | 21 | Changes / 分叉回退、MCP·Plugins、权限阶梯、worktree、资源编辑、粘贴截图、错误卡、多会话流式、CLI 会话导入、turn 收尾、store 写锁等 |
+| <img src="https://github.com/Sdefendre.png?size=48" width="48" height="48" alt="Sdefendre" /> | [**Sdefendre**](https://github.com/Sdefendre)<br/>Steve Defendre | 2 | 会话标题跟随语言；Grok Build 权限 optionId |
+| <img src="https://github.com/jason920612.png?size=48" width="48" height="48" alt="jason920612" /> | [**jason920612**](https://github.com/jason920612) | 2 | 远程 ACP（API 模式）；繁體中文 locale |
+| <img src="https://github.com/shiaho777.png?size=48" width="48" height="48" alt="shiaho777" /> | [**shiaho777**](https://github.com/shiaho777)<br/>shiaho | 2 | 登录可取消；切换历史会话不再重播流式回复 |
+| <img src="https://github.com/2530185073.png?size=48" width="48" height="48" alt="2530185073" /> | [**2530185073**](https://github.com/2530185073)<br/>Yun | 1 | 自定义中转账户与本地用量展示 |
+| <img src="https://github.com/tisrop.png?size=48" width="48" height="48" alt="tisrop" /> | [**tisrop**](https://github.com/tisrop)<br/>wanghang | — | Composer 忙时后续消息队列 |
+
+[完整贡献图 →](https://github.com/RongleCat/grok-app/graphs/contributors)
 
 [![Contributors](https://contrib.rocks/image?repo=RongleCat/grok-app)](https://github.com/RongleCat/grok-app/graphs/contributors)
 

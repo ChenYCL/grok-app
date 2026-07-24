@@ -86,18 +86,19 @@ The `grok` CLI is powerful in a terminal. Day-to-day work still needs multi-proj
 | Area | What you get |
 |------|----------------|
 | **Real Build sessions** | Default `grok agent stdio` (ACP); host-owned session FSM; optional remote ACP |
-| **Projects & sessions** | Trusted dirs, virtualized sidebar, archive / orphan, fork & rewind |
-| **Git worktrees** | Project chip lists linked worktrees; switch session cwd in one click |
+| **Projects & sessions** | Trusted dirs, virtualized sidebar, archive / orphan, fork & rewind; **import CLI sessions** in shared mode |
+| **Multi-session stream** | Keep busy turns streaming after switching chats; process limits & idle recycle |
+| **Git worktrees** | Project chip lists linked worktrees; switch cwd in one click (hidden for non-git) |
 | **Permissions** | Default Ask; allow once / session / deny; YOLO; **per-project** permission tier |
 | **Plan / Goal** | Sticky execution progress; resource-pane Markdown review + steps; Goal entry |
 | **Slash · Extensions** | Slash palette, Skills; Settings → Extensions for MCP / Plugins |
 | **Composer** | Follow-up send queue while busy; paste screenshots; context usage chip |
 | **Media & files** | Image / video / PDF / Office / code preview; **edit & save** text in Resources; Changes (session diffs + workspace git) |
-| **Agent runtime** | Process limits & idle recycle; stall cancel; structured error deck (CLI / auth / network / crash) |
+| **Agent runtime** | Stall cancel; structured error deck; **diagnostic zip** export; no early “ready” while tools/permissions open |
 | **Automations** | Scheduled list; natural-language create-from-chat (silent fence, no JSON in UI) |
 | **Account & quota** | Multi-account switcher, official login, SuperGrok quota + heatmap, custom-provider local usage |
 | **Custom relays** | Independent `GROK_HOME` agent profile (keeps `~/.grok` clean when desired) |
-| **Security** | Optional OS keychain for API keys (default `secrets.json` 0600); in-app confirms only |
+| **Security** | Optional OS keychain for API keys (default `secrets.json` 0600); store write locks; in-app confirms only |
 | **i18n** | Simplified Chinese / Traditional Chinese / English + tray |
 | **Packaging** | macOS ARM / Intel · Windows x64 (setup + portable) · Linux x64 (AppImage / deb / rpm) |
 
@@ -243,18 +244,35 @@ Issues and PRs are welcome.
 
 ## Contributors
 
-Thanks to everyone who has contributed to Grok App — community PRs and issues shape the product.
+Thanks to everyone who has contributed to Grok App. Data from the GitHub Contributors API (fetched 2026-07-24).
 
-| Contributor | Highlights (selected) |
-|-------------|------------------------|
-| [sonnemusk](https://github.com/sonnemusk) | Session Changes / fork & rewind, MCP·Plugins, permission tiers, worktrees, resource edit, paste screenshots, error deck, and many more |
-| [Sdefendre](https://github.com/Sdefendre) | Session titles follow locale; Grok Build permission optionIds |
-| [jason920612](https://github.com/jason920612) | Remote ACP (API mode); Traditional Chinese locale |
-| [shiaho777](https://github.com/shiaho777) | Cancelable login; stop re-streaming history on session switch |
-| [2530185073](https://github.com/2530185073) | Custom provider account + local usage UI |
-| [tisrop](https://github.com/tisrop) | Composer follow-up send queue while agent is busy |
+<p align="center">
+  <a href="https://github.com/RongleCat"><img src="https://github.com/RongleCat.png?size=80" width="80" height="80" alt="RongleCat" /></a>
+  &nbsp;&nbsp;
+  <a href="https://github.com/sonnemusk"><img src="https://github.com/sonnemusk.png?size=80" width="80" height="80" alt="sonnemusk" /></a>
+  &nbsp;&nbsp;
+  <a href="https://github.com/Sdefendre"><img src="https://github.com/Sdefendre.png?size=80" width="80" height="80" alt="Sdefendre" /></a>
+  &nbsp;&nbsp;
+  <a href="https://github.com/jason920612"><img src="https://github.com/jason920612.png?size=80" width="80" height="80" alt="jason920612" /></a>
+  &nbsp;&nbsp;
+  <a href="https://github.com/shiaho777"><img src="https://github.com/shiaho777.png?size=80" width="80" height="80" alt="shiaho777" /></a>
+  &nbsp;&nbsp;
+  <a href="https://github.com/2530185073"><img src="https://github.com/2530185073.png?size=80" width="80" height="80" alt="2530185073" /></a>
+  &nbsp;&nbsp;
+  <a href="https://github.com/tisrop"><img src="https://github.com/tisrop.png?size=80" width="80" height="80" alt="tisrop" /></a>
+</p>
 
-Full graph:
+| | Contributor | Commits | Highlights (selected) |
+|:---:|:---|:---:|:---|
+| <img src="https://github.com/RongleCat.png?size=48" width="48" height="48" alt="RongleCat" /> | [**RongleCat**](https://github.com/RongleCat) · maintainer | 59 | Product architecture, releases, community integration |
+| <img src="https://github.com/sonnemusk.png?size=48" width="48" height="48" alt="sonnemusk" /> | [**sonnemusk**](https://github.com/sonnemusk) | 21 | Changes / fork & rewind, MCP·Plugins, permission tiers, worktrees, resource edit, paste screenshots, error deck, multi-session stream, CLI session import, turn-complete, store locks, and more |
+| <img src="https://github.com/Sdefendre.png?size=48" width="48" height="48" alt="Sdefendre" /> | [**Sdefendre**](https://github.com/Sdefendre)<br/>Steve Defendre | 2 | Session titles follow locale; Grok Build permission optionIds |
+| <img src="https://github.com/jason920612.png?size=48" width="48" height="48" alt="jason920612" /> | [**jason920612**](https://github.com/jason920612) | 2 | Remote ACP (API mode); Traditional Chinese locale |
+| <img src="https://github.com/shiaho777.png?size=48" width="48" height="48" alt="shiaho777" /> | [**shiaho777**](https://github.com/shiaho777)<br/>shiaho | 2 | Cancelable login; stop re-streaming history on session switch |
+| <img src="https://github.com/2530185073.png?size=48" width="48" height="48" alt="2530185073" /> | [**2530185073**](https://github.com/2530185073)<br/>Yun | 1 | Custom provider account + local usage UI |
+| <img src="https://github.com/tisrop.png?size=48" width="48" height="48" alt="tisrop" /> | [**tisrop**](https://github.com/tisrop)<br/>wanghang | — | Composer follow-up send queue while agent is busy |
+
+[Full contributors graph →](https://github.com/RongleCat/grok-app/graphs/contributors)
 
 [![Contributors](https://contrib.rocks/image?repo=RongleCat/grok-app)](https://github.com/RongleCat/grok-app/graphs/contributors)
 
