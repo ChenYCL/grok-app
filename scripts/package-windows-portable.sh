@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Build a Windows portable (绿色版) zip from a release Grok.exe and upload to GitHub Release.
-# Usage (CI): bash scripts/package-windows-portable.sh v0.1.1
-# Or: TAG=v0.1.1 bash scripts/package-windows-portable.sh
+# Build a Windows portable (绿色版) zip from a release Windows binary and upload to GitHub Release.
+# Usage (CI): bash scripts/package-windows-portable.sh v0.1.2
+# Or: TAG=v0.1.2 bash scripts/package-windows-portable.sh
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
@@ -12,16 +12,41 @@ if [[ -z "$TAG" ]]; then
 fi
 VER="${TAG#v}"
 
-EXE="$(find src-tauri/target -type f -name 'Grok.exe' -path '*/release/Grok.exe' 2>/dev/null | head -n 1 || true)"
-if [[ -z "$EXE" || ! -f "$EXE" ]]; then
-  echo "error: Grok.exe not found under src-tauri/target/**/release/" >&2
-  find src-tauri/target -name 'Grok.exe' 2>/dev/null | head -20 || true
+# Tauri productName is "Grok" but Cargo package name may produce grok-app.exe.
+find_release_exe() {
+  local name
+  for name in Grok.exe grok-app.exe; do
+    # Prefer top-level release binary (not under bundle/)
+    if [[ -f "src-tauri/target/release/${name}" ]]; then
+      echo "src-tauri/target/release/${name}"
+      return 0
+    fi
+  done
+  # Fallback: any release/*.exe that is not under bundle/
+  local found
+  found="$(find src-tauri/target -type f -name '*.exe' 2>/dev/null \
+    | grep -E '/release/[^/]+\.exe$' \
+    | grep -v '/bundle/' \
+    | head -n 1 || true)"
+  if [[ -n "$found" && -f "$found" ]]; then
+    echo "$found"
+    return 0
+  fi
+  return 1
+}
+
+EXE="$(find_release_exe || true)"
+if [[ -z "${EXE:-}" || ! -f "$EXE" ]]; then
+  echo "error: Windows release .exe not found under src-tauri/target/release/" >&2
+  find src-tauri/target -name '*.exe' 2>/dev/null | head -40 || true
   exit 1
 fi
+echo "using EXE=$EXE"
 
 STAGE="dist-portable/Grok_${VER}_x64-portable"
 rm -rf dist-portable
 mkdir -p "$STAGE"
+# Always ship as Grok.exe for end users (product name).
 cp "$EXE" "$STAGE/Grok.exe"
 python3 - "$VER" "$STAGE" <<'PY'
 import sys
@@ -45,7 +70,13 @@ print("wrote", stage / "README-portable.txt")
 PY
 
 OUT="Grok_${VER}_x64-portable.zip"
-(cd dist-portable && zip -r "../${OUT}" "Grok_${VER}_x64-portable")
+# Prefer zip; on Windows Git Bash it is usually present. Fallback to PowerShell Compress-Archive.
+if command -v zip >/dev/null 2>&1; then
+  (cd dist-portable && zip -r "../${OUT}" "Grok_${VER}_x64-portable")
+else
+  powershell.exe -NoProfile -Command \
+    "Compress-Archive -Path 'dist-portable/Grok_${VER}_x64-portable' -DestinationPath '${OUT}' -Force"
+fi
 ls -lah "$OUT"
 if command -v gh >/dev/null 2>&1 && [[ -n "${GH_TOKEN:-${GITHUB_TOKEN:-}}" ]]; then
   gh release upload "$TAG" "$OUT" --clobber
