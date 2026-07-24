@@ -84,19 +84,21 @@ if n != 1:
 p.write_text(text2)
 print("Cargo.toml ->", ver)
 
-# i18n version footer
-p = Path("src/i18n/messages.ts")
-if p.is_file():
+# i18n version footer (en/zh messages + zh-TW overlay)
+for rel in ("src/i18n/messages.ts", "src/i18n/zh-tw.ts"):
+    p = Path(rel)
+    if not p.is_file():
+        continue
     t = p.read_text()
     t2, n = re.subn(r"(Grok v)[0-9]+\.[0-9]+\.[0-9]+", rf"\g<1>{ver}", t)
     if n:
         p.write_text(t2)
-        print("i18n versionFooter ->", ver)
+        print(f"{rel} versionFooter ->", ver)
     else:
-        print("warn: i18n versionFooter pattern not found")
+        print(f"warn: versionFooter pattern not found in {rel}")
 PY
 
-git add package.json src-tauri/tauri.conf.json src-tauri/Cargo.toml src/i18n/messages.ts
+git add package.json src-tauri/tauri.conf.json src-tauri/Cargo.toml src/i18n/messages.ts src/i18n/zh-tw.ts
 if [[ -n "$(git status --porcelain)" ]]; then
   git commit -m "chore: release $TAG"
 fi

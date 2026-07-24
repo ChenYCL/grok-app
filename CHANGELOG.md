@@ -11,23 +11,44 @@ See `docs/llm-wiki/release.md`.
 
 ## [Unreleased]
 
+## [0.1.3] - 2026-07-24
+
+> 中英文对照 / Bilingual notes.
+>
+> **Highlight:** OS keychain secrets, stream-stall cancel, MCP/Plugins enable, composer send queue, session switch fix.
+
 ### Security
 
-- **API keys in OS keychain** (C07): `officialApiKey` / `relayApiKey` prefer macOS Keychain, Windows Credential Manager, or Linux Secret Service via `keyring`, with `secrets.json` (0600) fallback when the OS store is unavailable. One-time migration imports plaintext keys from disk and clears them; `load_secrets` / `save_secrets` API unchanged for callers. Support zip and reset continue to avoid leaking keys.
+- **API keys in OS keychain** (C07): `officialApiKey` / `relayApiKey` prefer macOS Keychain, Windows Credential Manager, or Linux Secret Service via `keyring`, with `secrets.json` (0600) fallback and one-time plaintext migration — community PR #34.
 
 ### Added
 
-- **Composer follow-up send queue**: while agent is busy, queue messages for the current session; auto-flush after the turn if you stay on that chat — community PR #40.
-- **Stream stall cancel (I06)**: host watchdog emits `session://stream_stall` after pure silence (default 120s, Settings → Runtime); banner with Cancel turn / Keep waiting; tool events count as progress.
-- **Journal write throttle (I04)**: mid-stream assistant journal flushes ≥500ms or on paragraph / turn end / stop / disconnect — avoids per-token disk spikes.
-- **Changes panel — Workspace git status**: Session (agent tool edits) + Workspace (`git status`) sections; click for unified diff via `git_file_diff` / `git_show_file`; refresh, open in editor, reveal, copy path.
-- **Sidebar session list virtualization** (F07): windowed rendering for large project/orphan session groups (100+ rows) without new dependencies; short lists unchanged.
-- **Plugins manager** (L03): Settings → Extensions list/enable/disable/details/uninstall via `grok plugin` — community PR #39.
+- **Composer follow-up send queue**: while the agent is busy, queue messages for the current session; auto-flush after the turn if you stay on that chat — community PR #40.
+- **Stream stall cancel (I06)**: host watchdog emits `session://stream_stall` after pure silence (default 120s, Settings → Runtime); banner with Cancel turn / Keep waiting; tool events count as progress — community PR #37.
+- **Journal write throttle (I04)**: mid-stream assistant journal flushes ≥500ms or on paragraph / turn end / stop / disconnect — community PR #37.
+- **Changes panel — Workspace git status**: Session (agent tool edits) + Workspace (`git status`) sections; click for unified diff; refresh / open in editor / reveal / copy path — community PR #36.
+- **Sidebar session list virtualization** (F07): windowed rendering for large project/orphan session groups (100+ rows); short lists unchanged — community PR #32.
+- **Plugins manager** (L03): Settings → Extensions list / enable / disable / details / uninstall via `grok plugin` — community PR #39.
 - **MCP enable + inject** (L03): Settings → Extensions toggles; enabled servers inject into ACP `session/new|load` and agent-home config — community PR #38.
+- **ACP golden fixtures** (T06): offline protocol regression suite for wire shapes / mock stream / permissions — community PR #33.
 
-### Added (中文)
+### Fixed
 
-- **Changes 面板 — 工作区 git 状态**：会话变更 + 工作区 `git status` 分段；点击查看 diff；刷新 / 外开编辑器 / Reveal / 复制路径。
+- **Session switch re-stream**: switching historical sessions no longer re-types the whole assistant transcript as a live stream (Host FSM gate + frontend defense) — community PR #35.
+- **Windows portable zip**: CI package finds product `Grok.exe` correctly.
+
+### Community
+
+- Integrated community PRs **#32–#40** (sonnemusk, shiaho777, tisrop).
+
+**中文 · 安全**
+- API 密钥优先写入系统钥匙串（Keychain / Credential Manager / Secret Service），失败时回退 `secrets.json`（0600），并支持一次性明文迁移。
+
+**中文 · 新增**
+- 忙时后续消息队列（当前会话自动发送）；流式卡顿取消提示 + 日志落盘节流；Changes 工作区 git 状态；侧栏会话虚拟列表；扩展页 Plugins 管理与 MCP 启用注入；ACP 协议 golden 回归。
+
+**中文 · 修复**
+- 切换历史会话不再整段重播流式回复；Windows 绿色版打包路径修正。
 
 ## [0.1.2] - 2026-07-24
 
