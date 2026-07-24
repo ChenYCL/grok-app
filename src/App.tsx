@@ -170,7 +170,6 @@ import {
   voiceResultStillCurrent,
   voiceStealsEscape,
   VOICE_MAX_RECORD_MS,
-  VOICE_NO_SPEECH_MS,
   type VoiceErrorClass,
   type VoiceFsmState,
 } from "@/lib/voiceDictation";
@@ -4327,26 +4326,15 @@ export default function App() {
       voiceCaptureRef.current = handle;
       setVoice((s) => reduceVoice(s, { type: "mic_granted" }, Date.now()));
       clearVoiceTimers();
-      // ~10s without user stop → treat as no speech (CLI-aligned silence fail-closed).
-      voiceTimersRef.current.noSpeech = window.setTimeout(() => {
-        if (gen !== voiceGenRef.current) return;
-        if (voiceRef.current.phase !== "recording") return;
-        clearVoiceTimers();
-        try {
-          voiceCaptureRef.current?.cancel();
-        } catch {
-          /* ignore */
-        }
-        voiceCaptureRef.current = null;
-        setVoice((s) => reduceVoice(s, { type: "no_speech_timeout" }));
-        showToast(voiceErrorMessage("no_speech"), 4200);
-      }, VOICE_NO_SPEECH_MS);
-      voiceTimersRef.current.max = window.setTimeout(() => {
+      // Auto-stop cap: stop() + STT (never cancel/discard live speech).
+      // "no_speech" only after STT empty / tiny blob — phase-1 has no VAD.
+      const autoStopAndTranscribe = () => {
         void (async () => {
-          if (gen !== voiceGenRef.current) return;
+          if (!voiceResultStillCurrent(gen, voiceGenRef.current)) return;
           if (voiceRef.current.phase !== "recording") return;
           const cap = voiceCaptureRef.current;
           if (!cap) return;
+          clearVoiceTimers();
           try {
             voiceCaretRef.current = getComposerCaretOffset(
               composerInputRef.current,
@@ -4354,7 +4342,7 @@ export default function App() {
             const blob = await cap.stop();
             await finishVoiceTranscribe(blob, gen);
           } catch (e) {
-            if (gen !== voiceGenRef.current) return;
+            if (!voiceResultStillCurrent(gen, voiceGenRef.current)) return;
             const cls = classifyVoiceError(String(e));
             setVoice((s) =>
               reduceVoice(s, { type: "transcribe_fail", error: cls }),
@@ -4362,7 +4350,11 @@ export default function App() {
             showToast(voiceErrorMessage(cls), 4200);
           }
         })();
-      }, VOICE_MAX_RECORD_MS);
+      };
+      voiceTimersRef.current.max = window.setTimeout(
+        autoStopAndTranscribe,
+        VOICE_MAX_RECORD_MS,
+      );
     } catch (e) {
       if (gen !== voiceGenRef.current) return;
       const code =

@@ -10,6 +10,7 @@ import {
   voiceIsActive,
   voiceResultStillCurrent,
   voiceStealsEscape,
+  VOICE_MAX_RECORD_MS,
   VOICE_NO_SPEECH_MS,
 } from "./voiceDictation";
 
@@ -147,9 +148,12 @@ describe("classifyVoiceError", () => {
   });
 });
 
-describe("VOICE_NO_SPEECH_MS", () => {
-  it("is about 10 seconds", () => {
+describe("VOICE_NO_SPEECH_MS / max record policy", () => {
+  it("documents CLI-aligned silence window without hard-killing audio", () => {
     expect(VOICE_NO_SPEECH_MS).toBe(10_000);
+    // Max record must be longer than the silence constant so auto-stop+STT
+    // can cover multi-sentence dictation; no_speech comes from empty STT.
+    expect(VOICE_MAX_RECORD_MS).toBeGreaterThan(VOICE_NO_SPEECH_MS);
   });
 });
 

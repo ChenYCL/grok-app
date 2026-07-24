@@ -36,7 +36,13 @@ export type VoiceFsmState = {
   recordingStartedAt: number | null;
 };
 
+/**
+ * CLI documents ~10s without a transcript as silence stop. Phase-1 has no VAD;
+ * we only surface `no_speech` after stop/STT yields empty (or a tiny blob).
+ * Kept as the product constant for copy/tests — not a hard-kill recording timer.
+ */
 export const VOICE_NO_SPEECH_MS = 10_000;
+/** Max recording length; auto-stop runs stop()+STT (never discard audio). */
 export const VOICE_MAX_RECORD_MS = 60_000;
 
 export function initialVoiceState(): VoiceFsmState {
