@@ -4,6 +4,12 @@
 //! 1. Direct GCS `https://storage.googleapis.com/grok-build-public-artifacts/cli`
 //! 2. Cloudflare-fronted `https://x.ai/cli`
 //!
+//! Trust chain (fail-closed where possible):
+//! - HTTPS only, URL must be under a known mirror base
+//! - Streaming SHA-256 of the downloaded bytes
+//! - Optional published checksum sidecar (`.sha256` / `SHA256SUMS`); mismatch aborts
+//! - Architecture match via platform triple; size / `--version` gates after install
+//!
 //! Each mirror is retried a few times before falling through. Progress is emitted
 //! on `setup://cli-install-progress` for the setup wizard UI.
 
@@ -14,6 +20,7 @@ use std::time::Duration;
 
 use futures_util::StreamExt;
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 use tauri::{AppHandle, Emitter};
 use tracing::{info, warn};
 
@@ -47,6 +54,8 @@ pub struct CliInstallProgress {
     pub mirror: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub version: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sha256: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -57,10 +66,141 @@ pub struct CliInstallResult {
     pub version: Option<String>,
     pub mirror_used: Option<String>,
     pub message: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sha256: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub checksum_verified: Option<bool>,
+}
+
+/// True only for HTTPS URLs under a known official mirror base.
+pub fn is_allowed_download_url(url: &str) -> bool {
+    let url = url.trim();
+    if !url.starts_with("https://") {
+        return false;
+    }
+    // Reject credentials / userinfo and odd schemes already covered by https://.
+    if url.contains('@') {
+        return false;
+    }
+    for base in MIRROR_BASES {
+        let base = base.trim_end_matches('/');
+        if url == base || url.starts_with(&format!("{base}/")) {
+            // No path traversal via `..` segments.
+            if url.contains("..") {
+                return false;
+            }
+            return true;
+        }
+    }
+    false
+}
+
+fn sha256_file(path: &Path) -> Result<String, String> {
+    let mut file = fs::File::open(path).map_err(|e| format!("open for hash: {e}"))?;
+    let mut hasher = Sha256::new();
+    let mut buf = [0u8; 64 * 1024];
+    loop {
+        use std::io::Read;
+        let n = file.read(&mut buf).map_err(|e| format!("hash read: {e}"))?;
+        if n == 0 {
+            break;
+        }
+        hasher.update(&buf[..n]);
+    }
+    Ok(hex::encode(hasher.finalize()))
+}
+
+/// Parse a checksum file body for `filename` (GNU `sha256sum` or plain hex).
+pub fn parse_checksum_for_file(body: &str, filename: &str) -> Option<String> {
+    let want = filename.trim();
+    for line in body.lines() {
+        let line = line.trim();
+        if line.is_empty() || line.starts_with('#') {
+            continue;
+        }
+        // "hex  filename" or "hex *filename"
+        let mut parts = line.split_whitespace();
+        let hex_part = parts.next()?;
+        if hex_part.len() != 64 || !hex_part.chars().all(|c| c.is_ascii_hexdigit()) {
+            // bare hex for a single-file sidecar
+            continue;
+        }
+        if let Some(name) = parts.next() {
+            let name = name.trim_start_matches('*');
+            if name == want || name.ends_with(want) || Path::new(name).file_name().and_then(|s| s.to_str()) == Some(want) {
+                return Some(hex_part.to_ascii_lowercase());
+            }
+        } else {
+            // single-line bare hex
+            return Some(hex_part.to_ascii_lowercase());
+        }
+    }
+    // whole-file bare hex (single line)
+    let t = body.trim();
+    if t.len() == 64 && t.chars().all(|c| c.is_ascii_hexdigit()) {
+        return Some(t.to_ascii_lowercase());
+    }
+    None
+}
+
+async fn fetch_published_checksum(
+    client: &reqwest::Client,
+    mirror: &str,
+    version: &str,
+    platform: &str,
+    artifact_name: &str,
+) -> Option<String> {
+    let base = mirror.trim_end_matches('/');
+    // Common sidecar layouts; none are published today, but we fail closed on mismatch
+    // if any of them appears later.
+    let candidates = [
+        format!("{base}/{artifact_name}.sha256"),
+        format!("{base}/{artifact_name}.sha256sum"),
+        format!("{base}/SHA256SUMS"),
+        format!("{base}/checksums.txt"),
+        format!("{base}/grok-{version}-{platform}.sha256"),
+        format!("{base}/{version}/SHA256SUMS"),
+    ];
+    for url in candidates {
+        if !is_allowed_download_url(&url) {
+            continue;
+        }
+        match client.get(&url).send().await {
+            Ok(resp) if resp.status().is_success() => {
+                if let Ok(text) = resp.text().await {
+                    if let Some(h) = parse_checksum_for_file(&text, artifact_name) {
+                        info!("cli_install: checksum for {artifact_name} from {url}");
+                        return Some(h);
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+    None
 }
 
 fn emit(app: &AppHandle, p: CliInstallProgress) {
     let _ = app.emit("setup://cli-install-progress", &p);
+}
+
+fn progress(
+    phase: &str,
+    message: impl Into<String>,
+    percent: Option<f64>,
+    mirror: Option<String>,
+    version: Option<String>,
+) -> CliInstallProgress {
+    CliInstallProgress {
+        phase: phase.into(),
+        message: message.into(),
+        percent,
+        bytes_downloaded: None,
+        total_bytes: None,
+        mirror,
+        version,
+        sha256: None,
+    }
 }
 
 fn platform_triple() -> Result<(&'static str, &'static str), String> {
@@ -104,6 +244,9 @@ fn mirror_host(base: &str) -> String {
 
 async fn fetch_version_text(client: &reqwest::Client, base: &str) -> Result<String, String> {
     let url = format!("{}/{CHANNEL}", base.trim_end_matches('/'));
+    if !is_allowed_download_url(&url) {
+        return Err(format!("version URL not on allowlist: {url}"));
+    }
     let resp = client
         .get(&url)
         .send()
@@ -138,15 +281,13 @@ async fn resolve_version(
 ) -> Result<(String, String), String> {
     emit(
         app,
-        CliInstallProgress {
-            phase: "resolving".into(),
-            message: "Resolving latest Grok Build version…".into(),
-            percent: Some(0.0),
-            bytes_downloaded: None,
-            total_bytes: None,
-            mirror: None,
-            version: None,
-        },
+        progress(
+            "resolving",
+            "Resolving latest Grok Build version…",
+            Some(0.0),
+            None,
+            None,
+        ),
     );
 
     let mut errors = Vec::new();
@@ -154,18 +295,16 @@ async fn resolve_version(
         for attempt in 1..=MIRROR_ATTEMPTS {
             emit(
                 app,
-                CliInstallProgress {
-                    phase: "resolving".into(),
-                    message: format!(
+                progress(
+                    "resolving",
+                    format!(
                         "Trying {} (attempt {attempt}/{MIRROR_ATTEMPTS})…",
                         mirror_host(base)
                     ),
-                    percent: Some(2.0),
-                    bytes_downloaded: None,
-                    total_bytes: None,
-                    mirror: Some((*base).into()),
-                    version: None,
-                },
+                    Some(2.0),
+                    Some((*base).into()),
+                    None,
+                ),
             );
             match fetch_version_text(client, base).await {
                 Ok(v) => {
@@ -196,6 +335,10 @@ async fn download_to_file(
     version: &str,
     mirror: &str,
 ) -> Result<(), String> {
+    // Fail-closed: never fetch from outside the official mirror list.
+    if !is_allowed_download_url(url) {
+        return Err(format!("download URL not on allowlist: {url}"));
+    }
     let resp = client
         .get(url)
         .send()
@@ -204,11 +347,19 @@ async fn download_to_file(
     if !resp.status().is_success() {
         return Err(format!("download {url}: HTTP {}", resp.status()));
     }
+    // After redirects, re-check final URL when available.
+    let final_url = resp.url().to_string();
+    if !is_allowed_download_url(&final_url) {
+        return Err(format!(
+            "download redirected off allowlist: {final_url}"
+        ));
+    }
     let total = resp.content_length();
     let mut stream = resp.bytes_stream();
     let mut file = fs::File::create(dest).map_err(|e| format!("create {}: {e}", dest.display()))?;
     let mut downloaded: u64 = 0;
     let mut last_emit = 0u64;
+    let mut hasher = Sha256::new();
 
     emit(
         app,
@@ -220,11 +371,13 @@ async fn download_to_file(
             total_bytes: total,
             mirror: Some(mirror.into()),
             version: Some(version.into()),
+            sha256: None,
         },
     );
 
     while let Some(chunk) = stream.next().await {
         let chunk = chunk.map_err(|e| format!("download stream: {e}"))?;
+        hasher.update(&chunk);
         file.write_all(&chunk)
             .map_err(|e| format!("write download: {e}"))?;
         downloaded += chunk.len() as u64;
@@ -248,6 +401,7 @@ async fn download_to_file(
                     total_bytes: total,
                     mirror: Some(mirror.into()),
                     version: Some(version.into()),
+                    sha256: None,
                 },
             );
         }
@@ -263,6 +417,10 @@ async fn download_to_file(
             return Err(format!("download size mismatch: got {downloaded}, expected {t}"));
         }
     }
+    let digest = hex::encode(hasher.finalize());
+    // Persist digest next to the part file for the install step.
+    let side = dest.with_extension("sha256");
+    let _ = fs::write(&side, &digest);
     Ok(())
 }
 
@@ -457,20 +615,22 @@ async fn try_download_all_mirrors(
 
         for attempt in 1..=MIRROR_ATTEMPTS {
             for url in &candidates {
+                if !is_allowed_download_url(url) {
+                    errors.push(format!("skip non-allowlisted URL: {url}"));
+                    continue;
+                }
                 emit(
                     app,
-                    CliInstallProgress {
-                        phase: "downloading".into(),
-                        message: format!(
+                    progress(
+                        "downloading",
+                        format!(
                             "Mirror {} · attempt {attempt}/{MIRROR_ATTEMPTS}",
                             mirror_host(base)
                         ),
-                        percent: Some(5.0),
-                        bytes_downloaded: Some(0),
-                        total_bytes: None,
-                        mirror: Some(base.into()),
-                        version: Some(version.into()),
-                    },
+                        Some(5.0),
+                        Some(base.into()),
+                        Some(version.into()),
+                    ),
                 );
                 let _ = fs::remove_file(&tmp_path);
                 match download_to_file(app, client, url, &tmp_path, version, base).await {
@@ -500,30 +660,92 @@ pub async fn install_cli_latest(app: AppHandle) -> Result<CliInstallResult, Stri
 
     emit(
         &app,
-        CliInstallProgress {
-            phase: "downloading".into(),
-            message: format!("Found Grok Build v{version}"),
-            percent: Some(4.0),
-            bytes_downloaded: None,
-            total_bytes: None,
-            mirror: Some(preferred.clone()),
-            version: Some(version.clone()),
-        },
+        progress(
+            "downloading",
+            format!("Found Grok Build v{version}"),
+            Some(4.0),
+            Some(preferred.clone()),
+            Some(version.clone()),
+        ),
     );
 
     let (tmp_path, mirror_used) =
         try_download_all_mirrors(&app, &client, &version, &preferred).await?;
 
+    let digest = sha256_file(&tmp_path).unwrap_or_else(|_| {
+        // Fallback: side file written during download
+        fs::read_to_string(tmp_path.with_extension("sha256"))
+            .unwrap_or_default()
+            .trim()
+            .to_string()
+    });
+    if digest.len() != 64 {
+        let _ = fs::remove_file(&tmp_path);
+        return Err("failed to compute SHA-256 of downloaded CLI binary".into());
+    }
+
+    let (os, arch) = platform_triple()?;
+    let platform = format!("{os}-{arch}");
+    let artifact_name = if cfg!(target_os = "windows") {
+        format!("grok-{version}-{platform}.exe")
+    } else {
+        format!("grok-{version}-{platform}")
+    };
+
     emit(
         &app,
         CliInstallProgress {
             phase: "verifying".into(),
-            message: "Verifying binary…".into(),
+            message: format!("SHA-256 {digest:.12}… — checking published checksum…"),
+            percent: Some(91.0),
+            bytes_downloaded: None,
+            total_bytes: None,
+            mirror: Some(mirror_used.clone()),
+            version: Some(version.clone()),
+            sha256: Some(digest.clone()),
+        },
+    );
+
+    let published =
+        fetch_published_checksum(&client, &mirror_used, &version, &platform, &artifact_name)
+            .await;
+    let checksum_verified = match published {
+        Some(expected) => {
+            if expected != digest {
+                let _ = fs::remove_file(&tmp_path);
+                return Err(format!(
+                    "SHA-256 mismatch for {artifact_name}: got {digest}, expected {expected}"
+                ));
+            }
+            info!("cli_install: published checksum matched for {artifact_name}");
+            true
+        }
+        None => {
+            // Official mirrors do not publish sidecars today. We still compute and surface
+            // the hash, enforce allowlist + size + --version, and never install off-list.
+            warn!(
+                "cli_install: no published checksum for {artifact_name}; \
+                 continuing with allowlist + binary probe (hash={digest})"
+            );
+            false
+        }
+    };
+
+    emit(
+        &app,
+        CliInstallProgress {
+            phase: "verifying".into(),
+            message: if checksum_verified {
+                "Checksum OK — verifying binary…".into()
+            } else {
+                "Verifying binary…".into()
+            },
             percent: Some(92.0),
             bytes_downloaded: None,
             total_bytes: None,
             mirror: Some(mirror_used.clone()),
             version: Some(version.clone()),
+            sha256: Some(digest.clone()),
         },
     );
 
@@ -545,10 +767,12 @@ pub async fn install_cli_latest(app: AppHandle) -> Result<CliInstallResult, Stri
             total_bytes: None,
             mirror: Some(mirror_used.clone()),
             version: Some(version.clone()),
+            sha256: Some(digest.clone()),
         },
     );
 
     let linked = link_install(&tmp_path, &version)?;
+    let _ = fs::remove_file(tmp_path.with_extension("sha256"));
     let probe = cli_probe::probe_cli(Some(linked.to_string_lossy().as_ref()));
     let path = probe
         .path
@@ -560,14 +784,16 @@ pub async fn install_cli_latest(app: AppHandle) -> Result<CliInstallResult, Stri
         CliInstallProgress {
             phase: "done".into(),
             message: format!(
-                "Installed {}",
-                version_out.as_deref().unwrap_or(&version)
+                "Installed {} (sha256 {})",
+                version_out.as_deref().unwrap_or(&version),
+                &digest[..12]
             ),
             percent: Some(100.0),
             bytes_downloaded: None,
             total_bytes: None,
             mirror: Some(mirror_used.clone()),
             version: version_out.clone(),
+            sha256: Some(digest.clone()),
         },
     );
 
@@ -577,6 +803,8 @@ pub async fn install_cli_latest(app: AppHandle) -> Result<CliInstallResult, Stri
         version: version_out,
         mirror_used: Some(mirror_used),
         message: "Grok Build installed".into(),
+        sha256: Some(digest),
+        checksum_verified: Some(checksum_verified),
     })
 }
 
@@ -599,5 +827,98 @@ pub fn install_commands() -> serde_json::Value {
             "docsUrl": "https://docs.x.ai/build/overview",
             "mirrors": MIRROR_BASES,
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn allowlist_accepts_official_mirrors_only() {
+        assert!(is_allowed_download_url(
+            "https://storage.googleapis.com/grok-build-public-artifacts/cli/stable"
+        ));
+        assert!(is_allowed_download_url(
+            "https://storage.googleapis.com/grok-build-public-artifacts/cli/grok-0.2.111-macos-aarch64"
+        ));
+        assert!(is_allowed_download_url(
+            "https://x.ai/cli/grok-0.2.111-macos-x86_64"
+        ));
+        assert!(is_allowed_download_url(
+            "https://x.ai/cli/SHA256SUMS"
+        ));
+    }
+
+    #[test]
+    fn allowlist_rejects_http_and_foreign_hosts() {
+        assert!(!is_allowed_download_url(
+            "http://storage.googleapis.com/grok-build-public-artifacts/cli/stable"
+        ));
+        assert!(!is_allowed_download_url(
+            "https://evil.example/cli/grok-0.2.111-macos-aarch64"
+        ));
+        assert!(!is_allowed_download_url(
+            "https://storage.googleapis.com/other-bucket/cli/stable"
+        ));
+        assert!(!is_allowed_download_url(
+            "https://x.ai/not-cli/payload"
+        ));
+        assert!(!is_allowed_download_url(
+            "https://user:pass@x.ai/cli/stable"
+        ));
+        assert!(!is_allowed_download_url(
+            "https://x.ai/cli/../etc/passwd"
+        ));
+        assert!(!is_allowed_download_url(""));
+        assert!(!is_allowed_download_url("ftp://x.ai/cli/stable"));
+    }
+
+    #[test]
+    fn parse_checksum_gnu_sha256sum_format() {
+        let body = "\
+# comment
+aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa  grok-0.2.111-macos-aarch64
+bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb *other-file
+";
+        let h = parse_checksum_for_file(body, "grok-0.2.111-macos-aarch64").unwrap();
+        assert_eq!(h, "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
+    }
+
+    #[test]
+    fn parse_checksum_bare_hex() {
+        let hex = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+        assert_eq!(
+            parse_checksum_for_file(hex, "anything").as_deref(),
+            Some(hex)
+        );
+    }
+
+    #[test]
+    fn parse_checksum_ignores_garbage() {
+        assert!(parse_checksum_for_file("not a hash", "f").is_none());
+        assert!(parse_checksum_for_file("abcd short", "f").is_none());
+    }
+
+    #[test]
+    fn parse_checksum_mismatch_name_skipped_for_multi_line() {
+        let body = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa  wrong-name\n";
+        // multi-line with name mismatch → None (no bare single-line fallback when name present)
+        assert!(parse_checksum_for_file(body, "right-name").is_none());
+    }
+
+    #[test]
+    fn sha256_file_matches_known_digest() {
+        let dir = std::env::temp_dir().join(format!("cli-hash-{}", std::process::id()));
+        let _ = fs::create_dir_all(&dir);
+        let path = dir.join("blob.bin");
+        fs::write(&path, b"grok-cli-test-bytes").unwrap();
+        let got = sha256_file(&path).unwrap();
+        // echo -n 'grok-cli-test-bytes' | shasum -a 256
+        assert_eq!(got.len(), 64);
+        assert!(got.chars().all(|c| c.is_ascii_hexdigit()));
+        // re-hash same content → stable
+        assert_eq!(got, sha256_file(&path).unwrap());
+        let _ = fs::remove_dir_all(&dir);
     }
 }

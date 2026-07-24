@@ -8,6 +8,7 @@ mod supergrok_quota;
 mod cli_probe;
 mod cli_install;
 mod commands;
+mod support_bundle;
 mod editors;
 mod error;
 mod fs_browser;
@@ -152,6 +153,8 @@ pub fn run() {
             commands::import_grok_cli_config,
             commands::import_grok_go_config,
             commands::doctor_report,
+            commands::export_support_bundle,
+            commands::reset_app_data,
             commands::skills_list,
             commands::inspect_mcp,
             commands::pick_directory,
