@@ -168,6 +168,11 @@ pub struct AppSettings {
     /// Passed as top-level `grok --sandbox <profile>` / `GROK_SANDBOX` at spawn.
     #[serde(default = "default_sandbox_profile")]
     pub sandbox_profile: String,
+    /// Allow Grok Build subagent spawning (`Agent` / task tools). Default **true**
+    /// (CLI default). When false, spawn forces `--no-subagents` + `GROK_SUBAGENTS=0`
+    /// and independent mode writes `[subagents] enabled = false`.
+    #[serde(default = "default_true")]
+    pub subagents_enabled: bool,
 }
 
 fn default_composer_prefs_scope() -> String {
@@ -217,6 +222,7 @@ impl Default for AppSettings {
             stream_stall_seconds: default_stream_stall_seconds(),
             store_api_keys_in_keychain: false,
             sandbox_profile: default_sandbox_profile(),
+            subagents_enabled: true,
         }
     }
 }
@@ -1305,6 +1311,15 @@ mod tests {
         let raw = r#"{
             "theme": "dark",
             "locale": "en",
+        assert!(s.subagents_enabled);
+    }
+
+    #[test]
+    fn subagents_enabled_defaults_true_when_missing_from_json() {
+        // Older settings files omit the field — serde default keeps subagents on.
+        let raw = r#"{
+            "theme": "dark",
+            "locale": "zh",
             "sessionDataMode": "independent",
             "manualCliPath": null,
             "permissionPolicy": "ask",
@@ -1361,5 +1376,6 @@ mod tests {
         let m: SessionMeta = serde_json::from_str(raw).expect("deserialize legacy session");
         assert!(!m.pinned);
         assert!(!m.archived);
+        assert!(s.subagents_enabled);
     }
 }

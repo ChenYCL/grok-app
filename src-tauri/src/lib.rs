@@ -5,6 +5,7 @@ mod account_profiles;
 mod acp_client;
 mod agent_prefs;
 mod app_update;
+mod agent_subagents;
 mod extensions;
 mod supergrok_quota;
 mod cli_probe;

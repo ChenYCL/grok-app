@@ -289,6 +289,22 @@ impl AcpClient {
                 cmd.arg(a);
             }
         }
+        //   top-level: `grok --no-auto-update [--no-subagents] agent …`
+        //   agent opts: `--model` / `--reasoning-effort` / `--always-approve` before `stdio`
+        // Skip background update checks so ACP handshakes are not delayed on launch.
+        // Subagents default on; when off, force --no-subagents + GROK_SUBAGENTS=0 so
+        // agent-home / user config cannot re-enable them.
+        let subagents_enabled = crate::store::load_settings().subagents_enabled;
+        if session_data_mode != "shared" {
+            let _ = crate::agent_subagents::sync_subagents_to_agent_profile(
+                session_data_mode,
+                subagents_enabled,
+            );
+        }
+
+        let mut cmd = Command::new(&cli_path);
+        cmd.arg("--no-auto-update");
+        crate::agent_subagents::apply_subagents_to_command(&mut cmd, subagents_enabled);
         cmd.arg("agent");
         if !spawn_model.is_empty() {
             cmd.args(["--model", &spawn_model]);
@@ -322,6 +338,7 @@ impl AcpClient {
         }
         tracing::info!(
             "acp: spawn GROK_HOME={} mode={} auth_present={} route={:?} composer_model={:?} spawn_model={} yolo={} sandbox={:?}",
+            "acp: spawn GROK_HOME={} mode={} auth_present={} route={:?} composer_model={:?} spawn_model={} yolo={} subagents_enabled={}",
             grok_home.display(),
             session_data_mode,
             grok_home.join("auth.json").is_file(),
@@ -333,6 +350,7 @@ impl AcpClient {
                 .map(cli_permission_mode)
                 == Some("bypassPermissions"),
             sandbox.as_ref().map(|s| s.profile.as_str())
+            subagents_enabled
         );
 
         let mut child = cmd.spawn().map_err(|e| {

@@ -634,6 +634,7 @@ pub async fn settings_set(
         prev.store_api_keys_in_keychain != settings.store_api_keys_in_keychain;
     let session_data_mode_changed =
         prev.session_data_mode != settings.session_data_mode;
+    let subagents_flip = prev.subagents_enabled != settings.subagents_enabled;
 
     store::save_settings(&settings)?;
 
@@ -653,6 +654,15 @@ pub async fn settings_set(
     // so the next connect spawns under the new data root (E04).
     if session_data_mode_changed {
         mgr.recycle_all_agents(&app, "session_data_mode").await;
+    if subagents_flip {
+        if let Err(e) = crate::agent_subagents::sync_subagents_to_agent_profile(
+            &settings.session_data_mode,
+            settings.subagents_enabled,
+        ) {
+            tracing::warn!("settings_set sync subagents profile: {e}");
+        }
+        // Spawn flags change — soft-respawn so the next turn uses the new policy.
+        mgr.soft_respawn(&app).await;
     }
 
     // Full permission apply: Host + agent-home + soft-respawn if needed

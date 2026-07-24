@@ -35,6 +35,7 @@ See `docs/llm-wiki/release.md`.
 **中文**
 - 新增：应用更新检查、活动任务面板、会话正文搜索、插件安装更新、沙箱配置、会话置顶、项目 inspect、CLI Doctor 合并。  
 - 修复：会话模式切换回收 Agent；缺失项目目录可重定位。
+- **Allow subagent spawning toggle**: Settings → Permissions; default on. When off, agents spawn with `--no-subagents` / `GROK_SUBAGENTS=0` (independent mode also writes `[subagents] enabled = false`). Soft-respawn on flip.
 
 ## [0.1.6] - 2026-07-24
 

@@ -115,6 +115,9 @@ export interface SettingsPageProps {
   /** OS sandbox for agent spawn: off | workspace | read-only | strict | devbox. */
   sandboxProfile?: string;
   onSandboxProfile?: (v: string) => void;
+  /** Allow Grok Build subagent spawning (default on). */
+  subagentsEnabled?: boolean;
+  onSubagentsEnabled?: (v: boolean) => void;
   cliInfo: {
     found: boolean;
     path: string | null;
@@ -418,6 +421,8 @@ export function SettingsPage({
   onStoreApiKeysInKeychain,
   sandboxProfile = "off",
   onSandboxProfile,
+  subagentsEnabled = true,
+  onSubagentsEnabled,
   cliInfo,
   onDoctor,
   versionFooter,
@@ -886,6 +891,20 @@ export function SettingsPage({
                         label: t("settings.sandbox.devbox"),
                       },
                     ]}
+              {onSubagentsEnabled ? (
+                <div className="settings-row">
+                  <div className="settings-row__text">
+                    <div className="settings-row__label">
+                      {t("settings.subagentsEnabled")}
+                    </div>
+                    <div className="settings-row__desc">
+                      {t("settings.subagentsEnabledDesc")}
+                    </div>
+                  </div>
+                  <UiCheck
+                    checked={subagentsEnabled}
+                    onChange={() => onSubagentsEnabled(!subagentsEnabled)}
+                    ariaLabel={t("settings.subagentsEnabled")}
                   />
                 </div>
               ) : null}

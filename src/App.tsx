@@ -692,6 +692,7 @@ export default function App() {
   const [streamStallSeconds, setStreamStallSeconds] = useState(120);
   const [storeApiKeysInKeychain, setStoreApiKeysInKeychain] = useState(false);
   const [sandboxProfile, setSandboxProfile] = useState("off");
+  const [subagentsEnabled, setSubagentsEnabled] = useState(true);
   const [gitWorktrees, setGitWorktrees] = useState<api.GitWorktreeEntry[]>([]);
   /** null = unknown/loading; true = git work tree; false = not a git repo. */
   const [gitWorktreesAvailable, setGitWorktreesAvailable] = useState<
@@ -922,6 +923,8 @@ export default function App() {
         const known = ["off", "workspace", "read-only", "strict", "devbox"];
         setSandboxProfile(known.includes(sb) ? sb : "off");
       }
+      // Default true when field is missing from older settings files.
+      setSubagentsEnabled(settings.subagentsEnabled !== false);
       setCliInfo({
         found: cli.found,
         path: cli.path,
@@ -5893,6 +5896,8 @@ export default function App() {
       "settings.cliNotFound",
       "settings.permissionDeep",
       "settings.permissionDeepDesc",
+      "settings.subagentsEnabled",
+      "settings.subagentsEnabledDesc",
       "settings.prefsScope",
       "settings.prefsScopeDesc",
       "settings.prefsScope.global",
@@ -6226,6 +6231,17 @@ export default function App() {
             void api.settingsGet().then((s) =>
               api.settingsSet({ ...s, sandboxProfile: v }),
             );
+          subagentsEnabled={subagentsEnabled}
+          onSubagentsEnabled={(v) => {
+            const prev = subagentsEnabled;
+            setSubagentsEnabled(v);
+            void api
+              .settingsGet()
+              .then((s) => api.settingsSet({ ...s, subagentsEnabled: v }))
+              .catch((e) => {
+                setSubagentsEnabled(prev);
+                showToast(String(e), 4500);
+              });
           }}
           cliInfo={cliInfo}
           onDoctor={() => void openDoctor()}
