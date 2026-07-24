@@ -52,7 +52,8 @@ pnpm setup:cross   # rust targets + (macOS) cargo-xwin / nsis / llvm 检查
 
 ```bash
 # Debian/Ubuntu
-sudo apt install libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev \
+# Prefer Ayatana only (libappindicator3-dev conflicts with libayatana-appindicator3-dev).
+sudo apt install libwebkit2gtk-4.1-dev librsvg2-dev \
   patchelf libgtk-3-dev libayatana-appindicator3-dev libssl-dev
 
 # Arch
