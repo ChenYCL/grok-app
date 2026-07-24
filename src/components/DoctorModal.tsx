@@ -23,6 +23,7 @@ import {
   type CliDoctorSafeFacts,
   type CliDoctorView,
 } from "@/lib/cliDoctor";
+import { CliUpdateRow } from "@/components/CliUpdateRow";
 import { redact } from "@/lib/redact";
 
 export type DoctorModalProps = {
@@ -451,6 +452,19 @@ export function DoctorModal({
 
           <section className="doctor-advanced" aria-label={t("doctor.advanced")}>
             <h3 className="doctor-advanced__title">{t("doctor.advanced")}</h3>
+            <div className="doctor-advanced__cli-update">
+              <div className="doctor-advanced__text doctor-advanced__cli-update-head">
+                <div className="doctor-advanced__label">{t("doctor.cliUpdate")}</div>
+                <p className="doctor-advanced__hint">{t("doctor.cliUpdateHint")}</p>
+              </div>
+              <CliUpdateRow
+                t={t}
+                cliFound={
+                  report?.checks?.find((c) => c.id === "cli")?.level !== "fail"
+                }
+                compact
+              />
+            </div>
             <div className="doctor-advanced__row">
               <div className="doctor-advanced__text">
                 <div className="doctor-advanced__label">{t("doctor.supportZip")}</div>

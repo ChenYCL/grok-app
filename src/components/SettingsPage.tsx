@@ -45,6 +45,7 @@ import { AccountPanel } from "@/components/AccountPanel";
 import { ProvidersPanel } from "@/components/ProvidersPanel";
 import { ExtensionsPanel } from "@/components/ExtensionsPanel";
 import { ProjectInspectPanel } from "@/components/ProjectInspectPanel";
+import { CliUpdateRow } from "@/components/CliUpdateRow";
 import {
   createT,
   resolveLocale,
@@ -1379,6 +1380,11 @@ export function SettingsPage({
                 </div>
               )}
             </div>
+            <CliUpdateRow
+              t={t}
+              cliFound={cliInfo.found}
+              onAfterInstall={() => onCliBlur(manualCliPath.trim())}
+            />
             <AcpServerField
               value={acpServerAddr}
               onChange={onAcpServerAddr}

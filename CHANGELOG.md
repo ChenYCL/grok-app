@@ -21,6 +21,7 @@ See `docs/llm-wiki/release.md`.
 - **Pin sessions** (#73): pin chats to the top of the sidebar (like projects).
 - **Project inspect** (#75): Settings → Runtime summary from `grok inspect --json` (secret-safe).
 - **CLI doctor in App Doctor** (#76): merge `grok doctor --json` findings into the Doctor modal.
+- **CLI update check** (#63): Settings → Runtime and Doctor can run `grok update --check --json` and install via `grok update` (falls back to App install trust-chain).
 
 ### Fixed
 
@@ -33,7 +34,7 @@ See `docs/llm-wiki/release.md`.
 - Remaining open PRs (**#63–#64**, **#67–#72**, **#74**, **#77–#89**) need conflict resolution against this batch (heavy overlap on `App.tsx` / `Settings` / `commands.rs` / spawn flags).
 
 **中文**
-- 新增：应用更新检查、活动任务面板、会话正文搜索、插件安装更新、沙箱配置、会话置顶、项目 inspect、CLI Doctor 合并。  
+- 新增：应用更新检查、活动任务面板、会话正文搜索、插件安装更新、沙箱配置、会话置顶、项目 inspect、CLI Doctor 合并、CLI 更新检查。  
 - 修复：会话模式切换回收 Agent；缺失项目目录可重定位。
 
 ## [0.1.6] - 2026-07-24
