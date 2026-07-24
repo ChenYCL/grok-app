@@ -484,7 +484,21 @@ export const zhTW: Record<MessageKey, string> = {
   "settings.nav.archived": "已封存對話",
   "settings.nav.extensions": "擴充功能",
   "settings.nav.runtime": "CLI / 執行環境",
+  "settings.nav.shortcuts": "鍵盤",
   "settings.nav.about": "關於",
+  "settings.shortcuts.title": "鍵盤快捷鍵",
+  "settings.shortcuts.desc":
+    "應用程式內已生效的綁定。目前為唯讀列表，自訂改鍵稍後提供。",
+  "settings.shortcuts.colAction": "操作",
+  "settings.shortcuts.colMac": "macOS",
+  "settings.shortcuts.colWin": "Windows / Linux",
+  "settings.shortcuts.group.workbench": "工作台",
+  "settings.shortcuts.group.navigation": "導覽",
+  "settings.shortcuts.group.diagnostics": "診斷",
+  "settings.shortcuts.group.input": "輸入",
+  "settings.shortcuts.note":
+    "部分組合鍵可能被系統占用（如輸入法切換）。輸入區按鈕仍可作為後備。",
+  "settings.shortcuts.openHelp": "開啟快捷鍵說明",
   "settings.archived.desc":
     "已封存的對話依專案分組。可多選後批次還原或刪除。",
   "settings.archived.empty": "尚無已封存對話。",

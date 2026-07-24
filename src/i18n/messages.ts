@@ -510,7 +510,21 @@ const en = {
   "settings.nav.archived": "Archived chats",
   "settings.nav.extensions": "Extensions",
   "settings.nav.runtime": "CLI / Runtime",
+  "settings.nav.shortcuts": "Keyboard",
   "settings.nav.about": "About",
+  "settings.shortcuts.title": "Keyboard shortcuts",
+  "settings.shortcuts.desc":
+    "Bindings that already work in the app. Read-only for now — remapping comes later.",
+  "settings.shortcuts.colAction": "Action",
+  "settings.shortcuts.colMac": "macOS",
+  "settings.shortcuts.colWin": "Windows / Linux",
+  "settings.shortcuts.group.workbench": "Workbench",
+  "settings.shortcuts.group.navigation": "Navigation",
+  "settings.shortcuts.group.diagnostics": "Diagnostics",
+  "settings.shortcuts.group.input": "Input",
+  "settings.shortcuts.note":
+    "Some chords may be taken by the OS (e.g. input sources). Composer buttons stay available as a fallback.",
+  "settings.shortcuts.openHelp": "Open shortcuts help",
   "settings.archived.desc":
     "Chats you archived are listed by project. Select multiple to restore or delete.",
   "settings.archived.empty": "No archived chats.",
@@ -1723,7 +1737,21 @@ const zh: Record<MessageKey, string> = {
   "settings.nav.archived": "已归档会话",
   "settings.nav.extensions": "扩展",
   "settings.nav.runtime": "CLI / 运行时",
+  "settings.nav.shortcuts": "键盘",
   "settings.nav.about": "关于",
+  "settings.shortcuts.title": "键盘快捷键",
+  "settings.shortcuts.desc":
+    "应用内已生效的绑定。当前为只读列表，自定义改键稍后提供。",
+  "settings.shortcuts.colAction": "操作",
+  "settings.shortcuts.colMac": "macOS",
+  "settings.shortcuts.colWin": "Windows / Linux",
+  "settings.shortcuts.group.workbench": "工作台",
+  "settings.shortcuts.group.navigation": "导航",
+  "settings.shortcuts.group.diagnostics": "诊断",
+  "settings.shortcuts.group.input": "输入",
+  "settings.shortcuts.note":
+    "部分组合键可能被系统占用（如输入法切换）。输入区按钮仍可作为后备。",
+  "settings.shortcuts.openHelp": "打开快捷键帮助",
   "settings.archived.desc":
     "已归档的会话按项目分组。可多选后批量还原或删除。",
   "settings.archived.empty": "暂无已归档会话。",
