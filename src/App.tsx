@@ -690,6 +690,8 @@ export default function App() {
   const [maxConcurrentAgents, setMaxConcurrentAgents] = useState(3);
   const [agentIdleMinutes, setAgentIdleMinutes] = useState(30);
   const [streamStallSeconds, setStreamStallSeconds] = useState(120);
+  /** 0 = omit `--max-turns` (CLI default). */
+  const [maxAgentTurns, setMaxAgentTurns] = useState(0);
   const [storeApiKeysInKeychain, setStoreApiKeysInKeychain] = useState(false);
   const [sandboxProfile, setSandboxProfile] = useState("off");
   const [gitWorktrees, setGitWorktrees] = useState<api.GitWorktreeEntry[]>([]);
@@ -916,6 +918,14 @@ export default function App() {
           ? Math.min(900, Math.round(settings.streamStallSeconds))
           : 120,
       );
+      {
+        const raw = settings.maxAgentTurns;
+        setMaxAgentTurns(
+          typeof raw === "number" && raw > 0
+            ? Math.min(200, Math.round(raw))
+            : 0,
+        );
+      }
       setStoreApiKeysInKeychain(!!settings.storeApiKeysInKeychain);
       {
         const sb = (settings.sandboxProfile || "off").trim().toLowerCase();
@@ -6204,6 +6214,18 @@ export default function App() {
             setStreamStallSeconds(v);
             void api.settingsGet().then((s) =>
               api.settingsSet({ ...s, streamStallSeconds: v }),
+            );
+          }}
+          maxAgentTurns={maxAgentTurns}
+          onMaxAgentTurns={(v) => {
+            const n = v > 0 ? Math.min(200, Math.round(v)) : 0;
+            setMaxAgentTurns(n);
+            void api.settingsGet().then((s) =>
+              api.settingsSet({
+                ...s,
+                // null clears the optional field; 0 would also omit on spawn.
+                maxAgentTurns: n > 0 ? n : null,
+              }),
             );
           }}
           storeApiKeysInKeychain={storeApiKeysInKeychain}

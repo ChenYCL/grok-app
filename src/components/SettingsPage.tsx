@@ -109,6 +109,12 @@ export interface SettingsPageProps {
   /** Stream stall silence timeout seconds (I06). */
   streamStallSeconds?: number;
   onStreamStallSeconds?: (v: number) => void;
+  /**
+   * Max agent turns (`grok --max-turns N`). 0 / empty = CLI default (no flag).
+   * Clamped to 1–200 when set.
+   */
+  maxAgentTurns?: number;
+  onMaxAgentTurns?: (v: number) => void;
   /** Store App API keys in OS keychain (default off → secrets.json). */
   storeApiKeysInKeychain?: boolean;
   onStoreApiKeysInKeychain?: (v: boolean) => void;
@@ -414,6 +420,8 @@ export function SettingsPage({
   onAgentIdleMinutes,
   streamStallSeconds = 120,
   onStreamStallSeconds,
+  maxAgentTurns = 0,
+  onMaxAgentTurns,
   storeApiKeysInKeychain = false,
   onStoreApiKeysInKeychain,
   sandboxProfile = "off",
@@ -1453,6 +1461,39 @@ export function SettingsPage({
                   if (!Number.isFinite(n)) return;
                   onStreamStallSeconds?.(
                     Math.min(900, Math.max(15, Math.round(n))),
+                  );
+                }}
+              />
+            </div>
+            <div className="settings-row settings-row--stack">
+              <div className="settings-row__text">
+                <div className="settings-row__label">
+                  {t("settings.maxAgentTurns")}
+                </div>
+                <div className="settings-row__desc">
+                  {t("settings.maxAgentTurnsDesc")}
+                </div>
+              </div>
+              <input
+                className="settings-input"
+                type="number"
+                min={0}
+                max={200}
+                step={1}
+                placeholder={t("settings.maxAgentTurnsPlaceholder")}
+                value={
+                  maxAgentTurns && maxAgentTurns > 0 ? maxAgentTurns : ""
+                }
+                onChange={(e) => {
+                  const raw = e.target.value.trim();
+                  if (raw === "") {
+                    onMaxAgentTurns?.(0);
+                    return;
+                  }
+                  const n = Number(raw);
+                  if (!Number.isFinite(n)) return;
+                  onMaxAgentTurns?.(
+                    Math.min(200, Math.max(0, Math.round(n))),
                   );
                 }}
               />

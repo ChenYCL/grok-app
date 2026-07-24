@@ -565,6 +565,10 @@ const en = {
   "settings.streamStallSeconds": "Stream stall timeout (seconds)",
   "settings.streamStallSecondsDesc":
     "If a turn has no stream chunks or tool activity for this long, show a Cancel / Keep waiting prompt (default 120). Long-running tools that still emit events do not count as stalled.",
+  "settings.maxAgentTurns": "Max agent turns",
+  "settings.maxAgentTurnsDesc":
+    "Pass `grok --max-turns N` when starting the agent (1–200). Leave empty or 0 for the CLI default. Applies on the next agent start — reconnect the session after changing.",
+  "settings.maxAgentTurnsPlaceholder": "Default (no limit)",
   "agent.idleRecycledToast":
     "Agent process recycled after idle — session kept; next message will reconnect.",
   "agent.dataModeRecycledToast":
@@ -1777,6 +1781,10 @@ const zh: Record<MessageKey, string> = {
   "settings.streamStallSeconds": "流式卡顿超时（秒）",
   "settings.streamStallSecondsDesc":
     "若一轮对话在该时间内无任何流式片段或工具活动，将提示「取消本轮 / 继续等待」（默认 120）。仍有工具事件的长任务不会误判为卡顿。",
+  "settings.maxAgentTurns": "最大 Agent 轮次",
+  "settings.maxAgentTurnsDesc":
+    "启动 Agent 时传入 `grok --max-turns N`（1–200）。留空或 0 表示使用 CLI 默认。下次启动 Agent 时生效——更改后请重连会话。",
+  "settings.maxAgentTurnsPlaceholder": "默认（不限制）",
   "agent.idleRecycledToast":
     "Agent 进程因闲置已回收 — 会话仍在；下次发送将重新连接。",
   "agent.dataModeRecycledToast":

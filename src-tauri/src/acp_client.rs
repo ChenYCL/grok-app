@@ -193,6 +193,46 @@ impl SandboxSpawnSpec {
 pub fn sandbox_spawn_flags(profile: &str) -> Option<(Vec<String>, (String, String))> {
     let spec = SandboxSpawnSpec::from_setting(profile)?;
     Some((spec.cli_args().to_vec(), spec.env_pair()))
+/// Hard clamp for Settings → Runtime max agent turns (1–200).
+pub const MAX_AGENT_TURNS_CAP: u32 = 200;
+pub const MIN_AGENT_TURNS: u32 = 1;
+
+/// Pure spawn plan for top-level `--max-turns N`.
+///
+/// `--max-turns` is a **top-level** `grok` flag (same placement as session title
+/// generation). `None` / `0` omit the flag so the CLI keeps its default.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MaxTurnsSpawnSpec {
+    pub turns: u32,
+}
+
+impl MaxTurnsSpawnSpec {
+    /// Build from settings. `None` or `0` → do not pass `--max-turns`.
+    pub fn from_setting(raw: Option<u32>) -> Option<Self> {
+        let n = raw?;
+        if n == 0 {
+            return None;
+        }
+        Some(Self {
+            turns: n.clamp(MIN_AGENT_TURNS, MAX_AGENT_TURNS_CAP),
+        })
+    }
+
+    /// Top-level CLI args: `["--max-turns", "<N>"]` (before `agent`).
+    pub fn cli_args(&self) -> [String; 2] {
+        ["--max-turns".into(), self.turns.to_string()]
+    }
+}
+
+/// Normalize settings value: `None`/`0` stay unset; otherwise clamp to 1..=200.
+pub fn normalize_max_agent_turns(raw: Option<u32>) -> Option<u32> {
+    MaxTurnsSpawnSpec::from_setting(raw).map(|s| s.turns)
+}
+
+/// Pure helper used by spawn + unit tests: top-level args when a limit is set.
+pub fn max_turns_cli_args(raw: Option<u32>) -> Option<Vec<String>> {
+    let spec = MaxTurnsSpawnSpec::from_setting(raw)?;
+    Some(spec.cli_args().to_vec())
 }
 
 impl AcpClient {
@@ -286,6 +326,17 @@ impl AcpClient {
         cmd.arg("--no-auto-update");
         if let Some(ref sb) = sandbox {
             for a in sb.cli_args() {
+        //   top-level: `grok --no-auto-update [--max-turns N] agent …`
+        //   agent opts: `--model` / `--reasoning-effort` / `--always-approve` before `stdio`
+        // Skip background update checks so ACP handshakes are not delayed on launch.
+        // `--max-turns` is top-level only (same as headless title generation).
+        let settings = crate::store::load_settings();
+        let max_turns = MaxTurnsSpawnSpec::from_setting(settings.max_agent_turns);
+
+        let mut cmd = Command::new(&cli_path);
+        cmd.arg("--no-auto-update");
+        if let Some(ref mt) = max_turns {
+            for a in mt.cli_args() {
                 cmd.arg(a);
             }
         }
@@ -322,6 +373,7 @@ impl AcpClient {
         }
         tracing::info!(
             "acp: spawn GROK_HOME={} mode={} auth_present={} route={:?} composer_model={:?} spawn_model={} yolo={} sandbox={:?}",
+            "acp: spawn GROK_HOME={} mode={} auth_present={} route={:?} composer_model={:?} spawn_model={} yolo={} max_turns={:?}",
             grok_home.display(),
             session_data_mode,
             grok_home.join("auth.json").is_file(),
@@ -333,6 +385,7 @@ impl AcpClient {
                 .map(cli_permission_mode)
                 == Some("bypassPermissions"),
             sandbox.as_ref().map(|s| s.profile.as_str())
+            max_turns.as_ref().map(|s| s.turns)
         );
 
         let mut child = cmd.spawn().map_err(|e| {
@@ -2200,6 +2253,53 @@ mod sandbox_spawn_tests {
         assert_eq!(
             spec.cli_args(),
             ["--sandbox".to_string(), "workspace".to_string()]
+mod max_turns_spawn_tests {
+    use super::*;
+
+    #[test]
+    fn none_and_zero_yield_no_flags() {
+        assert!(MaxTurnsSpawnSpec::from_setting(None).is_none());
+        assert!(MaxTurnsSpawnSpec::from_setting(Some(0)).is_none());
+        assert!(max_turns_cli_args(None).is_none());
+        assert!(max_turns_cli_args(Some(0)).is_none());
+        assert_eq!(normalize_max_agent_turns(None), None);
+        assert_eq!(normalize_max_agent_turns(Some(0)), None);
+    }
+
+    #[test]
+    fn valid_turns_build_top_level_args() {
+        let spec = MaxTurnsSpawnSpec::from_setting(Some(5)).unwrap();
+        assert_eq!(spec.turns, 5);
+        assert_eq!(
+            spec.cli_args(),
+            ["--max-turns".to_string(), "5".to_string()]
+        );
+        assert_eq!(
+            max_turns_cli_args(Some(5)),
+            Some(vec!["--max-turns".to_string(), "5".to_string()])
+        );
+        assert_eq!(normalize_max_agent_turns(Some(5)), Some(5));
+    }
+
+    #[test]
+    fn clamp_to_one_through_two_hundred() {
+        assert_eq!(
+            MaxTurnsSpawnSpec::from_setting(Some(1)).unwrap().turns,
+            1
+        );
+        assert_eq!(
+            MaxTurnsSpawnSpec::from_setting(Some(200)).unwrap().turns,
+            200
+        );
+        // Values above cap clamp down (0 already omitted above).
+        assert_eq!(
+            MaxTurnsSpawnSpec::from_setting(Some(999)).unwrap().turns,
+            MAX_AGENT_TURNS_CAP
+        );
+        assert_eq!(normalize_max_agent_turns(Some(999)), Some(200));
+        assert_eq!(
+            max_turns_cli_args(Some(999)),
+            Some(vec!["--max-turns".to_string(), "200".to_string()])
         );
     }
 }
