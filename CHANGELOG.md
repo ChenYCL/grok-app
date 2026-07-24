@@ -11,6 +11,29 @@ See `docs/llm-wiki/release.md`.
 
 ## [Unreleased]
 
+### Added
+
+- **Session diagnostic export**: session menu → “Export diagnostic package” builds a redacted zip (host messages/meta/transcript/settings/runtime, CLI probe, app logs, Grok Build agent trail) for bug reports such as early `end_turn` (#52).
+- **Multi-session background stream** (#56): switching chats parks busy turns as `background` so streaming/permission continues under the process cap.
+- **A11y (T15 slice)** (#53): conversation live region, permission bar / GlassModal focus trap + Escape, ask_user option `aria-pressed`, focus-visible on actions.
+
+### Fixed
+
+- **Premature turn end** (#54 / #52): defer `prompt_complete` while tools, permission, plan review, or ask_user are still open; finish when gates clear.
+- **Orphan chat cwd**: no-project sessions spawn the agent under `$HOME` instead of process `current_dir()` (often `/` when launched from Dock), reducing silent early stops on coding tasks (#52).
+- **Empty-run soft signal**: when an agent turn ends with zero tool calls (non-ask mode), toast suggests “continue” or exporting the diagnostic package (#52).
+- **Store JSON write lock** (#55): exclusive lock + atomic rename; corrupt sessions/projects/messages files quarantined instead of silent empty read.
+
+### Community
+
+- Integrated **#53–#56** (sonnemusk); closed #42 (worktrees shipped), #52 (early end_turn).
+
+**中文 · 新增**
+- 会话诊断包导出；切换会话时后台流式继续；流式/权限/问卷无障碍增强。
+
+**中文 · 修复**
+- 工具/权限未结束时不提前「就绪」（#52）；无项目会话 cwd 用 `$HOME`；store JSON 并发写加锁与损坏隔离。
+
 ## [0.1.5] - 2026-07-24
 
 > 中英文对照 / Bilingual notes.

@@ -22,6 +22,8 @@ mod process_limits;
 mod journal_throttle;
 mod stream_stall;
 mod cli_sessions;
+mod turn_complete;
+mod store_lock;
 mod permission;
 mod providers;
 mod secrets;
@@ -179,6 +181,7 @@ pub fn run() {
             commands::import_grok_go_config,
             commands::doctor_report,
             commands::export_support_bundle,
+            commands::export_session_bundle,
             commands::reset_app_data,
             commands::skills_list,
             commands::inspect_mcp,
