@@ -1088,6 +1088,46 @@ const en = {
   "ext.plugins.updating": "Updating…",
   "ext.plugins.note":
     "Same inventory as Grok Build (`grok plugin list`). Install/update/enable/disable call the CLI; enable state lives in `~/.grok/config.toml`. The agent soft-respawns after mutations so the next turn reloads plugins.",
+    "Same inventory as Grok Build (`grok plugin list`). Enable/disable writes `~/.grok/config.toml`; the agent soft-respawns so the next turn reloads plugins.",
+  "ext.market.title": "Marketplace",
+  "ext.market.loading": "Loading marketplace sources…",
+  "ext.market.empty": "No marketplace sources configured",
+  "ext.market.emptyCli":
+    "Marketplace is unavailable until the CLI is installed.",
+  "ext.market.addLabel": "Add source",
+  "ext.market.addPlaceholder": "git URL, owner/repo, or local path",
+  "ext.market.add": "Add",
+  "ext.market.adding": "Adding…",
+  "ext.market.addEmpty": "Enter a marketplace git URL, shorthand, or path.",
+  "ext.market.addHint":
+    "Same as `grok plugin marketplace add`. Sources are catalog indexes (not individual plugins).",
+  "ext.market.remove": "Remove",
+  "ext.market.removeTitle": "Remove marketplace source",
+  "ext.market.removeConfirm":
+    "Remove source “{name}”? Plugins installed from it stay installed; the catalog cache is dropped.",
+  "ext.market.update": "Update cache",
+  "ext.market.updateAll": "Update all caches",
+  "ext.market.updating": "Updating…",
+  "ext.market.installLabel": "Install plugin",
+  "ext.market.installPlaceholder":
+    "name, name@marketplace, owner/repo, or git URL",
+  "ext.market.install": "Install",
+  "ext.market.installing": "Installing…",
+  "ext.market.installEmpty": "Enter a plugin name, qualified name, or git URL.",
+  "ext.market.installHint":
+    "CLI `marketplace list --json` returns sources only. Install with `plugin install`: catalog name (`vercel`), pin (`vercel@xAI Official`), or paste a git URL / owner/repo. Soft-respawns the agent after install.",
+  "ext.market.browseTitle": "Available from sources",
+  "ext.market.browseHint":
+    "Loaded via `grok plugin list --json --available` (status=available). Not embedded in marketplace list JSON.",
+  "ext.market.browseLoad": "Load catalog",
+  "ext.market.browseRefresh": "Refresh catalog",
+  "ext.market.browseLoading": "Loading catalog…",
+  "ext.market.browseSearch": "Filter by name or marketplace…",
+  "ext.market.browseEmpty": "No available plugins match.",
+  "ext.market.browseCapped":
+    "Showing {shown} of {total}. Narrow the filter to find more.",
+  "ext.market.note":
+    "Sources mirror Grok Build (`plugin marketplace list/add/remove/update`). Install calls `plugin install --trust` and soft-respawns the agent.",
   "ext.skills.title": "Skills",
   "ext.skills.loading": "Loading skills…",
   "ext.skills.empty": "No skills discovered",
@@ -1103,6 +1143,7 @@ const en = {
   "ext.enableAll": "Enable all",
   "ext.footnote":
     "Toggles persist under app data and inject enabled MCP into agent sessions. Disabled skills stay on disk but hide from the slash palette. Plugin install accepts path/git/GitHub shorthand; full marketplace browse stays CLI-only.",
+    "Toggles persist under app data and inject enabled MCP into agent sessions. Disabled skills stay on disk but hide from the slash palette. Marketplace sources and install use the Grok Build CLI.",
 
   // Errors / misc
   "error.needTauri": "Folder picker requires the Tauri window",
@@ -2287,6 +2328,44 @@ const zh: Record<MessageKey, string> = {
   "ext.plugins.updating": "正在更新…",
   "ext.plugins.note":
     "与 Grok Build 共用同一清单（`grok plugin list`）。安装/更新/启用/禁用走 CLI；启用状态写入 `~/.grok/config.toml`。变更后 agent soft-respawn，下一轮对话重新加载插件。",
+    "与 Grok Build 共用同一清单（`grok plugin list`）。启用/禁用写入 `~/.grok/config.toml`；agent soft-respawn 后下一轮对话重新加载插件。",
+  "ext.market.title": "插件市场",
+  "ext.market.loading": "正在加载市场源…",
+  "ext.market.empty": "尚未配置市场源",
+  "ext.market.emptyCli": "安装 CLI 后才能管理市场源。",
+  "ext.market.addLabel": "添加源",
+  "ext.market.addPlaceholder": "git URL、owner/repo 或本地路径",
+  "ext.market.add": "添加",
+  "ext.market.adding": "添加中…",
+  "ext.market.addEmpty": "请输入市场源的 git URL、简写或路径。",
+  "ext.market.addHint":
+    "等同 `grok plugin marketplace add`。源是目录索引，不是单个插件。",
+  "ext.market.remove": "移除",
+  "ext.market.removeTitle": "移除市场源",
+  "ext.market.removeConfirm":
+    "移除源「{name}」？已从该源安装的插件会保留；目录缓存将被删除。",
+  "ext.market.update": "更新缓存",
+  "ext.market.updateAll": "更新全部缓存",
+  "ext.market.updating": "更新中…",
+  "ext.market.installLabel": "安装插件",
+  "ext.market.installPlaceholder":
+    "名称、名称@市场、owner/repo 或 git URL",
+  "ext.market.install": "安装",
+  "ext.market.installing": "安装中…",
+  "ext.market.installEmpty": "请输入插件名称、限定名或 git URL。",
+  "ext.market.installHint":
+    "CLI `marketplace list --json` 目前只返回源列表。安装走 `plugin install`：目录名（`vercel`）、限定（`vercel@xAI Official`），或粘贴 git URL / owner/repo。安装后 agent soft-respawn。",
+  "ext.market.browseTitle": "源中的可用插件",
+  "ext.market.browseHint":
+    "通过 `grok plugin list --json --available` 加载（status=available），不在 marketplace list JSON 里。",
+  "ext.market.browseLoad": "加载目录",
+  "ext.market.browseRefresh": "刷新目录",
+  "ext.market.browseLoading": "正在加载目录…",
+  "ext.market.browseSearch": "按名称或市场筛选…",
+  "ext.market.browseEmpty": "没有匹配的可用插件。",
+  "ext.market.browseCapped": "显示 {shown} / {total}。缩小筛选可继续查找。",
+  "ext.market.note":
+    "源与 Grok Build 一致（`plugin marketplace list/add/remove/update`）。安装调用 `plugin install --trust` 并 soft-respawn agent。",
   "ext.skills.title": "技能",
   "ext.skills.loading": "正在加载技能…",
   "ext.skills.empty": "未发现技能",
@@ -2302,6 +2381,7 @@ const zh: Record<MessageKey, string> = {
   "ext.enableAll": "全部启用",
   "ext.footnote":
     "开关会写入应用数据，并在新会话中注入已启用的 MCP（ACP mcpServers + agent-home 配置）。禁用技能仍保留在磁盘，但不会出现在斜杠面板。插件安装支持路径/git/GitHub 简写；完整市场浏览仍仅 CLI。",
+    "开关会写入应用数据，并在新会话中注入已启用的 MCP（ACP mcpServers + agent-home 配置）。禁用技能仍保留在磁盘，但不会出现在斜杠面板。市场源与安装走 Grok Build CLI。",
   "error.needTauri": "需要在 Tauri 窗口中选择目录",
   "common.comingSoon": "即将推出",
   "common.local": "本地",
