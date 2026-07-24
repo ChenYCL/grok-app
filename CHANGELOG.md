@@ -19,8 +19,13 @@ See `docs/llm-wiki/release.md`.
 
 - **Stream stall cancel (I06)**: host watchdog emits `session://stream_stall` after pure silence (default 120s, Settings → Runtime); banner with Cancel turn / Keep waiting; tool events count as progress.
 - **Journal write throttle (I04)**: mid-stream assistant journal flushes ≥500ms or on paragraph / turn end / stop / disconnect — avoids per-token disk spikes.
+- **Changes panel — Workspace git status**: Session (agent tool edits) + Workspace (`git status`) sections; click for unified diff via `git_file_diff` / `git_show_file`; refresh, open in editor, reveal, copy path.
 - **Sidebar session list virtualization** (F07): windowed rendering for large project/orphan session groups (100+ rows) without new dependencies; short lists unchanged.
 - **MCP enable + inject** (L03): Settings → Extensions toggles; enabled servers inject into ACP `session/new|load` and agent-home config — community PR #38.
+
+### Added (中文)
+
+- **Changes 面板 — 工作区 git 状态**：会话变更 + 工作区 `git status` 分段；点击查看 diff；刷新 / 外开编辑器 / Reveal / 复制路径。
 
 ## [0.1.2] - 2026-07-24
 
