@@ -11,6 +11,12 @@ See `docs/llm-wiki/release.md`.
 
 ## [Unreleased]
 
+## [0.1.5] - 2026-07-24
+
+> 中英文对照 / Bilingual notes.
+>
+> **Highlight:** Git worktree switch, per-project permission tiers, resource-pane text edit, clipboard image paste, structured error deck.
+
 ### Added
 
 - **Git worktree switch** (#46): project chip lists `git worktree` siblings and rebinds session cwd (reuse / add project, trust inherited when possible).
@@ -25,12 +31,16 @@ See `docs/llm-wiki/release.md`.
 ### Community
 
 - Integrated community PRs **#46–#48**, **#50–#51** (sonnemusk).
+- README features + contributors list refreshed for shipped community work.
 
 **中文 · 新增**
 - Git worktree 从项目 chip 切换；可信项目默认权限阶梯；资源面板文本就地编辑保存；结构化错误卡（问题/原因/主次操作）。
 
 **中文 · 修复**
 - 粘贴截图/剪贴板图片可正确挂附件（含 macOS 系统剪贴板回退）。
+
+**中文 · 文档**
+- README 功能表与贡献者名单同步已合并社区能力。
 
 ## [0.1.4] - 2026-07-24
 
