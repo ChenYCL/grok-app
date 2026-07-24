@@ -36,8 +36,14 @@ pub enum AcpEvent {
         status: String,
         raw: Value,
     },
+    /// Live plan entries notification (sessionUpdate plan) and/or exit_plan_mode gate.
     Plan {
         entries: Value,
+        /// Markdown / text body when available (exit_plan_mode planContent).
+        body: Option<String>,
+        /// Pending JSON-RPC id for `_x.ai/exit_plan_mode` (reply required).
+        rpc_id: Option<u64>,
+        tool_call_id: Option<String>,
     },
     PermissionRequest {
         rpc_id: u64,
@@ -204,7 +210,12 @@ impl AcpClient {
             opts.model_id.as_deref().unwrap_or(""),
         );
 
+        // Flag placement (CLI 0.2.x):
+        //   top-level: `grok --no-auto-update agent …`
+        //   agent opts: `--model` / `--reasoning-effort` / `--always-approve` before `stdio`
+        // Skip background update checks so ACP handshakes are not delayed on launch.
         let mut cmd = Command::new(&cli_path);
+        cmd.arg("--no-auto-update");
         cmd.arg("agent");
         if !spawn_model.is_empty() {
             cmd.args(["--model", &spawn_model]);
@@ -457,6 +468,53 @@ impl AcpClient {
                 return;
             }
 
+            // Grok Build plan gate / ask-user (wire method has leading `_`).
+            // Params are FLAT: { sessionId, toolCallId, planContent } — not nested.
+            // See minos grok_driver + agent-client-protocol ext_method.
+            if let Some(bare) = method.strip_prefix('_') {
+                if bare == "x.ai/exit_plan_mode" || bare == "x.ai/ask_user_question" {
+                    let rpc_id = req_id.unwrap_or(0);
+                    let params = msg.get("params").cloned().unwrap_or(Value::Null);
+                    if bare == "x.ai/exit_plan_mode" {
+                        let plan_content = params
+                            .get("planContent")
+                            .or_else(|| params.get("plan_content"))
+                            .and_then(|v| v.as_str())
+                            .map(|s| s.to_string());
+                        let tool_call_id = params
+                            .get("toolCallId")
+                            .or_else(|| params.get("tool_call_id"))
+                            .and_then(|v| v.as_str())
+                            .map(|s| s.to_string());
+                        info!(
+                            "acp exit_plan_mode id={rpc_id} plan_chars={}",
+                            plan_content.as_ref().map(|s| s.len()).unwrap_or(0)
+                        );
+                        let _ = self.event_tx.send(AcpEvent::Plan {
+                            entries: params
+                                .get("entries")
+                                .cloned()
+                                .unwrap_or(json!([])),
+                            body: plan_content,
+                            rpc_id: Some(rpc_id),
+                            tool_call_id,
+                        });
+                    } else {
+                        // ask_user_question: cancel for now so the agent does not hang.
+                        info!("acp ask_user_question id={rpc_id} — auto-cancel (UI not implemented)");
+                        let reply = json!({
+                            "jsonrpc": "2.0",
+                            "id": rpc_id,
+                            "result": { "outcome": "cancelled" }
+                        });
+                        if let Err(e) = self.write_line(&reply).await {
+                            warn!("failed to auto-cancel ask_user_question: {e}");
+                        }
+                    }
+                    return;
+                }
+            }
+
             // True notifications: no id. (If id is present, must reply — never swallow.)
             if req_id.is_none() {
                 // Official + xAI-extended session updates (retry_state, chunks, tools…).
@@ -556,22 +614,44 @@ impl AcpClient {
                     done: false,
                 });
             }
-            "agent_thought_chunk" => {
+            // Grok/Gemini emit agent_thought_chunk; some paths also use "thought".
+            "agent_thought_chunk" | "thought" => {
                 let text = update
                     .pointer("/content/text")
                     .and_then(|v| v.as_str())
+                    .or_else(|| update.get("text").and_then(|v| v.as_str()))
                     .unwrap_or("")
                     .to_string();
+                // Prefer explicit messageId (minos-style); host fills from turn if missing.
+                let message_id = update
+                    .get("messageId")
+                    .or_else(|| update.get("message_id"))
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string());
+                if text.is_empty() {
+                    return;
+                }
                 let _ = self.event_tx.send(AcpEvent::Stream {
                     kind: StreamKind::Thought,
                     text,
-                    message_id: None,
+                    message_id,
                     done: false,
                 });
             }
             "plan" => {
                 let entries = update.get("entries").cloned().unwrap_or(json!([]));
-                let _ = self.event_tx.send(AcpEvent::Plan { entries });
+                let body = update
+                    .get("planContent")
+                    .or_else(|| update.get("plan_content"))
+                    .or_else(|| update.get("content"))
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string());
+                let _ = self.event_tx.send(AcpEvent::Plan {
+                    entries,
+                    body,
+                    rpc_id: None,
+                    tool_call_id: None,
+                });
             }
             "tool_call" | "tool_call_update" => {
                 let tool_call_id = update
@@ -881,6 +961,16 @@ impl AcpClient {
         self.write_line(&msg).await
     }
 
+    /// True while the agent stdout reader is still alive (process usable).
+    pub fn is_alive(&self) -> bool {
+        self.reader_alive.load(Ordering::SeqCst)
+    }
+
+    /// Working directory this process was spawned with.
+    pub fn cwd(&self) -> &std::path::Path {
+        &self.cwd
+    }
+
     /// Initialize + auth, then open a session.
     /// Prefer `session/load` when `resume_session_id` is set (Grok persists agent
     /// sessions under GROK_HOME). Fall back to `session/new`.
@@ -925,6 +1015,17 @@ impl AcpClient {
             Err(e) => warn!("acp authenticate soft-fail (continuing): {e}"),
         }
 
+        self.open_session(resume_session_id).await
+    }
+
+    /// Open or resume an ACP session on an already-initialized agent process.
+    /// Used for cold connect after `initialize` and for warm process reuse when
+    /// switching App sessions without respawning CLI.
+    /// Returns `(session_id, resumed)`.
+    pub async fn open_session(
+        &self,
+        resume_session_id: Option<&str>,
+    ) -> Result<(String, bool), AgentError> {
         let cwd = self.cwd.to_string_lossy().to_string();
         if !self.cwd.is_dir() {
             return Err(AgentError::new(
@@ -1246,6 +1347,38 @@ impl AcpClient {
             "id": rpc_id,
             "result": result,
         });
+        self.write_line(&msg).await
+    }
+
+    /// Reply to `_x.ai/exit_plan_mode` reverse-request.
+    /// Wire body: `{ "outcome": "approved"|"cancelled"|"abandoned", "feedback"?: string }`.
+    pub async fn respond_exit_plan_mode(
+        &self,
+        rpc_id: u64,
+        outcome: &str,
+        feedback: Option<String>,
+    ) -> Result<(), String> {
+        let outcome = match outcome {
+            "approved" | "cancelled" | "abandoned" => outcome,
+            "approve" | "yes" | "accept" => "approved",
+            "abandon" | "quit" => "abandoned",
+            _ => "cancelled",
+        };
+        let mut result = json!({ "outcome": outcome });
+        if outcome == "cancelled" {
+            if let Some(fb) = feedback.filter(|s| !s.trim().is_empty()) {
+                result
+                    .as_object_mut()
+                    .unwrap()
+                    .insert("feedback".into(), Value::String(fb));
+            }
+        }
+        let msg = json!({
+            "jsonrpc": "2.0",
+            "id": rpc_id,
+            "result": result,
+        });
+        info!("acp → exit_plan_mode reply id={rpc_id} outcome={outcome}");
         self.write_line(&msg).await
     }
 

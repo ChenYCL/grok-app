@@ -140,7 +140,11 @@ export function floatingStyle(
     base.width = "max-content";
     if (extras?.minWidth) base.minWidth = extras.minWidth;
   } else {
+    /* Lock both width and maxWidth so content (nowrap labels) cannot expand the panel. */
     base.width = pos.width;
+    base.maxWidth = Math.min(pos.width, pos.maxWidth);
+    base.minWidth = 0;
+    base.overflowX = "hidden";
   }
   if (pos.placeAbove) {
     base.transform = "translateY(-100%)";
@@ -217,7 +221,13 @@ export function useFloatingMenu({
       return;
     }
     update();
-    const onScroll = () => update();
+    // Ignore scrolls that originate inside the panel (list keyboard/filter
+    // scrolling). Those used to re-anchor the menu every frame → flicker.
+    const onScroll = (e: Event) => {
+      const t = e.target;
+      if (t instanceof Node && panelRef.current?.contains(t)) return;
+      update();
+    };
     const onResize = () => update();
     window.addEventListener("resize", onResize);
     window.addEventListener("scroll", onScroll, true);

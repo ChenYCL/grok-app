@@ -126,6 +126,34 @@ describe("filterSlashItems", () => {
       "goal",
     ]);
   });
+
+  it("matches resolved Chinese i18n titles", () => {
+    const resolve = (item: SlashItem) => {
+      if (item.name === "goal") return { title: "目标", description: "设置目标" };
+      if (item.name === "aihot")
+        return { title: "aihot", description: "中文资讯热点" };
+      return {};
+    };
+    expect(
+      filterSlashItems(items, "目标", resolve).map((i) => i.name),
+    ).toEqual(["goal"]);
+    expect(
+      filterSlashItems(items, "资讯", resolve).map((i) => i.name),
+    ).toEqual(["aihot"]);
+  });
+
+  it("matches Chinese in displayDescription without resolver", () => {
+    const zh: SlashItem[] = [
+      {
+        id: "skill:x",
+        kind: "skill",
+        name: "x",
+        displayTitle: "x",
+        displayDescription: "查询 AI 热点新闻",
+      },
+    ];
+    expect(filterSlashItems(zh, "热点").map((i) => i.name)).toEqual(["x"]);
+  });
 });
 
 describe("buildSlashCatalog", () => {

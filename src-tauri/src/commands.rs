@@ -76,6 +76,18 @@ pub async fn session_stop(
     mgr.stop(app).await
 }
 
+/// Approve / revise / abandon pending plan (`_x.ai/exit_plan_mode`).
+#[tauri::command]
+pub async fn session_resolve_plan(
+    app: tauri::AppHandle,
+    mgr: State<'_, Arc<SessionManager>>,
+    decision: String,
+    feedback: Option<String>,
+    rpc_id: Option<u64>,
+) -> Result<SessionSnapshot, String> {
+    mgr.resolve_plan(app, decision, feedback, rpc_id).await
+}
+
 #[tauri::command]
 pub async fn session_disconnect(
     app: tauri::AppHandle,

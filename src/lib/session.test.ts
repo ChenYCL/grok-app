@@ -11,6 +11,7 @@ import {
   clearPriorTurnStreaming,
   errorCopy,
   formatTurnErrorBody,
+  splitThoughtPhases,
   isSessionBusy,
   parseCompactContent,
   parseToolStepContent,
@@ -120,6 +121,34 @@ describe("session projection", () => {
       kind: "assistant",
     });
     expect(messages.find((m) => m.role === "assistant")!.content).toBe("直接干活");
+  });
+
+  it("splitThoughtPhases separates multi-phase markers", () => {
+    expect(splitThoughtPhases("a\n\n⟪phase⟫\n\nb")).toEqual(["a", "b"]);
+    expect(splitThoughtPhases("only")).toEqual(["only"]);
+  });
+
+  it("thought phases stay separate on new phase hint", () => {
+    let messages: ChatMessage[] = [
+      { id: "u1", role: "user", content: "hi" },
+      {
+        id: "a1",
+        role: "assistant",
+        content: "",
+        thought: "first",
+        thoughtPhases: ["first"],
+        streaming: true,
+      },
+    ];
+    messages = applyStreamChunk(messages, {
+      sessionId: "s",
+      messageId: "a1",
+      text: "second",
+      done: false,
+      kind: "thought",
+      thoughtPhase: "new",
+    });
+    expect(messages[1]!.thoughtPhases).toEqual(["first", "second"]);
   });
 
   it("stream chunks never append onto prior-turn assistants", () => {

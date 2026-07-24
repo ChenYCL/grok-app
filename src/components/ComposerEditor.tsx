@@ -221,9 +221,36 @@ export function ComposerEditor({
     el.style.height = `${Math.min(Math.max(el.scrollHeight, min), max)}px`;
   }, []);
 
+  const emitSlashRef = useRef<() => void>(() => {});
+
+  const emitSlash = useCallback(() => {
+    const el = elRef.current;
+    if (!el || !onSlashQueryChange) return;
+    // Prefer caret-based token; fall back to full draft (IME/caret can lag).
+    const beforeCaret = getTextBeforeCaret(el);
+    const full = serializeDom(el);
+    const fromCaret =
+      beforeCaret != null ? detectSlashQuery(beforeCaret) : null;
+    const fromFull = detectSlashQuery(full);
+    const q = fromCaret ?? fromFull;
+    if (!q) {
+      // Keep previous slash state if caret is momentarily unreadable (IME).
+      if (composing.current) return;
+      onSlashQueryChange(null);
+      return;
+    }
+    const end =
+      fromCaret && beforeCaret != null ? beforeCaret.length : full.length;
+    onSlashQueryChange({ start: q.start, query: q.query, end });
+  }, [onSlashQueryChange]);
+
+  emitSlashRef.current = emitSlash;
+
   useLayoutEffect(() => {
     const el = elRef.current;
     if (!el) return;
+    // Never rewrite DOM mid-IME — would abort composition and break Chinese filter.
+    if (composing.current) return;
     const current = serializeDom(el);
     if (current === value && el.childNodes.length > 0) {
       lastValue.current = value;
@@ -241,28 +268,13 @@ export function ComposerEditor({
       lastValue.current = value;
       placeCaretAtEnd(el);
       resize();
+      emitSlashRef.current();
       return;
     }
     renderSegmentsInto(el, parseStoredContent(value));
     lastValue.current = value;
     resize();
   }, [value, resize]);
-
-  const emitSlash = useCallback(() => {
-    const el = elRef.current;
-    if (!el || !onSlashQueryChange) return;
-    const before = getTextBeforeCaret(el);
-    if (before == null) {
-      onSlashQueryChange(null);
-      return;
-    }
-    const q = detectSlashQuery(before);
-    if (!q) {
-      onSlashQueryChange(null);
-      return;
-    }
-    onSlashQueryChange({ start: q.start, query: q.query, end: before.length });
-  }, [onSlashQueryChange]);
 
   const commitFromDom = useCallback(
     (el: HTMLElement) => {
@@ -285,7 +297,17 @@ export function ComposerEditor({
   );
 
   const onInput = (e: FormEvent<HTMLDivElement>) => {
-    if (composing.current) return;
+    // During IME composition, still refresh slash filter from live DOM so
+    // Chinese pinyin / candidates can narrow the panel in real time.
+    // Do not commit to parent state until composition ends (avoids caret thrash).
+    if (composing.current) {
+      // rAF: composition text is often not in the DOM until after the event.
+      requestAnimationFrame(() => {
+        emitSlash();
+        resize();
+      });
+      return;
+    }
     commitFromDom(e.currentTarget);
   };
 
@@ -370,11 +392,23 @@ export function ComposerEditor({
         onCompositionStart={() => {
           composing.current = true;
         }}
+        onCompositionUpdate={() => {
+          // IME intermediate text (pinyin / candidates) — update slash query only.
+          requestAnimationFrame(() => emitSlash());
+        }}
         onCompositionEnd={(e) => {
           composing.current = false;
-          onInput(e as unknown as FormEvent<HTMLDivElement>);
+          // Commit composed characters + refresh slash filter.
+          commitFromDom(e.currentTarget);
+          // Second pass after browser finalizes composition node.
+          requestAnimationFrame(() => emitSlash());
         }}
         onKeyDown={(e) => {
+          // Never intercept keys while IME is composing (Chinese etc.).
+          const ne = e.nativeEvent;
+          if (ne.isComposing || ne.keyCode === 229) {
+            return;
+          }
           onKeyDown?.(e);
         }}
       />

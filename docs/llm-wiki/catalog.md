@@ -23,9 +23,20 @@ Flags **必须在** `stdio` 之前。连接后 `session/set_model` 再对齐一�
 
 ## 推理强度（effort）
 
-`high` | `medium` | `low` → `--reasoning-effort`。
+`low` | `medium` | `high` → `--reasoning-effort`。
+
+**默认 `medium`**（速度与质量折中）。延迟敏感可降到 low；难任务升到 high。
 
 中途修改：soft-disconnect agent → 下一条消息重连。无 `session/set_effort` RPC。
+
+### 连接加速（Host）
+
+| 手段 | 说明 |
+|------|------|
+| 默认 medium effort | 比 high 更短 thinking / TTFT，比 low 更稳 |
+| `grok --no-auto-update agent … stdio` | 跳过启动时更新检查 |
+| 进程复用 | 同 cwd + effort + YOLO 标志时，切会话只 `session/load\|new`，不 respawn CLI |
+| 打开会话预热 | `openSession` 后台 `session_connect`，首发跳过冷启动 |
 
 ## 会话模式（mode）— 产品态
 

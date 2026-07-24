@@ -44,6 +44,7 @@ import {
   isSessionBusy,
   preferSessionMessages,
   presentErrorBanner,
+  splitThoughtPhases,
   truncateBeforeLastUser,
   IDLE_SNAPSHOT,
   type ChatMessage,
@@ -100,7 +101,11 @@ import { OverlayScroll } from "@/components/OverlayScroll";
 import { GrokLogo } from "@/components/GrokLogo";
 import { SetupWizard, type SetupCliInfo } from "@/components/SetupWizard";
 import { ComposerEditor } from "@/components/ComposerEditor";
-import { SlashPalette } from "@/components/SlashPalette";
+import {
+  ComposerPlusPanel,
+  buildComposerPlusEntries,
+  uploadMatchesQuery,
+} from "@/components/ComposerPlusPanel";
 import { StatusModal } from "@/components/StatusModal";
 import { McpStatusModal } from "@/components/McpStatusModal";
 import {
@@ -119,11 +124,6 @@ import {
   IconNewChat as IconSquarePen,
   IconNewChat,
   IconImagine,
-  IconSkills,
-  IconTarget,
-  IconClipboardList,
-  IconPuzzle,
-  IconAutomations,
   IconScheduled,
   IconPanel,
   IconPanelRight,
@@ -232,6 +232,9 @@ interface PlanState {
   body: string;
   entries: unknown[];
   waiting: boolean;
+  /** Pending exit_plan_mode JSON-RPC id */
+  rpcId?: number | null;
+  toolCallId?: string | null;
 }
 
 export default function App() {
@@ -294,33 +297,13 @@ export default function App() {
   const composerPlusTriggerRef = useRef<HTMLButtonElement>(null);
   const composerPlusPanelRef = useRef<HTMLDivElement>(null);
   const composerInputRef = useRef<HTMLDivElement>(null);
-  /** Actual input card (.composer) — slash palette anchors here, not the wrap (which includes SuperGrok mark). */
+  /** Actual input card (.composer) — command panel anchors here. */
   const composerShellRef = useRef<HTMLDivElement>(null);
-  const slashPanelRef = useRef<HTMLDivElement>(null);
   /** Floating composer shell — height drives chat bottom padding. */
   const composerWrapRef = useRef<HTMLDivElement>(null);
   const [composerFloatPad, setComposerFloatPad] = useState(168);
   /** Set by newChat; applied after chat pane + textarea mount. */
   const pendingComposerFocus = useRef(false);
-  /** Pin above the input card (not the + chip); width matches composer shell. */
-  const { pos: composerPlusPos, style: composerPlusStyle } = useFloatingMenu({
-    open: showComposerPlus,
-    triggerRef: composerShellRef,
-    panelRef: composerPlusPanelRef,
-    roots: [composerPlusTriggerRef, composerShellRef],
-    onClose: () => setShowComposerPlus(false),
-    placement: "up",
-    fitContent: false,
-    matchTriggerWidth: true,
-    minWidth: 280,
-    /* ~10 rows @ 28px; floating maxHeight ≈ estHeight+80, CSS hard-caps at 300 */
-    estHeight: 220,
-    gap: 8,
-  });
-  const invocableSkills = useMemo(
-    () => skillInfos.filter((s) => s.userInvocable !== false),
-    [skillInfos],
-  );
   const [sessionDataMode, setSessionDataMode] = useState("independent");
   const [defaultOpenTarget, setDefaultOpenTarget] = useState("finder");
   const [showUserMenu, setShowUserMenu] = useState(false);
@@ -429,6 +412,8 @@ export default function App() {
     waiting: true,
     // Only show when Agent sends a plan event (or user opens Plan mode later)
     visible: false,
+    rpcId: null,
+    toolCallId: null,
   });
   const [locale, setLocale] = useState<Locale>("zh");
   const localeRef = useRef(locale);
@@ -1130,25 +1115,50 @@ export default function App() {
           }),
         );
         await track(
-          api.listen<{ entries: unknown[]; sessionId?: string }>(
-            "session://plan",
-            (p) => {
-              if (cancelled) return;
-              if (
-                p.sessionId &&
-                p.sessionId !== viewingSessionIdRef.current
-              ) {
-                return;
-              }
-              setPlan({
-                title: "Plan ready for review",
-                body: "Agent plan",
-                entries: p.entries || [],
-                waiting: false,
-                visible: true,
-              });
-            },
-          ),
+          api.listen<{
+            entries?: unknown[];
+            body?: string | null;
+            sessionId?: string;
+            rpcId?: number | null;
+            toolCallId?: string | null;
+            waiting?: boolean;
+          }>("session://plan", (p) => {
+            if (cancelled) return;
+            if (
+              p.sessionId &&
+              p.sessionId !== viewingSessionIdRef.current
+            ) {
+              return;
+            }
+            const body = (p.body || "").trim();
+            const entries = Array.isArray(p.entries) ? p.entries : [];
+            // Prefer markdown planContent; fall back to readable entries list
+            let displayBody = body;
+            if (!displayBody && entries.length) {
+              displayBody = entries
+                .map((e, i) => {
+                  if (e && typeof e === "object") {
+                    const o = e as Record<string, unknown>;
+                    const content = String(o.content ?? o.title ?? o.text ?? "");
+                    const st = o.status ? ` [${o.status}]` : "";
+                    const pr = o.priority ? ` (${o.priority})` : "";
+                    return `${i + 1}. ${content}${pr}${st}`;
+                  }
+                  return `${i + 1}. ${String(e)}`;
+                })
+                .join("\n");
+            }
+            setPlan({
+              title: tr("plan.ready"),
+              body: displayBody,
+              entries,
+              // Waiting only if no rpc to answer; exit_plan_mode has rpcId
+              waiting: p.waiting === true && p.rpcId == null,
+              visible: true,
+              rpcId: p.rpcId ?? null,
+              toolCallId: p.toolCallId ?? null,
+            });
+          }),
         );
         await track(
           api.listen<{ sessionId?: string; title?: string }>(
@@ -1269,7 +1279,10 @@ export default function App() {
     return () => window.removeEventListener("hashchange", syncFromHash);
   }, []);
 
-  /** Open local session placeholder — CLI connects on first send. */
+  /**
+   * Open a stored session. Loads journal immediately; warms the ACP agent in
+   * the background so the first send skips cold process spawn when possible.
+   */
   const openSession = async (s: SessionRow, project?: Project | null) => {
     const proj =
       project ||
@@ -1336,6 +1349,7 @@ export default function App() {
           role,
           content: displayContent,
           thought: m.thought ?? undefined,
+          thoughtPhases: splitThoughtPhases(m.thought),
           isError: m.isError || undefined,
           attachments,
           createdAt: m.createdAt || undefined,
@@ -1476,6 +1490,45 @@ export default function App() {
     if (live.sessionId !== s.id) {
       setPerm(null);
       setRetryStatus(null);
+    }
+
+    // Warm ACP: connect while the user reads history (trusted project or orphan).
+    // Host serializes connect; first send no-ops if already ready, or waits if
+    // still handshaking. Process is reused across sessions when cwd/effort match.
+    if (
+      api.isTauri() &&
+      (!proj || proj.trusted) &&
+      !(live.sessionId === s.id && live.state === "ready")
+    ) {
+      const warmId = s.id;
+      void (async () => {
+        if (viewingSessionIdRef.current !== warmId) return;
+        try {
+          const snap = await api.sessionConnect({
+            projectPath: proj?.path,
+            sessionId: warmId,
+          });
+          if (viewingSessionIdRef.current !== warmId) return;
+          setLiveHost(snap);
+          liveHostRef.current = snap;
+          if (snap.sessionId === warmId) {
+            setSession((prev) => ({
+              ...snap,
+              title: prev.title || s.title || snap.title || "Untitled",
+            }));
+          }
+          if (snap.lastError && snap.state !== "ready") {
+            // Soft: keep chat readable; send will retry via ensureConnected.
+            console.warn(
+              "warm connect:",
+              snap.lastError.code,
+              snap.lastError.message,
+            );
+          }
+        } catch (e) {
+          console.warn("warm connect failed", e);
+        }
+      })();
     }
   };
 
@@ -2494,8 +2547,32 @@ export default function App() {
     [addAttachmentsFromPaths, tr],
   );
 
-  const pickComposerFiles = useCallback(async () => {
+  const closeComposerMenu = useCallback(() => {
     setShowComposerPlus(false);
+    setSlashQuery(null);
+  }, []);
+
+  /** Stable slash-query setter: skip no-op updates so filter effects don't thrash. */
+  const onSlashQueryChange = useCallback(
+    (q: { start: number; query: string; end: number } | null) => {
+      setSlashQuery((prev) => {
+        if (q == null) return prev == null ? prev : null;
+        if (
+          prev &&
+          prev.start === q.start &&
+          prev.query === q.query &&
+          prev.end === q.end
+        ) {
+          return prev;
+        }
+        return q;
+      });
+    },
+    [],
+  );
+
+  const pickComposerFiles = useCallback(async () => {
+    closeComposerMenu();
     if (!api.isTauri()) {
       setLocalError(tr("composer.attachPasteFailed"));
       return;
@@ -2507,7 +2584,7 @@ export default function App() {
     } catch (e) {
       setLocalError(String(e));
     }
-  }, [addAttachmentsFromPaths, tr]);
+  }, [addAttachmentsFromPaths, closeComposerMenu, tr]);
 
   const addProjectsFromPaths = useCallback(
     async (paths: string[]) => {
@@ -2764,35 +2841,6 @@ export default function App() {
     () => buildSlashCatalog(skillInfos),
     [skillInfos],
   );
-  const slashFiltered = useMemo(
-    () =>
-      flattenFilteredCatalog(
-        slashCatalog,
-        slashQuery?.query ?? "",
-      ),
-    [slashCatalog, slashQuery?.query],
-  );
-
-  /** Codex-style: pin above composer card; width locked to input card (not grow with text). */
-  const { pos: slashPos, style: slashFloatStyle } = useFloatingMenu({
-    open: !!slashQuery,
-    triggerRef: composerShellRef,
-    panelRef: slashPanelRef,
-    roots: [composerInputRef, composerShellRef],
-    onClose: () => setSlashQuery(null),
-    placement: "up",
-    fitContent: false,
-    matchTriggerWidth: true,
-    minWidth: 280,
-    estHeight: 360,
-    gap: 8,
-    deps: [slashQuery?.query, slashFiltered.flat.length],
-  });
-
-  useEffect(() => {
-    setSlashActiveIndex(0);
-  }, [slashQuery?.query, slashQuery?.start]);
-
   const resolveSlashTitle = useCallback(
     (item: SlashItem) => {
       if (item.titleKey) {
@@ -2819,6 +2867,70 @@ export default function App() {
     },
     [tr],
   );
+  /** Shared filter for + menu and `/` slash — empty query = full catalog.
+   * Resolves i18n titles so Chinese queries (e.g.「目标」) match commands. */
+  const slashFiltered = useMemo(
+    () =>
+      flattenFilteredCatalog(slashCatalog, slashQuery?.query ?? "", (item) => ({
+        title: resolveSlashTitle(item),
+        description: resolveSlashDescription(item),
+      })),
+    [
+      slashCatalog,
+      slashQuery?.query,
+      resolveSlashTitle,
+      resolveSlashDescription,
+    ],
+  );
+  const showUploadInMenu = useMemo(
+    () =>
+      uploadMatchesQuery(slashQuery?.query ?? "", {
+        title: tr("composer.addFiles"),
+        hint: tr("composer.addFilesHint"),
+      }),
+    [slashQuery?.query, tr],
+  );
+  const composerMenuEntries = useMemo(
+    () =>
+      buildComposerPlusEntries({
+        showUpload: showUploadInMenu,
+        commands: slashFiltered.commands,
+        skills: slashFiltered.skills,
+      }),
+    [showUploadInMenu, slashFiltered.commands, slashFiltered.skills],
+  );
+  /** + button and `/` open the same panel. */
+  const composerMenuOpen = showComposerPlus || !!slashQuery;
+
+  /** Pin above input card; width matches composer shell.
+   * Do not depend on slash query / entry count — that re-anchored the panel
+   * on every keystroke and made the list jump/flicker. */
+  const { pos: composerPlusPos, style: composerPlusStyle } = useFloatingMenu({
+    open: composerMenuOpen,
+    triggerRef: composerShellRef,
+    panelRef: composerPlusPanelRef,
+    roots: [composerPlusTriggerRef, composerShellRef, composerInputRef],
+    onClose: closeComposerMenu,
+    placement: "up",
+    fitContent: false,
+    matchTriggerWidth: true,
+    minWidth: 280,
+    estHeight: 220,
+    gap: 8,
+  });
+
+  // Reset highlight when the filter query changes (not on every parent render).
+  useEffect(() => {
+    setSlashActiveIndex(0);
+  }, [slashQuery?.query]);
+
+  // Keep highlight in range when the filtered list shrinks.
+  useEffect(() => {
+    setSlashActiveIndex((i) => {
+      if (composerMenuEntries.length === 0) return 0;
+      return Math.min(i, composerMenuEntries.length - 1);
+    });
+  }, [composerMenuEntries.length]);
 
   const openMcpModal = useCallback(async () => {
     setShowMcpModal(true);
@@ -2900,6 +3012,7 @@ export default function App() {
     (item: SlashItem) => {
       const q = slashQuery;
       setSlashQuery(null);
+      setShowComposerPlus(false);
 
       if (item.kind === "skill") {
         if (q) {
@@ -4696,15 +4809,67 @@ export default function App() {
               setResourceOpenTarget(target);
             }}
             plan={plan}
-            onDismissPlan={() =>
-              setPlan((p) => ({
-                ...p,
-                visible: false,
-                waiting: true,
-                entries: [],
-                body: "",
-              }))
-            }
+            onApprovePlan={() => {
+              void (async () => {
+                try {
+                  await api.sessionResolvePlan({
+                    decision: "approved",
+                    rpcId: plan.rpcId,
+                  });
+                  setPlan((p) => ({
+                    ...p,
+                    visible: false,
+                    waiting: false,
+                    rpcId: null,
+                  }));
+                  showToast(tr("plan.approvedToast"), 2500);
+                } catch (e) {
+                  showToast(String(e), 4500);
+                }
+              })();
+            }}
+            onRequestPlanChanges={() => {
+              void (async () => {
+                try {
+                  await api.sessionResolvePlan({
+                    decision: "cancelled",
+                    feedback: tr("plan.reviseFeedback"),
+                    rpcId: plan.rpcId,
+                  });
+                  setPlan((p) => ({
+                    ...p,
+                    visible: false,
+                    waiting: false,
+                    rpcId: null,
+                  }));
+                  showToast(tr("plan.reviseToast"), 2800);
+                } catch (e) {
+                  showToast(String(e), 4500);
+                }
+              })();
+            }}
+            onDismissPlan={() => {
+              void (async () => {
+                if (plan.rpcId != null) {
+                  try {
+                    await api.sessionResolvePlan({
+                      decision: "abandoned",
+                      rpcId: plan.rpcId,
+                    });
+                  } catch {
+                    /* still hide UI */
+                  }
+                }
+                setPlan((p) => ({
+                  ...p,
+                  visible: false,
+                  waiting: true,
+                  entries: [],
+                  body: "",
+                  rpcId: null,
+                }));
+              })();
+            }}
             onAddAttachmentToComposer={(att) =>
               setAttachments((prev) => mergeAttachments(prev, [att]))
             }
@@ -4817,186 +4982,28 @@ export default function App() {
                   ))}
                 </div>
               )}
-              {showComposerPlus &&
+              {composerMenuOpen &&
                 composerPlusPos &&
                 typeof document !== "undefined" &&
                 createPortal(
-                  <div
-                    ref={composerPlusPanelRef}
-                    className="menu-panel composer-plus composer-plus--portal"
-                    role="menu"
-                    style={composerPlusStyle}
-                  >
-                    <div className="composer-plus__section">
-                      {tr("composer.add")}
-                    </div>
-                    <button
-                      type="button"
-                      role="menuitem"
-                      className="composer-plus__item"
-                      onClick={() => {
-                        void pickComposerFiles();
-                      }}
-                    >
-                      <span className="composer-plus__ico" aria-hidden>
-                        <IconAttach size={16} />
-                      </span>
-                      <span className="composer-plus__title">
-                        {tr("composer.addFiles")}
-                      </span>
-                      <span className="composer-plus__desc">
-                        {tr("composer.addFilesHint")}
-                      </span>
-                    </button>
-                    <button
-                      type="button"
-                      role="menuitem"
-                      className="composer-plus__item"
-                      onClick={() => {
-                        setShowComposerPlus(false);
-                        setGoalMode(true);
-                        if (mode === "plan") setMode("agent");
-                      }}
-                    >
-                      <span className="composer-plus__ico" aria-hidden>
-                        <IconTarget size={16} />
-                      </span>
-                      <span className="composer-plus__title">
-                        {tr("composer.goal")}
-                      </span>
-                      <span className="composer-plus__desc">
-                        {tr("composer.goalHint")}
-                      </span>
-                    </button>
-                    <button
-                      type="button"
-                      role="menuitem"
-                      className="composer-plus__item"
-                      onClick={() => {
-                        setShowComposerPlus(false);
-                        setGoalMode(false);
-                        setMode("plan");
-                        void api
-                          .composerPrefsSet({
-                            projectId: activeProject?.id ?? null,
-                            sessionId: session.sessionId ?? null,
-                            mode: "plan",
-                          })
-                          .catch((e) => showToast(String(e), 4000));
-                      }}
-                    >
-                      <span className="composer-plus__ico" aria-hidden>
-                        <IconClipboardList size={16} />
-                      </span>
-                      <span className="composer-plus__title">
-                        {tr("composer.planMode")}
-                      </span>
-                      <span className="composer-plus__desc">
-                        {tr("composer.planModeHint")}
-                      </span>
-                    </button>
-                    <button
-                      type="button"
-                      role="menuitem"
-                      className="composer-plus__item"
-                      onClick={() => {
-                        setShowComposerPlus(false);
-                        navigateAutomations();
-                      }}
-                    >
-                      <span className="composer-plus__ico" aria-hidden>
-                        <IconAutomations size={16} />
-                      </span>
-                      <span className="composer-plus__title">
-                        {tr("automations.menu")}
-                      </span>
-                      <span className="composer-plus__desc">
-                        {tr("automations.menuHint")}
-                      </span>
-                    </button>
-                    <div className="composer-plus__section">
-                      {tr("composer.skills")}
-                    </div>
-                    {skillsLoading && (
-                      <div
-                        className="composer-plus__item composer-plus__item--muted"
-                        aria-busy
-                      >
-                        <span className="composer-plus__ico" aria-hidden>
-                          <IconSkills size={16} />
-                        </span>
-                        <span className="composer-plus__title">
-                          {tr("composer.skillsLoading")}
-                        </span>
-                      </div>
-                    )}
-                    {!skillsLoading && invocableSkills.length === 0 && (
-                      <div className="composer-plus__item composer-plus__item--muted">
-                        <span className="composer-plus__ico" aria-hidden>
-                          <IconSkills size={16} />
-                        </span>
-                        <span className="composer-plus__title">
-                          {tr("composer.skillsEmpty")}
-                        </span>
-                      </div>
-                    )}
-                    {!skillsLoading &&
-                      invocableSkills.map((s) => (
-                        <button
-                          key={s.name}
-                          type="button"
-                          role="menuitem"
-                          className="composer-plus__item"
-                          title={
-                            s.description
-                              ? `${s.name} — ${s.description}`
-                              : s.name
-                          }
-                          onClick={() => {
-                            setShowComposerPlus(false);
-                            setDraft((d) => {
-                              const needsSpace =
-                                d.length > 0 && !/\s$/.test(d);
-                              return (
-                                d +
-                                (needsSpace ? " " : "") +
-                                `[[skill:${s.name}]] `
-                              );
-                            });
-                          }}
-                        >
-                          <span className="composer-plus__ico" aria-hidden>
-                            <IconPuzzle size={16} />
-                          </span>
-                          <span className="composer-plus__title">{s.name}</span>
-                          {s.description ? (
-                            <span className="composer-plus__desc">
-                              {s.description}
-                            </span>
-                          ) : null}
-                        </button>
-                      ))}
-                  </div>,
-                  document.body,
-                )}
-              {slashQuery &&
-                slashPos &&
-                slashFloatStyle &&
-                typeof document !== "undefined" &&
-                createPortal(
-                  <SlashPalette
+                  <ComposerPlusPanel
                     open
-                    panelRef={slashPanelRef}
+                    panelRef={composerPlusPanelRef}
                     locale={locale}
                     commands={slashFiltered.commands}
                     skills={slashFiltered.skills}
+                    showUpload={showUploadInMenu}
+                    skillsLoading={skillsLoading}
                     activeIndex={slashActiveIndex}
                     onActiveIndexChange={setSlashActiveIndex}
-                    onSelect={applySlashItem}
+                    onSelectUpload={() => {
+                      void pickComposerFiles();
+                    }}
+                    onSelectSlash={applySlashItem}
                     resolveTitle={resolveSlashTitle}
                     resolveDescription={resolveSlashDescription}
                     style={{
-                      ...slashFloatStyle,
+                      ...composerPlusStyle,
                       zIndex: 10050,
                     }}
                   />,
@@ -5016,7 +5023,7 @@ export default function App() {
                 onPasteFiles={(files) => {
                   void addAttachmentsFromFiles(files);
                 }}
-                onSlashQueryChange={setSlashQuery}
+                onSlashQueryChange={onSlashQueryChange}
                 onKeyDown={(e) => {
                   if (
                     e.nativeEvent.isComposing ||
@@ -5024,8 +5031,8 @@ export default function App() {
                   ) {
                     return;
                   }
-                  if (slashQuery) {
-                    const flat = slashFiltered.flat;
+                  if (composerMenuOpen) {
+                    const flat = composerMenuEntries;
                     if (e.key === "ArrowDown") {
                       e.preventDefault();
                       setSlashActiveIndex((i) =>
@@ -5044,18 +5051,22 @@ export default function App() {
                     }
                     if (e.key === "Enter" && !e.shiftKey) {
                       e.preventDefault();
-                      const item = flat[slashActiveIndex];
-                      if (item) applySlashItem(item);
+                      const entry = flat[slashActiveIndex];
+                      if (!entry) return;
+                      if (entry.kind === "upload") void pickComposerFiles();
+                      else applySlashItem(entry.item);
                       return;
                     }
                     if (e.key === "Escape") {
                       e.preventDefault();
-                      setSlashQuery(null);
+                      closeComposerMenu();
                       return;
                     }
                     if (e.key === "Tab" && flat[slashActiveIndex]) {
                       e.preventDefault();
-                      applySlashItem(flat[slashActiveIndex]!);
+                      const entry = flat[slashActiveIndex]!;
+                      if (entry.kind === "upload") void pickComposerFiles();
+                      else applySlashItem(entry.item);
                       return;
                     }
                   }
@@ -5070,7 +5081,7 @@ export default function App() {
                       void send();
                     }
                   }
-                  if (e.key === "Escape") setShowComposerPlus(false);
+                  if (e.key === "Escape") closeComposerMenu();
                 }}
               />
               <div className="composer__row">
@@ -5080,9 +5091,15 @@ export default function App() {
                     type="button"
                     className={
                       "icon-btn icon-btn--plus" +
-                      (showComposerPlus ? " is-open" : "")
+                      (composerMenuOpen ? " is-open" : "")
                     }
-                    onClick={() => setShowComposerPlus((v) => !v)}
+                    onClick={() => {
+                      if (composerMenuOpen) {
+                        closeComposerMenu();
+                      } else {
+                        setShowComposerPlus(true);
+                      }
+                    }}
                   >
                     <IconPlus size={18} />
                   </button>

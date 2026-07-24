@@ -126,22 +126,36 @@ export function skillsToSlashItems(skills: SkillInfo[]): SlashItem[] {
     }));
 }
 
+/** Optional resolved UI strings (i18n titles / descriptions) for search. */
+export type SlashSearchText = {
+  title?: string;
+  description?: string;
+};
+
 /**
- * Filter items by query (case-insensitive substring on name / titles / descriptions).
+ * Filter items by query (case-insensitive substring).
+ * Matches name, id, display fields, and optional resolved i18n title/description
+ * so Chinese labels like「目标」match `goal`.
  * Empty query returns all items.
  */
 export function filterSlashItems(
   items: SlashItem[],
   query: string,
+  resolveSearchText?: (item: SlashItem) => SlashSearchText | null | undefined,
 ): SlashItem[] {
   const q = query.trim().toLowerCase();
   if (!q) return items;
   return items.filter((item) => {
+    const resolved = resolveSearchText?.(item);
     const fields = [
       item.name,
       item.displayTitle,
       item.displayDescription,
       item.id,
+      item.titleKey,
+      item.descriptionKey,
+      resolved?.title,
+      resolved?.description,
     ];
     return fields.some((f) => f && f.toLowerCase().includes(q));
   });
@@ -162,8 +176,9 @@ export function buildSlashCatalog(skills: SkillInfo[]): {
 export function flattenFilteredCatalog(
   catalog: { commands: SlashItem[]; skills: SlashItem[] },
   query: string,
+  resolveSearchText?: (item: SlashItem) => SlashSearchText | null | undefined,
 ): { commands: SlashItem[]; skills: SlashItem[]; flat: SlashItem[] } {
-  const commands = filterSlashItems(catalog.commands, query);
-  const skills = filterSlashItems(catalog.skills, query);
+  const commands = filterSlashItems(catalog.commands, query, resolveSearchText);
+  const skills = filterSlashItems(catalog.skills, query, resolveSearchText);
   return { commands, skills, flat: [...commands, ...skills] };
 }

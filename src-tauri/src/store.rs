@@ -57,7 +57,8 @@ impl Default for ComposerPrefs {
     fn default() -> Self {
         Self {
             model_id: "grok-4.5".into(),
-            effort: "high".into(),
+            // Balanced default: faster than high, deeper than low.
+            effort: "medium".into(),
             mode: "agent".into(),
             permission_policy: "ask".into(),
             scope: "global".into(),
@@ -158,7 +159,7 @@ impl Default for AppSettings {
             manual_cli_path: None,
             permission_policy: "ask".into(),
             model_id: None,
-            effort: Some("high".into()),
+            effort: Some("medium".into()),
             mode: "agent".into(),
             onboarding_done: false,
             setup_skipped: false,
@@ -735,7 +736,7 @@ fn global_prefs(settings: &AppSettings) -> (String, String, String, String) {
             .effort
             .clone()
             .filter(|s| !s.trim().is_empty())
-            .unwrap_or_else(|| "high".into()),
+            .unwrap_or_else(|| "medium".into()),
         if settings.mode.trim().is_empty() {
             "agent".into()
         } else {

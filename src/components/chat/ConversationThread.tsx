@@ -84,7 +84,10 @@ export interface ConversationThreadProps {
     title: string;
     body: string;
     entries: unknown[];
+    rpcId?: number | null;
   };
+  onApprovePlan?: () => void;
+  onRequestPlanChanges?: () => void;
   onDismissPlan?: () => void;
   onAddAttachmentToComposer?: (att: Attachment) => void;
   attachLabels: {
@@ -137,6 +140,8 @@ export function ConversationThread({
   projectPath,
   onOpenResource,
   plan,
+  onApprovePlan,
+  onRequestPlanChanges,
   onDismissPlan,
   onAddAttachmentToComposer,
   attachLabels,
@@ -372,16 +377,35 @@ export function ConversationThread({
             <div className="mb-1 text-[12px] font-medium text-[var(--text-tertiary)]">
               {tr("plan.context")}
             </div>
-            <pre className="mb-3 max-h-48 overflow-auto rounded-lg bg-[var(--bg-code)] p-3 font-mono text-[12px] text-[var(--text-secondary)]">
-              {Array.isArray(plan.entries) && plan.entries.length
-                ? JSON.stringify(plan.entries, null, 2)
-                : plan.body || tr("plan.empty")}
+            <pre className="mb-3 max-h-48 overflow-auto whitespace-pre-wrap rounded-lg bg-[var(--bg-code)] p-3 font-mono text-[12px] text-[var(--text-secondary)]">
+              {plan.body?.trim()
+                ? plan.body
+                : Array.isArray(plan.entries) && plan.entries.length
+                  ? plan.entries
+                      .map((e, i) => {
+                        if (e && typeof e === "object") {
+                          const o = e as Record<string, unknown>;
+                          return `${i + 1}. ${String(o.content ?? o.title ?? "")}`;
+                        }
+                        return `${i + 1}. ${String(e)}`;
+                      })
+                      .join("\n")
+                  : tr("plan.empty")}
             </pre>
             <div className="flex flex-wrap gap-2">
-              <Button type="button" disabled={plan.waiting}>
+              <Button
+                type="button"
+                disabled={plan.waiting && plan.rpcId == null}
+                onClick={onApprovePlan}
+              >
                 {tr("plan.approve")}
               </Button>
-              <Button type="button" variant="ghost" disabled={plan.waiting}>
+              <Button
+                type="button"
+                variant="ghost"
+                disabled={plan.waiting && plan.rpcId == null}
+                onClick={onRequestPlanChanges}
+              >
                 {tr("plan.changes")}
               </Button>
               <Button type="button" variant="ghost" onClick={onDismissPlan}>

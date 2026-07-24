@@ -61,12 +61,16 @@ export const DEFAULT_MODEL_ID =
 
 /** Reasoning effort flags: `--reasoning-effort` / `--effort` on grok agent. */
 export const GROK_BUILD_EFFORTS: EffortOption[] = [
-  { id: "high" },
   { id: "medium" },
   { id: "low" },
+  { id: "high" },
 ];
 
-export const DEFAULT_EFFORT: EffortOption["id"] = "high";
+/**
+ * Default reasoning depth. `medium` balances speed vs quality for agentic use;
+ * users can lower (faster) or raise (deeper) via the composer chip.
+ */
+export const DEFAULT_EFFORT: EffortOption["id"] = "medium";
 
 /** Product session modes (desktop shell). */
 export const SESSION_MODES: SessionModeOption[] = [

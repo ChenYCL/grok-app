@@ -112,6 +112,10 @@ struct LiveSession {
     /// Accumulated assistant text for current turn (persisted on complete).
     stream_buf: String,
     stream_thought: String,
+    /// True once any assistant body text arrived this turn (splits later thoughts).
+    stream_had_body: bool,
+    /// True once we opened a post-body thinking phase (after tools).
+    stream_post_body_thought: bool,
     /// Image/file paths produced this turn (image_gen / image_edit).
     stream_attachments: Vec<MessageAttachmentStored>,
     model_id: Option<String>,
@@ -128,6 +132,8 @@ struct LiveSession {
     provider_retry_aborted: bool,
     /// After session/new (load failed), first prompt should carry journal history.
     needs_history_bootstrap: bool,
+    /// Pending `_x.ai/exit_plan_mode` JSON-RPC id awaiting user Approve / revise.
+    pending_plan_rpc_id: Option<u64>,
 }
 
 /// How many journal messages (user+assistant) to carry when session/load fails.
@@ -377,6 +383,8 @@ pub struct SessionManager {
     inner: Mutex<Option<LiveSession>>,
     /// Max concurrent agent processes (spec: 3). Single active for P0 simplicity + limit check.
     active_count: Mutex<u32>,
+    /// Serialize connect / warm-reuse so openSession prefetch cannot race first send.
+    connect_lock: tokio::sync::Mutex<()>,
 }
 
 impl Default for SessionManager {
@@ -390,6 +398,7 @@ impl SessionManager {
         Self {
             inner: Mutex::new(None),
             active_count: Mutex::new(0),
+            connect_lock: tokio::sync::Mutex::new(()),
         }
     }
 
@@ -493,6 +502,8 @@ impl SessionManager {
         let _ = store::update_session_meta(&s.meta);
         s.stream_buf.clear();
         s.stream_thought.clear();
+        s.stream_had_body = false;
+        s.stream_post_body_thought = false;
         s.streaming_message_id = None;
 
         let _ = app.emit(
@@ -514,9 +525,18 @@ impl SessionManager {
         app_session_id: Option<String>,
         mock_mode: Option<String>,
     ) -> Result<SessionSnapshot, String> {
-        // Tear down existing
-        self.disconnect_inner(&app).await;
+        let _connect_guard = self.connect_lock.lock().await;
+        self.connect_inner(app, project_path, app_session_id, mock_mode)
+            .await
+    }
 
+    async fn connect_inner(
+        self: &Arc<Self>,
+        app: AppHandle,
+        project_path: Option<String>,
+        app_session_id: Option<String>,
+        mock_mode: Option<String>,
+    ) -> Result<SessionSnapshot, String> {
         let settings = store::load_settings();
 
         let cwd = project_path
@@ -543,6 +563,46 @@ impl SessionManager {
             Some(meta.id.as_str()),
         );
         let policy = PermissionPolicy::parse(&prefs.permission_policy);
+        let agent_model = crate::providers::agent_spawn_model_id(&prefs.model_id);
+
+        // Already live on this App session with a healthy agent → no-op.
+        {
+            let guard = self.inner.lock();
+            if let Some(s) = guard.as_ref() {
+                if s.app_session_id == meta.id
+                    && s.project_path == project_path
+                    && s.acp.as_ref().is_some_and(|c| c.is_alive())
+                    && matches!(s.fsm.state(), SessionState::Ready)
+                    && s.streaming_message_id.is_none()
+                    && s.effort.as_deref() == Some(prefs.effort.as_str())
+                {
+                    tracing::info!(
+                        "acp connect no-op: already ready session={}",
+                        meta.id
+                    );
+                    return Ok(self.snapshot());
+                }
+            }
+        }
+
+        // Warm reuse: same cwd + effort + YOLO flag → switch ACP session without
+        // respawning the CLI (skips process start + initialize + auth).
+        let reuse_client = Self::take_reusable_acp(
+            &self.inner,
+            &cwd,
+            &project_path,
+            &prefs,
+            policy,
+        );
+
+        if reuse_client.is_none() {
+            // Cold path: tear down any previous agent process.
+            self.disconnect_inner(&app).await;
+        } else {
+            // Keep process; drop LiveSession shell so we can rebind.
+            let _ = self.inner.lock().take();
+            Self::emit_state(&app, &self.snapshot());
+        }
 
         // Independent GROK_HOME: push permission into agent config before spawn so
         // dontAsk / acceptEdits / YOLO apply agent-side (not only Host).
@@ -566,6 +626,8 @@ impl SessionManager {
                 streaming_message_id: None,
                 stream_buf: String::new(),
                 stream_thought: String::new(),
+                stream_had_body: false,
+                stream_post_body_thought: false,
                 stream_attachments: Vec::new(),
                 model_id: Some(prefs.model_id.clone()),
                 effort: Some(prefs.effort.clone()),
@@ -576,6 +638,7 @@ impl SessionManager {
                 provider_retry_attempt: 0,
                 provider_retry_aborted: false,
                 needs_history_bootstrap: false,
+                pending_plan_rpc_id: None,
             });
         }
         Self::emit_state(&app, &self.snapshot());
@@ -596,71 +659,82 @@ impl SessionManager {
                 && !m.is_error
         });
 
-        // Real ACP
-        let probe = cli_probe::probe_cli(settings.manual_cli_path.as_deref());
-        if !probe.found {
-            {
-                let mut guard = self.inner.lock();
-                if let Some(s) = guard.as_mut() {
-                    let _ = s.fsm.connect_failed(AgentError::new(
-                        AgentErrorCode::CliNotFound,
-                        "Grok Build CLI not found. Install Grok Build or set path in Settings.",
-                    ));
-                }
-            }
-            let snap = self.snapshot();
-            Self::emit_state(&app, &snap);
-            return Ok(snap);
-        }
-
-        let cli_path = std::path::PathBuf::from(probe.path.unwrap());
-
-        // Channel-aware model: custom provider → route id; official → catalog id.
-        let agent_model =
-            crate::providers::agent_spawn_model_id(&prefs.model_id);
-
-        let spawn_opts = crate::acp_client::SpawnOptions {
-            model_id: Some(agent_model.clone()),
-            effort: Some(prefs.effort.clone()),
-            permission_policy: Some(prefs.permission_policy.clone()),
-        };
-
-        let (client, mut events) =
-            match AcpClient::spawn_with_options(cli_path, cwd, spawn_opts) {
-            Ok(v) => v,
-            Err(e) => {
+        let (client, reused_process) = if let Some(existing) = reuse_client {
+            tracing::info!(
+                "acp warm reuse process cwd={} effort={} app_session={}",
+                cwd.display(),
+                prefs.effort,
+                meta.id
+            );
+            (existing, true)
+        } else {
+            // Real ACP cold spawn
+            let probe = cli_probe::probe_cli(settings.manual_cli_path.as_deref());
+            if !probe.found {
                 {
                     let mut guard = self.inner.lock();
                     if let Some(s) = guard.as_mut() {
-                        let _ = s.fsm.connect_failed(e);
+                        let _ = s.fsm.connect_failed(AgentError::new(
+                            AgentErrorCode::CliNotFound,
+                            "Grok Build CLI not found. Install Grok Build or set path in Settings.",
+                        ));
                     }
                 }
                 let snap = self.snapshot();
                 Self::emit_state(&app, &snap);
                 return Ok(snap);
             }
+
+            let cli_path = std::path::PathBuf::from(probe.path.unwrap());
+            let spawn_opts = crate::acp_client::SpawnOptions {
+                model_id: Some(agent_model.clone()),
+                effort: Some(prefs.effort.clone()),
+                permission_policy: Some(prefs.permission_policy.clone()),
+            };
+
+            let (client, mut events) =
+                match AcpClient::spawn_with_options(cli_path, cwd, spawn_opts) {
+                    Ok(v) => v,
+                    Err(e) => {
+                        {
+                            let mut guard = self.inner.lock();
+                            if let Some(s) = guard.as_mut() {
+                                let _ = s.fsm.connect_failed(e);
+                            }
+                        }
+                        let snap = self.snapshot();
+                        Self::emit_state(&app, &snap);
+                        return Ok(snap);
+                    }
+                };
+
+            {
+                let mut n = self.active_count.lock();
+                *n += 1;
+            }
+
+            // Event pump (only for newly spawned processes)
+            {
+                let mgr = Arc::clone(self);
+                let app_ev = app.clone();
+                tokio::spawn(async move {
+                    while let Some(ev) = events.recv().await {
+                        mgr.handle_acp_event(&app_ev, ev).await;
+                    }
+                });
+            }
+            (client, false)
         };
 
-        {
-            let mut n = self.active_count.lock();
-            *n += 1;
-        }
+        let open_result = if reused_process {
+            client.open_session(resume_agent_sid.as_deref()).await
+        } else {
+            client
+                .initialize_and_open_session(resume_agent_sid.as_deref())
+                .await
+        };
 
-        // Event pump
-        {
-            let mgr = Arc::clone(self);
-            let app_ev = app.clone();
-            tokio::spawn(async move {
-                while let Some(ev) = events.recv().await {
-                    mgr.handle_acp_event(&app_ev, ev).await;
-                }
-            });
-        }
-
-        match client
-            .initialize_and_open_session(resume_agent_sid.as_deref())
-            .await
-        {
+        match open_result {
             Ok((agent_sid, resumed)) => {
                 // Align live agent model / product mode with active channel.
                 if let Err(e) = client.set_model(&agent_model).await {
@@ -674,11 +748,11 @@ impl SessionManager {
                 let need_bootstrap = !resumed && journal_has_history;
                 if resumed {
                     tracing::info!(
-                        "agent session resumed id={agent_sid} (full context)"
+                        "agent session resumed id={agent_sid} (full context) warm={reused_process}"
                     );
                 } else if need_bootstrap {
                     tracing::info!(
-                        "agent session new id={agent_sid}; will bootstrap journal history on first send"
+                        "agent session new id={agent_sid}; will bootstrap journal history on first send warm={reused_process}"
                     );
                 }
                 {
@@ -721,6 +795,47 @@ impl SessionManager {
                 Ok(snap)
             }
         }
+    }
+
+    /// Detach a live ACP client when spawn-critical flags match the next connect.
+    /// Event pump keeps running on the Arc; caller rebinds into a new LiveSession.
+    fn take_reusable_acp(
+        inner: &Mutex<Option<LiveSession>>,
+        cwd: &std::path::Path,
+        project_path: &Option<String>,
+        prefs: &store::ComposerPrefs,
+        next_policy: PermissionPolicy,
+    ) -> Option<Arc<AcpClient>> {
+        let mut guard = inner.lock();
+        let s = guard.as_mut()?;
+        if !matches!(s.fsm.state(), SessionState::Ready) {
+            return None;
+        }
+        if s.streaming_message_id.is_some() {
+            return None;
+        }
+        if s.project_path != *project_path {
+            return None;
+        }
+        let client = s.acp.as_ref()?;
+        if !client.is_alive() {
+            return None;
+        }
+        // Effort is a spawn flag — mismatch requires cold respawn.
+        if s.effort.as_deref() != Some(prefs.effort.as_str()) {
+            return None;
+        }
+        // YOLO maps to `--always-approve` at spawn time.
+        let prev_yolo = s.policy == PermissionPolicy::AlwaysApprove;
+        let next_yolo = next_policy == PermissionPolicy::AlwaysApprove;
+        if prev_yolo != next_yolo {
+            return None;
+        }
+        // cwd must match the process (project path or orphan fallback).
+        if client.cwd() != cwd {
+            return None;
+        }
+        s.acp.take()
     }
 
     async fn connect_mock(
@@ -772,20 +887,54 @@ impl SessionManager {
                 message_id,
                 done,
             } => {
-                let (app_sid, mid) = {
+                let (app_sid, mid, thought_phase) = {
                     let mut guard = self.inner.lock();
                     if let Some(s) = guard.as_mut() {
+                        // Prefer agent-supplied messageId; otherwise keep the turn id.
+                        if let Some(ref mid_in) = message_id {
+                            if s.streaming_message_id.as_ref() != Some(mid_in) {
+                                // New assistant message id mid-turn (rare) — adopt it.
+                                if s.streaming_message_id.is_none()
+                                    || matches!(kind, StreamKind::Assistant)
+                                {
+                                    s.streaming_message_id = Some(mid_in.clone());
+                                }
+                            }
+                        }
                         if s.streaming_message_id.is_none() {
                             s.streaming_message_id =
                                 Some(message_id.unwrap_or_else(|| Uuid::new_v4().to_string()));
                         }
-                        match kind {
-                            StreamKind::Assistant => s.stream_buf.push_str(&text),
-                            StreamKind::Thought => s.stream_thought.push_str(&text),
-                        }
+                        // Split thinking: pre-body phase vs post-tool phase (minos-style
+                        // per-message reasoning; UI renders each phase as its own block).
+                        let thought_phase = match kind {
+                            StreamKind::Thought => {
+                                let phase = if s.stream_had_body {
+                                    if !s.stream_post_body_thought {
+                                        if !s.stream_thought.is_empty() {
+                                            s.stream_thought.push_str("\n\n⟪phase⟫\n\n");
+                                        }
+                                        s.stream_post_body_thought = true;
+                                        "new"
+                                    } else {
+                                        "continue"
+                                    }
+                                } else {
+                                    "open"
+                                };
+                                s.stream_thought.push_str(&text);
+                                phase
+                            }
+                            StreamKind::Assistant => {
+                                s.stream_buf.push_str(&text);
+                                s.stream_had_body = true;
+                                "none"
+                            }
+                        };
                         (
                             s.app_session_id.clone(),
                             s.streaming_message_id.clone().unwrap_or_default(),
+                            thought_phase,
                         )
                     } else {
                         return;
@@ -799,7 +948,8 @@ impl SessionManager {
                     "kind": match kind {
                         StreamKind::Assistant => "assistant",
                         StreamKind::Thought => "thought",
-                    }
+                    },
+                    "thoughtPhase": thought_phase,
                 });
                 let _ = app.emit("session://stream", payload);
             }
@@ -841,6 +991,8 @@ impl SessionManager {
                         }
                         s.stream_buf.clear();
                         s.stream_thought.clear();
+                        s.stream_had_body = false;
+                        s.stream_post_body_thought = false;
                         s.stream_attachments.clear();
                         if s.fsm.state() == SessionState::Streaming
                             || s.fsm.state() == SessionState::AwaitingPermission
@@ -1082,8 +1234,34 @@ impl SessionManager {
                     }
                 }
             }
-            AcpEvent::Plan { entries } => {
-                let _ = app.emit("session://plan", serde_json::json!({ "entries": entries }));
+            AcpEvent::Plan {
+                entries,
+                body,
+                rpc_id,
+                tool_call_id,
+            } => {
+                let app_sid = {
+                    let mut guard = self.inner.lock();
+                    if let Some(s) = guard.as_mut() {
+                        if let Some(id) = rpc_id {
+                            s.pending_plan_rpc_id = Some(id);
+                        }
+                        s.app_session_id.clone()
+                    } else {
+                        String::new()
+                    }
+                };
+                let _ = app.emit(
+                    "session://plan",
+                    serde_json::json!({
+                        "sessionId": app_sid,
+                        "entries": entries,
+                        "body": body,
+                        "rpcId": rpc_id,
+                        "toolCallId": tool_call_id,
+                        "waiting": rpc_id.is_none(),
+                    }),
+                );
             }
             AcpEvent::Error { error } => {
                 {
@@ -1435,6 +1613,8 @@ impl SessionManager {
             s.streaming_message_id = Some(mid.clone());
             s.stream_buf.clear();
             s.stream_thought.clear();
+            s.stream_had_body = false;
+            s.stream_post_body_thought = false;
             s.stream_attachments.clear();
             s.provider_retry_attempt = 0;
             s.provider_retry_aborted = false;
@@ -1620,6 +1800,8 @@ impl SessionManager {
             s.streaming_message_id = None;
             s.stream_buf.clear();
             s.stream_thought.clear();
+            s.stream_had_body = false;
+            s.stream_post_body_thought = false;
             s.acp.clone()
         };
         if let Some(acp) = acp {
@@ -1829,6 +2011,31 @@ impl SessionManager {
                 .await
                 .map_err(|e| e)?;
         }
+        let snap = self.snapshot();
+        Self::emit_state(&app, &snap);
+        Ok(snap)
+    }
+
+    /// Resolve pending `_x.ai/exit_plan_mode` (Approve & build / request changes / abandon).
+    ///
+    /// `decision`: "approved" | "cancelled" | "abandoned"
+    /// Optional `feedback` is sent only with cancelled (revise).
+    pub async fn resolve_plan(
+        &self,
+        app: AppHandle,
+        decision: String,
+        feedback: Option<String>,
+        rpc_id: Option<u64>,
+    ) -> Result<SessionSnapshot, String> {
+        let (acp, id) = {
+            let mut guard = self.inner.lock();
+            let s = guard.as_mut().ok_or("no session")?;
+            let id = rpc_id.or(s.pending_plan_rpc_id.take());
+            (s.acp.clone(), id)
+        };
+        let id = id.ok_or_else(|| "no pending plan approval".to_string())?;
+        let acp = acp.ok_or_else(|| "ACP client missing".to_string())?;
+        acp.respond_exit_plan_mode(id, &decision, feedback).await?;
         let snap = self.snapshot();
         Self::emit_state(&app, &snap);
         Ok(snap)

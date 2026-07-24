@@ -8,6 +8,7 @@ import type { Locale } from "@/i18n";
 import { createT } from "@/i18n";
 import {
   formatTurnErrorBody,
+  splitThoughtPhases,
   type ChatMessage,
   type SessionState,
 } from "@/lib/session";
@@ -236,7 +237,10 @@ export interface ConversationThreadProps {
     title: string;
     body: string;
     entries: unknown[];
+    rpcId?: number | null;
   };
+  onApprovePlan?: () => void;
+  onRequestPlanChanges?: () => void;
   onDismissPlan?: () => void;
   onAddAttachmentToComposer?: (att: Attachment) => void;
   attachLabels: {
@@ -272,6 +276,8 @@ export function ConversationThread({
   onRemoveEditAttachment,
   onOpenResource,
   plan,
+  onApprovePlan,
+  onRequestPlanChanges,
   onDismissPlan,
   onAddAttachmentToComposer,
   attachLabels,
@@ -547,20 +553,22 @@ export function ConversationThread({
               );
             }
 
-            // Assistant
-            const hasThought = !!(m.thought && m.thought.trim());
-            const thoughtStreaming =
-              !!m.streaming && !m.content.trim() && hasThought;
+            // Assistant — split thinking into phases (not one merged blob)
+            const phases =
+              m.thoughtPhases?.length
+                ? m.thoughtPhases
+                : splitThoughtPhases(m.thought);
+            const hasThought = phases.some((p) => p.trim());
             const isActiveAssistant = activeAssistantId === m.id;
             const showLiveToolBelow = !!liveTool && isActiveAssistant;
-            // Tool motion already signals work — skip empty thinking placeholder.
+            // Only the last phase streams while the message is still streaming
+            // and has no body yet (or post-tool thinking after body).
+            const lastPhaseIdx = Math.max(0, phases.length - 1);
             const showThinkingPlaceholder =
               !!m.streaming &&
               !m.content.trim() &&
               !hasThought &&
               !showLiveToolBelow;
-            const showReasoning =
-              thoughtStreaming || hasThought || showThinkingPlaceholder;
 
             return (
               <ChatItem
@@ -570,19 +578,52 @@ export function ConversationThread({
                 showAvatar={false}
                 loading={!!m.streaming}
                 aboveMessage={
-                  showReasoning ? (
-                    <Thinking
-                      locale={locale}
-                      thinking={
-                        thoughtStreaming || showThinkingPlaceholder
-                      }
-                      content={hasThought ? m.thought : undefined}
-                      streamingLabel={tr("chat.thinking")}
-                      doneLabel={tr("chat.thoughtDone")}
-                      thoughtForLabel={(n) =>
-                        tr("chat.thoughtFor", { n })
-                      }
-                    />
+                  hasThought || showThinkingPlaceholder ? (
+                    <div className="lobe-chat-thinking-stack">
+                      {phases.map((phaseText, pi) => {
+                        const isLast = pi === lastPhaseIdx;
+                        const phaseStreaming =
+                          !!m.streaming &&
+                          isLast &&
+                          // last phase streams until content finishes (or whole msg done)
+                          (!m.content.trim() ||
+                            phases.length > 1);
+                        const label =
+                          phases.length > 1
+                            ? tr("plan.phaseLabel", { n: String(pi + 1) })
+                            : tr("chat.thinking");
+                        return (
+                          <Thinking
+                            key={`${m.id}-th-${pi}`}
+                            locale={locale}
+                            thinking={phaseStreaming}
+                            content={phaseText}
+                            streamingLabel={label}
+                            doneLabel={
+                              phases.length > 1
+                                ? tr("plan.phaseLabel", {
+                                    n: String(pi + 1),
+                                  })
+                                : tr("chat.thoughtDone")
+                            }
+                            thoughtForLabel={(n) =>
+                              tr("chat.thoughtFor", { n })
+                            }
+                          />
+                        );
+                      })}
+                      {showThinkingPlaceholder ? (
+                        <Thinking
+                          locale={locale}
+                          thinking
+                          streamingLabel={tr("chat.thinking")}
+                          doneLabel={tr("chat.thoughtDone")}
+                          thoughtForLabel={(n) =>
+                            tr("chat.thoughtFor", { n })
+                          }
+                        />
+                      ) : null}
+                    </div>
                   ) : null
                 }
                 message={
@@ -676,29 +717,51 @@ export function ConversationThread({
               >
                 {plan.title}
               </h3>
-              <pre
+              <div
+                className="lobe-chat-plan__body"
                 style={{
                   margin: "0 0 12px",
-                  maxHeight: "12rem",
+                  maxHeight: "16rem",
                   overflow: "auto",
                   padding: 12,
                   borderRadius: 8,
                   background: "var(--lobe-color-fill-quaternary)",
                   border: "1px solid var(--lobe-color-border-secondary)",
-                  fontFamily: "var(--lobe-font-mono)",
-                  fontSize: 12,
+                  fontSize: 13,
+                  lineHeight: 1.5,
                   color: "var(--lobe-color-text-secondary)",
+                  whiteSpace: "pre-wrap",
+                  wordBreak: "break-word",
                 }}
               >
-                {Array.isArray(plan.entries) && plan.entries.length
-                  ? JSON.stringify(plan.entries, null, 2)
-                  : plan.body || tr("plan.empty")}
-              </pre>
+                {plan.body?.trim()
+                  ? plan.body
+                  : Array.isArray(plan.entries) && plan.entries.length
+                    ? plan.entries
+                        .map((e, i) => {
+                          if (e && typeof e === "object") {
+                            const o = e as Record<string, unknown>;
+                            return `${i + 1}. ${String(o.content ?? o.title ?? o.text ?? "")}`;
+                          }
+                          return `${i + 1}. ${String(e)}`;
+                        })
+                        .join("\n")
+                    : tr("plan.empty")}
+              </div>
               <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-                <Button type="button" disabled={plan.waiting}>
+                <Button
+                  type="button"
+                  disabled={plan.waiting && plan.rpcId == null}
+                  onClick={onApprovePlan}
+                >
                   {tr("plan.approve")}
                 </Button>
-                <Button type="button" variant="ghost" disabled={plan.waiting}>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  disabled={plan.waiting && plan.rpcId == null}
+                  onClick={onRequestPlanChanges}
+                >
                   {tr("plan.changes")}
                 </Button>
                 <Button type="button" variant="ghost" onClick={onDismissPlan}>

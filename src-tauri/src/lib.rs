@@ -113,6 +113,7 @@ pub fn run() {
             commands::session_disconnect,
             commands::session_reattach,
             commands::session_resolve_permission,
+            commands::session_resolve_plan,
             commands::probe_cli,
             commands::cli_install_latest,
             commands::cli_install_commands,

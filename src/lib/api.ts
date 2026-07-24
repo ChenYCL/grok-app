@@ -89,6 +89,19 @@ export async function sessionResolvePermission(args: {
   });
 }
 
+/** Approve / revise / abandon pending `_x.ai/exit_plan_mode`. */
+export async function sessionResolvePlan(args: {
+  decision: "approved" | "cancelled" | "abandoned" | string;
+  feedback?: string | null;
+  rpcId?: number | null;
+}): Promise<SessionSnapshot> {
+  return invoke("session_resolve_plan", {
+    decision: args.decision,
+    feedback: args.feedback ?? null,
+    rpcId: args.rpcId ?? null,
+  });
+}
+
 export async function probeCli(manualPath?: string) {
   return invoke<{
     found: boolean;

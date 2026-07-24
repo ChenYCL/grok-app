@@ -98,6 +98,15 @@ describe("detectSlashQuery", () => {
     expect(detectSlashQuery("hello")).toBeNull();
     expect(detectSlashQuery("a /x more")).toBeNull();
   });
+
+  it("supports Chinese query after slash", () => {
+    expect(detectSlashQuery("/目标")).toEqual({ start: 0, query: "目标" });
+    expect(detectSlashQuery("a /计划")).toEqual({ start: 2, query: "计划" });
+    expect(detectSlashQuery("/热点资讯")).toEqual({
+      start: 0,
+      query: "热点资讯",
+    });
+  });
 });
 
 describe("serializeForAgent", () => {

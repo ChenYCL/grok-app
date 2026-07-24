@@ -41,7 +41,14 @@ export interface ChatMessage {
   id: string;
   role: "user" | "assistant" | "tool";
   content: string;
+  /** Joined thought text (legacy + journal). Prefer thoughtPhases for UI. */
   thought?: string;
+  /**
+   * Separate thinking segments for this assistant message.
+   * Phase 0 = pre-tool reasoning; later phases = resumed thinking after tools.
+   * Each phase renders as its own collapsible block (not one merged blob).
+   */
+  thoughtPhases?: string[];
   streaming?: boolean;
   toolStatus?: string;
   /** Turn failed (retries exhausted / provider error) — show as chat error record. */
@@ -406,6 +413,17 @@ export interface StreamPayload {
   text: string;
   done: boolean;
   kind?: "assistant" | "thought";
+  /** Host hint: open | new | continue | none — split multi-phase thinking. */
+  thoughtPhase?: "open" | "new" | "continue" | "none" | string;
+}
+
+/** Split persisted thought on host phase markers. */
+export function splitThoughtPhases(thought: string | undefined | null): string[] {
+  if (!thought?.trim()) return [];
+  return thought
+    .split(/\n\n⟪phase⟫\n\n/)
+    .map((s) => s.trim())
+    .filter(Boolean);
 }
 
 export interface PermissionPayload {
@@ -681,20 +699,37 @@ export function applyStreamChunk(
   if (chunk.kind === "thought") {
     if (!chunk.text) return messages;
     const idx = findCurrentTurnStreamingAssistant(messages, chunk.messageId);
-    if (idx != null) {
-      const next = messages.slice();
-      const prev = next[idx]!;
-      next[idx] = {
+    const appendThought = (prev: ChatMessage): ChatMessage => {
+      const phases =
+        prev.thoughtPhases?.length
+          ? [...prev.thoughtPhases]
+          : splitThoughtPhases(prev.thought);
+      const phaseHint = chunk.thoughtPhase || "open";
+      if (!phases.length) {
+        phases.push(chunk.text);
+      } else if (phaseHint === "new") {
+        phases.push(chunk.text);
+      } else {
+        // open | continue — append to last phase
+        const last = phases.length - 1;
+        phases[last] = (phases[last] || "") + chunk.text;
+      }
+      const thought = phases.join("\n\n⟪phase⟫\n\n");
+      return {
         ...prev,
-        // Adopt host id when optimistic pending was used
         id:
           chunk.messageId &&
           (prev.id.startsWith("a-pending-") || prev.id.startsWith("t-"))
             ? chunk.messageId
             : prev.id,
-        thought: (prev.thought ?? "") + chunk.text,
+        thought,
+        thoughtPhases: phases,
         streaming: true,
       };
+    };
+    if (idx != null) {
+      const next = messages.slice();
+      next[idx] = appendThought(next[idx]!);
       return next;
     }
     return [
@@ -704,6 +739,7 @@ export function applyStreamChunk(
         role: "assistant",
         content: "",
         thought: chunk.text,
+        thoughtPhases: [chunk.text],
         streaming: true,
       },
     ];

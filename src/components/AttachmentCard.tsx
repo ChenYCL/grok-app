@@ -211,7 +211,7 @@ export function AttachmentCard({
                 aria-label={labels.remove}
                 onClick={() => onRemove(attachment)}
               >
-                <IconClose size={12} />
+                <IconClose size={11} />
               </button>
             </Tip>
           ) : onRemove ? (
@@ -221,7 +221,7 @@ export function AttachmentCard({
               aria-label={labels.remove}
               onClick={() => onRemove(attachment)}
             >
-              <IconClose size={12} />
+              <IconClose size={11} />
             </button>
           ) : null}
           <ContextMenu
@@ -273,9 +273,9 @@ export function AttachmentCard({
           <>
             <span className="att-card__icon" aria-hidden>
               {attachment.isDir ? (
-                <IconFolder size={18} />
+                <IconFolder size={14} />
               ) : (
-                <IconFileText size={18} />
+                <IconFileText size={14} />
               )}
             </span>
             <span className="att-card__meta">
