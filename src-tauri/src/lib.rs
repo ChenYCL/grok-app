@@ -122,6 +122,7 @@ pub fn run() {
             commands::session_reattach,
             commands::session_resolve_permission,
             commands::session_resolve_plan,
+            commands::session_resolve_ask_user,
             commands::probe_cli,
             commands::acp_test_connection,
             commands::cli_install_latest,

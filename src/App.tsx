@@ -52,6 +52,7 @@ import {
   userPromptIndexOf,
   localRewindPoints,
   IDLE_SNAPSHOT,
+  type AskUserPayload,
   type ChatMessage,
   type GeneratedImagePayload,
   type PermissionPayload,
@@ -85,6 +86,7 @@ import {
   formatPermissionSummary,
   mapPermissionButtons,
 } from "@/lib/permissionOptions";
+import { AskUserModal } from "@/components/AskUserModal";
 import { DoctorModal } from "@/components/DoctorModal";
 import { filterSessionSearch } from "@/lib/sessionSearch";
 import {
@@ -532,6 +534,7 @@ export default function App() {
   const [savedAccounts, setSavedAccounts] = useState<api.SavedAccount[]>([]);
   const [activeAccountId, setActiveAccountId] = useState<string | null>(null);
   const [perm, setPerm] = useState<PermissionPayload | null>(null);
+  const [askUser, setAskUser] = useState<AskUserPayload | null>(null);
   const [plan, setPlan] = useState<PlanState & { visible: boolean }>({
     title: "Plan ready for review",
     body: "",
@@ -1345,6 +1348,21 @@ export default function App() {
           }),
         );
         await track(
+          api.listen<AskUserPayload>("session://ask_user", (p) => {
+            if (cancelled) return;
+            if (
+              p.sessionId &&
+              p.sessionId !== viewingSessionIdRef.current
+            ) {
+              return;
+            }
+            if (!p?.rpcId || !Array.isArray(p.questions) || !p.questions.length) {
+              return;
+            }
+            setAskUser(p);
+          }),
+        );
+        await track(
           api.listen<{
             entries?: unknown[];
             body?: string | null;
@@ -1782,9 +1800,10 @@ export default function App() {
       openingSessionIdRef.current = null;
     }
     setLocalError(null);
-    // Permission / retry chrome only apply to the live viewed session.
+    // Permission / retry / ask-user chrome only apply to the live viewed session.
     if (live.sessionId !== s.id) {
       setPerm(null);
+      setAskUser(null);
       setRetryStatus(null);
     }
 
@@ -1925,6 +1944,7 @@ export default function App() {
       visible: false,
     });
     setPerm(null);
+    setAskUser(null);
     setRetryStatus(null);
     setSession({
       ...IDLE_SNAPSHOT,
@@ -2063,6 +2083,7 @@ export default function App() {
         setMessages([]);
         setAttachments([]);
         setPerm(null);
+        setAskUser(null);
         setRetryStatus(null);
         setLocalError(null);
         setDraft("");
@@ -6638,6 +6659,43 @@ export default function App() {
           ))}
         </ul>
       </GlassModal>
+      <AskUserModal
+        payload={askUser}
+        labels={{
+          title: tr("askUser.title"),
+          submit: tr("askUser.submit"),
+          cancel: tr("askUser.cancel"),
+          otherPlaceholder: tr("askUser.otherPlaceholder"),
+          freeTextHint: tr("askUser.freeTextHint"),
+          multiHint: tr("askUser.multiHint"),
+          close: tr("common.close"),
+        }}
+        onSubmit={async (answers) => {
+          if (!askUser) return;
+          try {
+            await api.sessionResolveAskUser({
+              decision: "accepted",
+              answers,
+              rpcId: askUser.rpcId,
+            });
+            setAskUser(null);
+          } catch (e) {
+            showToast(String(e), 4500);
+          }
+        }}
+        onCancel={async () => {
+          if (!askUser) return;
+          try {
+            await api.sessionResolveAskUser({
+              decision: "cancelled",
+              rpcId: askUser.rpcId,
+            });
+          } catch {
+            /* still hide UI */
+          }
+          setAskUser(null);
+        }}
+      />
       <StatusModal
         open={showStatusModal}
         locale={locale}

@@ -31,6 +31,16 @@ Optional: `authenticate { methodId: "cached_token" }` uses `~/.grok/auth.json`.
 
 Client must handle server→client RPC: `session/request_permission` (allow/deny options).
 
+### `_x.ai/ask_user_question` (Host UI)
+
+Agent reverse-request when the `ask_user_question` tool needs answers. Wire method is `_x.ai/ask_user_question` (leading `_` on the wire).
+
+- **Params (flat):** `{ sessionId, toolCallId?, questions: [{ question, options, multiSelect? }] }` — also accepts a single flat `{ question, options|choices }` form.
+- **Host:** parse → `AcpEvent::AskUserQuestion` → emit `session://ask_user` → App GlassModal.
+- **Reply (`session_resolve_ask_user`):**
+  - Accepted: `{ "outcome": "accepted", "answers": { "<question>": "<answer>" }, "partial_answers": {} }`
+  - Dismiss: `{ "outcome": "cancelled" }`
+
 ## Stop
 
 `session/cancel { sessionId }` cancels in-flight prompt; Host maps to FSM Streaming→Ready.
@@ -62,3 +72,4 @@ Client must handle server→client RPC: `session/request_permission` (allow/deny
 - Handshake + `PONG_SPIKE` / `M01_OK` stream logs.
 - Tool write: `.spike-proj/SPIKE_PERM*.txt`.
 - Host permission unit/integration: `cargo test permission` / `permission_host_test`.
+- Host ask_user parse unit tests: `cargo test ask_user_question`.

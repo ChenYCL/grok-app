@@ -822,6 +822,14 @@ const en = {
   "perm.hintSession": "Allow similar actions for the rest of this chat.",
   "perm.hintDeny": "Block this action and tell the agent.",
 
+  // Agent ask_user_question
+  "askUser.title": "Agent question",
+  "askUser.submit": "Submit",
+  "askUser.cancel": "Dismiss",
+  "askUser.otherPlaceholder": "Type your answer…",
+  "askUser.freeTextHint": "Or type a custom answer",
+  "askUser.multiHint": "Select one or more options",
+
   "message.copy": "Copy",
   "message.copied": "Copied",
   "message.edit": "Edit",
@@ -1721,6 +1729,13 @@ const zh: Record<MessageKey, string> = {
   "perm.hintOnce": "仅执行这一次，下次仍会询问。",
   "perm.hintSession": "本会话内同类操作不再询问。",
   "perm.hintDeny": "阻止本次操作并告知 Agent。",
+
+  "askUser.title": "Agent 提问",
+  "askUser.submit": "提交",
+  "askUser.cancel": "忽略",
+  "askUser.otherPlaceholder": "输入你的回答…",
+  "askUser.freeTextHint": "或输入自定义回答",
+  "askUser.multiHint": "可多选",
 
   "message.copy": "复制",
   "message.copied": "已复制",
