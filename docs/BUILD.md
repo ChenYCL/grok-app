@@ -7,6 +7,7 @@
 | macOS Apple Silicon | `aarch64-apple-darwin` | ✅ | ✅ `macos-latest` |
 | macOS Intel | `x86_64-apple-darwin` | ✅（在 Apple Silicon 上交叉） | ✅ `macos-latest` + target |
 | Windows x64 | `x86_64-pc-windows-msvc` | ✅ 本机 Windows，或 **macOS/Linux 经 cargo-xwin** | ✅ `windows-latest` |
+| Linux x64 | `x86_64-unknown-linux-gnu` | ✅ 本机 Linux（AppImage / deb） | ✅ `ubuntu-22.04` |
 
 > macOS / Linux 交叉打 Windows 安装包使用 Tauri 官方 runner：`cargo-xwin` + `makensis`（NSIS）。  
 > 见 [Build Windows apps on Linux and macOS](https://v2.tauri.app/distribute/windows-installer/#build-windows-apps-on-linux-and-macos)。
@@ -47,6 +48,28 @@ pnpm setup:cross   # rust targets + (macOS) cargo-xwin / nsis / llvm 检查
 - [WebView2 Runtime](https://developer.microsoft.com/microsoft-edge/webview2/)（多数 Win10/11 已带）
 - Rust MSVC toolchain：`rustup default stable-x86_64-pc-windows-msvc`
 
+### Linux（含 Arch / Ubuntu / Debian）
+
+```bash
+# Debian/Ubuntu
+sudo apt install libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev \
+  patchelf libgtk-3-dev libayatana-appindicator3-dev libssl-dev
+
+# Arch
+sudo pacman -S webkit2gtk-4.1 base-devel curl wget file openssl appmenu-gtk-module \
+  libappindicator-gtk3 librsvg
+```
+
+然后：
+
+```bash
+pnpm build:linux
+# 或
+./scripts/build-local.sh linux
+```
+
+产物：`src-tauri/target/x86_64-unknown-linux-gnu/release/bundle/`（AppImage / deb 等，取决于 Tauri bundle targets）。
+
 ## 2. 本地构建命令
 
 ```bash
@@ -55,11 +78,13 @@ pnpm build:mac-arm      # macOS ARM
 pnpm build:mac-intel    # macOS Intel
 pnpm build:mac-all      # ARM + Intel（仅 macOS）
 pnpm build:win          # Windows（macOS/Linux → cargo-xwin；Windows → 原生）
+pnpm build:linux        # Linux x64（需 Linux 主机）
 pnpm build:all          # mac-arm + mac-intel + win（仅 macOS）
 
 # 或直接：
 ./scripts/build-local.sh mac-arm
 ./scripts/build-local.sh win
+./scripts/build-local.sh linux
 ./scripts/build-local.sh all
 ```
 
@@ -75,6 +100,7 @@ pnpm exec tauri build --runner cargo-xwin --target x86_64-pc-windows-msvc
 src-tauri/target/<triple>/release/bundle/
   macos/   # .app / .dmg  （产品名 Grok）
   nsis/    # Windows installer（*.exe setup）
+  deb/ appimage/  # Linux
   msi/     # 可选
 ```
 

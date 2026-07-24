@@ -73,12 +73,19 @@ export interface SettingsPageProps {
   account: AccountStatus | null;
   accountLoading: boolean;
   accountBusy: boolean;
+  loginHint?: string | null;
+  savedAccounts?: import("@/lib/api").SavedAccount[];
+  activeAccountId?: string | null;
   onAccountLoginOauth: () => void;
   onAccountLoginDevice: () => void;
   onAccountLogout: () => void;
   onAccountRefresh: () => void;
   onAccountManageUsage: () => void;
   onAccountSubscribe: () => void;
+  onSaveAccount?: () => void;
+  onSwitchAccount?: (id: string) => void;
+  onRemoveAccount?: (id: string) => void;
+  onImportChat?: () => void;
   /** Default open target: finder | editor id */
   defaultOpenTarget?: string;
   onDefaultOpenTarget?: (v: string) => void;
@@ -138,12 +145,19 @@ export function SettingsPage({
   account,
   accountLoading,
   accountBusy,
+  loginHint = null,
+  savedAccounts = [],
+  activeAccountId = null,
   onAccountLoginOauth,
   onAccountLoginDevice,
   onAccountLogout,
   onAccountRefresh,
   onAccountManageUsage,
   onAccountSubscribe,
+  onSaveAccount,
+  onSwitchAccount,
+  onRemoveAccount,
+  onImportChat,
   defaultOpenTarget = "finder",
   onDefaultOpenTarget,
   onProviderActivated,
@@ -555,13 +569,33 @@ export function SettingsPage({
               heatmapRequests: t("account.heatmap.requests"),
               heatmapTokens: t("account.heatmap.tokens"),
               weeklyTitle: t("account.weeklyTitle"),
+              loginHelpTitle: t("account.loginHelpTitle"),
+              loginHelpBody: t("account.loginHelpBody"),
+              loginTryDevice: t("account.loginTryDevice"),
+              profiles: t("account.profiles"),
+              profilesHint: t("account.profilesHint"),
+              profilesEmpty: t("account.profilesEmpty"),
+              profileSave: t("account.profileSave"),
+              profileSwitch: t("account.profileSwitch"),
+              profileRemove: t("account.profileRemove"),
+              profileActive: t("account.profileActive"),
+              importChat: t("account.importChat"),
+              importChatHint: t("account.importChatHint"),
+              importChatBtn: t("account.importChatBtn"),
             }}
+            loginHint={loginHint}
+            savedAccounts={savedAccounts}
+            activeAccountId={activeAccountId}
             onLoginOauth={onAccountLoginOauth}
             onLoginDevice={onAccountLoginDevice}
             onLogout={onAccountLogout}
             onRefresh={onAccountRefresh}
             onManageUsage={onAccountManageUsage}
             onSubscribe={onAccountSubscribe}
+            onSaveAccount={onSaveAccount}
+            onSwitchAccount={onSwitchAccount}
+            onRemoveAccount={onRemoveAccount}
+            onImportChat={onImportChat}
           />
             )}
           </>

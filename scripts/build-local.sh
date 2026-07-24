@@ -6,6 +6,7 @@
 #   ./scripts/build-local.sh mac-arm
 #   ./scripts/build-local.sh mac-intel
 #   ./scripts/build-local.sh win          # native on Windows; cargo-xwin on macOS/Linux
+#   ./scripts/build-local.sh linux        # native on Linux (AppImage/deb under bundle/)
 #   ./scripts/build-local.sh all-mac      # both mac targets (Darwin only)
 #   ./scripts/build-local.sh all          # mac-arm + mac-intel + win (Darwin)
 set -euo pipefail
@@ -107,6 +108,14 @@ case "$TARGET_ALIAS" in
   win|windows|x86_64-pc-windows-msvc)
     build_windows
     ;;
+  linux|x86_64-unknown-linux-gnu)
+    if [[ "$OS" != "Linux" ]]; then
+      echo "error: linux builds require a Linux host (or CI ubuntu-latest)" >&2
+      echo "       deps: libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf" >&2
+      exit 1
+    fi
+    build_target "x86_64-unknown-linux-gnu"
+    ;;
   all-mac)
     if [[ "$OS" != "Darwin" ]]; then
       echo "error: all-mac requires macOS" >&2
@@ -125,7 +134,7 @@ case "$TARGET_ALIAS" in
     build_windows
     ;;
   *)
-    echo "usage: $0 [host|mac-arm|mac-intel|win|all-mac|all]" >&2
+    echo "usage: $0 [host|mac-arm|mac-intel|win|linux|all-mac|all]" >&2
     exit 1
     ;;
 esac

@@ -1,11 +1,12 @@
 /**
  * Account panel — simplified layout:
  * 1) One top card: identity + plan + quota + actions
- * 2) Heatmap
- * 3) Fixed-height, internally scrolling call logs
+ * 2) Multi-account switcher + import chat
+ * 3) Heatmap
+ * 4) Fixed-height, internally scrolling call logs
  */
 
-import type { AccountStatus } from "@/lib/api";
+import type { AccountStatus, SavedAccount } from "@/lib/api";
 import {
   accountDisplayName,
   accountInitials,
@@ -61,6 +62,19 @@ export interface AccountPanelLabels {
   heatmapRequests: string;
   heatmapTokens: string;
   weeklyTitle: string;
+  loginHelpTitle: string;
+  loginHelpBody: string;
+  loginTryDevice: string;
+  profiles: string;
+  profilesHint: string;
+  profilesEmpty: string;
+  profileSave: string;
+  profileSwitch: string;
+  profileRemove: string;
+  profileActive: string;
+  importChat: string;
+  importChatHint: string;
+  importChatBtn: string;
 }
 
 export interface AccountPanelProps {
@@ -71,6 +85,10 @@ export interface AccountPanelProps {
   t: (key: string) => string;
   labels: AccountPanelLabels;
   compact?: boolean;
+  /** Last login error / tip (Access denied etc.) */
+  loginHint?: string | null;
+  savedAccounts?: SavedAccount[];
+  activeAccountId?: string | null;
   onLoginOauth: () => void;
   onLoginDevice: () => void;
   onLogout: () => void;
@@ -78,6 +96,10 @@ export interface AccountPanelProps {
   onManageUsage: () => void;
   onSubscribe: () => void;
   onOpenSettings?: () => void;
+  onSaveAccount?: () => void;
+  onSwitchAccount?: (id: string) => void;
+  onRemoveAccount?: (id: string) => void;
+  onImportChat?: () => void;
 }
 
 export function AccountPanel({
@@ -88,6 +110,9 @@ export function AccountPanel({
   t,
   labels,
   compact = false,
+  loginHint = null,
+  savedAccounts = [],
+  activeAccountId = null,
   onLoginOauth,
   onLoginDevice,
   onLogout,
@@ -95,6 +120,10 @@ export function AccountPanel({
   onManageUsage,
   onSubscribe,
   onOpenSettings,
+  onSaveAccount,
+  onSwitchAccount,
+  onRemoveAccount,
+  onImportChat,
 }: AccountPanelProps) {
   const profile = status?.profile;
   const signedIn = !!profile?.signedIn;
@@ -190,6 +219,106 @@ export function AccountPanel({
             )}
           </div>
         </div>
+
+        {!signedIn ? (
+          <div className="account-login-help" role="note">
+            <strong>{labels.loginHelpTitle}</strong>
+            <p>{labels.loginHelpBody}</p>
+            {loginHint ? (
+              <p className="account-login-help__err">{loginHint}</p>
+            ) : null}
+            <button
+              type="button"
+              className="btn btn--ghost btn--sm"
+              disabled={busy}
+              onClick={onLoginDevice}
+            >
+              {labels.loginTryDevice}
+            </button>
+          </div>
+        ) : null}
+
+        {/* Multi-account switcher */}
+        <div className="account-profiles">
+          <div className="account-profiles__head">
+            <div>
+              <div className="account-profiles__title">{labels.profiles}</div>
+              <div className="account-profiles__hint">{labels.profilesHint}</div>
+            </div>
+            {signedIn && onSaveAccount ? (
+              <button
+                type="button"
+                className="btn btn--ghost btn--sm"
+                disabled={busy}
+                onClick={onSaveAccount}
+              >
+                {labels.profileSave}
+              </button>
+            ) : null}
+          </div>
+          {savedAccounts.length === 0 ? (
+            <div className="account-profiles__empty">{labels.profilesEmpty}</div>
+          ) : (
+            <ul className="account-profiles__list">
+              {savedAccounts.map((a) => {
+                const active = activeAccountId === a.id;
+                return (
+                  <li key={a.id} className="account-profiles__row">
+                    <div className="account-profiles__meta">
+                      <span className="account-profiles__label">{a.label}</span>
+                      {active ? (
+                        <span className="account-badge account-badge--muted">
+                          {labels.profileActive}
+                        </span>
+                      ) : null}
+                      {a.email && a.email !== a.label ? (
+                        <span className="account-profiles__email">{a.email}</span>
+                      ) : null}
+                    </div>
+                    <div className="account-profiles__actions">
+                      {!active && onSwitchAccount ? (
+                        <button
+                          type="button"
+                          className="btn btn--ghost btn--sm"
+                          disabled={busy}
+                          onClick={() => onSwitchAccount(a.id)}
+                        >
+                          {labels.profileSwitch}
+                        </button>
+                      ) : null}
+                      {onRemoveAccount ? (
+                        <button
+                          type="button"
+                          className="btn btn--ghost btn--sm"
+                          disabled={busy}
+                          onClick={() => onRemoveAccount(a.id)}
+                        >
+                          {labels.profileRemove}
+                        </button>
+                      ) : null}
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </div>
+
+        {/* Import conversation (web history alternative) */}
+        {onImportChat ? (
+          <div className="account-import">
+            <div className="account-import__title">{labels.importChat}</div>
+            <p className="account-import__hint">{labels.importChatHint}</p>
+            <button
+              type="button"
+              className="btn btn--ghost btn--sm"
+              disabled={busy}
+              onClick={onImportChat}
+            >
+              {labels.importChatBtn}
+            </button>
+          </div>
+        ) : null}
 
         {signedIn ? (
           <>

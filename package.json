@@ -23,6 +23,7 @@
     "build:mac-intel": "tauri build --target x86_64-apple-darwin",
     "build:mac-all": "bash scripts/build-local.sh all-mac",
     "build:win": "bash scripts/build-local.sh win",
+    "build:linux": "bash scripts/build-local.sh linux",
     "build:all": "bash scripts/build-local.sh all",
     "setup:cross": "bash scripts/setup-cross-compile.sh",
     "release:tag": "bash scripts/release-tag.sh",

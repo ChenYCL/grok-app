@@ -433,6 +433,27 @@ const en = {
   "account.cliAuthMissing": "no CLI auth.json",
   "account.loginFailed": "Sign-in failed",
   "account.loginOk": "Signed in",
+  "account.loginHelpTitle": "Login tips",
+  "account.loginHelpBody":
+    "If the browser shows Access denied / failed to generate authentication code: try another network or VPN, use Device code login, or add a custom provider under Settings.",
+  "account.loginTryDevice": "Try device code instead",
+  "account.profiles": "Saved accounts",
+  "account.profilesHint":
+    "Switch between multiple Grok accounts. Snapshots are stored under the app data folder (auth only).",
+  "account.profilesEmpty": "No saved accounts yet. Sign in, then Save current.",
+  "account.profileSave": "Save current",
+  "account.profileSwitch": "Switch",
+  "account.profileRemove": "Remove",
+  "account.profileActive": "Active",
+  "account.profileSaved": "Account saved",
+  "account.profileSwitched": "Switched account",
+  "account.profileRemoved": "Account removed",
+  "account.importChat": "Import conversation",
+  "account.importChatHint":
+    "Grok.com web history is not available via CLI. Import a markdown or JSON transcript into a local session instead.",
+  "account.importChatBtn": "Choose file…",
+  "account.importChatOk": "Imported “{title}”",
+  "account.importChatFailed": "Import failed",
 
   "onboarding.welcome": "Welcome to Grok",
   "onboarding.body":
@@ -1120,6 +1141,27 @@ const zh: Record<MessageKey, string> = {
   "account.cliAuthMissing": "无 CLI auth.json",
   "account.loginFailed": "登录失败",
   "account.loginOk": "登录成功",
+  "account.loginHelpTitle": "登录说明",
+  "account.loginHelpBody":
+    "若浏览器出现 Access denied / 无法生成授权码：请换网络或 VPN，改用「设备码登录」，或在设置中配置自定义中转。",
+  "account.loginTryDevice": "改用设备码登录",
+  "account.profiles": "已保存账号",
+  "account.profilesHint":
+    "在多个 Grok 账号间切换。快照保存在应用数据目录（仅凭证文件）。",
+  "account.profilesEmpty": "尚无已保存账号。登录后点击「保存当前」。",
+  "account.profileSave": "保存当前",
+  "account.profileSwitch": "切换",
+  "account.profileRemove": "移除",
+  "account.profileActive": "当前",
+  "account.profileSaved": "已保存账号",
+  "account.profileSwitched": "已切换账号",
+  "account.profileRemoved": "已移除账号",
+  "account.importChat": "导入对话",
+  "account.importChatHint":
+    "Grok.com 网页历史无法通过 CLI 同步。可导入 Markdown / JSON 文稿到本地会话。",
+  "account.importChatBtn": "选择文件…",
+  "account.importChatOk": "已导入「{title}」",
+  "account.importChatFailed": "导入失败",
 
   "onboarding.welcome": "欢迎使用 Grok",
   "onboarding.body": "MIT · 非 xAI 官方。选择一种账户方式，或跳过先进壳。",

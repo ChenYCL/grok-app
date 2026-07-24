@@ -1290,10 +1290,20 @@ pub async fn account_login(method: &str, manual_cli: Option<&str>) -> LoginResul
         }
     }
 
+    // Device-code login: open the verification URL so the user is not stuck with a toast only.
+    if method == "device" {
+        if let Some(ref url) = device_url {
+            if let Err(e) = open_url(url) {
+                warn!("account: open device URL failed: {e}");
+            }
+        }
+    }
+
     // Wait briefly for auth.json to update if process returned quickly after browser flow.
-    if output.status.success() || before_mtime.is_some() {
-        for _ in 0..20 {
-            tokio::time::sleep(Duration::from_millis(250)).await;
+    // OAuth/device can take longer; poll up to ~30s for credentials.
+    if output.status.success() || before_mtime.is_some() || device_url.is_some() {
+        for _ in 0..60 {
+            tokio::time::sleep(Duration::from_millis(500)).await;
             let after = auth_json_path()
                 .metadata()
                 .and_then(|m| m.modified())
@@ -1316,6 +1326,7 @@ pub async fn account_login(method: &str, manual_cli: Option<&str>) -> LoginResul
         if let Err(e) = sync_cli_auth_to_agent_home() {
             warn!("account: post-login auth sync failed: {e}");
         }
+        crate::account_profiles::auto_snapshot_after_login();
     }
 
     let message = if profile.signed_in {
@@ -1414,6 +1425,11 @@ pub async fn open_usage_manage() -> Result<(), String> {
 
 pub async fn open_subscribe() -> Result<(), String> {
     open_url(SUBSCRIBE_URL)
+}
+
+/// Open a URL in the system browser (also used after device-code login).
+pub fn open_browser_url(url: &str) -> Result<(), String> {
+    open_url(url)
 }
 
 fn open_url(url: &str) -> Result<(), String> {

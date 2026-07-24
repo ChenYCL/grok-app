@@ -15,7 +15,7 @@
 <p align="center">
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="MIT License" /></a>
   <a href="https://github.com/RongleCat/grok-app/stargazers"><img src="https://img.shields.io/github/stars/RongleCat/grok-app?style=social" alt="GitHub stars" /></a>
-  <img src="https://img.shields.io/badge/platform-macOS%20%7C%20Windows-lightgrey" alt="Platforms" />
+  <img src="https://img.shields.io/badge/platform-macOS%20%7C%20Windows%20%7C%20Linux-lightgrey" alt="Platforms" />
   <img src="https://img.shields.io/badge/Tauri-2-orange" alt="Tauri 2" />
   <img src="https://img.shields.io/badge/note-unofficial-yellow" alt="Unofficial" />
 </p>
@@ -93,7 +93,7 @@ The `grok` CLI is powerful in a terminal. Day-to-day work still needs multi-proj
 | **Account & quota** | Official login surface, SuperGrok quota + heatmap |
 | **Custom relays** | Independent `GROK_HOME` agent profile (keeps `~/.grok` clean when desired) |
 | **i18n** | EN / 中文 UI and tray menus |
-| **Packaging** | macOS ARM / Intel + Windows x64 via GitHub Actions |
+| **Packaging** | macOS ARM / Intel + Windows x64 + Linux x64 via GitHub Actions |
 
 ---
 
@@ -122,6 +122,7 @@ Get installers from [Releases](https://github.com/RongleCat/grok-app/releases):
 | macOS Apple Silicon | `Grok_*_aarch64.dmg` |
 | macOS Intel | `Grok_*_x64.dmg` |
 | Windows x64 | `.msi` / `.exe` |
+| Linux x64 | AppImage / `.deb` |
 
 The bundle product name is **Grok** (matches the window title).
 

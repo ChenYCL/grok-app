@@ -18,6 +18,9 @@ See `docs/llm-wiki/release.md`.
 - **Single-instance** plugin: second launch focuses the existing window (macOS Dock multi-open).
 - Thinking/reasoning **auto-collapse when done** (default); remembers last expand/collapse choice.
 - Error codes **QUOTA_EXCEEDED** / **CONNECT_FAILED** with clearer user-facing copy.
+- **Multi-account switcher**: save / switch / remove official Grok auth snapshots (Settings → Account).
+- **Import conversation** from markdown/JSON file into a local session (web-history alternative).
+- **Linux x64** packaging path: `pnpm build:linux`, CI rust job + release matrix `ubuntu-22.04` (AppImage/deb).
 
 ### Fixed
 

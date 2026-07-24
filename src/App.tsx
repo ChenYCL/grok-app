@@ -469,6 +469,9 @@ export default function App() {
   const [account, setAccount] = useState<api.AccountStatus | null>(null);
   const [accountLoading, setAccountLoading] = useState(false);
   const [accountBusy, setAccountBusy] = useState(false);
+  const [loginHint, setLoginHint] = useState<string | null>(null);
+  const [savedAccounts, setSavedAccounts] = useState<api.SavedAccount[]>([]);
+  const [activeAccountId, setActiveAccountId] = useState<string | null>(null);
   const platform = useMemo(() => {
     const ua = navigator.userAgent.toLowerCase();
     if (ua.includes("mac")) return "mac" as const;
@@ -3511,6 +3514,17 @@ export default function App() {
     ],
   );
 
+  const refreshSavedAccounts = useCallback(async () => {
+    if (!api.isTauri()) return;
+    try {
+      const list = await api.accountsList();
+      setSavedAccounts(list.profiles ?? []);
+      setActiveAccountId(list.activeId ?? null);
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
   const runAccountLogin = useCallback(
     async (method: "oauth" | "device" = "oauth"): Promise<boolean> => {
       if (!api.isTauri()) {
@@ -3518,21 +3532,32 @@ export default function App() {
         return false;
       }
       setAccountBusy(true);
+      setLoginHint(null);
       try {
         const res = await api.accountLogin(method);
-        showToast(
-          res.ok ? tr("account.loginOk") : res.message || tr("account.loginFailed"),
-          res.ok ? 2800 : 4500,
-        );
+        if (res.ok) {
+          setLoginHint(null);
+          showToast(tr("account.loginOk"), 2800);
+        } else {
+          const msg = res.message || tr("account.loginFailed");
+          setLoginHint(msg);
+          showToast(msg, 6000);
+        }
         if (res.deviceUrl) {
+          try {
+            await api.openExternalUrl(res.deviceUrl);
+          } catch {
+            /* host may already open it */
+          }
           showToast(
             [res.deviceUrl, res.deviceCode ? `code: ${res.deviceCode}` : ""]
               .filter(Boolean)
               .join(" · "),
-            8000,
+            10000,
           );
         }
         await refreshAccount({ refreshBilling: true });
+        await refreshSavedAccounts();
         // Drop live agent so next send re-spawns with synced auth.json in agent-home.
         if (res.ok && api.isTauri()) {
           try {
@@ -3544,14 +3569,100 @@ export default function App() {
         }
         return !!res.ok;
       } catch (e) {
-        showToast(String(e), 4500);
+        const msg = String(e);
+        setLoginHint(msg);
+        showToast(msg, 4500);
         return false;
       } finally {
         setAccountBusy(false);
       }
     },
-    [refreshAccount, showToast, tr],
+    [refreshAccount, refreshSavedAccounts, showToast, tr],
   );
+
+  const runSaveAccount = useCallback(async () => {
+    if (!api.isTauri()) return;
+    setAccountBusy(true);
+    try {
+      await api.accountSaveCurrent();
+      await refreshSavedAccounts();
+      showToast(tr("account.profileSaved"), 2500);
+    } catch (e) {
+      showToast(String(e), 4500);
+    } finally {
+      setAccountBusy(false);
+    }
+  }, [refreshSavedAccounts, showToast, tr]);
+
+  const runSwitchAccount = useCallback(
+    async (id: string) => {
+      if (!api.isTauri()) return;
+      setAccountBusy(true);
+      try {
+        await api.accountSwitch(id);
+        await refreshAccount({ refreshBilling: true });
+        await refreshSavedAccounts();
+        setSession({ ...IDLE_SNAPSHOT });
+        showToast(tr("account.profileSwitched"), 2500);
+      } catch (e) {
+        showToast(String(e), 4500);
+      } finally {
+        setAccountBusy(false);
+      }
+    },
+    [refreshAccount, refreshSavedAccounts, showToast, tr],
+  );
+
+  const runRemoveAccount = useCallback(
+    async (id: string) => {
+      if (!api.isTauri()) return;
+      setAccountBusy(true);
+      try {
+        await api.accountRemove(id);
+        await refreshSavedAccounts();
+        showToast(tr("account.profileRemoved"), 2200);
+      } catch (e) {
+        showToast(String(e), 4500);
+      } finally {
+        setAccountBusy(false);
+      }
+    },
+    [refreshSavedAccounts, showToast, tr],
+  );
+
+  const runImportChat = useCallback(async () => {
+    if (!api.isTauri()) {
+      showToast(tr("error.needTauri"));
+      return;
+    }
+    setAccountBusy(true);
+    try {
+      const meta = await api.sessionImportTranscriptFile(
+        null,
+        activeProject?.id ?? null,
+      );
+      if (!meta) return;
+      showToast(tr("account.importChatOk", { title: meta.title }), 3200);
+      await refreshSessions();
+      // Open the imported session from the refreshed list
+      const list = (await api.sessionsList()) as SessionRow[];
+      const row = list.find((s) => s.id === meta.id);
+      if (row) {
+        const proj =
+          projects.find((p) => p.id === (row.projectId ?? undefined)) ?? null;
+        await openSession(row, proj);
+        setAppView("workbench");
+        setMainPane("chat");
+      }
+    } catch (e) {
+      showToast(
+        `${tr("account.importChatFailed")}: ${String(e)}`,
+        5000,
+      );
+    } finally {
+      setAccountBusy(false);
+    }
+  }, [activeProject?.id, projects, refreshSessions, showToast, tr]);
 
   const runAccountLogout = useCallback(async () => {
     if (!api.isTauri()) return;
@@ -3582,17 +3693,20 @@ export default function App() {
       await refreshAccount({ refreshBilling: false });
       if (cancelled) return;
       await refreshAccount({ refreshBilling: true });
+      if (cancelled) return;
+      await refreshSavedAccounts();
     })();
     return () => {
       cancelled = true;
     };
-  }, [refreshAccount]);
+  }, [refreshAccount, refreshSavedAccounts]);
 
   useEffect(() => {
     if (appView === "settings" && settingsSection === "account") {
       void refreshAccount({ refreshBilling: true });
+      void refreshSavedAccounts();
     }
-  }, [appView, settingsSection, refreshAccount]);
+  }, [appView, settingsSection, refreshAccount, refreshSavedAccounts]);
 
   const settingsLabels = useMemo(() => {
     const keys = [
@@ -3719,6 +3833,19 @@ export default function App() {
       "account.billingUnavailable",
       "account.cliAuthOk",
       "account.cliAuthMissing",
+      "account.loginHelpTitle",
+      "account.loginHelpBody",
+      "account.loginTryDevice",
+      "account.profiles",
+      "account.profilesHint",
+      "account.profilesEmpty",
+      "account.profileSave",
+      "account.profileSwitch",
+      "account.profileRemove",
+      "account.profileActive",
+      "account.importChat",
+      "account.importChatHint",
+      "account.importChatBtn",
     ] as const;
     const out: Record<string, string> = {};
     for (const k of keys) out[k] = tr(k);
@@ -3876,12 +4003,19 @@ export default function App() {
           account={account}
           accountLoading={accountLoading}
           accountBusy={accountBusy}
+          loginHint={loginHint}
+          savedAccounts={savedAccounts}
+          activeAccountId={activeAccountId}
           onAccountLoginOauth={() => void runAccountLogin("oauth")}
           onAccountLoginDevice={() => void runAccountLogin("device")}
           onAccountLogout={() => void runAccountLogout()}
           onAccountRefresh={() => void refreshAccount({ refreshBilling: true })}
           onAccountManageUsage={() => void api.accountOpenUsage()}
           onAccountSubscribe={() => void api.accountOpenSubscribe()}
+          onSaveAccount={() => void runSaveAccount()}
+          onSwitchAccount={(id) => void runSwitchAccount(id)}
+          onRemoveAccount={(id) => void runRemoveAccount(id)}
+          onImportChat={() => void runImportChat()}
           defaultOpenTarget={defaultOpenTarget}
           onDefaultOpenTarget={(v) => {
             setDefaultOpenTarget(v);

@@ -1,6 +1,7 @@
 //! Grok App Host — real ACP default (`grok agent stdio`).
 
 mod account;
+mod account_profiles;
 mod acp_client;
 mod agent_prefs;
 mod supergrok_quota;
@@ -17,6 +18,7 @@ mod paths;
 mod process_util;
 mod permission;
 mod providers;
+mod session_import;
 mod session_title;
 #[cfg(test)]
 mod permission_host_test;
@@ -174,6 +176,13 @@ pub fn run() {
             commands::account_logout,
             commands::account_open_usage,
             commands::account_open_subscribe,
+            commands::accounts_list,
+            commands::account_save_current,
+            commands::account_switch,
+            commands::account_remove,
+            commands::account_rename,
+            commands::session_import_transcript,
+            commands::session_import_transcript_file,
             commands::providers_list,
             commands::providers_upsert,
             commands::providers_remove,

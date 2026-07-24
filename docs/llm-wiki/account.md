@@ -39,6 +39,29 @@ Host **must** sync `auth.json` into agent-home on login and before each ACP spaw
 | `account_logout` | Spawn `grok logout` (fallback: remove auth.json) |
 | `account_open_usage` | Open `https://grok.com/?_s=usage` |
 | `account_open_subscribe` | Open SuperGrok / subscription manage URL |
+| `accounts_list` / `account_save_current` / `account_switch` / `account_remove` | Multi-account snapshots under `~/.grok-app/accounts/` |
+| `session_import_transcript(_file)` | Import markdown/JSON chat into a new local session |
+
+### Multi-account
+
+- After successful login, Host **auto-snapshots** auth into `accounts/<id>/auth.json`.
+- Switch copies snapshot → `~/.grok/auth.json` + agent-home, then disconnects live ACP.
+- UI: Settings → Account → Saved accounts.
+
+### Login failures (Access denied)
+
+xAI may refuse device-code generation on some networks. Product response:
+
+1. Surface long-form error + tips (VPN / device code / custom provider).
+2. Prefer **Device code** path when OAuth fails; auto-open verification URL when CLI prints it.
+3. Do not invent a parallel OAuth — always go through Grok Build CLI.
+
+### Conversation import (not Grok.com cloud history)
+
+Grok Build CLI does **not** expose grok.com web history. Supported migration:
+
+- Settings → Account → **Import conversation** (`.md` / `.json` / `.txt`)
+- Formats: `## User` / `## Assistant` markdown, or JSON `[{role,content}]`
 
 ## Settings IA
 

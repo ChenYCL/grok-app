@@ -794,6 +794,75 @@ export async function accountOpenSubscribe() {
   return invoke<void>("account_open_subscribe");
 }
 
+// ── Multi-account switcher ──────────────────────────────────────────────────
+
+export interface SavedAccount {
+  id: string;
+  email?: string | null;
+  displayName?: string | null;
+  label: string;
+  updatedAt: string;
+}
+
+export interface AccountsListResult {
+  profiles: SavedAccount[];
+  activeId?: string | null;
+}
+
+export async function accountsList() {
+  return invoke<AccountsListResult>("accounts_list");
+}
+
+export async function accountSaveCurrent(label?: string | null) {
+  return invoke<SavedAccount>("account_save_current", {
+    label: label ?? null,
+  });
+}
+
+export async function accountSwitch(id: string) {
+  return invoke<AccountProfile>("account_switch", { id });
+}
+
+export async function accountRemove(id: string) {
+  return invoke<void>("account_remove", { id });
+}
+
+export async function accountRename(id: string, label: string) {
+  return invoke<SavedAccount>("account_rename", { id, label });
+}
+
+/** Import markdown/JSON transcript as a new local session. */
+export async function sessionImportTranscript(
+  text: string,
+  title?: string | null,
+  projectId?: string | null,
+) {
+  return invoke<{
+    id: string;
+    title: string;
+    projectId?: string | null;
+  }>("session_import_transcript", {
+    text,
+    title: title ?? null,
+    projectId: projectId ?? null,
+  });
+}
+
+/** Native file picker → import transcript. Returns null if cancelled. */
+export async function sessionImportTranscriptFile(
+  title?: string | null,
+  projectId?: string | null,
+) {
+  return invoke<{
+    id: string;
+    title: string;
+    projectId?: string | null;
+  } | null>("session_import_transcript_file", {
+    title: title ?? null,
+    projectId: projectId ?? null,
+  });
+}
+
 /** Rebuild system-tray / menu-bar menu (Recent list + Usage). */
 export async function trayRefresh() {
   if (!isTauri()) return;

@@ -35,6 +35,8 @@ pub fn ensure_app_dirs() -> std::io::Result<PathBuf> {
     std::fs::create_dir_all(root.join("agent-home"))?;
     // Clipboard paste / picker-written attachment files.
     std::fs::create_dir_all(root.join("attachments").join("paste"))?;
+    // Multi-account auth snapshots.
+    std::fs::create_dir_all(root.join("accounts"))?;
     Ok(root)
 }
 
