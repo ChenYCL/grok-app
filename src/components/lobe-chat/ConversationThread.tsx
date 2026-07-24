@@ -25,8 +25,10 @@ import {
   IconArrowsMinimize,
   IconClock,
   IconExportMd,
+  IconFork,
   IconPlan,
   IconRename,
+  IconRewind,
 } from "@/components/icons";
 import { formatMessageTime } from "@/lib/accountUi";
 import { formatTokenCount } from "@/lib/contextUsage";
@@ -221,6 +223,10 @@ export interface ConversationThreadProps {
   onCancelEditUserMessage?: () => void;
   onSubmitEditUserMessage?: (message: ChatMessage, content: string) => void;
   onRemoveEditAttachment?: (att: Attachment) => void;
+  /** Idle session — allow rewind / fork from user bubbles. */
+  canRewindSession?: boolean;
+  onRewindToUserMessage?: (message: ChatMessage) => void;
+  onForkFromUserMessage?: (message: ChatMessage) => void;
   onOpenResource?: (
     target: import("@/components/ResourceViewer").ResourceOpenTarget,
   ) => void;
@@ -267,6 +273,9 @@ export function ConversationThread({
   onCancelEditUserMessage,
   onSubmitEditUserMessage,
   onRemoveEditAttachment,
+  canRewindSession = false,
+  onRewindToUserMessage,
+  onForkFromUserMessage,
   onOpenResource,
   plan,
   onApprovePlan,
@@ -517,6 +526,30 @@ export function ConversationThread({
                             }}
                           >
                             <IconRename size={15} />
+                          </MessageActionButton>
+                        ) : null}
+                        {onRewindToUserMessage ? (
+                          <MessageActionButton
+                            label={tr("message.rewindHere")}
+                            disabled={!canRewindSession}
+                            onClick={() => {
+                              if (!canRewindSession) return;
+                              onRewindToUserMessage(m);
+                            }}
+                          >
+                            <IconRewind size={15} />
+                          </MessageActionButton>
+                        ) : null}
+                        {onForkFromUserMessage ? (
+                          <MessageActionButton
+                            label={tr("message.forkHere")}
+                            disabled={!canRewindSession}
+                            onClick={() => {
+                              if (!canRewindSession) return;
+                              onForkFromUserMessage(m);
+                            }}
+                          >
+                            <IconFork size={15} />
                           </MessageActionButton>
                         ) : null}
                       </>

@@ -70,6 +70,31 @@ export const zhTW: Record<MessageKey, string> = {
   "session.newShort": "新增",
   "session.placeholderTitle": "新對話",
   "session.untitled": "未命名",
+  "session.fork": "分叉對話",
+  "session.forkTitle": "分叉對話",
+  "session.forkTitleOf": "分叉：{name}",
+  "session.forkConfirm":
+    "基於目前對話複製並建立新對話？原對話保持不變。",
+  "session.forkConfirmPartial":
+    "複製到此為止的訊息並建立新對話？之後的回合不會複製。",
+  "session.forkOk": "已分叉 · 已開啟新對話",
+  "session.forkFailed": "分叉對話失敗",
+  "session.rewind": "回退時間線",
+  "session.rewindTitle": "回退對話",
+  "session.rewindHint":
+    "選擇要保留的使用者回合。該回合之後的內容將從本對話中移除。",
+  "session.rewindEmpty": "沒有可回退的使用者回合",
+  "session.rewindConfirm":
+    "回退到此回合並捨棄之後的全部內容？此操作對目前對話無法復原。",
+  "session.rewindConfirmLabel": "回退",
+  "session.rewindOk": "對話已回退",
+  "session.rewindLocalOnly":
+    "已在本機回退對話。Agent 歷史未更新（不支援或未連線）。",
+  "session.rewindFailed": "回退對話失敗",
+  "session.rewindBusy": "請等待目前回合結束後再回退",
+  "session.rewindNoop": "已在此位置，沒有可捨棄的內容",
+  "message.rewindHere": "回退到此處",
+  "message.forkHere": "從此處分叉",
 
   "main.rightPane": "檔案欄",
   "main.leftPane": "側邊欄",

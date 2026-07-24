@@ -88,6 +88,27 @@ pub struct SessionSnapshot {
     pub title: String,
 }
 
+/// One user-prompt checkpoint for the rewind timeline UI.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RewindPointDto {
+    pub prompt_index: u32,
+    pub message_id: Option<String>,
+    pub preview: String,
+}
+
+/// Result of `session_rewind_execute` — local journal is source of truth for UI.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RewindExecuteResult {
+    pub snapshot: SessionSnapshot,
+    /// False when agent rewind extension failed / unsupported / disconnected.
+    pub agent_ok: bool,
+    pub agent_error: Option<String>,
+    pub local_ok: bool,
+    pub kept_count: usize,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct UiPermissionRequest {
@@ -1631,6 +1652,167 @@ impl SessionManager {
         let snap = self.snapshot();
         Self::emit_state(&app, &snap);
         Ok(snap)
+    }
+
+    /// List rewind points for an app session journal (one per user prompt).
+    /// Prefer the local journal so the UI timeline always matches what the user sees.
+    pub fn list_rewind_points(&self, session_id: Option<String>) -> Result<Vec<RewindPointDto>, String> {
+        let app_sid = match session_id {
+            Some(id) if !id.trim().is_empty() => id,
+            _ => {
+                let guard = self.inner.lock();
+                let s = guard.as_ref().ok_or("no active session")?;
+                s.app_session_id.clone()
+            }
+        };
+        // Ensure session exists in the index (or at least has a journal dir).
+        let known = store::load_sessions_index()
+            .iter()
+            .any(|s| s.id == app_sid);
+        if !known && store::load_messages(&app_sid).is_empty() {
+            return Err(format!("session not found: {app_sid}"));
+        }
+        Ok(Self::rewind_points_from_journal(&app_sid))
+    }
+
+    fn rewind_points_from_journal(app_sid: &str) -> Vec<RewindPointDto> {
+        let msgs = store::load_messages(app_sid);
+        let mut out = Vec::new();
+        let mut idx = 0u32;
+        for m in msgs {
+            if m.role != "user" {
+                continue;
+            }
+            let raw = m.content.split_whitespace().collect::<Vec<_>>().join(" ");
+            let preview = if raw.chars().count() > 80 {
+                let truncated: String = raw.chars().take(79).collect();
+                format!("{truncated}…")
+            } else if raw.is_empty() {
+                "…".into()
+            } else {
+                raw
+            };
+            out.push(RewindPointDto {
+                prompt_index: idx,
+                message_id: Some(m.id),
+                preview,
+            });
+            idx = idx.saturating_add(1);
+        }
+        out
+    }
+
+    /// Rewind a session to a user-prompt index (keep that turn, drop after).
+    /// Always truncates the local journal. Agent `x.ai/rewind/execute` is best-effort
+    /// when this session is the live ACP session.
+    pub async fn rewind_to_prompt_index(
+        self: &Arc<Self>,
+        app: AppHandle,
+        target_prompt_index: u32,
+        restore_files: bool,
+        session_id: Option<String>,
+    ) -> Result<RewindExecuteResult, String> {
+        let app_sid = match session_id {
+            Some(id) if !id.trim().is_empty() => id,
+            _ => {
+                let guard = self.inner.lock();
+                let s = guard.as_ref().ok_or("no active session")?;
+                s.app_session_id.clone()
+            }
+        };
+
+        // Block if *this* session is mid-turn on the live host.
+        let (live_match, backend, acp, busy) = {
+            let guard = self.inner.lock();
+            match guard.as_ref() {
+                Some(s) if s.app_session_id == app_sid => {
+                    let busy = s.fsm.state() == SessionState::Streaming
+                        || s.fsm.state() == SessionState::AwaitingPermission;
+                    (true, s.backend.clone(), s.acp.clone(), busy)
+                }
+                _ => (false, String::new(), None, false),
+            }
+        };
+        if busy {
+            return Err("cannot rewind while a turn is running".into());
+        }
+
+        let msgs = store::load_messages(&app_sid);
+        let user_count = msgs.iter().filter(|m| m.role == "user").count() as u32;
+        if user_count == 0 {
+            return Err("no user messages to rewind".into());
+        }
+        if target_prompt_index >= user_count {
+            return Err(format!(
+                "user prompt index out of range: {target_prompt_index} (have {user_count})"
+            ));
+        }
+
+        let mut agent_ok = true;
+        let mut agent_error: Option<String> = None;
+
+        // Agent path only when this is the live session with a real ACP client.
+        if live_match && backend != "mock_acp" && !AcpClient::use_mock() {
+            if let Some(client) = acp {
+                match client
+                    .rewind_execute(target_prompt_index, restore_files)
+                    .await
+                {
+                    Ok(_) => {
+                        tracing::info!(
+                            target: "session",
+                            "rewind_to_prompt_index: agent rewound target={target_prompt_index}"
+                        );
+                    }
+                    Err(e) => {
+                        agent_ok = false;
+                        agent_error = Some(e.clone());
+                        tracing::warn!(
+                            target: "session",
+                            error = %e,
+                            "agent rewind failed; applying local journal truncate only"
+                        );
+                    }
+                }
+            } else {
+                agent_ok = false;
+                agent_error = Some("agent not connected".into());
+            }
+        } else if !live_match {
+            agent_ok = false;
+            agent_error = Some("session not live; local journal only".into());
+        }
+
+        let kept = store::truncate_through_user_prompt(&msgs, target_prompt_index)?;
+        let kept_count = kept.len();
+        store::save_messages(&app_sid, &kept)?;
+
+        // Touch meta updated_at for index sort.
+        if let Some(mut meta) = store::load_sessions_index()
+            .into_iter()
+            .find(|s| s.id == app_sid)
+        {
+            meta.updated_at = chrono::Utc::now();
+            let _ = store::update_session_meta(&meta);
+            if live_match {
+                let mut guard = self.inner.lock();
+                if let Some(s) = guard.as_mut() {
+                    if s.app_session_id == app_sid {
+                        s.meta.updated_at = meta.updated_at;
+                    }
+                }
+            }
+        }
+
+        let snap = self.snapshot();
+        Self::emit_state(&app, &snap);
+        Ok(RewindExecuteResult {
+            snapshot: snap,
+            agent_ok,
+            agent_error,
+            local_ok: true,
+            kept_count,
+        })
     }
 
     pub async fn send_message(
