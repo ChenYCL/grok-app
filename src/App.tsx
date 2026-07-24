@@ -47,6 +47,10 @@ import {
   buildSegmentsFromLegacy,
   splitThoughtPhases,
   truncateBeforeLastUser,
+  truncateThroughUserPrompt,
+  canRewindToUserPrompt,
+  userPromptIndexOf,
+  localRewindPoints,
   IDLE_SNAPSHOT,
   type ChatMessage,
   type GeneratedImagePayload,
@@ -137,6 +141,8 @@ import {
   IconCopy,
   IconTrash,
   IconExternalLink,
+  IconFork,
+  IconRewind,
 } from "@/components/icons";
 import { AutomationsPage } from "@/components/AutomationsPage";
 import { OpenLocationButton } from "@/components/OpenLocationButton";
@@ -282,6 +288,12 @@ export default function App() {
   const [showCompactModal, setShowCompactModal] = useState(false);
   const [compactNote, setCompactNote] = useState("");
   const compactNoteRef = useRef<HTMLInputElement>(null);
+  /** Rewind timeline picker (session menu / status). */
+  const [rewindTimeline, setRewindTimeline] = useState<{
+    sessionId: string;
+    points: Array<{ promptIndex: number; messageId?: string | null; preview: string }>;
+  } | null>(null);
+  const [rewindBusy, setRewindBusy] = useState(false);
   /** Last user message open in inline edit (not main composer). */
   const [editingUserMessageId, setEditingUserMessageId] = useState<
     string | null
@@ -2451,6 +2463,13 @@ export default function App() {
     session.state !== "streaming" &&
     session.state !== "awaiting_permission";
 
+  /** Idle-ish: allow fork / rewind from transcript (not mid-turn). */
+  const canRewindSession =
+    canSend(session.state) &&
+    !connecting &&
+    !editSubmitting &&
+    !rewindBusy;
+
   const send = async () => {
     const segments = parseStoredContent(draft);
     const storedDisplay = draft; // keep skill tokens in UI history
@@ -3210,6 +3229,293 @@ export default function App() {
       setToast((cur) => (cur === msg ? null : cur));
     }, ms);
   }, []);
+
+  /**
+   * Fork a session (full history or through a user-prompt index) and open it.
+   */
+  const runForkSession = useCallback(
+    async (
+      source: SessionRow,
+      opts?: { throughUserPromptIndex?: number | null },
+    ) => {
+      if (!api.isTauri()) {
+        showToast(tr("error.needTauri"));
+        return;
+      }
+      try {
+        const base = (source.title || tr("session.untitled")).trim();
+        // Avoid double-prefix when forking a fork (any locale).
+        const title = /^(fork of|分叉：|分叉:)\s*/i.test(base)
+          ? base
+          : tr("session.forkTitleOf", { name: base || "chat" });
+        const meta = await api.sessionFork(source.id, {
+          throughUserPromptIndex: opts?.throughUserPromptIndex ?? null,
+          title,
+        });
+        await refreshSessions();
+        const row: SessionRow = {
+          id: meta.id,
+          title: meta.title || title,
+          projectId: meta.projectId ?? source.projectId,
+          updatedAt: meta.updatedAt || new Date().toISOString(),
+          archived: meta.archived,
+          scheduled: meta.scheduled,
+        };
+        const proj = row.projectId
+          ? projects.find((p) => p.id === row.projectId) ?? null
+          : null;
+        if (row.projectId) {
+          setExpandedProjects((e) => ({ ...e, [row.projectId!]: true }));
+        } else {
+          setHistoryOpen(true);
+        }
+        await openSession(row, proj);
+        showToast(tr("session.forkOk"), 2800);
+      } catch (e) {
+        showToast(tr("session.forkFailed") + ": " + String(e), 4500);
+      }
+    },
+    // openSession / refreshSessions via closure
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [projects, showToast, tr],
+  );
+
+  const confirmForkSession = useCallback(
+    (source: SessionRow, throughUserPromptIndex?: number | null) => {
+      setCtxMenu(null);
+      const partial =
+        throughUserPromptIndex != null && throughUserPromptIndex !== undefined;
+      setAppDialog({
+        kind: "confirm",
+        title: tr("session.forkTitle"),
+        message: partial
+          ? tr("session.forkConfirmPartial")
+          : tr("session.forkConfirm"),
+        confirmLabel: tr("session.fork"),
+        onConfirm: () => {
+          void runForkSession(source, {
+            throughUserPromptIndex: throughUserPromptIndex ?? null,
+          });
+        },
+      });
+    },
+    [runForkSession, tr],
+  );
+
+  /**
+   * Apply rewind: truncate local journal (+ agent when live), refresh messages UI.
+   */
+  const runRewindToPrompt = useCallback(
+    async (sessionId: string, targetPromptIndex: number) => {
+      if (!api.isTauri()) {
+        showToast(tr("error.needTauri"));
+        return;
+      }
+      if (!canRewindSession) {
+        showToast(tr("session.rewindBusy"));
+        return;
+      }
+      setRewindBusy(true);
+      try {
+        // Prefer live connect so agent rewind can run; local truncate still works if not.
+        if (
+          (session.sessionId === sessionId ||
+            viewingSessionIdRef.current === sessionId) &&
+          session.state !== "ready"
+        ) {
+          try {
+            await ensureConnected();
+          } catch {
+            /* local-only path */
+          }
+        }
+
+        const result = await api.sessionRewindExecute(targetPromptIndex, {
+          sessionId,
+          restoreFiles: false,
+        });
+
+        // Refresh UI from truncated journal.
+        if (viewingSessionIdRef.current === sessionId) {
+          const stored = await api.sessionMessages(sessionId);
+          const mapped: ChatMessage[] = stored.map((m) => ({
+            id: m.id,
+            role: m.role as "user" | "assistant" | "tool",
+            content: m.content,
+            thought: m.thought ?? undefined,
+            thoughtPhases: splitThoughtPhases(m.thought),
+            isError: m.isError || undefined,
+            marker: m.marker || undefined,
+            createdAt: m.createdAt || undefined,
+            attachments: (m.attachments ?? []).map((a) => ({
+              path: a.path,
+              name: a.name || a.path.split(/[/\\]/).pop() || a.path,
+              isDir: !!a.isDir,
+            })),
+            streaming: false,
+          }));
+          const kept = truncateThroughUserPrompt(mapped, targetPromptIndex);
+          const finalMsgs =
+            kept.length || mapped.length <= result.keptCount
+              ? kept.length
+                ? kept
+                : mapped
+              : mapped.slice(0, result.keptCount);
+          messagesBySessionRef.current.set(sessionId, finalMsgs);
+          setMessages(finalMsgs);
+        } else {
+          messagesBySessionRef.current.delete(sessionId);
+        }
+
+        setRewindTimeline(null);
+        if (result.agentOk) {
+          showToast(tr("session.rewindOk"), 2600);
+        } else {
+          showToast(tr("session.rewindLocalOnly"), 4200);
+        }
+        await refreshSessions();
+      } catch (e) {
+        showToast(tr("session.rewindFailed") + ": " + String(e), 4500);
+      } finally {
+        setRewindBusy(false);
+      }
+    },
+    // ensureConnected / refreshSessions via closure
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [canRewindSession, session.sessionId, session.state, showToast, tr],
+  );
+
+  const confirmRewindToPrompt = useCallback(
+    (sessionId: string, targetPromptIndex: number, preview?: string) => {
+      setCtxMenu(null);
+      const msgPreview = preview?.trim()
+        ? `\n\n“${preview.trim()}”`
+        : "";
+      setAppDialog({
+        kind: "confirm",
+        title: tr("session.rewindTitle"),
+        message: tr("session.rewindConfirm") + msgPreview,
+        confirmLabel: tr("session.rewindConfirmLabel"),
+        danger: true,
+        onConfirm: () => {
+          void runRewindToPrompt(sessionId, targetPromptIndex);
+        },
+      });
+    },
+    [runRewindToPrompt, tr],
+  );
+
+  const openRewindTimeline = useCallback(
+    async (sessionId: string) => {
+      setCtxMenu(null);
+      if (!api.isTauri()) {
+        showToast(tr("error.needTauri"));
+        return;
+      }
+      if (!canRewindSession) {
+        showToast(tr("session.rewindBusy"));
+        return;
+      }
+      try {
+        let points = await api.sessionRewindPoints(sessionId);
+        if (!points.length) {
+          if (viewingSessionIdRef.current === sessionId) {
+            points = localRewindPoints(messagesRef.current).map((p) => ({
+              promptIndex: p.promptIndex,
+              messageId: p.messageId,
+              preview: p.preview,
+            }));
+          }
+        }
+        if (!points.length) {
+          showToast(tr("session.rewindEmpty"));
+          return;
+        }
+        setRewindTimeline({ sessionId, points });
+      } catch (e) {
+        if (viewingSessionIdRef.current === sessionId) {
+          const points = localRewindPoints(messagesRef.current);
+          if (points.length) {
+            setRewindTimeline({
+              sessionId,
+              points: points.map((p) => ({
+                promptIndex: p.promptIndex,
+                messageId: p.messageId,
+                preview: p.preview,
+              })),
+            });
+            return;
+          }
+        }
+        showToast(tr("session.rewindFailed") + ": " + String(e), 4500);
+      }
+    },
+    [canRewindSession, showToast, tr],
+  );
+
+  const onRewindToUserMessage = useCallback(
+    (msg: ChatMessage) => {
+      const sid = session.sessionId ?? viewingSessionIdRef.current;
+      if (!sid) {
+        showToast(tr("session.rewindFailed"));
+        return;
+      }
+      if (!canRewindSession) {
+        showToast(tr("session.rewindBusy"));
+        return;
+      }
+      const idx = userPromptIndexOf(messages, msg.id);
+      if (idx < 0) return;
+      if (!canRewindToUserPrompt(messages, idx)) {
+        showToast(tr("session.rewindNoop"));
+        return;
+      }
+      const preview = (msg.content || "")
+        .replace(/\s+/g, " ")
+        .trim()
+        .slice(0, 80);
+      confirmRewindToPrompt(sid, idx, preview);
+    },
+    [
+      canRewindSession,
+      confirmRewindToPrompt,
+      messages,
+      session.sessionId,
+      showToast,
+      tr,
+    ],
+  );
+
+  const onForkFromUserMessage = useCallback(
+    (msg: ChatMessage) => {
+      const sid = session.sessionId ?? viewingSessionIdRef.current;
+      if (!sid) {
+        showToast(tr("session.forkFailed"));
+        return;
+      }
+      const row =
+        sessions.find((s) => s.id === sid) ??
+        ({
+          id: sid,
+          title: session.title || tr("session.untitled"),
+          projectId: activeProject?.id ?? null,
+          updatedAt: new Date().toISOString(),
+        } satisfies SessionRow);
+      const idx = userPromptIndexOf(messages, msg.id);
+      if (idx < 0) return;
+      confirmForkSession(row, idx);
+    },
+    [
+      activeProject?.id,
+      confirmForkSession,
+      messages,
+      session.sessionId,
+      session.title,
+      sessions,
+      showToast,
+      tr,
+    ],
+  );
 
   /**
    * Apply permission policy (incl. YOLO). Never use window.confirm in Tauri —
@@ -5219,6 +5525,9 @@ export default function App() {
                 prev.filter((x) => x.path !== att.path),
               )
             }
+            canRewindSession={canRewindSession && !!session.sessionId}
+            onRewindToUserMessage={onRewindToUserMessage}
+            onForkFromUserMessage={onForkFromUserMessage}
             turnStartedAt={turnStartedAt}
             onOpenResource={(target) => {
               setLayout((l) => {
@@ -5764,6 +6073,90 @@ export default function App() {
         loading={mcpLoading}
         onClose={() => setShowMcpModal(false)}
       />
+      {rewindTimeline && (
+        <div
+          className="overlay"
+          role="presentation"
+          onClick={() => {
+            if (!rewindBusy) setRewindTimeline(null);
+          }}
+        >
+          <div
+            className="modal rewind-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="rewind-modal-title"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <header className="modal-head">
+              <h2 id="rewind-modal-title" className="modal-title">
+                {tr("session.rewindTitle")}
+              </h2>
+              <button
+                type="button"
+                className="icon-btn modal-close"
+                onClick={() => setRewindTimeline(null)}
+                aria-label={tr("common.close")}
+                disabled={rewindBusy}
+              >
+                <IconClose size={16} />
+              </button>
+            </header>
+            <p className="rewind-modal__msg">{tr("session.rewindHint")}</p>
+            <div className="rewind-modal__list" role="list">
+              {rewindTimeline.points.map((p) => {
+                const isLast =
+                  p.promptIndex ===
+                  rewindTimeline.points[rewindTimeline.points.length - 1]
+                    ?.promptIndex;
+                return (
+                  <button
+                    key={`${p.promptIndex}-${p.messageId ?? ""}`}
+                    type="button"
+                    role="listitem"
+                    className="rewind-modal__item"
+                    disabled={rewindBusy || isLast}
+                    title={
+                      isLast
+                        ? tr("session.rewindNoop")
+                        : tr("message.rewindHere")
+                    }
+                    onClick={() => {
+                      if (isLast) {
+                        showToast(tr("session.rewindNoop"));
+                        return;
+                      }
+                      confirmRewindToPrompt(
+                        rewindTimeline.sessionId,
+                        p.promptIndex,
+                        p.preview,
+                      );
+                    }}
+                  >
+                    <span className="rewind-modal__idx">
+                      #{p.promptIndex + 1}
+                    </span>
+                    <span className="rewind-modal__preview">
+                      {p.preview || "…"}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+            <div className="modal-actions">
+              <button
+                type="button"
+                className="btn btn--ghost"
+                disabled={rewindBusy}
+                onClick={() => setRewindTimeline(null)}
+              >
+                {tr("common.cancel")}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {showCompactModal && (
         <div
           className="overlay"
@@ -6124,12 +6517,30 @@ export default function App() {
         } else if (ctxMenu?.kind === "session") {
           const s = sessions.find((x) => x.id === ctxMenu.id);
           if (s) {
+            const isOpen =
+              session.sessionId === s.id ||
+              viewingSessionIdRef.current === s.id;
             items = [
               {
                 id: "rename",
                 label: tr("session.rename"),
                 icon: <IconRename size={16} />,
                 onClick: () => renameSession(s),
+              },
+              {
+                id: "fork",
+                label: tr("session.fork"),
+                icon: <IconFork size={16} />,
+                onClick: () => confirmForkSession(s),
+              },
+              {
+                id: "rewind",
+                label: tr("session.rewind"),
+                icon: <IconRewind size={16} />,
+                disabled: !isOpen || !canRewindSession,
+                onClick: () => {
+                  void openRewindTimeline(s.id);
+                },
               },
               {
                 id: "copy-id",

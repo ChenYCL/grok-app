@@ -68,6 +68,45 @@ pub async fn session_rewind_drop_last_user(
     mgr.rewind_drop_last_user_turn(app).await
 }
 
+/// List rewind points (one per user prompt) for a session journal.
+/// Omitting `session_id` uses the live host session.
+#[tauri::command]
+pub async fn session_rewind_points(
+    mgr: State<'_, Arc<SessionManager>>,
+    session_id: Option<String>,
+) -> Result<Vec<crate::session_manager::RewindPointDto>, String> {
+    mgr.list_rewind_points(session_id)
+}
+
+/// Rewind a session to a user-prompt index. Local journal always truncates;
+/// agent `x.ai/rewind/execute` is best-effort when the session is live (`agentOk`).
+#[tauri::command]
+pub async fn session_rewind_execute(
+    app: tauri::AppHandle,
+    mgr: State<'_, Arc<SessionManager>>,
+    target_prompt_index: u32,
+    restore_files: Option<bool>,
+    session_id: Option<String>,
+) -> Result<crate::session_manager::RewindExecuteResult, String> {
+    mgr.rewind_to_prompt_index(
+        app,
+        target_prompt_index,
+        restore_files.unwrap_or(false),
+        session_id,
+    )
+    .await
+}
+
+/// Fork a session into a new chat (same project, messages up to optional cut).
+#[tauri::command]
+pub fn session_fork(
+    source_id: String,
+    through_user_prompt_index: Option<u32>,
+    title: Option<String>,
+) -> Result<store::SessionMeta, String> {
+    store::fork_session(&source_id, through_user_prompt_index, title)
+}
+
 #[tauri::command]
 pub async fn session_stop(
     app: tauri::AppHandle,

@@ -81,6 +81,31 @@ const en = {
   "session.newShort": "New",
   "session.placeholderTitle": "New chat",
   "session.untitled": "Untitled",
+  "session.fork": "Fork chat",
+  "session.forkTitle": "Fork chat",
+  "session.forkTitleOf": "Fork of {name}",
+  "session.forkConfirm":
+    "Create a new chat with a copy of this conversation? The original stays unchanged.",
+  "session.forkConfirmPartial":
+    "Create a new chat with messages up to this point? Later turns are not copied.",
+  "session.forkOk": "Forked · opened new chat",
+  "session.forkFailed": "Could not fork chat",
+  "session.rewind": "Rewind timeline",
+  "session.rewindTitle": "Rewind conversation",
+  "session.rewindHint":
+    "Choose a user turn to keep. Everything after that turn is removed from this chat.",
+  "session.rewindEmpty": "No user turns to rewind to",
+  "session.rewindConfirm":
+    "Rewind to this turn and discard everything after it? This cannot be undone for this chat.",
+  "session.rewindConfirmLabel": "Rewind",
+  "session.rewindOk": "Conversation rewound",
+  "session.rewindLocalOnly":
+    "Conversation rewound locally. Agent history was not updated (unsupported or disconnected).",
+  "session.rewindFailed": "Could not rewind conversation",
+  "session.rewindBusy": "Wait for the current turn to finish before rewinding",
+  "session.rewindNoop": "Already at this point — nothing to discard",
+  "message.rewindHere": "Rewind to here",
+  "message.forkHere": "Fork from here",
 
   // Main
   "main.rightPane": "Files pane",
@@ -833,6 +858,31 @@ const zh: Record<MessageKey, string> = {
   "session.newShort": "新建",
   "session.placeholderTitle": "新会话",
   "session.untitled": "未命名",
+  "session.fork": "分叉会话",
+  "session.forkTitle": "分叉会话",
+  "session.forkTitleOf": "分叉：{name}",
+  "session.forkConfirm":
+    "基于当前对话复制新建一个会话？原会话保持不变。",
+  "session.forkConfirmPartial":
+    "复制到此为止的消息并新建会话？之后的回合不会复制。",
+  "session.forkOk": "已分叉 · 已打开新会话",
+  "session.forkFailed": "分叉会话失败",
+  "session.rewind": "回退时间线",
+  "session.rewindTitle": "回退对话",
+  "session.rewindHint":
+    "选择要保留的用户回合。该回合之后的内容将从本会话中移除。",
+  "session.rewindEmpty": "没有可回退的用户回合",
+  "session.rewindConfirm":
+    "回退到此回合并丢弃之后的全部内容？此操作对当前会话不可撤销。",
+  "session.rewindConfirmLabel": "回退",
+  "session.rewindOk": "对话已回退",
+  "session.rewindLocalOnly":
+    "已在本地回退对话。Agent 历史未更新（不支持或未连接）。",
+  "session.rewindFailed": "回退对话失败",
+  "session.rewindBusy": "请等待当前回合结束后再回退",
+  "session.rewindNoop": "已在此位置，没有可丢弃的内容",
+  "message.rewindHere": "回退到此处",
+  "message.forkHere": "从此处分叉",
 
   "main.rightPane": "文件栏",
   "main.leftPane": "侧栏",

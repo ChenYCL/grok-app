@@ -693,6 +693,147 @@ export function truncateBeforeLastUser(messages: ChatMessage[]): ChatMessage[] {
   return messages.slice(0, cut);
 }
 
+/** Number of user-role messages (0-based prompt index length). */
+export function countUserPrompts(messages: ChatMessage[]): number {
+  return messages.reduce((n, m) => (m.role === "user" ? n + 1 : n), 0);
+}
+
+/**
+ * 0-based user prompt index for a message id, or `-1` when not a user message.
+ */
+export function userPromptIndexOf(
+  messages: ChatMessage[],
+  messageId: string,
+): number {
+  let idx = 0;
+  for (const m of messages) {
+    if (m.role !== "user") continue;
+    if (m.id === messageId) return idx;
+    idx += 1;
+  }
+  return -1;
+}
+
+/**
+ * End index (exclusive) of the full turn for `userPromptIndex` (0-based).
+ * A turn = that user message + following non-user rows until the next user.
+ * Returns `-1` when the index is out of range.
+ */
+export function endIndexThroughUserPrompt(
+  messages: ChatMessage[],
+  userPromptIndex: number,
+): number {
+  if (userPromptIndex < 0 || !Number.isFinite(userPromptIndex)) return -1;
+  let userI = 0;
+  for (let i = 0; i < messages.length; i++) {
+    if (messages[i]?.role !== "user") continue;
+    if (userI === userPromptIndex) {
+      let j = i + 1;
+      while (j < messages.length && messages[j]?.role !== "user") j += 1;
+      return j;
+    }
+    userI += 1;
+  }
+  return -1;
+}
+
+/**
+ * Keep messages through the end of the turn for `userPromptIndex` (0-based).
+ * Matches ACP `/rewind` semantics: discard everything **after** the selected turn.
+ * Returns a copy; empty when index is out of range.
+ */
+export function truncateThroughUserPrompt(
+  messages: ChatMessage[],
+  userPromptIndex: number,
+): ChatMessage[] {
+  const end = endIndexThroughUserPrompt(messages, userPromptIndex);
+  if (end < 0) return [];
+  return messages.slice(0, end);
+}
+
+/** True when journal has rows after the selected user turn (something to drop). */
+export function canRewindToUserPrompt(
+  messages: ChatMessage[],
+  userPromptIndex: number,
+): boolean {
+  const end = endIndexThroughUserPrompt(messages, userPromptIndex);
+  return end >= 0 && end < messages.length;
+}
+
+export interface LocalRewindPoint {
+  promptIndex: number;
+  messageId: string;
+  preview: string;
+}
+
+/** Build rewind points from the local journal (one per user prompt). */
+export function localRewindPoints(
+  messages: ChatMessage[],
+  opts?: { previewMax?: number },
+): LocalRewindPoint[] {
+  const max = opts?.previewMax ?? 80;
+  const out: LocalRewindPoint[] = [];
+  let idx = 0;
+  for (const m of messages) {
+    if (m.role !== "user") continue;
+    const raw = (m.content || "").replace(/\s+/g, " ").trim();
+    const preview =
+      raw.length > max ? `${raw.slice(0, Math.max(1, max - 1))}…` : raw || "…";
+    out.push({ promptIndex: idx, messageId: m.id, preview });
+    idx += 1;
+  }
+  return out;
+}
+
+/**
+ * Messages for a forked session: through optional user prompt (full turn), or full history.
+ * Remaps ids by default so the fork is independent of the source journal.
+ */
+export function forkMessages(
+  messages: ChatMessage[],
+  options?: {
+    throughUserPromptIndex?: number | null;
+    remapIds?: boolean;
+    idPrefix?: string;
+  },
+): ChatMessage[] {
+  const through = options?.throughUserPromptIndex;
+  const sliced =
+    through == null || through === undefined
+      ? messages.slice()
+      : truncateThroughUserPrompt(messages, through);
+  const remap = options?.remapIds !== false;
+  if (!remap) {
+    return sliced.map((m) => ({
+      ...m,
+      streaming: false,
+      thoughtPhases: m.thoughtPhases ? [...m.thoughtPhases] : undefined,
+      segments: m.segments ? m.segments.map((s) => ({ ...s })) : undefined,
+      attachments: m.attachments
+        ? m.attachments.map((a) => ({ ...a }))
+        : undefined,
+    }));
+  }
+  const prefix = options?.idPrefix ?? `fork-${Date.now().toString(36)}`;
+  return sliced.map((m, i) => ({
+    ...m,
+    id: `${prefix}-${i}-${m.id}`,
+    streaming: false,
+    thoughtPhases: m.thoughtPhases ? [...m.thoughtPhases] : undefined,
+    segments: m.segments ? m.segments.map((s) => ({ ...s })) : undefined,
+    attachments: m.attachments
+      ? m.attachments.map((a) => ({ ...a }))
+      : undefined,
+  }));
+}
+
+/** Default fork title from source title. */
+export function forkSessionTitle(sourceTitle: string | undefined | null): string {
+  const base = (sourceTitle || "").trim() || "chat";
+  if (/^fork of\b/i.test(base)) return base;
+  return `Fork of ${base}`;
+}
+
 /**
  * When reopening a session, prefer the in-memory cache over disk if the cache
  * is ahead (optimistic user bubble, partial stream, longer history).

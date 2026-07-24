@@ -63,6 +63,70 @@ export async function sessionRewindDropLastUser(): Promise<SessionSnapshot> {
   return invoke("session_rewind_drop_last_user");
 }
 
+/** One user-prompt checkpoint on the rewind timeline. */
+export interface RewindPoint {
+  promptIndex: number;
+  messageId?: string | null;
+  preview: string;
+}
+
+/** Result of rewinding to a prompt index (local journal always applies). */
+export interface RewindExecuteResult {
+  snapshot: SessionSnapshot;
+  /** False when agent rewind failed / unsupported / disconnected. */
+  agentOk: boolean;
+  agentError?: string | null;
+  localOk: boolean;
+  keptCount: number;
+}
+
+/** List rewind points for a session journal (live session when `sessionId` omitted). */
+export async function sessionRewindPoints(
+  sessionId?: string | null,
+): Promise<RewindPoint[]> {
+  return invoke("session_rewind_points", {
+    sessionId: sessionId ?? null,
+  });
+}
+
+/**
+ * Rewind to a 0-based user-prompt index (keep that turn, drop after).
+ * Local journal is always truncated; agent extension is best-effort when live.
+ */
+export async function sessionRewindExecute(
+  targetPromptIndex: number,
+  opts?: { restoreFiles?: boolean; sessionId?: string | null },
+): Promise<RewindExecuteResult> {
+  return invoke("session_rewind_execute", {
+    targetPromptIndex,
+    restoreFiles: opts?.restoreFiles ?? false,
+    sessionId: opts?.sessionId ?? null,
+  });
+}
+
+/** Fork a session into a new chat (same project; optional cut through user turn). */
+export async function sessionFork(
+  sourceId: string,
+  opts?: {
+    throughUserPromptIndex?: number | null;
+    title?: string | null;
+  },
+) {
+  return invoke<{
+    id: string;
+    projectId: string | null;
+    title: string;
+    updatedAt: string;
+    modelId: string | null;
+    archived?: boolean;
+    scheduled?: boolean;
+  }>("session_fork", {
+    sourceId,
+    throughUserPromptIndex: opts?.throughUserPromptIndex ?? null,
+    title: opts?.title ?? null,
+  });
+}
+
 export async function sessionStop(): Promise<SessionSnapshot> {
   return invoke("session_stop");
 }

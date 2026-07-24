@@ -8,9 +8,11 @@ import {
   IconActivity as TbActivity,
   IconAlertTriangle as TbAlertTriangle,
   IconArchive as TbArchive,
+  IconArrowBackUp as TbArrowBackUp,
   IconArrowLeft as TbArrowLeft,
   IconArrowsMinimize as TbArrowsMinimize,
   IconBolt as TbBolt,
+  IconGitBranch as TbGitBranch,
   IconBox as TbBox,
   IconBrush as TbBrush,
   IconCalendarTime as TbCalendarTime,
@@ -223,6 +225,10 @@ export const IconThemeSun = wrap(TbSun);
 export const IconThemeMoon = wrap(TbMoon);
 export const IconStop = wrap(TbPlayerStop);
 export const IconHistory = wrap(TbRefresh);
+/** Session rewind / undo conversation tail. */
+export const IconRewind = wrap(TbArrowBackUp);
+/** Session fork / branch. */
+export const IconFork = wrap(TbGitBranch);
 export const IconUpload = wrap(TbUpload);
 export const IconFiles = wrap(TbFiles);
 /** File tree panel toggle (resource viewer). */

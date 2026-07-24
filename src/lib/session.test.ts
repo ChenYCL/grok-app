@@ -22,6 +22,14 @@ import {
   presentErrorBanner,
   stripAnsi,
   truncateBeforeLastUser,
+  truncateThroughUserPrompt,
+  endIndexThroughUserPrompt,
+  canRewindToUserPrompt,
+  userPromptIndexOf,
+  countUserPrompts,
+  localRewindPoints,
+  forkMessages,
+  forkSessionTitle,
   type ChatMessage,
   type StreamPayload,
 } from "./session";
@@ -64,6 +72,77 @@ describe("session projection", () => {
       truncateBeforeLastUser([{ id: "u1", role: "user", content: "only" }]),
     ).toEqual([]);
     expect(truncateBeforeLastUser([])).toEqual([]);
+  });
+
+  it("truncateThroughUserPrompt keeps the selected turn (ACP rewind semantics)", () => {
+    const msgs: ChatMessage[] = [
+      { id: "u1", role: "user", content: "first" },
+      { id: "t1", role: "tool", content: "tool", marker: "tool_step" },
+      { id: "a1", role: "assistant", content: "ok" },
+      { id: "u2", role: "user", content: "second" },
+      { id: "a2", role: "assistant", content: "later" },
+    ];
+    expect(truncateThroughUserPrompt(msgs, 0).map((m) => m.id)).toEqual([
+      "u1",
+      "t1",
+      "a1",
+    ]);
+    expect(truncateThroughUserPrompt(msgs, 1).map((m) => m.id)).toEqual([
+      "u1",
+      "t1",
+      "a1",
+      "u2",
+      "a2",
+    ]);
+    expect(truncateThroughUserPrompt(msgs, 2)).toEqual([]);
+    expect(endIndexThroughUserPrompt(msgs, 0)).toBe(3);
+    expect(canRewindToUserPrompt(msgs, 0)).toBe(true);
+    expect(canRewindToUserPrompt(msgs, 1)).toBe(false);
+    expect(userPromptIndexOf(msgs, "u2")).toBe(1);
+    expect(userPromptIndexOf(msgs, "a1")).toBe(-1);
+    expect(countUserPrompts(msgs)).toBe(2);
+  });
+
+  it("localRewindPoints lists one entry per user prompt", () => {
+    const msgs: ChatMessage[] = [
+      { id: "u1", role: "user", content: "  hello   world  " },
+      { id: "a1", role: "assistant", content: "ok" },
+      { id: "u2", role: "user", content: "x".repeat(100) },
+    ];
+    const pts = localRewindPoints(msgs, { previewMax: 10 });
+    expect(pts).toEqual([
+      { promptIndex: 0, messageId: "u1", preview: "hello wor…" },
+      {
+        promptIndex: 1,
+        messageId: "u2",
+        preview: "xxxxxxxxx…",
+      },
+    ]);
+  });
+
+  it("forkMessages copies through a turn and remaps ids", () => {
+    const msgs: ChatMessage[] = [
+      { id: "u1", role: "user", content: "first", streaming: true },
+      { id: "a1", role: "assistant", content: "ok" },
+      { id: "u2", role: "user", content: "second" },
+    ];
+    const forked = forkMessages(msgs, {
+      throughUserPromptIndex: 0,
+      idPrefix: "f",
+    });
+    expect(forked).toHaveLength(2);
+    expect(forked[0].id).toMatch(/^f-0-u1$/);
+    expect(forked[0].streaming).toBe(false);
+    expect(forked[0].content).toBe("first");
+    expect(forked[1].id).toMatch(/^f-1-a1$/);
+    const full = forkMessages(msgs, { remapIds: false });
+    expect(full.map((m) => m.id)).toEqual(["u1", "a1", "u2"]);
+  });
+
+  it("forkSessionTitle prefixes once", () => {
+    expect(forkSessionTitle("My chat")).toBe("Fork of My chat");
+    expect(forkSessionTitle("Fork of My chat")).toBe("Fork of My chat");
+    expect(forkSessionTitle("")).toBe("Fork of chat");
   });
 
   it("preferSessionMessages keeps optimistic / streaming cache over disk", () => {

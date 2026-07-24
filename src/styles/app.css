@@ -9301,6 +9301,75 @@ div.composer__input:empty::before {
   white-space: nowrap;
 }
 
+/* Rewind timeline picker */
+.rewind-modal {
+  width: min(var(--modal-width-md, 480px), 100%);
+  gap: var(--modal-gap, 16px);
+  max-height: min(72vh, 560px);
+  display: flex;
+  flex-direction: column;
+}
+
+.rewind-modal__msg {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.rewind-modal__list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  overflow: auto;
+  max-height: min(48vh, 360px);
+  margin: 0;
+  padding: 2px;
+}
+
+.rewind-modal__item {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  width: 100%;
+  text-align: left;
+  padding: 10px 12px;
+  border-radius: var(--menu-item-radius, 8px);
+  border: 1px solid var(--border-subtle, var(--glass-border));
+  background: color-mix(in srgb, var(--bg-code) 55%, transparent);
+  color: var(--text-primary);
+  font-size: 13px;
+  line-height: 1.4;
+  cursor: pointer;
+}
+
+.rewind-modal__item:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--text-primary) 22%, var(--border-subtle));
+  background: color-mix(in srgb, var(--bg-code) 80%, transparent);
+}
+
+.rewind-modal__item:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.rewind-modal__idx {
+  flex: 0 0 auto;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-tertiary, var(--text-secondary));
+  font-size: 12px;
+  padding-top: 1px;
+}
+
+.rewind-modal__preview {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
 /* Compact confirm */
 .compact-modal {
   width: min(var(--modal-width-sm, 420px), 100%);

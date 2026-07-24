@@ -511,6 +511,94 @@ pub fn append_message(session_id: &str, msg: ChatMessageStored) -> Result<(), St
     save_messages(session_id, &msgs)
 }
 
+/// End index (exclusive) of the full turn for `user_prompt_index` (0-based).
+/// Turn = that user message + following non-user rows until the next user.
+pub fn end_index_through_user_prompt(
+    messages: &[ChatMessageStored],
+    user_prompt_index: u32,
+) -> Option<usize> {
+    let mut user_i = 0u32;
+    for (i, m) in messages.iter().enumerate() {
+        if m.role != "user" {
+            continue;
+        }
+        if user_i == user_prompt_index {
+            let mut j = i + 1;
+            while j < messages.len() && messages[j].role != "user" {
+                j += 1;
+            }
+            return Some(j);
+        }
+        user_i = user_i.saturating_add(1);
+    }
+    None
+}
+
+/// Keep messages through the end of the selected user turn (ACP `/rewind` semantics).
+pub fn truncate_through_user_prompt(
+    messages: &[ChatMessageStored],
+    user_prompt_index: u32,
+) -> Result<Vec<ChatMessageStored>, String> {
+    let end = end_index_through_user_prompt(messages, user_prompt_index)
+        .ok_or_else(|| format!("user prompt index out of range: {user_prompt_index}"))?;
+    Ok(messages[..end].to_vec())
+}
+
+/// Fork a session: new journal + meta, same project, no agent session id.
+/// `through_user_prompt_index`: when set, copy only through that user turn (inclusive).
+pub fn fork_session(
+    source_id: &str,
+    through_user_prompt_index: Option<u32>,
+    title: Option<String>,
+) -> Result<SessionMeta, String> {
+    let list = load_sessions_index();
+    let source = list
+        .iter()
+        .find(|s| s.id == source_id)
+        .ok_or_else(|| format!("session not found: {source_id}"))?
+        .clone();
+
+    let mut msgs = load_messages(source_id);
+    if let Some(idx) = through_user_prompt_index {
+        msgs = truncate_through_user_prompt(&msgs, idx)?;
+    }
+
+    let fork_title = title
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| {
+            let base = source.title.trim();
+            let base = if base.is_empty() { "chat" } else { base };
+            if base.to_ascii_lowercase().starts_with("fork of ") {
+                base.to_string()
+            } else {
+                format!("Fork of {base}")
+            }
+        });
+
+    let mut meta = create_session(source.project_id.clone(), Some(fork_title), false)?;
+    // Inherit composer prefs from source so the fork feels continuous.
+    meta.model_id = source.model_id.clone();
+    meta.effort = source.effort.clone();
+    meta.mode = source.mode.clone();
+    meta.permission_policy = source.permission_policy.clone();
+    meta.updated_at = Utc::now();
+    update_session_meta(&meta)?;
+
+    // Remap ids so the fork is independent of the source journal ids.
+    let prefix = format!("fork-{}", &meta.id[..meta.id.len().min(8)]);
+    let forked: Vec<ChatMessageStored> = msgs
+        .into_iter()
+        .enumerate()
+        .map(|(i, mut m)| {
+            m.id = format!("{prefix}-{i}");
+            m
+        })
+        .collect();
+    save_messages(&meta.id, &forked)?;
+    Ok(meta)
+}
+
 // ─── Automations (scheduled tasks shell) ───────────────────────────────────
 
 /// Host-side scheduled automation. Execution is driven by the UI when the app is open
