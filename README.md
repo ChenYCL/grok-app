@@ -85,16 +85,21 @@
 
 | 类别 | 说明 |
 |------|------|
-| **真 Build 会话** | 默认 `grok agent stdio`（ACP）；Host 独占会话 FSM |
-| **项目与会话** | 多项目信任目录、侧栏会话、orphan「其他会话」 |
-| **权限** | 默认 Ask；Allow once / session / Deny；可选 YOLO |
-| **斜杠与技能** | Composer 斜杠面板、技能标签、Goal / Doctor 入口 |
-| **媒体与文件** | 图 / 视频 / PDF / Office / 代码预览；资源窗 + 内嵌浏览器 |
+| **真 Build 会话** | 默认 `grok agent stdio`（ACP）；Host 独占会话 FSM；可选远程 ACP |
+| **项目与会话** | 多项目信任目录、侧栏虚拟列表、归档 / orphan、会话分叉与回退 |
+| **Git 工作树** | 项目 chip 列出 linked worktree，一键切换会话 cwd |
+| **权限** | 默认 Ask；Allow once / session / Deny；YOLO；**按项目**默认权限阶梯 |
+| **Plan / Goal** | 顶部执行进度；资源面板 Markdown 审阅与步骤；Goal 入口 |
+| **斜杠 · 扩展** | 斜杠面板、Skills；设置 → 扩展管理 MCP / Plugins |
+| **Composer** | 忙时后续消息队列；粘贴截图附件；上下文用量芯片 |
+| **媒体与文件** | 图 / 视频 / PDF / Office / 代码预览；资源窗可**编辑保存**文本；Changes（会话 diff + 工作区 git） |
+| **Agent 运行时** | 并发上限与闲置回收；卡顿取消；结构化错误卡（CLI / 鉴权 / 网络 / 崩溃） |
 | **自动化** | 已安排任务列表；对话里自然语言创建（静默 fence，不展示 JSON） |
-| **账号与额度** | 官方登录面、SuperGrok 额度与热力图 |
+| **账号与额度** | 多账号切换、官方登录、SuperGrok 额度与热力图、自定义中转本地用量 |
 | **自定义中转** | 独立 `GROK_HOME` agent 配置，避免污染默认 `~/.grok` |
-| **i18n** | 界面与托盘中英切换 |
-| **跨平台打包** | macOS ARM / Intel + Windows x64（GitHub Actions） |
+| **安全** | API Key 可选系统钥匙串（默认 `secrets.json` 0600）；应用内确认框 |
+| **i18n** | 简体中文 / 繁體中文 / English 与托盘 |
+| **跨平台打包** | macOS ARM / Intel · Windows x64（安装版 + 绿色版）· Linux x64（AppImage / deb / rpm） |
 
 ---
 
@@ -245,7 +250,18 @@ pnpm build
 
 ## 贡献者
 
-感谢所有为 Grok App 做出贡献的人！
+感谢所有为 Grok App 做出贡献的人！社区 PR 与 Issue 让产品更快成型。
+
+| 贡献者 | 代表贡献（节选） |
+|--------|------------------|
+| [sonnemusk](https://github.com/sonnemusk) | 会话 Changes / 分叉回退、扩展 MCP·Plugins、权限阶梯、worktree、资源编辑、粘贴截图、错误卡等大量功能与修复 |
+| [Sdefendre](https://github.com/Sdefendre) | 会话标题跟随语言、Grok Build 权限 optionId 修正 |
+| [jason920612](https://github.com/jason920612) | 远程 ACP（API 模式）、繁體中文 locale |
+| [shiaho777](https://github.com/shiaho777) | 登录可取消、切换历史会话不再重播流式回复 |
+| [2530185073](https://github.com/2530185073) | 自定义中转账户与本地用量展示 |
+| [tisrop](https://github.com/tisrop) | Composer 忙时后续消息队列 |
+
+完整列表与贡献图：
 
 [![Contributors](https://contrib.rocks/image?repo=RongleCat/grok-app)](https://github.com/RongleCat/grok-app/graphs/contributors)
 

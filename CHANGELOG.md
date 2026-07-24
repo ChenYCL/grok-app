@@ -11,6 +11,27 @@ See `docs/llm-wiki/release.md`.
 
 ## [Unreleased]
 
+### Added
+
+- **Git worktree switch** (#46): project chip lists `git worktree` siblings and rebinds session cwd (reuse / add project, trust inherited when possible).
+- **Per-project permission default** (#47): trusted projects pin Ask / Accept edits / session / Deny / Full access; untrusted always forces Ask; cascade session → project → app.
+- **Resource pane text edit** (#50): edit/save text·code·markdown with dirty state, ⌘/Ctrl+S, mtime conflict (reload vs overwrite), discard on close.
+- **Structured error deck** (#51): CLI / auth / network / crash (+ quota, connect, process limit, timeout) cards with problem · cause · primary · secondary actions (Doctor / Account / Providers / Reconnect).
+
+### Fixed
+
+- **Composer image paste** (#48): WebView screenshot paste via event Files → Clipboard API → native OS clipboard (arboard → attachments/paste PNG); attach toast + clear errors.
+
+### Community
+
+- Integrated community PRs **#46–#48**, **#50–#51** (sonnemusk).
+
+**中文 · 新增**
+- Git worktree 从项目 chip 切换；可信项目默认权限阶梯；资源面板文本就地编辑保存；结构化错误卡（问题/原因/主次操作）。
+
+**中文 · 修复**
+- 粘贴截图/剪贴板图片可正确挂附件（含 macOS 系统剪贴板回退）。
+
 ## [0.1.4] - 2026-07-24
 
 > 中英文对照 / Bilingual notes.

@@ -85,16 +85,21 @@ The `grok` CLI is powerful in a terminal. Day-to-day work still needs multi-proj
 
 | Area | What you get |
 |------|----------------|
-| **Real Build sessions** | Default `grok agent stdio` (ACP); host-owned session FSM |
-| **Projects & sessions** | Trusted project dirs, sidebar history, orphan “other” sessions |
-| **Permissions** | Default Ask; allow once / session / deny; optional YOLO |
-| **Slash & skills** | Composer slash palette, skill chips, Goal / Doctor |
-| **Media & files** | Image / video / PDF / Office / code previews; resource pane + embedded browser |
+| **Real Build sessions** | Default `grok agent stdio` (ACP); host-owned session FSM; optional remote ACP |
+| **Projects & sessions** | Trusted dirs, virtualized sidebar, archive / orphan, fork & rewind |
+| **Git worktrees** | Project chip lists linked worktrees; switch session cwd in one click |
+| **Permissions** | Default Ask; allow once / session / deny; YOLO; **per-project** permission tier |
+| **Plan / Goal** | Sticky execution progress; resource-pane Markdown review + steps; Goal entry |
+| **Slash · Extensions** | Slash palette, Skills; Settings → Extensions for MCP / Plugins |
+| **Composer** | Follow-up send queue while busy; paste screenshots; context usage chip |
+| **Media & files** | Image / video / PDF / Office / code preview; **edit & save** text in Resources; Changes (session diffs + workspace git) |
+| **Agent runtime** | Process limits & idle recycle; stall cancel; structured error deck (CLI / auth / network / crash) |
 | **Automations** | Scheduled list; natural-language create-from-chat (silent fence, no JSON in UI) |
-| **Account & quota** | Official login surface, SuperGrok quota + heatmap |
+| **Account & quota** | Multi-account switcher, official login, SuperGrok quota + heatmap, custom-provider local usage |
 | **Custom relays** | Independent `GROK_HOME` agent profile (keeps `~/.grok` clean when desired) |
-| **i18n** | EN / 中文 UI and tray menus |
-| **Packaging** | macOS ARM / Intel + Windows x64 + Linux x64 via GitHub Actions |
+| **Security** | Optional OS keychain for API keys (default `secrets.json` 0600); in-app confirms only |
+| **i18n** | Simplified Chinese / Traditional Chinese / English + tray |
+| **Packaging** | macOS ARM / Intel · Windows x64 (setup + portable) · Linux x64 (AppImage / deb / rpm) |
 
 ---
 
@@ -238,7 +243,18 @@ Issues and PRs are welcome.
 
 ## Contributors
 
-Thanks to everyone who has contributed to Grok App!
+Thanks to everyone who has contributed to Grok App — community PRs and issues shape the product.
+
+| Contributor | Highlights (selected) |
+|-------------|------------------------|
+| [sonnemusk](https://github.com/sonnemusk) | Session Changes / fork & rewind, MCP·Plugins, permission tiers, worktrees, resource edit, paste screenshots, error deck, and many more |
+| [Sdefendre](https://github.com/Sdefendre) | Session titles follow locale; Grok Build permission optionIds |
+| [jason920612](https://github.com/jason920612) | Remote ACP (API mode); Traditional Chinese locale |
+| [shiaho777](https://github.com/shiaho777) | Cancelable login; stop re-streaming history on session switch |
+| [2530185073](https://github.com/2530185073) | Custom provider account + local usage UI |
+| [tisrop](https://github.com/tisrop) | Composer follow-up send queue while agent is busy |
+
+Full graph:
 
 [![Contributors](https://contrib.rocks/image?repo=RongleCat/grok-app)](https://github.com/RongleCat/grok-app/graphs/contributors)
 
