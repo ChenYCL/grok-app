@@ -14,7 +14,8 @@ export type AgentErrorCode =
   | "NETWORK_PROVIDER"
   | "AGENT_CRASHED"
   | "QUOTA_EXCEEDED"
-  | "CONNECT_FAILED";
+  | "CONNECT_FAILED"
+  | "PROCESS_LIMIT";
 
 export interface AgentError {
   code: AgentErrorCode;
@@ -1138,6 +1139,7 @@ const KNOWN_ERROR_CODES: AgentErrorCode[] = [
   "AGENT_CRASHED",
   "QUOTA_EXCEEDED",
   "CONNECT_FAILED",
+  "PROCESS_LIMIT",
 ];
 
 export function isAgentErrorCode(code: string | undefined | null): code is AgentErrorCode {
@@ -1155,6 +1157,8 @@ export function errorCopy(code: AgentErrorCode, locale: Locale = "zh"): string {
       "额度不足或订阅已限流。请到 Grok 账户查看用量，或切换模型/等待重置。",
     CONNECT_FAILED:
       "无法连接本会话的 Agent。请点重新连接；确认 CLI 已登录或中转配置正确。",
+    PROCESS_LIMIT:
+      "已达到 Agent 进程上限。请先停止或等待其他会话，或在设置 → 运行环境中提高并发上限。",
   };
   const en: Record<AgentErrorCode, string> = {
     CLI_NOT_FOUND: "Grok Build CLI not found. Install or set path in Settings.",
@@ -1167,6 +1171,8 @@ export function errorCopy(code: AgentErrorCode, locale: Locale = "zh"): string {
       "Quota exceeded or rate-limited. Check Grok usage, switch model, or wait for reset.",
     CONNECT_FAILED:
       "Could not connect the agent for this session. Reconnect; confirm CLI login or custom provider.",
+    PROCESS_LIMIT:
+      "Agent process limit reached. Stop or wait for another session, or raise the limit in Settings → Runtime.",
   };
   return (locale === "en" ? en : zh)[code];
 }
@@ -1185,10 +1191,10 @@ export function agentDisconnectedCopy(locale: Locale = "zh"): string {
 }
 
 const AGENT_ERROR_CODE_RE =
-  /^(CLI_NOT_FOUND|AUTH_FAILED|NETWORK_PROVIDER|AGENT_CRASHED|QUOTA_EXCEEDED|CONNECT_FAILED)(?::\s*|\s+)([\s\S]*)$/;
+  /^(CLI_NOT_FOUND|AUTH_FAILED|NETWORK_PROVIDER|AGENT_CRASHED|QUOTA_EXCEEDED|CONNECT_FAILED|PROCESS_LIMIT)(?::\s*|\s+)([\s\S]*)$/;
 
 const MARKDOWN_CODE_RE =
-  /^\*\*(CLI_NOT_FOUND|AUTH_FAILED|NETWORK_PROVIDER|AGENT_CRASHED|QUOTA_EXCEEDED|CONNECT_FAILED)\*\*(?:\s*[\r\n]+([\s\S]*))?$/;
+  /^\*\*(CLI_NOT_FOUND|AUTH_FAILED|NETWORK_PROVIDER|AGENT_CRASHED|QUOTA_EXCEEDED|CONNECT_FAILED|PROCESS_LIMIT)\*\*(?:\s*[\r\n]+([\s\S]*))?$/;
 
 /** Strip ANSI SGR sequences from CLI/MCP stderr dumps. */
 export function stripAnsi(text: string): string {

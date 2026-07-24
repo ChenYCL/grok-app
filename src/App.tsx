@@ -582,6 +582,8 @@ export default function App() {
   }>({ found: false, path: null, version: null, source: "", cliAuthPresent: false });
   const [manualCliPath, setManualCliPath] = useState("");
   const [acpServerAddr, setAcpServerAddr] = useState("");
+  const [maxConcurrentAgents, setMaxConcurrentAgents] = useState(3);
+  const [agentIdleMinutes, setAgentIdleMinutes] = useState(30);
   const [connecting, setConnecting] = useState(false);
   /** Live provider retry progress (session://retry); cleared on success/stop/error. */
   const [retryStatus, setRetryStatus] = useState<{
@@ -767,6 +769,18 @@ export default function App() {
       );
       setManualCliPath(settings.manualCliPath || cli.path || "");
       setAcpServerAddr(settings.acpServerAddr || "");
+      setMaxConcurrentAgents(
+        typeof settings.maxConcurrentAgents === "number" &&
+          settings.maxConcurrentAgents >= 1
+          ? Math.min(8, Math.round(settings.maxConcurrentAgents))
+          : 3,
+      );
+      setAgentIdleMinutes(
+        typeof settings.agentIdleMinutes === "number" &&
+          settings.agentIdleMinutes >= 1
+          ? Math.min(1440, Math.round(settings.agentIdleMinutes))
+          : 30,
+      );
       setCliInfo({
         found: cli.found,
         path: cli.path,
@@ -1226,6 +1240,49 @@ export default function App() {
                 setToast(tr("activity.cancelledToast"));
                 window.setTimeout(() => setToast(null), 2800);
               }
+            }
+          }),
+        );
+        await track(
+          api.listen<{ sessionId?: string; reason?: string }>(
+            "session://idle_recycled",
+            (p) => {
+              if (cancelled || !p) return;
+              if (p.reason === "capacity") {
+                setToast(tr("agent.processLimitToast"));
+                window.setTimeout(() => setToast(null), 5200);
+                return;
+              }
+              // Toast when the focused (or unknown) session was idle-recycled.
+              if (
+                !p.sessionId ||
+                p.sessionId === viewingSessionIdRef.current
+              ) {
+                setToast(tr("agent.idleRecycledToast"));
+                window.setTimeout(() => setToast(null), 4200);
+              }
+            },
+          ),
+        );
+        await track(
+          api.listen<{
+            sessionId?: string;
+            code?: string;
+            message?: string;
+            maxConcurrentAgents?: number;
+          }>("session://process_limit", (p) => {
+            if (cancelled || !p) return;
+            setToast(tr("agent.processLimitToast"));
+            window.setTimeout(() => setToast(null), 5200);
+            if (
+              !p.sessionId ||
+              p.sessionId === viewingSessionIdRef.current
+            ) {
+              setLocalError(
+                p.message
+                  ? `PROCESS_LIMIT: ${p.message}`
+                  : "PROCESS_LIMIT",
+              );
             }
           }),
         );
@@ -5131,6 +5188,20 @@ export default function App() {
             setAcpServerAddr(v);
             void api.settingsGet().then((s) =>
               api.settingsSet({ ...s, acpServerAddr: v.trim() || null }),
+            );
+          }}
+          maxConcurrentAgents={maxConcurrentAgents}
+          onMaxConcurrentAgents={(v) => {
+            setMaxConcurrentAgents(v);
+            void api.settingsGet().then((s) =>
+              api.settingsSet({ ...s, maxConcurrentAgents: v }),
+            );
+          }}
+          agentIdleMinutes={agentIdleMinutes}
+          onAgentIdleMinutes={(v) => {
+            setAgentIdleMinutes(v);
+            void api.settingsGet().then((s) =>
+              api.settingsSet({ ...s, agentIdleMinutes: v }),
             );
           }}
           cliInfo={cliInfo}

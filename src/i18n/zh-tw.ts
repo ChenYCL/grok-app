@@ -360,6 +360,16 @@ export const zhTW: Record<MessageKey, string> = {
   "settings.acpTestFail": "失敗：{error}",
   "settings.acpSetupHint":
     "在執行 agent 的機器上，用類似 socat 的方式把 stdio 暴露到 TCP：",
+  "settings.maxConcurrentAgents": "最大並發 Agent 數",
+  "settings.maxConcurrentAgentsDesc":
+    "為開啟的對話保留的熱 Agent 行程數（預設 3）。超過上限時會提示等待或釋放其他工作階段。",
+  "settings.agentIdleMinutes": "閒置回收（分鐘）",
+  "settings.agentIdleMinutesDesc":
+    "超過該分鐘數無活動後回收 Agent 行程。對話紀錄保留，下次傳送會自動重連。",
+  "agent.idleRecycledToast":
+    "Agent 行程因閒置已回收 — 工作階段仍在；下次傳送將重新連線。",
+  "agent.processLimitToast":
+    "已達 Agent 行程上限。請先停止其他工作階段，或在設定 → 執行環境中提高上限。",
   "settings.permissionDeep": "預設權限",
   "settings.permissionDeepDesc":
     "對新一輪對話生效，並依上方選擇的範圍記憶。YOLO 會自動核准工具呼叫。",
