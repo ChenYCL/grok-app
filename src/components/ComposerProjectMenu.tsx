@@ -9,6 +9,7 @@ import {
   IconChevronDown,
   IconFolder,
   IconPlus,
+  IconTrash,
 } from "@/components/icons";
 import { Tip } from "@/components/ui/tooltip";
 import { useFloatingMenu } from "@/lib/floatingMenu";
@@ -41,6 +42,8 @@ type Props = {
     worktreeDetached: string;
     /** Badge when project folder is missing on disk. */
     pathMissing?: string;
+    /** Clean stale worktree admin records (prune). */
+    worktreeGc?: string;
   };
   /** Linked worktrees for the active project (loaded by parent). */
   worktrees?: GitWorktreeEntry[];
@@ -57,6 +60,8 @@ type Props = {
   onAdd: () => void;
   /** Switch agent cwd to this worktree path (add project if needed + bind). */
   onSwitchWorktree?: (wt: GitWorktreeEntry) => void;
+  /** Open “Clean stale worktrees…” dialog (parent owns modal). */
+  onGcWorktrees?: () => void;
   onOpen?: () => void;
 };
 
@@ -74,6 +79,7 @@ export function ComposerProjectMenu({
   onSelect,
   onAdd,
   onSwitchWorktree,
+  onGcWorktrees,
   onOpen,
 }: Props) {
   const [open, setOpen] = useState(false);
@@ -86,13 +92,16 @@ export function ComposerProjectMenu({
 
   // Only for confirmed git work trees — hide while loading / non-git / no project.
   const showWorktrees = !!activeProject && worktreesAvailable === true;
+  const canGc = showWorktrees && !!onGcWorktrees && !!labels.worktreeGc;
 
   const estHeight = Math.min(
     400,
     52 +
       Math.min(LIST_MAX_H, projects.length * 40 + 8) +
       (showWorktrees
-        ? 28 + Math.min(160, Math.max(worktrees.length, 1) * 36 + 8)
+        ? 28 +
+          Math.min(160, Math.max(worktrees.length, 1) * 36 + 8) +
+          (canGc ? 36 : 0)
         : 0),
   );
   const { pos, style: popStyle } = useFloatingMenu({
@@ -106,7 +115,7 @@ export function ComposerProjectMenu({
     minWidth: 260,
     estHeight,
     gap: 8,
-    deps: [projects.length, worktrees.length, showWorktrees],
+    deps: [projects.length, worktrees.length, showWorktrees, canGc],
   });
 
   // Refresh only when the menu opens — not when parent re-renders with a new onOpen.
@@ -294,6 +303,20 @@ export function ComposerProjectMenu({
                       : labels.worktreesEmpty}
                   </p>
                 )}
+                {canGc ? (
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className="cpm__action cpm__worktree-gc"
+                    onClick={() => {
+                      setOpen(false);
+                      onGcWorktrees?.();
+                    }}
+                  >
+                    <IconTrash size={14} aria-hidden />
+                    <span>{labels.worktreeGc}</span>
+                  </button>
+                ) : null}
               </div>
             ) : null}
           </div>,

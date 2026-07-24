@@ -14,14 +14,15 @@ git worktree list --porcelain
 - If the path is already a project, switch only; otherwise `project_add` (trust inherited from the current project when possible).
 - Soft-fail when `git` is missing or the folder is not a repo (same spirit as Workspace Changes git status).
 - **UI:** section is hidden until host confirms `available: true` (non-git / loading → no “GIT WORKTREES” block). Rows match project list height; branch + badges on one line.
+- **GC / prune:** menu action **Clean stale worktrees…** → GlassModal dry-run preview (`git worktree prune -v --dry-run`), then apply. Optional force → `--expire now`. Does **not** delete live worktrees (use remove for that). Host: `git_worktree_gc`.
 
 ## Non-goals (MVP)
 
-- Creating or removing worktrees from the App
+- Creating or removing individual worktrees from the App (separate PRs when open)
 - Full branch browser
 
 ## Implementation
 
-- Host: `git_worktrees_list` (`src-tauri/src/commands.rs`)
-- Pure parse helpers: `src/lib/gitWorktree.ts` (+ unit tests)
-- UI: `ComposerProjectMenu` worktrees section
+- Host: `git_worktrees_list`, `git_worktree_gc` (`src-tauri/src/commands.rs`) — argv only, no shell
+- Pure parse + gc arg builders: `src/lib/gitWorktree.ts` (+ unit tests); host `build_worktree_gc_args`
+- UI: `ComposerProjectMenu` worktrees section + gc confirm in `App.tsx`
