@@ -495,6 +495,18 @@ const en = {
   "settings.sessionDataMode": "Session data mode",
   "settings.sessionDataModeDesc":
     "Where chat history is stored (independent app dir or shared with CLI)",
+  "settings.cliSessions": "CLI sessions",
+  "settings.cliSessionsDesc":
+    "Sessions already on disk under ~/.grok. Import brings chat history into the app sidebar.",
+  "settings.cliSessionsImport": "Import",
+  "settings.cliSessionsImportAll": "Import all ({n})",
+  "settings.cliSessionsImporting": "Importing…",
+  "settings.cliSessionsImportedOne": "Imported “{title}”",
+  "settings.cliSessionsImportedN": "Imported {n} session(s)",
+  "settings.cliSessionsLoading": "Looking for CLI sessions…",
+  "settings.cliSessionsEmpty": "No CLI sessions found under ~/.grok/sessions.",
+  "settings.cliSessionsMsgs": "{n} messages",
+  "settings.cliSessionsLinked": "In app",
   "settings.storeApiKeysInKeychain": "Store API keys in system keychain",
   "settings.storeApiKeysInKeychainDesc":
     "Off by default: keys stay in the app data folder (mode 0600). Turn on to use the OS keychain — the system may ask once. Official login still uses Grok Build auth.",
@@ -1574,6 +1586,18 @@ const zh: Record<MessageKey, string> = {
   "settings.languageDesc": "应用界面语言",
   "settings.sessionDataMode": "会话数据模式",
   "settings.sessionDataModeDesc": "会话历史存储位置（应用独立目录或与 CLI 共享）",
+  "settings.cliSessions": "CLI 会话",
+  "settings.cliSessionsDesc":
+    "已存在于 ~/.grok 的 CLI 会话。导入后会把聊天记录加入应用侧边栏。",
+  "settings.cliSessionsImport": "导入",
+  "settings.cliSessionsImportAll": "全部导入（{n}）",
+  "settings.cliSessionsImporting": "导入中…",
+  "settings.cliSessionsImportedOne": "已导入「{title}」",
+  "settings.cliSessionsImportedN": "已导入 {n} 个会话",
+  "settings.cliSessionsLoading": "正在查找 CLI 会话…",
+  "settings.cliSessionsEmpty": "在 ~/.grok/sessions 下未找到 CLI 会话。",
+  "settings.cliSessionsMsgs": "{n} 条消息",
+  "settings.cliSessionsLinked": "已在应用中",
   "settings.storeApiKeysInKeychain": "用系统钥匙串保存 API Key",
   "settings.storeApiKeysInKeychainDesc":
     "默认关闭：密钥写在应用数据目录（0600）。开启后写入系统钥匙串，系统可能要求一次授权。官方登录仍走 Grok Build 鉴权，不受此项影响。",

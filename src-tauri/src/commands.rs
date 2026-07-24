@@ -347,6 +347,37 @@ pub async fn sessions_list() -> Result<Vec<SessionMeta>, String> {
     Ok(store::load_sessions_index())
 }
 
+/// List Grok Build CLI sessions under GROK_HOME (shared-mode discovery, E03).
+#[tauri::command]
+pub async fn cli_sessions_list() -> Result<Vec<crate::cli_sessions::CliSessionSummary>, String> {
+    let mode = store::load_settings().session_data_mode;
+    crate::cli_sessions::list_cli_sessions(&mode)
+}
+
+/// Import one CLI session (chat_history.jsonl) into the App journal.
+#[tauri::command]
+pub async fn cli_session_import(
+    agent_session_id: String,
+    dir: Option<String>,
+    project_id: Option<String>,
+) -> Result<SessionMeta, String> {
+    let mode = store::load_settings().session_data_mode;
+    crate::cli_sessions::import_cli_session(
+        &agent_session_id,
+        dir.as_deref(),
+        project_id,
+        &mode,
+    )
+}
+
+/// Import up to `limit` not-yet-linked CLI sessions (default 50).
+#[tauri::command]
+pub async fn cli_sessions_import_all(limit: Option<u32>) -> Result<Vec<SessionMeta>, String> {
+    let mode = store::load_settings().session_data_mode;
+    let lim = limit.unwrap_or(50).min(100) as usize;
+    crate::cli_sessions::import_all_cli_sessions(&mode, lim)
+}
+
 #[tauri::command]
 pub async fn session_create(
     project_id: Option<String>,

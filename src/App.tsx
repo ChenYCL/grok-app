@@ -5815,6 +5815,9 @@ export default function App() {
           theme={theme}
           onTheme={applyThemeChoice}
           sessionDataMode={sessionDataMode}
+          onCliSessionsImported={() => {
+            void refreshSessions();
+          }}
           onSessionDataMode={(v) => {
             const commit = () => {
               setSessionDataMode(v);

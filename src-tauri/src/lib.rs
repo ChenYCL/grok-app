@@ -21,6 +21,7 @@ mod process_util;
 mod process_limits;
 mod journal_throttle;
 mod stream_stall;
+mod cli_sessions;
 mod permission;
 mod providers;
 mod secrets;
@@ -148,6 +149,9 @@ pub fn run() {
             commands::project_reveal,
             commands::project_archive_sessions,
             commands::sessions_list,
+            commands::cli_sessions_list,
+            commands::cli_session_import,
+            commands::cli_sessions_import_all,
             commands::session_create,
             commands::session_delete,
             commands::session_rename,

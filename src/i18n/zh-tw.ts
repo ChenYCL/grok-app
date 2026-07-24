@@ -468,6 +468,18 @@ export const zhTW: Record<MessageKey, string> = {
   "settings.languageDesc": "應用程式介面語言",
   "settings.sessionDataMode": "對話資料模式",
   "settings.sessionDataModeDesc": "對話歷史儲存位置（應用程式獨立目錄或與 CLI 共用）",
+  "settings.cliSessions": "CLI 工作階段",
+  "settings.cliSessionsDesc":
+    "已存在於 ~/.grok 的 CLI 工作階段。匯入後會把聊天紀錄加入應用程式側邊欄。",
+  "settings.cliSessionsImport": "匯入",
+  "settings.cliSessionsImportAll": "全部匯入（{n}）",
+  "settings.cliSessionsImporting": "匯入中…",
+  "settings.cliSessionsImportedOne": "已匯入「{title}」",
+  "settings.cliSessionsImportedN": "已匯入 {n} 個工作階段",
+  "settings.cliSessionsLoading": "正在尋找 CLI 工作階段…",
+  "settings.cliSessionsEmpty": "在 ~/.grok/sessions 下找不到 CLI 工作階段。",
+  "settings.cliSessionsMsgs": "{n} 則訊息",
+  "settings.cliSessionsLinked": "已在應用程式中",
   "settings.storeApiKeysInKeychain": "以系統鑰匙圈儲存 API Key",
   "settings.storeApiKeysInKeychainDesc":
     "預設關閉：金鑰寫在應用資料目錄（0600）。開啟後寫入系統鑰匙圈，系統可能要求一次授權。官方登入仍走 Grok Build 驗證，不受此項影響。",

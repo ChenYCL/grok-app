@@ -84,6 +84,8 @@ export interface SettingsPageProps {
   onTheme: (v: Theme) => void;
   sessionDataMode: string;
   onSessionDataMode: (v: string) => void;
+  /** After importing CLI sessions (shared mode) — refresh sidebar. */
+  onCliSessionsImported?: () => void;
   policy: string;
   onPolicy: (v: PermissionPolicyId) => void;
   /** Where model / permission choices are remembered. */
@@ -391,6 +393,7 @@ export function SettingsPage({
   onTheme,
   sessionDataMode,
   onSessionDataMode,
+  onCliSessionsImported,
   policy,
   onPolicy,
   prefsScope = "global",
@@ -887,6 +890,12 @@ export function SettingsPage({
                   ]}
                 />
               </div>
+              {sessionDataMode === "shared" ? (
+                <CliSessionsPanel
+                  t={t}
+                  onImported={onCliSessionsImported}
+                />
+              ) : null}
               {onStoreApiKeysInKeychain ? (
                 <div className="settings-row">
                   <div className="settings-row__text">
@@ -1439,6 +1448,158 @@ export function SettingsPage({
           </div>
         )}
       </main>
+      </div>
+    </div>
+  );
+}
+
+/** Shared-mode: list / import Grok Build CLI sessions from GROK_HOME. */
+function CliSessionsPanel({
+  t,
+  onImported,
+}: {
+  t: (key: MessageKey, vars?: Record<string, string | number>) => string;
+  onImported?: () => void;
+}) {
+  const [rows, setRows] = useState<api.CliSessionSummary[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [status, setStatus] = useState<string | null>(null);
+
+  const refresh = useCallback(async () => {
+    if (!api.isTauri()) return;
+    setLoading(true);
+    setError(null);
+    try {
+      const list = await api.cliSessionsList();
+      setRows(list);
+    } catch (e) {
+      setError(String(e));
+      setRows([]);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void refresh();
+  }, [refresh]);
+
+  const importOne = async (row: api.CliSessionSummary) => {
+    setBusyId(row.agentSessionId);
+    setError(null);
+    setStatus(null);
+    try {
+      await api.cliSessionImport(row.agentSessionId, { dir: row.dir });
+      setStatus(t("settings.cliSessionsImportedOne", { title: row.title }));
+      await refresh();
+      onImported?.();
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  const importAll = async () => {
+    setBusyId("__all__");
+    setError(null);
+    setStatus(null);
+    try {
+      const imported = await api.cliSessionsImportAll(50);
+      setStatus(
+        t("settings.cliSessionsImportedN", { n: String(imported.length) }),
+      );
+      await refresh();
+      onImported?.();
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  const pending = rows.filter((r) => !r.alreadyLinked).length;
+
+  return (
+    <div className="settings-row settings-row--stack">
+      <div className="settings-row__text">
+        <div className="settings-row__label">{t("settings.cliSessions")}</div>
+        <div className="settings-row__desc">{t("settings.cliSessionsDesc")}</div>
+      </div>
+      <div className="settings-cli-sessions">
+        <div className="settings-cli-sessions__actions">
+          <button
+            type="button"
+            className="btn btn--ghost"
+            disabled={loading || !!busyId}
+            onClick={() => void refresh()}
+          >
+            {t("resources.refresh")}
+          </button>
+          <button
+            type="button"
+            className="btn btn--solid"
+            disabled={loading || !!busyId || pending === 0}
+            onClick={() => void importAll()}
+          >
+            {busyId === "__all__"
+              ? t("settings.cliSessionsImporting")
+              : t("settings.cliSessionsImportAll", { n: String(pending) })}
+          </button>
+        </div>
+        {error ? (
+          <div className="settings-cli-sessions__err" role="alert">
+            {error}
+          </div>
+        ) : null}
+        {status ? (
+          <div className="settings-cli-sessions__ok" role="status">
+            {status}
+          </div>
+        ) : null}
+        {loading && rows.length === 0 ? (
+          <div className="settings-cli-sessions__empty">
+            {t("settings.cliSessionsLoading")}
+          </div>
+        ) : rows.length === 0 ? (
+          <div className="settings-cli-sessions__empty">
+            {t("settings.cliSessionsEmpty")}
+          </div>
+        ) : (
+          <ul className="settings-cli-sessions__list">
+            {rows.slice(0, 40).map((r) => (
+              <li key={r.agentSessionId} className="settings-cli-sessions__item">
+                <div className="settings-cli-sessions__meta">
+                  <div className="settings-cli-sessions__title">{r.title}</div>
+                  <div className="settings-cli-sessions__sub">
+                    {r.cwd || r.agentSessionId.slice(0, 12)}
+                    {r.numMessages
+                      ? ` · ${t("settings.cliSessionsMsgs", { n: String(r.numMessages) })}`
+                      : ""}
+                  </div>
+                </div>
+                {r.alreadyLinked ? (
+                  <span className="settings-cli-sessions__badge">
+                    {t("settings.cliSessionsLinked")}
+                  </span>
+                ) : (
+                  <button
+                    type="button"
+                    className="btn btn--ghost"
+                    disabled={!!busyId}
+                    onClick={() => void importOne(r)}
+                  >
+                    {busyId === r.agentSessionId
+                      ? t("settings.cliSessionsImporting")
+                      : t("settings.cliSessionsImport")}
+                  </button>
+                )}
+              </li>
+            ))}
+          </ul>
+        )}
       </div>
     </div>
   );

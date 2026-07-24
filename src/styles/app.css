@@ -3536,6 +3536,95 @@ html[data-theme="light"] .ui-check.is-mixed .ui-check__box {
   border: 1px solid var(--border-subtle);
 }
 
+/* Shared-mode: discover / import Grok Build CLI sessions */
+.settings-cli-sessions {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 100%;
+  margin-top: 4px;
+}
+
+.settings-cli-sessions__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.settings-cli-sessions__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 280px;
+  overflow: auto;
+}
+
+.settings-cli-sessions__item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-elevated, var(--bg-input));
+  min-width: 0;
+}
+
+.settings-cli-sessions__meta {
+  min-width: 0;
+  flex: 1;
+}
+
+.settings-cli-sessions__title {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.settings-cli-sessions__sub {
+  margin-top: 2px;
+  font-size: 11.5px;
+  color: var(--text-tertiary);
+  font-family: var(--font-mono, ui-monospace, monospace);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.settings-cli-sessions__badge {
+  flex-shrink: 0;
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent, #6b8afd) 16%, transparent);
+  color: var(--text-secondary);
+}
+
+.settings-cli-sessions__empty {
+  font-size: 12.5px;
+  color: var(--text-tertiary);
+  padding: 6px 2px;
+}
+
+.settings-cli-sessions__err {
+  font-size: 12.5px;
+  color: var(--danger, #d33);
+  padding: 4px 2px;
+}
+
+.settings-cli-sessions__ok {
+  font-size: 12.5px;
+  color: var(--text-secondary);
+  padding: 4px 2px;
+}
+
 /* ===== Drag-drop zone overlays (OS file drop) =====
    Full-bleed wash + inset ring (no dashed frame with margins).
    Hint card floats center; icons from Tabler only. */

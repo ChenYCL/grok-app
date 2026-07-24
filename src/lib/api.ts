@@ -562,6 +562,48 @@ export async function sessionsList() {
   >("sessions_list");
 }
 
+/** CLI sessions under GROK_HOME (shared-mode discovery). */
+export type CliSessionSummary = {
+  agentSessionId: string;
+  title: string;
+  cwd: string | null;
+  updatedAt: string;
+  dir: string;
+  numMessages: number;
+  alreadyLinked: boolean;
+};
+
+export async function cliSessionsList() {
+  return invoke<CliSessionSummary[]>("cli_sessions_list");
+}
+
+export async function cliSessionImport(
+  agentSessionId: string,
+  opts?: { dir?: string | null; projectId?: string | null },
+) {
+  return invoke<{
+    id: string;
+    title: string;
+    projectId: string | null;
+    updatedAt: string;
+  }>("cli_session_import", {
+    agentSessionId,
+    dir: opts?.dir ?? null,
+    projectId: opts?.projectId ?? null,
+  });
+}
+
+export async function cliSessionsImportAll(limit?: number) {
+  return invoke<
+    Array<{
+      id: string;
+      title: string;
+      projectId: string | null;
+      updatedAt: string;
+    }>
+  >("cli_sessions_import_all", { limit: limit ?? 50 });
+}
+
 export async function sessionCreate(
   projectId?: string,
   title?: string,
