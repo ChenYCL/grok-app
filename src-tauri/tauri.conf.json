@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "Grok",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "identifier": "com.grokapp.desktop",
   "build": {
     "beforeDevCommand": "pnpm dev:ui",
@@ -71,7 +71,10 @@
       },
       "nsis": {
         "installMode": "currentUser",
-        "languages": ["SimpChinese", "English"],
+        "languages": [
+          "SimpChinese",
+          "English"
+        ],
         "displayLanguageSelector": true
       }
     },
