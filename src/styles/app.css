@@ -11827,6 +11827,26 @@ div.composer__input:empty::before {
   border-top: 1px solid var(--border-subtle);
 }
 
+.ext-section-note--top {
+  border-top: none;
+  border-bottom: 1px solid var(--border-subtle);
+  padding-top: 12px;
+}
+
+.ext-folder-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 0 14px 10px;
+}
+
+.ext-folder-actions .btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
 .ext-details-pre {
   margin: 0;
   padding: 0;

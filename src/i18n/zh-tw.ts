@@ -996,9 +996,10 @@ export const zhTW: Record<MessageKey, string> = {
   "mcpModal.empty": "未發現 MCP 伺服器",
   "mcpModal.manage": "在設定中管理",
 
-  // Settings → Extensions (Plugins + Skills + MCP)
+  // Settings → Extensions (Plugins + Skills + MCP + Agents)
   "ext.lead":
-"透過 `grok inspect` 發現的技能與 MCP 伺服器。開關控制對話注入與斜線技能過濾；有目前專案時以該目錄為 cwd。",  "ext.refresh": "重新整理",
+    "透過 `grok plugin` 管理外掛、`grok inspect` 發現技能與 MCP，並列出 ~/.grok（及專案 .grok）下的 Agent/Persona 定義檔。開關控制對話注入與斜線技能過濾；有目前專案時以該目錄為 cwd。",
+  "ext.refresh": "重新整理",
   "ext.refreshing": "重新整理中…",
   "ext.scope.project": "專案",
   "ext.scope.global": "全域",
@@ -1052,6 +1053,24 @@ export const zhTW: Record<MessageKey, string> = {
   "ext.skills.empty": "未發現技能",
   "ext.skills.emptyCli": "安裝 CLI 後才能查看技能。",
   "ext.skills.invocable": "斜線指令",
+  "ext.agents.title": "Agents",
+  "ext.agents.loading": "正在載入 Agent 定義…",
+  "ext.agents.empty":
+    "未發現 Agent 定義檔。可在 ~/.grok/agents 或專案 .grok/agents 下新增 Markdown。",
+  "ext.agents.blurb":
+    "Grok Build 用於設定檔與子代理的定義檔。可開啟或在檔案總管中顯示以便編輯；執行時選用依賴 CLI 參數 / 設定，而非本面板。",
+  "ext.agents.note":
+    "啟動時用 `grok --agent <name>`、config.toml 的 `[agent]` 或 GROK_AGENT 選擇 Agent。應用不會切換目前 ACP 工作階段的 Agent（協定不支援工作階段級切換）。",
+  "ext.agents.openFile": "開啟檔案",
+  "ext.agents.openUserFolder": "開啟使用者 agents 目錄",
+  "ext.agents.openProjectFolder": "開啟專案 agents 目錄",
+  "ext.personas.title": "Personas",
+  "ext.personas.loading": "正在載入 Persona…",
+  "ext.personas.empty":
+    "未發現 Persona 檔。可在 ~/.grok/personas 或專案 .grok/personas 下新增 .toml / .md。",
+  "ext.personas.blurb":
+    "子代理 Persona 在派生子工作階段時疊加語氣與指令。在磁碟上編輯檔案即可；CLI 在執行時載入。",
+  "ext.personas.openUserFolder": "開啟使用者 personas 目錄",
   "ext.mcp.title": "MCP 伺服器",
   "ext.mcp.loading": "正在載入 MCP…",
   "ext.mcp.empty": "未發現 MCP 伺服器",
@@ -1062,6 +1081,7 @@ export const zhTW: Record<MessageKey, string> = {
   "ext.enableAll": "全部啟用",
   "ext.footnote":
     "開關會寫入應用資料，並在新對話中注入已啟用的 MCP（ACP mcpServers + agent-home 設定）。停用技能仍保留在磁碟，但不會出現在斜線面板。外掛安裝支援路徑/git/GitHub 簡寫；完整市集瀏覽仍僅 CLI。",
+    "開關會寫入應用資料，並在新對話中注入已啟用的 MCP（ACP mcpServers + agent-home 設定）。停用技能仍保留在磁碟，但不會出現在斜線面板。Agent/Persona 定義僅開啟檔案，選用由 CLI/設定決定。",
   "error.needTauri": "需要在 Tauri 視窗中選擇目錄",
   "common.comingSoon": "即將推出",
   "common.local": "本機",

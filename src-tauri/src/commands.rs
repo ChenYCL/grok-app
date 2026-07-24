@@ -1726,6 +1726,346 @@ fn parse_mcp_servers(v: &serde_json::Value) -> Vec<McpDto> {
     out
 }
 
+// ── Agent / persona definition files (disk discovery) ───────────────────────
+//
+// Grok Build loads agents from:
+//   {project}/.grok/agents/*.md   (project)
+//   ~/.grok/agents/*.md           (user)
+//   ~/.grok/bundled/agents/*.md   (bundled)
+// Personas: .grok/personas/*.{toml,md} under the same scopes.
+// The App only lists + opens files. Session agent selection is CLI/config
+// (`--agent`, `[agent]`, GROK_AGENT) — ACP has no session agent switch.
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AgentDefDto {
+    pub name: String,
+    pub path: String,
+    /// "project" | "user" | "bundled"
+    pub scope: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PersonaDefDto {
+    pub name: String,
+    pub path: String,
+    pub scope: String,
+}
+
+fn is_agent_def_file(name: &str) -> bool {
+    let lower = name.to_ascii_lowercase();
+    !name.starts_with('.')
+        && (lower.ends_with(".md") || lower.ends_with(".markdown"))
+}
+
+fn is_persona_def_file(name: &str) -> bool {
+    let lower = name.to_ascii_lowercase();
+    !name.starts_with('.')
+        && (lower.ends_with(".toml")
+            || lower.ends_with(".md")
+            || lower.ends_with(".markdown"))
+}
+
+fn stem_name(file_name: &str) -> String {
+    let path = std::path::Path::new(file_name);
+    path.file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or(file_name)
+        .to_string()
+}
+
+/// Best-effort YAML frontmatter `description:` (first line / plain value).
+fn extract_agent_description_from_content(content: &str) -> Option<String> {
+    if !content.starts_with("---") {
+        return None;
+    }
+    let rest = &content[3..];
+    let end = rest.find("\n---")?;
+    let fm = &rest[..end];
+    for (i, line) in fm.lines().enumerate() {
+        let trimmed = line.trim_start();
+        if let Some(val) = trimmed.strip_prefix("description:") {
+            let v = val.trim();
+            if v == ">" || v == "|" || v == ">-" || v == "|-" {
+                // Folded block: first non-empty indented line after this one.
+                for next in fm.lines().skip(i + 1) {
+                    if next.starts_with(' ') || next.starts_with('\t') {
+                        let t = next.trim();
+                        if !t.is_empty() {
+                            return Some(t.to_string());
+                        }
+                    } else if !next.trim().is_empty() {
+                        break;
+                    }
+                }
+                return None;
+            }
+            if v.is_empty() {
+                return None;
+            }
+            let unquoted = v
+                .strip_prefix('"')
+                .and_then(|s| s.strip_suffix('"'))
+                .or_else(|| v.strip_prefix('\'').and_then(|s| s.strip_suffix('\'')))
+                .unwrap_or(v);
+            let cleaned = unquoted.split_whitespace().collect::<Vec<_>>().join(" ");
+            if cleaned.is_empty() {
+                return None;
+            }
+            return Some(cleaned);
+        }
+    }
+    None
+}
+
+fn read_agent_description(path: &std::path::Path) -> Option<String> {
+    let bytes = std::fs::read(path).ok()?;
+    // Frontmatter is near the top; cap read size.
+    let take = bytes.len().min(4096);
+    let content = String::from_utf8_lossy(&bytes[..take]);
+    extract_agent_description_from_content(&content)
+}
+
+fn scan_agent_dir(dir: &std::path::Path, scope: &str) -> Vec<AgentDefDto> {
+    let mut out = Vec::new();
+    let rd = match std::fs::read_dir(dir) {
+        Ok(rd) => rd,
+        Err(_) => return out,
+    };
+    for entry in rd.flatten() {
+        let path = entry.path();
+        if !path.is_file() {
+            continue;
+        }
+        let file_name = match path.file_name().and_then(|s| s.to_str()) {
+            Some(n) => n.to_string(),
+            None => continue,
+        };
+        if !is_agent_def_file(&file_name) {
+            continue;
+        }
+        let name = stem_name(&file_name);
+        if name.is_empty() {
+            continue;
+        }
+        let path_str = path.to_string_lossy().to_string();
+        let description = read_agent_description(&path);
+        out.push(AgentDefDto {
+            name,
+            path: path_str,
+            scope: scope.to_string(),
+            description,
+        });
+    }
+    out
+}
+
+fn scan_persona_dir(dir: &std::path::Path, scope: &str) -> Vec<PersonaDefDto> {
+    let mut out = Vec::new();
+    let rd = match std::fs::read_dir(dir) {
+        Ok(rd) => rd,
+        Err(_) => return out,
+    };
+    for entry in rd.flatten() {
+        let path = entry.path();
+        if !path.is_file() {
+            continue;
+        }
+        let file_name = match path.file_name().and_then(|s| s.to_str()) {
+            Some(n) => n.to_string(),
+            None => continue,
+        };
+        if !is_persona_def_file(&file_name) {
+            continue;
+        }
+        let name = stem_name(&file_name);
+        if name.is_empty() {
+            continue;
+        }
+        out.push(PersonaDefDto {
+            name,
+            path: path.to_string_lossy().to_string(),
+            scope: scope.to_string(),
+        });
+    }
+    out
+}
+
+fn scope_rank(scope: &str) -> u8 {
+    match scope {
+        "project" => 0,
+        "user" => 1,
+        "bundled" => 2,
+        _ => 9,
+    }
+}
+
+fn sort_agent_defs(mut agents: Vec<AgentDefDto>) -> Vec<AgentDefDto> {
+    agents.sort_by(|a, b| {
+        scope_rank(&a.scope)
+            .cmp(&scope_rank(&b.scope))
+            .then_with(|| {
+                a.name
+                    .to_ascii_lowercase()
+                    .cmp(&b.name.to_ascii_lowercase())
+            })
+    });
+    agents
+}
+
+fn sort_persona_defs(mut personas: Vec<PersonaDefDto>) -> Vec<PersonaDefDto> {
+    personas.sort_by(|a, b| {
+        scope_rank(&a.scope)
+            .cmp(&scope_rank(&b.scope))
+            .then_with(|| {
+                a.name
+                    .to_ascii_lowercase()
+                    .cmp(&b.name.to_ascii_lowercase())
+            })
+    });
+    personas
+}
+
+/// List agent + persona definition files from user / project / bundled scopes.
+/// Does not require the CLI binary (pure filesystem discovery under `~/.grok`
+/// and optional `{project}/.grok`). Always returns Ok.
+#[tauri::command]
+pub async fn agents_list(project_path: Option<String>) -> Result<serde_json::Value, String> {
+    let project = project_path
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(|s| s.to_string());
+
+    let result = tauri::async_runtime::spawn_blocking(move || {
+        let home = crate::process_util::user_home();
+        let grok = home.join(".grok");
+        let user_agents = grok.join("agents");
+        let bundled_agents = grok.join("bundled").join("agents");
+        let user_personas = grok.join("personas");
+        let bundled_personas = grok.join("bundled").join("personas");
+
+        let project_agents = project.as_ref().map(|p| {
+            std::path::PathBuf::from(p).join(".grok").join("agents")
+        });
+        let project_personas = project.as_ref().map(|p| {
+            std::path::PathBuf::from(p).join(".grok").join("personas")
+        });
+
+        let mut agents = Vec::new();
+        if let Some(ref dir) = project_agents {
+            agents.extend(scan_agent_dir(dir, "project"));
+        }
+        agents.extend(scan_agent_dir(&user_agents, "user"));
+        agents.extend(scan_agent_dir(&bundled_agents, "bundled"));
+        let agents = sort_agent_defs(agents);
+
+        let mut personas = Vec::new();
+        if let Some(ref dir) = project_personas {
+            personas.extend(scan_persona_dir(dir, "project"));
+        }
+        personas.extend(scan_persona_dir(&user_personas, "user"));
+        personas.extend(scan_persona_dir(&bundled_personas, "bundled"));
+        let personas = sort_persona_defs(personas);
+
+        serde_json::json!({
+            "agents": agents,
+            "personas": personas,
+            "userAgentsDir": user_agents.to_string_lossy(),
+            "projectAgentsDir": project_agents
+                .as_ref()
+                .map(|p| p.to_string_lossy().to_string()),
+            "bundledAgentsDir": bundled_agents.to_string_lossy(),
+            "userPersonasDir": user_personas.to_string_lossy(),
+            "projectPersonasDir": project_personas
+                .as_ref()
+                .map(|p| p.to_string_lossy().to_string()),
+            "bundledPersonasDir": bundled_personas.to_string_lossy(),
+        })
+    })
+    .await
+    .map_err(|e| e.to_string())?;
+
+    Ok(result)
+}
+
+#[cfg(test)]
+mod agents_discovery_tests {
+    use super::*;
+
+    #[test]
+    fn agent_file_filter() {
+        assert!(is_agent_def_file("explore.md"));
+        assert!(is_agent_def_file("plan.markdown"));
+        assert!(!is_agent_def_file("explore.toml"));
+        assert!(!is_agent_def_file(".hidden.md"));
+    }
+
+    #[test]
+    fn persona_file_filter() {
+        assert!(is_persona_def_file("reviewer.toml"));
+        assert!(is_persona_def_file("concise.md"));
+        assert!(!is_persona_def_file("notes.txt"));
+    }
+
+    #[test]
+    fn description_plain() {
+        let md = "---\nname: x\ndescription: Fast explorer\n---\nbody\n";
+        assert_eq!(
+            extract_agent_description_from_content(md).as_deref(),
+            Some("Fast explorer")
+        );
+    }
+
+    #[test]
+    fn description_folded() {
+        let md = "---\ndescription: >\n  First line of desc.\n  Second.\n---\nbody\n";
+        assert_eq!(
+            extract_agent_description_from_content(md).as_deref(),
+            Some("First line of desc.")
+        );
+    }
+
+    #[test]
+    fn description_missing() {
+        assert!(extract_agent_description_from_content("no fm").is_none());
+    }
+
+    #[test]
+    fn sort_prefers_project_scope() {
+        let sorted = sort_agent_defs(vec![
+            AgentDefDto {
+                name: "z".into(),
+                path: "/u/z.md".into(),
+                scope: "user".into(),
+                description: None,
+            },
+            AgentDefDto {
+                name: "a".into(),
+                path: "/b/a.md".into(),
+                scope: "bundled".into(),
+                description: None,
+            },
+            AgentDefDto {
+                name: "m".into(),
+                path: "/p/m.md".into(),
+                scope: "project".into(),
+                description: None,
+            },
+        ]);
+        assert_eq!(
+            sorted
+                .iter()
+                .map(|a| format!("{}:{}", a.scope, a.name))
+                .collect::<Vec<_>>(),
+            vec!["project:m", "user:z", "bundled:a"]
+        );
+    }
+}
+
 /// List invocable skills from `grok inspect --json`.
 /// Always returns Ok; on CLI missing / timeout, `skills` is empty and `error` is set.
 /// Each skill includes `enabled` from App Extensions prefs (default true).
