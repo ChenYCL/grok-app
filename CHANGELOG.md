@@ -26,6 +26,7 @@ See `docs/llm-wiki/release.md`.
 
 - **Plan mode**: handle `_x.ai/exit_plan_mode` (planContent body + Approve/Revise/Abandon RPC reply); wire Plan card buttons (minos-aligned).
 - **Thinking UI**: multi-phase reasoning split into separate blocks (pre-tool vs post-tool); thought chunks bind to current assistant message id.
+- **Session ↔ project rebind**: composer project chip is a menu — bind orphan /「未选项目」sessions to a trusted folder (or clear back to orphan).
 - Grok Build shell permission fallbacks use **underscore** optionIds (`allow_once` / `reject`) — community PR #2.
 - Session auto-title LLM prompt follows **app locale** (EN/ZH) — community PR #1.
 - Composer stays **draftable while streaming** so a paused stream no longer feels like a hard lock.

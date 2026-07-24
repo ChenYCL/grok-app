@@ -369,6 +369,18 @@ export async function sessionSetArchived(id: string, archived: boolean) {
   return invoke("session_set_archived", { id, archived });
 }
 
+/** Bind session to a project, or clear (`projectId: null`) for orphan / 其他会话. */
+export async function sessionSetProject(
+  id: string,
+  projectId: string | null,
+) {
+  return invoke<{
+    id: string;
+    projectId: string | null;
+    title: string;
+  }>("session_set_project", { id, projectId });
+}
+
 export async function sessionDelete(id: string) {
   return invoke("session_delete", { id });
 }

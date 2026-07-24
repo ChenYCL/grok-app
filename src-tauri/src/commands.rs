@@ -300,6 +300,23 @@ pub async fn session_set_archived(id: String, archived: bool) -> Result<SessionM
     store::set_session_archived(&id, archived)
 }
 
+/// Move session under a project (or clear project → orphan / 「其他会话」).
+#[tauri::command]
+pub async fn session_set_project(
+    app: tauri::AppHandle,
+    mgr: State<'_, Arc<SessionManager>>,
+    id: String,
+    project_id: Option<String>,
+) -> Result<SessionMeta, String> {
+    let meta = store::set_session_project(&id, project_id)?;
+    // If this session is live, drop ACP so next send reconnects with new cwd.
+    let snap = mgr.snapshot();
+    if snap.session_id.as_deref() == Some(meta.id.as_str()) {
+        let _ = mgr.disconnect(app).await;
+    }
+    Ok(meta)
+}
+
 #[tauri::command]
 pub async fn session_messages(
     id: String,

@@ -101,6 +101,7 @@ import { OverlayScroll } from "@/components/OverlayScroll";
 import { GrokLogo } from "@/components/GrokLogo";
 import { SetupWizard, type SetupCliInfo } from "@/components/SetupWizard";
 import { ComposerEditor } from "@/components/ComposerEditor";
+import { ComposerProjectMenu } from "@/components/ComposerProjectMenu";
 import {
   ComposerPlusPanel,
   buildComposerPlusEntries,
@@ -5104,18 +5105,91 @@ export default function App() {
                     <IconPlus size={18} />
                   </button>
                 </Tip>
-                <Tip
-                  label={activeProject?.path || ""}
-                  disabled={!activeProject?.path}
-                >
-                  <span className="chip">
-                    <IconFolder size={14} />
-                    <span className="chip__label">
-                      {activeProject?.name ??
-                        (tr("composer.noProject"))}
-                    </span>
-                  </span>
-                </Tip>
+                <ComposerProjectMenu
+                  activeProject={activeProject}
+                  projects={projects}
+                  labels={{
+                    noProject: tr("composer.noProject"),
+                    pickProject: tr("composer.pickProject"),
+                    clearProject: tr("composer.clearProject"),
+                    untrusted: tr("composer.projectUntrusted"),
+                  }}
+                  disabled={
+                    session.state === "streaming" ||
+                    session.state === "awaiting_permission"
+                  }
+                  onSelect={(proj) => {
+                    void (async () => {
+                      const sid = session.sessionId;
+                      // Draft (no session yet): only switch workspace context
+                      if (!sid || !api.isTauri()) {
+                        setActiveProject(proj);
+                        if (proj) {
+                          setExpandedProjects((e) => ({
+                            ...e,
+                            [proj.id]: true,
+                          }));
+                        } else {
+                          setHistoryOpen(true);
+                        }
+                        return;
+                      }
+                      try {
+                        if (proj && !proj.trusted) {
+                          setLocalError(
+                            tr("project.trustFirst", { name: proj.name }),
+                          );
+                          return;
+                        }
+                        await api.sessionSetProject(
+                          sid,
+                          proj?.id ?? null,
+                        );
+                        setActiveProject(proj);
+                        setSessions((list) =>
+                          list.map((s) =>
+                            s.id === sid
+                              ? { ...s, projectId: proj?.id ?? null }
+                              : s,
+                          ),
+                        );
+                        // Live agent used old cwd — force reconnect next send
+                        setSession((prev) =>
+                          prev.sessionId === sid
+                            ? {
+                                ...IDLE_SNAPSHOT,
+                                sessionId: sid,
+                                title: prev.title,
+                                state: "idle",
+                                backend: prev.backend || "grok_agent_stdio",
+                              }
+                            : prev,
+                        );
+                        setLiveHost((prev) =>
+                          prev.sessionId === sid
+                            ? { ...IDLE_SNAPSHOT }
+                            : prev,
+                        );
+                        if (proj) {
+                          setExpandedProjects((e) => ({
+                            ...e,
+                            [proj.id]: true,
+                          }));
+                          showToast(
+                            tr("composer.projectBound", { name: proj.name }),
+                            2500,
+                          );
+                        } else {
+                          setHistoryOpen(true);
+                          showToast(tr("composer.projectCleared"), 2200);
+                        }
+                        setLocalError(null);
+                      } catch (e) {
+                        showToast(String(e), 4500);
+                      }
+                    })();
+                  }}
+                />
                 {goalMode ? (
                   <Tip label={tr("composer.goalHint")}>
                     <button

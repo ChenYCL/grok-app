@@ -441,6 +441,34 @@ pub fn set_session_archived(id: &str, archived: bool) -> Result<SessionMeta, Str
     Ok(clone)
 }
 
+/// Bind (or clear) a session's project folder. Used to attach orphan / legacy
+/// chats to a project added later.
+pub fn set_session_project(
+    id: &str,
+    project_id: Option<String>,
+) -> Result<SessionMeta, String> {
+    let pid = project_id
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty());
+    if let Some(ref p) = pid {
+        // Ensure project exists in the projects list.
+        let projects = load_projects();
+        if !projects.iter().any(|x| x.id == *p) {
+            return Err(format!("project not found: {p}"));
+        }
+    }
+    let mut list = load_sessions_index();
+    let s = list
+        .iter_mut()
+        .find(|s| s.id == id)
+        .ok_or_else(|| "session not found".to_string())?;
+    s.project_id = pid;
+    s.updated_at = Utc::now();
+    let clone = s.clone();
+    save_sessions_index(&list)?;
+    Ok(clone)
+}
+
 /// Archive every non-archived session under a project.
 pub fn archive_project_sessions(project_id: &str) -> Result<usize, String> {
     let mut list = load_sessions_index();
