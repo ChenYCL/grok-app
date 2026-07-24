@@ -5,9 +5,12 @@ import {
   insertTranscriptIntoDraft,
   isVoiceToggleKey,
   reduceVoice,
+  resolveVoiceErrorClass,
   voiceAvailabilityFromAuth,
   voiceIsActive,
+  voiceResultStillCurrent,
   voiceStealsEscape,
+  VOICE_NO_SPEECH_MS,
 } from "./voiceDictation";
 
 describe("voiceDictation FSM", () => {
@@ -129,12 +132,31 @@ describe("classifyVoiceError", () => {
     expect(classifyVoiceError("nope", 401)).toBe("auth");
   });
 
+  it("trusts known Host errorClass token auth", () => {
+    expect(classifyVoiceError("auth")).toBe("auth");
+    expect(resolveVoiceErrorClass("auth", "whatever")).toBe("auth");
+    expect(resolveVoiceErrorClass("no_speech", null)).toBe("no_speech");
+  });
+
   it("maps empty transcript language", () => {
     expect(classifyVoiceError("empty transcript")).toBe("no_speech");
   });
 
   it("maps network strings", () => {
     expect(classifyVoiceError("connection refused")).toBe("network");
+  });
+});
+
+describe("VOICE_NO_SPEECH_MS", () => {
+  it("is about 10 seconds", () => {
+    expect(VOICE_NO_SPEECH_MS).toBe(10_000);
+  });
+});
+
+describe("voiceResultStillCurrent", () => {
+  it("rejects stale generation after cancel", () => {
+    expect(voiceResultStillCurrent(1, 1)).toBe(true);
+    expect(voiceResultStillCurrent(1, 2)).toBe(false);
   });
 });
 

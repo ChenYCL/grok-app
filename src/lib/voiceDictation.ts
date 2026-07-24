@@ -158,14 +158,34 @@ export function insertTranscriptIntoDraft(
   return { text, caret: left.length + mid.length };
 }
 
-/** Map host/HTTP failures to UI error classes. */
+const KNOWN_VOICE_ERRORS: readonly VoiceErrorClass[] = [
+  "mic_denied",
+  "mic_missing",
+  "no_speech",
+  "not_available",
+  "network",
+  "auth",
+  "timeout",
+  "unknown",
+] as const;
+
+function isVoiceErrorClass(s: string): s is VoiceErrorClass {
+  return (KNOWN_VOICE_ERRORS as readonly string[]).includes(s);
+}
+
+/** Map host/HTTP failures to UI error classes. Trust known Host errorClass tokens. */
 export function classifyVoiceError(
   raw: string | null | undefined,
   httpStatus?: number | null,
 ): VoiceErrorClass {
   if (httpStatus === 401 || httpStatus === 403) return "auth";
   if (httpStatus === 408 || httpStatus === 504) return "timeout";
-  const s = (raw ?? "").toLowerCase();
+  const rawTrim = (raw ?? "").trim();
+  // Host already returns a stable class (e.g. "auth", "no_speech").
+  if (rawTrim && isVoiceErrorClass(rawTrim)) {
+    return rawTrim;
+  }
+  const s = rawTrim.toLowerCase();
   if (!s) return "unknown";
   if (
     s.includes("not_available") ||
@@ -213,10 +233,29 @@ export function classifyVoiceError(
   ) {
     return "network";
   }
-  if (s.includes("401") || s.includes("403") || s.includes("unauthor")) {
+  if (
+    s === "auth" ||
+    s.includes("401") ||
+    s.includes("403") ||
+    s.includes("unauthor")
+  ) {
     return "auth";
   }
   return "unknown";
+}
+
+/**
+ * Prefer Host `errorClass` when present; otherwise classify free-form error text.
+ */
+export function resolveVoiceErrorClass(
+  errorClass: string | null | undefined,
+  error: string | null | undefined,
+  httpStatus?: number | null,
+): VoiceErrorClass {
+  if (errorClass && isVoiceErrorClass(errorClass.trim())) {
+    return errorClass.trim() as VoiceErrorClass;
+  }
+  return classifyVoiceError(errorClass || error, httpStatus);
 }
 
 /**
@@ -249,4 +288,12 @@ export function isVoiceToggleKey(e: {
   if (e.metaKey || e.altKey || e.shiftKey) return false;
   if (!e.ctrlKey) return false;
   return e.code === "Space" || e.key === " " || e.key === "Spacebar";
+}
+
+/** In-flight STT must ignore results after cancel/start bumps the generation. */
+export function voiceResultStillCurrent(
+  attemptGen: number,
+  activeGen: number,
+): boolean {
+  return attemptGen === activeGen;
 }

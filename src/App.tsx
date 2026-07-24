@@ -151,7 +151,10 @@ import {
 } from "@/lib/virtualList";
 import { GrokLogo } from "@/components/GrokLogo";
 import { SetupWizard, type SetupCliInfo } from "@/components/SetupWizard";
-import { ComposerEditor } from "@/components/ComposerEditor";
+import {
+  ComposerEditor,
+  getComposerCaretOffset,
+} from "@/components/ComposerEditor";
 import { ComposerProjectMenu } from "@/components/ComposerProjectMenu";
 import { pathsEqual } from "@/lib/gitWorktree";
 import { isProjectPathMissing } from "@/lib/projectPath";
@@ -161,10 +164,13 @@ import {
   insertTranscriptIntoDraft,
   isVoiceToggleKey,
   reduceVoice,
+  resolveVoiceErrorClass,
   voiceAvailabilityFromAuth,
   voiceIsActive,
+  voiceResultStillCurrent,
   voiceStealsEscape,
   VOICE_MAX_RECORD_MS,
+  VOICE_NO_SPEECH_MS,
   type VoiceErrorClass,
   type VoiceFsmState,
 } from "@/lib/voiceDictation";
@@ -365,6 +371,10 @@ export default function App() {
   const voiceTimersRef = useRef<{ max?: number; noSpeech?: number }>({});
   const voiceRef = useRef(voice);
   voiceRef.current = voice;
+  /** Bumped on cancel/start so in-flight STT never mutates draft after cancel. */
+  const voiceGenRef = useRef(0);
+  /** Caret in draft string captured when stop is requested. */
+  const voiceCaretRef = useRef<number | null>(null);
   const [goalMode, setGoalMode] = useState(false);
   /** Prevent overlapping executeSend / queue auto-flush races. */
   const sendInFlightRef = useRef(false);
@@ -4224,6 +4234,7 @@ export default function App() {
   }, [refreshVoiceGate]);
 
   const cancelVoice = useCallback(() => {
+    voiceGenRef.current += 1;
     clearVoiceTimers();
     try {
       voiceCaptureRef.current?.cancel();
@@ -4231,14 +4242,17 @@ export default function App() {
       /* ignore */
     }
     voiceCaptureRef.current = null;
+    voiceCaretRef.current = null;
     setVoice(reduceVoice(voiceRef.current, { type: "cancel" }));
   }, [clearVoiceTimers]);
 
   const finishVoiceTranscribe = useCallback(
-    async (blob: Blob) => {
+    async (blob: Blob, gen: number) => {
+      if (!voiceResultStillCurrent(gen, voiceGenRef.current)) return;
       setVoice((s) => reduceVoice(s, { type: "stop" }));
       try {
         if (blob.size < 256) {
+          if (!voiceResultStillCurrent(gen, voiceGenRef.current)) return;
           setVoice((s) =>
             reduceVoice(s, {
               type: "transcribe_fail",
@@ -4249,6 +4263,7 @@ export default function App() {
           return;
         }
         const b64 = await blobToBase64(blob);
+        if (!voiceResultStillCurrent(gen, voiceGenRef.current)) return;
         const mime = blob.type || "audio/webm";
         const ext = extensionForMime(mime);
         const res = await api.voiceTranscribe({
@@ -4256,28 +4271,36 @@ export default function App() {
           filename: `dictation.${ext}`,
           mime,
         });
+        if (!voiceResultStillCurrent(gen, voiceGenRef.current)) return;
         if (!res.ok || !res.text?.trim()) {
-          const cls = classifyVoiceError(
-            res.errorClass || res.error,
-            null,
-          );
+          const cls = resolveVoiceErrorClass(res.errorClass, res.error);
           setVoice((s) =>
             reduceVoice(s, { type: "transcribe_fail", error: cls }),
           );
           showToast(voiceErrorMessage(cls), 4800);
           return;
         }
-        setDraft((d) => insertTranscriptIntoDraft(d, res.text!).text);
+        if (!voiceResultStillCurrent(gen, voiceGenRef.current)) return;
+        const caret = voiceCaretRef.current;
+        setDraft((d) => {
+          const at =
+            caret == null ? d.length : Math.max(0, Math.min(caret, d.length));
+          return insertTranscriptIntoDraft(d, res.text!, at).text;
+        });
         setVoice((s) => reduceVoice(s, { type: "transcribe_ok" }));
       } catch (e) {
+        if (!voiceResultStillCurrent(gen, voiceGenRef.current)) return;
         const cls = classifyVoiceError(String(e));
         setVoice((s) =>
           reduceVoice(s, { type: "transcribe_fail", error: cls }),
         );
         showToast(voiceErrorMessage(cls), 4800);
       } finally {
-        voiceCaptureRef.current = null;
-        clearVoiceTimers();
+        if (voiceResultStillCurrent(gen, voiceGenRef.current)) {
+          voiceCaptureRef.current = null;
+          voiceCaretRef.current = null;
+          clearVoiceTimers();
+        }
       }
     },
     [clearVoiceTimers, showToast, voiceErrorMessage],
@@ -4292,22 +4315,46 @@ export default function App() {
       return;
     }
     if (voiceIsActive(voiceRef.current.phase)) return;
+    voiceGenRef.current += 1;
+    const gen = voiceGenRef.current;
     setVoice((s) => reduceVoice(s, { type: "start" }));
     try {
       const handle = await startVoiceCapture();
+      if (gen !== voiceGenRef.current) {
+        handle.cancel();
+        return;
+      }
       voiceCaptureRef.current = handle;
       setVoice((s) => reduceVoice(s, { type: "mic_granted" }, Date.now()));
       clearVoiceTimers();
-      // No real VAD in phase 1: cap max length; empty STT maps to no_speech.
+      // ~10s without user stop → treat as no speech (CLI-aligned silence fail-closed).
+      voiceTimersRef.current.noSpeech = window.setTimeout(() => {
+        if (gen !== voiceGenRef.current) return;
+        if (voiceRef.current.phase !== "recording") return;
+        clearVoiceTimers();
+        try {
+          voiceCaptureRef.current?.cancel();
+        } catch {
+          /* ignore */
+        }
+        voiceCaptureRef.current = null;
+        setVoice((s) => reduceVoice(s, { type: "no_speech_timeout" }));
+        showToast(voiceErrorMessage("no_speech"), 4200);
+      }, VOICE_NO_SPEECH_MS);
       voiceTimersRef.current.max = window.setTimeout(() => {
         void (async () => {
+          if (gen !== voiceGenRef.current) return;
           if (voiceRef.current.phase !== "recording") return;
           const cap = voiceCaptureRef.current;
           if (!cap) return;
           try {
+            voiceCaretRef.current = getComposerCaretOffset(
+              composerInputRef.current,
+            );
             const blob = await cap.stop();
-            await finishVoiceTranscribe(blob);
+            await finishVoiceTranscribe(blob, gen);
           } catch (e) {
+            if (gen !== voiceGenRef.current) return;
             const cls = classifyVoiceError(String(e));
             setVoice((s) =>
               reduceVoice(s, { type: "transcribe_fail", error: cls }),
@@ -4317,6 +4364,7 @@ export default function App() {
         })();
       }, VOICE_MAX_RECORD_MS);
     } catch (e) {
+      if (gen !== voiceGenRef.current) return;
       const code =
         e && typeof e === "object" && "code" in e
           ? String((e as { code?: string }).code)
@@ -4347,6 +4395,9 @@ export default function App() {
 
   const stopVoice = useCallback(async () => {
     if (voiceRef.current.phase !== "recording") return;
+    const gen = voiceGenRef.current;
+    // Capture caret before focus/selection changes during stop.
+    voiceCaretRef.current = getComposerCaretOffset(composerInputRef.current);
     clearVoiceTimers();
     const cap = voiceCaptureRef.current;
     if (!cap) {
@@ -4355,8 +4406,9 @@ export default function App() {
     }
     try {
       const blob = await cap.stop();
-      await finishVoiceTranscribe(blob);
+      await finishVoiceTranscribe(blob, gen);
     } catch (e) {
+      if (gen !== voiceGenRef.current) return;
       const cls = classifyVoiceError(String(e));
       setVoice((s) =>
         reduceVoice(s, { type: "transcribe_fail", error: cls }),
