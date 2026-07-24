@@ -168,6 +168,12 @@ pub struct AppSettings {
     /// Passed as top-level `grok --sandbox <profile>` / `GROK_SANDBOX` at spawn.
     #[serde(default = "default_sandbox_profile")]
     pub sandbox_profile: String,
+    /// Preferred Grok Build agent definition for new agent processes
+    /// (`explore` / `plan` / `general-purpose` / custom name under `~/.grok/agents`).
+    /// Empty / `default` / `none` → omit top-level `--agent` (CLI default).
+    /// Applied at spawn only; changing it soft-respawns the live agent.
+    #[serde(default)]
+    pub preferred_agent: String,
 }
 
 fn default_composer_prefs_scope() -> String {
@@ -217,6 +223,7 @@ impl Default for AppSettings {
             stream_stall_seconds: default_stream_stall_seconds(),
             store_api_keys_in_keychain: false,
             sandbox_profile: default_sandbox_profile(),
+            preferred_agent: String::new(),
         }
     }
 }
@@ -1302,6 +1309,11 @@ mod tests {
     #[test]
     fn sandbox_profile_defaults_when_missing_from_json() {
         // Old settings files without the field must deserialize to "off".
+        assert_eq!(s.preferred_agent, "");
+    }
+
+    #[test]
+    fn preferred_agent_defaults_when_missing_from_json() {
         let raw = r#"{
             "theme": "dark",
             "locale": "en",
@@ -1361,5 +1373,6 @@ mod tests {
         let m: SessionMeta = serde_json::from_str(raw).expect("deserialize legacy session");
         assert!(!m.pinned);
         assert!(!m.archived);
+        assert_eq!(s.preferred_agent, "");
     }
 }

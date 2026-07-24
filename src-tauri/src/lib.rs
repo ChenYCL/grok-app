@@ -3,6 +3,7 @@
 mod account;
 mod account_profiles;
 mod acp_client;
+mod agents_catalog;
 mod agent_prefs;
 mod app_update;
 mod extensions;
@@ -172,6 +173,7 @@ pub fn run() {
             commands::settings_get,
             commands::settings_set,
             commands::models_list_available,
+            commands::agents_catalog,
             commands::composer_prefs_resolve,
             commands::composer_prefs_set,
             commands::session_set_policy,

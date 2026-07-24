@@ -538,6 +538,14 @@ export const zhTW: Record<MessageKey, string> = {
   "settings.streamStallSeconds": "串流停滯逾時（秒）",
   "settings.streamStallSecondsDesc":
     "若一輪對話在該時間內無任何串流片段或工具活動，將提示「取消本輪 / 繼續等待」（預設 120）。仍有工具事件的長任務不會誤判為停滯。",
+  "settings.preferredAgent": "Agent 定義",
+  "settings.preferredAgentDesc":
+    "啟動 Agent 行程時作為頂層 grok --agent <name> 傳入（內建 explore / plan / general-purpose，以及 ~/.grok/agents 與專案 .grok/agents）。在重連或新工作階段時生效，不會在一輪對話中途熱切換。",
+  "settings.preferredAgent.default": "預設（CLI）",
+  "settings.preferredAgent.source.builtin": "內建",
+  "settings.preferredAgent.source.bundled": "捆綁",
+  "settings.preferredAgent.source.user": "使用者",
+  "settings.preferredAgent.source.project": "專案",
   "agent.idleRecycledToast":
     "Agent 行程因閒置已回收 — 工作階段仍在；下次傳送將重新連線。",
   "agent.dataModeRecycledToast":

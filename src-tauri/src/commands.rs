@@ -634,6 +634,7 @@ pub async fn settings_set(
         prev.store_api_keys_in_keychain != settings.store_api_keys_in_keychain;
     let session_data_mode_changed =
         prev.session_data_mode != settings.session_data_mode;
+    let preferred_agent_flip = prev.preferred_agent.trim() != settings.preferred_agent.trim();
 
     store::save_settings(&settings)?;
 
@@ -653,6 +654,9 @@ pub async fn settings_set(
     // so the next connect spawns under the new data root (E04).
     if session_data_mode_changed {
         mgr.recycle_all_agents(&app, "session_data_mode").await;
+    if preferred_agent_flip {
+        // `--agent` is spawn-only — soft-respawn so the next turn uses the new definition.
+        mgr.soft_respawn(&app).await;
     }
 
     // Full permission apply: Host + agent-home + soft-respawn if needed
@@ -672,6 +676,16 @@ pub async fn settings_set(
 #[tauri::command]
 pub async fn models_list_available() -> Result<crate::models_catalog::AvailableModelsResult, String> {
     Ok(crate::models_catalog::list_available_models())
+}
+
+/// Selectable agent definitions for Settings → Runtime (built-ins + user/project `.md`).
+#[tauri::command]
+pub async fn agents_catalog(
+    project_path: Option<String>,
+) -> Result<crate::agents_catalog::AgentsCatalogResult, String> {
+    Ok(crate::agents_catalog::list_agents_catalog(
+        project_path.as_deref(),
+    ))
 }
 
 #[tauri::command]

@@ -115,6 +115,14 @@ export interface SettingsPageProps {
   /** OS sandbox for agent spawn: off | workspace | read-only | strict | devbox. */
   sandboxProfile?: string;
   onSandboxProfile?: (v: string) => void;
+  /**
+   * Preferred agent definition for ACP spawn (`""` = CLI default).
+   * Spawn-only: reconnect / new session applies; no mid-turn hot-swap.
+   */
+  preferredAgent?: string;
+  onPreferredAgent?: (v: string) => void;
+  /** Catalog rows for the agent picker (built-ins + discovered defs). */
+  agentCatalog?: Array<{ name: string; source: string }>;
   cliInfo: {
     found: boolean;
     path: string | null;
@@ -418,6 +426,9 @@ export function SettingsPage({
   onStoreApiKeysInKeychain,
   sandboxProfile = "off",
   onSandboxProfile,
+  preferredAgent = "",
+  onPreferredAgent,
+  agentCatalog = [],
   cliInfo,
   onDoctor,
   versionFooter,
@@ -1457,6 +1468,55 @@ export function SettingsPage({
                 }}
               />
             </div>
+            {onPreferredAgent ? (
+              <div className="settings-row settings-row--stack">
+                <div className="settings-row__text">
+                  <div className="settings-row__label">
+                    {t("settings.preferredAgent")}
+                  </div>
+                  <div className="settings-row__desc">
+                    {t("settings.preferredAgentDesc")}
+                  </div>
+                </div>
+                <Select
+                  value={preferredAgent || ""}
+                  onChange={(v) => onPreferredAgent(v)}
+                  options={[
+                    {
+                      value: "",
+                      label: t("settings.preferredAgent.default"),
+                    },
+                    ...(() => {
+                      const seen = new Set<string>();
+                      const opts: { value: string; label: string }[] = [];
+                      for (const a of agentCatalog) {
+                        const name = (a.name || "").trim();
+                        if (!name || seen.has(name)) continue;
+                        seen.add(name);
+                        const srcKey =
+                          a.source === "project"
+                            ? "settings.preferredAgent.source.project"
+                            : a.source === "user"
+                              ? "settings.preferredAgent.source.user"
+                              : a.source === "bundled"
+                                ? "settings.preferredAgent.source.bundled"
+                                : "settings.preferredAgent.source.builtin";
+                        opts.push({
+                          value: name,
+                          label: `${name} · ${t(srcKey)}`,
+                        });
+                      }
+                      // Keep current value visible even if not in catalog yet.
+                      const cur = (preferredAgent || "").trim();
+                      if (cur && !seen.has(cur)) {
+                        opts.unshift({ value: cur, label: cur });
+                      }
+                      return opts;
+                    })(),
+                  ]}
+                />
+              </div>
+            ) : null}
             <div className="settings-row">
               <div className="settings-row__text">
                 <div className="settings-row__label">
