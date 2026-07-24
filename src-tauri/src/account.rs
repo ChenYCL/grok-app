@@ -8,6 +8,7 @@ use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
+use std::sync::OnceLock;
 use std::time::Duration;
 
 use chrono::{DateTime, Duration as ChronoDuration, NaiveDate, Utc};
@@ -17,6 +18,36 @@ use tracing::{info, warn};
 
 use crate::cli_probe;
 use crate::paths;
+
+/// Cancellation signal for a running `grok login`. The login task selects on
+/// this notifier plus the child wait; Cancel just fires it without touching the
+/// child handle (avoids racing the wait side).
+pub struct LoginProcState {
+    cancel: tokio::sync::Notify,
+    /// Guard: only one login may run at a time.
+    busy: tokio::sync::Mutex<bool>,
+}
+
+impl Default for LoginProcState {
+    fn default() -> Self {
+        Self {
+            cancel: tokio::sync::Notify::new(),
+            busy: tokio::sync::Mutex::new(false),
+        }
+    }
+}
+
+static LOGIN_PROC: OnceLock<LoginProcState> = OnceLock::new();
+
+/// Process-wide login process handle. Initialized once on first access.
+fn login_proc() -> &'static LoginProcState {
+    LOGIN_PROC.get_or_init(LoginProcState::default)
+}
+
+/// Signal a running login to abort (no-op if none is running).
+pub async fn account_login_cancel() {
+    login_proc().cancel.notify_waiters();
+}
 use crate::store;
 
 const BILLING_CANDIDATES: &[&str] = &[
@@ -1227,25 +1258,18 @@ pub async fn account_login(method: &str, manual_cli: Option<&str>) -> LoginResul
     };
 
     // Spawn CLI login; for OAuth the CLI opens the browser.
-    let output = tokio::task::spawn_blocking({
-        let cli = cli.clone();
-        let arg = arg.to_string();
-        move || {
-            let mut cmd = Command::new(&cli);
-            cmd.arg("login")
-                .arg(&arg)
-                .stdout(Stdio::piped())
-                .stderr(Stdio::piped());
-            // Login may open a browser; still hide the console flash on Windows.
-            crate::process_util::apply_no_window_std(&mut cmd);
-            cmd.output()
-        }
-    })
-    .await;
+    // Uses tokio::process so we can select between completion and Cancel.
+    let mut cmd = tokio::process::Command::new(&cli);
+    cmd.arg("login")
+        .arg(&arg)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+    // Login may open a browser; still hide the console flash on Windows.
+    crate::process_util::apply_no_window_tokio(&mut cmd);
 
-    let output = match output {
-        Ok(Ok(o)) => o,
-        Ok(Err(e)) => {
+    let mut child = match cmd.spawn() {
+        Ok(c) => c,
+        Err(e) => {
             return LoginResult {
                 ok: false,
                 method: method.into(),
@@ -1255,11 +1279,45 @@ pub async fn account_login(method: &str, manual_cli: Option<&str>) -> LoginResul
                 profile: None,
             };
         }
+    };
+
+    // Race the CLI output against the cancel notifier. On cancel we kill the
+    // child ourselves; either way the process is reaped (no zombie).
+    // Wrap in Option so each select branch can take() ownership independently.
+    let mut child = Some(child);
+    let cancelled;
+    let output = tokio::select! {
+        biased;
+        _ = login_proc().cancel.notified() => {
+            if let Some(mut c) = child.take() {
+                let _ = c.kill().await;
+            }
+            cancelled = true;
+            Err(std::io::Error::new(std::io::ErrorKind::Other, "login cancelled"))
+        }
+        out = async {
+            match child.take() {
+                Some(c) => c.wait_with_output().await,
+                None => Err(std::io::Error::new(std::io::ErrorKind::Other, "no child")),
+            }
+        } => {
+            cancelled = false;
+            out
+        }
+    };
+
+    let output = match output {
+        Ok(o) => o,
         Err(e) => {
+            let message = if cancelled {
+                "Login cancelled. Try another sign-in method.".to_string()
+            } else {
+                format!("Login did not complete: {e}")
+            };
             return LoginResult {
                 ok: false,
                 method: method.into(),
-                message: format!("Login task failed: {e}"),
+                message,
                 device_url: None,
                 device_code: None,
                 profile: None,

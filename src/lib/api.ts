@@ -799,6 +799,11 @@ export async function accountLogin(method: "oauth" | "device" = "oauth") {
   return invoke<LoginResult>("account_login", { method });
 }
 
+/** Abort a running `grok login` (OAuth / device-code). No-op if none is running. */
+export async function accountLoginCancel() {
+  return invoke<void>("account_login_cancel");
+}
+
 export async function accountLogout() {
   return invoke<AccountProfile>("account_logout");
 }

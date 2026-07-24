@@ -175,6 +175,7 @@ pub fn run() {
             commands::automation_delete,
             commands::account_status,
             commands::account_login,
+            commands::account_login_cancel,
             commands::account_logout,
             commands::account_open_usage,
             commands::account_open_subscribe,

@@ -81,6 +81,7 @@ export interface SettingsPageProps {
   activeAccountId?: string | null;
   onAccountLoginOauth: () => void;
   onAccountLoginDevice: () => void;
+  onCancelLogin: () => void;
   onAccountLogout: () => void;
   onAccountRefresh: () => void;
   onAccountManageUsage: () => void;
@@ -155,6 +156,7 @@ export function SettingsPage({
   activeAccountId = null,
   onAccountLoginOauth,
   onAccountLoginDevice,
+  onCancelLogin,
   onAccountLogout,
   onAccountRefresh,
   onAccountManageUsage,
@@ -567,6 +569,7 @@ export function SettingsPage({
               team: t("account.team"),
               billingUnavailable: t("account.billingUnavailable"),
               loginBusy: t("account.loginBusy"),
+              loginCancel: t("account.loginCancel"),
               resetsAt: t("account.resetsAt"),
               fetchedAt: t("account.fetchedAt"),
               products: t("account.products"),
@@ -594,6 +597,7 @@ export function SettingsPage({
             activeAccountId={activeAccountId}
             onLoginOauth={onAccountLoginOauth}
             onLoginDevice={onAccountLoginDevice}
+            onCancelLogin={onCancelLogin}
             onLogout={onAccountLogout}
             onRefresh={onAccountRefresh}
             onManageUsage={onAccountManageUsage}
