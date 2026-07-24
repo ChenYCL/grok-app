@@ -27,11 +27,15 @@ CHANGELOG = ROOT / "CHANGELOG.md"
 
 ASSETS_TABLE = """## Downloads / 下载
 
-| Platform / 平台 | File (typical) / 文件 |
-|-----------------|------------------------|
-| macOS Apple Silicon | `Grok_*_aarch64.dmg` |
-| macOS Intel | `Grok_*_x64.dmg` |
-| Windows x64 | `Grok_*_x64-setup.exe` |
+| Platform / 平台 | File (typical) / 文件 | Notes / 说明 |
+|-----------------|------------------------|--------------|
+| macOS Apple Silicon | `Grok_*_aarch64.dmg` | 拖到「应用程序」 |
+| macOS Intel | `Grok_*_x64.dmg` | 拖到「应用程序」 |
+| Windows x64 安装版 | `Grok_*_x64-setup.exe` | NSIS 安装包 |
+| Windows x64 **绿色版** | `Grok_*_x64-portable.zip` | 解压即用，免安装 |
+| Linux x64 AppImage | `Grok_*.AppImage` | 通用桌面，chmod +x 后运行 |
+| Linux x64 Debian/Ubuntu | `Grok_*.deb` | `sudo dpkg -i …` |
+| Linux x64 Fedora/RHEL | `Grok_*.rpm` | `sudo rpm -i …` / dnf |
 
 Product name in installers is **Grok**. 安装包产品名为 **Grok**。
 """
@@ -66,9 +70,18 @@ Only download from this repo’s official Releases.
 
 ### Windows
 
+- **安装版** (`*-setup.exe`)：NSIS 安装向导。  
+- **绿色版** (`*-portable.zip`)：解压任意目录，双击 `Grok.exe`（无需安装）。  
 - SmartScreen may warn until code signing is configured → **More info** → **Run anyway**.  
   SmartScreen 可能提示未知发布者 → **更多信息** → **仍要运行**。
 - Needs **WebView2** (usually preinstalled on Windows 10/11).
+
+### Linux
+
+- **AppImage**：`chmod +x Grok_*.AppImage && ./Grok_*.AppImage`（多数发行版通用）。  
+- **.deb**：Debian / Ubuntu / Linux Mint / Pop!_OS 等 → `sudo dpkg -i Grok_*.deb`（缺依赖时 `sudo apt -f install`）。  
+- **.rpm**：Fedora / RHEL / openSUSE 等 → `sudo dnf install ./Grok_*.rpm` 或 `sudo rpm -i Grok_*.rpm`。  
+- 需本机 WebKitGTK 4.1 / GTK3 运行库（包依赖会尽量声明；AppImage 自带更多运行时）。
 
 ### Grok Build CLI
 

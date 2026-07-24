@@ -4,10 +4,11 @@
 
 ## 目标
 
-- 每次正式版 = **一个 git tag `vX.Y.Z`** + **GitHub Release** + **三端安装包**  
-  - macOS Apple Silicon (`aarch64`)  
-  - macOS Intel (`x64`)  
-  - Windows x64 (`*-setup.exe`)  
+- 每次正式版 = **一个 git tag `vX.Y.Z`** + **GitHub Release** + **多平台安装包**  
+  - macOS Apple Silicon (`aarch64` `.dmg`)  
+  - macOS Intel (`x64` `.dmg`)  
+  - Windows x64 安装版 (`*-setup.exe`) + **绿色版** (`*-portable.zip`)  
+  - Linux x64：**AppImage** + **.deb**（Debian/Ubuntu 系）+ **.rpm**（Fedora/RHEL 系）
 - Release 正文**必须**包含：  
   1. 下载对照表  
   2. **该版本更新内容列表**（来自 `CHANGELOG.md` 对应章节）  
@@ -110,7 +111,7 @@ git push origin vX.Y.Z
 | 工作流 | 触发 | 作用 |
 |--------|------|------|
 | `.github/workflows/ci.yml` | push/PR → main | typecheck、test、`build:ui`、mac/win `cargo test` |
-| `.github/workflows/release.yml` | tag `v*` 或手动 | 矩阵打三端包 → 上传到同一 GitHub Release |
+| `.github/workflows/release.yml` | tag `v*` 或手动 | 矩阵：mac×2 + win（setup+portable）+ linux（AppImage/deb/rpm）→ 同一 Release |
 
 Release job 关键：
 
@@ -141,9 +142,17 @@ open /Applications/Grok.app
 
 ## Windows 说明
 
+- **安装版** NSIS + **绿色版** zip（解压即用）均上传到同一 Release。  
 - SmartScreen 可能提示未知发布者 →「更多信息」→「仍要运行」。  
 - 需 **WebView2**（Win10/11 多已预装）。  
 - 真 Agent 需本机 **Grok Build CLI**（`grok.exe`）。
+
+## Linux 说明
+
+- **AppImage**：通用桌面；`chmod +x` 后运行。  
+- **.deb**：Ubuntu / Debian / Mint / Pop!_OS 等。  
+- **.rpm**：Fedora / RHEL / openSUSE 等。  
+- CI 使用 `ubuntu-22.04` + `rpm` 工具链打出三种格式。
 
 ## 本地交叉编译（可选，不替代 CI）
 
@@ -159,8 +168,8 @@ pnpm build:win   # tauri + cargo-xwin + makensis
 
 ## 发版后检查清单
 
-- [ ] Actions `release` 三个 job 全绿（macOS-ARM64 / macOS-x64 / Windows-x64）  
-- [ ] GitHub Release 页有三个平台资产  
+- [ ] Actions `release` 四个 job 全绿（macOS-ARM64 / macOS-x64 / Windows-x64 / Linux-x64）  
+- [ ] GitHub Release 页含：两 dmg、setup.exe、portable.zip、AppImage、deb、rpm  
 - [ ] Release body 含更新列表 + macOS `xattr` + Windows 说明  
 - [ ] README 下载链接指向 Releases（相对路径已写）  
 - [ ] 版本号与 tag 一致  

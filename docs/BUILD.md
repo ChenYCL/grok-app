@@ -2,12 +2,12 @@
 
 支持平台：
 
-| 平台 | Triple | 本地构建 | CI Release |
-|------|--------|----------|------------|
-| macOS Apple Silicon | `aarch64-apple-darwin` | ✅ | ✅ `macos-latest` |
-| macOS Intel | `x86_64-apple-darwin` | ✅（在 Apple Silicon 上交叉） | ✅ `macos-latest` + target |
-| Windows x64 | `x86_64-pc-windows-msvc` | ✅ 本机 Windows，或 **macOS/Linux 经 cargo-xwin** | ✅ `windows-latest` |
-| Linux x64 | `x86_64-unknown-linux-gnu` | ✅ 本机 Linux（AppImage / deb） | ✅ `ubuntu-22.04` |
+| 平台 | Triple | 本地构建 | CI Release 产物 |
+|------|--------|----------|-----------------|
+| macOS Apple Silicon | `aarch64-apple-darwin` | ✅ | `.dmg` |
+| macOS Intel | `x86_64-apple-darwin` | ✅（在 Apple Silicon 上交叉） | `.dmg` |
+| Windows x64 | `x86_64-pc-windows-msvc` | ✅ 本机 Windows，或 **macOS/Linux 经 cargo-xwin** | NSIS `*-setup.exe` + **绿色版** `*-portable.zip` |
+| Linux x64 | `x86_64-unknown-linux-gnu` | ✅ 本机 Linux | **AppImage** + **.deb** + **.rpm** |
 
 > macOS / Linux 交叉打 Windows 安装包使用 Tauri 官方 runner：`cargo-xwin` + `makensis`（NSIS）。  
 > 见 [Build Windows apps on Linux and macOS](https://v2.tauri.app/distribute/windows-installer/#build-windows-apps-on-linux-and-macos)。
@@ -68,7 +68,10 @@ pnpm build:linux
 ./scripts/build-local.sh linux
 ```
 
-产物：`src-tauri/target/x86_64-unknown-linux-gnu/release/bundle/`（AppImage / deb 等，取决于 Tauri bundle targets）。
+产物：`src-tauri/target/x86_64-unknown-linux-gnu/release/bundle/`  
+（`appimage/`、`deb/`、`rpm/` —— 对应 Ubuntu/Debian 系与 Fedora/RHEL 系）。
+
+构建 RPM 需要 `rpm` 工具：`sudo apt install rpm`（Debian/Ubuntu CI 已装）。
 
 ## 2. 本地构建命令
 
@@ -98,10 +101,12 @@ pnpm exec tauri build --runner cargo-xwin --target x86_64-pc-windows-msvc
 
 ```
 src-tauri/target/<triple>/release/bundle/
-  macos/   # .app / .dmg  （产品名 Grok）
-  nsis/    # Windows installer（*.exe setup）
-  deb/ appimage/  # Linux
-  msi/     # 可选
+  macos/     # .app / .dmg  （产品名 Grok）
+  nsis/      # Windows 安装版（*-setup.exe）
+  deb/       # Debian/Ubuntu .deb
+  rpm/       # Fedora/RHEL .rpm
+  appimage/  # 通用 Linux AppImage
+src-tauri/target/<triple>/release/Grok.exe   # Windows 裸二进制 → CI 打成绿色版 zip
 ```
 
 拷贝测试建议：
@@ -111,6 +116,10 @@ mkdir -p dist-installers
 cp src-tauri/target/aarch64-apple-darwin/release/bundle/dmg/*.dmg dist-installers/
 cp src-tauri/target/x86_64-apple-darwin/release/bundle/dmg/*.dmg dist-installers/
 cp src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/*-setup.exe dist-installers/
+# 绿色版：zip release/Grok.exe
+cp src-tauri/target/x86_64-unknown-linux-gnu/release/bundle/appimage/* dist-installers/ 2>/dev/null || true
+cp src-tauri/target/x86_64-unknown-linux-gnu/release/bundle/deb/* dist-installers/ 2>/dev/null || true
+cp src-tauri/target/x86_64-unknown-linux-gnu/release/bundle/rpm/* dist-installers/ 2>/dev/null || true
 ```
 
 ## 3. GitHub Actions 发布（推荐）
