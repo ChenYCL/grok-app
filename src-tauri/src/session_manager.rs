@@ -162,8 +162,9 @@ fn build_history_bootstrap(app_session_id: &str) -> Option<String> {
 
     let mut body = String::from(
         "[Prior conversation context — this chat continues an existing Grok App session. \
-The agent process was restarted; use the following transcript for continuity. \
-Do not re-greet or re-summarize unless asked.]\n\n",
+The agent process was restarted; use the following transcript for continuity ONLY. \
+Rules: do NOT re-greet; do NOT restate, quote, or re-answer prior assistant turns; \
+do NOT reprint the transcript in your reply; answer ONLY the new user message below.]\n\n",
     );
     let header_len = body.len();
 

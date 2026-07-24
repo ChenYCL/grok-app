@@ -40,6 +40,7 @@ import {
   canSend,
   canStop,
   canType,
+  clearPriorTurnStreaming,
   isSessionBusy,
   preferSessionMessages,
   presentErrorBanner,
@@ -899,6 +900,18 @@ export default function App() {
               if (s.state !== "streaming" && s.state !== "awaiting_permission") {
                 setRetryStatus(null);
                 setTurnStartedAt(null);
+                // Ensure no assistant is left with streaming=true after the turn
+                // (missed done chunk) — otherwise the next send can bind to it.
+                setMessages((prev) => {
+                  if (!prev.some((m) => m.streaming)) return prev;
+                  const next = prev.map((m) =>
+                    m.streaming ? { ...m, streaming: false } : m,
+                  );
+                  if (s.sessionId) {
+                    messagesBySessionRef.current.set(s.sessionId, next);
+                  }
+                  return next;
+                });
               } else if (
                 (s.state === "streaming" || s.state === "awaiting_permission") &&
                 s.sessionId === viewingSessionIdRef.current
@@ -2247,10 +2260,13 @@ export default function App() {
     });
     // Optimistic: user bubble + chat thinking; connection stays silent (no top-bar chip)
     // Write cache immediately so a fast session switch does not drop the user turn.
+    // Clear any stuck streaming flags on prior turns so the next stream cannot
+    // append onto an old assistant (duplicate-history reports).
     const nowIso = new Date().toISOString();
     setMessages((m) => {
+      const cleaned = clearPriorTurnStreaming(m);
       const next: ChatMessage[] = [
-        ...m,
+        ...cleaned,
         {
           id: `u-${Date.now()}`,
           role: "user",

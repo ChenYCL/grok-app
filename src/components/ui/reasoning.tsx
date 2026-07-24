@@ -22,6 +22,11 @@ import {
 } from "@/components/ui/collapsible";
 import { IconCheck, IconChevronDown } from "@/components/icons";
 import { cn } from "@/lib/utils";
+import {
+  loadThinkingExpandPref,
+  saveThinkingExpandPref,
+  thinkingDefaultOpenWhenDone,
+} from "@/lib/thinkingPref";
 
 interface ReasoningContextValue {
   isStreaming: boolean;
@@ -96,6 +101,11 @@ export const Reasoning = memo(function Reasoning({
       isOpen &&
       !hasAutoClosed
     ) {
+      // Honor user preference: keep-open skips auto-collapse after stream ends.
+      if (thinkingDefaultOpenWhenDone(loadThinkingExpandPref())) {
+        setHasAutoClosed(true);
+        return;
+      }
       const t = window.setTimeout(() => {
         setIsOpen(false);
         setHasAutoClosed(true);
@@ -109,12 +119,23 @@ export const Reasoning = memo(function Reasoning({
     [duration, isOpen, isStreaming, setIsOpen],
   );
 
+  const handleOpenChange = useCallback(
+    (next: boolean) => {
+      setIsOpen(next);
+      // Persist expand preference when user toggles a finished block
+      if (!isStreaming && hasEverStreamedRef.current) {
+        saveThinkingExpandPref(next ? "keep-open" : "auto-collapse");
+      }
+    },
+    [setIsOpen, isStreaming],
+  );
+
   return (
     <ReasoningContext.Provider value={value}>
       <Collapsible
         className={cn("not-prose w-full", className)}
         open={isOpen}
-        onOpenChange={setIsOpen}
+        onOpenChange={handleOpenChange}
         {...props}
       >
         {children}

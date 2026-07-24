@@ -465,7 +465,13 @@ pub fn save_messages(session_id: &str, messages: &[ChatMessageStored]) -> Result
 
 pub fn append_message(session_id: &str, msg: ChatMessageStored) -> Result<(), String> {
     let mut msgs = load_messages(session_id);
-    msgs.push(msg);
+    // Upsert by id — never double-insert the same host message (stream complete +
+    // reconnect edge cases). Keeps journal length honest for multi-turn chats.
+    if let Some(slot) = msgs.iter_mut().find(|m| m.id == msg.id) {
+        *slot = msg;
+    } else {
+        msgs.push(msg);
+    }
     save_messages(session_id, &msgs)
 }
 

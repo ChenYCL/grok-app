@@ -10,7 +10,9 @@ export type AgentErrorCode =
   | "CLI_NOT_FOUND"
   | "AUTH_FAILED"
   | "NETWORK_PROVIDER"
-  | "AGENT_CRASHED";
+  | "AGENT_CRASHED"
+  | "QUOTA_EXCEEDED"
+  | "CONNECT_FAILED";
 
 export interface AgentError {
   code: AgentErrorCode;
@@ -591,11 +593,85 @@ export function applyGeneratedImage(
   return next;
 }
 
+/**
+ * Index of the last user message — stream chunks only bind to the current turn
+ * (after this index). Prevents a late/orphan chunk from appending onto an older
+ * assistant and looking like "history re-appeared after the new question".
+ */
+export function lastUserMessageIndex(messages: ChatMessage[]): number {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    if (messages[i]?.role === "user") return i;
+  }
+  return -1;
+}
+
+/**
+ * Drop stuck streaming flags on assistants from previous turns (before last user).
+ * Call when starting a new send so the next stream never binds to old bubbles.
+ */
+export function clearPriorTurnStreaming(messages: ChatMessage[]): ChatMessage[] {
+  const lastUser = lastUserMessageIndex(messages);
+  let changed = false;
+  const next = messages.map((m, i) => {
+    if (m.role !== "assistant" || !m.streaming) return m;
+    // Keep streaming only on the active turn (after last user).
+    if (i > lastUser) return m;
+    changed = true;
+    return { ...m, streaming: false };
+  });
+  return changed ? next : messages;
+}
+
+/**
+ * Remove empty optimistic assistant placeholders left behind when a real stream
+ * message was created separately (id mismatch). Keeps at most one streaming
+ * assistant after the last user message.
+ */
+export function dedupeCurrentTurnAssistants(
+  messages: ChatMessage[],
+): ChatMessage[] {
+  const lastUser = lastUserMessageIndex(messages);
+  if (lastUser < 0) return messages;
+  const turn = messages.slice(lastUser + 1);
+  const assistants = turn
+    .map((m, i) => ({ m, i: lastUser + 1 + i }))
+    .filter(({ m }) => m.role === "assistant" && !m.isError);
+  if (assistants.length <= 1) return messages;
+
+  // Prefer the one with content/thought or host uuid; drop empty pending shells.
+  const keep = [...assistants].sort((a, b) => {
+    const score = (x: ChatMessage) =>
+      (x.content?.trim() ? 4 : 0) +
+      (x.thought?.trim() ? 2 : 0) +
+      (x.streaming ? 1 : 0) +
+      (!x.id.startsWith("a-pending-") && !x.id.startsWith("t-") ? 1 : 0);
+    return score(b.m) - score(a.m);
+  })[0]!;
+
+  const dropIds = new Set(
+    assistants.filter((a) => a.i !== keep.i).map((a) => a.m.id),
+  );
+  // Only drop empties that look like optimistic leftovers
+  const dropEmpty = new Set(
+    assistants
+      .filter(
+        (a) =>
+          a.i !== keep.i &&
+          !a.m.content?.trim() &&
+          !a.m.thought?.trim() &&
+          (a.m.id.startsWith("a-pending-") || a.m.id.startsWith("t-")),
+      )
+      .map((a) => a.m.id),
+  );
+  if (!dropEmpty.size) return messages;
+  return messages.filter((m) => !dropEmpty.has(m.id) || dropIds.size === 0);
+}
+
 export function applyStreamChunk(
   messages: ChatMessage[],
   chunk: StreamPayload,
 ): ChatMessage[] {
-  // done-only with empty text: just clear streaming flag
+  // done-only with empty text: clear all streaming flags so the next send is clean
   if (chunk.done && !chunk.text) {
     return messages.map((m) =>
       m.role === "assistant" && m.streaming ? { ...m, streaming: false } : m,
@@ -604,13 +680,20 @@ export function applyStreamChunk(
 
   if (chunk.kind === "thought") {
     if (!chunk.text) return messages;
-    const idx = findStreamingAssistant(messages, chunk.messageId);
+    const idx = findCurrentTurnStreamingAssistant(messages, chunk.messageId);
     if (idx != null) {
       const next = messages.slice();
       const prev = next[idx]!;
       next[idx] = {
         ...prev,
+        // Adopt host id when optimistic pending was used
+        id:
+          chunk.messageId &&
+          (prev.id.startsWith("a-pending-") || prev.id.startsWith("t-"))
+            ? chunk.messageId
+            : prev.id,
         thought: (prev.thought ?? "") + chunk.text,
+        streaming: true,
       };
       return next;
     }
@@ -632,9 +715,17 @@ export function applyStreamChunk(
   let idx = chunk.messageId
     ? messages.findIndex((m) => m.id === chunk.messageId)
     : -1;
+  // Host id may not match optimistic pending — bind only within current turn.
   if (idx < 0) {
-    const fallback = findStreamingAssistant(messages, undefined);
+    const fallback = findCurrentTurnStreamingAssistant(messages, undefined);
     idx = fallback ?? -1;
+  } else {
+    // Refuse to append onto an assistant from a previous turn (stale id reuse).
+    const lastUser = lastUserMessageIndex(messages);
+    if (idx <= lastUser) {
+      const fallback = findCurrentTurnStreamingAssistant(messages, undefined);
+      idx = fallback ?? -1;
+    }
   }
 
   if (idx < 0) {
@@ -654,26 +745,35 @@ export function applyStreamChunk(
   const prev = next[idx]!;
   next[idx] = {
     ...prev,
-    // Keep first assigned id stable for subsequent chunks
-    id: prev.id || chunk.messageId || prev.id,
+    // Prefer host messageId so journal reload dedupes cleanly
+    id:
+      chunk.messageId &&
+      (prev.id.startsWith("a-pending-") || prev.id.startsWith("t-") || !prev.id)
+        ? chunk.messageId
+        : prev.id || chunk.messageId || prev.id,
     content: prev.content + (chunk.text || ""),
     streaming: !chunk.done,
   };
   return next;
 }
 
-function findStreamingAssistant(
+/**
+ * Find the streaming assistant for the *current* turn only (after last user).
+ */
+function findCurrentTurnStreamingAssistant(
   messages: ChatMessage[],
   messageId: string | undefined,
 ): number | undefined {
+  const lastUser = lastUserMessageIndex(messages);
   if (messageId) {
     const byId = messages.findIndex((m) => m.id === messageId);
-    if (byId >= 0) return byId;
+    if (byId > lastUser) return byId;
   }
-  for (let i = messages.length - 1; i >= 0; i--) {
+  for (let i = messages.length - 1; i > lastUser; i--) {
     const m = messages[i]!;
     if (m.role === "assistant" && m.streaming) return i;
   }
+  // No current-turn streaming bubble — do NOT fall back to older turns.
   return undefined;
 }
 
@@ -682,6 +782,8 @@ const KNOWN_ERROR_CODES: AgentErrorCode[] = [
   "AUTH_FAILED",
   "NETWORK_PROVIDER",
   "AGENT_CRASHED",
+  "QUOTA_EXCEEDED",
+  "CONNECT_FAILED",
 ];
 
 export function isAgentErrorCode(code: string | undefined | null): code is AgentErrorCode {
@@ -691,17 +793,26 @@ export function isAgentErrorCode(code: string | undefined | null): code is Agent
 export function errorCopy(code: AgentErrorCode, locale: "zh" | "en" = "zh"): string {
   const zh: Record<AgentErrorCode, string> = {
     CLI_NOT_FOUND: "未找到 Grok Build CLI。请安装或在设置中指定路径。",
-    AUTH_FAILED: "鉴权失败。请重新登录、更换 Key 或导入配置。",
+    AUTH_FAILED: "鉴权失败。请重新登录、更换 Key，或改用设置里的自定义中转。",
     NETWORK_PROVIDER:
       "网络或模型服务异常。请检查网络、额度，或切换模型/渠道后重试。",
     AGENT_CRASHED: "Agent 进程异常退出。可尝试重新连接。",
+    QUOTA_EXCEEDED:
+      "额度不足或订阅已限流。请到 Grok 账户查看用量，或切换模型/等待重置。",
+    CONNECT_FAILED:
+      "无法连接本会话的 Agent。请点重新连接；确认 CLI 已登录或中转配置正确。",
   };
   const en: Record<AgentErrorCode, string> = {
     CLI_NOT_FOUND: "Grok Build CLI not found. Install or set path in Settings.",
-    AUTH_FAILED: "Authentication failed. Re-login, change key, or import config.",
+    AUTH_FAILED:
+      "Authentication failed. Re-login, change key, or use a custom provider in Settings.",
     NETWORK_PROVIDER:
       "Network or model provider error. Check connection, quota, or switch model/provider, then retry.",
     AGENT_CRASHED: "Agent process crashed. Try reconnect.",
+    QUOTA_EXCEEDED:
+      "Quota exceeded or rate-limited. Check Grok usage, switch model, or wait for reset.",
+    CONNECT_FAILED:
+      "Could not connect the agent for this session. Reconnect; confirm CLI login or custom provider.",
   };
   return (locale === "en" ? en : zh)[code];
 }
@@ -720,10 +831,10 @@ export function agentDisconnectedCopy(locale: "zh" | "en" = "zh"): string {
 }
 
 const AGENT_ERROR_CODE_RE =
-  /^(CLI_NOT_FOUND|AUTH_FAILED|NETWORK_PROVIDER|AGENT_CRASHED)(?::\s*|\s+)([\s\S]*)$/;
+  /^(CLI_NOT_FOUND|AUTH_FAILED|NETWORK_PROVIDER|AGENT_CRASHED|QUOTA_EXCEEDED|CONNECT_FAILED)(?::\s*|\s+)([\s\S]*)$/;
 
 const MARKDOWN_CODE_RE =
-  /^\*\*(CLI_NOT_FOUND|AUTH_FAILED|NETWORK_PROVIDER|AGENT_CRASHED)\*\*(?:\s*[\r\n]+([\s\S]*))?$/;
+  /^\*\*(CLI_NOT_FOUND|AUTH_FAILED|NETWORK_PROVIDER|AGENT_CRASHED|QUOTA_EXCEEDED|CONNECT_FAILED)\*\*(?:\s*[\r\n]+([\s\S]*))?$/;
 
 /** Strip ANSI SGR sequences from CLI/MCP stderr dumps. */
 export function stripAnsi(text: string): string {
@@ -778,6 +889,31 @@ export function formatTurnErrorBody(
   }
   if (rest === "agent_disconnected" || /rpc channel closed|transport channel closed/i.test(lower)) {
     return agentDisconnectedCopy(locale);
+  }
+
+  // Infer codes from common agent/host phrases when payload lacks a code.
+  if (!code) {
+    if (
+      /could not connect the agent|edit aborted|no active session|acp client missing|connect failed/i.test(
+        lower,
+      )
+    ) {
+      code = "CONNECT_FAILED";
+    } else if (
+      /quota|rate.?limit|429|insufficient.?credit|usage.?limit|out of credits/i.test(
+        lower,
+      )
+    ) {
+      code = "QUOTA_EXCEEDED";
+    } else if (
+      /not logged|unauthor|401|auth failed|access denied|failed to generate authentication/i.test(
+        lower,
+      )
+    ) {
+      code = "AUTH_FAILED";
+    } else if (/cli not found|command not found|grok.*not found/i.test(lower)) {
+      code = "CLI_NOT_FOUND";
+    }
   }
 
   if (code) {

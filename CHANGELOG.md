@@ -16,6 +16,8 @@ See `docs/llm-wiki/release.md`.
 - Composer **file picker** (+ menu → Files / Folder) and **clipboard paste** for images/files (screenshot → temp path → `@path` attach).
 - Open-source **maintenance playbook** (`docs/llm-wiki/maintain.md`): triage labels, PR review, community intake, ship loop.
 - **Single-instance** plugin: second launch focuses the existing window (macOS Dock multi-open).
+- Thinking/reasoning **auto-collapse when done** (default); remembers last expand/collapse choice.
+- Error codes **QUOTA_EXCEEDED** / **CONNECT_FAILED** with clearer user-facing copy.
 
 ### Fixed
 
@@ -23,6 +25,9 @@ See `docs/llm-wiki/release.md`.
 - Session auto-title LLM prompt follows **app locale** (EN/ZH) — community PR #1.
 - Composer stays **draftable while streaming** so a paused stream no longer feels like a hard lock.
 - macOS titlebar: larger traffic-light safe inset; panel toggle stays non-drag and icon-visible.
+- **Same-session history duplication**: stream chunks only bind to the current turn; clear stuck streaming flags on send/turn end; journal upsert by message id; stronger history-bootstrap anti-echo prompt.
+- Login failure when xAI returns Access denied / auth-code generation failure — actionable message (network / device code / custom provider).
+- Friendlier mapping for “Could not connect the agent” and quota/rate-limit phrases.
 
 ### Community
 

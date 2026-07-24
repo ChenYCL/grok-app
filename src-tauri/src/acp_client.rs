@@ -1286,37 +1286,39 @@ fn format_jsonrpc_error(err: &Value) -> String {
 
 fn classify_rpc_error(e: &str) -> AgentError {
     let lower = e.to_lowercase();
+    if lower.contains("quota")
+        || lower.contains("rate limit")
+        || lower.contains("rate_limit")
+        || lower.contains("429")
+        || lower.contains("not entitled")
+        || lower.contains("insufficient credit")
+        || lower.contains("out of credits")
+        || lower.contains("usage limit")
+    {
+        return AgentError::new(AgentErrorCode::QuotaExceeded, e);
+    }
+    if lower.contains("could not connect")
+        || lower.contains("edit aborted")
+        || lower.contains("no active session")
+        || lower.contains("acp client missing")
+        || lower.contains("no session")
+    {
+        return AgentError::new(AgentErrorCode::ConnectFailed, e);
+    }
     if lower.contains("401")
         || lower.contains("auth")
         || lower.contains("unauthor")
         || lower.contains("login")
-        || lower.contains("subscription")
-        || lower.contains("not entitled")
-        || lower.contains("quota")
-        || lower.contains("billing")
-        || lower.contains("payment")
+        || lower.contains("access denied")
+        || lower.contains("authentication code")
     {
-        // Auth / subscription entitlement failures (official SuperGrok path)
-        if lower.contains("subscription")
-            || lower.contains("not entitled")
-            || lower.contains("quota")
-            || lower.contains("billing")
-            || lower.contains("payment")
-            || lower.contains("401")
-            || lower.contains("unauthor")
-        {
-            // Prefer AUTH for true auth; NETWORK for quota/billing when clearly provider-side
-            if lower.contains("401")
-                || lower.contains("unauthor")
-                || lower.contains("login")
-                || lower.contains("auth")
-            {
-                return AgentError::new(AgentErrorCode::AuthFailed, e);
-            }
-            return AgentError::new(AgentErrorCode::NetworkProvider, e);
-        }
-        AgentError::new(AgentErrorCode::AuthFailed, e)
-    } else if lower.contains("dns")
+        return AgentError::new(AgentErrorCode::AuthFailed, e);
+    }
+    if lower.contains("subscription") || lower.contains("billing") || lower.contains("payment") {
+        // Subscription/billing without explicit quota → treat as auth/entitlement.
+        return AgentError::new(AgentErrorCode::AuthFailed, e);
+    }
+    if lower.contains("dns")
         || lower.contains("timeout")
         || lower.contains("network")
         || lower.contains("5xx")

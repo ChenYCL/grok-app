@@ -8,6 +8,7 @@ import {
   canSend,
   canStop,
   canType,
+  clearPriorTurnStreaming,
   errorCopy,
   formatTurnErrorBody,
   isSessionBusy,
@@ -121,11 +122,66 @@ describe("session projection", () => {
     expect(messages.find((m) => m.role === "assistant")!.content).toBe("直接干活");
   });
 
-  it("errorCopy distinguishes four codes", () => {
+  it("stream chunks never append onto prior-turn assistants", () => {
+    let messages: ChatMessage[] = [
+      { id: "u1", role: "user", content: "first" },
+      {
+        id: "a1",
+        role: "assistant",
+        content: "old answer",
+        streaming: true, // stuck flag from missed done
+      },
+      { id: "u2", role: "user", content: "second" },
+      { id: "a-pending-1", role: "assistant", content: "", streaming: true },
+    ];
+    messages = applyStreamChunk(messages, {
+      sessionId: "s",
+      messageId: "a2",
+      text: "new answer",
+      done: false,
+      kind: "assistant",
+    });
+    expect(messages.find((m) => m.id === "a1")!.content).toBe("old answer");
+    const current = messages.find(
+      (m) => m.id === "a2" || m.id === "a-pending-1",
+    )!;
+    expect(current.content).toBe("new answer");
+    expect(current.id).toBe("a2"); // adopted host id
+  });
+
+  it("clearPriorTurnStreaming only clears assistants before last user", () => {
+    const msgs: ChatMessage[] = [
+      { id: "a0", role: "assistant", content: "x", streaming: true },
+      { id: "u1", role: "user", content: "hi" },
+      { id: "a1", role: "assistant", content: "", streaming: true },
+    ];
+    const next = clearPriorTurnStreaming(msgs);
+    expect(next[0]!.streaming).toBe(false);
+    expect(next[2]!.streaming).toBe(true);
+  });
+
+  it("errorCopy distinguishes six codes", () => {
     expect(errorCopy("CLI_NOT_FOUND")).toMatch(/CLI/i);
     expect(errorCopy("AUTH_FAILED")).toMatch(/鉴权|Auth/i);
     expect(errorCopy("NETWORK_PROVIDER")).toMatch(/网络|Network|模型/i);
     expect(errorCopy("AGENT_CRASHED")).toMatch(/崩溃|crash|进程/i);
+    expect(errorCopy("QUOTA_EXCEEDED")).toMatch(/额度|Quota/i);
+    expect(errorCopy("CONNECT_FAILED")).toMatch(/连接|connect/i);
+  });
+
+  it("formatTurnErrorBody maps connect / quota phrases", () => {
+    expect(
+      formatTurnErrorBody(
+        {
+          content:
+            "Could not connect the agent for this session; edit aborted.",
+        },
+        "en",
+      ),
+    ).toMatch(/connect/i);
+    expect(
+      formatTurnErrorBody({ content: "rate limit exceeded (429)" }, "en"),
+    ).toMatch(/quota|rate/i);
   });
 
   it("presentErrorBanner shows friendly copy without MCP dumps", () => {

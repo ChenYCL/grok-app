@@ -1,5 +1,7 @@
 /**
  * Lobe Thinking — Accordion + shinyText (1:1 of lobe-chat Thinking).
+ * Auto-open while streaming; when done, respect user expand preference
+ * (default: collapse so the answer stays the focus).
  */
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
@@ -7,6 +9,12 @@ import { IconChevronDown } from "@/components/icons";
 import { cn } from "@/lib/utils";
 import { MarkdownChat } from "./MarkdownChat";
 import type { Locale } from "@/i18n";
+import {
+  loadThinkingExpandPref,
+  saveThinkingExpandPref,
+  thinkingDefaultOpenWhenDone,
+  type ThinkingExpandPref,
+} from "@/lib/thinkingPref";
 
 export function Thinking({
   content,
@@ -16,6 +24,8 @@ export function Thinking({
   doneLabel,
   thoughtForLabel,
   locale = "zh",
+  expandPref,
+  onExpandPrefChange,
 }: {
   content?: string | ReactNode;
   thinking?: boolean;
@@ -26,20 +36,32 @@ export function Thinking({
   /** e.g. "Thought for {n}s" — n is seconds with 1 decimal */
   thoughtForLabel: (seconds: string) => string;
   locale?: Locale;
+  /** Override stored preference (tests / parent). */
+  expandPref?: ThinkingExpandPref;
+  onExpandPrefChange?: (pref: ThinkingExpandPref) => void;
 }) {
-  const [open, setOpen] = useState(!!thinking);
+  const pref = expandPref ?? loadThinkingExpandPref();
+  const [open, setOpen] = useState(() =>
+    thinking ? true : thinkingDefaultOpenWhenDone(pref),
+  );
   const startRef = useRef<number | null>(null);
   const [localDuration, setLocalDuration] = useState<number | undefined>(durationMs);
+  const userToggled = useRef(false);
 
   useEffect(() => {
     if (thinking) {
       setOpen(true);
+      userToggled.current = false;
       if (startRef.current == null) startRef.current = Date.now();
     } else if (startRef.current != null) {
       setLocalDuration(Date.now() - startRef.current);
       startRef.current = null;
+      // Collapse when done unless user prefers keep-open or just toggled open.
+      if (!userToggled.current) {
+        setOpen(thinkingDefaultOpenWhenDone(pref));
+      }
     }
-  }, [thinking]);
+  }, [thinking, pref]);
 
   useEffect(() => {
     if (durationMs != null) setLocalDuration(durationMs);
@@ -54,13 +76,27 @@ export function Thinking({
     (typeof content === "string" && content.trim().length > 0) ||
     (content != null && typeof content !== "string");
 
+  const toggle = () => {
+    setOpen((v) => {
+      const next = !v;
+      userToggled.current = true;
+      // Remember: open after finish → keep-open; close → auto-collapse
+      if (!thinking) {
+        const p: ThinkingExpandPref = next ? "keep-open" : "auto-collapse";
+        saveThinkingExpandPref(p);
+        onExpandPrefChange?.(p);
+      }
+      return next;
+    });
+  };
+
   return (
     <div className="lobe-chat-thinking">
       <button
         type="button"
         className="lobe-chat-thinking__trigger"
         aria-expanded={open}
-        onClick={() => setOpen((v) => !v)}
+        onClick={toggle}
       >
         <span
           className={cn(

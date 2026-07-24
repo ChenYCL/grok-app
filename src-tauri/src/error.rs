@@ -1,9 +1,8 @@
-//! Host-side error taxonomy (P0 four codes). UI must not conflate these.
-//! Full i18n copy is deferred; codes are stable for PR3+.
+//! Host-side error taxonomy. UI maps codes via `src/lib/session.ts` errorCopy.
 
 use serde::{Deserialize, Serialize};
 
-/// Stable error codes for agent / runtime failures (AUTOPLAN §5.3).
+/// Stable error codes for agent / runtime failures.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum AgentErrorCode {
@@ -15,6 +14,10 @@ pub enum AgentErrorCode {
     NetworkProvider,
     /// Process died or protocol crashed.
     AgentCrashed,
+    /// Quota / rate limit / insufficient credits.
+    QuotaExceeded,
+    /// Could not attach agent to this session (no ACP / connect failed).
+    ConnectFailed,
 }
 
 impl AgentErrorCode {
@@ -24,6 +27,8 @@ impl AgentErrorCode {
             Self::AuthFailed => "AUTH_FAILED",
             Self::NetworkProvider => "NETWORK_PROVIDER",
             Self::AgentCrashed => "AGENT_CRASHED",
+            Self::QuotaExceeded => "QUOTA_EXCEEDED",
+            Self::ConnectFailed => "CONNECT_FAILED",
         }
     }
 }
@@ -54,12 +59,16 @@ mod tests {
             AgentErrorCode::AuthFailed,
             AgentErrorCode::NetworkProvider,
             AgentErrorCode::AgentCrashed,
+            AgentErrorCode::QuotaExceeded,
+            AgentErrorCode::ConnectFailed,
         ];
         let expected = [
             "CLI_NOT_FOUND",
             "AUTH_FAILED",
             "NETWORK_PROVIDER",
             "AGENT_CRASHED",
+            "QUOTA_EXCEEDED",
+            "CONNECT_FAILED",
         ];
         for (code, name) in codes.into_iter().zip(expected) {
             assert_eq!(code.as_str(), name);

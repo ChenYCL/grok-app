@@ -1340,9 +1340,19 @@ pub async fn account_login(method: &str, manual_cli: Option<&str>) -> LoginResul
         } else {
             detail
         };
-        format!("Login did not complete: {detail}")
+        let lower = combined.to_lowercase();
+        if lower.contains("access denied")
+            || lower.contains("failed to generate authentication")
+            || lower.contains("authentication code")
+        {
+            "Login failed: xAI could not generate an authentication code (Access denied). \
+Try another network/VPN, use device-code login, or configure a custom provider in Settings."
+                .into()
+        } else {
+            format!("Login did not complete: {detail}")
+        }
     } else {
-        "Login process finished but no credentials found. Try again or use device code.".into()
+        "Login process finished but no credentials found. Try device-code login, switch network, or use a custom provider in Settings.".into()
     };
 
     LoginResult {
