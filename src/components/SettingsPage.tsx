@@ -592,6 +592,7 @@ export function SettingsPage({
             onRefresh={onAccountRefresh}
             onManageUsage={onAccountManageUsage}
             onSubscribe={onAccountSubscribe}
+            // Multi-account / import UI gated in AccountPanel (SHOW_ACCOUNT_EXTRAS).
             onSaveAccount={onSaveAccount}
             onSwitchAccount={onSwitchAccount}
             onRemoveAccount={onRemoveAccount}

@@ -1,9 +1,10 @@
 /**
  * Account panel — simplified layout:
  * 1) One top card: identity + plan + quota + actions
- * 2) Multi-account switcher + import chat
- * 3) Heatmap
- * 4) Fixed-height, internally scrolling call logs
+ * 2) Heatmap
+ * 3) Fixed-height, internally scrolling call logs
+ *
+ * Multi-account + import-chat UI is gated off (`SHOW_ACCOUNT_EXTRAS`) until product opens them.
  */
 
 import type { AccountStatus, SavedAccount } from "@/lib/api";
@@ -18,6 +19,9 @@ import {
 } from "@/lib/accountUi";
 import { Heatmap } from "@/components/Heatmap";
 import { Tip } from "@/components/ui/tooltip";
+
+/** Flip to true when multi-account switcher / import chat should ship publicly. */
+const SHOW_ACCOUNT_EXTRAS = false;
 
 export interface AccountPanelLabels {
   signedIn: string;
@@ -238,86 +242,89 @@ export function AccountPanel({
           </div>
         ) : null}
 
-        {/* Multi-account switcher */}
-        <div className="account-profiles">
-          <div className="account-profiles__head">
-            <div>
-              <div className="account-profiles__title">{labels.profiles}</div>
-              <div className="account-profiles__hint">{labels.profilesHint}</div>
+        {/* Multi-account + import: hidden until SHOW_ACCOUNT_EXTRAS */}
+        {SHOW_ACCOUNT_EXTRAS ? (
+          <>
+            <div className="account-profiles">
+              <div className="account-profiles__head">
+                <div>
+                  <div className="account-profiles__title">{labels.profiles}</div>
+                  <div className="account-profiles__hint">{labels.profilesHint}</div>
+                </div>
+                {signedIn && onSaveAccount ? (
+                  <button
+                    type="button"
+                    className="btn btn--ghost btn--sm"
+                    disabled={busy}
+                    onClick={onSaveAccount}
+                  >
+                    {labels.profileSave}
+                  </button>
+                ) : null}
+              </div>
+              {savedAccounts.length === 0 ? (
+                <div className="account-profiles__empty">{labels.profilesEmpty}</div>
+              ) : (
+                <ul className="account-profiles__list">
+                  {savedAccounts.map((a) => {
+                    const active = activeAccountId === a.id;
+                    return (
+                      <li key={a.id} className="account-profiles__row">
+                        <div className="account-profiles__meta">
+                          <span className="account-profiles__label">{a.label}</span>
+                          {active ? (
+                            <span className="account-badge account-badge--muted">
+                              {labels.profileActive}
+                            </span>
+                          ) : null}
+                          {a.email && a.email !== a.label ? (
+                            <span className="account-profiles__email">{a.email}</span>
+                          ) : null}
+                        </div>
+                        <div className="account-profiles__actions">
+                          {!active && onSwitchAccount ? (
+                            <button
+                              type="button"
+                              className="btn btn--ghost btn--sm"
+                              disabled={busy}
+                              onClick={() => onSwitchAccount(a.id)}
+                            >
+                              {labels.profileSwitch}
+                            </button>
+                          ) : null}
+                          {onRemoveAccount ? (
+                            <button
+                              type="button"
+                              className="btn btn--ghost btn--sm"
+                              disabled={busy}
+                              onClick={() => onRemoveAccount(a.id)}
+                            >
+                              {labels.profileRemove}
+                            </button>
+                          ) : null}
+                        </div>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
             </div>
-            {signedIn && onSaveAccount ? (
-              <button
-                type="button"
-                className="btn btn--ghost btn--sm"
-                disabled={busy}
-                onClick={onSaveAccount}
-              >
-                {labels.profileSave}
-              </button>
-            ) : null}
-          </div>
-          {savedAccounts.length === 0 ? (
-            <div className="account-profiles__empty">{labels.profilesEmpty}</div>
-          ) : (
-            <ul className="account-profiles__list">
-              {savedAccounts.map((a) => {
-                const active = activeAccountId === a.id;
-                return (
-                  <li key={a.id} className="account-profiles__row">
-                    <div className="account-profiles__meta">
-                      <span className="account-profiles__label">{a.label}</span>
-                      {active ? (
-                        <span className="account-badge account-badge--muted">
-                          {labels.profileActive}
-                        </span>
-                      ) : null}
-                      {a.email && a.email !== a.label ? (
-                        <span className="account-profiles__email">{a.email}</span>
-                      ) : null}
-                    </div>
-                    <div className="account-profiles__actions">
-                      {!active && onSwitchAccount ? (
-                        <button
-                          type="button"
-                          className="btn btn--ghost btn--sm"
-                          disabled={busy}
-                          onClick={() => onSwitchAccount(a.id)}
-                        >
-                          {labels.profileSwitch}
-                        </button>
-                      ) : null}
-                      {onRemoveAccount ? (
-                        <button
-                          type="button"
-                          className="btn btn--ghost btn--sm"
-                          disabled={busy}
-                          onClick={() => onRemoveAccount(a.id)}
-                        >
-                          {labels.profileRemove}
-                        </button>
-                      ) : null}
-                    </div>
-                  </li>
-                );
-              })}
-            </ul>
-          )}
-        </div>
 
-        {/* Import conversation (web history alternative) */}
-        {onImportChat ? (
-          <div className="account-import">
-            <div className="account-import__title">{labels.importChat}</div>
-            <p className="account-import__hint">{labels.importChatHint}</p>
-            <button
-              type="button"
-              className="btn btn--ghost btn--sm"
-              disabled={busy}
-              onClick={onImportChat}
-            >
-              {labels.importChatBtn}
-            </button>
-          </div>
+            {onImportChat ? (
+              <div className="account-import">
+                <div className="account-import__title">{labels.importChat}</div>
+                <p className="account-import__hint">{labels.importChatHint}</p>
+                <button
+                  type="button"
+                  className="btn btn--ghost btn--sm"
+                  disabled={busy}
+                  onClick={onImportChat}
+                >
+                  {labels.importChatBtn}
+                </button>
+              </div>
+            ) : null}
+          </>
         ) : null}
 
         {signedIn ? (
