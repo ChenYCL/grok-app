@@ -738,6 +738,515 @@ pub fn build_session_mcp_servers(project_cwd: Option<&str>) -> Value {
     build_acp_mcp_servers(&defs, &prefs)
 }
 
+// ── Config.toml MCP upsert / remove ──────────────────────────────────────────
+
+/// Validate a config-safe MCP server name (bare TOML table key, no dots).
+pub fn validate_mcp_server_name(name: &str) -> Result<&str, String> {
+    let n = name.trim();
+    if n.is_empty() {
+        return Err("MCP server name required".into());
+    }
+    if n.len() > 64 {
+        return Err("MCP server name too long (max 64)".into());
+    }
+    let mut chars = n.chars();
+    let Some(first) = chars.next() else {
+        return Err("MCP server name required".into());
+    };
+    if !first.is_ascii_alphanumeric() {
+        return Err(
+            "MCP server name must start with a letter or digit".into(),
+        );
+    }
+    if !chars.all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-') {
+        return Err(
+            "MCP server name may only contain letters, digits, _ and -".into(),
+        );
+    }
+    Ok(n)
+}
+
+/// Escape a string for a double-quoted TOML value.
+pub fn toml_quote(s: &str) -> String {
+    let mut out = String::with_capacity(s.len() + 2);
+    out.push('"');
+    for ch in s.chars() {
+        match ch {
+            '\\' => out.push_str("\\\\"),
+            '"' => out.push_str("\\\""),
+            '\n' => out.push_str("\\n"),
+            '\r' => out.push_str("\\r"),
+            '\t' => out.push_str("\\t"),
+            c => out.push(c),
+        }
+    }
+    out.push('"');
+    out
+}
+
+/// Path of the config.toml the App manages for MCP (respects session_data_mode).
+pub fn mcp_agent_config_path(session_data_mode: &str) -> PathBuf {
+    if session_data_mode == "shared" {
+        resolve_agent_grok_home(session_data_mode).join("config.toml")
+    } else {
+        let _ = ensure_app_dirs();
+        agent_config_toml()
+    }
+}
+
+/// Whether a TOML table header is `[mcp_servers.<name>]` or a nested
+/// `[mcp_servers.<name>.…]` table (e.g. `.env`).
+fn is_mcp_server_table(header_inner: &str, name: &str) -> bool {
+    let Some(rest) = header_inner.strip_prefix("mcp_servers.") else {
+        return false;
+    };
+    let rest = rest.trim();
+    rest == name || rest.starts_with(&format!("{name}."))
+}
+
+/// Remove `[mcp_servers.<name>]` and nested tables (e.g. `.env`) from TOML text.
+pub fn remove_mcp_server_from_toml(text: &str, name: &str) -> String {
+    let name = name.trim();
+    if name.is_empty() {
+        return text.to_string();
+    }
+    let mut out: Vec<String> = Vec::new();
+    let mut skipping = false;
+    for line in text.lines() {
+        let trimmed = line.trim();
+        if trimmed.starts_with('[') && trimmed.ends_with(']') {
+            let inner = trimmed[1..trimmed.len() - 1].trim();
+            skipping = is_mcp_server_table(inner, name);
+            if skipping {
+                continue;
+            }
+        }
+        if skipping {
+            continue;
+        }
+        out.push(line.to_string());
+    }
+    let joined = out.join("\n");
+    // Collapse excessive blank lines left by removals.
+    let mut cleaned = String::new();
+    let mut blank_run = 0usize;
+    for line in joined.lines() {
+        if line.trim().is_empty() {
+            blank_run += 1;
+            if blank_run > 1 {
+                continue;
+            }
+        } else {
+            blank_run = 0;
+        }
+        cleaned.push_str(line);
+        cleaned.push('\n');
+    }
+    if text.ends_with('\n') || text.is_empty() {
+        cleaned
+    } else {
+        cleaned.trim_end_matches('\n').to_string()
+    }
+}
+
+/// Build a stdio `[mcp_servers.<name>]` block (+ optional `.env` table).
+pub fn format_mcp_stdio_toml_block(
+    name: &str,
+    command: &str,
+    args: &[String],
+    env: Option<&HashMap<String, String>>,
+) -> String {
+    let mut block = String::new();
+    block.push_str(&format!("[mcp_servers.{name}]\n"));
+    block.push_str(&format!("command = {}\n", toml_quote(command)));
+    if args.is_empty() {
+        block.push_str("args = []\n");
+    } else {
+        block.push_str("args = [");
+        for (i, a) in args.iter().enumerate() {
+            if i > 0 {
+                block.push_str(", ");
+            }
+            block.push_str(&toml_quote(a));
+        }
+        block.push_str("]\n");
+    }
+    block.push_str("enabled = true\n");
+    if let Some(map) = env {
+        if !map.is_empty() {
+            block.push_str(&format!("\n[mcp_servers.{name}.env]\n"));
+            let mut keys: Vec<&String> = map.keys().collect();
+            keys.sort();
+            for k in keys {
+                if let Some(v) = map.get(k) {
+                    block.push_str(&format!("{k} = {}\n", toml_quote(v)));
+                }
+            }
+        }
+    }
+    block
+}
+
+/// Upsert a stdio MCP server under `[mcp_servers.<name>]` in TOML text.
+/// Replaces any existing table for that name (including nested `.env`).
+pub fn upsert_mcp_stdio_in_toml(
+    text: &str,
+    name: &str,
+    command: &str,
+    args: &[String],
+    env: Option<&HashMap<String, String>>,
+) -> String {
+    let name = name.trim();
+    if name.is_empty() {
+        return text.to_string();
+    }
+    let stripped = remove_mcp_server_from_toml(text, name);
+    let block = format_mcp_stdio_toml_block(name, command, args, env);
+    let base = stripped.trim_end();
+    if base.is_empty() {
+        block
+    } else {
+        format!("{base}\n\n{block}")
+    }
+}
+
+/// Persist a stdio MCP server into the agent GROK_HOME config (session_data_mode).
+/// Enables the name in App prefs and invalidates the MCP list cache.
+pub fn add_mcp_stdio(
+    name: &str,
+    command: &str,
+    args: &[String],
+    env: Option<&HashMap<String, String>>,
+) -> Result<McpServerDef, String> {
+    let name = validate_mcp_server_name(name)?.to_string();
+    let command = command.trim();
+    if command.is_empty() {
+        return Err("MCP command required".into());
+    }
+    let settings = store::load_settings();
+    let path = mcp_agent_config_path(&settings.session_data_mode);
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+    }
+    let existing = fs::read_to_string(&path).unwrap_or_default();
+    let next = upsert_mcp_stdio_in_toml(&existing, &name, command, args, env);
+    fs::write(&path, next).map_err(|e| e.to_string())?;
+    invalidate_mcp_cache();
+
+    // Default the new server to enabled in App prefs + agent config flag.
+    let _ = set_mcp_enabled(&name, true);
+
+    tracing::info!(
+        "extensions: mcp add {} → {}",
+        name,
+        path.display()
+    );
+
+    Ok(McpServerDef {
+        name,
+        command: Some(command.to_string()),
+        args: Some(args.to_vec()),
+        env: env.cloned(),
+        url: None,
+        headers: None,
+        transport: Some("stdio".into()),
+        enabled: Some(true),
+        scope: Some(if settings.session_data_mode == "shared" {
+            "user".into()
+        } else {
+            "agent-home".into()
+        }),
+    })
+}
+
+/// Strip `[mcp_servers.<name>]` from a config path if the file exists.
+fn strip_mcp_server_file(path: &Path, name: &str) -> Result<bool, String> {
+    if !path.exists() {
+        return Ok(false);
+    }
+    let existing = fs::read_to_string(path).map_err(|e| e.to_string())?;
+    let next = remove_mcp_server_from_toml(&existing, name);
+    if next == existing {
+        return Ok(false);
+    }
+    fs::write(path, next).map_err(|e| e.to_string())?;
+    Ok(true)
+}
+
+/// Remove an MCP server section from agent GROK_HOME config (and user
+/// `~/.grok/config.toml` when distinct) plus App prefs.
+pub fn remove_mcp_server(name: &str) -> Result<(), String> {
+    let name = validate_mcp_server_name(name)?.to_string();
+    let settings = store::load_settings();
+    let agent_path = mcp_agent_config_path(&settings.session_data_mode);
+    let user_path = crate::process_util::user_home()
+        .join(".grok")
+        .join("config.toml");
+
+    let mut touched = false;
+    if strip_mcp_server_file(&agent_path, &name)? {
+        touched = true;
+        tracing::info!(
+            "extensions: mcp remove {} → {}",
+            name,
+            agent_path.display()
+        );
+    }
+    // Independent mode may still list user-scoped servers from ~/.grok.
+    if user_path != agent_path && strip_mcp_server_file(&user_path, &name)? {
+        touched = true;
+        tracing::info!(
+            "extensions: mcp remove {} → {}",
+            name,
+            user_path.display()
+        );
+    }
+    if !touched {
+        tracing::info!(
+            "extensions: mcp remove {} — no config section found",
+            name
+        );
+    }
+
+    // Drop App enable pref so stale toggles don't linger.
+    let mut prefs = load_prefs();
+    prefs.mcp.remove(&name);
+    save_prefs(&prefs)?;
+    invalidate_mcp_cache();
+    Ok(())
+}
+
+// ── MCP doctor (parse CLI JSON) ──────────────────────────────────────────────
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct McpDoctorCheck {
+    pub label: String,
+    pub passed: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub detail: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub hint: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct McpDoctorServer {
+    pub name: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub transport: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub target: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source: Option<String>,
+    pub healthy: bool,
+    #[serde(default)]
+    pub checks: Vec<McpDoctorCheck>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct McpDoctorSource {
+    pub path: String,
+    pub status: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub server_count: Option<u32>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct McpDoctorSummary {
+    pub total: u32,
+    pub healthy: u32,
+    pub unhealthy: u32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct McpDoctorReport {
+    pub ok: bool,
+    pub summary: McpDoctorSummary,
+    #[serde(default)]
+    pub servers: Vec<McpDoctorServer>,
+    #[serde(default)]
+    pub sources: Vec<McpDoctorSource>,
+    /// When CLI returned non-JSON text, include a short excerpt.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub raw_text: Option<String>,
+}
+
+/// Parse `grok mcp doctor --json` output into a structured report.
+/// Falls back to a single synthetic fail check when JSON is missing.
+pub fn parse_mcp_doctor_json(raw: &str) -> McpDoctorReport {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return McpDoctorReport {
+            ok: false,
+            summary: McpDoctorSummary {
+                total: 0,
+                healthy: 0,
+                unhealthy: 0,
+            },
+            servers: vec![],
+            sources: vec![],
+            raw_text: Some("(empty doctor output)".into()),
+        };
+    }
+
+    // CLI may emit log lines before the JSON object — take the last `{…}` blob.
+    let json_slice = extract_json_object(trimmed).unwrap_or(trimmed);
+    let Ok(v) = serde_json::from_str::<Value>(json_slice) else {
+        return McpDoctorReport {
+            ok: false,
+            summary: McpDoctorSummary {
+                total: 0,
+                healthy: 0,
+                unhealthy: 0,
+            },
+            servers: vec![],
+            sources: vec![],
+            raw_text: Some(trimmed.chars().take(800).collect()),
+        };
+    };
+
+    let mut servers = Vec::new();
+    if let Some(arr) = v.get("servers").and_then(|x| x.as_array()) {
+        for s in arr {
+            let name = s
+                .get("name")
+                .and_then(|x| x.as_str())
+                .unwrap_or("")
+                .trim()
+                .to_string();
+            if name.is_empty() {
+                continue;
+            }
+            let healthy = s
+                .get("healthy")
+                .and_then(|x| x.as_bool())
+                .unwrap_or(false);
+            let mut checks = Vec::new();
+            if let Some(carr) = s.get("checks").and_then(|x| x.as_array()) {
+                for c in carr {
+                    let label = c
+                        .get("label")
+                        .and_then(|x| x.as_str())
+                        .unwrap_or("check")
+                        .to_string();
+                    let passed = c
+                        .get("passed")
+                        .and_then(|x| x.as_bool())
+                        .unwrap_or(false);
+                    let detail = c
+                        .get("detail")
+                        .and_then(|x| x.as_str())
+                        .map(|s| s.trim().to_string())
+                        .filter(|s| !s.is_empty());
+                    let hint = c
+                        .get("hint")
+                        .and_then(|x| x.as_str())
+                        .map(|s| s.trim().to_string())
+                        .filter(|s| !s.is_empty());
+                    checks.push(McpDoctorCheck {
+                        label,
+                        passed,
+                        detail,
+                        hint,
+                    });
+                }
+            }
+            servers.push(McpDoctorServer {
+                name,
+                transport: s
+                    .get("transport")
+                    .and_then(|x| x.as_str())
+                    .map(|s| s.to_string()),
+                target: s
+                    .get("target")
+                    .and_then(|x| x.as_str())
+                    .map(|s| s.to_string()),
+                source: s
+                    .get("source")
+                    .and_then(|x| x.as_str())
+                    .map(|s| s.to_string()),
+                healthy,
+                checks,
+            });
+        }
+    }
+
+    let mut sources = Vec::new();
+    if let Some(arr) = v.get("sources").and_then(|x| x.as_array()) {
+        for s in arr {
+            let path = s
+                .get("path")
+                .and_then(|x| x.as_str())
+                .unwrap_or("")
+                .to_string();
+            if path.is_empty() {
+                continue;
+            }
+            let status_obj = s.get("status");
+            let status = status_obj
+                .and_then(|x| x.get("status"))
+                .and_then(|x| x.as_str())
+                .or_else(|| status_obj.and_then(|x| x.as_str()))
+                .unwrap_or("unknown")
+                .to_string();
+            let server_count = status_obj
+                .and_then(|x| x.get("server_count"))
+                .and_then(|x| x.as_u64())
+                .map(|n| n as u32);
+            sources.push(McpDoctorSource {
+                path,
+                status,
+                server_count,
+            });
+        }
+    }
+
+    let healthy = servers.iter().filter(|s| s.healthy).count() as u32;
+    let total = servers.len() as u32;
+    let unhealthy = total.saturating_sub(healthy);
+    McpDoctorReport {
+        ok: total == 0 || unhealthy == 0,
+        summary: McpDoctorSummary {
+            total,
+            healthy,
+            unhealthy,
+        },
+        servers,
+        sources,
+        raw_text: None,
+    }
+}
+
+/// Find the outermost JSON object in a mixed stdout blob.
+fn extract_json_object(s: &str) -> Option<&str> {
+    let start = s.find('{')?;
+    // Prefer last complete object if multiple.
+    let mut depth = 0i32;
+    let mut end = None;
+    let bytes = s.as_bytes();
+    let mut i = start;
+    while i < bytes.len() {
+        match bytes[i] {
+            b'{' => depth += 1,
+            b'}' => {
+                depth -= 1;
+                if depth == 0 {
+                    end = Some(i);
+                    // Keep scanning for a later top-level object only if more `{` appear.
+                }
+            }
+            _ => {}
+        }
+        i += 1;
+    }
+    let end = end?;
+    Some(&s[start..=end])
+}
+
 // ── Config.toml enabled sync ─────────────────────────────────────────────────
 
 /// Upsert `enabled = bool` under `[mcp_servers.<name>]` in TOML text.
@@ -1144,5 +1653,129 @@ enabled = true
         assert_eq!(a.len(), 2);
         assert!(a.iter().any(|v| v["name"] == "chrome-devtools"));
         assert!(a.iter().any(|v| v["name"] == "cloudflare-api" && v["type"] == "http"));
+    }
+
+    #[test]
+    fn validate_mcp_server_name_rules() {
+        assert_eq!(validate_mcp_server_name("chrome-devtools").unwrap(), "chrome-devtools");
+        assert_eq!(validate_mcp_server_name("  a1_b  ").unwrap(), "a1_b");
+        assert!(validate_mcp_server_name("").is_err());
+        assert!(validate_mcp_server_name("-bad").is_err());
+        assert!(validate_mcp_server_name("has.dot").is_err());
+        assert!(validate_mcp_server_name("has space").is_err());
+    }
+
+    #[test]
+    fn upsert_and_remove_mcp_stdio_toml() {
+        let base = r#"
+[ui]
+yolo = false
+
+[mcp_servers.old]
+command = "npx"
+args = ["-y", "old"]
+enabled = true
+"#;
+        let mut env = HashMap::new();
+        env.insert("PATH".into(), "/usr/bin".into());
+        let next = upsert_mcp_stdio_in_toml(
+            base,
+            "playwright",
+            "/usr/local/bin/npx",
+            &["-y".into(), "@playwright/mcp".into()],
+            Some(&env),
+        );
+        assert!(next.contains("[mcp_servers.playwright]"));
+        assert!(next.contains("command = \"/usr/local/bin/npx\""));
+        assert!(next.contains("\"@playwright/mcp\""));
+        assert!(next.contains("[mcp_servers.playwright.env]"));
+        assert!(next.contains("PATH = \"/usr/bin\""));
+        assert!(next.contains("[mcp_servers.old]"));
+
+        // Upsert replaces existing block including env.
+        let replaced = upsert_mcp_stdio_in_toml(
+            &next,
+            "playwright",
+            "node",
+            &["server.js".into()],
+            None,
+        );
+        assert_eq!(replaced.matches("[mcp_servers.playwright]").count(), 1);
+        assert!(replaced.contains("command = \"node\""));
+        assert!(!replaced.contains("[mcp_servers.playwright.env]"));
+        assert!(replaced.contains("[mcp_servers.old]"));
+
+        let removed = remove_mcp_server_from_toml(&replaced, "old");
+        assert!(!removed.contains("[mcp_servers.old]"));
+        assert!(removed.contains("[mcp_servers.playwright]"));
+        assert!(removed.contains("[ui]"));
+
+        // Removing env-bearing server drops nested table too.
+        let with_env = upsert_mcp_stdio_in_toml(
+            "[ui]\nx = 1\n",
+            "ctx",
+            "npx",
+            &["-y".into(), "pkg".into()],
+            Some(&env),
+        );
+        let gone = remove_mcp_server_from_toml(&with_env, "ctx");
+        assert!(!gone.contains("mcp_servers.ctx"));
+        assert!(gone.contains("[ui]"));
+    }
+
+    #[test]
+    fn parse_mcp_doctor_json_shape() {
+        let raw = r#"{
+          "sources": [
+            {"path": "~/.grok/config.toml", "status": {"status": "found", "server_count": 2}}
+          ],
+          "servers": [
+            {
+              "name": "context7",
+              "transport": "stdio",
+              "target": "npx",
+              "source": "config",
+              "healthy": true,
+              "checks": [
+                {"label": "server started", "passed": true, "detail": "1.2s"}
+              ]
+            },
+            {
+              "name": "broken",
+              "transport": "http",
+              "target": "https://example.com",
+              "source": "config",
+              "healthy": false,
+              "checks": [
+                {"label": "handshake failed", "passed": false, "detail": "timeout", "hint": "check logs"}
+              ]
+            }
+          ]
+        }"#;
+        let report = parse_mcp_doctor_json(raw);
+        assert!(!report.ok);
+        assert_eq!(report.summary.total, 2);
+        assert_eq!(report.summary.healthy, 1);
+        assert_eq!(report.summary.unhealthy, 1);
+        assert_eq!(report.sources.len(), 1);
+        assert_eq!(report.sources[0].status, "found");
+        assert_eq!(report.sources[0].server_count, Some(2));
+        let broken = report.servers.iter().find(|s| s.name == "broken").unwrap();
+        assert!(!broken.healthy);
+        assert_eq!(broken.checks[0].hint.as_deref(), Some("check logs"));
+
+        // Log noise before JSON.
+        let noisy = format!("2026-01-01 ERROR worker quit\n{raw}");
+        let report2 = parse_mcp_doctor_json(&noisy);
+        assert_eq!(report2.summary.total, 2);
+
+        let empty = parse_mcp_doctor_json("not json at all");
+        assert!(!empty.ok);
+        assert!(empty.raw_text.is_some());
+    }
+
+    #[test]
+    fn toml_quote_escapes() {
+        assert_eq!(toml_quote(r#"a"b\c"#), r#""a\"b\\c""#);
     }
 }

@@ -9,8 +9,10 @@ import * as api from "@/lib/api";
 import { createT, type Locale } from "@/i18n";
 import { GlassModal } from "@/components/GlassModal";
 import {
+  IconDoctor,
   IconExternalLink,
   IconFolder,
+  IconPlus,
   IconPlug,
   IconPuzzle,
   IconRefresh,
@@ -70,6 +72,9 @@ export function ExtensionsPanel({
   const [busyKey, setBusyKey] = useState<string | null>(null);
   const [actionBusy, setActionBusy] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [actionErrorSource, setActionErrorSource] = useState<
+    "plugin" | "mcp" | null
+  >(null);
   const [uninstallTarget, setUninstallTarget] = useState<api.PluginDto | null>(
     null,
   );
@@ -80,6 +85,18 @@ export function ExtensionsPanel({
   /** Grok Build Plugins tab filter: all | enabled | disabled */
   const [pluginFilter, setPluginFilter] = useState<PluginFilter>("all");
   const [installSource, setInstallSource] = useState("");
+  const [addOpen, setAddOpen] = useState(false);
+  const [addName, setAddName] = useState("");
+  const [addCommand, setAddCommand] = useState("");
+  const [addArgs, setAddArgs] = useState("");
+  const [addEnv, setAddEnv] = useState("");
+  const [removeTarget, setRemoveTarget] = useState<api.McpDto | null>(null);
+  const [doctorOpen, setDoctorOpen] = useState(false);
+  const [doctorLoading, setDoctorLoading] = useState(false);
+  const [doctorReport, setDoctorReport] =
+    useState<api.McpDoctorReport | null>(null);
+  const [doctorError, setDoctorError] = useState<string | null>(null);
+  const [doctorFocus, setDoctorFocus] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
     if (!api.isTauri()) {
@@ -239,11 +256,13 @@ export function ExtensionsPanel({
   ) => {
     setActionBusy(key);
     setActionError(null);
+    setActionErrorSource(null);
     try {
       await action();
       await refresh();
     } catch (e) {
       setActionError(String(e));
+      setActionErrorSource("plugin");
     } finally {
       setActionBusy(null);
     }
@@ -315,6 +334,85 @@ export function ExtensionsPanel({
     }
   };
 
+  const resetAddForm = () => {
+    setAddName("");
+    setAddCommand("");
+    setAddArgs("");
+    setAddEnv("");
+  };
+
+  const openAdd = () => {
+    resetAddForm();
+    setActionError(null);
+    setAddOpen(true);
+  };
+
+  const submitAdd = async () => {
+    if (!api.isTauri() || actionBusy) return;
+    const name = addName.trim();
+    const command = addCommand.trim();
+    if (!name || !command) return;
+    const args = splitArgs(addArgs);
+    const env = parseEnvLines(addEnv);
+    setActionBusy("mcp:add");
+    setActionError(null);
+    setActionErrorSource(null);
+    try {
+      await api.mcpAdd({
+        name,
+        command,
+        args,
+        env: Object.keys(env).length ? env : undefined,
+      });
+      setAddOpen(false);
+      resetAddForm();
+      await refresh();
+    } catch (e) {
+      setActionError(String(e));
+      setActionErrorSource("mcp");
+    } finally {
+      setActionBusy(null);
+    }
+  };
+
+  const confirmRemoveMcp = async () => {
+    const target = removeTarget;
+    if (!target || !api.isTauri()) return;
+    setRemoveTarget(null);
+    setActionBusy(`mcp:rm:${target.name}`);
+    setActionError(null);
+    setActionErrorSource(null);
+    try {
+      await api.mcpRemove(target.name);
+      await refresh();
+    } catch (e) {
+      setActionError(String(e));
+      setActionErrorSource("mcp");
+    } finally {
+      setActionBusy(null);
+    }
+  };
+
+  const runDoctor = useCallback(
+    async (focusName?: string | null) => {
+      if (!api.isTauri()) return;
+      setDoctorOpen(true);
+      setDoctorLoading(true);
+      setDoctorError(null);
+      setDoctorFocus(focusName?.trim() || null);
+      try {
+        const report = await api.mcpDoctor(focusName?.trim() || null);
+        setDoctorReport(report);
+      } catch (e) {
+        setDoctorReport(null);
+        setDoctorError(String(e));
+      } finally {
+        setDoctorLoading(false);
+      }
+    },
+    [],
+  );
+
   const visiblePlugins = useMemo(
     () => filterPluginsByLoadState(plugins, pluginFilter),
     [plugins, pluginFilter],
@@ -373,12 +471,19 @@ export function ExtensionsPanel({
 
       {actionError && (
         <div className="ext-alert ext-alert--error" role="alert">
-          <div className="ext-alert__title">{tr("ext.plugins.actionError")}</div>
+          <div className="ext-alert__title">
+            {actionErrorSource === "mcp"
+              ? tr("ext.mcp.actionError")
+              : tr("ext.plugins.actionError")}
+          </div>
           <p className="ext-alert__body">{actionError}</p>
           <button
             type="button"
             className="btn btn--ghost ext-alert__cta"
-            onClick={() => setActionError(null)}
+            onClick={() => {
+              setActionError(null);
+              setActionErrorSource(null);
+            }}
           >
             {tr("common.close")}
           </button>
@@ -704,16 +809,36 @@ export function ExtensionsPanel({
         {!loading ? (
           <span className="ext-count">{servers.length}</span>
         ) : null}
-        {!loading && servers.length > 0 && mcpOffCount > 0 ? (
+        <span className="ext-h2-actions">
           <button
             type="button"
             className="btn btn--ghost ext-bulk-btn"
-            disabled={!!busyKey}
-            onClick={() => void enableAllMcp()}
+            disabled={!!actionBusy || !!busyKey || cliMissing}
+            onClick={() => void runDoctor(null)}
           >
-            {tr("ext.enableAll")}
+            <IconDoctor size={14} />
+            <span>{tr("ext.mcp.doctor")}</span>
           </button>
-        ) : null}
+          <button
+            type="button"
+            className="btn btn--ghost ext-bulk-btn"
+            disabled={!!actionBusy || !!busyKey || !api.isTauri()}
+            onClick={openAdd}
+          >
+            <IconPlus size={14} />
+            <span>{tr("ext.mcp.add")}</span>
+          </button>
+          {!loading && servers.length > 0 && mcpOffCount > 0 ? (
+            <button
+              type="button"
+              className="btn btn--ghost ext-bulk-btn"
+              disabled={!!busyKey || !!actionBusy}
+              onClick={() => void enableAllMcp()}
+            >
+              {tr("ext.enableAll")}
+            </button>
+          ) : null}
+        </span>
       </h2>
       <div className="settings-card ext-card">
         {loading && <p className="ext-empty">{tr("ext.mcp.loading")}</p>}
@@ -727,6 +852,7 @@ export function ExtensionsPanel({
             {servers.map((s) => {
               const meta = mcpMetaLine(s);
               const on = isExtensionEnabled(s.enabled);
+              const rmBusy = actionBusy === `mcp:rm:${s.name}`;
               return (
                 <li
                   key={s.name}
@@ -746,7 +872,7 @@ export function ExtensionsPanel({
                     ) : null}
                     <ExtensionToggle
                       checked={on}
-                      disabled={!!busyKey}
+                      disabled={!!busyKey || !!actionBusy}
                       label={on ? tr("ext.enabled") : tr("ext.disabled")}
                       onChange={(next) => void toggleMcp(s.name, next)}
                     />
@@ -777,11 +903,38 @@ export function ExtensionsPanel({
                       </span>
                     </div>
                   ) : null}
+                  <div className="ext-item__actions">
+                    <button
+                      type="button"
+                      className="btn btn--ghost btn--sm"
+                      disabled={!!actionBusy || doctorLoading || cliMissing}
+                      onClick={() => void runDoctor(s.name)}
+                    >
+                      <IconDoctor size={13} />
+                      <span>{tr("ext.mcp.doctor")}</span>
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn--ghost btn--sm ext-item__danger"
+                      disabled={rmBusy || !!actionBusy}
+                      onClick={() => setRemoveTarget(s)}
+                    >
+                      <IconTrash size={13} />
+                      <span>
+                        {rmBusy
+                          ? tr("ext.plugins.working")
+                          : tr("ext.mcp.remove")}
+                      </span>
+                    </button>
+                  </div>
                 </li>
               );
             })}
           </ul>
         )}
+        {!loading ? (
+          <p className="ext-section-note">{tr("ext.mcp.note")}</p>
+        ) : null}
       </div>
 
       <p className="ext-footnote">
@@ -848,8 +1001,319 @@ export function ExtensionsPanel({
           <pre className="ext-details-pre">{detailsBody}</pre>
         )}
       </GlassModal>
+
+      <GlassModal
+        open={addOpen}
+        onClose={() => {
+          if (actionBusy !== "mcp:add") setAddOpen(false);
+        }}
+        title={tr("ext.mcp.addTitle")}
+        size="md"
+        closeLabel={tr("common.close")}
+        wrapBody
+        footer={
+          <>
+            <button
+              type="button"
+              className="btn btn--ghost"
+              disabled={actionBusy === "mcp:add"}
+              onClick={() => setAddOpen(false)}
+            >
+              {tr("common.cancel")}
+            </button>
+            <button
+              type="button"
+              className="btn btn--solid"
+              disabled={
+                actionBusy === "mcp:add" ||
+                !addName.trim() ||
+                !addCommand.trim()
+              }
+              onClick={() => void submitAdd()}
+            >
+              {actionBusy === "mcp:add"
+                ? tr("ext.mcp.addWorking")
+                : tr("ext.mcp.addSubmit")}
+            </button>
+          </>
+        }
+      >
+        <form
+          className="app-dialog__form"
+          onSubmit={(e) => {
+            e.preventDefault();
+            void submitAdd();
+          }}
+        >
+          <label className="field">
+            <span>{tr("ext.mcp.name")}</span>
+            <input
+              className="app-dialog__input"
+              value={addName}
+              onChange={(e) => setAddName(e.target.value)}
+              placeholder={tr("ext.mcp.namePlaceholder")}
+              autoComplete="off"
+              spellCheck={false}
+              disabled={actionBusy === "mcp:add"}
+            />
+          </label>
+          <label className="field">
+            <span>{tr("ext.mcp.command")}</span>
+            <input
+              className="app-dialog__input"
+              value={addCommand}
+              onChange={(e) => setAddCommand(e.target.value)}
+              placeholder={tr("ext.mcp.commandPlaceholder")}
+              autoComplete="off"
+              spellCheck={false}
+              disabled={actionBusy === "mcp:add"}
+            />
+          </label>
+          <label className="field">
+            <span>{tr("ext.mcp.args")}</span>
+            <input
+              className="app-dialog__input"
+              value={addArgs}
+              onChange={(e) => setAddArgs(e.target.value)}
+              placeholder={tr("ext.mcp.argsPlaceholder")}
+              autoComplete="off"
+              spellCheck={false}
+              disabled={actionBusy === "mcp:add"}
+            />
+            <span className="ext-field-hint">{tr("ext.mcp.argsHint")}</span>
+          </label>
+          <label className="field">
+            <span>{tr("ext.mcp.env")}</span>
+            <textarea
+              className="app-dialog__input ext-env-textarea"
+              value={addEnv}
+              onChange={(e) => setAddEnv(e.target.value)}
+              placeholder={tr("ext.mcp.envPlaceholder")}
+              rows={3}
+              spellCheck={false}
+              disabled={actionBusy === "mcp:add"}
+            />
+            <span className="ext-field-hint">{tr("ext.mcp.envHint")}</span>
+          </label>
+        </form>
+      </GlassModal>
+
+      <GlassModal
+        open={!!removeTarget}
+        onClose={() => {
+          if (!actionBusy) setRemoveTarget(null);
+        }}
+        title={tr("ext.mcp.removeTitle")}
+        size="sm"
+        closeLabel={tr("common.close")}
+        footer={
+          <>
+            <button
+              type="button"
+              className="btn btn--ghost"
+              disabled={!!actionBusy}
+              onClick={() => setRemoveTarget(null)}
+            >
+              {tr("common.cancel")}
+            </button>
+            <button
+              type="button"
+              className="btn btn--danger"
+              disabled={!!actionBusy}
+              onClick={() => void confirmRemoveMcp()}
+            >
+              {tr("ext.mcp.remove")}
+            </button>
+          </>
+        }
+      >
+        <p className="app-dialog__msg">
+          {tr("ext.mcp.removeConfirm", {
+            name: removeTarget?.name ?? "",
+          })}
+        </p>
+      </GlassModal>
+
+      <GlassModal
+        open={doctorOpen}
+        onClose={() => {
+          if (!doctorLoading) setDoctorOpen(false);
+        }}
+        title={
+          doctorFocus
+            ? `${tr("ext.mcp.doctorTitle")} · ${doctorFocus}`
+            : tr("ext.mcp.doctorTitle")
+        }
+        size="lg"
+        closeLabel={tr("common.close")}
+        wrapBody
+        footer={
+          <>
+            <button
+              type="button"
+              className="btn btn--ghost"
+              disabled={doctorLoading}
+              onClick={() => void runDoctor(doctorFocus)}
+            >
+              <IconRefresh size={14} />
+              <span>{tr("ext.mcp.doctorRerun")}</span>
+            </button>
+            <button
+              type="button"
+              className="btn btn--ghost"
+              disabled={doctorLoading}
+              onClick={() => setDoctorOpen(false)}
+            >
+              {tr("common.close")}
+            </button>
+          </>
+        }
+      >
+        {doctorLoading && (
+          <p className="ext-empty">{tr("ext.mcp.doctorRunning")}</p>
+        )}
+        {!doctorLoading && doctorError && (
+          <div className="ext-alert ext-alert--error" role="alert">
+            <p className="ext-alert__body">{doctorError}</p>
+          </div>
+        )}
+        {!doctorLoading && doctorReport && (
+          <div className="ext-doctor">
+            <p className="ext-doctor__summary">
+              {tr("ext.mcp.doctorSummary", {
+                healthy: doctorReport.summary.healthy,
+                unhealthy: doctorReport.summary.unhealthy,
+                total: doctorReport.summary.total,
+              })}
+            </p>
+            {doctorReport.sources.length > 0 ? (
+              <div className="ext-doctor__sources">
+                <div className="ext-doctor__section-title">
+                  {tr("ext.mcp.doctorSources")}
+                </div>
+                <ul className="ext-doctor__source-list">
+                  {doctorReport.sources.map((src) => (
+                    <li key={src.path}>
+                      <code>{src.path}</code>
+                      <span className="ext-badge ext-badge--muted">
+                        {src.status}
+                        {src.serverCount != null
+                          ? ` · ${src.serverCount}`
+                          : ""}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
+            {doctorReport.servers.length === 0 ? (
+              <p className="ext-empty">
+                {doctorReport.rawText?.trim() || tr("ext.mcp.doctorEmpty")}
+              </p>
+            ) : (
+              <ul className="ext-list ext-doctor__servers">
+                {doctorReport.servers.map((s) => (
+                  <li
+                    key={s.name}
+                    className={
+                      "ext-item" + (s.healthy ? "" : " ext-item--off")
+                    }
+                  >
+                    <div className="ext-item__head">
+                      <strong className="ext-item__name">{s.name}</strong>
+                      <span
+                        className={
+                          "ext-badge " +
+                          (s.healthy
+                            ? "ext-badge--ok"
+                            : "ext-badge--fail")
+                        }
+                      >
+                        {s.healthy
+                          ? tr("ext.mcp.doctorHealthy")
+                          : tr("ext.mcp.doctorUnhealthy")}
+                      </span>
+                      {s.transport ? (
+                        <span className="ext-badge ext-badge--muted">
+                          {s.transport}
+                        </span>
+                      ) : null}
+                    </div>
+                    {s.target ? (
+                      <p className="ext-item__desc" title={s.target}>
+                        {shortPathLabel(s.target, 72) || s.target}
+                      </p>
+                    ) : null}
+                    {s.checks.length > 0 ? (
+                      <ul className="ext-doctor__checks">
+                        {s.checks.map((c, i) => (
+                          <li
+                            key={`${s.name}:${c.label}:${i}`}
+                            className={
+                              "ext-doctor__check" +
+                              (c.passed ? " is-pass" : " is-fail")
+                            }
+                          >
+                            <span className="ext-doctor__check-label">
+                              {c.passed ? "✓" : "✗"} {c.label}
+                            </span>
+                            {c.detail ? (
+                              <span className="ext-doctor__check-detail">
+                                {c.detail}
+                              </span>
+                            ) : null}
+                            {c.hint ? (
+                              <span className="ext-doctor__check-hint">
+                                {tr("ext.mcp.doctorHint", { hint: c.hint })}
+                              </span>
+                            ) : null}
+                          </li>
+                        ))}
+                      </ul>
+                    ) : null}
+                  </li>
+                ))}
+              </ul>
+            )}
+            {doctorReport.rawText ? (
+              <pre className="ext-details-pre">{doctorReport.rawText}</pre>
+            ) : null}
+          </div>
+        )}
+      </GlassModal>
     </div>
   );
+}
+
+/** Space-separated args; keeps simple tokens (no shell quoting). */
+function splitArgs(raw: string): string[] {
+  return raw
+    .trim()
+    .split(/\s+/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
+
+/** Parse KEY=value lines into a map. Skips blanks and `#` comments. */
+function parseEnvLines(raw: string): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const line of raw.split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith("#")) continue;
+    const eq = trimmed.indexOf("=");
+    if (eq <= 0) continue;
+    const key = trimmed.slice(0, eq).trim();
+    if (!key) continue;
+    let val = trimmed.slice(eq + 1).trim();
+    if (
+      (val.startsWith('"') && val.endsWith('"')) ||
+      (val.startsWith("'") && val.endsWith("'"))
+    ) {
+      val = val.slice(1, -1);
+    }
+    out[key] = val;
+  }
+  return out;
 }
 
 function ExtensionToggle({
