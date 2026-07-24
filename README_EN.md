@@ -61,7 +61,8 @@
 6. [Config paths](#config-paths)
 7. [Develop & build](#develop--build)
 8. [Docs & contributing](#docs--contributing)
-9. [Follow the author](#follow-the-author)
+9. [Contributors](#contributors)
+10. [Follow the author](#follow-the-author)
 
 ---
 
@@ -228,6 +229,12 @@ Release (write the matching `CHANGELOG.md` section first):
 | Security | [SECURITY.md](./SECURITY.md) |
 
 Issues and PRs are welcome.
+
+## Contributors
+
+Thanks to everyone who has contributed to Grok App!
+
+[![Contributors](https://contrib.rocks/image?repo=RongleCat/grok-app)](https://github.com/RongleCat/grok-app/graphs/contributors)
 
 ## License
 

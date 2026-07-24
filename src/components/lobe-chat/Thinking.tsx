@@ -67,8 +67,9 @@ export function Thinking({
     if (durationMs != null) setLocalDuration(durationMs);
   }, [durationMs]);
 
+  // Avoid "Thought for 0.0s" for sub-100ms phases.
   const durationText =
-    localDuration != null && localDuration > 0
+    localDuration != null && localDuration >= 100
       ? thoughtForLabel((localDuration / 1000).toFixed(1))
       : doneLabel;
 

@@ -44,6 +44,7 @@ import {
   isSessionBusy,
   preferSessionMessages,
   presentErrorBanner,
+  buildSegmentsFromLegacy,
   splitThoughtPhases,
   truncateBeforeLastUser,
   IDLE_SNAPSHOT,
@@ -85,6 +86,7 @@ import {
   applySkillAtSlash,
   isDraftEmpty,
   hydrateDisplayContent,
+  detectSlashQueryFromEditor,
   parseStoredContent,
   serializeForAgent,
 } from "@/lib/draftDoc";
@@ -255,6 +257,22 @@ export default function App() {
     query: string;
     end: number;
   } | null>(null);
+  /**
+   * Live slash token from contenteditable.innerText (rAF poll).
+   * Independent of React draft so IME / <br> / missed onChange cannot desync.
+   * `present` is true for bare `/` as well as `/query`.
+   */
+  const [liveSlash, setLiveSlash] = useState<{
+    present: boolean;
+    query: string;
+    start: number;
+    end: number;
+  }>({ present: false, query: "", start: 0, end: 0 });
+  const liveSlashRef = useRef(liveSlash);
+  liveSlashRef.current = liveSlash;
+  /** After Escape, suppress re-open until the `/token` text changes. */
+  const slashDismissedSigRef = useRef<string | null>(null);
+  const showComposerPlusRef = useRef(false);
   const [slashActiveIndex, setSlashActiveIndex] = useState(0);
   const [showStatusModal, setShowStatusModal] = useState(false);
   const [showMcpModal, setShowMcpModal] = useState(false);
@@ -295,6 +313,7 @@ export default function App() {
   const [showSearch, setShowSearch] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [showComposerPlus, setShowComposerPlus] = useState(false);
+  showComposerPlusRef.current = showComposerPlus;
   const composerPlusTriggerRef = useRef<HTMLButtonElement>(null);
   const composerPlusPanelRef = useRef<HTMLDivElement>(null);
   const composerInputRef = useRef<HTMLDivElement>(null);
@@ -1281,6 +1300,7 @@ export default function App() {
           "general",
           "appearance",
           "account",
+          "archived",
           "runtime",
           "about",
         ];
@@ -1366,12 +1386,22 @@ export default function App() {
         if (role === "assistant" && displayContent) {
           displayContent = extractAutomationPayload(displayContent).cleanText;
         }
+        const thoughtPhases = splitThoughtPhases(m.thought);
         return {
           id: m.id,
           role,
           content: displayContent,
           thought: m.thought ?? undefined,
-          thoughtPhases: splitThoughtPhases(m.thought),
+          thoughtPhases,
+          // Reconstruct interleaved timeline for reload (first phase → body → rest).
+          segments:
+            role === "assistant"
+              ? buildSegmentsFromLegacy(
+                  displayContent,
+                  m.thought,
+                  thoughtPhases,
+                )
+              : undefined,
           isError: m.isError || undefined,
           attachments,
           createdAt: m.createdAt || undefined,
@@ -1683,6 +1713,48 @@ export default function App() {
       (!s.projectId || !projects.some((p) => p.id === s.projectId)) &&
       !s.archived,
   );
+
+  /** Archived chats grouped by project for Settings → Archived. */
+  const archivedGroups = useMemo(() => {
+    const archived = sessions
+      .filter((s) => s.archived)
+      .slice()
+      .sort(
+        (a, b) =>
+          new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime(),
+      );
+    const byProject = new Map<string | null, SessionRow[]>();
+    for (const s of archived) {
+      const key =
+        s.projectId && projects.some((p) => p.id === s.projectId)
+          ? s.projectId
+          : null;
+      const list = byProject.get(key) ?? [];
+      list.push(s);
+      byProject.set(key, list);
+    }
+    const groups: Array<{
+      id: string | null;
+      name: string;
+      sessions: SessionRow[];
+    }> = [];
+    // Stable order: pin projects list order, then orphan bucket.
+    for (const p of projects) {
+      const list = byProject.get(p.id);
+      if (list?.length) {
+        groups.push({ id: p.id, name: p.name, sessions: list });
+      }
+    }
+    const orphan = byProject.get(null);
+    if (orphan?.length) {
+      groups.push({
+        id: null,
+        name: tr("settings.archived.orphan"),
+        sessions: orphan,
+      });
+    }
+    return groups;
+  }, [sessions, projects, tr]);
 
   /** Session id currently running on the Host (for sidebar spinner). */
   const busySessionId =
@@ -2083,10 +2155,91 @@ export default function App() {
         // Same project context when possible; orphan → “其他会话” draft.
         if (proj) await newChat(proj, { switchToChat: true });
         else await newChat(null, { switchToChat: true });
+      } else if (!archived && s.projectId) {
+        setExpandedProjects((e) => ({ ...e, [s.projectId!]: true }));
       }
     } catch (e) {
       setLocalError(String(e));
     }
+  };
+
+  /** Permanent delete — confirm first; leave workbench if viewing that chat. */
+  const deleteSessionConfirm = (s: SessionRow) => {
+    deleteSessionsConfirm([s]);
+  };
+
+  /** Bulk restore archived sessions. */
+  const restoreSessions = async (rows: SessionRow[]) => {
+    if (!rows.length) return;
+    try {
+      if (!api.isTauri()) {
+        setLocalError(tr("error.needTauri"));
+        return;
+      }
+      for (const s of rows) {
+        await api.sessionSetArchived(s.id, false);
+        if (s.projectId) {
+          setExpandedProjects((e) => ({ ...e, [s.projectId!]: true }));
+        }
+      }
+      await refreshSessions();
+      setLocalError(null);
+    } catch (e) {
+      setLocalError(String(e));
+    }
+  };
+
+  /** Bulk permanent delete with one confirm. */
+  const deleteSessionsConfirm = (rows: SessionRow[]) => {
+    setCtxMenu(null);
+    if (!rows.length) return;
+    const n = rows.length;
+    const title =
+      n === 1
+        ? rows[0].title || tr("session.untitled")
+        : tr("session.deleteManyTitle");
+    const message =
+      n === 1
+        ? tr("session.deleteConfirm", {
+            name: rows[0].title || tr("session.untitled"),
+          })
+        : tr("session.deleteManyConfirm", { n: String(n) });
+    setAppDialog({
+      kind: "confirm",
+      title: n === 1 ? tr("session.deleteTitle") : title,
+      message,
+      confirmLabel: tr("session.delete"),
+      danger: true,
+      onConfirm: async () => {
+        try {
+          if (!api.isTauri()) {
+            setLocalError(tr("error.needTauri"));
+            return;
+          }
+          const openId =
+            session.sessionId ?? viewingSessionIdRef.current ?? null;
+          const wasViewing = !!openId && rows.some((s) => s.id === openId);
+          const viewingRow = wasViewing
+            ? rows.find((s) => s.id === openId)
+            : null;
+          for (const s of rows) {
+            await api.sessionDelete(s.id);
+            messagesBySessionRef.current.delete(s.id);
+          }
+          await refreshSessions();
+          if (wasViewing && viewingRow) {
+            const proj = viewingRow.projectId
+              ? projects.find((p) => p.id === viewingRow.projectId) ?? null
+              : null;
+            if (proj) await newChat(proj, { switchToChat: true });
+            else await newChat(null, { switchToChat: true });
+          }
+          setLocalError(null);
+        } catch (e) {
+          setLocalError(String(e));
+        }
+      },
+    });
   };
 
   /** Archive all chats under a project; exit mid-pane if current chat is among them. */
@@ -2570,8 +2723,15 @@ export default function App() {
   );
 
   const closeComposerMenu = useCallback(() => {
+    const live = liveSlashRef.current;
+    if (live.present) {
+      slashDismissedSigRef.current = `${live.start}:${live.query}`;
+    }
     setShowComposerPlus(false);
     setSlashQuery(null);
+    const cleared = { present: false, query: "", start: 0, end: 0 };
+    setLiveSlash(cleared);
+    liveSlashRef.current = cleared;
   }, []);
 
   /** Stable slash-query setter: skip no-op updates so filter effects don't thrash. */
@@ -2889,28 +3049,30 @@ export default function App() {
     },
     [tr],
   );
-  /** Shared filter for + menu and `/` slash — empty query = full catalog.
-   * Resolves i18n titles so Chinese queries (e.g.「目标」) match commands. */
+  /** Filter query from live editor poll only. */
+  const slashFilterQuery = liveSlash.present ? liveSlash.query : "";
+
+  /** Shared filter for + menu and `/` slash — empty query = full catalog. */
   const slashFiltered = useMemo(
     () =>
-      flattenFilteredCatalog(slashCatalog, slashQuery?.query ?? "", (item) => ({
+      flattenFilteredCatalog(slashCatalog, slashFilterQuery, (item) => ({
         title: resolveSlashTitle(item),
         description: resolveSlashDescription(item),
       })),
     [
       slashCatalog,
-      slashQuery?.query,
+      slashFilterQuery,
       resolveSlashTitle,
       resolveSlashDescription,
     ],
   );
   const showUploadInMenu = useMemo(
     () =>
-      uploadMatchesQuery(slashQuery?.query ?? "", {
+      uploadMatchesQuery(slashFilterQuery, {
         title: tr("composer.addFiles"),
         hint: tr("composer.addFilesHint"),
       }),
-    [slashQuery?.query, tr],
+    [slashFilterQuery, tr],
   );
   const composerMenuEntries = useMemo(
     () =>
@@ -2921,12 +3083,78 @@ export default function App() {
       }),
     [showUploadInMenu, slashFiltered.commands, slashFiltered.skills],
   );
+  const composerMenuEntriesRef = useRef(composerMenuEntries);
+  composerMenuEntriesRef.current = composerMenuEntries;
+
   /** + button and `/` open the same panel. */
-  const composerMenuOpen = showComposerPlus || !!slashQuery;
+  const composerMenuOpen = showComposerPlus || liveSlash.present;
+
+  /**
+   * rAF poll of composer innerText → live slash token.
+   * Single source of truth for open state + filter (not React draft).
+   */
+  useEffect(() => {
+    let raf = 0;
+    let alive = true;
+    const tick = () => {
+      if (!alive) return;
+      const el = composerInputRef.current;
+      const detected = detectSlashQueryFromEditor(el);
+      let next = detected
+        ? {
+            present: true as const,
+            query: detected.query,
+            start: detected.start,
+            end: detected.end,
+          }
+        : {
+            present: false as const,
+            query: "",
+            start: 0,
+            end: 0,
+          };
+      // Honor Escape dismiss until the user edits the `/token`.
+      if (next.present && slashDismissedSigRef.current != null) {
+        const sig = `${next.start}:${next.query}`;
+        if (sig === slashDismissedSigRef.current) {
+          next = { present: false, query: "", start: 0, end: 0 };
+        } else {
+          slashDismissedSigRef.current = null;
+        }
+      }
+      if (!next.present && detected == null) {
+        slashDismissedSigRef.current = null;
+      }
+      const prev = liveSlashRef.current;
+      if (
+        prev.present !== next.present ||
+        prev.query !== next.query ||
+        prev.start !== next.start ||
+        prev.end !== next.end
+      ) {
+        liveSlashRef.current = next;
+        setLiveSlash(next);
+        if (next.present) {
+          setSlashQuery({
+            start: next.start,
+            query: next.query,
+            end: next.end,
+          });
+        } else if (!showComposerPlusRef.current) {
+          setSlashQuery((q) => (q == null ? q : null));
+        }
+      }
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => {
+      alive = false;
+      cancelAnimationFrame(raf);
+    };
+  }, []);
 
   /** Pin above input card; width matches composer shell.
-   * Do not depend on slash query / entry count — that re-anchored the panel
-   * on every keystroke and made the list jump/flicker. */
+   * Re-anchor when filter results change height (short list must sit on input). */
   const { pos: composerPlusPos, style: composerPlusStyle } = useFloatingMenu({
     open: composerMenuOpen,
     triggerRef: composerShellRef,
@@ -2939,18 +3167,24 @@ export default function App() {
     minWidth: 280,
     estHeight: 220,
     gap: 8,
+    deps: [slashFilterQuery, composerMenuEntries.length],
   });
 
-  // Reset highlight when the filter query changes (not on every parent render).
+  // Reset highlight only when the filter *string* changes.
+  const prevFilterQueryRef = useRef(slashFilterQuery);
   useEffect(() => {
+    if (prevFilterQueryRef.current === slashFilterQuery) return;
+    prevFilterQueryRef.current = slashFilterQuery;
     setSlashActiveIndex(0);
-  }, [slashQuery?.query]);
+  }, [slashFilterQuery]);
 
-  // Keep highlight in range when the filtered list shrinks.
+  // Keep highlight in range when the filtered list shrinks (no forced 0).
   useEffect(() => {
     setSlashActiveIndex((i) => {
       if (composerMenuEntries.length === 0) return 0;
-      return Math.min(i, composerMenuEntries.length - 1);
+      return i >= composerMenuEntries.length
+        ? composerMenuEntries.length - 1
+        : i;
     });
   }, [composerMenuEntries.length]);
 
@@ -3032,8 +3266,15 @@ export default function App() {
 
   const applySlashItem = useCallback(
     (item: SlashItem) => {
-      const q = slashQuery;
+      const live = liveSlashRef.current;
+      const q =
+        slashQuery ??
+        (live.present
+          ? { start: live.start, query: live.query, end: live.end }
+          : null);
       setSlashQuery(null);
+      setLiveSlash({ present: false, query: "", start: 0, end: 0 });
+      liveSlashRef.current = { present: false, query: "", start: 0, end: 0 };
       setShowComposerPlus(false);
 
       if (item.kind === "skill") {
@@ -3246,43 +3487,138 @@ export default function App() {
     }
   };
 
-  const addProject = async (autoTrust = false) => {
-    setLocalError(null);
-    try {
-      if (!api.isTauri()) {
-        setLocalError(tr("error.needTauri"));
+  /**
+   * Bind (or clear) the open session's project. Draft chats only switch
+   * workspace context. Untrusted projects refuse bind when a session exists.
+   */
+  const bindSessionProject = useCallback(
+    async (proj: Project | null) => {
+      const sid = session.sessionId;
+      if (!sid || !api.isTauri()) {
+        setActiveProject(proj);
+        if (proj) {
+          setExpandedProjects((e) => ({ ...e, [proj.id]: true }));
+        } else {
+          setHistoryOpen(true);
+        }
         return;
       }
-      // Prefer one-shot dialog that adds + optional trust
-      const p = (await api.projectAddDialog(autoTrust)) as Project | null;
-      if (!p) return; // cancelled
+      if (proj && !proj.trusted) {
+        setLocalError(tr("project.trustFirst", { name: proj.name }));
+        return;
+      }
+      try {
+        await api.sessionSetProject(sid, proj?.id ?? null);
+        setActiveProject(proj);
+        setSessions((list) =>
+          list.map((s) =>
+            s.id === sid ? { ...s, projectId: proj?.id ?? null } : s,
+          ),
+        );
+        // Live agent used old cwd — force reconnect next send
+        setSession((prev) =>
+          prev.sessionId === sid
+            ? {
+                ...IDLE_SNAPSHOT,
+                sessionId: sid,
+                title: prev.title,
+                state: "idle",
+                backend: prev.backend || "grok_agent_stdio",
+              }
+            : prev,
+        );
+        setLiveHost((prev) =>
+          prev.sessionId === sid ? { ...IDLE_SNAPSHOT } : prev,
+        );
+        if (proj) {
+          setExpandedProjects((e) => ({ ...e, [proj.id]: true }));
+          showToast(tr("composer.projectBound", { name: proj.name }), 2500);
+        } else {
+          setHistoryOpen(true);
+          showToast(tr("composer.projectCleared"), 2200);
+        }
+        setLocalError(null);
+      } catch (e) {
+        showToast(String(e), 4500);
+      }
+    },
+    [session.sessionId, showToast, tr],
+  );
+
+  /**
+   * After a project is created/updated: refresh list, expand, optionally trust
+   * via in-app confirm, then set active (+ bind session when requested).
+   */
+  const finalizeAddedProject = useCallback(
+    async (p: Project, opts: { bindSession: boolean }) => {
       const list = (await api.projectsList()) as Project[];
       setProjects(list);
-      setActiveProject(p);
       setSetup((s) => ({ ...s, project: true }));
+
+      const apply = async (proj: Project) => {
+        const fresh = (await api.projectsList()) as Project[];
+        setProjects(fresh);
+        const current = fresh.find((x) => x.id === proj.id) ?? proj;
+        if (opts.bindSession) {
+          await bindSessionProject(current);
+        } else {
+          setActiveProject(current);
+          setExpandedProjects((e) => ({ ...e, [current.id]: true }));
+          showToast(tr("composer.projectAdded", { name: current.name }), 2500);
+        }
+      };
+
       // Tauri WebView: never use window.confirm — offer in-app trust dialog.
       if (!p.trusted) {
         setAppDialog({
           kind: "confirm",
-          title: tr("sidebar.trustProject"),
-          message: tr("project.trustConfirm", { name: p.name, path: p.path }),
-          confirmLabel: tr("sidebar.trustProject"),
+          title: tr("project.trustTitle"),
+          message: tr("project.trustConfirm", {
+            name: p.name,
+            path: p.path,
+          }),
+          confirmLabel: tr("project.trustToSend", { name: p.name }),
           onConfirm: async () => {
             try {
               const trusted = (await api.projectTrust(p.id)) as Project;
-              setActiveProject(trusted);
-              setProjects((await api.projectsList()) as Project[]);
+              await apply(trusted);
             } catch (e) {
               setLocalError(String(e));
             }
           },
         });
-      } else {
-        setProjects((await api.projectsList()) as Project[]);
+        return;
       }
-    } catch (e) {
-      setLocalError(String(e));
-    }
+      await apply(p);
+    },
+    [bindSessionProject, showToast, tr],
+  );
+
+  /**
+   * Pick folder → add project (name = folder basename; no rename prompt).
+   * `bindSession` also attaches the open chat under the new project.
+   */
+  const addProjectFromPicker = useCallback(
+    async (opts: { bindSession: boolean; autoTrust?: boolean }) => {
+      setLocalError(null);
+      try {
+        if (!api.isTauri()) {
+          setLocalError(tr("error.needTauri"));
+          return;
+        }
+        const path = await api.pickDirectory();
+        if (!path) return;
+        const p = (await api.projectAdd(path, !!opts.autoTrust)) as Project;
+        await finalizeAddedProject(p, { bindSession: opts.bindSession });
+      } catch (e) {
+        setLocalError(String(e));
+      }
+    },
+    [finalizeAddedProject, tr],
+  );
+
+  const addProject = async (autoTrust = false) => {
+    await addProjectFromPicker({ bindSession: false, autoTrust });
   };
 
   const trustProject = async (proj?: Project | null) => {
@@ -3386,6 +3722,7 @@ export default function App() {
               "general",
               "appearance",
               "account",
+              "archived",
               "runtime",
               "about",
             ];
@@ -3768,8 +4105,19 @@ export default function App() {
       "settings.nav.general",
       "settings.nav.appearance",
       "settings.nav.account",
+      "settings.nav.archived",
       "settings.nav.runtime",
       "settings.nav.about",
+      "settings.archived.desc",
+      "settings.archived.empty",
+      "settings.archived.restore",
+      "settings.archived.delete",
+      "settings.archived.orphan",
+      "settings.archived.selectAll",
+      "settings.archived.deselectAll",
+      "settings.archived.selectedCount",
+      "settings.archived.totalCount",
+      "session.untitled",
       "settings.section.permissions",
       "settings.section.composer",
       "settings.section.general",
@@ -4086,6 +4434,19 @@ export default function App() {
             void api.settingsGet().then((s) =>
               api.settingsSet({ ...s, defaultOpenTarget: v }),
             );
+          }}
+          archivedGroups={archivedGroups}
+          onRestoreArchivedSessions={(ids) => {
+            const rows = ids
+              .map((id) => sessions.find((x) => x.id === id))
+              .filter((s): s is SessionRow => !!s);
+            void restoreSessions(rows);
+          }}
+          onDeleteArchivedSessions={(ids) => {
+            const rows = ids
+              .map((id) => sessions.find((x) => x.id === id))
+              .filter((s): s is SessionRow => !!s);
+            deleteSessionsConfirm(rows);
           }}
           onProviderActivated={() => {
             // Hot-reload Grok Build: drop live ACP so next send re-spawns with new GROK_HOME config.
@@ -5052,9 +5413,10 @@ export default function App() {
                     open
                     panelRef={composerPlusPanelRef}
                     locale={locale}
-                    commands={slashFiltered.commands}
-                    skills={slashFiltered.skills}
-                    showUpload={showUploadInMenu}
+                    entries={composerMenuEntries}
+                    filterQuery={
+                      liveSlash.present ? slashFilterQuery : undefined
+                    }
                     skillsLoading={skillsLoading}
                     activeIndex={slashActiveIndex}
                     onActiveIndexChange={setSlashActiveIndex}
@@ -5094,26 +5456,30 @@ export default function App() {
                     return;
                   }
                   if (composerMenuOpen) {
-                    const flat = composerMenuEntries;
+                    // Ref = same array the panel renders (never desync).
+                    const flat = composerMenuEntriesRef.current;
+                    const n = flat.length;
                     if (e.key === "ArrowDown") {
                       e.preventDefault();
-                      setSlashActiveIndex((i) =>
-                        flat.length ? (i + 1) % flat.length : 0,
-                      );
+                      if (!n) return;
+                      setSlashActiveIndex((i) => (i + 1) % n);
                       return;
                     }
                     if (e.key === "ArrowUp") {
                       e.preventDefault();
-                      setSlashActiveIndex((i) =>
-                        flat.length
-                          ? (i - 1 + flat.length) % flat.length
-                          : 0,
-                      );
+                      if (!n) return;
+                      setSlashActiveIndex((i) => (i - 1 + n) % n);
                       return;
                     }
                     if (e.key === "Enter" && !e.shiftKey) {
                       e.preventDefault();
-                      const entry = flat[slashActiveIndex];
+                      const entry =
+                        flat[
+                          Math.min(
+                            Math.max(0, slashActiveIndex),
+                            Math.max(0, n - 1),
+                          )
+                        ];
                       if (!entry) return;
                       if (entry.kind === "upload") void pickComposerFiles();
                       else applySlashItem(entry.item);
@@ -5124,9 +5490,15 @@ export default function App() {
                       closeComposerMenu();
                       return;
                     }
-                    if (e.key === "Tab" && flat[slashActiveIndex]) {
+                    if (e.key === "Tab" && n > 0) {
                       e.preventDefault();
-                      const entry = flat[slashActiveIndex]!;
+                      const entry =
+                        flat[
+                          Math.min(
+                            Math.max(0, slashActiveIndex),
+                            n - 1,
+                          )
+                        ]!;
                       if (entry.kind === "upload") void pickComposerFiles();
                       else applySlashItem(entry.item);
                       return;
@@ -5172,83 +5544,17 @@ export default function App() {
                   labels={{
                     noProject: tr("composer.noProject"),
                     pickProject: tr("composer.pickProject"),
-                    clearProject: tr("composer.clearProject"),
-                    untrusted: tr("composer.projectUntrusted"),
+                    addProject: tr("composer.addProject"),
                   }}
                   disabled={
                     session.state === "streaming" ||
                     session.state === "awaiting_permission"
                   }
                   onSelect={(proj) => {
-                    void (async () => {
-                      const sid = session.sessionId;
-                      // Draft (no session yet): only switch workspace context
-                      if (!sid || !api.isTauri()) {
-                        setActiveProject(proj);
-                        if (proj) {
-                          setExpandedProjects((e) => ({
-                            ...e,
-                            [proj.id]: true,
-                          }));
-                        } else {
-                          setHistoryOpen(true);
-                        }
-                        return;
-                      }
-                      try {
-                        if (proj && !proj.trusted) {
-                          setLocalError(
-                            tr("project.trustFirst", { name: proj.name }),
-                          );
-                          return;
-                        }
-                        await api.sessionSetProject(
-                          sid,
-                          proj?.id ?? null,
-                        );
-                        setActiveProject(proj);
-                        setSessions((list) =>
-                          list.map((s) =>
-                            s.id === sid
-                              ? { ...s, projectId: proj?.id ?? null }
-                              : s,
-                          ),
-                        );
-                        // Live agent used old cwd — force reconnect next send
-                        setSession((prev) =>
-                          prev.sessionId === sid
-                            ? {
-                                ...IDLE_SNAPSHOT,
-                                sessionId: sid,
-                                title: prev.title,
-                                state: "idle",
-                                backend: prev.backend || "grok_agent_stdio",
-                              }
-                            : prev,
-                        );
-                        setLiveHost((prev) =>
-                          prev.sessionId === sid
-                            ? { ...IDLE_SNAPSHOT }
-                            : prev,
-                        );
-                        if (proj) {
-                          setExpandedProjects((e) => ({
-                            ...e,
-                            [proj.id]: true,
-                          }));
-                          showToast(
-                            tr("composer.projectBound", { name: proj.name }),
-                            2500,
-                          );
-                        } else {
-                          setHistoryOpen(true);
-                          showToast(tr("composer.projectCleared"), 2200);
-                        }
-                        setLocalError(null);
-                      } catch (e) {
-                        showToast(String(e), 4500);
-                      }
-                    })();
+                    void bindSessionProject(proj);
+                  }}
+                  onAdd={() => {
+                    void addProjectFromPicker({ bindSession: true });
                   }}
                 />
                 {goalMode ? (
@@ -5842,6 +6148,13 @@ export default function App() {
                 onClick: () => {
                   void archiveSession(s, !s.archived);
                 },
+              },
+              {
+                id: "delete",
+                label: tr("session.delete"),
+                icon: <IconTrash size={16} />,
+                danger: true,
+                onClick: () => deleteSessionConfirm(s),
               },
             ];
           }

@@ -112,10 +112,9 @@ struct LiveSession {
     /// Accumulated assistant text for current turn (persisted on complete).
     stream_buf: String,
     stream_thought: String,
-    /// True once any assistant body text arrived this turn (splits later thoughts).
-    stream_had_body: bool,
-    /// True once we opened a post-body thinking phase (after tools).
-    stream_post_body_thought: bool,
+    /// Last emitted chunk was assistant body — next thought opens a new phase
+    /// so thinking and body can interleave (think → write → think → write).
+    stream_last_was_assistant: bool,
     /// Image/file paths produced this turn (image_gen / image_edit).
     stream_attachments: Vec<MessageAttachmentStored>,
     model_id: Option<String>,
@@ -502,8 +501,7 @@ impl SessionManager {
         let _ = store::update_session_meta(&s.meta);
         s.stream_buf.clear();
         s.stream_thought.clear();
-        s.stream_had_body = false;
-        s.stream_post_body_thought = false;
+        s.stream_last_was_assistant = false;
         s.streaming_message_id = None;
 
         let _ = app.emit(
@@ -626,8 +624,7 @@ impl SessionManager {
                 streaming_message_id: None,
                 stream_buf: String::new(),
                 stream_thought: String::new(),
-                stream_had_body: false,
-                stream_post_body_thought: false,
+                stream_last_was_assistant: false,
                 stream_attachments: Vec::new(),
                 model_id: Some(prefs.model_id.clone()),
                 effort: Some(prefs.effort.clone()),
@@ -905,29 +902,27 @@ impl SessionManager {
                             s.streaming_message_id =
                                 Some(message_id.unwrap_or_else(|| Uuid::new_v4().to_string()));
                         }
-                        // Split thinking: pre-body phase vs post-tool phase (minos-style
-                        // per-message reasoning; UI renders each phase as its own block).
+                        // Split thinking whenever it resumes after body text so the UI
+                        // can interleave thought ↔ content (not stack all thoughts on top).
                         let thought_phase = match kind {
                             StreamKind::Thought => {
-                                let phase = if s.stream_had_body {
-                                    if !s.stream_post_body_thought {
-                                        if !s.stream_thought.is_empty() {
-                                            s.stream_thought.push_str("\n\n⟪phase⟫\n\n");
-                                        }
-                                        s.stream_post_body_thought = true;
-                                        "new"
-                                    } else {
-                                        "continue"
+                                let phase = if s.stream_last_was_assistant {
+                                    if !s.stream_thought.is_empty() {
+                                        s.stream_thought.push_str("\n\n⟪phase⟫\n\n");
                                     }
-                                } else {
+                                    s.stream_last_was_assistant = false;
+                                    "new"
+                                } else if s.stream_thought.is_empty() {
                                     "open"
+                                } else {
+                                    "continue"
                                 };
                                 s.stream_thought.push_str(&text);
                                 phase
                             }
                             StreamKind::Assistant => {
                                 s.stream_buf.push_str(&text);
-                                s.stream_had_body = true;
+                                s.stream_last_was_assistant = true;
                                 "none"
                             }
                         };
@@ -991,8 +986,7 @@ impl SessionManager {
                         }
                         s.stream_buf.clear();
                         s.stream_thought.clear();
-                        s.stream_had_body = false;
-                        s.stream_post_body_thought = false;
+                        s.stream_last_was_assistant = false;
                         s.stream_attachments.clear();
                         if s.fsm.state() == SessionState::Streaming
                             || s.fsm.state() == SessionState::AwaitingPermission
@@ -1170,13 +1164,24 @@ impl SessionManager {
                         .unwrap_or_default()
                 };
 
-                // Live tool activity for UI (Codex-style activity stream).
+                // Live tool activity for UI — prefer human call text over bare "tool".
+                let live_title = if !title.is_empty() && title.to_ascii_lowercase() != "tool" {
+                    title.clone()
+                } else if let Some(ref d) = detail {
+                    d.clone()
+                } else if let Some(ref p) = path_out {
+                    p.clone()
+                } else if !kind.is_empty() && kind.to_ascii_lowercase() != "tool" {
+                    kind.replace('_', " ")
+                } else {
+                    String::new()
+                };
                 let _ = app.emit(
                     "session://tool",
                     serde_json::json!({
                         "sessionId": app_sid,
                         "toolCallId": tool_call_id,
-                        "title": title,
+                        "title": live_title,
                         "kind": kind,
                         "status": if status.is_empty() { "in_progress" } else { &status },
                         "path": path_out,
@@ -1613,8 +1618,7 @@ impl SessionManager {
             s.streaming_message_id = Some(mid.clone());
             s.stream_buf.clear();
             s.stream_thought.clear();
-            s.stream_had_body = false;
-            s.stream_post_body_thought = false;
+            s.stream_last_was_assistant = false;
             s.stream_attachments.clear();
             s.provider_retry_attempt = 0;
             s.provider_retry_aborted = false;
@@ -1800,8 +1804,7 @@ impl SessionManager {
             s.streaming_message_id = None;
             s.stream_buf.clear();
             s.stream_thought.clear();
-            s.stream_had_body = false;
-            s.stream_post_body_thought = false;
+            s.stream_last_was_assistant = false;
             s.acp.clone()
         };
         if let Some(acp) = acp {

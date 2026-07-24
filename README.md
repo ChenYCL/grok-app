@@ -61,7 +61,8 @@
 6. [配置目录](#配置目录)
 7. [开发与构建](#开发与构建)
 8. [文档与贡献](#文档与贡献)
-9. [关注作者](#关注作者)
+9. [贡献者](#贡献者)
+10. [关注作者](#关注作者)
 
 ---
 
@@ -235,6 +236,12 @@ pnpm build
 | 安全披露 | [SECURITY.md](./SECURITY.md) |
 
 欢迎 Issue 与 PR。
+
+## 贡献者
+
+感谢所有为 Grok App 做出贡献的人！
+
+[![Contributors](https://contrib.rocks/image?repo=RongleCat/grok-app)](https://github.com/RongleCat/grok-app/graphs/contributors)
 
 ## License
 

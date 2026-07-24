@@ -15,6 +15,7 @@ import { createT } from "@/i18n";
 import type { ChatMessage } from "@/lib/session";
 import { toolStepDisplayTitle } from "@/lib/session";
 import { IconStop } from "@/components/icons";
+// locale kept on LiveToolText for API compatibility with ConversationThread
 
 export {
   isToolStepMessage,
@@ -24,18 +25,18 @@ export {
 } from "@/lib/session";
 
 /**
- * Simple mid-stream tool status — text only, like:
- * “Listing files in private persona folder”
+ * Mid-stream tool status — plain call text only (no "tool" chrome).
+ * Hidden when there is no meaningful title yet.
  */
 export function LiveToolText({
   message,
-  locale,
+  locale: _locale,
 }: {
   message: ChatMessage;
   locale: Locale;
 }) {
-  const tr = useMemo(() => createT(locale), [locale]);
-  const title = toolStepDisplayTitle(message) || tr("activity.tool");
+  const title = toolStepDisplayTitle(message);
+  if (!title) return null;
 
   return (
     <div

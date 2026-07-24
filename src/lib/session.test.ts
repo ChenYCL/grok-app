@@ -137,6 +137,7 @@ describe("session projection", () => {
         content: "",
         thought: "first",
         thoughtPhases: ["first"],
+        segments: [{ kind: "thought", text: "first" }],
         streaming: true,
       },
     ];
@@ -149,6 +150,56 @@ describe("session projection", () => {
       thoughtPhase: "new",
     });
     expect(messages[1]!.thoughtPhases).toEqual(["first", "second"]);
+    expect(messages[1]!.segments).toEqual([
+      { kind: "thought", text: "first" },
+      { kind: "thought", text: "second" },
+    ]);
+  });
+
+  it("interleaves thought and content in stream order", () => {
+    let messages: ChatMessage[] = [
+      { id: "u1", role: "user", content: "hi" },
+      { id: "a1", role: "assistant", content: "", streaming: true },
+    ];
+    messages = applyStreamChunk(messages, {
+      sessionId: "s",
+      messageId: "a1",
+      text: "think1",
+      done: false,
+      kind: "thought",
+      thoughtPhase: "open",
+    });
+    messages = applyStreamChunk(messages, {
+      sessionId: "s",
+      messageId: "a1",
+      text: "hello ",
+      done: false,
+      kind: "assistant",
+    });
+    messages = applyStreamChunk(messages, {
+      sessionId: "s",
+      messageId: "a1",
+      text: "think2",
+      done: false,
+      kind: "thought",
+      thoughtPhase: "new",
+    });
+    messages = applyStreamChunk(messages, {
+      sessionId: "s",
+      messageId: "a1",
+      text: "world",
+      done: false,
+      kind: "assistant",
+    });
+    const a = messages[1]!;
+    expect(a.segments).toEqual([
+      { kind: "thought", text: "think1" },
+      { kind: "content", text: "hello " },
+      { kind: "thought", text: "think2" },
+      { kind: "content", text: "world" },
+    ]);
+    expect(a.content).toBe("hello world");
+    expect(a.thoughtPhases).toEqual(["think1", "think2"]);
   });
 
   it("stream chunks never append onto prior-turn assistants", () => {
@@ -437,5 +488,48 @@ describe("tool activity", () => {
         marker: "tool_step",
       }),
     ).toBe("Read foo");
+  });
+
+  it("never surfaces bare tool placeholder; prefers detail/path", () => {
+    expect(
+      toolStepDisplayTitle({
+        id: "tool-3",
+        role: "tool",
+        content: "tool",
+        toolDetail: "ls -la /tmp",
+        marker: "tool_step",
+      }),
+    ).toBe("ls -la /tmp");
+    expect(
+      toolStepDisplayTitle({
+        id: "tool-4",
+        role: "tool",
+        content: "tool",
+        marker: "tool_step",
+      }),
+    ).toBe("");
+    let m = applyToolEvent([], {
+      toolCallId: "t-gen",
+      title: "tool",
+      kind: "tool",
+      status: "in_progress",
+    });
+    expect(pickRunningTurnTool(m)).toBeNull();
+    m = applyToolEvent(m, {
+      toolCallId: "t-gen",
+      title: "tool",
+      kind: "bash",
+      status: "in_progress",
+      detail: "npm test",
+    });
+    expect(pickRunningTurnTool(m)?.content).toBe("npm test");
+    // Don't downgrade a good title on a vague update
+    m = applyToolEvent(m, {
+      toolCallId: "t-gen",
+      title: "tool",
+      kind: "bash",
+      status: "in_progress",
+    });
+    expect(m[0]?.content).toBe("npm test");
   });
 });

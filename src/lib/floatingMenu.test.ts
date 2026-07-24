@@ -100,9 +100,26 @@ describe("floatingStyle", () => {
       maxWidth: 1000,
       fitContent: false,
     });
-    expect(s?.transform).toBe("translateY(-100%)");
+    expect(s?.transform).toContain("translateY(-100%)");
     expect(s?.position).toBe("fixed");
     expect(s?.width).toBe(200);
+  });
+
+  it("hides panel until settled to avoid open flash", () => {
+    const s = floatingStyle(
+      {
+        left: 10,
+        top: 100,
+        width: 200,
+        placeAbove: false,
+        maxHeight: 200,
+        maxWidth: 1000,
+        fitContent: true,
+      },
+      { settled: false },
+    );
+    expect(s?.visibility).toBe("hidden");
+    expect(s?.pointerEvents).toBe("none");
   });
 
   it("uses max-content when fitContent", () => {
