@@ -1149,15 +1149,34 @@ export default function App() {
                 })
                 .join("\n");
             }
-            setPlan({
-              title: tr("plan.ready"),
-              body: displayBody,
-              entries,
-              // Waiting only if no rpc to answer; exit_plan_mode has rpcId
-              waiting: p.waiting === true && p.rpcId == null,
-              visible: true,
-              rpcId: p.rpcId ?? null,
-              toolCallId: p.toolCallId ?? null,
+            // Preserve exit_plan_mode rpcId across later sessionUpdate plan
+            // notifications (those arrive with rpcId=null and would otherwise
+            // disable Approve / Request changes — see #17).
+            setPlan((prev) => {
+              const rpcId =
+                p.rpcId != null
+                  ? p.rpcId
+                  : prev.visible
+                    ? (prev.rpcId ?? null)
+                    : null;
+              return {
+                title: tr("plan.ready"),
+                body: displayBody || (prev.visible ? prev.body : ""),
+                entries: entries.length
+                  ? entries
+                  : prev.visible
+                    ? prev.entries
+                    : [],
+                waiting: rpcId == null,
+                visible: true,
+                rpcId,
+                toolCallId:
+                  p.toolCallId != null
+                    ? p.toolCallId
+                    : prev.visible
+                      ? (prev.toolCallId ?? null)
+                      : null,
+              };
             });
           }),
         );
@@ -3955,14 +3974,24 @@ export default function App() {
           onTheme={applyThemeChoice}
           sessionDataMode={sessionDataMode}
           onSessionDataMode={(v) => {
+            const commit = () => {
+              setSessionDataMode(v);
+              void api.settingsGet().then((s) =>
+                api.settingsSet({ ...s, sessionDataMode: v }),
+              );
+            };
+            // Tauri WebView: window.confirm is unreliable (often always false).
             if (v === "shared") {
-              const ok = window.confirm(tr("settings.sharedConfirm"));
-              if (!ok) return;
+              setAppDialog({
+                kind: "confirm",
+                title: tr("settings.sessionDataMode"),
+                message: tr("settings.sharedConfirm"),
+                confirmLabel: tr("common.confirm"),
+                onConfirm: commit,
+              });
+              return;
             }
-            setSessionDataMode(v);
-            void api.settingsGet().then((s) =>
-              api.settingsSet({ ...s, sessionDataMode: v }),
-            );
+            commit();
           }}
           policy={policy}
           onPolicy={(v) => {

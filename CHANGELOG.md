@@ -24,6 +24,8 @@ See `docs/llm-wiki/release.md`.
 
 ### Fixed
 
+- **Settings → Session data mode**: switching to shared used `window.confirm`, which is unreliable in Tauri WebView and made the control look broken — use in-app confirm (Fixes #19).
+- **Plan card**: keep `exit_plan_mode` `rpcId` when later `sessionUpdate` plan notifications arrive without one, so Approve / Request changes stay clickable (Fixes #17).
 - **Plan mode**: handle `_x.ai/exit_plan_mode` (planContent body + Approve/Revise/Abandon RPC reply); wire Plan card buttons (minos-aligned).
 - **Thinking UI**: multi-phase reasoning split into separate blocks (pre-tool vs post-tool); thought chunks bind to current assistant message id.
 - **Session ↔ project rebind**: composer project chip is a menu — bind orphan /「未选项目」sessions to a trusted folder (or clear back to orphan).
