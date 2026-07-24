@@ -1739,6 +1739,218 @@ pub async fn path_open(path: String) -> Result<(), String> {
     Ok(())
 }
 
+/// Optional git unified diff for a path under a project (session Changes panel).
+/// Soft-fails: returns `available: false` when git is missing, path is outside
+/// the repo, or the file has no diff — never hard-requires git.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GitFileDiffResult {
+    pub available: bool,
+    pub diff: Option<String>,
+    pub relative_path: Option<String>,
+    pub reason: Option<String>,
+}
+
+#[tauri::command]
+pub async fn git_file_diff(
+    project_path: String,
+    path: String,
+) -> Result<GitFileDiffResult, String> {
+    let project = normalize_fs_path(&project_path);
+    let target = normalize_fs_path(&path);
+    if project.is_empty() || target.is_empty() {
+        return Ok(GitFileDiffResult {
+            available: false,
+            diff: None,
+            relative_path: None,
+            reason: Some("empty path".into()),
+        });
+    }
+    let proj = std::path::PathBuf::from(&project);
+    if !proj.is_dir() {
+        return Ok(GitFileDiffResult {
+            available: false,
+            diff: None,
+            relative_path: None,
+            reason: Some("project not a directory".into()),
+        });
+    }
+
+    // Prefer project-relative when under root (git -C wants repo-relative paths).
+    let rel = {
+        let t = std::path::PathBuf::from(&target);
+        match t.strip_prefix(&proj) {
+            Ok(r) => r.to_string_lossy().replace('\\', "/"),
+            Err(_) => {
+                // Also try string prefix (macOS /var vs /private/var etc. is best-effort)
+                let p = project.trim_end_matches('/').replace('\\', "/");
+                let a = target.replace('\\', "/");
+                if a.starts_with(&(p.clone() + "/")) {
+                    a[p.len() + 1..].to_string()
+                } else {
+                    target.clone()
+                }
+            }
+        }
+    };
+    if rel.is_empty() || rel == "." {
+        return Ok(GitFileDiffResult {
+            available: false,
+            diff: None,
+            relative_path: None,
+            reason: Some("not a file path".into()),
+        });
+    }
+
+    // Soft check: is git on PATH?
+    let git_ok = std::process::Command::new("git")
+        .arg("--version")
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status()
+        .map(|s| s.success())
+        .unwrap_or(false);
+    if !git_ok {
+        return Ok(GitFileDiffResult {
+            available: false,
+            diff: None,
+            relative_path: Some(rel),
+            reason: Some("git not available".into()),
+        });
+    }
+
+    // Confirm we are inside a work tree
+    let inside = std::process::Command::new("git")
+        .args(["-C", &project, "rev-parse", "--is-inside-work-tree"])
+        .output();
+    let inside_ok = inside
+        .as_ref()
+        .map(|o| o.status.success() && String::from_utf8_lossy(&o.stdout).trim() == "true")
+        .unwrap_or(false);
+    if !inside_ok {
+        return Ok(GitFileDiffResult {
+            available: false,
+            diff: None,
+            relative_path: Some(rel),
+            reason: Some("not a git repository".into()),
+        });
+    }
+
+    // Working tree + index vs HEAD (covers staged and unstaged edits).
+    let out = std::process::Command::new("git")
+        .args([
+            "-C",
+            &project,
+            "diff",
+            "--no-color",
+            "--no-ext-diff",
+            "HEAD",
+            "--",
+            &rel,
+        ])
+        .output()
+        .map_err(|e| e.to_string())?;
+
+    if !out.status.success() {
+        // Untracked new file: try against empty tree
+        let untracked = std::process::Command::new("git")
+            .args([
+                "-C",
+                &project,
+                "diff",
+                "--no-color",
+                "--no-ext-diff",
+                "--no-index",
+                "--",
+                "/dev/null",
+                &rel,
+            ])
+            .output();
+        if let Ok(u) = untracked {
+            // git --no-index exits 1 when files differ — still useful
+            let text = String::from_utf8_lossy(&u.stdout).to_string();
+            if !text.trim().is_empty() {
+                return Ok(GitFileDiffResult {
+                    available: true,
+                    diff: Some(text.chars().take(400_000).collect()),
+                    relative_path: Some(rel),
+                    reason: None,
+                });
+            }
+        }
+        let err = String::from_utf8_lossy(&out.stderr).trim().to_string();
+        return Ok(GitFileDiffResult {
+            available: false,
+            diff: None,
+            relative_path: Some(rel),
+            reason: Some(if err.is_empty() {
+                "git diff failed".into()
+            } else {
+                err.chars().take(200).collect()
+            }),
+        });
+    }
+
+    let text = String::from_utf8_lossy(&out.stdout).to_string();
+    if text.trim().is_empty() {
+        // Maybe untracked
+        let untracked = std::process::Command::new("git")
+            .args([
+                "-C",
+                &project,
+                "ls-files",
+                "--error-unmatch",
+                "--",
+                &rel,
+            ])
+            .status();
+        let tracked = untracked.map(|s| s.success()).unwrap_or(false);
+        if !tracked {
+            // Show full file as addition via --no-index when possible
+            let abs = proj.join(&rel);
+            if abs.is_file() {
+                let u = std::process::Command::new("git")
+                    .args([
+                        "-C",
+                        &project,
+                        "diff",
+                        "--no-color",
+                        "--no-ext-diff",
+                        "--no-index",
+                        "--",
+                        "/dev/null",
+                        abs.to_string_lossy().as_ref(),
+                    ])
+                    .output();
+                if let Ok(u) = u {
+                    let t = String::from_utf8_lossy(&u.stdout).to_string();
+                    if !t.trim().is_empty() {
+                        return Ok(GitFileDiffResult {
+                            available: true,
+                            diff: Some(t.chars().take(400_000).collect()),
+                            relative_path: Some(rel),
+                            reason: None,
+                        });
+                    }
+                }
+            }
+        }
+        return Ok(GitFileDiffResult {
+            available: false,
+            diff: None,
+            relative_path: Some(rel),
+            reason: Some("no diff".into()),
+        });
+    }
+
+    Ok(GitFileDiffResult {
+        available: true,
+        diff: Some(text.chars().take(400_000).collect()),
+        relative_path: Some(rel),
+        reason: None,
+    })
+}
+
 /// Reveal a path in the system file manager (Finder / Explorer).
 #[tauri::command]
 pub async fn path_reveal(path: String) -> Result<(), String> {

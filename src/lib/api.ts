@@ -247,6 +247,18 @@ export async function pathReveal(path: string) {
   return invoke<void>("path_reveal", { path });
 }
 
+/** Optional git unified diff for a project file (session Changes panel). */
+export interface GitFileDiffResult {
+  available: boolean;
+  diff?: string | null;
+  relativePath?: string | null;
+  reason?: string | null;
+}
+
+export async function gitFileDiff(projectPath: string, path: string) {
+  return invoke<GitFileDiffResult>("git_file_diff", { projectPath, path });
+}
+
 export interface FsEntry {
   name: string;
   relativePath: string;

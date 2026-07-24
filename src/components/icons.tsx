@@ -25,6 +25,7 @@ import {
   IconCopy as TbCopy,
   IconDots as TbDots,
   IconEdit as TbEdit,
+  IconFileDiff as TbFileDiff,
   IconFileText as TbFileText,
   IconFiles as TbFiles,
   IconFirstAidKit as TbFirstAidKit,
@@ -225,6 +226,8 @@ export const IconStop = wrap(TbPlayerStop);
 export const IconHistory = wrap(TbRefresh);
 export const IconUpload = wrap(TbUpload);
 export const IconFiles = wrap(TbFiles);
+/** Session changes / diff panel (resource viewer). */
+export const IconFileDiff = wrap(TbFileDiff);
 /** File tree panel toggle (resource viewer). */
 export const IconListTree = wrap(TbListTree);
 export const IconFileUp = wrap(TbUpload);

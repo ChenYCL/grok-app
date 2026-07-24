@@ -165,6 +165,7 @@ pub fn run() {
             commands::paths_classify,
             commands::path_open,
             commands::path_reveal,
+            commands::git_file_diff,
             commands::fs_list_dir,
             commands::fs_read_file,
             tray::tray_refresh,
