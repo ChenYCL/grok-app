@@ -615,6 +615,27 @@ export interface PermissionPayload {
   options: unknown;
 }
 
+export interface AskUserOption {
+  id: string;
+  label: string;
+  description?: string | null;
+}
+
+export interface AskUserQuestionItem {
+  id: string;
+  question: string;
+  options: AskUserOption[];
+  multiSelect?: boolean;
+}
+
+/** Payload for `session://ask_user` (`_x.ai/ask_user_question`). */
+export interface AskUserPayload {
+  rpcId: number;
+  sessionId: string;
+  toolCallId?: string | null;
+  questions: AskUserQuestionItem[];
+}
+
 export const IDLE_SNAPSHOT: SessionSnapshot = {
   sessionId: null,
   agentSessionId: null,

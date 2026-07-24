@@ -102,6 +102,19 @@ export async function sessionResolvePlan(args: {
   });
 }
 
+/** Answer or dismiss pending `_x.ai/ask_user_question`. */
+export async function sessionResolveAskUser(args: {
+  decision: "accepted" | "cancelled" | string;
+  answers?: Record<string, string> | null;
+  rpcId?: number | null;
+}): Promise<SessionSnapshot> {
+  return invoke("session_resolve_ask_user", {
+    decision: args.decision,
+    answers: args.answers ?? null,
+    rpcId: args.rpcId ?? null,
+  });
+}
+
 export async function probeCli(manualPath?: string) {
   return invoke<{
     found: boolean;

@@ -46,6 +46,13 @@ pub enum AcpEvent {
         rpc_id: Option<u64>,
         tool_call_id: Option<String>,
     },
+    /// Agent reverse-request `_x.ai/ask_user_question` (questionnaire / choices).
+    AskUserQuestion {
+        rpc_id: u64,
+        tool_call_id: Option<String>,
+        questions: Vec<AskUserQuestionItem>,
+        raw: Value,
+    },
     PermissionRequest {
         rpc_id: u64,
         tool_call_id: String,
@@ -569,15 +576,31 @@ impl AcpClient {
                             tool_call_id,
                         });
                     } else {
-                        // ask_user_question: cancel for now so the agent does not hang.
-                        info!("acp ask_user_question id={rpc_id} — auto-cancel (UI not implemented)");
-                        let reply = json!({
-                            "jsonrpc": "2.0",
-                            "id": rpc_id,
-                            "result": { "outcome": "cancelled" }
-                        });
-                        if let Err(e) = self.write_line(&reply).await {
-                            warn!("failed to auto-cancel ask_user_question: {e}");
+                        // ask_user_question: surface UI; reply via respond_ask_user_question.
+                        let parsed = parse_ask_user_question_params(&params);
+                        info!(
+                            "acp ask_user_question id={rpc_id} questions={} tool_call={:?}",
+                            parsed.questions.len(),
+                            parsed.tool_call_id
+                        );
+                        if parsed.questions.is_empty() {
+                            // Nothing to show — cancel so the agent does not hang.
+                            warn!("ask_user_question id={rpc_id}: empty questions, auto-cancel");
+                            let reply = json!({
+                                "jsonrpc": "2.0",
+                                "id": rpc_id,
+                                "result": { "outcome": "cancelled" }
+                            });
+                            if let Err(e) = self.write_line(&reply).await {
+                                warn!("failed to auto-cancel empty ask_user_question: {e}");
+                            }
+                        } else {
+                            let _ = self.event_tx.send(AcpEvent::AskUserQuestion {
+                                rpc_id,
+                                tool_call_id: parsed.tool_call_id,
+                                questions: parsed.questions,
+                                raw: params,
+                            });
                         }
                     }
                     return;
@@ -1451,6 +1474,42 @@ impl AcpClient {
         self.write_line(&msg).await
     }
 
+    /// Reply to `_x.ai/ask_user_question` reverse-request.
+    ///
+    /// Wire (internally-tagged `AskUserQuestionExtResponse`):
+    /// - `{ "outcome": "accepted", "answers": { "<question>": "<answer>" }, "partial_answers": {} }`
+    /// - `{ "outcome": "cancelled" }` when the user dismisses
+    pub async fn respond_ask_user_question(
+        &self,
+        rpc_id: u64,
+        outcome: AskUserOutcome,
+    ) -> Result<(), String> {
+        let result = match outcome {
+            AskUserOutcome::Accepted { answers } => {
+                json!({
+                    "outcome": "accepted",
+                    "answers": answers,
+                    "partial_answers": {},
+                })
+            }
+            AskUserOutcome::Cancelled => json!({ "outcome": "cancelled" }),
+        };
+        let msg = json!({
+            "jsonrpc": "2.0",
+            "id": rpc_id,
+            "result": result,
+        });
+        info!(
+            "acp → ask_user_question reply id={rpc_id} outcome={}",
+            if matches!(result.get("outcome").and_then(|v| v.as_str()), Some("accepted")) {
+                "accepted"
+            } else {
+                "cancelled"
+            }
+        );
+        self.write_line(&msg).await
+    }
+
     pub fn agent_session_id(&self) -> Option<String> {
         self.agent_session_id.lock().clone()
     }
@@ -1467,6 +1526,316 @@ impl AcpClient {
 pub enum PermissionOutcome {
     Selected { option_id: String },
     Cancelled,
+}
+
+/// Client reply to `_x.ai/ask_user_question`.
+#[derive(Debug, Clone)]
+pub enum AskUserOutcome {
+    /// Map of question text → selected label(s) and/or free-text answer.
+    Accepted { answers: Value },
+    Cancelled,
+}
+
+/// One choice inside an ask-user question.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct AskUserOption {
+    pub id: String,
+    pub label: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+}
+
+/// One question presented by the agent.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct AskUserQuestionItem {
+    pub id: String,
+    pub question: String,
+    #[serde(default)]
+    pub options: Vec<AskUserOption>,
+    #[serde(default)]
+    pub multi_select: bool,
+}
+
+#[derive(Debug, Clone)]
+pub struct ParsedAskUserQuestion {
+    pub tool_call_id: Option<String>,
+    pub questions: Vec<AskUserQuestionItem>,
+}
+
+/// Parse flat `_x.ai/ask_user_question` params into UI-friendly questions.
+///
+/// Accepts several shapes seen on the wire / in tool schemas:
+/// - `{ questions: [{ question, options, multiSelect? }] }`
+/// - `{ question|prompt|text, options|choices }` (single question)
+/// - option entries as strings or `{ label, description, id? }`
+pub fn parse_ask_user_question_params(params: &Value) -> ParsedAskUserQuestion {
+    let tool_call_id = params
+        .get("toolCallId")
+        .or_else(|| params.get("tool_call_id"))
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string());
+
+    let mut questions = Vec::new();
+
+    if let Some(arr) = params
+        .get("questions")
+        .and_then(|v| v.as_array())
+        .filter(|a| !a.is_empty())
+    {
+        for (i, q) in arr.iter().enumerate() {
+            if let Some(item) = parse_one_question(q, i) {
+                questions.push(item);
+            }
+        }
+    }
+
+    if questions.is_empty() {
+        // Flat single-question form.
+        if let Some(item) = parse_one_question(params, 0) {
+            // Only keep if there is real question text or options.
+            if !item.question.is_empty() || !item.options.is_empty() {
+                questions.push(item);
+            }
+        }
+    }
+
+    // Last-resort: string prompt field only.
+    if questions.is_empty() {
+        let text = params
+            .get("prompt")
+            .or_else(|| params.get("message"))
+            .or_else(|| params.get("text"))
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .trim()
+            .to_string();
+        if !text.is_empty() {
+            questions.push(AskUserQuestionItem {
+                id: "0".into(),
+                question: text,
+                options: Vec::new(),
+                multi_select: false,
+            });
+        }
+    }
+
+    ParsedAskUserQuestion {
+        tool_call_id,
+        questions,
+    }
+}
+
+fn parse_one_question(q: &Value, index: usize) -> Option<AskUserQuestionItem> {
+    if q.is_null() {
+        return None;
+    }
+    // Bare string → free-text question.
+    if let Some(s) = q.as_str() {
+        let s = s.trim();
+        if s.is_empty() {
+            return None;
+        }
+        return Some(AskUserQuestionItem {
+            id: index.to_string(),
+            question: s.to_string(),
+            options: Vec::new(),
+            multi_select: false,
+        });
+    }
+
+    let obj = q.as_object()?;
+    let question = obj
+        .get("question")
+        .or_else(|| obj.get("prompt"))
+        .or_else(|| obj.get("text"))
+        .or_else(|| obj.get("header"))
+        .or_else(|| obj.get("title"))
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .trim()
+        .to_string();
+
+    let multi_select = obj
+        .get("multiSelect")
+        .or_else(|| obj.get("multi_select"))
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+
+    let id = obj
+        .get("id")
+        .or_else(|| obj.get("questionId"))
+        .or_else(|| obj.get("question_id"))
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string())
+        .unwrap_or_else(|| index.to_string());
+
+    let options_val = obj
+        .get("options")
+        .or_else(|| obj.get("choices"))
+        .cloned()
+        .unwrap_or(json!([]));
+    let options = parse_ask_user_options(&options_val);
+
+    if question.is_empty() && options.is_empty() {
+        return None;
+    }
+
+    Some(AskUserQuestionItem {
+        id,
+        question: if question.is_empty() {
+            format!("Question {}", index + 1)
+        } else {
+            question
+        },
+        options,
+        multi_select,
+    })
+}
+
+fn parse_ask_user_options(v: &Value) -> Vec<AskUserOption> {
+    let Some(arr) = v.as_array() else {
+        return Vec::new();
+    };
+    let mut out = Vec::new();
+    for (i, item) in arr.iter().enumerate() {
+        if let Some(s) = item.as_str() {
+            let label = s.trim();
+            if label.is_empty() {
+                continue;
+            }
+            out.push(AskUserOption {
+                id: format!("opt-{i}"),
+                label: label.to_string(),
+                description: None,
+            });
+            continue;
+        }
+        let Some(obj) = item.as_object() else {
+            continue;
+        };
+        let label = obj
+            .get("label")
+            .or_else(|| obj.get("name"))
+            .or_else(|| obj.get("text"))
+            .or_else(|| obj.get("title"))
+            .or_else(|| obj.get("value"))
+            .and_then(|x| x.as_str())
+            .unwrap_or("")
+            .trim()
+            .to_string();
+        if label.is_empty() {
+            continue;
+        }
+        let id = obj
+            .get("id")
+            .or_else(|| obj.get("optionId"))
+            .or_else(|| obj.get("option_id"))
+            .or_else(|| obj.get("value"))
+            .and_then(|x| x.as_str())
+            .map(|s| s.to_string())
+            .unwrap_or_else(|| format!("opt-{i}"));
+        let description = obj
+            .get("description")
+            .or_else(|| obj.get("desc"))
+            .or_else(|| obj.get("detail"))
+            .and_then(|x| x.as_str())
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty());
+        out.push(AskUserOption {
+            id,
+            label,
+            description,
+        });
+    }
+    out
+}
+
+#[cfg(test)]
+mod ask_user_question_tests {
+    use super::*;
+
+    #[test]
+    fn parse_questions_array_with_object_options() {
+        let params = json!({
+            "sessionId": "s1",
+            "toolCallId": "call-1",
+            "questions": [{
+                "question": "Which store?",
+                "multiSelect": false,
+                "options": [
+                    { "label": "SQLite", "description": "Local file" },
+                    { "label": "Postgres", "description": "Server" }
+                ]
+            }]
+        });
+        let p = parse_ask_user_question_params(&params);
+        assert_eq!(p.tool_call_id.as_deref(), Some("call-1"));
+        assert_eq!(p.questions.len(), 1);
+        assert_eq!(p.questions[0].question, "Which store?");
+        assert!(!p.questions[0].multi_select);
+        assert_eq!(p.questions[0].options.len(), 2);
+        assert_eq!(p.questions[0].options[0].label, "SQLite");
+        assert_eq!(
+            p.questions[0].options[0].description.as_deref(),
+            Some("Local file")
+        );
+    }
+
+    #[test]
+    fn parse_flat_single_question_string_options() {
+        let params = json!({
+            "question": "Ship it?",
+            "options": ["Yes", "No", "Later"]
+        });
+        let p = parse_ask_user_question_params(&params);
+        assert_eq!(p.questions.len(), 1);
+        assert_eq!(p.questions[0].question, "Ship it?");
+        assert_eq!(
+            p.questions[0]
+                .options
+                .iter()
+                .map(|o| o.label.as_str())
+                .collect::<Vec<_>>(),
+            vec!["Yes", "No", "Later"]
+        );
+    }
+
+    #[test]
+    fn parse_multi_select_and_snake_case() {
+        let params = json!({
+            "questions": [{
+                "question": "Pick targets",
+                "multi_select": true,
+                "choices": [
+                    { "name": "macOS" },
+                    { "name": "Windows" }
+                ]
+            }]
+        });
+        let p = parse_ask_user_question_params(&params);
+        assert_eq!(p.questions.len(), 1);
+        assert!(p.questions[0].multi_select);
+        assert_eq!(p.questions[0].options.len(), 2);
+        assert_eq!(p.questions[0].options[1].label, "Windows");
+    }
+
+    #[test]
+    fn parse_prompt_only_free_text() {
+        let params = json!({ "prompt": "What should the package be named?" });
+        let p = parse_ask_user_question_params(&params);
+        assert_eq!(p.questions.len(), 1);
+        assert_eq!(p.questions[0].question, "What should the package be named?");
+        assert!(p.questions[0].options.is_empty());
+    }
+
+    #[test]
+    fn parse_empty_params_yields_no_questions() {
+        let p = parse_ask_user_question_params(&json!({}));
+        assert!(p.questions.is_empty());
+        assert!(p.tool_call_id.is_none());
+    }
 }
 
 fn format_jsonrpc_error(err: &Value) -> String {

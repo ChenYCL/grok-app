@@ -9,8 +9,8 @@ use tauri::{AppHandle, Emitter};
 use uuid::Uuid;
 
 use crate::acp_client::{
-    should_abort_provider_retry, AcpClient, AcpEvent, PermissionOutcome, StreamKind,
-    HOST_PROVIDER_MAX_RETRIES,
+    should_abort_provider_retry, AcpClient, AcpEvent, AskUserOutcome, PermissionOutcome,
+    StreamKind, HOST_PROVIDER_MAX_RETRIES,
 };
 use crate::cli_probe;
 use crate::error::{AgentError, AgentErrorCode};
@@ -133,6 +133,8 @@ struct LiveSession {
     needs_history_bootstrap: bool,
     /// Pending `_x.ai/exit_plan_mode` JSON-RPC id awaiting user Approve / revise.
     pending_plan_rpc_id: Option<u64>,
+    /// Pending `_x.ai/ask_user_question` JSON-RPC id awaiting user answers.
+    pending_ask_user_rpc_id: Option<u64>,
 }
 
 /// How many journal messages (user+assistant) to carry when session/load fails.
@@ -636,6 +638,7 @@ impl SessionManager {
                 provider_retry_aborted: false,
                 needs_history_bootstrap: false,
                 pending_plan_rpc_id: None,
+                pending_ask_user_rpc_id: None,
             });
         }
         Self::emit_state(&app, &self.snapshot());
@@ -1265,6 +1268,31 @@ impl SessionManager {
                         "rpcId": rpc_id,
                         "toolCallId": tool_call_id,
                         "waiting": rpc_id.is_none(),
+                    }),
+                );
+            }
+            AcpEvent::AskUserQuestion {
+                rpc_id,
+                tool_call_id,
+                questions,
+                raw: _,
+            } => {
+                let app_sid = {
+                    let mut guard = self.inner.lock();
+                    if let Some(s) = guard.as_mut() {
+                        s.pending_ask_user_rpc_id = Some(rpc_id);
+                        s.app_session_id.clone()
+                    } else {
+                        String::new()
+                    }
+                };
+                let _ = app.emit(
+                    "session://ask_user",
+                    serde_json::json!({
+                        "rpcId": rpc_id,
+                        "sessionId": app_sid,
+                        "toolCallId": tool_call_id,
+                        "questions": questions,
                     }),
                 );
             }
@@ -2039,6 +2067,42 @@ impl SessionManager {
         let id = id.ok_or_else(|| "no pending plan approval".to_string())?;
         let acp = acp.ok_or_else(|| "ACP client missing".to_string())?;
         acp.respond_exit_plan_mode(id, &decision, feedback).await?;
+        let snap = self.snapshot();
+        Self::emit_state(&app, &snap);
+        Ok(snap)
+    }
+
+    /// Resolve pending `_x.ai/ask_user_question` (answers or cancel).
+    ///
+    /// `decision`: "accepted" | "cancelled"
+    /// `answers`: object map of question text → answer string (required for accepted).
+    pub async fn resolve_ask_user(
+        &self,
+        app: AppHandle,
+        decision: String,
+        answers: Option<serde_json::Value>,
+        rpc_id: Option<u64>,
+    ) -> Result<SessionSnapshot, String> {
+        let (acp, id) = {
+            let mut guard = self.inner.lock();
+            let s = guard.as_mut().ok_or("no session")?;
+            let id = rpc_id.or(s.pending_ask_user_rpc_id.take());
+            // Clear pending id even if rpc_id was explicit.
+            if rpc_id.is_some() {
+                s.pending_ask_user_rpc_id = None;
+            }
+            (s.acp.clone(), id)
+        };
+        let id = id.ok_or_else(|| "no pending ask_user_question".to_string())?;
+        let acp = acp.ok_or_else(|| "ACP client missing".to_string())?;
+        let outcome = match decision.as_str() {
+            "accepted" | "answered" | "accept" => {
+                let answers = answers.unwrap_or_else(|| serde_json::json!({}));
+                AskUserOutcome::Accepted { answers }
+            }
+            _ => AskUserOutcome::Cancelled,
+        };
+        acp.respond_ask_user_question(id, outcome).await?;
         let snap = self.snapshot();
         Self::emit_state(&app, &snap);
         Ok(snap)

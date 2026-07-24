@@ -625,6 +625,13 @@ export const zhTW: Record<MessageKey, string> = {
   "perm.allowSession": "對話內允許",
   "perm.deny": "拒絕",
 
+  "askUser.title": "Agent 提問",
+  "askUser.submit": "提交",
+  "askUser.cancel": "略過",
+  "askUser.otherPlaceholder": "輸入你的回答…",
+  "askUser.freeTextHint": "或輸入自訂回答",
+  "askUser.multiHint": "可多選",
+
   "message.copy": "複製",
   "message.copied": "已複製",
   "message.edit": "編輯",

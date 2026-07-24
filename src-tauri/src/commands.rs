@@ -88,6 +88,18 @@ pub async fn session_resolve_plan(
     mgr.resolve_plan(app, decision, feedback, rpc_id).await
 }
 
+/// Answer or dismiss pending `_x.ai/ask_user_question`.
+#[tauri::command]
+pub async fn session_resolve_ask_user(
+    app: tauri::AppHandle,
+    mgr: State<'_, Arc<SessionManager>>,
+    decision: String,
+    answers: Option<serde_json::Value>,
+    rpc_id: Option<u64>,
+) -> Result<SessionSnapshot, String> {
+    mgr.resolve_ask_user(app, decision, answers, rpc_id).await
+}
+
 #[tauri::command]
 pub async fn session_disconnect(
     app: tauri::AppHandle,

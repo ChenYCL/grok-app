@@ -652,6 +652,14 @@ const en = {
   "perm.allowSession": "Allow for session",
   "perm.deny": "Deny",
 
+  // Agent ask_user_question
+  "askUser.title": "Agent question",
+  "askUser.submit": "Submit",
+  "askUser.cancel": "Dismiss",
+  "askUser.otherPlaceholder": "Type your answer…",
+  "askUser.freeTextHint": "Or type a custom answer",
+  "askUser.multiHint": "Select one or more options",
+
   "message.copy": "Copy",
   "message.copied": "Copied",
   "message.edit": "Edit",
@@ -1387,6 +1395,13 @@ const zh: Record<MessageKey, string> = {
   "perm.allowOnce": "允许一次",
   "perm.allowSession": "会话内允许",
   "perm.deny": "拒绝",
+
+  "askUser.title": "Agent 提问",
+  "askUser.submit": "提交",
+  "askUser.cancel": "忽略",
+  "askUser.otherPlaceholder": "输入你的回答…",
+  "askUser.freeTextHint": "或输入自定义回答",
+  "askUser.multiHint": "可多选",
 
   "message.copy": "复制",
   "message.copied": "已复制",
