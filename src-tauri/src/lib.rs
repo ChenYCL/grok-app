@@ -175,6 +175,7 @@ pub fn run() {
             commands::import_grok_go_config,
             commands::doctor_report,
             commands::export_support_bundle,
+            commands::export_session_bundle,
             commands::reset_app_data,
             commands::skills_list,
             commands::inspect_mcp,

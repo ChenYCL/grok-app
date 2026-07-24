@@ -1346,6 +1346,23 @@ export default function App() {
         await track(
           api.listen<{
             sessionId?: string;
+            stopReason?: string;
+            toolCount?: number;
+          }>("session://turn_empty_run", (p) => {
+            if (cancelled || !p) return;
+            if (
+              p.sessionId &&
+              p.sessionId !== viewingSessionIdRef.current
+            ) {
+              return;
+            }
+            setToast(tr("session.emptyRunToast"));
+            window.setTimeout(() => setToast(null), 7200);
+          }),
+        );
+        await track(
+          api.listen<{
+            sessionId?: string;
             code?: string;
             message?: string;
             maxConcurrentAgents?: number;
@@ -5147,6 +5164,28 @@ export default function App() {
     ],
   );
 
+  /** Full diagnostic zip (messages + agent trail + logs) for bug reports. */
+  const exportSessionDiagnostic = useCallback(
+    async (sessionId?: string | null) => {
+      const id = sessionId || session.sessionId;
+      if (!id) {
+        showToast(tr("session.exportBundleFail"));
+        return;
+      }
+      try {
+        const res = await api.exportSessionBundle(id);
+        if (res?.ok && res.path) {
+          showToast(tr("session.exportBundleDone"), 4200);
+        } else {
+          showToast(tr("session.exportBundleFail"));
+        }
+      } catch (e) {
+        showToast(`${tr("session.exportBundleFail")}: ${String(e)}`, 5000);
+      }
+    },
+    [session.sessionId, showToast, tr],
+  );
+
   const beginEditLastUser = useCallback(
     (msg: ChatMessage) => {
       if (msg.role !== "user") return;
@@ -8135,6 +8174,14 @@ export default function App() {
                     title: s.title,
                     projectId: s.projectId,
                   });
+                },
+              },
+              {
+                id: "export-bundle",
+                label: tr("session.exportBundle"),
+                icon: <IconCopy size={16} />,
+                onClick: () => {
+                  void exportSessionDiagnostic(s.id);
                 },
               },
               {

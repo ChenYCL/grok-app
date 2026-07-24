@@ -186,6 +186,8 @@ struct LiveSession {
     last_stall_emit: Option<Instant>,
     /// Throttle mid-stream assistant journal upserts (I04).
     journal_throttle: JournalWriteThrottle,
+    /// Tool events observed during the current turn (empty-run soft signal).
+    tools_this_turn: u32,
 }
 
 /// Ready agent process parked while another App session is focused (I01/I02).
@@ -790,6 +792,7 @@ impl SessionManager {
             last_stream_progress: now,
             last_stall_emit: None,
             journal_throttle: JournalWriteThrottle::with_default_interval(),
+            tools_this_turn: 0,
         })
     }
 
@@ -914,6 +917,65 @@ impl SessionManager {
         }
     }
 
+    /// Runtime diagnostics for a session export package (live or parked).
+    /// Returns `None` when the session is not currently attached to a process.
+    pub fn diagnostic_runtime_for(&self, app_session_id: &str) -> Option<serde_json::Value> {
+        {
+            let guard = self.inner.lock();
+            if let Some(s) = guard.as_ref() {
+                if s.app_session_id == app_session_id {
+                    let cwd = s.acp.as_ref().map(|c| c.cwd().display().to_string());
+                    let agent_alive = s.acp.as_ref().is_some_and(|c| c.is_alive());
+                    return Some(serde_json::json!({
+                        "slot": "live",
+                        "state": format!("{:?}", s.fsm.state()),
+                        "backend": s.backend,
+                        "modelId": s.model_id,
+                        "effort": s.effort,
+                        "mode": s.product_mode,
+                        "permissionPolicy": s.policy.as_str(),
+                        "projectPath": s.project_path,
+                        "agentSessionId": s.meta.agent_session_id,
+                        "processId": s.process_id,
+                        "agentAlive": agent_alive,
+                        "cwd": cwd,
+                        "streamingMessageId": s.streaming_message_id,
+                        "toolsThisTurn": s.tools_this_turn,
+                        "needsHistoryBootstrap": s.needs_history_bootstrap,
+                        "lastError": s.fsm.last_error().map(|e| {
+                            serde_json::json!({
+                                "code": e.code.as_str(),
+                                "message": e.message,
+                            })
+                        }),
+                    }));
+                }
+            }
+        }
+        let parked = self.parked.lock();
+        if let Some(p) = parked.get(app_session_id) {
+            return Some(serde_json::json!({
+                "slot": "parked",
+                "state": "Ready",
+                "backend": p.backend,
+                "modelId": p.model_id,
+                "effort": p.effort,
+                "mode": p.product_mode,
+                "permissionPolicy": p.policy.as_str(),
+                "projectPath": p.project_path,
+                "agentSessionId": p.meta.agent_session_id,
+                "processId": p.process_id,
+                "agentAlive": p.acp.is_alive(),
+                "cwd": p.acp.cwd().display().to_string(),
+                "streamingMessageId": serde_json::Value::Null,
+                "toolsThisTurn": 0,
+                "needsHistoryBootstrap": p.needs_history_bootstrap,
+                "lastError": serde_json::Value::Null,
+            }));
+        }
+        None
+    }
+
     /// Keep live session meta title in sync after store rename / auto-title.
     /// Without this, later `session://state` events re-emit the stale connect-time title
     /// and wipe sidebar / header renames.
@@ -1019,10 +1081,19 @@ impl SessionManager {
         let max_concurrent = normalize_max_concurrent(settings.max_concurrent_agents);
         self.sweep_dead_parked();
 
+        // Orphan chats (no project): use $HOME, never process cwd.
+        // Dock-launched macOS apps often have cwd `/`, which confuses the agent.
         let cwd = project_path
             .clone()
             .map(std::path::PathBuf::from)
-            .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| ".".into()));
+            .unwrap_or_else(|| {
+                let home = crate::process_util::user_home();
+                if home.is_dir() {
+                    home
+                } else {
+                    std::env::current_dir().unwrap_or_else(|_| ".".into())
+                }
+            });
 
         // Ensure app session meta
         let mut meta = if let Some(id) = app_session_id {
@@ -1206,6 +1277,7 @@ impl SessionManager {
                 last_stream_progress: now,
                 last_stall_emit: None,
                 journal_throttle: JournalWriteThrottle::with_default_interval(),
+                tools_this_turn: 0,
             });
         }
         Self::emit_state(&app, &self.snapshot());
@@ -1577,11 +1649,23 @@ impl SessionManager {
                 });
                 let _ = app.emit("session://stream", payload);
             }
-            AcpEvent::PromptComplete { stop_reason: _ } => {
-                {
+            AcpEvent::PromptComplete { stop_reason } => {
+                let empty_run = {
                     let mut guard = self.inner.lock();
                     if let Some(s) = guard.as_mut() {
                         Self::touch_stream_progress_locked(s);
+                        // Snapshot empty-run signal before clearing stream buffers.
+                        let had_body = !s.stream_buf.trim().is_empty();
+                        let had_thought = !s.stream_thought.trim().is_empty();
+                        let tools = s.tools_this_turn;
+                        let mode = s.product_mode.clone().unwrap_or_else(|| "agent".into());
+                        let app_sid = s.app_session_id.clone();
+                        let empty = tools == 0
+                            && (had_body || had_thought)
+                            && mode != "ask"
+                            && !s.provider_retry_aborted
+                            && stop_reason != "cancelled"
+                            && stop_reason != "stop";
                         // Force-flush assistant turn (I04 end-of-turn path).
                         Self::maybe_flush_stream_journal(s, true, false);
                         s.stream_buf.clear();
@@ -1596,9 +1680,35 @@ impl SessionManager {
                         }
                         s.streaming_message_id = None;
                         s.last_stall_emit = None;
+                        s.tools_this_turn = 0;
+                        if empty {
+                            Some((app_sid, stop_reason.clone(), mode))
+                        } else {
+                            None
+                        }
+                    } else {
+                        None
                     }
-                }
+                };
                 Self::emit_state(app, &self.snapshot());
+                if let Some((app_sid, reason, mode)) = empty_run {
+                    tracing::info!(
+                        target: "session",
+                        session = %app_sid,
+                        stop_reason = %reason,
+                        mode = %mode,
+                        "turn ended with zero tool calls (soft empty-run signal)"
+                    );
+                    let _ = app.emit(
+                        "session://turn_empty_run",
+                        serde_json::json!({
+                            "sessionId": app_sid,
+                            "stopReason": reason,
+                            "mode": mode,
+                            "toolCount": 0,
+                        }),
+                    );
+                }
             }
             AcpEvent::PermissionRequest {
                 rpc_id,
@@ -1766,6 +1876,7 @@ impl SessionManager {
                     if let Some(s) = guard.as_mut() {
                         // Tool events count as progress so long tools never false-stall (I06).
                         Self::touch_stream_progress_locked(s);
+                        s.tools_this_turn = s.tools_this_turn.saturating_add(1);
                         s.app_session_id.clone()
                     } else {
                         String::new()
@@ -2425,6 +2536,7 @@ impl SessionManager {
             s.last_stall_emit = None;
             s.provider_retry_attempt = 0;
             s.provider_retry_aborted = false;
+            s.tools_this_turn = 0;
 
             let mut agent_prompt = text.clone();
             if s.needs_history_bootstrap {

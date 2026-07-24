@@ -786,8 +786,13 @@ export const zhTW: Record<MessageKey, string> = {
   "shortcuts.help": "顯示快捷鍵",
 
   "session.exportMd": "匯出對話為 Markdown",
+  "session.exportBundle": "匯出完整診斷包…",
+  "session.exportBundleDone": "診斷包已儲存",
+  "session.exportBundleFail": "診斷包匯出失敗",
   "session.exportDone": "對話已匯出",
   "session.exportFail": "匯出失敗",
+  "session.emptyRunToast":
+    "本輪未呼叫任何工具就結束了。若任務未完成可回覆「繼續」；也可從對話選單匯出診斷包回報。",
 
   "empty.noProjectTitle": "尚未開啟專案",
   "empty.noProjectHint": "從側欄新增資料夾，以便帶上下文開始工作。",

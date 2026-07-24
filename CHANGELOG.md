@@ -11,6 +11,15 @@ See `docs/llm-wiki/release.md`.
 
 ## [Unreleased]
 
+### Added
+
+- **Session diagnostic export**: session menu → “Export diagnostic package” builds a redacted zip (host messages/meta/transcript/settings/runtime, CLI probe, app logs, Grok Build agent trail) for bug reports such as early `end_turn` (#52).
+
+### Fixed
+
+- **Orphan chat cwd**: no-project sessions spawn the agent under `$HOME` instead of process `current_dir()` (often `/` when launched from Dock), reducing silent early stops on coding tasks (#52).
+- **Empty-run soft signal**: when an agent turn ends with zero tool calls (non-ask mode), toast suggests “continue” or exporting the diagnostic package (#52).
+
 ## [0.1.5] - 2026-07-24
 
 > 中英文对照 / Bilingual notes.

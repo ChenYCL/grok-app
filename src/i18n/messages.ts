@@ -820,8 +820,13 @@ const en = {
 
   // Session export
   "session.exportMd": "Export chat as Markdown",
+  "session.exportBundle": "Export diagnostic package…",
+  "session.exportBundleDone": "Diagnostic package saved",
+  "session.exportBundleFail": "Diagnostic export failed",
   "session.exportDone": "Chat exported",
   "session.exportFail": "Export failed",
+  "session.emptyRunToast":
+    "This turn ended without tool calls. Reply “continue” if the task is unfinished, or export a diagnostic package from the session menu.",
 
   // Empty states
   "empty.noProjectTitle": "No project open",
@@ -1892,8 +1897,13 @@ const zh: Record<MessageKey, string> = {
   "shortcuts.help": "显示快捷键",
 
   "session.exportMd": "导出会话为 Markdown",
+  "session.exportBundle": "导出完整诊断包…",
+  "session.exportBundleDone": "诊断包已保存",
+  "session.exportBundleFail": "诊断包导出失败",
   "session.exportDone": "会话已导出",
   "session.exportFail": "导出失败",
+  "session.emptyRunToast":
+    "本轮未调用任何工具就结束了。若任务未完成可回复「继续」；也可从会话菜单导出诊断包反馈。",
 
   "empty.noProjectTitle": "尚未打开项目",
   "empty.noProjectHint": "从侧栏添加文件夹，以便带上下文开始工作。",
