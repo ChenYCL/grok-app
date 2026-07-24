@@ -996,9 +996,10 @@ export const zhTW: Record<MessageKey, string> = {
   "mcpModal.empty": "未發現 MCP 伺服器",
   "mcpModal.manage": "在設定中管理",
 
-  // Settings → Extensions (Plugins + Skills + MCP)
+  // Settings → Extensions (Plugins + Skills + MCP + Hooks)
   "ext.lead":
-"透過 `grok inspect` 發現的技能與 MCP 伺服器。開關控制對話注入與斜線技能過濾；有目前專案時以該目錄為 cwd。",  "ext.refresh": "重新整理",
+    "透過 `grok plugin` 管理外掛、`grok inspect` 發現技能與 MCP，Hooks 來自 `~/.grok/hooks`（及專案 `.grok/hooks`）。開關控制對話注入與斜線技能過濾；Hooks 為唯讀清單，請在磁碟編輯 JSON。",
+  "ext.refresh": "重新整理",
   "ext.refreshing": "重新整理中…",
   "ext.scope.project": "專案",
   "ext.scope.global": "全域",
@@ -1057,11 +1058,32 @@ export const zhTW: Record<MessageKey, string> = {
   "ext.mcp.empty": "未發現 MCP 伺服器",
   "ext.mcp.emptyCli": "安裝 CLI 後才能查看 MCP 狀態。",
   "ext.mcp.vendor": "供應商",
+  "ext.hooks.title": "Hooks",
+  "ext.hooks.loading": "正在載入 Hooks…",
+  "ext.hooks.empty": "尚未發現 hook 檔案",
+  "ext.hooks.emptyHint":
+    "在 hooks 目錄下新增 `*.json` 檔案即可。Grok 會在工作階段啟動時載入它們。",
+  "ext.hooks.scope.user": "使用者",
+  "ext.hooks.scope.project": "專案",
+  "ext.hooks.openUserDir": "開啟使用者 hooks 目錄",
+  "ext.hooks.openProjectDir": "開啟專案 hooks 目錄",
+  "ext.hooks.createUserDir": "建立使用者 hooks 目錄",
+  "ext.hooks.createProjectDir": "建立專案 hooks 目錄",
+  "ext.hooks.reveal": "在 Finder 中顯示",
+  "ext.hooks.missingUser": "使用者 hooks 目錄尚不存在。",
+  "ext.hooks.missingProject": "專案 hooks 目錄尚不存在。",
+  "ext.hooks.noProject": "選取專案後可列出專案級 hooks。",
+  "ext.hooks.tip":
+    "Hooks 是生命週期 JSON（SessionStart、PreToolUse、Stop 等）。請在編輯器中修改檔案 — 此處僅唯讀清單。格式見 Grok Build 使用指南（Hooks）。",
+  "ext.hooks.openDocs": "開啟 Hooks 指南",
+  "ext.hooks.working": "處理中…",
+  "ext.hooks.actionError": "Hooks 操作失敗",
   "ext.enabled": "已啟用",
   "ext.disabled": "已停用",
   "ext.enableAll": "全部啟用",
   "ext.footnote":
     "開關會寫入應用資料，並在新對話中注入已啟用的 MCP（ACP mcpServers + agent-home 設定）。停用技能仍保留在磁碟，但不會出現在斜線面板。外掛安裝支援路徑/git/GitHub 簡寫；完整市集瀏覽仍僅 CLI。",
+    "開關會寫入應用資料，並在新對話中注入已啟用的 MCP（ACP mcpServers + agent-home 設定）。停用技能仍保留在磁碟，但不會出現在斜線面板。Hooks 在 ~/.grok/hooks 中編輯。",
   "error.needTauri": "需要在 Tauri 視窗中選擇目錄",
   "common.comingSoon": "即將推出",
   "common.local": "本機",

@@ -1035,9 +1035,9 @@ const en = {
   "mcpModal.empty": "No MCP servers discovered",
   "mcpModal.manage": "Manage in Settings",
 
-  // Settings → Extensions (Plugins + Skills + MCP)
+  // Settings → Extensions (Plugins + Skills + MCP + Hooks)
   "ext.lead":
-    "Plugins via `grok plugin`, plus Skills/MCP from `grok inspect`. Toggle MCP/skills enable for session inject and slash filter. Project scope uses the active workbench folder as cwd for inspect; plugins are user-global.",
+    "Plugins via `grok plugin`, Skills/MCP from `grok inspect`, and Hooks from `~/.grok/hooks` (plus project `.grok/hooks`). Toggle MCP/skills enable for session inject and slash filter. Hooks are listed read-only — edit JSON on disk.",
   "ext.refresh": "Refresh",
   "ext.refreshing": "Refreshing…",
   "ext.scope.project": "Project",
@@ -1098,11 +1098,32 @@ const en = {
   "ext.mcp.empty": "No MCP servers discovered",
   "ext.mcp.emptyCli": "MCP status is unavailable until the CLI is installed.",
   "ext.mcp.vendor": "Vendor",
+  "ext.hooks.title": "Hooks",
+  "ext.hooks.loading": "Loading hooks…",
+  "ext.hooks.empty": "No hook files yet",
+  "ext.hooks.emptyHint":
+    "Add `*.json` hook files under the hooks folder. Grok loads them on session start.",
+  "ext.hooks.scope.user": "User",
+  "ext.hooks.scope.project": "Project",
+  "ext.hooks.openUserDir": "Open user hooks folder",
+  "ext.hooks.openProjectDir": "Open project hooks folder",
+  "ext.hooks.createUserDir": "Create user hooks folder",
+  "ext.hooks.createProjectDir": "Create project hooks folder",
+  "ext.hooks.reveal": "Reveal in Finder",
+  "ext.hooks.missingUser": "User hooks folder does not exist yet.",
+  "ext.hooks.missingProject": "Project hooks folder does not exist yet.",
+  "ext.hooks.noProject": "Select a project to list project hooks.",
+  "ext.hooks.tip":
+    "Hooks are JSON lifecycle scripts (SessionStart, PreToolUse, Stop, …). Edit them in your editor — this list is read-only. See the Grok Build user guide (Hooks) for the file format.",
+  "ext.hooks.openDocs": "Open hooks guide",
+  "ext.hooks.working": "Working…",
+  "ext.hooks.actionError": "Hooks action failed",
   "ext.enabled": "Enabled",
   "ext.disabled": "Disabled",
   "ext.enableAll": "Enable all",
   "ext.footnote":
     "Toggles persist under app data and inject enabled MCP into agent sessions. Disabled skills stay on disk but hide from the slash palette. Plugin install accepts path/git/GitHub shorthand; full marketplace browse stays CLI-only.",
+    "Toggles persist under app data and inject enabled MCP into agent sessions. Disabled skills stay on disk but hide from the slash palette. Plugin marketplace install remains CLI-only. Hooks are edited on disk under ~/.grok/hooks.",
 
   // Errors / misc
   "error.needTauri": "Folder picker requires the Tauri window",
@@ -2235,9 +2256,9 @@ const zh: Record<MessageKey, string> = {
   "mcpModal.empty": "未发现 MCP 服务器",
   "mcpModal.manage": "在设置中管理",
 
-  // Settings → Extensions (Plugins + Skills + MCP)
+  // Settings → Extensions (Plugins + Skills + MCP + Hooks)
   "ext.lead":
-    "通过 `grok plugin` 管理插件，以及 `grok inspect` 发现的技能与 MCP。开关控制会话注入与斜杠技能过滤；inspect 有当前项目时以该目录为 cwd；插件为用户全局范围。",
+    "通过 `grok plugin` 管理插件，`grok inspect` 发现技能与 MCP，Hooks 来自 `~/.grok/hooks`（及项目 `.grok/hooks`）。开关控制会话注入与斜杠技能过滤；Hooks 只读列表，请在磁盘编辑 JSON。",
   "ext.refresh": "刷新",
   "ext.refreshing": "刷新中…",
   "ext.scope.project": "项目",
@@ -2297,11 +2318,32 @@ const zh: Record<MessageKey, string> = {
   "ext.mcp.empty": "未发现 MCP 服务器",
   "ext.mcp.emptyCli": "安装 CLI 后才能查看 MCP 状态。",
   "ext.mcp.vendor": "供应商",
+  "ext.hooks.title": "Hooks",
+  "ext.hooks.loading": "正在加载 Hooks…",
+  "ext.hooks.empty": "尚未发现 hook 文件",
+  "ext.hooks.emptyHint":
+    "在 hooks 目录下添加 `*.json` 文件即可。Grok 在会话启动时加载它们。",
+  "ext.hooks.scope.user": "用户",
+  "ext.hooks.scope.project": "项目",
+  "ext.hooks.openUserDir": "打开用户 hooks 目录",
+  "ext.hooks.openProjectDir": "打开项目 hooks 目录",
+  "ext.hooks.createUserDir": "创建用户 hooks 目录",
+  "ext.hooks.createProjectDir": "创建项目 hooks 目录",
+  "ext.hooks.reveal": "在 Finder 中显示",
+  "ext.hooks.missingUser": "用户 hooks 目录尚不存在。",
+  "ext.hooks.missingProject": "项目 hooks 目录尚不存在。",
+  "ext.hooks.noProject": "选择项目后可列出项目级 hooks。",
+  "ext.hooks.tip":
+    "Hooks 是生命周期 JSON（SessionStart、PreToolUse、Stop 等）。请在编辑器中修改文件 — 此处只读列表。格式见 Grok Build 用户指南（Hooks）。",
+  "ext.hooks.openDocs": "打开 Hooks 指南",
+  "ext.hooks.working": "处理中…",
+  "ext.hooks.actionError": "Hooks 操作失败",
   "ext.enabled": "已启用",
   "ext.disabled": "已禁用",
   "ext.enableAll": "全部启用",
   "ext.footnote":
     "开关会写入应用数据，并在新会话中注入已启用的 MCP（ACP mcpServers + agent-home 配置）。禁用技能仍保留在磁盘，但不会出现在斜杠面板。插件安装支持路径/git/GitHub 简写；完整市场浏览仍仅 CLI。",
+    "开关会写入应用数据，并在新会话中注入已启用的 MCP（ACP mcpServers + agent-home 配置）。禁用技能仍保留在磁盘，但不会出现在斜杠面板。Hooks 在 ~/.grok/hooks 中编辑。",
   "error.needTauri": "需要在 Tauri 窗口中选择目录",
   "common.comingSoon": "即将推出",
   "common.local": "本地",

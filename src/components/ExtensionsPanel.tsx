@@ -1,7 +1,9 @@
 /**
- * Settings → Extensions: Skills + MCP + Plugins.
+ * Settings → Extensions: Skills + MCP + Plugins + Hooks.
  * Skills/MCP from `grok inspect` with enable toggles (extensions.json / ACP inject).
  * Plugins from `grok plugin list/install/update/…` (config.toml disabled list).
+ * Plugins from `grok plugin list/enable/…` (config.toml disabled list).
+ * Hooks: list / reveal / open folder under ~/.grok/hooks (+ project .grok/hooks).
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -11,6 +13,8 @@ import { GlassModal } from "@/components/GlassModal";
 import {
   IconExternalLink,
   IconFolder,
+  IconFolderPlus,
+  IconHooks,
   IconPlug,
   IconPuzzle,
   IconRefresh,
@@ -36,6 +40,11 @@ import {
   sortSkillsByName,
   type PluginFilter,
 } from "@/lib/extensionsUi";
+import {
+  hookMetaLine,
+  hookRowKey,
+  sortHooksByScopeName,
+} from "@/lib/hooksUi";
 
 export interface ExtensionsPanelProps {
   locale: Locale;
@@ -60,9 +69,11 @@ export function ExtensionsPanel({
   const [skills, setSkills] = useState<api.SkillDto[]>([]);
   const [servers, setServers] = useState<api.McpDto[]>([]);
   const [plugins, setPlugins] = useState<api.PluginDto[]>([]);
+  const [hooks, setHooks] = useState<api.HookDto[]>([]);
   const [skillsError, setSkillsError] = useState<string | null>(null);
   const [mcpError, setMcpError] = useState<string | null>(null);
   const [pluginsError, setPluginsError] = useState<string | null>(null);
+  const [hooksError, setHooksError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [agentHome, setAgentHome] = useState<string | null>(null);
   const [configPath, setConfigPath] = useState<string | null>(null);
@@ -80,15 +91,22 @@ export function ExtensionsPanel({
   /** Grok Build Plugins tab filter: all | enabled | disabled */
   const [pluginFilter, setPluginFilter] = useState<PluginFilter>("all");
   const [installSource, setInstallSource] = useState("");
+  const [hooksUserDir, setHooksUserDir] = useState<string | null>(null);
+  const [hooksUserDirExists, setHooksUserDirExists] = useState(false);
+  const [hooksProjectDir, setHooksProjectDir] = useState<string | null>(null);
+  const [hooksProjectDirExists, setHooksProjectDirExists] = useState(false);
+  const [hooksDocsPath, setHooksDocsPath] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
     if (!api.isTauri()) {
       setSkills([]);
       setServers([]);
       setPlugins([]);
+      setHooks([]);
       setSkillsError(tr("ext.needTauri"));
       setMcpError(null);
       setPluginsError(null);
+      setHooksError(null);
       setLoading(false);
       return;
     }
@@ -96,29 +114,51 @@ export function ExtensionsPanel({
     setSkillsError(null);
     setMcpError(null);
     setPluginsError(null);
+    setHooksError(null);
     setPathHint(null);
     const cwd = projectPath?.trim() || null;
-    const [skillsRes, mcpRes, pluginsRes, providersRes] = await Promise.all([
-      api.skillsList(cwd).catch((e) => ({
-        skills: [] as api.SkillDto[],
-        error: String(e),
-      })),
-      api.inspectMcp(cwd).catch((e) => ({
-        servers: [] as api.McpDto[],
-        error: String(e),
-      })),
-      api.pluginsList().catch((e) => ({
-        plugins: [] as api.PluginDto[],
-        error: String(e),
-      })),
-      api.providersList().catch(() => null),
-    ]);
+    const [skillsRes, mcpRes, pluginsRes, hooksRes, providersRes] =
+      await Promise.all([
+        api.skillsList(cwd).catch((e) => ({
+          skills: [] as api.SkillDto[],
+          error: String(e),
+        })),
+        api.inspectMcp(cwd).catch((e) => ({
+          servers: [] as api.McpDto[],
+          error: String(e),
+        })),
+        api.pluginsList().catch((e) => ({
+          plugins: [] as api.PluginDto[],
+          error: String(e),
+        })),
+        api.hooksList(cwd).catch((e) => ({
+          hooks: [] as api.HookDto[],
+          userDir: "",
+          userDirExists: false,
+          projectDir: null as string | null,
+          projectDirExists: null as boolean | null,
+          docsPath: null as string | null,
+          error: String(e),
+        })),
+        api.providersList().catch(() => null),
+      ]);
     setSkills(sortSkillsByName(skillsRes.skills ?? []));
     setServers(sortMcpByName(mcpRes.servers ?? []));
     setPlugins(sortPluginsByName(pluginsRes.plugins ?? []));
+    setHooks(sortHooksByScopeName(hooksRes.hooks ?? []));
+    setHooksUserDir(hooksRes.userDir?.trim() || null);
+    setHooksUserDirExists(Boolean(hooksRes.userDirExists));
+    setHooksProjectDir(hooksRes.projectDir?.trim() || null);
+    setHooksProjectDirExists(Boolean(hooksRes.projectDirExists));
+    setHooksDocsPath(hooksRes.docsPath?.trim() || null);
     setSkillsError(skillsRes.error?.trim() ? skillsRes.error : null);
     setMcpError(mcpRes.error?.trim() ? mcpRes.error : null);
     setPluginsError(pluginsRes.error?.trim() ? pluginsRes.error : null);
+    setHooksError(
+      "error" in hooksRes && typeof hooksRes.error === "string" && hooksRes.error.trim()
+        ? hooksRes.error
+        : null,
+    );
     if (providersRes) {
       setAgentHome(providersRes.agentHome?.trim() || null);
       setConfigPath(providersRes.configPath?.trim() || null);
@@ -163,6 +203,47 @@ export function ExtensionsPanel({
     } catch (e) {
       setPathHint(String(e));
     }
+  };
+
+  const runHooksAction = async (
+    key: string,
+    action: () => Promise<unknown>,
+  ) => {
+    setActionBusy(key);
+    setActionError(null);
+    try {
+      await action();
+      await refresh();
+    } catch (e) {
+      setActionError(String(e));
+    } finally {
+      setActionBusy(null);
+    }
+  };
+
+  const openHooksDir = (scope: "user" | "project", create: boolean) => {
+    if (!api.isTauri()) return;
+    const key = `hooks-open:${scope}:${create ? "create" : "open"}`;
+    void runHooksAction(key, async () => {
+      await api.hooksOpenDir({
+        scope,
+        projectPath: projectPath?.trim() || null,
+        create,
+      });
+    });
+  };
+
+  const revealHook = (path: string) => {
+    if (!api.isTauri()) return;
+    void runHooksAction(`hooks-reveal:${path}`, async () => {
+      await api.hooksReveal(path);
+    });
+  };
+
+  const openHooksDocs = () => {
+    const p = hooksDocsPath?.trim();
+    if (!p || !api.isTauri()) return;
+    void reveal(p);
   };
 
   const toggleMcp = async (name: string, next: boolean) => {
@@ -782,6 +863,170 @@ export function ExtensionsPanel({
             })}
           </ul>
         )}
+      </div>
+
+      {/* Hooks — filesystem list under ~/.grok/hooks (+ project) */}
+      <h2 className="settings-page__h2">
+        <IconHooks size={15} />
+        {tr("ext.hooks.title")}
+        {!loading ? <span className="ext-count">{hooks.length}</span> : null}
+      </h2>
+      <div className="settings-card ext-card" data-testid="hooks-section">
+        <div className="ext-toolbar ext-toolbar--hooks">
+          <div className="ext-toolbar__actions">
+            {hooksUserDirExists ? (
+              <button
+                type="button"
+                className="btn btn--ghost btn--sm"
+                disabled={!!actionBusy}
+                title={hooksUserDir ?? undefined}
+                onClick={() => openHooksDir("user", false)}
+              >
+                <IconFolder size={13} />
+                <span>{tr("ext.hooks.openUserDir")}</span>
+              </button>
+            ) : (
+              <button
+                type="button"
+                className="btn btn--ghost btn--sm"
+                disabled={!!actionBusy}
+                onClick={() => openHooksDir("user", true)}
+              >
+                <IconFolderPlus size={13} />
+                <span>{tr("ext.hooks.createUserDir")}</span>
+              </button>
+            )}
+            {projectPath?.trim() ? (
+              hooksProjectDirExists ? (
+                <button
+                  type="button"
+                  className="btn btn--ghost btn--sm"
+                  disabled={!!actionBusy}
+                  title={hooksProjectDir ?? undefined}
+                  onClick={() => openHooksDir("project", false)}
+                >
+                  <IconFolder size={13} />
+                  <span>{tr("ext.hooks.openProjectDir")}</span>
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  className="btn btn--ghost btn--sm"
+                  disabled={!!actionBusy}
+                  onClick={() => openHooksDir("project", true)}
+                >
+                  <IconFolderPlus size={13} />
+                  <span>{tr("ext.hooks.createProjectDir")}</span>
+                </button>
+              )
+            ) : null}
+          </div>
+        </div>
+
+        {hooksError ? (
+          <p className="ext-alert ext-alert--warn" role="status">
+            {hooksError}
+          </p>
+        ) : null}
+
+        {loading && <p className="ext-empty">{tr("ext.hooks.loading")}</p>}
+
+        {!loading && hooks.length === 0 && (
+          <div className="ext-empty">
+            <p>{tr("ext.hooks.empty")}</p>
+            <p className="ext-section-note">{tr("ext.hooks.emptyHint")}</p>
+            {!hooksUserDirExists ? (
+              <p className="ext-section-note">{tr("ext.hooks.missingUser")}</p>
+            ) : null}
+            {projectPath?.trim() && !hooksProjectDirExists ? (
+              <p className="ext-section-note">
+                {tr("ext.hooks.missingProject")}
+              </p>
+            ) : null}
+            {!projectPath?.trim() ? (
+              <p className="ext-section-note">{tr("ext.hooks.noProject")}</p>
+            ) : null}
+          </div>
+        )}
+
+        {!loading && hooks.length > 0 && (
+          <ul className="ext-list">
+            {hooks.map((h) => {
+              const key = hookRowKey(h);
+              const scopeLabel =
+                h.scope === "project"
+                  ? tr("ext.hooks.scope.project")
+                  : tr("ext.hooks.scope.user");
+              const meta = hookMetaLine(h, {
+                scopeLabel: (s) =>
+                  s === "project"
+                    ? tr("ext.hooks.scope.project")
+                    : s === "user"
+                      ? tr("ext.hooks.scope.user")
+                      : s,
+              });
+              return (
+                <li key={key} className="ext-item">
+                  <div className="ext-item__head">
+                    <strong className="ext-item__name">{h.name}</strong>
+                    <span
+                      className={
+                        "ext-badge" +
+                        (h.scope === "project"
+                          ? " ext-badge--project"
+                          : " ext-badge--user")
+                      }
+                    >
+                      {scopeLabel}
+                    </span>
+                    {h.kind === "dir" ? (
+                      <span className="ext-badge ext-badge--muted">dir</span>
+                    ) : h.ext ? (
+                      <span className="ext-badge ext-badge--muted">
+                        {h.ext}
+                      </span>
+                    ) : null}
+                  </div>
+                  <div className="ext-item__meta">
+                    <span>{meta}</span>
+                    <button
+                      type="button"
+                      className="ext-path-btn"
+                      title={h.path}
+                      disabled={!!actionBusy}
+                      onClick={() => revealHook(h.path)}
+                    >
+                      <IconFolder size={13} />
+                      <span>{shortPathLabel(h.path, 42)}</span>
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn--ghost btn--sm"
+                      disabled={!!actionBusy}
+                      onClick={() => revealHook(h.path)}
+                    >
+                      {tr("ext.hooks.reveal")}
+                    </button>
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+
+        <p className="ext-section-note">{tr("ext.hooks.tip")}</p>
+        {hooksDocsPath ? (
+          <button
+            type="button"
+            className="btn btn--ghost btn--sm"
+            disabled={!!actionBusy}
+            title={hooksDocsPath}
+            onClick={() => openHooksDocs()}
+          >
+            <IconExternalLink size={13} />
+            <span>{tr("ext.hooks.openDocs")}</span>
+          </button>
+        ) : null}
       </div>
 
       <p className="ext-footnote">

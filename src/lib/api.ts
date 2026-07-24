@@ -1176,6 +1176,71 @@ export async function pluginUpdate(name?: string | null) {
   const n = (name ?? "").trim();
   return invoke<PluginActionResult>("plugin_update", {
     name: n ? n : null,
+// ── Hooks manager (`~/.grok/hooks` + project `.grok/hooks`) ─────────────────
+
+export interface HookDto {
+  name: string;
+  path: string;
+  /** `user` | `project` */
+  scope: string;
+  /** `file` | `dir` */
+  kind: string;
+  ext: string;
+  size: number;
+  mtimeMs: number;
+}
+
+export interface HooksListResult {
+  hooks: HookDto[];
+  userDir: string;
+  userDirExists: boolean;
+  projectDir?: string | null;
+  projectDirExists?: boolean | null;
+  /** Local Grok Build user-guide path when present. */
+  docsPath?: string | null;
+}
+
+export interface HooksDirResult {
+  path: string;
+  scope: string;
+}
+
+/** List hook files under user (+ optional project) hooks dirs. */
+export async function hooksList(projectPath?: string | null) {
+  return invoke<HooksListResult>("hooks_list", {
+    projectPath: projectPath ?? null,
+  });
+}
+
+/** Reveal a hook file/folder in Finder / Explorer. */
+export async function hooksReveal(path: string) {
+  return invoke<void>("hooks_reveal", { path });
+}
+
+/**
+ * Open the user or project hooks folder.
+ * @param create when true, create the folder if missing before opening.
+ */
+export async function hooksOpenDir(opts?: {
+  scope?: "user" | "project" | string;
+  projectPath?: string | null;
+  create?: boolean;
+}) {
+  return invoke<HooksDirResult>("hooks_open_dir", {
+    scope: opts?.scope ?? "user",
+    projectPath: opts?.projectPath ?? null,
+    create: opts?.create ?? false,
+  });
+}
+
+/** Create hooks folder if missing (`user` or `project`). */
+export async function hooksEnsureDir(opts?: {
+  scope?: "user" | "project" | string;
+  projectPath?: string | null;
+}) {
+  return invoke<HooksDirResult>("hooks_ensure_dir", {
+    scope: opts?.scope ?? "user",
+    projectPath: opts?.projectPath ?? null,
   });
 }
 

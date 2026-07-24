@@ -4327,6 +4327,98 @@ detached
     }
 }
 
+// ── Hooks manager (list / reveal / open folder) ─────────────────────────────
+
+/// List hook files under `~/.grok/hooks` and optionally `<project>/.grok/hooks`.
+#[tauri::command]
+pub async fn hooks_list(project_path: Option<String>) -> Result<crate::hooks::HooksListResult, String> {
+    let path = project_path
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(|s| s.to_string());
+    tauri::async_runtime::spawn_blocking(move || {
+        crate::hooks::collect_hooks_list(path.as_deref())
+    })
+    .await
+    .map_err(|e| e.to_string())
+}
+
+/// Reveal a hook path in the system file manager (Finder / Explorer).
+#[tauri::command]
+pub async fn hooks_reveal(path: String) -> Result<(), String> {
+    path_reveal(path).await
+}
+
+/// Open the user or project hooks directory in the system file manager.
+/// When `create` is true, creates the folder if it is missing.
+#[tauri::command]
+pub async fn hooks_open_dir(
+    scope: Option<String>,
+    project_path: Option<String>,
+    create: Option<bool>,
+) -> Result<serde_json::Value, String> {
+    let scope = scope.unwrap_or_else(|| "user".into());
+    let create = create.unwrap_or(false);
+    let project = project_path
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(|s| s.to_string());
+    let scope_for_block = scope.clone();
+    let project_for_block = project.clone();
+    let dir = tauri::async_runtime::spawn_blocking(move || {
+        if create {
+            crate::hooks::ensure_hooks_dir(&scope_for_block, project_for_block.as_deref())
+        } else {
+            let d = match scope_for_block.trim() {
+                "user" | "" => crate::hooks::user_hooks_dir(),
+                "project" => crate::hooks::project_hooks_dir(project_for_block.as_deref().unwrap_or(""))
+                    .ok_or_else(|| "project path required for project hooks".to_string())?,
+                other => return Err(format!("unknown hooks scope: {other}")),
+            };
+            if !d.exists() {
+                return Err(format!(
+                    "hooks folder not found: {} (use Create folder first)",
+                    d.display()
+                ));
+            }
+            Ok(d)
+        }
+    })
+    .await
+    .map_err(|e| e.to_string())??;
+
+    let path = dir.to_string_lossy().to_string();
+    // Open the directory itself (not reveal-select).
+    path_open(path.clone()).await?;
+    Ok(serde_json::json!({ "path": path, "scope": scope }))
+}
+
+/// Create the user or project hooks directory if missing. Returns the absolute path.
+#[tauri::command]
+pub async fn hooks_ensure_dir(
+    scope: Option<String>,
+    project_path: Option<String>,
+) -> Result<serde_json::Value, String> {
+    let scope = scope.unwrap_or_else(|| "user".into());
+    let project = project_path
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(|s| s.to_string());
+    let scope_for_block = scope.clone();
+    let dir = tauri::async_runtime::spawn_blocking(move || {
+        crate::hooks::ensure_hooks_dir(&scope_for_block, project.as_deref())
+    })
+    .await
+    .map_err(|e| e.to_string())??;
+    Ok(serde_json::json!({
+        "path": dir.to_string_lossy(),
+        "scope": scope,
+    }))
+}
+
 /// Reveal a path in the system file manager (Finder / Explorer).
 #[tauri::command]
 pub async fn path_reveal(path: String) -> Result<(), String> {
