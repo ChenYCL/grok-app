@@ -319,6 +319,42 @@ describe("session projection", () => {
     expect(next[2]!.streaming).toBe(true);
   });
 
+  it("next-send optimistic path does not leave prior turn streaming (no re-type history)", () => {
+    // Simulate turn 1 finished (done chunk) then user sends turn 2.
+    let messages: ChatMessage[] = [
+      { id: "u1", role: "user", content: "first" },
+      {
+        id: "a1",
+        role: "assistant",
+        content: "answer one",
+        streaming: true,
+      },
+    ];
+    messages = applyStreamChunk(messages, {
+      sessionId: "s",
+      messageId: "a1",
+      text: "",
+      done: true,
+      kind: "assistant",
+    });
+    expect(messages[1]!.streaming).toBe(false);
+    expect(messages[1]!.content).toBe("answer one");
+
+    // Same path as executeSend appendOptimistic: clear prior streaming flags
+    // then append new user + pending assistant — prior content stays put once.
+    const cleaned = clearPriorTurnStreaming(messages);
+    const nextSend: ChatMessage[] = [
+      ...cleaned,
+      { id: "u2", role: "user", content: "second" },
+      { id: "a-pending-2", role: "assistant", content: "", streaming: true },
+    ];
+    expect(nextSend.filter((m) => m.role === "assistant" && m.streaming)).toHaveLength(
+      1,
+    );
+    expect(nextSend[1]!.content).toBe("answer one");
+    expect(nextSend[1]!.streaming).toBe(false);
+  });
+
   it("errorCopy distinguishes seven codes", () => {
     expect(errorCopy("CLI_NOT_FOUND")).toMatch(/CLI/i);
     expect(errorCopy("AUTH_FAILED")).toMatch(/鉴权|Auth/i);

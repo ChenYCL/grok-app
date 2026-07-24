@@ -382,8 +382,8 @@ html.platform-mac[data-theme="light"] .settings-page__content {
   min-height: var(--titlebar-height, 40px);
   max-height: var(--titlebar-height, 40px);
   padding: 0 10px;
-  /* Traffic lights (~70px) + ~6px breathing room → panel toggle hugs lights */
-  padding-left: var(--titlebar-safe-left, 76px);
+  /* Traffic lights + control width — must clear red/yellow/green entirely */
+  padding-left: var(--titlebar-safe-left, 96px);
   margin: 0;
   user-select: none;
   flex-shrink: 0;
@@ -7168,7 +7168,7 @@ html[data-theme="light"] .ui-check.is-mixed .ui-check__box {
 
 /* When left sidebar fully closed, reserve mac traffic-light inset on main */
 .platform-mac .main--sidebar-hidden .main__top {
-  padding-left: var(--titlebar-safe-left, 78px);
+  padding-left: var(--titlebar-safe-left, 96px);
 }
 
 .main__pane-toggle.is-on {
@@ -10172,6 +10172,13 @@ textarea::-webkit-scrollbar-thumb:active,
   line-height: 22px;
   pointer-events: none;
   white-space: pre-wrap;
+  /* Sit fully behind editor ink; never paint over typed glyphs */
+  z-index: 0;
+  user-select: none;
+}
+.composer-editor-wrap > .composer__input {
+  position: relative;
+  z-index: 1;
 }
 div.composer__input {
   white-space: pre-wrap;

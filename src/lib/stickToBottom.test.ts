@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
+  STICK_HEIGHT_NOISE_PX,
   STICK_TO_BOTTOM_THRESHOLD_PX,
   bottomScrollTop,
   distanceFromBottom,
+  isHeightDeltaNoise,
   isNearBottom,
   nextStickPinState,
 } from "./stickToBottom";
@@ -56,6 +58,22 @@ describe("bottomScrollTop", () => {
 
   it("is 0 when content shorter than viewport", () => {
     expect(bottomScrollTop(200, 400)).toBe(0);
+  });
+});
+
+describe("isHeightDeltaNoise", () => {
+  it("ignores sub-noise reflows (thinking stream flicker)", () => {
+    expect(isHeightDeltaNoise(0)).toBe(true);
+    expect(isHeightDeltaNoise(1)).toBe(true);
+    expect(isHeightDeltaNoise(3)).toBe(true);
+    expect(isHeightDeltaNoise(-2)).toBe(true);
+    expect(STICK_HEIGHT_NOISE_PX).toBe(4);
+  });
+
+  it("passes real growth / collapse through", () => {
+    expect(isHeightDeltaNoise(4)).toBe(false);
+    expect(isHeightDeltaNoise(24)).toBe(false);
+    expect(isHeightDeltaNoise(-40)).toBe(false);
   });
 });
 

@@ -122,10 +122,12 @@ Get installers from [Releases](https://github.com/RongleCat/grok-app/releases):
 |----------|----------|
 | macOS Apple Silicon | `Grok_*_aarch64.dmg` |
 | macOS Intel | `Grok_*_x64.dmg` |
-| Windows x64 | `.msi` / `.exe` |
-| Linux x64 | AppImage / `.deb` |
+| Windows x64 | `*-setup.exe` installer + `*-portable.zip` |
+| Linux x64 | AppImage / `.deb` / `.rpm` |
 
 The bundle product name is **Grok** (matches the window title).
+
+**Arch / Manjaro / EndeavourOS:** prefer the **AppImage** (`chmod +x` then run). Official CI does not publish a separate AUR package; AppImage is distro-agnostic.
 
 ### 2. First run
 

@@ -22,6 +22,7 @@ import {
 import {
   STICK_TO_BOTTOM_THRESHOLD_PX,
   bottomScrollTop,
+  isHeightDeltaNoise,
   isNearBottom,
   nextStickPinState,
 } from "@/lib/stickToBottom";
@@ -292,6 +293,12 @@ export function useStickToBottom(
 
     const onHeightChange = (height: number) => {
       const difference = height - (previousHeight ?? height);
+      // Thought-stream / font / 1–3px reflow: update baseline only — re-follow
+      // would fight itself and look like the page bouncing while thinking.
+      if (previousHeight != null && isHeightDeltaNoise(difference)) {
+        previousHeight = height;
+        return;
+      }
       resizeDifferenceRef.current = difference;
 
       // Browser can leave scrollTop past max after a shrink — clamp without

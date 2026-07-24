@@ -153,16 +153,24 @@ When an agent maintains this repo:
 
 Captured from X open-source thread (2026-07-24). Track as GitHub Issues with `from:community`.
 
-| Topic | Priority |
-|-------|----------|
-| Paste image + file picker in + menu | P0 |
-| Composer lock when stream stalls | P0 |
-| Duplicate history on next send | P0 |
-| Login auth code denied | P0 |
-| Agent connect / provider errors | P0 |
-| Permission optionId hyphen vs underscore | P0 (PR #2) |
-| Multi-open Dock | P1 |
-| Titlebar panel toggle overflow | P1 |
-| Session title hard-coded Chinese | P1 (PR #1) |
-| Thinking collapse preference | P2 |
-| Multi account / web history / Linux | P2 |
+| Topic | Priority | Status |
+|-------|----------|--------|
+| Paste image + file picker in + menu | P0 | ✅ 0.1.1+ (paste / + Files; dead “coming later” string removed) |
+| Composer lock when stream stalls | P0 | ✅ 0.1.3 #37 stall cancel + #40 send queue; type allowed except permission |
+| Duplicate history on next send / session switch | P0 | ✅ 0.1.3 #35 FSM gate + `clearPriorTurnStreaming`; regression test |
+| Login auth code / relay path | P0 | ⏸ deferred (official OAuth works; custom relay separate) |
+| Agent connect / provider errors | P0 | ⏳ keep improving G11 copy |
+| Permission optionId hyphen vs underscore | P0 | ✅ PR #2 |
+| Multi-open Dock | P1 | ✅ single-instance plugin (re-verify if dual Dock icons remain) |
+| Titlebar panel toggle overflow | P1 | ✅ traffic-light safe inset 96px |
+| Composer placeholder occlusion | P1 | ✅ DOM-aware placeholder hide |
+| Thinking / long-chat scroll flicker | P1 | ✅ height-noise filter on stick-to-bottom |
+| Plan/Goal sticky bar | P1 | ✅ PR #41 |
+| Session title hard-coded Chinese | P1 | ✅ PR #1 |
+| Thinking collapse preference | P2 | ✅ auto-collapse default + remember |
+| Multi account | P2 | ✅ 0.1.1 |
+| Grok Web history import | P2 | ❌ out of scope (local sessions) |
+| git worktree UX | P2 | 📋 Issue (project path / multi-worktree) |
+| Claude-Code-like pure chat shell | P2 | ❌ product is Agent workbench |
+| Arch Linux package | P2 | ✅ document AppImage on Arch (+ optional AUR later) |
+| Plugin marketplace install UI | P2 | 💬 design note (CLI remains SoT for install) |

@@ -11,6 +11,17 @@ See `docs/llm-wiki/release.md`.
 
 ## [Unreleased]
 
+### Added
+
+- **Sticky Plan/Goal status bar** (L04): progress meter + review actions stay above the chat while the in-thread card scrolls away — community PR #41.
+
+### Fixed
+
+- **macOS titlebar**: increase traffic-light safe inset so the sidebar panel toggle no longer underlaps red/yellow/green.
+- **Composer placeholder**: hide overlay as soon as the DOM has typed/IME glyphs (no more “随心输入” showing through input).
+- **Chat scroll flicker**: ignore sub-4px content height noise while stick-to-bottom follows (thinking / reflow thrash).
+- **Dead copy**: remove obsolete `composer.attachLater` (“attachments coming later”) now that paste/file pick ship.
+
 ## [0.1.3] - 2026-07-24
 
 > 中英文对照 / Bilingual notes.

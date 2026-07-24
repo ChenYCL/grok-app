@@ -174,8 +174,9 @@
   --modal-width-md: 480px;
   --modal-width-lg: 560px;
 
-  /* mac traffic-light safe inset — leave room so panel toggle never underlaps lights */
-  --titlebar-safe-left: 84px;
+  /* mac traffic-light safe inset — leave room so panel toggle never underlaps lights.
+   * Overlay chrome: red/yellow/green ~52–70px; 28px control + gap → ≥96px. */
+  --titlebar-safe-left: 96px;
 }
 
 [data-theme="light"] {

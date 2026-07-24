@@ -122,9 +122,12 @@
 |------|------|
 | macOS Apple Silicon | `Grok_*_aarch64.dmg` |
 | macOS Intel | `Grok_*_x64.dmg` |
-| Windows x64 | `.msi` / `.exe` |
+| Windows x64 | `*-setup.exe` 安装版 + `*-portable.zip` 绿色版 |
+| Linux x64 | `AppImage` / `.deb` / `.rpm` |
 
 安装包产品名为 **Grok**（与窗口标题一致）。
+
+**Arch / Manjaro / EndeavourOS 等：** 优先下载 **AppImage**（`chmod +x` 后运行），不依赖发行版打包格式。`.deb` 可用 `debtap` 等转换，但官方 CI 不单独发布 AUR 包。
 
 ### 2. 首次使用
 

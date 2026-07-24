@@ -12,6 +12,12 @@
 /** Distance from bottom (px) still treated as "near" for re-engage. */
 export const STICK_TO_BOTTOM_THRESHOLD_PX = 100;
 
+/**
+ * Sub-pixel / font / thought-stream reflows under this delta should not
+ * force a scroll follow (avoids up-down flicker while thinking grows).
+ */
+export const STICK_HEIGHT_NOISE_PX = 4;
+
 export function distanceFromBottom(
   scrollTop: number,
   scrollHeight: number,
@@ -38,6 +44,14 @@ export function bottomScrollTop(
   clientHeight: number,
 ): number {
   return Math.max(0, scrollHeight - clientHeight);
+}
+
+/** True when a content-height delta is noise and should not re-follow. */
+export function isHeightDeltaNoise(
+  difference: number,
+  noisePx: number = STICK_HEIGHT_NOISE_PX,
+): boolean {
+  return Math.abs(difference) < noisePx;
 }
 
 /** Pin + escape lock used by the chat scroll hook. */

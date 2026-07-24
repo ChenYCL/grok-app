@@ -227,7 +227,6 @@ export const zhTW: Record<MessageKey, string> = {
   "composer.goalHint": "設定要持續追求的目標",
   "composer.goalPlaceholder": "描述你的目標，定義可衡量的成果，以獲得最佳效果",
   "composer.goalClear": "關閉目標模式",
-  "composer.attachLater": "附件上傳將在後續版本提供",
   "composer.addFilesHint": "附加檔案或資料夾到下一則訊息",
   "composer.addFolder": "資料夾",
   "composer.addFolderHint": "附加資料夾路徑給 Agent",

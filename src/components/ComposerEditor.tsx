@@ -11,6 +11,7 @@ import {
   useEffect,
   useLayoutEffect,
   useRef,
+  useState,
   type ClipboardEvent,
   type CompositionEvent,
   type FormEvent,
@@ -196,6 +197,11 @@ export function ComposerEditor({
   const lastValue = useRef(value);
   const composing = useRef(false);
   const focused = useRef(false);
+  /**
+   * DOM may show typed / IME glyphs before React `value` commits.
+   * Track live emptiness so the overlay placeholder never paints over ink.
+   */
+  const [domEmpty, setDomEmpty] = useState(() => !value.trim());
 
   const setRefs = useCallback(
     (node: HTMLDivElement | null) => {
@@ -238,6 +244,17 @@ export function ComposerEditor({
     onSlashQueryChange({ start: q.start, query: q.query, end });
   }, [onSlashQueryChange]);
 
+  const syncDomEmpty = useCallback((el: HTMLElement) => {
+    const stored = serializeDom(el);
+    const empty =
+      !stored.trim() ||
+      (parseStoredContent(stored).every(
+        (s) => s.type === "text" && !s.text.trim(),
+      ) &&
+        !stored.includes("[[skill:"));
+    setDomEmpty(empty);
+  }, []);
+
   const commitFromDom = useCallback(
     (el: HTMLElement) => {
       let stored = serializeDom(el);
@@ -249,6 +266,7 @@ export function ComposerEditor({
         stored = serializeDom(el);
         placeCaretAtEnd(el);
       }
+      syncDomEmpty(el);
       if (stored !== lastValue.current) {
         lastValue.current = stored;
         onChange(stored);
@@ -256,7 +274,7 @@ export function ComposerEditor({
       emitSlash();
       resize();
     },
-    [onChange, emitSlash, resize],
+    [onChange, emitSlash, resize, syncDomEmpty],
   );
 
   useLayoutEffect(() => {
@@ -287,6 +305,8 @@ export function ComposerEditor({
   }, [value, resize, emitSlash]);
 
   const onInput = (e: FormEvent<HTMLDivElement>) => {
+    // Hide placeholder as soon as the DOM has glyphs (incl. IME preedit).
+    syncDomEmpty(e.currentTarget);
     if (composing.current) {
       // Live pinyin in DOM — update slash filter without committing draft yet.
       emitSlash();
@@ -390,12 +410,25 @@ export function ComposerEditor({
     };
   }, [commitFromDom, emitSlash, value]);
 
-  const isEmpty =
+  const valueEmpty =
     !value.trim() ||
     (parseStoredContent(value).every(
       (s) => s.type === "text" && !s.text.trim(),
     ) &&
       !value.includes("[[skill:"));
+  // Both prop and live DOM must be empty — otherwise placeholder covers ink.
+  const isEmpty = valueEmpty && domEmpty;
+
+  // External value clear (send / clear) must restore placeholder.
+  useEffect(() => {
+    if (valueEmpty) {
+      const el = elRef.current;
+      if (el) syncDomEmpty(el);
+      else setDomEmpty(true);
+    } else {
+      setDomEmpty(false);
+    }
+  }, [valueEmpty, value, syncDomEmpty]);
 
   return (
     <div className="composer-editor-wrap">

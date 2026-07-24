@@ -242,7 +242,6 @@ const en = {
   "composer.goalPlaceholder":
     "Describe your goal and define measurable outcomes for best results",
   "composer.goalClear": "Clear goal mode",
-  "composer.attachLater": "File attach is coming later",
   "composer.addFilesHint": "Attach files or folders to the next message",
   "composer.addFolder": "Folder",
   "composer.addFolderHint": "Attach a folder path for the agent",
@@ -1255,7 +1254,6 @@ const zh: Record<MessageKey, string> = {
   "composer.goalHint": "设置要持续追求的目标",
   "composer.goalPlaceholder": "描述你的目标，定义可衡量的成果，以获得最佳效果",
   "composer.goalClear": "关闭目标模式",
-  "composer.attachLater": "附件上传将在后续版本提供",
   "composer.addFilesHint": "附加文件或文件夹到下一条消息",
   "composer.addFolder": "文件夹",
   "composer.addFolderHint": "附加文件夹路径给 Agent",
