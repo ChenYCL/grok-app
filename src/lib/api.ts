@@ -174,6 +174,32 @@ export async function pickDirectory() {
   return invoke<string | null>("pick_directory");
 }
 
+/** Native multi-file picker for composer attachments (empty if cancelled). */
+export async function pickAttachFiles() {
+  return invoke<string[]>("pick_attach_files");
+}
+
+/** Native folder picker for attaching a directory. */
+export async function pickAttachFolder() {
+  return invoke<string | null>("pick_attach_folder");
+}
+
+/**
+ * Persist clipboard/webview File bytes into the app attachments dir.
+ * Returns a classified path entry for `@path` agent refs.
+ */
+export async function saveTempAttachment(
+  bytesBase64: string,
+  suggestedName?: string | null,
+  mime?: string | null,
+) {
+  return invoke<PathEntry>("save_temp_attachment", {
+    bytesBase64,
+    suggestedName: suggestedName ?? null,
+    mime: mime ?? null,
+  });
+}
+
 export interface PathEntry {
   path: string;
   name: string;

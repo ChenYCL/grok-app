@@ -11,6 +11,23 @@ See `docs/llm-wiki/release.md`.
 
 ## [Unreleased]
 
+### Added
+
+- Composer **file picker** (+ menu → Files / Folder) and **clipboard paste** for images/files (screenshot → temp path → `@path` attach).
+- Open-source **maintenance playbook** (`docs/llm-wiki/maintain.md`): triage labels, PR review, community intake, ship loop.
+- **Single-instance** plugin: second launch focuses the existing window (macOS Dock multi-open).
+
+### Fixed
+
+- Grok Build shell permission fallbacks use **underscore** optionIds (`allow_once` / `reject`) — community PR #2.
+- Session auto-title LLM prompt follows **app locale** (EN/ZH) — community PR #1.
+- Composer stays **draftable while streaming** so a paused stream no longer feels like a hard lock.
+- macOS titlebar: larger traffic-light safe inset; panel toggle stays non-drag and icon-visible.
+
+### Community
+
+- Issues #3–#13 opened from launch-thread X feedback (duplicate history, login auth, attach, multi-open, Linux, etc.).
+
 ## [0.1.0] - 2026-07-24
 
 > 中英文对照 / Bilingual notes. English first (Keep a Changelog), then 中文摘要 under each section.

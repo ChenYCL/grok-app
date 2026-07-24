@@ -25,14 +25,16 @@ import {
 } from "./session";
 
 describe("session projection", () => {
-  it("input matrix Ready / Streaming / Stop (type anytime except stream)", () => {
+  it("input matrix Ready / Streaming / Stop (draft ok while stream; send blocked)", () => {
     expect(canType("ready")).toBe(true);
     expect(canType("idle")).toBe(true);
+    // Draft allowed while streaming so the box is never "stuck" on pauses.
+    expect(canType("streaming")).toBe(true);
+    expect(canType("awaiting_permission")).toBe(false);
     expect(canSend("ready")).toBe(true);
     expect(canSend("idle")).toBe(true);
     expect(canStop("ready")).toBe(false);
     expect(canStop("streaming")).toBe(true);
-    expect(canType("streaming")).toBe(false);
     expect(canSend("streaming")).toBe(false);
   });
 

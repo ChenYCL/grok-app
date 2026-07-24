@@ -449,13 +449,19 @@ export function statusPresentation(state: SessionState): {
   }
 }
 
-/** Allow drafting anytime except mid-stream / mid-permission. */
+/**
+ * Allow drafting the next message even while the agent is streaming.
+ * Users reported the composer felt "stuck" when output paused mid-turn —
+ * keeping the input focusable lets them edit / queue text and still hit Stop.
+ * Block only during permission prompts (modal decision in progress).
+ */
 export function canType(state: SessionState): boolean {
-  return state !== "streaming" && state !== "awaiting_permission";
+  return state !== "awaiting_permission";
 }
 
 /**
  * UI may enable Send before Host is ready; App ensures silent connect on submit.
+ * Still block send while streaming / awaiting permission (one turn at a time).
  */
 export function canSend(state: SessionState): boolean {
   return state !== "streaming" && state !== "awaiting_permission";

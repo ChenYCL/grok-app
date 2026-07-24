@@ -1335,6 +1335,162 @@ pub async fn pick_directory() -> Result<Option<String>, String> {
     Ok(folder.map(|p| p.display().to_string()))
 }
 
+/// Native multi-file picker for composer attachments. Returns empty vec if cancelled.
+#[tauri::command]
+pub async fn pick_attach_files() -> Result<Vec<String>, String> {
+    let files = tauri::async_runtime::spawn_blocking(|| {
+        rfd::FileDialog::new()
+            .set_title("附加文件 / Attach files")
+            .pick_files()
+    })
+    .await
+    .map_err(|e| e.to_string())?;
+    Ok(files
+        .unwrap_or_default()
+        .into_iter()
+        .map(|p| p.display().to_string())
+        .collect())
+}
+
+/// Native folder picker for attaching a directory as `@path` (optional).
+#[tauri::command]
+pub async fn pick_attach_folder() -> Result<Option<String>, String> {
+    let folder = tauri::async_runtime::spawn_blocking(|| {
+        rfd::FileDialog::new()
+            .set_title("附加文件夹 / Attach folder")
+            .pick_folder()
+    })
+    .await
+    .map_err(|e| e.to_string())?;
+    Ok(folder.map(|p| p.display().to_string()))
+}
+
+/// Save clipboard / webview File bytes into app attachments dir; return classified path.
+/// Used when paste has image data without a filesystem path (screenshots, browser copy).
+#[tauri::command]
+pub async fn save_temp_attachment(
+    bytes_base64: String,
+    suggested_name: Option<String>,
+    mime: Option<String>,
+) -> Result<PathEntry, String> {
+    use base64::Engine;
+    let raw = bytes_base64.trim();
+    // Accept data-URL prefix if present
+    let b64 = raw
+        .split(',')
+        .last()
+        .unwrap_or(raw)
+        .trim();
+    let bytes = base64::engine::general_purpose::STANDARD
+        .decode(b64)
+        .map_err(|e| format!("invalid base64: {e}"))?;
+    if bytes.is_empty() {
+        return Err("empty attachment payload".into());
+    }
+    // Cap paste size at 40 MiB to avoid runaway memory
+    if bytes.len() > 40 * 1024 * 1024 {
+        return Err("attachment too large (max 40 MiB)".into());
+    }
+
+    let mime = mime.unwrap_or_default().to_lowercase();
+    let ext = mime_to_ext(&mime).unwrap_or_else(|| {
+        suggested_name
+            .as_deref()
+            .and_then(|n| {
+                std::path::Path::new(n)
+                    .extension()
+                    .and_then(|e| e.to_str())
+                    .map(|s| s.to_lowercase())
+            })
+            .unwrap_or_else(|| "bin".into())
+    });
+
+    let safe_name = sanitize_attachment_name(
+        suggested_name.as_deref(),
+        &ext,
+    );
+    let dir = crate::paths::attachments_paste_dir();
+    let stamp = chrono::Local::now().format("%Y%m%d-%H%M%S-%3f");
+    let file_name = format!("{stamp}-{safe_name}");
+    let path = dir.join(&file_name);
+    std::fs::write(&path, &bytes).map_err(|e| format!("write attachment: {e}"))?;
+
+    let path_str = path.display().to_string();
+    Ok(PathEntry {
+        path: path_str.clone(),
+        name: path
+            .file_name()
+            .map(|s| s.to_string_lossy().into_owned())
+            .unwrap_or(file_name),
+        is_dir: false,
+        exists: true,
+    })
+}
+
+fn mime_to_ext(mime: &str) -> Option<String> {
+    let m = mime.split(';').next().unwrap_or(mime).trim();
+    Some(
+        match m {
+            "image/png" => "png",
+            "image/jpeg" | "image/jpg" => "jpg",
+            "image/gif" => "gif",
+            "image/webp" => "webp",
+            "image/bmp" => "bmp",
+            "image/svg+xml" => "svg",
+            "image/heic" => "heic",
+            "image/avif" => "avif",
+            "application/pdf" => "pdf",
+            "text/plain" => "txt",
+            "text/markdown" => "md",
+            "application/json" => "json",
+            "video/mp4" => "mp4",
+            "video/webm" => "webm",
+            "audio/mpeg" | "audio/mp3" => "mp3",
+            "audio/wav" | "audio/x-wav" => "wav",
+            _ => return None,
+        }
+        .into(),
+    )
+}
+
+fn sanitize_attachment_name(suggested: Option<&str>, ext: &str) -> String {
+    let base = suggested
+        .map(|s| s.trim())
+        .filter(|s| !s.is_empty())
+        .unwrap_or("paste");
+    let stem = std::path::Path::new(base)
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or("paste");
+    let mut cleaned: String = stem
+        .chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || c == '-' || c == '_' || c == '.' {
+                c
+            } else {
+                '_'
+            }
+        })
+        .collect();
+    if cleaned.is_empty() {
+        cleaned = "paste".into();
+    }
+    // Cap stem length
+    if cleaned.len() > 64 {
+        cleaned.truncate(64);
+    }
+    let has_ext = std::path::Path::new(base)
+        .extension()
+        .and_then(|e| e.to_str())
+        .map(|e| e.eq_ignore_ascii_case(ext))
+        .unwrap_or(false);
+    if has_ext {
+        format!("{cleaned}.{ext}")
+    } else {
+        format!("{cleaned}.{ext}")
+    }
+}
+
 /// Classify dropped / picked paths for drag-drop UX (file vs folder).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]

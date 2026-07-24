@@ -43,6 +43,8 @@ Default is the real **Grok Build** CLI (`grok agent stdio`).
 5. 禁止在 UI 使用 `window.confirm` / `prompt` / `alert`（见 `docs/llm-wiki/dialogs.md`）
 6. 提交 PR，说明动机、改动与验证方式
 
+**维护者 / AI 协作者**：Issue 分拣、PR 采纳标准、社区反馈入库与发版闭环见 **[docs/llm-wiki/maintain.md](./docs/llm-wiki/maintain.md)**。
+
 ## 约定 / Guidelines
 
 - 产品名：**Grok App**（窗口 / 安装包名多为 **Grok**）

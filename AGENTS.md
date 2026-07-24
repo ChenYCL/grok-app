@@ -10,7 +10,8 @@
    - [account.md](docs/llm-wiki/account.md) — official login, membership, quota, heatmap  
    - [providers.md](docs/llm-wiki/providers.md) — custom relays, agent `GROK_HOME`, editors  
    - [setup.md](docs/llm-wiki/setup.md) — first-run gate (CLI required, account optional)  
-   - [icons.md](docs/llm-wiki/icons.md) — app dock icons vs tray/status-bar icons (never mix)
+   - [icons.md](docs/llm-wiki/icons.md) — app dock icons vs tray/status-bar icons (never mix)  
+   - [maintain.md](docs/llm-wiki/maintain.md) — **open-source maintenance**: Issues triage, PR review, community intake, ship loop
 
 1b. **Release (AI handoff)** — **[docs/llm-wiki/release.md](docs/llm-wiki/release.md)** is the single source for ship steps. Platforms / local build: [docs/BUILD.md](docs/BUILD.md). Window chrome: `tauri.macos.conf.json` (Overlay) vs `tauri.windows.conf.json` (frameless).  
    - Never tag without `## [X.Y.Z]` in `CHANGELOG.md`.  

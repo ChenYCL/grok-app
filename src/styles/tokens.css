@@ -174,8 +174,8 @@
   --modal-width-md: 480px;
   --modal-width-lg: 560px;
 
-  /* mac traffic-light safe inset */
-  --titlebar-safe-left: 78px;
+  /* mac traffic-light safe inset — leave room so panel toggle never underlaps lights */
+  --titlebar-safe-left: 84px;
 }
 
 [data-theme="light"] {

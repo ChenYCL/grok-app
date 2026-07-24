@@ -176,6 +176,12 @@ export type ComposerEditorProps = {
     q: { start: number; query: string; end: number } | null,
   ) => void;
   editorRef?: Ref<HTMLDivElement | null>;
+  /**
+   * When clipboard has files/images (screenshot paste, file copy), parent
+   * should attach them. Called after preventDefault on the paste event.
+   * Plain text is still inserted when present alongside files.
+   */
+  onPasteFiles?: (files: File[]) => void;
 };
 
 export function ComposerEditor({
@@ -187,6 +193,7 @@ export function ComposerEditor({
   onKeyDown,
   onSlashQueryChange,
   editorRef,
+  onPasteFiles,
 }: ComposerEditorProps) {
   const elRef = useRef<HTMLDivElement | null>(null);
   const lastValue = useRef(value);
@@ -282,15 +289,46 @@ export function ComposerEditor({
     commitFromDom(e.currentTarget);
   };
 
-  /** Block rich HTML / styled paste — only plain text enters the composer. */
+  /**
+   * Paste: files/images → parent attach; text → plain text only (no rich HTML).
+   * Screenshot / image clipboard often has empty text + image/* items.
+   */
   const onPaste = (e: ClipboardEvent<HTMLDivElement>) => {
     e.preventDefault();
     e.stopPropagation();
+
+    const filesFromList = e.clipboardData?.files
+      ? Array.from(e.clipboardData.files)
+      : [];
+    const filesFromItems: File[] = [];
+    const items = e.clipboardData?.items;
+    if (items) {
+      for (let i = 0; i < items.length; i++) {
+        const item = items[i];
+        if (!item || item.kind !== "file") continue;
+        const f = item.getAsFile();
+        if (f) filesFromItems.push(f);
+      }
+    }
+    // Prefer FileList; fall back to items (screenshots often only appear there).
+    const fileMap = new Map<string, File>();
+    for (const f of [...filesFromList, ...filesFromItems]) {
+      const key = `${f.name}:${f.size}:${f.type}:${f.lastModified}`;
+      if (!fileMap.has(key)) fileMap.set(key, f);
+    }
+    const files = Array.from(fileMap.values());
+    if (files.length && onPasteFiles) {
+      onPasteFiles(files);
+    }
+
     const plain =
       e.clipboardData?.getData("text/plain") ??
       e.clipboardData?.getData("text") ??
       "";
+    // If we only got files/images, skip empty text insert.
     if (!plain) return;
+    // Avoid pasting file:// URI lists as body text when files were attached.
+    if (files.length && /^file:\/\//i.test(plain.trim())) return;
     insertPlainTextAtSelection(plain);
     const el = elRef.current;
     if (el) commitFromDom(el);

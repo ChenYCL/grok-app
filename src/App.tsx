@@ -2407,6 +2407,95 @@ export default function App() {
     [tr],
   );
 
+  /** Web File list (paste / HTML5 drop) → absolute paths for agent `@path`. */
+  const addAttachmentsFromFiles = useCallback(
+    async (files: File[]) => {
+      if (!files.length) return;
+      const withPath: string[] = [];
+      const withoutPath: File[] = [];
+      for (const f of files) {
+        const anyF = f as File & { path?: string };
+        if (anyF.path) withPath.push(anyF.path);
+        else withoutPath.push(f);
+      }
+      if (withPath.length) {
+        await addAttachmentsFromPaths(withPath);
+      }
+      if (!withoutPath.length) return;
+      if (!api.isTauri()) {
+        setLocalError(tr("composer.attachPasteFailed"));
+        return;
+      }
+      const intoEdit = !!editingUserMessageIdRef.current;
+      const mergeInto = intoEdit ? setEditAttachments : setAttachments;
+      try {
+        for (const f of withoutPath) {
+          const buf = await f.arrayBuffer();
+          const bytes = new Uint8Array(buf);
+          // Chunked base64 to avoid call-stack limits on large pastes
+          let binary = "";
+          const chunk = 0x8000;
+          for (let i = 0; i < bytes.length; i += chunk) {
+            binary += String.fromCharCode(
+              ...bytes.subarray(i, Math.min(i + chunk, bytes.length)),
+            );
+          }
+          const b64 = btoa(binary);
+          const name =
+            f.name && f.name !== "image.png" && f.name !== "blob"
+              ? f.name
+              : f.type?.startsWith("image/")
+                ? `paste.${(f.type.split("/")[1] || "png").replace("jpeg", "jpg")}`
+                : f.name || "paste.bin";
+          const entry = await api.saveTempAttachment(b64, name, f.type || null);
+          mergeInto((prev) =>
+            mergeAttachments(prev, [
+              {
+                path: entry.path,
+                name: entry.name,
+                isDir: entry.isDir,
+              },
+            ]),
+          );
+        }
+        setLocalError(null);
+      } catch (e) {
+        setLocalError(String(e) || tr("composer.attachPasteFailed"));
+      }
+    },
+    [addAttachmentsFromPaths, tr],
+  );
+
+  const pickComposerFiles = useCallback(async () => {
+    setShowComposerPlus(false);
+    if (!api.isTauri()) {
+      setLocalError(tr("composer.attachPasteFailed"));
+      return;
+    }
+    try {
+      const paths = await api.pickAttachFiles();
+      if (!paths.length) return;
+      await addAttachmentsFromPaths(paths);
+    } catch (e) {
+      setLocalError(String(e));
+    }
+  }, [addAttachmentsFromPaths, tr]);
+
+  const pickComposerFolder = useCallback(async () => {
+    setShowComposerPlus(false);
+    if (!api.isTauri()) {
+      setLocalError(tr("composer.attachPasteFailed"));
+      return;
+    }
+    try {
+      const folder = await api.pickAttachFolder();
+      if (!folder) return;
+      await addAttachmentsFromPaths([folder]);
+    } catch (e) {
+      setLocalError(String(e));
+    }
+  }, [addAttachmentsFromPaths, tr]);
+
   const addProjectsFromPaths = useCallback(
     async (paths: string[]) => {
       if (!paths.length || !api.isTauri()) return;
@@ -2553,12 +2642,20 @@ export default function App() {
           return anyF.path || "";
         })
         .filter(Boolean);
-      if (!paths.length) return;
-      e.preventDefault();
-      e.stopPropagation();
       const zone = hitDragZone(e.clientX, e.clientY);
-      if (zone === "sidebar") void addProjectsFromPaths(paths);
-      else void addAttachmentsFromPaths(paths);
+      if (paths.length) {
+        e.preventDefault();
+        e.stopPropagation();
+        if (zone === "sidebar") void addProjectsFromPaths(paths);
+        else void addAttachmentsFromPaths(paths);
+        return;
+      }
+      // Browser-only / path-less File list (e.g. image from another app)
+      if (zone !== "sidebar" && files.length) {
+        e.preventDefault();
+        e.stopPropagation();
+        void addAttachmentsFromFiles(files);
+      }
     };
     window.addEventListener("dragover", onDragOver);
     window.addEventListener("drop", onDrop);
@@ -2566,7 +2663,12 @@ export default function App() {
       window.removeEventListener("dragover", onDragOver);
       window.removeEventListener("drop", onDrop);
     };
-  }, [addAttachmentsFromPaths, addProjectsFromPaths, hitDragZone]);
+  }, [
+    addAttachmentsFromFiles,
+    addAttachmentsFromPaths,
+    addProjectsFromPaths,
+    hitDragZone,
+  ]);
 
   // Drag-resize right resource pane
   useEffect(() => {
@@ -4693,13 +4795,26 @@ export default function App() {
                       type="button"
                       className="composer-plus__item"
                       onClick={() => {
-                        setShowComposerPlus(false);
-                        setLocalError(tr("composer.attachLater"));
+                        void pickComposerFiles();
                       }}
                     >
                       <IconAttach size={16} />
                       <span>
                         <strong>{tr("composer.addFiles")}</strong>
+                        <em>{tr("composer.addFilesHint")}</em>
+                      </span>
+                    </button>
+                    <button
+                      type="button"
+                      className="composer-plus__item"
+                      onClick={() => {
+                        void pickComposerFolder();
+                      }}
+                    >
+                      <IconFolder size={16} />
+                      <span>
+                        <strong>{tr("composer.addFolder")}</strong>
+                        <em>{tr("composer.addFolderHint")}</em>
                       </span>
                     </button>
                     <button
@@ -4819,6 +4934,9 @@ export default function App() {
                     : tr("composer.placeholder")
                 }
                 onChange={setDraft}
+                onPasteFiles={(files) => {
+                  void addAttachmentsFromFiles(files);
+                }}
                 onSlashQueryChange={setSlashQuery}
                 onKeyDown={(e) => {
                   if (

@@ -46,6 +46,15 @@ pub fn run() {
     let session_mgr = Arc::new(SessionManager::new());
 
     tauri::Builder::default()
+        // Must be registered first so a second process exits and focuses the primary window.
+        .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
+            use tauri::Manager;
+            if let Some(window) = app.get_webview_window("main") {
+                let _ = window.unminimize();
+                let _ = window.show();
+                let _ = window.set_focus();
+            }
+        }))
         .plugin(tauri_plugin_store::Builder::new().build())
         .manage(session_mgr)
         // Range-capable media streaming (video/audio/pdf) — never loads multi‑GB into RAM.
@@ -142,6 +151,9 @@ pub fn run() {
             commands::skills_list,
             commands::inspect_mcp,
             commands::pick_directory,
+            commands::pick_attach_files,
+            commands::pick_attach_folder,
+            commands::save_temp_attachment,
             commands::paths_classify,
             commands::path_open,
             commands::path_reveal,

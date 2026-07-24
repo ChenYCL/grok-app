@@ -33,7 +33,16 @@ pub fn ensure_app_dirs() -> std::io::Result<PathBuf> {
     std::fs::create_dir_all(root.join("logs"))?;
     // Agent profile (config.toml / optional auth) when session_data_mode=independent.
     std::fs::create_dir_all(root.join("agent-home"))?;
+    // Clipboard paste / picker-written attachment files.
+    std::fs::create_dir_all(root.join("attachments").join("paste"))?;
     Ok(root)
+}
+
+/// Directory for pasted / saved composer attachments (absolute paths for `@path` refs).
+pub fn attachments_paste_dir() -> PathBuf {
+    let dir = app_data_root().join("attachments").join("paste");
+    let _ = fs::create_dir_all(&dir);
+    dir
 }
 
 /// GROK_HOME for independent mode: App-owned agent profile (providers, config).
