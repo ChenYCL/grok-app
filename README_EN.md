@@ -99,15 +99,15 @@ The `grok` CLI is powerful in a terminal. Day-to-day work still needs multi-proj
 
 ## Screenshots
 
-> Structural shots from development; live UI is the source of truth.
+> From the current macOS development build.
 
-| Workbench | Setup |
+| Workbench · SuperGrok | Account & quota |
 |:---:|:---:|
-| ![Workbench](assets/screenshots/workbench.png) | ![Setup](assets/screenshots/setup.png) |
+| ![Workbench](assets/screenshots/workbench.png) | ![Account](assets/screenshots/account.png) |
 
-| Permission | Light |
+| Light theme | Session & media |
 |:---:|:---:|
-| ![Permission](assets/screenshots/permission.png) | ![Light](assets/screenshots/light.png) |
+| ![Light](assets/screenshots/light.png) | ![Chat](assets/screenshots/chat.png) |
 
 ---
 

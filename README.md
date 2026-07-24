@@ -99,15 +99,15 @@
 
 ## 界面预览
 
-> 截图来自开发版结构稿，正式产品 UI 以当前构建为准。
+> 截图来自当前开发版（macOS）。
 
-| 工作台 | 首次向导 |
+| 工作台 · SuperGrok | 账户与额度 |
 |:---:|:---:|
-| ![Workbench](assets/screenshots/workbench.png) | ![Setup](assets/screenshots/setup.png) |
+| ![Workbench](assets/screenshots/workbench.png) | ![Account](assets/screenshots/account.png) |
 
-| 权限条 | 浅色 |
+| 浅色主题 | 会话与媒体 |
 |:---:|:---:|
-| ![Permission](assets/screenshots/permission.png) | ![Light](assets/screenshots/light.png) |
+| ![Light](assets/screenshots/light.png) | ![Chat](assets/screenshots/chat.png) |
 
 ---
 
