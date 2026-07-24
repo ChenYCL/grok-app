@@ -8,6 +8,40 @@ export interface AcpPermissionOption {
   kind?: string;
 }
 
+/** Human-readable summary for the permission bar header / aria. */
+export function formatPermissionSummary(input: {
+  toolName?: string | null;
+  title?: string | null;
+  path?: string | null;
+  command?: string | null;
+}): string {
+  const tool = (input.toolName || input.title || "").trim();
+  const path = (input.path || "").trim();
+  const command = (input.command || "").trim();
+  if (command) {
+    const short =
+      command.length > 96 ? `${command.slice(0, 96)}…` : command;
+    return tool ? `${tool}: ${short}` : short;
+  }
+  if (path) {
+    return tool ? `${tool} · ${path}` : path;
+  }
+  return tool || "Permission request";
+}
+
+/** Extra one-line copy that clarifies scope of each decision. */
+export function permissionDecisionHint(
+  decision: "allow_once" | "allow_session" | "deny",
+): string {
+  if (decision === "allow_once") {
+    return "Run this once; ask again next time.";
+  }
+  if (decision === "allow_session") {
+    return "Allow similar actions for the rest of this chat.";
+  }
+  return "Block this action and tell the agent.";
+}
+
 export interface MappedPermButton {
   decision: "allow_once" | "allow_session" | "deny";
   optionId: string;

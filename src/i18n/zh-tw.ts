@@ -306,6 +306,12 @@ export const zhTW: Record<MessageKey, string> = {
   "settings.acpServer": "ACP 伺服器（API 模式）",
   "settings.acpServerDesc":
     "透過 TCP（host:port）連線遠端 ACP Agent，取代啟動本機 CLI —— 例如執行在 WSL、容器或另一台主機上的 Agent。留空則使用本機啟動。",
+  "settings.acpTest": "測試連線",
+  "settings.acpTesting": "測試中…",
+  "settings.acpTestOk": "已連線 — {version} · 模型 {model}",
+  "settings.acpTestFail": "失敗：{error}",
+  "settings.acpSetupHint":
+    "在執行 agent 的機器上，用類似 socat 的方式把 stdio 暴露到 TCP：",
   "settings.permissionDeep": "預設權限",
   "settings.permissionDeepDesc":
     "對新一輪對話生效，並依上方選擇的範圍記憶。YOLO 會自動核准工具呼叫。",
@@ -555,6 +561,56 @@ export const zhTW: Record<MessageKey, string> = {
   "doctor.check.backend": "後端",
   "doctor.check.logs": "日誌",
   "doctor.rawToggle": "顯示原始報告",
+  "doctor.supportZip": "支援包",
+  "doctor.supportZipHint": "脫敏後的 Doctor 報告與近期日誌（不含金鑰）。",
+  "doctor.supportZipDone": "支援包已儲存",
+  "doctor.supportZipFail": "無法產生支援包",
+  "doctor.reset": "重設應用資料",
+  "doctor.resetHint":
+    "刪除本應用資料根下的工作階段、專案與設定，不影響 ~/.grok。",
+  "doctor.resetConfirmTitle": "重設應用資料？",
+  "doctor.resetConfirmBody":
+    "將清除本應用內的工作階段、專案、自動化與設定。除非取消勾選，API 金鑰會保留。不會改動 Grok Build CLI 主目錄（~/.grok）。",
+  "doctor.resetConfirm2Title": "確認重設？",
+  "doctor.resetConfirm2Body":
+    "此操作無法復原。應用將以空白工作區重新載入。",
+  "doctor.resetKeepSecrets": "保留 API 金鑰與已儲存帳號",
+  "doctor.resetDone": "應用資料已清除 — 正在重新載入…",
+  "doctor.resetFail": "重設失敗",
+  "doctor.advanced": "進階",
+
+  "conn.idle": "閒置",
+  "conn.connecting": "連線中",
+  "conn.ready": "就緒",
+  "conn.streaming": "工作中",
+  "conn.permission": "等待授權",
+  "conn.disconnected": "已中斷",
+
+  "shortcuts.title": "鍵盤快捷鍵",
+  "shortcuts.close": "關閉",
+  "shortcuts.search": "搜尋對話 / 專案",
+  "shortcuts.newChat": "新增對話",
+  "shortcuts.settings": "設定",
+  "shortcuts.doctor": "Doctor",
+  "shortcuts.stop": "停止產生 / 關閉浮層",
+  "shortcuts.send": "傳送訊息",
+  "shortcuts.help": "顯示快捷鍵",
+
+  "session.exportMd": "匯出對話為 Markdown",
+  "session.exportDone": "對話已匯出",
+  "session.exportFail": "匯出失敗",
+
+  "empty.noProjectTitle": "尚未開啟專案",
+  "empty.noProjectHint": "從側欄新增資料夾，以便帶上下文開始工作。",
+  "empty.noChatsTitle": "還沒有對話",
+  "empty.noChatsHint": "開始對話後會顯示在側欄。",
+  "empty.disconnectedTitle": "Agent 已中斷",
+  "empty.disconnectedHint": "重新連線以繼續此對話，或新建一個。",
+
+  "notify.turnDoneTitle": "Grok 已完成一輪",
+  "notify.turnDoneBody": "對話已就緒，可繼續輸入。",
+  "notify.permissionTitle": "需要授權",
+  "notify.permissionBody": "Agent 正在等待你的批准。",
 
   "slash.section.commands": "指令",
   "slash.section.skills": "技能",
@@ -626,6 +682,9 @@ export const zhTW: Record<MessageKey, string> = {
   "perm.allowOnce": "允許一次",
   "perm.allowSession": "對話內允許",
   "perm.deny": "拒絕",
+  "perm.hintOnce": "僅執行這一次，下次仍會詢問。",
+  "perm.hintSession": "本對話內同類操作不再詢問。",
+  "perm.hintDeny": "阻止本次操作並告知 Agent。",
 
   "message.copy": "複製",
   "message.copied": "已複製",

@@ -1,6 +1,6 @@
 /**
- * Structured Doctor health UI — checks with ok/warn/fail, re-run, copy, close.
- * Replaces the previous raw JSON `<pre>` dump.
+ * Structured Doctor health UI — checks with ok/warn/fail, re-run, copy,
+ * support zip, and reset app data (double-confirm via in-app dialogs).
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -21,6 +21,19 @@ export type DoctorModalProps = {
   open: boolean;
   onClose: () => void;
   locale: Locale;
+  /**
+   * App-level confirm dialog (no window.confirm).
+   * Used for the two-step reset flow.
+   */
+  onConfirm?: (opts: {
+    title: string;
+    message: string;
+    confirmLabel?: string;
+    danger?: boolean;
+    onConfirm: () => void;
+  }) => void;
+  /** After a successful reset — reload lists / hard refresh. */
+  onResetDone?: () => void;
 };
 
 const CHECK_TITLE_KEYS: Record<string, MessageKey> = {
@@ -49,7 +62,7 @@ function formatGeneratedAt(iso: string, locale: Locale): string {
   try {
     const d = new Date(iso);
     if (Number.isNaN(d.getTime())) return iso;
-    return d.toLocaleString(locale === "zh" ? "zh-CN" : "en-US", {
+    return d.toLocaleString(locale === "zh" || locale === "zh-TW" ? "zh-CN" : "en-US", {
       dateStyle: "medium",
       timeStyle: "medium",
     });
@@ -68,17 +81,27 @@ function LevelIcon({ level }: { level: DoctorLevel }) {
   return <IconCheck size={14} className="doctor-check__icon" />;
 }
 
-export function DoctorModal({ open, onClose, locale }: DoctorModalProps) {
+export function DoctorModal({
+  open,
+  onClose,
+  locale,
+  onConfirm,
+  onResetDone,
+}: DoctorModalProps) {
   const t = useMemo(() => createT(locale), [locale]);
   const [report, setReport] = useState<DoctorReport | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const [busy, setBusy] = useState<"zip" | "reset" | null>(null);
+  const [keepSecrets, setKeepSecrets] = useState(true);
+  const [statusMsg, setStatusMsg] = useState<string | null>(null);
 
   const run = useCallback(async () => {
     setLoading(true);
     setError(null);
     setCopied(false);
+    setStatusMsg(null);
     try {
       const next = await api.doctorReport();
       setReport(next);
@@ -114,6 +137,66 @@ export function DoctorModal({ open, onClose, locale }: DoctorModalProps) {
     } catch {
       setError(t("doctor.error"));
     }
+  };
+
+  const onSupportZip = async () => {
+    setBusy("zip");
+    setStatusMsg(null);
+    setError(null);
+    try {
+      const payload = report ? JSON.stringify(report.raw ?? report, null, 2) : null;
+      const res = await api.exportSupportBundle(payload);
+      setStatusMsg(`${t("doctor.supportZipDone")}: ${res.path}`);
+    } catch (e) {
+      setError(`${t("doctor.supportZipFail")}: ${String(e)}`);
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const doReset = async () => {
+    setBusy("reset");
+    setError(null);
+    try {
+      await api.resetAppData(keepSecrets);
+      setStatusMsg(t("doctor.resetDone"));
+      onResetDone?.();
+      // Hard reload so in-memory session/project state is dropped.
+      window.setTimeout(() => {
+        window.location.reload();
+      }, 600);
+    } catch (e) {
+      setError(`${t("doctor.resetFail")}: ${String(e)}`);
+      setBusy(null);
+    }
+  };
+
+  const onResetClick = () => {
+    const start = () => {
+      if (onConfirm) {
+        onConfirm({
+          title: t("doctor.resetConfirmTitle"),
+          message: t("doctor.resetConfirmBody"),
+          confirmLabel: t("doctor.reset"),
+          danger: true,
+          onConfirm: () => {
+            onConfirm({
+              title: t("doctor.resetConfirm2Title"),
+              message: t("doctor.resetConfirm2Body"),
+              confirmLabel: t("common.confirm"),
+              danger: true,
+              onConfirm: () => {
+                void doReset();
+              },
+            });
+          },
+        });
+      } else {
+        // Fallback for isolated stories — still no window.confirm.
+        void doReset();
+      }
+    };
+    start();
   };
 
   if (!open) return null;
@@ -191,6 +274,11 @@ export function DoctorModal({ open, onClose, locale }: DoctorModalProps) {
               {t("doctor.error")}: {error}
             </p>
           )}
+          {!loading && statusMsg && (
+            <p className="doctor-modal__status" role="status">
+              {statusMsg}
+            </p>
+          )}
           {!loading && !error && checks.length === 0 && (
             <p className="doctor-modal__status">{t("doctor.empty")}</p>
           )}
@@ -221,6 +309,47 @@ export function DoctorModal({ open, onClose, locale }: DoctorModalProps) {
               ))}
             </ul>
           )}
+
+          <section className="doctor-advanced" aria-label={t("doctor.advanced")}>
+            <h3 className="doctor-advanced__title">{t("doctor.advanced")}</h3>
+            <div className="doctor-advanced__row">
+              <div className="doctor-advanced__text">
+                <div className="doctor-advanced__label">{t("doctor.supportZip")}</div>
+                <p className="doctor-advanced__hint">{t("doctor.supportZipHint")}</p>
+              </div>
+              <button
+                type="button"
+                className="btn btn--ghost btn--sm"
+                disabled={!!busy || loading}
+                onClick={() => void onSupportZip()}
+              >
+                {busy === "zip" ? "…" : t("doctor.supportZip")}
+              </button>
+            </div>
+            <div className="doctor-advanced__row doctor-advanced__row--danger">
+              <div className="doctor-advanced__text">
+                <div className="doctor-advanced__label">{t("doctor.reset")}</div>
+                <p className="doctor-advanced__hint">{t("doctor.resetHint")}</p>
+                <label className="doctor-advanced__check">
+                  <input
+                    type="checkbox"
+                    checked={keepSecrets}
+                    onChange={(e) => setKeepSecrets(e.target.checked)}
+                    disabled={!!busy}
+                  />
+                  <span>{t("doctor.resetKeepSecrets")}</span>
+                </label>
+              </div>
+              <button
+                type="button"
+                className="btn btn--ghost btn--sm doctor-advanced__danger-btn"
+                disabled={!!busy || loading}
+                onClick={onResetClick}
+              >
+                {busy === "reset" ? "…" : t("doctor.reset")}
+              </button>
+            </div>
+          </section>
         </div>
 
         <footer className="doctor-modal__foot">
@@ -228,7 +357,7 @@ export function DoctorModal({ open, onClose, locale }: DoctorModalProps) {
             type="button"
             className="btn btn--ghost btn--sm"
             onClick={() => void run()}
-            disabled={loading}
+            disabled={loading || !!busy}
           >
             <IconRefresh size={14} />
             {t("doctor.rerun")}
@@ -237,7 +366,7 @@ export function DoctorModal({ open, onClose, locale }: DoctorModalProps) {
             type="button"
             className="btn btn--ghost btn--sm"
             onClick={() => void onCopy()}
-            disabled={!report || loading}
+            disabled={!report || loading || !!busy}
           >
             {copied ? <IconCheck size={14} /> : <IconCopy size={14} />}
             {copied ? t("doctor.copied") : t("doctor.copy")}
@@ -247,6 +376,7 @@ export function DoctorModal({ open, onClose, locale }: DoctorModalProps) {
             type="button"
             className="btn btn--ghost btn--sm"
             onClick={onClose}
+            disabled={!!busy}
           >
             {t("doctor.close")}
           </button>

@@ -122,6 +122,18 @@ pub async fn probe_cli(manual_path: Option<String>) -> Result<CliProbeResult, St
     Ok(cli_probe::probe_cli(manual_path.as_deref()))
 }
 
+/// API mode: TCP-connect to an ACP server and run the initialize handshake.
+#[tauri::command]
+pub async fn acp_test_connection(
+    addr: String,
+) -> Result<crate::acp_client::AcpProbeResult, String> {
+    let addr = addr.trim();
+    if addr.is_empty() {
+        return Err("empty address".into());
+    }
+    Ok(crate::acp_client::probe_acp_server(addr).await)
+}
+
 /// Download + install latest Grok Build (multi-mirror, progress via `setup://cli-install-progress`).
 #[tauri::command]
 pub async fn cli_install_latest(app: tauri::AppHandle) -> Result<crate::cli_install::CliInstallResult, String> {
@@ -1117,6 +1129,77 @@ pub async fn doctor_report() -> Result<serde_json::Value, String> {
         "checks": checks,
         "raw": raw,
     }))
+}
+
+/// Write a redacted support zip (Doctor JSON + logs) and return its path.
+/// Optionally opens a save dialog so the user can pick the destination.
+#[tauri::command]
+pub async fn export_support_bundle(
+    doctor_json: Option<String>,
+) -> Result<serde_json::Value, String> {
+    let doctor = if let Some(j) = doctor_json.filter(|s| !s.trim().is_empty()) {
+        j
+    } else {
+        // Build a fresh report when the UI did not pass one.
+        let report = doctor_report().await?;
+        serde_json::to_string_pretty(&report).map_err(|e| e.to_string())?
+    };
+
+    let tmp = crate::support_bundle::write_support_bundle(&doctor)?;
+
+    // Let the user pick where to keep it (cancel keeps the temp path).
+    let suggested = tmp
+        .file_name()
+        .and_then(|s| s.to_str())
+        .unwrap_or("grok-app-support.zip")
+        .to_string();
+    let dest = rfd::FileDialog::new()
+        .set_title("Save support bundle")
+        .set_file_name(&suggested)
+        .add_filter("Zip", &["zip"])
+        .save_file();
+
+    let final_path = if let Some(dest) = dest {
+        std::fs::copy(&tmp, &dest).map_err(|e| format!("copy support zip: {e}"))?;
+        let _ = std::fs::remove_file(&tmp);
+        dest
+    } else {
+        tmp
+    };
+
+    // Reveal in Finder / Explorer when possible.
+    let path_s = final_path.display().to_string();
+    #[cfg(target_os = "macos")]
+    {
+        let _ = std::process::Command::new("open")
+            .args(["-R", &path_s])
+            .status();
+    }
+    #[cfg(target_os = "windows")]
+    {
+        let _ = std::process::Command::new("explorer")
+            .args(["/select,", &path_s])
+            .status();
+    }
+
+    Ok(serde_json::json!({
+        "ok": true,
+        "path": path_s,
+    }))
+}
+
+/// Wipe App data under the data root (sessions, projects, settings).
+/// Does not touch the CLI home (`~/.grok`). Double-confirm in the UI before calling.
+#[tauri::command]
+pub async fn reset_app_data(
+    app: tauri::AppHandle,
+    keep_secrets: Option<bool>,
+    mgr: State<'_, Arc<SessionManager>>,
+) -> Result<serde_json::Value, String> {
+    // Drop live agent first so session files are not mid-write.
+    let _ = mgr.disconnect(app).await;
+    let keep = keep_secrets.unwrap_or(true);
+    crate::support_bundle::reset_app_data(keep)
 }
 
 // ── Skills / MCP via `grok inspect --json` ──────────────────────────────────

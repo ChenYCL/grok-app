@@ -176,6 +176,108 @@ function formatSessionWhen(iso: string, locale: string): string {
   }
 }
 
+/**
+ * ACP API-mode field with Test + server-side setup one-liner (from PR #23).
+ * Remote agents may run anywhere — verify reachability instead of auto-start.
+ */
+function AcpServerField({
+  value,
+  onChange,
+  t,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  t: (k: string) => string;
+}) {
+  const [testing, setTesting] = useState(false);
+  const [result, setResult] = useState<api.AcpProbeResult | null>(null);
+  const [copied, setCopied] = useState(false);
+  const addr = value.trim();
+  const port = (addr.split(":")[1] || "").replace(/[^0-9]/g, "") || "8799";
+  const setupCmd = `socat TCP-LISTEN:${port},reuseaddr,fork EXEC:'grok agent --no-leader stdio'`;
+
+  const runTest = async () => {
+    if (!addr || !api.isTauri()) return;
+    setTesting(true);
+    setResult(null);
+    try {
+      setResult(await api.acpTestConnection(addr));
+    } catch (e) {
+      setResult({ ok: false, error: String(e) });
+    } finally {
+      setTesting(false);
+    }
+  };
+  const copyCmd = async () => {
+    try {
+      await navigator.clipboard.writeText(setupCmd);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1500);
+    } catch {
+      /* clipboard unavailable */
+    }
+  };
+  const fill = (k: string, vars: Record<string, string>) =>
+    Object.entries(vars).reduce(
+      (s, [key, val]) => s.replace(`{${key}}`, val),
+      t(k),
+    );
+
+  return (
+    <div className="settings-row settings-row--stack">
+      <div className="settings-row__text">
+        <div className="settings-row__label">{t("settings.acpServer")}</div>
+        <div className="settings-row__desc">{t("settings.acpServerDesc")}</div>
+      </div>
+      <div className="settings-acp-field">
+        <input
+          className="settings-input"
+          value={value}
+          placeholder="e.g. 127.0.0.1:8799"
+          onChange={(e) => onChange(e.target.value)}
+        />
+        <button
+          type="button"
+          className="btn btn--ghost"
+          disabled={!addr || testing}
+          onClick={() => void runTest()}
+        >
+          {testing ? t("settings.acpTesting") : t("settings.acpTest")}
+        </button>
+      </div>
+      {result ? (
+        <div
+          className={
+            "settings-row__hint" + (result.ok ? "" : " is-danger")
+          }
+        >
+          {result.ok
+            ? fill("settings.acpTestOk", {
+                version: result.agentVersion || "?",
+                model: result.model || "?",
+              })
+            : fill("settings.acpTestFail", {
+                error: result.error || "unknown",
+              })}
+        </div>
+      ) : null}
+      {addr ? (
+        <div className="settings-row__hint">
+          <div>{t("settings.acpSetupHint")}</div>
+          <code className="settings-acp-cmd">{setupCmd}</code>
+          <button
+            type="button"
+            className="btn btn--ghost btn--sm"
+            onClick={() => void copyCmd()}
+          >
+            {copied ? t("message.copied") : t("message.copy")}
+          </button>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 /** App-styled checkbox (no native OS control). */
 function UiCheck({
   checked,
@@ -1147,22 +1249,11 @@ export function SettingsPage({
                 </div>
               )}
             </div>
-            <div className="settings-row settings-row--stack">
-              <div className="settings-row__text">
-                <div className="settings-row__label">
-                  {t("settings.acpServer")}
-                </div>
-                <div className="settings-row__desc">
-                  {t("settings.acpServerDesc")}
-                </div>
-              </div>
-              <input
-                className="settings-input"
-                value={acpServerAddr}
-                placeholder="e.g. 127.0.0.1:8799"
-                onChange={(e) => onAcpServerAddr(e.target.value)}
-              />
-            </div>
+            <AcpServerField
+              value={acpServerAddr}
+              onChange={onAcpServerAddr}
+              t={t}
+            />
             <div className="settings-row">
               <div className="settings-row__text">
                 <div className="settings-row__label">

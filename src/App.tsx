@@ -70,8 +70,23 @@ import {
   type ModelOption,
   type PermissionPolicyId,
 } from "@/lib/grokCatalog";
-import { mapPermissionButtons } from "@/lib/permissionOptions";
+import {
+  formatPermissionSummary,
+  mapPermissionButtons,
+} from "@/lib/permissionOptions";
 import { DoctorModal } from "@/components/DoctorModal";
+import { filterSessionSearch } from "@/lib/sessionSearch";
+import {
+  sessionExportFilename,
+  sessionToMarkdown,
+} from "@/lib/sessionExport";
+import { connPillForState } from "@/lib/connStatus";
+import { shortcutsForPlatform } from "@/lib/shortcuts";
+import {
+  ensureNotifyPermission,
+  showDesktopNotification,
+} from "@/lib/desktopNotify";
+import { GlassModal } from "@/components/GlassModal";
 import {
   applyResolvedSessionMedia,
   buildAgentPrompt,
@@ -418,12 +433,69 @@ export default function App() {
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
   }, [showSearch]);
+
+  // Global shortcuts: search, help, doctor, new chat, settings.
+  // Handlers go through refs so we don't re-bind every render.
+  const shortcutHandlersRef = useRef({
+    newChat: () => {},
+    openSettings: () => {},
+  });
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.isComposing) return;
+      const mod = e.metaKey || e.ctrlKey;
+      if (!mod) return;
+      const target = e.target as HTMLElement | null;
+      const tag = target?.tagName?.toLowerCase();
+      const typing =
+        tag === "input" ||
+        tag === "textarea" ||
+        !!target?.isContentEditable;
+      const key = e.key.toLowerCase();
+      if (key === "k") {
+        e.preventDefault();
+        setShowSearch(true);
+        return;
+      }
+      if (key === "/") {
+        e.preventDefault();
+        setShowShortcuts((v) => !v);
+        return;
+      }
+      if (key === "," && !typing) {
+        e.preventDefault();
+        shortcutHandlersRef.current.openSettings();
+        return;
+      }
+      if (key === "n" && !typing) {
+        e.preventDefault();
+        shortcutHandlersRef.current.newChat();
+        return;
+      }
+      if (key === "d" && e.shiftKey) {
+        e.preventDefault();
+        setShowDoctor(true);
+        return;
+      }
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, []);
+
   /** First-run gate: loading → setup wizard → ready (home). */
   const [appGate, setAppGate] = useState<"loading" | "setup" | "ready">(
     "loading",
   );
+  // Ask once for notification permission after first ready.
+  useEffect(() => {
+    if (appGate !== "ready") return;
+    void ensureNotifyPermission();
+  }, [appGate]);
   const [setupCliSeed, setSetupCliSeed] = useState<SetupCliInfo | null>(null);
   const [showDoctor, setShowDoctor] = useState(false);
+  const [showShortcuts, setShowShortcuts] = useState(false);
+  const [savedAccounts, setSavedAccounts] = useState<api.SavedAccount[]>([]);
+  const [activeAccountId, setActiveAccountId] = useState<string | null>(null);
   const [perm, setPerm] = useState<PermissionPayload | null>(null);
   const [plan, setPlan] = useState<PlanState & { visible: boolean }>({
     title: "Plan ready for review",
@@ -439,6 +511,8 @@ export default function App() {
   const localeRef = useRef(locale);
   localeRef.current = locale;
   const tr = useMemo(() => createT(locale), [locale]);
+  const trRef = useRef(tr);
+  trRef.current = tr;
   const [modelId, setModelId] = useState(DEFAULT_MODEL_ID);
   const [effort, setEffort] = useState(DEFAULT_EFFORT);
   const [mode, setMode] = useState("agent");
@@ -486,8 +560,6 @@ export default function App() {
   const [account, setAccount] = useState<api.AccountStatus | null>(null);
   const [accountLoading, setAccountLoading] = useState(false);
   const [accountBusy, setAccountBusy] = useState(false);
-  const [savedAccounts, setSavedAccounts] = useState<api.SavedAccount[]>([]);
-  const [activeAccountId, setActiveAccountId] = useState<string | null>(null);
   const [loginHint, setLoginHint] = useState<string | null>(null);
   const platform = useMemo(() => {
     const ua = navigator.userAgent.toLowerCase();
@@ -933,6 +1005,13 @@ export default function App() {
                   }
                   return next;
                 });
+                if (s.state === "ready") {
+                  showDesktopNotification({
+                    title: trRef.current("notify.turnDoneTitle"),
+                    body: trRef.current("notify.turnDoneBody"),
+                    tag: `turn-${s.sessionId || "x"}`,
+                  });
+                }
               } else if (
                 (s.state === "streaming" || s.state === "awaiting_permission") &&
                 s.sessionId === viewingSessionIdRef.current
@@ -1136,6 +1215,12 @@ export default function App() {
               return;
             }
             setPerm(p);
+            showDesktopNotification({
+              title: trRef.current("notify.permissionTitle"),
+              body: trRef.current("notify.permissionBody"),
+              tag: `perm-${p.rpcId}`,
+              force: true,
+            });
           }),
         );
         await track(
@@ -2283,29 +2368,25 @@ export default function App() {
     setCtxMenu({ kind: "project", id: proj.id, x: e.clientX, y: e.clientY });
   };
 
-  const searchHits = useMemo(() => {
-    const q = searchQuery.trim().toLowerCase();
-    const sess = sessions.filter((s) => !s.archived);
-    const matchedSessions = !q
-      ? sess.slice(0, 12)
-      : sess
-          .filter(
-            (s) =>
-              s.title.toLowerCase().includes(q) ||
-              s.id.toLowerCase().includes(q),
-          )
-          .slice(0, 20);
-    const matchedProjects = !q
-      ? projects.slice(0, 6)
-      : projects
-          .filter(
-            (p) =>
-              p.name.toLowerCase().includes(q) ||
-              p.path.toLowerCase().includes(q),
-          )
-          .slice(0, 10);
-    return { matchedSessions, matchedProjects };
-  }, [searchQuery, sessions, projects]);
+  const searchHits = useMemo(
+    () =>
+      filterSessionSearch(
+        searchQuery,
+        sessions.map((s) => ({
+          id: s.id,
+          title: s.title,
+          projectId: s.projectId,
+          archived: s.archived,
+        })),
+        projects.map((p) => ({ id: p.id, name: p.name, path: p.path })),
+      ),
+    [searchQuery, sessions, projects],
+  );
+
+  const connPill = useMemo(
+    () => connPillForState(session.state, connecting),
+    [session.state, connecting],
+  );
 
   const isPlaceholderTitle = useCallback(
     (title: string | undefined | null) => {
@@ -3648,6 +3729,16 @@ export default function App() {
     openSettings: (_section: SettingsSectionId = "general") => {},
     openDoctor: () => {},
   });
+  shortcutHandlersRef.current = {
+    newChat: () => {
+      void newChat();
+    },
+    openSettings: () => {
+      setAppView("settings");
+      setSettingsSection("general");
+      window.location.hash = "#/settings/general";
+    },
+  };
   trayHandlersRef.current = {
     newChat: () => {
       void newChat();
@@ -3778,6 +3869,13 @@ export default function App() {
           auth: isAccountConnected(st),
           cli: st.cliFound || s.cli,
         }));
+        try {
+          const list = await api.accountsList();
+          setSavedAccounts(list.profiles ?? []);
+          setActiveAccountId(list.activeId ?? null);
+        } catch {
+          // multi-account list is best-effort
+        }
         // Usage line on tray menu (Codex-style)
         void api.trayRefresh();
       } catch (e) {
@@ -3799,6 +3897,102 @@ export default function App() {
       /* ignore */
     }
   }, []);
+
+  /** Import markdown/JSON transcript as a new local session (from PR #24). */
+  const importChatTranscript = useCallback(async () => {
+    if (!api.isTauri()) {
+      showToast(tr("error.needTauri"));
+      return;
+    }
+    setAccountBusy(true);
+    try {
+      const created = await api.sessionImportTranscriptFile(
+        null,
+        activeProject?.id ?? null,
+      );
+      if (!created) return;
+      await refreshSessions();
+      showToast(tr("account.importChatOk", { title: created.title }), 3200);
+      const list = (await api.sessionsList()) as SessionRow[];
+      const hit = list.find((s) => s.id === created.id);
+      if (hit) {
+        const proj =
+          projects.find((p) => p.id === (hit.projectId ?? undefined)) ?? null;
+        void openSession(hit, proj ?? undefined);
+      }
+    } catch (e) {
+      showToast(
+        `${tr("account.importChatFailed")}: ${String(e)}`,
+        5000,
+      );
+    } finally {
+      setAccountBusy(false);
+    }
+  }, [activeProject?.id, projects, showToast, tr]);
+
+  /** Export active (or given) session as Markdown (from PR #24). */
+  const exportActiveSessionMd = useCallback(
+    async (sessionMeta?: {
+      id: string;
+      title: string;
+      projectId?: string | null;
+    }) => {
+      try {
+        const id = sessionMeta?.id ?? session.sessionId;
+        if (!id) {
+          showToast(tr("session.exportFail"));
+          return;
+        }
+        const title =
+          sessionMeta?.title ||
+          sessions.find((s) => s.id === id)?.title ||
+          session.title ||
+          tr("session.untitled");
+        const projectId =
+          sessionMeta?.projectId ??
+          sessions.find((s) => s.id === id)?.projectId ??
+          null;
+        const proj =
+          projects.find((p) => p.id === projectId) || activeProject || null;
+        let msgs = messages;
+        if (id !== session.sessionId) {
+          msgs = (await api.sessionMessages(id)) as ChatMessage[];
+        }
+        const md = sessionToMarkdown({
+          title,
+          projectName: proj?.name,
+          projectPath: proj?.path,
+          sessionId: id,
+          messages: msgs.map((m) => ({
+            role: m.role,
+            content: m.content,
+            thought: m.thought,
+            createdAt: m.createdAt,
+          })),
+        });
+        const blob = new Blob([md], { type: "text/markdown;charset=utf-8" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = sessionExportFilename(title, id);
+        a.click();
+        URL.revokeObjectURL(url);
+        showToast(tr("session.exportDone"));
+      } catch (e) {
+        showToast(`${tr("session.exportFail")}: ${String(e)}`);
+      }
+    },
+    [
+      session.sessionId,
+      session.title,
+      sessions,
+      messages,
+      projects,
+      activeProject,
+      showToast,
+      tr,
+    ],
+  );
 
   const beginEditLastUser = useCallback(
     (msg: ChatMessage) => {
@@ -4140,20 +4334,32 @@ export default function App() {
   );
 
   const runRemoveAccount = useCallback(
-    async (id: string) => {
+    (id: string) => {
       if (!api.isTauri()) return;
-      setAccountBusy(true);
-      try {
-        await api.accountRemove(id);
-        await refreshSavedAccounts();
-        showToast(tr("account.profileRemoved"), 2200);
-      } catch (e) {
-        showToast(String(e), 4500);
-      } finally {
-        setAccountBusy(false);
-      }
+      const label =
+        savedAccounts.find((a) => a.id === id)?.label || id.slice(0, 8);
+      setAppDialog({
+        kind: "confirm",
+        title: tr("account.profileRemove"),
+        message: tr("account.profilesHint"),
+        confirmLabel: tr("account.profileRemove"),
+        danger: true,
+        onConfirm: async () => {
+          setAccountBusy(true);
+          try {
+            await api.accountRemove(id);
+            await refreshSavedAccounts();
+            showToast(tr("account.profileRemoved"), 2200);
+          } catch (e) {
+            showToast(String(e), 4500);
+          } finally {
+            setAccountBusy(false);
+          }
+        },
+      });
+      void label;
     },
-    [refreshSavedAccounts, showToast, tr],
+    [refreshSavedAccounts, savedAccounts, showToast, tr],
   );
 
   const runAccountLogout = useCallback(async () => {
@@ -4531,6 +4737,8 @@ export default function App() {
           accountLoading={accountLoading}
           accountBusy={accountBusy}
           loginHint={loginHint}
+          savedAccounts={savedAccounts}
+          activeAccountId={activeAccountId}
           onAccountLoginOauth={() => void runAccountLogin("oauth")}
           onAccountLoginDevice={() => void runAccountLogin("device")}
           onCancelLogin={() => void cancelAccountLogin()}
@@ -4538,12 +4746,11 @@ export default function App() {
           onAccountRefresh={() => void refreshAccount({ refreshBilling: true })}
           onAccountManageUsage={() => void api.accountOpenUsage()}
           onAccountSubscribe={() => void api.accountOpenSubscribe()}
-          savedAccounts={savedAccounts}
-          activeAccountId={activeAccountId}
           onSaveAccount={() => void runSaveAccount()}
           onAddAccount={() => void runAddAccount()}
           onSwitchAccount={(id) => void runSwitchAccount(id)}
           onRemoveAccount={(id) => void runRemoveAccount(id)}
+          onImportChat={() => void importChatTranscript()}
           defaultOpenTarget={defaultOpenTarget}
           onDefaultOpenTarget={(v) => {
             setDefaultOpenTarget(v);
@@ -5143,6 +5350,16 @@ export default function App() {
               )}
             </div>
             <div className="main__top-actions">
+              {mainPane === "chat" && (
+                <span
+                  className={`status-pill status-pill--${connPill.tone}`}
+                  role="status"
+                  title={tr(connPill.labelKey as MessageKey)}
+                >
+                  <span className="status-pill__dot" aria-hidden />
+                  {tr(connPill.labelKey as MessageKey)}
+                </span>
+              )}
               {/* Retry progress only — connection is silent; thinking lives in chat */}
               {retryStatus && (
                 <Tip
@@ -5449,6 +5666,13 @@ export default function App() {
                     {perm.title || perm.toolName}
                   </span>
                 </div>
+                <p className="perm-bar__summary">
+                  {formatPermissionSummary({
+                    toolName: perm.toolName,
+                    title: perm.title,
+                    command: perm.preview,
+                  })}
+                </p>
                 {perm.preview?.trim() ? (
                   <pre className="perm-bar__preview">{perm.preview.trim()}</pre>
                 ) : null}
@@ -5468,6 +5692,13 @@ export default function App() {
                           : btn.decision === "deny"
                             ? " perm-bar__btn--deny"
                             : " perm-bar__btn--session")
+                      }
+                      title={
+                        btn.decision === "allow_once"
+                          ? tr("perm.hintOnce")
+                          : btn.decision === "allow_session"
+                            ? tr("perm.hintSession")
+                            : tr("perm.hintDeny")
                       }
                       onClick={() =>
                         void api
@@ -5858,7 +6089,49 @@ export default function App() {
         open={showDoctor}
         onClose={() => setShowDoctor(false)}
         locale={locale}
+        onConfirm={({ title, message, confirmLabel, danger, onConfirm }) => {
+          setAppDialog({
+            kind: "confirm",
+            title,
+            message,
+            confirmLabel,
+            danger,
+            onConfirm,
+          });
+        }}
+        onResetDone={() => {
+          void refreshLists();
+        }}
       />
+      <GlassModal
+        open={showShortcuts}
+        onClose={() => setShowShortcuts(false)}
+        title={tr("shortcuts.title")}
+        size="md"
+        closeLabel={tr("shortcuts.close")}
+        footer={
+          <button
+            type="button"
+            className="btn btn--ghost"
+            onClick={() => setShowShortcuts(false)}
+          >
+            {tr("shortcuts.close")}
+          </button>
+        }
+      >
+        <ul className="shortcuts-list">
+          {shortcutsForPlatform(
+            platform === "mac" ? "mac" : platform === "win" ? "win" : "other",
+          ).map((row) => (
+            <li key={row.id} className="shortcuts-list__row">
+              <span className="shortcuts-list__label">
+                {tr(row.labelKey as MessageKey)}
+              </span>
+              <kbd className="shortcuts-list__keys">{row.keys}</kbd>
+            </li>
+          ))}
+        </ul>
+      </GlassModal>
       <StatusModal
         open={showStatusModal}
         locale={locale}
@@ -6025,7 +6298,9 @@ export default function App() {
                 {tr("search.noMatches")}
               </div>
             )}
-            {searchHits.matchedSessions.map((s, i) => {
+            {searchHits.matchedSessions.map((hit, i) => {
+              const s = sessions.find((x) => x.id === hit.id);
+              if (!s) return null;
               const proj = projects.find((p) => p.id === s.projectId);
               return (
                 <button
@@ -6246,6 +6521,18 @@ export default function App() {
                 label: tr("session.rename"),
                 icon: <IconRename size={16} />,
                 onClick: () => renameSession(s),
+              },
+              {
+                id: "export-md",
+                label: tr("session.exportMd"),
+                icon: <IconCopy size={16} />,
+                onClick: () => {
+                  void exportActiveSessionMd({
+                    id: s.id,
+                    title: s.title,
+                    projectId: s.projectId,
+                  });
+                },
               },
               {
                 id: "copy-id",
