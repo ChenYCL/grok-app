@@ -168,6 +168,10 @@ pub struct AppSettings {
     /// Passed as top-level `grok --sandbox <profile>` / `GROK_SANDBOX` at spawn.
     #[serde(default = "default_sandbox_profile")]
     pub sandbox_profile: String,
+    /// When true (default), agents may enter plan mode. When false, spawn with
+    /// top-level `--no-plan` so plan mode is disabled for that process.
+    #[serde(default = "default_plan_enabled")]
+    pub plan_enabled: bool,
 }
 
 fn default_composer_prefs_scope() -> String {
@@ -192,6 +196,8 @@ fn default_stream_stall_seconds() -> u32 {
 
 fn default_sandbox_profile() -> String {
     "off".into()
+fn default_plan_enabled() -> bool {
+    true
 }
 
 impl Default for AppSettings {
@@ -217,6 +223,7 @@ impl Default for AppSettings {
             stream_stall_seconds: default_stream_stall_seconds(),
             store_api_keys_in_keychain: false,
             sandbox_profile: default_sandbox_profile(),
+            plan_enabled: default_plan_enabled(),
         }
     }
 }
@@ -1305,6 +1312,15 @@ mod tests {
         let raw = r#"{
             "theme": "dark",
             "locale": "en",
+        assert!(s.plan_enabled);
+    }
+
+    #[test]
+    fn plan_enabled_defaults_true_when_missing_from_json() {
+        // Older settings files omit the field — keep plan mode on (CLI default).
+        let raw = r#"{
+            "theme": "dark",
+            "locale": "zh",
             "sessionDataMode": "independent",
             "manualCliPath": null,
             "permissionPolicy": "ask",
@@ -1361,5 +1377,6 @@ mod tests {
         let m: SessionMeta = serde_json::from_str(raw).expect("deserialize legacy session");
         assert!(!m.pinned);
         assert!(!m.archived);
+        assert!(s.plan_enabled);
     }
 }

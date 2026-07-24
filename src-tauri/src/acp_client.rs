@@ -193,6 +193,16 @@ impl SandboxSpawnSpec {
 pub fn sandbox_spawn_flags(profile: &str) -> Option<(Vec<String>, (String, String))> {
     let spec = SandboxSpawnSpec::from_setting(profile)?;
     Some((spec.cli_args().to_vec(), spec.env_pair()))
+/// Pure helper: top-level CLI flags for the plan_enabled setting.
+///
+/// When `plan_enabled` is false, returns `["--no-plan"]` (before `agent`).
+/// When true, returns no flags so the CLI keeps plan mode available.
+pub fn no_plan_spawn_flags(plan_enabled: bool) -> Vec<&'static str> {
+    if plan_enabled {
+        vec![]
+    } else {
+        vec!["--no-plan"]
+    }
 }
 
 impl AcpClient {
@@ -288,6 +298,16 @@ impl AcpClient {
             for a in sb.cli_args() {
                 cmd.arg(a);
             }
+        //   top-level: `grok --no-auto-update [--no-plan] agent …`
+        //   agent opts: `--model` / `--reasoning-effort` / `--always-approve` before `stdio`
+        // Skip background update checks so ACP handshakes are not delayed on launch.
+        // `--no-plan` is top-level only (disables plan mode for the process).
+        let plan_enabled = crate::store::load_settings().plan_enabled;
+
+        let mut cmd = Command::new(&cli_path);
+        cmd.arg("--no-auto-update");
+        for flag in no_plan_spawn_flags(plan_enabled) {
+            cmd.arg(flag);
         }
         cmd.arg("agent");
         if !spawn_model.is_empty() {
@@ -322,6 +342,7 @@ impl AcpClient {
         }
         tracing::info!(
             "acp: spawn GROK_HOME={} mode={} auth_present={} route={:?} composer_model={:?} spawn_model={} yolo={} sandbox={:?}",
+            "acp: spawn GROK_HOME={} mode={} auth_present={} route={:?} composer_model={:?} spawn_model={} yolo={} plan_enabled={}",
             grok_home.display(),
             session_data_mode,
             grok_home.join("auth.json").is_file(),
@@ -333,6 +354,7 @@ impl AcpClient {
                 .map(cli_permission_mode)
                 == Some("bypassPermissions"),
             sandbox.as_ref().map(|s| s.profile.as_str())
+            plan_enabled
         );
 
         let mut child = cmd.spawn().map_err(|e| {
@@ -2260,5 +2282,20 @@ mod live_handshake_tests {
         eprintln!("OK session={} in {:?}", sid, t0.elapsed());
         client.kill().await;
         assert!(!sid.is_empty());
+    }
+}
+
+#[cfg(test)]
+mod no_plan_spawn_tests {
+    use super::no_plan_spawn_flags;
+
+    #[test]
+    fn enabled_adds_no_flags() {
+        assert!(no_plan_spawn_flags(true).is_empty());
+    }
+
+    #[test]
+    fn disabled_adds_top_level_flag() {
+        assert_eq!(no_plan_spawn_flags(false), vec!["--no-plan"]);
     }
 }

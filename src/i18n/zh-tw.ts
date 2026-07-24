@@ -559,6 +559,9 @@ export const zhTW: Record<MessageKey, string> = {
   "settings.sandbox.readOnly": "唯讀 — 不可寫專案檔案",
   "settings.sandbox.strict": "嚴格 — 僅限 CWD，封鎖子行程網路",
   "settings.sandbox.devbox": "Devbox — 一次性開發機配置",
+  "settings.planEnabled": "計畫模式",
+  "settings.planEnabledDesc":
+    "允許 Agent 進入計畫模式。關閉時啟動會加上 --no-plan。變更後會 soft-respawn 已連線的 Agent。",
   "settings.prefsScope": "模型與權限記憶範圍",
   "settings.prefsScopeDesc":
     "全域：所有對話共用。專案：依工作區記憶。對話：僅目前聊天。",

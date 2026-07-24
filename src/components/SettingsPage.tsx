@@ -115,6 +115,9 @@ export interface SettingsPageProps {
   /** OS sandbox for agent spawn: off | workspace | read-only | strict | devbox. */
   sandboxProfile?: string;
   onSandboxProfile?: (v: string) => void;
+  /** When true (default), agents may use plan mode; false → spawn with `--no-plan`. */
+  planEnabled?: boolean;
+  onPlanEnabled?: (v: boolean) => void;
   cliInfo: {
     found: boolean;
     path: string | null;
@@ -418,6 +421,8 @@ export function SettingsPage({
   onStoreApiKeysInKeychain,
   sandboxProfile = "off",
   onSandboxProfile,
+  planEnabled = true,
+  onPlanEnabled,
   cliInfo,
   onDoctor,
   versionFooter,
@@ -886,6 +891,20 @@ export function SettingsPage({
                         label: t("settings.sandbox.devbox"),
                       },
                     ]}
+              {onPlanEnabled ? (
+                <div className="settings-row">
+                  <div className="settings-row__text">
+                    <div className="settings-row__label">
+                      {t("settings.planEnabled")}
+                    </div>
+                    <div className="settings-row__desc">
+                      {t("settings.planEnabledDesc")}
+                    </div>
+                  </div>
+                  <UiCheck
+                    checked={planEnabled}
+                    onChange={() => onPlanEnabled(!planEnabled)}
+                    ariaLabel={t("settings.planEnabled")}
                   />
                 </div>
               ) : null}

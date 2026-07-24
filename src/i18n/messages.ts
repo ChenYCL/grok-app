@@ -586,6 +586,9 @@ const en = {
   "settings.sandbox.readOnly": "Read-only — no project writes",
   "settings.sandbox.strict": "Strict — CWD only, block child network",
   "settings.sandbox.devbox": "Devbox — disposable VM layout",
+  "settings.planEnabled": "Plan mode",
+  "settings.planEnabledDesc":
+    "Allow agents to enter plan mode. When off, agents spawn with --no-plan. Live agents soft-respawn when this changes.",
   "settings.prefsScope": "Remember model & permission at",
   "settings.prefsScopeDesc":
     "Global: all chats. Project: each workspace. Session: only the current chat.",
@@ -1798,6 +1801,9 @@ const zh: Record<MessageKey, string> = {
   "settings.sandbox.readOnly": "只读 — 不可写项目文件",
   "settings.sandbox.strict": "严格 — 仅限 CWD，阻止子进程网络",
   "settings.sandbox.devbox": "Devbox — 一次性开发机布局",
+  "settings.planEnabled": "计划模式",
+  "settings.planEnabledDesc":
+    "允许 Agent 进入计划模式。关闭时启动会加上 --no-plan。更改后会 soft-respawn 已连接的 Agent。",
   "settings.prefsScope": "模型与权限记忆范围",
   "settings.prefsScopeDesc":
     "全局：所有对话共用。项目：按工作区记忆。会话：仅当前聊天。",

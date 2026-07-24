@@ -786,6 +786,10 @@ export interface AppSettings {
    * Default "off". Passed as `grok --sandbox <profile>` / GROK_SANDBOX on spawn.
    */
   sandboxProfile?: string;
+   * When true (default), agents may use plan mode.
+   * When false, spawn with top-level `--no-plan`.
+   */
+  planEnabled?: boolean;
 }
 
 export interface AvailableModel {

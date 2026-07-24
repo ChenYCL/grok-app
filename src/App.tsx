@@ -692,6 +692,8 @@ export default function App() {
   const [streamStallSeconds, setStreamStallSeconds] = useState(120);
   const [storeApiKeysInKeychain, setStoreApiKeysInKeychain] = useState(false);
   const [sandboxProfile, setSandboxProfile] = useState("off");
+  /** Default true — false spawns with top-level `--no-plan`. */
+  const [planEnabled, setPlanEnabled] = useState(true);
   const [gitWorktrees, setGitWorktrees] = useState<api.GitWorktreeEntry[]>([]);
   /** null = unknown/loading; true = git work tree; false = not a git repo. */
   const [gitWorktreesAvailable, setGitWorktreesAvailable] = useState<
@@ -922,6 +924,8 @@ export default function App() {
         const known = ["off", "workspace", "read-only", "strict", "devbox"];
         setSandboxProfile(known.includes(sb) ? sb : "off");
       }
+      // Missing field → keep plan mode on (matches AppSettings default).
+      setPlanEnabled(settings.planEnabled !== false);
       setCliInfo({
         found: cli.found,
         path: cli.path,
@@ -5893,6 +5897,8 @@ export default function App() {
       "settings.cliNotFound",
       "settings.permissionDeep",
       "settings.permissionDeepDesc",
+      "settings.planEnabled",
+      "settings.planEnabledDesc",
       "settings.prefsScope",
       "settings.prefsScopeDesc",
       "settings.prefsScope.global",
@@ -6225,6 +6231,11 @@ export default function App() {
             setSandboxProfile(v);
             void api.settingsGet().then((s) =>
               api.settingsSet({ ...s, sandboxProfile: v }),
+          planEnabled={planEnabled}
+          onPlanEnabled={(v) => {
+            setPlanEnabled(v);
+            void api.settingsGet().then((s) =>
+              api.settingsSet({ ...s, planEnabled: v }),
             );
           }}
           cliInfo={cliInfo}
