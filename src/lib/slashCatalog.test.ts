@@ -115,10 +115,29 @@ describe("filterSlashItems", () => {
     ]);
   });
 
-  it("filters by description", () => {
+  it("filters by description only when query length >= 4", () => {
     expect(filterSlashItems(items, "health").map((i) => i.name)).toEqual([
       "doctor",
     ]);
+    // "hot" is 3 chars — name-only; aihot matches by name, doctor does not
+    expect(filterSlashItems(items, "hot").map((i) => i.name)).toEqual([
+      "aihot",
+    ]);
+  });
+
+  it("does not match description for short queries", () => {
+    const onlyName = filterSlashItems(items, "a").map((i) => i.name);
+    expect(onlyName).not.toContain("doctor");
+  });
+
+  it("dedupes skills by name", () => {
+    const skills: SkillInfo[] = [
+      { name: "make-pdf", description: "a" },
+      { name: "make-pdf", description: "b" },
+      { name: "docx", description: "c" },
+    ];
+    const items = skillsToSlashItems(skills);
+    expect(items.map((i) => i.name)).toEqual(["make-pdf", "docx"]);
   });
 
   it("is case-insensitive", () => {

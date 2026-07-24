@@ -3,25 +3,24 @@
 **强制**：Tauri WebView 下 **`window.confirm` / `window.prompt` / `window.alert` 不可靠**（常无对话框、恒为 false、或阻塞异常）。  
 用户确认、输入、危险操作 **必须** 使用应用内弹窗，禁止再引入浏览器原生对话框。
 
-## 视觉：统一毛玻璃
+## 视觉：复用现有面板样式
 
-所有浮层（确认框、业务弹窗、下拉菜单、搜索面板、侧滑表单、toast、权限条）共用 **同一套毛玻璃材质**：
+**不强制** 毛玻璃 / 半透明浮层。新浮层 **优先复用** 应用内已有面板样式，与邻近控件保持一致：
 
-| Token | 用途 |
-|-------|------|
-| `--glass-surface` / `--glass-surface-solid` | 半透明底 / 无 blur 回退 |
-| `--glass-border` / `--glass-blur` / `--glass-saturate` / `--glass-shadow` | 边框、模糊、饱和、阴影 |
-| `--menu-*` | 下拉菜单布局（圆角 12、外 pad 6、item 圆角 8） |
-| `--modal-*` | 对话框布局（圆角 16、pad 20×24、gap 16） |
-| `--bg-sidebar` + `--sidebar-blur` | 左栏 80% 透明 + 更强模糊 |
+| 场景 | 优先样式 | 参考 |
+|------|----------|------|
+| Composer 芯片菜单（模型 / 权限 / 项目） | `.cmm__pop` + `.cmm__opt` / `.cmm__section` | `ComposerModelMenu`、`ComposerProjectMenu` |
+| 右键 / 行操作 / 位置菜单 | 实心 `.menu-panel` + context tokens（`--menu-context-*`） | `ContextMenu`、`OpenLocationButton` |
+| 确认 / 输入 / 业务对话框 | `.modal` · `GlassModal` · `setAppDialog` | `App.tsx`、`GlassModal` |
+| 搜索 / 侧栏表单 / 斜杠 | 现有 `.search-panel` / `.auto-panel` / `.slash-palette` | 对应组件 |
 
-CSS 入口：`.glass-surface` 以及 `.modal` / `.menu-panel` / `.search-panel` / `.cmm__pop` / `.effort-panel__pop` / `.auto-panel` 等选择器（见 `src/styles/app.css`）。
+布局 token（圆角、pad、item 间距）仍可用 `--menu-*` / `--modal-*`；材质以**该区域既有实现**为准，不要为「统一毛玻璃」另起一套。
 
-**禁止** 在浮层上再写 `background: var(--bg-elevated)` 等不透明底，否则盖住毛玻璃。
+**可选**：存量仍有 `.glass-surface` / `--glass-*`（部分 modal、历史浮层）。新代码不要求套用；也**不要**再写「浮层禁止不透明底」之类规则。
 
 ## 公共壳：`GlassModal`
 
-新业务弹窗优先用：
+业务对话框可用公共壳（名字历史遗留，不代表必须毛玻璃）：
 
 ```tsx
 import { GlassModal } from "@/components/GlassModal";
@@ -101,11 +100,11 @@ setAppDialog({
 | Compact / Doctor / Status / MCP | `.modal` · `GlassModal` · `DoctorModal` |
 | 文件详情 | `.modal.file-path-details` |
 | 搜索面板 | `.search-panel` |
-| 模型 / 强度 / 用户 / 斜杠 / + | `.cmm__pop` · `.effort-panel__pop` · `.menu-panel` · `.slash-palette` · `.composer-plus` |
+| 模型 / 权限 / 项目 / 用户 / 斜杠 / + | `.cmm__pop` · `.menu-panel` · `.slash-palette` · `.composer-plus` |
 | 上下文 / 附件 / 打开位置 / Select | `.ctx-menu` · `.att-menu` · `.open-loc-menu` · `.c-select__menu` |
 | 自动化表单侧栏 / 行菜单 | `.auto-panel` · `.auto-row__menu` |
 | Toast / 权限条 / 拖放卡 | `.app-toast` · `.perm-bar` · `.drop-overlay__card` |
-| 左栏 | `.sidebar`（80% + `--sidebar-blur`） |
+| 左栏 | `.sidebar` |
 
 ## 禁止清单
 
@@ -115,7 +114,6 @@ setAppDialog({
 | `window.prompt(...)` | **禁止** |
 | `window.alert(...)` | **禁止**（用户可见错误用 toast / error banner / 应用内 dialog） |
 | `confirm` / `prompt` 全局别名 | **禁止** |
-| 浮层不透明 `bg-elevated` | **禁止**（用 glass tokens） |
 
 存量调用发现即改（搜索 `window.confirm`、`window.prompt`）。
 
@@ -125,15 +123,15 @@ setAppDialog({
 - [ ] 确认框文案中英键齐全。  
 - [ ] Tauri 真机：点确认执行、点取消/遮罩关闭、无「无反应」。  
 - [ ] 危险操作（删除任务、YOLO、移除项目）使用 `danger` 样式并写清后果。  
-- [ ] 暗/亮主题下弹窗与菜单均为半透明毛玻璃，可见背景模糊。  
-- [ ] 左栏透明度约 80%，模糊强于浮层。
+- [ ] 新浮层与同区域既有面板（`.cmm__pop` / `.menu-panel` / `.modal`）观感一致，不另造透明材质规范。
 
 ## 相关源码
 
 - `src/components/GlassModal.tsx` — 公共对话框壳  
 - `src/App.tsx` — `AppDialog` 类型、`setAppDialog`、portal 渲染  
-- `src/styles/tokens.css` — `--glass-*` / `--menu-*` / `--modal-*` / sidebar  
-- `src/styles/app.css` — 统一 glass 选择器 + modal/menu 布局  
+- `src/styles/tokens.css` — `--menu-*` / `--modal-*` / 可选 `--glass-*`  
+- `src/styles/app.css` — modal / menu / cmm 布局  
+- `src/components/ComposerModelMenu.tsx` / `ComposerProjectMenu.tsx` — composer 芯片菜单范例  
 - `src/components/StatusModal.tsx` / `McpStatusModal.tsx` — GlassModal 范例  
 - `src/components/AutomationsPage.tsx` — 子页面自建删除确认范例  
 - `src/i18n/messages.ts` — `common.cancel` / `common.confirm` / `common.close` 等  

@@ -22,7 +22,7 @@
 
 2. Do **not** hardcode user-facing English/Chinese. Use `createT(locale)` / `t()`.
 
-2b. **Dialogs** — never use `window.confirm` / `window.prompt` / `window.alert` in Tauri UI. Use App `setAppDialog`, `GlassModal`, or the same in-app portal + glass CSS. All floating panels share frosted glass tokens. Details: [docs/llm-wiki/dialogs.md](docs/llm-wiki/dialogs.md).
+2b. **Dialogs** — never use `window.confirm` / `window.prompt` / `window.alert` in Tauri UI. Use App `setAppDialog`, `GlassModal`, or the same in-app portal + modal/menu CSS. Prefer existing panel styles (`.cmm__pop`, solid `.menu-panel`, `.modal`); frosted glass is **not** required. Details: [docs/llm-wiki/dialogs.md](docs/llm-wiki/dialogs.md).
 
 3. When adding models or permission modes, update `src/lib/grokCatalog.ts` **and** `docs/llm-wiki/catalog.md`.
 

@@ -39,6 +39,11 @@ export interface MessageAttachment {
   isDir: boolean;
 }
 
+/** Ordered assistant turn pieces — thinking and body as they actually arrived. */
+export type MessageSegment =
+  | { kind: "thought"; text: string }
+  | { kind: "content"; text: string };
+
 export interface ChatMessage {
   id: string;
   role: "user" | "assistant" | "tool";
@@ -48,9 +53,14 @@ export interface ChatMessage {
   /**
    * Separate thinking segments for this assistant message.
    * Phase 0 = pre-tool reasoning; later phases = resumed thinking after tools.
-   * Each phase renders as its own collapsible block (not one merged blob).
+   * Prefer `segments` for interleaved rendering.
    */
   thoughtPhases?: string[];
+  /**
+   * Timeline of thought / content chunks in stream order.
+   * UI renders these interleaved (not all thinking stacked above the body).
+   */
+  segments?: MessageSegment[];
   streaming?: boolean;
   toolStatus?: string;
   /** Turn failed (retries exhausted / provider error) — show as chat error record. */
@@ -135,6 +145,47 @@ export function applyContextCompact(
   ];
 }
 
+/** True for placeholder labels we never want as live UI text. */
+export function isGenericToolLabel(s: string | undefined | null): boolean {
+  const t = (s || "").trim().toLowerCase();
+  return (
+    !t ||
+    t === "tool" ||
+    t === "tools" ||
+    t === "工具" ||
+    t === "unknown" ||
+    t === "function"
+  );
+}
+
+/** Prefer human call text: title → detail → path → prev → kind (never bare "tool"). */
+export function resolveToolDisplayTitle(
+  payload: {
+    title?: string | null;
+    kind?: string | null;
+    detail?: string | null;
+    path?: string | null;
+  },
+  prevContent?: string | null,
+): string {
+  const title = (payload.title || "").trim();
+  if (title && !isGenericToolLabel(title)) return title;
+  const detail = (payload.detail || "").trim();
+  if (detail) return detail;
+  const path = (payload.path || "").trim();
+  if (path) return path;
+  const prev = (prevContent || "").trim();
+  if (prev && !isGenericToolLabel(prev) && !prev.startsWith("tool_step|")) {
+    return prev;
+  }
+  const kind = (payload.kind || "").trim();
+  if (kind && !isGenericToolLabel(kind)) {
+    return kind.replace(/[_./]+/g, " ").trim();
+  }
+  // Empty → UI hides the line until a real title arrives (no "tool" flash).
+  return "";
+}
+
 /** Upsert a tool activity row by toolCallId (Codex-style live activity). */
 export function applyToolEvent(
   messages: ChatMessage[],
@@ -148,9 +199,13 @@ export function applyToolEvent(
     status === "pending" ||
     status === "running" ||
     status === "";
-  const title = (payload.title || payload.kind || "tool").trim();
   const id = `tool-${tcid}`;
   const now = new Date().toISOString();
+  const idx = messages.findIndex(
+    (m) => m.id === id || m.toolCallId === tcid,
+  );
+  const prev = idx >= 0 ? messages[idx]! : null;
+  const title = resolveToolDisplayTitle(payload, prev?.content);
   const nextRow: ChatMessage = {
     id,
     role: "tool",
@@ -165,21 +220,28 @@ export function applyToolEvent(
     createdAt: now,
     isError: status === "failed" || status === "error",
   };
-  const idx = messages.findIndex(
-    (m) => m.id === id || m.toolCallId === tcid,
-  );
   if (idx < 0) return [...messages, nextRow];
-  const prev = messages[idx]!;
   const copy = messages.slice();
+  // Never downgrade a good title to empty / generic on later updates.
+  const mergedTitle =
+    title ||
+    resolveToolDisplayTitle(
+      {
+        title: prev!.content,
+        kind: prev!.toolKind,
+        detail: prev!.toolDetail,
+        path: prev!.toolPath,
+      },
+      prev!.content,
+    );
   copy[idx] = {
-    ...prev,
+    ...prev!,
     ...nextRow,
-    createdAt: prev.createdAt || now,
-    // Keep earliest start; refresh fields from latest event
-    content: title || prev.content,
-    toolDetail: nextRow.toolDetail || prev.toolDetail,
-    toolPath: nextRow.toolPath || prev.toolPath,
-    toolKind: nextRow.toolKind || prev.toolKind,
+    createdAt: prev!.createdAt || now,
+    content: mergedTitle,
+    toolDetail: nextRow.toolDetail || prev!.toolDetail,
+    toolPath: nextRow.toolPath || prev!.toolPath,
+    toolKind: nextRow.toolKind || prev!.toolKind,
   };
   return copy;
 }
@@ -242,8 +304,9 @@ export function pickLatestTurnTool(
 }
 
 /**
- * Only a still-running tool in the current turn.
- * Used for mid-stream one-line UI: show while running, hide when done / content resumes.
+ * Only a still-running tool in the current turn, with a real display title.
+ * Used for mid-stream one-line UI: show call text while running; hide when done
+ * or while we only have a placeholder (no "tool" flash).
  */
 export function pickRunningTurnTool(
   messages: ChatMessage[],
@@ -261,22 +324,33 @@ export function pickRunningTurnTool(
     if (!isToolStepMessage(m)) continue;
     if (m.streaming) latestRunning = m;
   }
+  if (!latestRunning) return null;
+  // Hide until we have real call text (avoids "tool" → content → blank flicker).
+  if (!toolStepDisplayTitle(latestRunning)) return null;
   return latestRunning;
 }
 
-/** One-line title for live tool text (Image-style plain status). */
+/** One-line title for live tool text — empty when only a placeholder. */
 export function toolStepDisplayTitle(m: ChatMessage): string {
   const fromContent = m.content?.trim() || "";
-  if (fromContent && !fromContent.startsWith("tool_step|")) return fromContent;
+  if (
+    fromContent &&
+    !fromContent.startsWith("tool_step|") &&
+    !isGenericToolLabel(fromContent)
+  ) {
+    return fromContent;
+  }
   const parsed = fromContent.startsWith("tool_step|")
     ? parseToolStepContent(fromContent)
     : null;
-  return (
-    parsed?.title?.trim() ||
-    m.toolKind?.trim() ||
-    m.toolDetail?.trim() ||
-    m.toolPath?.trim() ||
-    "tool"
+  return resolveToolDisplayTitle(
+    {
+      title: parsed?.title || fromContent,
+      kind: m.toolKind || parsed?.kind,
+      detail: m.toolDetail || parsed?.detail,
+      path: m.toolPath || parsed?.path,
+    },
+    fromContent,
   );
 }
 
@@ -426,6 +500,108 @@ export function splitThoughtPhases(thought: string | undefined | null): string[]
     .split(/\n\n⟪phase⟫\n\n/)
     .map((s) => s.trim())
     .filter(Boolean);
+}
+
+const THOUGHT_PHASE_JOIN = "\n\n⟪phase⟫\n\n";
+
+/** Sync legacy thought / content / thoughtPhases fields from a segment timeline. */
+export function deriveFieldsFromSegments(segments: MessageSegment[]): {
+  content: string;
+  thought: string | undefined;
+  thoughtPhases: string[] | undefined;
+} {
+  const thoughts = segments
+    .filter((s): s is { kind: "thought"; text: string } => s.kind === "thought")
+    .map((s) => s.text)
+    .filter((t) => t.trim());
+  const content = segments
+    .filter((s): s is { kind: "content"; text: string } => s.kind === "content")
+    .map((s) => s.text)
+    .join("");
+  return {
+    content,
+    thought: thoughts.length ? thoughts.join(THOUGHT_PHASE_JOIN) : undefined,
+    thoughtPhases: thoughts.length ? thoughts : undefined,
+  };
+}
+
+/**
+ * Build an interleaved timeline from journal fields.
+ * Host stores one content blob + thought phases (pre-body, then post-body…).
+ * Approximation: first thought phase(s) before body, remaining after body.
+ * Live streaming uses applyStreamChunk which keeps true order in `segments`.
+ */
+export function buildSegmentsFromLegacy(
+  content: string,
+  thought?: string | null,
+  thoughtPhases?: string[] | null,
+): MessageSegment[] {
+  const phases = (
+    thoughtPhases?.length ? thoughtPhases : splitThoughtPhases(thought)
+  )
+    .map((p) => p.trim())
+    .filter(Boolean);
+  const body = content ?? "";
+  if (!phases.length) {
+    return body ? [{ kind: "content", text: body }] : [];
+  }
+  if (phases.length === 1) {
+    const segs: MessageSegment[] = [{ kind: "thought", text: phases[0]! }];
+    if (body) segs.push({ kind: "content", text: body });
+    return segs;
+  }
+  // Multi-phase: first phase pre-body, rest after body (host convention).
+  const segs: MessageSegment[] = [{ kind: "thought", text: phases[0]! }];
+  if (body) segs.push({ kind: "content", text: body });
+  for (let i = 1; i < phases.length; i++) {
+    segs.push({ kind: "thought", text: phases[i]! });
+  }
+  return segs;
+}
+
+/** Prefer live segments; otherwise reconstruct from legacy fields. */
+export function messageSegments(m: ChatMessage): MessageSegment[] {
+  if (m.segments?.length) return m.segments;
+  return buildSegmentsFromLegacy(m.content, m.thought, m.thoughtPhases);
+}
+
+function ensureSegments(prev: ChatMessage): MessageSegment[] {
+  if (prev.segments?.length) return prev.segments.map((s) => ({ ...s }));
+  return buildSegmentsFromLegacy(prev.content, prev.thought, prev.thoughtPhases);
+}
+
+function appendThoughtToSegments(
+  segs: MessageSegment[],
+  text: string,
+  phaseHint: string,
+): MessageSegment[] {
+  if (!text) return segs;
+  const last = segs[segs.length - 1];
+  // New phase, or resume after body → open a new thought block.
+  if (
+    phaseHint === "new" ||
+    !last ||
+    last.kind !== "thought"
+  ) {
+    segs.push({ kind: "thought", text });
+  } else {
+    last.text += text;
+  }
+  return segs;
+}
+
+function appendContentToSegments(
+  segs: MessageSegment[],
+  text: string,
+): MessageSegment[] {
+  if (!text) return segs;
+  const last = segs[segs.length - 1];
+  if (last?.kind === "content") {
+    last.text += text;
+  } else {
+    segs.push({ kind: "content", text });
+  }
+  return segs;
 }
 
 export interface PermissionPayload {
@@ -701,22 +877,14 @@ export function applyStreamChunk(
   if (chunk.kind === "thought") {
     if (!chunk.text) return messages;
     const idx = findCurrentTurnStreamingAssistant(messages, chunk.messageId);
+    const phaseHint = chunk.thoughtPhase || "open";
     const appendThought = (prev: ChatMessage): ChatMessage => {
-      const phases =
-        prev.thoughtPhases?.length
-          ? [...prev.thoughtPhases]
-          : splitThoughtPhases(prev.thought);
-      const phaseHint = chunk.thoughtPhase || "open";
-      if (!phases.length) {
-        phases.push(chunk.text);
-      } else if (phaseHint === "new") {
-        phases.push(chunk.text);
-      } else {
-        // open | continue — append to last phase
-        const last = phases.length - 1;
-        phases[last] = (phases[last] || "") + chunk.text;
-      }
-      const thought = phases.join("\n\n⟪phase⟫\n\n");
+      const segs = appendThoughtToSegments(
+        ensureSegments(prev),
+        chunk.text,
+        phaseHint,
+      );
+      const derived = deriveFieldsFromSegments(segs);
       return {
         ...prev,
         id:
@@ -724,8 +892,8 @@ export function applyStreamChunk(
           (prev.id.startsWith("a-pending-") || prev.id.startsWith("t-"))
             ? chunk.messageId
             : prev.id,
-        thought,
-        thoughtPhases: phases,
+        ...derived,
+        segments: segs,
         streaming: true,
       };
     };
@@ -734,6 +902,7 @@ export function applyStreamChunk(
       next[idx] = appendThought(next[idx]!);
       return next;
     }
+    const segs: MessageSegment[] = [{ kind: "thought", text: chunk.text }];
     return [
       ...messages,
       {
@@ -742,6 +911,7 @@ export function applyStreamChunk(
         content: "",
         thought: chunk.text,
         thoughtPhases: [chunk.text],
+        segments: segs,
         streaming: true,
       },
     ];
@@ -768,12 +938,14 @@ export function applyStreamChunk(
 
   if (idx < 0) {
     if (!chunk.text) return messages;
+    const segs: MessageSegment[] = [{ kind: "content", text: chunk.text }];
     return [
       ...messages,
       {
         id: chunk.messageId || `a-${Date.now()}`,
         role: "assistant",
         content: chunk.text,
+        segments: segs,
         streaming: !chunk.done,
       },
     ];
@@ -781,6 +953,8 @@ export function applyStreamChunk(
 
   const next = messages.slice();
   const prev = next[idx]!;
+  const segs = appendContentToSegments(ensureSegments(prev), chunk.text || "");
+  const derived = deriveFieldsFromSegments(segs);
   next[idx] = {
     ...prev,
     // Prefer host messageId so journal reload dedupes cleanly
@@ -789,7 +963,8 @@ export function applyStreamChunk(
       (prev.id.startsWith("a-pending-") || prev.id.startsWith("t-") || !prev.id)
         ? chunk.messageId
         : prev.id || chunk.messageId || prev.id,
-    content: prev.content + (chunk.text || ""),
+    ...derived,
+    segments: segs,
     streaming: !chunk.done,
   };
   return next;

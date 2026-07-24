@@ -550,6 +550,15 @@
 }
 
 /* ── Thinking ── */
+/* Interleaved thought + body within one assistant bubble */
+.lobe-chat-assistant-timeline {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+  width: 100%;
+}
+
 .lobe-chat-thinking {
   width: 100%;
   display: flex;

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   applySkillAtSlash,
   detectSlashQuery,
+  detectSlashQueryFromEditor,
   draftFromPlainText,
   emptyDraft,
   hydrateDisplayContent,
@@ -106,6 +107,31 @@ describe("detectSlashQuery", () => {
       start: 0,
       query: "热点资讯",
     });
+  });
+
+  it("normalizes fullwidth slash and zero-width chars from IME", () => {
+    expect(detectSlashQuery("／目标")).toEqual({ start: 0, query: "目标" });
+    expect(detectSlashQuery("/\u200B目标")).toEqual({ start: 0, query: "目标" });
+    expect(detectSlashQuery("/目\u200C标")).toEqual({ start: 0, query: "目标" });
+  });
+
+  it("ignores trailing newlines/nbsp from contenteditable <br>", () => {
+    // This was the production bug: panel showed full list for `/目标` because
+    // serializeDom appends \n for the trailing <br> WebKit inserts.
+    expect(detectSlashQuery("/目标\n")).toEqual({ start: 0, query: "目标" });
+    expect(detectSlashQuery("/目标\n\n")).toEqual({ start: 0, query: "目标" });
+    expect(detectSlashQuery("/go\n")).toEqual({ start: 0, query: "go" });
+    expect(detectSlashQuery("/目标\u00a0")).toEqual({ start: 0, query: "目标" });
+    expect(detectSlashQuery("hello\n/plan\n")).toEqual({
+      start: 6,
+      query: "plan",
+    });
+  });
+});
+
+describe("detectSlashQueryFromEditor", () => {
+  it("returns null for null element", () => {
+    expect(detectSlashQueryFromEditor(null)).toBeNull();
   });
 });
 

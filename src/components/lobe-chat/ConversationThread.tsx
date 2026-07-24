@@ -8,7 +8,7 @@ import type { Locale } from "@/i18n";
 import { createT } from "@/i18n";
 import {
   formatTurnErrorBody,
-  splitThoughtPhases,
+  messageSegments,
   type ChatMessage,
   type SessionState,
 } from "@/lib/session";
@@ -553,22 +553,28 @@ export function ConversationThread({
               );
             }
 
-            // Assistant — split thinking into phases (not one merged blob)
-            const phases =
-              m.thoughtPhases?.length
-                ? m.thoughtPhases
-                : splitThoughtPhases(m.thought);
-            const hasThought = phases.some((p) => p.trim());
+            // Assistant — interleave thought / body in stream order (not all
+            // thinking stacked above the answer).
+            const segs = messageSegments(m);
+            const thoughtSegs = segs.filter((s) => s.kind === "thought");
+            const thoughtCount = thoughtSegs.length;
+            const lastSeg = segs[segs.length - 1];
             const isActiveAssistant = activeAssistantId === m.id;
             const showLiveToolBelow = !!liveTool && isActiveAssistant;
-            // Only the last phase streams while the message is still streaming
-            // and has no body yet (or post-tool thinking after body).
-            const lastPhaseIdx = Math.max(0, phases.length - 1);
             const showThinkingPlaceholder =
               !!m.streaming &&
-              !m.content.trim() &&
-              !hasThought &&
+              segs.length === 0 &&
               !showLiveToolBelow;
+
+            const contentSegCount = segs.filter((s) => s.kind === "content")
+              .length;
+            let lastContentSi = -1;
+            for (let i = segs.length - 1; i >= 0; i--) {
+              if (segs[i]!.kind === "content") {
+                lastContentSi = i;
+                break;
+              }
+            }
 
             return (
               <ChatItem
@@ -577,32 +583,46 @@ export function ConversationThread({
                 placement="left"
                 showAvatar={false}
                 loading={!!m.streaming}
-                aboveMessage={
-                  hasThought || showThinkingPlaceholder ? (
-                    <div className="lobe-chat-thinking-stack">
-                      {phases.map((phaseText, pi) => {
-                        const isLast = pi === lastPhaseIdx;
+                message={
+                  <div className="lobe-chat-assistant-timeline">
+                    {showThinkingPlaceholder ? (
+                      <Thinking
+                        locale={locale}
+                        thinking
+                        streamingLabel={tr("chat.thinking")}
+                        doneLabel={tr("chat.thoughtDone")}
+                        thoughtForLabel={(n) => tr("chat.thoughtFor", { n })}
+                      />
+                    ) : null}
+                    {segs.map((seg, si) => {
+                      if (seg.kind === "thought") {
+                        // Skip empty finished phases (avoids "Thought for 0.0s").
+                        if (
+                          !seg.text.trim() &&
+                          !(m.streaming && lastSeg === seg)
+                        ) {
+                          return null;
+                        }
+                        const thoughtIdx = segs
+                          .slice(0, si + 1)
+                          .filter((x) => x.kind === "thought").length;
                         const phaseStreaming =
-                          !!m.streaming &&
-                          isLast &&
-                          // last phase streams until content finishes (or whole msg done)
-                          (!m.content.trim() ||
-                            phases.length > 1);
-                        const label =
-                          phases.length > 1
-                            ? tr("plan.phaseLabel", { n: String(pi + 1) })
-                            : tr("chat.thinking");
+                          !!m.streaming && lastSeg === seg;
+                        const multi = thoughtCount > 1;
+                        const label = multi
+                          ? tr("plan.phaseLabel", { n: String(thoughtIdx) })
+                          : tr("chat.thinking");
                         return (
                           <Thinking
-                            key={`${m.id}-th-${pi}`}
+                            key={`${m.id}-th-${si}`}
                             locale={locale}
                             thinking={phaseStreaming}
-                            content={phaseText}
+                            content={seg.text}
                             streamingLabel={label}
                             doneLabel={
-                              phases.length > 1
+                              multi
                                 ? tr("plan.phaseLabel", {
-                                    n: String(pi + 1),
+                                    n: String(thoughtIdx),
                                   })
                                 : tr("chat.thoughtDone")
                             }
@@ -611,32 +631,39 @@ export function ConversationThread({
                             }
                           />
                         );
-                      })}
-                      {showThinkingPlaceholder ? (
-                        <Thinking
-                          locale={locale}
-                          thinking
-                          streamingLabel={tr("chat.thinking")}
-                          doneLabel={tr("chat.thoughtDone")}
-                          thoughtForLabel={(n) =>
-                            tr("chat.thoughtFor", { n })
+                      }
+                      return (
+                        <AssistantMessageBody
+                          key={`${m.id}-c-${si}`}
+                          content={seg.text}
+                          attachments={
+                            si === lastContentSi ? m.attachments : undefined
                           }
+                          streaming={!!m.streaming && lastSeg === seg}
+                          locale={locale}
+                          projectPath={projectPath}
+                          onOpenResource={onOpenResource}
+                          onAddAttachmentToComposer={
+                            onAddAttachmentToComposer
+                          }
+                          attachLabels={attachLabels}
                         />
-                      ) : null}
-                    </div>
-                  ) : null
-                }
-                message={
-                  <AssistantMessageBody
-                    content={m.content}
-                    attachments={m.attachments}
-                    streaming={!!m.streaming}
-                    locale={locale}
-                    projectPath={projectPath}
-                    onOpenResource={onOpenResource}
-                    onAddAttachmentToComposer={onAddAttachmentToComposer}
-                    attachLabels={attachLabels}
-                  />
+                      );
+                    })}
+                    {/* Body-less turn with only attachments */}
+                    {!contentSegCount && m.attachments?.length ? (
+                      <AssistantMessageBody
+                        content=""
+                        attachments={m.attachments}
+                        streaming={!!m.streaming}
+                        locale={locale}
+                        projectPath={projectPath}
+                        onOpenResource={onOpenResource}
+                        onAddAttachmentToComposer={onAddAttachmentToComposer}
+                        attachLabels={attachLabels}
+                      />
+                    ) : null}
+                  </div>
                 }
                 belowMessage={
                   showLiveToolBelow && liveTool ? (

@@ -1,7 +1,8 @@
 /**
  * Unified composer command panel (+ button and `/` slash).
- * Layout matches composer-plus single-row style:
- *   [icon] Name  description…
+ *
+ * IMPORTANT: Render and keyboard nav share one `entries` array so they can
+ * never desync (which caused “see many rows but only 2 keyboard targets”).
  */
 
 import {
@@ -34,9 +35,15 @@ import {
 
 const ICON_SIZE = 16;
 
+/** Selectable row (keyboard + click). */
 export type ComposerPlusEntry =
   | { id: "upload"; kind: "upload" }
   | { id: string; kind: "slash"; item: SlashItem };
+
+/** Visual row including section headers (headers are not in keyboard nav). */
+export type ComposerPlusRow =
+  | { type: "section"; id: string; label: string }
+  | { type: "entry"; entry: ComposerPlusEntry; navIndex: number };
 
 function slashItemIcon(item: SlashItem): ReactNode {
   if (item.kind === "skill") {
@@ -90,6 +97,54 @@ export function buildComposerPlusEntries(opts: {
   return out;
 }
 
+/**
+ * Rows for rendering: section headers + the same entries used for keyboard.
+ * Order always: 添加 → 命令 (builtins like 目标/计划) → 技能.
+ * Built-in commands must never sit under the skills section.
+ */
+export function buildComposerPlusRows(
+  entries: ComposerPlusEntry[],
+  labels: {
+    add: string;
+    commands: string;
+    skills: string;
+  },
+): ComposerPlusRow[] {
+  const rows: ComposerPlusRow[] = [];
+  let navIndex = 0;
+  let addedAddSection = false;
+  let addedCmdSection = false;
+  let addedSkillSection = false;
+
+  for (const entry of entries) {
+    if (entry.kind === "upload") {
+      if (!addedAddSection) {
+        rows.push({ type: "section", id: "sec-add", label: labels.add });
+        addedAddSection = true;
+      }
+      rows.push({ type: "entry", entry, navIndex: navIndex++ });
+      continue;
+    }
+
+    if (entry.item.kind === "skill") {
+      if (!addedSkillSection) {
+        rows.push({ type: "section", id: "sec-skills", label: labels.skills });
+        addedSkillSection = true;
+      }
+      rows.push({ type: "entry", entry, navIndex: navIndex++ });
+      continue;
+    }
+
+    // mode / action / prompt → built-in commands (目标, 计划, …)
+    if (!addedCmdSection) {
+      rows.push({ type: "section", id: "sec-cmd", label: labels.commands });
+      addedCmdSection = true;
+    }
+    rows.push({ type: "entry", entry, navIndex: navIndex++ });
+  }
+  return rows;
+}
+
 /** Whether the upload row matches a slash filter query. */
 export function uploadMatchesQuery(
   query: string,
@@ -119,9 +174,8 @@ export function ComposerPlusPanel({
   locale,
   style,
   panelRef,
-  commands,
-  skills,
-  showUpload,
+  entries,
+  filterQuery,
   skillsLoading,
   activeIndex,
   onActiveIndexChange,
@@ -134,9 +188,10 @@ export function ComposerPlusPanel({
   locale: Locale;
   style?: CSSProperties;
   panelRef?: Ref<HTMLDivElement | null>;
-  commands: SlashItem[];
-  skills: SlashItem[];
-  showUpload: boolean;
+  /** Sole list of selectable items — same array the host uses for keyboard. */
+  entries: ComposerPlusEntry[];
+  /** Live filter string (shown in header when non-empty). */
+  filterQuery?: string;
   skillsLoading?: boolean;
   activeIndex: number;
   onActiveIndexChange: (i: number) => void;
@@ -156,11 +211,12 @@ export function ComposerPlusPanel({
     }
   };
 
-  /**
-   * Keep the active row visible by scrolling only this panel (not the page).
-   * Avoid scrollIntoView — it scrolls ancestors and re-anchors the floating
-   * menu (looked like the list jumping back to the top / flickering).
-   */
+  const rows = buildComposerPlusRows(entries, {
+    add: tr("composer.add"),
+    commands: tr("slash.section.commands"),
+    skills: tr("composer.skills"),
+  });
+
   useEffect(() => {
     if (!open) return;
     const panel = listRef.current;
@@ -176,113 +232,44 @@ export function ComposerPlusPanel({
     } else if (eRect.bottom > pRect.bottom) {
       panel.scrollTop += eRect.bottom - pRect.bottom;
     }
-  }, [activeIndex, open]);
+  }, [activeIndex, open, entries.length]);
 
-  /** When the filter result set changes, pin list to top once. */
-  const filterKey = `${showUpload ? 1 : 0}:${commands.map((c) => c.id).join(",")}:${skills.map((s) => s.id).join(",")}`;
-  const prevFilterKey = useRef(filterKey);
+  const prevLen = useRef(entries.length);
   useEffect(() => {
     if (!open) return;
-    if (prevFilterKey.current === filterKey) return;
-    prevFilterKey.current = filterKey;
+    if (prevLen.current === entries.length) return;
+    prevLen.current = entries.length;
     const panel = listRef.current;
     if (panel) panel.scrollTop = 0;
-  }, [filterKey, open]);
+  }, [entries.length, open]);
 
   if (!open) return null;
 
-  let idx = 0;
-
-  const renderSlash = (item: SlashItem) => {
-    const i = idx++;
-    const active = i === activeIndex;
-    const title = resolveTitle(item);
-    const desc = resolveDescription(item);
-    const right =
-      desc.trim() ||
-      (item.kind === "skill" && item.source ? item.source : "") ||
-      `/${item.name}`;
-
-    return (
-      <button
-        key={item.id}
-        type="button"
-        role="option"
-        aria-selected={active}
-        data-plus-idx={i}
-        className={"composer-plus__item" + (active ? " is-active" : "")}
-        title={desc ? `${title} — ${desc}` : title}
-        onMouseEnter={() => onActiveIndexChange(i)}
-        onClick={() => onSelectSlash(item)}
-      >
-        <span className="composer-plus__ico" aria-hidden>
-          {slashItemIcon(item)}
-        </span>
-        <span className="composer-plus__title">{title}</span>
-        {right ? <span className="composer-plus__desc">{right}</span> : null}
-      </button>
-    );
-  };
-
-  const empty =
-    !showUpload &&
-    commands.length === 0 &&
-    skills.length === 0 &&
-    !skillsLoading;
+  const q = (filterQuery ?? "").trim();
+  const empty = entries.length === 0 && !skillsLoading;
 
   return (
     <div
       ref={setRefs}
       className="menu-panel composer-plus composer-plus--portal"
       role="listbox"
+      aria-activedescendant={
+        entries[activeIndex] ? `plus-opt-${activeIndex}` : undefined
+      }
+      data-filter-query={q}
       style={style}
     >
-      {showUpload && (
-        <>
-          <div className="composer-plus__section">{tr("composer.add")}</div>
-          {(() => {
-            const i = idx++;
-            const active = i === activeIndex;
-            return (
-              <button
-                type="button"
-                role="option"
-                aria-selected={active}
-                data-plus-idx={i}
-                className={
-                  "composer-plus__item" + (active ? " is-active" : "")
-                }
-                onMouseEnter={() => onActiveIndexChange(i)}
-                onClick={onSelectUpload}
-              >
-                <span className="composer-plus__ico" aria-hidden>
-                  <IconAttach size={ICON_SIZE} />
-                </span>
-                <span className="composer-plus__title">
-                  {tr("composer.addFiles")}
-                </span>
-                <span className="composer-plus__desc">
-                  {tr("composer.addFilesHint")}
-                </span>
-              </button>
-            );
-          })()}
-        </>
-      )}
+      {q ? (
+        <div className="composer-plus__filter" aria-live="polite">
+          <span className="composer-plus__filter-label">/</span>
+          <span className="composer-plus__filter-q">{q}</span>
+          <span className="composer-plus__filter-count">
+            {entries.length}
+          </span>
+        </div>
+      ) : null}
 
-      {commands.length > 0 && (
-        <>
-          <div className="composer-plus__section">
-            {tr("slash.section.commands")}
-          </div>
-          {commands.map(renderSlash)}
-        </>
-      )}
-
-      {(skills.length > 0 || skillsLoading) && (
-        <div className="composer-plus__section">{tr("composer.skills")}</div>
-      )}
-      {skillsLoading && (
+      {skillsLoading && entries.length === 0 && (
         <div
           className="composer-plus__item composer-plus__item--muted"
           aria-busy
@@ -295,11 +282,84 @@ export function ComposerPlusPanel({
           </span>
         </div>
       )}
-      {!skillsLoading && skills.map(renderSlash)}
+
+      {rows.map((row) => {
+        if (row.type === "section") {
+          return (
+            <div key={row.id} className="composer-plus__section">
+              {row.label}
+            </div>
+          );
+        }
+        const { entry, navIndex } = row;
+        const active = navIndex === activeIndex;
+
+        if (entry.kind === "upload") {
+          return (
+            <button
+              key={`upload-${navIndex}`}
+              id={`plus-opt-${navIndex}`}
+              type="button"
+              role="option"
+              aria-selected={active}
+              data-plus-idx={navIndex}
+              className={
+                "composer-plus__item" + (active ? " is-active" : "")
+              }
+              onMouseEnter={() => onActiveIndexChange(navIndex)}
+              onClick={onSelectUpload}
+            >
+              <span className="composer-plus__ico" aria-hidden>
+                <IconAttach size={ICON_SIZE} />
+              </span>
+              <span className="composer-plus__title">
+                {tr("composer.addFiles")}
+              </span>
+              <span className="composer-plus__desc">
+                {tr("composer.addFilesHint")}
+              </span>
+            </button>
+          );
+        }
+
+        const item = entry.item;
+        const title = resolveTitle(item);
+        const desc = resolveDescription(item);
+        const right =
+          desc.trim() ||
+          (item.kind === "skill" && item.source ? item.source : "") ||
+          `/${item.name}`;
+
+        return (
+          <button
+            key={`${entry.id}#${navIndex}`}
+            id={`plus-opt-${navIndex}`}
+            type="button"
+            role="option"
+            aria-selected={active}
+            data-plus-idx={navIndex}
+            className={
+              "composer-plus__item" + (active ? " is-active" : "")
+            }
+            onMouseEnter={() => onActiveIndexChange(navIndex)}
+            onClick={() => onSelectSlash(item)}
+          >
+            <span className="composer-plus__ico" aria-hidden>
+              {slashItemIcon(item)}
+            </span>
+            <span className="composer-plus__title">{title}</span>
+            {right ? (
+              <span className="composer-plus__desc">{right}</span>
+            ) : null}
+          </button>
+        );
+      })}
 
       {empty && (
         <div className="composer-plus__item composer-plus__item--muted">
-          <span className="composer-plus__title">{tr("slash.empty")}</span>
+          <span className="composer-plus__title">
+            {q ? tr("slash.empty") : tr("composer.skillsEmpty")}
+          </span>
         </div>
       )}
     </div>

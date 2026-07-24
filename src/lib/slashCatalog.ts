@@ -114,16 +114,25 @@ export function builtinSlashItems(): SlashItem[] {
 
 /** Map skill metadata to slash items (skips `userInvocable: false`). */
 export function skillsToSlashItems(skills: SkillInfo[]): SlashItem[] {
-  return skills
-    .filter((s) => s.userInvocable !== false)
-    .map((s) => ({
-      id: `skill:${s.name}`,
+  // Dedupe by name — duplicate ids (`skill:foo`) break React keys and leave
+  // ghost rows that ignore filter updates (always visible, not keyboard-navable).
+  const seen = new Set<string>();
+  const out: SlashItem[] = [];
+  for (const s of skills) {
+    if (s.userInvocable === false) continue;
+    const name = (s.name ?? "").trim();
+    if (!name || seen.has(name)) continue;
+    seen.add(name);
+    out.push({
+      id: `skill:${name}`,
       kind: "skill" as const,
-      name: s.name,
-      displayTitle: s.name,
+      name,
+      displayTitle: name,
       displayDescription: s.description,
       source: s.source,
-    }));
+    });
+  }
+  return out;
 }
 
 /** Optional resolved UI strings (i18n titles / descriptions) for search. */
@@ -134,8 +143,8 @@ export type SlashSearchText = {
 
 /**
  * Filter items by query (case-insensitive substring).
- * Matches name, id, display fields, and optional resolved i18n title/description
- * so Chinese labels like「目标」match `goal`.
+ * Prefer name/title hits; descriptions only when query is longer (4+ chars)
+ * so short tokens don't light up half the catalog via English blurbs.
  * Empty query returns all items.
  */
 export function filterSlashItems(
@@ -147,17 +156,21 @@ export function filterSlashItems(
   if (!q) return items;
   return items.filter((item) => {
     const resolved = resolveSearchText?.(item);
-    const fields = [
+    // Name / title only for short queries (strict).
+    const nameFields = [
       item.name,
       item.displayTitle,
-      item.displayDescription,
-      item.id,
-      item.titleKey,
-      item.descriptionKey,
+      // strip "skill:" prefix from id for matching
+      item.id?.replace(/^skill:/, ""),
       resolved?.title,
-      resolved?.description,
     ];
-    return fields.some((f) => f && f.toLowerCase().includes(q));
+    if (nameFields.some((f) => f && f.toLowerCase().includes(q))) return true;
+    // Description: ASCII needs 4+ chars (avoid "the"/"and" style noise);
+    // CJK tokens are already dense at 2 characters.
+    const asciiOnly = /^[\x00-\x7f]+$/.test(q);
+    if (q.length < (asciiOnly ? 4 : 2)) return false;
+    const descFields = [item.displayDescription, resolved?.description];
+    return descFields.some((f) => f && f.toLowerCase().includes(q));
   });
 }
 

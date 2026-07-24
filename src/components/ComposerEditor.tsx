@@ -1,13 +1,18 @@
 /**
  * Contenteditable composer: plain text + inline skill chips.
  * Value is stored form with [[skill:name]] tokens.
+ *
+ * Slash filter: parent also derives query from `value` (draft). This editor
+ * still emits caret-based slashQuery for mid-line tokens and live IME updates.
  */
 
 import {
   useCallback,
+  useEffect,
   useLayoutEffect,
   useRef,
   type ClipboardEvent,
+  type CompositionEvent,
   type FormEvent,
   type KeyboardEvent,
   type Ref,
@@ -130,10 +135,8 @@ function placeCaretAtEnd(el: HTMLElement) {
  */
 function insertPlainTextAtSelection(text: string) {
   if (!text) return;
-  // Normalize exotic line endings; keep \n for serializeDom.
   const plain = text.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
 
-  // Preferred: browser handles caret + undo stack.
   try {
     if (document.queryCommandSupported?.("insertText")) {
       const ok = document.execCommand("insertText", false, plain);
@@ -148,7 +151,6 @@ function insertPlainTextAtSelection(text: string) {
   const range = sel.getRangeAt(0);
   range.deleteContents();
 
-  // Insert as text + <br> so multiline paste matches our editor model.
   const frag = document.createDocumentFragment();
   const parts = plain.split("\n");
   parts.forEach((part, i) => {
@@ -176,11 +178,6 @@ export type ComposerEditorProps = {
     q: { start: number; query: string; end: number } | null,
   ) => void;
   editorRef?: Ref<HTMLDivElement | null>;
-  /**
-   * When clipboard has files/images (screenshot paste, file copy), parent
-   * should attach them. Called after preventDefault on the paste event.
-   * Plain text is still inserted when present alongside files.
-   */
   onPasteFiles?: (files: File[]) => void;
 };
 
@@ -221,65 +218,29 @@ export function ComposerEditor({
     el.style.height = `${Math.min(Math.max(el.scrollHeight, min), max)}px`;
   }, []);
 
-  const emitSlashRef = useRef<() => void>(() => {});
-
   const emitSlash = useCallback(() => {
     const el = elRef.current;
     if (!el || !onSlashQueryChange) return;
-    // Prefer caret-based token; fall back to full draft (IME/caret can lag).
     const beforeCaret = getTextBeforeCaret(el);
     const full = serializeDom(el);
+    // Prefer full text — more reliable after IME confirms 汉字.
+    const fromFull = detectSlashQuery(full);
     const fromCaret =
       beforeCaret != null ? detectSlashQuery(beforeCaret) : null;
-    const fromFull = detectSlashQuery(full);
-    const q = fromCaret ?? fromFull;
+    const q = fromFull ?? fromCaret;
     if (!q) {
-      // Keep previous slash state if caret is momentarily unreadable (IME).
+      // During composition the DOM may briefly not contain `/…`; keep prior.
       if (composing.current) return;
       onSlashQueryChange(null);
       return;
     }
-    const end =
-      fromCaret && beforeCaret != null ? beforeCaret.length : full.length;
+    const end = fromFull ? full.length : (beforeCaret?.length ?? full.length);
     onSlashQueryChange({ start: q.start, query: q.query, end });
   }, [onSlashQueryChange]);
-
-  emitSlashRef.current = emitSlash;
-
-  useLayoutEffect(() => {
-    const el = elRef.current;
-    if (!el) return;
-    // Never rewrite DOM mid-IME — would abort composition and break Chinese filter.
-    if (composing.current) return;
-    const current = serializeDom(el);
-    if (current === value && el.childNodes.length > 0) {
-      lastValue.current = value;
-      resize();
-      return;
-    }
-    // Don't clobber caret on every keystroke — only when external change
-    if (focused.current && value === lastValue.current) {
-      resize();
-      return;
-    }
-    if (focused.current && value !== lastValue.current) {
-      // Parent applied skill insert etc. — re-render and caret end
-      renderSegmentsInto(el, parseStoredContent(value));
-      lastValue.current = value;
-      placeCaretAtEnd(el);
-      resize();
-      emitSlashRef.current();
-      return;
-    }
-    renderSegmentsInto(el, parseStoredContent(value));
-    lastValue.current = value;
-    resize();
-  }, [value, resize]);
 
   const commitFromDom = useCallback(
     (el: HTMLElement) => {
       let stored = serializeDom(el);
-      // Paste of raw tokens → rehydrate chips
       if (
         /\[\[skill:[a-zA-Z0-9_.:-]+\]\]/.test(stored) &&
         !el.querySelector("[data-skill]")
@@ -288,33 +249,53 @@ export function ComposerEditor({
         stored = serializeDom(el);
         placeCaretAtEnd(el);
       }
-      lastValue.current = stored;
-      onChange(stored);
+      if (stored !== lastValue.current) {
+        lastValue.current = stored;
+        onChange(stored);
+      }
       emitSlash();
       resize();
     },
     [onChange, emitSlash, resize],
   );
 
+  useLayoutEffect(() => {
+    const el = elRef.current;
+    if (!el) return;
+    if (composing.current) return;
+    const current = serializeDom(el);
+    if (current === value && el.childNodes.length > 0) {
+      lastValue.current = value;
+      resize();
+      return;
+    }
+    if (focused.current && value === lastValue.current) {
+      resize();
+      return;
+    }
+    if (focused.current && value !== lastValue.current) {
+      renderSegmentsInto(el, parseStoredContent(value));
+      lastValue.current = value;
+      placeCaretAtEnd(el);
+      resize();
+      emitSlash();
+      return;
+    }
+    renderSegmentsInto(el, parseStoredContent(value));
+    lastValue.current = value;
+    resize();
+  }, [value, resize, emitSlash]);
+
   const onInput = (e: FormEvent<HTMLDivElement>) => {
-    // During IME composition, still refresh slash filter from live DOM so
-    // Chinese pinyin / candidates can narrow the panel in real time.
-    // Do not commit to parent state until composition ends (avoids caret thrash).
     if (composing.current) {
-      // rAF: composition text is often not in the DOM until after the event.
-      requestAnimationFrame(() => {
-        emitSlash();
-        resize();
-      });
+      // Live pinyin in DOM — update slash filter without committing draft yet.
+      emitSlash();
+      resize();
       return;
     }
     commitFromDom(e.currentTarget);
   };
 
-  /**
-   * Paste: files/images → parent attach; text → plain text only (no rich HTML).
-   * Screenshot / image clipboard often has empty text + image/* items.
-   */
   const onPaste = (e: ClipboardEvent<HTMLDivElement>) => {
     e.preventDefault();
     e.stopPropagation();
@@ -332,7 +313,6 @@ export function ComposerEditor({
         if (f) filesFromItems.push(f);
       }
     }
-    // Prefer FileList; fall back to items (screenshots often only appear there).
     const fileMap = new Map<string, File>();
     for (const f of [...filesFromList, ...filesFromItems]) {
       const key = `${f.name}:${f.size}:${f.type}:${f.lastModified}`;
@@ -347,14 +327,68 @@ export function ComposerEditor({
       e.clipboardData?.getData("text/plain") ??
       e.clipboardData?.getData("text") ??
       "";
-    // If we only got files/images, skip empty text insert.
     if (!plain) return;
-    // Avoid pasting file:// URI lists as body text when files were attached.
     if (files.length && /^file:\/\//i.test(plain.trim())) return;
     insertPlainTextAtSelection(plain);
     const el = elRef.current;
     if (el) commitFromDom(el);
   };
+
+  const flushAfterIme = useCallback(
+    (el: HTMLElement) => {
+      composing.current = false;
+      commitFromDom(el);
+      // WebKit may finalize the text node after compositionend.
+      requestAnimationFrame(() => {
+        commitFromDom(el);
+        requestAnimationFrame(() => commitFromDom(el));
+      });
+      window.setTimeout(() => commitFromDom(el), 0);
+      window.setTimeout(() => commitFromDom(el), 50);
+    },
+    [commitFromDom],
+  );
+
+  /**
+   * Live sync while focused: contenteditable + IME can change the DOM without a
+   * clean input event. MutationObserver keeps draft + slash filter aligned with
+   * what the user actually sees (including after 汉字 selection).
+   */
+  useEffect(() => {
+    const el = elRef.current;
+    if (!el) return;
+
+    let raf = 0;
+    const sync = () => {
+      if (!elRef.current) return;
+      if (composing.current) {
+        emitSlash();
+        return;
+      }
+      const live = serializeDom(el);
+      if (live !== lastValue.current) {
+        commitFromDom(el);
+      } else {
+        emitSlash();
+      }
+    };
+    const schedule = () => {
+      if (raf) cancelAnimationFrame(raf);
+      raf = requestAnimationFrame(sync);
+    };
+
+    const mo = new MutationObserver(schedule);
+    mo.observe(el, {
+      childList: true,
+      subtree: true,
+      characterData: true,
+    });
+
+    return () => {
+      mo.disconnect();
+      if (raf) cancelAnimationFrame(raf);
+    };
+  }, [commitFromDom, emitSlash, value]);
 
   const isEmpty =
     !value.trim() ||
@@ -387,26 +421,22 @@ export function ComposerEditor({
         }}
         onInput={onInput}
         onPaste={onPaste}
-        onKeyUp={() => emitSlash()}
+        onKeyUp={() => {
+          if (!composing.current) emitSlash();
+        }}
         onClick={() => emitSlash()}
         onCompositionStart={() => {
           composing.current = true;
         }}
         onCompositionUpdate={() => {
-          // IME intermediate text (pinyin / candidates) — update slash query only.
-          requestAnimationFrame(() => emitSlash());
+          emitSlash();
         }}
-        onCompositionEnd={(e) => {
-          composing.current = false;
-          // Commit composed characters + refresh slash filter.
-          commitFromDom(e.currentTarget);
-          // Second pass after browser finalizes composition node.
-          requestAnimationFrame(() => emitSlash());
+        onCompositionEnd={(e: CompositionEvent<HTMLDivElement>) => {
+          flushAfterIme(e.currentTarget);
         }}
         onKeyDown={(e) => {
-          // Never intercept keys while IME is composing (Chinese etc.).
           const ne = e.nativeEvent;
-          if (ne.isComposing || ne.keyCode === 229) {
+          if (ne.isComposing || ne.keyCode === 229 || composing.current) {
             return;
           }
           onKeyDown?.(e);
