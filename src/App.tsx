@@ -6227,6 +6227,7 @@ export default function App() {
               api.settingsSet({ ...s, sandboxProfile: v }),
             );
           }}
+          onToast={showToast}
           cliInfo={cliInfo}
           onDoctor={() => void openDoctor()}
           versionFooter={tr("app.versionFooter")}

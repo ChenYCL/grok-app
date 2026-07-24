@@ -815,6 +815,42 @@ export async function settingsGet() {
   return invoke<AppSettings>("settings_get");
 }
 
+// ── Permission rules (`[permission]` allow / deny / ask in config.toml) ─────
+
+export type PermissionRuleAction = "allow" | "deny" | "ask";
+
+export interface PermissionRulesDto {
+  allow: string[];
+  deny: string[];
+  ask: string[];
+  /** Absolute path of the managed config.toml. */
+  configPath: string;
+  /** `independent` | `shared` */
+  sessionDataMode: string;
+  fileExists: boolean;
+}
+
+/** Read compact permission rules from the active GROK_HOME config.toml. */
+export async function permissionRulesGet() {
+  return invoke<PermissionRulesDto>("permission_rules_get");
+}
+
+/**
+ * Replace compact allow/deny/ask arrays and soft-respawn the live agent so the
+ * next turn reloads Grok Build rules.
+ */
+export async function permissionRulesSet(rules: {
+  allow?: string[];
+  deny?: string[];
+  ask?: string[];
+}) {
+  return invoke<PermissionRulesDto>("permission_rules_set", {
+    allow: rules.allow ?? [],
+    deny: rules.deny ?? [],
+    ask: rules.ask ?? [],
+  });
+}
+
 export async function modelsListAvailable() {
   return invoke<AvailableModelsResult>("models_list_available");
 }

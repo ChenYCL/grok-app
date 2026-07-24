@@ -26,6 +26,7 @@ mod cli_sessions;
 mod turn_complete;
 mod store_lock;
 mod permission;
+mod permission_rules;
 mod providers;
 mod secrets;
 mod session_import;
@@ -175,6 +176,8 @@ pub fn run() {
             commands::composer_prefs_resolve,
             commands::composer_prefs_set,
             commands::session_set_policy,
+            commands::permission_rules_get,
+            commands::permission_rules_set,
             commands::session_set_model,
             commands::session_rewind_drop_last_user,
             commands::session_rewind_points,
