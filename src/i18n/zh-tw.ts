@@ -285,6 +285,9 @@ export const zhTW: Record<MessageKey, string> = {
   "settings.cliPath": "CLI 路徑",
   "settings.cliPathDesc": "Grok Build CLI 可執行檔路徑",
   "settings.cliNotFound": "（未找到）",
+  "settings.acpServer": "ACP 伺服器（API 模式）",
+  "settings.acpServerDesc":
+    "透過 TCP（host:port）連線遠端 ACP Agent，取代啟動本機 CLI —— 例如執行在 WSL、容器或另一台主機上的 Agent。留空則使用本機啟動。",
   "settings.permissionDeep": "預設權限",
   "settings.permissionDeepDesc":
     "對新一輪對話生效，並依上方選擇的範圍記憶。YOLO 會自動核准工具呼叫。",

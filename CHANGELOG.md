@@ -21,10 +21,13 @@ See `docs/llm-wiki/release.md`.
 - **Multi-account switcher**: save / switch / remove official Grok auth snapshots (Settings → Account).
 - **Import conversation** from markdown/JSON file into a local session (web-history alternative).
 - **Linux x64** packaging path: `pnpm build:linux`, CI rust job + release matrix `ubuntu-22.04` (AppImage/deb).
+- **Traditional Chinese (zh-TW)** UI locale — community PR #18.
+- **ACP API mode**: optional TCP connection to a remote ACP server (`host:port`) instead of local CLI spawn — community PR #20.
 
 ### Fixed
 
 - **Settings → Session data mode**: switching to shared used `window.confirm`, which is unreliable in Tauri WebView and made the control look broken — use in-app confirm (Fixes #19).
+- **Add project trust prompt**: also replaced `window.confirm` with in-app dialog (same Tauri WebView issue).
 - **Plan card**: keep `exit_plan_mode` `rpcId` when later `sessionUpdate` plan notifications arrive without one, so Approve / Request changes stay clickable (Fixes #17).
 - **Plan mode**: handle `_x.ai/exit_plan_mode` (planContent body + Approve/Revise/Abandon RPC reply); wire Plan card buttons (minos-aligned).
 - **Thinking UI**: multi-phase reasoning split into separate blocks (pre-tool vs post-tool); thought chunks bind to current assistant message id.
@@ -40,6 +43,7 @@ See `docs/llm-wiki/release.md`.
 ### Community
 
 - Issues #3–#13 opened from launch-thread X feedback (duplicate history, login auth, attach, multi-open, Linux, etc.).
+- PR #18 (zh-TW), PR #20 (ACP TCP API mode) merged; issues #17 / #19 fixed on main.
 
 ## [0.1.0] - 2026-07-24
 

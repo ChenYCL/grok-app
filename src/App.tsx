@@ -3258,18 +3258,28 @@ export default function App() {
       if (!p) return; // cancelled
       const list = (await api.projectsList()) as Project[];
       setProjects(list);
-      let current = p;
-      if (!p.trusted) {
-        const ok = window.confirm(
-          tr("project.trustConfirm", { name: p.name, path: p.path }),
-        );
-        if (ok) {
-          current = (await api.projectTrust(p.id)) as Project;
-        }
-      }
-      setActiveProject(current);
+      setActiveProject(p);
       setSetup((s) => ({ ...s, project: true }));
-      setProjects((await api.projectsList()) as Project[]);
+      // Tauri WebView: never use window.confirm — offer in-app trust dialog.
+      if (!p.trusted) {
+        setAppDialog({
+          kind: "confirm",
+          title: tr("sidebar.trustProject"),
+          message: tr("project.trustConfirm", { name: p.name, path: p.path }),
+          confirmLabel: tr("sidebar.trustProject"),
+          onConfirm: async () => {
+            try {
+              const trusted = (await api.projectTrust(p.id)) as Project;
+              setActiveProject(trusted);
+              setProjects((await api.projectsList()) as Project[]);
+            } catch (e) {
+              setLocalError(String(e));
+            }
+          },
+        });
+      } else {
+        setProjects((await api.projectsList()) as Project[]);
+      }
     } catch (e) {
       setLocalError(String(e));
     }
