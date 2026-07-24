@@ -42,6 +42,12 @@ type Props = {
   };
   /** Linked worktrees for the active project (loaded by parent). */
   worktrees?: GitWorktreeEntry[];
+  /**
+   * `true` only after host confirmed a git work tree.
+   * `false` = not a git repo / git missing — section hidden.
+   * `null` / omitted = unknown (loading or no project) — section hidden.
+   */
+  worktreesAvailable?: boolean | null;
   worktreesLoading?: boolean;
   worktreesReason?: string | null;
   disabled?: boolean;
@@ -59,6 +65,7 @@ export function ComposerProjectMenu({
   projects,
   labels,
   worktrees = [],
+  worktreesAvailable = null,
   worktreesLoading = false,
   worktreesReason = null,
   disabled,
@@ -75,14 +82,16 @@ export function ComposerProjectMenu({
   const onOpenRef = useRef(onOpen);
   onOpenRef.current = onOpen;
 
-  // Show section whenever a project is active (soft-fail empty / loading still useful).
-  const showWorktrees = !!activeProject;
+  // Only for confirmed git work trees — hide while loading / non-git / no project.
+  const showWorktrees = !!activeProject && worktreesAvailable === true;
 
   const estHeight = Math.min(
     400,
     52 +
       Math.min(LIST_MAX_H, projects.length * 40 + 8) +
-      (showWorktrees ? 28 + Math.min(160, (worktrees.length || 1) * 36 + 24) : 0),
+      (showWorktrees
+        ? 28 + Math.min(160, Math.max(worktrees.length, 1) * 36 + 8)
+        : 0),
   );
   const { pos, style: popStyle } = useFloatingMenu({
     open,
@@ -106,7 +115,6 @@ export function ComposerProjectMenu({
 
   const label = activeProject?.name ?? labels.noProject;
   const tip = activeProject?.path || labels.pickProject;
-  const loadingLabel = labels.worktreesLoading?.trim() || labels.worktreesEmpty;
 
   return (
     <div ref={rootRef} className={`cpm${open ? " is-open" : ""}`}>
@@ -243,8 +251,8 @@ export function ComposerProjectMenu({
                               onSwitchWorktree(wt);
                             }}
                           >
-                            <span className="cmm__opt-main">
-                              <span className="cmm__opt-title">{name}</span>
+                            <span className="cpm__worktree-row">
+                              <span className="cpm__worktree-name">{name}</span>
                               {meta ? (
                                 <span className="cpm__worktree-meta">{meta}</span>
                               ) : null}
@@ -261,11 +269,9 @@ export function ComposerProjectMenu({
                   </ul>
                 ) : (
                   <p className="cpm__worktrees-empty">
-                    {worktreesLoading
-                      ? loadingLabel
-                      : worktreesReason?.trim()
-                        ? labels.worktreesUnavailable
-                        : labels.worktreesEmpty}
+                    {worktreesReason?.trim()
+                      ? labels.worktreesUnavailable
+                      : labels.worktreesEmpty}
                   </p>
                 )}
               </div>

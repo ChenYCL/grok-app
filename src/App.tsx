@@ -627,6 +627,10 @@ export default function App() {
   const [streamStallSeconds, setStreamStallSeconds] = useState(120);
   const [storeApiKeysInKeychain, setStoreApiKeysInKeychain] = useState(false);
   const [gitWorktrees, setGitWorktrees] = useState<api.GitWorktreeEntry[]>([]);
+  /** null = unknown/loading; true = git work tree; false = not a git repo. */
+  const [gitWorktreesAvailable, setGitWorktreesAvailable] = useState<
+    boolean | null
+  >(null);
   const [gitWorktreesLoading, setGitWorktreesLoading] = useState(false);
   const [gitWorktreesReason, setGitWorktreesReason] = useState<string | null>(
     null,
@@ -4644,6 +4648,7 @@ export default function App() {
       gitWorktreesReqRef.current += 1;
       gitWorktreesPathRef.current = null;
       setGitWorktrees([]);
+      setGitWorktreesAvailable(null);
       setGitWorktreesReason(null);
       setGitWorktreesLoading(false);
       return;
@@ -4654,6 +4659,7 @@ export default function App() {
     if (gitWorktreesPathRef.current !== path) {
       gitWorktreesPathRef.current = path;
       setGitWorktrees([]);
+      setGitWorktreesAvailable(null);
       setGitWorktreesReason(null);
     }
     setGitWorktreesLoading(true);
@@ -4662,14 +4668,17 @@ export default function App() {
       if (reqId !== gitWorktreesReqRef.current) return;
       if (!res.available) {
         setGitWorktrees([]);
+        setGitWorktreesAvailable(false);
         setGitWorktreesReason(res.reason?.trim() || "unavailable");
       } else {
         setGitWorktrees(res.worktrees ?? []);
+        setGitWorktreesAvailable(true);
         setGitWorktreesReason(null);
       }
     } catch (e) {
       if (reqId !== gitWorktreesReqRef.current) return;
       setGitWorktrees([]);
+      setGitWorktreesAvailable(false);
       setGitWorktreesReason(String(e));
     } finally {
       if (reqId === gitWorktreesReqRef.current) {
@@ -7243,13 +7252,13 @@ export default function App() {
                     worktrees: tr("composer.worktrees"),
                     worktreesEmpty: tr("composer.worktreesEmpty"),
                     worktreesUnavailable: tr("composer.worktreesUnavailable"),
-                    worktreesLoading: tr("composer.worktreesLoading"),
                     worktreeCurrent: tr("composer.worktreeCurrent"),
                     worktreeSwitch: tr("composer.worktreeSwitch"),
                     worktreeMain: tr("composer.worktreeMain"),
                     worktreeDetached: tr("composer.worktreeDetached"),
                   }}
                   worktrees={gitWorktrees}
+                  worktreesAvailable={gitWorktreesAvailable}
                   worktreesLoading={gitWorktreesLoading}
                   worktreesReason={gitWorktreesReason}
                   disabled={
