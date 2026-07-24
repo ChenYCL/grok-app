@@ -13,6 +13,8 @@ See `docs/llm-wiki/release.md`.
 
 ### Added
 
+- **Import CLI sessions (shared mode)** (#57): Settings → General lists `~/.grok/sessions` (percent-encoded cwd trees); import one / all into App journals with agentSessionId link.
+
 - **Session diagnostic export**: session menu → “Export diagnostic package” builds a redacted zip (host messages/meta/transcript/settings/runtime, CLI probe, app logs, Grok Build agent trail) for bug reports such as early `end_turn` (#52).
 - **Multi-session background stream** (#56): switching chats parks busy turns as `background` so streaming/permission continues under the process cap.
 - **A11y (T15 slice)** (#53): conversation live region, permission bar / GlassModal focus trap + Escape, ask_user option `aria-pressed`, focus-visible on actions.
