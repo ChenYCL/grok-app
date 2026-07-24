@@ -1177,6 +1177,41 @@ export async function pluginUpdate(name?: string | null) {
   return invoke<PluginActionResult>("plugin_update", {
     name: n ? n : null,
   });
+// ── Managed configuration (`grok setup` / `grok setup --json`) ──────────────
+
+export type ManagedSetupErrorKind =
+  | "missing_auth"
+  | "rejected"
+  | "cli_missing"
+  | "timeout"
+  | "parse"
+  | "other";
+
+/** Host result of `grok setup --json` (payload already key-redacted). */
+export interface SetupPreviewResult {
+  ok: boolean;
+  payload?: unknown | null;
+  message?: string | null;
+  error?: string | null;
+  errorKind?: ManagedSetupErrorKind | null;
+}
+
+/** Host result of `grok setup` install. */
+export interface SetupInstallResult {
+  ok: boolean;
+  message?: string | null;
+  error?: string | null;
+  errorKind?: ManagedSetupErrorKind | null;
+}
+
+/** Preview managed config without writing (`grok setup --json`). */
+export async function setupPreview() {
+  return invoke<SetupPreviewResult>("setup_preview");
+}
+
+/** Install managed config into ~/.grok (`grok setup`); soft-respawns agent. */
+export async function setupInstall() {
+  return invoke<SetupInstallResult>("setup_install");
 }
 
 // ── Official Grok Build account ─────────────────────────────────────────────

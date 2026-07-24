@@ -610,6 +610,38 @@ export const zhTW: Record<MessageKey, string> = {
   "inspect.section.config": "設定層",
   "inspect.plugin.disabled": "已停用",
   "inspect.skills.sample": "可呼叫範例：{names}",
+
+  // Managed configuration (`grok setup`)
+  "managedSetup.title": "託管設定安裝",
+  "managedSetup.desc":
+    "擷取並安裝組織託管設定（`grok setup`）。預覽顯示去敏摘要；安裝會寫入 ~/.grok。",
+  "managedSetup.authHint":
+    "需要團隊登入（`grok login`）或部署金鑰 GROK_DEPLOYMENT_KEY（環境變數，或 ~/.grok/config.toml 中 [endpoints] deployment_key）。",
+  "managedSetup.preview": "預覽",
+  "managedSetup.previewing": "正在取得預覽…",
+  "managedSetup.previewOk": "預覽已就緒（未寫入任何檔案）。",
+  "managedSetup.previewTitle": "預覽摘要",
+  "managedSetup.install": "安裝",
+  "managedSetup.installing": "正在安裝…",
+  "managedSetup.installOk": "已套用託管設定。",
+  "managedSetup.confirmTitle": "安裝託管設定？",
+  "managedSetup.confirmBody":
+    "將執行 `grok setup`，可能覆寫 ~/.grok 下的託管檔案（例如 managed_config.toml）。不會刪除你的個人 config.toml。是否繼續？",
+  "managedSetup.openAccount": "開啟帳戶",
+  "managedSetup.needTauri": "託管設定安裝需要桌面應用程式。",
+  "managedSetup.sections": "區段：{list}",
+  "managedSetup.redactNote": "金鑰與敏感欄位已去敏，不會顯示完整值。",
+  "managedSetup.error.title": "託管設定失敗",
+  "managedSetup.error.generic": "無法完成託管設定安裝。",
+  "managedSetup.error.cliTitle": "找不到 Grok Build CLI",
+  "managedSetup.error.cliBody":
+    "請先在 設定 → 執行環境 安裝或指定 CLI，然後再試。",
+  "managedSetup.error.missingAuthTitle": "需要團隊登入或部署金鑰",
+  "managedSetup.error.missingAuth":
+    "請使用團隊帳號登入，或設定 GROK_DEPLOYMENT_KEY / [endpoints].deployment_key 後再試。",
+  "managedSetup.error.rejectedTitle": "部署金鑰被拒絕",
+  "managedSetup.error.rejected":
+    "部署金鑰無效或已過期，請與管理員確認。",
   "settings.aboutApp": "關於 Grok App",
   "settings.checkUpdate": "檢查更新",
   "settings.checkUpdateDesc":

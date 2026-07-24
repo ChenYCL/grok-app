@@ -12024,4 +12024,56 @@ div.composer__input:empty::before {
   font-size: 12px;
   line-height: 1.4;
   color: var(--text-tertiary);
+/* ── Managed setup (Settings → Runtime) ─────────────────────────────────── */
+.managed-setup {
+  border-top: 1px solid var(--border-subtle);
+  padding-top: 4px;
+}
+
+.managed-setup__preview {
+  margin-top: 8px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-elevated, var(--bg-hover));
+}
+
+.managed-setup__facts {
+  list-style: none;
+  margin: 0 0 8px;
+  padding: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.managed-setup__facts li {
+  display: flex;
+  gap: 10px;
+  align-items: baseline;
+  font-size: 12px;
+  line-height: 1.4;
+  min-width: 0;
+}
+
+.managed-setup__fact-key {
+  flex: 0 0 auto;
+  color: var(--text-tertiary);
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 11px;
+}
+
+.managed-setup__fact-val {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-secondary);
+}
+
+.managed-setup__json {
+  margin-top: 8px;
+  max-height: 240px;
+  overflow: auto;
+  font-size: 11px;
 }

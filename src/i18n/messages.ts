@@ -639,6 +639,39 @@ const en = {
   "inspect.section.config": "Config layers",
   "inspect.plugin.disabled": "Disabled",
   "inspect.skills.sample": "Invocable sample: {names}",
+
+  // Managed configuration (`grok setup`)
+  "managedSetup.title": "Managed setup",
+  "managedSetup.desc":
+    "Fetch and install organization-managed configuration (`grok setup`). Preview shows a sanitized summary; Install writes into ~/.grok.",
+  "managedSetup.authHint":
+    "Requires a team sign-in (`grok login`) or GROK_DEPLOYMENT_KEY (env or [endpoints] deployment_key in ~/.grok/config.toml).",
+  "managedSetup.preview": "Preview",
+  "managedSetup.previewing": "Fetching preview…",
+  "managedSetup.previewOk": "Preview ready (nothing written).",
+  "managedSetup.previewTitle": "Preview summary",
+  "managedSetup.install": "Install",
+  "managedSetup.installing": "Installing…",
+  "managedSetup.installOk": "Managed configuration applied.",
+  "managedSetup.confirmTitle": "Install managed configuration?",
+  "managedSetup.confirmBody":
+    "This runs `grok setup` and may overwrite managed files under ~/.grok (for example managed_config.toml). Your personal config.toml is not deleted. Continue?",
+  "managedSetup.openAccount": "Open Account",
+  "managedSetup.needTauri": "Managed setup requires the desktop app.",
+  "managedSetup.sections": "Sections: {list}",
+  "managedSetup.redactNote":
+    "Secrets and key-like fields are redacted. Full values are never shown.",
+  "managedSetup.error.title": "Managed setup failed",
+  "managedSetup.error.generic": "Could not complete managed setup.",
+  "managedSetup.error.cliTitle": "Grok Build CLI not found",
+  "managedSetup.error.cliBody":
+    "Install or locate the CLI under Settings → Runtime, then try again.",
+  "managedSetup.error.missingAuthTitle": "Team login or deployment key required",
+  "managedSetup.error.missingAuth":
+    "Sign in with a team account, or set GROK_DEPLOYMENT_KEY / [endpoints].deployment_key, then retry.",
+  "managedSetup.error.rejectedTitle": "Deployment key rejected",
+  "managedSetup.error.rejected":
+    "The deployment key was rejected or expired. Confirm it with your administrator.",
   "settings.aboutApp": "About Grok App",
   "settings.checkUpdate": "Check for updates",
   "settings.checkUpdateDesc":
@@ -1849,6 +1882,38 @@ const zh: Record<MessageKey, string> = {
   "inspect.section.config": "配置层",
   "inspect.plugin.disabled": "已禁用",
   "inspect.skills.sample": "可调用示例：{names}",
+
+  // Managed configuration (`grok setup`)
+  "managedSetup.title": "托管配置安装",
+  "managedSetup.desc":
+    "拉取并安装组织托管配置（`grok setup`）。预览显示脱敏摘要；安装会写入 ~/.grok。",
+  "managedSetup.authHint":
+    "需要团队登录（`grok login`）或部署密钥 GROK_DEPLOYMENT_KEY（环境变量，或 ~/.grok/config.toml 中 [endpoints] deployment_key）。",
+  "managedSetup.preview": "预览",
+  "managedSetup.previewing": "正在获取预览…",
+  "managedSetup.previewOk": "预览已就绪（未写入任何文件）。",
+  "managedSetup.previewTitle": "预览摘要",
+  "managedSetup.install": "安装",
+  "managedSetup.installing": "正在安装…",
+  "managedSetup.installOk": "已应用托管配置。",
+  "managedSetup.confirmTitle": "安装托管配置？",
+  "managedSetup.confirmBody":
+    "将运行 `grok setup`，可能覆盖 ~/.grok 下的托管文件（例如 managed_config.toml）。不会删除你的个人 config.toml。是否继续？",
+  "managedSetup.openAccount": "打开账户",
+  "managedSetup.needTauri": "托管配置安装需要桌面应用。",
+  "managedSetup.sections": "分区：{list}",
+  "managedSetup.redactNote": "密钥与敏感字段已脱敏，不会显示完整值。",
+  "managedSetup.error.title": "托管配置失败",
+  "managedSetup.error.generic": "无法完成托管配置安装。",
+  "managedSetup.error.cliTitle": "未找到 Grok Build CLI",
+  "managedSetup.error.cliBody":
+    "请先在 设置 → 运行环境 安装或指定 CLI，然后重试。",
+  "managedSetup.error.missingAuthTitle": "需要团队登录或部署密钥",
+  "managedSetup.error.missingAuth":
+    "请使用团队账号登录，或设置 GROK_DEPLOYMENT_KEY / [endpoints].deployment_key 后再试。",
+  "managedSetup.error.rejectedTitle": "部署密钥被拒绝",
+  "managedSetup.error.rejected":
+    "部署密钥无效或已过期，请与管理员确认。",
   "settings.aboutApp": "关于 Grok App",
   "settings.checkUpdate": "检查更新",
   "settings.checkUpdateDesc":
