@@ -161,6 +161,11 @@ import {
   ResourceViewer,
   type ResourceOpenTarget,
 } from "@/components/ResourceViewer";
+import {
+  mergeSessionChange,
+  sessionChangesFromMessages,
+  type SessionFileChange,
+} from "@/lib/sessionChanges";
 import { ConversationThread } from "@/components/lobe-chat";
 import { Spinner } from "@/components/ui/spinner";
 import { UserMenu, remainingPercent } from "@/components/UserMenu";
@@ -247,6 +252,13 @@ export default function App() {
   /** Host live agent (may differ from the session currently viewed in the UI). */
   const [liveHost, setLiveHost] = useState<SessionSnapshot>(IDLE_SNAPSHOT);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
+  /**
+   * Files written/edited by agent tools per session (Changes / diff panel).
+   * Live tool events may enrich entries with before/after snippets.
+   */
+  const [sessionChangesById, setSessionChangesById] = useState<
+    Record<string, SessionFileChange[]>
+  >({});
   /** Composer stored form (may include [[skill:name]] tokens). */
   const [draft, setDraft] = useState("");
   const [goalMode, setGoalMode] = useState(false);
@@ -1053,11 +1065,29 @@ export default function App() {
             status?: string;
             path?: string | null;
             detail?: string | null;
+            before?: string | null;
+            after?: string | null;
           }>("session://tool", (p) => {
             if (cancelled || !p?.toolCallId) return;
             const sid = p.sessionId || viewingSessionIdRef.current;
             if (!sid) return;
             patchSessionMessages(sid, (prev) => applyToolEvent(prev, p));
+            // Track write/edit tools for the session Changes panel.
+            setSessionChangesById((prev) => {
+              const list = prev[sid] ?? [];
+              const next = mergeSessionChange(list, {
+                toolCallId: p.toolCallId,
+                title: p.title,
+                kind: p.kind,
+                status: p.status,
+                path: p.path,
+                detail: p.detail,
+                before: p.before,
+                after: p.after,
+              });
+              if (next === list) return prev;
+              return { ...prev, [sid]: next };
+            });
             if (sid === viewingSessionIdRef.current) {
               setTurnStartedAt((t) => t ?? Date.now());
             }
@@ -1452,6 +1482,29 @@ export default function App() {
       }
       // Cache raw journal (may include fences) so apply can read them.
       messagesBySessionRef.current.set(s.id, chosen);
+      // Rebuild Changes list from tool_step history; preserve live before/after.
+      {
+        const fromHist = sessionChangesFromMessages(chosen);
+        setSessionChangesById((prev) => {
+          const existing = prev[s.id] ?? [];
+          let list = fromHist;
+          for (const e of existing) {
+            if (e.before != null || e.after != null) {
+              list = mergeSessionChange(list, {
+                toolCallId: e.toolCallId,
+                title: e.title,
+                kind: e.toolKind,
+                status: e.status,
+                path: e.path,
+                before: e.before,
+                after: e.after,
+                updatedAt: e.updatedAt,
+              });
+            }
+          }
+          return { ...prev, [s.id]: list };
+        });
+      }
       const stripped = chosen.map((m) => {
         if (m.role !== "assistant" || !m.content) return m;
         const { cleanText } = extractAutomationPayload(m.content);
@@ -5725,6 +5778,9 @@ export default function App() {
               paneActive={!layout.asideCollapsed}
               openRequest={resourceOpenTarget}
               onOpenRequestConsumed={() => setResourceOpenTarget(null)}
+              sessionChanges={
+                sessionChangesById[session.sessionId || ""] ?? []
+              }
               onClose={() =>
                 setLayout((l) => {
                   const n = { ...l, asideCollapsed: true };

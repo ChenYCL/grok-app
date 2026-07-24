@@ -202,6 +202,9 @@ do NOT reprint the transcript in your reply; answer ONLY the new user message be
     Some(body)
 }
 
+/// Cap content snippets emitted on live tool events (diff panel).
+const TOOL_CONTENT_SNIPPET_MAX: usize = 200_000;
+
 /// Extract human-visible path + detail from tool_call payload for activity UI.
 fn extract_tool_ui_fields(raw: &serde_json::Value) -> (Option<String>, Option<String>) {
     let path = raw
@@ -226,6 +229,39 @@ fn extract_tool_ui_fields(raw: &serde_json::Value) -> (Option<String>, Option<St
             .map(|s| s.chars().take(240).collect::<String>())
     });
     (detail, path)
+}
+
+fn take_tool_content_str(v: Option<&serde_json::Value>) -> Option<String> {
+    let s = v.and_then(|x| x.as_str())?;
+    if s.is_empty() {
+        return None;
+    }
+    Some(s.chars().take(TOOL_CONTENT_SNIPPET_MAX).collect())
+}
+
+/// Optional before/after text for the session diff panel (from rawInput when present).
+/// - str_replace / search_replace: old_string → before, new_string → after
+/// - write / create_file: contents → after
+fn extract_tool_content_snippets(
+    raw: &serde_json::Value,
+) -> (Option<String>, Option<String>) {
+    let before = take_tool_content_str(
+        raw.pointer("/rawInput/old_string")
+            .or_else(|| raw.pointer("/rawInput/oldString"))
+            .or_else(|| raw.pointer("/rawInput/old_str"))
+            .or_else(|| raw.pointer("/rawInput/previous"))
+            .or_else(|| raw.pointer("/rawInput/before")),
+    );
+    let after = take_tool_content_str(
+        raw.pointer("/rawInput/new_string")
+            .or_else(|| raw.pointer("/rawInput/newString"))
+            .or_else(|| raw.pointer("/rawInput/new_str"))
+            .or_else(|| raw.pointer("/rawInput/contents"))
+            .or_else(|| raw.pointer("/rawInput/content"))
+            .or_else(|| raw.pointer("/rawInput/new_contents"))
+            .or_else(|| raw.pointer("/rawInput/after")),
+    );
+    (before, after)
 }
 
 /// When user asks to open a Grok App / foreign agent session by UUID, steer tools.
@@ -1125,6 +1161,7 @@ impl SessionManager {
                     .clone()
                     .or(path_hint)
                     .filter(|p| !p.is_empty());
+                let (before_snip, after_snip) = extract_tool_content_snippets(&raw);
 
                 if let Some(path) = media_path.as_ref() {
                     let att = attachment_from_path(path);
@@ -1186,6 +1223,9 @@ impl SessionManager {
                         "status": if status.is_empty() { "in_progress" } else { &status },
                         "path": path_out,
                         "detail": detail,
+                        // Optional content snippets for the session Changes / diff panel.
+                        "before": before_snip,
+                        "after": after_snip,
                     }),
                 );
 

@@ -25,6 +25,8 @@ import {
   IconChevronDown,
   IconChevronRight,
   IconClose,
+  IconExternalLink,
+  IconFileDiff,
   IconFolder,
   IconFiles,
   IconListTree,
@@ -37,6 +39,13 @@ import { isOfficeKind } from "@/lib/filePreviewSrc";
 import { OpenLocationButton } from "@/components/OpenLocationButton";
 import { Tip } from "@/components/ui/tooltip";
 import { ContextMenu, type ContextMenuItem } from "@/components/ContextMenu";
+import {
+  buildUnifiedDiff,
+  normalizePath,
+  pathBaseName,
+  pathRelativeToProject,
+  type SessionFileChange,
+} from "@/lib/sessionChanges";
 
 const TREE_WIDTH_KEY = "grok-app.resourceTreeWidth";
 const TREE_WIDTH_DEFAULT = 220;
@@ -83,7 +92,25 @@ export interface ResourceViewerProps {
    * When it becomes false, the file tree collapses and is not remembered.
    */
   paneActive?: boolean;
+  /**
+   * Files written/edited by agent tools in the active session (Changes panel).
+   */
+  sessionChanges?: SessionFileChange[];
 }
+
+type SideMode = "files" | "changes";
+
+type DiffViewState = {
+  path: string;
+  name: string;
+  loading: boolean;
+  /** Unified diff text when available. */
+  unified: string | null;
+  /** Fallback: full after content only. */
+  afterOnly: string | null;
+  error: string | null;
+  source: "payload" | "git" | "after" | null;
+};
 
 interface TreeNode {
   name: string;
@@ -170,6 +197,7 @@ export function ResourceViewer({
   openRequest,
   onOpenRequestConsumed,
   paneActive = true,
+  sessionChanges = [],
 }: ResourceViewerProps) {
   const tr = useMemo(() => createT(locale), [locale]);
   const [root, setRoot] = useState<TreeNode[]>([]);
@@ -183,9 +211,15 @@ export function ResourceViewer({
   const [query, setQuery] = useState("");
   // Default closed; session-only — not persisted; reset when pane hides.
   const [treeVisible, setTreeVisible] = useState(false);
+  const [sideMode, setSideMode] = useState<SideMode>("files");
   const [treeWidth, setTreeWidth] = useState(loadTreeWidth);
   const [resizingTree, setResizingTree] = useState(false);
   const splitRef = useRef<HTMLDivElement>(null);
+  const [selectedChangePath, setSelectedChangePath] = useState<string | null>(
+    null,
+  );
+  const [diffView, setDiffView] = useState<DiffViewState | null>(null);
+  const diffLoadSeq = useRef(0);
   /** Open-with target for the location button (finder / editor id). */
   const [openWithTarget, setOpenWithTarget] = useState(() => {
     try {
@@ -196,11 +230,179 @@ export function ResourceViewer({
   });
 
   const activeTab = tabs.find((t) => t.id === activeId) ?? null;
+  const changeCount = sessionChanges.length;
+  const filteredChanges = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return sessionChanges;
+    return sessionChanges.filter(
+      (c) =>
+        c.name.toLowerCase().includes(q) ||
+        c.path.toLowerCase().includes(q) ||
+        (c.toolKind || "").toLowerCase().includes(q),
+    );
+  }, [sessionChanges, query]);
 
   // Closing the right pane always collapses the tree (not remembered).
   useEffect(() => {
     if (!paneActive) setTreeVisible(false);
   }, [paneActive]);
+
+  // Drop selection if the change list no longer contains it.
+  useEffect(() => {
+    if (!selectedChangePath) return;
+    const still = sessionChanges.some(
+      (c) => normalizePath(c.path) === normalizePath(selectedChangePath),
+    );
+    if (!still) {
+      setSelectedChangePath(null);
+      setDiffView(null);
+    }
+  }, [sessionChanges, selectedChangePath]);
+
+  const loadChangeDiff = useCallback(
+    async (change: SessionFileChange) => {
+      const path = normalizePath(change.path);
+      if (!path) return;
+      const seq = ++diffLoadSeq.current;
+      setSelectedChangePath(path);
+      setDiffView({
+        path,
+        name: change.name || pathBaseName(path),
+        loading: true,
+        unified: null,
+        afterOnly: null,
+        error: null,
+        source: null,
+      });
+
+      const relName =
+        pathRelativeToProject(path, projectPath) || change.name || pathBaseName(path);
+
+      // 1) Tool payload before/after → local unified diff
+      if (
+        typeof change.before === "string" &&
+        typeof change.after === "string"
+      ) {
+        const unified = buildUnifiedDiff(relName, change.before, change.after);
+        if (seq !== diffLoadSeq.current) return;
+        setDiffView({
+          path,
+          name: change.name || pathBaseName(path),
+          loading: false,
+          unified,
+          afterOnly: null,
+          error: null,
+          source: "payload",
+        });
+        return;
+      }
+
+      // 2) Optional git diff under project
+      if (projectPath && api.isTauri()) {
+        try {
+          const g = await api.gitFileDiff(projectPath, path);
+          if (seq !== diffLoadSeq.current) return;
+          if (g.available && g.diff?.trim()) {
+            setDiffView({
+              path,
+              name: change.name || pathBaseName(path),
+              loading: false,
+              unified: g.diff,
+              afterOnly: null,
+              error: null,
+              source: "git",
+            });
+            return;
+          }
+        } catch {
+          /* soft-fail; try after content */
+        }
+      }
+
+      // 3) Payload after-only, or read current file
+      let afterText =
+        typeof change.after === "string" && change.after.length > 0
+          ? change.after
+          : null;
+      if (!afterText && api.isTauri()) {
+        try {
+          const r = await api.fsOpenPath(path, projectPath);
+          if (r.text) afterText = r.text;
+        } catch {
+          /* ignore */
+        }
+      }
+      if (seq !== diffLoadSeq.current) return;
+
+      if (
+        typeof change.before === "string" &&
+        afterText != null
+      ) {
+        const unified = buildUnifiedDiff(relName, change.before, afterText);
+        setDiffView({
+          path,
+          name: change.name || pathBaseName(path),
+          loading: false,
+          unified,
+          afterOnly: null,
+          error: null,
+          source: "payload",
+        });
+        return;
+      }
+
+      if (afterText != null) {
+        setDiffView({
+          path,
+          name: change.name || pathBaseName(path),
+          loading: false,
+          unified: null,
+          afterOnly: afterText,
+          error: null,
+          source: "after",
+        });
+        return;
+      }
+
+      setDiffView({
+        path,
+        name: change.name || pathBaseName(path),
+        loading: false,
+        unified: null,
+        afterOnly: null,
+        error: null,
+        source: null,
+      });
+    },
+    [projectPath],
+  );
+
+  const openChangeInEditor = useCallback(async (path: string) => {
+    if (!path || !api.isTauri()) return;
+    try {
+      await api.openInEditor({ path });
+    } catch (e) {
+      setError(String(e));
+    }
+  }, []);
+
+  const revealChangePath = useCallback(async (path: string) => {
+    if (!path || !api.isTauri()) return;
+    try {
+      await api.pathReveal(path);
+    } catch (e) {
+      setError(String(e));
+    }
+  }, []);
+
+  const showSidePanel = (mode: SideMode) => {
+    if (treeVisible && sideMode === mode) {
+      setTreeVisible(false);
+      return;
+    }
+    setSideMode(mode);
+    setTreeVisible(true);
+  };
 
   // Drag-resize preview | file-tree split
   useEffect(() => {
@@ -590,7 +792,10 @@ export function ResourceViewer({
     tabId: string;
   } | null>(null);
 
-  const absPath = activeTab?.absolutePath || "";
+  const absPath =
+    (diffView && sideMode === "changes" ? diffView.path : "") ||
+    activeTab?.absolutePath ||
+    "";
 
   const filterMatch = useCallback(
     (name: string, path: string) => {
@@ -648,7 +853,80 @@ export function ResourceViewer({
         );
       });
 
+  const changeStatusLabel = useCallback(
+    (status: string) => {
+      const s = (status || "").toLowerCase();
+      if (s === "completed") return tr("changes.status.completed");
+      if (s === "failed" || s === "error") return tr("changes.status.failed");
+      if (s === "in_progress" || s === "running")
+        return tr("changes.status.in_progress");
+      if (s === "pending") return tr("changes.status.pending");
+      return status || "";
+    },
+    [tr],
+  );
+
   const previewBody = useMemo(() => {
+    // Session change diff takes over the preview when selected in Changes mode.
+    if (sideMode === "changes" && diffView) {
+      if (diffView.loading) {
+        return (
+          <div className="rp-preview__msg">{tr("changes.loadingDiff")}</div>
+        );
+      }
+      if (diffView.unified) {
+        const srcLabel =
+          diffView.source === "git"
+            ? tr("changes.sourceGit")
+            : diffView.source === "payload"
+              ? tr("changes.sourcePayload")
+              : null;
+        return (
+          <CodePreview
+            code={diffView.unified}
+            fileName={`${diffView.name}.diff`}
+            language="diff"
+            footer={srcLabel}
+          />
+        );
+      }
+      if (diffView.afterOnly) {
+        return (
+          <CodePreview
+            code={diffView.afterOnly}
+            fileName={diffView.name}
+            footer={tr("changes.afterOnly")}
+          />
+        );
+      }
+      return (
+        <div className="rp-changes-empty">
+          <div className="rp-changes-empty__title">{tr("changes.noDiff")}</div>
+          <div className="rp-changes-empty__hint">{tr("changes.noDiffHint")}</div>
+          <div className="rp-changes-empty__actions">
+            <button
+              type="button"
+              className="rp-tool-btn"
+              onClick={() => void openChangeInEditor(diffView.path)}
+            >
+              <IconExternalLink size={14} />
+              <span className="rp-tool-btn__label">
+                {tr("changes.openInEditor")}
+              </span>
+            </button>
+            <button
+              type="button"
+              className="rp-tool-btn"
+              onClick={() => void revealChangePath(diffView.path)}
+            >
+              <IconFolder size={14} />
+              <span className="rp-tool-btn__label">{tr("changes.reveal")}</span>
+            </button>
+          </div>
+        </div>
+      );
+    }
+
     // URL tabs render via EmbeddedBrowser below (native Webview host).
     // Keep other kinds here so useMemo deps stay correct.
     if (activeTab?.tabKind === "url" && activeTab.url) {
@@ -804,7 +1082,15 @@ export function ResourceViewer({
           </div>
         );
     }
-  }, [activeTab, tr, locale]);
+  }, [
+    activeTab,
+    tr,
+    locale,
+    sideMode,
+    diffView,
+    openChangeInEditor,
+    revealChangePath,
+  ]);
 
   // No project and no open tabs → empty; allow absolute/url tabs without a project.
   if (!projectPath && tabs.length === 0) {
@@ -945,7 +1231,31 @@ export function ResourceViewer({
           ) : null}
           <Tip
             label={
-              treeVisible
+              treeVisible && sideMode === "changes"
+                ? tr("changes.hidePanel")
+                : tr("changes.showPanel")
+            }
+          >
+            <button
+              type="button"
+              className={
+                "chrome-btn main__pane-toggle rp-chrome__changes-btn" +
+                (treeVisible && sideMode === "changes" ? " is-on" : "")
+              }
+              onClick={() => showSidePanel("changes")}
+              aria-label={tr("changes.title")}
+            >
+              <IconFileDiff size={16} />
+              {changeCount > 0 ? (
+                <span className="rp-chrome__badge" aria-hidden>
+                  {changeCount > 99 ? "99+" : changeCount}
+                </span>
+              ) : null}
+            </button>
+          </Tip>
+          <Tip
+            label={
+              treeVisible && sideMode === "files"
                 ? tr("resources.collapseTree")
                 : tr("resources.expandTree")
             }
@@ -953,9 +1263,10 @@ export function ResourceViewer({
             <button
               type="button"
               className={
-                "chrome-btn main__pane-toggle" + (treeVisible ? " is-on" : "")
+                "chrome-btn main__pane-toggle" +
+                (treeVisible && sideMode === "files" ? " is-on" : "")
               }
-              onClick={() => setTreeVisible((v) => !v)}
+              onClick={() => showSidePanel("files")}
             >
               <IconListTree size={16} />
             </button>
@@ -1004,11 +1315,31 @@ export function ResourceViewer({
         }
       >
         <div className="rp-split__preview">
-          {!activeTab ? (
+          {sideMode === "changes" && diffView ? (
+            diffView.loading ? (
+              <div className="rp__empty-state">
+                <div className="rp__empty-desc">{tr("changes.loadingDiff")}</div>
+              </div>
+            ) : diffView.unified || diffView.afterOnly ? (
+              <div className="rp-preview-code-host">{previewBody}</div>
+            ) : (
+              <div className="rp__empty-state">{previewBody}</div>
+            )
+          ) : !activeTab ? (
             <div className="rp__empty-state">
-              <div className="rp__empty-title">{tr("resources.emptyPreview")}</div>
+              <div className="rp__empty-title">
+                {sideMode === "changes" && changeCount === 0
+                  ? tr("changes.empty")
+                  : sideMode === "changes"
+                    ? tr("changes.title")
+                    : tr("resources.emptyPreview")}
+              </div>
               <div className="rp__empty-desc">
-                {tr("resources.emptyPreviewHint")}
+                {sideMode === "changes" && changeCount === 0
+                  ? tr("changes.emptyHint")
+                  : sideMode === "changes"
+                    ? tr("changes.emptyHint")
+                    : tr("resources.emptyPreviewHint")}
               </div>
             </div>
           ) : activeTab.loading ? (
@@ -1070,26 +1401,135 @@ export function ResourceViewer({
                 minWidth: TREE_WIDTH_MIN,
               }}
             >
+              <div className="rp-side-modes" role="tablist" aria-label={tr("resources.title")}>
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={sideMode === "files"}
+                  className={
+                    "rp-side-modes__btn" + (sideMode === "files" ? " is-active" : "")
+                  }
+                  onClick={() => setSideMode("files")}
+                >
+                  {tr("changes.files")}
+                </button>
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={sideMode === "changes"}
+                  className={
+                    "rp-side-modes__btn" +
+                    (sideMode === "changes" ? " is-active" : "")
+                  }
+                  onClick={() => setSideMode("changes")}
+                >
+                  {tr("changes.title")}
+                  {changeCount > 0 ? (
+                    <span className="rp-side-modes__count">{changeCount}</span>
+                  ) : null}
+                </button>
+              </div>
               <div className="rp-tree-search">
                 <IconSearch size={14} />
                 <input
                   value={query}
                   onChange={(e) => setQuery(e.target.value)}
-                  placeholder={tr("resources.filterPh")}
+                  placeholder={
+                    sideMode === "changes"
+                      ? tr("resources.filterPh")
+                      : tr("resources.filterPh")
+                  }
                   aria-label={tr("resources.filterPh")}
                 />
-                <Tip label={tr("resources.refresh")}>
-                  <button
-                    type="button"
-                    className="chrome-btn"
-                    onClick={() => void refresh()}
-                  >
-                    <IconRefresh size={14} />
-                  </button>
-                </Tip>
+                {sideMode === "files" ? (
+                  <Tip label={tr("resources.refresh")}>
+                    <button
+                      type="button"
+                      className="chrome-btn"
+                      onClick={() => void refresh()}
+                    >
+                      <IconRefresh size={14} />
+                    </button>
+                  </Tip>
+                ) : null}
               </div>
               <OverlayScroll className="rp-tree-scroll">
-                {loadingTree ? (
+                {sideMode === "changes" ? (
+                  filteredChanges.length === 0 ? (
+                    <div className="rp__empty-state rp__empty-state--sm">
+                      {tr("changes.empty")}
+                    </div>
+                  ) : (
+                    <div className="rp-changes-list" role="list">
+                      {filteredChanges.map((c) => {
+                        const active =
+                          selectedChangePath != null &&
+                          normalizePath(c.path) ===
+                            normalizePath(selectedChangePath);
+                        const rel =
+                          pathRelativeToProject(c.path, projectPath) || c.path;
+                        return (
+                          <div
+                            key={c.path}
+                            className={
+                              "rp-changes-row" + (active ? " is-active" : "")
+                            }
+                            role="listitem"
+                          >
+                            <button
+                              type="button"
+                              className="rp-changes-row__main"
+                              title={c.path}
+                              onClick={() => void loadChangeDiff(c)}
+                            >
+                              <FileKindMark name={c.name} isDir={false} />
+                              <span className="rp-changes-row__meta">
+                                <span className="rp-changes-row__name">
+                                  {c.name}
+                                </span>
+                                <span className="rp-changes-row__path">
+                                  {rel}
+                                </span>
+                                <span className="rp-changes-row__kind">
+                                  {c.toolKind}
+                                  {c.status
+                                    ? ` · ${changeStatusLabel(c.status)}`
+                                    : ""}
+                                </span>
+                              </span>
+                            </button>
+                            <div className="rp-changes-row__actions">
+                              <Tip label={tr("changes.openInEditor")}>
+                                <button
+                                  type="button"
+                                  className="chrome-btn"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    void openChangeInEditor(c.path);
+                                  }}
+                                >
+                                  <IconExternalLink size={13} />
+                                </button>
+                              </Tip>
+                              <Tip label={tr("changes.reveal")}>
+                                <button
+                                  type="button"
+                                  className="chrome-btn"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    void revealChangePath(c.path);
+                                  }}
+                                >
+                                  <IconFolder size={13} />
+                                </button>
+                              </Tip>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )
+                ) : loadingTree ? (
                   <div className="rp__empty-state rp__empty-state--sm">
                     {tr("resources.loading")}
                   </div>
