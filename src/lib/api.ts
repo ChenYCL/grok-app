@@ -907,6 +907,17 @@ export async function exportSupportBundle(doctorJson?: string | null) {
   });
 }
 
+/**
+ * Full session diagnostic zip for bug reports: messages, meta, settings,
+ * CLI probe, agent trail (events/history/terminal logs), optional runtime snapshot.
+ * Secrets are redacted. Opens a native save dialog.
+ */
+export async function exportSessionBundle(sessionId: string) {
+  return invoke<SupportBundleResult>("export_session_bundle", {
+    sessionId,
+  });
+}
+
 export interface ResetAppDataResult {
   ok: boolean;
   dataRoot: string;

@@ -82,6 +82,28 @@ button:disabled {
   outline: none;
 }
 
+/* Screen-reader only (T15 live regions / labels) */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* Keyboard focus for permission / ask-user (no global outline, but visible here) */
+.perm-bar__btn:focus-visible,
+.ask-user__opt:focus-visible,
+.modal-actions .btn:focus-visible,
+.modal-close:focus-visible {
+  outline: 2px solid var(--border-focus, #6b8cff);
+  outline-offset: 2px;
+}
+
 /* Composer textarea: no focus ring / border flash (Codex-like quiet field) */
 textarea:focus-visible,
 .composer__input:focus,
@@ -2523,7 +2545,7 @@ html.platform-mac[data-theme="light"] .settings-page__content {
 }
 
 .cpm__worktrees-head {
-  padding: 4px 10px 6px;
+  padding: 4px 10px 4px;
   font-size: 11px;
   font-weight: 600;
   letter-spacing: 0.02em;
@@ -2531,10 +2553,17 @@ html.platform-mac[data-theme="light"] .settings-page__content {
   color: var(--text-tertiary);
 }
 
+.cpm__worktrees-list.is-loading {
+  opacity: 0.72;
+}
+
 .cpm__worktrees-list {
   list-style: none;
   margin: 0;
   padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
   max-height: 160px;
   overflow-y: auto;
 }
@@ -2546,17 +2575,45 @@ html.platform-mac[data-theme="light"] .settings-page__content {
   color: var(--text-tertiary);
 }
 
+/* Match project row height; title + badges on one horizontal line */
+.cpm__pop .cpm__worktree {
+  align-items: center;
+  min-height: 36px;
+  padding: 8px 12px;
+}
+
 .cpm__worktree:disabled {
   opacity: 0.85;
   cursor: default;
 }
 
+.cpm__worktree-row {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+}
+
+.cpm__worktree-name {
+  font-size: 13px;
+  font-weight: 550;
+  color: var(--text-primary);
+  line-height: 1.25;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+
 .cpm__worktree-meta {
-  display: block;
-  margin-top: 2px;
+  flex-shrink: 0;
   font-size: 11px;
+  font-weight: 500;
+  line-height: 1.2;
   color: var(--text-tertiary);
-  font-weight: 400;
+  white-space: nowrap;
 }
 
 .account-link:hover {

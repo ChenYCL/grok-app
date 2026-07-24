@@ -191,6 +191,8 @@ struct LiveSession {
     open_tool_ids: HashSet<String>,
     /// `prompt_complete` arrived while tools/gates still open; finish when clear.
     deferred_prompt_complete: Option<String>,
+    /// Tool events observed during the current turn (empty-run soft signal).
+    tools_this_turn: u32,
 }
 
 /// Ready agent process parked while another App session is focused (I01/I02).
@@ -489,8 +491,11 @@ fn attachment_from_path(path: &str) -> MessageAttachmentStored {
 }
 
 pub struct SessionManager {
-    /// Currently focused live session (UI-bound).
+    /// Currently focused live session (UI-bound for send).
     inner: Mutex<Option<LiveSession>>,
+    /// Busy sessions still receiving ACP events (streaming / permission).
+    /// Keyed by app session id. Enables multi-session parallel streaming.
+    background: Mutex<HashMap<String, LiveSession>>,
     /// Warm Ready agents for other App sessions (keyed by app session id).
     parked: Mutex<HashMap<String, ParkedAgent>>,
     /// Serialize connect / park / unpark so openSession prefetch cannot race first send.
@@ -507,6 +512,7 @@ impl SessionManager {
     pub fn new() -> Self {
         Self {
             inner: Mutex::new(None),
+            background: Mutex::new(HashMap::new()),
             parked: Mutex::new(HashMap::new()),
             connect_lock: tokio::sync::Mutex::new(()),
         }
@@ -543,11 +549,39 @@ impl SessionManager {
     }
 
     /// Stream chunk or tool activity — advances stall deadline (I06).
+
+    /// Soft signal when a non-ask turn ends with zero tool events (diagnostic aid for #52).
+    /// Call **before** stream buffers are cleared.
+    fn empty_run_signal_from_live(
+        s: &LiveSession,
+        stop_reason: &str,
+    ) -> Option<(String, String, String)> {
+        let had_body = !s.stream_buf.trim().is_empty();
+        let had_thought = !s.stream_thought.trim().is_empty();
+        let tools = s.tools_this_turn;
+        let mode = s.product_mode.clone().unwrap_or_else(|| "agent".into());
+        let app_sid = s.app_session_id.clone();
+        let empty = tools == 0
+            && (had_body || had_thought)
+            && mode != "ask"
+            && !s.provider_retry_aborted
+            && stop_reason != "cancelled"
+            && stop_reason != "stop";
+        if empty {
+            Some((app_sid, stop_reason.to_string(), mode))
+        } else {
+            None
+        }
+    }
+
     /// Finish turn when a deferred `prompt_complete` is safe (#52).
-    /// Returns true if the FSM left Streaming / busy states.
-    fn try_finish_deferred_prompt_complete(s: &mut LiveSession) -> bool {
+    /// Returns `Some(empty_run)` if finished (`None` inside = finished, not empty);
+    /// returns `None` if still deferred.
+    fn try_finish_deferred_prompt_complete(
+        s: &mut LiveSession,
+    ) -> Option<Option<(String, String, String)>> {
         let Some(stop_reason) = s.deferred_prompt_complete.clone() else {
-            return false;
+            return None;
         };
         let awaiting_perm = s.fsm.state() == SessionState::AwaitingPermission;
         if should_defer_prompt_complete(
@@ -556,8 +590,9 @@ impl SessionManager {
             s.pending_ask_user_rpc_id.is_some(),
             s.open_tool_ids.len(),
         ) {
-            return false;
+            return None;
         }
+        let empty = Self::empty_run_signal_from_live(s, &stop_reason);
         s.deferred_prompt_complete = None;
         // Force-flush assistant turn (I04 end-of-turn path).
         Self::maybe_flush_stream_journal(s, true, false);
@@ -567,6 +602,7 @@ impl SessionManager {
         s.stream_attachments.clear();
         s.journal_throttle.reset();
         s.open_tool_ids.clear();
+        s.tools_this_turn = 0;
         if s.fsm.state() == SessionState::Streaming
             || s.fsm.state() == SessionState::AwaitingPermission
         {
@@ -577,7 +613,33 @@ impl SessionManager {
         tracing::info!(
             "acp turn finished after deferred prompt_complete stop={stop_reason}"
         );
-        true
+        Some(empty)
+    }
+
+    /// Emit empty-run toast event if the finish result says so.
+    fn emit_empty_run_if_any(
+        app: &AppHandle,
+        empty: Option<(String, String, String)>,
+    ) {
+        let Some((app_sid, reason, mode)) = empty else {
+            return;
+        };
+        tracing::info!(
+            target: "session",
+            session = %app_sid,
+            stop_reason = %reason,
+            mode = %mode,
+            "turn ended with zero tool calls (soft empty-run signal)"
+        );
+        let _ = app.emit(
+            "session://turn_empty_run",
+            serde_json::json!({
+                "sessionId": app_sid,
+                "stopReason": reason,
+                "mode": mode,
+                "toolCount": 0,
+            }),
+        );
     }
 
     fn touch_stream_progress_locked(s: &mut LiveSession) {
@@ -682,7 +744,7 @@ impl SessionManager {
         Self::emit_stream_stall(app, &sid, stall_secs);
     }
 
-    /// Live + parked processes that still have a living ACP child.
+    /// Live + background + parked processes that still have a living ACP child.
     fn active_process_count(&self) -> u32 {
         let live = self
             .inner
@@ -691,13 +753,19 @@ impl SessionManager {
             .and_then(|s| s.acp.as_ref())
             .filter(|c| c.is_alive())
             .is_some() as u32;
+        let background = self
+            .background
+            .lock()
+            .values()
+            .filter(|s| s.acp.as_ref().is_some_and(|c| c.is_alive()))
+            .count() as u32;
         let parked = self
             .parked
             .lock()
             .values()
             .filter(|p| p.acp.is_alive())
             .count() as u32;
-        live + parked
+        live + background + parked
     }
 
     fn max_concurrent_from_settings() -> u32 {
@@ -738,9 +806,11 @@ impl SessionManager {
         before.saturating_sub(parked.len())
     }
 
-    /// Park the current live session if it is Ready with a living agent.
-    /// Returns true if parked (or there was nothing to park).
-    /// Returns false if live is busy (streaming / permission / connecting).
+    /// Park or background the current live session so focus can move.
+    ///
+    /// - Ready → warm `parked` (idle process).
+    /// - Streaming / AwaitingPermission → `background` (keeps full LiveSession + event pump).
+    /// - Capacity exceeded → error (PROCESS_LIMIT).
     fn try_park_live(&self) -> Result<(), AgentError> {
         let max = Self::max_concurrent_from_settings();
         let mut guard = self.inner.lock();
@@ -752,24 +822,88 @@ impl SessionManager {
             return Ok(());
         }
         match s.fsm.state() {
-            SessionState::Ready if s.streaming_message_id.is_none() => {}
-            SessionState::Idle | SessionState::Disconnected => return Ok(()),
-            other => {
-                return Err(AgentError::new(
-                    AgentErrorCode::ProcessLimit,
-                    format!(
-                        "Session is busy ({other:?}). Stop the turn or wait, then switch chats. {}",
-                        process_limit_message(max)
-                    ),
-                ));
+            SessionState::Ready if s.streaming_message_id.is_none() => {
+                let acp = match s.acp.take() {
+                    Some(c) if c.is_alive() => c,
+                    Some(_) | None => return Ok(()),
+                };
+                let parked = ParkedAgent {
+                    process_id: s.process_id.clone(),
+                    app_session_id: s.app_session_id.clone(),
+                    meta: s.meta.clone(),
+                    acp,
+                    last_activity: s.last_activity,
+                    model_id: s.model_id.clone(),
+                    effort: s.effort.clone(),
+                    product_mode: s.product_mode.clone(),
+                    project_path: s.project_path.clone(),
+                    policy: s.policy,
+                    needs_history_bootstrap: s.needs_history_bootstrap,
+                    backend: s.backend.clone(),
+                };
+                let _ = guard.take();
+                drop(guard);
+                self.parked
+                    .lock()
+                    .insert(parked.app_session_id.clone(), parked);
+                Ok(())
             }
+            SessionState::Idle | SessionState::Disconnected => Ok(()),
+            // Busy: keep full LiveSession in background so streaming continues.
+            SessionState::Streaming
+            | SessionState::AwaitingPermission
+            | SessionState::Connecting => {
+                // +1 for the demoted session already counted as live; need room.
+                let others = self.active_process_count().saturating_sub(1);
+                if others.saturating_add(1) > max {
+                    return Err(AgentError::new(
+                        AgentErrorCode::ProcessLimit,
+                        format!(
+                            "Session is busy and process limit ({max}) is full. Stop a turn or raise the limit. {}",
+                            process_limit_message(max)
+                        ),
+                    ));
+                }
+                let Some(live) = guard.take() else {
+                    return Ok(());
+                };
+                let sid = live.app_session_id.clone();
+                drop(guard);
+                tracing::info!(
+                    "acp demote busy session to background sid={sid} state={:?}",
+                    live.fsm.state()
+                );
+                self.background.lock().insert(sid, live);
+                Ok(())
+            }
+            other => Err(AgentError::new(
+                AgentErrorCode::ProcessLimit,
+                format!(
+                    "Session is busy ({other:?}). Stop the turn or wait, then switch chats. {}",
+                    process_limit_message(max)
+                ),
+            )),
         }
+    }
 
-        let acp = match s.acp.take() {
-            Some(c) if c.is_alive() => c,
-            Some(_) | None => return Ok(()),
+    /// If a background session finished its turn (Ready), convert to warm parked.
+    fn promote_background_ready_to_parked(&self, app_session_id: &str) {
+        let mut bg = self.background.lock();
+        let ready = bg.get(app_session_id).is_some_and(|s| {
+            matches!(s.fsm.state(), SessionState::Ready)
+                && s.streaming_message_id.is_none()
+                && s.acp.as_ref().is_some_and(|c| c.is_alive())
+        });
+        if !ready {
+            return;
+        }
+        let Some(mut s) = bg.remove(app_session_id) else {
+            return;
         };
-
+        drop(bg);
+        let Some(acp) = s.acp.take() else {
+            return;
+        };
         let parked = ParkedAgent {
             process_id: s.process_id.clone(),
             app_session_id: s.app_session_id.clone(),
@@ -784,13 +918,13 @@ impl SessionManager {
             needs_history_bootstrap: s.needs_history_bootstrap,
             backend: s.backend.clone(),
         };
-        // Drop LiveSession shell — focus moves away; meta remains on disk.
-        let _ = guard.take();
-        drop(guard);
         self.parked
             .lock()
             .insert(parked.app_session_id.clone(), parked);
-        Ok(())
+        tracing::info!(
+            "acp background session ready → parked sid={}",
+            app_session_id
+        );
     }
 
     /// Promote a parked agent into the live slot (caller must have cleared live).
@@ -834,6 +968,7 @@ impl SessionManager {
             journal_throttle: JournalWriteThrottle::with_default_interval(),
             open_tool_ids: HashSet::new(),
             deferred_prompt_complete: None,
+            tools_this_turn: 0,
         })
     }
 
@@ -958,6 +1093,65 @@ impl SessionManager {
         }
     }
 
+    /// Runtime diagnostics for a session export package (live or parked).
+    /// Returns `None` when the session is not currently attached to a process.
+    pub fn diagnostic_runtime_for(&self, app_session_id: &str) -> Option<serde_json::Value> {
+        {
+            let guard = self.inner.lock();
+            if let Some(s) = guard.as_ref() {
+                if s.app_session_id == app_session_id {
+                    let cwd = s.acp.as_ref().map(|c| c.cwd().display().to_string());
+                    let agent_alive = s.acp.as_ref().is_some_and(|c| c.is_alive());
+                    return Some(serde_json::json!({
+                        "slot": "live",
+                        "state": format!("{:?}", s.fsm.state()),
+                        "backend": s.backend,
+                        "modelId": s.model_id,
+                        "effort": s.effort,
+                        "mode": s.product_mode,
+                        "permissionPolicy": s.policy.as_str(),
+                        "projectPath": s.project_path,
+                        "agentSessionId": s.meta.agent_session_id,
+                        "processId": s.process_id,
+                        "agentAlive": agent_alive,
+                        "cwd": cwd,
+                        "streamingMessageId": s.streaming_message_id,
+                        "toolsThisTurn": s.tools_this_turn,
+                        "needsHistoryBootstrap": s.needs_history_bootstrap,
+                        "lastError": s.fsm.last_error().map(|e| {
+                            serde_json::json!({
+                                "code": e.code.as_str(),
+                                "message": e.message,
+                            })
+                        }),
+                    }));
+                }
+            }
+        }
+        let parked = self.parked.lock();
+        if let Some(p) = parked.get(app_session_id) {
+            return Some(serde_json::json!({
+                "slot": "parked",
+                "state": "Ready",
+                "backend": p.backend,
+                "modelId": p.model_id,
+                "effort": p.effort,
+                "mode": p.product_mode,
+                "permissionPolicy": p.policy.as_str(),
+                "projectPath": p.project_path,
+                "agentSessionId": p.meta.agent_session_id,
+                "processId": p.process_id,
+                "agentAlive": p.acp.is_alive(),
+                "cwd": p.acp.cwd().display().to_string(),
+                "streamingMessageId": serde_json::Value::Null,
+                "toolsThisTurn": 0,
+                "needsHistoryBootstrap": p.needs_history_bootstrap,
+                "lastError": serde_json::Value::Null,
+            }));
+        }
+        None
+    }
+
     /// Keep live session meta title in sync after store rename / auto-title.
     /// Without this, later `session://state` events re-emit the stale connect-time title
     /// and wipe sidebar / header renames.
@@ -1063,10 +1257,19 @@ impl SessionManager {
         let max_concurrent = normalize_max_concurrent(settings.max_concurrent_agents);
         self.sweep_dead_parked();
 
+        // Orphan chats (no project): use $HOME, never process cwd.
+        // Dock-launched macOS apps often have cwd `/`, which confuses the agent.
         let cwd = project_path
             .clone()
             .map(std::path::PathBuf::from)
-            .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| ".".into()));
+            .unwrap_or_else(|| {
+                let home = crate::process_util::user_home();
+                if home.is_dir() {
+                    home
+                } else {
+                    std::env::current_dir().unwrap_or_else(|_| ".".into())
+                }
+            });
 
         // Ensure app session meta
         let mut meta = if let Some(id) = app_session_id {
@@ -1110,9 +1313,24 @@ impl SessionManager {
             }
         }
 
+        // Target already streaming in background → promote to focus.
+        if self.background.lock().contains_key(&meta.id) {
+            if let Err(e) = self.try_park_live() {
+                Self::emit_process_limit(&app, Some(&meta.id), max_concurrent);
+                return Err(format!("{}: {}", e.code.as_str(), e.message));
+            }
+            if let Some(live) = self.background.lock().remove(&meta.id) {
+                *self.inner.lock() = Some(live);
+                let snap = self.snapshot();
+                Self::emit_state(&app, &snap);
+                tracing::info!("acp promoted background session to live sid={}", meta.id);
+                return Ok(snap);
+            }
+        }
+
         // Target already parked (warm multi-session) → unpark.
         if self.parked.lock().contains_key(&meta.id) {
-            // Park current live if needed (busy → error).
+            // Park current live if needed (busy → demote to background / park).
             if let Err(e) = self.try_park_live() {
                 Self::emit_process_limit(&app, Some(&meta.id), max_concurrent);
                 return Err(format!("{}: {}", e.code.as_str(), e.message));
@@ -1252,6 +1470,7 @@ impl SessionManager {
                 journal_throttle: JournalWriteThrottle::with_default_interval(),
                 open_tool_ids: HashSet::new(),
                 deferred_prompt_complete: None,
+                tools_this_turn: 0,
             });
         }
         Self::emit_state(&app, &self.snapshot());
@@ -1516,18 +1735,34 @@ impl SessionManager {
     }
 
     async fn handle_acp_event(self: &Arc<Self>, app: &AppHandle, process_id: &str, ev: AcpEvent) {
-        // Drop events from non-focused processes (parked agents should be idle).
-        // ProcessExited still cleans parked map entries.
+        // Route events to the focused live session **or** a background busy session
+        // (multi-session parallel streaming). Idle parked agents should not emit.
         let is_live = self
             .inner
             .lock()
             .as_ref()
             .map(|s| s.process_id == process_id)
             .unwrap_or(false);
+        let bg_sid = if !is_live {
+            self.background
+                .lock()
+                .iter()
+                .find(|(_, s)| s.process_id == process_id)
+                .map(|(id, _)| id.clone())
+        } else {
+            None
+        };
+
         if !is_live {
+            if let Some(sid) = bg_sid {
+                self.handle_acp_event_on_background(app, &sid, ev).await;
+                return;
+            }
             if let AcpEvent::ProcessExited { .. } = &ev {
                 let mut parked = self.parked.lock();
                 parked.retain(|_, p| p.process_id != process_id);
+                let mut bg = self.background.lock();
+                bg.retain(|_, s| s.process_id != process_id);
             }
             return;
         }
@@ -1624,25 +1859,32 @@ impl SessionManager {
                 let _ = app.emit("session://stream", payload);
             }
             AcpEvent::PromptComplete { stop_reason } => {
-                {
+                let empty_run = {
                     let mut guard = self.inner.lock();
                     if let Some(s) = guard.as_mut() {
                         Self::touch_stream_progress_locked(s);
                         s.deferred_prompt_complete = Some(stop_reason.clone());
                         // #52: do not Ready the UI while tools / permission / ask_user / plan
                         // are still open — agent often fires prompt_complete early.
-                        if !Self::try_finish_deferred_prompt_complete(s) {
-                            tracing::info!(
-                                "acp prompt_complete deferred stop={stop_reason} tools={} perm={} plan={} ask={}",
-                                s.open_tool_ids.len(),
-                                s.fsm.state() == SessionState::AwaitingPermission,
-                                s.pending_plan_rpc_id.is_some(),
-                                s.pending_ask_user_rpc_id.is_some(),
-                            );
+                        match Self::try_finish_deferred_prompt_complete(s) {
+                            None => {
+                                tracing::info!(
+                                    "acp prompt_complete deferred stop={stop_reason} tools={} perm={} plan={} ask={}",
+                                    s.open_tool_ids.len(),
+                                    s.fsm.state() == SessionState::AwaitingPermission,
+                                    s.pending_plan_rpc_id.is_some(),
+                                    s.pending_ask_user_rpc_id.is_some(),
+                                );
+                                None
+                            }
+                            Some(empty) => empty,
                         }
+                    } else {
+                        None
                     }
-                }
+                };
                 Self::emit_state(app, &self.snapshot());
+                Self::emit_empty_run_if_any(app, empty_run);
             }
             AcpEvent::PermissionRequest {
                 rpc_id,
@@ -1711,13 +1953,18 @@ impl SessionManager {
                                 PermissionOutcome::Selected { option_id },
                             )
                             .await;
-                        let mut guard = self.inner.lock();
-                        if let Some(s) = guard.as_mut() {
-                            if s.fsm.state() == SessionState::AwaitingPermission {
-                                let _ = s.fsm.permission_resolved_continue();
+                        let empty = {
+                            let mut guard = self.inner.lock();
+                            if let Some(s) = guard.as_mut() {
+                                if s.fsm.state() == SessionState::AwaitingPermission {
+                                    let _ = s.fsm.permission_resolved_continue();
+                                }
+                                Self::try_finish_deferred_prompt_complete(s).flatten()
+                            } else {
+                                None
                             }
-                            let _ = Self::try_finish_deferred_prompt_complete(s);
-                        }
+                        };
+                        Self::emit_empty_run_if_any(app, empty);
                     }
                 } else if auto_deny {
                     let acp = self.inner.lock().as_ref().and_then(|s| s.acp.clone());
@@ -1733,13 +1980,18 @@ impl SessionManager {
                                 PermissionOutcome::Selected { option_id },
                             )
                             .await;
-                        let mut guard = self.inner.lock();
-                        if let Some(s) = guard.as_mut() {
-                            if s.fsm.state() == SessionState::AwaitingPermission {
-                                let _ = s.fsm.permission_resolved_continue();
+                        let empty = {
+                            let mut guard = self.inner.lock();
+                            if let Some(s) = guard.as_mut() {
+                                if s.fsm.state() == SessionState::AwaitingPermission {
+                                    let _ = s.fsm.permission_resolved_continue();
+                                }
+                                Self::try_finish_deferred_prompt_complete(s).flatten()
+                            } else {
+                                None
                             }
-                            let _ = Self::try_finish_deferred_prompt_complete(s);
-                        }
+                        };
+                        Self::emit_empty_run_if_any(app, empty);
                     }
                 } else {
                     let req = UiPermissionRequest {
@@ -1807,7 +2059,7 @@ impl SessionManager {
                     );
                 }
 
-                let app_sid = {
+                let (app_sid, empty_run) = {
                     let mut guard = self.inner.lock();
                     if let Some(s) = guard.as_mut() {
                         // Tool events count as progress so long tools never false-stall (I06).
@@ -1819,13 +2071,15 @@ impl SessionManager {
                                 s.open_tool_ids.insert(tool_call_id.clone());
                             }
                         }
+                        s.tools_this_turn = s.tools_this_turn.saturating_add(1);
                         // Tools settled → apply deferred prompt_complete if any (#52).
-                        let _ = Self::try_finish_deferred_prompt_complete(s);
-                        s.app_session_id.clone()
+                        let empty = Self::try_finish_deferred_prompt_complete(s).flatten();
+                        (s.app_session_id.clone(), empty)
                     } else {
-                        String::new()
+                        (String::new(), None)
                     }
                 };
+                Self::emit_empty_run_if_any(app, empty_run);
 
                 // Live tool activity for UI — prefer human call text over bare "tool".
                 let live_title = if !title.is_empty() && title.to_ascii_lowercase() != "tool" {
@@ -2192,6 +2446,280 @@ impl SessionManager {
         }
     }
 
+    /// Apply ACP events for a session demoted to background (still streaming).
+    /// Emits the same `session://*` events with that session's id so the UI can
+    /// update caches without focus, and permissions are not applied to the wrong chat.
+    async fn handle_acp_event_on_background(
+        self: &Arc<Self>,
+        app: &AppHandle,
+        app_session_id: &str,
+        ev: AcpEvent,
+    ) {
+        match ev {
+            AcpEvent::Stream {
+                kind,
+                text,
+                message_id,
+                done,
+            } => {
+                let (app_sid, mid, thought_phase) = {
+                    let mut bg = self.background.lock();
+                    let Some(s) = bg.get_mut(app_session_id) else {
+                        return;
+                    };
+                    if !matches!(
+                        s.fsm.state(),
+                        SessionState::Streaming | SessionState::AwaitingPermission
+                    ) {
+                        return;
+                    }
+                    Self::touch_stream_progress_locked(s);
+                    if let Some(ref mid_in) = message_id {
+                        if s.streaming_message_id.as_ref() != Some(mid_in)
+                            && (s.streaming_message_id.is_none()
+                                || matches!(kind, StreamKind::Assistant))
+                        {
+                            s.streaming_message_id = Some(mid_in.clone());
+                        }
+                    }
+                    if s.streaming_message_id.is_none() {
+                        s.streaming_message_id =
+                            Some(message_id.unwrap_or_else(|| Uuid::new_v4().to_string()));
+                    }
+                    let thought_phase = match kind {
+                        StreamKind::Thought => {
+                            let phase = if s.stream_last_was_assistant {
+                                if !s.stream_thought.is_empty() {
+                                    s.stream_thought.push_str("\n\n⟪phase⟫\n\n");
+                                }
+                                s.stream_last_was_assistant = false;
+                                "new"
+                            } else if s.stream_thought.is_empty() {
+                                "open"
+                            } else {
+                                "continue"
+                            };
+                            s.stream_thought.push_str(&text);
+                            phase
+                        }
+                        StreamKind::Assistant => {
+                            s.stream_buf.push_str(&text);
+                            s.stream_last_was_assistant = true;
+                            "none"
+                        }
+                    };
+                    let para = is_paragraph_break(&text);
+                    Self::maybe_flush_stream_journal(s, done, para);
+                    (
+                        s.app_session_id.clone(),
+                        s.streaming_message_id.clone().unwrap_or_default(),
+                        thought_phase,
+                    )
+                };
+                let _ = app.emit(
+                    "session://stream",
+                    serde_json::json!({
+                        "sessionId": app_sid,
+                        "messageId": mid,
+                        "text": text,
+                        "done": done,
+                        "kind": match kind {
+                            StreamKind::Assistant => "assistant",
+                            StreamKind::Thought => "thought",
+                        },
+                        "thoughtPhase": thought_phase,
+                    }),
+                );
+            }
+            AcpEvent::PromptComplete { stop_reason: _ } => {
+                {
+                    let mut bg = self.background.lock();
+                    if let Some(s) = bg.get_mut(app_session_id) {
+                        Self::touch_stream_progress_locked(s);
+                        Self::maybe_flush_stream_journal(s, true, false);
+                        s.stream_buf.clear();
+                        s.stream_thought.clear();
+                        s.stream_last_was_assistant = false;
+                        s.stream_attachments.clear();
+                        s.journal_throttle.reset();
+                        if matches!(
+                            s.fsm.state(),
+                            SessionState::Streaming | SessionState::AwaitingPermission
+                        ) {
+                            let _ = s.fsm.end_stream();
+                        }
+                        s.streaming_message_id = None;
+                        s.last_stall_emit = None;
+                    }
+                }
+                self.promote_background_ready_to_parked(app_session_id);
+                // Snapshot is focused live — still emit so sidebar busy flags can refresh.
+                Self::emit_state(app, &self.snapshot());
+            }
+            AcpEvent::PermissionRequest {
+                rpc_id,
+                tool_call_id,
+                tool_name,
+                title,
+                options,
+                raw,
+            } => {
+                let preview = raw.to_string();
+                let path_target = extract_path_target(&raw);
+                let shell_command = extract_shell_command(&raw);
+                let sk_source = if path_target.is_empty() {
+                    title.clone()
+                } else {
+                    path_target.clone()
+                };
+                let sk = scope_key(&tool_name, &sk_source);
+                let (auto, auto_deny, session_id, project_path, acp) = {
+                    let mut bg = self.background.lock();
+                    if let Some(s) = bg.get_mut(app_session_id) {
+                        Self::touch_activity_locked(s);
+                        let _ = s.fsm.await_permission();
+                        let root = s.project_path.as_ref().map(std::path::PathBuf::from);
+                        let auto = may_auto_allow(
+                            s.policy,
+                            &s.allow_cache,
+                            &sk,
+                            root.as_deref(),
+                            &path_target,
+                            &tool_name,
+                            &shell_command,
+                        );
+                        let auto_deny = may_auto_deny(s.policy) && !auto;
+                        (
+                            auto,
+                            auto_deny,
+                            s.app_session_id.clone(),
+                            s.project_path.clone(),
+                            s.acp.clone(),
+                        )
+                    } else {
+                        return;
+                    }
+                };
+                let _ = project_path;
+                if auto {
+                    if let Some(acp) = acp {
+                        let option_id = pick_option_id(&options, "allow_once")
+                            .or_else(|| pick_option_id(&options, "allow"))
+                            .unwrap_or_else(|| "allow_once".into());
+                        let _ = acp
+                            .respond_permission(
+                                rpc_id,
+                                PermissionOutcome::Selected { option_id },
+                            )
+                            .await;
+                        let mut bg = self.background.lock();
+                        if let Some(s) = bg.get_mut(app_session_id) {
+                            if s.fsm.state() == SessionState::AwaitingPermission {
+                                let _ = s.fsm.permission_resolved_continue();
+                            }
+                        }
+                    }
+                } else if auto_deny {
+                    if let Some(acp) = acp {
+                        let option_id = pick_option_id(&options, "reject_once")
+                            .or_else(|| pick_option_id(&options, "reject"))
+                            .unwrap_or_else(|| "reject".into());
+                        let _ = acp
+                            .respond_permission(
+                                rpc_id,
+                                PermissionOutcome::Selected { option_id },
+                            )
+                            .await;
+                        let mut bg = self.background.lock();
+                        if let Some(s) = bg.get_mut(app_session_id) {
+                            if s.fsm.state() == SessionState::AwaitingPermission {
+                                let _ = s.fsm.permission_resolved_continue();
+                            }
+                        }
+                    }
+                } else {
+                    let req = UiPermissionRequest {
+                        rpc_id,
+                        session_id: session_id.clone(),
+                        tool_call_id,
+                        tool_name,
+                        title,
+                        preview: preview.chars().take(2000).collect(),
+                        scope_key: sk,
+                        options,
+                    };
+                    let _ = app.emit("session://permission", &req);
+                    // Tell UI this permission belongs to a non-focused session.
+                    let _ = app.emit(
+                        "session://background_permission",
+                        serde_json::json!({ "sessionId": session_id }),
+                    );
+                    Self::emit_state(app, &self.snapshot());
+                }
+            }
+            AcpEvent::ToolCall {
+                tool_call_id,
+                title,
+                kind,
+                status,
+                raw: _,
+            } => {
+                let app_sid = {
+                    let mut bg = self.background.lock();
+                    if let Some(s) = bg.get_mut(app_session_id) {
+                        Self::touch_stream_progress_locked(s);
+                        s.app_session_id.clone()
+                    } else {
+                        return;
+                    }
+                };
+                let live_title = if !title.is_empty() {
+                    title
+                } else {
+                    kind.clone()
+                };
+                let st = if status.is_empty() {
+                    "in_progress"
+                } else {
+                    status.as_str()
+                };
+                let _ = app.emit(
+                    "session://tool",
+                    serde_json::json!({
+                        "sessionId": app_sid,
+                        "toolCallId": tool_call_id,
+                        "title": live_title,
+                        "kind": kind,
+                        "status": st,
+                    }),
+                );
+            }
+            AcpEvent::ProcessExited { .. } => {
+                let mut bg = self.background.lock();
+                if let Some(mut s) = bg.remove(app_session_id) {
+                    let _ = s.fsm.crash("Agent process exited (background)");
+                    s.acp = None;
+                }
+                Self::emit_state(app, &self.snapshot());
+            }
+            AcpEvent::Error { error } => {
+                {
+                    let mut bg = self.background.lock();
+                    if let Some(s) = bg.get_mut(app_session_id) {
+                        Self::record_turn_error(s, app, &error);
+                        let _ = s.fsm.fail_with(error);
+                    }
+                }
+                self.promote_background_ready_to_parked(app_session_id);
+                Self::emit_state(app, &self.snapshot());
+            }
+            _ => {
+                // ask_user / plan / stderr / retry — still forward with session id when possible
+                tracing::debug!("background acp event ignored variant for sid={app_session_id}");
+            }
+        }
+    }
+
     /// Drop the last user turn (and everything after) on the agent + local journal.
     /// Used before re-sending an edited last user message so the previous assistant
     /// reply is replaced, not stacked.
@@ -2482,6 +3010,7 @@ impl SessionManager {
             s.deferred_prompt_complete = None;
             s.provider_retry_attempt = 0;
             s.provider_retry_aborted = false;
+            s.tools_this_turn = 0;
 
             let mut agent_prompt = text.clone();
             if s.needs_history_bootstrap {
@@ -2865,10 +3394,11 @@ impl SessionManager {
                 let _ = s.fsm.permission_resolved_continue();
             }
             // Permission cleared — may finish a deferred prompt_complete (#52).
-            let _ = Self::try_finish_deferred_prompt_complete(s);
-            s.acp.clone()
+            let empty = Self::try_finish_deferred_prompt_complete(s).flatten();
+            (s.acp.clone(), empty)
         };
 
+        let (acp, empty_run) = acp;
         if let Some(acp) = acp {
             let outcome = match decision.as_str() {
                 "cancel" => PermissionOutcome::Cancelled,
@@ -2886,6 +3416,7 @@ impl SessionManager {
         }
         let snap = self.snapshot();
         Self::emit_state(&app, &snap);
+        Self::emit_empty_run_if_any(&app, empty_run);
         Ok(snap)
     }
 
@@ -2910,14 +3441,17 @@ impl SessionManager {
         let id = id.ok_or_else(|| "no pending plan approval".to_string())?;
         let acp = acp.ok_or_else(|| "ACP client missing".to_string())?;
         acp.respond_exit_plan_mode(id, &decision, feedback).await?;
-        {
+        let empty_run = {
             let mut guard = self.inner.lock();
             if let Some(s) = guard.as_mut() {
-                let _ = Self::try_finish_deferred_prompt_complete(s);
+                Self::try_finish_deferred_prompt_complete(s).flatten()
+            } else {
+                None
             }
-        }
+        };
         let snap = self.snapshot();
         Self::emit_state(&app, &snap);
+        Self::emit_empty_run_if_any(&app, empty_run);
         Ok(snap)
     }
 
@@ -2952,14 +3486,17 @@ impl SessionManager {
             _ => AskUserOutcome::Cancelled,
         };
         acp.respond_ask_user_question(id, outcome).await?;
-        {
+        let empty_run = {
             let mut guard = self.inner.lock();
             if let Some(s) = guard.as_mut() {
-                let _ = Self::try_finish_deferred_prompt_complete(s);
+                Self::try_finish_deferred_prompt_complete(s).flatten()
+            } else {
+                None
             }
-        }
+        };
         let snap = self.snapshot();
         Self::emit_state(&app, &snap);
+        Self::emit_empty_run_if_any(&app, empty_run);
         Ok(snap)
     }
 

@@ -1278,28 +1278,51 @@ pub async fn export_support_bundle(
     };
 
     let tmp = crate::support_bundle::write_support_bundle(&doctor)?;
+    save_and_reveal_zip(tmp, "Save support bundle", "grok-app-support.zip")
+}
 
-    // Let the user pick where to keep it (cancel keeps the temp path).
+/// Full session diagnostic zip: messages, meta, settings, CLI probe, agent trail, logs.
+/// Redacts secrets. Opens a save dialog and reveals the file.
+#[tauri::command]
+pub async fn export_session_bundle(
+    session_id: String,
+    mgr: State<'_, Arc<SessionManager>>,
+) -> Result<serde_json::Value, String> {
+    let sid = session_id.trim().to_string();
+    if sid.is_empty() {
+        return Err("session id is empty".into());
+    }
+    let runtime = mgr.diagnostic_runtime_for(&sid);
+    let tmp = crate::support_bundle::write_session_bundle(&sid, runtime)?;
+    let short: String = sid.chars().take(8).collect();
+    let suggested = format!("grok-app-session-{short}.zip");
+    save_and_reveal_zip(tmp, "Save session diagnostic bundle", &suggested)
+}
+
+fn save_and_reveal_zip(
+    tmp: std::path::PathBuf,
+    dialog_title: &str,
+    fallback_name: &str,
+) -> Result<serde_json::Value, String> {
     let suggested = tmp
         .file_name()
         .and_then(|s| s.to_str())
-        .unwrap_or("grok-app-support.zip")
+        .unwrap_or(fallback_name)
         .to_string();
     let dest = rfd::FileDialog::new()
-        .set_title("Save support bundle")
+        .set_title(dialog_title)
         .set_file_name(&suggested)
         .add_filter("Zip", &["zip"])
         .save_file();
 
     let final_path = if let Some(dest) = dest {
-        std::fs::copy(&tmp, &dest).map_err(|e| format!("copy support zip: {e}"))?;
+        std::fs::copy(&tmp, &dest).map_err(|e| format!("copy zip: {e}"))?;
         let _ = std::fs::remove_file(&tmp);
         dest
     } else {
         tmp
     };
 
-    // Reveal in Finder / Explorer when possible.
     let path_s = final_path.display().to_string();
     #[cfg(target_os = "macos")]
     {

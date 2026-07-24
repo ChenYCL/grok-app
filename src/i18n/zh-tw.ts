@@ -83,6 +83,8 @@ export const zhTW: Record<MessageKey, string> = {
     "複製到此為止的訊息並建立新對話？之後的回合不會複製。",
   "session.forkOk": "已分叉 · 已開啟新對話",
   "session.forkFailed": "分叉對話失敗",
+  "session.backgroundPermission":
+    "另一個對話需要權限批准 — 請切換過去以允許或拒絕。",
   "session.rewind": "回退時間線",
   "session.rewindTitle": "回退對話",
   "session.rewindHint":
@@ -279,6 +281,7 @@ export const zhTW: Record<MessageKey, string> = {
   "composer.worktrees": "Git worktrees",
   "composer.worktreesEmpty": "沒有關聯的 worktree",
   "composer.worktreesUnavailable": "無法列出 worktree（需要 git 倉庫）",
+  "composer.worktreesLoading": "正在載入 worktree…",
   "composer.worktreeCurrent": "目前",
   "composer.worktreeSwitch": "切換",
   "composer.worktreeMain": "主目錄",
@@ -787,8 +790,13 @@ export const zhTW: Record<MessageKey, string> = {
   "shortcuts.help": "顯示快捷鍵",
 
   "session.exportMd": "匯出對話為 Markdown",
+  "session.exportBundle": "匯出完整診斷包…",
+  "session.exportBundleDone": "診斷包已儲存",
+  "session.exportBundleFail": "診斷包匯出失敗",
   "session.exportDone": "對話已匯出",
   "session.exportFail": "匯出失敗",
+  "session.emptyRunToast":
+    "本輪未呼叫任何工具就結束了。若任務未完成可回覆「繼續」；也可從對話選單匯出診斷包回報。",
 
   "empty.noProjectTitle": "尚未開啟專案",
   "empty.noProjectHint": "從側欄新增資料夾，以便帶上下文開始工作。",
@@ -940,6 +948,9 @@ export const zhTW: Record<MessageKey, string> = {
   "common.comingSoon": "即將推出",
   "common.local": "本機",
   "common.close": "關閉",
+  "a11y.assistantStreaming": "助手正在回覆",
+  "a11y.assistantDone": "助手回覆已完成",
+  "a11y.permissionNeeded": "需要權限批准。請選擇允許或拒絕。",
   "perm.title": "權限",
   "perm.allowOnce": "允許一次",
   "perm.allowSession": "對話內允許",

@@ -218,6 +218,10 @@ import {
   type SessionFileChange,
 } from "@/lib/sessionChanges";
 import { ConversationThread } from "@/components/lobe-chat";
+import {
+  preferPermissionFocus,
+  trapTabKey,
+} from "@/lib/a11yFocus";
 import { Spinner } from "@/components/ui/spinner";
 import { UserMenu, remainingPercent } from "@/components/UserMenu";
 import {
@@ -568,7 +572,11 @@ export default function App() {
   const [savedAccounts, setSavedAccounts] = useState<api.SavedAccount[]>([]);
   const [activeAccountId, setActiveAccountId] = useState<string | null>(null);
   const [perm, setPerm] = useState<PermissionPayload | null>(null);
+  const permBarRef = useRef<HTMLDivElement | null>(null);
   const [askUser, setAskUser] = useState<AskUserPayload | null>(null);
+  /** Polite SR announce for stream start/stop (not every token). */
+  const [streamA11yNote, setStreamA11yNote] = useState("");
+  const wasStreamingRef = useRef(false);
   const [plan, setPlan] = useState<PlanState & { visible: boolean }>({
     title: "Plan ready for review",
     body: "",
@@ -627,6 +635,10 @@ export default function App() {
   const [streamStallSeconds, setStreamStallSeconds] = useState(120);
   const [storeApiKeysInKeychain, setStoreApiKeysInKeychain] = useState(false);
   const [gitWorktrees, setGitWorktrees] = useState<api.GitWorktreeEntry[]>([]);
+  /** null = unknown/loading; true = git work tree; false = not a git repo. */
+  const [gitWorktreesAvailable, setGitWorktreesAvailable] = useState<
+    boolean | null
+  >(null);
   const [gitWorktreesLoading, setGitWorktreesLoading] = useState(false);
   const [gitWorktreesReason, setGitWorktreesReason] = useState<string | null>(
     null,
@@ -1342,6 +1354,23 @@ export default function App() {
         await track(
           api.listen<{
             sessionId?: string;
+            stopReason?: string;
+            toolCount?: number;
+          }>("session://turn_empty_run", (p) => {
+            if (cancelled || !p) return;
+            if (
+              p.sessionId &&
+              p.sessionId !== viewingSessionIdRef.current
+            ) {
+              return;
+            }
+            setToast(tr("session.emptyRunToast"));
+            window.setTimeout(() => setToast(null), 7200);
+          }),
+        );
+        await track(
+          api.listen<{
+            sessionId?: string;
             code?: string;
             message?: string;
             maxConcurrentAgents?: number;
@@ -1433,6 +1462,15 @@ export default function App() {
               p.sessionId &&
               p.sessionId !== viewingSessionIdRef.current
             ) {
+              // Multi-session stream: another chat needs approval — nudge user.
+              setToast(trRef.current("session.backgroundPermission"));
+              window.setTimeout(() => setToast(null), 4200);
+              showDesktopNotification({
+                title: trRef.current("notify.permissionTitle"),
+                body: trRef.current("session.backgroundPermission"),
+                tag: `perm-bg-${p.rpcId}`,
+                force: true,
+              });
               return;
             }
             setPerm(p);
@@ -4645,29 +4683,50 @@ export default function App() {
     [session.sessionId, showToast, tr],
   );
 
+  const gitWorktreesReqRef = useRef(0);
+  const gitWorktreesPathRef = useRef<string | null>(null);
   const refreshGitWorktrees = useCallback(async () => {
-    const path = activeProject?.path?.trim();
+    const path = activeProject?.path?.trim() || null;
     if (!path || !api.isTauri()) {
+      gitWorktreesReqRef.current += 1;
+      gitWorktreesPathRef.current = null;
       setGitWorktrees([]);
+      setGitWorktreesAvailable(null);
       setGitWorktreesReason(null);
       setGitWorktreesLoading(false);
       return;
     }
+    const reqId = ++gitWorktreesReqRef.current;
+    // Drop stale rows when the active project path changes; soft-refresh keeps
+    // the previous list for the same path so the menu does not flash empty.
+    if (gitWorktreesPathRef.current !== path) {
+      gitWorktreesPathRef.current = path;
+      setGitWorktrees([]);
+      setGitWorktreesAvailable(null);
+      setGitWorktreesReason(null);
+    }
     setGitWorktreesLoading(true);
     try {
       const res = await api.gitWorktreesList(path);
+      if (reqId !== gitWorktreesReqRef.current) return;
       if (!res.available) {
         setGitWorktrees([]);
+        setGitWorktreesAvailable(false);
         setGitWorktreesReason(res.reason?.trim() || "unavailable");
       } else {
         setGitWorktrees(res.worktrees ?? []);
+        setGitWorktreesAvailable(true);
         setGitWorktreesReason(null);
       }
     } catch (e) {
+      if (reqId !== gitWorktreesReqRef.current) return;
       setGitWorktrees([]);
+      setGitWorktreesAvailable(false);
       setGitWorktreesReason(String(e));
     } finally {
-      setGitWorktreesLoading(false);
+      if (reqId === gitWorktreesReqRef.current) {
+        setGitWorktreesLoading(false);
+      }
     }
   }, [activeProject?.path]);
 
@@ -4952,6 +5011,58 @@ export default function App() {
     setErrorDetailOpen(false);
   }, [errorBanner?.code, errorBanner?.summary, errorBanner?.detail]);
 
+  // T15: announce stream start/end once (avoid token-level noise).
+  useEffect(() => {
+    const streaming =
+      session.state === "streaming" ||
+      messages.some((m) => m.role === "assistant" && m.streaming);
+    if (streaming && !wasStreamingRef.current) {
+      setStreamA11yNote(tr("a11y.assistantStreaming"));
+    } else if (!streaming && wasStreamingRef.current) {
+      setStreamA11yNote(tr("a11y.assistantDone"));
+      const t = window.setTimeout(() => setStreamA11yNote(""), 2500);
+      wasStreamingRef.current = streaming;
+      return () => window.clearTimeout(t);
+    }
+    wasStreamingRef.current = streaming;
+  }, [session.state, messages, tr]);
+
+  // T15: permission bar — focus primary action, Tab trap, Escape → deny.
+  useEffect(() => {
+    if (!perm) return;
+    const t = window.setTimeout(() => {
+      preferPermissionFocus(permBarRef.current);
+    }, 0);
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        e.stopPropagation();
+        const deny = mapPermissionButtons(perm.options, {
+          allowOnce: tr("perm.allowOnce"),
+          allowSession: tr("perm.allowSession"),
+          deny: tr("perm.deny"),
+        }).find((b) => b.decision === "deny");
+        if (deny) {
+          void api
+            .sessionResolvePermission({
+              rpcId: perm.rpcId,
+              decision: deny.decision,
+              optionId: deny.optionId,
+              scopeKey: perm.scopeKey,
+            })
+            .then(() => setPerm(null));
+        }
+        return;
+      }
+      trapTabKey(e, permBarRef.current);
+    };
+    document.addEventListener("keydown", onKey, true);
+    return () => {
+      window.clearTimeout(t);
+      document.removeEventListener("keydown", onKey, true);
+    };
+  }, [perm, tr]);
+
   /** T04 deck buttons: reconnect / Doctor / Settings sections / dismiss. */
   const runErrorBannerAction = useCallback(
     (action: NonNullable<ErrorBannerView["primary"]>) => {
@@ -5129,6 +5240,28 @@ export default function App() {
       showToast,
       tr,
     ],
+  );
+
+  /** Full diagnostic zip (messages + agent trail + logs) for bug reports. */
+  const exportSessionDiagnostic = useCallback(
+    async (sessionId?: string | null) => {
+      const id = sessionId || session.sessionId;
+      if (!id) {
+        showToast(tr("session.exportBundleFail"));
+        return;
+      }
+      try {
+        const res = await api.exportSessionBundle(id);
+        if (res?.ok && res.path) {
+          showToast(tr("session.exportBundleDone"), 4200);
+        } else {
+          showToast(tr("session.exportBundleFail"));
+        }
+      } catch (e) {
+        showToast(`${tr("session.exportBundleFail")}: ${String(e)}`, 5000);
+      }
+    },
+    [session.sessionId, showToast, tr],
   );
 
   const beginEditLastUser = useCallback(
@@ -6855,6 +6988,9 @@ export default function App() {
               } as CSSProperties
             }
           >
+          <div className="sr-only" aria-live="polite" aria-atomic="true">
+            {streamA11yNote}
+          </div>
           <ConversationThread
             locale={locale}
             messages={messages}
@@ -6922,17 +7058,25 @@ export default function App() {
             ) : null}
             {perm ? (
               <div
+                ref={permBarRef}
                 className="perm-bar"
                 role="dialog"
-                aria-label={tr("perm.title")}
+                aria-modal="true"
+                aria-labelledby="perm-bar-title"
+                aria-describedby="perm-bar-summary"
               >
+                <div className="sr-only" aria-live="assertive">
+                  {tr("a11y.permissionNeeded")}
+                </div>
                 <div className="perm-bar__head">
-                  <span className="perm-bar__badge">{tr("perm.title")}</span>
+                  <span className="perm-bar__badge" id="perm-bar-title">
+                    {tr("perm.title")}
+                  </span>
                   <span className="perm-bar__tool">
                     {perm.title || perm.toolName}
                   </span>
                 </div>
-                <p className="perm-bar__summary">
+                <p className="perm-bar__summary" id="perm-bar-summary">
                   {formatPermissionSummary({
                     toolName: perm.toolName,
                     title: perm.title,
@@ -6942,7 +7086,7 @@ export default function App() {
                 {perm.preview?.trim() ? (
                   <pre className="perm-bar__preview">{perm.preview.trim()}</pre>
                 ) : null}
-                <div className="perm-bar__actions">
+                <div className="perm-bar__actions" role="group">
                   {mapPermissionButtons(perm.options, {
                     allowOnce: tr("perm.allowOnce"),
                     allowSession: tr("perm.allowSession"),
@@ -7242,6 +7386,7 @@ export default function App() {
                     worktreeDetached: tr("composer.worktreeDetached"),
                   }}
                   worktrees={gitWorktrees}
+                  worktreesAvailable={gitWorktreesAvailable}
                   worktreesLoading={gitWorktreesLoading}
                   worktreesReason={gitWorktreesReason}
                   disabled={
@@ -7257,9 +7402,7 @@ export default function App() {
                   onSwitchWorktree={(wt) => {
                     void switchToWorktree(wt);
                   }}
-                  onOpen={() => {
-                    void refreshGitWorktrees();
-                  }}
+                  onOpen={refreshGitWorktrees}
                 />
                 {goalMode ? (
                   <Tip label={tr("composer.goalHint")}>
@@ -8120,6 +8263,14 @@ export default function App() {
                     title: s.title,
                     projectId: s.projectId,
                   });
+                },
+              },
+              {
+                id: "export-bundle",
+                label: tr("session.exportBundle"),
+                icon: <IconCopy size={16} />,
+                onClick: () => {
+                  void exportSessionDiagnostic(s.id);
                 },
               },
               {

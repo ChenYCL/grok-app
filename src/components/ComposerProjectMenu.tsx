@@ -12,11 +12,7 @@ import {
 } from "@/components/icons";
 import { Tip } from "@/components/ui/tooltip";
 import { useFloatingMenu } from "@/lib/floatingMenu";
-import {
-  pathsEqual,
-  siblingWorktrees,
-  worktreeLabel,
-} from "@/lib/gitWorktree";
+import { pathsEqual, worktreeLabel } from "@/lib/gitWorktree";
 import type { GitWorktreeEntry } from "@/lib/api";
 
 export type ProjectOption = {
@@ -38,6 +34,7 @@ type Props = {
     worktrees: string;
     worktreesEmpty: string;
     worktreesUnavailable: string;
+    worktreesLoading?: string;
     worktreeCurrent: string;
     worktreeSwitch: string;
     worktreeMain: string;
@@ -45,6 +42,12 @@ type Props = {
   };
   /** Linked worktrees for the active project (loaded by parent). */
   worktrees?: GitWorktreeEntry[];
+  /**
+   * `true` only after host confirmed a git work tree.
+   * `false` = not a git repo / git missing — section hidden.
+   * `null` / omitted = unknown (loading or no project) — section hidden.
+   */
+  worktreesAvailable?: boolean | null;
   worktreesLoading?: boolean;
   worktreesReason?: string | null;
   disabled?: boolean;
@@ -62,6 +65,7 @@ export function ComposerProjectMenu({
   projects,
   labels,
   worktrees = [],
+  worktreesAvailable = null,
   worktreesLoading = false,
   worktreesReason = null,
   disabled,
@@ -74,17 +78,20 @@ export function ComposerProjectMenu({
   const rootRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const popRef = useRef<HTMLDivElement>(null);
+  /** Avoid putting unstable parent callbacks in the open-effect deps (re-fetch loop). */
+  const onOpenRef = useRef(onOpen);
+  onOpenRef.current = onOpen;
 
-  const siblings = activeProject
-    ? siblingWorktrees(worktrees, activeProject.path)
-    : [];
-  const showWorktrees = !!activeProject && (worktreesLoading || worktrees.length > 0 || !!worktreesReason);
+  // Only for confirmed git work trees — hide while loading / non-git / no project.
+  const showWorktrees = !!activeProject && worktreesAvailable === true;
 
   const estHeight = Math.min(
     400,
     52 +
       Math.min(LIST_MAX_H, projects.length * 40 + 8) +
-      (showWorktrees ? 28 + Math.min(160, (siblings.length || 1) * 36 + 24) : 0),
+      (showWorktrees
+        ? 28 + Math.min(160, Math.max(worktrees.length, 1) * 36 + 8)
+        : 0),
   );
   const { pos, style: popStyle } = useFloatingMenu({
     open,
@@ -97,12 +104,14 @@ export function ComposerProjectMenu({
     minWidth: 260,
     estHeight,
     gap: 8,
-    deps: [projects.length, siblings.length, showWorktrees],
+    deps: [projects.length, worktrees.length, showWorktrees],
   });
 
+  // Refresh only when the menu opens — not when parent re-renders with a new onOpen.
   useEffect(() => {
-    if (open) onOpen?.();
-  }, [open, onOpen]);
+    if (!open) return;
+    onOpenRef.current?.();
+  }, [open]);
 
   const label = activeProject?.name ?? labels.noProject;
   const tip = activeProject?.path || labels.pickProject;
@@ -207,16 +216,14 @@ export function ComposerProjectMenu({
             {showWorktrees ? (
               <div className="cpm__worktrees" role="group" aria-label={labels.worktrees}>
                 <div className="cpm__worktrees-head">{labels.worktrees}</div>
-                {worktreesLoading ? (
-                  <p className="cpm__worktrees-empty">{labels.worktreesEmpty}</p>
-                ) : worktrees.length === 0 ? (
-                  <p className="cpm__worktrees-empty">
-                    {worktreesReason?.trim()
-                      ? labels.worktreesUnavailable
-                      : labels.worktreesEmpty}
-                  </p>
-                ) : (
-                  <ul className="cpm__worktrees-list">
+                {worktrees.length > 0 ? (
+                  <ul
+                    className={
+                      "cpm__worktrees-list" +
+                      (worktreesLoading ? " is-loading" : "")
+                    }
+                    aria-busy={worktreesLoading || undefined}
+                  >
                     {worktrees.map((wt) => {
                       const current = pathsEqual(wt.path, activeProject?.path);
                       const name = worktreeLabel(wt);
@@ -244,8 +251,8 @@ export function ComposerProjectMenu({
                               onSwitchWorktree(wt);
                             }}
                           >
-                            <span className="cmm__opt-main">
-                              <span className="cmm__opt-title">{name}</span>
+                            <span className="cpm__worktree-row">
+                              <span className="cpm__worktree-name">{name}</span>
                               {meta ? (
                                 <span className="cpm__worktree-meta">{meta}</span>
                               ) : null}
@@ -260,6 +267,12 @@ export function ComposerProjectMenu({
                       );
                     })}
                   </ul>
+                ) : (
+                  <p className="cpm__worktrees-empty">
+                    {worktreesReason?.trim()
+                      ? labels.worktreesUnavailable
+                      : labels.worktreesEmpty}
+                  </p>
                 )}
               </div>
             ) : null}

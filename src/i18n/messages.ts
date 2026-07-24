@@ -94,6 +94,8 @@ const en = {
     "Create a new chat with messages up to this point? Later turns are not copied.",
   "session.forkOk": "Forked · opened new chat",
   "session.forkFailed": "Could not fork chat",
+  "session.backgroundPermission":
+    "Another chat needs permission — switch to it to approve or deny.",
   "session.rewind": "Rewind timeline",
   "session.rewindTitle": "Rewind conversation",
   "session.rewindHint":
@@ -337,6 +339,7 @@ const en = {
   "composer.worktrees": "Git worktrees",
   "composer.worktreesEmpty": "No linked worktrees",
   "composer.worktreesUnavailable": "Worktrees unavailable (need git repo)",
+  "composer.worktreesLoading": "Loading worktrees…",
   "composer.worktreeCurrent": "current",
   "composer.worktreeSwitch": "Switch",
   "composer.worktreeMain": "main",
@@ -821,8 +824,13 @@ const en = {
 
   // Session export
   "session.exportMd": "Export chat as Markdown",
+  "session.exportBundle": "Export diagnostic package…",
+  "session.exportBundleDone": "Diagnostic package saved",
+  "session.exportBundleFail": "Diagnostic export failed",
   "session.exportDone": "Chat exported",
   "session.exportFail": "Export failed",
+  "session.emptyRunToast":
+    "This turn ended without tool calls. Reply “continue” if the task is unfinished, or export a diagnostic package from the session menu.",
 
   // Empty states
   "empty.noProjectTitle": "No project open",
@@ -980,6 +988,9 @@ const en = {
   "common.comingSoon": "Coming soon",
   "common.local": "Local",
   "common.close": "Close",
+  "a11y.assistantStreaming": "Assistant is responding",
+  "a11y.assistantDone": "Assistant finished responding",
+  "a11y.permissionNeeded": "Permission required. Choose allow or deny.",
   "perm.title": "Permission",
   "perm.allowOnce": "Allow once",
   "perm.allowSession": "Allow for session",
@@ -1189,6 +1200,8 @@ const zh: Record<MessageKey, string> = {
   "session.forkConfirmPartial":
     "复制到此为止的消息并新建会话？之后的回合不会复制。",
   "session.forkOk": "已分叉 · 已打开新会话",
+  "session.backgroundPermission":
+    "另一个会话需要权限批准 — 请切换过去以允许或拒绝。",
   "session.forkFailed": "分叉会话失败",
   "session.rewind": "回退时间线",
   "session.rewindTitle": "回退对话",
@@ -1423,6 +1436,7 @@ const zh: Record<MessageKey, string> = {
   "composer.worktrees": "Git worktrees",
   "composer.worktreesEmpty": "没有关联的 worktree",
   "composer.worktreesUnavailable": "无法列出 worktree（需要 git 仓库）",
+  "composer.worktreesLoading": "正在加载 worktree…",
   "composer.worktreeCurrent": "当前",
   "composer.worktreeSwitch": "切换",
   "composer.worktreeMain": "主目录",
@@ -1894,8 +1908,13 @@ const zh: Record<MessageKey, string> = {
   "shortcuts.help": "显示快捷键",
 
   "session.exportMd": "导出会话为 Markdown",
+  "session.exportBundle": "导出完整诊断包…",
+  "session.exportBundleDone": "诊断包已保存",
+  "session.exportBundleFail": "诊断包导出失败",
   "session.exportDone": "会话已导出",
   "session.exportFail": "导出失败",
+  "session.emptyRunToast":
+    "本轮未调用任何工具就结束了。若任务未完成可回复「继续」；也可从会话菜单导出诊断包反馈。",
 
   "empty.noProjectTitle": "尚未打开项目",
   "empty.noProjectHint": "从侧栏添加文件夹，以便带上下文开始工作。",
@@ -2048,6 +2067,9 @@ const zh: Record<MessageKey, string> = {
   "common.comingSoon": "即将推出",
   "common.local": "本地",
   "common.close": "关闭",
+  "a11y.assistantStreaming": "助手正在回复",
+  "a11y.assistantDone": "助手回复已完成",
+  "a11y.permissionNeeded": "需要权限批准。请选择允许或拒绝。",
   "perm.title": "权限",
   "perm.allowOnce": "允许一次",
   "perm.allowSession": "会话内允许",
