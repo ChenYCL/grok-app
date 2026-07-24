@@ -17,6 +17,7 @@ See `docs/llm-wiki/release.md`.
 
 ### Added
 
+- **Composer follow-up send queue**: while agent is busy, queue messages for the current session; auto-flush after the turn if you stay on that chat — community PR #40.
 - **Stream stall cancel (I06)**: host watchdog emits `session://stream_stall` after pure silence (default 120s, Settings → Runtime); banner with Cancel turn / Keep waiting; tool events count as progress.
 - **Journal write throttle (I04)**: mid-stream assistant journal flushes ≥500ms or on paragraph / turn end / stop / disconnect — avoids per-token disk spikes.
 - **Changes panel — Workspace git status**: Session (agent tool edits) + Workspace (`git status`) sections; click for unified diff via `git_file_diff` / `git_show_file`; refresh, open in editor, reveal, copy path.
