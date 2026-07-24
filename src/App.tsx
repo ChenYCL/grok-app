@@ -3707,6 +3707,17 @@ export default function App() {
     [refreshAccount, showToast, tr],
   );
 
+  /** Abort a running login (OAuth/device) so the user can pick another method
+   *  without restarting the app. The backend kills the `grok login` child. */
+  const cancelAccountLogin = useCallback(async () => {
+    try {
+      await api.accountLoginCancel();
+    } catch {
+      /* ignore — still unlock UI */
+    }
+    setAccountBusy(false);
+  }, []);
+
   const runAccountLogout = useCallback(async () => {
     if (!api.isTauri()) return;
     setAccountBusy(true);
@@ -3830,6 +3841,7 @@ export default function App() {
       "account.loginOauth",
       "account.loginDevice",
       "account.loginBusy",
+      "account.loginCancel",
       "account.logout",
       "account.refresh",
       "account.refreshing",
@@ -4063,6 +4075,7 @@ export default function App() {
           loginHint={loginHint}
           onAccountLoginOauth={() => void runAccountLogin("oauth")}
           onAccountLoginDevice={() => void runAccountLogin("device")}
+          onCancelLogin={() => void cancelAccountLogin()}
           onAccountLogout={() => void runAccountLogout()}
           onAccountRefresh={() => void refreshAccount({ refreshBilling: true })}
           onAccountManageUsage={() => void api.accountOpenUsage()}

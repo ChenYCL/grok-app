@@ -351,6 +351,18 @@ export function SetupWizard({
     }
   }, [tr]);
 
+  /** Abort the running login (OAuth/device) and unlock the UI immediately.
+   *  The backend kills the `grok login` child; the pending handler's `finally`
+   *  also clears accountBusy, but we reset here so the UI is instant. */
+  const cancelAccountLogin = useCallback(async () => {
+    try {
+      await api.accountLoginCancel();
+    } catch {
+      /* host may be unavailable; still unlock UI below */
+    }
+    setAccountBusy(false);
+  }, []);
+
   const percent = useMemo(() => {
     const p = progress?.percent;
     if (p == null || Number.isNaN(p)) return installing ? 8 : 0;
@@ -673,6 +685,13 @@ export function SetupWizard({
                 <div className="setup-busy">
                   <Spinner className="size-4" />
                   {tr("setup.account.busy")}
+                  <button
+                    type="button"
+                    className="btn btn--ghost btn--sm"
+                    onClick={() => void cancelAccountLogin()}
+                  >
+                    {tr("setup.account.cancelBusy")}
+                  </button>
                 </div>
               )}
 

@@ -58,6 +58,7 @@ export interface AccountPanelLabels {
   team: string;
   billingUnavailable: string;
   loginBusy: string;
+  loginCancel: string;
   resetsAt: string;
   fetchedAt: string;
   products: string;
@@ -95,6 +96,8 @@ export interface AccountPanelProps {
   activeAccountId?: string | null;
   onLoginOauth: () => void;
   onLoginDevice: () => void;
+  /** Abort a running login (OAuth/device). Optional — only relevant while busy. */
+  onCancelLogin?: () => void;
   onLogout: () => void;
   onRefresh: () => void;
   onManageUsage: () => void;
@@ -119,6 +122,7 @@ export function AccountPanel({
   activeAccountId = null,
   onLoginOauth,
   onLoginDevice,
+  onCancelLogin,
   onLogout,
   onRefresh,
   onManageUsage,
@@ -219,6 +223,15 @@ export function AccountPanel({
                 >
                   {labels.loginDevice}
                 </button>
+                {busy && onCancelLogin ? (
+                  <button
+                    type="button"
+                    className="btn btn--ghost"
+                    onClick={onCancelLogin}
+                  >
+                    {labels.loginCancel}
+                  </button>
+                ) : null}
               </>
             )}
           </div>

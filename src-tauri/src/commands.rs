@@ -1741,6 +1741,13 @@ pub async fn account_login(
     Ok(crate::account::account_login(&method, manual.as_deref()).await)
 }
 
+/// Abort a running `grok login` (OAuth / device-code). No-op if none is running.
+#[tauri::command]
+pub async fn account_login_cancel() -> Result<(), String> {
+    crate::account::account_login_cancel().await;
+    Ok(())
+}
+
 #[tauri::command]
 pub async fn account_logout(
     manual_cli_path: Option<String>,
