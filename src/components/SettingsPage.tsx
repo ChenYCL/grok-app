@@ -115,6 +115,12 @@ export interface SettingsPageProps {
   /** OS sandbox for agent spawn: off | workspace | read-only | strict | devbox. */
   sandboxProfile?: string;
   onSandboxProfile?: (v: string) => void;
+  /** Grok Build cross-session memory (experimental, default off). */
+  experimentalMemory?: boolean;
+  onExperimentalMemory?: (v: boolean) => void;
+  /** Clear workspace memory via `grok memory clear` (confirm in App dialog). */
+  onClearWorkspaceMemory?: () => void;
+  clearWorkspaceMemoryBusy?: boolean;
   cliInfo: {
     found: boolean;
     path: string | null;
@@ -415,6 +421,10 @@ export function SettingsPage({
   streamStallSeconds = 120,
   onStreamStallSeconds,
   storeApiKeysInKeychain = false,
+  experimentalMemory = false,
+  onExperimentalMemory,
+  onClearWorkspaceMemory,
+  clearWorkspaceMemoryBusy = false,
   onStoreApiKeysInKeychain,
   sandboxProfile = "off",
   onSandboxProfile,
@@ -959,6 +969,47 @@ export function SettingsPage({
                   />
                 </div>
               ) : null}
+
+              {onExperimentalMemory ? (
+                <div className="settings-row">
+                  <div className="settings-row__text">
+                    <div className="settings-row__label">
+                      {t("settings.experimentalMemory")}
+                    </div>
+                    <div className="settings-row__desc">
+                      {t("settings.experimentalMemoryDesc")}
+                    </div>
+                  </div>
+                  <UiCheck
+                    checked={experimentalMemory}
+                    onChange={() => onExperimentalMemory(!experimentalMemory)}
+                    ariaLabel={t("settings.experimentalMemory")}
+                  />
+                </div>
+              ) : null}
+              {onClearWorkspaceMemory ? (
+                <div className="settings-row">
+                  <div className="settings-row__text">
+                    <div className="settings-row__label">
+                      {t("settings.clearWorkspaceMemory")}
+                    </div>
+                    <div className="settings-row__desc">
+                      {t("settings.clearWorkspaceMemoryDesc")}
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    className="btn btn--ghost btn--danger settings-row__action"
+                    onClick={onClearWorkspaceMemory}
+                    disabled={clearWorkspaceMemoryBusy}
+                  >
+                    {clearWorkspaceMemoryBusy
+                      ? t("settings.clearWorkspaceMemoryBusy")
+                      : t("settings.clearWorkspaceMemory")}
+                  </button>
+                </div>
+              ) : null}
+
               {onDefaultOpenTarget && (
                 <div className="settings-row">
                   <div className="settings-row__text">

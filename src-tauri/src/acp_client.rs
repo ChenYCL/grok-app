@@ -289,6 +289,22 @@ impl AcpClient {
                 cmd.arg(a);
             }
         }
+        //   top-level: `grok --no-auto-update [--experimental-memory|--no-memory] agent …`
+        //   agent opts: `--model` / `--reasoning-effort` / `--always-approve` before `stdio`
+        // Skip background update checks so ACP handshakes are not delayed on launch.
+        // Cross-session memory (experimental). When off, force --no-memory + GROK_MEMORY=0
+        // so agent-home / user config cannot re-enable it (independent isolation).
+        let memory_enabled = crate::store::load_settings().experimental_memory;
+        if session_data_mode != "shared" {
+            let _ = crate::agent_memory::sync_memory_to_agent_profile(
+                session_data_mode,
+                memory_enabled,
+            );
+        }
+
+        let mut cmd = Command::new(&cli_path);
+        cmd.arg("--no-auto-update");
+        crate::agent_memory::apply_memory_to_command(&mut cmd, memory_enabled);
         cmd.arg("agent");
         if !spawn_model.is_empty() {
             cmd.args(["--model", &spawn_model]);
@@ -322,6 +338,7 @@ impl AcpClient {
         }
         tracing::info!(
             "acp: spawn GROK_HOME={} mode={} auth_present={} route={:?} composer_model={:?} spawn_model={} yolo={} sandbox={:?}",
+            "acp: spawn GROK_HOME={} mode={} auth_present={} route={:?} composer_model={:?} spawn_model={} yolo={} experimental_memory={}",
             grok_home.display(),
             session_data_mode,
             grok_home.join("auth.json").is_file(),
@@ -333,6 +350,7 @@ impl AcpClient {
                 .map(cli_permission_mode)
                 == Some("bypassPermissions"),
             sandbox.as_ref().map(|s| s.profile.as_str())
+            memory_enabled
         );
 
         let mut child = cmd.spawn().map_err(|e| {

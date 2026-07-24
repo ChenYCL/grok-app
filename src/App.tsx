@@ -692,6 +692,8 @@ export default function App() {
   const [streamStallSeconds, setStreamStallSeconds] = useState(120);
   const [storeApiKeysInKeychain, setStoreApiKeysInKeychain] = useState(false);
   const [sandboxProfile, setSandboxProfile] = useState("off");
+  const [experimentalMemory, setExperimentalMemory] = useState(false);
+  const [clearMemoryBusy, setClearMemoryBusy] = useState(false);
   const [gitWorktrees, setGitWorktrees] = useState<api.GitWorktreeEntry[]>([]);
   /** null = unknown/loading; true = git work tree; false = not a git repo. */
   const [gitWorktreesAvailable, setGitWorktreesAvailable] = useState<
@@ -922,6 +924,7 @@ export default function App() {
         const known = ["off", "workspace", "read-only", "strict", "devbox"];
         setSandboxProfile(known.includes(sb) ? sb : "off");
       }
+      setExperimentalMemory(!!settings.experimentalMemory);
       setCliInfo({
         found: cli.found,
         path: cli.path,
@@ -6226,6 +6229,44 @@ export default function App() {
             void api.settingsGet().then((s) =>
               api.settingsSet({ ...s, sandboxProfile: v }),
             );
+          experimentalMemory={experimentalMemory}
+          onExperimentalMemory={(v) => {
+            const prev = experimentalMemory;
+            setExperimentalMemory(v);
+            void api
+              .settingsGet()
+              .then((s) =>
+                api.settingsSet({ ...s, experimentalMemory: v }),
+              )
+              .catch((e) => {
+                setExperimentalMemory(prev);
+                showToast(String(e), 4500);
+              });
+          }}
+          clearWorkspaceMemoryBusy={clearMemoryBusy}
+          onClearWorkspaceMemory={() => {
+            setAppDialog({
+              kind: "confirm",
+              title: tr("settings.clearWorkspaceMemoryConfirmTitle"),
+              message: tr("settings.clearWorkspaceMemoryConfirmMsg"),
+              confirmLabel: tr("settings.clearWorkspaceMemory"),
+              danger: true,
+              onConfirm: () => {
+                setClearMemoryBusy(true);
+                void api
+                  .memoryClear({
+                    cwd: activeProject?.path ?? null,
+                    scope: "workspace",
+                  })
+                  .then(() => {
+                    showToast(tr("settings.clearWorkspaceMemoryDone"), 3500);
+                  })
+                  .catch((e) => {
+                    showToast(String(e), 4500);
+                  })
+                  .finally(() => setClearMemoryBusy(false));
+              },
+            });
           }}
           cliInfo={cliInfo}
           onDoctor={() => void openDoctor()}
