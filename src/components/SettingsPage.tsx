@@ -42,7 +42,12 @@ import type { AccountStatus, DetectedEditor } from "@/lib/api";
 import * as api from "@/lib/api";
 import { AccountPanel } from "@/components/AccountPanel";
 import { ProvidersPanel } from "@/components/ProvidersPanel";
-import { resolveLocale } from "@/i18n";
+import {
+  createT,
+  resolveLocale,
+  type MessageKey,
+  type Vars,
+} from "@/i18n";
 
 export type SettingsSectionId =
   | "general"
@@ -187,7 +192,7 @@ function AcpServerField({
 }: {
   value: string;
   onChange: (v: string) => void;
-  t: (k: string) => string;
+  t: (k: string, vars?: Vars) => string;
 }) {
   const [testing, setTesting] = useState(false);
   const [result, setResult] = useState<api.AcpProbeResult | null>(null);
@@ -217,12 +222,6 @@ function AcpServerField({
       /* clipboard unavailable */
     }
   };
-  const fill = (k: string, vars: Record<string, string>) =>
-    Object.entries(vars).reduce(
-      (s, [key, val]) => s.replace(`{${key}}`, val),
-      t(k),
-    );
-
   return (
     <div className="settings-row settings-row--stack">
       <div className="settings-row__text">
@@ -252,11 +251,11 @@ function AcpServerField({
           }
         >
           {result.ok
-            ? fill("settings.acpTestOk", {
+            ? t("settings.acpTestOk", {
                 version: result.agentVersion || "?",
                 model: result.model || "?",
               })
-            : fill("settings.acpTestFail", {
+            : t("settings.acpTestFail", {
                 error: result.error || "unknown",
               })}
         </div>
@@ -352,7 +351,7 @@ export function SettingsPage({
   section,
   onSection,
   onBack,
-  labels,
+  labels: _legacyLabels,
   locale,
   onLocale,
   theme,
@@ -417,7 +416,13 @@ export function SettingsPage({
     box: MarqueeBox;
     pointerId: number;
   } | null>(null);
-  const t = (k: string) => labels[k] ?? k;
+  // Full catalog via createT — do not depend on App's partial `labels` whitelist
+  // (missing keys used to render raw "settings.acpServer" etc.).
+  const tr = useMemo(() => createT(resolveLocale(locale)), [locale]);
+  const t = useCallback(
+    (k: string, vars?: Vars) => tr(k as MessageKey, vars),
+    [tr],
+  );
 
   useEffect(() => {
     if (!api.isTauri()) return;
@@ -428,7 +433,7 @@ export function SettingsPage({
     const q = query.trim().toLowerCase();
     if (!q) return NAV;
     return NAV.filter((n) => t(n.labelKey).toLowerCase().includes(q));
-  }, [query, labels]);
+  }, [query, t]);
 
   const archivedAllIds = useMemo(
     () => archivedGroups.flatMap((g) => g.sessions.map((s) => s.id)),
@@ -1063,14 +1068,12 @@ export function SettingsPage({
                   />
                   <span className="settings-archived-toolbar__count">
                     {archivedSelectedCount > 0
-                      ? t("settings.archived.selectedCount").replace(
-                          "{n}",
-                          String(archivedSelectedCount),
-                        )
-                      : t("settings.archived.totalCount").replace(
-                          "{n}",
-                          String(archivedTotal),
-                        )}
+                      ? t("settings.archived.selectedCount", {
+                          n: archivedSelectedCount,
+                        })
+                      : t("settings.archived.totalCount", {
+                          n: archivedTotal,
+                        })}
                   </span>
                   <div className="settings-archived-toolbar__actions">
                     <button
