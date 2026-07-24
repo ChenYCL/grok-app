@@ -11,6 +11,26 @@ See `docs/llm-wiki/release.md`.
 
 ## [Unreleased]
 
+## [0.1.2] - 2026-07-24
+
+> 中英文对照 / Bilingual notes.
+>
+> **Highlight:** session Changes/diff, fork & rewind, agent process limits, ask-user questionnaire.
+
+### Added
+
+- **Session Changes panel** (resource pane Files | Changes): track agent write/edit tools, unified diff from tool snippets or optional `git_file_diff` — community PR #28.
+- **Session fork & rewind timeline**: fork full/partial history; rewind to a user prompt (local journal + best-effort agent) — community PR #29.
+- **Agent process limits**: max concurrent warm agents (default 3) + idle recycle minutes (default 30); Settings → Runtime; `PROCESS_LIMIT` toast — community PR #30.
+- **Ask user questionnaire**: in-app UI for `_x.ai/ask_user_question` (single/multi/free-text) instead of always cancelling — community PR #31.
+
+### Community
+
+- Integrated and closed community PRs **#28–#31**.
+
+**中文 · 新增**
+- 会话 Changes/diff 面板；会话分叉与回退时间线；并发 Agent 上限与闲置回收；Agent 问卷（ask_user）应用内作答。
+
 ## [0.1.1] - 2026-07-24
 
 > 中英文对照 / Bilingual notes.
