@@ -11,18 +11,43 @@ See `docs/llm-wiki/release.md`.
 
 ## [Unreleased]
 
+## [0.1.4] - 2026-07-24
+
+> 中英文对照 / Bilingual notes.
+>
+> **Highlight:** Plan review in the resource pane, top-only progress bar, opt-in keychain, custom-provider account usage.
+
+### Security
+
+- **Keychain opt-in on cold start** (#44): default keeps API keys in `secrets.json` (0600); OS keychain is Settings → General opt-in so app launch no longer prompts for Keychain unlock. Existing installs that already used keychain keep that mode.
+
 ### Added
 
-- **Sticky Plan/Goal status bar** (L04): progress meter + review actions stay above the chat while the in-thread card scrolls away — community PR #41.
-- **Plan resource review**: 「在资源中打开」opens the right pane Plan workbench with full **Markdown** body, steps, and approve/request-changes; auto-opens when `exit_plan_mode` is ready. Accent-tinted bar (theme-aware) with top spacing under chrome.
+- **Plan resource review** (#45): full plan Markdown + steps in the right **Resources → Plan** workbench; top sticky bar shows execution progress only (`n/m`, current step, meter); 「在资源中打开」/ review-gate auto-open; expand steps on demand; no plan card in the chat transcript.
+- **Sticky Plan/Goal status bar** (L04, #41): progress + review actions above the chat stage.
 
 ### Fixed
 
-- **macOS titlebar**: increase traffic-light safe inset so the sidebar panel toggle no longer underlaps red/yellow/green.
-- **Composer placeholder**: hide overlay as soon as the DOM has typed/IME glyphs (no more “随心输入” showing through input).
-- **Chat scroll flicker**: ignore sub-4px content height noise while stick-to-bottom follows (thinking / reflow thrash).
-- **Dead copy**: remove obsolete `composer.attachLater` (“attachments coming later”) now that paste/file pick ship.
-- **Plan “Details” no-op**: was only scrolling the in-thread card; now opens the resource Plan panel.
+- **macOS titlebar**: traffic-light safe inset so the sidebar panel toggle no longer underlaps red/yellow/green.
+- **Composer placeholder**: hide overlay as soon as the DOM has typed/IME glyphs.
+- **Chat scroll flicker**: ignore sub-4px content height noise while stick-to-bottom follows.
+- **Custom provider account UI** (#43): sidebar shows active custom provider name/model and local usage instead of official OAuth identity when a custom route is active; hide official quota/login actions for that route.
+- **Plan dismiss**: soft-hide top progress bar during execution without wiping plan state; review-gate dismiss still abandons the RPC.
+- **Dead copy**: remove obsolete `composer.attachLater`.
+
+### Community
+
+- Integrated **#41**, **#43–#45** (plan UX, keychain startup, custom provider usage).
+
+**中文 · 安全**
+- 钥匙串改为设置里可选；默认仍用 `secrets.json`，避免冷启动弹系统密码框。
+
+**中文 · 新增**
+- 计划：顶部只显示执行进度；完整正文在资源面板 Markdown 审阅（批准/请求修改）；步骤按需展开。
+- Plan/Goal 状态条（L04）。
+
+**中文 · 修复**
+- mac 交通灯与侧栏按钮重叠；输入框 placeholder 遮字；长对话滚动闪动；自定义中转时账户区与本地用量展示。
 
 ## [0.1.3] - 2026-07-24
 
