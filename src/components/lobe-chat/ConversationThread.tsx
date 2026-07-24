@@ -26,7 +26,6 @@ import {
   IconClock,
   IconExportMd,
   IconFork,
-  IconPlan,
   IconRename,
   IconRewind,
 } from "@/components/icons";
@@ -37,7 +36,6 @@ import {
   MessageActionButton,
   MessageCopyButton,
 } from "./MessageAction";
-import { Button } from "@/components/ui/button";
 import { ChatItem } from "./ChatItem";
 import { MarkdownChat } from "./MarkdownChat";
 import { Thinking } from "./Thinking";
@@ -230,17 +228,6 @@ export interface ConversationThreadProps {
   onOpenResource?: (
     target: import("@/components/ResourceViewer").ResourceOpenTarget,
   ) => void;
-  plan?: {
-    visible: boolean;
-    waiting: boolean;
-    title: string;
-    body: string;
-    entries: unknown[];
-    rpcId?: number | null;
-  };
-  onApprovePlan?: () => void;
-  onRequestPlanChanges?: () => void;
-  onDismissPlan?: () => void;
   onAddAttachmentToComposer?: (att: Attachment) => void;
   attachLabels: {
     open: string;
@@ -277,10 +264,6 @@ export function ConversationThread({
   onRewindToUserMessage,
   onForkFromUserMessage,
   onOpenResource,
-  plan,
-  onApprovePlan,
-  onRequestPlanChanges,
-  onDismissPlan,
   onAddAttachmentToComposer,
   attachLabels,
 }: ConversationThreadProps) {
@@ -349,8 +332,7 @@ export function ConversationThread({
     messages.length === 0 &&
     !showQuietThinking &&
     !liveTool &&
-    !turnBusy &&
-    !plan?.visible;
+    !turnBusy;
 
   return (
     <div className="lobe-chat" data-slot="lobe-chat">
@@ -743,86 +725,7 @@ export function ConversationThread({
             </div>
           ) : null}
 
-          {plan?.visible ? (
-            <div className="lobe-chat-plan">
-              <div
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 8,
-                  marginBottom: 8,
-                  color: "var(--lobe-color-text-secondary)",
-                  fontSize: 14,
-                }}
-              >
-                <IconPlan size={14} />
-                <span style={{ fontWeight: 500, color: "var(--lobe-color-text)" }}>
-                  {plan.waiting ? tr("plan.waiting") : tr("plan.ready")}
-                </span>
-              </div>
-              <h3
-                style={{
-                  margin: "0 0 8px",
-                  fontSize: 15,
-                  fontWeight: 600,
-                  color: "var(--lobe-color-text)",
-                }}
-              >
-                {plan.title}
-              </h3>
-              <div
-                className="lobe-chat-plan__body"
-                style={{
-                  margin: "0 0 12px",
-                  maxHeight: "16rem",
-                  overflow: "auto",
-                  padding: 12,
-                  borderRadius: 8,
-                  background: "var(--lobe-color-fill-quaternary)",
-                  border: "1px solid var(--lobe-color-border-secondary)",
-                  fontSize: 13,
-                  lineHeight: 1.5,
-                  color: "var(--lobe-color-text-secondary)",
-                  whiteSpace: "pre-wrap",
-                  wordBreak: "break-word",
-                }}
-              >
-                {plan.body?.trim()
-                  ? plan.body
-                  : Array.isArray(plan.entries) && plan.entries.length
-                    ? plan.entries
-                        .map((e, i) => {
-                          if (e && typeof e === "object") {
-                            const o = e as Record<string, unknown>;
-                            return `${i + 1}. ${String(o.content ?? o.title ?? o.text ?? "")}`;
-                          }
-                          return `${i + 1}. ${String(e)}`;
-                        })
-                        .join("\n")
-                    : tr("plan.empty")}
-              </div>
-              <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-                <Button
-                  type="button"
-                  disabled={plan.waiting && plan.rpcId == null}
-                  onClick={onApprovePlan}
-                >
-                  {tr("plan.approve")}
-                </Button>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  disabled={plan.waiting && plan.rpcId == null}
-                  onClick={onRequestPlanChanges}
-                >
-                  {tr("plan.changes")}
-                </Button>
-                <Button type="button" variant="ghost" onClick={onDismissPlan}>
-                  {tr("plan.dismiss")}
-                </Button>
-              </div>
-            </div>
-          ) : null}
+          {/* Plan UI lives only in PlanStatusBar (top) + ResourceViewer Plan mode. */}
         </div>
       </div>
 
