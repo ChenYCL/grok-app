@@ -6,35 +6,37 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 **Maintainer rule (AI):** before every `vX.Y.Z` tag, complete `## [X.Y.Z]` below.  
-CI Release body = this section + install notes from `scripts/changelog-for-release.py`.  
+CI Release body = this section only (via `scripts/changelog-for-release.py`; no repeated download/install boilerplate).  
 See `docs/llm-wiki/release.md`.
 
 ## [Unreleased]
 
+## [0.1.6] - 2026-07-24
+
+> **Highlight:** early-turn fix (#52), multi-session stream, shared-mode CLI import, store write locks.
+
 ### Added
 
-- **Import CLI sessions (shared mode)** (#57): Settings → General lists `~/.grok/sessions` (percent-encoded cwd trees); import one / all into App journals with agentSessionId link.
-
-- **Session diagnostic export**: session menu → “Export diagnostic package” builds a redacted zip (host messages/meta/transcript/settings/runtime, CLI probe, app logs, Grok Build agent trail) for bug reports such as early `end_turn` (#52).
-- **Multi-session background stream** (#56): switching chats parks busy turns as `background` so streaming/permission continues under the process cap.
-- **A11y (T15 slice)** (#53): conversation live region, permission bar / GlassModal focus trap + Escape, ask_user option `aria-pressed`, focus-visible on actions.
+- **Import CLI sessions (shared mode)** (#57): Settings → General lists `~/.grok/sessions`; import one / all into App journals.
+- **Session diagnostic export**: session menu → redacted zip (messages, runtime, CLI probe, logs, agent trail) for bug reports (#52).
+- **Multi-session background stream** (#56): switching chats keeps busy turns streaming under the process cap.
+- **A11y** (#53): conversation live region; permission / modal focus trap + Escape; ask_user `aria-pressed`.
 
 ### Fixed
 
-- **Premature turn end** (#54 / #52): defer `prompt_complete` while tools, permission, plan review, or ask_user are still open; finish when gates clear.
-- **Orphan chat cwd**: no-project sessions spawn the agent under `$HOME` instead of process `current_dir()` (often `/` when launched from Dock), reducing silent early stops on coding tasks (#52).
-- **Empty-run soft signal**: when an agent turn ends with zero tool calls (non-ask mode), toast suggests “continue” or exporting the diagnostic package (#52).
-- **Store JSON write lock** (#55): exclusive lock + atomic rename; corrupt sessions/projects/messages files quarantined instead of silent empty read.
+- **Premature turn end** (#54 / #52): defer `prompt_complete` while tools, permission, plan, or ask_user are still open.
+- **Orphan chat cwd**: no-project agents use `$HOME` instead of Dock `cwd=/` (#52).
+- **Empty-run soft signal**: toast when a non-ask turn ends with zero tool calls (#52).
+- **Store JSON write lock** (#55): exclusive lock + atomic rename; quarantine corrupt store files.
+- **Git worktrees UI**: hide section for non-git folders; stop loading flicker; compact single-line rows.
 
 ### Community
 
-- Integrated **#53–#56** (sonnemusk); closed #42 (worktrees shipped), #52 (early end_turn).
+- PRs **#53–#57** (sonnemusk). Closed #42 (worktrees), #52 (early end_turn).
 
-**中文 · 新增**
-- 会话诊断包导出；切换会话时后台流式继续；流式/权限/问卷无障碍增强。
-
-**中文 · 修复**
-- 工具/权限未结束时不提前「就绪」（#52）；无项目会话 cwd 用 `$HOME`；store JSON 并发写加锁与损坏隔离。
+**中文**
+- 新增：CLI 会话导入（shared）、诊断包、后台多会话流式、无障碍。  
+- 修复：工具/权限未完不提前就绪；无项目 cwd=`$HOME`；store 写锁；worktree 非 git 隐藏与紧凑行。
 
 ## [0.1.5] - 2026-07-24
 

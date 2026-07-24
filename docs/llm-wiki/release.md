@@ -9,11 +9,8 @@
   - macOS Intel (`x64` `.dmg`)  
   - Windows x64 安装版 (`*-setup.exe`) + **绿色版** (`*-portable.zip`)  
   - Linux x64：**AppImage** + **.deb**（Debian/Ubuntu 系）+ **.rpm**（Fedora/RHEL 系）
-- Release 正文**必须**包含：  
-  1. 下载对照表  
-  2. **该版本更新内容列表**（来自 `CHANGELOG.md` 对应章节）  
-  3. **macOS「应用已损坏」处理** + Windows SmartScreen 说明  
-  4. 依赖 Grok Build CLI 的提示  
+- Release 正文**只保留本版变更**（`CHANGELOG.md` 对应 `## [X.Y.Z]` 章节）。  
+  下载资产由 GitHub 自动挂在下方；安装 / Gatekeeper / SmartScreen / CLI 说明见 README，**不要**在每个 Release 重复长文。
 
 正文由 CI 调用 `scripts/changelog-for-release.py` 自动生成，**禁止**在 workflow 里写死静态 Release body 覆盖 CHANGELOG。
 
@@ -126,19 +123,16 @@ GitHub → **Settings → Actions → General → Workflow permissions**
 
 未配置 Apple 签名时 macOS 包**未公证**，属预期；Release 正文必须带 `xattr` 说明。
 
-## macOS「已损坏 / 无法打开」（必须出现在每个 Release）
+## macOS「已损坏 / 无法打开」
 
-未签名下载后，用户常见 Gatekeeper 拦截。处理顺序：
+未签名下载后 Gatekeeper 可能拦截。**用户说明放在 README**（不要每个 Release 正文再贴一遍）：
 
 ```bash
-# 1) 拖到「应用程序」后
 xattr -cr /Applications/Grok.app
 open /Applications/Grok.app
 ```
 
-备选：Finder **右键 → 打开** → 确认；或 **系统设置 → 隐私与安全性 → 仍要打开**。
-
-文案由 `scripts/changelog-for-release.py` 的 `INSTALL_NOTES` 统一输出；改说明时**只改该脚本**，不要只在某一个 Release 手写。
+改安装说明时改 `README.md` / `README_EN.md`。
 
 ## Windows 说明
 
@@ -170,7 +164,7 @@ pnpm build:win   # tauri + cargo-xwin + makensis
 
 - [ ] Actions `release` 四个 job 全绿（macOS-ARM64 / macOS-x64 / Windows-x64 / Linux-x64）  
 - [ ] GitHub Release 页含：两 dmg、setup.exe、portable.zip、AppImage、deb、rpm  
-- [ ] Release body 含更新列表 + macOS `xattr` + Windows 说明  
+- [ ] Release body 仅为该版本变更列表（无整页下载表/安装长文）  
 - [ ] README 下载链接指向 Releases（相对路径已写）  
 - [ ] 版本号与 tag 一致  
 
@@ -196,7 +190,7 @@ pnpm build:win   # tauri + cargo-xwin + makensis
 | 路径 | 用途 |
 |------|------|
 | `CHANGELOG.md` | 版本更新列表 SoT |
-| `scripts/changelog-for-release.py` | Release body 生成（含损坏处理） |
+| `scripts/changelog-for-release.py` | Release body = 该版本 CHANGELOG 章节（精简） |
 | `scripts/release-tag.sh` | bump + tag |
 | `.github/workflows/release.yml` | 三端构建与上传 |
 | `docs/BUILD.md` | 本地构建细节 |

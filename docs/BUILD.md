@@ -128,7 +128,7 @@ cp src-tauri/target/x86_64-unknown-linux-gnu/release/bundle/rpm/* dist-installer
 > **AI / 维护者完整 checklist：** [docs/llm-wiki/release.md](./llm-wiki/release.md)（发版步骤、CHANGELOG 写法、损坏处理、禁止事项）。
 
 工作流：`.github/workflows/release.yml`  
-发版说明：从 `CHANGELOG.md` 对应版本章节生成（`scripts/changelog-for-release.py`），**固定包含**更新列表 + macOS「已损坏」/`xattr` + Windows SmartScreen。
+发版说明：从 `CHANGELOG.md` 对应版本章节生成（`scripts/changelog-for-release.py`），**仅本版变更**；安装 / Gatekeeper 见 README。
 
 ### 触发方式
 
