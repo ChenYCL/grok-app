@@ -629,6 +629,35 @@ export async function doctorReport() {
   return invoke<DoctorReport>("doctor_report");
 }
 
+export interface SupportBundleResult {
+  ok: boolean;
+  path: string;
+}
+
+/** Build a redacted support zip (Doctor + logs) and save via native dialog. */
+export async function exportSupportBundle(doctorJson?: string | null) {
+  return invoke<SupportBundleResult>("export_support_bundle", {
+    doctorJson: doctorJson ?? null,
+  });
+}
+
+export interface ResetAppDataResult {
+  ok: boolean;
+  dataRoot: string;
+  removed: string[];
+  keptSecrets: boolean;
+}
+
+/**
+ * Wipe App data under the data root.
+ * Does not touch ~/.grok. Confirm twice in the UI before calling.
+ */
+export async function resetAppData(keepSecrets = true) {
+  return invoke<ResetAppDataResult>("reset_app_data", {
+    keepSecrets,
+  });
+}
+
 /** List skills via `grok inspect --json` (optional project cwd). */
 export async function skillsList(projectPath?: string | null) {
   return invoke<SkillsListResult>("skills_list", {

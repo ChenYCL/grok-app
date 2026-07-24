@@ -20,8 +20,8 @@ import {
 import { Heatmap } from "@/components/Heatmap";
 import { Tip } from "@/components/ui/tooltip";
 
-/** Flip to true when multi-account switcher / import chat should ship publicly. */
-const SHOW_ACCOUNT_EXTRAS = false;
+/** Multi-account switcher + transcript import (backend already shipped). */
+const SHOW_ACCOUNT_EXTRAS = true;
 
 export interface AccountPanelLabels {
   signedIn: string;

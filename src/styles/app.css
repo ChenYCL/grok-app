@@ -5783,6 +5783,164 @@ html.platform-mac[data-theme="light"] .settings-page__content {
   word-break: break-word;
 }
 
+.doctor-advanced {
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border-subtle);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.doctor-advanced__title {
+  margin: 0;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+}
+
+.doctor-advanced__row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-main);
+}
+
+.doctor-advanced__row--danger {
+  border-color: color-mix(in srgb, var(--danger) 28%, var(--border-subtle));
+}
+
+.doctor-advanced__text {
+  min-width: 0;
+  flex: 1;
+}
+
+.doctor-advanced__label {
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.doctor-advanced__hint {
+  margin: 4px 0 0;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--text-secondary);
+}
+
+.doctor-advanced__check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  user-select: none;
+}
+
+.doctor-advanced__check input {
+  margin: 0;
+}
+
+.doctor-advanced__danger-btn {
+  color: var(--danger);
+}
+
+/* Connection status pill in main chrome */
+.status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 22px;
+  padding: 0 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  color: var(--text-secondary);
+  border: 1px solid var(--border-subtle);
+  background: color-mix(in srgb, var(--bg-elevated) 55%, transparent);
+  flex-shrink: 0;
+}
+
+.status-pill__dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--text-tertiary);
+}
+
+.status-pill--ok .status-pill__dot {
+  background: var(--success);
+}
+.status-pill--warn .status-pill__dot {
+  background: var(--warning);
+}
+.status-pill--err .status-pill__dot {
+  background: var(--danger);
+}
+.status-pill--muted .status-pill__dot {
+  background: var(--text-tertiary);
+}
+
+/* Shortcuts help panel */
+.shortcuts-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.shortcuts-list__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 8px 4px;
+  border-bottom: 1px solid var(--border-subtle);
+  font-size: 13px;
+}
+
+.shortcuts-list__row:last-child {
+  border-bottom: none;
+}
+
+.shortcuts-list__label {
+  color: var(--text-primary);
+}
+
+.shortcuts-list__keys {
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 12px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  padding: 2px 8px;
+  border-radius: 6px;
+  border: 1px solid var(--border-subtle);
+  background: color-mix(in srgb, var(--bg-main) 70%, transparent);
+}
+
+.perm-bar__hint {
+  margin: 0 0 8px;
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--text-tertiary);
+}
+
+.perm-bar__summary {
+  margin: 0 0 6px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  word-break: break-word;
+}
+
 .doctor-modal__foot {
   display: flex;
   flex-wrap: wrap;

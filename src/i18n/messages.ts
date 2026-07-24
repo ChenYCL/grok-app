@@ -556,6 +556,61 @@ const en = {
   "doctor.check.backend": "Backend",
   "doctor.check.logs": "Logs",
   "doctor.rawToggle": "Show raw report",
+  "doctor.supportZip": "Support zip",
+  "doctor.supportZipHint": "Redacted Doctor report + recent logs (no secrets).",
+  "doctor.supportZipDone": "Support zip saved",
+  "doctor.supportZipFail": "Could not build support zip",
+  "doctor.reset": "Reset app data",
+  "doctor.resetHint":
+    "Deletes local sessions, projects, and settings under the App data root. Does not touch ~/.grok.",
+  "doctor.resetConfirmTitle": "Reset app data?",
+  "doctor.resetConfirmBody":
+    "This removes sessions, projects, automations, and settings in this app. API keys stay unless you uncheck below. The Grok Build CLI home (~/.grok) is not touched.",
+  "doctor.resetConfirm2Title": "Really reset?",
+  "doctor.resetConfirm2Body":
+    "This cannot be undone. The app will reload with an empty workspace.",
+  "doctor.resetKeepSecrets": "Keep API keys and saved accounts",
+  "doctor.resetDone": "App data cleared — reloading…",
+  "doctor.resetFail": "Reset failed",
+  "doctor.advanced": "Advanced",
+
+  // Connection status pill
+  "conn.idle": "Idle",
+  "conn.connecting": "Connecting",
+  "conn.ready": "Ready",
+  "conn.streaming": "Working",
+  "conn.permission": "Needs permission",
+  "conn.disconnected": "Disconnected",
+
+  // Keyboard shortcuts help
+  "shortcuts.title": "Keyboard shortcuts",
+  "shortcuts.close": "Close",
+  "shortcuts.search": "Search chats / projects",
+  "shortcuts.newChat": "New chat",
+  "shortcuts.settings": "Settings",
+  "shortcuts.doctor": "Doctor",
+  "shortcuts.stop": "Stop generation / close overlay",
+  "shortcuts.send": "Send message",
+  "shortcuts.help": "Show shortcuts",
+
+  // Session export
+  "session.exportMd": "Export chat as Markdown",
+  "session.exportDone": "Chat exported",
+  "session.exportFail": "Export failed",
+
+  // Empty states
+  "empty.noProjectTitle": "No project open",
+  "empty.noProjectHint": "Add a folder from the sidebar to start coding with context.",
+  "empty.noChatsTitle": "No chats yet",
+  "empty.noChatsHint": "Start a conversation — it will show up in the sidebar.",
+  "empty.disconnectedTitle": "Agent disconnected",
+  "empty.disconnectedHint": "Reconnect to continue this chat, or start a new one.",
+
+  // Desktop notifications
+  "notify.turnDoneTitle": "Grok finished a turn",
+  "notify.turnDoneBody": "Session is ready for the next message.",
+  "notify.permissionTitle": "Permission needed",
+  "notify.permissionBody": "The agent is waiting for your approval.",
 
   // Slash palette
   "slash.section.commands": "Commands",
@@ -629,6 +684,9 @@ const en = {
   "perm.allowOnce": "Allow once",
   "perm.allowSession": "Allow for session",
   "perm.deny": "Deny",
+  "perm.hintOnce": "Run this once; ask again next time.",
+  "perm.hintSession": "Allow similar actions for the rest of this chat.",
+  "perm.hintDeny": "Block this action and tell the agent.",
 
   "message.copy": "Copy",
   "message.copied": "Copied",
@@ -1274,6 +1332,56 @@ const zh: Record<MessageKey, string> = {
   "doctor.check.backend": "后端",
   "doctor.check.logs": "日志",
   "doctor.rawToggle": "显示原始报告",
+  "doctor.supportZip": "支持包",
+  "doctor.supportZipHint": "脱敏后的 Doctor 报告与近期日志（不含密钥）。",
+  "doctor.supportZipDone": "支持包已保存",
+  "doctor.supportZipFail": "无法生成支持包",
+  "doctor.reset": "重置应用数据",
+  "doctor.resetHint":
+    "删除本应用数据根下的会话、项目与设置，不影响 ~/.grok。",
+  "doctor.resetConfirmTitle": "重置应用数据？",
+  "doctor.resetConfirmBody":
+    "将清除本应用内的会话、项目、自动化与设置。除非取消勾选，API 密钥会保留。不会改动 Grok Build CLI 主目录（~/.grok）。",
+  "doctor.resetConfirm2Title": "确认重置？",
+  "doctor.resetConfirm2Body":
+    "此操作无法撤销。应用将以空白工作区重新加载。",
+  "doctor.resetKeepSecrets": "保留 API 密钥与已保存账号",
+  "doctor.resetDone": "应用数据已清除 — 正在重新加载…",
+  "doctor.resetFail": "重置失败",
+  "doctor.advanced": "高级",
+
+  "conn.idle": "空闲",
+  "conn.connecting": "连接中",
+  "conn.ready": "就绪",
+  "conn.streaming": "工作中",
+  "conn.permission": "等待授权",
+  "conn.disconnected": "已断开",
+
+  "shortcuts.title": "键盘快捷键",
+  "shortcuts.close": "关闭",
+  "shortcuts.search": "搜索会话 / 项目",
+  "shortcuts.newChat": "新建会话",
+  "shortcuts.settings": "设置",
+  "shortcuts.doctor": "Doctor",
+  "shortcuts.stop": "停止生成 / 关闭浮层",
+  "shortcuts.send": "发送消息",
+  "shortcuts.help": "显示快捷键",
+
+  "session.exportMd": "导出会话为 Markdown",
+  "session.exportDone": "会话已导出",
+  "session.exportFail": "导出失败",
+
+  "empty.noProjectTitle": "尚未打开项目",
+  "empty.noProjectHint": "从侧栏添加文件夹，以便带上下文开始工作。",
+  "empty.noChatsTitle": "还没有会话",
+  "empty.noChatsHint": "开始对话后会显示在侧栏。",
+  "empty.disconnectedTitle": "Agent 已断开",
+  "empty.disconnectedHint": "重新连接以继续此会话，或新建一个。",
+
+  "notify.turnDoneTitle": "Grok 已完成一轮",
+  "notify.turnDoneBody": "会话已就绪，可继续输入。",
+  "notify.permissionTitle": "需要授权",
+  "notify.permissionBody": "Agent 正在等待你的批准。",
 
   "slash.section.commands": "命令",
   "slash.section.skills": "技能",
@@ -1345,6 +1453,9 @@ const zh: Record<MessageKey, string> = {
   "perm.allowOnce": "允许一次",
   "perm.allowSession": "会话内允许",
   "perm.deny": "拒绝",
+  "perm.hintOnce": "仅执行这一次，下次仍会询问。",
+  "perm.hintSession": "本会话内同类操作不再询问。",
+  "perm.hintDeny": "阻止本次操作并告知 Agent。",
 
   "message.copy": "复制",
   "message.copied": "已复制",
