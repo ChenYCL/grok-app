@@ -339,7 +339,20 @@ const en = {
   "composer.attachPickedNone": "No files selected",
   "composer.attachPasteFailed": "Could not attach pasted file",
   "composer.attachSaved": "Attached {name}",
-  "composer.voiceSoon": "Voice (soon)",
+  "composer.voice": "Voice dictation",
+  "composer.voiceListening": "Listening… tap to stop",
+  "composer.voiceTranscribing": "Transcribing…",
+  "composer.voiceUnavailable": "Voice dictation unavailable",
+  "composer.voiceErr.mic_denied":
+    "Microphone access denied. Enable it in System Settings → Privacy → Microphone.",
+  "composer.voiceErr.mic_missing": "No microphone found.",
+  "composer.voiceErr.no_speech": "No speech detected — voice stopped.",
+  "composer.voiceErr.not_available":
+    "Voice dictation needs official Grok login or an official xAI API key (relay-only is not enough).",
+  "composer.voiceErr.network": "Could not reach speech service. Check network and try again.",
+  "composer.voiceErr.auth": "Speech auth failed. Sign in again under Account.",
+  "composer.voiceErr.timeout": "Speech request timed out. Try a shorter clip.",
+  "composer.voiceErr.unknown": "Voice dictation failed.",
   "composer.send": "Send",
   "composer.queue": "Queue — send after this turn (this chat)",
   "composer.queued":
@@ -931,6 +944,7 @@ const en = {
   "shortcuts.stop": "Stop generation / close overlay",
   "shortcuts.send": "Send message",
   "shortcuts.help": "Show shortcuts",
+  "shortcuts.voice": "Toggle voice dictation",
 
   // Session export
   "session.exportMd": "Export chat as Markdown",
@@ -1561,7 +1575,20 @@ const zh: Record<MessageKey, string> = {
   "composer.attachPickedNone": "未选择文件",
   "composer.attachPasteFailed": "无法附加粘贴的文件",
   "composer.attachSaved": "已附加 {name}",
-  "composer.voiceSoon": "语音（即将推出）",
+  "composer.voice": "语音输入",
+  "composer.voiceListening": "正在听…再点停止",
+  "composer.voiceTranscribing": "转写中…",
+  "composer.voiceUnavailable": "语音输入不可用",
+  "composer.voiceErr.mic_denied":
+    "未授权麦克风。请在系统设置 → 隐私 → 麦克风中允许 Grok。",
+  "composer.voiceErr.mic_missing": "未检测到麦克风。",
+  "composer.voiceErr.no_speech": "未检测到语音，已停止。",
+  "composer.voiceErr.not_available":
+    "语音输入需要官方 Grok 登录或官方 xAI API Key（仅中转不可用）。",
+  "composer.voiceErr.network": "无法连接语音服务，请检查网络后重试。",
+  "composer.voiceErr.auth": "语音鉴权失败，请在账户中重新登录。",
+  "composer.voiceErr.timeout": "转写超时，请缩短说话时长后重试。",
+  "composer.voiceErr.unknown": "语音输入失败。",
   "composer.send": "发送",
   "composer.queue": "入队 — 本轮结束后发送（当前会话）",
   "composer.queued": "已入当前会话队列 — 留在本会话且本轮结束后自动发送",
@@ -2135,6 +2162,7 @@ const zh: Record<MessageKey, string> = {
   "shortcuts.stop": "停止生成 / 关闭浮层",
   "shortcuts.send": "发送消息",
   "shortcuts.help": "显示快捷键",
+  "shortcuts.voice": "开关语音输入",
 
   "session.exportMd": "导出会话为 Markdown",
   "session.exportBundle": "导出完整诊断包…",

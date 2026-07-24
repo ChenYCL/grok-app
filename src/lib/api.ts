@@ -260,6 +260,36 @@ export async function appCheckUpdate() {
   return invoke<AppUpdateCheck>("app_check_update");
 }
 
+/** Composer voice dictation — Host STT availability. */
+export type VoiceStatusDto = {
+  available: boolean;
+  reason: string | null;
+  authSource: string | null;
+};
+
+export type VoiceTranscribeResult = {
+  ok: boolean;
+  text: string | null;
+  error: string | null;
+  errorClass: string | null;
+};
+
+export async function voiceStatus() {
+  return invoke<VoiceStatusDto>("voice_status");
+}
+
+export async function voiceTranscribe(opts: {
+  audioBase64: string;
+  filename?: string | null;
+  mime?: string | null;
+}) {
+  return invoke<VoiceTranscribeResult>("voice_transcribe", {
+    audioBase64: opts.audioBase64,
+    filename: opts.filename ?? null,
+    mime: opts.mime ?? null,
+  });
+}
+
 export async function projectsList() {
   return invoke<
     Array<{

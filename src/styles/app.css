@@ -6526,6 +6526,25 @@ html[data-theme="light"] .ui-check.is-mixed .ui-check__box {
   overflow: visible;
 }
 
+.composer__voice.composer__voice--live {
+  color: var(--danger, #e55);
+  animation: composer-voice-pulse 1.1s ease-in-out infinite;
+}
+
+.composer__voice.composer__voice--busy {
+  opacity: 0.65;
+}
+
+@keyframes composer-voice-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.55;
+  }
+}
+
 /* Flat chips (project etc.) — no capsule border, hover wash only */
 .chip {
   display: inline-flex;

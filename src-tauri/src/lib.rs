@@ -42,6 +42,7 @@ mod session_manager;
 mod store;
 mod tray;
 mod tray_i18n;
+mod voice_stt;
 
 use std::sync::Arc;
 
@@ -143,6 +144,8 @@ pub fn run() {
             commands::pick_cli_binary,
             commands::open_external_url,
             commands::app_check_update,
+            commands::voice_status,
+            commands::voice_transcribe,
             commands::projects_list,
             commands::project_add,
             commands::project_add_dialog,

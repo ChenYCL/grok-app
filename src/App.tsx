@@ -156,6 +156,25 @@ import { ComposerProjectMenu } from "@/components/ComposerProjectMenu";
 import { pathsEqual } from "@/lib/gitWorktree";
 import { isProjectPathMissing } from "@/lib/projectPath";
 import {
+  classifyVoiceError,
+  initialVoiceState,
+  insertTranscriptIntoDraft,
+  isVoiceToggleKey,
+  reduceVoice,
+  voiceAvailabilityFromAuth,
+  voiceIsActive,
+  voiceStealsEscape,
+  VOICE_MAX_RECORD_MS,
+  type VoiceErrorClass,
+  type VoiceFsmState,
+} from "@/lib/voiceDictation";
+import {
+  blobToBase64,
+  extensionForMime,
+  startVoiceCapture,
+  type CaptureHandle,
+} from "@/lib/voiceCapture";
+import {
   ComposerPlusPanel,
   buildComposerPlusEntries,
   uploadMatchesQuery,
@@ -170,6 +189,7 @@ import {
   IconSearch,
   IconAttach,
   IconSend,
+  IconMic,
   IconQueue,
   IconStop,
   IconFolder,
@@ -335,6 +355,16 @@ export default function App() {
   >({});
   /** Composer stored form (may include [[skill:name]] tokens). */
   const [draft, setDraft] = useState("");
+  /** Composer voice dictation FSM (record → STT → insert draft). */
+  const [voice, setVoice] = useState<VoiceFsmState>(() => initialVoiceState());
+  const [voiceGate, setVoiceGate] = useState<{
+    available: boolean;
+    reason: VoiceErrorClass | null;
+  }>({ available: false, reason: "not_available" });
+  const voiceCaptureRef = useRef<CaptureHandle | null>(null);
+  const voiceTimersRef = useRef<{ max?: number; noSpeech?: number }>({});
+  const voiceRef = useRef(voice);
+  voiceRef.current = voice;
   const [goalMode, setGoalMode] = useState(false);
   /** Prevent overlapping executeSend / queue auto-flush races. */
   const sendInFlightRef = useRef(false);
@@ -566,15 +596,31 @@ export default function App() {
     return () => window.clearTimeout(t);
   }, [searchQuery, showSearch]);
 
-  // Global shortcuts: search, help, doctor, new chat, settings.
+  // Global shortcuts: search, help, doctor, new chat, settings, voice.
   // Handlers go through refs so we don't re-bind every render.
   const shortcutHandlersRef = useRef({
     newChat: () => {},
     openSettings: () => {},
+    toggleVoice: () => {},
+    cancelVoice: () => {},
   });
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.isComposing) return;
+      // Esc cancels in-progress dictation (steal before other Esc handlers).
+      if (e.key === "Escape" && voiceStealsEscape(voiceRef.current.phase)) {
+        e.preventDefault();
+        e.stopPropagation();
+        shortcutHandlersRef.current.cancelVoice();
+        return;
+      }
+      // Ctrl+Space toggles voice (not Cmd+Space — Spotlight on macOS).
+      if (isVoiceToggleKey(e)) {
+        e.preventDefault();
+        e.stopPropagation();
+        shortcutHandlersRef.current.toggleVoice();
+        return;
+      }
       const mod = e.metaKey || e.ctrlKey;
       if (!mod) return;
       const target = e.target as HTMLElement | null;
@@ -610,8 +656,8 @@ export default function App() {
         return;
       }
     };
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
+    document.addEventListener("keydown", onKey, true);
+    return () => document.removeEventListener("keydown", onKey, true);
   }, []);
 
   /** First-run gate: loading → setup wizard → ready (home). */
@@ -4120,6 +4166,222 @@ export default function App() {
     }, ms);
   }, []);
 
+  const voiceErrorMessage = useCallback(
+    (cls: VoiceErrorClass | null | undefined) => {
+      const key = (`composer.voiceErr.${cls ?? "unknown"}`) as MessageKey;
+      try {
+        return tr(key);
+      } catch {
+        return tr("composer.voiceErr.unknown");
+      }
+    },
+    [tr],
+  );
+
+  const clearVoiceTimers = useCallback(() => {
+    const t = voiceTimersRef.current;
+    if (t.max != null) window.clearTimeout(t.max);
+    if (t.noSpeech != null) window.clearTimeout(t.noSpeech);
+    voiceTimersRef.current = {};
+  }, []);
+
+  const refreshVoiceGate = useCallback(async () => {
+    try {
+      if (api.isTauri()) {
+        const st = await api.voiceStatus();
+        setVoiceGate({
+          available: !!st.available,
+          reason: (st.reason as VoiceErrorClass | null) ?? "not_available",
+        });
+        return;
+      }
+    } catch {
+      /* fall through to local estimate */
+    }
+    const signedIn = !!account?.profile?.signedIn;
+    let hasOfficial = false;
+    let hasRelay = false;
+    try {
+      const masked = await api.secretsGetMasked();
+      hasOfficial = !!masked.hasOfficialKey;
+      hasRelay = !!masked.hasRelayKey;
+    } catch {
+      /* ignore */
+    }
+    const gate = voiceAvailabilityFromAuth({
+      signedInOfficial: signedIn,
+      hasOfficialApiKey: hasOfficial,
+      hasRelayOnly: hasRelay && !hasOfficial && !signedIn,
+    });
+    setVoiceGate({
+      available: gate.available,
+      reason: gate.reason,
+    });
+  }, [account?.profile?.signedIn]);
+
+  useEffect(() => {
+    void refreshVoiceGate();
+  }, [refreshVoiceGate]);
+
+  const cancelVoice = useCallback(() => {
+    clearVoiceTimers();
+    try {
+      voiceCaptureRef.current?.cancel();
+    } catch {
+      /* ignore */
+    }
+    voiceCaptureRef.current = null;
+    setVoice(reduceVoice(voiceRef.current, { type: "cancel" }));
+  }, [clearVoiceTimers]);
+
+  const finishVoiceTranscribe = useCallback(
+    async (blob: Blob) => {
+      setVoice((s) => reduceVoice(s, { type: "stop" }));
+      try {
+        if (blob.size < 256) {
+          setVoice((s) =>
+            reduceVoice(s, {
+              type: "transcribe_fail",
+              error: "no_speech",
+            }),
+          );
+          showToast(voiceErrorMessage("no_speech"), 4200);
+          return;
+        }
+        const b64 = await blobToBase64(blob);
+        const mime = blob.type || "audio/webm";
+        const ext = extensionForMime(mime);
+        const res = await api.voiceTranscribe({
+          audioBase64: b64,
+          filename: `dictation.${ext}`,
+          mime,
+        });
+        if (!res.ok || !res.text?.trim()) {
+          const cls = classifyVoiceError(
+            res.errorClass || res.error,
+            null,
+          );
+          setVoice((s) =>
+            reduceVoice(s, { type: "transcribe_fail", error: cls }),
+          );
+          showToast(voiceErrorMessage(cls), 4800);
+          return;
+        }
+        setDraft((d) => insertTranscriptIntoDraft(d, res.text!).text);
+        setVoice((s) => reduceVoice(s, { type: "transcribe_ok" }));
+      } catch (e) {
+        const cls = classifyVoiceError(String(e));
+        setVoice((s) =>
+          reduceVoice(s, { type: "transcribe_fail", error: cls }),
+        );
+        showToast(voiceErrorMessage(cls), 4800);
+      } finally {
+        voiceCaptureRef.current = null;
+        clearVoiceTimers();
+      }
+    },
+    [clearVoiceTimers, showToast, voiceErrorMessage],
+  );
+
+  const startVoice = useCallback(async () => {
+    if (!voiceGate.available) {
+      showToast(
+        voiceErrorMessage(voiceGate.reason ?? "not_available"),
+        4800,
+      );
+      return;
+    }
+    if (voiceIsActive(voiceRef.current.phase)) return;
+    setVoice((s) => reduceVoice(s, { type: "start" }));
+    try {
+      const handle = await startVoiceCapture();
+      voiceCaptureRef.current = handle;
+      setVoice((s) => reduceVoice(s, { type: "mic_granted" }, Date.now()));
+      clearVoiceTimers();
+      // No real VAD in phase 1: cap max length; empty STT maps to no_speech.
+      voiceTimersRef.current.max = window.setTimeout(() => {
+        void (async () => {
+          if (voiceRef.current.phase !== "recording") return;
+          const cap = voiceCaptureRef.current;
+          if (!cap) return;
+          try {
+            const blob = await cap.stop();
+            await finishVoiceTranscribe(blob);
+          } catch (e) {
+            const cls = classifyVoiceError(String(e));
+            setVoice((s) =>
+              reduceVoice(s, { type: "transcribe_fail", error: cls }),
+            );
+            showToast(voiceErrorMessage(cls), 4200);
+          }
+        })();
+      }, VOICE_MAX_RECORD_MS);
+    } catch (e) {
+      const code =
+        e && typeof e === "object" && "code" in e
+          ? String((e as { code?: string }).code)
+          : "";
+      if (code === "mic_denied") {
+        setVoice((s) => reduceVoice(s, { type: "mic_denied" }));
+        showToast(voiceErrorMessage("mic_denied"), 5200);
+      } else if (code === "mic_missing") {
+        setVoice((s) => reduceVoice(s, { type: "mic_missing" }));
+        showToast(voiceErrorMessage("mic_missing"), 4200);
+      } else {
+        const cls = classifyVoiceError(String(e));
+        setVoice((s) =>
+          reduceVoice(s, { type: "transcribe_fail", error: cls }),
+        );
+        showToast(voiceErrorMessage(cls), 4200);
+      }
+      voiceCaptureRef.current = null;
+    }
+  }, [
+    clearVoiceTimers,
+    finishVoiceTranscribe,
+    showToast,
+    voiceErrorMessage,
+    voiceGate.available,
+    voiceGate.reason,
+  ]);
+
+  const stopVoice = useCallback(async () => {
+    if (voiceRef.current.phase !== "recording") return;
+    clearVoiceTimers();
+    const cap = voiceCaptureRef.current;
+    if (!cap) {
+      setVoice(initialVoiceState());
+      return;
+    }
+    try {
+      const blob = await cap.stop();
+      await finishVoiceTranscribe(blob);
+    } catch (e) {
+      const cls = classifyVoiceError(String(e));
+      setVoice((s) =>
+        reduceVoice(s, { type: "transcribe_fail", error: cls }),
+      );
+      showToast(voiceErrorMessage(cls), 4200);
+      voiceCaptureRef.current = null;
+    }
+  }, [clearVoiceTimers, finishVoiceTranscribe, showToast, voiceErrorMessage]);
+
+  const toggleVoice = useCallback(() => {
+    const phase = voiceRef.current.phase;
+    if (phase === "recording") {
+      void stopVoice();
+      return;
+    }
+    if (phase === "requesting_mic" || phase === "transcribing") {
+      cancelVoice();
+      return;
+    }
+    if (phase === "error") {
+      setVoice(initialVoiceState());
+    }
+    void startVoice();
+  }, [cancelVoice, startVoice, stopVoice]);
+
   const approvePlan = useCallback(async () => {
     try {
       await api.sessionResolvePlan({
@@ -5074,6 +5336,12 @@ export default function App() {
       setAppView("settings");
       setSettingsSection("general");
       window.location.hash = "#/settings/general";
+    },
+    toggleVoice: () => {
+      toggleVoice();
+    },
+    cancelVoice: () => {
+      cancelVoice();
     },
   };
   trayHandlersRef.current = {
@@ -7830,6 +8098,47 @@ export default function App() {
                   }}
                 />
                 <span className="composer__spacer" />
+                <Tip
+                  label={
+                    !voiceGate.available
+                      ? voiceErrorMessage(voiceGate.reason ?? "not_available")
+                      : voice.phase === "recording"
+                        ? tr("composer.voiceListening")
+                        : voice.phase === "transcribing"
+                          ? tr("composer.voiceTranscribing")
+                          : tr("composer.voice")
+                  }
+                >
+                  <button
+                    type="button"
+                    className={
+                      "icon-btn composer__voice" +
+                      (voice.phase === "recording"
+                        ? " composer__voice--live"
+                        : "") +
+                      (voice.phase === "transcribing"
+                        ? " composer__voice--busy"
+                        : "")
+                    }
+                    disabled={
+                      !voiceGate.available ||
+                      voice.phase === "transcribing" ||
+                      voice.phase === "requesting_mic" ||
+                      !canType(session.state)
+                    }
+                    aria-pressed={voice.phase === "recording"}
+                    aria-label={
+                      !voiceGate.available
+                        ? tr("composer.voiceUnavailable")
+                        : voice.phase === "recording"
+                          ? tr("composer.voiceListening")
+                          : tr("composer.voice")
+                    }
+                    onClick={() => toggleVoice()}
+                  >
+                    <IconMic size={16} />
+                  </button>
+                </Tip>
                 {canStop(session.state) ? (
                   <>
                     {sendQueue.canShowQueueButton(

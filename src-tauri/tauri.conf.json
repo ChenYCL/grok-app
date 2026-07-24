@@ -91,6 +91,9 @@
       "rpm": {
         "release": "1"
       }
+    },
+    "macOS": {
+      "infoPlist": "Info.plist"
     }
   }
 }

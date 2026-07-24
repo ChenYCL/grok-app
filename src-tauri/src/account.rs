@@ -426,6 +426,11 @@ fn read_access_token() -> Option<String> {
         .map(str::to_string)
 }
 
+/// Access token for xAI APIs (speech STT, etc.). Never log the return value.
+pub fn speech_access_token() -> Option<String> {
+    read_access_token()
+}
+
 fn resolve_cli_path(manual: Option<&str>) -> Option<String> {
     let probe = cli_probe::probe_cli(manual);
     probe.path
