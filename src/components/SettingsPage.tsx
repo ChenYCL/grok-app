@@ -115,6 +115,9 @@ export interface SettingsPageProps {
   /** OS sandbox for agent spawn: off | workspace | read-only | strict | devbox. */
   sandboxProfile?: string;
   onSandboxProfile?: (v: string) => void;
+  /** Reopen last active chat once after launch (default on). */
+  reopenLastSession?: boolean;
+  onReopenLastSession?: (v: boolean) => void;
   cliInfo: {
     found: boolean;
     path: string | null;
@@ -418,6 +421,8 @@ export function SettingsPage({
   onStoreApiKeysInKeychain,
   sandboxProfile = "off",
   onSandboxProfile,
+  reopenLastSession = true,
+  onReopenLastSession,
   cliInfo,
   onDoctor,
   versionFooter,
@@ -956,6 +961,25 @@ export function SettingsPage({
                       onStoreApiKeysInKeychain(!storeApiKeysInKeychain)
                     }
                     ariaLabel={t("settings.storeApiKeysInKeychain")}
+                  />
+                </div>
+              ) : null}
+              {onReopenLastSession ? (
+                <div className="settings-row">
+                  <div className="settings-row__text">
+                    <div className="settings-row__label">
+                      {t("settings.reopenLastSession")}
+                    </div>
+                    <div className="settings-row__desc">
+                      {t("settings.reopenLastSessionDesc")}
+                    </div>
+                  </div>
+                  <UiCheck
+                    checked={reopenLastSession}
+                    onChange={() =>
+                      onReopenLastSession(!reopenLastSession)
+                    }
+                    ariaLabel={t("settings.reopenLastSession")}
                   />
                 </div>
               ) : null}

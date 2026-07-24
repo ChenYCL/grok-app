@@ -35,6 +35,7 @@ See `docs/llm-wiki/release.md`.
 **中文**
 - 新增：应用更新检查、活动任务面板、会话正文搜索、插件安装更新、沙箱配置、会话置顶、项目 inspect、CLI Doctor 合并。  
 - 修复：会话模式切换回收 Agent；缺失项目目录可重定位。
+- **Reopen last chat on startup**: remembers the last opened session and restores it once after launch (Settings → General toggle, on by default; skips archived / missing / setup wizard).
 
 ## [0.1.6] - 2026-07-24
 

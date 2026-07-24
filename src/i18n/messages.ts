@@ -544,6 +544,9 @@ const en = {
   "settings.storeApiKeysInKeychain": "Store API keys in system keychain",
   "settings.storeApiKeysInKeychainDesc":
     "Off by default: keys stay in the app data folder (mode 0600). Turn on to use the OS keychain — the system may ask once. Official login still uses Grok Build auth.",
+  "settings.reopenLastSession": "Reopen last chat on startup",
+  "settings.reopenLastSessionDesc":
+    "When you quit and reopen the app, restore the chat you were last viewing (if it still exists and is not archived).",
   "settings.cliPath": "CLI path",
   "settings.cliPathDesc": "Path to the Grok Build CLI binary",
   "settings.cliNotFound": "(not found)",
@@ -1756,6 +1759,9 @@ const zh: Record<MessageKey, string> = {
   "settings.storeApiKeysInKeychain": "用系统钥匙串保存 API Key",
   "settings.storeApiKeysInKeychainDesc":
     "默认关闭：密钥写在应用数据目录（0600）。开启后写入系统钥匙串，系统可能要求一次授权。官方登录仍走 Grok Build 鉴权，不受此项影响。",
+  "settings.reopenLastSession": "启动时恢复上次会话",
+  "settings.reopenLastSessionDesc":
+    "退出并重新打开应用时，自动打开你上次查看的会话（若仍存在且未归档）。",
   "settings.cliPath": "CLI 路径",
   "settings.cliPathDesc": "Grok Build CLI 可执行文件路径",
   "settings.cliNotFound": "（未找到）",

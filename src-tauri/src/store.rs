@@ -168,6 +168,15 @@ pub struct AppSettings {
     /// Passed as top-level `grok --sandbox <profile>` / `GROK_SANDBOX` at spawn.
     #[serde(default = "default_sandbox_profile")]
     pub sandbox_profile: String,
+    /// Reopen the last active chat once after launch (default true).
+    #[serde(default = "default_reopen_last_session")]
+    pub reopen_last_session: bool,
+    /// Last successfully opened / switched session (for startup restore).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_session_id: Option<String>,
+    /// Project of [`Self::last_session_id`] when it belonged to one (hint only).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_project_id: Option<String>,
 }
 
 fn default_composer_prefs_scope() -> String {
@@ -192,6 +201,8 @@ fn default_stream_stall_seconds() -> u32 {
 
 fn default_sandbox_profile() -> String {
     "off".into()
+fn default_reopen_last_session() -> bool {
+    true
 }
 
 impl Default for AppSettings {
@@ -217,6 +228,9 @@ impl Default for AppSettings {
             stream_stall_seconds: default_stream_stall_seconds(),
             store_api_keys_in_keychain: false,
             sandbox_profile: default_sandbox_profile(),
+            reopen_last_session: default_reopen_last_session(),
+            last_session_id: None,
+            last_project_id: None,
         }
     }
 }

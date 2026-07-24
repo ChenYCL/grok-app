@@ -517,6 +517,9 @@ export const zhTW: Record<MessageKey, string> = {
   "settings.storeApiKeysInKeychain": "以系統鑰匙圈儲存 API Key",
   "settings.storeApiKeysInKeychainDesc":
     "預設關閉：金鑰寫在應用資料目錄（0600）。開啟後寫入系統鑰匙圈，系統可能要求一次授權。官方登入仍走 Grok Build 驗證，不受此項影響。",
+  "settings.reopenLastSession": "啟動時還原上次對話",
+  "settings.reopenLastSessionDesc":
+    "結束並重新開啟應用程式時，自動開啟你上次檢視的對話（若仍存在且未封存）。",
   "settings.cliPath": "CLI 路徑",
   "settings.cliPathDesc": "Grok Build CLI 可執行檔路徑",
   "settings.cliNotFound": "（未找到）",

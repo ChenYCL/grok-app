@@ -786,6 +786,12 @@ export interface AppSettings {
    * Default "off". Passed as `grok --sandbox <profile>` / GROK_SANDBOX on spawn.
    */
   sandboxProfile?: string;
+  /** Reopen last active chat once after launch (default true). */
+  reopenLastSession?: boolean;
+  /** Last successfully opened session id (startup restore). */
+  lastSessionId?: string | null;
+  /** Project id for lastSessionId when it had one. */
+  lastProjectId?: string | null;
 }
 
 export interface AvailableModel {
@@ -813,6 +819,17 @@ export interface ComposerPrefs {
 
 export async function settingsGet() {
   return invoke<AppSettings>("settings_get");
+}
+
+/** Persist last active chat without full settings_set side-effects. */
+export async function settingsRememberLastSession(
+  sessionId: string | null,
+  projectId: string | null = null,
+) {
+  return invoke<void>("settings_remember_last_session", {
+    sessionId,
+    projectId,
+  });
 }
 
 export async function modelsListAvailable() {

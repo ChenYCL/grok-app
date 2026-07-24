@@ -171,6 +171,7 @@ pub fn run() {
             commands::session_resolve_relative_media,
             commands::settings_get,
             commands::settings_set,
+            commands::settings_remember_last_session,
             commands::models_list_available,
             commands::composer_prefs_resolve,
             commands::composer_prefs_set,
