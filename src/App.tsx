@@ -4636,17 +4636,30 @@ export default function App() {
     [session.sessionId, showToast, tr],
   );
 
+  const gitWorktreesReqRef = useRef(0);
+  const gitWorktreesPathRef = useRef<string | null>(null);
   const refreshGitWorktrees = useCallback(async () => {
-    const path = activeProject?.path?.trim();
+    const path = activeProject?.path?.trim() || null;
     if (!path || !api.isTauri()) {
+      gitWorktreesReqRef.current += 1;
+      gitWorktreesPathRef.current = null;
       setGitWorktrees([]);
       setGitWorktreesReason(null);
       setGitWorktreesLoading(false);
       return;
     }
+    const reqId = ++gitWorktreesReqRef.current;
+    // Drop stale rows when the active project path changes; soft-refresh keeps
+    // the previous list for the same path so the menu does not flash empty.
+    if (gitWorktreesPathRef.current !== path) {
+      gitWorktreesPathRef.current = path;
+      setGitWorktrees([]);
+      setGitWorktreesReason(null);
+    }
     setGitWorktreesLoading(true);
     try {
       const res = await api.gitWorktreesList(path);
+      if (reqId !== gitWorktreesReqRef.current) return;
       if (!res.available) {
         setGitWorktrees([]);
         setGitWorktreesReason(res.reason?.trim() || "unavailable");
@@ -4655,10 +4668,13 @@ export default function App() {
         setGitWorktreesReason(null);
       }
     } catch (e) {
+      if (reqId !== gitWorktreesReqRef.current) return;
       setGitWorktrees([]);
       setGitWorktreesReason(String(e));
     } finally {
-      setGitWorktreesLoading(false);
+      if (reqId === gitWorktreesReqRef.current) {
+        setGitWorktreesLoading(false);
+      }
     }
   }, [activeProject?.path]);
 
@@ -7227,6 +7243,7 @@ export default function App() {
                     worktrees: tr("composer.worktrees"),
                     worktreesEmpty: tr("composer.worktreesEmpty"),
                     worktreesUnavailable: tr("composer.worktreesUnavailable"),
+                    worktreesLoading: tr("composer.worktreesLoading"),
                     worktreeCurrent: tr("composer.worktreeCurrent"),
                     worktreeSwitch: tr("composer.worktreeSwitch"),
                     worktreeMain: tr("composer.worktreeMain"),
@@ -7248,9 +7265,7 @@ export default function App() {
                   onSwitchWorktree={(wt) => {
                     void switchToWorktree(wt);
                   }}
-                  onOpen={() => {
-                    void refreshGitWorktrees();
-                  }}
+                  onOpen={refreshGitWorktrees}
                 />
                 {goalMode ? (
                   <Tip label={tr("composer.goalHint")}>

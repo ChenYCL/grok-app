@@ -2531,6 +2531,10 @@ html.platform-mac[data-theme="light"] .settings-page__content {
   color: var(--text-tertiary);
 }
 
+.cpm__worktrees-list.is-loading {
+  opacity: 0.72;
+}
+
 .cpm__worktrees-list {
   list-style: none;
   margin: 0;

@@ -12,11 +12,7 @@ import {
 } from "@/components/icons";
 import { Tip } from "@/components/ui/tooltip";
 import { useFloatingMenu } from "@/lib/floatingMenu";
-import {
-  pathsEqual,
-  siblingWorktrees,
-  worktreeLabel,
-} from "@/lib/gitWorktree";
+import { pathsEqual, worktreeLabel } from "@/lib/gitWorktree";
 import type { GitWorktreeEntry } from "@/lib/api";
 
 export type ProjectOption = {
@@ -38,6 +34,7 @@ type Props = {
     worktrees: string;
     worktreesEmpty: string;
     worktreesUnavailable: string;
+    worktreesLoading?: string;
     worktreeCurrent: string;
     worktreeSwitch: string;
     worktreeMain: string;
@@ -74,17 +71,18 @@ export function ComposerProjectMenu({
   const rootRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const popRef = useRef<HTMLDivElement>(null);
+  /** Avoid putting unstable parent callbacks in the open-effect deps (re-fetch loop). */
+  const onOpenRef = useRef(onOpen);
+  onOpenRef.current = onOpen;
 
-  const siblings = activeProject
-    ? siblingWorktrees(worktrees, activeProject.path)
-    : [];
-  const showWorktrees = !!activeProject && (worktreesLoading || worktrees.length > 0 || !!worktreesReason);
+  // Show section whenever a project is active (soft-fail empty / loading still useful).
+  const showWorktrees = !!activeProject;
 
   const estHeight = Math.min(
     400,
     52 +
       Math.min(LIST_MAX_H, projects.length * 40 + 8) +
-      (showWorktrees ? 28 + Math.min(160, (siblings.length || 1) * 36 + 24) : 0),
+      (showWorktrees ? 28 + Math.min(160, (worktrees.length || 1) * 36 + 24) : 0),
   );
   const { pos, style: popStyle } = useFloatingMenu({
     open,
@@ -97,15 +95,18 @@ export function ComposerProjectMenu({
     minWidth: 260,
     estHeight,
     gap: 8,
-    deps: [projects.length, siblings.length, showWorktrees],
+    deps: [projects.length, worktrees.length, showWorktrees],
   });
 
+  // Refresh only when the menu opens — not when parent re-renders with a new onOpen.
   useEffect(() => {
-    if (open) onOpen?.();
-  }, [open, onOpen]);
+    if (!open) return;
+    onOpenRef.current?.();
+  }, [open]);
 
   const label = activeProject?.name ?? labels.noProject;
   const tip = activeProject?.path || labels.pickProject;
+  const loadingLabel = labels.worktreesLoading?.trim() || labels.worktreesEmpty;
 
   return (
     <div ref={rootRef} className={`cpm${open ? " is-open" : ""}`}>
@@ -207,16 +208,14 @@ export function ComposerProjectMenu({
             {showWorktrees ? (
               <div className="cpm__worktrees" role="group" aria-label={labels.worktrees}>
                 <div className="cpm__worktrees-head">{labels.worktrees}</div>
-                {worktreesLoading ? (
-                  <p className="cpm__worktrees-empty">{labels.worktreesEmpty}</p>
-                ) : worktrees.length === 0 ? (
-                  <p className="cpm__worktrees-empty">
-                    {worktreesReason?.trim()
-                      ? labels.worktreesUnavailable
-                      : labels.worktreesEmpty}
-                  </p>
-                ) : (
-                  <ul className="cpm__worktrees-list">
+                {worktrees.length > 0 ? (
+                  <ul
+                    className={
+                      "cpm__worktrees-list" +
+                      (worktreesLoading ? " is-loading" : "")
+                    }
+                    aria-busy={worktreesLoading || undefined}
+                  >
                     {worktrees.map((wt) => {
                       const current = pathsEqual(wt.path, activeProject?.path);
                       const name = worktreeLabel(wt);
@@ -260,6 +259,14 @@ export function ComposerProjectMenu({
                       );
                     })}
                   </ul>
+                ) : (
+                  <p className="cpm__worktrees-empty">
+                    {worktreesLoading
+                      ? loadingLabel
+                      : worktreesReason?.trim()
+                        ? labels.worktreesUnavailable
+                        : labels.worktreesEmpty}
+                  </p>
                 )}
               </div>
             ) : null}

@@ -279,6 +279,7 @@ export const zhTW: Record<MessageKey, string> = {
   "composer.worktrees": "Git worktrees",
   "composer.worktreesEmpty": "沒有關聯的 worktree",
   "composer.worktreesUnavailable": "無法列出 worktree（需要 git 倉庫）",
+  "composer.worktreesLoading": "正在載入 worktree…",
   "composer.worktreeCurrent": "目前",
   "composer.worktreeSwitch": "切換",
   "composer.worktreeMain": "主目錄",
