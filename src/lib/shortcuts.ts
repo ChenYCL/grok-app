@@ -22,6 +22,12 @@ export const SHORTCUTS: ShortcutRow[] = [
     win: "Ctrl K",
   },
   {
+    id: "findInChat",
+    labelKey: "shortcuts.findInChat",
+    mac: "⌘ F",
+    win: "Ctrl F",
+  },
+  {
     id: "newChat",
     labelKey: "shortcuts.newChat",
     mac: "⌘ N",

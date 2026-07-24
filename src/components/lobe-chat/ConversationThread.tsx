@@ -3,7 +3,7 @@
  * Replaces AI Elements / previous ConversationThread.
  */
 
-import { memo, useMemo } from "react";
+import { memo, useEffect, useMemo } from "react";
 import type { Locale } from "@/i18n";
 import { createT } from "@/i18n";
 import {
@@ -42,6 +42,8 @@ import { Thinking } from "./Thinking";
 import { BackBottom } from "./BackBottom";
 import { InlineUserEdit } from "./InlineUserEdit";
 import { SkillChip } from "@/components/SkillChip";
+import { HighlightedText } from "@/components/HighlightedText";
+import { findChatMatches } from "@/lib/chatFind";
 import { hydrateDisplayContent, parseStoredContent } from "@/lib/draftDoc";
 import { parseScheduledUserContent } from "@/lib/automations";
 import { extractAutomationPayload } from "@/lib/automationSetup";
@@ -76,6 +78,9 @@ const AssistantMessageBody = memo(function AssistantMessageBody({
   onOpenResource,
   onAddAttachmentToComposer,
   attachLabels,
+  findQuery,
+  findActiveOccurrence,
+  findOccurrenceBase = 0,
 }: {
   content: string;
   attachments?: Attachment[];
@@ -85,6 +90,10 @@ const AssistantMessageBody = memo(function AssistantMessageBody({
   onOpenResource?: (target: ResourceOpenTarget) => void;
   onAddAttachmentToComposer?: (att: Attachment) => void;
   attachLabels: AttachLabels;
+  findQuery?: string;
+  findActiveOccurrence?: number | null;
+  /** Offset into the message-level occurrence index for multi-segment bodies. */
+  findOccurrenceBase?: number;
 }) {
   // Never show silent grok-automation fences in the transcript.
   const displayContent = content?.trim()
@@ -123,6 +132,9 @@ const AssistantMessageBody = memo(function AssistantMessageBody({
           imagePathMap={pathMapProp}
           projectPath={projectPath}
           onOpenResource={onOpenResource}
+          findQuery={findQuery}
+          findActiveOccurrence={findActiveOccurrence}
+          findOccurrenceBase={findOccurrenceBase}
         >
           {displayContent}
         </MarkdownChat>
@@ -146,10 +158,27 @@ const AssistantMessageBody = memo(function AssistantMessageBody({
 });
 
 /** Render skill chips / plain text for the user bubble body. */
-function UserPlainOrSkills({ content }: { content: string }) {
+function UserPlainOrSkills({
+  content,
+  findQuery,
+  findActiveOccurrence,
+}: {
+  content: string;
+  findQuery?: string;
+  findActiveOccurrence?: number | null;
+}) {
   const hydrated = hydrateDisplayContent(content);
   const segs = parseStoredContent(hydrated);
   if (!segs.some((s) => s.type === "skill")) {
+    if (findQuery?.trim()) {
+      return (
+        <HighlightedText
+          text={content}
+          query={findQuery}
+          activeOccurrence={findActiveOccurrence ?? null}
+        />
+      );
+    }
     return <>{content}</>;
   }
   return (
@@ -157,6 +186,13 @@ function UserPlainOrSkills({ content }: { content: string }) {
       {segs.map((s, i) =>
         s.type === "skill" ? (
           <SkillChip key={`sk-${i}-${s.name}`} name={s.name} size="sm" />
+        ) : findQuery?.trim() && s.text ? (
+          <HighlightedText
+            key={`t-${i}`}
+            text={s.text}
+            query={findQuery}
+            activeOccurrence={findActiveOccurrence ?? null}
+          />
         ) : (
           <span key={`t-${i}`}>{s.text}</span>
         ),
@@ -172,10 +208,14 @@ function UserPlainOrSkills({ content }: { content: string }) {
 function UserMessageBody({
   content,
   scheduledLabel,
+  findQuery,
+  findActiveOccurrence,
 }: {
   content: string;
   /** Short badge word, e.g. 已安排 / Scheduled */
   scheduledLabel: string;
+  findQuery?: string;
+  findActiveOccurrence?: number | null;
 }) {
   const scheduled = parseScheduledUserContent(content);
   if (scheduled) {
@@ -187,17 +227,37 @@ function UserMessageBody({
           <span className="lobe-scheduled-tag__sep" aria-hidden>
             ·
           </span>
-          <span className="lobe-scheduled-tag__title">{scheduled.title}</span>
+          <span className="lobe-scheduled-tag__title">
+            {findQuery?.trim() ? (
+              <HighlightedText
+                text={scheduled.title}
+                query={findQuery}
+                activeOccurrence={null}
+              />
+            ) : (
+              scheduled.title
+            )}
+          </span>
         </span>
         {scheduled.body.trim() ? (
           <div className="lobe-chat-user-msg__body">
-            <UserPlainOrSkills content={scheduled.body} />
+            <UserPlainOrSkills
+              content={scheduled.body}
+              findQuery={findQuery}
+              findActiveOccurrence={findActiveOccurrence}
+            />
           </div>
         ) : null}
       </div>
     );
   }
-  return <UserPlainOrSkills content={content} />;
+  return (
+    <UserPlainOrSkills
+      content={content}
+      findQuery={findQuery}
+      findActiveOccurrence={findActiveOccurrence}
+    />
+  );
 }
 
 export interface ConversationThreadProps {
@@ -242,6 +302,12 @@ export interface ConversationThreadProps {
    * Retained for callers; not rendered in the transcript.
    */
   turnStartedAt?: number | null;
+  /** In-chat find (Cmd/Ctrl+F) — highlight + scroll. */
+  findQuery?: string;
+  /** Message ids that contain at least one match. */
+  findHitMessageIds?: ReadonlySet<string>;
+  /** Active match target for scroll / current mark. */
+  findActive?: { messageId: string; occurrence: number } | null;
 }
 
 export function ConversationThread({
@@ -266,8 +332,31 @@ export function ConversationThread({
   onOpenResource,
   onAddAttachmentToComposer,
   attachLabels,
+  findQuery = "",
+  findHitMessageIds,
+  findActive = null,
 }: ConversationThreadProps) {
   const tr = useMemo(() => createT(locale), [locale]);
+
+  // Scroll the current find match into view (mark if present, else message).
+  useEffect(() => {
+    if (!findActive?.messageId) return;
+    const q = findQuery.trim();
+    if (!q) return;
+    const id = findActive.messageId;
+    const t = window.requestAnimationFrame(() => {
+      const root = document.querySelector(
+        `[data-message-id="${CSS.escape(id)}"]`,
+      ) as HTMLElement | null;
+      if (!root) return;
+      const currentMark = root.querySelector(
+        '[data-find-mark="current"]',
+      ) as HTMLElement | null;
+      const target = currentMark ?? root;
+      target.scrollIntoView({ block: "center", behavior: "smooth" });
+    });
+    return () => window.cancelAnimationFrame(t);
+  }, [findActive?.messageId, findActive?.occurrence, findQuery]);
 
   // Re-pin when user sends (even if they had scrolled up to read history).
   const forceStickKey = useMemo(() => {
@@ -425,6 +514,8 @@ export function ConversationThread({
               const isLastUser = lastUserMessageId === m.id;
               const isEditing = editingUserMessageId === m.id;
               const timeLabel = formatMessageTime(m.createdAt, locale);
+              const isFindHit = !!findHitMessageIds?.has(m.id);
+              const isFindCurrent = findActive?.messageId === m.id;
               return (
                 <ChatItem
                   key={m.id}
@@ -432,6 +523,10 @@ export function ConversationThread({
                   placement="right"
                   showAvatar={false}
                   showTitle={false}
+                  className={
+                    (isFindHit ? " lobe-chat-item--find-hit" : "") +
+                    (isFindCurrent ? " lobe-chat-item--find-current" : "")
+                  }
                   message={
                     <div
                       className={
@@ -478,6 +573,12 @@ export function ConversationThread({
                           <UserMessageBody
                             content={m.content}
                             scheduledLabel={tr("automations.msgTag")}
+                            findQuery={findQuery}
+                            findActiveOccurrence={
+                              isFindCurrent
+                                ? (findActive?.occurrence ?? null)
+                                : null
+                            }
                           />
                         </div>
                       ) : null}
@@ -546,17 +647,38 @@ export function ConversationThread({
                 { content: m.content, code: undefined, message: undefined },
                 locale === "en" ? "en" : "zh",
               );
+              const isFindHit = !!findHitMessageIds?.has(m.id);
+              const isFindCurrent = findActive?.messageId === m.id;
               return (
                 <div
                   key={m.id}
-                  className="lobe-chat-error"
+                  className={
+                    "lobe-chat-error" +
+                    (isFindHit ? " lobe-chat-item--find-hit" : "") +
+                    (isFindCurrent ? " lobe-chat-item--find-current" : "")
+                  }
                   role="alert"
                   data-testid="chat-turn-error"
+                  data-message-id={m.id}
                 >
                   <div className="lobe-chat-error__label">
                     {tr("chat.turnFailed")}
                   </div>
-                  <div className="lobe-chat-error__body">{friendly}</div>
+                  <div className="lobe-chat-error__body">
+                    {findQuery.trim() ? (
+                      <HighlightedText
+                        text={friendly}
+                        query={findQuery}
+                        activeOccurrence={
+                          isFindCurrent
+                            ? (findActive?.occurrence ?? null)
+                            : null
+                        }
+                      />
+                    ) : (
+                      friendly
+                    )}
+                  </div>
                 </div>
               );
             }
@@ -584,6 +706,9 @@ export function ConversationThread({
               }
             }
 
+            const isFindHit = !!findHitMessageIds?.has(m.id);
+            const isFindCurrent = findActive?.messageId === m.id;
+
             return (
               <ChatItem
                 key={m.id}
@@ -591,11 +716,16 @@ export function ConversationThread({
                 placement="left"
                 showAvatar={false}
                 loading={!!m.streaming}
+                className={
+                  (isFindHit ? " lobe-chat-item--find-hit" : "") +
+                  (isFindCurrent ? " lobe-chat-item--find-current" : "")
+                }
                 message={
                   <div
                     className="lobe-chat-assistant-timeline"
                     aria-busy={m.streaming ? true : undefined}
                     aria-live={m.streaming ? "polite" : undefined}
+                    data-find-assistant={isFindCurrent ? "current" : undefined}
                   >
                     {showThinkingPlaceholder ? (
                       <Thinking
@@ -606,62 +736,84 @@ export function ConversationThread({
                         thoughtForLabel={(n) => tr("chat.thoughtFor", { n })}
                       />
                     ) : null}
-                    {segs.map((seg, si) => {
-                      if (seg.kind === "thought") {
-                        // Skip empty finished phases (avoids "Thought for 0.0s").
-                        if (
-                          !seg.text.trim() &&
-                          !(m.streaming && lastSeg === seg)
-                        ) {
-                          return null;
+                    {(() => {
+                      // Running occurrence base across content segments so
+                      // find marks stay aligned with message-level match index.
+                      let contentOccBase = 0;
+                      return segs.map((seg, si) => {
+                        if (seg.kind === "thought") {
+                          // Skip empty finished phases (avoids "Thought for 0.0s").
+                          if (
+                            !seg.text.trim() &&
+                            !(m.streaming && lastSeg === seg)
+                          ) {
+                            return null;
+                          }
+                          const thoughtIdx = segs
+                            .slice(0, si + 1)
+                            .filter((x) => x.kind === "thought").length;
+                          const phaseStreaming =
+                            !!m.streaming && lastSeg === seg;
+                          const multi = thoughtCount > 1;
+                          const label = multi
+                            ? tr("plan.phaseLabel", { n: String(thoughtIdx) })
+                            : tr("chat.thinking");
+                          return (
+                            <Thinking
+                              key={`${m.id}-th-${si}`}
+                              locale={locale}
+                              thinking={phaseStreaming}
+                              content={seg.text}
+                              streamingLabel={label}
+                              doneLabel={
+                                multi
+                                  ? tr("plan.phaseLabel", {
+                                      n: String(thoughtIdx),
+                                    })
+                                  : tr("chat.thoughtDone")
+                              }
+                              thoughtForLabel={(n) =>
+                                tr("chat.thoughtFor", { n })
+                              }
+                            />
+                          );
                         }
-                        const thoughtIdx = segs
-                          .slice(0, si + 1)
-                          .filter((x) => x.kind === "thought").length;
-                        const phaseStreaming =
-                          !!m.streaming && lastSeg === seg;
-                        const multi = thoughtCount > 1;
-                        const label = multi
-                          ? tr("plan.phaseLabel", { n: String(thoughtIdx) })
-                          : tr("chat.thinking");
+                        const segBase = contentOccBase;
+                        if (findQuery.trim()) {
+                          contentOccBase += findChatMatches(findQuery, [
+                            {
+                              id: `${m.id}-seg-${si}`,
+                              role: "assistant",
+                              content: seg.text,
+                            },
+                          ]).length;
+                        }
                         return (
-                          <Thinking
-                            key={`${m.id}-th-${si}`}
-                            locale={locale}
-                            thinking={phaseStreaming}
+                          <AssistantMessageBody
+                            key={`${m.id}-c-${si}`}
                             content={seg.text}
-                            streamingLabel={label}
-                            doneLabel={
-                              multi
-                                ? tr("plan.phaseLabel", {
-                                    n: String(thoughtIdx),
-                                  })
-                                : tr("chat.thoughtDone")
+                            attachments={
+                              si === lastContentSi ? m.attachments : undefined
                             }
-                            thoughtForLabel={(n) =>
-                              tr("chat.thoughtFor", { n })
+                            streaming={!!m.streaming && lastSeg === seg}
+                            locale={locale}
+                            projectPath={projectPath}
+                            onOpenResource={onOpenResource}
+                            onAddAttachmentToComposer={
+                              onAddAttachmentToComposer
                             }
+                            attachLabels={attachLabels}
+                            findQuery={findQuery}
+                            findActiveOccurrence={
+                              isFindCurrent
+                                ? (findActive?.occurrence ?? null)
+                                : null
+                            }
+                            findOccurrenceBase={segBase}
                           />
                         );
-                      }
-                      return (
-                        <AssistantMessageBody
-                          key={`${m.id}-c-${si}`}
-                          content={seg.text}
-                          attachments={
-                            si === lastContentSi ? m.attachments : undefined
-                          }
-                          streaming={!!m.streaming && lastSeg === seg}
-                          locale={locale}
-                          projectPath={projectPath}
-                          onOpenResource={onOpenResource}
-                          onAddAttachmentToComposer={
-                            onAddAttachmentToComposer
-                          }
-                          attachLabels={attachLabels}
-                        />
-                      );
-                    })}
+                      });
+                    })()}
                     {/* Body-less turn with only attachments */}
                     {!contentSegCount && m.attachments?.length ? (
                       <AssistantMessageBody
@@ -673,6 +825,12 @@ export function ConversationThread({
                         onOpenResource={onOpenResource}
                         onAddAttachmentToComposer={onAddAttachmentToComposer}
                         attachLabels={attachLabels}
+                        findQuery={findQuery}
+                        findActiveOccurrence={
+                          isFindCurrent
+                            ? (findActive?.occurrence ?? null)
+                            : null
+                        }
                       />
                     ) : null}
                   </div>

@@ -446,6 +446,14 @@ export const zhTW: Record<MessageKey, string> = {
   "search.matchCount": "{n} 處相符",
   "search.searchingContent": "正在搜尋訊息…",
 
+  "chatFind.placeholder": "在對話中尋找…",
+  "chatFind.prev": "上一個相符",
+  "chatFind.next": "下一個相符",
+  "chatFind.close": "關閉尋找",
+  "chatFind.count": "{current} / {total}",
+  "chatFind.noMatches": "無相符",
+  "chatFind.aria": "在對話中尋找",
+
   "plan.waiting": "等待計劃",
   "plan.ready": "計劃待審閱",
   "plan.context": "上下文",
@@ -890,6 +898,7 @@ export const zhTW: Record<MessageKey, string> = {
   "shortcuts.title": "鍵盤快捷鍵",
   "shortcuts.close": "關閉",
   "shortcuts.search": "搜尋對話 / 專案",
+  "shortcuts.findInChat": "在對話中尋找",
   "shortcuts.newChat": "新增對話",
   "shortcuts.settings": "設定",
   "shortcuts.doctor": "Doctor",

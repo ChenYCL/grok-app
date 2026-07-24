@@ -470,6 +470,15 @@ const en = {
   "search.matchCount": "{n} matches",
   "search.searchingContent": "Searching messages…",
 
+  // In-conversation find (Cmd/Ctrl+F)
+  "chatFind.placeholder": "Find in conversation…",
+  "chatFind.prev": "Previous match",
+  "chatFind.next": "Next match",
+  "chatFind.close": "Close find",
+  "chatFind.count": "{current} / {total}",
+  "chatFind.noMatches": "No matches",
+  "chatFind.aria": "Find in conversation",
+
   // Plan card
   "plan.waiting": "Waiting for plan",
   "plan.ready": "Plan ready for review",
@@ -925,6 +934,7 @@ const en = {
   "shortcuts.title": "Keyboard shortcuts",
   "shortcuts.close": "Close",
   "shortcuts.search": "Search chats / projects",
+  "shortcuts.findInChat": "Find in conversation",
   "shortcuts.newChat": "New chat",
   "shortcuts.settings": "Settings",
   "shortcuts.doctor": "Doctor",
@@ -1685,6 +1695,14 @@ const zh: Record<MessageKey, string> = {
   "search.matchCount": "{n} 处匹配",
   "search.searchingContent": "正在搜索消息…",
 
+  "chatFind.placeholder": "在对话中查找…",
+  "chatFind.prev": "上一个匹配",
+  "chatFind.next": "下一个匹配",
+  "chatFind.close": "关闭查找",
+  "chatFind.count": "{current} / {total}",
+  "chatFind.noMatches": "无匹配",
+  "chatFind.aria": "在对话中查找",
+
   "plan.waiting": "等待计划",
   "plan.ready": "计划待审阅",
   "plan.context": "上下文",
@@ -2129,6 +2147,7 @@ const zh: Record<MessageKey, string> = {
   "shortcuts.title": "键盘快捷键",
   "shortcuts.close": "关闭",
   "shortcuts.search": "搜索会话 / 项目",
+  "shortcuts.findInChat": "在对话中查找",
   "shortcuts.newChat": "新建会话",
   "shortcuts.settings": "设置",
   "shortcuts.doctor": "Doctor",

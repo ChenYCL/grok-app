@@ -4674,6 +4674,134 @@ html[data-theme="light"] .ui-check.is-mixed .ui-check__box {
   }
 }
 
+/* In-conversation find bar (Cmd/Ctrl+F) */
+.chat-find {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 8px var(--space-5) 0;
+  padding: 6px 8px 6px 10px;
+  border-radius: 12px;
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-card, var(--bg-elevated));
+  min-width: 0;
+  box-shadow: 0 1px 0 color-mix(in srgb, var(--border-subtle) 60%, transparent);
+}
+
+.chat-find__icon {
+  display: inline-flex;
+  color: var(--text-tertiary);
+  flex-shrink: 0;
+}
+
+.chat-find__input {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 28px;
+  border: none;
+  outline: none;
+  background: transparent;
+  color: var(--text-primary);
+  font-size: 13px;
+  font-family: inherit;
+}
+
+.chat-find__input::placeholder {
+  color: var(--text-tertiary);
+}
+
+.chat-find__input::-webkit-search-cancel-button {
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.chat-find__count {
+  flex-shrink: 0;
+  font-size: 11.5px;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-tertiary);
+  min-width: 4.5em;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.chat-find__count.is-empty {
+  color: var(--text-secondary);
+}
+
+.chat-find__actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex-shrink: 0;
+}
+
+.chat-find__btn {
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  padding: 0;
+}
+
+.chat-find__btn:hover:not(:disabled) {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.chat-find__btn:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.chat-find__btn--close {
+  color: var(--text-tertiary);
+}
+
+.chat-find__chev--up {
+  transform: rotate(90deg);
+}
+
+/* Find hit marks + message chrome */
+.chat-find-mark {
+  background: color-mix(in srgb, #e6b800 48%, transparent);
+  color: inherit;
+  border-radius: 2px;
+  padding: 0 1px;
+}
+
+.chat-find-mark--current {
+  background: color-mix(in srgb, #ff9f0a 72%, transparent);
+  outline: 1px solid color-mix(in srgb, #ff9f0a 80%, transparent);
+}
+
+[data-theme="light"] .chat-find-mark {
+  background: color-mix(in srgb, #f5d76e 70%, transparent);
+}
+
+[data-theme="light"] .chat-find-mark--current {
+  background: color-mix(in srgb, #ffb020 78%, transparent);
+}
+
+.lobe-chat-item--find-current {
+  border-radius: 12px;
+  outline: 1px solid color-mix(in srgb, var(--accent) 42%, transparent);
+  outline-offset: 2px;
+  background: color-mix(in srgb, var(--accent) 6%, transparent);
+}
+
+.lobe-chat-error.lobe-chat-item--find-current {
+  outline: 1px solid color-mix(in srgb, var(--accent) 42%, transparent);
+  outline-offset: 2px;
+}
+
 /* Sticky plan/goal bar above the chat stage — accent blue-violet, theme-aware */
 .plan-bar {
   display: flex;
