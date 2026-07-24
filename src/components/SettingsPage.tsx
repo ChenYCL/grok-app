@@ -113,6 +113,8 @@ export interface SettingsPageProps {
   onAccountManageUsage: () => void;
   onAccountSubscribe: () => void;
   onSaveAccount?: () => void;
+  /** Save current (if signed in) then start OAuth login for another account. */
+  onAddAccount?: () => void;
   onSwitchAccount?: (id: string) => void;
   onRemoveAccount?: (id: string) => void;
   onImportChat?: () => void;
@@ -282,6 +284,7 @@ export function SettingsPage({
   onAccountManageUsage,
   onAccountSubscribe,
   onSaveAccount,
+  onAddAccount,
   onSwitchAccount,
   onRemoveAccount,
   onImportChat,
@@ -903,9 +906,12 @@ export function SettingsPage({
               profileSwitch: t("account.profileSwitch"),
               profileRemove: t("account.profileRemove"),
               profileActive: t("account.profileActive"),
+              manageAccounts: t("account.manageAccounts"),
+              addAccount: t("account.addAccount"),
               importChat: t("account.importChat"),
               importChatHint: t("account.importChatHint"),
               importChatBtn: t("account.importChatBtn"),
+              close: t("common.close"),
             }}
             loginHint={loginHint}
             savedAccounts={savedAccounts}
@@ -917,8 +923,8 @@ export function SettingsPage({
             onRefresh={onAccountRefresh}
             onManageUsage={onAccountManageUsage}
             onSubscribe={onAccountSubscribe}
-            // Multi-account / import UI gated in AccountPanel (SHOW_ACCOUNT_EXTRAS).
             onSaveAccount={onSaveAccount}
+            onAddAccount={onAddAccount}
             onSwitchAccount={onSwitchAccount}
             onRemoveAccount={onRemoveAccount}
             onImportChat={onImportChat}

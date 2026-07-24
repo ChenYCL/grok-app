@@ -2074,11 +2074,29 @@ html.platform-mac[data-theme="light"] .settings-page__content {
 .account-hero {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 14px;
   padding: 14px 16px;
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-lg, 10px);
   background: var(--bg-elevated);
+}
+
+/* Top: who (left) · actions (right) */
+.account-hero__top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px 16px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.account-hero__who {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  flex: 1 1 180px;
 }
 
 .account-hero__head {
@@ -2130,28 +2148,14 @@ html.platform-mac[data-theme="light"] .settings-page__content {
   white-space: nowrap;
 }
 
-.account-hero__meta {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 4px;
-  margin-top: 3px;
+.account-hero__email {
+  margin-top: 2px;
   font-size: 12px;
   color: var(--text-tertiary);
-  line-height: 1.35;
-}
-
-.account-hero__email {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  max-width: 220px;
-}
-
-.account-hero__sep,
-.account-hero__dot {
-  opacity: 0.55;
-  flex-shrink: 0;
+  max-width: 280px;
 }
 
 .account-hero__warn {
@@ -2162,34 +2166,51 @@ html.platform-mac[data-theme="light"] .settings-page__content {
   display: flex;
   flex-shrink: 0;
   flex-wrap: wrap;
+  align-items: center;
   gap: 6px;
   justify-content: flex-end;
 }
 
-.account-hero__quota {
+.account-hero__actions .btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.account-hero__count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  background: var(--bg-hover);
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Full-width plan / quota block */
+.account-hero__plan {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  padding-top: 2px;
-  border-top: 1px solid var(--border-subtle);
+  min-width: 0;
   padding-top: 12px;
+  border-top: 1px solid var(--border-subtle);
 }
 
-.account-hero__quota-line {
+.account-hero__plan-head {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
   gap: 12px;
-  flex-wrap: wrap;
 }
 
-.account-hero__quota-line--compact {
-  align-items: center;
-  gap: 10px;
-}
-
-.account-hero__plan {
-  font-size: 13px;
+.account-hero__plan-name {
+  font-size: 14px;
   font-weight: 600;
   color: var(--text-primary);
   overflow: hidden;
@@ -2198,53 +2219,42 @@ html.platform-mac[data-theme="light"] .settings-page__content {
   min-width: 0;
 }
 
-.account-hero__remain {
+.account-hero__plan-remain {
   flex-shrink: 0;
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 500;
   color: var(--text-secondary);
   font-variant-numeric: tabular-nums;
 }
 
-.account-hero__quota-main {
-  font-size: 20px;
-  font-weight: 650;
-  color: var(--text-primary);
-  font-variant-numeric: tabular-nums;
-  letter-spacing: -0.02em;
-}
-
-.account-hero__quota-main em {
-  margin-left: 6px;
-  font-style: normal;
-  font-size: 12px;
-  font-weight: 500;
-  color: var(--text-secondary);
-}
-
-.account-hero__quota-side {
+.account-hero__plan-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 12px;
   font-size: 12px;
   color: var(--text-tertiary);
   font-variant-numeric: tabular-nums;
 }
 
-.account-hero__quota-side--below {
-  margin-top: -2px;
+.account-hero__plan-empty {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 14px;
 }
 
-.account-hero__quota-empty {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  font-size: 13px;
-  color: var(--text-secondary);
+.account-hero__plan-meta-text {
+  font-size: 12px;
+  color: var(--text-tertiary);
 }
 
 .account-hero__links {
   display: flex;
   flex-wrap: wrap;
-  gap: 12px;
+  gap: 14px;
+  padding-top: 2px;
 }
 
 .account-link {
@@ -2284,86 +2294,96 @@ html.platform-mac[data-theme="light"] .settings-page__content {
   word-break: break-word;
 }
 
-.account-profiles,
-.account-import {
-  margin-top: 14px;
-  padding-top: 12px;
-  border-top: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.06));
-}
-
-.account-profiles__head {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 10px;
-  margin-bottom: 8px;
-}
-
-.account-profiles__title,
-.account-import__title {
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--text-primary);
-}
-
-.account-profiles__hint,
-.account-import__hint,
-.account-profiles__empty {
-  font-size: 12px;
+/* Multi-account manager modal */
+.account-mgr__hint {
+  margin: 0 0 12px;
+  font-size: 12.5px;
+  line-height: 1.45;
   color: var(--text-tertiary);
-  line-height: 1.4;
-  margin: 2px 0 0;
 }
 
-.account-profiles__list {
+.account-mgr__empty {
+  padding: 20px 12px;
+  text-align: center;
+  font-size: 13px;
+  color: var(--text-tertiary);
+  border-radius: 10px;
+  border: 1px dashed var(--border-subtle);
+}
+
+.account-mgr__list {
   list-style: none;
   margin: 0;
   padding: 0;
   display: flex;
   flex-direction: column;
-  gap: 6px;
-}
-
-.account-profiles__row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
   gap: 8px;
-  padding: 8px 10px;
-  border-radius: 8px;
-  background: color-mix(in srgb, var(--bg-hover) 60%, transparent);
 }
 
-.account-profiles__meta {
-  min-width: 0;
+.account-mgr__row {
   display: flex;
-  flex-wrap: wrap;
   align-items: center;
-  gap: 6px;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--border-subtle);
+  background: color-mix(in srgb, var(--bg-hover) 40%, transparent);
 }
 
-.account-profiles__label {
-  font-size: 13px;
-  font-weight: 500;
+.account-mgr__row.is-active {
+  border-color: color-mix(in srgb, var(--accent, #6b9fff) 40%, transparent);
+  background: color-mix(in srgb, var(--accent, #6b9fff) 10%, transparent);
+}
+
+.account-mgr__av {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 999px;
+  flex-shrink: 0;
+  font-size: 11px;
+  font-weight: 700;
+  background: var(--accent-muted, rgba(107, 159, 255, 0.15));
+  color: var(--accent, #6b9fff);
+}
+
+.account-mgr__meta {
+  min-width: 0;
+  flex: 1;
+}
+
+.account-mgr__name {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13.5px;
+  font-weight: 550;
   color: var(--text-primary);
 }
 
-.account-profiles__email {
-  font-size: 11px;
+.account-mgr__email {
+  margin-top: 2px;
+  font-size: 12px;
   color: var(--text-tertiary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.account-profiles__actions {
+.account-mgr__actions {
   display: flex;
-  gap: 4px;
   flex-shrink: 0;
+  flex-wrap: wrap;
+  gap: 6px;
+  justify-content: flex-end;
 }
 
-.account-import {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 8px;
+.account-mgr__actions .btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
 }
 
 /* Multiple thinking phases stacked (pre-tool + post-tool) */

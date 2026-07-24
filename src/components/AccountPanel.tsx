@@ -1,12 +1,11 @@
 /**
- * Account panel — simplified layout:
- * 1) One top card: identity + plan + quota + actions
- * 2) Heatmap
- * 3) Fixed-height, internally scrolling call logs
+ * Account panel — clean hero card + heatmap + call logs.
  *
- * Multi-account + import-chat UI is gated off (`SHOW_ACCOUNT_EXTRAS`) until product opens them.
+ * Multi-account: one button opens a modal (not inline chips).
+ * Hero layout: identity | actions on top; plan/quota full width below (not mixed).
  */
 
+import { useState } from "react";
 import type { AccountStatus, SavedAccount } from "@/lib/api";
 import {
   accountDisplayName,
@@ -18,10 +17,9 @@ import {
   usagePercent,
 } from "@/lib/accountUi";
 import { Heatmap } from "@/components/Heatmap";
+import { GlassModal } from "@/components/GlassModal";
 import { Tip } from "@/components/ui/tooltip";
-
-/** Flip to true when multi-account switcher / import chat should ship publicly. */
-const SHOW_ACCOUNT_EXTRAS = false;
+import { IconPlus, IconTrash, IconUser } from "@/components/icons";
 
 export interface AccountPanelLabels {
   signedIn: string;
@@ -77,9 +75,14 @@ export interface AccountPanelLabels {
   profileSwitch: string;
   profileRemove: string;
   profileActive: string;
+  /** Open multi-account manager */
+  manageAccounts: string;
+  /** Save current + start OAuth for another account */
+  addAccount: string;
   importChat: string;
   importChatHint: string;
   importChatBtn: string;
+  close: string;
 }
 
 export interface AccountPanelProps {
@@ -90,13 +93,11 @@ export interface AccountPanelProps {
   t: (key: string) => string;
   labels: AccountPanelLabels;
   compact?: boolean;
-  /** Last login error / tip (Access denied etc.) */
   loginHint?: string | null;
   savedAccounts?: SavedAccount[];
   activeAccountId?: string | null;
   onLoginOauth: () => void;
   onLoginDevice: () => void;
-  /** Abort a running login (OAuth/device). Optional — only relevant while busy. */
   onCancelLogin?: () => void;
   onLogout: () => void;
   onRefresh: () => void;
@@ -104,9 +105,20 @@ export interface AccountPanelProps {
   onSubscribe: () => void;
   onOpenSettings?: () => void;
   onSaveAccount?: () => void;
+  /** Save current (if signed in) then start OAuth for another account. */
+  onAddAccount?: () => void;
   onSwitchAccount?: (id: string) => void;
   onRemoveAccount?: (id: string) => void;
   onImportChat?: () => void;
+}
+
+function rowInitials(a: SavedAccount): string {
+  const src = (a.displayName || a.label || a.email || "?").trim();
+  const parts = src.split(/\s+/).filter(Boolean);
+  if (parts.length >= 2) {
+    return (parts[0]![0]! + parts[1]![0]!).toUpperCase();
+  }
+  return src.slice(0, 2).toUpperCase() || "?";
 }
 
 export function AccountPanel({
@@ -129,10 +141,13 @@ export function AccountPanel({
   onSubscribe,
   onOpenSettings,
   onSaveAccount,
+  onAddAccount,
   onSwitchAccount,
   onRemoveAccount,
   onImportChat,
 }: AccountPanelProps) {
+  const [accountsOpen, setAccountsOpen] = useState(false);
+
   const profile = status?.profile;
   const signedIn = !!profile?.signedIn;
   const name = profile
@@ -152,45 +167,176 @@ export function AccountPanel({
     (p) => p.usedPercent > 0 || p.productId === 1 || p.productId === 2,
   );
   const plan = billing ? tierLabel(billing, channel) : "—";
-  /** Only show SuperGrok quota when the official account is signed in. */
   const hasQuota = signedIn && !!billing?.available && remaining != null;
+
+  const canManageAccounts =
+    !!onSwitchAccount ||
+    !!onSaveAccount ||
+    !!onRemoveAccount ||
+    !!onAddAccount;
+
+  const accountsModal = canManageAccounts ? (
+    <GlassModal
+      open={accountsOpen}
+      onClose={() => setAccountsOpen(false)}
+      title={labels.profiles}
+      size="md"
+      closeLabel={labels.close}
+      wrapBody
+      footer={
+        <>
+          {onAddAccount ? (
+            <button
+              type="button"
+              className="btn btn--solid"
+              disabled={busy}
+              onClick={() => {
+                setAccountsOpen(false);
+                onAddAccount();
+              }}
+            >
+              <IconPlus size={14} />
+              {labels.addAccount}
+            </button>
+          ) : null}
+          {signedIn && onSaveAccount ? (
+            <button
+              type="button"
+              className="btn btn--ghost"
+              disabled={busy}
+              onClick={() => {
+                onSaveAccount();
+              }}
+            >
+              {labels.profileSave}
+            </button>
+          ) : null}
+          <button
+            type="button"
+            className="btn btn--ghost"
+            onClick={() => setAccountsOpen(false)}
+          >
+            {labels.close}
+          </button>
+        </>
+      }
+    >
+      <p className="account-mgr__hint">{labels.profilesHint}</p>
+      {savedAccounts.length === 0 ? (
+        <div className="account-mgr__empty">{labels.profilesEmpty}</div>
+      ) : (
+        <ul className="account-mgr__list">
+          {savedAccounts.map((a) => {
+            const active = activeAccountId === a.id;
+            return (
+              <li
+                key={a.id}
+                className={
+                  "account-mgr__row" + (active ? " is-active" : "")
+                }
+              >
+                <span className="account-mgr__av" aria-hidden>
+                  {rowInitials(a)}
+                </span>
+                <div className="account-mgr__meta">
+                  <div className="account-mgr__name">
+                    <span>{a.label}</span>
+                    {active ? (
+                      <span className="account-badge account-badge--muted">
+                        {labels.profileActive}
+                      </span>
+                    ) : null}
+                  </div>
+                  {a.email && a.email !== a.label ? (
+                    <div className="account-mgr__email">{a.email}</div>
+                  ) : null}
+                </div>
+                <div className="account-mgr__actions">
+                  {!active && onSwitchAccount ? (
+                    <button
+                      type="button"
+                      className="btn btn--solid btn--sm"
+                      disabled={busy}
+                      onClick={() => {
+                        onSwitchAccount(a.id);
+                        setAccountsOpen(false);
+                      }}
+                    >
+                      {labels.profileSwitch}
+                    </button>
+                  ) : null}
+                  {onRemoveAccount ? (
+                    <button
+                      type="button"
+                      className="btn btn--ghost btn--sm btn--danger"
+                      disabled={busy}
+                      onClick={() => onRemoveAccount(a.id)}
+                    >
+                      <IconTrash size={14} />
+                      {labels.profileRemove}
+                    </button>
+                  ) : null}
+                </div>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </GlassModal>
+  ) : null;
 
   return (
     <div
       className={"account-panel" + (compact ? " account-panel--compact" : "")}
       data-testid="account-panel"
     >
-      {/* ── Top: one card for profile + plan + quota + actions ── */}
       <div className="account-hero">
-        <div className="account-hero__head">
-          <div className="account-avatar" aria-hidden>
-            {initials}
-          </div>
-          <div className="account-hero__id">
-            <div className="account-hero__name-row">
-              <span className="account-hero__name">{name}</span>
-              {!signedIn ? (
-                <span className="account-badge account-badge--muted">
-                  {labels.signedOut}
-                </span>
-              ) : profile?.expired ? (
-                <span className="account-badge account-badge--muted account-hero__warn">
-                  {labels.expired}
-                </span>
+        {/* Row 1: identity · primary actions */}
+        <div className="account-hero__top">
+          <div className="account-hero__who">
+            <div className="account-avatar" aria-hidden>
+              {initials}
+            </div>
+            <div className="account-hero__id">
+              <div className="account-hero__name-row">
+                <span className="account-hero__name">{name}</span>
+                {!signedIn ? (
+                  <span className="account-badge account-badge--muted">
+                    {labels.signedOut}
+                  </span>
+                ) : profile?.expired ? (
+                  <span className="account-badge account-badge--muted account-hero__warn">
+                    {labels.expired}
+                  </span>
+                ) : null}
+              </div>
+              {profile?.email && profile.email !== name ? (
+                <div className="account-hero__email">{profile.email}</div>
               ) : null}
             </div>
-            {profile?.email && profile.email !== name ? (
-              <div className="account-hero__meta">
-                <span className="account-hero__email">{profile.email}</span>
-              </div>
-            ) : null}
           </div>
           <div className="account-hero__actions">
             {signedIn ? (
               <>
+                {canManageAccounts ? (
+                  <button
+                    type="button"
+                    className="btn btn--ghost btn--sm"
+                    disabled={busy}
+                    onClick={() => setAccountsOpen(true)}
+                  >
+                    <IconUser size={14} />
+                    {labels.manageAccounts}
+                    {savedAccounts.length > 0 ? (
+                      <span className="account-hero__count">
+                        {savedAccounts.length}
+                      </span>
+                    ) : null}
+                  </button>
+                ) : null}
                 <button
                   type="button"
-                  className="btn btn--ghost"
+                  className="btn btn--ghost btn--sm"
                   disabled={busy || loading}
                   onClick={onRefresh}
                 >
@@ -198,7 +344,7 @@ export function AccountPanel({
                 </button>
                 <button
                   type="button"
-                  className="btn btn--ghost"
+                  className="btn btn--ghost btn--sm"
                   disabled={busy}
                   onClick={onLogout}
                 >
@@ -207,9 +353,23 @@ export function AccountPanel({
               </>
             ) : (
               <>
+                {canManageAccounts && savedAccounts.length > 0 ? (
+                  <button
+                    type="button"
+                    className="btn btn--ghost btn--sm"
+                    disabled={busy}
+                    onClick={() => setAccountsOpen(true)}
+                  >
+                    <IconUser size={14} />
+                    {labels.manageAccounts}
+                    <span className="account-hero__count">
+                      {savedAccounts.length}
+                    </span>
+                  </button>
+                ) : null}
                 <button
                   type="button"
-                  className="btn btn--solid"
+                  className="btn btn--solid btn--sm"
                   disabled={busy}
                   onClick={onLoginOauth}
                 >
@@ -217,7 +377,7 @@ export function AccountPanel({
                 </button>
                 <button
                   type="button"
-                  className="btn btn--ghost"
+                  className="btn btn--ghost btn--sm"
                   disabled={busy}
                   onClick={onLoginDevice}
                 >
@@ -226,7 +386,7 @@ export function AccountPanel({
                 {busy && onCancelLogin ? (
                   <button
                     type="button"
-                    className="btn btn--ghost"
+                    className="btn btn--ghost btn--sm"
                     onClick={onCancelLogin}
                   >
                     {labels.loginCancel}
@@ -255,124 +415,39 @@ export function AccountPanel({
           </div>
         ) : null}
 
-        {/* Multi-account + import: hidden until SHOW_ACCOUNT_EXTRAS */}
-        {SHOW_ACCOUNT_EXTRAS ? (
-          <>
-            <div className="account-profiles">
-              <div className="account-profiles__head">
-                <div>
-                  <div className="account-profiles__title">{labels.profiles}</div>
-                  <div className="account-profiles__hint">{labels.profilesHint}</div>
-                </div>
-                {signedIn && onSaveAccount ? (
-                  <button
-                    type="button"
-                    className="btn btn--ghost btn--sm"
-                    disabled={busy}
-                    onClick={onSaveAccount}
-                  >
-                    {labels.profileSave}
-                  </button>
-                ) : null}
-              </div>
-              {savedAccounts.length === 0 ? (
-                <div className="account-profiles__empty">{labels.profilesEmpty}</div>
-              ) : (
-                <ul className="account-profiles__list">
-                  {savedAccounts.map((a) => {
-                    const active = activeAccountId === a.id;
-                    return (
-                      <li key={a.id} className="account-profiles__row">
-                        <div className="account-profiles__meta">
-                          <span className="account-profiles__label">{a.label}</span>
-                          {active ? (
-                            <span className="account-badge account-badge--muted">
-                              {labels.profileActive}
-                            </span>
-                          ) : null}
-                          {a.email && a.email !== a.label ? (
-                            <span className="account-profiles__email">{a.email}</span>
-                          ) : null}
-                        </div>
-                        <div className="account-profiles__actions">
-                          {!active && onSwitchAccount ? (
-                            <button
-                              type="button"
-                              className="btn btn--ghost btn--sm"
-                              disabled={busy}
-                              onClick={() => onSwitchAccount(a.id)}
-                            >
-                              {labels.profileSwitch}
-                            </button>
-                          ) : null}
-                          {onRemoveAccount ? (
-                            <button
-                              type="button"
-                              className="btn btn--ghost btn--sm"
-                              disabled={busy}
-                              onClick={() => onRemoveAccount(a.id)}
-                            >
-                              {labels.profileRemove}
-                            </button>
-                          ) : null}
-                        </div>
-                      </li>
-                    );
-                  })}
-                </ul>
-              )}
-            </div>
-
-            {onImportChat ? (
-              <div className="account-import">
-                <div className="account-import__title">{labels.importChat}</div>
-                <p className="account-import__hint">{labels.importChatHint}</p>
-                <button
-                  type="button"
-                  className="btn btn--ghost btn--sm"
-                  disabled={busy}
-                  onClick={onImportChat}
-                >
-                  {labels.importChatBtn}
-                </button>
-              </div>
-            ) : null}
-          </>
-        ) : null}
-
+        {/* Row 2: plan + quota (full width, clean stack) */}
         {signedIn ? (
-          <>
-            <div className="account-hero__quota">
-              {hasQuota ? (
-                <>
-                  {/* Compact: plan + remaining on one row (same as user menu) */}
-                  <div className="account-hero__quota-line account-hero__quota-line--compact">
-                    <span className="account-hero__plan">{plan}</span>
-                    <span className="account-hero__remain">
-                      {remaining!.toFixed(0)}% {labels.quotaRemaining}
-                    </span>
-                  </div>
-                  <div className="account-quota-bar" aria-hidden>
-                    <div
-                      className={
-                        "account-quota-bar__fill" +
-                        ((usedPct ?? 0) >= 90
-                          ? " is-danger"
-                          : (usedPct ?? 0) >= 70
-                            ? " is-warn"
-                            : "")
-                      }
-                      style={{ width: `${Math.min(100, usedPct ?? 0)}%` }}
-                    />
-                  </div>
-                  <div className="account-hero__quota-side account-hero__quota-side--below">
+          <div className="account-hero__plan">
+            {hasQuota ? (
+              <>
+                <div className="account-hero__plan-head">
+                  <span className="account-hero__plan-name">{plan}</span>
+                  <span className="account-hero__plan-remain">
+                    {remaining!.toFixed(0)}% {labels.quotaRemaining}
+                  </span>
+                </div>
+                <div className="account-quota-bar" aria-hidden>
+                  <div
+                    className={
+                      "account-quota-bar__fill" +
+                      ((usedPct ?? 0) >= 90
+                        ? " is-danger"
+                        : (usedPct ?? 0) >= 70
+                          ? " is-warn"
+                          : "")
+                    }
+                    style={{ width: `${Math.min(100, usedPct ?? 0)}%` }}
+                  />
+                </div>
+                <div className="account-hero__plan-meta">
+                  <span>
                     {labels.quotaUsed} {(usedPct ?? 0).toFixed(0)}%
                     {billing?.resetsAt
                       ? ` · ${labels.resetsAt} ${formatRelativeTime(billing.resetsAt, locale)}`
                       : ""}
-                  </div>
-                  {products.length > 0 && (
-                    <div className="account-products">
+                  </span>
+                  {products.length > 0 ? (
+                    <span className="account-products">
                       {products.map((p) => (
                         <span
                           key={`${p.productId}-${p.label}`}
@@ -381,53 +456,58 @@ export function AccountPanel({
                           {p.label} {p.usedPercent.toFixed(0)}%
                         </span>
                       ))}
-                    </div>
-                  )}
-                </>
-              ) : (
-                <div className="account-hero__quota-empty">
-                  <div className="account-hero__quota-line account-hero__quota-line--compact">
-                    <span className="account-hero__plan">{plan}</span>
-                  </div>
-                  <span>{billing?.message || labels.quotaUnknown}</span>
-                  <button
-                    type="button"
-                    className="btn btn--ghost"
-                    disabled={busy || loading}
-                    onClick={onRefresh}
-                  >
-                    {loading ? labels.refreshing : labels.refresh}
-                  </button>
+                    </span>
+                  ) : null}
                 </div>
-              )}
-            </div>
+              </>
+            ) : (
+              <div className="account-hero__plan-empty">
+                <span className="account-hero__plan-name">{plan}</span>
+                <span className="account-hero__plan-meta-text">
+                  {billing?.message || labels.quotaUnknown}
+                </span>
+              </div>
+            )}
+          </div>
+        ) : null}
 
-            <div className="account-hero__links">
+        {/* Row 3: text links */}
+        {signedIn ? (
+          <div className="account-hero__links">
+            <button
+              type="button"
+              className="account-link"
+              onClick={onManageUsage}
+            >
+              {labels.manageUsage}
+            </button>
+            <button
+              type="button"
+              className="account-link"
+              onClick={onSubscribe}
+            >
+              {labels.subscribe}
+            </button>
+            {onImportChat ? (
               <button
                 type="button"
                 className="account-link"
-                onClick={onManageUsage}
+                disabled={busy}
+                onClick={onImportChat}
               >
-                {labels.manageUsage}
+                {labels.importChatBtn}
               </button>
+            ) : null}
+            {compact && onOpenSettings ? (
               <button
                 type="button"
                 className="account-link"
-                onClick={onSubscribe}
+                onClick={onOpenSettings}
               >
-                {labels.subscribe}
+                {t("settings.nav.account")}
               </button>
-              {compact && onOpenSettings ? (
-                <button
-                  type="button"
-                  className="account-link"
-                  onClick={onOpenSettings}
-                >
-                  {t("settings.nav.account")}
-                </button>
-              ) : null}
-            </div>
-          </>
+            ) : null}
+          </div>
         ) : compact && onOpenSettings ? (
           <div className="account-hero__links">
             <button
@@ -443,7 +523,6 @@ export function AccountPanel({
 
       {!compact && (
         <>
-          {/* Heatmap */}
           <section className="account-section">
             <div className="account-section__title">{labels.heatmap}</div>
             <div className="account-section__body account-section__body--heat">
@@ -463,7 +542,6 @@ export function AccountPanel({
             </div>
           </section>
 
-          {/* Fixed-height, internally scrolling call logs */}
           <section className="account-section">
             <div className="account-section__title">{labels.callLogs}</div>
             <div className="account-section__body account-logs-scroll">
@@ -505,6 +583,8 @@ export function AccountPanel({
           </section>
         </>
       )}
+
+      {accountsModal}
     </div>
   );
 }

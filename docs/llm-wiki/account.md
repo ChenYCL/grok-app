@@ -46,7 +46,8 @@ Host **must** sync `auth.json` into agent-home on login and before each ACP spaw
 
 - After successful login, Host **auto-snapshots** auth into `accounts/<id>/auth.json`.
 - Switch copies snapshot → `~/.grok/auth.json` + agent-home, then disconnects live ACP.
-- UI: Settings → Account → Saved accounts.
+- UI: Settings → Account → **「切换账号」** opens a modal to list / switch / remove.
+  **「添加账号」** saves the current profile (if signed in) then starts OAuth login.
 
 ### Login failures (Access denied)
 

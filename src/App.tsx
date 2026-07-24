@@ -486,6 +486,8 @@ export default function App() {
   const [account, setAccount] = useState<api.AccountStatus | null>(null);
   const [accountLoading, setAccountLoading] = useState(false);
   const [accountBusy, setAccountBusy] = useState(false);
+  const [savedAccounts, setSavedAccounts] = useState<api.SavedAccount[]>([]);
+  const [activeAccountId, setActiveAccountId] = useState<string | null>(null);
   const [loginHint, setLoginHint] = useState<string | null>(null);
   const platform = useMemo(() => {
     const ua = navigator.userAgent.toLowerCase();
@@ -3787,6 +3789,17 @@ export default function App() {
     [manualCliPath],
   );
 
+  const refreshSavedAccounts = useCallback(async () => {
+    if (!api.isTauri()) return;
+    try {
+      const list = await api.accountsList();
+      setSavedAccounts(list.profiles ?? []);
+      setActiveAccountId(list.activeId ?? null);
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
   const beginEditLastUser = useCallback(
     (msg: ChatMessage) => {
       if (msg.role !== "user") return;
@@ -4022,6 +4035,7 @@ export default function App() {
           );
         }
         await refreshAccount({ refreshBilling: true });
+        await refreshSavedAccounts();
         // Drop live agent so next send re-spawns with synced auth.json in agent-home.
         if (res.ok && api.isTauri()) {
           try {
@@ -4041,7 +4055,7 @@ export default function App() {
         setAccountBusy(false);
       }
     },
-    [refreshAccount, showToast, tr],
+    [refreshAccount, refreshSavedAccounts, showToast, tr],
   );
 
   /** Abort a running login (OAuth/device) so the user can pick another method
@@ -4055,12 +4069,100 @@ export default function App() {
     setAccountBusy(false);
   }, []);
 
+  const runSaveAccount = useCallback(async () => {
+    if (!api.isTauri()) return;
+    setAccountBusy(true);
+    try {
+      await api.accountSaveCurrent();
+      await refreshSavedAccounts();
+      showToast(tr("account.profileSaved"), 2500);
+    } catch (e) {
+      showToast(String(e), 4500);
+    } finally {
+      setAccountBusy(false);
+    }
+  }, [refreshSavedAccounts, showToast, tr]);
+
+  /**
+   * Save current login (if any), then start OAuth so the user can add another
+   * account without losing the previous snapshot.
+   */
+  const runAddAccount = useCallback(async () => {
+    if (!api.isTauri()) {
+      showToast(tr("error.needTauri"));
+      return;
+    }
+    // Snapshot current auth first so switcher keeps it.
+    if (account?.profile?.signedIn) {
+      setAccountBusy(true);
+      try {
+        await api.accountSaveCurrent();
+        await refreshSavedAccounts();
+        showToast(tr("account.profileSaved"), 1800);
+      } catch (e) {
+        // Still try login — user may want a fresh account even if save fails.
+        showToast(String(e), 3500);
+      } finally {
+        setAccountBusy(false);
+      }
+    }
+    await runAccountLogin("oauth");
+  }, [
+    account?.profile?.signedIn,
+    refreshSavedAccounts,
+    runAccountLogin,
+    showToast,
+    tr,
+  ]);
+
+  const runSwitchAccount = useCallback(
+    async (id: string) => {
+      if (!api.isTauri()) return;
+      setAccountBusy(true);
+      try {
+        await api.accountSwitch(id);
+        await refreshAccount({ refreshBilling: true });
+        await refreshSavedAccounts();
+        try {
+          await api.sessionDisconnect();
+        } catch {
+          /* ignore */
+        }
+        setSession({ ...IDLE_SNAPSHOT });
+        showToast(tr("account.profileSwitched"), 2500);
+      } catch (e) {
+        showToast(String(e), 4500);
+      } finally {
+        setAccountBusy(false);
+      }
+    },
+    [refreshAccount, refreshSavedAccounts, showToast, tr],
+  );
+
+  const runRemoveAccount = useCallback(
+    async (id: string) => {
+      if (!api.isTauri()) return;
+      setAccountBusy(true);
+      try {
+        await api.accountRemove(id);
+        await refreshSavedAccounts();
+        showToast(tr("account.profileRemoved"), 2200);
+      } catch (e) {
+        showToast(String(e), 4500);
+      } finally {
+        setAccountBusy(false);
+      }
+    },
+    [refreshSavedAccounts, showToast, tr],
+  );
+
   const runAccountLogout = useCallback(async () => {
     if (!api.isTauri()) return;
     setAccountBusy(true);
     try {
       await api.accountLogout();
       await refreshAccount({ refreshBilling: false });
+      await refreshSavedAccounts();
       try {
         await api.sessionDisconnect();
         setSession({ ...IDLE_SNAPSHOT });
@@ -4072,7 +4174,7 @@ export default function App() {
     } finally {
       setAccountBusy(false);
     }
-  }, [refreshAccount, showToast]);
+  }, [refreshAccount, refreshSavedAccounts, showToast]);
 
   // Account boot: paint fast from disk cache first, then refresh quota on network.
   // Welcome SuperGrok logo depends on billing tier — waiting only on the slow
@@ -4084,17 +4186,20 @@ export default function App() {
       await refreshAccount({ refreshBilling: false });
       if (cancelled) return;
       await refreshAccount({ refreshBilling: true });
+      if (cancelled) return;
+      await refreshSavedAccounts();
     })();
     return () => {
       cancelled = true;
     };
-  }, [refreshAccount]);
+  }, [refreshAccount, refreshSavedAccounts]);
 
   useEffect(() => {
     if (appView === "settings" && settingsSection === "account") {
       void refreshAccount({ refreshBilling: true });
+      void refreshSavedAccounts();
     }
-  }, [appView, settingsSection, refreshAccount]);
+  }, [appView, settingsSection, refreshAccount, refreshSavedAccounts]);
 
   const settingsLabels = useMemo(() => {
     const keys = [
@@ -4240,6 +4345,11 @@ export default function App() {
       "account.profilesHint",
       "account.profilesEmpty",
       "account.profileSave",
+      "account.profileSwitch",
+      "account.profileRemove",
+      "account.profileActive",
+      "account.manageAccounts",
+      "account.addAccount",
       "account.profileSwitch",
       "account.profileRemove",
       "account.profileActive",
@@ -4428,6 +4538,12 @@ export default function App() {
           onAccountRefresh={() => void refreshAccount({ refreshBilling: true })}
           onAccountManageUsage={() => void api.accountOpenUsage()}
           onAccountSubscribe={() => void api.accountOpenSubscribe()}
+          savedAccounts={savedAccounts}
+          activeAccountId={activeAccountId}
+          onSaveAccount={() => void runSaveAccount()}
+          onAddAccount={() => void runAddAccount()}
+          onSwitchAccount={(id) => void runSwitchAccount(id)}
+          onRemoveAccount={(id) => void runRemoveAccount(id)}
           defaultOpenTarget={defaultOpenTarget}
           onDefaultOpenTarget={(v) => {
             setDefaultOpenTarget(v);
