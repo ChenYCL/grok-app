@@ -17,6 +17,8 @@ See `docs/llm-wiki/release.md`.
 
 ### Added
 
+- **Stream stall cancel (I06)**: host watchdog emits `session://stream_stall` after pure silence (default 120s, Settings → Runtime); banner with Cancel turn / Keep waiting; tool events count as progress.
+- **Journal write throttle (I04)**: mid-stream assistant journal flushes ≥500ms or on paragraph / turn end / stop / disconnect — avoids per-token disk spikes.
 - **Sidebar session list virtualization** (F07): windowed rendering for large project/orphan session groups (100+ rows) without new dependencies; short lists unchanged.
 - **MCP enable + inject** (L03): Settings → Extensions toggles; enabled servers inject into ACP `session/new|load` and agent-home config — community PR #38.
 
