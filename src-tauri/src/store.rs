@@ -146,6 +146,12 @@ pub struct AppSettings {
     /// the normal local-CLI spawn path.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub acp_server_addr: Option<String>,
+    /// Max warm/live agent processes (I02). Default 3.
+    #[serde(default = "default_max_concurrent_agents")]
+    pub max_concurrent_agents: u32,
+    /// Recycle idle agent processes after this many minutes (I03). Default 30.
+    #[serde(default = "default_agent_idle_minutes")]
+    pub agent_idle_minutes: u32,
 }
 
 fn default_composer_prefs_scope() -> String {
@@ -154,6 +160,14 @@ fn default_composer_prefs_scope() -> String {
 
 fn default_open_target() -> String {
     "finder".into()
+}
+
+fn default_max_concurrent_agents() -> u32 {
+    crate::process_limits::DEFAULT_MAX_CONCURRENT_AGENTS
+}
+
+fn default_agent_idle_minutes() -> u32 {
+    crate::process_limits::DEFAULT_AGENT_IDLE_MINUTES
 }
 
 impl Default for AppSettings {
@@ -174,6 +188,8 @@ impl Default for AppSettings {
             default_open_target: default_open_target(),
             composer_prefs_scope: default_composer_prefs_scope(),
             acp_server_addr: None,
+            max_concurrent_agents: default_max_concurrent_agents(),
+            agent_idle_minutes: default_agent_idle_minutes(),
         }
     }
 }
@@ -1031,5 +1047,7 @@ mod tests {
         assert_eq!(s.session_data_mode, "independent");
         assert_eq!(s.permission_policy, "ask");
         assert_eq!(s.theme, "dark");
+        assert_eq!(s.max_concurrent_agents, 3);
+        assert_eq!(s.agent_idle_minutes, 30);
     }
 }

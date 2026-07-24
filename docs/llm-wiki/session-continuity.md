@@ -35,6 +35,15 @@ This covers load failure, wiped agent dirs, or agent version mismatches.
 
 Permission / mode soft-respawn **keeps** `agentSessionId` so the next connect prefers `session/load`. Bootstrap runs only if load fails.
 
+### 4. Process limits & idle recycle (I01–I03)
+
+| Setting | Default | Behavior |
+|---------|---------|----------|
+| `maxConcurrentAgents` | **3** | Cap on live + parked warm agent processes. Switching Ready chats **parks** the prior process (same session id). Over capacity → `PROCESS_LIMIT` + UI toast; LRU parked may be recycled for capacity. |
+| `agentIdleMinutes` | **30** | Background watchdog soft-kills idle Ready agents (live + parked). **Session meta + journal stay**; next send reconnects (`session/load` or bootstrap). Emits `session://idle_recycled`. |
+
+Same-cwd warm reuse (one process, switch ACP session) still applies when spawn flags match; otherwise multi-session parks up to the concurrent cap.
+
 ## Who does `/compact`?
 
 | Layer | Behavior |

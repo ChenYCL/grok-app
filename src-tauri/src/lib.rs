@@ -16,6 +16,7 @@ mod mock_acp;
 mod models_catalog;
 mod paths;
 mod process_util;
+mod process_limits;
 mod permission;
 mod providers;
 mod session_import;
@@ -102,6 +103,12 @@ pub fn run() {
             // Menu-bar / system tray — logo.svg tray icon (not dock app icon)
             if let Err(e) = tray::setup_tray(app.handle()) {
                 tracing::warn!("tray setup: {e}");
+            }
+            // I03: recycle idle agent processes; session metadata stays on disk.
+            {
+                use tauri::Manager;
+                let mgr = app.state::<Arc<SessionManager>>().inner().clone();
+                mgr.start_idle_watchdog(app.handle().clone());
             }
             Ok(())
         })

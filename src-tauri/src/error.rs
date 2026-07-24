@@ -18,6 +18,8 @@ pub enum AgentErrorCode {
     QuotaExceeded,
     /// Could not attach agent to this session (no ACP / connect failed).
     ConnectFailed,
+    /// Max concurrent agent processes reached (I02).
+    ProcessLimit,
 }
 
 impl AgentErrorCode {
@@ -29,6 +31,7 @@ impl AgentErrorCode {
             Self::AgentCrashed => "AGENT_CRASHED",
             Self::QuotaExceeded => "QUOTA_EXCEEDED",
             Self::ConnectFailed => "CONNECT_FAILED",
+            Self::ProcessLimit => "PROCESS_LIMIT",
         }
     }
 }
@@ -61,6 +64,7 @@ mod tests {
             AgentErrorCode::AgentCrashed,
             AgentErrorCode::QuotaExceeded,
             AgentErrorCode::ConnectFailed,
+            AgentErrorCode::ProcessLimit,
         ];
         let expected = [
             "CLI_NOT_FOUND",
@@ -69,6 +73,7 @@ mod tests {
             "AGENT_CRASHED",
             "QUOTA_EXCEEDED",
             "CONNECT_FAILED",
+            "PROCESS_LIMIT",
         ];
         for (code, name) in codes.into_iter().zip(expected) {
             assert_eq!(code.as_str(), name);

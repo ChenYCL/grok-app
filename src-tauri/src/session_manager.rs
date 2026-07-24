@@ -1,7 +1,13 @@
 //! Host session manager: real ACP default; mock only if GROK_APP_ACP=mock.
+//!
+//! Process policy (I01–I03):
+//! - One ACP process per live/parked App session (up to `maxConcurrentAgents`, default 3).
+//! - Switching chats parks a Ready process instead of killing it (when under the cap).
+//! - Idle processes are soft-recycled after `agentIdleMinutes` (default 30); session meta stays.
 
+use std::collections::HashMap;
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
@@ -17,8 +23,11 @@ use crate::error::{AgentError, AgentErrorCode};
 use crate::mock_acp::{self, MockConnectMode, MockStreamHandle, StreamChunk};
 use crate::permission::{
     extract_path_target, extract_shell_command, may_auto_allow, may_auto_deny, pick_option_id,
-    scope_key, PermissionPolicy,
-    SessionAllowCache,
+    scope_key, PermissionPolicy, SessionAllowCache,
+};
+use crate::process_limits::{
+    can_spawn_process, is_idle_expired, normalize_idle_minutes, normalize_max_concurrent,
+    process_limit_message,
 };
 use crate::session_fsm::{SessionFsm, SessionState};
 use crate::store::{self, ChatMessageStored, MessageAttachmentStored, SessionMeta};
@@ -101,8 +110,13 @@ pub struct UiPermissionRequest {
     pub options: serde_json::Value,
 }
 
+/// Identity for routing ACP event pumps when multiple processes are warm.
+type ProcessId = String;
+
 struct LiveSession {
     app_session_id: String,
+    /// Stable id for the agent process / event pump (not the App session id).
+    process_id: ProcessId,
     meta: SessionMeta,
     fsm: SessionFsm,
     backend: String,
@@ -133,6 +147,24 @@ struct LiveSession {
     needs_history_bootstrap: bool,
     /// Pending `_x.ai/exit_plan_mode` JSON-RPC id awaiting user Approve / revise.
     pending_plan_rpc_id: Option<u64>,
+    /// Last user/agent activity (send, stream, permission, connect).
+    last_activity: Instant,
+}
+
+/// Ready agent process parked while another App session is focused (I01/I02).
+struct ParkedAgent {
+    process_id: ProcessId,
+    app_session_id: String,
+    meta: SessionMeta,
+    acp: Arc<AcpClient>,
+    last_activity: Instant,
+    model_id: Option<String>,
+    effort: Option<String>,
+    product_mode: Option<String>,
+    project_path: Option<String>,
+    policy: PermissionPolicy,
+    needs_history_bootstrap: bool,
+    backend: String,
 }
 
 /// How many journal messages (user+assistant) to carry when session/load fails.
@@ -379,10 +411,11 @@ fn attachment_from_path(path: &str) -> MessageAttachmentStored {
 }
 
 pub struct SessionManager {
+    /// Currently focused live session (UI-bound).
     inner: Mutex<Option<LiveSession>>,
-    /// Max concurrent agent processes (spec: 3). Single active for P0 simplicity + limit check.
-    active_count: Mutex<u32>,
-    /// Serialize connect / warm-reuse so openSession prefetch cannot race first send.
+    /// Warm Ready agents for other App sessions (keyed by app session id).
+    parked: Mutex<HashMap<String, ParkedAgent>>,
+    /// Serialize connect / park / unpark so openSession prefetch cannot race first send.
     connect_lock: tokio::sync::Mutex<()>,
 }
 
@@ -396,8 +429,258 @@ impl SessionManager {
     pub fn new() -> Self {
         Self {
             inner: Mutex::new(None),
-            active_count: Mutex::new(0),
+            parked: Mutex::new(HashMap::new()),
             connect_lock: tokio::sync::Mutex::new(()),
+        }
+    }
+
+    /// Background idle recycle loop (I03). Safe to call once from app setup.
+    pub fn start_idle_watchdog(self: &Arc<Self>, app: AppHandle) {
+        let mgr = Arc::clone(self);
+        tauri::async_runtime::spawn(async move {
+            let mut ticker = tokio::time::interval(Duration::from_secs(30));
+            ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+            loop {
+                ticker.tick().await;
+                mgr.tick_idle_recycle(&app).await;
+            }
+        });
+    }
+
+    fn touch_activity_locked(s: &mut LiveSession) {
+        s.last_activity = Instant::now();
+    }
+
+    /// Live + parked processes that still have a living ACP child.
+    fn active_process_count(&self) -> u32 {
+        let live = self
+            .inner
+            .lock()
+            .as_ref()
+            .and_then(|s| s.acp.as_ref())
+            .filter(|c| c.is_alive())
+            .is_some() as u32;
+        let parked = self
+            .parked
+            .lock()
+            .values()
+            .filter(|p| p.acp.is_alive())
+            .count() as u32;
+        live + parked
+    }
+
+    fn max_concurrent_from_settings() -> u32 {
+        normalize_max_concurrent(store::load_settings().max_concurrent_agents)
+    }
+
+    fn idle_minutes_from_settings() -> u32 {
+        normalize_idle_minutes(store::load_settings().agent_idle_minutes)
+    }
+
+    fn emit_idle_recycled(app: &AppHandle, session_id: &str, reason: &str) {
+        let _ = app.emit(
+            "session://idle_recycled",
+            serde_json::json!({
+                "sessionId": session_id,
+                "reason": reason,
+            }),
+        );
+    }
+
+    fn emit_process_limit(app: &AppHandle, session_id: Option<&str>, max: u32) {
+        let _ = app.emit(
+            "session://process_limit",
+            serde_json::json!({
+                "sessionId": session_id,
+                "maxConcurrentAgents": max,
+                "code": "PROCESS_LIMIT",
+                "message": process_limit_message(max),
+            }),
+        );
+    }
+
+    /// Drop dead parked entries; return killed count (for logging).
+    fn sweep_dead_parked(&self) -> usize {
+        let mut parked = self.parked.lock();
+        let before = parked.len();
+        parked.retain(|_, p| p.acp.is_alive());
+        before.saturating_sub(parked.len())
+    }
+
+    /// Park the current live session if it is Ready with a living agent.
+    /// Returns true if parked (or there was nothing to park).
+    /// Returns false if live is busy (streaming / permission / connecting).
+    fn try_park_live(&self) -> Result<(), AgentError> {
+        let max = Self::max_concurrent_from_settings();
+        let mut guard = self.inner.lock();
+        let Some(s) = guard.as_mut() else {
+            return Ok(());
+        };
+        // Nothing to park
+        if s.acp.as_ref().is_none_or(|c| !c.is_alive()) {
+            return Ok(());
+        }
+        match s.fsm.state() {
+            SessionState::Ready if s.streaming_message_id.is_none() => {}
+            SessionState::Idle | SessionState::Disconnected => return Ok(()),
+            other => {
+                return Err(AgentError::new(
+                    AgentErrorCode::ProcessLimit,
+                    format!(
+                        "Session is busy ({other:?}). Stop the turn or wait, then switch chats. {}",
+                        process_limit_message(max)
+                    ),
+                ));
+            }
+        }
+
+        let acp = match s.acp.take() {
+            Some(c) if c.is_alive() => c,
+            Some(_) | None => return Ok(()),
+        };
+
+        let parked = ParkedAgent {
+            process_id: s.process_id.clone(),
+            app_session_id: s.app_session_id.clone(),
+            meta: s.meta.clone(),
+            acp,
+            last_activity: s.last_activity,
+            model_id: s.model_id.clone(),
+            effort: s.effort.clone(),
+            product_mode: s.product_mode.clone(),
+            project_path: s.project_path.clone(),
+            policy: s.policy,
+            needs_history_bootstrap: s.needs_history_bootstrap,
+            backend: s.backend.clone(),
+        };
+        // Drop LiveSession shell — focus moves away; meta remains on disk.
+        let _ = guard.take();
+        drop(guard);
+        self.parked
+            .lock()
+            .insert(parked.app_session_id.clone(), parked);
+        Ok(())
+    }
+
+    /// Promote a parked agent into the live slot (caller must have cleared live).
+    fn unpark_to_live(&self, app_session_id: &str) -> Option<LiveSession> {
+        let parked = self.parked.lock().remove(app_session_id)?;
+        if !parked.acp.is_alive() {
+            return None;
+        }
+        let mut fsm = SessionFsm::new();
+        // Parked agents were Ready; restore Ready without connect handshake.
+        let _ = fsm.start_connect();
+        let _ = fsm.handshake_ok();
+        Some(LiveSession {
+            app_session_id: parked.app_session_id,
+            process_id: parked.process_id,
+            meta: parked.meta,
+            fsm,
+            backend: parked.backend,
+            acp: Some(parked.acp),
+            mock_stream: None,
+            streaming_message_id: None,
+            stream_buf: String::new(),
+            stream_thought: String::new(),
+            stream_last_was_assistant: false,
+            stream_attachments: Vec::new(),
+            model_id: parked.model_id,
+            effort: parked.effort,
+            product_mode: parked.product_mode,
+            project_path: parked.project_path,
+            allow_cache: SessionAllowCache::default(),
+            policy: parked.policy,
+            provider_retry_attempt: 0,
+            provider_retry_aborted: false,
+            needs_history_bootstrap: parked.needs_history_bootstrap,
+            pending_plan_rpc_id: None,
+            last_activity: Instant::now(),
+        })
+    }
+
+    /// Kill oldest parked agents until under capacity (or none left).
+    async fn free_parked_for_capacity(&self, app: &AppHandle, need_slots: u32) {
+        if need_slots == 0 {
+            return;
+        }
+        for _ in 0..need_slots {
+            let victim = {
+                let mut parked = self.parked.lock();
+                let key = parked
+                    .iter()
+                    .min_by_key(|(_, p)| p.last_activity)
+                    .map(|(k, _)| k.clone());
+                key.and_then(|k| parked.remove(&k))
+            };
+            let Some(p) = victim else {
+                break;
+            };
+            tracing::info!(
+                "process limit: recycling parked session={} process={}",
+                p.app_session_id,
+                p.process_id
+            );
+            p.acp.kill().await;
+            Self::emit_idle_recycled(app, &p.app_session_id, "capacity");
+        }
+    }
+
+    /// Idle recycle for live + parked (I03).
+    async fn tick_idle_recycle(&self, app: &AppHandle) {
+        let idle_mins = Self::idle_minutes_from_settings();
+        let now = Instant::now();
+        self.sweep_dead_parked();
+
+        // Parked first
+        let expired_parked: Vec<ParkedAgent> = {
+            let mut parked = self.parked.lock();
+            let keys: Vec<String> = parked
+                .iter()
+                .filter(|(_, p)| is_idle_expired(p.last_activity, idle_mins, now))
+                .map(|(k, _)| k.clone())
+                .collect();
+            keys.into_iter()
+                .filter_map(|k| parked.remove(&k))
+                .collect()
+        };
+        for p in expired_parked {
+            tracing::info!(
+                "idle recycle parked session={} after {}min",
+                p.app_session_id,
+                idle_mins
+            );
+            p.acp.kill().await;
+            Self::emit_idle_recycled(app, &p.app_session_id, "idle");
+        }
+
+        // Live: only when Ready (not mid-turn)
+        let live_kill = {
+            let mut guard = self.inner.lock();
+            if let Some(s) = guard.as_mut() {
+                let idle = is_idle_expired(s.last_activity, idle_mins, now);
+                let ready = matches!(s.fsm.state(), SessionState::Ready)
+                    && s.streaming_message_id.is_none();
+                if idle && ready {
+                    if let Some(acp) = s.acp.take() {
+                        s.fsm.soft_disconnect();
+                        s.needs_history_bootstrap = false;
+                        Some((s.app_session_id.clone(), acp))
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                }
+            } else {
+                None
+            }
+        };
+        if let Some((sid, acp)) = live_kill {
+            tracing::info!("idle recycle live session={sid} after {idle_mins}min");
+            acp.kill().await;
+            Self::emit_idle_recycled(app, &sid, "idle");
+            Self::emit_state(app, &self.snapshot());
         }
     }
 
@@ -536,6 +819,8 @@ impl SessionManager {
         mock_mode: Option<String>,
     ) -> Result<SessionSnapshot, String> {
         let settings = store::load_settings();
+        let max_concurrent = normalize_max_concurrent(settings.max_concurrent_agents);
+        self.sweep_dead_parked();
 
         let cwd = project_path
             .clone()
@@ -563,10 +848,10 @@ impl SessionManager {
         let policy = PermissionPolicy::parse(&prefs.permission_policy);
         let agent_model = crate::providers::agent_spawn_model_id(&prefs.model_id);
 
-        // Already live on this App session with a healthy agent → no-op.
+        // Already live on this App session with a healthy agent → no-op (or soft re-bind prefs).
         {
-            let guard = self.inner.lock();
-            if let Some(s) = guard.as_ref() {
+            let mut guard = self.inner.lock();
+            if let Some(s) = guard.as_mut() {
                 if s.app_session_id == meta.id
                     && s.project_path == project_path
                     && s.acp.as_ref().is_some_and(|c| c.is_alive())
@@ -574,6 +859,7 @@ impl SessionManager {
                     && s.streaming_message_id.is_none()
                     && s.effort.as_deref() == Some(prefs.effort.as_str())
                 {
+                    Self::touch_activity_locked(s);
                     tracing::info!(
                         "acp connect no-op: already ready session={}",
                         meta.id
@@ -583,22 +869,97 @@ impl SessionManager {
             }
         }
 
-        // Warm reuse: same cwd + effort + YOLO flag → switch ACP session without
-        // respawning the CLI (skips process start + initialize + auth).
-        let reuse_client = Self::take_reusable_acp(
-            &self.inner,
-            &cwd,
-            &project_path,
-            &prefs,
-            policy,
-        );
+        // Target already parked (warm multi-session) → unpark.
+        if self.parked.lock().contains_key(&meta.id) {
+            // Park current live if needed (busy → error).
+            if let Err(e) = self.try_park_live() {
+                Self::emit_process_limit(&app, Some(&meta.id), max_concurrent);
+                return Err(format!("{}: {}", e.code.as_str(), e.message));
+            }
+            if let Some(live) = self.unpark_to_live(&meta.id) {
+                // Refresh prefs on shell (model may have changed in UI).
+                let mut live = live;
+                live.model_id = Some(prefs.model_id.clone());
+                live.effort = Some(prefs.effort.clone());
+                live.product_mode = Some(prefs.mode.clone());
+                live.policy = policy;
+                live.project_path = project_path.clone();
+                live.meta.model_id = Some(prefs.model_id.clone());
+                live.meta.mode = Some(prefs.mode.clone());
+                live.meta.effort = Some(prefs.effort.clone());
+                live.meta.permission_policy = Some(prefs.permission_policy.clone());
+                // Best-effort align agent process to channel prefs.
+                if let Some(acp) = live.acp.clone() {
+                    if let Err(e) = acp.set_model(&agent_model).await {
+                        tracing::warn!("acp set_model on unpark soft-fail: {e}");
+                    }
+                    if let Err(e) = acp.set_mode(&prefs.mode).await {
+                        tracing::warn!("acp set_mode on unpark soft-fail: {e}");
+                    }
+                }
+                *self.inner.lock() = Some(live);
+                let snap = self.snapshot();
+                Self::emit_state(&app, &snap);
+                tracing::info!("acp unparked warm session={}", meta.id);
+                return Ok(snap);
+            }
+            // Parked process died — fall through to cold spawn.
+        }
 
-        if reuse_client.is_none() {
-            // Cold path: tear down any previous agent process.
-            self.disconnect_inner(&app).await;
-        } else {
-            // Keep process; drop LiveSession shell so we can rebind.
+        // Cross-session warm reuse: same process, switch ACP session without respawn.
+        // Only when target is not a different parked agent and flags match.
+        let reuse_pair = {
+            let same_focus = self
+                .inner
+                .lock()
+                .as_ref()
+                .map(|s| s.app_session_id == meta.id)
+                .unwrap_or(false);
+            if same_focus {
+                None
+            } else {
+                Self::take_reusable_acp(&self.inner, &cwd, &project_path, &prefs, policy)
+            }
+        };
+
+        if reuse_pair.is_some() {
+            // Keep process; drop LiveSession shell so we can rebind (1 process stays).
             let _ = self.inner.lock().take();
+            Self::emit_state(&app, &self.snapshot());
+        } else {
+            // Park live Ready agent when switching focus (multi-warm). Busy → error.
+            let live_sid = self
+                .inner
+                .lock()
+                .as_ref()
+                .map(|s| s.app_session_id.clone());
+            if live_sid.as_deref() != Some(meta.id.as_str()) {
+                if let Err(e) = self.try_park_live() {
+                    Self::emit_process_limit(&app, Some(&meta.id), max_concurrent);
+                    return Err(format!("{}: {}", e.code.as_str(), e.message));
+                }
+                // Clear disconnected / dead live shell so we can rebuild.
+                {
+                    let mut guard = self.inner.lock();
+                    if let Some(s) = guard.as_ref() {
+                        if s.app_session_id != meta.id
+                            || s.acp.is_none()
+                            || !matches!(s.fsm.state(), SessionState::Ready)
+                        {
+                            let _ = guard.take();
+                        }
+                    }
+                }
+            } else {
+                // Same session reconnect / flag change — kill any leftover process.
+                let leftover = {
+                    let mut guard = self.inner.lock();
+                    guard.take().and_then(|mut s| s.acp.take())
+                };
+                if let Some(acp) = leftover {
+                    acp.kill().await;
+                }
+            }
             Self::emit_state(&app, &self.snapshot());
         }
 
@@ -611,11 +972,17 @@ impl SessionManager {
             tracing::warn!("sync agent permission prefs: {e}");
         }
 
+        // Warm reuse must keep the original process_id so the event pump still routes.
+        let process_id = reuse_pair
+            .as_ref()
+            .map(|(pid, _)| pid.clone())
+            .unwrap_or_else(|| Uuid::new_v4().to_string());
         {
             let mut fsm = SessionFsm::new();
             fsm.start_connect().map_err(|e| e.to_string())?;
             *self.inner.lock() = Some(LiveSession {
                 app_session_id: meta.id.clone(),
+                process_id: process_id.clone(),
                 meta: meta.clone(),
                 fsm,
                 backend: Self::backend_name(),
@@ -636,6 +1003,7 @@ impl SessionManager {
                 provider_retry_aborted: false,
                 needs_history_bootstrap: false,
                 pending_plan_rpc_id: None,
+                last_activity: Instant::now(),
             });
         }
         Self::emit_state(&app, &self.snapshot());
@@ -656,15 +1024,41 @@ impl SessionManager {
                 && !m.is_error
         });
 
-        let (client, reused_process) = if let Some(existing) = reuse_client {
+        let (client, reused_process, process_id) = if let Some((pid, existing)) = reuse_pair {
             tracing::info!(
                 "acp warm reuse process cwd={} effort={} app_session={}",
                 cwd.display(),
                 prefs.effort,
                 meta.id
             );
-            (existing, true)
+            (existing, true, pid)
         } else {
+            // Capacity: free LRU parked if needed, else reject.
+            self.sweep_dead_parked();
+            let active = self.active_process_count();
+            // active does not yet include this new spawn (live has no acp).
+            if !can_spawn_process(active, max_concurrent) {
+                // Try freeing one parked LRU slot.
+                self.free_parked_for_capacity(&app, 1).await;
+            }
+            let active = self.active_process_count();
+            if !can_spawn_process(active, max_concurrent) {
+                let err = AgentError::new(
+                    AgentErrorCode::ProcessLimit,
+                    process_limit_message(max_concurrent),
+                );
+                {
+                    let mut guard = self.inner.lock();
+                    if let Some(s) = guard.as_mut() {
+                        let _ = s.fsm.connect_failed(err.clone());
+                    }
+                }
+                Self::emit_process_limit(&app, Some(&meta.id), max_concurrent);
+                let snap = self.snapshot();
+                Self::emit_state(&app, &snap);
+                return Ok(snap);
+            }
+
             // Real ACP cold spawn
             let probe = cli_probe::probe_cli(settings.manual_cli_path.as_deref());
             if !probe.found {
@@ -705,22 +1099,18 @@ impl SessionManager {
                     }
                 };
 
-            {
-                let mut n = self.active_count.lock();
-                *n += 1;
-            }
-
-            // Event pump (only for newly spawned processes)
+            // Event pump tagged with process_id (multi-process routing).
             {
                 let mgr = Arc::clone(self);
                 let app_ev = app.clone();
+                let pid = process_id.clone();
                 tokio::spawn(async move {
                     while let Some(ev) = events.recv().await {
-                        mgr.handle_acp_event(&app_ev, ev).await;
+                        mgr.handle_acp_event(&app_ev, &pid, ev).await;
                     }
                 });
             }
-            (client, false)
+            (client, false, process_id)
         };
 
         let open_result = if reused_process {
@@ -757,6 +1147,7 @@ impl SessionManager {
                     if let Some(s) = guard.as_mut() {
                         let _ = s.fsm.handshake_ok();
                         s.acp = Some(client);
+                        s.process_id = process_id;
                         s.meta.agent_session_id = Some(agent_sid);
                         s.meta.model_id = Some(prefs.model_id.clone());
                         s.meta.mode = Some(prefs.mode.clone());
@@ -767,6 +1158,7 @@ impl SessionManager {
                         s.product_mode = Some(prefs.mode.clone());
                         s.backend = "grok_agent_stdio".into();
                         s.needs_history_bootstrap = need_bootstrap;
+                        Self::touch_activity_locked(s);
                         meta = s.meta.clone();
                     }
                 }
@@ -777,10 +1169,6 @@ impl SessionManager {
             }
             Err(e) => {
                 client.kill().await;
-                {
-                    let mut n = self.active_count.lock();
-                    *n = n.saturating_sub(1);
-                }
                 {
                     let mut guard = self.inner.lock();
                     if let Some(s) = guard.as_mut() {
@@ -796,13 +1184,15 @@ impl SessionManager {
 
     /// Detach a live ACP client when spawn-critical flags match the next connect.
     /// Event pump keeps running on the Arc; caller rebinds into a new LiveSession.
+    /// Prefer park+spawn for multi-session; this path keeps a single process for same cwd.
+    /// Returns `(process_id, client)` so the event pump tag stays valid.
     fn take_reusable_acp(
         inner: &Mutex<Option<LiveSession>>,
         cwd: &std::path::Path,
         project_path: &Option<String>,
         prefs: &store::ComposerPrefs,
         next_policy: PermissionPolicy,
-    ) -> Option<Arc<AcpClient>> {
+    ) -> Option<(ProcessId, Arc<AcpClient>)> {
         let mut guard = inner.lock();
         let s = guard.as_mut()?;
         if !matches!(s.fsm.state(), SessionState::Ready) {
@@ -832,7 +1222,8 @@ impl SessionManager {
         if client.cwd() != cwd {
             return None;
         }
-        s.acp.take()
+        let pid = s.process_id.clone();
+        s.acp.take().map(|c| (pid, c))
     }
 
     async fn connect_mock(
@@ -876,7 +1267,23 @@ impl SessionManager {
         }
     }
 
-    async fn handle_acp_event(self: &Arc<Self>, app: &AppHandle, ev: AcpEvent) {
+    async fn handle_acp_event(self: &Arc<Self>, app: &AppHandle, process_id: &str, ev: AcpEvent) {
+        // Drop events from non-focused processes (parked agents should be idle).
+        // ProcessExited still cleans parked map entries.
+        let is_live = self
+            .inner
+            .lock()
+            .as_ref()
+            .map(|s| s.process_id == process_id)
+            .unwrap_or(false);
+        if !is_live {
+            if let AcpEvent::ProcessExited { .. } = &ev {
+                let mut parked = self.parked.lock();
+                parked.retain(|_, p| p.process_id != process_id);
+            }
+            return;
+        }
+
         match ev {
             AcpEvent::Stream {
                 kind,
@@ -887,6 +1294,7 @@ impl SessionManager {
                 let (app_sid, mid, thought_phase) = {
                     let mut guard = self.inner.lock();
                     if let Some(s) = guard.as_mut() {
+                        Self::touch_activity_locked(s);
                         // Prefer agent-supplied messageId; otherwise keep the turn id.
                         if let Some(ref mid_in) = message_id {
                             if s.streaming_message_id.as_ref() != Some(mid_in) {
@@ -952,6 +1360,7 @@ impl SessionManager {
                 {
                     let mut guard = self.inner.lock();
                     if let Some(s) = guard.as_mut() {
+                        Self::touch_activity_locked(s);
                         // Persist assistant turn to independent session store
                         let has_atts = !s.stream_attachments.is_empty();
                         if !s.stream_buf.is_empty() || !s.stream_thought.is_empty() || has_atts {
@@ -1018,6 +1427,7 @@ impl SessionManager {
                 let (auto, auto_deny, session_id, project_path) = {
                     let mut guard = self.inner.lock();
                     if let Some(s) = guard.as_mut() {
+                        Self::touch_activity_locked(s);
                         let _ = s.fsm.await_permission();
                         // Use live session policy (updated by chip / settings_set / set_policy).
                         // Do NOT re-read only global settings — project/session scope would break.
@@ -1328,12 +1738,13 @@ impl SessionManager {
                         {
                             let _ = s.fsm.crash("Agent process exited");
                         }
+                        s.acp = None;
                     }
                 }
-                {
-                    let mut n = self.active_count.lock();
-                    *n = n.saturating_sub(1);
-                }
+                // Also drop any parked entry with this process id (defensive).
+                self.parked
+                    .lock()
+                    .retain(|_, p| p.process_id != process_id);
                 Self::emit_state(app, &self.snapshot());
             }
             AcpEvent::State {
@@ -1614,6 +2025,7 @@ impl SessionManager {
             let mut guard = self.inner.lock();
             let s = guard.as_mut().ok_or("no active session")?;
             s.fsm.begin_stream().map_err(|e| e.to_string())?;
+            Self::touch_activity_locked(s);
             let mid = Uuid::new_v4().to_string();
             s.streaming_message_id = Some(mid.clone());
             s.stream_buf.clear();
@@ -1836,6 +2248,8 @@ impl SessionManager {
                 // Prefer resume on next connect; bootstrap only if load fails.
                 s.needs_history_bootstrap = false;
                 s.fsm.soft_disconnect();
+                // New process gets a new id on next connect.
+                s.process_id = String::new();
                 acp
             } else {
                 None
@@ -1987,6 +2401,7 @@ impl SessionManager {
         let acp = {
             let mut guard = self.inner.lock();
             let s = guard.as_mut().ok_or("no session")?;
+            Self::touch_activity_locked(s);
             // "allow_session" decision caches scope_key for H05 (works under Ask chip too)
             if decision == "allow_session" || decision == "allow_for_session" {
                 if let Some(sk) = scope {
@@ -2033,6 +2448,7 @@ impl SessionManager {
         let (acp, id) = {
             let mut guard = self.inner.lock();
             let s = guard.as_mut().ok_or("no session")?;
+            Self::touch_activity_locked(s);
             let id = rpc_id.or(s.pending_plan_rpc_id.take());
             (s.acp.clone(), id)
         };
@@ -2058,13 +2474,14 @@ impl SessionManager {
         };
         if let Some(acp) = acp {
             acp.kill().await;
-            let mut n = self.active_count.lock();
-            *n = n.saturating_sub(1);
         }
+        // Keep parked warm agents — full app teardown can clear them later.
         Self::emit_state(app, &self.snapshot());
     }
 
     pub async fn disconnect(self: &Arc<Self>, app: AppHandle) -> Result<SessionSnapshot, String> {
+        // Drop the focused process only. Parked warm agents stay until idle recycle
+        // or capacity eviction so reopening another chat can unpark quickly.
         self.disconnect_inner(&app).await;
         Ok(self.snapshot())
     }

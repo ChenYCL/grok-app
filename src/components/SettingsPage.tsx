@@ -89,6 +89,12 @@ export interface SettingsPageProps {
   /** API mode: remote ACP server `host:port` (empty = local CLI spawn). */
   acpServerAddr: string;
   onAcpServerAddr: (v: string) => void;
+  /** Max warm/live agent processes (I02). */
+  maxConcurrentAgents?: number;
+  onMaxConcurrentAgents?: (v: number) => void;
+  /** Idle recycle minutes (I03). */
+  agentIdleMinutes?: number;
+  onAgentIdleMinutes?: (v: number) => void;
   cliInfo: {
     found: boolean;
     path: string | null;
@@ -265,6 +271,10 @@ export function SettingsPage({
   onCliBlur,
   acpServerAddr,
   onAcpServerAddr,
+  maxConcurrentAgents = 3,
+  onMaxConcurrentAgents,
+  agentIdleMinutes = 30,
+  onAgentIdleMinutes,
   cliInfo,
   onDoctor,
   versionFooter,
@@ -1155,6 +1165,54 @@ export function SettingsPage({
                 value={acpServerAddr}
                 placeholder="e.g. 127.0.0.1:8799"
                 onChange={(e) => onAcpServerAddr(e.target.value)}
+              />
+            </div>
+            <div className="settings-row settings-row--stack">
+              <div className="settings-row__text">
+                <div className="settings-row__label">
+                  {t("settings.maxConcurrentAgents")}
+                </div>
+                <div className="settings-row__desc">
+                  {t("settings.maxConcurrentAgentsDesc")}
+                </div>
+              </div>
+              <input
+                className="settings-input"
+                type="number"
+                min={1}
+                max={8}
+                step={1}
+                value={maxConcurrentAgents}
+                onChange={(e) => {
+                  const n = Number(e.target.value);
+                  if (!Number.isFinite(n)) return;
+                  onMaxConcurrentAgents?.(Math.min(8, Math.max(1, Math.round(n))));
+                }}
+              />
+            </div>
+            <div className="settings-row settings-row--stack">
+              <div className="settings-row__text">
+                <div className="settings-row__label">
+                  {t("settings.agentIdleMinutes")}
+                </div>
+                <div className="settings-row__desc">
+                  {t("settings.agentIdleMinutesDesc")}
+                </div>
+              </div>
+              <input
+                className="settings-input"
+                type="number"
+                min={1}
+                max={1440}
+                step={1}
+                value={agentIdleMinutes}
+                onChange={(e) => {
+                  const n = Number(e.target.value);
+                  if (!Number.isFinite(n)) return;
+                  onAgentIdleMinutes?.(
+                    Math.min(1440, Math.max(1, Math.round(n))),
+                  );
+                }}
               />
             </div>
             <div className="settings-row">

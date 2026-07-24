@@ -327,6 +327,16 @@ const en = {
   "settings.acpServer": "ACP server (API mode)",
   "settings.acpServerDesc":
     "Connect to a remote ACP agent over TCP (host:port) instead of spawning the local CLI — e.g. an agent in WSL, a container, or another host. Leave empty for local spawn.",
+  "settings.maxConcurrentAgents": "Max concurrent agents",
+  "settings.maxConcurrentAgentsDesc":
+    "Warm agent processes kept for open chats (default 3). Opening more than this prompts you to wait or free a session.",
+  "settings.agentIdleMinutes": "Idle recycle (minutes)",
+  "settings.agentIdleMinutesDesc":
+    "After this many minutes without activity, the agent process is recycled. Chat history is kept; the next message reconnects.",
+  "agent.idleRecycledToast":
+    "Agent process recycled after idle — session kept; next message will reconnect.",
+  "agent.processLimitToast":
+    "Agent process limit reached. Stop another session or raise the limit in Settings → Runtime.",
   "settings.permissionDeep": "Default permission",
   "settings.permissionDeepDesc":
     "Applied to new turns and remembered at the scope chosen above. YOLO auto-approves tools.",
@@ -1069,6 +1079,16 @@ const zh: Record<MessageKey, string> = {
   "settings.acpServer": "ACP 服务器（API 模式）",
   "settings.acpServerDesc":
     "通过 TCP（host:port）连接远程 ACP Agent，替代启动本地 CLI —— 例如运行在 WSL、容器或另一台主机上的 Agent。留空则使用本地启动。",
+  "settings.maxConcurrentAgents": "最大并发 Agent 数",
+  "settings.maxConcurrentAgentsDesc":
+    "为打开的对话保留的热 Agent 进程数（默认 3）。超过上限时会提示等待或释放其他会话。",
+  "settings.agentIdleMinutes": "闲置回收（分钟）",
+  "settings.agentIdleMinutesDesc":
+    "超过该分钟数无活动后回收 Agent 进程。对话记录保留，下次发送会自动重连。",
+  "agent.idleRecycledToast":
+    "Agent 进程因闲置已回收 — 会话仍在；下次发送将重新连接。",
+  "agent.processLimitToast":
+    "已达 Agent 进程上限。请先停止其他会话，或在设置 → 运行环境中提高上限。",
   "settings.permissionDeep": "默认权限",
   "settings.permissionDeepDesc":
     "对新一轮对话生效，并按上方选择的范围记忆。YOLO 会自动批准工具调用。",

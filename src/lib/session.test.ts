@@ -240,13 +240,14 @@ describe("session projection", () => {
     expect(next[2]!.streaming).toBe(true);
   });
 
-  it("errorCopy distinguishes six codes", () => {
+  it("errorCopy distinguishes seven codes", () => {
     expect(errorCopy("CLI_NOT_FOUND")).toMatch(/CLI/i);
     expect(errorCopy("AUTH_FAILED")).toMatch(/鉴权|Auth/i);
     expect(errorCopy("NETWORK_PROVIDER")).toMatch(/网络|Network|模型/i);
     expect(errorCopy("AGENT_CRASHED")).toMatch(/崩溃|crash|进程/i);
     expect(errorCopy("QUOTA_EXCEEDED")).toMatch(/额度|Quota/i);
     expect(errorCopy("CONNECT_FAILED")).toMatch(/连接|connect/i);
+    expect(errorCopy("PROCESS_LIMIT")).toMatch(/上限|limit|进程|process/i);
   });
 
   it("formatTurnErrorBody maps connect / quota phrases", () => {
