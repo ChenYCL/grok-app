@@ -786,6 +786,10 @@ export interface AppSettings {
    * Default "off". Passed as `grok --sandbox <profile>` / GROK_SANDBOX on spawn.
    */
   sandboxProfile?: string;
+   * Connect agents to a shared Grok Build leader (`grok agent --leader`).
+   * Default false: standalone process (`--no-leader`). Soft-respawns on change.
+   */
+  useLeader?: boolean;
 }
 
 export interface AvailableModel {
@@ -1177,6 +1181,32 @@ export async function pluginUpdate(name?: string | null) {
   return invoke<PluginActionResult>("plugin_update", {
     name: n ? n : null,
   });
+// ── Leader process (shared agent backend) ───────────────────────────────────
+
+export interface LeaderProcessDto {
+  pid?: number | null;
+  socketPath?: string | null;
+  version?: string | null;
+}
+
+export interface LeaderListResult {
+  leaders: LeaderProcessDto[];
+  error?: string;
+}
+
+export interface LeaderKillResult {
+  ok: boolean;
+  message?: string;
+}
+
+/** List running leader processes (`grok leader list --json`). */
+export async function leaderList() {
+  return invoke<LeaderListResult>("leader_list");
+}
+
+/** Stop all leaders (`grok leader kill`) and soft-respawn the app agent. */
+export async function leaderKillAll() {
+  return invoke<LeaderKillResult>("leader_kill_all");
 }
 
 // ── Official Grok Build account ─────────────────────────────────────────────

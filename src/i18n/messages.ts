@@ -565,6 +565,19 @@ const en = {
   "settings.streamStallSeconds": "Stream stall timeout (seconds)",
   "settings.streamStallSecondsDesc":
     "If a turn has no stream chunks or tool activity for this long, show a Cancel / Keep waiting prompt (default 120). Long-running tools that still emit events do not count as stalled.",
+  "settings.useLeader": "Shared leader backend",
+  "settings.useLeaderDesc":
+    "Advanced: connect the agent to a shared Grok Build leader process (`grok agent --leader`) so multiple clients can share one backend. Off by default (`--no-leader`). Changing this soft-respawns the live agent.",
+  "settings.leaderStatusNone": "No leader process running.",
+  "settings.leaderStatusCount": "{count} leader process(es)",
+  "settings.leaderStatusLine": "PID {pid}{socket}",
+  "settings.leaderRefresh": "Refresh",
+  "settings.leaderKillAll": "Stop leaders",
+  "settings.leaderKillConfirmTitle": "Stop all leader processes?",
+  "settings.leaderKillConfirmMsg":
+    "This runs `grok leader kill` and stops every shared leader. Local agents that were attached will reconnect on the next message.",
+  "settings.leaderKillBusy": "Stopping…",
+  "settings.leaderKillDone": "Leader processes stopped.",
   "agent.idleRecycledToast":
     "Agent process recycled after idle — session kept; next message will reconnect.",
   "agent.dataModeRecycledToast":
@@ -1777,6 +1790,19 @@ const zh: Record<MessageKey, string> = {
   "settings.streamStallSeconds": "流式卡顿超时（秒）",
   "settings.streamStallSecondsDesc":
     "若一轮对话在该时间内无任何流式片段或工具活动，将提示「取消本轮 / 继续等待」（默认 120）。仍有工具事件的长任务不会误判为卡顿。",
+  "settings.useLeader": "共享 Leader 后端",
+  "settings.useLeaderDesc":
+    "高级：将 Agent 连接到共享的 Grok Build Leader 进程（`grok agent --leader`），使多个客户端共用一个后端。默认关闭（`--no-leader`）。更改后会软重启当前 Agent。",
+  "settings.leaderStatusNone": "当前没有运行中的 Leader 进程。",
+  "settings.leaderStatusCount": "{count} 个 Leader 进程",
+  "settings.leaderStatusLine": "PID {pid}{socket}",
+  "settings.leaderRefresh": "刷新",
+  "settings.leaderKillAll": "停止 Leader",
+  "settings.leaderKillConfirmTitle": "停止全部 Leader 进程？",
+  "settings.leaderKillConfirmMsg":
+    "将执行 `grok leader kill` 并停止所有共享 Leader。已连接的本地 Agent 会在下次发送消息时重连。",
+  "settings.leaderKillBusy": "正在停止…",
+  "settings.leaderKillDone": "已停止 Leader 进程。",
   "agent.idleRecycledToast":
     "Agent 进程因闲置已回收 — 会话仍在；下次发送将重新连接。",
   "agent.dataModeRecycledToast":

@@ -204,6 +204,8 @@ pub fn run() {
             commands::plugin_details,
             commands::plugin_install,
             commands::plugin_update,
+            commands::leader_list,
+            commands::leader_kill_all,
             commands::pick_directory,
             commands::pick_attach_files,
             commands::pick_attach_folder,

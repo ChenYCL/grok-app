@@ -168,6 +168,11 @@ pub struct AppSettings {
     /// Passed as top-level `grok --sandbox <profile>` / `GROK_SANDBOX` at spawn.
     #[serde(default = "default_sandbox_profile")]
     pub sandbox_profile: String,
+    /// Connect local ACP agents to a shared Grok Build leader process
+    /// (`grok agent --leader`). Default **false** — each agent is a standalone
+    /// process (`--no-leader`). Advanced; multiple clients can share one backend.
+    #[serde(default)]
+    pub use_leader: bool,
 }
 
 fn default_composer_prefs_scope() -> String {
@@ -217,6 +222,7 @@ impl Default for AppSettings {
             stream_stall_seconds: default_stream_stall_seconds(),
             store_api_keys_in_keychain: false,
             sandbox_profile: default_sandbox_profile(),
+            use_leader: false,
         }
     }
 }
@@ -1302,6 +1308,12 @@ mod tests {
     #[test]
     fn sandbox_profile_defaults_when_missing_from_json() {
         // Old settings files without the field must deserialize to "off".
+        assert!(!s.use_leader);
+    }
+
+    #[test]
+    fn use_leader_defaults_when_missing_from_json() {
+        // Old settings files without the field must deserialize to false.
         let raw = r#"{
             "theme": "dark",
             "locale": "en",
@@ -1361,5 +1373,6 @@ mod tests {
         let m: SessionMeta = serde_json::from_str(raw).expect("deserialize legacy session");
         assert!(!m.pinned);
         assert!(!m.archived);
+        assert!(!s.use_leader);
     }
 }

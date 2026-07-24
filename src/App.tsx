@@ -692,6 +692,7 @@ export default function App() {
   const [streamStallSeconds, setStreamStallSeconds] = useState(120);
   const [storeApiKeysInKeychain, setStoreApiKeysInKeychain] = useState(false);
   const [sandboxProfile, setSandboxProfile] = useState("off");
+  const [useLeader, setUseLeader] = useState(false);
   const [gitWorktrees, setGitWorktrees] = useState<api.GitWorktreeEntry[]>([]);
   /** null = unknown/loading; true = git work tree; false = not a git repo. */
   const [gitWorktreesAvailable, setGitWorktreesAvailable] = useState<
@@ -922,6 +923,7 @@ export default function App() {
         const known = ["off", "workspace", "read-only", "strict", "devbox"];
         setSandboxProfile(known.includes(sb) ? sb : "off");
       }
+      setUseLeader(!!settings.useLeader);
       setCliInfo({
         found: cli.found,
         path: cli.path,
@@ -6226,6 +6228,17 @@ export default function App() {
             void api.settingsGet().then((s) =>
               api.settingsSet({ ...s, sandboxProfile: v }),
             );
+          useLeader={useLeader}
+          onUseLeader={(v) => {
+            const prev = useLeader;
+            setUseLeader(v);
+            void api
+              .settingsGet()
+              .then((s) => api.settingsSet({ ...s, useLeader: v }))
+              .catch((e) => {
+                setUseLeader(prev);
+                showToast(String(e), 4500);
+              });
           }}
           cliInfo={cliInfo}
           onDoctor={() => void openDoctor()}

@@ -45,6 +45,7 @@ import { AccountPanel } from "@/components/AccountPanel";
 import { ProvidersPanel } from "@/components/ProvidersPanel";
 import { ExtensionsPanel } from "@/components/ExtensionsPanel";
 import { ProjectInspectPanel } from "@/components/ProjectInspectPanel";
+import { GlassModal } from "@/components/GlassModal";
 import {
   createT,
   resolveLocale,
@@ -115,6 +116,12 @@ export interface SettingsPageProps {
   /** OS sandbox for agent spawn: off | workspace | read-only | strict | devbox. */
   sandboxProfile?: string;
   onSandboxProfile?: (v: string) => void;
+  /**
+   * Shared leader backend (`grok agent --leader`). Default off (`--no-leader`).
+   * Soft-respawns the live agent when toggled.
+   */
+  useLeader?: boolean;
+  onUseLeader?: (v: boolean) => void;
   cliInfo: {
     found: boolean;
     path: string | null;
@@ -418,6 +425,8 @@ export function SettingsPage({
   onStoreApiKeysInKeychain,
   sandboxProfile = "off",
   onSandboxProfile,
+  useLeader = false,
+  onUseLeader,
   cliInfo,
   onDoctor,
   versionFooter,
@@ -1457,6 +1466,26 @@ export function SettingsPage({
                 }}
               />
             </div>
+            {onUseLeader ? (
+              <>
+                <div className="settings-row">
+                  <div className="settings-row__text">
+                    <div className="settings-row__label">
+                      {t("settings.useLeader")}
+                    </div>
+                    <div className="settings-row__desc">
+                      {t("settings.useLeaderDesc")}
+                    </div>
+                  </div>
+                  <UiCheck
+                    checked={useLeader}
+                    onChange={() => onUseLeader(!useLeader)}
+                    ariaLabel={t("settings.useLeader")}
+                  />
+                </div>
+                {useLeader ? <LeaderStatusPanel t={t} /> : null}
+              </>
+            ) : null}
             <div className="settings-row">
               <div className="settings-row__text">
                 <div className="settings-row__label">
@@ -1658,6 +1687,8 @@ function CliSessionsPanel({
 }
 
 function AboutUpdateRow({
+/** Runtime: list / kill shared leader processes when leader mode is on. */
+function LeaderStatusPanel({
   t,
 }: {
   t: (key: MessageKey, vars?: Record<string, string | number>) => string;
@@ -1689,6 +1720,46 @@ function AboutUpdateRow({
       await api.openExternalUrl(url);
     } catch (e) {
       setError(String(e));
+  const [leaders, setLeaders] = useState<api.LeaderProcessDto[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [status, setStatus] = useState<string | null>(null);
+  const [killBusy, setKillBusy] = useState(false);
+  const [confirmKill, setConfirmKill] = useState(false);
+
+  const refresh = useCallback(async () => {
+    if (!api.isTauri()) return;
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await api.leaderList();
+      setLeaders(res.leaders ?? []);
+      if (res.error) setError(res.error);
+    } catch (e) {
+      setError(String(e));
+      setLeaders([]);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void refresh();
+  }, [refresh]);
+
+  const doKill = async () => {
+    setConfirmKill(false);
+    setKillBusy(true);
+    setError(null);
+    setStatus(null);
+    try {
+      await api.leaderKillAll();
+      setStatus(t("settings.leaderKillDone"));
+      await refresh();
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setKillBusy(false);
     }
   };
 
@@ -1749,6 +1820,84 @@ function AboutUpdateRow({
           </div>
         ) : null}
       </div>
+        <div className="settings-row__desc">
+          {loading
+            ? t("settings.leaderRefresh") + "…"
+            : leaders.length === 0
+              ? t("settings.leaderStatusNone")
+              : t("settings.leaderStatusCount", { count: leaders.length })}
+        </div>
+        {leaders.length > 0 ? (
+          <ul className="settings-cli-sessions__list" role="list">
+            {leaders.map((row, i) => {
+              const pid = row.pid != null ? String(row.pid) : "—";
+              const socket = row.socketPath
+                ? ` · ${row.socketPath}`
+                : row.version
+                  ? ` · ${row.version}`
+                  : "";
+              return (
+                <li
+                  key={`${pid}-${i}`}
+                  className="settings-cli-sessions__item"
+                  role="listitem"
+                >
+                  <div className="settings-row__hint">
+                    {t("settings.leaderStatusLine", { pid, socket })}
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+        ) : null}
+        {error ? (
+          <div className="settings-row__hint is-danger">{error}</div>
+        ) : null}
+        {status ? <div className="settings-row__hint">{status}</div> : null}
+      </div>
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+        <button
+          type="button"
+          className="btn btn--ghost settings-row__action"
+          onClick={() => void refresh()}
+          disabled={loading || killBusy}
+        >
+          {t("settings.leaderRefresh")}
+        </button>
+        <button
+          type="button"
+          className="btn btn--ghost btn--danger settings-row__action"
+          onClick={() => setConfirmKill(true)}
+          disabled={killBusy || loading}
+        >
+          {killBusy ? t("settings.leaderKillBusy") : t("settings.leaderKillAll")}
+        </button>
+      </div>
+      <GlassModal
+        open={confirmKill}
+        onClose={() => setConfirmKill(false)}
+        title={t("settings.leaderKillConfirmTitle")}
+        footer={
+          <>
+            <button
+              type="button"
+              className="btn btn--ghost"
+              onClick={() => setConfirmKill(false)}
+            >
+              {t("common.cancel")}
+            </button>
+            <button
+              type="button"
+              className="btn btn--danger"
+              onClick={() => void doKill()}
+            >
+              {t("settings.leaderKillAll")}
+            </button>
+          </>
+        }
+      >
+        <p className="app-dialog__msg">{t("settings.leaderKillConfirmMsg")}</p>
+      </GlassModal>
     </div>
   );
 }

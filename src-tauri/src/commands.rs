@@ -634,6 +634,7 @@ pub async fn settings_set(
         prev.store_api_keys_in_keychain != settings.store_api_keys_in_keychain;
     let session_data_mode_changed =
         prev.session_data_mode != settings.session_data_mode;
+    let use_leader_changed = prev.use_leader != settings.use_leader;
 
     store::save_settings(&settings)?;
 
@@ -653,6 +654,15 @@ pub async fn settings_set(
     // so the next connect spawns under the new data root (E04).
     if session_data_mode_changed {
         mgr.recycle_all_agents(&app, "session_data_mode").await;
+    // Leader mode is a spawn-time flag — soft-respawn so the next connect uses
+    // `--leader` / `--no-leader` matching the new setting.
+    if use_leader_changed {
+        tracing::info!(
+            "settings: use_leader {} → {} — soft-respawn live agent",
+            prev.use_leader,
+            settings.use_leader
+        );
+        mgr.soft_respawn(&app).await;
     }
 
     // Full permission apply: Host + agent-home + soft-respawn if needed
@@ -2881,6 +2891,121 @@ pub async fn plugin_update(
     let result = tauri::async_runtime::spawn_blocking(move || match target_for_cmd.as_deref() {
         Some(n) => run_grok_cli_args(&["plugin", "update", n], PLUGIN_MUTATE_TIMEOUT_SECS),
         None => run_grok_cli_args(&["plugin", "update"], PLUGIN_MUTATE_TIMEOUT_SECS),
+const LEADER_CMD_TIMEOUT_SECS: u64 = 15;
+
+/// One row from `grok leader list --json` (fields vary by CLI version).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LeaderProcessDto {
+    pub pid: Option<u64>,
+    pub socket_path: Option<String>,
+    pub version: Option<String>,
+    /// Original object for debugging / future UI fields.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub raw: Option<serde_json::Value>,
+}
+
+/// Pure parse helper for `grok leader list --json` (unit-tested).
+pub fn parse_leader_list_json(stdout: &str) -> Result<Vec<LeaderProcessDto>, String> {
+    let trimmed = stdout.trim();
+    if trimmed.is_empty() {
+        return Ok(Vec::new());
+    }
+    let value: serde_json::Value = serde_json::from_str(trimmed)
+        .map_err(|e| format!("invalid leader list JSON: {e}"))?;
+    let items: Vec<serde_json::Value> = if let Some(arr) = value.as_array() {
+        arr.clone()
+    } else if let Some(arr) = value
+        .get("leaders")
+        .or_else(|| value.get("processes"))
+        .and_then(|v| v.as_array())
+    {
+        arr.clone()
+    } else if value.is_object() {
+        // Single leader object.
+        vec![value]
+    } else {
+        return Ok(Vec::new());
+    };
+
+    let mut out = Vec::with_capacity(items.len());
+    for item in items {
+        let pid = item
+            .get("pid")
+            .or_else(|| item.get("leader_pid"))
+            .or_else(|| item.get("leaderPid"))
+            .and_then(|v| v.as_u64().or_else(|| v.as_i64().map(|i| i as u64)));
+        let socket_path = item
+            .get("socket_path")
+            .or_else(|| item.get("socketPath"))
+            .or_else(|| item.get("socket"))
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string());
+        let version = item
+            .get("version")
+            .or_else(|| item.get("leader_version"))
+            .or_else(|| item.get("leaderVersion"))
+            .or_else(|| item.get("leader_binary_version"))
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string());
+        out.push(LeaderProcessDto {
+            pid,
+            socket_path,
+            version,
+            raw: Some(item),
+        });
+    }
+    Ok(out)
+}
+
+/// List running leader processes (`grok leader list --json`).
+/// Always returns Ok; on CLI missing / failure, `leaders` is empty and `error` is set.
+#[tauri::command]
+pub async fn leader_list() -> Result<serde_json::Value, String> {
+    let result = tauri::async_runtime::spawn_blocking(|| {
+        run_grok_cli_args(&["leader", "list", "--json"], LEADER_CMD_TIMEOUT_SECS)
+    })
+    .await
+    .map_err(|e| e.to_string())?;
+
+    match result {
+        Ok((stdout, stderr, ok)) => {
+            if !ok {
+                let msg = if !stderr.is_empty() {
+                    stderr
+                } else if !stdout.is_empty() {
+                    stdout
+                } else {
+                    "grok leader list failed".into()
+                };
+                return Ok(serde_json::json!({
+                    "leaders": [],
+                    "error": msg.chars().take(400).collect::<String>(),
+                }));
+            }
+            match parse_leader_list_json(&stdout) {
+                Ok(leaders) => Ok(serde_json::json!({ "leaders": leaders })),
+                Err(e) => Ok(serde_json::json!({
+                    "leaders": [],
+                    "error": e,
+                })),
+            }
+        }
+        Err(e) => Ok(serde_json::json!({
+            "leaders": [],
+            "error": e,
+        })),
+    }
+}
+
+/// Stop all running leader processes (`grok leader kill`). Soft-respawns the app agent.
+#[tauri::command]
+pub async fn leader_kill_all(
+    app: tauri::AppHandle,
+    mgr: State<'_, Arc<SessionManager>>,
+) -> Result<serde_json::Value, String> {
+    let result = tauri::async_runtime::spawn_blocking(|| {
+        run_grok_cli_args(&["leader", "kill"], LEADER_CMD_TIMEOUT_SECS)
     })
     .await
     .map_err(|e| e.to_string())??;
@@ -2903,6 +3028,66 @@ pub async fn plugin_update(
         "name": target.unwrap_or_default(),
         "message": stdout.chars().take(400).collect::<String>(),
     }))
+}
+
+            "grok leader kill failed".into()
+        };
+        return Err(msg.chars().take(400).collect());
+    }
+    // Live agent may have been attached to a killed leader — soft-respawn.
+    mgr.soft_respawn(&app).await;
+    Ok(serde_json::json!({
+        "ok": true,
+        "message": if stdout.is_empty() {
+            stderr.chars().take(200).collect::<String>()
+        } else {
+            stdout.chars().take(200).collect::<String>()
+        },
+    }))
+}
+
+#[cfg(test)]
+mod leader_list_parse_tests {
+    use super::parse_leader_list_json;
+
+    #[test]
+    fn empty_array_and_blank() {
+        assert!(parse_leader_list_json("[]").unwrap().is_empty());
+        assert!(parse_leader_list_json("").unwrap().is_empty());
+        assert!(parse_leader_list_json("   ").unwrap().is_empty());
+    }
+
+    #[test]
+    fn array_of_objects_extracts_fields() {
+        let raw = r#"[
+            {"pid": 42, "socket_path": "/tmp/leader.sock", "leader_version": "0.2.1"},
+            {"leader_pid": 99, "socketPath": "~/.grok/leader.sock"}
+        ]"#;
+        let rows = parse_leader_list_json(raw).unwrap();
+        assert_eq!(rows.len(), 2);
+        assert_eq!(rows[0].pid, Some(42));
+        assert_eq!(rows[0].socket_path.as_deref(), Some("/tmp/leader.sock"));
+        assert_eq!(rows[0].version.as_deref(), Some("0.2.1"));
+        assert_eq!(rows[1].pid, Some(99));
+        assert_eq!(
+            rows[1].socket_path.as_deref(),
+            Some("~/.grok/leader.sock")
+        );
+    }
+
+    #[test]
+    fn wrapped_object_and_single() {
+        let wrapped = r#"{"leaders":[{"pid":7}]}"#;
+        let rows = parse_leader_list_json(wrapped).unwrap();
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].pid, Some(7));
+
+        let single = r#"{"pid":11,"socket":"/x.sock"}"#;
+        let rows = parse_leader_list_json(single).unwrap();
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].pid, Some(11));
+        assert_eq!(rows[0].socket_path.as_deref(), Some("/x.sock"));
+    }
 }
 
 #[cfg(test)]

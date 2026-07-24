@@ -193,6 +193,18 @@ impl SandboxSpawnSpec {
 pub fn sandbox_spawn_flags(profile: &str) -> Option<(Vec<String>, (String, String))> {
     let spec = SandboxSpawnSpec::from_setting(profile)?;
     Some((spec.cli_args().to_vec(), spec.env_pair()))
+/// Pure spawn flag for Settings → Runtime leader mode.
+///
+/// Always returns an explicit agent-level flag so App settings win over
+/// `[cli] use_leader` in the user's `config.toml`:
+/// - `true`  → `--leader`   (connect to / share a leader backend)
+/// - `false` → `--no-leader` (standalone agent process; default)
+pub fn leader_spawn_flag(use_leader: bool) -> &'static str {
+    if use_leader {
+        "--leader"
+    } else {
+        "--no-leader"
+    }
 }
 
 impl AcpClient {
@@ -281,6 +293,13 @@ impl AcpClient {
         // also set GROK_SANDBOX so nested tools inherit the same profile.
         let settings = crate::store::load_settings();
         let sandbox = SandboxSpawnSpec::from_setting(&settings.sandbox_profile);
+        //   top-level: `grok --no-auto-update agent …`
+        //   agent opts: `--leader` / `--no-leader` / `--model` / `--reasoning-effort`
+        //               / `--always-approve` before `stdio`
+        // Skip background update checks so ACP handshakes are not delayed on launch.
+        // Leader flag is always explicit so App `use_leader` overrides config.toml.
+        let use_leader = crate::store::load_settings().use_leader;
+        let leader_flag = leader_spawn_flag(use_leader);
 
         let mut cmd = Command::new(&cli_path);
         cmd.arg("--no-auto-update");
@@ -290,6 +309,7 @@ impl AcpClient {
             }
         }
         cmd.arg("agent");
+        cmd.arg(leader_flag);
         if !spawn_model.is_empty() {
             cmd.args(["--model", &spawn_model]);
         }
@@ -322,6 +342,7 @@ impl AcpClient {
         }
         tracing::info!(
             "acp: spawn GROK_HOME={} mode={} auth_present={} route={:?} composer_model={:?} spawn_model={} yolo={} sandbox={:?}",
+            "acp: spawn GROK_HOME={} mode={} auth_present={} route={:?} composer_model={:?} spawn_model={} yolo={} leader={}",
             grok_home.display(),
             session_data_mode,
             grok_home.join("auth.json").is_file(),
@@ -333,6 +354,7 @@ impl AcpClient {
                 .map(cli_permission_mode)
                 == Some("bypassPermissions"),
             sandbox.as_ref().map(|s| s.profile.as_str())
+            use_leader
         );
 
         let mut child = cmd.spawn().map_err(|e| {
@@ -2260,5 +2282,20 @@ mod live_handshake_tests {
         eprintln!("OK session={} in {:?}", sid, t0.elapsed());
         client.kill().await;
         assert!(!sid.is_empty());
+    }
+}
+
+#[cfg(test)]
+mod leader_spawn_tests {
+    use super::leader_spawn_flag;
+
+    #[test]
+    fn default_off_uses_no_leader() {
+        assert_eq!(leader_spawn_flag(false), "--no-leader");
+    }
+
+    #[test]
+    fn enabled_uses_leader() {
+        assert_eq!(leader_spawn_flag(true), "--leader");
     }
 }
