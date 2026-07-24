@@ -115,6 +115,9 @@ export interface SettingsPageProps {
   /** OS sandbox for agent spawn: off | workspace | read-only | strict | devbox. */
   sandboxProfile?: string;
   onSandboxProfile?: (v: string) => void;
+  /** When true, agents get top-level `--disable-web-search`. */
+  disableWebSearch?: boolean;
+  onDisableWebSearch?: (v: boolean) => void;
   cliInfo: {
     found: boolean;
     path: string | null;
@@ -418,6 +421,8 @@ export function SettingsPage({
   onStoreApiKeysInKeychain,
   sandboxProfile = "off",
   onSandboxProfile,
+  disableWebSearch = false,
+  onDisableWebSearch,
   cliInfo,
   onDoctor,
   versionFooter,
@@ -886,6 +891,20 @@ export function SettingsPage({
                         label: t("settings.sandbox.devbox"),
                       },
                     ]}
+              {onDisableWebSearch ? (
+                <div className="settings-row">
+                  <div className="settings-row__text">
+                    <div className="settings-row__label">
+                      {t("settings.disableWebSearch")}
+                    </div>
+                    <div className="settings-row__desc">
+                      {t("settings.disableWebSearchDesc")}
+                    </div>
+                  </div>
+                  <UiCheck
+                    checked={disableWebSearch}
+                    onChange={() => onDisableWebSearch(!disableWebSearch)}
+                    ariaLabel={t("settings.disableWebSearch")}
                   />
                 </div>
               ) : null}

@@ -634,6 +634,7 @@ pub async fn settings_set(
         prev.store_api_keys_in_keychain != settings.store_api_keys_in_keychain;
     let session_data_mode_changed =
         prev.session_data_mode != settings.session_data_mode;
+    let web_search_flip = prev.disable_web_search != settings.disable_web_search;
 
     store::save_settings(&settings)?;
 
@@ -653,6 +654,9 @@ pub async fn settings_set(
     // so the next connect spawns under the new data root (E04).
     if session_data_mode_changed {
         mgr.recycle_all_agents(&app, "session_data_mode").await;
+    if web_search_flip {
+        // Spawn flag changes — soft-respawn so the next turn drops/restores web tools.
+        mgr.soft_respawn(&app).await;
     }
 
     // Full permission apply: Host + agent-home + soft-respawn if needed

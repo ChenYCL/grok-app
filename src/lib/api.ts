@@ -786,6 +786,10 @@ export interface AppSettings {
    * Default "off". Passed as `grok --sandbox <profile>` / GROK_SANDBOX on spawn.
    */
   sandboxProfile?: string;
+   * When true, agents spawn with top-level `--disable-web-search`
+   * (removes web_search / web_fetch tools). Default false.
+   */
+  disableWebSearch?: boolean;
 }
 
 export interface AvailableModel {

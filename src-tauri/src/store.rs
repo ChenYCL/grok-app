@@ -168,6 +168,10 @@ pub struct AppSettings {
     /// Passed as top-level `grok --sandbox <profile>` / `GROK_SANDBOX` at spawn.
     #[serde(default = "default_sandbox_profile")]
     pub sandbox_profile: String,
+    /// When true, spawn agents with top-level `--disable-web-search` so
+    /// `web_search` / `web_fetch` tools are removed. Default false (CLI default).
+    #[serde(default)]
+    pub disable_web_search: bool,
 }
 
 fn default_composer_prefs_scope() -> String {
@@ -217,6 +221,7 @@ impl Default for AppSettings {
             stream_stall_seconds: default_stream_stall_seconds(),
             store_api_keys_in_keychain: false,
             sandbox_profile: default_sandbox_profile(),
+            disable_web_search: false,
         }
     }
 }
@@ -1305,6 +1310,15 @@ mod tests {
         let raw = r#"{
             "theme": "dark",
             "locale": "en",
+        assert!(!s.disable_web_search);
+    }
+
+    #[test]
+    fn disable_web_search_defaults_when_missing_from_json() {
+        // Older settings files omit the field — serde default keeps web tools on.
+        let raw = r#"{
+            "theme": "dark",
+            "locale": "zh",
             "sessionDataMode": "independent",
             "manualCliPath": null,
             "permissionPolicy": "ask",
@@ -1361,5 +1375,6 @@ mod tests {
         let m: SessionMeta = serde_json::from_str(raw).expect("deserialize legacy session");
         assert!(!m.pinned);
         assert!(!m.archived);
+        assert!(!s.disable_web_search);
     }
 }

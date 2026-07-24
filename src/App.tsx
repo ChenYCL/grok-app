@@ -692,6 +692,7 @@ export default function App() {
   const [streamStallSeconds, setStreamStallSeconds] = useState(120);
   const [storeApiKeysInKeychain, setStoreApiKeysInKeychain] = useState(false);
   const [sandboxProfile, setSandboxProfile] = useState("off");
+  const [disableWebSearch, setDisableWebSearch] = useState(false);
   const [gitWorktrees, setGitWorktrees] = useState<api.GitWorktreeEntry[]>([]);
   /** null = unknown/loading; true = git work tree; false = not a git repo. */
   const [gitWorktreesAvailable, setGitWorktreesAvailable] = useState<
@@ -922,6 +923,7 @@ export default function App() {
         const known = ["off", "workspace", "read-only", "strict", "devbox"];
         setSandboxProfile(known.includes(sb) ? sb : "off");
       }
+      setDisableWebSearch(!!settings.disableWebSearch);
       setCliInfo({
         found: cli.found,
         path: cli.path,
@@ -5893,6 +5895,8 @@ export default function App() {
       "settings.cliNotFound",
       "settings.permissionDeep",
       "settings.permissionDeepDesc",
+      "settings.disableWebSearch",
+      "settings.disableWebSearchDesc",
       "settings.prefsScope",
       "settings.prefsScopeDesc",
       "settings.prefsScope.global",
@@ -6225,6 +6229,11 @@ export default function App() {
             setSandboxProfile(v);
             void api.settingsGet().then((s) =>
               api.settingsSet({ ...s, sandboxProfile: v }),
+          disableWebSearch={disableWebSearch}
+          onDisableWebSearch={(v) => {
+            setDisableWebSearch(v);
+            void api.settingsGet().then((s) =>
+              api.settingsSet({ ...s, disableWebSearch: v }),
             );
           }}
           cliInfo={cliInfo}
