@@ -11,39 +11,71 @@ See `docs/llm-wiki/release.md`.
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-07-24
+
+> 中英文对照 / Bilingual notes.
+>
+> **Highlight:** multi-account, Doctor support tools, context usage chip, Extensions (Skills/MCP), OAuth browser open, Windows 绿色版 + Linux deb/rpm.
+
 ### Added
 
-- Composer **file picker** (+ menu → Files / Folder) and **clipboard paste** for images/files (screenshot → temp path → `@path` attach).
-- Open-source **maintenance playbook** (`docs/llm-wiki/maintain.md`): triage labels, PR review, community intake, ship loop.
-- **Single-instance** plugin: second launch focuses the existing window (macOS Dock multi-open).
-- Thinking/reasoning **auto-collapse when done** (default); remembers last expand/collapse choice.
+- **Multi-account manager** (Settings → Account): compact hero, modal switcher, **Add account** = save current then OAuth; import/export account snapshots.
+- **Doctor**: redacted support zip export; safe app-data reset (double in-app confirm; optional keep keys/accounts).
+- **CLI install hardening**: HTTPS allowlist, streaming SHA-256, fail on published checksum mismatch.
+- **Workbench UX**: session Markdown export; palette search by project path; connection status pill; keyboard shortcuts panel; optional desktop notifications for permission waits / finished turns.
+- **Context usage chip** (composer): known tokens after compact, honest `~` estimate from visible chat, Compact… menu — community PR #25.
+- **Settings → Extensions**: Skills + MCP inspect lists, project-scoped refresh, reveal paths, `/mcp` → Manage in Settings — community PR #27.
+- **ACP connection test**: TCP + initialize probe and server setup one-liner in Runtime settings — community PR #23.
+- Composer **file picker** (+ menu → Files / Folder) and **clipboard paste** for images/files.
+- Open-source **maintenance playbook** (`docs/llm-wiki/maintain.md`).
+- **Single-instance** plugin: second launch focuses the existing window.
+- Thinking/reasoning **auto-collapse when done** (default); remembers expand/collapse choice.
 - Error codes **QUOTA_EXCEEDED** / **CONNECT_FAILED** with clearer user-facing copy.
-- **Multi-account switcher**: save / switch / remove official Grok auth snapshots (Settings → Account).
-- **Import conversation** from markdown/JSON file into a local session (web-history alternative).
-- **Linux x64** packaging path: `pnpm build:linux`, CI rust job + release matrix `ubuntu-22.04` (AppImage/deb).
+- **Import conversation** from markdown/JSON into a local session.
+- **Linux x64** packages: AppImage + **.deb** + **.rpm** in release CI.
+- **Windows x64 绿色版**: `Grok_*_x64-portable.zip` (unzip and run) alongside NSIS setup.
 - **Traditional Chinese (zh-TW)** UI locale — community PR #18.
-- **ACP API mode**: optional TCP connection to a remote ACP server (`host:port`) instead of local CLI spawn — community PR #20.
+- **ACP API mode**: optional TCP remote ACP server (`host:port`) — community PR #20.
 
 ### Fixed
 
-- **Settings → Session data mode**: switching to shared used `window.confirm`, which is unreliable in Tauri WebView and made the control look broken — use in-app confirm (Fixes #19).
-- **Add project trust prompt**: also replaced `window.confirm` with in-app dialog (same Tauri WebView issue).
-- **Plan card**: keep `exit_plan_mode` `rpcId` when later `sessionUpdate` plan notifications arrive without one, so Approve / Request changes stay clickable (Fixes #17).
-- **Plan mode**: handle `_x.ai/exit_plan_mode` (planContent body + Approve/Revise/Abandon RPC reply); wire Plan card buttons (minos-aligned).
-- **Thinking UI**: multi-phase reasoning split into separate blocks (pre-tool vs post-tool); thought chunks bind to current assistant message id.
-- **Session ↔ project rebind**: composer project chip is a menu — bind orphan /「未选项目」sessions to a trusted folder (or clear back to orphan).
-- Grok Build shell permission fallbacks use **underscore** optionIds (`allow_once` / `reject`) — community PR #2.
-- Session auto-title LLM prompt follows **app locale** (EN/ZH) — community PR #1.
-- Composer stays **draftable while streaming** so a paused stream no longer feels like a hard lock.
-- macOS titlebar: larger traffic-light safe inset; panel toggle stays non-drag and icon-visible.
-- **Same-session history duplication**: stream chunks only bind to the current turn; clear stuck streaming flags on send/turn end; journal upsert by message id; stronger history-bootstrap anti-echo prompt.
-- Login failure when xAI returns Access denied / auth-code generation failure — actionable message (network / device code / custom provider).
-- Friendlier mapping for “Could not connect the agent” and quota/rate-limit phrases.
+- **OAuth / device login**: open the authorize URL as soon as the CLI prints it (stream stdout); previously stuck on “Working…” with no browser — community PR #26.
+- **Settings i18n**: Settings page uses full `createT` catalog (no raw keys / partial labels whitelist).
+- **Settings → Session data mode** and **Add project trust**: replace `window.confirm` with in-app dialogs (Fixes #19).
+- **Plan card**: keep `exit_plan_mode` `rpcId` so Approve / Request changes stay clickable (Fixes #17).
+- **Plan mode**: handle `_x.ai/exit_plan_mode` + wire Plan card buttons.
+- **Thinking UI**: multi-phase reasoning blocks; thought chunks bind to current assistant message.
+- **Session ↔ project rebind** via composer project chip menu.
+- Shell permission fallbacks use **underscore** optionIds — community PR #2.
+- Session auto-title prompt follows **app locale** (incl. zh-TW) — community PR #1 / follow-ups.
+- Composer stays **draftable while streaming**.
+- macOS titlebar traffic-light inset / panel toggle drag.
+- **Same-session history duplication** and stuck streaming flags.
+- Login / connect error mapping (Access denied, quota, agent connect).
+
+### Changed
+
+- Release download table documents portable zip + Linux AppImage/deb/rpm.
+- Bundle targets explicit: dmg / nsis / appimage / deb / rpm.
 
 ### Community
 
-- Issues #3–#13 opened from launch-thread X feedback (duplicate history, login auth, attach, multi-open, Linux, etc.).
-- PR #18 (zh-TW), PR #20 (ACP TCP API mode) merged; issues #17 / #19 fixed on main.
+- Integrated and closed community PRs **#23–#27** (ACP probe, Doctor/workbench, context chip, OAuth browser, Extensions).
+- Issues #3–#13 from launch-thread feedback; #17 / #19 fixed on main.
+- PR #18 (zh-TW), PR #20 (ACP TCP) already on main.
+
+**中文 · 新增**
+- 多账号管理、Doctor 支持包/重置、CLI 安装校验、会话导出与连接状态、快捷键与桌面通知。
+- 上下文用量芯片、设置 → 扩展（Skills/MCP）、ACP 连通测试。
+- Windows **绿色版 zip**；Linux **AppImage / deb / rpm**。
+- 多账号、导入对话、单实例、思考自动折叠、zh-TW、ACP API 模式等。
+
+**中文 · 修复**
+- 登录 OAuth/设备码时立即打开浏览器授权页（不再卡在 Working…）。
+- 设置页 i18n 裸 key；`window.confirm` 替换；计划卡 RPC；历史重复与登录/连接错误提示等。
+
+**中文 · 变更**
+- 发布资源表与打包目标覆盖绿色版与 Linux 三件套。
 
 ## [0.1.0] - 2026-07-24
 

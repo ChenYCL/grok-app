@@ -55,6 +55,13 @@ import {
   type StreamPayload,
   type TurnErrorPayload,
 } from "@/lib/session";
+import {
+  INITIAL_CONTEXT_USAGE,
+  reduceContextUsage,
+  resolveContextUsageDisplay,
+  type ContextUsageState,
+} from "@/lib/contextUsage";
+import { ContextUsageChip } from "@/components/ContextUsageChip";
 import * as api from "@/lib/api";
 import { createT, resolveLocale, type Locale } from "@/i18n";
 import {
@@ -262,6 +269,10 @@ export default function App() {
   /** Host live agent (may differ from the session currently viewed in the UI). */
   const [liveHost, setLiveHost] = useState<SessionSnapshot>(IDLE_SNAPSHOT);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
+  /** Context usage chip — known tokens from compact events + estimate fallback. */
+  const [contextUsage, setContextUsage] = useState<ContextUsageState>(
+    INITIAL_CONTEXT_USAGE,
+  );
   /** Composer stored form (may include [[skill:name]] tokens). */
   const [draft, setDraft] = useState("");
   const [goalMode, setGoalMode] = useState(false);
@@ -1115,6 +1126,17 @@ export default function App() {
             if (!sid) return;
             patchSessionMessages(sid, (prev) => applyContextCompact(prev, p));
             if (sid === viewingSessionIdRef.current) {
+              setContextUsage((prev) =>
+                reduceContextUsage(prev, {
+                  type: "compact",
+                  trigger: p.trigger,
+                  tokensBefore: p.tokensBefore,
+                  tokensAfter: p.tokensAfter,
+                  summaryPreview: p.summaryPreview,
+                  note: p.note,
+                  messageId: p.messageId,
+                }),
+              );
               const auto = (p.trigger || "auto").toLowerCase() !== "manual";
               setToast(
                 auto
@@ -1388,6 +1410,7 @@ export default function App() {
           "appearance",
           "account",
           "archived",
+          "extensions",
           "runtime",
           "about",
         ];
@@ -1545,6 +1568,12 @@ export default function App() {
         return cleanText === m.content ? m : { ...m, content: cleanText };
       });
       setMessages(stripped);
+      setContextUsage(
+        reduceContextUsage(INITIAL_CONTEXT_USAGE, {
+          type: "hydrate",
+          messages: stripped,
+        }),
+      );
       // Backfill create if assistant still has a fence in journal (failed chat-create).
       void tryApplyAutomationFromSession(s.id);
       // Backfill scheduled flag from journal (older automation sessions).
@@ -1595,6 +1624,12 @@ export default function App() {
       }
       const cached = messagesBySessionRef.current.get(s.id);
       setMessages(cached ?? []);
+      setContextUsage(
+        reduceContextUsage(INITIAL_CONTEXT_USAGE, {
+          type: "hydrate",
+          messages: cached ?? [],
+        }),
+      );
     }
     if (viewingSessionIdRef.current !== s.id) {
       if (openingSessionIdRef.current === s.id) {
@@ -1757,6 +1792,7 @@ export default function App() {
     }
     viewingSessionIdRef.current = null;
     setMessages([]);
+    setContextUsage(INITIAL_CONTEXT_USAGE);
     setDraft(opts?.seedDraft ?? "");
     setAttachments([]);
     setPlan({
@@ -3458,6 +3494,12 @@ export default function App() {
     syncComposerHeight();
   }, [draft, mainPane, session.sessionId, requestComposerFocus, syncComposerHeight]);
 
+  /** Context usage chip label/state from compact events + message estimate. */
+  const contextUsageDisplay = useMemo(
+    () => resolveContextUsageDisplay(contextUsage, messages),
+    [contextUsage, messages],
+  );
+
   /**
    * New empty draft only: lift composer and SuperGrok brand.
    * Existing sessions (even with empty journal) must not look like a fresh chat.
@@ -3816,6 +3858,7 @@ export default function App() {
               "appearance",
               "account",
               "archived",
+              "extensions",
               "runtime",
               "about",
             ];
@@ -4417,6 +4460,7 @@ export default function App() {
       "settings.nav.appearance",
       "settings.nav.account",
       "settings.nav.archived",
+      "settings.nav.extensions",
       "settings.nav.runtime",
       "settings.nav.about",
       "settings.archived.desc",
@@ -4771,6 +4815,7 @@ export default function App() {
               .filter((s): s is SessionRow => !!s);
             deleteSessionsConfirm(rows);
           }}
+          projectPath={activeProject?.path ?? null}
           onProviderActivated={() => {
             // Hot-reload Grok Build: drop live ACP so next send re-spawns with new GROK_HOME config.
             void (async () => {
@@ -5997,6 +6042,31 @@ export default function App() {
                     applyPermissionPolicy(v);
                   }}
                 />
+                <ContextUsageChip
+                  display={contextUsageDisplay}
+                  labels={{
+                    aria: tr("context.chipAria"),
+                    tipUnknown: tr("context.chipTipUnknown"),
+                    tipEstimated: tr("context.chipTipEstimated"),
+                    tipKnown: tr("context.chipTipKnown"),
+                    menuTitle: tr("context.menuTitle"),
+                    current: tr("context.current"),
+                    sourceKnown: tr("context.sourceKnown"),
+                    sourceEstimated: tr("context.sourceEstimated"),
+                    sourceUnknown: tr("context.sourceUnknown"),
+                    lastCompact: tr("context.lastCompact"),
+                    lastCompactNone: tr("context.lastCompactNone"),
+                    tokensRange: tr("compact.tokensRange"),
+                    compactAction: tr("context.compactAction"),
+                    heuristicNote: tr("context.heuristicNote"),
+                    auto: tr("context.triggerAuto"),
+                    manual: tr("context.triggerManual"),
+                  }}
+                  onCompact={() => {
+                    setCompactNote("");
+                    setShowCompactModal(true);
+                  }}
+                />
                 <span className="composer__spacer" />
                 {canStop(session.state) ? (
                   <Tip label={tr("composer.stop")}>
@@ -6152,6 +6222,7 @@ export default function App() {
         error={mcpError}
         loading={mcpLoading}
         onClose={() => setShowMcpModal(false)}
+        onManage={() => navigateSettings("extensions")}
       />
       {showCompactModal && (
         <div
