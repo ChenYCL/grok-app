@@ -21,6 +21,7 @@ mod process_util;
 mod process_limits;
 mod journal_throttle;
 mod stream_stall;
+mod turn_complete;
 mod permission;
 mod providers;
 mod secrets;

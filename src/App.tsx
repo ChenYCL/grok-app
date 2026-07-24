@@ -3204,6 +3204,15 @@ export default function App() {
       showToast(tr("composer.queueBlockedPermission"), 2800);
       return;
     }
+    // #52: orphan chats without a folder often stop after planning text —
+    // tools can't land in a workspace until a project is bound.
+    if (
+      !activeProject &&
+      (mode === "agent" || goalMode) &&
+      !shouldEnqueueSend(session.state, connecting)
+    ) {
+      showToast(tr("composer.noProjectWriteHint"), 4500);
+    }
     sendQueue.releaseFlushHold();
 
     if (shouldEnqueueSend(session.state, connecting)) {

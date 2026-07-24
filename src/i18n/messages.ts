@@ -330,6 +330,8 @@ const en = {
   "composer.queueFilesCount": "{n} files",
   "composer.stop": "Stop",
   "composer.noProject": "No project",
+  "composer.noProjectWriteHint":
+    "No project selected — pick a folder first so the agent can create/edit files in a workspace.",
   "composer.pickProject": "Project folder",
   "composer.addProject": "Add project",
   "composer.worktrees": "Git worktrees",
@@ -1414,6 +1416,8 @@ const zh: Record<MessageKey, string> = {
   "composer.queueFilesCount": "{n} 个文件",
   "composer.stop": "停止",
   "composer.noProject": "未选项目",
+  "composer.noProjectWriteHint":
+    "尚未选择项目 — 请先绑定文件夹，Agent 才能在工作区里创建/修改文件。",
   "composer.pickProject": "项目目录",
   "composer.addProject": "添加项目",
   "composer.worktrees": "Git worktrees",

@@ -318,6 +318,8 @@ export const zhTW: Record<MessageKey, string> = {
   "composer.queueFilesCount": "{n} 個檔案",
   "composer.stop": "停止",
   "composer.noProject": "未選專案",
+  "composer.noProjectWriteHint":
+    "尚未選擇專案 — 請先綁定資料夾，Agent 才能在工作區建立/修改檔案。",
   "composer.pickProject": "專案目錄",
   "composer.clearProject": "無專案（其他對話）",
   "composer.projectUntrusted": "尚未信任",

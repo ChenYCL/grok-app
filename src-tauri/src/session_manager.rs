@@ -9,7 +9,7 @@
 //! - Mid-stream journal upserts are throttled (≥500ms or paragraph / force).
 //! - Pure stream silence past `streamStallSeconds` emits `session://stream_stall`.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -39,6 +39,7 @@ use crate::store::{self, ChatMessageStored, MessageAttachmentStored, SessionMeta
 use crate::stream_stall::{
     normalize_stream_stall_seconds, should_emit_stall, stream_stall_message,
 };
+use crate::turn_complete::{is_terminal_tool_status, should_defer_prompt_complete};
 
 /// Strip bulky MCP/RPC dumps so chat errors stay human-readable.
 /// Full stderr is still logged via `tracing` on the ACP client side.
@@ -186,6 +187,10 @@ struct LiveSession {
     last_stall_emit: Option<Instant>,
     /// Throttle mid-stream assistant journal upserts (I04).
     journal_throttle: JournalWriteThrottle,
+    /// Tool calls still pending/in_progress this turn (#52 early prompt_complete).
+    open_tool_ids: HashSet<String>,
+    /// `prompt_complete` arrived while tools/gates still open; finish when clear.
+    deferred_prompt_complete: Option<String>,
 }
 
 /// Ready agent process parked while another App session is focused (I01/I02).
@@ -538,6 +543,43 @@ impl SessionManager {
     }
 
     /// Stream chunk or tool activity — advances stall deadline (I06).
+    /// Finish turn when a deferred `prompt_complete` is safe (#52).
+    /// Returns true if the FSM left Streaming / busy states.
+    fn try_finish_deferred_prompt_complete(s: &mut LiveSession) -> bool {
+        let Some(stop_reason) = s.deferred_prompt_complete.clone() else {
+            return false;
+        };
+        let awaiting_perm = s.fsm.state() == SessionState::AwaitingPermission;
+        if should_defer_prompt_complete(
+            awaiting_perm,
+            s.pending_plan_rpc_id.is_some(),
+            s.pending_ask_user_rpc_id.is_some(),
+            s.open_tool_ids.len(),
+        ) {
+            return false;
+        }
+        s.deferred_prompt_complete = None;
+        // Force-flush assistant turn (I04 end-of-turn path).
+        Self::maybe_flush_stream_journal(s, true, false);
+        s.stream_buf.clear();
+        s.stream_thought.clear();
+        s.stream_last_was_assistant = false;
+        s.stream_attachments.clear();
+        s.journal_throttle.reset();
+        s.open_tool_ids.clear();
+        if s.fsm.state() == SessionState::Streaming
+            || s.fsm.state() == SessionState::AwaitingPermission
+        {
+            let _ = s.fsm.end_stream();
+        }
+        s.streaming_message_id = None;
+        s.last_stall_emit = None;
+        tracing::info!(
+            "acp turn finished after deferred prompt_complete stop={stop_reason}"
+        );
+        true
+    }
+
     fn touch_stream_progress_locked(s: &mut LiveSession) {
         let now = Instant::now();
         s.last_activity = now;
@@ -790,6 +832,8 @@ impl SessionManager {
             last_stream_progress: now,
             last_stall_emit: None,
             journal_throttle: JournalWriteThrottle::with_default_interval(),
+            open_tool_ids: HashSet::new(),
+            deferred_prompt_complete: None,
         })
     }
 
@@ -1206,6 +1250,8 @@ impl SessionManager {
                 last_stream_progress: now,
                 last_stall_emit: None,
                 journal_throttle: JournalWriteThrottle::with_default_interval(),
+                open_tool_ids: HashSet::new(),
+                deferred_prompt_complete: None,
             });
         }
         Self::emit_state(&app, &self.snapshot());
@@ -1577,25 +1623,23 @@ impl SessionManager {
                 });
                 let _ = app.emit("session://stream", payload);
             }
-            AcpEvent::PromptComplete { stop_reason: _ } => {
+            AcpEvent::PromptComplete { stop_reason } => {
                 {
                     let mut guard = self.inner.lock();
                     if let Some(s) = guard.as_mut() {
                         Self::touch_stream_progress_locked(s);
-                        // Force-flush assistant turn (I04 end-of-turn path).
-                        Self::maybe_flush_stream_journal(s, true, false);
-                        s.stream_buf.clear();
-                        s.stream_thought.clear();
-                        s.stream_last_was_assistant = false;
-                        s.stream_attachments.clear();
-                        s.journal_throttle.reset();
-                        if s.fsm.state() == SessionState::Streaming
-                            || s.fsm.state() == SessionState::AwaitingPermission
-                        {
-                            let _ = s.fsm.end_stream();
+                        s.deferred_prompt_complete = Some(stop_reason.clone());
+                        // #52: do not Ready the UI while tools / permission / ask_user / plan
+                        // are still open — agent often fires prompt_complete early.
+                        if !Self::try_finish_deferred_prompt_complete(s) {
+                            tracing::info!(
+                                "acp prompt_complete deferred stop={stop_reason} tools={} perm={} plan={} ask={}",
+                                s.open_tool_ids.len(),
+                                s.fsm.state() == SessionState::AwaitingPermission,
+                                s.pending_plan_rpc_id.is_some(),
+                                s.pending_ask_user_rpc_id.is_some(),
+                            );
                         }
-                        s.streaming_message_id = None;
-                        s.last_stall_emit = None;
                     }
                 }
                 Self::emit_state(app, &self.snapshot());
@@ -1672,6 +1716,7 @@ impl SessionManager {
                             if s.fsm.state() == SessionState::AwaitingPermission {
                                 let _ = s.fsm.permission_resolved_continue();
                             }
+                            let _ = Self::try_finish_deferred_prompt_complete(s);
                         }
                     }
                 } else if auto_deny {
@@ -1693,6 +1738,7 @@ impl SessionManager {
                             if s.fsm.state() == SessionState::AwaitingPermission {
                                 let _ = s.fsm.permission_resolved_continue();
                             }
+                            let _ = Self::try_finish_deferred_prompt_complete(s);
                         }
                     }
                 } else {
@@ -1766,6 +1812,15 @@ impl SessionManager {
                     if let Some(s) = guard.as_mut() {
                         // Tool events count as progress so long tools never false-stall (I06).
                         Self::touch_stream_progress_locked(s);
+                        if !tool_call_id.is_empty() {
+                            if is_terminal_tool_status(&status) {
+                                s.open_tool_ids.remove(&tool_call_id);
+                            } else {
+                                s.open_tool_ids.insert(tool_call_id.clone());
+                            }
+                        }
+                        // Tools settled → apply deferred prompt_complete if any (#52).
+                        let _ = Self::try_finish_deferred_prompt_complete(s);
                         s.app_session_id.clone()
                     } else {
                         String::new()
@@ -2423,6 +2478,8 @@ impl SessionManager {
             s.stream_attachments.clear();
             s.journal_throttle.reset();
             s.last_stall_emit = None;
+            s.open_tool_ids.clear();
+            s.deferred_prompt_complete = None;
             s.provider_retry_attempt = 0;
             s.provider_retry_aborted = false;
 
@@ -2807,6 +2864,8 @@ impl SessionManager {
             if s.fsm.state() == SessionState::AwaitingPermission {
                 let _ = s.fsm.permission_resolved_continue();
             }
+            // Permission cleared — may finish a deferred prompt_complete (#52).
+            let _ = Self::try_finish_deferred_prompt_complete(s);
             s.acp.clone()
         };
 
@@ -2851,6 +2910,12 @@ impl SessionManager {
         let id = id.ok_or_else(|| "no pending plan approval".to_string())?;
         let acp = acp.ok_or_else(|| "ACP client missing".to_string())?;
         acp.respond_exit_plan_mode(id, &decision, feedback).await?;
+        {
+            let mut guard = self.inner.lock();
+            if let Some(s) = guard.as_mut() {
+                let _ = Self::try_finish_deferred_prompt_complete(s);
+            }
+        }
         let snap = self.snapshot();
         Self::emit_state(&app, &snap);
         Ok(snap)
@@ -2887,6 +2952,12 @@ impl SessionManager {
             _ => AskUserOutcome::Cancelled,
         };
         acp.respond_ask_user_question(id, outcome).await?;
+        {
+            let mut guard = self.inner.lock();
+            if let Some(s) = guard.as_mut() {
+                let _ = Self::try_finish_deferred_prompt_complete(s);
+            }
+        }
         let snap = self.snapshot();
         Self::emit_state(&app, &snap);
         Ok(snap)
