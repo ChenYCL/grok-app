@@ -36,5 +36,5 @@ export function createT(locale: Locale) {
 
 export function resolveLocale(raw: string | undefined | null): Locale {
   if (raw && isLocale(raw)) return raw;
-  return "zh";
+  return "en";
 }

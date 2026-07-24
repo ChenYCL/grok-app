@@ -355,14 +355,14 @@ describe("session projection", () => {
     expect(nextSend[1]!.streaming).toBe(false);
   });
 
-  it("errorCopy distinguishes seven codes", () => {
+  it("errorCopy distinguishes seven codes (English default)", () => {
     expect(errorCopy("CLI_NOT_FOUND")).toMatch(/CLI/i);
-    expect(errorCopy("AUTH_FAILED")).toMatch(/鉴权|Auth/i);
-    expect(errorCopy("NETWORK_PROVIDER")).toMatch(/网络|Network|模型/i);
-    expect(errorCopy("AGENT_CRASHED")).toMatch(/崩溃|crash|进程/i);
-    expect(errorCopy("QUOTA_EXCEEDED")).toMatch(/额度|Quota/i);
-    expect(errorCopy("CONNECT_FAILED")).toMatch(/连接|connect/i);
-    expect(errorCopy("PROCESS_LIMIT")).toMatch(/上限|limit|进程|process/i);
+    expect(errorCopy("AUTH_FAILED")).toMatch(/Auth|sign.?in|credential/i);
+    expect(errorCopy("NETWORK_PROVIDER")).toMatch(/Network|model|provider/i);
+    expect(errorCopy("AGENT_CRASHED")).toMatch(/crash|process|agent/i);
+    expect(errorCopy("QUOTA_EXCEEDED")).toMatch(/Quota|limit|usage/i);
+    expect(errorCopy("CONNECT_FAILED")).toMatch(/connect/i);
+    expect(errorCopy("PROCESS_LIMIT")).toMatch(/limit|process|concurrent/i);
   });
 
   it("formatTurnErrorBody maps connect / quota phrases", () => {
@@ -386,9 +386,9 @@ describe("session projection", () => {
     const fromAgent = presentErrorBanner(
       { code: "NETWORK_PROVIDER", message: raw },
       null,
-      "zh",
+      "en",
     );
-    expect(fromAgent?.summary).toMatch(/超时|网络|模型/);
+    expect(fromAgent?.summary).toMatch(/timed?\s*out|timeout|network|model|provider/i);
     expect(fromAgent?.cause).toBeTruthy();
     expect(fromAgent?.summary).not.toMatch(/Connection refused/);
     expect(fromAgent?.summary).not.toMatch(/stderr/i);
@@ -399,15 +399,15 @@ describe("session projection", () => {
     const fromLocal = presentErrorBanner(
       null,
       `NETWORK_PROVIDER: ${raw}`,
-      "zh",
+      "en",
     );
     expect(fromLocal?.code).toBe("NETWORK_PROVIDER");
-    expect(fromLocal?.summary).toMatch(/超时|网络|模型/);
+    expect(fromLocal?.summary).toMatch(/timed?\s*out|timeout|network|model|provider/i);
     expect(fromLocal?.detail).toBeNull();
     expect(fromLocal?.primary?.label.length).toBeGreaterThan(0);
 
-    const short = presentErrorBanner(null, "请先选择项目", "zh");
-    expect(short?.summary).toBe("请先选择项目");
+    const short = presentErrorBanner(null, "Select a project first", "en");
+    expect(short?.summary).toBe("Select a project first");
     expect(short?.detail).toBeNull();
     expect(short?.primary?.id).toBe("dismiss");
   });
@@ -443,9 +443,9 @@ describe("session projection", () => {
         message: "turn_timeout",
         content: "**NETWORK_PROVIDER**\n\nturn_timeout",
       },
-      "zh",
+      "en",
     );
-    expect(body).toMatch(/超时/);
+    expect(body).toMatch(/timed?\s*out|timeout/i);
     expect(body).not.toMatch(/NETWORK_PROVIDER|rpc timeout|stderr/i);
   });
 
@@ -468,20 +468,20 @@ describe("session projection", () => {
         content:
           '**NETWORK_PROVIDER**\n\nrpc timeout on session/prompt (id=6) after 600s; stderr: Connection refused',
       },
-      "zh",
+      "en",
     );
     expect(messages).toHaveLength(2);
     const err = messages[1]!;
     expect(err.role).toBe("assistant");
     expect(err.isError).toBe(true);
     expect(err.streaming).toBe(false);
-    expect(err.content).toMatch(/超时/);
+    expect(err.content).toMatch(/timed?\s*out|timeout/i);
     expect(err.content).not.toMatch(/Connection refused|stderr|rpc timeout/i);
   });
 
   it("applyGeneratedImage attaches to streaming assistant and dedupes", () => {
     let messages: ChatMessage[] = [
-      { id: "u1", role: "user", content: "画猫" },
+      { id: "u1", role: "user", content: "draw a cat" },
       { id: "a-pending", role: "assistant", content: "", streaming: true },
     ];
     messages = applyGeneratedImage(messages, {

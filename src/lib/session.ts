@@ -431,7 +431,7 @@ export interface TurnErrorPayload {
 export function applyTurnError(
   messages: ChatMessage[],
   payload: TurnErrorPayload,
-  locale: Locale = "zh",
+  locale: Locale = "en",
 ): ChatMessage[] {
   const content = formatTurnErrorBody(payload, locale);
   const mid = payload.messageId || "";
@@ -1178,18 +1178,18 @@ export function isAgentErrorCode(code: string | undefined | null): code is Agent
   return !!code && (KNOWN_ERROR_CODES as string[]).includes(code);
 }
 
-export function errorCopy(code: AgentErrorCode, locale: Locale = "zh"): string {
+export function errorCopy(code: AgentErrorCode, locale: Locale = "en"): string {
   const card = buildErrorDeck(code, locale);
   return `${card.problem} ${card.cause}`.trim();
 }
 
 /** Turn took too long (Host session/prompt timeout) — more specific than generic network. */
-export function turnTimeoutCopy(locale: Locale = "zh"): string {
+export function turnTimeoutCopy(locale: Locale = "en"): string {
   const card = buildErrorDeck("TURN_TIMEOUT", locale);
   return `${card.problem} ${card.cause}`.trim();
 }
 
-export function agentDisconnectedCopy(locale: Locale = "zh"): string {
+export function agentDisconnectedCopy(locale: Locale = "en"): string {
   const card = buildErrorDeck("AGENT_DISCONNECTED", locale);
   return `${card.problem} ${card.cause}`.trim();
 }
@@ -1220,7 +1220,7 @@ export function stripErrorNoise(text: string): string {
  */
 export function formatTurnErrorBody(
   payload: Pick<TurnErrorPayload, "code" | "message" | "content">,
-  locale: Locale = "zh",
+  locale: Locale = "en",
 ): string {
   const rawCombined = [payload.content, payload.message, payload.code]
     .filter(Boolean)
@@ -1333,7 +1333,7 @@ function bannerFromDeck(
 export function presentErrorBanner(
   error: AgentError | null,
   localError: string | null,
-  locale: Locale = "zh",
+  locale: Locale = "en",
 ): ErrorBannerView | null {
   if (error) {
     const body = formatTurnErrorBody(

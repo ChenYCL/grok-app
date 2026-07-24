@@ -44,7 +44,7 @@ async function openExternalUrl(url: string) {
 export function EmbeddedBrowser({
   url,
   title,
-  locale = "zh",
+  locale = "en",
   active = true,
   className = "",
 }: EmbeddedBrowserProps) {

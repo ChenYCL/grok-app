@@ -168,6 +168,15 @@ pub struct AppSettings {
     /// Passed as top-level `grok --sandbox <profile>` / `GROK_SANDBOX` at spawn.
     #[serde(default = "default_sandbox_profile")]
     pub sandbox_profile: String,
+    /// xAI realtime voice id (e.g. `eve`).
+    #[serde(default = "default_voice_id")]
+    pub voice_id: String,
+    /// When true, dictation auto-sends on end-of-speech silence.
+    #[serde(default)]
+    pub voice_dictation_auto_send: bool,
+    /// Keep delegated agent sessions running after ending a live voice chat.
+    #[serde(default = "default_true")]
+    pub voice_keep_agents_on_end: bool,
 }
 
 fn default_composer_prefs_scope() -> String {
@@ -194,11 +203,16 @@ fn default_sandbox_profile() -> String {
     "off".into()
 }
 
+fn default_voice_id() -> String {
+    "eve".into()
+}
+
 impl Default for AppSettings {
     fn default() -> Self {
         Self {
             theme: "dark".into(),
-            locale: "zh".into(),
+            // Product default is English; users can switch to zh / zh-TW in Settings.
+            locale: "en".into(),
             session_data_mode: "independent".into(),
             manual_cli_path: None,
             permission_policy: "ask".into(),
@@ -217,6 +231,9 @@ impl Default for AppSettings {
             stream_stall_seconds: default_stream_stall_seconds(),
             store_api_keys_in_keychain: false,
             sandbox_profile: default_sandbox_profile(),
+            voice_id: default_voice_id(),
+            voice_dictation_auto_send: false,
+            voice_keep_agents_on_end: true,
         }
     }
 }
@@ -1293,6 +1310,7 @@ mod tests {
         assert_eq!(s.session_data_mode, "independent");
         assert_eq!(s.permission_policy, "ask");
         assert_eq!(s.theme, "dark");
+        assert_eq!(s.locale, "en");
         assert_eq!(s.max_concurrent_agents, 3);
         assert_eq!(s.agent_idle_minutes, 30);
         assert_eq!(s.stream_stall_seconds, 120);

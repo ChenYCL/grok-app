@@ -152,7 +152,9 @@ import {
 import { GrokLogo } from "@/components/GrokLogo";
 import { SetupWizard, type SetupCliInfo } from "@/components/SetupWizard";
 import { ComposerEditor } from "@/components/ComposerEditor";
+import { VoiceOverlay } from "@/components/VoiceOverlay";
 import { ComposerProjectMenu } from "@/components/ComposerProjectMenu";
+import { blobToBase64 } from "@/lib/voiceAudio";
 import { pathsEqual } from "@/lib/gitWorktree";
 import { isProjectPathMissing } from "@/lib/projectPath";
 import {
@@ -172,6 +174,7 @@ import {
   IconSend,
   IconQueue,
   IconStop,
+  IconMic,
   IconFolder,
   IconFolderPlus,
   IconClock,
@@ -335,6 +338,11 @@ export default function App() {
   >({});
   /** Composer stored form (may include [[skill:name]] tokens). */
   const [draft, setDraft] = useState("");
+  /** Live voice overlay (GPT-Live-style delegate mode). */
+  const [voiceOpen, setVoiceOpen] = useState(false);
+  const [voiceDictating, setVoiceDictating] = useState(false);
+  const voiceRecorderRef = useRef<MediaRecorder | null>(null);
+  const voiceChunksRef = useRef<Blob[]>([]);
   const [goalMode, setGoalMode] = useState(false);
   /** Prevent overlapping executeSend / queue auto-flush races. */
   const sendInFlightRef = useRef(false);
@@ -645,7 +653,7 @@ export default function App() {
     toolCallId: null,
     barDismissed: false,
   });
-  const [locale, setLocale] = useState<Locale>("zh");
+  const [locale, setLocale] = useState<Locale>("en");
   const localeRef = useRef(locale);
   localeRef.current = locale;
   const tr = useMemo(() => createT(locale), [locale]);
@@ -7830,6 +7838,100 @@ export default function App() {
                   }}
                 />
                 <span className="composer__spacer" />
+                <Tip label={tr("voice.dictation")}>
+                  <button
+                    type="button"
+                    className={
+                      "icon-btn" + (voiceDictating ? " icon-btn--danger" : "")
+                    }
+                    disabled={!canType(session.state)}
+                    aria-label={
+                      voiceDictating
+                        ? tr("voice.dictationStop")
+                        : tr("voice.dictation")
+                    }
+                    onClick={() => {
+                      void (async () => {
+                        if (voiceDictating) {
+                          const rec = voiceRecorderRef.current;
+                          if (rec && rec.state !== "inactive") rec.stop();
+                          return;
+                        }
+                        try {
+                          const stream =
+                            await navigator.mediaDevices.getUserMedia({
+                              audio: true,
+                            });
+                          const mime = MediaRecorder.isTypeSupported(
+                            "audio/webm;codecs=opus",
+                          )
+                            ? "audio/webm;codecs=opus"
+                            : "audio/webm";
+                          const rec = new MediaRecorder(stream, {
+                            mimeType: mime,
+                          });
+                          voiceChunksRef.current = [];
+                          rec.ondataavailable = (e) => {
+                            if (e.data.size) voiceChunksRef.current.push(e.data);
+                          };
+                          rec.onstop = () => {
+                            stream.getTracks().forEach((t) => t.stop());
+                            setVoiceDictating(false);
+                            void (async () => {
+                              try {
+                                const blob = new Blob(voiceChunksRef.current, {
+                                  type: mime,
+                                });
+                                if (blob.size < 32) return;
+                                const b64 = await blobToBase64(blob);
+                                const result =
+                                  await api.voiceDictationTranscribe(
+                                    b64,
+                                    mime,
+                                    locale === "zh" || locale === "zh-TW"
+                                      ? "zh"
+                                      : "en",
+                                  );
+                                if (result.text?.trim()) {
+                                  setDraft((d) =>
+                                    d.trim()
+                                      ? `${d.trim()} ${result.text.trim()}`
+                                      : result.text.trim(),
+                                  );
+                                }
+                              } catch (e) {
+                                console.warn("dictation failed", e);
+                              }
+                            })();
+                          };
+                          voiceRecorderRef.current = rec;
+                          rec.start();
+                          setVoiceDictating(true);
+                        } catch {
+                          /* mic denied */
+                        }
+                      })();
+                    }}
+                  >
+                    {voiceDictating ? (
+                      <IconStop size={14} />
+                    ) : (
+                      <IconMic size={16} />
+                    )}
+                  </button>
+                </Tip>
+                <Tip label={tr("voice.start")}>
+                  <button
+                    type="button"
+                    className="icon-btn"
+                    aria-label={tr("voice.start")}
+                    onClick={() => {
+                      setVoiceOpen(true);
+                    }}
+                  >
+                    <IconMic size={16} />
+                  </button>
+                </Tip>
                 {canStop(session.state) ? (
                   <>
                     {sendQueue.canShowQueueButton(
@@ -8682,6 +8784,28 @@ export default function App() {
           />
         );
       })()}
+
+      <VoiceOverlay
+        locale={locale}
+        open={voiceOpen}
+        projectPath={activeProject?.path}
+        projectId={activeProject?.id}
+        projectName={activeProject?.name}
+        onClose={() => setVoiceOpen(false)}
+        onOpenSession={(sessionId) => {
+          setVoiceOpen(false);
+          void (async () => {
+            try {
+              await api.sessionConnect({
+                projectPath: activeProject?.path,
+                sessionId,
+              });
+            } catch {
+              /* ignore */
+            }
+          })();
+        }}
+      />
 
       <span hidden data-layout-default={JSON.stringify(DEFAULT_LAYOUT)} />
     </div>

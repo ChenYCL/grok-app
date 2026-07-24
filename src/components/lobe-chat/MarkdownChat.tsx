@@ -52,7 +52,7 @@ function textFromChildren(children: ReactNode): string {
 export const MarkdownChat = memo(function MarkdownChat({
   children,
   streaming = false,
-  locale = "zh",
+  locale = "en",
   className,
   muted,
   imagePathMap,

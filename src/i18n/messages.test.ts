@@ -19,9 +19,11 @@ describe("i18n catalog", () => {
     expect(t("zh", "project.trustFirst", { name: "演示" })).toContain("演示");
   });
 
-  it("createT binds locale", () => {
-    const tr = createT("zh");
-    expect(tr("sidebar.settings")).toBe("设置");
+  it("createT binds locale (English is the product default)", () => {
+    const tr = createT("en");
+    expect(tr("sidebar.settings")).toBe("Settings");
+    const zh = createT("zh");
+    expect(zh("sidebar.settings")).toBe("设置");
   });
 
   it("every value is a non-empty string", () => {
