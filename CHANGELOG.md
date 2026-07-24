@@ -21,6 +21,7 @@ See `docs/llm-wiki/release.md`.
 - **Journal write throttle (I04)**: mid-stream assistant journal flushes ≥500ms or on paragraph / turn end / stop / disconnect — avoids per-token disk spikes.
 - **Changes panel — Workspace git status**: Session (agent tool edits) + Workspace (`git status`) sections; click for unified diff via `git_file_diff` / `git_show_file`; refresh, open in editor, reveal, copy path.
 - **Sidebar session list virtualization** (F07): windowed rendering for large project/orphan session groups (100+ rows) without new dependencies; short lists unchanged.
+- **Plugins manager** (L03): Settings → Extensions list/enable/disable/details/uninstall via `grok plugin` — community PR #39.
 - **MCP enable + inject** (L03): Settings → Extensions toggles; enabled servers inject into ACP `session/new|load` and agent-home config — community PR #38.
 
 ### Added (中文)

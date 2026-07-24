@@ -2617,7 +2617,9 @@ impl SessionManager {
     /// Soft-drop live agent so next send re-spawns with new spawn flags / config.
     /// Keeps `agent_session_id` so reconnect can `session/load`; if load fails,
     /// journal bootstrap still fills the gap.
-    /// Public so Extensions MCP toggles can recycle the process with new mcpServers.
+    /// Soft-respawn the live agent process so the next connect reloads agent-visible
+    /// state (MCP mcpServers injection, plugin enable/disable, prefs) without a full
+    /// disconnect toast. Public for Extensions / plugin settings mutations.
     pub async fn soft_respawn(&self, app: &AppHandle) {
         let acp = {
             let mut guard = self.inner.lock();

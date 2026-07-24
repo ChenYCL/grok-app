@@ -779,10 +779,9 @@ export const zhTW: Record<MessageKey, string> = {
   "mcpModal.empty": "未發現 MCP 伺服器",
   "mcpModal.manage": "在設定中管理",
 
-  // Settings → Extensions (Skills + MCP)
+  // Settings → Extensions (Plugins + Skills + MCP)
   "ext.lead":
-    "透過 `grok inspect` 發現的技能與 MCP 伺服器。開關控制對話注入與斜線技能過濾；有目前專案時以該目錄為 cwd。",
-  "ext.refresh": "重新整理",
+"透過 `grok inspect` 發現的技能與 MCP 伺服器。開關控制對話注入與斜線技能過濾；有目前專案時以該目錄為 cwd。",  "ext.refresh": "重新整理",
   "ext.refreshing": "重新整理中…",
   "ext.scope.project": "專案",
   "ext.scope.global": "全域",
@@ -795,6 +794,32 @@ export const zhTW: Record<MessageKey, string> = {
   "ext.error.cliBody":
     "請先在「設定 → CLI / 執行環境」安裝或指定 CLI 路徑，然後返回此頁重新整理。",
   "ext.error.openRuntime": "開啟 CLI / 執行環境",
+  "ext.plugins.title": "外掛",
+  "ext.plugins.loading": "正在載入外掛…",
+  "ext.plugins.empty": "尚未安裝外掛",
+  "ext.plugins.emptyCli": "安裝 CLI 後才能管理外掛。",
+  "ext.plugins.status.enabled": "已啟用",
+  "ext.plugins.status.disabled": "已停用",
+  "ext.plugins.enable": "啟用",
+  "ext.plugins.disable": "停用",
+  "ext.plugins.details": "詳情",
+  "ext.plugins.uninstall": "解除安裝",
+  "ext.plugins.uninstallTitle": "解除安裝外掛",
+  "ext.plugins.uninstallConfirm":
+    "確定解除安裝「{name}」？此外掛提供的技能、MCP 與 hooks 將不再載入。",
+  "ext.plugins.detailsTitle": "{name}",
+  "ext.plugins.detailsLoading": "正在載入詳情…",
+  "ext.plugins.detailsEmpty": "未回傳詳情。",
+  "ext.plugins.marketplace": "市集",
+  "ext.plugins.working": "處理中…",
+  "ext.plugins.actionError": "外掛操作失敗",
+  "ext.plugins.filterLabel": "篩選外掛",
+  "ext.plugins.filter.all": "全部",
+  "ext.plugins.filter.enabled": "已啟用",
+  "ext.plugins.filter.disabled": "已停用",
+  "ext.plugins.filterEmpty": "沒有符合篩選條件的外掛。",
+  "ext.plugins.note":
+    "與 Grok Build 共用同一清單（`grok plugin list`）。啟用/停用寫入 `~/.grok/config.toml`；agent soft-respawn 後下一輪對話重新載入外掛。",
   "ext.skills.title": "技能",
   "ext.skills.loading": "正在載入技能…",
   "ext.skills.empty": "未發現技能",
@@ -809,8 +834,7 @@ export const zhTW: Record<MessageKey, string> = {
   "ext.disabled": "已停用",
   "ext.enableAll": "全部啟用",
   "ext.footnote":
-    "開關會寫入應用資料，並在新對話中注入已啟用的 MCP（ACP mcpServers + agent-home 設定）。停用技能仍保留在磁碟，但不會出現在斜線面板。",
-
+"開關會寫入應用資料，並在新對話中注入已啟用的 MCP（ACP mcpServers + agent-home 設定）。停用技能仍保留在磁碟，但不會出現在斜線面板。",
   "error.needTauri": "需要在 Tauri 視窗中選擇目錄",
   "common.comingSoon": "即將推出",
   "common.local": "本機",
