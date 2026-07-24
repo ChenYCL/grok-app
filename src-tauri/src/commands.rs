@@ -1386,6 +1386,9 @@ pub async fn doctor_report() -> Result<serde_json::Value, String> {
 /// Timeout for `grok doctor --json` (host env probes; keep short).
 const CLI_DOCTOR_TIMEOUT_SECS: u64 = 15;
 
+/// Timeout for `grok doctor fix <id> --yes` (may rewrite shell rc / config).
+const CLI_DOCTOR_FIX_TIMEOUT_SECS: u64 = 30;
+
 /// Run probed CLI `doctor --json`. Returns a stable envelope for the UI parser.
 /// Never includes secret values — only CLI doctor facts/findings/probeNotes.
 fn run_cli_doctor_json() -> serde_json::Value {
@@ -1436,6 +1439,95 @@ fn truncate_cli_err(s: &str, max: usize) -> String {
     }
     let head: String = t.chars().take(max).collect();
     format!("{head}…")
+}
+
+/// Safe fix-id shape: short handle (`ssh-wrap`) or canonical (`terminal.ssh-wrap`).
+/// Rejects flags, paths, and shell metacharacters before invoking the CLI.
+fn is_safe_doctor_fix_id(id: &str) -> bool {
+    let t = id.trim();
+    if t.is_empty() || t.len() > 128 {
+        return false;
+    }
+    let mut chars = t.chars();
+    let Some(first) = chars.next() else {
+        return false;
+    };
+    if !first.is_ascii_alphanumeric() {
+        return false;
+    }
+    chars.all(|c| c.is_ascii_alphanumeric() || c == '.' || c == '_' || c == '-')
+}
+
+/// Redact + cap CLI doctor fix stdout/stderr for the UI (no secrets, no huge dumps).
+fn redact_doctor_fix_output(s: &str, max: usize) -> String {
+    let scrubbed = store::redact_text(s);
+    truncate_cli_err(&scrubbed, max)
+}
+
+/// Apply a CLI automatic remediation: `grok doctor fix <id> --yes`.
+/// Returns redacted stdout/stderr; never throws on non-zero exit (ok=false).
+#[tauri::command]
+pub async fn cli_doctor_fix(id: String) -> Result<serde_json::Value, String> {
+    let id = id.trim().to_string();
+    if id.is_empty() {
+        return Err("doctor fix id required".into());
+    }
+    if !is_safe_doctor_fix_id(&id) {
+        return Err(format!("invalid doctor fix id: {id}"));
+    }
+
+    let id_for_cmd = id.clone();
+    let result = tauri::async_runtime::spawn_blocking(move || {
+        run_grok_cli_args(
+            &["doctor", "fix", &id_for_cmd, "--yes"],
+            CLI_DOCTOR_FIX_TIMEOUT_SECS,
+        )
+    })
+    .await
+    .map_err(|e| format!("doctor fix worker panicked: {e}"))?;
+
+    match result {
+        Ok((stdout, stderr, exit_ok)) => Ok(serde_json::json!({
+            "ok": exit_ok,
+            "id": id,
+            "stdout": redact_doctor_fix_output(&stdout, 2000),
+            "stderr": redact_doctor_fix_output(&stderr, 800),
+            "exitOk": exit_ok,
+        })),
+        Err(e) => {
+            // Missing CLI / timeout — surface as structured failure, not panic.
+            Ok(serde_json::json!({
+                "ok": false,
+                "id": id,
+                "stdout": "",
+                "stderr": redact_doctor_fix_output(&e, 400),
+                "exitOk": false,
+                "error": redact_doctor_fix_output(&e, 400),
+            }))
+        }
+    }
+}
+
+#[cfg(test)]
+mod doctor_fix_id_tests {
+    use super::is_safe_doctor_fix_id;
+
+    #[test]
+    fn accepts_short_and_canonical_handles() {
+        assert!(is_safe_doctor_fix_id("ssh-wrap"));
+        assert!(is_safe_doctor_fix_id("terminal.ssh-wrap"));
+        assert!(is_safe_doctor_fix_id("tmux-clipboard"));
+    }
+
+    #[test]
+    fn rejects_flags_paths_and_injection() {
+        assert!(!is_safe_doctor_fix_id(""));
+        assert!(!is_safe_doctor_fix_id("--yes"));
+        assert!(!is_safe_doctor_fix_id("a b"));
+        assert!(!is_safe_doctor_fix_id("../etc/passwd"));
+        assert!(!is_safe_doctor_fix_id("ssh-wrap;rm"));
+        assert!(!is_safe_doctor_fix_id("-ssh-wrap"));
+    }
 }
 
 /// Write a redacted support zip (Doctor JSON + logs) and return its path.

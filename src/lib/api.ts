@@ -1017,6 +1017,24 @@ export async function doctorReport() {
   return invoke<DoctorReport>("doctor_report");
 }
 
+/** Result of `grok doctor fix <id> --yes` (stdout/stderr already redacted). */
+export interface CliDoctorFixResult {
+  ok: boolean;
+  id: string;
+  stdout: string;
+  stderr: string;
+  exitOk?: boolean;
+  error?: string;
+}
+
+/**
+ * Apply a CLI automatic remediation (`doctor fix <id> --yes`).
+ * Prefer confirm in UI for destructive fixes first.
+ */
+export async function cliDoctorFix(id: string) {
+  return invoke<CliDoctorFixResult>("cli_doctor_fix", { id });
+}
+
 export interface SupportBundleResult {
   ok: boolean;
   path: string;

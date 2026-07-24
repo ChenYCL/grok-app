@@ -879,6 +879,15 @@ export const zhTW: Record<MessageKey, string> = {
   "doctor.cliDoctorFact.ssh": "SSH",
   "doctor.cliDoctorFact.voice": "語音",
   "doctor.cliDoctorProbeNotes": "探測備註（{count}）",
+  "doctor.cliDoctorFix": "套用修復",
+  "doctor.cliDoctorFixes": "自動修復",
+  "doctor.cliDoctorFixHint": "執行 `grok doctor fix {id} --yes`",
+  "doctor.cliDoctorFixConfirmTitle": "套用 CLI doctor 修復？",
+  "doctor.cliDoctorFixConfirmBody":
+    "將執行 `grok doctor fix {id} --yes`，可能修改 shell 設定或其他本機檔案。\n\n{message}",
+  "doctor.cliDoctorFixDone": "已套用修復「{id}」。Doctor 已重新執行。",
+  "doctor.cliDoctorFixDoneDetail": "已套用修復「{id}」。{detail}",
+  "doctor.cliDoctorFixFail": "無法套用 CLI doctor 修復",
 
   "conn.idle": "閒置",
   "conn.connecting": "連線中",

@@ -17,11 +17,14 @@ import * as api from "@/lib/api";
 import type { DoctorCheck, DoctorLevel, DoctorReport } from "@/lib/api";
 import {
   CLI_DOCTOR_FACT_KEYS,
+  extractFixIds,
   formatFactValue,
   hasAnySafeFact,
   parseCliDoctorEnvelope,
+  type CliDoctorCheck,
   type CliDoctorSafeFacts,
   type CliDoctorView,
+  type DoctorFixHandle,
 } from "@/lib/cliDoctor";
 import { redact } from "@/lib/redact";
 
@@ -128,7 +131,9 @@ export function DoctorModal({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
-  const [busy, setBusy] = useState<"zip" | "reset" | null>(null);
+  const [busy, setBusy] = useState<"zip" | "reset" | "fix" | null>(null);
+  /** Which fix id is currently running (for per-row spinner). */
+  const [fixingId, setFixingId] = useState<string | null>(null);
   const [keepSecrets, setKeepSecrets] = useState(true);
   const [statusMsg, setStatusMsg] = useState<string | null>(null);
 
@@ -238,6 +243,97 @@ export function DoctorModal({
     if (!report) return null;
     return parseCliDoctorEnvelope(report.cliDoctor ?? null);
   }, [report]);
+
+  /** Fix handles from CLI findings (automaticRemediation / fixId). */
+  const cliFixes: DoctorFixHandle[] = useMemo(() => {
+    if (!report?.cliDoctor) return [];
+    return extractFixIds(report.cliDoctor);
+  }, [report]);
+
+  const applyFix = useCallback(
+    async (fixId: string) => {
+      setBusy("fix");
+      setFixingId(fixId);
+      setError(null);
+      setStatusMsg(null);
+      try {
+        const res = await api.cliDoctorFix(fixId);
+        // Re-run doctor so findings refresh; then restore fix outcome
+        // (run() clears status/error at start).
+        await run();
+        if (res.ok) {
+          const preview = (res.stdout || res.stderr || "").trim();
+          setStatusMsg(
+            preview
+              ? t("doctor.cliDoctorFixDoneDetail", {
+                  id: fixId,
+                  detail: redact(preview).slice(0, 240),
+                })
+              : t("doctor.cliDoctorFixDone", { id: fixId }),
+          );
+        } else {
+          const detail = redact(
+            (
+              res.error ||
+              res.stderr ||
+              res.stdout ||
+              t("doctor.cliDoctorFixFail")
+            ).trim(),
+          ).slice(0, 320);
+          setError(`${t("doctor.cliDoctorFixFail")}: ${detail}`);
+        }
+      } catch (e) {
+        setError(`${t("doctor.cliDoctorFixFail")}: ${String(e)}`);
+      } finally {
+        setBusy(null);
+        setFixingId(null);
+      }
+    },
+    [run, t],
+  );
+
+  const onApplyFix = useCallback(
+    (handle: { fixId: string; message?: string; destructive?: boolean }) => {
+      const runFix = () => {
+        void applyFix(handle.fixId);
+      };
+      // Destructive (shell/config) fixes always go through in-app confirm.
+      if (handle.destructive !== false && onConfirm) {
+        onConfirm({
+          title: t("doctor.cliDoctorFixConfirmTitle"),
+          message: t("doctor.cliDoctorFixConfirmBody", {
+            id: handle.fixId,
+            message: handle.message?.trim() || handle.fixId,
+          }),
+          confirmLabel: t("doctor.cliDoctorFix"),
+          danger: true,
+          onConfirm: runFix,
+        });
+        return;
+      }
+      runFix();
+    },
+    [applyFix, onConfirm, t],
+  );
+
+  const fixForCheck = useCallback(
+    (c: CliDoctorCheck): DoctorFixHandle | null => {
+      if (c.fixId) {
+        return {
+          fixId: c.fixId,
+          findingId: c.id,
+          message: c.title,
+          destructive: c.destructive !== false,
+        };
+      }
+      return (
+        cliFixes.find(
+          (f) => f.findingId === c.id || f.fixId === c.id,
+        ) ?? null
+      );
+    },
+    [cliFixes],
+  );
 
   if (!open) return null;
 
@@ -374,35 +470,98 @@ export function DoctorModal({
 
               {cliDoctor.available && cliDoctor.checks.length > 0 && (
                 <ul className="doctor-checks">
-                  {cliDoctor.checks.map((c) => (
-                    <li
-                      key={c.id}
-                      className={`doctor-check doctor-check--${c.level}`}
-                    >
-                      <div className="doctor-check__badge" aria-hidden>
-                        <LevelIcon level={c.level} />
-                      </div>
-                      <div className="doctor-check__main">
-                        <div className="doctor-check__row">
-                          <span className="doctor-check__title">
-                            {c.id === "cli-doctor-clean"
-                              ? t("doctor.cliDoctorEmpty")
-                              : c.title}
-                          </span>
-                          <span
-                            className={`doctor-check__level doctor-check__level--${c.level}`}
-                          >
-                            {t(levelLabelKey(c.level))}
-                          </span>
+                  {cliDoctor.checks.map((c) => {
+                    const fix = fixForCheck(c);
+                    const isThisFixing =
+                      busy === "fix" && fixingId === fix?.fixId;
+                    return (
+                      <li
+                        key={c.id}
+                        className={`doctor-check doctor-check--${c.level}`}
+                      >
+                        <div className="doctor-check__badge" aria-hidden>
+                          <LevelIcon level={c.level} />
                         </div>
-                        {c.detail && c.id !== "cli-doctor-clean" ? (
-                          <p className="doctor-check__detail">{c.detail}</p>
-                        ) : null}
-                      </div>
-                    </li>
-                  ))}
+                        <div className="doctor-check__main">
+                          <div className="doctor-check__row">
+                            <span className="doctor-check__title">
+                              {c.id === "cli-doctor-clean"
+                                ? t("doctor.cliDoctorEmpty")
+                                : c.title}
+                            </span>
+                            <span
+                              className={`doctor-check__level doctor-check__level--${c.level}`}
+                            >
+                              {t(levelLabelKey(c.level))}
+                            </span>
+                          </div>
+                          {c.detail && c.id !== "cli-doctor-clean" ? (
+                            <p className="doctor-check__detail">{c.detail}</p>
+                          ) : null}
+                          {fix ? (
+                            <div className="doctor-check__actions">
+                              <button
+                                type="button"
+                                className="btn btn--ghost btn--sm"
+                                disabled={!!busy || loading}
+                                onClick={() => onApplyFix(fix)}
+                                title={t("doctor.cliDoctorFixHint", {
+                                  id: fix.fixId,
+                                })}
+                              >
+                                {isThisFixing
+                                  ? "…"
+                                  : t("doctor.cliDoctorFix")}
+                              </button>
+                              <span className="doctor-check__fix-id">
+                                {fix.fixId}
+                              </span>
+                            </div>
+                          ) : null}
+                        </div>
+                      </li>
+                    );
+                  })}
                 </ul>
               )}
+
+              {/* Fallback strip when findings carry automaticRemediation but
+                  were not already rendered as check rows (older host shapes). */}
+              {cliDoctor.available &&
+                cliFixes.length > 0 &&
+                !cliDoctor.checks.some((c) => c.fixId) && (
+                  <div className="doctor-cli-fixes">
+                    <div className="doctor-cli-fixes__title">
+                      {t("doctor.cliDoctorFixes")}
+                    </div>
+                    <ul className="doctor-cli-fixes__list">
+                      {cliFixes.map((f) => (
+                        <li key={f.fixId} className="doctor-cli-fixes__item">
+                          <div className="doctor-cli-fixes__text">
+                            <span className="doctor-cli-fixes__id">
+                              {f.fixId}
+                            </span>
+                            {f.message ? (
+                              <span className="doctor-cli-fixes__msg">
+                                {f.message}
+                              </span>
+                            ) : null}
+                          </div>
+                          <button
+                            type="button"
+                            className="btn btn--ghost btn--sm"
+                            disabled={!!busy || loading}
+                            onClick={() => onApplyFix(f)}
+                          >
+                            {busy === "fix" && fixingId === f.fixId
+                              ? "…"
+                              : t("doctor.cliDoctorFix")}
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
 
               {cliDoctor.available &&
                 hasAnySafeFact(cliDoctor.facts) &&

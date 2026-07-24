@@ -16,6 +16,28 @@ export type CliDoctorCheck = {
   /** Note / remediation / disposition context. */
   detail: string;
   disposition?: string;
+  /**
+   * CLI `doctor fix <id>` handle when `automaticRemediation` is set
+   * (short form e.g. `ssh-wrap`, or canonical `terminal.ssh-wrap`).
+   */
+  fixId?: string | null;
+  /** Whether applying the fix mutates shell/config (needs in-app confirm). */
+  destructive?: boolean;
+};
+
+/**
+ * One automatic remediation extractable from doctor JSON findings.
+ * Used by the pure helper and by DoctorModal “Apply fix”.
+ */
+export type DoctorFixHandle = {
+  /** Id passed to `grok doctor fix <id> --yes`. */
+  fixId: string;
+  /** Finding id (often the canonical form, e.g. `terminal.ssh-wrap`). */
+  findingId: string;
+  /** Finding message when present. */
+  message?: string;
+  /** Shell/config mutation → confirm before apply. */
+  destructive: boolean;
 };
 
 /** Safe, human-readable fact chips (no paths that embed tokens). */
@@ -176,6 +198,113 @@ export function extractSafeFacts(facts: unknown): CliDoctorSafeFacts {
   };
 }
 
+/**
+ * Normalize a fix handle from CLI fields.
+ * Accepts a plain string or a small object `{ id | handle | name }`.
+ */
+export function coerceFixId(raw: unknown): string | null {
+  if (typeof raw === "string") {
+    const t = raw.trim();
+    return t || null;
+  }
+  if (isRecord(raw)) {
+    return (
+      asString(raw.id) ??
+      asString(raw.handle) ??
+      asString(raw.name) ??
+      asString(raw.fixId) ??
+      null
+    );
+  }
+  return null;
+}
+
+/**
+ * Whether applying this fix is expected to mutate shell rc / user config.
+ * Unknown handles default to destructive (safer: always confirm).
+ */
+export function isDestructiveDoctorFix(fixId: string): boolean {
+  const id = fixId.trim().toLowerCase();
+  if (!id) return true;
+  // Explicitly non-mutating placeholders (none today; keep the hook).
+  if (id === "noop" || id === "none" || id === "info") return false;
+  // Shell alias / wrap / profile / config writers.
+  if (
+    id.includes("ssh-wrap") ||
+    id.includes("wrap") ||
+    id.includes("profile") ||
+    id.includes("shell") ||
+    id.includes("tmux") ||
+    id.includes("clipboard") ||
+    id.includes("passthrough") ||
+    id.includes("byobu") ||
+    id.includes("config")
+  ) {
+    return true;
+  }
+  // Default: treat as destructive so --yes never fires without a dialog.
+  return true;
+}
+
+/** Validate fix id shape before invoking the CLI (no spaces / flags). */
+export function isValidDoctorFixId(fixId: string): boolean {
+  const t = fixId.trim();
+  if (!t || t.length > 128) return false;
+  // Short handle or dotted canonical id; reject flags / paths / injection.
+  return /^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(t);
+}
+
+/**
+ * Pure extract of automatic remediation handles from doctor JSON.
+ * Accepts bare CLI blob, host envelope `{ report }`, or a findings array.
+ */
+export function extractFixIds(input: unknown): DoctorFixHandle[] {
+  let findings: unknown[] | null = null;
+
+  if (Array.isArray(input)) {
+    findings = input;
+  } else if (isRecord(input)) {
+    if (Array.isArray(input.findings)) {
+      findings = input.findings;
+    } else if (Array.isArray(input.checks)) {
+      findings = input.checks;
+    } else if (isRecord(input.report)) {
+      if (Array.isArray(input.report.findings)) {
+        findings = input.report.findings;
+      } else if (Array.isArray(input.report.checks)) {
+        findings = input.report.checks;
+      }
+    }
+  }
+
+  if (!findings) return [];
+
+  const seen = new Set<string>();
+  const out: DoctorFixHandle[] = [];
+
+  findings.forEach((raw, index) => {
+    if (!isRecord(raw)) return;
+    // Prefer automaticRemediation; fall back to fixId field some builds emit.
+    const fixId =
+      coerceFixId(raw.automaticRemediation) ?? coerceFixId(raw.fixId);
+    if (!fixId || !isValidDoctorFixId(fixId)) return;
+    const key = fixId.toLowerCase();
+    if (seen.has(key)) return;
+    seen.add(key);
+
+    const findingId = asString(raw.id) ?? `finding-${index}`;
+    const message = asString(raw.message) ?? undefined;
+    out.push({
+      fixId,
+      findingId,
+      message,
+      destructive: isDestructiveDoctorFix(fixId),
+    });
+  });
+
+  return out;
+}
+
 export function parseFinding(raw: unknown, index: number): CliDoctorCheck | null {
   if (!isRecord(raw)) return null;
   const id = asString(raw.id) ?? `finding-${index}`;
@@ -183,8 +312,10 @@ export function parseFinding(raw: unknown, index: number): CliDoctorCheck | null
   const message = asString(raw.message) ?? id;
   const note = asString(raw.note);
   const remediation = asString(raw.remediation);
-  const auto = asString(raw.automaticRemediation);
-  const detailParts = [note, remediation, auto].filter(Boolean);
+  const fixId =
+    coerceFixId(raw.automaticRemediation) ?? coerceFixId(raw.fixId);
+  const autoLabel = fixId ? `fix: ${fixId}` : asString(raw.automaticRemediation);
+  const detailParts = [note, remediation, autoLabel].filter(Boolean);
   const detail =
     detailParts.length > 0
       ? detailParts.join(" · ")
@@ -197,6 +328,8 @@ export function parseFinding(raw: unknown, index: number): CliDoctorCheck | null
     title: message,
     detail,
     disposition,
+    fixId: fixId && isValidDoctorFixId(fixId) ? fixId : null,
+    destructive: fixId ? isDestructiveDoctorFix(fixId) : undefined,
   };
 }
 
