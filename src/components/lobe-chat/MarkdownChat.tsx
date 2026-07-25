@@ -11,6 +11,7 @@ import { ImageUi, imageUiLabels } from "@/components/ImageUi";
 import { VideoUi, videoUiLabels } from "@/components/VideoUi";
 import { FilePathCard } from "@/components/FilePathCard";
 import type { ResourceOpenTarget } from "@/components/ResourceViewer";
+import { HighlightedText } from "@/components/HighlightedText";
 import {
   isImagePath,
   isVideoPath,
@@ -29,6 +30,55 @@ import {
 import { useSmoothStream } from "@/hooks/useSmoothStream";
 import { cn } from "@/lib/utils";
 import { CodeBlock } from "./CodeBlock";
+
+/** Highlight string leaves for in-chat find (markdown-safe). */
+function highlightChildren(
+  children: ReactNode,
+  query: string,
+  activeOccurrence: number | null | undefined,
+  counter: { n: number },
+): ReactNode {
+  const q = query.trim();
+  if (!q) return children;
+  if (typeof children === "string" || typeof children === "number") {
+    const text = String(children);
+    const base = counter.n;
+    // Count matches in this leaf so subsequent leaves get correct indices.
+    const lower = text.toLowerCase();
+    const qLower = q.toLowerCase();
+    let from = 0;
+    let local = 0;
+    while (from < lower.length) {
+      const at = lower.indexOf(qLower, from);
+      if (at < 0) break;
+      local += 1;
+      from = at + q.length;
+    }
+    const activeLocal =
+      activeOccurrence != null &&
+      activeOccurrence >= base &&
+      activeOccurrence < base + local
+        ? activeOccurrence - base
+        : null;
+    counter.n += local;
+    if (local === 0) return text;
+    return (
+      <HighlightedText
+        text={text}
+        query={q}
+        activeOccurrence={activeLocal}
+      />
+    );
+  }
+  if (Array.isArray(children)) {
+    return children.map((c, i) => (
+      <span key={i}>
+        {highlightChildren(c, query, activeOccurrence, counter)}
+      </span>
+    ));
+  }
+  return children;
+}
 
 function softCloseMarkdown(src: string, streaming: boolean): string {
   if (!streaming || !src) return src;
@@ -58,6 +108,9 @@ export const MarkdownChat = memo(function MarkdownChat({
   imagePathMap,
   projectPath,
   onOpenResource,
+  findQuery = "",
+  findActiveOccurrence = null,
+  findOccurrenceBase = 0,
 }: {
   children: string;
   streaming?: boolean;
@@ -67,6 +120,11 @@ export const MarkdownChat = memo(function MarkdownChat({
   imagePathMap?: Record<string, string>;
   projectPath?: string | null;
   onOpenResource?: (target: ResourceOpenTarget) => void;
+  /** In-chat find query — highlights string leaves in markdown. */
+  findQuery?: string;
+  findActiveOccurrence?: number | null;
+  /** Starting occurrence index for multi-segment assistant bodies. */
+  findOccurrenceBase?: number;
 }) {
   const tr = useMemo(() => createT(locale), [locale]);
   const imageLabels = useMemo(() => imageUiLabels(locale), [locale]);
@@ -229,6 +287,14 @@ export const MarkdownChat = memo(function MarkdownChat({
     );
   };
 
+  // Fresh counter each render so occurrence indices stay stable for the mark.
+  const findCounter = { n: findOccurrenceBase };
+  const qFind = findQuery.trim();
+  const paint = (node: ReactNode) =>
+    qFind
+      ? highlightChildren(node, qFind, findActiveOccurrence, findCounter)
+      : node;
+
   return (
     <div
       className={cn(
@@ -241,6 +307,19 @@ export const MarkdownChat = memo(function MarkdownChat({
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
         components={{
+          p: ({ children: c }) => <p>{paint(c)}</p>,
+          li: ({ children: c }) => <li>{paint(c)}</li>,
+          strong: ({ children: c }) => <strong>{paint(c)}</strong>,
+          em: ({ children: c }) => <em>{paint(c)}</em>,
+          h1: ({ children: c }) => <h1>{paint(c)}</h1>,
+          h2: ({ children: c }) => <h2>{paint(c)}</h2>,
+          h3: ({ children: c }) => <h3>{paint(c)}</h3>,
+          h4: ({ children: c }) => <h4>{paint(c)}</h4>,
+          blockquote: ({ children: c }) => (
+            <blockquote>{paint(c)}</blockquote>
+          ),
+          td: ({ children: c }) => <td>{paint(c)}</td>,
+          th: ({ children: c }) => <th>{paint(c)}</th>,
           a: ({ href, children: c }) => {
             const text = textFromChildren(c).trim();
             const hrefStr = typeof href === "string" ? href : "";
@@ -255,7 +334,7 @@ export const MarkdownChat = memo(function MarkdownChat({
                 target="_blank"
                 rel="noreferrer noopener"
               >
-                {c}
+                {paint(c)}
               </a>
             );
           },
@@ -270,7 +349,9 @@ export const MarkdownChat = memo(function MarkdownChat({
               const raw = textFromChildren(c).replace(/\n$/, "").trim();
               const card = renderPathOrUrl(raw);
               if (card) return card;
-              return <code className="chat-md__inline-code">{c}</code>;
+              return (
+                <code className="chat-md__inline-code">{paint(c)}</code>
+              );
             }
             return (
               <CodeBlock

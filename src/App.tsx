@@ -94,12 +94,18 @@ import { AskUserModal } from "@/components/AskUserModal";
 import { DoctorModal } from "@/components/DoctorModal";
 import { filterSessionSearch } from "@/lib/sessionSearch";
 import {
+  findChatMatches,
+  stepChatFindIndex,
+  type ChatFindMatch,
+} from "@/lib/chatFind";
+import {
   sessionExportFilename,
   sessionToMarkdown,
 } from "@/lib/sessionExport";
 import { shouldRestoreLastSession } from "@/lib/sessionRestore";
 import { connPillForState } from "@/lib/connStatus";
 import { shortcutsForPlatform } from "@/lib/shortcuts";
+import { ChatFindBar } from "@/components/ChatFindBar";
 import {
   ensureNotifyPermission,
   showDesktopNotification,
@@ -516,10 +522,12 @@ export default function App() {
   }, [showSearch]);
 
   // Global shortcuts: search, help, doctor, new chat, settings.
+  // Global shortcuts: search, find-in-chat, help, doctor, new chat, settings.
   // Handlers go through refs so we don't re-bind every render.
   const shortcutHandlersRef = useRef({
     newChat: () => {},
     openSettings: () => {},
+    openChatFind: () => {},
   });
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -533,6 +541,12 @@ export default function App() {
         tag === "textarea" ||
         !!target?.isContentEditable;
       const key = e.key.toLowerCase();
+      // In-chat find — open even while typing in the composer.
+      if (key === "f" && !e.shiftKey) {
+        e.preventDefault();
+        shortcutHandlersRef.current.openChatFind();
+        return;
+      }
       if (key === "k") {
         e.preventDefault();
         setShowSearch(true);
@@ -575,6 +589,10 @@ export default function App() {
   const [setupCliSeed, setSetupCliSeed] = useState<SetupCliInfo | null>(null);
   const [showDoctor, setShowDoctor] = useState(false);
   const [showShortcuts, setShowShortcuts] = useState(false);
+  /** In-conversation find (Cmd/Ctrl+F) — not the palette/session search. */
+  const [showChatFind, setShowChatFind] = useState(false);
+  const [chatFindQuery, setChatFindQuery] = useState("");
+  const [chatFindIndex, setChatFindIndex] = useState(0);
   const [savedAccounts, setSavedAccounts] = useState<api.SavedAccount[]>([]);
   const [activeAccountId, setActiveAccountId] = useState<string | null>(null);
   const [perm, setPerm] = useState<PermissionPayload | null>(null);
@@ -4610,6 +4628,106 @@ export default function App() {
   );
 
   /**
+   * In-chat find matches — user + assistant bodies only.
+   * Historical tool_step rows are not rendered in the transcript, so matching
+   * them would land on invisible hits.
+   */
+  const chatFindMatches = useMemo((): ChatFindMatch[] => {
+    if (!showChatFind) return [];
+    return findChatMatches(
+      chatFindQuery,
+      messages
+        .filter((m) => m.role === "user" || m.role === "assistant")
+        .map((m) => ({
+          id: m.id,
+          role: m.role,
+          content: m.content,
+          marker: m.marker,
+        })),
+    );
+  }, [showChatFind, chatFindQuery, messages]);
+
+  const chatFindHitIds = useMemo(() => {
+    const s = new Set<string>();
+    for (const m of chatFindMatches) s.add(m.messageId);
+    return s;
+  }, [chatFindMatches]);
+
+  const chatFindActive = useMemo(() => {
+    if (!showChatFind || chatFindMatches.length === 0) return null;
+    const idx =
+      chatFindIndex >= 0 && chatFindIndex < chatFindMatches.length
+        ? chatFindIndex
+        : 0;
+    const hit = chatFindMatches[idx]!;
+    return { messageId: hit.messageId, occurrence: hit.occurrence };
+  }, [showChatFind, chatFindMatches, chatFindIndex]);
+
+  // Clamp active index when the match list shrinks (query edit / new messages).
+  useEffect(() => {
+    if (!showChatFind) return;
+    if (chatFindMatches.length === 0) {
+      if (chatFindIndex !== 0) setChatFindIndex(0);
+      return;
+    }
+    if (chatFindIndex >= chatFindMatches.length) {
+      setChatFindIndex(0);
+    }
+  }, [showChatFind, chatFindMatches.length, chatFindIndex]);
+
+  // Reset find when switching conversation (keep open across same session).
+  useEffect(() => {
+    setShowChatFind(false);
+    setChatFindQuery("");
+    setChatFindIndex(0);
+  }, [session.sessionId]);
+
+  // Close find when leaving the chat pane (not when opening from another pane).
+  useEffect(() => {
+    if (mainPane !== "chat") {
+      setShowChatFind(false);
+    }
+  }, [mainPane]);
+
+  useEffect(() => {
+    if (!showChatFind) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      if (e.isComposing) return;
+      // Permission bar / dialogs own Escape when open.
+      if (perm || appDialog) return;
+      e.preventDefault();
+      e.stopPropagation();
+      setShowChatFind(false);
+    };
+    document.addEventListener("keydown", onKey, true);
+    return () => document.removeEventListener("keydown", onKey, true);
+  }, [showChatFind, perm, appDialog]);
+
+  const [chatFindFocusKey, setChatFindFocusKey] = useState(0);
+  const openChatFind = useCallback(() => {
+    // Ensure chat pane first; opening find after pane switch is handled by
+    // setting show true in the same tick (pane effect only closes on leave).
+    if (mainPane !== "chat") {
+      setMainPane("chat");
+    }
+    setShowChatFind(true);
+    setChatFindFocusKey((k) => k + 1);
+  }, [mainPane]);
+
+  const chatFindNext = useCallback(() => {
+    setChatFindIndex((i) =>
+      stepChatFindIndex(i, chatFindMatches.length, 1),
+    );
+  }, [chatFindMatches.length]);
+
+  const chatFindPrev = useCallback(() => {
+    setChatFindIndex((i) =>
+      stepChatFindIndex(i, chatFindMatches.length, -1),
+    );
+  }, [chatFindMatches.length]);
+
+  /**
    * New empty draft only: lift composer and SuperGrok brand.
    * Existing sessions (even with empty journal) must not look like a fresh chat.
    */
@@ -5091,6 +5209,9 @@ export default function App() {
       setAppView("settings");
       setSettingsSection("general");
       window.location.hash = "#/settings/general";
+    },
+    openChatFind: () => {
+      openChatFind();
     },
   };
   trayHandlersRef.current = {
@@ -7172,6 +7293,31 @@ export default function App() {
             />
           )}
 
+          {mainPane === "chat" && showChatFind && (
+            <ChatFindBar
+              key={chatFindFocusKey}
+              query={chatFindQuery}
+              activeIndex={chatFindIndex}
+              matchCount={chatFindMatches.length}
+              labels={{
+                placeholder: tr("chatFind.placeholder"),
+                prev: tr("chatFind.prev"),
+                next: tr("chatFind.next"),
+                close: tr("chatFind.close"),
+                count: tr("chatFind.count"),
+                noMatches: tr("chatFind.noMatches"),
+                aria: tr("chatFind.aria"),
+              }}
+              onQueryChange={(q) => {
+                setChatFindQuery(q);
+                setChatFindIndex(0);
+              }}
+              onPrev={chatFindPrev}
+              onNext={chatFindNext}
+              onClose={() => setShowChatFind(false)}
+            />
+          )}
+
           {/* Pre-turn / host errors: T04 deck (problem · cause · primary · secondary) */}
           {errorBanner && !hasChatTurnError && (
             <div className="error-banner" role="alert">
@@ -7304,6 +7450,9 @@ export default function App() {
               setAttachments((prev) => mergeAttachments(prev, [att]))
             }
             attachLabels={attachLabels}
+            findQuery={showChatFind ? chatFindQuery : ""}
+            findHitMessageIds={showChatFind ? chatFindHitIds : undefined}
+            findActive={showChatFind ? chatFindActive : null}
           />
 
           <div
