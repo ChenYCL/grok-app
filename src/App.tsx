@@ -159,18 +159,14 @@ import {
   getComposerCaretOffset,
 } from "@/components/ComposerEditor";
 import { ComposerProjectMenu } from "@/components/ComposerProjectMenu";
+import { VoiceOverlay } from "@/components/VoiceOverlay";
 import {
   buildWorktreeSiblingPath,
   mainWorktreePath,
   pathsEqual,
   sanitizeWorktreeName,
+  worktreeLabel,
 } from "@/lib/gitWorktree";
-import { pathsEqual, worktreeLabel } from "@/lib/gitWorktree";
-import { ComposerEditor } from "@/components/ComposerEditor";
-import { VoiceOverlay } from "@/components/VoiceOverlay";
-import { ComposerProjectMenu } from "@/components/ComposerProjectMenu";
-import { blobToBase64 } from "@/lib/voiceAudio";
-import { pathsEqual } from "@/lib/gitWorktree";
 import {
   classifyVoiceError,
   initialVoiceState,
@@ -210,7 +206,6 @@ import {
   IconMic,
   IconQueue,
   IconStop,
-  IconMic,
   IconFolder,
   IconFolderPlus,
   IconClock,
