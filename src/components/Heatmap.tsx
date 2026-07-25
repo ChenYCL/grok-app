@@ -144,7 +144,7 @@ function buildGrid(
 export function Heatmap({
   days,
   metric = "requests",
-  locale = "zh",
+  locale = "en",
   labels,
 }: {
   days: HeatmapDay[];

@@ -15,8 +15,9 @@ impl Locale {
         match raw.trim().to_ascii_lowercase().as_str() {
             "en" | "en-us" | "en_us" | "en-gb" => Locale::En,
             "zh-tw" | "zh_tw" | "zh-hant" | "zh_hant" => Locale::ZhTw,
-            // Default product locale is zh (matches AppSettings::default).
-            _ => Locale::Zh,
+            "zh" | "zh-cn" | "zh_cn" | "zh-hans" | "zh_hans" => Locale::Zh,
+            // Default product locale is en (matches AppSettings::default).
+            _ => Locale::En,
         }
     }
 }
@@ -131,7 +132,7 @@ mod tests {
         assert_eq!(Locale::parse("en"), Locale::En);
         assert_eq!(Locale::parse("EN-US"), Locale::En);
         assert_eq!(Locale::parse("zh"), Locale::Zh);
-        assert_eq!(Locale::parse(""), Locale::Zh);
+        assert_eq!(Locale::parse(""), Locale::En);
         assert_eq!(Locale::parse("zh-TW"), Locale::ZhTw);
         assert_eq!(Locale::parse("zh-Hant"), Locale::ZhTw);
         assert_eq!(strings(Locale::ZhTw).settings, "設定…");

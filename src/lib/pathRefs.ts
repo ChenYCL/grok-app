@@ -129,7 +129,7 @@ export function classifyPathRef(pathOrUrl: string): PathRefKind {
   return "file";
 }
 
-export function fileSubtitle(path: string, locale: Locale = "zh"): string {
+export function fileSubtitle(path: string, locale: Locale = "en"): string {
   const ext = pathExt(path).toUpperCase();
   const pick = (en: string, zh: string, tw: string) =>
     locale === "en" ? en : locale === "zh-TW" ? tw : zh;

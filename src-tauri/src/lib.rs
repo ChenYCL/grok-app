@@ -50,6 +50,10 @@ mod store;
 mod tray;
 mod tray_i18n;
 mod voice_stt;
+mod voice_auth;
+mod voice_host;
+mod voice_stt;
+mod voice_tools;
 
 use std::sync::Arc;
 
@@ -67,6 +71,7 @@ pub fn run() {
         .init();
 
     let session_mgr = Arc::new(SessionManager::new());
+    let voice_host = Arc::new(voice_host::VoiceHost::new());
 
     tauri::Builder::default()
         // Must be registered first so a second process exits and focuses the primary window.
@@ -80,6 +85,7 @@ pub fn run() {
         }))
         .plugin(tauri_plugin_store::Builder::new().build())
         .manage(session_mgr)
+        .manage(voice_host)
         // Range-capable media streaming (video/audio/pdf) — never loads multi‑GB into RAM.
         .register_asynchronous_uri_scheme_protocol("media", |_ctx, request, responder| {
             std::thread::spawn(move || {
@@ -292,6 +298,12 @@ pub fn run() {
             commands::providers_list_models,
             commands::editors_list,
             commands::open_in_editor,
+            voice_host::voice_state,
+            voice_host::voice_start,
+            voice_host::voice_stop,
+            voice_host::voice_push_pcm,
+            voice_host::voice_invoke_tool,
+            voice_host::voice_dictation_transcribe,
         ])
         .build(tauri::generate_context!())
         .expect("error while building Grok App")

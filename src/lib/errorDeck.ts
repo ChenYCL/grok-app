@@ -138,7 +138,7 @@ const DECK: Record<ErrorDeckCode, DeckSpec> = {
 
 export function buildErrorDeck(
   code: ErrorDeckCode,
-  locale: Locale = "zh",
+  locale: Locale = "en",
 ): ErrorDeckCard {
   const t = createT(locale);
   const spec = DECK[code] ?? DECK.GENERIC;

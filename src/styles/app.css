@@ -12893,3 +12893,133 @@ div.composer__input:empty::before {
   overflow: auto;
   font-size: 11px;
 }
+
+/* Live voice overlay */
+.voice-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 12000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(6px);
+}
+.voice-overlay__panel {
+  width: min(440px, calc(100vw - 2rem));
+  max-height: min(80vh, 640px);
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding: 1rem 1.1rem 1.1rem;
+  border-radius: 16px;
+  background: var(--bg-elevated, #141414);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.45);
+  color: var(--fg, #f5f5f5);
+}
+.voice-overlay__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+.voice-overlay__title {
+  font-weight: 600;
+  font-size: 1rem;
+}
+.voice-overlay__status {
+  font-size: 0.8rem;
+  opacity: 0.7;
+  margin-top: 0.15rem;
+}
+.voice-overlay__end {
+  border: 0;
+  border-radius: 999px;
+  padding: 0.4rem 0.85rem;
+  background: #e11d48;
+  color: #fff;
+  font-weight: 600;
+  cursor: pointer;
+}
+.voice-overlay__error {
+  font-size: 0.8rem;
+  color: #fda4af;
+}
+.voice-overlay__wave {
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 0.35rem;
+  height: 2.5rem;
+}
+.voice-overlay__bar {
+  width: 0.35rem;
+  height: 0.6rem;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.2);
+  transition: height 0.15s ease, background 0.15s ease;
+}
+.voice-overlay__bar.is-on {
+  height: 1.8rem;
+  background: #34d399;
+}
+.voice-overlay__transcript {
+  flex: 1;
+  min-height: 8rem;
+  max-height: 16rem;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  font-size: 0.85rem;
+}
+.voice-overlay__line {
+  display: flex;
+  gap: 0.5rem;
+  line-height: 1.4;
+}
+.voice-overlay__role {
+  flex: 0 0 auto;
+  opacity: 0.5;
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  width: 4.2rem;
+}
+.voice-overlay__line.is-user .voice-overlay__role { color: #93c5fd; opacity: 1; }
+.voice-overlay__line.is-assistant .voice-overlay__role { color: #6ee7b7; opacity: 1; }
+.voice-overlay__delegated {
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  padding-top: 0.65rem;
+}
+.voice-overlay__delegated-title {
+  font-size: 0.75rem;
+  font-weight: 600;
+  opacity: 0.8;
+  margin-bottom: 0.35rem;
+}
+.voice-overlay__muted {
+  font-size: 0.8rem;
+  opacity: 0.55;
+}
+.voice-overlay__chips {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+.voice-overlay__chips button,
+.voice-overlay__demo {
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.06);
+  color: inherit;
+  border-radius: 999px;
+  padding: 0.3rem 0.65rem;
+  font-size: 0.75rem;
+  cursor: pointer;
+}
+.voice-overlay__demo {
+  margin-top: 0.5rem;
+}

@@ -23,7 +23,7 @@ export function Thinking({
   streamingLabel,
   doneLabel,
   thoughtForLabel,
-  locale = "zh",
+  locale = "en",
   expandPref,
   onExpandPrefChange,
 }: {

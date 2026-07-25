@@ -210,6 +210,15 @@ pub struct AppSettings {
     /// process (`--no-leader`). Advanced; multiple clients can share one backend.
     #[serde(default)]
     pub use_leader: bool,
+    /// xAI realtime voice id (e.g. `eve`).
+    #[serde(default = "default_voice_id")]
+    pub voice_id: String,
+    /// When true, dictation auto-sends on end-of-speech silence.
+    #[serde(default)]
+    pub voice_dictation_auto_send: bool,
+    /// Keep delegated agent sessions running after ending a live voice chat.
+    #[serde(default = "default_true")]
+    pub voice_keep_agents_on_end: bool,
 }
 
 fn default_composer_prefs_scope() -> String {
@@ -239,11 +248,16 @@ fn default_plan_enabled() -> bool {
     true
 }
 
+fn default_voice_id() -> String {
+    "eve".into()
+}
+
 impl Default for AppSettings {
     fn default() -> Self {
         Self {
             theme: "dark".into(),
-            locale: "zh".into(),
+            // Product default is English; users can switch to zh / zh-TW in Settings.
+            locale: "en".into(),
             session_data_mode: "independent".into(),
             manual_cli_path: None,
             permission_policy: "ask".into(),
@@ -272,6 +286,9 @@ impl Default for AppSettings {
             subagents_enabled: true,
             preferred_agent: String::new(),
             use_leader: false,
+            voice_id: default_voice_id(),
+            voice_dictation_auto_send: false,
+            voice_keep_agents_on_end: true,
         }
     }
 }
@@ -1348,6 +1365,7 @@ mod tests {
         assert_eq!(s.session_data_mode, "independent");
         assert_eq!(s.permission_policy, "ask");
         assert_eq!(s.theme, "dark");
+        assert_eq!(s.locale, "en");
         assert_eq!(s.max_concurrent_agents, 3);
         assert_eq!(s.agent_idle_minutes, 30);
         assert_eq!(s.stream_stall_seconds, 120);

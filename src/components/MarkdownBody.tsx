@@ -32,7 +32,7 @@ function textFromChildren(children: ReactNode): string {
 export function MarkdownBody({
   children,
   streaming,
-  locale = "zh",
+  locale = "en",
   imagePathMap,
 }: {
   children: string;

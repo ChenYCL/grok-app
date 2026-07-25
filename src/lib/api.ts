@@ -1003,6 +1003,77 @@ export interface AgentsCatalogResult {
    * Default false: standalone process (`--no-leader`). Soft-respawns on change.
    */
   useLeader?: boolean;
+  /** xAI realtime voice id (e.g. eve). */
+  voiceId?: string;
+  /** Auto-send composer text after dictation ends. */
+  voiceDictationAutoSend?: boolean;
+  /** Keep delegated agents running when live voice ends. */
+  voiceKeepAgentsOnEnd?: boolean;
+}
+
+export interface VoiceSessionState {
+  active: boolean;
+  mode: string;
+  projectPath?: string | null;
+  projectId?: string | null;
+  projectName?: string | null;
+  mock: boolean;
+  listening: boolean;
+  speaking: boolean;
+  error?: string | null;
+  delegatedSessionIds: string[];
+}
+
+export interface SttResult {
+  text: string;
+  duration?: number | null;
+  language?: string | null;
+}
+
+export async function voiceState(): Promise<VoiceSessionState> {
+  return invoke("voice_state");
+}
+
+export async function voiceStart(opts?: {
+  projectPath?: string | null;
+  projectId?: string | null;
+  projectName?: string | null;
+}): Promise<VoiceSessionState> {
+  return invoke("voice_start", {
+    projectPath: opts?.projectPath ?? null,
+    projectId: opts?.projectId ?? null,
+    projectName: opts?.projectName ?? null,
+  });
+}
+
+export async function voiceStop(): Promise<VoiceSessionState> {
+  return invoke("voice_stop");
+}
+
+export async function voicePushPcm(pcmBase64: string): Promise<void> {
+  return invoke("voice_push_pcm", { pcmBase64 });
+}
+
+export async function voiceInvokeTool(
+  name: string,
+  argsJson?: string,
+): Promise<unknown> {
+  return invoke("voice_invoke_tool", {
+    name,
+    argsJson: argsJson ?? "{}",
+  });
+}
+
+export async function voiceDictationTranscribe(
+  audioBase64: string,
+  mime?: string | null,
+  language?: string | null,
+): Promise<SttResult> {
+  return invoke("voice_dictation_transcribe", {
+    audioBase64,
+    mime: mime ?? null,
+    language: language ?? null,
+  });
 }
 
 export interface AvailableModel {

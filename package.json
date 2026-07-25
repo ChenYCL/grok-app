@@ -2,16 +2,16 @@
   "name": "grok-app",
   "private": true,
   "version": "0.1.6",
-  "description": "Desktop workbench for Grok Build CLI",
+  "description": "Desktop workbench for Grok Build CLI (English-first)",
   "author": "RongleCat",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/RongleCat/grok-app.git"
+    "url": "https://github.com/jchacker5/grok-app.git"
   },
-  "homepage": "https://github.com/RongleCat/grok-app",
+  "homepage": "https://github.com/jchacker5/grok-app",
   "bugs": {
-    "url": "https://github.com/RongleCat/grok-app/issues"
+    "url": "https://github.com/jchacker5/grok-app/issues"
   },
   "type": "module",
   "scripts": {

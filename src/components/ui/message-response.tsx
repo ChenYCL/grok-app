@@ -55,7 +55,7 @@ function MessageResponseImpl({
   children,
   isAnimating = false,
   className,
-  locale = "zh",
+  locale = "en",
   imagePathMap,
   projectPath,
   onOpenResource,
