@@ -92,6 +92,7 @@ import {
   type SessionPlanState,
 } from "@/lib/planSession";
 import * as api from "@/lib/api";
+import { shouldRestoreLastSession } from "@/lib/sessionRestore";
 import { createT, resolveLocale, type Locale } from "@/i18n";
 import {
   DEFAULT_EFFORT,
@@ -802,6 +803,9 @@ export default function App() {
   const [planEnabled, setPlanEnabled] = useState(true);
   const [disableWebSearch, setDisableWebSearch] = useState(false);
   const [useLeader, setUseLeader] = useState(false);
+  const [reopenLastSession, setReopenLastSession] = useState(true);
+  const [lastSessionId, setLastSessionId] = useState<string | null>(null);
+  const didRestoreLastRef = useRef(false);
   const [gitWorktrees, setGitWorktrees] = useState<api.GitWorktreeEntry[]>([]);
   /** null = unknown/loading; true = git work tree; false = not a git repo. */
   const [gitWorktreesAvailable, setGitWorktreesAvailable] = useState<
@@ -1121,6 +1125,12 @@ export default function App() {
       setPlanEnabled(settings.planEnabled !== false);
       setDisableWebSearch(!!settings.disableWebSearch);
       setUseLeader(!!settings.useLeader);
+      setReopenLastSession(settings.reopenLastSession !== false);
+      setLastSessionId(
+        typeof settings.lastSessionId === "string"
+          ? settings.lastSessionId.trim() || null
+          : null,
+      );
       void api
         .agentsCatalog(null)
         .then((cat) => {
@@ -2370,6 +2380,13 @@ export default function App() {
       setRetryStatus(null);
     }
 
+    if (api.isTauri()) {
+      setLastSessionId(s.id);
+      void api
+        .settingsRememberLastSession(s.id, proj?.id ?? null)
+        .catch(() => {});
+    }
+
     // Warm ACP: connect while the user reads history (trusted project or orphan).
     // Host serializes connect; first send no-ops if already ready, or waits if
     // still handshaking. Process is reused across sessions when cwd/effort match.
@@ -2410,6 +2427,36 @@ export default function App() {
       })();
     }
   };
+
+  const openSessionRef = useRef(openSession);
+  openSessionRef.current = openSession;
+
+  useEffect(() => {
+    if (appGate !== "ready") return;
+    if (didRestoreLastRef.current) return;
+    if (!api.isTauri()) {
+      didRestoreLastRef.current = true;
+      return;
+    }
+    const id = shouldRestoreLastSession({
+      enabled: reopenLastSession,
+      workbenchReady: true,
+      lastSessionId,
+      sessions,
+      currentSessionId: session.sessionId,
+    });
+    didRestoreLastRef.current = true;
+    if (!id) return;
+    const row = sessions.find((s) => s.id === id);
+    if (!row) return;
+    void openSessionRef.current(row);
+  }, [
+    appGate,
+    reopenLastSession,
+    lastSessionId,
+    sessions,
+    session.sessionId,
+  ]);
 
   /**
    * Focus composer after React commit. Retries until the textarea is mounted
@@ -7316,6 +7363,11 @@ export default function App() {
             setUseLeader(v);
             void api.settingsGet().then((s) =>
               api.settingsSet({ ...s, useLeader: v }),
+          reopenLastSession={reopenLastSession}
+          onReopenLastSession={(v) => {
+            setReopenLastSession(v);
+            void api.settingsGet().then((s) =>
+              api.settingsSet({ ...s, reopenLastSession: v }),
             );
           }}
           cliInfo={cliInfo}
