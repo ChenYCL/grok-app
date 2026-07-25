@@ -684,6 +684,8 @@ export const zhTW: Record<MessageKey, string> = {
   "settings.subagentsEnabledDesc": "關閉時啟動加上 --no-subagents，無法拉起巢狀 Agent / 任務。變更後 soft-respawn。",
   "settings.planEnabled": "允許計畫模式",
   "settings.planEnabledDesc": "關閉時啟動加上 --no-plan，Agent 無法進入計畫模式。變更後 soft-respawn。",
+  "settings.useLeader": "共用 Agent 後端（leader）",
+  "settings.useLeaderDesc": "使用 --leader 讓多個用戶端共用一個後端行程；關閉則 --no-leader（預設）。變更後 soft-respawn。",
 "settings.prefsScope": "模型與權限記憶範圍",
   "settings.prefsScopeDesc":
     "全域：所有對話共用。專案：依工作區記憶。對話：僅目前聊天。",

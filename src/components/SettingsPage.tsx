@@ -511,6 +511,8 @@ export function SettingsPage({
   onPlanEnabled,
   disableWebSearch = false,
   onDisableWebSearch,
+  useLeader = false,
+  onUseLeader,
   cliInfo,
   onDoctor,
   versionFooter,
@@ -1152,6 +1154,20 @@ export function SettingsPage({
                     checked={!!disableWebSearch}
                     onChange={() => onDisableWebSearch(!disableWebSearch)}
                     ariaLabel={t("settings.disableWebSearch")}
+              {onUseLeader ? (
+                <div className="settings-row">
+                  <div className="settings-row__text">
+                    <div className="settings-row__label">
+                      {t("settings.useLeader")}
+                    </div>
+                    <div className="settings-row__desc">
+                      {t("settings.useLeaderDesc")}
+                    </div>
+                  </div>
+                  <UiCheck
+                    checked={!!useLeader}
+                    onChange={() => onUseLeader(!useLeader)}
+                    ariaLabel={t("settings.useLeader")}
                   />
                 </div>
               ) : null}

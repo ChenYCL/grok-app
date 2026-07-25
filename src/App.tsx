@@ -801,6 +801,7 @@ export default function App() {
   const [subagentsEnabled, setSubagentsEnabled] = useState(true);
   const [planEnabled, setPlanEnabled] = useState(true);
   const [disableWebSearch, setDisableWebSearch] = useState(false);
+  const [useLeader, setUseLeader] = useState(false);
   const [gitWorktrees, setGitWorktrees] = useState<api.GitWorktreeEntry[]>([]);
   /** null = unknown/loading; true = git work tree; false = not a git repo. */
   const [gitWorktreesAvailable, setGitWorktreesAvailable] = useState<
@@ -1119,6 +1120,7 @@ export default function App() {
       setSubagentsEnabled(settings.subagentsEnabled !== false);
       setPlanEnabled(settings.planEnabled !== false);
       setDisableWebSearch(!!settings.disableWebSearch);
+      setUseLeader(!!settings.useLeader);
       void api
         .agentsCatalog(null)
         .then((cat) => {
@@ -7309,6 +7311,11 @@ export default function App() {
             setDisableWebSearch(v);
             void api.settingsGet().then((s) =>
               api.settingsSet({ ...s, disableWebSearch: v }),
+          useLeader={useLeader}
+          onUseLeader={(v) => {
+            setUseLeader(v);
+            void api.settingsGet().then((s) =>
+              api.settingsSet({ ...s, useLeader: v }),
             );
           }}
           cliInfo={cliInfo}
