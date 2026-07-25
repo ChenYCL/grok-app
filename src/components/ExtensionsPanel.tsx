@@ -1,7 +1,9 @@
 /**
- * Settings → Extensions: Skills + MCP + Plugins.
+ * Settings → Extensions: Skills + MCP + Plugins + Agents/Personas.
  * Skills/MCP from `grok inspect` with enable toggles (extensions.json / ACP inject).
  * Plugins from `grok plugin list/install/update/…` (config.toml disabled list).
+ * Plugins from `grok plugin list/enable/…` (config.toml disabled list).
+ * Agents/personas: definition files under ~/.grok and project .grok (list + open).
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -16,9 +18,18 @@ import {
   IconPlug,
   IconPuzzle,
   IconRefresh,
+  IconRobot,
   IconSkills,
   IconTrash,
+  IconUser,
 } from "@/components/icons";
+import {
+  agentMetaLine,
+  agentScopeTone,
+  personaMetaLine,
+  sortAgentDefs,
+  sortPersonaDefs,
+} from "@/lib/agentsDiscovery";
 import {
   filterPluginsByLoadState,
   isCliMissingError,
@@ -62,9 +73,15 @@ export function ExtensionsPanel({
   const [skills, setSkills] = useState<api.SkillDto[]>([]);
   const [servers, setServers] = useState<api.McpDto[]>([]);
   const [plugins, setPlugins] = useState<api.PluginDto[]>([]);
+  const [agents, setAgents] = useState<api.AgentDefDto[]>([]);
+  const [personas, setPersonas] = useState<api.PersonaDefDto[]>([]);
+  const [userAgentsDir, setUserAgentsDir] = useState<string | null>(null);
+  const [projectAgentsDir, setProjectAgentsDir] = useState<string | null>(null);
+  const [userPersonasDir, setUserPersonasDir] = useState<string | null>(null);
   const [skillsError, setSkillsError] = useState<string | null>(null);
   const [mcpError, setMcpError] = useState<string | null>(null);
   const [pluginsError, setPluginsError] = useState<string | null>(null);
+  const [agentsError, setAgentsError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [agentHome, setAgentHome] = useState<string | null>(null);
   const [configPath, setConfigPath] = useState<string | null>(null);
@@ -103,9 +120,15 @@ export function ExtensionsPanel({
       setSkills([]);
       setServers([]);
       setPlugins([]);
+      setAgents([]);
+      setPersonas([]);
+      setUserAgentsDir(null);
+      setProjectAgentsDir(null);
+      setUserPersonasDir(null);
       setSkillsError(tr("ext.needTauri"));
       setMcpError(null);
       setPluginsError(null);
+      setAgentsError(null);
       setLoading(false);
       return;
     }
@@ -113,29 +136,44 @@ export function ExtensionsPanel({
     setSkillsError(null);
     setMcpError(null);
     setPluginsError(null);
+    setAgentsError(null);
     setPathHint(null);
     const cwd = projectPath?.trim() || null;
-    const [skillsRes, mcpRes, pluginsRes, providersRes] = await Promise.all([
-      api.skillsList(cwd).catch((e) => ({
-        skills: [] as api.SkillDto[],
-        error: String(e),
-      })),
-      api.inspectMcp(cwd).catch((e) => ({
-        servers: [] as api.McpDto[],
-        error: String(e),
-      })),
-      api.pluginsList().catch((e) => ({
-        plugins: [] as api.PluginDto[],
-        error: String(e),
-      })),
-      api.providersList().catch(() => null),
-    ]);
+    const [skillsRes, mcpRes, pluginsRes, agentsRes, providersRes] =
+      await Promise.all([
+        api.skillsList(cwd).catch((e) => ({
+          skills: [] as api.SkillDto[],
+          error: String(e),
+        })),
+        api.inspectMcp(cwd).catch((e) => ({
+          servers: [] as api.McpDto[],
+          error: String(e),
+        })),
+        api.pluginsList().catch((e) => ({
+          plugins: [] as api.PluginDto[],
+          error: String(e),
+        })),
+        api.agentsList(cwd).catch(
+          (e): api.AgentsListResult => ({
+            agents: [],
+            personas: [],
+            error: String(e),
+          }),
+        ),
+        api.providersList().catch(() => null),
+      ]);
     setSkills(sortSkillsByName(skillsRes.skills ?? []));
     setServers(sortMcpByName(mcpRes.servers ?? []));
     setPlugins(sortPluginsByName(pluginsRes.plugins ?? []));
+    setAgents(sortAgentDefs(agentsRes.agents ?? []));
+    setPersonas(sortPersonaDefs(agentsRes.personas ?? []));
+    setUserAgentsDir(agentsRes.userAgentsDir?.trim() || null);
+    setProjectAgentsDir(agentsRes.projectAgentsDir?.trim() || null);
+    setUserPersonasDir(agentsRes.userPersonasDir?.trim() || null);
     setSkillsError(skillsRes.error?.trim() ? skillsRes.error : null);
     setMcpError(mcpRes.error?.trim() ? mcpRes.error : null);
     setPluginsError(pluginsRes.error?.trim() ? pluginsRes.error : null);
+    setAgentsError(agentsRes.error?.trim() ? agentsRes.error : null);
     if (providersRes) {
       setAgentHome(providersRes.agentHome?.trim() || null);
       setConfigPath(providersRes.configPath?.trim() || null);
@@ -179,6 +217,35 @@ export function ExtensionsPanel({
       setPathHint(null);
     } catch (e) {
       setPathHint(String(e));
+    }
+  };
+
+  const openPath = async (path: string | null | undefined) => {
+    const p = (path ?? "").trim();
+    if (!p || !api.isTauri()) return;
+    try {
+      await api.pathOpen(p);
+      setPathHint(null);
+    } catch (e) {
+      setPathHint(String(e));
+    }
+  };
+
+  /** Open folder if it exists; otherwise reveal/create parent hint. */
+  const openFolder = async (path: string | null | undefined) => {
+    const p = (path ?? "").trim();
+    if (!p || !api.isTauri()) return;
+    try {
+      await api.pathOpen(p);
+      setPathHint(null);
+    } catch {
+      // Dir may not exist yet — try reveal so Finder focuses parent path area.
+      try {
+        await api.pathReveal(p);
+        setPathHint(null);
+      } catch (e) {
+        setPathHint(String(e));
+      }
     }
   };
 
@@ -722,6 +789,187 @@ export function ExtensionsPanel({
         {!loading ? (
           <p className="ext-section-note">{tr("ext.plugins.note")}</p>
         ) : null}
+      </div>
+
+      {/* Agents — markdown defs under ~/.grok/agents and project .grok/agents */}
+      <h2 className="settings-page__h2">
+        <IconRobot size={15} />
+        {tr("ext.agents.title")}
+        {!loading ? (
+          <span className="ext-count">{agents.length}</span>
+        ) : null}
+      </h2>
+      <div className="settings-card ext-card" data-testid="ext-agents">
+        <p className="ext-section-note ext-section-note--top">
+          {tr("ext.agents.blurb")}
+        </p>
+        {agentsError ? (
+          <p className="ext-alert ext-alert--warn" role="status">
+            {agentsError}
+          </p>
+        ) : null}
+        {(userAgentsDir || projectAgentsDir) && (
+          <div className="ext-folder-actions">
+            {userAgentsDir ? (
+              <button
+                type="button"
+                className="btn btn--ghost btn--sm"
+                title={userAgentsDir}
+                onClick={() => void openFolder(userAgentsDir)}
+              >
+                <IconFolder size={13} />
+                <span>{tr("ext.agents.openUserFolder")}</span>
+              </button>
+            ) : null}
+            {projectAgentsDir ? (
+              <button
+                type="button"
+                className="btn btn--ghost btn--sm"
+                title={projectAgentsDir}
+                onClick={() => void openFolder(projectAgentsDir)}
+              >
+                <IconFolder size={13} />
+                <span>{tr("ext.agents.openProjectFolder")}</span>
+              </button>
+            ) : null}
+          </div>
+        )}
+        {loading && <p className="ext-empty">{tr("ext.agents.loading")}</p>}
+        {!loading && agents.length === 0 && (
+          <p className="ext-empty">{tr("ext.agents.empty")}</p>
+        )}
+        {!loading && agents.length > 0 && (
+          <ul className="ext-list">
+            {agents.map((a) => {
+              const tone = agentScopeTone(a.scope);
+              const meta = agentMetaLine(a);
+              return (
+                <li key={`${a.scope}:${a.path}`} className="ext-item">
+                  <div className="ext-item__head">
+                    <strong className="ext-item__name">{a.name}</strong>
+                    <span className={`ext-badge ext-badge--${tone}`}>
+                      {a.scope}
+                    </span>
+                  </div>
+                  {meta ? <p className="ext-item__desc">{meta}</p> : null}
+                  <div className="ext-item__meta">
+                    {a.path ? (
+                      <button
+                        type="button"
+                        className="ext-path-btn"
+                        title={a.path}
+                        onClick={() => void reveal(a.path)}
+                      >
+                        <IconFolder size={13} />
+                        <span>{shortPathLabel(a.path, 42)}</span>
+                      </button>
+                    ) : null}
+                  </div>
+                  <div className="ext-item__actions">
+                    <button
+                      type="button"
+                      className="btn btn--ghost btn--sm"
+                      disabled={!a.path}
+                      onClick={() => void openPath(a.path)}
+                    >
+                      {tr("ext.agents.openFile")}
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn--ghost btn--sm"
+                      disabled={!a.path}
+                      onClick={() => void reveal(a.path)}
+                    >
+                      {tr("ext.reveal")}
+                    </button>
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+        <p className="ext-section-note">{tr("ext.agents.note")}</p>
+      </div>
+
+      {/* Personas — subagent tone files */}
+      <h2 className="settings-page__h2">
+        <IconUser size={15} />
+        {tr("ext.personas.title")}
+        {!loading ? (
+          <span className="ext-count">{personas.length}</span>
+        ) : null}
+      </h2>
+      <div className="settings-card ext-card" data-testid="ext-personas">
+        <p className="ext-section-note ext-section-note--top">
+          {tr("ext.personas.blurb")}
+        </p>
+        {userPersonasDir ? (
+          <div className="ext-folder-actions">
+            <button
+              type="button"
+              className="btn btn--ghost btn--sm"
+              title={userPersonasDir}
+              onClick={() => void openFolder(userPersonasDir)}
+            >
+              <IconFolder size={13} />
+              <span>{tr("ext.personas.openUserFolder")}</span>
+            </button>
+          </div>
+        ) : null}
+        {loading && <p className="ext-empty">{tr("ext.personas.loading")}</p>}
+        {!loading && personas.length === 0 && (
+          <p className="ext-empty">{tr("ext.personas.empty")}</p>
+        )}
+        {!loading && personas.length > 0 && (
+          <ul className="ext-list">
+            {personas.map((p) => {
+              const tone = agentScopeTone(p.scope);
+              const meta = personaMetaLine(p);
+              return (
+                <li key={`${p.scope}:${p.path}`} className="ext-item">
+                  <div className="ext-item__head">
+                    <strong className="ext-item__name">{p.name}</strong>
+                    <span className={`ext-badge ext-badge--${tone}`}>
+                      {p.scope}
+                    </span>
+                  </div>
+                  {meta ? <p className="ext-item__desc">{meta}</p> : null}
+                  <div className="ext-item__meta">
+                    {p.path ? (
+                      <button
+                        type="button"
+                        className="ext-path-btn"
+                        title={p.path}
+                        onClick={() => void reveal(p.path)}
+                      >
+                        <IconFolder size={13} />
+                        <span>{shortPathLabel(p.path, 42)}</span>
+                      </button>
+                    ) : null}
+                  </div>
+                  <div className="ext-item__actions">
+                    <button
+                      type="button"
+                      className="btn btn--ghost btn--sm"
+                      disabled={!p.path}
+                      onClick={() => void openPath(p.path)}
+                    >
+                      {tr("ext.agents.openFile")}
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn--ghost btn--sm"
+                      disabled={!p.path}
+                      onClick={() => void reveal(p.path)}
+                    >
+                      {tr("ext.reveal")}
+                    </button>
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+        )}
       </div>
 
       {/* Skills */}

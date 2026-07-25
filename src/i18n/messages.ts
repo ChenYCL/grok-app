@@ -1111,9 +1111,9 @@ const en = {
   "mcpModal.empty": "No MCP servers discovered",
   "mcpModal.manage": "Manage in Settings",
 
-  // Settings → Extensions (Plugins + Skills + MCP)
+  // Settings → Extensions (Plugins + Skills + MCP + Agents)
   "ext.lead":
-    "Plugins via `grok plugin`, plus Skills/MCP from `grok inspect`. Toggle MCP/skills enable for session inject and slash filter. Project scope uses the active workbench folder as cwd for inspect; plugins are user-global.",
+    "Plugins via `grok plugin`, Skills/MCP from `grok inspect`, and agent/persona definition files under ~/.grok (plus project .grok). Toggle MCP/skills enable for session inject and slash filter. Project scope uses the active workbench folder as cwd for inspect; plugins are user-global.",
   "ext.refresh": "Refresh",
   "ext.refreshing": "Refreshing…",
   "ext.scope.project": "Project",
@@ -1169,6 +1169,24 @@ const en = {
   "ext.skills.empty": "No skills discovered",
   "ext.skills.emptyCli": "Skills are unavailable until the CLI is installed.",
   "ext.skills.invocable": "Slash",
+  "ext.agents.title": "Agents",
+  "ext.agents.loading": "Loading agent definitions…",
+  "ext.agents.empty":
+    "No agent definition files found. Add markdown under ~/.grok/agents or .grok/agents in a project.",
+  "ext.agents.blurb":
+    "Definition files Grok Build discovers for profiles and subagents. Open or reveal a file to edit it; runtime selection uses CLI flags / config, not this panel.",
+  "ext.agents.note":
+    "Pick an agent at spawn with `grok --agent <name>`, `[agent]` in config.toml, or GROK_AGENT. The App does not switch the live ACP session agent (protocol has no session agent switch).",
+  "ext.agents.openFile": "Open file",
+  "ext.agents.openUserFolder": "Open user agents folder",
+  "ext.agents.openProjectFolder": "Open project agents folder",
+  "ext.personas.title": "Personas",
+  "ext.personas.loading": "Loading personas…",
+  "ext.personas.empty":
+    "No persona files found. Add .toml or .md under ~/.grok/personas or project .grok/personas.",
+  "ext.personas.blurb":
+    "Subagent personas layer tone and instructions when a child agent is spawned. Edit files on disk; the CLI loads them at runtime.",
+  "ext.personas.openUserFolder": "Open user personas folder",
   "ext.mcp.title": "MCP servers",
   "ext.mcp.loading": "Loading MCP servers…",
   "ext.mcp.empty": "No MCP servers discovered",
@@ -2416,9 +2434,9 @@ const zh: Record<MessageKey, string> = {
   "mcpModal.empty": "未发现 MCP 服务器",
   "mcpModal.manage": "在设置中管理",
 
-  // Settings → Extensions (Plugins + Skills + MCP)
+  // Settings → Extensions (Plugins + Skills + MCP + Agents)
   "ext.lead":
-    "通过 `grok plugin` 管理插件，以及 `grok inspect` 发现的技能与 MCP。开关控制会话注入与斜杠技能过滤；inspect 有当前项目时以该目录为 cwd；插件为用户全局范围。",
+    "通过 `grok plugin` 管理插件、`grok inspect` 发现技能与 MCP，并列出 ~/.grok（及项目 .grok）下的 Agent/Persona 定义文件。开关控制会话注入与斜杠技能过滤；inspect 有当前项目时以该目录为 cwd；插件为用户全局范围。",
   "ext.refresh": "刷新",
   "ext.refreshing": "刷新中…",
   "ext.scope.project": "项目",
@@ -2473,6 +2491,24 @@ const zh: Record<MessageKey, string> = {
   "ext.skills.empty": "未发现技能",
   "ext.skills.emptyCli": "安装 CLI 后才能查看技能。",
   "ext.skills.invocable": "斜杠",
+  "ext.agents.title": "Agents",
+  "ext.agents.loading": "正在加载 Agent 定义…",
+  "ext.agents.empty":
+    "未发现 Agent 定义文件。可在 ~/.grok/agents 或项目 .grok/agents 下添加 Markdown。",
+  "ext.agents.blurb":
+    "Grok Build 用于配置文件与子代理的定义文件。可打开或在文件管理器中显示以便编辑；运行时选用依赖 CLI 参数 / 配置，而非本面板。",
+  "ext.agents.note":
+    "启动时用 `grok --agent <name>`、config.toml 的 `[agent]` 或 GROK_AGENT 选择 Agent。应用不会切换当前 ACP 会话的 Agent（协议不支持会话级切换）。",
+  "ext.agents.openFile": "打开文件",
+  "ext.agents.openUserFolder": "打开用户 agents 目录",
+  "ext.agents.openProjectFolder": "打开项目 agents 目录",
+  "ext.personas.title": "Personas",
+  "ext.personas.loading": "正在加载 Persona…",
+  "ext.personas.empty":
+    "未发现 Persona 文件。可在 ~/.grok/personas 或项目 .grok/personas 下添加 .toml / .md。",
+  "ext.personas.blurb":
+    "子代理 Persona 在派生子会话时叠加语气与指令。在磁盘上编辑文件即可；CLI 在运行时加载。",
+  "ext.personas.openUserFolder": "打开用户 personas 目录",
   "ext.mcp.title": "MCP 服务器",
   "ext.mcp.loading": "正在加载 MCP…",
   "ext.mcp.empty": "未发现 MCP 服务器",

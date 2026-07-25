@@ -1177,6 +1177,46 @@ export async function skillsList(projectPath?: string | null) {
   });
 }
 
+/** Agent definition file discovered under user / project / bundled scopes. */
+export interface AgentDefDto {
+  name: string;
+  path: string;
+  /** "project" | "user" | "bundled" */
+  scope: string;
+  description?: string | null;
+}
+
+/** Persona definition file (subagent tone/instructions). */
+export interface PersonaDefDto {
+  name: string;
+  path: string;
+  scope: string;
+}
+
+/** Disk discovery for Grok Build agent / persona definition files. */
+export interface AgentsListResult {
+  agents: AgentDefDto[];
+  personas: PersonaDefDto[];
+  userAgentsDir?: string | null;
+  projectAgentsDir?: string | null;
+  bundledAgentsDir?: string | null;
+  userPersonasDir?: string | null;
+  projectPersonasDir?: string | null;
+  bundledPersonasDir?: string | null;
+  /** Host-side failure (rare; discovery is filesystem-only). */
+  error?: string | null;
+}
+
+/**
+ * List agent + persona definition files from ~/.grok and optional project
+ * `.grok` dirs. Does not require the CLI binary.
+ */
+export async function agentsList(projectPath?: string | null) {
+  return invoke<AgentsListResult>("agents_list", {
+    projectPath: projectPath ?? null,
+  });
+}
+
 /** List MCP servers via `grok inspect --json` (optional project cwd). */
 export async function inspectMcp(projectPath?: string | null) {
   return invoke<InspectMcpResult>("inspect_mcp", {

@@ -196,6 +196,7 @@ pub fn run() {
             commands::export_session_bundle,
             commands::reset_app_data,
             commands::skills_list,
+            commands::agents_list,
             commands::inspect_mcp,
             commands::project_inspect,
             commands::extensions_get,
