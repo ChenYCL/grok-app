@@ -412,6 +412,13 @@ export default function App() {
     points: Array<{ promptIndex: number; messageId?: string | null; preview: string }>;
   } | null>(null);
   const [rewindBusy, setRewindBusy] = useState(false);
+  /** Confirm rewind target + optional file restore (default off). */
+  const [rewindConfirm, setRewindConfirm] = useState<{
+    sessionId: string;
+    targetPromptIndex: number;
+    preview?: string;
+  } | null>(null);
+  const [rewindRestoreFiles, setRewindRestoreFiles] = useState(false);
   /** Last user message open in inline edit (not main composer). */
   const [editingUserMessageId, setEditingUserMessageId] = useState<
     string | null
@@ -4738,9 +4745,14 @@ export default function App() {
 
   /**
    * Apply rewind: truncate local journal (+ agent when live), refresh messages UI.
+   * `restoreFiles` is opt-in (safe default off) — reverts workspace files when agent supports it.
    */
   const runRewindToPrompt = useCallback(
-    async (sessionId: string, targetPromptIndex: number) => {
+    async (
+      sessionId: string,
+      targetPromptIndex: number,
+      restoreFiles = false,
+    ) => {
       if (!api.isTauri()) {
         showToast(tr("error.needTauri"));
         return;
@@ -4766,7 +4778,7 @@ export default function App() {
 
         const result = await api.sessionRewindExecute(targetPromptIndex, {
           sessionId,
-          restoreFiles: false,
+          restoreFiles,
         });
 
         // Refresh UI from truncated journal.
@@ -4802,6 +4814,8 @@ export default function App() {
         }
 
         setRewindTimeline(null);
+        setRewindConfirm(null);
+        setRewindRestoreFiles(false);
         if (result.agentOk) {
           showToast(tr("session.rewindOk"), 2600);
         } else {
@@ -4822,21 +4836,15 @@ export default function App() {
   const confirmRewindToPrompt = useCallback(
     (sessionId: string, targetPromptIndex: number, preview?: string) => {
       setCtxMenu(null);
-      const msgPreview = preview?.trim()
-        ? `\n\n“${preview.trim()}”`
-        : "";
-      setAppDialog({
-        kind: "confirm",
-        title: tr("session.rewindTitle"),
-        message: tr("session.rewindConfirm") + msgPreview,
-        confirmLabel: tr("session.rewindConfirmLabel"),
-        danger: true,
-        onConfirm: () => {
-          void runRewindToPrompt(sessionId, targetPromptIndex);
-        },
+      // GlassModal with restore-files checkbox (default off) — not bare setAppDialog.
+      setRewindRestoreFiles(false);
+      setRewindConfirm({
+        sessionId,
+        targetPromptIndex,
+        preview: preview?.trim() || undefined,
       });
     },
-    [runRewindToPrompt, tr],
+    [],
   );
 
   const openRewindTimeline = useCallback(
@@ -8827,6 +8835,73 @@ export default function App() {
           </div>
         </div>
       )}
+
+      <GlassModal
+        open={!!rewindConfirm}
+        onClose={() => {
+          if (rewindBusy) return;
+          setRewindConfirm(null);
+          setRewindRestoreFiles(false);
+        }}
+        title={tr("session.rewindTitle")}
+        size="sm"
+        closeLabel={tr("common.close")}
+        closeOnOverlay={!rewindBusy}
+        showClose={!rewindBusy}
+        wrapBody
+        className="rewind-confirm-modal"
+        footer={
+          <>
+            <button
+              type="button"
+              className="btn btn--ghost"
+              disabled={rewindBusy}
+              onClick={() => {
+                setRewindConfirm(null);
+                setRewindRestoreFiles(false);
+              }}
+            >
+              {tr("common.cancel")}
+            </button>
+            <button
+              type="button"
+              className="btn btn--danger"
+              disabled={rewindBusy || !rewindConfirm}
+              onClick={() => {
+                if (!rewindConfirm) return;
+                void runRewindToPrompt(
+                  rewindConfirm.sessionId,
+                  rewindConfirm.targetPromptIndex,
+                  rewindRestoreFiles,
+                );
+              }}
+            >
+              {tr("session.rewindConfirmLabel")}
+            </button>
+          </>
+        }
+      >
+        <div className="rewind-confirm">
+          <p className="rewind-confirm__msg">
+            {tr("session.rewindConfirm")}
+            {rewindConfirm?.preview
+              ? `\n\n“${rewindConfirm.preview}”`
+              : ""}
+          </p>
+          <label className="rewind-confirm__restore">
+            <input
+              type="checkbox"
+              checked={rewindRestoreFiles}
+              disabled={rewindBusy}
+              onChange={(e) => setRewindRestoreFiles(e.target.checked)}
+            />
+            <span>{tr("session.rewindRestoreFiles")}</span>
+          </label>
+          <p className="rewind-confirm__hint">
+            {tr("session.rewindRestoreFilesHint")}
+          </p>
+        </div>
+      </GlassModal>
 
       {showCompactModal && (
         <div
