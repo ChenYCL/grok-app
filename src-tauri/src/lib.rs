@@ -204,6 +204,7 @@ pub fn run() {
             commands::session_media_root,
             commands::session_resolve_relative_media,
             commands::settings_get,
+            commands::store_take_quarantine,
             commands::settings_set,
             commands::memory_clear,
             commands::settings_remember_last_session,

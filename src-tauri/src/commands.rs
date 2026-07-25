@@ -625,6 +625,12 @@ pub async fn settings_get() -> Result<AppSettings, String> {
     Ok(store::load_settings())
 }
 
+/// One-shot notice after corrupt store files were quarantined on load.
+#[tauri::command]
+pub fn store_take_quarantine() -> Option<String> {
+    store::take_store_quarantine()
+}
+
 #[tauri::command]
 pub async fn settings_set(
     app: tauri::AppHandle,
