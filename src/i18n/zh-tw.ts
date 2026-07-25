@@ -1081,7 +1081,6 @@ export const zhTW: Record<MessageKey, string> = {
   "ext.enableAll": "全部啟用",
   "ext.footnote":
     "開關會寫入應用資料，並在新對話中注入已啟用的 MCP（ACP mcpServers + agent-home 設定）。停用技能仍保留在磁碟，但不會出現在斜線面板。外掛安裝支援路徑/git/GitHub 簡寫；完整市集瀏覽仍僅 CLI。",
-    "開關會寫入應用資料，並在新對話中注入已啟用的 MCP（ACP mcpServers + agent-home 設定）。停用技能仍保留在磁碟，但不會出現在斜線面板。Agent/Persona 定義僅開啟檔案，選用由 CLI/設定決定。",
   "error.needTauri": "需要在 Tauri 視窗中選擇目錄",
   "common.comingSoon": "即將推出",
   "common.local": "本機",

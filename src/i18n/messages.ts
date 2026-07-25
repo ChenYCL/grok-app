@@ -1121,7 +1121,6 @@ const en = {
   "ext.enableAll": "Enable all",
   "ext.footnote":
     "Toggles persist under app data and inject enabled MCP into agent sessions. Disabled skills stay on disk but hide from the slash palette. Plugin install accepts path/git/GitHub shorthand; full marketplace browse stays CLI-only.",
-    "Toggles persist under app data and inject enabled MCP into agent sessions. Disabled skills stay on disk but hide from the slash palette. Agent/persona defs are opened as files — selection is CLI/config. Plugin marketplace install remains CLI-only.",
 
   // Errors / misc
   "error.needTauri": "Folder picker requires the Tauri window",
@@ -2339,7 +2338,6 @@ const zh: Record<MessageKey, string> = {
   "ext.enableAll": "全部启用",
   "ext.footnote":
     "开关会写入应用数据，并在新会话中注入已启用的 MCP（ACP mcpServers + agent-home 配置）。禁用技能仍保留在磁盘，但不会出现在斜杠面板。插件安装支持路径/git/GitHub 简写；完整市场浏览仍仅 CLI。",
-    "开关会写入应用数据，并在新会话中注入已启用的 MCP（ACP mcpServers + agent-home 配置）。禁用技能仍保留在磁盘，但不会出现在斜杠面板。Agent/Persona 定义仅打开文件，选用由 CLI/配置决定。",
   "error.needTauri": "需要在 Tauri 窗口中选择目录",
   "common.comingSoon": "即将推出",
   "common.local": "本地",
