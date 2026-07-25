@@ -340,6 +340,74 @@ interface PlanState {
   barDismissed?: boolean;
 }
 
+/** Empty plan chrome for a session with no live plan (or after hard dismiss). */
+function emptySessionPlan(title = "Plan ready for review"): PlanState & {
+  visible: boolean;
+} {
+  return {
+    title,
+    body: "",
+    entries: [],
+    waiting: true,
+    visible: false,
+    rpcId: null,
+    toolCallId: null,
+    barDismissed: false,
+  };
+}
+
+/** Merge a `session://plan` payload into previous session plan state. */
+function mergePlanFromEvent(
+  prev: PlanState & { visible: boolean },
+  p: {
+    entries?: unknown[];
+    body?: string | null;
+    rpcId?: number | null;
+    toolCallId?: string | null;
+    waiting?: boolean;
+  },
+  readyTitle: string,
+): PlanState & { visible: boolean } {
+  const body = (p.body || "").trim();
+  const entries = Array.isArray(p.entries) ? p.entries : [];
+  let displayBody = body;
+  if (!displayBody && entries.length) {
+    displayBody = entries
+      .map((e, i) => {
+        if (e && typeof e === "object") {
+          const o = e as Record<string, unknown>;
+          const content = String(o.content ?? o.title ?? o.text ?? "");
+          const st = o.status ? ` [${o.status}]` : "";
+          const pr = o.priority ? ` (${o.priority})` : "";
+          return `${i + 1}. ${content}${pr}${st}`;
+        }
+        return `${i + 1}. ${String(e)}`;
+      })
+      .join("\n");
+  }
+  // Preserve exit_plan_mode rpcId across later sessionUpdate plan
+  // notifications (those arrive with rpcId=null and would otherwise
+  // disable Approve / Request changes — see #17).
+  const rpcId =
+    p.rpcId != null ? p.rpcId : prev.visible ? (prev.rpcId ?? null) : null;
+  return {
+    title: readyTitle,
+    body: displayBody || (prev.visible ? prev.body : ""),
+    entries: entries.length ? entries : prev.visible ? prev.entries : [],
+    waiting: rpcId == null,
+    visible: true,
+    rpcId,
+    toolCallId:
+      p.toolCallId != null
+        ? p.toolCallId
+        : prev.visible
+          ? (prev.toolCallId ?? null)
+          : null,
+    // New plan activity always resurfaces the top progress bar.
+    barDismissed: false,
+  };
+}
+
 export default function App() {
   const [theme, setTheme] = useState<Theme>(() => loadTheme(localStorage));
   const [layout, setLayout] = useState(() => loadLayout(localStorage));
@@ -689,17 +757,20 @@ export default function App() {
   /** Polite SR announce for stream start/stop (not every token). */
   const [streamA11yNote, setStreamA11yNote] = useState("");
   const wasStreamingRef = useRef(false);
-  const [plan, setPlan] = useState<PlanState & { visible: boolean }>({
-    title: "Plan ready for review",
-    body: "",
-    entries: [],
-    waiting: true,
-    // Only show when Agent sends a plan event (or user opens Plan mode later)
-    visible: false,
-    rpcId: null,
-    toolCallId: null,
-    barDismissed: false,
-  });
+  const [plan, setPlan] = useState<PlanState & { visible: boolean }>(() =>
+    emptySessionPlan(),
+  );
+  /** Latest plan for the viewed session (mirrors `plan` for switch/cache). */
+  const planRef = useRef(plan);
+  planRef.current = plan;
+  /**
+   * Plan UI is session-scoped: switching chats restores that session's plan
+   * (or hides the bar when the target has none). Live events for background
+   * sessions update this map without touching the bar.
+   */
+  const planBySessionRef = useRef(
+    new Map<string, PlanState & { visible: boolean }>(),
+  );
   const [locale, setLocale] = useState<Locale>("zh");
   const localeRef = useRef(locale);
   localeRef.current = locale;
@@ -1690,42 +1761,30 @@ export default function App() {
             waiting?: boolean;
           }>("session://plan", (p) => {
             if (cancelled) return;
+            const readyTitle = trRef.current("plan.ready");
+            const targetSid =
+              (p.sessionId && p.sessionId.trim()) ||
+              viewingSessionIdRef.current ||
+              null;
+
+            // Background session: keep plan cache warm without stealing the bar.
             if (
               p.sessionId &&
               p.sessionId !== viewingSessionIdRef.current
             ) {
+              const prev =
+                planBySessionRef.current.get(p.sessionId) ??
+                emptySessionPlan(readyTitle);
+              const next = mergePlanFromEvent(prev, p, readyTitle);
+              planBySessionRef.current.set(p.sessionId, next);
               return;
             }
-            const body = (p.body || "").trim();
-            const entries = Array.isArray(p.entries) ? p.entries : [];
-            // Prefer markdown planContent; fall back to readable entries list
-            let displayBody = body;
-            if (!displayBody && entries.length) {
-              displayBody = entries
-                .map((e, i) => {
-                  if (e && typeof e === "object") {
-                    const o = e as Record<string, unknown>;
-                    const content = String(o.content ?? o.title ?? o.text ?? "");
-                    const st = o.status ? ` [${o.status}]` : "";
-                    const pr = o.priority ? ` (${o.priority})` : "";
-                    return `${i + 1}. ${content}${pr}${st}`;
-                  }
-                  return `${i + 1}. ${String(e)}`;
-                })
-                .join("\n");
-            }
-            // Preserve exit_plan_mode rpcId across later sessionUpdate plan
-            // notifications (those arrive with rpcId=null and would otherwise
-            // disable Approve / Request changes — see #17).
+
             setPlan((prev) => {
-              const rpcId =
-                p.rpcId != null
-                  ? p.rpcId
-                  : prev.visible
-                    ? (prev.rpcId ?? null)
-                    : null;
+              const next = mergePlanFromEvent(prev, p, readyTitle);
               const becameReview =
-                rpcId != null && (prev.rpcId == null || !prev.visible);
+                next.rpcId != null &&
+                (prev.rpcId == null || !prev.visible);
               if (becameReview) {
                 // Auto-open resource Plan workbench when gate is ready.
                 queueMicrotask(() => {
@@ -1738,26 +1797,10 @@ export default function App() {
                   setPlanFocusKey((k) => k + 1);
                 });
               }
-              return {
-                title: tr("plan.ready"),
-                body: displayBody || (prev.visible ? prev.body : ""),
-                entries: entries.length
-                  ? entries
-                  : prev.visible
-                    ? prev.entries
-                    : [],
-                waiting: rpcId == null,
-                visible: true,
-                rpcId,
-                toolCallId:
-                  p.toolCallId != null
-                    ? p.toolCallId
-                    : prev.visible
-                      ? (prev.toolCallId ?? null)
-                      : null,
-                // New plan activity always resurfaces the top progress bar.
-                barDismissed: false,
-              };
+              if (targetSid) {
+                planBySessionRef.current.set(targetSid, next);
+              }
+              return next;
             });
           }),
         );
@@ -1781,6 +1824,68 @@ export default function App() {
                   ? { ...prev, title: p.title! }
                   : prev,
               );
+            },
+          ),
+        );
+        // Remote IM wrote sessions_index / messages.json — refresh sidebar +
+        // reload journal if the user is currently viewing that session.
+        await track(
+          api.listen<{ sessionId?: string; source?: string }>(
+            "session://index_changed",
+            (p) => {
+              if (cancelled) return;
+              void (async () => {
+                try {
+                  const list = await api.sessionsList();
+                  if (cancelled) return;
+                  setSessions(
+                    list.map((s) => ({
+                      id: s.id,
+                      title: s.title,
+                      projectId: s.projectId,
+                      updatedAt: s.updatedAt,
+                      archived: !!s.archived,
+                      pinned: !!s.pinned,
+                      scheduled: !!s.scheduled,
+                    })),
+                  );
+                  const sid = p?.sessionId;
+                  if (
+                    !sid ||
+                    viewingSessionIdRef.current !== sid ||
+                    openingSessionIdRef.current
+                  ) {
+                    return;
+                  }
+                  // Drop cache so preferSessionMessages cannot hide disk IM turns.
+                  messagesBySessionRef.current.delete(sid);
+                  const stored = await api.sessionMessages(sid);
+                  if (cancelled || viewingSessionIdRef.current !== sid) return;
+                  const mapped: ChatMessage[] = stored.map((m) => {
+                    const parsed = parseAttachmentsFromContent(m.content);
+                    const rawContent =
+                      parsed.text ||
+                      (parsed.attachments.length ? "" : m.content);
+                    const content =
+                      m.role === "user"
+                        ? hydrateDisplayContent(rawContent)
+                        : rawContent;
+                    return {
+                      id: m.id,
+                      role: m.role as "user" | "assistant" | "tool",
+                      content,
+                      thought: m.thought ?? undefined,
+                      isError: m.isError || undefined,
+                      createdAt: m.createdAt || undefined,
+                      streaming: false,
+                    };
+                  });
+                  messagesBySessionRef.current.set(sid, mapped);
+                  setMessages(mapped);
+                } catch {
+                  /* ignore */
+                }
+              })();
             },
           ),
         );
@@ -1862,6 +1967,7 @@ export default function App() {
           "account",
           "archived",
           "extensions",
+          "remote_im",
           "runtime",
           "shortcuts",
           "about",
@@ -1899,11 +2005,18 @@ export default function App() {
     const leavingId = viewingSessionIdRef.current;
     if (leavingId) {
       messagesBySessionRef.current.set(leavingId, messagesRef.current);
+      // Plan progress is per-session — stash bar state before switching.
+      planBySessionRef.current.set(leavingId, planRef.current);
     }
 
     // Point viewing id immediately so late stream chunks land in the right cache.
     openingSessionIdRef.current = s.id;
     viewingSessionIdRef.current = s.id;
+    // Swap plan chrome to this session (or hide if none / not yet streamed).
+    setPlan(
+      planBySessionRef.current.get(s.id) ??
+        emptySessionPlan(trRef.current("plan.ready")),
+    );
     setEditingUserMessageId(null);
     setEditAttachments([]);
 
@@ -2270,6 +2383,7 @@ export default function App() {
       if (cachedLeaving) {
         messagesBySessionRef.current.set(leavingId, cachedLeaving);
       }
+      planBySessionRef.current.set(leavingId, planRef.current);
     }
     viewingSessionIdRef.current = null;
     setMessages([]);
@@ -2277,13 +2391,7 @@ export default function App() {
     setDraft(opts?.seedDraft ?? "");
     setAttachments([]);
     sendQueue.clearDraftQueue();
-    setPlan({
-      title: "Plan ready for review",
-      body: "",
-      entries: [],
-      waiting: true,
-      visible: false,
-    });
+    setPlan(emptySessionPlan(tr("plan.ready")));
     setPerm(null);
     setAskUser(null);
     setRetryStatus(null);
@@ -2984,6 +3092,7 @@ export default function App() {
           for (const s of rows) {
             await api.sessionDelete(s.id);
             messagesBySessionRef.current.delete(s.id);
+            planBySessionRef.current.delete(s.id);
           }
           sendQueue.dropSessions(deletedIds);
           await refreshSessions();
@@ -4492,23 +4601,32 @@ export default function App() {
     void startVoice();
   }, [cancelVoice, startVoice, stopVoice]);
 
+  const writePlanForViewing = useCallback(
+    (next: PlanState & { visible: boolean }) => {
+      const sid = viewingSessionIdRef.current;
+      if (sid) planBySessionRef.current.set(sid, next);
+      setPlan(next);
+    },
+    [],
+  );
+
   const approvePlan = useCallback(async () => {
     try {
       await api.sessionResolvePlan({
         decision: "approved",
         rpcId: plan.rpcId,
       });
-      setPlan((p) => ({
-        ...p,
+      writePlanForViewing({
+        ...planRef.current,
         visible: false,
         waiting: false,
         rpcId: null,
-      }));
+      });
       showToast(tr("plan.approvedToast"), 2500);
     } catch (e) {
       showToast(String(e), 4500);
     }
-  }, [plan.rpcId, showToast, tr]);
+  }, [plan.rpcId, showToast, tr, writePlanForViewing]);
 
   const requestPlanChanges = useCallback(async () => {
     try {
@@ -4517,17 +4635,17 @@ export default function App() {
         feedback: tr("plan.reviseFeedback"),
         rpcId: plan.rpcId,
       });
-      setPlan((p) => ({
-        ...p,
+      writePlanForViewing({
+        ...planRef.current,
         visible: false,
         waiting: false,
         rpcId: null,
-      }));
+      });
       showToast(tr("plan.reviseToast"), 2800);
     } catch (e) {
       showToast(String(e), 4500);
     }
-  }, [plan.rpcId, showToast, tr]);
+  }, [plan.rpcId, showToast, tr, writePlanForViewing]);
 
   const dismissPlan = useCallback(async () => {
     // Review gate: abandon RPC and clear plan UI entirely.
@@ -4540,23 +4658,23 @@ export default function App() {
       } catch {
         /* hide UI anyway */
       }
-      setPlan((p) => ({
-        ...p,
+      writePlanForViewing({
+        ...planRef.current,
         visible: false,
         waiting: true,
         entries: [],
         body: "",
         rpcId: null,
         barDismissed: false,
-      }));
+      });
       return;
     }
     // Execution progress only: soft-hide top bar; keep entries for later updates.
-    setPlan((p) => ({
-      ...p,
+    writePlanForViewing({
+      ...planRef.current,
       barDismissed: true,
-    }));
-  }, [plan.rpcId]);
+    });
+  }, [plan.rpcId, writePlanForViewing]);
 
   /** Open resource pane Plan review (replaces scroll-to-card “详情”). */
   const openPlanInResource = useCallback(() => {
@@ -5601,6 +5719,7 @@ export default function App() {
               "account",
               "archived",
               "extensions",
+              "remote_im",
               "runtime",
               "shortcuts",
               "about",
@@ -6751,6 +6870,9 @@ export default function App() {
           onSkillsPrefsChanged={() =>
             setSkillsReloadToken((n) => n + 1)
           }
+          trustedProjects={projects
+            .filter((p) => p.trusted)
+            .map((p) => ({ id: p.id, name: p.name, path: p.path }))}
           onProviderActivated={() => {
             // Hot-reload Grok Build: drop live ACP so next send re-spawns with new GROK_HOME config.
             void (async () => {
