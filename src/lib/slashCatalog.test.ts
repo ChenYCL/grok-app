@@ -23,6 +23,10 @@ describe("builtinSlashItems", () => {
       "new",
       "automations",
       "settings",
+      "export",
+      "copy",
+      "find",
+      "extensions",
       "yolo",
     ]);
 
@@ -49,6 +53,30 @@ describe("builtinSlashItems", () => {
     const doctor = items.find((i) => i.name === "doctor")!;
     expect(doctor.kind).toBe("action");
     expect(doctor.action).toBe("doctor");
+
+    const exportItem = items.find((i) => i.id === "export")!;
+    expect(exportItem.kind).toBe("action");
+    expect(exportItem.action).toBe("export");
+    expect(exportItem.titleKey).toBe("slash.export");
+    expect(exportItem.descriptionKey).toBe("slash.exportDesc");
+
+    const copyItem = items.find((i) => i.id === "copy")!;
+    expect(copyItem.kind).toBe("action");
+    expect(copyItem.action).toBe("copy");
+    expect(copyItem.titleKey).toBe("slash.copy");
+    expect(copyItem.descriptionKey).toBe("slash.copyDesc");
+
+    const findItem = items.find((i) => i.id === "find")!;
+    expect(findItem.kind).toBe("action");
+    expect(findItem.action).toBe("find");
+    expect(findItem.titleKey).toBe("slash.find");
+    expect(findItem.descriptionKey).toBe("slash.findDesc");
+
+    const extensionsItem = items.find((i) => i.id === "extensions")!;
+    expect(extensionsItem.kind).toBe("action");
+    expect(extensionsItem.action).toBe("extensions");
+    expect(extensionsItem.titleKey).toBe("slash.extensions");
+    expect(extensionsItem.descriptionKey).toBe("slash.extensionsDesc");
 
     const yolo = items.find((i) => i.name === "yolo")!;
     expect(yolo.kind).toBe("action");
