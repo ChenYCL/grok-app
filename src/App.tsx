@@ -6231,6 +6231,8 @@ export default function App() {
             setSandboxProfile(v);
             void api.settingsGet().then((s) =>
               api.settingsSet({ ...s, sandboxProfile: v }),
+            );
+          }}
           planEnabled={planEnabled}
           onPlanEnabled={(v) => {
             setPlanEnabled(v);

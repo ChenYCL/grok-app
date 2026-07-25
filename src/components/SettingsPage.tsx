@@ -891,6 +891,9 @@ export function SettingsPage({
                         label: t("settings.sandbox.devbox"),
                       },
                     ]}
+                  />
+                </div>
+              ) : null}
               {onPlanEnabled ? (
                 <div className="settings-row">
                   <div className="settings-row__text">
