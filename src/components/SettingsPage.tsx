@@ -469,6 +469,8 @@ export function SettingsPage({
   onStoreApiKeysInKeychain,
   sandboxProfile = "off",
   onSandboxProfile,
+  subagentsEnabled = true,
+  onSubagentsEnabled,
   cliInfo,
   onDoctor,
   versionFooter,
@@ -953,7 +955,28 @@ export function SettingsPage({
               ) : null}
             </div>
 
-            <h2 className="settings-page__h2">{t("settings.section.general")}</h2>
+                        <h2 className="settings-page__h2">{t("settings.section.agent")}</h2>
+            <div className="settings-card" id="settings-agent-card">
+              {onSubagentsEnabled ? (
+                <div className="settings-row">
+                  <div className="settings-row__text">
+                    <div className="settings-row__label">
+                      {t("settings.subagentsEnabled")}
+                    </div>
+                    <div className="settings-row__desc">
+                      {t("settings.subagentsEnabledDesc")}
+                    </div>
+                  </div>
+                  <UiCheck
+                    checked={!!subagentsEnabled}
+                    onChange={() => onSubagentsEnabled(!subagentsEnabled)}
+                    ariaLabel={t("settings.subagentsEnabled")}
+                  />
+                </div>
+              ) : null}
+            </div>
+
+<h2 className="settings-page__h2">{t("settings.section.general")}</h2>
             <div className="settings-card">
               <div className="settings-row">
                 <div className="settings-row__text">
