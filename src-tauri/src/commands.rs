@@ -197,30 +197,11 @@ pub async fn cli_install_commands() -> Result<serde_json::Value, String> {
     Ok(crate::cli_install::install_commands())
 }
 
-/// Run resolved `grok update --check --json` and return a typed DTO.
-#[tauri::command]
-pub async fn cli_update_check() -> Result<crate::cli_update::CliUpdateCheck, String> {
-    tauri::async_runtime::spawn_blocking(|| {
-        let settings = store::load_settings();
-        crate::cli_update::check_cli_update(settings.manual_cli_path.as_deref())
-    })
-    .await
-    .map_err(|e| e.to_string())?
-}
-
-/// Install CLI update: prefer `grok update`, fall back to install trust-chain.
-#[tauri::command]
-pub async fn cli_update_install(
-    app: tauri::AppHandle,
-) -> Result<crate::cli_install::CliInstallResult, String> {
-    crate::cli_update::install_cli_update(app).await
-}
-
 /// Native file picker for a Grok Build binary (manual path).
 #[tauri::command]
 pub async fn pick_cli_binary() -> Result<Option<String>, String> {
     let file = tauri::async_runtime::spawn_blocking(|| {
-        let mut dlg = rfd::FileDialog::new().set_title("Select Grok Build binary");
+        let mut dlg = rfd::FileDialog::new().set_title("Select Grok Build binary / 选择 Grok Build 可执行文件");
         #[cfg(target_os = "windows")]
         {
             dlg = dlg.add_filter("Executable", &["exe", "cmd", "bat"]);
@@ -236,22 +217,6 @@ pub async fn pick_cli_binary() -> Result<Option<String>, String> {
 #[tauri::command]
 pub async fn app_check_update() -> Result<crate::app_update::AppUpdateCheck, String> {
     crate::app_update::check_app_update().await
-}
-
-/// Whether official speech (STT) auth is available for Composer dictation.
-#[tauri::command]
-pub async fn voice_status() -> Result<crate::voice_stt::VoiceStatusDto, String> {
-    Ok(crate::voice_stt::voice_status())
-}
-
-/// Transcribe base64 audio via xAI STT (official token / API key only).
-#[tauri::command]
-pub async fn voice_transcribe(
-    audio_base64: String,
-    filename: Option<String>,
-    mime: Option<String>,
-) -> Result<crate::voice_stt::VoiceTranscribeResult, String> {
-    Ok(crate::voice_stt::voice_transcribe(audio_base64, filename, mime).await)
 }
 
 /// Open a URL in the system browser (docs, install pages).
@@ -385,22 +350,6 @@ pub async fn project_reveal(id: String) -> Result<(), String> {
     Ok(())
 }
 
-/// List existing project rule files (AGENTS.md, CLAUDE.md, `.grok/rules*`, nested AGENTS).
-#[tauri::command]
-pub async fn project_rules_list(
-    path: String,
-) -> Result<crate::project_rules::ProjectRulesListResult, String> {
-    crate::project_rules::list_project_rules(&path)
-}
-
-/// Create root `AGENTS.md` stub when missing (idempotent).
-#[tauri::command]
-pub async fn project_rules_ensure_template(
-    path: String,
-) -> Result<crate::project_rules::ProjectRulesEnsureResult, String> {
-    crate::project_rules::ensure_agents_template(&path)
-}
-
 #[tauri::command]
 pub async fn project_archive_sessions(id: String) -> Result<usize, String> {
     store::archive_project_sessions(&id)
@@ -504,7 +453,7 @@ pub async fn session_set_pinned(id: String, pinned: bool) -> Result<SessionMeta,
     store::set_session_pinned(&id, pinned)
 }
 
-/// Move session under a project (or clear project → orphan / "Other" group).
+/// Move session under a project (or clear project → orphan / 「其他会话」).
 #[tauri::command]
 pub async fn session_set_project(
     app: tauri::AppHandle,
@@ -688,9 +637,12 @@ pub async fn settings_set(
     let memory_flip = prev.experimental_memory != settings.experimental_memory;
     let web_search_flip = prev.disable_web_search != settings.disable_web_search;
     let plan_enabled_flip = prev.plan_enabled != settings.plan_enabled;
-    let subagents_flip = prev.subagents_enabled != settings.subagents_enabled;
-    let preferred_agent_flip = prev.preferred_agent.trim() != settings.preferred_agent.trim();
     let use_leader_changed = prev.use_leader != settings.use_leader;
+    let subagents_flip = prev.subagents_enabled != settings.subagents_enabled;
+    let preferred_agent_flip =
+        prev.preferred_agent.trim() != settings.preferred_agent.trim();
+    let max_turns_flip = prev.max_agent_turns != settings.max_agent_turns;
+    let sandbox_flip = prev.sandbox_profile.trim() != settings.sandbox_profile.trim();
 
     store::save_settings(&settings)?;
 
@@ -698,7 +650,6 @@ pub async fn settings_set(
         if let Err(e) =
             crate::secrets::apply_keychain_preference(settings.store_api_keys_in_keychain)
         {
-            // Revert flag so UI and storage stay consistent.
             let mut rolled = settings.clone();
             rolled.store_api_keys_in_keychain = prev.store_api_keys_in_keychain;
             let _ = store::save_settings(&rolled);
@@ -706,10 +657,11 @@ pub async fn settings_set(
         }
     }
 
-    // independent↔shared changes GROK_HOME — kill live/background/parked agents
-    // so the next connect spawns under the new data root (E04).
     if session_data_mode_changed {
         mgr.recycle_all_agents(&app, "session_data_mode").await;
+    }
+
+    let mut need_soft_respawn = false;
     if memory_flip {
         if let Err(e) = crate::agent_memory::sync_memory_to_agent_profile(
             &settings.session_data_mode,
@@ -717,11 +669,8 @@ pub async fn settings_set(
         ) {
             tracing::warn!("settings_set sync memory profile: {e}");
         }
-        // Spawn flags change — soft-respawn so the next turn uses the new policy.
-    if web_search_flip {
-        // Spawn flag changes — soft-respawn so the next turn drops/restores web tools.
-    if plan_enabled_flip {
-        // Spawn flag changes — soft-respawn so the next turn drops/restores plan mode.
+        need_soft_respawn = true;
+    }
     if subagents_flip {
         if let Err(e) = crate::agent_subagents::sync_subagents_to_agent_profile(
             &settings.session_data_mode,
@@ -729,107 +678,36 @@ pub async fn settings_set(
         ) {
             tracing::warn!("settings_set sync subagents profile: {e}");
         }
-        // Spawn flags change — soft-respawn so the next turn uses the new policy.
-    if preferred_agent_flip {
-        // `--agent` is spawn-only — soft-respawn so the next turn uses the new definition.
-    // Leader mode is a spawn-time flag — soft-respawn so the next connect uses
-    // `--leader` / `--no-leader` matching the new setting.
-    if use_leader_changed {
-        tracing::info!(
-            "settings: use_leader {} → {} — soft-respawn live agent",
-            prev.use_leader,
-            settings.use_leader
-        );
+        need_soft_respawn = true;
+    }
+    if web_search_flip
+        || plan_enabled_flip
+        || use_leader_changed
+        || preferred_agent_flip
+        || max_turns_flip
+        || sandbox_flip
+    {
+        need_soft_respawn = true;
+    }
+    if need_soft_respawn {
         mgr.soft_respawn(&app).await;
     }
 
-    // Full permission apply: Host + agent-home + soft-respawn if needed
     if let Err(e) = mgr
         .apply_permission_policy(&app, &settings.permission_policy)
         .await
     {
         tracing::warn!("settings_set apply_permission: {e}");
     }
-    // Rebuild tray so locale / recent list match settings immediately.
     if let Err(e) = crate::tray::refresh_menu(&app) {
         tracing::warn!("settings_set tray refresh: {e}");
     }
     Ok(settings)
 }
 
-
-/// Clear Grok Build cross-session memory (`grok memory clear`).
-/// Workspace-scoped by default; runs with project cwd when provided.
-#[tauri::command]
-pub async fn memory_clear(
-    cwd: Option<String>,
-    scope: Option<String>,
-) -> Result<crate::agent_memory::MemoryClearResult, String> {
-    let settings = store::load_settings();
-    let path = cwd
-        .as_deref()
-        .map(str::trim)
-        .filter(|s| !s.is_empty())
-        .map(std::path::PathBuf::from);
-    let scope = scope
-        .map(|s| s.trim().to_string())
-        .filter(|s| !s.is_empty())
-        .unwrap_or_else(|| "workspace".into());
-    tokio::task::spawn_blocking(move || {
-        crate::agent_memory::clear_workspace_memory(
-            path.as_deref(),
-            &settings.session_data_mode,
-            settings.manual_cli_path.as_deref(),
-            &scope,
-        )
-    })
-    .await
-    .map_err(|e| format!("memory clear task failed: {e}"))?
-/// Persist last active chat without permission/tray side-effects of `settings_set`.
-/// Called on every successful open/switch so startup can restore once.
-#[tauri::command]
-pub async fn settings_remember_last_session(
-    session_id: Option<String>,
-    project_id: Option<String>,
-) -> Result<(), String> {
-    let mut s = store::load_settings();
-    let next_session = session_id.and_then(|id| {
-        let t = id.trim().to_string();
-        if t.is_empty() {
-            None
-        } else {
-            Some(t)
-        }
-    });
-    let next_project = project_id.and_then(|id| {
-        let t = id.trim().to_string();
-        if t.is_empty() {
-            None
-        } else {
-            Some(t)
-        }
-    });
-    if s.last_session_id == next_session && s.last_project_id == next_project {
-        return Ok(());
-    }
-    s.last_session_id = next_session;
-    s.last_project_id = next_project;
-    store::save_settings(&s)
-}
-
 #[tauri::command]
 pub async fn models_list_available() -> Result<crate::models_catalog::AvailableModelsResult, String> {
     Ok(crate::models_catalog::list_available_models())
-}
-
-/// Selectable agent definitions for Settings → Runtime (built-ins + user/project `.md`).
-#[tauri::command]
-pub async fn agents_catalog(
-    project_path: Option<String>,
-) -> Result<crate::agents_catalog::AgentsCatalogResult, String> {
-    Ok(crate::agents_catalog::list_agents_catalog(
-        project_path.as_deref(),
-    ))
 }
 
 #[tauri::command]
@@ -1544,9 +1422,6 @@ pub async fn doctor_report() -> Result<serde_json::Value, String> {
 /// Timeout for `grok doctor --json` (host env probes; keep short).
 const CLI_DOCTOR_TIMEOUT_SECS: u64 = 15;
 
-/// Timeout for `grok doctor fix <id> --yes` (may rewrite shell rc / config).
-const CLI_DOCTOR_FIX_TIMEOUT_SECS: u64 = 30;
-
 /// Run probed CLI `doctor --json`. Returns a stable envelope for the UI parser.
 /// Never includes secret values — only CLI doctor facts/findings/probeNotes.
 fn run_cli_doctor_json() -> serde_json::Value {
@@ -1597,95 +1472,6 @@ fn truncate_cli_err(s: &str, max: usize) -> String {
     }
     let head: String = t.chars().take(max).collect();
     format!("{head}…")
-}
-
-/// Safe fix-id shape: short handle (`ssh-wrap`) or canonical (`terminal.ssh-wrap`).
-/// Rejects flags, paths, and shell metacharacters before invoking the CLI.
-fn is_safe_doctor_fix_id(id: &str) -> bool {
-    let t = id.trim();
-    if t.is_empty() || t.len() > 128 {
-        return false;
-    }
-    let mut chars = t.chars();
-    let Some(first) = chars.next() else {
-        return false;
-    };
-    if !first.is_ascii_alphanumeric() {
-        return false;
-    }
-    chars.all(|c| c.is_ascii_alphanumeric() || c == '.' || c == '_' || c == '-')
-}
-
-/// Redact + cap CLI doctor fix stdout/stderr for the UI (no secrets, no huge dumps).
-fn redact_doctor_fix_output(s: &str, max: usize) -> String {
-    let scrubbed = store::redact_text(s);
-    truncate_cli_err(&scrubbed, max)
-}
-
-/// Apply a CLI automatic remediation: `grok doctor fix <id> --yes`.
-/// Returns redacted stdout/stderr; never throws on non-zero exit (ok=false).
-#[tauri::command]
-pub async fn cli_doctor_fix(id: String) -> Result<serde_json::Value, String> {
-    let id = id.trim().to_string();
-    if id.is_empty() {
-        return Err("doctor fix id required".into());
-    }
-    if !is_safe_doctor_fix_id(&id) {
-        return Err(format!("invalid doctor fix id: {id}"));
-    }
-
-    let id_for_cmd = id.clone();
-    let result = tauri::async_runtime::spawn_blocking(move || {
-        run_grok_cli_args(
-            &["doctor", "fix", &id_for_cmd, "--yes"],
-            CLI_DOCTOR_FIX_TIMEOUT_SECS,
-        )
-    })
-    .await
-    .map_err(|e| format!("doctor fix worker panicked: {e}"))?;
-
-    match result {
-        Ok((stdout, stderr, exit_ok)) => Ok(serde_json::json!({
-            "ok": exit_ok,
-            "id": id,
-            "stdout": redact_doctor_fix_output(&stdout, 2000),
-            "stderr": redact_doctor_fix_output(&stderr, 800),
-            "exitOk": exit_ok,
-        })),
-        Err(e) => {
-            // Missing CLI / timeout — surface as structured failure, not panic.
-            Ok(serde_json::json!({
-                "ok": false,
-                "id": id,
-                "stdout": "",
-                "stderr": redact_doctor_fix_output(&e, 400),
-                "exitOk": false,
-                "error": redact_doctor_fix_output(&e, 400),
-            }))
-        }
-    }
-}
-
-#[cfg(test)]
-mod doctor_fix_id_tests {
-    use super::is_safe_doctor_fix_id;
-
-    #[test]
-    fn accepts_short_and_canonical_handles() {
-        assert!(is_safe_doctor_fix_id("ssh-wrap"));
-        assert!(is_safe_doctor_fix_id("terminal.ssh-wrap"));
-        assert!(is_safe_doctor_fix_id("tmux-clipboard"));
-    }
-
-    #[test]
-    fn rejects_flags_paths_and_injection() {
-        assert!(!is_safe_doctor_fix_id(""));
-        assert!(!is_safe_doctor_fix_id("--yes"));
-        assert!(!is_safe_doctor_fix_id("a b"));
-        assert!(!is_safe_doctor_fix_id("../etc/passwd"));
-        assert!(!is_safe_doctor_fix_id("ssh-wrap;rm"));
-        assert!(!is_safe_doctor_fix_id("-ssh-wrap"));
-    }
 }
 
 /// Write a redacted support zip (Doctor JSON + logs) and return its path.
@@ -1974,346 +1760,6 @@ fn parse_mcp_servers(v: &serde_json::Value) -> Vec<McpDto> {
         });
     }
     out
-}
-
-// ── Agent / persona definition files (disk discovery) ───────────────────────
-//
-// Grok Build loads agents from:
-//   {project}/.grok/agents/*.md   (project)
-//   ~/.grok/agents/*.md           (user)
-//   ~/.grok/bundled/agents/*.md   (bundled)
-// Personas: .grok/personas/*.{toml,md} under the same scopes.
-// The App only lists + opens files. Session agent selection is CLI/config
-// (`--agent`, `[agent]`, GROK_AGENT) — ACP has no session agent switch.
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct AgentDefDto {
-    pub name: String,
-    pub path: String,
-    /// "project" | "user" | "bundled"
-    pub scope: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub description: Option<String>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct PersonaDefDto {
-    pub name: String,
-    pub path: String,
-    pub scope: String,
-}
-
-fn is_agent_def_file(name: &str) -> bool {
-    let lower = name.to_ascii_lowercase();
-    !name.starts_with('.')
-        && (lower.ends_with(".md") || lower.ends_with(".markdown"))
-}
-
-fn is_persona_def_file(name: &str) -> bool {
-    let lower = name.to_ascii_lowercase();
-    !name.starts_with('.')
-        && (lower.ends_with(".toml")
-            || lower.ends_with(".md")
-            || lower.ends_with(".markdown"))
-}
-
-fn stem_name(file_name: &str) -> String {
-    let path = std::path::Path::new(file_name);
-    path.file_stem()
-        .and_then(|s| s.to_str())
-        .unwrap_or(file_name)
-        .to_string()
-}
-
-/// Best-effort YAML frontmatter `description:` (first line / plain value).
-fn extract_agent_description_from_content(content: &str) -> Option<String> {
-    if !content.starts_with("---") {
-        return None;
-    }
-    let rest = &content[3..];
-    let end = rest.find("\n---")?;
-    let fm = &rest[..end];
-    for (i, line) in fm.lines().enumerate() {
-        let trimmed = line.trim_start();
-        if let Some(val) = trimmed.strip_prefix("description:") {
-            let v = val.trim();
-            if v == ">" || v == "|" || v == ">-" || v == "|-" {
-                // Folded block: first non-empty indented line after this one.
-                for next in fm.lines().skip(i + 1) {
-                    if next.starts_with(' ') || next.starts_with('\t') {
-                        let t = next.trim();
-                        if !t.is_empty() {
-                            return Some(t.to_string());
-                        }
-                    } else if !next.trim().is_empty() {
-                        break;
-                    }
-                }
-                return None;
-            }
-            if v.is_empty() {
-                return None;
-            }
-            let unquoted = v
-                .strip_prefix('"')
-                .and_then(|s| s.strip_suffix('"'))
-                .or_else(|| v.strip_prefix('\'').and_then(|s| s.strip_suffix('\'')))
-                .unwrap_or(v);
-            let cleaned = unquoted.split_whitespace().collect::<Vec<_>>().join(" ");
-            if cleaned.is_empty() {
-                return None;
-            }
-            return Some(cleaned);
-        }
-    }
-    None
-}
-
-fn read_agent_description(path: &std::path::Path) -> Option<String> {
-    let bytes = std::fs::read(path).ok()?;
-    // Frontmatter is near the top; cap read size.
-    let take = bytes.len().min(4096);
-    let content = String::from_utf8_lossy(&bytes[..take]);
-    extract_agent_description_from_content(&content)
-}
-
-fn scan_agent_dir(dir: &std::path::Path, scope: &str) -> Vec<AgentDefDto> {
-    let mut out = Vec::new();
-    let rd = match std::fs::read_dir(dir) {
-        Ok(rd) => rd,
-        Err(_) => return out,
-    };
-    for entry in rd.flatten() {
-        let path = entry.path();
-        if !path.is_file() {
-            continue;
-        }
-        let file_name = match path.file_name().and_then(|s| s.to_str()) {
-            Some(n) => n.to_string(),
-            None => continue,
-        };
-        if !is_agent_def_file(&file_name) {
-            continue;
-        }
-        let name = stem_name(&file_name);
-        if name.is_empty() {
-            continue;
-        }
-        let path_str = path.to_string_lossy().to_string();
-        let description = read_agent_description(&path);
-        out.push(AgentDefDto {
-            name,
-            path: path_str,
-            scope: scope.to_string(),
-            description,
-        });
-    }
-    out
-}
-
-fn scan_persona_dir(dir: &std::path::Path, scope: &str) -> Vec<PersonaDefDto> {
-    let mut out = Vec::new();
-    let rd = match std::fs::read_dir(dir) {
-        Ok(rd) => rd,
-        Err(_) => return out,
-    };
-    for entry in rd.flatten() {
-        let path = entry.path();
-        if !path.is_file() {
-            continue;
-        }
-        let file_name = match path.file_name().and_then(|s| s.to_str()) {
-            Some(n) => n.to_string(),
-            None => continue,
-        };
-        if !is_persona_def_file(&file_name) {
-            continue;
-        }
-        let name = stem_name(&file_name);
-        if name.is_empty() {
-            continue;
-        }
-        out.push(PersonaDefDto {
-            name,
-            path: path.to_string_lossy().to_string(),
-            scope: scope.to_string(),
-        });
-    }
-    out
-}
-
-fn scope_rank(scope: &str) -> u8 {
-    match scope {
-        "project" => 0,
-        "user" => 1,
-        "bundled" => 2,
-        _ => 9,
-    }
-}
-
-fn sort_agent_defs(mut agents: Vec<AgentDefDto>) -> Vec<AgentDefDto> {
-    agents.sort_by(|a, b| {
-        scope_rank(&a.scope)
-            .cmp(&scope_rank(&b.scope))
-            .then_with(|| {
-                a.name
-                    .to_ascii_lowercase()
-                    .cmp(&b.name.to_ascii_lowercase())
-            })
-    });
-    agents
-}
-
-fn sort_persona_defs(mut personas: Vec<PersonaDefDto>) -> Vec<PersonaDefDto> {
-    personas.sort_by(|a, b| {
-        scope_rank(&a.scope)
-            .cmp(&scope_rank(&b.scope))
-            .then_with(|| {
-                a.name
-                    .to_ascii_lowercase()
-                    .cmp(&b.name.to_ascii_lowercase())
-            })
-    });
-    personas
-}
-
-/// List agent + persona definition files from user / project / bundled scopes.
-/// Does not require the CLI binary (pure filesystem discovery under `~/.grok`
-/// and optional `{project}/.grok`). Always returns Ok.
-#[tauri::command]
-pub async fn agents_list(project_path: Option<String>) -> Result<serde_json::Value, String> {
-    let project = project_path
-        .as_deref()
-        .map(str::trim)
-        .filter(|s| !s.is_empty())
-        .map(|s| s.to_string());
-
-    let result = tauri::async_runtime::spawn_blocking(move || {
-        let home = crate::process_util::user_home();
-        let grok = home.join(".grok");
-        let user_agents = grok.join("agents");
-        let bundled_agents = grok.join("bundled").join("agents");
-        let user_personas = grok.join("personas");
-        let bundled_personas = grok.join("bundled").join("personas");
-
-        let project_agents = project.as_ref().map(|p| {
-            std::path::PathBuf::from(p).join(".grok").join("agents")
-        });
-        let project_personas = project.as_ref().map(|p| {
-            std::path::PathBuf::from(p).join(".grok").join("personas")
-        });
-
-        let mut agents = Vec::new();
-        if let Some(ref dir) = project_agents {
-            agents.extend(scan_agent_dir(dir, "project"));
-        }
-        agents.extend(scan_agent_dir(&user_agents, "user"));
-        agents.extend(scan_agent_dir(&bundled_agents, "bundled"));
-        let agents = sort_agent_defs(agents);
-
-        let mut personas = Vec::new();
-        if let Some(ref dir) = project_personas {
-            personas.extend(scan_persona_dir(dir, "project"));
-        }
-        personas.extend(scan_persona_dir(&user_personas, "user"));
-        personas.extend(scan_persona_dir(&bundled_personas, "bundled"));
-        let personas = sort_persona_defs(personas);
-
-        serde_json::json!({
-            "agents": agents,
-            "personas": personas,
-            "userAgentsDir": user_agents.to_string_lossy(),
-            "projectAgentsDir": project_agents
-                .as_ref()
-                .map(|p| p.to_string_lossy().to_string()),
-            "bundledAgentsDir": bundled_agents.to_string_lossy(),
-            "userPersonasDir": user_personas.to_string_lossy(),
-            "projectPersonasDir": project_personas
-                .as_ref()
-                .map(|p| p.to_string_lossy().to_string()),
-            "bundledPersonasDir": bundled_personas.to_string_lossy(),
-        })
-    })
-    .await
-    .map_err(|e| e.to_string())?;
-
-    Ok(result)
-}
-
-#[cfg(test)]
-mod agents_discovery_tests {
-    use super::*;
-
-    #[test]
-    fn agent_file_filter() {
-        assert!(is_agent_def_file("explore.md"));
-        assert!(is_agent_def_file("plan.markdown"));
-        assert!(!is_agent_def_file("explore.toml"));
-        assert!(!is_agent_def_file(".hidden.md"));
-    }
-
-    #[test]
-    fn persona_file_filter() {
-        assert!(is_persona_def_file("reviewer.toml"));
-        assert!(is_persona_def_file("concise.md"));
-        assert!(!is_persona_def_file("notes.txt"));
-    }
-
-    #[test]
-    fn description_plain() {
-        let md = "---\nname: x\ndescription: Fast explorer\n---\nbody\n";
-        assert_eq!(
-            extract_agent_description_from_content(md).as_deref(),
-            Some("Fast explorer")
-        );
-    }
-
-    #[test]
-    fn description_folded() {
-        let md = "---\ndescription: >\n  First line of desc.\n  Second.\n---\nbody\n";
-        assert_eq!(
-            extract_agent_description_from_content(md).as_deref(),
-            Some("First line of desc.")
-        );
-    }
-
-    #[test]
-    fn description_missing() {
-        assert!(extract_agent_description_from_content("no fm").is_none());
-    }
-
-    #[test]
-    fn sort_prefers_project_scope() {
-        let sorted = sort_agent_defs(vec![
-            AgentDefDto {
-                name: "z".into(),
-                path: "/u/z.md".into(),
-                scope: "user".into(),
-                description: None,
-            },
-            AgentDefDto {
-                name: "a".into(),
-                path: "/b/a.md".into(),
-                scope: "bundled".into(),
-                description: None,
-            },
-            AgentDefDto {
-                name: "m".into(),
-                path: "/p/m.md".into(),
-                scope: "project".into(),
-                description: None,
-            },
-        ]);
-        assert_eq!(
-            sorted
-                .iter()
-                .map(|a| format!("{}:{}", a.scope, a.name))
-                .collect::<Vec<_>>(),
-            vec!["project:m", "user:z", "bundled:a"]
-        );
-    }
 }
 
 /// List invocable skills from `grok inspect --json`.
@@ -2800,141 +2246,6 @@ pub async fn extensions_enable_all_skills(
     })
     .await
     .map_err(|e| e.to_string())?
-}
-
-// ── MCP add / remove / doctor ────────────────────────────────────────────────
-//
-// Add/remove write `[mcp_servers.<name>]` into the agent GROK_HOME config.toml
-// (independent → agent-home; shared → ~/.grok), matching extensions enable sync.
-// Doctor wraps `grok mcp doctor --json` with the same GROK_HOME.
-
-const MCP_DOCTOR_TIMEOUT_SECS: u64 = 90;
-
-/// Add or replace a stdio MCP server. Soft-respawns a live agent so the next
-/// connect injects the new `mcpServers` set.
-#[tauri::command]
-pub async fn mcp_add(
-    app: tauri::AppHandle,
-    mgr: State<'_, Arc<SessionManager>>,
-    name: String,
-    command: String,
-    args: Option<Vec<String>>,
-    env: Option<std::collections::HashMap<String, String>>,
-) -> Result<serde_json::Value, String> {
-    let name = name.trim().to_string();
-    let command = command.trim().to_string();
-    let args = args.unwrap_or_default();
-    let env_owned = env;
-    let def = tauri::async_runtime::spawn_blocking(move || {
-        crate::extensions::add_mcp_stdio(
-            &name,
-            &command,
-            &args,
-            env_owned.as_ref(),
-        )
-    })
-    .await
-    .map_err(|e| e.to_string())??;
-
-    mgr.apply_extensions_mcp_change(&app).await;
-    Ok(serde_json::json!({
-        "ok": true,
-        "name": def.name,
-        "command": def.command,
-        "args": def.args,
-        "transport": def.transport,
-        "enabled": true,
-    }))
-}
-
-/// Remove an MCP server from agent config + App prefs. Soft-respawns when live.
-#[tauri::command]
-pub async fn mcp_remove(
-    app: tauri::AppHandle,
-    mgr: State<'_, Arc<SessionManager>>,
-    name: String,
-) -> Result<serde_json::Value, String> {
-    let name = name.trim().to_string();
-    if name.is_empty() {
-        return Err("MCP server name required".into());
-    }
-    let name_for_job = name.clone();
-    tauri::async_runtime::spawn_blocking(move || {
-        crate::extensions::remove_mcp_server(&name_for_job)
-    })
-    .await
-    .map_err(|e| e.to_string())??;
-
-    mgr.apply_extensions_mcp_change(&app).await;
-    Ok(serde_json::json!({
-        "ok": true,
-        "name": name,
-    }))
-}
-
-/// Run `grok mcp doctor --json` (optional server name) under the active GROK_HOME.
-#[tauri::command]
-pub async fn mcp_doctor(
-    name: Option<String>,
-) -> Result<crate::extensions::McpDoctorReport, String> {
-    let name = name
-        .map(|s| s.trim().to_string())
-        .filter(|s| !s.is_empty());
-    tauri::async_runtime::spawn_blocking(move || run_mcp_doctor(name.as_deref()))
-        .await
-        .map_err(|e| e.to_string())?
-}
-
-/// Invoke CLI doctor with GROK_HOME matching session_data_mode.
-fn run_mcp_doctor(name: Option<&str>) -> Result<crate::extensions::McpDoctorReport, String> {
-    let settings = store::load_settings();
-    let probe = cli_probe::probe_cli(settings.manual_cli_path.as_deref());
-    let Some(cli_path) = probe.path.filter(|_| probe.found) else {
-        return Err("Grok Build CLI not found".into());
-    };
-    let grok_home = crate::paths::resolve_agent_grok_home(&settings.session_data_mode);
-
-    let mut args: Vec<String> = vec!["mcp".into(), "doctor".into(), "--json".into()];
-    if let Some(n) = name {
-        args.push(n.to_string());
-    }
-
-    let (tx, rx) = std::sync::mpsc::channel();
-    std::thread::spawn(move || {
-        let mut cmd = std::process::Command::new(&cli_path);
-        cmd.args(&args);
-        cmd.env("GROK_HOME", &grok_home);
-        crate::process_util::apply_no_window_std(&mut cmd);
-        if let Some(path_env) = crate::process_util::enriched_path_env() {
-            cmd.env("PATH", path_env);
-        }
-        let _ = tx.send(cmd.output());
-    });
-
-    match rx.recv_timeout(std::time::Duration::from_secs(MCP_DOCTOR_TIMEOUT_SECS)) {
-        Ok(Ok(output)) => {
-            let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
-            let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
-            // Doctor may exit non-zero when servers are unhealthy — still parse JSON.
-            let blob = if !stdout.is_empty() {
-                stdout
-            } else {
-                stderr.clone()
-            };
-            if blob.is_empty() {
-                return Err(if !stderr.is_empty() {
-                    stderr.chars().take(400).collect()
-                } else {
-                    "mcp doctor returned no output".into()
-                });
-            }
-            Ok(crate::extensions::parse_mcp_doctor_json(&blob))
-        }
-        Ok(Err(e)) => Err(format!("Failed to run grok mcp doctor: {e}")),
-        Err(_) => Err(format!(
-            "grok mcp doctor timed out after {MCP_DOCTOR_TIMEOUT_SECS}s"
-        )),
-    }
 }
 
 // ── Plugins via Grok Build CLI (`grok plugin …` + `inspect` + config.toml) ──
@@ -3544,254 +2855,12 @@ pub fn normalize_plugin_install_source(source: &str) -> Result<String, String> {
     let s = source.trim();
     if s.is_empty() {
         return Err("plugin source required".into());
-// ── Plugin marketplace (`grok plugin marketplace …` + available list) ───────
-//
-// Marketplace list --json currently returns sources only (no nested plugins).
-// Browse installable plugins via `plugin list --json --available`.
-// Install uses `plugin install <name|name@market|url> --trust` + soft-respawn.
-
-const PLUGIN_MARKETPLACE_MUTATE_TIMEOUT_SECS: u64 = 120;
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct MarketplaceSourceDto {
-    pub name: String,
-    pub kind: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub url: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub path: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub branch: Option<String>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct AvailablePluginDto {
-    pub name: String,
-    pub status: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub marketplace: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub description: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub version: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub skill_count: Option<u32>,
-    #[serde(default)]
-    pub has_hooks: bool,
-    #[serde(default)]
-    pub has_agents: bool,
-    #[serde(default)]
-    pub has_mcp: bool,
-}
-
-/// Parse `grok plugin marketplace list --json` (array or `{ sources: [...] }`).
-pub fn parse_marketplace_list_json(raw: &str) -> Result<Vec<MarketplaceSourceDto>, String> {
-    let text = raw.trim();
-    if text.is_empty() {
-        return Ok(Vec::new());
-    }
-    let value: serde_json::Value = serde_json::from_str(text)
-        .map_err(|e| format!("Failed to parse marketplace list JSON: {e}"))?;
-    let arr = if let Some(a) = value.as_array() {
-        a
-    } else if let Some(a) = value
-        .get("sources")
-        .or_else(|| value.get("marketplaces"))
-        .and_then(|x| x.as_array())
-    {
-        a
-    } else {
-        return Err("marketplace list JSON is not an array".into());
-    };
-
-    let mut out = Vec::with_capacity(arr.len());
-    for item in arr {
-        let name = item
-            .get("name")
-            .and_then(|x| x.as_str())
-            .unwrap_or("")
-            .trim()
-            .to_string();
-        if name.is_empty() {
-            continue;
-        }
-        let kind = item
-            .get("kind")
-            .or_else(|| item.get("type"))
-            .and_then(|x| x.as_str())
-            .map(|s| s.trim().to_string())
-            .filter(|s| !s.is_empty())
-            .unwrap_or_else(|| "git".into());
-        let source = item.get("source");
-        let url = source
-            .and_then(|s| {
-                s.get("url")
-                    .or_else(|| s.get("git"))
-                    .and_then(|x| x.as_str())
-            })
-            .or_else(|| item.get("url").and_then(|x| x.as_str()))
-            .map(|s| s.trim().to_string())
-            .filter(|s| !s.is_empty());
-        let path = source
-            .and_then(|s| s.get("path").and_then(|x| x.as_str()))
-            .or_else(|| item.get("path").and_then(|x| x.as_str()))
-            .map(|s| s.trim().to_string())
-            .filter(|s| !s.is_empty());
-        let branch = source
-            .and_then(|s| s.get("branch").and_then(|x| x.as_str()))
-            .map(|s| s.trim().to_string())
-            .filter(|s| !s.is_empty());
-        out.push(MarketplaceSourceDto {
-            name,
-            kind,
-            url,
-            path,
-            branch,
-        });
-    }
-    Ok(out)
-}
-
-/// Parse `plugin list --json --available`; keep status "available" rows only.
-pub fn parse_available_plugins_json(raw: &str) -> Result<Vec<AvailablePluginDto>, String> {
-    let text = raw.trim();
-    if text.is_empty() {
-        return Ok(Vec::new());
-    }
-    let value: serde_json::Value = serde_json::from_str(text)
-        .map_err(|e| format!("Failed to parse available plugins JSON: {e}"))?;
-    let arr = if let Some(a) = value.as_array() {
-        a
-    } else if let Some(a) = value.get("plugins").and_then(|x| x.as_array()) {
-        a
-    } else {
-        return Err("available plugins JSON is not an array".into());
-    };
-
-    let mut out = Vec::new();
-    for item in arr {
-        let name = item
-            .get("name")
-            .and_then(|x| x.as_str())
-            .unwrap_or("")
-            .trim()
-            .to_string();
-        if name.is_empty() {
-            continue;
-        }
-        let status = item
-            .get("status")
-            .and_then(|x| x.as_str())
-            .unwrap_or("available")
-            .trim()
-            .to_string();
-        if !status.eq_ignore_ascii_case("available") {
-            continue;
-        }
-        let marketplace = item
-            .get("marketplace")
-            .and_then(|x| {
-                if x.is_null() {
-                    None
-                } else {
-                    x.as_str()
-                }
-            })
-            .map(|s| s.trim().to_string())
-            .filter(|s| !s.is_empty());
-        let description = item
-            .get("description")
-            .and_then(|x| x.as_str())
-            .map(|s| s.trim().to_string())
-            .filter(|s| !s.is_empty());
-        let version = item
-            .get("version")
-            .and_then(|x| x.as_str())
-            .map(|s| s.trim().to_string())
-            .filter(|s| !s.is_empty());
-        let skill_count = item
-            .get("skill_count")
-            .or_else(|| item.get("skillCount"))
-            .and_then(|x| x.as_u64())
-            .map(|n| n as u32);
-        let has_hooks = item
-            .get("has_hooks")
-            .or_else(|| item.get("hasHooks"))
-            .and_then(|x| x.as_bool())
-            .unwrap_or(false);
-        let has_agents = item
-            .get("has_agents")
-            .or_else(|| item.get("hasAgents"))
-            .and_then(|x| x.as_bool())
-            .unwrap_or(false);
-        let has_mcp = item
-            .get("has_mcp")
-            .or_else(|| item.get("hasMcp"))
-            .and_then(|x| x.as_bool())
-            .unwrap_or(false);
-        out.push(AvailablePluginDto {
-            name,
-            status,
-            marketplace,
-            description,
-            version,
-            skill_count,
-            has_hooks,
-            has_agents,
-            has_mcp,
-        });
-    }
-    Ok(out)
-}
-
-pub fn normalize_marketplace_add_source(source: &str) -> Result<String, String> {
-    let s = source.trim();
-    if s.is_empty() {
-        return Err("marketplace source required".into());
     }
     Ok(s.to_string())
 }
 
 /// Optional update target: empty / whitespace → update all (`None`).
 pub fn normalize_plugin_update_name(name: Option<&str>) -> Option<String> {
-/// CLI `marketplace remove` wants a git URL or local path — resolve name → URL.
-pub fn resolve_marketplace_remove_arg(
-    name_or_url: &str,
-    sources: &[MarketplaceSourceDto],
-) -> Result<String, String> {
-    let raw = name_or_url.trim();
-    if raw.is_empty() {
-        return Err("marketplace source name or URL required".into());
-    }
-    let looks_like_url = raw.contains("://")
-        || raw.starts_with("git@")
-        || raw.ends_with(".git");
-    let looks_like_path = raw.starts_with('/')
-        || raw.starts_with('~')
-        || (raw.len() >= 3
-            && raw.as_bytes()[1] == b':'
-            && (raw.as_bytes()[2] == b'\\' || raw.as_bytes()[2] == b'/'));
-    if looks_like_url || looks_like_path {
-        return Ok(raw.to_string());
-    }
-    let lower = raw.to_ascii_lowercase();
-    if let Some(src) = sources
-        .iter()
-        .find(|s| s.name.eq_ignore_ascii_case(raw) || s.name.to_ascii_lowercase() == lower)
-    {
-        if let Some(url) = src.url.as_ref().map(|s| s.trim()).filter(|s| !s.is_empty()) {
-            return Ok(url.to_string());
-        }
-        if let Some(path) = src.path.as_ref().map(|s| s.trim()).filter(|s| !s.is_empty()) {
-            return Ok(path.to_string());
-        }
-    }
-    Ok(raw.to_string())
-}
-
-pub fn normalize_marketplace_update_name(name: Option<&str>) -> Option<String> {
     name.map(str::trim)
         .filter(|s| !s.is_empty())
         .map(|s| s.to_string())
@@ -3811,89 +2880,6 @@ pub async fn plugin_install(
         run_grok_cli_args(
             &["plugin", "install", &source_for_cmd, "--trust"],
             PLUGIN_MUTATE_TIMEOUT_SECS,
-pub fn normalize_plugin_install_source(source: &str) -> Result<String, String> {
-    let s = source.trim();
-    if s.is_empty() {
-        return Err("plugin source required".into());
-    }
-    Ok(s.to_string())
-}
-
-fn collect_marketplace_list() -> Result<Vec<MarketplaceSourceDto>, String> {
-    let (stdout, stderr, ok) = run_grok_cli_args(
-        &["plugin", "marketplace", "list", "--json"],
-        PLUGIN_CMD_TIMEOUT_SECS,
-    )?;
-    if !ok {
-        let msg = if !stderr.is_empty() {
-            stderr
-        } else if !stdout.is_empty() {
-            stdout
-        } else {
-            "grok plugin marketplace list failed".into()
-        };
-        return Err(msg);
-    }
-    parse_marketplace_list_json(&stdout)
-}
-
-fn collect_available_plugins() -> Result<Vec<AvailablePluginDto>, String> {
-    let (stdout, stderr, ok) = run_grok_cli_args(
-        &["plugin", "list", "--json", "--available"],
-        PLUGIN_CMD_TIMEOUT_SECS,
-    )?;
-    if !ok {
-        let msg = if !stderr.is_empty() {
-            stderr
-        } else if !stdout.is_empty() {
-            stdout
-        } else {
-            "grok plugin list --available failed".into()
-        };
-        return Err(msg);
-    }
-    parse_available_plugins_json(&stdout)
-}
-
-/// List configured marketplace sources. Always Ok; error field on failure.
-#[tauri::command]
-pub async fn marketplace_list() -> Result<serde_json::Value, String> {
-    let result = tauri::async_runtime::spawn_blocking(collect_marketplace_list)
-        .await
-        .map_err(|e| e.to_string())?;
-    match result {
-        Ok(sources) => Ok(serde_json::json!({ "sources": sources })),
-        Err(error) => Ok(serde_json::json!({
-            "sources": [],
-            "error": error,
-        })),
-    }
-}
-
-/// Available (not yet installed) plugins from marketplace catalogs.
-#[tauri::command]
-pub async fn marketplace_available() -> Result<serde_json::Value, String> {
-    let result = tauri::async_runtime::spawn_blocking(collect_available_plugins)
-        .await
-        .map_err(|e| e.to_string())?;
-    match result {
-        Ok(plugins) => Ok(serde_json::json!({ "plugins": plugins })),
-        Err(error) => Ok(serde_json::json!({
-            "plugins": [],
-            "error": error,
-        })),
-    }
-}
-
-/// Add a marketplace source (git URL, GitHub shorthand, or local path).
-#[tauri::command]
-pub async fn marketplace_add(source: String) -> Result<serde_json::Value, String> {
-    let source = normalize_marketplace_add_source(&source)?;
-    let source_for_cmd = source.clone();
-    let result = tauri::async_runtime::spawn_blocking(move || {
-        run_grok_cli_args(
-            &["plugin", "marketplace", "add", &source_for_cmd],
-            PLUGIN_MARKETPLACE_MUTATE_TIMEOUT_SECS,
         )
     })
     .await
@@ -3914,13 +2900,6 @@ pub async fn marketplace_add(source: String) -> Result<serde_json::Value, String
     Ok(serde_json::json!({
         "ok": true,
         "name": source,
-            format!("failed to add marketplace source {source}")
-        };
-        return Err(msg.chars().take(400).collect());
-    }
-    Ok(serde_json::json!({
-        "ok": true,
-        "source": source,
         "message": stdout.chars().take(400).collect::<String>(),
     }))
 }
@@ -3938,173 +2917,6 @@ pub async fn plugin_update(
     let result = tauri::async_runtime::spawn_blocking(move || match target_for_cmd.as_deref() {
         Some(n) => run_grok_cli_args(&["plugin", "update", n], PLUGIN_MUTATE_TIMEOUT_SECS),
         None => run_grok_cli_args(&["plugin", "update"], PLUGIN_MUTATE_TIMEOUT_SECS),
-/// Remove a marketplace source by name or URL (name resolved to URL for CLI).
-#[tauri::command]
-pub async fn marketplace_remove(name_or_url: String) -> Result<serde_json::Value, String> {
-    let raw = name_or_url.trim().to_string();
-    if raw.is_empty() {
-        return Err("marketplace source name or URL required".into());
-    }
-    let sources = collect_marketplace_list().unwrap_or_default();
-    let target = resolve_marketplace_remove_arg(&raw, &sources)?;
-    let target_for_cmd = target.clone();
-    let result = tauri::async_runtime::spawn_blocking(move || {
-        run_grok_cli_args(
-            &["plugin", "marketplace", "remove", &target_for_cmd],
-            PLUGIN_MARKETPLACE_MUTATE_TIMEOUT_SECS,
-        )
-    })
-    .await
-    .map_err(|e| e.to_string())??;
-
-    let (stdout, stderr, ok) = result;
-    if !ok {
-        let msg = if !stderr.is_empty() {
-            stderr
-        } else if !stdout.is_empty() {
-            stdout
-        } else {
-            format!("failed to remove marketplace source {target}")
-        };
-        return Err(msg.chars().take(400).collect());
-    }
-    Ok(serde_json::json!({
-        "ok": true,
-        "name": raw,
-        "source": target,
-        "message": stdout.chars().take(400).collect::<String>(),
-    }))
-}
-
-/// Refresh marketplace source caches. Omit name to refresh all.
-#[tauri::command]
-pub async fn marketplace_update(name: Option<String>) -> Result<serde_json::Value, String> {
-    let target = normalize_marketplace_update_name(name.as_deref());
-    let target_for_cmd = target.clone();
-    let result = tauri::async_runtime::spawn_blocking(move || match target_for_cmd.as_deref() {
-        Some(n) => run_grok_cli_args(
-            &["plugin", "marketplace", "update", n],
-            PLUGIN_MARKETPLACE_MUTATE_TIMEOUT_SECS,
-        ),
-        None => run_grok_cli_args(
-            &["plugin", "marketplace", "update"],
-            PLUGIN_MARKETPLACE_MUTATE_TIMEOUT_SECS,
-        ),
-const LEADER_CMD_TIMEOUT_SECS: u64 = 15;
-
-/// One row from `grok leader list --json` (fields vary by CLI version).
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct LeaderProcessDto {
-    pub pid: Option<u64>,
-    pub socket_path: Option<String>,
-    pub version: Option<String>,
-    /// Original object for debugging / future UI fields.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub raw: Option<serde_json::Value>,
-}
-
-/// Pure parse helper for `grok leader list --json` (unit-tested).
-pub fn parse_leader_list_json(stdout: &str) -> Result<Vec<LeaderProcessDto>, String> {
-    let trimmed = stdout.trim();
-    if trimmed.is_empty() {
-        return Ok(Vec::new());
-    }
-    let value: serde_json::Value = serde_json::from_str(trimmed)
-        .map_err(|e| format!("invalid leader list JSON: {e}"))?;
-    let items: Vec<serde_json::Value> = if let Some(arr) = value.as_array() {
-        arr.clone()
-    } else if let Some(arr) = value
-        .get("leaders")
-        .or_else(|| value.get("processes"))
-        .and_then(|v| v.as_array())
-    {
-        arr.clone()
-    } else if value.is_object() {
-        // Single leader object.
-        vec![value]
-    } else {
-        return Ok(Vec::new());
-    };
-
-    let mut out = Vec::with_capacity(items.len());
-    for item in items {
-        let pid = item
-            .get("pid")
-            .or_else(|| item.get("leader_pid"))
-            .or_else(|| item.get("leaderPid"))
-            .and_then(|v| v.as_u64().or_else(|| v.as_i64().map(|i| i as u64)));
-        let socket_path = item
-            .get("socket_path")
-            .or_else(|| item.get("socketPath"))
-            .or_else(|| item.get("socket"))
-            .and_then(|v| v.as_str())
-            .map(|s| s.to_string());
-        let version = item
-            .get("version")
-            .or_else(|| item.get("leader_version"))
-            .or_else(|| item.get("leaderVersion"))
-            .or_else(|| item.get("leader_binary_version"))
-            .and_then(|v| v.as_str())
-            .map(|s| s.to_string());
-        out.push(LeaderProcessDto {
-            pid,
-            socket_path,
-            version,
-            raw: Some(item),
-        });
-    }
-    Ok(out)
-}
-
-/// List running leader processes (`grok leader list --json`).
-/// Always returns Ok; on CLI missing / failure, `leaders` is empty and `error` is set.
-#[tauri::command]
-pub async fn leader_list() -> Result<serde_json::Value, String> {
-    let result = tauri::async_runtime::spawn_blocking(|| {
-        run_grok_cli_args(&["leader", "list", "--json"], LEADER_CMD_TIMEOUT_SECS)
-    })
-    .await
-    .map_err(|e| e.to_string())?;
-
-    match result {
-        Ok((stdout, stderr, ok)) => {
-            if !ok {
-                let msg = if !stderr.is_empty() {
-                    stderr
-                } else if !stdout.is_empty() {
-                    stdout
-                } else {
-                    "grok leader list failed".into()
-                };
-                return Ok(serde_json::json!({
-                    "leaders": [],
-                    "error": msg.chars().take(400).collect::<String>(),
-                }));
-            }
-            match parse_leader_list_json(&stdout) {
-                Ok(leaders) => Ok(serde_json::json!({ "leaders": leaders })),
-                Err(e) => Ok(serde_json::json!({
-                    "leaders": [],
-                    "error": e,
-                })),
-            }
-        }
-        Err(e) => Ok(serde_json::json!({
-            "leaders": [],
-            "error": e,
-        })),
-    }
-}
-
-/// Stop all running leader processes (`grok leader kill`). Soft-respawns the app agent.
-#[tauri::command]
-pub async fn leader_kill_all(
-    app: tauri::AppHandle,
-    mgr: State<'_, Arc<SessionManager>>,
-) -> Result<serde_json::Value, String> {
-    let result = tauri::async_runtime::spawn_blocking(|| {
-        run_grok_cli_args(&["leader", "kill"], LEADER_CMD_TIMEOUT_SECS)
     })
     .await
     .map_err(|e| e.to_string())??;
@@ -4122,113 +2934,11 @@ pub async fn leader_kill_all(
         return Err(msg.chars().take(400).collect());
     }
     mgr.soft_respawn(&app).await;
-            format!("failed to update marketplace source(s): {label}")
-        };
-        return Err(msg.chars().take(400).collect());
-    }
     Ok(serde_json::json!({
         "ok": true,
         "name": target.unwrap_or_default(),
         "message": stdout.chars().take(400).collect::<String>(),
     }))
-}
-
-/// Install plugin by marketplace name, `name@marketplace`, git URL, or path.
-/// Soft-respawns agent on success (`--trust` for non-interactive UI).
-#[tauri::command]
-pub async fn plugin_install(
-    app: tauri::AppHandle,
-    mgr: State<'_, Arc<SessionManager>>,
-    source: String,
-) -> Result<serde_json::Value, String> {
-    let source = normalize_plugin_install_source(&source)?;
-    let source_for_cmd = source.clone();
-    let result = tauri::async_runtime::spawn_blocking(move || {
-        run_grok_cli_args(
-            &["plugin", "install", &source_for_cmd, "--trust"],
-            PLUGIN_MARKETPLACE_MUTATE_TIMEOUT_SECS,
-        )
-    })
-    .await
-    .map_err(|e| e.to_string())??;
-
-    let (stdout, stderr, ok) = result;
-    if !ok {
-        let msg = if !stderr.is_empty() {
-            stderr
-        } else if !stdout.is_empty() {
-            stdout
-        } else {
-            format!("failed to install plugin from {source}")
-        };
-        return Err(msg.chars().take(400).collect());
-    }
-    mgr.soft_respawn(&app).await;
-    Ok(serde_json::json!({
-        "ok": true,
-        "name": source,
-        "message": stdout.chars().take(400).collect::<String>(),
-    }))
-}
-
-            "grok leader kill failed".into()
-        };
-        return Err(msg.chars().take(400).collect());
-    }
-    // Live agent may have been attached to a killed leader — soft-respawn.
-    mgr.soft_respawn(&app).await;
-    Ok(serde_json::json!({
-        "ok": true,
-        "message": if stdout.is_empty() {
-            stderr.chars().take(200).collect::<String>()
-        } else {
-            stdout.chars().take(200).collect::<String>()
-        },
-    }))
-}
-
-#[cfg(test)]
-mod leader_list_parse_tests {
-    use super::parse_leader_list_json;
-
-    #[test]
-    fn empty_array_and_blank() {
-        assert!(parse_leader_list_json("[]").unwrap().is_empty());
-        assert!(parse_leader_list_json("").unwrap().is_empty());
-        assert!(parse_leader_list_json("   ").unwrap().is_empty());
-    }
-
-    #[test]
-    fn array_of_objects_extracts_fields() {
-        let raw = r#"[
-            {"pid": 42, "socket_path": "/tmp/leader.sock", "leader_version": "0.2.1"},
-            {"leader_pid": 99, "socketPath": "~/.grok/leader.sock"}
-        ]"#;
-        let rows = parse_leader_list_json(raw).unwrap();
-        assert_eq!(rows.len(), 2);
-        assert_eq!(rows[0].pid, Some(42));
-        assert_eq!(rows[0].socket_path.as_deref(), Some("/tmp/leader.sock"));
-        assert_eq!(rows[0].version.as_deref(), Some("0.2.1"));
-        assert_eq!(rows[1].pid, Some(99));
-        assert_eq!(
-            rows[1].socket_path.as_deref(),
-            Some("~/.grok/leader.sock")
-        );
-    }
-
-    #[test]
-    fn wrapped_object_and_single() {
-        let wrapped = r#"{"leaders":[{"pid":7}]}"#;
-        let rows = parse_leader_list_json(wrapped).unwrap();
-        assert_eq!(rows.len(), 1);
-        assert_eq!(rows[0].pid, Some(7));
-
-        let single = r#"{"pid":11,"socket":"/x.sock"}"#;
-        let rows = parse_leader_list_json(single).unwrap();
-        assert_eq!(rows.len(), 1);
-        assert_eq!(rows[0].pid, Some(11));
-        assert_eq!(rows[0].socket_path.as_deref(), Some("/x.sock"));
-    }
 }
 
 #[cfg(test)]
@@ -4368,99 +3078,6 @@ disabled = ["yes"]
         assert_eq!(normalize_plugin_update_name(Some("")), None);
         assert_eq!(normalize_plugin_update_name(Some("   ")), None);
         assert_eq!(normalize_plugin_update_name(None), None);
-    fn marketplace_list_json_sources_only() {
-        let raw = r#"[
-          {
-            "name": "xAI Official",
-            "kind": "git",
-            "source": { "url": "https://github.com/xai-org/plugin-marketplace.git", "branch": null }
-          },
-          {
-            "name": "claude-plugins-official",
-            "kind": "git",
-            "source": { "url": "https://github.com/anthropics/claude-plugins-official.git", "branch": null }
-          }
-        ]"#;
-        let sources = parse_marketplace_list_json(raw).unwrap();
-        assert_eq!(sources.len(), 2);
-        assert_eq!(sources[0].name, "xAI Official");
-        assert_eq!(
-            sources[0].url.as_deref(),
-            Some("https://github.com/xai-org/plugin-marketplace.git")
-        );
-        assert!(sources[0].path.is_none());
-    }
-
-    #[test]
-    fn marketplace_list_wrapped_and_local() {
-        let raw = r#"{
-          "sources": [
-            { "name": "local-cat", "kind": "local", "source": { "path": "/tmp/mkt" } }
-          ]
-        }"#;
-        let sources = parse_marketplace_list_json(raw).unwrap();
-        assert_eq!(sources.len(), 1);
-        assert_eq!(sources[0].path.as_deref(), Some("/tmp/mkt"));
-    }
-
-    #[test]
-    fn marketplace_list_empty_and_invalid() {
-        assert!(parse_marketplace_list_json("").unwrap().is_empty());
-        assert!(parse_marketplace_list_json(r#"{"nope":1}"#).is_err());
-    }
-
-    #[test]
-    fn resolve_remove_name_to_url() {
-        let sources = parse_marketplace_list_json(
-            r#"[{"name":"xAI Official","kind":"git","source":{"url":"https://github.com/xai-org/plugin-marketplace.git"}}]"#,
-        )
-        .unwrap();
-        assert_eq!(
-            resolve_marketplace_remove_arg("xAI Official", &sources).unwrap(),
-            "https://github.com/xai-org/plugin-marketplace.git"
-        );
-        assert_eq!(
-            resolve_marketplace_remove_arg(
-                "https://github.com/xai-org/plugin-marketplace.git",
-                &sources
-            )
-            .unwrap(),
-            "https://github.com/xai-org/plugin-marketplace.git"
-        );
-        assert!(resolve_marketplace_remove_arg("  ", &sources).is_err());
-    }
-
-    #[test]
-    fn marketplace_add_update_install_normalize() {
-        assert_eq!(
-            normalize_marketplace_add_source("  owner/repo  ").unwrap(),
-            "owner/repo"
-        );
-        assert!(normalize_marketplace_add_source("").is_err());
-        assert_eq!(
-            normalize_marketplace_update_name(Some("xAI Official")).as_deref(),
-            Some("xAI Official")
-        );
-        assert!(normalize_marketplace_update_name(Some("  ")).is_none());
-        assert!(normalize_marketplace_update_name(None).is_none());
-        assert_eq!(
-            normalize_plugin_install_source(" vercel@xAI Official ").unwrap(),
-            "vercel@xAI Official"
-        );
-        assert!(normalize_plugin_install_source("").is_err());
-    }
-
-    #[test]
-    fn available_plugins_filters_status() {
-        let raw = r#"[
-          {"status":"installed","name":"cloudflare","marketplace":"xAI Official"},
-          {"status":"available","name":"vercel","marketplace":"xAI Official","skill_count":2,"has_agents":true}
-        ]"#;
-        let plugins = parse_available_plugins_json(raw).unwrap();
-        assert_eq!(plugins.len(), 1);
-        assert_eq!(plugins[0].name, "vercel");
-        assert_eq!(plugins[0].skill_count, Some(2));
-        assert!(plugins[0].has_agents);
     }
 }
 
@@ -4469,7 +3086,7 @@ pub async fn pick_directory() -> Result<Option<String>, String> {
     // rfd must run off the async runtime (main-thread dialog on macOS via spawn_blocking)
     let folder = tauri::async_runtime::spawn_blocking(|| {
         rfd::FileDialog::new()
-            .set_title("Choose project folder")
+            .set_title("选择项目目录 / Choose project folder")
             .pick_folder()
     })
     .await
@@ -4482,7 +3099,7 @@ pub async fn pick_directory() -> Result<Option<String>, String> {
 pub async fn pick_attach_files() -> Result<Vec<String>, String> {
     let files = tauri::async_runtime::spawn_blocking(|| {
         rfd::FileDialog::new()
-            .set_title("Attach files")
+            .set_title("附加文件 / Attach files")
             .pick_files()
     })
     .await
@@ -4499,7 +3116,7 @@ pub async fn pick_attach_files() -> Result<Vec<String>, String> {
 pub async fn pick_attach_folder() -> Result<Option<String>, String> {
     let folder = tauri::async_runtime::spawn_blocking(|| {
         rfd::FileDialog::new()
-            .set_title("Attach folder")
+            .set_title("附加文件夹 / Attach folder")
             .pick_folder()
     })
     .await
@@ -5711,499 +4328,6 @@ pub async fn git_worktrees_list(project_path: String) -> Result<GitWorktreesResu
     })
 }
 
-/// Result of creating a linked worktree (`git worktree add`).
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct GitWorktreeAddResult {
-    /// Absolute path of the new worktree directory.
-    pub path: String,
-    /// Sanitized worktree / new-branch name.
-    pub name: String,
-    /// Optional start-point / commit-ish that was used.
-    pub start_point: Option<String>,
-    /// Branch checked out after add (best-effort from re-list).
-    pub branch: Option<String>,
-}
-
-/// Sanitize a user-provided worktree name for use as a path segment + branch name.
-///
-/// Allows letters, digits, `.`, `_`, `-`. Rejects empty, `..`, path separators,
-/// and other control / shell-metacharacters. Pure; unit-tested.
-pub fn sanitize_worktree_name(raw: &str) -> Result<String, String> {
-    let name = raw.trim();
-    if name.is_empty() {
-        return Err("worktree name is required".into());
-    }
-    if name == "." || name == ".." {
-        return Err("invalid worktree name".into());
-    }
-    if name.len() > 64 {
-        return Err("worktree name too long (max 64)".into());
-    }
-    // Single path segment only — no separators, no absolute paths.
-    if name.contains('/') || name.contains('\\') || name.contains('\0') {
-        return Err("worktree name must not contain path separators".into());
-    }
-    // Branch-safe: alphanumeric + . _ - (common for feature names).
-    let ok = name
-        .chars()
-        .all(|c| c.is_ascii_alphanumeric() || c == '.' || c == '_' || c == '-');
-    if !ok {
-        return Err(
-            "worktree name may only contain letters, digits, '.', '_' and '-'".into(),
-        );
-    }
-    if name.starts_with('-') {
-        return Err("worktree name must not start with '-'".into());
-    }
-    Ok(name.to_string())
-}
-
-/// Optional commit-ish / branch start-point for `git worktree add`.
-/// Passed as a single argv element (no shell) after light validation.
-pub fn sanitize_worktree_ref(raw: Option<&str>) -> Result<Option<String>, String> {
-    let Some(s) = raw.map(str::trim).filter(|s| !s.is_empty()) else {
-        return Ok(None);
-    };
-    if s.len() > 256 {
-        return Err("branch / ref too long".into());
-    }
-    if s.contains('\0') || s.contains('\n') || s.contains('\r') {
-        return Err("invalid branch / ref".into());
-    }
-    // Disallow option-like args so they cannot be mistaken for git flags.
-    if s.starts_with('-') {
-        return Err("branch / ref must not start with '-'".into());
-/// Result of `git worktree prune` (gc / clean stale admin files).
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct GitWorktreeGcResult {
-    /// Whether this was a dry-run (`-n`).
-    pub dry_run: bool,
-    /// Whether aggressive expire (`now`) was applied via force without max_age.
-    pub forced: bool,
-    /// Optional `--expire` value that was used.
-    pub max_age: Option<String>,
-    /// Combined verbose prune output (stdout + stderr, trimmed).
-    pub output: String,
-    /// Paths marked `prunable` in `git worktree list --porcelain` before prune.
-    pub prunable: Vec<String>,
-    /// Best-effort count of removals reported in prune output.
-    pub pruned_count: usize,
-}
-
-/// Sanitize optional `--expire` / max-age for `git worktree prune`.
-///
-/// Accepts common git relative dates (`now`, `2.weeks.ago`, `3.months`) and
-/// simple tokens. Rejects empty, option-like (`-…`), and control characters.
-/// Pure; unit-tested.
-pub fn sanitize_worktree_gc_max_age(raw: Option<&str>) -> Result<Option<String>, String> {
-    let Some(s) = raw.map(str::trim).filter(|s| !s.is_empty()) else {
-        return Ok(None);
-    };
-    if s.len() > 64 {
-        return Err("max-age too long".into());
-    }
-    if s.starts_with('-') {
-        return Err("max-age must not start with '-'".into());
-    }
-    if s.contains('\0') || s.contains('\n') || s.contains('\r') || s.contains(' ') {
-        return Err("invalid max-age".into());
-    }
-    // Git expire: alphanumerics + . _ (e.g. 2.weeks.ago, now, 90.days).
-    let ok = s
-        .chars()
-        .all(|c| c.is_ascii_alphanumeric() || c == '.' || c == '_');
-    if !ok {
-        return Err("max-age may only contain letters, digits, '.' and '_'".into());
-    }
-    Ok(Some(s.to_string()))
-}
-
-/// Build sibling worktree path: `<parent>/<main_basename>-<name>`.
-///
-/// Example: main `/Users/me/repo` + name `feat` → `/Users/me/repo-feat`.
-///
-/// Choice (documented in `docs/llm-wiki/git-worktrees.md`): sibling of the
-/// **main** worktree root, not `.worktrees/<name>` inside the repo. Matches
-/// common `git worktree add ../repo-feat` layout and existing list samples.
-pub fn build_worktree_sibling_path(main_worktree_path: &str, name: &str) -> Result<String, String> {
-    let main = normalize_fs_path(main_worktree_path);
-    if main.is_empty() {
-        return Err("empty main worktree path".into());
-    }
-    let safe = sanitize_worktree_name(name)?;
-    let main_pb = std::path::PathBuf::from(&main);
-    let base = main_pb
-        .file_name()
-        .and_then(|s| s.to_str())
-        .filter(|s| !s.is_empty())
-        .ok_or_else(|| "cannot derive repo folder name".to_string())?;
-    let parent = main_pb
-        .parent()
-        .ok_or_else(|| "main worktree has no parent directory".to_string())?;
-    let dir_name = format!("{base}-{safe}");
-    let path = parent.join(dir_name);
-    let s = path.to_string_lossy().replace('\\', "/");
-    let s = normalize_fs_path(&s);
-    if s == main || s.is_empty() {
-        return Err("resolved worktree path is invalid".into());
-    }
-    Ok(s)
-}
-
-/// Create a linked git worktree under a sibling path, then return its path.
-///
-/// Args are passed to `git` as an argv array (no shell) to avoid injection.
-/// - Without `start_point`: `git worktree add -b <name> <path>` (branch from HEAD).
-/// - With `start_point`: `git worktree add -b <name> <path> <start_point>`.
-#[tauri::command]
-pub async fn git_worktree_add(
-    project_path: String,
-    name: String,
-    start_point: Option<String>,
-) -> Result<GitWorktreeAddResult, String> {
-/// Normalize a path for worktree equality checks (slash direction, no trailing
-/// slash, ASCII lowercased so macOS/Windows case-insensitive volumes match).
-pub fn normalize_worktree_path_key(raw: &str) -> String {
-    let mut s = normalize_fs_path(raw).replace('\\', "/");
-    while s.len() > 1 && s.ends_with('/') {
-        s.pop();
-    }
-    s.make_ascii_lowercase();
-    s
-}
-
-/// Case-insensitive path equality after normalization (pure; unit-tested).
-pub fn worktree_paths_equal(a: &str, b: &str) -> bool {
-    let na = normalize_worktree_path_key(a);
-    let nb = normalize_worktree_path_key(b);
-    !na.is_empty() && na == nb
-}
-
-/// Refuse removing the main (primary) worktree. Pure; unit-tested.
-pub fn refuse_remove_main_worktree(
-    listed: &[GitWorktreeEntry],
-    worktree_path: &str,
-) -> Result<(), String> {
-    let target = normalize_fs_path(worktree_path);
-    if target.is_empty() {
-        return Err("empty worktree path".into());
-    }
-    let main = listed
-        .iter()
-        .find(|w| w.is_main)
-        .or_else(|| listed.first());
-    if let Some(m) = main {
-        if worktree_paths_equal(&m.path, &target) {
-            return Err("refusing to remove the main worktree".into());
-        }
-    }
-    Ok(())
-}
-
-/// Result of `git worktree remove`.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct GitWorktreeRemoveResult {
-    /// Absolute path that was removed.
-    pub path: String,
-    /// Whether `--force` was used.
-    pub forced: bool,
-}
-
-/// Remove a linked git worktree via `git worktree remove` (argv only, no shell).
-///
-/// Refuses the main worktree. Optional `force` maps to `--force` (dirty / locked).
-#[tauri::command]
-pub async fn git_worktree_remove(
-    project_path: String,
-    worktree_path: String,
-    force: Option<bool>,
-) -> Result<GitWorktreeRemoveResult, String> {
-/// Build argv for `git worktree prune` (no binary name; caller prefixes `git`).
-///
-/// Layout: `[-C <project>] worktree prune -v [--dry-run] [--expire <age>]`
-///
-/// - `dry_run` → `--dry-run` (report only)
-/// - `max_age` → `--expire <max_age>` when set
-/// - `force` without `max_age` → `--expire now` (prune all stale admin files now)
-/// - always `-v` so dry-run preview has useful lines
-///
-/// Pure; unit-tested. Never goes through a shell.
-pub fn build_worktree_gc_args(
-    project: &str,
-    dry_run: bool,
-    force: bool,
-    max_age: Option<&str>,
-) -> Result<Vec<String>, String> {
-    let project = normalize_fs_path(project);
-    if project.is_empty() {
-        return Err("empty path".into());
-    }
-    if project.starts_with('-') {
-        return Err("invalid project path".into());
-    }
-    let expire = match sanitize_worktree_gc_max_age(max_age)? {
-        Some(age) => Some(age),
-        None if force => Some("now".into()),
-        None => None,
-    };
-
-    let mut args: Vec<String> = vec![
-        "-C".into(),
-        project,
-        "worktree".into(),
-        "prune".into(),
-        "-v".into(),
-    ];
-    if dry_run {
-        args.push("--dry-run".into());
-    }
-    if let Some(age) = expire {
-        args.push("--expire".into());
-        args.push(age);
-    }
-    Ok(args)
-}
-
-/// Count removal-like lines in `git worktree prune -v` output (best-effort).
-pub fn count_worktree_prune_lines(output: &str) -> usize {
-    output
-        .lines()
-        .map(str::trim)
-        .filter(|l| !l.is_empty())
-        .filter(|l| {
-            let lower = l.to_ascii_lowercase();
-            lower.contains("remov") || lower.contains("prun") || lower.starts_with("would ")
-        })
-        .count()
-}
-
-/// Garbage-collect stale git worktree administrative files via `git worktree prune`.
-///
-/// Safe argv only (no shell). Soft-fails on missing git / non-repo with an Err.
-/// When `dry_run` is true, nothing is deleted (`--dry-run`).
-/// Optional `force` maps to `--expire now` when `max_age` is unset.
-/// Optional `max_age` maps to `--expire <max_age>`.
-#[tauri::command]
-pub async fn git_worktree_gc(
-    project_path: String,
-    dry_run: bool,
-    force: Option<bool>,
-    max_age: Option<String>,
-) -> Result<GitWorktreeGcResult, String> {
-    let project = normalize_fs_path(&project_path);
-    if project.is_empty() {
-        return Err("empty path".into());
-    }
-    let proj = std::path::PathBuf::from(&project);
-    if !proj.is_dir() {
-        return Err("project not a directory".into());
-    }
-    git_probe_work_tree(&project)?;
-
-    let safe_name = sanitize_worktree_name(&name)?;
-    let start = sanitize_worktree_ref(start_point.as_deref())?;
-
-    // Resolve main worktree path (first porcelain entry) for sibling placement.
-    let target = normalize_fs_path(&worktree_path);
-    if target.is_empty() {
-        return Err("empty worktree path".into());
-    }
-    // Disallow option-like paths so a crafted path cannot become a git flag.
-    if target.starts_with('-') {
-        return Err("invalid worktree path".into());
-    }
-
-    let list_out = std::process::Command::new("git")
-        .args(["-C", &project, "worktree", "list", "--porcelain"])
-        .output()
-        .map_err(|e| e.to_string())?;
-    if !list_out.status.success() {
-        let err = String::from_utf8_lossy(&list_out.stderr).trim().to_string();
-        return Err(if err.is_empty() {
-            "git worktree list failed".into()
-        } else {
-            err.chars().take(200).collect()
-        });
-    }
-    let listed = parse_worktree_porcelain(&String::from_utf8_lossy(&list_out.stdout));
-    let main_path = listed
-        .first()
-        .map(|w| w.path.clone())
-        .filter(|p| !p.is_empty())
-        .ok_or_else(|| "could not resolve main worktree path".to_string())?;
-
-    let target = build_worktree_sibling_path(&main_path, &safe_name)?;
-    let target_pb = std::path::PathBuf::from(&target);
-    if target_pb.exists() {
-        return Err(format!("path already exists: {target}"));
-    }
-    // Refuse if already registered as a worktree.
-    if listed.iter().any(|w| {
-        let p = normalize_fs_path(&w.path);
-        p.eq_ignore_ascii_case(&target) || p == target
-    }) {
-        return Err(format!("worktree already registered: {target}"));
-    }
-
-    // Safe argv — never go through a shell.
-    // `git worktree add -b <name> <path> [start_point]`
-    let mut args: Vec<String> = vec![
-        "-C".into(),
-        project.clone(),
-        "worktree".into(),
-        "add".into(),
-        "-b".into(),
-        safe_name.clone(),
-        target.clone(),
-    ];
-    if let Some(ref sp) = start {
-        args.push(sp.clone());
-    }
-    if listed.is_empty() {
-        return Err("no worktrees found".into());
-    }
-
-    refuse_remove_main_worktree(&listed, &target)?;
-
-    let registered = listed.iter().any(|w| worktree_paths_equal(&w.path, &target));
-    if !registered {
-        return Err("worktree not registered for this repository".into());
-    }
-
-    // Use the path as listed by git (preserves real casing / form).
-    let remove_path = listed
-        .iter()
-        .find(|w| worktree_paths_equal(&w.path, &target))
-        .map(|w| w.path.clone())
-        .unwrap_or(target.clone());
-
-    let forced = force.unwrap_or(false);
-    // Safe argv — never go through a shell.
-    // `git worktree remove [--force] <path>`
-    let mut args: Vec<String> = vec![
-        "-C".into(),
-        project,
-        "worktree".into(),
-        "remove".into(),
-    ];
-    if forced {
-        args.push("--force".into());
-    }
-    args.push(remove_path.clone());
-    let forced = force.unwrap_or(false);
-    let age = sanitize_worktree_gc_max_age(max_age.as_deref())?;
-
-    // Snapshot prunable entries before prune for UI preview / summary.
-    let prunable = {
-        let list_out = std::process::Command::new("git")
-            .args(["-C", &project, "worktree", "list", "--porcelain"])
-            .output()
-            .map_err(|e| e.to_string())?;
-        if list_out.status.success() {
-            parse_worktree_porcelain(&String::from_utf8_lossy(&list_out.stdout))
-                .into_iter()
-                .filter(|w| w.prunable)
-                .map(|w| w.path)
-                .collect::<Vec<_>>()
-        } else {
-            Vec::new()
-        }
-    };
-
-    let args = build_worktree_gc_args(
-        &project,
-        dry_run,
-        forced,
-        age.as_deref(),
-    )?;
-
-    let out = std::process::Command::new("git")
-        .args(&args)
-        .output()
-        .map_err(|e| e.to_string())?;
-    if !out.status.success() {
-        let err = String::from_utf8_lossy(&out.stderr).trim().to_string();
-        let err = if err.is_empty() {
-            String::from_utf8_lossy(&out.stdout).trim().to_string()
-        } else {
-            err
-        };
-        return Err(if err.is_empty() {
-            "git worktree add failed".into()
-            "git worktree remove failed".into()
-            "git worktree prune failed".into()
-        } else {
-            err.chars().take(400).collect()
-        });
-    }
-
-    // Best-effort: re-list to pick up branch field for the new path.
-    let branch = {
-        let re = std::process::Command::new("git")
-            .args(["-C", &project, "worktree", "list", "--porcelain"])
-            .output()
-            .ok();
-        re.and_then(|o| {
-            if !o.status.success() {
-                return None;
-            }
-            let list = parse_worktree_porcelain(&String::from_utf8_lossy(&o.stdout));
-            list.into_iter()
-                .find(|w| {
-                    let p = normalize_fs_path(&w.path);
-                    p.eq_ignore_ascii_case(&target) || p == target
-                })
-                .and_then(|w| w.branch)
-        })
-        .or_else(|| Some(safe_name.clone()))
-    };
-
-    Ok(GitWorktreeAddResult {
-        path: target,
-        name: safe_name,
-        start_point: start,
-        branch,
-    Ok(GitWorktreeRemoveResult {
-        path: remove_path,
-        forced,
-    // prune -v writes progress to stderr on some git versions, stdout on others.
-    let mut combined = String::new();
-    let stdout = String::from_utf8_lossy(&out.stdout);
-    let stderr = String::from_utf8_lossy(&out.stderr);
-    if !stdout.trim().is_empty() {
-        combined.push_str(stdout.trim());
-    }
-    if !stderr.trim().is_empty() {
-        if !combined.is_empty() {
-            combined.push('\n');
-        }
-        combined.push_str(stderr.trim());
-    }
-    // Prefer verbose prune lines; fall back to porcelain prunable count on dry-run.
-    let mut pruned_count = count_worktree_prune_lines(&combined);
-    if pruned_count == 0 && !prunable.is_empty() {
-        pruned_count = prunable.len();
-    }
-
-    let used_expire = match &age {
-        Some(a) => Some(a.clone()),
-        None if forced => Some("now".into()),
-        None => None,
-    };
-
-    Ok(GitWorktreeGcResult {
-        dry_run,
-        forced,
-        max_age: used_expire,
-        output: combined.chars().take(4000).collect(),
-        prunable,
-        pruned_count,
-    })
-}
-
 #[cfg(test)]
 mod git_worktree_parse_tests {
     use super::*;
@@ -6236,257 +4360,6 @@ detached
     #[test]
     fn empty_input() {
         assert!(parse_worktree_porcelain("").is_empty());
-    }
-
-    #[test]
-    fn sanitize_name_accepts_simple() {
-        assert_eq!(sanitize_worktree_name("  feat-x  ").unwrap(), "feat-x");
-        assert_eq!(sanitize_worktree_name("v1.2_rc").unwrap(), "v1.2_rc");
-    }
-
-    #[test]
-    fn sanitize_name_rejects_bad() {
-        assert!(sanitize_worktree_name("").is_err());
-        assert!(sanitize_worktree_name("..").is_err());
-        assert!(sanitize_worktree_name("a/b").is_err());
-        assert!(sanitize_worktree_name("a\\b").is_err());
-        assert!(sanitize_worktree_name("-lead").is_err());
-        assert!(sanitize_worktree_name("has space").is_err());
-        assert!(sanitize_worktree_name("a;rm -rf").is_err());
-    }
-
-    #[test]
-    fn sanitize_ref_optional() {
-        assert_eq!(sanitize_worktree_ref(None).unwrap(), None);
-        assert_eq!(sanitize_worktree_ref(Some("  ")).unwrap(), None);
-        assert_eq!(
-            sanitize_worktree_ref(Some(" origin/main ")).unwrap().as_deref(),
-            Some("origin/main")
-        );
-        assert!(sanitize_worktree_ref(Some("--force")).is_err());
-        assert!(sanitize_worktree_ref(Some("bad\nref")).is_err());
-    }
-
-    #[test]
-    fn sibling_path_builder() {
-        let p = build_worktree_sibling_path("/Users/me/repo", "feat").unwrap();
-        assert_eq!(p, "/Users/me/repo-feat");
-        let p2 = build_worktree_sibling_path("/Users/me/repo/", "hot-fix").unwrap();
-        assert_eq!(p2, "/Users/me/repo-hot-fix");
-        assert!(build_worktree_sibling_path("/Users/me/repo", "a/b").is_err());
-        assert!(build_worktree_sibling_path("", "feat").is_err());
-    fn worktree_paths_equal_normalizes_slash_and_case() {
-        assert!(worktree_paths_equal("/Users/Me/Repo", "/users/me/repo/"));
-        assert!(worktree_paths_equal(r"C:\Work\App", r"c:/work/app"));
-        assert!(!worktree_paths_equal("/a/b", "/a/c"));
-        assert!(!worktree_paths_equal("", "/a"));
-        assert!(!worktree_paths_equal("", ""));
-    }
-
-    #[test]
-    fn refuse_remove_main_worktree_blocks_primary() {
-        let list = parse_worktree_porcelain(
-            "\
-worktree /Users/me/repo
-HEAD abc
-branch refs/heads/main
-
-worktree /Users/me/repo-feat
-HEAD def
-branch refs/heads/feat
-",
-        );
-        assert!(refuse_remove_main_worktree(&list, "/Users/me/repo").is_err());
-        assert!(refuse_remove_main_worktree(&list, "/Users/me/repo/").is_err());
-        assert!(refuse_remove_main_worktree(&list, "/USERS/ME/REPO").is_err());
-        assert!(refuse_remove_main_worktree(&list, "/Users/me/repo-feat").is_ok());
-        assert!(refuse_remove_main_worktree(&list, "").is_err());
-    }
-}
-
-// ── Hooks manager (list / reveal / open folder) ─────────────────────────────
-
-/// List hook files under `~/.grok/hooks` and optionally `<project>/.grok/hooks`.
-#[tauri::command]
-pub async fn hooks_list(project_path: Option<String>) -> Result<crate::hooks::HooksListResult, String> {
-    let path = project_path
-        .as_deref()
-        .map(str::trim)
-        .filter(|s| !s.is_empty())
-        .map(|s| s.to_string());
-    tauri::async_runtime::spawn_blocking(move || {
-        crate::hooks::collect_hooks_list(path.as_deref())
-    })
-    .await
-    .map_err(|e| e.to_string())
-}
-
-/// Reveal a hook path in the system file manager (Finder / Explorer).
-#[tauri::command]
-pub async fn hooks_reveal(path: String) -> Result<(), String> {
-    path_reveal(path).await
-}
-
-/// Open the user or project hooks directory in the system file manager.
-/// When `create` is true, creates the folder if it is missing.
-#[tauri::command]
-pub async fn hooks_open_dir(
-    scope: Option<String>,
-    project_path: Option<String>,
-    create: Option<bool>,
-) -> Result<serde_json::Value, String> {
-    let scope = scope.unwrap_or_else(|| "user".into());
-    let create = create.unwrap_or(false);
-    let project = project_path
-        .as_deref()
-        .map(str::trim)
-        .filter(|s| !s.is_empty())
-        .map(|s| s.to_string());
-    let scope_for_block = scope.clone();
-    let project_for_block = project.clone();
-    let dir = tauri::async_runtime::spawn_blocking(move || {
-        if create {
-            crate::hooks::ensure_hooks_dir(&scope_for_block, project_for_block.as_deref())
-        } else {
-            let d = match scope_for_block.trim() {
-                "user" | "" => crate::hooks::user_hooks_dir(),
-                "project" => crate::hooks::project_hooks_dir(project_for_block.as_deref().unwrap_or(""))
-                    .ok_or_else(|| "project path required for project hooks".to_string())?,
-                other => return Err(format!("unknown hooks scope: {other}")),
-            };
-            if !d.exists() {
-                return Err(format!(
-                    "hooks folder not found: {} (use Create folder first)",
-                    d.display()
-                ));
-            }
-            Ok(d)
-        }
-    })
-    .await
-    .map_err(|e| e.to_string())??;
-
-    let path = dir.to_string_lossy().to_string();
-    // Open the directory itself (not reveal-select).
-    path_open(path.clone()).await?;
-    Ok(serde_json::json!({ "path": path, "scope": scope }))
-}
-
-/// Create the user or project hooks directory if missing. Returns the absolute path.
-#[tauri::command]
-pub async fn hooks_ensure_dir(
-    scope: Option<String>,
-    project_path: Option<String>,
-) -> Result<serde_json::Value, String> {
-    let scope = scope.unwrap_or_else(|| "user".into());
-    let project = project_path
-        .as_deref()
-        .map(str::trim)
-        .filter(|s| !s.is_empty())
-        .map(|s| s.to_string());
-    let scope_for_block = scope.clone();
-    let dir = tauri::async_runtime::spawn_blocking(move || {
-        crate::hooks::ensure_hooks_dir(&scope_for_block, project.as_deref())
-    })
-    .await
-    .map_err(|e| e.to_string())??;
-    Ok(serde_json::json!({
-        "path": dir.to_string_lossy(),
-        "scope": scope,
-    }))
-    fn sanitize_max_age_accepts_common() {
-        assert_eq!(
-            sanitize_worktree_gc_max_age(Some("now")).unwrap(),
-            Some("now".into())
-        );
-        assert_eq!(
-            sanitize_worktree_gc_max_age(Some("  2.weeks.ago  ")).unwrap(),
-            Some("2.weeks.ago".into())
-        );
-        assert_eq!(sanitize_worktree_gc_max_age(None).unwrap(), None);
-        assert_eq!(sanitize_worktree_gc_max_age(Some("")).unwrap(), None);
-        assert_eq!(sanitize_worktree_gc_max_age(Some("   ")).unwrap(), None);
-    }
-
-    #[test]
-    fn sanitize_max_age_rejects_bad() {
-        assert!(sanitize_worktree_gc_max_age(Some("-n")).is_err());
-        assert!(sanitize_worktree_gc_max_age(Some("--expire")).is_err());
-        assert!(sanitize_worktree_gc_max_age(Some("2 weeks")).is_err());
-        assert!(sanitize_worktree_gc_max_age(Some("a;rm")).is_err());
-        assert!(sanitize_worktree_gc_max_age(Some(&"x".repeat(80))).is_err());
-    }
-
-    #[test]
-    fn build_worktree_gc_args_dry_run() {
-        let args = build_worktree_gc_args("/Users/me/repo", true, false, None).unwrap();
-        assert_eq!(
-            args,
-            vec![
-                "-C",
-                "/Users/me/repo",
-                "worktree",
-                "prune",
-                "-v",
-                "--dry-run",
-            ]
-        );
-    }
-
-    #[test]
-    fn build_worktree_gc_args_force_expire_now() {
-        let args = build_worktree_gc_args("/Users/me/repo", false, true, None).unwrap();
-        assert_eq!(
-            args,
-            vec![
-                "-C",
-                "/Users/me/repo",
-                "worktree",
-                "prune",
-                "-v",
-                "--expire",
-                "now",
-            ]
-        );
-    }
-
-    #[test]
-    fn build_worktree_gc_args_max_age_overrides_force() {
-        let args =
-            build_worktree_gc_args("/Users/me/repo", true, true, Some("3.months")).unwrap();
-        assert_eq!(
-            args,
-            vec![
-                "-C",
-                "/Users/me/repo",
-                "worktree",
-                "prune",
-                "-v",
-                "--dry-run",
-                "--expire",
-                "3.months",
-            ]
-        );
-    }
-
-    #[test]
-    fn build_worktree_gc_args_rejects_empty_project() {
-        assert!(build_worktree_gc_args("", false, false, None).is_err());
-        assert!(build_worktree_gc_args("-C", false, false, None).is_err());
-    }
-
-    #[test]
-    fn count_prune_lines_matches_verbose() {
-        let out = "\
-Removing worktrees/stale: gitdir file points to non-existent location
-Removing worktrees/old: gitdir file points to non-existent location
-";
-        assert_eq!(count_worktree_prune_lines(out), 2);
-        assert_eq!(count_worktree_prune_lines(""), 0);
-        assert_eq!(
-            count_worktree_prune_lines("Would remove worktrees/foo\n"),
-            1
-        );
     }
 }
 
@@ -6536,7 +4409,7 @@ pub async fn path_reveal(path: String) -> Result<(), String> {
 pub async fn project_add_dialog(trust: bool) -> Result<Option<Project>, String> {
     let folder = tauri::async_runtime::spawn_blocking(|| {
         rfd::FileDialog::new()
-            .set_title("Add project")
+            .set_title("添加项目 / Add project")
             .pick_folder()
     })
     .await
@@ -6658,7 +4531,7 @@ pub async fn session_import_transcript_file(
 ) -> Result<Option<store::SessionMeta>, String> {
     let path = tauri::async_runtime::spawn_blocking(|| {
         rfd::FileDialog::new()
-            .set_title("Import conversation")
+            .set_title("Import conversation / 导入对话")
             .add_filter("Transcript", &["md", "txt", "json", "markdown"])
             .pick_file()
     })
@@ -6841,43 +4714,6 @@ pub async fn providers_list_models(
     crate::providers::list_remote_models(base_url, api_key, provider_id).await
 }
 
-// ── Permission rules (`[permission]` allow / deny / ask) ────────────────────
-
-/// Read compact permission rules from the active GROK_HOME config.toml.
-#[tauri::command]
-pub async fn permission_rules_get(
-) -> Result<crate::permission_rules::PermissionRulesResult, String> {
-    tauri::async_runtime::spawn_blocking(crate::permission_rules::load_permission_rules)
-        .await
-        .map_err(|e| e.to_string())?
-}
-
-/// Replace compact allow/deny/ask arrays and soft-respawn the live agent.
-#[tauri::command]
-pub async fn permission_rules_set(
-    app: tauri::AppHandle,
-    mgr: State<'_, Arc<SessionManager>>,
-    allow: Option<Vec<String>>,
-    deny: Option<Vec<String>>,
-    ask: Option<Vec<String>>,
-) -> Result<crate::permission_rules::PermissionRulesResult, String> {
-    let rules = crate::permission_rules::PermissionRules {
-        allow: allow.unwrap_or_default(),
-        deny: deny.unwrap_or_default(),
-        ask: ask.unwrap_or_default(),
-    };
-    let result = tauri::async_runtime::spawn_blocking(move || {
-        crate::permission_rules::save_permission_rules(&rules)
-    })
-    .await
-    .map_err(|e| e.to_string())??;
-
-    // Grok Build reads rules at session start — soft-respawn so the next turn
-    // reloads config without a full disconnect toast.
-    mgr.soft_respawn(&app).await;
-    Ok(result)
-}
-
 // ── Editors ─────────────────────────────────────────────────────────────────
 
 #[tauri::command]
@@ -6958,42 +4794,866 @@ mod project_inspect_tests {
         );
         assert_eq!(out["skills"]["total"], 0);
         assert_eq!(out["error"], "Grok Build CLI not found");
-// ── Managed configuration (`grok setup` / `grok setup --json`) ──────────────
-//
-// Team-managed policy for enterprises. Requires team sign-in or GROK_DEPLOYMENT_KEY.
-// Preview never writes; install applies into ~/.grok. Secrets are scrubbed before
-// leaving the host so the UI never receives full keys.
-
-const SETUP_CMD_TIMEOUT_SECS: u64 = 60;
-
-fn setup_error_kind(msg: &str) -> &'static str {
-    let m = msg.to_ascii_lowercase();
-    if m.contains("cli not found") || m.contains("no such file") {
-        return "cli_missing";
     }
-    if m.contains("timed out") || m.contains("timeout") {
-        return "timeout";
-    }
-    if m.contains("no deployment key")
-        || m.contains("team sign-in")
-        || m.contains("team login")
-        || m.contains("sign in with a team")
-        || m.contains("export grok_deployment_key")
-    {
-        return "missing_auth";
-    }
-    if m.contains("deployment key was rejected")
-        || m.contains("key was rejected")
-        || m.contains("hasn't expired")
-        || m.contains("hasnt expired")
-    {
-        return "rejected";
-    }
-    if m.contains("json") && (m.contains("parse") || m.contains("invalid")) {
-        return "parse";
-    }
-    "other"
 }
+
+// ── Community PR batch (#63–#91) ─────────────────────────
+
+// from PR #88
+
+/// Timeout for `grok doctor fix <id> --yes` (may rewrite shell rc / config).
+const CLI_DOCTOR_FIX_TIMEOUT_SECS: u64 = 30;
+
+// from PR #68
+
+const MCP_DOCTOR_TIMEOUT_SECS: u64 = 90;
+
+// from PR #77
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AgentDefDto {
+    pub name: String,
+    pub path: String,
+    /// "project" | "user" | "bundled"
+    pub scope: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+}
+
+// from PR #64
+
+/// Result of creating a linked worktree (`git worktree add`).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GitWorktreeAddResult {
+    /// Absolute path of the new worktree directory.
+    pub path: String,
+    /// Sanitized worktree / new-branch name.
+    pub name: String,
+    /// Optional start-point / commit-ish that was used.
+    pub start_point: Option<String>,
+    /// Branch checked out after add (best-effort from re-list).
+    pub branch: Option<String>,
+}
+
+// from PR #83
+
+/// Result of `git worktree prune` (gc / clean stale admin files).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GitWorktreeGcResult {
+    /// Whether this was a dry-run (`-n`).
+    pub dry_run: bool,
+    /// Whether aggressive expire (`now`) was applied via force without max_age.
+    pub forced: bool,
+    /// Optional `--expire` value that was used.
+    pub max_age: Option<String>,
+    /// Combined verbose prune output (stdout + stderr, trimmed).
+    pub output: String,
+    /// Paths marked `prunable` in `git worktree list --porcelain` before prune.
+    pub prunable: Vec<String>,
+    /// Best-effort count of removals reported in prune output.
+    pub pruned_count: usize,
+}
+
+// from PR #74
+
+/// Result of `git worktree remove`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GitWorktreeRemoveResult {
+    /// Absolute path that was removed.
+    pub path: String,
+    /// Whether `--force` was used.
+    pub forced: bool,
+}
+
+// from PR #77
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PersonaDefDto {
+    pub name: String,
+    pub path: String,
+    pub scope: String,
+}
+
+// from PR #77
+
+/// List agent + persona definition files from user / project / bundled scopes.
+/// Does not require the CLI binary (pure filesystem discovery under `~/.grok`
+/// and optional `{project}/.grok`). Always returns Ok.
+#[tauri::command]
+pub async fn agents_list(project_path: Option<String>) -> Result<serde_json::Value, String> {
+    let project = project_path
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(|s| s.to_string());
+
+    let result = tauri::async_runtime::spawn_blocking(move || {
+        let home = crate::process_util::user_home();
+        let grok = home.join(".grok");
+        let user_agents = grok.join("agents");
+        let bundled_agents = grok.join("bundled").join("agents");
+        let user_personas = grok.join("personas");
+        let bundled_personas = grok.join("bundled").join("personas");
+
+        let project_agents = project.as_ref().map(|p| {
+            std::path::PathBuf::from(p).join(".grok").join("agents")
+        });
+        let project_personas = project.as_ref().map(|p| {
+            std::path::PathBuf::from(p).join(".grok").join("personas")
+        });
+
+        let mut agents = Vec::new();
+        if let Some(ref dir) = project_agents {
+            agents.extend(scan_agent_dir(dir, "project"));
+        }
+        agents.extend(scan_agent_dir(&user_agents, "user"));
+        agents.extend(scan_agent_dir(&bundled_agents, "bundled"));
+        let agents = sort_agent_defs(agents);
+
+        let mut personas = Vec::new();
+        if let Some(ref dir) = project_personas {
+            personas.extend(scan_persona_dir(dir, "project"));
+        }
+        personas.extend(scan_persona_dir(&user_personas, "user"));
+        personas.extend(scan_persona_dir(&bundled_personas, "bundled"));
+        let personas = sort_persona_defs(personas);
+
+        serde_json::json!({
+            "agents": agents,
+            "personas": personas,
+            "userAgentsDir": user_agents.to_string_lossy(),
+            "projectAgentsDir": project_agents
+                .as_ref()
+                .map(|p| p.to_string_lossy().to_string()),
+            "bundledAgentsDir": bundled_agents.to_string_lossy(),
+            "userPersonasDir": user_personas.to_string_lossy(),
+            "projectPersonasDir": project_personas
+                .as_ref()
+                .map(|p| p.to_string_lossy().to_string()),
+            "bundledPersonasDir": bundled_personas.to_string_lossy(),
+        })
+    })
+    .await
+    .map_err(|e| e.to_string())?;
+
+    Ok(result)
+}
+
+// from PR #83
+
+/// Build argv for `git worktree prune` (no binary name; caller prefixes `git`).
+///
+/// Layout: `[-C <project>] worktree prune -v [--dry-run] [--expire <age>]`
+///
+/// - `dry_run` → `--dry-run` (report only)
+/// - `max_age` → `--expire <max_age>` when set
+/// - `force` without `max_age` → `--expire now` (prune all stale admin files now)
+/// - always `-v` so dry-run preview has useful lines
+///
+/// Pure; unit-tested. Never goes through a shell.
+pub fn build_worktree_gc_args(
+    project: &str,
+    dry_run: bool,
+    force: bool,
+    max_age: Option<&str>,
+) -> Result<Vec<String>, String> {
+    let project = normalize_fs_path(project);
+    if project.is_empty() {
+        return Err("empty path".into());
+    }
+    if project.starts_with('-') {
+        return Err("invalid project path".into());
+    }
+    let expire = match sanitize_worktree_gc_max_age(max_age)? {
+        Some(age) => Some(age),
+        None if force => Some("now".into()),
+        None => None,
+    };
+
+    let mut args: Vec<String> = vec![
+        "-C".into(),
+        project,
+        "worktree".into(),
+        "prune".into(),
+        "-v".into(),
+    ];
+    if dry_run {
+        args.push("--dry-run".into());
+    }
+    if let Some(age) = expire {
+        args.push("--expire".into());
+        args.push(age);
+    }
+    Ok(args)
+}
+
+// from PR #64
+
+/// Build sibling worktree path: `<parent>/<main_basename>-<name>`.
+///
+/// Example: main `/Users/me/repo` + name `feat` → `/Users/me/repo-feat`.
+///
+/// Choice (documented in `docs/llm-wiki/git-worktrees.md`): sibling of the
+/// **main** worktree root, not `.worktrees/<name>` inside the repo. Matches
+/// common `git worktree add ../repo-feat` layout and existing list samples.
+pub fn build_worktree_sibling_path(main_worktree_path: &str, name: &str) -> Result<String, String> {
+    let main = normalize_fs_path(main_worktree_path);
+    if main.is_empty() {
+        return Err("empty main worktree path".into());
+    }
+    let safe = sanitize_worktree_name(name)?;
+    let main_pb = std::path::PathBuf::from(&main);
+    let base = main_pb
+        .file_name()
+        .and_then(|s| s.to_str())
+        .filter(|s| !s.is_empty())
+        .ok_or_else(|| "cannot derive repo folder name".to_string())?;
+    let parent = main_pb
+        .parent()
+        .ok_or_else(|| "main worktree has no parent directory".to_string())?;
+    let dir_name = format!("{base}-{safe}");
+    let path = parent.join(dir_name);
+    let s = path.to_string_lossy().replace('\\', "/");
+    let s = normalize_fs_path(&s);
+    if s == main || s.is_empty() {
+        return Err("resolved worktree path is invalid".into());
+    }
+    Ok(s)
+}
+
+// from PR #88
+
+/// Apply a CLI automatic remediation: `grok doctor fix <id> --yes`.
+/// Returns redacted stdout/stderr; never throws on non-zero exit (ok=false).
+#[tauri::command]
+pub async fn cli_doctor_fix(id: String) -> Result<serde_json::Value, String> {
+    let id = id.trim().to_string();
+    if id.is_empty() {
+        return Err("doctor fix id required".into());
+    }
+    if !is_safe_doctor_fix_id(&id) {
+        return Err(format!("invalid doctor fix id: {id}"));
+    }
+
+    let id_for_cmd = id.clone();
+    let result = tauri::async_runtime::spawn_blocking(move || {
+        run_grok_cli_args(
+            &["doctor", "fix", &id_for_cmd, "--yes"],
+            CLI_DOCTOR_FIX_TIMEOUT_SECS,
+        )
+    })
+    .await
+    .map_err(|e| format!("doctor fix worker panicked: {e}"))?;
+
+    match result {
+        Ok((stdout, stderr, exit_ok)) => Ok(serde_json::json!({
+            "ok": exit_ok,
+            "id": id,
+            "stdout": redact_doctor_fix_output(&stdout, 2000),
+            "stderr": redact_doctor_fix_output(&stderr, 800),
+            "exitOk": exit_ok,
+        })),
+        Err(e) => {
+            // Missing CLI / timeout — surface as structured failure, not panic.
+            Ok(serde_json::json!({
+                "ok": false,
+                "id": id,
+                "stdout": "",
+                "stderr": redact_doctor_fix_output(&e, 400),
+                "exitOk": false,
+                "error": redact_doctor_fix_output(&e, 400),
+            }))
+        }
+    }
+}
+
+// from PR #63
+
+/// Run resolved `grok update --check --json` and return a typed DTO.
+#[tauri::command]
+pub async fn cli_update_check() -> Result<crate::cli_update::CliUpdateCheck, String> {
+    tauri::async_runtime::spawn_blocking(|| {
+        let settings = store::load_settings();
+        crate::cli_update::check_cli_update(settings.manual_cli_path.as_deref())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+// from PR #63
+
+/// Install CLI update: prefer `grok update`, fall back to install trust-chain.
+#[tauri::command]
+pub async fn cli_update_install(
+    app: tauri::AppHandle,
+) -> Result<crate::cli_install::CliInstallResult, String> {
+    crate::cli_update::install_cli_update(app).await
+}
+
+// from PR #83
+
+/// Count removal-like lines in `git worktree prune -v` output (best-effort).
+pub fn count_worktree_prune_lines(output: &str) -> usize {
+    output
+        .lines()
+        .map(str::trim)
+        .filter(|l| !l.is_empty())
+        .filter(|l| {
+            let lower = l.to_ascii_lowercase();
+            lower.contains("remov") || lower.contains("prun") || lower.starts_with("would ")
+        })
+        .count()
+}
+
+// from PR #77
+
+/// Best-effort YAML frontmatter `description:` (first line / plain value).
+fn extract_agent_description_from_content(content: &str) -> Option<String> {
+    if !content.starts_with("---") {
+        return None;
+    }
+    let rest = &content[3..];
+    let end = rest.find("\n---")?;
+    let fm = &rest[..end];
+    for (i, line) in fm.lines().enumerate() {
+        let trimmed = line.trim_start();
+        if let Some(val) = trimmed.strip_prefix("description:") {
+            let v = val.trim();
+            if v == ">" || v == "|" || v == ">-" || v == "|-" {
+                // Folded block: first non-empty indented line after this one.
+                for next in fm.lines().skip(i + 1) {
+                    if next.starts_with(' ') || next.starts_with('\t') {
+                        let t = next.trim();
+                        if !t.is_empty() {
+                            return Some(t.to_string());
+                        }
+                    } else if !next.trim().is_empty() {
+                        break;
+                    }
+                }
+                return None;
+            }
+            if v.is_empty() {
+                return None;
+            }
+            let unquoted = v
+                .strip_prefix('"')
+                .and_then(|s| s.strip_suffix('"'))
+                .or_else(|| v.strip_prefix('\'').and_then(|s| s.strip_suffix('\'')))
+                .unwrap_or(v);
+            let cleaned = unquoted.split_whitespace().collect::<Vec<_>>().join(" ");
+            if cleaned.is_empty() {
+                return None;
+            }
+            return Some(cleaned);
+        }
+    }
+    None
+}
+
+// from PR #64
+
+/// Create a linked git worktree under a sibling path, then return its path.
+///
+/// Args are passed to `git` as an argv array (no shell) to avoid injection.
+/// - Without `start_point`: `git worktree add -b <name> <path>` (branch from HEAD).
+/// - With `start_point`: `git worktree add -b <name> <path> <start_point>`.
+#[tauri::command]
+pub async fn git_worktree_add(
+    project_path: String,
+    name: String,
+    start_point: Option<String>,
+) -> Result<GitWorktreeAddResult, String> {
+    let project = normalize_fs_path(&project_path);
+    if project.is_empty() {
+        return Err("empty path".into());
+    }
+    let proj = std::path::PathBuf::from(&project);
+    if !proj.is_dir() {
+        return Err("project not a directory".into());
+    }
+    git_probe_work_tree(&project)?;
+
+    let safe_name = sanitize_worktree_name(&name)?;
+    let start = sanitize_worktree_ref(start_point.as_deref())?;
+
+    // Resolve main worktree path (first porcelain entry) for sibling placement.
+    let list_out = std::process::Command::new("git")
+        .args(["-C", &project, "worktree", "list", "--porcelain"])
+        .output()
+        .map_err(|e| e.to_string())?;
+    if !list_out.status.success() {
+        let err = String::from_utf8_lossy(&list_out.stderr).trim().to_string();
+        return Err(if err.is_empty() {
+            "git worktree list failed".into()
+        } else {
+            err.chars().take(200).collect()
+        });
+    }
+    let listed = parse_worktree_porcelain(&String::from_utf8_lossy(&list_out.stdout));
+    let main_path = listed
+        .first()
+        .map(|w| w.path.clone())
+        .filter(|p| !p.is_empty())
+        .ok_or_else(|| "could not resolve main worktree path".to_string())?;
+
+    let target = build_worktree_sibling_path(&main_path, &safe_name)?;
+    let target_pb = std::path::PathBuf::from(&target);
+    if target_pb.exists() {
+        return Err(format!("path already exists: {target}"));
+    }
+    // Refuse if already registered as a worktree.
+    if listed.iter().any(|w| {
+        let p = normalize_fs_path(&w.path);
+        p.eq_ignore_ascii_case(&target) || p == target
+    }) {
+        return Err(format!("worktree already registered: {target}"));
+    }
+
+    // Safe argv — never go through a shell.
+    // `git worktree add -b <name> <path> [start_point]`
+    let mut args: Vec<String> = vec![
+        "-C".into(),
+        project.clone(),
+        "worktree".into(),
+        "add".into(),
+        "-b".into(),
+        safe_name.clone(),
+        target.clone(),
+    ];
+    if let Some(ref sp) = start {
+        args.push(sp.clone());
+    }
+
+    let out = std::process::Command::new("git")
+        .args(&args)
+        .output()
+        .map_err(|e| e.to_string())?;
+    if !out.status.success() {
+        let err = String::from_utf8_lossy(&out.stderr).trim().to_string();
+        let err = if err.is_empty() {
+            String::from_utf8_lossy(&out.stdout).trim().to_string()
+        } else {
+            err
+        };
+        return Err(if err.is_empty() {
+            "git worktree add failed".into()
+        } else {
+            err.chars().take(400).collect()
+        });
+    }
+
+    // Best-effort: re-list to pick up branch field for the new path.
+    let branch = {
+        let re = std::process::Command::new("git")
+            .args(["-C", &project, "worktree", "list", "--porcelain"])
+            .output()
+            .ok();
+        re.and_then(|o| {
+            if !o.status.success() {
+                return None;
+            }
+            let list = parse_worktree_porcelain(&String::from_utf8_lossy(&o.stdout));
+            list.into_iter()
+                .find(|w| {
+                    let p = normalize_fs_path(&w.path);
+                    p.eq_ignore_ascii_case(&target) || p == target
+                })
+                .and_then(|w| w.branch)
+        })
+        .or_else(|| Some(safe_name.clone()))
+    };
+
+    Ok(GitWorktreeAddResult {
+        path: target,
+        name: safe_name,
+        start_point: start,
+        branch,
+    })
+}
+
+// from PR #83
+
+/// Garbage-collect stale git worktree administrative files via `git worktree prune`.
+///
+/// Safe argv only (no shell). Soft-fails on missing git / non-repo with an Err.
+/// When `dry_run` is true, nothing is deleted (`--dry-run`).
+/// Optional `force` maps to `--expire now` when `max_age` is unset.
+/// Optional `max_age` maps to `--expire <max_age>`.
+#[tauri::command]
+pub async fn git_worktree_gc(
+    project_path: String,
+    dry_run: bool,
+    force: Option<bool>,
+    max_age: Option<String>,
+) -> Result<GitWorktreeGcResult, String> {
+    let project = normalize_fs_path(&project_path);
+    if project.is_empty() {
+        return Err("empty path".into());
+    }
+    let proj = std::path::PathBuf::from(&project);
+    if !proj.is_dir() {
+        return Err("project not a directory".into());
+    }
+    git_probe_work_tree(&project)?;
+
+    let forced = force.unwrap_or(false);
+    let age = sanitize_worktree_gc_max_age(max_age.as_deref())?;
+
+    // Snapshot prunable entries before prune for UI preview / summary.
+    let prunable = {
+        let list_out = std::process::Command::new("git")
+            .args(["-C", &project, "worktree", "list", "--porcelain"])
+            .output()
+            .map_err(|e| e.to_string())?;
+        if list_out.status.success() {
+            parse_worktree_porcelain(&String::from_utf8_lossy(&list_out.stdout))
+                .into_iter()
+                .filter(|w| w.prunable)
+                .map(|w| w.path)
+                .collect::<Vec<_>>()
+        } else {
+            Vec::new()
+        }
+    };
+
+    let args = build_worktree_gc_args(
+        &project,
+        dry_run,
+        forced,
+        age.as_deref(),
+    )?;
+
+    let out = std::process::Command::new("git")
+        .args(&args)
+        .output()
+        .map_err(|e| e.to_string())?;
+    if !out.status.success() {
+        let err = String::from_utf8_lossy(&out.stderr).trim().to_string();
+        let err = if err.is_empty() {
+            String::from_utf8_lossy(&out.stdout).trim().to_string()
+        } else {
+            err
+        };
+        return Err(if err.is_empty() {
+            "git worktree prune failed".into()
+        } else {
+            err.chars().take(400).collect()
+        });
+    }
+
+    // prune -v writes progress to stderr on some git versions, stdout on others.
+    let mut combined = String::new();
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    if !stdout.trim().is_empty() {
+        combined.push_str(stdout.trim());
+    }
+    if !stderr.trim().is_empty() {
+        if !combined.is_empty() {
+            combined.push('\n');
+        }
+        combined.push_str(stderr.trim());
+    }
+    // Prefer verbose prune lines; fall back to porcelain prunable count on dry-run.
+    let mut pruned_count = count_worktree_prune_lines(&combined);
+    if pruned_count == 0 && !prunable.is_empty() {
+        pruned_count = prunable.len();
+    }
+
+    let used_expire = match &age {
+        Some(a) => Some(a.clone()),
+        None if forced => Some("now".into()),
+        None => None,
+    };
+
+    Ok(GitWorktreeGcResult {
+        dry_run,
+        forced,
+        max_age: used_expire,
+        output: combined.chars().take(4000).collect(),
+        prunable,
+        pruned_count,
+    })
+}
+
+// from PR #74
+
+/// Remove a linked git worktree via `git worktree remove` (argv only, no shell).
+///
+/// Refuses the main worktree. Optional `force` maps to `--force` (dirty / locked).
+#[tauri::command]
+pub async fn git_worktree_remove(
+    project_path: String,
+    worktree_path: String,
+    force: Option<bool>,
+) -> Result<GitWorktreeRemoveResult, String> {
+    let project = normalize_fs_path(&project_path);
+    if project.is_empty() {
+        return Err("empty path".into());
+    }
+    let proj = std::path::PathBuf::from(&project);
+    if !proj.is_dir() {
+        return Err("project not a directory".into());
+    }
+    git_probe_work_tree(&project)?;
+
+    let target = normalize_fs_path(&worktree_path);
+    if target.is_empty() {
+        return Err("empty worktree path".into());
+    }
+    // Disallow option-like paths so a crafted path cannot become a git flag.
+    if target.starts_with('-') {
+        return Err("invalid worktree path".into());
+    }
+
+    let list_out = std::process::Command::new("git")
+        .args(["-C", &project, "worktree", "list", "--porcelain"])
+        .output()
+        .map_err(|e| e.to_string())?;
+    if !list_out.status.success() {
+        let err = String::from_utf8_lossy(&list_out.stderr).trim().to_string();
+        return Err(if err.is_empty() {
+            "git worktree list failed".into()
+        } else {
+            err.chars().take(200).collect()
+        });
+    }
+    let listed = parse_worktree_porcelain(&String::from_utf8_lossy(&list_out.stdout));
+    if listed.is_empty() {
+        return Err("no worktrees found".into());
+    }
+
+    refuse_remove_main_worktree(&listed, &target)?;
+
+    let registered = listed.iter().any(|w| worktree_paths_equal(&w.path, &target));
+    if !registered {
+        return Err("worktree not registered for this repository".into());
+    }
+
+    // Use the path as listed by git (preserves real casing / form).
+    let remove_path = listed
+        .iter()
+        .find(|w| worktree_paths_equal(&w.path, &target))
+        .map(|w| w.path.clone())
+        .unwrap_or(target.clone());
+
+    let forced = force.unwrap_or(false);
+    // Safe argv — never go through a shell.
+    // `git worktree remove [--force] <path>`
+    let mut args: Vec<String> = vec![
+        "-C".into(),
+        project,
+        "worktree".into(),
+        "remove".into(),
+    ];
+    if forced {
+        args.push("--force".into());
+    }
+    args.push(remove_path.clone());
+
+    let out = std::process::Command::new("git")
+        .args(&args)
+        .output()
+        .map_err(|e| e.to_string())?;
+    if !out.status.success() {
+        let err = String::from_utf8_lossy(&out.stderr).trim().to_string();
+        let err = if err.is_empty() {
+            String::from_utf8_lossy(&out.stdout).trim().to_string()
+        } else {
+            err
+        };
+        return Err(if err.is_empty() {
+            "git worktree remove failed".into()
+        } else {
+            err.chars().take(400).collect()
+        });
+    }
+
+    Ok(GitWorktreeRemoveResult {
+        path: remove_path,
+        forced,
+    })
+}
+
+// from PR #78
+
+/// Create the user or project hooks directory if missing. Returns the absolute path.
+#[tauri::command]
+pub async fn hooks_ensure_dir(
+    scope: Option<String>,
+    project_path: Option<String>,
+) -> Result<serde_json::Value, String> {
+    let scope = scope.unwrap_or_else(|| "user".into());
+    let project = project_path
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(|s| s.to_string());
+    let scope_for_block = scope.clone();
+    let dir = tauri::async_runtime::spawn_blocking(move || {
+        crate::hooks::ensure_hooks_dir(&scope_for_block, project.as_deref())
+    })
+    .await
+    .map_err(|e| e.to_string())??;
+    Ok(serde_json::json!({
+        "path": dir.to_string_lossy(),
+        "scope": scope,
+    }))
+}
+
+// from PR #78
+
+#[cfg(test)]
+mod git_worktree_parse_tests {
+    use super::*;
+
+    #[test]
+    fn parses_main_and_linked() {
+        let raw = "\
+worktree /Users/me/repo
+HEAD abcdef
+branch refs/heads/main
+
+worktree /Users/me/repo-feat
+HEAD fedcba
+branch refs/heads/feat/x
+
+worktree /Users/me/repo-d
+HEAD 112233
+detached
+";
+        let list = parse_worktree_porcelain(raw);
+        assert_eq!(list.len(), 3);
+        assert!(list[0].is_main);
+        assert_eq!(list[0].branch.as_deref(), Some("main"));
+        assert_eq!(list[1].branch.as_deref(), Some("feat/x"));
+        assert!(!list[1].is_main);
+        assert!(list[2].detached);
+        assert!(list[2].branch.is_none());
+    }
+
+    #[test]
+    fn empty_input() {
+        assert!(parse_worktree_porcelain("").is_empty());
+    }
+}
+
+// ── Hooks manager (list / reveal / open folder) ─────────────────────────────
+
+/// List hook files under `~/.grok/hooks` and optionally `<project>/.grok/hooks`.
+#[tauri::command]
+pub async fn hooks_list(project_path: Option<String>) -> Result<crate::hooks::HooksListResult, String> {
+    let path = project_path
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(|s| s.to_string());
+    tauri::async_runtime::spawn_blocking(move || {
+        crate::hooks::collect_hooks_list(path.as_deref())
+    })
+    .await
+    .map_err(|e| e.to_string())
+}
+
+// from PR #78
+
+/// Open the user or project hooks directory in the system file manager.
+/// When `create` is true, creates the folder if it is missing.
+#[tauri::command]
+pub async fn hooks_open_dir(
+    scope: Option<String>,
+    project_path: Option<String>,
+    create: Option<bool>,
+) -> Result<serde_json::Value, String> {
+    let scope = scope.unwrap_or_else(|| "user".into());
+    let create = create.unwrap_or(false);
+    let project = project_path
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(|s| s.to_string());
+    let scope_for_block = scope.clone();
+    let project_for_block = project.clone();
+    let dir = tauri::async_runtime::spawn_blocking(move || {
+        if create {
+            crate::hooks::ensure_hooks_dir(&scope_for_block, project_for_block.as_deref())
+        } else {
+            let d = match scope_for_block.trim() {
+                "user" | "" => crate::hooks::user_hooks_dir(),
+                "project" => crate::hooks::project_hooks_dir(project_for_block.as_deref().unwrap_or(""))
+                    .ok_or_else(|| "project path required for project hooks".to_string())?,
+                other => return Err(format!("unknown hooks scope: {other}")),
+            };
+            if !d.exists() {
+                return Err(format!(
+                    "hooks folder not found: {} (use Create folder first)",
+                    d.display()
+                ));
+            }
+            Ok(d)
+        }
+    })
+    .await
+    .map_err(|e| e.to_string())??;
+
+    let path = dir.to_string_lossy().to_string();
+    // Open the directory itself (not reveal-select).
+    path_open(path.clone()).await?;
+    Ok(serde_json::json!({ "path": path, "scope": scope }))
+}
+
+// from PR #78
+
+/// Reveal a hook path in the system file manager (Finder / Explorer).
+#[tauri::command]
+pub async fn hooks_reveal(path: String) -> Result<(), String> {
+    path_reveal(path).await
+}
+
+// from PR #77
+
+fn is_agent_def_file(name: &str) -> bool {
+    let lower = name.to_ascii_lowercase();
+    !name.starts_with('.')
+        && (lower.ends_with(".md") || lower.ends_with(".markdown"))
+}
+
+// from PR #77
+
+fn is_persona_def_file(name: &str) -> bool {
+    let lower = name.to_ascii_lowercase();
+    !name.starts_with('.')
+        && (lower.ends_with(".toml")
+            || lower.ends_with(".md")
+            || lower.ends_with(".markdown"))
+}
+
+// from PR #88
+
+/// Safe fix-id shape: short handle (`ssh-wrap`) or canonical (`terminal.ssh-wrap`).
+/// Rejects flags, paths, and shell metacharacters before invoking the CLI.
+fn is_safe_doctor_fix_id(id: &str) -> bool {
+    let t = id.trim();
+    if t.is_empty() || t.len() > 128 {
+        return false;
+    }
+    let mut chars = t.chars();
+    let Some(first) = chars.next() else {
+        return false;
+    };
+    if !first.is_ascii_alphanumeric() {
+        return false;
+    }
+    chars.all(|c| c.is_ascii_alphanumeric() || c == '.' || c == '_' || c == '-')
+}
+
+// from PR #79
 
 fn is_setup_sensitive_key(key: &str) -> bool {
     let k = key.trim().to_ascii_lowercase();
@@ -7047,6 +5707,179 @@ fn is_setup_sensitive_key(key: &str) -> bool {
         || k.ends_with("_sig")
 }
 
+// from PR #68
+
+/// Add or replace a stdio MCP server. Soft-respawns a live agent so the next
+/// connect injects the new `mcpServers` set.
+#[tauri::command]
+pub async fn mcp_add(
+    app: tauri::AppHandle,
+    mgr: State<'_, Arc<SessionManager>>,
+    name: String,
+    command: String,
+    args: Option<Vec<String>>,
+    env: Option<std::collections::HashMap<String, String>>,
+) -> Result<serde_json::Value, String> {
+    let name = name.trim().to_string();
+    let command = command.trim().to_string();
+    let args = args.unwrap_or_default();
+    let env_owned = env;
+    let def = tauri::async_runtime::spawn_blocking(move || {
+        crate::extensions::add_mcp_stdio(
+            &name,
+            &command,
+            &args,
+            env_owned.as_ref(),
+        )
+    })
+    .await
+    .map_err(|e| e.to_string())??;
+
+    mgr.apply_extensions_mcp_change(&app).await;
+    Ok(serde_json::json!({
+        "ok": true,
+        "name": def.name,
+        "command": def.command,
+        "args": def.args,
+        "transport": def.transport,
+        "enabled": true,
+    }))
+}
+
+// from PR #68
+
+/// Run `grok mcp doctor --json` (optional server name) under the active GROK_HOME.
+#[tauri::command]
+pub async fn mcp_doctor(
+    name: Option<String>,
+) -> Result<crate::extensions::McpDoctorReport, String> {
+    let name = name
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty());
+    tauri::async_runtime::spawn_blocking(move || run_mcp_doctor(name.as_deref()))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+// from PR #68
+
+/// Remove an MCP server from agent config + App prefs. Soft-respawns when live.
+#[tauri::command]
+pub async fn mcp_remove(
+    app: tauri::AppHandle,
+    mgr: State<'_, Arc<SessionManager>>,
+    name: String,
+) -> Result<serde_json::Value, String> {
+    let name = name.trim().to_string();
+    if name.is_empty() {
+        return Err("MCP server name required".into());
+    }
+    let name_for_job = name.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        crate::extensions::remove_mcp_server(&name_for_job)
+    })
+    .await
+    .map_err(|e| e.to_string())??;
+
+    mgr.apply_extensions_mcp_change(&app).await;
+    Ok(serde_json::json!({
+        "ok": true,
+        "name": name,
+    }))
+}
+
+// from PR #74
+
+/// Normalize a path for worktree equality checks (slash direction, no trailing
+/// slash, ASCII lowercased so macOS/Windows case-insensitive volumes match).
+pub fn normalize_worktree_path_key(raw: &str) -> String {
+    let mut s = normalize_fs_path(raw).replace('\\', "/");
+    while s.len() > 1 && s.ends_with('/') {
+        s.pop();
+    }
+    s.make_ascii_lowercase();
+    s
+}
+
+// from PR #84
+
+/// Read compact permission rules from the active GROK_HOME config.toml.
+#[tauri::command]
+pub async fn permission_rules_get(
+) -> Result<crate::permission_rules::PermissionRulesResult, String> {
+    tauri::async_runtime::spawn_blocking(crate::permission_rules::load_permission_rules)
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+// from PR #84
+
+/// Replace compact allow/deny/ask arrays and soft-respawn the live agent.
+#[tauri::command]
+pub async fn permission_rules_set(
+    app: tauri::AppHandle,
+    mgr: State<'_, Arc<SessionManager>>,
+    allow: Option<Vec<String>>,
+    deny: Option<Vec<String>>,
+    ask: Option<Vec<String>>,
+) -> Result<crate::permission_rules::PermissionRulesResult, String> {
+    let rules = crate::permission_rules::PermissionRules {
+        allow: allow.unwrap_or_default(),
+        deny: deny.unwrap_or_default(),
+        ask: ask.unwrap_or_default(),
+    };
+    let result = tauri::async_runtime::spawn_blocking(move || {
+        crate::permission_rules::save_permission_rules(&rules)
+    })
+    .await
+    .map_err(|e| e.to_string())??;
+
+    // Grok Build reads rules at session start — soft-respawn so the next turn
+    // reloads config without a full disconnect toast.
+    mgr.soft_respawn(&app).await;
+    Ok(result)
+}
+
+// from PR #82
+
+/// Create root `AGENTS.md` stub when missing (idempotent).
+#[tauri::command]
+pub async fn project_rules_ensure_template(
+    path: String,
+) -> Result<crate::project_rules::ProjectRulesEnsureResult, String> {
+    crate::project_rules::ensure_agents_template(&path)
+}
+
+// from PR #82
+
+/// List existing project rule files (AGENTS.md, CLAUDE.md, `.grok/rules*`, nested AGENTS).
+#[tauri::command]
+pub async fn project_rules_list(
+    path: String,
+) -> Result<crate::project_rules::ProjectRulesListResult, String> {
+    crate::project_rules::list_project_rules(&path)
+}
+
+// from PR #77
+
+fn read_agent_description(path: &std::path::Path) -> Option<String> {
+    let bytes = std::fs::read(path).ok()?;
+    // Frontmatter is near the top; cap read size.
+    let take = bytes.len().min(4096);
+    let content = String::from_utf8_lossy(&bytes[..take]);
+    extract_agent_description_from_content(&content)
+}
+
+// from PR #88
+
+/// Redact + cap CLI doctor fix stdout/stderr for the UI (no secrets, no huge dumps).
+fn redact_doctor_fix_output(s: &str, max: usize) -> String {
+    let scrubbed = store::redact_text(s);
+    truncate_cli_err(&scrubbed, max)
+}
+
+// from PR #79
+
 /// In-place redaction of secret-like keys / tokenish strings in managed setup JSON.
 pub fn redact_setup_json_value(value: &mut serde_json::Value) {
     match value {
@@ -7073,6 +5906,286 @@ pub fn redact_setup_json_value(value: &mut serde_json::Value) {
     }
 }
 
+// from PR #74
+
+/// Refuse removing the main (primary) worktree. Pure; unit-tested.
+pub fn refuse_remove_main_worktree(
+    listed: &[GitWorktreeEntry],
+    worktree_path: &str,
+) -> Result<(), String> {
+    let target = normalize_fs_path(worktree_path);
+    if target.is_empty() {
+        return Err("empty worktree path".into());
+    }
+    let main = listed
+        .iter()
+        .find(|w| w.is_main)
+        .or_else(|| listed.first());
+    if let Some(m) = main {
+        if worktree_paths_equal(&m.path, &target) {
+            return Err("refusing to remove the main worktree".into());
+        }
+    }
+    Ok(())
+}
+
+// from PR #68
+
+/// Invoke CLI doctor with GROK_HOME matching session_data_mode.
+fn run_mcp_doctor(name: Option<&str>) -> Result<crate::extensions::McpDoctorReport, String> {
+    let settings = store::load_settings();
+    let probe = cli_probe::probe_cli(settings.manual_cli_path.as_deref());
+    let Some(cli_path) = probe.path.filter(|_| probe.found) else {
+        return Err("Grok Build CLI not found".into());
+    };
+    let grok_home = crate::paths::resolve_agent_grok_home(&settings.session_data_mode);
+
+    let mut args: Vec<String> = vec!["mcp".into(), "doctor".into(), "--json".into()];
+    if let Some(n) = name {
+        args.push(n.to_string());
+    }
+
+    let (tx, rx) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        let mut cmd = std::process::Command::new(&cli_path);
+        cmd.args(&args);
+        cmd.env("GROK_HOME", &grok_home);
+        crate::process_util::apply_no_window_std(&mut cmd);
+        if let Some(path_env) = crate::process_util::enriched_path_env() {
+            cmd.env("PATH", path_env);
+        }
+        let _ = tx.send(cmd.output());
+    });
+
+    match rx.recv_timeout(std::time::Duration::from_secs(MCP_DOCTOR_TIMEOUT_SECS)) {
+        Ok(Ok(output)) => {
+            let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
+            let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+            // Doctor may exit non-zero when servers are unhealthy — still parse JSON.
+            let blob = if !stdout.is_empty() {
+                stdout
+            } else {
+                stderr.clone()
+            };
+            if blob.is_empty() {
+                return Err(if !stderr.is_empty() {
+                    stderr.chars().take(400).collect()
+                } else {
+                    "mcp doctor returned no output".into()
+                });
+            }
+            Ok(crate::extensions::parse_mcp_doctor_json(&blob))
+        }
+        Ok(Err(e)) => Err(format!("Failed to run grok mcp doctor: {e}")),
+        Err(_) => Err(format!(
+            "grok mcp doctor timed out after {MCP_DOCTOR_TIMEOUT_SECS}s"
+        )),
+    }
+}
+
+// from PR #83
+
+/// Sanitize optional `--expire` / max-age for `git worktree prune`.
+///
+/// Accepts common git relative dates (`now`, `2.weeks.ago`, `3.months`) and
+/// simple tokens. Rejects empty, option-like (`-…`), and control characters.
+/// Pure; unit-tested.
+pub fn sanitize_worktree_gc_max_age(raw: Option<&str>) -> Result<Option<String>, String> {
+    let Some(s) = raw.map(str::trim).filter(|s| !s.is_empty()) else {
+        return Ok(None);
+    };
+    if s.len() > 64 {
+        return Err("max-age too long".into());
+    }
+    if s.starts_with('-') {
+        return Err("max-age must not start with '-'".into());
+    }
+    if s.contains('\0') || s.contains('\n') || s.contains('\r') || s.contains(' ') {
+        return Err("invalid max-age".into());
+    }
+    // Git expire: alphanumerics + . _ (e.g. 2.weeks.ago, now, 90.days).
+    let ok = s
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || c == '.' || c == '_');
+    if !ok {
+        return Err("max-age may only contain letters, digits, '.' and '_'".into());
+    }
+    Ok(Some(s.to_string()))
+}
+
+// from PR #64
+
+/// Sanitize a user-provided worktree name for use as a path segment + branch name.
+///
+/// Allows letters, digits, `.`, `_`, `-`. Rejects empty, `..`, path separators,
+/// and other control / shell-metacharacters. Pure; unit-tested.
+pub fn sanitize_worktree_name(raw: &str) -> Result<String, String> {
+    let name = raw.trim();
+    if name.is_empty() {
+        return Err("worktree name is required".into());
+    }
+    if name == "." || name == ".." {
+        return Err("invalid worktree name".into());
+    }
+    if name.len() > 64 {
+        return Err("worktree name too long (max 64)".into());
+    }
+    // Single path segment only — no separators, no absolute paths.
+    if name.contains('/') || name.contains('\\') || name.contains('\0') {
+        return Err("worktree name must not contain path separators".into());
+    }
+    // Branch-safe: alphanumeric + . _ - (common for feature names).
+    let ok = name
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || c == '.' || c == '_' || c == '-');
+    if !ok {
+        return Err(
+            "worktree name may only contain letters, digits, '.', '_' and '-'".into(),
+        );
+    }
+    if name.starts_with('-') {
+        return Err("worktree name must not start with '-'".into());
+    }
+    Ok(name.to_string())
+}
+
+// from PR #64
+
+/// Optional commit-ish / branch start-point for `git worktree add`.
+/// Passed as a single argv element (no shell) after light validation.
+pub fn sanitize_worktree_ref(raw: Option<&str>) -> Result<Option<String>, String> {
+    let Some(s) = raw.map(str::trim).filter(|s| !s.is_empty()) else {
+        return Ok(None);
+    };
+    if s.len() > 256 {
+        return Err("branch / ref too long".into());
+    }
+    if s.contains('\0') || s.contains('\n') || s.contains('\r') {
+        return Err("invalid branch / ref".into());
+    }
+    // Disallow option-like args so they cannot be mistaken for git flags.
+    if s.starts_with('-') {
+        return Err("branch / ref must not start with '-'".into());
+    }
+    Ok(Some(s.to_string()))
+}
+
+// from PR #77
+
+fn scan_agent_dir(dir: &std::path::Path, scope: &str) -> Vec<AgentDefDto> {
+    let mut out = Vec::new();
+    let rd = match std::fs::read_dir(dir) {
+        Ok(rd) => rd,
+        Err(_) => return out,
+    };
+    for entry in rd.flatten() {
+        let path = entry.path();
+        if !path.is_file() {
+            continue;
+        }
+        let file_name = match path.file_name().and_then(|s| s.to_str()) {
+            Some(n) => n.to_string(),
+            None => continue,
+        };
+        if !is_agent_def_file(&file_name) {
+            continue;
+        }
+        let name = stem_name(&file_name);
+        if name.is_empty() {
+            continue;
+        }
+        let path_str = path.to_string_lossy().to_string();
+        let description = read_agent_description(&path);
+        out.push(AgentDefDto {
+            name,
+            path: path_str,
+            scope: scope.to_string(),
+            description,
+        });
+    }
+    out
+}
+
+// from PR #77
+
+fn scan_persona_dir(dir: &std::path::Path, scope: &str) -> Vec<PersonaDefDto> {
+    let mut out = Vec::new();
+    let rd = match std::fs::read_dir(dir) {
+        Ok(rd) => rd,
+        Err(_) => return out,
+    };
+    for entry in rd.flatten() {
+        let path = entry.path();
+        if !path.is_file() {
+            continue;
+        }
+        let file_name = match path.file_name().and_then(|s| s.to_str()) {
+            Some(n) => n.to_string(),
+            None => continue,
+        };
+        if !is_persona_def_file(&file_name) {
+            continue;
+        }
+        let name = stem_name(&file_name);
+        if name.is_empty() {
+            continue;
+        }
+        out.push(PersonaDefDto {
+            name,
+            path: path.to_string_lossy().to_string(),
+            scope: scope.to_string(),
+        });
+    }
+    out
+}
+
+// from PR #77
+
+fn scope_rank(scope: &str) -> u8 {
+    match scope {
+        "project" => 0,
+        "user" => 1,
+        "bundled" => 2,
+        _ => 9,
+    }
+}
+
+// from PR #71
+
+/// Persist last active chat without permission/tray side-effects of `settings_set`.
+/// Called on every successful open/switch so startup can restore once.
+#[tauri::command]
+pub async fn settings_remember_last_session(
+    session_id: Option<String>,
+    project_id: Option<String>,
+) -> Result<(), String> {
+    let mut s = store::load_settings();
+    let next_session = session_id.and_then(|id| {
+        let t = id.trim().to_string();
+        if t.is_empty() {
+            None
+        } else {
+            Some(t)
+        }
+    });
+    let next_project = project_id.and_then(|id| {
+        let t = id.trim().to_string();
+        if t.is_empty() {
+            None
+        } else {
+            Some(t)
+        }
+    });
+    if s.last_session_id == next_session && s.last_project_id == next_project {
+        return Ok(());
+    }
+    s.last_session_id = next_session;
+    s.last_project_id = next_project;
+    store::save_settings(&s)
+}
+
+// from PR #79
+
 fn setup_cli_failure_message(stdout: &str, stderr: &str, fallback: &str) -> String {
     let msg = if !stderr.trim().is_empty() {
         stderr.trim()
@@ -7085,95 +6198,38 @@ fn setup_cli_failure_message(stdout: &str, stderr: &str, fallback: &str) -> Stri
     store::redact_text(msg).trim().chars().take(1200).collect()
 }
 
-/// `grok setup --json` — fetch managed config preview without writing to ~/.grok.
-/// Always returns Ok; failures surface as `{ ok: false, error, errorKind }`.
-#[tauri::command]
-pub async fn setup_preview() -> Result<serde_json::Value, String> {
-    let result = tauri::async_runtime::spawn_blocking(|| {
-        run_grok_cli_args(&["setup", "--json"], SETUP_CMD_TIMEOUT_SECS)
-    })
-    .await
-    .map_err(|e| e.to_string())?;
+// from PR #79
 
-    let (stdout, stderr, ok) = match result {
-        Ok(t) => t,
-        Err(e) => {
-            let error = store::redact_text(&e).trim().to_string();
-            let kind = setup_error_kind(&error);
-            return Ok(serde_json::json!({
-                "ok": false,
-                "payload": null,
-                "message": null,
-                "error": error,
-                "errorKind": kind,
-            }));
-        }
-    };
-
-    if !ok {
-        let error = setup_cli_failure_message(
-            &stdout,
-            &stderr,
-            "Could not fetch managed configuration",
-        );
-        let kind = setup_error_kind(&error);
-        return Ok(serde_json::json!({
-            "ok": false,
-            "payload": null,
-            "message": null,
-            "error": error,
-            "errorKind": kind,
-        }));
+fn setup_error_kind(msg: &str) -> &'static str {
+    let m = msg.to_ascii_lowercase();
+    if m.contains("cli not found") || m.contains("no such file") {
+        return "cli_missing";
     }
-
-    let body = stdout.trim();
-    if body.is_empty() {
-        // Some CLI builds may print JSON on stderr when successful.
-        let alt = stderr.trim();
-        if alt.starts_with('{') || alt.starts_with('[') {
-            return Ok(setup_preview_from_body(alt));
-        }
-        return Ok(serde_json::json!({
-            "ok": true,
-            "payload": null,
-            "message": store::redact_text(alt).trim().chars().take(400).collect::<String>(),
-            "error": null,
-            "errorKind": null,
-        }));
+    if m.contains("timed out") || m.contains("timeout") {
+        return "timeout";
     }
-
-    Ok(setup_preview_from_body(body))
+    if m.contains("no deployment key")
+        || m.contains("team sign-in")
+        || m.contains("team login")
+        || m.contains("sign in with a team")
+        || m.contains("export grok_deployment_key")
+    {
+        return "missing_auth";
+    }
+    if m.contains("deployment key was rejected")
+        || m.contains("key was rejected")
+        || m.contains("hasn't expired")
+        || m.contains("hasnt expired")
+    {
+        return "rejected";
+    }
+    if m.contains("json") && (m.contains("parse") || m.contains("invalid")) {
+        return "parse";
+    }
+    "other"
 }
 
-fn setup_preview_from_body(body: &str) -> serde_json::Value {
-    match serde_json::from_str::<serde_json::Value>(body) {
-        Ok(mut value) => {
-            redact_setup_json_value(&mut value);
-            serde_json::json!({
-                "ok": true,
-                "payload": value,
-                "message": null,
-                "error": null,
-                "errorKind": null,
-            })
-        }
-        Err(_) => {
-            // Not JSON — return scrubbed plain text as message only.
-            let message = store::redact_text(body)
-                .trim()
-                .chars()
-                .take(4000)
-                .collect::<String>();
-            serde_json::json!({
-                "ok": true,
-                "payload": null,
-                "message": message,
-                "error": null,
-                "errorKind": null,
-            })
-        }
-    }
-}
+// from PR #79
 
 /// `grok setup` — fetch and install managed configuration into ~/.grok.
 /// Soft-respawns the agent on success so new policy is picked up.
@@ -7241,39 +6297,797 @@ pub async fn setup_install(
     }))
 }
 
-#[cfg(test)]
-mod setup_cmd_tests {
-    use super::*;
+// from PR #79
 
-    #[test]
-    fn classifies_missing_auth() {
-        let msg = "No deployment key or team sign-in found.\nexport GROK_DEPLOYMENT_KEY=<your-key>";
-        assert_eq!(setup_error_kind(msg), "missing_auth");
-    }
+/// `grok setup --json` — fetch managed config preview without writing to ~/.grok.
+/// Always returns Ok; failures surface as `{ ok: false, error, errorKind }`.
+#[tauri::command]
+pub async fn setup_preview() -> Result<serde_json::Value, String> {
+    let result = tauri::async_runtime::spawn_blocking(|| {
+        run_grok_cli_args(&["setup", "--json"], SETUP_CMD_TIMEOUT_SECS)
+    })
+    .await
+    .map_err(|e| e.to_string())?;
 
-    #[test]
-    fn classifies_rejected() {
-        assert_eq!(
-            setup_error_kind("The deployment key was rejected. Confirm it hasn't expired."),
-            "rejected"
+    let (stdout, stderr, ok) = match result {
+        Ok(t) => t,
+        Err(e) => {
+            let error = store::redact_text(&e).trim().to_string();
+            let kind = setup_error_kind(&error);
+            return Ok(serde_json::json!({
+                "ok": false,
+                "payload": null,
+                "message": null,
+                "error": error,
+                "errorKind": kind,
+            }));
+        }
+    };
+
+    if !ok {
+        let error = setup_cli_failure_message(
+            &stdout,
+            &stderr,
+            "Could not fetch managed configuration",
         );
+        let kind = setup_error_kind(&error);
+        return Ok(serde_json::json!({
+            "ok": false,
+            "payload": null,
+            "message": null,
+            "error": error,
+            "errorKind": kind,
+        }));
     }
 
-    #[test]
-    fn redacts_secret_keys_in_json() {
-        let mut v = serde_json::json!({
-            "deploymentId": "dep_1",
-            "apiKey": "sk-abcdefghijklmnopqrstuvwxyz",
-            "deployment_key": "secret-deploy",
-            "env": { "OPENAI_API_KEY": "sk-nested" },
-            "nested": { "client_secret": "cs", "name": "ok" }
-        });
-        redact_setup_json_value(&mut v);
-        assert_eq!(v["deploymentId"], "dep_1");
-        assert_eq!(v["apiKey"], "[REDACTED]");
-        assert_eq!(v["deployment_key"], "[REDACTED]");
-        assert_eq!(v["env"], "[REDACTED]");
-        assert_eq!(v["nested"]["client_secret"], "[REDACTED]");
-        assert_eq!(v["nested"]["name"], "ok");
+    let body = stdout.trim();
+    if body.is_empty() {
+        // Some CLI builds may print JSON on stderr when successful.
+        let alt = stderr.trim();
+        if alt.starts_with('{') || alt.starts_with('[') {
+            return Ok(setup_preview_from_body(alt));
+        }
+        return Ok(serde_json::json!({
+            "ok": true,
+            "payload": null,
+            "message": store::redact_text(alt).trim().chars().take(400).collect::<String>(),
+            "error": null,
+            "errorKind": null,
+        }));
+    }
+
+    Ok(setup_preview_from_body(body))
+}
+
+// from PR #79
+
+fn setup_preview_from_body(body: &str) -> serde_json::Value {
+    match serde_json::from_str::<serde_json::Value>(body) {
+        Ok(mut value) => {
+            redact_setup_json_value(&mut value);
+            serde_json::json!({
+                "ok": true,
+                "payload": value,
+                "message": null,
+                "error": null,
+                "errorKind": null,
+            })
+        }
+        Err(_) => {
+            // Not JSON — return scrubbed plain text as message only.
+            let message = store::redact_text(body)
+                .trim()
+                .chars()
+                .take(4000)
+                .collect::<String>();
+            serde_json::json!({
+                "ok": true,
+                "payload": null,
+                "message": message,
+                "error": null,
+                "errorKind": null,
+            })
+        }
     }
 }
+
+// from PR #77
+
+fn sort_agent_defs(mut agents: Vec<AgentDefDto>) -> Vec<AgentDefDto> {
+    agents.sort_by(|a, b| {
+        scope_rank(&a.scope)
+            .cmp(&scope_rank(&b.scope))
+            .then_with(|| {
+                a.name
+                    .to_ascii_lowercase()
+                    .cmp(&b.name.to_ascii_lowercase())
+            })
+    });
+    agents
+}
+
+// from PR #77
+
+fn sort_persona_defs(mut personas: Vec<PersonaDefDto>) -> Vec<PersonaDefDto> {
+    personas.sort_by(|a, b| {
+        scope_rank(&a.scope)
+            .cmp(&scope_rank(&b.scope))
+            .then_with(|| {
+                a.name
+                    .to_ascii_lowercase()
+                    .cmp(&b.name.to_ascii_lowercase())
+            })
+    });
+    personas
+}
+
+// from PR #77
+
+fn stem_name(file_name: &str) -> String {
+    let path = std::path::Path::new(file_name);
+    path.file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or(file_name)
+        .to_string()
+}
+
+// from PR #89
+
+/// Whether official speech (STT) auth is available for Composer dictation.
+#[tauri::command]
+pub async fn voice_status() -> Result<crate::voice_stt::VoiceStatusDto, String> {
+    Ok(crate::voice_stt::voice_status())
+}
+
+// from PR #89
+
+/// Transcribe base64 audio via xAI STT (official token / API key only).
+#[tauri::command]
+pub async fn voice_transcribe(
+    audio_base64: String,
+    filename: Option<String>,
+    mime: Option<String>,
+) -> Result<crate::voice_stt::VoiceTranscribeResult, String> {
+    Ok(crate::voice_stt::voice_transcribe(audio_base64, filename, mime).await)
+}
+
+// from PR #74
+
+/// Case-insensitive path equality after normalization (pure; unit-tested).
+pub fn worktree_paths_equal(a: &str, b: &str) -> bool {
+    let na = normalize_worktree_path_key(a);
+    let nb = normalize_worktree_path_key(b);
+    !na.is_empty() && na == nb
+}
+
+// --- recovered PR command blocks ---
+
+const SETUP_CMD_TIMEOUT_SECS: u64 = 60;
+
+/// Clear Grok Build cross-session memory (`grok memory clear`).
+#[tauri::command]
+pub async fn memory_clear(
+    cwd: Option<String>,
+    scope: Option<String>,
+) -> Result<crate::agent_memory::MemoryClearResult, String> {
+    let settings = store::load_settings();
+    let path = cwd
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(std::path::PathBuf::from);
+    let scope = scope
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| "workspace".into());
+    tokio::task::spawn_blocking(move || {
+        crate::agent_memory::clear_workspace_memory(
+            path.as_deref(),
+            &settings.session_data_mode,
+            settings.manual_cli_path.as_deref(),
+            &scope,
+        )
+    })
+    .await
+    .map_err(|e| format!("memory clear task failed: {e}"))?
+}
+
+/// List agent definitions available for session agent selection.
+#[tauri::command]
+pub async fn agents_catalog(
+    project_path: Option<String>,
+) -> Result<crate::agents_catalog::AgentsCatalogResult, String> {
+    Ok(crate::agents_catalog::list_agents_catalog(
+        project_path.as_deref(),
+    ))
+}
+
+// marketplace
+// ── Plugin marketplace (`grok plugin marketplace …` + available list) ───────
+//
+// Marketplace list --json currently returns sources only (no nested plugins).
+// Browse installable plugins via `plugin list --json --available`.
+// Install uses `plugin install <name|name@market|url> --trust` + soft-respawn.
+
+const PLUGIN_MARKETPLACE_MUTATE_TIMEOUT_SECS: u64 = 120;
+
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MarketplaceSourceDto {
+    pub name: String,
+    pub kind: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub url: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub path: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub branch: Option<String>,
+}
+
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AvailablePluginDto {
+    pub name: String,
+    pub status: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub marketplace: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub version: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub skill_count: Option<u32>,
+    #[serde(default)]
+    pub has_hooks: bool,
+    #[serde(default)]
+    pub has_agents: bool,
+    #[serde(default)]
+    pub has_mcp: bool,
+}
+
+
+/// Parse `grok plugin marketplace list --json` (array or `{ sources: [...] }`).
+pub fn parse_marketplace_list_json(raw: &str) -> Result<Vec<MarketplaceSourceDto>, String> {
+    let text = raw.trim();
+    if text.is_empty() {
+        return Ok(Vec::new());
+    }
+    let value: serde_json::Value = serde_json::from_str(text)
+        .map_err(|e| format!("Failed to parse marketplace list JSON: {e}"))?;
+    let arr = if let Some(a) = value.as_array() {
+        a
+    } else if let Some(a) = value
+        .get("sources")
+        .or_else(|| value.get("marketplaces"))
+        .and_then(|x| x.as_array())
+    {
+        a
+    } else {
+        return Err("marketplace list JSON is not an array".into());
+    };
+
+    let mut out = Vec::with_capacity(arr.len());
+    for item in arr {
+        let name = item
+            .get("name")
+            .and_then(|x| x.as_str())
+            .unwrap_or("")
+            .trim()
+            .to_string();
+        if name.is_empty() {
+            continue;
+        }
+        let kind = item
+            .get("kind")
+            .or_else(|| item.get("type"))
+            .and_then(|x| x.as_str())
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+            .unwrap_or_else(|| "git".into());
+        let source = item.get("source");
+        let url = source
+            .and_then(|s| {
+                s.get("url")
+                    .or_else(|| s.get("git"))
+                    .and_then(|x| x.as_str())
+            })
+            .or_else(|| item.get("url").and_then(|x| x.as_str()))
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty());
+        let path = source
+            .and_then(|s| s.get("path").and_then(|x| x.as_str()))
+            .or_else(|| item.get("path").and_then(|x| x.as_str()))
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty());
+        let branch = source
+            .and_then(|s| s.get("branch").and_then(|x| x.as_str()))
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty());
+        out.push(MarketplaceSourceDto {
+            name,
+            kind,
+            url,
+            path,
+            branch,
+        });
+    }
+    Ok(out)
+}
+
+
+/// Parse `plugin list --json --available`; keep status "available" rows only.
+pub fn parse_available_plugins_json(raw: &str) -> Result<Vec<AvailablePluginDto>, String> {
+    let text = raw.trim();
+    if text.is_empty() {
+        return Ok(Vec::new());
+    }
+    let value: serde_json::Value = serde_json::from_str(text)
+        .map_err(|e| format!("Failed to parse available plugins JSON: {e}"))?;
+    let arr = if let Some(a) = value.as_array() {
+        a
+    } else if let Some(a) = value.get("plugins").and_then(|x| x.as_array()) {
+        a
+    } else {
+        return Err("available plugins JSON is not an array".into());
+    };
+
+    let mut out = Vec::new();
+    for item in arr {
+        let name = item
+            .get("name")
+            .and_then(|x| x.as_str())
+            .unwrap_or("")
+            .trim()
+            .to_string();
+        if name.is_empty() {
+            continue;
+        }
+        let status = item
+            .get("status")
+            .and_then(|x| x.as_str())
+            .unwrap_or("available")
+            .trim()
+            .to_string();
+        if !status.eq_ignore_ascii_case("available") {
+            continue;
+        }
+        let marketplace = item
+            .get("marketplace")
+            .and_then(|x| {
+                if x.is_null() {
+                    None
+                } else {
+                    x.as_str()
+                }
+            })
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty());
+        let description = item
+            .get("description")
+            .and_then(|x| x.as_str())
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty());
+        let version = item
+            .get("version")
+            .and_then(|x| x.as_str())
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty());
+        let skill_count = item
+            .get("skill_count")
+            .or_else(|| item.get("skillCount"))
+            .and_then(|x| x.as_u64())
+            .map(|n| n as u32);
+        let has_hooks = item
+            .get("has_hooks")
+            .or_else(|| item.get("hasHooks"))
+            .and_then(|x| x.as_bool())
+            .unwrap_or(false);
+        let has_agents = item
+            .get("has_agents")
+            .or_else(|| item.get("hasAgents"))
+            .and_then(|x| x.as_bool())
+            .unwrap_or(false);
+        let has_mcp = item
+            .get("has_mcp")
+            .or_else(|| item.get("hasMcp"))
+            .and_then(|x| x.as_bool())
+            .unwrap_or(false);
+        out.push(AvailablePluginDto {
+            name,
+            status,
+            marketplace,
+            description,
+            version,
+            skill_count,
+            has_hooks,
+            has_agents,
+            has_mcp,
+        });
+    }
+    Ok(out)
+}
+
+
+pub fn normalize_marketplace_add_source(source: &str) -> Result<String, String> {
+    let s = source.trim();
+    if s.is_empty() {
+        return Err("marketplace source required".into());
+    }
+    Ok(s.to_string())
+}
+
+/// CLI `marketplace remove` wants a git URL or local path — resolve name → URL.
+pub fn resolve_marketplace_remove_arg(
+    name_or_url: &str,
+    sources: &[MarketplaceSourceDto],
+) -> Result<String, String> {
+    let raw = name_or_url.trim();
+    if raw.is_empty() {
+        return Err("marketplace source name or URL required".into());
+    }
+    let looks_like_url = raw.contains("://")
+        || raw.starts_with("git@")
+        || raw.ends_with(".git");
+    let looks_like_path = raw.starts_with('/')
+        || raw.starts_with('~')
+        || (raw.len() >= 3
+            && raw.as_bytes()[1] == b':'
+            && (raw.as_bytes()[2] == b'\\' || raw.as_bytes()[2] == b'/'));
+    if looks_like_url || looks_like_path {
+        return Ok(raw.to_string());
+    }
+    let lower = raw.to_ascii_lowercase();
+    if let Some(src) = sources
+        .iter()
+        .find(|s| s.name.eq_ignore_ascii_case(raw) || s.name.to_ascii_lowercase() == lower)
+    {
+        if let Some(url) = src.url.as_ref().map(|s| s.trim()).filter(|s| !s.is_empty()) {
+            return Ok(url.to_string());
+        }
+        if let Some(path) = src.path.as_ref().map(|s| s.trim()).filter(|s| !s.is_empty()) {
+            return Ok(path.to_string());
+        }
+    }
+    Ok(raw.to_string())
+}
+
+
+pub fn normalize_marketplace_update_name(name: Option<&str>) -> Option<String> {
+    name.map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(|s| s.to_string())
+}
+
+
+fn collect_marketplace_list() -> Result<Vec<MarketplaceSourceDto>, String> {
+    let (stdout, stderr, ok) = run_grok_cli_args(
+        &["plugin", "marketplace", "list", "--json"],
+        PLUGIN_CMD_TIMEOUT_SECS,
+    )?;
+    if !ok {
+        let msg = if !stderr.is_empty() {
+            stderr
+        } else if !stdout.is_empty() {
+            stdout
+        } else {
+            "grok plugin marketplace list failed".into()
+        };
+        return Err(msg);
+    }
+    parse_marketplace_list_json(&stdout)
+}
+
+
+fn collect_available_plugins() -> Result<Vec<AvailablePluginDto>, String> {
+    let (stdout, stderr, ok) = run_grok_cli_args(
+        &["plugin", "list", "--json", "--available"],
+        PLUGIN_CMD_TIMEOUT_SECS,
+    )?;
+    if !ok {
+        let msg = if !stderr.is_empty() {
+            stderr
+        } else if !stdout.is_empty() {
+            stdout
+        } else {
+            "grok plugin list --available failed".into()
+        };
+        return Err(msg);
+    }
+    parse_available_plugins_json(&stdout)
+}
+
+
+/// List configured marketplace sources. Always Ok; error field on failure.
+#[tauri::command]
+pub async fn marketplace_list() -> Result<serde_json::Value, String> {
+    let result = tauri::async_runtime::spawn_blocking(collect_marketplace_list)
+        .await
+        .map_err(|e| e.to_string())?;
+    match result {
+        Ok(sources) => Ok(serde_json::json!({ "sources": sources })),
+        Err(error) => Ok(serde_json::json!({
+            "sources": [],
+            "error": error,
+        })),
+    }
+}
+
+
+/// Available (not yet installed) plugins from marketplace catalogs.
+#[tauri::command]
+pub async fn marketplace_available() -> Result<serde_json::Value, String> {
+    let result = tauri::async_runtime::spawn_blocking(collect_available_plugins)
+        .await
+        .map_err(|e| e.to_string())?;
+    match result {
+        Ok(plugins) => Ok(serde_json::json!({ "plugins": plugins })),
+        Err(error) => Ok(serde_json::json!({
+            "plugins": [],
+            "error": error,
+        })),
+    }
+}
+
+
+
+/// Add a marketplace source (git URL, GitHub shorthand, or local path).
+#[tauri::command]
+pub async fn marketplace_add(source: String) -> Result<serde_json::Value, String> {
+    let source = normalize_marketplace_add_source(&source)?;
+    let source_for_cmd = source.clone();
+    let result = tauri::async_runtime::spawn_blocking(move || {
+        run_grok_cli_args(
+            &["plugin", "marketplace", "add", &source_for_cmd],
+            PLUGIN_MARKETPLACE_MUTATE_TIMEOUT_SECS,
+        )
+    })
+    .await
+    .map_err(|e| e.to_string())?;
+
+    let (stdout, stderr, ok) = match result {
+        Ok(t) => t,
+        Err(e) => return Err(e),
+    };
+    if !ok {
+        let msg = if !stderr.is_empty() {
+            stderr
+        } else if !stdout.is_empty() {
+            stdout
+        } else {
+            format!("failed to add marketplace source {source}")
+        };
+        return Err(msg.chars().take(400).collect());
+    }
+    Ok(serde_json::json!({
+        "ok": true,
+        "name": source,
+        "message": stdout.chars().take(400).collect::<String>(),
+    }))
+}
+
+/// Remove a marketplace source by name or URL (name resolved to URL for CLI).
+#[tauri::command]
+pub async fn marketplace_remove(name_or_url: String) -> Result<serde_json::Value, String> {
+    let raw = name_or_url.trim().to_string();
+    if raw.is_empty() {
+        return Err("marketplace source name or URL required".into());
+    }
+    let sources = collect_marketplace_list().unwrap_or_default();
+    let target = resolve_marketplace_remove_arg(&raw, &sources)?;
+    let target_for_cmd = target.clone();
+    let result = tauri::async_runtime::spawn_blocking(move || {
+        run_grok_cli_args(
+            &["plugin", "marketplace", "remove", &target_for_cmd],
+            PLUGIN_MARKETPLACE_MUTATE_TIMEOUT_SECS,
+        )
+    })
+    .await
+    .map_err(|e| e.to_string())?;
+
+    let (stdout, stderr, ok) = match result {
+        Ok(t) => t,
+        Err(e) => return Err(e),
+    };
+    if !ok {
+        let msg = if !stderr.is_empty() {
+            stderr
+        } else if !stdout.is_empty() {
+            stdout
+        } else {
+            format!("failed to remove marketplace source {target}")
+        };
+        return Err(msg.chars().take(400).collect());
+    }
+    Ok(serde_json::json!({
+        "ok": true,
+        "name": raw,
+        "removed": target,
+        "message": stdout.chars().take(400).collect::<String>(),
+    }))
+}
+
+/// Update one marketplace source by name, or all when `name` is null/empty.
+#[tauri::command]
+pub async fn marketplace_update(name: Option<String>) -> Result<serde_json::Value, String> {
+    let target = normalize_marketplace_update_name(name.as_deref());
+    let target_for_cmd = target.clone();
+    let result = tauri::async_runtime::spawn_blocking(move || match target_for_cmd.as_deref() {
+        Some(n) => run_grok_cli_args(
+            &["plugin", "marketplace", "update", n],
+            PLUGIN_MARKETPLACE_MUTATE_TIMEOUT_SECS,
+        ),
+        None => run_grok_cli_args(
+            &["plugin", "marketplace", "update"],
+            PLUGIN_MARKETPLACE_MUTATE_TIMEOUT_SECS,
+        ),
+    })
+    .await
+    .map_err(|e| e.to_string())?;
+
+    let (stdout, stderr, ok) = match result {
+        Ok(t) => t,
+        Err(e) => return Err(e),
+    };
+    if !ok {
+        let label = target.as_deref().unwrap_or("all");
+        let msg = if !stderr.is_empty() {
+            stderr
+        } else if !stdout.is_empty() {
+            stdout
+        } else {
+            format!("failed to update marketplace source(s): {label}")
+        };
+        return Err(msg.chars().take(400).collect());
+    }
+    Ok(serde_json::json!({
+        "ok": true,
+        "name": target.unwrap_or_default(),
+        "message": stdout.chars().take(400).collect::<String>(),
+    }))
+}
+
+
+// leader
+const LEADER_CMD_TIMEOUT_SECS: u64 = 15;
+
+/// One row from `grok leader list --json` (fields vary by CLI version).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LeaderProcessDto {
+    pub pid: Option<u64>,
+    pub socket_path: Option<String>,
+    pub version: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub raw: Option<serde_json::Value>,
+}
+
+/// Pure parse helper for `grok leader list --json`.
+pub fn parse_leader_list_json(stdout: &str) -> Result<Vec<LeaderProcessDto>, String> {
+    let trimmed = stdout.trim();
+    if trimmed.is_empty() {
+        return Ok(Vec::new());
+    }
+    let value: serde_json::Value = serde_json::from_str(trimmed)
+        .map_err(|e| format!("invalid leader list JSON: {e}"))?;
+    let items: Vec<serde_json::Value> = if let Some(arr) = value.as_array() {
+        arr.clone()
+    } else if let Some(arr) = value
+        .get("leaders")
+        .or_else(|| value.get("processes"))
+        .and_then(|v| v.as_array())
+    {
+        arr.clone()
+    } else if value.is_object() {
+        vec![value]
+    } else {
+        return Ok(Vec::new());
+    };
+
+    let mut out = Vec::with_capacity(items.len());
+    for item in items {
+        let pid = item
+            .get("pid")
+            .or_else(|| item.get("leader_pid"))
+            .or_else(|| item.get("leaderPid"))
+            .and_then(|v| v.as_u64().or_else(|| v.as_i64().map(|i| i as u64)));
+        let socket_path = item
+            .get("socket_path")
+            .or_else(|| item.get("socketPath"))
+            .or_else(|| item.get("socket"))
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string());
+        let version = item
+            .get("version")
+            .or_else(|| item.get("leader_version"))
+            .or_else(|| item.get("leaderVersion"))
+            .or_else(|| item.get("leader_binary_version"))
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string());
+        out.push(LeaderProcessDto {
+            pid,
+            socket_path,
+            version,
+            raw: Some(item),
+        });
+    }
+    Ok(out)
+}
+
+/// List running leader processes (`grok leader list --json`).
+#[tauri::command]
+pub async fn leader_list() -> Result<serde_json::Value, String> {
+    let result = tauri::async_runtime::spawn_blocking(|| {
+        run_grok_cli_args(&["leader", "list", "--json"], LEADER_CMD_TIMEOUT_SECS)
+    })
+    .await
+    .map_err(|e| e.to_string())?;
+
+    match result {
+        Ok((stdout, stderr, ok)) => {
+            if !ok {
+                let msg = if !stderr.is_empty() {
+                    stderr
+                } else if !stdout.is_empty() {
+                    stdout
+                } else {
+                    "grok leader list failed".into()
+                };
+                return Ok(serde_json::json!({
+                    "leaders": [],
+                    "error": msg.chars().take(400).collect::<String>(),
+                }));
+            }
+            match parse_leader_list_json(&stdout) {
+                Ok(leaders) => Ok(serde_json::json!({ "leaders": leaders })),
+                Err(e) => Ok(serde_json::json!({
+                    "leaders": [],
+                    "error": e,
+                })),
+            }
+        }
+        Err(e) => Ok(serde_json::json!({
+            "leaders": [],
+            "error": e,
+        })),
+    }
+}
+
+/// Stop all running leader processes (`grok leader kill`). Soft-respawns the app agent.
+#[tauri::command]
+pub async fn leader_kill_all(
+    app: tauri::AppHandle,
+    mgr: State<'_, Arc<SessionManager>>,
+) -> Result<serde_json::Value, String> {
+    let result = tauri::async_runtime::spawn_blocking(|| {
+        run_grok_cli_args(&["leader", "kill"], LEADER_CMD_TIMEOUT_SECS)
+    })
+    .await
+    .map_err(|e| e.to_string())?;
+
+    let (stdout, stderr, ok) = match result {
+        Ok(t) => t,
+        Err(e) => return Err(e),
+    };
+    if !ok {
+        let msg = if !stderr.is_empty() {
+            stderr
+        } else if !stdout.is_empty() {
+            stdout
+        } else {
+            "grok leader kill failed".into()
+        };
+        return Err(msg.chars().take(400).collect());
+    }
+    mgr.soft_respawn(&app).await;
+    Ok(serde_json::json!({
+        "ok": true,
+        "message": if stdout.is_empty() {
+            stderr.chars().take(200).collect::<String>()
+        } else {
+            stdout.chars().take(200).collect::<String>()
+        },
+    }))
+}
+

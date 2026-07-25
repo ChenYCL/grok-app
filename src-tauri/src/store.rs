@@ -243,7 +243,12 @@ fn default_stream_stall_seconds() -> u32 {
 
 fn default_sandbox_profile() -> String {
     "off".into()
+}
+
 fn default_reopen_last_session() -> bool {
+    true
+}
+
 fn default_plan_enabled() -> bool {
     true
 }

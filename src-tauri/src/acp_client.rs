@@ -193,21 +193,17 @@ impl SandboxSpawnSpec {
 pub fn sandbox_spawn_flags(profile: &str) -> Option<(Vec<String>, (String, String))> {
     let spec = SandboxSpawnSpec::from_setting(profile)?;
     Some((spec.cli_args().to_vec(), spec.env_pair()))
-/// Hard clamp for Settings → Runtime max agent turns (1–200).
+}
+
 pub const MAX_AGENT_TURNS_CAP: u32 = 200;
 pub const MIN_AGENT_TURNS: u32 = 1;
 
-/// Pure spawn plan for top-level `--max-turns N`.
-///
-/// `--max-turns` is a **top-level** `grok` flag (same placement as session title
-/// generation). `None` / `0` omit the flag so the CLI keeps its default.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MaxTurnsSpawnSpec {
     pub turns: u32,
 }
 
 impl MaxTurnsSpawnSpec {
-    /// Build from settings. `None` or `0` → do not pass `--max-turns`.
     pub fn from_setting(raw: Option<u32>) -> Option<Self> {
         let n = raw?;
         if n == 0 {
@@ -218,71 +214,36 @@ impl MaxTurnsSpawnSpec {
         })
     }
 
-    /// Top-level CLI args: `["--max-turns", "<N>"]` (before `agent`).
     pub fn cli_args(&self) -> [String; 2] {
         ["--max-turns".into(), self.turns.to_string()]
     }
 }
 
-/// Normalize settings value: `None`/`0` stay unset; otherwise clamp to 1..=200.
 pub fn normalize_max_agent_turns(raw: Option<u32>) -> Option<u32> {
     MaxTurnsSpawnSpec::from_setting(raw).map(|s| s.turns)
 }
 
-/// Pure helper used by spawn + unit tests: top-level args when a limit is set.
 pub fn max_turns_cli_args(raw: Option<u32>) -> Option<Vec<String>> {
     let spec = MaxTurnsSpawnSpec::from_setting(raw)?;
     Some(spec.cli_args().to_vec())
-/// Pure helper: top-level CLI flags for the disable_web_search setting.
-///
-/// When true, returns `["--disable-web-search"]` (before `agent`).
-/// When false, returns no flags so the CLI keeps web_search / web_fetch.
+}
+
 pub fn disable_web_search_spawn_flags(disable: bool) -> Vec<&'static str> {
     if disable {
         vec!["--disable-web-search"]
     } else {
         vec![]
-/// Pure helper: top-level CLI flags for the plan_enabled setting.
-///
-/// When `plan_enabled` is false, returns `["--no-plan"]` (before `agent`).
-/// When true, returns no flags so the CLI keeps plan mode available.
+    }
+}
+
 pub fn no_plan_spawn_flags(plan_enabled: bool) -> Vec<&'static str> {
     if plan_enabled {
         vec![]
     } else {
         vec!["--no-plan"]
     }
-/// Pure spawn plan for top-level `--agent <NAME>`.
-///
-/// `--agent` is a **top-level** `grok` flag (not under `agent` / `stdio`).
-/// Empty / `default` / `none` omit the flag so the CLI keeps its built-in default.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct AgentSpawnSpec {
-    pub name: String,
 }
 
-impl AgentSpawnSpec {
-    /// Build from settings. `None` means do not pass `--agent`.
-    pub fn from_setting(raw: &str) -> Option<Self> {
-        let name = crate::agents_catalog::normalize_preferred_agent(raw)?;
-        Some(Self { name })
-    }
-
-    /// Top-level CLI args: `["--agent", "<name>"]` (before `agent`).
-    pub fn cli_args(&self) -> [String; 2] {
-        ["--agent".into(), self.name.clone()]
-    }
-}
-
-/// Pure helper used by spawn + unit tests.
-pub fn preferred_agent_spawn_flags(raw: &str) -> Option<Vec<String>> {
-    crate::agents_catalog::agent_spawn_cli_args(raw)
-/// Pure spawn flag for Settings → Runtime leader mode.
-///
-/// Always returns an explicit agent-level flag so App settings win over
-/// `[cli] use_leader` in the user's `config.toml`:
-/// - `true`  → `--leader`   (connect to / share a leader backend)
-/// - `false` → `--no-leader` (standalone agent process; default)
 pub fn leader_spawn_flag(use_leader: bool) -> &'static str {
     if use_leader {
         "--leader"
@@ -290,6 +251,27 @@ pub fn leader_spawn_flag(use_leader: bool) -> &'static str {
         "--no-leader"
     }
 }
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AgentSpawnSpec {
+    pub name: String,
+}
+
+impl AgentSpawnSpec {
+    pub fn from_setting(raw: &str) -> Option<Self> {
+        let name = crate::agents_catalog::normalize_preferred_agent(raw)?;
+        Some(Self { name })
+    }
+
+    pub fn cli_args(&self) -> [String; 2] {
+        ["--agent".into(), self.name.clone()]
+    }
+}
+
+pub fn preferred_agent_spawn_flags(raw: &str) -> Option<Vec<String>> {
+    crate::agents_catalog::agent_spawn_cli_args(raw)
+}
+
 
 impl AcpClient {
     pub fn use_mock() -> bool {
@@ -377,93 +359,52 @@ impl AcpClient {
         // also set GROK_SANDBOX so nested tools inherit the same profile.
         let settings = crate::store::load_settings();
         let sandbox = SandboxSpawnSpec::from_setting(&settings.sandbox_profile);
-        //   top-level: `grok --no-auto-update agent …`
-        //   agent opts: `--leader` / `--no-leader` / `--model` / `--reasoning-effort`
-        //               / `--always-approve` before `stdio`
-        // Skip background update checks so ACP handshakes are not delayed on launch.
-        // Leader flag is always explicit so App `use_leader` overrides config.toml.
-        let use_leader = crate::store::load_settings().use_leader;
-        let leader_flag = leader_spawn_flag(use_leader);
-
-        let mut cmd = Command::new(&cli_path);
-        cmd.arg("--no-auto-update");
-        if let Some(ref sb) = sandbox {
-            for a in sb.cli_args() {
-        //   top-level: `grok --no-auto-update [--max-turns N] agent …`
-        //   agent opts: `--model` / `--reasoning-effort` / `--always-approve` before `stdio`
-        // Skip background update checks so ACP handshakes are not delayed on launch.
-        // `--max-turns` is top-level only (same as headless title generation).
-        let settings = crate::store::load_settings();
         let max_turns = MaxTurnsSpawnSpec::from_setting(settings.max_agent_turns);
+        let preferred_agent = AgentSpawnSpec::from_setting(&settings.preferred_agent);
+        let subagents_enabled = settings.subagents_enabled;
+        let memory_enabled = settings.experimental_memory;
+        let use_leader = settings.use_leader;
+        let plan_enabled = settings.plan_enabled;
+        let disable_web = settings.disable_web_search;
 
-        let mut cmd = Command::new(&cli_path);
-        cmd.arg("--no-auto-update");
-        if let Some(ref mt) = max_turns {
-            for a in mt.cli_args() {
-        //   top-level: `grok --no-auto-update [--agent NAME] agent …`
-        //   agent opts: `--model` / `--reasoning-effort` / `--always-approve` before `stdio`
-        // Skip background update checks so ACP handshakes are not delayed on launch.
-        // `--agent` is top-level only (agent definition name or path).
-        let settings_for_spawn = crate::store::load_settings();
-        let preferred_agent = AgentSpawnSpec::from_setting(&settings_for_spawn.preferred_agent);
-
-        let mut cmd = Command::new(&cli_path);
-        cmd.arg("--no-auto-update");
-        if let Some(ref agent) = preferred_agent {
-            for a in agent.cli_args() {
-                cmd.arg(a);
-            }
-        //   top-level: `grok --no-auto-update [--disable-web-search] agent …`
-        //   agent opts: `--model` / `--reasoning-effort` / `--always-approve` before `stdio`
-        // Skip background update checks so ACP handshakes are not delayed on launch.
-        // `--disable-web-search` is top-level only (removes web_search / web_fetch tools).
-        let disable_web_search = crate::store::load_settings().disable_web_search;
-
-        let mut cmd = Command::new(&cli_path);
-        cmd.arg("--no-auto-update");
-        for flag in disable_web_search_spawn_flags(disable_web_search) {
-            cmd.arg(flag);
-        }
-        //   top-level: `grok --no-auto-update [--experimental-memory|--no-memory] agent …`
-        //   agent opts: `--model` / `--reasoning-effort` / `--always-approve` before `stdio`
-        // Skip background update checks so ACP handshakes are not delayed on launch.
-        // Cross-session memory (experimental). When off, force --no-memory + GROK_MEMORY=0
-        // so agent-home / user config cannot re-enable it (independent isolation).
-        let memory_enabled = crate::store::load_settings().experimental_memory;
-        if session_data_mode != "shared" {
-            let _ = crate::agent_memory::sync_memory_to_agent_profile(
-                session_data_mode,
-                memory_enabled,
-            );
-        //   top-level: `grok --no-auto-update [--no-plan] agent …`
-        //   agent opts: `--model` / `--reasoning-effort` / `--always-approve` before `stdio`
-        // Skip background update checks so ACP handshakes are not delayed on launch.
-        // `--no-plan` is top-level only (disables plan mode for the process).
-        let plan_enabled = crate::store::load_settings().plan_enabled;
-
-        let mut cmd = Command::new(&cli_path);
-        cmd.arg("--no-auto-update");
-        for flag in no_plan_spawn_flags(plan_enabled) {
-            cmd.arg(flag);
-        //   top-level: `grok --no-auto-update [--no-subagents] agent …`
-        //   agent opts: `--model` / `--reasoning-effort` / `--always-approve` before `stdio`
-        // Skip background update checks so ACP handshakes are not delayed on launch.
-        // Subagents default on; when off, force --no-subagents + GROK_SUBAGENTS=0 so
-        // agent-home / user config cannot re-enable them.
-        let subagents_enabled = crate::store::load_settings().subagents_enabled;
         if session_data_mode != "shared" {
             let _ = crate::agent_subagents::sync_subagents_to_agent_profile(
                 session_data_mode,
                 subagents_enabled,
             );
+            let _ = crate::agent_memory::sync_memory_to_agent_profile(
+                session_data_mode,
+                memory_enabled,
+            );
         }
 
         let mut cmd = Command::new(&cli_path);
         cmd.arg("--no-auto-update");
-        crate::agent_memory::apply_memory_to_command(&mut cmd, memory_enabled);
+        if let Some(ref sb) = sandbox {
+            for a in sb.cli_args() {
+                cmd.arg(a);
+            }
+        }
+        if let Some(ref mt) = max_turns {
+            for a in mt.cli_args() {
+                cmd.arg(a);
+            }
+        }
+        for f in disable_web_search_spawn_flags(disable_web) {
+            cmd.arg(f);
+        }
+        for f in no_plan_spawn_flags(plan_enabled) {
+            cmd.arg(f);
+        }
+        if let Some(ref agent) = preferred_agent {
+            for a in agent.cli_args() {
+                cmd.arg(a);
+            }
+        }
         crate::agent_subagents::apply_subagents_to_command(&mut cmd, subagents_enabled);
+        crate::agent_memory::apply_memory_to_command(&mut cmd, memory_enabled);
         cmd.arg("agent");
-        cmd.arg(leader_flag);
+        cmd.arg(leader_spawn_flag(use_leader));
         if !spawn_model.is_empty() {
             cmd.args(["--model", &spawn_model]);
         }
@@ -474,7 +415,6 @@ impl AcpClient {
             }
         }
         if let Some(ref pol) = opts.permission_policy {
-            // Only always-approve maps to an agent flag; other modes are Host-side.
             if cli_permission_mode(pol) == "bypassPermissions" {
                 cmd.arg("--always-approve");
             }
@@ -495,32 +435,14 @@ impl AcpClient {
             cmd.env(k, v);
         }
         tracing::info!(
-            "acp: spawn GROK_HOME={} mode={} auth_present={} route={:?} composer_model={:?} spawn_model={} yolo={} sandbox={:?}",
-            "acp: spawn GROK_HOME={} mode={} auth_present={} route={:?} composer_model={:?} spawn_model={} yolo={} experimental_memory={}",
-            "acp: spawn GROK_HOME={} mode={} auth_present={} route={:?} composer_model={:?} spawn_model={} yolo={} max_turns={:?}",
-            "acp: spawn GROK_HOME={} mode={} auth_present={} route={:?} composer_model={:?} spawn_model={} yolo={} disable_web_search={}",
-            "acp: spawn GROK_HOME={} mode={} auth_present={} route={:?} composer_model={:?} spawn_model={} yolo={} plan_enabled={}",
-            "acp: spawn GROK_HOME={} mode={} auth_present={} route={:?} composer_model={:?} spawn_model={} yolo={} subagents_enabled={}",
-            "acp: spawn GROK_HOME={} mode={} auth_present={} route={:?} composer_model={:?} spawn_model={} yolo={} preferred_agent={:?}",
-            "acp: spawn GROK_HOME={} mode={} auth_present={} route={:?} composer_model={:?} spawn_model={} yolo={} leader={}",
+            "acp: spawn home={} mode={} sandbox={:?} max_turns={:?} leader={} subagents={} memory={}",
             grok_home.display(),
             session_data_mode,
-            grok_home.join("auth.json").is_file(),
-            crate::providers::active_route(),
-            opts.model_id.as_deref(),
-            spawn_model,
-            opts.permission_policy
-                .as_deref()
-                .map(cli_permission_mode)
-                == Some("bypassPermissions"),
-            sandbox.as_ref().map(|s| s.profile.as_str())
+            sandbox.as_ref().map(|s| s.profile.as_str()),
+            max_turns.as_ref().map(|m| m.turns),
+            use_leader,
+            subagents_enabled,
             memory_enabled
-            max_turns.as_ref().map(|s| s.turns)
-            disable_web_search
-            plan_enabled
-            subagents_enabled
-            preferred_agent.as_ref().map(|a| a.name.as_str())
-            use_leader
         );
 
         let mut child = cmd.spawn().map_err(|e| {
@@ -2388,53 +2310,6 @@ mod sandbox_spawn_tests {
         assert_eq!(
             spec.cli_args(),
             ["--sandbox".to_string(), "workspace".to_string()]
-mod max_turns_spawn_tests {
-    use super::*;
-
-    #[test]
-    fn none_and_zero_yield_no_flags() {
-        assert!(MaxTurnsSpawnSpec::from_setting(None).is_none());
-        assert!(MaxTurnsSpawnSpec::from_setting(Some(0)).is_none());
-        assert!(max_turns_cli_args(None).is_none());
-        assert!(max_turns_cli_args(Some(0)).is_none());
-        assert_eq!(normalize_max_agent_turns(None), None);
-        assert_eq!(normalize_max_agent_turns(Some(0)), None);
-    }
-
-    #[test]
-    fn valid_turns_build_top_level_args() {
-        let spec = MaxTurnsSpawnSpec::from_setting(Some(5)).unwrap();
-        assert_eq!(spec.turns, 5);
-        assert_eq!(
-            spec.cli_args(),
-            ["--max-turns".to_string(), "5".to_string()]
-        );
-        assert_eq!(
-            max_turns_cli_args(Some(5)),
-            Some(vec!["--max-turns".to_string(), "5".to_string()])
-        );
-        assert_eq!(normalize_max_agent_turns(Some(5)), Some(5));
-    }
-
-    #[test]
-    fn clamp_to_one_through_two_hundred() {
-        assert_eq!(
-            MaxTurnsSpawnSpec::from_setting(Some(1)).unwrap().turns,
-            1
-        );
-        assert_eq!(
-            MaxTurnsSpawnSpec::from_setting(Some(200)).unwrap().turns,
-            200
-        );
-        // Values above cap clamp down (0 already omitted above).
-        assert_eq!(
-            MaxTurnsSpawnSpec::from_setting(Some(999)).unwrap().turns,
-            MAX_AGENT_TURNS_CAP
-        );
-        assert_eq!(normalize_max_agent_turns(Some(999)), Some(200));
-        assert_eq!(
-            max_turns_cli_args(Some(999)),
-            Some(vec!["--max-turns".to_string(), "200".to_string()])
         );
     }
 }
@@ -2495,81 +2370,5 @@ mod live_handshake_tests {
         eprintln!("OK session={} in {:?}", sid, t0.elapsed());
         client.kill().await;
         assert!(!sid.is_empty());
-    }
-}
-
-#[cfg(test)]
-mod disable_web_search_spawn_tests {
-    use super::disable_web_search_spawn_flags;
-
-    #[test]
-    fn off_adds_no_flags() {
-        assert!(disable_web_search_spawn_flags(false).is_empty());
-    }
-
-    #[test]
-    fn on_adds_top_level_flag() {
-        assert_eq!(
-            disable_web_search_spawn_flags(true),
-            vec!["--disable-web-search"]
-        );
-mod no_plan_spawn_tests {
-    use super::no_plan_spawn_flags;
-
-    #[test]
-    fn enabled_adds_no_flags() {
-        assert!(no_plan_spawn_flags(true).is_empty());
-    }
-
-    #[test]
-    fn disabled_adds_top_level_flag() {
-        assert_eq!(no_plan_spawn_flags(false), vec!["--no-plan"]);
-mod preferred_agent_spawn_tests {
-    use super::*;
-
-    #[test]
-    fn empty_and_sentinels_yield_no_flags() {
-        assert!(AgentSpawnSpec::from_setting("").is_none());
-        assert!(AgentSpawnSpec::from_setting("default").is_none());
-        assert!(AgentSpawnSpec::from_setting("NONE").is_none());
-        assert!(preferred_agent_spawn_flags("").is_none());
-        assert!(preferred_agent_spawn_flags("grok-build").is_none());
-    }
-
-    #[test]
-    fn known_agents_build_top_level_args() {
-        for name in ["explore", "plan", "general-purpose", "my-custom"] {
-            let spec = AgentSpawnSpec::from_setting(name).expect(name);
-            assert_eq!(spec.name, name);
-            assert_eq!(
-                spec.cli_args(),
-                ["--agent".to_string(), name.to_string()]
-            );
-            assert_eq!(
-                preferred_agent_spawn_flags(name),
-                Some(vec!["--agent".to_string(), name.to_string()])
-            );
-        }
-    }
-
-    #[test]
-    fn trims_preferred_agent() {
-        let spec = AgentSpawnSpec::from_setting("  explore  ").unwrap();
-        assert_eq!(spec.name, "explore");
-        assert_eq!(
-            spec.cli_args(),
-            ["--agent".to_string(), "explore".to_string()]
-        );
-mod leader_spawn_tests {
-    use super::leader_spawn_flag;
-
-    #[test]
-    fn default_off_uses_no_leader() {
-        assert_eq!(leader_spawn_flag(false), "--no-leader");
-    }
-
-    #[test]
-    fn enabled_uses_leader() {
-        assert_eq!(leader_spawn_flag(true), "--leader");
     }
 }

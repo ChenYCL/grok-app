@@ -6,11 +6,12 @@
 use std::time::Duration;
 
 use base64::Engine;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::account;
 use crate::secrets;
+use crate::voice_auth;
 
 const STT_URL: &str = "https://api.x.ai/v1/stt";
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(15);
@@ -145,70 +146,6 @@ pub async fn voice_transcribe(
 
     let res = match client
         .post(STT_URL)
-//! Speech-to-text via xAI REST API (composer dictation).
-
-use base64::Engine;
-use serde::{Deserialize, Serialize};
-use serde_json::Value;
-
-use crate::voice_auth;
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct SttResult {
-    pub text: String,
-    pub duration: Option<f64>,
-    pub language: Option<String>,
-}
-
-/// Transcribe a base64-encoded audio blob (wav/webm/mp3). Used by the composer mic.
-pub async fn transcribe_base64(
-    audio_b64: &str,
-    mime: Option<&str>,
-    language: Option<&str>,
-) -> Result<SttResult, String> {
-    if std::env::var("GROK_APP_VOICE")
-        .map(|v| v == "mock")
-        .unwrap_or(false)
-    {
-        return Ok(SttResult {
-            text: "mock transcript from voice dictation".into(),
-            duration: Some(1.0),
-            language: Some("en".into()),
-        });
-    }
-
-    let token = voice_auth::resolve_bearer_token()?;
-    let bytes = base64::engine::general_purpose::STANDARD
-        .decode(audio_b64.trim())
-        .map_err(|e| format!("invalid audio base64: {e}"))?;
-    if bytes.is_empty() {
-        return Err("empty audio".into());
-    }
-
-    let (filename, content_type) = match mime.unwrap_or("") {
-        m if m.contains("webm") => ("audio.webm", "audio/webm"),
-        m if m.contains("ogg") => ("audio.ogg", "audio/ogg"),
-        m if m.contains("mpeg") || m.contains("mp3") => ("audio.mp3", "audio/mpeg"),
-        m if m.contains("mp4") || m.contains("m4a") => ("audio.m4a", "audio/mp4"),
-        _ => ("audio.wav", "audio/wav"),
-    };
-
-    let part = reqwest::multipart::Part::bytes(bytes)
-        .file_name(filename.to_string())
-        .mime_str(content_type)
-        .map_err(|e| format!("multipart: {e}"))?;
-
-    let mut form = reqwest::multipart::Form::new().part("file", part);
-    if let Some(lang) = language.filter(|s| !s.is_empty()) {
-        form = form
-            .text("language", lang.to_string())
-            .text("format", "true");
-    }
-
-    let client = reqwest::Client::new();
-    let resp = client
-        .post("https://api.x.ai/v1/stt")
         .header("Authorization", format!("Bearer {token}"))
         .multipart(form)
         .send()
@@ -315,6 +252,69 @@ pub fn extract_transcript(body: &str) -> String {
         }
     }
     String::new()
+}
+
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SttResult {
+    pub text: String,
+    pub duration: Option<f64>,
+    pub language: Option<String>,
+}
+
+/// Transcribe a base64-encoded audio blob (wav/webm/mp3). Used by live voice / host.
+pub async fn transcribe_base64(
+    audio_b64: &str,
+    mime: Option<&str>,
+    language: Option<&str>,
+) -> Result<SttResult, String> {
+    if std::env::var("GROK_APP_VOICE")
+        .map(|v| v == "mock")
+        .unwrap_or(false)
+    {
+        return Ok(SttResult {
+            text: "mock transcript from voice dictation".into(),
+            duration: Some(1.0),
+            language: Some("en".into()),
+        });
+    }
+
+    let token = voice_auth::resolve_bearer_token()?;
+    let bytes = base64::engine::general_purpose::STANDARD
+        .decode(audio_b64.trim())
+        .map_err(|e| format!("invalid audio base64: {e}"))?;
+    if bytes.is_empty() {
+        return Err("empty audio".into());
+    }
+
+    let (filename, content_type) = match mime.unwrap_or("") {
+        m if m.contains("webm") => ("audio.webm", "audio/webm"),
+        m if m.contains("ogg") => ("audio.ogg", "audio/ogg"),
+        m if m.contains("mpeg") || m.contains("mp3") => ("audio.mp3", "audio/mpeg"),
+        m if m.contains("mp4") || m.contains("m4a") => ("audio.m4a", "audio/mp4"),
+        _ => ("audio.wav", "audio/wav"),
+    };
+
+    let part = reqwest::multipart::Part::bytes(bytes)
+        .file_name(filename.to_string())
+        .mime_str(content_type)
+        .map_err(|e| format!("multipart: {e}"))?;
+
+    let mut form = reqwest::multipart::Form::new().part("file", part);
+    if let Some(lang) = language.filter(|s| !s.is_empty()) {
+        form = form
+            .text("language", lang.to_string())
+            .text("format", "true");
+    }
+
+    let client = reqwest::Client::new();
+    let resp = client
+        .post(STT_URL)
+        .header("Authorization", format!("Bearer {token}"))
+        .multipart(form)
+        .send()
+        .await
         .map_err(|e| format!("STT request failed: {e}"))?;
 
     let status = resp.status();
@@ -386,6 +386,8 @@ mod tests {
             // Invalid tiny base64 audio should not panic; either no_speech or decode/network.
             assert!(r.error_class.is_some() || r.ok);
         }
+    }
+
     #[tokio::test]
     async fn mock_stt() {
         std::env::set_var("GROK_APP_VOICE", "mock");

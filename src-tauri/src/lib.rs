@@ -49,7 +49,6 @@ mod session_manager;
 mod store;
 mod tray;
 mod tray_i18n;
-mod voice_stt;
 mod voice_auth;
 mod voice_host;
 mod voice_stt;
