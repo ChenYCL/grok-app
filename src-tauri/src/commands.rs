@@ -238,6 +238,22 @@ pub async fn app_check_update() -> Result<crate::app_update::AppUpdateCheck, Str
     crate::app_update::check_app_update().await
 }
 
+/// Whether official speech (STT) auth is available for Composer dictation.
+#[tauri::command]
+pub async fn voice_status() -> Result<crate::voice_stt::VoiceStatusDto, String> {
+    Ok(crate::voice_stt::voice_status())
+}
+
+/// Transcribe base64 audio via xAI STT (official token / API key only).
+#[tauri::command]
+pub async fn voice_transcribe(
+    audio_base64: String,
+    filename: Option<String>,
+    mime: Option<String>,
+) -> Result<crate::voice_stt::VoiceTranscribeResult, String> {
+    Ok(crate::voice_stt::voice_transcribe(audio_base64, filename, mime).await)
+}
+
 /// Open a URL in the system browser (docs, install pages).
 #[tauri::command]
 pub async fn open_external_url(url: String) -> Result<(), String> {
