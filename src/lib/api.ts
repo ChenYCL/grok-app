@@ -879,6 +879,10 @@ export interface AppSettings {
    * When false, spawn with top-level `--no-plan`.
    */
   planEnabled?: boolean;
+   * Allow Grok Build subagent spawning (default true).
+   * When false: force --no-subagents / GROK_SUBAGENTS=0 / [subagents] enabled = false.
+   */
+  subagentsEnabled?: boolean;
 }
 
 export interface AvailableModel {

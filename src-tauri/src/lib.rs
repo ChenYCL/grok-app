@@ -6,6 +6,7 @@ mod acp_client;
 mod agent_memory;
 mod agent_prefs;
 mod app_update;
+mod agent_subagents;
 mod extensions;
 mod hooks;
 mod supergrok_quota;

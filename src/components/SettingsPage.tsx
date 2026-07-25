@@ -138,6 +138,9 @@ export interface SettingsPageProps {
   /** When true (default), agents may use plan mode; false → spawn with `--no-plan`. */
   planEnabled?: boolean;
   onPlanEnabled?: (v: boolean) => void;
+  /** Allow Grok Build subagent spawning (default on). */
+  subagentsEnabled?: boolean;
+  onSubagentsEnabled?: (v: boolean) => void;
   cliInfo: {
     found: boolean;
     path: string | null;
@@ -453,6 +456,8 @@ export function SettingsPage({
   onReopenLastSession,
   planEnabled = true,
   onPlanEnabled,
+  subagentsEnabled = true,
+  onSubagentsEnabled,
   cliInfo,
   onDoctor,
   versionFooter,
@@ -952,6 +957,20 @@ export function SettingsPage({
                     checked={planEnabled}
                     onChange={() => onPlanEnabled(!planEnabled)}
                     ariaLabel={t("settings.planEnabled")}
+              {onSubagentsEnabled ? (
+                <div className="settings-row">
+                  <div className="settings-row__text">
+                    <div className="settings-row__label">
+                      {t("settings.subagentsEnabled")}
+                    </div>
+                    <div className="settings-row__desc">
+                      {t("settings.subagentsEnabledDesc")}
+                    </div>
+                  </div>
+                  <UiCheck
+                    checked={subagentsEnabled}
+                    onChange={() => onSubagentsEnabled(!subagentsEnabled)}
+                    ariaLabel={t("settings.subagentsEnabled")}
                   />
                 </div>
               ) : null}

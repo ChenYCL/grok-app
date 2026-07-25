@@ -390,11 +390,23 @@ impl AcpClient {
         cmd.arg("--no-auto-update");
         for flag in no_plan_spawn_flags(plan_enabled) {
             cmd.arg(flag);
+        //   top-level: `grok --no-auto-update [--no-subagents] agent …`
+        //   agent opts: `--model` / `--reasoning-effort` / `--always-approve` before `stdio`
+        // Skip background update checks so ACP handshakes are not delayed on launch.
+        // Subagents default on; when off, force --no-subagents + GROK_SUBAGENTS=0 so
+        // agent-home / user config cannot re-enable them.
+        let subagents_enabled = crate::store::load_settings().subagents_enabled;
+        if session_data_mode != "shared" {
+            let _ = crate::agent_subagents::sync_subagents_to_agent_profile(
+                session_data_mode,
+                subagents_enabled,
+            );
         }
 
         let mut cmd = Command::new(&cli_path);
         cmd.arg("--no-auto-update");
         crate::agent_memory::apply_memory_to_command(&mut cmd, memory_enabled);
+        crate::agent_subagents::apply_subagents_to_command(&mut cmd, subagents_enabled);
         cmd.arg("agent");
         if !spawn_model.is_empty() {
             cmd.args(["--model", &spawn_model]);
@@ -432,6 +444,7 @@ impl AcpClient {
             "acp: spawn GROK_HOME={} mode={} auth_present={} route={:?} composer_model={:?} spawn_model={} yolo={} max_turns={:?}",
             "acp: spawn GROK_HOME={} mode={} auth_present={} route={:?} composer_model={:?} spawn_model={} yolo={} disable_web_search={}",
             "acp: spawn GROK_HOME={} mode={} auth_present={} route={:?} composer_model={:?} spawn_model={} yolo={} plan_enabled={}",
+            "acp: spawn GROK_HOME={} mode={} auth_present={} route={:?} composer_model={:?} spawn_model={} yolo={} subagents_enabled={}",
             grok_home.display(),
             session_data_mode,
             grok_home.join("auth.json").is_file(),
@@ -447,6 +460,7 @@ impl AcpClient {
             max_turns.as_ref().map(|s| s.turns)
             disable_web_search
             plan_enabled
+            subagents_enabled
         );
 
         let mut child = cmd.spawn().map_err(|e| {

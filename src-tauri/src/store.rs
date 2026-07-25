@@ -194,6 +194,11 @@ pub struct AppSettings {
     /// top-level `--no-plan` so plan mode is disabled for that process.
     #[serde(default = "default_plan_enabled")]
     pub plan_enabled: bool,
+    /// Allow Grok Build subagent spawning (`Agent` / task tools). Default **true**
+    /// (CLI default). When false, spawn forces `--no-subagents` + `GROK_SUBAGENTS=0`
+    /// and independent mode writes `[subagents] enabled = false`.
+    #[serde(default = "default_true")]
+    pub subagents_enabled: bool,
 }
 
 fn default_composer_prefs_scope() -> String {
@@ -253,6 +258,7 @@ impl Default for AppSettings {
             last_session_id: None,
             last_project_id: None,
             plan_enabled: default_plan_enabled(),
+            subagents_enabled: true,
         }
     }
 }
@@ -1359,6 +1365,12 @@ mod tests {
     #[test]
     fn plan_enabled_defaults_true_when_missing_from_json() {
         // Older settings files omit the field — keep plan mode on (CLI default).
+        assert!(s.subagents_enabled);
+    }
+
+    #[test]
+    fn subagents_enabled_defaults_true_when_missing_from_json() {
+        // Older settings files omit the field — serde default keeps subagents on.
         let raw = r#"{
             "theme": "dark",
             "locale": "zh",
@@ -1422,5 +1434,6 @@ mod tests {
         assert_eq!(s.max_agent_turns, None);
         assert!(!s.disable_web_search);
         assert!(s.plan_enabled);
+        assert!(s.subagents_enabled);
     }
 }

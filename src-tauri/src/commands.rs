@@ -656,6 +656,7 @@ pub async fn settings_set(
     let memory_flip = prev.experimental_memory != settings.experimental_memory;
     let web_search_flip = prev.disable_web_search != settings.disable_web_search;
     let plan_enabled_flip = prev.plan_enabled != settings.plan_enabled;
+    let subagents_flip = prev.subagents_enabled != settings.subagents_enabled;
 
     store::save_settings(&settings)?;
 
@@ -687,6 +688,14 @@ pub async fn settings_set(
         // Spawn flag changes — soft-respawn so the next turn drops/restores web tools.
     if plan_enabled_flip {
         // Spawn flag changes — soft-respawn so the next turn drops/restores plan mode.
+    if subagents_flip {
+        if let Err(e) = crate::agent_subagents::sync_subagents_to_agent_profile(
+            &settings.session_data_mode,
+            settings.subagents_enabled,
+        ) {
+            tracing::warn!("settings_set sync subagents profile: {e}");
+        }
+        // Spawn flags change — soft-respawn so the next turn uses the new policy.
         mgr.soft_respawn(&app).await;
     }
 

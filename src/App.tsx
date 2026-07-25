@@ -673,6 +673,7 @@ export default function App() {
   const startupRestoreDoneRef = useRef(false);
   /** Default true — false spawns with top-level `--no-plan`. */
   const [planEnabled, setPlanEnabled] = useState(true);
+  const [subagentsEnabled, setSubagentsEnabled] = useState(true);
   const [gitWorktrees, setGitWorktrees] = useState<api.GitWorktreeEntry[]>([]);
   /** null = unknown/loading; true = git work tree; false = not a git repo. */
   const [gitWorktreesAvailable, setGitWorktreesAvailable] = useState<
@@ -930,6 +931,8 @@ export default function App() {
       settingsBootstrappedRef.current = true;
       // Missing field → keep plan mode on (matches AppSettings default).
       setPlanEnabled(settings.planEnabled !== false);
+      // Default true when field is missing from older settings files.
+      setSubagentsEnabled(settings.subagentsEnabled !== false);
       setCliInfo({
         found: cli.found,
         path: cli.path,
@@ -6145,6 +6148,8 @@ export default function App() {
       "settings.disableWebSearchDesc",
       "settings.planEnabled",
       "settings.planEnabledDesc",
+      "settings.subagentsEnabled",
+      "settings.subagentsEnabledDesc",
       "settings.prefsScope",
       "settings.prefsScopeDesc",
       "settings.prefsScope.global",
@@ -6545,6 +6550,18 @@ export default function App() {
             void api.settingsGet().then((s) =>
               api.settingsSet({ ...s, planEnabled: v }),
             );
+          }}
+          subagentsEnabled={subagentsEnabled}
+          onSubagentsEnabled={(v) => {
+            const prev = subagentsEnabled;
+            setSubagentsEnabled(v);
+            void api
+              .settingsGet()
+              .then((s) => api.settingsSet({ ...s, subagentsEnabled: v }))
+              .catch((e) => {
+                setSubagentsEnabled(prev);
+                showToast(String(e), 4500);
+              });
           }}
           cliInfo={cliInfo}
           onDoctor={() => void openDoctor()}
