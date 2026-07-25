@@ -13,6 +13,7 @@ import {
   formatTurnErrorBody,
   splitThoughtPhases,
   isSessionBusy,
+  isSessionLiveStreaming,
   parseCompactContent,
   parseToolStepContent,
   pickLatestTurnTool,
@@ -55,6 +56,14 @@ describe("session projection", () => {
     expect(isSessionBusy("connecting")).toBe(true);
     expect(isSessionBusy("streaming")).toBe(true);
     expect(isSessionBusy("awaiting_permission")).toBe(true);
+  });
+
+  it("isSessionLiveStreaming excludes connecting (sidebar spinner silent)", () => {
+    expect(isSessionLiveStreaming("connecting")).toBe(false);
+    expect(isSessionLiveStreaming("idle")).toBe(false);
+    expect(isSessionLiveStreaming("ready")).toBe(false);
+    expect(isSessionLiveStreaming("streaming")).toBe(true);
+    expect(isSessionLiveStreaming("awaiting_permission")).toBe(true);
   });
 
   it("truncateBeforeLastUser drops last user turn and everything after", () => {

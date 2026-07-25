@@ -2469,9 +2469,13 @@ export default function App() {
     return groups;
   }, [sessions, projects, tr]);
 
-  /** Session id currently running on the Host (for sidebar spinner). */
+  /**
+   * Session id with an active turn (stream / permission) for sidebar spinner.
+   * Deliberately excludes `connecting` — warm ACP connect should be silent
+   * and must not flash loading on sidebar items.
+   */
   const busySessionId =
-    liveHost.sessionId && isSessionBusy(liveHost.state)
+    liveHost.sessionId && isSessionLiveStreaming(liveHost.state)
       ? liveHost.sessionId
       : null;
 
