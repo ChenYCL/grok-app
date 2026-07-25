@@ -1176,6 +1176,9 @@ export async function pluginUpdate(name?: string | null) {
   const n = (name ?? "").trim();
   return invoke<PluginActionResult>("plugin_update", {
     name: n ? n : null,
+  });
+}
+
 // ── Hooks manager (`~/.grok/hooks` + project `.grok/hooks`) ─────────────────
 
 export interface HookDto {
