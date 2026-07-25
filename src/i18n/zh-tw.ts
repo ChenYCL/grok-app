@@ -515,6 +515,9 @@ export const zhTW: Record<MessageKey, string> = {
   "plan.approve": "核准並建置",
   "plan.changes": "請求修改",
   "plan.dismiss": "關閉",
+  "plan.dismissConfirmTitle": "關閉計劃面板？",
+  "plan.dismissConfirmMessage":
+    "將徹底關閉本對話的計劃進度，再次開啟該對話也不會顯示。只有對話裡再次開啟計劃任務（進入 plan 模式 / 新的 plan 工具）後才會重新出現。",
   "plan.approvedToast": "已核准計劃，Agent 繼續執行",
   "plan.reviseToast": "已請 Agent 修改計劃",
   "plan.reviseFeedback": "請根據回饋修改計劃。",
@@ -1360,6 +1363,7 @@ export const zhTW: Record<MessageKey, string> = {
     "此對話尚無訊息（可能建立後連線 Agent 失敗）。可刪除後重試，或新增對話。",
   "automations.connectFailed": "已排程任務無法連線 Agent：{detail}",
   "automations.msgTag": "已排程",
+  "remoteIm.msgTag": "遠端 IM",
 
   // System tray / menu-bar (native; Rust mirror in tray_i18n.rs — keep in sync)
   "tray.recent": "最近",

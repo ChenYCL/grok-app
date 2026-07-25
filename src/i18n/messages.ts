@@ -542,6 +542,9 @@ const en = {
   "plan.approve": "Approve & build",
   "plan.changes": "Request changes",
   "plan.dismiss": "Dismiss",
+  "plan.dismissConfirmTitle": "Close plan panel?",
+  "plan.dismissConfirmMessage":
+    "This hides the plan progress for this chat. It will not come back when you reopen the session. A new plan appears only after the agent starts plan work again (plan mode / new plan task).",
   "plan.approvedToast": "Plan approved — agent continues",
   "plan.reviseToast": "Asked agent to revise the plan",
   "plan.reviseFeedback": "Please revise the plan based on user feedback.",
@@ -1410,6 +1413,7 @@ const en = {
   "automations.connectFailed":
     "Scheduled task could not connect to the agent: {detail}",
   "automations.msgTag": "Scheduled",
+  "remoteIm.msgTag": "Remote IM",
 
   // System tray / menu-bar (native; Rust mirror in tray_i18n.rs — keep in sync)
   "tray.recent": "Recent",
@@ -1989,6 +1993,9 @@ const zh: Record<MessageKey, string> = {
   "plan.approve": "批准并构建",
   "plan.changes": "请求修改",
   "plan.dismiss": "关闭",
+  "plan.dismissConfirmTitle": "关闭计划面板？",
+  "plan.dismissConfirmMessage":
+    "将彻底关闭本会话的计划进度，再次打开该会话也不会显示。只有对话里再次开启计划任务（进入 plan 模式 / 新的 plan 工具）后才会重新出现。",
   "plan.approvedToast": "已批准计划，Agent 继续执行",
   "plan.reviseToast": "已请 Agent 修改计划",
   "plan.reviseFeedback": "请根据反馈修改计划。",
@@ -2834,6 +2841,7 @@ const zh: Record<MessageKey, string> = {
     "此会话暂无消息（可能创建后连接 Agent 失败）。可删除后重试，或新建会话。",
   "automations.connectFailed": "已安排任务无法连接 Agent：{detail}",
   "automations.msgTag": "已安排",
+  "remoteIm.msgTag": "远程 IM",
 
   // System tray / menu-bar (native; Rust mirror in tray_i18n.rs — keep in sync)
   "tray.recent": "最近",
