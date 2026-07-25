@@ -4091,6 +4091,183 @@ html[data-theme="light"] .ui-check.is-mixed .ui-check__box {
   border: 1px solid var(--border-subtle);
 }
 
+/* Color skin packs (Appearance) — Dream Skin–style swatch grid */
+.settings-skin-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(104px, 1fr));
+  gap: 8px;
+  width: 100%;
+  margin-top: 4px;
+}
+
+.settings-skin-card {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+  padding: 8px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-hover);
+  color: var(--text-secondary);
+  text-align: left;
+  cursor: pointer;
+  transition:
+    border-color var(--motion-fast) ease,
+    background var(--motion-fast) ease,
+    color var(--motion-fast) ease;
+}
+
+.settings-skin-card:hover {
+  background: var(--bg-active);
+  color: var(--text-primary);
+}
+
+.settings-skin-card.is-on {
+  border-color: var(--accent);
+  background: var(--accent-muted);
+  color: var(--text-primary);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 35%, transparent);
+}
+
+.settings-skin-card__swatch {
+  display: block;
+  height: 36px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-subtle);
+}
+
+.settings-skin-card__name {
+  font-size: 12px;
+  font-weight: 560;
+  line-height: 1.2;
+  padding: 0 2px 2px;
+}
+
+/* Custom wallpaper upload (Appearance) */
+.settings-wallpaper {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 100%;
+  margin-top: 4px;
+}
+
+.settings-wallpaper__preview {
+  position: relative;
+  width: 100%;
+  height: 120px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-subtle);
+  background:
+    linear-gradient(135deg, var(--bg-hover), var(--bg-elevated));
+  overflow: hidden;
+}
+
+.settings-wallpaper__preview img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.settings-wallpaper__preview-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  padding: 12px;
+  color: var(--text-tertiary);
+  font-size: 12px;
+  text-align: center;
+}
+
+.settings-wallpaper__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.settings-wallpaper__error {
+  margin: 0;
+  font-size: 12px;
+  color: var(--danger);
+  line-height: 1.35;
+}
+
+/* Wallpaper scrim strength — affects only the shell ::after overlay. */
+.settings-wallpaper__scrim {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-top: 2px;
+}
+
+.settings-wallpaper__scrim-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.settings-wallpaper__scrim-label {
+  font-size: 12.5px;
+  font-weight: 560;
+  color: var(--text-secondary);
+}
+
+.settings-wallpaper__scrim-value {
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-tertiary);
+}
+
+.settings-wallpaper__scrim-range {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 6px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--border-strong) 55%, var(--bg-hover));
+  outline: none;
+  cursor: pointer;
+}
+
+.settings-wallpaper__scrim-range::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--accent);
+  border: 2px solid var(--bg-elevated);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 40%, transparent);
+  cursor: pointer;
+}
+
+.settings-wallpaper__scrim-range::-moz-range-thumb {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--accent);
+  border: 2px solid var(--bg-elevated);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 40%, transparent);
+  cursor: pointer;
+}
+
+.settings-wallpaper__scrim-range:focus-visible {
+  outline: 2px solid var(--border-focus);
+  outline-offset: 3px;
+}
+
+.settings-wallpaper__scrim-hint {
+  margin: 0;
+  font-size: 11.5px;
+  line-height: 1.35;
+  color: var(--text-tertiary);
+}
+
 /* Shared-mode: discover / import Grok Build CLI sessions */
 .settings-cli-sessions {
   display: flex;

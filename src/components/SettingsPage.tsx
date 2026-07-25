@@ -36,6 +36,15 @@ import {
   type ShortcutGroup,
 } from "@/lib/shortcuts";
 import type { Theme } from "@/lib/theme";
+import {
+  THEME_SKINS,
+  WALLPAPER_ACCEPT,
+  WallpaperPrepareError,
+  prepareWallpaperFromFile,
+  type ThemeSkinId,
+  type WallpaperKind,
+  type WallpaperRecord,
+} from "@/lib/themeSkin";
 import type {
   ComposerPrefsScope,
   ModelOption,
@@ -90,6 +99,17 @@ export interface SettingsPageProps {
   onLocale: (v: string) => void;
   theme: Theme;
   onTheme: (v: Theme) => void;
+  /** Color skin pack on top of light/dark (optional for older callers). */
+  skin?: ThemeSkinId;
+  onSkin?: (v: ThemeSkinId) => void;
+  /** Custom wallpaper blob: URL (null/undefined = none). */
+  wallpaperUrl?: string | null;
+  /** Kind of the current wallpaper, to pick <video> vs <img> in the preview. */
+  wallpaperKind?: WallpaperKind | null;
+  onWallpaper?: (record: WallpaperRecord | null) => void | Promise<void>;
+  /** Wallpaper scrim strength 0–100 (only the dimming overlay; not chrome). */
+  wallpaperScrim?: number;
+  onWallpaperScrim?: (value: number) => void;
   sessionDataMode: string;
   onSessionDataMode: (v: string) => void;
   /** After importing CLI sessions (shared mode) — refresh sidebar. */
@@ -433,6 +453,13 @@ export function SettingsPage({
   onLocale,
   theme,
   onTheme,
+  skin = "default",
+  onSkin,
+  wallpaperUrl = null,
+  wallpaperKind = null,
+  wallpaperScrim = 100,
+  onWallpaperScrim,
+  onWallpaper,
   sessionDataMode,
   onSessionDataMode,
   onCliSessionsImported,
@@ -499,6 +526,9 @@ export function SettingsPage({
   /** Rubber-band marquee (client coords) while dragging on the list surface. */
   const [marquee, setMarquee] = useState<MarqueeBox | null>(null);
   const archivedSurfaceRef = useRef<HTMLDivElement>(null);
+  const wallpaperInputRef = useRef<HTMLInputElement>(null);
+  const [wallpaperBusy, setWallpaperBusy] = useState(false);
+  const [wallpaperError, setWallpaperError] = useState<string | null>(null);
   const marqueeRef = useRef<{
     active: boolean;
     dragging: boolean;
@@ -513,6 +543,36 @@ export function SettingsPage({
   const t = useCallback(
     (k: string, vars?: Vars) => tr(k as MessageKey, vars),
     [tr],
+  );
+
+  const wallpaperErrorMessage = useCallback(
+    (err: unknown): string => {
+      if (err instanceof WallpaperPrepareError) {
+        const key = `settings.wallpaper.err.${err.code}` as MessageKey;
+        const msg = t(key);
+        return msg === key ? t("settings.wallpaper.err.generic") : msg;
+      }
+      return t("settings.wallpaper.err.generic");
+    },
+    [t],
+  );
+
+  const onWallpaperFile = useCallback(
+    async (file: File | null | undefined) => {
+      if (!file || !onWallpaper) return;
+      setWallpaperBusy(true);
+      setWallpaperError(null);
+      try {
+        const record = await prepareWallpaperFromFile(file);
+        await onWallpaper(record);
+      } catch (e) {
+        setWallpaperError(wallpaperErrorMessage(e));
+      } finally {
+        setWallpaperBusy(false);
+        if (wallpaperInputRef.current) wallpaperInputRef.current.value = "";
+      }
+    },
+    [onWallpaper, wallpaperErrorMessage],
   );
 
   useEffect(() => {
@@ -1028,39 +1088,229 @@ export function SettingsPage({
         )}
 
         {section === "appearance" && (
-          <div className="settings-card">
-            <div className="settings-row">
-              <div className="settings-row__text">
-                <div className="settings-row__label">
-                  <IconAppearance size={16} />
-                  {t("settings.theme")}
+          <>
+            <div className="settings-card">
+              <div className="settings-row">
+                <div className="settings-row__text">
+                  <div className="settings-row__label">
+                    <IconAppearance size={16} />
+                    {t("settings.theme")}
+                  </div>
+                  <div className="settings-row__desc">
+                    {t("settings.themeDesc")}
+                  </div>
                 </div>
-                <div className="settings-row__desc">
-                  {t("settings.themeDesc")}
+                <div className="settings-seg">
+                  <button
+                    type="button"
+                    className={
+                      "settings-seg__btn" + (theme === "light" ? " is-on" : "")
+                    }
+                    onClick={() => onTheme("light")}
+                  >
+                    {t("settings.themeLight")}
+                  </button>
+                  <button
+                    type="button"
+                    className={
+                      "settings-seg__btn" + (theme === "dark" ? " is-on" : "")
+                    }
+                    onClick={() => onTheme("dark")}
+                  >
+                    {t("settings.themeDark")}
+                  </button>
                 </div>
-              </div>
-              <div className="settings-seg">
-                <button
-                  type="button"
-                  className={
-                    "settings-seg__btn" + (theme === "light" ? " is-on" : "")
-                  }
-                  onClick={() => onTheme("light")}
-                >
-                  {t("settings.themeLight")}
-                </button>
-                <button
-                  type="button"
-                  className={
-                    "settings-seg__btn" + (theme === "dark" ? " is-on" : "")
-                  }
-                  onClick={() => onTheme("dark")}
-                >
-                  {t("settings.themeDark")}
-                </button>
               </div>
             </div>
-          </div>
+            {onSkin ? (
+              <div className="settings-card">
+                <div className="settings-row settings-row--stack">
+                  <div className="settings-row__text">
+                    <div className="settings-row__label">
+                      {t("settings.skin")}
+                    </div>
+                    <div className="settings-row__desc">
+                      {t("settings.skinDesc")}
+                    </div>
+                  </div>
+                  <div
+                    className="settings-skin-grid"
+                    role="listbox"
+                    aria-label={t("settings.skin")}
+                  >
+                    {THEME_SKINS.map((pack) => {
+                      const selected = skin === pack.id;
+                      const label = t(
+                        `settings.skin.${pack.id}` as "settings.skin.default",
+                      );
+                      return (
+                        <button
+                          key={pack.id}
+                          type="button"
+                          role="option"
+                          aria-selected={selected}
+                          className={
+                            "settings-skin-card" + (selected ? " is-on" : "")
+                          }
+                          onClick={() => onSkin(pack.id)}
+                        >
+                          <span
+                            className="settings-skin-card__swatch"
+                            style={{
+                              background: `linear-gradient(135deg, ${pack.swatch} 0%, ${pack.swatchAlt} 100%)`,
+                            }}
+                            aria-hidden
+                          />
+                          <span className="settings-skin-card__name">
+                            {label}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+            ) : null}
+            {onWallpaper ? (
+              <div className="settings-card">
+                <div className="settings-row settings-row--stack">
+                  <div className="settings-row__text">
+                    <div className="settings-row__label">
+                      {t("settings.wallpaper")}
+                    </div>
+                    <div className="settings-row__desc">
+                      {t("settings.wallpaperDesc")}
+                    </div>
+                  </div>
+                  <div className="settings-wallpaper">
+                    <div className="settings-wallpaper__preview">
+                      {wallpaperUrl ? (
+                        wallpaperKind === "video" ? (
+                          <video
+                            src={wallpaperUrl}
+                            muted
+                            loop
+                            autoPlay
+                            playsInline
+                            preload="metadata"
+                          />
+                        ) : (
+                          <img src={wallpaperUrl} alt="" />
+                        )
+                      ) : (
+                        <div className="settings-wallpaper__preview-empty">
+                          {t("settings.wallpaperEmpty")}
+                        </div>
+                      )}
+                    </div>
+                    <div className="settings-wallpaper__actions">
+                      <input
+                        ref={wallpaperInputRef}
+                        type="file"
+                        accept={WALLPAPER_ACCEPT}
+                        hidden
+                        onChange={(e) => {
+                          void onWallpaperFile(e.target.files?.[0]);
+                        }}
+                      />
+                      <button
+                        type="button"
+                        className="btn btn--solid btn--sm"
+                        disabled={wallpaperBusy}
+                        onClick={() => wallpaperInputRef.current?.click()}
+                      >
+                        {wallpaperBusy
+                          ? t("settings.wallpaperWorking")
+                          : wallpaperUrl
+                            ? t("settings.wallpaperReplace")
+                            : t("settings.wallpaperUpload")}
+                      </button>
+                      <button
+                        type="button"
+                        className="btn btn--solid btn--sm"
+                        onClick={() => {
+                          void (async () => {
+                            try {
+                              if (api.isTauri()) {
+                                await api.openExternalUrl(
+                                  "https://haowallpaper.com/",
+                                );
+                                return;
+                              }
+                            } catch {
+                              /* fall through */
+                            }
+                            window.open(
+                              "https://haowallpaper.com/",
+                              "_blank",
+                              "noopener,noreferrer",
+                            );
+                          })();
+                        }}
+                      >
+                        {t("settings.wallpaperFind")}
+                      </button>
+                      {wallpaperUrl ? (
+                        <button
+                          type="button"
+                          className="btn btn--ghost btn--sm"
+                          disabled={wallpaperBusy}
+                          onClick={() => {
+                            setWallpaperError(null);
+                            void onWallpaper(null);
+                          }}
+                        >
+                          {t("settings.wallpaperClear")}
+                        </button>
+                      ) : null}
+                    </div>
+                    {wallpaperUrl && onWallpaperScrim ? (
+                      <div className="settings-wallpaper__scrim">
+                        <div className="settings-wallpaper__scrim-head">
+                          <label
+                            className="settings-wallpaper__scrim-label"
+                            htmlFor="settings-wallpaper-scrim"
+                          >
+                            {t("settings.wallpaperScrim")}
+                          </label>
+                          <span
+                            className="settings-wallpaper__scrim-value"
+                            aria-hidden
+                          >
+                            {Math.round(wallpaperScrim)}%
+                          </span>
+                        </div>
+                        <input
+                          id="settings-wallpaper-scrim"
+                          type="range"
+                          className="settings-wallpaper__scrim-range"
+                          min={0}
+                          max={100}
+                          step={1}
+                          value={wallpaperScrim}
+                          aria-valuemin={0}
+                          aria-valuemax={100}
+                          aria-valuenow={Math.round(wallpaperScrim)}
+                          aria-label={t("settings.wallpaperScrim")}
+                          onChange={(e) => {
+                            onWallpaperScrim(Number(e.target.value));
+                          }}
+                        />
+                        <p className="settings-wallpaper__scrim-hint">
+                          {t("settings.wallpaperScrimDesc")}
+                        </p>
+                      </div>
+                    ) : null}
+                    {wallpaperError ? (
+                      <p className="settings-wallpaper__error" role="alert">
+                        {wallpaperError}
+                      </p>
+                    ) : null}
+                  </div>
+                </div>
+              </div>
+            ) : null}
+          </>
         )}
 
         {section === "account" && (
