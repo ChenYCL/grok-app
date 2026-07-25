@@ -1165,6 +1165,85 @@ export async function projectInspect(projectPath?: string | null) {
   });
 }
 
+// ── MCP add / remove / doctor ───────────────────────────────────────────────
+
+export interface McpAddResult {
+  ok: boolean;
+  name: string;
+  command?: string | null;
+  args?: string[] | null;
+  transport?: string | null;
+  enabled?: boolean;
+}
+
+export interface McpRemoveResult {
+  ok: boolean;
+  name: string;
+}
+
+export interface McpDoctorCheck {
+  label: string;
+  passed: boolean;
+  detail?: string | null;
+  hint?: string | null;
+}
+
+export interface McpDoctorServer {
+  name: string;
+  transport?: string | null;
+  target?: string | null;
+  source?: string | null;
+  healthy: boolean;
+  checks: McpDoctorCheck[];
+}
+
+export interface McpDoctorSource {
+  path: string;
+  status: string;
+  serverCount?: number | null;
+}
+
+export interface McpDoctorSummary {
+  total: number;
+  healthy: number;
+  unhealthy: number;
+}
+
+export interface McpDoctorReport {
+  ok: boolean;
+  summary: McpDoctorSummary;
+  servers: McpDoctorServer[];
+  sources: McpDoctorSource[];
+  rawText?: string | null;
+}
+
+/** Add or replace a stdio MCP server in agent GROK_HOME config; soft-respawn. */
+export async function mcpAdd(opts: {
+  name: string;
+  command: string;
+  args?: string[];
+  env?: Record<string, string>;
+}) {
+  return invoke<McpAddResult>("mcp_add", {
+    name: opts.name,
+    command: opts.command,
+    args: opts.args ?? [],
+    env: opts.env ?? null,
+  });
+}
+
+/** Remove an MCP server from agent config + prefs; soft-respawn. */
+export async function mcpRemove(name: string) {
+  return invoke<McpRemoveResult>("mcp_remove", { name });
+}
+
+/** Run `grok mcp doctor --json` under the active GROK_HOME. */
+export async function mcpDoctor(name?: string | null) {
+  return invoke<McpDoctorReport>("mcp_doctor", {
+    name: name?.trim() ? name.trim() : null,
+  });
+}
+
 // ── Plugins via `grok plugin …` ─────────────────────────────────────────────
 
 /** Component counts from `grok inspect` plugins[].provides — Grok Build shape. */

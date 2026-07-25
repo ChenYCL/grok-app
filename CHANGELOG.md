@@ -42,6 +42,7 @@ See `docs/llm-wiki/release.md`.
 - 项目 chip 可新建 git worktree（名称 + 可选起始点），同级目录 `<repo>-<name>`，加入项目并切换。
 - **Cross-session memory toggle** (experimental): Settings → General enables Grok Build `--experimental-memory` / `GROK_MEMORY` / `[memory] enabled` (default off). When off, spawn forces `--no-memory` + `GROK_MEMORY=0` for isolation. Clear workspace memory runs `grok memory clear` (project cwd) behind an in-app confirm.
 
+- **MCP add / remove / doctor** in Settings → Extensions: stdio server form, GlassModal remove confirm, `grok mcp doctor` results; writes agent `GROK_HOME` config.
 
 ## [0.1.6] - 2026-07-24
 

@@ -2271,6 +2271,141 @@ pub async fn extensions_enable_all_skills(
     .map_err(|e| e.to_string())?
 }
 
+// ── MCP add / remove / doctor ────────────────────────────────────────────────
+//
+// Add/remove write `[mcp_servers.<name>]` into the agent GROK_HOME config.toml
+// (independent → agent-home; shared → ~/.grok), matching extensions enable sync.
+// Doctor wraps `grok mcp doctor --json` with the same GROK_HOME.
+
+const MCP_DOCTOR_TIMEOUT_SECS: u64 = 90;
+
+/// Add or replace a stdio MCP server. Soft-respawns a live agent so the next
+/// connect injects the new `mcpServers` set.
+#[tauri::command]
+pub async fn mcp_add(
+    app: tauri::AppHandle,
+    mgr: State<'_, Arc<SessionManager>>,
+    name: String,
+    command: String,
+    args: Option<Vec<String>>,
+    env: Option<std::collections::HashMap<String, String>>,
+) -> Result<serde_json::Value, String> {
+    let name = name.trim().to_string();
+    let command = command.trim().to_string();
+    let args = args.unwrap_or_default();
+    let env_owned = env;
+    let def = tauri::async_runtime::spawn_blocking(move || {
+        crate::extensions::add_mcp_stdio(
+            &name,
+            &command,
+            &args,
+            env_owned.as_ref(),
+        )
+    })
+    .await
+    .map_err(|e| e.to_string())??;
+
+    mgr.apply_extensions_mcp_change(&app).await;
+    Ok(serde_json::json!({
+        "ok": true,
+        "name": def.name,
+        "command": def.command,
+        "args": def.args,
+        "transport": def.transport,
+        "enabled": true,
+    }))
+}
+
+/// Remove an MCP server from agent config + App prefs. Soft-respawns when live.
+#[tauri::command]
+pub async fn mcp_remove(
+    app: tauri::AppHandle,
+    mgr: State<'_, Arc<SessionManager>>,
+    name: String,
+) -> Result<serde_json::Value, String> {
+    let name = name.trim().to_string();
+    if name.is_empty() {
+        return Err("MCP server name required".into());
+    }
+    let name_for_job = name.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        crate::extensions::remove_mcp_server(&name_for_job)
+    })
+    .await
+    .map_err(|e| e.to_string())??;
+
+    mgr.apply_extensions_mcp_change(&app).await;
+    Ok(serde_json::json!({
+        "ok": true,
+        "name": name,
+    }))
+}
+
+/// Run `grok mcp doctor --json` (optional server name) under the active GROK_HOME.
+#[tauri::command]
+pub async fn mcp_doctor(
+    name: Option<String>,
+) -> Result<crate::extensions::McpDoctorReport, String> {
+    let name = name
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty());
+    tauri::async_runtime::spawn_blocking(move || run_mcp_doctor(name.as_deref()))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+/// Invoke CLI doctor with GROK_HOME matching session_data_mode.
+fn run_mcp_doctor(name: Option<&str>) -> Result<crate::extensions::McpDoctorReport, String> {
+    let settings = store::load_settings();
+    let probe = cli_probe::probe_cli(settings.manual_cli_path.as_deref());
+    let Some(cli_path) = probe.path.filter(|_| probe.found) else {
+        return Err("Grok Build CLI not found".into());
+    };
+    let grok_home = crate::paths::resolve_agent_grok_home(&settings.session_data_mode);
+
+    let mut args: Vec<String> = vec!["mcp".into(), "doctor".into(), "--json".into()];
+    if let Some(n) = name {
+        args.push(n.to_string());
+    }
+
+    let (tx, rx) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        let mut cmd = std::process::Command::new(&cli_path);
+        cmd.args(&args);
+        cmd.env("GROK_HOME", &grok_home);
+        crate::process_util::apply_no_window_std(&mut cmd);
+        if let Some(path_env) = crate::process_util::enriched_path_env() {
+            cmd.env("PATH", path_env);
+        }
+        let _ = tx.send(cmd.output());
+    });
+
+    match rx.recv_timeout(std::time::Duration::from_secs(MCP_DOCTOR_TIMEOUT_SECS)) {
+        Ok(Ok(output)) => {
+            let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
+            let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+            // Doctor may exit non-zero when servers are unhealthy — still parse JSON.
+            let blob = if !stdout.is_empty() {
+                stdout
+            } else {
+                stderr.clone()
+            };
+            if blob.is_empty() {
+                return Err(if !stderr.is_empty() {
+                    stderr.chars().take(400).collect()
+                } else {
+                    "mcp doctor returned no output".into()
+                });
+            }
+            Ok(crate::extensions::parse_mcp_doctor_json(&blob))
+        }
+        Ok(Err(e)) => Err(format!("Failed to run grok mcp doctor: {e}")),
+        Err(_) => Err(format!(
+            "grok mcp doctor timed out after {MCP_DOCTOR_TIMEOUT_SECS}s"
+        )),
+    }
+}
+
 // ── Plugins via Grok Build CLI (`grok plugin …` + `inspect` + config.toml) ──
 //
 // Keep field semantics aligned with Grok Build:
