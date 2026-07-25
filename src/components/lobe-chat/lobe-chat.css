@@ -219,6 +219,21 @@
   font-weight: 550;
 }
 
+/* Remote IM journaled user turn — same pill as scheduled, subtle accent */
+.lobe-remote-im-tag {
+  color: color-mix(
+    in srgb,
+    var(--accent, #60a5fa) 72%,
+    var(--chat-text-2, #a1a1aa)
+  );
+  background: color-mix(in srgb, var(--accent, #60a5fa) 14%, transparent);
+  border-color: color-mix(in srgb, var(--accent, #60a5fa) 28%, transparent);
+}
+
+.lobe-remote-im-tag .lobe-scheduled-tag__title {
+  color: var(--chat-text, inherit);
+}
+
 /* Hover actions */
 .lobe-chat-item__actions {
   display: flex;

@@ -13116,3 +13116,659 @@ div.composer__input:empty::before {
 .voice-overlay__demo {
   margin-top: 0.5rem;
 }
+
+/* ── Remote IM (settings secondary layout) ─────────────────────────────── */
+/* Independent vertical scroll in sidebar + panel; page itself does not scroll. */
+
+.settings-page__content:has(.settings-remote-im-shell) {
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.settings-page__main--remote-im {
+  max-width: none !important;
+  width: 100%;
+  margin: 0;
+  padding: 8px 12px 12px;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  box-sizing: border-box;
+}
+
+.settings-page__main--remote-im > .settings-page__title {
+  flex-shrink: 0;
+  margin: 0 0 8px;
+  font-size: 20px;
+}
+
+.settings-remote-im-shell {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.rim-layout {
+  display: flex;
+  flex-direction: row;
+  align-items: stretch;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  border: 1px solid var(--border-subtle);
+  border-radius: 14px;
+  background: var(--bg-card);
+}
+
+.rim-sidebar {
+  width: 220px;
+  min-width: 200px;
+  max-width: 240px;
+  flex-shrink: 0;
+  border-right: 1px solid var(--border-subtle);
+  background: var(--bg-sidebar, var(--bg-card));
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 10px 8px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  box-sizing: border-box;
+  min-height: 0;
+}
+
+.rim-sidebar__group {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: 10px;
+}
+
+.rim-sidebar__group-label {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+  padding: 8px 10px 4px;
+}
+
+.rim-sidebar__item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 34px;
+  padding: 0 10px;
+  border: none;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.rim-sidebar__item:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.rim-sidebar__item.is-active {
+  background: var(--bg-active, var(--bg-hover));
+  color: var(--text-primary);
+  font-weight: 550;
+}
+
+.rim-sidebar__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  flex-shrink: 0;
+  opacity: 0.85;
+  color: inherit;
+}
+
+.rim-sidebar__label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rim-sidebar__badge {
+  font-size: 11px;
+  min-width: 18px;
+  height: 18px;
+  border-radius: 9px;
+  background: var(--bg-hover);
+  color: var(--text-tertiary);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 5px;
+  font-weight: 600;
+}
+
+.rim-status {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  background: color-mix(in srgb, var(--text-tertiary, #888) 70%, transparent);
+}
+
+.rim-status--connected {
+  background: #34c759;
+  box-shadow: 0 0 0 2px color-mix(in srgb, #34c759 22%, transparent);
+}
+
+.rim-status--configured {
+  background: #ffcc00;
+}
+
+.rim-status--unconfigured {
+  background: color-mix(in srgb, var(--text-tertiary, #888) 55%, transparent);
+  opacity: 0.7;
+}
+
+.rim-status--error {
+  background: #ff3b30;
+}
+
+.rim-panel {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 16px 18px 28px;
+  background: var(--bg-main);
+  box-sizing: border-box;
+}
+
+.rim-panel__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+  margin-bottom: 12px;
+}
+
+.rim-panel__header-text {
+  min-width: 0;
+  flex: 1;
+}
+
+.rim-panel__title-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-primary);
+}
+
+.rim-panel__title {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--text-primary);
+}
+
+.rim-panel__lead {
+  margin: 6px 0 0;
+  font-size: 12.5px;
+  color: var(--text-tertiary);
+  line-height: 1.5;
+}
+
+.rim-panel__empty {
+  padding: 24px 8px;
+  color: var(--text-tertiary);
+  font-size: 13px;
+}
+
+.rim-badge {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  font-size: 11.5px;
+  font-weight: 600;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: var(--bg-hover);
+  color: var(--text-secondary);
+  border: 1px solid var(--border-subtle);
+  line-height: 1.2;
+}
+
+.rim-badge__inner {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.rim-badge--ok {
+  background: color-mix(in srgb, #34c759 14%, transparent);
+  border-color: color-mix(in srgb, #34c759 28%, transparent);
+  color: #248a3d;
+}
+
+.rim-badge--warn {
+  background: color-mix(in srgb, #ffcc00 16%, transparent);
+  border-color: color-mix(in srgb, #ffcc00 30%, transparent);
+  color: #9a7b00;
+}
+
+.rim-badge--err {
+  background: color-mix(in srgb, #ff3b30 12%, transparent);
+  border-color: color-mix(in srgb, #ff3b30 28%, transparent);
+  color: #d70015;
+}
+
+html[data-theme="dark"] .rim-badge--ok { color: #30d158; }
+html[data-theme="dark"] .rim-badge--warn { color: #ffd60a; }
+html[data-theme="dark"] .rim-badge--err { color: #ff6961; }
+
+.rim-btn-row,
+.rim-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.rim-actions {
+  margin: 14px 0 8px;
+  position: sticky;
+  bottom: 0;
+  padding: 10px 0 4px;
+  background: linear-gradient(to top, var(--bg-main) 70%, transparent);
+}
+
+.rim-select {
+  width: 100%;
+  max-width: 100%;
+}
+.rim-select .c-select__trigger {
+  width: 100%;
+  min-height: 36px;
+  border-radius: 10px;
+}
+
+.rim-choice-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.rim-choice {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 34px;
+  padding: 0 12px;
+  border-radius: 10px;
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-input);
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.rim-choice:hover:not(:disabled) {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.rim-choice.is-on {
+  border-color: color-mix(in srgb, var(--accent, #6b9fff) 55%, var(--border-subtle));
+  background: color-mix(in srgb, var(--accent, #6b9fff) 14%, transparent);
+  color: var(--text-primary);
+  font-weight: 550;
+}
+
+.rim-choice__dot {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 1.5px solid var(--border-strong, rgba(255, 255, 255, 0.2));
+  flex-shrink: 0;
+}
+
+.rim-choice.is-on .rim-choice__dot {
+  border-color: var(--accent, #6b9fff);
+  background: radial-gradient(circle at center, var(--accent, #6b9fff) 0 45%, transparent 48%);
+}
+
+.rim-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.rim-list__link {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+  text-align: left;
+  border: none;
+  border-bottom: 1px solid var(--border-subtle);
+  background: transparent;
+  color: var(--text-primary);
+  font-size: 13px;
+  font-family: inherit;
+  padding: 12px 14px;
+  cursor: pointer;
+}
+
+.rim-list li:last-child .rim-list__link { border-bottom: none; }
+.rim-list__link:hover { background: var(--bg-hover); }
+
+.rim-list__name {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.rim-list__meta {
+  font-size: 12px;
+  color: var(--text-tertiary);
+  font-weight: 400;
+}
+
+.rim-callout {
+  margin: 10px 0 0;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: var(--bg-input);
+  border: 1px solid var(--border-subtle);
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--text-secondary);
+}
+
+.rim-callout p { margin: 0; }
+
+.rim-callout--warn {
+  border-color: color-mix(in srgb, #ffcc00 35%, var(--border-subtle));
+  background: color-mix(in srgb, #ffcc00 8%, var(--bg-card));
+}
+
+.rim-callout--error {
+  border-color: color-mix(in srgb, #ff3b30 35%, var(--border-subtle));
+  background: color-mix(in srgb, #ff3b30 8%, var(--bg-card));
+  color: var(--text-primary);
+}
+
+.rim-callout--ok {
+  border-color: color-mix(in srgb, #34c759 35%, var(--border-subtle));
+  background: color-mix(in srgb, #34c759 8%, var(--bg-card));
+}
+
+.rim-callout__title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 6px;
+  font-size: 13px;
+}
+
+.rim-callout__code {
+  display: block;
+  margin-top: 8px;
+  font-size: 11.5px;
+  word-break: break-all;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--bg-elevated, #1c1c1e) 80%, transparent);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-secondary);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
+.rim-help-list {
+  margin: 0;
+  padding-left: 1.15rem;
+  font-size: 12.5px;
+  color: var(--text-secondary);
+  line-height: 1.6;
+}
+
+.rim-help-list code {
+  font-size: 12px;
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: var(--bg-hover);
+}
+
+.rim-secret-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  width: 100%;
+}
+
+.rim-secret-row .settings-input {
+  flex: 1;
+  min-width: 0;
+}
+
+.rim-instance-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  width: 100%;
+}
+
+.rim-instance-bar .rim-select {
+  min-width: 140px;
+  max-width: 200px;
+  flex: 0 1 auto;
+}
+
+.rim-instance-bar__name {
+  flex: 1 1 140px;
+  min-width: 120px;
+}
+
+.rim-scan__box {
+  min-height: 168px;
+  border: 1px dashed var(--border-subtle);
+  border-radius: 12px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  color: var(--text-tertiary);
+  font-size: 13px;
+  background: var(--bg-input);
+  padding: 16px;
+  text-align: center;
+}
+
+.rim-scan__box.is-waiting,
+.rim-scan__box.is-done {
+  border-style: solid;
+}
+
+.rim-scan__box.is-waiting {
+  border-color: color-mix(in srgb, var(--accent, #6b9fff) 50%, var(--border-subtle));
+}
+
+.rim-scan__box.is-done {
+  border-color: color-mix(in srgb, #34c759 45%, var(--border-subtle));
+  background: color-mix(in srgb, #34c759 8%, var(--bg-input));
+  color: var(--text-primary);
+}
+
+.rim-scan__qr {
+  width: 180px;
+  height: 180px;
+  border-radius: 10px;
+  background: #fff;
+  object-fit: contain;
+}
+
+.rim-scan__uri {
+  max-width: 100%;
+  font-size: 11px;
+  word-break: break-all;
+  color: var(--text-secondary);
+}
+
+.rim-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.rim-chip {
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-input);
+  color: var(--text-secondary);
+  border-radius: 999px;
+  padding: 6px 12px;
+  font-size: 12.5px;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.rim-chip:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.rim-chip.is-on {
+  border-color: color-mix(in srgb, var(--accent, #6b9fff) 55%, var(--border-subtle));
+  color: var(--text-primary);
+  background: color-mix(in srgb, var(--accent, #6b9fff) 14%, transparent);
+  font-weight: 550;
+}
+
+.rim-collapse {
+  border: 1px solid var(--border-subtle);
+  border-radius: 14px;
+  background: var(--bg-card);
+  margin-top: 10px;
+  overflow: hidden;
+}
+
+.rim-collapse__head {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 12px 14px;
+  border: none;
+  background: transparent;
+  color: var(--text-primary);
+  font-size: 13px;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  text-align: left;
+}
+
+.rim-collapse__head:hover {
+  background: var(--bg-hover);
+}
+
+.rim-collapse__body {
+  border-top: 1px solid var(--border-subtle);
+}
+
+.rim-collapse__body .settings-row:last-child {
+  border-bottom: none;
+}
+
+.rim-doctor {
+  border-top: 1px solid var(--border-subtle);
+  padding-top: 12px !important;
+}
+
+.rim-danger {
+  border-color: color-mix(in srgb, #ff3b30 28%, var(--border-subtle));
+}
+
+.rim-required {
+  margin-left: 4px;
+  color: color-mix(in srgb, #ff3b30 85%, var(--text-secondary));
+  font-weight: 700;
+}
+
+.rim-modal__body {
+  margin: 0;
+  font-size: 13.5px;
+  color: var(--text-secondary);
+  line-height: 1.55;
+}
+
+.rim-modal__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  width: 100%;
+}
+
+.rim-channel .settings-card,
+.rim-overview .settings-card {
+  margin-bottom: 4px;
+}
+
+.rim-channel .settings-page__h2,
+.rim-overview .settings-page__h2 {
+  margin-top: 14px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.rim-channel .settings-page__h2:first-of-type,
+.rim-overview .settings-page__h2:first-of-type {
+  margin-top: 2px;
+}
+
+.settings-card > .rim-callout {
+  margin: 0 14px 14px;
+}
+
+html[data-theme="light"] .rim-sidebar {
+  background: color-mix(in srgb, var(--bg-sidebar, #f5f5f7) 92%, #fff);
+}
+
+@media (max-width: 780px) {
+  .rim-layout {
+    flex-direction: column;
+  }
+  .rim-sidebar {
+    width: 100%;
+    max-width: none;
+    border-right: none;
+    border-bottom: 1px solid var(--border-subtle);
+    max-height: 36vh;
+  }
+}
+

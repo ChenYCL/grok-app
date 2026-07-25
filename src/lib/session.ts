@@ -869,7 +869,8 @@ export function forkSessionTitle(sourceTitle: string | undefined | null): string
 
 /**
  * When reopening a session, prefer the in-memory cache over disk if the cache
- * is ahead (optimistic user bubble, partial stream, longer history).
+ * is ahead (optimistic user bubble, partial stream). If disk has messages the
+ * cache lacks (e.g. Remote IM appends), merge by id so IM turns are never lost.
  */
 export function preferSessionMessages(
   cached: ChatMessage[] | undefined,
@@ -877,8 +878,18 @@ export function preferSessionMessages(
 ): ChatMessage[] {
   if (!cached?.length) return stored;
   if (!stored.length) return cached;
-  if (cached.some((m) => m.streaming)) return cached;
-  if (cached.length > stored.length) return cached;
+  if (cached.some((m) => m.streaming)) {
+    // Still fold in any disk-only rows (Remote IM) behind the stream.
+    return mergeSessionMessagesById(cached, stored);
+  }
+  // Disk strictly longer (common after IM turns) → take disk as base, keep
+  // any cache-only optimistic ids that aren't on disk yet.
+  if (stored.length >= cached.length) {
+    return mergeSessionMessagesById(stored, cached);
+  }
+  if (cached.length > stored.length) {
+    return mergeSessionMessagesById(cached, stored);
+  }
   const cacheChars = cached.reduce(
     (n, m) => n + m.content.length + (m.thought?.length ?? 0),
     0,
@@ -887,8 +898,34 @@ export function preferSessionMessages(
     (n, m) => n + m.content.length + (m.thought?.length ?? 0),
     0,
   );
-  if (cacheChars > storeChars) return cached;
-  return stored;
+  if (cacheChars > storeChars) return mergeSessionMessagesById(cached, stored);
+  return mergeSessionMessagesById(stored, cached);
+}
+
+/**
+ * Union of two message lists by `id`. First list wins on conflict; extras from
+ * second are appended. Order: first list order, then second-only rows in their order.
+ */
+export function mergeSessionMessagesById(
+  primary: ChatMessage[],
+  secondary: ChatMessage[],
+): ChatMessage[] {
+  const seen = new Set(primary.map((m) => m.id));
+  const out = [...primary];
+  for (const m of secondary) {
+    if (!m.id || seen.has(m.id)) continue;
+    seen.add(m.id);
+    out.push(m);
+  }
+  // Stable chronological preference when createdAt present
+  const hasTs = out.some((m) => m.createdAt);
+  if (!hasTs) return out;
+  return out.slice().sort((a, b) => {
+    const ta = a.createdAt || "";
+    const tb = b.createdAt || "";
+    if (ta === tb) return 0;
+    return ta < tb ? -1 : 1;
+  });
 }
 
 /**
