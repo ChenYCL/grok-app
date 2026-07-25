@@ -469,6 +469,8 @@ export function SettingsPage({
   onStoreApiKeysInKeychain,
   sandboxProfile = "off",
   onSandboxProfile,
+  planEnabled = true,
+  onPlanEnabled,
   cliInfo,
   onDoctor,
   versionFooter,
@@ -953,7 +955,28 @@ export function SettingsPage({
               ) : null}
             </div>
 
-            <h2 className="settings-page__h2">{t("settings.section.general")}</h2>
+                        <h2 className="settings-page__h2">{t("settings.section.agent")}</h2>
+            <div className="settings-card" id="settings-agent-card">
+              {onPlanEnabled ? (
+                <div className="settings-row">
+                  <div className="settings-row__text">
+                    <div className="settings-row__label">
+                      {t("settings.planEnabled")}
+                    </div>
+                    <div className="settings-row__desc">
+                      {t("settings.planEnabledDesc")}
+                    </div>
+                  </div>
+                  <UiCheck
+                    checked={!!planEnabled}
+                    onChange={() => onPlanEnabled(!planEnabled)}
+                    ariaLabel={t("settings.planEnabled")}
+                  />
+                </div>
+              ) : null}
+            </div>
+
+<h2 className="settings-page__h2">{t("settings.section.general")}</h2>
             <div className="settings-card">
               <div className="settings-row">
                 <div className="settings-row__text">
