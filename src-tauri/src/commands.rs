@@ -4311,6 +4311,224 @@ pub async fn git_worktrees_list(project_path: String) -> Result<GitWorktreesResu
     })
 }
 
+/// Result of creating a linked worktree (`git worktree add`).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GitWorktreeAddResult {
+    /// Absolute path of the new worktree directory.
+    pub path: String,
+    /// Sanitized worktree / new-branch name.
+    pub name: String,
+    /// Optional start-point / commit-ish that was used.
+    pub start_point: Option<String>,
+    /// Branch checked out after add (best-effort from re-list).
+    pub branch: Option<String>,
+}
+
+/// Sanitize a user-provided worktree name for use as a path segment + branch name.
+///
+/// Allows letters, digits, `.`, `_`, `-`. Rejects empty, `..`, path separators,
+/// and other control / shell-metacharacters. Pure; unit-tested.
+pub fn sanitize_worktree_name(raw: &str) -> Result<String, String> {
+    let name = raw.trim();
+    if name.is_empty() {
+        return Err("worktree name is required".into());
+    }
+    if name == "." || name == ".." {
+        return Err("invalid worktree name".into());
+    }
+    if name.len() > 64 {
+        return Err("worktree name too long (max 64)".into());
+    }
+    // Single path segment only — no separators, no absolute paths.
+    if name.contains('/') || name.contains('\\') || name.contains('\0') {
+        return Err("worktree name must not contain path separators".into());
+    }
+    // Branch-safe: alphanumeric + . _ - (common for feature names).
+    let ok = name
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || c == '.' || c == '_' || c == '-');
+    if !ok {
+        return Err(
+            "worktree name may only contain letters, digits, '.', '_' and '-'".into(),
+        );
+    }
+    if name.starts_with('-') {
+        return Err("worktree name must not start with '-'".into());
+    }
+    Ok(name.to_string())
+}
+
+/// Optional commit-ish / branch start-point for `git worktree add`.
+/// Passed as a single argv element (no shell) after light validation.
+pub fn sanitize_worktree_ref(raw: Option<&str>) -> Result<Option<String>, String> {
+    let Some(s) = raw.map(str::trim).filter(|s| !s.is_empty()) else {
+        return Ok(None);
+    };
+    if s.len() > 256 {
+        return Err("branch / ref too long".into());
+    }
+    if s.contains('\0') || s.contains('\n') || s.contains('\r') {
+        return Err("invalid branch / ref".into());
+    }
+    // Disallow option-like args so they cannot be mistaken for git flags.
+    if s.starts_with('-') {
+        return Err("branch / ref must not start with '-'".into());
+    }
+    Ok(Some(s.to_string()))
+}
+
+/// Build sibling worktree path: `<parent>/<main_basename>-<name>`.
+///
+/// Example: main `/Users/me/repo` + name `feat` → `/Users/me/repo-feat`.
+///
+/// Choice (documented in `docs/llm-wiki/git-worktrees.md`): sibling of the
+/// **main** worktree root, not `.worktrees/<name>` inside the repo. Matches
+/// common `git worktree add ../repo-feat` layout and existing list samples.
+pub fn build_worktree_sibling_path(main_worktree_path: &str, name: &str) -> Result<String, String> {
+    let main = normalize_fs_path(main_worktree_path);
+    if main.is_empty() {
+        return Err("empty main worktree path".into());
+    }
+    let safe = sanitize_worktree_name(name)?;
+    let main_pb = std::path::PathBuf::from(&main);
+    let base = main_pb
+        .file_name()
+        .and_then(|s| s.to_str())
+        .filter(|s| !s.is_empty())
+        .ok_or_else(|| "cannot derive repo folder name".to_string())?;
+    let parent = main_pb
+        .parent()
+        .ok_or_else(|| "main worktree has no parent directory".to_string())?;
+    let dir_name = format!("{base}-{safe}");
+    let path = parent.join(dir_name);
+    let s = path.to_string_lossy().replace('\\', "/");
+    let s = normalize_fs_path(&s);
+    if s == main || s.is_empty() {
+        return Err("resolved worktree path is invalid".into());
+    }
+    Ok(s)
+}
+
+/// Create a linked git worktree under a sibling path, then return its path.
+///
+/// Args are passed to `git` as an argv array (no shell) to avoid injection.
+/// - Without `start_point`: `git worktree add -b <name> <path>` (branch from HEAD).
+/// - With `start_point`: `git worktree add -b <name> <path> <start_point>`.
+#[tauri::command]
+pub async fn git_worktree_add(
+    project_path: String,
+    name: String,
+    start_point: Option<String>,
+) -> Result<GitWorktreeAddResult, String> {
+    let project = normalize_fs_path(&project_path);
+    if project.is_empty() {
+        return Err("empty path".into());
+    }
+    let proj = std::path::PathBuf::from(&project);
+    if !proj.is_dir() {
+        return Err("project not a directory".into());
+    }
+    git_probe_work_tree(&project)?;
+
+    let safe_name = sanitize_worktree_name(&name)?;
+    let start = sanitize_worktree_ref(start_point.as_deref())?;
+
+    // Resolve main worktree path (first porcelain entry) for sibling placement.
+    let list_out = std::process::Command::new("git")
+        .args(["-C", &project, "worktree", "list", "--porcelain"])
+        .output()
+        .map_err(|e| e.to_string())?;
+    if !list_out.status.success() {
+        let err = String::from_utf8_lossy(&list_out.stderr).trim().to_string();
+        return Err(if err.is_empty() {
+            "git worktree list failed".into()
+        } else {
+            err.chars().take(200).collect()
+        });
+    }
+    let listed = parse_worktree_porcelain(&String::from_utf8_lossy(&list_out.stdout));
+    let main_path = listed
+        .first()
+        .map(|w| w.path.clone())
+        .filter(|p| !p.is_empty())
+        .ok_or_else(|| "could not resolve main worktree path".to_string())?;
+
+    let target = build_worktree_sibling_path(&main_path, &safe_name)?;
+    let target_pb = std::path::PathBuf::from(&target);
+    if target_pb.exists() {
+        return Err(format!("path already exists: {target}"));
+    }
+    // Refuse if already registered as a worktree.
+    if listed.iter().any(|w| {
+        let p = normalize_fs_path(&w.path);
+        p.eq_ignore_ascii_case(&target) || p == target
+    }) {
+        return Err(format!("worktree already registered: {target}"));
+    }
+
+    // Safe argv — never go through a shell.
+    // `git worktree add -b <name> <path> [start_point]`
+    let mut args: Vec<String> = vec![
+        "-C".into(),
+        project.clone(),
+        "worktree".into(),
+        "add".into(),
+        "-b".into(),
+        safe_name.clone(),
+        target.clone(),
+    ];
+    if let Some(ref sp) = start {
+        args.push(sp.clone());
+    }
+
+    let out = std::process::Command::new("git")
+        .args(&args)
+        .output()
+        .map_err(|e| e.to_string())?;
+    if !out.status.success() {
+        let err = String::from_utf8_lossy(&out.stderr).trim().to_string();
+        let err = if err.is_empty() {
+            String::from_utf8_lossy(&out.stdout).trim().to_string()
+        } else {
+            err
+        };
+        return Err(if err.is_empty() {
+            "git worktree add failed".into()
+        } else {
+            err.chars().take(400).collect()
+        });
+    }
+
+    // Best-effort: re-list to pick up branch field for the new path.
+    let branch = {
+        let re = std::process::Command::new("git")
+            .args(["-C", &project, "worktree", "list", "--porcelain"])
+            .output()
+            .ok();
+        re.and_then(|o| {
+            if !o.status.success() {
+                return None;
+            }
+            let list = parse_worktree_porcelain(&String::from_utf8_lossy(&o.stdout));
+            list.into_iter()
+                .find(|w| {
+                    let p = normalize_fs_path(&w.path);
+                    p.eq_ignore_ascii_case(&target) || p == target
+                })
+                .and_then(|w| w.branch)
+        })
+        .or_else(|| Some(safe_name.clone()))
+    };
+
+    Ok(GitWorktreeAddResult {
+        path: target,
+        name: safe_name,
+        start_point: start,
+        branch,
+    })
+}
+
 #[cfg(test)]
 mod git_worktree_parse_tests {
     use super::*;
@@ -4343,6 +4561,45 @@ detached
     #[test]
     fn empty_input() {
         assert!(parse_worktree_porcelain("").is_empty());
+    }
+
+    #[test]
+    fn sanitize_name_accepts_simple() {
+        assert_eq!(sanitize_worktree_name("  feat-x  ").unwrap(), "feat-x");
+        assert_eq!(sanitize_worktree_name("v1.2_rc").unwrap(), "v1.2_rc");
+    }
+
+    #[test]
+    fn sanitize_name_rejects_bad() {
+        assert!(sanitize_worktree_name("").is_err());
+        assert!(sanitize_worktree_name("..").is_err());
+        assert!(sanitize_worktree_name("a/b").is_err());
+        assert!(sanitize_worktree_name("a\\b").is_err());
+        assert!(sanitize_worktree_name("-lead").is_err());
+        assert!(sanitize_worktree_name("has space").is_err());
+        assert!(sanitize_worktree_name("a;rm -rf").is_err());
+    }
+
+    #[test]
+    fn sanitize_ref_optional() {
+        assert_eq!(sanitize_worktree_ref(None).unwrap(), None);
+        assert_eq!(sanitize_worktree_ref(Some("  ")).unwrap(), None);
+        assert_eq!(
+            sanitize_worktree_ref(Some(" origin/main ")).unwrap().as_deref(),
+            Some("origin/main")
+        );
+        assert!(sanitize_worktree_ref(Some("--force")).is_err());
+        assert!(sanitize_worktree_ref(Some("bad\nref")).is_err());
+    }
+
+    #[test]
+    fn sibling_path_builder() {
+        let p = build_worktree_sibling_path("/Users/me/repo", "feat").unwrap();
+        assert_eq!(p, "/Users/me/repo-feat");
+        let p2 = build_worktree_sibling_path("/Users/me/repo/", "hot-fix").unwrap();
+        assert_eq!(p2, "/Users/me/repo-hot-fix");
+        assert!(build_worktree_sibling_path("/Users/me/repo", "a/b").is_err());
+        assert!(build_worktree_sibling_path("", "feat").is_err());
     }
 }
 

@@ -170,7 +170,7 @@ Captured from X open-source thread (2026-07-24). Track as GitHub Issues with `fr
 | Thinking collapse preference | P2 | ✅ auto-collapse default + remember |
 | Multi account | P2 | ✅ 0.1.1 |
 | Grok Web history import | P2 | ❌ out of scope (local sessions) |
-| git worktree UX | P2 | ✅ #46 project chip switch (list + bind cwd; no create/remove) |
+| git worktree UX | P2 | ✅ #46 list+switch; create via project chip (sibling path; no remove) |
 | Claude-Code-like pure chat shell | P2 | ❌ product is Agent workbench |
 | Arch Linux package | P2 | ✅ document AppImage on Arch (+ optional AUR later) |
 | Plugin marketplace install UI | P2 | 💬 design note (CLI remains SoT for install) |
