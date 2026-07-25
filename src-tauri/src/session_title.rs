@@ -13,6 +13,8 @@ use crate::tray_i18n::{self, Locale};
 const PLACEHOLDERS: &[&str] = &[
     "New chat",
     "新会话",
+    "新对话",
+    "新對話",
     "Untitled",
     "未命名",
     "New conversation",
@@ -90,7 +92,9 @@ fn title_prompt(snippet: &str, locale: Locale) -> String {
 
 /// Call Grok CLI headless with low effort.
 fn llm_title_via_cli(message: &str) -> Option<String> {
-    let probe = cli_probe::probe_cli(None);
+    // Same settings path as other CLI call sites (doctor, session spawn, etc.).
+    let settings = store::load_settings();
+    let probe = cli_probe::probe_cli(settings.manual_cli_path.as_deref());
     let path = probe.path?;
     let snippet: String = message.chars().take(400).collect();
     let prompt = title_prompt(&snippet, tray_i18n::app_locale());
@@ -192,8 +196,11 @@ mod tests {
     #[test]
     fn placeholders() {
         assert!(is_placeholder_title("新会话"));
+        assert!(is_placeholder_title("新对话"));
+        assert!(is_placeholder_title("新對話"));
         assert!(is_placeholder_title("New chat"));
         assert!(!is_placeholder_title("修权限条 bug"));
+        assert!(!is_placeholder_title("馬斯克最近有發什麼貼文"));
     }
 
     #[test]
@@ -228,7 +235,15 @@ mod tests {
 
         let zh = title_prompt("list open prs", Locale::Zh);
         assert!(zh.contains("用户消息："));
+        assert!(zh.contains("为下面这条用户消息"));
         assert!(zh.contains("list open prs"));
         assert!(!zh.contains("User message:"));
+
+        let zhtw = title_prompt("list open prs", Locale::ZhTw);
+        assert!(zhtw.contains("為下面這則使用者訊息"));
+        assert!(zhtw.contains("使用者訊息："));
+        assert!(zhtw.contains("list open prs"));
+        assert!(!zhtw.contains("为下面这条用户消息"));
+        assert!(!zhtw.contains("User message:"));
     }
 }
