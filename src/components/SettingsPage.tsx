@@ -503,6 +503,8 @@ export function SettingsPage({
   preferredAgent = "",
   onPreferredAgent,
   agentCatalog = [],
+  experimentalMemory = false,
+  onExperimentalMemory,
   cliInfo,
   onDoctor,
   versionFooter,
@@ -1088,6 +1090,20 @@ export function SettingsPage({
                         };
                       }),
                     ]}
+              {onExperimentalMemory ? (
+                <div className="settings-row">
+                  <div className="settings-row__text">
+                    <div className="settings-row__label">
+                      {t("settings.experimentalMemory")}
+                    </div>
+                    <div className="settings-row__desc">
+                      {t("settings.experimentalMemoryDesc")}
+                    </div>
+                  </div>
+                  <UiCheck
+                    checked={!!experimentalMemory}
+                    onChange={() => onExperimentalMemory(!experimentalMemory)}
+                    ariaLabel={t("settings.experimentalMemory")}
                   />
                 </div>
               ) : null}

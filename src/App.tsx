@@ -797,6 +797,7 @@ export default function App() {
   const [agentCatalog, setAgentCatalog] = useState<
     Array<{ name: string; source: string }>
   >([]);
+  const [experimentalMemory, setExperimentalMemory] = useState(false);
   const [gitWorktrees, setGitWorktrees] = useState<api.GitWorktreeEntry[]>([]);
   /** null = unknown/loading; true = git work tree; false = not a git repo. */
   const [gitWorktreesAvailable, setGitWorktreesAvailable] = useState<
@@ -1111,6 +1112,7 @@ export default function App() {
         setSandboxProfile(known.includes(sb) ? sb : "off");
       }
       setPreferredAgent((settings.preferredAgent || "").trim());
+      setExperimentalMemory(!!settings.experimentalMemory);
       void api
         .agentsCatalog(null)
         .then((cat) => {
@@ -7281,6 +7283,13 @@ export default function App() {
             );
           }}
           agentCatalog={agentCatalog}
+          experimentalMemory={experimentalMemory}
+          onExperimentalMemory={(v) => {
+            setExperimentalMemory(v);
+            void api.settingsGet().then((s) =>
+              api.settingsSet({ ...s, experimentalMemory: v }),
+            );
+          }}
           cliInfo={cliInfo}
           onDoctor={() => void openDoctor()}
           onOpenShortcutsHelp={() => setShowShortcuts(true)}
