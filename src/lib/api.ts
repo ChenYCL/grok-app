@@ -836,6 +836,12 @@ export interface AppSettings {
    * Default "off". Passed as `grok --sandbox <profile>` / GROK_SANDBOX on spawn.
    */
   sandboxProfile?: string;
+  /**
+   * Enable Grok Build cross-session memory (experimental).
+   * Default false. When on: --experimental-memory / GROK_MEMORY=1 / [memory] enabled.
+   * When off: force --no-memory / GROK_MEMORY=0 for isolation.
+   */
+  experimentalMemory?: boolean;
 }
 
 export interface AvailableModel {
@@ -863,6 +869,22 @@ export interface ComposerPrefs {
 
 export async function settingsGet() {
   return invoke<AppSettings>("settings_get");
+}
+
+
+export async function memoryClear(opts?: {
+  cwd?: string | null;
+  scope?: "workspace" | "global" | "all";
+}) {
+  return invoke<{
+    ok: boolean;
+    stdout: string;
+    stderr: string;
+    cwd: string;
+  }>("memory_clear", {
+    cwd: opts?.cwd ?? null,
+    scope: opts?.scope ?? "workspace",
+  });
 }
 
 export async function modelsListAvailable() {

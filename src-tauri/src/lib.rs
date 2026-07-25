@@ -3,6 +3,7 @@
 mod account;
 mod account_profiles;
 mod acp_client;
+mod agent_memory;
 mod agent_prefs;
 mod app_update;
 mod extensions;
@@ -174,6 +175,7 @@ pub fn run() {
             commands::session_resolve_relative_media,
             commands::settings_get,
             commands::settings_set,
+            commands::memory_clear,
             commands::models_list_available,
             commands::composer_prefs_resolve,
             commands::composer_prefs_set,

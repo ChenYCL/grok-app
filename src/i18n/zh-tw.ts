@@ -532,6 +532,17 @@ export const zhTW: Record<MessageKey, string> = {
   "settings.storeApiKeysInKeychain": "以系統鑰匙圈儲存 API Key",
   "settings.storeApiKeysInKeychainDesc":
     "預設關閉：金鑰寫在應用資料目錄（0600）。開啟後寫入系統鑰匙圈，系統可能要求一次授權。官方登入仍走 Grok Build 驗證，不受此項影響。",
+  "settings.experimentalMemory": "跨工作階段記憶（實驗性）",
+  "settings.experimentalMemoryDesc":
+    "透過 --experimental-memory / GROK_MEMORY 讓 Grok Build 跨對話記住專案事實。實驗性功能，行為可能變化。預設關閉；關閉時 Agent 強制 --no-memory 以隔離。",
+  "settings.clearWorkspaceMemory": "清除工作區記憶",
+  "settings.clearWorkspaceMemoryDesc":
+    "對目前專案執行 grok memory clear（MEMORY.md、工作階段摘要、索引）。不會刪除應用程式內聊天紀錄。",
+  "settings.clearWorkspaceMemoryBusy": "清除中…",
+  "settings.clearWorkspaceMemoryConfirmTitle": "清除工作區記憶？",
+  "settings.clearWorkspaceMemoryConfirmMsg":
+    "將刪除目前專案的 Grok Build 工作區記憶。應用程式內聊天紀錄會保留。此操作無法復原。",
+  "settings.clearWorkspaceMemoryDone": "已清除工作區記憶",
   "settings.cliPath": "CLI 路徑",
   "settings.cliPathDesc": "Grok Build CLI 可執行檔路徑",
   "settings.cliNotFound": "（未找到）",

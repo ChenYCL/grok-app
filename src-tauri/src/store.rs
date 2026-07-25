@@ -168,6 +168,11 @@ pub struct AppSettings {
     /// Passed as top-level `grok --sandbox <profile>` / `GROK_SANDBOX` at spawn.
     #[serde(default = "default_sandbox_profile")]
     pub sandbox_profile: String,
+    /// Enable Grok Build cross-session memory (`--experimental-memory` / `GROK_MEMORY=1`
+    /// / `[memory] enabled`). Default **false** — experimental; when off, spawn forces
+    /// `--no-memory` + `GROK_MEMORY=0` for isolation (esp. independent mode).
+    #[serde(default)]
+    pub experimental_memory: bool,
 }
 
 fn default_composer_prefs_scope() -> String {
@@ -217,6 +222,7 @@ impl Default for AppSettings {
             stream_stall_seconds: default_stream_stall_seconds(),
             store_api_keys_in_keychain: false,
             sandbox_profile: default_sandbox_profile(),
+            experimental_memory: false,
         }
     }
 }
@@ -1361,5 +1367,6 @@ mod tests {
         let m: SessionMeta = serde_json::from_str(raw).expect("deserialize legacy session");
         assert!(!m.pinned);
         assert!(!m.archived);
+        assert!(!s.experimental_memory);
     }
 }

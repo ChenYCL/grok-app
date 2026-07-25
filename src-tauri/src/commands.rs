@@ -653,6 +653,7 @@ pub async fn settings_set(
         prev.store_api_keys_in_keychain != settings.store_api_keys_in_keychain;
     let session_data_mode_changed =
         prev.session_data_mode != settings.session_data_mode;
+    let memory_flip = prev.experimental_memory != settings.experimental_memory;
 
     store::save_settings(&settings)?;
 
@@ -672,6 +673,15 @@ pub async fn settings_set(
     // so the next connect spawns under the new data root (E04).
     if session_data_mode_changed {
         mgr.recycle_all_agents(&app, "session_data_mode").await;
+    if memory_flip {
+        if let Err(e) = crate::agent_memory::sync_memory_to_agent_profile(
+            &settings.session_data_mode,
+            settings.experimental_memory,
+        ) {
+            tracing::warn!("settings_set sync memory profile: {e}");
+        }
+        // Spawn flags change — soft-respawn so the next turn uses the new policy.
+        mgr.soft_respawn(&app).await;
     }
 
     // Full permission apply: Host + agent-home + soft-respawn if needed
@@ -686,6 +696,36 @@ pub async fn settings_set(
         tracing::warn!("settings_set tray refresh: {e}");
     }
     Ok(settings)
+}
+
+
+/// Clear Grok Build cross-session memory (`grok memory clear`).
+/// Workspace-scoped by default; runs with project cwd when provided.
+#[tauri::command]
+pub async fn memory_clear(
+    cwd: Option<String>,
+    scope: Option<String>,
+) -> Result<crate::agent_memory::MemoryClearResult, String> {
+    let settings = store::load_settings();
+    let path = cwd
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(std::path::PathBuf::from);
+    let scope = scope
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| "workspace".into());
+    tokio::task::spawn_blocking(move || {
+        crate::agent_memory::clear_workspace_memory(
+            path.as_deref(),
+            &settings.session_data_mode,
+            settings.manual_cli_path.as_deref(),
+            &scope,
+        )
+    })
+    .await
+    .map_err(|e| format!("memory clear task failed: {e}"))?
 }
 
 #[tauri::command]

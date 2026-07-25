@@ -559,6 +559,17 @@ const en = {
   "settings.storeApiKeysInKeychain": "Store API keys in system keychain",
   "settings.storeApiKeysInKeychainDesc":
     "Off by default: keys stay in the app data folder (mode 0600). Turn on to use the OS keychain — the system may ask once. Official login still uses Grok Build auth.",
+  "settings.experimentalMemory": "Cross-session memory (experimental)",
+  "settings.experimentalMemoryDesc":
+    "Let Grok Build remember project facts across chats via --experimental-memory / GROK_MEMORY. Experimental — may change. Off by default; when off, agents force --no-memory for isolation.",
+  "settings.clearWorkspaceMemory": "Clear workspace memory",
+  "settings.clearWorkspaceMemoryDesc":
+    "Run grok memory clear for the current project workspace (MEMORY.md, session logs, index). Does not delete chat history in the app.",
+  "settings.clearWorkspaceMemoryBusy": "Clearing…",
+  "settings.clearWorkspaceMemoryConfirmTitle": "Clear workspace memory?",
+  "settings.clearWorkspaceMemoryConfirmMsg":
+    "This deletes Grok Build workspace memory for the current project. Chat history in the app is kept. This cannot be undone.",
+  "settings.clearWorkspaceMemoryDone": "Workspace memory cleared",
   "settings.cliPath": "CLI path",
   "settings.cliPathDesc": "Path to the Grok Build CLI binary",
   "settings.cliNotFound": "(not found)",
@@ -1802,6 +1813,17 @@ const zh: Record<MessageKey, string> = {
   "settings.storeApiKeysInKeychain": "用系统钥匙串保存 API Key",
   "settings.storeApiKeysInKeychainDesc":
     "默认关闭：密钥写在应用数据目录（0600）。开启后写入系统钥匙串，系统可能要求一次授权。官方登录仍走 Grok Build 鉴权，不受此项影响。",
+  "settings.experimentalMemory": "跨会话记忆（实验性）",
+  "settings.experimentalMemoryDesc":
+    "通过 --experimental-memory / GROK_MEMORY 让 Grok Build 跨对话记住项目事实。实验性功能，行为可能变化。默认关闭；关闭时 Agent 强制 --no-memory 以隔离。",
+  "settings.clearWorkspaceMemory": "清除工作区记忆",
+  "settings.clearWorkspaceMemoryDesc":
+    "对当前项目执行 grok memory clear（MEMORY.md、会话摘要、索引）。不会删除应用内聊天记录。",
+  "settings.clearWorkspaceMemoryBusy": "清除中…",
+  "settings.clearWorkspaceMemoryConfirmTitle": "清除工作区记忆？",
+  "settings.clearWorkspaceMemoryConfirmMsg":
+    "将删除当前项目的 Grok Build 工作区记忆。应用内聊天记录会保留。此操作不可撤销。",
+  "settings.clearWorkspaceMemoryDone": "已清除工作区记忆",
   "settings.cliPath": "CLI 路径",
   "settings.cliPathDesc": "Grok Build CLI 可执行文件路径",
   "settings.cliNotFound": "（未找到）",
