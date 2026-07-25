@@ -1086,7 +1086,7 @@ export const zhTW: Record<MessageKey, string> = {
   "slash.compactConfirm": "壓縮目前對話上下文？",
   "slash.compactConfirmOk": "壓縮",
   "slash.compactConfirmCancel": "取消",
-  "slash.compactNote": "選填備註（希望保留的重點）",
+  "slash.compactNote": "希望 Grok 保留什麼？",
   "compact.bannerAuto": "上下文已自動壓縮",
   "compact.bannerManual": "上下文已壓縮",
   "compact.tokensRange": "{before} → {after} tokens",

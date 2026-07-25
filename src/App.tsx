@@ -326,7 +326,11 @@ type AppDialog =
       kind: "prompt";
       title: string;
       initial: string;
+      /** Optional secondary copy above the input (e.g. compact confirm). */
+      message?: string;
       placeholder?: string;
+      /** Primary submit button label (default: common.save). */
+      submitLabel?: string;
       onSubmit: (value: string) => void | Promise<void>;
     }
   | null;
@@ -403,9 +407,6 @@ export default function App() {
   const [mcpServers, setMcpServers] = useState<api.McpDto[]>([]);
   const [mcpError, setMcpError] = useState<string | null>(null);
   const [mcpLoading, setMcpLoading] = useState(false);
-  const [showCompactModal, setShowCompactModal] = useState(false);
-  const [compactNote, setCompactNote] = useState("");
-  const compactNoteRef = useRef<HTMLInputElement>(null);
   /** Rewind timeline picker (session menu / status). */
   const [rewindTimeline, setRewindTimeline] = useState<{
     sessionId: string;
@@ -526,25 +527,6 @@ export default function App() {
     document.addEventListener("keydown", onKey, true);
     return () => document.removeEventListener("keydown", onKey, true);
   }, [appDialog]);
-
-  // Compact context modal: focus note field on open; Escape dismisses.
-  useEffect(() => {
-    if (!showCompactModal) return;
-    const t = window.setTimeout(() => {
-      compactNoteRef.current?.focus();
-    }, 0);
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        setShowCompactModal(false);
-        setCompactNote("");
-      }
-    };
-    document.addEventListener("keydown", onKey);
-    return () => {
-      window.clearTimeout(t);
-      document.removeEventListener("keydown", onKey);
-    };
-  }, [showCompactModal]);
 
   useEffect(() => {
     if (!showSearch) return;
@@ -3284,6 +3266,35 @@ export default function App() {
     }
   };
 
+  /**
+   * `/compact [note]` — in-app prompt for optional keep-note (CLI supports a
+   * context note of what to retain). Empty → `/compact`; non-empty → `/compact {note}`.
+   * Never uses window.prompt (unreliable in Tauri WebView).
+   */
+  const openCompactWithNote = () => {
+    setAppDialog({
+      kind: "prompt",
+      title: tr("slash.compact"),
+      message: tr("slash.compactConfirm"),
+      initial: "",
+      placeholder: tr("slash.compactNote"),
+      submitLabel: tr("slash.compactConfirmOk"),
+      onSubmit: (value) => {
+        void (async () => {
+          const note = value.trim();
+          const cmd = note ? `/compact ${note}` : "/compact";
+          try {
+            const sid = await ensureConnected();
+            if (!sid) return;
+            await api.sessionSend(cmd);
+          } catch (err) {
+            setLocalError(String(err));
+          }
+        })();
+      },
+    });
+  };
+
   const attachLabels = useMemo(
     () => ({
       open: tr("attach.open"),
@@ -5066,8 +5077,7 @@ export default function App() {
             void openMcpModal();
             return;
           case "compact":
-            setCompactNote("");
-            setShowCompactModal(true);
+            openCompactWithNote();
             return;
           case "newChat":
             void newChat();
@@ -8379,10 +8389,7 @@ export default function App() {
                     auto: tr("context.triggerAuto"),
                     manual: tr("context.triggerManual"),
                   }}
-                  onCompact={() => {
-                    setCompactNote("");
-                    setShowCompactModal(true);
-                  }}
+                  onCompact={openCompactWithNote}
                 />
                 <span className="composer__spacer" />
                 <Tip
@@ -8828,87 +8835,6 @@ export default function App() {
         </div>
       )}
 
-      {showCompactModal && (
-        <div
-          className="overlay"
-          role="presentation"
-          onClick={() => {
-            setShowCompactModal(false);
-            setCompactNote("");
-          }}
-        >
-          <form
-            className="modal compact-modal"
-            onClick={(e) => e.stopPropagation()}
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="compact-modal-title"
-            onSubmit={(e) => {
-              e.preventDefault();
-              const note = compactNote;
-              setShowCompactModal(false);
-              setCompactNote("");
-              void (async () => {
-                const cmd = note.trim()
-                  ? `/compact ${note.trim()}`
-                  : "/compact";
-                try {
-                  const sid = await ensureConnected();
-                  if (!sid) return;
-                  await api.sessionSend(cmd);
-                } catch (err) {
-                  setLocalError(String(err));
-                }
-              })();
-            }}
-          >
-            <header className="modal-head">
-              <h2 id="compact-modal-title" className="modal-title">
-                {tr("slash.compact")}
-              </h2>
-              <button
-                type="button"
-                className="icon-btn modal-close"
-                onClick={() => {
-                  setShowCompactModal(false);
-                  setCompactNote("");
-                }}
-                aria-label={tr("common.close")}
-              >
-                <IconClose size={16} />
-              </button>
-            </header>
-            <p className="compact-modal__msg">
-              {tr("slash.compactConfirm")}
-            </p>
-            <input
-              ref={compactNoteRef}
-              className="compact-modal__field"
-              value={compactNote}
-              onChange={(e) => setCompactNote(e.target.value)}
-              placeholder={tr("slash.compactNote")}
-              autoFocus
-              autoComplete="off"
-            />
-            <div className="modal-actions">
-              <button
-                type="button"
-                className="btn btn--ghost"
-                onClick={() => {
-                  setShowCompactModal(false);
-                  setCompactNote("");
-                }}
-              >
-                {tr("slash.compactConfirmCancel")}
-              </button>
-              <button type="submit" className="btn btn--solid">
-                {tr("slash.compactConfirmOk")}
-              </button>
-            </div>
-          </form>
-        </div>
-      )}
-
       {/* Search / command palette (Codex-style) */}
       {showSearch && (
         <div
@@ -9129,6 +9055,9 @@ export default function App() {
                     void submit(value);
                   }}
                 >
+                  {appDialog.message ? (
+                    <p className="app-dialog__msg">{appDialog.message}</p>
+                  ) : null}
                   <input
                     ref={dialogInputRef}
                     className="app-dialog__input"
@@ -9146,7 +9075,7 @@ export default function App() {
                       {tr("common.cancel")}
                     </button>
                     <button type="submit" className="btn btn--solid">
-                      {tr("common.save")}
+                      {appDialog.submitLabel || tr("common.save")}
                     </button>
                   </div>
                 </form>
