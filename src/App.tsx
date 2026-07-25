@@ -8734,6 +8734,12 @@ export default function App() {
                     heuristicNote: tr("context.heuristicNote"),
                     auto: tr("context.triggerAuto"),
                     manual: tr("context.triggerManual"),
+                    breakdownUser: tr("context.breakdownUser"),
+                    breakdownAssistant: tr("context.breakdownAssistant"),
+                    breakdownThought: tr("context.breakdownThought"),
+                    breakdownEstimatedNote: tr(
+                      "context.breakdownEstimatedNote",
+                    ),
                   }}
                   onCompact={openCompactWithNote}
                 />
