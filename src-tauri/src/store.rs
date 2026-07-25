@@ -173,6 +173,10 @@ pub struct AppSettings {
     /// `--no-memory` + `GROK_MEMORY=0` for isolation (esp. independent mode).
     #[serde(default)]
     pub experimental_memory: bool,
+    /// Cap agent turns per process via top-level `grok --max-turns N`.
+    /// `None` or `0` = omit the flag (CLI default / unlimited).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_agent_turns: Option<u32>,
 }
 
 fn default_composer_prefs_scope() -> String {
@@ -223,6 +227,7 @@ impl Default for AppSettings {
             store_api_keys_in_keychain: false,
             sandbox_profile: default_sandbox_profile(),
             experimental_memory: false,
+            max_agent_turns: None,
         }
     }
 }
@@ -1308,6 +1313,12 @@ mod tests {
     #[test]
     fn sandbox_profile_defaults_when_missing_from_json() {
         // Old settings files without the field must deserialize to "off".
+        assert_eq!(s.max_agent_turns, None);
+    }
+
+    #[test]
+    fn max_agent_turns_defaults_when_missing_from_json() {
+        // Old settings files without the field must deserialize to None.
         let raw = r#"{
             "theme": "dark",
             "locale": "en",
@@ -1368,5 +1379,6 @@ mod tests {
         assert!(!m.pinned);
         assert!(!m.archived);
         assert!(!s.experimental_memory);
+        assert_eq!(s.max_agent_turns, None);
     }
 }

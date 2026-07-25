@@ -842,6 +842,10 @@ export interface AppSettings {
    * When off: force --no-memory / GROK_MEMORY=0 for isolation.
    */
   experimentalMemory?: boolean;
+   * Cap agent turns via top-level `grok --max-turns N`.
+   * null / 0 / unset = omit flag (CLI default). Clamped to 1–200 when set.
+   */
+  maxAgentTurns?: number | null;
 }
 
 export interface AvailableModel {

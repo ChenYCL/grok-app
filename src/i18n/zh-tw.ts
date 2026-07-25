@@ -578,6 +578,10 @@ export const zhTW: Record<MessageKey, string> = {
   "settings.streamStallSeconds": "串流停滯逾時（秒）",
   "settings.streamStallSecondsDesc":
     "若一輪對話在該時間內無任何串流片段或工具活動，將提示「取消本輪 / 繼續等待」（預設 120）。仍有工具事件的長任務不會誤判為停滯。",
+  "settings.maxAgentTurns": "最大 Agent 輪次",
+  "settings.maxAgentTurnsDesc":
+    "啟動 Agent 時傳入 `grok --max-turns N`（1–200）。留空或 0 表示使用 CLI 預設。下次啟動 Agent 時生效——變更後請重新連線工作階段。",
+  "settings.maxAgentTurnsPlaceholder": "預設（不限制）",
   "agent.idleRecycledToast":
     "Agent 行程因閒置已回收 — 工作階段仍在；下次傳送將重新連線。",
   "agent.dataModeRecycledToast":
