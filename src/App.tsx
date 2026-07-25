@@ -681,6 +681,7 @@ export default function App() {
   const [agentCatalog, setAgentCatalog] = useState<
     Array<{ name: string; source: string }>
   >([]);
+  const [useLeader, setUseLeader] = useState(false);
   const [gitWorktrees, setGitWorktrees] = useState<api.GitWorktreeEntry[]>([]);
   /** null = unknown/loading; true = git work tree; false = not a git repo. */
   const [gitWorktreesAvailable, setGitWorktreesAvailable] = useState<
@@ -967,6 +968,7 @@ export default function App() {
             })),
           );
         });
+      setUseLeader(!!settings.useLeader);
       setCliInfo({
         found: cli.found,
         path: cli.path,
@@ -6705,6 +6707,18 @@ export default function App() {
             );
           }}
           agentCatalog={agentCatalog}
+          useLeader={useLeader}
+          onUseLeader={(v) => {
+            const prev = useLeader;
+            setUseLeader(v);
+            void api
+              .settingsGet()
+              .then((s) => api.settingsSet({ ...s, useLeader: v }))
+              .catch((e) => {
+                setUseLeader(prev);
+                showToast(String(e), 4500);
+              });
+          }}
           cliInfo={cliInfo}
           onDoctor={() => void openDoctor()}
           versionFooter={tr("app.versionFooter")}

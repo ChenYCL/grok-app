@@ -205,6 +205,11 @@ pub struct AppSettings {
     /// Applied at spawn only; changing it soft-respawns the live agent.
     #[serde(default)]
     pub preferred_agent: String,
+    /// Connect local ACP agents to a shared Grok Build leader process
+    /// (`grok agent --leader`). Default **false** — each agent is a standalone
+    /// process (`--no-leader`). Advanced; multiple clients can share one backend.
+    #[serde(default)]
+    pub use_leader: bool,
 }
 
 fn default_composer_prefs_scope() -> String {
@@ -266,6 +271,7 @@ impl Default for AppSettings {
             plan_enabled: default_plan_enabled(),
             subagents_enabled: true,
             preferred_agent: String::new(),
+            use_leader: false,
         }
     }
 }
@@ -1362,6 +1368,12 @@ mod tests {
 
     #[test]
     fn preferred_agent_defaults_when_missing_from_json() {
+        assert!(!s.use_leader);
+    }
+
+    #[test]
+    fn use_leader_defaults_when_missing_from_json() {
+        // Old settings files without the field must deserialize to false.
         let raw = r#"{
             "theme": "dark",
             "locale": "en",
@@ -1448,5 +1460,6 @@ mod tests {
         assert!(s.plan_enabled);
         assert!(s.subagents_enabled);
         assert_eq!(s.preferred_agent, "");
+        assert!(!s.use_leader);
     }
 }

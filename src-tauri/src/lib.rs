@@ -235,6 +235,8 @@ pub fn run() {
             commands::marketplace_add,
             commands::marketplace_remove,
             commands::marketplace_update,
+            commands::leader_list,
+            commands::leader_kill_all,
             commands::pick_directory,
             commands::pick_attach_files,
             commands::pick_attach_folder,

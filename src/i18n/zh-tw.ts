@@ -652,6 +652,19 @@ export const zhTW: Record<MessageKey, string> = {
   "settings.preferredAgent.source.bundled": "捆綁",
   "settings.preferredAgent.source.user": "使用者",
   "settings.preferredAgent.source.project": "專案",
+  "settings.useLeader": "共享 Leader 後端",
+  "settings.useLeaderDesc":
+    "進階：將 Agent 連線到共享的 Grok Build Leader 行程（`grok agent --leader`），讓多個用戶端共用一個後端。預設關閉（`--no-leader`）。變更後會軟重啟目前 Agent。",
+  "settings.leaderStatusNone": "目前沒有執行中的 Leader 行程。",
+  "settings.leaderStatusCount": "{count} 個 Leader 行程",
+  "settings.leaderStatusLine": "PID {pid}{socket}",
+  "settings.leaderRefresh": "重新整理",
+  "settings.leaderKillAll": "停止 Leader",
+  "settings.leaderKillConfirmTitle": "停止全部 Leader 行程？",
+  "settings.leaderKillConfirmMsg":
+    "將執行 `grok leader kill` 並停止所有共享 Leader。已連線的本機 Agent 會在下次傳送訊息時重新連線。",
+  "settings.leaderKillBusy": "正在停止…",
+  "settings.leaderKillDone": "已停止 Leader 行程。",
   "agent.idleRecycledToast":
     "Agent 行程因閒置已回收 — 工作階段仍在；下次傳送將重新連線。",
   "agent.dataModeRecycledToast":

@@ -277,6 +277,18 @@ impl AgentSpawnSpec {
 /// Pure helper used by spawn + unit tests.
 pub fn preferred_agent_spawn_flags(raw: &str) -> Option<Vec<String>> {
     crate::agents_catalog::agent_spawn_cli_args(raw)
+/// Pure spawn flag for Settings → Runtime leader mode.
+///
+/// Always returns an explicit agent-level flag so App settings win over
+/// `[cli] use_leader` in the user's `config.toml`:
+/// - `true`  → `--leader`   (connect to / share a leader backend)
+/// - `false` → `--no-leader` (standalone agent process; default)
+pub fn leader_spawn_flag(use_leader: bool) -> &'static str {
+    if use_leader {
+        "--leader"
+    } else {
+        "--no-leader"
+    }
 }
 
 impl AcpClient {
@@ -365,6 +377,13 @@ impl AcpClient {
         // also set GROK_SANDBOX so nested tools inherit the same profile.
         let settings = crate::store::load_settings();
         let sandbox = SandboxSpawnSpec::from_setting(&settings.sandbox_profile);
+        //   top-level: `grok --no-auto-update agent …`
+        //   agent opts: `--leader` / `--no-leader` / `--model` / `--reasoning-effort`
+        //               / `--always-approve` before `stdio`
+        // Skip background update checks so ACP handshakes are not delayed on launch.
+        // Leader flag is always explicit so App `use_leader` overrides config.toml.
+        let use_leader = crate::store::load_settings().use_leader;
+        let leader_flag = leader_spawn_flag(use_leader);
 
         let mut cmd = Command::new(&cli_path);
         cmd.arg("--no-auto-update");
@@ -444,6 +463,7 @@ impl AcpClient {
         crate::agent_memory::apply_memory_to_command(&mut cmd, memory_enabled);
         crate::agent_subagents::apply_subagents_to_command(&mut cmd, subagents_enabled);
         cmd.arg("agent");
+        cmd.arg(leader_flag);
         if !spawn_model.is_empty() {
             cmd.args(["--model", &spawn_model]);
         }
@@ -482,6 +502,7 @@ impl AcpClient {
             "acp: spawn GROK_HOME={} mode={} auth_present={} route={:?} composer_model={:?} spawn_model={} yolo={} plan_enabled={}",
             "acp: spawn GROK_HOME={} mode={} auth_present={} route={:?} composer_model={:?} spawn_model={} yolo={} subagents_enabled={}",
             "acp: spawn GROK_HOME={} mode={} auth_present={} route={:?} composer_model={:?} spawn_model={} yolo={} preferred_agent={:?}",
+            "acp: spawn GROK_HOME={} mode={} auth_present={} route={:?} composer_model={:?} spawn_model={} yolo={} leader={}",
             grok_home.display(),
             session_data_mode,
             grok_home.join("auth.json").is_file(),
@@ -499,6 +520,7 @@ impl AcpClient {
             plan_enabled
             subagents_enabled
             preferred_agent.as_ref().map(|a| a.name.as_str())
+            use_leader
         );
 
         let mut child = cmd.spawn().map_err(|e| {
@@ -2538,5 +2560,16 @@ mod preferred_agent_spawn_tests {
             spec.cli_args(),
             ["--agent".to_string(), "explore".to_string()]
         );
+mod leader_spawn_tests {
+    use super::leader_spawn_flag;
+
+    #[test]
+    fn default_off_uses_no_leader() {
+        assert_eq!(leader_spawn_flag(false), "--no-leader");
+    }
+
+    #[test]
+    fn enabled_uses_leader() {
+        assert_eq!(leader_spawn_flag(true), "--leader");
     }
 }
