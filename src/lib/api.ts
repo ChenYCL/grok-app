@@ -786,6 +786,7 @@ export interface AppSettings {
    * Default "off". Passed as `grok --sandbox <profile>` / GROK_SANDBOX on spawn.
    */
   sandboxProfile?: string;
+  /**
    * Enable Grok Build cross-session memory (experimental).
    * Default false. When on: --experimental-memory / GROK_MEMORY=1 / [memory] enabled.
    * When off: force --no-memory / GROK_MEMORY=0 for isolation.

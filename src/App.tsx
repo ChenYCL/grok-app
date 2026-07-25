@@ -6229,6 +6229,7 @@ export default function App() {
             void api.settingsGet().then((s) =>
               api.settingsSet({ ...s, sandboxProfile: v }),
             );
+          }}
           experimentalMemory={experimentalMemory}
           onExperimentalMemory={(v) => {
             const prev = experimentalMemory;
