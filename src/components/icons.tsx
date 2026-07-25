@@ -199,6 +199,8 @@ export const IconAutomations = wrap(TbBolt);
 export const IconScheduled = wrap(TbCalendarTime);
 export const IconClock = wrap(TbClock);
 export const IconSkills = wrap(TbTool);
+/** Lifecycle hooks (PreToolUse / SessionStart, …). */
+export const IconHooks = wrap(TbBolt);
 export const IconChevronDown = wrap(TbChevronDown);
 export const IconChevronLeft = wrap(TbChevronLeft);
 export const IconChevronRight = wrap(TbChevronRight);

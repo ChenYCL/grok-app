@@ -7,6 +7,7 @@ mod agent_memory;
 mod agent_prefs;
 mod app_update;
 mod extensions;
+mod hooks;
 mod supergrok_quota;
 mod cli_probe;
 mod cli_install;
@@ -214,6 +215,10 @@ pub fn run() {
             commands::plugin_details,
             commands::plugin_install,
             commands::plugin_update,
+            commands::hooks_list,
+            commands::hooks_reveal,
+            commands::hooks_open_dir,
+            commands::hooks_ensure_dir,
             commands::pick_directory,
             commands::pick_attach_files,
             commands::pick_attach_folder,
