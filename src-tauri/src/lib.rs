@@ -30,6 +30,7 @@ mod cli_sessions;
 mod turn_complete;
 mod store_lock;
 mod permission;
+mod project_rules;
 mod providers;
 mod secrets;
 mod session_import;
@@ -159,6 +160,8 @@ pub fn run() {
             commands::project_rename,
             commands::project_set_pinned,
             commands::project_reveal,
+            commands::project_rules_list,
+            commands::project_rules_ensure_template,
             commands::project_archive_sessions,
             commands::sessions_list,
             commands::sessions_search,

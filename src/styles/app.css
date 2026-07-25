@@ -10262,6 +10262,41 @@ textarea::-webkit-scrollbar-thumb:active,
   color: var(--text-tertiary);
 }
 
+/* Project rules panel (resource pane side mode) */
+.rp-rules-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 0 10px 6px;
+}
+
+.rp-rules-actions__btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  padding: 4px 8px;
+  min-height: 28px;
+}
+
+.rp-rules-hint {
+  padding: 0 12px 6px;
+  font-size: 11.5px;
+  line-height: 1.35;
+  color: var(--text-secondary);
+}
+
+.rp-rules-empty-hint {
+  margin-top: 4px;
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--text-tertiary);
+}
+
+.rp-rules-empty-hint--footer {
+  padding: 4px 12px 8px;
+}
+
 .rp-changes-badge {
   flex-shrink: 0;
   width: 18px;

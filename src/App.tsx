@@ -163,6 +163,7 @@ import {
   sanitizeWorktreeName,
 } from "@/lib/gitWorktree";
 import { pathsEqual, worktreeLabel } from "@/lib/gitWorktree";
+import { pathsEqual } from "@/lib/gitWorktree";
 import {
   ComposerPlusPanel,
   buildComposerPlusEntries,
@@ -197,6 +198,7 @@ import {
   IconCopy,
   IconTrash,
   IconExternalLink,
+  IconFileText,
   IconFork,
   IconRewind,
   IconShield,
@@ -8877,6 +8879,23 @@ export default function App() {
                 },
               },
               {
+                id: "rules",
+                label: tr("project.rules"),
+                icon: <IconFileText size={16} />,
+                onClick: () => {
+                  // Focus this project’s rules in the resource pane (no agent recycle).
+                  setActiveProject(proj);
+                  setExpandedProjects((e) => ({ ...e, [proj.id]: true }));
+                  setLayout((l) => {
+                    if (!l.asideCollapsed) return l;
+                    const n = { ...l, asideCollapsed: false };
+                    saveLayout(localStorage, n);
+                    return n;
+                  });
+                  setResourceOpenTarget({ type: "rules" });
+                },
+              },
+              {
                 id: "rename",
                 label: tr("project.rename"),
                 icon: <IconRename size={16} />,
@@ -9036,7 +9055,11 @@ export default function App() {
             onClose={() => setCtxMenu(null)}
             items={items}
             estimatedHeight={
-              ctxMenu?.kind === "project-policy" ? 280 : 240
+              ctxMenu?.kind === "project-policy"
+                ? 280
+                : ctxMenu?.kind === "project"
+                  ? 280
+                  : 240
             }
           />
         );

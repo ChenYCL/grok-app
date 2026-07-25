@@ -22,7 +22,6 @@ import { OverlayScroll } from "@/components/OverlayScroll";
 import { FileMediaPlayer } from "@/components/FileMediaPlayer";
 import { ImageUi } from "@/components/ImageUi";
 import {
-  IconActivity,
   IconChevronDown,
   IconChevronRight,
   IconClose,
@@ -30,10 +29,12 @@ import {
   IconEdit,
   IconExternalLink,
   IconFileDiff,
+  IconFileText,
   IconFolder,
   IconFiles,
   IconListTree,
   IconPlan,
+  IconPlus,
   IconRefresh,
   IconSearch,
 } from "@/components/icons";
@@ -54,14 +55,6 @@ import {
   pathRelativeToProject,
   type SessionFileChange,
 } from "@/lib/sessionChanges";
-import {
-  collectSessionTasks,
-  countRunningTasks,
-  filterSessionTasks,
-  taskStatusMessageKey,
-  type AgentTask,
-} from "@/lib/sessionTasks";
-import type { ChatMessage } from "@/lib/session";
 import {
   filterWorkspaceGitEntries,
   normalizeWorkspaceGitEntries,
@@ -107,7 +100,9 @@ function clampTreeWidth(w: number, containerWidth: number): number {
 /** Request from chat (or elsewhere) to open a path/URL in this pane. */
 export type ResourceOpenTarget =
   | { type: "file"; path: string; title?: string }
-  | { type: "url"; url: string; title?: string };
+  | { type: "url"; url: string; title?: string }
+  /** Open the Rules side panel (project AGENTS.md / .grok rules). */
+  | { type: "rules" };
 
 export interface ResourceViewerProps {
   projectPath: string | null;
@@ -127,11 +122,6 @@ export interface ResourceViewerProps {
    */
   sessionChanges?: SessionFileChange[];
   /**
-   * Live + journal messages for the active session — used to derive Tasks
-   * from ACP tool_step rows (no separate task-list protocol).
-   */
-  sessionMessages?: ChatMessage[];
-  /**
    * Live plan snapshot for Plan review mode (exit_plan_mode / progress).
    */
   plan?: PlanReviewState | null;
@@ -142,7 +132,7 @@ export interface ResourceViewerProps {
   onDismissPlan?: () => void;
 }
 
-type SideMode = "files" | "changes" | "plan" | "tasks";
+type SideMode = "files" | "changes" | "plan" | "rules";
 
 type DiffViewState = {
   path: string;
@@ -252,7 +242,6 @@ export function ResourceViewer({
   onOpenRequestConsumed,
   paneActive = true,
   sessionChanges = [],
-  sessionMessages = [],
   plan = null,
   planFocusKey = null,
   onApprovePlan,
@@ -272,9 +261,6 @@ export function ResourceViewer({
   // Default closed; session-only — not persisted; reset when pane hides.
   const [treeVisible, setTreeVisible] = useState(false);
   const [sideMode, setSideMode] = useState<SideMode>("files");
-  const [expandedTaskIds, setExpandedTaskIds] = useState<Record<string, boolean>>(
-    {},
-  );
   const lastPlanFocusKey = useRef<number | null>(null);
   const [treeWidth, setTreeWidth] = useState(loadTreeWidth);
   const [resizingTree, setResizingTree] = useState(false);
@@ -298,6 +284,12 @@ export function ResourceViewer({
   const [workspaceReason, setWorkspaceReason] = useState<string | null>(null);
   const [workspaceBranch, setWorkspaceBranch] = useState<string | null>(null);
   const [pathCopyFlash, setPathCopyFlash] = useState(false);
+  /** Project rule files (AGENTS.md / CLAUDE.md / .grok rules). */
+  const [projectRules, setProjectRules] = useState<api.ProjectRuleEntry[]>([]);
+  const [rulesLoading, setRulesLoading] = useState(false);
+  const [rulesHasAgents, setRulesHasAgents] = useState(false);
+  const [rulesHint, setRulesHint] = useState<string | null>(null);
+  const rulesLoadSeq = useRef(0);
   /** Open-with target for the location button (finder / editor id). */
   const [openWithTarget, setOpenWithTarget] = useState(() => {
     try {
@@ -311,121 +303,6 @@ export function ResourceViewer({
   const changeCount = sessionChanges.length;
   const workspaceCount = workspaceFiles.length;
   const totalChangeBadge = changeCount + workspaceCount;
-  const sessionTasks = useMemo(
-    () => collectSessionTasks(sessionMessages),
-    [sessionMessages],
-  );
-  const runningTaskCount = useMemo(
-    () => countRunningTasks(sessionTasks),
-    [sessionTasks],
-  );
-  const filteredTasks = useMemo(
-    () => filterSessionTasks(sessionTasks, query),
-    [sessionTasks, query],
-  );
-  const activeTasks = useMemo(
-    () => filteredTasks.filter((t) => t.status === "running"),
-    [filteredTasks],
-  );
-  const recentTasks = useMemo(
-    () => filteredTasks.filter((t) => t.status !== "running"),
-    [filteredTasks],
-  );
-
-  const toggleTaskExpanded = useCallback((id: string) => {
-    setExpandedTaskIds((prev) => ({ ...prev, [id]: !prev[id] }));
-  }, []);
-
-  const renderTaskRow = useCallback(
-    (task: AgentTask) => {
-      const open = !!expandedTaskIds[task.id];
-      const statusLabel = tr(taskStatusMessageKey(task.status));
-      return (
-        <div
-          key={task.id}
-          className={
-            "rp-tasks-row" +
-            (task.status === "running" ? " is-running" : "") +
-            (task.status === "failed" ? " is-failed" : "") +
-            (open ? " is-open" : "")
-          }
-          role="listitem"
-        >
-          <button
-            type="button"
-            className="rp-tasks-row__main"
-            aria-expanded={open}
-            title={task.detail || task.path || task.name}
-            onClick={() => toggleTaskExpanded(task.id)}
-          >
-            <span className="rp-tasks-row__chevron" aria-hidden>
-              {open ? (
-                <IconChevronDown size={13} />
-              ) : (
-                <IconChevronRight size={13} />
-              )}
-            </span>
-            <span className="rp-tasks-row__meta">
-              <span className="rp-tasks-row__name">{task.name}</span>
-              <span className="rp-tasks-row__sub">
-                {task.kind ? (
-                  <span className="rp-tasks-row__kind">
-                    {task.kind.replace(/_/g, " ")}
-                  </span>
-                ) : (
-                  <span className="rp-tasks-row__kind">{tr("tasks.kind")}</span>
-                )}
-                <span
-                  className={"rp-tasks-status rp-tasks-status--" + task.status}
-                >
-                  {statusLabel}
-                </span>
-                {task.longRunning ? (
-                  <span className="rp-tasks-row__badge">
-                    {tr("tasks.longRunning")}
-                  </span>
-                ) : null}
-              </span>
-            </span>
-          </button>
-          {open ? (
-            <div className="rp-tasks-row__detail">
-              {task.detail ? (
-                <div className="rp-tasks-row__field">
-                  <span className="rp-tasks-row__label">{tr("tasks.detail")}</span>
-                  <span className="rp-tasks-row__value" title={task.detail}>
-                    {task.detail}
-                  </span>
-                </div>
-              ) : null}
-              {task.path ? (
-                <div className="rp-tasks-row__field">
-                  <span className="rp-tasks-row__label">{tr("tasks.path")}</span>
-                  <span className="rp-tasks-row__value" title={task.path}>
-                    {pathRelativeToProject(task.path, projectPath) || task.path}
-                  </span>
-                </div>
-              ) : null}
-              {task.kind ? (
-                <div className="rp-tasks-row__field">
-                  <span className="rp-tasks-row__label">{tr("tasks.kind")}</span>
-                  <span className="rp-tasks-row__value">{task.kind}</span>
-                </div>
-              ) : null}
-              <div className="rp-tasks-row__field">
-                <span className="rp-tasks-row__label">{tr("tasks.id")}</span>
-                <span className="rp-tasks-row__value" title={task.id}>
-                  {task.id}
-                </span>
-              </div>
-            </div>
-          ) : null}
-        </div>
-      );
-    },
-    [expandedTaskIds, projectPath, toggleTaskExpanded, tr],
-  );
-
   const filteredChanges = useMemo(() => {
     const q = query.trim().toLowerCase();
     if (!q) return sessionChanges;
@@ -488,6 +365,39 @@ export function ResourceViewer({
   useEffect(() => {
     void refreshWorkspaceStatus();
   }, [projectPath, refreshWorkspaceStatus]);
+
+  const refreshProjectRules = useCallback(async () => {
+    if (!projectPath || !api.isTauri()) {
+      setProjectRules([]);
+      setRulesHasAgents(false);
+      setRulesLoading(false);
+      return;
+    }
+    const seq = ++rulesLoadSeq.current;
+    setRulesLoading(true);
+    try {
+      const res = await api.projectRulesList(projectPath);
+      if (seq !== rulesLoadSeq.current) return;
+      setProjectRules(res.rules ?? []);
+      setRulesHasAgents(Boolean(res.hasAgentsMd));
+    } catch (e) {
+      if (seq !== rulesLoadSeq.current) return;
+      setProjectRules([]);
+      setRulesHasAgents(false);
+      setError(String(e));
+    } finally {
+      if (seq === rulesLoadSeq.current) setRulesLoading(false);
+    }
+  }, [projectPath]);
+
+  // Load rules when project changes or Rules panel is shown.
+  useEffect(() => {
+    void refreshProjectRules();
+  }, [projectPath, refreshProjectRules]);
+
+  useEffect(() => {
+    if (sideMode === "rules") void refreshProjectRules();
+  }, [sideMode, refreshProjectRules]);
 
   // Drop selection if neither session nor workspace still lists the path.
   useEffect(() => {
@@ -1287,16 +1197,88 @@ export function ResourceViewer({
     [tabs],
   );
 
-  // External open requests (from chat file/url cards)
+  // External open requests (from chat file/url cards, project rules menu)
   useEffect(() => {
     if (!openRequest) return;
     if (openRequest.type === "file") {
       void openAbsoluteFile(openRequest.path, openRequest.title);
     } else if (openRequest.type === "url") {
       openUrl(openRequest.url, openRequest.title);
+    } else if (openRequest.type === "rules") {
+      setSideMode("rules");
+      setTreeVisible(true);
+      void refreshProjectRules();
     }
     onOpenRequestConsumed?.();
-  }, [openRequest, openAbsoluteFile, openUrl, onOpenRequestConsumed]);
+  }, [
+    openRequest,
+    openAbsoluteFile,
+    openUrl,
+    onOpenRequestConsumed,
+    refreshProjectRules,
+  ]);
+
+  const openRuleFile = useCallback(
+    async (rule: api.ProjectRuleEntry) => {
+      if (!rule) return;
+      const rel = (rule.relativePath || "").trim();
+      if (projectPath && rel && !rel.startsWith("/") && !/^[A-Za-z]:[\\/]/.test(rel)) {
+        await openFile(rel);
+        return;
+      }
+      const abs = (rule.absolutePath || "").trim();
+      if (abs) {
+        await openAbsoluteFile(abs, rule.name);
+        return;
+      }
+      setError(tr("rules.openFailed"));
+    },
+    [openAbsoluteFile, openFile, projectPath, tr],
+  );
+
+  const ensureAgentsTemplate = useCallback(async () => {
+    if (!projectPath || !api.isTauri()) {
+      setError(tr("rules.needProject"));
+      return;
+    }
+    setRulesHint(null);
+    try {
+      const res = await api.projectRulesEnsureTemplate(projectPath);
+      await refreshProjectRules();
+      if (res.created) {
+        setRulesHint(tr("rules.created"));
+      } else {
+        setRulesHint(tr("rules.exists"));
+      }
+      const rel = res.relativePath || "AGENTS.md";
+      await openFile(rel);
+    } catch (e) {
+      setError(String(e) || tr("rules.actionError"));
+    }
+  }, [openFile, projectPath, refreshProjectRules, tr]);
+
+  const ruleKindLabel = useCallback(
+    (kind: string) => {
+      const k = (kind || "").trim();
+      if (k === "agents_md") return tr("rules.kind.agents_md");
+      if (k === "claude_md") return tr("rules.kind.claude_md");
+      if (k === "grok_rules") return tr("rules.kind.grok_rules");
+      if (k === "nested_agents") return tr("rules.kind.nested_agents");
+      return k || tr("rules.title");
+    },
+    [tr],
+  );
+
+  const filteredRules = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return projectRules;
+    return projectRules.filter(
+      (r) =>
+        r.name.toLowerCase().includes(q) ||
+        r.relativePath.toLowerCase().includes(q) ||
+        (r.kind || "").toLowerCase().includes(q),
+    );
+  }, [projectRules, query]);
 
   /** Last tab gone → collapse the right pane (user can still re-open it manually). */
   const closePaneIfNoTabs = useCallback(
@@ -1990,30 +1972,6 @@ export function ResourceViewer({
           ) : null}
           <Tip
             label={
-              treeVisible && sideMode === "tasks"
-                ? tr("tasks.hidePanel")
-                : tr("tasks.showPanel")
-            }
-          >
-            <button
-              type="button"
-              className={
-                "chrome-btn main__pane-toggle rp-chrome__tasks-btn" +
-                (treeVisible && sideMode === "tasks" ? " is-on" : "")
-              }
-              onClick={() => showSidePanel("tasks")}
-              aria-label={tr("tasks.title")}
-            >
-              <IconActivity size={16} />
-              {runningTaskCount > 0 ? (
-                <span className="rp-chrome__badge" aria-hidden>
-                  {runningTaskCount > 99 ? "99+" : runningTaskCount}
-                </span>
-              ) : null}
-            </button>
-          </Tip>
-          <Tip
-            label={
               treeVisible && sideMode === "changes"
                 ? tr("changes.hidePanel")
                 : tr("changes.showPanel")
@@ -2032,6 +1990,30 @@ export function ResourceViewer({
               {totalChangeBadge > 0 ? (
                 <span className="rp-chrome__badge" aria-hidden>
                   {totalChangeBadge > 99 ? "99+" : totalChangeBadge}
+                </span>
+              ) : null}
+            </button>
+          </Tip>
+          <Tip
+            label={
+              treeVisible && sideMode === "rules"
+                ? tr("rules.hidePanel")
+                : tr("rules.showPanel")
+            }
+          >
+            <button
+              type="button"
+              className={
+                "chrome-btn main__pane-toggle" +
+                (treeVisible && sideMode === "rules" ? " is-on" : "")
+              }
+              onClick={() => showSidePanel("rules")}
+              aria-label={tr("rules.title")}
+            >
+              <IconFileText size={16} />
+              {projectRules.length > 0 ? (
+                <span className="rp-chrome__badge" aria-hidden>
+                  {projectRules.length > 99 ? "99+" : projectRules.length}
                 </span>
               ) : null}
             </button>
@@ -2139,10 +2121,8 @@ export function ResourceViewer({
           ) : !activeTab ? (
             <div className="rp__empty-state">
               <div className="rp__empty-title">
-                {sideMode === "tasks"
-                  ? sessionTasks.length === 0
-                    ? tr("tasks.empty")
-                    : tr("tasks.title")
+                {sideMode === "rules"
+                  ? tr("rules.title")
                   : sideMode === "changes" &&
                       changeCount === 0 &&
                       workspaceCount === 0
@@ -2152,14 +2132,10 @@ export function ResourceViewer({
                       : tr("resources.emptyPreview")}
               </div>
               <div className="rp__empty-desc">
-                {sideMode === "tasks"
-                  ? sessionTasks.length === 0
-                    ? tr("tasks.emptyHint")
-                    : runningTaskCount > 0
-                      ? tr("tasks.runningCount", {
-                          n: String(runningTaskCount),
-                        })
-                      : tr("tasks.emptyHint")
+                {sideMode === "rules"
+                  ? projectRules.length === 0
+                    ? tr("rules.emptyHint")
+                    : tr("rules.pickHint")
                   : sideMode === "changes" &&
                       changeCount === 0 &&
                       workspaceCount === 0
@@ -2168,11 +2144,6 @@ export function ResourceViewer({
                       ? tr("changes.workspace.emptyHint")
                       : tr("resources.emptyPreviewHint")}
               </div>
-              {sideMode === "tasks" && sessionTasks.length > 0 ? (
-                <div className="rp__empty-desc rp-tasks-nokill">
-                  {tr("tasks.noKill")}
-                </div>
-              ) : null}
             </div>
           ) : activeTab.loading ? (
             <div className="rp__empty-state">
@@ -2248,6 +2219,23 @@ export function ResourceViewer({
                 <button
                   type="button"
                   role="tab"
+                  aria-selected={sideMode === "rules"}
+                  className={
+                    "rp-side-modes__btn" +
+                    (sideMode === "rules" ? " is-active" : "")
+                  }
+                  onClick={() => setSideMode("rules")}
+                >
+                  {tr("rules.title")}
+                  {projectRules.length > 0 ? (
+                    <span className="rp-side-modes__count">
+                      {projectRules.length}
+                    </span>
+                  ) : null}
+                </button>
+                <button
+                  type="button"
+                  role="tab"
                   aria-selected={sideMode === "changes"}
                   className={
                     "rp-side-modes__btn" +
@@ -2259,23 +2247,6 @@ export function ResourceViewer({
                   {totalChangeBadge > 0 ? (
                     <span className="rp-side-modes__count">
                       {totalChangeBadge}
-                    </span>
-                  ) : null}
-                </button>
-                <button
-                  type="button"
-                  role="tab"
-                  aria-selected={sideMode === "tasks"}
-                  className={
-                    "rp-side-modes__btn" +
-                    (sideMode === "tasks" ? " is-active" : "")
-                  }
-                  onClick={() => setSideMode("tasks")}
-                >
-                  {tr("tasks.title")}
-                  {runningTaskCount > 0 ? (
-                    <span className="rp-side-modes__count">
-                      {runningTaskCount}
                     </span>
                   ) : null}
                 </button>
@@ -2312,7 +2283,18 @@ export function ResourceViewer({
                       <IconRefresh size={14} />
                     </button>
                   </Tip>
-                ) : sideMode === "changes" ? (
+                ) : sideMode === "rules" ? (
+                  <Tip label={tr("rules.refresh")}>
+                    <button
+                      type="button"
+                      className="chrome-btn"
+                      onClick={() => void refreshProjectRules()}
+                      disabled={rulesLoading}
+                    >
+                      <IconRefresh size={14} />
+                    </button>
+                  </Tip>
+                ) : (
                   <Tip label={tr("changes.workspace.refresh")}>
                     <button
                       type="button"
@@ -2323,51 +2305,108 @@ export function ResourceViewer({
                       <IconRefresh size={14} />
                     </button>
                   </Tip>
-                ) : null}
+                )}
               </div>
               <OverlayScroll className="rp-tree-scroll">
-                {sideMode === "tasks" ? (
-                  <div className="rp-tasks-list" role="list">
-                    {filteredTasks.length === 0 ? (
-                      <div className="rp-changes-empty">
-                        <div className="rp-changes-empty__title">
-                          {tr("tasks.empty")}
-                        </div>
-                        <div className="rp-changes-empty__hint">
-                          {tr("tasks.emptyHint")}
-                        </div>
+                {sideMode === "rules" ? (
+                  <div className="rp-changes-list rp-rules-list" role="list">
+                    <div className="rp-changes-section">
+                      <div className="rp-changes-section__head">
+                        <span className="rp-changes-section__title">
+                          {tr("rules.title")}
+                        </span>
+                        {projectRules.length > 0 ? (
+                          <span className="rp-changes-section__count">
+                            {projectRules.length}
+                          </span>
+                        ) : null}
                       </div>
-                    ) : (
-                      <>
-                        {activeTasks.length > 0 ? (
-                          <div className="rp-changes-section">
-                            <div className="rp-changes-section__head">
-                              <span className="rp-changes-section__title">
-                                {tr("tasks.section.active")}
-                              </span>
-                              <span className="rp-changes-section__count">
-                                {activeTasks.length}
-                              </span>
-                            </div>
-                            {activeTasks.map((t) => renderTaskRow(t))}
+                      <div className="rp-rules-actions">
+                        <button
+                          type="button"
+                          className="btn btn--ghost rp-rules-actions__btn"
+                          onClick={() => void ensureAgentsTemplate()}
+                          disabled={!projectPath || rulesLoading}
+                        >
+                          <IconPlus size={14} />
+                          <span>{tr("rules.createTemplate")}</span>
+                        </button>
+                      </div>
+                      {rulesHint ? (
+                        <div className="rp-rules-hint" role="status">
+                          {rulesHint}
+                        </div>
+                      ) : null}
+                      {rulesLoading && projectRules.length === 0 ? (
+                        <div className="rp-changes-section__empty">
+                          {tr("rules.loading")}
+                        </div>
+                      ) : filteredRules.length === 0 ? (
+                        <div className="rp-changes-section__empty">
+                          <div>{tr("rules.empty")}</div>
+                          <div className="rp-rules-empty-hint">
+                            {tr("rules.emptyHint")}
                           </div>
-                        ) : null}
-                        {recentTasks.length > 0 ? (
-                          <div className="rp-changes-section">
-                            <div className="rp-changes-section__head">
-                              <span className="rp-changes-section__title">
-                                {tr("tasks.section.recent")}
-                              </span>
-                              <span className="rp-changes-section__count">
-                                {recentTasks.length}
-                              </span>
+                        </div>
+                      ) : (
+                        filteredRules.map((r) => {
+                          const active =
+                            activeTab?.tabKind !== "url" &&
+                            (activeTab?.relativePath === r.relativePath ||
+                              activeTab?.absolutePath === r.absolutePath);
+                          return (
+                            <div
+                              key={r.relativePath}
+                              className={
+                                "rp-changes-row" + (active ? " is-active" : "")
+                              }
+                              role="listitem"
+                            >
+                              <button
+                                type="button"
+                                className="rp-changes-row__main"
+                                title={r.absolutePath || r.relativePath}
+                                onClick={() => void openRuleFile(r)}
+                              >
+                                <FileKindMark name={r.name} isDir={false} />
+                                <span className="rp-changes-row__meta">
+                                  <span className="rp-changes-row__name">
+                                    {r.name}
+                                  </span>
+                                  <span className="rp-changes-row__path">
+                                    {r.relativePath}
+                                  </span>
+                                  <span className="rp-changes-row__kind">
+                                    {ruleKindLabel(r.kind)}
+                                  </span>
+                                </span>
+                              </button>
+                              <div className="rp-changes-row__actions">
+                                <Tip label={tr("rules.reveal")}>
+                                  <button
+                                    type="button"
+                                    className="chrome-btn"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      void revealChangePath(
+                                        r.absolutePath || r.relativePath,
+                                      );
+                                    }}
+                                  >
+                                    <IconFolder size={13} />
+                                  </button>
+                                </Tip>
+                              </div>
                             </div>
-                            {recentTasks.map((t) => renderTaskRow(t))}
-                          </div>
-                        ) : null}
-                        <div className="rp-tasks-footnote">{tr("tasks.noKill")}</div>
-                      </>
-                    )}
+                          );
+                        })
+                      )}
+                      {!rulesHasAgents && projectRules.length > 0 ? (
+                        <div className="rp-rules-empty-hint rp-rules-empty-hint--footer">
+                          {tr("rules.noAgentsHint")}
+                        </div>
+                      ) : null}
+                    </div>
                   </div>
                 ) : sideMode === "changes" ? (
                   <div className="rp-changes-list" role="list">
