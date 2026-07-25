@@ -219,6 +219,8 @@ pub fn run() {
             commands::hooks_reveal,
             commands::hooks_open_dir,
             commands::hooks_ensure_dir,
+            commands::setup_preview,
+            commands::setup_install,
             commands::pick_directory,
             commands::pick_attach_files,
             commands::pick_attach_folder,

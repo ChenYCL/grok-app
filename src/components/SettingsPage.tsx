@@ -46,6 +46,7 @@ import { ProvidersPanel } from "@/components/ProvidersPanel";
 import { ExtensionsPanel } from "@/components/ExtensionsPanel";
 import { ProjectInspectPanel } from "@/components/ProjectInspectPanel";
 import { CliUpdateRow } from "@/components/CliUpdateRow";
+import { ManagedSetupPanel } from "@/components/ManagedSetupPanel";
 import {
   createT,
   resolveLocale,
@@ -1626,6 +1627,11 @@ export function SettingsPage({
                 cliFound={cliInfo.found}
               />
             </div>
+            <ManagedSetupPanel
+              locale={resolveLocale(locale)}
+              cliFound={cliInfo.found}
+              onOpenAccount={() => onSection("account")}
+            />
           </div>
         )}
 

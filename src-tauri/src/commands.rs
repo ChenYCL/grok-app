@@ -5802,5 +5802,322 @@ mod project_inspect_tests {
         );
         assert_eq!(out["skills"]["total"], 0);
         assert_eq!(out["error"], "Grok Build CLI not found");
+// ── Managed configuration (`grok setup` / `grok setup --json`) ──────────────
+//
+// Team-managed policy for enterprises. Requires team sign-in or GROK_DEPLOYMENT_KEY.
+// Preview never writes; install applies into ~/.grok. Secrets are scrubbed before
+// leaving the host so the UI never receives full keys.
+
+const SETUP_CMD_TIMEOUT_SECS: u64 = 60;
+
+fn setup_error_kind(msg: &str) -> &'static str {
+    let m = msg.to_ascii_lowercase();
+    if m.contains("cli not found") || m.contains("no such file") {
+        return "cli_missing";
+    }
+    if m.contains("timed out") || m.contains("timeout") {
+        return "timeout";
+    }
+    if m.contains("no deployment key")
+        || m.contains("team sign-in")
+        || m.contains("team login")
+        || m.contains("sign in with a team")
+        || m.contains("export grok_deployment_key")
+    {
+        return "missing_auth";
+    }
+    if m.contains("deployment key was rejected")
+        || m.contains("key was rejected")
+        || m.contains("hasn't expired")
+        || m.contains("hasnt expired")
+    {
+        return "rejected";
+    }
+    if m.contains("json") && (m.contains("parse") || m.contains("invalid")) {
+        return "parse";
+    }
+    "other"
+}
+
+fn is_setup_sensitive_key(key: &str) -> bool {
+    let k = key.trim().to_ascii_lowercase();
+    if k.is_empty() {
+        return false;
+    }
+    matches!(
+        k.as_str(),
+        "apikey"
+            | "api_key"
+            | "api-key"
+            | "token"
+            | "secret"
+            | "password"
+            | "passwd"
+            | "authorization"
+            | "auth"
+            | "access_token"
+            | "access-token"
+            | "refresh_token"
+            | "refresh-token"
+            | "client_secret"
+            | "client-secret"
+            | "private_key"
+            | "private-key"
+            | "bearer"
+            | "deployment_key"
+            | "deployment-key"
+            | "deploymentkey"
+            | "xai_api_key"
+            | "xai-api-key"
+            | "env"
+            | "environment"
+            | "headers"
+            | "secrets"
+            | "credentials"
+            | "signatures"
+            | "managed_identity_signatures"
+            | "managedidentitysignatures"
+    ) || k.contains("api_key")
+        || k.contains("api-key")
+        || k.contains("apikey")
+        || k.ends_with("_token")
+        || k.ends_with("-token")
+        || k.ends_with("_secret")
+        || k.ends_with("-secret")
+        || k.ends_with("_password")
+        || k.contains("deployment_key")
+        || k.contains("deploymentkey")
+        || (k.contains("signature") && !k.contains("fingerprint"))
+        || k.ends_with("_sig")
+}
+
+/// In-place redaction of secret-like keys / tokenish strings in managed setup JSON.
+pub fn redact_setup_json_value(value: &mut serde_json::Value) {
+    match value {
+        serde_json::Value::Object(map) => {
+            let keys: Vec<String> = map.keys().cloned().collect();
+            for key in keys {
+                if is_setup_sensitive_key(&key) {
+                    map.insert(key, serde_json::Value::String("[REDACTED]".into()));
+                } else if let Some(child) = map.get_mut(&key) {
+                    redact_setup_json_value(child);
+                }
+            }
+        }
+        serde_json::Value::Array(arr) => {
+            for item in arr.iter_mut() {
+                redact_setup_json_value(item);
+            }
+        }
+        serde_json::Value::String(s) => {
+            let scrubbed = store::redact_text(s);
+            *s = scrubbed.trim().to_string();
+        }
+        _ => {}
+    }
+}
+
+fn setup_cli_failure_message(stdout: &str, stderr: &str, fallback: &str) -> String {
+    let msg = if !stderr.trim().is_empty() {
+        stderr.trim()
+    } else if !stdout.trim().is_empty() {
+        stdout.trim()
+    } else {
+        fallback
+    };
+    // Scrub any accidental key material in CLI diagnostics.
+    store::redact_text(msg).trim().chars().take(1200).collect()
+}
+
+/// `grok setup --json` — fetch managed config preview without writing to ~/.grok.
+/// Always returns Ok; failures surface as `{ ok: false, error, errorKind }`.
+#[tauri::command]
+pub async fn setup_preview() -> Result<serde_json::Value, String> {
+    let result = tauri::async_runtime::spawn_blocking(|| {
+        run_grok_cli_args(&["setup", "--json"], SETUP_CMD_TIMEOUT_SECS)
+    })
+    .await
+    .map_err(|e| e.to_string())?;
+
+    let (stdout, stderr, ok) = match result {
+        Ok(t) => t,
+        Err(e) => {
+            let error = store::redact_text(&e).trim().to_string();
+            let kind = setup_error_kind(&error);
+            return Ok(serde_json::json!({
+                "ok": false,
+                "payload": null,
+                "message": null,
+                "error": error,
+                "errorKind": kind,
+            }));
+        }
+    };
+
+    if !ok {
+        let error = setup_cli_failure_message(
+            &stdout,
+            &stderr,
+            "Could not fetch managed configuration",
+        );
+        let kind = setup_error_kind(&error);
+        return Ok(serde_json::json!({
+            "ok": false,
+            "payload": null,
+            "message": null,
+            "error": error,
+            "errorKind": kind,
+        }));
+    }
+
+    let body = stdout.trim();
+    if body.is_empty() {
+        // Some CLI builds may print JSON on stderr when successful.
+        let alt = stderr.trim();
+        if alt.starts_with('{') || alt.starts_with('[') {
+            return Ok(setup_preview_from_body(alt));
+        }
+        return Ok(serde_json::json!({
+            "ok": true,
+            "payload": null,
+            "message": store::redact_text(alt).trim().chars().take(400).collect::<String>(),
+            "error": null,
+            "errorKind": null,
+        }));
+    }
+
+    Ok(setup_preview_from_body(body))
+}
+
+fn setup_preview_from_body(body: &str) -> serde_json::Value {
+    match serde_json::from_str::<serde_json::Value>(body) {
+        Ok(mut value) => {
+            redact_setup_json_value(&mut value);
+            serde_json::json!({
+                "ok": true,
+                "payload": value,
+                "message": null,
+                "error": null,
+                "errorKind": null,
+            })
+        }
+        Err(_) => {
+            // Not JSON — return scrubbed plain text as message only.
+            let message = store::redact_text(body)
+                .trim()
+                .chars()
+                .take(4000)
+                .collect::<String>();
+            serde_json::json!({
+                "ok": true,
+                "payload": null,
+                "message": message,
+                "error": null,
+                "errorKind": null,
+            })
+        }
+    }
+}
+
+/// `grok setup` — fetch and install managed configuration into ~/.grok.
+/// Soft-respawns the agent on success so new policy is picked up.
+/// Always returns Ok; failures surface as `{ ok: false, error, errorKind }`.
+#[tauri::command]
+pub async fn setup_install(
+    app: tauri::AppHandle,
+    mgr: State<'_, Arc<SessionManager>>,
+) -> Result<serde_json::Value, String> {
+    let result = tauri::async_runtime::spawn_blocking(|| {
+        run_grok_cli_args(&["setup"], SETUP_CMD_TIMEOUT_SECS)
+    })
+    .await
+    .map_err(|e| e.to_string())?;
+
+    let (stdout, stderr, ok) = match result {
+        Ok(t) => t,
+        Err(e) => {
+            let error = store::redact_text(&e).trim().to_string();
+            let kind = setup_error_kind(&error);
+            return Ok(serde_json::json!({
+                "ok": false,
+                "message": null,
+                "error": error,
+                "errorKind": kind,
+            }));
+        }
+    };
+
+    if !ok {
+        let error =
+            setup_cli_failure_message(&stdout, &stderr, "Could not install managed configuration");
+        let kind = setup_error_kind(&error);
+        return Ok(serde_json::json!({
+            "ok": false,
+            "message": null,
+            "error": error,
+            "errorKind": kind,
+        }));
+    }
+
+    let message = {
+        let raw = if !stdout.trim().is_empty() {
+            stdout.trim()
+        } else if !stderr.trim().is_empty() {
+            stderr.trim()
+        } else {
+            "Applied managed configuration."
+        };
+        store::redact_text(raw)
+            .trim()
+            .chars()
+            .take(800)
+            .collect::<String>()
+    };
+
+    // New managed policy may change models / permissions / MCP — recycle agent.
+    mgr.soft_respawn(&app).await;
+
+    Ok(serde_json::json!({
+        "ok": true,
+        "message": message,
+        "error": null,
+        "errorKind": null,
+    }))
+}
+
+#[cfg(test)]
+mod setup_cmd_tests {
+    use super::*;
+
+    #[test]
+    fn classifies_missing_auth() {
+        let msg = "No deployment key or team sign-in found.\nexport GROK_DEPLOYMENT_KEY=<your-key>";
+        assert_eq!(setup_error_kind(msg), "missing_auth");
+    }
+
+    #[test]
+    fn classifies_rejected() {
+        assert_eq!(
+            setup_error_kind("The deployment key was rejected. Confirm it hasn't expired."),
+            "rejected"
+        );
+    }
+
+    #[test]
+    fn redacts_secret_keys_in_json() {
+        let mut v = serde_json::json!({
+            "deploymentId": "dep_1",
+            "apiKey": "sk-abcdefghijklmnopqrstuvwxyz",
+            "deployment_key": "secret-deploy",
+            "env": { "OPENAI_API_KEY": "sk-nested" },
+            "nested": { "client_secret": "cs", "name": "ok" }
+        });
+        redact_setup_json_value(&mut v);
+        assert_eq!(v["deploymentId"], "dep_1");
+        assert_eq!(v["apiKey"], "[REDACTED]");
+        assert_eq!(v["deployment_key"], "[REDACTED]");
+        assert_eq!(v["env"], "[REDACTED]");
+        assert_eq!(v["nested"]["client_secret"], "[REDACTED]");
+        assert_eq!(v["nested"]["name"], "ok");
     }
 }
