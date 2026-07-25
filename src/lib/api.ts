@@ -846,6 +846,10 @@ export interface AppSettings {
    * null / 0 / unset = omit flag (CLI default). Clamped to 1–200 when set.
    */
   maxAgentTurns?: number | null;
+   * When true, agents spawn with top-level `--disable-web-search`
+   * (removes web_search / web_fetch tools). Default false.
+   */
+  disableWebSearch?: boolean;
 }
 
 export interface AvailableModel {

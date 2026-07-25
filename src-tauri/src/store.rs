@@ -177,6 +177,10 @@ pub struct AppSettings {
     /// `None` or `0` = omit the flag (CLI default / unlimited).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub max_agent_turns: Option<u32>,
+    /// When true, spawn agents with top-level `--disable-web-search` so
+    /// `web_search` / `web_fetch` tools are removed. Default false (CLI default).
+    #[serde(default)]
+    pub disable_web_search: bool,
 }
 
 fn default_composer_prefs_scope() -> String {
@@ -228,6 +232,7 @@ impl Default for AppSettings {
             sandbox_profile: default_sandbox_profile(),
             experimental_memory: false,
             max_agent_turns: None,
+            disable_web_search: false,
         }
     }
 }
@@ -1322,6 +1327,15 @@ mod tests {
         let raw = r#"{
             "theme": "dark",
             "locale": "en",
+        assert!(!s.disable_web_search);
+    }
+
+    #[test]
+    fn disable_web_search_defaults_when_missing_from_json() {
+        // Older settings files omit the field — serde default keeps web tools on.
+        let raw = r#"{
+            "theme": "dark",
+            "locale": "zh",
             "sessionDataMode": "independent",
             "manualCliPath": null,
             "permissionPolicy": "ask",
@@ -1380,5 +1394,6 @@ mod tests {
         assert!(!m.archived);
         assert!(!s.experimental_memory);
         assert_eq!(s.max_agent_turns, None);
+        assert!(!s.disable_web_search);
     }
 }

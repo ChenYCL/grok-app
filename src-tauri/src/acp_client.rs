@@ -233,6 +233,16 @@ pub fn normalize_max_agent_turns(raw: Option<u32>) -> Option<u32> {
 pub fn max_turns_cli_args(raw: Option<u32>) -> Option<Vec<String>> {
     let spec = MaxTurnsSpawnSpec::from_setting(raw)?;
     Some(spec.cli_args().to_vec())
+/// Pure helper: top-level CLI flags for the disable_web_search setting.
+///
+/// When true, returns `["--disable-web-search"]` (before `agent`).
+/// When false, returns no flags so the CLI keeps web_search / web_fetch.
+pub fn disable_web_search_spawn_flags(disable: bool) -> Vec<&'static str> {
+    if disable {
+        vec!["--disable-web-search"]
+    } else {
+        vec![]
+    }
 }
 
 impl AcpClient {
@@ -339,6 +349,16 @@ impl AcpClient {
             for a in mt.cli_args() {
                 cmd.arg(a);
             }
+        //   top-level: `grok --no-auto-update [--disable-web-search] agent …`
+        //   agent opts: `--model` / `--reasoning-effort` / `--always-approve` before `stdio`
+        // Skip background update checks so ACP handshakes are not delayed on launch.
+        // `--disable-web-search` is top-level only (removes web_search / web_fetch tools).
+        let disable_web_search = crate::store::load_settings().disable_web_search;
+
+        let mut cmd = Command::new(&cli_path);
+        cmd.arg("--no-auto-update");
+        for flag in disable_web_search_spawn_flags(disable_web_search) {
+            cmd.arg(flag);
         }
         //   top-level: `grok --no-auto-update [--experimental-memory|--no-memory] agent …`
         //   agent opts: `--model` / `--reasoning-effort` / `--always-approve` before `stdio`
@@ -391,6 +411,7 @@ impl AcpClient {
             "acp: spawn GROK_HOME={} mode={} auth_present={} route={:?} composer_model={:?} spawn_model={} yolo={} sandbox={:?}",
             "acp: spawn GROK_HOME={} mode={} auth_present={} route={:?} composer_model={:?} spawn_model={} yolo={} experimental_memory={}",
             "acp: spawn GROK_HOME={} mode={} auth_present={} route={:?} composer_model={:?} spawn_model={} yolo={} max_turns={:?}",
+            "acp: spawn GROK_HOME={} mode={} auth_present={} route={:?} composer_model={:?} spawn_model={} yolo={} disable_web_search={}",
             grok_home.display(),
             session_data_mode,
             grok_home.join("auth.json").is_file(),
@@ -404,6 +425,7 @@ impl AcpClient {
             sandbox.as_ref().map(|s| s.profile.as_str())
             memory_enabled
             max_turns.as_ref().map(|s| s.turns)
+            disable_web_search
         );
 
         let mut child = cmd.spawn().map_err(|e| {
@@ -2378,5 +2400,23 @@ mod live_handshake_tests {
         eprintln!("OK session={} in {:?}", sid, t0.elapsed());
         client.kill().await;
         assert!(!sid.is_empty());
+    }
+}
+
+#[cfg(test)]
+mod disable_web_search_spawn_tests {
+    use super::disable_web_search_spawn_flags;
+
+    #[test]
+    fn off_adds_no_flags() {
+        assert!(disable_web_search_spawn_flags(false).is_empty());
+    }
+
+    #[test]
+    fn on_adds_top_level_flag() {
+        assert_eq!(
+            disable_web_search_spawn_flags(true),
+            vec!["--disable-web-search"]
+        );
     }
 }

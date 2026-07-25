@@ -654,6 +654,7 @@ pub async fn settings_set(
     let session_data_mode_changed =
         prev.session_data_mode != settings.session_data_mode;
     let memory_flip = prev.experimental_memory != settings.experimental_memory;
+    let web_search_flip = prev.disable_web_search != settings.disable_web_search;
 
     store::save_settings(&settings)?;
 
@@ -681,6 +682,8 @@ pub async fn settings_set(
             tracing::warn!("settings_set sync memory profile: {e}");
         }
         // Spawn flags change — soft-respawn so the next turn uses the new policy.
+    if web_search_flip {
+        // Spawn flag changes — soft-respawn so the next turn drops/restores web tools.
         mgr.soft_respawn(&app).await;
     }
 

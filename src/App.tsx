@@ -644,6 +644,7 @@ export default function App() {
   const [sandboxProfile, setSandboxProfile] = useState("off");
   const [experimentalMemory, setExperimentalMemory] = useState(false);
   const [clearMemoryBusy, setClearMemoryBusy] = useState(false);
+  const [disableWebSearch, setDisableWebSearch] = useState(false);
   const [gitWorktrees, setGitWorktrees] = useState<api.GitWorktreeEntry[]>([]);
   /** null = unknown/loading; true = git work tree; false = not a git repo. */
   const [gitWorktreesAvailable, setGitWorktreesAvailable] = useState<
@@ -884,6 +885,7 @@ export default function App() {
         setSandboxProfile(known.includes(sb) ? sb : "off");
       }
       setExperimentalMemory(!!settings.experimentalMemory);
+      setDisableWebSearch(!!settings.disableWebSearch);
       setCliInfo({
         found: cli.found,
         path: cli.path,
@@ -5835,6 +5837,8 @@ export default function App() {
       "settings.cliNotFound",
       "settings.permissionDeep",
       "settings.permissionDeepDesc",
+      "settings.disableWebSearch",
+      "settings.disableWebSearchDesc",
       "settings.prefsScope",
       "settings.prefsScopeDesc",
       "settings.prefsScope.global",
@@ -6219,6 +6223,12 @@ export default function App() {
                   .finally(() => setClearMemoryBusy(false));
               },
             });
+          disableWebSearch={disableWebSearch}
+          onDisableWebSearch={(v) => {
+            setDisableWebSearch(v);
+            void api.settingsGet().then((s) =>
+              api.settingsSet({ ...s, disableWebSearch: v }),
+            );
           }}
           cliInfo={cliInfo}
           onDoctor={() => void openDoctor()}
