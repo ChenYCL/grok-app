@@ -7312,6 +7312,10 @@ html[data-theme="light"] .ui-check.is-mixed .ui-check__box {
   opacity: 0.65;
 }
 
+.composer__voice-live.is-on {
+  color: var(--accent, #5b8def);
+}
+
 @keyframes composer-voice-pulse {
   0%,
   100% {

@@ -276,7 +276,7 @@ export function VoiceOverlay({
               className="voice-overlay__demo"
               onClick={() => void demoDelegate()}
             >
-              Demo: create_agent_session
+              {tt("voice.demoDelegate")}
             </button>
           ) : null}
         </section>

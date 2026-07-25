@@ -46,6 +46,7 @@ import {
   IconMarkdown as TbMarkdown,
   IconMessage as TbMessage,
   IconMicrophone as TbMicrophone,
+  IconHeadphones as TbHeadphones,
   IconMinus as TbMinus,
   IconMoon as TbMoon,
   IconNotes as TbNotes,
@@ -218,6 +219,7 @@ export const IconClose = wrap(TbX);
 export const IconSend = wrap(TbSend);
 export const IconQueue = wrap(TbStack2);
 export const IconMic = wrap(TbMicrophone);
+export const IconLiveVoice = wrap(TbHeadphones);
 export const IconPanel = wrap(TbLayoutSidebar);
 /** Right files / context pane (Codex-style top bar). */
 export const IconPanelRight = wrap(TbLayoutSidebarRight);
