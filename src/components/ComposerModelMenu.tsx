@@ -15,11 +15,12 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 import {
-  GROK_BUILD_EFFORTS,
   GROK_BUILD_MODELS,
   PERMISSION_POLICIES,
   SESSION_MODES,
-  type EffortOption,
+  effortDisplayLabel,
+  effortsForModel,
+  findModel,
   type ModelOption,
   type PermissionPolicyId,
 } from "@/lib/grokCatalog";
@@ -38,7 +39,6 @@ import {
 } from "@/components/icons";
 import { useFloatingMenu, type FloatingPos } from "@/lib/floatingMenu";
 
-type EffortId = EffortOption["id"];
 type Nested = "model" | "effort" | null;
 
 function usePortalMenu(estHeight = 220, _width = 300, nestedKey?: string) {
@@ -193,21 +193,20 @@ export interface ComposerModelMenuProps {
     effortLow: string;
   };
   onModel: (id: string) => void;
-  onEffort: (id: EffortId) => void;
+  onEffort: (id: string) => void;
 }
 
-function effortLabel(
-  id: string,
+function resolveEffortLabel(
+  effortId: string,
+  effortList: ReturnType<typeof effortsForModel>,
   labels: ComposerModelMenuProps["labels"],
 ): string {
-  if (id === "high") return labels.effortHigh;
-  if (id === "medium") return labels.effortMedium;
-  return labels.effortLow;
-}
-
-function effortShort(id: string, labels: ComposerModelMenuProps["labels"]): string {
-  // Compact: just effort word (icon carries model)
-  return effortLabel(id, labels);
+  const entry = effortList.find((e) => e.id === effortId);
+  return effortDisplayLabel(entry ?? effortId, {
+    high: labels.effortHigh,
+    medium: labels.effortMedium,
+    low: labels.effortLow,
+  });
 }
 
 export function ComposerModelMenu({
@@ -221,6 +220,8 @@ export function ComposerModelMenu({
   const [nested, setNested] = useState<Nested>(null);
   const menu = usePortalMenu(240, 280, nested ?? "root");
   const modelList = models.length > 0 ? models : GROK_BUILD_MODELS;
+  const activeModel = findModel(modelId, modelList);
+  const effortList = effortsForModel(activeModel);
 
   useEffect(() => {
     if (!menu.open) setNested(null);
@@ -238,9 +239,8 @@ export function ComposerModelMenu({
     return () => document.removeEventListener("keydown", onKey);
   }, [menu.open, nested]);
 
-  const modelLabel =
-    modelList.find((m) => m.id === modelId)?.label ?? modelId;
-  const eLabel = effortLabel(effort, labels);
+  const modelLabel = activeModel?.label ?? modelId;
+  const eLabel = resolveEffortLabel(effort, effortList, labels);
   const triggerText = `${modelLabel} · ${eLabel}`;
   const title = `${labels.model}: ${modelLabel} · ${labels.effort}: ${eLabel}`;
 
@@ -250,7 +250,7 @@ export function ComposerModelMenu({
       className="cmm--model"
       triggerIcon={<IconBolt size={14} />}
       triggerText={triggerText}
-      triggerShort={effortShort(effort, labels)}
+      triggerShort={eLabel}
       ariaLabel={labels.model}
       title={title}
       onOpenChange={(o) => {
@@ -323,7 +323,7 @@ export function ComposerModelMenu({
               ))
             ))}
           {nested === "effort" &&
-            GROK_BUILD_EFFORTS.map((e) => (
+            effortList.map((e) => (
               <button
                 key={e.id}
                 type="button"
@@ -335,7 +335,7 @@ export function ComposerModelMenu({
               >
                 <span className="cmm__opt-main">
                   <span className="cmm__opt-title">
-                    {effortLabel(e.id, labels)}
+                    {resolveEffortLabel(e.id, effortList, labels)}
                   </span>
                 </span>
                 {e.id === effort && (

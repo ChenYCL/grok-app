@@ -12,6 +12,18 @@ use serde::{Deserialize, Serialize};
 use crate::paths::resolve_agent_grok_home;
 use crate::store;
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ReasoningEffort {
+    pub id: String,
+    pub value: String,
+    pub label: String,
+    #[serde(default)]
+    pub description: String,
+    #[serde(default)]
+    pub is_default: bool,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AvailableModel {
@@ -21,6 +33,9 @@ pub struct AvailableModel {
     pub source: String,
     #[serde(default)]
     pub is_default: bool,
+    /// Per-model reasoning efforts from CLI `info.reasoning_efforts` (may be empty).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub reasoning_efforts: Vec<ReasoningEffort>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -32,13 +47,71 @@ pub struct AvailableModelsResult {
     pub fetched_at: Option<String>,
 }
 
+struct ParsedCacheModel {
+    label: String,
+    reasoning_efforts: Vec<ReasoningEffort>,
+}
+
 fn user_grok_home() -> PathBuf {
     crate::process_util::user_home().join(".grok")
 }
 
+/// Parse `/info/reasoning_efforts` from a models_cache entry body.
+fn parse_reasoning_efforts(body: &serde_json::Value) -> Vec<ReasoningEffort> {
+    let Some(arr) = body
+        .pointer("/info/reasoning_efforts")
+        .and_then(|x| x.as_array())
+    else {
+        return Vec::new();
+    };
+    arr.iter()
+        .filter_map(|item| {
+            let id = item.get("id")?.as_str()?.trim();
+            if id.is_empty() {
+                return None;
+            }
+            let value = item
+                .get("value")
+                .and_then(|x| x.as_str())
+                .filter(|s| !s.is_empty())
+                .unwrap_or(id)
+                .to_string();
+            let label = item
+                .get("label")
+                .and_then(|x| x.as_str())
+                .filter(|s| !s.is_empty())
+                .unwrap_or(id)
+                .to_string();
+            let description = item
+                .get("description")
+                .and_then(|x| x.as_str())
+                .unwrap_or("")
+                .to_string();
+            // CLI cache uses `"default": true`; host API exposes `isDefault`.
+            let is_default = item
+                .get("default")
+                .and_then(|x| x.as_bool())
+                .or_else(|| item.get("isDefault").and_then(|x| x.as_bool()))
+                .or_else(|| item.get("is_default").and_then(|x| x.as_bool()))
+                .unwrap_or(false);
+            Some(ReasoningEffort {
+                id: id.to_string(),
+                value,
+                label,
+                description,
+                is_default,
+            })
+        })
+        .collect()
+}
+
 fn read_models_cache(
     path: &PathBuf,
-) -> Option<(BTreeMap<String, String>, Option<String>, Option<String>)> {
+) -> Option<(
+    BTreeMap<String, ParsedCacheModel>,
+    Option<String>,
+    Option<String>,
+)> {
     let raw = fs::read_to_string(path).ok()?;
     let v: serde_json::Value = serde_json::from_str(&raw).ok()?;
     let models_obj = v.get("models")?.as_object()?;
@@ -63,7 +136,14 @@ fn read_models_cache(
             .filter(|s| !s.is_empty())
             .unwrap_or(id)
             .to_string();
-        map.insert(id.clone(), label);
+        let reasoning_efforts = parse_reasoning_efforts(body);
+        map.insert(
+            id.clone(),
+            ParsedCacheModel {
+                label,
+                reasoning_efforts,
+            },
+        );
     }
     let origin = v
         .get("origin")
@@ -102,12 +182,13 @@ pub fn list_available_models() -> AvailableModelsResult {
             if fetched_at.is_none() {
                 fetched_at = f;
             }
-            for (id, label) in map {
+            for (id, parsed) in map {
                 by_id.entry(id.clone()).or_insert(AvailableModel {
                     id,
-                    label,
+                    label: parsed.label,
                     source: "official".into(),
                     is_default: false,
+                    reasoning_efforts: parsed.reasoning_efforts,
                 });
             }
             if !by_id.is_empty() {
@@ -125,6 +206,7 @@ pub fn list_available_models() -> AvailableModelsResult {
                 label: "Grok 4.5".into(),
                 source: "official".into(),
                 is_default: true,
+                reasoning_efforts: Vec::new(),
             },
         );
     }
@@ -189,8 +271,120 @@ mod tests {
         )
         .unwrap();
         let (map, origin, _) = read_models_cache(&path).expect("cache");
-        assert_eq!(map.get("grok-4.5").map(String::as_str), Some("Grok 4.5"));
+        assert_eq!(
+            map.get("grok-4.5").map(|m| m.label.as_str()),
+            Some("Grok 4.5")
+        );
+        assert!(map
+            .get("grok-4.5")
+            .map(|m| m.reasoning_efforts.is_empty())
+            .unwrap_or(false));
         assert!(origin.unwrap().contains("cli-chat-proxy"));
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn parse_reasoning_efforts_from_cache_pointer() {
+        let body: serde_json::Value = serde_json::from_str(
+            r#"{
+              "info": {
+                "reasoning_efforts": [
+                  {
+                    "id": "high",
+                    "value": "high",
+                    "label": "High Effort",
+                    "description": "Highest quality",
+                    "default": true
+                  },
+                  {
+                    "id": "medium",
+                    "value": "medium",
+                    "label": "Medium Effort",
+                    "description": "Balanced",
+                    "default": false
+                  },
+                  {
+                    "id": "low",
+                    "value": "low",
+                    "label": "Low Effort",
+                    "description": "Quick",
+                    "default": false
+                  }
+                ]
+              }
+            }"#,
+        )
+        .unwrap();
+        let efforts = parse_reasoning_efforts(&body);
+        assert_eq!(efforts.len(), 3);
+        assert_eq!(efforts[0].id, "high");
+        assert_eq!(efforts[0].value, "high");
+        assert_eq!(efforts[0].label, "High Effort");
+        assert_eq!(efforts[0].description, "Highest quality");
+        assert!(efforts[0].is_default);
+        assert!(!efforts[1].is_default);
+        assert_eq!(efforts[2].id, "low");
+    }
+
+    #[test]
+    fn parse_reasoning_efforts_skips_empty_id() {
+        let body: serde_json::Value = serde_json::from_str(
+            r#"{
+              "info": {
+                "reasoning_efforts": [
+                  { "id": "", "value": "x", "label": "X" },
+                  { "id": "medium", "label": "Med" }
+                ]
+              }
+            }"#,
+        )
+        .unwrap();
+        let efforts = parse_reasoning_efforts(&body);
+        assert_eq!(efforts.len(), 1);
+        assert_eq!(efforts[0].id, "medium");
+        assert_eq!(efforts[0].value, "medium");
+        assert_eq!(efforts[0].label, "Med");
+    }
+
+    #[test]
+    fn read_cache_includes_reasoning_efforts() {
+        let dir = std::env::temp_dir().join(format!(
+            "grok-app-models-efforts-{}",
+            std::process::id()
+        ));
+        let _ = fs::create_dir_all(&dir);
+        let path = dir.join("models_cache.json");
+        fs::write(
+            &path,
+            r#"{
+              "fetched_at": "2026-07-25T00:00:00Z",
+              "origin": "https://cli-chat-proxy.grok.com/v1/models",
+              "models": {
+                "grok-4.5": {
+                  "info": {
+                    "id": "grok-4.5",
+                    "name": "Grok 4.5",
+                    "hidden": false,
+                    "reasoning_efforts": [
+                      {
+                        "id": "high",
+                        "value": "high",
+                        "label": "High Effort",
+                        "description": "Deep",
+                        "default": true
+                      }
+                    ]
+                  }
+                }
+              }
+            }"#,
+        )
+        .unwrap();
+        let (map, _, _) = read_models_cache(&path).expect("cache");
+        let m = map.get("grok-4.5").expect("model");
+        assert_eq!(m.reasoning_efforts.len(), 1);
+        assert_eq!(m.reasoning_efforts[0].id, "high");
+        assert!(m.reasoning_efforts[0].is_default);
         let _ = fs::remove_dir_all(&dir);
     }
 }
