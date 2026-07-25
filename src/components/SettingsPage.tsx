@@ -18,6 +18,7 @@ import {
   IconAppearance,
   IconArrowLeft,
   IconCheck,
+  IconChat,
   IconDoctor,
   IconInfo,
   IconKeyboard,
@@ -51,6 +52,7 @@ import { AccountPanel } from "@/components/AccountPanel";
 import { ProvidersPanel } from "@/components/ProvidersPanel";
 import { ExtensionsPanel } from "@/components/ExtensionsPanel";
 import { ProjectInspectPanel } from "@/components/ProjectInspectPanel";
+import { RemoteImLayout } from "@/components/RemoteImLayout";
 import {
   createT,
   resolveLocale,
@@ -64,6 +66,7 @@ export type SettingsSectionId =
   | "account"
   | "archived"
   | "extensions"
+  | "remote_im"
   | "runtime"
   | "shortcuts"
   | "about";
@@ -189,6 +192,8 @@ export interface SettingsPageProps {
   onSkillsPrefsChanged?: () => void;
   /** Open the same shortcuts help modal as ⌘/ / Ctrl+/. */
   onOpenShortcutsHelp?: () => void;
+  /** Trusted projects for Remote IM project-scope chips (no free paths). */
+  trustedProjects?: Array<{ id: string; name: string; path: string }>;
 }
 
 const NAV: {
@@ -199,6 +204,7 @@ const NAV: {
     | "user"
     | "archive"
     | "extensions"
+    | "remote_im"
     | "doctor"
     | "keyboard"
     | "info";
@@ -213,6 +219,12 @@ const NAV: {
     id: "extensions",
     icon: "extensions",
     labelKey: "settings.nav.extensions",
+    group: "system",
+  },
+  {
+    id: "remote_im",
+    icon: "remote_im",
+    labelKey: "settings.nav.remoteIm",
     group: "system",
   },
   { id: "runtime", icon: "doctor", labelKey: "settings.nav.runtime", group: "system" },
@@ -237,6 +249,7 @@ function NavIcon({
   if (name === "archive") return <IconArchive size={size} />;
   if (name === "keyboard") return <IconKeyboard size={size} />;
   if (name === "extensions") return <IconPuzzle size={size} />;
+  if (name === "remote_im") return <IconChat size={size} />;
   if (name === "doctor") return <IconDoctor size={size} />;
   if (name === "info") return <IconInfo size={size} />;
   return <IconSettings size={size} />;
@@ -486,6 +499,7 @@ export function SettingsPage({
   projectPath = null,
   onSkillsPrefsChanged,
   onOpenShortcutsHelp,
+  trustedProjects = [],
 }: SettingsPageProps) {
   const [query, setQuery] = useState("");
   const [accountTab, setAccountTab] = useState<"official" | "providers">(
@@ -712,11 +726,13 @@ export function SettingsPage({
             ? t("settings.nav.archived")
             : section === "extensions"
               ? t("settings.nav.extensions")
-              : section === "runtime"
-                ? t("settings.nav.runtime")
-                : section === "shortcuts"
-                  ? t("settings.nav.shortcuts")
-                  : t("settings.nav.about");
+              : section === "remote_im"
+                ? t("settings.nav.remoteIm")
+                : section === "runtime"
+                  ? t("settings.nav.runtime")
+                  : section === "shortcuts"
+                    ? t("settings.nav.shortcuts")
+                    : t("settings.nav.about");
 
   return (
     <div className="settings-page" data-testid="settings-page">
@@ -794,7 +810,12 @@ export function SettingsPage({
       </aside>
 
       <div className="settings-page__content">
-      <main className="settings-page__main">
+      <main
+        className={
+          "settings-page__main" +
+          (section === "remote_im" ? " settings-page__main--remote-im" : "")
+        }
+      >
         <h1 className="settings-page__title">{title}</h1>
 
         {section === "general" && (
@@ -1387,6 +1408,15 @@ export function SettingsPage({
             onOpenRuntime={() => onSection("runtime")}
             onSkillsPrefsChanged={onSkillsPrefsChanged}
           />
+        )}
+
+        {section === "remote_im" && (
+          <div className="settings-remote-im-shell">
+            <RemoteImLayout
+              locale={locale}
+              trustedProjects={trustedProjects}
+            />
+          </div>
         )}
 
         {section === "runtime" && (

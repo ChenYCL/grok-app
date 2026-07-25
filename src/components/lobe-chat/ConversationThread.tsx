@@ -23,6 +23,7 @@ import { AttachmentCard } from "@/components/AttachmentCard";
 import type { ResourceOpenTarget } from "@/components/ResourceViewer";
 import {
   IconArrowsMinimize,
+  IconChat,
   IconClock,
   IconExportMd,
   IconFork,
@@ -46,6 +47,10 @@ import { HighlightedText } from "@/components/HighlightedText";
 import { findChatMatches } from "@/lib/chatFind";
 import { hydrateDisplayContent, parseStoredContent } from "@/lib/draftDoc";
 import { parseScheduledUserContent } from "@/lib/automations";
+import {
+  parseRemoteImUserContent,
+  remoteImChannelLabel,
+} from "@/lib/remoteImUserContent";
 import { extractAutomationPayload } from "@/lib/automationSetup";
 import {
   isToolStepMessage,
@@ -202,18 +207,23 @@ function UserPlainOrSkills({
 }
 
 /**
- * User bubble: skill chips + scheduled-task header as a clock tag
- * (`[Scheduled: title]` → label, not raw brackets).
+ * User bubble: skill chips + scheduled / Remote IM headers as pill tags
+ * (`[Scheduled: title]` / `[Remote IM · feishu]` → label, not raw brackets).
  */
 function UserMessageBody({
   content,
   scheduledLabel,
+  remoteImLabel,
+  locale,
   findQuery,
   findActiveOccurrence,
 }: {
   content: string;
   /** Short badge word, e.g. 已安排 / Scheduled */
   scheduledLabel: string;
+  /** Short badge word, e.g. 远程 IM / Remote IM */
+  remoteImLabel: string;
+  locale: Locale;
   findQuery?: string;
   findActiveOccurrence?: number | null;
 }) {
@@ -251,6 +261,44 @@ function UserMessageBody({
       </div>
     );
   }
+
+  const remoteIm = parseRemoteImUserContent(content);
+  if (remoteIm) {
+    const channelTitle = remoteImChannelLabel(remoteIm.channel, locale);
+    const tip = `${remoteImLabel} · ${channelTitle}`;
+    return (
+      <div className="lobe-chat-user-msg">
+        <span className="lobe-scheduled-tag lobe-remote-im-tag" title={tip}>
+          <IconChat size={13} className="lobe-scheduled-tag__icon" />
+          <span className="lobe-scheduled-tag__kind">{remoteImLabel}</span>
+          <span className="lobe-scheduled-tag__sep" aria-hidden>
+            ·
+          </span>
+          <span className="lobe-scheduled-tag__title">
+            {findQuery?.trim() ? (
+              <HighlightedText
+                text={channelTitle}
+                query={findQuery}
+                activeOccurrence={null}
+              />
+            ) : (
+              channelTitle
+            )}
+          </span>
+        </span>
+        {remoteIm.body.trim() ? (
+          <div className="lobe-chat-user-msg__body">
+            <UserPlainOrSkills
+              content={remoteIm.body}
+              findQuery={findQuery}
+              findActiveOccurrence={findActiveOccurrence}
+            />
+          </div>
+        ) : null}
+      </div>
+    );
+  }
+
   return (
     <UserPlainOrSkills
       content={content}
@@ -573,6 +621,8 @@ export function ConversationThread({
                           <UserMessageBody
                             content={m.content}
                             scheduledLabel={tr("automations.msgTag")}
+                            remoteImLabel={tr("remoteIm.msgTag")}
+                            locale={locale}
                             findQuery={findQuery}
                             findActiveOccurrence={
                               isFindCurrent

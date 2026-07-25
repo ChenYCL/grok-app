@@ -162,10 +162,12 @@ describe("session projection", () => {
       { id: "u1", role: "user", content: "hello" },
       { id: "a1", role: "assistant", content: "partial", streaming: true },
     ];
-    expect(preferSessionMessages(cached, stored)).toEqual(cached);
+    // Streaming cache kept, but disk-only rows still merge in
+    const mergedStream = preferSessionMessages(cached, stored);
+    expect(mergedStream.some((m) => m.streaming)).toBe(true);
     expect(preferSessionMessages(undefined, stored)).toEqual(stored);
     expect(preferSessionMessages([], stored)).toEqual(stored);
-    // Equal length, disk has more text → prefer disk
+    // Equal length, disk has more text → prefer disk base
     const doneCache: ChatMessage[] = [
       { id: "u1", role: "user", content: "hi" },
       { id: "a1", role: "assistant", content: "ok" },
@@ -174,7 +176,32 @@ describe("session projection", () => {
       { id: "u1", role: "user", content: "hi" },
       { id: "a1", role: "assistant", content: "ok full" },
     ];
-    expect(preferSessionMessages(doneCache, doneStore)).toEqual(doneStore);
+    const done = preferSessionMessages(doneCache, doneStore);
+    expect(done.find((m) => m.id === "a1")?.content).toBe("ok full");
+  });
+
+  it("preferSessionMessages merges Remote IM disk rows into cache", () => {
+    const cached: ChatMessage[] = [
+      { id: "u1", role: "user", content: "hi", createdAt: "2026-07-24T00:00:00Z" },
+      { id: "a1", role: "assistant", content: "yo", createdAt: "2026-07-24T00:00:01Z" },
+    ];
+    const stored: ChatMessage[] = [
+      ...cached,
+      {
+        id: "u-im",
+        role: "user",
+        content: "[Remote IM · weixin]\n继续",
+        createdAt: "2026-07-25T00:00:00Z",
+      },
+      {
+        id: "a-im",
+        role: "assistant",
+        content: "好的",
+        createdAt: "2026-07-25T00:00:01Z",
+      },
+    ];
+    const out = preferSessionMessages(cached, stored);
+    expect(out.map((m) => m.id)).toEqual(["u1", "a1", "u-im", "a-im"]);
   });
 
   it("applyStreamChunk grows assistant text once per chunk", () => {

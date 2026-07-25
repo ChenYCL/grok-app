@@ -53,6 +53,7 @@ mod voice_auth;
 mod voice_host;
 mod voice_stt;
 mod voice_tools;
+mod remote_im;
 
 use std::sync::Arc;
 
@@ -71,6 +72,9 @@ pub fn run() {
 
     let session_mgr = Arc::new(SessionManager::new());
     let voice_host = Arc::new(voice_host::VoiceHost::new());
+    let remote_im_state = Arc::new(remote_im::RemoteImState {
+        inner: tokio::sync::Mutex::new(remote_im::BridgeRuntime::default()),
+    });
 
     tauri::Builder::default()
         // Must be registered first so a second process exits and focuses the primary window.
@@ -85,6 +89,7 @@ pub fn run() {
         .plugin(tauri_plugin_store::Builder::new().build())
         .manage(session_mgr)
         .manage(voice_host)
+        .manage(remote_im_state)
         // Range-capable media streaming (video/audio/pdf) — never loads multi‑GB into RAM.
         .register_asynchronous_uri_scheme_protocol("media", |_ctx, request, responder| {
             std::thread::spawn(move || {
@@ -136,6 +141,16 @@ pub fn run() {
                 let mgr = app.state::<Arc<SessionManager>>().inner().clone();
                 mgr.start_idle_watchdog(app.handle().clone());
                 mgr.start_stream_stall_watchdog(app.handle().clone());
+            }
+            // Remote IM: restore Feishu/Weixin connectors after App restart so
+            // already-bound channels keep receiving messages without a manual Start.
+            {
+                use tauri::Manager;
+                remote_im::set_app_handle(app.handle().clone());
+                let rim = app.state::<Arc<remote_im::RemoteImState>>().inner().clone();
+                tauri::async_runtime::spawn(async move {
+                    remote_im::try_autostart(&rim).await;
+                });
             }
             Ok(())
         })
@@ -303,6 +318,18 @@ pub fn run() {
             voice_host::voice_push_pcm,
             voice_host::voice_invoke_tool,
             voice_host::voice_dictation_transcribe,
+            remote_im::remote_im_bridge_status,
+            remote_im::remote_im_bridge_start,
+            remote_im::remote_im_bridge_stop,
+            remote_im::remote_im_bridge_set_config,
+            remote_im::remote_im_bridge_reload,
+            remote_im::remote_im_test_connection,
+            remote_im::remote_im_scan_begin,
+            remote_im::remote_im_scan_poll,
+            remote_im::remote_im_list_instances,
+            remote_im::remote_im_save_instance,
+            remote_im::remote_im_delete_instance,
+            remote_im::remote_im_doctor,
         ])
         .build(tauri::generate_context!())
         .expect("error while building Grok App")
