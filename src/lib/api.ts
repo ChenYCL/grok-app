@@ -786,6 +786,7 @@ export interface AppSettings {
    * Default "off". Passed as `grok --sandbox <profile>` / GROK_SANDBOX on spawn.
    */
   sandboxProfile?: string;
+  /**
    * Cap agent turns via top-level `grok --max-turns N`.
    * null / 0 / unset = omit flag (CLI default). Clamped to 1–200 when set.
    */
