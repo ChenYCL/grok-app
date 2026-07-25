@@ -47,6 +47,7 @@ import { ExtensionsPanel } from "@/components/ExtensionsPanel";
 import { ProjectInspectPanel } from "@/components/ProjectInspectPanel";
 import { CliUpdateRow } from "@/components/CliUpdateRow";
 import { ManagedSetupPanel } from "@/components/ManagedSetupPanel";
+import { PermissionRulesPanel } from "@/components/PermissionRulesPanel";
 import {
   createT,
   resolveLocale,
@@ -185,6 +186,8 @@ export interface SettingsPageProps {
   projectPath?: string | null;
   /** After skill enable toggle — refresh slash palette in App. */
   onSkillsPrefsChanged?: () => void;
+  /** Brief status toast from nested settings panels. */
+  onToast?: (message: string, ms?: number) => void;
 }
 
 const NAV: {
@@ -487,6 +490,7 @@ export function SettingsPage({
   onDeleteArchivedSessions,
   projectPath = null,
   onSkillsPrefsChanged,
+  onToast,
 }: SettingsPageProps) {
   const [query, setQuery] = useState("");
   const [accountTab, setAccountTab] = useState<"official" | "providers">(
@@ -975,6 +979,16 @@ export function SettingsPage({
                 </div>
               ) : null}
             </div>
+
+            <PermissionRulesPanel
+              t={t}
+              onSaved={() =>
+                onToast?.(t("settings.permissionRulesSaved"), 3500)
+              }
+              onError={(msg) =>
+                onToast?.(msg || t("settings.permissionRulesError"), 4500)
+              }
+            />
 
             <h2 className="settings-page__h2">{t("settings.section.general")}</h2>
             <div className="settings-card">

@@ -6642,6 +6642,7 @@ export default function App() {
                 showToast(String(e), 4500);
               });
           }}
+          onToast={showToast}
           cliInfo={cliInfo}
           onDoctor={() => void openDoctor()}
           versionFooter={tr("app.versionFooter")}

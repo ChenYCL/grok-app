@@ -705,6 +705,24 @@ const en = {
   "settings.subagentsEnabled": "Allow subagent spawning",
   "settings.subagentsEnabledDesc":
     "On by default. When off, agents spawn with --no-subagents / GROK_SUBAGENTS=0 so child Agent/task sessions cannot start. Live agents soft-respawn when this changes.",
+  "settings.permissionRules": "Permission rules",
+  "settings.permissionRulesDesc":
+    "Compact allow / deny / ask patterns in agent config.toml (deny wins over ask over allow). Examples: Bash(git *), Read(src/**), Edit. Changes soft-respawn the agent so the next turn reloads rules.",
+  "settings.permissionRulesPath": "Config: {path}",
+  "settings.permissionRulesEmpty": "No rules yet — add a pattern below.",
+  "settings.permissionRulesAdd": "Add rule",
+  "settings.permissionRulesAddWorking": "Saving…",
+  "settings.permissionRulesRemove": "Remove",
+  "settings.permissionRulesRemoveTitle": "Remove permission rule",
+  "settings.permissionRulesRemoveConfirm":
+    "Remove {action} rule “{rule}” from config.toml?",
+  "settings.permissionRulesAction.allow": "Allow",
+  "settings.permissionRulesAction.deny": "Deny",
+  "settings.permissionRulesAction.ask": "Ask",
+  "settings.permissionRulesPlaceholder": "e.g. Bash(git *)",
+  "settings.permissionRulesError": "Could not update permission rules",
+  "settings.permissionRulesSaved": "Permission rules saved — agent will reload on next turn",
+  "settings.permissionRulesLoading": "Loading rules…",
   "settings.prefsScope": "Remember model & permission at",
   "settings.prefsScopeDesc":
     "Global: all chats. Project: each workspace. Session: only the current chat.",
@@ -2141,6 +2159,24 @@ const zh: Record<MessageKey, string> = {
   "settings.subagentsEnabled": "允许子 Agent 派生",
   "settings.subagentsEnabledDesc":
     "默认开启。关闭时启动 Agent 会加上 --no-subagents / GROK_SUBAGENTS=0，禁止子会话（Agent/task）。更改后会 soft-respawn 已连接的 Agent。",
+  "settings.permissionRules": "权限规则",
+  "settings.permissionRulesDesc":
+    "写入 agent config.toml 的 allow / deny / ask 规则（优先级：deny > ask > allow）。示例：Bash(git *)、Read(src/**)、Edit。保存后会 soft-respawn agent，下一轮对话重新加载规则。",
+  "settings.permissionRulesPath": "配置：{path}",
+  "settings.permissionRulesEmpty": "暂无规则 — 在下方添加模式。",
+  "settings.permissionRulesAdd": "添加规则",
+  "settings.permissionRulesAddWorking": "保存中…",
+  "settings.permissionRulesRemove": "移除",
+  "settings.permissionRulesRemoveTitle": "移除权限规则",
+  "settings.permissionRulesRemoveConfirm":
+    "从 config.toml 移除 {action} 规则「{rule}」？",
+  "settings.permissionRulesAction.allow": "允许",
+  "settings.permissionRulesAction.deny": "拒绝",
+  "settings.permissionRulesAction.ask": "询问",
+  "settings.permissionRulesPlaceholder": "例如 Bash(git *)",
+  "settings.permissionRulesError": "无法更新权限规则",
+  "settings.permissionRulesSaved": "权限规则已保存 — 下一轮对话将重新加载",
+  "settings.permissionRulesLoading": "正在加载规则…",
   "settings.prefsScope": "模型与权限记忆范围",
   "settings.prefsScopeDesc":
     "全局：所有对话共用。项目：按工作区记忆。会话：仅当前聊天。",

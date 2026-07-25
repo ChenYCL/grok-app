@@ -674,6 +674,24 @@ export const zhTW: Record<MessageKey, string> = {
   "settings.subagentsEnabled": "允許子 Agent 衍生",
   "settings.subagentsEnabledDesc":
     "預設開啟。關閉時啟動 Agent 會加上 --no-subagents / GROK_SUBAGENTS=0，禁止子工作階段（Agent/task）。變更後會 soft-respawn 已連線的 Agent。",
+  "settings.permissionRules": "權限規則",
+  "settings.permissionRulesDesc":
+    "寫入 agent config.toml 的 allow / deny / ask 規則（優先順序：deny > ask > allow）。範例：Bash(git *)、Read(src/**)、Edit。儲存後會 soft-respawn agent，下一輪對話重新載入規則。",
+  "settings.permissionRulesPath": "設定：{path}",
+  "settings.permissionRulesEmpty": "尚無規則 — 在下方新增模式。",
+  "settings.permissionRulesAdd": "新增規則",
+  "settings.permissionRulesAddWorking": "儲存中…",
+  "settings.permissionRulesRemove": "移除",
+  "settings.permissionRulesRemoveTitle": "移除權限規則",
+  "settings.permissionRulesRemoveConfirm":
+    "從 config.toml 移除 {action} 規則「{rule}」？",
+  "settings.permissionRulesAction.allow": "允許",
+  "settings.permissionRulesAction.deny": "拒絕",
+  "settings.permissionRulesAction.ask": "詢問",
+  "settings.permissionRulesPlaceholder": "例如 Bash(git *)",
+  "settings.permissionRulesError": "無法更新權限規則",
+  "settings.permissionRulesSaved": "權限規則已儲存 — 下一輪對話將重新載入",
+  "settings.permissionRulesLoading": "正在載入規則…",
   "settings.prefsScope": "模型與權限記憶範圍",
   "settings.prefsScopeDesc":
     "全域：所有對話共用。專案：依工作區記憶。對話：僅目前聊天。",

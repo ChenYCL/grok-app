@@ -47,6 +47,7 @@ See `docs/llm-wiki/release.md`.
 - **Remove git worktree** from the project chip: confirm dialog (optional force for dirty/locked), host refuses main worktree, then refresh list and carefully leave/remove a matching App project row.
 - **Allow subagent spawning toggle**: Settings → Permissions; default on. When off, agents spawn with `--no-subagents` / `GROK_SUBAGENTS=0` (independent mode also writes `[subagents] enabled = false`). Soft-respawn on flip.
 - **Clean stale git worktrees** from the project chip: dry-run preview then `git worktree prune` (optional `--expire now`), host `git_worktree_gc`, en / zh / zh-TW.
+- **Permission rules editor**: Settings → Permissions lists and edits Grok Build `[permission]` `allow` / `deny` / `ask` string arrays in the active agent `config.toml` (independent agent-home or shared `~/.grok`). Add / remove with confirm; safe TOML upsert; soft-respawn on change.
 
 ## [0.1.6] - 2026-07-24
 

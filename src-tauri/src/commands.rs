@@ -6017,6 +6017,43 @@ pub async fn providers_list_models(
     crate::providers::list_remote_models(base_url, api_key, provider_id).await
 }
 
+// ── Permission rules (`[permission]` allow / deny / ask) ────────────────────
+
+/// Read compact permission rules from the active GROK_HOME config.toml.
+#[tauri::command]
+pub async fn permission_rules_get(
+) -> Result<crate::permission_rules::PermissionRulesResult, String> {
+    tauri::async_runtime::spawn_blocking(crate::permission_rules::load_permission_rules)
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+/// Replace compact allow/deny/ask arrays and soft-respawn the live agent.
+#[tauri::command]
+pub async fn permission_rules_set(
+    app: tauri::AppHandle,
+    mgr: State<'_, Arc<SessionManager>>,
+    allow: Option<Vec<String>>,
+    deny: Option<Vec<String>>,
+    ask: Option<Vec<String>>,
+) -> Result<crate::permission_rules::PermissionRulesResult, String> {
+    let rules = crate::permission_rules::PermissionRules {
+        allow: allow.unwrap_or_default(),
+        deny: deny.unwrap_or_default(),
+        ask: ask.unwrap_or_default(),
+    };
+    let result = tauri::async_runtime::spawn_blocking(move || {
+        crate::permission_rules::save_permission_rules(&rules)
+    })
+    .await
+    .map_err(|e| e.to_string())??;
+
+    // Grok Build reads rules at session start — soft-respawn so the next turn
+    // reloads config without a full disconnect toast.
+    mgr.soft_respawn(&app).await;
+    Ok(result)
+}
+
 // ── Editors ─────────────────────────────────────────────────────────────────
 
 #[tauri::command]
