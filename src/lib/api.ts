@@ -799,11 +799,21 @@ export interface AppSettings {
   voiceKeepAgentsOnEnd?: boolean;
 }
 
+export interface ReasoningEffort {
+  id: string;
+  value: string;
+  label: string;
+  description?: string;
+  isDefault?: boolean;
+}
+
 export interface AvailableModel {
   id: string;
   label: string;
   source: string;
   isDefault?: boolean;
+  /** Per-model efforts from CLI models_cache; omit/empty → static fallback. */
+  reasoningEfforts?: ReasoningEffort[];
 }
 
 export interface AvailableModelsResult {

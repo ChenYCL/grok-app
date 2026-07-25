@@ -98,12 +98,15 @@ import {
   DEFAULT_MODEL_ID,
   GROK_BUILD_MODELS,
   PERMISSION_POLICIES,
+  findModel,
   isValidEffort,
   isValidModelId,
   isValidPolicy,
   isValidPrefsScope,
+  pickDefaultEffort,
   pickDefaultModelId,
   type ComposerPrefsScope,
+  type EffortOption,
   type ModelOption,
   type PermissionPolicyId,
 } from "@/lib/grokCatalog";
@@ -916,13 +919,18 @@ export default function App() {
   const applyComposerPrefs = useCallback(
     (prefs: api.ComposerPrefs, catalog: ModelOption[]) => {
       const models = catalog.length > 0 ? catalog : GROK_BUILD_MODELS;
+      let nextModelId: string;
       if (prefs.modelId && isValidModelId(prefs.modelId, models)) {
-        setModelId(prefs.modelId);
+        nextModelId = prefs.modelId;
       } else {
-        setModelId(pickDefaultModelId(models));
+        nextModelId = pickDefaultModelId(models);
       }
+      setModelId(nextModelId);
+      const model = findModel(nextModelId, models);
       setEffort(
-        isValidEffort(prefs.effort) ? prefs.effort : DEFAULT_EFFORT,
+        isValidEffort(prefs.effort, model)
+          ? prefs.effort
+          : pickDefaultEffort(model),
       );
       setMode(prefs.mode || "agent");
       setPolicy(
@@ -985,12 +993,25 @@ export default function App() {
       setLocale(resolveLocale(settings.locale));
       const catalog: ModelOption[] =
         modelsRes?.models?.length
-          ? modelsRes.models.map((m) => ({
-              id: m.id,
-              label: m.label || m.id,
-              source: m.source,
-              isDefault: m.isDefault,
-            }))
+          ? modelsRes.models.map((m) => {
+              const efforts: EffortOption[] | undefined =
+                m.reasoningEfforts?.length
+                  ? m.reasoningEfforts.map((e) => ({
+                      id: e.id,
+                      value: e.value,
+                      label: e.label,
+                      description: e.description,
+                      isDefault: e.isDefault,
+                    }))
+                  : undefined;
+              return {
+                id: m.id,
+                label: m.label || m.id,
+                source: m.source,
+                isDefault: m.isDefault,
+                reasoningEfforts: efforts,
+              };
+            })
           : GROK_BUILD_MODELS;
       setAvailableModels(catalog);
       if (
@@ -1011,11 +1032,18 @@ export default function App() {
             ? settings.permissionPolicy
             : "ask",
         );
-        setEffort(
-          isValidEffort(settings.effort || "")
-            ? (settings.effort as typeof effort)
-            : DEFAULT_EFFORT,
-        );
+        {
+          const mid =
+            settings.modelId && isValidModelId(settings.modelId, catalog)
+              ? settings.modelId
+              : pickDefaultModelId(catalog);
+          const model = findModel(mid, catalog);
+          setEffort(
+            isValidEffort(settings.effort || "", model)
+              ? settings.effort!
+              : pickDefaultEffort(model),
+          );
+        }
         setMode(settings.mode || "agent");
         if (settings.modelId && isValidModelId(settings.modelId, catalog)) {
           setModelId(settings.modelId);
@@ -8713,16 +8741,24 @@ export default function App() {
                   onModel={(v) => {
                     if (!isValidModelId(v, availableModels)) return;
                     setModelId(v);
+                    const nextModel = findModel(v, availableModels);
+                    if (!isValidEffort(effort, nextModel)) {
+                      setEffort(pickDefaultEffort(nextModel));
+                    }
                     void api
                       .composerPrefsSet({
                         projectId: activeProject?.id ?? null,
                         sessionId: session.sessionId ?? null,
                         modelId: v,
+                        ...(!isValidEffort(effort, nextModel)
+                          ? { effort: pickDefaultEffort(nextModel) }
+                          : {}),
                       })
                       .catch((e) => showToast(String(e), 4000));
                   }}
                   onEffort={(v) => {
-                    if (!isValidEffort(v)) return;
+                    const model = findModel(modelId, availableModels);
+                    if (!isValidEffort(v, model)) return;
                     setEffort(v);
                     void api
                       .composerPrefsSet({

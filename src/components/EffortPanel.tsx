@@ -5,13 +5,12 @@
 
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import type { EffortOption } from "@/lib/grokCatalog";
 import { GROK_BUILD_EFFORTS } from "@/lib/grokCatalog";
 import { IconChevronDown } from "@/components/icons";
 import { Tip } from "@/components/ui/tooltip";
 import { useFloatingMenu } from "@/lib/floatingMenu";
 
-type EffortId = EffortOption["id"];
+type EffortId = "low" | "medium" | "high";
 
 const ORDER: EffortId[] = ["low", "medium", "high"];
 
