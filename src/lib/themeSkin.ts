@@ -7,11 +7,41 @@
  * Blob in IndexedDB (large payloads, durable across restarts) with a tiny meta
  * mirror in localStorage for synchronous boot (so the shell can flip to
  * transparent + scrim before React mounts). Rendered by a React media layer
- * (`<video>` / `<img>`) with `object-fit: cover`, so the browser crops to the
- * window at render time — the source asset is never mutated.
+ * (`<video>` / `<img>`) with absolute layout from {@link WallpaperFocus}
+ * (pan + zoom). Source assets are never mutated / re-encoded.
  */
 
 import type { Theme } from "./theme";
+import {
+  DEFAULT_WALLPAPER_FOCUS,
+  normalizeWallpaperFocus,
+  parseWallpaperFocus,
+  type WallpaperFocus,
+} from "./wallpaperFocus";
+import {
+  normalizeWallpaperClip,
+  parseWallpaperClip,
+  type WallpaperClip,
+} from "./wallpaperClip";
+
+export type { WallpaperFocus } from "./wallpaperFocus";
+export type { WallpaperClip } from "./wallpaperClip";
+export {
+  DEFAULT_WALLPAPER_FOCUS,
+  WALLPAPER_FOCUS_MAX_ZOOM,
+  isDefaultWallpaperFocus,
+  normalizeWallpaperFocus,
+  parseWallpaperFocus,
+  wallpaperMediaLayout,
+} from "./wallpaperFocus";
+export {
+  WALLPAPER_CLIP_MIN_DURATION,
+  clipsEqual,
+  enforceVideoClip,
+  formatClipTime,
+  normalizeWallpaperClip,
+  parseWallpaperClip,
+} from "./wallpaperClip";
 
 export type ThemeSkinId =
   | "default"
@@ -58,7 +88,7 @@ export const WALLPAPER_MAX_IMAGE_BYTES = 1_600_000;
 export const WALLPAPER_MAX_SOURCE_BYTES = 12 * 1024 * 1024;
 
 /** Reject video source files larger than this (videos are stored as-is). */
-export const WALLPAPER_MAX_VIDEO_BYTES = 50 * 1024 * 1024;
+export const WALLPAPER_MAX_VIDEO_BYTES = 200 * 1024 * 1024;
 
 /** Video mimetypes we accept for wallpaper (browser can autoplay when muted). */
 export const WALLPAPER_ALLOWED_VIDEO_MIMES: ReadonlySet<string> = new Set([
@@ -263,6 +293,24 @@ export interface WallpaperMeta {
   name: string;
   /** Epoch ms when stored. */
   createdAt: number;
+  /**
+   * Intrinsic media pixels (from probe at upload / first decode).
+   * Stored so render can layout focus before video metadata arrives —
+   * avoids cover→absolute flash when entering settings / cold start.
+   */
+  width?: number;
+  height?: number;
+  /**
+   * Optional pan/zoom focus (window-aspect crop). Omitted / default = cover
+   * center. Stored in localStorage meta only — blob never rewritten on focus
+   * edits (critical for large video wallpapers).
+   */
+  focus?: WallpaperFocus;
+  /**
+   * Optional video in/out points (seconds). Omitted = full video.
+   * Playback seeks within the range; source is never re-encoded.
+   */
+  clip?: WallpaperClip;
 }
 
 export interface WallpaperRecord extends WallpaperMeta {
@@ -391,7 +439,36 @@ function normalizeWallpaperMeta(value: unknown): WallpaperMeta | null {
   if (kind !== "image" && kind !== "video") return null;
   if (typeof mime !== "string" || typeof name !== "string") return null;
   if (typeof createdAt !== "number" || !Number.isFinite(createdAt)) return null;
-  return { kind, mime, name, createdAt };
+  const focus =
+    v.focus !== undefined && v.focus !== null
+      ? parseWallpaperFocus(v.focus)
+      : undefined;
+  // Drop default focus from meta to keep localStorage lean.
+  const meta: WallpaperMeta = { kind, mime, name, createdAt };
+  const width = v.width;
+  const height = v.height;
+  if (
+    typeof width === "number" &&
+    typeof height === "number" &&
+    Number.isFinite(width) &&
+    Number.isFinite(height) &&
+    width > 0 &&
+    height > 0
+  ) {
+    meta.width = Math.round(width);
+    meta.height = Math.round(height);
+  }
+  if (
+    focus &&
+    (Math.abs(focus.cx - DEFAULT_WALLPAPER_FOCUS.cx) > 1e-6 ||
+      Math.abs(focus.cy - DEFAULT_WALLPAPER_FOCUS.cy) > 1e-6 ||
+      Math.abs(focus.zoom - DEFAULT_WALLPAPER_FOCUS.zoom) > 1e-6)
+  ) {
+    meta.focus = focus;
+  }
+  const clip = parseWallpaperClip(v.clip);
+  if (clip) meta.clip = clip;
+  return meta;
 }
 
 function writeWallpaperMeta(
@@ -446,6 +523,117 @@ export async function saveWallpaper(
   const { blob, ...meta } = record;
   writeWallpaperMeta(optsMeta(opts), meta);
   await optsBlobs(opts).set(blob);
+}
+
+function cloneWallpaperMetaBase(meta: WallpaperMeta): WallpaperMeta {
+  const next: WallpaperMeta = {
+    kind: meta.kind,
+    mime: meta.mime,
+    name: meta.name,
+    createdAt: meta.createdAt,
+  };
+  if (meta.width && meta.height) {
+    next.width = meta.width;
+    next.height = meta.height;
+  }
+  if (meta.focus) next.focus = meta.focus;
+  if (meta.clip) next.clip = meta.clip;
+  return next;
+}
+
+export type WallpaperAdjustPatch = {
+  focus?: WallpaperFocus | null;
+  /**
+   * Video clip in seconds. Pass `null` to clear (full video).
+   * Omit the field to leave the existing clip unchanged.
+   */
+  clip?: WallpaperClip | null;
+  /** When provided, used to decide if clip is "full" and can be omitted. */
+  duration?: number;
+};
+
+/**
+ * Update focus / video clip in localStorage meta only (no IDB blob rewrite).
+ * Returns the merged meta, or null if no wallpaper is stored.
+ */
+export function saveWallpaperFocus(
+  focus: WallpaperFocus | null | undefined,
+  opts?: WallpaperOptions,
+): WallpaperMeta | null {
+  return saveWallpaperAdjust({ focus }, opts);
+}
+
+/**
+ * Patch wallpaper layout meta (focus + optional video clip) without rewriting
+ * the blob — essential for large video wallpapers.
+ */
+export function saveWallpaperAdjust(
+  patch: WallpaperAdjustPatch,
+  opts?: WallpaperOptions,
+): WallpaperMeta | null {
+  const metaStore = optsMeta(opts);
+  const meta = loadWallpaperMeta(metaStore);
+  if (!meta) return null;
+  const next = cloneWallpaperMetaBase(meta);
+
+  if (patch.focus !== undefined) {
+    delete next.focus;
+    const nextFocus = patch.focus
+      ? normalizeWallpaperFocus(patch.focus)
+      : { ...DEFAULT_WALLPAPER_FOCUS };
+    if (
+      Math.abs(nextFocus.cx - DEFAULT_WALLPAPER_FOCUS.cx) > 1e-6 ||
+      Math.abs(nextFocus.cy - DEFAULT_WALLPAPER_FOCUS.cy) > 1e-6 ||
+      Math.abs(nextFocus.zoom - DEFAULT_WALLPAPER_FOCUS.zoom) > 1e-6
+    ) {
+      next.focus = nextFocus;
+    }
+  }
+
+  if (patch.clip !== undefined) {
+    delete next.clip;
+    if (patch.clip) {
+      const normalized =
+        typeof patch.duration === "number" && patch.duration > 0
+          ? normalizeWallpaperClip(patch.clip, patch.duration)
+          : parseWallpaperClip(patch.clip);
+      if (normalized) next.clip = normalized;
+    }
+  }
+
+  writeWallpaperMeta(metaStore, next);
+  return next;
+}
+
+/**
+ * Persist intrinsic media size once known (no blob rewrite).
+ * Used to backfill older wallpapers that predate width/height meta,
+ * so subsequent mounts can layout without waiting for video metadata.
+ */
+export function saveWallpaperMediaSize(
+  width: number,
+  height: number,
+  opts?: WallpaperOptions,
+): WallpaperMeta | null {
+  const metaStore = optsMeta(opts);
+  const meta = loadWallpaperMeta(metaStore);
+  if (!meta) return null;
+  if (
+    !Number.isFinite(width) ||
+    !Number.isFinite(height) ||
+    width <= 0 ||
+    height <= 0
+  ) {
+    return meta;
+  }
+  const w = Math.round(width);
+  const h = Math.round(height);
+  if (meta.width === w && meta.height === h) return meta;
+  const next = cloneWallpaperMetaBase(meta);
+  next.width = w;
+  next.height = h;
+  writeWallpaperMeta(metaStore, next);
+  return next;
 }
 
 /**
@@ -517,6 +705,66 @@ function loadHtmlImage(src: string): Promise<HTMLImageElement> {
   });
 }
 
+/** Probe video / gif intrinsic size without fully decoding frames. */
+function probeMediaSize(
+  blob: Blob,
+  kind: "video" | "image",
+): Promise<{ width: number; height: number } | null> {
+  if (typeof document === "undefined") return Promise.resolve(null);
+  const url = URL.createObjectURL(blob);
+  return new Promise((resolve) => {
+    let settled = false;
+    const cleanup = () => {
+      try {
+        URL.revokeObjectURL(url);
+      } catch {
+        /* ignore */
+      }
+    };
+    const finish = (size: { width: number; height: number } | null) => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      resolve(size);
+    };
+    if (kind === "video") {
+      const v = document.createElement("video");
+      v.preload = "metadata";
+      v.muted = true;
+      v.playsInline = true;
+      const done = (size: { width: number; height: number } | null) => {
+        v.onloadedmetadata = null;
+        v.onerror = null;
+        v.removeAttribute("src");
+        try {
+          v.load();
+        } catch {
+          /* ignore */
+        }
+        finish(size);
+      };
+      v.onloadedmetadata = () => {
+        const width = v.videoWidth;
+        const height = v.videoHeight;
+        done(width > 0 && height > 0 ? { width, height } : null);
+      };
+      v.onerror = () => done(null);
+      // Safety timeout so a hung probe never blocks upload forever.
+      window.setTimeout(() => done(null), 8000);
+      v.src = url;
+      return;
+    }
+    const img = new Image();
+    img.onload = () => {
+      const width = img.naturalWidth || img.width;
+      const height = img.naturalHeight || img.height;
+      finish(width > 0 && height > 0 ? { width, height } : null);
+    };
+    img.onerror = () => finish(null);
+    img.src = url;
+  });
+}
+
 function canvasToBlob(
   canvas: HTMLCanvasElement,
   type: string,
@@ -554,7 +802,17 @@ export async function prepareWallpaperFromFile(file: File): Promise<WallpaperRec
     if (file.size > WALLPAPER_MAX_VIDEO_BYTES) {
       throw new WallpaperPrepareError("video_too_large");
     }
-    return { kind: "video", mime: type, name, createdAt, blob: file };
+    const size = await probeMediaSize(file, "video");
+    return {
+      kind: "video",
+      mime: type,
+      name,
+      createdAt,
+      blob: file,
+      ...(size
+        ? { width: size.width, height: size.height }
+        : {}),
+    };
   }
 
   // Animated gif — preserve original blob so frames keep playing.
@@ -562,7 +820,17 @@ export async function prepareWallpaperFromFile(file: File): Promise<WallpaperRec
     if (file.size > WALLPAPER_MAX_SOURCE_BYTES) {
       throw new WallpaperPrepareError("too_large");
     }
-    return { kind: "image", mime: type, name, createdAt, blob: file };
+    const size = await probeMediaSize(file, "image");
+    return {
+      kind: "image",
+      mime: type,
+      name,
+      createdAt,
+      blob: file,
+      ...(size
+        ? { width: size.width, height: size.height }
+        : {}),
+    };
   }
 
   // Still image — downscale + JPEG compress.
@@ -604,5 +872,13 @@ export async function prepareWallpaperFromFile(file: File): Promise<WallpaperRec
   if (blob.size > WALLPAPER_MAX_IMAGE_BYTES) {
     throw new WallpaperPrepareError("still_too_large");
   }
-  return { kind: "image", mime: "image/jpeg", name, createdAt, blob };
+  return {
+    kind: "image",
+    mime: "image/jpeg",
+    name,
+    createdAt,
+    blob,
+    width: w,
+    height: h,
+  };
 }

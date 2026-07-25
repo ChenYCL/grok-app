@@ -6,19 +6,23 @@
  * - Multiple tools replace the same line (no stack)
  * - Line sits in the stream (after current reply / at live edge)
  * - Hidden when no running tool (content can resume without chrome)
- * - Historical tool_step rows are not rendered in the transcript
+ * - Historical successful tool_step rows are not stacked in the transcript
+ * - Failed tool_step rows stay visible (FailedToolRow)
  */
 
 import { useMemo } from "react";
 import type { Locale } from "@/i18n";
 import { createT } from "@/i18n";
 import type { ChatMessage } from "@/lib/session";
-import { toolStepDisplayTitle } from "@/lib/session";
-import { IconStop } from "@/components/icons";
-// locale kept on LiveToolText for API compatibility with ConversationThread
+import {
+  isFailedToolStepMessage,
+  toolStepDisplayTitle,
+} from "@/lib/session";
+import { EndOfTurnChip } from "./EndOfTurnChip";
 
 export {
   isToolStepMessage,
+  isFailedToolStepMessage,
   pickLatestTurnTool,
   pickRunningTurnTool,
   toolStepDisplayTitle,
@@ -51,7 +55,8 @@ export function LiveToolText({
   );
 }
 
-export function TurnCancelledRow({
+/** Historical / terminal failed tool — stays in transcript. */
+export function FailedToolRow({
   message,
   locale,
 }: {
@@ -59,19 +64,39 @@ export function TurnCancelledRow({
   locale: Locale;
 }) {
   const tr = useMemo(() => createT(locale), [locale]);
-  const reason = message.toolStatus || "";
-  const label =
-    reason === "user_stop"
-      ? tr("activity.cancelledByUser")
-      : reason === "agent_exit"
-        ? tr("activity.cancelledAgentExit")
-        : tr("activity.cancelled");
+  const title = toolStepDisplayTitle(message) || tr("activity.failed");
+  const detail = message.toolDetail || message.toolPath || "";
   return (
-    <div className="lobe-chat-live-tool lobe-chat-live-tool--cancel" role="status">
-      <span className="lobe-chat-live-tool__mark" aria-hidden>
-        <IconStop size={13} />
-      </span>
-      <span className="lobe-chat-live-tool__title">{label}</span>
+    <div
+      className="lobe-chat-failed-tool"
+      role="status"
+      data-testid="failed-tool-row"
+      data-tool-id={message.toolCallId}
+    >
+      <span className="lobe-chat-failed-tool__dot" aria-hidden />
+      <div className="lobe-chat-failed-tool__body">
+        <div className="lobe-chat-failed-tool__title">{title}</div>
+        {detail ? (
+          <div className="lobe-chat-failed-tool__detail" title={detail}>
+            {detail}
+          </div>
+        ) : null}
+      </div>
     </div>
   );
+}
+
+export function isFailedToolVisible(m: ChatMessage): boolean {
+  return isFailedToolStepMessage(m);
+}
+
+/** @deprecated Prefer EndOfTurnChip — kept as thin alias. */
+export function TurnCancelledRow({
+  message,
+  locale,
+}: {
+  message: ChatMessage;
+  locale: Locale;
+}) {
+  return <EndOfTurnChip message={message} locale={locale} />;
 }

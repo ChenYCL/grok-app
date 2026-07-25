@@ -13,7 +13,7 @@ Agent / 贡献者维护设置 UI 时**必读**。目标：层次清晰、可搜�
 ## 一级导航（固定 9 项，禁止双登记）
 
 个人：`general` · `appearance` · `account` · `archived`  
-系统：`extensions` · `runtime` · `remote_im` · `shortcuts` · `about`
+系统：`extensions` · `runtime` · `remote_im`（展示名「远程控制」）· `shortcuts` · `about`
 
 **不要**再往 `SETTINGS_NAV` 塞重复 `runtime`。
 
@@ -25,6 +25,7 @@ Agent / 贡献者维护设置 UI 时**必读**。目标：层次清晰、可搜�
 | account | `official` · `providers` |
 | extensions | `plugins` · `skills` · `mcp` · `hooks` · `market` |
 | runtime | `cli` · `connection` · `pool` · `tools` |
+| remote_im（远程控制） | `im`（IM 通信）· `mirror`（手机镜像） |
 | 其余 | 无 tab（单页） |
 
 默认 tab 见 `SETTINGS_NAV[].defaultTab`。
@@ -36,6 +37,8 @@ Agent / 贡献者维护设置 UI 时**必读**。目标：层次清晰、可搜�
 #/settings/extensions/mcp           → 扩展 · MCP
 #/settings/runtime/tools            → CLI · 诊断
 #/settings/account/providers        → 自定义提供商
+#/settings/remote_im                → 远程控制 · IM 通信
+#/settings/remote_im/mirror         → 远程控制 · 手机镜像
 #/settings/appearance               → 无 tab
 ```
 

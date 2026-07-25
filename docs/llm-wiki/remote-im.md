@@ -1,12 +1,12 @@
-# 远程 IM 功能设计文档（GUI 配置 · 全渠道 · Grok Build）
+# 远程控制 · IM 通信功能设计文档（GUI 配置 · 全渠道 · Grok Build）
 
 > **文档类型：** 功能设计 / 产品规格（实现前单一事实来源）  
 > **状态：** Rust 进程内多渠道 Bridge · `/p`/`/r` 控制平面（App sessions_index）· 飞书/钉钉卡片选项目会话 · 微信 ilink 扫码+长轮询 · **不** spawn Node/agent-connect  
 
 > **对齐：** [cc-connect](https://github.com/chenhg5/cc-connect) 已适配 IM 能力与 `config.example.toml` 字段  
-> **产品：** Grok App 设置内可视化配置；本机 Bridge × **仅 Grok Build（ACP）**  
+> **产品：** Grok App 设置 → **远程控制** 内可视化配置；本机 Bridge × **仅 Grok Build（ACP）**  
+> **IA：** 设置一级导航展示名为「远程控制」（section id 仍为 `remote_im`）；页内 tab：`im`（IM 通信，本文）· `mirror`（手机镜像，见 PR #95 / `MirrorConnectPanel`）  
 > **原则：** **零 CLI 主路径** — 绑定、扫码、启停、ACL、Doctor 全部 GUI；禁止要求用户手写 TOML
-
 ---
 
 ## 目录
@@ -33,7 +33,7 @@
 
 | # | 目标 |
 |---|------|
-| G1 | 设置 → **远程 IM**：侧栏选渠道，右侧可视化绑定/配置（对齐现有 Settings 风格） |
+| G1 | 设置 → **远程控制** → **IM 通信**：侧栏选渠道，右侧可视化绑定/配置（对齐现有 Settings 风格） |
 | G2 | **覆盖 cc-connect 全部 IM 渠道**（见 §6），字段与行为可映射其 options |
 | G3 | 扫码创建 / 粘贴凭证 / 测试连接 / 启停 Bridge **全 GUI** |
 | G4 | 远程消息进入 **Grok Build ACP**；项目仅限 App 已信任项目 |

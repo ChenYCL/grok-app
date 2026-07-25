@@ -613,6 +613,18 @@
   animation: chat-pulse 1.2s ease-in-out infinite;
 }
 
+/* CodePilot-style gist label (not "思考 1/2/3") */
+.lobe-chat-thinking__label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.lobe-chat-thinking__label--live {
+  /* Keep pulse on the dot; label stays readable */
+  opacity: 0.92;
+}
+
 @keyframes chat-pulse {
   0%,
   100% {
@@ -642,6 +654,201 @@
   white-space: pre-wrap;
   border: none;
   background: transparent;
+}
+
+/* ── Failed tool (stays in transcript) ── */
+.lobe-chat-failed-tool {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  width: 100%;
+  max-width: var(--chat-content-max, 48rem);
+  margin: 4px 0 8px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--chat-danger, #e11) 8%, transparent);
+  border: 1px solid color-mix(in srgb, var(--chat-danger, #e11) 22%, transparent);
+  color: var(--chat-text-2);
+  font-size: var(--chat-fs-sm);
+  line-height: var(--chat-lh-sm);
+}
+.lobe-chat-failed-tool__dot {
+  width: 6px;
+  height: 6px;
+  margin-top: 6px;
+  border-radius: 50%;
+  background: var(--chat-danger, #e11);
+  flex-shrink: 0;
+}
+.lobe-chat-failed-tool__title {
+  color: var(--chat-text);
+  font-weight: 500;
+}
+.lobe-chat-failed-tool__detail {
+  margin-top: 2px;
+  color: var(--chat-text-3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
+}
+
+/* ── End-of-turn chip family ── */
+.lobe-end-turn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: fit-content;
+  max-width: 100%;
+  margin: 8px 0 4px;
+  padding: 4px 0;
+  color: var(--chat-text-2);
+  font-size: var(--chat-fs-sm);
+}
+.lobe-end-turn--warning {
+  color: var(--chat-warning, #c90);
+}
+.lobe-end-turn--error {
+  color: var(--chat-danger, #e11);
+}
+.lobe-end-turn__mark {
+  display: inline-flex;
+  opacity: 0.75;
+}
+.lobe-end-turn__title {
+  color: inherit;
+}
+
+/* ── Turn activity summary ── */
+.lobe-turn-activity {
+  width: 100%;
+  max-width: var(--chat-content-max, 48rem);
+  margin: 8px 0 4px;
+  padding: 6px 0;
+  font-size: var(--chat-fs-sm);
+  color: var(--chat-text-2);
+  border-top: 1px solid color-mix(in srgb, var(--chat-border, #888) 35%, transparent);
+}
+.lobe-turn-activity--error {
+  border-top-color: color-mix(in srgb, var(--chat-danger, #e11) 35%, transparent);
+}
+.lobe-turn-activity__trigger {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  margin: 0;
+  padding: 4px 0;
+  border: none;
+  background: transparent;
+  color: var(--chat-text-2);
+  font-size: inherit;
+  cursor: pointer;
+  text-align: left;
+}
+.lobe-turn-activity__trigger:hover {
+  color: var(--chat-text);
+}
+.lobe-turn-activity__chev {
+  display: inline-flex;
+  color: var(--chat-text-3);
+}
+.lobe-turn-activity__title {
+  font-weight: 500;
+}
+.lobe-turn-activity__list {
+  list-style: none;
+  margin: 4px 0 0;
+  padding: 0 0 0 4px;
+}
+.lobe-turn-activity__seg {
+  margin: 2px 0;
+}
+.lobe-turn-activity__tool {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 6px 8px;
+  padding: 2px 0;
+}
+.lobe-turn-activity__dot {
+  width: 6px;
+  height: 6px;
+  margin-top: 6px;
+  border-radius: 50%;
+  background: var(--chat-text-3);
+  flex-shrink: 0;
+}
+.lobe-turn-activity__dot.is-error {
+  background: var(--chat-danger, #e11);
+}
+.lobe-turn-activity__dot.is-running {
+  background: var(--chat-link);
+  animation: chat-pulse 1.2s ease-in-out infinite;
+}
+.lobe-turn-activity__tool-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
+}
+.lobe-turn-activity__tail {
+  width: 100%;
+  margin: 0 0 0 14px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--chat-bg-elevated, #111) 80%, transparent);
+  color: var(--chat-text-3);
+  font-size: 11px;
+  line-height: 1.35;
+  white-space: pre-wrap;
+  overflow: auto;
+  max-height: 120px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+.lobe-turn-activity__ctx-trigger {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  margin: 0;
+  padding: 2px 0;
+  border: none;
+  background: transparent;
+  color: var(--chat-text-2);
+  font-size: inherit;
+  cursor: pointer;
+  text-align: left;
+}
+.lobe-turn-activity__sub {
+  list-style: none;
+  margin: 0 0 0 12px;
+  padding: 0 0 0 8px;
+  border-left: 2px solid color-mix(in srgb, var(--chat-border, #888) 40%, transparent);
+}
+.lobe-turn-activity__files {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+  align-items: center;
+}
+.lobe-turn-activity__files-btn,
+.lobe-turn-activity__file {
+  margin: 0;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--chat-border, #888) 50%, transparent);
+  background: transparent;
+  color: var(--chat-text-2);
+  font-size: 12px;
+  cursor: pointer;
+}
+.lobe-turn-activity__files-btn:hover,
+.lobe-turn-activity__file:hover {
+  color: var(--chat-text);
+  border-color: var(--chat-text-3);
 }
 
 /* ── Mid-stream tool text (plain one line under reply, replace-only) ── */

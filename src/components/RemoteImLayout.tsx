@@ -51,20 +51,30 @@ export interface RemoteImLayoutProps {
   trustedProjects?: TrustedProjectOption[];
 }
 
+/** Settings tab ids under remote_im — not channel ids. */
+const REMOTE_CONTROL_TABS = new Set(["im", "mirror"]);
+
 function parseHashSelection(): RemoteImSelection {
   if (typeof window === "undefined") return { kind: "bridge" };
   const raw = (window.location.hash || "").replace(/^#\/?/, "");
-  // settings/remote_im[/channel[/instance]]
+  // settings/remote_im[/im|mirror][/channel[/instance]]
+  // Legacy: settings/remote_im/{channel}[/instance]
   const parts = raw.split("/").filter(Boolean);
   if (parts[0] !== "settings" || parts[1] !== "remote_im") {
     return { kind: "bridge" };
   }
-  const channel = parts[2];
+  let idx = 2;
+  if (parts[2] && REMOTE_CONTROL_TABS.has(parts[2])) {
+    // "mirror" tab has no IM channel selection; "im" may be followed by channel.
+    if (parts[2] === "mirror") return { kind: "bridge" };
+    idx = 3;
+  }
+  const channel = parts[idx];
   if (channel && isRemoteChannelId(channel)) {
     return {
       kind: "channel",
       channelId: channel,
-      instanceId: parts[3],
+      instanceId: parts[idx + 1],
     };
   }
   return { kind: "bridge" };
@@ -72,11 +82,12 @@ function parseHashSelection(): RemoteImSelection {
 
 function writeHashSelection(sel: RemoteImSelection) {
   if (typeof window === "undefined") return;
+  // Keep the IM tab segment so settings catalog tab stays on `im`.
   if (sel.kind === "bridge") {
-    window.location.hash = "#/settings/remote_im";
+    window.location.hash = "#/settings/remote_im/im";
     return;
   }
-  const base = `#/settings/remote_im/${sel.channelId}`;
+  const base = `#/settings/remote_im/im/${sel.channelId}`;
   window.location.hash = sel.instanceId ? `${base}/${sel.instanceId}` : base;
 }
 

@@ -13,6 +13,10 @@ import {
   taskStatusMessageKey,
   type AgentTask,
 } from "@/lib/sessionTasks";
+import {
+  buildTurnActivity,
+  tasksFromTurnActivity,
+} from "@/lib/turnActivity";
 import { IconClose, IconList } from "@/components/icons";
 
 type TFn = (key: MessageKey, vars?: Record<string, string | number>) => string;
@@ -104,7 +108,17 @@ export function AgentTasksPanel({
   onClose,
 }: AgentTasksPanelProps) {
   const [query, setQuery] = useState("");
-  const tasks = useMemo(() => collectSessionTasks(messages), [messages]);
+  // Shared derivation with transcript TurnActivityBlock (current turn +
+  // any still-running tools from collectSessionTasks).
+  const tasks = useMemo(() => {
+    const act = buildTurnActivity(messages);
+    const fromTurn = tasksFromTurnActivity(act);
+    const ids = new Set(fromTurn.map((t) => t.id));
+    const extraRunning = collectSessionTasks(messages).filter(
+      (t) => t.status === "running" && !ids.has(t.id),
+    );
+    return [...extraRunning, ...fromTurn];
+  }, [messages]);
   const filtered = useMemo(
     () => filterSessionTasks(tasks, query),
     [tasks, query],

@@ -8,10 +8,13 @@ import type { Locale } from "@/i18n";
 import { createT } from "@/i18n";
 import {
   formatTurnErrorBody,
+  isFailedToolStepMessage,
   messageSegments,
   type ChatMessage,
   type SessionState,
 } from "@/lib/session";
+import { buildTurnActivity } from "@/lib/turnActivity";
+import { isEndOfTurnMarker } from "@/lib/endOfTurn";
 import type { Attachment } from "@/lib/attachments";
 import {
   buildInlineMediaPathMap,
@@ -54,10 +57,12 @@ import {
 import { extractAutomationPayload } from "@/lib/automationSetup";
 import {
   isToolStepMessage,
+  FailedToolRow,
   LiveToolText,
   pickRunningTurnTool,
-  TurnCancelledRow,
 } from "./AgentActivity";
+import { EndOfTurnChip } from "./EndOfTurnChip";
+import { TurnActivityBlock } from "./TurnActivityBlock";
 import "./lobe-chat.css";
 
 type AttachLabels = {
@@ -356,6 +361,10 @@ export interface ConversationThreadProps {
   findHitMessageIds?: ReadonlySet<string>;
   /** Active match target for scroll / current mark. */
   findActive?: { messageId: string; occurrence: number } | null;
+  /** Open session Changes panel (turn activity file strip). */
+  onOpenSessionChanges?: () => void;
+  /** Open a modified path from turn activity. */
+  onOpenModifiedPath?: (path: string) => void;
 }
 
 export function ConversationThread({
@@ -383,8 +392,30 @@ export function ConversationThread({
   findQuery = "",
   findHitMessageIds,
   findActive = null,
+  onOpenSessionChanges,
+  onOpenModifiedPath,
 }: ConversationThreadProps) {
   const tr = useMemo(() => createT(locale), [locale]);
+  const turnActivity = useMemo(
+    () => buildTurnActivity(messages),
+    [messages],
+  );
+  /** Last assistant in the current turn — attach activity summary below it. */
+  const activityAnchorAssistantId = useMemo(() => {
+    let lastUser = -1;
+    for (let i = messages.length - 1; i >= 0; i--) {
+      if (messages[i]!.role === "user") {
+        lastUser = i;
+        break;
+      }
+    }
+    let lastAsst: string | null = null;
+    for (let i = lastUser + 1; i < messages.length; i++) {
+      const m = messages[i]!;
+      if (m.role === "assistant" && !m.isError) lastAsst = m.id;
+    }
+    return lastAsst;
+  }, [messages]);
 
   // Scroll the current find match into view (mark if present, else message).
   useEffect(() => {
@@ -488,16 +519,25 @@ export function ConversationThread({
 
           {messages.map((m) => {
             if (
+              isEndOfTurnMarker(m.marker) ||
               m.marker === "turn_cancelled" ||
-              (m.role === "tool" && m.content?.startsWith("turn_cancelled"))
+              (m.role === "tool" &&
+                (m.content?.startsWith("turn_cancelled") ||
+                  m.content?.startsWith("turn_end|")))
             ) {
               return (
-                <TurnCancelledRow key={m.id} message={m} locale={locale} />
+                <EndOfTurnChip key={m.id} message={m} locale={locale} />
               );
             }
 
-            // Historical tool_step: never stack in transcript; live line is injected below.
+            // Failed tools stay visible; successful historical tool_step stay hidden
+            // (live line is injected under the active assistant).
             if (isToolStepMessage(m)) {
+              if (isFailedToolStepMessage(m)) {
+                return (
+                  <FailedToolRow key={m.id} message={m} locale={locale} />
+                );
+              }
               return null;
             }
 
@@ -736,8 +776,6 @@ export function ConversationThread({
             // Assistant — interleave thought / body in stream order (not all
             // thinking stacked above the answer).
             const segs = messageSegments(m);
-            const thoughtSegs = segs.filter((s) => s.kind === "thought");
-            const thoughtCount = thoughtSegs.length;
             const lastSeg = segs[segs.length - 1];
             const isActiveAssistant = activeAssistantId === m.id;
             const showLiveToolBelow = !!liveTool && isActiveAssistant;
@@ -792,36 +830,26 @@ export function ConversationThread({
                       let contentOccBase = 0;
                       return segs.map((seg, si) => {
                         if (seg.kind === "thought") {
-                          // Skip empty finished phases (avoids "Thought for 0.0s").
+                          // Skip empty finished phases (avoids empty trigger rows).
+                          // messageSegments already compactMessageSegments — keep guard.
                           if (
                             !seg.text.trim() &&
                             !(m.streaming && lastSeg === seg)
                           ) {
                             return null;
                           }
-                          const thoughtIdx = segs
-                            .slice(0, si + 1)
-                            .filter((x) => x.kind === "thought").length;
                           const phaseStreaming =
                             !!m.streaming && lastSeg === seg;
-                          const multi = thoughtCount > 1;
-                          const label = multi
-                            ? tr("plan.phaseLabel", { n: String(thoughtIdx) })
-                            : tr("chat.thinking");
+                          // CodePilot-style labels: content summary / 思考中… /
+                          // 思考了 Ns — never "思考 1 / 思考 2 / 思考 3".
                           return (
                             <Thinking
                               key={`${m.id}-th-${si}`}
                               locale={locale}
                               thinking={phaseStreaming}
                               content={seg.text}
-                              streamingLabel={label}
-                              doneLabel={
-                                multi
-                                  ? tr("plan.phaseLabel", {
-                                      n: String(thoughtIdx),
-                                    })
-                                  : tr("chat.thoughtDone")
-                              }
+                              streamingLabel={tr("chat.thinking")}
+                              doneLabel={tr("chat.thoughtDone")}
                               thoughtForLabel={(n) =>
                                 tr("chat.thoughtFor", { n })
                               }
@@ -886,9 +914,21 @@ export function ConversationThread({
                   </div>
                 }
                 belowMessage={
-                  showLiveToolBelow && liveTool ? (
-                    <LiveToolText message={liveTool} locale={locale} />
-                  ) : null
+                  <>
+                    {showLiveToolBelow && liveTool ? (
+                      <LiveToolText message={liveTool} locale={locale} />
+                    ) : null}
+                    {!m.streaming &&
+                    activityAnchorAssistantId === m.id &&
+                    turnActivity.stepCount > 0 ? (
+                      <TurnActivityBlock
+                        activity={turnActivity}
+                        locale={locale}
+                        onOpenChanges={onOpenSessionChanges}
+                        onOpenModifiedPath={onOpenModifiedPath}
+                      />
+                    ) : null}
+                  </>
                 }
                 actions={
                   !m.streaming && m.content.trim() ? (
@@ -924,6 +964,18 @@ export function ConversationThread({
           {/* Tool before any assistant bubble exists for this turn. */}
           {liveTool && !activeAssistantId ? (
             <LiveToolText message={liveTool} locale={locale} />
+          ) : null}
+
+          {/* Tool-only turn: activity summary when no assistant anchor. */}
+          {!turnBusy &&
+          !activityAnchorAssistantId &&
+          turnActivity.stepCount > 0 ? (
+            <TurnActivityBlock
+              activity={turnActivity}
+              locale={locale}
+              onOpenChanges={onOpenSessionChanges}
+              onOpenModifiedPath={onOpenModifiedPath}
+            />
           ) : null}
 
           {showQuietThinking ? (

@@ -280,6 +280,27 @@ export function isToolStepMessage(m: ChatMessage): boolean {
   );
 }
 
+/** Failed / rejected tool_step that must stay visible in the transcript. */
+export function isFailedToolStepMessage(m: ChatMessage): boolean {
+  if (!isToolStepMessage(m)) return false;
+  if (m.isError) return true;
+  const status = (m.toolStatus || "").toLowerCase().trim();
+  if (
+    status === "failed" ||
+    status === "error" ||
+    status === "rejected" ||
+    status === "denied"
+  ) {
+    return true;
+  }
+  if (m.content?.startsWith("tool_step|")) {
+    const p = parseToolStepContent(m.content);
+    const s = (p?.status || "").toLowerCase();
+    return s === "failed" || s === "error" || s === "rejected";
+  }
+  return false;
+}
+
 /**
  * Latest tool in the current turn (after last user message).
  * Prefer a still-running tool; else the most recent tool row.
@@ -534,6 +555,33 @@ export function deriveFieldsFromSegments(segments: MessageSegment[]): {
  * Approximation: first thought phase(s) before body, remaining after body.
  * Live streaming uses applyStreamChunk which keeps true order in `segments`.
  */
+/**
+ * Compact a segment timeline for display / persistence hygiene:
+ * - drop empty thought/content pieces
+ * - merge adjacent same-kind segments (spurious "new" thought phases after
+ *   empty assistant ticks used to create back-to-back 思考 2 / 思考 3 rows)
+ */
+export function compactMessageSegments(
+  segments: MessageSegment[],
+): MessageSegment[] {
+  const out: MessageSegment[] = [];
+  for (const raw of segments) {
+    if (!raw.text.trim()) continue;
+    const last = out[out.length - 1];
+    if (last && last.kind === raw.kind) {
+      if (raw.kind === "thought") {
+        // Preserve a readable break between formerly split phases.
+        last.text = `${last.text.replace(/\s+$/, "")}\n\n${raw.text.replace(/^\s+/, "")}`;
+      } else {
+        last.text += raw.text;
+      }
+      continue;
+    }
+    out.push({ kind: raw.kind, text: raw.text });
+  }
+  return out;
+}
+
 export function buildSegmentsFromLegacy(
   content: string,
   thought?: string | null,
@@ -545,26 +593,24 @@ export function buildSegmentsFromLegacy(
     .map((p) => p.trim())
     .filter(Boolean);
   const body = content ?? "";
-  if (!phases.length) {
-    return body ? [{ kind: "content", text: body }] : [];
-  }
+  // Journal only stores joined thought + body — not true interleave order.
+  // Stacking every phase *before* the body avoids the classic reload bug where
+  // multi-phase markers rendered as "answer … then 思考 2 / 思考 3" at the end.
+  // Live `segments` still interleave thought ↔ content while streaming.
+  const segs: MessageSegment[] = [];
   if (phases.length === 1) {
-    const segs: MessageSegment[] = [{ kind: "thought", text: phases[0]! }];
-    if (body) segs.push({ kind: "content", text: body });
-    return segs;
+    segs.push({ kind: "thought", text: phases[0]! });
+  } else if (phases.length > 1) {
+    // One collapsible block on reload (phases already separated by blank lines).
+    segs.push({ kind: "thought", text: phases.join("\n\n") });
   }
-  // Multi-phase: first phase pre-body, rest after body (host convention).
-  const segs: MessageSegment[] = [{ kind: "thought", text: phases[0]! }];
   if (body) segs.push({ kind: "content", text: body });
-  for (let i = 1; i < phases.length; i++) {
-    segs.push({ kind: "thought", text: phases[i]! });
-  }
   return segs;
 }
 
 /** Prefer live segments; otherwise reconstruct from legacy fields. */
 export function messageSegments(m: ChatMessage): MessageSegment[] {
-  if (m.segments?.length) return m.segments;
+  if (m.segments?.length) return compactMessageSegments(m.segments);
   return buildSegmentsFromLegacy(m.content, m.thought, m.thoughtPhases);
 }
 
@@ -576,16 +622,14 @@ function ensureSegments(prev: ChatMessage): MessageSegment[] {
 function appendThoughtToSegments(
   segs: MessageSegment[],
   text: string,
-  phaseHint: string,
+  _phaseHint: string,
 ): MessageSegment[] {
   if (!text) return segs;
   const last = segs[segs.length - 1];
-  // New phase, or resume after body → open a new thought block.
-  if (
-    phaseHint === "new" ||
-    !last ||
-    last.kind !== "thought"
-  ) {
+  // New thought block only after body (or at start). Never open a second
+  // adjacent thought — host `thoughtPhase: "new"` after empty assistant ticks
+  // used to produce trailing 思考 2 / 思考 3 rows under the answer.
+  if (!last || last.kind !== "thought") {
     segs.push({ kind: "thought", text });
   } else {
     last.text += text;
@@ -1090,10 +1134,12 @@ export function applyStreamChunk(
     const idx = findCurrentTurnStreamingAssistant(messages, chunk.messageId);
     const phaseHint = chunk.thoughtPhase || "open";
     const appendThought = (prev: ChatMessage): ChatMessage => {
-      const segs = appendThoughtToSegments(
-        ensureSegments(prev),
-        chunk.text,
-        phaseHint,
+      const segs = compactMessageSegments(
+        appendThoughtToSegments(
+          ensureSegments(prev),
+          chunk.text,
+          phaseHint,
+        ),
       );
       const derived = deriveFieldsFromSegments(segs);
       return {
@@ -1164,7 +1210,9 @@ export function applyStreamChunk(
 
   const next = messages.slice();
   const prev = next[idx]!;
-  const segs = appendContentToSegments(ensureSegments(prev), chunk.text || "");
+  const segs = compactMessageSegments(
+    appendContentToSegments(ensureSegments(prev), chunk.text || ""),
+  );
   const derived = deriveFieldsFromSegments(segs);
   next[idx] = {
     ...prev,

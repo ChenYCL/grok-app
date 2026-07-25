@@ -66,23 +66,29 @@ Host listens for agent compact signals (`session/update` kinds such as `tokens_u
 
 App history still shows full prior bubbles; the banner signals that **agent context** was compressed.
 
-## Agent activity visibility (Codex-style)
+## Agent activity visibility (Codex-style + honesty)
 
-Presentation rules (non-intrusive):
+Presentation rules (non-intrusive, audited 2026-07):
 
-1. Historical `tool_step` rows stay in the journal but are **not** stacked in the transcript.
-2. Live UI is a **single plain text line** (e.g. `Listing files in private persona folder`) under the current assistant bubble (or at the live edge if no assistant yet).
-3. Only the **running** tool is shown (`pickRunningTurnTool`); successive tools **replace** the line; when the tool completes (content can resume) the line **disappears**; the next tool call shows again.
-4. Quiet “thinking” only when busy with no running tool and no streaming assistant.
+1. **Live tools**: only the **running** tool is shown as a **single plain text line** under the current assistant (or at the live edge). Successive tools **replace** the line; when the tool completes the line **disappears**.
+2. **Hide success history**: historical successful `tool_step` rows stay in the journal but are **not** stacked in the transcript.
+3. **Show failures**: failed / rejected `tool_step` rows **remain visible** in the main conversation (red row).
+4. **Turn summary**: after a multi-tool turn, a collapsible **「本回合活动」** block appears under the last assistant (default collapsed; **auto-expands when any tool failed**). ≥3 consecutive read/search tools group as “Gathering context”. Shared derivation with the Tasks side panel (`turnActivity` / `sessionTasks`).
+5. **Thinking labels**: collapse titles use content gist (`**bold**` / `# heading` / first line) or duration — **never** 「思考 1 / 思考 2」 numbering. Adjacent thought segments merge; empty assistant ticks do not open a new phase.
+6. **End of turn**: stop / stall / agent exit / permission deny / error surface as one **EndOfTurnChip** family (no duplicate banners). User Stop arms a **2s latch** that force-unlocks the composer if Host stays busy.
+7. Quiet “thinking” only when busy with no running tool and no streaming assistant.
 
 | Piece | Behavior |
 |-------|----------|
-| Live tools | Host emits `session://tool`; UI upserts `tool_step` messages in state |
-| Visible UI | `LiveToolText` — one muted title line, no card / no “tool” chrome |
-| Cancel / abort | `turn_cancelled` marker + toast |
-| Session UUID hint | Host injects a narrow search hint when user asks to resume a session by UUID |
+| Live tools | Host emits `session://tool`; UI upserts `tool_step`; only running line shown |
+| Failed tools | `FailedToolRow` in transcript |
+| Turn activity | `TurnActivityBlock` from `buildTurnActivity` |
+| Tasks panel | Same tool derivation (`collectSessionTasks` / turn activity) |
+| Cancel / stop | `turn_end` / `turn_cancelled` → `EndOfTurnChip` |
+| Multi-session busy | `sessionLiveStore` projects streaming / permission for sidebar |
+| Session UUID hint | Host injects a narrow search hint when user asks to resume by UUID |
 
-Docs peer: Codex-style mid-stream tool title — never multi-row stack, never heavy tool card.
+Docs peer: Codex-style mid-stream tool title — never multi-row stack of successes; failures + turn summary stay honest.
 
 ## Acceptance
 

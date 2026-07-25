@@ -56,7 +56,10 @@ export type SettingsTabId =
   | "cli"
   | "connection"
   | "pool"
-  | "tools";
+  | "tools"
+  // remote control (section id stays remote_im)
+  | "im"
+  | "mirror";
 
 export type SettingsNavGroup = "personal" | "system";
 
@@ -177,7 +180,11 @@ export const SETTINGS_NAV: readonly SettingsNavDef[] = [
     icon: "remote_im",
     labelKey: "settings.nav.remoteIm",
     group: "system",
-    tabs: [],
+    defaultTab: "im",
+    tabs: [
+      { id: "im", labelKey: "settings.tab.remoteIm" },
+      { id: "mirror", labelKey: "settings.tab.phoneMirror" },
+    ],
   },
   {
     id: "shortcuts",
@@ -576,13 +583,48 @@ export const SETTINGS_ENTRIES: readonly SettingsEntry[] = [
     labelKey: "managedSetup.title",
     keywords: ["managed setup", "grok setup"],
   },
-  // ── remote_im ──
+  // ── remote_im (Remote control) ──
   {
     id: "remote_im.root",
     section: "remote_im",
+    tab: "im",
     anchorId: "settings-anchor-remote-im",
-    labelKey: "settings.nav.remoteIm",
-    keywords: ["remote im", "feishu", "lark", "telegram", "bridge", "im"],
+    labelKey: "settings.tab.remoteIm",
+    descKeys: ["settings.nav.remoteIm", "settings.remoteIm.bridgeOverview"],
+    keywords: [
+      "remote control",
+      "remote im",
+      "feishu",
+      "lark",
+      "telegram",
+      "bridge",
+      "im",
+      "远程控制",
+      "远程 IM",
+    ],
+  },
+  {
+    id: "remote_im.mirror",
+    section: "remote_im",
+    tab: "mirror",
+    anchorId: "settings-anchor-phone-mirror",
+    labelKey: "settings.tab.phoneMirror",
+    descKeys: [
+      "mirror.connect",
+      "mirror.connectTitle",
+      "mirror.connectHint",
+      "settings.nav.remoteIm",
+    ],
+    keywords: [
+      "phone mirror",
+      "connect phone",
+      "connect device",
+      "qr",
+      "cloudflared",
+      "手机镜像",
+      "连接手机",
+      "连接设备",
+    ],
   },
   // ── shortcuts ──
   {

@@ -18,6 +18,8 @@ import {
   prepareWallpaperFromFile,
   saveSkin,
   saveWallpaper,
+  saveWallpaperAdjust,
+  saveWallpaperFocus,
   saveWallpaperScrim,
   SKIN_STORAGE_KEY,
   skinPreferredTheme,
@@ -213,6 +215,74 @@ describe("wallpaper storage", () => {
     expect(attrs.get("data-wallpaper")).toBe("1");
     applyWallpaperFlag(false, el);
     expect(attrs.has("data-wallpaper")).toBe(false);
+  });
+
+  it("saveWallpaperFocus updates meta only (no blob rewrite)", async () => {
+    const meta = memoryStorage();
+    const blobs = memoryWallpaperBlobStorage();
+    const blob = new Blob([new Uint8Array([1, 2, 3])], { type: "image/jpeg" });
+    await saveWallpaper(
+      {
+        kind: "image",
+        mime: "image/jpeg",
+        name: "f.jpg",
+        createdAt: 9,
+        blob,
+      },
+      { blobs, meta },
+    );
+    const beforeBlob = blobs._blob;
+    const saved = saveWallpaperFocus(
+      { cx: 0.2, cy: 0.8, zoom: 2 },
+      { meta },
+    );
+    expect(saved?.focus).toEqual({ cx: 0.2, cy: 0.8, zoom: 2 });
+    expect(loadWallpaperMeta(meta)?.focus).toEqual({
+      cx: 0.2,
+      cy: 0.8,
+      zoom: 2,
+    });
+    // Blob pointer unchanged — focus edits must not touch IDB.
+    expect(blobs._blob).toBe(beforeBlob);
+
+    // Default focus is omitted from meta.
+    saveWallpaperFocus({ cx: 0.5, cy: 0.5, zoom: 1 }, { meta });
+    expect(loadWallpaperMeta(meta)?.focus).toBeUndefined();
+  });
+
+  it("saveWallpaperAdjust stores video clip without rewriting blob", async () => {
+    const meta = memoryStorage();
+    const blobs = memoryWallpaperBlobStorage();
+    const blob = new Blob([new Uint8Array([9, 9, 9])], { type: "video/mp4" });
+    await saveWallpaper(
+      {
+        kind: "video",
+        mime: "video/mp4",
+        name: "v.mp4",
+        createdAt: 1,
+        blob,
+      },
+      { blobs, meta },
+    );
+    const beforeBlob = blobs._blob;
+    const saved = saveWallpaperAdjust(
+      {
+        focus: { cx: 0.5, cy: 0.5, zoom: 1 },
+        clip: { start: 1.2, end: 5.8 },
+        duration: 12,
+      },
+      { meta },
+    );
+    expect(saved?.clip).toEqual({ start: 1.2, end: 5.8 });
+    expect(loadWallpaperMeta(meta)?.clip).toEqual({ start: 1.2, end: 5.8 });
+    expect(blobs._blob).toBe(beforeBlob);
+
+    // Full-span clip is dropped.
+    saveWallpaperAdjust(
+      { clip: { start: 0, end: 12 }, duration: 12 },
+      { meta },
+    );
+    expect(loadWallpaperMeta(meta)?.clip).toBeUndefined();
   });
 });
 

@@ -4241,10 +4241,36 @@ html[data-theme="light"] .ui-check.is-mixed .ui-check__box {
   border: 1px solid var(--border-subtle);
 }
 
+/* Appearance: skin (left) + wallpaper (right) */
+.settings-appearance-duo {
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr);
+  gap: 14px;
+  align-items: stretch;
+  width: 100%;
+}
+
+.settings-appearance-duo > .settings-card {
+  margin-top: 0;
+  min-width: 0;
+  height: 100%;
+}
+
+/* Stacked cards after the theme row still need top gap */
+.settings-page__main > .settings-card + .settings-appearance-duo {
+  margin-top: 14px;
+}
+
+@media (max-width: 720px) {
+  .settings-appearance-duo {
+    grid-template-columns: 1fr;
+  }
+}
+
 /* Color skin packs (Appearance) — Dream Skin–style swatch grid */
 .settings-skin-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(104px, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 8px;
   width: 100%;
   margin-top: 4px;
@@ -4303,41 +4329,376 @@ html[data-theme="light"] .ui-check.is-mixed .ui-check__box {
   margin-top: 4px;
 }
 
-.settings-wallpaper__preview {
+.settings-wallpaper__preview-wrap {
   position: relative;
   width: 100%;
-  height: 120px;
+}
+
+/* Window-shaped preview (~desktop frame). Empty state click → file picker. */
+.settings-wallpaper__preview {
+  position: relative;
+  display: block;
+  width: 100%;
+  aspect-ratio: 16 / 10;
+  min-height: 160px;
+  padding: 0;
+  margin: 0;
   border-radius: var(--radius-md);
-  border: 1px solid var(--border-subtle);
+  border: 1px dashed color-mix(in srgb, var(--border-strong) 70%, transparent);
   background:
     linear-gradient(135deg, var(--bg-hover), var(--bg-elevated));
   overflow: hidden;
+  cursor: pointer;
+  color: inherit;
+  font: inherit;
+  transition:
+    border-color var(--motion-fast) ease,
+    box-shadow var(--motion-fast) ease,
+    background var(--motion-fast) ease;
 }
 
-.settings-wallpaper__preview img,
-.settings-wallpaper__preview video {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
+button.settings-wallpaper__preview:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--accent) 55%, var(--border-subtle));
+  background: color-mix(in srgb, var(--bg-active) 80%, var(--bg-elevated));
+}
+
+.settings-wallpaper__preview:focus-visible {
+  outline: 2px solid var(--border-focus);
+  outline-offset: 2px;
+}
+
+.settings-wallpaper__preview--set {
+  border-style: solid;
+  border-color: var(--border-subtle);
+  cursor: default;
+}
+
+.settings-wallpaper__preview--busy {
+  cursor: progress;
+  opacity: 0.85;
+}
+
+.settings-wallpaper__media {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  background: color-mix(in srgb, var(--bg-elevated) 70%, #000 30%);
+}
+
+.settings-wallpaper__media-el {
   display: block;
+  pointer-events: none;
+  transition: opacity 120ms ease-out;
 }
 
 .settings-wallpaper__preview-empty {
   display: flex;
   align-items: center;
   justify-content: center;
+  width: 100%;
   height: 100%;
-  padding: 12px;
+  padding: 16px 14px;
   color: var(--text-tertiary);
-  font-size: 12px;
+  font-size: 12.5px;
+  line-height: 1.4;
   text-align: center;
 }
 
-.settings-wallpaper__actions {
+.settings-wallpaper__busy {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: color-mix(in srgb, var(--bg-elevated) 55%, transparent);
+  color: var(--text-secondary);
+  font-size: 12.5px;
+  font-weight: 560;
+}
+
+/* Hover actions: replace + focus crop (shown only when media is set). */
+.settings-wallpaper__hover {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
   align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 28px 12px 12px;
+  background: color-mix(in srgb, var(--bg-elevated) 42%, transparent);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--motion-fast) ease;
+}
+
+.settings-wallpaper__preview--set:hover .settings-wallpaper__hover,
+.settings-wallpaper__preview--set:focus-within .settings-wallpaper__hover {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+/* Touch / no-hover: keep actions reachable without hover. */
+@media (hover: none) {
+  .settings-wallpaper__preview--set .settings-wallpaper__hover {
+    opacity: 1;
+    pointer-events: auto;
+    background: color-mix(in srgb, var(--bg-elevated) 28%, transparent);
+  }
+}
+
+.settings-wallpaper__hover .btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  box-shadow: 0 2px 10px color-mix(in srgb, #000 28%, transparent);
+}
+
+.settings-wallpaper__clear {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 3;
+  background: color-mix(in srgb, var(--bg-elevated) 88%, transparent) !important;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  box-shadow: 0 1px 4px color-mix(in srgb, #000 25%, transparent);
+}
+
+/* ── Wallpaper focus editor modal ── */
+.modal.wallpaper-focus-modal {
+  width: min(920px, calc(100vw - 32px));
+  max-height: min(90vh, 860px);
+}
+
+.wallpaper-focus-modal__body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-height: 0;
+}
+
+.wallpaper-focus-modal__hint {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--text-tertiary);
+}
+
+.wallpaper-focus-modal__footer-spacer {
+  flex: 1;
+  min-width: 8px;
+}
+
+.wallpaper-focus-stage {
+  position: relative;
+  width: 100%;
+  height: min(52vh, 440px);
+  min-height: 220px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-subtle);
+  background: color-mix(in srgb, #000 55%, var(--bg-elevated));
+  overflow: hidden;
+  touch-action: none;
+  user-select: none;
+}
+
+.wallpaper-focus-stage__media {
+  display: block;
+  max-width: none;
+  /* Video: keep decode cheap — no filters / blend modes on the element. */
+  pointer-events: none;
+}
+
+.wallpaper-focus-frame {
+  position: absolute;
+  left: 0;
+  top: 0;
+  box-sizing: border-box;
+  /* Dim outside the crop with a huge box-shadow (no extra video layer). */
+  box-shadow: 0 0 0 9999px color-mix(in srgb, #000 52%, transparent);
+  border: 2px solid color-mix(in srgb, var(--accent) 85%, #fff);
+  border-radius: 3px;
+  cursor: grab;
+  touch-action: none;
+  will-change: transform, width, height;
+}
+
+.wallpaper-focus-frame:active {
+  cursor: grabbing;
+}
+
+.wallpaper-focus-frame__edge {
+  position: absolute;
+  inset: 6px;
+  border: 1px dashed color-mix(in srgb, #fff 55%, transparent);
+  border-radius: 1px;
+  pointer-events: none;
+}
+
+/* Video clip dual-handle timeline */
+.wallpaper-clip {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.wallpaper-clip__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.wallpaper-clip__label {
+  font-size: 12.5px;
+  font-weight: 560;
+  color: var(--text-secondary);
+}
+
+.wallpaper-clip__times {
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-tertiary);
+}
+
+.wallpaper-clip__dur {
+  color: var(--text-secondary);
+}
+
+.wallpaper-clip__track {
+  position: relative;
+  height: 28px;
+  touch-action: none;
+  user-select: none;
+  cursor: default;
+}
+
+.wallpaper-clip__rail {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  height: 6px;
+  margin-top: -3px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--border-strong) 55%, var(--bg-hover));
+}
+
+.wallpaper-clip__range {
+  position: absolute;
+  top: 50%;
+  height: 10px;
+  margin-top: -5px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent) 55%, transparent);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 40%, transparent);
+  cursor: grab;
+  touch-action: none;
+}
+
+.wallpaper-clip__range:active {
+  cursor: grabbing;
+}
+
+.wallpaper-clip__handle {
+  position: absolute;
+  top: 50%;
+  width: 14px;
+  height: 22px;
+  margin-top: -11px;
+  margin-left: -7px;
+  padding: 0;
+  border: 2px solid var(--bg-elevated);
+  border-radius: 4px;
+  background: var(--accent);
+  box-shadow: 0 1px 4px color-mix(in srgb, #000 30%, transparent);
+  cursor: ew-resize;
+  touch-action: none;
+  z-index: 1;
+}
+
+.wallpaper-clip__handle:focus-visible {
+  outline: 2px solid var(--border-focus);
+  outline-offset: 2px;
+}
+
+.wallpaper-clip__handle--start {
+  border-radius: 4px 2px 2px 4px;
+}
+
+.wallpaper-clip__handle--end {
+  border-radius: 2px 4px 4px 2px;
+}
+
+.wallpaper-focus-zoom {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 10px 12px;
+}
+
+.wallpaper-focus-zoom__label {
+  font-size: 12.5px;
+  font-weight: 560;
+  color: var(--text-secondary);
+}
+
+.wallpaper-focus-zoom__value {
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-tertiary);
+  min-width: 2.8em;
+  text-align: right;
+}
+
+.wallpaper-focus-zoom__range {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 6px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--border-strong) 55%, var(--bg-hover));
+  outline: none;
+  cursor: pointer;
+}
+
+.wallpaper-focus-zoom__range::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--accent);
+  border: 2px solid var(--bg-elevated);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 40%, transparent);
+  cursor: pointer;
+}
+
+.wallpaper-focus-zoom__range::-moz-range-thumb {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--accent);
+  border: 2px solid var(--bg-elevated);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 40%, transparent);
+  cursor: pointer;
+}
+
+.wallpaper-focus-zoom__range:focus-visible {
+  outline: 2px solid var(--border-focus);
+  outline-offset: 3px;
+}
+
+/* Footer actions share one row with reset on the left */
+.wallpaper-focus-modal .modal-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
 }
 
 .settings-wallpaper__error {
@@ -13442,6 +13803,12 @@ div.composer__input:empty::before {
   gap: 12px;
 }
 
+/* Inline phone-mirror body inside a normal .settings-card */
+.mirror-connect--inline {
+  padding: 14px 16px 16px;
+  max-width: none;
+}
+
 .mirror-connect__hint {
   margin: 0;
   font-size: 13px;
@@ -13618,9 +13985,14 @@ div.composer__input:empty::before {
 .mirror-connect__footer {
   display: flex;
   gap: 8px;
-  justify-content: flex-end;
+  justify-content: flex-start;
   flex-wrap: wrap;
   width: 100%;
+  margin-top: 4px;
+}
+
+.mirror-connect--inline .mirror-connect__footer {
+  padding-top: 4px;
 }
 
 /* ── Phone mirror layout (DESIGN §4.3 / TASK-mobile-redesign) ───────────── */
@@ -14707,62 +15079,35 @@ div.composer__input:empty::before {
   margin-top: 0.5rem;
 }
 
-/* ── Remote IM (settings secondary layout) ─────────────────────────────── */
-/* Independent vertical scroll in sidebar + panel; page itself does not scroll. */
+/* ── Remote control · IM (card-internal dual pane; page chrome is standard) ─ */
+/* Lives inside .settings-card like every other settings section. Outer page
+ * keeps normal .settings-page__main scroll — do NOT hijack content/main. */
 
-.settings-page__content:has(.settings-remote-im-shell) {
-  overflow: hidden;
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
-}
-
-.settings-page__main--remote-im {
-  max-width: none !important;
-  width: 100%;
-  margin: 0;
-  padding: 8px 12px 12px;
-  flex: 1;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-  box-sizing: border-box;
-}
-
-.settings-page__main--remote-im > .settings-page__title {
-  flex-shrink: 0;
-  margin: 0 0 8px;
-  font-size: 20px;
-}
-
-.settings-remote-im-shell {
-  flex: 1;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
+.settings-card--rim {
+  padding: 0;
+  /* Dual pane needs a usable height; page still scrolls as a whole. */
+  min-height: min(560px, 70vh);
 }
 
 .rim-layout {
   display: flex;
   flex-direction: row;
   align-items: stretch;
-  flex: 1;
-  min-height: 0;
+  min-height: min(560px, 70vh);
+  /* Border/radius come from parent .settings-card */
+  border: none;
+  border-radius: 0;
+  background: transparent;
   overflow: hidden;
-  border: 1px solid var(--border-subtle);
-  border-radius: 14px;
-  background: var(--bg-card);
 }
 
 .rim-sidebar {
   width: 220px;
-  min-width: 200px;
+  min-width: 180px;
   max-width: 240px;
   flex-shrink: 0;
   border-right: 1px solid var(--border-subtle);
-  background: var(--bg-sidebar, var(--bg-card));
+  background: var(--bg-sidebar, color-mix(in srgb, var(--bg-card) 92%, var(--bg-hover)));
   overflow-x: hidden;
   overflow-y: auto;
   overscroll-behavior: contain;
@@ -14771,7 +15116,7 @@ div.composer__input:empty::before {
   flex-direction: column;
   gap: 2px;
   box-sizing: border-box;
-  min-height: 0;
+  max-height: min(640px, 72vh);
 }
 
 .rim-sidebar__group {
@@ -14879,13 +15224,13 @@ div.composer__input:empty::before {
 .rim-panel {
   flex: 1;
   min-width: 0;
-  min-height: 0;
   overflow-x: hidden;
   overflow-y: auto;
   overscroll-behavior: contain;
-  padding: 16px 18px 28px;
-  background: var(--bg-main);
+  padding: 16px 18px 24px;
+  background: var(--bg-card);
   box-sizing: border-box;
+  max-height: min(640px, 72vh);
 }
 
 .rim-panel__header {
@@ -15350,6 +15695,10 @@ html[data-theme="light"] .rim-sidebar {
 }
 
 @media (max-width: 780px) {
+  .settings-card--rim,
+  .rim-layout {
+    min-height: 0;
+  }
   .rim-layout {
     flex-direction: column;
   }
@@ -15359,6 +15708,9 @@ html[data-theme="light"] .rim-sidebar {
     border-right: none;
     border-bottom: 1px solid var(--border-subtle);
     max-height: 36vh;
+  }
+  .rim-panel {
+    max-height: none;
   }
 }
 

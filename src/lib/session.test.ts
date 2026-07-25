@@ -5,12 +5,16 @@ import {
   applyStreamChunk,
   applyToolEvent,
   applyTurnError,
+  buildSegmentsFromLegacy,
   canSend,
   canStop,
   canType,
   clearPriorTurnStreaming,
+  compactMessageSegments,
   errorCopy,
   formatTurnErrorBody,
+  isFailedToolStepMessage,
+  messageSegments,
   splitThoughtPhases,
   isSessionBusy,
   isSessionLiveStreaming,
@@ -243,7 +247,29 @@ describe("session projection", () => {
     expect(splitThoughtPhases("only")).toEqual(["only"]);
   });
 
-  it("thought phases stay separate on new phase hint", () => {
+  it("isFailedToolStepMessage detects failed tools only", () => {
+    expect(
+      isFailedToolStepMessage({
+        id: "tool-a",
+        role: "tool",
+        content: "Read x",
+        marker: "tool_step",
+        toolStatus: "completed",
+      }),
+    ).toBe(false);
+    expect(
+      isFailedToolStepMessage({
+        id: "tool-b",
+        role: "tool",
+        content: "Bash",
+        marker: "tool_step",
+        toolStatus: "failed",
+        isError: true,
+      }),
+    ).toBe(true);
+  });
+
+  it("spurious new-phase without body merges into one thought (no 思考 2)", () => {
     let messages: ChatMessage[] = [
       { id: "u1", role: "user", content: "hi" },
       {
@@ -264,10 +290,58 @@ describe("session projection", () => {
       kind: "thought",
       thoughtPhase: "new",
     });
-    expect(messages[1]!.thoughtPhases).toEqual(["first", "second"]);
+    // Adjacent thoughts must not become multiple UI rows.
     expect(messages[1]!.segments).toEqual([
-      { kind: "thought", text: "first" },
-      { kind: "thought", text: "second" },
+      { kind: "thought", text: "firstsecond" },
+    ]);
+    expect(messages[1]!.thoughtPhases).toEqual(["firstsecond"]);
+  });
+
+  it("buildSegmentsFromLegacy stacks multi-phase thought before body", () => {
+    const segs = buildSegmentsFromLegacy(
+      "answer body",
+      "a\n\n⟪phase⟫\n\nb\n\n⟪phase⟫\n\nc",
+      undefined,
+    );
+    // One thought block + body — never "body then 思考 2 / 3".
+    expect(segs).toEqual([
+      { kind: "thought", text: "a\n\nb\n\nc" },
+      { kind: "content", text: "answer body" },
+    ]);
+  });
+
+  it("compactMessageSegments merges adjacent thoughts", () => {
+    expect(
+      compactMessageSegments([
+        { kind: "thought", text: "a" },
+        { kind: "thought", text: "b" },
+        { kind: "content", text: "hi" },
+        { kind: "thought", text: "c" },
+        { kind: "thought", text: "" },
+      ]),
+    ).toEqual([
+      { kind: "thought", text: "a\n\nb" },
+      { kind: "content", text: "hi" },
+      { kind: "thought", text: "c" },
+    ]);
+  });
+
+  it("messageSegments compacts live multi thought rows", () => {
+    const segs = messageSegments({
+      id: "a1",
+      role: "assistant",
+      content: "done",
+      segments: [
+        { kind: "thought", text: "p1" },
+        { kind: "thought", text: "p2" },
+        { kind: "content", text: "done" },
+        { kind: "thought", text: "p3" },
+      ],
+    });
+    expect(segs).toEqual([
+      { kind: "thought", text: "p1\n\np2" },
+      { kind: "content", text: "done" },
+      { kind: "thought", text: "p3" },
     ]);
   });
 

@@ -28,6 +28,7 @@ import {
   IconDeviceDesktop as TbDeviceDesktop,
   IconDeviceMobile as TbDeviceMobile,
   IconDots as TbDots,
+  IconCrop as TbCrop,
   IconEdit as TbEdit,
   IconFileDiff as TbFileDiff,
   IconFileText as TbFileText,
@@ -197,6 +198,8 @@ export const IconSearch = wrap(TbSearch);
 /** New chat / compose — Tabler Edit (pencil writing on paper). */
 export const IconNewChat = wrap(TbEdit);
 export const IconEdit = wrap(TbEdit);
+/** Wallpaper focus / crop frame editor. */
+export const IconCrop = wrap(TbCrop);
 export const IconNotes = wrap(TbNotes);
 export const IconImagine = wrap(TbWand);
 export const IconAutomations = wrap(TbBolt);

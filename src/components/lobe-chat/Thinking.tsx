@@ -1,10 +1,14 @@
 /**
- * Lobe Thinking — Accordion + shinyText (1:1 of lobe-chat Thinking).
- * Auto-open while streaming; when done, respect user expand preference
- * (default: collapse so the answer stays the focus).
+ * Lobe Thinking — collapsible reasoning row.
+ *
+ * Label model (CodePilot / Opencode):
+ * - Prefer content summary (**bold** / # heading / first line)
+ * - Never show dumb counters like "思考 1 / 思考 2"
+ * - Streaming without summary → streamingLabel ("思考中…")
+ * - Done without summary → duration ("思考了 Ns") or doneLabel
  */
 
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { IconChevronDown } from "@/components/icons";
 import { cn } from "@/lib/utils";
 import { MarkdownChat } from "./MarkdownChat";
@@ -15,6 +19,7 @@ import {
   thinkingDefaultOpenWhenDone,
   type ThinkingExpandPref,
 } from "@/lib/thinkingPref";
+import { extractThinkingSummary } from "@/lib/thinkingSummary";
 
 export function Thinking({
   content,
@@ -45,7 +50,9 @@ export function Thinking({
     thinking ? true : thinkingDefaultOpenWhenDone(pref),
   );
   const startRef = useRef<number | null>(null);
-  const [localDuration, setLocalDuration] = useState<number | undefined>(durationMs);
+  const [localDuration, setLocalDuration] = useState<number | undefined>(
+    durationMs,
+  );
   const userToggled = useRef(false);
 
   useEffect(() => {
@@ -72,6 +79,20 @@ export function Thinking({
     localDuration != null && localDuration >= 100
       ? thoughtForLabel((localDuration / 1000).toFixed(1))
       : doneLabel;
+
+  const textContent = typeof content === "string" ? content : "";
+  const summary = useMemo(
+    () => extractThinkingSummary(textContent),
+    [textContent],
+  );
+
+  /**
+   * CodePilot ThinkingRow: summary (or Thinking… / Thought) is the trigger.
+   * Duration is a fine fallback when we have no extractable gist.
+   */
+  const triggerLabel = thinking
+    ? summary || streamingLabel
+    : summary || durationText;
 
   const hasBody =
     (typeof content === "string" && content.trim().length > 0) ||
@@ -105,15 +126,20 @@ export function Thinking({
             thinking && "lobe-chat-thinking__dot--live",
           )}
         />
-        {thinking ? (
-          <span style={{ color: "var(--lobe-color-text-secondary)" }}>
-            {streamingLabel}
-          </span>
-        ) : (
-          <span style={{ color: "var(--lobe-color-text-secondary)" }}>
-            {durationText}
-          </span>
-        )}
+        <span
+          className={cn(
+            "lobe-chat-thinking__label",
+            thinking && "lobe-chat-thinking__label--live",
+          )}
+          style={{ color: "var(--lobe-color-text-secondary)" }}
+          title={
+            summary && !thinking && durationText !== doneLabel
+              ? durationText
+              : undefined
+          }
+        >
+          {triggerLabel}
+        </span>
         {hasBody ? (
           <IconChevronDown
             size={14}

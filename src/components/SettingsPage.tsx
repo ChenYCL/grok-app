@@ -20,7 +20,7 @@ import {
   IconCheck,
   IconChat,
   IconChevronRight,
-
+  IconCrop,
   IconDoctor,
   IconInfo,
   IconKeyboard,
@@ -40,14 +40,22 @@ import {
 } from "@/lib/shortcuts";
 import type { Theme, ThemePreference } from "@/lib/theme";
 import {
+  DEFAULT_WALLPAPER_FOCUS,
   THEME_SKINS,
   WALLPAPER_ACCEPT,
   WallpaperPrepareError,
   prepareWallpaperFromFile,
   type ThemeSkinId,
+  type WallpaperClip,
+  type WallpaperFocus,
   type WallpaperKind,
   type WallpaperRecord,
 } from "@/lib/themeSkin";
+import {
+  WallpaperFocusEditor,
+  type WallpaperFocusApplyResult,
+} from "@/components/WallpaperFocusEditor";
+import { WallpaperMediaLayer } from "@/components/WallpaperMediaLayer";
 import type {
   ComposerPrefsScope,
   ModelOption,
@@ -67,6 +75,7 @@ import { PermissionRulesPanel } from "@/components/PermissionRulesPanel";
 import { ManagedSetupPanel } from "@/components/ManagedSetupPanel";
 import { GlassModal } from "@/components/GlassModal";
 import { RemoteImLayout } from "@/components/RemoteImLayout";
+import { MirrorConnectPanel } from "@/components/MirrorConnectPanel";
 import {
   createT,
   resolveLocale,
@@ -130,7 +139,17 @@ export interface SettingsPageProps {
   wallpaperUrl?: string | null;
   /** Kind of the current wallpaper, to pick <video> vs <img> in the preview. */
   wallpaperKind?: WallpaperKind | null;
+  /** Pan/zoom focus for the wallpaper (window-aspect crop). */
+  wallpaperFocus?: WallpaperFocus | null;
+  /** Video in/out clip (seconds). */
+  wallpaperClip?: WallpaperClip | null;
+  /** Intrinsic media size from meta (avoids video preview flash). */
+  wallpaperMediaSize?: { w: number; h: number } | null;
   onWallpaper?: (record: WallpaperRecord | null) => void | Promise<void>;
+  /** Save focus crop + optional video clip (no blob rewrite). */
+  onWallpaperAdjust?: (result: WallpaperFocusApplyResult) => void;
+  /** Backfill intrinsic size once decoded. */
+  onWallpaperMediaSize?: (size: { w: number; h: number }) => void;
   /** Wallpaper scrim strength 0–100 (only the dimming overlay; not chrome). */
   wallpaperScrim?: number;
   onWallpaperScrim?: (value: number) => void;
@@ -494,9 +513,14 @@ export function SettingsPage({
   onSkin,
   wallpaperUrl = null,
   wallpaperKind = null,
+  wallpaperFocus = null,
+  wallpaperClip = null,
+  wallpaperMediaSize = null,
   wallpaperScrim = 100,
   onWallpaperScrim,
   onWallpaper,
+  onWallpaperAdjust,
+  onWallpaperMediaSize,
   sessionDataMode,
   onSessionDataMode,
   onCliSessionsImported,
@@ -582,6 +606,13 @@ export function SettingsPage({
   const [clearMemoryOpen, setClearMemoryOpen] = useState(false);
   const [clearMemoryBusy, setClearMemoryBusy] = useState(false);
   const [settingsToast, setSettingsToast] = useState<string | null>(null);
+  /** Phone-mirror stop confirm (settings → remote control → mirror tab). */
+  const [mirrorStopConfirm, setMirrorStopConfirm] = useState<{
+    title: string;
+    message: string;
+    confirmLabel: string;
+    onConfirm: () => void;
+  } | null>(null);
   /** Selected archived session ids (settings → archived multi-select). */
   const [archivedSelected, setArchivedSelected] = useState<Set<string>>(
     () => new Set(),
@@ -592,6 +623,7 @@ export function SettingsPage({
   const wallpaperInputRef = useRef<HTMLInputElement>(null);
   const [wallpaperBusy, setWallpaperBusy] = useState(false);
   const [wallpaperError, setWallpaperError] = useState<string | null>(null);
+  const [wallpaperFocusOpen, setWallpaperFocusOpen] = useState(false);
   const marqueeRef = useRef<{
     active: boolean;
     dragging: boolean;
@@ -1165,12 +1197,7 @@ export function SettingsPage({
           <h1 className="settings-page__phone-title">{title}</h1>
         </div>
       ) : null}
-      <main
-        className={
-          "settings-page__main" +
-          (section === "remote_im" ? " settings-page__main--remote-im" : "")
-        }
-      >
+      <main className="settings-page__main">
         {!phoneDetail ? (
           <h1 className="settings-page__title">{title}</h1>
         ) : null}
@@ -1733,198 +1760,259 @@ export function SettingsPage({
                 </div>
               </div>
             </div>
-            {onSkin ? (
-              <div
-                className={"settings-card" + rowHighlight("settings-anchor-skin")}
-                id="settings-anchor-skin"
-              >
-                <div className="settings-row settings-row--stack">
-                  <div className="settings-row__text">
-                    <div className="settings-row__label">
-                      {t("settings.skin")}
-                    </div>
-                    <div className="settings-row__desc">
-                      {t("settings.skinDesc")}
-                    </div>
-                  </div>
+            {onSkin || onWallpaper ? (
+              <div className="settings-appearance-duo">
+                {onSkin ? (
                   <div
-                    className="settings-skin-grid"
-                    role="listbox"
-                    aria-label={t("settings.skin")}
+                    className={
+                      "settings-card settings-card--appearance-col" +
+                      rowHighlight("settings-anchor-skin")
+                    }
+                    id="settings-anchor-skin"
                   >
-                    {THEME_SKINS.map((pack) => {
-                      const selected = skin === pack.id;
-                      const label = t(
-                        `settings.skin.${pack.id}` as "settings.skin.default",
-                      );
-                      return (
-                        <button
-                          key={pack.id}
-                          type="button"
-                          role="option"
-                          aria-selected={selected}
-                          className={
-                            "settings-skin-card" + (selected ? " is-on" : "")
-                          }
-                          onClick={() => onSkin(pack.id)}
-                        >
-                          <span
-                            className="settings-skin-card__swatch"
-                            style={{
-                              background: `linear-gradient(135deg, ${pack.swatch} 0%, ${pack.swatchAlt} 100%)`,
-                            }}
-                            aria-hidden
-                          />
-                          <span className="settings-skin-card__name">
-                            {label}
-                          </span>
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-              </div>
-            ) : null}
-            {onWallpaper ? (
-              <div
-                className={"settings-card" + rowHighlight("settings-anchor-wallpaper")}
-                id="settings-anchor-wallpaper"
-              >
-                <div className="settings-row settings-row--stack">
-                  <div className="settings-row__text">
-                    <div className="settings-row__label">
-                      {t("settings.wallpaper")}
-                    </div>
-                    <div className="settings-row__desc">
-                      {t("settings.wallpaperDesc")}
-                    </div>
-                  </div>
-                  <div className="settings-wallpaper">
-                    <div className="settings-wallpaper__preview">
-                      {wallpaperUrl ? (
-                        wallpaperKind === "video" ? (
-                          <video
-                            src={wallpaperUrl}
-                            muted
-                            loop
-                            autoPlay
-                            playsInline
-                            preload="metadata"
-                          />
-                        ) : (
-                          <img src={wallpaperUrl} alt="" />
-                        )
-                      ) : (
-                        <div className="settings-wallpaper__preview-empty">
-                          {t("settings.wallpaperEmpty")}
+                    <div className="settings-row settings-row--stack">
+                      <div className="settings-row__text">
+                        <div className="settings-row__label">
+                          {t("settings.skin")}
                         </div>
-                      )}
-                    </div>
-                    <div className="settings-wallpaper__actions">
-                      <input
-                        ref={wallpaperInputRef}
-                        type="file"
-                        accept={WALLPAPER_ACCEPT}
-                        hidden
-                        onChange={(e) => {
-                          void onWallpaperFile(e.target.files?.[0]);
-                        }}
-                      />
-                      <button
-                        type="button"
-                        className="btn btn--solid btn--sm"
-                        disabled={wallpaperBusy}
-                        onClick={() => wallpaperInputRef.current?.click()}
+                        <div className="settings-row__desc">
+                          {t("settings.skinDesc")}
+                        </div>
+                      </div>
+                      <div
+                        className="settings-skin-grid"
+                        role="listbox"
+                        aria-label={t("settings.skin")}
                       >
-                        {wallpaperBusy
-                          ? t("settings.wallpaperWorking")
-                          : wallpaperUrl
-                            ? t("settings.wallpaperReplace")
-                            : t("settings.wallpaperUpload")}
-                      </button>
-                      <button
-                        type="button"
-                        className="btn btn--solid btn--sm"
-                        onClick={() => {
-                          void (async () => {
-                            try {
-                              if (api.isTauri()) {
-                                await api.openExternalUrl(
-                                  "https://haowallpaper.com/",
-                                );
-                                return;
+                        {THEME_SKINS.map((pack) => {
+                          const selected = skin === pack.id;
+                          const label = t(
+                            `settings.skin.${pack.id}` as "settings.skin.default",
+                          );
+                          return (
+                            <button
+                              key={pack.id}
+                              type="button"
+                              role="option"
+                              aria-selected={selected}
+                              className={
+                                "settings-skin-card" +
+                                (selected ? " is-on" : "")
                               }
-                            } catch {
-                              /* fall through */
-                            }
-                            window.open(
-                              "https://haowallpaper.com/",
-                              "_blank",
-                              "noopener,noreferrer",
-                            );
-                          })();
-                        }}
-                      >
-                        {t("settings.wallpaperFind")}
-                      </button>
-                      {wallpaperUrl ? (
-                        <button
-                          type="button"
-                          className="btn btn--ghost btn--sm"
-                          disabled={wallpaperBusy}
-                          onClick={() => {
-                            setWallpaperError(null);
-                            void onWallpaper(null);
-                          }}
-                        >
-                          {t("settings.wallpaperClear")}
-                        </button>
-                      ) : null}
+                              onClick={() => onSkin(pack.id)}
+                            >
+                              <span
+                                className="settings-skin-card__swatch"
+                                style={{
+                                  background: `linear-gradient(135deg, ${pack.swatch} 0%, ${pack.swatchAlt} 100%)`,
+                                }}
+                                aria-hidden
+                              />
+                              <span className="settings-skin-card__name">
+                                {label}
+                              </span>
+                            </button>
+                          );
+                        })}
+                      </div>
                     </div>
-                    {wallpaperUrl && onWallpaperScrim ? (
-                      <div className="settings-wallpaper__scrim">
-                        <div className="settings-wallpaper__scrim-head">
-                          <label
-                            className="settings-wallpaper__scrim-label"
-                            htmlFor="settings-wallpaper-scrim"
-                          >
-                            {t("settings.wallpaperScrim")}
-                          </label>
-                          <span
-                            className="settings-wallpaper__scrim-value"
-                            aria-hidden
-                          >
-                            {Math.round(wallpaperScrim)}%
-                          </span>
+                  </div>
+                ) : null}
+                {onWallpaper ? (
+                  <div
+                    className={
+                      "settings-card settings-card--appearance-col" +
+                      rowHighlight("settings-anchor-wallpaper")
+                    }
+                    id="settings-anchor-wallpaper"
+                  >
+                    <div className="settings-row settings-row--stack">
+                      <div className="settings-row__text">
+                        <div className="settings-row__label">
+                          {t("settings.wallpaper")}
                         </div>
+                        <div className="settings-row__desc">
+                          {t("settings.wallpaperDesc")}
+                        </div>
+                      </div>
+                      <div className="settings-wallpaper">
                         <input
-                          id="settings-wallpaper-scrim"
-                          type="range"
-                          className="settings-wallpaper__scrim-range"
-                          min={0}
-                          max={100}
-                          step={1}
-                          value={wallpaperScrim}
-                          aria-valuemin={0}
-                          aria-valuemax={100}
-                          aria-valuenow={Math.round(wallpaperScrim)}
-                          aria-label={t("settings.wallpaperScrim")}
+                          ref={wallpaperInputRef}
+                          type="file"
+                          accept={WALLPAPER_ACCEPT}
+                          hidden
                           onChange={(e) => {
-                            onWallpaperScrim(Number(e.target.value));
+                            void onWallpaperFile(e.target.files?.[0]);
                           }}
                         />
-                        <p className="settings-wallpaper__scrim-hint">
-                          {t("settings.wallpaperScrimDesc")}
-                        </p>
+                        <div className="settings-wallpaper__preview-wrap">
+                          {wallpaperUrl ? (
+                            <div
+                              className={
+                                "settings-wallpaper__preview settings-wallpaper__preview--set" +
+                                (wallpaperBusy
+                                  ? " settings-wallpaper__preview--busy"
+                                  : "")
+                              }
+                            >
+                              <WallpaperMediaLayer
+                                url={wallpaperUrl}
+                                kind={wallpaperKind ?? "image"}
+                                focus={
+                                  wallpaperFocus ?? DEFAULT_WALLPAPER_FOCUS
+                                }
+                                clip={wallpaperClip}
+                                intrinsicSize={wallpaperMediaSize}
+                                onIntrinsicSize={onWallpaperMediaSize}
+                                className="settings-wallpaper__media"
+                                mediaClassName="settings-wallpaper__media-el"
+                              />
+                              {wallpaperBusy ? (
+                                <span
+                                  className="settings-wallpaper__busy"
+                                  aria-hidden
+                                >
+                                  {t("settings.wallpaperWorking")}
+                                </span>
+                              ) : null}
+                              <div className="settings-wallpaper__hover">
+                                <button
+                                  type="button"
+                                  className="btn btn--solid btn--sm"
+                                  disabled={wallpaperBusy}
+                                  onClick={() =>
+                                    wallpaperInputRef.current?.click()
+                                  }
+                                >
+                                  {t("settings.wallpaperReplace")}
+                                </button>
+                                {onWallpaperAdjust ? (
+                                  <button
+                                    type="button"
+                                    className="btn btn--solid btn--sm"
+                                    disabled={wallpaperBusy}
+                                    onClick={() => setWallpaperFocusOpen(true)}
+                                  >
+                                    <IconCrop size={14} />
+                                    {t("settings.wallpaperFocus")}
+                                  </button>
+                                ) : null}
+                              </div>
+                              <button
+                                type="button"
+                                className="settings-wallpaper__clear btn btn--ghost btn--sm"
+                                disabled={wallpaperBusy}
+                                onClick={() => {
+                                  setWallpaperError(null);
+                                  setWallpaperFocusOpen(false);
+                                  void onWallpaper(null);
+                                }}
+                              >
+                                {t("settings.wallpaperClear")}
+                              </button>
+                            </div>
+                          ) : (
+                            <button
+                              type="button"
+                              className={
+                                "settings-wallpaper__preview" +
+                                (wallpaperBusy
+                                  ? " settings-wallpaper__preview--busy"
+                                  : "")
+                              }
+                              disabled={wallpaperBusy}
+                              aria-label={
+                                wallpaperBusy
+                                  ? t("settings.wallpaperWorking")
+                                  : t("settings.wallpaperUpload")
+                              }
+                              onClick={() =>
+                                wallpaperInputRef.current?.click()
+                              }
+                            >
+                              <span className="settings-wallpaper__preview-empty">
+                                {wallpaperBusy
+                                  ? t("settings.wallpaperWorking")
+                                  : t("settings.wallpaperEmpty")}
+                              </span>
+                            </button>
+                          )}
+                        </div>
+                        {wallpaperUrl && onWallpaperAdjust ? (
+                          <WallpaperFocusEditor
+                            open={wallpaperFocusOpen}
+                            onClose={() => setWallpaperFocusOpen(false)}
+                            onApply={(result) => onWallpaperAdjust(result)}
+                            mediaUrl={wallpaperUrl}
+                            kind={wallpaperKind ?? "image"}
+                            initialFocus={
+                              wallpaperFocus ?? DEFAULT_WALLPAPER_FOCUS
+                            }
+                            initialClip={wallpaperClip}
+                            labels={{
+                              title: t("settings.wallpaperFocusTitle"),
+                              hint: t("settings.wallpaperFocusHint"),
+                              hintVideo: t("settings.wallpaperFocusHintVideo"),
+                              zoom: t("settings.wallpaperFocusZoom"),
+                              clip: t("settings.wallpaperClip"),
+                              clipStart: t("settings.wallpaperClipStart"),
+                              clipEnd: t("settings.wallpaperClipEnd"),
+                              reset: t("settings.wallpaperFocusReset"),
+                              cancel: t("common.cancel"),
+                              apply: t("settings.wallpaperFocusApply"),
+                              close: t("common.close"),
+                            }}
+                          />
+                        ) : null}
+                        {wallpaperUrl && onWallpaperScrim ? (
+                          <div className="settings-wallpaper__scrim">
+                            <div className="settings-wallpaper__scrim-head">
+                              <label
+                                className="settings-wallpaper__scrim-label"
+                                htmlFor="settings-wallpaper-scrim"
+                              >
+                                {t("settings.wallpaperScrim")}
+                              </label>
+                              <span
+                                className="settings-wallpaper__scrim-value"
+                                aria-hidden
+                              >
+                                {Math.round(wallpaperScrim)}%
+                              </span>
+                            </div>
+                            <input
+                              id="settings-wallpaper-scrim"
+                              type="range"
+                              className="settings-wallpaper__scrim-range"
+                              min={0}
+                              max={100}
+                              step={1}
+                              value={wallpaperScrim}
+                              aria-valuemin={0}
+                              aria-valuemax={100}
+                              aria-valuenow={Math.round(wallpaperScrim)}
+                              aria-label={t("settings.wallpaperScrim")}
+                              onChange={(e) => {
+                                onWallpaperScrim(Number(e.target.value));
+                              }}
+                            />
+                            <p className="settings-wallpaper__scrim-hint">
+                              {t("settings.wallpaperScrimDesc")}
+                            </p>
+                          </div>
+                        ) : null}
+                        {wallpaperError ? (
+                          <p
+                            className="settings-wallpaper__error"
+                            role="alert"
+                          >
+                            {wallpaperError}
+                          </p>
+                        ) : null}
                       </div>
-                    ) : null}
-                    {wallpaperError ? (
-                      <p className="settings-wallpaper__error" role="alert">
-                        {wallpaperError}
-                      </p>
-                    ) : null}
+                    </div>
                   </div>
-                </div>
+                ) : null}
               </div>
             ) : null}
           </>
@@ -2289,15 +2377,75 @@ export function SettingsPage({
         )}
 
         {section === "remote_im" && (
-          <div
-            className="settings-remote-im-shell"
-            id="settings-anchor-remote-im"
-          >
-            <RemoteImLayout
-              locale={locale}
-              trustedProjects={trustedProjects}
+          <>
+            <SettingsTabStrip
+              tabs={sectionNav?.tabs ?? []}
+              active={activeTab}
+              onChange={setSectionTab}
+              ariaLabel={title}
+              t={(k) => t(k)}
             />
-          </div>
+            {activeTab === "im" && (
+              <div
+                className="settings-card settings-card--rim"
+                id="settings-anchor-remote-im"
+              >
+                <RemoteImLayout
+                  locale={locale}
+                  trustedProjects={trustedProjects}
+                />
+              </div>
+            )}
+            {activeTab === "mirror" && (
+              <div
+                className="settings-card"
+                id="settings-anchor-phone-mirror"
+              >
+                {api.isDesktopHost() ? (
+                  <MirrorConnectPanel
+                    variant="inline"
+                    open
+                    labels={{
+                      title: t("mirror.connectTitle"),
+                      close: t("common.close"),
+                      start: t("mirror.start"),
+                      stop: t("mirror.stop"),
+                      stopConfirmTitle: t("mirror.stopConfirmTitle"),
+                      stopConfirmMessage: t("mirror.stopConfirmMessage"),
+                      stopConfirmOk: t("mirror.stopConfirmOk"),
+                      cancel: t("common.cancel"),
+                      copyLink: t("mirror.copyLink"),
+                      copied: t("mirror.copied"),
+                      clients: t("mirror.clients"),
+                      phaseStopped: t("mirror.phase.stopped"),
+                      phaseStarting: t("mirror.phase.starting"),
+                      phaseLocal: t("mirror.phase.local"),
+                      phaseWaitingTunnel: t("mirror.phase.waiting_tunnel"),
+                      phaseLive: t("mirror.phase.live"),
+                      phaseTunnelDead: t("mirror.phase.tunnel_dead"),
+                      phaseError: t("mirror.phase.error"),
+                      hint: t("mirror.connectHint"),
+                      warningToken: t("mirror.warningToken"),
+                      missingCloudflared: t("mirror.missingCloudflared"),
+                      errorGeneric: t("mirror.errorGeneric"),
+                      qrAlt: t("mirror.qrAlt"),
+                      linkLabel: t("mirror.linkLabel"),
+                    }}
+                    onConfirmStop={(opts) => setMirrorStopConfirm(opts)}
+                    showToast={showSettingsToast}
+                  />
+                ) : (
+                  <div className="settings-row">
+                    <div className="settings-row__text">
+                      <div className="settings-row__desc">
+                        {t("mirror.desktopOnly")}
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </>
         )}
 
         {section === "runtime" && (
@@ -2600,6 +2748,40 @@ export function SettingsPage({
       >
         <p className="settings-row__desc" style={{ margin: 0 }}>
           {t("settings.clearWorkspaceMemoryConfirmMsg")}
+        </p>
+      </GlassModal>
+
+      <GlassModal
+        open={!!mirrorStopConfirm}
+        onClose={() => setMirrorStopConfirm(null)}
+        title={mirrorStopConfirm?.title ?? t("mirror.stopConfirmTitle")}
+        size="sm"
+        closeLabel={t("common.close")}
+        footer={
+          <>
+            <button
+              type="button"
+              className="btn btn--ghost"
+              onClick={() => setMirrorStopConfirm(null)}
+            >
+              {t("common.cancel")}
+            </button>
+            <button
+              type="button"
+              className="btn btn--danger"
+              onClick={() => {
+                const action = mirrorStopConfirm?.onConfirm;
+                setMirrorStopConfirm(null);
+                action?.();
+              }}
+            >
+              {mirrorStopConfirm?.confirmLabel ?? t("mirror.stopConfirmOk")}
+            </button>
+          </>
+        }
+      >
+        <p className="settings-row__desc" style={{ margin: 0 }}>
+          {mirrorStopConfirm?.message ?? t("mirror.stopConfirmMessage")}
         </p>
       </GlassModal>
     </div>

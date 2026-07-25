@@ -27,16 +27,22 @@ import {
   applyWallpaperFlag,
   applyWallpaperScrimToDocument,
   clearWallpaper,
+  DEFAULT_WALLPAPER_FOCUS,
   loadSkin,
   loadWallpaperRecord,
   loadWallpaperScrim,
   saveSkin,
   saveWallpaper,
+  saveWallpaperAdjust,
+  saveWallpaperMediaSize,
   saveWallpaperScrim,
   skinPreferredTheme,
   type ThemeSkinId,
+  type WallpaperClip,
+  type WallpaperFocus,
   type WallpaperRecord,
 } from "@/lib/themeSkin";
+import { WallpaperMediaLayer } from "@/components/WallpaperMediaLayer";
 import {
   DEFAULT_LAYOUT,
   clampAsideWidth,
@@ -64,7 +70,6 @@ import {
   parseCompactContent,
   parseToolStepContent,
   canSend,
-  canStop,
   canType,
   clearPriorTurnStreaming,
   isSessionBusy,
@@ -109,6 +114,28 @@ import {
   collectSessionTasks,
   countRunningTasks,
 } from "@/lib/sessionTasks";
+import {
+  armStopLatch,
+  canStopWithStopLatch,
+  createStopLatchState,
+  tickStopLatch,
+  type StopLatchState,
+  STOP_LATCH_MS,
+} from "@/lib/stopLatch";
+import {
+  busySessionIds,
+  projectHostIntoLiveMap,
+  projectLiveToolFromMessages,
+  markSawModelOutput,
+  type SessionLiveMap,
+} from "@/lib/sessionLiveStore";
+import { endOfTurnMarkerContent } from "@/lib/endOfTurn";
+import {
+  stallMessageKey,
+  stallTierFromProgress,
+  reconcileSessionState,
+  reconcileUiBusyGate,
+} from "@/lib/sessionPhase";
 import {
   isMirrorClient,
   mirrorEnsureTransport,
@@ -291,7 +318,6 @@ import {
   IconCheck,
   IconList,
 } from "@/components/icons";
-import { MirrorConnectPanel } from "@/components/MirrorConnectPanel";
 import { PhoneAccountSheet } from "@/components/PhoneAccountSheet";
 import { PhoneComposerToolsSheet } from "@/components/PhoneComposerToolsSheet";
 import { AutomationsPage } from "@/components/AutomationsPage";
@@ -448,6 +474,14 @@ export default function App() {
   const [session, setSession] = useState<SessionSnapshot>(IDLE_SNAPSHOT);
   /** Host live agent (may differ from the session currently viewed in the UI). */
   const [liveHost, setLiveHost] = useState<SessionSnapshot>(IDLE_SNAPSHOT);
+  /** Multi-session live projection (busy / permission badges). */
+  const [liveMap, setLiveMap] = useState<SessionLiveMap>({});
+  /** Stop interrupt honesty latch (force unlock after budget). */
+  const [stopLatch, setStopLatch] = useState<StopLatchState>(() =>
+    createStopLatchState(),
+  );
+  const stopLatchRef = useRef<StopLatchState>(createStopLatchState());
+  stopLatchRef.current = stopLatch;
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   /** Context usage chip — known tokens from compact events + estimate fallback. */
   const [contextUsage, setContextUsage] = useState<ContextUsageState>(
@@ -591,7 +625,7 @@ export default function App() {
   const [defaultOpenTarget, setDefaultOpenTarget] = useState("finder");
   const [showUserMenu, setShowUserMenu] = useState(false);
   /** Desktop Connect panel (AC7) — close does not stop host. */
-  const [showMirrorConnect, setShowMirrorConnect] = useState(false);
+
   /** Phone mirror chrome: WS link + host account summary. */
   const [mirrorLinkOk, setMirrorLinkOk] = useState(() =>
     typeof window !== "undefined" && isMirrorClient() ? mirrorWsConnected() : false,
@@ -1721,8 +1755,18 @@ export default function App() {
           liveHostRef.current = snap;
           // Only bind the viewed session when Host already has a live row.
           if (snap.sessionId) {
-            setSession(snap);
+            setSession((prev) => ({
+              ...snap,
+              state: reconcileSessionState(snap.state, prev.state),
+            }));
             viewingSessionIdRef.current = snap.sessionId;
+            setLiveMap((prev) =>
+              projectHostIntoLiveMap(prev, {
+                sessionId: snap.sessionId,
+                state: snap.state,
+                streamingMessageId: snap.streamingMessageId,
+              }),
+            );
           }
         }
 
@@ -1731,13 +1775,32 @@ export default function App() {
             if (cancelled) return;
             setLiveHost(s);
             liveHostRef.current = s;
+            setLiveMap((prev) =>
+              projectHostIntoLiveMap(prev, {
+                sessionId: s.sessionId,
+                state: s.state,
+                streamingMessageId: s.streamingMessageId,
+              }),
+            );
+            if (
+              s.state !== "streaming" &&
+              s.state !== "awaiting_permission" &&
+              stopLatchRef.current.phase !== "idle"
+            ) {
+              const cleared = createStopLatchState();
+              stopLatchRef.current = cleared;
+              setStopLatch(cleared);
+            }
             // Only update the workbench session when the user is viewing it.
             // Otherwise switching sessions would yank selection back to the live agent.
             if (
               s.sessionId &&
               s.sessionId === viewingSessionIdRef.current
             ) {
-              setSession(s);
+              setSession((prev) => ({
+                ...s,
+                state: reconcileSessionState(s.state, prev.state),
+              }));
               // Clear retry chip / turn timer / stall banner when turn ends or errors out
               if (s.state !== "streaming" && s.state !== "awaiting_permission") {
                 setRetryStatus(null);
@@ -1843,6 +1906,11 @@ export default function App() {
               }
               return next;
             });
+            if (chunk.sessionId && chunk.text) {
+              setLiveMap((prev) =>
+                markSawModelOutput(prev, chunk.sessionId!),
+              );
+            }
             // After a completed assistant stream, try silent automation create.
             if (chunk.done && chunk.sessionId) {
               void tryApplyAutomationFromSession(chunk.sessionId);
@@ -1912,7 +1980,13 @@ export default function App() {
             if (cancelled || !p?.toolCallId) return;
             const sid = p.sessionId || viewingSessionIdRef.current;
             if (!sid) return;
-            patchSessionMessages(sid, (prev) => applyToolEvent(prev, p));
+            patchSessionMessages(sid, (prev) => {
+              const next = applyToolEvent(prev, p);
+              setLiveMap((lm) =>
+                projectLiveToolFromMessages(lm, sid, next),
+              );
+              return next;
+            });
             // Track write/edit tools for the session Changes panel.
             setSessionChangesById((prev) => {
               const list = prev[sid] ?? [];
@@ -2355,18 +2429,65 @@ export default function App() {
       setWallpaperUrl(null);
       return;
     }
+    // New upload resets focus to cover-center unless the record already has one.
+    const toSave: WallpaperRecord = {
+      ...record,
+      focus: record.focus ?? undefined,
+    };
     try {
-      await saveWallpaper(record);
+      await saveWallpaper(toSave);
     } catch (e) {
       showToast(String(e), 4000);
       return;
     }
-    const url = URL.createObjectURL(record.blob);
+    const url = URL.createObjectURL(toSave.blob);
     if (wallpaperUrlRef.current) URL.revokeObjectURL(wallpaperUrlRef.current);
     wallpaperUrlRef.current = url;
-    setWallpaperRecord(record);
+    setWallpaperRecord(toSave);
     setWallpaperUrl(url);
   };
+
+  const applyWallpaperAdjustChoice = (patch: {
+    focus: WallpaperFocus;
+    clip: WallpaperClip | null;
+    duration?: number;
+  }) => {
+    const meta = saveWallpaperAdjust({
+      focus: patch.focus,
+      clip: patch.clip,
+      duration: patch.duration,
+    });
+    if (!meta) return;
+    setWallpaperRecord((prev) => {
+      if (!prev) return prev;
+      const next: WallpaperRecord = {
+        ...prev,
+        focus: meta.focus,
+        clip: meta.clip,
+      };
+      if (!meta.focus) delete next.focus;
+      if (!meta.clip) delete next.clip;
+      return next;
+    });
+  };
+
+  /** Backfill width/height for wallpapers uploaded before size meta existed. */
+  const applyWallpaperMediaSize = useCallback(
+    (size: { w: number; h: number }) => {
+      const meta = saveWallpaperMediaSize(size.w, size.h);
+      if (!meta) return;
+      setWallpaperRecord((prev) => {
+        if (!prev) return prev;
+        if (prev.width === meta.width && prev.height === meta.height) return prev;
+        return {
+          ...prev,
+          width: meta.width,
+          height: meta.height,
+        };
+      });
+    },
+    [],
+  );
 
   const applyWallpaperScrimChoice = (value: number) => {
     saveWallpaperScrim(localStorage, value);
@@ -2976,14 +3097,26 @@ export default function App() {
   }, [sessions, projects, tr]);
 
   /**
-   * Session id with an active turn (stream / permission) for sidebar spinner.
-   * Deliberately excludes `connecting` — warm ACP connect should be silent
-   * and must not flash loading on sidebar items.
+   * Multi-session busy ids (stream / permission) for sidebar spinner.
+   * Uses liveMap projection + liveHost fallback. Excludes connecting.
    */
-  const busySessionId =
-    liveHost.sessionId && isSessionLiveStreaming(liveHost.state)
-      ? liveHost.sessionId
-      : null;
+  const busyIds = useMemo(() => {
+    const set = busySessionIds(liveMap);
+    if (liveHost.sessionId && isSessionLiveStreaming(liveHost.state)) {
+      set.add(liveHost.sessionId);
+    }
+    return set;
+  }, [liveMap, liveHost.sessionId, liveHost.state]);
+  const stopGate = useMemo(
+    () =>
+      reconcileUiBusyGate({
+        hostState: session.state,
+        stopLatch,
+      }),
+    [session.state, stopLatch],
+  );
+  const effectiveCanSend = stopGate.sendable;
+  const effectiveCanStop = canStopWithStopLatch(session.state, stopLatch);
 
   const refreshSessions = async () => {
     try {
@@ -3862,7 +3995,17 @@ export default function App() {
             viewingSessionIdRef.current === snap.sessionId))
       ) {
         viewingSessionIdRef.current = snap.sessionId;
-        setSession(snap);
+        setSession((prev) => ({
+          ...snap,
+          state: reconcileSessionState(snap.state, prev.state),
+        }));
+        setLiveMap((prev) =>
+          projectHostIntoLiveMap(prev, {
+            sessionId: snap.sessionId,
+            state: snap.state,
+            streamingMessageId: snap.streamingMessageId,
+          }),
+        );
       }
       if (snap.lastError || snap.state !== "ready") {
         const code = snap.lastError?.code ?? "AGENT_CRASHED";
@@ -6025,20 +6168,81 @@ export default function App() {
   ]);
 
   const stop = async () => {
+    const now = Date.now();
+    const sid =
+      liveHostRef.current.sessionId || viewingSessionIdRef.current || null;
+    const armed = armStopLatch(stopLatchRef.current, sid, now);
+    stopLatchRef.current = armed;
+    setStopLatch(armed);
+    // Force-unlock if Host stays busy past STOP_LATCH_MS.
+    window.setTimeout(() => {
+      const tick = tickStopLatch(
+        stopLatchRef.current,
+        liveHostRef.current.state,
+        Date.now(),
+        STOP_LATCH_MS,
+      );
+      stopLatchRef.current = tick.latch;
+      setStopLatch(tick.latch);
+      if (tick.forceComplete) {
+        const id = sid || liveHostRef.current.sessionId;
+        if (id) {
+          patchSessionMessages(id, (prev) =>
+            applyTurnMarker(prev, {
+              sessionId: id,
+              messageId: `end-stop-${Date.now()}`,
+              marker: "turn_end",
+              reason: "user_stop",
+              content: endOfTurnMarkerContent("user_stop"),
+            }),
+          );
+          patchSessionMessages(id, (m) =>
+            m.map((x) => ({ ...x, streaming: false })),
+          );
+        }
+        setRetryStatus(null);
+        setStreamStall(null);
+        setTurnStartedAt(null);
+      }
+    }, STOP_LATCH_MS + 50);
     try {
       await api.sessionStop();
       setRetryStatus(null);
       setStreamStall(null);
-      setTurnStartedAt(null);
       setTurnStartedAt(null);
       const liveId = liveHostRef.current.sessionId;
       if (liveId) {
         patchSessionMessages(liveId, (m) =>
           m.map((x) => ({ ...x, streaming: false })),
         );
+        // Prefer a clean end marker when stop settles normally.
+        if (stopLatchRef.current.phase !== "force_idle") {
+          patchSessionMessages(liveId, (prev) => {
+            if (
+              prev.some(
+                (x) =>
+                  x.marker === "turn_end" ||
+                  x.marker === "turn_cancelled" ||
+                  x.content?.startsWith("turn_end|"),
+              )
+            ) {
+              return prev;
+            }
+            return applyTurnMarker(prev, {
+              sessionId: liveId,
+              messageId: `end-stop-ok-${Date.now()}`,
+              marker: "turn_end",
+              reason: "user_stop",
+              content: endOfTurnMarkerContent("user_stop"),
+            });
+          });
+        }
       } else {
         setMessages((m) => m.map((x) => ({ ...x, streaming: false })));
       }
+      const cleared = createStopLatchState();
+      stopLatchRef.current = cleared;
+      setStopLatch(cleared);
     } catch (e) {
       setLocalError(String(e));
     }
@@ -7528,23 +7732,20 @@ export default function App() {
         }}
       />
 
-      {wallpaperUrl && (
-        <div className="app-wallpaper-media" aria-hidden>
-          {wallpaperRecord?.kind === "video" ? (
-            <video
-              className="app-wallpaper-media__el"
-              src={wallpaperUrl}
-              autoPlay
-              muted
-              loop
-              playsInline
-              disablePictureInPicture
-            />
-          ) : (
-            <img className="app-wallpaper-media__el" src={wallpaperUrl} alt="" />
-          )}
-        </div>
-      )}
+      {wallpaperUrl && wallpaperRecord ? (
+        <WallpaperMediaLayer
+          url={wallpaperUrl}
+          kind={wallpaperRecord.kind}
+          focus={wallpaperRecord.focus ?? DEFAULT_WALLPAPER_FOCUS}
+          clip={wallpaperRecord.clip ?? null}
+          intrinsicSize={
+            wallpaperRecord.width && wallpaperRecord.height
+              ? { w: wallpaperRecord.width, h: wallpaperRecord.height }
+              : null
+          }
+          onIntrinsicSize={applyWallpaperMediaSize}
+        />
+      ) : null}
 
       {appGate === "loading" && (
         <div className="setup-gate" data-testid="setup-booting">
@@ -7624,7 +7825,16 @@ export default function App() {
           onSkin={applySkinChoice}
           wallpaperUrl={wallpaperUrl}
           wallpaperKind={wallpaperRecord?.kind ?? null}
+          wallpaperFocus={wallpaperRecord?.focus ?? null}
+          wallpaperClip={wallpaperRecord?.clip ?? null}
+          wallpaperMediaSize={
+            wallpaperRecord?.width && wallpaperRecord?.height
+              ? { w: wallpaperRecord.width, h: wallpaperRecord.height }
+              : null
+          }
           onWallpaper={applyWallpaperChoice}
+          onWallpaperAdjust={applyWallpaperAdjustChoice}
+          onWallpaperMediaSize={applyWallpaperMediaSize}
           wallpaperScrim={wallpaperScrim}
           onWallpaperScrim={applyWallpaperScrimChoice}
           sessionDataMode={sessionDataMode}
@@ -7978,10 +8188,9 @@ export default function App() {
             {api.isDesktopHost() ? (
               <button
                 type="button"
-                className={
-                  "nav-item" + (showMirrorConnect ? " nav-item--active" : "")
-                }
-                onClick={() => setShowMirrorConnect(true)}
+                className="nav-item"
+                onClick={() => navigateSettings("remote_im", "mirror")}
+                title={tr("settings.nav.remoteIm")}
               >
                 <span className="nav-item__icon">
                   <IconDeviceMobile size={16} />
@@ -8180,7 +8389,7 @@ export default function App() {
                                 : null
                             }
                             renderItem={(s) => {
-                              const working = busySessionId === s.id;
+                              const working = busyIds.has(s.id);
                               return (
                                 <div
                                   className={
@@ -8345,7 +8554,7 @@ export default function App() {
                     : null
                 }
                 renderItem={(s) => {
-                  const working = busySessionId === s.id;
+                  const working = busyIds.has(s.id);
                   return (
                     <div
                       className={
@@ -8885,9 +9094,17 @@ export default function App() {
           {streamStall && mainPane === "chat" && (
             <div className="stall-banner" role="status">
               <div className="stall-banner__summary">
-                {tr("agent.streamStallBanner", {
-                  seconds: String(streamStall.stallSeconds),
-                })}
+                {(() => {
+                  const sid = streamStall.sessionId || session.sessionId || "";
+                  const saw = !!liveMap[sid]?.sawModelOutput;
+                  const tier = stallTierFromProgress({ sawModelOutput: saw });
+                  const key = stallMessageKey(tier);
+                  return key === "endOfTurn.stallPreToken"
+                    ? tr("endOfTurn.stallPreToken")
+                    : tr("agent.streamStallBanner", {
+                        seconds: String(streamStall.stallSeconds),
+                      });
+                })()}
               </div>
               <div className="stall-banner__actions">
                 <button
@@ -9068,7 +9285,11 @@ export default function App() {
           <ConversationThread
             locale={locale}
             messages={messages}
-            sessionState={session.state}
+            sessionState={
+              stopLatch.phase === "force_idle" || stopGate.forceIdle
+                ? "ready"
+                : session.state
+            }
             sessionKey={session.sessionId ?? `draft-${session.title ?? "new"}`}
             projectPath={activeProject?.path ?? null}
             suppressEmptyCopy={welcomeSession}
@@ -9091,6 +9312,28 @@ export default function App() {
             onRewindToUserMessage={onRewindToUserMessage}
             onForkFromUserMessage={onForkFromUserMessage}
             turnStartedAt={turnStartedAt}
+            onOpenSessionChanges={() => {
+              setLayout((l) => {
+                if (l.asideCollapsed) {
+                  const n = { ...l, asideCollapsed: false };
+                  saveLayout(localStorage, n);
+                  return n;
+                }
+                return l;
+              });
+              setResourceOpenTarget({ type: "changes" });
+            }}
+            onOpenModifiedPath={(path) => {
+              setLayout((l) => {
+                if (l.asideCollapsed) {
+                  const n = { ...l, asideCollapsed: false };
+                  saveLayout(localStorage, n);
+                  return n;
+                }
+                return l;
+              });
+              setResourceOpenTarget({ type: "changes", path });
+            }}
             onOpenResource={(target) => {
               setLayout((l) => {
                 if (l.asideCollapsed) {
@@ -9705,6 +9948,12 @@ export default function App() {
                         heuristicNote: tr("context.heuristicNote"),
                         auto: tr("context.triggerAuto"),
                         manual: tr("context.triggerManual"),
+                        breakdownUser: tr("context.breakdownUser"),
+                        breakdownAssistant: tr("context.breakdownAssistant"),
+                        breakdownThought: tr("context.breakdownThought"),
+                        breakdownEstimatedNote: tr(
+                          "context.breakdownEstimatedNote",
+                        ),
                       }}
                       onCompact={() => {
                         setCompactNote("");
@@ -9787,7 +10036,7 @@ export default function App() {
                     <IconLiveVoice size={16} />
                   </button>
                 </Tip>
-                {canStop(session.state) ? (
+                {effectiveCanStop ? (
                   <>
                     {sendQueue.canShowQueueButton(
                       session.state,
@@ -9823,7 +10072,7 @@ export default function App() {
                       type="button"
                       className="icon-btn icon-btn--primary"
                       disabled={
-                        (!canSend(session.state) &&
+                        (!effectiveCanSend &&
                           !shouldEnqueueSend(session.state, connecting)) ||
                         (isDraftEmpty(parseStoredContent(draft)) &&
                           attachments.length === 0) ||
@@ -10034,49 +10283,6 @@ export default function App() {
         </>
       ) : null}
 
-      {api.isDesktopHost() && (
-        <MirrorConnectPanel
-          open={showMirrorConnect}
-          onClose={() => setShowMirrorConnect(false)}
-          labels={{
-            title: tr("mirror.connectTitle"),
-            close: tr("common.close"),
-            start: tr("mirror.start"),
-            stop: tr("mirror.stop"),
-            stopConfirmTitle: tr("mirror.stopConfirmTitle"),
-            stopConfirmMessage: tr("mirror.stopConfirmMessage"),
-            stopConfirmOk: tr("mirror.stopConfirmOk"),
-            cancel: tr("common.cancel"),
-            copyLink: tr("mirror.copyLink"),
-            copied: tr("mirror.copied"),
-            clients: tr("mirror.clients"),
-            phaseStopped: tr("mirror.phase.stopped"),
-            phaseStarting: tr("mirror.phase.starting"),
-            phaseLocal: tr("mirror.phase.local"),
-            phaseWaitingTunnel: tr("mirror.phase.waiting_tunnel"),
-            phaseLive: tr("mirror.phase.live"),
-            phaseTunnelDead: tr("mirror.phase.tunnel_dead"),
-            phaseError: tr("mirror.phase.error"),
-            hint: tr("mirror.connectHint"),
-            warningToken: tr("mirror.warningToken"),
-            missingCloudflared: tr("mirror.missingCloudflared"),
-            errorGeneric: tr("mirror.errorGeneric"),
-            qrAlt: tr("mirror.qrAlt"),
-            linkLabel: tr("mirror.linkLabel"),
-          }}
-          onConfirmStop={({ title, message, confirmLabel, onConfirm }) => {
-            setAppDialog({
-              kind: "confirm",
-              title,
-              message,
-              confirmLabel,
-              danger: true,
-              onConfirm,
-            });
-          }}
-          showToast={showToast}
-        />
-      )}
       <DoctorModal
         open={showDoctor}
         onClose={() => setShowDoctor(false)}

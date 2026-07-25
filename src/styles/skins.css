@@ -44,10 +44,12 @@ html[data-wallpaper="1"] .app-shell::after {
 }
 
 .app-wallpaper-media__el {
-  width: 100%;
-  height: 100%;
-  object-fit: cover; /* render-time cover-crop to window — source stays intact */
   display: block;
+  /* Compositor-friendly; avoid filters that force software decode on video. */
+  will-change: auto;
+  pointer-events: none;
+  /* WallpaperMediaLayer fades in only when focus layout is ready. */
+  transition: opacity 120ms ease-out;
 }
 
 /* Lift real chrome above the media + scrim.

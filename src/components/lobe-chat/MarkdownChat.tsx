@@ -2,7 +2,7 @@
  * Chat markdown — path/url → cards (image/video/file); open in resource pane.
  */
 
-import { memo, useMemo, type ReactNode } from "react";
+import { memo, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import type { Locale } from "@/i18n";
@@ -28,6 +28,11 @@ import {
   resolveFileToken,
 } from "@/lib/pathRefs";
 import { useSmoothStream } from "@/hooks/useSmoothStream";
+import {
+  createSoftBufferState,
+  stepSoftBuffer,
+  type SoftBufferState,
+} from "@/lib/softStreamBuffer";
 import { cn } from "@/lib/utils";
 import { CodeBlock } from "./CodeBlock";
 
@@ -157,8 +162,42 @@ export const MarkdownChat = memo(function MarkdownChat({
     return Array.from(new Set(Object.values(imagePathMap))).filter(isImagePath);
   }, [imagePathMap]);
 
-  // Adaptive buffer: drip when sparse, catch up hard on large dumps.
-  const smoothChildren = useSmoothStream(children, streaming);
+  // Soft first-paint buffer (pure text) then adaptive drip reveal.
+  const softStateRef = useRef<SoftBufferState>(createSoftBufferState());
+  const [softDisplayed, setSoftDisplayed] = useState(children || "");
+  useEffect(() => {
+    if (!streaming) {
+      softStateRef.current = createSoftBufferState();
+      setSoftDisplayed(children || "");
+      return;
+    }
+    const now = Date.now();
+    const r = stepSoftBuffer({
+      state: softStateRef.current,
+      raw: children || "",
+      streaming: true,
+      nowMs: now,
+    });
+    softStateRef.current = r.state;
+    setSoftDisplayed(r.displayed);
+    // Poll max-wait while still holding
+    if (!r.state.bypassed && (children || "").trim()) {
+      const t = window.setTimeout(() => {
+        const r2 = stepSoftBuffer({
+          state: softStateRef.current,
+          raw: children || "",
+          streaming: true,
+          nowMs: Date.now(),
+        });
+        softStateRef.current = r2.state;
+        setSoftDisplayed(r2.displayed);
+      }, 100);
+      return () => window.clearTimeout(t);
+    }
+  }, [children, streaming]);
+
+  const buffered = streaming ? softDisplayed : children || "";
+  const smoothChildren = useSmoothStream(buffered, streaming && !!buffered);
   const source = softCloseMarkdown(
     smoothChildren || (streaming ? " " : ""),
     streaming,

@@ -102,7 +102,9 @@ export type ResourceOpenTarget =
   | { type: "file"; path: string; title?: string }
   | { type: "url"; url: string; title?: string }
   /** Open the Rules side panel (project AGENTS.md / .grok rules). */
-  | { type: "rules" };
+  | { type: "rules" }
+  /** Open the Changes side panel (session + workspace diffs). */
+  | { type: "changes"; path?: string };
 
 export interface ResourceViewerProps {
   projectPath: string | null;
@@ -1210,6 +1212,11 @@ export function ResourceViewer({
       void openAbsoluteFile(openRequest.path, openRequest.title);
     } else if (openRequest.type === "url") {
       openUrl(openRequest.url, openRequest.title);
+    } else if (openRequest.type === "changes") {
+      showSidePanel("changes");
+      if (openRequest.path) {
+        void openAbsoluteFile(openRequest.path, openRequest.path);
+      }
     } else if (openRequest.type === "rules") {
       setSideMode("rules");
       setTreeVisible(true);

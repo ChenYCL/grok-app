@@ -89,12 +89,36 @@ describe("settingsCatalog", () => {
     expect(isSettingsSectionId("nope")).toBe(false);
   });
 
-  it("keywordKeysForSection includes skin/wallpaper and remote im", () => {
+  it("keywordKeysForSection includes skin/wallpaper and remote control", () => {
     const appearance = keywordKeysForSection("appearance");
     expect(appearance).toContain("settings.skin");
     expect(appearance).toContain("settings.wallpaper");
     const rim = keywordKeysForSection("remote_im");
     expect(rim).toContain("settings.nav.remoteIm");
+    expect(rim).toContain("settings.tab.remoteIm");
+    expect(rim).toContain("settings.tab.phoneMirror");
+  });
+
+  it("remote_im has im + mirror tabs", () => {
+    expect(defaultTabFor("remote_im")).toBe("im");
+    expect(resolveTab("remote_im", "mirror")).toBe("mirror");
+    expect(resolveTab("remote_im", "feishu")).toBe("im");
+    expect(parseSettingsHash("settings/remote_im")).toEqual({
+      section: "remote_im",
+      tab: "im",
+    });
+    expect(parseSettingsHash("settings/remote_im/mirror")).toEqual({
+      section: "remote_im",
+      tab: "mirror",
+    });
+    // Legacy channel deep-link: unknown tab segment falls back to IM tab.
+    expect(parseSettingsHash("settings/remote_im/feishu")).toEqual({
+      section: "remote_im",
+      tab: "im",
+    });
+    expect(buildSettingsHash({ section: "remote_im", tab: "mirror" })).toBe(
+      "#/settings/remote_im/mirror",
+    );
   });
 
   it("search finds mcp / wallpaper / cli path (zh + en)", () => {
