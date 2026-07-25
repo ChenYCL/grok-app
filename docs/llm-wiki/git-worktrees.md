@@ -18,11 +18,14 @@ git worktree list --porcelain
 
 ### Create worktree
 
-From the same menu: **New worktree…**
+From the same menu:
+
+- **New worktree…** — create + bind current session/cwd to the new path.
+- **New worktree & chat…** — create, then open a **draft new chat** whose project path is the worktree (agent cwd).
 
 1. User enters a **name** (required) and optional **start point** (branch / tag / commit).
 2. Host runs `git worktree add -b <name> <path> [<start_point>]` with argv (no shell).
-3. On success: refresh the list, `project_add` with trust inherited from the source project when possible, then bind session cwd to the new path.
+3. On success: refresh the list, `project_add` with trust inherited from the source project when possible, then either bind the open session or call `newChat(worktreeProject)`.
 
 **Path layout (sibling of main worktree):**
 

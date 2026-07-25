@@ -342,17 +342,24 @@ export const zhTW: Record<MessageKey, string> = {
   "composer.worktreeDetached": "游離 HEAD",
   "composer.worktreeSwitched": "已切換到 worktree {name}（{branch}）",
   "composer.worktreeNew": "新建 worktree…",
+  "composer.worktreeNewChat": "新建 worktree 並開聊…",
   "composer.worktreeNewTitle": "新建 Git worktree",
+  "composer.worktreeNewChatTitle": "新建 worktree 並開聊",
   "composer.worktreeNewHint":
     "在主 worktree 旁建立同級目錄，並檢出一條新分支。",
+  "composer.worktreeNewChatHint":
+    "建立同級 worktree，並以該目錄為專案開始新對話。",
   "composer.worktreeName": "名稱",
   "composer.worktreeNamePlaceholder": "feat-login",
   "composer.worktreeRef": "起始點（可選）",
   "composer.worktreeRefPlaceholder": "main、origin/main 或 commit",
   "composer.worktreePathPreview": "路徑：{path}",
   "composer.worktreeCreate": "建立",
+  "composer.worktreeCreateChat": "建立並開聊",
   "composer.worktreeCreating": "正在建立…",
   "composer.worktreeCreated": "已建立 worktree {name}（{branch}）",
+  "composer.worktreeCreatedChat":
+    "已建立 worktree {name}（{branch}）· 已開新對話",
   "composer.worktreeNameRequired": "請輸入 worktree 名稱",
   "composer.worktreeNameInvalid":
     "僅允許字母、數字、'.'、'_'、'-'（不能含空格或斜線）",

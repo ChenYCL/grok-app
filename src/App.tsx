@@ -191,7 +191,12 @@ import {
   getComposerCaretOffset,
 } from "@/components/ComposerEditor";
 import { ComposerProjectMenu } from "@/components/ComposerProjectMenu";
-import { pathsEqual } from "@/lib/gitWorktree";
+import {
+  buildWorktreeSiblingPath,
+  mainWorktreePath,
+  pathsEqual,
+  sanitizeWorktreeName,
+} from "@/lib/gitWorktree";
 import { isProjectPathMissing } from "@/lib/projectPath";
 import {
   classifyVoiceError,
@@ -801,6 +806,16 @@ export default function App() {
   const [gitWorktreesReason, setGitWorktreesReason] = useState<string | null>(
     null,
   );
+  /** New worktree dialog (name + optional start-point). */
+  const [worktreeCreateOpen, setWorktreeCreateOpen] = useState(false);
+  const [worktreeCreateName, setWorktreeCreateName] = useState("");
+  const [worktreeCreateRef, setWorktreeCreateRef] = useState("");
+  const [worktreeCreateBusy, setWorktreeCreateBusy] = useState(false);
+  const [worktreeCreateError, setWorktreeCreateError] = useState<string | null>(
+    null,
+  );
+  /** When true, after create bind cwd and open a draft chat on that path. */
+  const [worktreeCreateStartChat, setWorktreeCreateStartChat] = useState(false);
   /** Clean stale worktrees (git worktree prune) dialog. */
   const [worktreeGcOpen, setWorktreeGcOpen] = useState(false);
   const [worktreeGcForce, setWorktreeGcForce] = useState(false);
@@ -5843,6 +5858,123 @@ export default function App() {
     ],
   );
 
+  const openWorktreeCreate = useCallback((opts?: { startNewChat?: boolean }) => {
+    setWorktreeCreateName("");
+    setWorktreeCreateRef("");
+    setWorktreeCreateError(null);
+    setWorktreeCreateBusy(false);
+    setWorktreeCreateStartChat(!!opts?.startNewChat);
+    setWorktreeCreateOpen(true);
+  }, []);
+
+  const worktreeCreatePreviewPath = (() => {
+    try {
+      const main = mainWorktreePath(gitWorktrees) || activeProject?.path || "";
+      if (!main || !worktreeCreateName.trim()) return null;
+      return buildWorktreeSiblingPath(main, worktreeCreateName.trim());
+    } catch {
+      return null;
+    }
+  })();
+
+  /**
+   * Create worktree → refresh list → add as project (trust inherited) →
+   * either bind current session or start a draft chat on that path.
+   */
+  const submitWorktreeCreate = useCallback(async () => {
+    if (!api.isTauri() || !activeProject?.path) return;
+    const rawName = worktreeCreateName.trim();
+    if (!rawName) {
+      setWorktreeCreateError(tr("composer.worktreeNameRequired"));
+      return;
+    }
+    let safeName: string;
+    try {
+      safeName = sanitizeWorktreeName(rawName);
+    } catch {
+      setWorktreeCreateError(tr("composer.worktreeNameInvalid"));
+      return;
+    }
+    setWorktreeCreateBusy(true);
+    setWorktreeCreateError(null);
+    try {
+      const start = worktreeCreateRef.trim() || null;
+      const created = await api.gitWorktreeAdd(
+        activeProject.path,
+        safeName,
+        start,
+      );
+      setWorktreeCreateOpen(false);
+      await refreshGitWorktrees();
+
+      const path = created.path;
+      const branch =
+        created.branch?.trim() ||
+        created.name ||
+        tr("composer.worktreeDetached");
+      const trust = !!activeProject.trusted;
+      const startChat = worktreeCreateStartChat;
+      const existing = projects.find((p) => pathsEqual(p.path, path));
+      let target: Project | null = existing ?? null;
+      if (!target) {
+        const added = (await api.projectAdd(path, trust)) as Project;
+        const list = (await api.projectsList()) as Project[];
+        setProjects(list);
+        target = list.find((p) => p.id === added.id) ?? added;
+      }
+
+      if (!target.trusted) {
+        // Trust prompt first; bind only (chat requires trusted project).
+        await finalizeAddedProject(target, { bindSession: true });
+        showToast(
+          tr("composer.worktreeCreated", {
+            name: created.name,
+            branch,
+          }),
+          2800,
+        );
+        return;
+      }
+
+      if (startChat) {
+        await newChat(target, { switchToChat: true });
+        showToast(
+          tr("composer.worktreeCreatedChat", {
+            name: created.name,
+            branch,
+          }),
+          2800,
+        );
+      } else {
+        await bindSessionProject(target, { silent: true });
+        showToast(
+          tr("composer.worktreeCreated", {
+            name: created.name,
+            branch,
+          }),
+          2800,
+        );
+      }
+    } catch (e) {
+      setWorktreeCreateError(String(e));
+    } finally {
+      setWorktreeCreateBusy(false);
+    }
+  }, [
+    activeProject?.path,
+    activeProject?.trusted,
+    bindSessionProject,
+    finalizeAddedProject,
+    newChat,
+    projects,
+    refreshGitWorktrees,
+    showToast,
+    tr,
+    worktreeCreateName,
+    worktreeCreateRef,
+    worktreeCreateStartChat,
+  ]);
+
   /**
    * Pick folder → add project (name = folder basename; no rename prompt).
    * `bindSession` also attaches the open chat under the new project.
@@ -8687,6 +8819,8 @@ export default function App() {
                     worktreeMain: tr("composer.worktreeMain"),
                     worktreeDetached: tr("composer.worktreeDetached"),
                     pathMissing: tr("project.pathMissingShort"),
+                    worktreeNew: tr("composer.worktreeNew"),
+                    worktreeNewChat: tr("composer.worktreeNewChat"),
                     worktreeGc: tr("composer.worktreeGc"),
                   }}
                   worktrees={gitWorktrees}
@@ -8706,6 +8840,10 @@ export default function App() {
                   onSwitchWorktree={(wt) => {
                     void switchToWorktree(wt);
                   }}
+                  onCreateWorktree={() => openWorktreeCreate()}
+                  onCreateWorktreeAndChat={() =>
+                    openWorktreeCreate({ startNewChat: true })
+                  }
                   onGcWorktrees={openWorktreeGc}
                   onOpen={refreshGitWorktrees}
                 />
@@ -9018,6 +9156,111 @@ export default function App() {
           void refreshLists();
         }}
       />
+      <GlassModal
+        open={worktreeCreateOpen}
+        onClose={() => {
+          if (worktreeCreateBusy) return;
+          setWorktreeCreateOpen(false);
+        }}
+        title={
+          worktreeCreateStartChat
+            ? tr("composer.worktreeNewChatTitle")
+            : tr("composer.worktreeNewTitle")
+        }
+        size="sm"
+        closeLabel={tr("common.close")}
+        closeOnOverlay={!worktreeCreateBusy}
+        showClose={!worktreeCreateBusy}
+        wrapBody
+        footer={
+          <>
+            <button
+              type="button"
+              className="btn btn--ghost"
+              disabled={worktreeCreateBusy}
+              onClick={() => setWorktreeCreateOpen(false)}
+            >
+              {tr("common.cancel")}
+            </button>
+            <button
+              type="button"
+              className="btn btn--solid"
+              disabled={worktreeCreateBusy || !worktreeCreateName.trim()}
+              onClick={() => {
+                void submitWorktreeCreate();
+              }}
+            >
+              {worktreeCreateBusy
+                ? tr("composer.worktreeCreating")
+                : worktreeCreateStartChat
+                  ? tr("composer.worktreeCreateChat")
+                  : tr("composer.worktreeCreate")}
+            </button>
+          </>
+        }
+      >
+        <form
+          className="wt-create"
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (worktreeCreateBusy) return;
+            void submitWorktreeCreate();
+          }}
+        >
+          <p className="wt-create__hint">
+            {worktreeCreateStartChat
+              ? tr("composer.worktreeNewChatHint")
+              : tr("composer.worktreeNewHint")}
+          </p>
+          <label className="wt-create__field">
+            <span className="wt-create__label">
+              {tr("composer.worktreeName")}
+            </span>
+            <input
+              className="settings-input"
+              value={worktreeCreateName}
+              onChange={(e) => {
+                setWorktreeCreateName(e.target.value);
+                setWorktreeCreateError(null);
+              }}
+              placeholder={tr("composer.worktreeNamePlaceholder")}
+              autoComplete="off"
+              autoFocus
+              disabled={worktreeCreateBusy}
+              spellCheck={false}
+            />
+          </label>
+          <label className="wt-create__field">
+            <span className="wt-create__label">
+              {tr("composer.worktreeRef")}
+            </span>
+            <input
+              className="settings-input"
+              value={worktreeCreateRef}
+              onChange={(e) => {
+                setWorktreeCreateRef(e.target.value);
+                setWorktreeCreateError(null);
+              }}
+              placeholder={tr("composer.worktreeRefPlaceholder")}
+              autoComplete="off"
+              disabled={worktreeCreateBusy}
+              spellCheck={false}
+            />
+          </label>
+          {worktreeCreatePreviewPath ? (
+            <p className="wt-create__preview">
+              {tr("composer.worktreePathPreview", {
+                path: worktreeCreatePreviewPath,
+              })}
+            </p>
+          ) : null}
+          {worktreeCreateError ? (
+            <p className="wt-create__error" role="alert">
+              {worktreeCreateError}
+            </p>
+          ) : null}
+        </form>
+      </GlassModal>
       <GlassModal
         open={worktreeGcOpen}
         onClose={() => {
