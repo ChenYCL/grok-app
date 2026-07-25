@@ -469,6 +469,8 @@ export function SettingsPage({
   onStoreApiKeysInKeychain,
   sandboxProfile = "off",
   onSandboxProfile,
+  maxAgentTurns = 0,
+  onMaxAgentTurns,
   cliInfo,
   onDoctor,
   versionFooter,
@@ -953,7 +955,42 @@ export function SettingsPage({
               ) : null}
             </div>
 
-            <h2 className="settings-page__h2">{t("settings.section.general")}</h2>
+                        <h2 className="settings-page__h2">{t("settings.section.agent")}</h2>
+            <div className="settings-card" id="settings-agent-card">
+              {onMaxAgentTurns ? (
+                <div className="settings-row settings-row--stack">
+                  <div className="settings-row__text">
+                    <div className="settings-row__label">
+                      {t("settings.maxAgentTurns")}
+                    </div>
+                    <div className="settings-row__desc">
+                      {t("settings.maxAgentTurnsDesc")}
+                    </div>
+                  </div>
+                  <input
+                    className="settings-input"
+                    type="number"
+                    min={0}
+                    max={200}
+                    step={1}
+                    placeholder={t("settings.maxAgentTurnsPlaceholder")}
+                    value={maxAgentTurns > 0 ? maxAgentTurns : ""}
+                    onChange={(e) => {
+                      const raw = e.target.value.trim();
+                      if (!raw) {
+                        onMaxAgentTurns(0);
+                        return;
+                      }
+                      const n = Number(raw);
+                      if (!Number.isFinite(n)) return;
+                      onMaxAgentTurns(Math.min(200, Math.max(0, Math.round(n))));
+                    }}
+                  />
+                </div>
+              ) : null}
+            </div>
+
+<h2 className="settings-page__h2">{t("settings.section.general")}</h2>
             <div className="settings-card">
               <div className="settings-row">
                 <div className="settings-row__text">
