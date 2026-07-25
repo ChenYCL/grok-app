@@ -414,17 +414,24 @@ const en = {
   "composer.worktreeDetached": "detached",
   "composer.worktreeSwitched": "Using worktree {name} ({branch})",
   "composer.worktreeNew": "New worktree…",
+  "composer.worktreeNewChat": "New worktree & chat…",
   "composer.worktreeNewTitle": "New git worktree",
+  "composer.worktreeNewChatTitle": "New worktree & chat",
   "composer.worktreeNewHint":
     "Creates a sibling folder next to the main worktree and checks out a new branch.",
+  "composer.worktreeNewChatHint":
+    "Creates a sibling worktree, then starts a new chat with that folder as the project.",
   "composer.worktreeName": "Name",
   "composer.worktreeNamePlaceholder": "feat-login",
   "composer.worktreeRef": "Start point (optional)",
   "composer.worktreeRefPlaceholder": "main, origin/main, or commit",
   "composer.worktreePathPreview": "Path: {path}",
   "composer.worktreeCreate": "Create",
+  "composer.worktreeCreateChat": "Create & open chat",
   "composer.worktreeCreating": "Creating…",
   "composer.worktreeCreated": "Created worktree {name} ({branch})",
+  "composer.worktreeCreatedChat":
+    "Created worktree {name} ({branch}) · new chat",
   "composer.worktreeNameRequired": "Enter a worktree name",
   "composer.worktreeNameInvalid":
     "Use letters, digits, '.', '_' or '-' (no spaces or slashes)",
@@ -2070,17 +2077,24 @@ const zh: Record<MessageKey, string> = {
   "composer.worktreeDetached": "游离 HEAD",
   "composer.worktreeSwitched": "已切换到 worktree {name}（{branch}）",
   "composer.worktreeNew": "新建 worktree…",
+  "composer.worktreeNewChat": "新建 worktree 并开聊…",
   "composer.worktreeNewTitle": "新建 Git worktree",
+  "composer.worktreeNewChatTitle": "新建 worktree 并开聊",
   "composer.worktreeNewHint":
     "在主 worktree 旁创建同级目录，并检出一条新分支。",
+  "composer.worktreeNewChatHint":
+    "创建同级 worktree，并以该目录为项目开始新对话。",
   "composer.worktreeName": "名称",
   "composer.worktreeNamePlaceholder": "feat-login",
   "composer.worktreeRef": "起始点（可选）",
   "composer.worktreeRefPlaceholder": "main、origin/main 或 commit",
   "composer.worktreePathPreview": "路径：{path}",
   "composer.worktreeCreate": "创建",
+  "composer.worktreeCreateChat": "创建并开聊",
   "composer.worktreeCreating": "正在创建…",
   "composer.worktreeCreated": "已创建 worktree {name}（{branch}）",
+  "composer.worktreeCreatedChat":
+    "已创建 worktree {name}（{branch}）· 已开新对话",
   "composer.worktreeNameRequired": "请输入 worktree 名称",
   "composer.worktreeNameInvalid":
     "仅允许字母、数字、'.'、'_'、'-'（不能含空格或斜杠）",

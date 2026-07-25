@@ -299,6 +299,31 @@ export async function gitWorktreesList(projectPath: string) {
   return invoke<GitWorktreesResult>("git_worktrees_list", { projectPath });
 }
 
+/** Result of creating a linked worktree (`git worktree add`). */
+export interface GitWorktreeAddResult {
+  path: string;
+  name: string;
+  startPoint?: string | null;
+  branch?: string | null;
+}
+
+/**
+ * Create a linked worktree for a project folder.
+ * Path: `<parent>/<main_basename>-<name>` (see docs/llm-wiki/git-worktrees.md).
+ * Throws when not a git repo / git missing / path exists / invalid name.
+ */
+export async function gitWorktreeAdd(
+  projectPath: string,
+  name: string,
+  startPoint?: string | null,
+) {
+  return invoke<GitWorktreeAddResult>("git_worktree_add", {
+    projectPath,
+    name,
+    startPoint: startPoint?.trim() || null,
+  });
+}
+
 /** Native folder dialog → add project. Returns null if user cancels. */
 export async function projectAddDialog(trust: boolean) {
   return invoke<{

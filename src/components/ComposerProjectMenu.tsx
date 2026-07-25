@@ -42,6 +42,10 @@ type Props = {
     worktreeDetached: string;
     /** Badge when project folder is missing on disk. */
     pathMissing?: string;
+    /** New worktree… (create + switch). */
+    worktreeNew?: string;
+    /** New worktree & chat… (create + start draft chat there). */
+    worktreeNewChat?: string;
     /** Clean stale worktree admin records (prune). */
     worktreeGc?: string;
   };
@@ -60,6 +64,10 @@ type Props = {
   onAdd: () => void;
   /** Switch agent cwd to this worktree path (add project if needed + bind). */
   onSwitchWorktree?: (wt: GitWorktreeEntry) => void;
+  /** Open “New worktree…” dialog (parent owns modal). */
+  onCreateWorktree?: () => void;
+  /** Open create dialog then start a new chat bound to the worktree path. */
+  onCreateWorktreeAndChat?: () => void;
   /** Open “Clean stale worktrees…” dialog (parent owns modal). */
   onGcWorktrees?: () => void;
   onOpen?: () => void;
@@ -79,6 +87,8 @@ export function ComposerProjectMenu({
   onSelect,
   onAdd,
   onSwitchWorktree,
+  onCreateWorktree,
+  onCreateWorktreeAndChat,
   onGcWorktrees,
   onOpen,
 }: Props) {
@@ -92,7 +102,14 @@ export function ComposerProjectMenu({
 
   // Only for confirmed git work trees — hide while loading / non-git / no project.
   const showWorktrees = !!activeProject && worktreesAvailable === true;
+  const canCreate = showWorktrees && !!onCreateWorktree && !!labels.worktreeNew;
+  const canCreateChat =
+    showWorktrees &&
+    !!onCreateWorktreeAndChat &&
+    !!labels.worktreeNewChat;
   const canGc = showWorktrees && !!onGcWorktrees && !!labels.worktreeGc;
+  const actionRows =
+    (canCreate ? 1 : 0) + (canCreateChat ? 1 : 0) + (canGc ? 1 : 0);
 
   const estHeight = Math.min(
     400,
@@ -101,7 +118,7 @@ export function ComposerProjectMenu({
       (showWorktrees
         ? 28 +
           Math.min(160, Math.max(worktrees.length, 1) * 36 + 8) +
-          (canGc ? 36 : 0)
+          actionRows * 36
         : 0),
   );
   const { pos, style: popStyle } = useFloatingMenu({
@@ -115,7 +132,14 @@ export function ComposerProjectMenu({
     minWidth: 260,
     estHeight,
     gap: 8,
-    deps: [projects.length, worktrees.length, showWorktrees, canGc],
+    deps: [
+      projects.length,
+      worktrees.length,
+      showWorktrees,
+      canCreate,
+      canCreateChat,
+      canGc,
+    ],
   });
 
   // Refresh only when the menu opens — not when parent re-renders with a new onOpen.
@@ -303,6 +327,34 @@ export function ComposerProjectMenu({
                       : labels.worktreesEmpty}
                   </p>
                 )}
+                {canCreate ? (
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className="cpm__action cpm__worktree-new"
+                    onClick={() => {
+                      setOpen(false);
+                      onCreateWorktree?.();
+                    }}
+                  >
+                    <IconPlus size={14} aria-hidden />
+                    <span>{labels.worktreeNew}</span>
+                  </button>
+                ) : null}
+                {canCreateChat ? (
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className="cpm__action cpm__worktree-new"
+                    onClick={() => {
+                      setOpen(false);
+                      onCreateWorktreeAndChat?.();
+                    }}
+                  >
+                    <IconPlus size={14} aria-hidden />
+                    <span>{labels.worktreeNewChat}</span>
+                  </button>
+                ) : null}
                 {canGc ? (
                   <button
                     type="button"
