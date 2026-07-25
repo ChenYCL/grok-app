@@ -6229,6 +6229,8 @@ export default function App() {
             setSandboxProfile(v);
             void api.settingsGet().then((s) =>
               api.settingsSet({ ...s, sandboxProfile: v }),
+            );
+          }}
           disableWebSearch={disableWebSearch}
           onDisableWebSearch={(v) => {
             setDisableWebSearch(v);
