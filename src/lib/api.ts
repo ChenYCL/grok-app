@@ -1069,6 +1069,16 @@ export async function exportSessionBundle(sessionId: string) {
   });
 }
 
+/**
+ * Export Grok Build CLI session trace via `grok trace <agentSessionId> --local`.
+ * Requires a linked agent session id. Opens a native save dialog for the `.tar.gz`.
+ */
+export async function sessionTraceExport(sessionId: string) {
+  return invoke<SupportBundleResult>("session_trace_export", {
+    sessionId,
+  });
+}
+
 export interface ResetAppDataResult {
   ok: boolean;
   dataRoot: string;

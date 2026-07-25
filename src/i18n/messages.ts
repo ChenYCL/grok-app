@@ -1093,6 +1093,11 @@ const en = {
 
   // Session export
   "session.exportMd": "Export chat as Markdown",
+  "session.exportTrace": "Export trace",
+  "session.exportTraceDone": "Session trace saved",
+  "session.exportTraceFail": "Trace export failed",
+  "session.exportTraceNoAgent":
+    "No agent session linked yet. Start a conversation first, then export the trace.",
   "session.exportBundle": "Export diagnostic package…",
   "session.exportBundleDone": "Diagnostic package saved",
   "session.exportBundleFail": "Diagnostic export failed",
@@ -2732,6 +2737,11 @@ const zh: Record<MessageKey, string> = {
   "shortcuts.voice": "开关语音输入",
 
   "session.exportMd": "导出会话为 Markdown",
+  "session.exportTrace": "导出 trace",
+  "session.exportTraceDone": "会话 trace 已保存",
+  "session.exportTraceFail": "trace 导出失败",
+  "session.exportTraceNoAgent":
+    "尚未关联 agent 会话。请先发起对话，再导出 trace。",
   "session.exportBundle": "导出完整诊断包…",
   "session.exportBundleDone": "诊断包已保存",
   "session.exportBundleFail": "诊断包导出失败",

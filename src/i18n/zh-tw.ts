@@ -1054,6 +1054,11 @@ export const zhTW: Record<MessageKey, string> = {
   "shortcuts.voice": "開關語音輸入",
 
   "session.exportMd": "匯出對話為 Markdown",
+  "session.exportTrace": "匯出 trace",
+  "session.exportTraceDone": "對話 trace 已儲存",
+  "session.exportTraceFail": "trace 匯出失敗",
+  "session.exportTraceNoAgent":
+    "尚未關聯 agent 對話。請先發起對話，再匯出 trace。",
   "session.exportBundle": "匯出完整診斷包…",
   "session.exportBundleDone": "診斷包已儲存",
   "session.exportBundleFail": "診斷包匯出失敗",
