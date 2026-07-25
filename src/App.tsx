@@ -92,11 +92,7 @@ import {
 } from "@/lib/permissionOptions";
 import { AskUserModal } from "@/components/AskUserModal";
 import { DoctorModal } from "@/components/DoctorModal";
-import {
-  filterSessionSearch,
-  mergeSessionSearchHits,
-  type SessionContentHit,
-} from "@/lib/sessionSearch";
+import { filterSessionSearch } from "@/lib/sessionSearch";
 import {
   sessionExportFilename,
   sessionToMarkdown,
@@ -154,7 +150,6 @@ import { SetupWizard, type SetupCliInfo } from "@/components/SetupWizard";
 import { ComposerEditor } from "@/components/ComposerEditor";
 import { ComposerProjectMenu } from "@/components/ComposerProjectMenu";
 import { pathsEqual } from "@/lib/gitWorktree";
-import { isProjectPathMissing } from "@/lib/projectPath";
 import {
   ComposerPlusPanel,
   buildComposerPlusEntries,
@@ -189,6 +184,7 @@ import {
   IconCopy,
   IconTrash,
   IconExternalLink,
+  IconFileText,
   IconFork,
   IconRewind,
   IconShield,
@@ -269,8 +265,6 @@ interface SessionRow {
   projectId: string | null;
   updatedAt: string;
   archived?: boolean;
-  /** Pinned chats float to the top of the sidebar */
-  pinned?: boolean;
   /** Shell scheduled-automation run */
   scheduled?: boolean;
 }
@@ -409,12 +403,6 @@ export default function App() {
   appDialogRef.current = appDialog;
   const [showSearch, setShowSearch] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
-  /** Debounced journal content hits from `sessions_search`. */
-  const [contentSearchHits, setContentSearchHits] = useState<
-    SessionContentHit[]
-  >([]);
-  const [contentSearchLoading, setContentSearchLoading] = useState(false);
-  const contentSearchSeq = useRef(0);
   const [showComposerPlus, setShowComposerPlus] = useState(false);
   showComposerPlusRef.current = showComposerPlus;
   const composerPlusTriggerRef = useRef<HTMLButtonElement>(null);
@@ -521,50 +509,6 @@ export default function App() {
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
   }, [showSearch]);
-
-  // Debounced content search over App journals (title filter stays instant).
-  useEffect(() => {
-    if (!showSearch) {
-      setContentSearchHits([]);
-      setContentSearchLoading(false);
-      return;
-    }
-    const q = searchQuery.trim();
-    if (!q) {
-      setContentSearchHits([]);
-      setContentSearchLoading(false);
-      return;
-    }
-    setContentSearchLoading(true);
-    const seq = ++contentSearchSeq.current;
-    const t = window.setTimeout(() => {
-      void (async () => {
-        try {
-          const hits = await api.sessionsSearch(q, 20);
-          if (contentSearchSeq.current !== seq) return;
-          setContentSearchHits(
-            hits.map((h) => ({
-              id: h.id,
-              title: h.title,
-              projectId: h.projectId,
-              snippet: h.snippet,
-              matchCount: h.matchCount,
-              updatedAt: h.updatedAt,
-              archived: h.archived,
-            })),
-          );
-        } catch {
-          if (contentSearchSeq.current !== seq) return;
-          setContentSearchHits([]);
-        } finally {
-          if (contentSearchSeq.current === seq) {
-            setContentSearchLoading(false);
-          }
-        }
-      })();
-    }, 280);
-    return () => window.clearTimeout(t);
-  }, [searchQuery, showSearch]);
 
   // Global shortcuts: search, help, doctor, new chat, settings.
   // Handlers go through refs so we don't re-bind every render.
@@ -691,7 +635,6 @@ export default function App() {
   const [agentIdleMinutes, setAgentIdleMinutes] = useState(30);
   const [streamStallSeconds, setStreamStallSeconds] = useState(120);
   const [storeApiKeysInKeychain, setStoreApiKeysInKeychain] = useState(false);
-  const [sandboxProfile, setSandboxProfile] = useState("off");
   const [gitWorktrees, setGitWorktrees] = useState<api.GitWorktreeEntry[]>([]);
   /** null = unknown/loading; true = git work tree; false = not a git repo. */
   const [gitWorktreesAvailable, setGitWorktreesAvailable] = useState<
@@ -827,20 +770,13 @@ export default function App() {
       );
       setSessions(
         (
-          s as Array<
-            SessionRow & {
-              archived?: boolean;
-              pinned?: boolean;
-              scheduled?: boolean;
-            }
-          >
+          s as Array<SessionRow & { archived?: boolean; scheduled?: boolean }>
         ).map((x) => ({
           id: x.id,
           title: x.title,
           projectId: x.projectId,
           updatedAt: x.updatedAt,
           archived: !!x.archived,
-          pinned: !!x.pinned,
           scheduled: !!x.scheduled,
         })),
       );
@@ -917,11 +853,6 @@ export default function App() {
           : 120,
       );
       setStoreApiKeysInKeychain(!!settings.storeApiKeysInKeychain);
-      {
-        const sb = (settings.sandboxProfile || "off").trim().toLowerCase();
-        const known = ["off", "workspace", "read-only", "strict", "devbox"];
-        setSandboxProfile(known.includes(sb) ? sb : "off");
-      }
       setCliInfo({
         found: cli.found,
         path: cli.path,
@@ -1417,22 +1348,6 @@ export default function App() {
               ) {
                 setToast(tr("agent.idleRecycledToast"));
                 window.setTimeout(() => setToast(null), 4200);
-              }
-            },
-          ),
-        );
-        await track(
-          api.listen<{ reason?: string; killed?: number }>(
-            "session://agents_recycled",
-            (p) => {
-              if (cancelled || !p) return;
-              // session_data_mode flip (and any future full recycle).
-              if (
-                p.reason === "session_data_mode" ||
-                (p.killed != null && p.killed > 0)
-              ) {
-                setToast(tr("agent.dataModeRecycledToast"));
-                window.setTimeout(() => setToast(null), 4800);
               }
             },
           ),
@@ -2047,10 +1962,9 @@ export default function App() {
     // Warm ACP: connect while the user reads history (trusted project or orphan).
     // Host serializes connect; first send no-ops if already ready, or waits if
     // still handshaking. Process is reused across sessions when cwd/effort match.
-    // Skip when project folder is missing (D05) — user must relocate first.
     if (
       api.isTauri() &&
-      (!proj || (proj.trusted && !isProjectPathMissing(proj.pathOk))) &&
+      (!proj || proj.trusted) &&
       !(live.sessionId === s.id && live.state === "ready")
     ) {
       const warmId = s.id;
@@ -2148,10 +2062,6 @@ export default function App() {
     }
     if (proj && !proj.trusted) {
       setLocalError(tr("project.trustFirst", { name: proj.name }));
-      return;
-    }
-    if (proj && isProjectPathMissing(proj.pathOk)) {
-      setLocalError(tr("project.pathMissing", { name: proj.name }));
       return;
     }
     automationSetupDraftRef.current = !!opts?.automationSetup;
@@ -2280,7 +2190,6 @@ export default function App() {
           projectId: s.projectId,
           updatedAt: s.updatedAt,
           archived: !!s.archived,
-          pinned: !!s.pinned,
           scheduled: !!s.scheduled,
         })),
       );
@@ -2312,10 +2221,6 @@ export default function App() {
           : null;
         if (proj && !proj.trusted) {
           setLocalError(tr("project.trustFirst", { name: proj.name }));
-          return false;
-        }
-        if (proj && isProjectPathMissing(proj.pathOk)) {
-          setLocalError(tr("project.pathMissing", { name: proj.name }));
           return false;
         }
         setMainPane("chat");
@@ -2550,16 +2455,12 @@ export default function App() {
   const refreshProjects = async () => {
     try {
       const list = await api.projectsList();
-      const mapped = list.map((p) => ({
-        ...p,
-        pinned: !!p.pinned,
-      })) as Project[];
-      setProjects(mapped);
-      // Keep active project pathOk/path in sync with Host re-check.
-      setActiveProject((prev) => {
-        if (!prev) return prev;
-        return mapped.find((x) => x.id === prev.id) ?? prev;
-      });
+      setProjects(
+        list.map((p) => ({
+          ...p,
+          pinned: !!p.pinned,
+        })),
+      );
     } catch {
       /* ignore */
     }
@@ -2599,55 +2500,6 @@ export default function App() {
         }
       },
     });
-  };
-
-  /**
-   * Pick a new folder for a project whose path is gone or moved (D05).
-   * Host persists path and re-checks is_dir → pathOk true.
-   */
-  const relocateProject = async (proj: Project) => {
-    setCtxMenu(null);
-    if (!api.isTauri()) {
-      setLocalError(tr("error.needTauri"));
-      return;
-    }
-    try {
-      const dir = await api.pickDirectory();
-      if (!dir) return;
-      const updated = (await api.projectRelocate(proj.id, dir)) as Project;
-      await refreshProjects();
-      void api.trayRefresh();
-      if (activeProject?.id === proj.id) {
-        setActiveProject(updated);
-        // Force reconnect on next send — cwd changed.
-        setSession((prev) =>
-          prev.sessionId
-            ? {
-                ...IDLE_SNAPSHOT,
-                sessionId: prev.sessionId,
-                title: prev.title,
-                state: "idle",
-                backend: prev.backend || "grok_agent_stdio",
-              }
-            : prev,
-        );
-        setLiveHost((prev) =>
-          prev.sessionId ? { ...IDLE_SNAPSHOT } : prev,
-        );
-      }
-      setLocalError(null);
-      const msg = tr("project.relocateOk", {
-        name: updated.name,
-        path: updated.path,
-      });
-      setToast(msg);
-      window.setTimeout(
-        () => setToast((cur) => (cur === msg ? null : cur)),
-        3200,
-      );
-    } catch (e) {
-      setLocalError(String(e));
-    }
   };
 
   /**
@@ -2812,17 +2664,6 @@ export default function App() {
     }
   };
 
-  /** Pin / unpin a session (floats to top of its sidebar group). */
-  const pinSession = async (s: SessionRow, pinned = true) => {
-    setCtxMenu(null);
-    try {
-      await api.sessionSetPinned(s.id, pinned);
-      await refreshSessions();
-    } catch (e) {
-      setLocalError(String(e));
-    }
-  };
-
   /** Permanent delete — confirm first; leave workbench if viewing that chat. */
   const deleteSessionConfirm = (s: SessionRow) => {
     deleteSessionsConfirm([s]);
@@ -2958,16 +2799,6 @@ export default function App() {
     [searchQuery, sessions, projects],
   );
 
-  const mergedSessionHits = useMemo(
-    () =>
-      mergeSessionSearchHits(
-        searchQuery,
-        searchHits.matchedSessions,
-        contentSearchHits,
-      ),
-    [searchQuery, searchHits.matchedSessions, contentSearchHits],
-  );
-
   const connPill = useMemo(
     () => connPillForState(session.state, connecting),
     [session.state, connecting],
@@ -3021,12 +2852,6 @@ export default function App() {
     // Project-less (orphan) sessions are allowed: cwd falls back on Host.
     if (activeProject && !activeProject.trusted) {
       setLocalError(tr("project.trustFirst", { name: activeProject.name }));
-      return null;
-    }
-    if (activeProject && isProjectPathMissing(activeProject.pathOk)) {
-      setLocalError(
-        tr("project.pathMissing", { name: activeProject.name }),
-      );
       return null;
     }
     // Fast path: already ready on the *preferred* session (not merely "any" ready).
@@ -4250,7 +4075,6 @@ export default function App() {
           projectId: meta.projectId ?? source.projectId,
           updatedAt: meta.updatedAt || new Date().toISOString(),
           archived: meta.archived,
-          pinned: !!(meta as SessionRow).pinned,
           scheduled: meta.scheduled,
         };
         const proj = row.projectId
@@ -4816,10 +4640,6 @@ export default function App() {
       }
       if (proj && !proj.trusted) {
         setLocalError(tr("project.trustFirst", { name: proj.name }));
-        return;
-      }
-      if (proj && isProjectPathMissing(proj.pathOk)) {
-        setLocalError(tr("project.pathMissing", { name: proj.name }));
         return;
       }
       try {
@@ -6220,13 +6040,6 @@ export default function App() {
                 showToast(String(e), 4500);
               });
           }}
-          sandboxProfile={sandboxProfile}
-          onSandboxProfile={(v) => {
-            setSandboxProfile(v);
-            void api.settingsGet().then((s) =>
-              api.settingsSet({ ...s, sandboxProfile: v }),
-            );
-          }}
           cliInfo={cliInfo}
           onDoctor={() => void openDoctor()}
           versionFooter={tr("app.versionFooter")}
@@ -6428,12 +6241,7 @@ export default function App() {
                   <div key={proj.id} className="tree-project">
                     {/* L2 — project folder: expand/collapse only (not selectable) */}
                     <div
-                      className={
-                        "tree-l2" +
-                        (isProjectPathMissing(proj.pathOk)
-                          ? " tree-l2--path-missing"
-                          : "")
-                      }
+                      className="tree-l2"
                       role="button"
                       tabIndex={0}
                       aria-expanded={open}
@@ -6457,13 +6265,7 @@ export default function App() {
                       <span className="tree-l2__icon">
                         <IconFolder size={15} />
                       </span>
-                      <Tip
-                        label={
-                          isProjectPathMissing(proj.pathOk)
-                            ? tr("project.pathMissing", { name: proj.name })
-                            : proj.path
-                        }
-                      >
+                      <Tip label={proj.path}>
                         <span className="tree-l2__name">
                           {proj.pinned ? (
                             <IconPin size={12} className="tree-l2__pin" />
@@ -6471,24 +6273,17 @@ export default function App() {
                           {proj.name}
                         </span>
                       </Tip>
-                      {isProjectPathMissing(proj.pathOk) ? (
-                        <span className="project-row__badge project-row__badge--path-missing">
-                          {tr("sidebar.pathMissing")}
-                        </span>
-                      ) : !proj.trusted ? (
+                      {!proj.trusted && (
                         <span className="project-row__badge">
                           {tr("sidebar.untrusted")}
                         </span>
-                      ) : null}
+                      )}
                       <span className="tree-l2__actions">
                         <Tip label={tr("sidebar.newConversation")}>
                           <button
                             type="button"
                             className="tree-icon-btn"
-                            disabled={
-                              !proj.trusted ||
-                              isProjectPathMissing(proj.pathOk)
-                            }
+                            disabled={!proj.trusted}
                             onClick={(e) => {
                               e.stopPropagation();
                               void newChat(proj);
@@ -6511,19 +6306,7 @@ export default function App() {
 
                     {open && (
                       <div className="tree-l3-list-wrap">
-                        {isProjectPathMissing(proj.pathOk) && (
-                          <button
-                            type="button"
-                            className="tree-l3 tree-l3--hint"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              void relocateProject(proj);
-                            }}
-                          >
-                            {tr("sidebar.relocateProject")}
-                          </button>
-                        )}
-                        {!proj.trusted && !isProjectPathMissing(proj.pathOk) && (
+                        {!proj.trusted && (
                           <button
                             type="button"
                             className="tree-l3 tree-l3--hint"
@@ -6570,18 +6353,6 @@ export default function App() {
                                   }}
                                 >
                                   <span className="tree-l3__title">
-                                    {s.pinned ? (
-                                      <span
-                                        className="tree-l3__kind"
-                                        title={tr("session.pinned")}
-                                        aria-label={tr("session.pinned")}
-                                      >
-                                        <IconPin
-                                          size={12}
-                                          className="tree-l3__pin"
-                                        />
-                                      </span>
-                                    ) : null}
                                     {s.scheduled ? (
                                       <span
                                         className="tree-l3__kind"
@@ -6610,29 +6381,7 @@ export default function App() {
                                       </span>
                                     </Tip>
                                   ) : (
-                                    <span className="tree-l3__actions tree-l3__actions--triple">
-                                      <Tip
-                                        label={
-                                          s.pinned
-                                            ? tr("session.unpin")
-                                            : tr("session.pin")
-                                        }
-                                      >
-                                        <button
-                                          type="button"
-                                          className="tree-icon-btn"
-                                          onClick={(e) => {
-                                            e.stopPropagation();
-                                            void pinSession(s, !s.pinned);
-                                          }}
-                                        >
-                                          {s.pinned ? (
-                                            <IconPinOff size={13} />
-                                          ) : (
-                                            <IconPin size={13} />
-                                          )}
-                                        </button>
-                                      </Tip>
+                                    <span className="tree-l3__actions">
                                       <Tip
                                         label={
                                           s.archived
@@ -6733,18 +6482,6 @@ export default function App() {
                       }}
                     >
                       <span className="tree-l3__title">
-                        {s.pinned ? (
-                          <span
-                            className="tree-l3__kind"
-                            title={tr("session.pinned")}
-                            aria-label={tr("session.pinned")}
-                          >
-                            <IconPin
-                              size={12}
-                              className="tree-l3__pin"
-                            />
-                          </span>
-                        ) : null}
                         {s.scheduled ? (
                           <span
                             className="tree-l3__kind"
@@ -6771,29 +6508,7 @@ export default function App() {
                           </span>
                         </Tip>
                       ) : (
-                        <span className="tree-l3__actions tree-l3__actions--triple">
-                          <Tip
-                            label={
-                              s.pinned
-                                ? tr("session.unpin")
-                                : tr("session.pin")
-                            }
-                          >
-                            <button
-                              type="button"
-                              className="tree-icon-btn"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                void pinSession(s, !s.pinned);
-                              }}
-                            >
-                              {s.pinned ? (
-                                <IconPinOff size={13} />
-                              ) : (
-                                <IconPin size={13} />
-                              )}
-                            </button>
-                          </Tip>
+                        <span className="tree-l3__actions">
                           <Tip label={tr("sidebar.archive")}>
                             <button
                               type="button"
@@ -7109,24 +6824,7 @@ export default function App() {
             />
           ) : (
           <>
-          {activeProject && isProjectPathMissing(activeProject.pathOk) && (
-            <div className="conn-bar">
-              <span style={{ fontSize: 12, opacity: 0.9, marginRight: 8 }}>
-                {tr("project.pathMissingShort")}
-              </span>
-              <button
-                type="button"
-                className="btn btn--primary"
-                style={{ height: 24, fontSize: 11 }}
-                onClick={() => void relocateProject(activeProject)}
-              >
-                {tr("project.relocateToSend")}
-              </button>
-            </div>
-          )}
-          {activeProject &&
-            !isProjectPathMissing(activeProject.pathOk) &&
-            !activeProject.trusted && (
+          {activeProject && !activeProject.trusted && (
             <div className="conn-bar">
               <button
                 type="button"
@@ -7690,7 +7388,6 @@ export default function App() {
                     worktreeSwitch: tr("composer.worktreeSwitch"),
                     worktreeMain: tr("composer.worktreeMain"),
                     worktreeDetached: tr("composer.worktreeDetached"),
-                    pathMissing: tr("project.pathMissingShort"),
                   }}
                   worktrees={gitWorktrees}
                   worktreesAvailable={gitWorktreesAvailable}
@@ -7927,7 +7624,6 @@ export default function App() {
               sessionChanges={
                 sessionChangesById[session.sessionId || ""] ?? []
               }
-              sessionMessages={messages}
               plan={plan}
               planFocusKey={planFocusKey}
               onApprovePlan={() => void approvePlan()}
@@ -8275,58 +7971,33 @@ export default function App() {
             )}
             <div className="search-panel__section">
               {tr("search.chats")}
-              {contentSearchLoading && searchQuery.trim()
-                ? ` · ${tr("search.searchingContent")}`
-                : null}
             </div>
-            {mergedSessionHits.length === 0 && !contentSearchLoading && (
+            {searchHits.matchedSessions.length === 0 && (
               <div className="sidebar-empty" style={{ padding: 12 }}>
                 {tr("search.noMatches")}
               </div>
             )}
-            {mergedSessionHits.map((hit, i) => {
+            {searchHits.matchedSessions.map((hit, i) => {
               const s = sessions.find((x) => x.id === hit.id);
-              // Content-only hits may lack a live row if the list is stale; still open by id.
-              const row: SessionRow = s ?? {
-                id: hit.id,
-                title: hit.title,
-                projectId: hit.projectId ?? null,
-                updatedAt: "",
-              };
-              const proj = projects.find(
-                (p) => p.id === (row.projectId ?? hit.projectId),
-              );
-              const metaParts: string[] = [];
-              if (proj?.name) metaParts.push(proj.name);
-              if (hit.contentMatch && hit.matchCount && hit.matchCount > 0) {
-                metaParts.push(
-                  tr("search.matchCount", { n: String(hit.matchCount) }),
-                );
-              }
-              if (i < 9) metaParts.push(`⌘${i + 1}`);
+              if (!s) return null;
+              const proj = projects.find((p) => p.id === s.projectId);
               return (
                 <button
-                  key={hit.id}
+                  key={s.id}
                   type="button"
                   className="search-panel__row"
                   onClick={() => {
                     setShowSearch(false);
-                    void openSession(row, proj ?? null);
+                    void openSession(s, proj ?? null);
                   }}
                 >
                   <IconSquarePen size={15} />
-                  <span className="search-panel__body">
-                    <span className="search-panel__title">
-                      {hit.title || s?.title || "Untitled"}
-                    </span>
-                    {hit.snippet ? (
-                      <span className="search-panel__snippet">
-                        {hit.snippet}
-                      </span>
-                    ) : null}
+                  <span className="search-panel__title">
+                    {s.title || "Untitled"}
                   </span>
                   <span className="search-panel__meta">
-                    {metaParts.join(" · ") || "—"}
+                    {proj?.name ?? "—"}
+                    {i < 9 ? `  ⌘${i + 1}` : ""}
                   </span>
                 </button>
               );
@@ -8498,11 +8169,20 @@ export default function App() {
                 },
               },
               {
-                id: "relocate",
-                label: tr("project.relocate"),
-                icon: <IconFolderPlus size={16} />,
+                id: "rules",
+                label: tr("project.rules"),
+                icon: <IconFileText size={16} />,
                 onClick: () => {
-                  void relocateProject(proj);
+                  // Focus this project’s rules in the resource pane (no agent recycle).
+                  setActiveProject(proj);
+                  setExpandedProjects((e) => ({ ...e, [proj.id]: true }));
+                  setLayout((l) => {
+                    if (!l.asideCollapsed) return l;
+                    const n = { ...l, asideCollapsed: false };
+                    saveLayout(localStorage, n);
+                    return n;
+                  });
+                  setResourceOpenTarget({ type: "rules" });
                 },
               },
               {
@@ -8589,18 +8269,6 @@ export default function App() {
               viewingSessionIdRef.current === s.id;
             items = [
               {
-                id: "pin",
-                label: s.pinned ? tr("session.unpin") : tr("session.pin"),
-                icon: s.pinned ? (
-                  <IconPinOff size={16} />
-                ) : (
-                  <IconPin size={16} />
-                ),
-                onClick: () => {
-                  void pinSession(s, !s.pinned);
-                },
-              },
-              {
                 id: "rename",
                 label: tr("session.rename"),
                 icon: <IconRename size={16} />,
@@ -8677,7 +8345,11 @@ export default function App() {
             onClose={() => setCtxMenu(null)}
             items={items}
             estimatedHeight={
-              ctxMenu?.kind === "project-policy" ? 280 : 240
+              ctxMenu?.kind === "project-policy"
+                ? 280
+                : ctxMenu?.kind === "project"
+                  ? 280
+                  : 240
             }
           />
         );

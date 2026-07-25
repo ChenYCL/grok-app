@@ -372,6 +372,43 @@ export async function pathReveal(path: string) {
   return invoke<void>("path_reveal", { path });
 }
 
+/** One existing project rule file (AGENTS.md / CLAUDE.md / .grok rules). */
+export interface ProjectRuleEntry {
+  relativePath: string;
+  absolutePath: string;
+  kind: string;
+  name: string;
+  size: number;
+  mtimeMs: number;
+}
+
+export interface ProjectRulesListResult {
+  projectPath: string;
+  rules: ProjectRuleEntry[];
+  hasAgentsMd: boolean;
+  preferredAgentsPath: string;
+}
+
+export interface ProjectRulesEnsureResult {
+  projectPath: string;
+  relativePath: string;
+  absolutePath: string;
+  created: boolean;
+  alreadyExisted: boolean;
+}
+
+/** List project rule files under a project root. */
+export async function projectRulesList(path: string) {
+  return invoke<ProjectRulesListResult>("project_rules_list", { path });
+}
+
+/** Create root AGENTS.md stub when no agents file exists. */
+export async function projectRulesEnsureTemplate(path: string) {
+  return invoke<ProjectRulesEnsureResult>("project_rules_ensure_template", {
+    path,
+  });
+}
+
 /** Optional git unified diff for a project file (session Changes panel). */
 export interface GitFileDiffResult {
   available: boolean;

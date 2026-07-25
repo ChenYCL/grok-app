@@ -350,6 +350,22 @@ pub async fn project_reveal(id: String) -> Result<(), String> {
     Ok(())
 }
 
+/// List existing project rule files (AGENTS.md, CLAUDE.md, `.grok/rules*`, nested AGENTS).
+#[tauri::command]
+pub async fn project_rules_list(
+    path: String,
+) -> Result<crate::project_rules::ProjectRulesListResult, String> {
+    crate::project_rules::list_project_rules(&path)
+}
+
+/// Create root `AGENTS.md` stub when missing (idempotent).
+#[tauri::command]
+pub async fn project_rules_ensure_template(
+    path: String,
+) -> Result<crate::project_rules::ProjectRulesEnsureResult, String> {
+    crate::project_rules::ensure_agents_template(&path)
+}
+
 #[tauri::command]
 pub async fn project_archive_sessions(id: String) -> Result<usize, String> {
     store::archive_project_sessions(&id)
