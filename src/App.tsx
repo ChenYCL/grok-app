@@ -162,6 +162,7 @@ import {
   pathsEqual,
   sanitizeWorktreeName,
 } from "@/lib/gitWorktree";
+import { pathsEqual, worktreeLabel } from "@/lib/gitWorktree";
 import {
   ComposerPlusPanel,
   buildComposerPlusEntries,
@@ -685,6 +686,12 @@ export default function App() {
   const [worktreeCreateRef, setWorktreeCreateRef] = useState("");
   const [worktreeCreateBusy, setWorktreeCreateBusy] = useState(false);
   const [worktreeCreateError, setWorktreeCreateError] = useState<string | null>(
+  /** Confirm remove for a linked (non-main) worktree. */
+  const [worktreeRemoveTarget, setWorktreeRemoveTarget] =
+    useState<api.GitWorktreeEntry | null>(null);
+  const [worktreeRemoveForce, setWorktreeRemoveForce] = useState(false);
+  const [worktreeRemoveBusy, setWorktreeRemoveBusy] = useState(false);
+  const [worktreeRemoveError, setWorktreeRemoveError] = useState<string | null>(
     null,
   );
   /** Host stream-stall prompt (I06); null when dismissed or not stalled. */
@@ -5141,12 +5148,111 @@ export default function App() {
     activeProject?.trusted,
     bindSessionProject,
     finalizeAddedProject,
+  const openWorktreeRemove = useCallback((wt: api.GitWorktreeEntry) => {
+    if (wt.isMain) return;
+    setWorktreeRemoveTarget(wt);
+    setWorktreeRemoveForce(false);
+    setWorktreeRemoveError(null);
+    setWorktreeRemoveBusy(false);
+  }, []);
+
+  /**
+   * Remove linked worktree via host, refresh list, leave active session if needed,
+   * and carefully offer dropping a matching App project row (folder is gone).
+   */
+  const submitWorktreeRemove = useCallback(async () => {
+    if (!api.isTauri() || !activeProject?.path || !worktreeRemoveTarget) return;
+    const wt = worktreeRemoveTarget;
+    if (wt.isMain) {
+      setWorktreeRemoveError(tr("composer.worktreeRemoveMainBlocked"));
+      return;
+    }
+    const removedPath = wt.path;
+    const wasActive = pathsEqual(activeProject.path, removedPath);
+    const matchedProject = projects.find((p) => pathsEqual(p.path, removedPath));
+    // Main worktree project to fall back to after removing the active path.
+    const mainWt = gitWorktrees.find((w) => w.isMain) ?? gitWorktrees[0] ?? null;
+    const mainProject =
+      mainWt && !pathsEqual(mainWt.path, removedPath)
+        ? projects.find((p) => pathsEqual(p.path, mainWt.path)) ?? null
+        : null;
+
+    setWorktreeRemoveBusy(true);
+    setWorktreeRemoveError(null);
+    try {
+      // Use a cwd that will still exist after remove when deleting the active tree.
+      const gitCwd =
+        wasActive && mainWt?.path
+          ? mainWt.path
+          : activeProject.path;
+      await api.gitWorktreeRemove(
+        gitCwd,
+        removedPath,
+        worktreeRemoveForce,
+      );
+      setWorktreeRemoveTarget(null);
+      setWorktreeRemoveForce(false);
+
+      // Leave the removed cwd before refresh if we were on it.
+      if (wasActive) {
+        if (mainProject) {
+          await bindSessionProject(mainProject, { silent: true });
+        } else {
+          await bindSessionProject(null, { silent: true });
+        }
+      }
+
+      await refreshGitWorktrees();
+
+      const label = worktreeLabel(wt);
+      showToast(tr("composer.worktreeRemoved", { name: label }), 2800);
+
+      // Prefer leaving other projects alone. Only offer removing the App row
+      // that pointed at the deleted path (folder is gone; pathOk would fail).
+      if (matchedProject) {
+        const leaveId = matchedProject.id;
+        const leaveName = matchedProject.name;
+        setAppDialog({
+          kind: "confirm",
+          title: tr("composer.worktreeLeaveProjectTitle"),
+          message: tr("composer.worktreeLeaveProjectMsg", {
+            name: leaveName,
+          }),
+          confirmLabel: tr("project.remove"),
+          danger: true,
+          onConfirm: async () => {
+            try {
+              await api.projectRemove(leaveId);
+              await refreshProjects();
+              await refreshSessions();
+            } catch (e) {
+              showToast(String(e), 4500);
+            }
+          },
+        });
+      }
+    } catch (e) {
+      const msg = String(e);
+      setWorktreeRemoveError(msg);
+      // Dirty trees often need --force; surface that without closing the modal.
+      if (!worktreeRemoveForce && /force|dirty|locked|modified/i.test(msg)) {
+        setWorktreeRemoveForce(true);
+      }
+    } finally {
+      setWorktreeRemoveBusy(false);
+    }
+  }, [
+    activeProject?.path,
+    bindSessionProject,
+    gitWorktrees,
     projects,
     refreshGitWorktrees,
     showToast,
     tr,
     worktreeCreateName,
     worktreeCreateRef,
+    worktreeRemoveForce,
+    worktreeRemoveTarget,
   ]);
 
   /**
@@ -7806,6 +7912,7 @@ export default function App() {
                     worktreeMain: tr("composer.worktreeMain"),
                     worktreeDetached: tr("composer.worktreeDetached"),
                     worktreeNew: tr("composer.worktreeNew"),
+                    worktreeRemove: tr("composer.worktreeRemove"),
                   }}
                   worktrees={gitWorktrees}
                   worktreesAvailable={gitWorktreesAvailable}
@@ -7825,6 +7932,9 @@ export default function App() {
                     void switchToWorktree(wt);
                   }}
                   onCreateWorktree={openWorktreeCreate}
+                  onRemoveWorktree={(wt) => {
+                    openWorktreeRemove(wt);
+                  }}
                   onOpen={refreshGitWorktrees}
                 />
                 {goalMode ? (
@@ -8090,6 +8200,18 @@ export default function App() {
         closeLabel={tr("common.close")}
         closeOnOverlay={!worktreeCreateBusy}
         showClose={!worktreeCreateBusy}
+        open={!!worktreeRemoveTarget}
+        onClose={() => {
+          if (worktreeRemoveBusy) return;
+          setWorktreeRemoveTarget(null);
+          setWorktreeRemoveError(null);
+          setWorktreeRemoveForce(false);
+        }}
+        title={tr("composer.worktreeRemoveTitle")}
+        size="sm"
+        closeLabel={tr("common.close")}
+        closeOnOverlay={!worktreeRemoveBusy}
+        showClose={!worktreeRemoveBusy}
         wrapBody
         footer={
           <>
@@ -8098,6 +8220,12 @@ export default function App() {
               className="btn btn--ghost"
               disabled={worktreeCreateBusy}
               onClick={() => setWorktreeCreateOpen(false)}
+              disabled={worktreeRemoveBusy}
+              onClick={() => {
+                setWorktreeRemoveTarget(null);
+                setWorktreeRemoveError(null);
+                setWorktreeRemoveForce(false);
+              }}
             >
               {tr("common.cancel")}
             </button>
@@ -8112,6 +8240,15 @@ export default function App() {
               {worktreeCreateBusy
                 ? tr("composer.worktreeCreating")
                 : tr("composer.worktreeCreate")}
+              className="btn btn--danger"
+              disabled={worktreeRemoveBusy || !worktreeRemoveTarget}
+              onClick={() => {
+                void submitWorktreeRemove();
+              }}
+            >
+              {worktreeRemoveBusy
+                ? tr("composer.worktreeRemoving")
+                : tr("composer.worktreeRemoveConfirm")}
             </button>
           </>
         }
@@ -8173,6 +8310,35 @@ export default function App() {
             </p>
           ) : null}
         </form>
+        {worktreeRemoveTarget ? (
+          <div className="wt-remove">
+            <p className="wt-remove__msg">
+              {tr("composer.worktreeRemoveMsg", {
+                name: worktreeLabel(worktreeRemoveTarget),
+                branch:
+                  worktreeRemoveTarget.branch?.trim() ||
+                  tr("composer.worktreeDetached"),
+              })}
+            </p>
+            <p className="wt-remove__path" title={worktreeRemoveTarget.path}>
+              {worktreeRemoveTarget.path}
+            </p>
+            <label className="wt-remove__force">
+              <input
+                type="checkbox"
+                checked={worktreeRemoveForce}
+                disabled={worktreeRemoveBusy}
+                onChange={(e) => setWorktreeRemoveForce(e.target.checked)}
+              />
+              <span>{tr("composer.worktreeRemoveForce")}</span>
+            </label>
+            {worktreeRemoveError ? (
+              <p className="wt-remove__error" role="alert">
+                {worktreeRemoveError}
+              </p>
+            ) : null}
+          </div>
+        ) : null}
       </GlassModal>
       <GlassModal
         open={showShortcuts}

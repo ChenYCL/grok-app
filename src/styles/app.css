@@ -2643,6 +2643,18 @@ html.platform-mac[data-theme="light"] .settings-page__content {
 }
 
 /* Match project row height; title + badges on one horizontal line */
+.cpm__worktree-li {
+  display: flex;
+  align-items: stretch;
+  gap: 2px;
+  min-width: 0;
+}
+
+.cpm__worktree-li .cpm__worktree {
+  flex: 1;
+  min-width: 0;
+}
+
 .cpm__pop .cpm__worktree {
   align-items: center;
   min-height: 36px;
@@ -2699,6 +2711,42 @@ html.platform-mac[data-theme="light"] .settings-page__content {
 .wt-create__hint {
   margin: 0;
   font-size: 12.5px;
+.cpm__worktree-remove {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  min-height: 36px;
+  margin: 0;
+  padding: 0;
+  border: none;
+  border-radius: var(--menu-radius-item, 8px);
+  background: transparent;
+  color: var(--text-tertiary);
+  cursor: pointer;
+}
+
+.cpm__worktree-remove:hover {
+  color: var(--danger, #e5484d);
+  background: var(--menu-item-hover, rgba(127, 127, 127, 0.12));
+}
+
+.cpm__worktree-remove:focus-visible {
+  outline: 2px solid var(--accent, #5b8def);
+  outline-offset: -2px;
+}
+
+/* Remove worktree confirm dialog */
+.wt-remove {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.wt-remove__msg {
+  margin: 0;
+  font-size: 13px;
   line-height: 1.45;
   color: var(--text-secondary);
 }
@@ -2730,6 +2778,38 @@ html.platform-mac[data-theme="light"] .settings-page__content {
   font-size: 12.5px;
   line-height: 1.4;
   color: var(--danger, #e35d6a);
+.wt-remove__path {
+  margin: 0;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: var(--surface-2, rgba(127, 127, 127, 0.08));
+  font-size: 12px;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  color: var(--text-primary);
+  word-break: break-all;
+}
+
+.wt-remove__force {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 13px;
+  line-height: 1.35;
+  color: var(--text-secondary);
+  cursor: pointer;
+  user-select: none;
+}
+
+.wt-remove__force input {
+  margin-top: 2px;
+  flex-shrink: 0;
+}
+
+.wt-remove__error {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--danger, #e5484d);
 }
 
 .account-link:hover {

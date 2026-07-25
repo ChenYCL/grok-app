@@ -14,6 +14,7 @@ git worktree list --porcelain
 - If the path is already a project, switch only; otherwise `project_add` (trust inherited from the current project when possible).
 - Soft-fail when `git` is missing or the folder is not a repo (same spirit as Workspace Changes git status).
 - **UI:** section is hidden until host confirms `available: true` (non-git / loading → no “GIT WORKTREES” block). Rows match project list height; branch + badges on one line.
+- **Remove:** non-main rows expose Remove… → GlassModal confirm (`git worktree remove [--force]`). Main worktree is refused on the host. After success the list refreshes; if the session was on that path it leaves to the main worktree project (or clears). If an App project row still pointed at the deleted path, offer leave/remove that project entry only (other projects untouched).
 
 ### Create worktree
 
@@ -51,3 +52,11 @@ Errors when the folder is not a git repository, `git` is missing, the path alrea
 - Pure path / name helpers: `sanitize_worktree_name`, `build_worktree_sibling_path` (+ unit tests)
 - Frontend pure helpers: `src/lib/gitWorktree.ts` (+ unit tests)
 - UI: `ComposerProjectMenu` worktrees section + create dialog in `App.tsx`
+- Creating worktrees from the App (see separate worktree-create PR when open)
+- Full branch browser
+
+## Implementation
+
+- Host: `git_worktrees_list`, `git_worktree_remove` (`src-tauri/src/commands.rs`) — argv only, no shell
+- Pure path helpers + refuse-main tests on the host; parse helpers: `src/lib/gitWorktree.ts` (+ unit tests)
+- UI: `ComposerProjectMenu` worktrees section + remove confirm in `App.tsx`

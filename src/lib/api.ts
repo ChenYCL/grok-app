@@ -346,6 +346,25 @@ export async function gitWorktreeAdd(
     projectPath,
     name,
     startPoint: startPoint?.trim() || null,
+/** Result of `git worktree remove`. */
+export interface GitWorktreeRemoveResult {
+  path: string;
+  forced: boolean;
+}
+
+/**
+ * Remove a linked worktree (`git worktree remove [--force] <path>`).
+ * Host refuses the main worktree. Throws on git errors (dirty without force, etc.).
+ */
+export async function gitWorktreeRemove(
+  projectPath: string,
+  worktreePath: string,
+  force?: boolean,
+) {
+  return invoke<GitWorktreeRemoveResult>("git_worktree_remove", {
+    projectPath,
+    worktreePath,
+    force: force ?? false,
   });
 }
 

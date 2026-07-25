@@ -44,6 +44,7 @@ See `docs/llm-wiki/release.md`.
 
 - **MCP add / remove / doctor** in Settings → Extensions: stdio server form, GlassModal remove confirm, `grok mcp doctor` results; writes agent `GROK_HOME` config.
 - **Reopen last chat on startup**: remembers the last opened session and restores it once after launch (Settings → General toggle, on by default; skips archived / missing / setup wizard).
+- **Remove git worktree** from the project chip: confirm dialog (optional force for dirty/locked), host refuses main worktree, then refresh list and carefully leave/remove a matching App project row.
 
 ## [0.1.6] - 2026-07-24
 
