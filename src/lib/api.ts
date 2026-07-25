@@ -867,6 +867,11 @@ export async function settingsGet() {
   return invoke<AppSettings>("settings_get");
 }
 
+/** Path of a store JSON file quarantined after corrupt parse (one-shot). */
+export async function storeTakeQuarantine() {
+  return invoke<string | null>("store_take_quarantine");
+}
+
 export async function modelsListAvailable() {
   return invoke<AvailableModelsResult>("models_list_available");
 }

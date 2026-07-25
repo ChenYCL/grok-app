@@ -592,6 +592,8 @@ export const zhTW: Record<MessageKey, string> = {
   "settings.section.general": "一般",
   "settings.language": "語言",
   "settings.languageDesc": "應用程式介面語言",
+  "store.quarantineNotice":
+    "偵測到損壞的設定/工作階段檔，已隔離備份（{path}）。該檔已以預設值啟動。",
   "settings.sessionDataMode": "對話資料模式",
   "settings.sessionDataModeDesc": "對話歷史儲存位置（應用程式獨立目錄或與 CLI 共用）",
   "settings.cliSessions": "CLI 工作階段",

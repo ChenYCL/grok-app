@@ -1,5 +1,6 @@
 //! Independent store under ~/.grok-app: projects, sessions index, settings, secrets.
 
+use std::sync::Mutex;
 use std::fs;
 use std::path::PathBuf;
 
@@ -359,6 +360,10 @@ fn read_json<T: for<'de> Deserialize<'de> + Default>(path: &PathBuf) -> T {
     }
 }
 
+
+/// Last quarantined store path (corrupt JSON recovered). Taken once by the UI.
+static LAST_STORE_QUARANTINE: Mutex<Option<String>> = Mutex::new(None);
+
 /// Read JSON; if the file exists but is corrupt, quarantine it and return default.
 fn read_json_recover<T: for<'de> Deserialize<'de> + Default>(path: &PathBuf) -> T {
     match fs::read_to_string(path) {
@@ -373,11 +378,20 @@ fn read_json_recover<T: for<'de> Deserialize<'de> + Default>(path: &PathBuf) -> 
                 let stamp = chrono::Utc::now().format("%Y%m%d-%H%M%S");
                 let bak = path.with_extension(format!("corrupt-{stamp}.json"));
                 let _ = fs::rename(path, &bak);
+                if let Ok(mut g) = LAST_STORE_QUARANTINE.lock() {
+                    *g = Some(bak.display().to_string());
+                }
                 T::default()
             }
         },
         Err(_) => T::default(),
     }
+}
+
+
+/// Pop the most recent store quarantine path (if any) for a one-shot UI notice.
+pub fn take_store_quarantine() -> Option<String> {
+    LAST_STORE_QUARANTINE.lock().ok().and_then(|mut g| g.take())
 }
 
 fn write_json<T: Serialize>(path: &PathBuf, value: &T) -> Result<(), String> {
@@ -1365,6 +1379,18 @@ mod tests {
                 || r.contains("sk-")
         );
         assert!(!r.is_empty());
+    }
+
+    #[test]
+    fn take_store_quarantine_is_one_shot() {
+        // Seed the static as if a corrupt file was recovered.
+        {
+            let mut g = LAST_STORE_QUARANTINE.lock().unwrap();
+            *g = Some("/tmp/fake-corrupt-store.json".into());
+        }
+        let first = take_store_quarantine();
+        assert_eq!(first.as_deref(), Some("/tmp/fake-corrupt-store.json"));
+        assert!(take_store_quarantine().is_none());
     }
 
     #[test]

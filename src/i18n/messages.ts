@@ -620,6 +620,8 @@ const en = {
   "settings.section.general": "General",
   "settings.language": "Language",
   "settings.languageDesc": "App UI language",
+  "store.quarantineNotice":
+    "A damaged settings/sessions file was set aside ({path}). The app started with defaults for that file.",
   "settings.sessionDataMode": "Session data mode",
   "settings.sessionDataModeDesc":
     "Where chat history is stored (independent app dir or shared with CLI)",
@@ -2387,6 +2389,8 @@ const zh: Record<MessageKey, string> = {
   "settings.section.general": "常规",
   "settings.language": "语言",
   "settings.languageDesc": "应用界面语言",
+  "store.quarantineNotice":
+    "检测到损坏的配置/会话文件，已隔离备份（{path}）。该文件已按默认值启动。",
   "settings.sessionDataMode": "会话数据模式",
   "settings.sessionDataModeDesc": "会话历史存储位置（应用独立目录或与 CLI 共享）",
   "settings.cliSessions": "CLI 会话",

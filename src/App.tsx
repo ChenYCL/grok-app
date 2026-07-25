@@ -1217,6 +1217,20 @@ export default function App() {
         setAppGate("ready");
       }
 
+      // One-shot: corrupt store JSON was renamed aside on load (shared-mode safety).
+      void api
+        .storeTakeQuarantine()
+        .then((path) => {
+          if (!path) return;
+          const msg = createT(resolveLocale(settings.locale))(
+            "store.quarantineNotice",
+            { path },
+          );
+          setToast(msg);
+          window.setTimeout(() => setToast(null), 9000);
+        })
+        .catch(() => {});
+
       // Prefer first trusted project; keep selection if still present
       setActiveProject((prev) => {
         if (prev && (p as Project[]).some((x) => x.id === prev.id)) {
