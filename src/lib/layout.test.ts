@@ -8,6 +8,10 @@ import {
   ASIDE_WIDTH_MIN,
   ASIDE_WIDTH_MAX,
   LAYOUT_STORAGE_KEY,
+  withMirrorPhoneDrawerDefault,
+  MIRROR_DRAWER_BREAKPOINT,
+  isPhoneViewport,
+  isMirrorPhoneLayout,
 } from "./layout";
 
 describe("layout prefs", () => {
@@ -47,5 +51,43 @@ describe("layout prefs", () => {
     expect(clampAsideWidth(100)).toBe(ASIDE_WIDTH_MIN);
     expect(clampAsideWidth(9999)).toBe(ASIDE_WIDTH_MAX);
     expect(clampAsideWidth(400)).toBe(400);
+  });
+
+  it("mirror phone viewport starts with drawer collapsed", () => {
+    const open = { ...DEFAULT_LAYOUT, sidebarCollapsed: false };
+    const at390 = withMirrorPhoneDrawerDefault(open, {
+      isMirror: true,
+      viewportWidth: 390,
+    });
+    expect(at390.sidebarCollapsed).toBe(true);
+
+    const atBreakpoint = withMirrorPhoneDrawerDefault(open, {
+      isMirror: true,
+      viewportWidth: MIRROR_DRAWER_BREAKPOINT,
+    });
+    expect(atBreakpoint.sidebarCollapsed).toBe(true);
+
+    const desktopMirror = withMirrorPhoneDrawerDefault(open, {
+      isMirror: true,
+      viewportWidth: MIRROR_DRAWER_BREAKPOINT + 1,
+    });
+    expect(desktopMirror.sidebarCollapsed).toBe(false);
+
+    const nonMirror = withMirrorPhoneDrawerDefault(open, {
+      isMirror: false,
+      viewportWidth: 390,
+    });
+    expect(nonMirror.sidebarCollapsed).toBe(false);
+  });
+
+  it("isPhoneViewport / isMirrorPhoneLayout gate phone chrome", () => {
+    expect(isPhoneViewport(MIRROR_DRAWER_BREAKPOINT)).toBe(true);
+    expect(isPhoneViewport(MIRROR_DRAWER_BREAKPOINT + 1)).toBe(false);
+    expect(isMirrorPhoneLayout({ isMirror: true, viewportWidth: 390 })).toBe(
+      true,
+    );
+    expect(isMirrorPhoneLayout({ isMirror: true, viewportWidth: 900 })).toBe(
+      false,
+    );
   });
 });

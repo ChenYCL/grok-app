@@ -19,6 +19,8 @@ import {
   IconArrowLeft,
   IconCheck,
   IconChat,
+  IconChevronRight,
+
   IconDoctor,
   IconInfo,
   IconKeyboard,
@@ -100,6 +102,11 @@ export interface SettingsPageProps {
   section: SettingsSectionId;
   onSection: (id: SettingsSectionId) => void;
   onBack: () => void;
+  /**
+   * Mirror phone chrome (≤820px). Enables single-column index/detail drill-down.
+   * Desktop / wide viewports leave this false so the two-column layout is unchanged.
+   */
+  phoneLayout?: boolean;
   labels: Record<string, string>;
   locale: string;
   onLocale: (v: string) => void;
@@ -219,7 +226,7 @@ export interface SettingsPageProps {
   trustedProjects?: Array<{ id: string; name: string; path: string }>;
 }
 
-const NAV: {
+type NavEntry = {
   id: SettingsSectionId;
   icon:
     | "settings"
@@ -232,16 +239,129 @@ const NAV: {
     | "keyboard"
     | "info";
   labelKey: string;
+  /**
+   * i18n keys of the rows (labels + descriptions) this section contains.
+   * Search matches the section label *or* any of these, so typing a setting
+   * name ("語言", "theme", "permission") finds the section that holds it.
+   * Keys only — never hardcode localized strings here.
+   */
+  keywordKeys: readonly MessageKey[];
   group: "personal" | "system";
-}[] = [
-  { id: "general", icon: "settings", labelKey: "settings.nav.general", group: "personal" },
-  { id: "appearance", icon: "appearance", labelKey: "settings.nav.appearance", group: "personal" },
-  { id: "account", icon: "user", labelKey: "settings.nav.account", group: "personal" },
-  { id: "archived", icon: "archive", labelKey: "settings.nav.archived", group: "personal" },
+};
+
+const NAV: NavEntry[] = [
+  {
+    id: "general",
+    icon: "settings",
+    labelKey: "settings.nav.general",
+    keywordKeys: [
+      "settings.section.composer",
+      "settings.prefsScope",
+      "settings.prefsScopeDesc",
+      "settings.prefsScope.global",
+      "settings.prefsScope.project",
+      "settings.prefsScope.session",
+      "settings.availableModels",
+      "settings.availableModelsDesc",
+      "settings.section.permissions",
+      "settings.permissionDeep",
+      "settings.permissionDeepDesc",
+      "policy.ask",
+      "policy.accept_edits",
+      "policy.allow_for_session",
+      "policy.dont_ask",
+      "policy.always_approve",
+      "settings.section.general",
+      "settings.language",
+      "settings.languageDesc",
+      "settings.sessionDataMode",
+      "settings.sessionDataModeDesc",
+      "settings.modeIndependent",
+      "settings.modeShared",
+      "settings.openTarget",
+      "settings.openTargetDesc",
+      "settings.openFinder",
+    ],
+    group: "personal",
+  },
+  {
+    id: "appearance",
+    icon: "appearance",
+    labelKey: "settings.nav.appearance",
+    keywordKeys: [
+      "settings.theme",
+      "settings.themeDesc",
+      "settings.themeLight",
+      "settings.themeDark",
+    ],
+    group: "personal",
+  },
+  {
+    id: "account",
+    icon: "user",
+    labelKey: "settings.nav.account",
+    keywordKeys: [
+      "settings.tabOfficial",
+      "settings.tabOfficialHint",
+      "settings.tabProviders",
+      "settings.tabProvidersHint",
+      "account.signedIn",
+      "account.loginOauth",
+      "account.loginDevice",
+      "account.logout",
+      "account.subscription",
+      "account.quota",
+      "account.profiles",
+      "account.manageAccounts",
+      "account.addAccount",
+      "account.importChat",
+    ],
+    group: "personal",
+  },
+  {
+    id: "archived",
+    icon: "archive",
+    labelKey: "settings.nav.archived",
+    keywordKeys: [
+      "settings.archived.desc",
+      "settings.archived.empty",
+      "settings.archived.restore",
+      "settings.archived.delete",
+      "settings.archived.selectAll",
+    ],
+    group: "personal",
+  },
   {
     id: "extensions",
     icon: "extensions",
     labelKey: "settings.nav.extensions",
+    keywordKeys: [
+      "ext.lead",
+      "ext.plugins.title",
+      "ext.skills.title",
+      "ext.mcp.title",
+    ],
+    group: "system",
+  },
+  {
+    id: "runtime",
+    icon: "doctor",
+    labelKey: "settings.nav.runtime",
+    keywordKeys: [
+      "settings.cliPath",
+      "settings.cliPathDesc",
+      "settings.acpServer",
+      "settings.acpServerDesc",
+      "settings.maxConcurrentAgents",
+      "settings.maxConcurrentAgentsDesc",
+      "settings.agentIdleMinutes",
+      "settings.agentIdleMinutesDesc",
+      "settings.streamStallSeconds",
+      "settings.streamStallSecondsDesc",
+      "doctor.title",
+      "settings.doctorDesc",
+      "settings.runDoctor",
+    ],
     group: "system",
   },
   {
@@ -251,13 +371,28 @@ const NAV: {
     group: "system",
   },
   { id: "runtime", icon: "doctor", labelKey: "settings.nav.runtime", group: "system" },
+
   {
     id: "shortcuts",
     icon: "keyboard",
     labelKey: "settings.nav.shortcuts",
+    keywordKeys: [
+      "settings.shortcuts.title",
+      "settings.shortcuts.desc",
+      "settings.shortcuts.group.workbench",
+      "settings.shortcuts.group.navigation",
+      "settings.shortcuts.group.diagnostics",
+      "settings.shortcuts.group.input",
+    ],
     group: "system",
   },
-  { id: "about", icon: "info", labelKey: "settings.nav.about", group: "system" },
+  {
+    id: "about",
+    icon: "info",
+    labelKey: "settings.nav.about",
+    keywordKeys: ["settings.aboutApp"],
+    group: "system",
+  },
 ];
 
 function NavIcon({
@@ -464,6 +599,7 @@ export function SettingsPage({
   section,
   onSection,
   onBack,
+  phoneLayout = false,
   labels: _legacyLabels,
   locale,
   onLocale,
@@ -549,6 +685,11 @@ export function SettingsPage({
   trustedProjects = [],
 }: SettingsPageProps) {
   const [query, setQuery] = useState("");
+  /**
+   * Phone drill-down: "index" = section list only; "detail" = one section full-width.
+   * Always start on the index so opening 設定 never lands on a squeezed two-column pane.
+   */
+  const [phonePane, setPhonePane] = useState<"index" | "detail">("index");
   const [accountTab, setAccountTab] = useState<"official" | "providers">(
     "official",
   );
@@ -636,11 +777,78 @@ export function SettingsPage({
     void api.editorsList().then((r) => setEditors(r.editors ?? [])).catch(() => {});
   }, []);
 
+  // Reset to index when leaving phone layout (e.g. rotate to desktop width).
+  useEffect(() => {
+    if (!phoneLayout) setPhonePane("index");
+  }, [phoneLayout]);
+
+  // Hardware / browser back: detail → index (cheap history entry on open).
+  useEffect(() => {
+    if (!phoneLayout) return;
+    const onPopState = () => {
+      setPhonePane((pane) => (pane === "detail" ? "index" : pane));
+    };
+    window.addEventListener("popstate", onPopState);
+    return () => window.removeEventListener("popstate", onPopState);
+  }, [phoneLayout]);
+
+  const openSection = useCallback(
+    (id: SettingsSectionId) => {
+      onSection(id);
+      if (!phoneLayout) return;
+      setPhonePane("detail");
+      try {
+        window.history.pushState(
+          { settingsPhone: "detail", section: id },
+          "",
+          `#/settings/${id}`,
+        );
+      } catch {
+        /* ignore */
+      }
+    },
+    [onSection, phoneLayout],
+  );
+
+  const backToPhoneIndex = useCallback(() => {
+    if (!phoneLayout) return;
+    if (phonePane === "detail") {
+      // Prefer history.back so Android/browser back stack stays consistent.
+      const st = window.history.state as { settingsPhone?: string } | null;
+      if (st?.settingsPhone === "detail") {
+        window.history.back();
+        return;
+      }
+    }
+    setPhonePane("index");
+  }, [phoneLayout, phonePane]);
+
+  const trimmedQuery = query.trim();
+
+  /** English catalog: keeps "theme" / "permission" searchable in a zh UI too. */
+  const tEn = useMemo(() => createT("en"), []);
+
   const nav = useMemo(() => {
-    const q = query.trim().toLowerCase();
+    const q = trimmedQuery.toLowerCase();
     if (!q) return NAV;
-    return NAV.filter((n) => t(n.labelKey).toLowerCase().includes(q));
-  }, [query, t]);
+    return NAV.filter((n) =>
+      [n.labelKey as MessageKey, ...n.keywordKeys].some(
+        (k) =>
+          t(k).toLowerCase().includes(q) || tEn(k).toLowerCase().includes(q),
+      ),
+    );
+  }, [trimmedQuery, t, tEn]);
+
+  const personalNav = useMemo(
+    () => nav.filter((n) => n.group === "personal"),
+    [nav],
+  );
+  const systemNav = useMemo(
+    () => nav.filter((n) => n.group === "system"),
+    [nav],
+  );
+  /** Searching with zero hits: show an explicit empty state, never bare headers. */
+  const searchEmpty = trimmedQuery.length > 0 && nav.length === 0;
 
   const archivedAllIds = useMemo(
     () => archivedGroups.flatMap((g) => g.sessions.map((s) => s.id)),
@@ -836,8 +1044,41 @@ export function SettingsPage({
                     ? t("settings.nav.shortcuts")
                     : t("settings.nav.about");
 
+  const phoneIndex = phoneLayout && phonePane === "index";
+  const phoneDetail = phoneLayout && phonePane === "detail";
+  const pageClass =
+    "settings-page" +
+    (phoneIndex ? " settings-page--phone-index" : "") +
+    (phoneDetail ? " settings-page--phone-detail" : "");
+
+  const renderNavItem = (n: NavEntry) => (
+    <button
+      key={n.id}
+      type="button"
+      className={
+        "settings-page__nav-item" +
+        (section === n.id && !phoneIndex ? " is-active" : "")
+      }
+      onClick={() => openSection(n.id)}
+    >
+      <NavIcon name={n.icon} />
+      <span className="settings-page__nav-label">{t(n.labelKey)}</span>
+      {phoneLayout ? (
+        <IconChevronRight
+          size={18}
+          className="settings-page__nav-chevron"
+          aria-hidden
+        />
+      ) : null}
+    </button>
+  );
+
   return (
-    <div className="settings-page" data-testid="settings-page">
+    <div
+      className={pageClass}
+      data-testid="settings-page"
+      data-phone-pane={phoneLayout ? phonePane : undefined}
+    >
       {/* Full-width overlay drag band (does not break glass nav continuity) */}
       <div
         className="settings-page__chrome"
@@ -849,7 +1090,11 @@ export function SettingsPage({
             .catch(() => {});
         }}
       />
-      <aside className="settings-page__nav">
+      <aside
+        className="settings-page__nav"
+        hidden={phoneDetail || undefined}
+        aria-hidden={phoneDetail || undefined}
+      >
         <div className="settings-page__nav-inner">
         <button
           type="button"
@@ -866,59 +1111,73 @@ export function SettingsPage({
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder={t("settings.searchPlaceholder")}
+            aria-label={t("settings.searchPlaceholder")}
           />
         </div>
 
-        <div className="settings-page__group-label">
-          {t("settings.group.personal")}
-        </div>
-        {nav
-          .filter((n) => n.group === "personal")
-          .map((n) => (
-            <button
-              key={n.id}
-              type="button"
-              className={
-                "settings-page__nav-item" +
-                (section === n.id ? " is-active" : "")
-              }
-              onClick={() => onSection(n.id)}
-            >
-              <NavIcon name={n.icon} />
-              <span>{t(n.labelKey)}</span>
-            </button>
-          ))}
+        {personalNav.length > 0 ? (
+          <>
+            <div className="settings-page__group-label">
+              {t("settings.group.personal")}
+            </div>
+            {personalNav.map(renderNavItem)}
+          </>
+        ) : null}
 
-        <div className="settings-page__group-label">
-          {t("settings.group.system")}
-        </div>
-        {nav
-          .filter((n) => n.group === "system")
-          .map((n) => (
-            <button
-              key={n.id}
-              type="button"
-              className={
-                "settings-page__nav-item" +
-                (section === n.id ? " is-active" : "")
-              }
-              onClick={() => onSection(n.id)}
-            >
-              <NavIcon name={n.icon} />
-              <span>{t(n.labelKey)}</span>
-            </button>
-          ))}
+        {systemNav.length > 0 ? (
+          <>
+            <div className="settings-page__group-label">
+              {t("settings.group.system")}
+            </div>
+            {systemNav.map(renderNavItem)}
+          </>
+        ) : null}
+
+        {searchEmpty ? (
+          <div
+            className="settings-page__nav-empty"
+            role="status"
+            data-testid="settings-search-empty"
+          >
+            <div className="settings-page__nav-empty-title">
+              {t("settings.searchNoResults")}
+            </div>
+            <div className="settings-page__nav-empty-hint">
+              {t("settings.searchNoResultsHint", { q: trimmedQuery })}
+            </div>
+          </div>
+        ) : null}
         </div>
       </aside>
 
-      <div className="settings-page__content">
+      <div
+        className="settings-page__content"
+        hidden={phoneIndex || undefined}
+        aria-hidden={phoneIndex || undefined}
+      >
+      {phoneDetail ? (
+        <div className="settings-page__phone-bar">
+          <button
+            type="button"
+            className="settings-page__phone-back"
+            onClick={backToPhoneIndex}
+            aria-label={t("settings.backToIndex")}
+          >
+            <IconArrowLeft size={20} />
+          </button>
+          <h1 className="settings-page__phone-title">{title}</h1>
+        </div>
+      ) : null}
       <main
         className={
           "settings-page__main" +
           (section === "remote_im" ? " settings-page__main--remote-im" : "")
         }
       >
-        <h1 className="settings-page__title">{title}</h1>
+        {!phoneDetail ? (
+          <h1 className="settings-page__title">{title}</h1>
+        ) : null}
+
 
         {section === "general" && (
           <>
@@ -1895,7 +2154,7 @@ export function SettingsPage({
             locale={resolveLocale(locale)}
             projectPath={projectPath}
             cliFound={cliInfo.found}
-            onOpenRuntime={() => onSection("runtime")}
+            onOpenRuntime={() => openSection("runtime")}
             onSkillsPrefsChanged={onSkillsPrefsChanged}
           />
         )}

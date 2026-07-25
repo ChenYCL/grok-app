@@ -56,6 +56,12 @@ fs2 = "0.4"
 tokio-tungstenite = { version = "0.26", features = ["rustls-tls-webpki-roots"] }
 url = "2"
 
+# Remote mirror host (HTTP + WS + token gate) — see src/mirror/
+axum = { version = "0.8", features = ["ws", "macros"] }
+tower = "0.5"
+tower-http = { version = "0.6", features = ["fs", "trace"] }
+rand = "0.8"
+
 [profile.release]
 codegen-units = 1
 lto = true

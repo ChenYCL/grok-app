@@ -20,6 +20,7 @@ mod editors;
 mod error;
 mod fs_browser;
 mod media_protocol;
+mod mirror;
 mod mock_acp;
 mod models_catalog;
 mod paths;
@@ -57,6 +58,7 @@ mod remote_im;
 
 use std::sync::Arc;
 
+use mirror::MirrorHost;
 use session_manager::SessionManager;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -71,6 +73,7 @@ pub fn run() {
         .init();
 
     let session_mgr = Arc::new(SessionManager::new());
+    let mirror_host = Arc::new(MirrorHost::from_env());
     let voice_host = Arc::new(voice_host::VoiceHost::new());
     let remote_im_state = Arc::new(remote_im::RemoteImState {
         inner: tokio::sync::Mutex::new(remote_im::BridgeRuntime::default()),
@@ -88,6 +91,7 @@ pub fn run() {
         }))
         .plugin(tauri_plugin_store::Builder::new().build())
         .manage(session_mgr)
+        .manage(mirror_host)
         .manage(voice_host)
         .manage(remote_im_state)
         // Range-capable media streaming (video/audio/pdf) — never loads multi‑GB into RAM.
@@ -151,6 +155,13 @@ pub fn run() {
                 tauri::async_runtime::spawn(async move {
                     remote_im::try_autostart(&rim).await;
                 });
+            }
+            // Headless mirror auto-start (GROK_MIRROR_HEADLESS=1) — off by default.
+            {
+                use tauri::Manager;
+                let host = app.state::<Arc<MirrorHost>>().inner().clone();
+                let mgr = app.state::<Arc<SessionManager>>().inner().clone();
+                mirror::maybe_autostart(host, app.handle().clone(), mgr);
             }
             Ok(())
         })
@@ -314,6 +325,9 @@ pub fn run() {
             commands::providers_list_models,
             commands::editors_list,
             commands::open_in_editor,
+            mirror::mirror_status,
+            mirror::mirror_start,
+            mirror::mirror_stop,
             voice_host::voice_state,
             voice_host::voice_start,
             voice_host::voice_stop,
@@ -345,6 +359,13 @@ pub fn run() {
             {
                 if !has_visible_windows {
                     tray::show_main_window(app);
+                }
+            }
+            // Full exit (tray Quit / Cmd+Q): tear down mirror host + cloudflared group.
+            if let tauri::RunEvent::Exit = event {
+                use tauri::Manager;
+                if let Some(host) = app.try_state::<Arc<MirrorHost>>() {
+                    host.inner().stop_sync();
                 }
             }
             let _ = (app, &event);

@@ -15,7 +15,7 @@ use std::time::{Duration, Instant};
 
 use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
-use tauri::{AppHandle, Emitter};
+use tauri::AppHandle;
 use uuid::Uuid;
 
 use crate::acp_client::{
@@ -631,15 +631,12 @@ impl SessionManager {
             mode = %mode,
             "turn ended with zero tool calls (soft empty-run signal)"
         );
-        let _ = app.emit(
-            "session://turn_empty_run",
-            serde_json::json!({
+        crate::mirror::fanout_event(&app, "session://turn_empty_run", serde_json::json!({
                 "sessionId": app_sid,
                 "stopReason": reason,
                 "mode": mode,
                 "toolCount": 0,
-            }),
-        );
+            }));
     }
 
     fn touch_stream_progress_locked(s: &mut LiveSession) {
@@ -654,15 +651,12 @@ impl SessionManager {
     }
 
     fn emit_stream_stall(app: &AppHandle, session_id: &str, stall_seconds: u32) {
-        let _ = app.emit(
-            "session://stream_stall",
-            serde_json::json!({
+        crate::mirror::fanout_event(&app, "session://stream_stall", serde_json::json!({
                 "sessionId": session_id,
                 "stallSeconds": stall_seconds,
                 "code": "STREAM_STALL",
                 "message": stream_stall_message(stall_seconds),
-            }),
-        );
+            }));
     }
 
     /// Persist accumulated assistant stream (I04). `force` bypasses the throttle.
@@ -777,25 +771,19 @@ impl SessionManager {
     }
 
     fn emit_idle_recycled(app: &AppHandle, session_id: &str, reason: &str) {
-        let _ = app.emit(
-            "session://idle_recycled",
-            serde_json::json!({
+        crate::mirror::fanout_event(&app, "session://idle_recycled", serde_json::json!({
                 "sessionId": session_id,
                 "reason": reason,
-            }),
-        );
+            }));
     }
 
     fn emit_process_limit(app: &AppHandle, session_id: Option<&str>, max: u32) {
-        let _ = app.emit(
-            "session://process_limit",
-            serde_json::json!({
+        crate::mirror::fanout_event(&app, "session://process_limit", serde_json::json!({
                 "sessionId": session_id,
                 "maxConcurrentAgents": max,
                 "code": "PROCESS_LIMIT",
                 "message": process_limit_message(max),
-            }),
-        );
+            }));
     }
 
     /// Drop dead parked entries; return killed count (for logging).
@@ -1178,7 +1166,7 @@ impl SessionManager {
     }
 
     fn emit_state(app: &AppHandle, snap: &SessionSnapshot) {
-        let _ = app.emit("session://state", snap);
+        crate::mirror::fanout_event(app, "session://state", snap);
     }
 
     /// Persist + push a chat-visible error for a failed turn (retries exhausted, RPC fail, …).
@@ -1222,16 +1210,13 @@ impl SessionManager {
         s.journal_throttle.reset();
         s.last_stall_emit = None;
 
-        let _ = app.emit(
-            "session://turn_error",
-            serde_json::json!({
+        crate::mirror::fanout_event(&app, "session://turn_error", serde_json::json!({
                 "sessionId": s.app_session_id,
                 "messageId": mid,
                 "code": code,
                 "message": detail,
                 "content": content,
-            }),
-        );
+            }));
     }
 
     pub async fn connect(
@@ -1856,7 +1841,7 @@ impl SessionManager {
                     },
                     "thoughtPhase": thought_phase,
                 });
-                let _ = app.emit("session://stream", payload);
+                crate::mirror::fanout_event(&app, "session://stream", payload);
             }
             AcpEvent::PromptComplete { stop_reason } => {
                 let empty_run = {
@@ -2004,7 +1989,7 @@ impl SessionManager {
                         scope_key: sk,
                         options,
                     };
-                    let _ = app.emit("session://permission", &req);
+                    crate::mirror::fanout_event(&app, "session://permission", &req);
                     Self::emit_state(app, &self.snapshot());
                 }
             }
@@ -2046,17 +2031,14 @@ impl SessionManager {
                         }
                     };
                     // Keep event name for backward compat; used for image + video.
-                    let _ = app.emit(
-                        "session://generated_image",
-                        serde_json::json!({
+                    crate::mirror::fanout_event(&app, "session://generated_image", serde_json::json!({
                             "sessionId": app_sid,
                             "messageId": mid,
                             "path": att.path,
                             "name": att.name,
                             "toolCallId": tool_call_id,
                             "kind": if is_video_fs_path(path) { "video" } else { "image" },
-                        }),
-                    );
+                        }));
                 }
 
                 let (app_sid, empty_run) = {
@@ -2093,9 +2075,7 @@ impl SessionManager {
                 } else {
                     String::new()
                 };
-                let _ = app.emit(
-                    "session://tool",
-                    serde_json::json!({
+                crate::mirror::fanout_event(&app, "session://tool", serde_json::json!({
                         "sessionId": app_sid,
                         "toolCallId": tool_call_id,
                         "title": live_title,
@@ -2106,8 +2086,7 @@ impl SessionManager {
                         // Optional content snippets for the session Changes / diff panel.
                         "before": before_snip,
                         "after": after_snip,
-                    }),
-                );
+                    }));
 
                 // Persist completed/failed tool steps so reload still shows work trail.
                 let st = if status.is_empty() {
@@ -2176,17 +2155,14 @@ impl SessionManager {
                         String::new()
                     }
                 };
-                let _ = app.emit(
-                    "session://plan",
-                    serde_json::json!({
+                crate::mirror::fanout_event(&app, "session://plan", serde_json::json!({
                         "sessionId": app_sid,
                         "entries": entries,
                         "body": body,
                         "rpcId": rpc_id,
                         "toolCallId": tool_call_id,
                         "waiting": rpc_id.is_none(),
-                    }),
-                );
+                    }));
             }
             AcpEvent::AskUserQuestion {
                 rpc_id,
@@ -2203,15 +2179,12 @@ impl SessionManager {
                         String::new()
                     }
                 };
-                let _ = app.emit(
-                    "session://ask_user",
-                    serde_json::json!({
+                crate::mirror::fanout_event(&app, "session://ask_user", serde_json::json!({
                         "rpcId": rpc_id,
                         "sessionId": app_sid,
                         "toolCallId": tool_call_id,
                         "questions": questions,
-                    }),
-                );
+                    }));
             }
             AcpEvent::Error { error } => {
                 {
@@ -2251,16 +2224,13 @@ impl SessionManager {
                                     marker: Some("turn_cancelled".into()),
                                 },
                             );
-                            let _ = app.emit(
-                                "session://turn_marker",
-                                serde_json::json!({
+                            crate::mirror::fanout_event(&app, "session://turn_marker", serde_json::json!({
                                     "sessionId": s.app_session_id,
                                     "messageId": mid,
                                     "marker": "turn_cancelled",
                                     "reason": "agent_exit",
                                     "content": content,
-                                }),
-                            );
+                                }));
                         }
                         // During Connecting, leave error to initialize/connect_failed
                         // (fail_all_pending already surfaces a richer stderr-backed message).
@@ -2304,7 +2274,7 @@ impl SessionManager {
                 Self::emit_state(app, &self.snapshot());
             }
             AcpEvent::Stderr { line } => {
-                let _ = app.emit("session://stderr", serde_json::json!({ "line": line }));
+                crate::mirror::fanout_event(&app, "session://stderr", serde_json::json!({ "line": line }));
             }
             AcpEvent::RetryState {
                 attempt,
@@ -2327,16 +2297,13 @@ impl SessionManager {
                     }
                 };
 
-                let _ = app.emit(
-                    "session://retry",
-                    serde_json::json!({
+                crate::mirror::fanout_event(&app, "session://retry", serde_json::json!({
                         "attempt": attempt,
                         "maxRetries": cap,
                         "reason": reason,
                         "status": status,
                         "aborting": abort,
-                    }),
-                );
+                    }));
 
                 if abort {
                     let acp = {
@@ -2429,9 +2396,7 @@ impl SessionManager {
                         marker: Some("context_compact".into()),
                     },
                 );
-                let _ = app.emit(
-                    "session://context_compact",
-                    serde_json::json!({
+                crate::mirror::fanout_event(&app, "session://context_compact", serde_json::json!({
                         "sessionId": app_sid,
                         "messageId": mid,
                         "trigger": trigger,
@@ -2440,8 +2405,7 @@ impl SessionManager {
                         "summaryPreview": summary_preview,
                         "note": note,
                         "content": content,
-                    }),
-                );
+                    }));
             }
         }
     }
@@ -2516,9 +2480,7 @@ impl SessionManager {
                         thought_phase,
                     )
                 };
-                let _ = app.emit(
-                    "session://stream",
-                    serde_json::json!({
+                crate::mirror::fanout_event(&app, "session://stream", serde_json::json!({
                         "sessionId": app_sid,
                         "messageId": mid,
                         "text": text,
@@ -2528,8 +2490,7 @@ impl SessionManager {
                             StreamKind::Thought => "thought",
                         },
                         "thoughtPhase": thought_phase,
-                    }),
-                );
+                    }));
             }
             AcpEvent::PromptComplete { stop_reason: _ } => {
                 {
@@ -2648,9 +2609,10 @@ impl SessionManager {
                         scope_key: sk,
                         options,
                     };
-                    let _ = app.emit("session://permission", &req);
+                    crate::mirror::fanout_event(&app, "session://permission", &req);
                     // Tell UI this permission belongs to a non-focused session.
-                    let _ = app.emit(
+                    crate::mirror::fanout_event(
+                        &app,
                         "session://background_permission",
                         serde_json::json!({ "sessionId": session_id }),
                     );
@@ -2683,16 +2645,13 @@ impl SessionManager {
                 } else {
                     status.as_str()
                 };
-                let _ = app.emit(
-                    "session://tool",
-                    serde_json::json!({
+                crate::mirror::fanout_event(&app, "session://tool", serde_json::json!({
                         "sessionId": app_sid,
                         "toolCallId": tool_call_id,
                         "title": live_title,
                         "kind": kind,
                         "status": st,
-                    }),
-                );
+                    }));
             }
             AcpEvent::ProcessExited { .. } => {
                 let mut bg = self.background.lock();
@@ -3068,16 +3027,13 @@ impl SessionManager {
                 agent_prompt,
                 Duration::from_millis(25),
                 move |chunk: StreamChunk| {
-                    let _ = app_done.emit(
-                        "session://stream",
-                        serde_json::json!({
+                    crate::mirror::fanout_event(&app_done, "session://stream", serde_json::json!({
                             "sessionId": chunk.session_id,
                             "messageId": chunk.message_id,
                             "text": chunk.text,
                             "done": chunk.done,
                             "kind": "assistant"
-                        }),
-                    );
+                        }));
                     let mut guard = mgr.inner.lock();
                     if let Some(s) = guard.as_mut() {
                         SessionManager::touch_stream_progress_locked(s);
@@ -3162,16 +3118,13 @@ impl SessionManager {
                         marker: Some("turn_cancelled".into()),
                     },
                 );
-                let _ = app.emit(
-                    "session://turn_marker",
-                    serde_json::json!({
+                crate::mirror::fanout_event(&app, "session://turn_marker", serde_json::json!({
                         "sessionId": s.app_session_id,
                         "messageId": mid,
                         "marker": "turn_cancelled",
                         "reason": "user_stop",
                         "content": content,
-                    }),
-                );
+                    }));
             }
             if was_busy {
                 let _ = s.fsm.end_stream();
@@ -3258,15 +3211,12 @@ impl SessionManager {
             drained.background_count,
             drained.parked_count
         );
-        let _ = app.emit(
-            "session://agents_recycled",
-            serde_json::json!({
+        crate::mirror::fanout_event(&app, "session://agents_recycled", serde_json::json!({
                 "reason": reason,
                 "killed": total,
                 "background": drained.background_count,
                 "parked": drained.parked_count,
-            }),
-        );
+            }));
         Self::emit_state(app, &self.snapshot());
     }
 
