@@ -18,6 +18,21 @@ import {
   type Theme,
 } from "@/lib/theme";
 import {
+  applySkinToDocument,
+  applyWallpaperFlag,
+  applyWallpaperScrimToDocument,
+  clearWallpaper,
+  loadSkin,
+  loadWallpaperRecord,
+  loadWallpaperScrim,
+  saveSkin,
+  saveWallpaper,
+  saveWallpaperScrim,
+  skinPreferredTheme,
+  type ThemeSkinId,
+  type WallpaperRecord,
+} from "@/lib/themeSkin";
+import {
   DEFAULT_LAYOUT,
   clampAsideWidth,
   loadLayout,
@@ -336,6 +351,16 @@ type PlanState = SessionPlanState;
 
 export default function App() {
   const [theme, setTheme] = useState<Theme>(() => loadTheme(localStorage));
+  const [skin, setSkin] = useState<ThemeSkinId>(() => loadSkin(localStorage));
+  const [wallpaperRecord, setWallpaperRecord] = useState<WallpaperRecord | null>(
+    null,
+  );
+  const [wallpaperUrl, setWallpaperUrl] = useState<string | null>(null);
+  // Holds the current blob: URL so we can revoke it when replacing/clearing.
+  const wallpaperUrlRef = useRef<string | null>(null);
+  const [wallpaperScrim, setWallpaperScrim] = useState(() =>
+    loadWallpaperScrim(localStorage),
+  );
   const [layout, setLayout] = useState(() => loadLayout(localStorage));
   const [session, setSession] = useState<SessionSnapshot>(IDLE_SNAPSHOT);
   /** Host live agent (may differ from the session currently viewed in the UI). */
@@ -800,6 +825,38 @@ export default function App() {
     applyThemeToDocument(theme);
     void applyNativeWindowTheme(theme);
   }, [theme]);
+
+  useEffect(() => {
+    applySkinToDocument(skin);
+  }, [skin]);
+
+  // Cold-load persisted wallpaper from IndexedDB (blob is async-only) and
+  // create the object URL for the media layer. The data-wallpaper flag is
+  // already set synchronously in main.tsx so the shell is transparent now.
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      const rec = await loadWallpaperRecord();
+      if (cancelled || !rec) return;
+      const url = URL.createObjectURL(rec.blob);
+      wallpaperUrlRef.current = url;
+      setWallpaperRecord(rec);
+      setWallpaperUrl(url);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // Keep the data-wallpaper flag in sync when the user uploads / clears.
+  useEffect(() => {
+    applyWallpaperFlag(wallpaperUrl !== null);
+  }, [wallpaperUrl]);
+
+  // Scrim strength only dims the wallpaper overlay (::after), not chrome.
+  useEffect(() => {
+    applyWallpaperScrimToDocument(wallpaperScrim);
+  }, [wallpaperScrim]);
 
   useEffect(() => {
     document.documentElement.classList.remove(
@@ -1855,6 +1912,51 @@ export default function App() {
     applyThemeToDocument(next);
     void applyNativeWindowTheme(next);
     setTheme(next);
+  };
+
+  const applySkinChoice = (next: ThemeSkinId) => {
+    saveSkin(localStorage, next);
+    applySkinToDocument(next);
+    setSkin(next);
+    const preferred = skinPreferredTheme(next);
+    if (preferred && preferred !== theme) {
+      applyThemeChoice(preferred);
+    }
+  };
+
+  const applyWallpaperChoice = async (record: WallpaperRecord | null) => {
+    if (!record) {
+      try {
+        await clearWallpaper();
+      } catch (e) {
+        showToast(String(e), 4000);
+        return;
+      }
+      if (wallpaperUrlRef.current) {
+        URL.revokeObjectURL(wallpaperUrlRef.current);
+        wallpaperUrlRef.current = null;
+      }
+      setWallpaperRecord(null);
+      setWallpaperUrl(null);
+      return;
+    }
+    try {
+      await saveWallpaper(record);
+    } catch (e) {
+      showToast(String(e), 4000);
+      return;
+    }
+    const url = URL.createObjectURL(record.blob);
+    if (wallpaperUrlRef.current) URL.revokeObjectURL(wallpaperUrlRef.current);
+    wallpaperUrlRef.current = url;
+    setWallpaperRecord(record);
+    setWallpaperUrl(url);
+  };
+
+  const applyWallpaperScrimChoice = (value: number) => {
+    saveWallpaperScrim(localStorage, value);
+    applyWallpaperScrimToDocument(value);
+    setWallpaperScrim(value);
   };
 
   const navigateWorkbench = useCallback(() => {
@@ -6569,6 +6671,24 @@ export default function App() {
         }}
       />
 
+      {wallpaperUrl && (
+        <div className="app-wallpaper-media" aria-hidden>
+          {wallpaperRecord?.kind === "video" ? (
+            <video
+              className="app-wallpaper-media__el"
+              src={wallpaperUrl}
+              autoPlay
+              muted
+              loop
+              playsInline
+              disablePictureInPicture
+            />
+          ) : (
+            <img className="app-wallpaper-media__el" src={wallpaperUrl} alt="" />
+          )}
+        </div>
+      )}
+
       {appGate === "loading" && (
         <div className="setup-gate" data-testid="setup-booting">
           <div className="setup-gate__drag" data-tauri-drag-region />
@@ -6641,6 +6761,13 @@ export default function App() {
           }}
           theme={theme}
           onTheme={applyThemeChoice}
+          skin={skin}
+          onSkin={applySkinChoice}
+          wallpaperUrl={wallpaperUrl}
+          wallpaperKind={wallpaperRecord?.kind ?? null}
+          onWallpaper={applyWallpaperChoice}
+          wallpaperScrim={wallpaperScrim}
+          onWallpaperScrim={applyWallpaperScrimChoice}
           sessionDataMode={sessionDataMode}
           onCliSessionsImported={() => {
             void refreshSessions();
