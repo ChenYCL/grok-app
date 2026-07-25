@@ -786,6 +786,7 @@ export interface AppSettings {
    * Default "off". Passed as `grok --sandbox <profile>` / GROK_SANDBOX on spawn.
    */
   sandboxProfile?: string;
+  /**
    * Allow Grok Build subagent spawning (default true).
    * When false: force --no-subagents / GROK_SUBAGENTS=0 / [subagents] enabled = false.
    */

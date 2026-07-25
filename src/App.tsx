@@ -6231,6 +6231,7 @@ export default function App() {
             void api.settingsGet().then((s) =>
               api.settingsSet({ ...s, sandboxProfile: v }),
             );
+          }}
           subagentsEnabled={subagentsEnabled}
           onSubagentsEnabled={(v) => {
             const prev = subagentsEnabled;
