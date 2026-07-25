@@ -5084,6 +5084,9 @@ export default function App() {
             applyPermissionPolicy(next, { toastYoloToggle: true });
             return;
           }
+          case "goal-clear":
+            setGoalMode(false);
+            return;
           default:
             return;
         }
@@ -7730,7 +7733,7 @@ export default function App() {
             </div>
           )}
 
-          {mainPane === "chat" && !plan.barDismissed && (
+          {mainPane === "chat" && (!plan.barDismissed || goalMode) && (
             <PlanStatusBar
               goalMode={goalMode}
               mode={mode}
@@ -7750,11 +7753,13 @@ export default function App() {
                 changes: tr("plan.changes"),
                 dismiss: tr("plan.dismiss"),
                 expand: tr("planBar.expand"),
+                clearGoal: tr("planBar.clearGoal"),
                 aria: tr("planBar.aria"),
               }}
               onApprove={() => void approvePlan()}
               onRequestChanges={() => void requestPlanChanges()}
               onDismiss={() => void dismissPlan()}
+              onClearGoal={() => setGoalMode(false)}
               onOpenDetails={() => openPlanInResource()}
             />
           )}
@@ -8267,16 +8272,20 @@ export default function App() {
                   onOpen={refreshGitWorktrees}
                 />
                 {goalMode ? (
-                  <Tip label={tr("composer.goalHint")}>
+                  <Tip label={tr("composer.goalClear")}>
                     <button
                       type="button"
                       className="chip chip--goal"
                       onClick={() => setGoalMode(false)}
                       aria-label={tr("composer.goalClear")}
+                      title={tr("composer.goalClear")}
+                      data-testid="composer-goal-chip"
                     >
                       <IconImagine size={14} />
-                      <span className="chip__label">{tr("composer.goal")}</span>
-                      <IconClose size={12} />
+                      <span className="chip__label">
+                        {tr("composer.goalActive")}
+                      </span>
+                      <IconClose size={12} aria-hidden />
                     </button>
                   </Tip>
                 ) : null}

@@ -38,6 +38,14 @@ export function builtinSlashItems(): SlashItem[] {
       mode: "goal",
     },
     {
+      id: "goal-clear",
+      kind: "action",
+      name: "goal-clear",
+      titleKey: "slash.goalClear",
+      descriptionKey: "slash.goalClearDesc",
+      action: "goal-clear",
+    },
+    {
       id: "plan",
       kind: "mode",
       name: "plan",

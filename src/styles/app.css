@@ -5414,6 +5414,12 @@ html[data-theme="light"] .ui-check.is-mixed .ui-check__box {
   font-size: 12px;
 }
 
+.plan-bar__btn--clear-goal {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
 .plan-bar__close {
   width: 26px;
   height: 26px;
@@ -11911,13 +11917,15 @@ div.composer__input:empty::before {
   font-size: 13px;
 }
 
-/* Goal mode chip */
+/* Goal mode chip — compact “Goal active” status with clear affordance */
 .chip--goal {
-  color: var(--text-primary);
-  background: var(--bg-active);
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, var(--bg-active));
+  max-width: 180px;
 }
 .chip--goal:hover {
-  background: var(--bg-hover);
+  background: color-mix(in srgb, var(--accent) 18%, var(--bg-hover));
+  color: var(--accent);
 }
 
 /* Status modal */

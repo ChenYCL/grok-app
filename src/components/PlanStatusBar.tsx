@@ -21,6 +21,8 @@ export type PlanStatusBarLabels = {
   changes: string;
   dismiss: string;
   expand: string;
+  /** Exit goal mode (goal strip only). */
+  clearGoal: string;
   aria: string;
 };
 
@@ -35,6 +37,8 @@ export type PlanStatusBarProps = {
   onApprove?: () => void;
   onRequestChanges?: () => void;
   onDismiss?: () => void;
+  /** Exit goal mode from the sticky goal strip. */
+  onClearGoal?: () => void;
   /** Scroll / focus the in-thread plan card when present. */
   onOpenDetails?: () => void;
 };
@@ -67,6 +71,7 @@ export function PlanStatusBar({
   onApprove,
   onRequestChanges,
   onDismiss,
+  onClearGoal,
   onOpenDetails,
 }: PlanStatusBarProps) {
   const model = useMemo(
@@ -102,6 +107,7 @@ export function PlanStatusBar({
       aria-live="polite"
       aria-label={labels.aria}
       data-testid="plan-status-bar"
+      data-kind={model.kind}
     >
       <div className="plan-bar__main">
         <span className="plan-bar__icon" aria-hidden>
@@ -171,6 +177,18 @@ export function PlanStatusBar({
             onClick={onRequestChanges}
           >
             {labels.changes}
+          </button>
+        ) : null}
+        {model.kind === "goal" && onClearGoal ? (
+          <button
+            type="button"
+            className="btn btn--ghost btn--sm plan-bar__btn plan-bar__btn--clear-goal"
+            onClick={onClearGoal}
+            data-testid="plan-status-clear-goal"
+            title={labels.clearGoal}
+          >
+            <IconClose size={12} />
+            <span>{labels.clearGoal}</span>
           </button>
         ) : null}
         {(model.kind === "plan_progress" ||
