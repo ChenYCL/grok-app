@@ -131,6 +131,9 @@ export interface SettingsPageProps {
   /** When true, agents get top-level `--disable-web-search`. */
   disableWebSearch?: boolean;
   onDisableWebSearch?: (v: boolean) => void;
+  /** Reopen last active chat once after launch (default on). */
+  reopenLastSession?: boolean;
+  onReopenLastSession?: (v: boolean) => void;
   cliInfo: {
     found: boolean;
     path: string | null;
@@ -442,6 +445,8 @@ export function SettingsPage({
   onSandboxProfile,
   disableWebSearch = false,
   onDisableWebSearch,
+  reopenLastSession = true,
+  onReopenLastSession,
   cliInfo,
   onDoctor,
   versionFooter,
@@ -1041,6 +1046,25 @@ export function SettingsPage({
                 </div>
               ) : null}
 
+              {onReopenLastSession ? (
+                <div className="settings-row">
+                  <div className="settings-row__text">
+                    <div className="settings-row__label">
+                      {t("settings.reopenLastSession")}
+                    </div>
+                    <div className="settings-row__desc">
+                      {t("settings.reopenLastSessionDesc")}
+                    </div>
+                  </div>
+                  <UiCheck
+                    checked={reopenLastSession}
+                    onChange={() =>
+                      onReopenLastSession(!reopenLastSession)
+                    }
+                    ariaLabel={t("settings.reopenLastSession")}
+                  />
+                </div>
+              ) : null}
               {onDefaultOpenTarget && (
                 <div className="settings-row">
                   <div className="settings-row__text">

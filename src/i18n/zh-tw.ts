@@ -543,6 +543,9 @@ export const zhTW: Record<MessageKey, string> = {
   "settings.clearWorkspaceMemoryConfirmMsg":
     "將刪除目前專案的 Grok Build 工作區記憶。應用程式內聊天紀錄會保留。此操作無法復原。",
   "settings.clearWorkspaceMemoryDone": "已清除工作區記憶",
+  "settings.reopenLastSession": "啟動時還原上次對話",
+  "settings.reopenLastSessionDesc":
+    "結束並重新開啟應用程式時，自動開啟你上次檢視的對話（若仍存在且未封存）。",
   "settings.cliPath": "CLI 路徑",
   "settings.cliPathDesc": "Grok Build CLI 可執行檔路徑",
   "settings.cliNotFound": "（未找到）",

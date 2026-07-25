@@ -43,6 +43,7 @@ See `docs/llm-wiki/release.md`.
 - **Cross-session memory toggle** (experimental): Settings → General enables Grok Build `--experimental-memory` / `GROK_MEMORY` / `[memory] enabled` (default off). When off, spawn forces `--no-memory` + `GROK_MEMORY=0` for isolation. Clear workspace memory runs `grok memory clear` (project cwd) behind an in-app confirm.
 
 - **MCP add / remove / doctor** in Settings → Extensions: stdio server form, GlassModal remove confirm, `grok mcp doctor` results; writes agent `GROK_HOME` config.
+- **Reopen last chat on startup**: remembers the last opened session and restores it once after launch (Settings → General toggle, on by default; skips archived / missing / setup wizard).
 
 ## [0.1.6] - 2026-07-24
 

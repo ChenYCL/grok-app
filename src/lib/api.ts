@@ -850,6 +850,12 @@ export interface AppSettings {
    * (removes web_search / web_fetch tools). Default false.
    */
   disableWebSearch?: boolean;
+  /** Reopen last active chat once after launch (default true). */
+  reopenLastSession?: boolean;
+  /** Last successfully opened session id (startup restore). */
+  lastSessionId?: string | null;
+  /** Project id for lastSessionId when it had one. */
+  lastProjectId?: string | null;
 }
 
 export interface AvailableModel {
@@ -892,6 +898,14 @@ export async function memoryClear(opts?: {
   }>("memory_clear", {
     cwd: opts?.cwd ?? null,
     scope: opts?.scope ?? "workspace",
+/** Persist last active chat without full settings_set side-effects. */
+export async function settingsRememberLastSession(
+  sessionId: string | null,
+  projectId: string | null = null,
+) {
+  return invoke<void>("settings_remember_last_session", {
+    sessionId,
+    projectId,
   });
 }
 

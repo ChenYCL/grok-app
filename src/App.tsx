@@ -97,6 +97,7 @@ import {
   sessionExportFilename,
   sessionToMarkdown,
 } from "@/lib/sessionExport";
+import { shouldRestoreLastSession } from "@/lib/sessionRestore";
 import { connPillForState } from "@/lib/connStatus";
 import { shortcutsForPlatform } from "@/lib/shortcuts";
 import {
@@ -645,6 +646,12 @@ export default function App() {
   const [experimentalMemory, setExperimentalMemory] = useState(false);
   const [clearMemoryBusy, setClearMemoryBusy] = useState(false);
   const [disableWebSearch, setDisableWebSearch] = useState(false);
+  /** Reopen last chat on launch (default on; loaded from settings). */
+  const [reopenLastSession, setReopenLastSession] = useState(true);
+  const [lastSessionId, setLastSessionId] = useState<string | null>(null);
+  /** Settings + sessions finished first bootstrap (gate for one-shot restore). */
+  const settingsBootstrappedRef = useRef(false);
+  const startupRestoreDoneRef = useRef(false);
   const [gitWorktrees, setGitWorktrees] = useState<api.GitWorktreeEntry[]>([]);
   /** null = unknown/loading; true = git work tree; false = not a git repo. */
   const [gitWorktreesAvailable, setGitWorktreesAvailable] = useState<
@@ -886,6 +893,14 @@ export default function App() {
       }
       setExperimentalMemory(!!settings.experimentalMemory);
       setDisableWebSearch(!!settings.disableWebSearch);
+      setReopenLastSession(settings.reopenLastSession !== false);
+      setLastSessionId(
+        typeof settings.lastSessionId === "string" &&
+          settings.lastSessionId.trim()
+          ? settings.lastSessionId.trim()
+          : null,
+      );
+      settingsBootstrappedRef.current = true;
       setCliInfo({
         found: cli.found,
         path: cli.path,
@@ -1992,6 +2007,14 @@ export default function App() {
       setRetryStatus(null);
     }
 
+    // Remember for "reopen last chat on startup".
+    setLastSessionId(s.id);
+    if (api.isTauri()) {
+      void api
+        .settingsRememberLastSession(s.id, proj?.id ?? s.projectId ?? null)
+        .catch(() => {});
+    }
+
     // Warm ACP: connect while the user reads history (trusted project or orphan).
     // Host serializes connect; first send no-ops if already ready, or waits if
     // still handshaking. Process is reused across sessions when cwd/effort match.
@@ -2031,6 +2054,46 @@ export default function App() {
       })();
     }
   };
+
+  // Once after setup/onboarding: reopen last chat if it still exists.
+  useEffect(() => {
+    if (startupRestoreDoneRef.current) return;
+    if (!settingsBootstrappedRef.current) return;
+    if (appGate !== "ready") return;
+    if (!api.isTauri()) {
+      startupRestoreDoneRef.current = true;
+      return;
+    }
+    // Don't steal hash routes (settings / automations).
+    const raw = window.location.hash.replace(/^#\/?/, "");
+    if (raw.startsWith("settings") || raw.startsWith("automations")) {
+      startupRestoreDoneRef.current = true;
+      return;
+    }
+
+    const restoreId = shouldRestoreLastSession({
+      enabled: reopenLastSession,
+      workbenchReady: true,
+      lastSessionId,
+      sessions,
+      currentSessionId: session.sessionId ?? viewingSessionIdRef.current,
+    });
+    startupRestoreDoneRef.current = true;
+    if (!restoreId) return;
+
+    const row = sessions.find((s) => s.id === restoreId);
+    if (!row) return;
+    const proj =
+      projects.find((p) => p.id === row.projectId) ?? null;
+    if (row.projectId) {
+      setExpandedProjects((e) => ({ ...e, [row.projectId!]: true }));
+    } else {
+      setHistoryOpen(true);
+    }
+    void openSession(row, proj);
+    // openSession closes over latest projects/sessions; run once at ready.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- one-shot startup
+  }, [appGate, sessions, reopenLastSession, lastSessionId, projects, session.sessionId]);
 
   /**
    * Focus composer after React commit. Retries until the textarea is mounted
@@ -2944,6 +3007,16 @@ export default function App() {
           setExpandedProjects((e) => ({ ...e, [activeProject.id]: true }));
         } else {
           setHistoryOpen(true);
+        }
+        // First send materializes a real session — treat as active for restore.
+        setLastSessionId(meta.id);
+        if (api.isTauri()) {
+          void api
+            .settingsRememberLastSession(
+              meta.id,
+              activeProject?.id ?? null,
+            )
+            .catch(() => {});
         }
         await refreshSessions();
       }
@@ -6228,6 +6301,11 @@ export default function App() {
             setDisableWebSearch(v);
             void api.settingsGet().then((s) =>
               api.settingsSet({ ...s, disableWebSearch: v }),
+          reopenLastSession={reopenLastSession}
+          onReopenLastSession={(v) => {
+            setReopenLastSession(v);
+            void api.settingsGet().then((s) =>
+              api.settingsSet({ ...s, reopenLastSession: v }),
             );
           }}
           cliInfo={cliInfo}

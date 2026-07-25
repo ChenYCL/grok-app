@@ -176,6 +176,7 @@ pub fn run() {
             commands::settings_get,
             commands::settings_set,
             commands::memory_clear,
+            commands::settings_remember_last_session,
             commands::models_list_available,
             commands::composer_prefs_resolve,
             commands::composer_prefs_set,

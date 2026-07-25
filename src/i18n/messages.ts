@@ -570,6 +570,9 @@ const en = {
   "settings.clearWorkspaceMemoryConfirmMsg":
     "This deletes Grok Build workspace memory for the current project. Chat history in the app is kept. This cannot be undone.",
   "settings.clearWorkspaceMemoryDone": "Workspace memory cleared",
+  "settings.reopenLastSession": "Reopen last chat on startup",
+  "settings.reopenLastSessionDesc":
+    "When you quit and reopen the app, restore the chat you were last viewing (if it still exists and is not archived).",
   "settings.cliPath": "CLI path",
   "settings.cliPathDesc": "Path to the Grok Build CLI binary",
   "settings.cliNotFound": "(not found)",
@@ -1863,6 +1866,9 @@ const zh: Record<MessageKey, string> = {
   "settings.clearWorkspaceMemoryConfirmMsg":
     "将删除当前项目的 Grok Build 工作区记忆。应用内聊天记录会保留。此操作不可撤销。",
   "settings.clearWorkspaceMemoryDone": "已清除工作区记忆",
+  "settings.reopenLastSession": "启动时恢复上次会话",
+  "settings.reopenLastSessionDesc":
+    "退出并重新打开应用时，自动打开你上次查看的会话（若仍存在且未归档）。",
   "settings.cliPath": "CLI 路径",
   "settings.cliPathDesc": "Grok Build CLI 可执行文件路径",
   "settings.cliNotFound": "（未找到）",

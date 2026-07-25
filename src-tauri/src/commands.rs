@@ -729,6 +729,36 @@ pub async fn memory_clear(
     })
     .await
     .map_err(|e| format!("memory clear task failed: {e}"))?
+/// Persist last active chat without permission/tray side-effects of `settings_set`.
+/// Called on every successful open/switch so startup can restore once.
+#[tauri::command]
+pub async fn settings_remember_last_session(
+    session_id: Option<String>,
+    project_id: Option<String>,
+) -> Result<(), String> {
+    let mut s = store::load_settings();
+    let next_session = session_id.and_then(|id| {
+        let t = id.trim().to_string();
+        if t.is_empty() {
+            None
+        } else {
+            Some(t)
+        }
+    });
+    let next_project = project_id.and_then(|id| {
+        let t = id.trim().to_string();
+        if t.is_empty() {
+            None
+        } else {
+            Some(t)
+        }
+    });
+    if s.last_session_id == next_session && s.last_project_id == next_project {
+        return Ok(());
+    }
+    s.last_session_id = next_session;
+    s.last_project_id = next_project;
+    store::save_settings(&s)
 }
 
 #[tauri::command]

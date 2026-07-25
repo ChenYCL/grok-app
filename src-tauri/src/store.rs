@@ -181,6 +181,15 @@ pub struct AppSettings {
     /// `web_search` / `web_fetch` tools are removed. Default false (CLI default).
     #[serde(default)]
     pub disable_web_search: bool,
+    /// Reopen the last active chat once after launch (default true).
+    #[serde(default = "default_reopen_last_session")]
+    pub reopen_last_session: bool,
+    /// Last successfully opened / switched session (for startup restore).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_session_id: Option<String>,
+    /// Project of [`Self::last_session_id`] when it belonged to one (hint only).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_project_id: Option<String>,
 }
 
 fn default_composer_prefs_scope() -> String {
@@ -205,6 +214,8 @@ fn default_stream_stall_seconds() -> u32 {
 
 fn default_sandbox_profile() -> String {
     "off".into()
+fn default_reopen_last_session() -> bool {
+    true
 }
 
 impl Default for AppSettings {
@@ -233,6 +244,9 @@ impl Default for AppSettings {
             experimental_memory: false,
             max_agent_turns: None,
             disable_web_search: false,
+            reopen_last_session: default_reopen_last_session(),
+            last_session_id: None,
+            last_project_id: None,
         }
     }
 }
