@@ -1,19 +1,7 @@
 /**
- * Settings → Extensions: Skills + MCP + Plugins + Agents/Personas.
+ * Settings → Extensions: Skills + MCP + Plugins.
  * Skills/MCP from `grok inspect` with enable toggles (extensions.json / ACP inject).
  * Plugins from `grok plugin list/install/update/…` (config.toml disabled list).
- * Plugins from `grok plugin list/enable/…` (config.toml disabled list).
- * Agents/personas: definition files under ~/.grok and project .grok (list + open).
- * Settings → Extensions: Skills + MCP + Plugins + Hooks.
- * Skills/MCP from `grok inspect` with enable toggles (extensions.json / ACP inject).
- * Plugins from `grok plugin list/install/update/…` (config.toml disabled list).
- * Plugins from `grok plugin list/enable/…` (config.toml disabled list).
- * Hooks: list / reveal / open folder under ~/.grok/hooks (+ project .grok/hooks).
- * Settings → Extensions: Skills + MCP + Plugins + Marketplace.
- * Skills/MCP from `grok inspect` with enable toggles (extensions.json / ACP inject).
- * Plugins from `grok plugin list/install/update/…` (config.toml disabled list).
- * Plugins from `grok plugin list/enable/…` (config.toml disabled list).
- * Marketplace sources from `grok plugin marketplace …`; browse via list --available.
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -22,27 +10,15 @@ import { createT, type Locale } from "@/i18n";
 import { GlassModal } from "@/components/GlassModal";
 import {
   IconDoctor,
-  IconBox,
   IconExternalLink,
   IconFolder,
   IconPlus,
-  IconFolderPlus,
-  IconHooks,
   IconPlug,
   IconPuzzle,
   IconRefresh,
-  IconRobot,
   IconSkills,
   IconTrash,
-  IconUser,
 } from "@/components/icons";
-import {
-  agentMetaLine,
-  agentScopeTone,
-  personaMetaLine,
-  sortAgentDefs,
-  sortPersonaDefs,
-} from "@/lib/agentsDiscovery";
 import {
   filterPluginsByLoadState,
   isCliMissingError,
@@ -62,21 +38,6 @@ import {
   sortSkillsByName,
   type PluginFilter,
 } from "@/lib/extensionsUi";
-import {
-  hookMetaLine,
-  hookRowKey,
-  sortHooksByScopeName,
-} from "@/lib/hooksUi";
-  availablePluginMetaLine,
-  filterPluginsByQuery,
-  marketplaceQualifiedInstallSource,
-  marketplaceSourceLabel,
-  sortAvailablePluginsByName,
-  sortMarketplaceSourcesByName,
-  takePluginsPage,
-  type AvailablePluginLike,
-  type MarketplaceSourceLike,
-} from "@/lib/pluginMarketplace";
 
 export interface ExtensionsPanelProps {
   locale: Locale;
@@ -101,20 +62,9 @@ export function ExtensionsPanel({
   const [skills, setSkills] = useState<api.SkillDto[]>([]);
   const [servers, setServers] = useState<api.McpDto[]>([]);
   const [plugins, setPlugins] = useState<api.PluginDto[]>([]);
-  const [agents, setAgents] = useState<api.AgentDefDto[]>([]);
-  const [personas, setPersonas] = useState<api.PersonaDefDto[]>([]);
-  const [userAgentsDir, setUserAgentsDir] = useState<string | null>(null);
-  const [projectAgentsDir, setProjectAgentsDir] = useState<string | null>(null);
-  const [userPersonasDir, setUserPersonasDir] = useState<string | null>(null);
   const [skillsError, setSkillsError] = useState<string | null>(null);
   const [mcpError, setMcpError] = useState<string | null>(null);
   const [pluginsError, setPluginsError] = useState<string | null>(null);
-  const [agentsError, setAgentsError] = useState<string | null>(null);
-  const [hooks, setHooks] = useState<api.HookDto[]>([]);
-  const [skillsError, setSkillsError] = useState<string | null>(null);
-  const [mcpError, setMcpError] = useState<string | null>(null);
-  const [pluginsError, setPluginsError] = useState<string | null>(null);
-  const [hooksError, setHooksError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [agentHome, setAgentHome] = useState<string | null>(null);
   const [configPath, setConfigPath] = useState<string | null>(null);
@@ -144,56 +94,18 @@ export function ExtensionsPanel({
   const [doctorOpen, setDoctorOpen] = useState(false);
   const [doctorLoading, setDoctorLoading] = useState(false);
   const [doctorReport, setDoctorReport] =
-    useState<api.McpDoctorReport | null>(null);
+    useState<any>(null);
   const [doctorError, setDoctorError] = useState<string | null>(null);
   const [doctorFocus, setDoctorFocus] = useState<string | null>(null);
-  const [hooksUserDir, setHooksUserDir] = useState<string | null>(null);
-  const [hooksUserDirExists, setHooksUserDirExists] = useState(false);
-  const [hooksProjectDir, setHooksProjectDir] = useState<string | null>(null);
-  const [hooksProjectDirExists, setHooksProjectDirExists] = useState(false);
-  const [hooksDocsPath, setHooksDocsPath] = useState<string | null>(null);
-
-  const [marketSources, setMarketSources] = useState<MarketplaceSourceLike[]>(
-    [],
-  );
-  const [marketError, setMarketError] = useState<string | null>(null);
-  const [availablePlugins, setAvailablePlugins] = useState<
-    AvailablePluginLike[]
-  >([]);
-  const [availableError, setAvailableError] = useState<string | null>(null);
-  const [availableLoading, setAvailableLoading] = useState(false);
-  const [availableLoaded, setAvailableLoaded] = useState(false);
-  const [availableQuery, setAvailableQuery] = useState("");
-  const [addSource, setAddSource] = useState("");
-  const [removeSourceTarget, setRemoveSourceTarget] =
-    useState<MarketplaceSourceLike | null>(null);
 
   const refresh = useCallback(async () => {
     if (!api.isTauri()) {
       setSkills([]);
       setServers([]);
       setPlugins([]);
-      setAgents([]);
-      setPersonas([]);
-      setUserAgentsDir(null);
-      setProjectAgentsDir(null);
-      setUserPersonasDir(null);
       setSkillsError(tr("ext.needTauri"));
       setMcpError(null);
       setPluginsError(null);
-      setAgentsError(null);
-      setHooks([]);
-      setSkillsError(tr("ext.needTauri"));
-      setMcpError(null);
-      setPluginsError(null);
-      setHooksError(null);
-      setMarketSources([]);
-      setAvailablePlugins([]);
-      setSkillsError(tr("ext.needTauri"));
-      setMcpError(null);
-      setPluginsError(null);
-      setMarketError(null);
-      setAvailableError(null);
       setLoading(false);
       return;
     }
@@ -201,130 +113,35 @@ export function ExtensionsPanel({
     setSkillsError(null);
     setMcpError(null);
     setPluginsError(null);
-    setAgentsError(null);
     setPathHint(null);
     const cwd = projectPath?.trim() || null;
-    const [skillsRes, mcpRes, pluginsRes, agentsRes, providersRes] =
-    setHooksError(null);
-    setPathHint(null);
-    const cwd = projectPath?.trim() || null;
-    const [skillsRes, mcpRes, pluginsRes, hooksRes, providersRes] =
-    setMarketError(null);
-    setPathHint(null);
-    const cwd = projectPath?.trim() || null;
-    const [skillsRes, mcpRes, pluginsRes, marketRes, providersRes] =
-      await Promise.all([
-        api.skillsList(cwd).catch((e) => ({
-          skills: [] as api.SkillDto[],
-          error: String(e),
-        })),
-        api.inspectMcp(cwd).catch((e) => ({
-          servers: [] as api.McpDto[],
-          error: String(e),
-        })),
-        api.pluginsList().catch((e) => ({
-          plugins: [] as api.PluginDto[],
-          error: String(e),
-        })),
-        api.agentsList(cwd).catch(
-          (e): api.AgentsListResult => ({
-            agents: [],
-            personas: [],
-            error: String(e),
-          }),
-        ),
-        api.hooksList(cwd).catch((e) => ({
-          hooks: [] as api.HookDto[],
-          userDir: "",
-          userDirExists: false,
-          projectDir: null as string | null,
-          projectDirExists: null as boolean | null,
-          docsPath: null as string | null,
-        api.marketplaceList().catch((e) => ({
-          sources: [] as api.MarketplaceSourceDto[],
-          error: String(e),
-        })),
-        api.providersList().catch(() => null),
-      ]);
+    const [skillsRes, mcpRes, pluginsRes, providersRes] = await Promise.all([
+      api.skillsList(cwd).catch((e) => ({
+        skills: [] as api.SkillDto[],
+        error: String(e),
+      })),
+      api.inspectMcp(cwd).catch((e) => ({
+        servers: [] as api.McpDto[],
+        error: String(e),
+      })),
+      api.pluginsList().catch((e) => ({
+        plugins: [] as api.PluginDto[],
+        error: String(e),
+      })),
+      api.providersList().catch(() => null),
+    ]);
     setSkills(sortSkillsByName(skillsRes.skills ?? []));
     setServers(sortMcpByName(mcpRes.servers ?? []));
     setPlugins(sortPluginsByName(pluginsRes.plugins ?? []));
-    setAgents(sortAgentDefs(agentsRes.agents ?? []));
-    setPersonas(sortPersonaDefs(agentsRes.personas ?? []));
-    setUserAgentsDir(agentsRes.userAgentsDir?.trim() || null);
-    setProjectAgentsDir(agentsRes.projectAgentsDir?.trim() || null);
-    setUserPersonasDir(agentsRes.userPersonasDir?.trim() || null);
     setSkillsError(skillsRes.error?.trim() ? skillsRes.error : null);
     setMcpError(mcpRes.error?.trim() ? mcpRes.error : null);
     setPluginsError(pluginsRes.error?.trim() ? pluginsRes.error : null);
-    setAgentsError(agentsRes.error?.trim() ? agentsRes.error : null);
-    setHooks(sortHooksByScopeName(hooksRes.hooks ?? []));
-    setHooksUserDir(hooksRes.userDir?.trim() || null);
-    setHooksUserDirExists(Boolean(hooksRes.userDirExists));
-    setHooksProjectDir(hooksRes.projectDir?.trim() || null);
-    setHooksProjectDirExists(Boolean(hooksRes.projectDirExists));
-    setHooksDocsPath(hooksRes.docsPath?.trim() || null);
-    setSkillsError(skillsRes.error?.trim() ? skillsRes.error : null);
-    setMcpError(mcpRes.error?.trim() ? mcpRes.error : null);
-    setPluginsError(pluginsRes.error?.trim() ? pluginsRes.error : null);
-    setHooksError(
-      "error" in hooksRes && typeof hooksRes.error === "string" && hooksRes.error.trim()
-        ? hooksRes.error
-        : null,
-    );
-    setMarketSources(
-      sortMarketplaceSourcesByName(
-        (marketRes.sources ?? []).map((s) => ({
-          name: s.name,
-          kind: s.kind,
-          url: s.url,
-          path: s.path,
-          branch: s.branch,
-        })),
-      ),
-    );
-    setSkillsError(skillsRes.error?.trim() ? skillsRes.error : null);
-    setMcpError(mcpRes.error?.trim() ? mcpRes.error : null);
-    setPluginsError(pluginsRes.error?.trim() ? pluginsRes.error : null);
-    setMarketError(marketRes.error?.trim() ? marketRes.error : null);
     if (providersRes) {
       setAgentHome(providersRes.agentHome?.trim() || null);
       setConfigPath(providersRes.configPath?.trim() || null);
     }
     setLoading(false);
   }, [projectPath, tr]);
-
-  const loadAvailable = useCallback(async () => {
-    if (!api.isTauri()) return;
-    setAvailableLoading(true);
-    setAvailableError(null);
-    try {
-      const res = await api.marketplaceAvailable();
-      setAvailablePlugins(
-        sortAvailablePluginsByName(
-          (res.plugins ?? []).map((p) => ({
-            name: p.name,
-            status: p.status,
-            marketplace: p.marketplace,
-            description: p.description,
-            version: p.version,
-            skillCount: p.skillCount,
-            hasHooks: p.hasHooks,
-            hasAgents: p.hasAgents,
-            hasMcp: p.hasMcp,
-          })),
-        ),
-      );
-      setAvailableError(res.error?.trim() ? res.error : null);
-      setAvailableLoaded(true);
-    } catch (e) {
-      setAvailablePlugins([]);
-      setAvailableError(String(e));
-      setAvailableLoaded(true);
-    } finally {
-      setAvailableLoading(false);
-    }
-  }, []);
 
   useEffect(() => {
     void refresh();
@@ -338,8 +155,7 @@ export function ExtensionsPanel({
     !cliFound ||
     isCliMissingError(skillsError) ||
     isCliMissingError(mcpError) ||
-    isCliMissingError(pluginsError) ||
-    isCliMissingError(marketError);
+    isCliMissingError(pluginsError);
 
   const scopeLabel = projectPath?.trim()
     ? tr("ext.scope.project")
@@ -364,74 +180,6 @@ export function ExtensionsPanel({
     } catch (e) {
       setPathHint(String(e));
     }
-  };
-
-  const openPath = async (path: string | null | undefined) => {
-    const p = (path ?? "").trim();
-    if (!p || !api.isTauri()) return;
-    try {
-      await api.pathOpen(p);
-      setPathHint(null);
-    } catch (e) {
-      setPathHint(String(e));
-    }
-  };
-
-  /** Open folder if it exists; otherwise reveal/create parent hint. */
-  const openFolder = async (path: string | null | undefined) => {
-    const p = (path ?? "").trim();
-    if (!p || !api.isTauri()) return;
-    try {
-      await api.pathOpen(p);
-      setPathHint(null);
-    } catch {
-      // Dir may not exist yet — try reveal so Finder focuses parent path area.
-      try {
-        await api.pathReveal(p);
-        setPathHint(null);
-      } catch (e) {
-        setPathHint(String(e));
-      }
-    }
-  const runHooksAction = async (
-    key: string,
-    action: () => Promise<unknown>,
-  ) => {
-    setActionBusy(key);
-    setActionError(null);
-    try {
-      await action();
-      await refresh();
-    } catch (e) {
-      setActionError(String(e));
-    } finally {
-      setActionBusy(null);
-    }
-  };
-
-  const openHooksDir = (scope: "user" | "project", create: boolean) => {
-    if (!api.isTauri()) return;
-    const key = `hooks-open:${scope}:${create ? "create" : "open"}`;
-    void runHooksAction(key, async () => {
-      await api.hooksOpenDir({
-        scope,
-        projectPath: projectPath?.trim() || null,
-        create,
-      });
-    });
-  };
-
-  const revealHook = (path: string) => {
-    if (!api.isTauri()) return;
-    void runHooksAction(`hooks-reveal:${path}`, async () => {
-      await api.hooksReveal(path);
-    });
-  };
-
-  const openHooksDocs = () => {
-    const p = hooksDocsPath?.trim();
-    if (!p || !api.isTauri()) return;
-    void reveal(p);
   };
 
   const toggleMcp = async (name: string, next: boolean) => {
@@ -664,75 +412,10 @@ export function ExtensionsPanel({
     },
     [],
   );
-  const addMarketplaceSource = async () => {
-    if (!api.isTauri() || actionBusy || cliMissing) return;
-    const source = addSource.trim();
-    if (!source) {
-      setActionError(tr("ext.market.addEmpty"));
-      return;
-    }
-    await runPluginAction("market:add", async () => {
-      await api.marketplaceAdd(source);
-      setAddSource("");
-    });
-  };
-
-  const confirmRemoveSource = async () => {
-    const target = removeSourceTarget;
-    if (!target) return;
-    setRemoveSourceTarget(null);
-    await runPluginAction(`market:rm:${target.name}`, async () => {
-      await api.marketplaceRemove(target.name);
-    });
-  };
-
-  const updateMarketplace = async (name?: string | null) => {
-    if (!api.isTauri() || actionBusy || cliMissing) return;
-    const key = name?.trim()
-      ? `market:upd:${name.trim()}`
-      : "market:upd:all";
-    await runPluginAction(key, async () => {
-      await api.marketplaceUpdate(name);
-      if (availableLoaded) {
-        await loadAvailable();
-      }
-    });
-  };
-
-  const installFromMarketplace = async (source?: string) => {
-    if (!api.isTauri() || actionBusy || cliMissing) return;
-    const raw = (source ?? installSource).trim();
-    if (!raw) {
-      setActionError(tr("ext.market.installEmpty"));
-      return;
-    }
-    await runPluginAction(`market:install:${raw}`, async () => {
-      await api.pluginInstall(raw);
-      setInstallSource("");
-      if (availableLoaded) {
-        await loadAvailable();
-      }
-    });
-  };
-
-  const installAvailable = (p: AvailablePluginLike) => {
-    const src = marketplaceQualifiedInstallSource(p.name, p.marketplace);
-    void installFromMarketplace(src);
-  };
 
   const visiblePlugins = useMemo(
     () => filterPluginsByLoadState(plugins, pluginFilter),
     [plugins, pluginFilter],
-  );
-
-  const visibleAvailable = useMemo(() => {
-    const filtered = filterPluginsByQuery(availablePlugins, availableQuery);
-    return takePluginsPage(filtered, 40);
-  }, [availablePlugins, availableQuery]);
-
-  const availableTotal = useMemo(
-    () => filterPluginsByQuery(availablePlugins, availableQuery).length,
-    [availablePlugins, availableQuery],
   );
 
   return (
@@ -1041,426 +724,6 @@ export function ExtensionsPanel({
         ) : null}
       </div>
 
-      {/* Agents — markdown defs under ~/.grok/agents and project .grok/agents */}
-      <h2 className="settings-page__h2">
-        <IconRobot size={15} />
-        {tr("ext.agents.title")}
-        {!loading ? (
-          <span className="ext-count">{agents.length}</span>
-        ) : null}
-      </h2>
-      <div className="settings-card ext-card" data-testid="ext-agents">
-        <p className="ext-section-note ext-section-note--top">
-          {tr("ext.agents.blurb")}
-        </p>
-        {agentsError ? (
-          <p className="ext-alert ext-alert--warn" role="status">
-            {agentsError}
-          </p>
-        ) : null}
-        {(userAgentsDir || projectAgentsDir) && (
-          <div className="ext-folder-actions">
-            {userAgentsDir ? (
-              <button
-                type="button"
-                className="btn btn--ghost btn--sm"
-                title={userAgentsDir}
-                onClick={() => void openFolder(userAgentsDir)}
-              >
-                <IconFolder size={13} />
-                <span>{tr("ext.agents.openUserFolder")}</span>
-              </button>
-            ) : null}
-            {projectAgentsDir ? (
-              <button
-                type="button"
-                className="btn btn--ghost btn--sm"
-                title={projectAgentsDir}
-                onClick={() => void openFolder(projectAgentsDir)}
-              >
-                <IconFolder size={13} />
-                <span>{tr("ext.agents.openProjectFolder")}</span>
-              </button>
-            ) : null}
-          </div>
-        )}
-        {loading && <p className="ext-empty">{tr("ext.agents.loading")}</p>}
-        {!loading && agents.length === 0 && (
-          <p className="ext-empty">{tr("ext.agents.empty")}</p>
-        )}
-        {!loading && agents.length > 0 && (
-          <ul className="ext-list">
-            {agents.map((a) => {
-              const tone = agentScopeTone(a.scope);
-              const meta = agentMetaLine(a);
-              return (
-                <li key={`${a.scope}:${a.path}`} className="ext-item">
-                  <div className="ext-item__head">
-                    <strong className="ext-item__name">{a.name}</strong>
-                    <span className={`ext-badge ext-badge--${tone}`}>
-                      {a.scope}
-                    </span>
-                  </div>
-                  {meta ? <p className="ext-item__desc">{meta}</p> : null}
-                  <div className="ext-item__meta">
-                    {a.path ? (
-                      <button
-                        type="button"
-                        className="ext-path-btn"
-                        title={a.path}
-                        onClick={() => void reveal(a.path)}
-                      >
-                        <IconFolder size={13} />
-                        <span>{shortPathLabel(a.path, 42)}</span>
-                      </button>
-                    ) : null}
-                  </div>
-      {/* Marketplace sources + browse / install */}
-      <h2 className="settings-page__h2">
-        <IconBox size={15} />
-        {tr("ext.market.title")}
-        {!loading ? (
-          <span className="ext-count">{marketSources.length}</span>
-        ) : null}
-        {!loading && !cliMissing ? (
-          <button
-            type="button"
-            className="btn btn--ghost ext-bulk-btn"
-            disabled={!!actionBusy}
-            onClick={() => void updateMarketplace(null)}
-          >
-            {actionBusy === "market:upd:all"
-              ? tr("ext.market.updating")
-              : tr("ext.market.updateAll")}
-          </button>
-        ) : null}
-      </h2>
-      <div className="settings-card ext-card">
-        {marketError && !cliMissing ? (
-          <p className="ext-alert ext-alert--warn" role="status">
-            {marketError}
-          </p>
-        ) : null}
-
-        <div className="ext-plugin-install">
-          <label className="ext-plugin-install__label" htmlFor="ext-market-add">
-            {tr("ext.market.addLabel")}
-          </label>
-          <div className="ext-plugin-install__row">
-            <input
-              id="ext-market-add"
-              type="text"
-              className="settings-input ext-plugin-install__input"
-              value={addSource}
-              placeholder={tr("ext.market.addPlaceholder")}
-              disabled={!!actionBusy || cliMissing || loading}
-              onChange={(e) => setAddSource(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") {
-                  e.preventDefault();
-                  void addMarketplaceSource();
-                }
-              }}
-            />
-            <button
-              type="button"
-              className="btn btn--solid btn--sm"
-              disabled={!!actionBusy || cliMissing || !addSource.trim()}
-              onClick={() => void addMarketplaceSource()}
-            >
-              {actionBusy === "market:add"
-                ? tr("ext.market.adding")
-                : tr("ext.market.add")}
-            </button>
-          </div>
-          <p className="ext-plugin-install__hint">{tr("ext.market.addHint")}</p>
-        </div>
-
-        {loading && <p className="ext-empty">{tr("ext.market.loading")}</p>}
-        {!loading && marketSources.length === 0 && (
-          <p className="ext-empty">
-            {cliMissing ? tr("ext.market.emptyCli") : tr("ext.market.empty")}
-          </p>
-        )}
-        {!loading && marketSources.length > 0 && (
-          <ul className="ext-list">
-            {marketSources.map((s) => {
-              const label = marketplaceSourceLabel(s);
-              const busy =
-                actionBusy === `market:upd:${s.name}` ||
-                actionBusy === `market:rm:${s.name}`;
-              return (
-                <li key={`${s.name}:${label}`} className="ext-item">
-                  <div className="ext-item__head">
-                    <strong className="ext-item__name">{s.name}</strong>
-                    {s.kind ? (
-                      <span className="ext-badge ext-badge--muted">{s.kind}</span>
-                    ) : null}
-                  </div>
-                  {label ? (
-                    <p className="ext-item__desc" title={label}>
-                      {shortPathLabel(label, 72) || label}
-                    </p>
-                  ) : null}
-                  <div className="ext-item__actions">
-                    <button
-                      type="button"
-                      className="btn btn--ghost btn--sm"
-                      disabled={!a.path}
-                      onClick={() => void openPath(a.path)}
-                    >
-                      {tr("ext.agents.openFile")}
-                    </button>
-                    <button
-                      type="button"
-                      className="btn btn--ghost btn--sm"
-                      disabled={!a.path}
-                      onClick={() => void reveal(a.path)}
-                    >
-                      {tr("ext.reveal")}
-                      disabled={busy || !!actionBusy || cliMissing}
-                      onClick={() => void updateMarketplace(s.name)}
-                    >
-                      {actionBusy === `market:upd:${s.name}`
-                        ? tr("ext.market.updating")
-                        : tr("ext.market.update")}
-                    </button>
-                    <button
-                      type="button"
-                      className="btn btn--ghost btn--sm ext-item__danger"
-                      disabled={busy || !!actionBusy || cliMissing}
-                      onClick={() => setRemoveSourceTarget(s)}
-                    >
-                      <IconTrash size={13} />
-                      <span>{tr("ext.market.remove")}</span>
-                    </button>
-                  </div>
-                </li>
-              );
-            })}
-          </ul>
-        )}
-        <p className="ext-section-note">{tr("ext.agents.note")}</p>
-      </div>
-
-      {/* Personas — subagent tone files */}
-      <h2 className="settings-page__h2">
-        <IconUser size={15} />
-        {tr("ext.personas.title")}
-        {!loading ? (
-          <span className="ext-count">{personas.length}</span>
-        ) : null}
-      </h2>
-      <div className="settings-card ext-card" data-testid="ext-personas">
-        <p className="ext-section-note ext-section-note--top">
-          {tr("ext.personas.blurb")}
-        </p>
-        {userPersonasDir ? (
-          <div className="ext-folder-actions">
-            <button
-              type="button"
-              className="btn btn--ghost btn--sm"
-              title={userPersonasDir}
-              onClick={() => void openFolder(userPersonasDir)}
-            >
-              <IconFolder size={13} />
-              <span>{tr("ext.personas.openUserFolder")}</span>
-            </button>
-          </div>
-        ) : null}
-        {loading && <p className="ext-empty">{tr("ext.personas.loading")}</p>}
-        {!loading && personas.length === 0 && (
-          <p className="ext-empty">{tr("ext.personas.empty")}</p>
-        )}
-        {!loading && personas.length > 0 && (
-          <ul className="ext-list">
-            {personas.map((p) => {
-              const tone = agentScopeTone(p.scope);
-              const meta = personaMetaLine(p);
-              return (
-                <li key={`${p.scope}:${p.path}`} className="ext-item">
-                  <div className="ext-item__head">
-                    <strong className="ext-item__name">{p.name}</strong>
-                    <span className={`ext-badge ext-badge--${tone}`}>
-                      {p.scope}
-                    </span>
-                  </div>
-                  {meta ? <p className="ext-item__desc">{meta}</p> : null}
-                  <div className="ext-item__meta">
-                    {p.path ? (
-                      <button
-                        type="button"
-                        className="ext-path-btn"
-                        title={p.path}
-                        onClick={() => void reveal(p.path)}
-                      >
-                        <IconFolder size={13} />
-                        <span>{shortPathLabel(p.path, 42)}</span>
-                      </button>
-                    ) : null}
-                  </div>
-                  <div className="ext-item__actions">
-                    <button
-                      type="button"
-                      className="btn btn--ghost btn--sm"
-                      disabled={!p.path}
-                      onClick={() => void openPath(p.path)}
-                    >
-                      {tr("ext.agents.openFile")}
-                    </button>
-                    <button
-                      type="button"
-                      className="btn btn--ghost btn--sm"
-                      disabled={!p.path}
-                      onClick={() => void reveal(p.path)}
-                    >
-                      {tr("ext.reveal")}
-                    </button>
-                  </div>
-                </li>
-              );
-            })}
-          </ul>
-        )}
-
-        <div className="ext-plugin-install">
-          <label
-            className="ext-plugin-install__label"
-            htmlFor="ext-market-install"
-          >
-            {tr("ext.market.installLabel")}
-          </label>
-          <div className="ext-plugin-install__row">
-            <input
-              id="ext-market-install"
-              type="text"
-              className="settings-input ext-plugin-install__input"
-              value={installSource}
-              placeholder={tr("ext.market.installPlaceholder")}
-              disabled={!!actionBusy || cliMissing}
-              onChange={(e) => setInstallSource(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") {
-                  e.preventDefault();
-                  void installFromMarketplace();
-                }
-              }}
-            />
-            <button
-              type="button"
-              className="btn btn--solid btn--sm"
-              disabled={!!actionBusy || cliMissing || !installSource.trim()}
-              onClick={() => void installFromMarketplace()}
-            >
-              {actionBusy?.startsWith("market:install:")
-                ? tr("ext.market.installing")
-                : tr("ext.market.install")}
-            </button>
-          </div>
-          <p className="ext-plugin-install__hint">
-            {tr("ext.market.installHint")}
-          </p>
-        </div>
-
-        <div className="ext-market-browse">
-          <div className="ext-market-browse__head">
-            <span className="ext-plugin-install__label">
-              {tr("ext.market.browseTitle")}
-            </span>
-            <button
-              type="button"
-              className="btn btn--ghost btn--sm"
-              disabled={!!actionBusy || cliMissing || availableLoading}
-              onClick={() => void loadAvailable()}
-            >
-              <IconRefresh size={13} />
-              <span>
-                {availableLoading
-                  ? tr("ext.market.browseLoading")
-                  : availableLoaded
-                    ? tr("ext.market.browseRefresh")
-                    : tr("ext.market.browseLoad")}
-              </span>
-            </button>
-          </div>
-          <p className="ext-plugin-install__hint">{tr("ext.market.browseHint")}</p>
-          {availableLoaded ? (
-            <input
-              type="search"
-              className="settings-input ext-market-browse__search"
-              value={availableQuery}
-              placeholder={tr("ext.market.browseSearch")}
-              disabled={availableLoading}
-              onChange={(e) => setAvailableQuery(e.target.value)}
-            />
-          ) : null}
-          {availableError ? (
-            <p className="ext-alert ext-alert--warn" role="status">
-              {availableError}
-            </p>
-          ) : null}
-          {availableLoading && (
-            <p className="ext-empty">{tr("ext.market.browseLoading")}</p>
-          )}
-          {!availableLoading && availableLoaded && availableTotal === 0 && (
-            <p className="ext-empty">{tr("ext.market.browseEmpty")}</p>
-          )}
-          {!availableLoading && visibleAvailable.length > 0 && (
-            <ul className="ext-list ext-market-browse__list">
-              {visibleAvailable.map((p) => {
-                const key = `${p.marketplace ?? ""}:${p.name}`;
-                const installKey = `market:install:${marketplaceQualifiedInstallSource(
-                  p.name,
-                  p.marketplace,
-                )}`;
-                const busy = actionBusy === installKey;
-                const meta = availablePluginMetaLine(p);
-                return (
-                  <li key={key} className="ext-item">
-                    <div className="ext-item__head">
-                      <strong className="ext-item__name">{p.name}</strong>
-                      {p.marketplace ? (
-                        <span className="ext-badge ext-badge--muted">
-                          {p.marketplace}
-                        </span>
-                      ) : null}
-                    </div>
-                    {p.description ? (
-                      <p className="ext-item__desc">{p.description}</p>
-                    ) : null}
-                    {meta ? <p className="ext-item__desc">{meta}</p> : null}
-                    <div className="ext-item__actions">
-                      <button
-                        type="button"
-                        className="btn btn--ghost btn--sm"
-                        disabled={busy || !!actionBusy || cliMissing}
-                        onClick={() => installAvailable(p)}
-                      >
-                        {busy
-                          ? tr("ext.market.installing")
-                          : tr("ext.market.install")}
-                      </button>
-                    </div>
-                  </li>
-                );
-              })}
-            </ul>
-          )}
-          {!availableLoading &&
-          availableLoaded &&
-          availableTotal > visibleAvailable.length ? (
-            <p className="ext-section-note">
-              {tr("ext.market.browseCapped", {
-                shown: visibleAvailable.length,
-                total: availableTotal,
-              })}
-            </p>
-          ) : null}
-        </div>
-
-        <p className="ext-section-note">{tr("ext.market.note")}</p>
-      </div>
-
       {/* Skills */}
       <h2 className="settings-page__h2">
         <IconSkills size={15} />
@@ -1674,170 +937,6 @@ export function ExtensionsPanel({
         ) : null}
       </div>
 
-      {/* Hooks — filesystem list under ~/.grok/hooks (+ project) */}
-      <h2 className="settings-page__h2">
-        <IconHooks size={15} />
-        {tr("ext.hooks.title")}
-        {!loading ? <span className="ext-count">{hooks.length}</span> : null}
-      </h2>
-      <div className="settings-card ext-card" data-testid="hooks-section">
-        <div className="ext-toolbar ext-toolbar--hooks">
-          <div className="ext-toolbar__actions">
-            {hooksUserDirExists ? (
-              <button
-                type="button"
-                className="btn btn--ghost btn--sm"
-                disabled={!!actionBusy}
-                title={hooksUserDir ?? undefined}
-                onClick={() => openHooksDir("user", false)}
-              >
-                <IconFolder size={13} />
-                <span>{tr("ext.hooks.openUserDir")}</span>
-              </button>
-            ) : (
-              <button
-                type="button"
-                className="btn btn--ghost btn--sm"
-                disabled={!!actionBusy}
-                onClick={() => openHooksDir("user", true)}
-              >
-                <IconFolderPlus size={13} />
-                <span>{tr("ext.hooks.createUserDir")}</span>
-              </button>
-            )}
-            {projectPath?.trim() ? (
-              hooksProjectDirExists ? (
-                <button
-                  type="button"
-                  className="btn btn--ghost btn--sm"
-                  disabled={!!actionBusy}
-                  title={hooksProjectDir ?? undefined}
-                  onClick={() => openHooksDir("project", false)}
-                >
-                  <IconFolder size={13} />
-                  <span>{tr("ext.hooks.openProjectDir")}</span>
-                </button>
-              ) : (
-                <button
-                  type="button"
-                  className="btn btn--ghost btn--sm"
-                  disabled={!!actionBusy}
-                  onClick={() => openHooksDir("project", true)}
-                >
-                  <IconFolderPlus size={13} />
-                  <span>{tr("ext.hooks.createProjectDir")}</span>
-                </button>
-              )
-            ) : null}
-          </div>
-        </div>
-
-        {hooksError ? (
-          <p className="ext-alert ext-alert--warn" role="status">
-            {hooksError}
-          </p>
-        ) : null}
-
-        {loading && <p className="ext-empty">{tr("ext.hooks.loading")}</p>}
-
-        {!loading && hooks.length === 0 && (
-          <div className="ext-empty">
-            <p>{tr("ext.hooks.empty")}</p>
-            <p className="ext-section-note">{tr("ext.hooks.emptyHint")}</p>
-            {!hooksUserDirExists ? (
-              <p className="ext-section-note">{tr("ext.hooks.missingUser")}</p>
-            ) : null}
-            {projectPath?.trim() && !hooksProjectDirExists ? (
-              <p className="ext-section-note">
-                {tr("ext.hooks.missingProject")}
-              </p>
-            ) : null}
-            {!projectPath?.trim() ? (
-              <p className="ext-section-note">{tr("ext.hooks.noProject")}</p>
-            ) : null}
-          </div>
-        )}
-
-        {!loading && hooks.length > 0 && (
-          <ul className="ext-list">
-            {hooks.map((h) => {
-              const key = hookRowKey(h);
-              const scopeLabel =
-                h.scope === "project"
-                  ? tr("ext.hooks.scope.project")
-                  : tr("ext.hooks.scope.user");
-              const meta = hookMetaLine(h, {
-                scopeLabel: (s) =>
-                  s === "project"
-                    ? tr("ext.hooks.scope.project")
-                    : s === "user"
-                      ? tr("ext.hooks.scope.user")
-                      : s,
-              });
-              return (
-                <li key={key} className="ext-item">
-                  <div className="ext-item__head">
-                    <strong className="ext-item__name">{h.name}</strong>
-                    <span
-                      className={
-                        "ext-badge" +
-                        (h.scope === "project"
-                          ? " ext-badge--project"
-                          : " ext-badge--user")
-                      }
-                    >
-                      {scopeLabel}
-                    </span>
-                    {h.kind === "dir" ? (
-                      <span className="ext-badge ext-badge--muted">dir</span>
-                    ) : h.ext ? (
-                      <span className="ext-badge ext-badge--muted">
-                        {h.ext}
-                      </span>
-                    ) : null}
-                  </div>
-                  <div className="ext-item__meta">
-                    <span>{meta}</span>
-                    <button
-                      type="button"
-                      className="ext-path-btn"
-                      title={h.path}
-                      disabled={!!actionBusy}
-                      onClick={() => revealHook(h.path)}
-                    >
-                      <IconFolder size={13} />
-                      <span>{shortPathLabel(h.path, 42)}</span>
-                    </button>
-                    <button
-                      type="button"
-                      className="btn btn--ghost btn--sm"
-                      disabled={!!actionBusy}
-                      onClick={() => revealHook(h.path)}
-                    >
-                      {tr("ext.hooks.reveal")}
-                    </button>
-                  </div>
-                </li>
-              );
-            })}
-          </ul>
-        )}
-
-        <p className="ext-section-note">{tr("ext.hooks.tip")}</p>
-        {hooksDocsPath ? (
-          <button
-            type="button"
-            className="btn btn--ghost btn--sm"
-            disabled={!!actionBusy}
-            title={hooksDocsPath}
-            onClick={() => openHooksDocs()}
-          >
-            <IconExternalLink size={13} />
-            <span>{tr("ext.hooks.openDocs")}</span>
-          </button>
-        ) : null}
-      </div>
-
       <p className="ext-footnote">
         <IconPuzzle size={13} />
         <span>{tr("ext.footnote")}</span>
@@ -1875,42 +974,6 @@ export function ExtensionsPanel({
         <p className="app-dialog__msg">
           {tr("ext.plugins.uninstallConfirm", {
             name: uninstallTarget?.name ?? "",
-          })}
-        </p>
-      </GlassModal>
-
-      <GlassModal
-        open={!!removeSourceTarget}
-        onClose={() => {
-          if (!actionBusy) setRemoveSourceTarget(null);
-        }}
-        title={tr("ext.market.removeTitle")}
-        size="sm"
-        closeLabel={tr("common.close")}
-        footer={
-          <>
-            <button
-              type="button"
-              className="btn btn--ghost"
-              disabled={!!actionBusy}
-              onClick={() => setRemoveSourceTarget(null)}
-            >
-              {tr("common.cancel")}
-            </button>
-            <button
-              type="button"
-              className="btn btn--danger"
-              disabled={!!actionBusy}
-              onClick={() => void confirmRemoveSource()}
-            >
-              {tr("ext.market.remove")}
-            </button>
-          </>
-        }
-      >
-        <p className="app-dialog__msg">
-          {tr("ext.market.removeConfirm", {
-            name: removeSourceTarget?.name ?? "",
           })}
         </p>
       </GlassModal>
@@ -2123,13 +1186,13 @@ export function ExtensionsPanel({
                 total: doctorReport.summary.total,
               })}
             </p>
-            {doctorReport.sources.length > 0 ? (
+            {(doctorReport.sources?.length ?? 0) > 0 ? (
               <div className="ext-doctor__sources">
                 <div className="ext-doctor__section-title">
                   {tr("ext.mcp.doctorSources")}
                 </div>
                 <ul className="ext-doctor__source-list">
-                  {doctorReport.sources.map((src) => (
+                  {doctorReport.sources.map((src: any) => (
                     <li key={src.path}>
                       <code>{src.path}</code>
                       <span className="ext-badge ext-badge--muted">
@@ -2143,13 +1206,13 @@ export function ExtensionsPanel({
                 </ul>
               </div>
             ) : null}
-            {doctorReport.servers.length === 0 ? (
+            {(doctorReport.servers?.length ?? 0) === 0 ? (
               <p className="ext-empty">
                 {doctorReport.rawText?.trim() || tr("ext.mcp.doctorEmpty")}
               </p>
             ) : (
               <ul className="ext-list ext-doctor__servers">
-                {doctorReport.servers.map((s) => (
+                {doctorReport.servers.map((s: any) => (
                   <li
                     key={s.name}
                     className={
@@ -2183,7 +1246,7 @@ export function ExtensionsPanel({
                     ) : null}
                     {s.checks.length > 0 ? (
                       <ul className="ext-doctor__checks">
-                        {s.checks.map((c, i) => (
+                        {s.checks.map((c: any, i: any) => (
                           <li
                             key={`${s.name}:${c.label}:${i}`}
                             className={

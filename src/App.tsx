@@ -92,20 +92,17 @@ import {
 } from "@/lib/permissionOptions";
 import { AskUserModal } from "@/components/AskUserModal";
 import { DoctorModal } from "@/components/DoctorModal";
-import { filterSessionSearch } from "@/lib/sessionSearch";
 import {
-  findChatMatches,
-  stepChatFindIndex,
-  type ChatFindMatch,
-} from "@/lib/chatFind";
+  filterSessionSearch,
+  mergeSessionSearchHits,
+  type SessionContentHit,
+} from "@/lib/sessionSearch";
 import {
   sessionExportFilename,
   sessionToMarkdown,
 } from "@/lib/sessionExport";
-import { shouldRestoreLastSession } from "@/lib/sessionRestore";
 import { connPillForState } from "@/lib/connStatus";
 import { shortcutsForPlatform } from "@/lib/shortcuts";
-import { ChatFindBar } from "@/components/ChatFindBar";
 import {
   ensureNotifyPermission,
   showDesktopNotification,
@@ -159,14 +156,8 @@ import {
   getComposerCaretOffset,
 } from "@/components/ComposerEditor";
 import { ComposerProjectMenu } from "@/components/ComposerProjectMenu";
-import { VoiceOverlay } from "@/components/VoiceOverlay";
-import {
-  buildWorktreeSiblingPath,
-  mainWorktreePath,
-  pathsEqual,
-  sanitizeWorktreeName,
-  worktreeLabel,
-} from "@/lib/gitWorktree";
+import { pathsEqual } from "@/lib/gitWorktree";
+import { isProjectPathMissing } from "@/lib/projectPath";
 import {
   classifyVoiceError,
   initialVoiceState,
@@ -223,7 +214,6 @@ import {
   IconCopy,
   IconTrash,
   IconExternalLink,
-  IconFileText,
   IconFork,
   IconRewind,
   IconShield,
@@ -304,6 +294,8 @@ interface SessionRow {
   projectId: string | null;
   updatedAt: string;
   archived?: boolean;
+  /** Pinned chats float to the top of the sidebar */
+  pinned?: boolean;
   /** Shell scheduled-automation run */
   scheduled?: boolean;
 }
@@ -382,11 +374,6 @@ export default function App() {
   const voiceGenRef = useRef(0);
   /** Caret in draft string captured when stop is requested. */
   const voiceCaretRef = useRef<number | null>(null);
-  /** Live voice overlay (GPT-Live-style delegate mode). */
-  const [voiceOpen, setVoiceOpen] = useState(false);
-  const [voiceDictating, setVoiceDictating] = useState(false);
-  const voiceRecorderRef = useRef<MediaRecorder | null>(null);
-  const voiceChunksRef = useRef<Blob[]>([]);
   const [goalMode, setGoalMode] = useState(false);
   /** Prevent overlapping executeSend / queue auto-flush races. */
   const sendInFlightRef = useRef(false);
@@ -461,6 +448,12 @@ export default function App() {
   appDialogRef.current = appDialog;
   const [showSearch, setShowSearch] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+  /** Debounced journal content hits from `sessions_search`. */
+  const [contentSearchHits, setContentSearchHits] = useState<
+    SessionContentHit[]
+  >([]);
+  const [contentSearchLoading, setContentSearchLoading] = useState(false);
+  const contentSearchSeq = useRef(0);
   const [showComposerPlus, setShowComposerPlus] = useState(false);
   showComposerPlusRef.current = showComposerPlus;
   const composerPlusTriggerRef = useRef<HTMLButtonElement>(null);
@@ -568,8 +561,6 @@ export default function App() {
     return () => document.removeEventListener("keydown", onKey);
   }, [showSearch]);
 
-  // Global shortcuts: search, help, doctor, new chat, settings.
-  // Global shortcuts: search, find-in-chat, help, doctor, new chat, settings.
   // Debounced content search over App journals (title filter stays instant).
   useEffect(() => {
     if (!showSearch) {
@@ -619,7 +610,6 @@ export default function App() {
   const shortcutHandlersRef = useRef({
     newChat: () => {},
     openSettings: () => {},
-    openChatFind: () => {},
     toggleVoice: () => {},
     cancelVoice: () => {},
   });
@@ -649,12 +639,6 @@ export default function App() {
         tag === "textarea" ||
         !!target?.isContentEditable;
       const key = e.key.toLowerCase();
-      // In-chat find — open even while typing in the composer.
-      if (key === "f" && !e.shiftKey) {
-        e.preventDefault();
-        shortcutHandlersRef.current.openChatFind();
-        return;
-      }
       if (key === "k") {
         e.preventDefault();
         setShowSearch(true);
@@ -697,10 +681,6 @@ export default function App() {
   const [setupCliSeed, setSetupCliSeed] = useState<SetupCliInfo | null>(null);
   const [showDoctor, setShowDoctor] = useState(false);
   const [showShortcuts, setShowShortcuts] = useState(false);
-  /** In-conversation find (Cmd/Ctrl+F) — not the palette/session search. */
-  const [showChatFind, setShowChatFind] = useState(false);
-  const [chatFindQuery, setChatFindQuery] = useState("");
-  const [chatFindIndex, setChatFindIndex] = useState(0);
   const [savedAccounts, setSavedAccounts] = useState<api.SavedAccount[]>([]);
   const [activeAccountId, setActiveAccountId] = useState<string | null>(null);
   const [perm, setPerm] = useState<PermissionPayload | null>(null);
@@ -720,7 +700,7 @@ export default function App() {
     toolCallId: null,
     barDismissed: false,
   });
-  const [locale, setLocale] = useState<Locale>("en");
+  const [locale, setLocale] = useState<Locale>("zh");
   const localeRef = useRef(locale);
   localeRef.current = locale;
   const tr = useMemo(() => createT(locale), [locale]);
@@ -769,24 +749,11 @@ export default function App() {
   const [maxAgentTurns, setMaxAgentTurns] = useState(0);
   const [storeApiKeysInKeychain, setStoreApiKeysInKeychain] = useState(false);
   const [sandboxProfile, setSandboxProfile] = useState("off");
-  const [experimentalMemory, setExperimentalMemory] = useState(false);
-  const [clearMemoryBusy, setClearMemoryBusy] = useState(false);
-  const [disableWebSearch, setDisableWebSearch] = useState(false);
-  /** Reopen last chat on launch (default on; loaded from settings). */
-  const [reopenLastSession, setReopenLastSession] = useState(true);
-  const [lastSessionId, setLastSessionId] = useState<string | null>(null);
-  /** Settings + sessions finished first bootstrap (gate for one-shot restore). */
-  const settingsBootstrappedRef = useRef(false);
-  const startupRestoreDoneRef = useRef(false);
-  /** Default true — false spawns with top-level `--no-plan`. */
-  const [planEnabled, setPlanEnabled] = useState(true);
-  const [subagentsEnabled, setSubagentsEnabled] = useState(true);
   /** Preferred CLI agent definition for spawn (`""` = CLI default). */
   const [preferredAgent, setPreferredAgent] = useState("");
   const [agentCatalog, setAgentCatalog] = useState<
     Array<{ name: string; source: string }>
   >([]);
-  const [useLeader, setUseLeader] = useState(false);
   const [gitWorktrees, setGitWorktrees] = useState<api.GitWorktreeEntry[]>([]);
   /** null = unknown/loading; true = git work tree; false = not a git repo. */
   const [gitWorktreesAvailable, setGitWorktreesAvailable] = useState<
@@ -794,20 +761,6 @@ export default function App() {
   >(null);
   const [gitWorktreesLoading, setGitWorktreesLoading] = useState(false);
   const [gitWorktreesReason, setGitWorktreesReason] = useState<string | null>(
-    null,
-  );
-  /** New worktree dialog (name + optional start-point). */
-  const [worktreeCreateOpen, setWorktreeCreateOpen] = useState(false);
-  const [worktreeCreateName, setWorktreeCreateName] = useState("");
-  const [worktreeCreateRef, setWorktreeCreateRef] = useState("");
-  const [worktreeCreateBusy, setWorktreeCreateBusy] = useState(false);
-  const [worktreeCreateError, setWorktreeCreateError] = useState<string | null>(
-  /** Confirm remove for a linked (non-main) worktree. */
-  const [worktreeRemoveTarget, setWorktreeRemoveTarget] =
-    useState<api.GitWorktreeEntry | null>(null);
-  const [worktreeRemoveForce, setWorktreeRemoveForce] = useState(false);
-  const [worktreeRemoveBusy, setWorktreeRemoveBusy] = useState(false);
-  const [worktreeRemoveError, setWorktreeRemoveError] = useState<string | null>(
     null,
   );
   /** Clean stale worktrees (git worktree prune) dialog. */
@@ -944,13 +897,20 @@ export default function App() {
       );
       setSessions(
         (
-          s as Array<SessionRow & { archived?: boolean; scheduled?: boolean }>
+          s as Array<
+            SessionRow & {
+              archived?: boolean;
+              pinned?: boolean;
+              scheduled?: boolean;
+            }
+          >
         ).map((x) => ({
           id: x.id,
           title: x.title,
           projectId: x.projectId,
           updatedAt: x.updatedAt,
           archived: !!x.archived,
+          pinned: !!x.pinned,
           scheduled: !!x.scheduled,
         })),
       );
@@ -1040,20 +1000,6 @@ export default function App() {
         const known = ["off", "workspace", "read-only", "strict", "devbox"];
         setSandboxProfile(known.includes(sb) ? sb : "off");
       }
-      setExperimentalMemory(!!settings.experimentalMemory);
-      setDisableWebSearch(!!settings.disableWebSearch);
-      setReopenLastSession(settings.reopenLastSession !== false);
-      setLastSessionId(
-        typeof settings.lastSessionId === "string" &&
-          settings.lastSessionId.trim()
-          ? settings.lastSessionId.trim()
-          : null,
-      );
-      settingsBootstrappedRef.current = true;
-      // Missing field → keep plan mode on (matches AppSettings default).
-      setPlanEnabled(settings.planEnabled !== false);
-      // Default true when field is missing from older settings files.
-      setSubagentsEnabled(settings.subagentsEnabled !== false);
       setPreferredAgent((settings.preferredAgent || "").trim());
       void api
         .agentsCatalog(null)
@@ -1073,7 +1019,6 @@ export default function App() {
             })),
           );
         });
-      setUseLeader(!!settings.useLeader);
       setCliInfo({
         found: cli.found,
         path: cli.path,
@@ -1569,6 +1514,22 @@ export default function App() {
               ) {
                 setToast(tr("agent.idleRecycledToast"));
                 window.setTimeout(() => setToast(null), 4200);
+              }
+            },
+          ),
+        );
+        await track(
+          api.listen<{ reason?: string; killed?: number }>(
+            "session://agents_recycled",
+            (p) => {
+              if (cancelled || !p) return;
+              // session_data_mode flip (and any future full recycle).
+              if (
+                p.reason === "session_data_mode" ||
+                (p.killed != null && p.killed > 0)
+              ) {
+                setToast(tr("agent.dataModeRecycledToast"));
+                window.setTimeout(() => setToast(null), 4800);
               }
             },
           ),
@@ -2181,20 +2142,13 @@ export default function App() {
       setRetryStatus(null);
     }
 
-    // Remember for "reopen last chat on startup".
-    setLastSessionId(s.id);
-    if (api.isTauri()) {
-      void api
-        .settingsRememberLastSession(s.id, proj?.id ?? s.projectId ?? null)
-        .catch(() => {});
-    }
-
     // Warm ACP: connect while the user reads history (trusted project or orphan).
     // Host serializes connect; first send no-ops if already ready, or waits if
     // still handshaking. Process is reused across sessions when cwd/effort match.
+    // Skip when project folder is missing (D05) — user must relocate first.
     if (
       api.isTauri() &&
-      (!proj || proj.trusted) &&
+      (!proj || (proj.trusted && !isProjectPathMissing(proj.pathOk))) &&
       !(live.sessionId === s.id && live.state === "ready")
     ) {
       const warmId = s.id;
@@ -2228,46 +2182,6 @@ export default function App() {
       })();
     }
   };
-
-  // Once after setup/onboarding: reopen last chat if it still exists.
-  useEffect(() => {
-    if (startupRestoreDoneRef.current) return;
-    if (!settingsBootstrappedRef.current) return;
-    if (appGate !== "ready") return;
-    if (!api.isTauri()) {
-      startupRestoreDoneRef.current = true;
-      return;
-    }
-    // Don't steal hash routes (settings / automations).
-    const raw = window.location.hash.replace(/^#\/?/, "");
-    if (raw.startsWith("settings") || raw.startsWith("automations")) {
-      startupRestoreDoneRef.current = true;
-      return;
-    }
-
-    const restoreId = shouldRestoreLastSession({
-      enabled: reopenLastSession,
-      workbenchReady: true,
-      lastSessionId,
-      sessions,
-      currentSessionId: session.sessionId ?? viewingSessionIdRef.current,
-    });
-    startupRestoreDoneRef.current = true;
-    if (!restoreId) return;
-
-    const row = sessions.find((s) => s.id === restoreId);
-    if (!row) return;
-    const proj =
-      projects.find((p) => p.id === row.projectId) ?? null;
-    if (row.projectId) {
-      setExpandedProjects((e) => ({ ...e, [row.projectId!]: true }));
-    } else {
-      setHistoryOpen(true);
-    }
-    void openSession(row, proj);
-    // openSession closes over latest projects/sessions; run once at ready.
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- one-shot startup
-  }, [appGate, sessions, reopenLastSession, lastSessionId, projects, session.sessionId]);
 
   /**
    * Focus composer after React commit. Retries until the textarea is mounted
@@ -2332,6 +2246,10 @@ export default function App() {
     }
     if (proj && !proj.trusted) {
       setLocalError(tr("project.trustFirst", { name: proj.name }));
+      return;
+    }
+    if (proj && isProjectPathMissing(proj.pathOk)) {
+      setLocalError(tr("project.pathMissing", { name: proj.name }));
       return;
     }
     automationSetupDraftRef.current = !!opts?.automationSetup;
@@ -2460,6 +2378,7 @@ export default function App() {
           projectId: s.projectId,
           updatedAt: s.updatedAt,
           archived: !!s.archived,
+          pinned: !!s.pinned,
           scheduled: !!s.scheduled,
         })),
       );
@@ -2491,6 +2410,10 @@ export default function App() {
           : null;
         if (proj && !proj.trusted) {
           setLocalError(tr("project.trustFirst", { name: proj.name }));
+          return false;
+        }
+        if (proj && isProjectPathMissing(proj.pathOk)) {
+          setLocalError(tr("project.pathMissing", { name: proj.name }));
           return false;
         }
         setMainPane("chat");
@@ -2725,12 +2648,16 @@ export default function App() {
   const refreshProjects = async () => {
     try {
       const list = await api.projectsList();
-      setProjects(
-        list.map((p) => ({
-          ...p,
-          pinned: !!p.pinned,
-        })),
-      );
+      const mapped = list.map((p) => ({
+        ...p,
+        pinned: !!p.pinned,
+      })) as Project[];
+      setProjects(mapped);
+      // Keep active project pathOk/path in sync with Host re-check.
+      setActiveProject((prev) => {
+        if (!prev) return prev;
+        return mapped.find((x) => x.id === prev.id) ?? prev;
+      });
     } catch {
       /* ignore */
     }
@@ -2770,6 +2697,55 @@ export default function App() {
         }
       },
     });
+  };
+
+  /**
+   * Pick a new folder for a project whose path is gone or moved (D05).
+   * Host persists path and re-checks is_dir → pathOk true.
+   */
+  const relocateProject = async (proj: Project) => {
+    setCtxMenu(null);
+    if (!api.isTauri()) {
+      setLocalError(tr("error.needTauri"));
+      return;
+    }
+    try {
+      const dir = await api.pickDirectory();
+      if (!dir) return;
+      const updated = (await api.projectRelocate(proj.id, dir)) as Project;
+      await refreshProjects();
+      void api.trayRefresh();
+      if (activeProject?.id === proj.id) {
+        setActiveProject(updated);
+        // Force reconnect on next send — cwd changed.
+        setSession((prev) =>
+          prev.sessionId
+            ? {
+                ...IDLE_SNAPSHOT,
+                sessionId: prev.sessionId,
+                title: prev.title,
+                state: "idle",
+                backend: prev.backend || "grok_agent_stdio",
+              }
+            : prev,
+        );
+        setLiveHost((prev) =>
+          prev.sessionId ? { ...IDLE_SNAPSHOT } : prev,
+        );
+      }
+      setLocalError(null);
+      const msg = tr("project.relocateOk", {
+        name: updated.name,
+        path: updated.path,
+      });
+      setToast(msg);
+      window.setTimeout(
+        () => setToast((cur) => (cur === msg ? null : cur)),
+        3200,
+      );
+    } catch (e) {
+      setLocalError(String(e));
+    }
   };
 
   /**
@@ -2934,6 +2910,17 @@ export default function App() {
     }
   };
 
+  /** Pin / unpin a session (floats to top of its sidebar group). */
+  const pinSession = async (s: SessionRow, pinned = true) => {
+    setCtxMenu(null);
+    try {
+      await api.sessionSetPinned(s.id, pinned);
+      await refreshSessions();
+    } catch (e) {
+      setLocalError(String(e));
+    }
+  };
+
   /** Permanent delete — confirm first; leave workbench if viewing that chat. */
   const deleteSessionConfirm = (s: SessionRow) => {
     deleteSessionsConfirm([s]);
@@ -3069,6 +3056,16 @@ export default function App() {
     [searchQuery, sessions, projects],
   );
 
+  const mergedSessionHits = useMemo(
+    () =>
+      mergeSessionSearchHits(
+        searchQuery,
+        searchHits.matchedSessions,
+        contentSearchHits,
+      ),
+    [searchQuery, searchHits.matchedSessions, contentSearchHits],
+  );
+
   const connPill = useMemo(
     () => connPillForState(session.state, connecting),
     [session.state, connecting],
@@ -3122,6 +3119,12 @@ export default function App() {
     // Project-less (orphan) sessions are allowed: cwd falls back on Host.
     if (activeProject && !activeProject.trusted) {
       setLocalError(tr("project.trustFirst", { name: activeProject.name }));
+      return null;
+    }
+    if (activeProject && isProjectPathMissing(activeProject.pathOk)) {
+      setLocalError(
+        tr("project.pathMissing", { name: activeProject.name }),
+      );
       return null;
     }
     // Fast path: already ready on the *preferred* session (not merely "any" ready).
@@ -3181,16 +3184,6 @@ export default function App() {
           setExpandedProjects((e) => ({ ...e, [activeProject.id]: true }));
         } else {
           setHistoryOpen(true);
-        }
-        // First send materializes a real session — treat as active for restore.
-        setLastSessionId(meta.id);
-        if (api.isTauri()) {
-          void api
-            .settingsRememberLastSession(
-              meta.id,
-              activeProject?.id ?? null,
-            )
-            .catch(() => {});
         }
         await refreshSessions();
       }
@@ -4629,6 +4622,7 @@ export default function App() {
           projectId: meta.projectId ?? source.projectId,
           updatedAt: meta.updatedAt || new Date().toISOString(),
           archived: meta.archived,
+          pinned: !!(meta as SessionRow).pinned,
           scheduled: meta.scheduled,
         };
         const proj = row.projectId
@@ -5058,106 +5052,6 @@ export default function App() {
   );
 
   /**
-   * In-chat find matches — user + assistant bodies only.
-   * Historical tool_step rows are not rendered in the transcript, so matching
-   * them would land on invisible hits.
-   */
-  const chatFindMatches = useMemo((): ChatFindMatch[] => {
-    if (!showChatFind) return [];
-    return findChatMatches(
-      chatFindQuery,
-      messages
-        .filter((m) => m.role === "user" || m.role === "assistant")
-        .map((m) => ({
-          id: m.id,
-          role: m.role,
-          content: m.content,
-          marker: m.marker,
-        })),
-    );
-  }, [showChatFind, chatFindQuery, messages]);
-
-  const chatFindHitIds = useMemo(() => {
-    const s = new Set<string>();
-    for (const m of chatFindMatches) s.add(m.messageId);
-    return s;
-  }, [chatFindMatches]);
-
-  const chatFindActive = useMemo(() => {
-    if (!showChatFind || chatFindMatches.length === 0) return null;
-    const idx =
-      chatFindIndex >= 0 && chatFindIndex < chatFindMatches.length
-        ? chatFindIndex
-        : 0;
-    const hit = chatFindMatches[idx]!;
-    return { messageId: hit.messageId, occurrence: hit.occurrence };
-  }, [showChatFind, chatFindMatches, chatFindIndex]);
-
-  // Clamp active index when the match list shrinks (query edit / new messages).
-  useEffect(() => {
-    if (!showChatFind) return;
-    if (chatFindMatches.length === 0) {
-      if (chatFindIndex !== 0) setChatFindIndex(0);
-      return;
-    }
-    if (chatFindIndex >= chatFindMatches.length) {
-      setChatFindIndex(0);
-    }
-  }, [showChatFind, chatFindMatches.length, chatFindIndex]);
-
-  // Reset find when switching conversation (keep open across same session).
-  useEffect(() => {
-    setShowChatFind(false);
-    setChatFindQuery("");
-    setChatFindIndex(0);
-  }, [session.sessionId]);
-
-  // Close find when leaving the chat pane (not when opening from another pane).
-  useEffect(() => {
-    if (mainPane !== "chat") {
-      setShowChatFind(false);
-    }
-  }, [mainPane]);
-
-  useEffect(() => {
-    if (!showChatFind) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key !== "Escape") return;
-      if (e.isComposing) return;
-      // Permission bar / dialogs own Escape when open.
-      if (perm || appDialog) return;
-      e.preventDefault();
-      e.stopPropagation();
-      setShowChatFind(false);
-    };
-    document.addEventListener("keydown", onKey, true);
-    return () => document.removeEventListener("keydown", onKey, true);
-  }, [showChatFind, perm, appDialog]);
-
-  const [chatFindFocusKey, setChatFindFocusKey] = useState(0);
-  const openChatFind = useCallback(() => {
-    // Ensure chat pane first; opening find after pane switch is handled by
-    // setting show true in the same tick (pane effect only closes on leave).
-    if (mainPane !== "chat") {
-      setMainPane("chat");
-    }
-    setShowChatFind(true);
-    setChatFindFocusKey((k) => k + 1);
-  }, [mainPane]);
-
-  const chatFindNext = useCallback(() => {
-    setChatFindIndex((i) =>
-      stepChatFindIndex(i, chatFindMatches.length, 1),
-    );
-  }, [chatFindMatches.length]);
-
-  const chatFindPrev = useCallback(() => {
-    setChatFindIndex((i) =>
-      stepChatFindIndex(i, chatFindMatches.length, -1),
-    );
-  }, [chatFindMatches.length]);
-
-  /**
    * New empty draft only: lift composer and SuperGrok brand.
    * Existing sessions (even with empty journal) must not look like a fresh chat.
    */
@@ -5294,6 +5188,10 @@ export default function App() {
       }
       if (proj && !proj.trusted) {
         setLocalError(tr("project.trustFirst", { name: proj.name }));
+        return;
+      }
+      if (proj && isProjectPathMissing(proj.pathOk)) {
+        setLocalError(tr("project.pathMissing", { name: proj.name }));
         return;
       }
       try {
@@ -5557,196 +5455,6 @@ export default function App() {
     ],
   );
 
-  const openWorktreeCreate = useCallback(() => {
-    setWorktreeCreateName("");
-    setWorktreeCreateRef("");
-    setWorktreeCreateError(null);
-    setWorktreeCreateBusy(false);
-    setWorktreeCreateOpen(true);
-  }, []);
-
-  const worktreeCreatePreviewPath = (() => {
-    try {
-      const main =
-        mainWorktreePath(gitWorktrees) || activeProject?.path || "";
-      if (!main || !worktreeCreateName.trim()) return null;
-      return buildWorktreeSiblingPath(main, worktreeCreateName.trim());
-    } catch {
-      return null;
-    }
-  })();
-
-  /** Create worktree → refresh list → add as project (trust inherited) → switch. */
-  const submitWorktreeCreate = useCallback(async () => {
-    if (!api.isTauri() || !activeProject?.path) return;
-    const rawName = worktreeCreateName.trim();
-    if (!rawName) {
-      setWorktreeCreateError(tr("composer.worktreeNameRequired"));
-      return;
-    }
-    let safeName: string;
-    try {
-      safeName = sanitizeWorktreeName(rawName);
-    } catch {
-      setWorktreeCreateError(tr("composer.worktreeNameInvalid"));
-      return;
-    }
-    setWorktreeCreateBusy(true);
-    setWorktreeCreateError(null);
-    try {
-      const start = worktreeCreateRef.trim() || null;
-      const created = await api.gitWorktreeAdd(
-        activeProject.path,
-        safeName,
-        start,
-      );
-      setWorktreeCreateOpen(false);
-      await refreshGitWorktrees();
-
-      const path = created.path;
-      const branch =
-        created.branch?.trim() ||
-        created.name ||
-        tr("composer.worktreeDetached");
-      const trust = !!activeProject.trusted;
-      const existing = projects.find((p) => pathsEqual(p.path, path));
-      if (existing) {
-        await bindSessionProject(existing, { silent: true });
-      } else {
-        const added = (await api.projectAdd(path, trust)) as Project;
-        const list = (await api.projectsList()) as Project[];
-        setProjects(list);
-        const proj = list.find((p) => p.id === added.id) ?? added;
-        if (!proj.trusted) {
-          await finalizeAddedProject(proj, { bindSession: true });
-        } else {
-          await bindSessionProject(proj, { silent: true });
-        }
-      }
-      showToast(
-        tr("composer.worktreeCreated", {
-          name: created.name,
-          branch,
-        }),
-        2800,
-      );
-    } catch (e) {
-      setWorktreeCreateError(String(e));
-    } finally {
-      setWorktreeCreateBusy(false);
-    }
-  }, [
-    activeProject?.path,
-    activeProject?.trusted,
-    bindSessionProject,
-    finalizeAddedProject,
-  const openWorktreeRemove = useCallback((wt: api.GitWorktreeEntry) => {
-    if (wt.isMain) return;
-    setWorktreeRemoveTarget(wt);
-    setWorktreeRemoveForce(false);
-    setWorktreeRemoveError(null);
-    setWorktreeRemoveBusy(false);
-  }, []);
-
-  /**
-   * Remove linked worktree via host, refresh list, leave active session if needed,
-   * and carefully offer dropping a matching App project row (folder is gone).
-   */
-  const submitWorktreeRemove = useCallback(async () => {
-    if (!api.isTauri() || !activeProject?.path || !worktreeRemoveTarget) return;
-    const wt = worktreeRemoveTarget;
-    if (wt.isMain) {
-      setWorktreeRemoveError(tr("composer.worktreeRemoveMainBlocked"));
-      return;
-    }
-    const removedPath = wt.path;
-    const wasActive = pathsEqual(activeProject.path, removedPath);
-    const matchedProject = projects.find((p) => pathsEqual(p.path, removedPath));
-    // Main worktree project to fall back to after removing the active path.
-    const mainWt = gitWorktrees.find((w) => w.isMain) ?? gitWorktrees[0] ?? null;
-    const mainProject =
-      mainWt && !pathsEqual(mainWt.path, removedPath)
-        ? projects.find((p) => pathsEqual(p.path, mainWt.path)) ?? null
-        : null;
-
-    setWorktreeRemoveBusy(true);
-    setWorktreeRemoveError(null);
-    try {
-      // Use a cwd that will still exist after remove when deleting the active tree.
-      const gitCwd =
-        wasActive && mainWt?.path
-          ? mainWt.path
-          : activeProject.path;
-      await api.gitWorktreeRemove(
-        gitCwd,
-        removedPath,
-        worktreeRemoveForce,
-      );
-      setWorktreeRemoveTarget(null);
-      setWorktreeRemoveForce(false);
-
-      // Leave the removed cwd before refresh if we were on it.
-      if (wasActive) {
-        if (mainProject) {
-          await bindSessionProject(mainProject, { silent: true });
-        } else {
-          await bindSessionProject(null, { silent: true });
-        }
-      }
-
-      await refreshGitWorktrees();
-
-      const label = worktreeLabel(wt);
-      showToast(tr("composer.worktreeRemoved", { name: label }), 2800);
-
-      // Prefer leaving other projects alone. Only offer removing the App row
-      // that pointed at the deleted path (folder is gone; pathOk would fail).
-      if (matchedProject) {
-        const leaveId = matchedProject.id;
-        const leaveName = matchedProject.name;
-        setAppDialog({
-          kind: "confirm",
-          title: tr("composer.worktreeLeaveProjectTitle"),
-          message: tr("composer.worktreeLeaveProjectMsg", {
-            name: leaveName,
-          }),
-          confirmLabel: tr("project.remove"),
-          danger: true,
-          onConfirm: async () => {
-            try {
-              await api.projectRemove(leaveId);
-              await refreshProjects();
-              await refreshSessions();
-            } catch (e) {
-              showToast(String(e), 4500);
-            }
-          },
-        });
-      }
-    } catch (e) {
-      const msg = String(e);
-      setWorktreeRemoveError(msg);
-      // Dirty trees often need --force; surface that without closing the modal.
-      if (!worktreeRemoveForce && /force|dirty|locked|modified/i.test(msg)) {
-        setWorktreeRemoveForce(true);
-      }
-    } finally {
-      setWorktreeRemoveBusy(false);
-    }
-  }, [
-    activeProject?.path,
-    bindSessionProject,
-    gitWorktrees,
-    projects,
-    refreshGitWorktrees,
-    showToast,
-    tr,
-    worktreeCreateName,
-    worktreeCreateRef,
-    worktreeRemoveForce,
-    worktreeRemoveTarget,
-  ]);
-
   /**
    * Pick folder → add project (name = folder basename; no rename prompt).
    * `bindSession` also attaches the open chat under the new project.
@@ -5808,8 +5516,6 @@ export default function App() {
       setSettingsSection("general");
       window.location.hash = "#/settings/general";
     },
-    openChatFind: () => {
-      openChatFind();
     toggleVoice: () => {
       toggleVoice();
     },
@@ -6638,12 +6344,6 @@ export default function App() {
       "settings.cliNotFound",
       "settings.permissionDeep",
       "settings.permissionDeepDesc",
-      "settings.disableWebSearch",
-      "settings.disableWebSearchDesc",
-      "settings.planEnabled",
-      "settings.planEnabledDesc",
-      "settings.subagentsEnabled",
-      "settings.subagentsEnabledDesc",
       "settings.preferredAgent",
       "settings.preferredAgentDesc",
       "settings.preferredAgent.default",
@@ -6997,74 +6697,6 @@ export default function App() {
               api.settingsSet({ ...s, sandboxProfile: v }),
             );
           }}
-          experimentalMemory={experimentalMemory}
-          onExperimentalMemory={(v) => {
-            const prev = experimentalMemory;
-            setExperimentalMemory(v);
-            void api
-              .settingsGet()
-              .then((s) =>
-                api.settingsSet({ ...s, experimentalMemory: v }),
-              )
-              .catch((e) => {
-                setExperimentalMemory(prev);
-                showToast(String(e), 4500);
-              });
-          }}
-          clearWorkspaceMemoryBusy={clearMemoryBusy}
-          onClearWorkspaceMemory={() => {
-            setAppDialog({
-              kind: "confirm",
-              title: tr("settings.clearWorkspaceMemoryConfirmTitle"),
-              message: tr("settings.clearWorkspaceMemoryConfirmMsg"),
-              confirmLabel: tr("settings.clearWorkspaceMemory"),
-              danger: true,
-              onConfirm: () => {
-                setClearMemoryBusy(true);
-                void api
-                  .memoryClear({
-                    cwd: activeProject?.path ?? null,
-                    scope: "workspace",
-                  })
-                  .then(() => {
-                    showToast(tr("settings.clearWorkspaceMemoryDone"), 3500);
-                  })
-                  .catch((e) => {
-                    showToast(String(e), 4500);
-                  })
-                  .finally(() => setClearMemoryBusy(false));
-              },
-            });
-          disableWebSearch={disableWebSearch}
-          onDisableWebSearch={(v) => {
-            setDisableWebSearch(v);
-            void api.settingsGet().then((s) =>
-              api.settingsSet({ ...s, disableWebSearch: v }),
-          reopenLastSession={reopenLastSession}
-          onReopenLastSession={(v) => {
-            setReopenLastSession(v);
-            void api.settingsGet().then((s) =>
-              api.settingsSet({ ...s, reopenLastSession: v }),
-          planEnabled={planEnabled}
-          onPlanEnabled={(v) => {
-            setPlanEnabled(v);
-            void api.settingsGet().then((s) =>
-              api.settingsSet({ ...s, planEnabled: v }),
-            );
-          }}
-          subagentsEnabled={subagentsEnabled}
-          onSubagentsEnabled={(v) => {
-            const prev = subagentsEnabled;
-            setSubagentsEnabled(v);
-            void api
-              .settingsGet()
-              .then((s) => api.settingsSet({ ...s, subagentsEnabled: v }))
-              .catch((e) => {
-                setSubagentsEnabled(prev);
-                showToast(String(e), 4500);
-              });
-          }}
-          onToast={showToast}
           preferredAgent={preferredAgent}
           onPreferredAgent={(v) => {
             setPreferredAgent(v);
@@ -7073,18 +6705,6 @@ export default function App() {
             );
           }}
           agentCatalog={agentCatalog}
-          useLeader={useLeader}
-          onUseLeader={(v) => {
-            const prev = useLeader;
-            setUseLeader(v);
-            void api
-              .settingsGet()
-              .then((s) => api.settingsSet({ ...s, useLeader: v }))
-              .catch((e) => {
-                setUseLeader(prev);
-                showToast(String(e), 4500);
-              });
-          }}
           cliInfo={cliInfo}
           onDoctor={() => void openDoctor()}
           onOpenShortcutsHelp={() => setShowShortcuts(true)}
@@ -7287,7 +6907,12 @@ export default function App() {
                   <div key={proj.id} className="tree-project">
                     {/* L2 — project folder: expand/collapse only (not selectable) */}
                     <div
-                      className="tree-l2"
+                      className={
+                        "tree-l2" +
+                        (isProjectPathMissing(proj.pathOk)
+                          ? " tree-l2--path-missing"
+                          : "")
+                      }
                       role="button"
                       tabIndex={0}
                       aria-expanded={open}
@@ -7311,7 +6936,13 @@ export default function App() {
                       <span className="tree-l2__icon">
                         <IconFolder size={15} />
                       </span>
-                      <Tip label={proj.path}>
+                      <Tip
+                        label={
+                          isProjectPathMissing(proj.pathOk)
+                            ? tr("project.pathMissing", { name: proj.name })
+                            : proj.path
+                        }
+                      >
                         <span className="tree-l2__name">
                           {proj.pinned ? (
                             <IconPin size={12} className="tree-l2__pin" />
@@ -7319,17 +6950,24 @@ export default function App() {
                           {proj.name}
                         </span>
                       </Tip>
-                      {!proj.trusted && (
+                      {isProjectPathMissing(proj.pathOk) ? (
+                        <span className="project-row__badge project-row__badge--path-missing">
+                          {tr("sidebar.pathMissing")}
+                        </span>
+                      ) : !proj.trusted ? (
                         <span className="project-row__badge">
                           {tr("sidebar.untrusted")}
                         </span>
-                      )}
+                      ) : null}
                       <span className="tree-l2__actions">
                         <Tip label={tr("sidebar.newConversation")}>
                           <button
                             type="button"
                             className="tree-icon-btn"
-                            disabled={!proj.trusted}
+                            disabled={
+                              !proj.trusted ||
+                              isProjectPathMissing(proj.pathOk)
+                            }
                             onClick={(e) => {
                               e.stopPropagation();
                               void newChat(proj);
@@ -7352,7 +6990,19 @@ export default function App() {
 
                     {open && (
                       <div className="tree-l3-list-wrap">
-                        {!proj.trusted && (
+                        {isProjectPathMissing(proj.pathOk) && (
+                          <button
+                            type="button"
+                            className="tree-l3 tree-l3--hint"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              void relocateProject(proj);
+                            }}
+                          >
+                            {tr("sidebar.relocateProject")}
+                          </button>
+                        )}
+                        {!proj.trusted && !isProjectPathMissing(proj.pathOk) && (
                           <button
                             type="button"
                             className="tree-l3 tree-l3--hint"
@@ -7399,6 +7049,18 @@ export default function App() {
                                   }}
                                 >
                                   <span className="tree-l3__title">
+                                    {s.pinned ? (
+                                      <span
+                                        className="tree-l3__kind"
+                                        title={tr("session.pinned")}
+                                        aria-label={tr("session.pinned")}
+                                      >
+                                        <IconPin
+                                          size={12}
+                                          className="tree-l3__pin"
+                                        />
+                                      </span>
+                                    ) : null}
                                     {s.scheduled ? (
                                       <span
                                         className="tree-l3__kind"
@@ -7427,7 +7089,29 @@ export default function App() {
                                       </span>
                                     </Tip>
                                   ) : (
-                                    <span className="tree-l3__actions">
+                                    <span className="tree-l3__actions tree-l3__actions--triple">
+                                      <Tip
+                                        label={
+                                          s.pinned
+                                            ? tr("session.unpin")
+                                            : tr("session.pin")
+                                        }
+                                      >
+                                        <button
+                                          type="button"
+                                          className="tree-icon-btn"
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            void pinSession(s, !s.pinned);
+                                          }}
+                                        >
+                                          {s.pinned ? (
+                                            <IconPinOff size={13} />
+                                          ) : (
+                                            <IconPin size={13} />
+                                          )}
+                                        </button>
+                                      </Tip>
                                       <Tip
                                         label={
                                           s.archived
@@ -7528,6 +7212,18 @@ export default function App() {
                       }}
                     >
                       <span className="tree-l3__title">
+                        {s.pinned ? (
+                          <span
+                            className="tree-l3__kind"
+                            title={tr("session.pinned")}
+                            aria-label={tr("session.pinned")}
+                          >
+                            <IconPin
+                              size={12}
+                              className="tree-l3__pin"
+                            />
+                          </span>
+                        ) : null}
                         {s.scheduled ? (
                           <span
                             className="tree-l3__kind"
@@ -7554,7 +7250,29 @@ export default function App() {
                           </span>
                         </Tip>
                       ) : (
-                        <span className="tree-l3__actions">
+                        <span className="tree-l3__actions tree-l3__actions--triple">
+                          <Tip
+                            label={
+                              s.pinned
+                                ? tr("session.unpin")
+                                : tr("session.pin")
+                            }
+                          >
+                            <button
+                              type="button"
+                              className="tree-icon-btn"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                void pinSession(s, !s.pinned);
+                              }}
+                            >
+                              {s.pinned ? (
+                                <IconPinOff size={13} />
+                              ) : (
+                                <IconPin size={13} />
+                              )}
+                            </button>
+                          </Tip>
                           <Tip label={tr("sidebar.archive")}>
                             <button
                               type="button"
@@ -7870,7 +7588,24 @@ export default function App() {
             />
           ) : (
           <>
-          {activeProject && !activeProject.trusted && (
+          {activeProject && isProjectPathMissing(activeProject.pathOk) && (
+            <div className="conn-bar">
+              <span style={{ fontSize: 12, opacity: 0.9, marginRight: 8 }}>
+                {tr("project.pathMissingShort")}
+              </span>
+              <button
+                type="button"
+                className="btn btn--primary"
+                style={{ height: 24, fontSize: 11 }}
+                onClick={() => void relocateProject(activeProject)}
+              >
+                {tr("project.relocateToSend")}
+              </button>
+            </div>
+          )}
+          {activeProject &&
+            !isProjectPathMissing(activeProject.pathOk) &&
+            !activeProject.trusted && (
             <div className="conn-bar">
               <button
                 type="button"
@@ -7947,31 +7682,6 @@ export default function App() {
               onRequestChanges={() => void requestPlanChanges()}
               onDismiss={() => void dismissPlan()}
               onOpenDetails={() => openPlanInResource()}
-            />
-          )}
-
-          {mainPane === "chat" && showChatFind && (
-            <ChatFindBar
-              key={chatFindFocusKey}
-              query={chatFindQuery}
-              activeIndex={chatFindIndex}
-              matchCount={chatFindMatches.length}
-              labels={{
-                placeholder: tr("chatFind.placeholder"),
-                prev: tr("chatFind.prev"),
-                next: tr("chatFind.next"),
-                close: tr("chatFind.close"),
-                count: tr("chatFind.count"),
-                noMatches: tr("chatFind.noMatches"),
-                aria: tr("chatFind.aria"),
-              }}
-              onQueryChange={(q) => {
-                setChatFindQuery(q);
-                setChatFindIndex(0);
-              }}
-              onPrev={chatFindPrev}
-              onNext={chatFindNext}
-              onClose={() => setShowChatFind(false)}
             />
           )}
 
@@ -8107,9 +7817,6 @@ export default function App() {
               setAttachments((prev) => mergeAttachments(prev, [att]))
             }
             attachLabels={attachLabels}
-            findQuery={showChatFind ? chatFindQuery : ""}
-            findHitMessageIds={showChatFind ? chatFindHitIds : undefined}
-            findActive={showChatFind ? chatFindActive : null}
           />
 
           <div
@@ -8462,8 +8169,6 @@ export default function App() {
                     worktreeSwitch: tr("composer.worktreeSwitch"),
                     worktreeMain: tr("composer.worktreeMain"),
                     worktreeDetached: tr("composer.worktreeDetached"),
-                    worktreeNew: tr("composer.worktreeNew"),
-                    worktreeRemove: tr("composer.worktreeRemove"),
                     pathMissing: tr("project.pathMissingShort"),
                     worktreeGc: tr("composer.worktreeGc"),
                   }}
@@ -8483,10 +8188,6 @@ export default function App() {
                   }}
                   onSwitchWorktree={(wt) => {
                     void switchToWorktree(wt);
-                  }}
-                  onCreateWorktree={openWorktreeCreate}
-                  onRemoveWorktree={(wt) => {
-                    openWorktreeRemove(wt);
                   }}
                   onGcWorktrees={openWorktreeGc}
                   onOpen={refreshGitWorktrees}
@@ -8647,96 +8348,6 @@ export default function App() {
                           : tr("composer.voice")
                     }
                     onClick={() => toggleVoice()}
-                <Tip label={tr("voice.dictation")}>
-                  <button
-                    type="button"
-                    className={
-                      "icon-btn" + (voiceDictating ? " icon-btn--danger" : "")
-                    }
-                    disabled={!canType(session.state)}
-                    aria-label={
-                      voiceDictating
-                        ? tr("voice.dictationStop")
-                        : tr("voice.dictation")
-                    }
-                    onClick={() => {
-                      void (async () => {
-                        if (voiceDictating) {
-                          const rec = voiceRecorderRef.current;
-                          if (rec && rec.state !== "inactive") rec.stop();
-                          return;
-                        }
-                        try {
-                          const stream =
-                            await navigator.mediaDevices.getUserMedia({
-                              audio: true,
-                            });
-                          const mime = MediaRecorder.isTypeSupported(
-                            "audio/webm;codecs=opus",
-                          )
-                            ? "audio/webm;codecs=opus"
-                            : "audio/webm";
-                          const rec = new MediaRecorder(stream, {
-                            mimeType: mime,
-                          });
-                          voiceChunksRef.current = [];
-                          rec.ondataavailable = (e) => {
-                            if (e.data.size) voiceChunksRef.current.push(e.data);
-                          };
-                          rec.onstop = () => {
-                            stream.getTracks().forEach((t) => t.stop());
-                            setVoiceDictating(false);
-                            void (async () => {
-                              try {
-                                const blob = new Blob(voiceChunksRef.current, {
-                                  type: mime,
-                                });
-                                if (blob.size < 32) return;
-                                const b64 = await blobToBase64(blob);
-                                const result =
-                                  await api.voiceDictationTranscribe(
-                                    b64,
-                                    mime,
-                                    locale === "zh" || locale === "zh-TW"
-                                      ? "zh"
-                                      : "en",
-                                  );
-                                if (result.text?.trim()) {
-                                  setDraft((d) =>
-                                    d.trim()
-                                      ? `${d.trim()} ${result.text.trim()}`
-                                      : result.text.trim(),
-                                  );
-                                }
-                              } catch (e) {
-                                console.warn("dictation failed", e);
-                              }
-                            })();
-                          };
-                          voiceRecorderRef.current = rec;
-                          rec.start();
-                          setVoiceDictating(true);
-                        } catch {
-                          /* mic denied */
-                        }
-                      })();
-                    }}
-                  >
-                    {voiceDictating ? (
-                      <IconStop size={14} />
-                    ) : (
-                      <IconMic size={16} />
-                    )}
-                  </button>
-                </Tip>
-                <Tip label={tr("voice.start")}>
-                  <button
-                    type="button"
-                    className="icon-btn"
-                    aria-label={tr("voice.start")}
-                    onClick={() => {
-                      setVoiceOpen(true);
-                    }}
                   >
                     <IconMic size={16} />
                   </button>
@@ -8838,6 +8449,7 @@ export default function App() {
               sessionChanges={
                 sessionChangesById[session.sessionId || ""] ?? []
               }
+              sessionMessages={messages}
               plan={plan}
               planFocusKey={planFocusKey}
               onApprovePlan={() => void approvePlan()}
@@ -8875,28 +8487,6 @@ export default function App() {
         }}
       />
       <GlassModal
-        open={worktreeCreateOpen}
-        onClose={() => {
-          if (worktreeCreateBusy) return;
-          setWorktreeCreateOpen(false);
-        }}
-        title={tr("composer.worktreeNewTitle")}
-        size="sm"
-        closeLabel={tr("common.close")}
-        closeOnOverlay={!worktreeCreateBusy}
-        showClose={!worktreeCreateBusy}
-        open={!!worktreeRemoveTarget}
-        onClose={() => {
-          if (worktreeRemoveBusy) return;
-          setWorktreeRemoveTarget(null);
-          setWorktreeRemoveError(null);
-          setWorktreeRemoveForce(false);
-        }}
-        title={tr("composer.worktreeRemoveTitle")}
-        size="sm"
-        closeLabel={tr("common.close")}
-        closeOnOverlay={!worktreeRemoveBusy}
-        showClose={!worktreeRemoveBusy}
         open={worktreeGcOpen}
         onClose={() => {
           if (worktreeGcBusy) return;
@@ -8916,13 +8506,6 @@ export default function App() {
             <button
               type="button"
               className="btn btn--ghost"
-              disabled={worktreeCreateBusy}
-              onClick={() => setWorktreeCreateOpen(false)}
-              disabled={worktreeRemoveBusy}
-              onClick={() => {
-                setWorktreeRemoveTarget(null);
-                setWorktreeRemoveError(null);
-                setWorktreeRemoveForce(false);
               disabled={worktreeGcBusy}
               onClick={() => {
                 setWorktreeGcOpen(false);
@@ -8936,23 +8519,6 @@ export default function App() {
             <button
               type="button"
               className="btn btn--solid"
-              disabled={worktreeCreateBusy || !worktreeCreateName.trim()}
-              onClick={() => {
-                void submitWorktreeCreate();
-              }}
-            >
-              {worktreeCreateBusy
-                ? tr("composer.worktreeCreating")
-                : tr("composer.worktreeCreate")}
-              className="btn btn--danger"
-              disabled={worktreeRemoveBusy || !worktreeRemoveTarget}
-              onClick={() => {
-                void submitWorktreeRemove();
-              }}
-            >
-              {worktreeRemoveBusy
-                ? tr("composer.worktreeRemoving")
-                : tr("composer.worktreeRemoveConfirm")}
               disabled={worktreeGcBusy || worktreeGcPreviewBusy}
               onClick={() => {
                 void submitWorktreeGc();
@@ -8965,92 +8531,6 @@ export default function App() {
           </>
         }
       >
-        <form
-          className="wt-create"
-          onSubmit={(e) => {
-            e.preventDefault();
-            if (worktreeCreateBusy) return;
-            void submitWorktreeCreate();
-          }}
-        >
-          <p className="wt-create__hint">{tr("composer.worktreeNewHint")}</p>
-          <label className="wt-create__field">
-            <span className="wt-create__label">
-              {tr("composer.worktreeName")}
-            </span>
-            <input
-              className="settings-input"
-              value={worktreeCreateName}
-              onChange={(e) => {
-                setWorktreeCreateName(e.target.value);
-                setWorktreeCreateError(null);
-              }}
-              placeholder={tr("composer.worktreeNamePlaceholder")}
-              autoComplete="off"
-              autoFocus
-              disabled={worktreeCreateBusy}
-              spellCheck={false}
-            />
-          </label>
-          <label className="wt-create__field">
-            <span className="wt-create__label">
-              {tr("composer.worktreeRef")}
-            </span>
-            <input
-              className="settings-input"
-              value={worktreeCreateRef}
-              onChange={(e) => {
-                setWorktreeCreateRef(e.target.value);
-                setWorktreeCreateError(null);
-              }}
-              placeholder={tr("composer.worktreeRefPlaceholder")}
-              autoComplete="off"
-              disabled={worktreeCreateBusy}
-              spellCheck={false}
-            />
-          </label>
-          {worktreeCreatePreviewPath ? (
-            <p className="wt-create__preview">
-              {tr("composer.worktreePathPreview", {
-                path: worktreeCreatePreviewPath,
-              })}
-            </p>
-          ) : null}
-          {worktreeCreateError ? (
-            <p className="wt-create__error" role="alert">
-              {worktreeCreateError}
-            </p>
-          ) : null}
-        </form>
-        {worktreeRemoveTarget ? (
-          <div className="wt-remove">
-            <p className="wt-remove__msg">
-              {tr("composer.worktreeRemoveMsg", {
-                name: worktreeLabel(worktreeRemoveTarget),
-                branch:
-                  worktreeRemoveTarget.branch?.trim() ||
-                  tr("composer.worktreeDetached"),
-              })}
-            </p>
-            <p className="wt-remove__path" title={worktreeRemoveTarget.path}>
-              {worktreeRemoveTarget.path}
-            </p>
-            <label className="wt-remove__force">
-              <input
-                type="checkbox"
-                checked={worktreeRemoveForce}
-                disabled={worktreeRemoveBusy}
-                onChange={(e) => setWorktreeRemoveForce(e.target.checked)}
-              />
-              <span>{tr("composer.worktreeRemoveForce")}</span>
-            </label>
-            {worktreeRemoveError ? (
-              <p className="wt-remove__error" role="alert">
-                {worktreeRemoveError}
-              </p>
-            ) : null}
-          </div>
-        ) : null}
         <div className="wt-gc">
           <p className="wt-gc__hint">{tr("composer.worktreeGcHint")}</p>
           <label className="wt-gc__force">
@@ -9069,18 +8549,20 @@ export default function App() {
             </p>
           ) : worktreeGcPreview ? (
             <>
-              {worktreeGcPreview.prunable.length > 0 ? (
+              {(worktreeGcPreview.prunable?.length ?? 0) > 0 ? (
                 <p className="wt-gc__prunable">
                   {tr("composer.worktreeGcPrunable", {
-                    n: String(worktreeGcPreview.prunable.length),
+                    n: String(worktreeGcPreview.prunable?.length ?? 0),
                   })}
                 </p>
               ) : null}
-              {worktreeGcPreview.output.trim() ||
-              worktreeGcPreview.prunable.length > 0 ? (
+              {(worktreeGcPreview.output ?? "").trim() ||
+              (worktreeGcPreview.prunable?.length ?? 0) > 0 ? (
                 <pre className="wt-gc__output" tabIndex={0}>
-                  {worktreeGcPreview.output.trim() ||
-                    worktreeGcPreview.prunable.join("\n")}
+                  {(worktreeGcPreview.output ?? "").trim() ||
+                    (Array.isArray(worktreeGcPreview.prunable)
+                      ? worktreeGcPreview.prunable.join("\n")
+                      : "")}
                 </pre>
               ) : (
                 <p className="wt-gc__preview-status">
@@ -9411,33 +8893,58 @@ export default function App() {
             )}
             <div className="search-panel__section">
               {tr("search.chats")}
+              {contentSearchLoading && searchQuery.trim()
+                ? ` · ${tr("search.searchingContent")}`
+                : null}
             </div>
-            {searchHits.matchedSessions.length === 0 && (
+            {mergedSessionHits.length === 0 && !contentSearchLoading && (
               <div className="sidebar-empty" style={{ padding: 12 }}>
                 {tr("search.noMatches")}
               </div>
             )}
-            {searchHits.matchedSessions.map((hit, i) => {
+            {mergedSessionHits.map((hit, i) => {
               const s = sessions.find((x) => x.id === hit.id);
-              if (!s) return null;
-              const proj = projects.find((p) => p.id === s.projectId);
+              // Content-only hits may lack a live row if the list is stale; still open by id.
+              const row: SessionRow = s ?? {
+                id: hit.id,
+                title: hit.title,
+                projectId: hit.projectId ?? null,
+                updatedAt: "",
+              };
+              const proj = projects.find(
+                (p) => p.id === (row.projectId ?? hit.projectId),
+              );
+              const metaParts: string[] = [];
+              if (proj?.name) metaParts.push(proj.name);
+              if (hit.contentMatch && hit.matchCount && hit.matchCount > 0) {
+                metaParts.push(
+                  tr("search.matchCount", { n: String(hit.matchCount) }),
+                );
+              }
+              if (i < 9) metaParts.push(`⌘${i + 1}`);
               return (
                 <button
-                  key={s.id}
+                  key={hit.id}
                   type="button"
                   className="search-panel__row"
                   onClick={() => {
                     setShowSearch(false);
-                    void openSession(s, proj ?? null);
+                    void openSession(row, proj ?? null);
                   }}
                 >
                   <IconSquarePen size={15} />
-                  <span className="search-panel__title">
-                    {s.title || "Untitled"}
+                  <span className="search-panel__body">
+                    <span className="search-panel__title">
+                      {hit.title || s?.title || "Untitled"}
+                    </span>
+                    {hit.snippet ? (
+                      <span className="search-panel__snippet">
+                        {hit.snippet}
+                      </span>
+                    ) : null}
                   </span>
                   <span className="search-panel__meta">
-                    {proj?.name ?? "—"}
-                    {i < 9 ? `  ⌘${i + 1}` : ""}
+                    {metaParts.join(" · ") || "—"}
                   </span>
                 </button>
               );
@@ -9609,20 +9116,11 @@ export default function App() {
                 },
               },
               {
-                id: "rules",
-                label: tr("project.rules"),
-                icon: <IconFileText size={16} />,
+                id: "relocate",
+                label: tr("project.relocate"),
+                icon: <IconFolderPlus size={16} />,
                 onClick: () => {
-                  // Focus this project’s rules in the resource pane (no agent recycle).
-                  setActiveProject(proj);
-                  setExpandedProjects((e) => ({ ...e, [proj.id]: true }));
-                  setLayout((l) => {
-                    if (!l.asideCollapsed) return l;
-                    const n = { ...l, asideCollapsed: false };
-                    saveLayout(localStorage, n);
-                    return n;
-                  });
-                  setResourceOpenTarget({ type: "rules" });
+                  void relocateProject(proj);
                 },
               },
               {
@@ -9709,6 +9207,18 @@ export default function App() {
               viewingSessionIdRef.current === s.id;
             items = [
               {
+                id: "pin",
+                label: s.pinned ? tr("session.unpin") : tr("session.pin"),
+                icon: s.pinned ? (
+                  <IconPinOff size={16} />
+                ) : (
+                  <IconPin size={16} />
+                ),
+                onClick: () => {
+                  void pinSession(s, !s.pinned);
+                },
+              },
+              {
                 id: "rename",
                 label: tr("session.rename"),
                 icon: <IconRename size={16} />,
@@ -9785,37 +9295,11 @@ export default function App() {
             onClose={() => setCtxMenu(null)}
             items={items}
             estimatedHeight={
-              ctxMenu?.kind === "project-policy"
-                ? 280
-                : ctxMenu?.kind === "project"
-                  ? 280
-                  : 240
+              ctxMenu?.kind === "project-policy" ? 280 : 240
             }
           />
         );
       })()}
-
-      <VoiceOverlay
-        locale={locale}
-        open={voiceOpen}
-        projectPath={activeProject?.path}
-        projectId={activeProject?.id}
-        projectName={activeProject?.name}
-        onClose={() => setVoiceOpen(false)}
-        onOpenSession={(sessionId) => {
-          setVoiceOpen(false);
-          void (async () => {
-            try {
-              await api.sessionConnect({
-                projectPath: activeProject?.path,
-                sessionId,
-              });
-            } catch {
-              /* ignore */
-            }
-          })();
-        }}
-      />
 
       <span hidden data-layout-default={JSON.stringify(DEFAULT_LAYOUT)} />
     </div>

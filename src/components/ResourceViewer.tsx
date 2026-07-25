@@ -122,6 +122,12 @@ export interface ResourceViewerProps {
    */
   sessionChanges?: SessionFileChange[];
   /**
+   * Active session messages (optional; used by some side-pane helpers).
+   * Accepted for forward-compat with App; not required for core file/plan UI.
+   */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  sessionMessages?: any[];
+  /**
    * Live plan snapshot for Plan review mode (exit_plan_mode / progress).
    */
   plan?: PlanReviewState | null;
@@ -285,7 +291,7 @@ export function ResourceViewer({
   const [workspaceBranch, setWorkspaceBranch] = useState<string | null>(null);
   const [pathCopyFlash, setPathCopyFlash] = useState(false);
   /** Project rule files (AGENTS.md / CLAUDE.md / .grok rules). */
-  const [projectRules, setProjectRules] = useState<api.ProjectRuleEntry[]>([]);
+  const [projectRules, setProjectRules] = useState<any[]>([]);
   const [rulesLoading, setRulesLoading] = useState(false);
   const [rulesHasAgents, setRulesHasAgents] = useState(false);
   const [rulesHint, setRulesHint] = useState<string | null>(null);
@@ -376,10 +382,10 @@ export function ResourceViewer({
     const seq = ++rulesLoadSeq.current;
     setRulesLoading(true);
     try {
-      const res = await api.projectRulesList(projectPath);
+      const res = (await api.projectRulesList(projectPath)) as any;
       if (seq !== rulesLoadSeq.current) return;
-      setProjectRules(res.rules ?? []);
-      setRulesHasAgents(Boolean(res.hasAgentsMd));
+      setProjectRules(res?.rules ?? (Array.isArray(res) ? res : []) ?? []);
+      setRulesHasAgents(Boolean(res?.hasAgentsMd));
     } catch (e) {
       if (seq !== rulesLoadSeq.current) return;
       setProjectRules([]);
@@ -1219,7 +1225,7 @@ export function ResourceViewer({
   ]);
 
   const openRuleFile = useCallback(
-    async (rule: api.ProjectRuleEntry) => {
+    async (rule: any) => {
       if (!rule) return;
       const rel = (rule.relativePath || "").trim();
       if (projectPath && rel && !rel.startsWith("/") && !/^[A-Za-z]:[\\/]/.test(rel)) {

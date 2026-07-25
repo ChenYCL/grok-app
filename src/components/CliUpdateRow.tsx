@@ -21,7 +21,7 @@ export function CliUpdateRow({
 }) {
   const [busy, setBusy] = useState<"check" | "install" | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [result, setResult] = useState<api.CliUpdateCheck | null>(null);
+  const [result, setResult] = useState<any | null>(null);
   const [installMsg, setInstallMsg] = useState<string | null>(null);
 
   const check = async () => {

@@ -27,12 +27,6 @@ export const SHORTCUTS: ShortcutRow[] = [
     win: "Ctrl K",
   },
   {
-    id: "findInChat",
-    labelKey: "shortcuts.findInChat",
-    mac: "⌘ F",
-    win: "Ctrl F",
-  },
-  {
     id: "newChat",
     labelKey: "shortcuts.newChat",
     group: "workbench",
@@ -68,11 +62,6 @@ export const SHORTCUTS: ShortcutRow[] = [
     win: "Ctrl /",
   },
   {
-    id: "voice",
-    labelKey: "shortcuts.voice",
-    mac: "Ctrl Space",
-    win: "Ctrl Space",
-  },
     id: "doctor",
     labelKey: "shortcuts.doctor",
     group: "diagnostics",

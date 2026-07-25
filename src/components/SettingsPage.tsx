@@ -51,10 +51,6 @@ import { AccountPanel } from "@/components/AccountPanel";
 import { ProvidersPanel } from "@/components/ProvidersPanel";
 import { ExtensionsPanel } from "@/components/ExtensionsPanel";
 import { ProjectInspectPanel } from "@/components/ProjectInspectPanel";
-import { CliUpdateRow } from "@/components/CliUpdateRow";
-import { ManagedSetupPanel } from "@/components/ManagedSetupPanel";
-import { PermissionRulesPanel } from "@/components/PermissionRulesPanel";
-import { GlassModal } from "@/components/GlassModal";
 import {
   createT,
   resolveLocale,
@@ -120,50 +116,33 @@ export interface SettingsPageProps {
   /** Stream stall silence timeout seconds (I06). */
   streamStallSeconds?: number;
   onStreamStallSeconds?: (v: number) => void;
-  /**
-   * Max agent turns (`grok --max-turns N`). 0 / empty = CLI default (no flag).
-   * Clamped to 1–200 when set.
-   */
+  /** Cap agent turns per process (`grok --max-turns`). 0/undefined = unlimited. */
   maxAgentTurns?: number;
   onMaxAgentTurns?: (v: number) => void;
+  /** Preferred agent definition name for spawn (`""` = CLI default). */
+  preferredAgent?: string;
+  onPreferredAgent?: (v: string) => void;
+  /** Catalog rows for preferred-agent select. */
+  agentCatalog?: Array<{ name: string; source: string }>;
+  /** Cross-session memory toggle. */
+  experimentalMemory?: boolean;
+  onExperimentalMemory?: (v: boolean) => void;
+  disableWebSearch?: boolean;
+  onDisableWebSearch?: (v: boolean) => void;
+  reopenLastSession?: boolean;
+  onReopenLastSession?: (v: boolean) => void;
+  planEnabled?: boolean;
+  onPlanEnabled?: (v: boolean) => void;
+  subagentsEnabled?: boolean;
+  onSubagentsEnabled?: (v: boolean) => void;
+  useLeader?: boolean;
+  onUseLeader?: (v: boolean) => void;
   /** Store App API keys in OS keychain (default off → secrets.json). */
   storeApiKeysInKeychain?: boolean;
   onStoreApiKeysInKeychain?: (v: boolean) => void;
   /** OS sandbox for agent spawn: off | workspace | read-only | strict | devbox. */
   sandboxProfile?: string;
   onSandboxProfile?: (v: string) => void;
-  /** Grok Build cross-session memory (experimental, default off). */
-  experimentalMemory?: boolean;
-  onExperimentalMemory?: (v: boolean) => void;
-  /** Clear workspace memory via `grok memory clear` (confirm in App dialog). */
-  onClearWorkspaceMemory?: () => void;
-  clearWorkspaceMemoryBusy?: boolean;
-  /** When true, agents get top-level `--disable-web-search`. */
-  disableWebSearch?: boolean;
-  onDisableWebSearch?: (v: boolean) => void;
-  /** Reopen last active chat once after launch (default on). */
-  reopenLastSession?: boolean;
-  onReopenLastSession?: (v: boolean) => void;
-  /** When true (default), agents may use plan mode; false → spawn with `--no-plan`. */
-  planEnabled?: boolean;
-  onPlanEnabled?: (v: boolean) => void;
-  /** Allow Grok Build subagent spawning (default on). */
-  subagentsEnabled?: boolean;
-  onSubagentsEnabled?: (v: boolean) => void;
-  /**
-   * Preferred agent definition for ACP spawn (`""` = CLI default).
-   * Spawn-only: reconnect / new session applies; no mid-turn hot-swap.
-   */
-  preferredAgent?: string;
-  onPreferredAgent?: (v: string) => void;
-  /** Catalog rows for the agent picker (built-ins + discovered defs). */
-  agentCatalog?: Array<{ name: string; source: string }>;
-  /**
-   * Shared leader backend (`grok agent --leader`). Default off (`--no-leader`).
-   * Soft-respawns the live agent when toggled.
-   */
-  useLeader?: boolean;
-  onUseLeader?: (v: boolean) => void;
   cliInfo: {
     found: boolean;
     path: string | null;
@@ -208,8 +187,6 @@ export interface SettingsPageProps {
   projectPath?: string | null;
   /** After skill enable toggle — refresh slash palette in App. */
   onSkillsPrefsChanged?: () => void;
-  /** Brief status toast from nested settings panels. */
-  onToast?: (message: string, ms?: number) => void;
   /** Open the same shortcuts help modal as ⌘/ / Ctrl+/. */
   onOpenShortcutsHelp?: () => void;
 }
@@ -475,29 +452,10 @@ export function SettingsPage({
   onAgentIdleMinutes,
   streamStallSeconds = 120,
   onStreamStallSeconds,
-  maxAgentTurns = 0,
-  onMaxAgentTurns,
   storeApiKeysInKeychain = false,
-  experimentalMemory = false,
-  onExperimentalMemory,
-  onClearWorkspaceMemory,
-  clearWorkspaceMemoryBusy = false,
   onStoreApiKeysInKeychain,
   sandboxProfile = "off",
   onSandboxProfile,
-  disableWebSearch = false,
-  onDisableWebSearch,
-  reopenLastSession = true,
-  onReopenLastSession,
-  planEnabled = true,
-  onPlanEnabled,
-  subagentsEnabled = true,
-  onSubagentsEnabled,
-  preferredAgent = "",
-  onPreferredAgent,
-  agentCatalog = [],
-  useLeader = false,
-  onUseLeader,
   cliInfo,
   onDoctor,
   versionFooter,
@@ -527,7 +485,6 @@ export function SettingsPage({
   onDeleteArchivedSessions,
   projectPath = null,
   onSkillsPrefsChanged,
-  onToast,
   onOpenShortcutsHelp,
 }: SettingsPageProps) {
   const [query, setQuery] = useState("");
@@ -973,62 +930,7 @@ export function SettingsPage({
                   />
                 </div>
               ) : null}
-              {onDisableWebSearch ? (
-                <div className="settings-row">
-                  <div className="settings-row__text">
-                    <div className="settings-row__label">
-                      {t("settings.disableWebSearch")}
-                    </div>
-                    <div className="settings-row__desc">
-                      {t("settings.disableWebSearchDesc")}
-                    </div>
-                  </div>
-                  <UiCheck
-                    checked={disableWebSearch}
-                    onChange={() => onDisableWebSearch(!disableWebSearch)}
-                    ariaLabel={t("settings.disableWebSearch")}
-              {onPlanEnabled ? (
-                <div className="settings-row">
-                  <div className="settings-row__text">
-                    <div className="settings-row__label">
-                      {t("settings.planEnabled")}
-                    </div>
-                    <div className="settings-row__desc">
-                      {t("settings.planEnabledDesc")}
-                    </div>
-                  </div>
-                  <UiCheck
-                    checked={planEnabled}
-                    onChange={() => onPlanEnabled(!planEnabled)}
-                    ariaLabel={t("settings.planEnabled")}
-              {onSubagentsEnabled ? (
-                <div className="settings-row">
-                  <div className="settings-row__text">
-                    <div className="settings-row__label">
-                      {t("settings.subagentsEnabled")}
-                    </div>
-                    <div className="settings-row__desc">
-                      {t("settings.subagentsEnabledDesc")}
-                    </div>
-                  </div>
-                  <UiCheck
-                    checked={subagentsEnabled}
-                    onChange={() => onSubagentsEnabled(!subagentsEnabled)}
-                    ariaLabel={t("settings.subagentsEnabled")}
-                  />
-                </div>
-              ) : null}
             </div>
-
-            <PermissionRulesPanel
-              t={t}
-              onSaved={() =>
-                onToast?.(t("settings.permissionRulesSaved"), 3500)
-              }
-              onError={(msg) =>
-                onToast?.(msg || t("settings.permissionRulesError"), 4500)
-              }
-            />
 
             <h2 className="settings-page__h2">{t("settings.section.general")}</h2>
             <div className="settings-card">
@@ -1046,9 +948,9 @@ export function SettingsPage({
                   value={locale}
                   onChange={onLocale}
                   options={[
-                    { value: "en", label: "English" },
                     { value: "zh", label: "简体中文" },
                     { value: "zh-TW", label: "繁體中文" },
+                    { value: "en", label: "English" },
                   ]}
                 />
               </div>
@@ -1095,66 +997,6 @@ export function SettingsPage({
                       onStoreApiKeysInKeychain(!storeApiKeysInKeychain)
                     }
                     ariaLabel={t("settings.storeApiKeysInKeychain")}
-                  />
-                </div>
-              ) : null}
-
-              {onExperimentalMemory ? (
-                <div className="settings-row">
-                  <div className="settings-row__text">
-                    <div className="settings-row__label">
-                      {t("settings.experimentalMemory")}
-                    </div>
-                    <div className="settings-row__desc">
-                      {t("settings.experimentalMemoryDesc")}
-                    </div>
-                  </div>
-                  <UiCheck
-                    checked={experimentalMemory}
-                    onChange={() => onExperimentalMemory(!experimentalMemory)}
-                    ariaLabel={t("settings.experimentalMemory")}
-                  />
-                </div>
-              ) : null}
-              {onClearWorkspaceMemory ? (
-                <div className="settings-row">
-                  <div className="settings-row__text">
-                    <div className="settings-row__label">
-                      {t("settings.clearWorkspaceMemory")}
-                    </div>
-                    <div className="settings-row__desc">
-                      {t("settings.clearWorkspaceMemoryDesc")}
-                    </div>
-                  </div>
-                  <button
-                    type="button"
-                    className="btn btn--ghost btn--danger settings-row__action"
-                    onClick={onClearWorkspaceMemory}
-                    disabled={clearWorkspaceMemoryBusy}
-                  >
-                    {clearWorkspaceMemoryBusy
-                      ? t("settings.clearWorkspaceMemoryBusy")
-                      : t("settings.clearWorkspaceMemory")}
-                  </button>
-                </div>
-              ) : null}
-
-              {onReopenLastSession ? (
-                <div className="settings-row">
-                  <div className="settings-row__text">
-                    <div className="settings-row__label">
-                      {t("settings.reopenLastSession")}
-                    </div>
-                    <div className="settings-row__desc">
-                      {t("settings.reopenLastSessionDesc")}
-                    </div>
-                  </div>
-                  <UiCheck
-                    checked={reopenLastSession}
-                    onChange={() =>
-                      onReopenLastSession(!reopenLastSession)
-                    }
-                    ariaLabel={t("settings.reopenLastSession")}
                   />
                 </div>
               ) : null}
@@ -1578,11 +1420,6 @@ export function SettingsPage({
                 </div>
               )}
             </div>
-            <CliUpdateRow
-              t={t}
-              cliFound={cliInfo.found}
-              onAfterInstall={() => onCliBlur(manualCliPath.trim())}
-            />
             <AcpServerField
               value={acpServerAddr}
               onChange={onAcpServerAddr}
@@ -1661,107 +1498,6 @@ export function SettingsPage({
                 }}
               />
             </div>
-            <div className="settings-row settings-row--stack">
-              <div className="settings-row__text">
-                <div className="settings-row__label">
-                  {t("settings.maxAgentTurns")}
-                </div>
-                <div className="settings-row__desc">
-                  {t("settings.maxAgentTurnsDesc")}
-                </div>
-              </div>
-              <input
-                className="settings-input"
-                type="number"
-                min={0}
-                max={200}
-                step={1}
-                placeholder={t("settings.maxAgentTurnsPlaceholder")}
-                value={
-                  maxAgentTurns && maxAgentTurns > 0 ? maxAgentTurns : ""
-                }
-                onChange={(e) => {
-                  const raw = e.target.value.trim();
-                  if (raw === "") {
-                    onMaxAgentTurns?.(0);
-                    return;
-                  }
-                  const n = Number(raw);
-                  if (!Number.isFinite(n)) return;
-                  onMaxAgentTurns?.(
-                    Math.min(200, Math.max(0, Math.round(n))),
-                  );
-                }}
-              />
-            </div>
-            {onPreferredAgent ? (
-              <div className="settings-row settings-row--stack">
-                <div className="settings-row__text">
-                  <div className="settings-row__label">
-                    {t("settings.preferredAgent")}
-                  </div>
-                  <div className="settings-row__desc">
-                    {t("settings.preferredAgentDesc")}
-                  </div>
-                </div>
-                <Select
-                  value={preferredAgent || ""}
-                  onChange={(v) => onPreferredAgent(v)}
-                  options={[
-                    {
-                      value: "",
-                      label: t("settings.preferredAgent.default"),
-                    },
-                    ...(() => {
-                      const seen = new Set<string>();
-                      const opts: { value: string; label: string }[] = [];
-                      for (const a of agentCatalog) {
-                        const name = (a.name || "").trim();
-                        if (!name || seen.has(name)) continue;
-                        seen.add(name);
-                        const srcKey =
-                          a.source === "project"
-                            ? "settings.preferredAgent.source.project"
-                            : a.source === "user"
-                              ? "settings.preferredAgent.source.user"
-                              : a.source === "bundled"
-                                ? "settings.preferredAgent.source.bundled"
-                                : "settings.preferredAgent.source.builtin";
-                        opts.push({
-                          value: name,
-                          label: `${name} · ${t(srcKey)}`,
-                        });
-                      }
-                      // Keep current value visible even if not in catalog yet.
-                      const cur = (preferredAgent || "").trim();
-                      if (cur && !seen.has(cur)) {
-                        opts.unshift({ value: cur, label: cur });
-                      }
-                      return opts;
-                    })(),
-                  ]}
-                />
-              </div>
-            {onUseLeader ? (
-              <>
-                <div className="settings-row">
-                  <div className="settings-row__text">
-                    <div className="settings-row__label">
-                      {t("settings.useLeader")}
-                    </div>
-                    <div className="settings-row__desc">
-                      {t("settings.useLeaderDesc")}
-                    </div>
-                  </div>
-                  <UiCheck
-                    checked={useLeader}
-                    onChange={() => onUseLeader(!useLeader)}
-                    ariaLabel={t("settings.useLeader")}
-                  />
-                </div>
-                {useLeader ? <LeaderStatusPanel t={t} /> : null}
-              </>
-            ) : null}
             <div className="settings-row">
               <div className="settings-row__text">
                 <div className="settings-row__label">
@@ -1787,11 +1523,6 @@ export function SettingsPage({
                 cliFound={cliInfo.found}
               />
             </div>
-            <ManagedSetupPanel
-              locale={resolveLocale(locale)}
-              cliFound={cliInfo.found}
-              onOpenAccount={() => onSection("account")}
-            />
           </div>
         )}
 
@@ -2147,140 +1878,6 @@ function AboutUpdateRow({
           </div>
         ) : null}
       </div>
-    </div>
-  );
-}
-
-/** Runtime: list / kill shared leader processes when leader mode is on. */
-function LeaderStatusPanel({
-  t,
-}: {
-  t: (key: MessageKey, vars?: Record<string, string | number>) => string;
-}) {
-  const [leaders, setLeaders] = useState<api.LeaderProcessDto[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [status, setStatus] = useState<string | null>(null);
-  const [killBusy, setKillBusy] = useState(false);
-  const [confirmKill, setConfirmKill] = useState(false);
-
-  const refresh = useCallback(async () => {
-    if (!api.isTauri()) return;
-    setLoading(true);
-    setError(null);
-    try {
-      const res = await api.leaderList();
-      setLeaders(res.leaders ?? []);
-      if (res.error) setError(res.error);
-    } catch (e) {
-      setError(String(e));
-      setLeaders([]);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    void refresh();
-  }, [refresh]);
-
-  const doKill = async () => {
-    setConfirmKill(false);
-    setKillBusy(true);
-    setError(null);
-    setStatus(null);
-    try {
-      await api.leaderKillAll();
-      setStatus(t("settings.leaderKillDone"));
-      await refresh();
-    } catch (e) {
-      setError(String(e));
-    } finally {
-      setKillBusy(false);
-    }
-  };
-
-  return (
-    <div className="settings-row settings-row--stack">
-      <div className="settings-row__text">
-        <div className="settings-row__desc">
-          {loading
-            ? t("settings.leaderRefresh") + "…"
-            : leaders.length === 0
-              ? t("settings.leaderStatusNone")
-              : t("settings.leaderStatusCount", { count: leaders.length })}
-        </div>
-        {leaders.length > 0 ? (
-          <ul className="settings-cli-sessions__list" role="list">
-            {leaders.map((row, i) => {
-              const pid = row.pid != null ? String(row.pid) : "—";
-              const socket = row.socketPath
-                ? ` · ${row.socketPath}`
-                : row.version
-                  ? ` · ${row.version}`
-                  : "";
-              return (
-                <li
-                  key={`${pid}-${i}`}
-                  className="settings-cli-sessions__item"
-                  role="listitem"
-                >
-                  <div className="settings-row__hint">
-                    {t("settings.leaderStatusLine", { pid, socket })}
-                  </div>
-                </li>
-              );
-            })}
-          </ul>
-        ) : null}
-        {error ? (
-          <div className="settings-row__hint is-danger">{error}</div>
-        ) : null}
-        {status ? <div className="settings-row__hint">{status}</div> : null}
-      </div>
-      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-        <button
-          type="button"
-          className="btn btn--ghost settings-row__action"
-          onClick={() => void refresh()}
-          disabled={loading || killBusy}
-        >
-          {t("settings.leaderRefresh")}
-        </button>
-        <button
-          type="button"
-          className="btn btn--ghost btn--danger settings-row__action"
-          onClick={() => setConfirmKill(true)}
-          disabled={killBusy || loading}
-        >
-          {killBusy ? t("settings.leaderKillBusy") : t("settings.leaderKillAll")}
-        </button>
-      </div>
-      <GlassModal
-        open={confirmKill}
-        onClose={() => setConfirmKill(false)}
-        title={t("settings.leaderKillConfirmTitle")}
-        footer={
-          <>
-            <button
-              type="button"
-              className="btn btn--ghost"
-              onClick={() => setConfirmKill(false)}
-            >
-              {t("common.cancel")}
-            </button>
-            <button
-              type="button"
-              className="btn btn--danger"
-              onClick={() => void doKill()}
-            >
-              {t("settings.leaderKillAll")}
-            </button>
-          </>
-        }
-      >
-        <p className="app-dialog__msg">{t("settings.leaderKillConfirmMsg")}</p>
-      </GlassModal>
     </div>
   );
 }

@@ -40,7 +40,7 @@ export function ManagedSetupPanel({
   const applyError = useCallback((msg: string, kind?: ManagedSetupErrorKind | null) => {
     const text = (msg ?? "").trim() || tr("managedSetup.error.generic");
     setError(text);
-    setErrorKind(kind ?? classifySetupError(text));
+    setErrorKind(kind ?? classifySetupError(text as any));
     setStatus(null);
   }, [tr]);
 
@@ -51,7 +51,7 @@ export function ManagedSetupPanel({
     }
     setLoadingPreview(true);
     setError(null);
-    setErrorKind(null);
+    setErrorKind(null as any);
     setStatus(null);
     setPreviewNote(null);
     try {
@@ -60,7 +60,7 @@ export function ManagedSetupPanel({
         setSummary(null);
         applyError(
           res.error?.trim() || tr("managedSetup.error.generic"),
-          res.errorKind ?? classifySetupError(res.error),
+          (res.errorKind ?? classifySetupError(res.error)) as any,
         );
         return;
       }
@@ -91,14 +91,14 @@ export function ManagedSetupPanel({
     }
     setInstalling(true);
     setError(null);
-    setErrorKind(null);
+    setErrorKind(null as any);
     setStatus(null);
     try {
       const res = await api.setupInstall();
       if (!res.ok) {
         applyError(
           res.error?.trim() || tr("managedSetup.error.generic"),
-          res.errorKind ?? classifySetupError(res.error),
+          (res.errorKind ?? classifySetupError(res.error)) as any,
         );
         return;
       }

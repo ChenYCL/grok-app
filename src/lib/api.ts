@@ -236,31 +236,6 @@ export async function cliInstallCommands() {
   return invoke<CliInstallCommands>("cli_install_commands");
 }
 
-/** Result of `grok update --check --json` (plus resolved binary path). */
-export type CliUpdateCheck = {
-  currentVersion: string;
-  latestVersion: string;
-  updateAvailable: boolean;
-  channel?: string | null;
-  installer?: string | null;
-  autoUpdate?: boolean | null;
-  error?: string | null;
-  cliPath?: string | null;
-};
-
-/** Run resolved CLI: `update --check --json`. Uses settings manual path / probe. */
-export async function cliUpdateCheck() {
-  return invoke<CliUpdateCheck>("cli_update_check");
-}
-
-/**
- * Install CLI update. Prefers `grok update` (channel-aware); falls back to
- * `cli_install_latest` trust-chain. Progress events may fire on fallback.
- */
-export async function cliUpdateInstall() {
-  return invoke<CliInstallResult>("cli_update_install");
-}
-
 export async function pickCliBinary() {
   return invoke<string | null>("pick_cli_binary");
 }
@@ -283,36 +258,6 @@ export type AppUpdateCheck = {
 
 export async function appCheckUpdate() {
   return invoke<AppUpdateCheck>("app_check_update");
-}
-
-/** Composer voice dictation — Host STT availability. */
-export type VoiceStatusDto = {
-  available: boolean;
-  reason: string | null;
-  authSource: string | null;
-};
-
-export type VoiceTranscribeResult = {
-  ok: boolean;
-  text: string | null;
-  error: string | null;
-  errorClass: string | null;
-};
-
-export async function voiceStatus() {
-  return invoke<VoiceStatusDto>("voice_status");
-}
-
-export async function voiceTranscribe(opts: {
-  audioBase64: string;
-  filename?: string | null;
-  mime?: string | null;
-}) {
-  return invoke<VoiceTranscribeResult>("voice_transcribe", {
-    audioBase64: opts.audioBase64,
-    filename: opts.filename ?? null,
-    mime: opts.mime ?? null,
-  });
 }
 
 export async function projectsList() {
@@ -352,79 +297,6 @@ export interface GitWorktreesResult {
 /** List worktrees for a project folder. Soft-fails when git/repo missing. */
 export async function gitWorktreesList(projectPath: string) {
   return invoke<GitWorktreesResult>("git_worktrees_list", { projectPath });
-}
-
-/** Result of `git worktree add` (sibling path under main worktree parent). */
-export interface GitWorktreeAddResult {
-  path: string;
-  name: string;
-  startPoint?: string | null;
-  branch?: string | null;
-}
-
-/**
- * Create a linked worktree for a project folder.
- * Path: `<parent>/<main_basename>-<name>` (see docs/llm-wiki/git-worktrees.md).
- * Throws when not a git repo / git missing / path exists / invalid name.
- */
-export async function gitWorktreeAdd(
-  projectPath: string,
-  name: string,
-  startPoint?: string | null,
-) {
-  return invoke<GitWorktreeAddResult>("git_worktree_add", {
-    projectPath,
-    name,
-    startPoint: startPoint?.trim() || null,
-/** Result of `git worktree remove`. */
-export interface GitWorktreeRemoveResult {
-  path: string;
-  forced: boolean;
-}
-
-/**
- * Remove a linked worktree (`git worktree remove [--force] <path>`).
- * Host refuses the main worktree. Throws on git errors (dirty without force, etc.).
- */
-export async function gitWorktreeRemove(
-  projectPath: string,
-  worktreePath: string,
-  force?: boolean,
-) {
-  return invoke<GitWorktreeRemoveResult>("git_worktree_remove", {
-    projectPath,
-    worktreePath,
-    force: force ?? false,
-/** Result of `git worktree prune` (gc / clean stale admin files). */
-export interface GitWorktreeGcResult {
-  dryRun: boolean;
-  forced: boolean;
-  maxAge?: string | null;
-  /** Verbose prune output (trimmed). */
-  output: string;
-  /** Paths marked prunable before prune. */
-  prunable: string[];
-  /** Best-effort count of removals. */
-  prunedCount: number;
-}
-
-/**
- * Garbage-collect stale worktree admin files (`git worktree prune`).
- * Pass `dryRun: true` for a preview (`--dry-run`). Optional `force` → `--expire now`
- * when maxAge is unset. Optional `maxAge` → `--expire <maxAge>`.
- */
-export async function gitWorktreeGc(
-  projectPath: string,
-  dryRun: boolean,
-  force?: boolean,
-  maxAge?: string | null,
-) {
-  return invoke<GitWorktreeGcResult>("git_worktree_gc", {
-    projectPath,
-    dryRun,
-    force: force ?? false,
-    maxAge: maxAge ?? null,
-  });
 }
 
 /** Native folder dialog → add project. Returns null if user cancels. */
@@ -498,43 +370,6 @@ export async function pathOpen(path: string) {
 /** Reveal in Finder / Explorer. */
 export async function pathReveal(path: string) {
   return invoke<void>("path_reveal", { path });
-}
-
-/** One existing project rule file (AGENTS.md / CLAUDE.md / .grok rules). */
-export interface ProjectRuleEntry {
-  relativePath: string;
-  absolutePath: string;
-  kind: string;
-  name: string;
-  size: number;
-  mtimeMs: number;
-}
-
-export interface ProjectRulesListResult {
-  projectPath: string;
-  rules: ProjectRuleEntry[];
-  hasAgentsMd: boolean;
-  preferredAgentsPath: string;
-}
-
-export interface ProjectRulesEnsureResult {
-  projectPath: string;
-  relativePath: string;
-  absolutePath: string;
-  created: boolean;
-  alreadyExisted: boolean;
-}
-
-/** List project rule files under a project root. */
-export async function projectRulesList(path: string) {
-  return invoke<ProjectRulesListResult>("project_rules_list", { path });
-}
-
-/** Create root AGENTS.md stub when no agents file exists. */
-export async function projectRulesEnsureTemplate(path: string) {
-  return invoke<ProjectRulesEnsureResult>("project_rules_ensure_template", {
-    path,
-  });
 }
 
 /** Optional git unified diff for a project file (session Changes panel). */
@@ -951,129 +786,17 @@ export interface AppSettings {
    * Default "off". Passed as `grok --sandbox <profile>` / GROK_SANDBOX on spawn.
    */
   sandboxProfile?: string;
-  /**
-   * Enable Grok Build cross-session memory (experimental).
-   * Default false. When on: --experimental-memory / GROK_MEMORY=1 / [memory] enabled.
-   * When off: force --no-memory / GROK_MEMORY=0 for isolation.
-   */
-  experimentalMemory?: boolean;
-   * Cap agent turns via top-level `grok --max-turns N`.
-   * null / 0 / unset = omit flag (CLI default). Clamped to 1–200 when set.
-   */
+
   maxAgentTurns?: number | null;
-   * When true, agents spawn with top-level `--disable-web-search`
-   * (removes web_search / web_fetch tools). Default false.
-   */
-  disableWebSearch?: boolean;
-  /** Reopen last active chat once after launch (default true). */
-  reopenLastSession?: boolean;
-  /** Last successfully opened session id (startup restore). */
-  lastSessionId?: string | null;
-  /** Project id for lastSessionId when it had one. */
-  lastProjectId?: string | null;
-   * When true (default), agents may use plan mode.
-   * When false, spawn with top-level `--no-plan`.
-   */
-  planEnabled?: boolean;
-   * Allow Grok Build subagent spawning (default true).
-   * When false: force --no-subagents / GROK_SUBAGENTS=0 / [subagents] enabled = false.
-   */
-  subagentsEnabled?: boolean;
-   * Preferred Grok Build agent definition for spawn (`explore` / `plan` / …).
-   * Empty / "default" / "none" → omit top-level `--agent` (CLI default).
-   * Applied at agent process start; changing soft-respawns the live agent.
-   */
   preferredAgent?: string;
-}
-
-export type AgentCatalogSource = "builtin" | "user" | "project" | "bundled";
-
-export interface AgentCatalogEntry {
-  name: string;
-  source: AgentCatalogSource;
-  path?: string | null;
-}
-
-export interface AgentsCatalogResult {
-  agents: AgentCatalogEntry[];
-  userDir: string;
-  projectDir?: string | null;
-  bundledDir: string;
-   * Connect agents to a shared Grok Build leader (`grok agent --leader`).
-   * Default false: standalone process (`--no-leader`). Soft-respawns on change.
-   */
+  experimentalMemory?: boolean;
+  disableWebSearch?: boolean;
+  planEnabled?: boolean;
+  subagentsEnabled?: boolean;
   useLeader?: boolean;
-  /** xAI realtime voice id (e.g. eve). */
   voiceId?: string;
-  /** Auto-send composer text after dictation ends. */
   voiceDictationAutoSend?: boolean;
-  /** Keep delegated agents running when live voice ends. */
   voiceKeepAgentsOnEnd?: boolean;
-}
-
-export interface VoiceSessionState {
-  active: boolean;
-  mode: string;
-  projectPath?: string | null;
-  projectId?: string | null;
-  projectName?: string | null;
-  mock: boolean;
-  listening: boolean;
-  speaking: boolean;
-  error?: string | null;
-  delegatedSessionIds: string[];
-}
-
-export interface SttResult {
-  text: string;
-  duration?: number | null;
-  language?: string | null;
-}
-
-export async function voiceState(): Promise<VoiceSessionState> {
-  return invoke("voice_state");
-}
-
-export async function voiceStart(opts?: {
-  projectPath?: string | null;
-  projectId?: string | null;
-  projectName?: string | null;
-}): Promise<VoiceSessionState> {
-  return invoke("voice_start", {
-    projectPath: opts?.projectPath ?? null,
-    projectId: opts?.projectId ?? null,
-    projectName: opts?.projectName ?? null,
-  });
-}
-
-export async function voiceStop(): Promise<VoiceSessionState> {
-  return invoke("voice_stop");
-}
-
-export async function voicePushPcm(pcmBase64: string): Promise<void> {
-  return invoke("voice_push_pcm", { pcmBase64 });
-}
-
-export async function voiceInvokeTool(
-  name: string,
-  argsJson?: string,
-): Promise<unknown> {
-  return invoke("voice_invoke_tool", {
-    name,
-    argsJson: argsJson ?? "{}",
-  });
-}
-
-export async function voiceDictationTranscribe(
-  audioBase64: string,
-  mime?: string | null,
-  language?: string | null,
-): Promise<SttResult> {
-  return invoke("voice_dictation_transcribe", {
-    audioBase64,
-    mime: mime ?? null,
-    language: language ?? null,
-  });
 }
 
 export interface AvailableModel {
@@ -1103,72 +826,8 @@ export async function settingsGet() {
   return invoke<AppSettings>("settings_get");
 }
 
-
-export async function memoryClear(opts?: {
-  cwd?: string | null;
-  scope?: "workspace" | "global" | "all";
-}) {
-  return invoke<{
-    ok: boolean;
-    stdout: string;
-    stderr: string;
-    cwd: string;
-  }>("memory_clear", {
-    cwd: opts?.cwd ?? null,
-    scope: opts?.scope ?? "workspace",
-/** Persist last active chat without full settings_set side-effects. */
-export async function settingsRememberLastSession(
-  sessionId: string | null,
-  projectId: string | null = null,
-) {
-  return invoke<void>("settings_remember_last_session", {
-    sessionId,
-    projectId,
-// ── Permission rules (`[permission]` allow / deny / ask in config.toml) ─────
-
-export type PermissionRuleAction = "allow" | "deny" | "ask";
-
-export interface PermissionRulesDto {
-  allow: string[];
-  deny: string[];
-  ask: string[];
-  /** Absolute path of the managed config.toml. */
-  configPath: string;
-  /** `independent` | `shared` */
-  sessionDataMode: string;
-  fileExists: boolean;
-}
-
-/** Read compact permission rules from the active GROK_HOME config.toml. */
-export async function permissionRulesGet() {
-  return invoke<PermissionRulesDto>("permission_rules_get");
-}
-
-/**
- * Replace compact allow/deny/ask arrays and soft-respawn the live agent so the
- * next turn reloads Grok Build rules.
- */
-export async function permissionRulesSet(rules: {
-  allow?: string[];
-  deny?: string[];
-  ask?: string[];
-}) {
-  return invoke<PermissionRulesDto>("permission_rules_set", {
-    allow: rules.allow ?? [],
-    deny: rules.deny ?? [],
-    ask: rules.ask ?? [],
-  });
-}
-
 export async function modelsListAvailable() {
   return invoke<AvailableModelsResult>("models_list_available");
-}
-
-/** Built-ins + ~/.grok/agents + project .grok/agents for the agent picker. */
-export async function agentsCatalog(projectPath?: string | null) {
-  return invoke<AgentsCatalogResult>("agents_catalog", {
-    projectPath: projectPath ?? null,
-  });
 }
 
 export async function composerPrefsResolve(opts?: {
@@ -1434,46 +1093,6 @@ export async function skillsList(projectPath?: string | null) {
   });
 }
 
-/** Agent definition file discovered under user / project / bundled scopes. */
-export interface AgentDefDto {
-  name: string;
-  path: string;
-  /** "project" | "user" | "bundled" */
-  scope: string;
-  description?: string | null;
-}
-
-/** Persona definition file (subagent tone/instructions). */
-export interface PersonaDefDto {
-  name: string;
-  path: string;
-  scope: string;
-}
-
-/** Disk discovery for Grok Build agent / persona definition files. */
-export interface AgentsListResult {
-  agents: AgentDefDto[];
-  personas: PersonaDefDto[];
-  userAgentsDir?: string | null;
-  projectAgentsDir?: string | null;
-  bundledAgentsDir?: string | null;
-  userPersonasDir?: string | null;
-  projectPersonasDir?: string | null;
-  bundledPersonasDir?: string | null;
-  /** Host-side failure (rare; discovery is filesystem-only). */
-  error?: string | null;
-}
-
-/**
- * List agent + persona definition files from ~/.grok and optional project
- * `.grok` dirs. Does not require the CLI binary.
- */
-export async function agentsList(projectPath?: string | null) {
-  return invoke<AgentsListResult>("agents_list", {
-    projectPath: projectPath ?? null,
-  });
-}
-
 /** List MCP servers via `grok inspect --json` (optional project cwd). */
 export async function inspectMcp(projectPath?: string | null) {
   return invoke<InspectMcpResult>("inspect_mcp", {
@@ -1500,85 +1119,6 @@ export type {
 export async function projectInspect(projectPath?: string | null) {
   return invoke<import("./projectInspect").ProjectInspectSummary>("project_inspect", {
     projectPath: projectPath ?? null,
-  });
-}
-
-// ── MCP add / remove / doctor ───────────────────────────────────────────────
-
-export interface McpAddResult {
-  ok: boolean;
-  name: string;
-  command?: string | null;
-  args?: string[] | null;
-  transport?: string | null;
-  enabled?: boolean;
-}
-
-export interface McpRemoveResult {
-  ok: boolean;
-  name: string;
-}
-
-export interface McpDoctorCheck {
-  label: string;
-  passed: boolean;
-  detail?: string | null;
-  hint?: string | null;
-}
-
-export interface McpDoctorServer {
-  name: string;
-  transport?: string | null;
-  target?: string | null;
-  source?: string | null;
-  healthy: boolean;
-  checks: McpDoctorCheck[];
-}
-
-export interface McpDoctorSource {
-  path: string;
-  status: string;
-  serverCount?: number | null;
-}
-
-export interface McpDoctorSummary {
-  total: number;
-  healthy: number;
-  unhealthy: number;
-}
-
-export interface McpDoctorReport {
-  ok: boolean;
-  summary: McpDoctorSummary;
-  servers: McpDoctorServer[];
-  sources: McpDoctorSource[];
-  rawText?: string | null;
-}
-
-/** Add or replace a stdio MCP server in agent GROK_HOME config; soft-respawn. */
-export async function mcpAdd(opts: {
-  name: string;
-  command: string;
-  args?: string[];
-  env?: Record<string, string>;
-}) {
-  return invoke<McpAddResult>("mcp_add", {
-    name: opts.name,
-    command: opts.command,
-    args: opts.args ?? [],
-    env: opts.env ?? null,
-  });
-}
-
-/** Remove an MCP server from agent config + prefs; soft-respawn. */
-export async function mcpRemove(name: string) {
-  return invoke<McpRemoveResult>("mcp_remove", { name });
-}
-
-/** Run `grok mcp doctor --json` under the active GROK_HOME. */
-export async function mcpDoctor(name?: string | null) {
-  return invoke<McpDoctorReport>("mcp_doctor", {
-    name: name?.trim() ? name.trim() : null,
   });
 }
 
@@ -1652,8 +1192,6 @@ export async function pluginDetails(name: string) {
 /**
  * Install from path, git URL, or GitHub shorthand (`grok plugin install --trust`).
  * Soft-respawns agent on success.
- * Install from marketplace name, `name@marketplace`, git URL, or path
- * (`grok plugin install --trust`). Soft-respawns agent on success.
  */
 export async function pluginInstall(source: string) {
   return invoke<PluginActionResult>("plugin_install", { source });
@@ -1668,205 +1206,6 @@ export async function pluginUpdate(name?: string | null) {
   return invoke<PluginActionResult>("plugin_update", {
     name: n ? n : null,
   });
-}
-
-// ── Hooks manager (`~/.grok/hooks` + project `.grok/hooks`) ─────────────────
-
-export interface HookDto {
-  name: string;
-  path: string;
-  /** `user` | `project` */
-  scope: string;
-  /** `file` | `dir` */
-  kind: string;
-  ext: string;
-  size: number;
-  mtimeMs: number;
-}
-
-export interface HooksListResult {
-  hooks: HookDto[];
-  userDir: string;
-  userDirExists: boolean;
-  projectDir?: string | null;
-  projectDirExists?: boolean | null;
-  /** Local Grok Build user-guide path when present. */
-  docsPath?: string | null;
-}
-
-export interface HooksDirResult {
-  path: string;
-  scope: string;
-}
-
-/** List hook files under user (+ optional project) hooks dirs. */
-export async function hooksList(projectPath?: string | null) {
-  return invoke<HooksListResult>("hooks_list", {
-    projectPath: projectPath ?? null,
-  });
-}
-
-/** Reveal a hook file/folder in Finder / Explorer. */
-export async function hooksReveal(path: string) {
-  return invoke<void>("hooks_reveal", { path });
-}
-
-/**
- * Open the user or project hooks folder.
- * @param create when true, create the folder if missing before opening.
- */
-export async function hooksOpenDir(opts?: {
-  scope?: "user" | "project" | string;
-  projectPath?: string | null;
-  create?: boolean;
-}) {
-  return invoke<HooksDirResult>("hooks_open_dir", {
-    scope: opts?.scope ?? "user",
-    projectPath: opts?.projectPath ?? null,
-    create: opts?.create ?? false,
-  });
-}
-
-/** Create hooks folder if missing (`user` or `project`). */
-export async function hooksEnsureDir(opts?: {
-  scope?: "user" | "project" | string;
-  projectPath?: string | null;
-}) {
-  return invoke<HooksDirResult>("hooks_ensure_dir", {
-    scope: opts?.scope ?? "user",
-    projectPath: opts?.projectPath ?? null,
-  });
-// ── Managed configuration (`grok setup` / `grok setup --json`) ──────────────
-
-export type ManagedSetupErrorKind =
-  | "missing_auth"
-  | "rejected"
-  | "cli_missing"
-  | "timeout"
-  | "parse"
-  | "other";
-
-/** Host result of `grok setup --json` (payload already key-redacted). */
-export interface SetupPreviewResult {
-  ok: boolean;
-  payload?: unknown | null;
-  message?: string | null;
-  error?: string | null;
-  errorKind?: ManagedSetupErrorKind | null;
-}
-
-/** Host result of `grok setup` install. */
-export interface SetupInstallResult {
-  ok: boolean;
-  message?: string | null;
-  error?: string | null;
-  errorKind?: ManagedSetupErrorKind | null;
-}
-
-/** Preview managed config without writing (`grok setup --json`). */
-export async function setupPreview() {
-  return invoke<SetupPreviewResult>("setup_preview");
-}
-
-/** Install managed config into ~/.grok (`grok setup`); soft-respawns agent. */
-export async function setupInstall() {
-  return invoke<SetupInstallResult>("setup_install");
-// ── Plugin marketplace sources (`grok plugin marketplace …`) ────────────────
-
-export interface MarketplaceSourceDto {
-  name: string;
-  kind: string;
-  url?: string | null;
-  path?: string | null;
-  branch?: string | null;
-}
-
-export interface MarketplaceListResult {
-  sources: MarketplaceSourceDto[];
-  error?: string;
-}
-
-export interface AvailablePluginDto {
-  name: string;
-  status: string;
-  marketplace?: string | null;
-  description?: string | null;
-  version?: string | null;
-  skillCount?: number | null;
-  hasHooks?: boolean;
-  hasAgents?: boolean;
-  hasMcp?: boolean;
-}
-
-export interface MarketplaceAvailableResult {
-  plugins: AvailablePluginDto[];
-  error?: string;
-}
-
-export interface MarketplaceActionResult {
-  ok: boolean;
-  name?: string;
-  source?: string;
-  message?: string;
-}
-
-/** Configured marketplace sources (`grok plugin marketplace list --json`). */
-export async function marketplaceList() {
-  return invoke<MarketplaceListResult>("marketplace_list");
-}
-
-/**
- * Installable plugins from marketplace catalogs
- * (`grok plugin list --json --available`, status=available only).
- */
-export async function marketplaceAvailable() {
-  return invoke<MarketplaceAvailableResult>("marketplace_available");
-}
-
-/** Add marketplace source (git URL, GitHub shorthand, or local path). */
-export async function marketplaceAdd(source: string) {
-  return invoke<MarketplaceActionResult>("marketplace_add", { source });
-}
-
-/** Remove marketplace source by display name or git URL. */
-export async function marketplaceRemove(nameOrUrl: string) {
-  return invoke<MarketplaceActionResult>("marketplace_remove", {
-    nameOrUrl,
-  });
-}
-
-/** Refresh marketplace cache(s). Omit name to refresh all. */
-export async function marketplaceUpdate(name?: string | null) {
-  const n = (name ?? "").trim();
-  return invoke<MarketplaceActionResult>("marketplace_update", {
-    name: n ? n : null,
-  });
-// ── Leader process (shared agent backend) ───────────────────────────────────
-
-export interface LeaderProcessDto {
-  pid?: number | null;
-  socketPath?: string | null;
-  version?: string | null;
-}
-
-export interface LeaderListResult {
-  leaders: LeaderProcessDto[];
-  error?: string;
-}
-
-export interface LeaderKillResult {
-  ok: boolean;
-  message?: string;
-}
-
-/** List running leader processes (`grok leader list --json`). */
-export async function leaderList() {
-  return invoke<LeaderListResult>("leader_list");
-}
-
-/** Stop all leaders (`grok leader kill`) and soft-respawn the app agent. */
-export async function leaderKillAll() {
-  return invoke<LeaderKillResult>("leader_kill_all");
 }
 
 // ── Official Grok Build account ─────────────────────────────────────────────
@@ -2458,4 +1797,335 @@ export async function automationDelete(id: string): Promise<void> {
     return;
   }
   return invoke<void>("automation_delete", { id });
+}
+
+export type AgentCatalogEntry = {
+  name: string;
+  source: string;
+  description?: string | null;
+  path?: string | null;
+};
+
+export type AgentsCatalogResult = {
+  agents: AgentCatalogEntry[];
+};
+
+export async function agentsCatalog(projectPath?: string | null) {
+  return invoke<AgentsCatalogResult>("agents_catalog", {
+    projectPath: projectPath ?? null,
+  });
+}
+
+export type GitWorktreeGcResult = {
+  dryRun?: boolean;
+  force?: boolean;
+  pruned?: number;
+  /** Alias used by some UI call sites. */
+  prunedCount?: number;
+  /** Preview list of prunable worktree paths (when dry-run). */
+  prunable?: any;
+  stdout?: string;
+  stderr?: string;
+  output?: string;
+};
+
+export async function gitWorktreeGc(
+  projectPathOrOpts:
+    | string
+    | {
+        projectPath: string;
+        dryRun?: boolean;
+        force?: boolean;
+        expire?: string | null;
+      },
+  forceArg?: boolean,
+  dryRunArg?: boolean,
+): Promise<GitWorktreeGcResult> {
+  const opts =
+    typeof projectPathOrOpts === "string"
+      ? {
+          projectPath: projectPathOrOpts,
+          force: forceArg ?? false,
+          dryRun: dryRunArg ?? false,
+          expire: null as string | null,
+        }
+      : projectPathOrOpts;
+  return invoke<GitWorktreeGcResult>("git_worktree_gc", {
+    projectPath: opts.projectPath,
+    dryRun: opts.dryRun ?? false,
+    force: opts.force ?? false,
+    expire: opts.expire ?? null,
+  });
+}
+
+export type GitWorktreeRemoveResult = {
+  path: string;
+  force: boolean;
+};
+
+export async function gitWorktreeRemove(opts: {
+  projectPath: string;
+  worktreePath: string;
+  force?: boolean;
+}): Promise<GitWorktreeRemoveResult> {
+  return invoke<GitWorktreeRemoveResult>("git_worktree_remove", {
+    projectPath: opts.projectPath,
+    worktreePath: opts.worktreePath,
+    force: opts.force ?? false,
+  });
+}
+
+export async function memoryClear(opts?: {
+  cwd?: string | null;
+  scope?: "workspace" | "global" | "all";
+}) {
+  return invoke<{
+    ok: boolean;
+    stdout: string;
+    stderr: string;
+    cwd: string;
+  }>("memory_clear", {
+    cwd: opts?.cwd ?? null,
+    scope: opts?.scope ?? "workspace",
+  });
+}
+
+export type SetupPreviewResult = {
+  ok: boolean;
+  payload?: unknown;
+  message?: string | null;
+  error?: string | null;
+  errorKind?: string | null;
+};
+
+export type SetupInstallResult = {
+  ok: boolean;
+  message?: string | null;
+  error?: string | null;
+  errorKind?: string | null;
+};
+
+export async function setupPreview() {
+  return invoke<SetupPreviewResult>("setup_preview");
+}
+
+export async function setupInstall() {
+  return invoke<SetupInstallResult>("setup_install");
+}
+
+export type MarketplaceListResult = {
+  sources: Array<Record<string, unknown>>;
+  error?: string | null;
+};
+
+export type MarketplaceAvailableResult = {
+  plugins: Array<Record<string, unknown>>;
+  error?: string | null;
+};
+
+export type MarketplaceActionResult = {
+  ok: boolean;
+  name?: string;
+  message?: string;
+  removed?: string;
+  error?: string;
+};
+
+export async function marketplaceList() {
+  return invoke<MarketplaceListResult>("marketplace_list");
+}
+
+export async function marketplaceAvailable() {
+  return invoke<MarketplaceAvailableResult>("marketplace_available");
+}
+
+export async function marketplaceAdd(source: string) {
+  return invoke<MarketplaceActionResult>("marketplace_add", { source });
+}
+
+export async function marketplaceRemove(nameOrUrl: string) {
+  return invoke<MarketplaceActionResult>("marketplace_remove", { nameOrUrl });
+}
+
+export async function marketplaceUpdate(name?: string | null) {
+  return invoke<MarketplaceActionResult>("marketplace_update", {
+    name: name ?? null,
+  });
+}
+
+export type PermissionRules = {
+  path?: string;
+  configPath?: string;
+  allow: string[];
+  deny: string[];
+  ask: string[];
+};
+
+export async function permissionRulesGet() {
+  return invoke<PermissionRules>("permission_rules_get");
+}
+
+export async function permissionRulesSet(rules: PermissionRules) {
+  return invoke<PermissionRules>("permission_rules_set", { rules });
+}
+
+export interface VoiceSessionState {
+  active: boolean;
+  mode?: string;
+  phase?: string | null;
+  sessionId?: string | null;
+  projectPath?: string | null;
+  projectId?: string | null;
+  projectName?: string | null;
+  error?: string | null;
+  delegatedSessionIds?: string[];
+  mock?: boolean;
+  listening?: boolean;
+  speaking?: boolean;
+}
+
+export async function voiceState(): Promise<VoiceSessionState> {
+  return invoke<VoiceSessionState>("voice_state");
+}
+
+export async function voiceStart(opts?: {
+  voiceId?: string | null;
+  projectPath?: string | null;
+  projectId?: string | null;
+  projectName?: string | null;
+  keepAgentsOnEnd?: boolean;
+}): Promise<VoiceSessionState> {
+  return invoke<VoiceSessionState>("voice_start", {
+    voiceId: opts?.voiceId ?? null,
+    projectPath: opts?.projectPath ?? null,
+    projectId: opts?.projectId ?? null,
+    projectName: opts?.projectName ?? null,
+    keepAgentsOnEnd: opts?.keepAgentsOnEnd ?? true,
+  });
+}
+
+export async function voiceStop(): Promise<VoiceSessionState> {
+  return invoke<VoiceSessionState>("voice_stop");
+}
+
+export async function voicePushPcm(pcmBase64: string): Promise<void> {
+  return invoke<void>("voice_push_pcm", { pcmBase64 });
+}
+
+export async function voiceInvokeTool(
+  name: string,
+  args?: any,
+): Promise<unknown> {
+  return invoke<unknown>("voice_invoke_tool", { name, args: args ?? {} });
+}
+
+
+export type VoiceStatusDto = {
+  available: boolean;
+  reason?: string | null;
+  authSource?: string | null;
+};
+
+export type VoiceTranscribeResult = {
+  ok: boolean;
+  text?: string | null;
+  error?: string | null;
+  errorClass?: string | null;
+};
+
+export async function voiceStatus() {
+  return invoke<VoiceStatusDto>("voice_status");
+}
+
+export async function voiceTranscribe(opts: {
+  audioBase64: string;
+  filename?: string | null;
+  mime?: string | null;
+}) {
+  return invoke<VoiceTranscribeResult>("voice_transcribe", {
+    audioBase64: opts.audioBase64,
+    filename: opts.filename ?? null,
+    mime: opts.mime ?? null,
+  });
+}
+
+export type CliUpdateCheck = {
+  ok: boolean;
+  current?: string | null;
+  latest?: string | null;
+  currentVersion?: string | null;
+  latestVersion?: string | null;
+  version?: string | null;
+  channel?: string | null;
+  updateAvailable?: boolean;
+  message?: string | null;
+  error?: string | null;
+  [key: string]: unknown;
+};
+
+export async function cliUpdateCheck() {
+  return invoke<CliUpdateCheck>("cli_update_check");
+}
+
+export async function cliUpdateInstall() {
+  return invoke<CliUpdateCheck>("cli_update_install");
+}
+
+export type McpDoctorReport = {
+  ok: boolean;
+  servers?: Array<Record<string, any>>;
+  sources?: Array<Record<string, any>>;
+  issues?: Array<Record<string, any>>;
+  summary?: any;
+  rawText?: string | null;
+  message?: string | null;
+  error?: string | null;
+  [key: string]: unknown;
+};
+
+export async function mcpAdd(opts: {
+  name: string;
+  command: string;
+  args?: string[];
+  env?: Record<string, string>;
+}) {
+  return invoke<{ ok: boolean; error?: string }>("mcp_add", opts);
+}
+
+export async function mcpRemove(name: string) {
+  return invoke<{ ok: boolean; error?: string }>("mcp_remove", { name });
+}
+
+export async function mcpDoctor(projectPath?: string | null) {
+  return invoke<McpDoctorReport>("mcp_doctor", {
+    projectPath: projectPath ?? null,
+  });
+}
+
+export type ProjectRuleEntry = {
+  path?: string;
+  name?: string;
+  scope?: string;
+  exists?: boolean;
+  relativePath?: string;
+  absolutePath?: string;
+  kind?: string;
+  created?: boolean;
+  [key: string]: unknown;
+};
+
+export type ProjectRulesListResult = {
+  rules?: ProjectRuleEntry[];
+  hasAgentsMd?: boolean;
+  [key: string]: unknown;
+};
+
+export async function projectRulesList(projectPath: string) {
+  return invoke<ProjectRulesListResult | ProjectRuleEntry[]>("project_rules_list", { projectPath });
+}
+
+export async function projectRulesEnsureTemplate(projectPath: string) {
+  return invoke<ProjectRuleEntry>("project_rules_ensure_template", {
+    projectPath,
+  });
 }

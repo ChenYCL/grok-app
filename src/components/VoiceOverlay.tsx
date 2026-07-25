@@ -258,7 +258,7 @@ export function VoiceOverlay({
             <div className="voice-overlay__muted">{tt("voice.noDelegated")}</div>
           ) : (
             <ul className="voice-overlay__chips">
-              {state!.delegatedSessionIds.map((id) => (
+              {(state?.delegatedSessionIds ?? []).map((id) => (
                 <li key={id}>
                   <button
                     type="button"

@@ -1,14 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
-  buildWorktreeSiblingPath,
   buildWorktreeGcArgs,
   countWorktreePruneLines,
   findWorktreeAt,
-  mainWorktreePath,
   normalizeWorktreePath,
   parseWorktreePorcelain,
   pathsEqual,
-  sanitizeWorktreeName,
   sanitizeWorktreeGcMaxAge,
   siblingWorktrees,
   worktreeLabel,
@@ -75,29 +72,6 @@ describe("path helpers", () => {
   });
 });
 
-describe("worktree path builder", () => {
-  it("sanitizes names", () => {
-    expect(sanitizeWorktreeName("  feat-x  ")).toBe("feat-x");
-    expect(sanitizeWorktreeName("v1.2_rc")).toBe("v1.2_rc");
-    expect(() => sanitizeWorktreeName("")).toThrow(/required/);
-    expect(() => sanitizeWorktreeName("a/b")).toThrow(/separator/);
-    expect(() => sanitizeWorktreeName("-lead")).toThrow(/start/);
-    expect(() => sanitizeWorktreeName("has space")).toThrow();
-  });
-
-  it("builds sibling path next to main worktree", () => {
-    expect(buildWorktreeSiblingPath("/Users/me/repo", "feat")).toBe(
-      "/Users/me/repo-feat",
-    );
-    expect(buildWorktreeSiblingPath("/Users/me/repo/", "hot-fix")).toBe(
-      "/Users/me/repo-hot-fix",
-    );
-    expect(mainWorktreePath(parseWorktreePorcelain(SAMPLE))).toBe(
-      "/Users/me/repo",
-    );
-    // Path preview uses main even when active cwd is a linked worktree.
-    const main = mainWorktreePath(parseWorktreePorcelain(SAMPLE))!;
-    expect(buildWorktreeSiblingPath(main, "new")).toBe("/Users/me/repo-new");
 describe("worktree gc arg builder", () => {
   it("sanitizes max-age", () => {
     expect(sanitizeWorktreeGcMaxAge("  now  ")).toBe("now");

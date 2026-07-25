@@ -40,9 +40,6 @@ type Props = {
     worktreeSwitch: string;
     worktreeMain: string;
     worktreeDetached: string;
-    worktreeNew: string;
-    /** Remove linked worktree (non-main). */
-    worktreeRemove?: string;
     /** Badge when project folder is missing on disk. */
     pathMissing?: string;
     /** Clean stale worktree admin records (prune). */
@@ -63,10 +60,6 @@ type Props = {
   onAdd: () => void;
   /** Switch agent cwd to this worktree path (add project if needed + bind). */
   onSwitchWorktree?: (wt: GitWorktreeEntry) => void;
-  /** Open “New worktree…” dialog (parent owns modal). */
-  onCreateWorktree?: () => void;
-  /** Open confirm to remove a linked (non-main) worktree. */
-  onRemoveWorktree?: (wt: GitWorktreeEntry) => void;
   /** Open “Clean stale worktrees…” dialog (parent owns modal). */
   onGcWorktrees?: () => void;
   onOpen?: () => void;
@@ -86,8 +79,6 @@ export function ComposerProjectMenu({
   onSelect,
   onAdd,
   onSwitchWorktree,
-  onCreateWorktree,
-  onRemoveWorktree,
   onGcWorktrees,
   onOpen,
 }: Props) {
@@ -101,7 +92,6 @@ export function ComposerProjectMenu({
 
   // Only for confirmed git work trees — hide while loading / non-git / no project.
   const showWorktrees = !!activeProject && worktreesAvailable === true;
-  const canCreate = showWorktrees && !!onCreateWorktree;
   const canGc = showWorktrees && !!onGcWorktrees && !!labels.worktreeGc;
 
   const estHeight = Math.min(
@@ -111,7 +101,6 @@ export function ComposerProjectMenu({
       (showWorktrees
         ? 28 +
           Math.min(160, Math.max(worktrees.length, 1) * 36 + 8) +
-          (canCreate ? 36 : 0)
           (canGc ? 36 : 0)
         : 0),
   );
@@ -126,7 +115,6 @@ export function ComposerProjectMenu({
     minWidth: 260,
     estHeight,
     gap: 8,
-    deps: [projects.length, worktrees.length, showWorktrees, canCreate],
     deps: [projects.length, worktrees.length, showWorktrees, canGc],
   });
 
@@ -137,7 +125,12 @@ export function ComposerProjectMenu({
   }, [open]);
 
   const label = activeProject?.name ?? labels.noProject;
-  const tip = activeProject?.path || labels.pickProject;
+  const activeMissing = activeProject?.pathOk === false;
+  const tip = activeMissing
+    ? (labels.pathMissing
+        ? `${labels.pathMissing}: ${activeProject?.path || ""}`.trim()
+        : activeProject?.path) || labels.pickProject
+    : activeProject?.path || labels.pickProject;
 
   return (
     <div ref={rootRef} className={`cpm${open ? " is-open" : ""}`}>
@@ -148,7 +141,8 @@ export function ComposerProjectMenu({
           className={
             "chip chip--project" +
             (open ? " is-open" : "") +
-            (!activeProject ? " chip--muted" : "")
+            (!activeProject ? " chip--muted" : "") +
+            (activeMissing ? " chip--project-path-missing" : "")
           }
           disabled={disabled}
           aria-haspopup="menu"
@@ -208,15 +202,22 @@ export function ComposerProjectMenu({
               >
                 {projects.map((p) => {
                   const active = activeProject?.id === p.id;
+                  const missing = p.pathOk === false;
                   return (
                     <button
                       key={p.id}
                       type="button"
                       role="menuitem"
                       className={
-                        "cmm__opt cpm__item" + (active ? " is-active" : "")
+                        "cmm__opt cpm__item" +
+                        (active ? " is-active" : "") +
+                        (missing ? " cpm__item--path-missing" : "")
                       }
-                      title={p.path}
+                      title={
+                        missing && labels.pathMissing
+                          ? `${labels.pathMissing}: ${p.path}`
+                          : p.path
+                      }
                       onClick={() => {
                         onSelect(p);
                         setOpen(false);
@@ -224,6 +225,11 @@ export function ComposerProjectMenu({
                     >
                       <span className="cmm__opt-main">
                         <span className="cmm__opt-title">{p.name}</span>
+                        {missing && labels.pathMissing ? (
+                          <span className="cpm__path-badge">
+                            {labels.pathMissing}
+                          </span>
+                        ) : null}
                       </span>
                       {active ? (
                         <span className="cmm__opt-check" aria-hidden>
@@ -257,15 +263,8 @@ export function ComposerProjectMenu({
                       ]
                         .filter(Boolean)
                         .join(" · ");
-                      const canRemove =
-                        !wt.isMain && !!onRemoveWorktree && !!labels.worktreeRemove;
                       return (
-                        <li
-                          key={wt.path}
-                          className={
-                            "cpm__worktree-li" + (canRemove ? " has-remove" : "")
-                          }
-                        >
+                        <li key={wt.path}>
                           <button
                             type="button"
                             role="menuitem"
@@ -293,24 +292,6 @@ export function ComposerProjectMenu({
                               </span>
                             ) : null}
                           </button>
-                          {canRemove ? (
-                            <Tip label={labels.worktreeRemove!}>
-                              <button
-                                type="button"
-                                className="cpm__worktree-remove"
-                                aria-label={labels.worktreeRemove}
-                                title={labels.worktreeRemove}
-                                onClick={(e) => {
-                                  e.preventDefault();
-                                  e.stopPropagation();
-                                  setOpen(false);
-                                  onRemoveWorktree?.(wt);
-                                }}
-                              >
-                                <IconTrash size={14} />
-                              </button>
-                            </Tip>
-                          ) : null}
                         </li>
                       );
                     })}
@@ -322,18 +303,6 @@ export function ComposerProjectMenu({
                       : labels.worktreesEmpty}
                   </p>
                 )}
-                {canCreate ? (
-                  <button
-                    type="button"
-                    role="menuitem"
-                    className="cpm__action cpm__worktree-new"
-                    onClick={() => {
-                      setOpen(false);
-                      onCreateWorktree?.();
-                    }}
-                  >
-                    <IconPlus size={14} aria-hidden />
-                    <span>{labels.worktreeNew}</span>
                 {canGc ? (
                   <button
                     type="button"
