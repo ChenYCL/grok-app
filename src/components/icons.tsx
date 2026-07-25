@@ -35,6 +35,7 @@ import {
   IconFolderPlus as TbFolderPlus,
   IconHandStop as TbHandStop,
   IconInfoCircle as TbInfoCircle,
+  IconKeyboard as TbKeyboard,
   IconLanguage as TbLanguage,
   IconExternalLink as TbExternalLink,
   IconLayoutSidebar as TbLayoutSidebar,
@@ -267,6 +268,7 @@ export const IconUser = wrap(TbUser);
 export const IconAppearance = wrap(TbBrush);
 export const IconLanguage = wrap(TbLanguage);
 export const IconInfo = wrap(TbInfoCircle);
+export const IconKeyboard = wrap(TbKeyboard);
 /** Slash palette / goal mode */
 export const IconTarget = wrap(TbTarget);
 export const IconClipboardList = wrap(TbClipboardList);

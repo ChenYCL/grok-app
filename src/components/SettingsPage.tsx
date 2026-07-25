@@ -20,6 +20,7 @@ import {
   IconCheck,
   IconDoctor,
   IconInfo,
+  IconKeyboard,
   IconLanguage,
   IconMinimize,
   IconPuzzle,
@@ -29,6 +30,11 @@ import {
   IconTrash,
   IconUser,
 } from "@/components/icons";
+import {
+  detectShortcutPlatform,
+  shortcutsByGroup,
+  type ShortcutGroup,
+} from "@/lib/shortcuts";
 import type { Theme } from "@/lib/theme";
 import type {
   ComposerPrefsScope,
@@ -63,6 +69,7 @@ export type SettingsSectionId =
   | "archived"
   | "extensions"
   | "runtime"
+  | "shortcuts"
   | "about";
 
 export type ArchivedSessionRow = {
@@ -203,6 +210,8 @@ export interface SettingsPageProps {
   onSkillsPrefsChanged?: () => void;
   /** Brief status toast from nested settings panels. */
   onToast?: (message: string, ms?: number) => void;
+  /** Open the same shortcuts help modal as ⌘/ / Ctrl+/. */
+  onOpenShortcutsHelp?: () => void;
 }
 
 const NAV: {
@@ -214,6 +223,7 @@ const NAV: {
     | "archive"
     | "extensions"
     | "doctor"
+    | "keyboard"
     | "info";
   labelKey: string;
   group: "personal" | "system";
@@ -229,6 +239,12 @@ const NAV: {
     group: "system",
   },
   { id: "runtime", icon: "doctor", labelKey: "settings.nav.runtime", group: "system" },
+  {
+    id: "shortcuts",
+    icon: "keyboard",
+    labelKey: "settings.nav.shortcuts",
+    group: "system",
+  },
   { id: "about", icon: "info", labelKey: "settings.nav.about", group: "system" },
 ];
 
@@ -242,6 +258,7 @@ function NavIcon({
   if (name === "appearance") return <IconAppearance size={size} />;
   if (name === "user") return <IconUser size={size} />;
   if (name === "archive") return <IconArchive size={size} />;
+  if (name === "keyboard") return <IconKeyboard size={size} />;
   if (name === "extensions") return <IconPuzzle size={size} />;
   if (name === "doctor") return <IconDoctor size={size} />;
   if (name === "info") return <IconInfo size={size} />;
@@ -511,6 +528,7 @@ export function SettingsPage({
   projectPath = null,
   onSkillsPrefsChanged,
   onToast,
+  onOpenShortcutsHelp,
 }: SettingsPageProps) {
   const [query, setQuery] = useState("");
   const [accountTab, setAccountTab] = useState<"official" | "providers">(
@@ -739,7 +757,9 @@ export function SettingsPage({
               ? t("settings.nav.extensions")
               : section === "runtime"
                 ? t("settings.nav.runtime")
-                : t("settings.nav.about");
+                : section === "shortcuts"
+                  ? t("settings.nav.shortcuts")
+                  : t("settings.nav.about");
 
   return (
     <div className="settings-page" data-testid="settings-page">
@@ -1775,6 +1795,13 @@ export function SettingsPage({
           </div>
         )}
 
+        {section === "shortcuts" && (
+          <ShortcutsSettingsPanel
+            t={t}
+            onOpenHelp={onOpenShortcutsHelp}
+          />
+        )}
+
         {section === "about" && (
           <div className="settings-card">
             <div className="settings-row settings-row--stack">
@@ -1791,6 +1818,87 @@ export function SettingsPage({
         )}
       </main>
       </div>
+    </div>
+  );
+}
+
+function ShortcutsSettingsPanel({
+  t,
+  onOpenHelp,
+}: {
+  t: (key: MessageKey, vars?: Vars) => string;
+  onOpenHelp?: () => void;
+}) {
+  const platform = useMemo(() => detectShortcutPlatform(), []);
+  const groups = useMemo(() => shortcutsByGroup(), []);
+
+  const groupLabel = (g: ShortcutGroup) =>
+    t(`settings.shortcuts.group.${g}` as MessageKey);
+
+  return (
+    <div className="settings-card">
+      <div className="settings-row settings-row--stack">
+        <div className="settings-row__text">
+          <div className="settings-row__label">
+            <IconKeyboard size={16} />
+            {t("settings.shortcuts.title")}
+          </div>
+          <div className="settings-row__desc">{t("settings.shortcuts.desc")}</div>
+        </div>
+        {onOpenHelp ? (
+          <button
+            type="button"
+            className="btn btn--ghost"
+            onClick={() => onOpenHelp()}
+          >
+            {t("settings.shortcuts.openHelp")}
+          </button>
+        ) : null}
+      </div>
+      {groups.map(({ group, rows }) => (
+        <div key={group} className="settings-shortcuts-group">
+          <div className="settings-shortcuts-group__title">{groupLabel(group)}</div>
+          <table className="settings-shortcuts-table">
+            <thead>
+              <tr>
+                <th scope="col">{t("settings.shortcuts.colAction")}</th>
+                <th
+                  scope="col"
+                  className={
+                    platform === "mac" ? "is-platform-active" : undefined
+                  }
+                >
+                  {t("settings.shortcuts.colMac")}
+                </th>
+                <th
+                  scope="col"
+                  className={
+                    platform === "win" || platform === "other"
+                      ? "is-platform-active"
+                      : undefined
+                  }
+                >
+                  {t("settings.shortcuts.colWin")}
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((row) => (
+                <tr key={row.id}>
+                  <td>{t(row.labelKey as MessageKey)}</td>
+                  <td>
+                    <kbd className="settings-shortcuts-kbd">{row.mac}</kbd>
+                  </td>
+                  <td>
+                    <kbd className="settings-shortcuts-kbd">{row.win}</kbd>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ))}
+      <p className="settings-shortcuts-note">{t("settings.shortcuts.note")}</p>
     </div>
   );
 }

@@ -1907,6 +1907,7 @@ export default function App() {
           "archived",
           "extensions",
           "runtime",
+          "shortcuts",
           "about",
         ];
         setSettingsSection(
@@ -5900,6 +5901,7 @@ export default function App() {
               "archived",
               "extensions",
               "runtime",
+              "shortcuts",
               "about",
             ];
             trayHandlersRef.current.openSettings(
@@ -6615,7 +6617,10 @@ export default function App() {
       "settings.nav.archived",
       "settings.nav.extensions",
       "settings.nav.runtime",
+      "settings.nav.shortcuts",
       "settings.nav.about",
+      "settings.shortcuts.title",
+      "settings.shortcuts.desc",
       "settings.archived.desc",
       "settings.archived.empty",
       "settings.archived.restore",
@@ -7087,6 +7092,7 @@ export default function App() {
           }}
           cliInfo={cliInfo}
           onDoctor={() => void openDoctor()}
+          onOpenShortcutsHelp={() => setShowShortcuts(true)}
           versionFooter={tr("app.versionFooter")}
           account={account}
           accountLoading={accountLoading}
