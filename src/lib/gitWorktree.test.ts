@@ -1,12 +1,15 @@
 import { describe, expect, it } from "vitest";
 import {
   buildWorktreeSiblingPath,
+  buildWorktreeGcArgs,
+  countWorktreePruneLines,
   findWorktreeAt,
   mainWorktreePath,
   normalizeWorktreePath,
   parseWorktreePorcelain,
   pathsEqual,
   sanitizeWorktreeName,
+  sanitizeWorktreeGcMaxAge,
   siblingWorktrees,
   worktreeLabel,
 } from "./gitWorktree";
@@ -95,5 +98,67 @@ describe("worktree path builder", () => {
     // Path preview uses main even when active cwd is a linked worktree.
     const main = mainWorktreePath(parseWorktreePorcelain(SAMPLE))!;
     expect(buildWorktreeSiblingPath(main, "new")).toBe("/Users/me/repo-new");
+describe("worktree gc arg builder", () => {
+  it("sanitizes max-age", () => {
+    expect(sanitizeWorktreeGcMaxAge("  now  ")).toBe("now");
+    expect(sanitizeWorktreeGcMaxAge("2.weeks.ago")).toBe("2.weeks.ago");
+    expect(sanitizeWorktreeGcMaxAge("")).toBeNull();
+    expect(sanitizeWorktreeGcMaxAge(null)).toBeNull();
+    expect(() => sanitizeWorktreeGcMaxAge("-n")).toThrow(/start/);
+    expect(() => sanitizeWorktreeGcMaxAge("2 weeks")).toThrow(/invalid/);
+    expect(() => sanitizeWorktreeGcMaxAge("a;rm")).toThrow();
+  });
+
+  it("builds dry-run argv", () => {
+    expect(buildWorktreeGcArgs("/Users/me/repo", true, false)).toEqual([
+      "-C",
+      "/Users/me/repo",
+      "worktree",
+      "prune",
+      "-v",
+      "--dry-run",
+    ]);
+  });
+
+  it("maps force to --expire now", () => {
+    expect(buildWorktreeGcArgs("/Users/me/repo", false, true)).toEqual([
+      "-C",
+      "/Users/me/repo",
+      "worktree",
+      "prune",
+      "-v",
+      "--expire",
+      "now",
+    ]);
+  });
+
+  it("prefers explicit maxAge over force", () => {
+    expect(
+      buildWorktreeGcArgs("/Users/me/repo", true, true, "3.months"),
+    ).toEqual([
+      "-C",
+      "/Users/me/repo",
+      "worktree",
+      "prune",
+      "-v",
+      "--dry-run",
+      "--expire",
+      "3.months",
+    ]);
+  });
+
+  it("rejects empty / option-like project path", () => {
+    expect(() => buildWorktreeGcArgs("", false)).toThrow(/empty/);
+    expect(() => buildWorktreeGcArgs("-C", false)).toThrow(/invalid/);
+  });
+
+  it("counts prune verbose lines", () => {
+    expect(
+      countWorktreePruneLines(
+        "Removing worktrees/stale: gitdir file points to non-existent location\n",
+      ),
+    ).toBe(1);
+    expect(countWorktreePruneLines("Would remove worktrees/foo\n")).toBe(1);
+    expect(countWorktreePruneLines("")).toBe(0);
   });
 });

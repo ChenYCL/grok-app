@@ -211,4 +211,69 @@ export function mainWorktreePath(
   if (!worktrees.length) return null;
   const main = worktrees.find((w) => w.isMain) ?? worktrees[0];
   return main?.path ?? null;
+ * Sanitize optional `--expire` / max-age for `git worktree prune`.
+ * Mirrors host `sanitize_worktree_gc_max_age`.
+ */
+export function sanitizeWorktreeGcMaxAge(
+  raw: string | null | undefined,
+): string | null {
+  const s = (raw ?? "").trim();
+  if (!s) return null;
+  if (s.length > 64) throw new Error("max-age too long");
+  if (s.startsWith("-")) throw new Error("max-age must not start with '-'");
+  if (/[\0\n\r\s]/.test(s)) throw new Error("invalid max-age");
+  if (!/^[A-Za-z0-9._]+$/.test(s)) {
+    throw new Error("max-age may only contain letters, digits, '.' and '_'");
+  }
+  return s;
+}
+
+/**
+ * Build argv for `git worktree prune` (no binary name).
+ * Mirrors host `build_worktree_gc_args` — pure; unit-tested.
+ *
+ * `git [-C project] worktree prune -v [--dry-run] [--expire <age>]`
+ * - force without maxAge → `--expire now`
+ */
+export function buildWorktreeGcArgs(
+  projectPath: string,
+  dryRun: boolean,
+  force = false,
+  maxAge?: string | null,
+): string[] {
+  const project = normalizeWorktreePath(projectPath);
+  if (!project) throw new Error("empty path");
+  if (project.startsWith("-")) throw new Error("invalid project path");
+
+  let expire: string | null = null;
+  try {
+    expire = sanitizeWorktreeGcMaxAge(maxAge);
+  } catch (e) {
+    throw e instanceof Error ? e : new Error(String(e));
+  }
+  if (!expire && force) expire = "now";
+
+  const args = ["-C", project, "worktree", "prune", "-v"];
+  if (dryRun) args.push("--dry-run");
+  if (expire) {
+    args.push("--expire", expire);
+  }
+  return args;
+}
+
+/** Best-effort count of removal-like lines in prune -v output. */
+export function countWorktreePruneLines(output: string | null | undefined): number {
+  const text = output ?? "";
+  return text
+    .split(/\r?\n/)
+    .map((l) => l.trim())
+    .filter(Boolean)
+    .filter((l) => {
+      const lower = l.toLowerCase();
+      return (
+        lower.includes("remov") ||
+        lower.includes("prun") ||
+        lower.startsWith("would ")
+      );
+    }).length;
 }

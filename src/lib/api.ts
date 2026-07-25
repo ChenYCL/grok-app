@@ -365,6 +365,35 @@ export async function gitWorktreeRemove(
     projectPath,
     worktreePath,
     force: force ?? false,
+/** Result of `git worktree prune` (gc / clean stale admin files). */
+export interface GitWorktreeGcResult {
+  dryRun: boolean;
+  forced: boolean;
+  maxAge?: string | null;
+  /** Verbose prune output (trimmed). */
+  output: string;
+  /** Paths marked prunable before prune. */
+  prunable: string[];
+  /** Best-effort count of removals. */
+  prunedCount: number;
+}
+
+/**
+ * Garbage-collect stale worktree admin files (`git worktree prune`).
+ * Pass `dryRun: true` for a preview (`--dry-run`). Optional `force` → `--expire now`
+ * when maxAge is unset. Optional `maxAge` → `--expire <maxAge>`.
+ */
+export async function gitWorktreeGc(
+  projectPath: string,
+  dryRun: boolean,
+  force?: boolean,
+  maxAge?: string | null,
+) {
+  return invoke<GitWorktreeGcResult>("git_worktree_gc", {
+    projectPath,
+    dryRun,
+    force: force ?? false,
+    maxAge: maxAge ?? null,
   });
 }
 

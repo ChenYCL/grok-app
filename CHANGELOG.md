@@ -46,6 +46,7 @@ See `docs/llm-wiki/release.md`.
 - **Reopen last chat on startup**: remembers the last opened session and restores it once after launch (Settings → General toggle, on by default; skips archived / missing / setup wizard).
 - **Remove git worktree** from the project chip: confirm dialog (optional force for dirty/locked), host refuses main worktree, then refresh list and carefully leave/remove a matching App project row.
 - **Allow subagent spawning toggle**: Settings → Permissions; default on. When off, agents spawn with `--no-subagents` / `GROK_SUBAGENTS=0` (independent mode also writes `[subagents] enabled = false`). Soft-respawn on flip.
+- **Clean stale git worktrees** from the project chip: dry-run preview then `git worktree prune` (optional `--expire now`), host `git_worktree_gc`, en / zh / zh-TW.
 
 ## [0.1.6] - 2026-07-24
 

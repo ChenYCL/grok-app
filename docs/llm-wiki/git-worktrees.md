@@ -53,6 +53,11 @@ Errors when the folder is not a git repository, `git` is missing, the path alrea
 - Frontend pure helpers: `src/lib/gitWorktree.ts` (+ unit tests)
 - UI: `ComposerProjectMenu` worktrees section + create dialog in `App.tsx`
 - Creating worktrees from the App (see separate worktree-create PR when open)
+- **GC / prune:** menu action **Clean stale worktrees…** → GlassModal dry-run preview (`git worktree prune -v --dry-run`), then apply. Optional force → `--expire now`. Does **not** delete live worktrees (use remove for that). Host: `git_worktree_gc`.
+
+## Non-goals (MVP)
+
+- Creating or removing individual worktrees from the App (separate PRs when open)
 - Full branch browser
 
 ## Implementation
@@ -60,3 +65,6 @@ Errors when the folder is not a git repository, `git` is missing, the path alrea
 - Host: `git_worktrees_list`, `git_worktree_remove` (`src-tauri/src/commands.rs`) — argv only, no shell
 - Pure path helpers + refuse-main tests on the host; parse helpers: `src/lib/gitWorktree.ts` (+ unit tests)
 - UI: `ComposerProjectMenu` worktrees section + remove confirm in `App.tsx`
+- Host: `git_worktrees_list`, `git_worktree_gc` (`src-tauri/src/commands.rs`) — argv only, no shell
+- Pure parse + gc arg builders: `src/lib/gitWorktree.ts` (+ unit tests); host `build_worktree_gc_args`
+- UI: `ComposerProjectMenu` worktrees section + gc confirm in `App.tsx`

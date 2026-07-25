@@ -699,6 +699,14 @@ export default function App() {
   const [worktreeRemoveError, setWorktreeRemoveError] = useState<string | null>(
     null,
   );
+  /** Clean stale worktrees (git worktree prune) dialog. */
+  const [worktreeGcOpen, setWorktreeGcOpen] = useState(false);
+  const [worktreeGcForce, setWorktreeGcForce] = useState(false);
+  const [worktreeGcBusy, setWorktreeGcBusy] = useState(false);
+  const [worktreeGcPreviewBusy, setWorktreeGcPreviewBusy] = useState(false);
+  const [worktreeGcError, setWorktreeGcError] = useState<string | null>(null);
+  const [worktreeGcPreview, setWorktreeGcPreview] =
+    useState<api.GitWorktreeGcResult | null>(null);
   /** Host stream-stall prompt (I06); null when dismissed or not stalled. */
   const [streamStall, setStreamStall] = useState<{
     sessionId?: string;
@@ -5024,6 +5032,75 @@ export default function App() {
     [bindSessionProject, showToast, tr],
   );
 
+  /** Open gc dialog and run dry-run preview. */
+  const openWorktreeGc = useCallback(() => {
+    setWorktreeGcForce(false);
+    setWorktreeGcError(null);
+    setWorktreeGcBusy(false);
+    setWorktreeGcPreview(null);
+    setWorktreeGcOpen(true);
+  }, []);
+
+  /** Dry-run `git worktree prune` for the modal preview. */
+  const refreshWorktreeGcPreview = useCallback(async () => {
+    if (!api.isTauri() || !activeProject?.path || !worktreeGcOpen) return;
+    setWorktreeGcPreviewBusy(true);
+    setWorktreeGcError(null);
+    try {
+      const res = await api.gitWorktreeGc(
+        activeProject.path,
+        true,
+        worktreeGcForce,
+      );
+      setWorktreeGcPreview(res);
+    } catch (e) {
+      setWorktreeGcPreview(null);
+      setWorktreeGcError(String(e));
+    } finally {
+      setWorktreeGcPreviewBusy(false);
+    }
+  }, [activeProject?.path, worktreeGcForce, worktreeGcOpen]);
+
+  useEffect(() => {
+    if (!worktreeGcOpen) return;
+    void refreshWorktreeGcPreview();
+  }, [worktreeGcOpen, refreshWorktreeGcPreview]);
+
+  /** Apply prune (non-dry-run), refresh list, toast. */
+  const submitWorktreeGc = useCallback(async () => {
+    if (!api.isTauri() || !activeProject?.path) return;
+    setWorktreeGcBusy(true);
+    setWorktreeGcError(null);
+    try {
+      const res = await api.gitWorktreeGc(
+        activeProject.path,
+        false,
+        worktreeGcForce,
+      );
+      setWorktreeGcOpen(false);
+      setWorktreeGcPreview(null);
+      setWorktreeGcForce(false);
+      await refreshGitWorktrees();
+      const n = res.prunedCount ?? 0;
+      showToast(
+        n > 0
+          ? tr("composer.worktreeGcDone", { n: String(n) })
+          : tr("composer.worktreeGcDoneNone"),
+        2800,
+      );
+    } catch (e) {
+      setWorktreeGcError(String(e));
+    } finally {
+      setWorktreeGcBusy(false);
+    }
+  }, [
+    activeProject?.path,
+    refreshGitWorktrees,
+    showToast,
+    tr,
+    worktreeGcForce,
+  ]);
+
   /** Open a linked worktree as project cwd (reuse existing project if path matches). */
   const switchToWorktree = useCallback(
     async (wt: api.GitWorktreeEntry) => {
@@ -7943,6 +8020,8 @@ export default function App() {
                     worktreeDetached: tr("composer.worktreeDetached"),
                     worktreeNew: tr("composer.worktreeNew"),
                     worktreeRemove: tr("composer.worktreeRemove"),
+                    pathMissing: tr("project.pathMissingShort"),
+                    worktreeGc: tr("composer.worktreeGc"),
                   }}
                   worktrees={gitWorktrees}
                   worktreesAvailable={gitWorktreesAvailable}
@@ -7965,6 +8044,7 @@ export default function App() {
                   onRemoveWorktree={(wt) => {
                     openWorktreeRemove(wt);
                   }}
+                  onGcWorktrees={openWorktreeGc}
                   onOpen={refreshGitWorktrees}
                 />
                 {goalMode ? (
@@ -8242,6 +8322,19 @@ export default function App() {
         closeLabel={tr("common.close")}
         closeOnOverlay={!worktreeRemoveBusy}
         showClose={!worktreeRemoveBusy}
+        open={worktreeGcOpen}
+        onClose={() => {
+          if (worktreeGcBusy) return;
+          setWorktreeGcOpen(false);
+          setWorktreeGcError(null);
+          setWorktreeGcPreview(null);
+          setWorktreeGcForce(false);
+        }}
+        title={tr("composer.worktreeGcTitle")}
+        size="sm"
+        closeLabel={tr("common.close")}
+        closeOnOverlay={!worktreeGcBusy}
+        showClose={!worktreeGcBusy}
         wrapBody
         footer={
           <>
@@ -8255,6 +8348,12 @@ export default function App() {
                 setWorktreeRemoveTarget(null);
                 setWorktreeRemoveError(null);
                 setWorktreeRemoveForce(false);
+              disabled={worktreeGcBusy}
+              onClick={() => {
+                setWorktreeGcOpen(false);
+                setWorktreeGcError(null);
+                setWorktreeGcPreview(null);
+                setWorktreeGcForce(false);
               }}
             >
               {tr("common.cancel")}
@@ -8279,6 +8378,14 @@ export default function App() {
               {worktreeRemoveBusy
                 ? tr("composer.worktreeRemoving")
                 : tr("composer.worktreeRemoveConfirm")}
+              disabled={worktreeGcBusy || worktreeGcPreviewBusy}
+              onClick={() => {
+                void submitWorktreeGc();
+              }}
+            >
+              {worktreeGcBusy
+                ? tr("composer.worktreeGcRunning")
+                : tr("composer.worktreeGcConfirm")}
             </button>
           </>
         }
@@ -8369,6 +8476,54 @@ export default function App() {
             ) : null}
           </div>
         ) : null}
+        <div className="wt-gc">
+          <p className="wt-gc__hint">{tr("composer.worktreeGcHint")}</p>
+          <label className="wt-gc__force">
+            <input
+              type="checkbox"
+              checked={worktreeGcForce}
+              disabled={worktreeGcBusy || worktreeGcPreviewBusy}
+              onChange={(e) => setWorktreeGcForce(e.target.checked)}
+            />
+            <span>{tr("composer.worktreeGcForce")}</span>
+          </label>
+          <div className="wt-gc__preview-head">{tr("composer.worktreeGcPreview")}</div>
+          {worktreeGcPreviewBusy ? (
+            <p className="wt-gc__preview-status">
+              {tr("composer.worktreeGcPreviewLoading")}
+            </p>
+          ) : worktreeGcPreview ? (
+            <>
+              {worktreeGcPreview.prunable.length > 0 ? (
+                <p className="wt-gc__prunable">
+                  {tr("composer.worktreeGcPrunable", {
+                    n: String(worktreeGcPreview.prunable.length),
+                  })}
+                </p>
+              ) : null}
+              {worktreeGcPreview.output.trim() ||
+              worktreeGcPreview.prunable.length > 0 ? (
+                <pre className="wt-gc__output" tabIndex={0}>
+                  {worktreeGcPreview.output.trim() ||
+                    worktreeGcPreview.prunable.join("\n")}
+                </pre>
+              ) : (
+                <p className="wt-gc__preview-status">
+                  {tr("composer.worktreeGcPreviewEmpty")}
+                </p>
+              )}
+            </>
+          ) : worktreeGcError ? null : (
+            <p className="wt-gc__preview-status">
+              {tr("composer.worktreeGcPreviewEmpty")}
+            </p>
+          )}
+          {worktreeGcError ? (
+            <p className="wt-gc__error" role="alert">
+              {worktreeGcError}
+            </p>
+          ) : null}
+        </div>
       </GlassModal>
       <GlassModal
         open={showShortcuts}

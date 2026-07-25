@@ -2696,12 +2696,15 @@ html.platform-mac[data-theme="light"] .settings-page__content {
 }
 
 .cpm__worktree-new {
+.cpm__worktree-gc {
   margin-top: 4px;
   width: 100%;
 }
 
 /* New worktree dialog fields */
 .wt-create {
+/* Clean stale worktrees (gc / prune) dialog */
+.wt-gc {
   display: flex;
   flex-direction: column;
   gap: 12px;
@@ -2747,6 +2750,9 @@ html.platform-mac[data-theme="light"] .settings-page__content {
 .wt-remove__msg {
   margin: 0;
   font-size: 13px;
+.wt-gc__hint {
+  margin: 0;
+  font-size: 12.5px;
   line-height: 1.45;
   color: var(--text-secondary);
 }
@@ -2810,6 +2816,58 @@ html.platform-mac[data-theme="light"] .settings-page__content {
   font-size: 12px;
   line-height: 1.4;
   color: var(--danger, #e5484d);
+.wt-gc__force {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 13px;
+  line-height: 1.35;
+  color: var(--text-secondary);
+  cursor: pointer;
+  user-select: none;
+}
+
+.wt-gc__force input {
+  margin-top: 2px;
+  flex-shrink: 0;
+}
+
+.wt-gc__preview-head {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+}
+
+.wt-gc__preview-status,
+.wt-gc__prunable {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.4;
+  color: var(--text-secondary);
+}
+
+.wt-gc__output {
+  margin: 0;
+  max-height: 180px;
+  overflow: auto;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: var(--surface-2, rgba(127, 127, 127, 0.08));
+  font-size: 11.5px;
+  line-height: 1.4;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  color: var(--text-primary);
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.wt-gc__error {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.4;
+  color: var(--danger, #e35d6a);
 }
 
 .account-link:hover {

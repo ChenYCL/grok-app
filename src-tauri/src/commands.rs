@@ -4950,6 +4950,48 @@ pub fn sanitize_worktree_ref(raw: Option<&str>) -> Result<Option<String>, String
     // Disallow option-like args so they cannot be mistaken for git flags.
     if s.starts_with('-') {
         return Err("branch / ref must not start with '-'".into());
+/// Result of `git worktree prune` (gc / clean stale admin files).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GitWorktreeGcResult {
+    /// Whether this was a dry-run (`-n`).
+    pub dry_run: bool,
+    /// Whether aggressive expire (`now`) was applied via force without max_age.
+    pub forced: bool,
+    /// Optional `--expire` value that was used.
+    pub max_age: Option<String>,
+    /// Combined verbose prune output (stdout + stderr, trimmed).
+    pub output: String,
+    /// Paths marked `prunable` in `git worktree list --porcelain` before prune.
+    pub prunable: Vec<String>,
+    /// Best-effort count of removals reported in prune output.
+    pub pruned_count: usize,
+}
+
+/// Sanitize optional `--expire` / max-age for `git worktree prune`.
+///
+/// Accepts common git relative dates (`now`, `2.weeks.ago`, `3.months`) and
+/// simple tokens. Rejects empty, option-like (`-…`), and control characters.
+/// Pure; unit-tested.
+pub fn sanitize_worktree_gc_max_age(raw: Option<&str>) -> Result<Option<String>, String> {
+    let Some(s) = raw.map(str::trim).filter(|s| !s.is_empty()) else {
+        return Ok(None);
+    };
+    if s.len() > 64 {
+        return Err("max-age too long".into());
+    }
+    if s.starts_with('-') {
+        return Err("max-age must not start with '-'".into());
+    }
+    if s.contains('\0') || s.contains('\n') || s.contains('\r') || s.contains(' ') {
+        return Err("invalid max-age".into());
+    }
+    // Git expire: alphanumerics + . _ (e.g. 2.weeks.ago, now, 90.days).
+    let ok = s
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || c == '.' || c == '_');
+    if !ok {
+        return Err("max-age may only contain letters, digits, '.' and '_'".into());
     }
     Ok(Some(s.to_string()))
 }
@@ -5055,6 +5097,78 @@ pub async fn git_worktree_remove(
     worktree_path: String,
     force: Option<bool>,
 ) -> Result<GitWorktreeRemoveResult, String> {
+/// Build argv for `git worktree prune` (no binary name; caller prefixes `git`).
+///
+/// Layout: `[-C <project>] worktree prune -v [--dry-run] [--expire <age>]`
+///
+/// - `dry_run` → `--dry-run` (report only)
+/// - `max_age` → `--expire <max_age>` when set
+/// - `force` without `max_age` → `--expire now` (prune all stale admin files now)
+/// - always `-v` so dry-run preview has useful lines
+///
+/// Pure; unit-tested. Never goes through a shell.
+pub fn build_worktree_gc_args(
+    project: &str,
+    dry_run: bool,
+    force: bool,
+    max_age: Option<&str>,
+) -> Result<Vec<String>, String> {
+    let project = normalize_fs_path(project);
+    if project.is_empty() {
+        return Err("empty path".into());
+    }
+    if project.starts_with('-') {
+        return Err("invalid project path".into());
+    }
+    let expire = match sanitize_worktree_gc_max_age(max_age)? {
+        Some(age) => Some(age),
+        None if force => Some("now".into()),
+        None => None,
+    };
+
+    let mut args: Vec<String> = vec![
+        "-C".into(),
+        project,
+        "worktree".into(),
+        "prune".into(),
+        "-v".into(),
+    ];
+    if dry_run {
+        args.push("--dry-run".into());
+    }
+    if let Some(age) = expire {
+        args.push("--expire".into());
+        args.push(age);
+    }
+    Ok(args)
+}
+
+/// Count removal-like lines in `git worktree prune -v` output (best-effort).
+pub fn count_worktree_prune_lines(output: &str) -> usize {
+    output
+        .lines()
+        .map(str::trim)
+        .filter(|l| !l.is_empty())
+        .filter(|l| {
+            let lower = l.to_ascii_lowercase();
+            lower.contains("remov") || lower.contains("prun") || lower.starts_with("would ")
+        })
+        .count()
+}
+
+/// Garbage-collect stale git worktree administrative files via `git worktree prune`.
+///
+/// Safe argv only (no shell). Soft-fails on missing git / non-repo with an Err.
+/// When `dry_run` is true, nothing is deleted (`--dry-run`).
+/// Optional `force` maps to `--expire now` when `max_age` is unset.
+/// Optional `max_age` maps to `--expire <max_age>`.
+#[tauri::command]
+pub async fn git_worktree_gc(
+    project_path: String,
+    dry_run: bool,
+    force: Option<bool>,
+    max_age: Option<String>,
+) -> Result<GitWorktreeGcResult, String> {
     let project = normalize_fs_path(&project_path);
     if project.is_empty() {
         return Err("empty path".into());
@@ -5155,6 +5269,32 @@ pub async fn git_worktree_remove(
         args.push("--force".into());
     }
     args.push(remove_path.clone());
+    let forced = force.unwrap_or(false);
+    let age = sanitize_worktree_gc_max_age(max_age.as_deref())?;
+
+    // Snapshot prunable entries before prune for UI preview / summary.
+    let prunable = {
+        let list_out = std::process::Command::new("git")
+            .args(["-C", &project, "worktree", "list", "--porcelain"])
+            .output()
+            .map_err(|e| e.to_string())?;
+        if list_out.status.success() {
+            parse_worktree_porcelain(&String::from_utf8_lossy(&list_out.stdout))
+                .into_iter()
+                .filter(|w| w.prunable)
+                .map(|w| w.path)
+                .collect::<Vec<_>>()
+        } else {
+            Vec::new()
+        }
+    };
+
+    let args = build_worktree_gc_args(
+        &project,
+        dry_run,
+        forced,
+        age.as_deref(),
+    )?;
 
     let out = std::process::Command::new("git")
         .args(&args)
@@ -5170,6 +5310,7 @@ pub async fn git_worktree_remove(
         return Err(if err.is_empty() {
             "git worktree add failed".into()
             "git worktree remove failed".into()
+            "git worktree prune failed".into()
         } else {
             err.chars().take(400).collect()
         });
@@ -5204,6 +5345,38 @@ pub async fn git_worktree_remove(
     Ok(GitWorktreeRemoveResult {
         path: remove_path,
         forced,
+    // prune -v writes progress to stderr on some git versions, stdout on others.
+    let mut combined = String::new();
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    if !stdout.trim().is_empty() {
+        combined.push_str(stdout.trim());
+    }
+    if !stderr.trim().is_empty() {
+        if !combined.is_empty() {
+            combined.push('\n');
+        }
+        combined.push_str(stderr.trim());
+    }
+    // Prefer verbose prune lines; fall back to porcelain prunable count on dry-run.
+    let mut pruned_count = count_worktree_prune_lines(&combined);
+    if pruned_count == 0 && !prunable.is_empty() {
+        pruned_count = prunable.len();
+    }
+
+    let used_expire = match &age {
+        Some(a) => Some(a.clone()),
+        None if forced => Some("now".into()),
+        None => None,
+    };
+
+    Ok(GitWorktreeGcResult {
+        dry_run,
+        forced,
+        max_age: used_expire,
+        output: combined.chars().take(4000).collect(),
+        prunable,
+        pruned_count,
     })
 }
 
@@ -5397,6 +5570,100 @@ pub async fn hooks_ensure_dir(
         "path": dir.to_string_lossy(),
         "scope": scope,
     }))
+    fn sanitize_max_age_accepts_common() {
+        assert_eq!(
+            sanitize_worktree_gc_max_age(Some("now")).unwrap(),
+            Some("now".into())
+        );
+        assert_eq!(
+            sanitize_worktree_gc_max_age(Some("  2.weeks.ago  ")).unwrap(),
+            Some("2.weeks.ago".into())
+        );
+        assert_eq!(sanitize_worktree_gc_max_age(None).unwrap(), None);
+        assert_eq!(sanitize_worktree_gc_max_age(Some("")).unwrap(), None);
+        assert_eq!(sanitize_worktree_gc_max_age(Some("   ")).unwrap(), None);
+    }
+
+    #[test]
+    fn sanitize_max_age_rejects_bad() {
+        assert!(sanitize_worktree_gc_max_age(Some("-n")).is_err());
+        assert!(sanitize_worktree_gc_max_age(Some("--expire")).is_err());
+        assert!(sanitize_worktree_gc_max_age(Some("2 weeks")).is_err());
+        assert!(sanitize_worktree_gc_max_age(Some("a;rm")).is_err());
+        assert!(sanitize_worktree_gc_max_age(Some(&"x".repeat(80))).is_err());
+    }
+
+    #[test]
+    fn build_worktree_gc_args_dry_run() {
+        let args = build_worktree_gc_args("/Users/me/repo", true, false, None).unwrap();
+        assert_eq!(
+            args,
+            vec![
+                "-C",
+                "/Users/me/repo",
+                "worktree",
+                "prune",
+                "-v",
+                "--dry-run",
+            ]
+        );
+    }
+
+    #[test]
+    fn build_worktree_gc_args_force_expire_now() {
+        let args = build_worktree_gc_args("/Users/me/repo", false, true, None).unwrap();
+        assert_eq!(
+            args,
+            vec![
+                "-C",
+                "/Users/me/repo",
+                "worktree",
+                "prune",
+                "-v",
+                "--expire",
+                "now",
+            ]
+        );
+    }
+
+    #[test]
+    fn build_worktree_gc_args_max_age_overrides_force() {
+        let args =
+            build_worktree_gc_args("/Users/me/repo", true, true, Some("3.months")).unwrap();
+        assert_eq!(
+            args,
+            vec![
+                "-C",
+                "/Users/me/repo",
+                "worktree",
+                "prune",
+                "-v",
+                "--dry-run",
+                "--expire",
+                "3.months",
+            ]
+        );
+    }
+
+    #[test]
+    fn build_worktree_gc_args_rejects_empty_project() {
+        assert!(build_worktree_gc_args("", false, false, None).is_err());
+        assert!(build_worktree_gc_args("-C", false, false, None).is_err());
+    }
+
+    #[test]
+    fn count_prune_lines_matches_verbose() {
+        let out = "\
+Removing worktrees/stale: gitdir file points to non-existent location
+Removing worktrees/old: gitdir file points to non-existent location
+";
+        assert_eq!(count_worktree_prune_lines(out), 2);
+        assert_eq!(count_worktree_prune_lines(""), 0);
+        assert_eq!(
+            count_worktree_prune_lines("Would remove worktrees/foo\n"),
+            1
+        );
+    }
 }
 
 /// Reveal a path in the system file manager (Finder / Explorer).

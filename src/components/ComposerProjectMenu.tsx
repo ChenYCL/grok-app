@@ -43,6 +43,10 @@ type Props = {
     worktreeNew: string;
     /** Remove linked worktree (non-main). */
     worktreeRemove?: string;
+    /** Badge when project folder is missing on disk. */
+    pathMissing?: string;
+    /** Clean stale worktree admin records (prune). */
+    worktreeGc?: string;
   };
   /** Linked worktrees for the active project (loaded by parent). */
   worktrees?: GitWorktreeEntry[];
@@ -63,6 +67,8 @@ type Props = {
   onCreateWorktree?: () => void;
   /** Open confirm to remove a linked (non-main) worktree. */
   onRemoveWorktree?: (wt: GitWorktreeEntry) => void;
+  /** Open “Clean stale worktrees…” dialog (parent owns modal). */
+  onGcWorktrees?: () => void;
   onOpen?: () => void;
 };
 
@@ -82,6 +88,7 @@ export function ComposerProjectMenu({
   onSwitchWorktree,
   onCreateWorktree,
   onRemoveWorktree,
+  onGcWorktrees,
   onOpen,
 }: Props) {
   const [open, setOpen] = useState(false);
@@ -95,6 +102,7 @@ export function ComposerProjectMenu({
   // Only for confirmed git work trees — hide while loading / non-git / no project.
   const showWorktrees = !!activeProject && worktreesAvailable === true;
   const canCreate = showWorktrees && !!onCreateWorktree;
+  const canGc = showWorktrees && !!onGcWorktrees && !!labels.worktreeGc;
 
   const estHeight = Math.min(
     400,
@@ -104,6 +112,7 @@ export function ComposerProjectMenu({
         ? 28 +
           Math.min(160, Math.max(worktrees.length, 1) * 36 + 8) +
           (canCreate ? 36 : 0)
+          (canGc ? 36 : 0)
         : 0),
   );
   const { pos, style: popStyle } = useFloatingMenu({
@@ -118,6 +127,7 @@ export function ComposerProjectMenu({
     estHeight,
     gap: 8,
     deps: [projects.length, worktrees.length, showWorktrees, canCreate],
+    deps: [projects.length, worktrees.length, showWorktrees, canGc],
   });
 
   // Refresh only when the menu opens — not when parent re-renders with a new onOpen.
@@ -324,6 +334,18 @@ export function ComposerProjectMenu({
                   >
                     <IconPlus size={14} aria-hidden />
                     <span>{labels.worktreeNew}</span>
+                {canGc ? (
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className="cpm__action cpm__worktree-gc"
+                    onClick={() => {
+                      setOpen(false);
+                      onGcWorktrees?.();
+                    }}
+                  >
+                    <IconTrash size={14} aria-hidden />
+                    <span>{labels.worktreeGc}</span>
                   </button>
                 ) : null}
               </div>
