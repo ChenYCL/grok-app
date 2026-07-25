@@ -105,6 +105,9 @@ export const zhTW: Record<MessageKey, string> = {
   "session.rewindConfirm":
     "回退到此回合並捨棄之後的全部內容？此操作對目前對話無法復原。",
   "session.rewindConfirmLabel": "回退",
+  "session.rewindRestoreFiles": "同時將工作區檔案還原到此節點",
+  "session.rewindRestoreFilesHint":
+    "回退此回合之後的檔案變更（需 Agent 支援）。預設關閉，更安全。",
   "session.rewindOk": "對話已回退",
   "session.rewindLocalOnly":
     "已在本機回退對話。Agent 歷史未更新（不支援或未連線）。",
@@ -315,7 +318,8 @@ export const zhTW: Record<MessageKey, string> = {
   "tasks.noKill": "ACP 不支援依工具終止 — 如需取消請停止本輪。",
   "tasks.expand": "展開詳情",
   "tasks.collapse": "收合詳情",
-  "media.loadError": "應用程式內無法載入此媒體。",
+    "tasks.searchPlaceholder": "篩選任務…",
+"media.loadError": "應用程式內無法載入此媒體。",
   "media.openExternal": "以系統播放器開啟",
   "media.loading": "正在載入媒體…",
 
@@ -680,6 +684,14 @@ export const zhTW: Record<MessageKey, string> = {
   "settings.disableWebSearchDesc":
     "啟動 Agent 時加上 --disable-web-search，移除 web_search / web_fetch 工具。變更後會 soft-respawn 已連線的 Agent。",
     "settings.section.agent": "Agent",
+  "settings.subagentsEnabled": "允許子代理",
+  "settings.subagentsEnabledDesc": "關閉時啟動加上 --no-subagents，無法拉起巢狀 Agent / 任務。變更後 soft-respawn。",
+  "settings.planEnabled": "允許計畫模式",
+  "settings.planEnabledDesc": "關閉時啟動加上 --no-plan，Agent 無法進入計畫模式。變更後 soft-respawn。",
+  "settings.useLeader": "共用 Agent 後端（leader）",
+  "settings.useLeaderDesc": "使用 --leader 讓多個用戶端共用一個後端行程；關閉則 --no-leader（預設）。變更後 soft-respawn。",
+  "settings.reopenLastSession": "啟動時還原上次對話",
+  "settings.reopenLastSessionDesc": "應用程式啟動後，若上次開啟的對話仍存在且未封存，則自動開啟。",
 "settings.prefsScope": "模型與權限記憶範圍",
   "settings.prefsScopeDesc":
     "全域：所有對話共用。專案：依工作區記憶。對話：僅目前聊天。",
@@ -1327,6 +1339,34 @@ export const zhTW: Record<MessageKey, string> = {
   "ext.hooks.error": "無法載入 hooks",
   "ext.hooks.docs": "Hooks 指南",
   "ext.market.update": "重新整理",
+  "ext.market.title": "市集來源",
+  "ext.market.desc":
+    "對應 `grok plugin marketplace` 的 git 來源。重新整理快取、新增來源後，可在下方安裝可用外掛。",
+  "ext.market.loading": "正在載入市集…",
+  "ext.market.empty": "尚未設定市集來源",
+  "ext.market.addLabel": "新增來源",
+  "ext.market.addPlaceholder": "Git URL、GitHub owner/repo 或本機路徑",
+  "ext.market.add": "新增",
+  "ext.market.adding": "新增中…",
+  "ext.market.addEmpty": "請輸入 git URL、GitHub 簡寫或路徑。",
+  "ext.market.remove": "移除",
+  "ext.market.removeTitle": "移除市集來源",
+  "ext.market.removeConfirm":
+    "移除來源 “{name}”？從此來源安裝的外掛可能需要另行解除安裝。",
+  "ext.market.updateAll": "全部重新整理",
+  "ext.market.updating": "重新整理中…",
+  "ext.market.availableTitle": "可用外掛",
+  "ext.market.availableEmpty": "已設定來源中沒有可用外掛。",
+  "ext.market.availableLoading": "正在載入可用外掛…",
+  "ext.market.install": "安裝",
+  "ext.market.installing": "安裝中…",
+  "ext.market.installTitle": "安裝外掛",
+  "ext.market.installConfirm":
+    "使用 `grok plugin install --trust` 安裝 “{name}”？第三方程式碼將以 Agent 權限執行。",
+  "ext.market.searchPlaceholder": "篩選可用外掛…",
+  "ext.market.error": "市集操作失敗",
+  "ext.market.note":
+    "來源與目錄來自 CLI。安裝使用 --trust，並 soft-respawn Agent 以便下一輪載入外掛。",
 "error.needTauri": "需要在 Tauri 視窗中選擇目錄",
   "common.comingSoon": "即將推出",
   "common.local": "本機",

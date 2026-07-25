@@ -91,7 +91,13 @@ import {
   mergePlanFromEvent,
   type SessionPlanState,
 } from "@/lib/planSession";
+import { AgentTasksPanel } from "@/components/AgentTasksPanel";
 import * as api from "@/lib/api";
+import { shouldRestoreLastSession } from "@/lib/sessionRestore";
+import {
+  collectSessionTasks,
+  countRunningTasks,
+} from "@/lib/sessionTasks";
 import { createT, resolveLocale, type Locale } from "@/i18n";
 import {
   DEFAULT_EFFORT,
@@ -258,6 +264,7 @@ import {
   IconRewind,
   IconShield,
   IconCheck,
+  IconList,
 } from "@/components/icons";
 import { AutomationsPage } from "@/components/AutomationsPage";
 import { OpenLocationButton } from "@/components/OpenLocationButton";
@@ -458,6 +465,9 @@ export default function App() {
   const [slashActiveIndex, setSlashActiveIndex] = useState(0);
   const [showStatusModal, setShowStatusModal] = useState(false);
   const [showMcpModal, setShowMcpModal] = useState(false);
+  const [showCompactModal, setShowCompactModal] = useState(false);
+  const [compactNote, setCompactNote] = useState("");
+  const compactNoteRef = useRef<HTMLInputElement>(null);
   const [mcpServers, setMcpServers] = useState<api.McpDto[]>([]);
   const [mcpError, setMcpError] = useState<string | null>(null);
   const [mcpLoading, setMcpLoading] = useState(false);
@@ -467,6 +477,13 @@ export default function App() {
     points: Array<{ promptIndex: number; messageId?: string | null; preview: string }>;
   } | null>(null);
   const [rewindBusy, setRewindBusy] = useState(false);
+  /** Confirm rewind target + optional file restore (default off). */
+  const [rewindConfirm, setRewindConfirm] = useState<{
+    sessionId: string;
+    targetPromptIndex: number;
+    preview?: string;
+  } | null>(null);
+  const [rewindRestoreFiles, setRewindRestoreFiles] = useState(false);
   /** Last user message open in inline edit (not main composer). */
   const [editingUserMessageId, setEditingUserMessageId] = useState<
     string | null
@@ -797,6 +814,15 @@ export default function App() {
   const [agentCatalog, setAgentCatalog] = useState<
     Array<{ name: string; source: string }>
   >([]);
+  const [experimentalMemory, setExperimentalMemory] = useState(false);
+  const [subagentsEnabled, setSubagentsEnabled] = useState(true);
+  const [planEnabled, setPlanEnabled] = useState(true);
+  const [disableWebSearch, setDisableWebSearch] = useState(false);
+  const [useLeader, setUseLeader] = useState(false);
+  const [reopenLastSession, setReopenLastSession] = useState(true);
+  const [lastSessionId, setLastSessionId] = useState<string | null>(null);
+  const didRestoreLastRef = useRef(false);
+  const [tasksPanelOpen, setTasksPanelOpen] = useState(false);
   const [gitWorktrees, setGitWorktrees] = useState<api.GitWorktreeEntry[]>([]);
   /** null = unknown/loading; true = git work tree; false = not a git repo. */
   const [gitWorktreesAvailable, setGitWorktreesAvailable] = useState<
@@ -1111,6 +1137,17 @@ export default function App() {
         setSandboxProfile(known.includes(sb) ? sb : "off");
       }
       setPreferredAgent((settings.preferredAgent || "").trim());
+      setExperimentalMemory(!!settings.experimentalMemory);
+      setSubagentsEnabled(settings.subagentsEnabled !== false);
+      setPlanEnabled(settings.planEnabled !== false);
+      setDisableWebSearch(!!settings.disableWebSearch);
+      setUseLeader(!!settings.useLeader);
+      setReopenLastSession(settings.reopenLastSession !== false);
+      setLastSessionId(
+        typeof settings.lastSessionId === "string"
+          ? settings.lastSessionId.trim() || null
+          : null,
+      );
       void api
         .agentsCatalog(null)
         .then((cat) => {
@@ -2360,6 +2397,13 @@ export default function App() {
       setRetryStatus(null);
     }
 
+    if (api.isTauri()) {
+      setLastSessionId(s.id);
+      void api
+        .settingsRememberLastSession(s.id, proj?.id ?? null)
+        .catch(() => {});
+    }
+
     // Warm ACP: connect while the user reads history (trusted project or orphan).
     // Host serializes connect; first send no-ops if already ready, or waits if
     // still handshaking. Process is reused across sessions when cwd/effort match.
@@ -2400,6 +2444,36 @@ export default function App() {
       })();
     }
   };
+
+  const openSessionRef = useRef(openSession);
+  openSessionRef.current = openSession;
+
+  useEffect(() => {
+    if (appGate !== "ready") return;
+    if (didRestoreLastRef.current) return;
+    if (!api.isTauri()) {
+      didRestoreLastRef.current = true;
+      return;
+    }
+    const id = shouldRestoreLastSession({
+      enabled: reopenLastSession,
+      workbenchReady: true,
+      lastSessionId,
+      sessions,
+      currentSessionId: session.sessionId,
+    });
+    didRestoreLastRef.current = true;
+    if (!id) return;
+    const row = sessions.find((s) => s.id === id);
+    if (!row) return;
+    void openSessionRef.current(row);
+  }, [
+    appGate,
+    reopenLastSession,
+    lastSessionId,
+    sessions,
+    session.sessionId,
+  ]);
 
   /**
    * Focus composer after React commit. Retries until the textarea is mounted
@@ -4934,9 +5008,14 @@ export default function App() {
 
   /**
    * Apply rewind: truncate local journal (+ agent when live), refresh messages UI.
+   * `restoreFiles` is opt-in (safe default off) — reverts workspace files when agent supports it.
    */
   const runRewindToPrompt = useCallback(
-    async (sessionId: string, targetPromptIndex: number) => {
+    async (
+      sessionId: string,
+      targetPromptIndex: number,
+      restoreFiles = false,
+    ) => {
       if (!api.isTauri()) {
         showToast(tr("error.needTauri"));
         return;
@@ -4962,7 +5041,7 @@ export default function App() {
 
         const result = await api.sessionRewindExecute(targetPromptIndex, {
           sessionId,
-          restoreFiles: false,
+          restoreFiles,
         });
 
         // Refresh UI from truncated journal.
@@ -4998,6 +5077,8 @@ export default function App() {
         }
 
         setRewindTimeline(null);
+        setRewindConfirm(null);
+        setRewindRestoreFiles(false);
         if (result.agentOk) {
           showToast(tr("session.rewindOk"), 2600);
         } else {
@@ -5018,21 +5099,15 @@ export default function App() {
   const confirmRewindToPrompt = useCallback(
     (sessionId: string, targetPromptIndex: number, preview?: string) => {
       setCtxMenu(null);
-      const msgPreview = preview?.trim()
-        ? `\n\n“${preview.trim()}”`
-        : "";
-      setAppDialog({
-        kind: "confirm",
-        title: tr("session.rewindTitle"),
-        message: tr("session.rewindConfirm") + msgPreview,
-        confirmLabel: tr("session.rewindConfirmLabel"),
-        danger: true,
-        onConfirm: () => {
-          void runRewindToPrompt(sessionId, targetPromptIndex);
-        },
+      // GlassModal with restore-files checkbox (default off) — not bare setAppDialog.
+      setRewindRestoreFiles(false);
+      setRewindConfirm({
+        sessionId,
+        targetPromptIndex,
+        preview: preview?.trim() || undefined,
       });
     },
-    [runRewindToPrompt, tr],
+    [],
   );
 
   const openRewindTimeline = useCallback(
@@ -5329,6 +5404,15 @@ export default function App() {
   const contextUsageDisplay = useMemo(
     () => resolveContextUsageDisplay(contextUsage, messages),
     [contextUsage, messages],
+  );
+
+  const sessionTasks = useMemo(
+    () => collectSessionTasks(messages),
+    [messages],
+  );
+  const runningTaskCount = useMemo(
+    () => countRunningTasks(sessionTasks),
+    [sessionTasks],
   );
 
   /**
@@ -7281,6 +7365,48 @@ export default function App() {
             );
           }}
           agentCatalog={agentCatalog}
+          experimentalMemory={experimentalMemory}
+          onExperimentalMemory={(v) => {
+            setExperimentalMemory(v);
+            void api.settingsGet().then((s) =>
+              api.settingsSet({ ...s, experimentalMemory: v }),
+            );
+          }}
+          subagentsEnabled={subagentsEnabled}
+          onSubagentsEnabled={(v) => {
+            setSubagentsEnabled(v);
+            void api.settingsGet().then((s) =>
+              api.settingsSet({ ...s, subagentsEnabled: v }),
+            );
+          }}
+          planEnabled={planEnabled}
+          onPlanEnabled={(v) => {
+            setPlanEnabled(v);
+            void api.settingsGet().then((s) =>
+              api.settingsSet({ ...s, planEnabled: v }),
+            );
+          }}
+          disableWebSearch={disableWebSearch}
+          onDisableWebSearch={(v) => {
+            setDisableWebSearch(v);
+            void api.settingsGet().then((s) =>
+              api.settingsSet({ ...s, disableWebSearch: v }),
+            );
+          }}
+          useLeader={useLeader}
+          onUseLeader={(v) => {
+            setUseLeader(v);
+            void api.settingsGet().then((s) =>
+              api.settingsSet({ ...s, useLeader: v }),
+            );
+          }}
+          reopenLastSession={reopenLastSession}
+          onReopenLastSession={(v) => {
+            setReopenLastSession(v);
+            void api.settingsGet().then((s) =>
+              api.settingsSet({ ...s, reopenLastSession: v }),
+            );
+          }}
           cliInfo={cliInfo}
           onDoctor={() => void openDoctor()}
           onOpenShortcutsHelp={() => setShowShortcuts(true)}
@@ -8118,6 +8244,37 @@ export default function App() {
                   }}
                 />
               )}
+              {mainPane === "chat" && session.sessionId ? (
+                <Tip
+                  label={
+                    tasksPanelOpen
+                      ? tr("tasks.hidePanel")
+                      : tr("tasks.showPanel")
+                  }
+                >
+                  <button
+                    type="button"
+                    className={
+                      "chrome-btn main__pane-toggle" +
+                      (tasksPanelOpen ? " is-on" : "")
+                    }
+                    onClick={() => setTasksPanelOpen((v) => !v)}
+                    aria-pressed={tasksPanelOpen}
+                    aria-label={
+                      tasksPanelOpen
+                        ? tr("tasks.hidePanel")
+                        : tr("tasks.showPanel")
+                    }
+                  >
+                    <IconList size={16} />
+                    {runningTaskCount > 0 ? (
+                      <span className="rp-chrome__badge" aria-hidden>
+                        {Math.min(99, runningTaskCount)}
+                      </span>
+                    ) : null}
+                  </button>
+                </Tip>
+              ) : null}
               <Tip
                 label={
                   layout.asideCollapsed
@@ -8290,6 +8447,13 @@ export default function App() {
               onClose={() => setShowChatFind(false)}
             />
           )}
+          {mainPane === "chat" && tasksPanelOpen && session.sessionId ? (
+            <AgentTasksPanel
+              messages={messages}
+              t={(k, vars) => tr(k, vars)}
+              onClose={() => setTasksPanelOpen(false)}
+            />
+          ) : null}
 
           {/* Pre-turn / host errors: T04 deck (problem · cause · primary · secondary) */}
           {errorBanner && !hasChatTurnError && (
@@ -9526,6 +9690,154 @@ export default function App() {
               </button>
             </div>
           </div>
+        </div>
+      )}
+
+      <GlassModal
+        open={!!rewindConfirm}
+        onClose={() => {
+          if (rewindBusy) return;
+          setRewindConfirm(null);
+          setRewindRestoreFiles(false);
+        }}
+        title={tr("session.rewindTitle")}
+        size="sm"
+        closeLabel={tr("common.close")}
+        closeOnOverlay={!rewindBusy}
+        showClose={!rewindBusy}
+        wrapBody
+        className="rewind-confirm-modal"
+        footer={
+          <>
+            <button
+              type="button"
+              className="btn btn--ghost"
+              disabled={rewindBusy}
+              onClick={() => {
+                setRewindConfirm(null);
+                setRewindRestoreFiles(false);
+              }}
+            >
+              {tr("common.cancel")}
+            </button>
+            <button
+              type="button"
+              className="btn btn--danger"
+              disabled={rewindBusy || !rewindConfirm}
+              onClick={() => {
+                if (!rewindConfirm) return;
+                void runRewindToPrompt(
+                  rewindConfirm.sessionId,
+                  rewindConfirm.targetPromptIndex,
+                  rewindRestoreFiles,
+                );
+              }}
+            >
+              {tr("session.rewindConfirmLabel")}
+            </button>
+          </>
+        }
+      >
+        <div className="rewind-confirm">
+          <p className="rewind-confirm__msg">
+            {tr("session.rewindConfirm")}
+            {rewindConfirm?.preview
+              ? `\n\n“${rewindConfirm.preview}”`
+              : ""}
+          </p>
+          <label className="rewind-confirm__restore">
+            <input
+              type="checkbox"
+              checked={rewindRestoreFiles}
+              disabled={rewindBusy}
+              onChange={(e) => setRewindRestoreFiles(e.target.checked)}
+            />
+            <span>{tr("session.rewindRestoreFiles")}</span>
+          </label>
+          <p className="rewind-confirm__hint">
+            {tr("session.rewindRestoreFilesHint")}
+          </p>
+        </div>
+      </GlassModal>
+
+      {showCompactModal && (
+        <div
+          className="overlay"
+          role="presentation"
+          onClick={() => {
+            setShowCompactModal(false);
+            setCompactNote("");
+          }}
+        >
+          <form
+            className="modal compact-modal"
+            onClick={(e) => e.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="compact-modal-title"
+            onSubmit={(e) => {
+              e.preventDefault();
+              const note = compactNote;
+              setShowCompactModal(false);
+              setCompactNote("");
+              void (async () => {
+                const cmd = note.trim()
+                  ? `/compact ${note.trim()}`
+                  : "/compact";
+                try {
+                  const sid = await ensureConnected();
+                  if (!sid) return;
+                  await api.sessionSend(cmd);
+                } catch (err) {
+                  setLocalError(String(err));
+                }
+              })();
+            }}
+          >
+            <header className="modal-head">
+              <h2 id="compact-modal-title" className="modal-title">
+                {tr("slash.compact")}
+              </h2>
+              <button
+                type="button"
+                className="icon-btn modal-close"
+                onClick={() => {
+                  setShowCompactModal(false);
+                  setCompactNote("");
+                }}
+                aria-label={tr("common.close")}
+              >
+                <IconClose size={16} />
+              </button>
+            </header>
+            <p className="compact-modal__msg">
+              {tr("slash.compactConfirm")}
+            </p>
+            <input
+              ref={compactNoteRef}
+              className="compact-modal__field"
+              value={compactNote}
+              onChange={(e) => setCompactNote(e.target.value)}
+              placeholder={tr("slash.compactNote")}
+              autoFocus
+              autoComplete="off"
+            />
+            <div className="modal-actions">
+              <button
+                type="button"
+                className="btn btn--ghost"
+                onClick={() => {
+                  setShowCompactModal(false);
+                  setCompactNote("");
+                }}
+              >
+                {tr("slash.compactConfirmCancel")}
+              </button>
+              <button type="submit" className="btn btn--solid">
+                {tr("slash.compactConfirmOk")}
+              </button>
+            </div>
+          </form>
         </div>
       )}
 

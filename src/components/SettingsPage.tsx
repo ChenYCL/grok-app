@@ -62,6 +62,8 @@ import { ProvidersPanel } from "@/components/ProvidersPanel";
 import { ExtensionsPanel } from "@/components/ExtensionsPanel";
 import { ProjectInspectPanel } from "@/components/ProjectInspectPanel";
 import { PermissionRulesPanel } from "@/components/PermissionRulesPanel";
+import { ManagedSetupPanel } from "@/components/ManagedSetupPanel";
+import { GlassModal } from "@/components/GlassModal";
 import { RemoteImLayout } from "@/components/RemoteImLayout";
 import {
   createT,
@@ -499,6 +501,21 @@ export function SettingsPage({
   onSandboxProfile,
   maxAgentTurns = 0,
   onMaxAgentTurns,
+  preferredAgent = "",
+  onPreferredAgent,
+  agentCatalog = [],
+  experimentalMemory = false,
+  onExperimentalMemory,
+  subagentsEnabled = true,
+  onSubagentsEnabled,
+  planEnabled = true,
+  onPlanEnabled,
+  disableWebSearch = false,
+  onDisableWebSearch,
+  useLeader = false,
+  onUseLeader,
+  reopenLastSession = true,
+  onReopenLastSession,
   cliInfo,
   onDoctor,
   versionFooter,
@@ -536,6 +553,9 @@ export function SettingsPage({
     "official",
   );
   const [editors, setEditors] = useState<DetectedEditor[]>([]);
+  const [clearMemoryOpen, setClearMemoryOpen] = useState(false);
+  const [clearMemoryBusy, setClearMemoryBusy] = useState(false);
+  const [settingsToast, setSettingsToast] = useState<string | null>(null);
   /** Selected archived session ids (settings → archived multi-select). */
   const [archivedSelected, setArchivedSelected] = useState<Set<string>>(
     () => new Set(),
@@ -561,6 +581,25 @@ export function SettingsPage({
     (k: string, vars?: Vars) => tr(k as MessageKey, vars),
     [tr],
   );
+
+  const workspaceCwd = (projectPath || "").trim() || null;
+  const showSettingsToast = useCallback((msg: string, ms = 3500) => {
+    setSettingsToast(msg);
+    window.setTimeout(() => setSettingsToast(null), ms);
+  }, []);
+  const runClearWorkspaceMemory = useCallback(async () => {
+    if (!workspaceCwd || clearMemoryBusy) return;
+    setClearMemoryBusy(true);
+    try {
+      await api.memoryClear({ cwd: workspaceCwd, scope: "workspace" });
+      setClearMemoryOpen(false);
+      showSettingsToast(t("settings.clearWorkspaceMemoryDone"), 3500);
+    } catch (e) {
+      showSettingsToast(String(e), 4500);
+    } finally {
+      setClearMemoryBusy(false);
+    }
+  }, [workspaceCwd, clearMemoryBusy, showSettingsToast, t]);
 
   const wallpaperErrorMessage = useCallback(
     (err: unknown): string => {
@@ -1050,7 +1089,130 @@ export function SettingsPage({
                   />
                 </div>
               ) : null}
+              {onPreferredAgent ? (
+                <div className="settings-row settings-row--stack">
+                  <div className="settings-row__text">
+                    <div className="settings-row__label">
+                      {t("settings.preferredAgent")}
+                    </div>
+                    <div className="settings-row__desc">
+                      {t("settings.preferredAgentDesc")}
+                    </div>
+                  </div>
+                  <Select
+                    value={preferredAgent || ""}
+                    onChange={(v) => onPreferredAgent(v)}
+                    options={[
+                      {
+                        value: "",
+                        label: t("settings.preferredAgent.default"),
+                      },
+                      ...agentCatalog.map((a) => {
+                        const srcKey = (
+                          {
+                            builtin: "settings.preferredAgent.source.builtin",
+                            bundled: "settings.preferredAgent.source.bundled",
+                            user: "settings.preferredAgent.source.user",
+                            project: "settings.preferredAgent.source.project",
+                          } as const
+                        )[a.source as "builtin" | "bundled" | "user" | "project"];
+                        const srcLabel = srcKey ? t(srcKey) : a.source || "other";
+                        return {
+                          value: a.name,
+                          label: `${a.name} · ${srcLabel}`,
+                        };
+                      }),
+                    ]}
+                  />
+                </div>
+              ) : null}
+              {onExperimentalMemory ? (
+                <div className="settings-row">
+                  <div className="settings-row__text">
+                    <div className="settings-row__label">
+                      {t("settings.experimentalMemory")}
+                    </div>
+                    <div className="settings-row__desc">
+                      {t("settings.experimentalMemoryDesc")}
+                    </div>
+                  </div>
+                  <UiCheck
+                    checked={!!experimentalMemory}
+                    onChange={() => onExperimentalMemory(!experimentalMemory)}
+                    ariaLabel={t("settings.experimentalMemory")}
+                  />
+                </div>
+              ) : null}
+              {onSubagentsEnabled ? (
+                <div className="settings-row">
+                  <div className="settings-row__text">
+                    <div className="settings-row__label">
+                      {t("settings.subagentsEnabled")}
+                    </div>
+                    <div className="settings-row__desc">
+                      {t("settings.subagentsEnabledDesc")}
+                    </div>
+                  </div>
+                  <UiCheck
+                    checked={!!subagentsEnabled}
+                    onChange={() => onSubagentsEnabled(!subagentsEnabled)}
+                    ariaLabel={t("settings.subagentsEnabled")}
+                  />
+                </div>
+              ) : null}
+              {onPlanEnabled ? (
+                <div className="settings-row">
+                  <div className="settings-row__text">
+                    <div className="settings-row__label">
+                      {t("settings.planEnabled")}
+                    </div>
+                    <div className="settings-row__desc">
+                      {t("settings.planEnabledDesc")}
+                    </div>
+                  </div>
+                  <UiCheck
+                    checked={!!planEnabled}
+                    onChange={() => onPlanEnabled(!planEnabled)}
+                    ariaLabel={t("settings.planEnabled")}
+                  />
+                </div>
+              ) : null}
+              {onDisableWebSearch ? (
+                <div className="settings-row">
+                  <div className="settings-row__text">
+                    <div className="settings-row__label">
+                      {t("settings.disableWebSearch")}
+                    </div>
+                    <div className="settings-row__desc">
+                      {t("settings.disableWebSearchDesc")}
+                    </div>
+                  </div>
+                  <UiCheck
+                    checked={!!disableWebSearch}
+                    onChange={() => onDisableWebSearch(!disableWebSearch)}
+                    ariaLabel={t("settings.disableWebSearch")}
+                  />
+                </div>
+              ) : null}
+              {onUseLeader ? (
+                <div className="settings-row">
+                  <div className="settings-row__text">
+                    <div className="settings-row__label">
+                      {t("settings.useLeader")}
+                    </div>
+                    <div className="settings-row__desc">
+                      {t("settings.useLeaderDesc")}
+                    </div>
+                  </div>
+                  <UiCheck
+                    checked={!!useLeader}
+                    onChange={() => onUseLeader(!useLeader)}
+                    ariaLabel={t("settings.useLeader")}
+                  />
+                </div>
+              ) : null}
             </div>
+
 
 <h2 className="settings-page__h2">{t("settings.section.general")}</h2>
             <div className="settings-card">
@@ -1117,6 +1279,45 @@ export function SettingsPage({
                       onStoreApiKeysInKeychain(!storeApiKeysInKeychain)
                     }
                     ariaLabel={t("settings.storeApiKeysInKeychain")}
+                  />
+                </div>
+              ) : null}
+              {workspaceCwd ? (
+                <div className="settings-row">
+                  <div className="settings-row__text">
+                    <div className="settings-row__label">
+                      {t("settings.clearWorkspaceMemory")}
+                    </div>
+                    <div className="settings-row__desc">
+                      {t("settings.clearWorkspaceMemoryDesc")}
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    className="btn btn--ghost btn--danger settings-row__action"
+                    disabled={clearMemoryBusy}
+                    onClick={() => setClearMemoryOpen(true)}
+                  >
+                    {clearMemoryBusy
+                      ? t("settings.clearWorkspaceMemoryBusy")
+                      : t("settings.clearWorkspaceMemory")}
+                  </button>
+                </div>
+              ) : null}
+              {onReopenLastSession ? (
+                <div className="settings-row">
+                  <div className="settings-row__text">
+                    <div className="settings-row__label">
+                      {t("settings.reopenLastSession")}
+                    </div>
+                    <div className="settings-row__desc">
+                      {t("settings.reopenLastSessionDesc")}
+                    </div>
+                  </div>
+                  <UiCheck
+                    checked={!!reopenLastSession}
+                    onChange={() => onReopenLastSession(!reopenLastSession)}
+                    ariaLabel={t("settings.reopenLastSession")}
                   />
                 </div>
               ) : null}
@@ -1842,6 +2043,13 @@ export function SettingsPage({
                 cliFound={cliInfo.found}
               />
             </div>
+            <div className="settings-card settings-card--nested pi-settings-block">
+              <ManagedSetupPanel
+                locale={resolveLocale(locale)}
+                cliFound={cliInfo.found}
+                onOpenAccount={() => onSection("account")}
+              />
+            </div>
           </div>
         )}
 
@@ -1868,6 +2076,49 @@ export function SettingsPage({
         )}
       </main>
       </div>
+
+      {settingsToast ? (
+        <div className="app-toast" role="status">
+          {settingsToast}
+        </div>
+      ) : null}
+
+      <GlassModal
+        open={clearMemoryOpen}
+        onClose={() => {
+          if (!clearMemoryBusy) setClearMemoryOpen(false);
+        }}
+        title={t("settings.clearWorkspaceMemoryConfirmTitle")}
+        size="sm"
+        closeLabel={t("common.close")}
+        closeOnOverlay={!clearMemoryBusy}
+        footer={
+          <>
+            <button
+              type="button"
+              className="btn btn--ghost"
+              disabled={clearMemoryBusy}
+              onClick={() => setClearMemoryOpen(false)}
+            >
+              {t("common.cancel")}
+            </button>
+            <button
+              type="button"
+              className="btn btn--danger"
+              disabled={clearMemoryBusy || !workspaceCwd}
+              onClick={() => void runClearWorkspaceMemory()}
+            >
+              {clearMemoryBusy
+                ? t("settings.clearWorkspaceMemoryBusy")
+                : t("settings.clearWorkspaceMemory")}
+            </button>
+          </>
+        }
+      >
+        <p className="settings-row__desc" style={{ margin: 0 }}>
+          {t("settings.clearWorkspaceMemoryConfirmMsg")}
+        </p>
+      </GlassModal>
     </div>
   );
 }

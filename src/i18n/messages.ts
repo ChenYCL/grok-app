@@ -116,6 +116,9 @@ const en = {
   "session.rewindConfirm":
     "Rewind to this turn and discard everything after it? This cannot be undone for this chat.",
   "session.rewindConfirmLabel": "Rewind",
+  "session.rewindRestoreFiles": "Also restore workspace files to this point",
+  "session.rewindRestoreFilesHint":
+    "Reverts file changes made after this turn when the agent supports it. Off by default (safer).",
   "session.rewindOk": "Conversation rewound",
   "session.rewindLocalOnly":
     "Conversation rewound locally. Agent history was not updated (unsupported or disconnected).",
@@ -331,7 +334,8 @@ const en = {
   "tasks.noKill": "Per-tool kill is not available over ACP — stop the turn to cancel work.",
   "tasks.expand": "Show details",
   "tasks.collapse": "Hide details",
-  "media.loadError": "Could not load this media in the app preview.",
+    "tasks.searchPlaceholder": "Filter tasks…",
+"media.loadError": "Could not load this media in the app preview.",
   "media.openExternal": "Open with system player",
   "media.loading": "Loading media…",
 
@@ -709,6 +713,14 @@ const en = {
   "settings.disableWebSearchDesc":
     "Spawn agents with --disable-web-search so web_search and web_fetch tools are unavailable. Live agents soft-respawn when this changes.",
     "settings.section.agent": "Agent",
+  "settings.subagentsEnabled": "Allow subagents",
+  "settings.subagentsEnabledDesc": "When off, spawn with --no-subagents so nested Agent / task tools cannot start child sessions. Soft-respawns after change.",
+  "settings.planEnabled": "Allow plan mode",
+  "settings.planEnabledDesc": "When off, spawn with --no-plan so the agent cannot enter plan mode. Soft-respawns after change.",
+  "settings.useLeader": "Share agent backend (leader)",
+  "settings.useLeaderDesc": "Connect with --leader so multiple clients can share one backend process. Off uses --no-leader (default). Soft-respawns after change.",
+  "settings.reopenLastSession": "Reopen last chat on startup",
+  "settings.reopenLastSessionDesc": "When the app launches, open the chat you were last viewing if it still exists and is not archived.",
 "settings.prefsScope": "Remember model & permission at",
   "settings.prefsScopeDesc":
     "Global: all chats. Project: each workspace. Session: only the current chat.",
@@ -1373,6 +1385,34 @@ const en = {
   "ext.hooks.error": "Could not load hooks",
   "ext.hooks.docs": "Hooks guide",
   "ext.market.update": "Refresh",
+  "ext.market.title": "Marketplace sources",
+  "ext.market.desc":
+    "Git sources for `grok plugin marketplace`. Refresh caches, add a source, then install available plugins below.",
+  "ext.market.loading": "Loading marketplace…",
+  "ext.market.empty": "No marketplace sources configured",
+  "ext.market.addLabel": "Add source",
+  "ext.market.addPlaceholder": "Git URL, GitHub owner/repo, or local path",
+  "ext.market.add": "Add",
+  "ext.market.adding": "Adding…",
+  "ext.market.addEmpty": "Enter a git URL, GitHub shorthand, or path.",
+  "ext.market.remove": "Remove",
+  "ext.market.removeTitle": "Remove marketplace source",
+  "ext.market.removeConfirm":
+    "Remove source “{name}”? Plugins installed from it may need a separate uninstall.",
+  "ext.market.updateAll": "Refresh all",
+  "ext.market.updating": "Refreshing…",
+  "ext.market.availableTitle": "Available plugins",
+  "ext.market.availableEmpty": "No available plugins from configured sources.",
+  "ext.market.availableLoading": "Loading available plugins…",
+  "ext.market.install": "Install",
+  "ext.market.installing": "Installing…",
+  "ext.market.installTitle": "Install plugin",
+  "ext.market.installConfirm":
+    "Install “{name}” with `grok plugin install --trust`? Third-party code will run with agent permissions.",
+  "ext.market.searchPlaceholder": "Filter available plugins…",
+  "ext.market.error": "Marketplace action failed",
+  "ext.market.note":
+    "Sources and catalogs come from the CLI. Install uses --trust and soft-respawns the agent so the next turn reloads plugins.",
 "error.needTauri": "Folder picker requires the Tauri window",
   "common.comingSoon": "Coming soon",
   "common.local": "Local",
@@ -1860,6 +1900,9 @@ const zh: Record<MessageKey, string> = {
   "session.rewindConfirm":
     "回退到此回合并丢弃之后的全部内容？此操作对当前会话不可撤销。",
   "session.rewindConfirmLabel": "回退",
+  "session.rewindRestoreFiles": "同时将工作区文件恢复到此节点",
+  "session.rewindRestoreFilesHint":
+    "回退此回合之后的文件改动（需 Agent 支持）。默认关闭，更安全。",
   "session.rewindOk": "对话已回退",
   "session.rewindLocalOnly":
     "已在本地回退对话。Agent 历史未更新（不支持或未连接）。",
@@ -2070,7 +2113,8 @@ const zh: Record<MessageKey, string> = {
   "tasks.noKill": "ACP 不支持按工具终止 — 如需取消请停止本轮。",
   "tasks.expand": "展开详情",
   "tasks.collapse": "收起详情",
-  "media.loadError": "应用内无法加载此媒体。",
+    "tasks.searchPlaceholder": "筛选任务…",
+"media.loadError": "应用内无法加载此媒体。",
   "media.openExternal": "用系统播放器打开",
   "media.loading": "正在加载媒体…",
 
@@ -2435,6 +2479,14 @@ const zh: Record<MessageKey, string> = {
   "settings.disableWebSearchDesc":
     "启动 Agent 时加上 --disable-web-search，移除 web_search / web_fetch 工具。更改后会 soft-respawn 已连接的 Agent。",
     "settings.section.agent": "Agent",
+  "settings.subagentsEnabled": "允许子代理",
+  "settings.subagentsEnabledDesc": "关闭时启动加上 --no-subagents，无法拉起嵌套 Agent / 任务。更改后 soft-respawn。",
+  "settings.planEnabled": "允许计划模式",
+  "settings.planEnabledDesc": "关闭时启动加上 --no-plan，Agent 无法进入计划模式。更改后 soft-respawn。",
+  "settings.useLeader": "共享 Agent 后端（leader）",
+  "settings.useLeaderDesc": "使用 --leader 让多个客户端共用一个后端进程；关闭则 --no-leader（默认）。更改后 soft-respawn。",
+  "settings.reopenLastSession": "启动时恢复上次对话",
+  "settings.reopenLastSessionDesc": "应用启动后，若上次打开的对话仍存在且未归档，则自动打开。",
 "settings.prefsScope": "模型与权限记忆范围",
   "settings.prefsScopeDesc":
     "全局：所有对话共用。项目：按工作区记忆。会话：仅当前聊天。",
@@ -3082,6 +3134,34 @@ const zh: Record<MessageKey, string> = {
   "ext.hooks.error": "无法加载 hooks",
   "ext.hooks.docs": "Hooks 指南",
   "ext.market.update": "刷新",
+  "ext.market.title": "市场源",
+  "ext.market.desc":
+    "对应 `grok plugin marketplace` 的 git 源。刷新缓存、添加源后，可在下方安装可用插件。",
+  "ext.market.loading": "正在加载市场…",
+  "ext.market.empty": "尚未配置市场源",
+  "ext.market.addLabel": "添加源",
+  "ext.market.addPlaceholder": "Git URL、GitHub owner/repo 或本地路径",
+  "ext.market.add": "添加",
+  "ext.market.adding": "添加中…",
+  "ext.market.addEmpty": "请输入 git URL、GitHub 简写或路径。",
+  "ext.market.remove": "移除",
+  "ext.market.removeTitle": "移除市场源",
+  "ext.market.removeConfirm":
+    "移除源 “{name}”？从该源安装的插件可能需要另行卸载。",
+  "ext.market.updateAll": "全部刷新",
+  "ext.market.updating": "刷新中…",
+  "ext.market.availableTitle": "可用插件",
+  "ext.market.availableEmpty": "已配置源中没有可用插件。",
+  "ext.market.availableLoading": "正在加载可用插件…",
+  "ext.market.install": "安装",
+  "ext.market.installing": "安装中…",
+  "ext.market.installTitle": "安装插件",
+  "ext.market.installConfirm":
+    "使用 `grok plugin install --trust` 安装 “{name}”？第三方代码将以 Agent 权限运行。",
+  "ext.market.searchPlaceholder": "筛选可用插件…",
+  "ext.market.error": "市场操作失败",
+  "ext.market.note":
+    "源与目录来自 CLI。安装使用 --trust，并 soft-respawn Agent 以便下一轮加载插件。",
 "error.needTauri": "需要在 Tauri 窗口中选择目录",
   "common.comingSoon": "即将推出",
   "common.local": "本地",
