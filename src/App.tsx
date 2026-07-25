@@ -798,6 +798,7 @@ export default function App() {
     Array<{ name: string; source: string }>
   >([]);
   const [experimentalMemory, setExperimentalMemory] = useState(false);
+  const [subagentsEnabled, setSubagentsEnabled] = useState(true);
   const [gitWorktrees, setGitWorktrees] = useState<api.GitWorktreeEntry[]>([]);
   /** null = unknown/loading; true = git work tree; false = not a git repo. */
   const [gitWorktreesAvailable, setGitWorktreesAvailable] = useState<
@@ -1113,6 +1114,7 @@ export default function App() {
       }
       setPreferredAgent((settings.preferredAgent || "").trim());
       setExperimentalMemory(!!settings.experimentalMemory);
+      setSubagentsEnabled(settings.subagentsEnabled !== false);
       void api
         .agentsCatalog(null)
         .then((cat) => {
@@ -7288,6 +7290,11 @@ export default function App() {
             setExperimentalMemory(v);
             void api.settingsGet().then((s) =>
               api.settingsSet({ ...s, experimentalMemory: v }),
+          subagentsEnabled={subagentsEnabled}
+          onSubagentsEnabled={(v) => {
+            setSubagentsEnabled(v);
+            void api.settingsGet().then((s) =>
+              api.settingsSet({ ...s, subagentsEnabled: v }),
             );
           }}
           cliInfo={cliInfo}

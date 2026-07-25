@@ -505,6 +505,8 @@ export function SettingsPage({
   agentCatalog = [],
   experimentalMemory = false,
   onExperimentalMemory,
+  subagentsEnabled = true,
+  onSubagentsEnabled,
   cliInfo,
   onDoctor,
   versionFooter,
@@ -1104,6 +1106,20 @@ export function SettingsPage({
                     checked={!!experimentalMemory}
                     onChange={() => onExperimentalMemory(!experimentalMemory)}
                     ariaLabel={t("settings.experimentalMemory")}
+              {onSubagentsEnabled ? (
+                <div className="settings-row">
+                  <div className="settings-row__text">
+                    <div className="settings-row__label">
+                      {t("settings.subagentsEnabled")}
+                    </div>
+                    <div className="settings-row__desc">
+                      {t("settings.subagentsEnabledDesc")}
+                    </div>
+                  </div>
+                  <UiCheck
+                    checked={!!subagentsEnabled}
+                    onChange={() => onSubagentsEnabled(!subagentsEnabled)}
+                    ariaLabel={t("settings.subagentsEnabled")}
                   />
                 </div>
               ) : null}

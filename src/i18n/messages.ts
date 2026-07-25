@@ -709,6 +709,8 @@ const en = {
   "settings.disableWebSearchDesc":
     "Spawn agents with --disable-web-search so web_search and web_fetch tools are unavailable. Live agents soft-respawn when this changes.",
     "settings.section.agent": "Agent",
+  "settings.subagentsEnabled": "Allow subagents",
+  "settings.subagentsEnabledDesc": "When off, spawn with --no-subagents so nested Agent / task tools cannot start child sessions. Soft-respawns after change.",
 "settings.prefsScope": "Remember model & permission at",
   "settings.prefsScopeDesc":
     "Global: all chats. Project: each workspace. Session: only the current chat.",
@@ -2435,6 +2437,8 @@ const zh: Record<MessageKey, string> = {
   "settings.disableWebSearchDesc":
     "启动 Agent 时加上 --disable-web-search，移除 web_search / web_fetch 工具。更改后会 soft-respawn 已连接的 Agent。",
     "settings.section.agent": "Agent",
+  "settings.subagentsEnabled": "允许子代理",
+  "settings.subagentsEnabledDesc": "关闭时启动加上 --no-subagents，无法拉起嵌套 Agent / 任务。更改后 soft-respawn。",
 "settings.prefsScope": "模型与权限记忆范围",
   "settings.prefsScopeDesc":
     "全局：所有对话共用。项目：按工作区记忆。会话：仅当前聊天。",
