@@ -3458,6 +3458,11 @@ html.platform-mac[data-theme="light"] .settings-page__content {
   overflow: hidden;
 }
 
+/* Stacked settings cards (e.g. Appearance: theme / skin / wallpaper) */
+.settings-page__main > .settings-card + .settings-card {
+  margin-top: 14px;
+}
+
 .settings-card--flush .settings-archived-row:last-child {
   border-bottom: none;
 }
@@ -4164,7 +4169,8 @@ html[data-theme="light"] .ui-check.is-mixed .ui-check__box {
   overflow: hidden;
 }
 
-.settings-wallpaper__preview img {
+.settings-wallpaper__preview img,
+.settings-wallpaper__preview video {
   width: 100%;
   height: 100%;
   object-fit: cover;
