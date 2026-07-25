@@ -70,6 +70,12 @@ import {
 } from "@/lib/contextUsage";
 import { ContextUsageChip } from "@/components/ContextUsageChip";
 import { PlanStatusBar } from "@/components/PlanStatusBar";
+import {
+  closedSessionPlan,
+  emptySessionPlan,
+  mergePlanFromEvent,
+  type SessionPlanState,
+} from "@/lib/planSession";
 import * as api from "@/lib/api";
 import { createT, resolveLocale, type Locale } from "@/i18n";
 import {
@@ -325,20 +331,8 @@ type AppDialog =
     }
   | null;
 
-interface PlanState {
-  title: string;
-  body: string;
-  entries: unknown[];
-  waiting: boolean;
-  /** Pending exit_plan_mode JSON-RPC id */
-  rpcId?: number | null;
-  toolCallId?: string | null;
-  /**
-   * Soft-hide the top PlanStatusBar without clearing progress.
-   * Cleared when new plan events arrive or review gate opens.
-   */
-  barDismissed?: boolean;
-}
+/** App-local plan chrome state (session-scoped via planBySessionRef). */
+type PlanState = SessionPlanState;
 
 /** Empty plan chrome for a session with no live plan (or after hard dismiss). */
 function emptySessionPlan(title = "Plan ready for review"): PlanState & {
@@ -757,20 +751,17 @@ export default function App() {
   /** Polite SR announce for stream start/stop (not every token). */
   const [streamA11yNote, setStreamA11yNote] = useState("");
   const wasStreamingRef = useRef(false);
-  const [plan, setPlan] = useState<PlanState & { visible: boolean }>(() =>
-    emptySessionPlan(),
-  );
+  const [plan, setPlan] = useState<PlanState>(() => emptySessionPlan());
   /** Latest plan for the viewed session (mirrors `plan` for switch/cache). */
   const planRef = useRef(plan);
   planRef.current = plan;
   /**
    * Plan UI is session-scoped: switching chats restores that session's plan
-   * (or hides the bar when the target has none). Live events for background
-   * sessions update this map without touching the bar.
+   * (or hides the bar when the target has none / was hard-dismissed).
+   * Live events for background sessions update this map without stealing the bar.
+   * Hard-dismiss sets `userClosed` so reopen stays empty until a new plan cycle.
    */
-  const planBySessionRef = useRef(
-    new Map<string, PlanState & { visible: boolean }>(),
-  );
+  const planBySessionRef = useRef(new Map<string, PlanState>());
   const [locale, setLocale] = useState<Locale>("zh");
   const localeRef = useRef(locale);
   localeRef.current = locale;
@@ -780,6 +771,8 @@ export default function App() {
   const [modelId, setModelId] = useState(DEFAULT_MODEL_ID);
   const [effort, setEffort] = useState(DEFAULT_EFFORT);
   const [mode, setMode] = useState("agent");
+  const modeRef = useRef(mode);
+  modeRef.current = mode;
   const [policy, setPolicy] = useState("ask");
   /** Live selectable models from Host (official CLI catalog only; not providers). */
   const [availableModels, setAvailableModels] =
@@ -1762,6 +1755,7 @@ export default function App() {
           }>("session://plan", (p) => {
             if (cancelled) return;
             const readyTitle = trRef.current("plan.ready");
+            const composerMode = modeRef.current;
             const targetSid =
               (p.sessionId && p.sessionId.trim()) ||
               viewingSessionIdRef.current ||
@@ -1775,17 +1769,31 @@ export default function App() {
               const prev =
                 planBySessionRef.current.get(p.sessionId) ??
                 emptySessionPlan(readyTitle);
-              const next = mergePlanFromEvent(prev, p, readyTitle);
+              const next = mergePlanFromEvent(
+                prev,
+                p,
+                readyTitle,
+                composerMode,
+              );
               planBySessionRef.current.set(p.sessionId, next);
               return;
             }
 
             setPlan((prev) => {
-              const next = mergePlanFromEvent(prev, p, readyTitle);
+              const next = mergePlanFromEvent(
+                prev,
+                p,
+                readyTitle,
+                composerMode,
+              );
+              // Suppressed hard-dismiss: no UI thrash.
+              if (prev.userClosed && next.userClosed) {
+                return prev;
+              }
               const becameReview =
                 next.rpcId != null &&
                 (prev.rpcId == null || !prev.visible);
-              if (becameReview) {
+              if (becameReview && next.visible && !next.userClosed) {
                 // Auto-open resource Plan workbench when gate is ready.
                 queueMicrotask(() => {
                   setLayout((l) => {
@@ -2470,9 +2478,13 @@ export default function App() {
     return groups;
   }, [sessions, projects, tr]);
 
-  /** Session id currently running on the Host (for sidebar spinner). */
+  /**
+   * Session id with an active turn (stream / permission) for sidebar spinner.
+   * Deliberately excludes `connecting` — warm ACP connect should be silent
+   * and must not flash loading on sidebar items.
+   */
   const busySessionId =
-    liveHost.sessionId && isSessionBusy(liveHost.state)
+    liveHost.sessionId && isSessionLiveStreaming(liveHost.state)
       ? liveHost.sessionId
       : null;
 
@@ -4601,14 +4613,11 @@ export default function App() {
     void startVoice();
   }, [cancelVoice, startVoice, stopVoice]);
 
-  const writePlanForViewing = useCallback(
-    (next: PlanState & { visible: boolean }) => {
-      const sid = viewingSessionIdRef.current;
-      if (sid) planBySessionRef.current.set(sid, next);
-      setPlan(next);
-    },
-    [],
-  );
+  const writePlanForViewing = useCallback((next: PlanState) => {
+    const sid = viewingSessionIdRef.current;
+    if (sid) planBySessionRef.current.set(sid, next);
+    setPlan(next);
+  }, []);
 
   const approvePlan = useCallback(async () => {
     try {
@@ -4621,6 +4630,7 @@ export default function App() {
         visible: false,
         waiting: false,
         rpcId: null,
+        userClosed: false,
       });
       showToast(tr("plan.approvedToast"), 2500);
     } catch (e) {
@@ -4640,6 +4650,7 @@ export default function App() {
         visible: false,
         waiting: false,
         rpcId: null,
+        userClosed: false,
       });
       showToast(tr("plan.reviseToast"), 2800);
     } catch (e) {
@@ -4647,34 +4658,43 @@ export default function App() {
     }
   }, [plan.rpcId, showToast, tr, writePlanForViewing]);
 
-  const dismissPlan = useCallback(async () => {
-    // Review gate: abandon RPC and clear plan UI entirely.
-    if (plan.rpcId != null) {
-      try {
-        await api.sessionResolvePlan({
-          decision: "abandoned",
-          rpcId: plan.rpcId,
-        });
-      } catch {
-        /* hide UI anyway */
-      }
-      writePlanForViewing({
-        ...planRef.current,
-        visible: false,
-        waiting: true,
-        entries: [],
-        body: "",
-        rpcId: null,
-        barDismissed: false,
-      });
+  /**
+   * User closes plan chrome (top bar / resource panel).
+   * Flow: confirm → abandon pending review RPC if any → hard-close session plan
+   * so reopen stays empty until a new plan cycle (plan mode / new tool / new rpcId).
+   */
+  const dismissPlan = useCallback(() => {
+    const cur = planRef.current;
+    if (!cur.visible && !cur.entries.length && !cur.body && cur.rpcId == null) {
       return;
     }
-    // Execution progress only: soft-hide top bar; keep entries for later updates.
-    writePlanForViewing({
-      ...planRef.current,
-      barDismissed: true,
+    setAppDialog({
+      kind: "confirm",
+      title: tr("plan.dismissConfirmTitle"),
+      message: tr("plan.dismissConfirmMessage"),
+      confirmLabel: tr("plan.dismiss"),
+      danger: false,
+      onConfirm: async () => {
+        const latest = planRef.current;
+        if (latest.rpcId != null) {
+          try {
+            await api.sessionResolvePlan({
+              decision: "abandoned",
+              rpcId: latest.rpcId,
+            });
+          } catch {
+            /* clear UI anyway */
+          }
+        }
+        writePlanForViewing(
+          closedSessionPlan(
+            trRef.current("plan.ready"),
+            latest.toolCallId ?? null,
+          ),
+        );
+      },
     });
-  }, [plan.rpcId, writePlanForViewing]);
+  }, [tr, writePlanForViewing]);
 
   /** Open resource pane Plan review (replaces scroll-to-card “详情”). */
   const openPlanInResource = useCallback(() => {
