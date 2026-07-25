@@ -639,7 +639,7 @@ pub fn reset_app_data(keep_secrets: bool) -> Result<serde_json::Value, String> {
     }
 
     // Index / config files
-    let mut files = vec![
+    let files = vec![
         "projects.json",
         "sessions_index.json",
         "automations.json",

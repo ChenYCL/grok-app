@@ -11,43 +11,55 @@ See `docs/llm-wiki/release.md`.
 
 ## [Unreleased]
 
+## [0.1.7] - 2026-07-25
+
+> **Highlight:** large community feature batch (worktrees, voice, Extensions, Runtime toggles) plus hard stability repairs so `tsc` / `cargo test` / CI install stay green after multi-PR landing.
+
 ### Added
 
-- **App update check** (#58): Settings → about / update checks GitHub Releases for newer installers.
+- **App update check** (#58): Settings → About checks GitHub Releases for newer installers.
 - **Active agent tasks panel** (#59): right pane shows live tool tasks from the current stream.
 - **Session content search** (#60): command palette / search matches journal message text, not only titles.
-- **Plugin install & update** (#61): Settings → Extensions can install and update plugins (not only enable/disable).
+- **Plugin install & update** (#61): Settings → Extensions can install/update plugins (not only enable/disable).
 - **Sandbox profile** (#66): Settings → Runtime sandbox (`off` / `workspace` / `read-only` / `strict` / `devbox`) at agent spawn.
-- **Pin sessions** (#73): pin chats to the top of the sidebar (like projects).
+- **Pin sessions** (#73): pin chats to the top of the sidebar.
 - **Project inspect** (#75): Settings → Runtime summary from `grok inspect --json` (secret-safe).
 - **CLI doctor in App Doctor** (#76): merge `grok doctor --json` findings into the Doctor modal.
-- **CLI update check** (#63): Settings → Runtime and Doctor can run `grok update --check --json` and install via `grok update` (falls back to App install trust-chain).
+- **CLI update check** (#63): Runtime / Doctor can run `grok update --check --json` and install via `grok update`.
+- **Git worktree create / remove / gc** (#64, #74, #83): project chip creates sibling worktrees, removes non-main trees (force optional), dry-run prune then `git worktree prune`.
+- **Composer voice dictation** (#89): mic capture → xAI STT; official login / API key only; in-app errors (no `window.alert`).
+- **Find in chat** (#72): Cmd/Ctrl+F in the current conversation.
+- **Reopen last chat on startup** (#71): restore last session once after launch (Settings toggle; default on).
+- **Spawn toggles**: experimental memory (#67), max agent turns (#69), disable web search (#70), plan mode (#80), subagents (#81), preferred agent (#85), optional leader mode (#87).
+- **Extensions depth**: MCP add/remove/doctor (#68), hooks (#78), agents/personas list (#77), plugin marketplace sources (#86).
+- **Managed setup** (#79): Settings → Runtime `grok setup` preview/install with soft-respawn.
+- **Permission rules editor** (#84): allow / deny / ask patterns in agent `config.toml`.
+- **Project rules entry** (#82): first-class AGENTS.md / `.grok` rules surface in the resource pane.
+- **Keyboard shortcuts panel** (#91): Settings → Shortcuts (read-only catalog).
+- **Doctor remediations** (#88): apply CLI doctor automatic fixes from App Doctor when available.
 
 ### Fixed
 
-- **Session data mode switch** (#62): flipping independent↔shared recycles live/background/parked agents so none keep the old `GROK_HOME`.
+- **Session data mode switch** (#62): independent↔shared recycles live/background/parked agents so none keep the old `GROK_HOME`.
 - **Missing project folder** (#65): pathOk UX to relocate deleted/moved project directories.
+- **Post-merge stability**: repair union-merge damage (Rust brace/tests, duplicate modules, truncated `useState` / JSX / CSS, deduped imports, bogus `pnpm-workspace.yaml`); `tsc` + `cargo test --lib` + frontend unit tests green again.
+- **Git worktrees UI**: hide for non-git folders; soft refresh without flicker; compact rows.
+- **Release notes**: slim GitHub Release body (CHANGELOG section only).
 
 ### Community
 
-- Squash-merged **#58–#62**, **#65–#66**, **#73**, **#75–#76** (sonnemusk).  
-- Remaining open PRs (**#63–#64**, **#67–#72**, **#74**, **#77–#89**) need conflict resolution against this batch (heavy overlap on `App.tsx` / `Settings` / `commands.rs` / spawn flags).
+- Integrated community PRs through the post-0.1.6 batch (sonnemusk and others), including worktrees, voice, Extensions, and Runtime spawn flags.
+- Superseded follow-up compile fix PR #92 after equivalent CI repairs landed on `main`.
 
-**中文**
-- 新增：应用更新检查、活动任务面板、会话正文搜索、插件安装更新、沙箱配置、会话置顶、项目 inspect、CLI Doctor 合并、CLI 更新检查。  
-- 修复：会话模式切换回收 Agent；缺失项目目录可重定位。
-- **Create git worktree** from project chip: name + optional start point → sibling folder `<repo>-<name>`, add as App project (trust inherited), refresh list, switch cwd.
+**中文 · 新增**
+- 应用更新检查、活动任务、会话正文搜索、插件安装更新、沙箱、置顶、inspect、CLI Doctor/更新。
+- Worktree 新建/删除/清理；Composer 语音听写；会话内查找；启动恢复上次会话。
+- Memory / max turns / 禁联网 / plan / subagents / preferred agent / leader 等 spawn 开关。
+- MCP 增删与 doctor、hooks、agents 列表、marketplace、managed setup、权限规则、项目规则入口、快捷键面板、Doctor 自动修复。
 
-**中文**
-- 项目 chip 可新建 git worktree（名称 + 可选起始点），同级目录 `<repo>-<name>`，加入项目并切换。
-- **Cross-session memory toggle** (experimental): Settings → General enables Grok Build `--experimental-memory` / `GROK_MEMORY` / `[memory] enabled` (default off). When off, spawn forces `--no-memory` + `GROK_MEMORY=0` for isolation. Clear workspace memory runs `grok memory clear` (project cwd) behind an in-app confirm.
-
-- **MCP add / remove / doctor** in Settings → Extensions: stdio server form, GlassModal remove confirm, `grok mcp doctor` results; writes agent `GROK_HOME` config.
-- **Reopen last chat on startup**: remembers the last opened session and restores it once after launch (Settings → General toggle, on by default; skips archived / missing / setup wizard).
-- **Remove git worktree** from the project chip: confirm dialog (optional force for dirty/locked), host refuses main worktree, then refresh list and carefully leave/remove a matching App project row.
-- **Allow subagent spawning toggle**: Settings → Permissions; default on. When off, agents spawn with `--no-subagents` / `GROK_SUBAGENTS=0` (independent mode also writes `[subagents] enabled = false`). Soft-respawn on flip.
-- **Clean stale git worktrees** from the project chip: dry-run preview then `git worktree prune` (optional `--expire now`), host `git_worktree_gc`, en / zh / zh-TW.
-- **Permission rules editor**: Settings → Permissions lists and edits Grok Build `[permission]` `allow` / `deny` / `ask` string arrays in the active agent `config.toml` (independent agent-home or shared `~/.grok`). Add / remove with confirm; safe TOML upsert; soft-respawn on change.
+**中文 · 修复**
+- 会话模式切换回收 Agent；缺失项目目录可重定位。
+- 大批量 PR 合并后的编译/类型/测试/安装链路修复；worktree UI 与发版日志精简。
 
 ## [0.1.6] - 2026-07-24
 

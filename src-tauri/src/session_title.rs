@@ -79,7 +79,7 @@ fn title_prompt(snippet: &str, locale: Locale) -> String {
         Locale::En => format!(
             "Write a short session title for the user message below.\nRequirements: at most 8 English words (or match the message language if it is not English); output the title only; no quotes, prefixes, or explanation.\n\nUser message:\n{snippet}"
         ),
-        Locale::Zh | Locale::ZhTw => format!(
+        Locale::Zh => format!(
             "为下面这条用户消息起一个简短会话标题。要求：最多16个汉字或8个英文单词；只输出标题；不要引号、标点前缀、解释。\n\n用户消息：\n{snippet}"
         ),
         Locale::ZhTw => format!(

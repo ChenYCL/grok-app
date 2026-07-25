@@ -4,8 +4,6 @@
 use std::fs;
 use std::io::Read;
 use std::path::{Component, Path, PathBuf};
-use std::time::UNIX_EPOCH;
-
 use base64::Engine;
 use serde::Serialize;
 
