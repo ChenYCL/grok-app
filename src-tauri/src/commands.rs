@@ -201,7 +201,9 @@ pub async fn cli_install_commands() -> Result<serde_json::Value, String> {
 #[tauri::command]
 pub async fn pick_cli_binary() -> Result<Option<String>, String> {
     let file = tauri::async_runtime::spawn_blocking(|| {
-        let dlg = rfd::FileDialog::new().set_title("Select Grok Build binary / 选择 Grok Build 可执行文件");
+        // `mut` required on Windows: we rebind after add_filter.
+        let mut dlg =
+            rfd::FileDialog::new().set_title("Select Grok Build binary / 选择 Grok Build 可执行文件");
         #[cfg(target_os = "windows")]
         {
             dlg = dlg.add_filter("Executable", &["exe", "cmd", "bat"]);
