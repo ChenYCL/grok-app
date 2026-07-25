@@ -786,6 +786,7 @@ export interface AppSettings {
    * Default "off". Passed as `grok --sandbox <profile>` / GROK_SANDBOX on spawn.
    */
   sandboxProfile?: string;
+  /**
    * Preferred Grok Build agent definition for spawn (`explore` / `plan` / …).
    * Empty / "default" / "none" → omit top-level `--agent` (CLI default).
    * Applied at agent process start; changing soft-respawns the live agent.
