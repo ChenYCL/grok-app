@@ -13,28 +13,10 @@ See `docs/llm-wiki/release.md`.
 
 ### Added
 
-- **App update check** (#58): Settings → about / update checks GitHub Releases for newer installers.
-- **Active agent tasks panel** (#59): right pane shows live tool tasks from the current stream.
-- **Session content search** (#60): command palette / search matches journal message text, not only titles.
-- **Plugin install & update** (#61): Settings → Extensions can install and update plugins (not only enable/disable).
-- **Sandbox profile** (#66): Settings → Runtime sandbox (`off` / `workspace` / `read-only` / `strict` / `devbox`) at agent spawn.
-- **Pin sessions** (#73): pin chats to the top of the sidebar (like projects).
-- **Project inspect** (#75): Settings → Runtime summary from `grok inspect --json` (secret-safe).
-- **CLI doctor in App Doctor** (#76): merge `grok doctor --json` findings into the Doctor modal.
-
-### Fixed
-
-- **Session data mode switch** (#62): flipping independent↔shared recycles live/background/parked agents so none keep the old `GROK_HOME`.
-- **Missing project folder** (#65): pathOk UX to relocate deleted/moved project directories.
-
-### Community
-
-- Squash-merged **#58–#62**, **#65–#66**, **#73**, **#75–#76** (sonnemusk).  
-- Remaining open PRs (**#63–#64**, **#67–#72**, **#74**, **#77–#89**) need conflict resolution against this batch (heavy overlap on `App.tsx` / `Settings` / `commands.rs` / spawn flags).
+- **Create git worktree** from project chip: name + optional start point → sibling folder `<repo>-<name>`, add as App project (trust inherited), refresh list, switch cwd.
 
 **中文**
-- 新增：应用更新检查、活动任务面板、会话正文搜索、插件安装更新、沙箱配置、会话置顶、项目 inspect、CLI Doctor 合并。  
-- 修复：会话模式切换回收 Agent；缺失项目目录可重定位。
+- 项目 chip 可新建 git worktree（名称 + 可选起始点），同级目录 `<repo>-<name>`，加入项目并切换。
 
 ## [0.1.6] - 2026-07-24
 

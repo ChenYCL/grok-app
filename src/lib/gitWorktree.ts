@@ -128,3 +128,87 @@ export function findWorktreeAt(
 ): GitWorktreeEntry | null {
   return worktrees.find((w) => pathsEqual(w.path, path)) ?? null;
 }
+
+/**
+ * Sanitize a worktree name for path segment + new branch.
+ * Mirrors host `sanitize_worktree_name` (letters, digits, `.` `_` `-`).
+ */
+export function sanitizeWorktreeName(raw: string | null | undefined): string {
+  const name = (raw ?? "").trim();
+  if (!name) {
+    throw new Error("worktree name is required");
+  }
+  if (name === "." || name === "..") {
+    throw new Error("invalid worktree name");
+  }
+  if (name.length > 64) {
+    throw new Error("worktree name too long (max 64)");
+  }
+  if (name.includes("/") || name.includes("\\") || name.includes("\0")) {
+    throw new Error("worktree name must not contain path separators");
+  }
+  if (!/^[A-Za-z0-9._-]+$/.test(name)) {
+    throw new Error(
+      "worktree name may only contain letters, digits, '.', '_' and '-'",
+    );
+  }
+  if (name.startsWith("-")) {
+    throw new Error("worktree name must not start with '-'");
+  }
+  return name;
+}
+
+/**
+ * Sibling path layout (host + UI preview):
+ *   `<parent>/<main_basename>-<name>`
+ *
+ * Example: main `/Users/me/repo` + `feat` → `/Users/me/repo-feat`.
+ *
+ * Prefer sibling of the **main** worktree over in-repo `.worktrees/<name>`
+ * so linked checkouts sit next to the primary clone (common git worktree UX).
+ */
+export function buildWorktreeSiblingPath(
+  mainWorktreePath: string | null | undefined,
+  name: string | null | undefined,
+): string {
+  const main = normalizeWorktreePath(mainWorktreePath);
+  if (!main) {
+    throw new Error("empty main worktree path");
+  }
+  const safe = sanitizeWorktreeName(name);
+  // Split keeps leading "" for absolute Unix paths: "/Users/me/repo" → ["", "Users", "me", "repo"]
+  const parts = main.split("/");
+  const base = parts.filter(Boolean).pop();
+  if (!base) {
+    throw new Error("cannot derive repo folder name");
+  }
+  const parentParts = parts.slice(0, -1);
+  const parentJoined = parentParts.join("/");
+  const parent =
+    parentParts.length === 0
+      ? ""
+      : parentJoined === "" && main.startsWith("/")
+        ? "/"
+        : parentJoined;
+  const dirName = `${base}-${safe}`;
+  const joined =
+    parent === "/"
+      ? `/${dirName}`
+      : parent
+        ? `${parent}/${dirName}`
+        : dirName;
+  const out = normalizeWorktreePath(joined);
+  if (!out || pathsEqual(out, main)) {
+    throw new Error("resolved worktree path is invalid");
+  }
+  return out;
+}
+
+/** Main worktree path from a porcelain list (first entry), if any. */
+export function mainWorktreePath(
+  worktrees: GitWorktreeEntry[],
+): string | null {
+  if (!worktrees.length) return null;
+  const main = worktrees.find((w) => w.isMain) ?? worktrees[0];
+  return main?.path ?? null;
+}
