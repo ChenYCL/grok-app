@@ -197,6 +197,25 @@ pub async fn cli_install_commands() -> Result<serde_json::Value, String> {
     Ok(crate::cli_install::install_commands())
 }
 
+/// Run resolved `grok update --check --json` and return a typed DTO.
+#[tauri::command]
+pub async fn cli_update_check() -> Result<crate::cli_update::CliUpdateCheck, String> {
+    tauri::async_runtime::spawn_blocking(|| {
+        let settings = store::load_settings();
+        crate::cli_update::check_cli_update(settings.manual_cli_path.as_deref())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+/// Install CLI update: prefer `grok update`, fall back to install trust-chain.
+#[tauri::command]
+pub async fn cli_update_install(
+    app: tauri::AppHandle,
+) -> Result<crate::cli_install::CliInstallResult, String> {
+    crate::cli_update::install_cli_update(app).await
+}
+
 /// Native file picker for a Grok Build binary (manual path).
 #[tauri::command]
 pub async fn pick_cli_binary() -> Result<Option<String>, String> {

@@ -236,6 +236,31 @@ export async function cliInstallCommands() {
   return invoke<CliInstallCommands>("cli_install_commands");
 }
 
+/** Result of `grok update --check --json` (plus resolved binary path). */
+export type CliUpdateCheck = {
+  currentVersion: string;
+  latestVersion: string;
+  updateAvailable: boolean;
+  channel?: string | null;
+  installer?: string | null;
+  autoUpdate?: boolean | null;
+  error?: string | null;
+  cliPath?: string | null;
+};
+
+/** Run resolved CLI: `update --check --json`. Uses settings manual path / probe. */
+export async function cliUpdateCheck() {
+  return invoke<CliUpdateCheck>("cli_update_check");
+}
+
+/**
+ * Install CLI update. Prefers `grok update` (channel-aware); falls back to
+ * `cli_install_latest` trust-chain. Progress events may fire on fallback.
+ */
+export async function cliUpdateInstall() {
+  return invoke<CliInstallResult>("cli_update_install");
+}
+
 export async function pickCliBinary() {
   return invoke<string | null>("pick_cli_binary");
 }

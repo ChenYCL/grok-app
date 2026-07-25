@@ -3583,6 +3583,57 @@ html[data-theme="light"] .ui-check.is-mixed .ui-check__box {
   font-family: var(--font-mono);
 }
 
+/* CLI update check (Settings → Runtime + Doctor) */
+.settings-cli-update {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+  margin-top: 4px;
+}
+
+.settings-cli-update__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.settings-cli-update__status {
+  font-size: 12.5px;
+  color: var(--text-secondary);
+  line-height: 1.45;
+}
+
+.settings-cli-update__status.is-available {
+  color: var(--text-primary);
+  font-weight: 500;
+}
+
+.settings-cli-update__err {
+  font-size: 12.5px;
+  color: var(--danger, #d33);
+  line-height: 1.45;
+}
+
+.settings-cli-update--compact .settings-row__label {
+  display: none;
+}
+
+.settings-cli-update--compact .settings-row__desc {
+  display: none;
+}
+
+.doctor-advanced__cli-update {
+  padding: 10px 0 14px;
+  border-bottom: 1px solid var(--border-subtle);
+  margin-bottom: 4px;
+}
+
+.doctor-advanced__cli-update-head {
+  margin-bottom: 8px;
+}
+
 .settings-row__action {
   height: 32px;
   flex-shrink: 0;

@@ -9,6 +9,7 @@ mod extensions;
 mod supergrok_quota;
 mod cli_probe;
 mod cli_install;
+mod cli_update;
 mod commands;
 mod support_bundle;
 mod editors;
@@ -140,6 +141,8 @@ pub fn run() {
             commands::acp_test_connection,
             commands::cli_install_latest,
             commands::cli_install_commands,
+            commands::cli_update_check,
+            commands::cli_update_install,
             commands::pick_cli_binary,
             commands::open_external_url,
             commands::app_check_update,
