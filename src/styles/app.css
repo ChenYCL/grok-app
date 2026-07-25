@@ -2696,6 +2696,10 @@ html.platform-mac[data-theme="light"] .settings-page__content {
 }
 
 .cpm__worktree-new {
+  margin-top: 4px;
+  width: 100%;
+}
+
 .cpm__worktree-gc {
   margin-top: 4px;
   width: 100%;
@@ -2703,8 +2707,6 @@ html.platform-mac[data-theme="light"] .settings-page__content {
 
 /* New worktree dialog fields */
 .wt-create {
-/* Clean stale worktrees (gc / prune) dialog */
-.wt-gc {
   display: flex;
   flex-direction: column;
   gap: 12px;
@@ -2714,6 +2716,39 @@ html.platform-mac[data-theme="light"] .settings-page__content {
 .wt-create__hint {
   margin: 0;
   font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--text-secondary);
+}
+
+.wt-create__field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.wt-create__label {
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--text-secondary);
+}
+
+.wt-create__preview {
+  margin: 0;
+  font-size: 11.5px;
+  line-height: 1.4;
+  color: var(--text-tertiary);
+  word-break: break-all;
+  font-family: var(--font-mono, ui-monospace, monospace);
+}
+
+.wt-create__error {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.4;
+  color: var(--danger, #e35d6a);
+}
+
 .cpm__worktree-remove {
   flex-shrink: 0;
   display: inline-flex;
@@ -2750,40 +2785,10 @@ html.platform-mac[data-theme="light"] .settings-page__content {
 .wt-remove__msg {
   margin: 0;
   font-size: 13px;
-.wt-gc__hint {
-  margin: 0;
-  font-size: 12.5px;
   line-height: 1.45;
   color: var(--text-secondary);
 }
 
-.wt-create__field {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  min-width: 0;
-}
-
-.wt-create__label {
-  font-size: 12.5px;
-  font-weight: 500;
-  color: var(--text-secondary);
-}
-
-.wt-create__preview {
-  margin: 0;
-  font-size: 11.5px;
-  line-height: 1.4;
-  color: var(--text-tertiary);
-  word-break: break-all;
-  font-family: var(--font-mono, ui-monospace, monospace);
-}
-
-.wt-create__error {
-  margin: 0;
-  font-size: 12.5px;
-  line-height: 1.4;
-  color: var(--danger, #e35d6a);
 .wt-remove__path {
   margin: 0;
   padding: 8px 10px;
@@ -2816,6 +2821,23 @@ html.platform-mac[data-theme="light"] .settings-page__content {
   font-size: 12px;
   line-height: 1.4;
   color: var(--danger, #e5484d);
+}
+
+/* Clean stale worktrees (gc / prune) dialog */
+.wt-gc {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 4px 4px 0;
+}
+
+.wt-gc__hint {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--text-secondary);
+}
+
 .wt-gc__force {
   display: flex;
   align-items: flex-start;
@@ -12909,6 +12931,8 @@ div.composer__input:empty::before {
   font-size: 12px;
   line-height: 1.4;
   color: var(--text-tertiary);
+}
+
 /* ── Managed setup (Settings → Runtime) ─────────────────────────────────── */
 .managed-setup {
   border-top: 1px solid var(--border-subtle);
