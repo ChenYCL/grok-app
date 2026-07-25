@@ -306,20 +306,9 @@
 }
 
 /*
- * Setup CTAs use brand accent (blue), not global `.btn--primary` warning/orange.
- * Matches app accent tokens used by steps, progress, and logo glow.
+ * Setup CTAs inherit global `.btn--primary` (theme accent + accent-fg).
+ * Keep a local disabled opacity for full-width gate buttons if needed.
  */
-.setup-gate .btn--primary {
-  background: var(--accent);
-  color: #fff;
-  border-color: transparent;
-}
-
-.setup-gate .btn--primary:hover:not(:disabled) {
-  background: var(--accent-hover);
-  filter: none;
-}
-
 .setup-gate .btn--primary:disabled {
   opacity: 0.5;
 }

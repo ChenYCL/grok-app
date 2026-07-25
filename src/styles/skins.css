@@ -179,6 +179,7 @@ html[data-wallpaper="1"][data-wallpaper-clear="1"].platform-mac[data-theme="ligh
   --accent: #e06b7c;
   --accent-muted: rgba(224, 107, 124, 0.18);
   --accent-hover: #f08a98;
+  --accent-fg: #140a0c;
   --border-focus: rgba(224, 107, 124, 0.55);
 
   --bg-app: #120c10;
@@ -216,6 +217,7 @@ html[data-wallpaper="1"][data-wallpaper-clear="1"].platform-mac[data-theme="ligh
   --accent: #c43d55;
   --accent-muted: rgba(196, 61, 85, 0.12);
   --accent-hover: #a83248;
+  --accent-fg: #ffffff;
   --border-focus: rgba(196, 61, 85, 0.45);
 
   --bg-app: #f6eef1;
@@ -255,6 +257,7 @@ html[data-wallpaper="1"][data-wallpaper-clear="1"].platform-mac[data-theme="ligh
   --accent: #d4b56a;
   --accent-muted: rgba(212, 181, 106, 0.16);
   --accent-hover: #e8cd8a;
+  --accent-fg: #141008;
   --border-focus: rgba(212, 181, 106, 0.55);
 
   --bg-app: #0a0908;
@@ -296,6 +299,7 @@ html[data-wallpaper="1"][data-wallpaper-clear="1"].platform-mac[data-theme="ligh
   --accent: #8b6914;
   --accent-muted: rgba(139, 105, 20, 0.12);
   --accent-hover: #6e5210;
+  --accent-fg: #fff8ec;
   --border-focus: rgba(139, 105, 20, 0.5);
 
   --bg-app: #ebe2d2;
@@ -342,6 +346,7 @@ html[data-wallpaper="1"][data-wallpaper-clear="1"].platform-mac[data-theme="ligh
   --accent: #7a9e98;
   --accent-muted: rgba(122, 158, 152, 0.16);
   --accent-hover: #96b5af;
+  --accent-fg: #0c1010;
   --border-focus: rgba(122, 158, 152, 0.5);
 
   --bg-app: #0e1214;
@@ -377,6 +382,7 @@ html[data-wallpaper="1"][data-wallpaper-clear="1"].platform-mac[data-theme="ligh
   --accent: #3f6b66;
   --accent-muted: rgba(63, 107, 102, 0.12);
   --accent-hover: #2f524e;
+  --accent-fg: #ffffff;
   --border-focus: rgba(63, 107, 102, 0.45);
 
   --bg-app: #e8eef0;
@@ -416,6 +422,7 @@ html[data-wallpaper="1"][data-wallpaper-clear="1"].platform-mac[data-theme="ligh
   --accent: #3ec8d6;
   --accent-muted: rgba(62, 200, 214, 0.16);
   --accent-hover: #6ad8e3;
+  --accent-fg: #061014;
   --border-focus: rgba(62, 200, 214, 0.55);
 
   --bg-app: #070d14;
@@ -453,6 +460,7 @@ html[data-wallpaper="1"][data-wallpaper-clear="1"].platform-mac[data-theme="ligh
   --accent: #0d7c8c;
   --accent-muted: rgba(13, 124, 140, 0.12);
   --accent-hover: #0a6270;
+  --accent-fg: #ffffff;
   --border-focus: rgba(13, 124, 140, 0.5);
 
   --bg-app: #e4eef4;
@@ -492,6 +500,7 @@ html[data-wallpaper="1"][data-wallpaper-clear="1"].platform-mac[data-theme="ligh
   --accent: #f08a3c;
   --accent-muted: rgba(240, 138, 60, 0.16);
   --accent-hover: #ffb06a;
+  --accent-fg: #140c06;
   --border-focus: rgba(240, 138, 60, 0.55);
 
   --bg-app: #0e0a08;
@@ -531,6 +540,7 @@ html[data-wallpaper="1"][data-wallpaper-clear="1"].platform-mac[data-theme="ligh
   --accent: #c45a12;
   --accent-muted: rgba(196, 90, 18, 0.12);
   --accent-hover: #9e480e;
+  --accent-fg: #ffffff;
   --border-focus: rgba(196, 90, 18, 0.5);
 
   --bg-app: #f3ebe2;

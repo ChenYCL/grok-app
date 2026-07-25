@@ -722,12 +722,14 @@ input:focus-visible {
 }
 
 .btn--primary {
-  background: var(--warning);
-  color: #1a1400;
+  background: var(--accent);
+  color: var(--accent-fg, #fff);
+  border-color: transparent;
 }
 
 .btn--primary:hover:not(:disabled) {
-  filter: brightness(1.05);
+  background: var(--accent-hover, var(--accent));
+  filter: none;
 }
 
 .btn--ghost {

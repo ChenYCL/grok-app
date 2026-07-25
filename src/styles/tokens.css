@@ -95,10 +95,12 @@
   --accent: #8aa4ff;
   --accent-muted: rgba(138, 164, 255, 0.14);
   --accent-hover: #a0b6ff;
+  /* Text/icon on filled accent CTAs (.btn--primary). Dark ink on light accent. */
+  --accent-fg: #0d0d0d;
 
   --success: #3ecf8e;
   --success-muted: rgba(62, 207, 142, 0.14);
-  /* Warning / trust / pending — orange (not gold/amber) */
+  /* Warning / trust / pending — orange status only (not primary CTAs) */
   --warning: #f0993d;
   --warning-muted: rgba(240, 153, 61, 0.16);
   --warning-fg: #1a1008;
@@ -257,10 +259,12 @@
   --accent: #3d5fd9;
   --accent-muted: rgba(61, 95, 217, 0.1);
   --accent-hover: #2f4fc4;
+  /* White label on deep accent. */
+  --accent-fg: #ffffff;
 
   --success: #1a9f63;
   --success-muted: rgba(26, 159, 99, 0.12);
-  /* Warning / trust / pending — orange (not gold/amber) */
+  /* Warning / trust / pending — orange status only (not primary CTAs) */
   --warning: #e07020;
   --warning-muted: rgba(224, 112, 32, 0.12);
   --warning-fg: #ffffff;

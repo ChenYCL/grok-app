@@ -21,7 +21,7 @@
   --color-secondary: var(--bg-elevated);
   --color-secondary-foreground: var(--text-primary);
   --color-accent: var(--accent);
-  --color-accent-foreground: var(--text-inverse);
+  --color-accent-foreground: var(--accent-fg, var(--text-inverse));
   --color-destructive: var(--danger);
   --color-destructive-foreground: #fff;
 }

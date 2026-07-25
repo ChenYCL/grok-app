@@ -7715,13 +7715,21 @@ html[data-theme="light"] .ui-check.is-mixed .ui-check__box {
   white-space: nowrap;
 }
 
+/* Primary CTA — theme accent (follows light/dark + color skins). */
 .btn--primary {
-  background: var(--warning);
-  color: var(--warning-fg);
+  background: var(--accent);
+  color: var(--accent-fg, #fff);
+  border-color: transparent;
 }
 
 .btn--primary:hover:not(:disabled) {
-  filter: brightness(1.06);
+  background: var(--accent-hover, var(--accent));
+  color: var(--accent-fg, #fff);
+  filter: none;
+}
+
+.btn--primary:disabled {
+  opacity: 0.45;
 }
 
 /** Neutral solid CTA — inverted text/bg (settings / providers / modal OK). */
