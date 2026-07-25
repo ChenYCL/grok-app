@@ -367,6 +367,7 @@ export const zhTW: Record<MessageKey, string> = {
   "composer.goalHint": "設定要持續追求的目標",
   "composer.goalPlaceholder": "描述你的目標，定義可衡量的成果，以獲得最佳效果",
   "composer.goalClear": "關閉目標模式",
+  "composer.goalActive": "目標進行中",
   "composer.addFilesHint": "附加檔案或資料夾到下一則訊息",
   "composer.addFolder": "資料夾",
   "composer.addFolderHint": "附加資料夾路徑給 Agent",
@@ -529,7 +530,7 @@ export const zhTW: Record<MessageKey, string> = {
 
   // Sticky plan/goal bar
   "planBar.aria": "計劃與目標狀態",
-  "planBar.goal": "目標模式",
+  "planBar.goal": "目標進行中",
   "planBar.planMode": "計劃模式",
   "planBar.progress": "計劃進行中",
   "planBar.review": "計劃待審閱",
@@ -537,6 +538,7 @@ export const zhTW: Record<MessageKey, string> = {
   "planBar.fraction": "{n}",
   "planBar.current": "目前",
   "planBar.expand": "在資源中開啟",
+  "planBar.clearGoal": "關閉目標",
 
   "settings.title": "設定",
   "settings.backToApp": "返回應用程式",
@@ -1109,6 +1111,8 @@ export const zhTW: Record<MessageKey, string> = {
   "slash.empty": "沒有相符的指令或技能",
   "slash.goal": "目標",
   "slash.goalDesc": "設定持續追求的可衡量目標",
+  "slash.goalClear": "關閉目標",
+  "slash.goalClearDesc": "退出目標模式",
   "slash.plan": "計劃模式",
   "slash.planDesc": "先探索與設計再寫程式碼",
   "slash.compact": "壓縮上下文",

@@ -14,6 +14,7 @@ describe("builtinSlashItems", () => {
     const names = items.map((i) => i.name);
     expect(names).toEqual([
       "goal",
+      "goal-clear",
       "plan",
       "compact",
       "status",
@@ -30,6 +31,12 @@ describe("builtinSlashItems", () => {
     expect(goal.mode).toBe("goal");
     expect(goal.titleKey).toBe("slash.goal");
     expect(goal.descriptionKey).toBe("slash.goalDesc");
+
+    const goalClear = items.find((i) => i.name === "goal-clear")!;
+    expect(goalClear.kind).toBe("action");
+    expect(goalClear.action).toBe("goal-clear");
+    expect(goalClear.titleKey).toBe("slash.goalClear");
+    expect(goalClear.descriptionKey).toBe("slash.goalClearDesc");
 
     const plan = items.find((i) => i.name === "plan")!;
     expect(plan.kind).toBe("mode");

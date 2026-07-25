@@ -360,6 +360,7 @@ const en = {
   "composer.goalPlaceholder":
     "Describe your goal and define measurable outcomes for best results",
   "composer.goalClear": "Clear goal mode",
+  "composer.goalActive": "Goal active",
   "composer.addFilesHint": "Attach files or folders to the next message",
   "composer.addFolder": "Folder",
   "composer.addFolderHint": "Attach a folder path for the agent",
@@ -556,7 +557,7 @@ const en = {
 
   // Sticky plan/goal bar
   "planBar.aria": "Plan and goal status",
-  "planBar.goal": "Goal mode",
+  "planBar.goal": "Goal active",
   "planBar.planMode": "Plan mode",
   "planBar.progress": "Plan in progress",
   "planBar.review": "Plan ready for review",
@@ -564,6 +565,7 @@ const en = {
   "planBar.fraction": "{n}",
   "planBar.current": "Now",
   "planBar.expand": "Open in resources",
+  "planBar.clearGoal": "Clear goal",
 
   // Settings / onboarding
   "settings.title": "Settings",
@@ -1152,6 +1154,8 @@ const en = {
   "slash.empty": "No matching commands or skills",
   "slash.goal": "Goal",
   "slash.goalDesc": "Set a continuous goal with measurable outcomes",
+  "slash.goalClear": "Clear goal",
+  "slash.goalClearDesc": "Exit goal mode",
   "slash.plan": "Plan mode",
   "slash.planDesc": "Explore and design before coding",
   "slash.compact": "Compact context",
@@ -2051,6 +2055,7 @@ const zh: Record<MessageKey, string> = {
   "composer.goalHint": "设置要持续追求的目标",
   "composer.goalPlaceholder": "描述你的目标，定义可衡量的成果，以获得最佳效果",
   "composer.goalClear": "关闭目标模式",
+  "composer.goalActive": "目标进行中",
   "composer.addFilesHint": "附加文件或文件夹到下一条消息",
   "composer.addFolder": "文件夹",
   "composer.addFolderHint": "附加文件夹路径给 Agent",
@@ -2238,7 +2243,7 @@ const zh: Record<MessageKey, string> = {
 
   // Sticky plan/goal bar
   "planBar.aria": "计划与目标状态",
-  "planBar.goal": "目标模式",
+  "planBar.goal": "目标进行中",
   "planBar.planMode": "计划模式",
   "planBar.progress": "计划进行中",
   "planBar.review": "计划待审阅",
@@ -2246,6 +2251,7 @@ const zh: Record<MessageKey, string> = {
   "planBar.fraction": "{n}",
   "planBar.current": "当前",
   "planBar.expand": "在资源中打开",
+  "planBar.clearGoal": "关闭目标",
 
   "settings.title": "设置",
   "settings.backToApp": "返回应用",
@@ -2818,6 +2824,8 @@ const zh: Record<MessageKey, string> = {
   "slash.empty": "没有匹配的命令或技能",
   "slash.goal": "目标",
   "slash.goalDesc": "设置持续追求的可衡量目标",
+  "slash.goalClear": "关闭目标",
+  "slash.goalClearDesc": "退出目标模式",
   "slash.plan": "计划模式",
   "slash.planDesc": "先探索与设计再写代码",
   "slash.compact": "压缩上下文",
