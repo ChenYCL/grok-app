@@ -1353,7 +1353,6 @@ export const zhTW: Record<MessageKey, string> = {
   "ext.market.removeTitle": "移除市集來源",
   "ext.market.removeConfirm":
     "移除來源 “{name}”？從此來源安裝的外掛可能需要另行解除安裝。",
-  "ext.market.update": "重新整理",
   "ext.market.updateAll": "全部重新整理",
   "ext.market.updating": "重新整理中…",
   "ext.market.availableTitle": "可用外掛",

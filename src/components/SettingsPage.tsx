@@ -63,8 +63,8 @@ import { ExtensionsPanel } from "@/components/ExtensionsPanel";
 import { ProjectInspectPanel } from "@/components/ProjectInspectPanel";
 import { PermissionRulesPanel } from "@/components/PermissionRulesPanel";
 import { ManagedSetupPanel } from "@/components/ManagedSetupPanel";
-import { RemoteImLayout } from "@/components/RemoteImLayout";
 import { GlassModal } from "@/components/GlassModal";
+import { RemoteImLayout } from "@/components/RemoteImLayout";
 import {
   createT,
   resolveLocale,
@@ -516,8 +516,6 @@ export function SettingsPage({
   onUseLeader,
   reopenLastSession = true,
   onReopenLastSession,
-  experimentalMemory = false,
-  onExperimentalMemory,
   cliInfo,
   onDoctor,
   versionFooter,
@@ -555,7 +553,6 @@ export function SettingsPage({
     "official",
   );
   const [editors, setEditors] = useState<DetectedEditor[]>([]);
-  /** Confirm + run `grok memory clear --workspace` for the active project. */
   const [clearMemoryOpen, setClearMemoryOpen] = useState(false);
   const [clearMemoryBusy, setClearMemoryBusy] = useState(false);
   const [settingsToast, setSettingsToast] = useState<string | null>(null);
@@ -584,6 +581,25 @@ export function SettingsPage({
     (k: string, vars?: Vars) => tr(k as MessageKey, vars),
     [tr],
   );
+
+  const workspaceCwd = (projectPath || "").trim() || null;
+  const showSettingsToast = useCallback((msg: string, ms = 3500) => {
+    setSettingsToast(msg);
+    window.setTimeout(() => setSettingsToast(null), ms);
+  }, []);
+  const runClearWorkspaceMemory = useCallback(async () => {
+    if (!workspaceCwd || clearMemoryBusy) return;
+    setClearMemoryBusy(true);
+    try {
+      await api.memoryClear({ cwd: workspaceCwd, scope: "workspace" });
+      setClearMemoryOpen(false);
+      showSettingsToast(t("settings.clearWorkspaceMemoryDone"), 3500);
+    } catch (e) {
+      showSettingsToast(String(e), 4500);
+    } finally {
+      setClearMemoryBusy(false);
+    }
+  }, [workspaceCwd, clearMemoryBusy, showSettingsToast, t]);
 
   const wallpaperErrorMessage = useCallback(
     (err: unknown): string => {
@@ -614,29 +630,6 @@ export function SettingsPage({
     },
     [onWallpaper, wallpaperErrorMessage],
   );
-  const showSettingsToast = useCallback((msg: string, ms = 3500) => {
-    setSettingsToast(msg);
-    window.setTimeout(
-      () => setSettingsToast((cur) => (cur === msg ? null : cur)),
-      ms,
-    );
-  }, []);
-
-  const workspaceCwd = (projectPath ?? "").trim() || null;
-
-  const runClearWorkspaceMemory = useCallback(async () => {
-    if (!workspaceCwd || clearMemoryBusy) return;
-    setClearMemoryBusy(true);
-    try {
-      await api.memoryClear({ cwd: workspaceCwd, scope: "workspace" });
-      setClearMemoryOpen(false);
-      showSettingsToast(t("settings.clearWorkspaceMemoryDone"), 3500);
-    } catch (e) {
-      showSettingsToast(String(e), 4500);
-    } finally {
-      setClearMemoryBusy(false);
-    }
-  }, [workspaceCwd, clearMemoryBusy, showSettingsToast, t]);
 
   useEffect(() => {
     if (!api.isTauri()) return;
@@ -1130,6 +1123,9 @@ export function SettingsPage({
                         };
                       }),
                     ]}
+                  />
+                </div>
+              ) : null}
               {onExperimentalMemory ? (
                 <div className="settings-row">
                   <div className="settings-row__text">
@@ -1144,6 +1140,9 @@ export function SettingsPage({
                     checked={!!experimentalMemory}
                     onChange={() => onExperimentalMemory(!experimentalMemory)}
                     ariaLabel={t("settings.experimentalMemory")}
+                  />
+                </div>
+              ) : null}
               {onSubagentsEnabled ? (
                 <div className="settings-row">
                   <div className="settings-row__text">
@@ -1158,6 +1157,9 @@ export function SettingsPage({
                     checked={!!subagentsEnabled}
                     onChange={() => onSubagentsEnabled(!subagentsEnabled)}
                     ariaLabel={t("settings.subagentsEnabled")}
+                  />
+                </div>
+              ) : null}
               {onPlanEnabled ? (
                 <div className="settings-row">
                   <div className="settings-row__text">
@@ -1172,6 +1174,9 @@ export function SettingsPage({
                     checked={!!planEnabled}
                     onChange={() => onPlanEnabled(!planEnabled)}
                     ariaLabel={t("settings.planEnabled")}
+                  />
+                </div>
+              ) : null}
               {onDisableWebSearch ? (
                 <div className="settings-row">
                   <div className="settings-row__text">
@@ -1186,6 +1191,9 @@ export function SettingsPage({
                     checked={!!disableWebSearch}
                     onChange={() => onDisableWebSearch(!disableWebSearch)}
                     ariaLabel={t("settings.disableWebSearch")}
+                  />
+                </div>
+              ) : null}
               {onUseLeader ? (
                 <div className="settings-row">
                   <div className="settings-row__text">
@@ -1204,6 +1212,7 @@ export function SettingsPage({
                 </div>
               ) : null}
             </div>
+
 
 <h2 className="settings-page__h2">{t("settings.section.general")}</h2>
             <div className="settings-card">
@@ -1273,23 +1282,6 @@ export function SettingsPage({
                   />
                 </div>
               ) : null}
-              {onExperimentalMemory ? (
-                <div className="settings-row">
-                  <div className="settings-row__text">
-                    <div className="settings-row__label">
-                      {t("settings.experimentalMemory")}
-                    </div>
-                    <div className="settings-row__desc">
-                      {t("settings.experimentalMemoryDesc")}
-                    </div>
-                  </div>
-                  <UiCheck
-                    checked={!!experimentalMemory}
-                    onChange={() => onExperimentalMemory(!experimentalMemory)}
-                    ariaLabel={t("settings.experimentalMemory")}
-                  />
-                </div>
-              ) : null}
               {workspaceCwd ? (
                 <div className="settings-row">
                   <div className="settings-row__text">
@@ -1310,6 +1302,23 @@ export function SettingsPage({
                       ? t("settings.clearWorkspaceMemoryBusy")
                       : t("settings.clearWorkspaceMemory")}
                   </button>
+                </div>
+              ) : null}
+              {onReopenLastSession ? (
+                <div className="settings-row">
+                  <div className="settings-row__text">
+                    <div className="settings-row__label">
+                      {t("settings.reopenLastSession")}
+                    </div>
+                    <div className="settings-row__desc">
+                      {t("settings.reopenLastSessionDesc")}
+                    </div>
+                  </div>
+                  <UiCheck
+                    checked={!!reopenLastSession}
+                    onChange={() => onReopenLastSession(!reopenLastSession)}
+                    ariaLabel={t("settings.reopenLastSession")}
+                  />
                 </div>
               ) : null}
               {onDefaultOpenTarget && (
@@ -1335,23 +1344,6 @@ export function SettingsPage({
                   />
                 </div>
               )}
-              {onReopenLastSession ? (
-                <div className="settings-row">
-                  <div className="settings-row__text">
-                    <div className="settings-row__label">
-                      {t("settings.reopenLastSession")}
-                    </div>
-                    <div className="settings-row__desc">
-                      {t("settings.reopenLastSessionDesc")}
-                    </div>
-                  </div>
-                  <UiCheck
-                    checked={!!reopenLastSession}
-                    onChange={() => onReopenLastSession(!reopenLastSession)}
-                    ariaLabel={t("settings.reopenLastSession")}
-                  />
-                </div>
-              ) : null}
             </div>
           </>
         )}

@@ -465,6 +465,9 @@ export default function App() {
   const [slashActiveIndex, setSlashActiveIndex] = useState(0);
   const [showStatusModal, setShowStatusModal] = useState(false);
   const [showMcpModal, setShowMcpModal] = useState(false);
+  const [showCompactModal, setShowCompactModal] = useState(false);
+  const [compactNote, setCompactNote] = useState("");
+  const compactNoteRef = useRef<HTMLInputElement>(null);
   const [mcpServers, setMcpServers] = useState<api.McpDto[]>([]);
   const [mcpError, setMcpError] = useState<string | null>(null);
   const [mcpLoading, setMcpLoading] = useState(false);
@@ -7367,26 +7370,36 @@ export default function App() {
             setExperimentalMemory(v);
             void api.settingsGet().then((s) =>
               api.settingsSet({ ...s, experimentalMemory: v }),
+            );
+          }}
           subagentsEnabled={subagentsEnabled}
           onSubagentsEnabled={(v) => {
             setSubagentsEnabled(v);
             void api.settingsGet().then((s) =>
               api.settingsSet({ ...s, subagentsEnabled: v }),
+            );
+          }}
           planEnabled={planEnabled}
           onPlanEnabled={(v) => {
             setPlanEnabled(v);
             void api.settingsGet().then((s) =>
               api.settingsSet({ ...s, planEnabled: v }),
+            );
+          }}
           disableWebSearch={disableWebSearch}
           onDisableWebSearch={(v) => {
             setDisableWebSearch(v);
             void api.settingsGet().then((s) =>
               api.settingsSet({ ...s, disableWebSearch: v }),
+            );
+          }}
           useLeader={useLeader}
           onUseLeader={(v) => {
             setUseLeader(v);
             void api.settingsGet().then((s) =>
               api.settingsSet({ ...s, useLeader: v }),
+            );
+          }}
           reopenLastSession={reopenLastSession}
           onReopenLastSession={(v) => {
             setReopenLastSession(v);

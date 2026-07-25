@@ -38,7 +38,6 @@ import {
   sortSkillsByName,
   type PluginFilter,
 } from "@/lib/extensionsUi";
-import { ExtensionsHooksPanel } from "@/components/ExtensionsHooksPanel";
 import { ExtensionsBuildExtras } from "@/components/ExtensionsBuildExtras";
 
 export interface ExtensionsPanelProps {
@@ -939,10 +938,6 @@ export function ExtensionsPanel({
         ) : null}
       </div>
 
-      <ExtensionsHooksPanel
-        locale={locale}
-        projectPath={projectPath}
-        cliFound={cliFound && !cliMissing}
       <ExtensionsBuildExtras
         locale={locale}
         projectPath={projectPath}

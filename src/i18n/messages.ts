@@ -1399,7 +1399,6 @@ const en = {
   "ext.market.removeTitle": "Remove marketplace source",
   "ext.market.removeConfirm":
     "Remove source “{name}”? Plugins installed from it may need a separate uninstall.",
-  "ext.market.update": "Refresh",
   "ext.market.updateAll": "Refresh all",
   "ext.market.updating": "Refreshing…",
   "ext.market.availableTitle": "Available plugins",
@@ -3149,7 +3148,6 @@ const zh: Record<MessageKey, string> = {
   "ext.market.removeTitle": "移除市场源",
   "ext.market.removeConfirm":
     "移除源 “{name}”？从该源安装的插件可能需要另行卸载。",
-  "ext.market.update": "刷新",
   "ext.market.updateAll": "全部刷新",
   "ext.market.updating": "刷新中…",
   "ext.market.availableTitle": "可用插件",
