@@ -1,7 +1,7 @@
 {
   "name": "grok-app",
   "private": true,
-  "version": "0.1.6",
+  "version": "0.1.7",
   "description": "Desktop workbench for Grok Build CLI (English-first)",
   "author": "RongleCat",
   "license": "MIT",
