@@ -949,6 +949,26 @@ export interface AppSettings {
    * When false: force --no-subagents / GROK_SUBAGENTS=0 / [subagents] enabled = false.
    */
   subagentsEnabled?: boolean;
+   * Preferred Grok Build agent definition for spawn (`explore` / `plan` / …).
+   * Empty / "default" / "none" → omit top-level `--agent` (CLI default).
+   * Applied at agent process start; changing soft-respawns the live agent.
+   */
+  preferredAgent?: string;
+}
+
+export type AgentCatalogSource = "builtin" | "user" | "project" | "bundled";
+
+export interface AgentCatalogEntry {
+  name: string;
+  source: AgentCatalogSource;
+  path?: string | null;
+}
+
+export interface AgentsCatalogResult {
+  agents: AgentCatalogEntry[];
+  userDir: string;
+  projectDir?: string | null;
+  bundledDir: string;
 }
 
 export interface AvailableModel {
@@ -1037,6 +1057,13 @@ export async function permissionRulesSet(rules: {
 
 export async function modelsListAvailable() {
   return invoke<AvailableModelsResult>("models_list_available");
+}
+
+/** Built-ins + ~/.grok/agents + project .grok/agents for the agent picker. */
+export async function agentsCatalog(projectPath?: string | null) {
+  return invoke<AgentsCatalogResult>("agents_catalog", {
+    projectPath: projectPath ?? null,
+  });
 }
 
 export async function composerPrefsResolve(opts?: {

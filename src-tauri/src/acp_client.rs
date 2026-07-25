@@ -252,6 +252,31 @@ pub fn no_plan_spawn_flags(plan_enabled: bool) -> Vec<&'static str> {
     } else {
         vec!["--no-plan"]
     }
+/// Pure spawn plan for top-level `--agent <NAME>`.
+///
+/// `--agent` is a **top-level** `grok` flag (not under `agent` / `stdio`).
+/// Empty / `default` / `none` omit the flag so the CLI keeps its built-in default.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AgentSpawnSpec {
+    pub name: String,
+}
+
+impl AgentSpawnSpec {
+    /// Build from settings. `None` means do not pass `--agent`.
+    pub fn from_setting(raw: &str) -> Option<Self> {
+        let name = crate::agents_catalog::normalize_preferred_agent(raw)?;
+        Some(Self { name })
+    }
+
+    /// Top-level CLI args: `["--agent", "<name>"]` (before `agent`).
+    pub fn cli_args(&self) -> [String; 2] {
+        ["--agent".into(), self.name.clone()]
+    }
+}
+
+/// Pure helper used by spawn + unit tests.
+pub fn preferred_agent_spawn_flags(raw: &str) -> Option<Vec<String>> {
+    crate::agents_catalog::agent_spawn_cli_args(raw)
 }
 
 impl AcpClient {
@@ -356,6 +381,17 @@ impl AcpClient {
         cmd.arg("--no-auto-update");
         if let Some(ref mt) = max_turns {
             for a in mt.cli_args() {
+        //   top-level: `grok --no-auto-update [--agent NAME] agent …`
+        //   agent opts: `--model` / `--reasoning-effort` / `--always-approve` before `stdio`
+        // Skip background update checks so ACP handshakes are not delayed on launch.
+        // `--agent` is top-level only (agent definition name or path).
+        let settings_for_spawn = crate::store::load_settings();
+        let preferred_agent = AgentSpawnSpec::from_setting(&settings_for_spawn.preferred_agent);
+
+        let mut cmd = Command::new(&cli_path);
+        cmd.arg("--no-auto-update");
+        if let Some(ref agent) = preferred_agent {
+            for a in agent.cli_args() {
                 cmd.arg(a);
             }
         //   top-level: `grok --no-auto-update [--disable-web-search] agent …`
@@ -445,6 +481,7 @@ impl AcpClient {
             "acp: spawn GROK_HOME={} mode={} auth_present={} route={:?} composer_model={:?} spawn_model={} yolo={} disable_web_search={}",
             "acp: spawn GROK_HOME={} mode={} auth_present={} route={:?} composer_model={:?} spawn_model={} yolo={} plan_enabled={}",
             "acp: spawn GROK_HOME={} mode={} auth_present={} route={:?} composer_model={:?} spawn_model={} yolo={} subagents_enabled={}",
+            "acp: spawn GROK_HOME={} mode={} auth_present={} route={:?} composer_model={:?} spawn_model={} yolo={} preferred_agent={:?}",
             grok_home.display(),
             session_data_mode,
             grok_home.join("auth.json").is_file(),
@@ -461,6 +498,7 @@ impl AcpClient {
             disable_web_search
             plan_enabled
             subagents_enabled
+            preferred_agent.as_ref().map(|a| a.name.as_str())
         );
 
         let mut child = cmd.spawn().map_err(|e| {
@@ -2464,5 +2502,41 @@ mod no_plan_spawn_tests {
     #[test]
     fn disabled_adds_top_level_flag() {
         assert_eq!(no_plan_spawn_flags(false), vec!["--no-plan"]);
+mod preferred_agent_spawn_tests {
+    use super::*;
+
+    #[test]
+    fn empty_and_sentinels_yield_no_flags() {
+        assert!(AgentSpawnSpec::from_setting("").is_none());
+        assert!(AgentSpawnSpec::from_setting("default").is_none());
+        assert!(AgentSpawnSpec::from_setting("NONE").is_none());
+        assert!(preferred_agent_spawn_flags("").is_none());
+        assert!(preferred_agent_spawn_flags("grok-build").is_none());
+    }
+
+    #[test]
+    fn known_agents_build_top_level_args() {
+        for name in ["explore", "plan", "general-purpose", "my-custom"] {
+            let spec = AgentSpawnSpec::from_setting(name).expect(name);
+            assert_eq!(spec.name, name);
+            assert_eq!(
+                spec.cli_args(),
+                ["--agent".to_string(), name.to_string()]
+            );
+            assert_eq!(
+                preferred_agent_spawn_flags(name),
+                Some(vec!["--agent".to_string(), name.to_string()])
+            );
+        }
+    }
+
+    #[test]
+    fn trims_preferred_agent() {
+        let spec = AgentSpawnSpec::from_setting("  explore  ").unwrap();
+        assert_eq!(spec.name, "explore");
+        assert_eq!(
+            spec.cli_args(),
+            ["--agent".to_string(), "explore".to_string()]
+        );
     }
 }

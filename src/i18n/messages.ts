@@ -675,6 +675,14 @@ const en = {
   "settings.maxAgentTurnsDesc":
     "Pass `grok --max-turns N` when starting the agent (1–200). Leave empty or 0 for the CLI default. Applies on the next agent start — reconnect the session after changing.",
   "settings.maxAgentTurnsPlaceholder": "Default (no limit)",
+  "settings.preferredAgent": "Agent definition",
+  "settings.preferredAgentDesc":
+    "Passed as top-level grok --agent <name> when starting the agent process (built-ins: explore, plan, general-purpose; plus ~/.grok/agents and project .grok/agents). Applies on reconnect or new session — not mid-turn.",
+  "settings.preferredAgent.default": "Default (CLI)",
+  "settings.preferredAgent.source.builtin": "built-in",
+  "settings.preferredAgent.source.bundled": "bundled",
+  "settings.preferredAgent.source.user": "user",
+  "settings.preferredAgent.source.project": "project",
   "agent.idleRecycledToast":
     "Agent process recycled after idle — session kept; next message will reconnect.",
   "agent.dataModeRecycledToast":
@@ -2129,6 +2137,14 @@ const zh: Record<MessageKey, string> = {
   "settings.maxAgentTurnsDesc":
     "启动 Agent 时传入 `grok --max-turns N`（1–200）。留空或 0 表示使用 CLI 默认。下次启动 Agent 时生效——更改后请重连会话。",
   "settings.maxAgentTurnsPlaceholder": "默认（不限制）",
+  "settings.preferredAgent": "Agent 定义",
+  "settings.preferredAgentDesc":
+    "启动 Agent 进程时作为顶层 grok --agent <name> 传入（内置 explore / plan / general-purpose，以及 ~/.grok/agents 与项目 .grok/agents）。在重连或新会话时生效，不会在一轮对话中途热切换。",
+  "settings.preferredAgent.default": "默认（CLI）",
+  "settings.preferredAgent.source.builtin": "内置",
+  "settings.preferredAgent.source.bundled": "捆绑",
+  "settings.preferredAgent.source.user": "用户",
+  "settings.preferredAgent.source.project": "项目",
   "agent.idleRecycledToast":
     "Agent 进程因闲置已回收 — 会话仍在；下次发送将重新连接。",
   "agent.dataModeRecycledToast":

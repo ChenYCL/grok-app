@@ -673,6 +673,7 @@ pub async fn settings_set(
     let web_search_flip = prev.disable_web_search != settings.disable_web_search;
     let plan_enabled_flip = prev.plan_enabled != settings.plan_enabled;
     let subagents_flip = prev.subagents_enabled != settings.subagents_enabled;
+    let preferred_agent_flip = prev.preferred_agent.trim() != settings.preferred_agent.trim();
 
     store::save_settings(&settings)?;
 
@@ -712,6 +713,8 @@ pub async fn settings_set(
             tracing::warn!("settings_set sync subagents profile: {e}");
         }
         // Spawn flags change — soft-respawn so the next turn uses the new policy.
+    if preferred_agent_flip {
+        // `--agent` is spawn-only — soft-respawn so the next turn uses the new definition.
         mgr.soft_respawn(&app).await;
     }
 
@@ -792,6 +795,16 @@ pub async fn settings_remember_last_session(
 #[tauri::command]
 pub async fn models_list_available() -> Result<crate::models_catalog::AvailableModelsResult, String> {
     Ok(crate::models_catalog::list_available_models())
+}
+
+/// Selectable agent definitions for Settings → Runtime (built-ins + user/project `.md`).
+#[tauri::command]
+pub async fn agents_catalog(
+    project_path: Option<String>,
+) -> Result<crate::agents_catalog::AgentsCatalogResult, String> {
+    Ok(crate::agents_catalog::list_agents_catalog(
+        project_path.as_deref(),
+    ))
 }
 
 #[tauri::command]

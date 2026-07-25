@@ -199,6 +199,12 @@ pub struct AppSettings {
     /// and independent mode writes `[subagents] enabled = false`.
     #[serde(default = "default_true")]
     pub subagents_enabled: bool,
+    /// Preferred Grok Build agent definition for new agent processes
+    /// (`explore` / `plan` / `general-purpose` / custom name under `~/.grok/agents`).
+    /// Empty / `default` / `none` → omit top-level `--agent` (CLI default).
+    /// Applied at spawn only; changing it soft-respawns the live agent.
+    #[serde(default)]
+    pub preferred_agent: String,
 }
 
 fn default_composer_prefs_scope() -> String {
@@ -259,6 +265,7 @@ impl Default for AppSettings {
             last_project_id: None,
             plan_enabled: default_plan_enabled(),
             subagents_enabled: true,
+            preferred_agent: String::new(),
         }
     }
 }
@@ -1350,6 +1357,11 @@ mod tests {
     #[test]
     fn max_agent_turns_defaults_when_missing_from_json() {
         // Old settings files without the field must deserialize to None.
+        assert_eq!(s.preferred_agent, "");
+    }
+
+    #[test]
+    fn preferred_agent_defaults_when_missing_from_json() {
         let raw = r#"{
             "theme": "dark",
             "locale": "en",
@@ -1435,5 +1447,6 @@ mod tests {
         assert!(!s.disable_web_search);
         assert!(s.plan_enabled);
         assert!(s.subagents_enabled);
+        assert_eq!(s.preferred_agent, "");
     }
 }

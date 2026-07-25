@@ -4,6 +4,7 @@ mod account;
 mod account_profiles;
 mod acp_client;
 mod agent_memory;
+mod agents_catalog;
 mod agent_prefs;
 mod app_update;
 mod agent_subagents;
@@ -184,6 +185,7 @@ pub fn run() {
             commands::memory_clear,
             commands::settings_remember_last_session,
             commands::models_list_available,
+            commands::agents_catalog,
             commands::composer_prefs_resolve,
             commands::composer_prefs_set,
             commands::session_set_policy,

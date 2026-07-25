@@ -644,6 +644,14 @@ export const zhTW: Record<MessageKey, string> = {
   "settings.maxAgentTurnsDesc":
     "啟動 Agent 時傳入 `grok --max-turns N`（1–200）。留空或 0 表示使用 CLI 預設。下次啟動 Agent 時生效——變更後請重新連線工作階段。",
   "settings.maxAgentTurnsPlaceholder": "預設（不限制）",
+  "settings.preferredAgent": "Agent 定義",
+  "settings.preferredAgentDesc":
+    "啟動 Agent 行程時作為頂層 grok --agent <name> 傳入（內建 explore / plan / general-purpose，以及 ~/.grok/agents 與專案 .grok/agents）。在重連或新工作階段時生效，不會在一輪對話中途熱切換。",
+  "settings.preferredAgent.default": "預設（CLI）",
+  "settings.preferredAgent.source.builtin": "內建",
+  "settings.preferredAgent.source.bundled": "捆綁",
+  "settings.preferredAgent.source.user": "使用者",
+  "settings.preferredAgent.source.project": "專案",
   "agent.idleRecycledToast":
     "Agent 行程因閒置已回收 — 工作階段仍在；下次傳送將重新連線。",
   "agent.dataModeRecycledToast":

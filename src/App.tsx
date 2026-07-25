@@ -676,6 +676,11 @@ export default function App() {
   /** Default true — false spawns with top-level `--no-plan`. */
   const [planEnabled, setPlanEnabled] = useState(true);
   const [subagentsEnabled, setSubagentsEnabled] = useState(true);
+  /** Preferred CLI agent definition for spawn (`""` = CLI default). */
+  const [preferredAgent, setPreferredAgent] = useState("");
+  const [agentCatalog, setAgentCatalog] = useState<
+    Array<{ name: string; source: string }>
+  >([]);
   const [gitWorktrees, setGitWorktrees] = useState<api.GitWorktreeEntry[]>([]);
   /** null = unknown/loading; true = git work tree; false = not a git repo. */
   const [gitWorktreesAvailable, setGitWorktreesAvailable] = useState<
@@ -943,6 +948,25 @@ export default function App() {
       setPlanEnabled(settings.planEnabled !== false);
       // Default true when field is missing from older settings files.
       setSubagentsEnabled(settings.subagentsEnabled !== false);
+      setPreferredAgent((settings.preferredAgent || "").trim());
+      void api
+        .agentsCatalog(null)
+        .then((cat) => {
+          setAgentCatalog(
+            (cat.agents ?? []).map((a) => ({
+              name: a.name,
+              source: a.source,
+            })),
+          );
+        })
+        .catch(() => {
+          setAgentCatalog(
+            ["explore", "general-purpose", "plan"].map((name) => ({
+              name,
+              source: "builtin",
+            })),
+          );
+        });
       setCliInfo({
         found: cli.found,
         path: cli.path,
@@ -3869,6 +3893,29 @@ export default function App() {
   /** Bumped when Extensions skill toggles change so slash palette refilters. */
   const [skillsReloadToken, setSkillsReloadToken] = useState(0);
 
+  // Refresh agent definition catalog when the active project changes.
+  useEffect(() => {
+    if (!api.isTauri()) return;
+    let cancelled = false;
+    void api
+      .agentsCatalog(activeProject?.path ?? null)
+      .then((cat) => {
+        if (cancelled) return;
+        setAgentCatalog(
+          (cat.agents ?? []).map((a) => ({
+            name: a.name,
+            source: a.source,
+          })),
+        );
+      })
+      .catch(() => {
+        /* keep previous catalog */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [activeProject?.path]);
+
   // Load skills catalog for slash palette (Grok inspect).
   useEffect(() => {
     if (!api.isTauri()) return;
@@ -6229,6 +6276,13 @@ export default function App() {
       "settings.planEnabledDesc",
       "settings.subagentsEnabled",
       "settings.subagentsEnabledDesc",
+      "settings.preferredAgent",
+      "settings.preferredAgentDesc",
+      "settings.preferredAgent.default",
+      "settings.preferredAgent.source.builtin",
+      "settings.preferredAgent.source.bundled",
+      "settings.preferredAgent.source.user",
+      "settings.preferredAgent.source.project",
       "settings.prefsScope",
       "settings.prefsScopeDesc",
       "settings.prefsScope.global",
@@ -6643,6 +6697,14 @@ export default function App() {
               });
           }}
           onToast={showToast}
+          preferredAgent={preferredAgent}
+          onPreferredAgent={(v) => {
+            setPreferredAgent(v);
+            void api.settingsGet().then((s) =>
+              api.settingsSet({ ...s, preferredAgent: v }),
+            );
+          }}
+          agentCatalog={agentCatalog}
           cliInfo={cliInfo}
           onDoctor={() => void openDoctor()}
           versionFooter={tr("app.versionFooter")}
