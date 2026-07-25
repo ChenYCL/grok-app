@@ -38,6 +38,7 @@ import {
   sortSkillsByName,
   type PluginFilter,
 } from "@/lib/extensionsUi";
+import { ExtensionsHooksPanel } from "@/components/ExtensionsHooksPanel";
 
 export interface ExtensionsPanelProps {
   locale: Locale;
@@ -936,6 +937,12 @@ export function ExtensionsPanel({
           <p className="ext-section-note">{tr("ext.mcp.note")}</p>
         ) : null}
       </div>
+
+      <ExtensionsHooksPanel
+        locale={locale}
+        projectPath={projectPath}
+        cliFound={cliFound && !cliMissing}
+      />
 
       <p className="ext-footnote">
         <IconPuzzle size={13} />
