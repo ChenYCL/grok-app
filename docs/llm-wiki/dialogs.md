@@ -97,7 +97,7 @@ setAppDialog({
 | 类型 | 选择器 / 组件 |
 |------|----------------|
 | App 确认/输入 | `.modal.app-dialog` · `setAppDialog` |
-| Compact / Doctor / Status / MCP | `.modal` · `GlassModal` · `DoctorModal` |
+| Compact keep-note / Doctor / Status / MCP | `setAppDialog` prompt · `.modal` · `GlassModal` · `DoctorModal` |
 | 文件详情 | `.modal.file-path-details` |
 | 搜索面板 | `.search-panel` |
 | 模型 / 权限 / 项目 / 用户 / 斜杠 / + | `.cmm__pop` · `.menu-panel` · `.slash-palette` · `.composer-plus` |

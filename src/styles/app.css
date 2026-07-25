@@ -12258,38 +12258,6 @@ div.composer__input:empty::before {
   -webkit-box-orient: vertical;
 }
 
-/* Compact confirm */
-.compact-modal {
-  width: min(var(--modal-width-sm, 420px), 100%);
-  gap: var(--modal-gap, 16px);
-}
-
-.compact-modal__msg {
-  margin: 0;
-  color: var(--text-secondary);
-  font-size: 13px;
-  line-height: 1.5;
-}
-
-.compact-modal__field {
-  width: 100%;
-  margin: 0;
-  padding: 10px 12px;
-  border-radius: var(--menu-item-radius, 8px);
-  border: 1px solid var(--glass-border);
-  background: color-mix(in srgb, var(--bg-code) 70%, transparent);
-  color: var(--text-primary);
-  font-size: 13px;
-  box-sizing: border-box;
-  outline: none;
-}
-
-.compact-modal__field:focus,
-.compact-modal__field:focus-visible {
-  border-color: color-mix(in srgb, var(--text-primary) 28%, var(--border-subtle));
-  outline: none;
-}
-
 /* Search palette sits at top of overlay (not vertically centered) */
 .overlay:has(> .search-panel) {
   align-items: flex-start;
