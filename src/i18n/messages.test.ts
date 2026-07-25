@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { createT, messages, t, type MessageKey } from "./index";
+import {
+  createT,
+  messages,
+  resolveLocale,
+  t,
+  type MessageKey,
+} from "./index";
 
 describe("i18n catalog", () => {
   it("en and zh share the same keys", () => {
@@ -37,5 +43,33 @@ describe("i18n catalog", () => {
   it("type surface accepts known keys only", () => {
     const key: MessageKey = "composer.send";
     expect(t("en", key)).toBeTruthy();
+  });
+});
+
+describe("resolveLocale", () => {
+  it("keeps canonical ids unchanged", () => {
+    expect(resolveLocale("zh-TW")).toBe("zh-TW");
+    expect(resolveLocale("zh")).toBe("zh");
+    expect(resolveLocale("en")).toBe("en");
+  });
+
+  it("accepts case/alias variants of Traditional Chinese", () => {
+    expect(resolveLocale("zh-tw")).toBe("zh-TW");
+    expect(resolveLocale("zh_TW")).toBe("zh-TW");
+    expect(resolveLocale("zh-Hant")).toBe("zh-TW");
+    expect(resolveLocale(" ZH-HANT ")).toBe("zh-TW");
+  });
+
+  it("accepts case/alias variants of Simplified Chinese and English", () => {
+    expect(resolveLocale("ZH")).toBe("zh");
+    expect(resolveLocale("zh-CN")).toBe("zh");
+    expect(resolveLocale("EN-US")).toBe("en");
+  });
+
+  it("falls back to the product default for unknown or empty ids", () => {
+    expect(resolveLocale("fr")).toBe("en");
+    expect(resolveLocale("")).toBe("en");
+    expect(resolveLocale(undefined)).toBe("en");
+    expect(resolveLocale(null)).toBe("en");
   });
 });
