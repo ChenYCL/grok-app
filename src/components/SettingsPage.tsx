@@ -500,6 +500,9 @@ export function SettingsPage({
   onSandboxProfile,
   maxAgentTurns = 0,
   onMaxAgentTurns,
+  preferredAgent = "",
+  onPreferredAgent,
+  agentCatalog = [],
   cliInfo,
   onDoctor,
   versionFooter,
@@ -1048,6 +1051,43 @@ export function SettingsPage({
                       if (!Number.isFinite(n)) return;
                       onMaxAgentTurns(Math.min(200, Math.max(0, Math.round(n))));
                     }}
+                  />
+                </div>
+              ) : null}
+              {onPreferredAgent ? (
+                <div className="settings-row settings-row--stack">
+                  <div className="settings-row__text">
+                    <div className="settings-row__label">
+                      {t("settings.preferredAgent")}
+                    </div>
+                    <div className="settings-row__desc">
+                      {t("settings.preferredAgentDesc")}
+                    </div>
+                  </div>
+                  <Select
+                    value={preferredAgent || ""}
+                    onChange={(v) => onPreferredAgent(v)}
+                    options={[
+                      {
+                        value: "",
+                        label: t("settings.preferredAgent.default"),
+                      },
+                      ...agentCatalog.map((a) => {
+                        const srcKey = (
+                          {
+                            builtin: "settings.preferredAgent.source.builtin",
+                            bundled: "settings.preferredAgent.source.bundled",
+                            user: "settings.preferredAgent.source.user",
+                            project: "settings.preferredAgent.source.project",
+                          } as const
+                        )[a.source as "builtin" | "bundled" | "user" | "project"];
+                        const srcLabel = srcKey ? t(srcKey) : a.source || "other";
+                        return {
+                          value: a.name,
+                          label: `${a.name} · ${srcLabel}`,
+                        };
+                      }),
+                    ]}
                   />
                 </div>
               ) : null}
