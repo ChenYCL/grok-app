@@ -1529,6 +1529,8 @@ export async function pluginDetails(name: string) {
 /**
  * Install from path, git URL, or GitHub shorthand (`grok plugin install --trust`).
  * Soft-respawns agent on success.
+ * Install from marketplace name, `name@marketplace`, git URL, or path
+ * (`grok plugin install --trust`). Soft-respawns agent on success.
  */
 export async function pluginInstall(source: string) {
   return invoke<PluginActionResult>("plugin_install", { source });
@@ -1646,6 +1648,76 @@ export async function setupPreview() {
 /** Install managed config into ~/.grok (`grok setup`); soft-respawns agent. */
 export async function setupInstall() {
   return invoke<SetupInstallResult>("setup_install");
+// ── Plugin marketplace sources (`grok plugin marketplace …`) ────────────────
+
+export interface MarketplaceSourceDto {
+  name: string;
+  kind: string;
+  url?: string | null;
+  path?: string | null;
+  branch?: string | null;
+}
+
+export interface MarketplaceListResult {
+  sources: MarketplaceSourceDto[];
+  error?: string;
+}
+
+export interface AvailablePluginDto {
+  name: string;
+  status: string;
+  marketplace?: string | null;
+  description?: string | null;
+  version?: string | null;
+  skillCount?: number | null;
+  hasHooks?: boolean;
+  hasAgents?: boolean;
+  hasMcp?: boolean;
+}
+
+export interface MarketplaceAvailableResult {
+  plugins: AvailablePluginDto[];
+  error?: string;
+}
+
+export interface MarketplaceActionResult {
+  ok: boolean;
+  name?: string;
+  source?: string;
+  message?: string;
+}
+
+/** Configured marketplace sources (`grok plugin marketplace list --json`). */
+export async function marketplaceList() {
+  return invoke<MarketplaceListResult>("marketplace_list");
+}
+
+/**
+ * Installable plugins from marketplace catalogs
+ * (`grok plugin list --json --available`, status=available only).
+ */
+export async function marketplaceAvailable() {
+  return invoke<MarketplaceAvailableResult>("marketplace_available");
+}
+
+/** Add marketplace source (git URL, GitHub shorthand, or local path). */
+export async function marketplaceAdd(source: string) {
+  return invoke<MarketplaceActionResult>("marketplace_add", { source });
+}
+
+/** Remove marketplace source by display name or git URL. */
+export async function marketplaceRemove(nameOrUrl: string) {
+  return invoke<MarketplaceActionResult>("marketplace_remove", {
+    nameOrUrl,
+  });
+}
+
+/** Refresh marketplace cache(s). Omit name to refresh all. */
+export async function marketplaceUpdate(name?: string | null) {
+  const n = (name ?? "").trim();
+  return invoke<MarketplaceActionResult>("marketplace_update", {
+    name: n ? n : null,
+  });
 }
 
 // ── Official Grok Build account ─────────────────────────────────────────────

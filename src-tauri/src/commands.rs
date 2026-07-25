@@ -3427,12 +3427,254 @@ pub fn normalize_plugin_install_source(source: &str) -> Result<String, String> {
     let s = source.trim();
     if s.is_empty() {
         return Err("plugin source required".into());
+// ── Plugin marketplace (`grok plugin marketplace …` + available list) ───────
+//
+// Marketplace list --json currently returns sources only (no nested plugins).
+// Browse installable plugins via `plugin list --json --available`.
+// Install uses `plugin install <name|name@market|url> --trust` + soft-respawn.
+
+const PLUGIN_MARKETPLACE_MUTATE_TIMEOUT_SECS: u64 = 120;
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MarketplaceSourceDto {
+    pub name: String,
+    pub kind: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub url: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub path: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub branch: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AvailablePluginDto {
+    pub name: String,
+    pub status: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub marketplace: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub version: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub skill_count: Option<u32>,
+    #[serde(default)]
+    pub has_hooks: bool,
+    #[serde(default)]
+    pub has_agents: bool,
+    #[serde(default)]
+    pub has_mcp: bool,
+}
+
+/// Parse `grok plugin marketplace list --json` (array or `{ sources: [...] }`).
+pub fn parse_marketplace_list_json(raw: &str) -> Result<Vec<MarketplaceSourceDto>, String> {
+    let text = raw.trim();
+    if text.is_empty() {
+        return Ok(Vec::new());
+    }
+    let value: serde_json::Value = serde_json::from_str(text)
+        .map_err(|e| format!("Failed to parse marketplace list JSON: {e}"))?;
+    let arr = if let Some(a) = value.as_array() {
+        a
+    } else if let Some(a) = value
+        .get("sources")
+        .or_else(|| value.get("marketplaces"))
+        .and_then(|x| x.as_array())
+    {
+        a
+    } else {
+        return Err("marketplace list JSON is not an array".into());
+    };
+
+    let mut out = Vec::with_capacity(arr.len());
+    for item in arr {
+        let name = item
+            .get("name")
+            .and_then(|x| x.as_str())
+            .unwrap_or("")
+            .trim()
+            .to_string();
+        if name.is_empty() {
+            continue;
+        }
+        let kind = item
+            .get("kind")
+            .or_else(|| item.get("type"))
+            .and_then(|x| x.as_str())
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+            .unwrap_or_else(|| "git".into());
+        let source = item.get("source");
+        let url = source
+            .and_then(|s| {
+                s.get("url")
+                    .or_else(|| s.get("git"))
+                    .and_then(|x| x.as_str())
+            })
+            .or_else(|| item.get("url").and_then(|x| x.as_str()))
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty());
+        let path = source
+            .and_then(|s| s.get("path").and_then(|x| x.as_str()))
+            .or_else(|| item.get("path").and_then(|x| x.as_str()))
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty());
+        let branch = source
+            .and_then(|s| s.get("branch").and_then(|x| x.as_str()))
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty());
+        out.push(MarketplaceSourceDto {
+            name,
+            kind,
+            url,
+            path,
+            branch,
+        });
+    }
+    Ok(out)
+}
+
+/// Parse `plugin list --json --available`; keep status "available" rows only.
+pub fn parse_available_plugins_json(raw: &str) -> Result<Vec<AvailablePluginDto>, String> {
+    let text = raw.trim();
+    if text.is_empty() {
+        return Ok(Vec::new());
+    }
+    let value: serde_json::Value = serde_json::from_str(text)
+        .map_err(|e| format!("Failed to parse available plugins JSON: {e}"))?;
+    let arr = if let Some(a) = value.as_array() {
+        a
+    } else if let Some(a) = value.get("plugins").and_then(|x| x.as_array()) {
+        a
+    } else {
+        return Err("available plugins JSON is not an array".into());
+    };
+
+    let mut out = Vec::new();
+    for item in arr {
+        let name = item
+            .get("name")
+            .and_then(|x| x.as_str())
+            .unwrap_or("")
+            .trim()
+            .to_string();
+        if name.is_empty() {
+            continue;
+        }
+        let status = item
+            .get("status")
+            .and_then(|x| x.as_str())
+            .unwrap_or("available")
+            .trim()
+            .to_string();
+        if !status.eq_ignore_ascii_case("available") {
+            continue;
+        }
+        let marketplace = item
+            .get("marketplace")
+            .and_then(|x| {
+                if x.is_null() {
+                    None
+                } else {
+                    x.as_str()
+                }
+            })
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty());
+        let description = item
+            .get("description")
+            .and_then(|x| x.as_str())
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty());
+        let version = item
+            .get("version")
+            .and_then(|x| x.as_str())
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty());
+        let skill_count = item
+            .get("skill_count")
+            .or_else(|| item.get("skillCount"))
+            .and_then(|x| x.as_u64())
+            .map(|n| n as u32);
+        let has_hooks = item
+            .get("has_hooks")
+            .or_else(|| item.get("hasHooks"))
+            .and_then(|x| x.as_bool())
+            .unwrap_or(false);
+        let has_agents = item
+            .get("has_agents")
+            .or_else(|| item.get("hasAgents"))
+            .and_then(|x| x.as_bool())
+            .unwrap_or(false);
+        let has_mcp = item
+            .get("has_mcp")
+            .or_else(|| item.get("hasMcp"))
+            .and_then(|x| x.as_bool())
+            .unwrap_or(false);
+        out.push(AvailablePluginDto {
+            name,
+            status,
+            marketplace,
+            description,
+            version,
+            skill_count,
+            has_hooks,
+            has_agents,
+            has_mcp,
+        });
+    }
+    Ok(out)
+}
+
+pub fn normalize_marketplace_add_source(source: &str) -> Result<String, String> {
+    let s = source.trim();
+    if s.is_empty() {
+        return Err("marketplace source required".into());
     }
     Ok(s.to_string())
 }
 
 /// Optional update target: empty / whitespace → update all (`None`).
 pub fn normalize_plugin_update_name(name: Option<&str>) -> Option<String> {
+/// CLI `marketplace remove` wants a git URL or local path — resolve name → URL.
+pub fn resolve_marketplace_remove_arg(
+    name_or_url: &str,
+    sources: &[MarketplaceSourceDto],
+) -> Result<String, String> {
+    let raw = name_or_url.trim();
+    if raw.is_empty() {
+        return Err("marketplace source name or URL required".into());
+    }
+    let looks_like_url = raw.contains("://")
+        || raw.starts_with("git@")
+        || raw.ends_with(".git");
+    let looks_like_path = raw.starts_with('/')
+        || raw.starts_with('~')
+        || (raw.len() >= 3
+            && raw.as_bytes()[1] == b':'
+            && (raw.as_bytes()[2] == b'\\' || raw.as_bytes()[2] == b'/'));
+    if looks_like_url || looks_like_path {
+        return Ok(raw.to_string());
+    }
+    let lower = raw.to_ascii_lowercase();
+    if let Some(src) = sources
+        .iter()
+        .find(|s| s.name.eq_ignore_ascii_case(raw) || s.name.to_ascii_lowercase() == lower)
+    {
+        if let Some(url) = src.url.as_ref().map(|s| s.trim()).filter(|s| !s.is_empty()) {
+            return Ok(url.to_string());
+        }
+        if let Some(path) = src.path.as_ref().map(|s| s.trim()).filter(|s| !s.is_empty()) {
+            return Ok(path.to_string());
+        }
+    }
+    Ok(raw.to_string())
+}
+
+pub fn normalize_marketplace_update_name(name: Option<&str>) -> Option<String> {
     name.map(str::trim)
         .filter(|s| !s.is_empty())
         .map(|s| s.to_string())
@@ -3452,6 +3694,89 @@ pub async fn plugin_install(
         run_grok_cli_args(
             &["plugin", "install", &source_for_cmd, "--trust"],
             PLUGIN_MUTATE_TIMEOUT_SECS,
+pub fn normalize_plugin_install_source(source: &str) -> Result<String, String> {
+    let s = source.trim();
+    if s.is_empty() {
+        return Err("plugin source required".into());
+    }
+    Ok(s.to_string())
+}
+
+fn collect_marketplace_list() -> Result<Vec<MarketplaceSourceDto>, String> {
+    let (stdout, stderr, ok) = run_grok_cli_args(
+        &["plugin", "marketplace", "list", "--json"],
+        PLUGIN_CMD_TIMEOUT_SECS,
+    )?;
+    if !ok {
+        let msg = if !stderr.is_empty() {
+            stderr
+        } else if !stdout.is_empty() {
+            stdout
+        } else {
+            "grok plugin marketplace list failed".into()
+        };
+        return Err(msg);
+    }
+    parse_marketplace_list_json(&stdout)
+}
+
+fn collect_available_plugins() -> Result<Vec<AvailablePluginDto>, String> {
+    let (stdout, stderr, ok) = run_grok_cli_args(
+        &["plugin", "list", "--json", "--available"],
+        PLUGIN_CMD_TIMEOUT_SECS,
+    )?;
+    if !ok {
+        let msg = if !stderr.is_empty() {
+            stderr
+        } else if !stdout.is_empty() {
+            stdout
+        } else {
+            "grok plugin list --available failed".into()
+        };
+        return Err(msg);
+    }
+    parse_available_plugins_json(&stdout)
+}
+
+/// List configured marketplace sources. Always Ok; error field on failure.
+#[tauri::command]
+pub async fn marketplace_list() -> Result<serde_json::Value, String> {
+    let result = tauri::async_runtime::spawn_blocking(collect_marketplace_list)
+        .await
+        .map_err(|e| e.to_string())?;
+    match result {
+        Ok(sources) => Ok(serde_json::json!({ "sources": sources })),
+        Err(error) => Ok(serde_json::json!({
+            "sources": [],
+            "error": error,
+        })),
+    }
+}
+
+/// Available (not yet installed) plugins from marketplace catalogs.
+#[tauri::command]
+pub async fn marketplace_available() -> Result<serde_json::Value, String> {
+    let result = tauri::async_runtime::spawn_blocking(collect_available_plugins)
+        .await
+        .map_err(|e| e.to_string())?;
+    match result {
+        Ok(plugins) => Ok(serde_json::json!({ "plugins": plugins })),
+        Err(error) => Ok(serde_json::json!({
+            "plugins": [],
+            "error": error,
+        })),
+    }
+}
+
+/// Add a marketplace source (git URL, GitHub shorthand, or local path).
+#[tauri::command]
+pub async fn marketplace_add(source: String) -> Result<serde_json::Value, String> {
+    let source = normalize_marketplace_add_source(&source)?;
+    let source_for_cmd = source.clone();
+    let result = tauri::async_runtime::spawn_blocking(move || {
+        run_grok_cli_args(
+            &["plugin", "marketplace", "add", &source_for_cmd],
+            PLUGIN_MARKETPLACE_MUTATE_TIMEOUT_SECS,
         )
     })
     .await
@@ -3472,6 +3797,13 @@ pub async fn plugin_install(
     Ok(serde_json::json!({
         "ok": true,
         "name": source,
+            format!("failed to add marketplace source {source}")
+        };
+        return Err(msg.chars().take(400).collect());
+    }
+    Ok(serde_json::json!({
+        "ok": true,
+        "source": source,
         "message": stdout.chars().take(400).collect::<String>(),
     }))
 }
@@ -3489,6 +3821,58 @@ pub async fn plugin_update(
     let result = tauri::async_runtime::spawn_blocking(move || match target_for_cmd.as_deref() {
         Some(n) => run_grok_cli_args(&["plugin", "update", n], PLUGIN_MUTATE_TIMEOUT_SECS),
         None => run_grok_cli_args(&["plugin", "update"], PLUGIN_MUTATE_TIMEOUT_SECS),
+/// Remove a marketplace source by name or URL (name resolved to URL for CLI).
+#[tauri::command]
+pub async fn marketplace_remove(name_or_url: String) -> Result<serde_json::Value, String> {
+    let raw = name_or_url.trim().to_string();
+    if raw.is_empty() {
+        return Err("marketplace source name or URL required".into());
+    }
+    let sources = collect_marketplace_list().unwrap_or_default();
+    let target = resolve_marketplace_remove_arg(&raw, &sources)?;
+    let target_for_cmd = target.clone();
+    let result = tauri::async_runtime::spawn_blocking(move || {
+        run_grok_cli_args(
+            &["plugin", "marketplace", "remove", &target_for_cmd],
+            PLUGIN_MARKETPLACE_MUTATE_TIMEOUT_SECS,
+        )
+    })
+    .await
+    .map_err(|e| e.to_string())??;
+
+    let (stdout, stderr, ok) = result;
+    if !ok {
+        let msg = if !stderr.is_empty() {
+            stderr
+        } else if !stdout.is_empty() {
+            stdout
+        } else {
+            format!("failed to remove marketplace source {target}")
+        };
+        return Err(msg.chars().take(400).collect());
+    }
+    Ok(serde_json::json!({
+        "ok": true,
+        "name": raw,
+        "source": target,
+        "message": stdout.chars().take(400).collect::<String>(),
+    }))
+}
+
+/// Refresh marketplace source caches. Omit name to refresh all.
+#[tauri::command]
+pub async fn marketplace_update(name: Option<String>) -> Result<serde_json::Value, String> {
+    let target = normalize_marketplace_update_name(name.as_deref());
+    let target_for_cmd = target.clone();
+    let result = tauri::async_runtime::spawn_blocking(move || match target_for_cmd.as_deref() {
+        Some(n) => run_grok_cli_args(
+            &["plugin", "marketplace", "update", n],
+            PLUGIN_MARKETPLACE_MUTATE_TIMEOUT_SECS,
+        ),
+        None => run_grok_cli_args(
+            &["plugin", "marketplace", "update"],
+            PLUGIN_MARKETPLACE_MUTATE_TIMEOUT_SECS,
+        ),
     })
     .await
     .map_err(|e| e.to_string())??;
@@ -3506,9 +3890,51 @@ pub async fn plugin_update(
         return Err(msg.chars().take(400).collect());
     }
     mgr.soft_respawn(&app).await;
+            format!("failed to update marketplace source(s): {label}")
+        };
+        return Err(msg.chars().take(400).collect());
+    }
     Ok(serde_json::json!({
         "ok": true,
         "name": target.unwrap_or_default(),
+        "message": stdout.chars().take(400).collect::<String>(),
+    }))
+}
+
+/// Install plugin by marketplace name, `name@marketplace`, git URL, or path.
+/// Soft-respawns agent on success (`--trust` for non-interactive UI).
+#[tauri::command]
+pub async fn plugin_install(
+    app: tauri::AppHandle,
+    mgr: State<'_, Arc<SessionManager>>,
+    source: String,
+) -> Result<serde_json::Value, String> {
+    let source = normalize_plugin_install_source(&source)?;
+    let source_for_cmd = source.clone();
+    let result = tauri::async_runtime::spawn_blocking(move || {
+        run_grok_cli_args(
+            &["plugin", "install", &source_for_cmd, "--trust"],
+            PLUGIN_MARKETPLACE_MUTATE_TIMEOUT_SECS,
+        )
+    })
+    .await
+    .map_err(|e| e.to_string())??;
+
+    let (stdout, stderr, ok) = result;
+    if !ok {
+        let msg = if !stderr.is_empty() {
+            stderr
+        } else if !stdout.is_empty() {
+            stdout
+        } else {
+            format!("failed to install plugin from {source}")
+        };
+        return Err(msg.chars().take(400).collect());
+    }
+    mgr.soft_respawn(&app).await;
+    Ok(serde_json::json!({
+        "ok": true,
+        "name": source,
         "message": stdout.chars().take(400).collect::<String>(),
     }))
 }
@@ -3650,6 +4076,99 @@ disabled = ["yes"]
         assert_eq!(normalize_plugin_update_name(Some("")), None);
         assert_eq!(normalize_plugin_update_name(Some("   ")), None);
         assert_eq!(normalize_plugin_update_name(None), None);
+    fn marketplace_list_json_sources_only() {
+        let raw = r#"[
+          {
+            "name": "xAI Official",
+            "kind": "git",
+            "source": { "url": "https://github.com/xai-org/plugin-marketplace.git", "branch": null }
+          },
+          {
+            "name": "claude-plugins-official",
+            "kind": "git",
+            "source": { "url": "https://github.com/anthropics/claude-plugins-official.git", "branch": null }
+          }
+        ]"#;
+        let sources = parse_marketplace_list_json(raw).unwrap();
+        assert_eq!(sources.len(), 2);
+        assert_eq!(sources[0].name, "xAI Official");
+        assert_eq!(
+            sources[0].url.as_deref(),
+            Some("https://github.com/xai-org/plugin-marketplace.git")
+        );
+        assert!(sources[0].path.is_none());
+    }
+
+    #[test]
+    fn marketplace_list_wrapped_and_local() {
+        let raw = r#"{
+          "sources": [
+            { "name": "local-cat", "kind": "local", "source": { "path": "/tmp/mkt" } }
+          ]
+        }"#;
+        let sources = parse_marketplace_list_json(raw).unwrap();
+        assert_eq!(sources.len(), 1);
+        assert_eq!(sources[0].path.as_deref(), Some("/tmp/mkt"));
+    }
+
+    #[test]
+    fn marketplace_list_empty_and_invalid() {
+        assert!(parse_marketplace_list_json("").unwrap().is_empty());
+        assert!(parse_marketplace_list_json(r#"{"nope":1}"#).is_err());
+    }
+
+    #[test]
+    fn resolve_remove_name_to_url() {
+        let sources = parse_marketplace_list_json(
+            r#"[{"name":"xAI Official","kind":"git","source":{"url":"https://github.com/xai-org/plugin-marketplace.git"}}]"#,
+        )
+        .unwrap();
+        assert_eq!(
+            resolve_marketplace_remove_arg("xAI Official", &sources).unwrap(),
+            "https://github.com/xai-org/plugin-marketplace.git"
+        );
+        assert_eq!(
+            resolve_marketplace_remove_arg(
+                "https://github.com/xai-org/plugin-marketplace.git",
+                &sources
+            )
+            .unwrap(),
+            "https://github.com/xai-org/plugin-marketplace.git"
+        );
+        assert!(resolve_marketplace_remove_arg("  ", &sources).is_err());
+    }
+
+    #[test]
+    fn marketplace_add_update_install_normalize() {
+        assert_eq!(
+            normalize_marketplace_add_source("  owner/repo  ").unwrap(),
+            "owner/repo"
+        );
+        assert!(normalize_marketplace_add_source("").is_err());
+        assert_eq!(
+            normalize_marketplace_update_name(Some("xAI Official")).as_deref(),
+            Some("xAI Official")
+        );
+        assert!(normalize_marketplace_update_name(Some("  ")).is_none());
+        assert!(normalize_marketplace_update_name(None).is_none());
+        assert_eq!(
+            normalize_plugin_install_source(" vercel@xAI Official ").unwrap(),
+            "vercel@xAI Official"
+        );
+        assert!(normalize_plugin_install_source("").is_err());
+    }
+
+    #[test]
+    fn available_plugins_filters_status() {
+        let raw = r#"[
+          {"status":"installed","name":"cloudflare","marketplace":"xAI Official"},
+          {"status":"available","name":"vercel","marketplace":"xAI Official","skill_count":2,"has_agents":true}
+        ]"#;
+        let plugins = parse_available_plugins_json(raw).unwrap();
+        assert_eq!(plugins.len(), 1);
+        assert_eq!(plugins[0].name, "vercel");
+        assert_eq!(plugins[0].skill_count, Some(2));
+        assert!(plugins[0].has_agents);
     }
 }
 

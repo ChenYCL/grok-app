@@ -1226,7 +1226,44 @@ export const zhTW: Record<MessageKey, string> = {
   "ext.plugins.updateAll": "全部更新",
   "ext.plugins.updating": "正在更新…",
   "ext.plugins.note":
-    "與 Grok Build 共用同一清單（`grok plugin list`）。安裝/更新/啟用/停用走 CLI；啟用狀態寫入 `~/.grok/config.toml`。變更後 agent soft-respawn，下一輪對話重新載入外掛。",
+    "與 Grok Build 共用同一清單（`grok plugin list`）。啟用/停用寫入 `~/.grok/config.toml`；agent soft-respawn 後下一輪對話重新載入外掛。",
+  "ext.market.title": "外掛市集",
+  "ext.market.loading": "正在載入市集來源…",
+  "ext.market.empty": "尚未設定市集來源",
+  "ext.market.emptyCli": "安裝 CLI 後才能管理市集來源。",
+  "ext.market.addLabel": "新增來源",
+  "ext.market.addPlaceholder": "git URL、owner/repo 或本機路徑",
+  "ext.market.add": "新增",
+  "ext.market.adding": "新增中…",
+  "ext.market.addEmpty": "請輸入市集來源的 git URL、簡寫或路徑。",
+  "ext.market.addHint":
+    "等同 `grok plugin marketplace add`。來源是目錄索引，不是單一外掛。",
+  "ext.market.remove": "移除",
+  "ext.market.removeTitle": "移除市集來源",
+  "ext.market.removeConfirm":
+    "移除來源「{name}」？已從該來源安裝的外掛會保留；目錄快取將被刪除。",
+  "ext.market.update": "更新快取",
+  "ext.market.updateAll": "更新全部快取",
+  "ext.market.updating": "更新中…",
+  "ext.market.installLabel": "安裝外掛",
+  "ext.market.installPlaceholder":
+    "名稱、名稱@市集、owner/repo 或 git URL",
+  "ext.market.install": "安裝",
+  "ext.market.installing": "安裝中…",
+  "ext.market.installEmpty": "請輸入外掛名稱、限定名或 git URL。",
+  "ext.market.installHint":
+    "CLI `marketplace list --json` 目前只回傳來源。安裝走 `plugin install`：目錄名（`vercel`）、限定（`vercel@xAI Official`），或貼上 git URL / owner/repo。安裝後 agent soft-respawn。",
+  "ext.market.browseTitle": "來源中的可用外掛",
+  "ext.market.browseHint":
+    "透過 `grok plugin list --json --available` 載入（status=available），不在 marketplace list JSON 裡。",
+  "ext.market.browseLoad": "載入目錄",
+  "ext.market.browseRefresh": "重新整理目錄",
+  "ext.market.browseLoading": "正在載入目錄…",
+  "ext.market.browseSearch": "依名稱或市集篩選…",
+  "ext.market.browseEmpty": "沒有符合的可用外掛。",
+  "ext.market.browseCapped": "顯示 {shown} / {total}。縮小篩選可繼續查找。",
+  "ext.market.note":
+    "來源與 Grok Build 一致（`plugin marketplace list/add/remove/update`）。安裝呼叫 `plugin install --trust` 並 soft-respawn agent。",
   "ext.skills.title": "技能",
   "ext.skills.loading": "正在載入技能…",
   "ext.skills.empty": "未發現技能",
@@ -1312,6 +1349,7 @@ export const zhTW: Record<MessageKey, string> = {
   "ext.enableAll": "全部啟用",
   "ext.footnote":
     "開關會寫入應用資料，並在新對話中注入已啟用的 MCP（ACP mcpServers + agent-home 設定）。停用技能仍保留在磁碟，但不會出現在斜線面板。Hooks 在 ~/.grok/hooks 中編輯。",
+    "開關會寫入應用資料，並在新對話中注入已啟用的 MCP（ACP mcpServers + agent-home 設定）。停用技能仍保留在磁碟，但不會出現在斜線面板。市集來源與安裝走 Grok Build CLI。",
   "error.needTauri": "需要在 Tauri 視窗中選擇目錄",
   "common.comingSoon": "即將推出",
   "common.local": "本機",

@@ -9,6 +9,11 @@
  * Plugins from `grok plugin list/install/update/…` (config.toml disabled list).
  * Plugins from `grok plugin list/enable/…` (config.toml disabled list).
  * Hooks: list / reveal / open folder under ~/.grok/hooks (+ project .grok/hooks).
+ * Settings → Extensions: Skills + MCP + Plugins + Marketplace.
+ * Skills/MCP from `grok inspect` with enable toggles (extensions.json / ACP inject).
+ * Plugins from `grok plugin list/install/update/…` (config.toml disabled list).
+ * Plugins from `grok plugin list/enable/…` (config.toml disabled list).
+ * Marketplace sources from `grok plugin marketplace …`; browse via list --available.
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -17,6 +22,7 @@ import { createT, type Locale } from "@/i18n";
 import { GlassModal } from "@/components/GlassModal";
 import {
   IconDoctor,
+  IconBox,
   IconExternalLink,
   IconFolder,
   IconPlus,
@@ -61,6 +67,16 @@ import {
   hookRowKey,
   sortHooksByScopeName,
 } from "@/lib/hooksUi";
+  availablePluginMetaLine,
+  filterPluginsByQuery,
+  marketplaceQualifiedInstallSource,
+  marketplaceSourceLabel,
+  sortAvailablePluginsByName,
+  sortMarketplaceSourcesByName,
+  takePluginsPage,
+  type AvailablePluginLike,
+  type MarketplaceSourceLike,
+} from "@/lib/pluginMarketplace";
 
 export interface ExtensionsPanelProps {
   locale: Locale;
@@ -137,6 +153,21 @@ export function ExtensionsPanel({
   const [hooksProjectDirExists, setHooksProjectDirExists] = useState(false);
   const [hooksDocsPath, setHooksDocsPath] = useState<string | null>(null);
 
+  const [marketSources, setMarketSources] = useState<MarketplaceSourceLike[]>(
+    [],
+  );
+  const [marketError, setMarketError] = useState<string | null>(null);
+  const [availablePlugins, setAvailablePlugins] = useState<
+    AvailablePluginLike[]
+  >([]);
+  const [availableError, setAvailableError] = useState<string | null>(null);
+  const [availableLoading, setAvailableLoading] = useState(false);
+  const [availableLoaded, setAvailableLoaded] = useState(false);
+  const [availableQuery, setAvailableQuery] = useState("");
+  const [addSource, setAddSource] = useState("");
+  const [removeSourceTarget, setRemoveSourceTarget] =
+    useState<MarketplaceSourceLike | null>(null);
+
   const refresh = useCallback(async () => {
     if (!api.isTauri()) {
       setSkills([]);
@@ -156,6 +187,13 @@ export function ExtensionsPanel({
       setMcpError(null);
       setPluginsError(null);
       setHooksError(null);
+      setMarketSources([]);
+      setAvailablePlugins([]);
+      setSkillsError(tr("ext.needTauri"));
+      setMcpError(null);
+      setPluginsError(null);
+      setMarketError(null);
+      setAvailableError(null);
       setLoading(false);
       return;
     }
@@ -171,6 +209,10 @@ export function ExtensionsPanel({
     setPathHint(null);
     const cwd = projectPath?.trim() || null;
     const [skillsRes, mcpRes, pluginsRes, hooksRes, providersRes] =
+    setMarketError(null);
+    setPathHint(null);
+    const cwd = projectPath?.trim() || null;
+    const [skillsRes, mcpRes, pluginsRes, marketRes, providersRes] =
       await Promise.all([
         api.skillsList(cwd).catch((e) => ({
           skills: [] as api.SkillDto[],
@@ -198,6 +240,8 @@ export function ExtensionsPanel({
           projectDir: null as string | null,
           projectDirExists: null as boolean | null,
           docsPath: null as string | null,
+        api.marketplaceList().catch((e) => ({
+          sources: [] as api.MarketplaceSourceDto[],
           error: String(e),
         })),
         api.providersList().catch(() => null),
@@ -228,12 +272,59 @@ export function ExtensionsPanel({
         ? hooksRes.error
         : null,
     );
+    setMarketSources(
+      sortMarketplaceSourcesByName(
+        (marketRes.sources ?? []).map((s) => ({
+          name: s.name,
+          kind: s.kind,
+          url: s.url,
+          path: s.path,
+          branch: s.branch,
+        })),
+      ),
+    );
+    setSkillsError(skillsRes.error?.trim() ? skillsRes.error : null);
+    setMcpError(mcpRes.error?.trim() ? mcpRes.error : null);
+    setPluginsError(pluginsRes.error?.trim() ? pluginsRes.error : null);
+    setMarketError(marketRes.error?.trim() ? marketRes.error : null);
     if (providersRes) {
       setAgentHome(providersRes.agentHome?.trim() || null);
       setConfigPath(providersRes.configPath?.trim() || null);
     }
     setLoading(false);
   }, [projectPath, tr]);
+
+  const loadAvailable = useCallback(async () => {
+    if (!api.isTauri()) return;
+    setAvailableLoading(true);
+    setAvailableError(null);
+    try {
+      const res = await api.marketplaceAvailable();
+      setAvailablePlugins(
+        sortAvailablePluginsByName(
+          (res.plugins ?? []).map((p) => ({
+            name: p.name,
+            status: p.status,
+            marketplace: p.marketplace,
+            description: p.description,
+            version: p.version,
+            skillCount: p.skillCount,
+            hasHooks: p.hasHooks,
+            hasAgents: p.hasAgents,
+            hasMcp: p.hasMcp,
+          })),
+        ),
+      );
+      setAvailableError(res.error?.trim() ? res.error : null);
+      setAvailableLoaded(true);
+    } catch (e) {
+      setAvailablePlugins([]);
+      setAvailableError(String(e));
+      setAvailableLoaded(true);
+    } finally {
+      setAvailableLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
     void refresh();
@@ -247,7 +338,8 @@ export function ExtensionsPanel({
     !cliFound ||
     isCliMissingError(skillsError) ||
     isCliMissingError(mcpError) ||
-    isCliMissingError(pluginsError);
+    isCliMissingError(pluginsError) ||
+    isCliMissingError(marketError);
 
   const scopeLabel = projectPath?.trim()
     ? tr("ext.scope.project")
@@ -572,10 +664,75 @@ export function ExtensionsPanel({
     },
     [],
   );
+  const addMarketplaceSource = async () => {
+    if (!api.isTauri() || actionBusy || cliMissing) return;
+    const source = addSource.trim();
+    if (!source) {
+      setActionError(tr("ext.market.addEmpty"));
+      return;
+    }
+    await runPluginAction("market:add", async () => {
+      await api.marketplaceAdd(source);
+      setAddSource("");
+    });
+  };
+
+  const confirmRemoveSource = async () => {
+    const target = removeSourceTarget;
+    if (!target) return;
+    setRemoveSourceTarget(null);
+    await runPluginAction(`market:rm:${target.name}`, async () => {
+      await api.marketplaceRemove(target.name);
+    });
+  };
+
+  const updateMarketplace = async (name?: string | null) => {
+    if (!api.isTauri() || actionBusy || cliMissing) return;
+    const key = name?.trim()
+      ? `market:upd:${name.trim()}`
+      : "market:upd:all";
+    await runPluginAction(key, async () => {
+      await api.marketplaceUpdate(name);
+      if (availableLoaded) {
+        await loadAvailable();
+      }
+    });
+  };
+
+  const installFromMarketplace = async (source?: string) => {
+    if (!api.isTauri() || actionBusy || cliMissing) return;
+    const raw = (source ?? installSource).trim();
+    if (!raw) {
+      setActionError(tr("ext.market.installEmpty"));
+      return;
+    }
+    await runPluginAction(`market:install:${raw}`, async () => {
+      await api.pluginInstall(raw);
+      setInstallSource("");
+      if (availableLoaded) {
+        await loadAvailable();
+      }
+    });
+  };
+
+  const installAvailable = (p: AvailablePluginLike) => {
+    const src = marketplaceQualifiedInstallSource(p.name, p.marketplace);
+    void installFromMarketplace(src);
+  };
 
   const visiblePlugins = useMemo(
     () => filterPluginsByLoadState(plugins, pluginFilter),
     [plugins, pluginFilter],
+  );
+
+  const visibleAvailable = useMemo(() => {
+    const filtered = filterPluginsByQuery(availablePlugins, availableQuery);
+    return takePluginsPage(filtered, 40);
+  }, [availablePlugins, availableQuery]);
+
+  const availableTotal = useMemo(
+    () => filterPluginsByQuery(availablePlugins, availableQuery).length,
+    [availablePlugins, availableQuery],
   );
 
   return (
@@ -958,6 +1115,93 @@ export function ExtensionsPanel({
                       </button>
                     ) : null}
                   </div>
+      {/* Marketplace sources + browse / install */}
+      <h2 className="settings-page__h2">
+        <IconBox size={15} />
+        {tr("ext.market.title")}
+        {!loading ? (
+          <span className="ext-count">{marketSources.length}</span>
+        ) : null}
+        {!loading && !cliMissing ? (
+          <button
+            type="button"
+            className="btn btn--ghost ext-bulk-btn"
+            disabled={!!actionBusy}
+            onClick={() => void updateMarketplace(null)}
+          >
+            {actionBusy === "market:upd:all"
+              ? tr("ext.market.updating")
+              : tr("ext.market.updateAll")}
+          </button>
+        ) : null}
+      </h2>
+      <div className="settings-card ext-card">
+        {marketError && !cliMissing ? (
+          <p className="ext-alert ext-alert--warn" role="status">
+            {marketError}
+          </p>
+        ) : null}
+
+        <div className="ext-plugin-install">
+          <label className="ext-plugin-install__label" htmlFor="ext-market-add">
+            {tr("ext.market.addLabel")}
+          </label>
+          <div className="ext-plugin-install__row">
+            <input
+              id="ext-market-add"
+              type="text"
+              className="settings-input ext-plugin-install__input"
+              value={addSource}
+              placeholder={tr("ext.market.addPlaceholder")}
+              disabled={!!actionBusy || cliMissing || loading}
+              onChange={(e) => setAddSource(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  void addMarketplaceSource();
+                }
+              }}
+            />
+            <button
+              type="button"
+              className="btn btn--solid btn--sm"
+              disabled={!!actionBusy || cliMissing || !addSource.trim()}
+              onClick={() => void addMarketplaceSource()}
+            >
+              {actionBusy === "market:add"
+                ? tr("ext.market.adding")
+                : tr("ext.market.add")}
+            </button>
+          </div>
+          <p className="ext-plugin-install__hint">{tr("ext.market.addHint")}</p>
+        </div>
+
+        {loading && <p className="ext-empty">{tr("ext.market.loading")}</p>}
+        {!loading && marketSources.length === 0 && (
+          <p className="ext-empty">
+            {cliMissing ? tr("ext.market.emptyCli") : tr("ext.market.empty")}
+          </p>
+        )}
+        {!loading && marketSources.length > 0 && (
+          <ul className="ext-list">
+            {marketSources.map((s) => {
+              const label = marketplaceSourceLabel(s);
+              const busy =
+                actionBusy === `market:upd:${s.name}` ||
+                actionBusy === `market:rm:${s.name}`;
+              return (
+                <li key={`${s.name}:${label}`} className="ext-item">
+                  <div className="ext-item__head">
+                    <strong className="ext-item__name">{s.name}</strong>
+                    {s.kind ? (
+                      <span className="ext-badge ext-badge--muted">{s.kind}</span>
+                    ) : null}
+                  </div>
+                  {label ? (
+                    <p className="ext-item__desc" title={label}>
+                      {shortPathLabel(label, 72) || label}
+                    </p>
+                  ) : null}
                   <div className="ext-item__actions">
                     <button
                       type="button"
@@ -974,6 +1218,21 @@ export function ExtensionsPanel({
                       onClick={() => void reveal(a.path)}
                     >
                       {tr("ext.reveal")}
+                      disabled={busy || !!actionBusy || cliMissing}
+                      onClick={() => void updateMarketplace(s.name)}
+                    >
+                      {actionBusy === `market:upd:${s.name}`
+                        ? tr("ext.market.updating")
+                        : tr("ext.market.update")}
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn--ghost btn--sm ext-item__danger"
+                      disabled={busy || !!actionBusy || cliMissing}
+                      onClick={() => setRemoveSourceTarget(s)}
+                    >
+                      <IconTrash size={13} />
+                      <span>{tr("ext.market.remove")}</span>
                     </button>
                   </div>
                 </li>
@@ -1063,6 +1322,143 @@ export function ExtensionsPanel({
             })}
           </ul>
         )}
+
+        <div className="ext-plugin-install">
+          <label
+            className="ext-plugin-install__label"
+            htmlFor="ext-market-install"
+          >
+            {tr("ext.market.installLabel")}
+          </label>
+          <div className="ext-plugin-install__row">
+            <input
+              id="ext-market-install"
+              type="text"
+              className="settings-input ext-plugin-install__input"
+              value={installSource}
+              placeholder={tr("ext.market.installPlaceholder")}
+              disabled={!!actionBusy || cliMissing}
+              onChange={(e) => setInstallSource(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  void installFromMarketplace();
+                }
+              }}
+            />
+            <button
+              type="button"
+              className="btn btn--solid btn--sm"
+              disabled={!!actionBusy || cliMissing || !installSource.trim()}
+              onClick={() => void installFromMarketplace()}
+            >
+              {actionBusy?.startsWith("market:install:")
+                ? tr("ext.market.installing")
+                : tr("ext.market.install")}
+            </button>
+          </div>
+          <p className="ext-plugin-install__hint">
+            {tr("ext.market.installHint")}
+          </p>
+        </div>
+
+        <div className="ext-market-browse">
+          <div className="ext-market-browse__head">
+            <span className="ext-plugin-install__label">
+              {tr("ext.market.browseTitle")}
+            </span>
+            <button
+              type="button"
+              className="btn btn--ghost btn--sm"
+              disabled={!!actionBusy || cliMissing || availableLoading}
+              onClick={() => void loadAvailable()}
+            >
+              <IconRefresh size={13} />
+              <span>
+                {availableLoading
+                  ? tr("ext.market.browseLoading")
+                  : availableLoaded
+                    ? tr("ext.market.browseRefresh")
+                    : tr("ext.market.browseLoad")}
+              </span>
+            </button>
+          </div>
+          <p className="ext-plugin-install__hint">{tr("ext.market.browseHint")}</p>
+          {availableLoaded ? (
+            <input
+              type="search"
+              className="settings-input ext-market-browse__search"
+              value={availableQuery}
+              placeholder={tr("ext.market.browseSearch")}
+              disabled={availableLoading}
+              onChange={(e) => setAvailableQuery(e.target.value)}
+            />
+          ) : null}
+          {availableError ? (
+            <p className="ext-alert ext-alert--warn" role="status">
+              {availableError}
+            </p>
+          ) : null}
+          {availableLoading && (
+            <p className="ext-empty">{tr("ext.market.browseLoading")}</p>
+          )}
+          {!availableLoading && availableLoaded && availableTotal === 0 && (
+            <p className="ext-empty">{tr("ext.market.browseEmpty")}</p>
+          )}
+          {!availableLoading && visibleAvailable.length > 0 && (
+            <ul className="ext-list ext-market-browse__list">
+              {visibleAvailable.map((p) => {
+                const key = `${p.marketplace ?? ""}:${p.name}`;
+                const installKey = `market:install:${marketplaceQualifiedInstallSource(
+                  p.name,
+                  p.marketplace,
+                )}`;
+                const busy = actionBusy === installKey;
+                const meta = availablePluginMetaLine(p);
+                return (
+                  <li key={key} className="ext-item">
+                    <div className="ext-item__head">
+                      <strong className="ext-item__name">{p.name}</strong>
+                      {p.marketplace ? (
+                        <span className="ext-badge ext-badge--muted">
+                          {p.marketplace}
+                        </span>
+                      ) : null}
+                    </div>
+                    {p.description ? (
+                      <p className="ext-item__desc">{p.description}</p>
+                    ) : null}
+                    {meta ? <p className="ext-item__desc">{meta}</p> : null}
+                    <div className="ext-item__actions">
+                      <button
+                        type="button"
+                        className="btn btn--ghost btn--sm"
+                        disabled={busy || !!actionBusy || cliMissing}
+                        onClick={() => installAvailable(p)}
+                      >
+                        {busy
+                          ? tr("ext.market.installing")
+                          : tr("ext.market.install")}
+                      </button>
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+          {!availableLoading &&
+          availableLoaded &&
+          availableTotal > visibleAvailable.length ? (
+            <p className="ext-section-note">
+              {tr("ext.market.browseCapped", {
+                shown: visibleAvailable.length,
+                total: availableTotal,
+              })}
+            </p>
+          ) : null}
+        </div>
+
+        <p className="ext-section-note">{tr("ext.market.note")}</p>
       </div>
 
       {/* Skills */}
@@ -1479,6 +1875,42 @@ export function ExtensionsPanel({
         <p className="app-dialog__msg">
           {tr("ext.plugins.uninstallConfirm", {
             name: uninstallTarget?.name ?? "",
+          })}
+        </p>
+      </GlassModal>
+
+      <GlassModal
+        open={!!removeSourceTarget}
+        onClose={() => {
+          if (!actionBusy) setRemoveSourceTarget(null);
+        }}
+        title={tr("ext.market.removeTitle")}
+        size="sm"
+        closeLabel={tr("common.close")}
+        footer={
+          <>
+            <button
+              type="button"
+              className="btn btn--ghost"
+              disabled={!!actionBusy}
+              onClick={() => setRemoveSourceTarget(null)}
+            >
+              {tr("common.cancel")}
+            </button>
+            <button
+              type="button"
+              className="btn btn--danger"
+              disabled={!!actionBusy}
+              onClick={() => void confirmRemoveSource()}
+            >
+              {tr("ext.market.remove")}
+            </button>
+          </>
+        }
+      >
+        <p className="app-dialog__msg">
+          {tr("ext.market.removeConfirm", {
+            name: removeSourceTarget?.name ?? "",
           })}
         </p>
       </GlassModal>
