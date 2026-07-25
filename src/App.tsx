@@ -154,6 +154,11 @@ import {
   serializeForAgent,
 } from "@/lib/draftDoc";
 import {
+  collectUserPromptHistory,
+  shouldHandlePromptHistoryKey,
+  stepPromptHistory,
+} from "@/lib/composerPromptHistory";
+import {
   queuePreviewText,
   shouldEnqueueSend,
 } from "@/lib/sendQueue";
@@ -389,6 +394,16 @@ export default function App() {
   >({});
   /** Composer stored form (may include [[skill:name]] tokens). */
   const [draft, setDraft] = useState("");
+  /**
+   * CLI-like prompt history browse index (0 = newest user msg).
+   * null = not browsing; only engaged when draft empty (or already browsing).
+   * Ref tracks live index for key-repeat before React re-renders.
+   */
+  const [promptHistoryIndex, setPromptHistoryIndex] = useState<number | null>(
+    null,
+  );
+  const promptHistoryIndexRef = useRef<number | null>(null);
+  promptHistoryIndexRef.current = promptHistoryIndex;
   /** Composer voice dictation FSM (record → STT → insert draft). */
   const [voice, setVoice] = useState<VoiceFsmState>(() => initialVoiceState());
   const [voiceGate, setVoiceGate] = useState<{
@@ -1192,6 +1207,12 @@ export default function App() {
   useEffect(() => {
     if (openingSessionIdRef.current) return;
     viewingSessionIdRef.current = session.sessionId;
+  }, [session.sessionId]);
+
+  // Prompt history is per viewed session — leave browse mode on switch / new chat.
+  useEffect(() => {
+    promptHistoryIndexRef.current = null;
+    setPromptHistoryIndex(null);
   }, [session.sessionId]);
 
   useEffect(() => {
@@ -3681,6 +3702,8 @@ export default function App() {
 
   const clearComposerAfterSubmit = () => {
     setDraft("");
+    promptHistoryIndexRef.current = null;
+    setPromptHistoryIndex(null);
     setSlashQuery(null);
     setAttachments([]);
     requestAnimationFrame(() => {
@@ -8482,7 +8505,18 @@ export default function App() {
                     ? tr("composer.goalPlaceholder")
                     : tr("composer.placeholder")
                 }
-                onChange={setDraft}
+                onChange={(next) => {
+                  setDraft(next);
+                  // Manual edit exits history browse; same text (DOM re-sync) keeps it.
+                  const idx = promptHistoryIndexRef.current;
+                  if (idx !== null) {
+                    const hist = collectUserPromptHistory(messages);
+                    if (next !== hist[idx]) {
+                      promptHistoryIndexRef.current = null;
+                      setPromptHistoryIndex(null);
+                    }
+                  }
+                }}
                 onPasteFiles={(files) => {
                   void addAttachmentsFromFiles(files);
                 }}
@@ -8543,6 +8577,35 @@ export default function App() {
                         ]!;
                       if (entry.kind === "upload") void pickComposerFiles();
                       else applySlashItem(entry.item);
+                      return;
+                    }
+                  }
+                  // CLI-like prompt history: ↑ on empty draft (or while browsing).
+                  // Only when slash palette is closed so palette ↑/↓ is untouched.
+                  if (
+                    (e.key === "ArrowUp" || e.key === "ArrowDown") &&
+                    !composerMenuOpen
+                  ) {
+                    const history = collectUserPromptHistory(messages);
+                    const draftEmpty = isDraftEmpty(parseStoredContent(draft));
+                    const browsing = promptHistoryIndexRef.current !== null;
+                    if (
+                      shouldHandlePromptHistoryKey({
+                        key: e.key,
+                        draftEmpty,
+                        browsing,
+                        historyLength: history.length,
+                      })
+                    ) {
+                      e.preventDefault();
+                      const step = stepPromptHistory(
+                        history,
+                        promptHistoryIndexRef.current,
+                        e.key === "ArrowUp" ? "up" : "down",
+                      );
+                      promptHistoryIndexRef.current = step.index;
+                      setPromptHistoryIndex(step.index);
+                      setDraft(step.text);
                       return;
                     }
                   }
