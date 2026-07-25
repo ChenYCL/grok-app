@@ -509,6 +509,8 @@ export function SettingsPage({
   onSubagentsEnabled,
   planEnabled = true,
   onPlanEnabled,
+  disableWebSearch = false,
+  onDisableWebSearch,
   cliInfo,
   onDoctor,
   versionFooter,
@@ -1136,6 +1138,20 @@ export function SettingsPage({
                     checked={!!planEnabled}
                     onChange={() => onPlanEnabled(!planEnabled)}
                     ariaLabel={t("settings.planEnabled")}
+              {onDisableWebSearch ? (
+                <div className="settings-row">
+                  <div className="settings-row__text">
+                    <div className="settings-row__label">
+                      {t("settings.disableWebSearch")}
+                    </div>
+                    <div className="settings-row__desc">
+                      {t("settings.disableWebSearchDesc")}
+                    </div>
+                  </div>
+                  <UiCheck
+                    checked={!!disableWebSearch}
+                    onChange={() => onDisableWebSearch(!disableWebSearch)}
+                    ariaLabel={t("settings.disableWebSearch")}
                   />
                 </div>
               ) : null}

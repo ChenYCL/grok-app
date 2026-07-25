@@ -800,6 +800,7 @@ export default function App() {
   const [experimentalMemory, setExperimentalMemory] = useState(false);
   const [subagentsEnabled, setSubagentsEnabled] = useState(true);
   const [planEnabled, setPlanEnabled] = useState(true);
+  const [disableWebSearch, setDisableWebSearch] = useState(false);
   const [gitWorktrees, setGitWorktrees] = useState<api.GitWorktreeEntry[]>([]);
   /** null = unknown/loading; true = git work tree; false = not a git repo. */
   const [gitWorktreesAvailable, setGitWorktreesAvailable] = useState<
@@ -1117,6 +1118,7 @@ export default function App() {
       setExperimentalMemory(!!settings.experimentalMemory);
       setSubagentsEnabled(settings.subagentsEnabled !== false);
       setPlanEnabled(settings.planEnabled !== false);
+      setDisableWebSearch(!!settings.disableWebSearch);
       void api
         .agentsCatalog(null)
         .then((cat) => {
@@ -7302,6 +7304,11 @@ export default function App() {
             setPlanEnabled(v);
             void api.settingsGet().then((s) =>
               api.settingsSet({ ...s, planEnabled: v }),
+          disableWebSearch={disableWebSearch}
+          onDisableWebSearch={(v) => {
+            setDisableWebSearch(v);
+            void api.settingsGet().then((s) =>
+              api.settingsSet({ ...s, disableWebSearch: v }),
             );
           }}
           cliInfo={cliInfo}
