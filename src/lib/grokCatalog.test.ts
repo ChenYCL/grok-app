@@ -103,13 +103,25 @@ describe("pickDefaultEffort", () => {
 });
 
 describe("effortDisplayLabel", () => {
-  it("prefers catalog label", () => {
+  it("prefers i18n for known ids over English catalog labels", () => {
     expect(
       effortDisplayLabel(
         { id: "high", label: "High Effort" },
         { high: "高" },
       ),
-    ).toBe("High Effort");
+    ).toBe("高");
+    expect(
+      effortDisplayLabel(
+        { id: "medium", label: "Medium Effort" },
+        { medium: "中" },
+      ),
+    ).toBe("中");
+    expect(
+      effortDisplayLabel(
+        { id: "low", label: "Low Effort" },
+        { high: "High", medium: "Medium", low: "Low" },
+      ),
+    ).toBe("Low");
   });
 
   it("uses i18n for known ids without catalog label", () => {
@@ -123,6 +135,12 @@ describe("effortDisplayLabel", () => {
     expect(effortDisplayLabel({ id: "medium" }, { medium: "中" })).toBe(
       "中",
     );
+  });
+
+  it("strips shared Effort suffix on non-standard catalog labels", () => {
+    expect(
+      effortDisplayLabel({ id: "max", label: "Max Effort" }),
+    ).toBe("Max");
   });
 
   it("falls back to raw id", () => {

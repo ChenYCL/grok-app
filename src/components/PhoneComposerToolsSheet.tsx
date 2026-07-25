@@ -295,7 +295,7 @@ export function PhoneComposerToolsSheet({
               <SheetRow
                 icon={<IconBolt size={20} />}
                 label={labels.model}
-                value={`${modelLabel} · ${effortLabel(effort, labels)}`}
+                value={`${modelLabel} ${effortLabel(effort, labels)}`}
                 chevron
                 onClick={() => setPanel("model")}
               />

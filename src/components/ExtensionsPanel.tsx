@@ -40,12 +40,22 @@ import {
 } from "@/lib/extensionsUi";
 import { ExtensionsBuildExtras } from "@/components/ExtensionsBuildExtras";
 
+export type ExtensionsTabId =
+  | "plugins"
+  | "skills"
+  | "mcp"
+  | "hooks"
+  | "market";
+
 export interface ExtensionsPanelProps {
   locale: Locale;
   /** Active workbench project path (inspect cwd). */
   projectPath?: string | null;
   /** Whether CLI probe found a binary (for empty-state copy). */
   cliFound?: boolean;
+  /** Page tab from settings hash (`#/settings/extensions/{tab}`). */
+  activeTab?: ExtensionsTabId;
+  onTabChange?: (tab: ExtensionsTabId) => void;
   /** Navigate to Settings → Runtime when CLI is missing. */
   onOpenRuntime?: () => void;
   /** Fired after skill enable prefs change so slash palette can refresh. */
@@ -56,6 +66,8 @@ export function ExtensionsPanel({
   locale,
   projectPath = null,
   cliFound = true,
+  activeTab = "plugins",
+  onTabChange,
   onOpenRuntime,
   onSkillsPrefsChanged,
 }: ExtensionsPanelProps) {
@@ -419,9 +431,49 @@ export function ExtensionsPanel({
     [plugins, pluginFilter],
   );
 
+  const tab = activeTab;
+
   return (
     <div className="ext-panel" data-testid="extensions-panel">
       <p className="settings-page__lead">{tr("ext.lead")}</p>
+
+      {onTabChange ? (
+        <div
+          className="settings-account-tabs settings-page__tabs"
+          role="tablist"
+          aria-label={tr("settings.nav.extensions")}
+        >
+          <div
+            className="settings-seg settings-seg--lg settings-page__tabs-seg"
+            role="presentation"
+          >
+            {(
+              [
+                ["plugins", "ext.plugins.title"],
+                ["skills", "ext.skills.title"],
+                ["mcp", "ext.mcp.title"],
+                ["hooks", "ext.hooks.title"],
+                ["market", "ext.market.title"],
+              ] as const
+            ).map(([id, key]) => (
+              <button
+                key={id}
+                type="button"
+                role="tab"
+                className={"settings-seg__btn" + (tab === id ? " is-on" : "")}
+                aria-selected={tab === id}
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  onTabChange(id);
+                }}
+              >
+                {tr(key)}
+              </button>
+            ))}
+          </div>
+        </div>
+      ) : null}
 
       <div className="ext-toolbar">
         <div className="ext-toolbar__scope">
@@ -523,7 +575,9 @@ export function ExtensionsPanel({
       )}
 
       {/* Plugins — same inventory as Grok Build `plugin list` / Plugins tab */}
-      <h2 className="settings-page__h2">
+      {tab === "plugins" && (
+      <>
+      <h2 className="settings-page__h2" id="settings-anchor-ext-plugins">
         <IconPuzzle size={15} />
         {tr("ext.plugins.title")}
         {!loading ? (
@@ -724,9 +778,13 @@ export function ExtensionsPanel({
           <p className="ext-section-note">{tr("ext.plugins.note")}</p>
         ) : null}
       </div>
+      </>
+      )}
 
       {/* Skills */}
-      <h2 className="settings-page__h2">
+      {tab === "skills" && (
+      <>
+      <h2 className="settings-page__h2" id="settings-anchor-ext-skills">
         <IconSkills size={15} />
         {tr("ext.skills.title")}
         {!loading ? (
@@ -802,9 +860,13 @@ export function ExtensionsPanel({
           </ul>
         )}
       </div>
+      </>
+      )}
 
       {/* MCP */}
-      <h2 className="settings-page__h2">
+      {tab === "mcp" && (
+      <>
+      <h2 className="settings-page__h2" id="settings-anchor-ext-mcp">
         <IconPlug size={15} />
         {tr("ext.mcp.title")}
         {!loading ? (
@@ -937,15 +999,20 @@ export function ExtensionsPanel({
           <p className="ext-section-note">{tr("ext.mcp.note")}</p>
         ) : null}
       </div>
+      </>
+      )}
 
-      <ExtensionsBuildExtras
-        locale={locale}
-        projectPath={projectPath}
-        cliFound={cliFound && !cliMissing}
-        onPluginsChanged={() => {
-          void refresh();
-        }}
-      />
+      {(tab === "hooks" || tab === "market") && (
+        <ExtensionsBuildExtras
+          locale={locale}
+          projectPath={projectPath}
+          cliFound={cliFound && !cliMissing}
+          mode={tab === "hooks" ? "hooks" : "market"}
+          onPluginsChanged={() => {
+            void refresh();
+          }}
+        />
+      )}
 
       <p className="ext-footnote">
         <IconPuzzle size={13} />

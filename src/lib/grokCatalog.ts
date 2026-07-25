@@ -154,8 +154,21 @@ export function pickDefaultEffort(
 }
 
 /**
- * Display label for an effort: prefer catalog label, else i18n via known ids.
- * `i18nLabels` maps high/medium/low (and optionally other ids).
+ * Strip a shared CLI suffix so "High Effort" / "Medium Effort" collapse to
+ * "High" / "Medium" (identical trailing " Effort" is noise in compact UI).
+ */
+export function stripCommonEffortSuffix(label: string): string {
+  const trimmed = label.trim();
+  if (!trimmed) return trimmed;
+  const stripped = trimmed.replace(/\s+Effort$/i, "").trim();
+  return stripped || trimmed;
+}
+
+/**
+ * Display label for an effort.
+ * - Standard ids (`high` / `medium` / `low`): prefer i18n so locale controls
+ *   高/中/低 vs High/Medium/Low (catalog labels are English-only).
+ * - Other catalog labels: strip a shared " Effort" suffix, then raw id.
  */
 export function effortDisplayLabel(
   effort: EffortOption | string,
@@ -165,13 +178,16 @@ export function effortDisplayLabel(
     low?: string;
   },
 ): string {
+  const id = typeof effort === "string" ? effort : effort.id;
+  if (id === "high" && i18nLabels?.high) return i18nLabels.high;
+  if (id === "medium" && i18nLabels?.medium) return i18nLabels.medium;
+  if (id === "low" && i18nLabels?.low) return i18nLabels.low;
+
   if (typeof effort !== "string") {
-    if (effort.label && effort.label.trim()) return effort.label;
+    const raw = effort.label?.trim();
+    if (raw) return stripCommonEffortSuffix(raw);
     return effortDisplayLabel(effort.id, i18nLabels);
   }
-  if (effort === "high" && i18nLabels?.high) return i18nLabels.high;
-  if (effort === "medium" && i18nLabels?.medium) return i18nLabels.medium;
-  if (effort === "low" && i18nLabels?.low) return i18nLabels.low;
   return effort;
 }
 

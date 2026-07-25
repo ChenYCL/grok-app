@@ -30,6 +30,8 @@ export interface ProjectInspectPanelProps {
   projectPath?: string | null;
   cliFound?: boolean;
   onOpenRuntime?: () => void;
+  /** When true, omit title/desc (parent card already shows them). */
+  hideHeader?: boolean;
 }
 
 function Fact({
@@ -51,6 +53,7 @@ export function ProjectInspectPanel({
   locale,
   projectPath = null,
   cliFound = true,
+  hideHeader = false,
 }: ProjectInspectPanelProps) {
   const tr = useMemo(() => createT(locale), [locale]);
   const cwd = projectPath?.trim() || null;
@@ -136,12 +139,17 @@ export function ProjectInspectPanel({
 
   return (
     <div className="pi-panel" data-testid="project-inspect-panel">
-      <div className="settings-row settings-row--stack" style={{ borderBottom: "none", paddingBottom: 0 }}>
-        <div className="settings-row__text">
-          <div className="settings-row__label">{tr("inspect.title")}</div>
-          <div className="settings-row__desc">{tr("inspect.desc")}</div>
+      {!hideHeader ? (
+        <div
+          className="settings-row settings-row--stack"
+          style={{ borderBottom: "none", paddingBottom: 0 }}
+        >
+          <div className="settings-row__text">
+            <div className="settings-row__label">{tr("inspect.title")}</div>
+            <div className="settings-row__desc">{tr("inspect.desc")}</div>
+          </div>
         </div>
-      </div>
+      ) : null}
 
       {!cwd && (
         <div className="pi-empty" role="status">

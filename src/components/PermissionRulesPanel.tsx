@@ -130,9 +130,10 @@ export function PermissionRulesPanel({
     await persist(next);
   };
 
+  /* Flat section inside parent settings-card — no nested card chrome. */
   return (
-    <div className="settings-card perm-rules">
-      <div className="settings-row settings-row--stack">
+    <div className="perm-rules">
+      <div className="settings-row settings-row--stack perm-rules__head">
         <div className="settings-row__text">
           <div className="settings-row__label">
             <IconShield size={16} />

@@ -25,6 +25,7 @@ import {
   IconChevronsLeft as TbChevronsLeft,
   IconCircleDashed as TbCircleDashed,
   IconCopy as TbCopy,
+  IconDeviceDesktop as TbDeviceDesktop,
   IconDeviceMobile as TbDeviceMobile,
   IconDots as TbDots,
   IconEdit as TbEdit,
@@ -241,6 +242,10 @@ export const IconHistory = wrap(TbRefresh);
 export const IconRewind = wrap(TbArrowBackUp);
 /** Session fork / branch. */
 export const IconFork = wrap(TbGitBranch);
+/** Git branch indicator (composer context bar). */
+export const IconGitBranch = wrap(TbGitBranch);
+/** Local machine / desktop workspace. */
+export const IconDeviceDesktop = wrap(TbDeviceDesktop);
 export const IconUpload = wrap(TbUpload);
 export const IconFiles = wrap(TbFiles);
 /** Session changes / diff panel (resource viewer). */
@@ -281,6 +286,65 @@ export const IconKeyboard = wrap(TbKeyboard);
 export const IconTarget = wrap(TbTarget);
 export const IconClipboardList = wrap(TbClipboardList);
 export const IconArrowsMinimize = wrap(TbArrowsMinimize);
+
+/**
+ * Two chevrons facing each other (∨ above ∧) — collapse all project folders.
+ * Glyph is slightly inset with a clearer mid gap; stroke stays Tabler 1.75
+ * so weight matches IconPlus at the same box size.
+ */
+export function IconArrowsVerticalCollapse({
+  size = 15,
+  title,
+  stroke = 1.75,
+  className = "",
+}: IconProps) {
+  const classes = ["g-icon", className].filter(Boolean).join(" ");
+  return (
+    <span
+      className={classes}
+      style={{
+        display: "inline-flex",
+        width: size,
+        height: size,
+        lineHeight: 0,
+        color: "currentColor",
+        flexShrink: 0,
+        alignItems: "center",
+        justifyContent: "center",
+      }}
+      role={title ? "img" : undefined}
+      aria-hidden={title ? undefined : true}
+      aria-label={title}
+      title={title}
+    >
+      <svg
+        width={size}
+        height={size}
+        viewBox="0 0 24 24"
+        fill="none"
+        xmlns="http://www.w3.org/2000/svg"
+        aria-hidden
+      >
+        {/* Upper chevron: ∨ — smaller, higher */}
+        <path
+          d="M8.5 7L12 10.25L15.5 7"
+          stroke="currentColor"
+          strokeWidth={stroke}
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+        {/* Lower chevron: ∧ — smaller, lower (wider mid gap) */}
+        <path
+          d="M8.5 17L12 13.75L15.5 17"
+          stroke="currentColor"
+          strokeWidth={stroke}
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+      </svg>
+    </span>
+  );
+}
 export const IconCircleDashed = wrap(TbCircleDashed);
 export const IconPlug = wrap(TbPlug);
 export const IconActivity = wrap(TbActivity);

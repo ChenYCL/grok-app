@@ -241,7 +241,8 @@ export function ComposerModelMenu({
 
   const modelLabel = activeModel?.label ?? modelId;
   const eLabel = resolveEffortLabel(effort, effortList, labels);
-  const triggerText = `${modelLabel} · ${eLabel}`;
+  // Compact trigger: model + short effort (locale), no middle-dot noise.
+  const triggerText = `${modelLabel} ${eLabel}`;
   const title = `${labels.model}: ${modelLabel} · ${labels.effort}: ${eLabel}`;
 
   return (

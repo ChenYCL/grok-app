@@ -4,6 +4,7 @@
 
 1. **`docs/llm-wiki/`** — product rules for agents (i18n, Grok Build catalog).  
    - [i18n.md](docs/llm-wiki/i18n.md) — all UI strings via `src/i18n/`  
+   - [settings-ia.md](docs/llm-wiki/settings-ia.md) — **settings IA**: tabs, search registry (`settingsCatalog`), deep links; every new setting must be registered  
    - [dialogs.md](docs/llm-wiki/dialogs.md) — **no `window.confirm` / `prompt` / `alert`**; use in-app dialogs  
    - [catalog.md](docs/llm-wiki/catalog.md) — models / effort / YOLO  
    - [automations.md](docs/llm-wiki/automations.md) — automation design (Build `/loop` / scheduler; non-blocking)  

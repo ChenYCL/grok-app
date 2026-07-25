@@ -10,7 +10,9 @@ import "./styles/setup-wizard.css";
 import {
   applyNativeWindowTheme,
   applyThemeToDocument,
-  loadTheme,
+  getSystemTheme,
+  loadThemePreference,
+  resolveTheme,
 } from "./lib/theme";
 import {
   applySkinToDocument,
@@ -21,8 +23,9 @@ import {
   loadWallpaperScrim,
 } from "./lib/themeSkin";
 
-// Apply persisted theme + color skin + wallpaper flag before first paint of React tree.
-const bootTheme = loadTheme(localStorage);
+// Apply persisted theme preference (default: system) before first React paint.
+const bootPref = loadThemePreference(localStorage);
+const bootTheme = resolveTheme(bootPref, getSystemTheme());
 applyThemeToDocument(bootTheme);
 applySkinToDocument(loadSkin(localStorage));
 // Only the data-wallpaper flag is set synchronously (so the shell flips to
@@ -30,8 +33,8 @@ applySkinToDocument(loadSkin(localStorage));
 // the IndexedDB blob is loaded — no synchronous access to IDB is possible.
 applyWallpaperFlag(loadWallpaperMeta(localStorage) !== null);
 applyWallpaperScrimToDocument(loadWallpaperScrim(localStorage));
-// Sync macOS NSAppearance / vibrancy with app theme (avoids dark glass under light UI).
-void applyNativeWindowTheme(bootTheme);
+// Native: null = follow OS (required for live system theme); light/dark locks chrome.
+void applyNativeWindowTheme(bootPref === "system" ? null : bootTheme);
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>

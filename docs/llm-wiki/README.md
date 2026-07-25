@@ -5,6 +5,7 @@ Agent 与贡献者的**可执行知识库**。改产品行为或 UI 文案前，
 | 文档 | 用途 |
 |------|------|
 | [i18n.md](./i18n.md) | **多语言强制规则**：所有 UI 文案、增改键、双语同步 |
+| [settings-ia.md](./settings-ia.md) | **设置页 IA**：一级导航 / 页内 tab / `settingsCatalog` 登记 / 搜索跳转 / 深链 |
 | [dialogs.md](./dialogs.md) | **禁止 `window.confirm` / `prompt` / `alert`**；应用内弹窗；复用现有面板样式（不强制毛玻璃） |
 | [catalog.md](./catalog.md) | 与 Grok Build CLI 对齐的模型 / 推理强度 / 权限（含 YOLO） |
 | [automations.md](./automations.md) | 自动化任务设计（Build `/loop` / scheduler；不阻塞 P0） |

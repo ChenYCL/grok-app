@@ -11,11 +11,16 @@ import { createPortal } from "react-dom";
 import { useFloatingMenu } from "@/lib/floatingMenu";
 import {
   applyNativeWindowTheme,
+  applyThemePreference,
   applyThemeToDocument,
-  loadTheme,
-  saveTheme,
-  toggleTheme,
+  getSystemTheme,
+  loadThemePreference,
+  resolveTheme,
+  saveThemePreference,
+  subscribeSystemTheme,
+  toggleThemePreference,
   type Theme,
+  type ThemePreference,
 } from "@/lib/theme";
 import {
   applySkinToDocument,
@@ -211,6 +216,7 @@ import {
   getComposerCaretOffset,
 } from "@/components/ComposerEditor";
 import { ComposerProjectMenu } from "@/components/ComposerProjectMenu";
+import { ComposerWorktreeMenu } from "@/components/ComposerWorktreeMenu";
 import {
   buildWorktreeSiblingPath,
   mainWorktreePath,
@@ -260,6 +266,7 @@ import {
   IconStop,
   IconFolder,
   IconFolderPlus,
+  IconArrowsVerticalCollapse,
   IconClock,
   IconClose,
   IconNewChat as IconSquarePen,
@@ -326,6 +333,13 @@ import {
   SettingsPage,
   type SettingsSectionId,
 } from "@/components/SettingsPage";
+import {
+  SETTINGS_SECTION_IDS,
+  buildSettingsHash,
+  parseSettingsHash,
+  resolveTab,
+  type SettingsTabId,
+} from "@/lib/settingsCatalog";
 import {
   accountDisplayName,
   accountInitials,
@@ -401,7 +415,14 @@ type AppDialog =
 type PlanState = SessionPlanState;
 
 export default function App() {
-  const [theme, setTheme] = useState<Theme>(() => loadTheme(localStorage));
+  const [themePreference, setThemePreference] = useState<ThemePreference>(() =>
+    loadThemePreference(localStorage),
+  );
+  const [systemTheme, setSystemTheme] = useState<Theme>(() => getSystemTheme());
+  const theme = useMemo(
+    () => resolveTheme(themePreference, systemTheme),
+    [themePreference, systemTheme],
+  );
   const [skin, setSkin] = useState<ThemeSkinId>(() => loadSkin(localStorage));
   const [wallpaperRecord, setWallpaperRecord] = useState<WallpaperRecord | null>(
     null,
@@ -593,6 +614,9 @@ export default function App() {
   const [mainPane, setMainPane] = useState<"chat" | "automations">("chat");
   const [settingsSection, setSettingsSection] =
     useState<SettingsSectionId>("general");
+  const [settingsTab, setSettingsTab] = useState<SettingsTabId | null>(
+    "composer",
+  );
   /** Prevent overlapping automation runs. */
   const automationRunLock = useRef(false);
   const firedAutomationIds = useRef<Set<string>>(new Set());
@@ -931,10 +955,39 @@ export default function App() {
   const useCustomWindowChrome = platform === "win" || platform === "other";
   const [windowMaximized, setWindowMaximized] = useState(false);
 
+  // Keep data-theme + native chrome in sync with the resolved theme.
+  // When preference is "system", native must stay unlocked (null) so the
+  // WebView continues to receive OS scheme changes via matchMedia.
   useEffect(() => {
     applyThemeToDocument(theme);
-    void applyNativeWindowTheme(theme);
-  }, [theme]);
+    void applyNativeWindowTheme(
+      themePreference === "system" ? null : theme,
+    );
+  }, [theme, themePreference]);
+
+  // Follow OS light/dark: re-read immediately on enter, then live-subscribe.
+  useEffect(() => {
+    if (themePreference !== "system") return;
+    let cancelled = false;
+    void (async () => {
+      // Unlock native first so getSystemTheme() sees the real OS scheme.
+      await applyNativeWindowTheme(null);
+      if (cancelled) return;
+      const sys = getSystemTheme();
+      setSystemTheme(sys);
+      applyThemeToDocument(sys);
+    })();
+    const unsub = subscribeSystemTheme((next) => {
+      setSystemTheme(next);
+      applyThemeToDocument(next);
+      // Keep native unlocked while following system.
+      void applyNativeWindowTheme(null);
+    });
+    return () => {
+      cancelled = true;
+      unsub();
+    };
+  }, [themePreference]);
 
   useEffect(() => {
     applySkinToDocument(skin);
@@ -2253,20 +2306,27 @@ export default function App() {
   }, [patchSessionMessages, tryApplyAutomationFromSession]);
 
   const toggleThemeBtn = () => {
-    setTheme((t) => {
-      const n = toggleTheme(t);
-      saveTheme(localStorage, n);
-      applyThemeToDocument(n);
-      void applyNativeWindowTheme(n);
-      return n;
+    const nextPref = toggleThemePreference(themePreference, theme);
+    saveThemePreference(localStorage, nextPref);
+    setThemePreference(nextPref);
+    void applyThemePreference(nextPref, {
+      onResolved: (_resolved, system) => {
+        setSystemTheme(system);
+      },
     });
   };
 
-  const applyThemeChoice = (next: Theme) => {
-    saveTheme(localStorage, next);
-    applyThemeToDocument(next);
-    void applyNativeWindowTheme(next);
-    setTheme(next);
+  const applyThemeChoice = (next: ThemePreference) => {
+    saveThemePreference(localStorage, next);
+    setThemePreference(next);
+    // System: unlock native → re-read OS → set data-theme immediately.
+    // Light/dark: lock native + CSS to that value.
+    void applyThemePreference(next, {
+      onResolved: (resolved, system) => {
+        // Always refresh systemTheme so resolveTheme("system", …) is current.
+        setSystemTheme(next === "system" ? resolved : system);
+      },
+    });
   };
 
   const applySkinChoice = (next: ThemeSkinId) => {
@@ -2344,40 +2404,42 @@ export default function App() {
   }, []);
 
   const navigateSettings = useCallback(
-    (section: SettingsSectionId = "general") => {
+    (section: SettingsSectionId = "general", tab?: string | null) => {
+      const nextTab = resolveTab(section, tab);
       setSettingsSection(section);
+      setSettingsTab(nextTab);
       setAppView("settings");
       setShowUserMenu(false);
       if (typeof window !== "undefined") {
         // Phone: generic settings open lands on the section index (SettingsPage
         // starts at phonePane=index). Specific sections still set the hash so a
         // later drill-in / deep-link matches the intended section.
-        window.location.hash = `#/settings/${section}`;
+        const hash = buildSettingsHash({
+          section,
+          tab: nextTab,
+        });
+        // Avoid no-op hash writes (some webviews skip hashchange; state still set above).
+        if (window.location.hash !== hash) {
+          window.location.hash = hash;
+        }
       }
     },
     [],
   );
 
-  // Hash route: #/settings[/section] | #/automations | #/workbench
+  // Hash route: #/settings[/section[/tab]] | #/automations | #/workbench
   useEffect(() => {
     const syncFromHash = () => {
       const raw = (window.location.hash || "").replace(/^#\/?/, "");
       if (raw.startsWith("settings")) {
-        const part = raw.split("/")[1] as SettingsSectionId | undefined;
-        const allowed: SettingsSectionId[] = [
-          "general",
-          "appearance",
-          "account",
-          "archived",
-          "extensions",
-          "remote_im",
-          "runtime",
-          "shortcuts",
-          "about",
-        ];
-        setSettingsSection(
-          part && allowed.includes(part) ? part : "general",
-        );
+        const loc = parseSettingsHash(raw);
+        if (loc) {
+          setSettingsSection(loc.section);
+          setSettingsTab(loc.tab ?? null);
+        } else {
+          setSettingsSection("general");
+          setSettingsTab(resolveTab("general"));
+        }
         setAppView("settings");
       } else if (raw === "automations" || raw.startsWith("automations")) {
         setAppView("workbench");
@@ -6452,10 +6514,8 @@ export default function App() {
     newChat: () => {
       void newChat();
     },
-    openSettings: () => {
-      setAppView("settings");
-      setSettingsSection("general");
-      window.location.hash = "#/settings/general";
+    openSettings: (section: SettingsSectionId = "general") => {
+      navigateSettings(section);
     },
     openChatFind: () => {
       openChatFind();
@@ -6538,21 +6598,13 @@ export default function App() {
         );
         unsubs.push(
           await listen<{ section?: string }>("tray://open-settings", (ev) => {
-            const raw = (ev.payload?.section || "general") as SettingsSectionId;
-            const allowed: SettingsSectionId[] = [
-              "general",
-              "appearance",
-              "account",
-              "archived",
-              "extensions",
-              "remote_im",
-              "runtime",
-              "shortcuts",
-              "about",
-            ];
-            trayHandlersRef.current.openSettings(
-              allowed.includes(raw) ? raw : "general",
-            );
+            const raw = (ev.payload?.section || "general") as string;
+            const section = (SETTINGS_SECTION_IDS as readonly string[]).includes(
+              raw,
+            )
+              ? (raw as SettingsSectionId)
+              : "general";
+            trayHandlersRef.current.openSettings(section);
           }),
         );
         unsubs.push(
@@ -7334,6 +7386,7 @@ export default function App() {
       "settings.availableModelsEmpty",
       "settings.theme",
       "settings.themeDesc",
+      "settings.themeSystem",
       "settings.themeLight",
       "settings.themeDark",
       "settings.doctorDesc",
@@ -7547,9 +7600,9 @@ export default function App() {
       {appGate === "ready" && (appView === "settings" ? (
         <SettingsPage
           section={settingsSection}
-          onSection={(id) => {
-            setSettingsSection(id);
-            window.location.hash = `#/settings/${id}`;
+          tab={settingsTab}
+          onSection={(id, nextTab) => {
+            navigateSettings(id, nextTab);
           }}
           onBack={navigateWorkbench}
           phoneLayout={phoneLayout}
@@ -7565,6 +7618,7 @@ export default function App() {
             });
           }}
           theme={theme}
+          themePreference={themePreference}
           onTheme={applyThemeChoice}
           skin={skin}
           onSkin={applySkinChoice}
@@ -7954,17 +8008,41 @@ export default function App() {
                   {tr("sidebar.projects")}
                 </span>
               </button>
-              {!isMirrorClient() ? (
-                <Tip label={tr("sidebar.addProject")}>
-                  <button
-                    type="button"
-                    className="tree-l1__action"
-                    onClick={() => void addProject(false)}
-                  >
-                    <IconPlus size={15} />
-                  </button>
-                </Tip>
-              ) : null}
+              <div className="tree-l1__actions">
+                {projects.length > 0 ? (
+                  <Tip label={tr("sidebar.collapseAllProjects")}>
+                    <button
+                      type="button"
+                      className="tree-l1__action"
+                      aria-label={tr("sidebar.collapseAllProjects")}
+                      onClick={(e) => {
+                        // Collapse each project folder only — not the L1 section.
+                        e.stopPropagation();
+                        setExpandedProjects((prev) => {
+                          const next = { ...prev };
+                          for (const p of projects) {
+                            next[p.id] = false;
+                          }
+                          return next;
+                        });
+                      }}
+                    >
+                      <IconArrowsVerticalCollapse size={15} />
+                    </button>
+                  </Tip>
+                ) : null}
+                {!isMirrorClient() ? (
+                  <Tip label={tr("sidebar.addProject")}>
+                    <button
+                      type="button"
+                      className="tree-l1__action"
+                      onClick={() => void addProject(false)}
+                    >
+                      <IconPlus size={15} />
+                    </button>
+                  </Tip>
+                ) : null}
+              </div>
             </div>
 
             {projectsOpen && projects.length === 0 && (
@@ -9139,6 +9217,82 @@ export default function App() {
               </div>
             ) : null}
             <div
+              className={
+                "composer-stack" +
+                (welcomeSession && !phoneLayout && activeProject
+                  ? " composer-stack--with-context"
+                  : "")
+              }
+            >
+            {/* New session + project bound: project + branch/worktree above input.
+                Hidden entirely when no project is selected. */}
+            {welcomeSession && !phoneLayout && activeProject ? (
+              <div
+                className="composer__context-bar"
+                aria-label={tr("composer.pickProject")}
+              >
+                <ComposerProjectMenu
+                  variant="context"
+                  activeProject={activeProject}
+                  projects={projects}
+                  labels={{
+                    noProject: tr("composer.noProject"),
+                    pickProject: tr("composer.pickProject"),
+                    addProject: tr("composer.addProject"),
+                    pathMissing: tr("project.pathMissingShort"),
+                  }}
+                  disabled={
+                    session.state === "streaming" ||
+                    session.state === "awaiting_permission"
+                  }
+                  onSelect={(proj) => {
+                    void bindSessionProject(proj);
+                  }}
+                  onAdd={() => {
+                    void addProjectFromPicker({ bindSession: true });
+                  }}
+                />
+                {gitWorktreesAvailable === true ? (
+                  <ComposerWorktreeMenu
+                    variant="context"
+                    activePath={activeProject.path}
+                    worktrees={gitWorktrees}
+                    worktreesAvailable={gitWorktreesAvailable}
+                    worktreesLoading={gitWorktreesLoading}
+                    worktreesReason={gitWorktreesReason}
+                    disabled={
+                      session.state === "streaming" ||
+                      session.state === "awaiting_permission"
+                    }
+                    labels={{
+                      worktrees: tr("composer.worktrees"),
+                      worktreesEmpty: tr("composer.worktreesEmpty"),
+                      worktreesUnavailable: tr(
+                        "composer.worktreesUnavailable",
+                      ),
+                      worktreesLoading: tr("composer.worktreesLoading"),
+                      worktreeCurrent: tr("composer.worktreeCurrent"),
+                      worktreeMain: tr("composer.worktreeMain"),
+                      worktreeDetached: tr("composer.worktreeDetached"),
+                      worktreeTip: tr("composer.worktreeTip"),
+                      worktreeNew: tr("composer.worktreeNew"),
+                      worktreeNewChat: tr("composer.worktreeNewChat"),
+                      worktreeGc: tr("composer.worktreeGc"),
+                    }}
+                    onSwitch={(wt) => {
+                      void switchToWorktree(wt);
+                    }}
+                    onCreate={() => openWorktreeCreate()}
+                    onCreateAndChat={() =>
+                      openWorktreeCreate({ startNewChat: true })
+                    }
+                    onGc={openWorktreeGc}
+                    onOpen={refreshGitWorktrees}
+                  />
+                ) : null}
+              </div>
+            ) : null}
+            <div
               ref={composerShellRef}
               className={
                 "composer" +
@@ -9433,45 +9587,6 @@ export default function App() {
                 </Tip>
                 {!phoneLayout ? (
                   <>
-                    <ComposerProjectMenu
-                      activeProject={activeProject}
-                      projects={projects}
-                      labels={{
-                        noProject: tr("composer.noProject"),
-                        pickProject: tr("composer.pickProject"),
-                        addProject: tr("composer.addProject"),
-                        worktrees: tr("composer.worktrees"),
-                        worktreesEmpty: tr("composer.worktreesEmpty"),
-                        worktreesUnavailable: tr(
-                          "composer.worktreesUnavailable",
-                        ),
-                        worktreeCurrent: tr("composer.worktreeCurrent"),
-                        worktreeSwitch: tr("composer.worktreeSwitch"),
-                        worktreeMain: tr("composer.worktreeMain"),
-                        worktreeDetached: tr("composer.worktreeDetached"),
-                        pathMissing: tr("project.pathMissingShort"),
-                        worktreeGc: tr("composer.worktreeGc"),
-                      }}
-                      worktrees={gitWorktrees}
-                      worktreesAvailable={gitWorktreesAvailable}
-                      worktreesLoading={gitWorktreesLoading}
-                      worktreesReason={gitWorktreesReason}
-                      disabled={
-                        session.state === "streaming" ||
-                        session.state === "awaiting_permission"
-                      }
-                      onSelect={(proj) => {
-                        void bindSessionProject(proj);
-                      }}
-                      onAdd={() => {
-                        void addProjectFromPicker({ bindSession: true });
-                      }}
-                      onSwitchWorktree={(wt) => {
-                        void switchToWorktree(wt);
-                      }}
-                      onGcWorktrees={openWorktreeGc}
-                      onOpen={refreshGitWorktrees}
-                    />
                     {goalMode ? (
                       <Tip label={tr("composer.goalHint")}>
                         <button
@@ -9722,6 +9837,7 @@ export default function App() {
                   </Tip>
                 )}
               </div>
+            </div>
             </div>
           </div>
           </div>

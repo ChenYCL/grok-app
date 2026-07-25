@@ -261,7 +261,7 @@ fn default_voice_id() -> String {
 impl Default for AppSettings {
     fn default() -> Self {
         Self {
-            theme: "dark".into(),
+            theme: "system".into(),
             // Product default is English; users can switch to zh / zh-TW in Settings.
             locale: "en".into(),
             session_data_mode: "independent".into(),
@@ -1398,7 +1398,7 @@ mod tests {
         let s = AppSettings::default();
         assert_eq!(s.session_data_mode, "independent");
         assert_eq!(s.permission_policy, "ask");
-        assert_eq!(s.theme, "dark");
+        assert_eq!(s.theme, "system");
         assert_eq!(s.locale, "en");
         assert_eq!(s.max_concurrent_agents, 3);
         assert_eq!(s.agent_idle_minutes, 30);

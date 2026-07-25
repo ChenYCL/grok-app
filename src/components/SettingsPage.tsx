@@ -38,7 +38,7 @@ import {
   shortcutsByGroup,
   type ShortcutGroup,
 } from "@/lib/shortcuts";
-import type { Theme } from "@/lib/theme";
+import type { Theme, ThemePreference } from "@/lib/theme";
 import {
   THEME_SKINS,
   WALLPAPER_ACCEPT,
@@ -73,17 +73,19 @@ import {
   type MessageKey,
   type Vars,
 } from "@/i18n";
+import {
+  SETTINGS_NAV,
+  buildSettingsHash,
+  defaultTabFor,
+  getNavDef,
+  resolveTab,
+  searchSettingsEntries,
+  type SettingsNavIcon,
+  type SettingsSectionId,
+  type SettingsTabId,
+} from "@/lib/settingsCatalog";
 
-export type SettingsSectionId =
-  | "general"
-  | "appearance"
-  | "account"
-  | "archived"
-  | "extensions"
-  | "remote_im"
-  | "runtime"
-  | "shortcuts"
-  | "about";
+export type { SettingsSectionId } from "@/lib/settingsCatalog";
 
 export type ArchivedSessionRow = {
   id: string;
@@ -100,7 +102,13 @@ export type ArchivedProjectGroup = {
 
 export interface SettingsPageProps {
   section: SettingsSectionId;
-  onSection: (id: SettingsSectionId) => void;
+  /** Active page tab (from hash `#/settings/{section}/{tab}`). */
+  tab?: string | null;
+  /**
+   * Navigate to a settings section (and optional tab / anchor).
+   * Prefer this over bare section changes so deep links stay in sync.
+   */
+  onSection: (id: SettingsSectionId, tab?: string | null) => void;
   onBack: () => void;
   /**
    * Mirror phone chrome (≤820px). Enables single-column index/detail drill-down.
@@ -110,8 +118,11 @@ export interface SettingsPageProps {
   labels: Record<string, string>;
   locale: string;
   onLocale: (v: string) => void;
+  /** Resolved light/dark currently applied (for display-only consumers). */
   theme: Theme;
-  onTheme: (v: Theme) => void;
+  /** User preference including "system" (drives the appearance segment). */
+  themePreference?: ThemePreference;
+  onTheme: (v: ThemePreference) => void;
   /** Color skin pack on top of light/dark (optional for older callers). */
   skin?: ThemeSkinId;
   onSkin?: (v: ThemeSkinId) => void;
@@ -226,180 +237,11 @@ export interface SettingsPageProps {
   trustedProjects?: Array<{ id: string; name: string; path: string }>;
 }
 
-type NavEntry = {
-  id: SettingsSectionId;
-  icon:
-    | "settings"
-    | "appearance"
-    | "user"
-    | "archive"
-    | "extensions"
-    | "remote_im"
-    | "doctor"
-    | "keyboard"
-    | "info";
-  labelKey: string;
-  /**
-   * i18n keys of the rows (labels + descriptions) this section contains.
-   * Search matches the section label *or* any of these, so typing a setting
-   * name ("語言", "theme", "permission") finds the section that holds it.
-   * Keys only — never hardcode localized strings here.
-   */
-  keywordKeys: readonly MessageKey[];
-  group: "personal" | "system";
-};
-
-const NAV: NavEntry[] = [
-  {
-    id: "general",
-    icon: "settings",
-    labelKey: "settings.nav.general",
-    keywordKeys: [
-      "settings.section.composer",
-      "settings.prefsScope",
-      "settings.prefsScopeDesc",
-      "settings.prefsScope.global",
-      "settings.prefsScope.project",
-      "settings.prefsScope.session",
-      "settings.availableModels",
-      "settings.availableModelsDesc",
-      "settings.section.permissions",
-      "settings.permissionDeep",
-      "settings.permissionDeepDesc",
-      "policy.ask",
-      "policy.accept_edits",
-      "policy.allow_for_session",
-      "policy.dont_ask",
-      "policy.always_approve",
-      "settings.section.general",
-      "settings.language",
-      "settings.languageDesc",
-      "settings.sessionDataMode",
-      "settings.sessionDataModeDesc",
-      "settings.modeIndependent",
-      "settings.modeShared",
-      "settings.openTarget",
-      "settings.openTargetDesc",
-      "settings.openFinder",
-    ],
-    group: "personal",
-  },
-  {
-    id: "appearance",
-    icon: "appearance",
-    labelKey: "settings.nav.appearance",
-    keywordKeys: [
-      "settings.theme",
-      "settings.themeDesc",
-      "settings.themeLight",
-      "settings.themeDark",
-    ],
-    group: "personal",
-  },
-  {
-    id: "account",
-    icon: "user",
-    labelKey: "settings.nav.account",
-    keywordKeys: [
-      "settings.tabOfficial",
-      "settings.tabOfficialHint",
-      "settings.tabProviders",
-      "settings.tabProvidersHint",
-      "account.signedIn",
-      "account.loginOauth",
-      "account.loginDevice",
-      "account.logout",
-      "account.subscription",
-      "account.quota",
-      "account.profiles",
-      "account.manageAccounts",
-      "account.addAccount",
-      "account.importChat",
-    ],
-    group: "personal",
-  },
-  {
-    id: "archived",
-    icon: "archive",
-    labelKey: "settings.nav.archived",
-    keywordKeys: [
-      "settings.archived.desc",
-      "settings.archived.empty",
-      "settings.archived.restore",
-      "settings.archived.delete",
-      "settings.archived.selectAll",
-    ],
-    group: "personal",
-  },
-  {
-    id: "extensions",
-    icon: "extensions",
-    labelKey: "settings.nav.extensions",
-    keywordKeys: [
-      "ext.lead",
-      "ext.plugins.title",
-      "ext.skills.title",
-      "ext.mcp.title",
-    ],
-    group: "system",
-  },
-  {
-    id: "runtime",
-    icon: "doctor",
-    labelKey: "settings.nav.runtime",
-    keywordKeys: [
-      "settings.cliPath",
-      "settings.cliPathDesc",
-      "settings.acpServer",
-      "settings.acpServerDesc",
-      "settings.maxConcurrentAgents",
-      "settings.maxConcurrentAgentsDesc",
-      "settings.agentIdleMinutes",
-      "settings.agentIdleMinutesDesc",
-      "settings.streamStallSeconds",
-      "settings.streamStallSecondsDesc",
-      "doctor.title",
-      "settings.doctorDesc",
-      "settings.runDoctor",
-    ],
-    group: "system",
-  },
-  {
-    id: "remote_im",
-    icon: "remote_im",
-    labelKey: "settings.nav.remoteIm",
-    group: "system",
-  },
-  { id: "runtime", icon: "doctor", labelKey: "settings.nav.runtime", group: "system" },
-
-  {
-    id: "shortcuts",
-    icon: "keyboard",
-    labelKey: "settings.nav.shortcuts",
-    keywordKeys: [
-      "settings.shortcuts.title",
-      "settings.shortcuts.desc",
-      "settings.shortcuts.group.workbench",
-      "settings.shortcuts.group.navigation",
-      "settings.shortcuts.group.diagnostics",
-      "settings.shortcuts.group.input",
-    ],
-    group: "system",
-  },
-  {
-    id: "about",
-    icon: "info",
-    labelKey: "settings.nav.about",
-    keywordKeys: ["settings.aboutApp"],
-    group: "system",
-  },
-];
-
 function NavIcon({
   name,
   size = 18,
 }: {
-  name: (typeof NAV)[number]["icon"];
+  name: SettingsNavIcon;
   size?: number;
 }) {
   if (name === "appearance") return <IconAppearance size={size} />;
@@ -595,8 +437,50 @@ function rectsOverlap(
   );
 }
 
+/** In-page settings tab strip (reuses account tab chrome). */
+function SettingsTabStrip({
+  tabs,
+  active,
+  onChange,
+  ariaLabel,
+  t,
+}: {
+  tabs: readonly { id: SettingsTabId; labelKey: MessageKey }[];
+  active: SettingsTabId | null;
+  onChange: (id: SettingsTabId) => void;
+  ariaLabel: string;
+  t: (k: MessageKey) => string;
+}) {
+  if (tabs.length === 0) return null;
+  return (
+    <div className="settings-account-tabs settings-page__tabs" role="tablist" aria-label={ariaLabel}>
+      <div className="settings-seg settings-seg--lg settings-page__tabs-seg" role="presentation">
+        {tabs.map((tab) => (
+          <button
+            key={tab.id}
+            type="button"
+            role="tab"
+            className={
+              "settings-seg__btn" + (active === tab.id ? " is-on" : "")
+            }
+            aria-selected={active === tab.id}
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              onChange(tab.id);
+            }}
+          >
+            {t(tab.labelKey)}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export function SettingsPage({
   section,
+  tab: tabProp = null,
   onSection,
   onBack,
   phoneLayout = false,
@@ -604,6 +488,7 @@ export function SettingsPage({
   locale,
   onLocale,
   theme,
+  themePreference: themePreferenceProp,
   onTheme,
   skin = "default",
   onSkin,
@@ -685,14 +570,14 @@ export function SettingsPage({
   trustedProjects = [],
 }: SettingsPageProps) {
   const [query, setQuery] = useState("");
+  /** Pending scroll target after search jump / deep link. */
+  const pendingAnchorRef = useRef<string | null>(null);
+  const [highlightAnchor, setHighlightAnchor] = useState<string | null>(null);
   /**
    * Phone drill-down: "index" = section list only; "detail" = one section full-width.
    * Always start on the index so opening 設定 never lands on a squeezed two-column pane.
    */
   const [phonePane, setPhonePane] = useState<"index" | "detail">("index");
-  const [accountTab, setAccountTab] = useState<"official" | "providers">(
-    "official",
-  );
   const [editors, setEditors] = useState<DetectedEditor[]>([]);
   const [clearMemoryOpen, setClearMemoryOpen] = useState(false);
   const [clearMemoryBusy, setClearMemoryBusy] = useState(false);
@@ -722,6 +607,9 @@ export function SettingsPage({
     (k: string, vars?: Vars) => tr(k as MessageKey, vars),
     [tr],
   );
+  /** Segment selection: prefer explicit preference; fall back to resolved theme. */
+  const themePreference: ThemePreference =
+    themePreferenceProp ?? theme;
 
   const workspaceCwd = (projectPath || "").trim() || null;
   const showSettingsToast = useCallback((msg: string, ms = 3500) => {
@@ -792,23 +680,91 @@ export function SettingsPage({
     return () => window.removeEventListener("popstate", onPopState);
   }, [phoneLayout]);
 
-  const openSection = useCallback(
-    (id: SettingsSectionId) => {
-      onSection(id);
+  /** Props → resolved tab (deep link / parent hash). */
+  const tabFromProps = useMemo(
+    () => resolveTab(section, tabProp),
+    [section, tabProp],
+  );
+  /**
+   * Local tab is the source of truth for in-page clicks so the strip reacts
+   * immediately. Parent/hash stay in sync via onSection; props re-sync when
+   * the section changes or a deep link arrives.
+   */
+  const [localTab, setLocalTab] = useState<SettingsTabId | null>(tabFromProps);
+  useEffect(() => {
+    setLocalTab(tabFromProps);
+  }, [section, tabFromProps]);
+
+  const activeTab = localTab ?? tabFromProps;
+  const sectionNav = useMemo(() => getNavDef(section), [section]);
+
+  const navigateTo = useCallback(
+    (
+      id: SettingsSectionId,
+      nextTab?: string | null,
+      anchorId?: string | null,
+    ) => {
+      if (anchorId) pendingAnchorRef.current = anchorId;
+      const resolved = resolveTab(id, nextTab ?? defaultTabFor(id));
+      // Optimistic: update strip/content before parent re-renders.
+      if (id === section) {
+        setLocalTab(resolved);
+      } else {
+        // Leaving section — next paint will sync from props; set optimistically.
+        setLocalTab(resolved);
+      }
+      onSection(id, resolved);
+      // Keep hash in sync even if the parent handler only stores section.
+      if (typeof window !== "undefined") {
+        const hash = buildSettingsHash({ section: id, tab: resolved });
+        if (window.location.hash !== hash) {
+          window.location.hash = hash;
+        }
+      }
       if (!phoneLayout) return;
       setPhonePane("detail");
       try {
         window.history.pushState(
           { settingsPhone: "detail", section: id },
           "",
-          `#/settings/${id}`,
+          buildSettingsHash({ section: id, tab: resolved }),
         );
       } catch {
         /* ignore */
       }
     },
-    [onSection, phoneLayout],
+    [onSection, phoneLayout, section],
   );
+
+  const openSection = useCallback(
+    (id: SettingsSectionId) => {
+      navigateTo(id, defaultTabFor(id));
+    },
+    [navigateTo],
+  );
+
+  const setSectionTab = useCallback(
+    (next: SettingsTabId) => {
+      // Always resolve against *current* section; never drop the tab arg.
+      navigateTo(section, next);
+    },
+    [navigateTo, section],
+  );
+
+  // Scroll + brief highlight after tab/section paint.
+  useEffect(() => {
+    const anchor = pendingAnchorRef.current;
+    if (!anchor) return;
+    pendingAnchorRef.current = null;
+    const timer = window.setTimeout(() => {
+      const el = document.getElementById(anchor);
+      if (!el) return;
+      el.scrollIntoView({ block: "center", behavior: "smooth" });
+      setHighlightAnchor(anchor);
+      window.setTimeout(() => setHighlightAnchor(null), 1600);
+    }, 60);
+    return () => window.clearTimeout(timer);
+  }, [section, activeTab]);
 
   const backToPhoneIndex = useCallback(() => {
     if (!phoneLayout) return;
@@ -828,16 +784,27 @@ export function SettingsPage({
   /** English catalog: keeps "theme" / "permission" searchable in a zh UI too. */
   const tEn = useMemo(() => createT("en"), []);
 
+  const searchHits = useMemo(
+    () =>
+      trimmedQuery
+        ? searchSettingsEntries(
+            trimmedQuery,
+            (k) => t(k),
+            (k) => tEn(k),
+          )
+        : [],
+    [trimmedQuery, t, tEn],
+  );
+
+  const hitSections = useMemo(() => {
+    if (!trimmedQuery) return null;
+    return new Set(searchHits.map((h) => h.entry.section));
+  }, [trimmedQuery, searchHits]);
+
   const nav = useMemo(() => {
-    const q = trimmedQuery.toLowerCase();
-    if (!q) return NAV;
-    return NAV.filter((n) =>
-      [n.labelKey as MessageKey, ...n.keywordKeys].some(
-        (k) =>
-          t(k).toLowerCase().includes(q) || tEn(k).toLowerCase().includes(q),
-      ),
-    );
-  }, [trimmedQuery, t, tEn]);
+    if (!hitSections) return [...SETTINGS_NAV];
+    return SETTINGS_NAV.filter((n) => hitSections.has(n.id));
+  }, [hitSections]);
 
   const personalNav = useMemo(
     () => nav.filter((n) => n.group === "personal"),
@@ -846,6 +813,20 @@ export function SettingsPage({
   const systemNav = useMemo(
     () => nav.filter((n) => n.group === "system"),
     [nav],
+  );
+
+  const jumpToHit = useCallback(
+    (sectionId: SettingsSectionId, tab?: SettingsTabId, anchorId?: string) => {
+      setQuery("");
+      navigateTo(sectionId, tab ?? defaultTabFor(sectionId), anchorId ?? null);
+    },
+    [navigateTo],
+  );
+
+  const rowHighlight = useCallback(
+    (anchorId: string) =>
+      highlightAnchor === anchorId ? " is-search-hit" : "",
+    [highlightAnchor],
   );
   /** Searching with zero hits: show an explicit empty state, never bare headers. */
   const searchEmpty = trimmedQuery.length > 0 && nav.length === 0;
@@ -1025,24 +1006,9 @@ export function SettingsPage({
     setMarquee(null);
   };
 
-  const title =
-    section === "general"
-      ? t("settings.nav.general")
-      : section === "appearance"
-        ? t("settings.nav.appearance")
-        : section === "account"
-          ? t("settings.nav.account")
-          : section === "archived"
-            ? t("settings.nav.archived")
-            : section === "extensions"
-              ? t("settings.nav.extensions")
-              : section === "remote_im"
-                ? t("settings.nav.remoteIm")
-                : section === "runtime"
-                  ? t("settings.nav.runtime")
-                  : section === "shortcuts"
-                    ? t("settings.nav.shortcuts")
-                    : t("settings.nav.about");
+  const title = sectionNav
+    ? t(sectionNav.labelKey)
+    : t("settings.nav.general");
 
   const phoneIndex = phoneLayout && phonePane === "index";
   const phoneDetail = phoneLayout && phonePane === "detail";
@@ -1051,7 +1017,7 @@ export function SettingsPage({
     (phoneIndex ? " settings-page--phone-index" : "") +
     (phoneDetail ? " settings-page--phone-detail" : "");
 
-  const renderNavItem = (n: NavEntry) => (
+  const renderNavItem = (n: (typeof SETTINGS_NAV)[number]) => (
     <button
       key={n.id}
       type="button"
@@ -1133,6 +1099,37 @@ export function SettingsPage({
           </>
         ) : null}
 
+        {searchHits.length > 0 ? (
+          <div className="settings-page__search-hits" role="listbox" aria-label={t("settings.searchResults")}>
+            <div className="settings-page__group-label">
+              {t("settings.searchResults")}
+            </div>
+            {searchHits.slice(0, 12).map((hit) => (
+              <button
+                key={hit.entry.id}
+                type="button"
+                role="option"
+                className="settings-page__search-hit"
+                onClick={() =>
+                  jumpToHit(
+                    hit.entry.section,
+                    hit.entry.tab,
+                    hit.entry.anchorId,
+                  )
+                }
+              >
+                <span className="settings-page__search-hit-label">
+                  {t(hit.entry.labelKey)}
+                </span>
+                <span className="settings-page__search-hit-path">
+                  {t(hit.sectionLabelKey)}
+                  {hit.tabLabelKey ? ` · ${t(hit.tabLabelKey)}` : ""}
+                </span>
+              </button>
+            ))}
+          </div>
+        ) : null}
+
         {searchEmpty ? (
           <div
             className="settings-page__nav-empty"
@@ -1181,10 +1178,22 @@ export function SettingsPage({
 
         {section === "general" && (
           <>
+            <SettingsTabStrip
+              tabs={sectionNav?.tabs ?? []}
+              active={activeTab}
+              onChange={setSectionTab}
+              ariaLabel={title}
+              t={(k) => t(k)}
+            />
+            {activeTab === "composer" && (
+            <>
             <h2 className="settings-page__h2">{t("settings.section.composer")}</h2>
-            <div className="settings-card">
+            <div className="settings-card" id="settings-anchor-composer">
               {onPrefsScope && (
-                <div className="settings-row settings-row--stack">
+                <div
+                  className={"settings-row settings-row--stack" + rowHighlight("settings-anchor-prefsScope")}
+                  id="settings-anchor-prefsScope"
+                >
                   <div className="settings-row__text">
                     <div className="settings-row__label">
                       {t("settings.prefsScope")}
@@ -1211,7 +1220,10 @@ export function SettingsPage({
                   />
                 </div>
               )}
-              <div className="settings-row settings-row--stack">
+              <div
+                className={"settings-row settings-row--stack" + rowHighlight("settings-anchor-availableModels")}
+                id="settings-anchor-availableModels"
+              >
                 <div className="settings-row__text">
                   <div className="settings-row__label">
                     {t("settings.availableModels")}
@@ -1242,10 +1254,17 @@ export function SettingsPage({
                 </div>
               </div>
             </div>
+            </>
+            )}
 
+            {activeTab === "permissions" && (
+            <>
             <h2 className="settings-page__h2">{t("settings.section.permissions")}</h2>
-            <div className="settings-card">
-              <div className="settings-row settings-row--stack">
+            <div className="settings-card" id="settings-anchor-permissionRules">
+              <div
+                className={"settings-row settings-row--stack" + rowHighlight("settings-anchor-permissionPolicy")}
+                id="settings-anchor-permissionPolicy"
+              >
                 <div className="settings-row__text">
                   <div className="settings-row__label">
                     <IconShield size={16} />
@@ -1275,7 +1294,10 @@ export function SettingsPage({
                 />
               </div>
               {onSandboxProfile ? (
-                <div className="settings-row settings-row--stack">
+                <div
+                  className={"settings-row settings-row--stack" + rowHighlight("settings-anchor-sandbox")}
+                  id="settings-anchor-sandbox"
+                >
                   <div className="settings-row__text">
                     <div className="settings-row__label">
                       {t("settings.sandboxProfile")}
@@ -1314,11 +1336,18 @@ export function SettingsPage({
               ) : null}
               <PermissionRulesPanel t={t} />
             </div>
+            </>
+            )}
 
-                        <h2 className="settings-page__h2">{t("settings.section.agent")}</h2>
+            {activeTab === "agent" && (
+            <>
+            <h2 className="settings-page__h2">{t("settings.section.agent")}</h2>
             <div className="settings-card" id="settings-agent-card">
               {onMaxAgentTurns ? (
-                <div className="settings-row settings-row--stack">
+                <div
+                  className={"settings-row settings-row--stack" + rowHighlight("settings-anchor-maxAgentTurns")}
+                  id="settings-anchor-maxAgentTurns"
+                >
                   <div className="settings-row__text">
                     <div className="settings-row__label">
                       {t("settings.maxAgentTurns")}
@@ -1349,7 +1378,10 @@ export function SettingsPage({
                 </div>
               ) : null}
               {onPreferredAgent ? (
-                <div className="settings-row settings-row--stack">
+                <div
+                  className={"settings-row settings-row--stack" + rowHighlight("settings-anchor-preferredAgent")}
+                  id="settings-anchor-preferredAgent"
+                >
                   <div className="settings-row__text">
                     <div className="settings-row__label">
                       {t("settings.preferredAgent")}
@@ -1386,7 +1418,10 @@ export function SettingsPage({
                 </div>
               ) : null}
               {onExperimentalMemory ? (
-                <div className="settings-row">
+                <div
+                  className={"settings-row" + rowHighlight("settings-anchor-experimentalMemory")}
+                  id="settings-anchor-experimentalMemory"
+                >
                   <div className="settings-row__text">
                     <div className="settings-row__label">
                       {t("settings.experimentalMemory")}
@@ -1403,7 +1438,10 @@ export function SettingsPage({
                 </div>
               ) : null}
               {onSubagentsEnabled ? (
-                <div className="settings-row">
+                <div
+                  className={"settings-row" + rowHighlight("settings-anchor-subagents")}
+                  id="settings-anchor-subagents"
+                >
                   <div className="settings-row__text">
                     <div className="settings-row__label">
                       {t("settings.subagentsEnabled")}
@@ -1420,7 +1458,10 @@ export function SettingsPage({
                 </div>
               ) : null}
               {onPlanEnabled ? (
-                <div className="settings-row">
+                <div
+                  className={"settings-row" + rowHighlight("settings-anchor-planEnabled")}
+                  id="settings-anchor-planEnabled"
+                >
                   <div className="settings-row__text">
                     <div className="settings-row__label">
                       {t("settings.planEnabled")}
@@ -1437,7 +1478,10 @@ export function SettingsPage({
                 </div>
               ) : null}
               {onDisableWebSearch ? (
-                <div className="settings-row">
+                <div
+                  className={"settings-row" + rowHighlight("settings-anchor-disableWebSearch")}
+                  id="settings-anchor-disableWebSearch"
+                >
                   <div className="settings-row__text">
                     <div className="settings-row__label">
                       {t("settings.disableWebSearch")}
@@ -1454,7 +1498,10 @@ export function SettingsPage({
                 </div>
               ) : null}
               {onUseLeader ? (
-                <div className="settings-row">
+                <div
+                  className={"settings-row" + rowHighlight("settings-anchor-useLeader")}
+                  id="settings-anchor-useLeader"
+                >
                   <div className="settings-row__text">
                     <div className="settings-row__label">
                       {t("settings.useLeader")}
@@ -1471,11 +1518,17 @@ export function SettingsPage({
                 </div>
               ) : null}
             </div>
+            </>
+            )}
 
-
-<h2 className="settings-page__h2">{t("settings.section.general")}</h2>
+            {activeTab === "app" && (
+            <>
+            <h2 className="settings-page__h2">{t("settings.section.general")}</h2>
             <div className="settings-card">
-              <div className="settings-row">
+              <div
+                className={"settings-row" + rowHighlight("settings-anchor-language")}
+                id="settings-anchor-language"
+              >
                 <div className="settings-row__text">
                   <div className="settings-row__label">
                     <IconLanguage size={16} />
@@ -1495,7 +1548,10 @@ export function SettingsPage({
                   ]}
                 />
               </div>
-              <div className="settings-row">
+              <div
+                className={"settings-row" + rowHighlight("settings-anchor-sessionDataMode")}
+                id="settings-anchor-sessionDataMode"
+              >
                 <div className="settings-row__text">
                   <div className="settings-row__label">
                     {t("settings.sessionDataMode")}
@@ -1523,7 +1579,10 @@ export function SettingsPage({
                 />
               ) : null}
               {onStoreApiKeysInKeychain ? (
-                <div className="settings-row">
+                <div
+                  className={"settings-row" + rowHighlight("settings-anchor-keychain")}
+                  id="settings-anchor-keychain"
+                >
                   <div className="settings-row__text">
                     <div className="settings-row__label">
                       {t("settings.storeApiKeysInKeychain")}
@@ -1542,7 +1601,10 @@ export function SettingsPage({
                 </div>
               ) : null}
               {workspaceCwd ? (
-                <div className="settings-row">
+                <div
+                  className={"settings-row" + rowHighlight("settings-anchor-clearMemory")}
+                  id="settings-anchor-clearMemory"
+                >
                   <div className="settings-row__text">
                     <div className="settings-row__label">
                       {t("settings.clearWorkspaceMemory")}
@@ -1564,7 +1626,10 @@ export function SettingsPage({
                 </div>
               ) : null}
               {onReopenLastSession ? (
-                <div className="settings-row">
+                <div
+                  className={"settings-row" + rowHighlight("settings-anchor-reopenLastSession")}
+                  id="settings-anchor-reopenLastSession"
+                >
                   <div className="settings-row__text">
                     <div className="settings-row__label">
                       {t("settings.reopenLastSession")}
@@ -1581,7 +1646,10 @@ export function SettingsPage({
                 </div>
               ) : null}
               {onDefaultOpenTarget && (
-                <div className="settings-row">
+                <div
+                  className={"settings-row" + rowHighlight("settings-anchor-openTarget")}
+                  id="settings-anchor-openTarget"
+                >
                   <div className="settings-row__text">
                     <div className="settings-row__label">
                       {t("settings.openTarget")}
@@ -1604,12 +1672,17 @@ export function SettingsPage({
                 </div>
               )}
             </div>
+            </>
+            )}
           </>
         )}
 
         {section === "appearance" && (
           <>
-            <div className="settings-card">
+            <div
+              className={"settings-card" + rowHighlight("settings-anchor-theme")}
+              id="settings-anchor-theme"
+            >
               <div className="settings-row">
                 <div className="settings-row__text">
                   <div className="settings-row__label">
@@ -1620,11 +1693,26 @@ export function SettingsPage({
                     {t("settings.themeDesc")}
                   </div>
                 </div>
-                <div className="settings-seg">
+                <div className="settings-seg" role="radiogroup" aria-label={t("settings.theme")}>
                   <button
                     type="button"
+                    role="radio"
+                    aria-checked={themePreference === "system"}
                     className={
-                      "settings-seg__btn" + (theme === "light" ? " is-on" : "")
+                      "settings-seg__btn" +
+                      (themePreference === "system" ? " is-on" : "")
+                    }
+                    onClick={() => onTheme("system")}
+                  >
+                    {t("settings.themeSystem")}
+                  </button>
+                  <button
+                    type="button"
+                    role="radio"
+                    aria-checked={themePreference === "light"}
+                    className={
+                      "settings-seg__btn" +
+                      (themePreference === "light" ? " is-on" : "")
                     }
                     onClick={() => onTheme("light")}
                   >
@@ -1632,8 +1720,11 @@ export function SettingsPage({
                   </button>
                   <button
                     type="button"
+                    role="radio"
+                    aria-checked={themePreference === "dark"}
                     className={
-                      "settings-seg__btn" + (theme === "dark" ? " is-on" : "")
+                      "settings-seg__btn" +
+                      (themePreference === "dark" ? " is-on" : "")
                     }
                     onClick={() => onTheme("dark")}
                   >
@@ -1643,7 +1734,10 @@ export function SettingsPage({
               </div>
             </div>
             {onSkin ? (
-              <div className="settings-card">
+              <div
+                className={"settings-card" + rowHighlight("settings-anchor-skin")}
+                id="settings-anchor-skin"
+              >
                 <div className="settings-row settings-row--stack">
                   <div className="settings-row__text">
                     <div className="settings-row__label">
@@ -1692,7 +1786,10 @@ export function SettingsPage({
               </div>
             ) : null}
             {onWallpaper ? (
-              <div className="settings-card">
+              <div
+                className={"settings-card" + rowHighlight("settings-anchor-wallpaper")}
+                id="settings-anchor-wallpaper"
+              >
                 <div className="settings-row settings-row--stack">
                   <div className="settings-row__text">
                     <div className="settings-row__label">
@@ -1835,17 +1932,31 @@ export function SettingsPage({
 
         {section === "account" && (
           <>
-            <div className="settings-account-tabs" role="tablist">
+            <div
+              className="settings-account-tabs"
+              role="tablist"
+              id={
+                activeTab === "providers"
+                  ? "settings-anchor-account-providers"
+                  : "settings-anchor-account-official"
+              }
+            >
               <div className="settings-seg settings-seg--lg" role="presentation">
                 <button
                   type="button"
                   role="tab"
                   className={
                     "settings-seg__btn" +
-                    (accountTab === "official" ? " is-on" : "")
+                    (activeTab === "official" || activeTab == null
+                      ? " is-on"
+                      : "")
                   }
-                  aria-selected={accountTab === "official"}
-                  onClick={() => setAccountTab("official")}
+                  aria-selected={activeTab === "official" || activeTab == null}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    setSectionTab("official");
+                  }}
                 >
                   {t("settings.tabOfficial")}
                 </button>
@@ -1854,21 +1965,29 @@ export function SettingsPage({
                   role="tab"
                   className={
                     "settings-seg__btn" +
-                    (accountTab === "providers" ? " is-on" : "")
+                    (activeTab === "providers" ? " is-on" : "")
                   }
-                  aria-selected={accountTab === "providers"}
-                  onClick={() => setAccountTab("providers")}
+                  aria-selected={activeTab === "providers"}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    setSectionTab("providers");
+                  }}
                 >
                   {t("settings.tabProviders")}
                 </button>
               </div>
-              {accountTab === "official" ? (
+              {activeTab === "providers" ? (
+                <p className="settings-account-tabs__hint">
+                  {t("settings.tabProvidersHint")}
+                </p>
+              ) : (
                 <p className="settings-account-tabs__hint">
                   {t("settings.tabOfficialHint")}
                 </p>
-              ) : null}
+              )}
             </div>
-            {accountTab === "providers" ? (
+            {activeTab === "providers" ? (
               <ProvidersPanel
                 locale={resolveLocale(locale)}
                 officialAvailable={
@@ -1969,7 +2088,7 @@ export function SettingsPage({
         )}
 
         {section === "archived" && (
-          <>
+          <div id="settings-anchor-archived">
             <p className="settings-page__lead">
               {t("settings.archived.desc")}
             </p>
@@ -2146,7 +2265,7 @@ export function SettingsPage({
                 </div>
               </>
             )}
-          </>
+          </div>
         )}
 
         {section === "extensions" && (
@@ -2154,13 +2273,26 @@ export function SettingsPage({
             locale={resolveLocale(locale)}
             projectPath={projectPath}
             cliFound={cliInfo.found}
-            onOpenRuntime={() => openSection("runtime")}
+            activeTab={
+              (activeTab as
+                | "plugins"
+                | "skills"
+                | "mcp"
+                | "hooks"
+                | "market"
+                | null) ?? "plugins"
+            }
+            onTabChange={(next) => setSectionTab(next)}
+            onOpenRuntime={() => navigateTo("runtime", "cli")}
             onSkillsPrefsChanged={onSkillsPrefsChanged}
           />
         )}
 
         {section === "remote_im" && (
-          <div className="settings-remote-im-shell">
+          <div
+            className="settings-remote-im-shell"
+            id="settings-anchor-remote-im"
+          >
             <RemoteImLayout
               locale={locale}
               trustedProjects={trustedProjects}
@@ -2169,158 +2301,250 @@ export function SettingsPage({
         )}
 
         {section === "runtime" && (
-          <div className="settings-card">
-            <div className="settings-row settings-row--stack">
-              <div className="settings-row__text">
-                <div className="settings-row__label">
-                  {t("settings.cliPath")}{" "}
-                  {cliInfo.found
-                    ? `(${cliInfo.source || "ok"})`
-                    : t("settings.cliNotFound")}
-                </div>
-                <div className="settings-row__desc">
-                  {t("settings.cliPathDesc")}
-                </div>
-              </div>
-              <input
-                className="settings-input"
-                value={manualCliPath}
-                placeholder={cliInfo.path || "e.g. ~/.grok/bin/grok"}
-                onChange={(e) => onManualCliPath(e.target.value)}
-                onBlur={(e) => onCliBlur(e.target.value.trim())}
-              />
-              {cliInfo.version && (
-                <div className="settings-row__hint">
-                  {cliInfo.version}
-                  {cliInfo.path ? ` · ${cliInfo.path}` : ""}
-                  {cliInfo.cliAuthPresent
-                    ? ` · ${t("account.cliAuthOk")}`
-                    : ` · ${t("account.cliAuthMissing")}`}
-                </div>
-              )}
-            </div>
-            <AcpServerField
-              value={acpServerAddr}
-              onChange={onAcpServerAddr}
-              t={t}
+          <>
+            <SettingsTabStrip
+              tabs={sectionNav?.tabs ?? []}
+              active={activeTab}
+              onChange={setSectionTab}
+              ariaLabel={title}
+              t={(k) => t(k)}
             />
-            <div className="settings-row settings-row--stack">
-              <div className="settings-row__text">
-                <div className="settings-row__label">
-                  {t("settings.maxConcurrentAgents")}
-                </div>
-                <div className="settings-row__desc">
-                  {t("settings.maxConcurrentAgentsDesc")}
-                </div>
-              </div>
-              <input
-                className="settings-input"
-                type="number"
-                min={1}
-                max={8}
-                step={1}
-                value={maxConcurrentAgents}
-                onChange={(e) => {
-                  const n = Number(e.target.value);
-                  if (!Number.isFinite(n)) return;
-                  onMaxConcurrentAgents?.(Math.min(8, Math.max(1, Math.round(n))));
-                }}
-              />
-            </div>
-            <div className="settings-row settings-row--stack">
-              <div className="settings-row__text">
-                <div className="settings-row__label">
-                  {t("settings.agentIdleMinutes")}
-                </div>
-                <div className="settings-row__desc">
-                  {t("settings.agentIdleMinutesDesc")}
-                </div>
-              </div>
-              <input
-                className="settings-input"
-                type="number"
-                min={1}
-                max={1440}
-                step={1}
-                value={agentIdleMinutes}
-                onChange={(e) => {
-                  const n = Number(e.target.value);
-                  if (!Number.isFinite(n)) return;
-                  onAgentIdleMinutes?.(
-                    Math.min(1440, Math.max(1, Math.round(n))),
-                  );
-                }}
-              />
-            </div>
-            <div className="settings-row settings-row--stack">
-              <div className="settings-row__text">
-                <div className="settings-row__label">
-                  {t("settings.streamStallSeconds")}
-                </div>
-                <div className="settings-row__desc">
-                  {t("settings.streamStallSecondsDesc")}
-                </div>
-              </div>
-              <input
-                className="settings-input"
-                type="number"
-                min={15}
-                max={900}
-                step={15}
-                value={streamStallSeconds}
-                onChange={(e) => {
-                  const n = Number(e.target.value);
-                  if (!Number.isFinite(n)) return;
-                  onStreamStallSeconds?.(
-                    Math.min(900, Math.max(15, Math.round(n))),
-                  );
-                }}
-              />
-            </div>
-            <div className="settings-row">
-              <div className="settings-row__text">
-                <div className="settings-row__label">
-                  <IconDoctor size={16} />
-                  {t("doctor.title")}
-                </div>
-                <div className="settings-row__desc">
-                  {t("settings.doctorDesc")}
-                </div>
-              </div>
-              <button
-                type="button"
-                className="btn btn--ghost settings-row__action"
-                onClick={onDoctor}
+            {activeTab === "cli" && (
+              <div
+                className={"settings-card" + rowHighlight("settings-anchor-cliPath")}
+                id="settings-anchor-cliPath"
               >
-                {t("settings.runDoctor")}
-              </button>
-            </div>
-            <div className="settings-card settings-card--nested pi-settings-block">
-              <ProjectInspectPanel
-                locale={resolveLocale(locale)}
-                projectPath={projectPath}
-                cliFound={cliInfo.found}
-              />
-            </div>
-            <div className="settings-card settings-card--nested pi-settings-block">
-              <ManagedSetupPanel
-                locale={resolveLocale(locale)}
-                cliFound={cliInfo.found}
-                onOpenAccount={() => onSection("account")}
-              />
-            </div>
-          </div>
+                <div className="settings-row settings-row--stack">
+                  <div className="settings-row__text">
+                    <div className="settings-row__label">
+                      {t("settings.cliPath")}{" "}
+                      {cliInfo.found
+                        ? `(${cliInfo.source || "ok"})`
+                        : t("settings.cliNotFound")}
+                    </div>
+                    <div className="settings-row__desc">
+                      {t("settings.cliPathDesc")}
+                    </div>
+                  </div>
+                  <input
+                    className="settings-input"
+                    value={manualCliPath}
+                    placeholder={cliInfo.path || "e.g. ~/.grok/bin/grok"}
+                    onChange={(e) => onManualCliPath(e.target.value)}
+                    onBlur={(e) => onCliBlur(e.target.value.trim())}
+                  />
+                  {cliInfo.version && (
+                    <div className="settings-row__hint">
+                      {cliInfo.version}
+                      {cliInfo.path ? ` · ${cliInfo.path}` : ""}
+                      {cliInfo.cliAuthPresent
+                        ? ` · ${t("account.cliAuthOk")}`
+                        : ` · ${t("account.cliAuthMissing")}`}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+            {activeTab === "connection" && (
+              <div
+                className={"settings-card" + rowHighlight("settings-anchor-acpServer")}
+                id="settings-anchor-acpServer"
+              >
+                <AcpServerField
+                  value={acpServerAddr}
+                  onChange={onAcpServerAddr}
+                  t={t}
+                />
+              </div>
+            )}
+            {activeTab === "pool" && (
+              <div className="settings-card">
+                <div
+                  className={
+                    "settings-row settings-row--stack" +
+                    rowHighlight("settings-anchor-maxConcurrentAgents")
+                  }
+                  id="settings-anchor-maxConcurrentAgents"
+                >
+                  <div className="settings-row__text">
+                    <div className="settings-row__label">
+                      {t("settings.maxConcurrentAgents")}
+                    </div>
+                    <div className="settings-row__desc">
+                      {t("settings.maxConcurrentAgentsDesc")}
+                    </div>
+                  </div>
+                  <input
+                    className="settings-input"
+                    type="number"
+                    min={1}
+                    max={8}
+                    step={1}
+                    value={maxConcurrentAgents}
+                    onChange={(e) => {
+                      const n = Number(e.target.value);
+                      if (!Number.isFinite(n)) return;
+                      onMaxConcurrentAgents?.(
+                        Math.min(8, Math.max(1, Math.round(n))),
+                      );
+                    }}
+                  />
+                </div>
+                <div
+                  className={
+                    "settings-row settings-row--stack" +
+                    rowHighlight("settings-anchor-agentIdleMinutes")
+                  }
+                  id="settings-anchor-agentIdleMinutes"
+                >
+                  <div className="settings-row__text">
+                    <div className="settings-row__label">
+                      {t("settings.agentIdleMinutes")}
+                    </div>
+                    <div className="settings-row__desc">
+                      {t("settings.agentIdleMinutesDesc")}
+                    </div>
+                  </div>
+                  <input
+                    className="settings-input"
+                    type="number"
+                    min={1}
+                    max={1440}
+                    step={1}
+                    value={agentIdleMinutes}
+                    onChange={(e) => {
+                      const n = Number(e.target.value);
+                      if (!Number.isFinite(n)) return;
+                      onAgentIdleMinutes?.(
+                        Math.min(1440, Math.max(1, Math.round(n))),
+                      );
+                    }}
+                  />
+                </div>
+                <div
+                  className={
+                    "settings-row settings-row--stack" +
+                    rowHighlight("settings-anchor-streamStallSeconds")
+                  }
+                  id="settings-anchor-streamStallSeconds"
+                >
+                  <div className="settings-row__text">
+                    <div className="settings-row__label">
+                      {t("settings.streamStallSeconds")}
+                    </div>
+                    <div className="settings-row__desc">
+                      {t("settings.streamStallSecondsDesc")}
+                    </div>
+                  </div>
+                  <input
+                    className="settings-input"
+                    type="number"
+                    min={15}
+                    max={900}
+                    step={15}
+                    value={streamStallSeconds}
+                    onChange={(e) => {
+                      const n = Number(e.target.value);
+                      if (!Number.isFinite(n)) return;
+                      onStreamStallSeconds?.(
+                        Math.min(900, Math.max(15, Math.round(n))),
+                      );
+                    }}
+                  />
+                </div>
+              </div>
+            )}
+            {activeTab === "tools" && (
+              <>
+                <div
+                  className={"settings-card" + rowHighlight("settings-anchor-doctor")}
+                  id="settings-anchor-doctor"
+                >
+                  <div className="settings-row">
+                    <div className="settings-row__text">
+                      <div className="settings-row__label">
+                        <IconDoctor size={16} />
+                        {t("doctor.title")}
+                      </div>
+                      <div className="settings-row__desc">
+                        {t("settings.doctorDesc")}
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      className="btn btn--ghost settings-row__action"
+                      onClick={onDoctor}
+                    >
+                      {t("settings.runDoctor")}
+                    </button>
+                  </div>
+                </div>
+                <div
+                  className={
+                    "settings-card pi-settings-block" +
+                    rowHighlight("settings-anchor-inspect")
+                  }
+                  id="settings-anchor-inspect"
+                >
+                  <div className="settings-row settings-row--stack">
+                    <div className="settings-row__text">
+                      <div className="settings-row__label">
+                        {t("inspect.title")}
+                      </div>
+                      <div className="settings-row__desc">
+                        {t("inspect.desc")}
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      className="btn btn--ghost settings-row__action"
+                      onClick={() => navigateTo("extensions", "plugins")}
+                    >
+                      {t("settings.inspect.manageInExtensions")}
+                    </button>
+                  </div>
+                  {/* Flat body — no nested settings-card */}
+                  <div className="pi-settings-body">
+                    <ProjectInspectPanel
+                      locale={resolveLocale(locale)}
+                      projectPath={projectPath}
+                      cliFound={cliInfo.found}
+                      hideHeader
+                    />
+                  </div>
+                </div>
+                <div
+                  className={
+                    "settings-card pi-settings-block" +
+                    rowHighlight("settings-anchor-managedSetup")
+                  }
+                  id="settings-anchor-managedSetup"
+                >
+                  <ManagedSetupPanel
+                    locale={resolveLocale(locale)}
+                    cliFound={cliInfo.found}
+                    onOpenAccount={() => navigateTo("account", "official")}
+                  />
+                </div>
+              </>
+            )}
+          </>
         )}
 
         {section === "shortcuts" && (
-          <ShortcutsSettingsPanel
-            t={t}
-            onOpenHelp={onOpenShortcutsHelp}
-          />
+          <div id="settings-anchor-shortcuts">
+            <ShortcutsSettingsPanel
+              t={t}
+              onOpenHelp={onOpenShortcutsHelp}
+            />
+          </div>
         )}
 
         {section === "about" && (
-          <div className="settings-card">
+          <div
+            className={"settings-card" + rowHighlight("settings-anchor-about")}
+            id="settings-anchor-about"
+          >
             <div className="settings-row settings-row--stack">
               <div className="settings-row__text">
                 <div className="settings-row__label">

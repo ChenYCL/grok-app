@@ -43,6 +43,7 @@ button:disabled {
 .ui-tip {
   position: fixed;
   z-index: 10050;
+  /* Inline style also sets maxWidth from viewport clamp; keep a CSS fallback. */
   max-width: min(280px, calc(100vw - 16px));
   padding: 5px 8px;
   border-radius: 6px;
@@ -60,6 +61,8 @@ button:disabled {
   overflow: hidden;
   text-overflow: ellipsis;
   pointer-events: none;
+  /* top/left are the box origin (no translate); viewport clamp in tooltip.tsx */
+  box-sizing: border-box;
   animation: ui-tip-in 100ms ease-out;
 }
 
@@ -144,6 +147,7 @@ input,
 textarea,
 select,
 [role="button"],
+[role="tab"],
 [role="menuitem"],
 [role="option"],
 [contenteditable="true"] {
@@ -566,6 +570,23 @@ html.platform-mac[data-theme="light"] .settings-page__content {
 
 .tree-l1__label {
   flex: 1;
+}
+
+.tree-l1__actions {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  flex-shrink: 0;
+  /* Collapse + add: only when hovering the Projects row (or keyboard focus). */
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 120ms ease;
+}
+
+.tree-l1:hover .tree-l1__actions,
+.tree-l1:focus-within .tree-l1__actions {
+  opacity: 1;
+  pointer-events: auto;
 }
 
 .tree-l1__action {
@@ -3326,6 +3347,91 @@ html.platform-mac[data-theme="light"] .settings-page__content {
   color: var(--text-primary);
 }
 
+.settings-page__search-hits {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0 0 10px;
+  max-height: min(40vh, 280px);
+  overflow: auto;
+  padding-right: 2px;
+}
+
+.settings-page__search-hit {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  width: 100%;
+  text-align: left;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: inherit;
+  padding: 8px 10px;
+  cursor: pointer;
+  font: inherit;
+}
+
+.settings-page__search-hit:hover {
+  background: var(--bg-hover);
+}
+
+.settings-page__search-hit-label {
+  font-size: 13px;
+  font-weight: 550;
+  line-height: 1.3;
+  color: var(--text-primary);
+}
+
+.settings-page__search-hit-path {
+  font-size: 11px;
+  color: var(--text-tertiary);
+  line-height: 1.25;
+}
+
+.settings-page__tabs {
+  margin-bottom: 14px;
+  position: relative;
+  z-index: 1;
+  pointer-events: auto;
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
+}
+
+.settings-page__tabs-seg {
+  flex-wrap: wrap;
+  max-width: 100%;
+  pointer-events: auto;
+}
+
+.settings-page__tabs .settings-seg__btn {
+  pointer-events: auto;
+  cursor: pointer;
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
+}
+
+.settings-row.is-search-hit,
+.settings-card.is-search-hit {
+  /* Inset outline so parent .settings-card { overflow: hidden } does not clip it */
+  outline: 2px solid color-mix(in srgb, var(--accent, #6b8cff) 70%, transparent);
+  outline-offset: -2px;
+  border-radius: 10px;
+  position: relative;
+  z-index: 1;
+  animation: settings-search-hit-pulse 1.4s ease-out 1;
+}
+
+@keyframes settings-search-hit-pulse {
+  0% {
+    outline-color: color-mix(in srgb, var(--accent, #6b8cff) 95%, transparent);
+  }
+  100% {
+    outline-color: color-mix(in srgb, var(--accent, #6b8cff) 25%, transparent);
+  }
+}
+
 .settings-page__search {
   display: flex;
   align-items: center;
@@ -3949,9 +4055,20 @@ html[data-theme="light"] .ui-check.is-mixed .ui-check__box {
   flex-shrink: 0;
 }
 
-/* Permission allow / deny / ask rules editor (Settings → Permissions) */
+/* Permission allow / deny / ask rules editor (Settings → Permissions)
+ * Flat block inside parent .settings-card — never a nested card. */
 .perm-rules {
-  margin-top: 12px;
+  margin: 0;
+  padding: 0;
+  border: none;
+  background: transparent;
+  /* Separator from policy/sandbox rows above (row border already draws line) */
+}
+
+.perm-rules__head.settings-row {
+  /* Keep head aligned with sibling settings-rows; no extra box or double line */
+  border-bottom: none;
+  padding-bottom: 10px;
 }
 
 .perm-rules__path {
@@ -3961,7 +4078,7 @@ html[data-theme="light"] .ui-check.is-mixed .ui-check__box {
 
 .perm-rules__empty {
   margin: 0;
-  padding: 12px 14px 16px;
+  padding: 4px 16px 16px;
   font-size: 13px;
   color: var(--text-tertiary);
 }
@@ -3969,10 +4086,11 @@ html[data-theme="light"] .ui-check.is-mixed .ui-check__box {
 .perm-rules__list {
   list-style: none;
   margin: 0;
-  padding: 0 10px 8px;
+  /* Match settings-row horizontal padding so content doesn't hug the card edge */
+  padding: 0 16px 12px;
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 8px;
 }
 
 .perm-rules__item {
@@ -3980,7 +4098,7 @@ html[data-theme="light"] .ui-check.is-mixed .ui-check__box {
   align-items: center;
   gap: 8px;
   min-height: 36px;
-  padding: 6px 8px;
+  padding: 8px 10px;
   border-radius: 10px;
   border: 1px solid var(--border-subtle);
   background: color-mix(in srgb, var(--bg-hover) 55%, transparent);
@@ -4044,7 +4162,7 @@ html[data-theme="light"] .ui-check.is-mixed .ui-check__box {
   flex-wrap: wrap;
   align-items: center;
   gap: 8px;
-  padding: 10px 14px 14px;
+  padding: 12px 16px 16px;
   border-top: 1px solid var(--border-subtle);
 }
 
@@ -6435,6 +6553,268 @@ html[data-theme="light"] .ui-check.is-mixed .ui-check__box {
 
 [data-theme="light"] .supergrok-mark__badge-text {
   fill: #646362;
+}
+
+/* Context bar + composer share width; tight gap when bar is present */
+.composer-stack {
+  pointer-events: none;
+  width: 100%;
+  max-width: 42rem;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0;
+}
+
+.composer-stack--with-context {
+  gap: 6px;
+}
+
+.composer-stack .composer {
+  width: 100%;
+  max-width: none;
+}
+
+/* New-session only: semi-rounded project / local / branch bar above input */
+.composer__context-bar {
+  pointer-events: auto;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex-wrap: wrap;
+  min-height: 36px;
+  padding: 4px 10px;
+  border-radius: 16px;
+  border: 1px solid var(--border-subtle);
+  background: color-mix(in srgb, var(--bg-elevated) 88%, var(--bg-main));
+  box-shadow: 0 1px 0 rgba(0, 0, 0, 0.03);
+  color: var(--text-secondary);
+}
+
+[data-theme="light"] .composer__context-bar {
+  background: color-mix(in srgb, var(--bg-elevated) 70%, #eef0f3);
+  border-color: color-mix(in srgb, var(--border-subtle) 80%, transparent);
+}
+
+.composer__context-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  max-width: min(200px, 42vw);
+  padding: 0 8px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 500;
+  line-height: 1;
+  cursor: default;
+  flex-shrink: 1;
+  min-width: 0;
+}
+
+button.composer__context-item {
+  cursor: pointer;
+}
+
+.composer__context-item:hover:not(:disabled),
+.composer__context-item.is-open {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.composer__context-item:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.composer__context-item.is-muted {
+  opacity: 0.78;
+}
+
+.composer__context-item.is-path-missing {
+  color: var(--warning);
+}
+
+.composer__context-item--static {
+  cursor: default;
+}
+
+.composer__context-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+.cpm--context {
+  min-width: 0;
+  flex-shrink: 1;
+}
+
+/* Branch / worktree menu (context bar) */
+.cwm {
+  position: relative;
+  flex-shrink: 1;
+  min-width: 0;
+}
+
+.cwm--context {
+  min-width: 0;
+}
+
+.composer__context-item--branch.is-loading {
+  opacity: 0.72;
+}
+
+.cwm__pop {
+  z-index: 10050;
+  max-height: min(420px, 55vh);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  /* Width locked by floatingStyle (fixed 288); avoid content reflow flash. */
+  box-sizing: border-box;
+  overflow-x: hidden;
+  overflow-y: auto;
+  padding: 6px;
+  background: var(--menu-context-bg, var(--bg-elevated, #2a2a2c));
+  border: 1px solid var(--menu-context-border, var(--border-subtle));
+  box-shadow: var(--menu-context-shadow, var(--glass-shadow));
+  /* No size transition — first open must not animate width/height. */
+  transition: none;
+}
+
+.cwm__head {
+  padding: 6px 10px 4px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+}
+
+.cwm__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  overflow-y: auto;
+  min-height: 0;
+  overscroll-behavior: contain;
+}
+
+.cwm__list.is-loading {
+  opacity: 0.72;
+}
+
+.cwm__row {
+  margin: 0;
+  padding: 0;
+  min-width: 0;
+}
+
+.cwm__item {
+  width: 100%;
+  align-items: center;
+  min-height: 36px;
+  padding: 8px 12px;
+  margin: 0;
+}
+
+.cwm__item:disabled {
+  opacity: 0.9;
+  cursor: default;
+}
+
+.cwm__item-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+}
+
+.cwm__item-name {
+  font-size: 13px;
+  font-weight: 550;
+  color: var(--text-primary);
+  line-height: 1.25;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+
+.cwm__item-meta {
+  flex-shrink: 0;
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1.2;
+  color: var(--text-tertiary);
+  white-space: nowrap;
+}
+
+.cwm__empty {
+  margin: 0;
+  padding: 8px 10px 10px;
+  font-size: 12px;
+  color: var(--text-tertiary);
+}
+
+.cwm__actions {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding-top: 4px;
+  border-top: 1px solid var(--border-subtle);
+}
+
+.cwm__action {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 34px;
+  padding: 6px 10px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 12.5px;
+  font-weight: 500;
+  line-height: 1.2;
+  cursor: pointer;
+  text-align: left;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cwm__action span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+.cwm__action:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.cwm__action--muted {
+  color: var(--text-tertiary);
+}
+
+.cwm__action svg {
+  flex-shrink: 0;
 }
 
 .composer-wrap--float .composer {
@@ -13070,13 +13450,20 @@ div.composer__input:empty::before {
 }
 
 /* ── Project inspect (Settings → Runtime) ───────────────────────────────── */
+/* Prefer flat body padding over nested .settings-card frames. */
+.pi-settings-body {
+  padding: 4px 16px 16px;
+  border: none;
+  background: transparent;
+}
 
+/* Legacy nested class: if still present, open it up so it doesn't look double-boxed */
 .settings-card--nested.pi-settings-block {
-  margin-top: 12px;
-  padding: 14px 16px 16px;
-  border: 1px solid var(--border-subtle);
-  border-radius: 12px;
-  background: color-mix(in srgb, var(--bg-card) 88%, transparent);
+  margin-top: 0;
+  padding: 4px 16px 16px;
+  border: none;
+  border-radius: 0;
+  background: transparent;
   box-shadow: none;
 }
 

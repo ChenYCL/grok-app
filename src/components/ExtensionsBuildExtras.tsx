@@ -45,6 +45,8 @@ export type ExtensionsBuildExtrasProps = {
   locale: Locale;
   projectPath?: string | null;
   cliFound?: boolean;
+  /** Which block(s) to render — settings page tabs use hooks | market. */
+  mode?: "hooks" | "market" | "all";
   /** After plugin install — parent can refresh plugins list. */
   onPluginsChanged?: () => void;
 };
@@ -90,10 +92,13 @@ export function ExtensionsBuildExtras({
   locale,
   projectPath = null,
   cliFound = true,
+  mode = "all",
   onPluginsChanged,
 }: ExtensionsBuildExtrasProps) {
   const tr = useMemo(() => createT(locale), [locale]);
   const cliMissing = !cliFound;
+  const showHooks = mode === "all" || mode === "hooks";
+  const showMarket = mode === "all" || mode === "market";
 
   const [hooks, setHooks] = useState<HookLike[]>([]);
   const [hooksUserDir, setHooksUserDir] = useState("");
@@ -334,7 +339,9 @@ export function ExtensionsBuildExtras({
   return (
     <>
       {/* ── Hooks ── */}
-      <h2 className="settings-page__h2">
+      {showHooks ? (
+      <>
+      <h2 className="settings-page__h2" id="settings-anchor-ext-hooks">
         <IconHooks size={15} />
         {tr("ext.hooks.title")}
         {!hooksLoading ? (
@@ -477,9 +484,13 @@ export function ExtensionsBuildExtras({
           </p>
         ) : null}
       </div>
+      </>
+      ) : null}
 
       {/* ── Marketplace sources + available ── */}
-      <h2 className="settings-page__h2">
+      {showMarket ? (
+      <>
+      <h2 className="settings-page__h2" id="settings-anchor-ext-market">
         <IconPuzzle size={15} />
         {tr("ext.market.title")}
         {!marketLoading ? (
@@ -715,6 +726,8 @@ export function ExtensionsBuildExtras({
           })}
         </p>
       </GlassModal>
+      </>
+      ) : null}
     </>
   );
 }
