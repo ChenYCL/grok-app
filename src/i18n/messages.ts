@@ -659,6 +659,9 @@ const en = {
   "settings.disableWebSearch": "Disable web search & fetch",
   "settings.disableWebSearchDesc":
     "Spawn agents with --disable-web-search so web_search and web_fetch tools are unavailable. Live agents soft-respawn when this changes.",
+  "settings.planEnabled": "Plan mode",
+  "settings.planEnabledDesc":
+    "Allow agents to enter plan mode. When off, agents spawn with --no-plan. Live agents soft-respawn when this changes.",
   "settings.prefsScope": "Remember model & permission at",
   "settings.prefsScopeDesc":
     "Global: all chats. Project: each workspace. Session: only the current chat.",
@@ -2050,6 +2053,9 @@ const zh: Record<MessageKey, string> = {
   "settings.disableWebSearch": "禁用网页搜索与抓取",
   "settings.disableWebSearchDesc":
     "启动 Agent 时加上 --disable-web-search，移除 web_search / web_fetch 工具。更改后会 soft-respawn 已连接的 Agent。",
+  "settings.planEnabled": "计划模式",
+  "settings.planEnabledDesc":
+    "允许 Agent 进入计划模式。关闭时启动会加上 --no-plan。更改后会 soft-respawn 已连接的 Agent。",
   "settings.prefsScope": "模型与权限记忆范围",
   "settings.prefsScopeDesc":
     "全局：所有对话共用。项目：按工作区记忆。会话：仅当前聊天。",

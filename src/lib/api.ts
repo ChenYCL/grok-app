@@ -875,6 +875,10 @@ export interface AppSettings {
   lastSessionId?: string | null;
   /** Project id for lastSessionId when it had one. */
   lastProjectId?: string | null;
+   * When true (default), agents may use plan mode.
+   * When false, spawn with top-level `--no-plan`.
+   */
+  planEnabled?: boolean;
 }
 
 export interface AvailableModel {

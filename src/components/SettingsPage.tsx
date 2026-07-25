@@ -135,6 +135,9 @@ export interface SettingsPageProps {
   /** Reopen last active chat once after launch (default on). */
   reopenLastSession?: boolean;
   onReopenLastSession?: (v: boolean) => void;
+  /** When true (default), agents may use plan mode; false → spawn with `--no-plan`. */
+  planEnabled?: boolean;
+  onPlanEnabled?: (v: boolean) => void;
   cliInfo: {
     found: boolean;
     path: string | null;
@@ -448,6 +451,8 @@ export function SettingsPage({
   onDisableWebSearch,
   reopenLastSession = true,
   onReopenLastSession,
+  planEnabled = true,
+  onPlanEnabled,
   cliInfo,
   onDoctor,
   versionFooter,
@@ -933,6 +938,20 @@ export function SettingsPage({
                     checked={disableWebSearch}
                     onChange={() => onDisableWebSearch(!disableWebSearch)}
                     ariaLabel={t("settings.disableWebSearch")}
+              {onPlanEnabled ? (
+                <div className="settings-row">
+                  <div className="settings-row__text">
+                    <div className="settings-row__label">
+                      {t("settings.planEnabled")}
+                    </div>
+                    <div className="settings-row__desc">
+                      {t("settings.planEnabledDesc")}
+                    </div>
+                  </div>
+                  <UiCheck
+                    checked={planEnabled}
+                    onChange={() => onPlanEnabled(!planEnabled)}
+                    ariaLabel={t("settings.planEnabled")}
                   />
                 </div>
               ) : null}

@@ -671,6 +671,8 @@ export default function App() {
   /** Settings + sessions finished first bootstrap (gate for one-shot restore). */
   const settingsBootstrappedRef = useRef(false);
   const startupRestoreDoneRef = useRef(false);
+  /** Default true — false spawns with top-level `--no-plan`. */
+  const [planEnabled, setPlanEnabled] = useState(true);
   const [gitWorktrees, setGitWorktrees] = useState<api.GitWorktreeEntry[]>([]);
   /** null = unknown/loading; true = git work tree; false = not a git repo. */
   const [gitWorktreesAvailable, setGitWorktreesAvailable] = useState<
@@ -926,6 +928,8 @@ export default function App() {
           : null,
       );
       settingsBootstrappedRef.current = true;
+      // Missing field → keep plan mode on (matches AppSettings default).
+      setPlanEnabled(settings.planEnabled !== false);
       setCliInfo({
         found: cli.found,
         path: cli.path,
@@ -6139,6 +6143,8 @@ export default function App() {
       "settings.permissionDeepDesc",
       "settings.disableWebSearch",
       "settings.disableWebSearchDesc",
+      "settings.planEnabled",
+      "settings.planEnabledDesc",
       "settings.prefsScope",
       "settings.prefsScopeDesc",
       "settings.prefsScope.global",
@@ -6533,6 +6539,11 @@ export default function App() {
             setReopenLastSession(v);
             void api.settingsGet().then((s) =>
               api.settingsSet({ ...s, reopenLastSession: v }),
+          planEnabled={planEnabled}
+          onPlanEnabled={(v) => {
+            setPlanEnabled(v);
+            void api.settingsGet().then((s) =>
+              api.settingsSet({ ...s, planEnabled: v }),
             );
           }}
           cliInfo={cliInfo}

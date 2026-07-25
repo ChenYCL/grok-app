@@ -190,6 +190,10 @@ pub struct AppSettings {
     /// Project of [`Self::last_session_id`] when it belonged to one (hint only).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub last_project_id: Option<String>,
+    /// When true (default), agents may enter plan mode. When false, spawn with
+    /// top-level `--no-plan` so plan mode is disabled for that process.
+    #[serde(default = "default_plan_enabled")]
+    pub plan_enabled: bool,
 }
 
 fn default_composer_prefs_scope() -> String {
@@ -215,6 +219,7 @@ fn default_stream_stall_seconds() -> u32 {
 fn default_sandbox_profile() -> String {
     "off".into()
 fn default_reopen_last_session() -> bool {
+fn default_plan_enabled() -> bool {
     true
 }
 
@@ -247,6 +252,7 @@ impl Default for AppSettings {
             reopen_last_session: default_reopen_last_session(),
             last_session_id: None,
             last_project_id: None,
+            plan_enabled: default_plan_enabled(),
         }
     }
 }
@@ -1347,6 +1353,12 @@ mod tests {
     #[test]
     fn disable_web_search_defaults_when_missing_from_json() {
         // Older settings files omit the field — serde default keeps web tools on.
+        assert!(s.plan_enabled);
+    }
+
+    #[test]
+    fn plan_enabled_defaults_true_when_missing_from_json() {
+        // Older settings files omit the field — keep plan mode on (CLI default).
         let raw = r#"{
             "theme": "dark",
             "locale": "zh",
@@ -1409,5 +1421,6 @@ mod tests {
         assert!(!s.experimental_memory);
         assert_eq!(s.max_agent_turns, None);
         assert!(!s.disable_web_search);
+        assert!(s.plan_enabled);
     }
 }

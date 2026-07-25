@@ -655,6 +655,7 @@ pub async fn settings_set(
         prev.session_data_mode != settings.session_data_mode;
     let memory_flip = prev.experimental_memory != settings.experimental_memory;
     let web_search_flip = prev.disable_web_search != settings.disable_web_search;
+    let plan_enabled_flip = prev.plan_enabled != settings.plan_enabled;
 
     store::save_settings(&settings)?;
 
@@ -684,6 +685,8 @@ pub async fn settings_set(
         // Spawn flags change — soft-respawn so the next turn uses the new policy.
     if web_search_flip {
         // Spawn flag changes — soft-respawn so the next turn drops/restores web tools.
+    if plan_enabled_flip {
+        // Spawn flag changes — soft-respawn so the next turn drops/restores plan mode.
         mgr.soft_respawn(&app).await;
     }
 

@@ -629,6 +629,9 @@ export const zhTW: Record<MessageKey, string> = {
   "settings.disableWebSearch": "停用網頁搜尋與抓取",
   "settings.disableWebSearchDesc":
     "啟動 Agent 時加上 --disable-web-search，移除 web_search / web_fetch 工具。變更後會 soft-respawn 已連線的 Agent。",
+  "settings.planEnabled": "計畫模式",
+  "settings.planEnabledDesc":
+    "允許 Agent 進入計畫模式。關閉時啟動會加上 --no-plan。變更後會 soft-respawn 已連線的 Agent。",
   "settings.prefsScope": "模型與權限記憶範圍",
   "settings.prefsScopeDesc":
     "全域：所有對話共用。專案：依工作區記憶。對話：僅目前聊天。",

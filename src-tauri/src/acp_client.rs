@@ -242,6 +242,15 @@ pub fn disable_web_search_spawn_flags(disable: bool) -> Vec<&'static str> {
         vec!["--disable-web-search"]
     } else {
         vec![]
+/// Pure helper: top-level CLI flags for the plan_enabled setting.
+///
+/// When `plan_enabled` is false, returns `["--no-plan"]` (before `agent`).
+/// When true, returns no flags so the CLI keeps plan mode available.
+pub fn no_plan_spawn_flags(plan_enabled: bool) -> Vec<&'static str> {
+    if plan_enabled {
+        vec![]
+    } else {
+        vec!["--no-plan"]
     }
 }
 
@@ -371,6 +380,16 @@ impl AcpClient {
                 session_data_mode,
                 memory_enabled,
             );
+        //   top-level: `grok --no-auto-update [--no-plan] agent …`
+        //   agent opts: `--model` / `--reasoning-effort` / `--always-approve` before `stdio`
+        // Skip background update checks so ACP handshakes are not delayed on launch.
+        // `--no-plan` is top-level only (disables plan mode for the process).
+        let plan_enabled = crate::store::load_settings().plan_enabled;
+
+        let mut cmd = Command::new(&cli_path);
+        cmd.arg("--no-auto-update");
+        for flag in no_plan_spawn_flags(plan_enabled) {
+            cmd.arg(flag);
         }
 
         let mut cmd = Command::new(&cli_path);
@@ -412,6 +431,7 @@ impl AcpClient {
             "acp: spawn GROK_HOME={} mode={} auth_present={} route={:?} composer_model={:?} spawn_model={} yolo={} experimental_memory={}",
             "acp: spawn GROK_HOME={} mode={} auth_present={} route={:?} composer_model={:?} spawn_model={} yolo={} max_turns={:?}",
             "acp: spawn GROK_HOME={} mode={} auth_present={} route={:?} composer_model={:?} spawn_model={} yolo={} disable_web_search={}",
+            "acp: spawn GROK_HOME={} mode={} auth_present={} route={:?} composer_model={:?} spawn_model={} yolo={} plan_enabled={}",
             grok_home.display(),
             session_data_mode,
             grok_home.join("auth.json").is_file(),
@@ -426,6 +446,7 @@ impl AcpClient {
             memory_enabled
             max_turns.as_ref().map(|s| s.turns)
             disable_web_search
+            plan_enabled
         );
 
         let mut child = cmd.spawn().map_err(|e| {
@@ -2418,5 +2439,16 @@ mod disable_web_search_spawn_tests {
             disable_web_search_spawn_flags(true),
             vec!["--disable-web-search"]
         );
+mod no_plan_spawn_tests {
+    use super::no_plan_spawn_flags;
+
+    #[test]
+    fn enabled_adds_no_flags() {
+        assert!(no_plan_spawn_flags(true).is_empty());
+    }
+
+    #[test]
+    fn disabled_adds_top_level_flag() {
+        assert_eq!(no_plan_spawn_flags(false), vec!["--no-plan"]);
     }
 }
