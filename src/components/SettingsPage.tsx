@@ -52,6 +52,7 @@ import { AccountPanel } from "@/components/AccountPanel";
 import { ProvidersPanel } from "@/components/ProvidersPanel";
 import { ExtensionsPanel } from "@/components/ExtensionsPanel";
 import { ProjectInspectPanel } from "@/components/ProjectInspectPanel";
+import { PermissionRulesPanel } from "@/components/PermissionRulesPanel";
 import { RemoteImLayout } from "@/components/RemoteImLayout";
 import {
   createT,
@@ -951,6 +952,7 @@ export function SettingsPage({
                   />
                 </div>
               ) : null}
+              <PermissionRulesPanel t={t} />
             </div>
 
             <h2 className="settings-page__h2">{t("settings.section.general")}</h2>
