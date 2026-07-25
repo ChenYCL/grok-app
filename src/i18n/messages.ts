@@ -711,6 +711,8 @@ const en = {
     "settings.section.agent": "Agent",
   "settings.subagentsEnabled": "Allow subagents",
   "settings.subagentsEnabledDesc": "When off, spawn with --no-subagents so nested Agent / task tools cannot start child sessions. Soft-respawns after change.",
+  "settings.planEnabled": "Allow plan mode",
+  "settings.planEnabledDesc": "When off, spawn with --no-plan so the agent cannot enter plan mode. Soft-respawns after change.",
 "settings.prefsScope": "Remember model & permission at",
   "settings.prefsScopeDesc":
     "Global: all chats. Project: each workspace. Session: only the current chat.",
@@ -2439,6 +2441,8 @@ const zh: Record<MessageKey, string> = {
     "settings.section.agent": "Agent",
   "settings.subagentsEnabled": "允许子代理",
   "settings.subagentsEnabledDesc": "关闭时启动加上 --no-subagents，无法拉起嵌套 Agent / 任务。更改后 soft-respawn。",
+  "settings.planEnabled": "允许计划模式",
+  "settings.planEnabledDesc": "关闭时启动加上 --no-plan，Agent 无法进入计划模式。更改后 soft-respawn。",
 "settings.prefsScope": "模型与权限记忆范围",
   "settings.prefsScopeDesc":
     "全局：所有对话共用。项目：按工作区记忆。会话：仅当前聊天。",
