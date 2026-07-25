@@ -1087,7 +1087,6 @@ const en = {
   "ext.plugins.updateAll": "Update all",
   "ext.plugins.updating": "Updating…",
   "ext.plugins.note":
-    "Same inventory as Grok Build (`grok plugin list`). Install/update/enable/disable call the CLI; enable state lives in `~/.grok/config.toml`. The agent soft-respawns after mutations so the next turn reloads plugins.",
     "Same inventory as Grok Build (`grok plugin list`). Enable/disable writes `~/.grok/config.toml`; the agent soft-respawns so the next turn reloads plugins.",
   "ext.market.title": "Marketplace",
   "ext.market.loading": "Loading marketplace sources…",
@@ -1142,7 +1141,6 @@ const en = {
   "ext.disabled": "Disabled",
   "ext.enableAll": "Enable all",
   "ext.footnote":
-    "Toggles persist under app data and inject enabled MCP into agent sessions. Disabled skills stay on disk but hide from the slash palette. Plugin install accepts path/git/GitHub shorthand; full marketplace browse stays CLI-only.",
     "Toggles persist under app data and inject enabled MCP into agent sessions. Disabled skills stay on disk but hide from the slash palette. Marketplace sources and install use the Grok Build CLI.",
 
   // Errors / misc
@@ -2327,7 +2325,6 @@ const zh: Record<MessageKey, string> = {
   "ext.plugins.updateAll": "全部更新",
   "ext.plugins.updating": "正在更新…",
   "ext.plugins.note":
-    "与 Grok Build 共用同一清单（`grok plugin list`）。安装/更新/启用/禁用走 CLI；启用状态写入 `~/.grok/config.toml`。变更后 agent soft-respawn，下一轮对话重新加载插件。",
     "与 Grok Build 共用同一清单（`grok plugin list`）。启用/禁用写入 `~/.grok/config.toml`；agent soft-respawn 后下一轮对话重新加载插件。",
   "ext.market.title": "插件市场",
   "ext.market.loading": "正在加载市场源…",
@@ -2380,7 +2377,6 @@ const zh: Record<MessageKey, string> = {
   "ext.disabled": "已禁用",
   "ext.enableAll": "全部启用",
   "ext.footnote":
-    "开关会写入应用数据，并在新会话中注入已启用的 MCP（ACP mcpServers + agent-home 配置）。禁用技能仍保留在磁盘，但不会出现在斜杠面板。插件安装支持路径/git/GitHub 简写；完整市场浏览仍仅 CLI。",
     "开关会写入应用数据，并在新会话中注入已启用的 MCP（ACP mcpServers + agent-home 配置）。禁用技能仍保留在磁盘，但不会出现在斜杠面板。市场源与安装走 Grok Build CLI。",
   "error.needTauri": "需要在 Tauri 窗口中选择目录",
   "common.comingSoon": "即将推出",

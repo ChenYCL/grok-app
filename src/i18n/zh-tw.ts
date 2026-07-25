@@ -1046,7 +1046,6 @@ export const zhTW: Record<MessageKey, string> = {
   "ext.plugins.updateAll": "全部更新",
   "ext.plugins.updating": "正在更新…",
   "ext.plugins.note":
-    "與 Grok Build 共用同一清單（`grok plugin list`）。安裝/更新/啟用/停用走 CLI；啟用狀態寫入 `~/.grok/config.toml`。變更後 agent soft-respawn，下一輪對話重新載入外掛。",
     "與 Grok Build 共用同一清單（`grok plugin list`）。啟用/停用寫入 `~/.grok/config.toml`；agent soft-respawn 後下一輪對話重新載入外掛。",
   "ext.market.title": "外掛市集",
   "ext.market.loading": "正在載入市集來源…",
@@ -1099,7 +1098,6 @@ export const zhTW: Record<MessageKey, string> = {
   "ext.disabled": "已停用",
   "ext.enableAll": "全部啟用",
   "ext.footnote":
-    "開關會寫入應用資料，並在新對話中注入已啟用的 MCP（ACP mcpServers + agent-home 設定）。停用技能仍保留在磁碟，但不會出現在斜線面板。外掛安裝支援路徑/git/GitHub 簡寫；完整市集瀏覽仍僅 CLI。",
     "開關會寫入應用資料，並在新對話中注入已啟用的 MCP（ACP mcpServers + agent-home 設定）。停用技能仍保留在磁碟，但不會出現在斜線面板。市集來源與安裝走 Grok Build CLI。",
   "error.needTauri": "需要在 Tauri 視窗中選擇目錄",
   "common.comingSoon": "即將推出",

@@ -1177,6 +1177,10 @@ export async function pluginInstall(source: string) {
 export async function pluginUpdate(name?: string | null) {
   const n = (name ?? "").trim();
   return invoke<PluginActionResult>("plugin_update", {
+    name: n ? n : null,
+  });
+}
+
 // ── Plugin marketplace sources (`grok plugin marketplace …`) ────────────────
 
 export interface MarketplaceSourceDto {

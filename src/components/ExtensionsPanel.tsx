@@ -107,7 +107,6 @@ export function ExtensionsPanel({
   const [availableLoaded, setAvailableLoaded] = useState(false);
   const [availableQuery, setAvailableQuery] = useState("");
   const [addSource, setAddSource] = useState("");
-  const [installSource, setInstallSource] = useState("");
   const [removeSourceTarget, setRemoveSourceTarget] =
     useState<MarketplaceSourceLike | null>(null);
 
