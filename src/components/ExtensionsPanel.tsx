@@ -39,6 +39,7 @@ import {
   type PluginFilter,
 } from "@/lib/extensionsUi";
 import { ExtensionsHooksPanel } from "@/components/ExtensionsHooksPanel";
+import { ExtensionsBuildExtras } from "@/components/ExtensionsBuildExtras";
 
 export interface ExtensionsPanelProps {
   locale: Locale;
@@ -942,6 +943,13 @@ export function ExtensionsPanel({
         locale={locale}
         projectPath={projectPath}
         cliFound={cliFound && !cliMissing}
+      <ExtensionsBuildExtras
+        locale={locale}
+        projectPath={projectPath}
+        cliFound={cliFound && !cliMissing}
+        onPluginsChanged={() => {
+          void refresh();
+        }}
       />
 
       <p className="ext-footnote">
