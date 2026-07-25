@@ -20,9 +20,15 @@ import {
 import {
   DEFAULT_LAYOUT,
   clampAsideWidth,
+  isMirrorPhoneLayout,
   loadLayout,
   saveLayout,
+  withMirrorPhoneDrawerDefault,
 } from "@/lib/layout";
+import {
+  PHONE_KEYBOARD_INSET_VAR,
+  keyboardInsetBottom,
+} from "@/lib/phoneViewport";
 import {
   hitDragZoneFromRects,
   querySidebarEl,
@@ -71,6 +77,12 @@ import {
 import { ContextUsageChip } from "@/components/ContextUsageChip";
 import { PlanStatusBar } from "@/components/PlanStatusBar";
 import * as api from "@/lib/api";
+import {
+  isMirrorClient,
+  mirrorEnsureTransport,
+  mirrorHello,
+  mirrorWsConnected,
+} from "@/lib/mirrorTransport";
 import { createT, resolveLocale, type Locale } from "@/i18n";
 import {
   DEFAULT_EFFORT,
@@ -205,8 +217,10 @@ import {
   IconNewChat,
   IconImagine,
   IconScheduled,
+  IconMenu,
   IconPanel,
   IconPanelRight,
+  IconUser,
   IconArchive,
   IconPin,
   IconPinOff,
@@ -216,9 +230,13 @@ import {
   IconExternalLink,
   IconFork,
   IconRewind,
+  IconDeviceMobile,
   IconShield,
   IconCheck,
 } from "@/components/icons";
+import { MirrorConnectPanel } from "@/components/MirrorConnectPanel";
+import { PhoneAccountSheet } from "@/components/PhoneAccountSheet";
+import { PhoneComposerToolsSheet } from "@/components/PhoneComposerToolsSheet";
 import { AutomationsPage } from "@/components/AutomationsPage";
 import { OpenLocationButton } from "@/components/OpenLocationButton";
 import { ContextMenu, type ContextMenuItem } from "@/components/ContextMenu";
@@ -342,7 +360,17 @@ interface PlanState {
 
 export default function App() {
   const [theme, setTheme] = useState<Theme>(() => loadTheme(localStorage));
-  const [layout, setLayout] = useState(() => loadLayout(localStorage));
+  const [layout, setLayout] = useState(() => {
+    const base = loadLayout(localStorage);
+    // Mirror phone: drawer starts collapsed so chat is not covered on first paint.
+    if (typeof window !== "undefined" && isMirrorClient()) {
+      return withMirrorPhoneDrawerDefault(base, {
+        isMirror: true,
+        viewportWidth: window.innerWidth,
+      });
+    }
+    return base;
+  });
   const [session, setSession] = useState<SessionSnapshot>(IDLE_SNAPSHOT);
   /** Host live agent (may differ from the session currently viewed in the UI). */
   const [liveHost, setLiveHost] = useState<SessionSnapshot>(IDLE_SNAPSHOT);
@@ -469,6 +497,24 @@ export default function App() {
   const [sessionDataMode, setSessionDataMode] = useState("independent");
   const [defaultOpenTarget, setDefaultOpenTarget] = useState("finder");
   const [showUserMenu, setShowUserMenu] = useState(false);
+  /** Desktop Connect panel (AC7) — close does not stop host. */
+  const [showMirrorConnect, setShowMirrorConnect] = useState(false);
+  /** Phone mirror chrome: WS link + host account summary. */
+  const [mirrorLinkOk, setMirrorLinkOk] = useState(() =>
+    typeof window !== "undefined" && isMirrorClient() ? mirrorWsConnected() : false,
+  );
+  const [mirrorHostLabel, setMirrorHostLabel] = useState<string | null>(null);
+  /** Mirror + ≤820px — phone chrome only; desktop layout path never sets this. */
+  const [phoneLayout, setPhoneLayout] = useState(() =>
+    typeof window !== "undefined"
+      ? isMirrorPhoneLayout({
+          isMirror: isMirrorClient(),
+          viewportWidth: window.innerWidth,
+        })
+      : false,
+  );
+  const [phoneToolsOpen, setPhoneToolsOpen] = useState(false);
+  const [phoneAccountOpen, setPhoneAccountOpen] = useState(false);
   /** Hash route: workbench | settings/:section | automations */
   const [appView, setAppView] = useState<"workbench" | "settings">("workbench");
   /** Inside workbench: chat thread vs scheduled tasks list. */
@@ -669,9 +715,9 @@ export default function App() {
     return () => document.removeEventListener("keydown", onKey, true);
   }, []);
 
-  /** First-run gate: loading → setup wizard → ready (home). */
-  const [appGate, setAppGate] = useState<"loading" | "setup" | "ready">(
-    "loading",
+  /** First-run gate: loading → setup wizard → ready (home). Mirror forces ready. */
+  const [appGate, setAppGate] = useState<"loading" | "setup" | "ready">(() =>
+    typeof window !== "undefined" && isMirrorClient() ? "ready" : "loading",
   );
   // Ask once for notification permission after first ready.
   useEffect(() => {
@@ -869,6 +915,78 @@ export default function App() {
   );
 
   const refreshLists = useCallback(async () => {
+    // Mirror phone client: never SetupWizard / Doctor hard-block (DESIGN §10.3).
+    if (isMirrorClient()) {
+      setAppGate("ready");
+      setSetupCliSeed({
+        found: true,
+        path: null,
+        version: "mirror",
+        source: "mirror",
+        cliAuthPresent: false,
+      });
+      try {
+        await mirrorEnsureTransport();
+        const [p, s, settings, modelsRes] = await Promise.all([
+          api.projectsList().catch(() => []),
+          api.sessionsList().catch(() => []),
+          api.settingsGet().catch(() => null),
+          api.modelsListAvailable().catch(() => null),
+        ]);
+        setProjects(
+          (p as Project[]).map((x) => ({
+            ...x,
+            pinned: !!(x as Project).pinned,
+          })),
+        );
+        setSessions(
+          (
+            s as Array<SessionRow & { archived?: boolean; scheduled?: boolean }>
+          ).map((x) => ({
+            id: x.id,
+            title: x.title,
+            projectId: x.projectId,
+            updatedAt: x.updatedAt,
+            archived: !!x.archived,
+            scheduled: !!x.scheduled,
+          })),
+        );
+        if (settings) {
+          setLocale(resolveLocale(settings.locale));
+          if (
+            settings.composerPrefsScope &&
+            isValidPrefsScope(settings.composerPrefsScope)
+          ) {
+            setPrefsScope(settings.composerPrefsScope);
+          }
+          setSessionDataMode(settings.sessionDataMode || "independent");
+        }
+        const catalog: ModelOption[] =
+          modelsRes?.models?.length
+            ? modelsRes.models.map((m) => ({
+                id: m.id,
+                label: m.label || m.id,
+                source: m.source,
+                isDefault: m.isDefault,
+              }))
+            : GROK_BUILD_MODELS;
+        setAvailableModels(catalog);
+        const prefs = await api
+          .composerPrefsResolve({ projectId: null, sessionId: null })
+          .catch(() => null);
+        if (prefs) {
+          applyComposerPrefs(prefs, catalog);
+        }
+        // Light account chip (display only; never login on phone).
+        const st = await api
+          .accountStatus({ refreshBilling: false })
+          .catch(() => null);
+        if (st) setAccount(st);
+      } catch {
+        /* never reset gate — soft-fail optional RPCs */
+      }
+      return;
+    }
     if (!api.isTauri()) {
       // Browser/Vite-only preview: skip Host gate.
       setAppGate("ready");
@@ -1237,9 +1355,126 @@ export default function App() {
     [patchSessionMessages, tr],
   );
 
-  // Event listeners: StrictMode-safe (cleanup cancels pending + live unsubs)
+  // Phone mirror chrome: track WS + host account from hello (DESIGN §4.3).
   useEffect(() => {
-    if (!api.isTauri()) return;
+    if (!isMirrorClient()) return;
+    let cancelled = false;
+    const cleanups: Array<() => void> = [];
+    const applyHello = () => {
+      const h = mirrorHello() as {
+        account?: {
+          signedIn?: boolean;
+          displayName?: string | null;
+          email?: string | null;
+        };
+      } | null;
+      if (!h) return;
+      const acc = h.account;
+      if (acc?.signedIn) {
+        setMirrorHostLabel(
+          (acc.displayName || acc.email || "").trim() ||
+            tr("mirror.chrome.accountHost"),
+        );
+      } else if (acc) {
+        setMirrorHostLabel(tr("mirror.chrome.signedOut"));
+      }
+    };
+    const tick = () => {
+      if (cancelled) return;
+      setMirrorLinkOk(mirrorWsConnected());
+      applyHello();
+    };
+    tick();
+    const id = window.setInterval(tick, 1500);
+    void api
+      .listen<unknown>("mirror://hello", () => {
+        if (!cancelled) {
+          setMirrorLinkOk(true);
+          applyHello();
+        }
+      })
+      .then((un) => {
+        if (cancelled) un();
+        else cleanups.push(un);
+      });
+    return () => {
+      cancelled = true;
+      window.clearInterval(id);
+      for (const u of cleanups) u();
+    };
+  }, [tr]);
+
+  // Phone layout flag: mirror client + ≤820px only (desktop ≥821px unchanged).
+  useEffect(() => {
+    if (!isMirrorClient()) {
+      setPhoneLayout(false);
+      return;
+    }
+    const sync = () => {
+      setPhoneLayout(
+        isMirrorPhoneLayout({
+          isMirror: true,
+          viewportWidth: window.innerWidth,
+        }),
+      );
+    };
+    sync();
+    window.addEventListener("resize", sync);
+    return () => window.removeEventListener("resize", sync);
+  }, []);
+
+  // Keep composer above the soft keyboard via visualViewport inset.
+  useEffect(() => {
+    if (!phoneLayout) {
+      document.documentElement.style.removeProperty(PHONE_KEYBOARD_INSET_VAR);
+      return;
+    }
+    const vv = window.visualViewport;
+    const apply = () => {
+      const inset = keyboardInsetBottom(
+        vv
+          ? { height: vv.height, offsetTop: vv.offsetTop }
+          : null,
+        window.innerHeight,
+      );
+      document.documentElement.style.setProperty(
+        PHONE_KEYBOARD_INSET_VAR,
+        `${inset}px`,
+      );
+    };
+    apply();
+    if (!vv) return;
+    vv.addEventListener("resize", apply);
+    vv.addEventListener("scroll", apply);
+    return () => {
+      vv.removeEventListener("resize", apply);
+      vv.removeEventListener("scroll", apply);
+      document.documentElement.style.removeProperty(PHONE_KEYBOARD_INSET_VAR);
+    };
+  }, [phoneLayout]);
+
+  const closePhoneDrawer = useCallback(() => {
+    setLayout((l) => {
+      if (l.sidebarCollapsed) return l;
+      const n = { ...l, sidebarCollapsed: true };
+      saveLayout(localStorage, n);
+      return n;
+    });
+  }, []);
+
+  const openPhoneDrawer = useCallback(() => {
+    setLayout((l) => {
+      if (!l.sidebarCollapsed) return l;
+      const n = { ...l, sidebarCollapsed: false };
+      saveLayout(localStorage, n);
+      return n;
+    });
+  }, []);
+
+  // Event listeners: StrictMode-safe (cleanup cancels pending + live unsubs)
+  // Mirror clients subscribe via WebSocket (same payload shapes as desktop).
+  useEffect(() => {
+    if (!api.isTauri() && !isMirrorClient()) return;
     let cancelled = false;
     const cleanups: Array<() => void> = [];
 
@@ -1841,14 +2076,20 @@ export default function App() {
     );
   }, []);
 
-  const navigateSettings = useCallback((section: SettingsSectionId = "general") => {
-    setSettingsSection(section);
-    setAppView("settings");
-    setShowUserMenu(false);
-    if (typeof window !== "undefined") {
-      window.location.hash = `#/settings/${section}`;
-    }
-  }, []);
+  const navigateSettings = useCallback(
+    (section: SettingsSectionId = "general") => {
+      setSettingsSection(section);
+      setAppView("settings");
+      setShowUserMenu(false);
+      if (typeof window !== "undefined") {
+        // Phone: generic settings open lands on the section index (SettingsPage
+        // starts at phonePane=index). Specific sections still set the hash so a
+        // later drill-in / deep-link matches the intended section.
+        window.location.hash = `#/settings/${section}`;
+      }
+    },
+    [],
+  );
 
   // Hash route: #/settings[/section] | #/automations | #/workbench
   useEffect(() => {
@@ -1894,6 +2135,8 @@ export default function App() {
       null;
     setMainPane("chat");
     setAppView("workbench");
+    // Phone drawer: selecting a session closes the overlay (does not push layout).
+    if (phoneLayout) closePhoneDrawer();
 
     // Snapshot the outgoing thread so a mid-turn switch does not lose the user bubble.
     const leavingId = viewingSessionIdRef.current;
@@ -2257,6 +2500,7 @@ export default function App() {
       setMainPane("chat");
       setAppView("workbench");
     }
+    if (phoneLayout) closePhoneDrawer();
     setActiveProject(proj);
     if (proj) {
       setExpandedProjects((e) => ({ ...e, [proj.id]: true }));
@@ -2387,6 +2631,44 @@ export default function App() {
       /* ignore */
     }
   };
+
+  /**
+   * Cross-device sessions-index sync (DESIGN §7.3 fanout).
+   *
+   * The host emits `sessions://changed` whenever a *mirror* client mutates the
+   * index (session.create / rename / autoTitle). Desktop mutations already
+   * refresh in-process, so this only adds the missing direction: a chat started
+   * on the phone shows up in the desktop window — and in any other phone — with
+   * no manual refresh. Coalesced so a burst reloads the list once.
+   */
+  const refreshSessionsRef = useRef(refreshSessions);
+  refreshSessionsRef.current = refreshSessions;
+  useEffect(() => {
+    if (!api.hasHost()) return;
+    let cancelled = false;
+    let timer: number | null = null;
+    let unlisten: (() => void) | undefined;
+    void (async () => {
+      const un = await api.listen<{ reason?: string; sessionId?: string }>(
+        "sessions://changed",
+        () => {
+          if (cancelled) return;
+          if (timer !== null) window.clearTimeout(timer);
+          timer = window.setTimeout(() => {
+            timer = null;
+            void refreshSessionsRef.current();
+          }, 150);
+        },
+      );
+      if (cancelled) un();
+      else unlisten = un;
+    })();
+    return () => {
+      cancelled = true;
+      if (timer !== null) window.clearTimeout(timer);
+      unlisten?.();
+    };
+  }, []);
 
   /**
    * Run a scheduled automation now: open chat under its project (or orphan),
@@ -3155,7 +3437,10 @@ export default function App() {
     try {
       let sessionId = preferredId ?? null;
       // First send: materialize draft into a real session (project or orphan).
-      if (!sessionId && api.isTauri()) {
+      // `hasHost`, not `isTauri`: phone mirror clients have a backend too and
+      // `session.create` is on the mirror allowlist — otherwise phone chats are
+      // never persisted (connect runs with sessionId undefined).
+      if (!sessionId && api.hasHost()) {
         const meta = (await api.sessionCreate(
           activeProject?.id,
           tr("session.new"),
@@ -3476,7 +3761,9 @@ export default function App() {
       if (!sendTargetId) {
         sendQueue.migrateDraft(sessionId);
       }
-      if (shouldAutoTitle && api.isTauri()) {
+      // `session.autoTitle` is on the mirror allowlist, so phone chats get a
+      // real title instead of staying on the "new chat" placeholder forever.
+      if (shouldAutoTitle && api.hasHost()) {
         void api
           .sessionAutoTitle(sessionId, titleSeed)
           .then((meta) => {
@@ -3739,6 +4026,11 @@ export default function App() {
 
   const pickComposerFiles = useCallback(async () => {
     closeComposerMenu();
+    if (isMirrorClient()) {
+      setToast(tr("mirror.desktopOnly"));
+      window.setTimeout(() => setToast(null), 3200);
+      return;
+    }
     if (!api.isTauri()) {
       setLocalError(tr("composer.attachPasteFailed"));
       return;
@@ -3765,7 +4057,16 @@ export default function App() {
         2200,
       );
     } catch (e) {
-      setLocalError(String(e) || tr("composer.attachPasteFailed"));
+      const code =
+        e && typeof e === "object" && "code" in e
+          ? String((e as { code?: string }).code)
+          : "";
+      if (code === "UNSUPPORTED") {
+        setToast(tr("mirror.unsupported"));
+        window.setTimeout(() => setToast(null), 3200);
+      } else {
+        setLocalError(String(e) || tr("composer.attachPasteFailed"));
+      }
     }
   }, [addAttachmentsFromPaths, closeComposerMenu, tr]);
 
@@ -4262,7 +4563,11 @@ export default function App() {
 
   const refreshVoiceGate = useCallback(async () => {
     try {
-      if (api.isTauri()) {
+      // Desktop Tauri and phone mirror both resolve availability from the host
+      // voice.status (mirror routes it over the WS allowlist). The mirror client
+      // has no access to secretsGetMasked, so this is its only signal — and it
+      // discloses nothing beyond a boolean + reason class.
+      if (api.isTauri() || isMirrorClient()) {
         const st = await api.voiceStatus();
         setVoiceGate({
           available: !!st.available,
@@ -5463,6 +5768,10 @@ export default function App() {
     async (opts: { bindSession: boolean; autoTrust?: boolean }) => {
       setLocalError(null);
       try {
+        if (isMirrorClient()) {
+          showToast(tr("mirror.desktopOnly"), 3200);
+          return;
+        }
         if (!api.isTauri()) {
           setLocalError(tr("error.needTauri"));
           return;
@@ -5472,10 +5781,18 @@ export default function App() {
         const p = (await api.projectAdd(path, !!opts.autoTrust)) as Project;
         await finalizeAddedProject(p, { bindSession: opts.bindSession });
       } catch (e) {
-        setLocalError(String(e));
+        const code =
+          e && typeof e === "object" && "code" in e
+            ? String((e as { code?: string }).code)
+            : "";
+        if (code === "UNSUPPORTED" || isMirrorClient()) {
+          showToast(tr("mirror.desktopOnly"), 3200);
+        } else {
+          setLocalError(String(e));
+        }
       }
     },
-    [finalizeAddedProject, tr],
+    [finalizeAddedProject, showToast, tr],
   );
 
   const addProject = async (autoTrust = false) => {
@@ -6060,7 +6377,8 @@ export default function App() {
         }
 
         await api.sessionSend(agentText, storedDisplay);
-        if (shouldAutoTitle && api.isTauri()) {
+        // Mirror-allowlisted (`session.autoTitle`) — safe for phone clients.
+        if (shouldAutoTitle && api.hasHost()) {
           void api
             .sessionAutoTitle(sessionId, titleSeed)
             .then((meta) => {
@@ -6484,12 +6802,16 @@ export default function App() {
       className={
         `app-shell platform-${platform}` +
         (windowMaximized ? " is-maximized" : "") +
-        (useCustomWindowChrome ? " has-custom-chrome" : "")
+        (useCustomWindowChrome && !isMirrorClient() ? " has-custom-chrome" : "") +
+        (isMirrorClient() ? " app-shell--mirror" : "") +
+        (phoneLayout ? " app-shell--phone" : "")
       }
       data-testid="app-shell"
+      data-mirror={isMirrorClient() ? "1" : undefined}
+      data-phone={phoneLayout ? "1" : undefined}
     >
       <WindowControls
-        visible={useCustomWindowChrome}
+        visible={useCustomWindowChrome && !isMirrorClient()}
         labels={{
           minimize: tr("window.minimize"),
           maximize: tr("window.maximize"),
@@ -6557,6 +6879,7 @@ export default function App() {
             window.location.hash = `#/settings/${id}`;
           }}
           onBack={navigateWorkbench}
+          phoneLayout={phoneLayout}
           labels={settingsLabels}
           locale={locale}
           onLocale={(v) => {
@@ -6770,14 +7093,24 @@ export default function App() {
           }}
         />
       ) : (
-      <div className="workbench">
+      <div className={"workbench" + (phoneLayout ? " workbench--phone" : "")}>
+        {/* Phone drawer scrim — tap closes without resizing the conversation */}
+        {phoneLayout && !layout.sidebarCollapsed ? (
+          <button
+            type="button"
+            className="phone-drawer-scrim"
+            aria-label={tr("phone.drawerClose")}
+            onClick={closePhoneDrawer}
+          />
+        ) : null}
         {/* LEFT — fully hideable (not icon-rail); open via top-bar icon when closed */}
         <aside
           className={
             "sidebar" +
             (layout.sidebarCollapsed ? " sidebar--hidden" : "") +
             (dragZone === "sidebar" ? " is-drop-target" : "") +
-            (dragZone === "main" ? " is-drop-idle" : "")
+            (dragZone === "main" ? " is-drop-idle" : "") +
+            (phoneLayout ? " sidebar--phone-drawer" : "")
           }
           aria-hidden={layout.sidebarCollapsed}
         >
@@ -6863,6 +7196,20 @@ export default function App() {
               </span>
               {tr("sidebar.scheduled")}
             </button>
+            {api.isDesktopHost() ? (
+              <button
+                type="button"
+                className={
+                  "nav-item" + (showMirrorConnect ? " nav-item--active" : "")
+                }
+                onClick={() => setShowMirrorConnect(true)}
+              >
+                <span className="nav-item__icon">
+                  <IconDeviceMobile size={16} />
+                </span>
+                {tr("mirror.connect")}
+              </button>
+            ) : null}
           </div>
 
           <OverlayScroll className="sidebar__scroll" viewportClassName="sidebar__scroll-inner">
@@ -6882,15 +7229,17 @@ export default function App() {
                   {tr("sidebar.projects")}
                 </span>
               </button>
-              <Tip label={tr("sidebar.addProject")}>
-                <button
-                  type="button"
-                  className="tree-l1__action"
-                  onClick={() => void addProject(false)}
-                >
-                  <IconPlus size={15} />
-                </button>
-              </Tip>
+              {!isMirrorClient() ? (
+                <Tip label={tr("sidebar.addProject")}>
+                  <button
+                    type="button"
+                    className="tree-l1__action"
+                    onClick={() => void addProject(false)}
+                  >
+                    <IconPlus size={15} />
+                  </button>
+                </Tip>
+              ) : null}
             </div>
 
             {projectsOpen && projects.length === 0 && (
@@ -7400,36 +7749,55 @@ export default function App() {
             </div>
           )}
           <div
-            className="main__top"
+            className={
+              "main__top" + (phoneLayout ? " main__top--phone" : "")
+            }
             data-tauri-drag-region
             onDoubleClick={() => {
               if (useCustomWindowChrome) void toggleMaximizeFromTitlebar();
             }}
           >
             <div className="main__title-row" data-tauri-drag-region>
-              {/* When left rail is hidden, reopen control sits next to traffic lights */}
-              {layout.sidebarCollapsed && (
-                <Tip label={tr("main.leftPaneShow")}>
-                  <button
-                    type="button"
-                    className="chrome-btn chrome-btn--traffic main__pane-toggle"
-                    onClick={() =>
-                      setLayout((l) => {
-                        const n = { ...l, sidebarCollapsed: false };
-                        saveLayout(localStorage, n);
-                        return n;
-                      })
-                    }
-                  >
-                    <IconPanel size={16} />
-                  </button>
-                </Tip>
+              {/* Phone: always-visible hamburger (≥44px). Desktop: reopen when rail hidden. */}
+              {phoneLayout ? (
+                <button
+                  type="button"
+                  className="chrome-btn main__phone-menu"
+                  aria-label={tr("phone.menu")}
+                  aria-expanded={!layout.sidebarCollapsed}
+                  onClick={() => {
+                    if (layout.sidebarCollapsed) openPhoneDrawer();
+                    else closePhoneDrawer();
+                  }}
+                >
+                  <IconMenu size={20} />
+                </button>
+              ) : (
+                layout.sidebarCollapsed && (
+                  <Tip label={tr("main.leftPaneShow")}>
+                    <button
+                      type="button"
+                      className="chrome-btn chrome-btn--traffic main__pane-toggle"
+                      onClick={() =>
+                        setLayout((l) => {
+                          const n = { ...l, sidebarCollapsed: false };
+                          saveLayout(localStorage, n);
+                          return n;
+                        })
+                      }
+                    >
+                      <IconPanel size={16} />
+                    </button>
+                  </Tip>
+                )
               )}
               {mainPane === "automations" ? (
                 <>
-                  <span className="main__title-icon">
-                    <IconScheduled size={16} />
-                  </span>
+                  {!phoneLayout ? (
+                    <span className="main__title-icon">
+                      <IconScheduled size={16} />
+                    </span>
+                  ) : null}
                   <h1 className="main__title" data-tauri-drag-region>
                     {tr("automations.title")}
                   </h1>
@@ -7451,7 +7819,7 @@ export default function App() {
                     );
                   return (
                     <>
-                      {isScheduledSession ? (
+                      {isScheduledSession && !phoneLayout ? (
                         <span
                           className="main__title-icon"
                           title={tr("automations.msgTag")}
@@ -7460,12 +7828,18 @@ export default function App() {
                           <IconClock size={16} />
                         </span>
                       ) : null}
-                      <Tip label={title}>
+                      {phoneLayout ? (
                         <h1 className="main__title" data-tauri-drag-region>
                           {title}
                         </h1>
-                      </Tip>
-                      {cur && (
+                      ) : (
+                        <Tip label={title}>
+                          <h1 className="main__title" data-tauri-drag-region>
+                            {title}
+                          </h1>
+                        </Tip>
+                      )}
+                      {cur && !phoneLayout && (
                         <Tip label={tr("session.menu")}>
                           <button
                             type="button"
@@ -7482,87 +7856,134 @@ export default function App() {
               )}
             </div>
             <div className="main__top-actions">
-              {mainPane === "chat" && (
-                <span
-                  className={`status-pill status-pill--${connPill.tone}`}
-                  role="status"
-                  title={tr(connPill.labelKey as MessageKey)}
-                >
-                  <span className="status-pill__dot" aria-hidden />
-                  {tr(connPill.labelKey as MessageKey)}
-                </span>
-              )}
-              {/* Retry progress only — connection is silent; thinking lives in chat */}
-              {retryStatus && (
-                <Tip
-                  label={retryStatus.reason || ""}
-                  disabled={!retryStatus.reason}
-                >
-                  <span className="main__sub main__sub--retry">
-                    {retryStatus.reason
-                      ? tr("main.retryingWithReason", {
-                          attempt: String(retryStatus.attempt),
-                          max: String(retryStatus.maxRetries),
-                          reason:
-                            retryStatus.reason.length > 72
-                              ? `${retryStatus.reason.slice(0, 72)}…`
-                              : retryStatus.reason,
-                        })
-                      : tr("main.retrying", {
-                          attempt: String(retryStatus.attempt),
-                          max: String(retryStatus.maxRetries),
-                        })}
-                  </span>
-                </Tip>
-              )}
-              {activeProject && mainPane === "chat" && (
-                <OpenLocationButton
-                  path={activeProject.path}
-                  target={defaultOpenTarget || "finder"}
-                  onTargetChange={persistOpenTarget}
-                  onOpenError={(e) => setLocalError(e)}
-                  onCopied={() => {
-                    setToast(tr("attach.copyPath") + " ✓");
-                    window.setTimeout(() => setToast(null), 1600);
-                  }}
-                  platform={platform === "win" ? "win" : platform === "mac" ? "mac" : "other"}
-                  labels={{
-                    openLocation: tr("main.openLocation"),
-                    openHint: tr("main.openLocationHint"),
-                    openMenu: tr("main.openLocationMenu"),
-                    finder:
-                      platform === "win"
-                        ? tr("main.openInExplorer")
-                        : tr("main.openInFinder"),
-                    systemDefault: tr("main.openSystemDefault"),
-                    copyPath: tr("attach.copyPath"),
-                  }}
-                />
-              )}
-              <Tip
-                label={
-                  layout.asideCollapsed
-                    ? tr("main.rightPaneShow")
-                    : tr("main.rightPaneHide")
-                }
-              >
+              {phoneLayout ? (
                 <button
                   type="button"
-                  className={
-                    "chrome-btn main__pane-toggle" +
-                    (!layout.asideCollapsed ? " is-on" : "")
-                  }
-                  onClick={() =>
-                    setLayout((l) => {
-                      const n = { ...l, asideCollapsed: !l.asideCollapsed };
-                      saveLayout(localStorage, n);
-                      return n;
-                    })
-                  }
+                  className="chrome-btn main__phone-account"
+                  aria-label={tr("phone.account")}
+                  onClick={() => setPhoneAccountOpen(true)}
                 >
-                  <IconPanelRight size={16} />
+                  <IconUser size={20} />
                 </button>
-              </Tip>
+              ) : (
+                <>
+                  {isMirrorClient() && (
+                    <span
+                      className={
+                        "status-pill status-pill--" +
+                        (mirrorLinkOk ? "ok" : "warn")
+                      }
+                      role="status"
+                      title={
+                        mirrorHostLabel
+                          ? `${mirrorHostLabel} · ${
+                              mirrorLinkOk
+                                ? tr("mirror.chrome.connected")
+                                : tr("mirror.chrome.reconnecting")
+                            }`
+                          : mirrorLinkOk
+                            ? tr("mirror.chrome.connected")
+                            : tr("mirror.chrome.reconnecting")
+                      }
+                    >
+                      <span className="status-pill__dot" aria-hidden />
+                      {mirrorLinkOk
+                        ? mirrorHostLabel || tr("mirror.chrome.connected")
+                        : tr("mirror.chrome.reconnecting")}
+                    </span>
+                  )}
+                  {mainPane === "chat" && (
+                    <span
+                      className={`status-pill status-pill--${connPill.tone}`}
+                      role="status"
+                      title={tr(connPill.labelKey as MessageKey)}
+                    >
+                      <span className="status-pill__dot" aria-hidden />
+                      {tr(connPill.labelKey as MessageKey)}
+                    </span>
+                  )}
+                  {/* Retry progress only — connection is silent; thinking lives in chat */}
+                  {retryStatus && (
+                    <Tip
+                      label={retryStatus.reason || ""}
+                      disabled={!retryStatus.reason}
+                    >
+                      <span className="main__sub main__sub--retry">
+                        {retryStatus.reason
+                          ? tr("main.retryingWithReason", {
+                              attempt: String(retryStatus.attempt),
+                              max: String(retryStatus.maxRetries),
+                              reason:
+                                retryStatus.reason.length > 72
+                                  ? `${retryStatus.reason.slice(0, 72)}…`
+                                  : retryStatus.reason,
+                            })
+                          : tr("main.retrying", {
+                              attempt: String(retryStatus.attempt),
+                              max: String(retryStatus.maxRetries),
+                            })}
+                      </span>
+                    </Tip>
+                  )}
+                  {activeProject && mainPane === "chat" && !isMirrorClient() && (
+                    <OpenLocationButton
+                      path={activeProject.path}
+                      target={defaultOpenTarget || "finder"}
+                      onTargetChange={persistOpenTarget}
+                      onOpenError={(e) => setLocalError(e)}
+                      onCopied={() => {
+                        setToast(tr("attach.copyPath") + " ✓");
+                        window.setTimeout(() => setToast(null), 1600);
+                      }}
+                      platform={
+                        platform === "win"
+                          ? "win"
+                          : platform === "mac"
+                            ? "mac"
+                            : "other"
+                      }
+                      labels={{
+                        openLocation: tr("main.openLocation"),
+                        openHint: tr("main.openLocationHint"),
+                        openMenu: tr("main.openLocationMenu"),
+                        finder:
+                          platform === "win"
+                            ? tr("main.openInExplorer")
+                            : tr("main.openInFinder"),
+                        systemDefault: tr("main.openSystemDefault"),
+                        copyPath: tr("attach.copyPath"),
+                      }}
+                    />
+                  )}
+                  <Tip
+                    label={
+                      layout.asideCollapsed
+                        ? tr("main.rightPaneShow")
+                        : tr("main.rightPaneHide")
+                    }
+                  >
+                    <button
+                      type="button"
+                      className={
+                        "chrome-btn main__pane-toggle" +
+                        (!layout.asideCollapsed ? " is-on" : "")
+                      }
+                      onClick={() =>
+                        setLayout((l) => {
+                          const n = {
+                            ...l,
+                            asideCollapsed: !l.asideCollapsed,
+                          };
+                          saveLayout(localStorage, n);
+                          return n;
+                        })
+                      }
+                    >
+                      <IconPanelRight size={16} />
+                    </button>
+                  </Tip>
+                </>
+              )}
             </div>
           </div>
 
@@ -7904,6 +8325,18 @@ export default function App() {
                             scopeKey: perm.scopeKey,
                           })
                           .then(() => setPerm(null))
+                          .catch((e) => {
+                            const code =
+                              e && typeof e === "object" && "code" in e
+                                ? String((e as { code?: string }).code)
+                                : "";
+                            showToast(
+                              code === "UNSUPPORTED"
+                                ? tr("mirror.unsupported")
+                                : String(e),
+                              4000,
+                            );
+                          })
                       }
                     >
                       {btn.label}
@@ -8135,16 +8568,26 @@ export default function App() {
                   if (e.key === "Escape") closeComposerMenu();
                 }}
               />
-              <div className="composer__row">
-                <Tip label={tr("composer.add")}>
+              <div
+                className={
+                  "composer__row" + (phoneLayout ? " composer__row--phone" : "")
+                }
+              >
+                <Tip label={tr("composer.add")} disabled={phoneLayout}>
                   <button
                     ref={composerPlusTriggerRef}
                     type="button"
                     className={
                       "icon-btn icon-btn--plus" +
-                      (composerMenuOpen ? " is-open" : "")
+                      (composerMenuOpen || phoneToolsOpen ? " is-open" : "")
                     }
+                    aria-label={tr("composer.add")}
                     onClick={() => {
+                      if (phoneLayout) {
+                        setPhoneToolsOpen((v) => !v);
+                        closeComposerMenu();
+                        return;
+                      }
                       if (composerMenuOpen) {
                         closeComposerMenu();
                       } else {
@@ -8155,161 +8598,173 @@ export default function App() {
                     <IconPlus size={18} />
                   </button>
                 </Tip>
-                <ComposerProjectMenu
-                  activeProject={activeProject}
-                  projects={projects}
-                  labels={{
-                    noProject: tr("composer.noProject"),
-                    pickProject: tr("composer.pickProject"),
-                    addProject: tr("composer.addProject"),
-                    worktrees: tr("composer.worktrees"),
-                    worktreesEmpty: tr("composer.worktreesEmpty"),
-                    worktreesUnavailable: tr("composer.worktreesUnavailable"),
-                    worktreeCurrent: tr("composer.worktreeCurrent"),
-                    worktreeSwitch: tr("composer.worktreeSwitch"),
-                    worktreeMain: tr("composer.worktreeMain"),
-                    worktreeDetached: tr("composer.worktreeDetached"),
-                    pathMissing: tr("project.pathMissingShort"),
-                    worktreeGc: tr("composer.worktreeGc"),
-                  }}
-                  worktrees={gitWorktrees}
-                  worktreesAvailable={gitWorktreesAvailable}
-                  worktreesLoading={gitWorktreesLoading}
-                  worktreesReason={gitWorktreesReason}
-                  disabled={
-                    session.state === "streaming" ||
-                    session.state === "awaiting_permission"
-                  }
-                  onSelect={(proj) => {
-                    void bindSessionProject(proj);
-                  }}
-                  onAdd={() => {
-                    void addProjectFromPicker({ bindSession: true });
-                  }}
-                  onSwitchWorktree={(wt) => {
-                    void switchToWorktree(wt);
-                  }}
-                  onGcWorktrees={openWorktreeGc}
-                  onOpen={refreshGitWorktrees}
-                />
-                {goalMode ? (
-                  <Tip label={tr("composer.goalHint")}>
-                    <button
-                      type="button"
-                      className="chip chip--goal"
-                      onClick={() => setGoalMode(false)}
-                      aria-label={tr("composer.goalClear")}
-                    >
-                      <IconImagine size={14} />
-                      <span className="chip__label">{tr("composer.goal")}</span>
-                      <IconClose size={12} />
-                    </button>
-                  </Tip>
+                {!phoneLayout ? (
+                  <>
+                    <ComposerProjectMenu
+                      activeProject={activeProject}
+                      projects={projects}
+                      labels={{
+                        noProject: tr("composer.noProject"),
+                        pickProject: tr("composer.pickProject"),
+                        addProject: tr("composer.addProject"),
+                        worktrees: tr("composer.worktrees"),
+                        worktreesEmpty: tr("composer.worktreesEmpty"),
+                        worktreesUnavailable: tr(
+                          "composer.worktreesUnavailable",
+                        ),
+                        worktreeCurrent: tr("composer.worktreeCurrent"),
+                        worktreeSwitch: tr("composer.worktreeSwitch"),
+                        worktreeMain: tr("composer.worktreeMain"),
+                        worktreeDetached: tr("composer.worktreeDetached"),
+                        pathMissing: tr("project.pathMissingShort"),
+                        worktreeGc: tr("composer.worktreeGc"),
+                      }}
+                      worktrees={gitWorktrees}
+                      worktreesAvailable={gitWorktreesAvailable}
+                      worktreesLoading={gitWorktreesLoading}
+                      worktreesReason={gitWorktreesReason}
+                      disabled={
+                        session.state === "streaming" ||
+                        session.state === "awaiting_permission"
+                      }
+                      onSelect={(proj) => {
+                        void bindSessionProject(proj);
+                      }}
+                      onAdd={() => {
+                        void addProjectFromPicker({ bindSession: true });
+                      }}
+                      onSwitchWorktree={(wt) => {
+                        void switchToWorktree(wt);
+                      }}
+                      onGcWorktrees={openWorktreeGc}
+                      onOpen={refreshGitWorktrees}
+                    />
+                    {goalMode ? (
+                      <Tip label={tr("composer.goalHint")}>
+                        <button
+                          type="button"
+                          className="chip chip--goal"
+                          onClick={() => setGoalMode(false)}
+                          aria-label={tr("composer.goalClear")}
+                        >
+                          <IconImagine size={14} />
+                          <span className="chip__label">
+                            {tr("composer.goal")}
+                          </span>
+                          <IconClose size={12} />
+                        </button>
+                      </Tip>
+                    ) : null}
+                    <ComposerModelMenu
+                      modelId={modelId}
+                      effort={effort}
+                      models={availableModels}
+                      labels={{
+                        model: tr("composer.model"),
+                        effort: tr("composer.effort"),
+                        effortHigh: tr("effort.high"),
+                        effortMedium: tr("effort.medium"),
+                        effortLow: tr("effort.low"),
+                      }}
+                      onModel={(v) => {
+                        if (!isValidModelId(v, availableModels)) return;
+                        setModelId(v);
+                        void api
+                          .composerPrefsSet({
+                            projectId: activeProject?.id ?? null,
+                            sessionId: session.sessionId ?? null,
+                            modelId: v,
+                          })
+                          .catch((e) => showToast(String(e), 4000));
+                      }}
+                      onEffort={(v) => {
+                        if (!isValidEffort(v)) return;
+                        setEffort(v);
+                        void api
+                          .composerPrefsSet({
+                            projectId: activeProject?.id ?? null,
+                            sessionId: session.sessionId ?? null,
+                            effort: v,
+                          })
+                          .catch((e) => showToast(String(e), 4000));
+                      }}
+                    />
+                    <ComposerAccessMenu
+                      mode={mode}
+                      policy={policy}
+                      labels={{
+                        access: tr("composer.access"),
+                        accessHint: tr("composer.accessHint"),
+                        mode: tr("composer.mode"),
+                        modeAgent: tr("mode.agent"),
+                        modePlan: tr("mode.plan"),
+                        modeAsk: tr("mode.ask"),
+                        modeAgentDesc: tr("mode.agentDesc"),
+                        modePlanDesc: tr("mode.planDesc"),
+                        modeAskDesc: tr("mode.askDesc"),
+                        permission: tr("composer.permission"),
+                        policyAsk: tr("policy.ask"),
+                        policyAcceptEdits: tr("policy.accept_edits"),
+                        policySession: tr("policy.allow_for_session"),
+                        policyDontAsk: tr("policy.dont_ask"),
+                        policyYolo: tr("policy.always_approve"),
+                        policyAskDesc: tr("policy.askDesc"),
+                        policyAcceptEditsDesc: tr("policy.accept_editsDesc"),
+                        policySessionDesc: tr(
+                          "policy.allow_for_sessionDesc",
+                        ),
+                        policyDontAskDesc: tr("policy.dont_askDesc"),
+                        policyYoloDesc: tr("policy.always_approveDesc"),
+                        policyShortAsk: tr("policy.short.ask"),
+                        policyShortAccept: tr("policy.short.accept_edits"),
+                        policyShortSession: tr(
+                          "policy.short.allow_for_session",
+                        ),
+                        policyShortDontAsk: tr("policy.short.dont_ask"),
+                        policyShortYolo: tr("policy.short.always_approve"),
+                      }}
+                      onMode={(v) => {
+                        setMode(v);
+                        if (v === "plan") setGoalMode(false);
+                        void api
+                          .composerPrefsSet({
+                            projectId: activeProject?.id ?? null,
+                            sessionId: session.sessionId ?? null,
+                            mode: v,
+                          })
+                          .catch((e) => showToast(String(e), 4000));
+                      }}
+                      onPolicy={(v: PermissionPolicyId) => {
+                        applyPermissionPolicy(v);
+                      }}
+                    />
+                    <ContextUsageChip
+                      display={contextUsageDisplay}
+                      labels={{
+                        aria: tr("context.chipAria"),
+                        tipUnknown: tr("context.chipTipUnknown"),
+                        tipEstimated: tr("context.chipTipEstimated"),
+                        tipKnown: tr("context.chipTipKnown"),
+                        menuTitle: tr("context.menuTitle"),
+                        current: tr("context.current"),
+                        sourceKnown: tr("context.sourceKnown"),
+                        sourceEstimated: tr("context.sourceEstimated"),
+                        sourceUnknown: tr("context.sourceUnknown"),
+                        lastCompact: tr("context.lastCompact"),
+                        lastCompactNone: tr("context.lastCompactNone"),
+                        tokensRange: tr("compact.tokensRange"),
+                        compactAction: tr("context.compactAction"),
+                        heuristicNote: tr("context.heuristicNote"),
+                        auto: tr("context.triggerAuto"),
+                        manual: tr("context.triggerManual"),
+                      }}
+                      onCompact={() => {
+                        setCompactNote("");
+                        setShowCompactModal(true);
+                      }}
+                    />
+                  </>
                 ) : null}
-                <ComposerModelMenu
-                  modelId={modelId}
-                  effort={effort}
-                  models={availableModels}
-                  labels={{
-                    model: tr("composer.model"),
-                    effort: tr("composer.effort"),
-                    effortHigh: tr("effort.high"),
-                    effortMedium: tr("effort.medium"),
-                    effortLow: tr("effort.low"),
-                  }}
-                  onModel={(v) => {
-                    if (!isValidModelId(v, availableModels)) return;
-                    setModelId(v);
-                    void api
-                      .composerPrefsSet({
-                        projectId: activeProject?.id ?? null,
-                        sessionId: session.sessionId ?? null,
-                        modelId: v,
-                      })
-                      .catch((e) => showToast(String(e), 4000));
-                  }}
-                  onEffort={(v) => {
-                    if (!isValidEffort(v)) return;
-                    setEffort(v);
-                    void api
-                      .composerPrefsSet({
-                        projectId: activeProject?.id ?? null,
-                        sessionId: session.sessionId ?? null,
-                        effort: v,
-                      })
-                      .catch((e) => showToast(String(e), 4000));
-                  }}
-                />
-                <ComposerAccessMenu
-                  mode={mode}
-                  policy={policy}
-                  labels={{
-                    access: tr("composer.access"),
-                    accessHint: tr("composer.accessHint"),
-                    mode: tr("composer.mode"),
-                    modeAgent: tr("mode.agent"),
-                    modePlan: tr("mode.plan"),
-                    modeAsk: tr("mode.ask"),
-                    modeAgentDesc: tr("mode.agentDesc"),
-                    modePlanDesc: tr("mode.planDesc"),
-                    modeAskDesc: tr("mode.askDesc"),
-                    permission: tr("composer.permission"),
-                    policyAsk: tr("policy.ask"),
-                    policyAcceptEdits: tr("policy.accept_edits"),
-                    policySession: tr("policy.allow_for_session"),
-                    policyDontAsk: tr("policy.dont_ask"),
-                    policyYolo: tr("policy.always_approve"),
-                    policyAskDesc: tr("policy.askDesc"),
-                    policyAcceptEditsDesc: tr("policy.accept_editsDesc"),
-                    policySessionDesc: tr("policy.allow_for_sessionDesc"),
-                    policyDontAskDesc: tr("policy.dont_askDesc"),
-                    policyYoloDesc: tr("policy.always_approveDesc"),
-                    policyShortAsk: tr("policy.short.ask"),
-                    policyShortAccept: tr("policy.short.accept_edits"),
-                    policyShortSession: tr("policy.short.allow_for_session"),
-                    policyShortDontAsk: tr("policy.short.dont_ask"),
-                    policyShortYolo: tr("policy.short.always_approve"),
-                  }}
-                  onMode={(v) => {
-                    setMode(v);
-                    if (v === "plan") setGoalMode(false);
-                    void api
-                      .composerPrefsSet({
-                        projectId: activeProject?.id ?? null,
-                        sessionId: session.sessionId ?? null,
-                        mode: v,
-                      })
-                      .catch((e) => showToast(String(e), 4000));
-                  }}
-                  onPolicy={(v: PermissionPolicyId) => {
-                    applyPermissionPolicy(v);
-                  }}
-                />
-                <ContextUsageChip
-                  display={contextUsageDisplay}
-                  labels={{
-                    aria: tr("context.chipAria"),
-                    tipUnknown: tr("context.chipTipUnknown"),
-                    tipEstimated: tr("context.chipTipEstimated"),
-                    tipKnown: tr("context.chipTipKnown"),
-                    menuTitle: tr("context.menuTitle"),
-                    current: tr("context.current"),
-                    sourceKnown: tr("context.sourceKnown"),
-                    sourceEstimated: tr("context.sourceEstimated"),
-                    sourceUnknown: tr("context.sourceUnknown"),
-                    lastCompact: tr("context.lastCompact"),
-                    lastCompactNone: tr("context.lastCompactNone"),
-                    tokensRange: tr("compact.tokensRange"),
-                    compactAction: tr("context.compactAction"),
-                    heuristicNote: tr("context.heuristicNote"),
-                    auto: tr("context.triggerAuto"),
-                    manual: tr("context.triggerManual"),
-                  }}
-                  onCompact={() => {
-                    setCompactNote("");
-                    setShowCompactModal(true);
-                  }}
-                />
                 <span className="composer__spacer" />
                 <Tip
                   label={
@@ -8413,11 +8868,12 @@ export default function App() {
         <aside
           className={
             (layout.asideCollapsed ? "aside aside--hidden" : "aside") +
-            (resizingAside ? " is-resizing" : "")
+            (resizingAside ? " is-resizing" : "") +
+            (phoneLayout ? " aside--phone-overlay" : "")
           }
           aria-hidden={layout.asideCollapsed}
           style={
-            !layout.asideCollapsed
+            !layout.asideCollapsed && !phoneLayout
               ? {
                   width: layout.asideWidth,
                   minWidth: layout.asideWidth,
@@ -8468,6 +8924,178 @@ export default function App() {
       </div>
       ))}
 
+      {phoneLayout ? (
+        <>
+          <PhoneComposerToolsSheet
+            open={phoneToolsOpen}
+            onClose={() => setPhoneToolsOpen(false)}
+            labels={{
+              title: tr("phone.toolsTitle"),
+              close: tr("common.close"),
+              attach: tr("phone.toolsAttach"),
+              project: tr("phone.toolsProject"),
+              model: tr("phone.toolsModel"),
+              effort: tr("composer.effort"),
+              access: tr("phone.toolsAccess"),
+              context: tr("phone.toolsContext"),
+              noProject: tr("composer.noProject"),
+              addProject: tr("composer.addProject"),
+              mode: tr("composer.mode"),
+              permission: tr("composer.permission"),
+              modeAgent: tr("mode.agent"),
+              modePlan: tr("mode.plan"),
+              modeAsk: tr("mode.ask"),
+              policyAsk: tr("policy.ask"),
+              policyAcceptEdits: tr("policy.accept_edits"),
+              policySession: tr("policy.allow_for_session"),
+              policyDontAsk: tr("policy.dont_ask"),
+              policyYolo: tr("policy.always_approve"),
+              effortHigh: tr("effort.high"),
+              effortMedium: tr("effort.medium"),
+              effortLow: tr("effort.low"),
+              contextCurrent: tr("context.current"),
+              contextUnknown: tr("phone.contextUnknown"),
+              contextCompact: tr("context.compactAction"),
+              sourceKnown: tr("context.sourceKnown"),
+              sourceEstimated: tr("context.sourceEstimated"),
+              sourceUnknown: tr("context.sourceUnknown"),
+              back: tr("phone.toolsBack"),
+            }}
+            activeProject={activeProject}
+            projects={projects}
+            modelId={modelId}
+            effort={effort}
+            models={availableModels}
+            mode={mode}
+            policy={policy}
+            contextDisplay={contextUsageDisplay}
+            onAttach={() => {
+              void pickComposerFiles();
+            }}
+            onSelectProject={(proj) => {
+              if (!proj) {
+                void bindSessionProject(null);
+                return;
+              }
+              const full =
+                projects.find((p) => p.id === proj.id) ?? null;
+              void bindSessionProject(full);
+            }}
+            onAddProject={() => {
+              void addProjectFromPicker({ bindSession: true });
+            }}
+            onModel={(v) => {
+              if (!isValidModelId(v, availableModels)) return;
+              setModelId(v);
+              void api
+                .composerPrefsSet({
+                  projectId: activeProject?.id ?? null,
+                  sessionId: session.sessionId ?? null,
+                  modelId: v,
+                })
+                .catch((e) => showToast(String(e), 4000));
+            }}
+            onEffort={(v) => {
+              if (!isValidEffort(v)) return;
+              setEffort(v);
+              void api
+                .composerPrefsSet({
+                  projectId: activeProject?.id ?? null,
+                  sessionId: session.sessionId ?? null,
+                  effort: v,
+                })
+                .catch((e) => showToast(String(e), 4000));
+            }}
+            onMode={(v) => {
+              setMode(v);
+              if (v === "plan") setGoalMode(false);
+              void api
+                .composerPrefsSet({
+                  projectId: activeProject?.id ?? null,
+                  sessionId: session.sessionId ?? null,
+                  mode: v,
+                })
+                .catch((e) => showToast(String(e), 4000));
+            }}
+            onPolicy={(v: PermissionPolicyId) => {
+              applyPermissionPolicy(v);
+            }}
+            onCompact={() => {
+              setCompactNote("");
+              setShowCompactModal(true);
+            }}
+          />
+          <PhoneAccountSheet
+            open={phoneAccountOpen}
+            onClose={() => setPhoneAccountOpen(false)}
+            labels={{
+              title: tr("phone.accountTitle"),
+              close: tr("common.close"),
+              hostAccount: tr("mirror.chrome.accountHost"),
+              linkStatus: tr("phone.linkStatus"),
+              agentStatus: tr("phone.agentStatus"),
+              openFiles: tr("phone.openFiles"),
+              connected: tr("mirror.chrome.connected"),
+              reconnecting: tr("mirror.chrome.reconnecting"),
+            }}
+            hostLabel={mirrorHostLabel}
+            linkOk={mirrorLinkOk}
+            agentStatusLabel={tr(connPill.labelKey as MessageKey)}
+            agentTone={connPill.tone}
+            onOpenFiles={() =>
+              setLayout((l) => {
+                const n = { ...l, asideCollapsed: false };
+                saveLayout(localStorage, n);
+                return n;
+              })
+            }
+          />
+        </>
+      ) : null}
+
+      {api.isDesktopHost() && (
+        <MirrorConnectPanel
+          open={showMirrorConnect}
+          onClose={() => setShowMirrorConnect(false)}
+          labels={{
+            title: tr("mirror.connectTitle"),
+            close: tr("common.close"),
+            start: tr("mirror.start"),
+            stop: tr("mirror.stop"),
+            stopConfirmTitle: tr("mirror.stopConfirmTitle"),
+            stopConfirmMessage: tr("mirror.stopConfirmMessage"),
+            stopConfirmOk: tr("mirror.stopConfirmOk"),
+            cancel: tr("common.cancel"),
+            copyLink: tr("mirror.copyLink"),
+            copied: tr("mirror.copied"),
+            clients: tr("mirror.clients"),
+            phaseStopped: tr("mirror.phase.stopped"),
+            phaseStarting: tr("mirror.phase.starting"),
+            phaseLocal: tr("mirror.phase.local"),
+            phaseWaitingTunnel: tr("mirror.phase.waiting_tunnel"),
+            phaseLive: tr("mirror.phase.live"),
+            phaseTunnelDead: tr("mirror.phase.tunnel_dead"),
+            phaseError: tr("mirror.phase.error"),
+            hint: tr("mirror.connectHint"),
+            warningToken: tr("mirror.warningToken"),
+            missingCloudflared: tr("mirror.missingCloudflared"),
+            errorGeneric: tr("mirror.errorGeneric"),
+            qrAlt: tr("mirror.qrAlt"),
+            linkLabel: tr("mirror.linkLabel"),
+          }}
+          onConfirmStop={({ title, message, confirmLabel, onConfirm }) => {
+            setAppDialog({
+              kind: "confirm",
+              title,
+              message,
+              confirmLabel,
+              danger: true,
+              onConfirm,
+            });
+          }}
+          showToast={showToast}
+        />
+      )}
       <DoctorModal
         open={showDoctor}
         onClose={() => setShowDoctor(false)}

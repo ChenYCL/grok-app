@@ -25,6 +25,7 @@ import {
   IconChevronsLeft as TbChevronsLeft,
   IconCircleDashed as TbCircleDashed,
   IconCopy as TbCopy,
+  IconDeviceMobile as TbDeviceMobile,
   IconDots as TbDots,
   IconEdit as TbEdit,
   IconFileDiff as TbFileDiff,
@@ -44,6 +45,7 @@ import {
   IconList as TbList,
   IconListTree as TbListTree,
   IconMarkdown as TbMarkdown,
+  IconMenu2 as TbMenu2,
   IconMessage as TbMessage,
   IconMicrophone as TbMicrophone,
   IconMinus as TbMinus,
@@ -219,6 +221,8 @@ export const IconSend = wrap(TbSend);
 export const IconQueue = wrap(TbStack2);
 export const IconMic = wrap(TbMicrophone);
 export const IconPanel = wrap(TbLayoutSidebar);
+/** Hamburger / phone session drawer toggle. */
+export const IconMenu = wrap(TbMenu2);
 /** Right files / context pane (Codex-style top bar). */
 export const IconPanelRight = wrap(TbLayoutSidebarRight);
 /** Open project in Finder / external app. */
@@ -247,6 +251,8 @@ export const IconThumbsUp = wrap(TbThumbUp);
 export const IconThumbsDown = wrap(TbThumbDown);
 export const IconRefresh = wrap(TbRefresh);
 export const IconCopy = wrap(TbCopy);
+/** Connect phone / remote mirror. */
+export const IconDeviceMobile = wrap(TbDeviceMobile);
 export const IconExportMd = wrap(TbMarkdown);
 export const IconArchive = wrap(TbArchive);
 export const IconChat = wrap(TbMessage);

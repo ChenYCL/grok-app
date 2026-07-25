@@ -5,6 +5,9 @@
 
 export const LAYOUT_STORAGE_KEY = "grok-app.layout";
 
+/** Mirror phone CSS drawer breakpoint (`app.css` max-width: 820px). */
+export const MIRROR_DRAWER_BREAKPOINT = 820;
+
 export interface LayoutPrefs {
   sidebarWidth: number;
   asideWidth: number;
@@ -22,6 +25,36 @@ export const DEFAULT_LAYOUT: LayoutPrefs = {
   /** Left session rail starts open; can fully hide via top-bar panel icon. */
   sidebarCollapsed: false,
 };
+
+/** True when CSS phone drawer / phone chrome rules apply (≤ 820px). */
+export function isPhoneViewport(width: number): boolean {
+  return Number.isFinite(width) && width <= MIRROR_DRAWER_BREAKPOINT;
+}
+
+/**
+ * Mirror client on a phone-width viewport — full phone chrome (drawer, sheets).
+ * Desktop (≥ 821px) never enters this path.
+ */
+export function isMirrorPhoneLayout(opts: {
+  isMirror: boolean;
+  viewportWidth: number;
+}): boolean {
+  return opts.isMirror && isPhoneViewport(opts.viewportWidth);
+}
+
+/**
+ * On mirror phone viewports the sidebar is a full-height drawer over chat.
+ * Start collapsed so first paint shows the conversation; toggle still opens it.
+ */
+export function withMirrorPhoneDrawerDefault(
+  layout: LayoutPrefs,
+  opts: { isMirror: boolean; viewportWidth: number },
+): LayoutPrefs {
+  if (isMirrorPhoneLayout(opts)) {
+    return { ...layout, sidebarCollapsed: true };
+  }
+  return layout;
+}
 
 export const ASIDE_WIDTH_MIN = 240;
 export const ASIDE_WIDTH_MAX = 720;

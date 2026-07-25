@@ -2,6 +2,14 @@
 
 import type { SessionSnapshot } from "./session";
 import { IDLE_SNAPSHOT } from "./session";
+import {
+  isMirrorClient,
+  mirrorEnsureTransport,
+  mirrorInvoke,
+  mirrorListen,
+} from "./mirrorTransport";
+
+export { isMirrorClient } from "./mirrorTransport";
 
 export function isTauri(): boolean {
   return (
@@ -10,13 +18,34 @@ export function isTauri(): boolean {
   );
 }
 
+/** Desktop WebView path (not phone mirror). Prefer over bare `isTauri()` when AC6 matters. */
+export function isDesktopHost(): boolean {
+  return isTauri() && !isMirrorClient();
+}
+
+/**
+ * True when a host backend is reachable — desktop Tauri IPC **or** mirror WS.
+ *
+ * Use this to gate work that only needs "a backend exists", e.g. creating a
+ * session before the first send. Only valid for commands present in
+ * `CMD_TO_METHOD` (mirrorTransport.ts); anything desktop-only must keep using
+ * `isTauri()` / `isDesktopHost()` so mirror clients cannot reach it (AC6).
+ */
+export function hasHost(): boolean {
+  return isTauri() || isMirrorClient();
+}
+
 async function invoke<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
+  if (isMirrorClient()) {
+    return mirrorInvoke<T>(cmd, args);
+  }
   if (!isTauri()) throw new Error(`Tauri required: ${cmd}`);
   const { invoke: inv } = await import("@tauri-apps/api/core");
   return inv<T>(cmd, args);
 }
 
 export async function sessionGetState(): Promise<SessionSnapshot> {
+  if (isMirrorClient()) return invoke("session_get_state");
   if (!isTauri()) return { ...IDLE_SNAPSHOT, backend: "browser" };
   return invoke("session_get_state");
 }
@@ -26,6 +55,13 @@ export async function sessionConnect(opts?: {
   sessionId?: string;
   mode?: string;
 }): Promise<SessionSnapshot> {
+  if (isMirrorClient()) {
+    return invoke("session_connect", {
+      projectPath: opts?.projectPath ?? null,
+      sessionId: opts?.sessionId ?? null,
+      mode: opts?.mode ?? null,
+    });
+  }
   if (!isTauri()) {
     return {
       ...IDLE_SNAPSHOT,
@@ -1303,6 +1339,12 @@ export async function accountStatus(opts?: {
   refreshBilling?: boolean;
   manualCliPath?: string | null;
 }) {
+  if (isMirrorClient()) {
+    return invoke<AccountStatus>("account_status", {
+      refreshBilling: opts?.refreshBilling ?? false,
+      manualCliPath: opts?.manualCliPath ?? null,
+    });
+  }
   if (!isTauri()) {
     return {
       profile: {
@@ -1604,10 +1646,65 @@ export async function listen<T>(
   event: string,
   handler: (payload: T) => void,
 ): Promise<() => void> {
+  if (isMirrorClient()) {
+    await mirrorEnsureTransport();
+    return mirrorListen<T>(event, handler);
+  }
   if (!isTauri()) return () => {};
   const { listen } = await import("@tauri-apps/api/event");
   const un = await listen<T>(event, (e) => handler(e.payload));
   return un;
+}
+
+// ── Remote mirror host (desktop only — DESIGN §4.2 / §11) ───────────────────
+
+export type MirrorPhase =
+  | "stopped"
+  | "starting"
+  | "local"
+  | "waiting_tunnel"
+  | "live"
+  | "tunnel_dead"
+  | "error";
+
+export type MirrorStatus = {
+  running: boolean;
+  publicUrl: string | null;
+  localPort: number | null;
+  token: string | null;
+  clients: number;
+  phase: MirrorPhase;
+  error: string | null;
+};
+
+/** Desktop host status for Connect panel. Not available on phone mirror. */
+export async function mirrorStatus(): Promise<MirrorStatus> {
+  if (!isDesktopHost()) {
+    return {
+      running: false,
+      publicUrl: null,
+      localPort: null,
+      token: null,
+      clients: 0,
+      phase: "stopped",
+      error: null,
+    };
+  }
+  return invoke<MirrorStatus>("mirror_status");
+}
+
+export async function mirrorStart(): Promise<MirrorStatus> {
+  if (!isDesktopHost()) {
+    throw new Error("mirror host requires desktop app");
+  }
+  return invoke<MirrorStatus>("mirror_start");
+}
+
+export async function mirrorStop(): Promise<MirrorStatus> {
+  if (!isDesktopHost()) {
+    throw new Error("mirror host requires desktop app");
+  }
+  return invoke<MirrorStatus>("mirror_stop");
 }
 
 // ── Automations (scheduled tasks) ───────────────────────────────────────────
