@@ -1,9 +1,13 @@
 import { describe, expect, it } from "vitest";
 import {
+  coerceFixId,
   dispositionToLevel,
+  extractFixIds,
   extractSafeFacts,
   formatFactValue,
   hasAnySafeFact,
+  isDestructiveDoctorFix,
+  isValidDoctorFixId,
   parseCliDoctorEnvelope,
   parseCliDoctorReport,
   parseFinding,
@@ -63,6 +67,14 @@ const FIXTURE = {
       automaticRemediation: null,
       note: null,
     },
+    {
+      id: "terminal.ssh-wrap",
+      disposition: "recommendation",
+      message: "Wrap ssh through grok wrap for better terminal support",
+      remediation: "Add shell alias via doctor fix",
+      automaticRemediation: "ssh-wrap",
+      note: "Writes an interactive-shell alias to ~/.zshrc (with backup).",
+    },
   ],
   probeNotes: [
     {
@@ -73,7 +85,7 @@ const FIXTURE = {
   ],
   counts: {
     issues: 1,
-    recommendations: 1,
+    recommendations: 2,
     probeNotes: 1,
   },
 };
@@ -115,6 +127,114 @@ describe("parseFinding", () => {
     expect(row?.level).toBe("fail");
     expect(row?.title).toContain("NO_COLOR");
     expect(row?.detail).toContain("Unset NO_COLOR");
+    expect(row?.fixId).toBeNull();
+  });
+
+  it("surfaces automaticRemediation as fixId", () => {
+    const row = parseFinding(FIXTURE.findings[2], 2);
+    expect(row?.id).toBe("terminal.ssh-wrap");
+    expect(row?.fixId).toBe("ssh-wrap");
+    expect(row?.destructive).toBe(true);
+    expect(row?.detail).toContain("fix: ssh-wrap");
+  });
+});
+
+describe("extractFixIds", () => {
+  it("extracts unique fix handles from fixture findings", () => {
+    const fixes = extractFixIds(FIXTURE);
+    expect(fixes).toHaveLength(1);
+    expect(fixes[0].fixId).toBe("ssh-wrap");
+    expect(fixes[0].findingId).toBe("terminal.ssh-wrap");
+    expect(fixes[0].destructive).toBe(true);
+    expect(fixes[0].message).toContain("Wrap ssh");
+  });
+
+  it("accepts host envelope and bare findings array", () => {
+    expect(
+      extractFixIds({ available: true, report: FIXTURE }).map((f) => f.fixId),
+    ).toEqual(["ssh-wrap"]);
+    expect(
+      extractFixIds(FIXTURE.findings).map((f) => f.fixId),
+    ).toEqual(["ssh-wrap"]);
+  });
+
+  it("accepts canonical automaticRemediation and fixId field", () => {
+    const fixes = extractFixIds({
+      findings: [
+        {
+          id: "terminal.ssh-wrap",
+          automaticRemediation: "terminal.ssh-wrap",
+          message: "canonical",
+        },
+        {
+          id: "tmux.clipboard",
+          fixId: "tmux-clipboard",
+          automaticRemediation: null,
+          message: "via fixId",
+        },
+        {
+          id: "bad",
+          automaticRemediation: "--yes; rm -rf /",
+          message: "injection",
+        },
+        {
+          id: "obj",
+          automaticRemediation: { handle: "dcs-passthrough" },
+          message: "object form",
+        },
+      ],
+    });
+    expect(fixes.map((f) => f.fixId).sort()).toEqual([
+      "dcs-passthrough",
+      "terminal.ssh-wrap",
+      "tmux-clipboard",
+    ]);
+  });
+
+  it("dedupes the same fix handle", () => {
+    const fixes = extractFixIds({
+      findings: [
+        { id: "a", automaticRemediation: "ssh-wrap" },
+        { id: "b", automaticRemediation: "SSH-WRAP" },
+      ],
+    });
+    expect(fixes).toHaveLength(1);
+  });
+
+  it("returns empty when nothing is fixable", () => {
+    expect(extractFixIds(null)).toEqual([]);
+    expect(extractFixIds({ findings: [] })).toEqual([]);
+    expect(
+      extractFixIds({
+        findings: [{ id: "x", automaticRemediation: null }],
+      }),
+    ).toEqual([]);
+  });
+});
+
+describe("coerceFixId / isValidDoctorFixId / isDestructiveDoctorFix", () => {
+  it("coerces string and object forms", () => {
+    expect(coerceFixId("ssh-wrap")).toBe("ssh-wrap");
+    expect(coerceFixId({ handle: "ssh-wrap" })).toBe("ssh-wrap");
+    expect(coerceFixId({ id: "terminal.ssh-wrap" })).toBe("terminal.ssh-wrap");
+    expect(coerceFixId(null)).toBeNull();
+    expect(coerceFixId("  ")).toBeNull();
+  });
+
+  it("rejects unsafe fix ids", () => {
+    expect(isValidDoctorFixId("ssh-wrap")).toBe(true);
+    expect(isValidDoctorFixId("terminal.ssh-wrap")).toBe(true);
+    expect(isValidDoctorFixId("--yes")).toBe(false);
+    expect(isValidDoctorFixId("a b")).toBe(false);
+    expect(isValidDoctorFixId("../etc")).toBe(false);
+    expect(isValidDoctorFixId("")).toBe(false);
+  });
+
+  it("flags shell-mutating fixes as destructive", () => {
+    expect(isDestructiveDoctorFix("ssh-wrap")).toBe(true);
+    expect(isDestructiveDoctorFix("terminal.ssh-wrap")).toBe(true);
+    expect(isDestructiveDoctorFix("unknown-thing")).toBe(true);
+    expect(isDestructiveDoctorFix("noop")).toBe(false);
   });
 });
 
@@ -122,11 +242,12 @@ describe("parseCliDoctorReport", () => {
   it("parses fixture JSON into pass/warn/fail rows", () => {
     const view = parseCliDoctorReport(FIXTURE);
     expect(view.schemaVersion).toBe("1");
-    expect(view.checks).toHaveLength(2);
+    expect(view.checks).toHaveLength(3);
     expect(view.checks[0].level).toBe("fail");
     expect(view.checks[1].level).toBe("warn");
+    expect(view.checks[2].fixId).toBe("ssh-wrap");
     expect(view.summary.fail).toBe(1);
-    expect(view.summary.warn).toBe(1);
+    expect(view.summary.warn).toBe(2);
     expect(view.counts?.issues).toBe(1);
     expect(view.probeNotes).toHaveLength(1);
     expect(view.facts.terminal).toBe("iterm2");

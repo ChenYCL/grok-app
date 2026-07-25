@@ -1105,6 +1105,15 @@ const en = {
   "doctor.cliDoctorFact.ssh": "SSH",
   "doctor.cliDoctorFact.voice": "Voice",
   "doctor.cliDoctorProbeNotes": "Probe notes ({count})",
+  "doctor.cliDoctorFix": "Apply fix",
+  "doctor.cliDoctorFixes": "Automatic fixes",
+  "doctor.cliDoctorFixHint": "Run `grok doctor fix {id} --yes`",
+  "doctor.cliDoctorFixConfirmTitle": "Apply CLI doctor fix?",
+  "doctor.cliDoctorFixConfirmBody":
+    "This runs `grok doctor fix {id} --yes` and may change shell config or other local files.\n\n{message}",
+  "doctor.cliDoctorFixDone": "Applied fix “{id}”. Doctor re-ran.",
+  "doctor.cliDoctorFixDoneDetail": "Applied fix “{id}”. {detail}",
+  "doctor.cliDoctorFixFail": "Could not apply CLI doctor fix",
 
   // Connection status pill
   "conn.idle": "Idle",
@@ -2613,6 +2622,15 @@ const zh: Record<MessageKey, string> = {
   "doctor.cliDoctorFact.ssh": "SSH",
   "doctor.cliDoctorFact.voice": "语音",
   "doctor.cliDoctorProbeNotes": "探测备注（{count}）",
+  "doctor.cliDoctorFix": "应用修复",
+  "doctor.cliDoctorFixes": "自动修复",
+  "doctor.cliDoctorFixHint": "运行 `grok doctor fix {id} --yes`",
+  "doctor.cliDoctorFixConfirmTitle": "应用 CLI doctor 修复？",
+  "doctor.cliDoctorFixConfirmBody":
+    "将运行 `grok doctor fix {id} --yes`，可能修改 shell 配置或其他本地文件。\n\n{message}",
+  "doctor.cliDoctorFixDone": "已应用修复「{id}」。Doctor 已重新运行。",
+  "doctor.cliDoctorFixDoneDetail": "已应用修复「{id}」。{detail}",
+  "doctor.cliDoctorFixFail": "无法应用 CLI doctor 修复",
 
   "conn.idle": "空闲",
   "conn.connecting": "连接中",

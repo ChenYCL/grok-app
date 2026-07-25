@@ -202,6 +202,7 @@ pub fn run() {
             commands::import_grok_cli_config,
             commands::import_grok_go_config,
             commands::doctor_report,
+            commands::cli_doctor_fix,
             commands::export_support_bundle,
             commands::export_session_bundle,
             commands::reset_app_data,
