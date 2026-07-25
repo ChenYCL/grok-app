@@ -6228,6 +6228,7 @@ export default function App() {
             void api.settingsGet().then((s) =>
               api.settingsSet({ ...s, sandboxProfile: v }),
             );
+          }}
           useLeader={useLeader}
           onUseLeader={(v) => {
             const prev = useLeader;

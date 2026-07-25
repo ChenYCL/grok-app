@@ -786,6 +786,7 @@ export interface AppSettings {
    * Default "off". Passed as `grok --sandbox <profile>` / GROK_SANDBOX on spawn.
    */
   sandboxProfile?: string;
+  /**
    * Connect agents to a shared Grok Build leader (`grok agent --leader`).
    * Default false: standalone process (`--no-leader`). Soft-respawns on change.
    */
@@ -1181,6 +1182,8 @@ export async function pluginUpdate(name?: string | null) {
   return invoke<PluginActionResult>("plugin_update", {
     name: n ? n : null,
   });
+}
+
 // ── Leader process (shared agent backend) ───────────────────────────────────
 
 export interface LeaderProcessDto {

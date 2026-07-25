@@ -1687,8 +1687,6 @@ function CliSessionsPanel({
 }
 
 function AboutUpdateRow({
-/** Runtime: list / kill shared leader processes when leader mode is on. */
-function LeaderStatusPanel({
   t,
 }: {
   t: (key: MessageKey, vars?: Record<string, string | number>) => string;
@@ -1720,46 +1718,6 @@ function LeaderStatusPanel({
       await api.openExternalUrl(url);
     } catch (e) {
       setError(String(e));
-  const [leaders, setLeaders] = useState<api.LeaderProcessDto[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [status, setStatus] = useState<string | null>(null);
-  const [killBusy, setKillBusy] = useState(false);
-  const [confirmKill, setConfirmKill] = useState(false);
-
-  const refresh = useCallback(async () => {
-    if (!api.isTauri()) return;
-    setLoading(true);
-    setError(null);
-    try {
-      const res = await api.leaderList();
-      setLeaders(res.leaders ?? []);
-      if (res.error) setError(res.error);
-    } catch (e) {
-      setError(String(e));
-      setLeaders([]);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    void refresh();
-  }, [refresh]);
-
-  const doKill = async () => {
-    setConfirmKill(false);
-    setKillBusy(true);
-    setError(null);
-    setStatus(null);
-    try {
-      await api.leaderKillAll();
-      setStatus(t("settings.leaderKillDone"));
-      await refresh();
-    } catch (e) {
-      setError(String(e));
-    } finally {
-      setKillBusy(false);
     }
   };
 
@@ -1820,6 +1778,62 @@ function LeaderStatusPanel({
           </div>
         ) : null}
       </div>
+    </div>
+  );
+}
+
+/** Runtime: list / kill shared leader processes when leader mode is on. */
+function LeaderStatusPanel({
+  t,
+}: {
+  t: (key: MessageKey, vars?: Record<string, string | number>) => string;
+}) {
+  const [leaders, setLeaders] = useState<api.LeaderProcessDto[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [status, setStatus] = useState<string | null>(null);
+  const [killBusy, setKillBusy] = useState(false);
+  const [confirmKill, setConfirmKill] = useState(false);
+
+  const refresh = useCallback(async () => {
+    if (!api.isTauri()) return;
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await api.leaderList();
+      setLeaders(res.leaders ?? []);
+      if (res.error) setError(res.error);
+    } catch (e) {
+      setError(String(e));
+      setLeaders([]);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void refresh();
+  }, [refresh]);
+
+  const doKill = async () => {
+    setConfirmKill(false);
+    setKillBusy(true);
+    setError(null);
+    setStatus(null);
+    try {
+      await api.leaderKillAll();
+      setStatus(t("settings.leaderKillDone"));
+      await refresh();
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setKillBusy(false);
+    }
+  };
+
+  return (
+    <div className="settings-row settings-row--stack">
+      <div className="settings-row__text">
         <div className="settings-row__desc">
           {loading
             ? t("settings.leaderRefresh") + "…"
