@@ -76,7 +76,12 @@ import {
   mergePlanFromEvent,
   type SessionPlanState,
 } from "@/lib/planSession";
+import { AgentTasksPanel } from "@/components/AgentTasksPanel";
 import * as api from "@/lib/api";
+import {
+  collectSessionTasks,
+  countRunningTasks,
+} from "@/lib/sessionTasks";
 import { createT, resolveLocale, type Locale } from "@/i18n";
 import {
   DEFAULT_EFFORT,
@@ -224,6 +229,7 @@ import {
   IconRewind,
   IconShield,
   IconCheck,
+  IconList,
 } from "@/components/icons";
 import { AutomationsPage } from "@/components/AutomationsPage";
 import { OpenLocationButton } from "@/components/OpenLocationButton";
@@ -750,6 +756,7 @@ export default function App() {
   const [agentCatalog, setAgentCatalog] = useState<
     Array<{ name: string; source: string }>
   >([]);
+  const [tasksPanelOpen, setTasksPanelOpen] = useState(false);
   const [gitWorktrees, setGitWorktrees] = useState<api.GitWorktreeEntry[]>([]);
   /** null = unknown/loading; true = git work tree; false = not a git repo. */
   const [gitWorktreesAvailable, setGitWorktreesAvailable] = useState<
@@ -5121,6 +5128,15 @@ export default function App() {
     [contextUsage, messages],
   );
 
+  const sessionTasks = useMemo(
+    () => collectSessionTasks(messages),
+    [messages],
+  );
+  const runningTaskCount = useMemo(
+    () => countRunningTasks(sessionTasks),
+    [sessionTasks],
+  );
+
   /**
    * New empty draft only: lift composer and SuperGrok brand.
    * Existing sessions (even with empty journal) must not look like a fresh chat.
@@ -7613,6 +7629,37 @@ export default function App() {
                   }}
                 />
               )}
+              {mainPane === "chat" && session.sessionId ? (
+                <Tip
+                  label={
+                    tasksPanelOpen
+                      ? tr("tasks.hidePanel")
+                      : tr("tasks.showPanel")
+                  }
+                >
+                  <button
+                    type="button"
+                    className={
+                      "chrome-btn main__pane-toggle" +
+                      (tasksPanelOpen ? " is-on" : "")
+                    }
+                    onClick={() => setTasksPanelOpen((v) => !v)}
+                    aria-pressed={tasksPanelOpen}
+                    aria-label={
+                      tasksPanelOpen
+                        ? tr("tasks.hidePanel")
+                        : tr("tasks.showPanel")
+                    }
+                  >
+                    <IconList size={16} />
+                    {runningTaskCount > 0 ? (
+                      <span className="rp-chrome__badge" aria-hidden>
+                        {Math.min(99, runningTaskCount)}
+                      </span>
+                    ) : null}
+                  </button>
+                </Tip>
+              ) : null}
               <Tip
                 label={
                   layout.asideCollapsed
@@ -7758,6 +7805,14 @@ export default function App() {
               onOpenDetails={() => openPlanInResource()}
             />
           )}
+
+          {mainPane === "chat" && tasksPanelOpen && session.sessionId ? (
+            <AgentTasksPanel
+              messages={messages}
+              t={(k, vars) => tr(k, vars)}
+              onClose={() => setTasksPanelOpen(false)}
+            />
+          ) : null}
 
           {/* Pre-turn / host errors: T04 deck (problem · cause · primary · secondary) */}
           {errorBanner && !hasChatTurnError && (
