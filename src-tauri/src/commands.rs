@@ -1491,7 +1491,13 @@ pub async fn export_support_bundle(
     };
 
     let tmp = crate::support_bundle::write_support_bundle(&doctor)?;
-    save_and_reveal_zip(tmp, "Save support bundle", "grok-app-support.zip")
+    save_and_reveal_file(
+        tmp,
+        "Save support bundle",
+        "grok-app-support.zip",
+        "Zip",
+        &["zip"],
+    )
 }
 
 /// Full session diagnostic zip: messages, meta, settings, CLI probe, agent trail, logs.
@@ -1509,13 +1515,177 @@ pub async fn export_session_bundle(
     let tmp = crate::support_bundle::write_session_bundle(&sid, runtime)?;
     let short: String = sid.chars().take(8).collect();
     let suggested = format!("grok-app-session-{short}.zip");
-    save_and_reveal_zip(tmp, "Save session diagnostic bundle", &suggested)
+    save_and_reveal_file(
+        tmp,
+        "Save session diagnostic bundle",
+        &suggested,
+        "Zip",
+        &["zip"],
+    )
 }
 
-fn save_and_reveal_zip(
+/// Export the Grok Build CLI session trace (`grok trace <agent_id> --local`).
+/// Resolves `agent_session_id` from live/parked runtime or session meta.
+/// Opens a save dialog for the `.tar.gz` and reveals the file.
+#[tauri::command]
+pub async fn session_trace_export(
+    session_id: String,
+    mgr: State<'_, Arc<SessionManager>>,
+) -> Result<serde_json::Value, String> {
+    let sid = session_id.trim().to_string();
+    if sid.is_empty() {
+        return Err("session id is empty".into());
+    }
+
+    // Prefer live/parked agent id (may be newer than the index), then meta.
+    let live_agent = mgr.diagnostic_runtime_for(&sid).and_then(|rt| {
+        rt.get("agentSessionId")
+            .and_then(|v| v.as_str())
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .map(|s| s.to_string())
+    });
+
+    tauri::async_runtime::spawn_blocking(move || {
+        session_trace_export_blocking(&sid, live_agent.as_deref())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+const TRACE_EXPORT_TIMEOUT_SECS: u64 = 90;
+
+fn session_trace_export_blocking(
+    session_id: &str,
+    live_agent_session_id: Option<&str>,
+) -> Result<serde_json::Value, String> {
+    let meta = store::load_sessions_index()
+        .into_iter()
+        .find(|s| s.id == session_id)
+        .ok_or_else(|| format!("session not found: {session_id}"))?;
+
+    let agent_sid = live_agent_session_id
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(|s| s.to_string())
+        .or_else(|| {
+            meta.agent_session_id
+                .as_deref()
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+                .map(|s| s.to_string())
+        })
+        .ok_or_else(|| {
+            "No agent session linked. Start a conversation first so the App has an agent session id."
+                .to_string()
+        })?;
+
+    let settings = store::load_settings();
+    let probe = cli_probe::probe_cli(settings.manual_cli_path.as_deref());
+    let Some(cli_path) = probe.path.filter(|_| probe.found) else {
+        return Err("Grok Build CLI not found".into());
+    };
+    let grok_home = crate::paths::resolve_agent_grok_home(&settings.session_data_mode);
+
+    let short: String = agent_sid.chars().take(8).collect();
+    let stamp = chrono::Utc::now().format("%Y%m%d-%H%M%S");
+    let tmp = std::env::temp_dir().join(format!("grok-trace-{short}-{stamp}.tar.gz"));
+    let tmp_s = tmp.to_string_lossy().to_string();
+
+    let args = vec![
+        "trace".to_string(),
+        agent_sid.clone(),
+        "--local".to_string(),
+        "-o".to_string(),
+        tmp_s.clone(),
+        "--json".to_string(),
+    ];
+
+    let (tx, rx) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        let mut cmd = std::process::Command::new(&cli_path);
+        cmd.args(&args);
+        cmd.env("GROK_HOME", &grok_home);
+        crate::process_util::apply_no_window_std(&mut cmd);
+        if let Some(path_env) = crate::process_util::enriched_path_env() {
+            cmd.env("PATH", path_env);
+        }
+        let _ = tx.send(cmd.output());
+    });
+
+    let output = match rx.recv_timeout(std::time::Duration::from_secs(TRACE_EXPORT_TIMEOUT_SECS)) {
+        Ok(Ok(o)) => o,
+        Ok(Err(e)) => {
+            return Err(store::redact_text(&format!("Failed to run grok trace: {e}")));
+        }
+        Err(_) => {
+            return Err(format!(
+                "grok trace timed out after {TRACE_EXPORT_TIMEOUT_SECS}s"
+            ));
+        }
+    };
+
+    let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+
+    if !output.status.success() {
+        let msg = if !stderr.is_empty() {
+            stderr
+        } else if !stdout.is_empty() {
+            stdout
+        } else {
+            "grok trace failed".into()
+        };
+        return Err(store::redact_text(&msg)
+            .trim()
+            .chars()
+            .take(1200)
+            .collect());
+    }
+
+    // Prefer the archive we asked for; fall back to JSON local_path from CLI.
+    let archive = if tmp.is_file() {
+        tmp
+    } else {
+        let from_json = serde_json::from_str::<serde_json::Value>(&stdout)
+            .ok()
+            .and_then(|v| {
+                v.get("local_path")
+                    .and_then(|p| p.as_str())
+                    .map(|s| std::path::PathBuf::from(s))
+            });
+        match from_json {
+            Some(p) if p.is_file() => p,
+            _ => {
+                let detail = if !stdout.is_empty() {
+                    store::redact_text(&stdout)
+                } else {
+                    "archive file not created".into()
+                };
+                return Err(format!(
+                    "grok trace succeeded but archive missing: {}",
+                    detail.trim().chars().take(400).collect::<String>()
+                ));
+            }
+        }
+    };
+
+    let suggested = format!("grok-trace-{short}.tar.gz");
+    save_and_reveal_file(
+        archive,
+        "Save session trace",
+        &suggested,
+        "Trace archive",
+        &["tar.gz", "gz", "tgz"],
+    )
+}
+
+fn save_and_reveal_file(
     tmp: std::path::PathBuf,
     dialog_title: &str,
     fallback_name: &str,
+    filter_name: &str,
+    extensions: &[&str],
 ) -> Result<serde_json::Value, String> {
     let suggested = tmp
         .file_name()
@@ -1525,11 +1695,11 @@ fn save_and_reveal_zip(
     let dest = rfd::FileDialog::new()
         .set_title(dialog_title)
         .set_file_name(&suggested)
-        .add_filter("Zip", &["zip"])
+        .add_filter(filter_name, extensions)
         .save_file();
 
     let final_path = if let Some(dest) = dest {
-        std::fs::copy(&tmp, &dest).map_err(|e| format!("copy zip: {e}"))?;
+        std::fs::copy(&tmp, &dest).map_err(|e| format!("copy archive: {e}"))?;
         let _ = std::fs::remove_file(&tmp);
         dest
     } else {

@@ -228,6 +228,7 @@ pub fn run() {
             commands::cli_doctor_fix,
             commands::export_support_bundle,
             commands::export_session_bundle,
+            commands::session_trace_export,
             commands::reset_app_data,
             commands::skills_list,
             commands::agents_list,

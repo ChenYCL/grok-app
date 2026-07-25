@@ -6079,6 +6079,33 @@ export default function App() {
     [session.sessionId, showToast, tr],
   );
 
+  /** Export Grok Build CLI session trace (`grok trace --local`). */
+  const exportSessionTrace = useCallback(
+    async (sessionId?: string | null) => {
+      const id = sessionId || session.sessionId;
+      if (!id) {
+        showToast(tr("session.exportTraceFail"));
+        return;
+      }
+      try {
+        const res = await api.sessionTraceExport(id);
+        if (res?.ok && res.path) {
+          showToast(tr("session.exportTraceDone"), 4200);
+        } else {
+          showToast(tr("session.exportTraceFail"));
+        }
+      } catch (e) {
+        const msg = String(e);
+        if (/no agent session/i.test(msg)) {
+          showToast(tr("session.exportTraceNoAgent"), 5000);
+        } else {
+          showToast(`${tr("session.exportTraceFail")}: ${msg}`, 5000);
+        }
+      }
+    },
+    [session.sessionId, showToast, tr],
+  );
+
   const beginEditLastUser = useCallback(
     (msg: ChatMessage) => {
       if (msg.role !== "user") return;
@@ -9373,6 +9400,14 @@ export default function App() {
                     title: s.title,
                     projectId: s.projectId,
                   });
+                },
+              },
+              {
+                id: "export-trace",
+                label: tr("session.exportTrace"),
+                icon: <IconArchive size={16} />,
+                onClick: () => {
+                  void exportSessionTrace(s.id);
                 },
               },
               {
