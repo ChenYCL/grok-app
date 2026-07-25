@@ -10,6 +10,7 @@ import { Tip } from "@/components/ui/tooltip";
 import { useFloatingMenu } from "@/lib/floatingMenu";
 import {
   formatTokenCount,
+  type ContextUsageBreakdown,
   type ContextUsageDisplay,
   type LastCompactSummary,
 } from "@/lib/contextUsage";
@@ -31,6 +32,11 @@ export type ContextUsageChipLabels = {
   heuristicNote: string;
   auto: string;
   manual: string;
+  breakdownUser: string;
+  breakdownAssistant: string;
+  breakdownThought: string;
+  /** Shown under role rows when breakdown is estimated-only. */
+  breakdownEstimatedNote: string;
 };
 
 type Props = {
@@ -76,6 +82,51 @@ function formatLastCompactDetail(
   return last.trigger === "manual" ? labels.manual : labels.auto;
 }
 
+/** Breakdown values are always heuristic — show with ~ prefix. */
+function formatBreakdownValue(n: number): string {
+  return `~${formatTokenCount(n)}`;
+}
+
+function BreakdownRows({
+  breakdown,
+  labels,
+}: {
+  breakdown: ContextUsageBreakdown;
+  labels: ContextUsageChipLabels;
+}) {
+  return (
+    <>
+      <div className="ctx-chip__row">
+        <span className="ctx-chip__k">{labels.breakdownUser}</span>
+        <span className="ctx-chip__v">
+          <span className="ctx-chip__tokens">
+            {formatBreakdownValue(breakdown.userTokens)}
+          </span>
+        </span>
+      </div>
+      <div className="ctx-chip__row">
+        <span className="ctx-chip__k">{labels.breakdownAssistant}</span>
+        <span className="ctx-chip__v">
+          <span className="ctx-chip__tokens">
+            {formatBreakdownValue(breakdown.assistantTokens)}
+          </span>
+        </span>
+      </div>
+      <div className="ctx-chip__row">
+        <span className="ctx-chip__k">{labels.breakdownThought}</span>
+        <span className="ctx-chip__v">
+          <span className="ctx-chip__tokens">
+            {formatBreakdownValue(breakdown.thoughtTokens)}
+          </span>
+        </span>
+      </div>
+      {breakdown.estimated ? (
+        <p className="ctx-chip__note">{labels.breakdownEstimatedNote}</p>
+      ) : null}
+    </>
+  );
+}
+
 export function ContextUsageChip({
   display,
   labels,
@@ -96,9 +147,13 @@ export function ContextUsageChip({
     placement: "up",
     fitContent: true,
     minWidth: 220,
-    estHeight: 220,
+    estHeight: 280,
     gap: 8,
-    deps: [display.label, display.lastCompact?.messageId],
+    deps: [
+      display.label,
+      display.lastCompact?.messageId,
+      display.breakdown?.totalTokens,
+    ],
   });
 
   const tip = useMemo(() => tipFor(display, labels), [display, labels]);
@@ -147,6 +202,9 @@ export function ContextUsageChip({
                 <span className="ctx-chip__src">{source}</span>
               </span>
             </div>
+            {display.breakdown ? (
+              <BreakdownRows breakdown={display.breakdown} labels={labels} />
+            ) : null}
             <div className="ctx-chip__row">
               <span className="ctx-chip__k">{labels.lastCompact}</span>
               <span className="ctx-chip__v">

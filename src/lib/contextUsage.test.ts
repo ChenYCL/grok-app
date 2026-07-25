@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  estimateContextBreakdown,
   estimateTokensFromMessages,
   estimateTokensFromText,
   formatContextChipLabel,
@@ -54,6 +55,44 @@ describe("estimateTokensFromText / messages", () => {
       { id: "tool", role: "tool", content: "tool_step|x", marker: "tool_step" },
     ]);
     expect(n).toBe(3);
+  });
+});
+
+describe("estimateContextBreakdown", () => {
+  it("splits user / assistant / thought with ceil(chars/4)", () => {
+    const b = estimateContextBreakdown([
+      { id: "u", role: "user", content: "a".repeat(8) }, // 2
+      {
+        id: "a",
+        role: "assistant",
+        content: "b".repeat(12), // 3
+        thought: "c".repeat(4), // 1
+      },
+      {
+        id: "t",
+        role: "tool",
+        content: "ignored".repeat(20),
+        marker: "tool_step",
+      },
+    ]);
+    expect(b.userTokens).toBe(2);
+    expect(b.assistantTokens).toBe(3);
+    expect(b.thoughtTokens).toBe(1);
+    expect(b.totalTokens).toBe(6);
+    expect(b.estimated).toBe(true);
+  });
+
+  it("returns zeros for empty / tools-only", () => {
+    const b = estimateContextBreakdown([
+      { id: "t", role: "tool", content: "x", marker: "tool_step" },
+    ]);
+    expect(b).toEqual({
+      userTokens: 0,
+      assistantTokens: 0,
+      thoughtTokens: 0,
+      totalTokens: 0,
+      estimated: true,
+    });
   });
 });
 
@@ -141,6 +180,7 @@ describe("resolveContextUsageDisplay", () => {
     expect(d.source).toBe("unknown");
     expect(d.label).toBe("—");
     expect(d.tokens).toBeNull();
+    expect(d.breakdown).toBeNull();
   });
 
   it("estimates from messages when never compacted", () => {
@@ -150,6 +190,30 @@ describe("resolveContextUsageDisplay", () => {
     expect(d.source).toBe("estimated");
     expect(d.tokens).toBe(10);
     expect(d.label).toBe("~10");
+    expect(d.breakdown).toEqual({
+      userTokens: 10,
+      assistantTokens: 0,
+      thoughtTokens: 0,
+      totalTokens: 10,
+      estimated: true,
+    });
+  });
+
+  it("includes role breakdown on estimated multi-role transcript", () => {
+    const d = resolveContextUsageDisplay(INITIAL_CONTEXT_USAGE, [
+      { id: "u", role: "user", content: "abcd" }, // 1
+      {
+        id: "a",
+        role: "assistant",
+        content: "efgh", // 1
+        thought: "ijkl", // 1
+      },
+    ]);
+    expect(d.source).toBe("estimated");
+    expect(d.breakdown?.userTokens).toBe(1);
+    expect(d.breakdown?.assistantTokens).toBe(1);
+    expect(d.breakdown?.thoughtTokens).toBe(1);
+    expect(d.breakdown?.estimated).toBe(true);
   });
 
   it("uses known tokens after compact with no further messages", () => {
@@ -170,6 +234,8 @@ describe("resolveContextUsageDisplay", () => {
     expect(d.source).toBe("known");
     expect(d.tokens).toBe(40_000);
     expect(d.label).toBe("40k");
+    // No visible user/assistant content → no breakdown rows
+    expect(d.breakdown).toBeNull();
   });
 
   it("adds post-compact estimate with ~ prefix", () => {
@@ -185,6 +251,7 @@ describe("resolveContextUsageDisplay", () => {
     expect(d.source).toBe("estimated");
     expect(d.tokens).toBe(101);
     expect(d.label.startsWith("~")).toBe(true);
+    expect(d.breakdown?.userTokens).toBe(1);
   });
 
   it("compact without tokens stays unknown (no full-history estimate)", () => {
@@ -202,6 +269,9 @@ describe("resolveContextUsageDisplay", () => {
     expect(d.source).toBe("unknown");
     expect(d.label).toBe("—");
     expect(d.lastCompact?.trigger).toBe("manual");
+    // Visible split still available as estimated free/unknown note path
+    expect(d.breakdown?.userTokens).toBe(100);
+    expect(d.breakdown?.estimated).toBe(true);
   });
 });
 

@@ -156,25 +156,76 @@ export function estimateTokensFromText(text: string): number {
   return Math.ceil(n / 4);
 }
 
+/** True for rows excluded from visible-chat token estimates. */
+function isSkippedContextMessage(m: ContextUsageMessage): boolean {
+  return (
+    m.marker === "context_compact" ||
+    m.marker === "tool_step" ||
+    m.marker === "turn_cancelled" ||
+    m.role === "tool"
+  );
+}
+
 /** Sum visible chat text (user/assistant content + thought); skip tools/markers. */
 export function estimateTokensFromMessages(
   messages: ContextUsageMessage[],
 ): number {
   let chars = 0;
   for (const m of messages) {
-    if (
-      m.marker === "context_compact" ||
-      m.marker === "tool_step" ||
-      m.marker === "turn_cancelled" ||
-      m.role === "tool"
-    ) {
-      continue;
-    }
+    if (isSkippedContextMessage(m)) continue;
     chars += (m.content || "").length;
     chars += (m.thought || "").length;
   }
   if (chars <= 0) return 0;
   return Math.ceil(chars / 4);
+}
+
+/**
+ * Rough role breakdown of visible chat (same ~4 chars/token heuristic).
+ * Always estimated — never model tokenizer output.
+ * User content → user; assistant body → assistant; thought/reasoning → thought.
+ */
+export interface ContextUsageBreakdown {
+  userTokens: number;
+  assistantTokens: number;
+  thoughtTokens: number;
+  /** Sum of the three role estimates (each ceil'd independently). */
+  totalTokens: number;
+  /** Always true for this heuristic path. */
+  estimated: true;
+}
+
+export function estimateContextBreakdown(
+  messages: ContextUsageMessage[],
+): ContextUsageBreakdown {
+  let userChars = 0;
+  let assistantChars = 0;
+  let thoughtChars = 0;
+  for (const m of messages) {
+    if (isSkippedContextMessage(m)) continue;
+    const contentLen = (m.content || "").length;
+    const thoughtLen = (m.thought || "").length;
+    if (m.role === "user") {
+      userChars += contentLen;
+      // Rare thought on user rows still counts as thought if present.
+      thoughtChars += thoughtLen;
+    } else {
+      // assistant (and any other non-tool visible role)
+      assistantChars += contentLen;
+      thoughtChars += thoughtLen;
+    }
+  }
+  const userTokens = userChars <= 0 ? 0 : Math.ceil(userChars / 4);
+  const assistantTokens =
+    assistantChars <= 0 ? 0 : Math.ceil(assistantChars / 4);
+  const thoughtTokens = thoughtChars <= 0 ? 0 : Math.ceil(thoughtChars / 4);
+  return {
+    userTokens,
+    assistantTokens,
+    thoughtTokens,
+    totalTokens: userTokens + assistantTokens + thoughtTokens,
+    estimated: true,
+  };
 }
 
 /** Compact token display: 999 / 1.2k / 12k / 1.5M */
@@ -207,6 +258,19 @@ export interface ContextUsageDisplay {
   /** Chip primary label: "42k", "~12k", or "—" */
   label: string;
   lastCompact: LastCompactSummary | null;
+  /**
+   * Role split of visible chat (chars/4). Always heuristic when present.
+   * Null when there is no visible content to attribute.
+   */
+  breakdown: ContextUsageBreakdown | null;
+}
+
+function breakdownOrNull(
+  messages: ContextUsageMessage[],
+): ContextUsageBreakdown | null {
+  const b = estimateContextBreakdown(messages);
+  if (b.totalTokens <= 0) return null;
+  return b;
 }
 
 /**
@@ -217,6 +281,8 @@ export function resolveContextUsageDisplay(
   messages: ContextUsageMessage[],
 ): ContextUsageDisplay {
   const lastCompact = state.lastCompact;
+  // Breakdown always from full visible transcript (host history not rewritten).
+  const breakdown = breakdownOrNull(messages);
 
   if (state.knownTokens != null) {
     let delta = 0;
@@ -238,6 +304,7 @@ export function resolveContextUsageDisplay(
       source,
       label: formatContextChipLabel(tokens, source),
       lastCompact,
+      breakdown,
     };
   }
 
@@ -248,6 +315,8 @@ export function resolveContextUsageDisplay(
       source: "unknown",
       label: formatContextChipLabel(null, "unknown"),
       lastCompact,
+      // Still surface visible role split as estimated (honest ~).
+      breakdown,
     };
   }
 
@@ -259,6 +328,7 @@ export function resolveContextUsageDisplay(
       source: "unknown",
       label: formatContextChipLabel(null, "unknown"),
       lastCompact: null,
+      breakdown: null,
     };
   }
   return {
@@ -266,5 +336,6 @@ export function resolveContextUsageDisplay(
     source: "estimated",
     label: formatContextChipLabel(estimated, "estimated"),
     lastCompact: null,
+    breakdown,
   };
 }
