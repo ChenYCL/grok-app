@@ -1177,6 +1177,8 @@ export async function pluginUpdate(name?: string | null) {
   return invoke<PluginActionResult>("plugin_update", {
     name: n ? n : null,
   });
+}
+
 // ── Managed configuration (`grok setup` / `grok setup --json`) ──────────────
 
 export type ManagedSetupErrorKind =
