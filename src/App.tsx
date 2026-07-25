@@ -1967,7 +1967,6 @@ export default function App() {
           "account",
           "archived",
           "extensions",
-          "remote_im",
           "runtime",
           "shortcuts",
           "about",
@@ -5719,7 +5718,6 @@ export default function App() {
               "account",
               "archived",
               "extensions",
-              "remote_im",
               "runtime",
               "shortcuts",
               "about",
@@ -6870,9 +6868,6 @@ export default function App() {
           onSkillsPrefsChanged={() =>
             setSkillsReloadToken((n) => n + 1)
           }
-          trustedProjects={projects
-            .filter((p) => p.trusted)
-            .map((p) => ({ id: p.id, name: p.name, path: p.path }))}
           onProviderActivated={() => {
             // Hot-reload Grok Build: drop live ACP so next send re-spawns with new GROK_HOME config.
             void (async () => {
