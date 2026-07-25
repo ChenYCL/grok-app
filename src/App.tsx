@@ -122,6 +122,7 @@ import {
 } from "@/lib/permissionOptions";
 import { AskUserModal } from "@/components/AskUserModal";
 import { DoctorModal } from "@/components/DoctorModal";
+import { VoiceOverlay } from "@/components/VoiceOverlay";
 import {
   filterSessionSearch,
   mergeSessionSearchHits,
@@ -241,6 +242,7 @@ import {
   IconAttach,
   IconSend,
   IconMic,
+  IconLiveVoice,
   IconQueue,
   IconStop,
   IconFolder,
@@ -421,6 +423,8 @@ export default function App() {
   promptHistoryIndexRef.current = promptHistoryIndex;
   /** Composer voice dictation FSM (record → STT → insert draft). */
   const [voice, setVoice] = useState<VoiceFsmState>(() => initialVoiceState());
+  /** Full-duplex live voice overlay (separate from composer dictation). */
+  const [liveVoiceOpen, setLiveVoiceOpen] = useState(false);
   const [voiceGate, setVoiceGate] = useState<{
     available: boolean;
     reason: VoiceErrorClass | null;
@@ -9200,6 +9204,38 @@ export default function App() {
                     <IconMic size={16} />
                   </button>
                 </Tip>
+                <Tip label={tr("voice.startLive")}>
+                  <button
+                    type="button"
+                    className={
+                      "icon-btn composer__voice-live" +
+                      (liveVoiceOpen ? " is-on" : "")
+                    }
+                    disabled={
+                      !voiceGate.available ||
+                      voice.phase === "transcribing" ||
+                      voice.phase === "requesting_mic"
+                    }
+                    aria-pressed={liveVoiceOpen}
+                    aria-label={tr("voice.startLive")}
+                    onClick={() => {
+                      if (!voiceGate.available) {
+                        showToast(
+                          voiceErrorMessage(voiceGate.reason ?? "not_available"),
+                          5200,
+                        );
+                        return;
+                      }
+                      // Mic is shared with dictation — stop recording first.
+                      if (voice.phase === "recording") {
+                        toggleVoice();
+                      }
+                      setLiveVoiceOpen(true);
+                    }}
+                  >
+                    <IconLiveVoice size={16} />
+                  </button>
+                </Tip>
                 {canStop(session.state) ? (
                   <>
                     {sendQueue.canShowQueueButton(
@@ -9564,6 +9600,25 @@ export default function App() {
           ))}
         </ul>
       </GlassModal>
+      <VoiceOverlay
+        locale={resolveLocale(locale)}
+        open={liveVoiceOpen}
+        projectPath={activeProject?.path ?? null}
+        projectId={activeProject?.id ?? null}
+        projectName={activeProject?.name ?? null}
+        onClose={() => setLiveVoiceOpen(false)}
+        onOpenSession={(id) => {
+          setLiveVoiceOpen(false);
+          const row = sessions.find((s) => s.id === id);
+          if (row) {
+            const proj =
+              projects.find((p) => p.id === row.projectId) ?? activeProject;
+            void openSession(row, proj ?? undefined);
+          } else {
+            showToast(tr("voice.sessionMissing"), 3500);
+          }
+        }}
+      />
       <AskUserModal
         payload={askUser}
         labels={{
