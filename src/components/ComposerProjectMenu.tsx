@@ -9,6 +9,7 @@ import {
   IconChevronDown,
   IconFolder,
   IconPlus,
+  IconTrash,
 } from "@/components/icons";
 import { Tip } from "@/components/ui/tooltip";
 import { useFloatingMenu } from "@/lib/floatingMenu";
@@ -39,8 +40,8 @@ type Props = {
     worktreeSwitch: string;
     worktreeMain: string;
     worktreeDetached: string;
-    /** Badge when project folder is missing on disk. */
-    pathMissing?: string;
+    /** Remove linked worktree (non-main). */
+    worktreeRemove?: string;
   };
   /** Linked worktrees for the active project (loaded by parent). */
   worktrees?: GitWorktreeEntry[];
@@ -57,6 +58,8 @@ type Props = {
   onAdd: () => void;
   /** Switch agent cwd to this worktree path (add project if needed + bind). */
   onSwitchWorktree?: (wt: GitWorktreeEntry) => void;
+  /** Open confirm to remove a linked (non-main) worktree. */
+  onRemoveWorktree?: (wt: GitWorktreeEntry) => void;
   onOpen?: () => void;
 };
 
@@ -74,6 +77,7 @@ export function ComposerProjectMenu({
   onSelect,
   onAdd,
   onSwitchWorktree,
+  onRemoveWorktree,
   onOpen,
 }: Props) {
   const [open, setOpen] = useState(false);
@@ -116,12 +120,7 @@ export function ComposerProjectMenu({
   }, [open]);
 
   const label = activeProject?.name ?? labels.noProject;
-  const activeMissing = activeProject?.pathOk === false;
-  const tip = activeMissing
-    ? (labels.pathMissing
-        ? `${labels.pathMissing}: ${activeProject?.path || ""}`.trim()
-        : activeProject?.path) || labels.pickProject
-    : activeProject?.path || labels.pickProject;
+  const tip = activeProject?.path || labels.pickProject;
 
   return (
     <div ref={rootRef} className={`cpm${open ? " is-open" : ""}`}>
@@ -132,8 +131,7 @@ export function ComposerProjectMenu({
           className={
             "chip chip--project" +
             (open ? " is-open" : "") +
-            (!activeProject ? " chip--muted" : "") +
-            (activeMissing ? " chip--project-path-missing" : "")
+            (!activeProject ? " chip--muted" : "")
           }
           disabled={disabled}
           aria-haspopup="menu"
@@ -193,22 +191,15 @@ export function ComposerProjectMenu({
               >
                 {projects.map((p) => {
                   const active = activeProject?.id === p.id;
-                  const missing = p.pathOk === false;
                   return (
                     <button
                       key={p.id}
                       type="button"
                       role="menuitem"
                       className={
-                        "cmm__opt cpm__item" +
-                        (active ? " is-active" : "") +
-                        (missing ? " cpm__item--path-missing" : "")
+                        "cmm__opt cpm__item" + (active ? " is-active" : "")
                       }
-                      title={
-                        missing && labels.pathMissing
-                          ? `${labels.pathMissing}: ${p.path}`
-                          : p.path
-                      }
+                      title={p.path}
                       onClick={() => {
                         onSelect(p);
                         setOpen(false);
@@ -216,11 +207,6 @@ export function ComposerProjectMenu({
                     >
                       <span className="cmm__opt-main">
                         <span className="cmm__opt-title">{p.name}</span>
-                        {missing && labels.pathMissing ? (
-                          <span className="cpm__path-badge">
-                            {labels.pathMissing}
-                          </span>
-                        ) : null}
                       </span>
                       {active ? (
                         <span className="cmm__opt-check" aria-hidden>
@@ -254,8 +240,15 @@ export function ComposerProjectMenu({
                       ]
                         .filter(Boolean)
                         .join(" · ");
+                      const canRemove =
+                        !wt.isMain && !!onRemoveWorktree && !!labels.worktreeRemove;
                       return (
-                        <li key={wt.path}>
+                        <li
+                          key={wt.path}
+                          className={
+                            "cpm__worktree-li" + (canRemove ? " has-remove" : "")
+                          }
+                        >
                           <button
                             type="button"
                             role="menuitem"
@@ -283,6 +276,24 @@ export function ComposerProjectMenu({
                               </span>
                             ) : null}
                           </button>
+                          {canRemove ? (
+                            <Tip label={labels.worktreeRemove!}>
+                              <button
+                                type="button"
+                                className="cpm__worktree-remove"
+                                aria-label={labels.worktreeRemove}
+                                title={labels.worktreeRemove}
+                                onClick={(e) => {
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                  setOpen(false);
+                                  onRemoveWorktree?.(wt);
+                                }}
+                              >
+                                <IconTrash size={14} />
+                              </button>
+                            </Tip>
+                          ) : null}
                         </li>
                       );
                     })}

@@ -373,6 +373,20 @@ const en = {
   "composer.worktreeMain": "main",
   "composer.worktreeDetached": "detached",
   "composer.worktreeSwitched": "Using worktree {name} ({branch})",
+  "composer.worktreeRemove": "Remove…",
+  "composer.worktreeRemoveTitle": "Remove git worktree",
+  "composer.worktreeRemoveMsg":
+    "Remove worktree “{name}” ({branch})? This deletes the worktree folder on disk (not the branch).",
+  "composer.worktreeRemoveForce":
+    "Force remove (dirty or locked worktree)",
+  "composer.worktreeRemoveConfirm": "Remove worktree",
+  "composer.worktreeRemoving": "Removing…",
+  "composer.worktreeRemoved": "Removed worktree {name}",
+  "composer.worktreeRemoveMainBlocked":
+    "The main worktree cannot be removed",
+  "composer.worktreeLeaveProjectTitle": "Leave project entry?",
+  "composer.worktreeLeaveProjectMsg":
+    "The folder for “{name}” is gone. Remove it from your project list? Chats stay; only the project row is removed.",
   "composer.clearProject": "No project (orphan chat)",
   "composer.projectUntrusted": "Not trusted yet",
   "composer.projectBound": "Session bound to “{name}”",
@@ -1591,6 +1605,18 @@ const zh: Record<MessageKey, string> = {
   "composer.worktreeMain": "主目录",
   "composer.worktreeDetached": "游离 HEAD",
   "composer.worktreeSwitched": "已切换到 worktree {name}（{branch}）",
+  "composer.worktreeRemove": "移除…",
+  "composer.worktreeRemoveTitle": "移除 git worktree",
+  "composer.worktreeRemoveMsg":
+    "移除 worktree「{name}」（{branch}）？会删除磁盘上的 worktree 目录（不会删除分支）。",
+  "composer.worktreeRemoveForce": "强制移除（有未提交改动或已锁定）",
+  "composer.worktreeRemoveConfirm": "移除 worktree",
+  "composer.worktreeRemoving": "正在移除…",
+  "composer.worktreeRemoved": "已移除 worktree {name}",
+  "composer.worktreeRemoveMainBlocked": "不能移除主 worktree",
+  "composer.worktreeLeaveProjectTitle": "从项目列表移出？",
+  "composer.worktreeLeaveProjectMsg":
+    "「{name}」对应的文件夹已不存在。要从项目列表移出吗？会话保留，只去掉项目条目。",
   "composer.clearProject": "无项目（其他会话）",
   "composer.projectUntrusted": "尚未信任",
   "composer.projectBound": "会话已绑定到「{name}」",

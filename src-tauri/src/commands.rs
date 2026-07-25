@@ -4292,6 +4292,152 @@ pub async fn git_worktrees_list(project_path: String) -> Result<GitWorktreesResu
     })
 }
 
+/// Normalize a path for worktree equality checks (slash direction, no trailing
+/// slash, ASCII lowercased so macOS/Windows case-insensitive volumes match).
+pub fn normalize_worktree_path_key(raw: &str) -> String {
+    let mut s = normalize_fs_path(raw).replace('\\', "/");
+    while s.len() > 1 && s.ends_with('/') {
+        s.pop();
+    }
+    s.make_ascii_lowercase();
+    s
+}
+
+/// Case-insensitive path equality after normalization (pure; unit-tested).
+pub fn worktree_paths_equal(a: &str, b: &str) -> bool {
+    let na = normalize_worktree_path_key(a);
+    let nb = normalize_worktree_path_key(b);
+    !na.is_empty() && na == nb
+}
+
+/// Refuse removing the main (primary) worktree. Pure; unit-tested.
+pub fn refuse_remove_main_worktree(
+    listed: &[GitWorktreeEntry],
+    worktree_path: &str,
+) -> Result<(), String> {
+    let target = normalize_fs_path(worktree_path);
+    if target.is_empty() {
+        return Err("empty worktree path".into());
+    }
+    let main = listed
+        .iter()
+        .find(|w| w.is_main)
+        .or_else(|| listed.first());
+    if let Some(m) = main {
+        if worktree_paths_equal(&m.path, &target) {
+            return Err("refusing to remove the main worktree".into());
+        }
+    }
+    Ok(())
+}
+
+/// Result of `git worktree remove`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GitWorktreeRemoveResult {
+    /// Absolute path that was removed.
+    pub path: String,
+    /// Whether `--force` was used.
+    pub forced: bool,
+}
+
+/// Remove a linked git worktree via `git worktree remove` (argv only, no shell).
+///
+/// Refuses the main worktree. Optional `force` maps to `--force` (dirty / locked).
+#[tauri::command]
+pub async fn git_worktree_remove(
+    project_path: String,
+    worktree_path: String,
+    force: Option<bool>,
+) -> Result<GitWorktreeRemoveResult, String> {
+    let project = normalize_fs_path(&project_path);
+    if project.is_empty() {
+        return Err("empty path".into());
+    }
+    let proj = std::path::PathBuf::from(&project);
+    if !proj.is_dir() {
+        return Err("project not a directory".into());
+    }
+    git_probe_work_tree(&project)?;
+
+    let target = normalize_fs_path(&worktree_path);
+    if target.is_empty() {
+        return Err("empty worktree path".into());
+    }
+    // Disallow option-like paths so a crafted path cannot become a git flag.
+    if target.starts_with('-') {
+        return Err("invalid worktree path".into());
+    }
+
+    let list_out = std::process::Command::new("git")
+        .args(["-C", &project, "worktree", "list", "--porcelain"])
+        .output()
+        .map_err(|e| e.to_string())?;
+    if !list_out.status.success() {
+        let err = String::from_utf8_lossy(&list_out.stderr).trim().to_string();
+        return Err(if err.is_empty() {
+            "git worktree list failed".into()
+        } else {
+            err.chars().take(200).collect()
+        });
+    }
+    let listed = parse_worktree_porcelain(&String::from_utf8_lossy(&list_out.stdout));
+    if listed.is_empty() {
+        return Err("no worktrees found".into());
+    }
+
+    refuse_remove_main_worktree(&listed, &target)?;
+
+    let registered = listed.iter().any(|w| worktree_paths_equal(&w.path, &target));
+    if !registered {
+        return Err("worktree not registered for this repository".into());
+    }
+
+    // Use the path as listed by git (preserves real casing / form).
+    let remove_path = listed
+        .iter()
+        .find(|w| worktree_paths_equal(&w.path, &target))
+        .map(|w| w.path.clone())
+        .unwrap_or(target.clone());
+
+    let forced = force.unwrap_or(false);
+    // Safe argv — never go through a shell.
+    // `git worktree remove [--force] <path>`
+    let mut args: Vec<String> = vec![
+        "-C".into(),
+        project,
+        "worktree".into(),
+        "remove".into(),
+    ];
+    if forced {
+        args.push("--force".into());
+    }
+    args.push(remove_path.clone());
+
+    let out = std::process::Command::new("git")
+        .args(&args)
+        .output()
+        .map_err(|e| e.to_string())?;
+    if !out.status.success() {
+        let err = String::from_utf8_lossy(&out.stderr).trim().to_string();
+        let err = if err.is_empty() {
+            String::from_utf8_lossy(&out.stdout).trim().to_string()
+        } else {
+            err
+        };
+        return Err(if err.is_empty() {
+            "git worktree remove failed".into()
+        } else {
+            err.chars().take(400).collect()
+        });
+    }
+
+    Ok(GitWorktreeRemoveResult {
+        path: remove_path,
+        forced,
+    })
+}
+
 #[cfg(test)]
 mod git_worktree_parse_tests {
     use super::*;
@@ -4324,6 +4470,35 @@ detached
     #[test]
     fn empty_input() {
         assert!(parse_worktree_porcelain("").is_empty());
+    }
+
+    #[test]
+    fn worktree_paths_equal_normalizes_slash_and_case() {
+        assert!(worktree_paths_equal("/Users/Me/Repo", "/users/me/repo/"));
+        assert!(worktree_paths_equal(r"C:\Work\App", r"c:/work/app"));
+        assert!(!worktree_paths_equal("/a/b", "/a/c"));
+        assert!(!worktree_paths_equal("", "/a"));
+        assert!(!worktree_paths_equal("", ""));
+    }
+
+    #[test]
+    fn refuse_remove_main_worktree_blocks_primary() {
+        let list = parse_worktree_porcelain(
+            "\
+worktree /Users/me/repo
+HEAD abc
+branch refs/heads/main
+
+worktree /Users/me/repo-feat
+HEAD def
+branch refs/heads/feat
+",
+        );
+        assert!(refuse_remove_main_worktree(&list, "/Users/me/repo").is_err());
+        assert!(refuse_remove_main_worktree(&list, "/Users/me/repo/").is_err());
+        assert!(refuse_remove_main_worktree(&list, "/USERS/ME/REPO").is_err());
+        assert!(refuse_remove_main_worktree(&list, "/Users/me/repo-feat").is_ok());
+        assert!(refuse_remove_main_worktree(&list, "").is_err());
     }
 }
 

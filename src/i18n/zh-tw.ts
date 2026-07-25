@@ -315,6 +315,18 @@ export const zhTW: Record<MessageKey, string> = {
   "composer.worktreeMain": "主目錄",
   "composer.worktreeDetached": "游離 HEAD",
   "composer.worktreeSwitched": "已切換到 worktree {name}（{branch}）",
+  "composer.worktreeRemove": "移除…",
+  "composer.worktreeRemoveTitle": "移除 git worktree",
+  "composer.worktreeRemoveMsg":
+    "移除 worktree「{name}」（{branch}）？會刪除磁碟上的 worktree 目錄（不會刪除分支）。",
+  "composer.worktreeRemoveForce": "強制移除（有未提交變更或已鎖定）",
+  "composer.worktreeRemoveConfirm": "移除 worktree",
+  "composer.worktreeRemoving": "正在移除…",
+  "composer.worktreeRemoved": "已移除 worktree {name}",
+  "composer.worktreeRemoveMainBlocked": "不能移除主 worktree",
+  "composer.worktreeLeaveProjectTitle": "從專案列表移出？",
+  "composer.worktreeLeaveProjectMsg":
+    "「{name}」對應的資料夾已不存在。要從專案列表移出嗎？會話保留，只去掉專案項目。",
   "composer.addFiles": "上傳檔案",
   "composer.planMode": "計劃模式",
   "composer.planModeHint": "開啟計劃模式",
