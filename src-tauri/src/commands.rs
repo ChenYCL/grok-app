@@ -698,7 +698,7 @@ pub async fn settings_set(
         need_soft_respawn = true;
     }
     if need_soft_respawn {
-        mgr.soft_respawn(&app).await;
+        mgr.soft_respawn_with_reason(&app, "settings_spawn").await;
     }
 
     if let Err(e) = mgr

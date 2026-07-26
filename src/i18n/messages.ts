@@ -694,6 +694,8 @@ const en = {
     "Agent process recycled after idle — session kept; next message will reconnect.",
   "agent.dataModeRecycledToast":
     "Agents restarted after data mode change — next message reconnects under the new home.",
+  "agent.softRespawnToast":
+    "Agent reloaded with new settings — next message reconnects.",
   "agent.processLimitToast":
     "Agent process limit reached. Stop another session or raise the limit in Settings → Runtime.",
   "agent.streamStallBanner":
@@ -2467,6 +2469,8 @@ const zh: Record<MessageKey, string> = {
     "Agent 进程因闲置已回收 — 会话仍在；下次发送将重新连接。",
   "agent.dataModeRecycledToast":
     "数据模式切换后已重启 Agent — 下次发送将在新目录下重连。",
+  "agent.softRespawnToast":
+    "已按新设置重载 Agent — 下次发送将重新连接。",
   "agent.processLimitToast":
     "已达 Agent 进程上限。请先停止其他会话，或在设置 → 运行环境中提高上限。",
   "agent.streamStallBanner":
