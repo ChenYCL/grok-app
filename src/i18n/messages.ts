@@ -10,7 +10,7 @@ const en = {
   // App chrome
   "app.name": "Grok",
   "app.tagline": "MIT · Unofficial · Sister project grok-go",
-  "app.versionFooter": "Grok v0.1.7 · MIT · Unofficial · Sister project grok-go",
+  "app.versionFooter": "Grok v0.1.8 · MIT · Unofficial · Sister project grok-go",
 
   // Window chrome (Windows self-drawn controls)
   "window.minimize": "Minimize",
@@ -1978,7 +1978,7 @@ const en = {
 const zh: Record<MessageKey, string> = {
   "app.name": "Grok",
   "app.tagline": "MIT · 非 xAI 官方 · 姐妹项目 grok-go",
-  "app.versionFooter": "Grok v0.1.7 · MIT · 非 xAI 官方 · 姐妹项目 grok-go",
+  "app.versionFooter": "Grok v0.1.8 · MIT · 非 xAI 官方 · 姐妹项目 grok-go",
 
   "window.minimize": "最小化",
   "window.maximize": "最大化",
