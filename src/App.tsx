@@ -7389,13 +7389,19 @@ export default function App() {
           navigateSettings("account");
           break;
         case "dismiss":
+        case "keep_waiting":
+          // keep_waiting is for the stream-stall banner (clears prompt only).
           setLocalError(null);
+          break;
+        case "cancel_turn":
+          setLocalError(null);
+          void stop();
           break;
         default:
           break;
       }
     },
-    [ensureConnected, navigateSettings, openDoctor],
+    [ensureConnected, navigateSettings, openDoctor, stop],
   );
 
   const refreshAccount = useCallback(
@@ -9586,23 +9592,28 @@ export default function App() {
             </div>
           )}
 
-          {/* I06: pure stream silence — cancel or keep waiting */}
+          {/* I06: pure stream silence — structured deck look; keep-waiting / cancel stay custom */}
           {streamStall && mainPane === "chat" && (
-            <div className="stall-banner" role="status">
-              <div className="stall-banner__summary">
+            <div className="stall-banner error-banner" role="status">
+              <div className="error-banner__code">STREAM_STALL</div>
+              <div className="error-banner__summary">
                 {(() => {
+                  // Prefer pre-token copy when this session has not seen model output yet.
                   const sid = streamStall.sessionId || session.sessionId || "";
                   const saw = !!liveMap[sid]?.sawModelOutput;
                   const tier = stallTierFromProgress({ sawModelOutput: saw });
                   const key = stallMessageKey(tier);
                   return key === "endOfTurn.stallPreToken"
                     ? tr("endOfTurn.stallPreToken")
-                    : tr("agent.streamStallBanner", {
-                        seconds: String(streamStall.stallSeconds),
-                      });
+                    : tr("error.deck.stall.problem");
                 })()}
               </div>
-              <div className="stall-banner__actions">
+              <div className="error-banner__cause">
+                {tr("error.deck.stall.cause", {
+                  seconds: String(streamStall.stallSeconds),
+                })}
+              </div>
+              <div className="stall-banner__actions error-banner__actions">
                 <button
                   type="button"
                   className="btn btn--ghost stall-banner__btn"

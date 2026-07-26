@@ -14,7 +14,11 @@ export type ErrorDeckActionId =
   | "open_runtime"
   | "open_account"
   | "open_providers"
-  | "dismiss";
+  | "dismiss"
+  /** Stream-stall banner: clear the stall prompt and keep the turn running. */
+  | "keep_waiting"
+  /** Stream-stall banner: cancel the in-flight turn. */
+  | "cancel_turn";
 
 /** Host / product error classes (aligned with AgentErrorCode + specials). */
 export type ErrorDeckCode =
@@ -27,6 +31,7 @@ export type ErrorDeckCode =
   | "PROCESS_LIMIT"
   | "TURN_TIMEOUT"
   | "AGENT_DISCONNECTED"
+  | "STREAM_STALL"
   | "GENERIC";
 
 export type ErrorDeckAction = {
@@ -125,6 +130,16 @@ const DECK: Record<ErrorDeckCode, DeckSpec> = {
     primaryLabel: "error.action.reconnect",
     secondaryId: "open_doctor",
     secondaryLabel: "error.action.openDoctor",
+  },
+  STREAM_STALL: {
+    problem: "error.deck.stall.problem",
+    cause: "error.deck.stall.cause",
+    // Handled by the stall banner (not the generic error-banner switch):
+    // keep_waiting dismisses the prompt; cancel_turn stops the turn.
+    primaryId: "keep_waiting",
+    primaryLabel: "agent.streamStallKeepWaiting",
+    secondaryId: "cancel_turn",
+    secondaryLabel: "agent.streamStallCancel",
   },
   GENERIC: {
     problem: "error.deck.generic.problem",

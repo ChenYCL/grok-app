@@ -183,6 +183,9 @@ const en = {
   "error.deck.disconnect.problem": "Agent connection interrupted",
   "error.deck.disconnect.cause":
     "The RPC channel closed mid-turn. Reconnect and send again.",
+  "error.deck.stall.problem": "Stream looks stuck",
+  "error.deck.stall.cause":
+    "No tokens or tool progress for about {seconds}s. Cancel this turn or keep waiting.",
   "error.deck.generic.problem": "Something went wrong",
   "error.deck.generic.cause":
     "Check Doctor for CLI/auth status, then retry the last action.",
@@ -2135,6 +2138,9 @@ const zh: Record<MessageKey, string> = {
   "error.deck.disconnect.problem": "与 Agent 的连接已中断",
   "error.deck.disconnect.cause":
     "传输通道在回合中关闭。请重新连接后再发送。",
+  "error.deck.stall.problem": "输出似乎卡住了",
+  "error.deck.stall.cause":
+    "约 {seconds} 秒没有新的内容或工具进度。可取消本轮或继续等待。",
   "error.deck.generic.problem": "出了点问题",
   "error.deck.generic.cause": "可在 Doctor 查看 CLI/鉴权状态，然后重试上一步操作。",
   "main.startTitle": "开始对话",

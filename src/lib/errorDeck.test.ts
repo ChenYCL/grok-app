@@ -42,4 +42,14 @@ describe("buildErrorDeck", () => {
     );
     expect(deckCodeFromAgent("AUTH_FAILED")).toBe("AUTH_FAILED");
   });
+
+  it("STREAM_STALL uses keep_waiting / cancel_turn (not dual dismiss)", () => {
+    const stall = buildErrorDeck("STREAM_STALL", "en");
+    expect(stall.code).toBe("STREAM_STALL");
+    expect(stall.problem.toLowerCase()).toMatch(/stuck|stream/);
+    expect(stall.primary.id).toBe("keep_waiting");
+    expect(stall.secondary?.id).toBe("cancel_turn");
+    expect(stall.primary.label.toLowerCase()).toMatch(/wait/);
+    expect(stall.secondary?.label.toLowerCase()).toMatch(/cancel/);
+  });
 });
