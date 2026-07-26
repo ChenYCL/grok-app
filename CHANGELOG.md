@@ -34,6 +34,7 @@ See `docs/llm-wiki/release.md`.
 - **Sidebar project collapse remembered**: collapsed folders persist across relaunch (`sidebarCollapsedProjectIds`).
 - **Launch opens new chat by default**: `reopenLastSession` defaults off (one-shot migration for existing installs); start on a draft new-chat page unless the setting is enabled.
 - **Launch does not pre-select a project**: cold start leaves the project chip empty (orphan draft); first trusted/first project is no longer auto-selected.
+- **Connect device → IM by default**: sidebar “Connect device” opens Remote control → **IM** tab (not Phone mirror).
 - **Empty-run toast spam (#128)**: only soft-signal when a non-ask turn ends with **no visible assistant reply** and zero tool calls. Pure-text answers (body present, no tools) no longer toast every turn.
 - Primary buttons use theme accent (not warning color).
 - Plan progress scoped to the viewed session; hard-dismiss confirm.

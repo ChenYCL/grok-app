@@ -8782,7 +8782,7 @@ export default function App() {
               <button
                 type="button"
                 className="nav-item"
-                onClick={() => navigateSettings("remote_im", "mirror")}
+                onClick={() => navigateSettings("remote_im", "im")}
                 title={tr("settings.nav.remoteIm")}
               >
                 <span className="nav-item__icon">
