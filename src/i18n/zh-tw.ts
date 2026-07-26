@@ -706,7 +706,7 @@ export const zhTW: Record<MessageKey, string> = {
     "超過該分鐘數無活動後回收 Agent 行程。對話紀錄保留，下次傳送會自動重連。",
   "settings.streamStallSeconds": "串流停滯逾時（秒）",
   "settings.streamStallSecondsDesc":
-    "若一輪對話在該時間內無任何串流片段或工具活動，將提示「取消本輪 / 繼續等待」（預設 120）。仍有工具事件的長任務不會誤判為停滯。",
+    "若一輪對話在該時間內無任何串流片段或工具活動，應用會先嘗試靜默收尾，再提示「繼續等待 / 結束本輪」（預設 180）。仍有工具事件的長任務不會誤判為停滯。更長靜默後會自動結束本輪並保留已生成內容。",
   "settings.maxAgentTurns": "最大 Agent 輪次",
   "settings.maxAgentTurnsDesc":
     "啟動 Agent 時傳入 `grok --max-turns N`（1–200）。留空或 0 表示使用 CLI 預設。下次啟動 Agent 時生效——變更後請重新連線工作階段。",
@@ -722,9 +722,11 @@ export const zhTW: Record<MessageKey, string> = {
   "agent.processLimitToast":
     "Agent 行程已達上限（目前槽位均被正在執行的任務佔用）。請停止某個執行中的工作階段，或到 設定 → 執行環境 → 行程池 提高上限。",
   "agent.streamStallBanner":
-    "約 {seconds} 秒無串流片段或工具活動。可取消本輪或繼續等待。",
-  "agent.streamStallCancel": "取消本輪",
+    "約 {seconds} 秒無串流片段或工具活動。可繼續等待或結束本輪。",
+  "agent.streamStallCancel": "結束本輪",
+  "agent.streamStallEndTurn": "結束本輪",
   "agent.streamStallKeepWaiting": "繼續等待",
+  "agent.streamStallHardEndToast": "本輪因長時間無進度已結束，內容已保留。",
   "settings.permissionDeep": "預設權限",
   "settings.permissionDeepDesc":
     "對新一輪對話生效，並依上方選擇的範圍記憶。YOLO 會自動核准工具呼叫。",
@@ -1269,8 +1271,10 @@ export const zhTW: Record<MessageKey, string> = {
   "activity.cancelledByUser": "已由使用者停止",
   "activity.cancelledAgentExit": "Agent 程序已結束",
   "activity.cancelledToast": "本輪已停止",
-  "endOfTurn.stall": "已停止 — 串流長時間無輸出",
-  "endOfTurn.stallPreToken": "已停止 — 仍在等待首個模型輸出",
+  "endOfTurn.stall": "已暫停 — 暫時沒有新輸出",
+  "endOfTurn.stallPreToken": "已暫停 — 仍在等待首個模型輸出",
+  "endOfTurn.stallWorkingTools": "已暫停 — 工具長時間無新進度",
+  "endOfTurn.stallMaybeDone": "本輪可能已經完成",
   "endOfTurn.permissionDenied": "權限被拒絕",
   "endOfTurn.error": "本輪以錯誤結束",
   "endOfTurn.unknown": "本輪已結束",

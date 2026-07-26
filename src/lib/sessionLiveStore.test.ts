@@ -2,11 +2,15 @@ import { describe, expect, it } from "vitest";
 import {
   busySessionIds,
   emptyLiveSnapshot,
+  inferTurnProgressFromMessages,
   isSessionLiveBusy,
+  markSawModelOutput,
+  mergeTurnProgressFromMessages,
   projectHostIntoLiveMap,
   resumeStateForSession,
   upsertLiveSnapshot,
 } from "./sessionLiveStore";
+import type { ChatMessage } from "./session";
 
 describe("sessionLiveStore", () => {
   it("tracks multi-session busy", () => {
@@ -115,5 +119,37 @@ describe("sessionLiveStore", () => {
     expect(
       resumeStateForSession("a", { sessionId: "b", state: "ready" }, map).state,
     ).toBe("awaiting_permission");
+  });
+
+  it("keeps sawModelOutput sticky across streaming host projections", () => {
+    let map = projectHostIntoLiveMap(
+      {},
+      { sessionId: "a", state: "streaming", streamingMessageId: "m1" },
+    );
+    map = markSawModelOutput(map, "a");
+    map = projectHostIntoLiveMap(map, {
+      sessionId: "a",
+      state: "streaming",
+      streamingMessageId: "m1",
+    });
+    expect(map.a!.sawModelOutput).toBe(true);
+    // Leaving the turn clears flags.
+    map = projectHostIntoLiveMap(map, { sessionId: "a", state: "ready" });
+    expect(map.a!.sawModelOutput).toBe(false);
+  });
+
+  it("infers turn progress from journal after last user message", () => {
+    const msgs: ChatMessage[] = [
+      { id: "u1", role: "user", content: "hi" },
+      { id: "t1", role: "tool", content: "tool_step|completed||read", marker: "tool_step" },
+      { id: "a1", role: "assistant", content: "done report" },
+    ];
+    expect(inferTurnProgressFromMessages(msgs)).toEqual({
+      sawModelOutput: true,
+      sawToolActivity: true,
+    });
+    let map = mergeTurnProgressFromMessages({}, "s", msgs);
+    expect(map.s!.sawModelOutput).toBe(true);
+    expect(map.s!.sawToolActivity).toBe(true);
   });
 });

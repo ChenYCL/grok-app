@@ -15,8 +15,10 @@ export interface SessionLiveSnapshot {
   liveToolTitle: string | null;
   liveToolId: string | null;
   terminalReason: EndOfTurnReason | null;
-  /** First model output seen this turn (for stall tier) */
+  /** First model output seen this turn (for stall tier). Sticky until turn ends. */
   sawModelOutput: boolean;
+  /** Tool activity observed this turn (stall tier; sticky until turn ends). */
+  sawToolActivity: boolean;
   startedAt: number | null;
   updatedAt: number;
   /** Permission waiting */
@@ -37,6 +39,7 @@ export function emptyLiveSnapshot(
     liveToolId: null,
     terminalReason: null,
     sawModelOutput: false,
+    sawToolActivity: false,
     startedAt: null,
     updatedAt: nowMs,
     awaitingPermission: false,
@@ -72,6 +75,7 @@ export function projectHostIntoLiveMap(
   if (!host.sessionId) return map;
   const awaitingPermission = host.state === "awaiting_permission";
   const live = isSessionLiveStreaming(host.state);
+  const prev = map[host.sessionId];
   return upsertLiveSnapshot(
     map,
     {
@@ -79,13 +83,18 @@ export function projectHostIntoLiveMap(
       state: host.state,
       streamingMessageId: host.streamingMessageId ?? null,
       awaitingPermission,
-      startedAt: live
-        ? (map[host.sessionId]?.startedAt ?? nowMs)
-        : null,
-      // Clear live tool when not streaming
+      startedAt: live ? (prev?.startedAt ?? nowMs) : null,
+      // Clear live tool when not streaming. Keep saw* sticky until turn truly ends
+      // so stall copy never says "waiting for first token" after a full answer.
       ...(live
         ? {}
-        : { liveToolTitle: null, liveToolId: null, sawModelOutput: false }),
+        : {
+            liveToolTitle: null,
+            liveToolId: null,
+            // Only reset progress flags when leaving a live turn (ready/idle/error).
+            sawModelOutput: false,
+            sawToolActivity: false,
+          }),
     },
     nowMs,
   );
@@ -148,6 +157,66 @@ export function markSawModelOutput(
   return upsertLiveSnapshot(
     map,
     { sessionId, sawModelOutput: true },
+    nowMs,
+  );
+}
+
+export function markSawToolActivity(
+  map: SessionLiveMap,
+  sessionId: string,
+  nowMs: number = Date.now(),
+): SessionLiveMap {
+  return upsertLiveSnapshot(
+    map,
+    { sessionId, sawToolActivity: true },
+    nowMs,
+  );
+}
+
+/**
+ * Infer sticky progress flags from journal messages for the *current* turn
+ * (from last user message to end). Used when opening a session or before stall UI.
+ */
+export function inferTurnProgressFromMessages(
+  messages: ChatMessage[],
+): { sawModelOutput: boolean; sawToolActivity: boolean } {
+  let lastUser = -1;
+  for (let i = messages.length - 1; i >= 0; i--) {
+    if (messages[i]?.role === "user") {
+      lastUser = i;
+      break;
+    }
+  }
+  const slice = lastUser >= 0 ? messages.slice(lastUser + 1) : messages;
+  let sawModelOutput = false;
+  let sawToolActivity = false;
+  for (const m of slice) {
+    if (m.role === "assistant" && (m.content || "").trim().length > 0) {
+      sawModelOutput = true;
+    }
+    if (m.role === "tool" || m.marker === "tool_step") {
+      sawToolActivity = true;
+    }
+  }
+  return { sawModelOutput, sawToolActivity };
+}
+
+/** Merge journal-inferred progress into the live map (OR with existing sticky flags). */
+export function mergeTurnProgressFromMessages(
+  map: SessionLiveMap,
+  sessionId: string,
+  messages: ChatMessage[],
+  nowMs: number = Date.now(),
+): SessionLiveMap {
+  const inferred = inferTurnProgressFromMessages(messages);
+  const prev = map[sessionId] ?? emptyLiveSnapshot(sessionId, nowMs);
+  return upsertLiveSnapshot(
+    map,
+    {
+      sessionId,
+      sawModelOutput: prev.sawModelOutput || inferred.sawModelOutput,
+      sawToolActivity: prev.sawToolActivity || inferred.sawToolActivity,
+    },
     nowMs,
   );
 }

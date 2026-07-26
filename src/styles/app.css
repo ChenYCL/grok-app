@@ -6687,7 +6687,12 @@ button.settings-wallpaper__preview:hover:not(:disabled) {
   line-height: 1.5;
 }
 
-/* Stream stall banner (I06) — warning surface with cancel / keep waiting */
+/* Stream stall banner (I06) — soft warning; keep waiting is primary */
+.stall-banner--soft {
+  border-color: color-mix(in srgb, var(--warning, #e6b84d) 55%, transparent);
+  background: color-mix(in srgb, var(--warning, #e6b84d) 12%, var(--bg-elevated, #1a1a1a));
+}
+
 .stall-banner {
   margin: 0 var(--space-5) var(--space-2);
   padding: var(--space-3);
@@ -6700,6 +6705,12 @@ button.settings-wallpaper__preview:hover:not(:disabled) {
   flex-wrap: wrap;
   align-items: center;
   gap: 10px 12px;
+}
+
+/* Prefer warning palette even when combined with error-banner utility classes. */
+.stall-banner.error-banner {
+  background: var(--warning-muted);
+  border-color: color-mix(in srgb, var(--warning) 45%, transparent);
 }
 
 .stall-banner__summary {
@@ -7833,9 +7844,15 @@ button.composer__context-item {
   max-width: 100%;
 }
 
-/* Path-in-place video card (replaces `videos/1.mp4` / links) */
+/* Path-in-place video card (replaces `videos/1.mp4` / links)
+ *
+ * Stage always has a non-zero reserved size (default 16:9 via JS aspect-ratio).
+ * Video is absolute-fill so metadata load / stream remounts do not thrash
+ * scrollHeight (that thrash + stick-to-bottom follow = chat flicker).
+ */
 .md-body__video-card {
   display: block;
+  box-sizing: border-box;
   max-width: min(100%, 360px);
   margin: 10px 0;
   border-radius: 12px;
@@ -7845,12 +7862,51 @@ button.composer__context-item {
   box-shadow: 0 1px 0 rgba(0, 0, 0, 0.04);
 }
 
-.md-body__video-card__el {
+.md-body__video-card__stage {
+  position: relative;
   display: block;
   width: 100%;
-  max-height: 240px;
+  /* Height from aspect-ratio (inline); never leave an empty collapsing box */
+  height: auto;
   background: #000;
-  vertical-align: middle;
+  overflow: hidden;
+}
+
+.md-body__video-card__el {
+  display: block;
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  object-position: center;
+  background: #000;
+  border: none;
+  margin: 0;
+  padding: 0;
+}
+
+.md-body__video-card__placeholder,
+.md-body__video-card__error {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 8px;
+  padding: 12px;
+  box-sizing: border-box;
+  color: var(--text-secondary);
+  font-size: 13px;
+  background: color-mix(in srgb, var(--bg-hover) 80%, #000 20%);
+}
+
+.md-body__video-card__name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
 }
 
 .md-body__video-card__caption {
@@ -7861,18 +7917,9 @@ button.composer__context-item {
   text-overflow: ellipsis;
   white-space: nowrap;
   border-top: 1px solid var(--border-subtle);
-}
-
-.md-body__video-card--loading,
-.md-body__video-card__error {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 8px;
-  min-height: 72px;
-  padding: 12px;
-  color: var(--text-secondary);
-  font-size: 13px;
+  /* Fixed caption band so presence of title doesn't reflow after first paint */
+  min-height: 28px;
+  box-sizing: border-box;
 }
 
 .md-body__video-card__btn {

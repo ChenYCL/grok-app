@@ -549,7 +549,7 @@ export function SettingsPage({
   onMaxConcurrentAgents,
   agentIdleMinutes = 30,
   onAgentIdleMinutes,
-  streamStallSeconds = 120,
+  streamStallSeconds = 180,
   onStreamStallSeconds,
   storeApiKeysInKeychain = false,
   onStoreApiKeysInKeychain,

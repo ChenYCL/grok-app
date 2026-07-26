@@ -14,7 +14,9 @@
 //!
 //! Streaming performance (I04 / I06):
 //! - Mid-stream journal upserts are throttled (≥500ms or paragraph / force).
-//! - Pure stream silence past `streamStallSeconds` emits `session://stream_stall`.
+//! - Pure stream silence: silent heal (orphan tools / ready-eligible end) first,
+//!   then at most one soft `session://stream_stall` per turn; hard silence
+//!   force-ends the turn while keeping the journal.
 
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
@@ -44,9 +46,29 @@ use crate::process_limits::{
 use crate::session_fsm::{SessionFsm, SessionState};
 use crate::store::{self, ChatMessageStored, MessageAttachmentStored, SessionMeta};
 use crate::stream_stall::{
-    normalize_stream_stall_seconds, should_emit_stall, stream_stall_message,
+    hard_stall_seconds, is_hard_stalled, is_stream_stalled, journal_tool_is_terminal,
+    normalize_stream_stall_seconds, should_emit_soft_stall, should_prune_open_tool_id,
+    stall_tier_from_evidence, stream_stall_message, StallTier,
 };
 use crate::turn_complete::{is_terminal_tool_status, should_defer_prompt_complete};
+
+/// Outcome of one stall-watchdog pass on a single live/background session.
+enum StallTickAction {
+    Healed {
+        session_id: String,
+    },
+    HardEnded {
+        session_id: String,
+        stall_seconds: u32,
+    },
+    SoftStall {
+        session_id: String,
+        stall_seconds: u32,
+        tier: StallTier,
+        saw_model_output: bool,
+        saw_tool_activity: bool,
+    },
+}
 
 /// Strip bulky MCP/RPC dumps so chat errors stay human-readable.
 /// Full stderr is still logged via `tracing` on the ACP client side.
@@ -199,14 +221,20 @@ struct LiveSession {
     last_stream_progress: Instant,
     /// Last time we emitted `session://stream_stall` for the current silence window.
     last_stall_emit: Option<Instant>,
+    /// Soft stall banners already shown this turn (capped; prefer silent heal).
+    stall_soft_emits: u32,
     /// Throttle mid-stream assistant journal upserts (I04).
     journal_throttle: JournalWriteThrottle,
     /// Tool calls still pending/in_progress this turn (#52 early prompt_complete).
     open_tool_ids: HashSet<String>,
+    /// Last tool event time per open id (orphan leak recovery).
+    open_tool_seen_at: HashMap<String, Instant>,
     /// `prompt_complete` arrived while tools/gates still open; finish when clear.
     deferred_prompt_complete: Option<String>,
     /// Tool events observed during the current turn (empty-run soft signal).
     tools_this_turn: u32,
+    /// Non-empty assistant body observed this turn (sticky until turn ends).
+    saw_model_output: bool,
     /// A `session/prompt` RPC is dispatched and has not resolved yet.
     ///
     /// Authoritative "this chat is working" flag — the FSM is not, because the
@@ -650,7 +678,128 @@ impl SessionManager {
         tracing::info!(
             "acp turn finished after deferred prompt_complete stop={stop_reason}"
         );
+        s.stall_soft_emits = 0;
+        s.saw_model_output = false;
+        s.open_tool_seen_at.clear();
         Some(empty)
+    }
+
+    /// Tool call ids that already have a terminal journal row (`tool-{id}`).
+    fn journal_terminal_tool_ids(app_session_id: &str) -> HashSet<String> {
+        let mut out = HashSet::new();
+        for m in store::load_messages(app_session_id) {
+            if m.role != "tool" {
+                continue;
+            }
+            let Some(call_id) = m.id.strip_prefix("tool-") else {
+                continue;
+            };
+            if journal_tool_is_terminal(&m.content) {
+                out.insert(call_id.to_string());
+            }
+        }
+        out
+    }
+
+    /// True when the journal has a non-empty, non-error assistant body (any turn).
+    /// Used only as a silent heal signal when Host is stuck Streaming after work finished.
+    fn journal_has_assistant_body(app_session_id: &str) -> bool {
+        store::load_messages(app_session_id).iter().rev().any(|m| {
+            m.role == "assistant" && !m.is_error && !m.content.trim().is_empty()
+        })
+    }
+
+    /// Drop leaked open tool ids (journal already terminal, or aged without updates).
+    fn prune_orphan_open_tools(s: &mut LiveSession, now: Instant) -> usize {
+        if s.open_tool_ids.is_empty() {
+            return 0;
+        }
+        let terminal = Self::journal_terminal_tool_ids(&s.app_session_id);
+        let mut drop_ids: Vec<String> = Vec::new();
+        for id in s.open_tool_ids.iter() {
+            let last = s
+                .open_tool_seen_at
+                .get(id)
+                .copied()
+                .unwrap_or(s.last_stream_progress);
+            let journal_done = terminal.contains(id);
+            if should_prune_open_tool_id(last, now, journal_done) {
+                drop_ids.push(id.clone());
+            }
+        }
+        let n = drop_ids.len();
+        for id in drop_ids {
+            s.open_tool_ids.remove(&id);
+            s.open_tool_seen_at.remove(&id);
+            tracing::info!(
+                target: "session",
+                session = %s.app_session_id,
+                tool_id = %id,
+                "pruned orphan open_tool_id (stall heal)"
+            );
+        }
+        n
+    }
+
+    /// Force-end a Streaming turn while preserving journal (silent heal / hard stall).
+    fn force_end_streaming_turn(s: &mut LiveSession, reason: &str) {
+        Self::maybe_flush_stream_journal(s, true, false);
+        s.stream_buf.clear();
+        s.stream_thought.clear();
+        s.stream_last_was_assistant = false;
+        s.stream_attachments.clear();
+        s.journal_throttle.reset();
+        s.open_tool_ids.clear();
+        s.open_tool_seen_at.clear();
+        s.deferred_prompt_complete = None;
+        s.tools_this_turn = 0;
+        s.prompt_in_flight = false;
+        if s.fsm.state() == SessionState::Streaming
+            || s.fsm.state() == SessionState::AwaitingPermission
+        {
+            let _ = s.fsm.end_stream();
+        }
+        s.streaming_message_id = None;
+        s.active_turn_id = None;
+        s.stream_message_id_locked = false;
+        s.last_stall_emit = None;
+        s.stall_soft_emits = 0;
+        s.saw_model_output = false;
+        tracing::info!(
+            target: "session",
+            session = %s.app_session_id,
+            reason,
+            "force-ended stuck streaming turn (journal preserved)"
+        );
+    }
+
+    /// Silent heal before any stall UI. Returns true if the turn was ended.
+    fn heal_stuck_streaming_turn(s: &mut LiveSession, now: Instant) -> bool {
+        if s.fsm.state() != SessionState::Streaming {
+            return false;
+        }
+        // Never auto-end while waiting on a human gate.
+        if s.pending_plan_rpc_id.is_some() || s.pending_ask_user_rpc_id.is_some() {
+            return false;
+        }
+
+        Self::prune_orphan_open_tools(s, now);
+
+        // Deferred prompt_complete may finish once tools are cleared.
+        if Self::try_finish_deferred_prompt_complete(s).is_some() {
+            return true;
+        }
+
+        // Pure stuck FSM: RPC done, no tools, no deferred finish left.
+        if !s.prompt_in_flight
+            && s.open_tool_ids.is_empty()
+            && s.deferred_prompt_complete.is_none()
+        {
+            Self::force_end_streaming_turn(s, "ready_eligible_silent_heal");
+            return true;
+        }
+
+        false
     }
 
     /// Emit empty-run toast event if the finish result says so.
@@ -690,7 +839,14 @@ impl SessionManager {
         normalize_stream_stall_seconds(store::load_settings().stream_stall_seconds)
     }
 
-    fn emit_stream_stall(app: &AppHandle, session_id: &str, stall_seconds: u32) {
+    fn emit_stream_stall(
+        app: &AppHandle,
+        session_id: &str,
+        stall_seconds: u32,
+        tier: StallTier,
+        saw_model_output: bool,
+        saw_tool_activity: bool,
+    ) {
         let _ = app.emit(
             "session://stream_stall",
             serde_json::json!({
@@ -698,6 +854,9 @@ impl SessionManager {
                 "stallSeconds": stall_seconds,
                 "code": "STREAM_STALL",
                 "message": stream_stall_message(stall_seconds),
+                "tier": tier.as_str(),
+                "sawModelOutput": saw_model_output,
+                "sawToolActivity": saw_tool_activity,
             }),
         );
     }
@@ -832,31 +991,195 @@ impl SessionManager {
         }
     }
 
-    /// I06: if live session is Streaming with pure silence, emit cancel prompt.
+    /// I06: silence → silent heal first; soft banner only if still stuck; hard end last.
     fn tick_stream_stall(&self, app: &AppHandle) {
         let stall_secs = Self::stream_stall_seconds_from_settings();
         let now = Instant::now();
-        let mut guard = self.inner.lock();
-        let Some(s) = guard.as_mut() else {
-            return;
+
+        // Heal live focus slot.
+        let live_action = {
+            let mut guard = self.inner.lock();
+            guard
+                .as_mut()
+                .and_then(|s| Self::tick_stream_stall_on_session(s, stall_secs, now))
         };
+        self.apply_stall_tick_action(app, live_action);
+
+        // Heal background busy turns (no soft UI — only silent/hard end).
+        let bg_actions: Vec<StallTickAction> = {
+            let mut bg = self.background.lock();
+            bg.values_mut()
+                .filter_map(|s| {
+                    Self::tick_stream_stall_on_session(s, stall_secs, now).and_then(|a| {
+                        // Background: heal/hard only — do not steal focus with soft banner.
+                        match a {
+                            StallTickAction::SoftStall { .. } => None,
+                            other => Some(other),
+                        }
+                    })
+                })
+                .collect()
+        };
+        for a in bg_actions {
+            self.apply_stall_tick_action(app, Some(a));
+        }
+    }
+
+    /// Per-session stall tick decision (mutates session when healing).
+    fn tick_stream_stall_on_session(
+        s: &mut LiveSession,
+        stall_secs: u32,
+        now: Instant,
+    ) -> Option<StallTickAction> {
         // Only pure streaming silence — not permission / plan / ask-user waits.
         if s.fsm.state() != SessionState::Streaming {
-            return;
+            return None;
         }
         if s.streaming_message_id.is_none() {
-            return;
+            return None;
         }
-        if !should_emit_stall(s.last_stream_progress, s.last_stall_emit, stall_secs, now) {
-            return;
+        if s.pending_plan_rpc_id.is_some() || s.pending_ask_user_rpc_id.is_some() {
+            return None;
+        }
+        // No silence yet — keep working.
+        if !is_stream_stalled(s.last_stream_progress, stall_secs, now) {
+            return None;
+        }
+
+        // 1) Silent heal (orphan tools + deferred complete + ready-eligible).
+        if Self::heal_stuck_streaming_turn(s, now) {
+            return Some(StallTickAction::Healed {
+                session_id: s.app_session_id.clone(),
+            });
+        }
+
+        // 2) Hard silence → force end, keep journal.
+        if is_hard_stalled(s.last_stream_progress, stall_secs, now) {
+            let sid = s.app_session_id.clone();
+            Self::force_end_streaming_turn(s, "hard_stall_timeout");
+            return Some(StallTickAction::HardEnded {
+                session_id: sid,
+                stall_seconds: hard_stall_seconds(stall_secs),
+            });
+        }
+
+        // 3) Soft banner (capped once per turn) — still less interruptive.
+        if !should_emit_soft_stall(
+            s.last_stream_progress,
+            s.last_stall_emit,
+            stall_secs,
+            s.stall_soft_emits,
+            now,
+        ) {
+            return None;
         }
         s.last_stall_emit = Some(now);
-        let sid = s.app_session_id.clone();
-        drop(guard);
-        tracing::warn!(
-            "stream stall: session={sid} silence≥{stall_secs}s — emitting cancel prompt"
-        );
-        Self::emit_stream_stall(app, &sid, stall_secs);
+        s.stall_soft_emits = s.stall_soft_emits.saturating_add(1);
+        let saw_model = s.saw_model_output
+            || !s.stream_buf.trim().is_empty()
+            || Self::journal_has_assistant_body(&s.app_session_id);
+        if saw_model {
+            s.saw_model_output = true;
+        }
+        let saw_tools = s.tools_this_turn > 0 || !s.open_tool_ids.is_empty();
+        // Terminal candidate: body present and no open tools — prefer maybe_done copy.
+        let terminal_candidate =
+            saw_model && s.open_tool_ids.is_empty() && s.deferred_prompt_complete.is_none();
+        let tier = stall_tier_from_evidence(saw_model, saw_tools, terminal_candidate);
+        Some(StallTickAction::SoftStall {
+            session_id: s.app_session_id.clone(),
+            stall_seconds: stall_secs,
+            tier,
+            saw_model_output: saw_model,
+            saw_tool_activity: saw_tools,
+        })
+    }
+
+    fn apply_stall_tick_action(&self, app: &AppHandle, action: Option<StallTickAction>) {
+        let Some(action) = action else {
+            return;
+        };
+        match action {
+            StallTickAction::Healed { session_id } => {
+                tracing::info!(
+                    target: "session",
+                    session = %session_id,
+                    "stream stall heal succeeded — turn Ready"
+                );
+                Self::emit_runtime(
+                    app,
+                    &SessionSnapshot {
+                        session_id: Some(session_id),
+                        agent_session_id: None,
+                        state: SessionState::Ready,
+                        last_error: None,
+                        streaming_message_id: None,
+                        backend: Self::backend_name(),
+                        model_id: None,
+                        project_path: None,
+                        title: String::new(),
+                    },
+                );
+                Self::emit_state(app, &self.snapshot());
+            }
+            StallTickAction::HardEnded {
+                session_id,
+                stall_seconds,
+            } => {
+                tracing::warn!(
+                    target: "session",
+                    session = %session_id,
+                    stall_seconds,
+                    "hard stream stall — force-ended turn, journal kept"
+                );
+                Self::emit_runtime(
+                    app,
+                    &SessionSnapshot {
+                        session_id: Some(session_id.clone()),
+                        agent_session_id: None,
+                        state: SessionState::Ready,
+                        last_error: None,
+                        streaming_message_id: None,
+                        backend: Self::backend_name(),
+                        model_id: None,
+                        project_path: None,
+                        title: String::new(),
+                    },
+                );
+                let _ = app.emit(
+                    "session://stream_stall_hard_end",
+                    serde_json::json!({
+                        "sessionId": session_id,
+                        "stallSeconds": stall_seconds,
+                        "code": "STREAM_STALL_HARD_END",
+                    }),
+                );
+                Self::emit_state(app, &self.snapshot());
+            }
+            StallTickAction::SoftStall {
+                session_id,
+                stall_seconds,
+                tier,
+                saw_model_output,
+                saw_tool_activity,
+            } => {
+                tracing::warn!(
+                    target: "session",
+                    session = %session_id,
+                    stall_seconds,
+                    tier = tier.as_str(),
+                    "stream soft stall — emitting keep-waiting prompt"
+                );
+                Self::emit_stream_stall(
+                    app,
+                    &session_id,
+                    stall_seconds,
+                    tier,
+                    saw_model_output,
+                    saw_tool_activity,
+                );
+            }
+        }
     }
 
     /// Live + background + parked processes that still have a living ACP child.
@@ -1170,10 +1493,13 @@ impl SessionManager {
             last_activity: now,
             last_stream_progress: now,
             last_stall_emit: None,
+            stall_soft_emits: 0,
             journal_throttle: JournalWriteThrottle::with_default_interval(),
             open_tool_ids: HashSet::new(),
+            open_tool_seen_at: HashMap::new(),
             deferred_prompt_complete: None,
             tools_this_turn: 0,
+            saw_model_output: false,
             prompt_in_flight: false,
         })
     }
@@ -1871,10 +2197,13 @@ impl SessionManager {
                 last_activity: now,
                 last_stream_progress: now,
                 last_stall_emit: None,
+                stall_soft_emits: 0,
                 journal_throttle: JournalWriteThrottle::with_default_interval(),
                 open_tool_ids: HashSet::new(),
+                open_tool_seen_at: HashMap::new(),
                 deferred_prompt_complete: None,
                 tools_this_turn: 0,
+            saw_model_output: false,
                 prompt_in_flight: false,
             });
         }
@@ -2137,10 +2466,13 @@ impl SessionManager {
             last_activity: now,
             last_stream_progress: now,
             last_stall_emit: None,
+            stall_soft_emits: 0,
             journal_throttle: JournalWriteThrottle::with_default_interval(),
             open_tool_ids: HashSet::new(),
+            open_tool_seen_at: HashMap::new(),
             deferred_prompt_complete: None,
             tools_this_turn: 0,
+            saw_model_output: false,
             // The agent is mid-turn; keep it un-parkable until the turn ends.
             prompt_in_flight: true,
         };
@@ -2294,6 +2626,7 @@ impl SessionManager {
                                 // Only real body text flips the phase boundary.
                                 if !text.trim().is_empty() {
                                     s.stream_last_was_assistant = true;
+                                    s.saw_model_output = true;
                                 }
                                 "none"
                             }
@@ -2540,8 +2873,11 @@ impl SessionManager {
                         if !tool_call_id.is_empty() {
                             if is_terminal_tool_status(&status) {
                                 s.open_tool_ids.remove(&tool_call_id);
+                                s.open_tool_seen_at.remove(&tool_call_id);
                             } else {
                                 s.open_tool_ids.insert(tool_call_id.clone());
+                                s.open_tool_seen_at
+                                    .insert(tool_call_id.clone(), Instant::now());
                             }
                         }
                         s.tools_this_turn = s.tools_this_turn.saturating_add(1);
@@ -2987,6 +3323,7 @@ impl SessionManager {
                             // Only real body text flips the phase boundary.
                             if !text.trim().is_empty() {
                                 s.stream_last_was_assistant = true;
+                                s.saw_model_output = true;
                             }
                             "none"
                         }
@@ -3202,8 +3539,11 @@ impl SessionManager {
                         if !tool_call_id.is_empty() {
                             if is_terminal_tool_status(&status) {
                                 s.open_tool_ids.remove(&tool_call_id);
+                                s.open_tool_seen_at.remove(&tool_call_id);
                             } else {
                                 s.open_tool_ids.insert(tool_call_id.clone());
+                                s.open_tool_seen_at
+                                    .insert(tool_call_id.clone(), Instant::now());
                             }
                         }
                         s.tools_this_turn = s.tools_this_turn.saturating_add(1);
@@ -3708,7 +4048,10 @@ impl SessionManager {
             s.journal_throttle.reset();
             s.last_stall_emit = None;
             s.open_tool_ids.clear();
+            s.open_tool_seen_at.clear();
             s.deferred_prompt_complete = None;
+            s.stall_soft_emits = 0;
+            s.saw_model_output = false;
             s.provider_retry_attempt = 0;
             s.provider_retry_aborted = false;
             s.tools_this_turn = 0;
@@ -4744,10 +5087,13 @@ mod session_routing_tests {
             last_activity: now,
             last_stream_progress: now,
             last_stall_emit: None,
+            stall_soft_emits: 0,
             journal_throttle: JournalWriteThrottle::with_default_interval(),
             open_tool_ids: HashSet::new(),
+            open_tool_seen_at: HashMap::new(),
             deferred_prompt_complete: None,
             tools_this_turn: tools,
+            saw_model_output: false,
             prompt_in_flight: false,
         }
     }
@@ -4837,10 +5183,13 @@ mod session_routing_tests {
             last_activity: now,
             last_stream_progress: now,
             last_stall_emit: None,
+            stall_soft_emits: 0,
             journal_throttle: JournalWriteThrottle::with_default_interval(),
             open_tool_ids: HashSet::new(),
+            open_tool_seen_at: HashMap::new(),
             deferred_prompt_complete: None,
             tools_this_turn: 0,
+            saw_model_output: false,
             prompt_in_flight: true,
         };
 
@@ -4926,10 +5275,13 @@ mod session_routing_tests {
             last_activity: now,
             last_stream_progress: now,
             last_stall_emit: None,
+            stall_soft_emits: 0,
             journal_throttle: JournalWriteThrottle::with_default_interval(),
             open_tool_ids: HashSet::new(),
+            open_tool_seen_at: HashMap::new(),
             deferred_prompt_complete: None,
             tools_this_turn: 0,
+            saw_model_output: false,
             prompt_in_flight: false,
         });
         let app = tauri::test::mock_app();

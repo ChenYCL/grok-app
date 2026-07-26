@@ -142,6 +142,8 @@ import {
   projectHostIntoLiveMap,
   projectLiveToolFromMessages,
   markSawModelOutput,
+  markSawToolActivity,
+  mergeTurnProgressFromMessages,
   resumeStateForSession,
   type SessionLiveMap,
 } from "@/lib/sessionLiveStore";
@@ -149,6 +151,7 @@ import { endOfTurnMarkerContent } from "@/lib/endOfTurn";
 import {
   stallMessageKey,
   stallTierFromProgress,
+  normalizeStallTier,
   reconcileSessionState,
   reconcileUiBusyGate,
 } from "@/lib/sessionPhase";
@@ -996,7 +999,7 @@ export default function App() {
   const [acpServerAddr, setAcpServerAddr] = useState("");
   const [maxConcurrentAgents, setMaxConcurrentAgents] = useState(8);
   const [agentIdleMinutes, setAgentIdleMinutes] = useState(30);
-  const [streamStallSeconds, setStreamStallSeconds] = useState(120);
+  const [streamStallSeconds, setStreamStallSeconds] = useState(180);
   /** 0 = omit `--max-turns` (CLI default). */
   const [maxAgentTurns, setMaxAgentTurns] = useState(0);
   const [storeApiKeysInKeychain, setStoreApiKeysInKeychain] = useState(false);
@@ -1053,6 +1056,9 @@ export default function App() {
   const [streamStall, setStreamStall] = useState<{
     sessionId?: string;
     stallSeconds: number;
+    tier?: string;
+    sawModelOutput?: boolean;
+    sawToolActivity?: boolean;
   } | null>(null);
   /** Queue item currently being steered into the live turn. */
   const [guidingQueueItemId, setGuidingQueueItemId] = useState<string | null>(null);
@@ -2160,9 +2166,11 @@ export default function App() {
             if (!sid) return;
             patchSessionMessages(sid, (prev) => {
               const next = applyToolEvent(prev, p);
-              setLiveMap((lm) =>
-                projectLiveToolFromMessages(lm, sid, next),
-              );
+              setLiveMap((lm) => {
+                let m = projectLiveToolFromMessages(lm, sid, next);
+                m = markSawToolActivity(m, sid);
+                return m;
+              });
               return next;
             });
             // Track write/edit tools for the session Changes panel.
@@ -2309,6 +2317,9 @@ export default function App() {
             stallSeconds?: number;
             code?: string;
             message?: string;
+            tier?: string;
+            sawModelOutput?: boolean;
+            sawToolActivity?: boolean;
           }>("session://stream_stall", (p) => {
             if (cancelled || !p) return;
             // Only prompt for the viewed session (or unknown id).
@@ -2321,11 +2332,46 @@ export default function App() {
             const secs =
               typeof p.stallSeconds === "number" && p.stallSeconds > 0
                 ? Math.round(p.stallSeconds)
-                : 120;
+                : streamStallSeconds;
+            // Merge journal evidence so we never show pre-token after a full answer.
+            const sid = p.sessionId || viewingSessionIdRef.current || "";
+            if (sid) {
+              setLiveMap((prev) => {
+                const msgs = messagesBySessionRef.current.get(sid) ?? [];
+                let next = mergeTurnProgressFromMessages(prev, sid, msgs);
+                if (p.sawModelOutput) {
+                  next = markSawModelOutput(next, sid);
+                }
+                if (p.sawToolActivity) {
+                  next = markSawToolActivity(next, sid);
+                }
+                return next;
+              });
+            }
             setStreamStall({
               sessionId: p.sessionId,
               stallSeconds: secs,
+              tier: p.tier,
+              sawModelOutput: p.sawModelOutput,
+              sawToolActivity: p.sawToolActivity,
             });
+          }),
+        );
+        await track(
+          api.listen<{
+            sessionId?: string;
+            stallSeconds?: number;
+            code?: string;
+          }>("session://stream_stall_hard_end", (p) => {
+            if (cancelled || !p) return;
+            setStreamStall(null);
+            if (
+              !p.sessionId ||
+              p.sessionId === viewingSessionIdRef.current
+            ) {
+              setToast(tr("agent.streamStallHardEndToast"));
+              window.setTimeout(() => setToast(null), 4200);
+            }
           }),
         );
         await track(
@@ -9683,20 +9729,64 @@ export default function App() {
             </div>
           )}
 
-          {/* I06: pure stream silence — structured deck look; keep-waiting / cancel stay custom */}
+          {/* I06: soft stall — heal-first Host; soft banner is secondary. Primary = keep waiting. */}
           {streamStall && mainPane === "chat" && (
-            <div className="stall-banner error-banner" role="status">
+            <div
+              className={`stall-banner error-banner${
+                (() => {
+                  const sid = streamStall.sessionId || session.sessionId || "";
+                  const live = liveMap[sid];
+                  const saw =
+                    !!streamStall.sawModelOutput ||
+                    !!live?.sawModelOutput ||
+                    false;
+                  const tools =
+                    !!streamStall.sawToolActivity ||
+                    !!live?.sawToolActivity ||
+                    false;
+                  const hostTier = normalizeStallTier(streamStall.tier);
+                  const tier =
+                    hostTier ??
+                    stallTierFromProgress({
+                      sawModelOutput: saw,
+                      sawToolActivity: tools,
+                      terminalCandidate: saw && !live?.liveToolId,
+                    });
+                  return tier === "maybe_done" || tier === "post_output"
+                    ? " stall-banner--soft"
+                    : "";
+                })()
+              }`}
+              role="status"
+            >
               <div className="error-banner__code">STREAM_STALL</div>
               <div className="error-banner__summary">
                 {(() => {
-                  // Prefer pre-token copy when this session has not seen model output yet.
                   const sid = streamStall.sessionId || session.sessionId || "";
-                  const saw = !!liveMap[sid]?.sawModelOutput;
-                  const tier = stallTierFromProgress({ sawModelOutput: saw });
+                  const live = liveMap[sid];
+                  const saw =
+                    !!streamStall.sawModelOutput || !!live?.sawModelOutput;
+                  const tools =
+                    !!streamStall.sawToolActivity || !!live?.sawToolActivity;
+                  const hostTier = normalizeStallTier(streamStall.tier);
+                  const tier =
+                    hostTier ??
+                    stallTierFromProgress({
+                      sawModelOutput: saw,
+                      sawToolActivity: tools,
+                      terminalCandidate: saw && !live?.liveToolId,
+                    });
                   const key = stallMessageKey(tier);
-                  return key === "endOfTurn.stallPreToken"
-                    ? tr("endOfTurn.stallPreToken")
-                    : tr("error.deck.stall.problem");
+                  if (key === "endOfTurn.stallPreToken") {
+                    return tr("endOfTurn.stallPreToken");
+                  }
+                  if (key === "endOfTurn.stallWorkingTools") {
+                    return tr("endOfTurn.stallWorkingTools");
+                  }
+                  if (key === "endOfTurn.stallMaybeDone") {
+                    return tr("endOfTurn.stallMaybeDone");
+                  }
+                  return tr("error.deck.stall.problem");
                 })()}
               </div>
               <div className="error-banner__cause">
@@ -9707,20 +9797,20 @@ export default function App() {
               <div className="stall-banner__actions error-banner__actions">
                 <button
                   type="button"
-                  className="btn btn--ghost stall-banner__btn"
+                  className="btn btn--primary stall-banner__btn"
                   onClick={() => setStreamStall(null)}
                 >
                   {tr("agent.streamStallKeepWaiting")}
                 </button>
                 <button
                   type="button"
-                  className="btn btn--primary stall-banner__btn stall-banner__btn--danger"
+                  className="btn btn--ghost stall-banner__btn"
                   onClick={() => {
                     setStreamStall(null);
                     void stop();
                   }}
                 >
-                  {tr("agent.streamStallCancel")}
+                  {tr("agent.streamStallEndTurn")}
                 </button>
               </div>
             </div>

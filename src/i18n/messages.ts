@@ -183,9 +183,9 @@ const en = {
   "error.deck.disconnect.problem": "Agent connection interrupted",
   "error.deck.disconnect.cause":
     "The RPC channel closed mid-turn. Reconnect and send again.",
-  "error.deck.stall.problem": "Stream looks stuck",
+  "error.deck.stall.problem": "Stream looks quiet",
   "error.deck.stall.cause":
-    "No tokens or tool progress for about {seconds}s. Cancel this turn or keep waiting.",
+    "No tokens or tool progress for about {seconds}s. Keep waiting or end this turn.",
   "error.deck.generic.problem": "Something went wrong",
   "error.deck.generic.cause":
     "Check Doctor for CLI/auth status, then retry the last action.",
@@ -739,7 +739,7 @@ const en = {
     "After this many minutes without activity, the agent process is recycled. Chat history is kept; the next message reconnects.",
   "settings.streamStallSeconds": "Stream stall timeout (seconds)",
   "settings.streamStallSecondsDesc":
-    "If a turn has no stream chunks or tool activity for this long, show a Cancel / Keep waiting prompt (default 120). Long-running tools that still emit events do not count as stalled.",
+    "If a turn has no stream chunks or tool activity for this long, the app first tries a silent heal, then may show Keep waiting / End turn (default 180). Long-running tools that still emit events do not count as stalled. After a longer hard silence the turn ends automatically and content is kept.",
   "settings.maxAgentTurns": "Max agent turns",
   "settings.maxAgentTurnsDesc":
     "Pass `grok --max-turns N` when starting the agent (1–200). Leave empty or 0 for the CLI default. Applies on the next agent start — reconnect the session after changing.",
@@ -755,9 +755,12 @@ const en = {
   "agent.processLimitToast":
     "Agent process limit reached (all slots are busy turns). Stop a running session or raise the limit in Settings → Runtime → Process pool.",
   "agent.streamStallBanner":
-    "No stream or tool progress for about {seconds}s. Cancel this turn or keep waiting.",
-  "agent.streamStallCancel": "Cancel turn",
+    "No stream or tool progress for about {seconds}s. Keep waiting or end this turn.",
+  "agent.streamStallCancel": "End turn",
+  "agent.streamStallEndTurn": "End turn",
   "agent.streamStallKeepWaiting": "Keep waiting",
+  "agent.streamStallHardEndToast":
+    "Turn ended after a long silence — your reply was kept.",
   "settings.permissionDeep": "Default permission",
   "settings.permissionDeepDesc":
     "Applied to new turns and remembered at the scope chosen above. YOLO auto-approves tools.",
@@ -1317,8 +1320,10 @@ const en = {
   "activity.cancelledByUser": "Stopped by user",
   "activity.cancelledAgentExit": "Agent process ended",
   "activity.cancelledToast": "Turn stopped",
-  "endOfTurn.stall": "Stopped — stream went silent",
-  "endOfTurn.stallPreToken": "Stopped — still waiting for the first response",
+  "endOfTurn.stall": "Paused — no new output for a while",
+  "endOfTurn.stallPreToken": "Paused — still waiting for the first response",
+  "endOfTurn.stallWorkingTools": "Paused — tools went quiet",
+  "endOfTurn.stallMaybeDone": "This turn may already be finished",
   "endOfTurn.permissionDenied": "Permission denied",
   "endOfTurn.error": "Turn ended with an error",
   "endOfTurn.unknown": "Turn ended",
@@ -2145,9 +2150,9 @@ const zh: Record<MessageKey, string> = {
   "error.deck.disconnect.problem": "与 Agent 的连接已中断",
   "error.deck.disconnect.cause":
     "传输通道在回合中关闭。请重新连接后再发送。",
-  "error.deck.stall.problem": "输出似乎卡住了",
+  "error.deck.stall.problem": "输出暂时停住了",
   "error.deck.stall.cause":
-    "约 {seconds} 秒没有新的内容或工具进度。可取消本轮或继续等待。",
+    "约 {seconds} 秒没有新的内容或工具进度。可继续等待或结束本轮。",
   "error.deck.generic.problem": "出了点问题",
   "error.deck.generic.cause": "可在 Doctor 查看 CLI/鉴权状态，然后重试上一步操作。",
   "main.startTitle": "开始对话",
@@ -2680,7 +2685,7 @@ const zh: Record<MessageKey, string> = {
     "超过该分钟数无活动后回收 Agent 进程。对话记录保留，下次发送会自动重连。",
   "settings.streamStallSeconds": "流式卡顿超时（秒）",
   "settings.streamStallSecondsDesc":
-    "若一轮对话在该时间内无任何流式片段或工具活动，将提示「取消本轮 / 继续等待」（默认 120）。仍有工具事件的长任务不会误判为卡顿。",
+    "若一轮对话在该时间内无任何流式片段或工具活动，应用会先尝试静默收尾，再提示「继续等待 / 结束本轮」（默认 180）。仍有工具事件的长任务不会误判为卡顿。更长静默后会自动结束本轮并保留已生成内容。",
   "settings.maxAgentTurns": "最大 Agent 轮次",
   "settings.maxAgentTurnsDesc":
     "启动 Agent 时传入 `grok --max-turns N`（1–200）。留空或 0 表示使用 CLI 默认。下次启动 Agent 时生效——更改后请重连会话。",
@@ -2696,9 +2701,11 @@ const zh: Record<MessageKey, string> = {
   "agent.processLimitToast":
     "Agent 进程已达上限（当前槽位均被正在执行的任务占用）。请停止某个运行中的会话，或到 设置 → 运行时 → 进程池 提高上限。",
   "agent.streamStallBanner":
-    "约 {seconds} 秒无流式片段或工具活动。可取消本轮或继续等待。",
-  "agent.streamStallCancel": "取消本轮",
+    "约 {seconds} 秒无流式片段或工具活动。可继续等待或结束本轮。",
+  "agent.streamStallCancel": "结束本轮",
+  "agent.streamStallEndTurn": "结束本轮",
   "agent.streamStallKeepWaiting": "继续等待",
+  "agent.streamStallHardEndToast": "本轮因长时间无进度已结束，内容已保留。",
   "settings.permissionDeep": "默认权限",
   "settings.permissionDeepDesc":
     "对新一轮对话生效，并按上方选择的范围记忆。YOLO 会自动批准工具调用。",
@@ -3243,8 +3250,10 @@ const zh: Record<MessageKey, string> = {
   "activity.cancelledByUser": "已由用户停止",
   "activity.cancelledAgentExit": "Agent 进程已结束",
   "activity.cancelledToast": "本轮已停止",
-  "endOfTurn.stall": "已停止 — 流式长时间无输出",
-  "endOfTurn.stallPreToken": "已停止 — 仍在等待首个模型输出",
+  "endOfTurn.stall": "已暂停 — 暂时没有新输出",
+  "endOfTurn.stallPreToken": "已暂停 — 仍在等待首个模型输出",
+  "endOfTurn.stallWorkingTools": "已暂停 — 工具长时间无新进度",
+  "endOfTurn.stallMaybeDone": "本轮可能已经完成",
   "endOfTurn.permissionDenied": "权限被拒绝",
   "endOfTurn.error": "本轮以错误结束",
   "endOfTurn.unknown": "本轮已结束",

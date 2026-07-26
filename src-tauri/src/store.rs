@@ -1499,7 +1499,7 @@ mod tests {
         assert_eq!(s.locale, "en");
         assert_eq!(s.max_concurrent_agents, 8);
         assert_eq!(s.agent_idle_minutes, 30);
-        assert_eq!(s.stream_stall_seconds, 120);
+        assert_eq!(s.stream_stall_seconds, 180);
         assert_eq!(s.sandbox_profile, "off");
         assert!(!s.experimental_memory);
         assert_eq!(s.max_agent_turns, None);
