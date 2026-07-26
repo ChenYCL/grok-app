@@ -1,9 +1,10 @@
 /**
  * Startup restore of the last active chat — pure decision helper.
  *
- * Product rule: after onboarding/workbench is ready, if the user left the
- * setting on (default), open the remembered session once when it still exists
- * and is not archived. No I/O here; App performs open + persistence.
+ * Product rule: after onboarding/workbench is ready, if the user **opts in**
+ * (Settings → reopen last chat; default **off** so launch stays on a draft
+ * new-chat page), open the remembered session once when it still exists and
+ * is not archived. No I/O here; App performs open + persistence.
  */
 
 export type RestorableSession = {
@@ -12,7 +13,7 @@ export type RestorableSession = {
 };
 
 export type ShouldRestoreLastSessionInput = {
-  /** Settings → General toggle (default true). */
+  /** Settings → General toggle (default false → draft new chat). */
   enabled: boolean;
   /** Setup wizard / onboarding finished; workbench is showing. */
   workbenchReady: boolean;

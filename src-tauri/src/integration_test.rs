@@ -119,8 +119,9 @@ mod integration {
         assert_eq!(factory.session_data_mode, "independent");
         assert_eq!(factory.permission_policy, "ask");
         assert_eq!(factory.sandbox_profile, "off");
-        assert!(factory.reopen_last_session);
+        assert!(!factory.reopen_last_session);
         assert!(factory.last_session_id.is_none());
+        assert!(factory.sidebar_collapsed_project_ids.is_empty());
         // Disk load + save same content must not corrupt
         let s = load_settings();
         save_settings(&s).expect("save");

@@ -115,6 +115,11 @@ import { AgentTasksPanel } from "@/components/AgentTasksPanel";
 import * as api from "@/lib/api";
 import { shouldRestoreLastSession } from "@/lib/sessionRestore";
 import {
+  collapsedIdsFromExpandMap,
+  expandMapFromCollapsedIds,
+  sameCollapsedIdSet,
+} from "@/lib/sidebarExpand";
+import {
   collectSessionTasks,
   countRunningTasks,
 } from "@/lib/sessionTasks";
@@ -637,6 +642,8 @@ export default function App() {
   const liveHostRef = useRef<SessionSnapshot>(IDLE_SNAPSHOT);
   const messagesRef = useRef<ChatMessage[]>([]);
   const [expandedProjects, setExpandedProjects] = useState<Record<string, boolean>>({});
+  /** Avoid writing collapse prefs before settings hydrate on launch. */
+  const expandedProjectsHydratedRef = useRef(false);
   const [projectsOpen, setProjectsOpen] = useState(true);
   const [historyOpen, setHistoryOpen] = useState(true);
   const [ctxMenu, setCtxMenu] = useState<ContextMenuState>(null);
@@ -1009,7 +1016,8 @@ export default function App() {
   const [planEnabled, setPlanEnabled] = useState(true);
   const [disableWebSearch, setDisableWebSearch] = useState(false);
   const [useLeader, setUseLeader] = useState(false);
-  const [reopenLastSession, setReopenLastSession] = useState(true);
+  /** Default off → launch on draft new-chat page. */
+  const [reopenLastSession, setReopenLastSession] = useState(false);
   const [closeToTray, setCloseToTray] = useState(true);
   const [lastSessionId, setLastSessionId] = useState<string | null>(null);
   const didRestoreLastRef = useRef(false);
@@ -1444,7 +1452,8 @@ export default function App() {
       setPlanEnabled(settings.planEnabled !== false);
       setDisableWebSearch(!!settings.disableWebSearch);
       setUseLeader(!!settings.useLeader);
-      setReopenLastSession(settings.reopenLastSession !== false);
+      // Opt-in only (missing key / false → draft new chat on launch).
+      setReopenLastSession(settings.reopenLastSession === true);
       setCloseToTray(settings.closeToTray !== false);
       setLastSessionId(
         typeof settings.lastSessionId === "string"
@@ -1545,13 +1554,14 @@ export default function App() {
           null
         );
       });
-      setExpandedProjects((prev) => {
-        const next = { ...prev };
-        for (const proj of p as Project[]) {
-          if (next[proj.id] === undefined) next[proj.id] = true;
-        }
-        return next;
-      });
+      // Restore sidebar project collapse (missing id ⇒ expanded).
+      setExpandedProjects(
+        expandMapFromCollapsedIds(
+          (p as Project[]).map((proj) => proj.id),
+          settings.sidebarCollapsedProjectIds,
+        ),
+      );
+      expandedProjectsHydratedRef.current = true;
     } catch (e) {
       setLocalError(String(e));
       // Still surface setup if Tauri partially works
@@ -3129,6 +3139,24 @@ export default function App() {
 
   const openSessionRef = useRef(openSession);
   openSessionRef.current = openSession;
+
+  // Persist sidebar project collapse (only false entries) after hydrate.
+  useEffect(() => {
+    if (!expandedProjectsHydratedRef.current) return;
+    if (!api.isTauri()) return;
+    const ids = collapsedIdsFromExpandMap(expandedProjects);
+    void api
+      .settingsGet()
+      .then((s) => {
+        const prev = s.sidebarCollapsedProjectIds ?? [];
+        if (sameCollapsedIdSet(prev, ids)) return;
+        return api.settingsSet({
+          ...s,
+          sidebarCollapsedProjectIds: ids,
+        });
+      })
+      .catch(() => {});
+  }, [expandedProjects]);
 
   useEffect(() => {
     if (appGate !== "ready") return;

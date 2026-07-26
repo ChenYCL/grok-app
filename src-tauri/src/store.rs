@@ -186,7 +186,8 @@ pub struct AppSettings {
     /// `web_search` / `web_fetch` tools are removed. Default false (CLI default).
     #[serde(default)]
     pub disable_web_search: bool,
-    /// Reopen the last active chat once after launch (default true).
+    /// Reopen the last active chat once after launch (default **false** —
+    /// start on a draft new-chat page; opt-in via Settings).
     #[serde(default = "default_reopen_last_session")]
     pub reopen_last_session: bool,
     /// Last successfully opened / switched session (for startup restore).
@@ -195,6 +196,13 @@ pub struct AppSettings {
     /// Project of [`Self::last_session_id`] when it belonged to one (hint only).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub last_project_id: Option<String>,
+    /// Sidebar project folders the user collapsed (ids). Missing id ⇒ expanded.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub sidebar_collapsed_project_ids: Vec<String>,
+    /// One-shot: flipped product default so launch opens a draft new chat
+    /// (reopen-last-session defaulted to false). Existing installs run this once.
+    #[serde(default)]
+    pub startup_new_chat_default_migrated: bool,
     /// When true (default), agents may enter plan mode. When false, spawn with
     /// top-level `--no-plan` so plan mode is disabled for that process.
     #[serde(default = "default_plan_enabled")]
@@ -254,7 +262,7 @@ fn default_sandbox_profile() -> String {
 }
 
 fn default_reopen_last_session() -> bool {
-    true
+    false
 }
 
 fn default_plan_enabled() -> bool {
@@ -301,6 +309,9 @@ impl Default for AppSettings {
             reopen_last_session: default_reopen_last_session(),
             last_session_id: None,
             last_project_id: None,
+            sidebar_collapsed_project_ids: Vec::new(),
+            // Fresh defaults already match the new-chat-on-launch product rule.
+            startup_new_chat_default_migrated: true,
             plan_enabled: default_plan_enabled(),
             subagents_enabled: true,
             preferred_agent: String::new(),
@@ -444,6 +455,17 @@ pub fn load_settings() -> AppSettings {
         let _ = write_json(&settings_file(), &s);
     } else if !s.pool_size_migrated {
         s.pool_size_migrated = true;
+        let _ = write_json(&settings_file(), &s);
+    }
+    // One-time: product default is draft new-chat on launch (not restore last).
+    // Prior builds defaulted reopen_last_session=true, so existing settings
+    // keep restoring a chat and look like "first session selected" on every boot.
+    if !s.startup_new_chat_default_migrated {
+        s.reopen_last_session = false;
+        s.startup_new_chat_default_migrated = true;
+        tracing::info!(
+            "settings migration: reopenLastSession → false (start on new chat)"
+        );
         let _ = write_json(&settings_file(), &s);
     }
     s

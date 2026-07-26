@@ -901,12 +901,14 @@ export interface AppSettings {
   planEnabled?: boolean;
   subagentsEnabled?: boolean;
   useLeader?: boolean;
-  /** Reopen last active chat once after launch (default true). */
+  /** Reopen last active chat once after launch (default false → draft new chat). */
   reopenLastSession?: boolean;
   /** Last successfully opened session id (startup restore). */
   lastSessionId?: string | null;
   /** Project of lastSessionId when it belonged to one (hint only). */
   lastProjectId?: string | null;
+  /** Sidebar project folder ids the user collapsed (missing ⇒ expanded). */
+  sidebarCollapsedProjectIds?: string[];
   voiceId?: string;
   voiceDictationAutoSend?: boolean;
   voiceKeepAgentsOnEnd?: boolean;
