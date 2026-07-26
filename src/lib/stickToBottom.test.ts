@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
   STICK_HEIGHT_NOISE_PX,
+  STICK_HARD_BOTTOM_PX,
   STICK_TO_BOTTOM_THRESHOLD_PX,
   bottomScrollTop,
   distanceFromBottom,
+  isHardBottom,
   isHeightDeltaNoise,
   isNearBottom,
   nextStickPinState,
@@ -77,6 +79,18 @@ describe("isHeightDeltaNoise", () => {
   });
 });
 
+describe("isHardBottom", () => {
+  it("true within hard band", () => {
+    expect(isHardBottom(600, 1000, 400, 2)).toBe(true); // distance 0
+    expect(isHardBottom(598, 1000, 400, 2)).toBe(true); // distance 2
+    expect(STICK_HARD_BOTTOM_PX).toBe(2);
+  });
+
+  it("false outside hard band", () => {
+    expect(isHardBottom(597, 1000, 400, 2)).toBe(false); // distance 3
+  });
+});
+
 describe("nextStickPinState", () => {
   it("scroll-up escapes and unpins even when still near bottom", () => {
     // This is the bounce bug: old logic re-pinned because near stayed true.
@@ -87,10 +101,39 @@ describe("nextStickPinState", () => {
     expect(next).toEqual({ pinned: false, escaped: true });
   });
 
+  it("scroll-up wins over hardBottom (leaving the end)", () => {
+    const next = nextStickPinState(
+      { pinned: true, escaped: false },
+      {
+        scrollingUp: true,
+        scrollingDown: false,
+        nearBottom: true,
+        hardBottom: true,
+        userIntentDown: true,
+      },
+    );
+    expect(next).toEqual({ pinned: false, escaped: true });
+  });
+
   it("does not re-pin while escaped just because near bottom", () => {
     const next = nextStickPinState(
       { pinned: false, escaped: true },
       { scrollingUp: false, scrollingDown: false, nearBottom: true },
+    );
+    expect(next).toEqual({ pinned: false, escaped: true });
+  });
+
+  it("does not re-pin on hardBottom alone without down intent", () => {
+    // Micro scroll-up left user inside hard band; idle event must not bounce.
+    const next = nextStickPinState(
+      { pinned: false, escaped: true },
+      {
+        scrollingUp: false,
+        scrollingDown: false,
+        nearBottom: true,
+        hardBottom: true,
+        userIntentDown: false,
+      },
     );
     expect(next).toEqual({ pinned: false, escaped: true });
   });
@@ -109,5 +152,20 @@ describe("nextStickPinState", () => {
       { scrollingUp: false, scrollingDown: true, nearBottom: false },
     );
     expect(next).toEqual({ pinned: false, escaped: false });
+  });
+
+  it("hard bottom + down intent re-engages without a positive scroll delta", () => {
+    // User scrolled toward latest; last event has scrollingDown=false at max.
+    const next = nextStickPinState(
+      { pinned: false, escaped: true },
+      {
+        scrollingUp: false,
+        scrollingDown: false,
+        nearBottom: true,
+        hardBottom: true,
+        userIntentDown: true,
+      },
+    );
+    expect(next).toEqual({ pinned: true, escaped: false });
   });
 });

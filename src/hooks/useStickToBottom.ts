@@ -22,6 +22,7 @@ import {
 import {
   STICK_TO_BOTTOM_THRESHOLD_PX,
   bottomScrollTop,
+  isHardBottom,
   isHeightDeltaNoise,
   isNearBottom,
   nextStickPinState,
@@ -68,6 +69,12 @@ export function useStickToBottom(
    * (or force-stick). Prevents re-pin while still inside the near threshold.
    */
   const escapedRef = useRef(false);
+  /**
+   * Last intentional user gesture toward latest content. Cleared on scroll-up.
+   * Used with hardBottom so landing at max scrollTop re-pins even when the
+   * final scroll event has no positive delta.
+   */
+  const userIntentDownRef = useRef(false);
   const lastScrollTopRef = useRef(0);
   /** scrollTop we just wrote — used to ignore synthetic scroll events. */
   const ignoreScrollTopRef = useRef<number | undefined>(undefined);
@@ -113,6 +120,7 @@ export function useStickToBottom(
       if (!el) return;
       escapedRef.current = false;
       isPinnedRef.current = true;
+      userIntentDownRef.current = false;
       const top = bottomScrollTop(el.scrollHeight, el.clientHeight);
       if (behavior === "smooth" && typeof el.scrollTo === "function") {
         // Smooth is only for the explicit "back to bottom" button.
@@ -183,10 +191,18 @@ export function useStickToBottom(
         lastScrollTop = ignore;
       }
 
-      // ResizeObserver scroll races: ignore until resizeDifference clears.
+      // Capture direction now; re-read geometry in the deferred tick
+      // (content may grow a frame later during streaming).
+      const scrollingUp = scrollTop < lastScrollTop;
+      const scrollingDown = scrollTop > lastScrollTop;
+      if (scrollingUp) userIntentDownRef.current = false;
+      if (scrollingDown) userIntentDownRef.current = true;
+
+      // ResizeObserver scroll races: suppress ambiguous resize-only events.
+      // Never drop a clear scroll-down / intent-down hard-bottom landing —
+      // those are how the user re-engages stick after reading history.
       // @see https://github.com/WICG/resize-observer/issues/25
       window.setTimeout(() => {
-        if (resizeDifferenceRef.current !== 0) return;
         if (ignore != null && scrollTop === ignore) return;
 
         const near = isNearBottom(
@@ -195,19 +211,37 @@ export function useStickToBottom(
           el.clientHeight,
           thresholdRef.current,
         );
+        const hard = isHardBottom(
+          el.scrollTop,
+          el.scrollHeight,
+          el.clientHeight,
+        );
+        const intentDown = userIntentDownRef.current;
+
+        if (
+          resizeDifferenceRef.current !== 0 &&
+          !scrollingDown &&
+          !(hard && intentDown)
+        ) {
+          return;
+        }
+
         const next = nextStickPinState(
           {
             pinned: isPinnedRef.current,
             escaped: escapedRef.current,
           },
           {
-            scrollingUp: scrollTop < lastScrollTop,
-            scrollingDown: scrollTop > lastScrollTop,
+            scrollingUp,
+            scrollingDown,
             nearBottom: near,
+            hardBottom: hard && !scrollingUp,
+            userIntentDown: intentDown && !scrollingUp,
           },
         );
         isPinnedRef.current = next.pinned;
         escapedRef.current = next.escaped;
+        if (next.pinned) userIntentDownRef.current = false;
         syncShowBack();
       }, 1);
     };
@@ -215,14 +249,38 @@ export function useStickToBottom(
     const handleWheel = (e: WheelEvent) => {
       // deltaY < 0 → user reading history. Escape immediately so a concurrent
       // content-growth follow cannot yank the viewport back down.
-      if (
-        e.deltaY < 0 &&
-        el.scrollHeight > el.clientHeight &&
-        isPinnedRef.current
-      ) {
-        escapedRef.current = true;
-        isPinnedRef.current = false;
-        syncShowBack();
+      if (e.deltaY < 0 && el.scrollHeight > el.clientHeight) {
+        userIntentDownRef.current = false;
+        if (isPinnedRef.current) {
+          escapedRef.current = true;
+          isPinnedRef.current = false;
+          syncShowBack();
+        }
+        return;
+      }
+      // deltaY > 0 → scrolling toward latest. Mark intent so a no-delta
+      // hard-bottom landing (max scrollTop) still re-pins.
+      if (e.deltaY > 0) {
+        userIntentDownRef.current = true;
+        if (escapedRef.current) {
+          requestAnimationFrame(() => {
+            if (!viewportRef.current) return;
+            const v = viewportRef.current;
+            if (
+              isNearBottom(
+                v.scrollTop,
+                v.scrollHeight,
+                v.clientHeight,
+                thresholdRef.current,
+              )
+            ) {
+              escapedRef.current = false;
+              isPinnedRef.current = true;
+              userIntentDownRef.current = false;
+              syncShowBack();
+            }
+          });
+        }
       }
     };
 
@@ -233,16 +291,43 @@ export function useStickToBottom(
     const onTouchMove = (e: TouchEvent) => {
       const y = e.touches[0]?.clientY;
       if (touchY == null || y == null) return;
+      const dy = y - touchY;
       // Finger moves down → content moves up (reading history)
-      if (y - touchY > 6 && isPinnedRef.current) {
-        escapedRef.current = true;
-        isPinnedRef.current = false;
-        syncShowBack();
+      if (dy > 6) {
+        userIntentDownRef.current = false;
+        if (isPinnedRef.current) {
+          escapedRef.current = true;
+          isPinnedRef.current = false;
+          syncShowBack();
+        }
+      } else if (dy < -6) {
+        // Finger moves up → content moves down (toward latest)
+        userIntentDownRef.current = true;
       }
       touchY = y;
     };
     const onTouchEnd = () => {
       touchY = null;
+      // After a fling toward latest, re-pin if we settled near the bottom.
+      if (userIntentDownRef.current && escapedRef.current) {
+        requestAnimationFrame(() => {
+          if (!viewportRef.current) return;
+          const v = viewportRef.current;
+          if (
+            isNearBottom(
+              v.scrollTop,
+              v.scrollHeight,
+              v.clientHeight,
+              thresholdRef.current,
+            )
+          ) {
+            escapedRef.current = false;
+            isPinnedRef.current = true;
+            userIntentDownRef.current = false;
+            syncShowBack();
+          }
+        });
+      }
     };
 
     el.addEventListener("scroll", handleScroll, { passive: true });
@@ -269,6 +354,7 @@ export function useStickToBottom(
     if (!enabled) return;
     escapedRef.current = false;
     isPinnedRef.current = true;
+    userIntentDownRef.current = false;
     const id = requestAnimationFrame(() => scrollToBottom("instant"));
     return () => cancelAnimationFrame(id);
   }, [conversationKey, enabled, scrollToBottom]);
@@ -278,6 +364,7 @@ export function useStickToBottom(
     if (!enabled || forceStickKey == null || forceStickKey === "") return;
     escapedRef.current = false;
     isPinnedRef.current = true;
+    userIntentDownRef.current = false;
     const id = requestAnimationFrame(() => scrollToBottom("instant"));
     return () => cancelAnimationFrame(id);
   }, [forceStickKey, enabled, scrollToBottom]);

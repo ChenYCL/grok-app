@@ -5,12 +5,19 @@
  * After an intentional scroll-up (`escaped`), we do NOT re-pin merely
  * because the viewport is still within the near-bottom threshold — that
  * thrash is what makes the chat bounce while the user is reading.
- * Re-pin only after they scroll down again and land near the bottom,
- * send a message, or switch conversation.
+ * Re-pin when they scroll down again and land near the bottom, land on
+ * the absolute bottom, send a message, or switch conversation.
  */
 
 /** Distance from bottom (px) still treated as "near" for re-engage. */
 export const STICK_TO_BOTTOM_THRESHOLD_PX = 100;
+
+/**
+ * Absolute bottom band (px). Landing here always re-engages follow —
+ * covers the common "I scrolled to the end but pin didn't come back" case
+ * when the last scroll event has no positive delta (already maxed).
+ */
+export const STICK_HARD_BOTTOM_PX = 2;
 
 /**
  * Sub-pixel / font / thought-stream reflows under this delta should not
@@ -36,6 +43,17 @@ export function isNearBottom(
   // No overflow → always "at bottom"
   if (scrollHeight <= clientHeight + 1) return true;
   return distanceFromBottom(scrollTop, scrollHeight, clientHeight) <= thresholdPx;
+}
+
+/** True when the viewport is parked on the absolute bottom. */
+export function isHardBottom(
+  scrollTop: number,
+  scrollHeight: number,
+  clientHeight: number,
+  hardPx: number = STICK_HARD_BOTTOM_PX,
+): boolean {
+  if (scrollHeight <= clientHeight + 1) return true;
+  return distanceFromBottom(scrollTop, scrollHeight, clientHeight) <= hardPx;
 }
 
 /** Target scrollTop that parks the viewport at the bottom. */
@@ -65,6 +83,12 @@ export type StickPinState = {
 /**
  * Pure transition for scroll-driven pin updates.
  * Direction is from user scroll (not programmatic follows).
+ *
+ * `userIntentDown`: last user gesture was toward the latest content
+ * (wheel/touch/scrollbar down). Combined with hardBottom this re-engages
+ * even when the final scroll event has no positive delta at max scrollTop.
+ * It does NOT re-engage after a scroll-up that left the user still inside
+ * the near-bottom band (that thrash is the bounce bug).
  */
 export function nextStickPinState(
   state: StickPinState,
@@ -72,13 +96,24 @@ export function nextStickPinState(
     scrollingUp: boolean;
     scrollingDown: boolean;
     nearBottom: boolean;
+    /** Parked on absolute bottom. */
+    hardBottom?: boolean;
+    /** Last user gesture was toward bottom (wheel/touch/scroll down). */
+    userIntentDown?: boolean;
   },
 ): StickPinState {
-  let { pinned, escaped } = state;
+  // Scroll-up always wins first: even a 1px pull away from the bottom
+  // must escape so stream growth cannot yank the reader back down.
   if (input.scrollingUp) {
-    escaped = true;
-    pinned = false;
+    return { pinned: false, escaped: true };
   }
+  // Absolute bottom after an intentional move toward latest → re-engage.
+  // Covers "scrolled to end but last event has no delta" without bouncing
+  // users who only nudged 1px up and are still inside the hard band.
+  if (input.hardBottom && (input.scrollingDown || input.userIntentDown)) {
+    return { pinned: true, escaped: false };
+  }
+  let { pinned, escaped } = state;
   if (input.scrollingDown) {
     escaped = false;
   }

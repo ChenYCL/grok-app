@@ -51,6 +51,7 @@ export function MarkdownBody({
     if (isVideoPath(abs)) {
       return (
         <VideoUi
+          key={abs}
           src={abs}
           path={abs}
           title={alt || pathBasename(abs)}

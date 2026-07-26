@@ -131,6 +131,7 @@ function MessageResponseImpl({
     if (mediaAbs && isVideoPath(mediaAbs)) {
       return (
         <VideoUi
+          key={mediaAbs}
           src={mediaAbs}
           path={mediaAbs}
           title={linkText || pathBasename(mediaAbs)}
@@ -165,6 +166,7 @@ function MessageResponseImpl({
     if (kind === "video" && resolved && isVideoPath(resolved)) {
       return (
         <VideoUi
+          key={resolved}
           src={resolved}
           path={resolved}
           title={linkText || pathBasename(resolved)}

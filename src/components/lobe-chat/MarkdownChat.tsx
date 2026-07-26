@@ -244,6 +244,7 @@ export const MarkdownChat = memo(function MarkdownChat({
     if (mediaAbs && isVideoPath(mediaAbs)) {
       return (
         <VideoUi
+          key={mediaAbs}
           src={mediaAbs}
           path={mediaAbs}
           title={linkText || pathBasename(mediaAbs)}
@@ -299,6 +300,7 @@ export const MarkdownChat = memo(function MarkdownChat({
     ) {
       return (
         <VideoUi
+          key={resolved}
           src={resolved}
           path={resolved}
           title={linkText || pathBasename(resolved)}
