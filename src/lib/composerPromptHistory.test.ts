@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
   collectUserPromptHistory,
+  filterPromptHistory,
   nextPromptHistoryIndex,
+  promptHistoryListPreview,
   shouldHandlePromptHistoryKey,
   stepPromptHistory,
 } from "./composerPromptHistory";
@@ -95,6 +97,39 @@ describe("stepPromptHistory", () => {
       index: null,
       text: "",
     });
+  });
+});
+
+describe("filterPromptHistory", () => {
+  const history = ["fix auth bug", "Add dark mode", "fix login form"];
+
+  it("returns all entries newest-first when query empty", () => {
+    expect(filterPromptHistory(history, "")).toEqual([
+      { historyIndex: 0, text: "fix auth bug" },
+      { historyIndex: 1, text: "Add dark mode" },
+      { historyIndex: 2, text: "fix login form" },
+    ]);
+    expect(filterPromptHistory(history, "  ")).toEqual(
+      filterPromptHistory(history, ""),
+    );
+  });
+
+  it("filters by case-insensitive substring and keeps historyIndex", () => {
+    expect(filterPromptHistory(history, "FIX")).toEqual([
+      { historyIndex: 0, text: "fix auth bug" },
+      { historyIndex: 2, text: "fix login form" },
+    ]);
+  });
+
+  it("returns empty when nothing matches", () => {
+    expect(filterPromptHistory(history, "xyz")).toEqual([]);
+  });
+});
+
+describe("promptHistoryListPreview", () => {
+  it("collapses whitespace and truncates", () => {
+    expect(promptHistoryListPreview("a\n\nb   c")).toBe("a b c");
+    expect(promptHistoryListPreview("abcdefghij", 6)).toBe("abcde…");
   });
 });
 

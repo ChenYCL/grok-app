@@ -1,6 +1,7 @@
 /**
- * Composer prompt history — CLI-like ↑/↓ recall of prior user prompts.
+ * Composer prompt history — CLI-like ↑/↓ recall + `/history` picker.
  *
+ * Scope matches Grok Build: **current session only** (not cross-session).
  * History is newest-first (index 0 = most recent user message).
  * Index `null` means not browsing (live draft).
  */
@@ -9,6 +10,14 @@ export type PromptHistoryStep = {
   /** Index into history (0 = newest), or null when not browsing. */
   index: number | null;
   /** Draft text to apply ("" when leaving history). */
+  text: string;
+};
+
+/** One row in the `/history` picker (filtered view of session history). */
+export type PromptHistoryEntry = {
+  /** Index into the unfiltered newest-first history list. */
+  historyIndex: number;
+  /** Stored prompt text (`[[skill:…]]` form). */
   text: string;
 };
 
@@ -29,6 +38,37 @@ export function collectUserPromptHistory(
     out.push(c);
   }
   return out;
+}
+
+/**
+ * Fuzzy-filter current-session prompt history (newest first).
+ * Empty query returns every entry. Match is case-insensitive substring.
+ */
+export function filterPromptHistory(
+  history: readonly string[],
+  query: string,
+): PromptHistoryEntry[] {
+  const q = query.trim().toLowerCase();
+  const out: PromptHistoryEntry[] = [];
+  for (let historyIndex = 0; historyIndex < history.length; historyIndex++) {
+    const text = history[historyIndex] ?? "";
+    if (q && !text.toLowerCase().includes(q)) continue;
+    out.push({ historyIndex, text });
+  }
+  return out;
+}
+
+/**
+ * One-line preview for the history list: collapse whitespace/newlines.
+ * Caller may pre-map skill tokens (`previewStoredAsSlash`).
+ */
+export function promptHistoryListPreview(
+  text: string,
+  maxLen = 120,
+): string {
+  const flat = text.replace(/\s+/g, " ").trim();
+  if (flat.length <= maxLen) return flat;
+  return `${flat.slice(0, Math.max(1, maxLen - 1))}…`;
 }
 
 /**

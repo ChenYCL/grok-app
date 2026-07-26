@@ -26,6 +26,7 @@ describe("builtinSlashItems", () => {
       "export",
       "copy",
       "find",
+      "history",
       "extensions",
       "yolo",
     ]);
@@ -71,6 +72,12 @@ describe("builtinSlashItems", () => {
     expect(findItem.action).toBe("find");
     expect(findItem.titleKey).toBe("slash.find");
     expect(findItem.descriptionKey).toBe("slash.findDesc");
+
+    const historyItem = items.find((i) => i.id === "history")!;
+    expect(historyItem.kind).toBe("action");
+    expect(historyItem.action).toBe("history");
+    expect(historyItem.titleKey).toBe("slash.history");
+    expect(historyItem.descriptionKey).toBe("slash.historyDesc");
 
     const extensionsItem = items.find((i) => i.id === "extensions")!;
     expect(extensionsItem.kind).toBe("action");

@@ -33,6 +33,18 @@ While the palette is open, Enter does **not** send the message.
 | `action` | Host action (modal, navigation, toggle) — no body insert |
 | `prompt` | Insert or send a slash command string |
 
+## Prompt history (`/history` · empty ↑)
+
+Aligned with Grok Build — **current session only** (no cross-session search).
+
+| Entry | Behavior |
+|-------|----------|
+| `/history` | Opens picker above composer; filter focuses; newest-first list of this chat’s user prompts |
+| Empty composer **↑** | Opens the same picker and fills the newest prompt; further **↑/↓** step (older / newer); **↓** past newest closes and clears |
+| Select | Click / Enter / Tab drops the prompt into the composer (keeps `[[skill:…]]` tokens) |
+
+Helpers: `src/lib/composerPromptHistory.ts`. UI: `PromptHistoryPanel`.
+
 ## Doctor
 
 Doctor is a **structured health UI**, not a raw JSON dump.
