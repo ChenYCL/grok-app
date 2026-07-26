@@ -134,6 +134,14 @@ export function builtinSlashItems(): SlashItem[] {
       action: "find",
     },
     {
+      id: "history",
+      kind: "action",
+      name: "history",
+      titleKey: "slash.history",
+      descriptionKey: "slash.historyDesc",
+      action: "history",
+    },
+    {
       id: "extensions",
       kind: "action",
       name: "extensions",

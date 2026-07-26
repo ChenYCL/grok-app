@@ -220,9 +220,12 @@ import {
 } from "@/lib/draftDoc";
 import {
   collectUserPromptHistory,
+  filterPromptHistory,
   shouldHandlePromptHistoryKey,
   stepPromptHistory,
+  type PromptHistoryEntry,
 } from "@/lib/composerPromptHistory";
+import { PromptHistoryPanel } from "@/components/PromptHistoryPanel";
 import {
   queuePreviewText,
   shouldEnqueueSend,
@@ -518,6 +521,18 @@ export default function App() {
   );
   const promptHistoryIndexRef = useRef<number | null>(null);
   promptHistoryIndexRef.current = promptHistoryIndex;
+  /**
+   * `/history` + empty-↑ picker — current session prompts only (Build-aligned).
+   * Filter focuses on slash open; empty ↑ keeps focus in the composer.
+   */
+  const [promptHistoryOpen, setPromptHistoryOpen] = useState(false);
+  const [promptHistoryFilter, setPromptHistoryFilter] = useState("");
+  const [promptHistoryActive, setPromptHistoryActive] = useState(0);
+  const [promptHistoryFocusFilter, setPromptHistoryFocusFilter] =
+    useState(false);
+  const promptHistoryPanelRef = useRef<HTMLDivElement>(null);
+  const promptHistoryOpenRef = useRef(false);
+  promptHistoryOpenRef.current = promptHistoryOpen;
   /** Composer voice dictation FSM (record → STT → insert draft). */
   const [voice, setVoice] = useState<VoiceFsmState>(() => initialVoiceState());
   /** Full-duplex live voice overlay (separate from composer dictation). */
@@ -1580,6 +1595,10 @@ export default function App() {
   useEffect(() => {
     promptHistoryIndexRef.current = null;
     setPromptHistoryIndex(null);
+    setPromptHistoryOpen(false);
+    setPromptHistoryFilter("");
+    setPromptHistoryActive(0);
+    setPromptHistoryFocusFilter(false);
   }, [session.sessionId]);
 
   useEffect(() => {
@@ -4590,6 +4609,10 @@ export default function App() {
     setDraft("");
     promptHistoryIndexRef.current = null;
     setPromptHistoryIndex(null);
+    setPromptHistoryOpen(false);
+    setPromptHistoryFilter("");
+    setPromptHistoryActive(0);
+    setPromptHistoryFocusFilter(false);
     setSlashQuery(null);
     setAttachments([]);
     requestAnimationFrame(() => {
@@ -5310,6 +5333,75 @@ export default function App() {
     deps: [slashFilterQuery, composerMenuEntries.length],
   });
 
+  const sessionPromptHistory = useMemo(
+    () => collectUserPromptHistory(messages),
+    [messages],
+  );
+  const promptHistoryEntries = useMemo(
+    () => filterPromptHistory(sessionPromptHistory, promptHistoryFilter),
+    [sessionPromptHistory, promptHistoryFilter],
+  );
+
+  const closePromptHistory = useCallback(() => {
+    setPromptHistoryOpen(false);
+    setPromptHistoryFilter("");
+    setPromptHistoryActive(0);
+    setPromptHistoryFocusFilter(false);
+  }, []);
+
+  const applyPromptHistoryEntry = useCallback(
+    (
+      entry: PromptHistoryEntry,
+      opts?: { close?: boolean; listIndex?: number },
+    ) => {
+      promptHistoryIndexRef.current = entry.historyIndex;
+      setPromptHistoryIndex(entry.historyIndex);
+      if (typeof opts?.listIndex === "number") {
+        setPromptHistoryActive(opts.listIndex);
+      }
+      setDraft(entry.text);
+      if (opts?.close !== false) {
+        closePromptHistory();
+        requestAnimationFrame(() => {
+          composerInputRef.current?.focus?.();
+        });
+      }
+    },
+    [closePromptHistory],
+  );
+
+  const { pos: promptHistoryPos, style: promptHistoryStyle } = useFloatingMenu({
+    open: promptHistoryOpen,
+    triggerRef: composerShellRef,
+    panelRef: promptHistoryPanelRef,
+    roots: [composerShellRef, composerInputRef, promptHistoryPanelRef],
+    onClose: closePromptHistory,
+    placement: "up",
+    fitContent: false,
+    matchTriggerWidth: true,
+    minWidth: 280,
+    estHeight: 280,
+    gap: 8,
+    deps: [promptHistoryFilter, promptHistoryEntries.length],
+  });
+
+  // Keep highlight in range when the filtered list shrinks; reset on filter text.
+  const prevPromptHistoryFilterRef = useRef(promptHistoryFilter);
+  useEffect(() => {
+    if (!promptHistoryOpen) return;
+    if (prevPromptHistoryFilterRef.current !== promptHistoryFilter) {
+      prevPromptHistoryFilterRef.current = promptHistoryFilter;
+      setPromptHistoryActive(0);
+      return;
+    }
+    setPromptHistoryActive((i) => {
+      if (promptHistoryEntries.length === 0) return 0;
+      return i >= promptHistoryEntries.length
+        ? promptHistoryEntries.length - 1
+        : i;
+    });
+  }, [promptHistoryEntries.length, promptHistoryFilter, promptHistoryOpen]);
+
   // Reset highlight only when the filter *string* changes.
   const prevFilterQueryRef = useRef(slashFilterQuery);
   useEffect(() => {
@@ -5350,6 +5442,37 @@ export default function App() {
       setToast((cur) => (cur === msg ? null : cur));
     }, ms);
   }, []);
+
+  /**
+   * Open current-session prompt history picker (Build `/history`).
+   * @param focusFilter — true for slash `/history` (search box); false for empty ↑.
+   * @param seedDraft — fill composer with the active row (empty ↑).
+   */
+  const openPromptHistory = useCallback(
+    (opts?: { focusFilter?: boolean; seedDraft?: boolean }) => {
+      const history = collectUserPromptHistory(messagesRef.current);
+      if (history.length === 0) {
+        showToast(tr("slash.historyEmpty"), 2400);
+        return;
+      }
+      // Don't stack with slash/plus menu.
+      setShowComposerPlus(false);
+      setSlashQuery(null);
+      setLiveSlash({ present: false, query: "", start: 0, end: 0 });
+      liveSlashRef.current = { present: false, query: "", start: 0, end: 0 };
+
+      setPromptHistoryFilter("");
+      setPromptHistoryActive(0);
+      setPromptHistoryFocusFilter(opts?.focusFilter === true);
+      setPromptHistoryOpen(true);
+      if (opts?.seedDraft !== false) {
+        promptHistoryIndexRef.current = 0;
+        setPromptHistoryIndex(0);
+        setDraft(history[0] ?? "");
+      }
+    },
+    [showToast, tr],
+  );
 
   const voiceErrorMessage = useCallback(
     (cls: VoiceErrorClass | null | undefined) => {
@@ -6193,6 +6316,9 @@ export default function App() {
           case "find":
             openChatFind();
             return;
+          case "history":
+            openPromptHistory({ focusFilter: true, seedDraft: false });
+            return;
           case "extensions":
             navigateSettings("extensions");
             return;
@@ -6222,6 +6348,7 @@ export default function App() {
       openMcpModal,
       applyPermissionPolicy,
       showToast,
+      openPromptHistory,
     ],
   );
 
@@ -9998,6 +10125,45 @@ export default function App() {
                   />,
                   document.body,
                 )}
+              {promptHistoryOpen &&
+                promptHistoryPos &&
+                typeof document !== "undefined" &&
+                createPortal(
+                  <PromptHistoryPanel
+                    open
+                    panelRef={promptHistoryPanelRef}
+                    entries={promptHistoryEntries}
+                    query={promptHistoryFilter}
+                    activeIndex={promptHistoryActive}
+                    focusFilter={promptHistoryFocusFilter}
+                    labels={{
+                      title: tr("promptHistory.title"),
+                      placeholder: tr("promptHistory.placeholder"),
+                      empty: tr("promptHistory.empty"),
+                      emptyFilter: tr("promptHistory.emptyFilter"),
+                      aria: tr("promptHistory.aria"),
+                    }}
+                    onQueryChange={setPromptHistoryFilter}
+                    onActiveIndexChange={(i) => {
+                      setPromptHistoryActive(i);
+                      const entry = promptHistoryEntries[i];
+                      if (entry && !promptHistoryFocusFilter) {
+                        // Empty-↑ browse: mirror Build — each step lands in the input.
+                        applyPromptHistoryEntry(entry, {
+                          close: false,
+                          listIndex: i,
+                        });
+                      }
+                    }}
+                    onSelect={(entry) => applyPromptHistoryEntry(entry)}
+                    onClose={closePromptHistory}
+                    style={{
+                      ...promptHistoryStyle,
+                      zIndex: 10050,
+                    }}
+                  />,
+                  document.body,
+                )}
               <ComposerEditor
                 editorRef={composerInputRef}
                 className="composer__input"
@@ -10017,6 +10183,7 @@ export default function App() {
                     if (next !== hist[idx]) {
                       promptHistoryIndexRef.current = null;
                       setPromptHistoryIndex(null);
+                      // Keep the picker open so the user can re-pick; only leave browse index.
                     }
                   }
                 }}
@@ -10083,11 +10250,68 @@ export default function App() {
                       return;
                     }
                   }
-                  // CLI-like prompt history: ↑ on empty draft (or while browsing).
+                  // Prompt history picker open: ↑/↓ move selection; Enter/Tab apply;
+                  // Esc closes (Build `/history` + empty-↑).
+                  if (promptHistoryOpenRef.current && !composerMenuOpen) {
+                    if (e.key === "Escape") {
+                      e.preventDefault();
+                      closePromptHistory();
+                      return;
+                    }
+                    if (e.key === "Enter" || e.key === "Tab") {
+                      const entry = promptHistoryEntries[promptHistoryActive];
+                      if (entry) {
+                        e.preventDefault();
+                        applyPromptHistoryEntry(entry, {
+                          listIndex: promptHistoryActive,
+                        });
+                        return;
+                      }
+                    }
+                    if (e.key === "ArrowUp" || e.key === "ArrowDown") {
+                      e.preventDefault();
+                      if (promptHistoryEntries.length === 0) return;
+                      if (e.key === "ArrowUp") {
+                        const next = Math.min(
+                          promptHistoryActive + 1,
+                          promptHistoryEntries.length - 1,
+                        );
+                        setPromptHistoryActive(next);
+                        const entry = promptHistoryEntries[next];
+                        if (entry) {
+                          applyPromptHistoryEntry(entry, {
+                            close: false,
+                            listIndex: next,
+                          });
+                        }
+                        return;
+                      }
+                      // ArrowDown: newer; past newest closes like Build.
+                      if (promptHistoryActive <= 0) {
+                        promptHistoryIndexRef.current = null;
+                        setPromptHistoryIndex(null);
+                        setDraft("");
+                        closePromptHistory();
+                        return;
+                      }
+                      const next = promptHistoryActive - 1;
+                      setPromptHistoryActive(next);
+                      const entry = promptHistoryEntries[next];
+                      if (entry) {
+                        applyPromptHistoryEntry(entry, {
+                          close: false,
+                          listIndex: next,
+                        });
+                      }
+                      return;
+                    }
+                  }
+                  // CLI-like prompt history: ↑ on empty draft opens picker + seeds newest.
                   // Only when slash palette is closed so palette ↑/↓ is untouched.
                   if (
                     (e.key === "ArrowUp" || e.key === "ArrowDown") &&
-                    !composerMenuOpen
+                    !composerMenuOpen &&
+                    !promptHistoryOpenRef.current
                   ) {
                     const history = collectUserPromptHistory(messages);
                     const draftEmpty = isDraftEmpty(parseStoredContent(draft));
@@ -10101,6 +10325,13 @@ export default function App() {
                       })
                     ) {
                       e.preventDefault();
+                      if (e.key === "ArrowUp" && !browsing) {
+                        openPromptHistory({
+                          focusFilter: false,
+                          seedDraft: true,
+                        });
+                        return;
+                      }
                       const step = stepPromptHistory(
                         history,
                         promptHistoryIndexRef.current,
@@ -10109,6 +10340,17 @@ export default function App() {
                       promptHistoryIndexRef.current = step.index;
                       setPromptHistoryIndex(step.index);
                       setDraft(step.text);
+                      if (step.index == null) {
+                        closePromptHistory();
+                      } else if (!promptHistoryOpenRef.current) {
+                        openPromptHistory({
+                          focusFilter: false,
+                          seedDraft: false,
+                        });
+                        setPromptHistoryActive(step.index);
+                      } else {
+                        setPromptHistoryActive(step.index);
+                      }
                       return;
                     }
                   }
@@ -10124,7 +10366,13 @@ export default function App() {
                       void send();
                     }
                   }
-                  if (e.key === "Escape") closeComposerMenu();
+                  if (e.key === "Escape") {
+                    if (promptHistoryOpenRef.current) {
+                      closePromptHistory();
+                      return;
+                    }
+                    closeComposerMenu();
+                  }
                 }}
               />
               <div

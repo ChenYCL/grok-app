@@ -987,6 +987,7 @@ html.platform-mac[data-theme="light"] .settings-page__content {
 .c-select__menu,
 .user-menu__pop,
 .slash-palette,
+.prompt-history,
 .modal,
 .search-panel,
 .effort-panel__pop,
@@ -1066,6 +1067,7 @@ html.platform-mac[data-theme="light"] .settings-page__content {
   .c-select__menu,
   .user-menu__pop,
   .slash-palette,
+  .prompt-history,
   .modal,
   .search-panel,
   .effort-panel__pop,
@@ -13167,6 +13169,105 @@ div.composer__input:empty::before {
   padding: var(--menu-pad);
   border-radius: var(--menu-radius);
   color: var(--text-primary);
+}
+
+/* Current-session prompt history (`/history` + empty ↑) */
+.prompt-history {
+  z-index: 10050;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  box-sizing: border-box;
+  max-width: calc(100vw - 16px) !important;
+  max-height: min(360px, 50vh);
+  padding: var(--menu-pad);
+  border-radius: var(--menu-radius);
+  color: var(--text-primary);
+  overflow: hidden;
+}
+.prompt-history__head {
+  padding: 2px 8px 0;
+}
+.prompt-history__title {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-tertiary);
+  letter-spacing: 0.02em;
+  user-select: none;
+}
+.prompt-history__filter {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 4px;
+  padding: 6px 8px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--text-primary) 6%, transparent);
+  border: 1px solid color-mix(in srgb, var(--text-primary) 8%, transparent);
+}
+.prompt-history__filter-ico {
+  flex-shrink: 0;
+  display: inline-flex;
+  color: var(--text-tertiary);
+}
+.prompt-history__input {
+  flex: 1 1 auto;
+  min-width: 0;
+  border: none;
+  outline: none;
+  background: transparent;
+  color: var(--text-primary);
+  font-size: 13px;
+  line-height: 1.3;
+}
+.prompt-history__input::placeholder {
+  color: var(--text-tertiary);
+}
+.prompt-history__input::-webkit-search-cancel-button {
+  appearance: none;
+}
+.prompt-history__list {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.prompt-history__item {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  min-height: 36px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  text-align: left;
+  color: var(--text-primary);
+  font-size: 13px;
+  line-height: 1.35;
+  font-weight: 400;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  box-sizing: border-box;
+}
+.prompt-history__item:hover,
+.prompt-history__item.is-active {
+  background: var(--menu-hover);
+}
+.prompt-history__item-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.prompt-history__empty {
+  padding: 14px 10px;
+  font-size: 12px;
+  color: var(--text-tertiary);
+  text-align: center;
 }
 .slash-palette__section {
   padding: 6px 10px 4px;

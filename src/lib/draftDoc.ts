@@ -39,6 +39,8 @@ const NON_SKILL_SLASH = new Set(
     "resume",
     "export",
     "copy",
+    "find",
+    "history",
     "feedback",
   ].map((s) => s.toLowerCase()),
 );

@@ -21,6 +21,7 @@ import {
   IconBox,
   IconCircleDashed,
   IconClipboardList,
+  IconClock,
   IconDoctor,
   IconNewChat,
   IconPlug,
@@ -61,6 +62,8 @@ function itemIcon(item: SlashItem): ReactNode {
     case "yolo":
     case "always-approve":
       return <IconShieldCheck size={ICON_SIZE} />;
+    case "history":
+      return <IconClock size={ICON_SIZE} />;
     default:
       if (item.kind === "mode") return <IconCircleDashed size={ICON_SIZE} />;
       if (item.kind === "action") return <IconBox size={ICON_SIZE} />;
