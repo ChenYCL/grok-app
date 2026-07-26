@@ -571,19 +571,24 @@ impl SessionManager {
 
     /// Stream chunk or tool activity — advances stall deadline (I06).
 
-    /// Soft signal when a non-ask turn ends with zero tool events (diagnostic aid for #52).
+    /// Soft signal when a non-ask turn ends with **no user-visible answer** and
+    /// zero tool events (diagnostic aid for #52).
+    ///
+    /// Successful pure-text replies (assistant body present, no tools) must
+    /// **not** toast — that was false-positive spam on every chatty turn (#128).
     /// Call **before** stream buffers are cleared.
     fn empty_run_signal_from_live(
         s: &LiveSession,
         stop_reason: &str,
     ) -> Option<(String, String, String)> {
         let had_body = !s.stream_buf.trim().is_empty();
-        let had_thought = !s.stream_thought.trim().is_empty();
         let tools = s.tools_this_turn;
         let mode = s.product_mode.clone().unwrap_or_else(|| "agent".into());
         let app_sid = s.app_session_id.clone();
+        // Zero tools + no body: agent "finished" without a reply the user can read
+        // (thought-only / blank). Body without tools is a normal Q&A turn.
         let empty = tools == 0
-            && (had_body || had_thought)
+            && !had_body
             && mode != "ask"
             && !s.provider_retry_aborted
             && stop_reason != "cancelled"
@@ -661,7 +666,7 @@ impl SessionManager {
             session = %app_sid,
             stop_reason = %reason,
             mode = %mode,
-            "turn ended with zero tool calls (soft empty-run signal)"
+            "turn ended with no assistant body and zero tool calls (soft empty-run signal)"
         );
         let _ = app.emit(
             "session://turn_empty_run",
@@ -4690,8 +4695,88 @@ mod session_routing_tests {
         assert!(mgr.rescue_parked_to_background("no-such-process").is_none());
     }
 
-    #[test]
+    fn sample_live_for_empty_run(body: &str, thought: &str, tools: u32, mode: &str) -> LiveSession {
+        let mut fsm = SessionFsm::new();
+        let _ = fsm.start_connect();
+        let _ = fsm.handshake_ok();
+        let _ = fsm.begin_stream();
+        let now = Instant::now();
+        LiveSession {
+            app_session_id: "session-1".into(),
+            process_id: "process-1".into(),
+            meta: SessionMeta {
+                id: "session-1".into(),
+                project_id: None,
+                title: "Test".into(),
+                agent_session_id: None,
+                created_at: chrono::Utc::now(),
+                updated_at: chrono::Utc::now(),
+                model_id: None,
+                archived: false,
+                pinned: false,
+                effort: None,
+                mode: Some(mode.into()),
+                permission_policy: None,
+                scheduled: false,
+            },
+            fsm,
+            backend: "mock_acp".into(),
+            acp: None,
+            mock_stream: None,
+            streaming_message_id: Some("a1".into()),
+            active_turn_id: Some("turn-1".into()),
+            stream_message_id_locked: false,
+            stream_buf: body.into(),
+            stream_thought: thought.into(),
+            stream_last_was_assistant: !body.is_empty(),
+            stream_attachments: Vec::new(),
+            model_id: None,
+            effort: None,
+            product_mode: Some(mode.into()),
+            project_path: None,
+            allow_cache: SessionAllowCache::default(),
+            policy: PermissionPolicy::default(),
+            provider_retry_attempt: 0,
+            provider_retry_aborted: false,
+            needs_history_bootstrap: false,
+            pending_plan_rpc_id: None,
+            pending_ask_user_rpc_id: None,
+            last_activity: now,
+            last_stream_progress: now,
+            last_stall_emit: None,
+            journal_throttle: JournalWriteThrottle::with_default_interval(),
+            open_tool_ids: HashSet::new(),
+            deferred_prompt_complete: None,
+            tools_this_turn: tools,
+            prompt_in_flight: false,
+        }
+    }
 
+    #[test]
+    fn empty_run_does_not_signal_when_assistant_body_exists_without_tools() {
+        // #128: pure-text agent replies must not toast.
+        let s = sample_live_for_empty_run("Here is a normal answer.", "", 0, "agent");
+        assert!(SessionManager::empty_run_signal_from_live(&s, "end_turn").is_none());
+    }
+
+    #[test]
+    fn empty_run_signals_when_no_body_and_no_tools() {
+        let s = sample_live_for_empty_run("", "thinking only", 0, "agent");
+        let sig = SessionManager::empty_run_signal_from_live(&s, "end_turn")
+            .expect("thought-only zero-tool turn should soft-signal");
+        assert_eq!(sig.0, "session-1");
+        assert_eq!(sig.2, "agent");
+    }
+
+    #[test]
+    fn empty_run_skips_ask_mode_and_tool_turns() {
+        let ask = sample_live_for_empty_run("", "", 0, "ask");
+        assert!(SessionManager::empty_run_signal_from_live(&ask, "end_turn").is_none());
+        let tools = sample_live_for_empty_run("", "", 2, "agent");
+        assert!(SessionManager::empty_run_signal_from_live(&tools, "end_turn").is_none());
+    }
+
+    #[test]
     fn interjection_starts_host_owned_stream_segment() {
         // Minimal LiveSession-shaped fields via a throwaway session on the manager.
         // We only need stream id lock semantics — use begin_post_interjection_stream.

@@ -1208,7 +1208,7 @@ export const zhTW: Record<MessageKey, string> = {
   "session.exportDone": "對話已匯出",
   "session.exportFail": "匯出失敗",
   "session.emptyRunToast":
-    "本輪未呼叫任何工具就結束了。若任務未完成可回覆「繼續」；也可從對話選單匯出診斷包回報。",
+    "本輪沒有可見回覆也沒有呼叫工具就結束了。若任務未完成可回覆「繼續」；也可從對話選單匯出診斷包回報。",
 
   "empty.noProjectTitle": "尚未開啟專案",
   "empty.noProjectHint": "從側欄新增資料夾，以便帶上下文開始工作。",

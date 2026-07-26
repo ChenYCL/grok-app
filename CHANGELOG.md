@@ -31,6 +31,7 @@ See `docs/llm-wiki/release.md`.
 
 ### Fixed
 
+- **Empty-run toast spam (#128)**: only soft-signal when a non-ask turn ends with **no visible assistant reply** and zero tool calls. Pure-text answers (body present, no tools) no longer toast every turn.
 - Primary buttons use theme accent (not warning color).
 - Plan progress scoped to the viewed session; hard-dismiss confirm.
 - zh / zh-TW auto-titles and locale id aliases.
