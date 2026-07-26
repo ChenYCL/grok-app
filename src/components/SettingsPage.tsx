@@ -194,6 +194,8 @@ export interface SettingsPageProps {
   onDisableWebSearch?: (v: boolean) => void;
   reopenLastSession?: boolean;
   onReopenLastSession?: (v: boolean) => void;
+  closeToTray?: boolean;
+  onCloseToTray?: (v: boolean) => void;
   planEnabled?: boolean;
   onPlanEnabled?: (v: boolean) => void;
   subagentsEnabled?: boolean;
@@ -561,6 +563,8 @@ export function SettingsPage({
   onUseLeader,
   reopenLastSession = true,
   onReopenLastSession,
+  closeToTray = true,
+  onCloseToTray,
   cliInfo,
   onDoctor,
   versionFooter,
@@ -1669,6 +1673,23 @@ export function SettingsPage({
                     checked={!!reopenLastSession}
                     onChange={() => onReopenLastSession(!reopenLastSession)}
                     ariaLabel={t("settings.reopenLastSession")}
+                  />
+                </div>
+              ) : null}
+              {onCloseToTray ? (
+                <div className="settings-row">
+                  <div className="settings-row__text">
+                    <div className="settings-row__label">
+                      {t("settings.closeToTray")}
+                    </div>
+                    <div className="settings-row__desc">
+                      {t("settings.closeToTrayDesc")}
+                    </div>
+                  </div>
+                  <UiCheck
+                    checked={!!closeToTray}
+                    onChange={() => onCloseToTray(!closeToTray)}
+                    ariaLabel={t("settings.closeToTray")}
                   />
                 </div>
               ) : null}

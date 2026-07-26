@@ -988,6 +988,7 @@ export default function App() {
   const [disableWebSearch, setDisableWebSearch] = useState(false);
   const [useLeader, setUseLeader] = useState(false);
   const [reopenLastSession, setReopenLastSession] = useState(true);
+  const [closeToTray, setCloseToTray] = useState(true);
   const [lastSessionId, setLastSessionId] = useState<string | null>(null);
   const didRestoreLastRef = useRef(false);
   const [tasksPanelOpen, setTasksPanelOpen] = useState(false);
@@ -1414,6 +1415,7 @@ export default function App() {
       setDisableWebSearch(!!settings.disableWebSearch);
       setUseLeader(!!settings.useLeader);
       setReopenLastSession(settings.reopenLastSession !== false);
+      setCloseToTray(settings.closeToTray !== false);
       setLastSessionId(
         typeof settings.lastSessionId === "string"
           ? settings.lastSessionId.trim() || null
@@ -8327,6 +8329,13 @@ export default function App() {
             setReopenLastSession(v);
             void api.settingsGet().then((s) =>
               api.settingsSet({ ...s, reopenLastSession: v }),
+            );
+          }}
+          closeToTray={closeToTray}
+          onCloseToTray={(v) => {
+            setCloseToTray(v);
+            void api.settingsGet().then((s) =>
+              api.settingsSet({ ...s, closeToTray: v }),
             );
           }}
           cliInfo={cliInfo}
