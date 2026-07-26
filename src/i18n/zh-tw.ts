@@ -168,6 +168,9 @@ export const zhTW: Record<MessageKey, string> = {
   "error.deck.timeout.cause":
     "等待過久已中止。可重試；生圖等長任務可能需要更久。",
   "error.deck.disconnect.problem": "與 Agent 的連線已中斷",
+  "error.deck.stall.problem": "輸出似乎卡住了",
+  "error.deck.stall.cause":
+    "約 {seconds} 秒沒有新的內容或工具進度。可取消本輪或繼續等待。",
   "error.deck.disconnect.cause":
     "傳輸通道在回合中關閉。請重新連線後再傳送。",
   "error.deck.generic.problem": "出了點問題",

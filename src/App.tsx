@@ -8380,15 +8380,19 @@ export default function App() {
             </div>
           )}
 
-          {/* I06: pure stream silence — cancel or keep waiting */}
+          {/* I06: pure stream silence — structured deck actions (cancel or keep waiting) */}
           {streamStall && mainPane === "chat" && (
-            <div className="stall-banner" role="status">
-              <div className="stall-banner__summary">
-                {tr("agent.streamStallBanner", {
+            <div className="stall-banner error-banner" role="status">
+              <div className="error-banner__code">STREAM_STALL</div>
+              <div className="error-banner__summary">
+                {tr("error.deck.stall.problem")}
+              </div>
+              <div className="error-banner__cause">
+                {tr("error.deck.stall.cause", {
                   seconds: String(streamStall.stallSeconds),
                 })}
               </div>
-              <div className="stall-banner__actions">
+              <div className="stall-banner__actions error-banner__actions">
                 <button
                   type="button"
                   className="btn btn--ghost stall-banner__btn"
