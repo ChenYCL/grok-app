@@ -617,7 +617,17 @@ const en = {
   "settings.archived.totalCount": "{n} archived",
   "settings.section.permissions": "Permissions",
   "settings.section.composer": "Composer prefs",
+  "settings.section.voice": "Voice",
   "settings.section.general": "General",
+  "settings.voiceId": "Live voice speaker",
+  "settings.voiceIdDesc":
+    "Voice used for full-duplex Live Voice (xAI realtime).",
+  "settings.voiceDictationAutoSend": "Send after dictation",
+  "settings.voiceDictationAutoSendDesc":
+    "When mic dictation finishes, send the prompt instead of only inserting text.",
+  "settings.voiceKeepAgentsOnEnd": "Keep coding sessions after Live Voice",
+  "settings.voiceKeepAgentsOnEndDesc":
+    "If off, ending Live Voice may stop sessions started from voice.",
   "settings.language": "Language",
   "settings.languageDesc": "App UI language",
   "store.quarantineNotice":
@@ -2391,7 +2401,16 @@ const zh: Record<MessageKey, string> = {
   "settings.archived.totalCount": "共 {n} 条",
   "settings.section.permissions": "权限",
   "settings.section.composer": "对话偏好",
+  "settings.section.voice": "语音",
   "settings.section.general": "常规",
+  "settings.voiceId": "实时语音音色",
+  "settings.voiceIdDesc": "全双工实时语音使用的音色（xAI realtime）。",
+  "settings.voiceDictationAutoSend": "听写结束后直接发送",
+  "settings.voiceDictationAutoSendDesc":
+    "麦克风听写转写完成后直接发送，而不是只插入输入框。",
+  "settings.voiceKeepAgentsOnEnd": "结束实时语音后保留编码会话",
+  "settings.voiceKeepAgentsOnEndDesc":
+    "关闭后，结束实时语音可能会停止由语音发起的编码会话。",
   "settings.language": "语言",
   "settings.languageDesc": "应用界面语言",
   "store.quarantineNotice":

@@ -589,7 +589,16 @@ export const zhTW: Record<MessageKey, string> = {
   "settings.archived.totalCount": "共 {n} 條",
   "settings.section.permissions": "權限",
   "settings.section.composer": "對話偏好",
+  "settings.section.voice": "語音",
   "settings.section.general": "一般",
+  "settings.voiceId": "即時語音音色",
+  "settings.voiceIdDesc": "全雙工即時語音使用的音色（xAI realtime）。",
+  "settings.voiceDictationAutoSend": "聽寫結束後直接傳送",
+  "settings.voiceDictationAutoSendDesc":
+    "麥克風聽寫轉寫完成後直接傳送，而不是只插入輸入框。",
+  "settings.voiceKeepAgentsOnEnd": "結束即時語音後保留編碼工作階段",
+  "settings.voiceKeepAgentsOnEndDesc":
+    "關閉後，結束即時語音可能會停止由語音發起的編碼工作階段。",
   "settings.language": "語言",
   "settings.languageDesc": "應用程式介面語言",
   "store.quarantineNotice":
