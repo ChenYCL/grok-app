@@ -202,6 +202,15 @@ export interface SettingsPageProps {
   onSubagentsEnabled?: (v: boolean) => void;
   useLeader?: boolean;
   onUseLeader?: (v: boolean) => void;
+  /** Live voice speaker id (xAI realtime), e.g. eve. */
+  voiceId?: string;
+  onVoiceId?: (v: string) => void;
+  /** After dictation STT, send the prompt immediately. */
+  voiceDictationAutoSend?: boolean;
+  onVoiceDictationAutoSend?: (v: boolean) => void;
+  /** Keep delegated agent sessions when Live Voice ends. */
+  voiceKeepAgentsOnEnd?: boolean;
+  onVoiceKeepAgentsOnEnd?: (v: boolean) => void;
   /** Store App API keys in OS keychain (default off → secrets.json). */
   storeApiKeysInKeychain?: boolean;
   onStoreApiKeysInKeychain?: (v: boolean) => void;
@@ -561,6 +570,12 @@ export function SettingsPage({
   onDisableWebSearch,
   useLeader = false,
   onUseLeader,
+  voiceId = "eve",
+  onVoiceId,
+  voiceDictationAutoSend = false,
+  onVoiceDictationAutoSend,
+  voiceKeepAgentsOnEnd = true,
+  onVoiceKeepAgentsOnEnd,
   reopenLastSession = true,
   onReopenLastSession,
   closeToTray = true,
@@ -1554,6 +1569,93 @@ export function SettingsPage({
 
             {activeTab === "app" && (
             <>
+            <h2 className="settings-page__h2">{t("settings.section.voice")}</h2>
+            <div className="settings-card" id="settings-voice-card">
+              {onVoiceId ? (
+                <div
+                  className={
+                    "settings-row settings-row--stack" +
+                    rowHighlight("settings-anchor-voiceId")
+                  }
+                  id="settings-anchor-voiceId"
+                >
+                  <div className="settings-row__text">
+                    <div className="settings-row__label">
+                      {t("settings.voiceId")}
+                    </div>
+                    <div className="settings-row__desc">
+                      {t("settings.voiceIdDesc")}
+                    </div>
+                  </div>
+                  <Select
+                    value={voiceId || "eve"}
+                    onChange={(v) => onVoiceId(v)}
+                    options={[
+                      { value: "eve", label: "Eve" },
+                      { value: "ara", label: "Ara" },
+                      { value: "rex", label: "Rex" },
+                      { value: "sal", label: "Sal" },
+                      { value: "leo", label: "Leo" },
+                      ...(voiceId &&
+                      !["eve", "ara", "rex", "sal", "leo"].includes(voiceId)
+                        ? [{ value: voiceId, label: voiceId }]
+                        : []),
+                    ]}
+                  />
+                </div>
+              ) : null}
+              {onVoiceDictationAutoSend ? (
+                <div
+                  className={
+                    "settings-row" +
+                    rowHighlight("settings-anchor-voiceDictationAutoSend")
+                  }
+                  id="settings-anchor-voiceDictationAutoSend"
+                >
+                  <div className="settings-row__text">
+                    <div className="settings-row__label">
+                      {t("settings.voiceDictationAutoSend")}
+                    </div>
+                    <div className="settings-row__desc">
+                      {t("settings.voiceDictationAutoSendDesc")}
+                    </div>
+                  </div>
+                  <UiCheck
+                    checked={!!voiceDictationAutoSend}
+                    onChange={() =>
+                      onVoiceDictationAutoSend(!voiceDictationAutoSend)
+                    }
+                    ariaLabel={t("settings.voiceDictationAutoSend")}
+                  />
+                </div>
+              ) : null}
+              {onVoiceKeepAgentsOnEnd ? (
+                <div
+                  className={
+                    "settings-row" +
+                    rowHighlight("settings-anchor-voiceKeepAgentsOnEnd")
+                  }
+                  id="settings-anchor-voiceKeepAgentsOnEnd"
+                >
+                  <div className="settings-row__text">
+                    <div className="settings-row__label">
+                      {t("settings.voiceKeepAgentsOnEnd")}
+                    </div>
+                    <div className="settings-row__desc">
+                      {t("settings.voiceKeepAgentsOnEndDesc")}
+                    </div>
+                  </div>
+                  <UiCheck
+                    checked={!!voiceKeepAgentsOnEnd}
+                    onChange={() =>
+                      onVoiceKeepAgentsOnEnd(!voiceKeepAgentsOnEnd)
+                    }
+                    ariaLabel={t("settings.voiceKeepAgentsOnEnd")}
+                  />
+                </div>
+              ) : null}
+            </div>
+
             <h2 className="settings-page__h2">{t("settings.section.general")}</h2>
             <div className="settings-card">
               <div

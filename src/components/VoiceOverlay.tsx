@@ -29,6 +29,8 @@ export type VoiceOverlayProps = {
   projectPath?: string | null;
   projectId?: string | null;
   projectName?: string | null;
+  voiceId?: string | null;
+  keepAgentsOnEnd?: boolean;
   onClose: () => void;
   onOpenSession?: (sessionId: string) => void;
 };
@@ -39,6 +41,8 @@ export function VoiceOverlay({
   projectPath,
   projectId,
   projectName,
+  voiceId,
+  keepAgentsOnEnd = true,
   onClose,
   onOpenSession,
 }: VoiceOverlayProps) {
@@ -94,6 +98,8 @@ export function VoiceOverlay({
           projectPath,
           projectId,
           projectName,
+          voiceId: voiceId ?? null,
+          keepAgentsOnEnd,
         });
         setState(st);
         appendLine(
@@ -167,7 +173,16 @@ export function VoiceOverlay({
         }
       });
     };
-  }, [open, projectPath, projectId, projectName, appendLine, tt]);
+  }, [
+    open,
+    projectPath,
+    projectId,
+    projectName,
+    voiceId,
+    keepAgentsOnEnd,
+    appendLine,
+    tt,
+  ]);
 
   const handleEnd = async () => {
     stopCapture.current?.();

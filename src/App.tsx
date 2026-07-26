@@ -998,6 +998,11 @@ export default function App() {
     Array<{ name: string; source: string }>
   >([]);
   const [experimentalMemory, setExperimentalMemory] = useState(false);
+  const [voiceId, setVoiceId] = useState("eve");
+  const [voiceDictationAutoSend, setVoiceDictationAutoSend] = useState(false);
+  const [voiceKeepAgentsOnEnd, setVoiceKeepAgentsOnEnd] = useState(true);
+  const voiceDictationAutoSendRef = useRef(false);
+  const sendRef = useRef<(() => Promise<void>) | null>(null);
   const [subagentsEnabled, setSubagentsEnabled] = useState(true);
   const [planEnabled, setPlanEnabled] = useState(true);
   const [disableWebSearch, setDisableWebSearch] = useState(false);
@@ -1425,6 +1430,11 @@ export default function App() {
       }
       setPreferredAgent((settings.preferredAgent || "").trim());
       setExperimentalMemory(!!settings.experimentalMemory);
+      setVoiceId((settings.voiceId || "eve").trim() || "eve");
+      setVoiceDictationAutoSend(!!settings.voiceDictationAutoSend);
+      setVoiceKeepAgentsOnEnd(
+        settings.voiceKeepAgentsOnEnd !== false,
+      );
       setSubagentsEnabled(settings.subagentsEnabled !== false);
       setPlanEnabled(settings.planEnabled !== false);
       setDisableWebSearch(!!settings.disableWebSearch);
@@ -4664,6 +4674,8 @@ export default function App() {
       targetSessionId: session.sessionId,
     });
   };
+  sendRef.current = send;
+  voiceDictationAutoSendRef.current = voiceDictationAutoSend;
 
   executeSendFromQueueRef.current = (opts) => executeSend(opts);
 
@@ -5610,12 +5622,22 @@ export default function App() {
         }
         if (!voiceResultStillCurrent(gen, voiceGenRef.current)) return;
         const caret = voiceCaretRef.current;
+        let inserted = "";
         setDraft((d) => {
           const at =
             caret == null ? d.length : Math.max(0, Math.min(caret, d.length));
-          return insertTranscriptIntoDraft(d, res.text!, at).text;
+          inserted = insertTranscriptIntoDraft(d, res.text!, at).text;
+          return inserted;
         });
         setVoice((s) => reduceVoice(s, { type: "transcribe_ok" }));
+        if (
+          voiceDictationAutoSendRef.current &&
+          inserted.trim().length > 0
+        ) {
+          window.setTimeout(() => {
+            void sendRef.current?.();
+          }, 0);
+        }
       } catch (e) {
         if (!voiceResultStillCurrent(gen, voiceGenRef.current)) return;
         const cls = classifyVoiceError(String(e));
@@ -8423,6 +8445,28 @@ export default function App() {
               api.settingsSet({ ...s, experimentalMemory: v }),
             );
           }}
+          voiceId={voiceId}
+          onVoiceId={(v) => {
+            const next = (v || "eve").trim() || "eve";
+            setVoiceId(next);
+            void api.settingsGet().then((s) =>
+              api.settingsSet({ ...s, voiceId: next }),
+            );
+          }}
+          voiceDictationAutoSend={voiceDictationAutoSend}
+          onVoiceDictationAutoSend={(v) => {
+            setVoiceDictationAutoSend(v);
+            void api.settingsGet().then((s) =>
+              api.settingsSet({ ...s, voiceDictationAutoSend: v }),
+            );
+          }}
+          voiceKeepAgentsOnEnd={voiceKeepAgentsOnEnd}
+          onVoiceKeepAgentsOnEnd={(v) => {
+            setVoiceKeepAgentsOnEnd(v);
+            void api.settingsGet().then((s) =>
+              api.settingsSet({ ...s, voiceKeepAgentsOnEnd: v }),
+            );
+          }}
           subagentsEnabled={subagentsEnabled}
           onSubagentsEnabled={(v) => {
             setSubagentsEnabled(v);
@@ -11083,6 +11127,8 @@ export default function App() {
         projectPath={activeProject?.path ?? null}
         projectId={activeProject?.id ?? null}
         projectName={activeProject?.name ?? null}
+        voiceId={voiceId}
+        keepAgentsOnEnd={voiceKeepAgentsOnEnd}
         onClose={() => setLiveVoiceOpen(false)}
         onOpenSession={(id) => {
           setLiveVoiceOpen(false);
