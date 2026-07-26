@@ -166,6 +166,11 @@ pub struct LoginResult {
     pub device_url: Option<String>,
     pub device_code: Option<String>,
     pub profile: Option<AccountProfile>,
+    /// True when the login was killed by the host-side watchdog because the
+    /// CLI produced neither a URL nor an exit (auth endpoint unreachable —
+    /// NEW-01). Lets the UI show network guidance instead of a generic failure.
+    #[serde(default)]
+    pub timed_out: bool,
 }
 
 fn grok_home() -> PathBuf {
@@ -760,7 +765,7 @@ fn merge_subscription_into_billing(billing: &mut BillingSnapshot, meta: &Subscri
 /// Primary: GET /v1/settings → subscription_tier_display ("SuperGrok Heavy")
 /// Fallback: GET /v1/user?include=subscription → subscriptionTier ("SuperGrokPro")
 async fn fetch_subscription_meta(token: &str) -> SubscriptionMeta {
-    let client = match reqwest::Client::builder()
+    let client = match crate::proxy::apply_to_reqwest(reqwest::Client::builder())
         .timeout(Duration::from_secs(8))
         .user_agent("GrokApp/0.1 (desktop; unofficial)")
         .build()
@@ -833,7 +838,7 @@ async fn fetch_subscription_meta(token: &str) -> SubscriptionMeta {
 }
 
 async fn fetch_billing_remote(token: &str) -> BillingSnapshot {
-    let client = match reqwest::Client::builder()
+    let client = match crate::proxy::apply_to_reqwest(reqwest::Client::builder())
         .timeout(Duration::from_secs(10))
         .user_agent("GrokApp/0.1 (desktop; unofficial)")
         .build()
@@ -1256,6 +1261,20 @@ pub async fn account_status(manual_cli: Option<&str>, refresh_billing: bool) -> 
     }
 }
 
+/// Hard ceiling for one `grok login` run. Generous enough for a slow browser
+/// round-trip, small enough that an unreachable auth endpoint fails visibly
+/// instead of hanging "Working…" forever (NEW-01).
+const LOGIN_TOTAL_TIMEOUT_SECS: u64 = 120;
+
+/// Effective login timeout; `GROK_APP_LOGIN_TIMEOUT_SECS` overrides for tests.
+fn login_timeout_secs() -> u64 {
+    std::env::var("GROK_APP_LOGIN_TIMEOUT_SECS")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .filter(|v| *v > 0)
+        .unwrap_or(LOGIN_TOTAL_TIMEOUT_SECS)
+}
+
 /// Run `grok login --oauth` or `--device-auth`. OAuth opens the system browser via CLI.
 pub async fn account_login(method: &str, manual_cli: Option<&str>) -> LoginResult {
     let cli = match resolve_cli_path(manual_cli) {
@@ -1268,6 +1287,7 @@ pub async fn account_login(method: &str, manual_cli: Option<&str>) -> LoginResul
                 device_url: None,
                 device_code: None,
                 profile: None,
+                timed_out: false,
             };
         }
     };
@@ -1302,6 +1322,8 @@ pub async fn account_login(method: &str, manual_cli: Option<&str>) -> LoginResul
         .stderr(Stdio::piped());
     // Login may open a browser; still hide the console flash on Windows.
     crate::process_util::apply_no_window_tokio(&mut cmd);
+    // The OpenID config fetch inside `grok login` needs the proxy too (NEW-02).
+    crate::proxy::apply_to_tokio_command(&mut cmd);
 
     let mut child = match cmd.spawn() {
         Ok(c) => c,
@@ -1313,6 +1335,7 @@ pub async fn account_login(method: &str, manual_cli: Option<&str>) -> LoginResul
                 device_url: None,
                 device_code: None,
                 profile: None,
+                timed_out: false,
             };
         }
     };
@@ -1359,14 +1382,26 @@ pub async fn account_login(method: &str, manual_cli: Option<&str>) -> LoginResul
     };
 
     // Drive stdout+stderr drain concurrently with process exit, and race the
-    // whole thing against Cancel. stdout/stderr reach EOF when the CLI exits,
-    // so join! naturally completes alongside wait().
+    // whole thing against Cancel AND a total-time watchdog. stdout/stderr reach
+    // EOF when the CLI exits, so join! naturally completes alongside wait().
+    //
+    // The watchdog is the fix for the "stuck on Working…" hang (NEW-01): when
+    // auth.x.ai is unreachable the CLI blocks on the OpenID config fetch and
+    // never prints a URL nor exits, so neither other branch fires.
     let cancelled;
+    let timed_out;
     let (stdout, stderr, status) = tokio::select! {
         biased;
         _ = login_proc().cancel.notified() => {
             let _ = child.kill().await;
             cancelled = true;
+            timed_out = false;
+            (String::new(), String::new(), None)
+        }
+        _ = tokio::time::sleep(Duration::from_secs(login_timeout_secs())) => {
+            let _ = child.kill().await;
+            cancelled = false;
+            timed_out = true;
             (String::new(), String::new(), None)
         }
         joined = async {
@@ -1376,6 +1411,7 @@ pub async fn account_login(method: &str, manual_cli: Option<&str>) -> LoginResul
             (so, se, st)
         } => {
             cancelled = false;
+            timed_out = false;
             joined
         }
     };
@@ -1388,6 +1424,23 @@ pub async fn account_login(method: &str, manual_cli: Option<&str>) -> LoginResul
             device_url: None,
             device_code: None,
             profile: None,
+            timed_out: false,
+        };
+    }
+
+    if timed_out {
+        let secs = login_timeout_secs();
+        warn!("account: login timed out after {secs}s (auth endpoint unreachable?)");
+        return LoginResult {
+            ok: false,
+            method: method.into(),
+            message: format!(
+                "Sign-in timed out after {secs}s — the Grok auth endpoint could not be reached."
+            ),
+            device_url: None,
+            device_code: None,
+            profile: None,
+            timed_out: true,
         };
     }
 
@@ -1494,6 +1547,7 @@ Try another network/VPN, use device-code login, or configure a custom provider i
         } else {
             None
         },
+        timed_out: false,
     }
 }
 
@@ -1708,5 +1762,47 @@ mod tests {
         assert_eq!(display_from_jwt_tier(5).as_deref(), Some("SuperGrok Heavy"));
         assert_eq!(display_from_jwt_tier(3).as_deref(), Some("SuperGrok"));
         assert_eq!(display_from_jwt_tier(0), None);
+    }
+
+    /// NEW-01: a CLI that hangs on the OpenID config fetch (prints nothing,
+    /// never exits) must trip the watchdog instead of hanging "Working…".
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn login_watchdog_kills_hanging_cli() {
+        use std::io::Write;
+        use std::os::unix::fs::PermissionsExt;
+
+        let dir = std::env::temp_dir().join(format!(
+            "grok-app-login-timeout-test-{}",
+            std::process::id()
+        ));
+        let _ = std::fs::create_dir_all(&dir);
+        let fake = dir.join("grok");
+        {
+            // Fake CLI: answer --version (the probe is synchronous), then hang
+            // on `login` the way a blocked OpenID fetch does.
+            let mut f = std::fs::File::create(&fake).unwrap();
+            writeln!(
+                f,
+                "#!/bin/sh\nif [ \"$1\" = \"--version\" ]; then echo \"grok 0.2.112\"; exit 0; fi\nsleep 600"
+            )
+            .unwrap();
+        }
+        let mut perm = std::fs::metadata(&fake).unwrap().permissions();
+        perm.set_mode(0o755);
+        std::fs::set_permissions(&fake, perm).unwrap();
+
+        std::env::set_var("GROK_APP_LOGIN_TIMEOUT_SECS", "2");
+        let res = account_login("oauth", Some(fake.to_str().unwrap())).await;
+        std::env::remove_var("GROK_APP_LOGIN_TIMEOUT_SECS");
+        let _ = std::fs::remove_dir_all(&dir);
+
+        assert!(!res.ok, "hanging login must not report success");
+        assert!(res.timed_out, "watchdog must mark the result as timed out");
+        assert!(
+            res.message.to_lowercase().contains("timed out"),
+            "message should explain the timeout: {}",
+            res.message
+        );
     }
 }

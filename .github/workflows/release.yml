@@ -156,3 +156,39 @@ jobs:
             TAG="v$(python3 -c 'import json; print(json.load(open("package.json"))["version"])')"
           fi
           bash scripts/package-windows-portable.sh "$TAG"
+
+  # Supply-chain floor (NEW-06): one SHA256SUMS over every published asset so
+  # users can verify downloads. Runs after all platform builds have uploaded.
+  checksums:
+    needs: publish
+    runs-on: ubuntu-22.04
+    name: Publish SHA256SUMS
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Compute and upload SHA256SUMS
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [[ "${{ github.ref_type }}" == "tag" ]]; then
+            TAG="${{ github.ref_name }}"
+          else
+            TAG="v$(python3 -c 'import json; print(json.load(open("package.json"))["version"])')"
+          fi
+          mkdir -p /tmp/release-assets
+          cd /tmp/release-assets
+          # Download everything except a stale checksum file from a rebuild.
+          gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --pattern '*' || true
+          rm -f SHA256SUMS
+          shopt -s nullglob
+          files=(*)
+          if [[ ${#files[@]} -eq 0 ]]; then
+            echo "error: no release assets found for $TAG" >&2
+            exit 1
+          fi
+          sha256sum "${files[@]}" > SHA256SUMS
+          cat SHA256SUMS
+          gh release upload "$TAG" SHA256SUMS --repo "$GITHUB_REPOSITORY" --clobber

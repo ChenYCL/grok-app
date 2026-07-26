@@ -384,9 +384,12 @@ export function AccountPanel({
                   {labels.loginDevice}
                 </button>
                 {busy && onCancelLogin ? (
+                  // Solid, not ghost: while login blocks on the network this is
+                  // the only actionable control, so it must read as primary
+                  // (NEW-01 — users failed to find the ghost variant).
                   <button
                     type="button"
-                    className="btn btn--ghost btn--sm"
+                    className="btn btn--solid btn--sm"
                     onClick={onCancelLogin}
                   >
                     {labels.loginCancel}

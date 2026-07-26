@@ -20,6 +20,10 @@ pub enum AgentErrorCode {
     ConnectFailed,
     /// Max concurrent agent processes reached (I02).
     ProcessLimit,
+    /// Installed grok CLI predates the flag set this app spawns with.
+    /// Without this code the failure surfaces as `AgentCrashed`, which points
+    /// the user nowhere (NEW-03).
+    CliTooOld,
 }
 
 impl AgentErrorCode {
@@ -32,6 +36,7 @@ impl AgentErrorCode {
             Self::QuotaExceeded => "QUOTA_EXCEEDED",
             Self::ConnectFailed => "CONNECT_FAILED",
             Self::ProcessLimit => "PROCESS_LIMIT",
+            Self::CliTooOld => "CLI_TOO_OLD",
         }
     }
 }
@@ -65,6 +70,7 @@ mod tests {
             AgentErrorCode::QuotaExceeded,
             AgentErrorCode::ConnectFailed,
             AgentErrorCode::ProcessLimit,
+            AgentErrorCode::CliTooOld,
         ];
         let expected = [
             "CLI_NOT_FOUND",
@@ -74,6 +80,7 @@ mod tests {
             "QUOTA_EXCEEDED",
             "CONNECT_FAILED",
             "PROCESS_LIMIT",
+            "CLI_TOO_OLD",
         ];
         for (code, name) in codes.into_iter().zip(expected) {
             assert_eq!(code.as_str(), name);

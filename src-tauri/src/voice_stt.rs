@@ -117,7 +117,7 @@ pub async fn voice_transcribe(
         .filter(|s| !s.trim().is_empty())
         .unwrap_or_else(|| guess_mime(&fname).into());
 
-    let client = match reqwest::Client::builder()
+    let client = match crate::proxy::apply_to_reqwest(reqwest::Client::builder())
         .connect_timeout(CONNECT_TIMEOUT)
         .timeout(REQUEST_TIMEOUT)
         .user_agent(format!(

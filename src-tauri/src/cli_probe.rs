@@ -13,6 +13,53 @@ use serde::{Deserialize, Serialize};
 
 use crate::process_util::{self, user_home};
 
+/// Minimum grok CLI version whose flag set `acp_client` is known to work with.
+///
+/// 0.2.112 is the first version that accepts `doctor --json`; older builds reject
+/// it with a raw clap error (`unexpected argument '--'`) and also reject agent
+/// flags the host spawns with, which surfaces to the user as `AGENT_CRASHED`
+/// with no path to a fix. Bump this together with any change to the flag
+/// placement in `acp_client::spawn_with_home`.
+pub const MIN_CLI_VERSION: (u64, u64, u64) = (0, 2, 112);
+
+/// Render [`MIN_CLI_VERSION`] as `x.y.z` for UI copy.
+pub fn min_cli_version_str() -> String {
+    let (a, b, c) = MIN_CLI_VERSION;
+    format!("{a}.{b}.{c}")
+}
+
+/// Pull the first semver-looking token out of a `--version` line.
+///
+/// The CLI prints shapes like `grok 0.2.112`, `grok-cli v0.2.112 (abc1234)`, or
+/// bare `0.2.112`; we only care about the numeric core.
+pub fn extract_version_token(raw: &str) -> Option<String> {
+    raw.split(|c: char| c.is_whitespace() || c == '(' || c == ')' || c == ',')
+        .map(|t| t.trim().trim_start_matches(['v', 'V']))
+        .find(|t| {
+            // Require at least `major.minor` with a leading digit so words like
+            // "grok" or a git hash are not mistaken for a version.
+            let mut parts = t.split('.');
+            let major = parts.next().unwrap_or("");
+            let minor = parts.next().unwrap_or("");
+            !major.is_empty()
+                && major.chars().all(|c| c.is_ascii_digit())
+                && !minor.is_empty()
+                && minor.chars().next().is_some_and(|c| c.is_ascii_digit())
+        })
+        .map(|t| t.to_string())
+}
+
+/// Compare a raw `--version` line against [`MIN_CLI_VERSION`].
+///
+/// Returns `None` when the version cannot be parsed — an unknown version is
+/// **not** treated as too old, so a CLI build with an unusual banner still
+/// runs instead of being blocked by a false positive.
+pub fn cli_version_supported(raw_version: &str) -> Option<bool> {
+    let token = extract_version_token(raw_version)?;
+    let parsed = crate::app_update::parse_semver(&token)?;
+    Some(parsed >= MIN_CLI_VERSION)
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CliProbeResult {
@@ -23,6 +70,11 @@ pub struct CliProbeResult {
     pub candidates_tried: Vec<String>,
     /// CLI auth material present at ~/.grok/auth.json (not App secrets).
     pub cli_auth_present: bool,
+    /// `Some(false)` when the CLI is older than [`MIN_CLI_VERSION`].
+    /// `None` when the version could not be probed or parsed (NEW-03).
+    pub version_supported: Option<bool>,
+    /// Minimum version this app requires, so the UI need not hardcode it.
+    pub min_version: String,
 }
 
 pub fn cli_auth_json_present() -> bool {
@@ -258,6 +310,13 @@ fn is_executable(path: &Path) -> bool {
     process_util::looks_runnable(path)
 }
 
+/// Public wrapper so spawn paths can gate on version without a full probe.
+/// One extra `--version` exec per session start, which is negligible next to
+/// spawning the agent itself.
+pub fn read_version_of(path: &Path) -> Option<String> {
+    read_version(path)
+}
+
 fn read_version(path: &Path) -> Option<String> {
     let mut cmd = Command::new(path);
     cmd.arg("--version");
@@ -317,6 +376,7 @@ pub fn probe_cli(manual_path: Option<&str>) -> CliProbeResult {
         }
         let source = classify_source(path, manual_set && i == 0);
         if let Some(version) = read_version(path) {
+            let version_supported = cli_version_supported(&version);
             return CliProbeResult {
                 found: true,
                 path: Some(path.display().to_string()),
@@ -324,6 +384,8 @@ pub fn probe_cli(manual_path: Option<&str>) -> CliProbeResult {
                 source,
                 candidates_tried: tried,
                 cli_auth_present,
+                version_supported,
+                min_version: min_cli_version_str(),
             };
         }
         if fallback.is_none() {
@@ -341,6 +403,8 @@ pub fn probe_cli(manual_path: Option<&str>) -> CliProbeResult {
             source,
             candidates_tried: tried,
             cli_auth_present,
+            version_supported: None,
+            min_version: min_cli_version_str(),
         };
     }
 
@@ -351,12 +415,57 @@ pub fn probe_cli(manual_path: Option<&str>) -> CliProbeResult {
         source: "not_found".into(),
         candidates_tried: tried,
         cli_auth_present,
+        version_supported: None,
+        min_version: min_cli_version_str(),
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn extracts_version_from_common_banners() {
+        assert_eq!(extract_version_token("grok 0.2.112").as_deref(), Some("0.2.112"));
+        assert_eq!(extract_version_token("grok-cli v0.2.112").as_deref(), Some("0.2.112"));
+        assert_eq!(
+            extract_version_token("grok 0.2.112 (a1b2c3d)").as_deref(),
+            Some("0.2.112")
+        );
+        assert_eq!(extract_version_token("0.2.101").as_deref(), Some("0.2.101"));
+        assert_eq!(extract_version_token("1.0").as_deref(), Some("1.0"));
+    }
+
+    #[test]
+    fn version_extraction_ignores_non_version_tokens() {
+        // A git hash or plain words must not be mistaken for a version.
+        assert_eq!(extract_version_token("grok"), None);
+        assert_eq!(extract_version_token("build a1b2c3d"), None);
+        assert_eq!(extract_version_token(""), None);
+    }
+
+    #[test]
+    fn version_gate_flags_old_cli() {
+        // The exact pairing reported in the field: 0.2.101 fails, 0.2.112 passes.
+        assert_eq!(cli_version_supported("grok 0.2.101"), Some(false));
+        assert_eq!(cli_version_supported("grok 0.2.112"), Some(true));
+        assert_eq!(cli_version_supported("grok 0.2.200"), Some(true));
+        assert_eq!(cli_version_supported("grok 0.3.0"), Some(true));
+        assert_eq!(cli_version_supported("grok 1.0.0"), Some(true));
+        assert_eq!(cli_version_supported("grok 0.1.999"), Some(false));
+    }
+
+    #[test]
+    fn unparseable_version_is_not_treated_as_too_old() {
+        // Fail open: an unknown banner must not block a working CLI.
+        assert_eq!(cli_version_supported("grok"), None);
+        assert_eq!(cli_version_supported(""), None);
+    }
+
+    #[test]
+    fn min_version_string_matches_constant() {
+        assert_eq!(min_cli_version_str(), "0.2.112");
+    }
 
     #[test]
     fn probe_returns_structure() {

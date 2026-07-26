@@ -80,7 +80,7 @@ pub fn default_unused_quota_snapshot() -> AccountQuotaSnapshot {
 }
 
 pub async fn fetch_quota_snapshot(access_token: &str) -> Result<AccountQuotaSnapshot, String> {
-    let client = reqwest::Client::builder()
+    let client = crate::proxy::apply_to_reqwest(reqwest::Client::builder())
         .timeout(SUPERGROK_TIMEOUT)
         .user_agent("GrokApp/0.1 (desktop; unofficial; sister-of-grok-go)")
         .build()
@@ -138,7 +138,7 @@ pub async fn fetch_quota_snapshot(access_token: &str) -> Result<AccountQuotaSnap
 
 /// Fallback: JSON billing used by Grok Build CLI extension.
 pub async fn fetch_quota_via_cli_proxy(access_token: &str) -> Result<AccountQuotaSnapshot, String> {
-    let client = reqwest::Client::builder()
+    let client = crate::proxy::apply_to_reqwest(reqwest::Client::builder())
         .timeout(SUPERGROK_TIMEOUT)
         .user_agent("GrokApp/0.1 (desktop; unofficial)")
         .build()

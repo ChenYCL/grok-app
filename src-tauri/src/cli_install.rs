@@ -224,7 +224,7 @@ fn platform_triple() -> Result<(&'static str, &'static str), String> {
 }
 
 fn http_client() -> Result<reqwest::Client, String> {
-    reqwest::Client::builder()
+    crate::proxy::apply_to_reqwest(reqwest::Client::builder())
         .connect_timeout(CONNECT_TIMEOUT)
         .timeout(REQUEST_TIMEOUT)
         .user_agent(format!("GrokApp/{}", env!("CARGO_PKG_VERSION")))

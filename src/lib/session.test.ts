@@ -957,6 +957,30 @@ describe("session projection", () => {
     expect(crash?.primary?.id).toBe("reconnect");
   });
 
+  it("presentErrorBanner routes CLI_TOO_OLD to the upgrade deck (NEW-03)", () => {
+    // From the agent spawn gate.
+    const fromAgent = presentErrorBanner(
+      {
+        code: "CLI_TOO_OLD",
+        message: "grok CLI 0.2.101 is older than the required 0.2.112",
+      },
+      null,
+      "en",
+    );
+    expect(fromAgent?.code).toBe("CLI_TOO_OLD");
+    expect(fromAgent?.primary?.id).toBe("upgrade_cli");
+
+    // From the launch-time probe (coded localError string).
+    const fromLocal = presentErrorBanner(
+      null,
+      "CLI_TOO_OLD: grok CLI 0.2.101 < required 0.2.112",
+      "en",
+    );
+    expect(fromLocal?.code).toBe("CLI_TOO_OLD");
+    expect(fromLocal?.primary?.id).toBe("upgrade_cli");
+    expect(fromLocal?.summary.toLowerCase()).toMatch(/cli/);
+  });
+
   it("formatTurnErrorBody maps turn_timeout tag", () => {
     const body = formatTurnErrorBody(
       {

@@ -235,6 +235,19 @@ pub struct AppSettings {
     /// Keep delegated agent sessions running after ending a live voice chat.
     #[serde(default = "default_true")]
     pub voice_keep_agents_on_end: bool,
+    /// Outbound proxy mode: `system` (default; OS proxy / env vars), `none`
+    /// (force direct), or `manual` (use [`Self::proxy_url`]). NEW-02: without
+    /// this, restricted-network users cannot reach Grok backends at all —
+    /// Windows system proxy is registry-based and never reaches child
+    /// processes as env vars.
+    #[serde(default = "default_proxy_mode")]
+    pub proxy_mode: String,
+    /// Proxy URL for `manual` mode, e.g. `http://127.0.0.1:7890`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub proxy_url: Option<String>,
+    /// Comma-separated hosts that bypass the proxy (NO_PROXY semantics).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub proxy_no_proxy: Option<String>,
 }
 
 fn default_composer_prefs_scope() -> String {
@@ -275,6 +288,10 @@ fn default_voice_id() -> String {
 
 fn default_close_to_tray() -> bool {
     true
+}
+
+fn default_proxy_mode() -> String {
+    "system".into()
 }
 
 impl Default for AppSettings {
@@ -320,6 +337,9 @@ impl Default for AppSettings {
             voice_dictation_auto_send: false,
             voice_keep_agents_on_end: true,
             close_to_tray: default_close_to_tray(),
+            proxy_mode: default_proxy_mode(),
+            proxy_url: None,
+            proxy_no_proxy: None,
         }
     }
 }

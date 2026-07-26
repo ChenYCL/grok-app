@@ -24,6 +24,18 @@ describe("buildErrorDeck", () => {
     const crash = buildErrorDeck("AGENT_CRASHED", "en");
     expect(crash.problem.toLowerCase()).toMatch(/agent|crash|process/);
     expect(crash.primary.id).toBe("reconnect");
+
+    // NEW-03: outdated CLI gets its own card pointing at an upgrade, not a
+    // generic crash.
+    const old = buildErrorDeck("CLI_TOO_OLD", "en");
+    expect(old.problem.toLowerCase()).toMatch(/cli/);
+    expect(old.problem.toLowerCase()).toMatch(/old|version/);
+    expect(old.primary.id).toBe("upgrade_cli");
+    expect(old.secondary?.id).toBe("open_doctor");
+  });
+
+  it("CLI_TOO_OLD maps to its own deck code, not GENERIC", () => {
+    expect(deckCodeFromAgent("CLI_TOO_OLD")).toBe("CLI_TOO_OLD");
   });
 
   it("returns Chinese copy for zh", () => {
@@ -50,6 +62,7 @@ describe("buildErrorDeck", () => {
     expect(stall.primary.id).toBe("keep_waiting");
     expect(stall.secondary?.id).toBe("cancel_turn");
     expect(stall.primary.label.toLowerCase()).toMatch(/wait/);
-    expect(stall.secondary?.label.toLowerCase()).toMatch(/cancel/);
+    // Copy changed from "Cancel" to "End turn"; assert intent, not wording.
+    expect(stall.secondary?.label.toLowerCase()).toMatch(/cancel|end/);
   });
 });

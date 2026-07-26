@@ -26,6 +26,7 @@ mod models_catalog;
 mod paths;
 mod process_util;
 mod process_limits;
+mod proxy;
 mod journal_throttle;
 mod stream_stall;
 mod cli_sessions;
@@ -242,6 +243,8 @@ pub fn run() {
             commands::import_grok_cli_config,
             commands::import_grok_go_config,
             commands::doctor_report,
+            commands::network_probe,
+            commands::agents_recycle_all,
             commands::cli_doctor_fix,
             commands::export_support_bundle,
             commands::export_session_bundle,

@@ -23,6 +23,9 @@ export function CliUpdateRow({
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<any | null>(null);
   const [installMsg, setInstallMsg] = useState<string | null>(null);
+  // NEW-05: running agents keep executing the old binary after an upgrade.
+  const [needsRestart, setNeedsRestart] = useState(false);
+  const [restarting, setRestarting] = useState(false);
 
   const check = async () => {
     if (!api.isTauri()) {
@@ -70,6 +73,7 @@ export function CliUpdateRow({
           version: r.version || result?.latestVersion || "—",
         }),
       );
+      setNeedsRestart(true);
       // Refresh check status after install.
       try {
         const next = await api.cliUpdateCheck();
@@ -88,6 +92,18 @@ export function CliUpdateRow({
       setError(String(e));
     } finally {
       setBusy(null);
+    }
+  };
+
+  const restartSessions = async () => {
+    setRestarting(true);
+    try {
+      await api.agentsRecycleAll();
+      setNeedsRestart(false);
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setRestarting(false);
     }
   };
 
@@ -138,6 +154,21 @@ export function CliUpdateRow({
         {installMsg && !error ? (
           <div className="settings-cli-update__status" role="status">
             {installMsg}
+          </div>
+        ) : null}
+        {needsRestart && !error ? (
+          <div className="settings-cli-update__status" role="status">
+            {t("settings.cliUpdateRestartHint")}{" "}
+            <button
+              type="button"
+              className="btn btn--sm"
+              disabled={restarting}
+              onClick={() => void restartSessions()}
+            >
+              {restarting
+                ? t("settings.cliUpdateRestarting")
+                : t("settings.cliUpdateRestartAction")}
+            </button>
           </div>
         ) : null}
         {result && !error && !installMsg ? (

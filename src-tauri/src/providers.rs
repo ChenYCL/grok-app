@@ -827,7 +827,7 @@ pub async fn ping_provider(
         key = resolve_stored_key(provider_id.as_deref());
     }
     let endpoint = models_list_endpoint(&base)?;
-    let client = reqwest::Client::builder()
+    let client = crate::proxy::apply_to_reqwest(reqwest::Client::builder())
         .timeout(std::time::Duration::from_secs(12))
         .build()
         .map_err(|e| e.to_string())?;
@@ -875,7 +875,7 @@ pub async fn list_remote_models(
         return Err("api_key is required to list models".into());
     }
     let endpoint = models_list_endpoint(&base)?;
-    let client = reqwest::Client::builder()
+    let client = crate::proxy::apply_to_reqwest(reqwest::Client::builder())
         .timeout(std::time::Duration::from_secs(20))
         .build()
         .map_err(|e| e.to_string())?;

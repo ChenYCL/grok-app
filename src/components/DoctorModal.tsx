@@ -541,8 +541,11 @@ export function DoctorModal({
 
               {!cliDoctor.available && (
                 <p className="doctor-modal__status doctor-modal__status--error">
-                  {t("doctor.cliDoctorMissing")}
-                  {cliDoctor.error ? `: ${cliDoctor.error}` : ""}
+                  {cliDoctor.reason === "cli_too_old"
+                    ? t("doctor.cliTooOld")
+                    : `${t("doctor.cliDoctorMissing")}${
+                        cliDoctor.error ? `: ${cliDoctor.error}` : ""
+                      }`}
                 </p>
               )}
 

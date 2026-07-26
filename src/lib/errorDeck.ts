@@ -15,6 +15,10 @@ export type ErrorDeckActionId =
   | "open_account"
   | "open_providers"
   | "dismiss"
+  /** Open Settings runtime section and trigger a CLI upgrade (CLI_TOO_OLD). */
+  | "upgrade_cli"
+  /** Open Settings → Runtime → Network (proxy) — NEW-07. */
+  | "open_network"
   /** Stream-stall banner: clear the stall prompt and keep the turn running. */
   | "keep_waiting"
   /** Stream-stall banner: cancel the in-flight turn. */
@@ -29,6 +33,7 @@ export type ErrorDeckCode =
   | "QUOTA_EXCEEDED"
   | "CONNECT_FAILED"
   | "PROCESS_LIMIT"
+  | "CLI_TOO_OLD"
   | "TURN_TIMEOUT"
   | "AGENT_DISCONNECTED"
   | "STREAM_STALL"
@@ -80,8 +85,10 @@ const DECK: Record<ErrorDeckCode, DeckSpec> = {
     cause: "error.deck.network.cause",
     primaryId: "reconnect",
     primaryLabel: "error.action.reconnect",
-    secondaryId: "open_providers",
-    secondaryLabel: "error.action.openProviders",
+    // Restricted networks are the dominant real-world cause (NEW-07): route
+    // the secondary action at proxy settings, not providers.
+    secondaryId: "open_network",
+    secondaryLabel: "error.action.openNetwork",
   },
   AGENT_CRASHED: {
     problem: "error.deck.crash.problem",
@@ -114,6 +121,14 @@ const DECK: Record<ErrorDeckCode, DeckSpec> = {
     primaryLabel: "error.action.openRuntime",
     secondaryId: "dismiss",
     secondaryLabel: "error.action.dismiss",
+  },
+  CLI_TOO_OLD: {
+    problem: "error.deck.cliTooOld.problem",
+    cause: "error.deck.cliTooOld.cause",
+    primaryId: "upgrade_cli",
+    primaryLabel: "error.action.upgradeCli",
+    secondaryId: "open_doctor",
+    secondaryLabel: "error.action.openDoctor",
   },
   TURN_TIMEOUT: {
     problem: "error.deck.timeout.problem",
@@ -177,6 +192,7 @@ const AGENT_DECK_CODES: ErrorDeckCode[] = [
   "QUOTA_EXCEEDED",
   "CONNECT_FAILED",
   "PROCESS_LIMIT",
+  "CLI_TOO_OLD",
 ];
 
 /** Map a classified agent code (or special timeout/disconnect) to a deck code. */

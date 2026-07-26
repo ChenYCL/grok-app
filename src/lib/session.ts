@@ -17,7 +17,8 @@ export type AgentErrorCode =
   | "AGENT_CRASHED"
   | "QUOTA_EXCEEDED"
   | "CONNECT_FAILED"
-  | "PROCESS_LIMIT";
+  | "PROCESS_LIMIT"
+  | "CLI_TOO_OLD";
 
 export interface AgentError {
   code: AgentErrorCode;
@@ -1872,6 +1873,7 @@ const KNOWN_ERROR_CODES: AgentErrorCode[] = [
   "QUOTA_EXCEEDED",
   "CONNECT_FAILED",
   "PROCESS_LIMIT",
+  "CLI_TOO_OLD",
 ];
 
 export function isAgentErrorCode(code: string | undefined | null): code is AgentErrorCode {
@@ -1895,10 +1897,10 @@ export function agentDisconnectedCopy(locale: Locale = "en"): string {
 }
 
 const AGENT_ERROR_CODE_RE =
-  /^(CLI_NOT_FOUND|AUTH_FAILED|NETWORK_PROVIDER|AGENT_CRASHED|QUOTA_EXCEEDED|CONNECT_FAILED|PROCESS_LIMIT)(?::\s*|\s+)([\s\S]*)$/;
+  /^(CLI_NOT_FOUND|AUTH_FAILED|NETWORK_PROVIDER|AGENT_CRASHED|QUOTA_EXCEEDED|CONNECT_FAILED|PROCESS_LIMIT|CLI_TOO_OLD)(?::\s*|\s+)([\s\S]*)$/;
 
 const MARKDOWN_CODE_RE =
-  /^\*\*(CLI_NOT_FOUND|AUTH_FAILED|NETWORK_PROVIDER|AGENT_CRASHED|QUOTA_EXCEEDED|CONNECT_FAILED|PROCESS_LIMIT)\*\*(?:\s*[\r\n]+([\s\S]*))?$/;
+  /^\*\*(CLI_NOT_FOUND|AUTH_FAILED|NETWORK_PROVIDER|AGENT_CRASHED|QUOTA_EXCEEDED|CONNECT_FAILED|PROCESS_LIMIT|CLI_TOO_OLD)\*\*(?:\s*[\r\n]+([\s\S]*))?$/;
 
 /** Strip ANSI SGR sequences from CLI/MCP stderr dumps. */
 export function stripAnsi(text: string): string {

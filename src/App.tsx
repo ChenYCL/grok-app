@@ -997,6 +997,10 @@ export default function App() {
   }>({ found: false, path: null, version: null, source: "", cliAuthPresent: false });
   const [manualCliPath, setManualCliPath] = useState("");
   const [acpServerAddr, setAcpServerAddr] = useState("");
+  // Outbound proxy prefs (NEW-02).
+  const [proxyMode, setProxyMode] = useState("system");
+  const [proxyUrl, setProxyUrl] = useState("");
+  const [proxyNoProxy, setProxyNoProxy] = useState("");
   const [maxConcurrentAgents, setMaxConcurrentAgents] = useState(8);
   const [agentIdleMinutes, setAgentIdleMinutes] = useState(30);
   const [streamStallSeconds, setStreamStallSeconds] = useState(180);
@@ -1408,6 +1412,16 @@ export default function App() {
           );
         }
       }
+      // NEW-03: surface an outdated CLI at launch instead of letting the first
+      // message die as AGENT_CRASHED. Flows through the coded error banner so
+      // the user gets an "Upgrade CLI" action, not raw clap stderr.
+      if (cli.versionSupported === false) {
+        setLocalError(
+          `CLI_TOO_OLD: grok CLI ${cli.version ?? "?"} < required ${
+            cli.minVersion ?? ""
+          }`.trim(),
+        );
+      }
       setSessionDataMode(settings.sessionDataMode || "independent");
       setDefaultOpenTarget(
         (settings as { defaultOpenTarget?: string }).defaultOpenTarget ||
@@ -1415,6 +1429,16 @@ export default function App() {
       );
       setManualCliPath(settings.manualCliPath || cli.path || "");
       setAcpServerAddr(settings.acpServerAddr || "");
+      {
+        const st = settings as {
+          proxyMode?: string;
+          proxyUrl?: string | null;
+          proxyNoProxy?: string | null;
+        };
+        setProxyMode(st.proxyMode || "system");
+        setProxyUrl(st.proxyUrl || "");
+        setProxyNoProxy(st.proxyNoProxy || "");
+      }
       setMaxConcurrentAgents(
         typeof settings.maxConcurrentAgents === "number" &&
           settings.maxConcurrentAgents >= 1
@@ -7515,6 +7539,16 @@ export default function App() {
           setLocalError(null);
           navigateSettings("runtime");
           break;
+        case "upgrade_cli":
+          // CLI_TOO_OLD: Runtime section owns CLI install/upgrade controls.
+          setLocalError(null);
+          navigateSettings("runtime");
+          break;
+        case "open_network":
+          // NEW-07: jump straight to proxy settings.
+          setLocalError(null);
+          navigateSettings("runtime", "network");
+          break;
         case "open_account":
           setLocalError(null);
           navigateSettings("account");
@@ -7947,6 +7981,14 @@ export default function App() {
         if (res.ok) {
           setLoginHint(null);
           showToast(tr("account.loginOk"), 2800);
+        } else if (res.timedOut) {
+          // NEW-01: unreachable auth endpoint. Point at the two real ways out
+          // (proxy / shared session-data mode) instead of a generic failure.
+          const msg = `${tr("account.loginTimeout")} ${tr(
+            "account.loginUnreachableHint",
+          )}`;
+          setLoginHint(msg);
+          showToast(msg, 10000);
         } else {
           const msg = res.message || tr("account.loginFailed");
           setLoginHint(msg);
@@ -8517,6 +8559,27 @@ export default function App() {
             setAcpServerAddr(v);
             void api.settingsGet().then((s) =>
               api.settingsSet({ ...s, acpServerAddr: v.trim() || null }),
+            );
+          }}
+          proxyMode={proxyMode}
+          onProxyMode={(v) => {
+            setProxyMode(v);
+            void api.settingsGet().then((s) =>
+              api.settingsSet({ ...s, proxyMode: v }),
+            );
+          }}
+          proxyUrl={proxyUrl}
+          onProxyUrl={(v) => {
+            setProxyUrl(v);
+            void api.settingsGet().then((s) =>
+              api.settingsSet({ ...s, proxyUrl: v.trim() || null }),
+            );
+          }}
+          proxyNoProxy={proxyNoProxy}
+          onProxyNoProxy={(v) => {
+            setProxyNoProxy(v);
+            void api.settingsGet().then((s) =>
+              api.settingsSet({ ...s, proxyNoProxy: v.trim() || null }),
             );
           }}
           maxConcurrentAgents={maxConcurrentAgents}

@@ -135,18 +135,45 @@ The bundle product name is **Grok** (matches the window title).
 
 **Arch / Manjaro / EndeavourOS:** prefer the **AppImage** (`chmod +x` then run). Official CI does not publish a separate AUR package; AppImage is distro-agnostic.
 
+> **Prebuilt packages need no build tools.** Node / pnpm / Rust are only required if you [build from source](#develop--build) — do not run `pnpm install && tauri build` just to use the app.
+
+#### Verify your download
+
+Each release ships a `SHA256SUMS` file. After downloading:
+
+```bash
+# macOS / Linux
+shasum -a 256 -c SHA256SUMS --ignore-missing
+# Windows (PowerShell)
+Get-FileHash .\Grok_*_x64-setup.exe -Algorithm SHA256
+```
+
+Compare the PowerShell hash against the matching line in `SHA256SUMS`.
+
+#### Windows SmartScreen
+
+Windows builds are **not code-signed** (no Authenticode certificate yet), so SmartScreen shows “Windows protected your PC / Unknown publisher” on first run. This is expected for this project’s unsigned builds: click **More info → Run anyway**. Verify the checksum above if in doubt.
+
 ### 2. First run
 
 1. Launch → **Setup wizard** ensures CLI is installed (multi-mirror install supported)  
-2. (Optional) Official login / API key / custom relay — skippable  
+2. (Optional) Official login / API key / custom relay — skippable. If your local `grok` CLI is already signed in, pick **Use existing CLI sign-in** — no re-authorization needed  
 3. **Add project** → trust a folder  
 4. **Connect agent** → chat when Ready  
 5. Permission bar defaults to **Ask**; use YOLO only when you want unattended runs  
 
 ### 3. Requirements
 
-- Local **Grok Build CLI** (`grok`), often `~/.grok/bin/grok` or on `PATH`  
-- Windows: `%USERPROFILE%\.grok\bin\grok.exe` or `PATH`  
+- Local **Grok Build CLI** (`grok`) **0.2.112 or newer**, often `~/.grok/bin/grok` or on `PATH` — older CLIs reject flags the app depends on (run `grok update` once after installing, then fully restart the app)  
+- Windows: `%USERPROFILE%\.grok\bin\grok.exe` or `PATH`; **WebView2 Runtime** (preinstalled on Windows 11; the installer bootstraps it otherwise)  
+
+### 4. Restricted networks (e.g. mainland China)
+
+Grok backends (`auth.x.ai` / `grok.com` / `cli-chat-proxy.grok.com`) may be unreachable by direct connection. If sign-in hangs or every message times out with `NETWORK_PROVIDER`:
+
+1. **Settings → Runtime → Network**: set the proxy (System / Manual, e.g. `http://127.0.0.1:7890`), then use **Test connection** to verify all three endpoints  
+2. If your `grok` CLI is already signed in, reuse it via the setup wizard (or switch **Session data mode** to *shared*) instead of Browser OAuth  
+3. No launcher scripts or manually exported `HTTP_PROXY` variables are needed — the app injects the configured proxy into all agent processes  
 
 ---
 

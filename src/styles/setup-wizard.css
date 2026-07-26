@@ -352,6 +352,12 @@
   border-color: var(--border-strong);
 }
 
+/* NEW-04: reuse-existing-CLI-sign-in is the recommended zero-friction path. */
+.setup-entry--recommended {
+  border-color: var(--accent, var(--border-strong));
+  background: var(--bg-hover);
+}
+
 .setup-entry strong {
   font-size: var(--text-sm);
   font-weight: 600;

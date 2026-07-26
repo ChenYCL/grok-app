@@ -261,6 +261,25 @@ export async function sessionResolveAskUser(args: {
   });
 }
 
+export interface NetworkProbeTarget {
+  key: string;
+  url: string;
+  ok: boolean;
+  status?: number;
+  error?: string;
+  millis: number;
+}
+
+export interface NetworkProbeResult {
+  allOk: boolean;
+  targets: NetworkProbeTarget[];
+}
+
+/** Probe Grok endpoints through the effective proxy (NEW-02 self-check). */
+export async function networkProbe() {
+  return invoke<NetworkProbeResult>("network_probe");
+}
+
 export async function probeCli(manualPath?: string) {
   return invoke<{
     found: boolean;
@@ -269,6 +288,10 @@ export async function probeCli(manualPath?: string) {
     source: string;
     cliAuthPresent?: boolean;
     candidatesTried?: string[];
+    /** false ⇒ CLI older than minVersion; null/undefined ⇒ version unknown. */
+    versionSupported?: boolean | null;
+    /** Minimum grok CLI version this app requires (from the host). */
+    minVersion?: string;
   }>("probe_cli", { manualPath: manualPath ?? null });
 }
 
@@ -1439,6 +1462,8 @@ export interface LoginResult {
   deviceUrl: string | null;
   deviceCode: string | null;
   profile: AccountProfile | null;
+  /** Host watchdog killed the login (auth endpoint unreachable — NEW-01). */
+  timedOut?: boolean;
 }
 
 export async function accountStatus(opts?: {
@@ -2335,6 +2360,11 @@ export async function cliUpdateCheck() {
 
 export async function cliUpdateInstall() {
   return invoke<CliUpdateCheck>("cli_update_install");
+}
+
+/** Recycle all warm agent processes (post-CLI-upgrade — NEW-05). */
+export async function agentsRecycleAll() {
+  return invoke<void>("agents_recycle_all");
 }
 
 export type McpDoctorReport = {

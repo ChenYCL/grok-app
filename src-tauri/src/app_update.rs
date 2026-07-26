@@ -189,7 +189,7 @@ fn format_http_error(status: u16, body: &str) -> String {
 }
 
 fn http_client(user_agent: &str) -> Result<reqwest::Client, String> {
-    reqwest::Client::builder()
+    crate::proxy::apply_to_reqwest(reqwest::Client::builder())
         .connect_timeout(CONNECT_TIMEOUT)
         .timeout(REQUEST_TIMEOUT)
         .user_agent(user_agent)
@@ -261,7 +261,7 @@ async fn fetch_via_html_redirect(
     );
 
     // 1) Prefer Location header without downloading the HTML body.
-    let client_nr = reqwest::Client::builder()
+    let client_nr = crate::proxy::apply_to_reqwest(reqwest::Client::builder())
         .connect_timeout(CONNECT_TIMEOUT)
         .timeout(REQUEST_TIMEOUT)
         .redirect(reqwest::redirect::Policy::none())

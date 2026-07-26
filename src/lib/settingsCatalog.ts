@@ -55,6 +55,7 @@ export type SettingsTabId =
   // runtime
   | "cli"
   | "connection"
+  | "network"
   | "pool"
   | "tools"
   // remote control (section id stays remote_im)
@@ -171,6 +172,7 @@ export const SETTINGS_NAV: readonly SettingsNavDef[] = [
     tabs: [
       { id: "cli", labelKey: "settings.tab.cli" },
       { id: "connection", labelKey: "settings.tab.connection" },
+      { id: "network", labelKey: "settings.tab.network" },
       { id: "pool", labelKey: "settings.tab.pool" },
       { id: "tools", labelKey: "settings.tab.tools" },
     ],

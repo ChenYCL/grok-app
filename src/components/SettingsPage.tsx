@@ -170,6 +170,13 @@ export interface SettingsPageProps {
   /** API mode: remote ACP server `host:port` (empty = local CLI spawn). */
   acpServerAddr: string;
   onAcpServerAddr: (v: string) => void;
+  /** Outbound proxy: system | manual | none (NEW-02). */
+  proxyMode?: string;
+  onProxyMode?: (v: string) => void;
+  proxyUrl?: string;
+  onProxyUrl?: (v: string) => void;
+  proxyNoProxy?: string;
+  onProxyNoProxy?: (v: string) => void;
   /** Max warm/live agent processes (I02). */
   maxConcurrentAgents?: number;
   onMaxConcurrentAgents?: (v: number) => void;
@@ -299,6 +306,60 @@ function formatSessionWhen(iso: string, locale: string): string {
   } catch {
     return iso;
   }
+}
+
+/**
+ * Grok endpoint reachability check through the effective proxy (NEW-02).
+ * Any HTTP status counts as reachable — this tests the network path, not auth.
+ */
+function NetworkProbeField({ t }: { t: (k: string, vars?: Vars) => string }) {
+  const [testing, setTesting] = useState(false);
+  const [result, setResult] = useState<api.NetworkProbeResult | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const runTest = async () => {
+    if (!api.isTauri()) return;
+    setTesting(true);
+    setResult(null);
+    setError(null);
+    try {
+      setResult(await api.networkProbe());
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setTesting(false);
+    }
+  };
+
+  return (
+    <div className="settings-row settings-row--stack">
+      <div className="settings-row__text">
+        <div className="settings-row__label">{t("settings.netProbe")}</div>
+        <div className="settings-row__desc">{t("settings.netProbeDesc")}</div>
+      </div>
+      <button
+        type="button"
+        className="btn btn--sm"
+        disabled={testing}
+        onClick={() => void runTest()}
+      >
+        {testing ? t("settings.netProbeTesting") : t("settings.netProbeRun")}
+      </button>
+      {error ? <div className="settings-row__hint">{error}</div> : null}
+      {result ? (
+        <ul className="settings-netprobe">
+          {result.targets.map((tg) => (
+            <li key={tg.key} className="settings-row__hint">
+              {tg.ok ? "✓" : "✗"} {tg.key} · {tg.url} ·{" "}
+              {tg.ok
+                ? `${tg.status ?? ""} · ${tg.millis}ms`
+                : tg.error || t("settings.netProbeFailed")}
+            </li>
+          ))}
+        </ul>
+      ) : null}
+    </div>
+  );
 }
 
 /**
@@ -545,6 +606,12 @@ export function SettingsPage({
   onCliBlur,
   acpServerAddr,
   onAcpServerAddr,
+  proxyMode = "system",
+  onProxyMode,
+  proxyUrl = "",
+  onProxyUrl,
+  proxyNoProxy = "",
+  onProxyNoProxy,
   maxConcurrentAgents = 8,
   onMaxConcurrentAgents,
   agentIdleMinutes = 30,
@@ -2626,6 +2693,84 @@ export function SettingsPage({
                   onChange={onAcpServerAddr}
                   t={t}
                 />
+              </div>
+            )}
+            {activeTab === "network" && (
+              <div
+                className={"settings-card" + rowHighlight("settings-anchor-proxy")}
+                id="settings-anchor-proxy"
+              >
+                <div className="settings-row settings-row--stack">
+                  <div className="settings-row__text">
+                    <div className="settings-row__label">
+                      {t("settings.proxyMode")}
+                    </div>
+                    <div className="settings-row__desc">
+                      {t("settings.proxyModeDesc")}
+                    </div>
+                  </div>
+                  <select
+                    className="settings-input"
+                    value={proxyMode}
+                    onChange={(e) => onProxyMode?.(e.target.value)}
+                  >
+                    <option value="system">
+                      {t("settings.proxyModeSystem")}
+                    </option>
+                    <option value="manual">
+                      {t("settings.proxyModeManual")}
+                    </option>
+                    <option value="none">{t("settings.proxyModeNone")}</option>
+                  </select>
+                </div>
+                {proxyMode === "manual" && (
+                  <>
+                    <div className="settings-row settings-row--stack">
+                      <div className="settings-row__text">
+                        <div className="settings-row__label">
+                          {t("settings.proxyUrl")}
+                        </div>
+                        <div className="settings-row__desc">
+                          {t("settings.proxyUrlDesc")}
+                        </div>
+                      </div>
+                      <input
+                        className="settings-input"
+                        value={proxyUrl}
+                        placeholder="http://127.0.0.1:7890"
+                        onChange={(e) => onProxyUrl?.(e.target.value)}
+                      />
+                      {proxyUrl.trim() !== "" &&
+                        !/^(https?|socks5h?):\/\/[^\s]+$/i.test(
+                          proxyUrl.trim(),
+                        ) && (
+                          <div className="settings-row__hint settings-row__hint--warn">
+                            {t("settings.proxyUrlInvalid")}
+                          </div>
+                        )}
+                    </div>
+                    <div className="settings-row settings-row--stack">
+                      <div className="settings-row__text">
+                        <div className="settings-row__label">
+                          {t("settings.proxyNoProxy")}
+                        </div>
+                        <div className="settings-row__desc">
+                          {t("settings.proxyNoProxyDesc")}
+                        </div>
+                      </div>
+                      <input
+                        className="settings-input"
+                        value={proxyNoProxy}
+                        placeholder="internal.example.com,10.0.0.0/8"
+                        onChange={(e) => onProxyNoProxy?.(e.target.value)}
+                      />
+                    </div>
+                  </>
+                )}
+                <NetworkProbeField t={t} />
+                <div className="settings-row__hint">
+                  {t("settings.proxyRestartHint")}
+                </div>
               </div>
             )}
             {activeTab === "pool" && (

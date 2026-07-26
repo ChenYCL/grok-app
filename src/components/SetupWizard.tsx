@@ -550,6 +550,20 @@ export function SetupWizard({
 
               {accountPanel === "menu" && (
                 <div className="setup-entry-grid">
+                  {/* NEW-04: an existing CLI sign-in is the zero-friction path —
+                      surface it FIRST so users are not funneled into Browser
+                      OAuth (which hangs on restricted networks). */}
+                  {cli.cliAuthPresent && (
+                    <button
+                      type="button"
+                      className="setup-entry setup-entry--recommended"
+                      disabled={accountBusy}
+                      onClick={() => void importCli()}
+                    >
+                      <strong>{tr("setup.reuseCliAuthTitle")}</strong>
+                      <span>{tr("setup.reuseCliAuthDesc")}</span>
+                    </button>
+                  )}
                   <button
                     type="button"
                     className="setup-entry"
@@ -577,17 +591,6 @@ export function SetupWizard({
                     <strong>{tr("setup.account.relay")}</strong>
                     <span>{tr("setup.account.relayHint")}</span>
                   </button>
-                  {cli.cliAuthPresent && (
-                    <button
-                      type="button"
-                      className="setup-entry"
-                      disabled={accountBusy}
-                      onClick={() => void importCli()}
-                    >
-                      <strong>{tr("setup.account.importCli")}</strong>
-                      <span>{tr("setup.account.importCliHint")}</span>
-                    </button>
-                  )}
                   <button
                     type="button"
                     className="setup-entry"

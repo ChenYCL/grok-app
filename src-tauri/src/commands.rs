@@ -1469,6 +1469,22 @@ fn run_cli_doctor_json() -> serde_json::Value {
         Ok((stdout, stderr, status_ok)) => {
             let trimmed = stdout.trim();
             if trimmed.is_empty() {
+                // An old CLI rejects `--json` with a raw clap error like
+                // `error: unexpected argument '--'`. Surfacing that verbatim tells
+                // the user nothing actionable, so map it to the real cause (NEW-03).
+                if looks_like_unsupported_flag(&stderr) {
+                    return serde_json::json!({
+                        "available": false,
+                        "error": format!(
+                            "grok CLI does not support `doctor --json`; version {} or newer is required",
+                            crate::cli_probe::min_cli_version_str()
+                        ),
+                        "reason": "cli_too_old",
+                        "minVersion": crate::cli_probe::min_cli_version_str(),
+                        "report": serde_json::Value::Null,
+                        "exitOk": status_ok,
+                    });
+                }
                 let detail = if stderr.trim().is_empty() {
                     "grok doctor returned no output".to_string()
                 } else {
@@ -1503,6 +1519,67 @@ fn run_cli_doctor_json() -> serde_json::Value {
             "report": serde_json::Value::Null,
         }),
     }
+}
+
+/// Grok endpoints probed by the network self-check (NEW-02 / NEW-07).
+const NET_PROBE_TARGETS: &[(&str, &str)] = &[
+    ("auth", "https://auth.x.ai/.well-known/openid-configuration"),
+    ("chat", "https://cli-chat-proxy.grok.com/"),
+    ("api", "https://api.x.ai/"),
+];
+
+/// Per-endpoint reachability probe through the effective proxy. Any HTTP
+/// response (including 401/404) counts as reachable — we test the network
+/// path, not authentication. Short curl-style probes can pass while streaming
+/// fails, so this is a hint, not a guarantee.
+#[tauri::command]
+pub async fn network_probe() -> Result<serde_json::Value, String> {
+    let client = crate::proxy::apply_to_reqwest(reqwest::Client::builder())
+        .connect_timeout(std::time::Duration::from_secs(5))
+        .timeout(std::time::Duration::from_secs(8))
+        .user_agent("grok-app-net-probe")
+        .build()
+        .map_err(|e| e.to_string())?;
+
+    let mut results = Vec::new();
+    for (key, url) in NET_PROBE_TARGETS {
+        let started = std::time::Instant::now();
+        let out = client.get(*url).send().await;
+        let ms = started.elapsed().as_millis() as u64;
+        match out {
+            Ok(resp) => results.push(serde_json::json!({
+                "key": key,
+                "url": url,
+                "ok": true,
+                "status": resp.status().as_u16(),
+                "millis": ms,
+            })),
+            Err(e) => results.push(serde_json::json!({
+                "key": key,
+                "url": url,
+                "ok": false,
+                // reqwest errors don't leak proxy credentials in Display.
+                "error": e.to_string(),
+                "millis": ms,
+            })),
+        }
+    }
+    let all_ok = results
+        .iter()
+        .all(|r| r.get("ok").and_then(|v| v.as_bool()).unwrap_or(false));
+    Ok(serde_json::json!({ "allOk": all_ok, "targets": results }))
+}
+
+/// Heuristic: stderr shapes an old CLI emits when it rejects a flag the app
+/// depends on (clap's `unexpected argument` / `unrecognized option` family).
+/// Used to translate raw CLI noise into a "CLI too old" diagnosis (NEW-03).
+fn looks_like_unsupported_flag(stderr: &str) -> bool {
+    let s = stderr.to_ascii_lowercase();
+    s.contains("unexpected argument")
+        || s.contains("unrecognized option")
+        || s.contains("unknown flag")
+        || s.contains("unknown option")
+        || s.contains("invalid option")
 }
 
 fn truncate_cli_err(s: &str, max: usize) -> String {
@@ -5452,6 +5529,19 @@ pub async fn cli_update_install(
     app: tauri::AppHandle,
 ) -> Result<crate::cli_install::CliInstallResult, String> {
     crate::cli_update::install_cli_update(app).await
+}
+
+/// Recycle every warm agent process so the next send spawns fresh binaries.
+/// Used after a CLI upgrade — running children keep executing the old image
+/// until restarted (NEW-05). Chat history is untouched; sessions reconnect
+/// lazily on the next send.
+#[tauri::command]
+pub async fn agents_recycle_all(
+    app: tauri::AppHandle,
+    mgr: State<'_, Arc<SessionManager>>,
+) -> Result<(), String> {
+    mgr.recycle_all_agents(&app, "cli_upgrade").await;
+    Ok(())
 }
 
 // from PR #83

@@ -143,6 +143,8 @@ export const zhTW: Record<MessageKey, string> = {
   "error.action.openAccount": "帳號與金鑰",
   "error.action.openProviders": "服務商",
   "error.action.openRuntime": "執行環境設定",
+  "error.action.upgradeCli": "升級 CLI",
+  "error.action.openNetwork": "網路設定",
   "error.action.dismiss": "關閉",
   "error.deck.cli.problem": "找不到 Grok Build CLI",
   "error.deck.cli.cause":
@@ -152,7 +154,7 @@ export const zhTW: Record<MessageKey, string> = {
     "登入過期、API 金鑰無效，或服務商拒絕了請求（401）。",
   "error.deck.network.problem": "網路或模型服務異常",
   "error.deck.network.cause":
-    "DNS/逾時、中轉 5xx、base URL 錯誤，或模型 ID 不可用。",
+    "DNS/逾時、中轉 5xx、base URL 錯誤，或模型 ID 不可用。受限網路請到「設定 → 網路」設定代理——短連線探測通過不代表串流請求不逾時。",
   "error.deck.crash.problem": "Agent 處理程序異常結束",
   "error.deck.crash.cause":
     "Agent 當掉或通訊中斷。對話紀錄仍保留，可重新連線後繼續。",
@@ -165,6 +167,9 @@ export const zhTW: Record<MessageKey, string> = {
   "error.deck.limit.problem": "已達 Agent 處理程序上限",
   "error.deck.limit.cause":
     "並行 Agent 過多。請先結束其他對話，或在執行環境中提高上限。",
+  "error.deck.cliTooOld.problem": "Grok CLI 版本過舊",
+  "error.deck.cliTooOld.cause":
+    "目前的 grok CLI 不認得應用相依的參數。請升級 CLI 後重新啟動對話。",
   "error.deck.timeout.problem": "本輪執行逾時",
   "error.deck.timeout.cause":
     "等待過久已中止。可重試；生圖等長任務可能需要更久。",
@@ -598,6 +603,28 @@ export const zhTW: Record<MessageKey, string> = {
   "settings.tab.app": "應用程式",
   "settings.tab.cli": "CLI",
   "settings.tab.connection": "連線",
+  "settings.tab.network": "網路",
+  "settings.proxyMode": "代理",
+  "settings.proxyModeDesc":
+    "應用與 Agent 處理程序的連線方式。系統＝跟隨作業系統代理；手動＝固定使用某個位址；直連＝不走任何代理。",
+  "settings.proxyModeSystem": "系統（預設）",
+  "settings.proxyModeManual": "手動",
+  "settings.proxyModeNone": "直連（不使用代理）",
+  "settings.proxyUrl": "代理位址",
+  "settings.proxyUrlDesc":
+    "手動模式下使用，如 http://127.0.0.1:7890 或 socks5://127.0.0.1:1080。對話、登入、額度、語音與更新皆生效。",
+  "settings.proxyUrlInvalid": "請輸入有效的 http:// 或 socks5:// 代理位址。",
+  "settings.proxyNoProxy": "直連名單",
+  "settings.proxyNoProxyDesc":
+    "以逗號分隔的直連主機（localhost 一律直連）。",
+  "settings.proxyRestartHint":
+    "對新啟動的 Agent 處理程序生效；執行中的對話需重新連線。",
+  "settings.netProbe": "連通性檢測",
+  "settings.netProbeDesc":
+    "經目前代理探測 Grok 端點（驗證 / 對話 / API）。任何 HTTP 狀態都視為可達。",
+  "settings.netProbeRun": "測試連線",
+  "settings.netProbeTesting": "檢測中…",
+  "settings.netProbeFailed": "無法連上",
   "settings.tab.pool": "程序池",
   "settings.tab.tools": "診斷",
   "settings.tab.remoteIm": "IM 通訊",
@@ -686,6 +713,10 @@ export const zhTW: Record<MessageKey, string> = {
   "settings.cliUpdateInstall": "更新 CLI",
   "settings.cliUpdateInstalling": "更新中…",
   "settings.cliUpdateDone": "CLI 已更新到 {version}。",
+  "settings.cliUpdateRestartHint":
+    "執行中的對話仍在使用舊版 CLI。",
+  "settings.cliUpdateRestartAction": "重新啟動對話",
+  "settings.cliUpdateRestarting": "重新啟動中…",
   "settings.cliUpdateFailed": "檢查失敗：{error}",
   "settings.cliUpdateInstallFailed": "更新失敗：{error}",
   "settings.cliUpdateNeedCli": "請先安裝或指定 CLI 路徑。",
@@ -1015,10 +1046,14 @@ export const zhTW: Record<MessageKey, string> = {
   "account.team": "團隊",
   "account.detail": "帳戶詳情",
   "account.billingUnavailable":
-    "無法擷取遠端額度。請先登入後重新整理，或在網頁檢視用量。",
+    "網路無法擷取遠端額度（不影響對話）。請檢查網路或代理（設定 → 網路）後重新整理；若登入已過期再重新登入。",
   "account.cliAuthOk": "auth.json 正常",
   "account.cliAuthMissing": "無 CLI auth.json",
   "account.loginFailed": "登入失敗",
+  "account.loginTimeout":
+    "登入逾時——目前網路無法連上 Grok 驗證服務（auth.x.ai）。",
+  "account.loginUnreachableHint":
+    "如果本機 grok CLI 已登入，可將「對話資料模式」切換為共用（~/.grok）直接沿用；受限網路請透過代理啟動。",
   "account.loginOk": "登入成功",
   "account.loginHelpTitle": "登入說明",
   "account.loginHelpBody":
@@ -1098,6 +1133,9 @@ export const zhTW: Record<MessageKey, string> = {
   "setup.account.saveRelay": "儲存並測試",
   "setup.account.importCli": "使用現有 CLI 登入",
   "setup.account.importCliHint": "偵測到 ~/.grok/auth.json",
+  "setup.reuseCliAuthTitle": "使用既有 CLI 登入（建議）",
+  "setup.reuseCliAuthDesc":
+    "偵測到本機 grok CLI 已登入——直接沿用，無需重新授權，也不依賴網路。",
   "setup.account.importGo": "從 grok-go 匯入",
   "setup.account.skip": "暫時跳過",
   "setup.account.busy": "處理中…",
@@ -1160,6 +1198,8 @@ export const zhTW: Record<MessageKey, string> = {
   "doctor.cliDoctor": "Grok Build CLI doctor",
   "doctor.cliDoctorHint": "來自 `grok doctor --json`（終端機、剪貼簿、色彩）。",
   "doctor.cliDoctorMissing": "CLI doctor 不可用",
+  "doctor.cliTooOld":
+    "CLI 版本過舊——應用需要較新版本的 grok CLI。請執行 `grok update`，然後完全結束並重開應用程式。",
   "doctor.cliDoctorEmpty": "無 CLI doctor 檢查項目",
   "doctor.cliDoctorFacts": "環境資訊",
   "doctor.cliDoctorFact.terminal": "終端機",

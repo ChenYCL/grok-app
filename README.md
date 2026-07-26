@@ -14,7 +14,7 @@
 
 <p align="center">
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="MIT License" /></a>
-  <a href="https://github.com/jchacker5/grok-app/stargazers"><img src="https://img.shields.io/github/stars/RongleCat/grok-app?style=social" alt="GitHub stars" /></a>
+  <a href="https://github.com/RongleCat/grok-app/stargazers"><img src="https://img.shields.io/github/stars/RongleCat/grok-app?style=social" alt="GitHub stars" /></a>
   <img src="https://img.shields.io/badge/platform-macOS%20%7C%20Windows%20%7C%20Linux-lightgrey" alt="Platforms" />
   <img src="https://img.shields.io/badge/Tauri-2-orange" alt="Tauri 2" />
   <img src="https://img.shields.io/badge/note-unofficial-yellow" alt="Unofficial" />
@@ -37,7 +37,7 @@
 
 <p align="center">
   Repo ·
-  <a href="https://github.com/jchacker5/grok-app">RongleCat/grok-app</a>
+  <a href="https://github.com/RongleCat/grok-app">RongleCat/grok-app</a>
 </p>
 
 ---
@@ -122,7 +122,7 @@ The `grok` CLI is powerful in a terminal. Day-to-day work still needs multi-proj
 
 ### 1. Download
 
-Get installers from [Releases](https://github.com/jchacker5/grok-app/releases):
+Get installers from [Releases](https://github.com/RongleCat/grok-app/releases):
 
 | Platform | Artifact |
 |----------|----------|
@@ -135,18 +135,45 @@ The bundle product name is **Grok** (matches the window title).
 
 **Arch / Manjaro / EndeavourOS:** prefer the **AppImage** (`chmod +x` then run). Official CI does not publish a separate AUR package; AppImage is distro-agnostic.
 
+> **Prebuilt packages need no build tools.** Node / pnpm / Rust are only required if you [build from source](#develop--build) — do not run `pnpm install && tauri build` just to use the app.
+
+#### Verify your download
+
+Each release ships a `SHA256SUMS` file. After downloading:
+
+```bash
+# macOS / Linux
+shasum -a 256 -c SHA256SUMS --ignore-missing
+# Windows (PowerShell)
+Get-FileHash .\Grok_*_x64-setup.exe -Algorithm SHA256
+```
+
+Compare the PowerShell hash against the matching line in `SHA256SUMS`.
+
+#### Windows SmartScreen
+
+Windows builds are **not code-signed** (no Authenticode certificate yet), so SmartScreen shows “Windows protected your PC / Unknown publisher” on first run. This is expected for this project’s unsigned builds: click **More info → Run anyway**. Verify the checksum above if in doubt.
+
 ### 2. First run
 
 1. Launch → **Setup wizard** ensures CLI is installed (multi-mirror install supported)  
-2. (Optional) Official login / API key / custom relay — skippable  
+2. (Optional) Official login / API key / custom relay — skippable. If your local `grok` CLI is already signed in, pick **Use existing CLI sign-in** — no re-authorization needed  
 3. **Add project** → trust a folder  
 4. **Connect agent** → chat when Ready  
 5. Permission bar defaults to **Ask**; use YOLO only when you want unattended runs  
 
 ### 3. Requirements
 
-- Local **Grok Build CLI** (`grok`), often `~/.grok/bin/grok` or on `PATH`  
-- Windows: `%USERPROFILE%\.grok\bin\grok.exe` or `PATH`  
+- Local **Grok Build CLI** (`grok`) **0.2.112 or newer**, often `~/.grok/bin/grok` or on `PATH` — older CLIs reject flags the app depends on (run `grok update` once after installing, then fully restart the app)  
+- Windows: `%USERPROFILE%\.grok\bin\grok.exe` or `PATH`; **WebView2 Runtime** (preinstalled on Windows 11; the installer bootstraps it otherwise)  
+
+### 4. Restricted networks (e.g. mainland China)
+
+Grok backends (`auth.x.ai` / `grok.com` / `cli-chat-proxy.grok.com`) may be unreachable by direct connection. If sign-in hangs or every message times out with `NETWORK_PROVIDER`:
+
+1. **Settings → Runtime → Network**: set the proxy (System / Manual, e.g. `http://127.0.0.1:7890`), then use **Test connection** to verify all three endpoints  
+2. If your `grok` CLI is already signed in, reuse it via the setup wizard (or switch **Session data mode** to *shared*) instead of Browser OAuth  
+3. No launcher scripts or manually exported `HTTP_PROXY` variables are needed — the app injects the configured proxy into all agent processes  
 
 ---
 
@@ -166,7 +193,7 @@ open /Applications/Grok.app
 - Finder: **right-click** → **Open** → confirm  
 - **System Settings → Privacy & Security** → **Open Anyway**  
 
-Only download from this repo’s official [Releases](https://github.com/jchacker5/grok-app/releases).
+Only download from this repo’s official [Releases](https://github.com/RongleCat/grok-app/releases).
 
 ---
 
@@ -272,9 +299,9 @@ Thanks to everyone who has contributed to Grok App. Data from the GitHub Contrib
 | <img src="https://github.com/2530185073.png?size=48" width="48" height="48" alt="2530185073" /> | [**2530185073**](https://github.com/2530185073)<br/>Yun | 1 | Custom provider account + local usage UI |
 | <img src="https://github.com/tisrop.png?size=48" width="48" height="48" alt="tisrop" /> | [**tisrop**](https://github.com/tisrop)<br/>wanghang | — | Composer follow-up send queue while agent is busy |
 
-[Full contributors graph →](https://github.com/jchacker5/grok-app/graphs/contributors)
+[Full contributors graph →](https://github.com/RongleCat/grok-app/graphs/contributors)
 
-[![Contributors](https://contrib.rocks/image?repo=RongleCat/grok-app)](https://github.com/jchacker5/grok-app/graphs/contributors)
+[![Contributors](https://contrib.rocks/image?repo=RongleCat/grok-app)](https://github.com/RongleCat/grok-app/graphs/contributors)
 
 ## License
 

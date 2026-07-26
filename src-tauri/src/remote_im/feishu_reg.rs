@@ -17,7 +17,7 @@ async fn registration_call(
     action: &str,
     params: Option<&[(&str, &str)]>,
 ) -> Result<Value, String> {
-    let client = reqwest::Client::builder()
+    let client = crate::proxy::apply_to_reqwest(reqwest::Client::builder())
         .timeout(std::time::Duration::from_secs(30))
         .build()
         .map_err(|e| format!("http client: {e}"))?;

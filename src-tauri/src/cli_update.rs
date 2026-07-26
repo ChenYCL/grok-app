@@ -248,6 +248,8 @@ fn run_cli_with_timeout(bin: &Path, args: &[&str], timeout: Duration) -> Result<
         if let Some(path_env) = process_util::enriched_path_env() {
             cmd.env("PATH", path_env);
         }
+        // `grok update` downloads over the network — honor the proxy (NEW-02).
+        crate::proxy::apply_to_std_command(&mut cmd);
         let result = cmd.output();
         let _ = tx.send(result);
     });

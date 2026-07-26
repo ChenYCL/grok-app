@@ -47,7 +47,7 @@ pub struct QrStatusResponse {
 }
 
 fn http() -> Result<reqwest::Client, String> {
-    reqwest::Client::builder()
+    crate::proxy::apply_to_reqwest(reqwest::Client::builder())
         .timeout(Duration::from_secs(35))
         .user_agent("GrokApp-RemoteIM/1.0")
         .build()

@@ -155,6 +155,8 @@ const en = {
   "error.action.openAccount": "Account & keys",
   "error.action.openProviders": "Providers",
   "error.action.openRuntime": "Runtime settings",
+  "error.action.upgradeCli": "Upgrade CLI",
+  "error.action.openNetwork": "Network settings",
   "error.action.dismiss": "Dismiss",
   "error.deck.cli.problem": "Grok Build CLI not found",
   "error.deck.cli.cause":
@@ -164,7 +166,7 @@ const en = {
     "Login expired, API key invalid, or the provider rejected the request (401).",
   "error.deck.network.problem": "Network or model provider error",
   "error.deck.network.cause":
-    "DNS/timeout, relay 5xx, wrong base URL, or the model id is unavailable.",
+    "DNS/timeout, relay 5xx, wrong base URL, or the model id is unavailable. On restricted networks, configure a proxy under Settings → Network — short probes may pass while streaming still times out.",
   "error.deck.crash.problem": "Agent process crashed",
   "error.deck.crash.cause":
     "The agent exited or the protocol broke. Chat history is kept; reconnect to continue.",
@@ -177,6 +179,9 @@ const en = {
   "error.deck.limit.problem": "Agent process limit reached",
   "error.deck.limit.cause":
     "Too many warm agent processes. Stop another session or raise the limit under Runtime.",
+  "error.deck.cliTooOld.problem": "Grok CLI is too old",
+  "error.deck.cliTooOld.cause":
+    "The installed grok CLI rejects flags this app depends on. Upgrade the CLI, then restart sessions.",
   "error.deck.timeout.problem": "This turn timed out",
   "error.deck.timeout.cause":
     "The agent stopped after a long wait. Retry — image or heavy tools may need more time.",
@@ -629,6 +634,28 @@ const en = {
   "settings.tab.app": "App",
   "settings.tab.cli": "CLI",
   "settings.tab.connection": "Connection",
+  "settings.tab.network": "Network",
+  "settings.proxyMode": "Proxy",
+  "settings.proxyModeDesc":
+    "How the app and agent processes reach the network. System follows the OS proxy; Manual pins a URL; Direct forces no proxy.",
+  "settings.proxyModeSystem": "System (default)",
+  "settings.proxyModeManual": "Manual",
+  "settings.proxyModeNone": "Direct (no proxy)",
+  "settings.proxyUrl": "Proxy URL",
+  "settings.proxyUrlDesc":
+    "Used in Manual mode, e.g. http://127.0.0.1:7890 or socks5://127.0.0.1:1080. Applies to chat, sign-in, quota, voice, and updates.",
+  "settings.proxyUrlInvalid": "Enter a valid http:// or socks5:// proxy URL.",
+  "settings.proxyNoProxy": "Bypass list",
+  "settings.proxyNoProxyDesc":
+    "Comma-separated hosts that connect directly (localhost is always bypassed).",
+  "settings.proxyRestartHint":
+    "Applies to new agent processes; reconnect running sessions to pick it up.",
+  "settings.netProbe": "Connectivity check",
+  "settings.netProbeDesc":
+    "Probe Grok endpoints (auth / chat / api) through the effective proxy. Any HTTP status counts as reachable.",
+  "settings.netProbeRun": "Test connection",
+  "settings.netProbeTesting": "Testing…",
+  "settings.netProbeFailed": "unreachable",
   "settings.tab.pool": "Process pool",
   "settings.tab.tools": "Diagnostics",
   "settings.tab.remoteIm": "IM messaging",
@@ -719,6 +746,10 @@ const en = {
   "settings.cliUpdateInstall": "Update CLI",
   "settings.cliUpdateInstalling": "Updating…",
   "settings.cliUpdateDone": "CLI updated to {version}.",
+  "settings.cliUpdateRestartHint":
+    "Running sessions still use the old CLI binary.",
+  "settings.cliUpdateRestartAction": "Restart sessions",
+  "settings.cliUpdateRestarting": "Restarting…",
   "settings.cliUpdateFailed": "Could not check: {error}",
   "settings.cliUpdateInstallFailed": "Update failed: {error}",
   "settings.cliUpdateNeedCli": "Install or locate the CLI first.",
@@ -1056,10 +1087,14 @@ const en = {
   "account.team": "Team",
   "account.detail": "Account details",
   "account.billingUnavailable":
-    "Could not load remote quota. Sign in, then refresh, or open usage on the web.",
+    "Could not load remote quota over the network. This does not affect chat — check your connection or proxy (Settings → Network), then refresh. If your sign-in expired, sign in again.",
   "account.cliAuthOk": "auth.json ok",
   "account.cliAuthMissing": "no CLI auth.json",
   "account.loginFailed": "Sign-in failed",
+  "account.loginTimeout":
+    "Sign-in timed out — the Grok auth endpoint (auth.x.ai) could not be reached from this network.",
+  "account.loginUnreachableHint":
+    "If your grok CLI is already signed in, switch Session data mode to shared (~/.grok) to reuse it. On restricted networks, launch with a proxy.",
   "account.loginOk": "Signed in",
   "account.loginHelpTitle": "Login tips",
   "account.loginHelpBody":
@@ -1141,6 +1176,9 @@ const en = {
   "setup.account.saveRelay": "Save & test",
   "setup.account.importCli": "Use existing CLI auth",
   "setup.account.importCliHint": "Detected ~/.grok/auth.json",
+  "setup.reuseCliAuthTitle": "Use existing CLI sign-in (recommended)",
+  "setup.reuseCliAuthDesc":
+    "Your local grok CLI is already signed in — reuse it directly, no re-authorization or network round-trip needed.",
   "setup.account.importGo": "Import from grok-go",
   "setup.account.skip": "Skip for now",
   "setup.account.busy": "Working…",
@@ -1203,6 +1241,8 @@ const en = {
   "doctor.cliDoctor": "Grok Build CLI doctor",
   "doctor.cliDoctorHint": "From `grok doctor --json` (terminal, clipboard, color).",
   "doctor.cliDoctorMissing": "CLI doctor unavailable",
+  "doctor.cliTooOld":
+    "CLI version too low — this app requires a newer grok CLI. Run `grok update`, then fully restart the app.",
   "doctor.cliDoctorEmpty": "No CLI doctor findings",
   "doctor.cliDoctorFacts": "Environment facts",
   "doctor.cliDoctorFact.terminal": "Terminal",
@@ -2122,6 +2162,8 @@ const zh: Record<MessageKey, string> = {
   "error.action.openAccount": "账号与密钥",
   "error.action.openProviders": "服务商",
   "error.action.openRuntime": "运行环境设置",
+  "error.action.upgradeCli": "升级 CLI",
+  "error.action.openNetwork": "网络设置",
   "error.action.dismiss": "关闭",
   "error.deck.cli.problem": "未找到 Grok Build CLI",
   "error.deck.cli.cause":
@@ -2131,7 +2173,7 @@ const zh: Record<MessageKey, string> = {
     "登录过期、API Key 无效，或服务商拒绝了请求（401）。",
   "error.deck.network.problem": "网络或模型服务异常",
   "error.deck.network.cause":
-    "DNS/超时、中转 5xx、base URL 错误，或模型 ID 不可用。",
+    "DNS/超时、中转 5xx、base URL 错误，或模型 ID 不可用。受限网络请到「设置 → 网络」配置代理——短连接探测通过不代表流式请求不超时。",
   "error.deck.crash.problem": "Agent 进程异常退出",
   "error.deck.crash.cause":
     "Agent 崩溃或协议中断。对话记录仍保留，可重新连接后继续。",
@@ -2144,6 +2186,9 @@ const zh: Record<MessageKey, string> = {
   "error.deck.limit.problem": "已达到 Agent 进程上限",
   "error.deck.limit.cause":
     "并行 Agent 过多。请先结束其他会话，或在运行环境中提高上限。",
+  "error.deck.cliTooOld.problem": "Grok CLI 版本过低",
+  "error.deck.cliTooOld.cause":
+    "当前 grok CLI 不认识应用依赖的参数。请升级 CLI 后重启会话。",
   "error.deck.timeout.problem": "本轮执行超时",
   "error.deck.timeout.cause":
     "等待过久已中止。可重试；生图等长任务可能需要更久。",
@@ -2577,6 +2622,28 @@ const zh: Record<MessageKey, string> = {
   "settings.tab.app": "应用",
   "settings.tab.cli": "CLI",
   "settings.tab.connection": "连接",
+  "settings.tab.network": "网络",
+  "settings.proxyMode": "代理",
+  "settings.proxyModeDesc":
+    "应用与 Agent 进程的联网方式。系统＝跟随操作系统代理；手动＝固定使用某个地址；直连＝不走任何代理。",
+  "settings.proxyModeSystem": "系统（默认）",
+  "settings.proxyModeManual": "手动",
+  "settings.proxyModeNone": "直连（不使用代理）",
+  "settings.proxyUrl": "代理地址",
+  "settings.proxyUrlDesc":
+    "手动模式下使用，如 http://127.0.0.1:7890 或 socks5://127.0.0.1:1080。对话、登录、额度、语音与更新均生效。",
+  "settings.proxyUrlInvalid": "请输入有效的 http:// 或 socks5:// 代理地址。",
+  "settings.proxyNoProxy": "直连名单",
+  "settings.proxyNoProxyDesc":
+    "逗号分隔的直连主机（localhost 始终直连）。",
+  "settings.proxyRestartHint":
+    "对新启动的 Agent 进程生效；正在运行的会话需重新连接。",
+  "settings.netProbe": "连通性检测",
+  "settings.netProbeDesc":
+    "经当前代理探测 Grok 端点（鉴权 / 对话 / API）。任何 HTTP 状态都视为可达。",
+  "settings.netProbeRun": "测试连接",
+  "settings.netProbeTesting": "检测中…",
+  "settings.netProbeFailed": "不可达",
   "settings.tab.pool": "进程池",
   "settings.tab.tools": "诊断",
   "settings.tab.remoteIm": "IM 通信",
@@ -2665,6 +2732,10 @@ const zh: Record<MessageKey, string> = {
   "settings.cliUpdateInstall": "更新 CLI",
   "settings.cliUpdateInstalling": "更新中…",
   "settings.cliUpdateDone": "CLI 已更新到 {version}。",
+  "settings.cliUpdateRestartHint":
+    "正在运行的会话仍在使用旧版 CLI。",
+  "settings.cliUpdateRestartAction": "重启会话",
+  "settings.cliUpdateRestarting": "重启中…",
   "settings.cliUpdateFailed": "检查失败：{error}",
   "settings.cliUpdateInstallFailed": "更新失败：{error}",
   "settings.cliUpdateNeedCli": "请先安装或指定 CLI 路径。",
@@ -2994,10 +3065,14 @@ const zh: Record<MessageKey, string> = {
   "account.team": "团队",
   "account.detail": "账户详情",
   "account.billingUnavailable":
-    "无法拉取远程额度。请先登录后刷新，或在网页查看用量。",
+    "网络无法拉取远程额度（不影响对话）。请检查网络或代理（设置 → 网络）后刷新；若登录已过期再重新登录。",
   "account.cliAuthOk": "auth.json 正常",
   "account.cliAuthMissing": "无 CLI auth.json",
   "account.loginFailed": "登录失败",
+  "account.loginTimeout":
+    "登录超时——当前网络无法连通 Grok 鉴权服务（auth.x.ai）。",
+  "account.loginUnreachableHint":
+    "如果本机 grok CLI 已登录，可把「会话数据模式」切到共享（~/.grok）直接复用；受限网络请通过代理启动。",
   "account.loginOk": "登录成功",
   "account.loginHelpTitle": "登录说明",
   "account.loginHelpBody":
@@ -3077,6 +3152,9 @@ const zh: Record<MessageKey, string> = {
   "setup.account.saveRelay": "保存并测试",
   "setup.account.importCli": "使用已有 CLI 登录",
   "setup.account.importCliHint": "检测到 ~/.grok/auth.json",
+  "setup.reuseCliAuthTitle": "使用已有 CLI 登录（推荐）",
+  "setup.reuseCliAuthDesc":
+    "检测到本机 grok CLI 已登录——直接复用，无需重新授权，也不依赖网络。",
   "setup.account.importGo": "从 grok-go 导入",
   "setup.account.skip": "暂时跳过",
   "setup.account.busy": "处理中…",
@@ -3139,6 +3217,8 @@ const zh: Record<MessageKey, string> = {
   "doctor.cliDoctor": "Grok Build CLI doctor",
   "doctor.cliDoctorHint": "来自 `grok doctor --json`（终端、剪贴板、颜色）。",
   "doctor.cliDoctorMissing": "CLI doctor 不可用",
+  "doctor.cliTooOld":
+    "CLI 版本过低——应用需要更新版本的 grok CLI。请执行 `grok update`，然后完全退出并重开应用。",
   "doctor.cliDoctorEmpty": "无 CLI doctor 检查项",
   "doctor.cliDoctorFacts": "环境信息",
   "doctor.cliDoctorFact.terminal": "终端",

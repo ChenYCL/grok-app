@@ -69,6 +69,8 @@ export type CliDoctorProbeNote = {
 export type CliDoctorView = {
   available: boolean;
   error: string | null;
+  /** Machine reason for unavailability (e.g. "cli_too_old") when the host set one. */
+  reason?: string | null;
   schemaVersion: string | null;
   checks: CliDoctorCheck[];
   facts: CliDoctorSafeFacts;
@@ -468,6 +470,7 @@ export function parseCliDoctorEnvelope(input: unknown): CliDoctorView {
   if (!available) {
     return {
       available: false,
+      reason: asString(input.reason),
       error: error ?? "Grok Build CLI doctor unavailable",
       schemaVersion: null,
       checks: [],

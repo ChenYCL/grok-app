@@ -171,7 +171,7 @@ async fn test_feishu(
         // already primary; ensure feishu is tried if custom failed
     }
 
-    let client = reqwest::Client::builder()
+    let client = crate::proxy::apply_to_reqwest(reqwest::Client::builder())
         .timeout(std::time::Duration::from_secs(20))
         .build()
         .map_err(|e| e.to_string())?;

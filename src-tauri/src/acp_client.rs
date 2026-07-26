@@ -351,6 +351,24 @@ impl AcpClient {
             ));
         }
 
+        // Gate on CLI version BEFORE spawning (NEW-03). The flag set below is
+        // 0.2.x-specific; an older CLI rejects it and dies, which the user only
+        // ever sees as AGENT_CRASHED with no hint that the CLI is the problem.
+        // Unknown/unparseable versions pass through — fail open, not closed.
+        if let Some(raw) = crate::cli_probe::read_version_of(&cli_path) {
+            if crate::cli_probe::cli_version_supported(&raw) == Some(false) {
+                return Err(AgentError::new(
+                    AgentErrorCode::CliTooOld,
+                    format!(
+                        "grok CLI {} is older than the required {}",
+                        crate::cli_probe::extract_version_token(&raw)
+                            .unwrap_or_else(|| raw.trim().to_string()),
+                        crate::cli_probe::min_cli_version_str()
+                    ),
+                ));
+            }
+        }
+
         let (event_tx, event_rx) = mpsc::unbounded_channel();
 
         // GUI apps often inherit a sparse PATH; keep absolute cli_path but enrich PATH
@@ -459,6 +477,9 @@ impl AcpClient {
             cmd.env("PATH", path);
         }
         cmd.env("GROK_HOME", &grok_home);
+        // Route agent traffic through the configured proxy (NEW-02). Windows
+        // system proxy is registry-only and never reaches children as env vars.
+        crate::proxy::apply_to_tokio_command(&mut cmd);
         if let Some(ref sb) = sandbox {
             let (k, v) = sb.env_pair();
             cmd.env(k, v);
