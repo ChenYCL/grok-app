@@ -11,88 +11,67 @@ See `docs/llm-wiki/release.md`.
 
 ## [Unreleased]
 
-> **Highlight:** phone mirror & remote IM, settings/search IA, skins, chat UX polish, official plugin marketplace install, voice buttons only when speech auth is ready.
+## [0.1.8] - 2026-07-26
+
+> **Highlight:** Multi-session chats keep running in the background; stabler replies; cleaner launch.
+>
+> **中文 · 亮点：** 多会话后台不中断；回复更完整；启动更干净。
 
 ### Added
 
-- **Mid-turn Steer (interject)**: while a turn is generating, queue items can inject guidance via `_x.ai/interject` without cancelling the turn or rewriting the existing per-session send queue.
-
-- **Phone mirror**: optional control of the workbench from a phone browser (live stream, send, permissions). Off by default.
-- **Remote IM**: Feishu / WeChat (and related) bridge synced with App sessions.
-- **Settings IA**: tabbed pages + searchable catalog; remote control (IM + mirror) in one place.
-- **Appearance**: color skins, custom wallpaper, scrim strength; follow system theme.
-- **Chat UX**: clearer turn/activity blocks; context usage chip; find-in-chat; prompt history (↑/↓); session pin; reopen last chat; compact with note; rewind with optional file restore; goal status clear.
-- **Slash palette**: export, copy, find, extensions shortcuts.
-- **Composer voice dictation** (mic): only when official login / official xAI API key is configured **and** the active provider is Official Grok — hidden on third-party providers. Live voice entry stays hidden (not product-ready).
-- **Plugin marketplace**: browse official catalog, one-click install + enable, catalog cache; path/git install under advanced.
-- **Extensions depth**: hooks, MCP add/remove/doctor, preferred agent, permission rules, managed setup.
-- **Agent/runtime toggles**: sandbox, max turns, disable web search, plan mode, subagents, memory, leader, worktree new-chat, per-model efforts.
-- **Session tools**: active tasks panel, session trace export, store quarantine toast.
+- Multi-session: switch chats freely while others keep running
+- Steer a running turn from a queued follow-up (without cancelling it)
+- Remote IM (Feishu / WeChat and more) + optional phone mirror
+- Settings tabs + search; skins, wallpaper, system theme
+- Official plugin marketplace one-click install
+- Stream-stuck banner (keep waiting / cancel)
+- Richer Markdown editing in the resource pane
+- Settings extras: voice prefs, close-to-tray, Doctor CLI info, soft-respawn toast, `/history` picker
 
 ### Fixed
 
-- **Sidebar project collapse remembered**: collapsed folders persist across relaunch (`sidebarCollapsedProjectIds`).
-- **Launch opens new chat by default**: `reopenLastSession` defaults off (one-shot migration for existing installs); start on a draft new-chat page unless the setting is enabled.
-- **Launch does not pre-select a project**: cold start leaves the project chip empty (orphan draft); first trusted/first project is no longer auto-selected.
-- **Connect device → IM by default**: sidebar “Connect device” opens Remote control → **IM** tab (not Phone mirror).
-- **Empty-run toast spam (#128)**: only soft-signal when a non-ask turn ends with **no visible assistant reply** and zero tool calls. Pure-text answers (body present, no tools) no longer toast every turn.
-- Primary buttons use theme accent (not warning color).
-- Plan progress scoped to the viewed session; hard-dismiss confirm.
-- zh / zh-TW auto-titles and locale id aliases.
-- Composer mic hidden without official speech auth, or when a custom/third-party provider is active; live voice button not shown.
-- Resource pane file editor: full-height text area (no 2-line collapse); Edit / Save / Revert moved from chrome into an in-page toolbar above the file body.
-- Markdown files use **TipTap** (WYSIWYG + `tiptap-markdown` serialize) instead of a plain textarea; format toolbar for bold/italic/headings/lists/link.
-- Chrome count badges (tasks / changes / rules) no longer drift to the window top-right: `.chrome-btn` is a positioning context for `rp-chrome__badge`.
-- **Multi-session non-exclusive agents**: switching chats no longer stops background turns. Host demotes busy sessions instead of cancelling; no same-cwd process steal; UI keeps applying streams by `sessionId` + `session://runtime`.
-- **Process pool**: default concurrent agents **8** (cap **32**); spawn reclaims idle parked chats until a slot is free so one busy turn + browsing others no longer false-trips `PROCESS_LIMIT`.
-- **Background turns survive session switch**: demote treats open tools / deferred `prompt_complete` as busy (not park→reclaim); `soft_respawn` skips mid-turn; background tool journal + `agent_exit` markers; UI defers warm-connect while another chat is busy.
-- **New chat no longer kills the live agent**: `newChat` stopped calling `sessionDisconnect` (that aborted in-flight turns and left empty sessions with only an agentSessionId). Disconnect now demotes/parks instead of killing mid-turn; send continues after UI switch.
-- **Send queue session isolation**: flush only claims the *viewed* session key (no live-session fallback); enqueue only when *this* chat is busy (follow-ups). Host busy on another chat → concurrent demote+spawn (not a fake “本会话队列” on empty new chat).
-- **Session-scoped Host commands (multi-session correctness)**: `session_send`, `session_stop`, `session_rewind_drop_last_user` and the permission / plan / ask-user resolvers now take the chat's `sessionId` instead of acting on “whatever holds the live slot”. A warm connect or sidebar switch landing between connect and send used to deliver the turn to a *different* chat (foreign replies, empty-journal zombie sessions); Host now re-focuses the target (background/parked → live) under the connect lock, or fails with `CONNECT_FAILED` so the UI reconnects and retries the same turn once.
-- **Background approvals are answerable**: permission / `ask_user` requests raised by a demoted chat are kept per session and restored when you reopen it — previously they were toast-only and the background turn blocked until the agent gave up. Answers are routed to the requesting chat's own ACP child (the old code replied on the live slot's process, so the rpc id never matched). A waiting background chat also emits its own `session://runtime` instead of the focused snapshot.
-- **Stop targets the chat on screen** rather than the live slot, so stopping a demoted turn no longer cancels an unrelated chat.
-- **Truncated answers / “stuck” chats (silent stream loss)**: Host decided a turn was over from the FSM, but agents fire `prompt_complete` *early* and keep streaming for many more seconds. Everything after that point was dropped — the chat kept spinning while the agent finished normally, and the journal held a half-written answer with no error, no cancel marker and no `agent_exit`. Turn lifetime is now driven by `prompt_in_flight` (the `session/prompt` RPC, which is ordered after every chunk), not by the FSM: chunks arriving after an early `prompt_complete` re-open the turn instead of being discarded, and a chat with a live prompt can never be parked or idle-recycled.
-- **Truncated answers, part two — the safety valve was the cause**: making turn lifetime follow `prompt_in_flight` was not enough, because a 3s timer armed by the early `prompt_complete` resolved the `session/prompt` RPC itself. That synthesised an *authoritative* completion while the agent was still streaming, so the turn closed and every later chunk was discarded as replay — same symptom as before (prefix-only journal, chat frozen mid-answer), now with the fix in place. The window is now **idle-based**: each inbound `session/update` re-arms it, so the waiter is released only after the agent actually goes quiet. `PROMPT_TIMEOUT_SECS` remains the backstop for a genuinely wedged RPC.
-- **Event routing never fails silently**: ACP events whose process matches no live/background session are recovered (a still-streaming parked agent is moved back to `background`) or logged at `warn`, instead of `return`-ing into the void. A background chunk dropped after its turn closed now warns too — a background chat never replays, so that drop is always real output loss.
-- **Turn errors are attributed to the right chat**: the `session/prompt` failure path wrote into the live slot, so a chat demoted mid-turn had its crash recorded against whichever chat had focus.
-- **Reopening a background chat re-attaches its output**: the thread showed `idle` (looking finished) while the agent was still writing into it; it now resumes the streaming / awaiting-permission state from the live map.
-- **One prompt per chat**: Host rejects a second `session/prompt` while one is in flight instead of dispatching into a busy agent.
-- **Sending then opening a new chat no longer yanks you back**: every draft is `sessionId: null`, so an in-flight `sessionCreate` + `sessionConnect` compared `null === null`, decided the user was still on *its* draft, and stole the workbench the moment the agent started executing. Views now carry a navigation epoch (`viewFocus`), so async work only takes over the workbench if the user has not navigated since it started — this also stops it re-expanding the old project in the sidebar and painting optimistic bubbles onto an unrelated new draft.
-- **“Agent process limit reached” with nothing running**: three separate causes. (1) Installs predating the multi-session rework had the *old* default pool size (**3**) persisted in `settings.json`, so raising the default to 8 never reached them — a one-time migration lifts a stored `3` to the current default and records that it ran, so a deliberate 3 still sticks. (2) A **successful** capacity reclaim (`idle_recycled reason=capacity`, i.e. Host freed an idle warm agent so the spawn could proceed) was toasted as “limit reached (all slots are busy turns)”, which was both alarming and false; it now reports what actually happened. (3) Finished `background` turns were only drained to `parked` on the events that end a turn, so a turn that ended any other way left its agent occupying a pool slot that **no reclaim path could ever free**; finished background turns are now swept to `parked` before any capacity decision and by the idle watchdog.
-- **Turn timeline order**: reopening a chat could render your own prompt *after* the finished answer. `mergeSessionMessagesById` appended journal-only rows at the tail; they are now placed at their turn position (before the next row both sides share), and repeated `tool_step` ids are preserved. The cache that lost the prompt is fixed too — navigating away no longer overwrites a populated session cache with an empty workbench view.
+- Launch opens a blank new chat (no auto last chat / no auto project)
+- Sidebar remembers collapsed projects
+- “Connect device” opens Remote IM first
+- No “empty run” toast after normal text-only replies
+- Answers no longer cut off mid-stream; fewer “stuck” chats
+- Send / stop / permissions always apply to the chat on screen
+- New chat no longer kills a turn that just started
+- False “agent process limit” when little is actually running
+- Message order when reopening a chat
+- File editor height, Markdown editing, top-bar badges, primary button color
 
-### Community
+### Changed
 
-- Merged phone mirror (#95 content), skins (#120), live voice workbench (#121), store quarantine notice (#122), and remaining settings/runtime community PRs.
+- Default concurrent agents raised (8, max 32)
+- Reopen-last-chat on startup is off by default (can re-enable in Settings)
 
 **中文 · 新增**
-- 手机镜像、远程 IM；设置分页与搜索；皮肤/壁纸/系统主题。
-- 对话轮次与活动更清晰；上下文用量、查找、历史上翻、置顶、恢复上次会话、压缩备注、回退可恢复文件。
-- 语音听写（官方登录/官方 Key 且当前为官方提供商时显示）；实时语音入口暂隐藏。
-- 官方插件市场一键安装启用；Hooks/MCP 与更多 Agent 开关；Worktree、活动任务、trace 导出等。
+
+- 多会话并行：切换会话时其他对话继续跑
+- 回合中途可引导（队列项 Steer，不取消当前任务）
+- 远程 IM（飞书 / 微信等）与可选手机镜像
+- 设置分页与搜索；皮肤 / 壁纸 / 跟随系统
+- 官方插件市场一键安装
+- 流卡住提示、资源区 Markdown 更好编辑
+- 语音偏好、关窗到托盘、Doctor CLI 信息、`/history` 等
 
 **中文 · 修复**
-- 主题色按钮、Plan 仅当前会话、中文标题与语言识别；第三方提供商与未配齐官方凭证时不展示语音听写；实时语音入口隐藏。
-- 资源面板文件编辑器：正文区全高可编辑（修复约 2 行高度塌缩）；编辑 / 保存 / 还原从顶栏移到文件内页顶部工具栏。
-- Markdown 文档改用 **TipTap** 所见即所得编辑（`tiptap-markdown` 回写），附格式工具栏。
-- 顶栏数量角标（任务 / 变更 / 规则）不再漂到窗口右上角（`.chrome-btn` 作为定位上下文）。
-- **多会话并行**：切换会话不再中断后台回合；Host 将忙会话 demote 到 background 而非 cancel；取消同 cwd 进程抢占；前端按 `sessionId` / `session://runtime` 继续消费 stream。
-- **进程池**：默认并发 **8**（上限 **32**）；开新会话时优先回收闲置 parked，避免「只有 1 个在跑却提示达上限」。
-- **后台回合可切换会话**：open tools / deferred complete 一律 demote 到 background（不 park 后被回收）；`soft_respawn` 跳过进行中回合；后台写 tool journal 与 `agent_exit` 标记；有其他忙会话时暂缓 warm-connect。
-- **新建会话不再杀 Agent**：去掉 `newChat` 里的 `sessionDisconnect`（会中断刚发送的任务、留下空 journal）；disconnect 改为 demote/park；发送在切走 UI 后仍会完成。
-- **发送队列按会话隔离**：flush 只认当前查看会话；仅本会话 busy 时入队后续消息。他会话 busy 时新建/切换发送会 demote+并行启动，不再在空「新会话」上出现假队列。
-- **Host 指令按会话寻址（多会话打架根因）**：`session_send`、`session_stop`、`session_rewind_drop_last_user` 以及权限 / Plan / ask_user 的响应全部改为携带 `sessionId`，不再作用于「当前 live 槽」。此前 warm connect 或侧栏切换插在 connect 与 send 之间，会把这条消息投递到**另一个会话**（串台回复、只有 agentSessionId 的空 journal 僵尸会话）。现在 Host 会在 connect 锁内把目标会话重新聚焦（background/parked → live），拿不到进程则返回 `CONNECT_FAILED`，前端重连后重试同一条消息。
-- **后台会话的权限可以回答了**：被 demote 的会话发起的权限 / `ask_user` 会按会话缓存，切回该会话时恢复；以前只有一个 toast，回到会话没有任何入口，后台回合会一直卡到 agent 放弃。响应也改为发往发起会话自己的 ACP 子进程（旧代码发给 live 槽，rpc id 对不上）。等待中的后台会话现在会发自己的 `session://runtime`，侧栏状态诚实。
-- **停止作用于当前查看的会话**，不再误停另一个正在跑的会话。
-- **回答被截断 / 会话「卡住」（输出被静默丢弃）**：Host 用 FSM 判断回合是否结束，但 agent 会**提前**发 `prompt_complete` 然后继续输出十几秒，这之后的内容全被丢掉——界面一直转圈，agent 其实早已正常跑完，journal 里留下半截答案，且没有报错、没有取消标记、没有 `agent_exit`。现在回合生命周期由 `prompt_in_flight`（`session/prompt` RPC，它排在所有 chunk 之后）决定，不再看 FSM：提前 `prompt_complete` 之后到达的 chunk 会重新打开回合而不是被丢弃；有 prompt 在飞的会话永远不会被 park 或闲置回收。
-- **回答被截断（二）——兜底逻辑本身才是元凶**：把回合生命周期改成看 `prompt_in_flight` 还不够。提前到达的 `prompt_complete` 会挂起一个 **3 秒定时器**，到点直接替 agent 把 `session/prompt` RPC「结算」掉，于是合成出一个 **authoritative** 完成事件 —— agent 还在输出，回合却已经关闭，后续 chunk 全被当作 replay 丢弃，症状与修复前一模一样（journal 只剩前缀、界面卡在半句话）。现在这个窗口改为**空闲计时**：每收到一条 `session/update` 就重新计时，只有 agent 真正安静下来才释放等待者；真正卡死的 RPC 仍由 `PROMPT_TIMEOUT_SECS` 兜底。
-- **事件路由不再静默失败**：进程对不上任何 live/background 会话的 ACP 事件，要么被救回（仍在输出却被 park 的 agent 移回 `background`），要么打 `warn` 日志，不再直接 `return` 吞掉。后台会话在回合关闭后被丢弃的 chunk 现在也会打 `warn` —— 后台会话不存在 replay，这种丢弃一定是真实的输出丢失。
-- **回合错误归属正确的会话**：`session/prompt` 失败走的是 live 槽，导致中途被 demote 的会话把崩溃记到了当前聚焦的那个会话头上。
-- **切回后台会话能接上输出**：原来会显示成 `idle`（看起来已完成），而 agent 还在往里写；现在会从 live map 恢复 streaming / 等待权限状态。
-- **同一会话同时只允许一个 prompt**：Host 会拒绝在上一轮未结束时再次下发 `session/prompt`，不再把请求打进忙碌的 agent。
-- **刚发送就去开新会话，不再被拉回原会话**：每个草稿的 `sessionId` 都是 `null`，in-flight 的 `sessionCreate` + `sessionConnect` 于是 `null === null`，认为用户还停在自己的草稿上，在 agent 刚开始执行时抢走工作区。现在视图带导航版本号（`viewFocus`），异步任务只有在用户未导航过时才接管工作区；顺带修掉它会重新展开旧项目侧栏、以及把乐观气泡画到无关新草稿上的问题。
-- **明明没有会话在跑却提示「Agent 进程已达上限」**：三个独立成因。(1) 多会话改造之前安装的版本把**旧默认值 3** 写进了 `settings.json`，因此把默认值提到 8 对老用户完全无效 —— 现在会一次性把存量的 `3` 升到当前默认值并记录已迁移，之后用户自己设成 3 仍然有效。(2) **成功**的槽位回收（`idle_recycled reason=capacity`，即 Host 回收了一个闲置常驻 Agent 让本次启动得以继续）被误报成「已达上限（当前槽位均被正在执行的任务占用）」，既吓人又不属实，现在如实描述。(3) 已结束的 `background` 回合只在"回合结束事件"里才会转成 `parked`，若回合以其他方式收尾，其 agent 就永久占着槽位且**没有任何回收路径能释放它**；现在在做容量判断前和闲置巡检时都会把已完成的 background 会话清扫为 `parked`。
-- **回合时间线顺序**：切回会话时，自己发的第一条消息可能被渲染到答案之后。`mergeSessionMessagesById` 原本把 journal 独有的行追加到末尾，现在按回合位置插入（放在双方共有的下一行之前），并保留重复的 `tool_step` id。缓存丢消息的成因也一并修掉：离开会话时不再用空的工作区视图覆盖已有内容的会话缓存。
+
+- 启动默认进入空白新会话（不自动打开上次对话 / 不默认选项目）
+- 侧栏项目折叠可记忆
+- 「连接设备」默认进 IM 通信
+- 正常纯文本回复不再弹「未调用工具」提示
+- 回答不再中途截断；会话更少「卡住」
+- 发送 / 停止 / 权限对准当前查看的会话
+- 新建会话不再杀掉刚开始的任务
+- 误报「进程已达上限」
+- 切回会话时消息顺序、编辑器高度、角标与按钮颜色等
+
+**中文 · 变更**
+
+- 默认可同时跑更多 Agent（8，上限 32）
+- 启动恢复上次对话默认关闭（可在设置中打开）
 
 ## [0.1.7] - 2026-07-25
 
