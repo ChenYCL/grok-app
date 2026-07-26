@@ -8748,6 +8748,46 @@ button.composer__context-item {
   overflow: auto;
 }
 
+.doctor-cli-resolved {
+  margin: 0 0 12px;
+  padding: 10px 12px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-elevated, var(--bg-main));
+}
+.doctor-cli-resolved__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.doctor-cli-resolved__title {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+}
+.doctor-cli-resolved__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 8px 12px;
+  margin: 0;
+}
+.doctor-cli-resolved__grid dt {
+  margin: 0;
+  font-size: 11px;
+  opacity: 0.65;
+}
+.doctor-cli-resolved__grid dd {
+  margin: 2px 0 0;
+  font-size: 12px;
+  word-break: break-all;
+}
+.doctor-cli-resolved__mono {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 11px;
+}
+
 .doctor-checks {
   list-style: none;
   margin: 0;

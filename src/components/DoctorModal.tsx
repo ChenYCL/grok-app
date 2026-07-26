@@ -340,6 +340,40 @@ export function DoctorModal({
 
   const summary = report?.summary;
   const checks = report?.checks ?? [];
+
+  /** App-resolved CLI path/version/source (probe), separate from `grok doctor` JSON. */
+  const cliResolved = useMemo(() => {
+    const raw = report?.raw as
+      | { cli?: { found?: boolean; path?: string | null; version?: string | null; source?: string | null } }
+      | undefined;
+    const cli = raw?.cli;
+    if (!cli) return null;
+    return {
+      found: !!cli.found,
+      path: typeof cli.path === "string" && cli.path.trim() ? cli.path.trim() : null,
+      version:
+        typeof cli.version === "string" && cli.version.trim()
+          ? cli.version.trim()
+          : null,
+      source:
+        typeof cli.source === "string" && cli.source.trim()
+          ? cli.source.trim()
+          : null,
+    };
+  }, [report]);
+
+  const copyCliPath = useCallback(
+    async (path: string) => {
+      try {
+        await navigator.clipboard.writeText(path);
+        setStatusMsg(t("doctor.pathCopied"));
+        window.setTimeout(() => setStatusMsg(null), 1600);
+      } catch {
+        setError(t("doctor.error"));
+      }
+    },
+    [t],
+  );
   const cliFacts = cliDoctor ? factEntries(cliDoctor.facts) : [];
 
   return (
@@ -416,6 +450,49 @@ export function DoctorModal({
             <p className="doctor-modal__status" role="status">
               {statusMsg}
             </p>
+          )}
+          {!loading && cliResolved && (
+            <div className="doctor-cli-resolved" aria-label={t("doctor.cliResolved")}>
+              <div className="doctor-cli-resolved__head">
+                <h3 className="doctor-cli-resolved__title">
+                  {t("doctor.cliResolved")}
+                </h3>
+                {cliResolved.path ? (
+                  <button
+                    type="button"
+                    className="btn btn--ghost btn--sm"
+                    onClick={() => void copyCliPath(cliResolved.path!)}
+                  >
+                    <IconCopy size={14} />
+                    {t("doctor.copyPath")}
+                  </button>
+                ) : null}
+              </div>
+              <dl className="doctor-cli-resolved__grid">
+                <div>
+                  <dt>{t("doctor.cliPath")}</dt>
+                  <dd className="doctor-cli-resolved__mono">
+                    {cliResolved.path || t("doctor.cliPathMissing")}
+                  </dd>
+                </div>
+                <div>
+                  <dt>{t("doctor.cliVersion")}</dt>
+                  <dd>{cliResolved.version || "—"}</dd>
+                </div>
+                <div>
+                  <dt>{t("doctor.cliSource")}</dt>
+                  <dd>{cliResolved.source || "—"}</dd>
+                </div>
+                <div>
+                  <dt>{t("doctor.cliFound")}</dt>
+                  <dd>
+                    {cliResolved.found
+                      ? t("doctor.level.ok")
+                      : t("doctor.level.fail")}
+                  </dd>
+                </div>
+              </dl>
+            </div>
           )}
           {!loading && !error && checks.length === 0 && (
             <p className="doctor-modal__status">{t("doctor.empty")}</p>
