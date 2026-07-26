@@ -1543,16 +1543,13 @@ export default function App() {
         })
         .catch(() => {});
 
-      // Prefer first trusted project; keep selection if still present
+      // Draft new-chat launch: no project selected. Only keep a mid-session
+      // selection when re-bootstrapping (e.g. refreshLists) if it still exists.
       setActiveProject((prev) => {
         if (prev && (p as Project[]).some((x) => x.id === prev.id)) {
           return (p as Project[]).find((x) => x.id === prev.id) || prev;
         }
-        return (
-          (p as Project[]).find((x) => x.trusted) ||
-          (p as Project[])[0] ||
-          null
-        );
+        return null;
       });
       // Restore sidebar project collapse (missing id ⇒ expanded).
       setExpandedProjects(
@@ -3239,13 +3236,9 @@ export default function App() {
       automationSetup?: boolean;
     },
   ) => {
-    // Explicit null → orphan; undefined → fall back to active project.
-    const wantOrphan = project === null;
-    const proj = wantOrphan ? null : project || activeProject;
-    if (!wantOrphan && !proj) {
-      setLocalError(tr("project.addSelectFirst"));
-      return;
-    }
+    // Explicit null → orphan; undefined → keep active project when set,
+    // otherwise orphan draft (no forced "pick a project first").
+    const proj = project === undefined ? activeProject : project;
     if (proj && !proj.trusted) {
       setLocalError(tr("project.trustFirst", { name: proj.name }));
       return;
