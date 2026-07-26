@@ -214,6 +214,9 @@ pub struct AppSettings {
     /// xAI realtime voice id (e.g. `eve`).
     #[serde(default = "default_voice_id")]
     pub voice_id: String,
+    /// When true, window close hides to tray. When false, close quits the app.
+    #[serde(default = "default_close_to_tray")]
+    pub close_to_tray: bool,
     /// When true, dictation auto-sends on end-of-speech silence.
     #[serde(default)]
     pub voice_dictation_auto_send: bool,
@@ -258,6 +261,10 @@ fn default_voice_id() -> String {
     "eve".into()
 }
 
+fn default_close_to_tray() -> bool {
+    true
+}
+
 impl Default for AppSettings {
     fn default() -> Self {
         Self {
@@ -295,6 +302,7 @@ impl Default for AppSettings {
             voice_id: default_voice_id(),
             voice_dictation_auto_send: false,
             voice_keep_agents_on_end: true,
+            close_to_tray: default_close_to_tray(),
         }
     }
 }

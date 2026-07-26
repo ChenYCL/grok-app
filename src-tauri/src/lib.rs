@@ -97,13 +97,17 @@ pub fn run() {
                 responder.respond(response);
             });
         })
-        // Close button / Alt+F4 → hide to tray only (no Dock / taskbar icon).
-        // Full exit: tray "Quit Grok" or Cmd+Q.
+        // Close button / Alt+F4: hide to tray (default) or quit — Settings → General.
+        // Full exit always available via tray "Quit Grok" or Cmd+Q.
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                 use tauri::Manager;
-                api.prevent_close();
-                tray::hide_to_tray(window.app_handle());
+                let close_to_tray = store::load_settings().close_to_tray;
+                if close_to_tray {
+                    api.prevent_close();
+                    tray::hide_to_tray(window.app_handle());
+                }
+                // else: allow default close → process exit
             }
         })
         .setup(|app| {

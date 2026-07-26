@@ -828,6 +828,8 @@ export interface AppSettings {
   voiceId?: string;
   voiceDictationAutoSend?: boolean;
   voiceKeepAgentsOnEnd?: boolean;
+  /** Window close hides to tray when true (default). */
+  closeToTray?: boolean;
 }
 
 export interface ReasoningEffort {

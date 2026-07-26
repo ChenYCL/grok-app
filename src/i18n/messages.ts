@@ -721,6 +721,9 @@ const en = {
   "settings.planEnabledDesc": "When off, spawn with --no-plan so the agent cannot enter plan mode. Soft-respawns after change.",
   "settings.useLeader": "Share agent backend (leader)",
   "settings.useLeaderDesc": "Connect with --leader so multiple clients can share one backend process. Off uses --no-leader (default). Soft-respawns after change.",
+  "settings.closeToTray": "Close window to tray",
+  "settings.closeToTrayDesc":
+    "When on, the red close button hides the app to the menu bar / system tray. Turn off to quit the app on close (Quit from the tray still works either way).",
   "settings.reopenLastSession": "Reopen last chat on startup",
   "settings.reopenLastSessionDesc": "When the app launches, open the chat you were last viewing if it still exists and is not archived.",
 "settings.prefsScope": "Remember model & permission at",
@@ -2494,6 +2497,9 @@ const zh: Record<MessageKey, string> = {
   "settings.planEnabledDesc": "关闭时启动加上 --no-plan，Agent 无法进入计划模式。更改后 soft-respawn。",
   "settings.useLeader": "共享 Agent 后端（leader）",
   "settings.useLeaderDesc": "使用 --leader 让多个客户端共用一个后端进程；关闭则 --no-leader（默认）。更改后 soft-respawn。",
+  "settings.closeToTray": "关闭窗口时最小化到托盘",
+  "settings.closeToTrayDesc":
+    "开启后，关闭按钮会隐藏到菜单栏/系统托盘。关闭此项则关闭窗口即退出（托盘「退出」始终可用）。",
   "settings.reopenLastSession": "启动时恢复上次对话",
   "settings.reopenLastSessionDesc": "应用启动后，若上次打开的对话仍存在且未归档，则自动打开。",
 "settings.prefsScope": "模型与权限记忆范围",

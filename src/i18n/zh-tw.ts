@@ -692,6 +692,9 @@ export const zhTW: Record<MessageKey, string> = {
   "settings.planEnabledDesc": "關閉時啟動加上 --no-plan，Agent 無法進入計畫模式。變更後 soft-respawn。",
   "settings.useLeader": "共用 Agent 後端（leader）",
   "settings.useLeaderDesc": "使用 --leader 讓多個用戶端共用一個後端行程；關閉則 --no-leader（預設）。變更後 soft-respawn。",
+  "settings.closeToTray": "關閉視窗時縮到系統匣",
+  "settings.closeToTrayDesc":
+    "開啟後，關閉按鈕會隱藏到選單列/系統匣。關閉此項則關閉視窗即結束（系統匣「結束」始終可用）。",
   "settings.reopenLastSession": "啟動時還原上次對話",
   "settings.reopenLastSessionDesc": "應用程式啟動後，若上次開啟的對話仍存在且未封存，則自動開啟。",
 "settings.prefsScope": "模型與權限記憶範圍",
