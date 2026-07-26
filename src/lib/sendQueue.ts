@@ -75,6 +75,12 @@ export function queuePreviewText(
  * Same “busy” surface as {@link isSessionBusy}, plus the UI `connecting`
  * flag — except `awaiting_permission`, where the user must decide first
  * (and `canType` is false). Keeps the busy set from drifting.
+ *
+ * **Only the viewed session’s own busy state** enqueues. Host busy on a
+ * *different* chat must **not** enqueue — that path is multi-session
+ * concurrent send (`executeSend` demotes the foreign turn and spawns).
+ * Enqueuing on foreign busy caused empty “new chat” queues (cross-session
+ * anomaly) and serialised all work behind one turn.
  */
 export function shouldEnqueueSend(
   state: SessionState,
@@ -82,6 +88,46 @@ export function shouldEnqueueSend(
 ): boolean {
   if (state === "awaiting_permission") return false;
   return connecting || isSessionBusy(state);
+}
+
+/**
+ * Whether Host live is busy on a different session than the viewed one.
+ *
+ * Used for diagnostics / UI hints only — **not** for enqueue gating.
+ * Concurrent send on draft/other chat should demote+spawn, not queue.
+ */
+export function isForeignLiveBusy(
+  liveSessionId: string | null | undefined,
+  liveState: SessionState | null | undefined,
+  viewedSessionId: string | null | undefined,
+): boolean {
+  if (!liveSessionId || !liveState) return false;
+  if (!isSessionBusy(liveState)) return false;
+  // Draft view (null) while any live session is busy → foreign
+  if (viewedSessionId == null || viewedSessionId === "") {
+    return true;
+  }
+  return liveSessionId !== viewedSessionId;
+}
+
+/**
+ * Whether auto-flush / claim should wait because the *claimed* session is
+ * the one currently busy on Host (same-session follow-up queue).
+ *
+ * Draft (`viewId` null) is never “the same” as a live host id — flush may
+ * demote and materialize a new chat. Foreign busy also does not block flush
+ * of another session’s queue.
+ */
+export function shouldHoldFlushForLive(
+  liveSessionId: string | null | undefined,
+  liveState: SessionState | null | undefined,
+  claimSessionId: string | null | undefined,
+): boolean {
+  if (!liveSessionId || !liveState) return false;
+  if (!isSessionBusy(liveState)) return false;
+  // Draft queue is never the live mid-turn session.
+  if (claimSessionId == null || claimSessionId === "") return false;
+  return liveSessionId === claimSessionId;
 }
 
 /**
@@ -221,6 +267,7 @@ export function requeueAfterFlushFail(
 /**
  * Whether the busy-state Queue button should render (not permission wait).
  * Enter/send still use {@link shouldEnqueueSend} alone for the enqueue path.
+ * Same-session busy only — never for foreign live turns.
  */
 export function canShowQueueButton(
   state: SessionState,

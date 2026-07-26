@@ -4,20 +4,43 @@
 
 use std::time::{Duration, Instant};
 
-/// Spec default: at most 3 warm/live agent processes.
-pub const DEFAULT_MAX_CONCURRENT_AGENTS: u32 = 3;
+/// Spec default: warm agent processes kept for open chats.
+/// Desktop machines can run more than a handful; idle parked are reclaimed first.
+pub const DEFAULT_MAX_CONCURRENT_AGENTS: u32 = 8;
 /// Spec default: recycle after ~30 minutes idle.
 pub const DEFAULT_AGENT_IDLE_MINUTES: u32 = 30;
 
 /// Hard clamp for settings (avoid 0 / absurd values).
-pub const MAX_CONCURRENT_AGENTS_CAP: u32 = 8;
+/// Room for multi-session parallel turns on a workstation.
+pub const MAX_CONCURRENT_AGENTS_CAP: u32 = 32;
 pub const MIN_CONCURRENT_AGENTS: u32 = 1;
 pub const MAX_IDLE_MINUTES_CAP: u32 = 24 * 60;
 pub const MIN_IDLE_MINUTES: u32 = 1;
 
+/// Pool size shipped before the multi-session rework (default 3, cap 8).
+/// Installs from that era persisted `3` into `settings.json`, so raising
+/// `DEFAULT_MAX_CONCURRENT_AGENTS` alone left them capped at three warm agents
+/// — two chats plus one warm prefetch was enough to trip the limit.
+pub const LEGACY_DEFAULT_MAX_CONCURRENT_AGENTS: u32 = 3;
+
 /// Normalize user/settings value for max concurrent agent processes.
 pub fn normalize_max_concurrent(raw: u32) -> u32 {
     raw.clamp(MIN_CONCURRENT_AGENTS, MAX_CONCURRENT_AGENTS_CAP)
+}
+
+/// One-time migration of a persisted pool size.
+///
+/// Only lifts the value when it is exactly the **legacy default** and the
+/// migration has not run yet — a deliberate `3` set after the migration is
+/// preserved, and any other value is never touched.
+pub fn migrate_max_concurrent(stored: u32, already_migrated: bool) -> Option<u32> {
+    if already_migrated {
+        return None;
+    }
+    if stored == LEGACY_DEFAULT_MAX_CONCURRENT_AGENTS {
+        return Some(DEFAULT_MAX_CONCURRENT_AGENTS);
+    }
+    None
 }
 
 /// Normalize idle recycle window (minutes).
@@ -51,11 +74,22 @@ pub fn processes_over_capacity(active_processes: u32, max_concurrent: u32) -> u3
     active_processes.saturating_sub(max)
 }
 
+/// How many parked (idle) slots to free so one new process can spawn.
+/// When already at capacity, free at least 1 parked agent.
+pub fn parked_slots_to_free_for_spawn(active_processes: u32, max_concurrent: u32) -> u32 {
+    let max = normalize_max_concurrent(max_concurrent);
+    if active_processes < max {
+        return 0;
+    }
+    // Need active < max after free → free (active - max + 1)
+    active_processes.saturating_sub(max).saturating_add(1)
+}
+
 /// Human-readable limit message (English; UI maps code via i18n).
 pub fn process_limit_message(max_concurrent: u32) -> String {
     let max = normalize_max_concurrent(max_concurrent);
     format!(
-        "Agent process limit reached (max {max}). Stop or wait for another session, or raise the limit in Settings → Runtime."
+        "Agent process limit reached (max {max} concurrent). Idle parked chats were already reclaimed; stop a running turn or raise the limit in Settings → Runtime → Process pool."
     )
 }
 
@@ -127,14 +161,47 @@ mod tests {
     }
 
     #[test]
+    fn parked_slots_to_free_for_spawn_at_capacity() {
+        assert_eq!(parked_slots_to_free_for_spawn(0, 8), 0);
+        assert_eq!(parked_slots_to_free_for_spawn(7, 8), 0);
+        assert_eq!(parked_slots_to_free_for_spawn(8, 8), 1);
+        assert_eq!(parked_slots_to_free_for_spawn(10, 8), 3);
+    }
+
+    #[test]
     fn process_limit_message_includes_max() {
-        let m = process_limit_message(3);
-        assert!(m.contains('3'), "{m}");
+        let m = process_limit_message(8);
+        assert!(m.contains('8'), "{m}");
+    }
+
+    #[test]
+    fn migrates_legacy_default_pool_size_once() {
+        // Stuck at the old default → lifted to the new one.
+        assert_eq!(
+            migrate_max_concurrent(LEGACY_DEFAULT_MAX_CONCURRENT_AGENTS, false),
+            Some(DEFAULT_MAX_CONCURRENT_AGENTS)
+        );
+        // Runs once: a deliberate 3 set afterwards survives.
+        assert_eq!(
+            migrate_max_concurrent(LEGACY_DEFAULT_MAX_CONCURRENT_AGENTS, true),
+            None
+        );
+        // Any other explicit choice is never rewritten.
+        assert_eq!(migrate_max_concurrent(1, false), None);
+        assert_eq!(migrate_max_concurrent(4, false), None);
+        assert_eq!(migrate_max_concurrent(16, false), None);
     }
 
     #[test]
     fn defaults_match_spec() {
-        assert_eq!(DEFAULT_MAX_CONCURRENT_AGENTS, 3);
+        assert_eq!(DEFAULT_MAX_CONCURRENT_AGENTS, 8);
         assert_eq!(DEFAULT_AGENT_IDLE_MINUTES, 30);
+        assert_eq!(MAX_CONCURRENT_AGENTS_CAP, 32);
+    }
+
+    #[test]
+    fn normalize_allows_workstation_caps() {
+        assert_eq!(normalize_max_concurrent(16), 16);
+        assert_eq!(normalize_max_concurrent(99), MAX_CONCURRENT_AGENTS_CAP);
     }
 }

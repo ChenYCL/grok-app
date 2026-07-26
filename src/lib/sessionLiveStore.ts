@@ -91,6 +91,36 @@ export function projectHostIntoLiveMap(
   );
 }
 
+/**
+ * State to project when (re)opening `sessionId`.
+ *
+ * The Host live slot wins. Otherwise a *background* turn's snapshot is used, so
+ * switching back to a demoted chat re-attaches the spinner and stream pipeline
+ * instead of showing a finished-looking `idle` thread while the agent is still
+ * writing into it.
+ */
+export function resumeStateForSession(
+  sessionId: string,
+  live: {
+    sessionId: string | null;
+    state: SessionState;
+    streamingMessageId?: string | null;
+  },
+  map: SessionLiveMap,
+): { state: SessionState; streamingMessageId: string | null } {
+  if (live.sessionId && live.sessionId === sessionId) {
+    return {
+      state: live.state,
+      streamingMessageId: live.streamingMessageId ?? null,
+    };
+  }
+  const snap = map[sessionId];
+  if (snap && (isSessionLiveStreaming(snap.state) || snap.state === "connecting")) {
+    return { state: snap.state, streamingMessageId: snap.streamingMessageId };
+  }
+  return { state: "idle", streamingMessageId: null };
+}
+
 /** Update live tool from messages for a session. */
 export function projectLiveToolFromMessages(
   map: SessionLiveMap,

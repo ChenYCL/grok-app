@@ -453,6 +453,26 @@ export const SETTINGS_ENTRIES: readonly SettingsEntry[] = [
     descKeys: ["settings.tabProvidersHint"],
     keywords: ["provider", "relay", "custom api", "base url"],
   },
+  {
+    id: "account.officialApiKey",
+    section: "account",
+    tab: "providers",
+    anchorId: "settings-anchor-official-key",
+    labelKey: "prov.officialApiKey",
+    descKeys: ["prov.officialVoiceHint", "prov.officialDesc"],
+    keywords: [
+      "api key",
+      "xai",
+      "official key",
+      "voice",
+      "speech",
+      "stt",
+      "dictation",
+      "语音",
+      "語音",
+      "听写",
+    ],
+  },
   // ── archived ──
   {
     id: "archived.list",

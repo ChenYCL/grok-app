@@ -142,9 +142,9 @@ export function Thinking({
         </span>
         {hasBody ? (
           <IconChevronDown
-            size={14}
+            size={12}
             className={cn(
-              "text-[var(--lobe-color-text-tertiary)] transition-transform",
+              "lobe-chat-thinking__caret text-[var(--lobe-color-text-tertiary)] transition-transform shrink-0 ml-auto",
               open && "rotate-180",
             )}
           />

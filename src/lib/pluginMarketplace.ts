@@ -36,6 +36,93 @@ export type AvailablePluginLike = {
   hasMcp?: boolean;
 };
 
+/** Canonical name for xAI's official marketplace source. */
+export const XAI_OFFICIAL_MARKETPLACE = "xAI Official";
+
+/** Match official catalog rows (CLI name may vary slightly). */
+export function isXaiOfficialMarketplace(
+  name: string | null | undefined,
+): boolean {
+  const n = (name ?? "").trim().toLowerCase();
+  if (!n) return false;
+  if (n === "xai official" || n === "xai-official" || n === "xai-official-marketplace") {
+    return true;
+  }
+  return n.includes("xai") && n.includes("official");
+}
+
+/** Prefer official source when present in the configured list. */
+export function pickDefaultMarketplaceFilter(
+  sources: { name: string }[],
+): string {
+  const official = sources.find((s) => isXaiOfficialMarketplace(s.name));
+  if (official) return official.name;
+  return XAI_OFFICIAL_MARKETPLACE;
+}
+
+/**
+ * Filter available plugins by marketplace chip.
+ * - `"__all__"` → every source
+ * - otherwise exact marketplace name (case-insensitive)
+ */
+export function filterAvailableByMarketplace<
+  T extends { marketplace?: string | null },
+>(plugins: T[], marketFilter: string): T[] {
+  const f = (marketFilter ?? "").trim();
+  if (!f || f === "__all__") return plugins;
+  if (isXaiOfficialMarketplace(f)) {
+    return plugins.filter((p) => isXaiOfficialMarketplace(p.marketplace));
+  }
+  const lower = f.toLowerCase();
+  return plugins.filter(
+    (p) => (p.marketplace ?? "").trim().toLowerCase() === lower,
+  );
+}
+
+/** Enrich top-level counts from CLI `components` when flags are empty. */
+export function enrichAvailableFromComponents(
+  raw: Record<string, unknown>,
+  base: {
+    skillCount?: number | null;
+    hasHooks?: boolean;
+    hasAgents?: boolean;
+    hasMcp?: boolean;
+  },
+): {
+  skillCount: number | null;
+  hasHooks: boolean;
+  hasAgents: boolean;
+  hasMcp: boolean;
+} {
+  let skillCount =
+    typeof base.skillCount === "number" ? base.skillCount : null;
+  let hasHooks = !!base.hasHooks;
+  let hasAgents = !!base.hasAgents;
+  let hasMcp = !!base.hasMcp;
+  const comps = raw.components;
+  if (!comps || typeof comps !== "object") {
+    return { skillCount, hasHooks, hasAgents, hasMcp };
+  }
+  const c = comps as Record<string, unknown>;
+  if ((skillCount ?? 0) === 0 && Array.isArray(c.skills)) {
+    skillCount = c.skills.length;
+  }
+  if (!hasHooks && Array.isArray(c.hooks)) {
+    hasHooks = c.hooks.length > 0;
+  }
+  if (!hasAgents && Array.isArray(c.agents)) {
+    hasAgents = c.agents.length > 0;
+  }
+  if (
+    !hasMcp &&
+    (Array.isArray(c.mcpServers) || Array.isArray(c.mcp_servers))
+  ) {
+    const arr = (c.mcpServers ?? c.mcp_servers) as unknown[];
+    hasMcp = arr.length > 0;
+  }
+  return { skillCount, hasHooks, hasAgents, hasMcp };
+}
+
 function asTrimmedString(v: unknown): string | null {
   if (typeof v !== "string") return null;
   const s = v.trim();
@@ -259,22 +346,28 @@ export function parsePluginListAvailableJson(raw: string): AvailablePluginLike[]
     const name = asTrimmedString(o.name);
     if (!name) continue;
     const status = asTrimmedString(o.status) ?? "available";
-    const skillCount =
+    const skillCountRaw =
       typeof o.skill_count === "number"
         ? o.skill_count
         : typeof o.skillCount === "number"
           ? o.skillCount
           : null;
+    const enriched = enrichAvailableFromComponents(o, {
+      skillCount: skillCountRaw,
+      hasHooks: Boolean(o.has_hooks ?? o.hasHooks),
+      hasAgents: Boolean(o.has_agents ?? o.hasAgents),
+      hasMcp: Boolean(o.has_mcp ?? o.hasMcp),
+    });
     out.push({
       name,
       status,
       marketplace: asTrimmedString(o.marketplace),
       description: asTrimmedString(o.description),
       version: asTrimmedString(o.version),
-      skillCount,
-      hasHooks: Boolean(o.has_hooks ?? o.hasHooks),
-      hasAgents: Boolean(o.has_agents ?? o.hasAgents),
-      hasMcp: Boolean(o.has_mcp ?? o.hasMcp),
+      skillCount: enriched.skillCount,
+      hasHooks: enriched.hasHooks,
+      hasAgents: enriched.hasAgents,
+      hasMcp: enriched.hasMcp,
     });
   }
   return out;

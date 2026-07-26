@@ -1,9 +1,16 @@
 //! Host session manager: real ACP default; mock only if GROK_APP_ACP=mock.
 //!
-//! Process policy (I01–I03):
-//! - One ACP process per live/parked App session (up to `maxConcurrentAgents`, default 3).
-//! - Switching chats parks a Ready process instead of killing it (when under the cap).
-//! - Idle processes are soft-recycled after `agentIdleMinutes` (default 30); session meta stays.
+//! Process policy (I01–I03) — multi-session, no monopoly:
+//! - One ACP process per App session (live / background-busy / parked-ready).
+//! - Switching chats **never** cancels a busy turn: Streaming / AwaitingPermission
+//!   / open tools / deferred prompt_complete demote to `background` (event pump
+//!   kept). Only true idle Ready parks warm.
+//! - Processes are **not** stolen across App sessions (no same-cwd rebind).
+//! - Cap: `maxConcurrentAgents` (default 8, cap 32). Over cap → reclaim idle
+//!   parked first; `PROCESS_LIMIT` only when busy slots are full. **Never** kill
+//!   background-busy or open-tool turns for capacity.
+//! - Idle recycle after `agentIdleMinutes` (default 30); session meta stays.
+//! - soft_respawn skips mid-turn live sessions.
 //!
 //! Streaming performance (I04 / I06):
 //! - Mid-stream journal upserts are throttled (≥500ms or paragraph / force).
@@ -32,7 +39,7 @@ use crate::permission::{
 };
 use crate::process_limits::{
     can_spawn_process, is_idle_expired, normalize_idle_minutes, normalize_max_concurrent,
-    process_limit_message,
+    parked_slots_to_free_for_spawn, process_limit_message,
 };
 use crate::session_fsm::{SessionFsm, SessionState};
 use crate::store::{self, ChatMessageStored, MessageAttachmentStored, SessionMeta};
@@ -193,6 +200,13 @@ struct LiveSession {
     deferred_prompt_complete: Option<String>,
     /// Tool events observed during the current turn (empty-run soft signal).
     tools_this_turn: u32,
+    /// A `session/prompt` RPC is dispatched and has not resolved yet.
+    ///
+    /// Authoritative "this chat is working" flag — the FSM is not, because the
+    /// agent may fire `prompt_complete` early (which Readies the FSM) and then
+    /// keep streaming. While this is set the session can never be parked or
+    /// idle-recycled, and its stream chunks are always applied.
+    prompt_in_flight: bool,
 }
 
 /// Ready agent process parked while another App session is focused (I01/I02).
@@ -583,6 +597,14 @@ impl SessionManager {
         let Some(stop_reason) = s.deferred_prompt_complete.clone() else {
             return None;
         };
+        // The `session/prompt` RPC has not resolved → the agent may still emit
+        // more text (it fires `prompt_complete` early). Ending the turn here is
+        // what truncated answers mid-sentence and made the chat look stuck.
+        // `schedule_prompt_complete_fallback` guarantees an authoritative
+        // completion within the grace window, so this cannot hang.
+        if s.prompt_in_flight {
+            return None;
+        }
         let awaiting_perm = s.fsm.state() == SessionState::AwaitingPermission;
         if should_defer_prompt_complete(
             awaiting_perm,
@@ -798,7 +820,7 @@ impl SessionManager {
         );
     }
 
-    /// Drop dead parked entries; return killed count (for logging).
+    /// Drop dead parked entries; return removed count (for logging).
     fn sweep_dead_parked(&self) -> usize {
         let mut parked = self.parked.lock();
         let before = parked.len();
@@ -806,26 +828,108 @@ impl SessionManager {
         before.saturating_sub(parked.len())
     }
 
+    /// Drop background shells whose ACP child is gone (stale mid-turn maps).
+    fn sweep_dead_background(&self) -> usize {
+        let mut bg = self.background.lock();
+        let before = bg.len();
+        bg.retain(|_, s| s.acp.as_ref().is_some_and(|c| c.is_alive()));
+        before.saturating_sub(bg.len())
+    }
+
+    /// Live + background process count (excludes reclaimable parked idle).
+    /// Used for diagnostics / limit messaging after parked reclaim.
+    fn busy_process_count(&self) -> u32 {
+        let live = self
+            .inner
+            .lock()
+            .as_ref()
+            .and_then(|s| s.acp.as_ref())
+            .filter(|c| c.is_alive())
+            .is_some() as u32;
+        let background = self
+            .background
+            .lock()
+            .values()
+            .filter(|s| s.acp.as_ref().is_some_and(|c| c.is_alive()))
+            .count() as u32;
+        live + background
+    }
+
+    /// True while a turn is still in flight — must demote to `background`, never park.
+    /// Includes open tools / deferred prompt_complete even if FSM already Ready
+    /// (early prompt_complete + long-running find/subagent).
+    fn live_session_is_busy(s: &LiveSession) -> bool {
+        // Authoritative: the prompt RPC has not resolved, so the agent is still
+        // producing output for this chat no matter what the FSM says. Parking
+        // here dropped the rest of the answer on the floor (parked agents get no
+        // event routing) while the agent happily finished the turn.
+        if s.prompt_in_flight {
+            return true;
+        }
+        if matches!(
+            s.fsm.state(),
+            SessionState::Streaming
+                | SessionState::AwaitingPermission
+                | SessionState::Connecting
+        ) {
+            return true;
+        }
+        if s.streaming_message_id.is_some() {
+            return true;
+        }
+        if !s.open_tool_ids.is_empty() {
+            return true;
+        }
+        if s.deferred_prompt_complete.is_some() {
+            return true;
+        }
+        if s.pending_plan_rpc_id.is_some() || s.pending_ask_user_rpc_id.is_some() {
+            return true;
+        }
+        false
+    }
+
     /// Park or background the current live session so focus can move.
     ///
-    /// - Ready → warm `parked` (idle process).
-    /// - Streaming / AwaitingPermission → `background` (keeps full LiveSession + event pump).
-    /// - Capacity exceeded → error (PROCESS_LIMIT).
+    /// - Idle Ready (no open tools) → warm `parked`.
+    /// - Busy (FSM or open tools / deferred complete) → `background` (event pump kept).
+    /// - Demoting a busy turn always succeeds (never cancel for focus).
     fn try_park_live(&self) -> Result<(), AgentError> {
-        let max = Self::max_concurrent_from_settings();
         let mut guard = self.inner.lock();
         let Some(s) = guard.as_mut() else {
             return Ok(());
         };
         // Nothing to park
         if s.acp.as_ref().is_none_or(|c| !c.is_alive()) {
+            // Drop dead shell so connect can rebuild.
+            let _ = guard.take();
             return Ok(());
         }
+
+        // Busy (incl. open tools while FSM Ready) → background, never park/reclaim.
+        if Self::live_session_is_busy(s) {
+            let Some(live) = guard.take() else {
+                return Ok(());
+            };
+            let sid = live.app_session_id.clone();
+            let st = live.fsm.state();
+            let tools = live.open_tool_ids.len();
+            drop(guard);
+            tracing::info!(
+                "acp demote busy session to background sid={sid} state={st:?} open_tools={tools}"
+            );
+            self.background.lock().insert(sid, live);
+            return Ok(());
+        }
+
         match s.fsm.state() {
-            SessionState::Ready if s.streaming_message_id.is_none() => {
+            SessionState::Ready => {
                 let acp = match s.acp.take() {
                     Some(c) if c.is_alive() => c,
-                    Some(_) | None => return Ok(()),
+                    Some(_) | None => {
+                        let _ = guard.take();
+                        return Ok(());
+                    }
                 };
                 let parked = ParkedAgent {
                     process_id: s.process_id.clone(),
@@ -848,50 +952,56 @@ impl SessionManager {
                     .insert(parked.app_session_id.clone(), parked);
                 Ok(())
             }
-            SessionState::Idle | SessionState::Disconnected => Ok(()),
-            // Busy: keep full LiveSession in background so streaming continues.
-            SessionState::Streaming
-            | SessionState::AwaitingPermission
-            | SessionState::Connecting => {
-                // +1 for the demoted session already counted as live; need room.
-                let others = self.active_process_count().saturating_sub(1);
-                if others.saturating_add(1) > max {
-                    return Err(AgentError::new(
-                        AgentErrorCode::ProcessLimit,
-                        format!(
-                            "Session is busy and process limit ({max}) is full. Stop a turn or raise the limit. {}",
-                            process_limit_message(max)
-                        ),
-                    ));
-                }
-                let Some(live) = guard.take() else {
-                    return Ok(());
-                };
-                let sid = live.app_session_id.clone();
-                drop(guard);
-                tracing::info!(
-                    "acp demote busy session to background sid={sid} state={:?}",
-                    live.fsm.state()
-                );
-                self.background.lock().insert(sid, live);
+            SessionState::Idle | SessionState::Disconnected => {
+                // Detach dead/idle shell without killing if no acp; drop shell.
+                let _ = guard.take();
                 Ok(())
             }
             other => Err(AgentError::new(
                 AgentErrorCode::ProcessLimit,
                 format!(
                     "Session is busy ({other:?}). Stop the turn or wait, then switch chats. {}",
-                    process_limit_message(max)
+                    process_limit_message(Self::max_concurrent_from_settings())
                 ),
             )),
         }
     }
 
-    /// If a background session finished its turn (Ready), convert to warm parked.
+    /// Like `try_park_live`, then emit `session://runtime` for the demoted session.
+    fn try_park_live_emit(&self, app: &AppHandle) -> Result<(), AgentError> {
+        let pre = self.inner.lock().as_ref().map(|s| {
+            let busy = Self::live_session_is_busy(s);
+            let mut snap = Self::snapshot_from_live(s);
+            if busy && snap.state == SessionState::Ready {
+                // Open tools while Ready — project as streaming so UI keeps busy.
+                snap.state = SessionState::Streaming;
+            }
+            (busy, snap)
+        });
+        self.try_park_live()?;
+        if let Some((busy, snap)) = pre {
+            if busy {
+                Self::emit_runtime(app, &snap);
+            } else if snap.state == SessionState::Ready {
+                let mut parked_snap = snap;
+                parked_snap.streaming_message_id = None;
+                Self::emit_runtime(app, &parked_snap);
+            }
+        }
+        Ok(())
+    }
+
+    /// If a background session finished its turn (Ready, no open tools), park warm.
     fn promote_background_ready_to_parked(&self, app_session_id: &str) {
         let mut bg = self.background.lock();
         let ready = bg.get(app_session_id).is_some_and(|s| {
             matches!(s.fsm.state(), SessionState::Ready)
+                && !s.prompt_in_flight
                 && s.streaming_message_id.is_none()
+                && s.open_tool_ids.is_empty()
+                && s.deferred_prompt_complete.is_none()
+                && s.pending_plan_rpc_id.is_none()
+                && s.pending_ask_user_rpc_id.is_none()
                 && s.acp.as_ref().is_some_and(|c| c.is_alive())
         });
         if !ready {
@@ -969,10 +1079,122 @@ impl SessionManager {
             open_tool_ids: HashSet::new(),
             deferred_prompt_complete: None,
             tools_this_turn: 0,
+            prompt_in_flight: false,
         })
     }
 
-    /// Kill oldest parked agents until under capacity (or none left).
+    /// Run `f` on a session's runtime state wherever it currently sits —
+    /// the live focus slot **or** a demoted `background` turn.
+    ///
+    /// Session-scoped commands (permission / plan / ask_user answers) must use
+    /// this instead of reaching for `self.inner`: the pending JSON-RPC id lives
+    /// on the session that asked, and that session may have been demoted when
+    /// the user switched chats. Answering against the live slot sent the reply
+    /// to the wrong ACP child, so the background turn waited forever.
+    ///
+    /// Parked agents are idle Ready and hold no pending RPC — not searched.
+    fn with_session_mut<R>(
+        &self,
+        app_session_id: &str,
+        f: impl FnOnce(&mut LiveSession) -> R,
+    ) -> Option<R> {
+        {
+            let mut guard = self.inner.lock();
+            if let Some(s) = guard.as_mut() {
+                if s.app_session_id == app_session_id {
+                    return Some(f(s));
+                }
+            }
+        }
+        let mut bg = self.background.lock();
+        bg.get_mut(app_session_id).map(f)
+    }
+
+    /// True when `app_session_id` currently owns the live focus slot.
+    fn is_live_session(&self, app_session_id: &str) -> bool {
+        self.inner
+            .lock()
+            .as_ref()
+            .is_some_and(|s| s.app_session_id == app_session_id)
+    }
+
+    /// Emit the right runtime event for a session touched out-of-focus:
+    /// `session://state` when it is live, `session://runtime` when demoted.
+    fn emit_for_session(&self, app: &AppHandle, app_session_id: &str) {
+        if self.is_live_session(app_session_id) {
+            Self::emit_state(app, &self.snapshot());
+            return;
+        }
+        let snap = self
+            .background
+            .lock()
+            .get(app_session_id)
+            .map(Self::snapshot_from_live);
+        if let Some(snap) = snap {
+            Self::emit_runtime(app, &snap);
+        }
+    }
+
+    /// Move `target_sid` into the live focus slot **without spawning**.
+    ///
+    /// Demotes the current live session first (busy → `background`, Ready →
+    /// `parked`), then promotes the target from `background` / `parked`.
+    /// Returns `false` when the target has no warm process — the caller must
+    /// `connect` (cold spawn) instead.
+    ///
+    /// `send` calls this under `connect_lock` so a concurrent warm connect
+    /// cannot swap the live slot between the caller's connect and its send
+    /// (that delivered prompts into a foreign chat and left empty-journal
+    /// zombie sessions behind).
+    fn focus_session(&self, app: &AppHandle, target_sid: &str) -> Result<bool, AgentError> {
+        if self
+            .inner
+            .lock()
+            .as_ref()
+            .is_some_and(|s| {
+                s.app_session_id == target_sid && s.acp.as_ref().is_some_and(|c| c.is_alive())
+            })
+        {
+            return Ok(true);
+        }
+        let in_background = self.background.lock().contains_key(target_sid);
+        let in_parked = self.parked.lock().contains_key(target_sid);
+        if !in_background && !in_parked {
+            return Ok(false);
+        }
+
+        self.try_park_live_emit(app)?;
+        // Never overwrite a shell that still holds a living ACP child.
+        if self
+            .inner
+            .lock()
+            .as_ref()
+            .is_some_and(|s| s.acp.as_ref().is_some_and(|c| c.is_alive()))
+        {
+            self.try_park_live()?;
+        }
+        let _ = self.inner.lock().take();
+
+        if in_background {
+            if let Some(live) = self.background.lock().remove(target_sid) {
+                *self.inner.lock() = Some(live);
+                tracing::info!("acp focus: background → live sid={target_sid}");
+                Self::emit_state(app, &self.snapshot());
+                return Ok(true);
+            }
+        }
+        if let Some(live) = self.unpark_to_live(target_sid) {
+            *self.inner.lock() = Some(live);
+            tracing::info!("acp focus: parked → live sid={target_sid}");
+            Self::emit_state(app, &self.snapshot());
+            return Ok(true);
+        }
+        // Parked process died between the check and the promote → cold spawn.
+        Ok(false)
+    }
+
+    /// Kill oldest parked agents until `need_slots` are freed (or none left).
+    /// Parked = Ready idle; never touches background busy turns.
     async fn free_parked_for_capacity(&self, app: &AppHandle, need_slots: u32) {
         if need_slots == 0 {
             return;
@@ -999,11 +1221,51 @@ impl SessionManager {
         }
     }
 
+    /// Move every finished `background` turn into `parked`.
+    ///
+    /// `background` is only reclaimable via `parked`, and it is only drained on
+    /// the events that end a turn. A turn that ended by any other route (error,
+    /// stop, a missed completion) left its agent sitting in `background`
+    /// forever: it counted against the pool but no reclaim path could ever free
+    /// it, so the app reported "all slots busy" with nothing running.
+    fn sweep_finished_background_to_parked(&self) {
+        let keys: Vec<String> = self.background.lock().keys().cloned().collect();
+        for k in keys {
+            self.promote_background_ready_to_parked(&k);
+        }
+    }
+
+    /// Before spawn: reclaim idle parked until there is room (never kill busy).
+    async fn reclaim_parked_until_can_spawn(&self, app: &AppHandle, max_concurrent: u32) {
+        self.sweep_dead_parked();
+        self.sweep_dead_background();
+        // Finished background turns are idle warm agents — make them reclaimable
+        // before deciding the pool is full of running work.
+        self.sweep_finished_background_to_parked();
+        // Free enough parked slots for one new process (may free multiple).
+        let active = self.active_process_count();
+        let need = parked_slots_to_free_for_spawn(active, max_concurrent);
+        if need > 0 {
+            self.free_parked_for_capacity(app, need).await;
+        }
+        // If still full (e.g. free returned fewer), keep freeing until spawnable or empty.
+        while !can_spawn_process(self.active_process_count(), max_concurrent) {
+            let parked_n = self.parked.lock().len();
+            if parked_n == 0 {
+                break;
+            }
+            self.free_parked_for_capacity(app, 1).await;
+        }
+    }
+
     /// Idle recycle for live + parked (I03).
     async fn tick_idle_recycle(&self, app: &AppHandle) {
         let idle_mins = Self::idle_minutes_from_settings();
         let now = Instant::now();
         self.sweep_dead_parked();
+        self.sweep_dead_background();
+        // Finished background turns become parked so the idle window applies.
+        self.sweep_finished_background_to_parked();
 
         // Parked first
         let expired_parked: Vec<ParkedAgent> = {
@@ -1027,14 +1289,14 @@ impl SessionManager {
             Self::emit_idle_recycled(app, &p.app_session_id, "idle");
         }
 
-        // Live: only when Ready (not mid-turn)
+        // Live: only true idle Ready (never mid-turn / open tools).
         let live_kill = {
             let mut guard = self.inner.lock();
             if let Some(s) = guard.as_mut() {
                 let idle = is_idle_expired(s.last_activity, idle_mins, now);
-                let ready = matches!(s.fsm.state(), SessionState::Ready)
-                    && s.streaming_message_id.is_none();
-                if idle && ready {
+                let ready_idle = matches!(s.fsm.state(), SessionState::Ready)
+                    && !Self::live_session_is_busy(s);
+                if idle && ready_idle {
                     if let Some(acp) = s.acp.take() {
                         s.fsm.soft_disconnect();
                         s.needs_history_bootstrap = false;
@@ -1181,6 +1443,40 @@ impl SessionManager {
         let _ = app.emit("session://state", snap);
     }
 
+    /// Multi-session runtime for a non-focused session (background / parked).
+    /// Does **not** move the live focus slot — UI projects this into `liveMap` only.
+    fn emit_runtime(app: &AppHandle, snap: &SessionSnapshot) {
+        let _ = app.emit("session://runtime", snap);
+    }
+
+    fn snapshot_from_live(s: &LiveSession) -> SessionSnapshot {
+        SessionSnapshot {
+            session_id: Some(s.app_session_id.clone()),
+            agent_session_id: s.meta.agent_session_id.clone(),
+            state: s.fsm.state(),
+            last_error: s.fsm.last_error().cloned(),
+            streaming_message_id: s.streaming_message_id.clone(),
+            backend: s.backend.clone(),
+            model_id: s.model_id.clone(),
+            project_path: s.project_path.clone(),
+            title: s.meta.title.clone(),
+        }
+    }
+
+    fn snapshot_from_parked(p: &ParkedAgent) -> SessionSnapshot {
+        SessionSnapshot {
+            session_id: Some(p.app_session_id.clone()),
+            agent_session_id: p.meta.agent_session_id.clone(),
+            state: SessionState::Ready,
+            last_error: None,
+            streaming_message_id: None,
+            backend: p.backend.clone(),
+            model_id: p.model_id.clone(),
+            project_path: p.project_path.clone(),
+            title: p.meta.title.clone(),
+        }
+    }
+
     /// Persist + push a chat-visible error for a failed turn (retries exhausted, RPC fail, …).
     /// Updates UI via `session://turn_error` so the optimistic thinking bubble becomes a record.
     ///
@@ -1219,6 +1515,7 @@ impl SessionManager {
         s.stream_last_was_assistant = false;
         s.stream_attachments.clear();
         s.streaming_message_id = None;
+        s.prompt_in_flight = false;
         s.journal_throttle.reset();
         s.last_stall_emit = None;
 
@@ -1292,30 +1589,36 @@ impl SessionManager {
         let policy = PermissionPolicy::parse(&prefs.permission_policy);
         let agent_model = crate::providers::agent_spawn_model_id(&prefs.model_id);
 
-        // Already live on this App session with a healthy agent → no-op (or soft re-bind prefs).
+        // Already live on this App session with a healthy agent → no-op.
+        // Includes mid-turn (streaming / open tools): never respawn or cancel.
         {
             let mut guard = self.inner.lock();
             if let Some(s) = guard.as_mut() {
                 if s.app_session_id == meta.id
-                    && s.project_path == project_path
                     && s.acp.as_ref().is_some_and(|c| c.is_alive())
-                    && matches!(s.fsm.state(), SessionState::Ready)
-                    && s.streaming_message_id.is_none()
-                    && s.effort.as_deref() == Some(prefs.effort.as_str())
                 {
-                    Self::touch_activity_locked(s);
-                    tracing::info!(
-                        "acp connect no-op: already ready session={}",
-                        meta.id
-                    );
-                    return Ok(self.snapshot());
+                    let mid_turn = Self::live_session_is_busy(s);
+                    let ready_match = matches!(s.fsm.state(), SessionState::Ready)
+                        && !Self::live_session_is_busy(s)
+                        && s.project_path == project_path
+                        && s.effort.as_deref() == Some(prefs.effort.as_str());
+                    if mid_turn || ready_match {
+                        Self::touch_activity_locked(s);
+                        tracing::info!(
+                            "acp connect no-op: already live session={} state={:?} busy={}",
+                            meta.id,
+                            s.fsm.state(),
+                            mid_turn
+                        );
+                        return Ok(self.snapshot());
+                    }
                 }
             }
         }
 
         // Target already streaming in background → promote to focus.
         if self.background.lock().contains_key(&meta.id) {
-            if let Err(e) = self.try_park_live() {
+            if let Err(e) = self.try_park_live_emit(&app) {
                 Self::emit_process_limit(&app, Some(&meta.id), max_concurrent);
                 return Err(format!("{}: {}", e.code.as_str(), e.message));
             }
@@ -1331,7 +1634,7 @@ impl SessionManager {
         // Target already parked (warm multi-session) → unpark.
         if self.parked.lock().contains_key(&meta.id) {
             // Park current live if needed (busy → demote to background / park).
-            if let Err(e) = self.try_park_live() {
+            if let Err(e) = self.try_park_live_emit(&app) {
                 Self::emit_process_limit(&app, Some(&meta.id), max_concurrent);
                 return Err(format!("{}: {}", e.code.as_str(), e.message));
             }
@@ -1365,55 +1668,60 @@ impl SessionManager {
             // Parked process died — fall through to cold spawn.
         }
 
-        // Cross-session warm reuse: same process, switch ACP session without respawn.
-        // Only when target is not a different parked agent and flags match.
-        let reuse_pair = {
-            let same_focus = self
-                .inner
-                .lock()
-                .as_ref()
-                .map(|s| s.app_session_id == meta.id)
-                .unwrap_or(false);
-            if same_focus {
-                None
-            } else {
-                Self::take_reusable_acp(&self.inner, &cwd, &project_path, &prefs, policy)
-            }
-        };
-
-        if reuse_pair.is_some() {
-            // Keep process; drop LiveSession shell so we can rebind (1 process stays).
-            let _ = self.inner.lock().take();
-            Self::emit_state(&app, &self.snapshot());
-        } else {
-            // Park live Ready agent when switching focus (multi-warm). Busy → error.
+        // Multi-session: never steal another App session's process (no same-cwd
+        // rebind). Each chat keeps its own ACP child — park Ready / background
+        // busy, then unpark or cold-spawn for the target.
+        {
             let live_sid = self
                 .inner
                 .lock()
                 .as_ref()
                 .map(|s| s.app_session_id.clone());
             if live_sid.as_deref() != Some(meta.id.as_str()) {
-                if let Err(e) = self.try_park_live() {
+                if let Err(e) = self.try_park_live_emit(&app) {
                     Self::emit_process_limit(&app, Some(&meta.id), max_concurrent);
                     return Err(format!("{}: {}", e.code.as_str(), e.message));
                 }
-                // Clear disconnected / dead live shell so we can rebuild.
+                // Never Drop a shell that still holds a live ACP — re-park/demote.
                 {
+                    let still_busy = self
+                        .inner
+                        .lock()
+                        .as_ref()
+                        .is_some_and(|s| {
+                            s.acp.as_ref().is_some_and(|c| c.is_alive())
+                                && (Self::live_session_is_busy(s)
+                                    || matches!(s.fsm.state(), SessionState::Ready))
+                        });
+                    if still_busy {
+                        // try_park should have moved it; force another demote/park.
+                        let _ = self.try_park_live();
+                    }
                     let mut guard = self.inner.lock();
                     if let Some(s) = guard.as_ref() {
-                        if s.app_session_id != meta.id
-                            || s.acp.is_none()
-                            || !matches!(s.fsm.state(), SessionState::Ready)
-                        {
+                        // Only drop empty / dead shells (no acp).
+                        if s.acp.as_ref().is_none_or(|c| !c.is_alive()) {
                             let _ = guard.take();
+                        } else if s.app_session_id != meta.id {
+                            // Safety: never leave a foreign session in live when connecting.
+                            drop(guard);
+                            let _ = self.try_park_live();
                         }
                     }
                 }
             } else {
                 // Same session reconnect / flag change — kill any leftover process.
+                // Busy turns on *this* session keep the process (mid-turn no-op above).
                 let leftover = {
                     let mut guard = self.inner.lock();
-                    guard.take().and_then(|mut s| s.acp.take())
+                    let busy = guard
+                        .as_ref()
+                        .is_some_and(Self::live_session_is_busy);
+                    if busy {
+                        None
+                    } else {
+                        guard.take().and_then(|mut s| s.acp.take())
+                    }
                 };
                 if let Some(acp) = leftover {
                     acp.kill().await;
@@ -1431,11 +1739,8 @@ impl SessionManager {
             tracing::warn!("sync agent permission prefs: {e}");
         }
 
-        // Warm reuse must keep the original process_id so the event pump still routes.
-        let process_id = reuse_pair
-            .as_ref()
-            .map(|(pid, _)| pid.clone())
-            .unwrap_or_else(|| Uuid::new_v4().to_string());
+        // Fresh process id per connect (each App session owns its ACP child).
+        let process_id = Uuid::new_v4().to_string();
         {
             let mut fsm = SessionFsm::new();
             fsm.start_connect().map_err(|e| e.to_string())?;
@@ -1471,6 +1776,7 @@ impl SessionManager {
                 open_tool_ids: HashSet::new(),
                 deferred_prompt_complete: None,
                 tools_this_turn: 0,
+                prompt_in_flight: false,
             });
         }
         Self::emit_state(&app, &self.snapshot());
@@ -1491,102 +1797,92 @@ impl SessionManager {
                 && !m.is_error
         });
 
-        let (client, reused_process, process_id) = if let Some((pid, existing)) = reuse_pair {
-            tracing::info!(
-                "acp warm reuse process cwd={} effort={} app_session={}",
-                cwd.display(),
-                prefs.effort,
-                meta.id
+        // Capacity: reclaim idle parked first (they fill the pool when browsing
+        // chats). Never kill background-busy turns. Live shell has no acp yet.
+        self.reclaim_parked_until_can_spawn(&app, max_concurrent)
+            .await;
+        let active = self.active_process_count();
+        let busy = self.busy_process_count();
+        if !can_spawn_process(active, max_concurrent) {
+            tracing::warn!(
+                "process limit: cannot spawn session={} active={} busy={} parked={} max={}",
+                meta.id,
+                active,
+                busy,
+                self.parked.lock().len(),
+                max_concurrent
             );
-            (existing, true, pid)
-        } else {
-            // Capacity: free LRU parked if needed, else reject.
-            self.sweep_dead_parked();
-            let active = self.active_process_count();
-            // active does not yet include this new spawn (live has no acp).
-            if !can_spawn_process(active, max_concurrent) {
-                // Try freeing one parked LRU slot.
-                self.free_parked_for_capacity(&app, 1).await;
-            }
-            let active = self.active_process_count();
-            if !can_spawn_process(active, max_concurrent) {
-                let err = AgentError::new(
-                    AgentErrorCode::ProcessLimit,
-                    process_limit_message(max_concurrent),
-                );
-                {
-                    let mut guard = self.inner.lock();
-                    if let Some(s) = guard.as_mut() {
-                        let _ = s.fsm.connect_failed(err.clone());
-                    }
-                }
-                Self::emit_process_limit(&app, Some(&meta.id), max_concurrent);
-                let snap = self.snapshot();
-                Self::emit_state(&app, &snap);
-                return Ok(snap);
-            }
-
-            // Real ACP cold spawn
-            let probe = cli_probe::probe_cli(settings.manual_cli_path.as_deref());
-            if !probe.found {
-                {
-                    let mut guard = self.inner.lock();
-                    if let Some(s) = guard.as_mut() {
-                        let _ = s.fsm.connect_failed(AgentError::new(
-                            AgentErrorCode::CliNotFound,
-                            "Grok Build CLI not found. Install Grok Build or set path in Settings.",
-                        ));
-                    }
-                }
-                let snap = self.snapshot();
-                Self::emit_state(&app, &snap);
-                return Ok(snap);
-            }
-
-            let cli_path = std::path::PathBuf::from(probe.path.unwrap());
-            let spawn_opts = crate::acp_client::SpawnOptions {
-                model_id: Some(agent_model.clone()),
-                effort: Some(prefs.effort.clone()),
-                permission_policy: Some(prefs.permission_policy.clone()),
-            };
-
-            let (client, mut events) =
-                match AcpClient::spawn_with_options(cli_path, cwd, spawn_opts) {
-                    Ok(v) => v,
-                    Err(e) => {
-                        {
-                            let mut guard = self.inner.lock();
-                            if let Some(s) = guard.as_mut() {
-                                let _ = s.fsm.connect_failed(e);
-                            }
-                        }
-                        let snap = self.snapshot();
-                        Self::emit_state(&app, &snap);
-                        return Ok(snap);
-                    }
-                };
-
-            // Event pump tagged with process_id (multi-process routing).
+            let err = AgentError::new(
+                AgentErrorCode::ProcessLimit,
+                process_limit_message(max_concurrent),
+            );
             {
-                let mgr = Arc::clone(self);
-                let app_ev = app.clone();
-                let pid = process_id.clone();
-                tokio::spawn(async move {
-                    while let Some(ev) = events.recv().await {
-                        mgr.handle_acp_event(&app_ev, &pid, ev).await;
-                    }
-                });
+                let mut guard = self.inner.lock();
+                if let Some(s) = guard.as_mut() {
+                    let _ = s.fsm.connect_failed(err.clone());
+                }
             }
-            (client, false, process_id)
+            Self::emit_process_limit(&app, Some(&meta.id), max_concurrent);
+            let snap = self.snapshot();
+            Self::emit_state(&app, &snap);
+            return Ok(snap);
+        }
+
+        // Real ACP cold spawn (one process per App session — no cross-session rebind).
+        let probe = cli_probe::probe_cli(settings.manual_cli_path.as_deref());
+        if !probe.found {
+            {
+                let mut guard = self.inner.lock();
+                if let Some(s) = guard.as_mut() {
+                    let _ = s.fsm.connect_failed(AgentError::new(
+                        AgentErrorCode::CliNotFound,
+                        "Grok Build CLI not found. Install Grok Build or set path in Settings.",
+                    ));
+                }
+            }
+            let snap = self.snapshot();
+            Self::emit_state(&app, &snap);
+            return Ok(snap);
+        }
+
+        let cli_path = std::path::PathBuf::from(probe.path.unwrap());
+        let spawn_opts = crate::acp_client::SpawnOptions {
+            model_id: Some(agent_model.clone()),
+            effort: Some(prefs.effort.clone()),
+            permission_policy: Some(prefs.permission_policy.clone()),
         };
 
-        let open_result = if reused_process {
-            client.open_session(resume_agent_sid.as_deref()).await
-        } else {
-            client
-                .initialize_and_open_session(resume_agent_sid.as_deref())
-                .await
+        let (client, mut events) = match AcpClient::spawn_with_options(cli_path, cwd, spawn_opts)
+        {
+            Ok(v) => v,
+            Err(e) => {
+                {
+                    let mut guard = self.inner.lock();
+                    if let Some(s) = guard.as_mut() {
+                        let _ = s.fsm.connect_failed(e);
+                    }
+                }
+                let snap = self.snapshot();
+                Self::emit_state(&app, &snap);
+                return Ok(snap);
+            }
         };
+
+        // Event pump tagged with process_id (multi-process routing).
+        {
+            let mgr = Arc::clone(self);
+            let app_ev = app.clone();
+            let pid = process_id.clone();
+            tokio::spawn(async move {
+                while let Some(ev) = events.recv().await {
+                    mgr.handle_acp_event(&app_ev, &pid, ev).await;
+                }
+            });
+        }
+
+        let open_result = client
+            .initialize_and_open_session(resume_agent_sid.as_deref())
+            .await;
 
         match open_result {
             Ok((agent_sid, resumed)) => {
@@ -1602,11 +1898,11 @@ impl SessionManager {
                 let need_bootstrap = !resumed && journal_has_history;
                 if resumed {
                     tracing::info!(
-                        "agent session resumed id={agent_sid} (full context) warm={reused_process}"
+                        "agent session resumed id={agent_sid} (full context)"
                     );
                 } else if need_bootstrap {
                     tracing::info!(
-                        "agent session new id={agent_sid}; will bootstrap journal history on first send warm={reused_process}"
+                        "agent session new id={agent_sid}; will bootstrap journal history on first send"
                     );
                 }
                 {
@@ -1647,50 +1943,6 @@ impl SessionManager {
                 Ok(snap)
             }
         }
-    }
-
-    /// Detach a live ACP client when spawn-critical flags match the next connect.
-    /// Event pump keeps running on the Arc; caller rebinds into a new LiveSession.
-    /// Prefer park+spawn for multi-session; this path keeps a single process for same cwd.
-    /// Returns `(process_id, client)` so the event pump tag stays valid.
-    fn take_reusable_acp(
-        inner: &Mutex<Option<LiveSession>>,
-        cwd: &std::path::Path,
-        project_path: &Option<String>,
-        prefs: &store::ComposerPrefs,
-        next_policy: PermissionPolicy,
-    ) -> Option<(ProcessId, Arc<AcpClient>)> {
-        let mut guard = inner.lock();
-        let s = guard.as_mut()?;
-        if !matches!(s.fsm.state(), SessionState::Ready) {
-            return None;
-        }
-        if s.streaming_message_id.is_some() {
-            return None;
-        }
-        if s.project_path != *project_path {
-            return None;
-        }
-        let client = s.acp.as_ref()?;
-        if !client.is_alive() {
-            return None;
-        }
-        // Effort is a spawn flag — mismatch requires cold respawn.
-        if s.effort.as_deref() != Some(prefs.effort.as_str()) {
-            return None;
-        }
-        // YOLO maps to `--always-approve` at spawn time.
-        let prev_yolo = s.policy == PermissionPolicy::AlwaysApprove;
-        let next_yolo = next_policy == PermissionPolicy::AlwaysApprove;
-        if prev_yolo != next_yolo {
-            return None;
-        }
-        // cwd must match the process (project path or orphan fallback).
-        if client.cwd() != cwd {
-            return None;
-        }
-        let pid = s.process_id.clone();
-        s.acp.take().map(|c| (pid, c))
     }
 
     async fn connect_mock(
@@ -1734,6 +1986,101 @@ impl SessionManager {
         }
     }
 
+    /// Move a parked agent back into `background` because its process is still
+    /// emitting turn events. Parked means "idle Ready, safe to reclaim" — an
+    /// agent that is still talking must never sit there, or its output is
+    /// dropped (parked agents get no event routing) while the turn completes
+    /// agent-side. Returns true when the session is now in `background`.
+    fn rescue_parked_to_background(&self, process_id: &str) -> Option<String> {
+        let key = {
+            let parked = self.parked.lock();
+            parked
+                .iter()
+                .find(|(_, p)| p.process_id == process_id)
+                .map(|(k, _)| k.clone())
+        }?;
+        let p = self.parked.lock().remove(&key)?;
+        tracing::warn!(
+            "acp rescue: parked session still streaming → background sid={} process={}",
+            p.app_session_id,
+            p.process_id
+        );
+        let mut fsm = SessionFsm::new();
+        let _ = fsm.start_connect();
+        let _ = fsm.handshake_ok();
+        let now = Instant::now();
+        let live = LiveSession {
+            app_session_id: p.app_session_id.clone(),
+            process_id: p.process_id,
+            meta: p.meta,
+            fsm,
+            backend: p.backend,
+            acp: Some(p.acp),
+            mock_stream: None,
+            streaming_message_id: None,
+            stream_buf: String::new(),
+            stream_thought: String::new(),
+            stream_last_was_assistant: false,
+            stream_attachments: Vec::new(),
+            model_id: p.model_id,
+            effort: p.effort,
+            product_mode: p.product_mode,
+            project_path: p.project_path,
+            allow_cache: SessionAllowCache::default(),
+            policy: p.policy,
+            provider_retry_attempt: 0,
+            provider_retry_aborted: false,
+            needs_history_bootstrap: p.needs_history_bootstrap,
+            pending_plan_rpc_id: None,
+            pending_ask_user_rpc_id: None,
+            last_activity: now,
+            last_stream_progress: now,
+            last_stall_emit: None,
+            journal_throttle: JournalWriteThrottle::with_default_interval(),
+            open_tool_ids: HashSet::new(),
+            deferred_prompt_complete: None,
+            tools_this_turn: 0,
+            // The agent is mid-turn; keep it un-parkable until the turn ends.
+            prompt_in_flight: true,
+        };
+        let sid = live.app_session_id.clone();
+        self.background.lock().insert(sid.clone(), live);
+        Some(sid)
+    }
+
+    /// Short event name for diagnostics (no payload — journals stay readable).
+    fn event_kind_name(ev: &AcpEvent) -> &'static str {
+        match ev {
+            AcpEvent::State { .. } => "state",
+            AcpEvent::Stream { .. } => "stream",
+            AcpEvent::ToolCall { .. } => "tool_call",
+            AcpEvent::Plan { .. } => "plan",
+            AcpEvent::AskUserQuestion { .. } => "ask_user",
+            AcpEvent::PermissionRequest { .. } => "permission",
+            AcpEvent::PromptComplete { .. } => "prompt_complete",
+            AcpEvent::RetryState { .. } => "retry_state",
+            AcpEvent::ContextCompact { .. } => "context_compact",
+            AcpEvent::Error { .. } => "error",
+            AcpEvent::ProcessExited { .. } => "process_exited",
+            AcpEvent::Stderr { .. } => "stderr",
+        }
+    }
+
+    /// Turn-bearing events must reach their session; bookkeeping ones may be dropped.
+    fn event_carries_turn_output(ev: &AcpEvent) -> bool {
+        matches!(
+            ev,
+            AcpEvent::Stream { .. }
+                | AcpEvent::ToolCall { .. }
+                | AcpEvent::PromptComplete { .. }
+                | AcpEvent::PermissionRequest { .. }
+                | AcpEvent::Plan { .. }
+                | AcpEvent::AskUserQuestion { .. }
+                | AcpEvent::Error { .. }
+                | AcpEvent::ProcessExited { .. }
+        )
+    }
+
     async fn handle_acp_event(self: &Arc<Self>, app: &AppHandle, process_id: &str, ev: AcpEvent) {
         // Route events to the focused live session **or** a background busy session
         // (multi-session parallel streaming). Idle parked agents should not emit.
@@ -1763,6 +2110,20 @@ impl SessionManager {
                 parked.retain(|_, p| p.process_id != process_id);
                 let mut bg = self.background.lock();
                 bg.retain(|_, s| s.process_id != process_id);
+                return;
+            }
+            // Still talking but parked (should be impossible now that
+            // `prompt_in_flight` blocks parking — keep the recovery anyway).
+            if Self::event_carries_turn_output(&ev) {
+                if let Some(sid) = self.rescue_parked_to_background(process_id) {
+                    self.handle_acp_event_on_background(app, &sid, ev).await;
+                    return;
+                }
+                // Never fail silently: a dropped chunk is a truncated answer.
+                tracing::warn!(
+                    "acp event dropped: no session owns process={process_id} ev={}",
+                    Self::event_kind_name(&ev)
+                );
             }
             return;
         }
@@ -1777,20 +2138,29 @@ impl SessionManager {
                 let (app_sid, mid, thought_phase) = {
                     let mut guard = self.inner.lock();
                     if let Some(s) = guard.as_mut() {
-                        // Drop stream chunks that arrive while no turn is in flight.
-                        // On session resume (session/load) the CLI may replay the past
-                        // transcript as agent_message_chunk notifications; without this
-                        // guard they'd be re-emitted as live session://stream and the
-                        // UI would re-type the whole history on every session switch.
-                        if !matches!(
-                            s.fsm.state(),
-                            SessionState::Streaming | SessionState::AwaitingPermission
-                        ) {
+                        // Replay guard: on session resume (`session/load`) the CLI
+                        // replays the past transcript as agent_message_chunk
+                        // notifications. Without a guard the UI re-types the whole
+                        // history on every session switch.
+                        //
+                        // Gate on `prompt_in_flight`, NOT on the FSM: the agent can
+                        // fire `prompt_complete` early (which Readies the FSM) and
+                        // keep streaming for many more seconds. Gating on the FSM
+                        // silently truncated those answers mid-sentence.
+                        if !s.prompt_in_flight {
                             tracing::debug!(
-                                "acp stream dropped: fsm={:?} (not in a live turn)",
+                                "acp stream dropped: no prompt in flight (fsm={:?}) — replay",
                                 s.fsm.state()
                             );
                             return;
+                        }
+                        // Agent resumed talking after an early prompt_complete —
+                        // re-open the turn so the tail is captured and shown.
+                        if s.fsm.state() == SessionState::Ready && s.fsm.begin_stream().is_ok() {
+                            tracing::info!(
+                                "acp turn re-opened: chunk after early prompt_complete sid={}",
+                                s.app_session_id
+                            );
                         }
                         // Stream chunk = progress (I06); not pure silence.
                         Self::touch_stream_progress_locked(s);
@@ -1864,11 +2234,19 @@ impl SessionManager {
                 });
                 let _ = app.emit("session://stream", payload);
             }
-            AcpEvent::PromptComplete { stop_reason } => {
+            AcpEvent::PromptComplete {
+                stop_reason,
+                authoritative,
+            } => {
                 let empty_run = {
                     let mut guard = self.inner.lock();
                     if let Some(s) = guard.as_mut() {
                         Self::touch_stream_progress_locked(s);
+                        // Only the RPC result ends the turn. It is ordered after
+                        // every chunk, so clearing here cannot truncate output.
+                        if authoritative {
+                            s.prompt_in_flight = false;
+                        }
                         s.deferred_prompt_complete = Some(stop_reason.clone());
                         // #52: do not Ready the UI while tools / permission / ask_user / plan
                         // are still open — agent often fires prompt_complete early.
@@ -2282,6 +2660,10 @@ impl SessionManager {
                             let _ = s.fsm.crash("Agent process exited");
                         }
                         s.acp = None;
+                        s.open_tool_ids.clear();
+                        s.deferred_prompt_complete = None;
+                        s.streaming_message_id = None;
+                        s.prompt_in_flight = false;
                     }
                 }
                 // Also drop any parked entry with this process id (defensive).
@@ -2473,11 +2855,13 @@ impl SessionManager {
                     let Some(s) = bg.get_mut(app_session_id) else {
                         return;
                     };
-                    if !matches!(
-                        s.fsm.state(),
-                        SessionState::Streaming | SessionState::AwaitingPermission
-                    ) {
+                    // Same rule as the live path: gate replay on `prompt_in_flight`,
+                    // never on the FSM (early prompt_complete + more text).
+                    if !s.prompt_in_flight {
                         return;
+                    }
+                    if s.fsm.state() == SessionState::Ready {
+                        let _ = s.fsm.begin_stream();
                     }
                     Self::touch_stream_progress_locked(s);
                     if let Some(ref mid_in) = message_id {
@@ -2540,29 +2924,67 @@ impl SessionManager {
                     }),
                 );
             }
-            AcpEvent::PromptComplete { stop_reason: _ } => {
-                {
+            AcpEvent::PromptComplete {
+                stop_reason,
+                authoritative,
+            } => {
+                let finished = {
                     let mut bg = self.background.lock();
                     if let Some(s) = bg.get_mut(app_session_id) {
                         Self::touch_stream_progress_locked(s);
-                        Self::maybe_flush_stream_journal(s, true, false);
-                        s.stream_buf.clear();
-                        s.stream_thought.clear();
-                        s.stream_last_was_assistant = false;
-                        s.stream_attachments.clear();
-                        s.journal_throttle.reset();
-                        if matches!(
-                            s.fsm.state(),
-                            SessionState::Streaming | SessionState::AwaitingPermission
-                        ) {
-                            let _ = s.fsm.end_stream();
+                        if authoritative {
+                            s.prompt_in_flight = false;
                         }
-                        s.streaming_message_id = None;
-                        s.last_stall_emit = None;
+                        s.deferred_prompt_complete = Some(stop_reason.clone());
+                        // Keep turn open while tools still running (long find / subagent).
+                        match Self::try_finish_deferred_prompt_complete(s) {
+                            None => {
+                                tracing::info!(
+                                    "background prompt_complete deferred sid={} tools={}",
+                                    app_session_id,
+                                    s.open_tool_ids.len()
+                                );
+                                false
+                            }
+                            Some(_) => true,
+                        }
+                    } else {
+                        false
                     }
+                };
+                if finished {
+                    self.promote_background_ready_to_parked(app_session_id);
+                    Self::emit_runtime(
+                        app,
+                        &SessionSnapshot {
+                            session_id: Some(app_session_id.to_string()),
+                            agent_session_id: None,
+                            state: SessionState::Ready,
+                            last_error: None,
+                            streaming_message_id: None,
+                            backend: Self::backend_name(),
+                            model_id: None,
+                            project_path: None,
+                            title: String::new(),
+                        },
+                    );
+                } else {
+                    // Still busy in background — keep liveMap streaming.
+                    Self::emit_runtime(
+                        app,
+                        &SessionSnapshot {
+                            session_id: Some(app_session_id.to_string()),
+                            agent_session_id: None,
+                            state: SessionState::Streaming,
+                            last_error: None,
+                            streaming_message_id: None,
+                            backend: Self::backend_name(),
+                            model_id: None,
+                            project_path: None,
+                            title: String::new(),
+                        },
+                    );
                 }
-                self.promote_background_ready_to_parked(app_session_id);
-                // Snapshot is focused live — still emit so sidebar busy flags can refresh.
                 Self::emit_state(app, &self.snapshot());
             }
             AcpEvent::PermissionRequest {
@@ -2663,7 +3085,17 @@ impl SessionManager {
                         "session://background_permission",
                         serde_json::json!({ "sessionId": session_id }),
                     );
-                    Self::emit_state(app, &self.snapshot());
+                }
+                // Runtime for *this* session, not the live slot: the sidebar
+                // must show which chat is waiting (or resumed), otherwise a
+                // demoted turn looks idle while it blocks on approval.
+                let bg_snap = self
+                    .background
+                    .lock()
+                    .get(app_session_id)
+                    .map(Self::snapshot_from_live);
+                if let Some(snap) = bg_snap {
+                    Self::emit_runtime(app, &snap);
                 }
             }
             AcpEvent::ToolCall {
@@ -2673,24 +3105,66 @@ impl SessionManager {
                 status,
                 raw: _,
             } => {
-                let app_sid = {
+                let (app_sid, live_title, st, finished) = {
                     let mut bg = self.background.lock();
                     if let Some(s) = bg.get_mut(app_session_id) {
                         Self::touch_stream_progress_locked(s);
-                        s.app_session_id.clone()
+                        if !tool_call_id.is_empty() {
+                            if is_terminal_tool_status(&status) {
+                                s.open_tool_ids.remove(&tool_call_id);
+                            } else {
+                                s.open_tool_ids.insert(tool_call_id.clone());
+                            }
+                        }
+                        s.tools_this_turn = s.tools_this_turn.saturating_add(1);
+                        let finished =
+                            matches!(Self::try_finish_deferred_prompt_complete(s), Some(_));
+                        let live_title = if !title.is_empty() {
+                            title.clone()
+                        } else if !kind.is_empty() {
+                            kind.clone()
+                        } else {
+                            "tool".into()
+                        };
+                        let st = if status.is_empty() {
+                            "in_progress".to_string()
+                        } else {
+                            status.clone()
+                        };
+                        // Persist tool_step like live path so journal survives switch.
+                        if matches!(
+                            st.as_str(),
+                            "completed" | "failed" | "error" | "cancelled"
+                        ) && !tool_call_id.is_empty()
+                        {
+                            let content =
+                                format!("tool_step|{st}|{kind}|{live_title}");
+                            let mid = format!("tool-{tool_call_id}");
+                            let mut msgs = store::load_messages(&s.app_session_id);
+                            if let Some(slot) = msgs.iter_mut().find(|m| m.id == mid) {
+                                slot.content = content.clone();
+                                slot.marker = Some("tool_step".into());
+                                let _ = store::save_messages(&s.app_session_id, &msgs);
+                            } else {
+                                let _ = store::append_message(
+                                    &s.app_session_id,
+                                    ChatMessageStored {
+                                        id: mid,
+                                        role: "tool".into(),
+                                        content,
+                                        thought: None,
+                                        created_at: chrono::Utc::now(),
+                                        is_error: matches!(st.as_str(), "failed" | "error"),
+                                        attachments: None,
+                                        marker: Some("tool_step".into()),
+                                    },
+                                );
+                            }
+                        }
+                        (s.app_session_id.clone(), live_title, st, finished)
                     } else {
                         return;
                     }
-                };
-                let live_title = if !title.is_empty() {
-                    title
-                } else {
-                    kind.clone()
-                };
-                let st = if status.is_empty() {
-                    "in_progress"
-                } else {
-                    status.as_str()
                 };
                 let _ = app.emit(
                     "session://tool",
@@ -2702,12 +3176,73 @@ impl SessionManager {
                         "status": st,
                     }),
                 );
+                if finished {
+                    self.promote_background_ready_to_parked(app_session_id);
+                    Self::emit_runtime(
+                        app,
+                        &SessionSnapshot {
+                            session_id: Some(app_session_id.to_string()),
+                            agent_session_id: None,
+                            state: SessionState::Ready,
+                            last_error: None,
+                            streaming_message_id: None,
+                            backend: Self::backend_name(),
+                            model_id: None,
+                            project_path: None,
+                            title: String::new(),
+                        },
+                    );
+                }
             }
             AcpEvent::ProcessExited { .. } => {
                 let mut bg = self.background.lock();
                 if let Some(mut s) = bg.remove(app_session_id) {
+                    let busy = Self::live_session_is_busy(&s)
+                        || matches!(
+                            s.fsm.state(),
+                            SessionState::Streaming | SessionState::AwaitingPermission
+                        );
+                    if busy {
+                        Self::maybe_flush_stream_journal(&mut s, true, false);
+                        let mid = Uuid::new_v4().to_string();
+                        let content = "turn_cancelled|agent_exit".to_string();
+                        let _ = store::append_message(
+                            &s.app_session_id,
+                            ChatMessageStored {
+                                id: mid.clone(),
+                                role: "tool".into(),
+                                content: content.clone(),
+                                thought: None,
+                                created_at: chrono::Utc::now(),
+                                is_error: true,
+                                attachments: None,
+                                marker: Some("turn_cancelled".into()),
+                            },
+                        );
+                        let _ = app.emit(
+                            "session://turn_marker",
+                            serde_json::json!({
+                                "sessionId": s.app_session_id,
+                                "messageId": mid,
+                                "marker": "turn_cancelled",
+                                "reason": "agent_exit",
+                                "content": content,
+                            }),
+                        );
+                        tracing::warn!(
+                            "background agent process exited mid-turn sid={}",
+                            s.app_session_id
+                        );
+                    }
                     let _ = s.fsm.crash("Agent process exited (background)");
                     s.acp = None;
+                    s.open_tool_ids.clear();
+                    s.streaming_message_id = None;
+                    s.deferred_prompt_complete = None;
+                    s.prompt_in_flight = false;
+                    let mut snap = Self::snapshot_from_live(&s);
+                    snap.state = SessionState::Disconnected;
+                    Self::emit_runtime(app, &snap);
                 }
                 Self::emit_state(app, &self.snapshot());
             }
@@ -2735,13 +3270,27 @@ impl SessionManager {
     ///
     /// Agent path: `x.ai/rewind/execute` (Grok Build extension).
     /// Local path: truncate `messages.json` to keep only messages before the last user row.
+    /// Drop the last user turn before an edit-resend.
+    ///
+    /// `session_id` guards against a concurrent connect moving the live slot
+    /// between the caller's connect and this call — truncating the wrong chat's
+    /// journal is unrecoverable, so a mismatch errors instead of guessing.
     pub async fn rewind_drop_last_user_turn(
         self: &Arc<Self>,
         app: AppHandle,
+        session_id: Option<String>,
     ) -> Result<SessionSnapshot, String> {
         let (backend, app_sid, acp, user_prompt_count) = {
             let guard = self.inner.lock();
             let s = guard.as_ref().ok_or("no active session")?;
+            if let Some(target) = session_id.as_deref() {
+                if s.app_session_id != target {
+                    return Err(format!(
+                        "{}: chat {target} is not focused — reconnect and retry",
+                        AgentErrorCode::ConnectFailed.as_str()
+                    ));
+                }
+            }
             if s.fsm.state() == SessionState::Streaming
                 || s.fsm.state() == SessionState::AwaitingPermission
             {
@@ -2985,11 +3534,22 @@ impl SessionManager {
         })
     }
 
+    /// Send one user turn.
+    ///
+    /// `session_id` names the chat the prompt belongs to. It is **not** optional
+    /// in practice: without it the prompt lands on whatever happens to hold the
+    /// live slot, and a concurrent connect (warm prefetch, sidebar switch,
+    /// automation) between the caller's connect and this call routed turns into
+    /// a foreign chat. When given, the target is focused first (promoted from
+    /// `background` / unparked) under `connect_lock`; if it has no warm process
+    /// the call fails with `CONNECT_FAILED` so the UI can reconnect and retry
+    /// instead of silently writing into another session's journal.
     pub async fn send_message(
         self: &Arc<Self>,
         app: AppHandle,
         text: String,
         display_text: Option<String>,
+        session_id: Option<String>,
     ) -> Result<SessionSnapshot, String> {
         let text = text.trim().to_string();
         if text.is_empty() {
@@ -3001,11 +3561,49 @@ impl SessionManager {
             .filter(|s| !s.is_empty())
             .unwrap_or_else(|| text.clone());
 
+        // Serialize against connect for the whole focus + turn-open window, so
+        // the slot cannot move between the target check and `begin_stream`.
+        let _focus_guard = self.connect_lock.lock().await;
+        if let Some(target) = session_id.as_deref() {
+            if !self.is_live_session(target) {
+                match self.focus_session(&app, target) {
+                    Ok(true) => {}
+                    Ok(false) => {
+                        return Err(format!(
+                            "{}: chat {target} has no live agent process — reconnect and retry",
+                            AgentErrorCode::ConnectFailed.as_str()
+                        ));
+                    }
+                    Err(e) => return Err(format!("{}: {}", e.code.as_str(), e.message)),
+                }
+            }
+        }
+
         // If agent is a fresh session/new, wrap recent journal into the prompt once.
         let (backend, app_sid, acp, agent_prompt) = {
             let mut guard = self.inner.lock();
             let s = guard.as_mut().ok_or("no active session")?;
+            if let Some(target) = session_id.as_deref() {
+                if s.app_session_id != target {
+                    return Err(format!(
+                        "{}: chat {target} lost focus before send — retry",
+                        AgentErrorCode::ConnectFailed.as_str()
+                    ));
+                }
+            }
+            // One prompt per chat at a time. The FSM alone is not enough: an
+            // early prompt_complete Readies it while the agent is still working,
+            // and a second `session/prompt` would then be dispatched into a busy
+            // agent (the CLI rejects it as `task_already_running`).
+            if s.prompt_in_flight {
+                return Err(format!(
+                    "{}: chat {} is still running its previous turn",
+                    AgentErrorCode::ConnectFailed.as_str(),
+                    s.app_session_id
+                ));
+            }
             s.fsm.begin_stream().map_err(|e| e.to_string())?;
+            s.prompt_in_flight = true;
             Self::touch_stream_progress_locked(s);
             let mid = Uuid::new_v4().to_string();
             s.streaming_message_id = Some(mid.clone());
@@ -3098,6 +3696,9 @@ impl SessionManager {
                             s.stream_buf.clear();
                             s.journal_throttle.reset();
                             s.last_stall_emit = None;
+                            // Mock backend has no `session/prompt` RPC — its
+                            // terminal chunk is the authoritative completion.
+                            s.prompt_in_flight = false;
                             if s.fsm.state() == SessionState::Streaming {
                                 let _ = s.fsm.end_stream();
                                 s.streaming_message_id = None;
@@ -3116,90 +3717,141 @@ impl SessionManager {
             return Ok(self.snapshot());
         }
 
-        let acp = acp.ok_or("ACP client missing")?;
+        // Bail *after* the turn was opened → roll it back, or the chat is stuck
+        // forever: `prompt_in_flight` blocks both parking and the next send.
+        let Some(acp) = acp else {
+            self.with_session_mut(&app_sid, |s| {
+                s.prompt_in_flight = false;
+                s.streaming_message_id = None;
+                if s.fsm.state() == SessionState::Streaming {
+                    let _ = s.fsm.end_stream();
+                }
+            });
+            Self::emit_state(&app, &self.snapshot());
+            return Err("ACP client missing".into());
+        };
         let mgr = Arc::clone(self);
         let app2 = app.clone();
+        let turn_sid = app_sid.clone();
         tokio::spawn(async move {
-            if let Err(e) = acp.prompt(&agent_prompt).await {
-                {
-                    let mut guard = mgr.inner.lock();
-                    if let Some(s) = guard.as_mut() {
-                        // Skip if host already recorded a retry-exhausted error this turn.
-                        if !s.provider_retry_aborted {
-                            SessionManager::record_turn_error(s, &app2, &e);
-                            let _ = s.fsm.fail_with(e);
-                        }
+            let outcome = acp.prompt(&agent_prompt).await;
+            if let Err(e) = outcome {
+                // Route by session id: this chat may have been demoted to
+                // background while the prompt ran, and the live slot now holds
+                // someone else's turn — recording the error there would blame
+                // the wrong chat.
+                mgr.with_session_mut(&turn_sid, |s| {
+                    // The RPC failed, so no authoritative PromptComplete will
+                    // arrive. Release the turn or the chat stays un-parkable
+                    // and refuses further sends.
+                    s.prompt_in_flight = false;
+                    // Skip if host already recorded a retry-exhausted error this turn.
+                    if !s.provider_retry_aborted {
+                        SessionManager::record_turn_error(s, &app2, &e);
+                        let _ = s.fsm.fail_with(e);
                     }
-                }
-                SessionManager::emit_state(&app2, &mgr.snapshot());
+                });
+                mgr.emit_for_session(&app2, &turn_sid);
             }
         });
 
         Ok(self.snapshot())
     }
 
-    pub async fn stop(self: &Arc<Self>, app: AppHandle) -> Result<SessionSnapshot, String> {
-        let acp = {
-            let mut guard = self.inner.lock();
-            let s = guard.as_mut().ok_or("no active session")?;
-            if let Some(h) = s.mock_stream.take() {
-                h.request_stop();
-            }
-            let was_busy = s.fsm.state() == SessionState::Streaming
-                || s.fsm.state() == SessionState::AwaitingPermission;
-            let partial = s.stream_buf.trim().to_string();
-            // Journal a cancel marker so UI history is not left as user-only silence.
-            if was_busy {
-                // I04: force-flush partial assistant before cancel marker.
-                Self::maybe_flush_stream_journal(s, true, false);
-                let mid = Uuid::new_v4().to_string();
-                let content = if partial.is_empty() {
-                    "turn_cancelled|user_stop".to_string()
-                } else {
-                    format!("turn_cancelled|user_stop|partial:{}", partial.chars().take(200).collect::<String>())
-                };
-                let _ = store::append_message(
-                    &s.app_session_id,
-                    ChatMessageStored {
-                        id: mid.clone(),
-                        role: "tool".into(),
-                        content: content.clone(),
-                        thought: None,
-                        created_at: chrono::Utc::now(),
-                        is_error: false,
-                        attachments: None,
-                        marker: Some("turn_cancelled".into()),
-                    },
-                );
-                let _ = app.emit(
-                    "session://turn_marker",
-                    serde_json::json!({
-                        "sessionId": s.app_session_id,
-                        "messageId": mid,
-                        "marker": "turn_cancelled",
-                        "reason": "user_stop",
-                        "content": content,
-                    }),
-                );
-            }
-            if was_busy {
-                let _ = s.fsm.end_stream();
-            }
-            s.streaming_message_id = None;
-            s.stream_buf.clear();
-            s.stream_thought.clear();
-            s.stream_last_was_assistant = false;
-            s.stream_attachments.clear();
-            s.journal_throttle.reset();
-            s.last_stall_emit = None;
-            s.acp.clone()
+    /// Stop the turn on `session_id` (defaults to the live focus slot).
+    ///
+    /// Targets background turns too: the user can watch a demoted chat and hit
+    /// Stop there, which previously cancelled whichever chat held focus.
+    pub async fn stop(
+        self: &Arc<Self>,
+        app: AppHandle,
+        session_id: Option<String>,
+    ) -> Result<SessionSnapshot, String> {
+        let target = match session_id {
+            Some(sid) => sid,
+            None => self
+                .inner
+                .lock()
+                .as_ref()
+                .map(|s| s.app_session_id.clone())
+                .ok_or("no active session")?,
         };
+        let app_for_marker = app.clone();
+        let acp = self
+            .with_session_mut(&target, move |s| {
+                let app = app_for_marker;
+                if let Some(h) = s.mock_stream.take() {
+                    h.request_stop();
+                }
+                let was_busy = s.fsm.state() == SessionState::Streaming
+                    || s.fsm.state() == SessionState::AwaitingPermission
+                    || s.streaming_message_id.is_some()
+                    || !s.open_tool_ids.is_empty();
+                let partial = s.stream_buf.trim().to_string();
+                // Journal a cancel marker so UI history is not left as user-only silence.
+                if was_busy {
+                    // I04: force-flush partial assistant before cancel marker.
+                    Self::maybe_flush_stream_journal(s, true, false);
+                    let mid = Uuid::new_v4().to_string();
+                    let content = if partial.is_empty() {
+                        "turn_cancelled|user_stop".to_string()
+                    } else {
+                        format!(
+                            "turn_cancelled|user_stop|partial:{}",
+                            partial.chars().take(200).collect::<String>()
+                        )
+                    };
+                    let _ = store::append_message(
+                        &s.app_session_id,
+                        ChatMessageStored {
+                            id: mid.clone(),
+                            role: "tool".into(),
+                            content: content.clone(),
+                            thought: None,
+                            created_at: chrono::Utc::now(),
+                            is_error: false,
+                            attachments: None,
+                            marker: Some("turn_cancelled".into()),
+                        },
+                    );
+                    let _ = app.emit(
+                        "session://turn_marker",
+                        serde_json::json!({
+                            "sessionId": s.app_session_id,
+                            "messageId": mid,
+                            "marker": "turn_cancelled",
+                            "reason": "user_stop",
+                            "content": content,
+                        }),
+                    );
+                    if s.fsm.state() == SessionState::Streaming
+                        || s.fsm.state() == SessionState::AwaitingPermission
+                    {
+                        let _ = s.fsm.end_stream();
+                    }
+                }
+                s.streaming_message_id = None;
+                s.stream_buf.clear();
+                s.stream_thought.clear();
+                s.stream_last_was_assistant = false;
+                s.stream_attachments.clear();
+                s.open_tool_ids.clear();
+                s.deferred_prompt_complete = None;
+                // Cancelled: the prompt RPC resolves as cancelled, so release the
+                // turn here too — otherwise the chat can never be parked again.
+                s.prompt_in_flight = false;
+                s.journal_throttle.reset();
+                s.last_stall_emit = None;
+                s.acp.clone()
+            })
+            .ok_or("no active session")?;
         if let Some(acp) = acp {
             let _ = acp.cancel().await;
         }
-        let snap = self.snapshot();
-        Self::emit_state(&app, &snap);
-        Ok(snap)
+        // Stopped background turn is Ready again → park it warm.
+        self.promote_background_ready_to_parked(&target);
+        self.emit_for_session(&app, &target);
+        Ok(self.snapshot())
     }
 
     /// Update live Host policy (in-memory). Prefer `apply_permission_policy` for full sync.
@@ -3212,14 +3864,23 @@ impl SessionManager {
     /// Soft-drop live agent so next send re-spawns with new spawn flags / config.
     /// Keeps `agent_session_id` so reconnect can `session/load`; if load fails,
     /// journal bootstrap still fills the gap.
-    /// Soft-respawn the live agent process so the next connect reloads agent-visible
-    /// state (MCP mcpServers injection, plugin enable/disable, prefs) without a full
-    /// disconnect toast. Public for Extensions / plugin settings mutations.
+    ///
+    /// **Never** kills a mid-turn live session (open tools / streaming). Callers
+    /// that mutate MCP/prefs while busy should wait until Ready.
+    /// Background busy sessions are left untouched.
     pub async fn soft_respawn(&self, app: &AppHandle) {
         let acp = {
             let mut guard = self.inner.lock();
             if let Some(s) = guard.as_mut() {
                 if s.acp.is_none() {
+                    return;
+                }
+                if Self::live_session_is_busy(s) {
+                    tracing::warn!(
+                        "soft_respawn skipped: live session mid-turn sid={} state={:?}",
+                        s.app_session_id,
+                        s.fsm.state()
+                    );
                     return;
                 }
                 let acp = s.acp.take();
@@ -3499,6 +4160,12 @@ impl SessionManager {
         }
     }
 
+    /// Answer a pending tool permission for `session_id` (defaults to live).
+    ///
+    /// `session_id` comes from `session://permission`; background turns raise
+    /// permissions too (`session://background_permission`), and their rpc id
+    /// belongs to *their* ACP child. Resolving against the live slot dropped the
+    /// answer on the wrong process and left the background turn stuck forever.
     pub async fn resolve_permission(
         self: &Arc<Self>,
         app: AppHandle,
@@ -3506,26 +4173,27 @@ impl SessionManager {
         decision: String,
         option_id: Option<String>,
         scope: Option<String>,
+        session_id: Option<String>,
     ) -> Result<SessionSnapshot, String> {
-        let acp = {
-            let mut guard = self.inner.lock();
-            let s = guard.as_mut().ok_or("no session")?;
-            Self::touch_activity_locked(s);
-            // "allow_session" decision caches scope_key for H05 (works under Ask chip too)
-            if decision == "allow_session" || decision == "allow_for_session" {
-                if let Some(sk) = scope {
-                    s.allow_cache.allow(sk);
+        let target = self.resolve_target_session(session_id)?;
+        let (acp, empty_run) = self
+            .with_session_mut(&target, |s| {
+                Self::touch_activity_locked(s);
+                // "allow_session" decision caches scope_key for H05 (works under Ask chip too)
+                if decision == "allow_session" || decision == "allow_for_session" {
+                    if let Some(sk) = scope {
+                        s.allow_cache.allow(sk);
+                    }
                 }
-            }
-            if s.fsm.state() == SessionState::AwaitingPermission {
-                let _ = s.fsm.permission_resolved_continue();
-            }
-            // Permission cleared — may finish a deferred prompt_complete (#52).
-            let empty = Self::try_finish_deferred_prompt_complete(s).flatten();
-            (s.acp.clone(), empty)
-        };
+                if s.fsm.state() == SessionState::AwaitingPermission {
+                    let _ = s.fsm.permission_resolved_continue();
+                }
+                // Permission cleared — may finish a deferred prompt_complete (#52).
+                let empty = Self::try_finish_deferred_prompt_complete(s).flatten();
+                (s.acp.clone(), empty)
+            })
+            .ok_or("no session")?;
 
-        let (acp, empty_run) = acp;
         if let Some(acp) = acp {
             let outcome = match decision.as_str() {
                 "cancel" => PermissionOutcome::Cancelled,
@@ -3537,14 +4205,24 @@ impl SessionManager {
                     option_id: option_id.unwrap_or_else(|| "allow_once".into()),
                 },
             };
-            acp.respond_permission(rpc_id, outcome)
-                .await
-                .map_err(|e| e)?;
+            acp.respond_permission(rpc_id, outcome).await?;
         }
-        let snap = self.snapshot();
-        Self::emit_state(&app, &snap);
+        self.emit_for_session(&app, &target);
         Self::emit_empty_run_if_any(&app, empty_run);
-        Ok(snap)
+        Ok(self.snapshot())
+    }
+
+    /// Session a gate answer applies to: explicit id, else the live focus slot.
+    fn resolve_target_session(&self, session_id: Option<String>) -> Result<String, String> {
+        match session_id {
+            Some(sid) if !sid.is_empty() => Ok(sid),
+            _ => self
+                .inner
+                .lock()
+                .as_ref()
+                .map(|s| s.app_session_id.clone())
+                .ok_or_else(|| "no session".to_string()),
+        }
     }
 
     /// Resolve pending `_x.ai/exit_plan_mode` (Approve & build / request changes / abandon).
@@ -3557,29 +4235,27 @@ impl SessionManager {
         decision: String,
         feedback: Option<String>,
         rpc_id: Option<u64>,
+        session_id: Option<String>,
     ) -> Result<SessionSnapshot, String> {
-        let (acp, id) = {
-            let mut guard = self.inner.lock();
-            let s = guard.as_mut().ok_or("no session")?;
-            Self::touch_activity_locked(s);
-            let id = rpc_id.or(s.pending_plan_rpc_id.take());
-            (s.acp.clone(), id)
-        };
+        let target = self.resolve_target_session(session_id)?;
+        let (acp, id) = self
+            .with_session_mut(&target, |s| {
+                Self::touch_activity_locked(s);
+                let id = rpc_id.or(s.pending_plan_rpc_id.take());
+                (s.acp.clone(), id)
+            })
+            .ok_or("no session")?;
         let id = id.ok_or_else(|| "no pending plan approval".to_string())?;
         let acp = acp.ok_or_else(|| "ACP client missing".to_string())?;
         acp.respond_exit_plan_mode(id, &decision, feedback).await?;
-        let empty_run = {
-            let mut guard = self.inner.lock();
-            if let Some(s) = guard.as_mut() {
+        let empty_run = self
+            .with_session_mut(&target, |s| {
                 Self::try_finish_deferred_prompt_complete(s).flatten()
-            } else {
-                None
-            }
-        };
-        let snap = self.snapshot();
-        Self::emit_state(&app, &snap);
+            })
+            .flatten();
+        self.emit_for_session(&app, &target);
         Self::emit_empty_run_if_any(&app, empty_run);
-        Ok(snap)
+        Ok(self.snapshot())
     }
 
     /// Resolve pending `_x.ai/ask_user_question` (answers or cancel).
@@ -3592,17 +4268,19 @@ impl SessionManager {
         decision: String,
         answers: Option<serde_json::Value>,
         rpc_id: Option<u64>,
+        session_id: Option<String>,
     ) -> Result<SessionSnapshot, String> {
-        let (acp, id) = {
-            let mut guard = self.inner.lock();
-            let s = guard.as_mut().ok_or("no session")?;
-            let id = rpc_id.or(s.pending_ask_user_rpc_id.take());
-            // Clear pending id even if rpc_id was explicit.
-            if rpc_id.is_some() {
-                s.pending_ask_user_rpc_id = None;
-            }
-            (s.acp.clone(), id)
-        };
+        let target = self.resolve_target_session(session_id)?;
+        let (acp, id) = self
+            .with_session_mut(&target, |s| {
+                let id = rpc_id.or(s.pending_ask_user_rpc_id.take());
+                // Clear pending id even if rpc_id was explicit.
+                if rpc_id.is_some() {
+                    s.pending_ask_user_rpc_id = None;
+                }
+                (s.acp.clone(), id)
+            })
+            .ok_or("no session")?;
         let id = id.ok_or_else(|| "no pending ask_user_question".to_string())?;
         let acp = acp.ok_or_else(|| "ACP client missing".to_string())?;
         let outcome = match decision.as_str() {
@@ -3613,44 +4291,77 @@ impl SessionManager {
             _ => AskUserOutcome::Cancelled,
         };
         acp.respond_ask_user_question(id, outcome).await?;
-        let empty_run = {
-            let mut guard = self.inner.lock();
-            if let Some(s) = guard.as_mut() {
+        let empty_run = self
+            .with_session_mut(&target, |s| {
                 Self::try_finish_deferred_prompt_complete(s).flatten()
-            } else {
-                None
-            }
-        };
-        let snap = self.snapshot();
-        Self::emit_state(&app, &snap);
+            })
+            .flatten();
+        self.emit_for_session(&app, &target);
         Self::emit_empty_run_if_any(&app, empty_run);
-        Ok(snap)
+        Ok(self.snapshot())
     }
 
+    /// Clear the live focus slot without aborting mid-turn work.
+    /// - Busy (streaming / open tools) → demote to `background` (keeps ACP + pump).
+    /// - Idle Ready → warm `parked`.
+    /// - Only kills when there is a leftover dead/orphan acp that could not be parked.
     async fn disconnect_inner(&self, app: &AppHandle) {
-        let acp = {
+        // Prefer demote/park over kill so "new chat" / UI clear never aborts turns.
+        if let Err(e) = self.try_park_live_emit(app) {
+            tracing::warn!(
+                "disconnect demote/park soft-fail: {} {}",
+                e.code.as_str(),
+                e.message
+            );
+        }
+        // If something is still live with a healthy acp, force another demote.
+        if self.inner.lock().as_ref().is_some_and(|s| {
+            s.acp.as_ref().is_some_and(|c| c.is_alive())
+        }) {
+            let _ = self.try_park_live();
+        }
+        // Drop empty shells only; never Drop a LiveSession that still owns acp.
+        let orphan = {
             let mut guard = self.inner.lock();
-            if let Some(mut s) = guard.take() {
-                if let Some(h) = s.mock_stream.take() {
-                    h.request_stop();
+            match guard.as_mut() {
+                Some(s) if s.acp.as_ref().is_some_and(|c| c.is_alive()) => {
+                    // Still couldn't park — last resort keep process in background.
+                    tracing::warn!(
+                        "disconnect: forcing background for sid={}",
+                        s.app_session_id
+                    );
+                    drop(guard);
+                    let _ = self.try_park_live();
+                    None
                 }
-                // I04: flush any in-flight stream before dropping the process.
-                Self::maybe_flush_stream_journal(&mut s, true, false);
-                s.acp.take()
-            } else {
-                None
+                Some(s) => {
+                    if let Some(h) = s.mock_stream.take() {
+                        h.request_stop();
+                    }
+                    let acp = s.acp.take();
+                    let _ = guard.take();
+                    acp
+                }
+                None => None,
             }
         };
-        if let Some(acp) = acp {
-            acp.kill().await;
+        if let Some(acp) = orphan {
+            // Dead / non-alive client handle only.
+            if !acp.is_alive() {
+                acp.kill().await;
+            } else {
+                // Alive but unparkable — do not kill; leave Arc drop alone would kill.
+                // Re-insert as anonymous? Safer to kill only if not busy — we already
+                // tried demote. Keep process alive by forgetting kill.
+                tracing::warn!("disconnect: orphan alive acp left without map entry — killing");
+                acp.kill().await;
+            }
         }
-        // Keep parked warm agents — full app teardown can clear them later.
         Self::emit_state(app, &self.snapshot());
     }
 
     pub async fn disconnect(self: &Arc<Self>, app: AppHandle) -> Result<SessionSnapshot, String> {
-        // Drop the focused process only. Parked warm agents stay until idle recycle
-        // or capacity eviction so reopening another chat can unpark quickly.
+        // Clear live focus without aborting background/parked multi-session work.
         self.disconnect_inner(&app).await;
         Ok(self.snapshot())
     }
@@ -3698,5 +4409,77 @@ mod recycle_tests {
         assert!(again.acps.is_empty());
         assert_eq!(again.background_count, 0);
         assert_eq!(again.parked_count, 0);
+    }
+}
+
+/// Session-scoped command routing (multi-session): an explicit `sessionId`
+/// must never silently fall back to whatever holds the live focus slot.
+#[cfg(test)]
+mod session_routing_tests {
+    use super::*;
+
+    #[test]
+    fn explicit_target_wins_over_live_slot() {
+        let mgr = SessionManager::new();
+        // No live session at all — an explicit id is still honoured.
+        assert_eq!(
+            mgr.resolve_target_session(Some("chat-b".into())).unwrap(),
+            "chat-b"
+        );
+    }
+
+    #[test]
+    fn blank_target_falls_back_to_live_and_errors_when_none() {
+        let mgr = SessionManager::new();
+        assert!(mgr.resolve_target_session(None).is_err());
+        // Empty string is treated as "unspecified", not as a session id.
+        assert!(mgr.resolve_target_session(Some(String::new())).is_err());
+    }
+
+    #[test]
+    fn unknown_session_never_resolves_to_another_chat() {
+        let mgr = SessionManager::new();
+        assert!(mgr.with_session_mut("chat-a", |_| ()).is_none());
+        assert!(!mgr.is_live_session("chat-a"));
+    }
+
+    #[test]
+    fn turn_output_events_are_never_droppable() {
+        // Anything that carries answer text, tool state, or a gate must be
+        // routed to its session — silently returning truncates the answer.
+        assert!(SessionManager::event_carries_turn_output(
+            &AcpEvent::Stream {
+                kind: StreamKind::Assistant,
+                text: "hi".into(),
+                message_id: None,
+                done: false,
+            }
+        ));
+        assert!(SessionManager::event_carries_turn_output(
+            &AcpEvent::PromptComplete {
+                stop_reason: "end_turn".into(),
+                authoritative: true,
+            }
+        ));
+        assert!(SessionManager::event_carries_turn_output(
+            &AcpEvent::ProcessExited { code: None }
+        ));
+        // Pure telemetry may be dropped when no session owns the process.
+        assert!(!SessionManager::event_carries_turn_output(
+            &AcpEvent::Stderr { line: "noise".into() }
+        ));
+        assert_eq!(
+            SessionManager::event_kind_name(&AcpEvent::PromptComplete {
+                stop_reason: "end_turn".into(),
+                authoritative: false,
+            }),
+            "prompt_complete"
+        );
+    }
+
+    #[test]
+    fn rescue_is_noop_when_no_parked_agent_owns_the_process() {
+        let mgr = SessionManager::new();
+        assert!(mgr.rescue_parked_to_background("no-such-process").is_none());
     }
 }

@@ -6,6 +6,7 @@ import {
   dropQueuesForSessions,
   enqueueSend,
   getQueueForKey,
+  isForeignLiveBusy,
   makeQueuedSend,
   migrateDraftQueue,
   queuePreviewText,
@@ -15,6 +16,7 @@ import {
   requeueAtFront,
   setQueueForKey,
   shouldEnqueueSend,
+  shouldHoldFlushForLive,
   SEND_QUEUE_MAX,
 } from "./sendQueue";
 
@@ -25,7 +27,7 @@ describe("sendQueue", () => {
     expect(queueSessionKey("abc")).toBe("abc");
   });
 
-  it("shouldEnqueueSend covers busy states", () => {
+  it("shouldEnqueueSend covers busy states (same session only)", () => {
     expect(shouldEnqueueSend("ready", false)).toBe(false);
     expect(shouldEnqueueSend("idle", false)).toBe(false);
     expect(shouldEnqueueSend("disconnected", false)).toBe(false);
@@ -34,6 +36,30 @@ describe("sendQueue", () => {
     expect(shouldEnqueueSend("awaiting_permission", false)).toBe(false);
     expect(shouldEnqueueSend("connecting", false)).toBe(true);
     expect(shouldEnqueueSend("ready", true)).toBe(true);
+    // Idle/ready viewed chat never enqueues — even if Host is busy elsewhere
+    // (that is concurrent demote+send, not a local queue).
+    expect(shouldEnqueueSend("idle", false)).toBe(false);
+    expect(shouldEnqueueSend("ready", false)).toBe(false);
+  });
+
+  it("isForeignLiveBusy isolates draft and other sessions", () => {
+    expect(isForeignLiveBusy("a", "streaming", "a")).toBe(false);
+    expect(isForeignLiveBusy("a", "streaming", "b")).toBe(true);
+    expect(isForeignLiveBusy("a", "streaming", null)).toBe(true);
+    expect(isForeignLiveBusy("a", "ready", "b")).toBe(false);
+    expect(isForeignLiveBusy(null, "streaming", "b")).toBe(false);
+  });
+
+  it("shouldHoldFlushForLive only when claim is the busy live session", () => {
+    // Same session mid-turn → hold follow-up flush
+    expect(shouldHoldFlushForLive("a", "streaming", "a")).toBe(true);
+    expect(shouldHoldFlushForLive("a", "awaiting_permission", "a")).toBe(true);
+    // Foreign busy → do NOT hold (concurrent demote path)
+    expect(shouldHoldFlushForLive("a", "streaming", "b")).toBe(false);
+    expect(shouldHoldFlushForLive("a", "streaming", null)).toBe(false);
+    // Live idle → never hold
+    expect(shouldHoldFlushForLive("a", "ready", "a")).toBe(false);
+    expect(shouldHoldFlushForLive(null, "streaming", "a")).toBe(false);
   });
 
   it("enqueue drops oldest past max and reports dropped", () => {

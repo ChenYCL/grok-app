@@ -126,6 +126,17 @@ describe("voiceAvailabilityFromAuth", () => {
     expect(s.available).toBe(false);
     expect(s.reason).toBe("not_available");
   });
+
+  it("disables when active provider is custom even with official login", () => {
+    const s = voiceAvailabilityFromAuth({
+      signedInOfficial: true,
+      hasOfficialApiKey: true,
+      hasRelayOnly: false,
+      activeProviderIsCustom: true,
+    });
+    expect(s.available).toBe(false);
+    expect(s.reason).toBe("not_available");
+  });
 });
 
 describe("classifyVoiceError", () => {

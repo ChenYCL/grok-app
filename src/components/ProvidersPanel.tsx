@@ -93,6 +93,11 @@ export function ProvidersPanel({
     id: string;
     name: string;
   } | null>(null);
+  /** Official xAI API key (for speech / STT when not using OAuth). */
+  const [hasOfficialKey, setHasOfficialKey] = useState(false);
+  const [officialKeyDraft, setOfficialKeyDraft] = useState("");
+  const [showOfficialKey, setShowOfficialKey] = useState(false);
+  const [officialKeyBusy, setOfficialKeyBusy] = useState(false);
 
   const protocolOptions = useMemo(
     () => [
@@ -119,10 +124,15 @@ export function ProvidersPanel({
           configPath: "",
           agentHome: "",
         });
+        setHasOfficialKey(false);
         return;
       }
-      const r = await api.providersList();
+      const [r, masked] = await Promise.all([
+        api.providersList(),
+        api.secretsGetMasked().catch(() => null),
+      ]);
       setList(r);
+      setHasOfficialKey(!!masked?.hasOfficialKey);
     } catch (e) {
       setError(String(e));
     } finally {
@@ -134,18 +144,12 @@ export function ProvidersPanel({
     void reload();
   }, [reload]);
 
-  // Drop official selection if auth disappears.
-  useEffect(() => {
-    if (!officialAvailable && selection === "official") {
-      setSelection(null);
-      setRightMode("empty");
-    }
-  }, [officialAvailable, selection]);
-
   const providers = list?.providers ?? [];
   const activeSource = list?.activeSource ?? "official";
   const activeProviderId = list?.activeProviderId ?? null;
   const officialActive = activeSource === "official";
+  /** Show official row even without OAuth so users can paste an API key for speech. */
+  const showOfficialRow = true;
 
   const openCreate = () => {
     setSelection(null);
@@ -158,11 +162,52 @@ export function ProvidersPanel({
   };
 
   const openOfficial = () => {
-    if (!officialAvailable) return;
     setSelection("official");
     setEditingId(null);
     setRightMode("official");
     setHint(null);
+    setOfficialKeyDraft("");
+    setShowOfficialKey(false);
+  };
+
+  const saveOfficialKey = async () => {
+    const key = officialKeyDraft.trim();
+    if (!key || !api.isTauri()) return;
+    setOfficialKeyBusy(true);
+    setHint(null);
+    try {
+      await api.secretsSet({ officialApiKey: key });
+      setOfficialKeyDraft("");
+      setShowOfficialKey(false);
+      setHasOfficialKey(true);
+      setHint(tr("prov.officialKeySaved"));
+      setHintTone("ok");
+      onProviderActivated?.();
+    } catch (e) {
+      setHint(String(e));
+      setHintTone("err");
+    } finally {
+      setOfficialKeyBusy(false);
+    }
+  };
+
+  const clearOfficialKey = async () => {
+    if (!api.isTauri() || !hasOfficialKey) return;
+    setOfficialKeyBusy(true);
+    setHint(null);
+    try {
+      await api.secretsSet({ officialApiKey: "" });
+      setHasOfficialKey(false);
+      setOfficialKeyDraft("");
+      setHint(tr("prov.officialKeyCleared"));
+      setHintTone("muted");
+      onProviderActivated?.();
+    } catch (e) {
+      setHint(String(e));
+      setHintTone("err");
+    } finally {
+      setOfficialKeyBusy(false);
+    }
   };
 
   const openEdit = (p: api.CustomProvider) => {
@@ -325,7 +370,7 @@ export function ProvidersPanel({
     );
   }
 
-  const listEmpty = !officialAvailable && providers.length === 0;
+  const listEmpty = !showOfficialRow && providers.length === 0;
 
   return (
     <div className="prov-panel" data-testid="providers-panel">
@@ -356,7 +401,7 @@ export function ProvidersPanel({
           </button>
 
           <div className="prov-rail" role="list">
-            {officialAvailable && (
+            {showOfficialRow && (
               <div
                 role="listitem"
                 className={
@@ -377,26 +422,35 @@ export function ProvidersPanel({
                     <span className="prov-item__name">
                       {tr("prov.officialName")}
                     </span>
+                    {(hasOfficialKey || officialAvailable) && (
+                      <span className="prov-item__sub">
+                        {officialAvailable
+                          ? tr("prov.officialAuthOk")
+                          : tr("prov.officialKeyOnly")}
+                      </span>
+                    )}
                   </span>
                 </button>
-                {!officialActive ? (
-                  <button
-                    type="button"
-                    className="btn btn--ghost btn--sm prov-item__use"
-                    disabled={busy}
-                    onClick={(e) => void activateOfficial(e)}
-                  >
-                    {tr("prov.useThis")}
-                  </button>
-                ) : (
-                  <span
-                    className="prov-item__using"
-                    title={tr("prov.active")}
-                    aria-label={tr("prov.active")}
-                  >
-                    <IconCheck size={14} />
-                  </span>
-                )}
+                {officialAvailable ? (
+                  !officialActive ? (
+                    <button
+                      type="button"
+                      className="btn btn--ghost btn--sm prov-item__use"
+                      disabled={busy}
+                      onClick={(e) => void activateOfficial(e)}
+                    >
+                      {tr("prov.useThis")}
+                    </button>
+                  ) : (
+                    <span
+                      className="prov-item__using"
+                      title={tr("prov.active")}
+                      aria-label={tr("prov.active")}
+                    >
+                      <IconCheck size={14} />
+                    </span>
+                  )
+                ) : null}
               </div>
             )}
 
@@ -477,21 +531,99 @@ export function ProvidersPanel({
                     {tr("prov.officialDesc")}
                   </p>
                 </div>
-                {officialActive ? (
-                  <span className="account-badge account-badge--ok">
-                    {tr("prov.active")}
-                  </span>
-                ) : (
+                {officialAvailable ? (
+                  officialActive ? (
+                    <span className="account-badge account-badge--ok">
+                      {tr("prov.active")}
+                    </span>
+                  ) : (
+                    <button
+                      type="button"
+                      className="btn btn--solid"
+                      disabled={busy}
+                      onClick={() => void activateOfficial()}
+                    >
+                      {tr("prov.useThis")}
+                    </button>
+                  )
+                ) : null}
+              </div>
+              <p className="prov-detail__sub" id="settings-anchor-official-key">
+                {tr("prov.officialVoiceHint")}
+              </p>
+              <label className="prov-field">
+                <span className="prov-field__label">
+                  {tr("prov.officialApiKey")}
+                </span>
+                <div className="prov-key-row">
+                  <input
+                    className="settings-input"
+                    type={showOfficialKey ? "text" : "password"}
+                    value={officialKeyDraft}
+                    onChange={(e) => setOfficialKeyDraft(e.target.value)}
+                    placeholder={
+                      hasOfficialKey
+                        ? tr("prov.keyKeep")
+                        : tr("prov.officialKeyPh")
+                    }
+                    autoComplete="off"
+                    spellCheck={false}
+                    disabled={officialKeyBusy}
+                  />
                   <button
                     type="button"
-                    className="btn btn--solid"
-                    disabled={busy}
-                    onClick={() => void activateOfficial()}
+                    className="btn btn--ghost btn--sm"
+                    onClick={() => setShowOfficialKey((v) => !v)}
                   >
-                    {tr("prov.useThis")}
+                    {showOfficialKey ? tr("prov.keyHide") : tr("prov.keyShow")}
                   </button>
-                )}
+                </div>
+              </label>
+              <div className="prov-form__actions">
+                <button
+                  type="button"
+                  className="btn btn--solid"
+                  disabled={
+                    officialKeyBusy || !officialKeyDraft.trim() || !api.isTauri()
+                  }
+                  onClick={() => void saveOfficialKey()}
+                >
+                  {officialKeyBusy
+                    ? tr("prov.saving")
+                    : tr("prov.officialKeySave")}
+                </button>
+                {hasOfficialKey ? (
+                  <button
+                    type="button"
+                    className="btn btn--ghost"
+                    disabled={officialKeyBusy}
+                    onClick={() => void clearOfficialKey()}
+                  >
+                    {tr("prov.officialKeyClear")}
+                  </button>
+                ) : null}
               </div>
+              {hasOfficialKey ? (
+                <p className="prov-detail__sub">{tr("prov.officialKeyPresent")}</p>
+              ) : null}
+              {!officialAvailable ? (
+                <p className="prov-detail__sub">{tr("prov.officialLoginHint")}</p>
+              ) : null}
+              {hint && rightMode === "official" ? (
+                <p
+                  className={
+                    "prov-hint" +
+                    (hintTone === "ok"
+                      ? " prov-hint--ok"
+                      : hintTone === "err"
+                        ? " prov-hint--err"
+                        : "")
+                  }
+                  role="status"
+                >
+                  {hint}
+                </p>
+              ) : null}
             </div>
           )}
 

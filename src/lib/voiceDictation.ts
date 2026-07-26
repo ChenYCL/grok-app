@@ -265,14 +265,21 @@ export function resolveVoiceErrorClass(
 }
 
 /**
- * Gate: speech needs official Grok OAuth token or official API key.
- * Relay-only installs stay disabled.
+ * Gate composer dictation (mic STT).
+ * - Needs official Grok OAuth token or official xAI API key.
+ * - Active custom / third-party provider route disables voice (relay keys are not enough).
+ * - Live voice is gated separately (currently not exposed in the composer).
  */
 export function voiceAvailabilityFromAuth(opts: {
   signedInOfficial: boolean;
   hasOfficialApiKey: boolean;
   hasRelayOnly: boolean;
+  /** True when Settings → Providers is set to a custom relay. */
+  activeProviderIsCustom?: boolean;
 }): VoiceStatus {
+  if (opts.activeProviderIsCustom) {
+    return { available: false, reason: "not_available" };
+  }
   if (opts.signedInOfficial || opts.hasOfficialApiKey) {
     return { available: true, reason: null };
   }

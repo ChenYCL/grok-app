@@ -18,6 +18,7 @@ import { resolvePreviewSrc } from "@/lib/filePreviewSrc";
 import { HtmlBrowser } from "@/components/HtmlBrowser";
 import { EmbeddedBrowser } from "@/components/EmbeddedBrowser";
 import { MarkdownBody } from "@/components/MarkdownBody";
+import { MarkdownTiptapEditor } from "@/components/MarkdownTiptapEditor";
 import { OverlayScroll } from "@/components/OverlayScroll";
 import { FileMediaPlayer } from "@/components/FileMediaPlayer";
 import { ImageUi } from "@/components/ImageUi";
@@ -327,9 +328,16 @@ export function ResourceViewer({
   );
 
   // Closing the right pane always collapses the tree (not remembered).
+  // Also leave Plan workbench when the pane hides without a live plan, so the
+  // next open is files — not a stale empty Plan panel after hard-dismiss.
   useEffect(() => {
-    if (!paneActive) setTreeVisible(false);
-  }, [paneActive]);
+    if (!paneActive) {
+      setTreeVisible(false);
+      if (sideMode === "plan" && (!plan || !plan.visible)) {
+        setSideMode("files");
+      }
+    }
+  }, [paneActive, sideMode, plan]);
 
   const refreshWorkspaceStatus = useCallback(async () => {
     if (!projectPath || !api.isTauri()) {
@@ -392,11 +400,17 @@ export function ResourceViewer({
       if (seq !== rulesLoadSeq.current) return;
       setProjectRules([]);
       setRulesHasAgents(false);
-      setError(String(e));
+      // Only surface rules-list failures on the Rules panel — never block
+      // file tabs / open-path errors with a spurious top banner.
+      if (sideMode === "rules") {
+        setError(String(e));
+      } else {
+        console.warn("[ResourceViewer] project_rules_list failed", e);
+      }
     } finally {
       if (seq === rulesLoadSeq.current) setRulesLoading(false);
     }
-  }, [projectPath]);
+  }, [projectPath, sideMode]);
 
   // Load rules when project changes or Rules panel is shown.
   useEffect(() => {
@@ -749,9 +763,9 @@ export function ResourceViewer({
     setTreeVisible(false);
   }, [planFocusKey]);
 
-  // Plan dismissed while viewing plan → fall back to files empty preview.
+  // Plan hard-dismissed / approved / cancelled while viewing plan → files.
   useEffect(() => {
-    if (sideMode === "plan" && plan && !plan.visible) {
+    if (sideMode === "plan" && (!plan || !plan.visible)) {
       setSideMode("files");
     }
   }, [plan, sideMode]);
@@ -888,11 +902,6 @@ export function ResourceViewer({
     );
   };
 
-  const activeTabDirty = useMemo(() => {
-    if (!activeTab || activeTab.tabKind === "url") return false;
-    return isResourceDraftDirty(activeTab.draftText, activeTab.baselineText);
-  }, [activeTab]);
-
   const activeTabEditable = useMemo(() => {
     if (!activeTab?.preview || activeTab.tabKind === "url") return false;
     return isResourceTextEditable({
@@ -917,6 +926,14 @@ export function ResourceViewer({
         t.id === activeId && t.baselineText != null
           ? { ...t, draftText: t.baselineText }
           : t,
+      ),
+    );
+  }, [activeId]);
+
+  const toggleActiveEditMode = useCallback(() => {
+    setTabs((prev) =>
+      prev.map((t) =>
+        t.id === activeId ? { ...t, editMode: !t.editMode } : t,
       ),
     );
   }, [activeId]);
@@ -1209,8 +1226,11 @@ export function ResourceViewer({
   useEffect(() => {
     if (!openRequest) return;
     if (openRequest.type === "file") {
+      // Leave plan workbench so file preview is not hidden behind Plan UI.
+      setSideMode("files");
       void openAbsoluteFile(openRequest.path, openRequest.title);
     } else if (openRequest.type === "url") {
+      setSideMode("files");
       openUrl(openRequest.url, openRequest.title);
     } else if (openRequest.type === "changes") {
       showSidePanel("changes");
@@ -1572,44 +1592,171 @@ export function ResourceViewer({
         : null;
     const src = mediaSrc || dataUrl;
 
-    // Text edit mode (Save writes disk; conflict if mtime changed).
+    // Text editor shell: full-height pane + in-content toolbar (not chrome).
+    // Markdown defaults to preview; other editable kinds open the source editor.
     const canEdit = isResourceTextEditable({
       kind: preview.kind,
       text: activeTab?.baselineText ?? preview.text,
       truncated: preview.truncated,
       error: preview.error,
     });
-    const showEditor =
-      canEdit &&
-      !!activeTab &&
-      (activeTab.editMode || preview.kind !== "markdown");
-    if (showEditor && activeTab.draftText != null) {
+    if (canEdit && activeTab && activeTab.draftText != null) {
+      const draftText = activeTab.draftText;
+      const isMarkdown = preview.kind === "markdown";
+      const showEditor = activeTab.editMode || !isMarkdown;
+      const dirty = isResourceDraftDirty(draftText, activeTab.baselineText);
       return (
         <div className="rp-editor">
+          <div
+            className="rp-editor__toolbar"
+            role="toolbar"
+            aria-label={tr("resources.editorToolbar")}
+          >
+            {isMarkdown ? (
+              <Tip
+                label={
+                  activeTab.editMode
+                    ? tr("resources.previewMode")
+                    : tr("resources.editMode")
+                }
+              >
+                <button
+                  type="button"
+                  className={
+                    "rp-editor__tool-btn" +
+                    (activeTab.editMode ? " is-on" : "")
+                  }
+                  disabled={!!activeTab.saving}
+                  onClick={toggleActiveEditMode}
+                  aria-pressed={!!activeTab.editMode}
+                  aria-label={
+                    activeTab.editMode
+                      ? tr("resources.previewMode")
+                      : tr("resources.editMode")
+                  }
+                >
+                  <IconEdit size={14} />
+                  <span className="rp-editor__tool-btn-label">
+                    {activeTab.editMode
+                      ? tr("resources.previewMode")
+                      : tr("resources.editMode")}
+                  </span>
+                </button>
+              </Tip>
+            ) : null}
+            <div className="rp-editor__toolbar-spacer" />
+            {dirty ? (
+              <Tip label={tr("resources.revert")}>
+                <button
+                  type="button"
+                  className="rp-editor__tool-btn"
+                  disabled={!!activeTab.saving}
+                  onClick={() => revertActiveDraft()}
+                >
+                  {tr("resources.revert")}
+                </button>
+              </Tip>
+            ) : null}
+            <Tip label={tr("resources.save")}>
+              <button
+                type="button"
+                className={
+                  "rp-editor__tool-btn rp-editor__tool-btn--save" +
+                  (dirty ? " is-dirty" : "")
+                }
+                disabled={!!activeTab.saving || !dirty}
+                onClick={() => void saveActiveFile()}
+              >
+                {activeTab.saving
+                  ? tr("resources.saving")
+                  : tr("resources.save")}
+              </button>
+            </Tip>
+            {dirty ? (
+              <span className="rp-editor__dirty-label" role="status">
+                {tr("resources.unsaved")}
+              </span>
+            ) : null}
+          </div>
           {preview.truncated ? (
             <div className="rp-editor__banner" role="status">
               {tr("resources.truncated")}
             </div>
           ) : null}
-          <textarea
-            className="rp-editor__textarea"
-            value={activeTab.draftText}
-            spellCheck={preview.kind === "markdown" || preview.kind === "text"}
-            disabled={!!activeTab.saving}
-            aria-label={tr("resources.editorAria", { name: preview.name })}
-            onChange={(e) => updateActiveDraft(e.target.value)}
-            onKeyDown={(e) => {
-              if ((e.metaKey || e.ctrlKey) && e.key === "s") {
-                e.preventDefault();
-                void saveActiveFile();
-              }
-            }}
-          />
-          {isResourceDraftDirty(activeTab.draftText, activeTab.baselineText) ? (
-            <div className="rp-editor__status" role="status">
-              {tr("resources.unsaved")}
-            </div>
-          ) : null}
+          {showEditor ? (
+            isMarkdown ? (
+              <MarkdownTiptapEditor
+                key={activeTab.id}
+                value={draftText}
+                onChange={updateActiveDraft}
+                onSave={() => void saveActiveFile()}
+                disabled={!!activeTab.saving}
+                labels={{
+                  bold: tr("resources.mdFmt.bold"),
+                  italic: tr("resources.mdFmt.italic"),
+                  strike: tr("resources.mdFmt.strike"),
+                  code: tr("resources.mdFmt.code"),
+                  h1: tr("resources.mdFmt.h1"),
+                  h2: tr("resources.mdFmt.h2"),
+                  h3: tr("resources.mdFmt.h3"),
+                  bulletList: tr("resources.mdFmt.bulletList"),
+                  orderedList: tr("resources.mdFmt.orderedList"),
+                  blockquote: tr("resources.mdFmt.blockquote"),
+                  link: tr("resources.mdFmt.link"),
+                  hr: tr("resources.mdFmt.hr"),
+                  linkPlaceholder: tr("resources.mdFmt.linkPlaceholder"),
+                  linkApply: tr("resources.mdFmt.linkApply"),
+                  placeholder: tr("resources.mdFmt.placeholder"),
+                  editorAria: tr("resources.editorAria", {
+                    name: preview.name,
+                  }),
+                }}
+              />
+            ) : (
+              <textarea
+                className="rp-editor__textarea"
+                value={draftText}
+                spellCheck={preview.kind === "text"}
+                disabled={!!activeTab.saving}
+                aria-label={tr("resources.editorAria", { name: preview.name })}
+                onChange={(e) => updateActiveDraft(e.target.value)}
+                onKeyDown={(e) => {
+                  if ((e.metaKey || e.ctrlKey) && e.key === "s") {
+                    e.preventDefault();
+                    void saveActiveFile();
+                    return;
+                  }
+                  if (
+                    e.key === "Tab" &&
+                    !e.metaKey &&
+                    !e.ctrlKey &&
+                    !e.altKey
+                  ) {
+                    e.preventDefault();
+                    const el = e.currentTarget;
+                    const start = el.selectionStart;
+                    const end = el.selectionEnd;
+                    const next =
+                      draftText.slice(0, start) +
+                      "  " +
+                      draftText.slice(end);
+                    updateActiveDraft(next);
+                    requestAnimationFrame(() => {
+                      el.selectionStart = el.selectionEnd = start + 2;
+                    });
+                  }
+                }}
+              />
+            )
+          ) : (
+            <OverlayScroll className="rp-editor__preview-scroll">
+              <div className="rp-editor__preview-body rp-preview__md">
+                <MarkdownBody>
+                  {draftText || preview.text || ""}
+                </MarkdownBody>
+              </div>
+            </OverlayScroll>
+          )}
         </div>
       );
     }
@@ -1761,6 +1908,8 @@ export function ResourceViewer({
     pathCopyFlash,
     updateActiveDraft,
     saveActiveFile,
+    revertActiveDraft,
+    toggleActiveEditMode,
   ]);
 
   // No project and no open tabs → empty; allow absolute/url tabs without a project.
@@ -1884,66 +2033,6 @@ export function ResourceViewer({
           </div>
         </div>
         <div className="rp-chrome__actions">
-          {activeTabEditable && activeTab ? (
-            <>
-              {activeTab.preview?.kind === "markdown" ? (
-                <Tip
-                  label={
-                    activeTab.editMode
-                      ? tr("resources.previewMode")
-                      : tr("resources.editMode")
-                  }
-                >
-                  <button
-                    type="button"
-                    className={
-                      "chrome-btn" + (activeTab.editMode ? " is-on" : "")
-                    }
-                    disabled={!!activeTab.saving}
-                    onClick={() => {
-                      setTabs((prev) =>
-                        prev.map((t) =>
-                          t.id === activeTab.id
-                            ? { ...t, editMode: !t.editMode }
-                            : t,
-                        ),
-                      );
-                    }}
-                    aria-label={tr("resources.editMode")}
-                  >
-                    <IconEdit size={14} />
-                  </button>
-                </Tip>
-              ) : null}
-              {activeTabDirty ? (
-                <Tip label={tr("resources.revert")}>
-                  <button
-                    type="button"
-                    className="chrome-btn"
-                    disabled={!!activeTab.saving}
-                    onClick={() => revertActiveDraft()}
-                  >
-                    {tr("resources.revert")}
-                  </button>
-                </Tip>
-              ) : null}
-              <Tip label={tr("resources.save")}>
-                <button
-                  type="button"
-                  className={
-                    "chrome-btn chrome-btn--save" +
-                    (activeTabDirty ? " is-dirty" : "")
-                  }
-                  disabled={!!activeTab.saving || !activeTabDirty}
-                  onClick={() => void saveActiveFile()}
-                >
-                  {activeTab.saving
-                    ? tr("resources.saving")
-                    : tr("resources.save")}
-                </button>
-              </Tip>
-            </>
-          ) : null}
           {absPath ? (
             <OpenLocationButton
               path={absPath}
@@ -2171,6 +2260,11 @@ export function ResourceViewer({
                 locale={locale}
                 active
               />
+            </div>
+          ) : activeTabEditable && activeTab.preview ? (
+            /* Full-height editor shell (toolbar + textarea / md preview) */
+            <div className="rp-preview-code-host rp-preview-editor-host">
+              {previewBody}
             </div>
           ) : activeTab.preview?.kind === "html" ? (
             <div className="rp-preview-browser">{previewBody}</div>

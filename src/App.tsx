@@ -74,10 +74,13 @@ import {
   clearPriorTurnStreaming,
   isSessionBusy,
   isSessionLiveStreaming,
+  isSessionNotLiveError,
   preferSessionMessages,
   presentErrorBanner,
+  snapshotOutgoingMessages,
   type ErrorBannerView,
   buildSegmentsFromLegacy,
+  weaveToolsIntoAssistantSegments,
   splitThoughtPhases,
   truncateBeforeLastUser,
   truncateThroughUserPrompt,
@@ -123,10 +126,17 @@ import {
   STOP_LATCH_MS,
 } from "@/lib/stopLatch";
 import {
+  isSameView,
+  isViewingSendTarget,
+  shouldAdoptView,
+  type ViewFocus,
+} from "@/lib/viewFocus";
+import {
   busySessionIds,
   projectHostIntoLiveMap,
   projectLiveToolFromMessages,
   markSawModelOutput,
+  resumeStateForSession,
   type SessionLiveMap,
 } from "@/lib/sessionLiveStore";
 import { endOfTurnMarkerContent } from "@/lib/endOfTurn";
@@ -288,7 +298,6 @@ import {
   IconAttach,
   IconSend,
   IconMic,
-  IconLiveVoice,
   IconQueue,
   IconStop,
   IconFolder,
@@ -476,6 +485,9 @@ export default function App() {
   const [liveHost, setLiveHost] = useState<SessionSnapshot>(IDLE_SNAPSHOT);
   /** Multi-session live projection (busy / permission badges). */
   const [liveMap, setLiveMap] = useState<SessionLiveMap>({});
+  /** Latest live map for callbacks that must not close over a stale render. */
+  const liveMapRef = useRef(liveMap);
+  liveMapRef.current = liveMap;
   /** Stop interrupt honesty latch (force unlock after budget). */
   const [stopLatch, setStopLatch] = useState<StopLatchState>(() =>
     createStopLatchState(),
@@ -588,6 +600,23 @@ export default function App() {
   /** Per-session message cache so switching away mid-turn does not drop the UI. */
   const messagesBySessionRef = useRef<Map<string, ChatMessage[]>>(new Map());
   const viewingSessionIdRef = useRef<string | null>(null);
+  /**
+   * Bumped on every user navigation (open chat / new chat). Async work captures
+   * {@link currentViewFocus} before its first await and must re-check before
+   * touching view state — otherwise a slow connect started on one draft yanks
+   * the workbench away from the draft the user opened since.
+   */
+  const viewEpochRef = useRef(0);
+  const currentViewFocus = useCallback(
+    (): ViewFocus => ({
+      sessionId: viewingSessionIdRef.current,
+      epoch: viewEpochRef.current,
+    }),
+    [],
+  );
+  const bumpViewEpoch = useCallback(() => {
+    viewEpochRef.current += 1;
+  }, []);
   const liveHostRef = useRef<SessionSnapshot>(IDLE_SNAPSHOT);
   const messagesRef = useRef<ChatMessage[]>([]);
   const [expandedProjects, setExpandedProjects] = useState<Record<string, boolean>>({});
@@ -854,6 +883,29 @@ export default function App() {
   const [perm, setPerm] = useState<PermissionPayload | null>(null);
   const permBarRef = useRef<HTMLDivElement | null>(null);
   const [askUser, setAskUser] = useState<AskUserPayload | null>(null);
+  /**
+   * Unanswered gates per session (`sessionId` → payload).
+   *
+   * A background turn can ask for approval while the user reads another chat.
+   * Without this the request was toast-only and lost forever: returning to that
+   * chat showed no bar and the turn blocked until the agent timed out. Entries
+   * are restored on `openSession` and dropped once answered / turn resolved.
+   */
+  const pendingPermBySessionRef = useRef<Map<string, PermissionPayload>>(
+    new Map(),
+  );
+  const pendingAskUserBySessionRef = useRef<Map<string, AskUserPayload>>(
+    new Map(),
+  );
+  /** Drop a session's stored gates (answered, cancelled, or turn ended). */
+  const clearPendingGates = useCallback((sessionId?: string | null) => {
+    if (!sessionId) return;
+    pendingPermBySessionRef.current.delete(sessionId);
+    pendingAskUserBySessionRef.current.delete(sessionId);
+  }, []);
+  /** Stable handle for the once-mounted event listeners. */
+  const clearPendingGatesRef = useRef(clearPendingGates);
+  clearPendingGatesRef.current = clearPendingGates;
   /** Polite SR announce for stream start/stop (not every token). */
   const [streamA11yNote, setStreamA11yNote] = useState("");
   const wasStreamingRef = useRef(false);
@@ -893,6 +945,12 @@ export default function App() {
     useState<ResourceOpenTarget | null>(null);
   /** Bump to force ResourceViewer into Plan review mode (详情 / auto-open). */
   const [planFocusKey, setPlanFocusKey] = useState(0);
+  /**
+   * True when we expanded the right resource pane for this plan cycle
+   * (auto-open on review or 详情). Hard-dismiss collapses it so the next
+   * open is a clean files pane, not a stuck Plan workbench.
+   */
+  const planOpenedAsideRef = useRef(false);
   /** Live drag-drop target for zone overlays (null = not dragging). */
   const [dragZone, setDragZone] = useState<"sidebar" | "main" | null>(null);
   const [toast, setToast] = useState<string | null>(null);
@@ -912,7 +970,7 @@ export default function App() {
   }>({ found: false, path: null, version: null, source: "", cliAuthPresent: false });
   const [manualCliPath, setManualCliPath] = useState("");
   const [acpServerAddr, setAcpServerAddr] = useState("");
-  const [maxConcurrentAgents, setMaxConcurrentAgents] = useState(3);
+  const [maxConcurrentAgents, setMaxConcurrentAgents] = useState(8);
   const [agentIdleMinutes, setAgentIdleMinutes] = useState(30);
   const [streamStallSeconds, setStreamStallSeconds] = useState(120);
   /** 0 = omit `--max-turns` (CLI default). */
@@ -966,6 +1024,8 @@ export default function App() {
     stallSeconds: number;
   } | null>(null);
   const [connecting, setConnecting] = useState(false);
+  /** Sync gate for ensureConnected (React state alone races two rapid sends). */
+  const connectingRef = useRef(false);
   /** Live provider retry progress (session://retry); cleared on success/stop/error. */
   const [retryStatus, setRetryStatus] = useState<{
     attempt: number;
@@ -1318,7 +1378,7 @@ export default function App() {
       setMaxConcurrentAgents(
         typeof settings.maxConcurrentAgents === "number" &&
           settings.maxConcurrentAgents >= 1
-          ? Math.min(8, Math.round(settings.maxConcurrentAgents))
+          ? Math.min(32, Math.round(settings.maxConcurrentAgents))
           : 3,
       );
       setAgentIdleMinutes(
@@ -1773,6 +1833,8 @@ export default function App() {
         await track(
           api.listen<SessionSnapshot>("session://state", (s) => {
             if (cancelled) return;
+            // Host focus slot (the process under the live cursor). Multi-session
+            // busy demotions also emit session://runtime so liveMap stays honest.
             setLiveHost(s);
             liveHostRef.current = s;
             setLiveMap((prev) =>
@@ -1876,17 +1938,57 @@ export default function App() {
             }
           }),
         );
+        // Background / parked multi-session runtime (does not steal liveHost focus).
+        await track(
+          api.listen<SessionSnapshot>("session://runtime", (s) => {
+            if (cancelled || !s.sessionId) return;
+            setLiveMap((prev) =>
+              projectHostIntoLiveMap(prev, {
+                sessionId: s.sessionId,
+                state: s.state,
+                streamingMessageId: s.streamingMessageId,
+              }),
+            );
+            // If user is viewing this demoted session, keep workbench state in sync.
+            if (s.sessionId === viewingSessionIdRef.current) {
+              setSession((prev) => ({
+                ...prev,
+                sessionId: s.sessionId,
+                state: reconcileSessionState(s.state, prev.state),
+                streamingMessageId: s.streamingMessageId,
+                lastError: s.lastError ?? prev.lastError,
+                title: s.title || prev.title,
+              }));
+              if (
+                s.state !== "streaming" &&
+                s.state !== "awaiting_permission"
+              ) {
+                setMessages((prev) => {
+                  if (!prev.some((m) => m.streaming)) return prev;
+                  const next = prev.map((m) =>
+                    m.streaming ? { ...m, streaming: false } : m,
+                  );
+                  messagesBySessionRef.current.set(s.sessionId!, next);
+                  return next;
+                });
+              }
+            }
+          }),
+        );
         await track(
           api.listen<StreamPayload>("session://stream", (chunk) => {
             if (cancelled) return;
             // Ignore empty terminal ticks that only flip done
             if (!chunk.text && !chunk.done) return;
-            // Defense-in-depth: drop stream chunks that arrive while no live turn
-            // is active (the host already gates this on FSM Streaming, but stale
-            // or replayed chunks must never re-type history on session switch).
+            // Anti-replay: only drop when the *same* focused host session is idle.
+            // Multi-session: background turns keep streaming after switch — never
+            // gate on liveHost.state alone (that monopolizes the focused chat).
+            const host = liveHostRef.current;
             if (
               chunk.text &&
-              !isSessionLiveStreaming(liveHostRef.current.state)
+              chunk.sessionId &&
+              chunk.sessionId === host.sessionId &&
+              !isSessionLiveStreaming(host.state)
             ) {
               return;
             }
@@ -1897,6 +1999,25 @@ export default function App() {
               setRetryStatus(null);
               // Progress clears stall banner (I06).
               setStreamStall(null);
+            }
+            // Keep multi-session busy projection alive for non-focused sessions.
+            if (chunk.sessionId && (chunk.text || !chunk.done)) {
+              setLiveMap((prev) =>
+                projectHostIntoLiveMap(prev, {
+                  sessionId: chunk.sessionId!,
+                  state: "streaming",
+                  streamingMessageId: chunk.messageId ?? null,
+                }),
+              );
+            }
+            if (chunk.done && chunk.sessionId) {
+              setLiveMap((prev) =>
+                projectHostIntoLiveMap(prev, {
+                  sessionId: chunk.sessionId!,
+                  state: "ready",
+                  streamingMessageId: null,
+                }),
+              );
             }
             patchSessionMessages(chunk.sessionId, (prev) => {
               const next = applyStreamChunk(prev, chunk);
@@ -2022,6 +2143,8 @@ export default function App() {
             const sid = p.sessionId;
             if (!sid) return;
             patchSessionMessages(sid, (prev) => applyTurnMarker(prev, p));
+            // Turn is over — any gate it raised can no longer be answered.
+            clearPendingGatesRef.current(sid);
             if (sid === viewingSessionIdRef.current) {
               setTurnStartedAt(null);
               setStreamStall(null);
@@ -2038,8 +2161,12 @@ export default function App() {
             (p) => {
               if (cancelled || !p) return;
               if (p.reason === "capacity") {
-                setToast(tr("agent.processLimitToast"));
-                window.setTimeout(() => setToast(null), 5200);
+                // Housekeeping, NOT a failure: Host reclaimed an *idle parked*
+                // chat so this spawn could proceed. Reporting it as "process
+                // limit reached" made a successful connect look broken, and
+                // claimed every slot was running a task when none was.
+                setToast(tr("agent.capacityRecycledToast"));
+                window.setTimeout(() => setToast(null), 4200);
                 return;
               }
               // Toast when the focused (or unknown) session was idle-recycled.
@@ -2164,6 +2291,7 @@ export default function App() {
         await track(
           api.listen<TurnErrorPayload>("session://turn_error", (p) => {
             if (cancelled) return;
+            clearPendingGatesRef.current(p.sessionId);
             if (p.sessionId === viewingSessionIdRef.current) {
               setRetryStatus(null);
             }
@@ -2175,6 +2303,10 @@ export default function App() {
         await track(
           api.listen<PermissionPayload>("session://permission", (p) => {
             if (cancelled) return;
+            // Park it against its session so returning to that chat can answer.
+            if (p.sessionId) {
+              pendingPermBySessionRef.current.set(p.sessionId, p);
+            }
             // Only surface the bar when viewing the session that needs it.
             if (
               p.sessionId &&
@@ -2203,13 +2335,19 @@ export default function App() {
         await track(
           api.listen<AskUserPayload>("session://ask_user", (p) => {
             if (cancelled) return;
+            if (!p?.rpcId || !Array.isArray(p.questions) || !p.questions.length) {
+              return;
+            }
+            if (p.sessionId) {
+              pendingAskUserBySessionRef.current.set(p.sessionId, p);
+            }
             if (
               p.sessionId &&
               p.sessionId !== viewingSessionIdRef.current
             ) {
-              return;
-            }
-            if (!p?.rpcId || !Array.isArray(p.questions) || !p.questions.length) {
+              // Background chat asked a question — answer it on reopen.
+              setToast(trRef.current("session.backgroundPermission"));
+              window.setTimeout(() => setToast(null), 4200);
               return;
             }
             setAskUser(p);
@@ -2269,6 +2407,7 @@ export default function App() {
                 queueMicrotask(() => {
                   setLayout((l) => {
                     if (!l.asideCollapsed) return l;
+                    planOpenedAsideRef.current = true;
                     const n = { ...l, asideCollapsed: false };
                     saveLayout(localStorage, n);
                     return n;
@@ -2589,10 +2728,18 @@ export default function App() {
     // Phone drawer: selecting a session closes the overlay (does not push layout).
     if (phoneLayout) closePhoneDrawer();
 
+    // User navigation: invalidate any in-flight work that wants the workbench.
+    bumpViewEpoch();
     // Snapshot the outgoing thread so a mid-turn switch does not lose the user bubble.
     const leavingId = viewingSessionIdRef.current;
     if (leavingId) {
-      messagesBySessionRef.current.set(leavingId, messagesRef.current);
+      messagesBySessionRef.current.set(
+        leavingId,
+        snapshotOutgoingMessages(
+          messagesBySessionRef.current.get(leavingId),
+          messagesRef.current,
+        ),
+      );
       // Plan progress is per-session — stash bar state before switching.
       planBySessionRef.current.set(leavingId, planRef.current);
     }
@@ -2701,9 +2848,13 @@ export default function App() {
         }
       }
       // Prefer in-memory cache (optimistic user msg + partial stream) over disk.
-      const chosen = preferSessionMessages(
-        messagesBySessionRef.current.get(s.id),
-        mapped,
+      // Weave journal tool_step rows into preceding assistant segments so reload
+      // still shows tools on the message timeline (live already interleaves).
+      const chosen = weaveToolsIntoAssistantSegments(
+        preferSessionMessages(
+          messagesBySessionRef.current.get(s.id),
+          mapped,
+        ),
       );
       if (viewingSessionIdRef.current !== s.id) {
         // User switched again while we were loading — keep cache warm, skip UI write.
@@ -2824,11 +2975,15 @@ export default function App() {
         title: s.title || live.title || "Untitled",
       });
     } else {
+      // A chat demoted to background is still running: re-attach its state so
+      // the thread shows the spinner / streaming bubble instead of looking done.
+      const resume = resumeStateForSession(s.id, live, liveMapRef.current);
       setSession({
         ...IDLE_SNAPSHOT,
         sessionId: s.id,
         title: s.title || "Untitled",
-        state: "idle",
+        state: resume.state,
+        streamingMessageId: resume.streamingMessageId,
         backend: "grok_agent_stdio",
       });
     }
@@ -2836,10 +2991,11 @@ export default function App() {
       openingSessionIdRef.current = null;
     }
     setLocalError(null);
-    // Permission / retry / ask-user chrome only apply to the live viewed session.
+    // Gates are session-scoped: restore any unanswered request for this chat
+    // (it may have been raised while demoted to background), else clear chrome.
+    setPerm(pendingPermBySessionRef.current.get(s.id) ?? null);
+    setAskUser(pendingAskUserBySessionRef.current.get(s.id) ?? null);
     if (live.sessionId !== s.id) {
-      setPerm(null);
-      setAskUser(null);
       setRetryStatus(null);
     }
 
@@ -2851,17 +3007,36 @@ export default function App() {
     }
 
     // Warm ACP: connect while the user reads history (trusted project or orphan).
-    // Host serializes connect; first send no-ops if already ready, or waits if
-    // still handshaking. Process is reused across sessions when cwd/effort match.
+    // Host serializes connect; first send no-ops if already ready.
+    //
+    // Multi-session: if *another* session is mid-turn, do NOT warm-connect here.
+    // Spawning demotes the busy process; capacity reclaim must never kill it, but
+    // deferring warm connect avoids demote/spawn churn while browsing other chats.
+    // The next send on this chat will `ensureConnected` intentionally.
     // Skip when project folder is missing (D05) — user must relocate first.
+    const foreignBusy =
+      Object.entries(liveMap).some(
+        ([id, snap]) =>
+          id !== s.id &&
+          (snap.state === "streaming" || snap.state === "awaiting_permission"),
+      ) ||
+      (!!live.sessionId &&
+        live.sessionId !== s.id &&
+        isSessionLiveStreaming(live.state));
+    // Also defer while a send / connect is in flight: warm-connecting mid-send
+    // used to steal the live slot from the turn being dispatched.
     if (
       api.isTauri() &&
+      !foreignBusy &&
+      !sendInFlightRef.current &&
+      !connectingRef.current &&
       (!proj || (proj.trusted && !isProjectPathMissing(proj.pathOk))) &&
       !(live.sessionId === s.id && live.state === "ready")
     ) {
       const warmId = s.id;
       void (async () => {
         if (viewingSessionIdRef.current !== warmId) return;
+        if (sendInFlightRef.current || connectingRef.current) return;
         try {
           const snap = await api.sessionConnect({
             projectPath: proj?.path,
@@ -3002,13 +3177,21 @@ export default function App() {
     } else {
       setHistoryOpen(true);
     }
+    // User navigation: a connect/send still in flight for the previous chat must
+    // not drag the workbench back here once it resolves.
+    bumpViewEpoch();
     // Preserve outgoing thread in cache before clearing the draft UI.
+    // Always snapshot current messages (not only if already cached) so a mid-send
+    // switch does not drop the optimistic user/assistant bubbles.
     const leavingId = viewingSessionIdRef.current;
     if (leavingId) {
-      const cachedLeaving = messagesBySessionRef.current.get(leavingId);
-      if (cachedLeaving) {
-        messagesBySessionRef.current.set(leavingId, cachedLeaving);
-      }
+      messagesBySessionRef.current.set(
+        leavingId,
+        snapshotOutgoingMessages(
+          messagesBySessionRef.current.get(leavingId),
+          messagesRef.current,
+        ),
+      );
       planBySessionRef.current.set(leavingId, planRef.current);
     }
     viewingSessionIdRef.current = null;
@@ -3029,16 +3212,23 @@ export default function App() {
       backend: "grok_agent_stdio",
     });
     setLocalError(null);
-    // Disconnect any live agent for previous session (best-effort).
-    if (api.isTauri()) {
-      try {
-        await api.sessionDisconnect();
-        const idle = { ...IDLE_SNAPSHOT };
-        setLiveHost(idle);
-        liveHostRef.current = idle;
-      } catch {
-        /* ignore */
-      }
+    // Multi-session: NEVER sessionDisconnect here.
+    // Disconnect kills the live ACP process — that aborted in-flight turns when
+    // users hit "new chat" right after send (sessions with agentSessionId but
+    // empty journals). Leave liveHost as-is so Host keeps executing; the next
+    // send on this draft will demote+spawn via ensureConnected.
+    const prevLive = liveHostRef.current;
+    if (
+      prevLive.sessionId &&
+      isSessionLiveStreaming(prevLive.state)
+    ) {
+      setLiveMap((prev) =>
+        projectHostIntoLiveMap(prev, {
+          sessionId: prevLive.sessionId,
+          state: prevLive.state,
+          streamingMessageId: prevLive.streamingMessageId,
+        }),
+      );
     }
     // Focus explicitly — do not rely only on useEffect: after await, effects may
     // already have run, and identical draft/sessionId can skip a re-render.
@@ -3213,6 +3403,7 @@ export default function App() {
           setHistoryOpen(true);
         }
         openingSessionIdRef.current = null;
+        bumpViewEpoch();
         viewingSessionIdRef.current = null;
         setMessages([]);
         setAttachments([]);
@@ -3345,7 +3536,7 @@ export default function App() {
         }));
 
         try {
-          await api.sessionSend(promptBody);
+          await api.sessionSend(promptBody, null, sessionId);
         } catch (sendErr) {
           const errText = String(sendErr);
           const failed: ChatMessage[] = [
@@ -3773,6 +3964,7 @@ export default function App() {
             await api.sessionDelete(s.id);
             messagesBySessionRef.current.delete(s.id);
             planBySessionRef.current.delete(s.id);
+            clearPendingGates(s.id);
           }
           sendQueue.dropSessions(deletedIds);
           await refreshSessions();
@@ -3937,10 +4129,31 @@ export default function App() {
         return preferredId;
       }
     }
-    if (connecting) return null;
+    // Serialize connects with a ref so two rapid sends cannot both pass a stale
+    // `connecting` state check (React setState is async).
+    if (connectingRef.current) {
+      // Another connect is in flight — do not drop the caller's send. Wait briefly
+      // for the in-flight connect if it targets the same preferred session.
+      const waitStart = Date.now();
+      while (connectingRef.current && Date.now() - waitStart < 120_000) {
+        await new Promise((r) => setTimeout(r, 50));
+        const live = liveHostRef.current;
+        if (
+          preferredId &&
+          live.sessionId === preferredId &&
+          live.state === "ready" &&
+          !live.lastError
+        ) {
+          return preferredId;
+        }
+      }
+      if (connectingRef.current) return null;
+    }
+    connectingRef.current = true;
     setConnecting(true);
-    // Capture draft identity before awaits (may still be null).
-    const viewedBefore = viewingSessionIdRef.current;
+    // Capture view identity before awaits. Drafts are all `null`, so the epoch
+    // is what distinguishes "still on my draft" from "user opened a new one".
+    const originView = currentViewFocus();
     try {
       let sessionId = preferredId ?? null;
       // First send: materialize draft into a real session (project or orphan).
@@ -3959,23 +4172,23 @@ export default function App() {
           messagesBySessionRef.current.set(meta.id, draftMsgs);
           messagesBySessionRef.current.delete("__draft__");
         }
-        // Only take over the workbench if still on this draft / same session.
-        if (
-          viewingSessionIdRef.current === viewedBefore ||
-          viewingSessionIdRef.current === null ||
-          viewingSessionIdRef.current === meta.id
-        ) {
+        // Only take over the workbench if the user has not navigated since.
+        // `viewingSessionIdRef.current === null` used to pass here, which is how
+        // opening a new chat in another project got yanked back to this one.
+        if (shouldAdoptView(originView, currentViewFocus(), meta.id)) {
           viewingSessionIdRef.current = meta.id;
           setSession((prev) => ({
             ...prev,
             sessionId: meta.id,
             title: meta.title || tr("session.new"),
           }));
-        }
-        if (activeProject) {
-          setExpandedProjects((e) => ({ ...e, [activeProject.id]: true }));
-        } else {
-          setHistoryOpen(true);
+          // Sidebar reveal belongs to the takeover — never re-expand a project
+          // the user has already navigated away from.
+          if (activeProject) {
+            setExpandedProjects((e) => ({ ...e, [activeProject.id]: true }));
+          } else {
+            setHistoryOpen(true);
+          }
         }
         await refreshSessions();
       }
@@ -3986,13 +4199,11 @@ export default function App() {
       });
       setLiveHost(snap);
       liveHostRef.current = snap;
-      // Only rebind viewed session when the user is still on it (or its draft).
+      // Only rebind the viewed session when the user is still on it (or has not
+      // navigated since this connect started).
       if (
         snap.sessionId &&
-        (viewingSessionIdRef.current === snap.sessionId ||
-          viewingSessionIdRef.current === viewedBefore ||
-          (viewedBefore === null &&
-            viewingSessionIdRef.current === snap.sessionId))
+        shouldAdoptView(originView, currentViewFocus(), snap.sessionId)
       ) {
         viewingSessionIdRef.current = snap.sessionId;
         setSession((prev) => ({
@@ -4018,17 +4229,20 @@ export default function App() {
       if (viewingSessionIdRef.current === (snap.sessionId || sessionId)) {
         setLocalError(null);
       }
+      // Always return the connected id even if the user switched away mid-connect
+      // so executeSend can still sessionSend for the original target.
       return snap.sessionId || sessionId || null;
     } catch (e) {
+      // Only surface the error on the view that asked for the connect.
       if (
-        viewingSessionIdRef.current === viewedBefore ||
-        viewingSessionIdRef.current === preferredId ||
-        viewingSessionIdRef.current === session.sessionId
+        (preferredId != null && viewingSessionIdRef.current === preferredId) ||
+        isSameView(originView, currentViewFocus())
       ) {
         setLocalError(String(e));
       }
       return null;
     } finally {
+      connectingRef.current = false;
       setConnecting(false);
     }
   };
@@ -4053,7 +4267,7 @@ export default function App() {
           try {
             const sid = await ensureConnected();
             if (!sid) return;
-            await api.sessionSend(cmd);
+            await api.sessionSend(cmd, null, sid);
           } catch (err) {
             setLocalError(String(err));
           }
@@ -4121,9 +4335,12 @@ export default function App() {
         ? opts.targetSessionId
         : session.sessionId;
     const cacheKey = sendTargetId ?? "__draft__";
+    // Draft sends have no id to compare, so pin them to the view they came from:
+    // otherwise the optimistic bubbles / streaming state paint whatever *new*
+    // draft the user opened in the meantime.
+    const originView = currentViewFocus();
     const viewingTarget = () =>
-      viewingSessionIdRef.current === sendTargetId ||
-      (sendTargetId == null && viewingSessionIdRef.current == null);
+      isViewingSendTarget(originView, currentViewFocus(), sendTargetId);
 
     const agentBody = serializeForAgent(segments, { goalMode: useGoal });
     let agentText = buildAgentPrompt(agentBody, att);
@@ -4196,9 +4413,13 @@ export default function App() {
       );
       setTurnStartedAt(Date.now());
     }
+    // Optimistic liveHost only when we already own the live slot (or nothing is live).
+    // Never stamp streaming onto a foreign mid-turn — ensureConnected demotes first.
     setLiveHost((prev) => {
-      if (sendTargetId && prev.sessionId && prev.sessionId !== sendTargetId) {
-        return prev;
+      if (prev.sessionId) {
+        if (sendTargetId && prev.sessionId !== sendTargetId) return prev;
+        // Draft / null target while another session is live → leave Host alone.
+        if (!sendTargetId && prev.sessionId) return prev;
       }
       const next = {
         ...prev,
@@ -4232,13 +4453,11 @@ export default function App() {
       }
       // Symmetric rollback of optimistic liveHost streaming — otherwise
       // useSendQueue.flush sees streaming forever and auto-flush starves.
+      // Mirror the optimistic guard: never rewind a foreign mid-turn we did not claim.
       setLiveHost((prev) => {
-        if (
-          sendTargetId &&
-          prev.sessionId &&
-          prev.sessionId !== sendTargetId
-        ) {
-          return prev;
+        if (prev.sessionId) {
+          if (sendTargetId && prev.sessionId !== sendTargetId) return prev;
+          if (!sendTargetId && prev.sessionId) return prev;
         }
         if (prev.state !== "streaming") return prev;
         const next = {
@@ -4301,7 +4520,32 @@ export default function App() {
         failStrip();
         return false;
       }
-      await api.sessionSend(agentText, storedDisplay);
+      // Bind the turn to `sessionId`, never to "whatever is live". Host
+      // re-focuses that chat (background/parked → live) before prompting, so a
+      // warm connect racing this send cannot deliver it to another chat — and
+      // a mid-send "new chat" still lets this turn complete.
+      try {
+        await api.sessionSend(agentText, storedDisplay, sessionId);
+      } catch (sendErr) {
+        // Host refuses rather than misroute when the chat lost its process
+        // (idle recycle / crash while `liveHost` still looked ready).
+        // Cold-connect that chat once, then retry the same turn.
+        if (!isSessionNotLiveError(sendErr)) throw sendErr;
+        const reconnected = await ensureConnected({
+          sessionId,
+          force: true,
+        });
+        if (reconnected !== sessionId) throw sendErr;
+        await api.sessionSend(agentText, storedDisplay, sessionId);
+      }
+      // Keep liveMap busy for this session if the user already left the thread.
+      setLiveMap((prev) =>
+        projectHostIntoLiveMap(prev, {
+          sessionId,
+          state: "streaming",
+          streamingMessageId: null,
+        }),
+      );
       // Only after a successful send: move remaining draft follow-ups onto the
       // real session. If this threw, claim requeues under `__draft__` intact.
       if (!sendTargetId) {
@@ -4362,6 +4606,10 @@ export default function App() {
     }
     sendQueue.releaseFlushHold();
 
+    // Enqueue only when *this viewed chat* is busy/connecting (follow-ups).
+    // Host mid-turn on another session → executeSend demotes + spawns concurrent
+    // work. Never park a new-chat / other-session send into a fake local queue
+    // (that showed “本会话队列” on empty welcome while the real turn ran elsewhere).
     if (shouldEnqueueSend(session.state, connecting)) {
       sendQueue.enqueue({
         storedDisplay,
@@ -5110,12 +5358,25 @@ export default function App() {
   }, []);
 
   const refreshVoiceGate = useCallback(async () => {
+    // Resolve whether the active inference route is a custom/third-party provider.
+    let customActive = false;
+    if (api.isTauri()) {
+      try {
+        const list = await api.providersList();
+        customActive = list.activeSource === "custom";
+      } catch {
+        /* ignore */
+      }
+    }
     try {
       // Desktop Tauri and phone mirror both resolve availability from the host
-      // voice.status (mirror routes it over the WS allowlist). The mirror client
-      // has no access to secretsGetMasked, so this is its only signal — and it
-      // discloses nothing beyond a boolean + reason class.
+      // voice.status (mirror routes it over the WS allowlist). The host also
+      // refuses speech when active provider is custom.
       if (api.isTauri() || isMirrorClient()) {
+        if (customActive) {
+          setVoiceGate({ available: false, reason: "not_available" });
+          return;
+        }
         const st = await api.voiceStatus();
         setVoiceGate({
           available: !!st.available,
@@ -5140,6 +5401,7 @@ export default function App() {
       signedInOfficial: signedIn,
       hasOfficialApiKey: hasOfficial,
       hasRelayOnly: hasRelay && !hasOfficial && !signedIn,
+      activeProviderIsCustom: customActive,
     });
     setVoiceGate({
       available: gate.available,
@@ -5163,6 +5425,18 @@ export default function App() {
     voiceCaretRef.current = null;
     setVoice(reduceVoice(voiceRef.current, { type: "cancel" }));
   }, [clearVoiceTimers]);
+
+  // Drop in-progress dictation / live session when speech becomes unavailable
+  // (e.g. switched to a third-party provider).
+  useEffect(() => {
+    if (voiceGate.available) return;
+    if (voiceIsActive(voiceRef.current.phase)) {
+      cancelVoice();
+    }
+    if (liveVoiceOpen) {
+      setLiveVoiceOpen(false);
+    }
+  }, [voiceGate.available, cancelVoice, liveVoiceOpen]);
 
   const finishVoiceTranscribe = useCallback(
     async (blob: Blob, gen: number) => {
@@ -5356,6 +5630,8 @@ export default function App() {
       await api.sessionResolvePlan({
         decision: "approved",
         rpcId: plan.rpcId,
+        // Plan chrome is per-viewed-session; the gate may sit on a demoted turn.
+        sessionId: viewingSessionIdRef.current,
       });
       writePlanForViewing({
         ...planRef.current,
@@ -5376,6 +5652,7 @@ export default function App() {
         decision: "cancelled",
         feedback: tr("plan.reviseFeedback"),
         rpcId: plan.rpcId,
+        sessionId: viewingSessionIdRef.current,
       });
       writePlanForViewing({
         ...planRef.current,
@@ -5393,7 +5670,8 @@ export default function App() {
   /**
    * User closes plan chrome (top bar / resource panel).
    * Flow: confirm → abandon pending review RPC if any → hard-close session plan
-   * so reopen stays empty until a new plan cycle (plan mode / new tool / new rpcId).
+   * so reopen stays empty until a new plan cycle (new toolCallId / new rpcId).
+   * Residual updates while still in composer plan mode stay suppressed.
    */
   const dismissPlan = useCallback(() => {
     const cur = planRef.current;
@@ -5408,11 +5686,13 @@ export default function App() {
       danger: false,
       onConfirm: async () => {
         const latest = planRef.current;
-        if (latest.rpcId != null) {
+        const abandonedRpcId = latest.rpcId ?? null;
+        if (abandonedRpcId != null) {
           try {
             await api.sessionResolvePlan({
               decision: "abandoned",
-              rpcId: latest.rpcId,
+              rpcId: abandonedRpcId,
+              sessionId: viewingSessionIdRef.current,
             });
           } catch {
             /* clear UI anyway */
@@ -5422,8 +5702,20 @@ export default function App() {
           closedSessionPlan(
             trRef.current("plan.ready"),
             latest.toolCallId ?? null,
+            abandonedRpcId,
           ),
         );
+        // If we opened the resource pane for this plan, close it so the next
+        // files open is not stuck on the Plan workbench.
+        if (planOpenedAsideRef.current) {
+          planOpenedAsideRef.current = false;
+          setLayout((l) => {
+            if (l.asideCollapsed) return l;
+            const n = { ...l, asideCollapsed: true };
+            saveLayout(localStorage, n);
+            return n;
+          });
+        }
       },
     });
   }, [tr, writePlanForViewing]);
@@ -5432,6 +5724,7 @@ export default function App() {
   const openPlanInResource = useCallback(() => {
     setLayout((l) => {
       if (!l.asideCollapsed) return l;
+      planOpenedAsideRef.current = true;
       const n = { ...l, asideCollapsed: false };
       saveLayout(localStorage, n);
       return n;
@@ -6110,6 +6403,10 @@ export default function App() {
   useEffect(() => {
     void refreshProviderRoute();
   }, [refreshProviderRoute]);
+  // Re-evaluate composer mic when switching official ↔ custom provider.
+  useEffect(() => {
+    void refreshVoiceGate();
+  }, [customRouteActive, refreshVoiceGate]);
   const liveBrandKind = useMemo(
     () =>
       superGrokBrandKind(
@@ -6169,8 +6466,10 @@ export default function App() {
 
   const stop = async () => {
     const now = Date.now();
+    // Stop belongs to the chat on screen. Preferring the live slot cancelled a
+    // foreign turn whenever the viewed chat had been demoted to background.
     const sid =
-      liveHostRef.current.sessionId || viewingSessionIdRef.current || null;
+      viewingSessionIdRef.current || liveHostRef.current.sessionId || null;
     const armed = armStopLatch(stopLatchRef.current, sid, now);
     stopLatchRef.current = armed;
     setStopLatch(armed);
@@ -6206,11 +6505,11 @@ export default function App() {
       }
     }, STOP_LATCH_MS + 50);
     try {
-      await api.sessionStop();
+      await api.sessionStop(sid);
       setRetryStatus(null);
       setStreamStall(null);
       setTurnStartedAt(null);
-      const liveId = liveHostRef.current.sessionId;
+      const liveId = sid || liveHostRef.current.sessionId;
       if (liveId) {
         patchSessionMessages(liveId, (m) =>
           m.map((x) => ({ ...x, streaming: false })),
@@ -6879,8 +7178,13 @@ export default function App() {
               decision: deny.decision,
               optionId: deny.optionId,
               scopeKey: perm.scopeKey,
+              // Background turns raise permissions on their own ACP child.
+              sessionId: perm.sessionId,
             })
-            .then(() => setPerm(null));
+            .then(() => {
+              clearPendingGates(perm.sessionId);
+              setPerm(null);
+            });
         }
         return;
       }
@@ -7280,14 +7584,14 @@ export default function App() {
 
         if (api.isTauri()) {
           try {
-            await api.sessionRewindDropLastUser();
+            await api.sessionRewindDropLastUser(sessionId);
           } catch (e) {
             console.warn("session rewind before edit failed", e);
             // Continue: UI already replaced the turn; resend still proceeds.
           }
         }
 
-        await api.sessionSend(agentText, storedDisplay);
+        await api.sessionSend(agentText, storedDisplay, sessionId);
         // Mirror-allowlisted (`session.autoTitle`) — safe for phone clients.
         if (shouldAutoTitle && api.hasHost()) {
           void api
@@ -8073,6 +8377,7 @@ export default function App() {
                 }
                 await refreshProviderRoute();
                 await refreshAccount({ refreshBilling: false });
+                await refreshVoiceGate();
                 setToast(tr("prov.switchedHotReload"));
                 window.setTimeout(() => setToast(null), 3200);
               } catch (e) {
@@ -9437,8 +9742,12 @@ export default function App() {
                             decision: btn.decision,
                             optionId: btn.optionId,
                             scopeKey: perm.scopeKey,
+                            sessionId: perm.sessionId,
                           })
-                          .then(() => setPerm(null))
+                          .then(() => {
+                            clearPendingGates(perm.sessionId);
+                            setPerm(null);
+                          })
                           .catch((e) => {
                             const code =
                               e && typeof e === "object" && "code" in e
@@ -9963,79 +10272,46 @@ export default function App() {
                   </>
                 ) : null}
                 <span className="composer__spacer" />
-                <Tip
-                  label={
-                    !voiceGate.available
-                      ? voiceErrorMessage(voiceGate.reason ?? "not_available")
-                      : voice.phase === "recording"
+                {/* Dictation (mic): official auth only, and not on custom providers.
+                    Live voice entry is hidden until product-ready. */}
+                {(voiceGate.available || voiceIsActive(voice.phase)) && (
+                  <Tip
+                    label={
+                      voice.phase === "recording"
                         ? tr("composer.voiceListening")
                         : voice.phase === "transcribing"
                           ? tr("composer.voiceTranscribing")
                           : tr("composer.voice")
-                  }
-                >
-                  <button
-                    type="button"
-                    className={
-                      "icon-btn composer__voice" +
-                      (voice.phase === "recording"
-                        ? " composer__voice--live"
-                        : "") +
-                      (voice.phase === "transcribing"
-                        ? " composer__voice--busy"
-                        : "")
                     }
-                    disabled={
-                      !voiceGate.available ||
-                      voice.phase === "transcribing" ||
-                      voice.phase === "requesting_mic" ||
-                      !canType(session.state)
-                    }
-                    aria-pressed={voice.phase === "recording"}
-                    aria-label={
-                      !voiceGate.available
-                        ? tr("composer.voiceUnavailable")
-                        : voice.phase === "recording"
+                  >
+                    <button
+                      type="button"
+                      className={
+                        "icon-btn composer__voice" +
+                        (voice.phase === "recording"
+                          ? " composer__voice--live"
+                          : "") +
+                        (voice.phase === "transcribing"
+                          ? " composer__voice--busy"
+                          : "")
+                      }
+                      disabled={
+                        voice.phase === "transcribing" ||
+                        voice.phase === "requesting_mic" ||
+                        !canType(session.state)
+                      }
+                      aria-pressed={voice.phase === "recording"}
+                      aria-label={
+                        voice.phase === "recording"
                           ? tr("composer.voiceListening")
                           : tr("composer.voice")
-                    }
-                    onClick={() => toggleVoice()}
-                  >
-                    <IconMic size={16} />
-                  </button>
-                </Tip>
-                <Tip label={tr("voice.startLive")}>
-                  <button
-                    type="button"
-                    className={
-                      "icon-btn composer__voice-live" +
-                      (liveVoiceOpen ? " is-on" : "")
-                    }
-                    disabled={
-                      !voiceGate.available ||
-                      voice.phase === "transcribing" ||
-                      voice.phase === "requesting_mic"
-                    }
-                    aria-pressed={liveVoiceOpen}
-                    aria-label={tr("voice.startLive")}
-                    onClick={() => {
-                      if (!voiceGate.available) {
-                        showToast(
-                          voiceErrorMessage(voiceGate.reason ?? "not_available"),
-                          5200,
-                        );
-                        return;
                       }
-                      // Mic is shared with dictation — stop recording first.
-                      if (voice.phase === "recording") {
-                        toggleVoice();
-                      }
-                      setLiveVoiceOpen(true);
-                    }}
-                  >
-                    <IconLiveVoice size={16} />
-                  </button>
-                </Tip>
+                      onClick={() => toggleVoice()}
+                    >
+                      <IconMic size={16} />
+                    </button>
+                  </Tip>
+                )}
                 {effectiveCanStop ? (
                   <>
                     {sendQueue.canShowQueueButton(
@@ -10141,13 +10417,15 @@ export default function App() {
               onApprovePlan={() => void approvePlan()}
               onRequestPlanChanges={() => void requestPlanChanges()}
               onDismissPlan={() => void dismissPlan()}
-              onClose={() =>
+              onClose={() => {
+                // Manual close — do not treat as plan-owned pane on later dismiss.
+                planOpenedAsideRef.current = false;
                 setLayout((l) => {
                   const n = { ...l, asideCollapsed: true };
                   saveLayout(localStorage, n);
                   return n;
-                })
-              }
+                });
+              }}
             />
           </div>
         </aside>
@@ -10568,7 +10846,9 @@ export default function App() {
               decision: "accepted",
               answers,
               rpcId: askUser.rpcId,
+              sessionId: askUser.sessionId,
             });
+            clearPendingGates(askUser.sessionId);
             setAskUser(null);
           } catch (e) {
             showToast(String(e), 4500);
@@ -10580,10 +10860,12 @@ export default function App() {
             await api.sessionResolveAskUser({
               decision: "cancelled",
               rpcId: askUser.rpcId,
+              sessionId: askUser.sessionId,
             });
           } catch {
             /* still hide UI */
           }
+          clearPendingGates(askUser.sessionId);
           setAskUser(null);
         }}
       />
@@ -10787,7 +11069,7 @@ export default function App() {
                 try {
                   const sid = await ensureConnected();
                   if (!sid) return;
-                  await api.sessionSend(cmd);
+                  await api.sessionSend(cmd, null, sid);
                 } catch (err) {
                   setLocalError(String(err));
                 }

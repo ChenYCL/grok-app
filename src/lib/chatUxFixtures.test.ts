@@ -14,6 +14,7 @@ import {
 } from "./session";
 import { extractThinkingSummary } from "./thinkingSummary";
 import { buildTurnActivity } from "./turnActivity";
+import { buildTimelineUnits } from "./timelinePhases";
 import { mapEndOfTurnReason } from "./endOfTurn";
 import {
   armStopLatch,
@@ -68,9 +69,16 @@ describe("chat UX fixtures (shipped path)", () => {
     expect(legacy[0]!.kind === "thought" && legacy[0]!.text).toContain("a");
   });
 
-  it("b) failed tools visible signal; successes not stacked as history rows", () => {
+  it("b) failed tools counted in activity; tools pin onto assistant timeline", () => {
     let messages: ChatMessage[] = [
       { id: "u1", role: "user", content: "do" },
+      {
+        id: "a1",
+        role: "assistant",
+        content: "",
+        segments: [{ kind: "thought", text: "plan" }],
+        streaming: true,
+      },
     ];
     for (let i = 0; i < 5; i++) {
       messages = applyToolEvent(messages, {
@@ -95,9 +103,115 @@ describe("chat UX fixtures (shipped path)", () => {
     const success = tools.filter((m) => !isFailedToolStepMessage(m));
     expect(failed).toHaveLength(1);
     expect(success.length).toBeGreaterThanOrEqual(5);
-    // Transcript policy: only failed would render — success hidden
-    const visibleCount = failed.length; // successes intentionally not visible
-    expect(visibleCount).toBe(1);
+    // Tasks panel still derives from tool_step rows
+    const act = buildTurnActivity(messages);
+    expect(act.errorCount).toBe(1);
+    expect(act.shouldExpand).toBe(true);
+    expect(act.stepCount).toBe(6);
+    // Assistant segments include tools on the real timeline
+    const asst = messages.find((m) => m.id === "a1")!;
+    const segs = messageSegments(asst);
+    expect(segs.some((s) => s.kind === "tool")).toBe(true);
+    expect(segs.filter((s) => s.kind === "tool")).toHaveLength(6);
+    const bad = segs.find(
+      (s) => s.kind === "tool" && s.toolCallId === "bad",
+    );
+    expect(bad && bad.kind === "tool" && bad.isError).toBe(true);
+  });
+
+  it("b2) live stream interleaves thought → tool → content", () => {
+    let messages: ChatMessage[] = [
+      { id: "u1", role: "user", content: "fix" },
+    ];
+    messages = applyStreamChunk(messages, {
+      sessionId: "s",
+      messageId: "a1",
+      text: "先查一下",
+      done: false,
+      kind: "thought",
+    });
+    messages = applyToolEvent(messages, {
+      toolCallId: "t1",
+      title: "Read foo.ts",
+      kind: "read_file",
+      status: "completed",
+      path: "/src/foo.ts",
+    });
+    messages = applyStreamChunk(messages, {
+      sessionId: "s",
+      messageId: "a1",
+      text: "修好了。",
+      done: true,
+      kind: "assistant",
+    });
+    const segs = messageSegments(messages.find((m) => m.role === "assistant")!);
+    expect(segs.map((s) => s.kind)).toEqual(["thought", "tool", "content"]);
+    expect(segs[1]!.kind === "tool" && segs[1]!.title).toContain("foo");
+  });
+
+  it("b3b) phase closes when content arrives mid-stream (not only at turn end)", () => {
+    let messages: ChatMessage[] = [
+      { id: "u1", role: "user", content: "go" },
+    ];
+    messages = applyStreamChunk(messages, {
+      sessionId: "s",
+      messageId: "a1",
+      text: "**定位** 问题",
+      done: false,
+      kind: "thought",
+    });
+    messages = applyToolEvent(messages, {
+      toolCallId: "t1",
+      title: "Read a",
+      kind: "read_file",
+      status: "completed",
+    });
+    messages = applyToolEvent(messages, {
+      toolCallId: "t2",
+      title: "Read b",
+      kind: "read_file",
+      status: "completed",
+    });
+    // Still streaming — work phase is live
+    let segs = messageSegments(messages.find((m) => m.role === "assistant")!);
+    let units = buildTimelineUnits(segs, { streaming: true });
+    expect(units[0]?.kind).toBe("phase");
+    if (units[0]?.kind === "phase") expect(units[0].live).toBe(true);
+
+    // Content starts → phase closes even though stream continues
+    messages = applyStreamChunk(messages, {
+      sessionId: "s",
+      messageId: "a1",
+      text: "结论。",
+      done: false,
+      kind: "assistant",
+    });
+    segs = messageSegments(messages.find((m) => m.role === "assistant")!);
+    units = buildTimelineUnits(segs, { streaming: true });
+    expect(units.map((u) => u.kind)).toEqual(["phase", "content"]);
+    if (units[0]?.kind === "phase") expect(units[0].live).toBe(false);
+  });
+
+  it("b3) tools before first stream token prepend onto assistant", () => {
+    let messages: ChatMessage[] = [
+      { id: "u1", role: "user", content: "go" },
+    ];
+    messages = applyToolEvent(messages, {
+      toolCallId: "early",
+      title: "List dir",
+      kind: "list_dir",
+      status: "completed",
+    });
+    messages = applyStreamChunk(messages, {
+      sessionId: "s",
+      messageId: "a1",
+      text: "看完了",
+      done: true,
+      kind: "assistant",
+    });
+    const segs = messageSegments(messages.find((m) => m.role === "assistant")!);
+    expect(segs.map((s) => s.kind)).toEqual(["tool", "content"]);
+    expect(segs[0]!.kind === "tool" && segs[0]!.toolCallId).toBe("early");
   });
 
   it("c) multi-tool turn activity groups context tools", () => {

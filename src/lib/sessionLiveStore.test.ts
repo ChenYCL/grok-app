@@ -4,6 +4,7 @@ import {
   emptyLiveSnapshot,
   isSessionLiveBusy,
   projectHostIntoLiveMap,
+  resumeStateForSession,
   upsertLiveSnapshot,
 } from "./sessionLiveStore";
 
@@ -49,5 +50,70 @@ describe("sessionLiveStore", () => {
     const s = emptyLiveSnapshot("x", 1);
     expect(s.sessionId).toBe("x");
     expect(s.state).toBe("idle");
+  });
+
+  it("keeps other sessions busy when host focuses a different chat", () => {
+    let map = projectHostIntoLiveMap(
+      {},
+      { sessionId: "a", state: "streaming", streamingMessageId: "m1" },
+    );
+    // User switches to B (host focus) — A must remain busy in the map.
+    map = projectHostIntoLiveMap(map, {
+      sessionId: "b",
+      state: "ready",
+    });
+    expect(busySessionIds(map).has("a")).toBe(true);
+    expect(busySessionIds(map).has("b")).toBe(false);
+    expect(map.a!.state).toBe("streaming");
+    expect(map.b!.state).toBe("ready");
+  });
+
+  it("re-attaches a background turn when its chat is reopened", () => {
+    // A is streaming in background; Host focus sits on B.
+    const map = projectHostIntoLiveMap({}, {
+      sessionId: "a",
+      state: "streaming",
+      streamingMessageId: "m-a",
+    });
+    const live = { sessionId: "b", state: "ready" as const };
+
+    // Opening A must keep the spinner + stream pipeline, not show it as done.
+    expect(resumeStateForSession("a", live, map)).toEqual({
+      state: "streaming",
+      streamingMessageId: "m-a",
+    });
+    // Host live slot always wins for its own chat.
+    expect(resumeStateForSession("b", live, map)).toEqual({
+      state: "ready",
+      streamingMessageId: null,
+    });
+    // A chat with no live work opens idle.
+    expect(resumeStateForSession("c", live, map)).toEqual({
+      state: "idle",
+      streamingMessageId: null,
+    });
+  });
+
+  it("does not resurrect a finished background chat as streaming", () => {
+    let map = projectHostIntoLiveMap({}, {
+      sessionId: "a",
+      state: "streaming",
+      streamingMessageId: "m-a",
+    });
+    map = projectHostIntoLiveMap(map, { sessionId: "a", state: "ready" });
+    expect(
+      resumeStateForSession("a", { sessionId: null, state: "idle" }, map),
+    ).toEqual({ state: "idle", streamingMessageId: null });
+  });
+
+  it("keeps awaiting_permission attached on reopen", () => {
+    const map = projectHostIntoLiveMap({}, {
+      sessionId: "a",
+      state: "awaiting_permission",
+      streamingMessageId: "m-a",
+    });
+    expect(
+      resumeStateForSession("a", { sessionId: "b", state: "ready" }, map).state,
+    ).toBe("awaiting_permission");
   });
 });

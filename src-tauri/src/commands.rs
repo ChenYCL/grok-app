@@ -49,14 +49,19 @@ pub async fn session_connect(
 
 /// Send a turn. `text` goes to the agent; optional `display_text` is stored in the journal
 /// (skill chips as `[[skill:name]]`) so history can re-render tags.
+///
+/// `session_id` binds the turn to a chat so a concurrent connect cannot route it
+/// into whichever session happens to hold the live slot. Omitting it keeps the
+/// legacy "current focus" behaviour for single-session callers.
 #[tauri::command]
 pub async fn session_send(
     app: tauri::AppHandle,
     mgr: State<'_, Arc<SessionManager>>,
     text: String,
     display_text: Option<String>,
+    session_id: Option<String>,
 ) -> Result<SessionSnapshot, String> {
-    mgr.send_message(app, text, display_text).await
+    mgr.send_message(app, text, display_text, session_id).await
 }
 
 /// Drop last user turn on agent + local journal (edit & resend).
@@ -64,8 +69,9 @@ pub async fn session_send(
 pub async fn session_rewind_drop_last_user(
     app: tauri::AppHandle,
     mgr: State<'_, Arc<SessionManager>>,
+    session_id: Option<String>,
 ) -> Result<SessionSnapshot, String> {
-    mgr.rewind_drop_last_user_turn(app).await
+    mgr.rewind_drop_last_user_turn(app, session_id).await
 }
 
 /// List rewind points (one per user prompt) for a session journal.
@@ -111,8 +117,9 @@ pub fn session_fork(
 pub async fn session_stop(
     app: tauri::AppHandle,
     mgr: State<'_, Arc<SessionManager>>,
+    session_id: Option<String>,
 ) -> Result<SessionSnapshot, String> {
-    mgr.stop(app).await
+    mgr.stop(app, session_id).await
 }
 
 /// Approve / revise / abandon pending plan (`_x.ai/exit_plan_mode`).
@@ -123,8 +130,10 @@ pub async fn session_resolve_plan(
     decision: String,
     feedback: Option<String>,
     rpc_id: Option<u64>,
+    session_id: Option<String>,
 ) -> Result<SessionSnapshot, String> {
-    mgr.resolve_plan(app, decision, feedback, rpc_id).await
+    mgr.resolve_plan(app, decision, feedback, rpc_id, session_id)
+        .await
 }
 
 /// Answer or dismiss pending `_x.ai/ask_user_question`.
@@ -135,8 +144,10 @@ pub async fn session_resolve_ask_user(
     decision: String,
     answers: Option<serde_json::Value>,
     rpc_id: Option<u64>,
+    session_id: Option<String>,
 ) -> Result<SessionSnapshot, String> {
-    mgr.resolve_ask_user(app, decision, answers, rpc_id).await
+    mgr.resolve_ask_user(app, decision, answers, rpc_id, session_id)
+        .await
 }
 
 #[tauri::command]
@@ -163,8 +174,9 @@ pub async fn session_resolve_permission(
     decision: String,
     option_id: Option<String>,
     scope_key: Option<String>,
+    session_id: Option<String>,
 ) -> Result<SessionSnapshot, String> {
-    mgr.resolve_permission(app, rpc_id, decision, option_id, scope_key)
+    mgr.resolve_permission(app, rpc_id, decision, option_id, scope_key, session_id)
         .await
 }
 
@@ -946,18 +958,23 @@ pub async fn secrets_set(
     default_model: Option<String>,
 ) -> Result<(), String> {
     let mut s = store::load_secrets();
+    // Empty string clears the secret (needed when revoking speech/API credentials).
     if let Some(k) = official_api_key {
-        if !k.is_empty() {
-            s.official_api_key = Some(k);
-        }
+        s.official_api_key = if k.trim().is_empty() {
+            None
+        } else {
+            Some(k)
+        };
     }
     if let Some(u) = relay_base_url {
         s.relay_base_url = if u.is_empty() { None } else { Some(u) };
     }
     if let Some(k) = relay_api_key {
-        if !k.is_empty() {
-            s.relay_api_key = Some(k);
-        }
+        s.relay_api_key = if k.trim().is_empty() {
+            None
+        } else {
+            Some(k)
+        };
     }
     if let Some(m) = default_model {
         s.default_model = if m.is_empty() { None } else { Some(m) };
@@ -3044,8 +3061,79 @@ pub fn normalize_plugin_update_name(name: Option<&str>) -> Option<String> {
         .map(|s| s.to_string())
 }
 
-/// Install from path / git URL / GitHub shorthand (`grok plugin install <source> --trust`).
-/// Soft-respawns agent on success. `--trust` is required for non-interactive UI.
+/// Best-effort plugin name for `plugin enable` after install.
+/// Handles `name`, `name@marketplace`, `owner/repo[@ref]`, git URLs, and paths.
+pub fn plugin_name_from_install_source(source: &str) -> Option<String> {
+    let s = source.trim();
+    if s.is_empty() {
+        return None;
+    }
+    // git@host:path/repo.git
+    if s.starts_with("git@") {
+        let leaf = s.rsplit([':', '/']).next().unwrap_or("");
+        let name = leaf.trim_end_matches(".git");
+        return if name.is_empty() {
+            None
+        } else {
+            Some(name.to_string())
+        };
+    }
+    // https://…/repo.git
+    if s.contains("://") {
+        let leaf = s.trim_end_matches('/').rsplit('/').next().unwrap_or("");
+        let name = leaf.trim_end_matches(".git");
+        return if name.is_empty() {
+            None
+        } else {
+            Some(name.to_string())
+        };
+    }
+    // Absolute / home / Windows path
+    let looks_like_path = s.starts_with('/')
+        || s.starts_with('~')
+        || (s.len() >= 3
+            && s.as_bytes()[1] == b':'
+            && (s.as_bytes()[2] == b'\\' || s.as_bytes()[2] == b'/'));
+    if looks_like_path {
+        let trimmed = s.trim_end_matches(['/', '\\']);
+        let leaf = trimmed.rsplit(['/', '\\']).next().unwrap_or("");
+        return if leaf.is_empty() {
+            None
+        } else {
+            Some(leaf.to_string())
+        };
+    }
+    // name@marketplace or owner/repo@ref
+    if let Some((left, _right)) = s.split_once('@') {
+        if left.is_empty() {
+            return None;
+        }
+        if !left.contains('/') {
+            return Some(left.to_string());
+        }
+        let leaf = left.rsplit('/').next().unwrap_or("");
+        return if leaf.is_empty() {
+            None
+        } else {
+            Some(leaf.to_string())
+        };
+    }
+    // bare name
+    if !s.contains('/') {
+        return Some(s.to_string());
+    }
+    // owner/repo
+    let leaf = s.rsplit('/').next().unwrap_or("");
+    if leaf.is_empty() {
+        None
+    } else {
+        Some(leaf.to_string())
+    }
+}
+
+/// Install from path / git URL / GitHub shorthand / marketplace name
+/// (`grok plugin install <source> --trust`), then enable, then soft-respawn.
+/// `--trust` is required for non-interactive UI; enable so skills/MCP load without a second step.
 #[tauri::command]
 pub async fn plugin_install(
     app: tauri::AppHandle,
@@ -3054,16 +3142,55 @@ pub async fn plugin_install(
 ) -> Result<serde_json::Value, String> {
     let source = normalize_plugin_install_source(&source)?;
     let source_for_cmd = source.clone();
-    let result = tauri::async_runtime::spawn_blocking(move || {
-        run_grok_cli_args(
-            &["plugin", "install", &source_for_cmd, "--trust"],
-            PLUGIN_MUTATE_TIMEOUT_SECS,
-        )
-    })
+    let enable_name = plugin_name_from_install_source(&source);
+    let enable_name_for_cmd = enable_name.clone();
+    let result = tauri::async_runtime::spawn_blocking(
+        move || -> Result<(String, String, bool, Option<String>), String> {
+            let (stdout, stderr, ok) = run_grok_cli_args(
+                &["plugin", "install", &source_for_cmd, "--trust"],
+                PLUGIN_MUTATE_TIMEOUT_SECS,
+            )?;
+            if !ok {
+                return Ok((stdout, stderr, false, None));
+            }
+            // Plugins stay off until enabled — enable so the install is usable immediately.
+            let mut enable_msg: Option<String> = None;
+            if let Some(name) = enable_name_for_cmd {
+                match run_grok_cli_args(
+                    &["plugin", "enable", &name],
+                    PLUGIN_CMD_TIMEOUT_SECS,
+                ) {
+                    Ok((e_out, e_err, e_ok)) => {
+                        if e_ok {
+                            enable_msg = Some(if e_out.is_empty() {
+                                format!("enabled {name}")
+                            } else {
+                                e_out
+                            });
+                        } else {
+                            // Install succeeded; surface enable failure as soft note.
+                            let note = if !e_err.is_empty() {
+                                e_err
+                            } else if !e_out.is_empty() {
+                                e_out
+                            } else {
+                                format!("installed but failed to enable {name}")
+                            };
+                            enable_msg = Some(note);
+                        }
+                    }
+                    Err(e) => {
+                        enable_msg = Some(format!("installed but enable failed: {e}"));
+                    }
+                }
+            }
+            Ok((stdout, stderr, true, enable_msg))
+        },
+    )
     .await
     .map_err(|e| e.to_string())??;
 
-    let (stdout, stderr, ok) = result;
+    let (stdout, stderr, ok, enable_msg) = result;
     if !ok {
         let msg = if !stderr.is_empty() {
             stderr
@@ -3075,10 +3202,17 @@ pub async fn plugin_install(
         return Err(msg.chars().take(400).collect());
     }
     mgr.soft_respawn(&app).await;
+    let mut message = stdout.chars().take(400).collect::<String>();
+    if let Some(em) = enable_msg {
+        if !message.is_empty() {
+            message.push_str(" · ");
+        }
+        message.push_str(&em.chars().take(200).collect::<String>());
+    }
     Ok(serde_json::json!({
         "ok": true,
-        "name": source,
-        "message": stdout.chars().take(400).collect::<String>(),
+        "name": enable_name.unwrap_or(source),
+        "message": message,
     }))
 }
 
@@ -3245,6 +3379,38 @@ disabled = ["yes"]
         );
         assert!(normalize_plugin_install_source("").is_err());
         assert!(normalize_plugin_install_source("   ").is_err());
+    }
+
+    #[test]
+    fn plugin_name_from_install_source_variants() {
+        assert_eq!(
+            plugin_name_from_install_source("vercel@xAI Official").as_deref(),
+            Some("vercel")
+        );
+        assert_eq!(
+            plugin_name_from_install_source("vercel").as_deref(),
+            Some("vercel")
+        );
+        assert_eq!(
+            plugin_name_from_install_source("owner/repo").as_deref(),
+            Some("repo")
+        );
+        assert_eq!(
+            plugin_name_from_install_source("owner/repo@v1").as_deref(),
+            Some("repo")
+        );
+        assert_eq!(
+            plugin_name_from_install_source("https://github.com/a/b.git").as_deref(),
+            Some("b")
+        );
+        assert_eq!(
+            plugin_name_from_install_source("git@github.com:a/b.git").as_deref(),
+            Some("b")
+        );
+        assert_eq!(
+            plugin_name_from_install_source("/tmp/my-plugin").as_deref(),
+            Some("my-plugin")
+        );
     }
 
     #[test]
@@ -5986,21 +6152,23 @@ pub async fn permission_rules_set(
 // from PR #82
 
 /// Create root `AGENTS.md` stub when missing (idempotent).
+/// IPC arg is `projectPath` (camelCase) → `project_path`.
 #[tauri::command]
 pub async fn project_rules_ensure_template(
-    path: String,
+    project_path: String,
 ) -> Result<crate::project_rules::ProjectRulesEnsureResult, String> {
-    crate::project_rules::ensure_agents_template(&path)
+    crate::project_rules::ensure_agents_template(&project_path)
 }
 
 // from PR #82
 
 /// List existing project rule files (AGENTS.md, CLAUDE.md, `.grok/rules*`, nested AGENTS).
+/// IPC arg is `projectPath` (camelCase) → `project_path`.
 #[tauri::command]
 pub async fn project_rules_list(
-    path: String,
+    project_path: String,
 ) -> Result<crate::project_rules::ProjectRulesListResult, String> {
-    crate::project_rules::list_project_rules(&path)
+    crate::project_rules::list_project_rules(&project_path)
 }
 
 // from PR #77
@@ -6760,6 +6928,49 @@ pub fn parse_marketplace_list_json(raw: &str) -> Result<Vec<MarketplaceSourceDto
 }
 
 
+/// Fill skill/MCP/hooks/agents counts from `components` when top-level flags are empty.
+/// CLI often reports skill_count=0 / has_mcp=false while `components` is populated.
+fn enrich_available_from_components(
+    item: &serde_json::Value,
+    skill_count: Option<u32>,
+    has_hooks: bool,
+    has_agents: bool,
+    has_mcp: bool,
+) -> (Option<u32>, bool, bool, bool) {
+    let Some(comps) = item.get("components") else {
+        return (skill_count, has_hooks, has_agents, has_mcp);
+    };
+    let mut sc = skill_count;
+    let mut hh = has_hooks;
+    let mut ha = has_agents;
+    let mut hm = has_mcp;
+    if sc.unwrap_or(0) == 0 {
+        if let Some(arr) = comps.get("skills").and_then(|x| x.as_array()) {
+            sc = Some(arr.len() as u32);
+        }
+    }
+    if !hh {
+        if let Some(arr) = comps.get("hooks").and_then(|x| x.as_array()) {
+            hh = !arr.is_empty();
+        }
+    }
+    if !ha {
+        if let Some(arr) = comps.get("agents").and_then(|x| x.as_array()) {
+            ha = !arr.is_empty();
+        }
+    }
+    if !hm {
+        if let Some(arr) = comps
+            .get("mcpServers")
+            .or_else(|| comps.get("mcp_servers"))
+            .and_then(|x| x.as_array())
+        {
+            hm = !arr.is_empty();
+        }
+    }
+    (sc, hh, ha, hm)
+}
+
 /// Parse `plugin list --json --available`; keep status "available" rows only.
 pub fn parse_available_plugins_json(raw: &str) -> Result<Vec<AvailablePluginDto>, String> {
     let text = raw.trim();
@@ -6837,6 +7048,8 @@ pub fn parse_available_plugins_json(raw: &str) -> Result<Vec<AvailablePluginDto>
             .or_else(|| item.get("hasMcp"))
             .and_then(|x| x.as_bool())
             .unwrap_or(false);
+        let (skill_count, has_hooks, has_agents, has_mcp) =
+            enrich_available_from_components(item, skill_count, has_hooks, has_agents, has_mcp);
         out.push(AvailablePluginDto {
             name,
             status,

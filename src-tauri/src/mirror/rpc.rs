@@ -227,7 +227,8 @@ pub async fn dispatch(
                 .ok_or_else(|| RpcError::bad_params("text required"))?;
             let display_text = param_string(&params, &["displayText", "display_text"]);
             // Connect-before-send if client names a session that is not focused.
-            if let Some(sid) = param_string(&params, &["sessionId", "session_id"]) {
+            let target = param_string(&params, &["sessionId", "session_id"]);
+            if let Some(sid) = target.clone() {
                 let focused = mgr.snapshot().session_id;
                 if focused.as_deref() != Some(sid.as_str()) {
                     mgr.connect(app.clone(), None, Some(sid), None)
@@ -239,8 +240,10 @@ pub async fn dispatch(
                     "no active session — call session.connect or pass sessionId",
                 ));
             }
+            // Pass the id through so Host re-focuses if another chat stole the
+            // live slot between connect and send.
             let snap = mgr
-                .send_message(app, text, display_text)
+                .send_message(app, text, display_text, target)
                 .await
                 .map_err(RpcError::host)?;
             Ok(serde_json::to_value(snap).map_err(|e| RpcError::host(e.to_string()))?)
@@ -248,7 +251,11 @@ pub async fn dispatch(
         "session.stop" => {
             let app = app.ok_or_else(RpcError::no_ctx)?.clone();
             let mgr = mgr.ok_or_else(RpcError::no_ctx)?.clone();
-            let snap = mgr.stop(app).await.map_err(RpcError::host)?;
+            let session_id = param_string(&params, &["sessionId", "session_id"]);
+            let snap = mgr
+                .stop(app, session_id)
+                .await
+                .map_err(RpcError::host)?;
             Ok(serde_json::to_value(snap).map_err(|e| RpcError::host(e.to_string()))?)
         }
 
@@ -263,7 +270,14 @@ pub async fn dispatch(
             let option_id = param_string(&params, &["optionId", "option_id"]);
             let scope_key = param_string(&params, &["scopeKey", "scope_key", "scope"]);
             let snap = mgr
-                .resolve_permission(app, rpc_id, decision, option_id, scope_key)
+                .resolve_permission(
+                    app,
+                    rpc_id,
+                    decision,
+                    option_id,
+                    scope_key,
+                    param_string(&params, &["sessionId", "session_id"]),
+                )
                 .await
                 .map_err(RpcError::host)?;
             Ok(serde_json::to_value(snap).map_err(|e| RpcError::host(e.to_string()))?)
@@ -276,7 +290,13 @@ pub async fn dispatch(
             let feedback = param_string(&params, &["feedback"]);
             let rpc_id = param_u64(&params, &["rpcId", "rpc_id"]);
             let snap = mgr
-                .resolve_plan(app, decision, feedback, rpc_id)
+                .resolve_plan(
+                    app,
+                    decision,
+                    feedback,
+                    rpc_id,
+                    param_string(&params, &["sessionId", "session_id"]),
+                )
                 .await
                 .map_err(RpcError::host)?;
             Ok(serde_json::to_value(snap).map_err(|e| RpcError::host(e.to_string()))?)
@@ -292,7 +312,13 @@ pub async fn dispatch(
                 .filter(|v| !v.is_null());
             let rpc_id = param_u64(&params, &["rpcId", "rpc_id"]);
             let snap = mgr
-                .resolve_ask_user(app, decision, answers, rpc_id)
+                .resolve_ask_user(
+                    app,
+                    decision,
+                    answers,
+                    rpc_id,
+                    param_string(&params, &["sessionId", "session_id"]),
+                )
                 .await
                 .map_err(RpcError::host)?;
             Ok(serde_json::to_value(snap).map_err(|e| RpcError::host(e.to_string()))?)

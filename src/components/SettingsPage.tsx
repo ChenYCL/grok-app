@@ -534,7 +534,7 @@ export function SettingsPage({
   onCliBlur,
   acpServerAddr,
   onAcpServerAddr,
-  maxConcurrentAgents = 3,
+  maxConcurrentAgents = 8,
   onMaxConcurrentAgents,
   agentIdleMinutes = 30,
   onAgentIdleMinutes,
@@ -2526,14 +2526,14 @@ export function SettingsPage({
                     className="settings-input"
                     type="number"
                     min={1}
-                    max={8}
+                    max={32}
                     step={1}
                     value={maxConcurrentAgents}
                     onChange={(e) => {
                       const n = Number(e.target.value);
                       if (!Number.isFinite(n)) return;
                       onMaxConcurrentAgents?.(
-                        Math.min(8, Math.max(1, Math.round(n))),
+                        Math.min(32, Math.max(1, Math.round(n))),
                       );
                     }}
                   />

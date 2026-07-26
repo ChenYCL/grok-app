@@ -1,8 +1,11 @@
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 import {
   availablePluginMetaLine,
+  enrichAvailableFromComponents,
+  filterAvailableByMarketplace,
   filterAvailablePlugins,
   filterPluginsByQuery,
+  isXaiOfficialMarketplace,
   marketplaceQualifiedInstallSource,
   marketplaceRemoveTarget,
   marketplaceSourceLabel,
@@ -11,10 +14,19 @@ import {
   normalizeMarketplaceUpdateName,
   parseMarketplaceListJson,
   parsePluginListAvailableJson,
+  pickDefaultMarketplaceFilter,
   resolveMarketplaceRemoveArg,
   sortMarketplaceSourcesByName,
   takePluginsPage,
+  XAI_OFFICIAL_MARKETPLACE,
 } from "./pluginMarketplace";
+import {
+  __resetMarketplaceCatalogCacheForTests,
+  invalidateMarketplaceCatalogCache,
+  isMarketplaceCatalogFresh,
+  loadMarketplaceCatalog,
+  removeAvailablePluginFromCache,
+} from "./marketplaceCatalogCache";
 
 const SAMPLE_LIST = `[
   {
@@ -216,5 +228,102 @@ describe("sort / page helpers", () => {
     expect(takePluginsPage(items, 40)).toHaveLength(40);
     expect(takePluginsPage(items, 0)).toHaveLength(0);
     expect(takePluginsPage([1, 2], 40)).toEqual([1, 2]);
+  });
+});
+
+describe("official filter + components enrich", () => {
+  it("detects xAI Official marketplace names", () => {
+    expect(isXaiOfficialMarketplace("xAI Official")).toBe(true);
+    expect(isXaiOfficialMarketplace("xai-official")).toBe(true);
+    expect(isXaiOfficialMarketplace("claude-plugins-official")).toBe(false);
+    expect(pickDefaultMarketplaceFilter([{ name: "xAI Official" }])).toBe(
+      "xAI Official",
+    );
+    expect(pickDefaultMarketplaceFilter([])).toBe(XAI_OFFICIAL_MARKETPLACE);
+  });
+
+  it("filters available by marketplace chip", () => {
+    const rows = [
+      { name: "a", marketplace: "xAI Official" },
+      { name: "b", marketplace: "claude-plugins-official" },
+    ];
+    expect(filterAvailableByMarketplace(rows, "xAI Official").map((p) => p.name)).toEqual([
+      "a",
+    ]);
+    expect(filterAvailableByMarketplace(rows, "__all__")).toHaveLength(2);
+  });
+
+  it("enriches skill/MCP counts from components when top-level is empty", () => {
+    const enriched = enrichAvailableFromComponents(
+      {
+        skill_count: 0,
+        has_mcp: false,
+        components: {
+          skills: [{ name: "s1" }, { name: "s2" }],
+          mcpServers: [{ name: "m" }],
+          hooks: [{ name: "h" }],
+          agents: [],
+        },
+      },
+      { skillCount: 0, hasHooks: false, hasAgents: false, hasMcp: false },
+    );
+    expect(enriched.skillCount).toBe(2);
+    expect(enriched.hasMcp).toBe(true);
+    expect(enriched.hasHooks).toBe(true);
+    expect(enriched.hasAgents).toBe(false);
+  });
+
+  it("parses available JSON with components enrich", () => {
+    const raw = JSON.stringify([
+      {
+        status: "available",
+        name: "vercel",
+        marketplace: "xAI Official",
+        skill_count: 0,
+        has_mcp: false,
+        components: {
+          skills: [{}, {}, {}],
+          mcpServers: [{}],
+        },
+      },
+    ]);
+    const [p] = filterAvailablePlugins(parsePluginListAvailableJson(raw));
+    expect(p.skillCount).toBe(3);
+    expect(p.hasMcp).toBe(true);
+  });
+});
+
+describe("marketplaceCatalogCache", () => {
+  beforeEach(() => {
+    __resetMarketplaceCatalogCacheForTests();
+  });
+
+  it("returns cached snapshot without re-fetching", async () => {
+    let calls = 0;
+    const fetch = async () => {
+      calls += 1;
+      return {
+        sources: [{ name: "xAI Official", kind: "git" }],
+        available: [{ name: "vercel", status: "available" }],
+      };
+    };
+    const first = await loadMarketplaceCatalog(fetch);
+    expect(first.fromCache).toBe(false);
+    expect(calls).toBe(1);
+    const second = await loadMarketplaceCatalog(fetch);
+    expect(second.fromCache).toBe(true);
+    expect(calls).toBe(1);
+    expect(isMarketplaceCatalogFresh()).toBe(true);
+
+    await loadMarketplaceCatalog(fetch, { force: true });
+    expect(calls).toBe(2);
+
+    removeAvailablePluginFromCache("vercel", null);
+    const after = await loadMarketplaceCatalog(fetch);
+    expect(after.available).toHaveLength(0);
+    expect(after.fromCache).toBe(true);
+
+    invalidateMarketplaceCatalogCache();
+    expect(isMarketplaceCatalogFresh()).toBe(false);
   });
 });

@@ -42,10 +42,24 @@ export interface MessageAttachment {
   isDir: boolean;
 }
 
-/** Ordered assistant turn pieces — thinking and body as they actually arrived. */
+/** Tool step embedded in the assistant timeline (live stream order). */
+export interface MessageToolSegment {
+  kind: "tool";
+  toolCallId: string;
+  title: string;
+  toolKind?: string;
+  status: string;
+  detail?: string;
+  path?: string;
+  streaming?: boolean;
+  isError?: boolean;
+}
+
+/** Ordered assistant turn pieces — thinking, tools, and body as they arrived. */
 export type MessageSegment =
   | { kind: "thought"; text: string }
-  | { kind: "content"; text: string };
+  | { kind: "content"; text: string }
+  | MessageToolSegment;
 
 export interface ChatMessage {
   id: string;
@@ -60,8 +74,8 @@ export interface ChatMessage {
    */
   thoughtPhases?: string[];
   /**
-   * Timeline of thought / content chunks in stream order.
-   * UI renders these interleaved (not all thinking stacked above the body).
+   * Timeline of thought / tool / content chunks in stream order.
+   * UI renders these interleaved on the real assistant timeline.
    */
   segments?: MessageSegment[];
   streaming?: boolean;
@@ -189,7 +203,350 @@ export function resolveToolDisplayTitle(
   return "";
 }
 
-/** Upsert a tool activity row by toolCallId (Codex-style live activity). */
+/** Index of the current-turn assistant to attach live tools into (prefer streaming). */
+export function findCurrentTurnAssistantIndex(
+  messages: ChatMessage[],
+): number {
+  let lastUser = -1;
+  for (let i = messages.length - 1; i >= 0; i--) {
+    if (messages[i]!.role === "user") {
+      lastUser = i;
+      break;
+    }
+  }
+  let lastAsst = -1;
+  for (let i = lastUser + 1; i < messages.length; i++) {
+    const m = messages[i]!;
+    if (m.role !== "assistant" || m.isError) continue;
+    if (m.streaming) return i;
+    lastAsst = i;
+  }
+  return lastAsst;
+}
+
+/** Build a tool segment from a live/persisted tool row fields. */
+export function toolSegmentFromFields(fields: {
+  toolCallId: string;
+  title: string;
+  toolKind?: string;
+  status: string;
+  detail?: string;
+  path?: string;
+  streaming?: boolean;
+  isError?: boolean;
+}): MessageToolSegment {
+  return {
+    kind: "tool",
+    toolCallId: fields.toolCallId,
+    title: fields.title,
+    toolKind: fields.toolKind,
+    status: fields.status,
+    detail: fields.detail,
+    path: fields.path,
+    streaming: !!fields.streaming,
+    isError: !!fields.isError,
+  };
+}
+
+/**
+ * Insert or update a tool segment on an assistant segment timeline.
+ * New tools append (true stream order); status updates mutate in place.
+ */
+export function upsertToolInSegments(
+  segs: MessageSegment[],
+  tool: MessageToolSegment,
+): MessageSegment[] {
+  const next = segs.map((s) =>
+    s.kind === "tool" ? { ...s } : { ...s },
+  ) as MessageSegment[];
+  const si = next.findIndex(
+    (s) => s.kind === "tool" && s.toolCallId === tool.toolCallId,
+  );
+  if (si >= 0) {
+    const prev = next[si] as MessageToolSegment;
+    // Never wipe a good title with empty/generic.
+    const title =
+      (tool.title && !isGenericToolLabel(tool.title) ? tool.title : "") ||
+      prev.title;
+    next[si] = {
+      ...prev,
+      ...tool,
+      title,
+      detail: tool.detail || prev.detail,
+      path: tool.path || prev.path,
+      toolKind: tool.toolKind || prev.toolKind,
+    };
+    return next;
+  }
+  next.push({ ...tool });
+  return next;
+}
+
+/** True when any assistant in the list already inlines this toolCallId. */
+export function isToolInlinedInAssistants(
+  messages: ChatMessage[],
+  toolCallId: string,
+): boolean {
+  const id = toolCallId.trim();
+  if (!id) return false;
+  for (const m of messages) {
+    if (m.role !== "assistant" || !m.segments?.length) continue;
+    for (const s of m.segments) {
+      if (s.kind === "tool" && s.toolCallId === id) return true;
+    }
+  }
+  return false;
+}
+
+/** Resolve stable toolCallId from a tool_step row. */
+export function toolCallIdOf(m: ChatMessage): string {
+  const fromField = (m.toolCallId || "").trim();
+  if (fromField) return fromField;
+  if (m.id.startsWith("tool-")) return m.id.slice(5);
+  return m.id;
+}
+
+function toolSegmentFromMessageRow(row: ChatMessage): MessageToolSegment | null {
+  if (!isToolStepMessage(row)) return null;
+  const tcid = toolCallIdOf(row);
+  if (!tcid) return null;
+  const status = (row.toolStatus || "completed").toLowerCase();
+  return toolSegmentFromFields({
+    toolCallId: tcid,
+    title: toolStepDisplayTitle(row) || row.content || tcid,
+    toolKind: row.toolKind,
+    status,
+    detail: row.toolDetail,
+    path: row.toolPath,
+    streaming: false,
+    isError: !!row.isError || status === "failed" || status === "error",
+  });
+}
+
+/**
+ * Place journal tools into a legacy [thought…, content…] timeline.
+ * Host often finalizes the assistant row *before* appending tool_step rows, and
+ * assistant.createdAt is often *after* tool timestamps — so tools must not sit
+ * only after the answer. Prefer: thoughts → tools → content for history reload.
+ * If segments already contain tools (live interleave), only fill missing ids.
+ */
+export function mergeToolsIntoAssistantSegments(
+  segs: MessageSegment[],
+  tools: MessageToolSegment[],
+): MessageSegment[] {
+  if (!tools.length) return compactMessageSegments(segs);
+  const existingIds = new Set(
+    segs
+      .filter((s): s is MessageToolSegment => s.kind === "tool")
+      .map((s) => s.toolCallId),
+  );
+  const missing = tools.filter((t) => !existingIds.has(t.toolCallId));
+  if (!missing.length) {
+    // Still apply status updates for known tools.
+    let next = segs;
+    for (const t of tools) next = upsertToolInSegments(next, t);
+    return compactMessageSegments(next);
+  }
+
+  const alreadyHasTools = segs.some((s) => s.kind === "tool");
+  if (alreadyHasTools) {
+    let next = segs;
+    for (const t of missing) next = upsertToolInSegments(next, t);
+    return compactMessageSegments(next);
+  }
+
+  // Legacy journal reconstruction: tools between reasoning and answer.
+  const thoughts = segs.filter(
+    (s): s is { kind: "thought"; text: string } => s.kind === "thought",
+  );
+  const contents = segs.filter(
+    (s): s is { kind: "content"; text: string } => s.kind === "content",
+  );
+  const rest = segs.filter((s) => s.kind !== "thought" && s.kind !== "content");
+  return compactMessageSegments([
+    ...thoughts,
+    ...rest,
+    ...missing,
+    ...contents,
+  ]);
+}
+
+/**
+ * After journal reload, stitch turn tool_step rows into the turn assistant.
+ *
+ * Collects tools anywhere in the user-turn window (before or after the assistant
+ * row — Host journal is often U → A → tools). Rebuilds display order as
+ * thought → tools → content when segments have no live tool interleave yet.
+ */
+export function weaveToolsIntoAssistantSegments(
+  messages: ChatMessage[],
+): ChatMessage[] {
+  if (!messages.length) return messages;
+  const out = messages.map((m) =>
+    m.segments
+      ? { ...m, segments: m.segments.map((s) => ({ ...s })) as MessageSegment[] }
+      : { ...m },
+  );
+
+  // Walk by user turns so tools before/after assistant all attach to that turn.
+  let i = 0;
+  while (i < out.length) {
+    // Advance to a turn start (user) or orphan prefix.
+    if (out[i]!.role !== "user" && i === 0) {
+      // Orphan non-user prefix — handle as one synthetic turn below via window.
+    }
+
+    let turnStart = i;
+    if (out[i]!.role === "user") {
+      turnStart = i + 1;
+    } else if (i > 0) {
+      i += 1;
+      continue;
+    }
+
+    let turnEnd = turnStart;
+    while (turnEnd < out.length && out[turnEnd]!.role !== "user") {
+      turnEnd += 1;
+    }
+
+    // Assistants in this turn (non-error).
+    const asstPositions: number[] = [];
+    for (let k = turnStart; k < turnEnd; k++) {
+      const m = out[k]!;
+      if (m.role === "assistant" && !m.isError) asstPositions.push(k);
+    }
+
+    // Tools in this turn, stable journal order (array order; not createdAt).
+    const turnTools: MessageToolSegment[] = [];
+    const seenTool = new Set<string>();
+    for (let k = turnStart; k < turnEnd; k++) {
+      const row = out[k]!;
+      if (!isToolStepMessage(row)) continue;
+      const seg = toolSegmentFromMessageRow(row);
+      if (!seg || seenTool.has(seg.toolCallId)) continue;
+      seenTool.add(seg.toolCallId);
+      turnTools.push(seg);
+    }
+
+    if (asstPositions.length === 1 && turnTools.length) {
+      const aIdx = asstPositions[0]!;
+      const asst = out[aIdx]!;
+      const segs = mergeToolsIntoAssistantSegments(
+        ensureSegments(asst),
+        turnTools,
+      );
+      const derived = deriveFieldsFromSegments(segs);
+      out[aIdx] = { ...asst, ...derived, segments: segs };
+    } else if (asstPositions.length > 1 && turnTools.length) {
+      // Multi-assistant turn: assign tools after each assistant until next asst.
+      for (let ai = 0; ai < asstPositions.length; ai++) {
+        const aIdx = asstPositions[ai]!;
+        const nextAsst =
+          ai + 1 < asstPositions.length
+            ? asstPositions[ai + 1]!
+            : turnEnd;
+        const sliceTools: MessageToolSegment[] = [];
+        const seen = new Set<string>();
+        for (let k = aIdx + 1; k < nextAsst; k++) {
+          const row = out[k]!;
+          if (!isToolStepMessage(row)) continue;
+          const seg = toolSegmentFromMessageRow(row);
+          if (!seg || seen.has(seg.toolCallId)) continue;
+          seen.add(seg.toolCallId);
+          sliceTools.push(seg);
+        }
+        // Also tools before the first assistant in the turn → first assistant.
+        if (ai === 0) {
+          for (let k = turnStart; k < aIdx; k++) {
+            const row = out[k]!;
+            if (!isToolStepMessage(row)) continue;
+            const seg = toolSegmentFromMessageRow(row);
+            if (!seg || seen.has(seg.toolCallId)) continue;
+            seen.add(seg.toolCallId);
+            sliceTools.unshift(seg);
+          }
+        }
+        if (!sliceTools.length) continue;
+        const asst = out[aIdx]!;
+        const segs = mergeToolsIntoAssistantSegments(
+          ensureSegments(asst),
+          sliceTools,
+        );
+        const derived = deriveFieldsFromSegments(segs);
+        out[aIdx] = { ...asst, ...derived, segments: segs };
+      }
+    }
+
+    i = turnEnd > i ? turnEnd : i + 1;
+  }
+  return out;
+}
+
+/**
+ * Pull current-turn tool_step rows into an assistant's segments when missing.
+ * Tools that appear *before* the assistant message are prepended; later tools append.
+ * Keeps live order when the agent runs tools before the first stream token.
+ */
+export function syncTurnToolsIntoAssistant(
+  messages: ChatMessage[],
+  aIdx: number,
+): ChatMessage[] {
+  if (aIdx < 0 || aIdx >= messages.length) return messages;
+  const asst = messages[aIdx]!;
+  if (asst.role !== "assistant" || asst.isError) return messages;
+
+  let lastUser = -1;
+  for (let i = aIdx - 1; i >= 0; i--) {
+    if (messages[i]!.role === "user") {
+      lastUser = i;
+      break;
+    }
+  }
+
+  let segs = ensureSegments(asst);
+  const have = new Set(
+    segs
+      .filter((s): s is MessageToolSegment => s.kind === "tool")
+      .map((s) => s.toolCallId),
+  );
+  const pre: MessageToolSegment[] = [];
+  const post: MessageToolSegment[] = [];
+
+  for (let i = lastUser + 1; i < messages.length; i++) {
+    if (i === aIdx) continue;
+    const m = messages[i]!;
+    if (m.role === "user") break;
+    if (m.role === "assistant" && i > aIdx) break;
+    if (!isToolStepMessage(m)) continue;
+    const tcid =
+      (m.toolCallId || "").trim() ||
+      (m.id.startsWith("tool-") ? m.id.slice(5) : m.id);
+    if (!tcid || have.has(tcid)) continue;
+    const status = (m.toolStatus || "completed").toLowerCase();
+    const toolSeg = toolSegmentFromFields({
+      toolCallId: tcid,
+      title: toolStepDisplayTitle(m) || m.content || tcid,
+      toolKind: m.toolKind,
+      status,
+      detail: m.toolDetail,
+      path: m.toolPath,
+      streaming: !!m.streaming,
+      isError: !!m.isError || status === "failed" || status === "error",
+    });
+    have.add(tcid);
+    if (i < aIdx) pre.push(toolSeg);
+    else post.push(toolSeg);
+  }
+
+  if (!pre.length && !post.length) return messages;
+  segs = compactMessageSegments([...pre, ...segs, ...post]);
+  const derived = deriveFieldsFromSegments(segs);
+  const copy = messages.slice();
+  copy[aIdx] = { ...asst, ...derived, segments: segs };
+  return copy;
+}
+
+/** Upsert a tool activity row by toolCallId; also pin into assistant timeline. */
 export function applyToolEvent(
   messages: ChatMessage[],
   payload: ToolEventPayload,
@@ -223,28 +580,60 @@ export function applyToolEvent(
     createdAt: now,
     isError: status === "failed" || status === "error",
   };
-  if (idx < 0) return [...messages, nextRow];
-  const copy = messages.slice();
-  // Never downgrade a good title to empty / generic on later updates.
-  const mergedTitle =
-    title ||
-    resolveToolDisplayTitle(
-      {
-        title: prev!.content,
-        kind: prev!.toolKind,
-        detail: prev!.toolDetail,
-        path: prev!.toolPath,
-      },
-      prev!.content,
-    );
-  copy[idx] = {
-    ...prev!,
-    ...nextRow,
-    createdAt: prev!.createdAt || now,
-    content: mergedTitle,
-    toolDetail: nextRow.toolDetail || prev!.toolDetail,
-    toolPath: nextRow.toolPath || prev!.toolPath,
-    toolKind: nextRow.toolKind || prev!.toolKind,
+
+  let copy: ChatMessage[];
+  let mergedTitle = title;
+  if (idx < 0) {
+    copy = [...messages, nextRow];
+  } else {
+    copy = messages.slice();
+    // Never downgrade a good title to empty / generic on later updates.
+    mergedTitle =
+      title ||
+      resolveToolDisplayTitle(
+        {
+          title: prev!.content,
+          kind: prev!.toolKind,
+          detail: prev!.toolDetail,
+          path: prev!.toolPath,
+        },
+        prev!.content,
+      );
+    copy[idx] = {
+      ...prev!,
+      ...nextRow,
+      createdAt: prev!.createdAt || now,
+      content: mergedTitle,
+      toolDetail: nextRow.toolDetail || prev!.toolDetail,
+      toolPath: nextRow.toolPath || prev!.toolPath,
+      toolKind: nextRow.toolKind || prev!.toolKind,
+    };
+  }
+
+  // Embed into the current-turn assistant so the UI can render true timeline order.
+  const aIdx = findCurrentTurnAssistantIndex(copy);
+  if (aIdx < 0) return copy;
+  const asst = copy[aIdx]!;
+  const row = idx < 0 ? nextRow : copy[idx]!;
+  const toolSeg = toolSegmentFromFields({
+    toolCallId: tcid,
+    title: mergedTitle || row.content || "",
+    toolKind: row.toolKind,
+    status: row.toolStatus || status,
+    detail: row.toolDetail,
+    path: row.toolPath,
+    streaming: running,
+    isError: !!row.isError,
+  });
+  const segs = compactMessageSegments(
+    upsertToolInSegments(ensureSegments(asst), toolSeg),
+  );
+  const derived = deriveFieldsFromSegments(segs);
+  copy = copy.slice();
+  copy[aIdx] = {
+    ...asst,
+    ...derived,
+    segments: segs,
   };
   return copy;
 }
@@ -550,29 +939,46 @@ export function deriveFieldsFromSegments(segments: MessageSegment[]): {
 }
 
 /**
- * Build an interleaved timeline from journal fields.
- * Host stores one content blob + thought phases (pre-body, then post-body…).
- * Approximation: first thought phase(s) before body, remaining after body.
- * Live streaming uses applyStreamChunk which keeps true order in `segments`.
- */
-/**
  * Compact a segment timeline for display / persistence hygiene:
  * - drop empty thought/content pieces
- * - merge adjacent same-kind segments (spurious "new" thought phases after
+ * - merge adjacent same-kind text segments (spurious "new" thought phases after
  *   empty assistant ticks used to create back-to-back 思考 2 / 思考 3 rows)
+ * - keep tool steps; coalesce duplicate toolCallId updates in place
  */
 export function compactMessageSegments(
   segments: MessageSegment[],
 ): MessageSegment[] {
   const out: MessageSegment[] = [];
   for (const raw of segments) {
+    if (raw.kind === "tool") {
+      const existing = out.findIndex(
+        (s) => s.kind === "tool" && s.toolCallId === raw.toolCallId,
+      );
+      if (existing >= 0) {
+        const prev = out[existing] as MessageToolSegment;
+        const title =
+          (raw.title && !isGenericToolLabel(raw.title) ? raw.title : "") ||
+          prev.title;
+        out[existing] = {
+          ...prev,
+          ...raw,
+          title,
+          detail: raw.detail || prev.detail,
+          path: raw.path || prev.path,
+          toolKind: raw.toolKind || prev.toolKind,
+        };
+        continue;
+      }
+      out.push({ ...raw });
+      continue;
+    }
     if (!raw.text.trim()) continue;
     const last = out[out.length - 1];
     if (last && last.kind === raw.kind) {
-      if (raw.kind === "thought") {
+      if (raw.kind === "thought" && last.kind === "thought") {
         // Preserve a readable break between formerly split phases.
         last.text = `${last.text.replace(/\s+$/, "")}\n\n${raw.text.replace(/^\s+/, "")}`;
-      } else {
+      } else if (raw.kind === "content" && last.kind === "content") {
         last.text += raw.text;
       }
       continue;
@@ -735,6 +1141,28 @@ export function canSend(state: SessionState): boolean {
 
 export function canStop(state: SessionState): boolean {
   return state === "streaming" || state === "awaiting_permission";
+}
+
+/**
+ * Host refused a *targeted* `session_send` because that chat holds no live
+ * agent process (idle-recycled, crashed, or focus moved mid-call).
+ *
+ * Host fails loudly instead of falling back to the live slot — that fallback
+ * was how one chat's prompt ended up in another chat's journal. Callers should
+ * cold-connect the target and retry the same turn once.
+ */
+export function isSessionNotLiveError(err: unknown): boolean {
+  const text =
+    typeof err === "string"
+      ? err
+      : err && typeof err === "object"
+        ? String((err as { message?: unknown }).message ?? err)
+        : String(err);
+  if (!text.includes("CONNECT_FAILED")) return false;
+  return (
+    text.includes("no live agent process") ||
+    text.includes("lost focus before send")
+  );
 }
 
 /** Host / UI “in progress” — sidebar spinner and cache preference. */
@@ -911,10 +1339,106 @@ export function forkSessionTitle(sourceTitle: string | undefined | null): string
   return `Fork of ${base}`;
 }
 
+/** Client-only ids from optimistic send UI (`u-171…`, `a-pending-…`, etc.). */
+export function isClientOptimisticId(id: string): boolean {
+  return (
+    /^u-\d+$/.test(id) ||
+    id.startsWith("a-pending-") ||
+    /^a-\d+$/.test(id) ||
+    /^t-\d+$/.test(id)
+  );
+}
+
+/** Drop client optimistic shells (keep host UUIDs and tool-* journal rows). */
+export function stripClientOptimistic(
+  messages: ChatMessage[],
+): ChatMessage[] {
+  return messages.filter((m) => !isClientOptimisticId(m.id));
+}
+
+/**
+ * Remove optimistic user/pending-assistant rows that host journal already
+ * replaced under a different id (same body). Fixes: switch away after a turn
+ * completes → switch back → first user bubble duplicated at the end.
+ *
+ * Optimistic users are **replaced in place** by the host row (not dropped then
+ * left at the tail), so order stays U → A → … instead of A → … → U.
+ */
+export function reconcileOptimisticDuplicates(
+  messages: ChatMessage[],
+): ChatMessage[] {
+  const realUsersByContent = new Map<string, ChatMessage>();
+  for (const m of messages) {
+    if (m.role === "user" && !isClientOptimisticId(m.id)) {
+      const key = m.content.trim();
+      if (key && !realUsersByContent.has(key)) {
+        realUsersByContent.set(key, m);
+      }
+    }
+  }
+  const hasHostAssistant = messages.some(
+    (m) =>
+      m.role === "assistant" &&
+      !isClientOptimisticId(m.id) &&
+      !m.id.startsWith("a-pending-"),
+  );
+  const placedRealUserIds = new Set<string>();
+  const out: ChatMessage[] = [];
+
+  for (const m of messages) {
+    if (m.role === "user" && isClientOptimisticId(m.id)) {
+      const real = realUsersByContent.get(m.content.trim());
+      if (real) {
+        if (!placedRealUserIds.has(real.id)) {
+          out.push(real);
+          placedRealUserIds.add(real.id);
+        }
+        continue;
+      }
+      out.push(m);
+      continue;
+    }
+    if (m.role === "user" && !isClientOptimisticId(m.id)) {
+      if (placedRealUserIds.has(m.id)) continue;
+      out.push(m);
+      placedRealUserIds.add(m.id);
+      continue;
+    }
+    if (m.id.startsWith("a-pending-")) {
+      if (!m.streaming) continue;
+      if (hasHostAssistant) continue;
+      out.push(m);
+      continue;
+    }
+    out.push(m);
+  }
+  return out;
+}
+
+/**
+ * Snapshot the thread being navigated away from.
+ *
+ * Never replaces a populated cache with an empty view: the workbench can be
+ * mid-clear (or was never painted, because the send belonged to a chat the user
+ * had already left) while the cache still holds that turn's real bubbles.
+ * Clobbering it there is how a user prompt went missing from the cache and had
+ * to be recovered from disk on the next open.
+ */
+export function snapshotOutgoingMessages(
+  cached: ChatMessage[] | undefined,
+  viewed: ChatMessage[],
+): ChatMessage[] {
+  if (viewed.length) return viewed;
+  return cached?.length ? cached : viewed;
+}
+
 /**
  * When reopening a session, prefer the in-memory cache over disk if the cache
  * is ahead (optimistic user bubble, partial stream). If disk has messages the
  * cache lacks (e.g. Remote IM appends), merge by id so IM turns are never lost.
+ *
+ * After a turn completes (nothing streaming), disk is the base of truth and
+ * client optimistic ids must not reappear as trailing duplicates.
  */
 export function preferSessionMessages(
   cached: ChatMessage[] | undefined,
@@ -922,54 +1446,94 @@ export function preferSessionMessages(
 ): ChatMessage[] {
   if (!cached?.length) return stored;
   if (!stored.length) return cached;
+
   if (cached.some((m) => m.streaming)) {
-    // Still fold in any disk-only rows (Remote IM) behind the stream.
-    return mergeSessionMessagesById(cached, stored);
+    // Keep streaming cache; fold disk-only rows (Remote IM); drop optimistic
+    // duplicates already persisted under host UUIDs.
+    return reconcileOptimisticDuplicates(
+      mergeSessionMessagesById(cached, stored),
+    );
   }
-  // Disk strictly longer (common after IM turns) → take disk as base, keep
-  // any cache-only optimistic ids that aren't on disk yet.
-  if (stored.length >= cached.length) {
-    return mergeSessionMessagesById(stored, cached);
-  }
-  if (cached.length > stored.length) {
-    return mergeSessionMessagesById(cached, stored);
-  }
-  const cacheChars = cached.reduce(
-    (n, m) => n + m.content.length + (m.thought?.length ?? 0),
-    0,
+
+  // Completed: prefer cache when it has live-interleaved tool segments that
+  // disk cannot represent yet; otherwise disk is authoritative.
+  const cacheHasLiveToolSegs = cached.some(
+    (m) =>
+      m.role === "assistant" &&
+      m.segments?.some((s) => s.kind === "tool"),
   );
-  const storeChars = stored.reduce(
-    (n, m) => n + m.content.length + (m.thought?.length ?? 0),
-    0,
+  const storedHasLiveToolSegs = stored.some(
+    (m) =>
+      m.role === "assistant" &&
+      m.segments?.some((s) => s.kind === "tool"),
   );
-  if (cacheChars > storeChars) return mergeSessionMessagesById(cached, stored);
-  return mergeSessionMessagesById(stored, cached);
+
+  if (cacheHasLiveToolSegs && !storedHasLiveToolSegs) {
+    return reconcileOptimisticDuplicates(
+      mergeSessionMessagesById(cached, stored),
+    );
+  }
+
+  // Disk base + non-optimistic cache-only extras (never reattach u-${ts}).
+  return reconcileOptimisticDuplicates(
+    mergeSessionMessagesById(stored, stripClientOptimistic(cached)),
+  );
 }
 
 /**
  * Union of two message lists by `id`. First list wins on conflict; extras from
- * second are appended. Order: first list order, then second-only rows in their order.
+ * second are appended. Order: **primary array order** (journal order), then
+ * second-only rows in their order.
+ *
+ * Do **not** re-sort by `createdAt`: Host journal often finalizes the assistant
+ * row with a later timestamp than tool_step rows (tools ran mid-turn). Sorting
+ * by createdAt turns `U → A → tools` into `U → tools → A` and breaks the
+ * transcript timeline on reload.
  */
 export function mergeSessionMessagesById(
   primary: ChatMessage[],
   secondary: ChatMessage[],
 ): ChatMessage[] {
-  const seen = new Set(primary.map((m) => m.id));
-  const out = [...primary];
+  const primaryIds = new Set(primary.map((m) => m.id));
+
+  // Secondary-only rows are placed **before the next row both lists share**,
+  // not appended at the tail. Appending reordered the thread whenever the
+  // cache was missing an early row: a mid-turn switch could leave the cache
+  // holding only the streaming assistant, and the journal's user prompt — the
+  // first thing in the turn — then rendered *after* the whole answer.
+  const beforeAnchor = new Map<string, ChatMessage[]>();
+  const tail: ChatMessage[] = [];
+  const takenIds = new Set<string>();
+  let bucket: ChatMessage[] = [];
   for (const m of secondary) {
-    if (!m.id || seen.has(m.id)) continue;
-    seen.add(m.id);
+    if (!m.id) continue;
+    if (primaryIds.has(m.id)) {
+      if (bucket.length) {
+        beforeAnchor.set(m.id, [...(beforeAnchor.get(m.id) ?? []), ...bucket]);
+        bucket = [];
+      }
+      continue;
+    }
+    if (takenIds.has(m.id)) continue;
+    takenIds.add(m.id);
+    bucket.push(m);
+  }
+  tail.push(...bucket);
+
+  // Primary is copied verbatim — including repeated ids, which journal
+  // `tool_step` rows legitimately have.
+  const out: ChatMessage[] = [];
+  const anchored = new Set<string>();
+  for (const m of primary) {
+    const extras = beforeAnchor.get(m.id);
+    if (extras && !anchored.has(m.id)) {
+      anchored.add(m.id);
+      out.push(...extras);
+    }
     out.push(m);
   }
-  // Stable chronological preference when createdAt present
-  const hasTs = out.some((m) => m.createdAt);
-  if (!hasTs) return out;
-  return out.slice().sort((a, b) => {
-    const ta = a.createdAt || "";
-    const tb = b.createdAt || "";
-    if (ta === tb) return 0;
-    return ta < tb ? -1 : 1;
-  });
+  out.push(...tail);
+  return out;
 }
 
 /**
@@ -1157,10 +1721,10 @@ export function applyStreamChunk(
     if (idx != null) {
       const next = messages.slice();
       next[idx] = appendThought(next[idx]!);
-      return next;
+      return syncTurnToolsIntoAssistant(next, idx);
     }
     const segs: MessageSegment[] = [{ kind: "thought", text: chunk.text }];
-    return [
+    const withAsst: ChatMessage[] = [
       ...messages,
       {
         id: chunk.messageId || `t-${Date.now()}`,
@@ -1172,6 +1736,7 @@ export function applyStreamChunk(
         streaming: true,
       },
     ];
+    return syncTurnToolsIntoAssistant(withAsst, withAsst.length - 1);
   }
 
   // assistant (default)
@@ -1196,7 +1761,7 @@ export function applyStreamChunk(
   if (idx < 0) {
     if (!chunk.text) return messages;
     const segs: MessageSegment[] = [{ kind: "content", text: chunk.text }];
-    return [
+    const withAsst: ChatMessage[] = [
       ...messages,
       {
         id: chunk.messageId || `a-${Date.now()}`,
@@ -1206,6 +1771,7 @@ export function applyStreamChunk(
         streaming: !chunk.done,
       },
     ];
+    return syncTurnToolsIntoAssistant(withAsst, withAsst.length - 1);
   }
 
   const next = messages.slice();
@@ -1226,7 +1792,7 @@ export function applyStreamChunk(
     segments: segs,
     streaming: !chunk.done,
   };
-  return next;
+  return syncTurnToolsIntoAssistant(next, idx);
 }
 
 /**

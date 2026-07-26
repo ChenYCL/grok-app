@@ -597,45 +597,6 @@ export function ExtensionsPanel({
         ) : null}
       </h2>
       <div className="settings-card ext-card">
-        <div className="ext-plugin-install">
-          <label className="ext-plugin-install__label" htmlFor="ext-plugin-source">
-            {tr("ext.plugins.installLabel")}
-          </label>
-          <div className="ext-plugin-install__row">
-            <input
-              id="ext-plugin-source"
-              type="text"
-              className="settings-input ext-plugin-install__input"
-              value={installSource}
-              placeholder={tr("ext.plugins.installPlaceholder")}
-              disabled={!!actionBusy || cliMissing}
-              autoComplete="off"
-              spellCheck={false}
-              onChange={(e) => setInstallSource(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") {
-                  e.preventDefault();
-                  void installPlugin();
-                }
-              }}
-            />
-            <button
-              type="button"
-              className="btn btn--solid btn--sm"
-              disabled={
-                !!actionBusy ||
-                cliMissing ||
-                !normalizePluginInstallSource(installSource)
-              }
-              onClick={() => void installPlugin()}
-            >
-              {actionBusy === "install"
-                ? tr("ext.plugins.installing")
-                : tr("ext.plugins.install")}
-            </button>
-          </div>
-          <p className="ext-plugin-install__hint">{tr("ext.plugins.installHint")}</p>
-        </div>
         {!loading && plugins.length > 0 ? (
           <div
             className="ext-plugin-filters"
@@ -666,9 +627,21 @@ export function ExtensionsPanel({
         ) : null}
         {loading && <p className="ext-empty">{tr("ext.plugins.loading")}</p>}
         {!loading && plugins.length === 0 && (
-          <p className="ext-empty">
-            {cliMissing ? tr("ext.plugins.emptyCli") : tr("ext.plugins.empty")}
-          </p>
+          <div className="ext-empty-cta">
+            <p className="ext-empty-cta__text">
+              {cliMissing ? tr("ext.plugins.emptyCli") : tr("ext.plugins.empty")}
+            </p>
+            {!cliMissing && onTabChange ? (
+              <button
+                type="button"
+                className="btn btn--solid btn--sm"
+                onClick={() => onTabChange("market")}
+              >
+                <IconPuzzle size={14} />
+                <span>{tr("ext.plugins.browseOfficial")}</span>
+              </button>
+            ) : null}
+          </div>
         )}
         {!loading && plugins.length > 0 && visiblePlugins.length === 0 && (
           <p className="ext-empty">{tr("ext.plugins.filterEmpty")}</p>
@@ -774,8 +747,53 @@ export function ExtensionsPanel({
             })}
           </ul>
         )}
-        {!loading ? (
-          <p className="ext-section-note">{tr("ext.plugins.note")}</p>
+        {!cliMissing ? (
+          <details className="ext-market-sources">
+            <summary className="ext-market-sources__summary">
+              {tr("ext.plugins.advancedInstall")}
+            </summary>
+            <div className="ext-plugin-install">
+              <label
+                className="ext-plugin-install__label"
+                htmlFor="ext-plugin-source"
+              >
+                {tr("ext.plugins.installLabel")}
+              </label>
+              <div className="ext-plugin-install__row">
+                <input
+                  id="ext-plugin-source"
+                  type="text"
+                  className="settings-input ext-plugin-install__input"
+                  value={installSource}
+                  placeholder={tr("ext.plugins.installPlaceholder")}
+                  disabled={!!actionBusy || cliMissing}
+                  autoComplete="off"
+                  spellCheck={false}
+                  onChange={(e) => setInstallSource(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      void installPlugin();
+                    }
+                  }}
+                />
+                <button
+                  type="button"
+                  className="btn btn--solid btn--sm"
+                  disabled={
+                    !!actionBusy ||
+                    cliMissing ||
+                    !normalizePluginInstallSource(installSource)
+                  }
+                  onClick={() => void installPlugin()}
+                >
+                  {actionBusy === "install"
+                    ? tr("ext.plugins.installing")
+                    : tr("ext.plugins.install")}
+                </button>
+              </div>
+            </div>
+          </details>
         ) : null}
       </div>
       </>
@@ -995,9 +1013,6 @@ export function ExtensionsPanel({
             })}
           </ul>
         )}
-        {!loading ? (
-          <p className="ext-section-note">{tr("ext.mcp.note")}</p>
-        ) : null}
       </div>
       </>
       )}
@@ -1013,11 +1028,6 @@ export function ExtensionsPanel({
           }}
         />
       )}
-
-      <p className="ext-footnote">
-        <IconPuzzle size={13} />
-        <span>{tr("ext.footnote")}</span>
-      </p>
 
       <GlassModal
         open={!!uninstallTarget}

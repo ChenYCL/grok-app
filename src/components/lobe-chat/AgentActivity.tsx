@@ -6,18 +6,13 @@
  * - Multiple tools replace the same line (no stack)
  * - Line sits in the stream (after current reply / at live edge)
  * - Hidden when no running tool (content can resume without chrome)
- * - Historical successful tool_step rows are not stacked in the transcript
- * - Failed tool_step rows stay visible (FailedToolRow)
+ * - Historical tool_step rows prefer assistant timeline segments (not a bottom dump)
+ * - Failures surface as quiet red marks on timeline tool rows
  */
 
-import { useMemo } from "react";
 import type { Locale } from "@/i18n";
-import { createT } from "@/i18n";
 import type { ChatMessage } from "@/lib/session";
-import {
-  isFailedToolStepMessage,
-  toolStepDisplayTitle,
-} from "@/lib/session";
+import { toolStepDisplayTitle } from "@/lib/session";
 import { EndOfTurnChip } from "./EndOfTurnChip";
 
 export {
@@ -53,41 +48,6 @@ export function LiveToolText({
       {title}
     </div>
   );
-}
-
-/** Historical / terminal failed tool — stays in transcript. */
-export function FailedToolRow({
-  message,
-  locale,
-}: {
-  message: ChatMessage;
-  locale: Locale;
-}) {
-  const tr = useMemo(() => createT(locale), [locale]);
-  const title = toolStepDisplayTitle(message) || tr("activity.failed");
-  const detail = message.toolDetail || message.toolPath || "";
-  return (
-    <div
-      className="lobe-chat-failed-tool"
-      role="status"
-      data-testid="failed-tool-row"
-      data-tool-id={message.toolCallId}
-    >
-      <span className="lobe-chat-failed-tool__dot" aria-hidden />
-      <div className="lobe-chat-failed-tool__body">
-        <div className="lobe-chat-failed-tool__title">{title}</div>
-        {detail ? (
-          <div className="lobe-chat-failed-tool__detail" title={detail}>
-            {detail}
-          </div>
-        ) : null}
-      </div>
-    </div>
-  );
-}
-
-export function isFailedToolVisible(m: ChatMessage): boolean {
-  return isFailedToolStepMessage(m);
 }
 
 /** @deprecated Prefer EndOfTurnChip — kept as thin alias. */

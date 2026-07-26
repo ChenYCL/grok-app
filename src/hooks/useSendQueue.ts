@@ -10,7 +10,6 @@ import {
 import type { Attachment } from "@/lib/attachments";
 import type { SessionSnapshot, SessionState } from "@/lib/session";
 import {
-  canShowQueueButton,
   claimQueueHead,
   dropQueuesForSessions,
   enqueueSend,
@@ -23,6 +22,7 @@ import {
   SEND_QUEUE_MAX,
   setQueueForKey,
   shouldEnqueueSend,
+  shouldHoldFlushForLive,
   type QueuedSend,
 } from "@/lib/sendQueue";
 
@@ -105,14 +105,17 @@ export function useSendQueue({
     setSendQueueByKey(next);
   }, []);
 
-  /** Enqueue a follow-up for the current session. Returns dropped count. */
+  /** Enqueue a follow-up for the *viewed* session (ref, not stale React id). */
   const enqueue = useCallback(
     (input: {
       storedDisplay: string;
       attachments: Attachment[];
       goalMode: boolean;
     }) => {
-      const key = queueSessionKey(sessionId);
+      // Prefer viewing ref so a mid-render session switch cannot mis-key the item.
+      const key = queueSessionKey(
+        viewingSessionIdRef.current ?? sessionId,
+      );
       const item = makeQueuedSend(input);
       const r = enqueueSend(getQueueForKey(sendQueueByKeyRef.current, key), item);
       writeMap(setQueueForKey(sendQueueByKeyRef.current, key, r.queue));
@@ -123,7 +126,7 @@ export function useSendQueue({
       }
       return r.dropped;
     },
-    [sessionId, showToast, labels, writeMap],
+    [sessionId, viewingSessionIdRef, showToast, labels, writeMap],
   );
 
   const removeItem = useCallback(
@@ -175,10 +178,17 @@ export function useSendQueue({
     if (queueFlushHoldRef.current) return;
     const live = liveHostRef.current;
     const viewId = viewingSessionIdRef.current;
-    if (live.sessionId && viewId && live.sessionId !== viewId) return;
-    if (shouldEnqueueSend(live.state, false)) return;
+    // Strict isolation: only ever claim the *viewed* session's queue.
+    // Never fall back to live.sessionId (that mixed draft UI with foreign queues).
+    const claimKey = queueSessionKey(viewId);
+    if (!getQueueForKey(sendQueueByKeyRef.current, claimKey).length) return;
 
-    const claimKey = queueSessionKey(viewId ?? live.sessionId);
+    // Same-session busy only: wait for this chat's turn to finish.
+    // Foreign busy must NOT block — executeSend demotes and spawns concurrent work.
+    if (shouldHoldFlushForLive(live.sessionId, live.state, viewId)) {
+      return;
+    }
+
     const claimed = claimQueueHead(sendQueueByKeyRef.current, claimKey);
     if (!claimed) return;
     const { head } = claimed;
@@ -229,14 +239,21 @@ export function useSendQueue({
     }
   }, [sessionState, setHold]);
 
-  // Auto-send next queued follow-up when the agent becomes idle.
+  // Auto-send next queued follow-up when *this viewed session* can take a turn.
   useEffect(() => {
     if (sessionState !== "ready" && sessionState !== "idle") return;
     if (connecting || sendInFlightRef.current || queueFlushHoldRef.current) {
       return;
     }
-    const key = queueSessionKey(sessionId);
+    // Viewed key only — never the live host's key when they differ.
+    const viewId = viewingSessionIdRef.current ?? sessionId;
+    const key = queueSessionKey(viewId);
     if (!getQueueForKey(sendQueueByKeyRef.current, key).length) return;
+    const live = liveHostRef.current;
+    // Hold only when this same session is mid-turn on Host.
+    if (shouldHoldFlushForLive(live.sessionId, live.state, viewId)) {
+      return;
+    }
     cancelFlushTimer();
     flushQueueTimerRef.current = setTimeout(() => {
       flushQueueTimerRef.current = null;
@@ -251,6 +268,8 @@ export function useSendQueue({
     flush,
     cancelFlushTimer,
     sendInFlightRef,
+    viewingSessionIdRef,
+    liveHostRef,
   ]);
 
   /** Clear hold and try flush immediately (user retry). */
@@ -273,7 +292,10 @@ export function useSendQueue({
     resumeFlush,
     shouldEnqueue: (state: SessionState, conn: boolean) =>
       shouldEnqueueSend(state, conn),
-    canShowQueueButton: (state: SessionState, conn: boolean, hasBody: boolean) =>
-      canShowQueueButton(state, conn, hasBody),
+    canShowQueueButton: (
+      state: SessionState,
+      conn: boolean,
+      hasBody: boolean,
+    ) => hasBody && shouldEnqueueSend(state, conn),
   };
 }

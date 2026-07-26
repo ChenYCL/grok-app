@@ -1,50 +1,44 @@
-# Plugin marketplace install (design note)
+# Plugin marketplace (App)
 
-Community ask: install Grok Build plugins from the App without dropping to CLI.
+Install and manage Grok Build plugins from Settings → Extensions without dropping to the CLI for day-1 discovery.
 
-## Current behavior (0.1.3+)
+## Current behavior
 
 | Action | Where | Effect |
 |--------|--------|--------|
-| List installed | Settings → Extensions → Plugins | `grok plugin list --json` + inspect enrich |
-| Enable / disable | Same UI | CLI + `~/.grok/config.toml` `[plugins].disabled` |
-| Details | Modal | `grok plugin details` |
-| Uninstall | In-app confirm (GlassModal) | `grok plugin uninstall` |
-| **Install from marketplace** | **CLI only** | e.g. `grok plugin install …` |
+| List installed | Extensions → Plugins | `grok plugin list --json` + inspect enrich |
+| Enable / disable | Same | CLI + `~/.grok/config.toml` |
+| Details / uninstall / update | Same | CLI; GlassModal confirms uninstall |
+| Browse catalog | Extensions → Marketplace | `plugin list --json --available` (cached) |
+| Install from catalog | Marketplace row → confirm | `plugin install --trust` then `plugin enable` + soft-respawn |
+| Manual install | Plugins → “Install from path or git…” | Same install path (path / git / `owner/repo`) |
+| Marketplace sources | Marketplace → sources details | add / remove / refresh git sources |
 
-Skills / MCP enable toggles are App-side (`extensions.json` + ACP inject); plugins follow **CLI/config as source of truth**.
+Skills / MCP enable toggles remain App-side (`extensions.json` + ACP inject). **Plugins follow CLI/config as source of truth** — do not invent a second store under `~/.grok-app`.
 
-## Why not ship install UI yet
+## Catalog UX
 
-1. **Trust & supply chain** — marketplace install runs third-party code; needs clear origin, version pin, and user confirmation copy (not a silent one-click).
-2. **CLI contract** — install flags, auth to marketplaces, and offline failure modes belong to Grok Build; App should wrap, not reimplement.
-3. **Scope** — enable/disable/uninstall already covers day-2 management; install is day-1 discovery and needs catalog UX (search, filters, risk badges).
+1. **Default filter** is **xAI Official** (about a dozen curated plugins). Other sources (e.g. Claude official) are available under “All sources” or per-source chips.
+2. **Cache**: first load runs CLI; re-entering Marketplace within ~6h uses in-memory cache. “Refresh catalog” forces a reload. Install/add/remove sources invalidate or patch the cache.
+3. **Install** uses GlassModal confirm (no `window.confirm`). On success the plugin is **trusted and enabled**, then the agent soft-respawns so skills/MCP appear on the next turn.
+4. **Empty Plugins tab** links to Marketplace (“Browse official plugins”).
 
-## Proposed product requirements (if we build it)
+## Component counts
 
-1. **Catalog**  
-   - Source: only what `grok plugin` / inspect can list or a documented marketplace API.  
-   - Show name, version, publisher, provides (skills / agents / hooks / MCP counts).
+CLI often returns top-level `skill_count: 0` / `has_mcp: false` while `components` is filled. Host parsing (Rust + TS) enriches counts from `components.skills` / `mcpServers` / `hooks` / `agents`.
 
-2. **Install flow**  
-   - Explicit confirm modal (GlassModal; **no** `window.confirm`).  
-   - Progress / error from CLI stderr (redacted).  
-   - On success: refresh list + soft-respawn agent (same as enable).
+## Safety
 
-3. **Safety**  
-   - Never auto-install.  
-   - Prefer pin to version when CLI supports it.  
-   - Support zip / Doctor never include marketplace tokens.
+- Never auto-install.
+- Install always passes `--trust` for non-interactive UI; confirmation copy states third-party code runs with agent permissions.
+- Prefer marketplace name pins (`name@xAI Official`) when the same id exists in multiple catalogs.
 
-4. **i18n**  
-   - en + zh + zh-TW for all new strings.
+## i18n
 
-5. **Non-goals (v1)**  
-   - Publishing plugins from the App.  
-   - Parallel package manager (npm/pip) installs outside `grok plugin`.
+All user-facing strings under `ext.plugins.*` / `ext.market.*` (en + zh + zh-TW).
 
-## Decision
+## Non-goals
 
-- **Short term:** keep install CLI-only; document in Extensions footnote (already).  
-- **Next:** open Issue when CLI has stable `plugin search` / `plugin install --json` for a clean Host wrapper.  
-- **Do not** invent a second plugin store under `~/.grok-app`.
+- Publishing plugins from the App.
+- Parallel package managers (npm/pip) outside `grok plugin`.
+- Hand-maintained catalog under app data (always CLI marketplace sources).

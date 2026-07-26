@@ -156,6 +156,10 @@ pub struct AppSettings {
     /// Recycle idle agent processes after this many minutes (I03). Default 30.
     #[serde(default = "default_agent_idle_minutes")]
     pub agent_idle_minutes: u32,
+    /// True once the legacy pool-size migration has run for this install.
+    /// Keeps a deliberate small pool from being lifted again on every launch.
+    #[serde(default)]
+    pub pool_size_migrated: bool,
     /// Pure stream silence before cancel prompt (I06). Default 120 seconds.
     #[serde(default = "default_stream_stall_seconds")]
     pub stream_stall_seconds: u32,
@@ -279,6 +283,8 @@ impl Default for AppSettings {
             acp_server_addr: None,
             max_concurrent_agents: default_max_concurrent_agents(),
             agent_idle_minutes: default_agent_idle_minutes(),
+            // Fresh installs already start on the current default.
+            pool_size_migrated: true,
             stream_stall_seconds: default_stream_stall_seconds(),
             store_api_keys_in_keychain: false,
             sandbox_profile: default_sandbox_profile(),
@@ -412,6 +418,25 @@ pub fn load_settings() -> AppSettings {
             s.store_api_keys_in_keychain = true;
             let _ = write_json(&settings_file(), &s);
         }
+    }
+    // One-time: installs predating the multi-session rework persisted the old
+    // default pool size (3). Without this they stay at three warm agents and
+    // hit the process limit while browsing a couple of chats.
+    if let Some(next) = crate::process_limits::migrate_max_concurrent(
+        s.max_concurrent_agents,
+        s.pool_size_migrated,
+    ) {
+        tracing::info!(
+            "settings migration: maxConcurrentAgents {} → {}",
+            s.max_concurrent_agents,
+            next
+        );
+        s.max_concurrent_agents = next;
+        s.pool_size_migrated = true;
+        let _ = write_json(&settings_file(), &s);
+    } else if !s.pool_size_migrated {
+        s.pool_size_migrated = true;
+        let _ = write_json(&settings_file(), &s);
     }
     s
 }
@@ -1394,13 +1419,49 @@ mod tests {
     }
 
     #[test]
+    fn legacy_settings_file_is_flagged_for_pool_migration() {
+        // A settings.json written before the multi-session rework: complete, but
+        // the pool pinned at the old default and no migration marker.
+        let mut v = serde_json::to_value(AppSettings::default()).unwrap();
+        let obj = v.as_object_mut().unwrap();
+        obj.insert("maxConcurrentAgents".into(), serde_json::json!(3));
+        obj.remove("poolSizeMigrated");
+        let s: AppSettings = serde_json::from_value(v).expect("parse legacy settings");
+        assert_eq!(s.max_concurrent_agents, 3);
+        assert!(
+            !s.pool_size_migrated,
+            "missing marker must read as not-yet-migrated"
+        );
+        assert_eq!(
+            crate::process_limits::migrate_max_concurrent(
+                s.max_concurrent_agents,
+                s.pool_size_migrated
+            ),
+            Some(8)
+        );
+    }
+
+    #[test]
+    fn fresh_install_needs_no_pool_migration() {
+        let s = AppSettings::default();
+        assert!(s.pool_size_migrated);
+        assert_eq!(
+            crate::process_limits::migrate_max_concurrent(
+                s.max_concurrent_agents,
+                s.pool_size_migrated
+            ),
+            None
+        );
+    }
+
+    #[test]
     fn default_settings_independent_mode() {
         let s = AppSettings::default();
         assert_eq!(s.session_data_mode, "independent");
         assert_eq!(s.permission_policy, "ask");
         assert_eq!(s.theme, "system");
         assert_eq!(s.locale, "en");
-        assert_eq!(s.max_concurrent_agents, 3);
+        assert_eq!(s.max_concurrent_agents, 8);
         assert_eq!(s.agent_idle_minutes, 30);
         assert_eq!(s.stream_stall_seconds, 120);
         assert_eq!(s.sandbox_profile, "off");

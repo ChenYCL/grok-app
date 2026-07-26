@@ -159,19 +159,29 @@ function SegmentRow({
         (seg.tool.status === "running" ? " is-running" : "")
       }
     >
-      <ToolLine tool={seg.tool} showTail />
+      {/* Detail tails only for failures (compact); successes = one-line title. */}
+      <ToolLine tool={seg.tool} showTailFailedOnly />
     </li>
   );
 }
 
 function ToolLine({
   tool,
-  showTail,
+  showTailFailedOnly,
 }: {
   tool: import("@/lib/turnActivity").TurnActivityTool;
-  showTail?: boolean;
+  /** When true, only failed tools may show a short detail line (not big code blocks). */
+  showTailFailedOnly?: boolean;
 }) {
   const failed = tool.isError || tool.status === "failed";
+  // One short failure hint — never dump full shell output in the activity list.
+  const failHint =
+    showTailFailedOnly && failed
+      ? (tool.path || tool.detail || "").trim().split("\n")[0] || ""
+      : "";
+  const failHintShort =
+    failHint.length > 72 ? `${failHint.slice(0, 71)}…` : failHint;
+
   return (
     <div className="lobe-turn-activity__tool">
       <span
@@ -182,11 +192,19 @@ function ToolLine({
         }
         aria-hidden
       />
-      <span className="lobe-turn-activity__tool-name" title={tool.detail || tool.path}>
+      <span
+        className={
+          "lobe-turn-activity__tool-name" +
+          (failed ? " is-error" : "")
+        }
+        title={tool.detail || tool.path || tool.name}
+      >
         {tool.summary || tool.name}
       </span>
-      {showTail && tool.detailTail && (failed || tool.status === "completed") ? (
-        <pre className="lobe-turn-activity__tail">{tool.detailTail}</pre>
+      {failHintShort ? (
+        <span className="lobe-turn-activity__fail-hint" title={failHint}>
+          {failHintShort}
+        </span>
       ) : null}
     </div>
   );

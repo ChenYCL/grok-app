@@ -8,12 +8,11 @@ import type { Locale } from "@/i18n";
 import { createT } from "@/i18n";
 import {
   formatTurnErrorBody,
-  isFailedToolStepMessage,
+  isToolInlinedInAssistants,
   messageSegments,
   type ChatMessage,
   type SessionState,
 } from "@/lib/session";
-import { buildTurnActivity } from "@/lib/turnActivity";
 import { isEndOfTurnMarker } from "@/lib/endOfTurn";
 import type { Attachment } from "@/lib/attachments";
 import {
@@ -57,12 +56,17 @@ import {
 import { extractAutomationPayload } from "@/lib/automationSetup";
 import {
   isToolStepMessage,
-  FailedToolRow,
   LiveToolText,
   pickRunningTurnTool,
 } from "./AgentActivity";
 import { EndOfTurnChip } from "./EndOfTurnChip";
-import { TurnActivityBlock } from "./TurnActivityBlock";
+import {
+  TimelineToolRow,
+  toolSegmentFromMessage,
+  toolSegmentIsRunning,
+} from "./TimelineToolRow";
+import { TimelinePhaseBlock } from "./TimelinePhaseBlock";
+import { buildTimelineUnits } from "@/lib/timelinePhases";
 import "./lobe-chat.css";
 
 type AttachLabels = {
@@ -392,30 +396,12 @@ export function ConversationThread({
   findQuery = "",
   findHitMessageIds,
   findActive = null,
-  onOpenSessionChanges,
-  onOpenModifiedPath,
+  onOpenSessionChanges: _onOpenSessionChanges,
+  onOpenModifiedPath: _onOpenModifiedPath,
 }: ConversationThreadProps) {
   const tr = useMemo(() => createT(locale), [locale]);
-  const turnActivity = useMemo(
-    () => buildTurnActivity(messages),
-    [messages],
-  );
-  /** Last assistant in the current turn — attach activity summary below it. */
-  const activityAnchorAssistantId = useMemo(() => {
-    let lastUser = -1;
-    for (let i = messages.length - 1; i >= 0; i--) {
-      if (messages[i]!.role === "user") {
-        lastUser = i;
-        break;
-      }
-    }
-    let lastAsst: string | null = null;
-    for (let i = lastUser + 1; i < messages.length; i++) {
-      const m = messages[i]!;
-      if (m.role === "assistant" && !m.isError) lastAsst = m.id;
-    }
-    return lastAsst;
-  }, [messages]);
+  void _onOpenSessionChanges;
+  void _onOpenModifiedPath;
 
   // Scroll the current find match into view (mark if present, else message).
   useEffect(() => {
@@ -530,15 +516,24 @@ export function ConversationThread({
               );
             }
 
-            // Failed tools stay visible; successful historical tool_step stay hidden
-            // (live line is injected under the active assistant).
+            // Standalone tool_step only when not already woven into an assistant
+            // timeline (tools before first assistant bubble, edge cases).
             if (isToolStepMessage(m)) {
-              if (isFailedToolStepMessage(m)) {
-                return (
-                  <FailedToolRow key={m.id} message={m} locale={locale} />
-                );
+              const tcid =
+                (m.toolCallId || "").trim() ||
+                (m.id.startsWith("tool-") ? m.id.slice(5) : "");
+              if (tcid && isToolInlinedInAssistants(messages, tcid)) {
+                return null;
               }
-              return null;
+              const toolSeg = toolSegmentFromMessage(m);
+              if (!toolSeg) return null;
+              return (
+                <div key={m.id} className="lobe-chat-assistant-timeline">
+                  <div className="lobe-timeline-rail">
+                    <TimelineToolRow tool={toolSeg} />
+                  </div>
+                </div>
+              );
             }
 
             if (
@@ -773,12 +768,15 @@ export function ConversationThread({
               );
             }
 
-            // Assistant — interleave thought / body in stream order (not all
-            // thinking stacked above the answer).
+            // Assistant — thought / tool / body in true stream order.
             const segs = messageSegments(m);
-            const lastSeg = segs[segs.length - 1];
             const isActiveAssistant = activeAssistantId === m.id;
-            const showLiveToolBelow = !!liveTool && isActiveAssistant;
+            const hasInlinedRunningTool = segs.some(
+              (s) => s.kind === "tool" && toolSegmentIsRunning(s),
+            );
+            // Fallback live line only when tool not yet woven into segments.
+            const showLiveToolBelow =
+              !!liveTool && isActiveAssistant && !hasInlinedRunningTool;
             const showThinkingPlaceholder =
               !!m.streaming &&
               segs.length === 0 &&
@@ -796,6 +794,11 @@ export function ConversationThread({
 
             const isFindHit = !!findHitMessageIds?.has(m.id);
             const isFindCurrent = findActive?.messageId === m.id;
+            // Phase projection: thought+tools collapse when phase ends (content
+            // / next thought), not only when the full answer is done.
+            const timelineUnits = buildTimelineUnits(segs, {
+              streaming: !!m.streaming,
+            });
 
             return (
               <ChatItem
@@ -828,52 +831,73 @@ export function ConversationThread({
                       // Running occurrence base across content segments so
                       // find marks stay aligned with message-level match index.
                       let contentOccBase = 0;
-                      return segs.map((seg, si) => {
-                        if (seg.kind === "thought") {
-                          // Skip empty finished phases (avoids empty trigger rows).
-                          // messageSegments already compactMessageSegments — keep guard.
-                          if (
-                            !seg.text.trim() &&
-                            !(m.streaming && lastSeg === seg)
-                          ) {
-                            return null;
-                          }
-                          const phaseStreaming =
-                            !!m.streaming && lastSeg === seg;
-                          // CodePilot-style labels: content summary / 思考中… /
-                          // 思考了 Ns — never "思考 1 / 思考 2 / 思考 3".
+                      return timelineUnits.map((unit) => {
+                        if (unit.kind === "phase") {
                           return (
-                            <Thinking
-                              key={`${m.id}-th-${si}`}
+                            <TimelinePhaseBlock
+                              key={`${m.id}-${unit.id}`}
+                              phase={unit}
                               locale={locale}
-                              thinking={phaseStreaming}
-                              content={seg.text}
-                              streamingLabel={tr("chat.thinking")}
-                              doneLabel={tr("chat.thoughtDone")}
-                              thoughtForLabel={(n) =>
-                                tr("chat.thoughtFor", { n })
-                              }
+                              messageStreaming={!!m.streaming}
                             />
                           );
                         }
+                        if (unit.kind === "tool") {
+                          return (
+                            <div
+                              key={`${m.id}-tool-${unit.tool.toolCallId || unit.si}`}
+                              className="lobe-timeline-rail"
+                            >
+                              <TimelineToolRow tool={unit.tool} />
+                            </div>
+                          );
+                        }
+                        if (unit.kind === "thought") {
+                          if (
+                            !unit.text.trim() &&
+                            !(m.streaming && unit.streaming)
+                          ) {
+                            return null;
+                          }
+                          return (
+                            <div
+                              key={`${m.id}-th-${unit.si}`}
+                              className="lobe-timeline-rail"
+                            >
+                              <Thinking
+                                locale={locale}
+                                thinking={unit.streaming}
+                                content={unit.text}
+                                streamingLabel={tr("chat.thinking")}
+                                doneLabel={tr("chat.thoughtDone")}
+                                thoughtForLabel={(n) =>
+                                  tr("chat.thoughtFor", { n })
+                                }
+                              />
+                            </div>
+                          );
+                        }
+                        // content — never folded into a work phase
                         const segBase = contentOccBase;
                         if (findQuery.trim()) {
                           contentOccBase += findChatMatches(findQuery, [
                             {
-                              id: `${m.id}-seg-${si}`,
+                              id: `${m.id}-seg-${unit.si}`,
                               role: "assistant",
-                              content: seg.text,
+                              content: unit.text,
                             },
                           ]).length;
                         }
                         return (
                           <AssistantMessageBody
-                            key={`${m.id}-c-${si}`}
-                            content={seg.text}
+                            key={`${m.id}-c-${unit.si}`}
+                            content={unit.text}
                             attachments={
-                              si === lastContentSi ? m.attachments : undefined
+                              unit.si === lastContentSi
+                                ? m.attachments
+                                : undefined
                             }
-                            streaming={!!m.streaming && lastSeg === seg}
+                            streaming={unit.streaming}
                             locale={locale}
                             projectPath={projectPath}
                             onOpenResource={onOpenResource}
@@ -914,21 +938,9 @@ export function ConversationThread({
                   </div>
                 }
                 belowMessage={
-                  <>
-                    {showLiveToolBelow && liveTool ? (
-                      <LiveToolText message={liveTool} locale={locale} />
-                    ) : null}
-                    {!m.streaming &&
-                    activityAnchorAssistantId === m.id &&
-                    turnActivity.stepCount > 0 ? (
-                      <TurnActivityBlock
-                        activity={turnActivity}
-                        locale={locale}
-                        onOpenChanges={onOpenSessionChanges}
-                        onOpenModifiedPath={onOpenModifiedPath}
-                      />
-                    ) : null}
-                  </>
+                  showLiveToolBelow && liveTool ? (
+                    <LiveToolText message={liveTool} locale={locale} />
+                  ) : null
                 }
                 actions={
                   !m.streaming && m.content.trim() ? (
@@ -961,21 +973,20 @@ export function ConversationThread({
             );
           })}
 
-          {/* Tool before any assistant bubble exists for this turn. */}
-          {liveTool && !activeAssistantId ? (
+          {/* Tool before any assistant bubble — only if not already a message row. */}
+          {liveTool &&
+          !activeAssistantId &&
+          !(
+            liveTool.toolCallId &&
+            isToolInlinedInAssistants(messages, liveTool.toolCallId)
+          ) &&
+          !messages.some(
+            (x) =>
+              isToolStepMessage(x) &&
+              (x.toolCallId === liveTool.toolCallId ||
+                x.id === `tool-${liveTool.toolCallId}`),
+          ) ? (
             <LiveToolText message={liveTool} locale={locale} />
-          ) : null}
-
-          {/* Tool-only turn: activity summary when no assistant anchor. */}
-          {!turnBusy &&
-          !activityAnchorAssistantId &&
-          turnActivity.stepCount > 0 ? (
-            <TurnActivityBlock
-              activity={turnActivity}
-              locale={locale}
-              onOpenChanges={onOpenSessionChanges}
-              onOpenModifiedPath={onOpenModifiedPath}
-            />
           ) : null}
 
           {showQuietThinking ? (

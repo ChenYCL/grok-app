@@ -18,6 +18,7 @@ import {
   splitThoughtPhases,
   isSessionBusy,
   isSessionLiveStreaming,
+  isSessionNotLiveError,
   parseCompactContent,
   parseToolStepContent,
   pickLatestTurnTool,
@@ -25,6 +26,11 @@ import {
   toolStepDisplayTitle,
   preferSessionMessages,
   presentErrorBanner,
+  snapshotOutgoingMessages,
+  mergeSessionMessagesById,
+  reconcileOptimisticDuplicates,
+  isClientOptimisticId,
+  weaveToolsIntoAssistantSegments,
   stripAnsi,
   truncateBeforeLastUser,
   truncateThroughUserPrompt,
@@ -68,6 +74,34 @@ describe("session projection", () => {
     expect(isSessionLiveStreaming("ready")).toBe(false);
     expect(isSessionLiveStreaming("streaming")).toBe(true);
     expect(isSessionLiveStreaming("awaiting_permission")).toBe(true);
+  });
+
+  it("isSessionNotLiveError only matches Host's targeted-send refusal", () => {
+    // Host string form (tauri invoke rejects with the message).
+    expect(
+      isSessionNotLiveError(
+        "CONNECT_FAILED: chat abc has no live agent process — reconnect and retry",
+      ),
+    ).toBe(true);
+    expect(
+      isSessionNotLiveError(
+        new Error("CONNECT_FAILED: chat abc lost focus before send — retry"),
+      ),
+    ).toBe(true);
+    // Mirror RPC error object shape.
+    expect(
+      isSessionNotLiveError({
+        code: "HOST_ERROR",
+        message: "CONNECT_FAILED: chat abc has no live agent process",
+      }),
+    ).toBe(true);
+    // Other connect failures must NOT trigger the send retry loop.
+    expect(
+      isSessionNotLiveError("CONNECT_FAILED: handshake timed out"),
+    ).toBe(false);
+    expect(isSessionNotLiveError("PROCESS_LIMIT: pool full")).toBe(false);
+    expect(isSessionNotLiveError(null)).toBe(false);
+    expect(isSessionNotLiveError(undefined)).toBe(false);
   });
 
   it("truncateBeforeLastUser drops last user turn and everything after", () => {
@@ -208,6 +242,79 @@ describe("session projection", () => {
     expect(out.map((m) => m.id)).toEqual(["u1", "a1", "u-im", "a-im"]);
   });
 
+  it("preferSessionMessages drops optimistic user when host UUID already has same body", () => {
+    // After turn completes: cache still has u-${ts}, disk has host UUID.
+    // Switch away → switch back must not append the first user bubble again.
+    const cached: ChatMessage[] = [
+      {
+        id: "u-1710000000000",
+        role: "user",
+        content: "找一下奇妙森林这个项目有什么内容",
+      },
+      {
+        id: "a1",
+        role: "assistant",
+        content: "概览……",
+        segments: [
+          { kind: "thought", text: "plan" },
+          {
+            kind: "tool",
+            toolCallId: "t1",
+            title: "Read",
+            status: "completed",
+          },
+          { kind: "content", text: "概览……" },
+        ],
+      },
+    ];
+    const stored: ChatMessage[] = [
+      {
+        id: "6749cf2f-57b2-4576-b940-60957e43cd44",
+        role: "user",
+        content: "找一下奇妙森林这个项目有什么内容",
+      },
+      {
+        id: "840227fd-3a82-4432-a829-49c18aa61327",
+        role: "assistant",
+        content: "概览……",
+      },
+      {
+        id: "tool-t1",
+        role: "tool",
+        content: "Read x",
+        marker: "tool_step",
+        toolCallId: "t1",
+        toolStatus: "completed",
+      },
+    ];
+    const out = preferSessionMessages(cached, stored);
+    const users = out.filter((m) => m.role === "user");
+    expect(users).toHaveLength(1);
+    expect(isClientOptimisticId(users[0]!.id)).toBe(false);
+    expect(out[out.length - 1]!.role).not.toBe("user");
+    // User stays at the head (in-place replace), not moved to the tail.
+    expect(out[0]!.role).toBe("user");
+  });
+
+  it("reconcileOptimisticDuplicates replaces u-${ts} in place (not tail)", () => {
+    const msgs: ChatMessage[] = [
+      {
+        id: "u-1710000000001",
+        role: "user",
+        content: "hello",
+      },
+      { id: "uuid-asst", role: "assistant", content: "hi" },
+      {
+        id: "uuid-user",
+        role: "user",
+        content: "hello",
+      },
+    ];
+    const out = reconcileOptimisticDuplicates(msgs);
+    expect(out.map((m) => m.id)).toEqual(["uuid-user", "uuid-asst"]);
+    expect(out[0]!.role).toBe("user");
+  });
+
   it("applyStreamChunk grows assistant text once per chunk", () => {
     let messages: ChatMessage[] = [];
     const chunks: StreamPayload[] = [
@@ -326,6 +433,34 @@ describe("session projection", () => {
     ]);
   });
 
+  it("compactMessageSegments keeps tools and coalesces same toolCallId", () => {
+    const segs = compactMessageSegments([
+      { kind: "thought", text: "t" },
+      {
+        kind: "tool",
+        toolCallId: "x",
+        title: "Read a",
+        status: "running",
+        streaming: true,
+      },
+      {
+        kind: "tool",
+        toolCallId: "x",
+        title: "Read a",
+        status: "completed",
+        streaming: false,
+      },
+      { kind: "content", text: "done" },
+    ]);
+    expect(segs.map((s) => s.kind)).toEqual(["thought", "tool", "content"]);
+    expect(segs[1]).toMatchObject({
+      kind: "tool",
+      toolCallId: "x",
+      status: "completed",
+      streaming: false,
+    });
+  });
+
   it("messageSegments compacts live multi thought rows", () => {
     const segs = messageSegments({
       id: "a1",
@@ -342,6 +477,197 @@ describe("session projection", () => {
       { kind: "thought", text: "p1\n\np2" },
       { kind: "content", text: "done" },
       { kind: "thought", text: "p3" },
+    ]);
+  });
+
+  it("weaveToolsIntoAssistantSegments puts journal tools between thought and content", () => {
+    // Host journal shape: U → A (final) → tools (tools ran mid-turn).
+    const woven = weaveToolsIntoAssistantSegments([
+      { id: "u1", role: "user", content: "q" },
+      {
+        id: "a1",
+        role: "assistant",
+        content: "answer",
+        createdAt: "2026-07-26T01:11:32Z",
+        segments: [
+          { kind: "thought", text: "why" },
+          { kind: "content", text: "answer" },
+        ],
+      },
+      {
+        id: "tool-t1",
+        role: "tool",
+        content: "Read x",
+        marker: "tool_step",
+        toolCallId: "t1",
+        toolKind: "read_file",
+        toolStatus: "completed",
+        toolPath: "/x.ts",
+        createdAt: "2026-07-26T01:10:47Z",
+      },
+      {
+        id: "tool-t2",
+        role: "tool",
+        content: "Edit y",
+        marker: "tool_step",
+        toolCallId: "t2",
+        toolKind: "search_replace",
+        toolStatus: "failed",
+        isError: true,
+        createdAt: "2026-07-26T01:10:58Z",
+      },
+    ]);
+    const segs = messageSegments(woven[1]!);
+    // History reconstruction: thought → tools → content (not tools under the answer).
+    expect(segs.map((s) => s.kind)).toEqual([
+      "thought",
+      "tool",
+      "tool",
+      "content",
+    ]);
+    expect(segs[2]).toMatchObject({
+      kind: "tool",
+      toolCallId: "t2",
+      isError: true,
+    });
+  });
+
+  it("weaveToolsIntoAssistantSegments attaches tools that appear before assistant in array", () => {
+    // Broken createdAt-sort shape: U → tools → A
+    const woven = weaveToolsIntoAssistantSegments([
+      { id: "u1", role: "user", content: "q" },
+      {
+        id: "tool-t1",
+        role: "tool",
+        content: "Read x",
+        marker: "tool_step",
+        toolCallId: "t1",
+        toolKind: "read_file",
+        toolStatus: "completed",
+      },
+      {
+        id: "tool-t2",
+        role: "tool",
+        content: "Read y",
+        marker: "tool_step",
+        toolCallId: "t2",
+        toolKind: "read_file",
+        toolStatus: "completed",
+      },
+      {
+        id: "a1",
+        role: "assistant",
+        content: "answer",
+        thought: "plan",
+        segments: [
+          { kind: "thought", text: "plan" },
+          { kind: "content", text: "answer" },
+        ],
+      },
+    ]);
+    const segs = messageSegments(woven.find((m) => m.id === "a1")!);
+    expect(segs.map((s) => s.kind)).toEqual([
+      "thought",
+      "tool",
+      "tool",
+      "content",
+    ]);
+  });
+
+  it("mergeSessionMessagesById keeps journal order (no createdAt re-sort)", () => {
+    const primary: ChatMessage[] = [
+      {
+        id: "u1",
+        role: "user",
+        content: "q",
+        createdAt: "2026-07-26T01:10:41Z",
+      },
+      {
+        id: "a1",
+        role: "assistant",
+        content: "answer",
+        createdAt: "2026-07-26T01:11:32Z",
+      },
+      {
+        id: "tool-t1",
+        role: "tool",
+        content: "Read",
+        marker: "tool_step",
+        createdAt: "2026-07-26T01:10:47Z",
+      },
+    ];
+    const merged = mergeSessionMessagesById(primary, []);
+    expect(merged.map((m) => m.id)).toEqual(["u1", "a1", "tool-t1"]);
+  });
+
+  it("places journal-only rows at their turn position, not at the tail", () => {
+    // Regression: a mid-turn session switch can leave the cache holding only
+    // the streaming assistant. Appending disk-only rows rendered the user's
+    // own prompt *after* the finished answer.
+    const cached: ChatMessage[] = [
+      { id: "a-host", role: "assistant", content: "…answer…", streaming: true },
+    ];
+    const stored: ChatMessage[] = [
+      { id: "u-host", role: "user", content: "查看项目内的内容" },
+      { id: "a-host", role: "assistant", content: "…answer…" },
+      { id: "tool-1", role: "tool", content: "tool_step|completed", marker: "tool_step" },
+      { id: "tool-2", role: "tool", content: "tool_step|completed", marker: "tool_step" },
+    ];
+    expect(mergeSessionMessagesById(cached, stored).map((m) => m.id)).toEqual([
+      "u-host",
+      "a-host",
+      "tool-1",
+      "tool-2",
+    ]);
+    // Same through the real entry point the workbench uses.
+    expect(preferSessionMessages(cached, stored).map((m) => m.role)).toEqual([
+      "user",
+      "assistant",
+      "tool",
+      "tool",
+    ]);
+  });
+
+  it("snapshotOutgoingMessages never clobbers a populated cache with an empty view", () => {
+    const cached: ChatMessage[] = [
+      { id: "u1", role: "user", content: "q" },
+      { id: "a1", role: "assistant", content: "a" },
+    ];
+    // Workbench already cleared (user hit "new chat") — keep the real turn.
+    expect(snapshotOutgoingMessages(cached, [])).toEqual(cached);
+    // Normal case: the viewed thread is authoritative.
+    const viewed: ChatMessage[] = [{ id: "u2", role: "user", content: "q2" }];
+    expect(snapshotOutgoingMessages(cached, viewed)).toEqual(viewed);
+    // Nothing anywhere → empty.
+    expect(snapshotOutgoingMessages(undefined, [])).toEqual([]);
+  });
+
+  it("keeps repeated journal ids (tool_step rows share call ids)", () => {
+    const primary: ChatMessage[] = [
+      { id: "u1", role: "user", content: "q" },
+      { id: "tool-call-a", role: "tool", content: "s1", marker: "tool_step" },
+      { id: "tool-call-a", role: "tool", content: "s2", marker: "tool_step" },
+    ];
+    expect(mergeSessionMessagesById(primary, []).map((m) => m.id)).toEqual([
+      "u1",
+      "tool-call-a",
+      "tool-call-a",
+    ]);
+  });
+
+  it("interleaves several journal-only rows before their shared anchor", () => {
+    const cached: ChatMessage[] = [{ id: "a1", role: "assistant", content: "x" }];
+    const stored: ChatMessage[] = [
+      { id: "u1", role: "user", content: "q1" },
+      { id: "t1", role: "tool", content: "one", marker: "tool_step" },
+      { id: "a1", role: "assistant", content: "x" },
+      { id: "t2", role: "tool", content: "two", marker: "tool_step" },
+    ];
+    expect(mergeSessionMessagesById(cached, stored).map((m) => m.id)).toEqual([
+      "u1",
+      "t1",
+      "a1",
+      "t2",
     ]);
   });
 

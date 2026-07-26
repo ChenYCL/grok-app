@@ -10,6 +10,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::account;
+use crate::providers::{self, ActiveRoute};
 use crate::secrets;
 use crate::voice_auth;
 
@@ -52,6 +53,14 @@ pub fn speech_auth_token() -> Option<(String, &'static str)> {
 }
 
 pub fn voice_status() -> VoiceStatusDto {
+    // Custom / third-party providers cannot use xAI speech endpoints.
+    if matches!(providers::active_route(), ActiveRoute::Custom { .. }) {
+        return VoiceStatusDto {
+            available: false,
+            reason: Some("not_available".into()),
+            auth_source: None,
+        };
+    }
     match speech_auth_token() {
         Some((_, src)) => VoiceStatusDto {
             available: true,

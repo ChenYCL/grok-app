@@ -63,6 +63,13 @@ pub enum AcpEvent {
     },
     PromptComplete {
         stop_reason: String,
+        /// True only for the `session/prompt` RPC result — the real end of the
+        /// turn, ordered after every chunk the agent sent.
+        ///
+        /// The `_x.ai/session/prompt_complete` *notification* fires early
+        /// (tools still open, or more text still coming), so it must not be
+        /// treated as terminal.
+        authoritative: bool,
     },
     /// Provider/API retry loop (sessionUpdate = retry_state). Host caps retries.
     RetryState {
@@ -665,6 +672,7 @@ impl AcpClient {
                 {
                     let _ = self.event_tx.send(AcpEvent::PromptComplete {
                         stop_reason: sr.to_string(),
+                        authoritative: true,
                     });
                 }
                 return;
@@ -764,6 +772,7 @@ impl AcpClient {
                         .to_string();
                     let _ = self.event_tx.send(AcpEvent::PromptComplete {
                         stop_reason: stop.clone(),
+                        authoritative: false,
                     });
                     // Grace period: free waiters only if the RPC result never arrives.
                     self.schedule_prompt_complete_fallback(stop);
@@ -1317,6 +1326,7 @@ impl AcpClient {
         });
         let _ = self.event_tx.send(AcpEvent::PromptComplete {
             stop_reason: stop,
+            authoritative: true,
         });
         Ok(())
     }

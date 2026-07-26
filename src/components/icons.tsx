@@ -11,6 +11,8 @@ import {
   IconArrowBackUp as TbArrowBackUp,
   IconArrowLeft as TbArrowLeft,
   IconArrowsMinimize as TbArrowsMinimize,
+  IconBlockquote as TbBlockquote,
+  IconBold as TbBold,
   IconBolt as TbBolt,
   IconGitBranch as TbGitBranch,
   IconBox as TbBox,
@@ -19,6 +21,7 @@ import {
   IconCheck as TbCheck,
   IconClipboardList as TbClipboardList,
   IconClock as TbClock,
+  IconCode as TbCode,
   IconChevronDown as TbChevronDown,
   IconChevronLeft as TbChevronLeft,
   IconChevronRight as TbChevronRight,
@@ -30,6 +33,10 @@ import {
   IconDots as TbDots,
   IconCrop as TbCrop,
   IconEdit as TbEdit,
+  IconH1 as TbH1,
+  IconH2 as TbH2,
+  IconH3 as TbH3,
+  IconItalic as TbItalic,
   IconFileDiff as TbFileDiff,
   IconFileText as TbFileText,
   IconFiles as TbFiles,
@@ -45,6 +52,7 @@ import {
   IconLayoutSidebarRight as TbLayoutSidebarRight,
   IconLink as TbLink,
   IconList as TbList,
+  IconListNumbers as TbListNumbers,
   IconListTree as TbListTree,
   IconMarkdown as TbMarkdown,
   IconMenu2 as TbMenu2,
@@ -66,12 +74,14 @@ import {
   IconRobot as TbRobot,
   IconSearch as TbSearch,
   IconSend as TbSend,
+  IconSeparator as TbSeparator,
   IconSettings as TbSettings,
   IconShield as TbShield,
   IconShieldCheck as TbShieldCheck,
   IconSparkles as TbSparkles,
   IconSquare as TbSquare,
   IconStack2 as TbStack2,
+  IconStrikethrough as TbStrikethrough,
   IconSun as TbSun,
   IconTarget as TbTarget,
   IconThumbDown as TbThumbDown,
@@ -198,6 +208,17 @@ export const IconSearch = wrap(TbSearch);
 /** New chat / compose — Tabler Edit (pencil writing on paper). */
 export const IconNewChat = wrap(TbEdit);
 export const IconEdit = wrap(TbEdit);
+/** Markdown / TipTap format toolbar */
+export const IconBold = wrap(TbBold);
+export const IconItalic = wrap(TbItalic);
+export const IconStrikethrough = wrap(TbStrikethrough);
+export const IconCode = wrap(TbCode);
+export const IconH1 = wrap(TbH1);
+export const IconH2 = wrap(TbH2);
+export const IconH3 = wrap(TbH3);
+export const IconListNumbers = wrap(TbListNumbers);
+export const IconBlockquote = wrap(TbBlockquote);
+export const IconSeparator = wrap(TbSeparator);
 /** Wallpaper focus / crop frame editor. */
 export const IconCrop = wrap(TbCrop);
 export const IconNotes = wrap(TbNotes);
@@ -218,6 +239,7 @@ export const IconMore = wrap(TbDots);
 export const IconFolder = wrap(TbFolder);
 export const IconRename = wrap(TbPencil);
 export const IconShare = wrap(TbLink);
+export const IconLink = wrap(TbLink);
 export const IconTrash = wrap(TbTrash, { className: "g-icon--danger" });
 export const IconPaperclip = wrap(TbPaperclip);
 export const IconAttach = wrap(TbPaperclip);

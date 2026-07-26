@@ -587,6 +587,114 @@ pub fn read_absolute_file(absolute: &str) -> Result<FsReadResult, String> {
     read_path(path, name)
 }
 
+/// True when a path token uses shell-style wildcards (agent docs often write
+/// `docs/plans/2026-03-15-foo*.md` instead of the exact filename).
+fn path_has_glob(s: &str) -> bool {
+    s.chars().any(|c| c == '*' || c == '?')
+}
+
+/// Match `name` against a simple shell-style pattern (`*` = any run, `?` = one char).
+/// No character classes, no recursive `**` — enough for agent basename globs.
+fn simple_glob_match(pattern: &str, name: &str) -> bool {
+    fn rec(p: &[u8], n: &[u8]) -> bool {
+        let mut i = 0usize;
+        let mut j = 0usize;
+        let mut star_p: Option<usize> = None;
+        let mut star_n: usize = 0;
+        while j < n.len() {
+            if i < p.len() && (p[i] == b'?' || p[i] == n[j]) {
+                i += 1;
+                j += 1;
+            } else if i < p.len() && p[i] == b'*' {
+                star_p = Some(i);
+                star_n = j;
+                i += 1;
+            } else if let Some(sp) = star_p {
+                i = sp + 1;
+                star_n += 1;
+                j = star_n;
+            } else {
+                return false;
+            }
+        }
+        while i < p.len() && p[i] == b'*' {
+            i += 1;
+        }
+        i == p.len()
+    }
+    rec(pattern.as_bytes(), name.as_bytes())
+}
+
+/// Resolve a relative path that contains `*` / `?` under `base`.
+/// Only the final path segment may be a glob; parent dirs must exist exactly.
+///
+/// - 0 matches → None
+/// - 1 match → Some(path)
+/// - many matches → prefer shortest basename (agent `foo*.md` usually means
+///   the canonical short name), then lexicographic; still returns one hit so
+///   chat cards can open.
+fn resolve_relative_glob(base: &Path, rel: &str) -> Option<PathBuf> {
+    let rel = rel.trim().trim_start_matches("./").replace('\\', "/");
+    if rel.is_empty() || !path_has_glob(&rel) {
+        return None;
+    }
+    // Reject path-segment globs in parent components (avoid broad scans).
+    let mut parts: Vec<&str> = rel.split('/').filter(|s| !s.is_empty()).collect();
+    if parts.is_empty() {
+        return None;
+    }
+    let file_pat = parts.pop()?;
+    if !path_has_glob(file_pat) {
+        return None;
+    }
+    if parts.iter().any(|p| path_has_glob(p)) {
+        return None;
+    }
+    let mut dir = base.to_path_buf();
+    for p in &parts {
+        dir = dir.join(p);
+    }
+    if !dir.is_dir() {
+        return None;
+    }
+    let mut hits: Vec<PathBuf> = Vec::new();
+    let rd = fs::read_dir(&dir).ok()?;
+    for ent in rd.flatten() {
+        let ft = match ent.file_type() {
+            Ok(t) => t,
+            Err(_) => continue,
+        };
+        if !ft.is_file() {
+            continue;
+        }
+        let name = ent.file_name();
+        let name_str = name.to_string_lossy();
+        if simple_glob_match(file_pat, name_str.as_ref()) {
+            hits.push(ent.path());
+        }
+    }
+    match hits.len() {
+        0 => None,
+        1 => hits.pop(),
+        _ => {
+            hits.sort_by(|a, b| {
+                let an = a
+                    .file_name()
+                    .map(|s| s.to_string_lossy().into_owned())
+                    .unwrap_or_default();
+                let bn = b
+                    .file_name()
+                    .map(|s| s.to_string_lossy().into_owned())
+                    .unwrap_or_default();
+                an.len()
+                    .cmp(&bn.len())
+                    .then_with(|| an.to_lowercase().cmp(&bn.to_lowercase()))
+            });
+            hits.into_iter().next()
+        }
+    }
+}
+
 /// Open a path for chat cards: absolute file, project-relative, sibling under
 /// project parent (e.g. `知识库/...` next to `ai-center/`), or suffix search.
 /// Strip agent ellipsis truncation: `.../a/b/c.jpg` → `a/b/c.jpg`.
@@ -686,6 +794,54 @@ pub fn open_path_smart(project_root: Option<&str>, path: &str) -> Result<FsReadR
                     .map(|s| s.to_string_lossy().to_string())
                     .unwrap_or_else(|| raw.to_string());
                 return read_path(canon, name);
+            }
+
+            // 2b) Agent basename globs: `docs/plans/2026-03-15-foo*.md`
+            if path_has_glob(rel) {
+                if let Some(found) = resolve_relative_glob(&root_pb, rel) {
+                    let canon = found
+                        .canonicalize()
+                        .map_err(|e| format!("path not found: {e}"))?;
+                    let name = canon
+                        .file_name()
+                        .map(|s| s.to_string_lossy().to_string())
+                        .unwrap_or_else(|| raw.to_string());
+                    return read_path(canon, name);
+                }
+                // Also try under project parent (sibling knowledge-base layouts)
+                if let Some(parent) = root_pb.parent() {
+                    if parent.is_dir() {
+                        if let Some(found) = resolve_relative_glob(parent, rel) {
+                            let canon = found
+                                .canonicalize()
+                                .map_err(|e| format!("path not found: {e}"))?;
+                            let name = canon
+                                .file_name()
+                                .map(|s| s.to_string_lossy().to_string())
+                                .unwrap_or_else(|| raw.to_string());
+                            return read_path(canon, name);
+                        }
+                        // Sibling project folders: try each child once
+                        if let Ok(rd) = fs::read_dir(parent) {
+                            for ent in rd.flatten() {
+                                let p = ent.path();
+                                if p == root_pb || !p.is_dir() {
+                                    continue;
+                                }
+                                if let Some(found) = resolve_relative_glob(&p, rel) {
+                                    let canon = found
+                                        .canonicalize()
+                                        .map_err(|e| format!("path not found: {e}"))?;
+                                    let name = canon
+                                        .file_name()
+                                        .map(|s| s.to_string_lossy().to_string())
+                                        .unwrap_or_else(|| raw.to_string());
+                                    return read_path(canon, name);
+                                }
+                            }
+                        }
+                    }
+                }
             }
 
             // 3) Sibling *path* under parent — e.g. path already starts with `知识库/…`
@@ -1400,6 +1556,59 @@ mod tests {
             &format!("projects/a/05-handoff/{name}"),
         );
         assert!(r2.is_ok(), "{r2:?}");
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn simple_glob_match_basics() {
+        assert!(simple_glob_match("foo*.md", "foo.md"));
+        assert!(simple_glob_match("foo*.md", "foo-bar.md"));
+        assert!(simple_glob_match(
+            "2026-03-15-tiezhu-picture-book*.md",
+            "2026-03-15-tiezhu-picture-book.md"
+        ));
+        assert!(simple_glob_match(
+            "2026-03-15-tiezhu-picture-book*.md",
+            "2026-03-15-tiezhu-picture-book-v2.md"
+        ));
+        assert!(!simple_glob_match("foo*.md", "bar.md"));
+        assert!(simple_glob_match("img_???.jpg", "img_000.jpg"));
+        assert!(!simple_glob_match("img_???.jpg", "img_00.jpg"));
+        assert!(simple_glob_match("*.md", "readme.md"));
+    }
+
+    #[test]
+    fn open_path_smart_agent_basename_glob() {
+        // Chat cards often cite `docs/plans/2026-03-15-foo*.md` (wildcard).
+        let dir = tempfile_dir();
+        let plans = dir.join("docs").join("plans");
+        fs::create_dir_all(&plans).unwrap();
+        let name = "2026-03-15-tiezhu-picture-book.md";
+        fs::write(plans.join(name), b"# plan\n").unwrap();
+        // noise
+        fs::write(plans.join("other.md"), b"# other\n").unwrap();
+        let pattern = "docs/plans/2026-03-15-tiezhu-picture-book*.md";
+        let r = open_path_smart(Some(dir.to_str().unwrap()), pattern);
+        assert!(r.is_ok(), "{r:?}");
+        assert_eq!(r.unwrap().name, name);
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn open_path_smart_agent_glob_prefers_shortest() {
+        let dir = tempfile_dir();
+        let plans = dir.join("docs").join("plans");
+        fs::create_dir_all(&plans).unwrap();
+        fs::write(
+            plans.join("2026-03-15-tiezhu-picture-book-extra.md"),
+            b"# long\n",
+        )
+        .unwrap();
+        fs::write(plans.join("2026-03-15-tiezhu-picture-book.md"), b"# short\n").unwrap();
+        let pattern = "docs/plans/2026-03-15-tiezhu-picture-book*.md";
+        let r = open_path_smart(Some(dir.to_str().unwrap()), pattern);
+        assert!(r.is_ok(), "{r:?}");
+        assert_eq!(r.unwrap().name, "2026-03-15-tiezhu-picture-book.md");
         let _ = fs::remove_dir_all(&dir);
     }
 

@@ -314,8 +314,13 @@ async fn execute_tool(
             let path = snap.project_path.clone();
             mgr.connect(app.clone(), path, Some(meta.id.clone()), None)
                 .await?;
-            mgr.send_message(app.clone(), args.prompt.clone(), None)
-                .await?;
+            mgr.send_message(
+                app.clone(),
+                args.prompt.clone(),
+                None,
+                Some(meta.id.clone()),
+            )
+            .await?;
             host.push_delegated(&meta.id);
             host.emit_state(app);
             json!({
@@ -337,8 +342,13 @@ async fn execute_tool(
                 .await?;
                 host.push_delegated(sid);
             }
-            mgr.send_message(app.clone(), args.prompt.clone(), None)
-                .await?;
+            mgr.send_message(
+                app.clone(),
+                args.prompt.clone(),
+                None,
+                args.session_id.clone(),
+            )
+            .await?;
             let live = mgr.snapshot();
             json!({
                 "session_id": live.session_id,
@@ -379,7 +389,7 @@ async fn execute_tool(
                     )
                     .await;
             }
-            let live = mgr.stop(app.clone()).await?;
+            let live = mgr.stop(app.clone(), args.session_id.clone()).await?;
             json!({
                 "session_id": live.session_id,
                 "state": live.state,

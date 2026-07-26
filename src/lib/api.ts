@@ -83,20 +83,33 @@ export async function sessionConnect(opts?: {
  * @param text Agent prompt (skills as `/name`, attachments as `@path`, etc.)
  * @param displayText Optional user-bubble text for journal (e.g. `[[skill:name]]` chips).
  *                    When omitted, journal stores `text`.
+ * @param sessionId Chat this turn belongs to. Always pass it in multi-session
+ *   flows: Host re-focuses that chat (background/parked → live) before
+ *   prompting, so a concurrent connect cannot deliver the turn to another chat.
+ *   Fails with `CONNECT_FAILED` when the chat has no warm agent process.
  */
 export async function sessionSend(
   text: string,
   displayText?: string | null,
+  sessionId?: string | null,
 ): Promise<SessionSnapshot> {
   return invoke("session_send", {
     text,
     displayText: displayText ?? null,
+    sessionId: sessionId ?? null,
   });
 }
 
-/** Drop last user turn (agent rewind + local journal) before edit-resend. */
-export async function sessionRewindDropLastUser(): Promise<SessionSnapshot> {
-  return invoke("session_rewind_drop_last_user");
+/**
+ * Drop last user turn (agent rewind + local journal) before edit-resend.
+ * Pass `sessionId` so a concurrent connect cannot truncate another chat.
+ */
+export async function sessionRewindDropLastUser(
+  sessionId?: string | null,
+): Promise<SessionSnapshot> {
+  return invoke("session_rewind_drop_last_user", {
+    sessionId: sessionId ?? null,
+  });
 }
 
 /** One user-prompt checkpoint on the rewind timeline. */
@@ -163,8 +176,11 @@ export async function sessionFork(
   });
 }
 
-export async function sessionStop(): Promise<SessionSnapshot> {
-  return invoke("session_stop");
+/** Stop a turn. Pass `sessionId` to stop a demoted (background) chat. */
+export async function sessionStop(
+  sessionId?: string | null,
+): Promise<SessionSnapshot> {
+  return invoke("session_stop", { sessionId: sessionId ?? null });
 }
 
 export async function sessionDisconnect(): Promise<SessionSnapshot> {
@@ -175,17 +191,25 @@ export async function sessionReattach(): Promise<SessionSnapshot> {
   return invoke("session_reattach");
 }
 
+/**
+ * Answer a tool permission prompt.
+ * @param sessionId Chat that raised it (`session://permission.sessionId`).
+ *   Required for background turns — their rpc id belongs to their own ACP
+ *   child, so answering against the live slot leaves them waiting forever.
+ */
 export async function sessionResolvePermission(args: {
   rpcId: number;
   decision: string;
   optionId?: string;
   scopeKey?: string;
+  sessionId?: string | null;
 }): Promise<SessionSnapshot> {
   return invoke("session_resolve_permission", {
     rpcId: args.rpcId,
     decision: args.decision,
     optionId: args.optionId ?? null,
     scopeKey: args.scopeKey ?? null,
+    sessionId: args.sessionId ?? null,
   });
 }
 
@@ -194,11 +218,13 @@ export async function sessionResolvePlan(args: {
   decision: "approved" | "cancelled" | "abandoned" | string;
   feedback?: string | null;
   rpcId?: number | null;
+  sessionId?: string | null;
 }): Promise<SessionSnapshot> {
   return invoke("session_resolve_plan", {
     decision: args.decision,
     feedback: args.feedback ?? null,
     rpcId: args.rpcId ?? null,
+    sessionId: args.sessionId ?? null,
   });
 }
 
@@ -207,11 +233,13 @@ export async function sessionResolveAskUser(args: {
   decision: "accepted" | "cancelled" | string;
   answers?: Record<string, string> | null;
   rpcId?: number | null;
+  sessionId?: string | null;
 }): Promise<SessionSnapshot> {
   return invoke("session_resolve_ask_user", {
     decision: args.decision,
     answers: args.answers ?? null,
     rpcId: args.rpcId ?? null,
+    sessionId: args.sessionId ?? null,
   });
 }
 

@@ -7,8 +7,10 @@
  * 3. Soft UI actions (approve / request changes) hide review gate but may keep steps.
  * 4. User dismiss (with confirm) — **hard close**: clear chrome, set `userClosed`.
  *    Reopening the session restores the closed state (no bar / no panel body).
- * 5. New plan cycle only un-closes: composer mode is `plan`, or a new plan toolCallId,
- *    or a new exit_plan_mode `rpcId` after close.
+ * 5. New plan cycle only un-closes: a **new** plan `toolCallId`, or a **new**
+ *    `exit_plan_mode` `rpcId` (not the one abandoned on dismiss).
+ *    Residual updates while still in composer plan mode must NOT resurrect
+ *    the dismissed cycle.
  */
 
 export type SessionPlanState = {
@@ -31,6 +33,11 @@ export type SessionPlanState = {
   userClosed: boolean;
   /** toolCallId at hard-dismiss time — same id = same cycle, keep suppressed. */
   closedToolCallId: string | null;
+  /**
+   * exit_plan_mode rpcId abandoned on hard-dismiss. Same id must not re-open
+   * the review panel after the user confirmed close.
+   */
+  closedRpcId: number | null;
 };
 
 export type PlanEventPayload = {
@@ -55,6 +62,7 @@ export function emptySessionPlan(
     barDismissed: false,
     userClosed: false,
     closedToolCallId: null,
+    closedRpcId: null,
   };
 }
 
@@ -62,36 +70,45 @@ export function emptySessionPlan(
 export function closedSessionPlan(
   title = "Plan ready for review",
   closedToolCallId: string | null = null,
+  closedRpcId: number | null = null,
 ): SessionPlanState {
   return {
     ...emptySessionPlan(title),
     userClosed: true,
     closedToolCallId,
+    closedRpcId,
     barDismissed: true,
   };
 }
 
+function normalizeToolCallId(
+  toolCallId: string | null | undefined,
+): string | null {
+  if (toolCallId == null) return null;
+  const t = String(toolCallId).trim();
+  return t || null;
+}
+
 /**
  * Whether a plan event should reopen UI after the user hard-closed this cycle.
+ *
+ * Important: merely remaining in composer `plan` mode is NOT enough to reopen.
+ * Residual `session://plan` updates from the dismissed cycle (same toolCallId,
+ * no new rpcId) would otherwise resurrect the bar + resource Plan panel.
  */
 export function shouldReopenClosedPlan(
   prev: SessionPlanState,
   p: PlanEventPayload,
-  composerMode: string,
+  _composerMode: string,
 ): boolean {
   if (!prev.userClosed) return true;
 
-  // User intentionally back in plan mode — allow the next plan payload through.
-  if (composerMode === "plan") return true;
-
-  // New exit_plan_mode gate (must surface for approve/revise).
-  if (p.rpcId != null) return true;
+  // New exit_plan_mode gate (must surface for approve/revise) — but not the
+  // same rpc the user just abandoned on dismiss.
+  if (p.rpcId != null && p.rpcId !== prev.closedRpcId) return true;
 
   // New plan tool invocation (different toolCallId than the one we closed).
-  const tid =
-    p.toolCallId != null && String(p.toolCallId).trim()
-      ? String(p.toolCallId).trim()
-      : null;
+  const tid = normalizeToolCallId(p.toolCallId ?? null);
   if (tid && tid !== prev.closedToolCallId) return true;
 
   return false;
@@ -171,5 +188,6 @@ export function mergePlanFromEvent(
     barDismissed: false,
     userClosed: false,
     closedToolCallId: null,
+    closedRpcId: null,
   };
 }
