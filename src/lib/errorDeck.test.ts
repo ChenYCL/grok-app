@@ -25,8 +25,6 @@ describe("buildErrorDeck", () => {
     expect(crash.problem.toLowerCase()).toMatch(/agent|crash|process/);
     expect(crash.primary.id).toBe("reconnect");
 
-    // NEW-03: outdated CLI gets its own card pointing at an upgrade, not a
-    // generic crash.
     const old = buildErrorDeck("CLI_TOO_OLD", "en");
     expect(old.problem.toLowerCase()).toMatch(/cli/);
     expect(old.problem.toLowerCase()).toMatch(/old|version/);

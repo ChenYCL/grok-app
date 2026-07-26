@@ -997,7 +997,6 @@ export default function App() {
   }>({ found: false, path: null, version: null, source: "", cliAuthPresent: false });
   const [manualCliPath, setManualCliPath] = useState("");
   const [acpServerAddr, setAcpServerAddr] = useState("");
-  // Outbound proxy prefs (NEW-02).
   const [proxyMode, setProxyMode] = useState("system");
   const [proxyUrl, setProxyUrl] = useState("");
   const [proxyNoProxy, setProxyNoProxy] = useState("");
@@ -1412,9 +1411,6 @@ export default function App() {
           );
         }
       }
-      // NEW-03: surface an outdated CLI at launch instead of letting the first
-      // message die as AGENT_CRASHED. Flows through the coded error banner so
-      // the user gets an "Upgrade CLI" action, not raw clap stderr.
       if (cli.versionSupported === false) {
         setLocalError(
           `CLI_TOO_OLD: grok CLI ${cli.version ?? "?"} < required ${
@@ -7540,12 +7536,10 @@ export default function App() {
           navigateSettings("runtime");
           break;
         case "upgrade_cli":
-          // CLI_TOO_OLD: Runtime section owns CLI install/upgrade controls.
           setLocalError(null);
           navigateSettings("runtime");
           break;
         case "open_network":
-          // NEW-07: jump straight to proxy settings.
           setLocalError(null);
           navigateSettings("runtime", "network");
           break;
@@ -7982,8 +7976,6 @@ export default function App() {
           setLoginHint(null);
           showToast(tr("account.loginOk"), 2800);
         } else if (res.timedOut) {
-          // NEW-01: unreachable auth endpoint. Point at the two real ways out
-          // (proxy / shared session-data mode) instead of a generic failure.
           const msg = `${tr("account.loginTimeout")} ${tr(
             "account.loginUnreachableHint",
           )}`;

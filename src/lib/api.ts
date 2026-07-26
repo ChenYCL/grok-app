@@ -275,7 +275,7 @@ export interface NetworkProbeResult {
   targets: NetworkProbeTarget[];
 }
 
-/** Probe Grok endpoints through the effective proxy (NEW-02 self-check). */
+/** Probe Grok endpoints through the effective proxy. */
 export async function networkProbe() {
   return invoke<NetworkProbeResult>("network_probe");
 }
@@ -1462,7 +1462,7 @@ export interface LoginResult {
   deviceUrl: string | null;
   deviceCode: string | null;
   profile: AccountProfile | null;
-  /** Host watchdog killed the login (auth endpoint unreachable — NEW-01). */
+  /** Host watchdog killed the login (auth endpoint unreachable). */
   timedOut?: boolean;
 }
 
@@ -2362,7 +2362,7 @@ export async function cliUpdateInstall() {
   return invoke<CliUpdateCheck>("cli_update_install");
 }
 
-/** Recycle all warm agent processes (post-CLI-upgrade — NEW-05). */
+/** Recycle all warm agent processes (e.g. after CLI upgrade). */
 export async function agentsRecycleAll() {
   return invoke<void>("agents_recycle_all");
 }

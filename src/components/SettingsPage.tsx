@@ -170,7 +170,7 @@ export interface SettingsPageProps {
   /** API mode: remote ACP server `host:port` (empty = local CLI spawn). */
   acpServerAddr: string;
   onAcpServerAddr: (v: string) => void;
-  /** Outbound proxy: system | manual | none (NEW-02). */
+  /** Outbound proxy: system | manual | none. */
   proxyMode?: string;
   onProxyMode?: (v: string) => void;
   proxyUrl?: string;
@@ -308,10 +308,7 @@ function formatSessionWhen(iso: string, locale: string): string {
   }
 }
 
-/**
- * Grok endpoint reachability check through the effective proxy (NEW-02).
- * Any HTTP status counts as reachable — this tests the network path, not auth.
- */
+/** Probe Grok endpoints through the effective proxy (path only, not auth). */
 function NetworkProbeField({ t }: { t: (k: string, vars?: Vars) => string }) {
   const [testing, setTesting] = useState(false);
   const [result, setResult] = useState<api.NetworkProbeResult | null>(null);
@@ -337,27 +334,46 @@ function NetworkProbeField({ t }: { t: (k: string, vars?: Vars) => string }) {
         <div className="settings-row__label">{t("settings.netProbe")}</div>
         <div className="settings-row__desc">{t("settings.netProbeDesc")}</div>
       </div>
-      <button
-        type="button"
-        className="btn btn--sm"
-        disabled={testing}
-        onClick={() => void runTest()}
-      >
-        {testing ? t("settings.netProbeTesting") : t("settings.netProbeRun")}
-      </button>
-      {error ? <div className="settings-row__hint">{error}</div> : null}
-      {result ? (
-        <ul className="settings-netprobe">
-          {result.targets.map((tg) => (
-            <li key={tg.key} className="settings-row__hint">
-              {tg.ok ? "✓" : "✗"} {tg.key} · {tg.url} ·{" "}
-              {tg.ok
-                ? `${tg.status ?? ""} · ${tg.millis}ms`
-                : tg.error || t("settings.netProbeFailed")}
-            </li>
-          ))}
-        </ul>
-      ) : null}
+      <div className="settings-netprobe">
+        <div className="settings-netprobe__actions">
+          <button
+            type="button"
+            className="btn btn--ghost btn--sm"
+            disabled={testing}
+            onClick={() => void runTest()}
+          >
+            {testing ? t("settings.netProbeTesting") : t("settings.netProbeRun")}
+          </button>
+        </div>
+        {error ? (
+          <div className="settings-row__hint is-danger" role="alert">
+            {error}
+          </div>
+        ) : null}
+        {result ? (
+          <ul className="settings-netprobe__list" role="list">
+            {result.targets.map((tg) => (
+              <li
+                key={tg.key}
+                className={
+                  "settings-netprobe__item" + (tg.ok ? " is-ok" : " is-fail")
+                }
+              >
+                <span className="settings-netprobe__mark" aria-hidden>
+                  {tg.ok ? "✓" : "✗"}
+                </span>
+                <span className="settings-netprobe__key">{tg.key}</span>
+                <span className="settings-netprobe__url">{tg.url}</span>
+                <span className="settings-netprobe__meta">
+                  {tg.ok
+                    ? `${tg.status ?? ""} · ${tg.millis}ms`
+                    : tg.error || t("settings.netProbeFailed")}
+                </span>
+              </li>
+            ))}
+          </ul>
+        ) : null}
+      </div>
     </div>
   );
 }
@@ -2697,7 +2713,9 @@ export function SettingsPage({
             )}
             {activeTab === "network" && (
               <div
-                className={"settings-card" + rowHighlight("settings-anchor-proxy")}
+                className={
+                  "settings-card" + rowHighlight("settings-anchor-proxy")
+                }
                 id="settings-anchor-proxy"
               >
                 <div className="settings-row settings-row--stack">
@@ -2709,19 +2727,29 @@ export function SettingsPage({
                       {t("settings.proxyModeDesc")}
                     </div>
                   </div>
-                  <select
-                    className="settings-input"
+                  <Select
+                    className="settings-select"
+                    aria-label={t("settings.proxyMode")}
                     value={proxyMode}
-                    onChange={(e) => onProxyMode?.(e.target.value)}
-                  >
-                    <option value="system">
-                      {t("settings.proxyModeSystem")}
-                    </option>
-                    <option value="manual">
-                      {t("settings.proxyModeManual")}
-                    </option>
-                    <option value="none">{t("settings.proxyModeNone")}</option>
-                  </select>
+                    onChange={(v) => onProxyMode?.(v)}
+                    options={[
+                      {
+                        value: "system",
+                        label: t("settings.proxyModeSystem"),
+                      },
+                      {
+                        value: "manual",
+                        label: t("settings.proxyModeManual"),
+                      },
+                      {
+                        value: "none",
+                        label: t("settings.proxyModeNone"),
+                      },
+                    ]}
+                  />
+                  <div className="settings-row__hint">
+                    {t("settings.proxyRestartHint")}
+                  </div>
                 </div>
                 {proxyMode === "manual" && (
                   <>
@@ -2738,13 +2766,18 @@ export function SettingsPage({
                         className="settings-input"
                         value={proxyUrl}
                         placeholder="http://127.0.0.1:7890"
+                        autoComplete="off"
+                        spellCheck={false}
                         onChange={(e) => onProxyUrl?.(e.target.value)}
                       />
                       {proxyUrl.trim() !== "" &&
                         !/^(https?|socks5h?):\/\/[^\s]+$/i.test(
                           proxyUrl.trim(),
                         ) && (
-                          <div className="settings-row__hint settings-row__hint--warn">
+                          <div
+                            className="settings-row__hint is-danger"
+                            role="alert"
+                          >
                             {t("settings.proxyUrlInvalid")}
                           </div>
                         )}
@@ -2762,15 +2795,14 @@ export function SettingsPage({
                         className="settings-input"
                         value={proxyNoProxy}
                         placeholder="internal.example.com,10.0.0.0/8"
+                        autoComplete="off"
+                        spellCheck={false}
                         onChange={(e) => onProxyNoProxy?.(e.target.value)}
                       />
                     </div>
                   </>
                 )}
                 <NetworkProbeField t={t} />
-                <div className="settings-row__hint">
-                  {t("settings.proxyRestartHint")}
-                </div>
               </div>
             )}
             {activeTab === "pool" && (

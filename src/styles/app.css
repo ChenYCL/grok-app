@@ -3937,6 +3937,127 @@ html[data-theme="light"] .ui-check.is-mixed .ui-check__box {
   color: var(--danger, #d33);
 }
 
+/* Full-width custom Select inside stacked settings rows */
+.settings-row--stack > .settings-select,
+.settings-row--stack > .c-select.settings-select {
+  width: 100%;
+  max-width: 420px;
+}
+
+.settings-row--stack > .settings-select .c-select__trigger,
+.settings-select .c-select__trigger {
+  width: 100%;
+}
+
+/* Settings → Runtime → Network: connectivity probe results */
+.settings-netprobe {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+  margin-top: 2px;
+}
+
+.settings-netprobe__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.settings-netprobe__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 100%;
+}
+
+.settings-netprobe__item {
+  display: grid;
+  grid-template-columns: auto auto 1fr auto;
+  gap: 8px 10px;
+  align-items: baseline;
+  padding: 8px 10px;
+  border-radius: 10px;
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-elevated, var(--bg-input));
+  font-size: 12.5px;
+  line-height: 1.4;
+}
+
+.settings-netprobe__mark {
+  font-weight: 600;
+  width: 1em;
+  text-align: center;
+}
+
+.settings-netprobe__item.is-ok .settings-netprobe__mark {
+  color: var(--success, #3d9a5f);
+}
+
+.settings-netprobe__item.is-fail .settings-netprobe__mark {
+  color: var(--danger, #d33);
+}
+
+.settings-netprobe__key {
+  font-weight: 600;
+  color: var(--text-primary);
+  text-transform: lowercase;
+}
+
+.settings-netprobe__url {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 11.5px;
+  color: var(--text-tertiary);
+}
+
+.settings-netprobe__meta {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 11.5px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+.settings-netprobe__item.is-fail .settings-netprobe__meta {
+  color: var(--danger, #d33);
+}
+
+@media (max-width: 560px) {
+  .settings-netprobe__item {
+    grid-template-columns: auto 1fr;
+    grid-template-areas:
+      "mark key"
+      "url url"
+      "meta meta";
+  }
+
+  .settings-netprobe__mark {
+    grid-area: mark;
+  }
+
+  .settings-netprobe__key {
+    grid-area: key;
+  }
+
+  .settings-netprobe__url {
+    grid-area: url;
+    white-space: normal;
+    word-break: break-all;
+  }
+
+  .settings-netprobe__meta {
+    grid-area: meta;
+    white-space: normal;
+  }
+}
+
 .settings-acp-field {
   display: flex;
   gap: 8px;
@@ -4023,6 +4144,10 @@ html[data-theme="light"] .ui-check.is-mixed .ui-check__box {
 }
 
 .settings-cli-update__status {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 10px;
   font-size: 12.5px;
   color: var(--text-secondary);
   line-height: 1.45;
@@ -4031,6 +4156,11 @@ html[data-theme="light"] .ui-check.is-mixed .ui-check__box {
 .settings-cli-update__status.is-available {
   color: var(--text-primary);
   font-weight: 500;
+}
+
+.settings-cli-update__status-text {
+  flex: 1 1 12rem;
+  min-width: 0;
 }
 
 .settings-cli-update__err {

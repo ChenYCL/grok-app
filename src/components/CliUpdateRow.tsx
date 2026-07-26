@@ -23,7 +23,6 @@ export function CliUpdateRow({
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<any | null>(null);
   const [installMsg, setInstallMsg] = useState<string | null>(null);
-  // NEW-05: running agents keep executing the old binary after an upgrade.
   const [needsRestart, setNeedsRestart] = useState(false);
   const [restarting, setRestarting] = useState(false);
 
@@ -158,10 +157,12 @@ export function CliUpdateRow({
         ) : null}
         {needsRestart && !error ? (
           <div className="settings-cli-update__status" role="status">
-            {t("settings.cliUpdateRestartHint")}{" "}
+            <span className="settings-cli-update__status-text">
+              {t("settings.cliUpdateRestartHint")}
+            </span>
             <button
               type="button"
-              className="btn btn--sm"
+              className="btn btn--ghost btn--sm"
               disabled={restarting}
               onClick={() => void restartSessions()}
             >

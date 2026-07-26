@@ -957,8 +957,7 @@ describe("session projection", () => {
     expect(crash?.primary?.id).toBe("reconnect");
   });
 
-  it("presentErrorBanner routes CLI_TOO_OLD to the upgrade deck (NEW-03)", () => {
-    // From the agent spawn gate.
+  it("presentErrorBanner routes CLI_TOO_OLD to the upgrade deck", () => {
     const fromAgent = presentErrorBanner(
       {
         code: "CLI_TOO_OLD",

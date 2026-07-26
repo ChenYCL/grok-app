@@ -550,9 +550,6 @@ export function SetupWizard({
 
               {accountPanel === "menu" && (
                 <div className="setup-entry-grid">
-                  {/* NEW-04: an existing CLI sign-in is the zero-friction path —
-                      surface it FIRST so users are not funneled into Browser
-                      OAuth (which hangs on restricted networks). */}
                   {cli.cliAuthPresent && (
                     <button
                       type="button"

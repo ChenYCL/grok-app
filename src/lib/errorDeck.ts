@@ -17,7 +17,7 @@ export type ErrorDeckActionId =
   | "dismiss"
   /** Open Settings runtime section and trigger a CLI upgrade (CLI_TOO_OLD). */
   | "upgrade_cli"
-  /** Open Settings → Runtime → Network (proxy) — NEW-07. */
+  /** Open Settings → Runtime → Network (proxy). */
   | "open_network"
   /** Stream-stall banner: clear the stall prompt and keep the turn running. */
   | "keep_waiting"
@@ -85,8 +85,6 @@ const DECK: Record<ErrorDeckCode, DeckSpec> = {
     cause: "error.deck.network.cause",
     primaryId: "reconnect",
     primaryLabel: "error.action.reconnect",
-    // Restricted networks are the dominant real-world cause (NEW-07): route
-    // the secondary action at proxy settings, not providers.
     secondaryId: "open_network",
     secondaryLabel: "error.action.openNetwork",
   },
