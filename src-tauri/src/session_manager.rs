@@ -160,6 +160,13 @@ struct LiveSession {
     acp: Option<Arc<AcpClient>>,
     mock_stream: Option<MockStreamHandle>,
     streaming_message_id: Option<String>,
+    /// Stable identity for one user-prompt turn. Survives assistant row splits
+    /// (e.g. mid-turn interjection / Steer).
+    active_turn_id: Option<String>,
+    /// Keep the host-created assistant id after an interjection splits the turn.
+    /// The agent may continue emitting its original messageId, which must not
+    /// merge post-interjection output back into the frozen pre-interjection row.
+    stream_message_id_locked: bool,
     /// Accumulated assistant text for current turn (persisted on complete).
     stream_buf: String,
     stream_thought: String,
@@ -632,6 +639,8 @@ impl SessionManager {
             let _ = s.fsm.end_stream();
         }
         s.streaming_message_id = None;
+        s.active_turn_id = None;
+        s.stream_message_id_locked = false;
         s.last_stall_emit = None;
         tracing::info!(
             "acp turn finished after deferred prompt_complete stop={stop_reason}"
@@ -737,6 +746,84 @@ impl SessionManager {
         s.journal_throttle.mark_flushed(now);
         if force {
             s.journal_throttle.reset();
+        }
+    }
+
+    /// Start a fresh assistant journal/UI row after a mid-turn interjection.
+    fn begin_post_interjection_stream(s: &mut LiveSession) {
+        s.streaming_message_id = Some(Uuid::new_v4().to_string());
+        s.stream_message_id_locked = true;
+        s.stream_buf.clear();
+        s.stream_thought.clear();
+        s.stream_last_was_assistant = false;
+        s.stream_attachments.clear();
+        s.journal_throttle.reset();
+    }
+
+    fn is_interjection_turn_active(
+        s: &LiveSession,
+        app_session_id: &str,
+        turn_id: &str,
+    ) -> bool {
+        s.app_session_id == app_session_id
+            && s.active_turn_id.as_deref() == Some(turn_id)
+            && (s.prompt_in_flight
+                || matches!(
+                    s.fsm.state(),
+                    SessionState::Streaming | SessionState::AwaitingPermission
+                ))
+    }
+
+    /// Persist an interjection at the current stream boundary while holding the
+    /// session lock. Emitting before unlock guarantees UI order vs stream chunks.
+    fn commit_interjection_boundary<R: tauri::Runtime>(
+        s: &mut LiveSession,
+        app: &AppHandle<R>,
+        message: &ChatMessageStored,
+        expected_app_session_id: &str,
+        expected_turn_id: &str,
+    ) -> Result<(), String> {
+        if !Self::is_interjection_turn_active(
+            s,
+            expected_app_session_id,
+            expected_turn_id,
+        ) {
+            return Err("interjection turn is no longer active".into());
+        }
+        Self::maybe_flush_stream_journal(s, true, false);
+        // ACP interject already landed — journal is best-effort; always split stream id.
+        if let Err(e) = store::append_message(&s.app_session_id, message.clone()) {
+            tracing::error!("interjection journal append failed: {e}");
+        }
+        s.meta.updated_at = message.created_at;
+        if let Err(e) = store::update_session_meta(&s.meta) {
+            tracing::warn!("interjection meta update failed: {e}");
+        }
+        Self::begin_post_interjection_stream(s);
+        let _ = app.emit(
+            "session://interjection",
+            serde_json::json!({
+                "sessionId": s.app_session_id,
+                "message": message,
+            }),
+        );
+        Ok(())
+    }
+
+    /// Adopt agent message id unless host locked the id after an interjection split.
+    fn ensure_stream_message_id(s: &mut LiveSession, kind: StreamKind, message_id: Option<String>) {
+        if !s.stream_message_id_locked {
+            if let Some(ref mid_in) = message_id {
+                if s.streaming_message_id.as_ref() != Some(mid_in)
+                    && (s.streaming_message_id.is_none() || matches!(kind, StreamKind::Assistant))
+                {
+                    s.streaming_message_id = Some(mid_in.clone());
+                }
+            }
+        }
+        if s.streaming_message_id.is_none() {
+            s.streaming_message_id =
+                Some(message_id.unwrap_or_else(|| Uuid::new_v4().to_string()));
         }
     }
 
@@ -1058,6 +1145,8 @@ impl SessionManager {
             acp: Some(parked.acp),
             mock_stream: None,
             streaming_message_id: None,
+            active_turn_id: None,
+            stream_message_id_locked: false,
             stream_buf: String::new(),
             stream_thought: String::new(),
             stream_last_was_assistant: false,
@@ -1516,6 +1605,8 @@ impl SessionManager {
         s.stream_last_was_assistant = false;
         s.stream_attachments.clear();
         s.streaming_message_id = None;
+        s.active_turn_id = None;
+        s.stream_message_id_locked = false;
         s.prompt_in_flight = false;
         s.journal_throttle.reset();
         s.last_stall_emit = None;
@@ -1755,6 +1846,8 @@ impl SessionManager {
                 acp: None,
                 mock_stream: None,
                 streaming_message_id: None,
+                active_turn_id: None,
+                stream_message_id_locked: false,
                 stream_buf: String::new(),
                 stream_thought: String::new(),
                 stream_last_was_assistant: false,
@@ -2019,6 +2112,8 @@ impl SessionManager {
             acp: Some(p.acp),
             mock_stream: None,
             streaming_message_id: None,
+            active_turn_id: None,
+            stream_message_id_locked: false,
             stream_buf: String::new(),
             stream_thought: String::new(),
             stream_last_was_assistant: false,
@@ -2165,21 +2260,9 @@ impl SessionManager {
                         }
                         // Stream chunk = progress (I06); not pure silence.
                         Self::touch_stream_progress_locked(s);
-                        // Prefer agent-supplied messageId; otherwise keep the turn id.
-                        if let Some(ref mid_in) = message_id {
-                            if s.streaming_message_id.as_ref() != Some(mid_in) {
-                                // New assistant message id mid-turn (rare) — adopt it.
-                                if s.streaming_message_id.is_none()
-                                    || matches!(kind, StreamKind::Assistant)
-                                {
-                                    s.streaming_message_id = Some(mid_in.clone());
-                                }
-                            }
-                        }
-                        if s.streaming_message_id.is_none() {
-                            s.streaming_message_id =
-                                Some(message_id.unwrap_or_else(|| Uuid::new_v4().to_string()));
-                        }
+                        // Prefer agent-supplied messageId unless an interjection
+                        // deliberately split this turn into a new host-owned row.
+                        Self::ensure_stream_message_id(s, kind, message_id);
                         // Split thinking whenever it resumes after *non-empty* body
                         // text so the UI can interleave thought ↔ content. Empty
                         // assistant ticks must not open a new phase — they caused
@@ -2664,6 +2747,8 @@ impl SessionManager {
                         s.open_tool_ids.clear();
                         s.deferred_prompt_complete = None;
                         s.streaming_message_id = None;
+                        s.active_turn_id = None;
+                        s.stream_message_id_locked = false;
                         s.prompt_in_flight = false;
                     }
                 }
@@ -2875,18 +2960,7 @@ impl SessionManager {
                         let _ = s.fsm.begin_stream();
                     }
                     Self::touch_stream_progress_locked(s);
-                    if let Some(ref mid_in) = message_id {
-                        if s.streaming_message_id.as_ref() != Some(mid_in)
-                            && (s.streaming_message_id.is_none()
-                                || matches!(kind, StreamKind::Assistant))
-                        {
-                            s.streaming_message_id = Some(mid_in.clone());
-                        }
-                    }
-                    if s.streaming_message_id.is_none() {
-                        s.streaming_message_id =
-                            Some(message_id.unwrap_or_else(|| Uuid::new_v4().to_string()));
-                    }
+                    Self::ensure_stream_message_id(s, kind, message_id);
                     let thought_phase = match kind {
                         StreamKind::Thought => {
                             let phase = if s.stream_last_was_assistant {
@@ -3249,6 +3323,8 @@ impl SessionManager {
                     s.acp = None;
                     s.open_tool_ids.clear();
                     s.streaming_message_id = None;
+                    s.active_turn_id = None;
+                    s.stream_message_id_locked = false;
                     s.deferred_prompt_complete = None;
                     s.prompt_in_flight = false;
                     let mut snap = Self::snapshot_from_live(&s);
@@ -3616,6 +3692,8 @@ impl SessionManager {
             s.fsm.begin_stream().map_err(|e| e.to_string())?;
             s.prompt_in_flight = true;
             Self::touch_stream_progress_locked(s);
+            s.active_turn_id = Some(Uuid::new_v4().to_string());
+            s.stream_message_id_locked = false;
             let mid = Uuid::new_v4().to_string();
             s.streaming_message_id = Some(mid.clone());
             s.stream_buf.clear();
@@ -3713,6 +3791,8 @@ impl SessionManager {
                             if s.fsm.state() == SessionState::Streaming {
                                 let _ = s.fsm.end_stream();
                                 s.streaming_message_id = None;
+                                s.active_turn_id = None;
+                                s.stream_message_id_locked = false;
                             }
                         }
                     }
@@ -3734,6 +3814,8 @@ impl SessionManager {
             self.with_session_mut(&app_sid, |s| {
                 s.prompt_in_flight = false;
                 s.streaming_message_id = None;
+                s.active_turn_id = None;
+                s.stream_message_id_locked = false;
                 if s.fsm.state() == SessionState::Streaming {
                     let _ = s.fsm.end_stream();
                 }
@@ -3773,6 +3855,107 @@ impl SessionManager {
     ///
     /// Targets background turns too: the user can watch a demoted chat and hit
     /// Stop there, which previously cancelled whichever chat held focus.
+
+    /// Inject guidance into the currently streaming turn without cancelling it.
+    ///
+    /// `session_id` names the chat (live or background). Omitting it uses the
+    /// focused live slot. Does **not** rewrite the follow-up send queue.
+    pub async fn interject_message<R: tauri::Runtime>(
+        &self,
+        app: AppHandle<R>,
+        text: String,
+        display_text: Option<String>,
+        attachments: Option<Vec<MessageAttachmentStored>>,
+        session_id: Option<String>,
+    ) -> Result<SessionSnapshot, String> {
+        let text = text.trim().to_string();
+        if text.is_empty() {
+            return Err("empty interjection".into());
+        }
+        let journal_content = display_text
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+            .unwrap_or_else(|| text.clone());
+        let attachments = attachments.filter(|items| !items.is_empty());
+        let target = session_id.as_deref();
+
+        let pick = |s: &LiveSession| -> Result<(String, String, String, Option<Arc<AcpClient>>), String> {
+            if !(s.prompt_in_flight || s.fsm.state() == SessionState::Streaming) {
+                return Err("interjection requires a streaming turn".into());
+            }
+            let turn_id = s
+                .active_turn_id
+                .clone()
+                .ok_or("interjection requires an active turn")?;
+            Ok((
+                s.backend.clone(),
+                s.app_session_id.clone(),
+                turn_id,
+                s.acp.clone(),
+            ))
+        };
+
+        let (backend, app_sid, turn_id, acp) = {
+            if let Some(t) = target {
+                let guard = self.inner.lock();
+                if let Some(s) = guard.as_ref().filter(|s| s.app_session_id == t) {
+                    pick(s)?
+                } else {
+                    drop(guard);
+                    let background = self.background.lock();
+                    let s = background
+                        .get(t)
+                        .ok_or_else(|| format!("interjection: chat {t} is not active"))?;
+                    pick(s)?
+                }
+            } else {
+                let guard = self.inner.lock();
+                let s = guard.as_ref().ok_or("no active session")?;
+                pick(s)?
+            }
+        };
+
+        if backend != "mock_acp" && !AcpClient::use_mock() {
+            acp.ok_or("ACP client missing")?.interject(&text).await?;
+        }
+
+        let created_at = chrono::Utc::now();
+        let message = ChatMessageStored {
+            id: Uuid::new_v4().to_string(),
+            role: "user".into(),
+            content: journal_content,
+            thought: None,
+            created_at,
+            is_error: false,
+            attachments,
+            marker: Some("interjection".into()),
+        };
+
+        // Session may move between live/background while the ACP RPC is in flight.
+        {
+            let mut guard = self.inner.lock();
+            if let Some(s) = guard.as_mut() {
+                if s.app_session_id == app_sid {
+                    Self::commit_interjection_boundary(
+                        s, &app, &message, &app_sid, &turn_id,
+                    )?;
+                    return Ok(self.snapshot());
+                }
+            }
+        }
+        {
+            let mut background = self.background.lock();
+            if let Some(s) = background.get_mut(&app_sid) {
+                Self::commit_interjection_boundary(
+                    s, &app, &message, &app_sid, &turn_id,
+                )?;
+                return Ok(self.snapshot());
+            }
+        }
+
+        Err("interjection turn is no longer active".into())
+    }
+
     pub async fn stop(
         self: &Arc<Self>,
         app: AppHandle,
@@ -3842,6 +4025,8 @@ impl SessionManager {
                     }
                 }
                 s.streaming_message_id = None;
+                s.active_turn_id = None;
+                s.stream_message_id_locked = false;
                 s.stream_buf.clear();
                 s.stream_thought.clear();
                 s.stream_last_was_assistant = false;
@@ -3983,6 +4168,8 @@ impl SessionManager {
                 s.stream_attachments.clear();
                 s.journal_throttle.reset();
                 s.streaming_message_id = None;
+                s.active_turn_id = None;
+                s.stream_message_id_locked = false;
                 s.open_tool_ids.clear();
                 s.deferred_prompt_complete = None;
                 s.tools_this_turn = 0;
@@ -4502,4 +4689,176 @@ mod session_routing_tests {
         let mgr = SessionManager::new();
         assert!(mgr.rescue_parked_to_background("no-such-process").is_none());
     }
+
+    #[test]
+
+    fn interjection_starts_host_owned_stream_segment() {
+        // Minimal LiveSession-shaped fields via a throwaway session on the manager.
+        // We only need stream id lock semantics — use begin_post_interjection_stream.
+        // Build through connect path is heavy; construct via unpark-style fields by
+        // reusing ensure_stream_message_id after begin_post_interjection_stream on a
+        // hand-built session inside the lock.
+        let mgr = SessionManager::new();
+        // Use a mock live session from existing patterns if any — otherwise skip build.
+        // Direct unit: call ensure after setting locked on an empty shell via private API
+        // through begin_post_interjection_stream requiring &mut LiveSession.
+        // We'll assemble a minimal session matching LiveSession fields by sending
+        // through the manager's public surface is hard; use sample via FSM.
+        let mut fsm = SessionFsm::new();
+        let _ = fsm.start_connect();
+        let _ = fsm.handshake_ok();
+        let _ = fsm.begin_stream();
+        let now = Instant::now();
+        let mut session = LiveSession {
+            app_session_id: "session-1".into(),
+            process_id: "process-1".into(),
+            meta: SessionMeta {
+                id: "session-1".into(),
+                project_id: None,
+                title: "Test".into(),
+                agent_session_id: None,
+                created_at: chrono::Utc::now(),
+                updated_at: chrono::Utc::now(),
+                model_id: None,
+                archived: false,
+                pinned: false,
+                effort: None,
+                mode: None,
+                permission_policy: None,
+                scheduled: false,
+            },
+            fsm,
+            backend: "mock_acp".into(),
+            acp: None,
+            mock_stream: None,
+            streaming_message_id: Some("agent-message-1".into()),
+            active_turn_id: Some("turn-1".into()),
+            stream_message_id_locked: false,
+            stream_buf: "before".into(),
+            stream_thought: String::new(),
+            stream_last_was_assistant: true,
+            stream_attachments: Vec::new(),
+            model_id: None,
+            effort: None,
+            product_mode: None,
+            project_path: None,
+            allow_cache: SessionAllowCache::default(),
+            policy: PermissionPolicy::default(),
+            provider_retry_attempt: 0,
+            provider_retry_aborted: false,
+            needs_history_bootstrap: false,
+            pending_plan_rpc_id: None,
+            pending_ask_user_rpc_id: None,
+            last_activity: now,
+            last_stream_progress: now,
+            last_stall_emit: None,
+            journal_throttle: JournalWriteThrottle::with_default_interval(),
+            open_tool_ids: HashSet::new(),
+            deferred_prompt_complete: None,
+            tools_this_turn: 0,
+            prompt_in_flight: true,
+        };
+
+        SessionManager::begin_post_interjection_stream(&mut session);
+        let post_id = session
+            .streaming_message_id
+            .clone()
+            .expect("post-interjection message id");
+        assert_ne!(post_id, "agent-message-1");
+        assert!(session.stream_message_id_locked);
+        assert!(session.stream_buf.is_empty());
+
+        SessionManager::ensure_stream_message_id(
+            &mut session,
+            StreamKind::Assistant,
+            Some("agent-message-1".into()),
+        );
+        assert_eq!(session.streaming_message_id.as_deref(), Some(post_id.as_str()));
+
+        assert!(SessionManager::is_interjection_turn_active(
+            &session, "session-1", "turn-1",
+        ));
+        assert!(!SessionManager::is_interjection_turn_active(
+            &session, "session-2", "turn-1",
+        ));
+        session.prompt_in_flight = false;
+        session.fsm.end_stream().unwrap();
+        session.active_turn_id = None;
+        assert!(!SessionManager::is_interjection_turn_active(
+            &session, "session-1", "turn-1",
+        ));
+        let _ = mgr; // keep manager constructed for parity with other tests
+    }
+
+    #[tokio::test]
+    async fn interject_message_rejects_non_streaming_session() {
+        let mgr = SessionManager::new();
+        let mut fsm = SessionFsm::new();
+        let _ = fsm.start_connect();
+        let _ = fsm.handshake_ok();
+        // Ready, not streaming
+        let now = Instant::now();
+        *mgr.inner.lock() = Some(LiveSession {
+            app_session_id: "session-1".into(),
+            process_id: "process-1".into(),
+            meta: SessionMeta {
+                id: "session-1".into(),
+                project_id: None,
+                title: "Test".into(),
+                agent_session_id: None,
+                created_at: chrono::Utc::now(),
+                updated_at: chrono::Utc::now(),
+                model_id: None,
+                archived: false,
+                pinned: false,
+                effort: None,
+                mode: None,
+                permission_policy: None,
+                scheduled: false,
+            },
+            fsm,
+            backend: "mock_acp".into(),
+            acp: None,
+            mock_stream: None,
+            streaming_message_id: None,
+            active_turn_id: None,
+            stream_message_id_locked: false,
+            stream_buf: String::new(),
+            stream_thought: String::new(),
+            stream_last_was_assistant: false,
+            stream_attachments: Vec::new(),
+            model_id: None,
+            effort: None,
+            product_mode: None,
+            project_path: None,
+            allow_cache: SessionAllowCache::default(),
+            policy: PermissionPolicy::default(),
+            provider_retry_attempt: 0,
+            provider_retry_aborted: false,
+            needs_history_bootstrap: false,
+            pending_plan_rpc_id: None,
+            pending_ask_user_rpc_id: None,
+            last_activity: now,
+            last_stream_progress: now,
+            last_stall_emit: None,
+            journal_throttle: JournalWriteThrottle::with_default_interval(),
+            open_tool_ids: HashSet::new(),
+            deferred_prompt_complete: None,
+            tools_this_turn: 0,
+            prompt_in_flight: false,
+        });
+        let app = tauri::test::mock_app();
+        let err = mgr
+            .interject_message(
+                app.handle().clone(),
+                "Use the existing component".into(),
+                None,
+                None,
+                Some("session-1".into()),
+            )
+            .await
+            .expect_err("ready session must reject interjection");
+        assert_eq!(err, "interjection requires a streaming turn");
+    }
 }
+

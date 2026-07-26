@@ -101,6 +101,24 @@ export async function sessionSend(
 }
 
 /**
+ * Inject guidance into the active turn without cancelling the running prompt.
+ * Grok Build `_x.ai/interject`. Pass `sessionId` so multi-session routing stays correct.
+ */
+export async function sessionInterject(
+  text: string,
+  displayText?: string | null,
+  attachments?: { path: string; name: string; isDir?: boolean }[] | null,
+  sessionId?: string | null,
+): Promise<SessionSnapshot> {
+  return invoke("session_interject", {
+    text,
+    displayText: displayText ?? null,
+    attachments: attachments?.length ? attachments : null,
+    sessionId: sessionId ?? null,
+  });
+}
+
+/**
  * Drop last user turn (agent rewind + local journal) before edit-resend.
  * Pass `sessionId` so a concurrent connect cannot truncate another chat.
  */

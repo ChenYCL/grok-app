@@ -10,6 +10,7 @@ import {
   formatTurnErrorBody,
   isToolInlinedInAssistants,
   messageSegments,
+  isTurnPromptMessage,
   type ChatMessage,
   type SessionState,
 } from "@/lib/session";
@@ -31,6 +32,7 @@ import {
   IconFork,
   IconRename,
   IconRewind,
+  IconTarget,
 } from "@/components/icons";
 import { formatMessageTime } from "@/lib/accountUi";
 import { formatTokenCount } from "@/lib/contextUsage";
@@ -458,7 +460,7 @@ export function ConversationThread({
   const activeAssistantId = useMemo(() => {
     let lastUser = -1;
     for (let i = messages.length - 1; i >= 0; i--) {
-      if (messages[i]!.role === "user") {
+      if (isTurnPromptMessage(messages[i])) {
         lastUser = i;
         break;
       }
@@ -594,7 +596,8 @@ export function ConversationThread({
             }
 
             if (m.role === "user") {
-              const isLastUser = lastUserMessageId === m.id;
+              const isInterjection = m.marker === "interjection";
+              const isLastUser = !isInterjection && lastUserMessageId === m.id;
               const isEditing = editingUserMessageId === m.id;
               const timeLabel = formatMessageTime(m.createdAt, locale);
               const isFindHit = !!findHitMessageIds?.has(m.id);
@@ -652,7 +655,21 @@ export function ConversationThread({
                           onRemoveAttachment={onRemoveEditAttachment}
                         />
                       ) : m.content.trim() ? (
-                        <div className="lobe-chat-bubble">
+                        <div
+                          className={
+                            "lobe-chat-bubble" +
+                            (isInterjection
+                              ? " lobe-chat-bubble--interjection"
+                              : "")
+                          }
+                          data-message-marker={m.marker}
+                        >
+                          {isInterjection ? (
+                            <div className="lobe-chat-interjection-tag">
+                              <IconTarget size={12} aria-hidden />
+                              <span>{tr("message.interjectionTag")}</span>
+                            </div>
+                          ) : null}
                           <UserMessageBody
                             content={m.content}
                             scheduledLabel={tr("automations.msgTag")}
@@ -696,7 +713,7 @@ export function ConversationThread({
                             <IconRename size={15} />
                           </MessageActionButton>
                         ) : null}
-                        {onRewindToUserMessage ? (
+                        {onRewindToUserMessage && !isInterjection ? (
                           <MessageActionButton
                             label={tr("message.rewindHere")}
                             disabled={!canRewindSession}
@@ -708,7 +725,7 @@ export function ConversationThread({
                             <IconRewind size={15} />
                           </MessageActionButton>
                         ) : null}
-                        {onForkFromUserMessage ? (
+                        {onForkFromUserMessage && !isInterjection ? (
                           <MessageActionButton
                             label={tr("message.forkHere")}
                             disabled={!canRewindSession}

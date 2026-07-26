@@ -63,6 +63,7 @@ import {
 import {
   applyContextCompact,
   applyGeneratedImage,
+  applyInterjection,
   applyStreamChunk,
   applyToolEvent,
   applyTurnError,
@@ -229,6 +230,7 @@ import { PromptHistoryPanel } from "@/components/PromptHistoryPanel";
 import {
   queuePreviewText,
   shouldEnqueueSend,
+  type QueuedSend,
 } from "@/lib/sendQueue";
 import {
   useSendQueue,
@@ -1044,6 +1046,9 @@ export default function App() {
     sessionId?: string;
     stallSeconds: number;
   } | null>(null);
+  /** Queue item currently being steered into the live turn. */
+  const [guidingQueueItemId, setGuidingQueueItemId] = useState<string | null>(null);
+
   const [connecting, setConnecting] = useState(false);
   /** Sync gate for ensureConnected (React state alone races two rapid sends). */
   const connectingRef = useRef(false);
@@ -2068,6 +2073,20 @@ export default function App() {
               void tryApplyAutomationFromSession(chunk.sessionId);
             }
           }),
+        );
+        await track(
+          api.listen<{ sessionId: string; message: ChatMessage }>(
+            "session://interjection",
+            (payload) => {
+              if (cancelled || !payload?.sessionId || !payload.message?.id) {
+                return;
+              }
+              // Only apply to the journal for that session; multi-session safe.
+              patchSessionMessages(payload.sessionId, (prev) =>
+                applyInterjection(prev, payload.message),
+              );
+            },
+          ),
         );
         await track(
           api.listen<GeneratedImagePayload>(
@@ -5913,6 +5932,57 @@ export default function App() {
     showToast,
     labels: sendQueueLabels,
   });
+
+  const canGuideQueuedMessage =
+    session.state === "streaming" &&
+    !connecting &&
+    !!session.sessionId &&
+    // Host may report streaming on this chat even when demoted; prefer viewed id.
+    (liveHost.sessionId === session.sessionId
+      ? liveHost.state === "streaming"
+      : session.state === "streaming");
+
+  const guideQueuedMessage = useCallback(
+    async (item: QueuedSend) => {
+      if (guidingQueueItemId || !canGuideQueuedMessage || !session.sessionId) {
+        return;
+      }
+      const segments = parseStoredContent(item.storedDisplay);
+      const agentBody = serializeForAgent(segments, { goalMode: item.goalMode });
+      const agentText = buildAgentPrompt(agentBody, item.attachments);
+      if (!agentText.trim()) return;
+
+      setGuidingQueueItemId(item.id);
+      try {
+        await api.sessionInterject(
+          agentText,
+          item.storedDisplay,
+          item.attachments.map((attachment) => ({
+            path: attachment.path,
+            name: attachment.name,
+            isDir: attachment.isDir,
+          })),
+          session.sessionId,
+        );
+        sendQueue.removeItem(item.id);
+      } catch {
+        showToast(tr("composer.queueGuideFailed"), 3600);
+      } finally {
+        setGuidingQueueItemId((current) =>
+          current === item.id ? null : current,
+        );
+      }
+    },
+    [
+      canGuideQueuedMessage,
+      guidingQueueItemId,
+      session.sessionId,
+      sendQueue.removeItem,
+      showToast,
+      tr,
+    ],
+  );
+
 
   /**
    * Fork a session (full history or through a user-prompt index) and open it.
@@ -10113,8 +10183,38 @@ export default function App() {
                         </span>
                         <button
                           type="button"
+                          className="composer__queue-guide"
+                          data-testid="queue-guide"
+                          aria-label={
+                            guidingQueueItemId === item.id ||
+                            guidingQueueItemId !== null
+                              ? tr("composer.queueGuiding")
+                              : canGuideQueuedMessage
+                                ? tr("composer.queueGuide")
+                                : tr("composer.queueGuideUnavailable")
+                          }
+                          title={
+                            guidingQueueItemId === item.id ||
+                            guidingQueueItemId !== null
+                              ? tr("composer.queueGuiding")
+                              : canGuideQueuedMessage
+                                ? tr("composer.queueGuide")
+                                : tr("composer.queueGuideUnavailable")
+                          }
+                          disabled={
+                            !canGuideQueuedMessage || guidingQueueItemId !== null
+                          }
+                          onClick={() => void guideQueuedMessage(item)}
+                        >
+                          {guidingQueueItemId === item.id
+                            ? tr("composer.queueGuiding")
+                            : tr("composer.queueGuide")}
+                        </button>
+                        <button
+                          type="button"
                           className="composer__queue-remove"
                           aria-label={tr("composer.queueRemove")}
+                          disabled={guidingQueueItemId === item.id}
                           onClick={() => sendQueue.removeItem(item.id)}
                         >
                           <IconClose size={12} />

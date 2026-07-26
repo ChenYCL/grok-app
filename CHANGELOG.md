@@ -15,6 +15,8 @@ See `docs/llm-wiki/release.md`.
 
 ### Added
 
+- **Mid-turn Steer (interject)**: while a turn is generating, queue items can inject guidance via `_x.ai/interject` without cancelling the turn or rewriting the existing per-session send queue.
+
 - **Phone mirror**: optional control of the workbench from a phone browser (live stream, send, permissions). Off by default.
 - **Remote IM**: Feishu / WeChat (and related) bridge synced with App sessions.
 - **Settings IA**: tabbed pages + searchable catalog; remote control (IM + mirror) in one place.

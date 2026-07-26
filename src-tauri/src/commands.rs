@@ -64,6 +64,21 @@ pub async fn session_send(
     mgr.send_message(app, text, display_text, session_id).await
 }
 
+/// Inject guidance into the active turn without cancelling the running prompt.
+/// `session_id` binds the interjection to a chat (live or background).
+#[tauri::command]
+pub async fn session_interject(
+    app: tauri::AppHandle,
+    mgr: State<'_, Arc<SessionManager>>,
+    text: String,
+    display_text: Option<String>,
+    attachments: Option<Vec<store::MessageAttachmentStored>>,
+    session_id: Option<String>,
+) -> Result<SessionSnapshot, String> {
+    mgr.interject_message(app, text, display_text, attachments, session_id)
+        .await
+}
+
 /// Drop last user turn on agent + local journal (edit & resend).
 #[tauri::command]
 pub async fn session_rewind_drop_last_user(

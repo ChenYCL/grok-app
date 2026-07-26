@@ -7370,6 +7370,30 @@ button.composer__context-item {
   color: var(--text-primary);
 }
 
+
+.composer__queue-guide {
+  flex: 0 0 auto;
+  min-width: 48px;
+  height: 24px;
+  padding: 0 9px;
+  border: 1px solid color-mix(in srgb, var(--accent) 35%, var(--border-subtle));
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+  color: var(--accent);
+  font: inherit;
+  font-weight: 550;
+  cursor: pointer;
+}
+
+.composer__queue-guide:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--accent) 17%, transparent);
+}
+
+.composer__queue-guide:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
 .composer__queue-remove {
   flex: 0 0 auto;
   display: inline-flex;
@@ -7384,7 +7408,7 @@ button.composer__context-item {
   cursor: pointer;
 }
 
-.composer__queue-remove:hover {
+.composer__queue-remove:hover:not(:disabled) {
   background: var(--bg-elevated, var(--bg-hover));
   color: var(--text-primary);
 }

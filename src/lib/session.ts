@@ -1187,10 +1187,15 @@ export function isSessionLiveStreaming(state: SessionState): boolean {
  * Drop the last user message and everything after it (assistant reply, errors, tools).
  * Used by edit-resend so the prior turn is fully replaced, not stacked.
  */
+/** A real prompt turn boundary. Mid-turn steering messages stay inside the active turn. */
+export function isTurnPromptMessage(message: ChatMessage | undefined): boolean {
+  return message?.role === "user" && message.marker !== "interjection";
+}
+
 export function truncateBeforeLastUser(messages: ChatMessage[]): ChatMessage[] {
   let cut = messages.length;
   for (let i = messages.length - 1; i >= 0; i--) {
-    if (messages[i]?.role === "user") {
+    if (isTurnPromptMessage(messages[i])) {
       cut = i;
       break;
     }
@@ -1200,7 +1205,7 @@ export function truncateBeforeLastUser(messages: ChatMessage[]): ChatMessage[] {
 
 /** Number of user-role messages (0-based prompt index length). */
 export function countUserPrompts(messages: ChatMessage[]): number {
-  return messages.reduce((n, m) => (m.role === "user" ? n + 1 : n), 0);
+  return messages.reduce((n, m) => (isTurnPromptMessage(m) ? n + 1 : n), 0);
 }
 
 /**
@@ -1212,7 +1217,7 @@ export function userPromptIndexOf(
 ): number {
   let idx = 0;
   for (const m of messages) {
-    if (m.role !== "user") continue;
+    if (!isTurnPromptMessage(m)) continue;
     if (m.id === messageId) return idx;
     idx += 1;
   }
@@ -1228,13 +1233,12 @@ export function endIndexThroughUserPrompt(
   messages: ChatMessage[],
   userPromptIndex: number,
 ): number {
-  if (userPromptIndex < 0 || !Number.isFinite(userPromptIndex)) return -1;
   let userI = 0;
   for (let i = 0; i < messages.length; i++) {
-    if (messages[i]?.role !== "user") continue;
+    if (!isTurnPromptMessage(messages[i])) continue;
     if (userI === userPromptIndex) {
       let j = i + 1;
-      while (j < messages.length && messages[j]?.role !== "user") j += 1;
+      while (j < messages.length && !isTurnPromptMessage(messages[j])) j += 1;
       return j;
     }
     userI += 1;
@@ -1280,7 +1284,7 @@ export function localRewindPoints(
   const out: LocalRewindPoint[] = [];
   let idx = 0;
   for (const m of messages) {
-    if (m.role !== "user") continue;
+    if (!isTurnPromptMessage(m)) continue;
     const raw = (m.content || "").replace(/\s+/g, " ").trim();
     const preview =
       raw.length > max ? `${raw.slice(0, Math.max(1, max - 1))}…` : raw || "…";
@@ -1615,7 +1619,7 @@ export function applyGeneratedImage(
  */
 export function lastUserMessageIndex(messages: ChatMessage[]): number {
   for (let i = messages.length - 1; i >= 0; i--) {
-    if (messages[i]?.role === "user") return i;
+    if (isTurnPromptMessage(messages[i])) return i;
   }
   return -1;
 }
@@ -1680,6 +1684,51 @@ export function dedupeCurrentTurnAssistants(
   );
   if (!dropEmpty.size) return messages;
   return messages.filter((m) => !dropEmpty.has(m.id) || dropIds.size === 0);
+}
+
+/**
+ * Insert a mid-turn user interjection and freeze the assistant segment above it.
+ * Post-interjection stream chunks carry a fresh host message id and append a new row.
+ */
+export function applyInterjection(
+  messages: ChatMessage[],
+  interjection: ChatMessage,
+): ChatMessage[] {
+  const existingIndex = messages.findIndex(
+    (message) => message.id === interjection.id,
+  );
+  const boundaryIndex = existingIndex < 0 ? messages.length : existingIndex;
+  const frozenBefore = messages
+    .slice(0, boundaryIndex)
+    .filter((message) => {
+      if (
+        message.role !== "assistant" ||
+        !message.streaming ||
+        !message.id.startsWith("a-pending-")
+      ) {
+        return true;
+      }
+      const hasVisibleContent =
+        !!message.content.trim() ||
+        !!message.thought?.trim() ||
+        !!message.segments?.some(
+          (segment) => "text" in segment && !!segment.text?.trim(),
+        ) ||
+        !!message.attachments?.length;
+      return hasVisibleContent;
+    })
+    .map((message) =>
+      message.role === "assistant" && message.streaming
+        ? { ...message, streaming: false }
+        : message,
+    );
+
+  if (existingIndex < 0) return [...frozenBefore, interjection];
+  return [
+    ...frozenBefore,
+    interjection,
+    ...messages.slice(existingIndex + 1),
+  ];
 }
 
 export function applyStreamChunk(
