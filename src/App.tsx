@@ -2197,6 +2197,17 @@ export default function App() {
           ),
         );
         await track(
+          api.listen<{ reason?: string }>(
+            "session://agent_soft_respawn",
+            (p) => {
+              if (cancelled || !p) return;
+              // Spawn flags / extensions changed while an agent was live.
+              setToast(tr("agent.softRespawnToast"));
+              window.setTimeout(() => setToast(null), 3600);
+            },
+          ),
+        );
+        await track(
           api.listen<{
             sessionId?: string;
             stopReason?: string;

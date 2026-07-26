@@ -701,6 +701,8 @@ export const zhTW: Record<MessageKey, string> = {
     "已回收一個閒置的常駐 Agent 以騰出槽位 — 該工作階段下次傳送時會重新連線。",
   "agent.dataModeRecycledToast":
     "資料模式切換後已重啟 Agent — 下次傳送將在新目錄下重連。",
+  "agent.softRespawnToast":
+    "已依新設定重載 Agent — 下次傳送將重新連線。",
   "agent.processLimitToast":
     "Agent 行程已達上限（目前槽位均被正在執行的任務佔用）。請停止某個執行中的工作階段，或到 設定 → 執行環境 → 行程池 提高上限。",
   "agent.streamStallBanner":

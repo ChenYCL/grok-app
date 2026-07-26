@@ -3880,6 +3880,11 @@ impl SessionManager {
     /// that mutate MCP/prefs while busy should wait until Ready.
     /// Background busy sessions are left untouched.
     pub async fn soft_respawn(&self, app: &AppHandle) {
+        self.soft_respawn_with_reason(app, "settings").await;
+    }
+
+    /// Soft-respawn and tell the UI why the agent process was reloaded.
+    pub async fn soft_respawn_with_reason(&self, app: &AppHandle, reason: &str) {
         let acp = {
             let mut guard = self.inner.lock();
             if let Some(s) = guard.as_mut() {
@@ -3907,6 +3912,10 @@ impl SessionManager {
         };
         if let Some(acp) = acp {
             acp.kill().await;
+            let _ = app.emit(
+                "session://agent_soft_respawn",
+                serde_json::json!({ "reason": reason }),
+            );
             Self::emit_state(app, &self.snapshot());
         }
     }

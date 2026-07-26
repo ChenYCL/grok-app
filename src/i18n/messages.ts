@@ -731,6 +731,8 @@ const en = {
     "Reclaimed an idle warm agent to free a slot — that session reconnects on its next message.",
   "agent.dataModeRecycledToast":
     "Agents restarted after data mode change — next message reconnects under the new home.",
+  "agent.softRespawnToast":
+    "Agent reloaded with new settings — next message reconnects.",
   "agent.processLimitToast":
     "Agent process limit reached (all slots are busy turns). Stop a running session or raise the limit in Settings → Runtime → Process pool.",
   "agent.streamStallBanner":
@@ -2642,6 +2644,8 @@ const zh: Record<MessageKey, string> = {
     "已回收一个闲置的常驻 Agent 以腾出槽位 — 该会话下次发送时会重新连接。",
   "agent.dataModeRecycledToast":
     "数据模式切换后已重启 Agent — 下次发送将在新目录下重连。",
+  "agent.softRespawnToast":
+    "已按新设置重载 Agent — 下次发送将重新连接。",
   "agent.processLimitToast":
     "Agent 进程已达上限（当前槽位均被正在执行的任务占用）。请停止某个运行中的会话，或到 设置 → 运行时 → 进程池 提高上限。",
   "agent.streamStallBanner":
