@@ -103,7 +103,75 @@ New Issue
 - **#1** locale-aware session titles — **merge** (correct i18n for LLM rename)  
 - **#2** Grok Build underscore permission optionIds — **merge** (fixes shell tool allow failures)
 
-After merge: thank author on PR; close linked Issues; mention in CHANGELOG under next version.
+After merge: thank author on PR; close linked Issues; mention in CHANGELOG under next version; **then clean branches** (next section).
+
+---
+
+## Branch hygiene (merged / finished work)
+
+**Rule:** after work lands on `main` (GitHub merge, squash, or batch integrate), **promptly and safely** delete the remote feature branch and local leftovers. Stale branches hide real WIP and confuse agents.
+
+### When to clean
+
+| Trigger | Action |
+|---------|--------|
+| PR **MERGED** on GitHub | Delete remote head branch (GitHub “Delete branch” or `git push origin :branch`) |
+| PR **CLOSED** with “merged via integrate / squash into main” (not the green Merge button) | Same as merged — content is on `main`; remote branch is obsolete |
+| Local `pr-*` / `rebase-pr-*` / `integrate/*` / `merge/*` / `feat/*` with **no unique commits** vs `origin/main` | Delete local branch |
+| Git worktree whose branch is fully contained in `main` and has a clean tree | `git worktree remove <path>` then delete the branch |
+| After a multi-PR batch land | `git fetch --prune` and sweep remotes + locals in one pass |
+
+### Safe identification (do not guess)
+
+1. `git fetch --prune origin`
+2. Fully merged (fast-forward / true merge):  
+   `git branch -r --merged origin/main` and `git merge-base --is-ancestor origin/<b> origin/main`
+3. Squash / batch integrate (commits not ancestors, but already landed):  
+   - `gh pr view <n> --json state,mergedAt` → `MERGED`, **or**  
+   - closing comment says integrated / landed on main, **and**  
+   - feature symbols / paths exist on `origin/main` (spot-check), **or**  
+   - `git cherry -v origin/main <branch>` shows only `-` (already applied)
+4. **Never** delete only because a PR is `CLOSED` — confirm content is on `main` or the change was intentionally abandoned.
+
+### Never delete without checks
+
+| Keep / stop | Why |
+|-------------|-----|
+| `main` (and default branch) | Always |
+| Branch with **unique commits** not on `main` and still wanted | Real WIP |
+| Branch checked out in a **worktree** | Remove/move worktree first (`git worktree list`) |
+| **Locked** Claude/agent worktrees | Unlock or end session first |
+| Open PR still targeting the branch | Wait until merge/close |
+| Uncommitted changes or meaningful **stash** only on that tree | Save or discard deliberately first |
+
+Stashes are **repo-wide** (shared across worktrees). Removing a worktree does not delete stashes — prune stashes separately if needed.
+
+### Commands (maintainer / agent)
+
+```bash
+# Remote: delete landed heads (example batch)
+git push origin :feat/foo :fix/bar
+
+# Local: fully contained in main
+git branch -d <branch>          # refuses if not merged
+# After squash/batch confirmed on main:
+git branch -D <branch>
+
+# Worktree fully behind main + clean tree
+git worktree remove /path/to/wt
+git branch -D <wt-branch>
+
+git fetch --prune
+```
+
+Prefer **delete remote soon after land**, then local. Do not force-push `main`. Do not `git push --delete` branches that still have open PRs or unmerged unique work.
+
+### Agent obligations
+
+1. After merging or confirming a land → offer or run branch cleanup in the same session when practical.  
+2. Report what was deleted vs what was kept (and why).  
+3. If unsure (CLOSED but no integrate note), **verify against `main`** before deleting.  
+4. Batch integrate closers (`integrate/remaining-prs`, etc.): treat closed feature remotes as deletable once symbols are on `main`.
 
 ---
 
@@ -113,7 +181,8 @@ After merge: thank author on PR; close linked Issues; mention in CHANGELOG under
 2. One concern per PR when possible  
 3. Commit body: `Fixes #N` or `Closes #N`  
 4. Update `docs/llm-wiki/*` if product rule changed  
-5. After ship: verify closed Issues; reopen if regression  
+5. After land: thank author; close Issues; **delete remote + local finished branches** (see Branch hygiene)  
+6. After ship: verify closed Issues; reopen if regression  
 
 ---
 
@@ -133,6 +202,7 @@ After merge: thank author on PR; close linked Issues; mention in CHANGELOG under
 3. Scan X launch thread for new bugs → Issues  
 4. Bump CHANGELOG unreleased notes if fixing on main  
 5. When enough P0/P1 landed → [release.md](./release.md)  
+6. **Branch hygiene:** `git fetch --prune`; drop merged remotes/locals and idle worktrees (see above)  
 
 ---
 
@@ -146,6 +216,7 @@ When an agent maintains this repo:
 4. Never force-push `main`; never tag without CHANGELOG section  
 5. Redact tokens in logs and Issue bodies  
 6. After multi-issue work: leave a short status in the PR / reply (what fixed, what remains)  
+7. **After land:** safely clear merged remote/local branches and finished worktrees (Branch hygiene) — do not leave long-lived `pr-*` / integrate leftovers
 
 ---
 

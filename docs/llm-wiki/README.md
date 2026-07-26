@@ -15,7 +15,7 @@ Agent 与贡献者的**可执行知识库**。改产品行为或 UI 文案前，
 | [providers.md](./providers.md) | 自定义中转、agent GROK_HOME、编辑器探测 |
 | [setup.md](./setup.md) | 首次初始化门禁：CLI 必装、账户可跳过、多镜像安装 |
 | [release.md](./release.md) | **发版 / Release 强制流程**：CHANGELOG、tag、三端 CI、macOS 损坏处理 |
-| [maintain.md](./maintain.md) | **开源维护**：Issue 分拣、PR 审核、社区反馈入库、修复闭环 |
+| [maintain.md](./maintain.md) | **开源维护**：Issue 分拣、PR 审核、社区反馈入库、修复闭环；**已合并分支 / worktree 及时安全清理** |
 
 ## 原则
 
