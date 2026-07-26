@@ -202,6 +202,22 @@ automation 只要插在 `ensureConnected` 与 `sessionSend` 之间，就会把�
 | R11.8 | 同一会话同时只允许一个 `session/prompt` 在飞。 |
 | **验收** | 长回答 + 提前 `prompt_complete` → journal 与 UI 拿到完整答案；切走再切回，输出管线不断、回合正常收尾。 |
 
+### R12 —（补充）`prompt_complete` 兜底不得替 agent 结算回合
+
+现场复盘会话 `9019d19a`：R11 的修复已在运行的二进制中，症状却完全复现 —— agent 端 `turn_ended outcome=completed`、完整答案 2380 字符；App journal 只有 **1528 字符且是完整文本的前缀**，缺尾部 852 字符（36%）。journal 最后一次写在 `09:27:32.31`，agent 一直输出到 `09:27:40.20`，中间 8 秒的输出全部消失，无报错、无 `turn_cancelled`、无 `agent_exit`。
+
+根因不在事件路由，而在 R11 依赖的那个「安全阀」：`_x.ai/session/prompt_complete` 到达时会挂起 `schedule_prompt_complete_fallback`，**固定 3 秒**后直接把 pending 的 `session/prompt` 用合成结果 resolve 掉。`AcpClient::prompt()` 随即发出 `Stream{done:true}` + `PromptComplete{authoritative:true}`，Host 于是 force-flush 当前缓冲（那 1528 字符）并置 `prompt_in_flight = false`。此后所有 chunk 命中 replay 守卫被丢弃。**R11.2 要求「只有 RPC 结果才能终结回合」，但兜底逻辑自己伪造了一个 RPC 结果**，把 R11 的修复从内部废掉了。
+
+与「其他会话结束抢占进程」无关：`pending` 表是每个 ACP client 私有的，一个 App 会话一个子进程。
+
+| 项 | 说明 |
+|----|------|
+| R12.1 | `prompt_complete` 兜底窗口是**空闲窗口**而非固定截止时间：每条入站 `session/update` 都重新计时。 |
+| R12.2 | 只有 agent 在整个窗口内**完全没有输出**时，才释放 `session/prompt` 等待者；RPC 结果已到达则直接退出，不做任何事。 |
+| R12.3 | 真正卡死的 RPC 由 `PROMPT_TIMEOUT_SECS` 兜底，兜底重新计时不得引入新的永久挂起路径。 |
+| R12.4 | background 路径上因 `prompt_in_flight == false` 丢弃 chunk 必须打 `warn`（后台会话不存在 `session/load` replay，这种丢弃一定是真实输出丢失）。 |
+| **验收** | 长回答 + 提前 `prompt_complete` + 中途持续输出 > 3 秒 → journal 与 UI 拿到完整答案；agent 提前 complete 后真的静默 → 3 秒后回合正常收尾，不挂起。 |
+
 ---
 
 ## 6. 实现落点（对照，非需求正文）
@@ -223,4 +239,5 @@ automation 只要插在 `ensureConnected` 与 `sessionSend` 之间，就会把�
 |------|------|
 | 2026-07-26 | 首版：汇总资源编辑、TipTap、角标、多会话并行、进程池、newChat 不杀进程、发送队列隔离与「空新会话假队列」整改要求 |
 | 2026-07-26 | 复审：R1–R9 已落地并核对；新增 R10「Host 指令按会话寻址」——修复多会话 ACP 打架根因（无 sessionId 的 `session_send` / 权限响应打到 live 槽）与后台权限无法回答导致回合卡死 |
+| 2026-07-26 | 现场复盘会话 `9019d19a` 后新增 R12「`prompt_complete` 兜底不得替 agent 结算回合」——R11 已上线仍复现截断（缺 36%），根因是提前 `prompt_complete` 挂起的 3 秒兜底定时器自行合成 authoritative 完成事件；改为空闲窗口计时 |
 | 2026-07-26 | 现场复盘会话 `a46455c7` 后新增 R11「回合生命周期与事件入口」——修复提前 `prompt_complete` 导致的输出静默截断（答案缺 39%、界面假卡死）、parked 会话事件丢弃、回合错误归属错会话、切回后台会话显示为 idle |

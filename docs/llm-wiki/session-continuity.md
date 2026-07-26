@@ -105,8 +105,18 @@ It is set when `session/prompt` is dispatched and cleared **only** by:
 | mock backend terminal chunk | Mock has no prompt RPC. |
 
 `_x.ai/session/prompt_complete` arrives as `authoritative: false` and only
-*defers* — `schedule_prompt_complete_fallback` guarantees an authoritative
-completion within the grace window, so a turn can never hang on this.
+*defers*. `schedule_prompt_complete_fallback` is the escape hatch for an agent
+that announces completion and then never returns the RPC result.
+
+**That escape hatch must never front-run a talking agent.** It originally slept a
+flat 3s and then resolved the pending `session/prompt` with a synthetic result —
+which produced `authoritative: true` while chunks were still arriving, closing the
+turn and sending the rest of the answer down the replay-drop path. Symptom:
+journal holds a clean prefix of the answer, UI frozen mid-sentence, agent-side
+`turn_ended outcome=completed`, no error anywhere. The window is therefore
+**idle-based**: every inbound `session/update` re-arms it (`prompt_fallback_due`),
+so the waiter is freed only after real silence. `PROMPT_TIMEOUT_SECS` (600s) is the
+backstop for a wedged RPC — the fallback is an optimisation, never a deadline.
 
 Consequences, all of them load-bearing:
 

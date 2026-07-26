@@ -6,6 +6,7 @@ use std::path::PathBuf;
 use std::process::Stdio;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
+use std::time::{Duration, Instant};
 
 use parking_lot::Mutex as ParkingMutex;
 use serde_json::{json, Value};
@@ -118,7 +119,25 @@ const PROMPT_TIMEOUT_SECS: u64 = 600;
 /// After `_x.ai/session/prompt_complete`, wait this long for the real JSON-RPC
 /// `session/prompt` result/error before treating the turn as successfully done.
 /// Official subscription failures often emit prompt_complete first, then error.
+/// Quiet window after an early `prompt_complete` before the pending
+/// `session/prompt` waiter is released without an RPC result.
+///
+/// This is an **idle** window, not a deadline: every inbound `session/update`
+/// re-arms it. The agent routinely fires `_x.ai/session/prompt_complete` while
+/// it is still streaming the answer, and resolving the RPC on a fixed timer
+/// ended the turn mid-answer — the host then dropped every later chunk as
+/// replay, so the journal kept only a prefix and the chat looked stuck.
+/// `PROMPT_TIMEOUT_SECS` remains the hard backstop for a genuinely wedged RPC.
 const PROMPT_COMPLETE_FALLBACK_GRACE_MS: u64 = 3000;
+
+/// Pure decision for the `prompt_complete` fallback: release the waiter only
+/// when the agent has been quiet for `grace` since its last session update.
+fn prompt_fallback_due(last_update: Option<Instant>, grace: Duration, now: Instant) -> bool {
+    match last_update {
+        None => true,
+        Some(t) => now.saturating_duration_since(t) >= grace,
+    }
+}
 
 pub struct AcpClient {
     /// The spawned CLI process, or `None` in API mode (connected to a remote
@@ -137,6 +156,9 @@ pub struct AcpClient {
     reader_alive: AtomicBool,
     /// Recent stderr lines for crash diagnostics (ring, newest last).
     stderr_tail: ParkingMutex<Vec<String>>,
+    /// Last inbound `session/update` — proof the agent is still producing turn
+    /// output. Re-arms the `prompt_complete` fallback window.
+    last_update_at: ParkingMutex<Option<Instant>>,
 }
 
 /// Options applied at agent process start (CLI flags).
@@ -481,6 +503,7 @@ impl AcpClient {
             stopped: AtomicBool::new(false),
             reader_alive: AtomicBool::new(true),
             stderr_tail: ParkingMutex::new(Vec::new()),
+            last_update_at: ParkingMutex::new(None),
         });
 
         client.start_read_loop(Box::new(stdout));
@@ -554,6 +577,7 @@ impl AcpClient {
             stopped: AtomicBool::new(false),
             reader_alive: AtomicBool::new(true),
             stderr_tail: ParkingMutex::new(Vec::new()),
+            last_update_at: ParkingMutex::new(None),
         });
         client.start_read_loop(Box::new(read_half));
         Ok((client, event_rx))
@@ -799,14 +823,40 @@ impl AcpClient {
         }
     }
 
-    /// Wait briefly for the real session/prompt JSON-RPC result; only then Ok-complete.
+    /// Whether a `session/prompt` request is still awaiting its RPC result.
+    fn has_pending_prompt(&self) -> bool {
+        self.pending
+            .lock()
+            .values()
+            .any(|p| p.method == "session/prompt")
+    }
+
+    /// Release the `session/prompt` waiter only once the agent has actually gone
+    /// quiet after its early `prompt_complete`.
+    ///
+    /// The agent fires `prompt_complete` before the answer is finished, so a
+    /// fixed timer resolved the RPC while chunks were still arriving. That
+    /// ended the turn early and every later chunk was discarded as replay —
+    /// a truncated journal and a chat frozen mid-answer. Each `session/update`
+    /// re-arms the window; `PROMPT_TIMEOUT_SECS` still caps a wedged RPC.
     fn schedule_prompt_complete_fallback(self: &Arc<Self>, stop_reason: String) {
         let this = Arc::clone(self);
         tokio::spawn(async move {
-            tokio::time::sleep(std::time::Duration::from_millis(
-                PROMPT_COMPLETE_FALLBACK_GRACE_MS,
-            ))
-            .await;
+            let grace = Duration::from_millis(PROMPT_COMPLETE_FALLBACK_GRACE_MS);
+            loop {
+                tokio::time::sleep(grace).await;
+                // Real RPC result landed (or the turn was cancelled) — nothing to free.
+                if !this.has_pending_prompt() {
+                    return;
+                }
+                let last = *this.last_update_at.lock();
+                if prompt_fallback_due(last, grace, Instant::now()) {
+                    break;
+                }
+                debug!(
+                    "acp prompt_complete fallback re-armed: agent still streaming after early complete"
+                );
+            }
             this.complete_pending_prompt_fallback(&stop_reason);
         });
     }
@@ -830,6 +880,9 @@ impl AcpClient {
     }
 
     fn handle_session_update(&self, params: &Value) {
+        // Proof of life for the turn: re-arms the `prompt_complete` fallback so
+        // an early completion notification cannot cut the answer short.
+        *self.last_update_at.lock() = Some(Instant::now());
         let events = decode_session_update(params);
         if events.is_empty() {
             let update = params.get("update").unwrap_or(params);
@@ -2278,6 +2331,42 @@ mod retry_tests {
     fn respect_lower_agent_max() {
         assert!(!should_abort_provider_retry(1, 3, "retrying"));
         assert!(should_abort_provider_retry(3, 3, "retrying"));
+    }
+}
+
+#[cfg(test)]
+mod prompt_fallback_tests {
+    use super::*;
+
+    fn grace() -> Duration {
+        Duration::from_millis(PROMPT_COMPLETE_FALLBACK_GRACE_MS)
+    }
+
+    #[test]
+    fn no_updates_yet_completes_immediately() {
+        assert!(prompt_fallback_due(None, grace(), Instant::now()));
+    }
+
+    #[test]
+    fn silence_past_grace_completes() {
+        let now = Instant::now();
+        let last = now - grace() - Duration::from_millis(1);
+        assert!(prompt_fallback_due(Some(last), grace(), now));
+    }
+
+    /// The regression: the agent keeps streaming after an early
+    /// `prompt_complete`. Completing the RPC here truncated the answer.
+    #[test]
+    fn still_streaming_defers_completion() {
+        let now = Instant::now();
+        let last = now - Duration::from_millis(PROMPT_COMPLETE_FALLBACK_GRACE_MS / 2);
+        assert!(!prompt_fallback_due(Some(last), grace(), now));
+    }
+
+    #[test]
+    fn exactly_at_grace_boundary_completes() {
+        let now = Instant::now();
+        assert!(prompt_fallback_due(Some(now - grace()), grace(), now));
     }
 }
 

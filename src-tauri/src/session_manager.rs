@@ -600,8 +600,9 @@ impl SessionManager {
         // The `session/prompt` RPC has not resolved → the agent may still emit
         // more text (it fires `prompt_complete` early). Ending the turn here is
         // what truncated answers mid-sentence and made the chat look stuck.
-        // `schedule_prompt_complete_fallback` guarantees an authoritative
-        // completion within the grace window, so this cannot hang.
+        // `schedule_prompt_complete_fallback` releases the waiter once the agent
+        // has gone quiet (and `PROMPT_TIMEOUT_SECS` caps a wedged RPC), so this
+        // cannot hang.
         if s.prompt_in_flight {
             return None;
         }
@@ -2857,7 +2858,17 @@ impl SessionManager {
                     };
                     // Same rule as the live path: gate replay on `prompt_in_flight`,
                     // never on the FSM (early prompt_complete + more text).
+                    //
+                    // A background chat never replays: `session/load` only runs
+                    // on the connecting (live) slot. So a drop here is a real
+                    // lost chunk — a truncated answer — and must leave a trace.
                     if !s.prompt_in_flight {
+                        tracing::warn!(
+                            "background stream chunk dropped after turn close sid={} fsm={:?} len={}",
+                            app_session_id,
+                            s.fsm.state(),
+                            text.len()
+                        );
                         return;
                     }
                     if s.fsm.state() == SessionState::Ready {
