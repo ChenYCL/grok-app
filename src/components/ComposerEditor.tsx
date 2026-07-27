@@ -236,6 +236,8 @@ export function ComposerEditor({
   const lastValue = useRef(value);
   const composing = useRef(false);
   const focused = useRef(false);
+  /** Guard against double paste events (some WebViews fire paste twice). */
+  const pasteInFlight = useRef(false);
   /**
    * DOM may show typed / IME glyphs before React `value` commits.
    * Track live emptiness so the overlay placeholder never paints over ink.
@@ -358,6 +360,7 @@ export function ComposerEditor({
   const onPaste = (e: ClipboardEvent<HTMLDivElement>) => {
     e.preventDefault();
     e.stopPropagation();
+    if (pasteInFlight.current) return;
 
     // Prefer nativeEvent — React's synthetic clipboardData is empty on some WebViews.
     const cd =
@@ -366,36 +369,48 @@ export function ComposerEditor({
       null;
 
     const files = collectFilesFromDataTransfer(cd);
+    const plain = clipboardPlainText(cd);
+
     if (files.length && onPasteFiles) {
+      // Sync path: event already has File(s). Do not also run async/native
+      // fallbacks — that was a common source of duplicate attachments.
       onPasteFiles(files);
     } else if (onPasteFiles && clipboardLooksLikeMedia(cd)) {
       // Screenshot paste: event often has image/* types but no File objects.
+      pasteInFlight.current = true;
       void (async () => {
-        const asyncFiles = await readClipboardMediaFiles();
-        if (asyncFiles.length) {
-          onPasteFiles(asyncFiles);
-          return;
+        try {
+          const asyncFiles = await readClipboardMediaFiles();
+          if (asyncFiles.length) {
+            onPasteFiles(asyncFiles);
+            return;
+          }
+          await onPasteMediaFallback?.({ expectMedia: true });
+        } finally {
+          pasteInFlight.current = false;
         }
-        await onPasteMediaFallback?.({ expectMedia: true });
       })();
     } else if (!files.length && onPasteMediaFallback) {
       // Empty-looking paste on Mac can still be a pure bitmap clipboard.
       // Only run native fallback when no text is about to be inserted.
-      const plainProbe = clipboardPlainText(cd);
-      if (!plainProbe.trim()) {
+      if (!plain.trim()) {
+        pasteInFlight.current = true;
         void (async () => {
-          const asyncFiles = await readClipboardMediaFiles();
-          if (asyncFiles.length) {
-            onPasteFiles?.(asyncFiles);
-            return;
+          try {
+            const asyncFiles = await readClipboardMediaFiles();
+            if (asyncFiles.length) {
+              onPasteFiles?.(asyncFiles);
+              return;
+            }
+            // Soft try — no error toast if clipboard has no image.
+            await onPasteMediaFallback({ expectMedia: false });
+          } finally {
+            pasteInFlight.current = false;
           }
-          // Soft try — no error toast if clipboard has no image.
-          await onPasteMediaFallback({ expectMedia: false });
         })();
       }
     }
 
-    const plain = clipboardPlainText(cd);
     if (!plain) return;
     if (files.length && isFileUrlOnlyText(plain)) return;
     insertPlainTextAtSelection(plain);

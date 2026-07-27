@@ -219,6 +219,7 @@ import {
   parseAttachmentsFromContent,
   type Attachment,
 } from "@/lib/attachments";
+import { fileKey as clipboardFileKey } from "@/lib/clipboardPaste";
 import {
   applySkillAtSlash,
   isDraftEmpty,
@@ -4845,10 +4846,22 @@ export default function App() {
       if (!files.length) return;
       const withPath: string[] = [];
       const withoutPath: File[] = [];
+      const seenPath = new Set<string>();
+      const seenBlob = new Set<string>();
       for (const f of files) {
+        if (!f || f.size <= 0) continue;
         const anyF = f as File & { path?: string };
-        if (anyF.path) withPath.push(anyF.path);
-        else withoutPath.push(f);
+        if (anyF.path) {
+          if (seenPath.has(anyF.path)) continue;
+          seenPath.add(anyF.path);
+          withPath.push(anyF.path);
+        } else {
+          // Same paste often yields two File wrappers (files + items); keep one.
+          const key = clipboardFileKey(f);
+          if (seenBlob.has(key)) continue;
+          seenBlob.add(key);
+          withoutPath.push(f);
+        }
       }
       if (withPath.length) {
         await addAttachmentsFromPaths(withPath);
@@ -4865,6 +4878,7 @@ export default function App() {
         for (const f of withoutPath) {
           const buf = await f.arrayBuffer();
           const bytes = new Uint8Array(buf);
+          if (!bytes.length) continue;
           // Chunked base64 to avoid call-stack limits on large pastes
           let binary = "";
           const chunk = 0x8000;

@@ -6,6 +6,9 @@
  * 1. collectFilesFromDataTransfer(clipboardData)
  * 2. if empty + clipboardLooksLikeMedia → readClipboardMediaFiles()
  * 3. if still empty → native Host clipboard (arboard)
+ *
+ * Always dedupe before attach: WebViews often expose the same blob via both
+ * `data.files` and `data.items`, or multiple image/* MIME flavors.
  */
 
 /** Collect File objects from a paste/drop DataTransfer (deduped). */
@@ -15,10 +18,15 @@ export function collectFilesFromDataTransfer(
   if (!data) return [];
   const fileMap = new Map<string, File>();
 
+  const add = (f: File | null | undefined) => {
+    if (!f || f.size <= 0) return;
+    const key = fileKey(f);
+    if (!fileMap.has(key)) fileMap.set(key, f);
+  };
+
   if (data.files?.length) {
     for (let i = 0; i < data.files.length; i++) {
-      const f = data.files.item(i);
-      if (f) fileMap.set(fileKey(f), f);
+      add(data.files.item(i));
     }
   }
 
@@ -29,8 +37,7 @@ export function collectFilesFromDataTransfer(
       if (!item) continue;
       // Screenshots: kind "file" + type image/*; some WebViews only expose type.
       if (item.kind === "file" || item.type.startsWith("image/")) {
-        const f = item.getAsFile();
-        if (f) fileMap.set(fileKey(f), f);
+        add(item.getAsFile());
       }
     }
   }
@@ -38,8 +45,27 @@ export function collectFilesFromDataTransfer(
   return Array.from(fileMap.values());
 }
 
-function fileKey(f: File): string {
-  return `${f.name}:${f.size}:${f.type}:${f.lastModified}`;
+/**
+ * Stable identity for paste/drop File objects.
+ * Do not use `lastModified`: `files` vs `items.getAsFile()` often return
+ * distinct wrappers with different timestamps for the same payload.
+ */
+export function fileKey(f: File): string {
+  const name = (f.name || "").trim().toLowerCase();
+  const type = (f.type || "").trim().toLowerCase();
+  // Generic clipboard names vary by OS; size+type is the real identity.
+  if (
+    !name ||
+    name === "image.png" ||
+    name === "image.jpg" ||
+    name === "image.jpeg" ||
+    name === "blob" ||
+    name === "null" ||
+    name.startsWith("paste.")
+  ) {
+    return `anon:${f.size}:${type || "application/octet-stream"}`;
+  }
+  return `${name}:${f.size}:${type}`;
 }
 
 /**
@@ -94,9 +120,27 @@ function extForMime(mime: string): string {
   return "bin";
 }
 
+/** Prefer a single representation per clipboard item (avoid png+jpeg doubles). */
+function pickPreferredMediaType(types: readonly string[]): string | null {
+  const media = types.filter(
+    (t) => t.startsWith("image/") || t === "application/pdf",
+  );
+  if (!media.length) return null;
+  const rank = (t: string): number => {
+    if (t === "image/png") return 0;
+    if (t === "image/jpeg" || t === "image/jpg") return 1;
+    if (t === "image/webp") return 2;
+    if (t === "image/gif") return 3;
+    if (t === "application/pdf") return 4;
+    return 10;
+  };
+  return [...media].sort((a, b) => rank(a) - rank(b))[0] ?? null;
+}
+
 /**
  * Async Clipboard API fallback (Chromium / some WKWebView builds).
  * Returns empty array when denied, unsupported, or no image items.
+ * At most one file per ClipboardItem (OS often exposes several image/* flavors).
  */
 export async function readClipboardMediaFiles(): Promise<File[]> {
   if (typeof navigator === "undefined" || !navigator.clipboard?.read) {
@@ -105,22 +149,25 @@ export async function readClipboardMediaFiles(): Promise<File[]> {
   try {
     const items = await navigator.clipboard.read();
     const out: File[] = [];
+    const seen = new Set<string>();
     for (const item of items) {
-      for (const type of item.types) {
-        if (!type.startsWith("image/") && type !== "application/pdf") continue;
-        try {
-          const blob = await item.getType(type);
-          if (!blob || blob.size === 0) continue;
-          const ext = extForMime(type);
-          out.push(
-            new File([blob], `paste.${ext}`, {
-              type: type || blob.type || "application/octet-stream",
-              lastModified: Date.now(),
-            }),
-          );
-        } catch {
-          /* type not readable */
-        }
+      const type = pickPreferredMediaType(item.types);
+      if (!type) continue;
+      try {
+        const blob = await item.getType(type);
+        if (!blob || blob.size === 0) continue;
+        const mime = type || blob.type || "application/octet-stream";
+        const ext = extForMime(mime);
+        const file = new File([blob], `paste.${ext}`, {
+          type: mime,
+          lastModified: Date.now(),
+        });
+        const key = fileKey(file);
+        if (seen.has(key)) continue;
+        seen.add(key);
+        out.push(file);
+      } catch {
+        /* type not readable */
       }
     }
     return out;
