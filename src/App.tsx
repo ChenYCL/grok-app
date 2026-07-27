@@ -145,6 +145,8 @@ import {
   markSawToolActivity,
   mergeTurnProgressFromMessages,
   resumeStateForSession,
+  settleStoppedSessionInLiveMap,
+  settleStoppedSessionSnapshot,
   type SessionLiveMap,
 } from "@/lib/sessionLiveStore";
 import { endOfTurnMarkerContent } from "@/lib/endOfTurn";
@@ -3446,6 +3448,19 @@ export default function App() {
     }
     return set;
   }, [liveMap, liveHost.sessionId, liveHost.state]);
+  const settleStoppedSessionUi = useCallback((sessionId: string) => {
+    setLiveMap((prev) => {
+      const next = settleStoppedSessionInLiveMap(prev, sessionId);
+      liveMapRef.current = next;
+      return next;
+    });
+    setLiveHost((prev) => {
+      const next = settleStoppedSessionSnapshot(prev, sessionId);
+      liveHostRef.current = next;
+      return next;
+    });
+    setSession((prev) => settleStoppedSessionSnapshot(prev, sessionId));
+  }, []);
   const stopGate = useMemo(
     () =>
       reconcileUiBusyGate({
@@ -6806,6 +6821,7 @@ export default function App() {
     const armed = armStopLatch(stopLatchRef.current, sid, now);
     stopLatchRef.current = armed;
     setStopLatch(armed);
+    let timeoutSettledSessionId: string | null = null;
     // Force-unlock if Host stays busy past STOP_LATCH_MS.
     window.setTimeout(() => {
       const tick = tickStopLatch(
@@ -6819,6 +6835,8 @@ export default function App() {
       if (tick.forceComplete) {
         const id = sid || liveHostRef.current.sessionId;
         if (id) {
+          timeoutSettledSessionId = id;
+          settleStoppedSessionUi(id);
           patchSessionMessages(id, (prev) =>
             applyTurnMarker(prev, {
               sessionId: id,
@@ -6844,6 +6862,9 @@ export default function App() {
       setTurnStartedAt(null);
       const liveId = sid || liveHostRef.current.sessionId;
       if (liveId) {
+        if (timeoutSettledSessionId !== liveId) {
+          settleStoppedSessionUi(liveId);
+        }
         patchSessionMessages(liveId, (m) =>
           m.map((x) => ({ ...x, streaming: false })),
         );
