@@ -18,6 +18,10 @@ import {
   isImagePath,
   isMediaPath,
 } from "@/lib/attachments";
+import {
+  buildSessionFilePathMap,
+  mergePathMaps,
+} from "@/lib/sessionPathMap";
 import { AttachmentCard } from "@/components/AttachmentCard";
 import {
   Conversation,
@@ -148,6 +152,11 @@ export function ConversationThread({
 }: ConversationThreadProps) {
   const tr = useMemo(() => createT(locale), [locale]);
 
+  const sessionPathMap = useMemo(
+    () => buildSessionFilePathMap(messages, projectPath),
+    [messages, projectPath],
+  );
+
   const showWorking =
     sessionState === "streaming" &&
     !messages.some((m) => m.role === "assistant" && m.streaming);
@@ -257,6 +266,7 @@ export function ConversationThread({
 
               {(() => {
                 const imagePathMap = buildInlineMediaPathMap(m.attachments);
+                const pathMap = mergePathMaps(imagePathMap, sessionPathMap);
                 const bottomAtts = filterAttachmentsNotInlined(
                   m.content,
                   m.attachments,
@@ -272,9 +282,7 @@ export function ConversationThread({
                         isAnimating={!!m.streaming}
                         locale={locale}
                         imagePathMap={
-                          Object.keys(imagePathMap).length
-                            ? imagePathMap
-                            : undefined
+                          Object.keys(pathMap).length ? pathMap : undefined
                         }
                         projectPath={projectPath}
                         onOpenResource={onOpenResource}

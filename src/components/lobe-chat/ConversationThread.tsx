@@ -22,6 +22,10 @@ import {
   isImagePath,
   isMediaPath,
 } from "@/lib/attachments";
+import {
+  buildSessionFilePathMap,
+  mergePathMaps,
+} from "@/lib/sessionPathMap";
 import { AttachmentCard } from "@/components/AttachmentCard";
 import type { ResourceOpenTarget } from "@/components/ResourceViewer";
 import {
@@ -91,6 +95,8 @@ const AssistantMessageBody = memo(function AssistantMessageBody({
   streaming,
   locale,
   projectPath,
+  /** Session-level token→abs map (tool-touched files + unique tails). */
+  sessionPathMap,
   onOpenResource,
   onAddAttachmentToComposer,
   attachLabels,
@@ -103,6 +109,7 @@ const AssistantMessageBody = memo(function AssistantMessageBody({
   streaming?: boolean;
   locale: Locale;
   projectPath?: string | null;
+  sessionPathMap?: Record<string, string>;
   onOpenResource?: (target: ResourceOpenTarget) => void;
   onAddAttachmentToComposer?: (att: Attachment) => void;
   attachLabels: AttachLabels;
@@ -125,8 +132,11 @@ const AssistantMessageBody = memo(function AssistantMessageBody({
     [displayContent, content, attachments],
   );
   const pathMapProp = useMemo(() => {
-    return Object.keys(imagePathMap).length ? imagePathMap : undefined;
-  }, [imagePathMap]);
+    // Session tool paths first so short relatives (04-正文/正文.md) beat media
+    // basename collisions; media map fills in image/video short tokens.
+    const merged = mergePathMaps(imagePathMap, sessionPathMap);
+    return Object.keys(merged).length ? merged : undefined;
+  }, [imagePathMap, sessionPathMap]);
   const galleryPaths = useMemo(
     () =>
       (bottomAtts ?? [])
@@ -478,6 +488,15 @@ export function ConversationThread({
 
   const hasStreamingAssistant = messages.some(
     (m) => m.role === "assistant" && m.streaming,
+  );
+
+  /**
+   * Map short path tokens → absolute using tool_step abs paths in this session.
+   * Fixes homonyms like many `04-正文/正文.md` under article roots.
+   */
+  const sessionPathMap = useMemo(
+    () => buildSessionFilePathMap(messages, projectPath),
+    [messages, projectPath],
   );
 
   // Quiet thinking when busy, no tool motion, no assistant yet.
@@ -917,6 +936,7 @@ export function ConversationThread({
                             streaming={unit.streaming}
                             locale={locale}
                             projectPath={projectPath}
+                            sessionPathMap={sessionPathMap}
                             onOpenResource={onOpenResource}
                             onAddAttachmentToComposer={
                               onAddAttachmentToComposer
@@ -941,6 +961,7 @@ export function ConversationThread({
                         streaming={!!m.streaming}
                         locale={locale}
                         projectPath={projectPath}
+                        sessionPathMap={sessionPathMap}
                         onOpenResource={onOpenResource}
                         onAddAttachmentToComposer={onAddAttachmentToComposer}
                         attachLabels={attachLabels}

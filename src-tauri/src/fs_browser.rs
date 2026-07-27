@@ -981,10 +981,12 @@ fn search_under_project_and_parent(
 /// Walk project (skip heavy dirs) looking for a path ending with `suffix`.
 /// Tries longest suffix first: `05-handoff/next.md` before `next.md`.
 ///
-/// Safety:
-/// - Multi-segment suffixes (`a/b/c.md`) are specific enough → first BFS hit.
-/// - Bare basenames (`README.md`) only succeed when **exactly one** match exists
-///   under the walk — never pick an arbitrary homonym.
+/// Safety (homonym-aware):
+/// - Bare basenames (`README.md`, `正文.md`) and multi-segment tails
+///   (`04-正文/正文.md`) only succeed when **exactly one** match exists under
+///   the walk — never pick an arbitrary first BFS hit.
+/// - Template trees (e.g. article folders all sharing `04-正文/正文.md`) must
+///   fail closed so the UI can resolve via full absolute / session tool paths.
 fn find_file_by_suffix(root: &Path, path_or_suffix: &str) -> Option<PathBuf> {
     let candidates = suffix_candidates(path_or_suffix);
     for suf in candidates {
@@ -1037,8 +1039,9 @@ fn find_one_suffix(root: &Path, suffix: &str) -> Option<PathBuf> {
     ];
     let is_basename = !suffix.contains('/') && !suffix.contains('\\');
     let needle = format!("/{suffix}");
-    // Bare names: wider scan + uniqueness check. Multi-segment: smaller budget.
-    let max_visits: usize = if is_basename { 50_000 } else { 15_000 };
+    // Bare names: wider scan. Multi-segment still fully scanned for uniqueness
+    // (template layouts often share the same 2-segment tail).
+    let max_visits: usize = if is_basename { 50_000 } else { 30_000 };
 
     let is_priority = |name: &str| priority.iter().any(|p| *p == name);
 
@@ -1071,10 +1074,6 @@ fn find_one_suffix(root: &Path, suffix: &str) -> Option<PathBuf> {
                     rest.push(p);
                 }
             } else if matches_file(&p, name_str.as_ref()) {
-                if !is_basename {
-                    // Specific multi-segment (or root-level exact): take first hit.
-                    return Some(p);
-                }
                 hits.push(p);
             }
         }
@@ -1086,6 +1085,10 @@ fn find_one_suffix(root: &Path, suffix: &str) -> Option<PathBuf> {
     let mut visits = 0usize;
     while let Some(dir) = queue.pop_front() {
         if visits >= max_visits {
+            break;
+        }
+        // Early exit only when we already know the suffix is ambiguous.
+        if hits.len() > 1 {
             break;
         }
         let rd = match fs::read_dir(&dir) {
@@ -1114,24 +1117,23 @@ fn find_one_suffix(root: &Path, suffix: &str) -> Option<PathBuf> {
                 continue;
             }
             if matches_file(&p, name_str.as_ref()) {
-                if !is_basename {
-                    // Path-like suffix is specific enough (e.g. `05-handoff/foo.md`).
-                    return Some(p);
-                }
                 hits.push(p);
-                // Keep scanning bare names so we can reject ambiguous homonyms.
+                // Keep scanning so we can reject ambiguous homonyms
+                // (e.g. many `04-正文/正文.md` under article roots).
+                if hits.len() > 1 {
+                    break;
+                }
             }
+        }
+        if hits.len() > 1 {
+            break;
         }
         for p in later_dirs {
             queue.push_back(p);
         }
     }
 
-    if !is_basename {
-        return None;
-    }
-
-    // Bare basename: only auto-open when unique under the scanned tree.
+    // Only auto-open when unique under the scanned tree — never guess.
     match hits.len() {
         1 => hits.pop(),
         _ => None, // 0 or many → do not guess
@@ -1550,12 +1552,53 @@ mod tests {
         // Two same basenames → must not pick either arbitrarily.
         let r = open_path_smart(Some(dir.to_str().unwrap()), name);
         assert!(r.is_err(), "expected ambiguous bare name to fail, got {r:?}");
-        // Multi-segment still works.
+        // Multi-segment still works when unique.
         let r2 = open_path_smart(
             Some(dir.to_str().unwrap()),
             &format!("projects/a/05-handoff/{name}"),
         );
         assert!(r2.is_ok(), "{r2:?}");
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn open_path_smart_multi_segment_rejects_ambiguous_homonym() {
+        // Article-style trees: every folder has `04-正文/正文.md`.
+        // Short relative `04-正文/正文.md` must NOT open the first BFS hit.
+        let dir = tempfile_dir();
+        let a = dir
+            .join("进行中")
+            .join("2026-07-24-用Grok开发一款桌面应用")
+            .join("04-正文");
+        let b = dir
+            .join("进行中")
+            .join("2026-06-22-codex画布标注指哪打哪")
+            .join("04-正文");
+        let t = dir.join("_templates").join("article-folder").join("04-正文");
+        fs::create_dir_all(&a).unwrap();
+        fs::create_dir_all(&b).unwrap();
+        fs::create_dir_all(&t).unwrap();
+        fs::write(a.join("正文.md"), b"# grok app\n").unwrap();
+        fs::write(b.join("正文.md"), b"# codex\n").unwrap();
+        fs::write(t.join("正文.md"), b"# template\n").unwrap();
+
+        let r = open_path_smart(Some(dir.to_str().unwrap()), "04-正文/正文.md");
+        assert!(
+            r.is_err(),
+            "expected ambiguous multi-segment to fail closed, got {r:?}"
+        );
+        let r_bare = open_path_smart(Some(dir.to_str().unwrap()), "正文.md");
+        assert!(
+            r_bare.is_err(),
+            "expected ambiguous bare 正文.md to fail, got {r_bare:?}"
+        );
+        // Unique full relative path still opens the right article.
+        let r_full = open_path_smart(
+            Some(dir.to_str().unwrap()),
+            "进行中/2026-07-24-用Grok开发一款桌面应用/04-正文/正文.md",
+        );
+        assert!(r_full.is_ok(), "{r_full:?}");
+        assert_eq!(r_full.unwrap().name, "正文.md");
         let _ = fs::remove_dir_all(&dir);
     }
 
