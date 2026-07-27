@@ -503,6 +503,9 @@ pub async fn session_set_project(
 pub async fn session_messages(
     id: String,
 ) -> Result<Vec<store::ChatMessageStored>, String> {
+    // If Host dropped the final assistant stream, agent chat_history still has
+    // it — merge before serving so reload / re-open recovers the answer.
+    let _ = crate::cli_sessions::try_reconcile_linked_session(&id);
     Ok(store::load_messages(&id))
 }
 

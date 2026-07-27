@@ -271,6 +271,150 @@ fn extract_user_query(content: &str) -> Option<String> {
     }
 }
 
+/// True when journal already covers this agent assistant body.
+///
+/// - Exact match or journal row contains the body (stream-concat / prefix cases).
+/// - Agent body contains a journal row only counts when the journal row is a
+///   *prefix* of the agent body (truncated stream) — then we extend that row.
+fn journal_covers_assistant(journal: &[ChatMessageStored], agent_body: &str) -> CoverKind {
+    let body = agent_body.trim();
+    if body.is_empty() {
+        return CoverKind::Covered;
+    }
+    let mut best_prefix: Option<usize> = None;
+    for (i, m) in journal.iter().enumerate() {
+        if m.role != "assistant" || m.is_error {
+            continue;
+        }
+        let j = m.content.trim();
+        if j.is_empty() {
+            continue;
+        }
+        if j == body || j.contains(body) {
+            return CoverKind::Covered;
+        }
+        // Truncated host journal: intro-only while agent has intro+more in one
+        // row, or host stopped mid-stream. Prefer extending that row.
+        if body.starts_with(j) && body.len() > j.len() {
+            best_prefix = Some(match best_prefix {
+                Some(prev) if journal[prev].content.len() >= j.len() => prev,
+                _ => i,
+            });
+        }
+    }
+    match best_prefix {
+        Some(i) => CoverKind::Extend(i),
+        None => CoverKind::Missing,
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum CoverKind {
+    Covered,
+    Missing,
+    Extend(usize),
+}
+
+/// Merge missing assistant bodies from CLI `chat_history.jsonl` into the App
+/// journal. Host stream can drop the final answer (early turn close / process
+/// ownership loss); reload only reads `messages.json`, so without this the UI
+/// never recovers content the agent already finished.
+///
+/// Returns how many journal rows were added or extended.
+pub fn reconcile_journal_from_chat_history(
+    app_session_id: &str,
+    agent_session_id: &str,
+    cwd_hint: Option<&str>,
+    session_data_mode: &str,
+) -> Result<u32, String> {
+    let dir = crate::paths::find_agent_session_dir(
+        agent_session_id,
+        cwd_hint,
+        session_data_mode,
+    )
+    .ok_or_else(|| format!("CLI session dir not found for {agent_session_id}"))?;
+    let history = dir.join("chat_history.jsonl");
+    if !history.is_file() {
+        return Ok(0);
+    }
+    let pairs = match parse_chat_history_jsonl(&history) {
+        Ok(p) => p,
+        Err(_) => return Ok(0),
+    };
+    let mut journal = store::load_messages(app_session_id);
+    let mut changed = 0u32;
+    let now = Utc::now();
+
+    for (role, content) in pairs {
+        if role != "assistant" {
+            continue;
+        }
+        match journal_covers_assistant(&journal, &content) {
+            CoverKind::Covered => {}
+            CoverKind::Extend(idx) => {
+                journal[idx].content = content;
+                changed += 1;
+            }
+            CoverKind::Missing => {
+                journal.push(ChatMessageStored {
+                    id: Uuid::new_v4().to_string(),
+                    role: "assistant".into(),
+                    content,
+                    thought: None,
+                    created_at: now + chrono::Duration::milliseconds(changed as i64),
+                    is_error: false,
+                    attachments: None,
+                    marker: None,
+                });
+                changed += 1;
+            }
+        }
+    }
+
+    if changed > 0 {
+        store::save_messages(app_session_id, &journal)?;
+        tracing::info!(
+            target: "session",
+            session = %app_session_id,
+            agent = %agent_session_id,
+            changed,
+            "reconciled App journal from agent chat_history"
+        );
+    }
+    Ok(changed)
+}
+
+/// Best-effort reconcile when opening an App session that is linked to an agent.
+/// Never fails the load path — missing agent dir is normal for brand-new chats.
+pub fn try_reconcile_linked_session(app_session_id: &str) -> u32 {
+    let meta = store::load_sessions_index()
+        .into_iter()
+        .find(|s| s.id == app_session_id);
+    let Some(meta) = meta else {
+        return 0;
+    };
+    let Some(agent_id) = meta.agent_session_id.as_deref().filter(|s| !s.is_empty()) else {
+        return 0;
+    };
+    let mode = store::load_settings().session_data_mode;
+    let cwd_hint = meta
+        .project_id
+        .as_deref()
+        .and_then(|pid| {
+            store::load_projects()
+                .into_iter()
+                .find(|p| p.id == pid)
+                .map(|p| p.path)
+        });
+    reconcile_journal_from_chat_history(
+        app_session_id,
+        agent_id,
+        cwd_hint.as_deref(),
+        &mode,
+    )
+    .unwrap_or(0)
+}
+
 /// Import one CLI session into the App journal (independent App session row).
 pub fn import_cli_session(
     agent_session_id: &str,
@@ -420,5 +564,49 @@ mod tests {
         assert_eq!(pairs[1].0, "assistant");
         assert_eq!(pairs[1].1, "hi there");
         let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn cover_detects_missing_final_and_prefix_extend() {
+        let journal = vec![ChatMessageStored {
+            id: "a1".into(),
+            role: "assistant".into(),
+            content: "基于已有调研，产出矩阵。".into(),
+            thought: None,
+            created_at: Utc::now(),
+            is_error: false,
+            attachments: None,
+            marker: None,
+        }];
+        assert_eq!(
+            journal_covers_assistant(&journal, "基于已有调研，产出矩阵。"),
+            CoverKind::Covered
+        );
+        assert_eq!(
+            journal_covers_assistant(&journal, "# 功能对照矩阵（已出）\n\n完整版已落盘"),
+            CoverKind::Missing
+        );
+        assert_eq!(
+            journal_covers_assistant(
+                &journal,
+                "基于已有调研，产出矩阵。\n\n# 功能对照矩阵（已出）"
+            ),
+            CoverKind::Extend(0)
+        );
+        // Full journal already has the answer — agent intro is covered.
+        let full = vec![ChatMessageStored {
+            id: "a2".into(),
+            role: "assistant".into(),
+            content: "基于已有调研，产出矩阵。\n\n# 功能对照矩阵（已出）".into(),
+            thought: None,
+            created_at: Utc::now(),
+            is_error: false,
+            attachments: None,
+            marker: None,
+        }];
+        assert_eq!(
+            journal_covers_assistant(&full, "基于已有调研，产出矩阵。"),
+            CoverKind::Covered
+        );
     }
 }
