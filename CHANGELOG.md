@@ -29,6 +29,7 @@ See `docs/llm-wiki/release.md`.
 - **LINE (#161):** default webhook port **8081** (was 8082) matching UI cloudflared hint; bind errors write `lastError`
 - Windows http(s) open no longer splits query `&` via `cmd /C start`
 - Secrets writes use atomic lock + rename
+- Windows release build: remove duplicate app-manifest embed (CVT1100 / link.exe)
 - Sidebar busy settles when stop resolves without a final host event (#134, already on main)
 
 ### Changed
