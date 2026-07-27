@@ -18,6 +18,18 @@ On `session_connect` for an existing App session:
 4. On success → full agent context (tools, prior turns) restored.  
 5. On failure → **`session/new`**, then mark **history bootstrap**.
 
+**Replay gate (Host):** `session/load` replays history as ACP notifications
+(`agent_message_chunk`, `tool_call`, plan, …). While **no** `session/prompt` is
+in flight (`prompt_in_flight == false`), the Host **drops** those side effects:
+
+- no re-typing into the UI stream  
+- no `session://tool` / plan / ask_user storms  
+- **no journal rewrites** (`messages.json` stays the UI source of truth)
+
+Live turns (`prompt_in_flight == true`) still apply stream + tools normally.
+See crash investigation notes: ungated tool_call replay on open could thrash
+Host/UI/disk and correlate with dual-process SIGABRT.
+
 ### 2. Fallback — journal bootstrap (reasonable turns)
 
 When a **new** agent session is created but the App journal already has turns:

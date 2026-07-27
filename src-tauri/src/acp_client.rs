@@ -1318,7 +1318,10 @@ impl AcpClient {
         info!("acp session open injecting mcpServers count={mcp_count}");
 
         // Prefer resuming the previous agent session for full native context.
+        // Note: session/load replays history as ACP notifications; Host must
+        // gate stream/tool side effects on `prompt_in_flight` (see session_manager).
         if let Some(rid) = resume_session_id.map(str::trim).filter(|s| !s.is_empty()) {
+            info!("acp session/load begin sessionId={rid} cwd={cwd}");
             match self
                 .request_timeout(
                     "session/load",
@@ -1351,7 +1354,7 @@ impl AcpClient {
                     return Ok((sid, true));
                 }
                 Err(e) => {
-                    warn!("acp session/load failed ({e}); falling back to session/new");
+                    warn!("acp session/load fail ({e}); falling back to session/new");
                 }
             }
         }

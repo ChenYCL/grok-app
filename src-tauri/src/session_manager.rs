@@ -622,17 +622,32 @@ impl SessionManager {
 
     /// Stream chunk or tool activity — advances stall deadline (I06).
 
+    /// `session/load` (and similar resume paths) replay history while no prompt
+    /// RPC is in flight. UI history must come only from the App journal — any
+    /// turn side-effect event (`tool_call`, plan, stream, …) must be dropped.
+    ///
+    /// Gate on `prompt_in_flight` (not the FSM): early `prompt_complete` Readies
+    /// the FSM while the agent may still stream live output.
+    #[inline]
+    fn is_session_load_replay(prompt_in_flight: bool) -> bool {
+        !prompt_in_flight
+    }
+
     /// Soft signal when a non-ask turn ends with **no user-visible answer** and
     /// zero tool events (diagnostic aid for #52).
     ///
     /// Successful pure-text replies (assistant body present, no tools) must
     /// **not** toast — that was false-positive spam on every chatty turn (#128).
     /// Call **before** stream buffers are cleared.
+    ///
+    /// Also suppress when the journal already has an assistant body after the
+    /// last user turn (Host buffers can disagree with agent output after
+    /// replay gating / early finish races).
     fn empty_run_signal_from_live(
         s: &LiveSession,
         stop_reason: &str,
     ) -> Option<(String, String, String)> {
-        let had_body = !s.stream_buf.trim().is_empty();
+        let had_body = !s.stream_buf.trim().is_empty() || s.saw_model_output;
         let tools = s.tools_this_turn;
         let mode = s.product_mode.clone().unwrap_or_else(|| "agent".into());
         let app_sid = s.app_session_id.clone();
@@ -645,10 +660,32 @@ impl SessionManager {
             && stop_reason != "cancelled"
             && stop_reason != "stop";
         if empty {
+            if Self::journal_has_assistant_after_last_user(&app_sid) {
+                tracing::debug!(
+                    target: "session",
+                    session = %app_sid,
+                    "empty-run suppressed: journal already has assistant after last user"
+                );
+                return None;
+            }
             Some((app_sid, stop_reason.to_string(), mode))
         } else {
             None
         }
+    }
+
+    /// True when the journal has a non-empty assistant after the most recent user row.
+    fn journal_has_assistant_after_last_user(app_session_id: &str) -> bool {
+        let msgs = store::load_messages(app_session_id);
+        let last_user = msgs
+            .iter()
+            .rposition(|m| m.role == "user" && !m.content.trim().is_empty());
+        let Some(ui) = last_user else {
+            return false;
+        };
+        msgs[ui + 1..].iter().any(|m| {
+            m.role == "assistant" && !m.is_error && !m.content.trim().is_empty()
+        })
     }
 
     /// Finish turn when a deferred `prompt_complete` is safe (#52).
@@ -2249,18 +2286,29 @@ impl SessionManager {
                 }
             });
 
-        // Ensure app session meta
+        // Ensure app session meta — never panic on disk/index races.
         let mut meta = if let Some(id) = app_session_id {
-            store::load_sessions_index()
+            if let Some(existing) = store::load_sessions_index()
                 .into_iter()
                 .find(|s| s.id == id)
-                .unwrap_or_else(|| {
-                    store::create_session(None, Some("New chat".into()), false)
-                        .expect("create session")
-                })
+            {
+                existing
+            } else {
+                store::create_session(None, Some("New chat".into()), false)
+                    .map_err(|e| format!("create session: {e}"))?
+            }
         } else {
-            store::create_session(None, Some("New chat".into()), false).map_err(|e| e)?
+            store::create_session(None, Some("New chat".into()), false)
+                .map_err(|e| format!("create session: {e}"))?
         };
+
+        tracing::info!(
+            target: "session",
+            session = %meta.id,
+            resume_agent = ?meta.agent_session_id,
+            cwd = %cwd.display(),
+            "connect open_start"
+        );
 
         // Resolve model / effort / permission / mode for this project+session scope.
         let prefs = store::resolve_composer_prefs(
@@ -2543,8 +2591,23 @@ impl SessionManager {
 
         let (client, mut events) = match AcpClient::spawn_with_options(cli_path, cwd, spawn_opts)
         {
-            Ok(v) => v,
+            Ok(v) => {
+                tracing::info!(
+                    target: "session",
+                    session = %meta.id,
+                    process = %process_id,
+                    "connect spawn_ok"
+                );
+                v
+            }
             Err(e) => {
+                tracing::warn!(
+                    target: "session",
+                    session = %meta.id,
+                    code = e.code.as_str(),
+                    error = %e.message,
+                    "connect spawn_fail"
+                );
                 {
                     let mut guard = self.inner.lock();
                     if let Some(s) = guard.as_mut() {
@@ -2569,6 +2632,12 @@ impl SessionManager {
             });
         }
 
+        tracing::info!(
+            target: "session",
+            session = %meta.id,
+            resume_agent = ?resume_agent_sid,
+            "connect session_open_begin"
+        );
         let open_result = client
             .initialize_and_open_session(resume_agent_sid.as_deref())
             .await;
@@ -2587,11 +2656,24 @@ impl SessionManager {
                 let need_bootstrap = !resumed && journal_has_history;
                 if resumed {
                     tracing::info!(
-                        "agent session resumed id={agent_sid} (full context)"
+                        target: "session",
+                        session = %meta.id,
+                        agent = %agent_sid,
+                        "connect session_open_ok resumed=true (full context)"
                     );
                 } else if need_bootstrap {
                     tracing::info!(
-                        "agent session new id={agent_sid}; will bootstrap journal history on first send"
+                        target: "session",
+                        session = %meta.id,
+                        agent = %agent_sid,
+                        "connect session_open_ok resumed=false; will bootstrap journal on first send"
+                    );
+                } else {
+                    tracing::info!(
+                        target: "session",
+                        session = %meta.id,
+                        agent = %agent_sid,
+                        "connect session_open_ok resumed=false"
                     );
                 }
                 {
@@ -2620,6 +2702,13 @@ impl SessionManager {
                 Ok(snap)
             }
             Err(e) => {
+                tracing::warn!(
+                    target: "session",
+                    session = %meta.id,
+                    code = e.code.as_str(),
+                    error = %e.message,
+                    "connect session_open_fail"
+                );
                 client.kill().await;
                 {
                     let mut guard = self.inner.lock();
@@ -2845,7 +2934,7 @@ impl SessionManager {
                         // fire `prompt_complete` early (which Readies the FSM) and
                         // keep streaming for many more seconds. Gating on the FSM
                         // silently truncated those answers mid-sentence.
-                        if !s.prompt_in_flight {
+                        if Self::is_session_load_replay(s.prompt_in_flight) {
                             tracing::debug!(
                                 "acp stream dropped: no prompt in flight (fsm={:?}) — replay",
                                 s.fsm.state()
@@ -2970,6 +3059,34 @@ impl SessionManager {
                 options,
                 raw,
             } => {
+                // During session/load replay, never surface a permission UI or
+                // leave the agent blocked on a historical tool approval.
+                let replay_acp = {
+                    let guard = self.inner.lock();
+                    guard.as_ref().and_then(|s| {
+                        if Self::is_session_load_replay(s.prompt_in_flight) {
+                            s.acp.clone()
+                        } else {
+                            None
+                        }
+                    })
+                };
+                if let Some(acp) = replay_acp {
+                    let option_id = pick_option_id(&options, "allow_once")
+                        .or_else(|| pick_option_id(&options, "allow"))
+                        .unwrap_or_else(|| "allow_once".into());
+                    tracing::debug!(
+                        "acp permission auto-resolved during load replay tool={tool_name}"
+                    );
+                    let _ = acp
+                        .respond_permission(
+                            rpc_id,
+                            PermissionOutcome::Selected { option_id },
+                        )
+                        .await;
+                    return;
+                }
+
                 let preview = raw.to_string();
                 let path_target = extract_path_target(&raw);
                 let shell_command = extract_shell_command(&raw);
@@ -3091,6 +3208,23 @@ impl SessionManager {
                 status,
                 raw,
             } => {
+                // Replay guard (P0): session/load floods tool_call history.
+                // UI journal is source of truth — do not re-emit, re-write journal,
+                // or mutate open_tool_ids during resume.
+                {
+                    let guard = self.inner.lock();
+                    if let Some(s) = guard.as_ref() {
+                        if Self::is_session_load_replay(s.prompt_in_flight) {
+                            tracing::debug!(
+                                "acp tool_call dropped: no prompt in flight (replay) id={tool_call_id} status={status}"
+                            );
+                            return;
+                        }
+                    } else {
+                        return;
+                    }
+                }
+
                 let media_path = if status == "completed" {
                     extract_generated_media_path(&raw).filter(|p| is_media_fs_path(p))
                 } else {
@@ -3247,12 +3381,18 @@ impl SessionManager {
                 let app_sid = {
                     let mut guard = self.inner.lock();
                     if let Some(s) = guard.as_mut() {
+                        if Self::is_session_load_replay(s.prompt_in_flight) {
+                            tracing::debug!(
+                                "acp plan dropped: no prompt in flight (replay)"
+                            );
+                            return;
+                        }
                         if let Some(id) = rpc_id {
                             s.pending_plan_rpc_id = Some(id);
                         }
                         s.app_session_id.clone()
                     } else {
-                        String::new()
+                        return;
                     }
                 };
                 let _ = app.emit(
@@ -3276,10 +3416,16 @@ impl SessionManager {
                 let app_sid = {
                     let mut guard = self.inner.lock();
                     if let Some(s) = guard.as_mut() {
+                        if Self::is_session_load_replay(s.prompt_in_flight) {
+                            tracing::debug!(
+                                "acp ask_user dropped: no prompt in flight (replay)"
+                            );
+                            return;
+                        }
                         s.pending_ask_user_rpc_id = Some(rpc_id);
                         s.app_session_id.clone()
                     } else {
-                        String::new()
+                        return;
                     }
                 };
                 let _ = app.emit(
@@ -3389,6 +3535,8 @@ impl SessionManager {
                 Self::emit_state(app, &self.snapshot());
             }
             AcpEvent::Stderr { line } => {
+                // Always land agent stderr in the diagnostic log (post-mortem).
+                tracing::warn!(target: "acp_stderr", "{line}");
                 let _ = app.emit("session://stderr", serde_json::json!({ "line": line }));
             }
             AcpEvent::RetryState {
@@ -3472,6 +3620,13 @@ impl SessionManager {
                     let Some(s) = guard.as_ref() else {
                         return;
                     };
+                    // Compact markers during load/replay would spam the journal.
+                    if Self::is_session_load_replay(s.prompt_in_flight) {
+                        tracing::debug!(
+                            "acp context_compact dropped: no prompt in flight (replay)"
+                        );
+                        return;
+                    }
                     let mut parts = Vec::new();
                     if trigger == "manual" {
                         parts.push("manual".to_string());
@@ -3552,13 +3707,13 @@ impl SessionManager {
                     let Some(s) = bg.get_mut(app_session_id) else {
                         return;
                     };
-                    // Same rule as the live path: gate replay on `prompt_in_flight`,
+                    // Same rule as the live path: gate on `prompt_in_flight`,
                     // never on the FSM (early prompt_complete + more text).
                     //
-                    // A background chat never replays: `session/load` only runs
-                    // on the connecting (live) slot. So a drop here is a real
-                    // lost chunk — a truncated answer — and must leave a trace.
-                    if !s.prompt_in_flight {
+                    // A background chat never runs `session/load` — a drop here
+                    // after the RPC resolved is a real lost chunk and must leave
+                    // a trace.
+                    if Self::is_session_load_replay(s.prompt_in_flight) {
                         tracing::warn!(
                             "background stream chunk dropped after turn close sid={} fsm={:?} len={}",
                             app_session_id,
@@ -3807,6 +3962,15 @@ impl SessionManager {
                 let (app_sid, live_title, st, finished) = {
                     let mut bg = self.background.lock();
                     if let Some(s) = bg.get_mut(app_session_id) {
+                        // Defensive: background turns never load-replay, but if
+                        // prompt_in_flight is already false, do not mutate journal.
+                        if Self::is_session_load_replay(s.prompt_in_flight) {
+                            tracing::debug!(
+                                "background tool_call dropped after turn close sid={} id={tool_call_id}",
+                                app_session_id
+                            );
+                            return;
+                        }
                         Self::touch_stream_progress_locked(s);
                         if !tool_call_id.is_empty() {
                             if is_terminal_tool_status(&status) {
@@ -5401,6 +5565,65 @@ mod session_routing_tests {
         assert!(SessionManager::empty_run_signal_from_live(&ask, "end_turn").is_none());
         let tools = sample_live_for_empty_run("", "", 2, "agent");
         assert!(SessionManager::empty_run_signal_from_live(&tools, "end_turn").is_none());
+    }
+
+    #[test]
+    fn session_load_replay_gate_matches_prompt_in_flight() {
+        // session/load replay: no prompt RPC → drop stream/tool/plan side effects.
+        assert!(SessionManager::is_session_load_replay(false));
+        // Live turn (prompt in flight): apply all side effects.
+        assert!(!SessionManager::is_session_load_replay(true));
+    }
+
+    #[test]
+    fn empty_run_skips_when_saw_model_output_even_if_buf_cleared() {
+        let mut s = sample_live_for_empty_run("", "", 0, "agent");
+        s.saw_model_output = true;
+        assert!(SessionManager::empty_run_signal_from_live(&s, "end_turn").is_none());
+    }
+
+    #[test]
+    fn journal_assistant_after_last_user_detects_answered_turn() {
+        let _lock = crate::paths::APP_HOME_ENV_LOCK.lock().unwrap();
+        let tmp = std::env::temp_dir().join(format!(
+            "grok-app-replay-gate-test-{}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&tmp);
+        let _ = std::fs::create_dir_all(&tmp);
+        std::env::set_var("GROK_APP_HOME", &tmp);
+        let _ = crate::paths::ensure_app_dirs();
+        let sid = "replay-gate-test-session";
+        let _ = store::append_message(
+            sid,
+            ChatMessageStored {
+                id: "u1".into(),
+                role: "user".into(),
+                content: "hello".into(),
+                thought: None,
+                created_at: chrono::Utc::now(),
+                is_error: false,
+                attachments: None,
+                marker: None,
+            },
+        );
+        assert!(!SessionManager::journal_has_assistant_after_last_user(sid));
+        let _ = store::append_message(
+            sid,
+            ChatMessageStored {
+                id: "a1".into(),
+                role: "assistant".into(),
+                content: "world".into(),
+                thought: None,
+                created_at: chrono::Utc::now(),
+                is_error: false,
+                attachments: None,
+                marker: None,
+            },
+        );
+        assert!(SessionManager::journal_has_assistant_after_last_user(sid));
+        std::env::remove_var("GROK_APP_HOME");
+        let _ = std::fs::remove_dir_all(&tmp);
     }
 
     #[test]
