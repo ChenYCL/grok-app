@@ -2039,6 +2039,12 @@ const en = {
   "settings.remoteIm.channel.matrix": "Matrix",
   "settings.remoteIm.channel.line": "LINE",
   "settings.remoteIm.channel.wpsAgentspace": "WPS Agentspace",
+
+  // UI error boundary (chat pane)
+  "ui.errorBoundary.title": "This view hit a display error",
+  "ui.errorBoundary.body":
+    "The chat surface failed to render. Your session on disk is kept — retry or switch chats.",
+  "ui.errorBoundary.retry": "Retry",
 } as const;
 
 const zh: Record<MessageKey, string> = {
@@ -4020,6 +4026,11 @@ const zh: Record<MessageKey, string> = {
   "settings.remoteIm.channel.matrix": "Matrix",
   "settings.remoteIm.channel.line": "LINE",
   "settings.remoteIm.channel.wpsAgentspace": "WPS 数字员工",
+
+  "ui.errorBoundary.title": "此视图渲染出错",
+  "ui.errorBoundary.body":
+    "聊天区域无法显示。磁盘上的会话仍保留 — 可重试或切换会话。",
+  "ui.errorBoundary.retry": "重试",
 };
 
 export const messages: Record<Locale, Record<MessageKey, string>> = {

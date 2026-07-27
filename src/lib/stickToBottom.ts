@@ -114,10 +114,15 @@ export function nextStickPinState(
     return { pinned: true, escaped: false };
   }
   let { pinned, escaped } = state;
-  if (input.scrollingDown) {
+  // Only clear escape when the user has actually reached the bottom band.
+  // Clearing escape on any scroll-down while mid-list was safe when
+  // scrollHeight matched real content — with virtualized/estimated heights
+  // a short totalHeight made mid-document look "near bottom", then the next
+  // frame re-pinned and yanked the viewport (bounce at tall messages).
+  if (input.scrollingDown && input.nearBottom) {
     escaped = false;
-  }
-  if (!escaped && input.nearBottom) {
+    pinned = true;
+  } else if (!escaped && input.nearBottom) {
     pinned = true;
   }
   return { pinned, escaped };

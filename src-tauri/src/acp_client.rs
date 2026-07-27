@@ -115,7 +115,16 @@ struct Pending {
 
 const HANDSHAKE_TIMEOUT_SECS: u64 = 45;
 const AUTH_TIMEOUT_SECS: u64 = 12;
-const PROMPT_TIMEOUT_SECS: u64 = 600;
+/// Max **silence** (no `session/update`) while waiting for `session/prompt`.
+/// Long tool chains that keep emitting updates re-arm this window.
+const PROMPT_IDLE_TIMEOUT_SECS: u64 = 600;
+/// Absolute ceiling for one `session/prompt` wait (wedged process / lost RPC).
+const PROMPT_ABSOLUTE_TIMEOUT_SECS: u64 = 4 * 60 * 60;
+/// Poll slice while waiting for the `session/prompt` oneshot.
+const PROMPT_WAIT_SLICE_SECS: u64 = 5;
+/// Legacy alias used in docs/comments — idle silence window for prompt RPC.
+#[allow(dead_code)]
+const PROMPT_TIMEOUT_SECS: u64 = PROMPT_IDLE_TIMEOUT_SECS;
 /// After `_x.ai/session/prompt_complete`, wait this long for the real JSON-RPC
 /// `session/prompt` result/error before treating the turn as successfully done.
 /// Official subscription failures often emit prompt_complete first, then error.
@@ -127,8 +136,31 @@ const PROMPT_TIMEOUT_SECS: u64 = 600;
 /// it is still streaming the answer, and resolving the RPC on a fixed timer
 /// ended the turn mid-answer — the host then dropped every later chunk as
 /// replay, so the journal kept only a prefix and the chat looked stuck.
-/// `PROMPT_TIMEOUT_SECS` remains the hard backstop for a genuinely wedged RPC.
+/// Prompt wait uses the same idle idea (`PROMPT_IDLE_TIMEOUT_SECS`) plus an
+/// absolute ceiling (`PROMPT_ABSOLUTE_TIMEOUT_SECS`).
 const PROMPT_COMPLETE_FALLBACK_GRACE_MS: u64 = 3000;
+
+/// Whether a `session/prompt` wait should fail for silence or absolute age.
+///
+/// - `last_update`: last inbound `session/update` (None → use wait start as baseline)
+/// - `wait_started`: when the RPC was dispatched
+/// - `now`: current time
+fn prompt_wait_should_timeout(
+    last_update: Option<Instant>,
+    wait_started: Instant,
+    now: Instant,
+    idle_timeout: Duration,
+    absolute_timeout: Duration,
+) -> Option<&'static str> {
+    if now.saturating_duration_since(wait_started) >= absolute_timeout {
+        return Some("absolute");
+    }
+    let baseline = last_update.unwrap_or(wait_started);
+    if now.saturating_duration_since(baseline) >= idle_timeout {
+        return Some("idle");
+    }
+    None
+}
 
 /// Pure decision for the `prompt_complete` fallback: release the waiter only
 /// when the agent has been quiet for `grace` since its last session update.
@@ -859,7 +891,7 @@ impl AcpClient {
     /// fixed timer resolved the RPC while chunks were still arriving. That
     /// ended the turn early and every later chunk was discarded as replay —
     /// a truncated journal and a chat frozen mid-answer. Each `session/update`
-    /// re-arms the window; `PROMPT_TIMEOUT_SECS` still caps a wedged RPC.
+    /// re-arms the window; idle + absolute prompt waits still cap a wedged RPC.
     fn schedule_prompt_complete_fallback(self: &Arc<Self>, stop_reason: String) {
         let this = Arc::clone(self);
         tokio::spawn(async move {
@@ -1091,6 +1123,105 @@ impl AcpClient {
                 let logged = self.format_exit_detail(&head);
                 error!("{logged}");
                 Err(head)
+            }
+        }
+    }
+
+    /// `session/prompt` wait: idle-based silence timeout (re-armed by every
+    /// `session/update`) plus an absolute ceiling. A fixed wall-clock timer
+    /// killed multi-tool turns that were still healthy past 10 minutes.
+    async fn request_prompt(&self, params: Value) -> Result<Value, String> {
+        let method = "session/prompt";
+        if !self.reader_alive.load(Ordering::SeqCst) {
+            return Err(format!(
+                "agent stdout closed before {method}; {}",
+                self.format_exit_detail("process dead")
+            ));
+        }
+        let id = self.next_id.fetch_add(1, Ordering::SeqCst);
+        let (tx, rx) = oneshot::channel();
+        self.pending.lock().insert(
+            id,
+            Pending {
+                method: method.to_string(),
+                tx,
+            },
+        );
+        let msg = json!({
+            "jsonrpc": "2.0",
+            "id": id,
+            "method": method,
+            "params": params,
+        });
+        info!("acp → {method} id={id}");
+        if let Err(e) = self.write_line(&msg).await {
+            self.pending.lock().remove(&id);
+            return Err(format!("write {method} failed: {e}"));
+        }
+
+        let wait_started = Instant::now();
+        // Mark activity at dispatch so pure silence is measured from send time.
+        *self.last_update_at.lock() = Some(wait_started);
+        let idle = Duration::from_secs(PROMPT_IDLE_TIMEOUT_SECS);
+        let absolute = Duration::from_secs(PROMPT_ABSOLUTE_TIMEOUT_SECS);
+        let slice = Duration::from_secs(PROMPT_WAIT_SLICE_SECS);
+        let mut rx = rx;
+
+        loop {
+            tokio::select! {
+                r = &mut rx => {
+                    match r {
+                        Ok(Ok(v)) => {
+                            info!("acp ← {method} id={id} ok");
+                            return Ok(v);
+                        }
+                        Ok(Err(e)) => {
+                            warn!("acp ← {method} id={id} error: {e}");
+                            return Err(e);
+                        }
+                        Err(_) => {
+                            let head = format!(
+                                "rpc channel closed while waiting for {method} (id={id})"
+                            );
+                            error!("{}", self.format_exit_detail(&head));
+                            return Err(head);
+                        }
+                    }
+                }
+                _ = tokio::time::sleep(slice) => {
+                    if !self.reader_alive.load(Ordering::SeqCst) {
+                        self.pending.lock().remove(&id);
+                        let head = format!(
+                            "agent stdout closed while waiting for {method} (id={id})"
+                        );
+                        error!("{}", self.format_exit_detail(&head));
+                        return Err(head);
+                    }
+                    let last = *self.last_update_at.lock();
+                    let now = Instant::now();
+                    if let Some(kind) =
+                        prompt_wait_should_timeout(last, wait_started, now, idle, absolute)
+                    {
+                        self.pending.lock().remove(&id);
+                        let idle_secs = last
+                            .unwrap_or(wait_started)
+                            .elapsed()
+                            .as_secs();
+                        let head = match kind {
+                            "absolute" => format!(
+                                "rpc timeout on {method} (id={id}) after {}s absolute (idle {idle_secs}s)",
+                                wait_started.elapsed().as_secs()
+                            ),
+                            _ => format!(
+                                "rpc timeout on {method} (id={id}) after {idle_secs}s idle (wall {}s)",
+                                wait_started.elapsed().as_secs()
+                            ),
+                        };
+                        let logged = self.format_exit_detail(&head);
+                        error!("{logged}");
+                        return Err(head);
+                    }
+                }
             }
         }
     }
@@ -1382,7 +1513,7 @@ impl AcpClient {
         let this_params = wire_session_prompt_params(&sid, text);
 
         let result = self
-            .request_timeout("session/prompt", this_params, PROMPT_TIMEOUT_SECS)
+            .request_prompt(this_params)
             .await
             .map_err(|e| classify_rpc_error(&e))?;
 
@@ -2417,6 +2548,62 @@ mod prompt_fallback_tests {
     fn exactly_at_grace_boundary_completes() {
         let now = Instant::now();
         assert!(prompt_fallback_due(Some(now - grace()), grace(), now));
+    }
+}
+
+#[cfg(test)]
+mod prompt_wait_timeout_tests {
+    use super::*;
+
+    fn idle() -> Duration {
+        Duration::from_secs(PROMPT_IDLE_TIMEOUT_SECS)
+    }
+    fn absolute() -> Duration {
+        Duration::from_secs(PROMPT_ABSOLUTE_TIMEOUT_SECS)
+    }
+
+    #[test]
+    fn healthy_activity_never_times_out() {
+        let started = Instant::now();
+        let last = started + Duration::from_secs(30 * 60);
+        let now = last + Duration::from_secs(60);
+        // 30+ min wall clock, but last update 60s ago — under 600s idle.
+        assert_eq!(
+            prompt_wait_should_timeout(Some(last), started, now, idle(), absolute()),
+            None
+        );
+    }
+
+    #[test]
+    fn pure_silence_hits_idle() {
+        let started = Instant::now();
+        let now = started + idle();
+        assert_eq!(
+            prompt_wait_should_timeout(None, started, now, idle(), absolute()),
+            Some("idle")
+        );
+    }
+
+    #[test]
+    fn stale_last_update_hits_idle() {
+        let started = Instant::now();
+        let last = started + Duration::from_secs(10);
+        let now = last + idle();
+        assert_eq!(
+            prompt_wait_should_timeout(Some(last), started, now, idle(), absolute()),
+            Some("idle")
+        );
+    }
+
+    #[test]
+    fn absolute_ceiling_even_with_fresh_updates() {
+        let started = Instant::now();
+        let now = started + absolute();
+        let last = now - Duration::from_secs(1);
+        assert_eq!(
+            prompt_wait_should_timeout(Some(last), started, now, idle(), absolute()),
+            Some("absolute")
+        );
     }
 }
 

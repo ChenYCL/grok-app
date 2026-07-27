@@ -1980,4 +1980,9 @@ export const zhTW: Record<MessageKey, string> = {
   "settings.remoteIm.channel.matrix": "Matrix",
   "settings.remoteIm.channel.line": "LINE",
   "settings.remoteIm.channel.wpsAgentspace": "WPS 數字員工",
+
+  "ui.errorBoundary.title": "此檢視渲染出錯",
+  "ui.errorBoundary.body":
+    "聊天區域無法顯示。磁碟上的工作階段仍保留 — 可重試或切換對話。",
+  "ui.errorBoundary.retry": "重試",
 };

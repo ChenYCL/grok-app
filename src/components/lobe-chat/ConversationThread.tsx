@@ -3,7 +3,7 @@
  * Replaces AI Elements / previous ConversationThread.
  */
 
-import { memo, useEffect, useMemo } from "react";
+import { memo, useCallback, useEffect, useMemo, type ReactNode } from "react";
 import type { Locale } from "@/i18n";
 import { createT } from "@/i18n";
 import {
@@ -41,6 +41,8 @@ import {
 import { formatMessageTime } from "@/lib/accountUi";
 import { formatTokenCount } from "@/lib/contextUsage";
 import { useStickToBottom } from "@/hooks/useStickToBottom";
+import { useChatMessageVirtualizer } from "@/hooks/useChatMessageVirtualizer";
+import { estimateChatRowHeight } from "@/lib/chatVirtualList";
 import {
   MessageActionButton,
   MessageCopyButton,
@@ -448,6 +450,7 @@ export function ConversationThread({
     contentRef,
     onScroll,
     scrollToBottom,
+    isPinnedRef,
     showBack,
   } = useStickToBottom({
     conversationKey: sessionKey ?? "chat",
@@ -509,6 +512,73 @@ export function ConversationThread({
     !liveTool &&
     !turnBusy;
 
+  // Force-mount only what must stay in DOM. Do NOT always force the last N
+  // rows while reading history — that expanded every window to the tail and
+  // remounted huge answers (org charts) mid-scroll → bounce.
+  const forceVirtualIndices = useMemo(() => {
+    const out: number[] = [];
+    const pushId = (id: string | null | undefined) => {
+      if (!id) return;
+      const i = messages.findIndex((m) => m.id === id);
+      if (i >= 0) out.push(i);
+    };
+    pushId(findActive?.messageId);
+    pushId(activeAssistantId);
+    // While following the live turn, keep the last user + tail mounted.
+    if (turnBusy) {
+      pushId(lastUserMessageId);
+      const n = messages.length;
+      for (let i = Math.max(0, n - 2); i < n; i++) out.push(i);
+    }
+    return out;
+  }, [
+    messages,
+    findActive?.messageId,
+    activeAssistantId,
+    lastUserMessageId,
+    turnBusy,
+  ]);
+
+  const getEstimateHeight = useCallback(
+    (i: number) => {
+      const m = messages[i];
+      if (!m) return 120;
+      return estimateChatRowHeight({
+        contentLength: m.content?.length ?? 0,
+        thoughtLength: m.thought?.length ?? 0,
+        role: m.role,
+      });
+    },
+    [messages],
+  );
+
+  const {
+    virtualized,
+    start: virtStart,
+    end: virtEnd,
+    paddingTop,
+    paddingBottom,
+    measureRef,
+  } = useChatMessageVirtualizer({
+    itemCount: messages.length,
+    getKey: (i) => messages[i]?.id ?? `i-${i}`,
+    getEstimateHeight,
+    viewportRef: scrollRef,
+    isPinnedRef,
+    conversationKey: sessionKey ?? "chat",
+    forceIndices: forceVirtualIndices,
+  });
+
+  const visibleMessages = useMemo(() => {
+    if (!virtualized) return messages.map((m, index) => ({ m, index }));
+    const slice: { m: ChatMessage; index: number }[] = [];
+    for (let i = virtStart; i < virtEnd; i++) {
+      const m = messages[i];
+      if (m) slice.push({ m, index: i });
+    }
+    return slice;
+  }, [messages, virtualized, virtStart, virtEnd]);
+
   return (
     <div className="lobe-chat" data-slot="lobe-chat">
       <div
@@ -524,7 +594,28 @@ export function ConversationThread({
             </div>
           ) : null}
 
-          {messages.map((m) => {
+          {virtualized && paddingTop > 0 ? (
+            <div
+              aria-hidden
+              className="lobe-chat__virt-spacer"
+              style={{ height: paddingTop, flexShrink: 0 }}
+            />
+          ) : null}
+
+          {visibleMessages.map(({ m, index: msgIndex }) => {
+            const wrap = (node: ReactNode) =>
+              virtualized ? (
+                <div
+                  key={m.id}
+                  ref={measureRef(msgIndex)}
+                  data-virt-index={msgIndex}
+                >
+                  {node}
+                </div>
+              ) : (
+                node
+              );
+
             if (
               isEndOfTurnMarker(m.marker) ||
               m.marker === "turn_cancelled" ||
@@ -532,8 +623,8 @@ export function ConversationThread({
                 (m.content?.startsWith("turn_cancelled") ||
                   m.content?.startsWith("turn_end|")))
             ) {
-              return (
-                <EndOfTurnChip key={m.id} message={m} locale={locale} />
+              return wrap(
+                <EndOfTurnChip key={m.id} message={m} locale={locale} />,
               );
             }
 
@@ -544,16 +635,34 @@ export function ConversationThread({
                 (m.toolCallId || "").trim() ||
                 (m.id.startsWith("tool-") ? m.id.slice(5) : "");
               if (tcid && isToolInlinedInAssistants(messages, tcid)) {
-                return null;
+                return virtualized ? (
+                  <div
+                    key={m.id}
+                    ref={measureRef(msgIndex)}
+                    data-virt-index={msgIndex}
+                    style={{ height: 0, overflow: "hidden" }}
+                    aria-hidden
+                  />
+                ) : null;
               }
               const toolSeg = toolSegmentFromMessage(m);
-              if (!toolSeg) return null;
-              return (
+              if (!toolSeg) {
+                return virtualized ? (
+                  <div
+                    key={m.id}
+                    ref={measureRef(msgIndex)}
+                    data-virt-index={msgIndex}
+                    style={{ height: 0, overflow: "hidden" }}
+                    aria-hidden
+                  />
+                ) : null;
+              }
+              return wrap(
                 <div key={m.id} className="lobe-chat-assistant-timeline">
                   <div className="lobe-timeline-rail">
                     <TimelineToolRow tool={toolSeg} />
                   </div>
-                </div>
+                </div>,
               );
             }
 
@@ -583,7 +692,7 @@ export function ConversationThread({
                 detail = meta.note;
               }
               const summary = meta?.summaryPreview?.trim();
-              return (
+              return wrap(
                 <div
                   key={m.id}
                   className="lobe-chat-compact"
@@ -605,13 +714,21 @@ export function ConversationThread({
                       </details>
                     ) : null}
                   </div>
-                </div>
+                </div>,
               );
             }
 
             // Generic tool rows (non marker) — keep quiet; no history stack.
             if (m.role === "tool") {
-              return null;
+              return virtualized ? (
+                <div
+                  key={m.id}
+                  ref={measureRef(msgIndex)}
+                  data-virt-index={msgIndex}
+                  style={{ height: 0, overflow: "hidden" }}
+                  aria-hidden
+                />
+              ) : null;
             }
 
             if (m.role === "user") {
@@ -621,7 +738,7 @@ export function ConversationThread({
               const timeLabel = formatMessageTime(m.createdAt, locale);
               const isFindHit = !!findHitMessageIds?.has(m.id);
               const isFindCurrent = findActive?.messageId === m.id;
-              return (
+              return wrap(
                 <ChatItem
                   key={m.id}
                   id={m.id}
@@ -759,7 +876,7 @@ export function ConversationThread({
                       </>
                     )
                   }
-                />
+                />,
               );
             }
 
@@ -770,7 +887,7 @@ export function ConversationThread({
               );
               const isFindHit = !!findHitMessageIds?.has(m.id);
               const isFindCurrent = findActive?.messageId === m.id;
-              return (
+              return wrap(
                 <div
                   key={m.id}
                   className={
@@ -800,7 +917,7 @@ export function ConversationThread({
                       friendly
                     )}
                   </div>
-                </div>
+                </div>,
               );
             }
 
@@ -836,7 +953,7 @@ export function ConversationThread({
               streaming: !!m.streaming,
             });
 
-            return (
+            return wrap(
               <ChatItem
                 key={m.id}
                 id={m.id}
@@ -1007,9 +1124,17 @@ export function ConversationThread({
                     </>
                   ) : null
                 }
-              />
+              />,
             );
           })}
+
+          {virtualized && paddingBottom > 0 ? (
+            <div
+              aria-hidden
+              className="lobe-chat__virt-spacer"
+              style={{ height: paddingBottom, flexShrink: 0 }}
+            />
+          ) : null}
 
           {/* Tool before any assistant bubble — only if not already a message row. */}
           {liveTool &&

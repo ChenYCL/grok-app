@@ -97,6 +97,8 @@ import {
   type StreamPayload,
   type TurnErrorPayload,
 } from "@/lib/session";
+import { StreamCoalescer } from "@/lib/streamCoalesce";
+import { UiErrorBoundary } from "@/components/UiErrorBoundary";
 import {
   INITIAL_CONTEXT_USAGE,
   reduceContextUsage,
@@ -2047,67 +2049,86 @@ export default function App() {
             }
           }),
         );
+        // Batch high-frequency stream tokens before React setState (long turns).
+        const applyStreamToUi = (chunk: StreamPayload) => {
+          if (cancelled) return;
+          // Ignore empty terminal ticks that only flip done
+          if (!chunk.text && !chunk.done) return;
+          // Anti-replay: only drop when the *same* focused host session is idle.
+          // Multi-session: background turns keep streaming after switch — never
+          // gate on liveHost.state alone (that monopolizes the focused chat).
+          const host = liveHostRef.current;
+          if (
+            chunk.text &&
+            chunk.sessionId &&
+            chunk.sessionId === host.sessionId &&
+            !isSessionLiveStreaming(host.state)
+          ) {
+            return;
+          }
+          if (
+            chunk.text &&
+            chunk.sessionId === viewingSessionIdRef.current
+          ) {
+            setRetryStatus(null);
+            // Progress clears stall banner (I06).
+            setStreamStall(null);
+          }
+          // Keep multi-session busy projection alive for non-focused sessions.
+          if (chunk.sessionId && (chunk.text || !chunk.done)) {
+            setLiveMap((prev) =>
+              projectHostIntoLiveMap(prev, {
+                sessionId: chunk.sessionId!,
+                state: "streaming",
+                streamingMessageId: chunk.messageId ?? null,
+              }),
+            );
+          }
+          if (chunk.done && chunk.sessionId) {
+            setLiveMap((prev) =>
+              projectHostIntoLiveMap(prev, {
+                sessionId: chunk.sessionId!,
+                state: "ready",
+                streamingMessageId: null,
+              }),
+            );
+          }
+          patchSessionMessages(chunk.sessionId, (prev) => {
+            const next = applyStreamChunk(prev, chunk);
+            // Keep cache in sync immediately so post-turn apply sees final text.
+            if (chunk.sessionId) {
+              messagesBySessionRef.current.set(chunk.sessionId, next);
+            }
+            return next;
+          });
+          if (chunk.sessionId && chunk.text) {
+            setLiveMap((prev) =>
+              markSawModelOutput(prev, chunk.sessionId!),
+            );
+          }
+          // After a completed assistant stream, try silent automation create.
+          if (chunk.done && chunk.sessionId) {
+            void tryApplyAutomationFromSession(chunk.sessionId);
+          }
+        };
+        const streamCoalescer = new StreamCoalescer({
+          flushMs: 48,
+          onFlush: (raw) => {
+            applyStreamToUi({
+              sessionId: raw.sessionId ?? "",
+              messageId: raw.messageId ?? "",
+              text: raw.text ?? "",
+              done: !!raw.done,
+              kind: (raw.kind as StreamPayload["kind"]) || "assistant",
+              thoughtPhase: raw.thoughtPhase ?? undefined,
+            });
+          },
+        });
+        cleanups.push(() => streamCoalescer.dispose());
         await track(
           api.listen<StreamPayload>("session://stream", (chunk) => {
             if (cancelled) return;
-            // Ignore empty terminal ticks that only flip done
-            if (!chunk.text && !chunk.done) return;
-            // Anti-replay: only drop when the *same* focused host session is idle.
-            // Multi-session: background turns keep streaming after switch — never
-            // gate on liveHost.state alone (that monopolizes the focused chat).
-            const host = liveHostRef.current;
-            if (
-              chunk.text &&
-              chunk.sessionId &&
-              chunk.sessionId === host.sessionId &&
-              !isSessionLiveStreaming(host.state)
-            ) {
-              return;
-            }
-            if (
-              chunk.text &&
-              chunk.sessionId === viewingSessionIdRef.current
-            ) {
-              setRetryStatus(null);
-              // Progress clears stall banner (I06).
-              setStreamStall(null);
-            }
-            // Keep multi-session busy projection alive for non-focused sessions.
-            if (chunk.sessionId && (chunk.text || !chunk.done)) {
-              setLiveMap((prev) =>
-                projectHostIntoLiveMap(prev, {
-                  sessionId: chunk.sessionId!,
-                  state: "streaming",
-                  streamingMessageId: chunk.messageId ?? null,
-                }),
-              );
-            }
-            if (chunk.done && chunk.sessionId) {
-              setLiveMap((prev) =>
-                projectHostIntoLiveMap(prev, {
-                  sessionId: chunk.sessionId!,
-                  state: "ready",
-                  streamingMessageId: null,
-                }),
-              );
-            }
-            patchSessionMessages(chunk.sessionId, (prev) => {
-              const next = applyStreamChunk(prev, chunk);
-              // Keep cache in sync immediately so post-turn apply sees final text.
-              if (chunk.sessionId) {
-                messagesBySessionRef.current.set(chunk.sessionId, next);
-              }
-              return next;
-            });
-            if (chunk.sessionId && chunk.text) {
-              setLiveMap((prev) =>
-                markSawModelOutput(prev, chunk.sessionId!),
-              );
-            }
-            // After a completed assistant stream, try silent automation create.
-            if (chunk.done && chunk.sessionId) {
-              void tryApplyAutomationFromSession(chunk.sessionId);
-            }
+            streamCoalescer.push(chunk);
           }),
         );
         await track(
@@ -2378,6 +2399,21 @@ export default function App() {
               sawModelOutput: p.sawModelOutput,
               sawToolActivity: p.sawToolActivity,
             });
+          }),
+        );
+        // Long-tool heartbeat: Host re-armed stall; clear soft banner for this chat.
+        await track(
+          api.listen<{
+            sessionId?: string;
+            toolCallIds?: string[];
+            openCount?: number;
+          }>("session://tool_heartbeat", (p) => {
+            if (cancelled || !p?.sessionId) return;
+            const sid = p.sessionId;
+            setLiveMap((prev) => markSawToolActivity(prev, sid));
+            if (sid === viewingSessionIdRef.current) {
+              setStreamStall(null);
+            }
           }),
         );
         await track(
@@ -10060,6 +10096,14 @@ export default function App() {
           <div className="sr-only" aria-live="polite" aria-atomic="true">
             {streamA11yNote}
           </div>
+          <UiErrorBoundary
+            resetKey={session.sessionId ?? `draft-${session.title ?? "new"}`}
+            labels={{
+              title: tr("ui.errorBoundary.title"),
+              body: tr("ui.errorBoundary.body"),
+              retry: tr("ui.errorBoundary.retry"),
+            }}
+          >
           <ConversationThread
             locale={locale}
             messages={messages}
@@ -10131,6 +10175,7 @@ export default function App() {
             findHitMessageIds={showChatFind ? chatFindHitIds : undefined}
             findActive={showChatFind ? chatFindActive : null}
           />
+          </UiErrorBoundary>
 
           <div
             ref={composerWrapRef}

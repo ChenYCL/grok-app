@@ -17,11 +17,20 @@ See `docs/llm-wiki/release.md`.
 - CSP enabled; asset protocol denies common secret paths
 - Phone mirror: default **read-only**, regenerate link (token rotate), allow-write toggle
 - Error deck: free-form message classification (CLI / auth / network / crash)
+- **Diagnostic file logs**: daily rolling `logs/app.log.YYYY-MM-DD` under app data (plus stderr)
+- **Chat ErrorBoundary**: render failures show Retry instead of blanking the workbench
+- **Main chat virtual list** (variable-height, ≥36 rows): spacers keep scroll metrics stable so stick-to-bottom / escape-pin / Back-to-bottom stay correct; find + streaming tail stay mounted
+- **Host stream emit backpressure**: coalesce `session://stream` IPC (~40ms / 600 chars / phase/`done` flush)
+- **Long-tool heartbeat protocol**: while tools are open, Host re-arms stall progress and emits `session://tool_heartbeat` every ~25s (max age 3h)
 
 ### Fixed
 
 - SVG resource preview no longer injects raw HTML
 - Resource absolute open/save grants path for re-open
+- Long multi-tool turns no longer hit a fixed **10-minute wall** on `session/prompt` — wait is idle-based (600s silence) with a 4h absolute ceiling
+- High-frequency stream tokens are **coalesced** (~48ms) before React state updates to reduce UI thrash on long answers
+- Long tools without intermediate status no longer false-trigger hard stream stall (heartbeat)
+- Chat scroll **bounce mid-transcript** (e.g. tall org-chart / table answers): content-aware row estimates, stricter stick re-pin, no force-mount of tail while reading history, shrink-thrash ignored
 
 ### Security
 

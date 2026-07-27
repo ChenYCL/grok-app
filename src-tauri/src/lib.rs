@@ -30,7 +30,10 @@ mod process_util;
 mod process_limits;
 mod proxy;
 mod journal_throttle;
+mod logging;
+mod stream_emit;
 mod stream_stall;
+mod tool_heartbeat;
 mod cli_sessions;
 mod turn_complete;
 mod store_lock;
@@ -67,13 +70,7 @@ use session_manager::SessionManager;
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let _ = paths::ensure_app_dirs();
-
-    tracing_subscriber::fmt()
-        .with_env_filter(
-            tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info")),
-        )
-        .init();
+    logging::init();
 
     let session_mgr = Arc::new(SessionManager::new());
     let mirror_host = Arc::new(MirrorHost::from_env());

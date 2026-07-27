@@ -34,6 +34,11 @@ use crate::acp_client::{
 use crate::cli_probe;
 use crate::error::{AgentError, AgentErrorCode};
 use crate::journal_throttle::{is_paragraph_break, JournalWriteThrottle};
+use crate::stream_emit::{
+    should_flush_stream_emit, stream_emit_can_merge, DEFAULT_STREAM_EMIT_MAX_CHARS,
+    DEFAULT_STREAM_EMIT_MS,
+};
+use crate::tool_heartbeat::should_emit_tool_heartbeat;
 use crate::mock_acp::{self, MockConnectMode, MockStreamHandle, StreamChunk};
 use crate::permission::{
     extract_path_target, extract_shell_command, may_auto_allow, may_auto_deny, pick_option_id,
@@ -172,6 +177,16 @@ pub struct UiPermissionRequest {
 /// Identity for routing ACP event pumps when multiple processes are warm.
 type ProcessId = String;
 
+/// Buffered `session://stream` payload awaiting coalesce flush.
+struct PendingStreamEmit {
+    kind: StreamKind,
+    message_id: String,
+    text: String,
+    thought_phase: String,
+    done: bool,
+    first_at: Instant,
+}
+
 struct LiveSession {
     app_session_id: String,
     /// Stable id for the agent process / event pump (not the App session id).
@@ -242,6 +257,12 @@ struct LiveSession {
     /// keep streaming. While this is set the session can never be parked or
     /// idle-recycled, and its stream chunks are always applied.
     prompt_in_flight: bool,
+    /// Coalesced stream IPC buffer (host backpressure).
+    pending_stream_emit: Option<PendingStreamEmit>,
+    /// Bumped when a delayed flush is scheduled; stale tasks no-op.
+    stream_emit_flush_gen: u64,
+    /// Last `session://tool_heartbeat` emit (long open tools).
+    last_tool_heartbeat_emit: Option<Instant>,
 }
 
 /// Ready agent process parked while another App session is focused (I01/I02).
@@ -581,6 +602,7 @@ impl SessionManager {
     }
 
     /// Background stream stall detector (I06). Safe to call once from app setup.
+    /// Also drives long-tool heartbeats on the same 5s tick.
     pub fn start_stream_stall_watchdog(self: &Arc<Self>, app: AppHandle) {
         let mgr = Arc::clone(self);
         tauri::async_runtime::spawn(async move {
@@ -588,6 +610,7 @@ impl SessionManager {
             ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
             loop {
                 ticker.tick().await;
+                mgr.tick_tool_heartbeats(&app);
                 mgr.tick_stream_stall(&app);
             }
         });
@@ -743,6 +766,8 @@ impl SessionManager {
 
     /// Force-end a Streaming turn while preserving journal (silent heal / hard stall).
     fn force_end_streaming_turn(s: &mut LiveSession, reason: &str) {
+        // Drop any unsent stream IPC so the UI does not get a late partial after Ready.
+        s.pending_stream_emit = None;
         Self::maybe_flush_stream_journal(s, true, false);
         s.stream_buf.clear();
         s.stream_thought.clear();
@@ -911,6 +936,236 @@ impl SessionManager {
         if force {
             s.journal_throttle.reset();
         }
+    }
+
+    fn stream_kind_str(kind: StreamKind) -> &'static str {
+        match kind {
+            StreamKind::Assistant => "assistant",
+            StreamKind::Thought => "thought",
+        }
+    }
+
+    /// Emit one coalesced stream payload (or no-op).
+    fn flush_pending_stream_emit(s: &mut LiveSession, app: &AppHandle) {
+        let Some(p) = s.pending_stream_emit.take() else {
+            return;
+        };
+        if p.text.is_empty() && !p.done {
+            return;
+        }
+        let _ = app.emit(
+            "session://stream",
+            serde_json::json!({
+                "sessionId": s.app_session_id,
+                "messageId": p.message_id,
+                "text": p.text,
+                "done": p.done,
+                "kind": Self::stream_kind_str(p.kind),
+                "thoughtPhase": p.thought_phase,
+            }),
+        );
+    }
+
+    /// Buffer stream IPC; flush on force / char budget / merge break / timer.
+    /// Returns whether a delayed flush task should be scheduled.
+    fn queue_stream_emit(
+        s: &mut LiveSession,
+        app: &AppHandle,
+        kind: StreamKind,
+        message_id: String,
+        text: String,
+        thought_phase: &str,
+        done: bool,
+    ) -> bool {
+        let kind_s = Self::stream_kind_str(kind);
+        let force = done
+            || thought_phase.eq_ignore_ascii_case("new")
+            || thought_phase.eq_ignore_ascii_case("open");
+
+        if let Some(pending) = s.pending_stream_emit.as_ref() {
+            let can = stream_emit_can_merge(
+                Self::stream_kind_str(pending.kind),
+                &pending.message_id,
+                kind_s,
+                &message_id,
+                thought_phase,
+            );
+            if !can {
+                Self::flush_pending_stream_emit(s, app);
+            }
+        }
+
+        let now = Instant::now();
+        if let Some(pending) = s.pending_stream_emit.as_mut() {
+            pending.text.push_str(&text);
+            pending.done = pending.done || done;
+            // Keep first non-none thought phase for the batch (UI phase open).
+            if pending.thought_phase == "none"
+                || pending.thought_phase.is_empty()
+            {
+                pending.thought_phase = thought_phase.to_string();
+            }
+            let flush = should_flush_stream_emit(
+                pending.first_at,
+                pending.text.len(),
+                now,
+                force,
+                DEFAULT_STREAM_EMIT_MAX_CHARS,
+                Duration::from_millis(DEFAULT_STREAM_EMIT_MS),
+            );
+            if flush {
+                Self::flush_pending_stream_emit(s, app);
+                return false;
+            }
+            return true; // still pending → ensure timer
+        }
+
+        // Fresh buffer
+        if force || text.is_empty() {
+            // Emit immediately (done tick / phase boundary / empty marker).
+            let _ = app.emit(
+                "session://stream",
+                serde_json::json!({
+                    "sessionId": s.app_session_id,
+                    "messageId": message_id,
+                    "text": text,
+                    "done": done,
+                    "kind": kind_s,
+                    "thoughtPhase": thought_phase,
+                }),
+            );
+            return false;
+        }
+
+        s.pending_stream_emit = Some(PendingStreamEmit {
+            kind,
+            message_id,
+            text,
+            thought_phase: thought_phase.to_string(),
+            done,
+            first_at: now,
+        });
+        true
+    }
+
+    fn schedule_stream_emit_flush(
+        self: &Arc<Self>,
+        app: AppHandle,
+        session_id: String,
+        gen: u64,
+    ) {
+        let mgr = Arc::clone(self);
+        tauri::async_runtime::spawn(async move {
+            tokio::time::sleep(Duration::from_millis(DEFAULT_STREAM_EMIT_MS)).await;
+            mgr.flush_stream_emit_if_gen(&app, &session_id, gen);
+        });
+    }
+
+    fn flush_stream_emit_if_gen(&self, app: &AppHandle, session_id: &str, gen: u64) {
+        {
+            let mut guard = self.inner.lock();
+            if let Some(s) = guard.as_mut() {
+                if s.app_session_id == session_id && s.stream_emit_flush_gen == gen {
+                    if let Some(p) = s.pending_stream_emit.as_ref() {
+                        if should_flush_stream_emit(
+                            p.first_at,
+                            p.text.len(),
+                            Instant::now(),
+                            false,
+                            DEFAULT_STREAM_EMIT_MAX_CHARS,
+                            Duration::from_millis(DEFAULT_STREAM_EMIT_MS),
+                        ) {
+                            Self::flush_pending_stream_emit(s, app);
+                        }
+                    }
+                    return;
+                }
+            }
+        }
+        let mut bg = self.background.lock();
+        if let Some(s) = bg.get_mut(session_id) {
+            if s.stream_emit_flush_gen == gen {
+                if let Some(p) = s.pending_stream_emit.as_ref() {
+                    if should_flush_stream_emit(
+                        p.first_at,
+                        p.text.len(),
+                        Instant::now(),
+                        false,
+                        DEFAULT_STREAM_EMIT_MAX_CHARS,
+                        Duration::from_millis(DEFAULT_STREAM_EMIT_MS),
+                    ) {
+                        Self::flush_pending_stream_emit(s, app);
+                    }
+                }
+            }
+        }
+    }
+
+    /// Open-tool heartbeat: re-arm stall progress + emit explicit protocol event.
+    fn tick_tool_heartbeats(&self, app: &AppHandle) {
+        let now = Instant::now();
+        let mut emits: Vec<(String, Vec<String>, u64)> = Vec::new();
+
+        {
+            let mut guard = self.inner.lock();
+            if let Some(s) = guard.as_mut() {
+                if let Some(e) = Self::maybe_tool_heartbeat_on_session(s, now) {
+                    emits.push(e);
+                }
+            }
+        }
+        {
+            let mut bg = self.background.lock();
+            for s in bg.values_mut() {
+                if let Some(e) = Self::maybe_tool_heartbeat_on_session(s, now) {
+                    emits.push(e);
+                }
+            }
+        }
+
+        for (sid, tool_ids, open_count) in emits {
+            let _ = app.emit(
+                "session://tool_heartbeat",
+                serde_json::json!({
+                    "sessionId": sid,
+                    "toolCallIds": tool_ids,
+                    "openCount": open_count,
+                    "intervalSecs": crate::tool_heartbeat::TOOL_HEARTBEAT_INTERVAL_SECS,
+                }),
+            );
+        }
+    }
+
+    fn maybe_tool_heartbeat_on_session(
+        s: &mut LiveSession,
+        now: Instant,
+    ) -> Option<(String, Vec<String>, u64)> {
+        if s.open_tool_ids.is_empty() {
+            return None;
+        }
+        if !matches!(
+            s.fsm.state(),
+            SessionState::Streaming | SessionState::AwaitingPermission
+        ) && !s.prompt_in_flight
+        {
+            return None;
+        }
+        let oldest = s.open_tool_seen_at.values().copied().min();
+        if !should_emit_tool_heartbeat(
+            s.open_tool_ids.len(),
+            s.last_tool_heartbeat_emit,
+            oldest,
+            now,
+        ) {
+            return None;
+        }
+        // Re-arm stall progress — long tools without intermediate tool events
+        // must not false-trigger soft/hard stream stall.
+        Self::touch_stream_progress_locked(s);
+        s.last_tool_heartbeat_emit = Some(now);
+        let ids: Vec<String> = s.open_tool_ids.iter().cloned().collect();
+        let n = ids.len() as u64;
+        Some((s.app_session_id.clone(), ids, n))
     }
 
     /// Start a fresh assistant journal/UI row after a mid-turn interjection.
@@ -1501,6 +1756,9 @@ impl SessionManager {
             tools_this_turn: 0,
             saw_model_output: false,
             prompt_in_flight: false,
+            pending_stream_emit: None,
+            stream_emit_flush_gen: 0,
+            last_tool_heartbeat_emit: None,
         })
     }
 
@@ -2205,6 +2463,9 @@ impl SessionManager {
                 tools_this_turn: 0,
             saw_model_output: false,
                 prompt_in_flight: false,
+            pending_stream_emit: None,
+            stream_emit_flush_gen: 0,
+            last_tool_heartbeat_emit: None,
             });
         }
         Self::emit_state(&app, &self.snapshot());
@@ -2475,6 +2736,9 @@ impl SessionManager {
             saw_model_output: false,
             // The agent is mid-turn; keep it un-parkable until the turn ends.
             prompt_in_flight: true,
+            pending_stream_emit: None,
+            stream_emit_flush_gen: 0,
+            last_tool_heartbeat_emit: None,
         };
         let sid = live.app_session_id.clone();
         self.background.lock().insert(sid.clone(), live);
@@ -2568,7 +2832,8 @@ impl SessionManager {
                 message_id,
                 done,
             } => {
-                let (app_sid, mid, thought_phase) = {
+                // Host stream backpressure: coalesce high-frequency tokens.
+                let need_schedule = {
                     let mut guard = self.inner.lock();
                     if let Some(s) = guard.as_mut() {
                         // Replay guard: on session resume (`session/load`) the CLI
@@ -2634,27 +2899,30 @@ impl SessionManager {
                         // I04: throttled mid-stream journal (force on terminal done chunk).
                         let para = is_paragraph_break(&text);
                         Self::maybe_flush_stream_journal(s, done, para);
-                        (
-                            s.app_session_id.clone(),
-                            s.streaming_message_id.clone().unwrap_or_default(),
+                        let mid = s.streaming_message_id.clone().unwrap_or_default();
+                        let need = Self::queue_stream_emit(
+                            s,
+                            app,
+                            kind,
+                            mid,
+                            text,
                             thought_phase,
-                        )
+                            done,
+                        );
+                        if need {
+                            s.stream_emit_flush_gen =
+                                s.stream_emit_flush_gen.wrapping_add(1);
+                            Some((s.app_session_id.clone(), s.stream_emit_flush_gen))
+                        } else {
+                            None
+                        }
                     } else {
                         return;
                     }
                 };
-                let payload = serde_json::json!({
-                    "sessionId": app_sid,
-                    "messageId": mid,
-                    "text": text,
-                    "done": done,
-                    "kind": match kind {
-                        StreamKind::Assistant => "assistant",
-                        StreamKind::Thought => "thought",
-                    },
-                    "thoughtPhase": thought_phase,
-                });
-                let _ = app.emit("session://stream", payload);
+                if let Some((sid, gen)) = need_schedule {
+                    self.schedule_stream_emit_flush(app.clone(), sid, gen);
+                }
             }
             AcpEvent::PromptComplete {
                 stop_reason,
@@ -2663,6 +2931,8 @@ impl SessionManager {
                 let empty_run = {
                     let mut guard = self.inner.lock();
                     if let Some(s) = guard.as_mut() {
+                        // Flush any buffered stream before turn-end signals.
+                        Self::flush_pending_stream_emit(s, app);
                         Self::touch_stream_progress_locked(s);
                         // Only the RPC result ends the turn. It is ordered after
                         // every chunk, so clearing here cannot truncate output.
@@ -3277,7 +3547,7 @@ impl SessionManager {
                 message_id,
                 done,
             } => {
-                let (app_sid, mid, thought_phase) = {
+                let need_schedule = {
                     let mut bg = self.background.lock();
                     let Some(s) = bg.get_mut(app_session_id) else {
                         return;
@@ -3330,26 +3600,27 @@ impl SessionManager {
                     };
                     let para = is_paragraph_break(&text);
                     Self::maybe_flush_stream_journal(s, done, para);
-                    (
-                        s.app_session_id.clone(),
-                        s.streaming_message_id.clone().unwrap_or_default(),
+                    let mid = s.streaming_message_id.clone().unwrap_or_default();
+                    let need = Self::queue_stream_emit(
+                        s,
+                        app,
+                        kind,
+                        mid,
+                        text,
                         thought_phase,
-                    )
+                        done,
+                    );
+                    if need {
+                        s.stream_emit_flush_gen =
+                            s.stream_emit_flush_gen.wrapping_add(1);
+                        Some((s.app_session_id.clone(), s.stream_emit_flush_gen))
+                    } else {
+                        None
+                    }
                 };
-                let _ = app.emit(
-                    "session://stream",
-                    serde_json::json!({
-                        "sessionId": app_sid,
-                        "messageId": mid,
-                        "text": text,
-                        "done": done,
-                        "kind": match kind {
-                            StreamKind::Assistant => "assistant",
-                            StreamKind::Thought => "thought",
-                        },
-                        "thoughtPhase": thought_phase,
-                    }),
-                );
+                if let Some((sid, gen)) = need_schedule {
+                    self.schedule_stream_emit_flush(app.clone(), sid, gen);
+                }
             }
             AcpEvent::PromptComplete {
                 stop_reason,
@@ -3358,6 +3629,7 @@ impl SessionManager {
                 let finished = {
                     let mut bg = self.background.lock();
                     if let Some(s) = bg.get_mut(app_session_id) {
+                        Self::flush_pending_stream_emit(s, app);
                         Self::touch_stream_progress_locked(s);
                         if authoritative {
                             s.prompt_in_flight = false;
@@ -5101,6 +5373,9 @@ mod session_routing_tests {
             tools_this_turn: tools,
             saw_model_output: false,
             prompt_in_flight: false,
+            pending_stream_emit: None,
+            stream_emit_flush_gen: 0,
+            last_tool_heartbeat_emit: None,
         }
     }
 
@@ -5197,6 +5472,9 @@ mod session_routing_tests {
             tools_this_turn: 0,
             saw_model_output: false,
             prompt_in_flight: true,
+            pending_stream_emit: None,
+            stream_emit_flush_gen: 0,
+            last_tool_heartbeat_emit: None,
         };
 
         SessionManager::begin_post_interjection_stream(&mut session);
@@ -5289,6 +5567,9 @@ mod session_routing_tests {
             tools_this_turn: 0,
             saw_model_output: false,
             prompt_in_flight: false,
+            pending_stream_emit: None,
+            stream_emit_flush_gen: 0,
+            last_tool_heartbeat_emit: None,
         });
         let app = tauri::test::mock_app();
         let err = mgr

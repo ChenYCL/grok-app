@@ -146,12 +146,14 @@ describe("nextStickPinState", () => {
     expect(next).toEqual({ pinned: true, escaped: false });
   });
 
-  it("scroll-down while still far does not pin", () => {
+  it("scroll-down while still far keeps escape (no mid-list re-pin)", () => {
+    // Virtualized/short scrollHeight must not clear escape mid-document —
+    // otherwise a false nearBottom on the next frame yanks to the tail.
     const next = nextStickPinState(
       { pinned: false, escaped: true },
       { scrollingUp: false, scrollingDown: true, nearBottom: false },
     );
-    expect(next).toEqual({ pinned: false, escaped: false });
+    expect(next).toEqual({ pinned: false, escaped: true });
   });
 
   it("hard bottom + down intent re-engages without a positive scroll delta", () => {

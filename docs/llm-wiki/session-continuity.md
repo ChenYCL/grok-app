@@ -115,8 +115,34 @@ turn and sending the rest of the answer down the replay-drop path. Symptom:
 journal holds a clean prefix of the answer, UI frozen mid-sentence, agent-side
 `turn_ended outcome=completed`, no error anywhere. The window is therefore
 **idle-based**: every inbound `session/update` re-arms it (`prompt_fallback_due`),
-so the waiter is freed only after real silence. `PROMPT_TIMEOUT_SECS` (600s) is the
-backstop for a wedged RPC — the fallback is an optimisation, never a deadline.
+so the waiter is freed only after real silence.
+
+**`session/prompt` wait (same idea):** not a fixed 600s wall clock. Host uses
+`PROMPT_IDLE_TIMEOUT_SECS` (600s **silence** without `session/update`) plus
+`PROMPT_ABSOLUTE_TIMEOUT_SECS` (4h) so multi-tool turns that keep emitting
+progress can run past 10 minutes without a false `rpc timeout`.
+
+### 4e. Host stream backpressure + long-tool heartbeat
+
+| Mechanism | Behavior |
+|-----------|----------|
+| Stream emit coalesce | Per-turn buffer for `session://stream`. Flush on ~40ms idle, ≥600 chars, thought phase open/new, or `done`. Live + background paths. |
+| Tool heartbeat | While `open_tool_ids` non-empty and turn busy: every **25s** re-arm `last_stream_progress` and emit `session://tool_heartbeat` `{ sessionId, toolCallIds, openCount, intervalSecs }`. Stops after **3h** age on oldest open tool (safety). |
+| Stall interaction | Soft/hard stream stall only sees pure silence; heartbeats count as progress so long shell/find/subagent tools are not false-ended. |
+
+Frontend also coalesces stream tokens (~48ms) before React `setState`.
+
+### 4f. Main chat virtualization (scroll-safe)
+
+When the transcript has **≥36** messages, the main chat uses a **variable-height**
+virtual window (`chatVirtualList` + `useChatMessageVirtualizer`):
+
+- Spacers preserve total `scrollHeight` so `useStickToBottom` pin / escape / re-pin
+  and “Back to bottom” keep working.
+- **Pinned** (following stream): always mount the tail; overscan builds upward.
+- **Escaped** (user scrolled up): window by `scrollTop`; height remeasure of rows
+  above the viewport adjusts `scrollTop` so content does not jump.
+- Force-mounted: find match, active streaming assistant, last user, last 4 rows.
 
 Consequences, all of them load-bearing:
 
