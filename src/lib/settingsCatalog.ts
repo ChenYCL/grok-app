@@ -451,6 +451,19 @@ export const SETTINGS_ENTRIES: readonly SettingsEntry[] = [
     ],
     keywords: ["wallpaper", "background", "scrim"],
   },
+  {
+    id: "appearance.chatFontScale",
+    section: "appearance",
+    anchorId: "settings-anchor-chatFontScale",
+    labelKey: "settings.chatFontScale",
+    descKeys: [
+      "settings.chatFontScaleDesc",
+      "settings.chatFontScale.sm",
+      "settings.chatFontScale.md",
+      "settings.chatFontScale.lg",
+    ],
+    keywords: ["font", "size", "text size", "字号", "字號", "字体", "字體"],
+  },
   // ── account ──
   {
     id: "account.official",

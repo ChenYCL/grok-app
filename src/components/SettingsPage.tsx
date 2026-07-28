@@ -52,6 +52,13 @@ import {
   type WallpaperRecord,
 } from "@/lib/themeSkin";
 import {
+  CHAT_FONT_SCALES,
+  applyChatFontScale,
+  loadChatFontScale,
+  saveChatFontScale,
+  type ChatFontScale,
+} from "@/lib/chatFontScale";
+import {
   WallpaperFocusEditor,
   type WallpaperFocusApplyResult,
 } from "@/components/WallpaperFocusEditor";
@@ -735,6 +742,19 @@ export function SettingsPage({
   const [wallpaperBusy, setWallpaperBusy] = useState(false);
   const [wallpaperError, setWallpaperError] = useState<string | null>(null);
   const [wallpaperFocusOpen, setWallpaperFocusOpen] = useState(false);
+  /** Chat transcript font scale — localStorage only (no AppSettings). */
+  const [chatFontScale, setChatFontScaleState] = useState<ChatFontScale>(() =>
+    loadChatFontScale(),
+  );
+  useEffect(() => {
+    // Re-apply on mount so Settings preview / document stay consistent.
+    applyChatFontScale(loadChatFontScale());
+  }, []);
+  const onChatFontScale = useCallback((next: ChatFontScale) => {
+    setChatFontScaleState(next);
+    saveChatFontScale(next);
+    applyChatFontScale(next);
+  }, []);
   const marqueeRef = useRef<{
     active: boolean;
     dragging: boolean;
@@ -1973,6 +1993,44 @@ export function SettingsPage({
                   >
                     {t("settings.themeDark")}
                   </button>
+                </div>
+              </div>
+            </div>
+            <div
+              className={
+                "settings-card" + rowHighlight("settings-anchor-chatFontScale")
+              }
+              id="settings-anchor-chatFontScale"
+            >
+              <div className="settings-row">
+                <div className="settings-row__text">
+                  <div className="settings-row__label">
+                    {t("settings.chatFontScale")}
+                  </div>
+                  <div className="settings-row__desc">
+                    {t("settings.chatFontScaleDesc")}
+                  </div>
+                </div>
+                <div
+                  className="settings-seg"
+                  role="radiogroup"
+                  aria-label={t("settings.chatFontScale")}
+                >
+                  {CHAT_FONT_SCALES.map((scale) => (
+                    <button
+                      key={scale}
+                      type="button"
+                      role="radio"
+                      aria-checked={chatFontScale === scale}
+                      className={
+                        "settings-seg__btn" +
+                        (chatFontScale === scale ? " is-on" : "")
+                      }
+                      onClick={() => onChatFontScale(scale)}
+                    >
+                      {t(`settings.chatFontScale.${scale}`)}
+                    </button>
+                  ))}
                 </div>
               </div>
             </div>

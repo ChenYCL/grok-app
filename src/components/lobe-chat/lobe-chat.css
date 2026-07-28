@@ -11,6 +11,7 @@
   --chat-mono: ui-monospace, "SF Mono", "Cascadia Code", Menlo, Consolas,
     "Liberation Mono", monospace;
 
+  /* Defaults = md; overridden by html[data-chat-font] (Appearance). */
   --chat-fs: 14px;
   --chat-fs-sm: 12.5px;
   --chat-fs-xs: 11.5px;
@@ -1742,4 +1743,29 @@
   border-radius: var(--chat-r-lg);
   border: 1px solid var(--chat-card-border);
   background: var(--chat-card);
+}
+
+/*
+ * Chat font scale (Settings → Appearance). Prefer html[data-chat-font] so every
+ * .lobe-chat root picks it up without prop drilling. Element attribute works too.
+ */
+html[data-chat-font="sm"] .lobe-chat,
+.lobe-chat[data-chat-font="sm"] {
+  --chat-fs: 13px;
+  --chat-fs-sm: 11.5px;
+  --chat-fs-xs: 10.5px;
+}
+
+html[data-chat-font="md"] .lobe-chat,
+.lobe-chat[data-chat-font="md"] {
+  --chat-fs: 14px;
+  --chat-fs-sm: 12.5px;
+  --chat-fs-xs: 11.5px;
+}
+
+html[data-chat-font="lg"] .lobe-chat,
+.lobe-chat[data-chat-font="lg"] {
+  --chat-fs: 16px;
+  --chat-fs-sm: 14px;
+  --chat-fs-xs: 12.5px;
 }

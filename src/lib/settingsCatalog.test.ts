@@ -89,10 +89,11 @@ describe("settingsCatalog", () => {
     expect(isSettingsSectionId("nope")).toBe(false);
   });
 
-  it("keywordKeysForSection includes skin/wallpaper and remote control", () => {
+  it("keywordKeysForSection includes skin/wallpaper/font and remote control", () => {
     const appearance = keywordKeysForSection("appearance");
     expect(appearance).toContain("settings.skin");
     expect(appearance).toContain("settings.wallpaper");
+    expect(appearance).toContain("settings.chatFontScale");
     const rim = keywordKeysForSection("remote_im");
     expect(rim).toContain("settings.nav.remoteIm");
     expect(rim).toContain("settings.tab.remoteIm");
@@ -121,7 +122,7 @@ describe("settingsCatalog", () => {
     );
   });
 
-  it("search finds mcp / wallpaper / cli path (zh + en)", () => {
+  it("search finds mcp / wallpaper / chat font / cli path (zh + en)", () => {
     const tZh = createT("zh");
     const tEn = createT("en");
     const mcp = searchSettingsEntries("mcp", tZh, tEn);
@@ -133,6 +134,14 @@ describe("settingsCatalog", () => {
         ? wallpaper
         : searchSettingsEntries("wallpaper", tZh, tEn);
     expect(wallpaperHits.some((h) => h.entry.id === "appearance.wallpaper")).toBe(
+      true,
+    );
+    const font = searchSettingsEntries("字号", tZh, tEn);
+    expect(font.some((h) => h.entry.id === "appearance.chatFontScale")).toBe(
+      true,
+    );
+    const fontEn = searchSettingsEntries("text size", tZh, tEn);
+    expect(fontEn.some((h) => h.entry.id === "appearance.chatFontScale")).toBe(
       true,
     );
     const cli = searchSettingsEntries("CLI", tZh, tEn);
