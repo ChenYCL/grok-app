@@ -101,8 +101,22 @@ async function githubCheckUpdate(): Promise<AppUpdateCheck> {
   return invoke<AppUpdateCheck>("app_check_update");
 }
 
+export type UpdaterChannelInfo = {
+  /** `silent` when signed release plugin path is live; else `github_manual`. */
+  channel: "silent" | "github_manual" | "unknown";
+  pluginEnabled: boolean;
+  platformSupported: boolean;
+  endpoint: string;
+};
+
 export function useUpdater() {
   const [status, setStatusState] = useState<UpdateStatus>(initialUpdateStatus);
+  const [channelInfo, setChannelInfo] = useState<UpdaterChannelInfo>({
+    channel: "unknown",
+    pluginEnabled: false,
+    platformSupported: false,
+    endpoint: "",
+  });
   const statusRef = useRef<UpdateStatus>(initialUpdateStatus());
   const updateRef = useRef<Update | null>(null);
   const checkInFlightRef = useRef(false);
@@ -395,6 +409,33 @@ export function useUpdater() {
     aliveRef.current = true;
     const gen = ++generationRef.current;
 
+    // Resolve channel once for About / Doctor (does not start download).
+    void (async () => {
+      if (!isDesktopHost()) return;
+      try {
+        const s = await invoke<{
+          platformSupported: boolean;
+          pluginEnabled: boolean;
+          channel: string;
+          endpoint: string;
+        }>("updater_status");
+        if (!aliveRef.current || generationRef.current !== gen) return;
+        setChannelInfo({
+          channel:
+            s.channel === "silent"
+              ? "silent"
+              : s.channel === "github_manual"
+                ? "github_manual"
+                : "unknown",
+          pluginEnabled: !!s.pluginEnabled,
+          platformSupported: !!s.platformSupported,
+          endpoint: s.endpoint || "",
+        });
+      } catch {
+        /* ignore — About still works via status machine */
+      }
+    })();
+
     void checkForUpdateInBackground();
 
     const intervalId = window.setInterval(() => {
@@ -412,6 +453,7 @@ export function useUpdater() {
 
   return {
     status,
+    channelInfo,
     checkForUpdate,
     installAndRelaunch,
     githubReleasesUrl: GITHUB_RELEASES_URL,

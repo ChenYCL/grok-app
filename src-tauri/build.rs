@@ -20,8 +20,10 @@ fn main() {
         .map(|value| value.trim().to_string())
         .filter(|value| !value.is_empty());
 
-    if updater_public_key.is_some() && updater_endpoint.is_some() {
+    if let (Some(_key), Some(endpoint)) = (updater_public_key, updater_endpoint) {
         println!("cargo:rustc-cfg=grok_updater_enabled");
+        // Expose non-secret endpoint URL to `option_env!` / status DTO.
+        println!("cargo:rustc-env=GROK_UPDATER_ENDPOINT={endpoint}");
     }
 
     tauri_build::build()

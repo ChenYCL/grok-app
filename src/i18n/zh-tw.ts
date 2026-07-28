@@ -938,6 +938,9 @@ export const zhTW: Record<MessageKey, string> = {
   "settings.autoUpdateManualRequired":
     "有新版本 {version}。目前安裝方式不支援應用程式內更新 — 請到發佈頁下載。",
   "settings.autoUpdateError": "更新失敗：{error}",
+  "settings.autoUpdateChannelSilent": "更新通道：應用內（已簽名正式版）",
+  "settings.autoUpdateChannelManual":
+    "更新通道：GitHub 下載（未簽名 / 本地建置）",
   "settings.close": "關閉",
   "settings.sharedConfirm":
     "切換到共用 ~/.grok？資料不會靜默合併，請確認。",

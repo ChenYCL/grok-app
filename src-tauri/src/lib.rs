@@ -221,6 +221,7 @@ pub fn run() {
             commands::app_check_update,
             updater::is_auto_update_supported,
             updater::is_updater_plugin_enabled,
+            updater::updater_status,
             updater::prepare_for_app_update,
             commands::voice_status,
             commands::voice_transcribe,
