@@ -89,10 +89,11 @@ describe("settingsCatalog", () => {
     expect(isSettingsSectionId("nope")).toBe(false);
   });
 
-  it("keywordKeysForSection includes skin/wallpaper and remote control", () => {
+  it("keywordKeysForSection includes skin/wallpaper/thinking and remote control", () => {
     const appearance = keywordKeysForSection("appearance");
     expect(appearance).toContain("settings.skin");
     expect(appearance).toContain("settings.wallpaper");
+    expect(appearance).toContain("settings.thinkingExpand");
     const rim = keywordKeysForSection("remote_im");
     expect(rim).toContain("settings.nav.remoteIm");
     expect(rim).toContain("settings.tab.remoteIm");
@@ -121,7 +122,7 @@ describe("settingsCatalog", () => {
     );
   });
 
-  it("search finds mcp / wallpaper / cli path (zh + en)", () => {
+  it("search finds mcp / wallpaper / thinking / cli path (zh + en)", () => {
     const tZh = createT("zh");
     const tEn = createT("en");
     const mcp = searchSettingsEntries("mcp", tZh, tEn);
@@ -135,6 +136,14 @@ describe("settingsCatalog", () => {
     expect(wallpaperHits.some((h) => h.entry.id === "appearance.wallpaper")).toBe(
       true,
     );
+    const thinking = searchSettingsEntries("thinking", tZh, tEn);
+    expect(thinking.some((h) => h.entry.id === "appearance.thinkingExpand")).toBe(
+      true,
+    );
+    const reasoning = searchSettingsEntries("reasoning", tZh, tEn);
+    expect(
+      reasoning.some((h) => h.entry.id === "appearance.thinkingExpand"),
+    ).toBe(true);
     const cli = searchSettingsEntries("CLI", tZh, tEn);
     expect(cli.some((h) => h.entry.section === "runtime")).toBe(true);
   });

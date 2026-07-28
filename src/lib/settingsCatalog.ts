@@ -485,6 +485,29 @@ export const SETTINGS_ENTRIES: readonly SettingsEntry[] = [
     ],
     keywords: ["wallpaper", "background", "scrim"],
   },
+  {
+    id: "appearance.thinkingExpand",
+    section: "appearance",
+    anchorId: "settings-anchor-thinkingExpand",
+    labelKey: "settings.thinkingExpand",
+    descKeys: [
+      "settings.thinkingExpandDesc",
+      "settings.thinkingExpand.autoCollapse",
+      "settings.thinkingExpand.keepOpen",
+    ],
+    keywords: [
+      "thinking",
+      "reasoning",
+      "collapse",
+      "expand",
+      "thought",
+      "思考",
+      "推理",
+      "折叠",
+      "展開",
+      "展开",
+    ],
+  },
   // ── account ──
   {
     id: "account.official",
