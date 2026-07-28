@@ -118,6 +118,7 @@ import {
   type SessionPlanState,
 } from "@/lib/planSession";
 import { AgentTasksPanel } from "@/components/AgentTasksPanel";
+import { collectActivitySessions } from "@/lib/agentActivity";
 import * as api from "@/lib/api";
 import { shouldRestoreLastSession } from "@/lib/sessionRestore";
 import {
@@ -10122,6 +10123,31 @@ export default function App() {
               messages={messages}
               t={(k, vars) => tr(k, vars)}
               onClose={() => setTasksPanelOpen(false)}
+              activitySessions={collectActivitySessions({
+                liveMap,
+                sessions,
+                currentSessionId: session.sessionId,
+                untitledLabel: tr("session.untitled"),
+              })}
+              onSelectSession={(id) => {
+                const row = sessions.find((s) => s.id === id);
+                if (!row) return;
+                const proj =
+                  projects.find((p) => p.id === row.projectId) || null;
+                void openSession(row, proj);
+              }}
+              onStopSession={(id) => {
+                void (async () => {
+                  try {
+                    await api.sessionStop(id);
+                    setLiveMap((lm) =>
+                      settleStoppedSessionInLiveMap(lm, id),
+                    );
+                  } catch (e) {
+                    showToast(String(e), 4000);
+                  }
+                })();
+              }}
             />
           ) : null}
 

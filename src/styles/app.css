@@ -17041,6 +17041,20 @@ html[data-theme="light"] .rim-sidebar {
   font-size: 13px;
   font-weight: 600;
 }
+.agent-tasks__row--session .agent-tasks__row-main--static {
+  cursor: default;
+}
+.agent-tasks__session-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 0 10px 8px 28px;
+}
+.agent-tasks__current-tag {
+  font-size: 11px;
+  opacity: 0.7;
+  font-weight: 400;
+}
 .agent-tasks__empty-hint {
   margin: 0;
   font-size: 12px;
