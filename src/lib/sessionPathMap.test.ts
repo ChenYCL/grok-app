@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { ChatMessage } from "@/lib/session";
+import { resolveFileToken } from "./pathRefs";
 import {
   buildSessionFilePathMap,
   buildUniquePathMap,
@@ -76,5 +77,53 @@ describe("sessionPathMap", () => {
     );
     expect(m["a.md"]).toBe("/tmp/b.md");
     expect(m["b.md"]).toBe("/tmp/b.md");
+  });
+
+  it("collects home-relative tilde paths from assistant prose", () => {
+    const tilde =
+      "~/.grok/docs/user-guide/01-getting-started.md";
+    const m: ChatMessage = {
+      id: "a",
+      role: "assistant",
+      content: `路径：\`${tilde}\`\n\n| \`05-configuration.md\` | 配置 |`,
+    };
+    const paths = collectAbsolutePathsFromMessage(m);
+    expect(paths).toContain(tilde);
+  });
+
+  it("maps basename from unique tilde path in session", () => {
+    const tilde =
+      "~/.grok/docs/user-guide/01-getting-started.md";
+    const messages: ChatMessage[] = [
+      {
+        id: "a",
+        role: "assistant",
+        content: `路径：\`${tilde}\``,
+      },
+    ];
+    const map = buildSessionFilePathMap(messages, null);
+    expect(map["01-getting-started.md"]).toBe(tilde);
+    expect(map[tilde]).toBe(tilde);
+  });
+
+  it("resolveFileToken opens sibling bare name under unique tilde parent", () => {
+    const tilde =
+      "~/.grok/docs/user-guide/01-getting-started.md";
+    const map = buildSessionFilePathMap(
+      [
+        {
+          id: "a",
+          role: "assistant",
+          content: `路径：\`${tilde}\``,
+        },
+      ],
+      null,
+    );
+    expect(
+      resolveFileToken("05-configuration.md", { pathMap: map }),
+    ).toBe("~/.grok/docs/user-guide/05-configuration.md");
+    expect(
+      resolveFileToken("~/.grok/docs/user-guide/05-configuration.md"),
+    ).toBe("~/.grok/docs/user-guide/05-configuration.md");
   });
 });

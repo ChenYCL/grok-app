@@ -68,11 +68,11 @@ impl Default for ComposerPrefs {
     }
 }
 
-/// Stable id for the app-managed general workspace (orphan chat default).
+/// Legacy id for the short-lived "General" sidebar project (`system:general`).
+/// No longer registered in `projects.json`; kept so we can migrate old rows /
+/// session bindings. Orphan chats use `project_id = None` and cwd
+/// `{app_data}/workspaces/general`.
 pub const GENERAL_PROJECT_ID: &str = "system:general";
-
-/// English storage name; UI maps `system:general` via i18n.
-pub const GENERAL_PROJECT_NAME: &str = "General";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -86,7 +86,7 @@ pub struct Project {
     /// Pinned projects float to the top of the sidebar.
     #[serde(default)]
     pub pinned: bool,
-    /// App-managed (e.g. general workspace) — cannot be removed from the list.
+    /// Legacy flag from the temporary system:general project. Not used for new data.
     #[serde(default)]
     pub system: bool,
     /// Per-project composer prefs (used when scope = project).
@@ -101,7 +101,8 @@ pub struct Project {
 }
 
 impl Project {
-    pub fn is_general(&self) -> bool {
+    /// True for the retired system:general row (migration only).
+    pub fn is_legacy_general(&self) -> bool {
         self.id == GENERAL_PROJECT_ID || self.system
     }
 }
@@ -531,21 +532,13 @@ pub fn save_settings(s: &AppSettings) -> Result<(), String> {
 
 pub fn load_projects() -> Vec<Project> {
     let _ = ensure_app_dirs();
+    let _ = ensure_general_workspace_dir();
     let mut list: Vec<Project> = read_json_recover(&projects_file());
-    // Always keep the general workspace project (orphan chat default).
-    // Persist only when the row is missing or fields need repair (avoid
-    // load → save → path_scope refresh → load recursion).
-    let _ = ensure_general_project_in(&mut list, /*persist*/ true);
+    // One-shot migration: drop the temporary system:general project row and
+    // rehome its sessions to orphan (`project_id = None`) under "其他会话".
+    migrate_legacy_general_project(&mut list);
     for p in &mut list {
         p.path_ok = PathBuf::from(&p.path).is_dir();
-        if p.id == GENERAL_PROJECT_ID {
-            p.system = true;
-            p.trusted = true;
-            p.path = crate::paths::general_workspace_dir()
-                .to_string_lossy()
-                .to_string();
-            p.path_ok = true;
-        }
     }
     list.sort_by(|a, b| match (b.pinned, a.pinned) {
         (true, false) => std::cmp::Ordering::Greater,
@@ -555,88 +548,50 @@ pub fn load_projects() -> Vec<Project> {
     list
 }
 
-/// Ensure `{app_data}/workspaces/general` exists and is registered as a
-/// trusted system project. Idempotent; persists when newly created or repaired.
-pub fn ensure_general_project() -> Result<Project, String> {
+/// Ensure `{app_data}/workspaces/general` exists (orphan chat default cwd).
+/// Not registered as a sidebar project.
+pub fn ensure_general_workspace_dir() -> Result<std::path::PathBuf, String> {
     let _ = ensure_app_dirs();
-    let mut list: Vec<Project> = read_json_recover(&projects_file());
-    ensure_general_project_in(&mut list, /*persist*/ true)
-}
-
-/// `persist`: write projects.json when the general row is created or fields change.
-/// Uses raw `write_json` (not `save_projects`) to avoid `path_scope::refresh_from_store`
-/// re-entering `load_projects` while we still hold the in-memory list.
-fn ensure_general_project_in(list: &mut Vec<Project>, persist: bool) -> Result<Project, String> {
     let dir = crate::paths::general_workspace_dir();
     fs::create_dir_all(&dir).map_err(|e| format!("create general workspace: {e}"))?;
-    let path = dir.to_string_lossy().to_string();
+    Ok(dir)
+}
+
+/// Absolute path of the general workspace directory (creates it if missing).
+pub fn general_workspace_path_string() -> Result<String, String> {
+    Ok(ensure_general_workspace_dir()?
+        .to_string_lossy()
+        .to_string())
+}
+
+/// Remove legacy `system:general` from the projects list and clear those
+/// session bindings so chats appear under "其他会话".
+fn migrate_legacy_general_project(list: &mut Vec<Project>) {
+    let had_row = list.iter().any(|p| p.is_legacy_general());
+    if !had_row {
+        // Still rehome sessions that point at the retired id (index-only leftover).
+        rehome_general_sessions();
+        return;
+    }
+    list.retain(|p| !p.is_legacy_general());
+    // Raw write: avoid save_projects → path_scope → load_projects recursion.
+    let _ = write_json(&projects_file(), &list);
+    rehome_general_sessions();
+    crate::path_scope::refresh_from_store();
+}
+
+fn rehome_general_sessions() {
+    let mut sessions: Vec<SessionMeta> = read_json_recover(&sessions_index_file());
     let mut dirty = false;
-
-    if let Some(existing) = list.iter_mut().find(|p| p.id == GENERAL_PROJECT_ID) {
-        if existing.path != path {
-            existing.path = path;
+    for s in &mut sessions {
+        if s.project_id.as_deref() == Some(GENERAL_PROJECT_ID) {
+            s.project_id = None;
             dirty = true;
         }
-        if !existing.path_ok {
-            existing.path_ok = true;
-            dirty = true;
-        }
-        if !existing.trusted {
-            existing.trusted = true;
-            dirty = true;
-        }
-        if !existing.system {
-            existing.system = true;
-            dirty = true;
-        }
-        if existing.name.trim().is_empty() {
-            existing.name = GENERAL_PROJECT_NAME.into();
-            dirty = true;
-        }
-        let clone = existing.clone();
-        if persist && dirty {
-            write_json(&projects_file(), &list)?;
-            crate::path_scope::refresh_from_store();
-        }
-        return Ok(clone);
     }
-
-    // Migrate: older installs may have a user project at the same path.
-    if let Some(existing) = list.iter_mut().find(|p| p.path == path) {
-        existing.id = GENERAL_PROJECT_ID.into();
-        existing.system = true;
-        existing.trusted = true;
-        existing.pinned = true;
-        existing.name = GENERAL_PROJECT_NAME.into();
-        existing.path_ok = true;
-        let clone = existing.clone();
-        if persist {
-            write_json(&projects_file(), &list)?;
-            crate::path_scope::refresh_from_store();
-        }
-        return Ok(clone);
+    if dirty {
+        let _ = write_json(&sessions_index_file(), &sessions);
     }
-
-    let p = Project {
-        id: GENERAL_PROJECT_ID.into(),
-        name: GENERAL_PROJECT_NAME.into(),
-        path,
-        trusted: true,
-        last_opened_at: Utc::now(),
-        path_ok: true,
-        pinned: true,
-        system: true,
-        model_id: None,
-        effort: None,
-        mode: None,
-        permission_policy: None,
-    };
-    list.push(p.clone());
-    if persist {
-        write_json(&projects_file(), &list)?;
-        crate::path_scope::refresh_from_store();
-    }
-    Ok(p)
 }
 
 pub fn save_projects(list: &[Project]) -> Result<(), String> {
@@ -686,12 +641,10 @@ pub fn add_project(path: String, trust: bool) -> Result<Project, String> {
 /// or any chat sessions (sessions keep their project_id and become orphans).
 pub fn remove_project(id: &str) -> Result<(), String> {
     if id == GENERAL_PROJECT_ID {
-        return Err("cannot remove the general workspace project".into());
+        // Already retired; treat as success so old clients cannot soft-lock.
+        return Ok(());
     }
     let mut list = load_projects();
-    if list.iter().any(|p| p.id == id && p.system) {
-        return Err("cannot remove a system project".into());
-    }
     list.retain(|p| p.id != id);
     save_projects(&list)
 }
@@ -826,15 +779,12 @@ pub fn create_session(
     title: Option<String>,
     scheduled: bool,
 ) -> Result<SessionMeta, String> {
-    // Unassigned chats bind to the general workspace so agents always have a
-    // writable cwd (no more orphan $HOME / toast-only hints).
-    let project_id = match project_id.filter(|s| !s.trim().is_empty()) {
-        Some(id) => Some(id),
-        None => {
-            let _ = ensure_general_project();
-            Some(GENERAL_PROJECT_ID.into())
-        }
-    };
+    // Unassigned chats stay orphan (`None`) and appear under "其他会话".
+    // Agent cwd falls back to `{app_data}/workspaces/general` at connect time.
+    let _ = ensure_general_workspace_dir();
+    let project_id = project_id
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty() && s.as_str() != GENERAL_PROJECT_ID);
     let id = Uuid::new_v4().to_string();
     let now = Utc::now();
     let meta = SessionMeta {
@@ -937,30 +887,29 @@ pub fn set_session_pinned(id: &str, pinned: bool) -> Result<SessionMeta, String>
 }
 
 /// Bind (or clear) a session's project folder. Used to attach orphan / legacy
-/// chats to a project added later. Clearing (`None`) binds to the general
-/// workspace — there is no longer a true "no project" cwd.
+/// chats to a project added later. Clearing (`None`) returns the chat to
+/// "其他会话"; agent cwd still uses the general workspace directory.
 pub fn set_session_project(
     id: &str,
     project_id: Option<String>,
 ) -> Result<SessionMeta, String> {
     let pid = project_id
         .map(|s| s.trim().to_string())
-        .filter(|s| !s.is_empty())
-        .unwrap_or_else(|| {
-            let _ = ensure_general_project();
-            GENERAL_PROJECT_ID.into()
-        });
-    // Ensure project exists in the projects list.
-    let projects = load_projects();
-    if !projects.iter().any(|x| x.id == pid) {
-        return Err(format!("project not found: {pid}"));
+        .filter(|s| !s.is_empty() && s.as_str() != GENERAL_PROJECT_ID);
+    if let Some(ref pid) = pid {
+        let projects = load_projects();
+        if !projects.iter().any(|x| x.id.as_str() == pid.as_str()) {
+            return Err(format!("project not found: {pid}"));
+        }
+    } else {
+        let _ = ensure_general_workspace_dir();
     }
     let mut list = load_sessions_index();
     let s = list
         .iter_mut()
         .find(|s| s.id == id)
         .ok_or_else(|| "session not found".to_string())?;
-    s.project_id = Some(pid);
+    s.project_id = pid;
     s.updated_at = Utc::now();
     let clone = s.clone();
     save_sessions_index(&list)?;
@@ -1774,28 +1723,77 @@ mod tests {
     }
 
     #[test]
-    fn ensure_general_project_is_idempotent_and_not_removable() {
+    fn general_workspace_dir_exists_without_sidebar_project() {
         let _ = ensure_app_dirs();
-        let a = ensure_general_project().expect("ensure");
-        assert_eq!(a.id, GENERAL_PROJECT_ID);
-        assert!(a.system);
-        assert!(a.trusted);
-        assert!(a.pinned);
-        assert!(PathBuf::from(&a.path).is_dir());
-        let b = ensure_general_project().expect("ensure again");
-        assert_eq!(a.id, b.id);
-        assert_eq!(a.path, b.path);
-        assert!(remove_project(GENERAL_PROJECT_ID).is_err());
+        let path = ensure_general_workspace_dir().expect("ensure dir");
+        assert!(path.is_dir());
         let listed = load_projects();
-        assert!(listed.iter().any(|p| p.id == GENERAL_PROJECT_ID && p.system));
+        assert!(
+            listed.iter().all(|p| p.id != GENERAL_PROJECT_ID && !p.system),
+            "general must not appear as a project: {:?}",
+            listed.iter().map(|p| &p.id).collect::<Vec<_>>()
+        );
     }
 
     #[test]
-    fn create_session_defaults_to_general_project() {
+    fn create_session_defaults_to_orphan() {
         let _ = ensure_app_dirs();
         let meta = create_session(None, Some("t".into()), false).expect("create");
-        assert_eq!(meta.project_id.as_deref(), Some(GENERAL_PROJECT_ID));
+        assert!(meta.project_id.is_none(), "got {:?}", meta.project_id);
         let _ = delete_session(&meta.id);
+    }
+
+    #[test]
+    fn migrate_legacy_general_project_rehomes_sessions() {
+        let _ = ensure_app_dirs();
+        // Seed a legacy system:general row + bound session.
+        let mut projects: Vec<Project> = read_json_recover(&projects_file());
+        projects.retain(|p| p.id != GENERAL_PROJECT_ID);
+        projects.push(Project {
+            id: GENERAL_PROJECT_ID.into(),
+            name: "General".into(),
+            path: crate::paths::general_workspace_dir()
+                .to_string_lossy()
+                .to_string(),
+            trusted: true,
+            last_opened_at: Utc::now(),
+            path_ok: true,
+            pinned: true,
+            system: true,
+            model_id: None,
+            effort: None,
+            mode: None,
+            permission_policy: None,
+        });
+        write_json(&projects_file(), &projects).expect("seed projects");
+        let mut sessions: Vec<SessionMeta> = read_json_recover(&sessions_index_file());
+        let sid = format!("migrate-general-{}", Uuid::new_v4());
+        sessions.insert(
+            0,
+            SessionMeta {
+                id: sid.clone(),
+                project_id: Some(GENERAL_PROJECT_ID.into()),
+                title: "legacy".into(),
+                agent_session_id: None,
+                created_at: Utc::now(),
+                updated_at: Utc::now(),
+                model_id: None,
+                archived: false,
+                pinned: false,
+                effort: None,
+                mode: None,
+                permission_policy: None,
+                scheduled: false,
+            },
+        );
+        write_json(&sessions_index_file(), &sessions).expect("seed sessions");
+
+        let listed = load_projects();
+        assert!(listed.iter().all(|p| p.id != GENERAL_PROJECT_ID));
+        let reloaded = load_sessions_index();
+        let hit = reloaded.iter().find(|s| s.id == sid).expect("session");
+        assert!(hit.project_id.is_none(), "got {:?}", hit.project_id);
+        let _ = delete_session(&sid);
     }
 
     #[test]

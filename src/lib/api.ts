@@ -413,10 +413,15 @@ export async function projectsList() {
       trusted: boolean;
       pathOk: boolean;
       pinned?: boolean;
-      /** App-managed general workspace (system:general). */
+      /** Legacy flag; retired system:general is no longer listed. */
       system?: boolean;
     }>
   >("projects_list");
+}
+
+/** On-disk default cwd for orphan chats (`{app_data}/workspaces/general`). */
+export async function generalWorkspacePath() {
+  return invoke<string>("general_workspace_path");
 }
 
 export async function projectAdd(path: string, trust: boolean) {

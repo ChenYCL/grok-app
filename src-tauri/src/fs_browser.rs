@@ -763,6 +763,16 @@ pub fn open_path_smart(project_root: Option<&str>, path: &str) -> Result<FsReadR
             raw_in.replace('\\', "/")
         }
     };
+    // Agent prose often cites `~/.grok/docs/...` — expand before absolute check.
+    // PathBuf("~/.grok/...") is not absolute on Unix, so without this step the
+    // path is wrongly joined under the (often empty) project root.
+    let raw = if raw == "~" || raw.starts_with("~/") || raw.starts_with("~\\") {
+        crate::cli_probe::expand_user_path(&raw)
+            .to_string_lossy()
+            .replace('\\', "/")
+    } else {
+        raw
+    };
 
     // 1) Absolute path that exists
     let as_path = PathBuf::from(&raw);
@@ -1475,6 +1485,29 @@ mod tests {
         assert!(r.is_ok(), "{r:?}");
         assert_eq!(r.unwrap().name, "abs.md");
         let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn open_path_smart_tilde_home() {
+        // Chat cards often cite ~/.grok/docs/... outside the project root.
+        let home = crate::process_util::user_home();
+        let stamp = format!(
+            "grok-app-fs-tilde-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_millis())
+                .unwrap_or(0)
+        );
+        let dir = home.join(&stamp).join("user-guide");
+        fs::create_dir_all(&dir).unwrap();
+        let name = "05-configuration.md";
+        fs::write(dir.join(name), b"# configuration\n").unwrap();
+        let tilde = format!("~/{stamp}/user-guide/{name}");
+        let r = open_path_smart(None, &tilde);
+        let _ = fs::remove_dir_all(home.join(&stamp));
+        assert!(r.is_ok(), "{r:?}");
+        assert_eq!(r.unwrap().name, name);
     }
 
     #[test]

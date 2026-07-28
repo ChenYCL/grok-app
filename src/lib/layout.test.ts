@@ -9,8 +9,11 @@ import {
   asideSurfaceFromPreviewKind,
   suggestAsideWidth,
   mergeAsideWidth,
+  requiredWorkbenchInnerWidth,
   ASIDE_WIDTH_MIN,
   ASIDE_WIDTH_MAX,
+  MAIN_CHAT_MIN_WIDTH,
+  SIDEBAR_DEFAULT_WIDTH,
   WINDOW_CONTROLS_INSET,
   LAYOUT_STORAGE_KEY,
   withMirrorPhoneDrawerDefault,
@@ -70,11 +73,45 @@ describe("layout prefs", () => {
     ).toBe(withWin);
   });
 
-  it("caps max by viewport so main chat keeps room", () => {
+  it("caps max by viewport so main chat keeps ≥400px", () => {
     const w = clampAsideWidth(700, { viewportWidth: 900 });
-    // 900 - 360 reserve = 540
-    expect(w).toBeLessThanOrEqual(540);
+    // 900 - 400 chat min = 500
+    expect(w).toBeLessThanOrEqual(500);
     expect(w).toBeGreaterThanOrEqual(ASIDE_WIDTH_MIN);
+  });
+
+  it("subtracts open sidebar when capping aside so chat stays ≥400px", () => {
+    // 1200 viewport, 268 sidebar, 400 chat → aside max 532
+    const w = clampAsideWidth(700, {
+      viewportWidth: 1200,
+      sidebarOccupiedWidth: 268,
+    });
+    expect(w).toBeLessThanOrEqual(1200 - 268 - 400);
+    expect(w).toBe(532);
+  });
+
+  it("requiredWorkbenchInnerWidth sums open panes + chat floor", () => {
+    expect(
+      requiredWorkbenchInnerWidth({
+        sidebarCollapsed: true,
+        asideCollapsed: true,
+      }),
+    ).toBe(MAIN_CHAT_MIN_WIDTH);
+    expect(
+      requiredWorkbenchInnerWidth({
+        sidebarCollapsed: false,
+        sidebarWidth: SIDEBAR_DEFAULT_WIDTH,
+        asideCollapsed: true,
+      }),
+    ).toBe(SIDEBAR_DEFAULT_WIDTH + MAIN_CHAT_MIN_WIDTH);
+    expect(
+      requiredWorkbenchInnerWidth({
+        sidebarCollapsed: false,
+        sidebarWidth: 268,
+        asideCollapsed: false,
+        asideWidth: 400,
+      }),
+    ).toBe(268 + MAIN_CHAT_MIN_WIDTH + 400);
   });
 
   it("maps preview kinds to surfaces", () => {

@@ -316,6 +316,13 @@ pub async fn projects_list() -> Result<Vec<Project>, String> {
     Ok(store::load_projects())
 }
 
+/// Default cwd for chats without a bound project folder (`workspaces/general`).
+/// Not a sidebar project — only the on-disk directory.
+#[tauri::command]
+pub async fn general_workspace_path() -> Result<String, String> {
+    store::general_workspace_path_string()
+}
+
 #[tauri::command]
 pub async fn project_add(path: String, trust: bool) -> Result<Project, String> {
     store::add_project(path, trust)

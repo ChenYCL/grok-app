@@ -5296,7 +5296,8 @@ button.settings-wallpaper__preview:hover:not(:disabled) {
 /* ===== Main — solid content surface (not glass) ===== */
 .main {
   flex: 1;
-  min-width: 0;
+  /* Floor so open aside / narrow windows cannot crush the conversation. */
+  min-width: 400px;
   display: flex;
   flex-direction: column;
   background: var(--bg-main);

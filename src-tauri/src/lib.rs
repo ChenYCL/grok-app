@@ -232,6 +232,7 @@ pub fn run() {
             commands::voice_status,
             commands::voice_transcribe,
             commands::projects_list,
+            commands::general_workspace_path,
             commands::project_add,
             commands::project_add_dialog,
             commands::project_remove,

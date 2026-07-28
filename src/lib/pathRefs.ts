@@ -70,8 +70,22 @@ export function looksLikeFilePath(s: string): boolean {
   return false;
 }
 
+/**
+ * Home-relative path (`~/docs/a.md`). Not a POSIX absolute path, but the host
+ * expands it in `fs_open_path` — treat like an absolute open token.
+ */
+export function isHomeRelativePath(s: string): boolean {
+  const t = s.trim();
+  return t === "~" || t.startsWith("~/") || t.startsWith("~\\");
+}
+
 export function isAbsoluteFsPath(s: string): boolean {
-  return s.startsWith("/") || /^[A-Za-z]:[\\/]/.test(s);
+  const t = s.trim();
+  return (
+    t.startsWith("/") ||
+    /^[A-Za-z]:[\\/]/.test(t) ||
+    isHomeRelativePath(t)
+  );
 }
 
 /** Join project root + relative path (posix-ish). */
@@ -82,6 +96,26 @@ export function joinProjectPath(projectRoot: string, relative: string): string {
     return `${root}\\${rel.replace(/\//g, "\\")}`;
   }
   return `${root}/${rel}`;
+}
+
+/**
+ * When the session has only one parent directory among known file paths,
+ * bare basenames like `05-configuration.md` can open as siblings.
+ */
+function uniqueParentDirFromPathMap(
+  pathMap: Record<string, string>,
+): string | null {
+  const parents = new Set<string>();
+  for (const abs of Object.values(pathMap)) {
+    const n = (abs || "").trim().replace(/\\/g, "/");
+    if (!n || isHttpUrl(n)) continue;
+    const i = n.lastIndexOf("/");
+    if (i <= 0) continue;
+    parents.add(n.slice(0, i));
+    if (parents.size > 1) return null;
+  }
+  if (parents.size !== 1) return null;
+  return [...parents][0] ?? null;
 }
 
 /**
@@ -102,8 +136,11 @@ export function resolveFileToken(
   const raw = token.trim().replace(/^<|>$/g, "");
   if (!raw) return null;
   if (opts?.pathMap?.[raw]) return opts.pathMap[raw]!;
-  // Prefer normalized form (strip agent ellipsis) for map + relative open
-  const t = normalizePathToken(raw);
+  // Prefer normalized form (strip agent ellipsis) for map + relative open.
+  // Do not strip leading `/` or `~/` — those are openable absolute/home paths.
+  const t = isAbsoluteFsPath(raw)
+    ? raw.trim().replace(/\\/g, "/")
+    : normalizePathToken(raw);
   if (!t) return null;
   if (opts?.pathMap?.[t]) return opts.pathMap[t]!;
   const norm = t.replace(/\\/g, "/");
@@ -114,7 +151,13 @@ export function resolveFileToken(
   // Relative: keep as relative token (do not join project root)
   if (looksLikeFilePath(raw) && !isHttpUrl(raw)) {
     if (norm.includes("/") || norm.includes("\\")) return norm;
-    // bare filename only — too ambiguous without pathMap
+    // bare filename — pathMap hit, or unique session parent dir (sibling table)
+    if (opts?.pathMap) {
+      const bare = pathBasename(norm);
+      if (opts.pathMap[bare]) return opts.pathMap[bare]!;
+      const parent = uniqueParentDirFromPathMap(opts.pathMap);
+      if (parent) return `${parent}/${bare}`;
+    }
     return null;
   }
   return null;

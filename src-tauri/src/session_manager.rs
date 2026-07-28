@@ -2364,10 +2364,16 @@ impl SessionManager {
                 .map_err(|e| format!("create session: {e}"))?
         };
 
-        // Legacy orphan sessions (no project_id) attach to the general workspace.
-        if meta.project_id.as_deref().map(|s| s.trim().is_empty()).unwrap_or(true) {
-            let _ = store::ensure_general_project();
-            meta.project_id = Some(store::GENERAL_PROJECT_ID.into());
+        // Orphan / missing project_id → keep null (shows under "其他会话").
+        // Clear retired system:general bindings if any slip through.
+        if meta.project_id.as_deref() == Some(store::GENERAL_PROJECT_ID)
+            || meta
+                .project_id
+                .as_deref()
+                .map(|s| s.trim().is_empty())
+                .unwrap_or(false)
+        {
+            meta.project_id = None;
             let _ = store::update_session_meta(&meta);
         }
 
@@ -2380,17 +2386,18 @@ impl SessionManager {
                 .filter(|s| !s.is_empty())
                 .map(std::path::PathBuf::from);
             let from_meta = meta.project_id.as_deref().and_then(|pid| {
+                if pid == store::GENERAL_PROJECT_ID {
+                    return None;
+                }
                 store::load_projects()
                     .into_iter()
                     .find(|p| p.id == pid)
                     .map(|p| std::path::PathBuf::from(p.path))
             });
-            from_arg
-                .or(from_meta)
-                .unwrap_or_else(|| {
-                    let _ = store::ensure_general_project();
-                    crate::paths::general_workspace_dir()
-                })
+            from_arg.or(from_meta).unwrap_or_else(|| {
+                let _ = store::ensure_general_workspace_dir();
+                crate::paths::general_workspace_dir()
+            })
         };
         let project_path = Some(cwd.to_string_lossy().to_string());
 

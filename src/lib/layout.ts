@@ -44,11 +44,26 @@ export const ASIDE_WIDTH_MIN = 320;
 
 export const ASIDE_WIDTH_MAX = 720;
 
-/** Leave at least this much for the main chat column when auto-sizing. */
-export const ASIDE_MAIN_RESERVE = 360;
+/**
+ * Minimum width for the center chat column. Aside drag / auto-size must not
+ * squeeze the conversation below this (composer + bubbles become unreadable).
+ */
+export const MAIN_CHAT_MIN_WIDTH = 400;
+
+/**
+ * Leave at least this much for the main chat column when auto-sizing the aside.
+ * Alias of {@link MAIN_CHAT_MIN_WIDTH} (kept for older call sites / docs).
+ */
+export const ASIDE_MAIN_RESERVE = MAIN_CHAT_MIN_WIDTH;
+
+/**
+ * Default open sidebar width — matches `.sidebar { width: 268px }` in app.css.
+ * Used when clamping aside so chat keeps {@link MAIN_CHAT_MIN_WIDTH}.
+ */
+export const SIDEBAR_DEFAULT_WIDTH = 268;
 
 export const DEFAULT_LAYOUT: LayoutPrefs = {
-  sidebarWidth: 260,
+  sidebarWidth: SIDEBAR_DEFAULT_WIDTH,
   /** Comfortable default: tabs + actions + light preview. */
   asideWidth: 400,
   /** Right resource pane starts closed; open via top-bar files icon. */
@@ -92,6 +107,11 @@ export type AsideClampOpts = {
   windowControlsInset?: number;
   /** `window.innerWidth` — caps max so chat stays usable. */
   viewportWidth?: number;
+  /**
+   * Horizontal space already taken by the left sidebar (0 when collapsed).
+   * Defaults to 0 so callers that omit it still reserve the chat min only.
+   */
+  sidebarOccupiedWidth?: number;
 };
 
 /**
@@ -110,8 +130,10 @@ export function asideWidthMax(opts?: AsideClampOpts): number {
   const vw = opts?.viewportWidth;
   if (typeof vw === "number" && Number.isFinite(vw) && vw > 0) {
     const chromeMin = asideChromeSafeMin(opts);
-    // Keep a usable main column; never go below chrome min.
-    max = Math.min(max, Math.max(chromeMin, Math.floor(vw - ASIDE_MAIN_RESERVE)));
+    const sidebar = Math.max(0, opts?.sidebarOccupiedWidth ?? 0);
+    // Keep chat ≥ MAIN_CHAT_MIN_WIDTH after sidebar; never go below chrome min.
+    const room = Math.floor(vw - sidebar - MAIN_CHAT_MIN_WIDTH);
+    max = Math.min(max, Math.max(chromeMin, room));
   }
   return max;
 }
@@ -121,6 +143,28 @@ export function clampAsideWidth(w: number, opts?: AsideClampOpts): number {
   const min = asideChromeSafeMin(opts);
   const max = asideWidthMax(opts);
   return Math.min(max, Math.max(min, Math.round(w)));
+}
+
+/**
+ * Minimum inner width to keep sidebar + chat floor + open resource pane readable.
+ * Used to grow the OS window when opening a pane on a narrow frame.
+ */
+export function requiredWorkbenchInnerWidth(layout: {
+  sidebarCollapsed?: boolean;
+  sidebarWidth?: number;
+  asideCollapsed?: boolean;
+  asideWidth?: number;
+}): number {
+  const side = layout.sidebarCollapsed
+    ? 0
+    : Math.max(0, Math.round(layout.sidebarWidth ?? SIDEBAR_DEFAULT_WIDTH));
+  const aside = layout.asideCollapsed
+    ? 0
+    : Math.max(
+        ASIDE_WIDTH_MIN,
+        Math.round(layout.asideWidth ?? DEFAULT_LAYOUT.asideWidth),
+      );
+  return side + MAIN_CHAT_MIN_WIDTH + aside;
 }
 
 /**

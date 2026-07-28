@@ -12,13 +12,14 @@ import type { ChatMessage, MessageSegment } from "@/lib/session";
 import { parseToolStepContent } from "@/lib/session";
 import {
   isAbsoluteFsPath,
+  isHomeRelativePath,
   isHttpUrl,
   normalizePathToken,
 } from "@/lib/pathRefs";
 import { pathBasename } from "@/lib/attachments";
 
 const ABS_PATH_RE =
-  /(?:^|[\s`"'([{])((?:\/(?:Users|home|tmp|var|private|opt|Volumes)\/[^\s`"'\]})]+)|(?:[A-Za-z]:[\\/][^\s`"'\]})]+))/g;
+  /(?:^|[\s`"'([{])((?:\/(?:Users|home|tmp|var|private|opt|Volumes)\/[^\s`"'\]})]+)|(?:[A-Za-z]:[\\/][^\s`"'\]})]+)|(?:~\/[^\s`"'\]})]+))/g;
 
 function normAbs(p: string): string {
   return p.replace(/\\/g, "/").replace(/\/+$/, "");
@@ -28,7 +29,9 @@ function isPlausibleAbsFile(p: string): boolean {
   const t = normAbs(p.trim());
   if (!t || t.length > 800) return false;
   if (isHttpUrl(t) || t.includes("://")) return false;
-  if (!isAbsoluteFsPath(t)) return false;
+  // Real absolute (`/Users/...`) or home-relative (`~/.grok/docs/...`) —
+  // agents commonly cite CLI docs with a tilde instead of expanding $HOME.
+  if (!isAbsoluteFsPath(t) && !isHomeRelativePath(t)) return false;
   // Prefer paths that look like files (have an extension) or known long tails.
   const base = pathBasename(t);
   if (!base || base === t) return false;
@@ -78,7 +81,7 @@ export function collectAbsolutePathsFromMessage(m: ChatMessage): string[] {
     }
     for (const hit of text.matchAll(/`([^`\n]{2,800})`/g)) {
       const inner = hit[1]?.trim() || "";
-      if (isAbsoluteFsPath(inner)) push(inner);
+      if (isAbsoluteFsPath(inner) || isHomeRelativePath(inner)) push(inner);
     }
   }
 

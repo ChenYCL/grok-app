@@ -52,6 +52,7 @@ import {
   DEFAULT_LAYOUT,
   WINDOW_CONTROLS_INSET,
   clampAsideWidth,
+  SIDEBAR_DEFAULT_WIDTH,
   isMirrorPhoneLayout,
   loadLayout,
   mergeAsideWidth,
@@ -60,6 +61,7 @@ import {
   withMirrorPhoneDrawerDefault,
   type AsideLayoutHint,
 } from "@/lib/layout";
+import { ensureWindowFitsLayout } from "@/lib/windowFit";
 import {
   PHONE_KEYBOARD_INSET_VAR,
   keyboardInsetBottom,
@@ -496,30 +498,41 @@ interface Project {
   permissionPolicy?: string | null;
 }
 
-/** Stable id of the app-managed general workspace (orphan chat default). */
+/** Retired sidebar project id — sessions rehomed to orphan ("其他会话"). */
 const GENERAL_PROJECT_ID = "system:general";
 
 function isGeneralProject(p: { id?: string | null; system?: boolean } | null | undefined) {
   return !!p && (p.id === GENERAL_PROJECT_ID || !!p.system);
 }
 
+/** Treat legacy system:general bindings as unbound (other sessions). */
+function normalizeProjectId(id: string | null | undefined): string | null {
+  if (!id || id === GENERAL_PROJECT_ID) return null;
+  return id;
+}
+
 function projectDisplayName(
   p: { id?: string | null; name?: string | null; system?: boolean } | null | undefined,
   tr: (k: MessageKey, vars?: Record<string, string>) => string,
 ): string {
-  if (isGeneralProject(p)) return tr("project.general");
+  if (!p || isGeneralProject(p)) return tr("composer.noProject");
   return (p?.name || "").trim() || tr("main.noProject");
 }
 
-/** Normalize API project rows (system flag + pin general). */
+/** Normalize API project rows; drop retired system:general if Host still returns it. */
 function normalizeProject(x: Project): Project {
-  const system = isGeneralProject(x);
   return {
     ...x,
-    system,
-    pinned: !!x.pinned || system,
-    trusted: system ? true : !!x.trusted,
+    system: false,
+    pinned: !!x.pinned,
+    trusted: !!x.trusted,
   };
+}
+
+function mapProjectsList(list: Project[]): Project[] {
+  return list
+    .filter((p) => !isGeneralProject(p))
+    .map((p) => normalizeProject({ ...p, pinned: !!p.pinned }));
 }
 
 interface SessionRow {
@@ -746,6 +759,16 @@ export default function App() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [sessions, setSessions] = useState<SessionRow[]>([]);
   const [activeProject, setActiveProject] = useState<Project | null>(null);
+  /**
+   * On-disk default cwd for unbound chats (`workspaces/general`).
+   * Not a sidebar project — used by connect / resource pane when no folder bound.
+   */
+  const [generalWorkspacePath, setGeneralWorkspacePath] = useState<string | null>(
+    null,
+  );
+  /** Effective agent / resource root: bound project, else general workspace dir. */
+  const effectiveProjectPath =
+    activeProject?.path?.trim() || generalWorkspacePath || null;
   /** Per-session message cache so switching away mid-turn does not drop the UI. */
   const messagesBySessionRef = useRef<Map<string, ChatMessage[]>>(new Map());
   const viewingSessionIdRef = useRef<string | null>(null);
@@ -1280,13 +1303,24 @@ export default function App() {
   const asideClampOpts = useCallback((): {
     windowControlsInset: number;
     viewportWidth?: number;
+    sidebarOccupiedWidth?: number;
   } => {
+    const sidebarOpen = !layout.sidebarCollapsed && !phoneLayout;
     return {
       windowControlsInset,
       viewportWidth:
         typeof window !== "undefined" ? window.innerWidth : undefined,
+      // Match open `.sidebar` width so aside max leaves chat ≥ 400px.
+      sidebarOccupiedWidth: sidebarOpen
+        ? layout.sidebarWidth || SIDEBAR_DEFAULT_WIDTH
+        : 0,
     };
-  }, [windowControlsInset]);
+  }, [
+    windowControlsInset,
+    layout.sidebarCollapsed,
+    layout.sidebarWidth,
+    phoneLayout,
+  ]);
 
   /**
    * Soft-grow the right resource pane from content hints (preview kind, tree,
@@ -1304,9 +1338,13 @@ export default function App() {
       setLayout((l) => {
         if (l.asideCollapsed) return l;
         const nextW = mergeAsideWidth(l.asideWidth, suggested, opts);
-        if (nextW === l.asideWidth) return l;
+        if (nextW === l.asideWidth) {
+          void ensureWindowFitsLayout(l);
+          return l;
+        }
         const n = { ...l, asideWidth: nextW };
         saveLayout(localStorage, n);
+        void ensureWindowFitsLayout(n);
         return n;
       });
     },
@@ -1317,17 +1355,38 @@ export default function App() {
   const openAsidePane = useCallback(() => {
     const opts = asideClampOpts();
     setLayout((l) => {
-      const width = clampAsideWidth(l.asideWidth, opts);
-      if (!l.asideCollapsed && width === l.asideWidth) return l;
+      // Phone overlay does not compete for horizontal room with chat.
+      const width = phoneLayout
+        ? l.asideWidth
+        : clampAsideWidth(l.asideWidth, opts);
       const n = {
         ...l,
         asideCollapsed: false,
         asideWidth: width,
       };
+      if (!l.asideCollapsed && width === l.asideWidth) {
+        if (!phoneLayout) void ensureWindowFitsLayout(n);
+        return l;
+      }
       saveLayout(localStorage, n);
+      if (!phoneLayout) void ensureWindowFitsLayout(n);
       return n;
     });
-  }, [asideClampOpts]);
+  }, [asideClampOpts, phoneLayout]);
+
+  /** Open the left project rail; grow the window when the frame is too narrow. */
+  const openSidebarPane = useCallback(() => {
+    setLayout((l) => {
+      const n = { ...l, sidebarCollapsed: false };
+      if (!l.sidebarCollapsed) {
+        if (!phoneLayout) void ensureWindowFitsLayout(n);
+        return l;
+      }
+      saveLayout(localStorage, n);
+      if (!phoneLayout) void ensureWindowFitsLayout(n);
+      return n;
+    });
+  }, [phoneLayout]);
 
   // Keep data-theme + native chrome in sync with the resolved theme.
   // When preference is "system", native must stay unlocked (null) so the
@@ -1482,23 +1541,23 @@ export default function App() {
           api.settingsGet().catch(() => null),
           api.modelsListAvailable().catch(() => null),
         ]);
-        setProjects(
-          (p as Project[]).map((x) =>
-            normalizeProject({ ...x, pinned: !!(x as Project).pinned }),
-          ),
-        );
+        setProjects(mapProjectsList(p as Project[]));
         setSessions(
           (
             s as Array<SessionRow & { archived?: boolean; scheduled?: boolean }>
           ).map((x) => ({
             id: x.id,
             title: x.title,
-            projectId: x.projectId,
+            projectId: normalizeProjectId(x.projectId),
             updatedAt: x.updatedAt,
             archived: !!x.archived,
             scheduled: !!x.scheduled,
           })),
         );
+        void api
+          .generalWorkspacePath()
+          .then((path) => setGeneralWorkspacePath(path || null))
+          .catch(() => {});
         if (settings) {
           setLocale(resolveLocale(settings.locale));
           if (
@@ -1555,11 +1614,7 @@ export default function App() {
         api.probeCli(),
         api.modelsListAvailable().catch(() => null),
       ]);
-      setProjects(
-        (p as Project[]).map((x) =>
-          normalizeProject({ ...x, pinned: !!(x as Project).pinned }),
-        ),
-      );
+      setProjects(mapProjectsList(p as Project[]));
       setSessions(
         (
           s as Array<
@@ -1572,13 +1627,17 @@ export default function App() {
         ).map((x) => ({
           id: x.id,
           title: x.title,
-          projectId: x.projectId,
+          projectId: normalizeProjectId(x.projectId),
           updatedAt: x.updatedAt,
           archived: !!x.archived,
           pinned: !!x.pinned,
           scheduled: !!x.scheduled,
         })),
       );
+      void api
+        .generalWorkspacePath()
+        .then((path) => setGeneralWorkspacePath(path || null))
+        .catch(() => {});
       void api.trayRefresh();
       setLocale(resolveLocale(settings.locale));
       const catalog: ModelOption[] =
@@ -2896,15 +2955,22 @@ export default function App() {
                           ? WINDOW_CONTROLS_INSET
                           : 0,
                       viewportWidth: window.innerWidth,
+                      sidebarOccupiedWidth: l.sidebarCollapsed
+                        ? 0
+                        : l.sidebarWidth || SIDEBAR_DEFAULT_WIDTH,
                     };
                     const width = clampAsideWidth(l.asideWidth, opts);
-                    if (!l.asideCollapsed && width === l.asideWidth) return l;
                     const n = {
                       ...l,
                       asideCollapsed: false,
                       asideWidth: width,
                     };
+                    if (!l.asideCollapsed && width === l.asideWidth) {
+                      void ensureWindowFitsLayout(n);
+                      return l;
+                    }
                     saveLayout(localStorage, n);
+                    void ensureWindowFitsLayout(n);
                     return n;
                   });
                   setPlanFocusKey((k) => k + 1);
@@ -2955,7 +3021,7 @@ export default function App() {
                     list.map((s) => ({
                       id: s.id,
                       title: s.title,
-                      projectId: s.projectId,
+                      projectId: normalizeProjectId(s.projectId),
                       updatedAt: s.updatedAt,
                       archived: !!s.archived,
                       pinned: !!s.pinned,
@@ -3534,7 +3600,8 @@ export default function App() {
         if (sendInFlightRef.current || connectingRef.current) return;
         try {
           const snap = await api.sessionConnect({
-            projectPath: proj?.path,
+            projectPath:
+              proj?.path || generalWorkspacePath || undefined,
             sessionId: warmId,
           });
           if (viewingSessionIdRef.current !== warmId) return;
@@ -3837,7 +3904,7 @@ export default function App() {
         list.map((s) => ({
           id: s.id,
           title: s.title,
-          projectId: s.projectId,
+          projectId: normalizeProjectId(s.projectId),
           updatedAt: s.updatedAt,
           archived: !!s.archived,
           pinned: !!s.pinned,
@@ -3987,7 +4054,7 @@ export default function App() {
         }
 
         const snap = await api.sessionConnect({
-          projectPath: proj?.path,
+          projectPath: proj?.path || generalWorkspacePath || undefined,
           sessionId: sessionId ?? undefined,
           mode: "agent",
         });
@@ -4160,15 +4227,19 @@ export default function App() {
   const refreshProjects = async () => {
     try {
       const list = await api.projectsList();
-      const mapped = list.map((p) =>
-        normalizeProject({ ...p, pinned: !!p.pinned } as Project),
-      );
+      const mapped = mapProjectsList(list as Project[]);
       setProjects(mapped);
       // Keep active project pathOk/path in sync with Host re-check.
+      // Drop retired system:general if it was still selected.
       setActiveProject((prev) => {
         if (!prev) return prev;
+        if (isGeneralProject(prev)) return null;
         return mapped.find((x) => x.id === prev.id) ?? prev;
       });
+      void api
+        .generalWorkspacePath()
+        .then((path) => setGeneralWorkspacePath(path || null))
+        .catch(() => {});
     } catch {
       /* ignore */
     }
@@ -4345,7 +4416,7 @@ export default function App() {
   const removeProjectFromApp = (proj: Project) => {
     setCtxMenu(null);
     if (isGeneralProject(proj)) {
-      showToast(tr("project.generalCannotRemove"), 3200);
+      // Should not appear in the list; no-op.
       return;
     }
     setAppDialog({
@@ -4364,10 +4435,9 @@ export default function App() {
           }
           await api.projectRemove(proj.id);
           if (activeProject?.id === proj.id) {
-            // Fall back to the general workspace instead of a true orphan.
-            const general =
-              projects.find((p) => isGeneralProject(p)) ?? null;
-            setActiveProject(general);
+            // Unbound — sessions for this folder show under "其他会话".
+            setActiveProject(null);
+            setHistoryOpen(true);
             setSession(IDLE_SNAPSHOT);
             setMessages([]);
           }
@@ -4643,11 +4713,9 @@ export default function App() {
     const preferredId =
       opts.sessionId !== undefined ? opts.sessionId : session.sessionId;
 
-    // Prefer explicit project; otherwise the app-managed general workspace.
+    // Bound project when set; unbound chats use general workspace cwd on Host.
     const connectProject =
-      activeProject ??
-      projects.find((p) => isGeneralProject(p)) ??
-      null;
+      activeProject && !isGeneralProject(activeProject) ? activeProject : null;
     if (connectProject && !connectProject.trusted) {
       setLocalError(
         tr("project.trustFirst", {
@@ -4753,7 +4821,8 @@ export default function App() {
         await refreshSessions();
       }
       const snap = await api.sessionConnect({
-        projectPath: connectProject?.path,
+        // Host falls back to workspaces/general when path is omitted.
+        projectPath: connectProject?.path || generalWorkspacePath || undefined,
         sessionId: sessionId ?? undefined,
         mode,
       });
@@ -5159,8 +5228,7 @@ export default function App() {
       showToast(tr("composer.queueBlockedPermission"), 2800);
       return;
     }
-    // Unassigned chats use the app-managed general workspace (system:general);
-    // no toast — agent always has a writable cwd under app data.
+    // Unassigned chats use workspaces/general as cwd (no sidebar project).
     sendQueue.releaseFlushHold();
 
     // Enqueue only when *this viewed chat* is busy/connecting (follow-ups).
@@ -5452,7 +5520,7 @@ export default function App() {
         for (const d of dirs) {
           last = (await api.projectAdd(d.path, false)) as Project;
         }
-        const list = ((await api.projectsList()) as Project[]).map(normalizeProject);
+        const list = mapProjectsList((await api.projectsList()) as Project[]);
         setProjects(list);
         if (last) {
           setActiveProject(list.find((p) => p.id === last!.id) ?? last);
@@ -5616,10 +5684,18 @@ export default function App() {
   useEffect(() => {
     if (!resizingAside) return;
     const onMove = (e: PointerEvent) => {
-      const next = clampAsideWidth(
-        window.innerWidth - e.clientX,
-        asideClampOpts(),
-      );
+      const desired = Math.round(window.innerWidth - e.clientX);
+      // Expand the OS window when the drag needs more room than chat min allows.
+      void ensureWindowFitsLayout({
+        sidebarCollapsed: layoutRef.current.sidebarCollapsed,
+        sidebarWidth: layoutRef.current.sidebarWidth,
+        asideCollapsed: false,
+        asideWidth: desired,
+      });
+      const next = clampAsideWidth(desired, {
+        ...asideClampOpts(),
+        viewportWidth: window.innerWidth,
+      });
       setLayout((l) => {
         const n = { ...l, asideWidth: next, asideCollapsed: false };
         return n;
@@ -7331,13 +7407,11 @@ export default function App() {
   /**
    * Bind the open session's project. Draft chats only switch workspace context.
    * Untrusted projects refuse bind when a session exists. Passing `null`
-   * selects the app-managed general workspace (always writable cwd).
+   * unbinds the folder (other sessions + general workspace cwd).
    */
   const bindSessionProject = useCallback(
     async (proj: Project | null, opts?: { silent?: boolean }) => {
-      // No true orphan: null → general workspace.
-      const target =
-        proj ?? projects.find((p) => isGeneralProject(p)) ?? null;
+      const target = proj && !isGeneralProject(proj) ? proj : null;
       const sid = session.sessionId;
       if (!sid || !api.isTauri()) {
         setActiveProject(target);
@@ -7399,13 +7473,16 @@ export default function App() {
           }
         } else {
           setHistoryOpen(true);
+          if (!opts?.silent) {
+            showToast(tr("composer.projectCleared"), 2500);
+          }
         }
         setLocalError(null);
       } catch (e) {
         showToast(String(e), 4500);
       }
     },
-    [projects, session.sessionId, showToast, tr],
+    [session.sessionId, showToast, tr],
   );
 
   const gitWorktreesReqRef = useRef(0);
@@ -7465,12 +7542,12 @@ export default function App() {
    */
   const finalizeAddedProject = useCallback(
     async (p: Project, opts: { bindSession: boolean }) => {
-      const list = ((await api.projectsList()) as Project[]).map(normalizeProject);
+      const list = mapProjectsList((await api.projectsList()) as Project[]);
         setProjects(list);
       setSetup((s) => ({ ...s, project: true }));
 
       const apply = async (proj: Project) => {
-        const fresh = ((await api.projectsList()) as Project[]).map(normalizeProject);
+        const fresh = mapProjectsList((await api.projectsList()) as Project[]);
         setProjects(fresh);
         const current = fresh.find((x) => x.id === proj.id) ?? proj;
         if (opts.bindSession) {
@@ -7598,7 +7675,7 @@ export default function App() {
         }
         const trust = !!activeProject?.trusted;
         const added = (await api.projectAdd(path, trust)) as Project;
-        const list = ((await api.projectsList()) as Project[]).map(normalizeProject);
+        const list = mapProjectsList((await api.projectsList()) as Project[]);
         setProjects(list);
         const proj = list.find((p) => p.id === added.id) ?? added;
         if (!proj.trusted) {
@@ -7787,7 +7864,7 @@ export default function App() {
       let target: Project | null = existing ?? null;
       if (!target) {
         const added = (await api.projectAdd(path, trust)) as Project;
-        const list = ((await api.projectsList()) as Project[]).map(normalizeProject);
+        const list = mapProjectsList((await api.projectsList()) as Project[]);
         setProjects(list);
         target = list.find((p) => p.id === added.id) ?? added;
       }
@@ -7889,7 +7966,7 @@ export default function App() {
     try {
       const p = (await api.projectTrust(target.id)) as Project;
       setActiveProject(p);
-      setProjects(((await api.projectsList()) as Project[]).map(normalizeProject));
+      setProjects(mapProjectsList((await api.projectsList()) as Project[]));
       setLocalError(null);
       // CLI connects on first send only.
     } catch (e) {
@@ -9585,7 +9662,7 @@ export default function App() {
               .filter((s): s is SessionRow => !!s);
             deleteSessionsConfirm(rows);
           }}
-          projectPath={activeProject?.path ?? null}
+          projectPath={effectiveProjectPath}
           onSkillsPrefsChanged={() =>
             setSkillsReloadToken((n) => n + 1)
           }
@@ -10320,13 +10397,7 @@ export default function App() {
                     <button
                       type="button"
                       className="chrome-btn chrome-btn--traffic main__pane-toggle"
-                      onClick={() =>
-                        setLayout((l) => {
-                          const n = { ...l, sidebarCollapsed: false };
-                          saveLayout(localStorage, n);
-                          return n;
-                        })
-                      }
+                      onClick={() => openSidebarPane()}
                     >
                       <IconPanel size={16} />
                     </button>
@@ -10904,7 +10975,7 @@ export default function App() {
                 : session.state
             }
             sessionKey={session.sessionId ?? `draft-${session.title ?? "new"}`}
-            projectPath={activeProject?.path ?? null}
+            projectPath={effectiveProjectPath}
             suppressEmptyCopy={welcomeSession}
             canEditLastUser={canEditLastUser}
             lastUserMessageId={lastUserMessageId}
@@ -11895,8 +11966,12 @@ export default function App() {
           )}
           <div className="aside__inner">
             <ResourceViewer
-              projectPath={activeProject?.path ?? null}
-              projectName={activeProject?.name ?? null}
+              projectPath={effectiveProjectPath}
+              projectName={
+                activeProject
+                  ? projectDisplayName(activeProject, tr)
+                  : tr("composer.noProject")
+              }
               locale={locale}
               paneActive={!layout.asideCollapsed}
               openRequest={resourceOpenTarget}
@@ -12307,9 +12382,13 @@ export default function App() {
       <VoiceOverlay
         locale={resolveLocale(locale)}
         open={liveVoiceOpen}
-        projectPath={activeProject?.path ?? null}
+        projectPath={effectiveProjectPath}
         projectId={activeProject?.id ?? null}
-        projectName={activeProject?.name ?? null}
+        projectName={
+          activeProject
+            ? projectDisplayName(activeProject, tr)
+            : tr("composer.noProject")
+        }
         voiceId={voiceId}
         keepAgentsOnEnd={voiceKeepAgentsOnEnd}
         onClose={() => setLiveVoiceOpen(false)}
@@ -12393,7 +12472,7 @@ export default function App() {
         effort={effort}
         mode={mode}
         policy={policy}
-        projectPath={activeProject?.path}
+        projectPath={effectiveProjectPath}
         messageCount={messages.length}
         onClose={() => setShowStatusModal(false)}
       />

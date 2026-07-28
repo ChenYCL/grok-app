@@ -19,7 +19,7 @@ See `docs/llm-wiki/release.md`.
 
 - **Composer skills picker**: skills missing `userInvocable` in `grok inspect` are treated as invocable (only explicit `false` hides them). Extensions-disabled skills stay hidden. Empty / CLI-error states replace the old “Coming soon” dead end.
 
-### Added
+### Changed
 
 - **Host automation scheduler**: due tasks fire while the app process is alive (including tray-hidden window); create session → connect → send without relying on WebView timers
 - **Remote IM health watchdog**: auto-restart enabled bridge after unexpected connector exit (backoff); status distinguishes listening / degraded / error (not just “configured”)
@@ -37,6 +37,9 @@ See `docs/llm-wiki/release.md`.
 - **Esc stops generation**: when a turn is streaming (Stop available) and no dialog/menu/find/permission/voice owns Escape, Esc calls the same `stop()` as the composer Stop button (honors shortcuts catalog)
 - **Message timestamps toggle**: Settings → Appearance — show/hide send times on message actions (`localStorage` `grok.messageTimestamps`; default on). Hides UI only; `createdAt` data is kept.
 - **General workspace**: app-managed `{app_data}/workspaces/general` project (`system:general`) for chats without a user folder — agent can create/edit files without the “bind a project first” toast; always trusted, pinned, not removable
+- **General workspace is a directory, not a sidebar project**: chats without a bound folder stay under **其他会话** (`projectId = null`); agent cwd defaults to `{app_data}/workspaces/general`. The temporary `system:general` project row is migrated away on load.
+
+### Added
 - **Session Markdown export options**: choose thinking + tool summaries; download `.md` or copy to clipboard (session menu / `/export`)
 - **Updater production status**: About shows silent vs GitHub update channel; Host `updater_status` DTO; `scripts/verify-updater-setup.sh` for maintainer/CI prerequisites (no secret values printed)
 - **Context usage from agent**: Host parses ACP usage/token payloads (`session://usage`); chip shows known input/output/total when reported, otherwise keeps honest `~` estimates
