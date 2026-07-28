@@ -56,6 +56,13 @@ import {
   type WallpaperFocusApplyResult,
 } from "@/components/WallpaperFocusEditor";
 import { WallpaperMediaLayer } from "@/components/WallpaperMediaLayer";
+import {
+  MESSAGE_ACTIONS_VISIBILITIES,
+  applyMessageActionsVisibility,
+  loadMessageActionsVisibility,
+  saveMessageActionsVisibility,
+  type MessageActionsVisibility,
+} from "@/lib/messageActionsPref";
 import type {
   ComposerPrefsScope,
   ModelOption,
@@ -735,6 +742,20 @@ export function SettingsPage({
   const [wallpaperBusy, setWallpaperBusy] = useState(false);
   const [wallpaperError, setWallpaperError] = useState<string | null>(null);
   const [wallpaperFocusOpen, setWallpaperFocusOpen] = useState(false);
+  /** Message action buttons visibility — localStorage only (no AppSettings). */
+  const [messageActionsVisibility, setMessageActionsVisibilityState] =
+    useState<MessageActionsVisibility>(() => loadMessageActionsVisibility());
+  useEffect(() => {
+    applyMessageActionsVisibility(loadMessageActionsVisibility());
+  }, []);
+  const onMessageActionsVisibility = useCallback(
+    (next: MessageActionsVisibility) => {
+      setMessageActionsVisibilityState(next);
+      saveMessageActionsVisibility(next);
+      applyMessageActionsVisibility(next);
+    },
+    [],
+  );
   const marqueeRef = useRef<{
     active: boolean;
     dragging: boolean;
@@ -1973,6 +1994,45 @@ export function SettingsPage({
                   >
                     {t("settings.themeDark")}
                   </button>
+                </div>
+              </div>
+            </div>
+            <div
+              className={
+                "settings-card" +
+                rowHighlight("settings-anchor-messageActions")
+              }
+              id="settings-anchor-messageActions"
+            >
+              <div className="settings-row">
+                <div className="settings-row__text">
+                  <div className="settings-row__label">
+                    {t("settings.messageActions")}
+                  </div>
+                  <div className="settings-row__desc">
+                    {t("settings.messageActionsDesc")}
+                  </div>
+                </div>
+                <div
+                  className="settings-seg"
+                  role="radiogroup"
+                  aria-label={t("settings.messageActions")}
+                >
+                  {MESSAGE_ACTIONS_VISIBILITIES.map((mode) => (
+                    <button
+                      key={mode}
+                      type="button"
+                      role="radio"
+                      aria-checked={messageActionsVisibility === mode}
+                      className={
+                        "settings-seg__btn" +
+                        (messageActionsVisibility === mode ? " is-on" : "")
+                      }
+                      onClick={() => onMessageActionsVisibility(mode)}
+                    >
+                      {t(`settings.messageActions.${mode}`)}
+                    </button>
+                  ))}
                 </div>
               </div>
             </div>

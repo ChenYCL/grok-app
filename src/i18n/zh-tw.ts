@@ -823,6 +823,11 @@ export const zhTW: Record<MessageKey, string> = {
   "settings.themeSystem": "跟隨系統",
   "settings.themeLight": "淺色",
   "settings.themeDark": "深色",
+  "settings.messageActions": "訊息操作按鈕",
+  "settings.messageActionsDesc":
+    "複製、匯出、重新生成、編輯：懸停顯示，或始終可見（觸控板與無障礙更友善）",
+  "settings.messageActions.hover": "懸停顯示",
+  "settings.messageActions.always": "始終顯示",
   "settings.skin": "配色皮膚",
   "settings.skinDesc": "強調色與表面色板（可與淺/深色疊加）",
   "settings.skin.default": "預設",

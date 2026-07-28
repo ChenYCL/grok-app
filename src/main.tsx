@@ -23,12 +23,18 @@ import {
   loadWallpaperMeta,
   loadWallpaperScrim,
 } from "./lib/themeSkin";
+import {
+  applyMessageActionsVisibility,
+  loadMessageActionsVisibility,
+} from "./lib/messageActionsPref";
 
 // Apply persisted theme preference (default: system) before first React paint.
 const bootPref = loadThemePreference(localStorage);
 const bootTheme = resolveTheme(bootPref, getSystemTheme());
 applyThemeToDocument(bootTheme);
 applySkinToDocument(loadSkin(localStorage));
+// Message action buttons (Appearance) — html[data-msg-actions].
+applyMessageActionsVisibility(loadMessageActionsVisibility(localStorage));
 // Only the data-wallpaper flag is set synchronously (so the shell flips to
 // transparent + scrim instantly). The media layer is rendered by App after
 // the IndexedDB blob is loaded — no synchronous access to IDB is possible.

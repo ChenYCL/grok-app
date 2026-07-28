@@ -268,7 +268,7 @@
   color: var(--chat-text, inherit);
 }
 
-/* Hover actions */
+/* Hover actions (default) — focus-within keeps keyboard a11y */
 .lobe-chat-item__actions {
   display: flex;
   align-items: center;
@@ -280,6 +280,12 @@
 
 .lobe-chat-item:hover .lobe-chat-item__actions,
 .lobe-chat-item:focus-within .lobe-chat-item__actions {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+/* Settings → Appearance: always show message action buttons */
+html[data-msg-actions="always"] .lobe-chat-item__actions {
   opacity: 1;
   pointer-events: auto;
 }

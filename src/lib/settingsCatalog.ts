@@ -451,6 +451,29 @@ export const SETTINGS_ENTRIES: readonly SettingsEntry[] = [
     ],
     keywords: ["wallpaper", "background", "scrim"],
   },
+  {
+    id: "appearance.messageActions",
+    section: "appearance",
+    anchorId: "settings-anchor-messageActions",
+    labelKey: "settings.messageActions",
+    descKeys: [
+      "settings.messageActionsDesc",
+      "settings.messageActions.hover",
+      "settings.messageActions.always",
+    ],
+    keywords: [
+      "actions",
+      "hover",
+      "copy buttons",
+      "message actions",
+      "always show",
+      "操作",
+      "按钮",
+      "按鈕",
+      "复制",
+      "複製",
+    ],
+  },
   // ── account ──
   {
     id: "account.official",
