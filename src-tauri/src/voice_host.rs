@@ -323,6 +323,10 @@ async fn execute_tool(
             .await?;
             host.push_delegated(&meta.id);
             host.emit_state(app);
+            let _ = app.emit(
+                "session://index_changed",
+                json!({ "reason": "voice_delegate", "sessionId": meta.id }),
+            );
             json!({
                 "session_id": meta.id,
                 "title": meta.title,

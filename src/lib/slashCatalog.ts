@@ -129,6 +129,14 @@ export function builtinSlashItems(): SlashItem[] {
       action: "automations",
     },
     {
+      id: "live-voice",
+      kind: "action",
+      name: "live-voice",
+      titleKey: "voice.startLive",
+      descriptionKey: "voice.startLiveDesc",
+      action: "live-voice",
+    },
+    {
       id: "settings",
       kind: "action",
       name: "settings",

@@ -23,6 +23,7 @@ describe("builtinSlashItems", () => {
       "doctor",
       "new",
       "automations",
+      "live-voice",
       "settings",
       "export",
       "copy",

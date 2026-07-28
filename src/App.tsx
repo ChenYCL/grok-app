@@ -321,6 +321,7 @@ import {
   IconAttach,
   IconSend,
   IconMic,
+  IconLiveVoice,
   IconQueue,
   IconStop,
   IconFolder,
@@ -888,6 +889,7 @@ export default function App() {
     openChatFind: () => {},
     toggleVoice: () => {},
     cancelVoice: () => {},
+    startLiveVoice: () => {},
   });
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -944,6 +946,12 @@ export default function App() {
       if (key === "d" && e.shiftKey) {
         e.preventDefault();
         setShowDoctor(true);
+        return;
+      }
+      // Live Voice: Cmd/Ctrl+Shift+V (works while typing in composer).
+      if (key === "v" && e.shiftKey) {
+        e.preventDefault();
+        shortcutHandlersRef.current.startLiveVoice();
         return;
       }
     };
@@ -5950,6 +5958,21 @@ export default function App() {
     }
   }, [voiceGate.available, cancelVoice, liveVoiceOpen]);
 
+  // Live Voice host created/updated a coding session — refresh sidebar list.
+  useEffect(() => {
+    const onVoiceSession = () => {
+      void refreshSessions();
+    };
+    window.addEventListener("grok-app:voice-session-changed", onVoiceSession);
+    return () =>
+      window.removeEventListener(
+        "grok-app:voice-session-changed",
+        onVoiceSession,
+      );
+    // refreshSessions is stable enough for mount-scoped listen
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const finishVoiceTranscribe = useCallback(
     async (blob: Blob, gen: number) => {
       if (!voiceResultStillCurrent(gen, voiceGenRef.current)) return;
@@ -6746,6 +6769,17 @@ export default function App() {
             return;
           case "automations":
             navigateAutomations();
+            return;
+          case "live-voice":
+          case "liveVoice":
+            if (!voiceGate.available) {
+              showToast(
+                voiceErrorMessage(voiceGate.reason ?? "not_available"),
+                4200,
+              );
+              return;
+            }
+            setLiveVoiceOpen(true);
             return;
           case "settings":
             navigateSettings("general");
@@ -7631,6 +7665,19 @@ export default function App() {
     },
     cancelVoice: () => {
       cancelVoice();
+    },
+    startLiveVoice: () => {
+      if (!voiceGate.available) {
+        showToast(
+          voiceErrorMessage(voiceGate.reason ?? "not_available"),
+          4200,
+        );
+        return;
+      }
+      if (voiceIsActive(voiceRef.current.phase)) {
+        cancelVoice();
+      }
+      setLiveVoiceOpen(true);
     },
   };
   trayHandlersRef.current = {
@@ -11269,8 +11316,7 @@ export default function App() {
                   </>
                 ) : null}
                 <span className="composer__spacer" />
-                {/* Dictation (mic): official auth only, and not on custom providers.
-                    Live voice entry is hidden until product-ready. */}
+                {/* Dictation (mic) + Live Voice (headphones): official auth only. */}
                 {(voiceGate.available || voiceIsActive(voice.phase)) && (
                   <Tip
                     label={
@@ -11295,6 +11341,7 @@ export default function App() {
                       disabled={
                         voice.phase === "transcribing" ||
                         voice.phase === "requesting_mic" ||
+                        liveVoiceOpen ||
                         !canType(session.state)
                       }
                       aria-pressed={voice.phase === "recording"}
@@ -11309,6 +11356,28 @@ export default function App() {
                     </button>
                   </Tip>
                 )}
+                {voiceGate.available ? (
+                  <Tip label={tr("voice.startLiveDesc")}>
+                    <button
+                      type="button"
+                      className={
+                        "icon-btn composer__voice composer__voice--live-mode" +
+                        (liveVoiceOpen ? " composer__voice--live" : "")
+                      }
+                      disabled={liveVoiceOpen || voiceIsActive(voice.phase)}
+                      aria-pressed={liveVoiceOpen}
+                      aria-label={tr("voice.startLive")}
+                      onClick={() => {
+                        if (voiceIsActive(voice.phase)) {
+                          cancelVoice();
+                        }
+                        setLiveVoiceOpen(true);
+                      }}
+                    >
+                      <IconLiveVoice size={16} />
+                    </button>
+                  </Tip>
+                ) : null}
                 {effectiveCanStop ? (
                   <>
                     {sendQueue.canShowQueueButton(
@@ -11819,14 +11888,32 @@ export default function App() {
         onClose={() => setLiveVoiceOpen(false)}
         onOpenSession={(id) => {
           setLiveVoiceOpen(false);
-          const row = sessions.find((s) => s.id === id);
-          if (row) {
-            const proj =
-              projects.find((p) => p.id === row.projectId) ?? activeProject;
-            void openSession(row, proj ?? undefined);
-          } else {
-            showToast(tr("voice.sessionMissing"), 3500);
-          }
+          void (async () => {
+            await refreshSessions();
+            let row = sessions.find((s) => s.id === id) ?? null;
+            if (!row) {
+              try {
+                const list = await api.sessionsList();
+                const hit = list.find((s) => s.id === id);
+                if (hit) {
+                  row = {
+                    id: hit.id,
+                    title: hit.title || tr("session.untitled"),
+                    projectId: hit.projectId ?? null,
+                  } as SessionRow;
+                }
+              } catch {
+                /* ignore */
+              }
+            }
+            if (row) {
+              const proj =
+                projects.find((p) => p.id === row!.projectId) ?? activeProject;
+              void openSession(row, proj ?? undefined);
+            } else {
+              showToast(tr("voice.sessionMissing"), 3500);
+            }
+          })();
         }}
       />
       <AskUserModal

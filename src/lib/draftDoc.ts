@@ -42,6 +42,8 @@ const NON_SKILL_SLASH = new Set(
     "find",
     "history",
     "feedback",
+    "live-voice",
+    "livevoice",
   ].map((s) => s.toLowerCase()),
 );
 
