@@ -3340,8 +3340,13 @@ function AboutUpdateRow({
   t: (key: MessageKey, vars?: Record<string, string | number>) => string;
 }) {
   // Single authority: useUpdater (plugin path or GitHub fallback).
-  const { status, checkForUpdate, installAndRelaunch, githubReleasesUrl } =
-    useUpdaterContext();
+  const {
+    status,
+    channelInfo,
+    checkForUpdate,
+    installAndRelaunch,
+    githubReleasesUrl,
+  } = useUpdaterContext();
   const [openError, setOpenError] = useState<string | null>(null);
 
   const openRelease = async (url: string) => {
@@ -3406,6 +3411,14 @@ function AboutUpdateRow({
       <div className="settings-row__text">
         <div className="settings-row__label">{t("settings.checkUpdate")}</div>
         <div className="settings-row__desc">{t("settings.checkUpdateDesc")}</div>
+        <div className="settings-row__hint" data-updater-channel={channelInfo.channel}>
+          {channelInfo.channel === "silent"
+            ? t("settings.autoUpdateChannelSilent")
+            : t("settings.autoUpdateChannelManual")}
+          {channelInfo.endpoint
+            ? ` · ${channelInfo.endpoint.replace(/^https:\/\//, "")}`
+            : ""}
+        </div>
       </div>
       <div className="settings-about-update">
         <div className="settings-about-update__actions">

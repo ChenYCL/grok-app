@@ -62,6 +62,23 @@ pnpm tauri signer generate -w ~/.tauri/grok-app.key
 # private key file contents → TAURI_SIGNING_PRIVATE_KEY
 ```
 
+### Maintainer production checklist
+
+Before treating silent update as “on” for users:
+
+1. **Secrets in the shipping repo** (Settings → Secrets and variables → Actions): all four rows above that you use. Empty `TAURI_SIGNING_PRIVATE_KEY` must not be set — omit or set a real key.
+2. **Local dry-run (no secret values printed):**
+   ```sh
+   ./scripts/verify-updater-setup.sh
+   ./scripts/verify-updater-setup.sh --fetch-latest
+   ```
+3. **Release cut:** tag `vX.Y.Z` so CI builds installers **and** refreshes `grok-desktop-latest` + `latest.json` + `.sig`.
+4. **Smoke on a prior signed build:** Settings → About shows **Update channel: in-app (signed release)** → Check → Download → Install and restart → version matches tag.
+5. **Failure path:** if install fails, agents / Remote IM / mirror must keep running (`prepare_for_app_update` only after successful `install()`).
+6. **Unsigned / local builds:** About must show **GitHub download** channel and still open Release / download installer (no crash).
+
+In-app host command `updater_status` reports `{ channel, pluginEnabled, platformSupported, endpoint }` for Doctor / About.
+
 ## Rolling endpoint
 
 ```text

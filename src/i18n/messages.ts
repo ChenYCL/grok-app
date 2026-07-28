@@ -969,6 +969,10 @@ const en = {
   "settings.autoUpdateManualRequired":
     "Version {version} is available. This install type cannot auto-update — download from the release page.",
   "settings.autoUpdateError": "Update failed: {error}",
+  "settings.autoUpdateChannelSilent":
+    "Update channel: in-app (signed release)",
+  "settings.autoUpdateChannelManual":
+    "Update channel: GitHub download (unsigned / local build)",
   "settings.close": "Close",
   "settings.sharedConfirm":
     "Switch to shared ~/.grok? Data will not merge silently. Confirm?",
@@ -3010,6 +3014,9 @@ const zh: Record<MessageKey, string> = {
   "settings.autoUpdateManualRequired":
     "有新版本 {version}。当前安装方式不支持应用内更新 — 请到发布页下载。",
   "settings.autoUpdateError": "更新失败：{error}",
+  "settings.autoUpdateChannelSilent": "更新通道：应用内（已签名正式版）",
+  "settings.autoUpdateChannelManual":
+    "更新通道：GitHub 下载（未签名 / 本地构建）",
   "settings.close": "关闭",
   "settings.sharedConfirm":
     "切换到共享 ~/.grok？数据不会静默合并，请确认。",

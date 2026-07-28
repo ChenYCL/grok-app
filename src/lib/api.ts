@@ -378,6 +378,19 @@ export async function isUpdaterPluginEnabled() {
   return invoke<boolean>("is_updater_plugin_enabled");
 }
 
+export type UpdaterStatus = {
+  platformSupported: boolean;
+  pluginEnabled: boolean;
+  /** `silent` | `github_manual` */
+  channel: string;
+  endpoint: string;
+};
+
+/** About / Doctor: which update path this binary uses. */
+export async function updaterStatus() {
+  return invoke<UpdaterStatus>("updater_status");
+}
+
 /** Stop agents / mirror / voice / IM before install + relaunch. */
 export async function prepareForAppUpdate() {
   return invoke<void>("prepare_for_app_update");

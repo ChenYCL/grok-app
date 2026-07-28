@@ -57,6 +57,46 @@ pub fn is_updater_plugin_enabled() -> bool {
     cfg!(grok_updater_enabled) && !cfg!(debug_assertions)
 }
 
+/// Snapshot for About / Doctor: which update path this binary can use.
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdaterStatusDto {
+    /// Platform packaging supports silent install (e.g. not Linux .deb).
+    pub platform_supported: bool,
+    /// Release binary built with signing pubkey + endpoint.
+    pub plugin_enabled: bool,
+    /// `silent` when plugin path is live; otherwise `github_manual`.
+    pub channel: String,
+    /// Compile-time endpoint (empty when plugin off).
+    pub endpoint: String,
+}
+
+#[tauri::command]
+pub fn updater_status() -> UpdaterStatusDto {
+    let platform_supported = is_auto_update_supported();
+    let plugin_enabled = is_updater_plugin_enabled();
+    let channel = if plugin_enabled && platform_supported {
+        "silent".to_string()
+    } else {
+        "github_manual".to_string()
+    };
+    // Endpoint is only meaningful when the plugin was compiled in; avoid leaking
+    // build-time env into debug strings beyond the non-secret public URL.
+    let endpoint = if plugin_enabled {
+        option_env!("GROK_UPDATER_ENDPOINT")
+            .unwrap_or("")
+            .to_string()
+    } else {
+        String::new()
+    };
+    UpdaterStatusDto {
+        platform_supported,
+        plugin_enabled,
+        channel,
+        endpoint,
+    }
+}
+
 /// Stop managed agent children / hosts before process relaunch after a staged install.
 ///
 /// Must run **after** a successful `update.install()` and **before** `relaunch()`
@@ -116,6 +156,17 @@ mod tests {
     fn auto_update_supported_is_bool() {
         let _ = is_auto_update_supported();
         assert!(!is_updater_plugin_enabled() || cfg!(grok_updater_enabled));
+    }
+
+    #[test]
+    fn updater_status_channel_matches_flags() {
+        let s = updater_status();
+        assert!(s.channel == "silent" || s.channel == "github_manual");
+        if s.plugin_enabled && s.platform_supported {
+            assert_eq!(s.channel, "silent");
+        } else {
+            assert_eq!(s.channel, "github_manual");
+        }
     }
 
     #[test]

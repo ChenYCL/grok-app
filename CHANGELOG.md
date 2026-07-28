@@ -13,6 +13,10 @@ See `docs/llm-wiki/release.md`.
 
 ### Added
 
+- **Updater production status**: About shows silent vs GitHub update channel; Host `updater_status` DTO; `scripts/verify-updater-setup.sh` for maintainer/CI prerequisites (no secret values printed)
+
+### Added
+
 - **Import providers from CC Switch** (#167): Settings → Account → Custom providers → scan local `cc-switch.db` (Grok Build tab), multi-select preview, import into agent-home (macOS / Windows / Linux path resolution + optional override)
 - Trust sandbox: `path_scope` allowlist for absolute fs / `media://` (trusted projects, app data, grants)
 - CSP enabled; asset protocol denies common secret paths
