@@ -13,6 +13,10 @@ See `docs/llm-wiki/release.md`.
 
 ### Added
 
+- **Context usage from agent**: Host parses ACP usage/token payloads (`session://usage`); chip shows known input/output/total when reported, otherwise keeps honest `~` estimates
+
+### Added
+
 - **Import providers from CC Switch** (#167): Settings → Account → Custom providers → scan local `cc-switch.db` (Grok Build tab), multi-select preview, import into agent-home (macOS / Windows / Linux path resolution + optional override)
 - Trust sandbox: `path_scope` allowlist for absolute fs / `media://` (trusted projects, app data, grants)
 - CSP enabled; asset protocol denies common secret paths

@@ -87,6 +87,16 @@ pub enum AcpEvent {
         summary_preview: Option<String>,
         note: Option<String>,
     },
+    /// Turn / context usage reported by the agent (when present).
+    /// Prefer these over UI char heuristics.
+    UsageReported {
+        /// Total context tokens after the turn when known.
+        total_tokens: Option<u64>,
+        input_tokens: Option<u64>,
+        output_tokens: Option<u64>,
+        /// Optional raw kind for debugging (not shown to users).
+        source: String,
+    },
     Error {
         error: AgentError,
     },
@@ -1017,6 +1027,95 @@ impl AcpClient {
             }
         }
     }
+}
+
+/// Pull a u64 from common token field names on a JSON object.
+fn json_token_u64(obj: &Value, keys: &[&str]) -> Option<u64> {
+    for k in keys {
+        if let Some(n) = obj.get(*k).and_then(|v| {
+            v.as_u64()
+                .or_else(|| v.as_i64().map(|i| i.max(0) as u64))
+                .or_else(|| v.as_f64().map(|f| f.max(0.0) as u64))
+        }) {
+            return Some(n);
+        }
+    }
+    None
+}
+
+/// Parse turn/context usage from a sessionUpdate payload.
+/// Supports nested `usage` objects and flat camel/snake fields.
+/// Returns None when no usage signal is present (do not invent zeros).
+pub fn parse_usage_update(kind: &str, update: &Value) -> Option<AcpEvent> {
+    let usage_obj = update
+        .get("usage")
+        .or_else(|| update.get("tokenUsage"))
+        .or_else(|| update.get("token_usage"))
+        .or_else(|| update.get("tokens"))
+        .filter(|v| v.is_object());
+
+    let root = usage_obj.unwrap_or(update);
+
+    let input = json_token_u64(
+        root,
+        &[
+            "inputTokens",
+            "input_tokens",
+            "promptTokens",
+            "prompt_tokens",
+            "input",
+        ],
+    );
+    let output = json_token_u64(
+        root,
+        &[
+            "outputTokens",
+            "output_tokens",
+            "completionTokens",
+            "completion_tokens",
+            "output",
+        ],
+    );
+    let total = json_token_u64(
+        root,
+        &[
+            "totalTokens",
+            "total_tokens",
+            "contextTokens",
+            "context_tokens",
+            "usedTokens",
+            "used_tokens",
+            "tokens",
+            "total",
+        ],
+    )
+    .or_else(|| match (input, output) {
+        (Some(i), Some(o)) => Some(i.saturating_add(o)),
+        _ => None,
+    });
+
+    // Kind hints alone are not enough — need at least one number.
+    if total.is_none() && input.is_none() && output.is_none() {
+        return None;
+    }
+
+    // Avoid double-firing compact events that only carry tokens_before/after.
+    if kind.contains("compact")
+        && total.is_none()
+        && (update.get("tokens_before").is_some()
+            || update.get("tokensBefore").is_some()
+            || update.get("tokens_after").is_some()
+            || update.get("tokensAfter").is_some())
+    {
+        return None;
+    }
+
+    Some(AcpEvent::UsageReported {
+        total_tokens: total,
+        input_tokens: input,
+        output_tokens: output,
+        source: kind.to_string(),
+    })
 }
 
 /// Parse compact-related sessionUpdate → (trigger, before, after, summary, note)
@@ -2012,8 +2111,26 @@ pub fn decode_session_update(params: &Value) -> Vec<AcpEvent> {
                     note,
                 });
             }
+            // tokens_used often also carries a usage object — surface it.
+            if let Some(ev) = parse_usage_update(kind, update) {
+                out.push(ev);
+            }
+        }
+        "usage"
+        | "token_usage"
+        | "tokenUsage"
+        | "context_usage"
+        | "contextUsage"
+        | "turn_usage"
+        | "turnUsage" => {
+            if let Some(ev) = parse_usage_update(kind, update) {
+                out.push(ev);
+            }
         }
         _ => {
+            if let Some(ev) = parse_usage_update(kind, update) {
+                out.push(ev);
+            }
             if update.get("tokens_before").is_some()
                 || update.get("tokensBefore").is_some()
                 || update.get("tokens_after").is_some()
@@ -2272,6 +2389,64 @@ fn parse_ask_user_options(v: &Value) -> Vec<AskUserOption> {
         });
     }
     out
+}
+
+#[cfg(test)]
+mod usage_parse_tests {
+    use super::*;
+
+    #[test]
+    fn parse_nested_usage_object() {
+        let update = json!({
+            "usage": {
+                "inputTokens": 1200,
+                "outputTokens": 340,
+                "totalTokens": 1540
+            }
+        });
+        let ev = parse_usage_update("usage", &update).expect("usage");
+        match ev {
+            AcpEvent::UsageReported {
+                total_tokens,
+                input_tokens,
+                output_tokens,
+                ..
+            } => {
+                assert_eq!(total_tokens, Some(1540));
+                assert_eq!(input_tokens, Some(1200));
+                assert_eq!(output_tokens, Some(340));
+            }
+            _ => panic!("expected UsageReported"),
+        }
+    }
+
+    #[test]
+    fn parse_flat_snake_case_sums_total() {
+        let update = json!({
+            "input_tokens": 10,
+            "output_tokens": 5
+        });
+        let ev = parse_usage_update("turn_usage", &update).expect("usage");
+        match ev {
+            AcpEvent::UsageReported {
+                total_tokens,
+                input_tokens,
+                output_tokens,
+                ..
+            } => {
+                assert_eq!(input_tokens, Some(10));
+                assert_eq!(output_tokens, Some(5));
+                assert_eq!(total_tokens, Some(15));
+            }
+            _ => panic!("expected UsageReported"),
+        }
+    }
+
+    #[test]
+    fn parse_usage_empty_returns_none() {
+        assert!(parse_usage_update("usage", &json!({})).is_none());
+        assert!(parse_usage_update("other", &json!({ "title": "hi" })).is_none());
+    }
 }
 
 #[cfg(test)]

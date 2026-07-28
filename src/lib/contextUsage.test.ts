@@ -103,10 +103,29 @@ describe("reduceContextUsage", () => {
         knownTokens: 100,
         lastCompactMessageId: "c1",
         lastCompact: { trigger: "auto", tokensAfter: 100 },
+        knownUsage: { inputTokens: 1, outputTokens: 2, totalTokens: 3 },
       },
       { type: "reset" },
     );
     expect(s).toEqual(INITIAL_CONTEXT_USAGE);
+  });
+
+  it("usage stores agent-reported totals", () => {
+    const s = reduceContextUsage(INITIAL_CONTEXT_USAGE, {
+      type: "usage",
+      inputTokens: 100,
+      outputTokens: 50,
+      totalTokens: 150,
+      source: "usage",
+    });
+    expect(s.knownTokens).toBe(150);
+    expect(s.knownUsage).toEqual({
+      inputTokens: 100,
+      outputTokens: 50,
+      totalTokens: 150,
+      source: "usage",
+    });
+    expect(s.lastCompactMessageId).toBeNull();
   });
 
   it("compact stores tokensAfter as known", () => {

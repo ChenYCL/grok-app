@@ -2294,6 +2294,28 @@ export default function App() {
         await track(
           api.listen<{
             sessionId?: string;
+            totalTokens?: number;
+            inputTokens?: number;
+            outputTokens?: number;
+            source?: string;
+          }>("session://usage", (p) => {
+            if (cancelled || !p) return;
+            const sid = p.sessionId;
+            if (!sid || sid !== viewingSessionIdRef.current) return;
+            setContextUsage((prev) =>
+              reduceContextUsage(prev, {
+                type: "usage",
+                totalTokens: p.totalTokens,
+                inputTokens: p.inputTokens,
+                outputTokens: p.outputTokens,
+                source: p.source,
+              }),
+            );
+          }),
+        );
+        await track(
+          api.listen<{
+            sessionId?: string;
             toolCallId?: string;
             title?: string;
             kind?: string;
@@ -11031,6 +11053,10 @@ export default function App() {
                         breakdownEstimatedNote: tr(
                           "context.breakdownEstimatedNote",
                         ),
+                        knownInput: tr("context.knownInput"),
+                        knownOutput: tr("context.knownOutput"),
+                        knownTotal: tr("context.knownTotal"),
+                        knownFromAgent: tr("context.knownFromAgent"),
                       }}
                       onCompact={() => {
                         setCompactNote("");

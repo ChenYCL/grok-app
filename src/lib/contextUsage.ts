@@ -24,18 +24,33 @@ export interface LastCompactSummary {
   messageId?: string;
 }
 
+/** Agent-reported turn/context usage (preferred over char heuristics). */
+export interface KnownUsageBreakdown {
+  inputTokens: number | null;
+  outputTokens: number | null;
+  totalTokens: number | null;
+  /** ACP sessionUpdate kind / source string. */
+  source?: string;
+}
+
 export interface ContextUsageState {
   /** Absolute tokens from last agent compact event (`tokensAfter`). */
   knownTokens: number | null;
   /** Message id of the last compact marker (for post-compact delta). */
   lastCompactMessageId: string | null;
   lastCompact: LastCompactSummary | null;
+  /**
+   * Latest agent-reported usage (input/output/total).
+   * Prefer total for the chip when present.
+   */
+  knownUsage: KnownUsageBreakdown | null;
 }
 
 export const INITIAL_CONTEXT_USAGE: ContextUsageState = {
   knownTokens: null,
   lastCompactMessageId: null,
   lastCompact: null,
+  knownUsage: null,
 };
 
 export type ContextUsageMessage = {
@@ -64,6 +79,13 @@ export type ContextUsageAction =
       note?: string;
       messageId?: string;
     }
+  | {
+      type: "usage";
+      totalTokens?: number;
+      inputTokens?: number;
+      outputTokens?: number;
+      source?: string;
+    }
   | { type: "hydrate"; messages: ContextUsageMessage[] };
 
 function finiteToken(n: number | undefined | null): number | undefined {
@@ -85,6 +107,7 @@ export function reduceContextUsage(
       // Only keep absolute known tokens when this event reports tokensAfter.
       // A compact without counts invalidates the previous absolute figure.
       return {
+        ...state,
         knownTokens: tokensAfter ?? null,
         lastCompactMessageId:
           action.messageId ?? state.lastCompactMessageId,
@@ -100,6 +123,49 @@ export function reduceContextUsage(
           summaryPreview: action.summaryPreview,
           note: action.note,
           messageId: action.messageId,
+        },
+        // Compact often resets agent context; clear stale turn usage unless
+        // tokensAfter already gives a known base (chip still shows knownTokens).
+        knownUsage: tokensAfter != null
+          ? {
+              inputTokens: null,
+              outputTokens: null,
+              totalTokens: tokensAfter,
+              source: "compact",
+            }
+          : null,
+      };
+    }
+    case "usage": {
+      const inputTokens = finiteToken(action.inputTokens) ?? null;
+      const outputTokens = finiteToken(action.outputTokens) ?? null;
+      let totalTokens = finiteToken(action.totalTokens) ?? null;
+      if (
+        totalTokens == null &&
+        inputTokens != null &&
+        outputTokens != null
+      ) {
+        totalTokens = inputTokens + outputTokens;
+      }
+      if (
+        totalTokens == null &&
+        inputTokens == null &&
+        outputTokens == null
+      ) {
+        return state;
+      }
+      return {
+        ...state,
+        // Prefer agent total as known chip base when provided.
+        knownTokens:
+          totalTokens != null ? totalTokens : state.knownTokens,
+        lastCompactMessageId:
+          totalTokens != null ? null : state.lastCompactMessageId,
+        knownUsage: {
+          inputTokens,
+          outputTokens,
+          totalTokens,
+          source: action.source,
         },
       };
     }
@@ -141,6 +207,15 @@ export function hydrateContextUsageFromMessages(
         note: meta?.note,
         messageId: m.id,
       },
+      knownUsage:
+        tokensAfter != null
+          ? {
+              inputTokens: null,
+              outputTokens: null,
+              totalTokens: tokensAfter,
+              source: "compact",
+            }
+          : null,
     };
   }
   return { ...INITIAL_CONTEXT_USAGE };
@@ -263,6 +338,8 @@ export interface ContextUsageDisplay {
    * Null when there is no visible content to attribute.
    */
   breakdown: ContextUsageBreakdown | null;
+  /** Agent-reported input/output/total when available. */
+  knownUsage: KnownUsageBreakdown | null;
 }
 
 function breakdownOrNull(
@@ -281,8 +358,24 @@ export function resolveContextUsageDisplay(
   messages: ContextUsageMessage[],
 ): ContextUsageDisplay {
   const lastCompact = state.lastCompact;
+  const knownUsage = state.knownUsage;
   // Breakdown always from full visible transcript (host history not rewritten).
   const breakdown = breakdownOrNull(messages);
+
+  // Prefer agent-reported total with no post-compact delta ambiguity.
+  if (
+    knownUsage?.totalTokens != null &&
+    state.lastCompactMessageId == null
+  ) {
+    return {
+      tokens: knownUsage.totalTokens,
+      source: "known",
+      label: formatContextChipLabel(knownUsage.totalTokens, "known"),
+      lastCompact,
+      breakdown,
+      knownUsage,
+    };
+  }
 
   if (state.knownTokens != null) {
     let delta = 0;
@@ -305,6 +398,7 @@ export function resolveContextUsageDisplay(
       label: formatContextChipLabel(tokens, source),
       lastCompact,
       breakdown,
+      knownUsage,
     };
   }
 
@@ -317,6 +411,7 @@ export function resolveContextUsageDisplay(
       lastCompact,
       // Still surface visible role split as estimated (honest ~).
       breakdown,
+      knownUsage,
     };
   }
 
@@ -329,6 +424,7 @@ export function resolveContextUsageDisplay(
       label: formatContextChipLabel(null, "unknown"),
       lastCompact: null,
       breakdown: null,
+      knownUsage,
     };
   }
   return {
@@ -337,5 +433,6 @@ export function resolveContextUsageDisplay(
     label: formatContextChipLabel(estimated, "estimated"),
     lastCompact: null,
     breakdown,
+    knownUsage,
   };
 }
