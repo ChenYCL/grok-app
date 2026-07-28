@@ -7835,57 +7835,59 @@ export default function App() {
     }
   }, [activeProject?.id, projects, showToast, tr]);
 
-  /** Export active (or given) session as Markdown (from PR #24). */
-  const exportActiveSessionMd = useCallback(
-    async (sessionMeta?: {
-      id: string;
-      title: string;
-      projectId?: string | null;
-    }) => {
-      try {
-        const id = sessionMeta?.id ?? session.sessionId;
-        if (!id) {
-          showToast(tr("session.exportFail"));
-          return;
-        }
-        const title =
-          sessionMeta?.title ||
-          sessions.find((s) => s.id === id)?.title ||
-          session.title ||
-          tr("session.untitled");
-        const projectId =
-          sessionMeta?.projectId ??
-          sessions.find((s) => s.id === id)?.projectId ??
-          null;
-        const proj =
-          projects.find((p) => p.id === projectId) || activeProject || null;
-        let msgs = messages;
-        if (id !== session.sessionId) {
-          msgs = (await api.sessionMessages(id)) as ChatMessage[];
-        }
-        const md = sessionToMarkdown({
-          title,
-          projectName: proj?.name,
-          projectPath: proj?.path,
-          sessionId: id,
-          messages: msgs.map((m) => ({
-            role: m.role,
-            content: m.content,
-            thought: m.thought,
-            createdAt: m.createdAt,
-          })),
-        });
-        const blob = new Blob([md], { type: "text/markdown;charset=utf-8" });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement("a");
-        a.href = url;
-        a.download = sessionExportFilename(title, id);
-        a.click();
-        URL.revokeObjectURL(url);
-        showToast(tr("session.exportDone"));
-      } catch (e) {
-        showToast(`${tr("session.exportFail")}: ${String(e)}`);
+  type ExportMdTarget = {
+    id: string;
+    title: string;
+    projectId?: string | null;
+  };
+  const [exportMdTarget, setExportMdTarget] = useState<ExportMdTarget | null>(
+    null,
+  );
+  const [exportMdIncludeThoughts, setExportMdIncludeThoughts] = useState(true);
+  const [exportMdIncludeTools, setExportMdIncludeTools] = useState(true);
+  const [exportMdBusy, setExportMdBusy] = useState(false);
+
+  /** Build markdown for a session; used by download + copy. */
+  const buildSessionMarkdown = useCallback(
+    async (
+      sessionMeta: ExportMdTarget | undefined,
+      options: { includeThoughts: boolean; includeToolSummary: boolean },
+    ) => {
+      const id = sessionMeta?.id ?? session.sessionId;
+      if (!id) throw new Error(tr("session.exportFail"));
+      const title =
+        sessionMeta?.title ||
+        sessions.find((s) => s.id === id)?.title ||
+        session.title ||
+        tr("session.untitled");
+      const projectId =
+        sessionMeta?.projectId ??
+        sessions.find((s) => s.id === id)?.projectId ??
+        null;
+      const proj =
+        projects.find((p) => p.id === projectId) || activeProject || null;
+      let msgs = messages;
+      if (id !== session.sessionId) {
+        msgs = (await api.sessionMessages(id)) as ChatMessage[];
       }
+      const md = sessionToMarkdown({
+        title,
+        projectName: proj?.name,
+        projectPath: proj?.path,
+        sessionId: id,
+        options: {
+          includeThoughts: options.includeThoughts,
+          includeToolSummary: options.includeToolSummary,
+        },
+        messages: msgs.map((m) => ({
+          role: m.role,
+          content: m.content,
+          thought: m.thought,
+          createdAt: m.createdAt,
+          marker: m.marker,
+        })),
+      });
+      return { id, title, md };
     },
     [
       session.sessionId,
@@ -7894,9 +7896,89 @@ export default function App() {
       messages,
       projects,
       activeProject,
+      tr,
+    ],
+  );
+
+  /** Open export options (thoughts / tools / download / copy). */
+  const openExportSessionMd = useCallback(
+    (sessionMeta?: {
+      id: string;
+      title: string;
+      projectId?: string | null;
+    }) => {
+      const id = sessionMeta?.id ?? session.sessionId;
+      if (!id) {
+        showToast(tr("session.exportFail"));
+        return;
+      }
+      setExportMdIncludeThoughts(true);
+      setExportMdIncludeTools(true);
+      setExportMdTarget({
+        id,
+        title:
+          sessionMeta?.title ||
+          sessions.find((s) => s.id === id)?.title ||
+          session.title ||
+          tr("session.untitled"),
+        projectId:
+          sessionMeta?.projectId ??
+          sessions.find((s) => s.id === id)?.projectId ??
+          null,
+      });
+    },
+    [session.sessionId, session.title, sessions, showToast, tr],
+  );
+
+  const runExportSessionMd = useCallback(
+    async (mode: "download" | "copy") => {
+      if (!exportMdTarget) return;
+      setExportMdBusy(true);
+      try {
+        const { id, title, md } = await buildSessionMarkdown(exportMdTarget, {
+          includeThoughts: exportMdIncludeThoughts,
+          includeToolSummary: exportMdIncludeTools,
+        });
+        if (mode === "copy") {
+          await navigator.clipboard.writeText(md);
+          showToast(tr("session.exportCopied"));
+        } else {
+          const blob = new Blob([md], { type: "text/markdown;charset=utf-8" });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement("a");
+          a.href = url;
+          a.download = sessionExportFilename(title, id);
+          a.click();
+          URL.revokeObjectURL(url);
+          showToast(tr("session.exportDone"));
+        }
+        setExportMdTarget(null);
+      } catch (e) {
+        showToast(`${tr("session.exportFail")}: ${String(e)}`);
+      } finally {
+        setExportMdBusy(false);
+      }
+    },
+    [
+      exportMdTarget,
+      exportMdIncludeThoughts,
+      exportMdIncludeTools,
+      buildSessionMarkdown,
       showToast,
       tr,
     ],
+  );
+
+  /** Quick export with defaults (slash /export, message actions). */
+  const exportActiveSessionMd = useCallback(
+    async (sessionMeta?: {
+      id: string;
+      title: string;
+      projectId?: string | null;
+    }) => {
+      openExportSessionMd(sessionMeta);
+    },
+    [openExportSessionMd],
   );
 
   /** Full diagnostic zip (messages + agent trail + logs) for bug reports. */
@@ -11814,6 +11896,73 @@ export default function App() {
         </div>
       </GlassModal>
 
+      <GlassModal
+        open={!!exportMdTarget}
+        onClose={() => {
+          if (exportMdBusy) return;
+          setExportMdTarget(null);
+        }}
+        title={tr("session.exportMdTitle")}
+        size="sm"
+        closeLabel={tr("common.close")}
+        closeOnOverlay={!exportMdBusy}
+        showClose={!exportMdBusy}
+        wrapBody
+        className="export-md-modal"
+        footer={
+          <>
+            <button
+              type="button"
+              className="btn btn--ghost"
+              disabled={exportMdBusy}
+              onClick={() => setExportMdTarget(null)}
+            >
+              {tr("common.cancel")}
+            </button>
+            <button
+              type="button"
+              className="btn btn--ghost"
+              disabled={exportMdBusy || !exportMdTarget}
+              onClick={() => void runExportSessionMd("copy")}
+            >
+              {tr("session.exportMdCopy")}
+            </button>
+            <button
+              type="button"
+              className="btn btn--solid"
+              disabled={exportMdBusy || !exportMdTarget}
+              onClick={() => void runExportSessionMd("download")}
+            >
+              {exportMdBusy
+                ? tr("session.exportMdWorking")
+                : tr("session.exportMdDownload")}
+            </button>
+          </>
+        }
+      >
+        <div className="export-md-options">
+          <p className="export-md-options__msg">{tr("session.exportMdHint")}</p>
+          <label className="export-md-options__row">
+            <input
+              type="checkbox"
+              checked={exportMdIncludeThoughts}
+              disabled={exportMdBusy}
+              onChange={(e) => setExportMdIncludeThoughts(e.target.checked)}
+            />
+            <span>{tr("session.exportMdIncludeThoughts")}</span>
+          </label>
+          <label className="export-md-options__row">
+            <input
+              type="checkbox"
+              checked={exportMdIncludeTools}
+              disabled={exportMdBusy}
+              onChange={(e) => setExportMdIncludeTools(e.target.checked)}
+            />
+            <span>{tr("session.exportMdIncludeTools")}</span>
+          </label>
+        </div>
+      </GlassModal>
+
       {showCompactModal && (
         <div
           className="overlay"
@@ -12303,7 +12452,7 @@ export default function App() {
                 label: tr("session.exportMd"),
                 icon: <IconCopy size={16} />,
                 onClick: () => {
-                  void exportActiveSessionMd({
+                  openExportSessionMd({
                     id: s.id,
                     title: s.title,
                     projectId: s.projectId,

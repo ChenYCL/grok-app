@@ -5,6 +5,18 @@ export type ExportableMessage = {
   content: string;
   thought?: string;
   createdAt?: string;
+  /** Journal markers: tool_step, context_compact, turn_cancelled, … */
+  marker?: string;
+};
+
+export type SessionExportOptions = {
+  /** Include assistant thinking in collapsed `<details>` (default true). */
+  includeThoughts?: boolean;
+  /**
+   * Include tool_step / tool rows as a short summary list (default true).
+   * When false, tool shells are omitted entirely.
+   */
+  includeToolSummary?: boolean;
 };
 
 export type SessionExportInput = {
@@ -14,6 +26,7 @@ export type SessionExportInput = {
   sessionId?: string | null;
   exportedAt?: string;
   messages: ExportableMessage[];
+  options?: SessionExportOptions;
 };
 
 function roleHeading(role: string): string {
@@ -23,11 +36,53 @@ function roleHeading(role: string): string {
   return role;
 }
 
+/** Parse `tool_step|name|status|…` or free-form tool content into one line. */
+export function formatToolSummaryLine(content: string, marker?: string): string | null {
+  const raw = (content || "").trim();
+  if (!raw && !marker) return null;
+
+  if (marker === "context_compact" || raw.startsWith("context_compact")) {
+    return "Context compact";
+  }
+  if (marker === "turn_cancelled" || raw === "turn_cancelled") {
+    return "Turn cancelled";
+  }
+
+  if (marker === "tool_step" || raw.startsWith("tool_step|") || raw.startsWith("tool_step")) {
+    const body = raw.startsWith("tool_step|")
+      ? raw.slice("tool_step|".length)
+      : raw.replace(/^tool_step\s*/i, "");
+    const parts = body.split("|").map((p) => p.trim()).filter(Boolean);
+    if (parts.length === 0) return "Tool step";
+    const name = parts[0] || "tool";
+    const status = parts[1] || "";
+    if (status) return `${name} (${status})`;
+    return name;
+  }
+
+  // Generic tool row — single line, truncated.
+  const one = raw.replace(/\s+/g, " ").slice(0, 160);
+  return one || null;
+}
+
+function isToolish(m: ExportableMessage): boolean {
+  if (m.role === "tool") return true;
+  if (m.marker === "tool_step" || m.marker === "context_compact" || m.marker === "turn_cancelled") {
+    return true;
+  }
+  const c = (m.content || "").trim();
+  return c.startsWith("tool_step|") || c.startsWith("tool_step");
+}
+
 /**
  * Render a session as GitHub-flavored markdown.
- * Skips empty tool shells; keeps assistant thought in a collapsed details block.
+ * Skips empty shells; optional thinking + tool summaries.
  */
 export function sessionToMarkdown(input: SessionExportInput): string {
+  const opts = input.options ?? {};
+  const includeThoughts = opts.includeThoughts !== false;
+  const includeToolSummary = opts.includeToolSummary !== false;
+
   const lines: string[] = [];
   const title = (input.title || "Untitled").trim() || "Untitled";
   lines.push(`# ${title}`);
@@ -46,15 +101,29 @@ export function sessionToMarkdown(input: SessionExportInput): string {
   for (const m of input.messages) {
     const body = (m.content || "").trim();
     const thought = (m.thought || "").trim();
+
+    if (isToolish(m)) {
+      if (!includeToolSummary) continue;
+      const line = formatToolSummaryLine(body, m.marker);
+      if (!line) continue;
+      lines.push(`## Tool`);
+      if (m.createdAt) {
+        lines.push(`*${m.createdAt}*`);
+        lines.push("");
+      }
+      lines.push(`- ${line}`);
+      lines.push("");
+      continue;
+    }
+
     if (!body && !thought) continue;
-    if (m.role === "tool" && !body) continue;
 
     lines.push(`## ${roleHeading(m.role)}`);
     if (m.createdAt) {
       lines.push(`*${m.createdAt}*`);
       lines.push("");
     }
-    if (thought) {
+    if (includeThoughts && thought) {
       lines.push("<details>");
       lines.push("<summary>Thinking</summary>");
       lines.push("");

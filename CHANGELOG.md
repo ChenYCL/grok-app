@@ -13,6 +13,14 @@ See `docs/llm-wiki/release.md`.
 
 ### Added
 
+- **Session Markdown export options**: choose thinking + tool summaries; download `.md` or copy to clipboard (session menu / `/export`)
+
+### Changed
+
+- Markdown export includes tool_step one-line summaries by default (was silently skipping tools)
+
+### Added
+
 - **Import providers from CC Switch** (#167): Settings → Account → Custom providers → scan local `cc-switch.db` (Grok Build tab), multi-select preview, import into agent-home (macOS / Windows / Linux path resolution + optional override)
 - Trust sandbox: `path_scope` allowlist for absolute fs / `media://` (trusted projects, app data, grants)
 - CSP enabled; asset protocol denies common secret paths
