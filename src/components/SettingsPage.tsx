@@ -94,6 +94,11 @@ import {
   type SettingsSectionId,
   type SettingsTabId,
 } from "@/lib/settingsCatalog";
+import {
+  loadThinkingExpandPref,
+  saveThinkingExpandPref,
+  type ThinkingExpandPref,
+} from "@/lib/thinkingPref";
 
 export type { SettingsSectionId } from "@/lib/settingsCatalog";
 
@@ -735,6 +740,10 @@ export function SettingsPage({
   const [wallpaperBusy, setWallpaperBusy] = useState(false);
   const [wallpaperError, setWallpaperError] = useState<string | null>(null);
   const [wallpaperFocusOpen, setWallpaperFocusOpen] = useState(false);
+  /** Thinking block expand preference (localStorage; self-contained). */
+  const [thinkingExpand, setThinkingExpand] = useState<ThinkingExpandPref>(
+    () => loadThinkingExpandPref(),
+  );
   const marqueeRef = useRef<{
     active: boolean;
     dragging: boolean;
@@ -1974,6 +1983,43 @@ export function SettingsPage({
                     {t("settings.themeDark")}
                   </button>
                 </div>
+              </div>
+            </div>
+            <div
+              className={
+                "settings-card" + rowHighlight("settings-anchor-thinkingExpand")
+              }
+              id="settings-anchor-thinkingExpand"
+            >
+              <div className="settings-row">
+                <div className="settings-row__text">
+                  <div className="settings-row__label">
+                    {t("settings.thinkingExpand")}
+                  </div>
+                  <div className="settings-row__desc">
+                    {t("settings.thinkingExpandDesc")}
+                  </div>
+                </div>
+                <Select
+                  value={thinkingExpand}
+                  aria-label={t("settings.thinkingExpand")}
+                  onChange={(v) => {
+                    const pref: ThinkingExpandPref =
+                      v === "keep-open" ? "keep-open" : "auto-collapse";
+                    saveThinkingExpandPref(pref);
+                    setThinkingExpand(pref);
+                  }}
+                  options={[
+                    {
+                      value: "auto-collapse",
+                      label: t("settings.thinkingExpand.autoCollapse"),
+                    },
+                    {
+                      value: "keep-open",
+                      label: t("settings.thinkingExpand.keepOpen"),
+                    },
+                  ]}
+                />
               </div>
             </div>
             {onSkin || onWallpaper ? (

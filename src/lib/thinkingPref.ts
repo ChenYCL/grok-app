@@ -6,6 +6,9 @@
 
 const STORAGE_KEY = "grok.thinkingExpanded";
 
+/** Fired on `window` after a successful save so open Thinking blocks can re-read. */
+export const THINKING_PREF_EVENT = "grok-thinking-pref";
+
 export type ThinkingExpandPref = "auto-collapse" | "keep-open";
 
 export function loadThinkingExpandPref(
@@ -30,6 +33,21 @@ export function saveThinkingExpandPref(
     storage.setItem(STORAGE_KEY, pref);
   } catch {
     /* ignore */
+  }
+  // Notify live UI (Settings → Thinking blocks) without a full reload.
+  // Only when writing default localStorage — unit tests inject memory Storage.
+  if (
+    typeof window !== "undefined" &&
+    typeof localStorage !== "undefined" &&
+    storage === localStorage
+  ) {
+    try {
+      window.dispatchEvent(
+        new CustomEvent(THINKING_PREF_EVENT, { detail: pref }),
+      );
+    } catch {
+      /* ignore */
+    }
   }
 }
 

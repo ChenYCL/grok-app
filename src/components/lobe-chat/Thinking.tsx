@@ -17,6 +17,7 @@ import {
   loadThinkingExpandPref,
   saveThinkingExpandPref,
   thinkingDefaultOpenWhenDone,
+  THINKING_PREF_EVENT,
   type ThinkingExpandPref,
 } from "@/lib/thinkingPref";
 import { extractThinkingSummary } from "@/lib/thinkingSummary";
@@ -45,7 +46,9 @@ export function Thinking({
   expandPref?: ThinkingExpandPref;
   onExpandPrefChange?: (pref: ThinkingExpandPref) => void;
 }) {
-  const pref = expandPref ?? loadThinkingExpandPref();
+  const [pref, setPref] = useState<ThinkingExpandPref>(
+    () => expandPref ?? loadThinkingExpandPref(),
+  );
   const [open, setOpen] = useState(() =>
     thinking ? true : thinkingDefaultOpenWhenDone(pref),
   );
@@ -54,6 +57,44 @@ export function Thinking({
     durationMs,
   );
   const userToggled = useRef(false);
+  const thinkingRef = useRef(!!thinking);
+  thinkingRef.current = !!thinking;
+
+  // Honor prop override (tests / parent).
+  useEffect(() => {
+    if (expandPref != null) setPref(expandPref);
+  }, [expandPref]);
+
+  // Settings (or another tab) changed the preference — apply to finished blocks
+  // the user has not manually toggled.
+  useEffect(() => {
+    if (expandPref != null) return;
+    const apply = (next: ThinkingExpandPref) => {
+      setPref(next);
+      if (!thinkingRef.current && !userToggled.current) {
+        setOpen(thinkingDefaultOpenWhenDone(next));
+      }
+    };
+    const onPref = (e: Event) => {
+      const detail = (e as CustomEvent<ThinkingExpandPref>).detail;
+      apply(
+        detail === "keep-open" || detail === "auto-collapse"
+          ? detail
+          : loadThinkingExpandPref(),
+      );
+    };
+    const onStorage = (e: StorageEvent) => {
+      if (e.key === "grok.thinkingExpanded") {
+        apply(loadThinkingExpandPref());
+      }
+    };
+    window.addEventListener(THINKING_PREF_EVENT, onPref);
+    window.addEventListener("storage", onStorage);
+    return () => {
+      window.removeEventListener(THINKING_PREF_EVENT, onPref);
+      window.removeEventListener("storage", onStorage);
+    };
+  }, [expandPref]);
 
   useEffect(() => {
     if (thinking) {

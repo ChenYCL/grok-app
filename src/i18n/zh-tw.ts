@@ -823,6 +823,11 @@ export const zhTW: Record<MessageKey, string> = {
   "settings.themeSystem": "跟隨系統",
   "settings.themeLight": "淺色",
   "settings.themeDark": "深色",
+  "settings.thinkingExpand": "思考過程",
+  "settings.thinkingExpandDesc":
+    "回覆完成後，思考/推理區塊保持展開，或自動摺疊。串流生成時仍會即時展開。",
+  "settings.thinkingExpand.autoCollapse": "完成後自動摺疊",
+  "settings.thinkingExpand.keepOpen": "保持展開",
   "settings.skin": "配色皮膚",
   "settings.skinDesc": "強調色與表面色板（可與淺/深色疊加）",
   "settings.skin.default": "預設",

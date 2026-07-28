@@ -857,6 +857,11 @@ const en = {
   "settings.themeSystem": "System",
   "settings.themeLight": "Light",
   "settings.themeDark": "Dark",
+  "settings.thinkingExpand": "Thinking blocks",
+  "settings.thinkingExpandDesc":
+    "After a reply finishes, keep reasoning expanded or collapse it automatically. Streaming still opens live.",
+  "settings.thinkingExpand.autoCollapse": "Auto-collapse when done",
+  "settings.thinkingExpand.keepOpen": "Keep expanded",
   "settings.skin": "Color skin",
   "settings.skinDesc": "Accent and surface palette (works with light/dark)",
   "settings.skin.default": "Default",
@@ -2942,6 +2947,11 @@ const zh: Record<MessageKey, string> = {
   "settings.themeSystem": "跟随系统",
   "settings.themeLight": "浅色",
   "settings.themeDark": "深色",
+  "settings.thinkingExpand": "思考过程",
+  "settings.thinkingExpandDesc":
+    "回复完成后，思考/推理块保持展开，或自动折叠。流式生成时仍会实时展开。",
+  "settings.thinkingExpand.autoCollapse": "完成后自动折叠",
+  "settings.thinkingExpand.keepOpen": "保持展开",
   "settings.skin": "配色皮肤",
   "settings.skinDesc": "强调色与表面色板（可与浅/深色叠加）",
   "settings.skin.default": "默认",
