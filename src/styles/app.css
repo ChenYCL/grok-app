@@ -14192,6 +14192,41 @@ div.composer__input:empty::before {
   flex-shrink: 0;
 }
 
+.export-md-options {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.export-md-options__msg {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--text-secondary, rgba(255, 255, 255, 0.72));
+  white-space: pre-wrap;
+}
+.export-md-options__row {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 13px;
+  line-height: 1.4;
+  cursor: pointer;
+}
+.export-md-options__row input {
+  margin-top: 2px;
+}
+/* Second row: cancel / copy / download (edit+save style), under options */
+.export-md-options__actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 8px;
+  margin-top: 4px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.08));
+}
+
 .rewind-confirm__hint {
   margin: 0;
   font-size: 12px;

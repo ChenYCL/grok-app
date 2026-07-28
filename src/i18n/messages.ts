@@ -1333,6 +1333,15 @@ const en = {
 
   // Session export
   "session.exportMd": "Export chat as Markdown",
+  "session.exportMdTitle": "Export Markdown",
+  "session.exportMdHint":
+    "Choose what to include, then download a .md file or copy to the clipboard.",
+  "session.exportMdIncludeThoughts": "Include thinking (collapsed details)",
+  "session.exportMdIncludeTools": "Include tool step summaries",
+  "session.exportMdDownload": "Download .md",
+  "session.exportMdCopy": "Copy",
+  "session.exportMdWorking": "Exporting…",
+  "session.exportCopied": "Markdown copied to clipboard",
   "session.exportTrace": "Export trace",
   "session.exportTraceDone": "Session trace saved",
   "session.exportTraceFail": "Trace export failed",
@@ -3368,6 +3377,14 @@ const zh: Record<MessageKey, string> = {
   "shortcuts.voice": "开关语音输入",
 
   "session.exportMd": "导出会话为 Markdown",
+  "session.exportMdTitle": "导出 Markdown",
+  "session.exportMdHint": "选择要包含的内容，然后下载 .md 文件或复制到剪贴板。",
+  "session.exportMdIncludeThoughts": "包含思考（折叠 details）",
+  "session.exportMdIncludeTools": "包含工具步骤摘要",
+  "session.exportMdDownload": "下载 .md",
+  "session.exportMdCopy": "复制",
+  "session.exportMdWorking": "导出中…",
+  "session.exportCopied": "Markdown 已复制到剪贴板",
   "session.exportTrace": "导出 trace",
   "session.exportTraceDone": "会话 trace 已保存",
   "session.exportTraceFail": "trace 导出失败",
