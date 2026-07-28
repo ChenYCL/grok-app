@@ -11,83 +11,80 @@ See `docs/llm-wiki/release.md`.
 
 ## [Unreleased]
 
-### Security
+## [0.2.0] - 2026-07-29
 
-- **CLI install fail-closed on missing checksum**: App-managed Grok Build download refuses install when the mirror has no published SHA-256 (default). Mismatch still always aborts. Escape hatch: Settings → Runtime → “Allow unverified CLI install”, or `GROK_CLI_ALLOW_UNVERIFIED=1`. Last install verification is remembered for Doctor/CLI status.
-
-### Fixed
-
-- **Workbench auto-widen**: grant `core:window:allow-set-size` (+ current-monitor / is-fullscreen) so opening the left sidebar or right files pane can actually resize the OS window when chat would be crushed; failures are logged instead of swallowed
-- **Composer skills picker**: skills missing `userInvocable` in `grok inspect` are treated as invocable (only explicit `false` hides them). Extensions-disabled skills stay hidden. Empty / CLI-error states replace the old “Coming soon” dead end.
-
-### Changed
-
-- **Host automation scheduler**: due tasks fire while the app process is alive (including tray-hidden window); create session → connect → send without relying on WebView timers
-- **Remote IM health watchdog**: auto-restart enabled bridge after unexpected connector exit (backoff); status distinguishes listening / degraded / error (not just “configured”)
-- **Live Voice entry**: headphones control next to composer mic, `/live-voice` slash, and ⌘/Ctrl+Shift+V open the full-duplex overlay (official auth); delegated sessions refresh sidebar / open from chips
-- **Regenerate last assistant reply**: refresh action on the latest completed assistant turn (and failed turns) resends the last user message unchanged via the same rewind + send path as edit-resend
-- **Remove linked git worktree from UI**: branch/worktree menu trash on non-main rows; in-app confirm (force retry if dirty); host `git_worktree_remove`; switches to main when removing the active cwd
-- **Command palette actions**: search panel lists filterable quick actions (Settings sections, Doctor, shortcuts help, automations, tasks panel, new chat, add project) above chats/projects
-- **Desktop notification preferences**: Settings → General → App toggles for turn-done and permission desktop notifications (default on, persisted). Clicking a notification focuses the app window
-- **Thinking expand preference in Settings**: Appearance → Thinking blocks — choose auto-collapse (default) vs keep expanded after a reply finishes; searchable via settings catalog (thinking / reasoning / collapse)
-- **Composer send key preference**: Settings → General → Composer — choose Enter to send (default) or ⌘/Ctrl+Enter to send (Enter inserts newline); stored in localStorage
-- **Composer model picker search**: filter the nested model list by id/label (case-insensitive) with empty state; clears on close/back; effort submenu unchanged
-- **Chat transcript font scale**: Settings → Appearance — Small / Medium / Large for message text (`html[data-chat-font]`, localStorage `grok.chatFontScale`; default Medium matches prior CSS)
-- **Default code line-wrap**: Settings → Appearance toggle “Wrap code lines by default” (`localStorage`); chat code blocks honor it on mount; per-block wrap still works
-- **Message action buttons visibility**: Settings → Appearance — On hover (default) or Always show Copy / Export / Regenerate / Edit (`html[data-msg-actions]`, localStorage `grok.messageActionsVisibility`; better for trackpads and accessibility)
-- **Esc stops generation**: when a turn is streaming (Stop available) and no dialog/menu/find/permission/voice owns Escape, Esc calls the same `stop()` as the composer Stop button (honors shortcuts catalog)
-- **Message timestamps toggle**: Settings → Appearance — show/hide send times on message actions (`localStorage` `grok.messageTimestamps`; default on). Hides UI only; `createdAt` data is kept.
-- **General workspace**: app-managed `{app_data}/workspaces/general` project (`system:general`) for chats without a user folder — agent can create/edit files without the “bind a project first” toast; always trusted, pinned, not removable
-- **General workspace is a directory, not a sidebar project**: chats without a bound folder stay under **其他会话** (`projectId = null`); agent cwd defaults to `{app_data}/workspaces/general`. The temporary `system:general` project row is migrated away on load.
+> **Highlight:** Wallpaper from X / Imagine; Appearance Theme · Interface; stabler long runs and chat prefs.
+>
+> **中文 · 亮点：** 从 X / Imagine 找壁纸；外观拆主题·界面；长任务更稳、聊天偏好更全。
 
 ### Added
-- **Session Markdown export options**: choose thinking + tool summaries; download `.md` or copy to clipboard (session menu / `/export`)
-- **Updater production status**: About shows silent vs GitHub update channel; Host `updater_status` DTO; `scripts/verify-updater-setup.sh` for maintainer/CI prerequisites (no secret values printed)
-- **Context usage from agent**: Host parses ACP usage/token payloads (`session://usage`); chip shows known input/output/total when reported, otherwise keeps honest `~` estimates
-- **Tasks panel cross-session activity**: list other busy chats (streaming / permission / connecting) with Open + Stop; still shows this-turn tools
-- **Import providers from CC Switch** (#167): Settings → Account → Custom providers → scan local `cc-switch.db` (Grok Build tab), multi-select preview, import into agent-home (macOS / Windows / Linux path resolution + optional override)
-- Trust sandbox: `path_scope` allowlist for absolute fs / `media://` (trusted projects, app data, grants)
-- CSP enabled; asset protocol denies common secret paths
-- Phone mirror: default **read-only**, regenerate link (token rotate), allow-write toggle
-- Error deck: free-form message classification (CLI / auth / network / crash)
-- **Diagnostic file logs**: daily rolling `logs/app.log.YYYY-MM-DD` under app data (plus stderr)
-- **Chat ErrorBoundary**: render failures show Retry instead of blanking the workbench
-- **Main chat virtual list** (variable-height, ≥36 rows): spacers keep scroll metrics stable so stick-to-bottom / escape-pin / Back-to-bottom stay correct; find + streaming tail stay mounted
-- **Host stream emit backpressure**: coalesce `session://stream` IPC (~40ms / 600 chars / phase/`done` flush)
-- **Long-tool heartbeat protocol**: while tools are open, Host re-arms stall progress and emits `session://tool_heartbeat` every ~25s (max age 3h)
 
-### Fixed
-
-- **Windows CI `cargo test`**: post-link embed Common Controls v6 into the lib test harness via `mt.exe` + `windows-test-manifest.xml` (avoids CVT1100 vs tauri_build), scrub PATH dirs that ship stale `api-ms-win-*.dll` (Temurin JDK). Fixes `STATUS_ENTRYPOINT_NOT_FOUND` (`0xc0000139`) without breaking release
-- Drop `tauri::test::mock_app()` from unit tests (pure `pick_interjection_target`); avoid Windows-only Tauri test harness crash class
-- Windows `win_shell` COM taskbar helpers: mark `CoCreateInstance` / `ITaskbarList` calls `unsafe` so cold CI rebuilds compile
-- SVG resource preview no longer injects raw HTML
-- Resource absolute open/save grants path for re-open
-- Long multi-tool turns no longer hit a fixed **10-minute wall** on `session/prompt` — wait is idle-based (600s silence) with a 4h absolute ceiling
-- High-frequency stream tokens are **coalesced** (~48ms) before React state updates to reduce UI thrash on long answers
-- Long tools without intermediate status no longer false-trigger hard stream stall (heartbeat)
-- Chat scroll **bounce mid-transcript** (e.g. tall org-chart / table answers): content-aware row estimates, stricter stick re-pin, no force-mount of tail while reading history, shrink-thrash ignored
-- **Long-run freeze / stuck “引导” / diagnostic export hang**:
-  - Agent stdin writes now time out (8s); a wedged child fails pending RPCs, emits process exit, and is killed so the turn does not stay “工作中” overnight
-  - Session/support zip save dialogs run on `spawn_blocking` (macOS `rfd` no longer blocks the async runtime)
-  - Heavy zip build moved off the async runtime; diagnostic runtime snapshot includes **background** busy turns
-  - Queue **引导** button has a 55s UI timeout so “正在引导…” cannot stick forever
-
-### Security
-
-- media:// CORS limited to main-window origins; path allowlist enforced
-
-- Desktop in-app auto-update (Tauri updater): signed release builds can check,
-  download, install, and relaunch from Settings → About. Local / unsigned
-  builds keep the GitHub “open release page” path. Adds
-  `tauri-plugin-updater` / `process` (ACL + relaunch; ~1–3 MB when fully wired
-  with signing secrets in CI).
+- **Wallpaper from X / Imagine** (Settings → Appearance → Theme): search X for images (prompt-share first, filter dead URLs), generate with Imagine, masonry preview + lightbox, set as background
+- **Appearance tabs**: Theme (light/dark/skin/wallpaper) vs Interface (thinking, font, actions, code wrap, timestamps); “?” tips instead of long desc blocks
+- **Desktop in-app auto-update** (signed builds): check / download / install / relaunch from About; unsigned keeps GitHub open-release path
+- **Updater channel status** in About + Host `updater_status`; maintainer `scripts/verify-updater-setup.sh`
+- **Live Voice entry**: headphones next to mic, `/live-voice`, ⌘/Ctrl+Shift+V
+- **Regenerate** last assistant turn; **Esc** stops generation when free
+- **Session Markdown export**: thinking / tool options; download or copy
+- **Command palette** quick actions; **Tasks panel** other busy chats (Open / Stop)
+- **Context usage** chip from agent-reported tokens when available
+- **Import providers from CC Switch** (#167)
+- **General workspace** cwd for unbound chats (no forced project bind)
+- **Trust sandbox / CSP**: `path_scope` for media/fs; asset protocol secret-path deny
+- **Phone mirror**: default read-only, rotate token, allow-write toggle
+- **Diagnostics**: rolling `logs/app.log.*`, error deck, chat ErrorBoundary, stream backpressure, long-tool heartbeat
+- **Main chat virtual list** for long transcripts
 
 ### Changed
 
-- Markdown export includes tool_step one-line summaries by default (was silently skipping tools)
-- `prepare_for_app_update` runs only after a successful `install()`, so a failed
-  update never kills agents / remote IM / mirror.
+- **Appearance prefs**: thinking expand, chat font scale, message actions hover/always, default code wrap, message timestamps
+- **Composer**: Enter vs ⌘/Ctrl+Enter send; model menu search; skills picker treats missing `userInvocable` as invocable
+- **Desktop notifications**: turn-done + permission toggles (Settings → General → App)
+- **Host automation scheduler** runs while app is alive (incl. tray)
+- **Remote IM health watchdog** + listening / degraded / error status
+- **Remove git worktree** from composer branch menu (in-app confirm)
+- Markdown export includes tool one-liners by default; update prep only after successful install
+- CLI install **fail-closed** without published checksum (escape hatch in Runtime / env)
+
+### Fixed
+
+- **Workbench auto-widen**: window set-size ACL so sidebar / files pane can grow the OS window
+- **Long-run freezes**: tool terminal accounting (no re-open after completed); stdin write timeout; idle-based prompt wait; stream stall heartbeat; steer / diagnostic export no longer hang forever
+- Chat scroll bounce on tall content; high-frequency stream coalescing
+- SVG preview no longer injects raw HTML; resource absolute open/save grants path
+- Windows CI `cargo test` (Common Controls v6 + PATH scrub); win_shell COM `unsafe` for cold rebuilds
+- Doctor / CC Switch import dialog edge cases
+
+### Security
+
+- `media://` CORS limited to main-window origins; path allowlist enforced
+- CLI download refuses missing checksum by default; mismatch always aborts
+
+**中文 · 新增**
+
+- 壁纸：从 X 搜索（优先提示词分享、过滤失效图）/ Imagine 生成，瀑布流 + 大图预览后设背景
+- 外观：主题 · 界面分页；说明收到「?」提示里
+- 桌面内更新（签名包）；关于页更新通道状态
+- Live Voice 入口；重新生成；Esc 停止生成
+- 会话 Markdown 导出；命令面板快捷操作；跨会话任务条
+- 上下文用量芯片；CC Switch 导入提供商；无项目时的通用工作区
+- 信任沙箱 / CSP；手机镜像默认只读；诊断日志与虚拟列表等
+
+**中文 · 变更**
+
+- 思考展开、字号、消息操作/时间戳、代码换行；发送快捷键与模型搜索
+- 桌面通知开关；托盘下自动化仍跑；远程 IM 健康看门狗
+- 可从 UI 移除 git worktree；CLI 安装默认要求校验和
+
+**中文 · 修复**
+
+- 侧栏/文件栏展开时窗口可真正变宽
+- 长任务卡住、工具终态回写、流心跳与滚动抖动
+- Windows CI / 资源预览等稳定性问题
+
+**中文 · 安全**
+
+- media 协议 CORS 与路径白名单；CLI 无校验和默认拒装
 
 ## [0.1.9] - 2026-07-27
 
