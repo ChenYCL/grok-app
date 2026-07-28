@@ -20,6 +20,7 @@ See `docs/llm-wiki/release.md`.
 - **General workspace**: app-managed `{app_data}/workspaces/general` project (`system:general`) for chats without a user folder — agent can create/edit files without the “bind a project first” toast; always trusted, pinned, not removable
 - **Session Markdown export options**: choose thinking + tool summaries; download `.md` or copy to clipboard (session menu / `/export`)
 - **Updater production status**: About shows silent vs GitHub update channel; Host `updater_status` DTO; `scripts/verify-updater-setup.sh` for maintainer/CI prerequisites (no secret values printed)
+- **Context usage from agent**: Host parses ACP usage/token payloads (`session://usage`); chip shows known input/output/total when reported, otherwise keeps honest `~` estimates
 - **Import providers from CC Switch** (#167): Settings → Account → Custom providers → scan local `cc-switch.db` (Grok Build tab), multi-select preview, import into agent-home (macOS / Windows / Linux path resolution + optional override)
 - Trust sandbox: `path_scope` allowlist for absolute fs / `media://` (trusted projects, app data, grants)
 - CSP enabled; asset protocol denies common secret paths

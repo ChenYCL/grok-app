@@ -2902,6 +2902,7 @@ impl SessionManager {
             AcpEvent::PromptComplete { .. } => "prompt_complete",
             AcpEvent::RetryState { .. } => "retry_state",
             AcpEvent::ContextCompact { .. } => "context_compact",
+            AcpEvent::UsageReported { .. } => "usage",
             AcpEvent::Error { .. } => "error",
             AcpEvent::ProcessExited { .. } => "process_exited",
             AcpEvent::Stderr { .. } => "stderr",
@@ -3739,6 +3740,33 @@ impl SessionManager {
                     }),
                 );
             }
+            AcpEvent::UsageReported {
+                total_tokens,
+                input_tokens,
+                output_tokens,
+                source,
+            } => {
+                let app_sid = {
+                    let guard = self.inner.lock();
+                    let Some(s) = guard.as_ref() else {
+                        return;
+                    };
+                    if Self::is_session_load_replay(s.prompt_in_flight) {
+                        return;
+                    }
+                    s.app_session_id.clone()
+                };
+                let _ = app.emit(
+                    "session://usage",
+                    serde_json::json!({
+                        "sessionId": app_sid,
+                        "totalTokens": total_tokens,
+                        "inputTokens": input_tokens,
+                        "outputTokens": output_tokens,
+                        "source": source,
+                    }),
+                );
+            }
         }
     }
 
@@ -4180,6 +4208,23 @@ impl SessionManager {
                 }
                 self.promote_background_ready_to_parked(app_session_id);
                 Self::emit_state(app, &self.snapshot());
+            }
+            AcpEvent::UsageReported {
+                total_tokens,
+                input_tokens,
+                output_tokens,
+                source,
+            } => {
+                let _ = app.emit(
+                    "session://usage",
+                    serde_json::json!({
+                        "sessionId": app_session_id,
+                        "totalTokens": total_tokens,
+                        "inputTokens": input_tokens,
+                        "outputTokens": output_tokens,
+                        "source": source,
+                    }),
+                );
             }
             _ => {
                 // ask_user / plan / stderr / retry — still forward with session id when possible

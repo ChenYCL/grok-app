@@ -37,6 +37,11 @@ export type ContextUsageChipLabels = {
   breakdownThought: string;
   /** Shown under role rows when breakdown is estimated-only. */
   breakdownEstimatedNote: string;
+  /** Agent-reported input / output rows. */
+  knownInput: string;
+  knownOutput: string;
+  knownTotal: string;
+  knownFromAgent: string;
 };
 
 type Props = {
@@ -202,6 +207,46 @@ export function ContextUsageChip({
                 <span className="ctx-chip__src">{source}</span>
               </span>
             </div>
+            {display.knownUsage &&
+            (display.knownUsage.inputTokens != null ||
+              display.knownUsage.outputTokens != null ||
+              display.knownUsage.totalTokens != null) ? (
+              <>
+                <div className="ctx-chip__head ctx-chip__head--sub">
+                  {labels.knownFromAgent}
+                </div>
+                {display.knownUsage.inputTokens != null ? (
+                  <div className="ctx-chip__row">
+                    <span className="ctx-chip__k">{labels.knownInput}</span>
+                    <span className="ctx-chip__v">
+                      <span className="ctx-chip__tokens">
+                        {formatTokenCount(display.knownUsage.inputTokens)}
+                      </span>
+                    </span>
+                  </div>
+                ) : null}
+                {display.knownUsage.outputTokens != null ? (
+                  <div className="ctx-chip__row">
+                    <span className="ctx-chip__k">{labels.knownOutput}</span>
+                    <span className="ctx-chip__v">
+                      <span className="ctx-chip__tokens">
+                        {formatTokenCount(display.knownUsage.outputTokens)}
+                      </span>
+                    </span>
+                  </div>
+                ) : null}
+                {display.knownUsage.totalTokens != null ? (
+                  <div className="ctx-chip__row">
+                    <span className="ctx-chip__k">{labels.knownTotal}</span>
+                    <span className="ctx-chip__v">
+                      <span className="ctx-chip__tokens">
+                        {formatTokenCount(display.knownUsage.totalTokens)}
+                      </span>
+                    </span>
+                  </div>
+                ) : null}
+              </>
+            ) : null}
             {display.breakdown ? (
               <BreakdownRows breakdown={display.breakdown} labels={labels} />
             ) : null}
