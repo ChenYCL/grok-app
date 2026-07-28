@@ -947,7 +947,7 @@ export default function App() {
     toggleVoice: () => {},
     cancelVoice: () => {},
     startLiveVoice: () => {},
-stopGeneration: () => {},
+    stopGeneration: () => {},
   });
   /** Live Esc→stop gate (overlays / menus / busy) for the capture-phase handler. */
   const escapeStopLiveRef = useRef({
