@@ -96,6 +96,7 @@ describe("settingsCatalog", () => {
     expect(appearance).toContain("settings.thinkingExpand");
     expect(appearance).toContain("settings.chatFontScale");
     expect(appearance).toContain("settings.messageActions");
+    expect(appearance).toContain("settings.messageTimestamps");
     const rim = keywordKeysForSection("remote_im");
     expect(rim).toContain("settings.nav.remoteIm");
     expect(rim).toContain("settings.tab.remoteIm");
@@ -161,6 +162,14 @@ describe("settingsCatalog", () => {
     const actionsEn = searchSettingsEntries("copy buttons", tZh, tEn);
     expect(
       actionsEn.some((h) => h.entry.id === "appearance.messageActions"),
+    ).toBe(true);
+    const timestamps = searchSettingsEntries("时间戳", tZh, tEn);
+    const timestampsHits =
+      timestamps.length > 0
+        ? timestamps
+        : searchSettingsEntries("timestamp", tZh, tEn);
+    expect(
+      timestampsHits.some((h) => h.entry.id === "appearance.messageTimestamps"),
     ).toBe(true);
     const cli = searchSettingsEntries("CLI", tZh, tEn);
     expect(cli.some((h) => h.entry.section === "runtime")).toBe(true);

@@ -35,6 +35,7 @@ See `docs/llm-wiki/release.md`.
 - **Default code line-wrap**: Settings → Appearance toggle “Wrap code lines by default” (`localStorage`); chat code blocks honor it on mount; per-block wrap still works
 - **Message action buttons visibility**: Settings → Appearance — On hover (default) or Always show Copy / Export / Regenerate / Edit (`html[data-msg-actions]`, localStorage `grok.messageActionsVisibility`; better for trackpads and accessibility)
 - **Esc stops generation**: when a turn is streaming (Stop available) and no dialog/menu/find/permission/voice owns Escape, Esc calls the same `stop()` as the composer Stop button (honors shortcuts catalog)
+- **Message timestamps toggle**: Settings → Appearance — show/hide send times on message actions (`localStorage` `grok.messageTimestamps`; default on). Hides UI only; `createdAt` data is kept.
 - **General workspace**: app-managed `{app_data}/workspaces/general` project (`system:general`) for chats without a user folder — agent can create/edit files without the “bind a project first” toast; always trusted, pinned, not removable
 - **Session Markdown export options**: choose thinking + tool summaries; download `.md` or copy to clipboard (session menu / `/export`)
 - **Updater production status**: About shows silent vs GitHub update channel; Host `updater_status` DTO; `scripts/verify-updater-setup.sh` for maintainer/CI prerequisites (no secret values printed)

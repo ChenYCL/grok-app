@@ -161,6 +161,9 @@ export interface SettingsPageProps {
   /** User preference including "system" (drives the appearance segment). */
   themePreference?: ThemePreference;
   onTheme: (v: ThemePreference) => void;
+  /** Show message timestamps in chat action rows (localStorage). */
+  showMessageTimestamps?: boolean;
+  onShowMessageTimestamps?: (v: boolean) => void;
   /** Color skin pack on top of light/dark (optional for older callers). */
   skin?: ThemeSkinId;
   onSkin?: (v: ThemeSkinId) => void;
@@ -637,6 +640,8 @@ export function SettingsPage({
   theme,
   themePreference: themePreferenceProp,
   onTheme,
+  showMessageTimestamps = true,
+  onShowMessageTimestamps,
   skin = "default",
   onSkin,
   wallpaperUrl = null,
@@ -2529,6 +2534,33 @@ export function SettingsPage({
                 />
               </div>
             </div>
+            {onShowMessageTimestamps ? (
+              <div
+                className={
+                  "settings-card" +
+                  rowHighlight("settings-anchor-messageTimestamps")
+                }
+                id="settings-anchor-messageTimestamps"
+              >
+                <div className="settings-row">
+                  <div className="settings-row__text">
+                    <div className="settings-row__label">
+                      {t("settings.messageTimestamps")}
+                    </div>
+                    <div className="settings-row__desc">
+                      {t("settings.messageTimestampsDesc")}
+                    </div>
+                  </div>
+                  <UiCheck
+                    checked={!!showMessageTimestamps}
+                    onChange={() =>
+                      onShowMessageTimestamps(!showMessageTimestamps)
+                    }
+                    ariaLabel={t("settings.messageTimestamps")}
+                  />
+                </div>
+              </div>
+            ) : null}
           </>
         )}
 

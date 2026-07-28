@@ -42,6 +42,11 @@ import {
   type WallpaperFocus,
   type WallpaperRecord,
 } from "@/lib/themeSkin";
+import {
+  loadMessageTimestampsPref,
+  MESSAGE_TIMESTAMPS_CHANGE_EVENT,
+  saveMessageTimestampsPref,
+} from "@/lib/messageTimestampsPref";
 import { WallpaperMediaLayer } from "@/components/WallpaperMediaLayer";
 import {
   DEFAULT_LAYOUT,
@@ -579,6 +584,9 @@ export default function App() {
   const wallpaperUrlRef = useRef<string | null>(null);
   const [wallpaperScrim, setWallpaperScrim] = useState(() =>
     loadWallpaperScrim(localStorage),
+  );
+  const [showMessageTimestamps, setShowMessageTimestamps] = useState(() =>
+    loadMessageTimestampsPref(localStorage),
   );
   const [layout, setLayout] = useState(() => {
     // Platform UA is available at first paint; reserve window-control inset on Win.
@@ -2027,6 +2035,21 @@ export default function App() {
       for (const u of cleanups) u();
     };
   }, [tr]);
+
+  // Message timestamps visibility (localStorage; Settings dispatches change event).
+  useEffect(() => {
+    const onChange = (ev: Event) => {
+      const detail = (ev as CustomEvent<unknown>).detail;
+      if (typeof detail === "boolean") {
+        setShowMessageTimestamps(detail);
+        return;
+      }
+      setShowMessageTimestamps(loadMessageTimestampsPref(localStorage));
+    };
+    window.addEventListener(MESSAGE_TIMESTAMPS_CHANGE_EVENT, onChange);
+    return () =>
+      window.removeEventListener(MESSAGE_TIMESTAMPS_CHANGE_EVENT, onChange);
+  }, []);
 
   // Phone layout flag: mirror client + ≤820px only (desktop ≥821px unchanged).
   useEffect(() => {
@@ -9250,6 +9273,11 @@ export default function App() {
           theme={theme}
           themePreference={themePreference}
           onTheme={applyThemeChoice}
+          showMessageTimestamps={showMessageTimestamps}
+          onShowMessageTimestamps={(v) => {
+            saveMessageTimestampsPref(v, localStorage);
+            setShowMessageTimestamps(v);
+          }}
           skin={skin}
           onSkin={applySkinChoice}
           wallpaperUrl={wallpaperUrl}
@@ -10920,6 +10948,7 @@ export default function App() {
             findQuery={showChatFind ? chatFindQuery : ""}
             findHitMessageIds={showChatFind ? chatFindHitIds : undefined}
             findActive={showChatFind ? chatFindActive : null}
+            showTimestamps={showMessageTimestamps}
           />
           </UiErrorBoundary>
 

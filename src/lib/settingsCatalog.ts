@@ -583,6 +583,22 @@ export const SETTINGS_ENTRIES: readonly SettingsEntry[] = [
       "複製",
     ],
   },
+  {
+    id: "appearance.messageTimestamps",
+    section: "appearance",
+    anchorId: "settings-anchor-messageTimestamps",
+    labelKey: "settings.messageTimestamps",
+    descKeys: ["settings.messageTimestampsDesc"],
+    keywords: [
+      "timestamp",
+      "timestamps",
+      "message time",
+      "time label",
+      "时间戳",
+      "时间",
+      "時間戳",
+    ],
+  },
   // ── account ──
   {
     id: "account.official",
