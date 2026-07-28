@@ -214,6 +214,7 @@ import { connPillForState } from "@/lib/connStatus";
 import { shortcutsForPlatform } from "@/lib/shortcuts";
 import {
   ensureNotifyPermission,
+  shouldShowDesktopNotify,
   showDesktopNotification,
 } from "@/lib/desktopNotify";
 import { GlassModal } from "@/components/GlassModal";
@@ -1092,6 +1093,14 @@ export default function App() {
   /** Default off → launch on draft new-chat page. */
   const [reopenLastSession, setReopenLastSession] = useState(false);
   const [closeToTray, setCloseToTray] = useState(true);
+  /** Desktop notification prefs (default on). Refs keep event listeners fresh. */
+  const [notifyOnTurnDone, setNotifyOnTurnDone] = useState(true);
+  const [notifyOnPermission, setNotifyOnPermission] = useState(true);
+  const notifyPrefsRef = useRef({
+    notifyOnTurnDone: true,
+    notifyOnPermission: true,
+  });
+  notifyPrefsRef.current = { notifyOnTurnDone, notifyOnPermission };
   const [lastSessionId, setLastSessionId] = useState<string | null>(null);
   const didRestoreLastRef = useRef(false);
   const [tasksPanelOpen, setTasksPanelOpen] = useState(false);
@@ -1606,6 +1615,8 @@ export default function App() {
       // Opt-in only (missing key / false → draft new chat on launch).
       setReopenLastSession(settings.reopenLastSession === true);
       setCloseToTray(settings.closeToTray !== false);
+      setNotifyOnTurnDone(settings.notifyOnTurnDone !== false);
+      setNotifyOnPermission(settings.notifyOnPermission !== false);
       setLastSessionId(
         typeof settings.lastSessionId === "string"
           ? settings.lastSessionId.trim() || null
@@ -2092,7 +2103,13 @@ export default function App() {
                   }
                   return next;
                 });
-                if (s.state === "ready") {
+                if (
+                  s.state === "ready" &&
+                  shouldShowDesktopNotify(
+                    "turn_done",
+                    notifyPrefsRef.current,
+                  )
+                ) {
                   showDesktopNotification({
                     title: trRef.current("notify.turnDoneTitle"),
                     body: trRef.current("notify.turnDoneBody"),
@@ -2648,21 +2665,32 @@ export default function App() {
               // Multi-session stream: another chat needs approval — nudge user.
               setToast(trRef.current("session.backgroundPermission"));
               window.setTimeout(() => setToast(null), 4200);
-              showDesktopNotification({
-                title: trRef.current("notify.permissionTitle"),
-                body: trRef.current("session.backgroundPermission"),
-                tag: `perm-bg-${p.rpcId}`,
-                force: true,
-              });
+              if (
+                shouldShowDesktopNotify(
+                  "permission",
+                  notifyPrefsRef.current,
+                )
+              ) {
+                showDesktopNotification({
+                  title: trRef.current("notify.permissionTitle"),
+                  body: trRef.current("session.backgroundPermission"),
+                  tag: `perm-bg-${p.rpcId}`,
+                  force: true,
+                });
+              }
               return;
             }
             setPerm(p);
-            showDesktopNotification({
-              title: trRef.current("notify.permissionTitle"),
-              body: trRef.current("notify.permissionBody"),
-              tag: `perm-${p.rpcId}`,
-              force: true,
-            });
+            if (
+              shouldShowDesktopNotify("permission", notifyPrefsRef.current)
+            ) {
+              showDesktopNotification({
+                title: trRef.current("notify.permissionTitle"),
+                body: trRef.current("notify.permissionBody"),
+                tag: `perm-${p.rpcId}`,
+                force: true,
+              });
+            }
           }),
         );
         await track(
@@ -9079,6 +9107,20 @@ export default function App() {
             setCloseToTray(v);
             void api.settingsGet().then((s) =>
               api.settingsSet({ ...s, closeToTray: v }),
+            );
+          }}
+          notifyOnTurnDone={notifyOnTurnDone}
+          onNotifyOnTurnDone={(v) => {
+            setNotifyOnTurnDone(v);
+            void api.settingsGet().then((s) =>
+              api.settingsSet({ ...s, notifyOnTurnDone: v }),
+            );
+          }}
+          notifyOnPermission={notifyOnPermission}
+          onNotifyOnPermission={(v) => {
+            setNotifyOnPermission(v);
+            void api.settingsGet().then((s) =>
+              api.settingsSet({ ...s, notifyOnPermission: v }),
             );
           }}
           cliInfo={cliInfo}

@@ -808,7 +808,13 @@ export const zhTW: Record<MessageKey, string> = {
     "開啟後，關閉按鈕會隱藏到選單列/系統匣。關閉此項則關閉視窗即結束（系統匣「結束」始終可用）。",
   "settings.reopenLastSession": "啟動時還原上次對話",
   "settings.reopenLastSessionDesc": "預設關閉（啟動進入新對話頁）。開啟後，若上次開啟的對話仍存在且未封存，則自動開啟。",
-"settings.prefsScope": "模型與權限記憶範圍",
+  "settings.notifyOnTurnDone": "回合完成時桌面通知",
+  "settings.notifyOnTurnDoneDesc":
+    "應用程式在背景時，Agent 完成一輪後顯示系統通知。點擊通知可聚焦視窗。",
+  "settings.notifyOnPermission": "需要授權時桌面通知",
+  "settings.notifyOnPermissionDesc":
+    "Agent 需要你批准時顯示系統通知（含背景對話）。",
+  "settings.prefsScope": "模型與權限記憶範圍",
   "settings.prefsScopeDesc":
     "全域：所有對話共用。專案：依工作區記憶。對話：僅目前聊天。",
   "settings.prefsScope.global": "全域（應用程式層級）",

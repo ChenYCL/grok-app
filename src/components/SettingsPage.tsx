@@ -209,6 +209,12 @@ export interface SettingsPageProps {
   onReopenLastSession?: (v: boolean) => void;
   closeToTray?: boolean;
   onCloseToTray?: (v: boolean) => void;
+  /** Desktop notification when an agent turn finishes (default on). */
+  notifyOnTurnDone?: boolean;
+  onNotifyOnTurnDone?: (v: boolean) => void;
+  /** Desktop notification when the agent requests permission (default on). */
+  notifyOnPermission?: boolean;
+  onNotifyOnPermission?: (v: boolean) => void;
   planEnabled?: boolean;
   onPlanEnabled?: (v: boolean) => void;
   subagentsEnabled?: boolean;
@@ -672,6 +678,10 @@ export function SettingsPage({
   onReopenLastSession,
   closeToTray = true,
   onCloseToTray,
+  notifyOnTurnDone = true,
+  onNotifyOnTurnDone,
+  notifyOnPermission = true,
+  onNotifyOnPermission,
   cliInfo,
   onDoctor,
   versionFooter,
@@ -1885,6 +1895,52 @@ export function SettingsPage({
                     checked={!!closeToTray}
                     onChange={() => onCloseToTray(!closeToTray)}
                     ariaLabel={t("settings.closeToTray")}
+                  />
+                </div>
+              ) : null}
+              {onNotifyOnTurnDone ? (
+                <div
+                  className={
+                    "settings-row" +
+                    rowHighlight("settings-anchor-notifyOnTurnDone")
+                  }
+                  id="settings-anchor-notifyOnTurnDone"
+                >
+                  <div className="settings-row__text">
+                    <div className="settings-row__label">
+                      {t("settings.notifyOnTurnDone")}
+                    </div>
+                    <div className="settings-row__desc">
+                      {t("settings.notifyOnTurnDoneDesc")}
+                    </div>
+                  </div>
+                  <UiCheck
+                    checked={!!notifyOnTurnDone}
+                    onChange={() => onNotifyOnTurnDone(!notifyOnTurnDone)}
+                    ariaLabel={t("settings.notifyOnTurnDone")}
+                  />
+                </div>
+              ) : null}
+              {onNotifyOnPermission ? (
+                <div
+                  className={
+                    "settings-row" +
+                    rowHighlight("settings-anchor-notifyOnPermission")
+                  }
+                  id="settings-anchor-notifyOnPermission"
+                >
+                  <div className="settings-row__text">
+                    <div className="settings-row__label">
+                      {t("settings.notifyOnPermission")}
+                    </div>
+                    <div className="settings-row__desc">
+                      {t("settings.notifyOnPermissionDesc")}
+                    </div>
+                  </div>
+                  <UiCheck
+                    checked={!!notifyOnPermission}
+                    onChange={() => onNotifyOnPermission(!notifyOnPermission)}
+                    ariaLabel={t("settings.notifyOnPermission")}
                   />
                 </div>
               ) : null}

@@ -21,6 +21,7 @@ See `docs/llm-wiki/release.md`.
 
 ### Added
 
+- **Desktop notification preferences**: Settings → General → App toggles for turn-done and permission desktop notifications (default on, persisted). Clicking a notification focuses the app window
 - **General workspace**: app-managed `{app_data}/workspaces/general` project (`system:general`) for chats without a user folder — agent can create/edit files without the “bind a project first” toast; always trusted, pinned, not removable
 - **Session Markdown export options**: choose thinking + tool summaries; download `.md` or copy to clipboard (session menu / `/export`)
 - **Updater production status**: About shows silent vs GitHub update channel; Host `updater_status` DTO; `scripts/verify-updater-setup.sh` for maintainer/CI prerequisites (no secret values printed)
