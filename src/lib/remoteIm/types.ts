@@ -34,7 +34,15 @@ export type ProgressStyle = "legacy" | "compact" | "card";
 
 export type BridgeLifecycle = "attached" | "detached";
 
-export type BridgeRunState = "stopped" | "running" | "error" | "starting" | "stopping";
+/** Host bridge phase. `listening` = connectors up; `degraded` = enabled but not listening. */
+export type BridgeRunState =
+  | "stopped"
+  | "running"
+  | "listening"
+  | "degraded"
+  | "error"
+  | "starting"
+  | "stopping";
 
 export type AclConfig = {
   allowFrom: string;

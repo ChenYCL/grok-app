@@ -58,16 +58,22 @@ export function RemoteImOverview({
   const configured = instances.filter((i) => i.hasCredentials);
 
   const stateLabel =
-    state === "running"
-      ? t("settings.remoteIm.bridge.running")
+    state === "running" || state === "listening"
+      ? t("settings.remoteIm.bridge.listening")
       : state === "error"
         ? t("settings.remoteIm.bridge.error")
         : state === "starting"
           ? t("settings.remoteIm.bridge.starting")
-          : t("settings.remoteIm.bridge.stopped");
+          : state === "degraded"
+            ? t("settings.remoteIm.bridge.degraded")
+            : t("settings.remoteIm.bridge.stopped");
 
   const badgeTone =
-    state === "running" ? "ok" : state === "error" ? "err" : "neutral";
+    state === "running" || state === "listening"
+      ? "ok"
+      : state === "error" || state === "degraded"
+        ? "err"
+        : "neutral";
 
   return (
     <div className="rim-overview">
@@ -85,7 +91,7 @@ export function RemoteImOverview({
           <span className="rim-badge__inner">
             <RimStatusDot
               tone={
-                state === "running"
+                state === "running" || state === "listening"
                   ? "connected"
                   : state === "error"
                     ? "error"
@@ -168,7 +174,12 @@ export function RemoteImOverview({
             <button
               type="button"
               className="btn btn--primary"
-              disabled={!!busy || state === "running"}
+              disabled={
+                !!busy ||
+                state === "running" ||
+                state === "listening" ||
+                state === "starting"
+              }
               onClick={() => void onStart()}
             >
               {t("settings.remoteIm.bridge.start")}

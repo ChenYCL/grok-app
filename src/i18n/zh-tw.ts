@@ -2025,6 +2025,8 @@ export const zhTW: Record<MessageKey, string> = {
   "settings.remoteIm.bridge.stop": "停止",
   "settings.remoteIm.bridge.restart": "重启",
   "settings.remoteIm.bridge.running": "執行中",
+  "settings.remoteIm.bridge.listening": "監聽中",
+  "settings.remoteIm.bridge.degraded": "未監聽（將自動重試）",
   "settings.remoteIm.bridge.stopped": "已停止",
   "settings.remoteIm.bridge.starting": "启动中…",
   "settings.remoteIm.bridge.error": "错误",

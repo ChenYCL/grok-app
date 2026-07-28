@@ -32,6 +32,11 @@ impl RuntimeHandle {
         // Do NOT clear outbound here: in-flight handle tasks may still reply.
         // A subsequent start_runtime builds a fresh OutboundRouter.
     }
+
+    /// True when the message pump task has finished (unexpected exit / panic).
+    pub fn is_finished(&self) -> bool {
+        self.pump.is_finished()
+    }
 }
 
 pub async fn start_runtime(

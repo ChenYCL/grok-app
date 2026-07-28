@@ -189,9 +189,12 @@ pub fn run() {
                 use tauri::Manager;
                 remote_im::set_app_handle(app.handle().clone());
                 let rim = app.state::<Arc<remote_im::RemoteImState>>().inner().clone();
+                let rim_watch = rim.clone();
                 tauri::async_runtime::spawn(async move {
                     remote_im::try_autostart(&rim).await;
                 });
+                // Crash / exit recovery while bridge stays enabled.
+                remote_im::start_health_watchdog(rim_watch);
             }
             // Headless mirror auto-start (GROK_MIRROR_HEADLESS=1) — off by default.
             {
