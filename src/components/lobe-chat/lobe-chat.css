@@ -1263,6 +1263,13 @@
   word-break: break-word;
 }
 
+.lobe-chat-error__actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 8px;
+}
+
 /* ── Empty ── */
 .lobe-chat-empty {
   display: flex;

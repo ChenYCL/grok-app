@@ -1704,6 +1704,11 @@ const en = {
     "Could not rewind session history; edit aborted.",
   "message.editConnectFailed":
     "Could not connect the agent for this session; edit aborted.",
+  "message.regenerate": "Regenerate",
+  "message.regenerateBusy":
+    "Wait for the current turn to finish before regenerating",
+  "message.regenerateOnlyLast":
+    "Only the latest assistant reply can be regenerated",
   "composer.editing": "Editing message",
   "composer.editingCancel": "Cancel edit",
   "chat.thinking": "Thinking…",
@@ -3772,6 +3777,9 @@ const zh: Record<MessageKey, string> = {
   "message.editPlaceholder": "编辑消息…",
   "message.editRewindFailed": "无法回退会话历史，编辑已取消。",
   "message.editConnectFailed": "无法连接该会话的 Agent，编辑已取消。",
+  "message.regenerate": "重新生成",
+  "message.regenerateBusy": "请等待当前回合结束后再重新生成",
+  "message.regenerateOnlyLast": "只能重新生成最后一条助手回复",
   "composer.editing": "正在编辑消息",
   "composer.editingCancel": "取消编辑",
   "chat.thinking": "思考中…",

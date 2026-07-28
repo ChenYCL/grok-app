@@ -39,6 +39,8 @@ import {
   canRewindToUserPrompt,
   userPromptIndexOf,
   countUserPrompts,
+  lastRegenerableAssistantId,
+  canRegenerateAssistant,
   localRewindPoints,
   forkMessages,
   forkSessionTitle,
@@ -120,6 +122,35 @@ describe("session projection", () => {
       truncateBeforeLastUser([{ id: "u1", role: "user", content: "only" }]),
     ).toEqual([]);
     expect(truncateBeforeLastUser([])).toEqual([]);
+  });
+
+  it("lastRegenerableAssistantId / canRegenerateAssistant gate last turn only", () => {
+    const msgs: ChatMessage[] = [
+      { id: "u1", role: "user", content: "first" },
+      { id: "a1", role: "assistant", content: "ok" },
+      { id: "u2", role: "user", content: "second" },
+      { id: "a2", role: "assistant", content: "later" },
+    ];
+    expect(lastRegenerableAssistantId(msgs)).toBe("a2");
+    expect(canRegenerateAssistant(msgs, "a2")).toBe(true);
+    expect(canRegenerateAssistant(msgs, "a1")).toBe(false);
+    expect(
+      lastRegenerableAssistantId([
+        { id: "u1", role: "user", content: "only" },
+      ]),
+    ).toBeNull();
+    expect(
+      lastRegenerableAssistantId([
+        { id: "u1", role: "user", content: "q" },
+        { id: "a1", role: "assistant", content: "", streaming: true },
+      ]),
+    ).toBeNull();
+    expect(
+      lastRegenerableAssistantId([
+        { id: "u1", role: "user", content: "q" },
+        { id: "a1", role: "assistant", content: "fail", isError: true },
+      ]),
+    ).toBe("a1");
   });
 
   it("truncateThroughUserPrompt keeps the selected turn (ACP rewind semantics)", () => {
