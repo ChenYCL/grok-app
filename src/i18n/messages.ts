@@ -579,9 +579,10 @@ const en = {
 
   // Search panel
   "search.title": "Search",
-  "search.placeholder": "Search chats, projects, or message content…",
+  "search.placeholder": "Search chats, projects, actions, or message content…",
   "search.projects": "Projects",
   "search.chats": "Chats",
+  "search.actions": "Actions",
   "search.noMatches": "No matches",
   "search.newChat": "New chat",
   "search.addProject": "Add project",
@@ -2694,9 +2695,10 @@ const zh: Record<MessageKey, string> = {
   "policy.yoloConfirm2": "再次确认：启用始终批准？工具将不再弹窗询问。",
 
   "search.title": "搜索",
-  "search.placeholder": "搜索会话、项目或消息内容…",
+  "search.placeholder": "搜索会话、项目、操作或消息内容…",
   "search.projects": "项目",
   "search.chats": "会话",
+  "search.actions": "操作",
   "search.noMatches": "无匹配结果",
   "search.newChat": "新建会话",
   "search.addProject": "添加项目",

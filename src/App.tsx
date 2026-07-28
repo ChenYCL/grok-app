@@ -203,6 +203,11 @@ import {
   type SessionContentHit,
 } from "@/lib/sessionSearch";
 import {
+  defaultPaletteActions,
+  filterPaletteActions,
+  type PaletteActionDef,
+} from "@/lib/paletteActions";
+import {
   sessionExportFilename,
   sessionToMarkdown,
 } from "@/lib/sessionExport";
@@ -355,6 +360,12 @@ import {
   IconCheck,
   IconList,
   IconFileText,
+  IconSettings,
+  IconDoctor,
+  IconKeyboard,
+  IconAppearance,
+  IconInfo,
+  IconPlug,
 } from "@/components/icons";
 import { PhoneAccountSheet } from "@/components/PhoneAccountSheet";
 import { PhoneComposerToolsSheet } from "@/components/PhoneComposerToolsSheet";
@@ -423,6 +434,41 @@ import {
   WindowControls,
   toggleMaximizeFromTitlebar,
 } from "@/components/WindowControls";
+
+/** Icon for a command-palette action row (stable by action id). */
+function paletteActionIcon(id: string) {
+  const size = 15;
+  switch (id) {
+    case "new-chat":
+      return <IconSquarePen size={size} />;
+    case "add-project":
+      return <IconFolder size={size} />;
+    case "open-automations":
+      return <IconScheduled size={size} />;
+    case "open-tasks":
+      return <IconList size={size} />;
+    case "doctor":
+      return <IconDoctor size={size} />;
+    case "shortcuts-help":
+    case "settings-shortcuts":
+      return <IconKeyboard size={size} />;
+    case "settings-appearance":
+      return <IconAppearance size={size} />;
+    case "settings-account":
+      return <IconUser size={size} />;
+    case "settings-extensions":
+      return <IconPlug size={size} />;
+    case "settings-runtime":
+      return <IconDoctor size={size} />;
+    case "settings-remote":
+      return <IconDeviceMobile size={size} />;
+    case "settings-about":
+      return <IconInfo size={size} />;
+    case "settings-general":
+    default:
+      return <IconSettings size={size} />;
+  }
+}
 
 interface Project {
   id: string;
@@ -4449,6 +4495,11 @@ export default function App() {
     [searchQuery, searchHits.matchedSessions, contentSearchHits],
   );
 
+  const paletteActionHits = useMemo(
+    () => filterPaletteActions(searchQuery, defaultPaletteActions(), tr),
+    [searchQuery, tr],
+  );
+
   const connPill = useMemo(
     () => connPillForState(session.state, connecting),
     [session.state, connecting],
@@ -7755,6 +7806,65 @@ export default function App() {
 
   const openDoctor = () => {
     setShowDoctor(true);
+  };
+
+  const runPaletteAction = (action: PaletteActionDef) => {
+    setShowSearch(false);
+    setSearchQuery("");
+    switch (action.id) {
+      case "new-chat":
+        void newChat(activeProject);
+        break;
+      case "add-project":
+        void addProject(false);
+        break;
+      case "open-automations":
+        navigateAutomations();
+        break;
+      case "open-tasks":
+        setAppView("workbench");
+        setMainPane("chat");
+        setTasksPanelOpen(true);
+        if (
+          typeof window !== "undefined" &&
+          window.location.hash.includes("settings")
+        ) {
+          window.location.hash = "#/workbench";
+        }
+        break;
+      case "doctor":
+        setShowDoctor(true);
+        break;
+      case "shortcuts-help":
+        setShowShortcuts(true);
+        break;
+      case "settings-general":
+        navigateSettings("general");
+        break;
+      case "settings-appearance":
+        navigateSettings("appearance");
+        break;
+      case "settings-account":
+        navigateSettings("account");
+        break;
+      case "settings-extensions":
+        navigateSettings("extensions");
+        break;
+      case "settings-runtime":
+        navigateSettings("runtime");
+        break;
+      case "settings-remote":
+        navigateSettings("remote_im");
+        break;
+      case "settings-shortcuts":
+        navigateSettings("shortcuts");
+        break;
+      case "settings-about":
+        navigateSettings("about");
+        break;
+      default:
+        break;
+    }
   };
 
   // Keep tray menu actions on latest closures (listeners registered once).
@@ -12485,6 +12595,26 @@ export default function App() {
                 <IconClose size={16} />
               </button>
             </div>
+            {paletteActionHits.length > 0 && (
+              <>
+                <div className="search-panel__section">
+                  {tr("search.actions")}
+                </div>
+                {paletteActionHits.map((action) => (
+                  <button
+                    key={action.id}
+                    type="button"
+                    className="search-panel__row"
+                    onClick={() => runPaletteAction(action)}
+                  >
+                    {paletteActionIcon(action.id)}
+                    <span className="search-panel__title">
+                      {tr(action.labelKey)}
+                    </span>
+                  </button>
+                ))}
+              </>
+            )}
             {searchHits.matchedProjects.length > 0 && (
               <>
                 <div className="search-panel__section">
@@ -12567,34 +12697,6 @@ export default function App() {
                 </button>
               );
             })}
-            <div className="search-panel__foot">
-              <button
-                type="button"
-                className="search-panel__row"
-                onClick={() => {
-                  setShowSearch(false);
-                  void newChat(activeProject);
-                }}
-              >
-                <IconSquarePen size={15} />
-                <span className="search-panel__title">
-                  {tr("search.newChat")}
-                </span>
-              </button>
-              <button
-                type="button"
-                className="search-panel__row"
-                onClick={() => {
-                  setShowSearch(false);
-                  void addProject(false);
-                }}
-              >
-                <IconFolder size={15} />
-                <span className="search-panel__title">
-                  {tr("sidebar.addProject")}
-                </span>
-              </button>
-            </div>
           </div>
         </div>
       )}

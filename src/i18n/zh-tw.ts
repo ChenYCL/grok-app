@@ -552,9 +552,10 @@ export const zhTW: Record<MessageKey, string> = {
   "policy.yoloConfirm2": "再次確認：啟用一律核准？工具將不再彈出視窗詢問。",
 
   "search.title": "搜尋",
-  "search.placeholder": "搜尋對話、專案或訊息內容…",
+  "search.placeholder": "搜尋對話、專案、操作或訊息內容…",
   "search.projects": "專案",
   "search.chats": "對話",
+  "search.actions": "操作",
   "search.noMatches": "無相符結果",
   "search.newChat": "新增對話",
   "search.addProject": "新增專案",
