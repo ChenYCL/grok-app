@@ -11,7 +11,7 @@ import {
   type MouseEvent,
 } from "react";
 import * as api from "@/lib/api";
-import { createT, type Locale } from "@/i18n";
+import { createT, type Locale, type MessageKey } from "@/i18n";
 import { Select } from "@/components/Select";
 import { GlassModal } from "@/components/GlassModal";
 import {
@@ -71,6 +71,24 @@ function hostOf(url: string): string {
   }
 }
 
+function ccSwitchStatusKey(status: string): MessageKey {
+  switch (status) {
+    case "importable":
+      return "prov.ccSwitch.status.importable";
+    case "official":
+      return "prov.ccSwitch.status.official";
+    case "missing_key":
+      return "prov.ccSwitch.status.missing_key";
+    case "proxy_managed":
+      return "prov.ccSwitch.status.proxy_managed";
+    case "exists":
+      return "prov.ccSwitch.status.exists";
+    case "invalid":
+    default:
+      return "prov.ccSwitch.status.invalid";
+  }
+}
+
 export function ProvidersPanel({
   locale,
   officialAvailable = false,
@@ -98,6 +116,18 @@ export function ProvidersPanel({
   const [officialKeyDraft, setOfficialKeyDraft] = useState("");
   const [showOfficialKey, setShowOfficialKey] = useState(false);
   const [officialKeyBusy, setOfficialKeyBusy] = useState(false);
+
+  /** CC Switch import dialog */
+  const [ccImportOpen, setCcImportOpen] = useState(false);
+  const [ccScan, setCcScan] = useState<api.CcSwitchScanResult | null>(null);
+  const [ccScanBusy, setCcScanBusy] = useState(false);
+  const [ccImportBusy, setCcImportBusy] = useState(false);
+  const [ccSelected, setCcSelected] = useState<Set<string>>(new Set());
+  const [ccConflict, setCcConflict] = useState<"skip" | "overwrite" | "rename">(
+    "skip",
+  );
+  const [ccActivateCurrent, setCcActivateCurrent] = useState(false);
+  const [ccImportMsg, setCcImportMsg] = useState<string | null>(null);
 
   const protocolOptions = useMemo(
     () => [
@@ -159,6 +189,103 @@ export function ProvidersPanel({
     setHint(null);
     setShowKey(false);
     setRightMode("create");
+  };
+
+  const openCcImport = () => {
+    setCcImportOpen(true);
+    setCcImportMsg(null);
+    setCcScan(null);
+    setCcSelected(new Set());
+    setCcConflict("skip");
+    setCcActivateCurrent(false);
+    void runCcScan();
+  };
+
+  const runCcScan = async () => {
+    if (!api.isTauri()) {
+      setCcScan({
+        status: "not_found",
+        triedPaths: [],
+        items: [],
+        error: tr("prov.ccSwitch.needTauri"),
+      });
+      return;
+    }
+    setCcScanBusy(true);
+    setCcImportMsg(null);
+    try {
+      const r = await api.providersCcSwitchScan();
+      setCcScan(r);
+      if (r.status === "ok") {
+        const next = new Set<string>();
+        for (const it of r.items) {
+          if (it.status === "importable") next.add(it.sourceId);
+        }
+        setCcSelected(next);
+      } else {
+        setCcSelected(new Set());
+      }
+    } catch (e) {
+      setCcScan({
+        status: "error",
+        triedPaths: [],
+        items: [],
+        error: String(e),
+      });
+    } finally {
+      setCcScanBusy(false);
+    }
+  };
+
+  const toggleCcItem = (sourceId: string, selectable: boolean) => {
+    if (!selectable) return;
+    setCcSelected((prev) => {
+      const n = new Set(prev);
+      if (n.has(sourceId)) n.delete(sourceId);
+      else n.add(sourceId);
+      return n;
+    });
+  };
+
+  const runCcImport = async () => {
+    if (!api.isTauri() || ccSelected.size === 0) return;
+    setCcImportBusy(true);
+    setCcImportMsg(null);
+    try {
+      const items = ccScan?.items ?? [];
+      let activateId: string | null = null;
+      if (ccActivateCurrent) {
+        const cur = items.find(
+          (i) => i.isCurrent && ccSelected.has(i.sourceId),
+        );
+        activateId = cur?.suggestedId ?? null;
+      }
+      const r = await api.providersCcSwitchImport({
+        sourceIds: Array.from(ccSelected),
+        onConflict: ccConflict,
+        activateId,
+      });
+      if (r.providers) setList(r.providers);
+      const failN = r.failed?.length ?? 0;
+      setCcImportMsg(
+        tr("prov.ccSwitch.importDone", {
+          n: String(r.imported),
+          skipped: String(r.skipped),
+          failed: String(failN),
+        }),
+      );
+      if (r.imported > 0) {
+        onProviderActivated?.();
+        await reload();
+      }
+      if (failN === 0 && r.imported > 0) {
+        // Keep dialog open briefly so user sees summary; they can close.
+      }
+    } catch (e) {
+      setCcImportMsg(String(e));
+    } finally {
+      setCcImportBusy(false);
+    }
   };
 
   const openOfficial = () => {
@@ -390,15 +517,27 @@ export function ProvidersPanel({
       <div className="prov-split">
         {/* ── Left: list ───────────────────────────────────────────── */}
         <aside className="prov-split__list">
-          <button
-            type="button"
-            className="btn btn--solid prov-add-btn"
-            onClick={openCreate}
-            disabled={busy}
-          >
-            <IconPlus size={16} />
-            {tr("prov.new")}
-          </button>
+          <div className="prov-list-actions">
+            <button
+              type="button"
+              className="btn btn--solid prov-add-btn"
+              onClick={openCreate}
+              disabled={busy}
+            >
+              <IconPlus size={16} />
+              {tr("prov.new")}
+            </button>
+            <button
+              type="button"
+              className="btn btn--ghost prov-cc-import-btn"
+              onClick={openCcImport}
+              disabled={busy || !api.isTauri()}
+              data-testid="prov-cc-switch-import"
+              title={tr("prov.ccSwitch.importBtnHint")}
+            >
+              {tr("prov.ccSwitch.importBtn")}
+            </button>
+          </div>
 
           <div className="prov-rail" role="list">
             {showOfficialRow && (
@@ -884,6 +1023,200 @@ export function ProvidersPanel({
             id: deleteTarget?.name || deleteTarget?.id || "",
           })}
         </p>
+      </GlassModal>
+
+      <GlassModal
+        open={ccImportOpen}
+        onClose={() => !ccImportBusy && setCcImportOpen(false)}
+        title={tr("prov.ccSwitch.title")}
+        size="lg"
+        closeLabel={tr("common.close")}
+        wrapBody
+        bodyClassName="prov-cc-modal-body"
+        footer={
+          <>
+            <button
+              type="button"
+              className="btn btn--ghost"
+              disabled={ccImportBusy}
+              onClick={() => setCcImportOpen(false)}
+            >
+              {tr("common.cancel")}
+            </button>
+            <button
+              type="button"
+              className="btn btn--ghost"
+              disabled={ccScanBusy || ccImportBusy}
+              onClick={() => void runCcScan()}
+            >
+              <IconRefresh size={14} />
+              {tr("prov.ccSwitch.rescan")}
+            </button>
+            <button
+              type="button"
+              className="btn btn--solid"
+              disabled={
+                ccImportBusy ||
+                ccScanBusy ||
+                ccSelected.size === 0 ||
+                ccScan?.status !== "ok"
+              }
+              onClick={() => void runCcImport()}
+            >
+              {ccImportBusy
+                ? tr("prov.ccSwitch.importing")
+                : tr("prov.ccSwitch.importAction", {
+                    n: String(ccSelected.size),
+                  })}
+            </button>
+          </>
+        }
+      >
+        {ccScanBusy && !ccScan ? (
+          <p className="prov-cc-status" role="status">
+            {tr("prov.ccSwitch.scanning")}
+          </p>
+        ) : null}
+
+        {ccScan?.status === "not_found" ? (
+          <div className="prov-cc-empty">
+            <p>{tr("prov.ccSwitch.notFound")}</p>
+            <p className="prov-cc-muted">{tr("prov.ccSwitch.notFoundHint")}</p>
+            {ccScan.triedPaths.length > 0 ? (
+              <details className="prov-cc-paths">
+                <summary>{tr("prov.ccSwitch.triedPaths")}</summary>
+                <ul>
+                  {ccScan.triedPaths.map((p) => (
+                    <li key={p}>
+                      <code>{p}</code>
+                    </li>
+                  ))}
+                </ul>
+              </details>
+            ) : null}
+          </div>
+        ) : null}
+
+        {ccScan?.status === "error" ? (
+          <div className="prov-cc-empty" role="alert">
+            <p>{tr("prov.ccSwitch.scanError")}</p>
+            <p className="prov-cc-muted">{ccScan.error}</p>
+          </div>
+        ) : null}
+
+        {ccScan?.status === "ok" ? (
+          <>
+            <p className="prov-cc-muted">
+              {tr("prov.ccSwitch.found", {
+                n: String(ccScan.items.length),
+                path: ccScan.dbPath || "",
+              })}
+            </p>
+            {ccScan.items.length === 0 ? (
+              <p className="prov-cc-empty">{tr("prov.ccSwitch.noItems")}</p>
+            ) : (
+              <ul className="prov-cc-list" role="list">
+                {ccScan.items.map((it) => {
+                  const selectable =
+                    it.status === "importable" ||
+                    (it.status === "exists" && ccConflict !== "skip");
+                  const checked = ccSelected.has(it.sourceId);
+                  return (
+                    <li
+                      key={it.sourceId}
+                      className={
+                        "prov-cc-item" +
+                        (checked ? " is-checked" : "") +
+                        (!selectable ? " is-disabled" : "")
+                      }
+                    >
+                      <label className="prov-cc-item__row">
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          disabled={!selectable || ccImportBusy}
+                          onChange={() =>
+                            toggleCcItem(it.sourceId, selectable)
+                          }
+                        />
+                        <span className="prov-cc-item__main">
+                          <span className="prov-cc-item__name">
+                            {it.name}
+                            {it.isCurrent ? (
+                              <span className="prov-cc-badge">
+                                {tr("prov.ccSwitch.current")}
+                              </span>
+                            ) : null}
+                          </span>
+                          <span className="prov-cc-item__sub">
+                            {it.baseUrl || "—"}
+                            {it.model ? ` · ${it.model}` : ""}
+                            {it.apiBackend ? ` · ${it.apiBackend}` : ""}
+                          </span>
+                          <span
+                            className={
+                              "prov-cc-item__status prov-cc-item__status--" +
+                              it.status
+                            }
+                          >
+                            {tr(ccSwitchStatusKey(it.status))}
+                            {it.statusDetail
+                              ? ` — ${it.statusDetail}`
+                              : it.keyHint
+                                ? ` · ${it.keyHint}`
+                                : ""}
+                          </span>
+                        </span>
+                      </label>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+
+            <div className="prov-cc-options">
+              <label className="prov-cc-option">
+                <span>{tr("prov.ccSwitch.conflict")}</span>
+                <Select
+                  value={ccConflict}
+                  onChange={(v) =>
+                    setCcConflict(v as "skip" | "overwrite" | "rename")
+                  }
+                  options={[
+                    {
+                      value: "skip",
+                      label: tr("prov.ccSwitch.conflict.skip"),
+                    },
+                    {
+                      value: "overwrite",
+                      label: tr("prov.ccSwitch.conflict.overwrite"),
+                    },
+                    {
+                      value: "rename",
+                      label: tr("prov.ccSwitch.conflict.rename"),
+                    },
+                  ]}
+                  disabled={ccImportBusy}
+                />
+              </label>
+              <label className="prov-cc-check">
+                <input
+                  type="checkbox"
+                  checked={ccActivateCurrent}
+                  disabled={ccImportBusy}
+                  onChange={(e) => setCcActivateCurrent(e.target.checked)}
+                />
+                <span>{tr("prov.ccSwitch.activateCurrent")}</span>
+              </label>
+            </div>
+          </>
+        ) : null}
+
+        {ccImportMsg ? (
+          <p className="prov-cc-result" role="status">
+            {ccImportMsg}
+          </p>
+        ) : null}
       </GlassModal>
     </div>
   );

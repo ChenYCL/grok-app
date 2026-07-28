@@ -71,6 +71,8 @@ tower = "0.5"
 tower-http = { version = "0.6", features = ["fs", "trace"] }
 rand = "0.8"
 tracing-appender = "0.2"
+# Read-only import from CC Switch (`~/.cc-switch/cc-switch.db`).
+rusqlite = { version = "0.32", features = ["bundled"] }
 
 # Windows system proxy (WinINET registry) for child-process env injection — NEW-02.
 # `windows` — shell integration (AUMID, Show Desktop / taskbar styles) in win_shell.rs.

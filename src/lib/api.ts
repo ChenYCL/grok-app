@@ -1684,6 +1684,59 @@ export async function providersList() {
   return invoke<ProvidersListResult>("providers_list");
 }
 
+/** CC Switch Grok Build provider preview (no full API key). */
+export interface CcSwitchProviderPreview {
+  sourceId: string;
+  name: string;
+  websiteUrl?: string | null;
+  category?: string | null;
+  isCurrent: boolean;
+  suggestedId: string;
+  model: string;
+  baseUrl: string;
+  apiBackend: string;
+  hasApiKey: boolean;
+  keyHint?: string | null;
+  /** importable | official | missing_key | proxy_managed | invalid | exists */
+  status: string;
+  statusDetail?: string | null;
+}
+
+export interface CcSwitchScanResult {
+  status: "ok" | "not_found" | "error" | string;
+  dbPath?: string | null;
+  triedPaths: string[];
+  items: CcSwitchProviderPreview[];
+  error?: string | null;
+}
+
+export interface CcSwitchImportResult {
+  imported: number;
+  skipped: number;
+  failed: Array<{ sourceId: string; reason: string }>;
+  providers?: ProvidersListResult | null;
+}
+
+/** Read-only scan of local CC Switch `cc-switch.db` (Grok Build tab). */
+export async function providersCcSwitchScan() {
+  return invoke<CcSwitchScanResult>("providers_cc_switch_scan");
+}
+
+/** Import selected CC Switch providers into agent-home config.toml. */
+export async function providersCcSwitchImport(body: {
+  sourceIds: string[];
+  onConflict?: "skip" | "overwrite" | "rename";
+  activateId?: string | null;
+}) {
+  return invoke<CcSwitchImportResult>("providers_cc_switch_import", {
+    body: {
+      sourceIds: body.sourceIds,
+      onConflict: body.onConflict ?? "skip",
+      activateId: body.activateId ?? null,
+    },
+  });
+}
+
 /** Switch to official Grok Build or a custom provider (writes config.toml default). */
 export async function providersActivate(
   source: "official" | "custom",

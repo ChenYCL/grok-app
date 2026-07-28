@@ -13,6 +13,7 @@ See `docs/llm-wiki/release.md`.
 
 ### Added
 
+- **Import providers from CC Switch** (#167): Settings → Account → Custom providers → scan local `cc-switch.db` (Grok Build tab), multi-select preview, import into agent-home (macOS / Windows / Linux path resolution + optional override)
 - Trust sandbox: `path_scope` allowlist for absolute fs / `media://` (trusted projects, app data, grants)
 - CSP enabled; asset protocol denies common secret paths
 - Phone mirror: default **read-only**, regenerate link (token rotate), allow-write toggle

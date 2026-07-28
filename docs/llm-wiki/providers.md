@@ -75,8 +75,40 @@ Host must rebind both sides on every switch and before each ACP spawn (`prepare_
 | `providers_set_default` | Set default model id |
 | `providers_ping` | `GET {base}/models` RTT |
 | `providers_list_models` | Fetch remote model ids |
+| `providers_cc_switch_scan` | Read-only scan of local **CC Switch** Grok Build providers |
+| `providers_cc_switch_import` | Import selected CC Switch rows into custom providers |
 | `editors_list` | Detected local IDEs |
 | `open_in_editor` | Open path in chosen editor |
+
+## Import from CC Switch (#167)
+
+Settings → Account → Custom providers → **Import from CC Switch**.
+
+| Step | Behavior |
+|------|----------|
+| Detect | Resolve `cc-switch.db` (see paths below); open SQLite **read-only** |
+| Scope | `providers` where `app_type = 'grokbuild'` |
+| Preview | Multi-select list (no full API keys; status badges) |
+| Import | Map TOML → `providers_upsert` into current agent-home `config.toml` |
+
+### CC Switch data paths (cross-platform)
+
+| Priority | Location |
+|----------|----------|
+| 1 | `GROK_APP_CC_SWITCH_DIR` or `CC_SWITCH_HOME` env (if set and contains db) |
+| 2 | Tauri Store override: `app_config_dir_override` in `app_paths.json` under `com.ccswitch.desktop` |
+| 3 | **Default:** `{user_home}/.cc-switch/cc-switch.db` (macOS / Windows / Linux) |
+| 4 | Windows only: `{HOME}/.cc-switch/cc-switch.db` when Profile default is missing (v3.10.3 legacy) |
+
+Store file locations:
+
+| OS | `app_paths.json` |
+|----|------------------|
+| macOS | `~/Library/Application Support/com.ccswitch.desktop/app_paths.json` |
+| Windows | `%APPDATA%\com.ccswitch.desktop\app_paths.json` |
+| Linux | `${XDG_DATA_HOME:-~/.local/share}/com.ccswitch.desktop/app_paths.json` |
+
+Official CC Switch rows are not imported as custom relays. Proxy-takeover placeholders (`PROXY_MANAGED`, `127.0.0.1:…`) are rejected.
 
 ## Security
 

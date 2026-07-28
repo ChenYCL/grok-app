@@ -41,6 +41,7 @@ mod permission;
 mod project_rules;
 mod permission_rules;
 mod providers;
+mod cc_switch_import;
 mod secrets;
 mod session_import;
 mod session_content_search;
@@ -362,6 +363,8 @@ pub fn run() {
             commands::providers_activate,
             commands::providers_ping,
             commands::providers_list_models,
+            commands::providers_cc_switch_scan,
+            commands::providers_cc_switch_import,
             commands::editors_list,
             commands::open_in_editor,
             mirror::mirror_status,
