@@ -33,6 +33,7 @@ See `docs/llm-wiki/release.md`.
 - **Composer model picker search**: filter the nested model list by id/label (case-insensitive) with empty state; clears on close/back; effort submenu unchanged
 - **Chat transcript font scale**: Settings → Appearance — Small / Medium / Large for message text (`html[data-chat-font]`, localStorage `grok.chatFontScale`; default Medium matches prior CSS)
 - **Default code line-wrap**: Settings → Appearance toggle “Wrap code lines by default” (`localStorage`); chat code blocks honor it on mount; per-block wrap still works
+- **Message action buttons visibility**: Settings → Appearance — On hover (default) or Always show Copy / Export / Regenerate / Edit (`html[data-msg-actions]`, localStorage `grok.messageActionsVisibility`; better for trackpads and accessibility)
 - **General workspace**: app-managed `{app_data}/workspaces/general` project (`system:general`) for chats without a user folder — agent can create/edit files without the “bind a project first” toast; always trusted, pinned, not removable
 - **Session Markdown export options**: choose thinking + tool summaries; download `.md` or copy to clipboard (session menu / `/export`)
 - **Updater production status**: About shows silent vs GitHub update channel; Host `updater_status` DTO; `scripts/verify-updater-setup.sh` for maintainer/CI prerequisites (no secret values printed)

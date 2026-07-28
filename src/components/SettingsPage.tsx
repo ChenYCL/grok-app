@@ -100,6 +100,13 @@ import {
   saveCodeWrapPref,
 } from "@/lib/codeWrapPref";
 import {
+  MESSAGE_ACTIONS_VISIBILITIES,
+  applyMessageActionsVisibility,
+  loadMessageActionsVisibility,
+  saveMessageActionsVisibility,
+  type MessageActionsVisibility,
+} from "@/lib/messageActionsPref";
+import {
   SETTINGS_NAV,
   buildSettingsHash,
   defaultTabFor,
@@ -789,6 +796,20 @@ export function SettingsPage({
 /** Chat code-block wrap default — frontend-only localStorage. */
   const [codeWrapDefault, setCodeWrapDefault] = useState(() =>
     loadCodeWrapPref(),
+  );
+  /** Message action buttons: hover vs always visible. */
+  const [messageActionsVisibility, setMessageActionsVisibilityState] =
+    useState<MessageActionsVisibility>(() => loadMessageActionsVisibility());
+  useEffect(() => {
+    applyMessageActionsVisibility(loadMessageActionsVisibility());
+  }, []);
+  const onMessageActionsVisibility = useCallback(
+    (next: MessageActionsVisibility) => {
+      setMessageActionsVisibilityState(next);
+      saveMessageActionsVisibility(next);
+      applyMessageActionsVisibility(next);
+    },
+    [],
   );
 
   const marqueeRef = useRef<{
@@ -2182,6 +2203,45 @@ export function SettingsPage({
                       onClick={() => onChatFontScale(scale)}
                     >
                       {t(`settings.chatFontScale.${scale}`)}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+            <div
+              className={
+                "settings-card" +
+                rowHighlight("settings-anchor-messageActions")
+              }
+              id="settings-anchor-messageActions"
+            >
+              <div className="settings-row">
+                <div className="settings-row__text">
+                  <div className="settings-row__label">
+                    {t("settings.messageActions")}
+                  </div>
+                  <div className="settings-row__desc">
+                    {t("settings.messageActionsDesc")}
+                  </div>
+                </div>
+                <div
+                  className="settings-seg"
+                  role="radiogroup"
+                  aria-label={t("settings.messageActions")}
+                >
+                  {MESSAGE_ACTIONS_VISIBILITIES.map((mode) => (
+                    <button
+                      key={mode}
+                      type="button"
+                      role="radio"
+                      aria-checked={messageActionsVisibility === mode}
+                      className={
+                        "settings-seg__btn" +
+                        (messageActionsVisibility === mode ? " is-on" : "")
+                      }
+                      onClick={() => onMessageActionsVisibility(mode)}
+                    >
+                      {t(`settings.messageActions.${mode}`)}
                     </button>
                   ))}
                 </div>

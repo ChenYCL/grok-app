@@ -850,7 +850,11 @@ export const zhTW: Record<MessageKey, string> = {
   "settings.codeWrapDefault": "預設自動換行程式碼",
   "settings.codeWrapDefaultDesc":
     "新的聊天程式碼區塊預設開啟軟換行。仍可在每個區塊上單獨切換。",
-
+  "settings.messageActions": "訊息操作按鈕",
+  "settings.messageActionsDesc":
+    "複製、匯出、重新生成、編輯：懸停顯示，或始終可見（觸控板與無障礙更友善）",
+  "settings.messageActions.hover": "懸停顯示",
+  "settings.messageActions.always": "始終顯示",
   "settings.skin": "配色皮膚",
   "settings.skinDesc": "強調色與表面色板（可與淺/深色疊加）",
   "settings.skin.default": "預設",
