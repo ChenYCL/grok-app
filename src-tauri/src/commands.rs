@@ -1621,7 +1621,12 @@ pub async fn export_support_bundle(
         serde_json::to_string_pretty(&report).map_err(|e| e.to_string())?
     };
 
-    let tmp = crate::support_bundle::write_support_bundle(&doctor)?;
+    // Zip + native save dialog must not block the async runtime (macOS rfd hangs).
+    let tmp = tauri::async_runtime::spawn_blocking(move || {
+        crate::support_bundle::write_support_bundle(&doctor)
+    })
+    .await
+    .map_err(|e| e.to_string())??;
     save_and_reveal_file(
         tmp,
         "Save support bundle",
@@ -1629,6 +1634,7 @@ pub async fn export_support_bundle(
         "Zip",
         &["zip"],
     )
+    .await
 }
 
 /// Full session diagnostic zip: messages, meta, settings, CLI probe, agent trail, logs.
@@ -1643,7 +1649,12 @@ pub async fn export_session_bundle(
         return Err("session id is empty".into());
     }
     let runtime = mgr.diagnostic_runtime_for(&sid);
-    let tmp = crate::support_bundle::write_session_bundle(&sid, runtime)?;
+    let sid_for_zip = sid.clone();
+    let tmp = tauri::async_runtime::spawn_blocking(move || {
+        crate::support_bundle::write_session_bundle(&sid_for_zip, runtime)
+    })
+    .await
+    .map_err(|e| e.to_string())??;
     let short: String = sid.chars().take(8).collect();
     let suggested = format!("grok-app-session-{short}.zip");
     save_and_reveal_file(
@@ -1653,6 +1664,7 @@ pub async fn export_session_bundle(
         "Zip",
         &["zip"],
     )
+    .await
 }
 
 /// Export the Grok Build CLI session trace (`grok trace <agent_id> --local`).
@@ -1802,31 +1814,61 @@ fn session_trace_export_blocking(
     };
 
     let suggested = format!("grok-trace-{short}.tar.gz");
-    save_and_reveal_file(
+    // Already on a blocking thread (session_trace_export spawns us).
+    save_and_reveal_file_blocking(
         archive,
         "Save session trace",
         &suggested,
         "Trace archive",
-        &["tar.gz", "gz", "tgz"],
+        &["tar.gz".into(), "gz".into(), "tgz".into()],
     )
 }
 
-fn save_and_reveal_file(
+/// Save dialog + reveal. Always runs rfd/copy on a blocking thread so async
+/// commands (export bundle/trace) do not hang on macOS when the dialog needs
+/// main-thread affinity via spawn_blocking.
+async fn save_and_reveal_file(
     tmp: std::path::PathBuf,
     dialog_title: &str,
     fallback_name: &str,
     filter_name: &str,
     extensions: &[&str],
 ) -> Result<serde_json::Value, String> {
+    let dialog_title = dialog_title.to_string();
+    let fallback_name = fallback_name.to_string();
+    let filter_name = filter_name.to_string();
+    let extensions: Vec<String> = extensions.iter().map(|s| (*s).to_string()).collect();
+
+    tauri::async_runtime::spawn_blocking(move || {
+        save_and_reveal_file_blocking(
+            tmp,
+            &dialog_title,
+            &fallback_name,
+            &filter_name,
+            &extensions,
+        )
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+fn save_and_reveal_file_blocking(
+    tmp: std::path::PathBuf,
+    dialog_title: &str,
+    fallback_name: &str,
+    filter_name: &str,
+    extensions: &[String],
+) -> Result<serde_json::Value, String> {
     let suggested = tmp
         .file_name()
         .and_then(|s| s.to_str())
         .unwrap_or(fallback_name)
         .to_string();
+    let ext_refs: Vec<&str> = extensions.iter().map(String::as_str).collect();
     let dest = rfd::FileDialog::new()
         .set_title(dialog_title)
         .set_file_name(&suggested)
-        .add_filter(filter_name, extensions)
+        .add_filter(filter_name, &ext_refs)
         .save_file();
 
     let final_path = if let Some(dest) = dest {
@@ -1834,6 +1876,7 @@ fn save_and_reveal_file(
         let _ = std::fs::remove_file(&tmp);
         dest
     } else {
+        // User cancelled: keep temp zip and still return path so UI can open it.
         tmp
     };
 

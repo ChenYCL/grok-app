@@ -31,6 +31,11 @@ See `docs/llm-wiki/release.md`.
 - High-frequency stream tokens are **coalesced** (~48ms) before React state updates to reduce UI thrash on long answers
 - Long tools without intermediate status no longer false-trigger hard stream stall (heartbeat)
 - Chat scroll **bounce mid-transcript** (e.g. tall org-chart / table answers): content-aware row estimates, stricter stick re-pin, no force-mount of tail while reading history, shrink-thrash ignored
+- **Long-run freeze / stuck “引导” / diagnostic export hang**:
+  - Agent stdin writes now time out (8s); a wedged child fails pending RPCs, emits process exit, and is killed so the turn does not stay “工作中” overnight
+  - Session/support zip save dialogs run on `spawn_blocking` (macOS `rfd` no longer blocks the async runtime)
+  - Heavy zip build moved off the async runtime; diagnostic runtime snapshot includes **background** busy turns
+  - Queue **引导** button has a 55s UI timeout so “正在引导…” cannot stick forever
 
 ### Security
 

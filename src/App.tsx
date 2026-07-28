@@ -6214,16 +6214,27 @@ export default function App() {
 
       setGuidingQueueItemId(item.id);
       try {
-        await api.sessionInterject(
-          agentText,
-          item.storedDisplay,
-          item.attachments.map((attachment) => ({
-            path: attachment.path,
-            name: attachment.name,
-            isDir: attachment.isDir,
-          })),
-          session.sessionId,
-        );
+        // Host interject has its own RPC timeout; also bound the UI so a wedged
+        // agent cannot leave the button stuck on "正在引导…" forever.
+        const GUIDE_UI_TIMEOUT_MS = 55_000;
+        await Promise.race([
+          api.sessionInterject(
+            agentText,
+            item.storedDisplay,
+            item.attachments.map((attachment) => ({
+              path: attachment.path,
+              name: attachment.name,
+              isDir: attachment.isDir,
+            })),
+            session.sessionId,
+          ),
+          new Promise<never>((_, reject) => {
+            window.setTimeout(
+              () => reject(new Error("guide timeout")),
+              GUIDE_UI_TIMEOUT_MS,
+            );
+          }),
+        ]);
         sendQueue.removeItem(item.id);
       } catch {
         showToast(tr("composer.queueGuideFailed"), 3600);

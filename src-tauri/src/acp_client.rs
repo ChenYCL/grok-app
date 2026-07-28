@@ -115,6 +115,10 @@ struct Pending {
 
 const HANDSHAKE_TIMEOUT_SECS: u64 = 45;
 const AUTH_TIMEOUT_SECS: u64 = 12;
+/// Max wait for a single stdin write (JSON-RPC line). A wedged agent with a full
+/// pipe used to block forever here — which froze interject ("引导"), cancel, and
+/// any other Host→agent RPC before the request-level timeout could start.
+const STDIN_WRITE_TIMEOUT_SECS: u64 = 8;
 /// Max **silence** (no `session/update`) while waiting for `session/prompt`.
 /// Long tool chains that keep emitting updates re-arm this window.
 const PROMPT_IDLE_TIMEOUT_SECS: u64 = 600;
@@ -977,14 +981,41 @@ impl AcpClient {
     async fn write_line(&self, value: &Value) -> Result<(), String> {
         let mut line = serde_json::to_string(value).map_err(|e| e.to_string())?;
         line.push('\n');
-        let mut guard = self.stdin.lock().await;
-        let stdin = guard.as_mut().ok_or_else(|| "stdin closed".to_string())?;
-        stdin
-            .write_all(line.as_bytes())
-            .await
-            .map_err(|e| e.to_string())?;
-        stdin.flush().await.map_err(|e| e.to_string())?;
-        Ok(())
+        // Bound stdin lock+write: a dead/wedged agent must not pin the Host
+        // forever (interject / cancel / prompt all go through here).
+        let write_fut = async {
+            let mut guard = self.stdin.lock().await;
+            let stdin = guard.as_mut().ok_or_else(|| "stdin closed".to_string())?;
+            stdin
+                .write_all(line.as_bytes())
+                .await
+                .map_err(|e| e.to_string())?;
+            stdin.flush().await.map_err(|e| e.to_string())?;
+            Ok::<(), String>(())
+        };
+        match tokio::time::timeout(
+            std::time::Duration::from_secs(STDIN_WRITE_TIMEOUT_SECS),
+            write_fut,
+        )
+        .await
+        {
+            Ok(r) => r,
+            Err(_) => {
+                // Wedged agent: free waiters, surface ProcessExited so Host ends
+                // the turn, and kill the child so the pool slot is not held as
+                // "still working" overnight.
+                self.reader_alive.store(false, Ordering::SeqCst);
+                let head = format!(
+                    "stdin write timeout after {STDIN_WRITE_TIMEOUT_SECS}s (agent may be wedged)"
+                );
+                let detail = self.format_exit_detail(&head);
+                error!("{detail}");
+                self.fail_all_pending(&detail);
+                let _ = self.event_tx.send(AcpEvent::ProcessExited { code: None });
+                self.kill().await;
+                Err(head)
+            }
+        }
     }
 }
 

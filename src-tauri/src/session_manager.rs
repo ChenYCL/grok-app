@@ -2071,39 +2071,22 @@ impl SessionManager {
         }
     }
 
-    /// Runtime diagnostics for a session export package (live or parked).
+    /// Runtime diagnostics for a session export package (live, background, or parked).
     /// Returns `None` when the session is not currently attached to a process.
     pub fn diagnostic_runtime_for(&self, app_session_id: &str) -> Option<serde_json::Value> {
         {
             let guard = self.inner.lock();
             if let Some(s) = guard.as_ref() {
                 if s.app_session_id == app_session_id {
-                    let cwd = s.acp.as_ref().map(|c| c.cwd().display().to_string());
-                    let agent_alive = s.acp.as_ref().is_some_and(|c| c.is_alive());
-                    return Some(serde_json::json!({
-                        "slot": "live",
-                        "state": format!("{:?}", s.fsm.state()),
-                        "backend": s.backend,
-                        "modelId": s.model_id,
-                        "effort": s.effort,
-                        "mode": s.product_mode,
-                        "permissionPolicy": s.policy.as_str(),
-                        "projectPath": s.project_path,
-                        "agentSessionId": s.meta.agent_session_id,
-                        "processId": s.process_id,
-                        "agentAlive": agent_alive,
-                        "cwd": cwd,
-                        "streamingMessageId": s.streaming_message_id,
-                        "toolsThisTurn": s.tools_this_turn,
-                        "needsHistoryBootstrap": s.needs_history_bootstrap,
-                        "lastError": s.fsm.last_error().map(|e| {
-                            serde_json::json!({
-                                "code": e.code.as_str(),
-                                "message": e.message,
-                            })
-                        }),
-                    }));
+                    return Some(Self::live_runtime_json(s, "live"));
                 }
+            }
+        }
+        {
+            let bg = self.background.lock();
+            if let Some(s) = bg.get(app_session_id) {
+                // Overnight / demoted busy turns live here — export must see them.
+                return Some(Self::live_runtime_json(s, "background"));
             }
         }
         let parked = self.parked.lock();
@@ -2123,11 +2106,43 @@ impl SessionManager {
                 "cwd": p.acp.cwd().display().to_string(),
                 "streamingMessageId": serde_json::Value::Null,
                 "toolsThisTurn": 0,
+                "openToolCount": 0,
+                "promptInFlight": false,
                 "needsHistoryBootstrap": p.needs_history_bootstrap,
                 "lastError": serde_json::Value::Null,
             }));
         }
         None
+    }
+
+    fn live_runtime_json(s: &LiveSession, slot: &str) -> serde_json::Value {
+        let cwd = s.acp.as_ref().map(|c| c.cwd().display().to_string());
+        let agent_alive = s.acp.as_ref().is_some_and(|c| c.is_alive());
+        serde_json::json!({
+            "slot": slot,
+            "state": format!("{:?}", s.fsm.state()),
+            "backend": s.backend,
+            "modelId": s.model_id,
+            "effort": s.effort,
+            "mode": s.product_mode,
+            "permissionPolicy": s.policy.as_str(),
+            "projectPath": s.project_path,
+            "agentSessionId": s.meta.agent_session_id,
+            "processId": s.process_id,
+            "agentAlive": agent_alive,
+            "cwd": cwd,
+            "streamingMessageId": s.streaming_message_id,
+            "toolsThisTurn": s.tools_this_turn,
+            "openToolCount": s.open_tool_ids.len(),
+            "promptInFlight": s.prompt_in_flight,
+            "needsHistoryBootstrap": s.needs_history_bootstrap,
+            "lastError": s.fsm.last_error().map(|e| {
+                serde_json::json!({
+                    "code": e.code.as_str(),
+                    "message": e.message,
+                })
+            }),
+        })
     }
 
     /// Keep live session meta title in sync after store rename / auto-title.
