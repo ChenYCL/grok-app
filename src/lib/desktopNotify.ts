@@ -14,6 +14,25 @@ export type DesktopNotifyOptions = {
 
 export type NotifyPermission = "granted" | "denied" | "default" | "unsupported";
 
+export type DesktopNotifyKind = "turn_done" | "permission";
+
+export type DesktopNotifyPrefs = {
+  notifyOnTurnDone?: boolean;
+  notifyOnPermission?: boolean;
+};
+
+/**
+ * Whether user prefs allow a desktop notification of this kind.
+ * Missing / undefined prefs default to **on** (product default).
+ */
+export function shouldShowDesktopNotify(
+  kind: DesktopNotifyKind,
+  prefs: DesktopNotifyPrefs | null | undefined,
+): boolean {
+  if (kind === "turn_done") return prefs?.notifyOnTurnDone !== false;
+  return prefs?.notifyOnPermission !== false;
+}
+
 function notificationCtor(): typeof Notification | null {
   if (typeof globalThis === "undefined") return null;
   const N = (globalThis as { Notification?: typeof Notification }).Notification;
@@ -48,9 +67,44 @@ export async function ensureNotifyPermission(): Promise<NotifyPermission> {
   }
 }
 
+/** Bring the app window to the front (Web + Tauri). Fail-closed. */
+export function focusAppFromNotification(): void {
+  try {
+    if (typeof window !== "undefined") {
+      window.focus();
+    }
+  } catch {
+    /* ignore */
+  }
+  void (async () => {
+    try {
+      const { getCurrentWindow } = await import("@tauri-apps/api/window");
+      const w = getCurrentWindow();
+      try {
+        await w.unminimize();
+      } catch {
+        /* ignore */
+      }
+      try {
+        await w.show();
+      } catch {
+        /* ignore */
+      }
+      try {
+        await w.setFocus();
+      } catch {
+        /* ignore */
+      }
+    } catch {
+      /* not in Tauri / API missing */
+    }
+  })();
+}
+
 /**
  * Show a system notification when permission is granted.
  * Returns true only when a Notification object was constructed.
+ * Click focuses the app window when possible.
  */
 export function showDesktopNotification(opts: DesktopNotifyOptions): boolean {
   if (notificationSupport() !== "granted") return false;
@@ -61,12 +115,26 @@ export function showDesktopNotification(opts: DesktopNotifyOptions): boolean {
   const N = notificationCtor();
   if (!N) return false;
   try {
-    // eslint-disable-next-line no-new
-    new N(opts.title, {
+    const n = new N(opts.title, {
       body: opts.body,
       tag: opts.tag,
       silent: false,
     });
+    try {
+      if (n && typeof n === "object") {
+        n.onclick = () => {
+          try {
+            // Some browsers leave the notification open until closed.
+            n.close?.();
+          } catch {
+            /* ignore */
+          }
+          focusAppFromNotification();
+        };
+      }
+    } catch {
+      /* ignore onclick assignment failures */
+    }
     return true;
   } catch {
     return false;

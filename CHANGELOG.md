@@ -27,6 +27,7 @@ See `docs/llm-wiki/release.md`.
 - **Regenerate last assistant reply**: refresh action on the latest completed assistant turn (and failed turns) resends the last user message unchanged via the same rewind + send path as edit-resend
 - **Remove linked git worktree from UI**: branch/worktree menu trash on non-main rows; in-app confirm (force retry if dirty); host `git_worktree_remove`; switches to main when removing the active cwd
 - **Command palette actions**: search panel lists filterable quick actions (Settings sections, Doctor, shortcuts help, automations, tasks panel, new chat, add project) above chats/projects
+- **Desktop notification preferences**: Settings → General → App toggles for turn-done and permission desktop notifications (default on, persisted). Clicking a notification focuses the app window
 - **General workspace**: app-managed `{app_data}/workspaces/general` project (`system:general`) for chats without a user folder — agent can create/edit files without the “bind a project first” toast; always trusted, pinned, not removable
 - **Session Markdown export options**: choose thinking + tool summaries; download `.md` or copy to clipboard (session menu / `/export`)
 - **Updater production status**: About shows silent vs GitHub update channel; Host `updater_status` DTO; `scripts/verify-updater-setup.sh` for maintainer/CI prerequisites (no secret values printed)

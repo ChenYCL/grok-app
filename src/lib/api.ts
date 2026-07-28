@@ -978,6 +978,10 @@ export interface AppSettings {
   voiceKeepAgentsOnEnd?: boolean;
   /** Window close hides to tray when true (default). */
   closeToTray?: boolean;
+  /** Desktop notification when an agent turn finishes (default true). */
+  notifyOnTurnDone?: boolean;
+  /** Desktop notification when the agent requests permission (default true). */
+  notifyOnPermission?: boolean;
   /**
    * Allow CLI install when the mirror has no published SHA-256 (default false).
    * Mismatch always fails. Prefer fixing the mirror over enabling this.

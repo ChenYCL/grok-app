@@ -244,6 +244,12 @@ pub struct AppSettings {
     /// When true, window close hides to tray. When false, close quits the app.
     #[serde(default = "default_close_to_tray")]
     pub close_to_tray: bool,
+    /// Desktop notification when an agent turn finishes (default on).
+    #[serde(default = "default_true")]
+    pub notify_on_turn_done: bool,
+    /// Desktop notification when the agent requests permission (default on).
+    #[serde(default = "default_true")]
+    pub notify_on_permission: bool,
     /// When true, dictation auto-sends on end-of-speech silence.
     #[serde(default)]
     pub voice_dictation_auto_send: bool,
@@ -360,6 +366,8 @@ impl Default for AppSettings {
             voice_dictation_auto_send: false,
             voice_keep_agents_on_end: true,
             close_to_tray: default_close_to_tray(),
+            notify_on_turn_done: true,
+            notify_on_permission: true,
             proxy_mode: default_proxy_mode(),
             proxy_url: None,
             proxy_no_proxy: None,
@@ -1729,6 +1737,16 @@ mod tests {
     fn subagents_enabled_defaults_true_when_missing_from_json() {
         let s: AppSettings = serde_json::from_str(legacy_settings_json()).expect("deserialize");
         assert!(s.subagents_enabled);
+    }
+
+    #[test]
+    fn notify_prefs_default_true_when_missing_from_json() {
+        let s: AppSettings = serde_json::from_str(legacy_settings_json()).expect("deserialize");
+        assert!(s.notify_on_turn_done);
+        assert!(s.notify_on_permission);
+        let d = AppSettings::default();
+        assert!(d.notify_on_turn_done);
+        assert!(d.notify_on_permission);
     }
 
     #[test]

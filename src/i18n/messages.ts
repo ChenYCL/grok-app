@@ -843,7 +843,13 @@ const en = {
     "When on, the red close button hides the app to the menu bar / system tray. Turn off to quit the app on close (Quit from the tray still works either way).",
   "settings.reopenLastSession": "Reopen last chat on startup",
   "settings.reopenLastSessionDesc": "Off by default (start on a new chat). When on, open the chat you were last viewing if it still exists and is not archived.",
-"settings.prefsScope": "Remember model & permission at",
+  "settings.notifyOnTurnDone": "Notify when a turn finishes",
+  "settings.notifyOnTurnDoneDesc":
+    "Show a desktop notification when the agent finishes a turn and the app is in the background. Click the notification to focus the window.",
+  "settings.notifyOnPermission": "Notify on permission requests",
+  "settings.notifyOnPermissionDesc":
+    "Show a desktop notification when the agent needs your approval (including background chats).",
+  "settings.prefsScope": "Remember model & permission at",
   "settings.prefsScopeDesc":
     "Global: all chats. Project: each workspace. Session: only the current chat.",
   "settings.prefsScope.global": "Global (app-wide)",
@@ -2952,7 +2958,13 @@ const zh: Record<MessageKey, string> = {
     "开启后，关闭按钮会隐藏到菜单栏/系统托盘。关闭此项则关闭窗口即退出（托盘「退出」始终可用）。",
   "settings.reopenLastSession": "启动时恢复上次对话",
   "settings.reopenLastSessionDesc": "默认关闭（启动进入新建会话页）。开启后，若上次打开的对话仍存在且未归档，则自动打开。",
-"settings.prefsScope": "模型与权限记忆范围",
+  "settings.notifyOnTurnDone": "回合完成时桌面通知",
+  "settings.notifyOnTurnDoneDesc":
+    "应用在后台时，Agent 完成一轮后显示系统通知。点击通知可聚焦窗口。",
+  "settings.notifyOnPermission": "需要授权时桌面通知",
+  "settings.notifyOnPermissionDesc":
+    "Agent 需要你批准时显示系统通知（含后台会话）。",
+  "settings.prefsScope": "模型与权限记忆范围",
   "settings.prefsScopeDesc":
     "全局：所有对话共用。项目：按工作区记忆。会话：仅当前聊天。",
   "settings.prefsScope.global": "全局（应用级）",
