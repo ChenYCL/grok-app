@@ -859,6 +859,11 @@ const en = {
   "settings.availableModelsDesc":
     "Official Grok Build model IDs from the CLI catalog. Providers are channels — switch them under Account → Providers.",
   "settings.availableModelsEmpty": "No models detected — check Grok Build CLI login.",
+  "settings.composerSendKey": "Send message with",
+  "settings.composerSendKeyDesc":
+    "Choose whether plain Enter sends, or inserts a newline (⌘/Ctrl+Enter sends instead). Applies to the chat composer.",
+  "settings.composerSendKey.enter": "Enter to send (Shift+Enter for newline)",
+  "settings.composerSendKey.modEnter": "⌘/Ctrl+Enter to send (Enter for newline)",
   "settings.theme": "Theme",
   "settings.themeDesc": "Follow the system, or lock light / dark",
   "settings.themeSystem": "System",
@@ -2979,6 +2984,11 @@ const zh: Record<MessageKey, string> = {
   "settings.availableModelsDesc":
     "来自 Grok Build CLI 官方目录的模型。服务商是后端渠道，请在「账户 → 自定义提供商」切换，不会出现在模型选择里。",
   "settings.availableModelsEmpty": "未检测到模型 — 请检查 Grok Build CLI 登录。",
+  "settings.composerSendKey": "发送消息快捷键",
+  "settings.composerSendKeyDesc":
+    "选择 Enter 直接发送，还是 Enter 换行、⌘/Ctrl+Enter 发送。仅作用于对话输入框。",
+  "settings.composerSendKey.enter": "Enter 发送（Shift+Enter 换行）",
+  "settings.composerSendKey.modEnter": "⌘/Ctrl+Enter 发送（Enter 换行）",
   "settings.theme": "主题",
   "settings.themeDesc": "跟随系统，或固定浅色 / 深色",
   "settings.themeSystem": "跟随系统",

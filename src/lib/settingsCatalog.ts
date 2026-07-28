@@ -231,6 +231,29 @@ export const SETTINGS_ENTRIES: readonly SettingsEntry[] = [
     descKeys: ["settings.availableModelsDesc"],
     keywords: ["models", "model list"],
   },
+  {
+    id: "general.composerSendKey",
+    section: "general",
+    tab: "composer",
+    anchorId: "settings-anchor-composerSendKey",
+    labelKey: "settings.composerSendKey",
+    descKeys: [
+      "settings.composerSendKeyDesc",
+      "settings.composerSendKey.enter",
+      "settings.composerSendKey.modEnter",
+      "settings.section.composer",
+    ],
+    keywords: [
+      "composer",
+      "send",
+      "enter",
+      "mod-enter",
+      "cmd enter",
+      "ctrl enter",
+      "newline",
+      "keyboard",
+    ],
+  },
   // ── general / permissions ──
   {
     id: "general.permissionPolicy",
