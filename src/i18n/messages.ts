@@ -735,6 +735,11 @@ const en = {
   "settings.clearWorkspaceMemoryConfirmMsg":
     "This deletes Grok Build workspace memory for the current project. Chat history in the app is kept. This cannot be undone.",
   "settings.clearWorkspaceMemoryDone": "Workspace memory cleared",
+  "settings.allowUnverifiedCli": "Allow unverified CLI install",
+  "settings.allowUnverifiedCliDesc":
+    "When off (default), install fails if the official mirror has no published SHA-256. Turn on only if checksums are temporarily unavailable. A mismatched checksum always fails.",
+  "settings.cliChecksumVerified": "last install checksum OK",
+  "settings.cliChecksumUnverified": "last install unverified",
   "settings.cliPath": "CLI path",
   "settings.cliPathDesc": "Path to the Grok Build CLI binary",
   "settings.cliNotFound": "(not found)",
@@ -2792,6 +2797,11 @@ const zh: Record<MessageKey, string> = {
   "settings.clearWorkspaceMemoryConfirmMsg":
     "将删除当前项目的 Grok Build 工作区记忆。应用内聊天记录会保留。此操作不可撤销。",
   "settings.clearWorkspaceMemoryDone": "已清除工作区记忆",
+  "settings.allowUnverifiedCli": "允许未校验的 CLI 安装",
+  "settings.allowUnverifiedCliDesc":
+    "关闭时（默认）若官方镜像没有发布 SHA-256 则拒绝安装。仅在校验文件暂时不可用时开启。校验和不一致始终拒绝。",
+  "settings.cliChecksumVerified": "上次安装校验通过",
+  "settings.cliChecksumUnverified": "上次安装未校验",
   "settings.cliPath": "CLI 路径",
   "settings.cliPathDesc": "Grok Build CLI 可执行文件路径",
   "settings.cliNotFound": "（未找到）",

@@ -571,6 +571,15 @@ export const SETTINGS_ENTRIES: readonly SettingsEntry[] = [
     keywords: ["cli", "binary", "grok path", "path"],
   },
   {
+    id: "runtime.allowUnverifiedCli",
+    section: "runtime",
+    tab: "cli",
+    anchorId: "settings-anchor-allowUnverifiedCli",
+    labelKey: "settings.allowUnverifiedCli",
+    descKeys: ["settings.allowUnverifiedCliDesc"],
+    keywords: ["checksum", "sha256", "unverified", "cli install", "trust"],
+  },
+  {
     id: "runtime.acp",
     section: "runtime",
     tab: "connection",

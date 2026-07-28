@@ -263,6 +263,14 @@ pub struct AppSettings {
     /// Comma-separated hosts that bypass the proxy (NO_PROXY semantics).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub proxy_no_proxy: Option<String>,
+    /// Allow CLI download/install when the mirror has **no** published SHA-256
+    /// sidecar. Default **false** (fail-closed). Mismatch always aborts.
+    /// Escape hatch for air-gapped / broken sidecars; prefer fixing the mirror.
+    #[serde(default)]
+    pub allow_unverified_cli_install: bool,
+    /// Result of the last App-managed CLI install (`Some(true)` = sidecar matched).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_cli_checksum_verified: Option<bool>,
 }
 
 fn default_composer_prefs_scope() -> String {
@@ -355,6 +363,8 @@ impl Default for AppSettings {
             proxy_mode: default_proxy_mode(),
             proxy_url: None,
             proxy_no_proxy: None,
+            allow_unverified_cli_install: false,
+            last_cli_checksum_verified: None,
         }
     }
 }

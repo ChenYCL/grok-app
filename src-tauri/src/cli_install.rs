@@ -4,10 +4,12 @@
 //! 1. Direct GCS `https://storage.googleapis.com/grok-build-public-artifacts/cli`
 //! 2. Cloudflare-fronted `https://x.ai/cli`
 //!
-//! Trust chain (fail-closed where possible):
+//! Trust chain (fail-closed by default):
 //! - HTTPS only, URL must be under a known mirror base
 //! - Streaming SHA-256 of the downloaded bytes
-//! - Optional published checksum sidecar (`.sha256` / `SHA256SUMS`); mismatch aborts
+//! - Published checksum sidecar (`.sha256` / `SHA256SUMS` / `checksums.txt`);
+//!   **mismatch always aborts**; **missing sidecar aborts** unless the user opts
+//!   into unverified install (settings or `GROK_CLI_ALLOW_UNVERIFIED=1`)
 //! - Architecture match via platform triple; size / `--version` gates after install
 //!
 //! Each mirror is retried a few times before falling through. Progress is emitted
@@ -653,8 +655,42 @@ async fn try_download_all_mirrors(
     ))
 }
 
+/// Whether a published checksum is **required** (fail-closed).
+///
+/// Default **true**. Unverified install is allowed only when:
+/// - `allow_unverified` argument is true (from App settings), or
+/// - env `GROK_CLI_ALLOW_UNVERIFIED` is 1/true/yes/on
+///
+/// Mismatch always fails regardless of this flag.
+pub fn require_published_checksum(allow_unverified: bool) -> bool {
+    if env_flag_truthy("GROK_CLI_ALLOW_UNVERIFIED") {
+        return false;
+    }
+    if allow_unverified {
+        return false;
+    }
+    // Legacy force-require stays redundant (default already requires).
+    // `GROK_CLI_REQUIRE_CHECKSUM=0` is **not** honored — use ALLOW_UNVERIFIED.
+    true
+}
+
+fn env_flag_truthy(name: &str) -> bool {
+    std::env::var(name)
+        .map(|v| {
+            let v = v.trim().to_ascii_lowercase();
+            matches!(v.as_str(), "1" | "true" | "yes" | "on")
+        })
+        .unwrap_or(false)
+}
+
 /// Download latest stable Grok Build and install into `~/.grok`.
-pub async fn install_cli_latest(app: AppHandle) -> Result<CliInstallResult, String> {
+///
+/// `allow_unverified`: when true, continue if the mirror has no published
+/// checksum (still fail on mismatch). Default path should pass `false`.
+pub async fn install_cli_latest(
+    app: AppHandle,
+    allow_unverified: bool,
+) -> Result<CliInstallResult, String> {
     let client = http_client()?;
     let (version, preferred) = resolve_version(&app, &client).await?;
 
@@ -721,23 +757,18 @@ pub async fn install_cli_latest(app: AppHandle) -> Result<CliInstallResult, Stri
             true
         }
         None => {
-            // Prefer published sidecars. Without one we still enforce URL allowlist +
-            // size + binary --version, and mark the install as unverified.
-            let require = std::env::var("GROK_CLI_REQUIRE_CHECKSUM")
-                .map(|v| {
-                    let v = v.trim().to_ascii_lowercase();
-                    matches!(v.as_str(), "1" | "true" | "yes" | "on")
-                })
-                .unwrap_or(false);
-            if require {
+            // Fail-closed: no published sidecar → refuse unless user opted in.
+            if require_published_checksum(allow_unverified) {
                 let _ = fs::remove_file(&tmp_path);
                 return Err(format!(
-                    "No published SHA-256 for {artifact_name}. Refusing install because GROK_CLI_REQUIRE_CHECKSUM is set. hash={digest}"
+                    "No published SHA-256 for {artifact_name}. Refusing install (checksum required). \
+                     Enable “Allow unverified CLI install” in Settings → Runtime, or set \
+                     GROK_CLI_ALLOW_UNVERIFIED=1. hash={digest}"
                 ));
             }
             warn!(
                 "cli_install: no published checksum for {artifact_name}; \
-                 continuing with allowlist + binary probe (hash={digest})"
+                 continuing with allowlist + binary probe (unverified, hash={digest})"
             );
             false
         }
@@ -917,6 +948,14 @@ bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb *other-file
         let body = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa  wrong-name\n";
         // multi-line with name mismatch → None (no bare single-line fallback when name present)
         assert!(parse_checksum_for_file(body, "right-name").is_none());
+    }
+
+    #[test]
+    fn require_checksum_defaults_fail_closed() {
+        // Clear both envs for the test process when possible.
+        std::env::remove_var("GROK_CLI_ALLOW_UNVERIFIED");
+        assert!(require_published_checksum(false));
+        assert!(!require_published_checksum(true));
     }
 
     #[test]

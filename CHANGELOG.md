@@ -11,6 +11,10 @@ See `docs/llm-wiki/release.md`.
 
 ## [Unreleased]
 
+### Security
+
+- **CLI install fail-closed on missing checksum**: App-managed Grok Build download refuses install when the mirror has no published SHA-256 (default). Mismatch still always aborts. Escape hatch: Settings → Runtime → “Allow unverified CLI install”, or `GROK_CLI_ALLOW_UNVERIFIED=1`. Last install verification is remembered for Doctor/CLI status.
+
 ### Added
 
 - **General workspace**: app-managed `{app_data}/workspaces/general` project (`system:general`) for chats without a user folder — agent can create/edit files without the “bind a project first” toast; always trusted, pinned, not removable
