@@ -40,7 +40,17 @@ pub fn ensure_app_dirs() -> std::io::Result<PathBuf> {
     std::fs::create_dir_all(root.join("attachments").join("paste"))?;
     // Multi-account auth snapshots.
     std::fs::create_dir_all(root.join("accounts"))?;
+    // Default workspace for chats with no user-picked project (agent file I/O).
+    std::fs::create_dir_all(general_workspace_dir())?;
     Ok(root)
+}
+
+/// Stable cwd for orphan / unassigned chats — under app data so agents can
+/// create/edit files without binding a user folder.
+///
+/// `{app_data}/workspaces/general`
+pub fn general_workspace_dir() -> PathBuf {
+    app_data_root().join("workspaces").join("general")
 }
 
 /// Directory for pasted / saved composer attachments (absolute paths for `@path` refs).

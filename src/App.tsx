@@ -425,8 +425,36 @@ interface Project {
   trusted: boolean;
   pathOk: boolean;
   pinned?: boolean;
+  /** App-managed general workspace — cannot be removed. */
+  system?: boolean;
   /** Project-level permission tier (L10). Null/undefined → app default. */
   permissionPolicy?: string | null;
+}
+
+/** Stable id of the app-managed general workspace (orphan chat default). */
+const GENERAL_PROJECT_ID = "system:general";
+
+function isGeneralProject(p: { id?: string | null; system?: boolean } | null | undefined) {
+  return !!p && (p.id === GENERAL_PROJECT_ID || !!p.system);
+}
+
+function projectDisplayName(
+  p: { id?: string | null; name?: string | null; system?: boolean } | null | undefined,
+  tr: (k: MessageKey, vars?: Record<string, string>) => string,
+): string {
+  if (isGeneralProject(p)) return tr("project.general");
+  return (p?.name || "").trim() || tr("main.noProject");
+}
+
+/** Normalize API project rows (system flag + pin general). */
+function normalizeProject(x: Project): Project {
+  const system = isGeneralProject(x);
+  return {
+    ...x,
+    system,
+    pinned: !!x.pinned || system,
+    trusted: system ? true : !!x.trusted,
+  };
 }
 
 interface SessionRow {
@@ -1331,10 +1359,9 @@ export default function App() {
           api.modelsListAvailable().catch(() => null),
         ]);
         setProjects(
-          (p as Project[]).map((x) => ({
-            ...x,
-            pinned: !!(x as Project).pinned,
-          })),
+          (p as Project[]).map((x) =>
+            normalizeProject({ ...x, pinned: !!(x as Project).pinned }),
+          ),
         );
         setSessions(
           (
@@ -1405,10 +1432,9 @@ export default function App() {
         api.modelsListAvailable().catch(() => null),
       ]);
       setProjects(
-        (p as Project[]).map((x) => ({
-          ...x,
-          pinned: !!(x as Project).pinned,
-        })),
+        (p as Project[]).map((x) =>
+          normalizeProject({ ...x, pinned: !!(x as Project).pinned }),
+        ),
       );
       setSessions(
         (
@@ -3937,10 +3963,9 @@ export default function App() {
   const refreshProjects = async () => {
     try {
       const list = await api.projectsList();
-      const mapped = list.map((p) => ({
-        ...p,
-        pinned: !!p.pinned,
-      })) as Project[];
+      const mapped = list.map((p) =>
+        normalizeProject({ ...p, pinned: !!p.pinned } as Project),
+      );
       setProjects(mapped);
       // Keep active project pathOk/path in sync with Host re-check.
       setActiveProject((prev) => {
@@ -4122,10 +4147,16 @@ export default function App() {
   /** Remove project from app list only (disk folder + chats kept). */
   const removeProjectFromApp = (proj: Project) => {
     setCtxMenu(null);
+    if (isGeneralProject(proj)) {
+      showToast(tr("project.generalCannotRemove"), 3200);
+      return;
+    }
     setAppDialog({
       kind: "confirm",
       title: tr("project.removeTitle"),
-      message: tr("project.removeConfirmDetail", { name: proj.name }),
+      message: tr("project.removeConfirmDetail", {
+        name: projectDisplayName(proj, tr),
+      }),
       confirmLabel: tr("project.remove"),
       danger: true,
       onConfirm: async () => {
@@ -4136,7 +4167,10 @@ export default function App() {
           }
           await api.projectRemove(proj.id);
           if (activeProject?.id === proj.id) {
-            setActiveProject(null);
+            // Fall back to the general workspace instead of a true orphan.
+            const general =
+              projects.find((p) => isGeneralProject(p)) ?? null;
+            setActiveProject(general);
             setSession(IDLE_SNAPSHOT);
             setMessages([]);
           }
@@ -4407,14 +4441,24 @@ export default function App() {
     const preferredId =
       opts.sessionId !== undefined ? opts.sessionId : session.sessionId;
 
-    // Project-less (orphan) sessions are allowed: cwd falls back on Host.
-    if (activeProject && !activeProject.trusted) {
-      setLocalError(tr("project.trustFirst", { name: activeProject.name }));
+    // Prefer explicit project; otherwise the app-managed general workspace.
+    const connectProject =
+      activeProject ??
+      projects.find((p) => isGeneralProject(p)) ??
+      null;
+    if (connectProject && !connectProject.trusted) {
+      setLocalError(
+        tr("project.trustFirst", {
+          name: projectDisplayName(connectProject, tr),
+        }),
+      );
       return null;
     }
-    if (activeProject && isProjectPathMissing(activeProject.pathOk)) {
+    if (connectProject && isProjectPathMissing(connectProject.pathOk)) {
       setLocalError(
-        tr("project.pathMissing", { name: activeProject.name }),
+        tr("project.pathMissing", {
+          name: projectDisplayName(connectProject, tr),
+        }),
       );
       return null;
     }
@@ -4472,7 +4516,7 @@ export default function App() {
       // never persisted (connect runs with sessionId undefined).
       if (!sessionId && api.hasHost()) {
         const meta = (await api.sessionCreate(
-          activeProject?.id,
+          connectProject?.id,
           tr("session.new"),
         )) as { id: string; title?: string };
         sessionId = meta.id;
@@ -4494,8 +4538,12 @@ export default function App() {
           }));
           // Sidebar reveal belongs to the takeover — never re-expand a project
           // the user has already navigated away from.
-          if (activeProject) {
-            setExpandedProjects((e) => ({ ...e, [activeProject.id]: true }));
+          if (connectProject) {
+            setActiveProject((prev) => prev ?? connectProject);
+            setExpandedProjects((e) => ({
+              ...e,
+              [connectProject.id]: true,
+            }));
           } else {
             setHistoryOpen(true);
           }
@@ -4503,7 +4551,7 @@ export default function App() {
         await refreshSessions();
       }
       const snap = await api.sessionConnect({
-        projectPath: activeProject?.path,
+        projectPath: connectProject?.path,
         sessionId: sessionId ?? undefined,
         mode,
       });
@@ -4909,15 +4957,8 @@ export default function App() {
       showToast(tr("composer.queueBlockedPermission"), 2800);
       return;
     }
-    // #52: orphan chats without a folder often stop after planning text —
-    // tools can't land in a workspace until a project is bound.
-    if (
-      !activeProject &&
-      (mode === "agent" || goalMode) &&
-      !shouldEnqueueSend(session.state, connecting)
-    ) {
-      showToast(tr("composer.noProjectWriteHint"), 4500);
-    }
+    // Unassigned chats use the app-managed general workspace (system:general);
+    // no toast — agent always has a writable cwd under app data.
     sendQueue.releaseFlushHold();
 
     // Enqueue only when *this viewed chat* is busy/connecting (follow-ups).
@@ -5209,7 +5250,7 @@ export default function App() {
         for (const d of dirs) {
           last = (await api.projectAdd(d.path, false)) as Project;
         }
-        const list = (await api.projectsList()) as Project[];
+        const list = ((await api.projectsList()) as Project[]).map(normalizeProject);
         setProjects(list);
         if (last) {
           setActiveProject(list.find((p) => p.id === last!.id) ?? last);
@@ -7057,35 +7098,47 @@ export default function App() {
   };
 
   /**
-   * Bind (or clear) the open session's project. Draft chats only switch
-   * workspace context. Untrusted projects refuse bind when a session exists.
+   * Bind the open session's project. Draft chats only switch workspace context.
+   * Untrusted projects refuse bind when a session exists. Passing `null`
+   * selects the app-managed general workspace (always writable cwd).
    */
   const bindSessionProject = useCallback(
     async (proj: Project | null, opts?: { silent?: boolean }) => {
+      // No true orphan: null → general workspace.
+      const target =
+        proj ?? projects.find((p) => isGeneralProject(p)) ?? null;
       const sid = session.sessionId;
       if (!sid || !api.isTauri()) {
-        setActiveProject(proj);
-        if (proj) {
-          setExpandedProjects((e) => ({ ...e, [proj.id]: true }));
+        setActiveProject(target);
+        if (target) {
+          setExpandedProjects((e) => ({ ...e, [target.id]: true }));
         } else {
           setHistoryOpen(true);
         }
         return;
       }
-      if (proj && !proj.trusted) {
-        setLocalError(tr("project.trustFirst", { name: proj.name }));
+      if (target && !target.trusted) {
+        setLocalError(
+          tr("project.trustFirst", {
+            name: projectDisplayName(target, tr),
+          }),
+        );
         return;
       }
-      if (proj && isProjectPathMissing(proj.pathOk)) {
-        setLocalError(tr("project.pathMissing", { name: proj.name }));
+      if (target && isProjectPathMissing(target.pathOk)) {
+        setLocalError(
+          tr("project.pathMissing", {
+            name: projectDisplayName(target, tr),
+          }),
+        );
         return;
       }
       try {
-        await api.sessionSetProject(sid, proj?.id ?? null);
-        setActiveProject(proj);
+        await api.sessionSetProject(sid, target?.id ?? null);
+        setActiveProject(target);
         setSessions((list) =>
           list.map((s) =>
-            s.id === sid ? { ...s, projectId: proj?.id ?? null } : s,
+            s.id === sid ? { ...s, projectId: target?.id ?? null } : s,
           ),
         );
         // Live agent used old cwd — force reconnect next send
@@ -7103,23 +7156,25 @@ export default function App() {
         setLiveHost((prev) =>
           prev.sessionId === sid ? { ...IDLE_SNAPSHOT } : prev,
         );
-        if (proj) {
-          setExpandedProjects((e) => ({ ...e, [proj.id]: true }));
+        if (target) {
+          setExpandedProjects((e) => ({ ...e, [target.id]: true }));
           if (!opts?.silent) {
-            showToast(tr("composer.projectBound", { name: proj.name }), 2500);
+            showToast(
+              tr("composer.projectBound", {
+                name: projectDisplayName(target, tr),
+              }),
+              2500,
+            );
           }
         } else {
           setHistoryOpen(true);
-          if (!opts?.silent) {
-            showToast(tr("composer.projectCleared"), 2200);
-          }
         }
         setLocalError(null);
       } catch (e) {
         showToast(String(e), 4500);
       }
     },
-    [session.sessionId, showToast, tr],
+    [projects, session.sessionId, showToast, tr],
   );
 
   const gitWorktreesReqRef = useRef(0);
@@ -7179,12 +7234,12 @@ export default function App() {
    */
   const finalizeAddedProject = useCallback(
     async (p: Project, opts: { bindSession: boolean }) => {
-      const list = (await api.projectsList()) as Project[];
-      setProjects(list);
+      const list = ((await api.projectsList()) as Project[]).map(normalizeProject);
+        setProjects(list);
       setSetup((s) => ({ ...s, project: true }));
 
       const apply = async (proj: Project) => {
-        const fresh = (await api.projectsList()) as Project[];
+        const fresh = ((await api.projectsList()) as Project[]).map(normalizeProject);
         setProjects(fresh);
         const current = fresh.find((x) => x.id === proj.id) ?? proj;
         if (opts.bindSession) {
@@ -7312,7 +7367,7 @@ export default function App() {
         }
         const trust = !!activeProject?.trusted;
         const added = (await api.projectAdd(path, trust)) as Project;
-        const list = (await api.projectsList()) as Project[];
+        const list = ((await api.projectsList()) as Project[]).map(normalizeProject);
         setProjects(list);
         const proj = list.find((p) => p.id === added.id) ?? added;
         if (!proj.trusted) {
@@ -7401,7 +7456,7 @@ export default function App() {
       let target: Project | null = existing ?? null;
       if (!target) {
         const added = (await api.projectAdd(path, trust)) as Project;
-        const list = (await api.projectsList()) as Project[];
+        const list = ((await api.projectsList()) as Project[]).map(normalizeProject);
         setProjects(list);
         target = list.find((p) => p.id === added.id) ?? added;
       }
@@ -7503,7 +7558,7 @@ export default function App() {
     try {
       const p = (await api.projectTrust(target.id)) as Project;
       setActiveProject(p);
-      setProjects((await api.projectsList()) as Project[]);
+      setProjects(((await api.projectsList()) as Project[]).map(normalizeProject));
       setLocalError(null);
       // CLI connects on first send only.
     } catch (e) {
@@ -9192,7 +9247,7 @@ export default function App() {
                           {proj.pinned ? (
                             <IconPin size={12} className="tree-l2__pin" />
                           ) : null}
-                          {proj.name}
+                          {projectDisplayName(proj, tr)}
                         </span>
                       </Tip>
                       {isProjectPathMissing(proj.pathOk) ? (
@@ -10402,10 +10457,20 @@ export default function App() {
               >
                 <ComposerProjectMenu
                   variant="context"
-                  activeProject={activeProject}
-                  projects={projects}
+                  activeProject={
+                    activeProject
+                      ? {
+                          ...activeProject,
+                          name: projectDisplayName(activeProject, tr),
+                        }
+                      : null
+                  }
+                  projects={projects.map((p) => ({
+                    ...p,
+                    name: projectDisplayName(p, tr),
+                  }))}
                   labels={{
-                    noProject: tr("composer.noProject"),
+                    noProject: tr("project.general"),
                     pickProject: tr("composer.pickProject"),
                     addProject: tr("composer.addProject"),
                     pathMissing: tr("project.pathMissingShort"),
@@ -10415,7 +10480,11 @@ export default function App() {
                     session.state === "awaiting_permission"
                   }
                   onSelect={(proj) => {
-                    void bindSessionProject(proj);
+                    // Menu "general" row still passes null; bind resolves it.
+                    const full = proj
+                      ? projects.find((p) => p.id === proj.id) ?? null
+                      : null;
+                    void bindSessionProject(full);
                   }}
                   onAdd={() => {
                     void addProjectFromPicker({ bindSession: true });
@@ -11215,7 +11284,7 @@ export default function App() {
               effort: tr("composer.effort"),
               access: tr("phone.toolsAccess"),
               context: tr("phone.toolsContext"),
-              noProject: tr("composer.noProject"),
+              noProject: tr("project.general"),
               addProject: tr("composer.addProject"),
               mode: tr("composer.mode"),
               permission: tr("composer.permission"),
@@ -12178,20 +12247,24 @@ export default function App() {
                     .catch((e) => setLocalError(String(e)));
                 },
               },
-              {
-                id: "relocate",
-                label: tr("project.relocate"),
-                icon: <IconFolderPlus size={16} />,
-                onClick: () => {
-                  void relocateProject(proj);
-                },
-              },
-              {
-                id: "rename",
-                label: tr("project.rename"),
-                icon: <IconRename size={16} />,
-                onClick: () => renameProject(proj),
-              },
+              ...(isGeneralProject(proj)
+                ? []
+                : [
+                    {
+                      id: "relocate",
+                      label: tr("project.relocate"),
+                      icon: <IconFolderPlus size={16} />,
+                      onClick: () => {
+                        void relocateProject(proj);
+                      },
+                    } satisfies ContextMenuItem,
+                    {
+                      id: "rename",
+                      label: tr("project.rename"),
+                      icon: <IconRename size={16} />,
+                      onClick: () => renameProject(proj),
+                    } satisfies ContextMenuItem,
+                  ]),
               {
                 id: "rules",
                 label: tr("project.rules"),
@@ -12199,7 +12272,7 @@ export default function App() {
                 onClick: () => {
                   setProjectRulesTarget({
                     path: proj.path,
-                    name: proj.name,
+                    name: projectDisplayName(proj, tr),
                   });
                 },
               },
@@ -12228,13 +12301,17 @@ export default function App() {
                   void archiveProjectSessions(proj);
                 },
               },
-              {
-                id: "remove",
-                label: tr("project.remove"),
-                icon: <IconTrash size={16} />,
-                danger: true,
-                onClick: () => removeProjectFromApp(proj),
-              },
+              ...(isGeneralProject(proj)
+                ? []
+                : [
+                    {
+                      id: "remove",
+                      label: tr("project.remove"),
+                      icon: <IconTrash size={16} />,
+                      danger: true,
+                      onClick: () => removeProjectFromApp(proj),
+                    } satisfies ContextMenuItem,
+                  ]),
             ];
           }
         } else if (ctxMenu?.kind === "project-policy") {

@@ -392,6 +392,8 @@ export async function projectsList() {
       trusted: boolean;
       pathOk: boolean;
       pinned?: boolean;
+      /** App-managed general workspace (system:general). */
+      system?: boolean;
     }>
   >("projects_list");
 }

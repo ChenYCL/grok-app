@@ -2312,20 +2312,6 @@ impl SessionManager {
         let max_concurrent = normalize_max_concurrent(settings.max_concurrent_agents);
         self.sweep_dead_parked();
 
-        // Orphan chats (no project): use $HOME, never process cwd.
-        // Dock-launched macOS apps often have cwd `/`, which confuses the agent.
-        let cwd = project_path
-            .clone()
-            .map(std::path::PathBuf::from)
-            .unwrap_or_else(|| {
-                let home = crate::process_util::user_home();
-                if home.is_dir() {
-                    home
-                } else {
-                    std::env::current_dir().unwrap_or_else(|_| ".".into())
-                }
-            });
-
         // Ensure app session meta — never panic on disk/index races.
         let mut meta = if let Some(id) = app_session_id {
             if let Some(existing) = store::load_sessions_index()
@@ -2341,6 +2327,36 @@ impl SessionManager {
             store::create_session(None, Some("New chat".into()), false)
                 .map_err(|e| format!("create session: {e}"))?
         };
+
+        // Legacy orphan sessions (no project_id) attach to the general workspace.
+        if meta.project_id.as_deref().map(|s| s.trim().is_empty()).unwrap_or(true) {
+            let _ = store::ensure_general_project();
+            meta.project_id = Some(store::GENERAL_PROJECT_ID.into());
+            let _ = store::update_session_meta(&meta);
+        }
+
+        // Resolve cwd: explicit path → session's project path → general workspace.
+        // Never use process cwd (Dock-launched macOS apps often have cwd `/`).
+        let cwd = {
+            let from_arg = project_path
+                .as_deref()
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+                .map(std::path::PathBuf::from);
+            let from_meta = meta.project_id.as_deref().and_then(|pid| {
+                store::load_projects()
+                    .into_iter()
+                    .find(|p| p.id == pid)
+                    .map(|p| std::path::PathBuf::from(p.path))
+            });
+            from_arg
+                .or(from_meta)
+                .unwrap_or_else(|| {
+                    let _ = store::ensure_general_project();
+                    crate::paths::general_workspace_dir()
+                })
+        };
+        let project_path = Some(cwd.to_string_lossy().to_string());
 
         tracing::info!(
             target: "session",

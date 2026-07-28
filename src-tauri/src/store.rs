@@ -68,6 +68,12 @@ impl Default for ComposerPrefs {
     }
 }
 
+/// Stable id for the app-managed general workspace (orphan chat default).
+pub const GENERAL_PROJECT_ID: &str = "system:general";
+
+/// English storage name; UI maps `system:general` via i18n.
+pub const GENERAL_PROJECT_NAME: &str = "General";
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Project {
@@ -80,6 +86,9 @@ pub struct Project {
     /// Pinned projects float to the top of the sidebar.
     #[serde(default)]
     pub pinned: bool,
+    /// App-managed (e.g. general workspace) — cannot be removed from the list.
+    #[serde(default)]
+    pub system: bool,
     /// Per-project composer prefs (used when scope = project).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub model_id: Option<String>,
@@ -89,6 +98,12 @@ pub struct Project {
     pub mode: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub permission_policy: Option<String>,
+}
+
+impl Project {
+    pub fn is_general(&self) -> bool {
+        self.id == GENERAL_PROJECT_ID || self.system
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -499,8 +514,20 @@ pub fn save_settings(s: &AppSettings) -> Result<(), String> {
 pub fn load_projects() -> Vec<Project> {
     let _ = ensure_app_dirs();
     let mut list: Vec<Project> = read_json_recover(&projects_file());
+    // Always keep the general workspace project (orphan chat default).
+    // Persist only when the row is missing or fields need repair (avoid
+    // load → save → path_scope refresh → load recursion).
+    let _ = ensure_general_project_in(&mut list, /*persist*/ true);
     for p in &mut list {
         p.path_ok = PathBuf::from(&p.path).is_dir();
+        if p.id == GENERAL_PROJECT_ID {
+            p.system = true;
+            p.trusted = true;
+            p.path = crate::paths::general_workspace_dir()
+                .to_string_lossy()
+                .to_string();
+            p.path_ok = true;
+        }
     }
     list.sort_by(|a, b| match (b.pinned, a.pinned) {
         (true, false) => std::cmp::Ordering::Greater,
@@ -508,6 +535,90 @@ pub fn load_projects() -> Vec<Project> {
         _ => b.last_opened_at.cmp(&a.last_opened_at),
     });
     list
+}
+
+/// Ensure `{app_data}/workspaces/general` exists and is registered as a
+/// trusted system project. Idempotent; persists when newly created or repaired.
+pub fn ensure_general_project() -> Result<Project, String> {
+    let _ = ensure_app_dirs();
+    let mut list: Vec<Project> = read_json_recover(&projects_file());
+    ensure_general_project_in(&mut list, /*persist*/ true)
+}
+
+/// `persist`: write projects.json when the general row is created or fields change.
+/// Uses raw `write_json` (not `save_projects`) to avoid `path_scope::refresh_from_store`
+/// re-entering `load_projects` while we still hold the in-memory list.
+fn ensure_general_project_in(list: &mut Vec<Project>, persist: bool) -> Result<Project, String> {
+    let dir = crate::paths::general_workspace_dir();
+    fs::create_dir_all(&dir).map_err(|e| format!("create general workspace: {e}"))?;
+    let path = dir.to_string_lossy().to_string();
+    let mut dirty = false;
+
+    if let Some(existing) = list.iter_mut().find(|p| p.id == GENERAL_PROJECT_ID) {
+        if existing.path != path {
+            existing.path = path;
+            dirty = true;
+        }
+        if !existing.path_ok {
+            existing.path_ok = true;
+            dirty = true;
+        }
+        if !existing.trusted {
+            existing.trusted = true;
+            dirty = true;
+        }
+        if !existing.system {
+            existing.system = true;
+            dirty = true;
+        }
+        if existing.name.trim().is_empty() {
+            existing.name = GENERAL_PROJECT_NAME.into();
+            dirty = true;
+        }
+        let clone = existing.clone();
+        if persist && dirty {
+            write_json(&projects_file(), &list)?;
+            crate::path_scope::refresh_from_store();
+        }
+        return Ok(clone);
+    }
+
+    // Migrate: older installs may have a user project at the same path.
+    if let Some(existing) = list.iter_mut().find(|p| p.path == path) {
+        existing.id = GENERAL_PROJECT_ID.into();
+        existing.system = true;
+        existing.trusted = true;
+        existing.pinned = true;
+        existing.name = GENERAL_PROJECT_NAME.into();
+        existing.path_ok = true;
+        let clone = existing.clone();
+        if persist {
+            write_json(&projects_file(), &list)?;
+            crate::path_scope::refresh_from_store();
+        }
+        return Ok(clone);
+    }
+
+    let p = Project {
+        id: GENERAL_PROJECT_ID.into(),
+        name: GENERAL_PROJECT_NAME.into(),
+        path,
+        trusted: true,
+        last_opened_at: Utc::now(),
+        path_ok: true,
+        pinned: true,
+        system: true,
+        model_id: None,
+        effort: None,
+        mode: None,
+        permission_policy: None,
+    };
+    list.push(p.clone());
+    if persist {
+        write_json(&projects_file(), &list)?;
+        crate::path_scope::refresh_from_store();
+    }
+    Ok(p)
 }
 
 pub fn save_projects(list: &[Project]) -> Result<(), String> {
@@ -542,6 +653,7 @@ pub fn add_project(path: String, trust: bool) -> Result<Project, String> {
         last_opened_at: Utc::now(),
         path_ok: true,
         pinned: false,
+        system: false,
         model_id: None,
         effort: None,
         mode: None,
@@ -555,7 +667,13 @@ pub fn add_project(path: String, trust: bool) -> Result<Project, String> {
 /// Remove project from the app list only — does **not** delete the disk folder
 /// or any chat sessions (sessions keep their project_id and become orphans).
 pub fn remove_project(id: &str) -> Result<(), String> {
+    if id == GENERAL_PROJECT_ID {
+        return Err("cannot remove the general workspace project".into());
+    }
     let mut list = load_projects();
+    if list.iter().any(|p| p.id == id && p.system) {
+        return Err("cannot remove a system project".into());
+    }
     list.retain(|p| p.id != id);
     save_projects(&list)
 }
@@ -690,6 +808,15 @@ pub fn create_session(
     title: Option<String>,
     scheduled: bool,
 ) -> Result<SessionMeta, String> {
+    // Unassigned chats bind to the general workspace so agents always have a
+    // writable cwd (no more orphan $HOME / toast-only hints).
+    let project_id = match project_id.filter(|s| !s.trim().is_empty()) {
+        Some(id) => Some(id),
+        None => {
+            let _ = ensure_general_project();
+            Some(GENERAL_PROJECT_ID.into())
+        }
+    };
     let id = Uuid::new_v4().to_string();
     let now = Utc::now();
     let meta = SessionMeta {
@@ -792,27 +919,30 @@ pub fn set_session_pinned(id: &str, pinned: bool) -> Result<SessionMeta, String>
 }
 
 /// Bind (or clear) a session's project folder. Used to attach orphan / legacy
-/// chats to a project added later.
+/// chats to a project added later. Clearing (`None`) binds to the general
+/// workspace — there is no longer a true "no project" cwd.
 pub fn set_session_project(
     id: &str,
     project_id: Option<String>,
 ) -> Result<SessionMeta, String> {
     let pid = project_id
         .map(|s| s.trim().to_string())
-        .filter(|s| !s.is_empty());
-    if let Some(ref p) = pid {
-        // Ensure project exists in the projects list.
-        let projects = load_projects();
-        if !projects.iter().any(|x| x.id == *p) {
-            return Err(format!("project not found: {p}"));
-        }
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| {
+            let _ = ensure_general_project();
+            GENERAL_PROJECT_ID.into()
+        });
+    // Ensure project exists in the projects list.
+    let projects = load_projects();
+    if !projects.iter().any(|x| x.id == pid) {
+        return Err(format!("project not found: {pid}"));
     }
     let mut list = load_sessions_index();
     let s = list
         .iter_mut()
         .find(|s| s.id == id)
         .ok_or_else(|| "session not found".to_string())?;
-    s.project_id = pid;
+    s.project_id = Some(pid);
     s.updated_at = Utc::now();
     let clone = s.clone();
     save_sessions_index(&list)?;
@@ -1612,6 +1742,31 @@ mod tests {
             permission_policy: None,
             scheduled: false,
         }
+    }
+
+    #[test]
+    fn ensure_general_project_is_idempotent_and_not_removable() {
+        let _ = ensure_app_dirs();
+        let a = ensure_general_project().expect("ensure");
+        assert_eq!(a.id, GENERAL_PROJECT_ID);
+        assert!(a.system);
+        assert!(a.trusted);
+        assert!(a.pinned);
+        assert!(PathBuf::from(&a.path).is_dir());
+        let b = ensure_general_project().expect("ensure again");
+        assert_eq!(a.id, b.id);
+        assert_eq!(a.path, b.path);
+        assert!(remove_project(GENERAL_PROJECT_ID).is_err());
+        let listed = load_projects();
+        assert!(listed.iter().any(|p| p.id == GENERAL_PROJECT_ID && p.system));
+    }
+
+    #[test]
+    fn create_session_defaults_to_general_project() {
+        let _ = ensure_app_dirs();
+        let meta = create_session(None, Some("t".into()), false).expect("create");
+        assert_eq!(meta.project_id.as_deref(), Some(GENERAL_PROJECT_ID));
+        let _ = delete_session(&meta.id);
     }
 
     #[test]
