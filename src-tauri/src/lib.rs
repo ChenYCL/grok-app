@@ -56,6 +56,8 @@ mod session_manager;
 mod store;
 mod tray;
 mod tray_i18n;
+#[cfg(windows)]
+mod win_shell;
 mod voice_auth;
 mod voice_host;
 mod voice_stt;
@@ -71,6 +73,10 @@ use session_manager::SessionManager;
 pub fn run() {
     let _ = paths::ensure_app_dirs();
     logging::init();
+    // Windows: AppUserModelID before window/taskbar so Show Desktop / jump lists
+    // treat us as a normal app (matches NSIS shortcut AUMID).
+    #[cfg(windows)]
+    win_shell::set_process_app_user_model_id();
 
     let session_mgr = Arc::new(SessionManager::new());
     let mirror_host = Arc::new(MirrorHost::from_env());
@@ -96,12 +102,8 @@ pub fn run() {
     let builder = tauri::Builder::default()
         // Must be registered first so a second process exits and focuses the primary window.
         .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
-            use tauri::Manager;
-            if let Some(window) = app.get_webview_window("main") {
-                let _ = window.unminimize();
-                let _ = window.show();
-                let _ = window.set_focus();
-            }
+            // Same restore path as tray Open — taskbar + shell styles included.
+            tray::show_main_window(app);
         }))
         .plugin(tauri_plugin_store::Builder::new().build())
         // Always register process so release builds can relaunch after install.
@@ -160,6 +162,10 @@ pub fn run() {
                 {
                     let _ = window.set_background_color(Some(tauri::window::Color(13, 13, 13, 255)));
                 }
+                // Windows: frameless + tray skip_taskbar can leave the HWND out of
+                // Explorer's Show Desktop set when it is the only visible window.
+                #[cfg(windows)]
+                win_shell::ensure_main_window_shell_integration(&window);
             }
             // Menu-bar / system tray — logo.svg tray icon (not dock app icon)
             if let Err(e) = tray::setup_tray(app.handle()) {

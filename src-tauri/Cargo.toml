@@ -73,8 +73,15 @@ rand = "0.8"
 tracing-appender = "0.2"
 
 # Windows system proxy (WinINET registry) for child-process env injection — NEW-02.
+# `windows` — shell integration (AUMID, Show Desktop / taskbar styles) in win_shell.rs.
 [target.'cfg(windows)'.dependencies]
 winreg = "0.55"
+windows = { version = "0.61", features = [
+    "Win32_Foundation",
+    "Win32_System_Com",
+    "Win32_UI_Shell",
+    "Win32_UI_WindowsAndMessaging",
+] }
 
 [dev-dependencies]
 tauri = { version = "2", features = ["test"] }

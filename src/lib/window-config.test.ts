@@ -53,6 +53,21 @@ describe("window chrome", () => {
     expect(main.transparent).toBe(false);
   });
 
+  it("ships Windows shell integration for Show Desktop (frameless alone)", () => {
+    // decorations:false + tray skip_taskbar needs win_shell.rs so Explorer
+    // ToggleDesktop still minimizes when Grok is the only window.
+    const winShell = resolve(TAURI_DIR, "src/win_shell.rs");
+    expect(existsSync(winShell)).toBe(true);
+    const body = readFileSync(winShell, "utf8");
+    expect(body).toMatch(/SetCurrentProcessExplicitAppUserModelID/);
+    expect(body).toMatch(/WS_EX_APPWINDOW/);
+    expect(body).toMatch(/ensure_main_window_shell_integration/);
+    expect(body).toMatch(/set_main_window_skip_taskbar/);
+    const conf = JSON.parse(readFileSync(CONF_PATH, "utf8")) as { identifier?: string };
+    expect(conf.identifier).toBe("com.grokapp.desktop");
+    expect(body).toContain("com.grokapp.desktop");
+  });
+
   it("base product identity is Grok", () => {
     const conf = JSON.parse(readFileSync(CONF_PATH, "utf8")) as {
       productName?: string;

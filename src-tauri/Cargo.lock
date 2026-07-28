@@ -1738,6 +1738,7 @@ dependencies = [
  "uuid",
  "which",
  "window-vibrancy",
+ "windows",
  "winreg",
  "zip 2.4.2",
 ]

@@ -205,8 +205,13 @@ fn usage_status_label(tr: &TrayStrings) -> String {
 pub fn hide_to_tray(app: &AppHandle) {
     if let Some(w) = app.get_webview_window("main") {
         let _ = w.hide();
-        // Windows / Linux: drop taskbar button while living in the tray.
-        #[cfg(not(target_os = "macos"))]
+        // Windows: TOOLWINDOW + DeleteTab (see win_shell) so reopen can fully
+        // restore Show Desktop significance. Linux: Tauri skip_taskbar only.
+        #[cfg(windows)]
+        {
+            crate::win_shell::set_main_window_skip_taskbar(&w, true);
+        }
+        #[cfg(all(not(target_os = "macos"), not(windows)))]
         {
             let _ = w.set_skip_taskbar(true);
         }
@@ -228,13 +233,24 @@ pub fn show_main_window(app: &AppHandle) {
         let _ = app.set_dock_visibility(true);
     }
     if let Some(w) = app.get_webview_window("main") {
-        #[cfg(not(target_os = "macos"))]
+        #[cfg(windows)]
+        {
+            // Restore APPWINDOW / clear TOOLWINDOW / re-AddTab before show so
+            // Explorer sees a normal app window (Show Desktop when alone).
+            crate::win_shell::set_main_window_skip_taskbar(&w, false);
+        }
+        #[cfg(all(not(target_os = "macos"), not(windows)))]
         {
             let _ = w.set_skip_taskbar(false);
         }
         let _ = w.show();
         let _ = w.unminimize();
         let _ = w.set_focus();
+        #[cfg(windows)]
+        {
+            // After show/focus, re-assert styles + taskbar tab once more.
+            crate::win_shell::ensure_main_window_shell_integration(&w);
+        }
     }
 }
 
