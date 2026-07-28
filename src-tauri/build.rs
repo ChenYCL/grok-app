@@ -1,7 +1,8 @@
 fn main() {
-    // Do not inject extra /MANIFESTINPUT here: Tauri already embeds a Windows
-    // app manifest via resource.lib. A second MANIFEST resource makes link.exe
-    // fail with CVT1100 "duplicate resource" (release Windows-x64 on v0.1.9).
+    // Windows test STATUS_ENTRYPOINT_NOT_FOUND fix lives in CI (post-link mt.exe
+    // Common Controls v6 on the test harness). Do NOT add /MANIFESTINPUT here:
+    // tauri_build already embeds a Windows app manifest; a second one fails
+    // link with CVT1100 "duplicate resource" (v0.1.9 release).
 
     println!("cargo:rerun-if-env-changed=GROK_UPDATER_PUBLIC_KEY");
     println!("cargo:rerun-if-env-changed=GROK_UPDATER_ENDPOINT");
