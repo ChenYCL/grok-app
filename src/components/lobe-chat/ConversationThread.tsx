@@ -18,6 +18,7 @@ import { createT } from "@/i18n";
 import {
   formatTurnErrorBody,
   isToolInlinedInAssistants,
+  lastRegenerableAssistantId,
   messageSegments,
   isTurnPromptMessage,
   type ChatMessage,
@@ -53,6 +54,7 @@ import {
   IconClock,
   IconExportMd,
   IconFork,
+  IconRefresh,
   IconRename,
   IconRewind,
   IconTarget,
@@ -371,6 +373,12 @@ export interface ConversationThreadProps {
   onCancelEditUserMessage?: () => void;
   onSubmitEditUserMessage?: (message: ChatMessage, content: string) => void;
   onRemoveEditAttachment?: (att: Attachment) => void;
+  /**
+   * Regenerate last assistant reply (resend last user turn unchanged).
+   * Gated like edit-last-user: idle session, last completed assistant only.
+   */
+  canRegenerate?: boolean;
+  onRegenerateAssistant?: (message: ChatMessage) => void;
   /** Idle session — allow rewind / fork from user bubbles. */
   canRewindSession?: boolean;
   onRewindToUserMessage?: (message: ChatMessage) => void;
@@ -420,6 +428,8 @@ export function ConversationThread({
   onCancelEditUserMessage,
   onSubmitEditUserMessage,
   onRemoveEditAttachment,
+  canRegenerate = false,
+  onRegenerateAssistant,
   canRewindSession = false,
   onRewindToUserMessage,
   onForkFromUserMessage,
@@ -443,6 +453,12 @@ export function ConversationThread({
     }
     return null;
   }, [messages]);
+
+  /** Last non-streaming assistant in the current user turn — regenerate target. */
+  const regenerableAssistantId = useMemo(
+    () => lastRegenerableAssistantId(messages),
+    [messages],
+  );
 
   const {
     viewportRef: scrollRef,
@@ -1108,6 +1124,8 @@ export function ConversationThread({
               const isFindHit = !!findHitMessageIds?.has(m.id);
               const isFindCurrent = findActive?.messageId === m.id;
               const isNodeFocus = focusMessageId === m.id;
+              const canRegenError =
+                !!onRegenerateAssistant && regenerableAssistantId === m.id;
               return wrap(
                 <div
                   key={m.id}
@@ -1139,6 +1157,20 @@ export function ConversationThread({
                       friendly
                     )}
                   </div>
+                  {canRegenError ? (
+                    <div className="lobe-chat-error__actions">
+                      <MessageActionButton
+                        label={tr("message.regenerate")}
+                        disabled={!canRegenerate}
+                        onClick={() => {
+                          if (!canRegenerate) return;
+                          onRegenerateAssistant?.(m);
+                        }}
+                      >
+                        <IconRefresh size={15} />
+                      </MessageActionButton>
+                    </div>
+                  ) : null}
                 </div>,
               );
             }
@@ -1321,33 +1353,54 @@ export function ConversationThread({
                     <LiveToolText message={liveTool} locale={locale} />
                   ) : null
                 }
-                actions={
-                  !m.streaming && m.content.trim() ? (
+                actions={(() => {
+                  if (m.streaming) return null;
+                  const showCopy = !!m.content.trim();
+                  const showRegen =
+                    !!onRegenerateAssistant && regenerableAssistantId === m.id;
+                  if (!showCopy && !showRegen) return null;
+                  return (
                     <>
-                      <MessageCopyButton
-                        text={m.content}
-                        copyLabel={tr("message.copy")}
-                        copiedLabel={tr("message.copied")}
-                      />
-                      <MessageActionButton
-                        label={tr("message.exportMd")}
-                        onClick={() => {
-                          const blob = new Blob([m.content], {
-                            type: "text/markdown;charset=utf-8",
-                          });
-                          const url = URL.createObjectURL(blob);
-                          const a = document.createElement("a");
-                          a.href = url;
-                          a.download = `grok-${m.id.slice(0, 8)}.md`;
-                          a.click();
-                          URL.revokeObjectURL(url);
-                        }}
-                      >
-                        <IconExportMd size={15} />
-                      </MessageActionButton>
+                      {showCopy ? (
+                        <>
+                          <MessageCopyButton
+                            text={m.content}
+                            copyLabel={tr("message.copy")}
+                            copiedLabel={tr("message.copied")}
+                          />
+                          <MessageActionButton
+                            label={tr("message.exportMd")}
+                            onClick={() => {
+                              const blob = new Blob([m.content], {
+                                type: "text/markdown;charset=utf-8",
+                              });
+                              const url = URL.createObjectURL(blob);
+                              const a = document.createElement("a");
+                              a.href = url;
+                              a.download = `grok-${m.id.slice(0, 8)}.md`;
+                              a.click();
+                              URL.revokeObjectURL(url);
+                            }}
+                          >
+                            <IconExportMd size={15} />
+                          </MessageActionButton>
+                        </>
+                      ) : null}
+                      {showRegen ? (
+                        <MessageActionButton
+                          label={tr("message.regenerate")}
+                          disabled={!canRegenerate}
+                          onClick={() => {
+                            if (!canRegenerate) return;
+                            onRegenerateAssistant?.(m);
+                          }}
+                        >
+                          <IconRefresh size={15} />
+                        </MessageActionButton>
+                      ) : null}
                     </>
-                  ) : null
-                }
+                  );
+                })()}
               />,
             );
           })}

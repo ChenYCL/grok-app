@@ -90,6 +90,7 @@ import {
   truncateBeforeLastUser,
   truncateThroughUserPrompt,
   canRewindToUserPrompt,
+  canRegenerateAssistant,
   userPromptIndexOf,
   localRewindPoints,
   IDLE_SNAPSHOT,
@@ -8156,26 +8157,25 @@ export default function App() {
   }, [editSubmitting]);
 
   /**
-   * Edit last user turn: commit UI immediately (edited bubble + thinking),
-   * then connect / rewind / send while the thinking row is already visible.
+   * Resend the last user turn (edit-resend or regenerate): commit UI immediately
+   * (user bubble + thinking), then connect / rewind / send while thinking is visible.
    */
-  const submitEditLastUser = useCallback(
-    async (msg: ChatMessage, storedDisplay: string) => {
+  const resendLastUserTurn = useCallback(
+    async (
+      msg: ChatMessage,
+      storedDisplay: string,
+      att: Attachment[],
+      opts?: { onlyLastToastKey?: "message.editOnlyLast" | "message.regenerateOnlyLast"; busyToastKey?: "message.editBusy" | "message.regenerateBusy" },
+    ) => {
       if (msg.role !== "user" || msg.id !== lastUserMessageId) {
-        showToast(tr("message.editOnlyLast"));
+        showToast(tr(opts?.onlyLastToastKey ?? "message.editOnlyLast"));
         return;
       }
       if (!canEditLastUser || editSubmitting) {
-        showToast(tr("message.editBusy"));
+        showToast(tr(opts?.busyToastKey ?? "message.editBusy"));
         return;
       }
       const segments = parseStoredContent(storedDisplay);
-      // Live editable set is the source of truth (may have added/removed files).
-      const att: Attachment[] = editAttachments.map((a) => ({
-        path: a.path,
-        name: a.name,
-        isDir: a.isDir,
-      }));
       if (isDraftEmpty(segments) && !att.length) return;
 
       const agentBody = serializeForAgent(segments, { goalMode });
@@ -8318,13 +8318,66 @@ export default function App() {
       lastUserMessageId,
       canEditLastUser,
       editSubmitting,
-      editAttachments,
       showToast,
       tr,
       goalMode,
       session.title,
       session.sessionId,
       // ensureConnected / patchSessionMessages / applySessionTitle via closure
+    ],
+  );
+
+  /** Edit last user turn — uses inline edit attachment chips as source of truth. */
+  const submitEditLastUser = useCallback(
+    async (msg: ChatMessage, storedDisplay: string) => {
+      const att: Attachment[] = editAttachments.map((a) => ({
+        path: a.path,
+        name: a.name,
+        isDir: a.isDir,
+      }));
+      await resendLastUserTurn(msg, storedDisplay, att);
+    },
+    [editAttachments, resendLastUserTurn],
+  );
+
+  /**
+   * Regenerate last assistant reply: resend the last user turn unchanged
+   * (same content + attachments) via the edit-resend pipeline.
+   */
+  const regenerateLastAssistant = useCallback(
+    async (message: ChatMessage) => {
+      if (message.role !== "assistant") return;
+      if (!canEditLastUser || editSubmitting) {
+        showToast(tr("message.regenerateBusy"));
+        return;
+      }
+      if (
+        !lastUserMessageId ||
+        !canRegenerateAssistant(messages, message.id)
+      ) {
+        showToast(tr("message.regenerateOnlyLast"));
+        return;
+      }
+      const userMsg = messages.find((m) => m.id === lastUserMessageId);
+      if (!userMsg || userMsg.role !== "user") return;
+      const att: Attachment[] = (userMsg.attachments ?? []).map((a) => ({
+        path: a.path,
+        name: a.name,
+        isDir: a.isDir,
+      }));
+      await resendLastUserTurn(userMsg, userMsg.content, att, {
+        onlyLastToastKey: "message.regenerateOnlyLast",
+        busyToastKey: "message.regenerateBusy",
+      });
+    },
+    [
+      canEditLastUser,
+      editSubmitting,
+      lastUserMessageId,
+      messages,
+      resendLastUserTurn,
+      showToast,
+      tr,
     ],
   );
 
@@ -10459,6 +10512,10 @@ export default function App() {
                 prev.filter((x) => x.path !== att.path),
               )
             }
+            canRegenerate={canEditLastUser && !editSubmitting}
+            onRegenerateAssistant={(msg) => {
+              void regenerateLastAssistant(msg);
+            }}
             canRewindSession={canRewindSession && !!session.sessionId}
             onRewindToUserMessage={onRewindToUserMessage}
             onForkFromUserMessage={onForkFromUserMessage}

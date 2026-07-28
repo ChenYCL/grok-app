@@ -1204,6 +1204,40 @@ export function truncateBeforeLastUser(messages: ChatMessage[]): ChatMessage[] {
   return messages.slice(0, cut);
 }
 
+/**
+ * Id of the last non-streaming assistant message in the current (last user) turn.
+ * Used to gate regenerate-last-reply UI.
+ */
+export function lastRegenerableAssistantId(
+  messages: ChatMessage[],
+): string | null {
+  let lastUserIdx = -1;
+  for (let i = messages.length - 1; i >= 0; i--) {
+    if (isTurnPromptMessage(messages[i])) {
+      lastUserIdx = i;
+      break;
+    }
+  }
+  if (lastUserIdx < 0) return null;
+
+  let lastAssistantId: string | null = null;
+  for (let i = lastUserIdx + 1; i < messages.length; i++) {
+    const m = messages[i]!;
+    if (m.role === "assistant" && !m.streaming) {
+      lastAssistantId = m.id;
+    }
+  }
+  return lastAssistantId;
+}
+
+/** True when `assistantId` is the regenerable last assistant for the last user turn. */
+export function canRegenerateAssistant(
+  messages: ChatMessage[],
+  assistantId: string,
+): boolean {
+  return lastRegenerableAssistantId(messages) === assistantId;
+}
+
 /** Number of user-role messages (0-based prompt index length). */
 export function countUserPrompts(messages: ChatMessage[]): number {
   return messages.reduce((n, m) => (isTurnPromptMessage(m) ? n + 1 : n), 0);
