@@ -11,6 +11,10 @@ See `docs/llm-wiki/release.md`.
 
 ## [Unreleased]
 
+### Fixed
+
+- **Composer skills picker**: skills missing `userInvocable` in `grok inspect` are treated as invocable (only explicit `false` hides them). Extensions-disabled skills stay hidden. Empty / CLI-error states replace the old “Coming soon” dead end.
+
 ### Added
 
 - **General workspace**: app-managed `{app_data}/workspaces/general` project (`system:general`) for chats without a user folder — agent can create/edit files without the “bind a project first” toast; always trusted, pinned, not removable
