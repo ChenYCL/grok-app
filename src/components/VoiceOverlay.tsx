@@ -155,6 +155,14 @@ export function VoiceOverlay({
               true,
             );
           }
+          if (
+            e.payload.name === "create_agent_session" ||
+            e.payload.name === "prompt_agent"
+          ) {
+            window.dispatchEvent(
+              new CustomEvent("grok-app:voice-session-changed"),
+            );
+          }
         });
         unsubs.push(u5);
       } catch (e) {

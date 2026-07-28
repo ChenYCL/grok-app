@@ -1305,6 +1305,7 @@ export const zhTW: Record<MessageKey, string> = {
   "shortcuts.newChat": "新增對話",
   "shortcuts.settings": "設定",
   "shortcuts.doctor": "Doctor",
+  "shortcuts.liveVoice": "開始即時語音",
   "shortcuts.stop": "停止產生 / 關閉浮層",
   "shortcuts.send": "傳送訊息",
   "shortcuts.help": "顯示快捷鍵",

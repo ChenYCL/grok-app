@@ -68,6 +68,13 @@ export const SHORTCUTS: ShortcutRow[] = [
     mac: "⌘ ⇧ D",
     win: "Ctrl Shift D",
   },
+  {
+    id: "liveVoice",
+    labelKey: "shortcuts.liveVoice",
+    group: "input",
+    mac: "⌘ ⇧ V",
+    win: "Ctrl Shift V",
+  },
 ];
 
 /** Group order for Settings → Keyboard (and optional help grouping). */
