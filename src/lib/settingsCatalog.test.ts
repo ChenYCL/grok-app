@@ -89,10 +89,11 @@ describe("settingsCatalog", () => {
     expect(isSettingsSectionId("nope")).toBe(false);
   });
 
-  it("keywordKeysForSection includes skin/wallpaper and remote control", () => {
+  it("keywordKeysForSection includes skin/wallpaper/timestamps and remote control", () => {
     const appearance = keywordKeysForSection("appearance");
     expect(appearance).toContain("settings.skin");
     expect(appearance).toContain("settings.wallpaper");
+    expect(appearance).toContain("settings.messageTimestamps");
     const rim = keywordKeysForSection("remote_im");
     expect(rim).toContain("settings.nav.remoteIm");
     expect(rim).toContain("settings.tab.remoteIm");

@@ -402,6 +402,12 @@ export interface ConversationThreadProps {
   onOpenSessionChanges?: () => void;
   /** Open a modified path from turn activity. */
   onOpenModifiedPath?: (path: string) => void;
+  /**
+   * When false, hide message time labels in action rows.
+   * createdAt data is still kept on messages — UI only.
+   * Default true.
+   */
+  showTimestamps?: boolean;
 }
 
 export function ConversationThread({
@@ -431,6 +437,7 @@ export function ConversationThread({
   findActive = null,
   onOpenSessionChanges: _onOpenSessionChanges,
   onOpenModifiedPath: _onOpenModifiedPath,
+  showTimestamps = true,
 }: ConversationThreadProps) {
   const tr = useMemo(() => createT(locale), [locale]);
   void _onOpenSessionChanges;
@@ -953,7 +960,9 @@ export function ConversationThread({
               const isInterjection = m.marker === "interjection";
               const isLastUser = !isInterjection && lastUserMessageId === m.id;
               const isEditing = editingUserMessageId === m.id;
-              const timeLabel = formatMessageTime(m.createdAt, locale);
+              const timeLabel = showTimestamps
+                ? formatMessageTime(m.createdAt, locale)
+                : null;
               const isFindHit = !!findHitMessageIds?.has(m.id);
               const isFindCurrent = findActive?.messageId === m.id;
               const isNodeFocus = focusMessageId === m.id;

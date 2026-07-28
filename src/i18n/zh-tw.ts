@@ -823,6 +823,9 @@ export const zhTW: Record<MessageKey, string> = {
   "settings.themeSystem": "跟隨系統",
   "settings.themeLight": "淺色",
   "settings.themeDark": "深色",
+  "settings.messageTimestamps": "顯示訊息時間戳",
+  "settings.messageTimestampsDesc":
+    "在訊息操作區顯示傳送時間。關閉後對話更簡潔。",
   "settings.skin": "配色皮膚",
   "settings.skinDesc": "強調色與表面色板（可與淺/深色疊加）",
   "settings.skin.default": "預設",
