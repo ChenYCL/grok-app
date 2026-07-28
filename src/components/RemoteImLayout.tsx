@@ -136,7 +136,7 @@ export function RemoteImLayout({
       const ready = list.some((i) => i.enabled && i.hasCredentials);
       const st = await bridgeGetStatus();
       setBridge(st);
-      if (ready && st.state !== "running") {
+      if (ready && st.state !== "running" && st.state !== "listening") {
         try {
           const started = await bridgeStart();
           setBridge(started);
@@ -167,7 +167,8 @@ export function RemoteImLayout({
     (schema: ChannelSchema): ChannelStatusTone => {
       const list = instancesForChannel(instances, schema.id);
       if (list.length === 0) return "unconfigured";
-      const running = bridge?.state === "running";
+      const running =
+        bridge?.state === "running" || bridge?.state === "listening";
       const tones = list.map((i) =>
         deriveStatus({ ...i, status: i.status }, !!running),
       );
@@ -207,7 +208,10 @@ export function RemoteImLayout({
           setBridge(st);
           saved = {
             ...saved,
-            status: deriveStatus(saved, st.state === "running"),
+            status: deriveStatus(
+              saved,
+              st.state === "running" || st.state === "listening",
+            ),
           };
         }
         persistInstances(upsertInstance(instances, saved));
@@ -281,7 +285,11 @@ export function RemoteImLayout({
           </span>
           <RimStatusDot
             tone={
-              bridge?.state === "running" ? "connected" : "unconfigured"
+              bridge?.state === "running" || bridge?.state === "listening"
+                ? "connected"
+                : bridge?.state === "degraded" || bridge?.state === "error"
+                  ? "error"
+                  : "unconfigured"
             }
             title={bridge?.state ?? "stopped"}
           />

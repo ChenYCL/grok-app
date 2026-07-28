@@ -190,6 +190,8 @@ pub async fn try_autostart(state: &RemoteImState) {
     }
 }
 
+pub use bridge::start_health_watchdog;
+
 #[tauri::command]
 pub async fn remote_im_test_connection(
     channel: String,

@@ -21,6 +21,7 @@ See `docs/llm-wiki/release.md`.
 
 ### Added
 
+- **Remote IM health watchdog**: auto-restart enabled bridge after unexpected connector exit (backoff); status distinguishes listening / degraded / error (not just “configured”)
 - **General workspace**: app-managed `{app_data}/workspaces/general` project (`system:general`) for chats without a user folder — agent can create/edit files without the “bind a project first” toast; always trusted, pinned, not removable
 - **Session Markdown export options**: choose thinking + tool summaries; download `.md` or copy to clipboard (session menu / `/export`)
 - **Updater production status**: About shows silent vs GitHub update channel; Host `updater_status` DTO; `scripts/verify-updater-setup.sh` for maintainer/CI prerequisites (no secret values printed)
