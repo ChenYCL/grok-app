@@ -11545,6 +11545,10 @@ export default function App() {
                         effortHigh: tr("effort.high"),
                         effortMedium: tr("effort.medium"),
                         effortLow: tr("effort.low"),
+                        modelSearchPlaceholder: tr(
+                          "composer.modelSearchPlaceholder",
+                        ),
+                        modelSearchEmpty: tr("composer.modelSearchEmpty"),
                       }}
                       onModel={(v) => {
                         if (!isValidModelId(v, availableModels)) return;
