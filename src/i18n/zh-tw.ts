@@ -472,6 +472,8 @@ export const zhTW: Record<MessageKey, string> = {
   "composer.projectBound": "對話已繫結至「{name}」",
   "composer.projectCleared": "已切換到通用工作區",
   "composer.model": "模型",
+  "composer.modelSearchPlaceholder": "搜尋模型…",
+  "composer.modelSearchEmpty": "沒有符合的模型",
   "composer.effort": "推理強度",
   "composer.mode": "模式",
   "composer.permission": "授權",

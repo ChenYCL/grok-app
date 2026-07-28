@@ -24,6 +24,7 @@ import {
   type ModelOption,
   type PermissionPolicyId,
 } from "@/lib/grokCatalog";
+import { filterModelsForMenu } from "@/lib/modelMenuSearch";
 import { Tip } from "@/components/ui/tooltip";
 import {
   IconAlertTriangle,
@@ -191,6 +192,10 @@ export interface ComposerModelMenuProps {
     effortHigh: string;
     effortMedium: string;
     effortLow: string;
+    /** Search field placeholder in the model nested list. */
+    modelSearchPlaceholder: string;
+    /** Empty state when filter matches nothing. */
+    modelSearchEmpty: string;
   };
   onModel: (id: string) => void;
   onEffort: (id: string) => void;
@@ -218,25 +223,67 @@ export function ComposerModelMenu({
   onEffort,
 }: ComposerModelMenuProps) {
   const [nested, setNested] = useState<Nested>(null);
+  const [modelQuery, setModelQuery] = useState("");
+  const modelSearchRef = useRef<HTMLInputElement>(null);
   const menu = usePortalMenu(240, 280, nested ?? "root");
   const modelList = models.length > 0 ? models : GROK_BUILD_MODELS;
+  const filteredModels = filterModelsForMenu(modelList, modelQuery);
   const activeModel = findModel(modelId, modelList);
   const effortList = effortsForModel(activeModel);
 
+  const clearModelQuery = () => setModelQuery("");
+
   useEffect(() => {
-    if (!menu.open) setNested(null);
+    if (!menu.open) {
+      setNested(null);
+      clearModelQuery();
+    }
   }, [menu.open]);
+
+  // Clear filter when leaving the model nested list (back / effort / select).
+  useEffect(() => {
+    if (nested !== "model") clearModelQuery();
+  }, [nested]);
+
+  // Autofocus search when entering the model list.
+  useEffect(() => {
+    if (!menu.open || nested !== "model") return;
+    const id = requestAnimationFrame(() => {
+      modelSearchRef.current?.focus();
+    });
+    return () => cancelAnimationFrame(id);
+  }, [menu.open, nested]);
 
   useEffect(() => {
     if (!menu.open) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape" && nested) {
+        // Capture + stopImmediate so floatingMenu does not close the whole panel.
+        e.preventDefault();
         e.stopPropagation();
+        e.stopImmediatePropagation();
         setNested(null);
+        return;
       }
+      // Typing while on model list focuses the filter (e.g. after tabbing to a row).
+      if (nested !== "model") return;
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      if (e.key.length !== 1) return;
+      const active = document.activeElement;
+      if (
+        active === modelSearchRef.current ||
+        (active instanceof HTMLElement &&
+          active.closest("input, textarea, [contenteditable=true]"))
+      ) {
+        return;
+      }
+      e.preventDefault();
+      setModelQuery((q) => q + e.key);
+      modelSearchRef.current?.focus();
     };
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
+    // Capture so Escape wins over useFloatingMenu's bubble listener.
+    document.addEventListener("keydown", onKey, true);
+    return () => document.removeEventListener("keydown", onKey, true);
   }, [menu.open, nested]);
 
   const modelLabel = activeModel?.label ?? modelId;
@@ -255,7 +302,10 @@ export function ComposerModelMenu({
       ariaLabel={labels.model}
       title={title}
       onOpenChange={(o) => {
-        if (!o) setNested(null);
+        if (!o) {
+          setNested(null);
+          clearModelQuery();
+        }
       }}
     >
       {nested === null ? (
@@ -300,28 +350,57 @@ export function ComposerModelMenu({
                 </span>
               </div>
             ) : (
-              modelList.map((m) => (
-                <button
-                  key={m.id}
-                  type="button"
-                  className={
-                    "cmm__opt" + (m.id === modelId ? " is-active" : "")
-                  }
-                  onClick={() => {
-                    onModel(m.id);
-                    setNested(null);
-                  }}
-                >
-                  <span className="cmm__opt-main">
-                    <span className="cmm__opt-title">{m.label}</span>
-                  </span>
-                  {m.id === modelId && (
-                    <span className="cmm__opt-check" aria-hidden>
-                      <IconCheck size={16} />
+              <>
+                <div className="cmm__search">
+                  <input
+                    ref={modelSearchRef}
+                    type="search"
+                    className="cmm__search-input"
+                    value={modelQuery}
+                    onChange={(e) => setModelQuery(e.target.value)}
+                    placeholder={labels.modelSearchPlaceholder}
+                    aria-label={labels.modelSearchPlaceholder}
+                    autoComplete="off"
+                    spellCheck={false}
+                    // Keep menu open / avoid accidental form submit.
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") e.preventDefault();
+                    }}
+                  />
+                </div>
+                {filteredModels.length === 0 ? (
+                  <div className="cmm__opt cmm__opt--muted" role="status">
+                    <span className="cmm__opt-main">
+                      <span className="cmm__opt-title">
+                        {labels.modelSearchEmpty}
+                      </span>
                     </span>
-                  )}
-                </button>
-              ))
+                  </div>
+                ) : (
+                  filteredModels.map((m) => (
+                    <button
+                      key={m.id}
+                      type="button"
+                      className={
+                        "cmm__opt" + (m.id === modelId ? " is-active" : "")
+                      }
+                      onClick={() => {
+                        onModel(m.id);
+                        setNested(null);
+                      }}
+                    >
+                      <span className="cmm__opt-main">
+                        <span className="cmm__opt-title">{m.label}</span>
+                      </span>
+                      {m.id === modelId && (
+                        <span className="cmm__opt-check" aria-hidden>
+                          <IconCheck size={16} />
+                        </span>
+                      )}
+                    </button>
+                  ))
+                )}
+              </>
             ))}
           {nested === "effort" &&
             effortList.map((e) => (

@@ -10072,6 +10072,37 @@ button.composer__context-item {
   gap: 2px;
 }
 
+.cmm__search {
+  padding: 4px 6px 6px;
+}
+
+.cmm__search-input {
+  width: 100%;
+  height: 32px;
+  padding: 0 10px;
+  border-radius: 8px;
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-input);
+  color: var(--text-primary);
+  font-size: 13px;
+  box-sizing: border-box;
+}
+
+.cmm__search-input::placeholder {
+  color: var(--text-tertiary);
+}
+
+.cmm__search-input:focus {
+  outline: none;
+  border-color: var(--border-focus, var(--accent, #6b8cff));
+}
+
+/* Hide native search clear on WebKit so layout stays tight in the menu. */
+.cmm__search-input::-webkit-search-decoration,
+.cmm__search-input::-webkit-search-cancel-button {
+  -webkit-appearance: none;
+}
+
 .cmm__back {
   padding: 8px 12px;
   text-align: left;
