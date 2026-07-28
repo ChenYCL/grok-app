@@ -84,6 +84,10 @@ import {
 } from "@/i18n";
 import { useUpdaterContext } from "@/hooks/UpdaterProvider";
 import {
+  loadCodeWrapPref,
+  saveCodeWrapPref,
+} from "@/lib/codeWrapPref";
+import {
   SETTINGS_NAV,
   buildSettingsHash,
   defaultTabFor,
@@ -735,6 +739,10 @@ export function SettingsPage({
   const [wallpaperBusy, setWallpaperBusy] = useState(false);
   const [wallpaperError, setWallpaperError] = useState<string | null>(null);
   const [wallpaperFocusOpen, setWallpaperFocusOpen] = useState(false);
+  /** Chat code-block wrap default — frontend-only localStorage. */
+  const [codeWrapDefault, setCodeWrapDefault] = useState(() =>
+    loadCodeWrapPref(),
+  );
   const marqueeRef = useRef<{
     active: boolean;
     dragging: boolean;
@@ -2231,6 +2239,33 @@ export function SettingsPage({
                 ) : null}
               </div>
             ) : null}
+            <div
+              className={
+                "settings-card" +
+                rowHighlight("settings-anchor-codeWrapDefault")
+              }
+              id="settings-anchor-codeWrapDefault"
+            >
+              <div className="settings-row">
+                <div className="settings-row__text">
+                  <div className="settings-row__label">
+                    {t("settings.codeWrapDefault")}
+                  </div>
+                  <div className="settings-row__desc">
+                    {t("settings.codeWrapDefaultDesc")}
+                  </div>
+                </div>
+                <UiCheck
+                  checked={codeWrapDefault}
+                  onChange={() => {
+                    const next = !codeWrapDefault;
+                    setCodeWrapDefault(next);
+                    saveCodeWrapPref(next);
+                  }}
+                  ariaLabel={t("settings.codeWrapDefault")}
+                />
+              </div>
+            </div>
           </>
         )}
 

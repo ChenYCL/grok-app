@@ -5,6 +5,7 @@
 import { useState, type ReactNode } from "react";
 import { IconCheck, IconCopy } from "@/components/icons";
 import { Tip } from "@/components/ui/tooltip";
+import { loadCodeWrapPref } from "@/lib/codeWrapPref";
 import { cn } from "@/lib/utils";
 
 function extractText(node: ReactNode): string {
@@ -31,7 +32,7 @@ export function CodeBlock({
   unwrapLabel?: string;
   copyLabel?: string;
 }) {
-  const [wrap, setWrap] = useState(false);
+  const [wrap, setWrap] = useState(() => loadCodeWrapPref());
   const [copied, setCopied] = useState(false);
   const lang = (language || "text").replace(/^language-/, "") || "text";
   const text = extractText(children).replace(/\n$/, "");

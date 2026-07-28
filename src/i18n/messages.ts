@@ -857,6 +857,9 @@ const en = {
   "settings.themeSystem": "System",
   "settings.themeLight": "Light",
   "settings.themeDark": "Dark",
+  "settings.codeWrapDefault": "Wrap code lines by default",
+  "settings.codeWrapDefaultDesc":
+    "New chat code blocks start with soft wrap on. You can still toggle wrap on each block.",
   "settings.skin": "Color skin",
   "settings.skinDesc": "Accent and surface palette (works with light/dark)",
   "settings.skin.default": "Default",
@@ -2942,6 +2945,9 @@ const zh: Record<MessageKey, string> = {
   "settings.themeSystem": "跟随系统",
   "settings.themeLight": "浅色",
   "settings.themeDark": "深色",
+  "settings.codeWrapDefault": "默认自动换行代码",
+  "settings.codeWrapDefaultDesc":
+    "新的聊天代码块默认开启软换行。仍可在每个代码块上单独切换。",
   "settings.skin": "配色皮肤",
   "settings.skinDesc": "强调色与表面色板（可与浅/深色叠加）",
   "settings.skin.default": "默认",
