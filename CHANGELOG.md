@@ -21,6 +21,7 @@ See `docs/llm-wiki/release.md`.
 
 ### Added
 
+- **Composer send key preference**: Settings → General → Composer — choose Enter to send (default) or ⌘/Ctrl+Enter to send (Enter inserts newline); stored in localStorage
 - **General workspace**: app-managed `{app_data}/workspaces/general` project (`system:general`) for chats without a user folder — agent can create/edit files without the “bind a project first” toast; always trusted, pinned, not removable
 - **Session Markdown export options**: choose thinking + tool summaries; download `.md` or copy to clipboard (session menu / `/export`)
 - **Updater production status**: About shows silent vs GitHub update channel; Host `updater_status` DTO; `scripts/verify-updater-setup.sh` for maintainer/CI prerequisites (no secret values printed)

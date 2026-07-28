@@ -65,6 +65,11 @@ import {
   COMPOSER_PREFS_SCOPES,
   PERMISSION_POLICIES,
 } from "@/lib/grokCatalog";
+import {
+  loadComposerSendKeyPref,
+  saveComposerSendKeyPref,
+  type ComposerSendKeyPref,
+} from "@/lib/composerSendKey";
 import type { AccountStatus, DetectedEditor } from "@/lib/api";
 import * as api from "@/lib/api";
 import { AccountPanel } from "@/components/AccountPanel";
@@ -705,6 +710,9 @@ export function SettingsPage({
   trustedProjects = [],
 }: SettingsPageProps) {
   const [query, setQuery] = useState("");
+  /** Composer Enter vs ⌘/Ctrl+Enter — localStorage only (no Host settings). */
+  const [composerSendKeyPref, setComposerSendKeyPref] =
+    useState<ComposerSendKeyPref>(() => loadComposerSendKeyPref());
   /** Pending scroll target after search jump / deep link. */
   const pendingAnchorRef = useRef<string | null>(null);
   const [highlightAnchor, setHighlightAnchor] = useState<string | null>(null);
@@ -1390,6 +1398,40 @@ export function SettingsPage({
                     ))
                   )}
                 </div>
+              </div>
+              <div
+                className={
+                  "settings-row settings-row--stack" +
+                  rowHighlight("settings-anchor-composerSendKey")
+                }
+                id="settings-anchor-composerSendKey"
+              >
+                <div className="settings-row__text">
+                  <div className="settings-row__label">
+                    {t("settings.composerSendKey")}
+                  </div>
+                  <div className="settings-row__desc">
+                    {t("settings.composerSendKeyDesc")}
+                  </div>
+                </div>
+                <Select
+                  value={composerSendKeyPref}
+                  onChange={(v) => {
+                    const next = v as ComposerSendKeyPref;
+                    setComposerSendKeyPref(next);
+                    saveComposerSendKeyPref(next);
+                  }}
+                  options={[
+                    {
+                      value: "enter",
+                      label: t("settings.composerSendKey.enter"),
+                    },
+                    {
+                      value: "mod-enter",
+                      label: t("settings.composerSendKey.modEnter"),
+                    },
+                  ]}
+                />
               </div>
             </div>
             </>

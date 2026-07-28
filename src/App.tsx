@@ -244,6 +244,12 @@ import {
   stepPromptHistory,
   type PromptHistoryEntry,
 } from "@/lib/composerPromptHistory";
+import {
+  COMPOSER_SEND_KEY_CHANGED_EVENT,
+  loadComposerSendKeyPref,
+  shouldSendOnKeydown,
+  type ComposerSendKeyPref,
+} from "@/lib/composerSendKey";
 import { PromptHistoryPanel } from "@/components/PromptHistoryPanel";
 import {
   queuePreviewText,
@@ -1027,6 +1033,15 @@ export default function App() {
   /** Where model/permission chips are remembered. */
   const [prefsScope, setPrefsScope] =
     useState<ComposerPrefsScope>("global");
+  /** Enter vs ⌘/Ctrl+Enter to send (localStorage; Settings → Composer). */
+  const [composerSendKeyPref, setComposerSendKeyPref] =
+    useState<ComposerSendKeyPref>(() => loadComposerSendKeyPref());
+  useEffect(() => {
+    const reload = () => setComposerSendKeyPref(loadComposerSendKeyPref());
+    window.addEventListener(COMPOSER_SEND_KEY_CHANGED_EVENT, reload);
+    return () =>
+      window.removeEventListener(COMPOSER_SEND_KEY_CHANGED_EVENT, reload);
+  }, []);
   /** Files/folders attached for next send (@path to agent). */
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   /** Chat file/url card → open in right resource pane. */
@@ -11079,7 +11094,7 @@ export default function App() {
                       return;
                     }
                   }
-                  if (e.key === "Enter" && !e.shiftKey) {
+                  if (shouldSendOnKeydown(e, composerSendKeyPref)) {
                     e.preventDefault();
                     const hasBody =
                       !isDraftEmpty(parseStoredContent(draft)) ||
