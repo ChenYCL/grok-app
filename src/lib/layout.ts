@@ -1,6 +1,12 @@
 /**
  * Layout preferences: sidebar width, aside width, aside collapsed default.
  * Durable key in localStorage (App config later).
+ *
+ * Right resource pane width is chrome-safe + content-aware:
+ * - Never narrower than tabs + action icons (+ window min/max/close on Win)
+ * - Soft-grow toward a preferred width for the active surface (preview kind,
+ *   plan, diff, tree split); never auto-shrink below the user/current width
+ *   except to enforce chrome min / viewport max.
  */
 
 export const LAYOUT_STORAGE_KEY = "grok-app.layout";
@@ -17,9 +23,34 @@ export interface LayoutPrefs {
   sidebarCollapsed: boolean;
 }
 
+/**
+ * Self-drawn window controls (min / max / close) — 3 × 46px.
+ * Matches `padding-right: 138px` in app.css for `.main__top` / `.rp-chrome`.
+ */
+export const WINDOW_CONTROLS_INSET = 138;
+
+/**
+ * Minimum width for tabs strip + chrome action cluster (open-loc, plan,
+ * changes, tree, close) before any window-control inset.
+ * ~100px tab name + ~160px actions + 20px chrome pad ≈ 280.
+ */
+export const ASIDE_CHROME_CONTENT_MIN = 280;
+
+/**
+ * Absolute floor for the right pane. Still below chrome-safe when window
+ * controls are present — use {@link asideChromeSafeMin} for the real floor.
+ */
+export const ASIDE_WIDTH_MIN = 320;
+
+export const ASIDE_WIDTH_MAX = 720;
+
+/** Leave at least this much for the main chat column when auto-sizing. */
+export const ASIDE_MAIN_RESERVE = 360;
+
 export const DEFAULT_LAYOUT: LayoutPrefs = {
   sidebarWidth: 260,
-  asideWidth: 360,
+  /** Comfortable default: tabs + actions + light preview. */
+  asideWidth: 400,
   /** Right resource pane starts closed; open via top-bar files icon. */
   asideCollapsed: true,
   /** Left session rail starts open; can fully hide via top-bar panel icon. */
@@ -56,23 +87,206 @@ export function withMirrorPhoneDrawerDefault(
   return layout;
 }
 
-export const ASIDE_WIDTH_MIN = 240;
-export const ASIDE_WIDTH_MAX = 720;
+export type AsideClampOpts = {
+  /** Right inset reserved for min/max/close (Win / custom chrome). */
+  windowControlsInset?: number;
+  /** `window.innerWidth` — caps max so chat stays usable. */
+  viewportWidth?: number;
+};
 
-export function clampAsideWidth(w: number): number {
-  if (!Number.isFinite(w)) return DEFAULT_LAYOUT.asideWidth;
-  return Math.min(ASIDE_WIDTH_MAX, Math.max(ASIDE_WIDTH_MIN, Math.round(w)));
+/**
+ * Chrome-safe minimum: tabs + action icons must not collide with window
+ * controls. Platform without custom chrome uses `windowControlsInset: 0`.
+ */
+export function asideChromeSafeMin(opts?: AsideClampOpts): number {
+  const inset = Math.max(0, opts?.windowControlsInset ?? 0);
+  // Extra 40px so an active tab label remains readable beside actions.
+  const min = ASIDE_CHROME_CONTENT_MIN + inset + 40;
+  return Math.min(ASIDE_WIDTH_MAX, Math.max(ASIDE_WIDTH_MIN, Math.round(min)));
 }
 
-export function parseLayout(raw: unknown): LayoutPrefs {
+export function asideWidthMax(opts?: AsideClampOpts): number {
+  let max = ASIDE_WIDTH_MAX;
+  const vw = opts?.viewportWidth;
+  if (typeof vw === "number" && Number.isFinite(vw) && vw > 0) {
+    const chromeMin = asideChromeSafeMin(opts);
+    // Keep a usable main column; never go below chrome min.
+    max = Math.min(max, Math.max(chromeMin, Math.floor(vw - ASIDE_MAIN_RESERVE)));
+  }
+  return max;
+}
+
+export function clampAsideWidth(w: number, opts?: AsideClampOpts): number {
+  if (!Number.isFinite(w)) return DEFAULT_LAYOUT.asideWidth;
+  const min = asideChromeSafeMin(opts);
+  const max = asideWidthMax(opts);
+  return Math.min(max, Math.max(min, Math.round(w)));
+}
+
+/**
+ * Active surface in the resource pane — drives preferred width.
+ * Keep in sync with ResourceViewer preview / side modes.
+ */
+export type AsideSurface =
+  | "empty"
+  | "plan"
+  | "diff"
+  | "markdown"
+  | "code"
+  | "text"
+  | "json"
+  | "html"
+  | "url"
+  | "image"
+  | "video"
+  | "audio"
+  | "pdf"
+  | "office"
+  | "binary"
+  | "unknown";
+
+export type AsideLayoutHint = {
+  surface: AsideSurface;
+  /** Preview | tree split open. */
+  treeVisible: boolean;
+  tabCount: number;
+  windowControlsInset?: number;
+};
+
+/** Map FsReadResult / preview kind strings onto {@link AsideSurface}. */
+export function asideSurfaceFromPreviewKind(
+  kind: string | null | undefined,
+): AsideSurface {
+  const k = (kind || "").toLowerCase().trim();
+  if (!k) return "empty";
+  if (k === "markdown" || k === "md") return "markdown";
+  if (k === "code" || k === "css" || k === "ts" || k === "tsx" || k === "js") {
+    return "code";
+  }
+  if (k === "text" || k === "csv" || k === "config") return "text";
+  if (k === "json") return "json";
+  if (k === "html") return "html";
+  if (k === "image") return "image";
+  if (k === "video") return "video";
+  if (k === "audio") return "audio";
+  if (k === "pdf") return "pdf";
+  if (
+    k === "docx" ||
+    k === "xlsx" ||
+    k === "pptx" ||
+    k === "odf" ||
+    k === "office"
+  ) {
+    return "office";
+  }
+  if (k === "binary") return "binary";
+  if (k === "url") return "url";
+  // Host may classify sources as generic text with body.
+  return "unknown";
+}
+
+/**
+ * Preferred aside width for the active surface.
+ * Policy: comfortable preview first; tree open adds split room; always ≥ chrome min.
+ */
+export function suggestAsideWidth(
+  hint: AsideLayoutHint,
+  opts?: AsideClampOpts,
+): number {
+  const clampOpts: AsideClampOpts = {
+    windowControlsInset:
+      hint.windowControlsInset ?? opts?.windowControlsInset ?? 0,
+    viewportWidth: opts?.viewportWidth,
+  };
+
+  let base: number;
+  switch (hint.surface) {
+    case "empty":
+      base = 380;
+      break;
+    case "plan":
+      base = 500;
+      break;
+    case "diff":
+      base = 540;
+      break;
+    case "markdown":
+    case "code":
+    case "text":
+    case "json":
+      base = 500;
+      break;
+    case "html":
+    case "url":
+      base = 580;
+      break;
+    case "image":
+      base = 460;
+      break;
+    case "video":
+      base = 580;
+      break;
+    case "audio":
+      base = 400;
+      break;
+    case "pdf":
+    case "office":
+      base = 580;
+      break;
+    case "binary":
+      base = 400;
+      break;
+    default:
+      base = 420;
+  }
+
+  // File tree / changes list is a right split (~220 default tree width).
+  if (hint.treeVisible) {
+    base = Math.max(base + 180, 560);
+  }
+
+  // A few tabs: give the strip a little more room so names stay visible.
+  if (hint.tabCount >= 3) {
+    base += 24;
+  } else if (hint.tabCount >= 2) {
+    base += 12;
+  }
+
+  return clampAsideWidth(base, clampOpts);
+}
+
+/**
+ * Merge current width with a content suggestion.
+ * - Always enforces chrome-safe min / viewport max
+ * - Soft-grows to suggestion (does not auto-shrink a wider user width)
+ */
+export function mergeAsideWidth(
+  current: number,
+  suggested: number,
+  opts?: AsideClampOpts,
+): number {
+  const min = asideChromeSafeMin(opts);
+  const max = asideWidthMax(opts);
+  const cur = Number.isFinite(current) ? Math.round(current) : min;
+  const sug = Number.isFinite(suggested) ? Math.round(suggested) : min;
+  const grown = Math.max(cur, sug, min);
+  return Math.min(max, grown);
+}
+
+export function parseLayout(
+  raw: unknown,
+  opts?: AsideClampOpts,
+): LayoutPrefs {
   if (!raw || typeof raw !== "object") return { ...DEFAULT_LAYOUT };
   const o = raw as Record<string, unknown>;
   return {
     sidebarWidth:
-      typeof o.sidebarWidth === "number" ? o.sidebarWidth : DEFAULT_LAYOUT.sidebarWidth,
+      typeof o.sidebarWidth === "number"
+        ? o.sidebarWidth
+        : DEFAULT_LAYOUT.sidebarWidth,
     asideWidth:
       typeof o.asideWidth === "number"
-        ? clampAsideWidth(o.asideWidth)
+        ? clampAsideWidth(o.asideWidth, opts)
         : DEFAULT_LAYOUT.asideWidth,
     // Cold start always closed; open state is session-only (not restored).
     asideCollapsed: DEFAULT_LAYOUT.asideCollapsed,
@@ -83,13 +297,16 @@ export function parseLayout(raw: unknown): LayoutPrefs {
   };
 }
 
-export function loadLayout(storage: {
-  getItem(k: string): string | null;
-}): LayoutPrefs {
+export function loadLayout(
+  storage: {
+    getItem(k: string): string | null;
+  },
+  opts?: AsideClampOpts,
+): LayoutPrefs {
   try {
     const raw = storage.getItem(LAYOUT_STORAGE_KEY);
     if (!raw) return { ...DEFAULT_LAYOUT };
-    return parseLayout(JSON.parse(raw));
+    return parseLayout(JSON.parse(raw), opts);
   } catch {
     return { ...DEFAULT_LAYOUT };
   }

@@ -21,8 +21,10 @@
   --space-8: 48px;
 
   --sidebar-width: 260px;
-  --aside-width: 360px;
+  --aside-width: 400px;
   --titlebar-height: 40px;
+  /* Self-drawn min/max/close (Win / custom chrome): 3 × 46px */
+  --window-controls-inset: 138px;
   --input-min-height: 52px;
   --control-height: 32px;
 

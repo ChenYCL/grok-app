@@ -5,8 +5,13 @@ import {
   parseLayout,
   saveLayout,
   clampAsideWidth,
+  asideChromeSafeMin,
+  asideSurfaceFromPreviewKind,
+  suggestAsideWidth,
+  mergeAsideWidth,
   ASIDE_WIDTH_MIN,
   ASIDE_WIDTH_MAX,
+  WINDOW_CONTROLS_INSET,
   LAYOUT_STORAGE_KEY,
   withMirrorPhoneDrawerDefault,
   MIRROR_DRAWER_BREAKPOINT,
@@ -29,7 +34,7 @@ describe("layout prefs", () => {
     };
     saveLayout(storage, {
       sidebarWidth: 280,
-      asideWidth: 320,
+      asideWidth: 420,
       asideCollapsed: false,
       sidebarCollapsed: true,
     });
@@ -38,7 +43,7 @@ describe("layout prefs", () => {
     // Open state is not restored across app launches.
     expect(loaded.asideCollapsed).toBe(true);
     expect(loaded.sidebarWidth).toBe(280);
-    expect(loaded.asideWidth).toBe(320);
+    expect(loaded.asideWidth).toBe(420);
     expect(loaded.sidebarCollapsed).toBe(true);
   });
 
@@ -47,10 +52,75 @@ describe("layout prefs", () => {
     expect(parseLayout(null).sidebarCollapsed).toBe(false);
   });
 
-  it("clamps aside width", () => {
+  it("clamps aside width to chrome-safe min / max", () => {
     expect(clampAsideWidth(100)).toBe(ASIDE_WIDTH_MIN);
     expect(clampAsideWidth(9999)).toBe(ASIDE_WIDTH_MAX);
     expect(clampAsideWidth(400)).toBe(400);
+  });
+
+  it("raises chrome-safe min when window controls are present", () => {
+    const plain = asideChromeSafeMin();
+    const withWin = asideChromeSafeMin({
+      windowControlsInset: WINDOW_CONTROLS_INSET,
+    });
+    expect(withWin).toBeGreaterThan(plain);
+    expect(withWin).toBeGreaterThanOrEqual(ASIDE_WIDTH_MIN + WINDOW_CONTROLS_INSET * 0.5);
+    expect(
+      clampAsideWidth(300, { windowControlsInset: WINDOW_CONTROLS_INSET }),
+    ).toBe(withWin);
+  });
+
+  it("caps max by viewport so main chat keeps room", () => {
+    const w = clampAsideWidth(700, { viewportWidth: 900 });
+    // 900 - 360 reserve = 540
+    expect(w).toBeLessThanOrEqual(540);
+    expect(w).toBeGreaterThanOrEqual(ASIDE_WIDTH_MIN);
+  });
+
+  it("maps preview kinds to surfaces", () => {
+    expect(asideSurfaceFromPreviewKind("markdown")).toBe("markdown");
+    expect(asideSurfaceFromPreviewKind("code")).toBe("code");
+    expect(asideSurfaceFromPreviewKind("docx")).toBe("office");
+    expect(asideSurfaceFromPreviewKind("pdf")).toBe("pdf");
+    expect(asideSurfaceFromPreviewKind(null)).toBe("empty");
+  });
+
+  it("suggests wider pane for code / video / tree split", () => {
+    const empty = suggestAsideWidth({
+      surface: "empty",
+      treeVisible: false,
+      tabCount: 0,
+    });
+    const code = suggestAsideWidth({
+      surface: "code",
+      treeVisible: false,
+      tabCount: 1,
+    });
+    const codeTree = suggestAsideWidth({
+      surface: "code",
+      treeVisible: true,
+      tabCount: 1,
+    });
+    const video = suggestAsideWidth({
+      surface: "video",
+      treeVisible: false,
+      tabCount: 1,
+    });
+    expect(code).toBeGreaterThan(empty);
+    expect(codeTree).toBeGreaterThan(code);
+    expect(video).toBeGreaterThanOrEqual(code);
+  });
+
+  it("mergeAsideWidth soft-grows and never drops below chrome min", () => {
+    expect(mergeAsideWidth(400, 500)).toBe(500);
+    expect(mergeAsideWidth(560, 420)).toBe(560); // keep wider user size
+    expect(
+      mergeAsideWidth(200, 200, {
+        windowControlsInset: WINDOW_CONTROLS_INSET,
+      }),
+    ).toBe(
+      asideChromeSafeMin({ windowControlsInset: WINDOW_CONTROLS_INSET }),
+    );
   });
 
   it("mirror phone viewport starts with drawer collapsed", () => {

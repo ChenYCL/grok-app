@@ -30,12 +30,10 @@ import {
   IconEdit,
   IconExternalLink,
   IconFileDiff,
-  IconFileText,
   IconFolder,
   IconFiles,
   IconListTree,
   IconPlan,
-  IconPlus,
   IconRefresh,
   IconSearch,
 } from "@/components/icons";
@@ -70,6 +68,11 @@ import {
   isResourceDraftDirty,
   isResourceTextEditable,
 } from "@/lib/resourceEdit";
+import {
+  asideSurfaceFromPreviewKind,
+  type AsideLayoutHint,
+  type AsideSurface,
+} from "@/lib/layout";
 
 const TREE_WIDTH_KEY = "grok-app.resourceTreeWidth";
 const TREE_WIDTH_DEFAULT = 220;
@@ -102,8 +105,6 @@ function clampTreeWidth(w: number, containerWidth: number): number {
 export type ResourceOpenTarget =
   | { type: "file"; path: string; title?: string }
   | { type: "url"; url: string; title?: string }
-  /** Open the Rules side panel (project AGENTS.md / .grok rules). */
-  | { type: "rules" }
   /** Open the Changes side panel (session + workspace diffs). */
   | { type: "changes"; path?: string };
 
@@ -139,9 +140,14 @@ export interface ResourceViewerProps {
   onApprovePlan?: () => void;
   onRequestPlanChanges?: () => void;
   onDismissPlan?: () => void;
+  /**
+   * Content-aware right-pane layout hint (preview kind, tree open, tabs).
+   * App soft-grows aside width so chrome icons never collide with window controls.
+   */
+  onAsideLayoutHint?: (hint: AsideLayoutHint) => void;
 }
 
-type SideMode = "files" | "changes" | "plan" | "rules";
+type SideMode = "files" | "changes" | "plan";
 
 type DiffViewState = {
   path: string;
@@ -256,6 +262,7 @@ export function ResourceViewer({
   onApprovePlan,
   onRequestPlanChanges,
   onDismissPlan,
+  onAsideLayoutHint,
 }: ResourceViewerProps) {
   const tr = useMemo(() => createT(locale), [locale]);
   const [root, setRoot] = useState<TreeNode[]>([]);
@@ -293,12 +300,6 @@ export function ResourceViewer({
   const [workspaceReason, setWorkspaceReason] = useState<string | null>(null);
   const [workspaceBranch, setWorkspaceBranch] = useState<string | null>(null);
   const [pathCopyFlash, setPathCopyFlash] = useState(false);
-  /** Project rule files (AGENTS.md / CLAUDE.md / .grok rules). */
-  const [projectRules, setProjectRules] = useState<any[]>([]);
-  const [rulesLoading, setRulesLoading] = useState(false);
-  const [rulesHasAgents, setRulesHasAgents] = useState(false);
-  const [rulesHint, setRulesHint] = useState<string | null>(null);
-  const rulesLoadSeq = useRef(0);
   /** Open-with target for the location button (finder / editor id). */
   const [openWithTarget, setOpenWithTarget] = useState(() => {
     try {
@@ -326,6 +327,40 @@ export function ResourceViewer({
     () => filterWorkspaceGitEntries(workspaceFiles, query),
     [workspaceFiles, query],
   );
+
+  // Report content surface → App soft-grows the aside so chrome stays usable.
+  const activePreviewKind = activeTab?.preview?.kind ?? null;
+  const activeTabKind = activeTab?.tabKind ?? null;
+  useEffect(() => {
+    if (!onAsideLayoutHint || !paneActive) return;
+    let surface: AsideSurface = "empty";
+    if (sideMode === "plan" && plan?.visible) {
+      surface = "plan";
+    } else if (sideMode === "changes" && diffView) {
+      surface = "diff";
+    } else if (activeTabKind === "url") {
+      surface = "url";
+    } else if (activePreviewKind) {
+      surface = asideSurfaceFromPreviewKind(activePreviewKind);
+    } else if (activeTabKind) {
+      surface = "unknown";
+    }
+    onAsideLayoutHint({
+      surface,
+      treeVisible,
+      tabCount: tabs.length,
+    });
+  }, [
+    onAsideLayoutHint,
+    paneActive,
+    sideMode,
+    plan?.visible,
+    diffView,
+    activePreviewKind,
+    activeTabKind,
+    treeVisible,
+    tabs.length,
+  ]);
 
   // Closing the right pane always collapses the tree (not remembered).
   // Also leave Plan workbench when the pane hides without a live plan, so the
@@ -382,44 +417,18 @@ export function ResourceViewer({
     void refreshWorkspaceStatus();
   }, [projectPath, refreshWorkspaceStatus]);
 
-  const refreshProjectRules = useCallback(async () => {
-    if (!projectPath || !api.isTauri()) {
-      setProjectRules([]);
-      setRulesHasAgents(false);
-      setRulesLoading(false);
-      return;
-    }
-    const seq = ++rulesLoadSeq.current;
-    setRulesLoading(true);
-    try {
-      const res = (await api.projectRulesList(projectPath)) as any;
-      if (seq !== rulesLoadSeq.current) return;
-      setProjectRules(res?.rules ?? (Array.isArray(res) ? res : []) ?? []);
-      setRulesHasAgents(Boolean(res?.hasAgentsMd));
-    } catch (e) {
-      if (seq !== rulesLoadSeq.current) return;
-      setProjectRules([]);
-      setRulesHasAgents(false);
-      // Only surface rules-list failures on the Rules panel — never block
-      // file tabs / open-path errors with a spurious top banner.
-      if (sideMode === "rules") {
-        setError(String(e));
-      } else {
-        console.warn("[ResourceViewer] project_rules_list failed", e);
-      }
-    } finally {
-      if (seq === rulesLoadSeq.current) setRulesLoading(false);
-    }
-  }, [projectPath, sideMode]);
-
-  // Load rules when project changes or Rules panel is shown.
+  // Non-git projects cannot surface workspace status — leave Changes mode and hide chrome.
   useEffect(() => {
-    void refreshProjectRules();
-  }, [projectPath, refreshProjectRules]);
-
-  useEffect(() => {
-    if (sideMode === "rules") void refreshProjectRules();
-  }, [sideMode, refreshProjectRules]);
+    if (workspaceLoading) return;
+    if (workspaceAvailable) return;
+    if (sideMode === "changes") {
+      setSideMode("files");
+      setTreeVisible(false);
+      setDiffView(null);
+      setSelectedChangePath(null);
+      setSelectedChangeSource(null);
+    }
+  }, [workspaceAvailable, workspaceLoading, sideMode]);
 
   // Drop selection if neither session nor workspace still lists the path.
   useEffect(() => {
@@ -1222,7 +1231,7 @@ export function ResourceViewer({
     [tabs],
   );
 
-  // External open requests (from chat file/url cards, project rules menu)
+  // External open requests (from chat file/url cards)
   useEffect(() => {
     if (!openRequest) return;
     if (openRequest.type === "file") {
@@ -1237,10 +1246,6 @@ export function ResourceViewer({
       if (openRequest.path) {
         void openAbsoluteFile(openRequest.path, openRequest.path);
       }
-    } else if (openRequest.type === "rules") {
-      setSideMode("rules");
-      setTreeVisible(true);
-      void refreshProjectRules();
     }
     onOpenRequestConsumed?.();
   }, [
@@ -1248,70 +1253,7 @@ export function ResourceViewer({
     openAbsoluteFile,
     openUrl,
     onOpenRequestConsumed,
-    refreshProjectRules,
   ]);
-
-  const openRuleFile = useCallback(
-    async (rule: any) => {
-      if (!rule) return;
-      const rel = (rule.relativePath || "").trim();
-      if (projectPath && rel && !rel.startsWith("/") && !/^[A-Za-z]:[\\/]/.test(rel)) {
-        await openFile(rel);
-        return;
-      }
-      const abs = (rule.absolutePath || "").trim();
-      if (abs) {
-        await openAbsoluteFile(abs, rule.name);
-        return;
-      }
-      setError(tr("rules.openFailed"));
-    },
-    [openAbsoluteFile, openFile, projectPath, tr],
-  );
-
-  const ensureAgentsTemplate = useCallback(async () => {
-    if (!projectPath || !api.isTauri()) {
-      setError(tr("rules.needProject"));
-      return;
-    }
-    setRulesHint(null);
-    try {
-      const res = await api.projectRulesEnsureTemplate(projectPath);
-      await refreshProjectRules();
-      if (res.created) {
-        setRulesHint(tr("rules.created"));
-      } else {
-        setRulesHint(tr("rules.exists"));
-      }
-      const rel = res.relativePath || "AGENTS.md";
-      await openFile(rel);
-    } catch (e) {
-      setError(String(e) || tr("rules.actionError"));
-    }
-  }, [openFile, projectPath, refreshProjectRules, tr]);
-
-  const ruleKindLabel = useCallback(
-    (kind: string) => {
-      const k = (kind || "").trim();
-      if (k === "agents_md") return tr("rules.kind.agents_md");
-      if (k === "claude_md") return tr("rules.kind.claude_md");
-      if (k === "grok_rules") return tr("rules.kind.grok_rules");
-      if (k === "nested_agents") return tr("rules.kind.nested_agents");
-      return k || tr("rules.title");
-    },
-    [tr],
-  );
-
-  const filteredRules = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    if (!q) return projectRules;
-    return projectRules.filter(
-      (r) =>
-        r.name.toLowerCase().includes(q) ||
-        r.relativePath.toLowerCase().includes(q) ||
-        (r.kind || "").toLowerCase().includes(q),
-    );
-  }, [projectRules, query]);
 
   /** Last tab gone → collapse the right pane (user can still re-open it manually). */
   const closePaneIfNoTabs = useCallback(
@@ -2062,54 +2004,32 @@ export function ResourceViewer({
               </button>
             </Tip>
           ) : null}
-          <Tip
-            label={
-              treeVisible && sideMode === "changes"
-                ? tr("changes.hidePanel")
-                : tr("changes.showPanel")
-            }
-          >
-            <button
-              type="button"
-              className={
-                "chrome-btn main__pane-toggle rp-chrome__changes-btn" +
-                (treeVisible && sideMode === "changes" ? " is-on" : "")
+          {workspaceAvailable ? (
+            <Tip
+              label={
+                treeVisible && sideMode === "changes"
+                  ? tr("changes.hidePanel")
+                  : tr("changes.showPanel")
               }
-              onClick={() => showSidePanel("changes")}
-              aria-label={tr("changes.title")}
             >
-              <IconFileDiff size={16} />
-              {totalChangeBadge > 0 ? (
-                <span className="rp-chrome__badge" aria-hidden>
-                  {totalChangeBadge > 99 ? "99+" : totalChangeBadge}
-                </span>
-              ) : null}
-            </button>
-          </Tip>
-          <Tip
-            label={
-              treeVisible && sideMode === "rules"
-                ? tr("rules.hidePanel")
-                : tr("rules.showPanel")
-            }
-          >
-            <button
-              type="button"
-              className={
-                "chrome-btn main__pane-toggle" +
-                (treeVisible && sideMode === "rules" ? " is-on" : "")
-              }
-              onClick={() => showSidePanel("rules")}
-              aria-label={tr("rules.title")}
-            >
-              <IconFileText size={16} />
-              {projectRules.length > 0 ? (
-                <span className="rp-chrome__badge" aria-hidden>
-                  {projectRules.length > 99 ? "99+" : projectRules.length}
-                </span>
-              ) : null}
-            </button>
-          </Tip>
+              <button
+                type="button"
+                className={
+                  "chrome-btn main__pane-toggle rp-chrome__changes-btn" +
+                  (treeVisible && sideMode === "changes" ? " is-on" : "")
+                }
+                onClick={() => showSidePanel("changes")}
+                aria-label={tr("changes.title")}
+              >
+                <IconFileDiff size={16} />
+                {totalChangeBadge > 0 ? (
+                  <span className="rp-chrome__badge" aria-hidden>
+                    {totalChangeBadge > 99 ? "99+" : totalChangeBadge}
+                  </span>
+                ) : null}
+              </button>
+            </Tip>
+          ) : null}
           <Tip
             label={
               treeVisible && sideMode === "files"
@@ -2213,28 +2133,22 @@ export function ResourceViewer({
           ) : !activeTab ? (
             <div className="rp__empty-state">
               <div className="rp__empty-title">
-                {sideMode === "rules"
-                  ? tr("rules.title")
-                  : sideMode === "changes" &&
-                      changeCount === 0 &&
-                      workspaceCount === 0
-                    ? tr("changes.empty")
-                    : sideMode === "changes"
-                      ? tr("changes.title")
-                      : tr("resources.emptyPreview")}
+                {sideMode === "changes" &&
+                changeCount === 0 &&
+                workspaceCount === 0
+                  ? tr("changes.empty")
+                  : sideMode === "changes"
+                    ? tr("changes.title")
+                    : tr("resources.emptyPreview")}
               </div>
               <div className="rp__empty-desc">
-                {sideMode === "rules"
-                  ? projectRules.length === 0
-                    ? tr("rules.emptyHint")
-                    : tr("rules.pickHint")
-                  : sideMode === "changes" &&
-                      changeCount === 0 &&
-                      workspaceCount === 0
-                    ? tr("changes.emptyHint")
-                    : sideMode === "changes"
-                      ? tr("changes.workspace.emptyHint")
-                      : tr("resources.emptyPreviewHint")}
+                {sideMode === "changes" &&
+                changeCount === 0 &&
+                workspaceCount === 0
+                  ? tr("changes.emptyHint")
+                  : sideMode === "changes"
+                    ? tr("changes.workspace.emptyHint")
+                    : tr("resources.emptyPreviewHint")}
               </div>
             </div>
           ) : activeTab.loading ? (
@@ -2313,40 +2227,25 @@ export function ResourceViewer({
                 >
                   {tr("changes.files")}
                 </button>
-                <button
-                  type="button"
-                  role="tab"
-                  aria-selected={sideMode === "rules"}
-                  className={
-                    "rp-side-modes__btn" +
-                    (sideMode === "rules" ? " is-active" : "")
-                  }
-                  onClick={() => setSideMode("rules")}
-                >
-                  {tr("rules.title")}
-                  {projectRules.length > 0 ? (
-                    <span className="rp-side-modes__count">
-                      {projectRules.length}
-                    </span>
-                  ) : null}
-                </button>
-                <button
-                  type="button"
-                  role="tab"
-                  aria-selected={sideMode === "changes"}
-                  className={
-                    "rp-side-modes__btn" +
-                    (sideMode === "changes" ? " is-active" : "")
-                  }
-                  onClick={() => setSideMode("changes")}
-                >
-                  {tr("changes.title")}
-                  {totalChangeBadge > 0 ? (
-                    <span className="rp-side-modes__count">
-                      {totalChangeBadge}
-                    </span>
-                  ) : null}
-                </button>
+                {workspaceAvailable ? (
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={sideMode === "changes"}
+                    className={
+                      "rp-side-modes__btn" +
+                      (sideMode === "changes" ? " is-active" : "")
+                    }
+                    onClick={() => setSideMode("changes")}
+                  >
+                    {tr("changes.title")}
+                    {totalChangeBadge > 0 ? (
+                      <span className="rp-side-modes__count">
+                        {totalChangeBadge}
+                      </span>
+                    ) : null}
+                  </button>
+                ) : null}
                 {plan?.visible ? (
                   <button
                     type="button"
@@ -2380,17 +2279,6 @@ export function ResourceViewer({
                       <IconRefresh size={14} />
                     </button>
                   </Tip>
-                ) : sideMode === "rules" ? (
-                  <Tip label={tr("rules.refresh")}>
-                    <button
-                      type="button"
-                      className="chrome-btn"
-                      onClick={() => void refreshProjectRules()}
-                      disabled={rulesLoading}
-                    >
-                      <IconRefresh size={14} />
-                    </button>
-                  </Tip>
                 ) : (
                   <Tip label={tr("changes.workspace.refresh")}>
                     <button
@@ -2405,107 +2293,7 @@ export function ResourceViewer({
                 )}
               </div>
               <OverlayScroll className="rp-tree-scroll">
-                {sideMode === "rules" ? (
-                  <div className="rp-changes-list rp-rules-list" role="list">
-                    <div className="rp-changes-section">
-                      <div className="rp-changes-section__head">
-                        <span className="rp-changes-section__title">
-                          {tr("rules.title")}
-                        </span>
-                        {projectRules.length > 0 ? (
-                          <span className="rp-changes-section__count">
-                            {projectRules.length}
-                          </span>
-                        ) : null}
-                      </div>
-                      <div className="rp-rules-actions">
-                        <button
-                          type="button"
-                          className="btn btn--ghost rp-rules-actions__btn"
-                          onClick={() => void ensureAgentsTemplate()}
-                          disabled={!projectPath || rulesLoading}
-                        >
-                          <IconPlus size={14} />
-                          <span>{tr("rules.createTemplate")}</span>
-                        </button>
-                      </div>
-                      {rulesHint ? (
-                        <div className="rp-rules-hint" role="status">
-                          {rulesHint}
-                        </div>
-                      ) : null}
-                      {rulesLoading && projectRules.length === 0 ? (
-                        <div className="rp-changes-section__empty">
-                          {tr("rules.loading")}
-                        </div>
-                      ) : filteredRules.length === 0 ? (
-                        <div className="rp-changes-section__empty">
-                          <div>{tr("rules.empty")}</div>
-                          <div className="rp-rules-empty-hint">
-                            {tr("rules.emptyHint")}
-                          </div>
-                        </div>
-                      ) : (
-                        filteredRules.map((r) => {
-                          const active =
-                            activeTab?.tabKind !== "url" &&
-                            (activeTab?.relativePath === r.relativePath ||
-                              activeTab?.absolutePath === r.absolutePath);
-                          return (
-                            <div
-                              key={r.relativePath}
-                              className={
-                                "rp-changes-row" + (active ? " is-active" : "")
-                              }
-                              role="listitem"
-                            >
-                              <button
-                                type="button"
-                                className="rp-changes-row__main"
-                                title={r.absolutePath || r.relativePath}
-                                onClick={() => void openRuleFile(r)}
-                              >
-                                <FileKindMark name={r.name} isDir={false} />
-                                <span className="rp-changes-row__meta">
-                                  <span className="rp-changes-row__name">
-                                    {r.name}
-                                  </span>
-                                  <span className="rp-changes-row__path">
-                                    {r.relativePath}
-                                  </span>
-                                  <span className="rp-changes-row__kind">
-                                    {ruleKindLabel(r.kind)}
-                                  </span>
-                                </span>
-                              </button>
-                              <div className="rp-changes-row__actions">
-                                <Tip label={tr("rules.reveal")}>
-                                  <button
-                                    type="button"
-                                    className="chrome-btn"
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      void revealChangePath(
-                                        r.absolutePath || r.relativePath,
-                                      );
-                                    }}
-                                  >
-                                    <IconFolder size={13} />
-                                  </button>
-                                </Tip>
-                              </div>
-                            </div>
-                          );
-                        })
-                      )}
-                      {!rulesHasAgents && projectRules.length > 0 ? (
-                        <div className="rp-rules-empty-hint rp-rules-empty-hint--footer">
-                          {tr("rules.noAgentsHint")}
-                        </div>
-                      ) : null}
-                    </div>
-                  </div>
-                ) : sideMode === "changes" ? (
+                {sideMode === "changes" ? (
                   <div className="rp-changes-list" role="list">
                     {/* ── Session (agent tool edits) ── */}
                     <div className="rp-changes-section">

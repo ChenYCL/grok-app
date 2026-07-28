@@ -45,11 +45,15 @@ import {
 import { WallpaperMediaLayer } from "@/components/WallpaperMediaLayer";
 import {
   DEFAULT_LAYOUT,
+  WINDOW_CONTROLS_INSET,
   clampAsideWidth,
   isMirrorPhoneLayout,
   loadLayout,
+  mergeAsideWidth,
   saveLayout,
+  suggestAsideWidth,
   withMirrorPhoneDrawerDefault,
+  type AsideLayoutHint,
 } from "@/lib/layout";
 import {
   PHONE_KEYBOARD_INSET_VAR,
@@ -344,6 +348,7 @@ import {
   IconShield,
   IconCheck,
   IconList,
+  IconFileText,
 } from "@/components/icons";
 import { PhoneAccountSheet } from "@/components/PhoneAccountSheet";
 import { PhoneComposerToolsSheet } from "@/components/PhoneComposerToolsSheet";
@@ -370,6 +375,7 @@ import {
   ResourceViewer,
   type ResourceOpenTarget,
 } from "@/components/ResourceViewer";
+import { ProjectRulesModal } from "@/components/ProjectRulesModal";
 import {
   mergeSessionChange,
   sessionChangesFromMessages,
@@ -487,7 +493,22 @@ export default function App() {
     loadWallpaperScrim(localStorage),
   );
   const [layout, setLayout] = useState(() => {
-    const base = loadLayout(localStorage);
+    // Platform UA is available at first paint; reserve window-control inset on Win.
+    const ua =
+      typeof navigator !== "undefined"
+        ? navigator.userAgent.toLowerCase()
+        : "";
+    const winChrome =
+      ua.includes("win") ||
+      (!ua.includes("mac") && typeof navigator !== "undefined");
+    const clampOpts =
+      typeof window !== "undefined"
+        ? {
+            windowControlsInset: winChrome ? WINDOW_CONTROLS_INSET : 0,
+            viewportWidth: window.innerWidth,
+          }
+        : undefined;
+    const base = loadLayout(localStorage, clampOpts);
     // Mirror phone: drawer starts collapsed so chat is not covered on first paint.
     if (typeof window !== "undefined" && isMirrorClient()) {
       return withMirrorPhoneDrawerDefault(base, {
@@ -655,6 +676,11 @@ export default function App() {
   const [projectsOpen, setProjectsOpen] = useState(true);
   const [historyOpen, setHistoryOpen] = useState(true);
   const [ctxMenu, setCtxMenu] = useState<ContextMenuState>(null);
+  /** Project rules dialog (from project context menu). */
+  const [projectRulesTarget, setProjectRulesTarget] = useState<{
+    path: string;
+    name: string;
+  } | null>(null);
   const [appDialog, setAppDialog] = useState<AppDialog>(null);
   const [dialogInput, setDialogInput] = useState("");
   const dialogInputRef = useRef<HTMLInputElement>(null);
@@ -1095,7 +1121,61 @@ export default function App() {
   }, []);
   /** Self-drawn chrome when OS title bar is disabled (Windows release config). */
   const useCustomWindowChrome = platform === "win" || platform === "other";
+  /** Right inset so resource chrome icons clear min/max/close. */
+  const windowControlsInset = useCustomWindowChrome ? WINDOW_CONTROLS_INSET : 0;
   const [windowMaximized, setWindowMaximized] = useState(false);
+
+  const asideClampOpts = useCallback((): {
+    windowControlsInset: number;
+    viewportWidth?: number;
+  } => {
+    return {
+      windowControlsInset,
+      viewportWidth:
+        typeof window !== "undefined" ? window.innerWidth : undefined,
+    };
+  }, [windowControlsInset]);
+
+  /**
+   * Soft-grow the right resource pane from content hints (preview kind, tree,
+   * tabs). Never auto-shrink a wider user width; always enforce chrome-safe min
+   * so action icons do not sit under window controls.
+   */
+  const applyAsideLayoutHint = useCallback(
+    (hint: AsideLayoutHint) => {
+      if (phoneLayout) return;
+      const opts = asideClampOpts();
+      const suggested = suggestAsideWidth(
+        { ...hint, windowControlsInset: opts.windowControlsInset },
+        opts,
+      );
+      setLayout((l) => {
+        if (l.asideCollapsed) return l;
+        const nextW = mergeAsideWidth(l.asideWidth, suggested, opts);
+        if (nextW === l.asideWidth) return l;
+        const n = { ...l, asideWidth: nextW };
+        saveLayout(localStorage, n);
+        return n;
+      });
+    },
+    [asideClampOpts, phoneLayout],
+  );
+
+  /** Open the right pane and clamp width to chrome-safe min (content hint may grow further). */
+  const openAsidePane = useCallback(() => {
+    const opts = asideClampOpts();
+    setLayout((l) => {
+      const width = clampAsideWidth(l.asideWidth, opts);
+      if (!l.asideCollapsed && width === l.asideWidth) return l;
+      const n = {
+        ...l,
+        asideCollapsed: false,
+        asideWidth: width,
+      };
+      saveLayout(localStorage, n);
+      return n;
+    });
+  }, [asideClampOpts]);
 
   // Keep data-theme + native chrome in sync with the resolved theme.
   // When preference is "system", native must stay unlocked (null) so the
@@ -1816,6 +1896,24 @@ export default function App() {
     window.addEventListener("resize", sync);
     return () => window.removeEventListener("resize", sync);
   }, []);
+
+  // Keep open aside within chrome-safe min / viewport max when the window resizes.
+  useEffect(() => {
+    if (phoneLayout) return;
+    const onResize = () => {
+      const opts = asideClampOpts();
+      setLayout((l) => {
+        if (l.asideCollapsed) return l;
+        const next = clampAsideWidth(l.asideWidth, opts);
+        if (next === l.asideWidth) return l;
+        const n = { ...l, asideWidth: next };
+        saveLayout(localStorage, n);
+        return n;
+      });
+    };
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, [asideClampOpts, phoneLayout]);
 
   // Keep composer above the soft keyboard via visualViewport inset.
   useEffect(() => {
@@ -2578,10 +2676,22 @@ export default function App() {
               if (becameReview && next.visible && !next.userClosed) {
                 // Auto-open resource Plan workbench when gate is ready.
                 queueMicrotask(() => {
+                  planOpenedAsideRef.current = true;
                   setLayout((l) => {
-                    if (!l.asideCollapsed) return l;
-                    planOpenedAsideRef.current = true;
-                    const n = { ...l, asideCollapsed: false };
+                    const opts = {
+                      windowControlsInset:
+                        platform === "win" || platform === "other"
+                          ? WINDOW_CONTROLS_INSET
+                          : 0,
+                      viewportWidth: window.innerWidth,
+                    };
+                    const width = clampAsideWidth(l.asideWidth, opts);
+                    if (!l.asideCollapsed && width === l.asideWidth) return l;
+                    const n = {
+                      ...l,
+                      asideCollapsed: false,
+                      asideWidth: width,
+                    };
                     saveLayout(localStorage, n);
                     return n;
                   });
@@ -5263,7 +5373,10 @@ export default function App() {
   useEffect(() => {
     if (!resizingAside) return;
     const onMove = (e: PointerEvent) => {
-      const next = clampAsideWidth(window.innerWidth - e.clientX);
+      const next = clampAsideWidth(
+        window.innerWidth - e.clientX,
+        asideClampOpts(),
+      );
       setLayout((l) => {
         const n = { ...l, asideWidth: next, asideCollapsed: false };
         return n;
@@ -5286,7 +5399,7 @@ export default function App() {
       window.removeEventListener("pointermove", onMove);
       window.removeEventListener("pointerup", onUp);
     };
-  }, [resizingAside]);
+  }, [asideClampOpts, resizingAside]);
 
   const resizeComposer = (el: HTMLElement) => {
     const line = 22; // ~line-height
@@ -6051,15 +6164,10 @@ export default function App() {
 
   /** Open resource pane Plan review (replaces scroll-to-card “详情”). */
   const openPlanInResource = useCallback(() => {
-    setLayout((l) => {
-      if (!l.asideCollapsed) return l;
-      planOpenedAsideRef.current = true;
-      const n = { ...l, asideCollapsed: false };
-      saveLayout(localStorage, n);
-      return n;
-    });
+    planOpenedAsideRef.current = true;
+    openAsidePane();
     setPlanFocusKey((k) => k + 1);
-  }, []);
+  }, [openAsidePane]);
 
   const sendQueueLabels = useMemo(
     () => ({
@@ -9776,16 +9884,17 @@ export default function App() {
                         "chrome-btn main__pane-toggle" +
                         (!layout.asideCollapsed ? " is-on" : "")
                       }
-                      onClick={() =>
-                        setLayout((l) => {
-                          const n = {
-                            ...l,
-                            asideCollapsed: !l.asideCollapsed,
-                          };
-                          saveLayout(localStorage, n);
-                          return n;
-                        })
-                      }
+                      onClick={() => {
+                        if (layout.asideCollapsed) {
+                          openAsidePane();
+                        } else {
+                          setLayout((l) => {
+                            const n = { ...l, asideCollapsed: true };
+                            saveLayout(localStorage, n);
+                            return n;
+                          });
+                        }
+                      }}
                     >
                       <IconPanelRight size={16} />
                     </button>
@@ -10135,36 +10244,15 @@ export default function App() {
             onForkFromUserMessage={onForkFromUserMessage}
             turnStartedAt={turnStartedAt}
             onOpenSessionChanges={() => {
-              setLayout((l) => {
-                if (l.asideCollapsed) {
-                  const n = { ...l, asideCollapsed: false };
-                  saveLayout(localStorage, n);
-                  return n;
-                }
-                return l;
-              });
+              openAsidePane();
               setResourceOpenTarget({ type: "changes" });
             }}
             onOpenModifiedPath={(path) => {
-              setLayout((l) => {
-                if (l.asideCollapsed) {
-                  const n = { ...l, asideCollapsed: false };
-                  saveLayout(localStorage, n);
-                  return n;
-                }
-                return l;
-              });
+              openAsidePane();
               setResourceOpenTarget({ type: "changes", path });
             }}
             onOpenResource={(target) => {
-              setLayout((l) => {
-                if (l.asideCollapsed) {
-                  const n = { ...l, asideCollapsed: false };
-                  saveLayout(localStorage, n);
-                  return n;
-                }
-                return l;
-              });
+              openAsidePane();
               setResourceOpenTarget(target);
             }}
             onAddAttachmentToComposer={(att) =>
@@ -11086,6 +11174,7 @@ export default function App() {
               onApprovePlan={() => void approvePlan()}
               onRequestPlanChanges={() => void requestPlanChanges()}
               onDismissPlan={() => void dismissPlan()}
+              onAsideLayoutHint={applyAsideLayoutHint}
               onClose={() => {
                 // Manual close — do not treat as plan-owned pane on later dismiss.
                 planOpenedAsideRef.current = false;
@@ -11219,13 +11308,7 @@ export default function App() {
             linkOk={mirrorLinkOk}
             agentStatusLabel={tr(connPill.labelKey as MessageKey)}
             agentTone={connPill.tone}
-            onOpenFiles={() =>
-              setLayout((l) => {
-                const n = { ...l, asideCollapsed: false };
-                saveLayout(localStorage, n);
-                return n;
-              })
-            }
+            onOpenFiles={() => openAsidePane()}
           />
         </>
       ) : null}
@@ -11247,6 +11330,13 @@ export default function App() {
         onResetDone={() => {
           void refreshLists();
         }}
+      />
+      <ProjectRulesModal
+        open={!!projectRulesTarget}
+        onClose={() => setProjectRulesTarget(null)}
+        projectPath={projectRulesTarget?.path ?? null}
+        projectName={projectRulesTarget?.name ?? null}
+        locale={locale}
       />
       <GlassModal
         open={worktreeCreateOpen}
@@ -12090,6 +12180,17 @@ export default function App() {
                 label: tr("project.rename"),
                 icon: <IconRename size={16} />,
                 onClick: () => renameProject(proj),
+              },
+              {
+                id: "rules",
+                label: tr("project.rules"),
+                icon: <IconFileText size={16} />,
+                onClick: () => {
+                  setProjectRulesTarget({
+                    path: proj.path,
+                    name: proj.name,
+                  });
+                },
               },
               ...(proj.trusted
                 ? [

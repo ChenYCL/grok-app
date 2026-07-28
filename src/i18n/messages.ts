@@ -298,17 +298,18 @@ const en = {
   "changes.section.session": "Session",
   "changes.section.workspace": "Workspace",
 
-  // Project rules (AGENTS.md / CLAUDE.md / .grok rules)
+  // Project rules (AGENTS.md / CLAUDE.md / .grok rules) — project menu modal
   "rules.title": "Rules",
-  "rules.showPanel": "Show project rules",
-  "rules.hidePanel": "Hide project rules",
+  "rules.modalTitleNamed": "Project rules · {name}",
   "rules.empty": "No project rule files found",
   "rules.emptyHint":
     "Add AGENTS.md or CLAUDE.md at the project root, or rules under .grok/.",
-  "rules.pickHint": "Open a rule file from the list to preview or edit it.",
+  "rules.pickHint": "Expand a rule file to preview or edit it.",
+  "rules.filterPh": "Filter rules…",
   "rules.createTemplate": "Create AGENTS.md",
   "rules.created": "Created AGENTS.md",
   "rules.exists": "AGENTS.md already exists",
+  "rules.saved": "Rule saved",
   "rules.open": "Open",
   "rules.reveal": "Reveal in file manager",
   "rules.refresh": "Refresh rules",
@@ -2330,15 +2331,16 @@ const zh: Record<MessageKey, string> = {
   "changes.section.workspace": "工作区",
 
   "rules.title": "规则",
-  "rules.showPanel": "显示项目规则",
-  "rules.hidePanel": "隐藏项目规则",
+  "rules.modalTitleNamed": "项目规则 · {name}",
   "rules.empty": "未找到项目规则文件",
   "rules.emptyHint":
     "在项目根目录添加 AGENTS.md 或 CLAUDE.md，或在 .grok/ 下放置 rules。",
-  "rules.pickHint": "从列表打开规则文件以预览或编辑。",
+  "rules.pickHint": "展开规则文件以预览或编辑。",
+  "rules.filterPh": "筛选规则…",
   "rules.createTemplate": "创建 AGENTS.md",
   "rules.created": "已创建 AGENTS.md",
   "rules.exists": "AGENTS.md 已存在",
+  "rules.saved": "规则已保存",
   "rules.open": "打开",
   "rules.reveal": "在文件管理器中显示",
   "rules.refresh": "刷新规则",

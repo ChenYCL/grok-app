@@ -5239,9 +5239,15 @@ button.settings-wallpaper__preview:hover:not(:disabled) {
 .has-custom-chrome .settings-page__titlebar,
 .platform-win .auto-page__head,
 .has-custom-chrome .auto-page__head,
+/* Resource pane chrome (tabs + actions) — both legacy .rp__chrome empty state
+   and live .rp-chrome toolbar. Must clear fixed .window-controls (3 × 46px). */
 .platform-win .rp__chrome,
-.has-custom-chrome .rp__chrome {
-  padding-right: 138px; /* 46px × 3 window controls */
+.platform-other .rp__chrome,
+.has-custom-chrome .rp__chrome,
+.platform-win .rp-chrome,
+.platform-other .rp-chrome,
+.has-custom-chrome .rp-chrome {
+  padding-right: var(--window-controls-inset, 138px); /* 46px × 3 window controls */
 }
 
 /* Settings content already clears chrome via .settings-page__content padding-top */
@@ -11035,6 +11041,9 @@ textarea::-webkit-scrollbar-thumb:active,
   background: color-mix(in srgb, var(--bg-hover) 40%, var(--bg-card));
   flex-shrink: 0;
   box-sizing: border-box;
+  /* Tabs shrink; action cluster (open-loc / tree / close) never compresses
+     into window controls — see padding-right on .platform-win .rp-chrome. */
+  min-width: 0;
 }
 
 .rp-chrome .rp-tabs {
@@ -11076,6 +11085,8 @@ textarea::-webkit-scrollbar-thumb:active,
   align-items: center;
   gap: 4px; /* same as .main__top-actions */
   flex-shrink: 0;
+  /* Keep icons fully visible even when the tab strip is tight. */
+  z-index: 1;
 }
 
 .rp-chrome__actions .open-loc,
@@ -12168,39 +12179,245 @@ textarea::-webkit-scrollbar-thumb:active,
   color: var(--text-tertiary);
 }
 
-/* Project rules panel (resource pane side mode) */
-.rp-rules-actions {
+/* Project rules modal (from project context menu) */
+.modal.project-rules-modal {
+  width: min(760px, calc(100vw - 32px));
+  max-height: min(88vh, 860px);
   display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  padding: 0 10px 6px;
+  flex-direction: column;
 }
 
-.rp-rules-actions__btn {
+.project-rules-modal__body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  padding-top: 4px;
+}
+
+.prm {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 0;
+  flex: 1;
+  height: min(68vh, 640px);
+}
+
+.prm__toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 auto;
+}
+
+.prm__tool-btn {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  font-size: 12px;
-  padding: 4px 8px;
-  min-height: 28px;
+  font-size: 12.5px;
+  min-height: 30px;
+  padding: 4px 10px;
 }
 
-.rp-rules-hint {
-  padding: 0 12px 6px;
-  font-size: 11.5px;
+.prm__toolbar-spacer {
+  flex: 1;
+  min-width: 8px;
+}
+
+.prm__search {
+  flex: 0 0 auto;
+}
+
+.prm__search-input {
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.prm__hint {
+  flex: 0 0 auto;
+  font-size: 12px;
   line-height: 1.35;
   color: var(--text-secondary);
 }
 
-.rp-rules-empty-hint {
-  margin-top: 4px;
+.prm__error {
+  flex: 0 0 auto;
+  font-size: 12px;
+  line-height: 1.35;
+  color: var(--danger, #e85d5d);
+}
+
+.prm__list-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.prm__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.prm__item {
+  border: 1px solid var(--border-subtle);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--bg-hover) 35%, var(--bg-card));
+  overflow: hidden;
+}
+
+.prm__item.is-open {
+  border-color: color-mix(in srgb, var(--border-focus, #6b8cff) 35%, var(--border-subtle));
+  background: var(--bg-card);
+}
+
+.prm__row {
+  display: flex;
+  align-items: stretch;
+  gap: 2px;
+  min-height: 44px;
+}
+
+.prm__row-main {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.prm__row-main:hover {
+  background: color-mix(in srgb, var(--bg-hover) 70%, transparent);
+}
+
+.prm__chevron {
+  flex: 0 0 auto;
+  margin-top: 3px;
+  color: var(--text-tertiary);
+  display: inline-flex;
+}
+
+.prm__kind-chip {
+  flex: 0 0 auto;
+  width: 20px;
+  height: 20px;
+  margin-top: 1px;
+  border-radius: 5px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  font-weight: 700;
+  font-family: var(--font-mono);
+  background: color-mix(in srgb, var(--bg-hover) 90%, transparent);
+  color: var(--text-secondary);
+}
+
+.prm__row-meta {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.prm__row-name {
+  font-size: 13px;
+  font-weight: 560;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.prm__row-path {
   font-size: 11px;
+  font-family: var(--font-mono);
+  color: var(--text-tertiary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.prm__row-kind {
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+.prm__row-actions {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  padding: 0 6px;
+}
+
+.prm__empty {
+  padding: 18px 12px;
+  text-align: center;
+  font-size: 12.5px;
+  color: var(--text-secondary);
+}
+
+.prm__empty-hint {
+  margin-top: 6px;
+  font-size: 11.5px;
   line-height: 1.4;
   color: var(--text-tertiary);
 }
 
-.rp-rules-empty-hint--footer {
-  padding: 4px 12px 8px;
+.prm__empty-hint--footer {
+  padding: 8px 4px 4px;
+  text-align: left;
+}
+
+.prm__editor {
+  display: flex;
+  flex-direction: column;
+  border-top: 1px solid var(--border-subtle);
+  min-height: 280px;
+  max-height: min(48vh, 420px);
+  background: var(--bg-card);
+}
+
+.prm__editor-toolbar {
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.prm__editor-file {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  font-size: 12.5px;
+  font-weight: 550;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.prm__editor-host {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.prm__editor-host .rp-md-editor {
+  flex: 1;
+  min-height: 0;
+  height: 100%;
 }
 
 .rp-changes-badge {
