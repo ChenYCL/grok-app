@@ -1817,6 +1817,18 @@ export const zhTW: Record<MessageKey, string> = {
   "composer.worktreeGcConfirm": "清理",
   "composer.worktreeGcDone": "已清理 {n} 條失效 worktree 記錄",
   "composer.worktreeGcDoneNone": "沒有需要清理的內容",
+  "composer.worktreeRemove": "移除 worktree",
+  "composer.worktreeRemoveTip": "移除此關聯 worktree",
+  "composer.worktreeRemoveTitle": "移除 Git worktree",
+  "composer.worktreeRemoveHint":
+    "將透過 git worktree remove 永久刪除該 worktree 目錄。分支會保留。此操作無法復原。",
+  "composer.worktreeRemoveConfirm": "{branch}\n{path}",
+  "composer.worktreeRemoveDone": "已移除 worktree {name}",
+  "composer.worktreeRemoveFailed": "無法移除 worktree",
+  "composer.worktreeRemoveForce":
+    "該 worktree 有本地修改（或已鎖定）。是否強制移除並刪除目錄？",
+  "composer.worktreeRemoveCurrentWarn":
+    "目前正在使用此 worktree。移除後會話將切換到主 worktree。",
   "settings.preferredAgent": "Agent definition",
   "settings.preferredAgent.source.project": "project",
   "settings.preferredAgent.source.user": "user",

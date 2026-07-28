@@ -280,9 +280,12 @@ import { ComposerProjectMenu } from "@/components/ComposerProjectMenu";
 import { ComposerWorktreeMenu } from "@/components/ComposerWorktreeMenu";
 import {
   buildWorktreeSiblingPath,
+  canRemoveWorktree,
   mainWorktreePath,
   pathsEqual,
   sanitizeWorktreeName,
+  worktreeLabel,
+  worktreeRemoveErrorSuggestsForce,
 } from "@/lib/gitWorktree";
 import { isProjectPathMissing } from "@/lib/projectPath";
 import {
@@ -7480,6 +7483,106 @@ export default function App() {
     ],
   );
 
+  /**
+   * Remove a live linked worktree via host `git_worktree_remove`.
+   * Never removes main. Dirty trees: first attempt without force, then
+   * in-app confirm for force. If the active cwd is removed, switch to main.
+   */
+  const executeWorktreeRemove = useCallback(
+    async (wt: api.GitWorktreeEntry, force: boolean) => {
+      if (!api.isTauri() || !canRemoveWorktree(wt)) return;
+      const mainPath =
+        mainWorktreePath(gitWorktrees) || activeProject?.path?.trim() || "";
+      if (!mainPath) {
+        showToast(tr("composer.worktreeRemoveFailed"), 4000);
+        return;
+      }
+      const name = worktreeLabel(wt);
+      const wasCurrent = pathsEqual(wt.path, activeProject?.path);
+      try {
+        await api.gitWorktreeRemove({
+          projectPath: mainPath,
+          worktreePath: wt.path,
+          force,
+        });
+        if (wasCurrent) {
+          const main =
+            gitWorktrees.find((w) => w.isMain) ??
+            gitWorktrees.find((w) => pathsEqual(w.path, mainPath)) ??
+            null;
+          if (main) {
+            await switchToWorktree(main);
+          } else {
+            await refreshGitWorktrees();
+          }
+        } else {
+          await refreshGitWorktrees();
+        }
+        showToast(
+          tr("composer.worktreeRemoveDone", { name }),
+          2800,
+        );
+      } catch (e) {
+        const err = String(e);
+        if (!force && worktreeRemoveErrorSuggestsForce(err)) {
+          setAppDialog({
+            kind: "confirm",
+            title: tr("composer.worktreeRemoveTitle"),
+            message: `${tr("composer.worktreeRemoveForce")}\n\n${err}`,
+            confirmLabel: tr("composer.worktreeRemove"),
+            danger: true,
+            onConfirm: () => {
+              void executeWorktreeRemove(wt, true);
+            },
+          });
+          return;
+        }
+        showToast(
+          `${tr("composer.worktreeRemoveFailed")}: ${err}`,
+          5000,
+        );
+      }
+    },
+    [
+      activeProject?.path,
+      gitWorktrees,
+      refreshGitWorktrees,
+      showToast,
+      switchToWorktree,
+      tr,
+    ],
+  );
+
+  const confirmRemoveWorktree = useCallback(
+    (wt: api.GitWorktreeEntry) => {
+      if (!canRemoveWorktree(wt)) return;
+      const branch =
+        wt.branch?.trim() || tr("composer.worktreeDetached");
+      const isCurrent = pathsEqual(wt.path, activeProject?.path);
+      const parts = [
+        tr("composer.worktreeRemoveHint"),
+        tr("composer.worktreeRemoveConfirm", {
+          branch,
+          path: wt.path,
+        }),
+      ];
+      if (isCurrent) {
+        parts.push(tr("composer.worktreeRemoveCurrentWarn"));
+      }
+      setAppDialog({
+        kind: "confirm",
+        title: tr("composer.worktreeRemoveTitle"),
+        message: parts.join("\n\n"),
+        confirmLabel: tr("composer.worktreeRemove"),
+        danger: true,
+        onConfirm: () => {
+          void executeWorktreeRemove(wt, false);
+        },
+      });
+    },
+    [activeProject?.path, executeWorktreeRemove, tr],
+  );
+
   const openWorktreeCreate = useCallback((opts?: { startNewChat?: boolean }) => {
     setWorktreeCreateName("");
     setWorktreeCreateRef("");
@@ -10784,6 +10887,8 @@ export default function App() {
                       worktreeNew: tr("composer.worktreeNew"),
                       worktreeNewChat: tr("composer.worktreeNewChat"),
                       worktreeGc: tr("composer.worktreeGc"),
+                      worktreeRemove: tr("composer.worktreeRemove"),
+                      worktreeRemoveTip: tr("composer.worktreeRemoveTip"),
                     }}
                     onSwitch={(wt) => {
                       void switchToWorktree(wt);
@@ -10793,6 +10898,7 @@ export default function App() {
                       openWorktreeCreate({ startNewChat: true })
                     }
                     onGc={openWorktreeGc}
+                    onRemove={confirmRemoveWorktree}
                     onOpen={refreshGitWorktrees}
                   />
                 ) : null}

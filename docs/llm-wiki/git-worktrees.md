@@ -14,8 +14,8 @@ git worktree list --porcelain
 - If the path is already a project, switch only; otherwise `project_add` (trust inherited from the current project when possible).
 - Soft-fail when `git` is missing or the folder is not a repo (same spirit as Workspace Changes git status).
 - **UI:** branch chip is hidden until host confirms `available: true` (non-git → no branch chip). Project menu no longer embeds worktrees.
-- **Create / GC** live in the branch menu (not the project menu).
-- **Remove:** host supports `git_worktree_remove` for non-main trees; UI wiring may lag — prefer GC for stale admin records.
+- **Create / remove / GC** live in the branch menu (not the project menu).
+- **Remove:** per-row trash on **non-main** linked worktrees → in-app confirm → host `git_worktree_remove` (force retry if dirty). Never removes main. Removing the active cwd switches to main. Use **GC** for stale admin records of folders already gone.
 
 ### Create worktree
 
@@ -45,6 +45,15 @@ Name rules: letters, digits, `.` `_` `-` only; max 64; no path separators; must 
 
 Errors are shown when the folder is not a git repository, `git` is missing, the path already exists, or `git worktree add` fails (message surfaced in the dialog).
 
+### Remove live worktree
+
+Per-row trash icon on linked (non-main) entries in the branch menu:
+
+1. In-app confirm shows path + branch; warns if removing the active cwd.
+2. Host runs `git worktree remove [--force] <path>` with argv (no shell); refuses main.
+3. On dirty/locked failure, second confirm offers force.
+4. Refresh list; if the removed path was the active project, switch to main worktree.
+
 ### GC / prune
 
 Menu action **Clean stale worktrees…** → GlassModal dry-run preview (`git worktree prune -v --dry-run`), then apply. Optional force → `--expire now`. Does **not** delete live worktrees. Host: `git_worktree_gc`.
@@ -61,5 +70,5 @@ Menu action **Clean stale worktrees…** → GlassModal dry-run preview (`git wo
 - Frontend pure helpers: `src/lib/gitWorktree.ts` (+ unit tests)
 - UI:
   - Project: `ComposerProjectMenu` (folder only)
-  - Branch / worktree: `ComposerWorktreeMenu` (context bar chip)
-  - Create + GC dialogs in `App.tsx`
+  - Branch / worktree: `ComposerWorktreeMenu` (context bar chip; per-row remove)
+  - Create + remove confirm + GC dialogs in `App.tsx`

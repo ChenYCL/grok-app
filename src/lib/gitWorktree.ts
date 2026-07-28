@@ -280,3 +280,34 @@ export function mainWorktreePath(
   const main = worktrees.find((w) => w.isMain) ?? worktrees[0];
   return main?.path ?? null;
 }
+
+/**
+ * Whether a worktree may be removed from the UI.
+ * Main / primary checkout is never removable (matches host refuse_remove_main).
+ */
+export function canRemoveWorktree(
+  wt: GitWorktreeEntry | null | undefined,
+): boolean {
+  return !!wt && !wt.isMain;
+}
+
+/**
+ * Heuristic: `git worktree remove` failed because the tree is dirty / locked
+ * and may succeed with `--force`.
+ */
+export function worktreeRemoveErrorSuggestsForce(
+  message: string | null | undefined,
+): boolean {
+  const m = (message ?? "").toLowerCase();
+  if (!m) return false;
+  return (
+    m.includes("--force") ||
+    m.includes("use -f") ||
+    m.includes("modified or untracked") ||
+    m.includes("contains modified") ||
+    m.includes("is dirty") ||
+    m.includes("not empty") ||
+    m.includes("uncommitted") ||
+    m.includes("locked")
+  );
+}

@@ -7333,6 +7333,48 @@ button.composer__context-item {
   min-width: 0;
 }
 
+.cwm__row-inner {
+  display: flex;
+  align-items: stretch;
+  gap: 2px;
+  min-width: 0;
+}
+
+.cwm__row-inner .cwm__item {
+  flex: 1;
+  min-width: 0;
+}
+
+.cwm__row-remove {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  min-height: 36px;
+  margin: 0;
+  padding: 0;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-tertiary);
+  cursor: pointer;
+}
+
+.cwm__row-remove:hover:not(:disabled) {
+  background: var(--bg-hover);
+  color: var(--danger, #e5484d);
+}
+
+.cwm__row-remove:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.cwm__row-remove svg {
+  flex-shrink: 0;
+}
+
 .cwm__item {
   width: 100%;
   align-items: center;
