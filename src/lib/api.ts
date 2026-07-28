@@ -8,6 +8,18 @@ import {
   mirrorInvoke,
   mirrorListen,
 } from "./mirrorTransport";
+import type {
+  WallpaperFetchResult,
+  WallpaperLibraryEntry,
+  WallpaperSearchResult,
+} from "./wallpaperSource";
+
+export type {
+  WallpaperFetchResult,
+  WallpaperGalleryItem,
+  WallpaperLibraryEntry,
+  WallpaperSearchResult,
+} from "./wallpaperSource";
 
 export { isMirrorClient } from "./mirrorTransport";
 
@@ -2554,5 +2566,45 @@ export async function projectRulesList(projectPath: string) {
 export async function projectRulesEnsureTemplate(projectPath: string) {
   return invoke<ProjectRuleEntry>("project_rules_ensure_template", {
     projectPath,
+  });
+}
+
+// ── Wallpaper sources (X search + Imagine) ──────────────────────────────────
+
+export async function wallpaperXSearch(
+  query: string,
+  sort?: "top" | "latest",
+): Promise<WallpaperSearchResult> {
+  return invoke<WallpaperSearchResult>("wallpaper_x_search", {
+    query,
+    sort: sort ?? null,
+  });
+}
+
+export async function wallpaperFetchMedia(
+  url: string,
+  source?: string,
+): Promise<WallpaperFetchResult> {
+  return invoke<WallpaperFetchResult>("wallpaper_fetch_media", {
+    url,
+    source: source ?? null,
+  });
+}
+
+export async function wallpaperImagine(
+  prompt: string,
+  aspectRatio?: string,
+): Promise<WallpaperSearchResult> {
+  return invoke<WallpaperSearchResult>("wallpaper_imagine", {
+    prompt,
+    aspectRatio: aspectRatio ?? null,
+  });
+}
+
+export async function wallpaperLibraryList(
+  limit?: number,
+): Promise<WallpaperLibraryEntry[]> {
+  return invoke<WallpaperLibraryEntry[]>("wallpaper_library_list", {
+    limit: limit ?? null,
   });
 }

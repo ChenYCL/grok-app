@@ -39,6 +39,11 @@ button:disabled {
   opacity: 0.45;
 }
 
+/* Image lightbox must sit above GlassModal (.overlay = 12000) and Select (13000) */
+.yarl__portal {
+  z-index: 14000 !important;
+}
+
 /* ── Codex-style tip (replaces native title= tooltips) ── */
 .ui-tip {
   position: fixed;
@@ -64,6 +69,17 @@ button:disabled {
   /* top/left are the box origin (no translate); viewport clamp in tooltip.tsx */
   box-sizing: border-box;
   animation: ui-tip-in 100ms ease-out;
+}
+
+/* Settings help: longer descriptions wrap instead of ellipsizing */
+.ui-tip--wrap {
+  white-space: normal;
+  overflow: visible;
+  text-overflow: unset;
+  max-width: min(320px, calc(100vw - 16px));
+  padding: 8px 10px;
+  line-height: 1.45;
+  font-weight: 400;
 }
 
 @keyframes ui-tip-in {
@@ -4018,6 +4034,41 @@ html[data-theme="light"] .ui-check.is-mixed .ui-check__box {
   color: var(--text-primary);
 }
 
+.settings-row__label-text {
+  min-width: 0;
+}
+
+/* “?” after module name — explanation lives in Tip, not a desc block */
+.settings-label-help {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 18px;
+  height: 18px;
+  margin: 0;
+  padding: 0;
+  border: none;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text-tertiary);
+  cursor: help;
+  line-height: 0;
+  opacity: 0.75;
+  transition:
+    color var(--motion-fast) ease,
+    opacity var(--motion-fast) ease,
+    background var(--motion-fast) ease;
+}
+
+.settings-label-help:hover,
+.settings-label-help:focus-visible {
+  opacity: 1;
+  color: var(--text-secondary);
+  background: color-mix(in srgb, var(--bg-hover) 80%, transparent);
+  outline: none;
+}
+
 .settings-row__desc {
   margin-top: 4px;
   font-size: 12.5px;
@@ -4558,6 +4609,315 @@ html[data-theme="light"] .ui-check.is-mixed .ui-check__box {
   margin-top: 4px;
 }
 
+.settings-wallpaper__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+/* ── Wallpaper source modal (X + Imagine) ── */
+.modal.wallpaper-source-modal {
+  width: min(860px, calc(100vw - 28px));
+  max-height: min(92vh, 820px);
+}
+
+.wallpaper-source-modal__body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-height: 0;
+  max-height: min(72vh, 640px);
+  overflow: hidden;
+}
+
+.wallpaper-source-tabs {
+  display: flex;
+  gap: 6px;
+  padding: 2px;
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--bg-hover) 80%, transparent);
+}
+
+.wallpaper-source-tabs__btn {
+  flex: 1;
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  padding: 8px 10px;
+  border-radius: calc(var(--radius-md) - 2px);
+  cursor: pointer;
+}
+
+.wallpaper-source-tabs__btn:hover:not(:disabled) {
+  color: var(--text-primary);
+  background: color-mix(in srgb, var(--bg-active) 70%, transparent);
+}
+
+.wallpaper-source-tabs__btn--active {
+  color: var(--text-primary);
+  background: var(--bg-elevated);
+  box-shadow: 0 1px 2px color-mix(in srgb, #000 12%, transparent);
+}
+
+.wallpaper-source-tabs__btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+/* Shared control metrics for X search + Imagine form rows */
+.wallpaper-source-form {
+  --ws-control-h: var(--control-height, 32px);
+  --ws-control-gap: 8px;
+  --ws-control-radius: var(--radius-md);
+  --ws-control-font: var(--text-sm, 13px);
+  display: flex;
+  flex-direction: column;
+  gap: var(--ws-control-gap);
+}
+
+.wallpaper-source-form__hint {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--text-tertiary);
+}
+
+.wallpaper-source-form__row {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: var(--ws-control-gap);
+  align-items: center;
+  min-height: var(--ws-control-h);
+}
+
+.wallpaper-source-form__input,
+.wallpaper-source-form__textarea {
+  box-sizing: border-box;
+  font: inherit;
+  font-size: var(--ws-control-font);
+  line-height: 1.25;
+  color: var(--text-primary);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--ws-control-radius);
+  margin: 0;
+}
+
+.wallpaper-source-form__input {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: var(--ws-control-h);
+  padding: 0 12px;
+}
+
+/* Kill UA search field chrome so height stays exact */
+.wallpaper-source-form__input[type="search"] {
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.wallpaper-source-form__input[type="search"]::-webkit-search-decoration,
+.wallpaper-source-form__input[type="search"]::-webkit-search-cancel-button {
+  -webkit-appearance: none;
+}
+
+.wallpaper-source-form__textarea {
+  width: 100%;
+  resize: vertical;
+  min-height: calc(var(--ws-control-h) * 3);
+  padding: 8px 12px;
+  line-height: 1.4;
+}
+
+/* App Select — same height / radius / border as input + button */
+.wallpaper-source-form__select {
+  flex: 0 0 auto;
+  min-width: 96px;
+  height: var(--ws-control-h);
+}
+
+.wallpaper-source-form__select .c-select__trigger {
+  box-sizing: border-box;
+  width: 100%;
+  height: var(--ws-control-h);
+  min-height: var(--ws-control-h);
+  max-height: var(--ws-control-h);
+  padding: 0 10px;
+  font-size: var(--ws-control-font);
+  line-height: 1;
+  border-radius: var(--ws-control-radius);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-subtle);
+}
+
+/* Search / Generate CTA — match control height (ignore btn--sm) */
+.wallpaper-source-form__row > .btn {
+  box-sizing: border-box;
+  flex: 0 0 auto;
+  height: var(--ws-control-h);
+  min-height: var(--ws-control-h);
+  max-height: var(--ws-control-h);
+  padding: 0 14px;
+  font-size: var(--ws-control-font);
+  border-radius: var(--ws-control-radius);
+  line-height: 1;
+}
+
+.wallpaper-source-modal .modal-actions {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 8px;
+}
+
+.wallpaper-source-footer-hint {
+  flex: 1 1 140px;
+  min-width: 0;
+  margin-right: auto;
+  font-size: 12px;
+  color: var(--text-tertiary);
+  line-height: 1.3;
+}
+
+.wallpaper-source-status {
+  margin: 0;
+  font-size: 12.5px;
+  color: var(--text-secondary);
+}
+
+.wallpaper-source-error {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  padding: 8px 10px;
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--danger, #e55) 12%, var(--bg-elevated));
+  color: var(--text-primary);
+  font-size: 12.5px;
+}
+
+.wallpaper-source-error p {
+  margin: 0;
+  flex: 1 1 auto;
+}
+
+/* X search: true 3-col masonry — height follows image, no fixed crop box */
+.wallpaper-masonry {
+  flex: 1 1 auto;
+  min-height: 160px;
+  max-height: min(48vh, 420px);
+  overflow-x: hidden;
+  overflow-y: auto;
+  column-count: 3;
+  column-gap: 10px;
+  column-fill: balance;
+  column-rule: none;
+  padding: 2px;
+  border: none;
+  outline: none;
+  background: transparent;
+}
+
+.wallpaper-masonry:focus,
+.wallpaper-masonry:focus-visible {
+  outline: none;
+}
+
+/* Imagine: one full-width column */
+.wallpaper-masonry--full {
+  column-count: 1;
+  column-gap: 0;
+}
+
+.wallpaper-masonry__empty {
+  column-span: all;
+  margin: 24px 8px;
+  text-align: center;
+  color: var(--text-tertiary);
+  font-size: 13px;
+}
+
+.wallpaper-masonry__card {
+  break-inside: avoid;
+  -webkit-column-break-inside: avoid;
+  page-break-inside: avoid;
+  display: inline-block;
+  width: 100%;
+  margin: 0 0 10px;
+  padding: 0;
+  border: 2px solid transparent;
+  border-radius: var(--radius-md);
+  background: var(--bg-elevated);
+  overflow: hidden;
+  cursor: zoom-in;
+  text-align: left;
+  color: inherit;
+  font: inherit;
+  vertical-align: top;
+  transition:
+    border-color var(--motion-fast) ease,
+    box-shadow var(--motion-fast) ease;
+}
+
+.wallpaper-masonry--full .wallpaper-masonry__card {
+  display: block;
+  margin-bottom: 12px;
+}
+
+.wallpaper-masonry__card:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--border-subtle));
+}
+
+.wallpaper-masonry__card--selected {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 40%, transparent);
+}
+
+.wallpaper-masonry__card--loading {
+  cursor: wait;
+  opacity: 0.85;
+}
+
+.wallpaper-masonry__card:disabled {
+  opacity: 0.7;
+  cursor: wait;
+}
+
+/* Natural image height — no aspect-ratio crop */
+.wallpaper-masonry__img {
+  display: block;
+  width: 100%;
+  height: auto;
+  max-width: 100%;
+  vertical-align: middle;
+  background: color-mix(in srgb, var(--bg-hover) 80%, #000);
+  border: none;
+  object-fit: contain;
+}
+
+.wallpaper-masonry__meta {
+  display: block;
+  padding: 6px 8px;
+  font-size: 11.5px;
+  line-height: 1.3;
+  color: var(--text-tertiary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  border: none;
+}
+
+@media (max-width: 640px) {
+  .wallpaper-masonry:not(.wallpaper-masonry--full) {
+    column-count: 2;
+  }
+}
+
 .settings-wallpaper__preview-wrap {
   position: relative;
   width: 100%;
@@ -4953,6 +5313,9 @@ button.settings-wallpaper__preview:hover:not(:disabled) {
 }
 
 .settings-wallpaper__scrim-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   font-size: 12.5px;
   font-weight: 560;
   color: var(--text-secondary);
@@ -9782,7 +10145,8 @@ button.composer__context-item {
 }
 
 .c-select__menu {
-  z-index: 10000;
+  /* Must exceed .overlay (12000); inline floatingStyle also sets 13000 */
+  z-index: 13000;
   overflow-y: auto;
   margin: 0;
   list-style: none;
@@ -9795,6 +10159,7 @@ button.composer__context-item {
 .c-select__menu--portal {
   position: fixed;
   box-sizing: border-box;
+  z-index: 13000;
 }
 
 /* In settings forms — full width trigger */

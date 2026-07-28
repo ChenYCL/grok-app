@@ -17,6 +17,7 @@ See `docs/llm-wiki/release.md`.
 
 ### Fixed
 
+- **Workbench auto-widen**: grant `core:window:allow-set-size` (+ current-monitor / is-fullscreen) so opening the left sidebar or right files pane can actually resize the OS window when chat would be crushed; failures are logged instead of swallowed
 - **Composer skills picker**: skills missing `userInvocable` in `grok inspect` are treated as invocable (only explicit `false` hides them). Extensions-disabled skills stay hidden. Empty / CLI-error states replace the old “Coming soon” dead end.
 
 ### Changed

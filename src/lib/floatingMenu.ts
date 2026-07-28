@@ -140,6 +140,12 @@ function posEqual(a: FloatingPos, b: FloatingPos): boolean {
   );
 }
 
+/**
+ * Above GlassModal / `.overlay` (z-index 12000) so portaled menus stay
+ * visible and clickable inside dialogs. Matches context-menu layer (13000).
+ */
+export const FLOATING_MENU_Z_INDEX = 13000;
+
 export function floatingStyle(
   pos: FloatingPos | null,
   extras?: { minWidth?: number; settled?: boolean },
@@ -151,7 +157,7 @@ export function floatingStyle(
     top: pos.top,
     maxHeight: pos.maxHeight,
     maxWidth: pos.maxWidth,
-    zIndex: 10000,
+    zIndex: FLOATING_MENU_Z_INDEX,
   };
   if (pos.fitContent) {
     base.width = "max-content";

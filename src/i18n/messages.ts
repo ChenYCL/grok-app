@@ -654,6 +654,8 @@ const en = {
   "settings.tab.permissions": "Permissions",
   "settings.tab.agent": "Agent",
   "settings.tab.app": "App",
+  "settings.tab.theme": "Theme",
+  "settings.tab.interface": "Interface",
   "settings.tab.cli": "CLI",
   "settings.tab.connection": "Connection",
   "settings.tab.network": "Network",
@@ -903,13 +905,61 @@ const en = {
   "settings.skin.ember": "Ember",
   "settings.wallpaper": "Background image",
   "settings.wallpaperDesc":
-    "Click the preview to choose a wallpaper (JPEG/PNG/WebP, GIF, or MP4/WebM). Still images are compressed and saved locally; videos and GIFs play as an animated background.",
+    "Choose a local file, search X for images, or generate with Imagine (JPEG/PNG/WebP, GIF, or MP4/WebM). Still images are compressed and saved locally; videos and GIFs play as an animated background.",
   "settings.wallpaperEmpty": "Click to choose a wallpaper",
   "settings.wallpaperUpload": "Choose wallpaper",
   "settings.wallpaperReplace": "Replace wallpaper",
   "settings.wallpaperClear": "Remove",
   "settings.wallpaperWorking": "Processing…",
   "settings.wallpaperFind": "Find wallpapers",
+  "settings.wallpaperFromX": "Search on X",
+  "settings.wallpaperImagine": "Imagine",
+  "settings.wallpaperSource.title": "Find a wallpaper",
+  "settings.wallpaperSource.xHint":
+    "Search X for AI prompt-share posts and high-quality images. Dead links are filtered out. Uses Grok’s X tools (needs sign-in).",
+  "settings.wallpaperSource.xPlaceholder": "e.g. cyberpunk city wallpaper",
+  "settings.wallpaperSource.imagineHint":
+    "Describe a wallpaper; Grok Imagine generates an image, saves it under the app wallpaper folder, then you can apply it.",
+  "settings.wallpaperSource.imaginePlaceholder":
+    "e.g. misty mountain lake at sunrise, cinematic 16:9 wallpaper, soft light",
+  "settings.wallpaperSource.search": "Search",
+  "settings.wallpaperSource.searching": "Searching X…",
+  "settings.wallpaperSource.generate": "Generate",
+  "settings.wallpaperSource.generating": "Generating…",
+  "settings.wallpaperSource.apply": "Set as background",
+  "settings.wallpaperSource.applying": "Applying…",
+  "settings.wallpaperSource.sort": "Sort",
+  "settings.wallpaperSource.sortTop": "Top",
+  "settings.wallpaperSource.sortLatest": "Latest",
+  "settings.wallpaperSource.aspect": "Aspect ratio",
+  "settings.wallpaperSource.gallery": "Wallpaper gallery",
+  "settings.wallpaperSource.emptyGallery":
+    "Results will appear here as a gallery. Search or generate to begin.",
+  "settings.wallpaperSource.goLogin": "Sign in",
+  "settings.wallpaperSource.loadingOriginal": "Loading full image…",
+  "settings.wallpaperSource.openPreview": "Open full-size preview",
+  "settings.wallpaperSource.clickToPreview":
+    "Click a thumbnail to load the original and preview it.",
+  "settings.wallpaperSource.previewThenApply":
+    "Preview opened — use “Set as background” when ready.",
+  "settings.wallpaperSource.err.auth_required":
+    "Sign in with Grok Build is required to search X or use Imagine.",
+  "settings.wallpaperSource.err.cli_missing":
+    "Grok Build CLI was not found. Install or set the CLI path in Settings → Runtime.",
+  "settings.wallpaperSource.err.search_failed":
+    "Search failed. Check the network and try again.",
+  "settings.wallpaperSource.err.empty":
+    "No images found. Try different keywords or another prompt.",
+  "settings.wallpaperSource.err.download_failed":
+    "Could not download that image.",
+  "settings.wallpaperSource.err.url_blocked":
+    "That media URL is not allowed for wallpaper download.",
+  "settings.wallpaperSource.err.imagine_failed":
+    "Imagine generation failed. Try a different prompt.",
+  "settings.wallpaperSource.err.timeout": "Timed out. Please try again.",
+  "settings.wallpaperSource.err.generic": "Something went wrong.",
+  "settings.wallpaperSource.err.desktopOnly":
+    "Wallpaper search and Imagine require the desktop app.",
   "settings.wallpaperFocus": "Adjust position",
   "settings.wallpaperFocusTitle": "Background position",
   "settings.wallpaperFocusHint":
@@ -2801,6 +2851,8 @@ const zh: Record<MessageKey, string> = {
   "settings.tab.permissions": "权限",
   "settings.tab.agent": "Agent",
   "settings.tab.app": "应用",
+  "settings.tab.theme": "主题",
+  "settings.tab.interface": "界面",
   "settings.tab.cli": "CLI",
   "settings.tab.connection": "连接",
   "settings.tab.network": "网络",
@@ -3046,13 +3098,58 @@ const zh: Record<MessageKey, string> = {
   "settings.skin.ember": "余烬",
   "settings.wallpaper": "背景图",
   "settings.wallpaperDesc":
-    "点击预览区选择壁纸（JPEG/PNG/WebP、GIF 或 MP4/WebM）。静态图会压缩后保存在本地；视频和 GIF 会作为动态背景播放。",
+    "可本机选图、从 X 搜索带图内容，或用 Imagine 生成（JPEG/PNG/WebP、GIF 或 MP4/WebM）。静态图会压缩后保存在本地；视频和 GIF 会作为动态背景播放。",
   "settings.wallpaperEmpty": "点击选择壁纸",
   "settings.wallpaperUpload": "选择壁纸",
   "settings.wallpaperReplace": "更换壁纸",
   "settings.wallpaperClear": "移除",
   "settings.wallpaperWorking": "处理中…",
   "settings.wallpaperFind": "寻找壁纸",
+  "settings.wallpaperFromX": "从 X 搜索",
+  "settings.wallpaperImagine": "Imagine 生成",
+  "settings.wallpaperSource.title": "寻找壁纸",
+  "settings.wallpaperSource.xHint":
+    "优先搜 AI 提示词分享与高质量配图；无法下载的链接会自动剔除。通过 Grok 的 X 工具完成（需登录）。",
+  "settings.wallpaperSource.xPlaceholder": "例如：赛博朋克城市 wallpaper",
+  "settings.wallpaperSource.imagineHint":
+    "输入提示词，Grok Imagine 生成图片并保存到应用壁纸目录，再一键设为背景。",
+  "settings.wallpaperSource.imaginePlaceholder":
+    "例如：日出时分的云海山湖，电影感 16:9 壁纸，柔光",
+  "settings.wallpaperSource.search": "搜索",
+  "settings.wallpaperSource.searching": "正在搜索 X…",
+  "settings.wallpaperSource.generate": "生成",
+  "settings.wallpaperSource.generating": "正在生成…",
+  "settings.wallpaperSource.apply": "设为背景",
+  "settings.wallpaperSource.applying": "正在应用…",
+  "settings.wallpaperSource.sort": "排序",
+  "settings.wallpaperSource.sortTop": "热门",
+  "settings.wallpaperSource.sortLatest": "最新",
+  "settings.wallpaperSource.aspect": "画面比例",
+  "settings.wallpaperSource.gallery": "壁纸画廊",
+  "settings.wallpaperSource.emptyGallery":
+    "结果会以瀑布流展示。请先搜索或生成。",
+  "settings.wallpaperSource.goLogin": "去登录",
+  "settings.wallpaperSource.loadingOriginal": "正在加载原图…",
+  "settings.wallpaperSource.openPreview": "打开大图预览",
+  "settings.wallpaperSource.clickToPreview": "点击缩略图加载原图并预览。",
+  "settings.wallpaperSource.previewThenApply":
+    "已打开预览 — 确认后点「设为背景」。",
+  "settings.wallpaperSource.err.auth_required":
+    "搜索 X 或使用 Imagine 需要先登录 Grok Build。",
+  "settings.wallpaperSource.err.cli_missing":
+    "未找到 Grok Build CLI。请安装，或在设置 → 运行时 配置 CLI 路径。",
+  "settings.wallpaperSource.err.search_failed":
+    "搜索失败，请检查网络后重试。",
+  "settings.wallpaperSource.err.empty":
+    "没有找到图片，请换个关键词或提示词。",
+  "settings.wallpaperSource.err.download_failed": "无法下载该图片。",
+  "settings.wallpaperSource.err.url_blocked": "该媒体地址不允许作为壁纸下载。",
+  "settings.wallpaperSource.err.imagine_failed":
+    "Imagine 生成失败，请换个提示词试试。",
+  "settings.wallpaperSource.err.timeout": "超时，请重试。",
+  "settings.wallpaperSource.err.generic": "出了点问题。",
+  "settings.wallpaperSource.err.desktopOnly":
+    "从 X 搜索与 Imagine 生成仅支持桌面端。",
   "settings.wallpaperFocus": "调整位置",
   "settings.wallpaperFocusTitle": "背景位置",
   "settings.wallpaperFocusHint":

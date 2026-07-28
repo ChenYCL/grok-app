@@ -7664,3 +7664,47 @@ pub async fn leader_kill_all(
     }))
 }
 
+// ── Wallpaper sources (X search + Imagine) ──────────────────────────────────
+
+#[tauri::command]
+pub async fn wallpaper_x_search(
+    query: String,
+    sort: Option<String>,
+) -> Result<crate::wallpaper_source::WallpaperSearchResult, String> {
+    crate::wallpaper_source::ensure_wallpaper_dirs();
+    Ok(crate::wallpaper_source::x_search_async(&query, sort.as_deref()).await)
+}
+
+#[tauri::command]
+pub async fn wallpaper_fetch_media(
+    url: String,
+    source: Option<String>,
+) -> Result<crate::wallpaper_source::WallpaperFetchResult, String> {
+    crate::wallpaper_source::ensure_wallpaper_dirs();
+    crate::wallpaper_source::fetch_media(&url, source.as_deref()).await
+}
+
+#[tauri::command]
+pub async fn wallpaper_imagine(
+    prompt: String,
+    aspect_ratio: Option<String>,
+) -> Result<crate::wallpaper_source::WallpaperSearchResult, String> {
+    crate::wallpaper_source::ensure_wallpaper_dirs();
+    let aspect = aspect_ratio.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        crate::wallpaper_source::imagine(&prompt, aspect.as_deref())
+    })
+    .await
+    .map_err(|e| format!("wallpaper_imagine: {e}"))
+}
+
+#[tauri::command]
+pub async fn wallpaper_library_list(
+    limit: Option<u32>,
+) -> Result<Vec<crate::wallpaper_source::WallpaperLibraryEntry>, String> {
+    crate::wallpaper_source::ensure_wallpaper_dirs();
+    tauri::async_runtime::spawn_blocking(move || crate::wallpaper_source::library_list(limit))
+        .await
+        .map_err(|e| format!("wallpaper_library_list: {e}"))?
+}
+

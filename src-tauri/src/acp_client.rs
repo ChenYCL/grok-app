@@ -38,6 +38,14 @@ pub enum AcpEvent {
         status: String,
         raw: Value,
     },
+    /// Background task handed off / finished (`task_backgrounded` / `task_completed`).
+    ///
+    /// Only affects Host open-tool accounting — does **not** rewrite journal tool
+    /// rows. CLI may still stream `tool_call_update(in_progress)` after a
+    /// completed(`[bg]`) tool; those must not keep the turn open.
+    ToolOpenReleased {
+        tool_call_id: String,
+    },
     /// Live plan entries notification (sessionUpdate plan) and/or exit_plan_mode gate.
     Plan {
         entries: Value,
@@ -2066,6 +2074,34 @@ pub fn decode_session_update(params: &Value) -> Vec<AcpEvent> {
                 raw: update.clone(),
             });
         }
+        // Background shell: release open-tool accounting without journal churn.
+        "task_backgrounded" => {
+            let tool_call_id = update
+                .get("tool_call_id")
+                .or_else(|| update.get("toolCallId"))
+                .or_else(|| update.get("task_id"))
+                .or_else(|| update.get("taskId"))
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
+            if !tool_call_id.is_empty() {
+                out.push(AcpEvent::ToolOpenReleased { tool_call_id });
+            }
+        }
+        "task_completed" => {
+            let tool_call_id = update
+                .pointer("/task_snapshot/task_id")
+                .or_else(|| update.pointer("/taskSnapshot/taskId"))
+                .or_else(|| update.get("tool_call_id"))
+                .or_else(|| update.get("toolCallId"))
+                .or_else(|| update.get("task_id"))
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
+            if !tool_call_id.is_empty() {
+                out.push(AcpEvent::ToolOpenReleased { tool_call_id });
+            }
+        }
         "retry_state" => {
             let attempt = update
                 .get("attempt")
@@ -2389,6 +2425,62 @@ fn parse_ask_user_options(v: &Value) -> Vec<AskUserOption> {
         });
     }
     out
+}
+
+#[cfg(test)]
+mod session_update_decode_tests {
+    use super::*;
+
+    #[test]
+    fn decodes_task_backgrounded_and_completed_as_tool_open_released() {
+        let bg = decode_session_update(&json!({
+            "update": {
+                "sessionUpdate": "task_backgrounded",
+                "tool_call_id": "call-f1b6b6f2-5e0f-413e-bafa-42a7ba048a01-10",
+                "task_id": "call-f1b6b6f2-5e0f-413e-bafa-42a7ba048a01-10",
+            }
+        }));
+        assert!(matches!(
+            &bg[..],
+            [AcpEvent::ToolOpenReleased { tool_call_id }]
+                if tool_call_id == "call-f1b6b6f2-5e0f-413e-bafa-42a7ba048a01-10"
+        ));
+
+        let done = decode_session_update(&json!({
+            "update": {
+                "sessionUpdate": "task_completed",
+                "task_snapshot": {
+                    "task_id": "call-bg-1",
+                    "command": "sleep 1"
+                },
+                "will_wake": false
+            }
+        }));
+        assert!(matches!(
+            &done[..],
+            [AcpEvent::ToolOpenReleased { tool_call_id }] if tool_call_id == "call-bg-1"
+        ));
+    }
+
+    #[test]
+    fn tool_call_update_still_decodes_as_tool_call() {
+        let evs = decode_session_update(&json!({
+            "update": {
+                "sessionUpdate": "tool_call_update",
+                "toolCallId": "call-1",
+                "status": "in_progress",
+                "title": "run_terminal_command"
+            }
+        }));
+        assert!(matches!(
+            &evs[..],
+            [AcpEvent::ToolCall {
+                tool_call_id,
+                status,
+                ..
+            }] if tool_call_id == "call-1" && status == "in_progress"
+        ));
+    }
 }
 
 #[cfg(test)]

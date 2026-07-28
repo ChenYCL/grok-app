@@ -65,6 +65,7 @@ mod voice_host;
 mod voice_stt;
 mod voice_tools;
 mod remote_im;
+mod wallpaper_source;
 
 use std::sync::Arc;
 
@@ -398,6 +399,10 @@ pub fn run() {
             remote_im::remote_im_save_instance,
             remote_im::remote_im_delete_instance,
             remote_im::remote_im_doctor,
+            commands::wallpaper_x_search,
+            commands::wallpaper_fetch_media,
+            commands::wallpaper_imagine,
+            commands::wallpaper_library_list,
         ])
         .build(tauri::generate_context!())
         .expect("error while building Grok App")

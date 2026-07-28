@@ -22,6 +22,7 @@ Agent / 贡献者维护设置 UI 时**必读**。目标：层次清晰、可搜�
 | Section | Tabs |
 |---------|------|
 | general | `composer` · `permissions` · `agent` · `app` |
+| appearance | `theme`（主题：浅深色 / 皮肤 / 背景）· `interface`（界面：聊天展示） |
 | account | `official` · `providers` |
 | extensions | `plugins` · `skills` · `mcp` · `hooks` · `market` |
 | runtime | `cli` · `connection` · `pool` · `tools` |
@@ -39,7 +40,8 @@ Agent / 贡献者维护设置 UI 时**必读**。目标：层次清晰、可搜�
 #/settings/account/providers        → 自定义提供商
 #/settings/remote_im                → 远程控制 · IM 通信
 #/settings/remote_im/mirror         → 远程控制 · 手机镜像
-#/settings/appearance               → 无 tab
+#/settings/appearance               → appearance/theme
+#/settings/appearance/interface     → 外观 · 界面（聊天展示）
 ```
 
 - 仅 section 的旧链**永远有效**（落到 default tab）。

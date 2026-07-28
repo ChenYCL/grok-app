@@ -57,7 +57,11 @@ describe("settingsCatalog", () => {
     });
     expect(parseSettingsHash("settings/appearance")).toEqual({
       section: "appearance",
-      tab: null,
+      tab: "theme",
+    });
+    expect(parseSettingsHash("settings/appearance/interface")).toEqual({
+      section: "appearance",
+      tab: "interface",
     });
     expect(parseSettingsHash("settings/extensions/not-a-tab")).toEqual({
       section: "extensions",

@@ -55,7 +55,9 @@ use crate::stream_stall::{
     normalize_stream_stall_seconds, should_emit_soft_stall, should_prune_open_tool_id,
     stall_tier_from_evidence, stream_stall_message, StallTier,
 };
-use crate::turn_complete::{is_terminal_tool_status, should_defer_prompt_complete};
+use crate::turn_complete::{
+    note_tool_open_status, release_tool_from_open, should_defer_prompt_complete,
+};
 
 /// Outcome of one stall-watchdog pass on a single live/background session.
 enum StallTickAction {
@@ -244,6 +246,10 @@ struct LiveSession {
     open_tool_ids: HashSet<String>,
     /// Last tool event time per open id (orphan leak recovery).
     open_tool_seen_at: HashMap<String, Instant>,
+    /// Tool ids that reached a terminal status this turn (monotonic: never re-open).
+    /// Prevents background-shell stdout `in_progress` after completed(`[bg]`) from
+    /// leaking `open_tool_ids` and stranding deferred `prompt_complete`.
+    terminal_tool_ids: HashSet<String>,
     /// `prompt_complete` arrived while tools/gates still open; finish when clear.
     deferred_prompt_complete: Option<String>,
     /// Tool events observed during the current turn (empty-run soft signal).
@@ -724,6 +730,28 @@ impl SessionManager {
         })
     }
 
+    /// Apply tool_call status to open/terminal sets (live + background paths).
+    fn note_tool_status_on_session(s: &mut LiveSession, tool_call_id: &str, status: &str) {
+        note_tool_open_status(
+            &mut s.open_tool_ids,
+            &mut s.terminal_tool_ids,
+            &mut s.open_tool_seen_at,
+            tool_call_id,
+            status,
+            Instant::now(),
+        );
+    }
+
+    /// Release open-tool accounting for background tasks (no journal write).
+    fn release_tool_open_on_session(s: &mut LiveSession, tool_call_id: &str) {
+        release_tool_from_open(
+            &mut s.open_tool_ids,
+            &mut s.terminal_tool_ids,
+            &mut s.open_tool_seen_at,
+            tool_call_id,
+        );
+    }
+
     /// Finish turn when a deferred `prompt_complete` is safe (#52).
     /// Returns `Some(empty_run)` if finished (`None` inside = finished, not empty);
     /// returns `None` if still deferred.
@@ -761,6 +789,7 @@ impl SessionManager {
         s.stream_attachments.clear();
         s.journal_throttle.reset();
         s.open_tool_ids.clear();
+        s.terminal_tool_ids.clear();
         s.tools_this_turn = 0;
         if s.fsm.state() == SessionState::Streaming
             || s.fsm.state() == SessionState::AwaitingPermission
@@ -825,6 +854,10 @@ impl SessionManager {
         }
         let n = drop_ids.len();
         for id in drop_ids {
+            // Journal-terminal orphans must stay closed (bg stdout after completed).
+            if terminal.contains(&id) {
+                s.terminal_tool_ids.insert(id.clone());
+            }
             s.open_tool_ids.remove(&id);
             s.open_tool_seen_at.remove(&id);
             tracing::info!(
@@ -849,6 +882,7 @@ impl SessionManager {
         s.journal_throttle.reset();
         s.open_tool_ids.clear();
         s.open_tool_seen_at.clear();
+        s.terminal_tool_ids.clear();
         s.deferred_prompt_complete = None;
         s.tools_this_turn = 0;
         s.prompt_in_flight = false;
@@ -1394,6 +1428,18 @@ impl SessionManager {
         if s.pending_plan_rpc_id.is_some() || s.pending_ask_user_rpc_id.is_some() {
             return None;
         }
+        // Deferred prompt_complete + orphan open tools: try silent heal without
+        // waiting for stall silence. Tool heartbeat re-arms last_stream_progress
+        // every 25s while open tools exist, so a leaked open id would otherwise
+        // never reach the stall path and the UI stays "running" forever.
+        // Normal mid-turn tools (journal not terminal, still young) are not pruned.
+        if s.deferred_prompt_complete.is_some() {
+            if Self::heal_stuck_streaming_turn(s, now) {
+                return Some(StallTickAction::Healed {
+                    session_id: s.app_session_id.clone(),
+                });
+            }
+        }
         // No silence yet — keep working.
         if !is_stream_stalled(s.last_stream_progress, stall_secs, now) {
             return None;
@@ -1658,6 +1704,42 @@ impl SessionManager {
         false
     }
 
+    /// Whether connect/respawn must keep the existing agent process.
+    ///
+    /// Terminal FSM states (`Disconnected` / `Idle`) never preserve the process —
+    /// even when leftover busy flags remain after a failed turn. Otherwise a 502
+    /// (or similar) that left `deferred_prompt_complete` set would make every
+    /// subsequent connect no-op as `state=Disconnected busy=true`, and the chat
+    /// could not send again (Remote IM still works because it uses one-shot `grok -p`).
+    fn should_preserve_live_process(s: &LiveSession) -> bool {
+        connect_should_preserve_live_process(s.fsm.state(), Self::live_session_is_busy(s))
+    }
+
+    /// Drop all in-turn busy markers after a terminal turn failure.
+    /// Complements FSM `fail_with` (which only flips state + last_error).
+    fn release_failed_turn_markers(s: &mut LiveSession) {
+        s.prompt_in_flight = false;
+        s.streaming_message_id = None;
+        s.active_turn_id = None;
+        s.stream_message_id_locked = false;
+        s.stream_buf.clear();
+        s.stream_thought.clear();
+        s.stream_last_was_assistant = false;
+        s.stream_attachments.clear();
+        s.open_tool_ids.clear();
+        s.open_tool_seen_at.clear();
+        s.terminal_tool_ids.clear();
+        s.deferred_prompt_complete = None;
+        s.pending_plan_rpc_id = None;
+        s.pending_ask_user_rpc_id = None;
+        s.pending_stream_emit = None;
+        s.journal_throttle.reset();
+        s.last_stall_emit = None;
+        s.stall_soft_emits = 0;
+        s.saw_model_output = false;
+        s.tools_this_turn = 0;
+    }
+
     /// Park or background the current live session so focus can move.
     ///
     /// - Idle Ready (no open tools) → warm `parked`.
@@ -1850,6 +1932,7 @@ impl SessionManager {
             journal_throttle: JournalWriteThrottle::with_default_interval(),
             open_tool_ids: HashSet::new(),
             open_tool_seen_at: HashMap::new(),
+            terminal_tool_ids: HashSet::new(),
             deferred_prompt_complete: None,
             tools_this_turn: 0,
             saw_model_output: false,
@@ -2302,16 +2385,10 @@ impl SessionManager {
         );
         s.meta.updated_at = chrono::Utc::now();
         let _ = store::update_session_meta(&s.meta);
-        s.stream_buf.clear();
-        s.stream_thought.clear();
-        s.stream_last_was_assistant = false;
-        s.stream_attachments.clear();
-        s.streaming_message_id = None;
-        s.active_turn_id = None;
-        s.stream_message_id_locked = false;
-        s.prompt_in_flight = false;
-        s.journal_throttle.reset();
-        s.last_stall_emit = None;
+        // Clear *all* busy markers (including deferred prompt_complete / open tools).
+        // Leaving them set after fail_with left the session as Disconnected+busy,
+        // so connect no-oped forever and local sends failed while Remote IM still worked.
+        Self::release_failed_turn_markers(s);
 
         let _ = app.emit(
             "session://turn_error",
@@ -2419,24 +2496,27 @@ impl SessionManager {
 
         // Already live on this App session with a healthy agent → no-op.
         // Includes mid-turn (streaming / open tools): never respawn or cancel.
+        // Never no-op on Disconnected/Idle — leftover busy flags after fail_with
+        // must not block reconnect (see `should_preserve_live_process`).
         {
             let mut guard = self.inner.lock();
             if let Some(s) = guard.as_mut() {
                 if s.app_session_id == meta.id
                     && s.acp.as_ref().is_some_and(|c| c.is_alive())
                 {
-                    let mid_turn = Self::live_session_is_busy(s);
+                    let preserve = Self::should_preserve_live_process(s);
                     let ready_match = matches!(s.fsm.state(), SessionState::Ready)
                         && !Self::live_session_is_busy(s)
                         && s.project_path == project_path
                         && s.effort.as_deref() == Some(prefs.effort.as_str());
-                    if mid_turn || ready_match {
+                    if preserve || ready_match {
                         Self::touch_activity_locked(s);
                         tracing::info!(
-                            "acp connect no-op: already live session={} state={:?} busy={}",
+                            "acp connect no-op: already live session={} state={:?} busy={} preserve={}",
                             meta.id,
                             s.fsm.state(),
-                            mid_turn
+                            Self::live_session_is_busy(s),
+                            preserve
                         );
                         return Ok(self.snapshot());
                     }
@@ -2539,13 +2619,14 @@ impl SessionManager {
                 }
             } else {
                 // Same session reconnect / flag change — kill any leftover process.
-                // Busy turns on *this* session keep the process (mid-turn no-op above).
+                // Mid-turn preserves the process (no-op above). Terminal Disconnected
+                // with leftover busy flags must still tear down so the next spawn works.
                 let leftover = {
                     let mut guard = self.inner.lock();
-                    let busy = guard
+                    let preserve = guard
                         .as_ref()
-                        .is_some_and(Self::live_session_is_busy);
-                    if busy {
+                        .is_some_and(Self::should_preserve_live_process);
+                    if preserve {
                         None
                     } else {
                         guard.take().and_then(|mut s| s.acp.take())
@@ -2606,6 +2687,7 @@ impl SessionManager {
                 journal_throttle: JournalWriteThrottle::with_default_interval(),
                 open_tool_ids: HashSet::new(),
                 open_tool_seen_at: HashMap::new(),
+                terminal_tool_ids: HashSet::new(),
                 deferred_prompt_complete: None,
                 tools_this_turn: 0,
             saw_model_output: false,
@@ -2919,6 +3001,7 @@ impl SessionManager {
             journal_throttle: JournalWriteThrottle::with_default_interval(),
             open_tool_ids: HashSet::new(),
             open_tool_seen_at: HashMap::new(),
+            terminal_tool_ids: HashSet::new(),
             deferred_prompt_complete: None,
             tools_this_turn: 0,
             saw_model_output: false,
@@ -2939,6 +3022,7 @@ impl SessionManager {
             AcpEvent::State { .. } => "state",
             AcpEvent::Stream { .. } => "stream",
             AcpEvent::ToolCall { .. } => "tool_call",
+            AcpEvent::ToolOpenReleased { .. } => "tool_open_released",
             AcpEvent::Plan { .. } => "plan",
             AcpEvent::AskUserQuestion { .. } => "ask_user",
             AcpEvent::PermissionRequest { .. } => "permission",
@@ -2958,6 +3042,7 @@ impl SessionManager {
             ev,
             AcpEvent::Stream { .. }
                 | AcpEvent::ToolCall { .. }
+                | AcpEvent::ToolOpenReleased { .. }
                 | AcpEvent::PromptComplete { .. }
                 | AcpEvent::PermissionRequest { .. }
                 | AcpEvent::Plan { .. }
@@ -3375,14 +3460,7 @@ impl SessionManager {
                         // Tool events count as progress so long tools never false-stall (I06).
                         Self::touch_stream_progress_locked(s);
                         if !tool_call_id.is_empty() {
-                            if is_terminal_tool_status(&status) {
-                                s.open_tool_ids.remove(&tool_call_id);
-                                s.open_tool_seen_at.remove(&tool_call_id);
-                            } else {
-                                s.open_tool_ids.insert(tool_call_id.clone());
-                                s.open_tool_seen_at
-                                    .insert(tool_call_id.clone(), Instant::now());
-                            }
+                            Self::note_tool_status_on_session(s, &tool_call_id, &status);
                         }
                         s.tools_this_turn = s.tools_this_turn.saturating_add(1);
                         // Tools settled → apply deferred prompt_complete if any (#52).
@@ -3472,6 +3550,24 @@ impl SessionManager {
                     }
                 }
             }
+            AcpEvent::ToolOpenReleased { tool_call_id } => {
+                let empty_run = {
+                    let mut guard = self.inner.lock();
+                    if let Some(s) = guard.as_mut() {
+                        if Self::is_session_load_replay(s.prompt_in_flight) {
+                            return;
+                        }
+                        Self::release_tool_open_on_session(s, &tool_call_id);
+                        // Progress without re-arming a false open tool.
+                        Self::touch_stream_progress_locked(s);
+                        Self::try_finish_deferred_prompt_complete(s).flatten()
+                    } else {
+                        None
+                    }
+                };
+                Self::emit_empty_run_if_any(app, empty_run);
+                Self::emit_state(app, &self.snapshot());
+            }
             AcpEvent::Plan {
                 entries,
                 body,
@@ -3544,6 +3640,10 @@ impl SessionManager {
                     if let Some(s) = guard.as_mut() {
                         if !s.provider_retry_aborted {
                             Self::record_turn_error(s, app, &error);
+                        } else {
+                            // Retry path already recorded the error; still drop busy
+                            // markers so reconnect is not stuck Disconnected+busy.
+                            Self::release_failed_turn_markers(s);
                         }
                         let _ = s.fsm.fail_with(error);
                     }
@@ -3602,6 +3702,8 @@ impl SessionManager {
                         }
                         s.acp = None;
                         s.open_tool_ids.clear();
+                        s.terminal_tool_ids.clear();
+                        s.open_tool_seen_at.clear();
                         s.deferred_prompt_complete = None;
                         s.streaming_message_id = None;
                         s.active_turn_id = None;
@@ -4100,14 +4202,7 @@ impl SessionManager {
                         }
                         Self::touch_stream_progress_locked(s);
                         if !tool_call_id.is_empty() {
-                            if is_terminal_tool_status(&status) {
-                                s.open_tool_ids.remove(&tool_call_id);
-                                s.open_tool_seen_at.remove(&tool_call_id);
-                            } else {
-                                s.open_tool_ids.insert(tool_call_id.clone());
-                                s.open_tool_seen_at
-                                    .insert(tool_call_id.clone(), Instant::now());
-                            }
+                            Self::note_tool_status_on_session(s, &tool_call_id, &status);
                         }
                         s.tools_this_turn = s.tools_this_turn.saturating_add(1);
                         let finished =
@@ -4187,6 +4282,38 @@ impl SessionManager {
                     );
                 }
             }
+            AcpEvent::ToolOpenReleased { tool_call_id } => {
+                let finished = {
+                    let mut bg = self.background.lock();
+                    if let Some(s) = bg.get_mut(app_session_id) {
+                        if Self::is_session_load_replay(s.prompt_in_flight) {
+                            return;
+                        }
+                        Self::release_tool_open_on_session(s, &tool_call_id);
+                        Self::touch_stream_progress_locked(s);
+                        matches!(Self::try_finish_deferred_prompt_complete(s), Some(_))
+                    } else {
+                        false
+                    }
+                };
+                if finished {
+                    self.promote_background_ready_to_parked(app_session_id);
+                    Self::emit_runtime(
+                        app,
+                        &SessionSnapshot {
+                            session_id: Some(app_session_id.to_string()),
+                            agent_session_id: None,
+                            state: SessionState::Ready,
+                            last_error: None,
+                            streaming_message_id: None,
+                            backend: Self::backend_name(),
+                            model_id: None,
+                            project_path: None,
+                            title: String::new(),
+                        },
+                    );
+                }
+            }
             AcpEvent::ProcessExited { .. } => {
                 let mut bg = self.background.lock();
                 if let Some(mut s) = bg.remove(app_session_id) {
@@ -4230,6 +4357,8 @@ impl SessionManager {
                     let _ = s.fsm.crash("Agent process exited (background)");
                     s.acp = None;
                     s.open_tool_ids.clear();
+                    s.terminal_tool_ids.clear();
+                    s.open_tool_seen_at.clear();
                     s.streaming_message_id = None;
                     s.active_turn_id = None;
                     s.stream_message_id_locked = false;
@@ -4629,6 +4758,7 @@ impl SessionManager {
             s.last_stall_emit = None;
             s.open_tool_ids.clear();
             s.open_tool_seen_at.clear();
+            s.terminal_tool_ids.clear();
             s.deferred_prompt_complete = None;
             s.stall_soft_emits = 0;
             s.saw_model_output = false;
@@ -4944,6 +5074,8 @@ impl SessionManager {
                 s.stream_last_was_assistant = false;
                 s.stream_attachments.clear();
                 s.open_tool_ids.clear();
+                s.terminal_tool_ids.clear();
+                s.open_tool_seen_at.clear();
                 s.deferred_prompt_complete = None;
                 // Cancelled: the prompt RPC resolves as cancelled, so release the
                 // turn here too — otherwise the chat can never be parked again.
@@ -5083,6 +5215,8 @@ impl SessionManager {
                 s.active_turn_id = None;
                 s.stream_message_id_locked = false;
                 s.open_tool_ids.clear();
+                s.terminal_tool_ids.clear();
+                s.open_tool_seen_at.clear();
                 s.deferred_prompt_complete = None;
                 s.tools_this_turn = 0;
                 s.pending_plan_rpc_id = None;
@@ -5511,6 +5645,150 @@ struct DrainedAgents {
     parked_count: usize,
 }
 
+/// Pure policy: should connect keep the live agent process instead of respawning?
+///
+/// Terminal states never preserve — leftover busy flags after a failed turn
+/// (`deferred_prompt_complete`, open tools, …) must not block reconnect.
+fn connect_should_preserve_live_process(state: SessionState, busy: bool) -> bool {
+    match state {
+        SessionState::Streaming
+        | SessionState::AwaitingPermission
+        | SessionState::Connecting => true,
+        SessionState::Ready => busy,
+        SessionState::Idle | SessionState::Disconnected => false,
+    }
+}
+
+#[cfg(test)]
+mod connect_preserve_tests {
+    use super::*;
+
+    #[test]
+    fn disconnected_never_preserves_even_when_busy_flags_stuck() {
+        // Real log: `state=Disconnected busy=true` after 502 — must reconnect.
+        assert!(!connect_should_preserve_live_process(
+            SessionState::Disconnected,
+            true
+        ));
+        assert!(!connect_should_preserve_live_process(
+            SessionState::Idle,
+            true
+        ));
+    }
+
+    #[test]
+    fn streaming_and_connecting_always_preserve() {
+        assert!(connect_should_preserve_live_process(
+            SessionState::Streaming,
+            false
+        ));
+        assert!(connect_should_preserve_live_process(
+            SessionState::AwaitingPermission,
+            false
+        ));
+        assert!(connect_should_preserve_live_process(
+            SessionState::Connecting,
+            false
+        ));
+    }
+
+    #[test]
+    fn ready_preserves_only_when_busy() {
+        assert!(connect_should_preserve_live_process(
+            SessionState::Ready,
+            true
+        ));
+        assert!(!connect_should_preserve_live_process(
+            SessionState::Ready,
+            false
+        ));
+    }
+
+    #[test]
+    fn release_failed_turn_markers_unblocks_reconnect_after_fail_with() {
+        // Repro: early prompt_complete(stop=error) sets deferred while prompt RPC
+        // is still in flight; then 502 fail_with → Disconnected. Before the fix,
+        // deferred stayed set → live_session_is_busy + connect no-op forever.
+        let mut fsm = SessionFsm::new();
+        let _ = fsm.start_connect();
+        let _ = fsm.handshake_ok();
+        let _ = fsm.begin_stream();
+        let now = Instant::now();
+        let mut s = LiveSession {
+            app_session_id: "session-stuck".into(),
+            process_id: "process-stuck".into(),
+            meta: SessionMeta {
+                id: "session-stuck".into(),
+                project_id: None,
+                title: "Stuck".into(),
+                agent_session_id: Some("agent-1".into()),
+                created_at: chrono::Utc::now(),
+                updated_at: chrono::Utc::now(),
+                model_id: None,
+                archived: false,
+                pinned: false,
+                effort: None,
+                mode: None,
+                permission_policy: None,
+                scheduled: false,
+            },
+            fsm,
+            backend: "grok_agent_stdio".into(),
+            acp: None,
+            mock_stream: None,
+            streaming_message_id: Some("a-err".into()),
+            active_turn_id: Some("turn-err".into()),
+            stream_message_id_locked: false,
+            stream_buf: String::new(),
+            stream_thought: String::new(),
+            stream_last_was_assistant: false,
+            stream_attachments: Vec::new(),
+            model_id: None,
+            effort: None,
+            product_mode: None,
+            project_path: Some("/tmp".into()),
+            allow_cache: SessionAllowCache::default(),
+            policy: PermissionPolicy::default(),
+            provider_retry_attempt: 0,
+            provider_retry_aborted: false,
+            needs_history_bootstrap: false,
+            pending_plan_rpc_id: None,
+            pending_ask_user_rpc_id: None,
+            last_activity: now,
+            last_stream_progress: now,
+            last_stall_emit: None,
+            stall_soft_emits: 0,
+            journal_throttle: JournalWriteThrottle::with_default_interval(),
+            open_tool_ids: HashSet::new(),
+            open_tool_seen_at: HashMap::new(),
+            terminal_tool_ids: HashSet::new(),
+            deferred_prompt_complete: Some("error".into()),
+            tools_this_turn: 0,
+            saw_model_output: false,
+            prompt_in_flight: true,
+            pending_stream_emit: None,
+            stream_emit_flush_gen: 0,
+            last_tool_heartbeat_emit: None,
+        };
+
+        assert!(SessionManager::live_session_is_busy(&s));
+        let _ = s.fsm.fail_with(AgentError::new(
+            AgentErrorCode::NetworkProvider,
+            "502 Bad Gateway",
+        ));
+        // Fail alone leaves deferred → still "busy" under the old policy.
+        assert!(SessionManager::live_session_is_busy(&s));
+        assert!(!SessionManager::should_preserve_live_process(&s));
+
+        SessionManager::release_failed_turn_markers(&mut s);
+        assert!(!SessionManager::live_session_is_busy(&s));
+        assert!(s.deferred_prompt_complete.is_none());
+        assert!(!s.prompt_in_flight);
+        assert!(s.streaming_message_id.is_none());
+        assert!(!SessionManager::should_preserve_live_process(&s));
+    }
+}
+
 #[cfg(test)]
 mod recycle_tests {
     use super::*;
@@ -5661,6 +5939,7 @@ mod session_routing_tests {
             journal_throttle: JournalWriteThrottle::with_default_interval(),
             open_tool_ids: HashSet::new(),
             open_tool_seen_at: HashMap::new(),
+            terminal_tool_ids: HashSet::new(),
             deferred_prompt_complete: None,
             tools_this_turn: tools,
             saw_model_output: false,
@@ -5819,6 +6098,7 @@ mod session_routing_tests {
             journal_throttle: JournalWriteThrottle::with_default_interval(),
             open_tool_ids: HashSet::new(),
             open_tool_seen_at: HashMap::new(),
+            terminal_tool_ids: HashSet::new(),
             deferred_prompt_complete: None,
             tools_this_turn: 0,
             saw_model_output: false,
@@ -5914,6 +6194,7 @@ mod session_routing_tests {
             journal_throttle: JournalWriteThrottle::with_default_interval(),
             open_tool_ids: HashSet::new(),
             open_tool_seen_at: HashMap::new(),
+            terminal_tool_ids: HashSet::new(),
             deferred_prompt_complete: None,
             tools_this_turn: 0,
             saw_model_output: false,

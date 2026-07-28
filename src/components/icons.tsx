@@ -45,6 +45,7 @@ import {
   IconFolder as TbFolder,
   IconFolderPlus as TbFolderPlus,
   IconHandStop as TbHandStop,
+  IconHelp as TbHelp,
   IconInfoCircle as TbInfoCircle,
   IconKeyboard as TbKeyboard,
   IconLanguage as TbLanguage,
@@ -308,6 +309,8 @@ export const IconUser = wrap(TbUser);
 export const IconAppearance = wrap(TbBrush);
 export const IconLanguage = wrap(TbLanguage);
 export const IconInfo = wrap(TbInfoCircle);
+/** Help / “?” tip trigger next to settings labels. */
+export const IconHelp = wrap(TbHelp);
 export const IconKeyboard = wrap(TbKeyboard);
 /** Slash palette / goal mode */
 export const IconTarget = wrap(TbTarget);

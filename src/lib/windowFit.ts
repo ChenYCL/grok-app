@@ -1,50 +1,105 @@
 /**
  * Grow the desktop window when workbench panes need more horizontal room.
- * No-op on mirror / browser / maximized / fullscreen.
+ *
+ * Programmatic setSize marks a short suppress window so resize listeners /
+ * ResizeObservers do not re-enter and flicker (grow → clamp → grow).
  */
 
 import { isDesktopHost } from "@/lib/api";
 import {
+  MAIN_CHAT_MIN_WIDTH,
   requiredWorkbenchInnerWidth,
   type LayoutPrefs,
 } from "@/lib/layout";
 
-/** Small padding so chrome / scrollbars do not immediately re-clamp. */
-const FIT_PAD = 8;
+/** Padding so chrome / scrollbars do not immediately re-clamp. */
+const FIT_PAD = 16;
+
+/** Ignore cascade resize events after we call setSize. */
+const SUPPRESS_MS = 500;
+
+let suppressUntilMs = 0;
+let inFlight: Promise<number | null> | null = null;
+let inFlightTarget = 0;
+
+export type EnsureWindowWidthOpts = {
+  /**
+   * When the window is maximized/zoomed and still too narrow for panes,
+   * unmaximize first so setSize can apply. Default true.
+   */
+  allowUnmaximize?: boolean;
+};
+
+/** True while a programmatic window grow is settling (skip cascade handlers). */
+export function isWindowFitSuppressed(): boolean {
+  return Date.now() < suppressUntilMs;
+}
+
+function markSuppressed() {
+  suppressUntilMs = Date.now() + SUPPRESS_MS;
+}
 
 /**
  * Ensure the main window's logical inner width is at least `minLogicalWidth`.
  * Returns the applied width, or null when unchanged / unavailable.
+ * Concurrent calls coalesce to the largest target.
  */
 export async function ensureWindowInnerWidth(
   minLogicalWidth: number,
+  opts?: EnsureWindowWidthOpts,
 ): Promise<number | null> {
   if (!isDesktopHost()) return null;
   if (!Number.isFinite(minLogicalWidth) || minLogicalWidth <= 0) return null;
 
+  const target = Math.ceil(minLogicalWidth + FIT_PAD);
+
+  // Coalesce concurrent fits to the max requested width.
+  if (inFlight) {
+    if (target <= inFlightTarget) return inFlight;
+    // Higher target: wait for current then run again with new target.
+    await inFlight;
+  }
+
+  inFlightTarget = target;
+  inFlight = growWindowTo(target, opts).finally(() => {
+    inFlight = null;
+    inFlightTarget = 0;
+  });
+  return inFlight;
+}
+
+async function growWindowTo(
+  target: number,
+  opts?: EnsureWindowWidthOpts,
+): Promise<number | null> {
   try {
     const { getCurrentWindow, currentMonitor } = await import(
       "@tauri-apps/api/window"
     );
     const { LogicalSize } = await import("@tauri-apps/api/dpi");
     const win = getCurrentWindow();
+    const allowUnmaximize = opts?.allowUnmaximize !== false;
 
-    if (await win.isMaximized()) return null;
     try {
       if (await win.isFullscreen()) return null;
     } catch {
-      /* older / platform without fullscreen probe */
+      /* ignore */
+    }
+
+    let maximized = false;
+    try {
+      maximized = await win.isMaximized();
+    } catch {
+      maximized = false;
     }
 
     const physical = await win.innerSize();
     const factor = await win.scaleFactor();
     if (!(factor > 0)) return null;
-    const curW = physical.width / factor;
+    let curW = physical.width / factor;
     const curH = physical.height / factor;
-    const target = Math.ceil(minLogicalWidth + FIT_PAD);
     if (curW + 0.5 >= target) return null;
 
-    // Prefer not to exceed the current monitor work area.
     let capped = target;
     try {
       const mon = await currentMonitor();
@@ -59,9 +114,30 @@ export async function ensureWindowInnerWidth(
     }
     if (capped <= curW + 0.5) return null;
 
+    if (maximized) {
+      if (!allowUnmaximize) return null;
+      try {
+        await win.unmaximize();
+      } catch {
+        return null;
+      }
+      try {
+        const again = await win.innerSize();
+        const f2 = await win.scaleFactor();
+        if (f2 > 0) curW = again.width / f2;
+      } catch {
+        /* keep curW */
+      }
+      if (curW + 0.5 >= capped) return null;
+    }
+
+    // Suppress cascade before setSize so the resize event is ignored.
+    markSuppressed();
     await win.setSize(new LogicalSize(capped, curH));
+    markSuppressed();
     return capped;
-  } catch {
+  } catch (e) {
+    console.warn("[windowFit] ensureWindowInnerWidth failed", e);
     return null;
   }
 }
@@ -72,6 +148,58 @@ export async function ensureWindowFitsLayout(
     LayoutPrefs,
     "sidebarCollapsed" | "sidebarWidth" | "asideCollapsed" | "asideWidth"
   >,
+  opts?: EnsureWindowWidthOpts,
 ): Promise<number | null> {
-  return ensureWindowInnerWidth(requiredWorkbenchInnerWidth(layout));
+  return ensureWindowInnerWidth(requiredWorkbenchInnerWidth(layout), opts);
+}
+
+/**
+ * If the live `.main` column is narrower than the chat floor, compute the
+ * inner width needed from on-screen pane boxes.
+ */
+export function measureWorkbenchFitNeed(
+  mainMin: number = MAIN_CHAT_MIN_WIDTH,
+): number | null {
+  if (typeof document === "undefined") return null;
+  const main = document.querySelector(".main") as HTMLElement | null;
+  if (!main) return null;
+  const mainW = main.getBoundingClientRect().width;
+  if (!(mainW > 0) || mainW >= mainMin - 1) return null;
+
+  const sidebar = document.querySelector(".sidebar") as HTMLElement | null;
+  const aside = document.querySelector(
+    ".aside:not(.aside--hidden):not(.aside--collapsed)",
+  ) as HTMLElement | null;
+
+  let sideW = 0;
+  if (sidebar) {
+    const r = sidebar.getBoundingClientRect();
+    const hidden =
+      sidebar.classList.contains("sidebar--hidden") ||
+      sidebar.classList.contains("sidebar--collapsed") ||
+      r.width < 2;
+    if (!hidden) sideW = Math.round(r.width);
+  }
+
+  let asideW = 0;
+  if (aside) {
+    const r = aside.getBoundingClientRect();
+    if (r.width >= 2) asideW = Math.round(r.width);
+  }
+
+  return sideW + mainMin + asideW;
+}
+
+/**
+ * DOM-based rescue: if chat is visibly crushed, grow once.
+ * No-op while a programmatic fit is settling.
+ */
+export async function ensureWindowFitsMeasuredChat(
+  mainMin: number = MAIN_CHAT_MIN_WIDTH,
+  opts?: EnsureWindowWidthOpts,
+): Promise<number | null> {
+  if (isWindowFitSuppressed()) return null;
+  const need = measureWorkbenchFitNeed(mainMin);
+  if (need == null) return null;
+  return ensureWindowInnerWidth(need, opts);
 }

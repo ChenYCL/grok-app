@@ -623,6 +623,8 @@ export const zhTW: Record<MessageKey, string> = {
   "settings.tab.permissions": "權限",
   "settings.tab.agent": "Agent",
   "settings.tab.app": "應用程式",
+  "settings.tab.theme": "主題",
+  "settings.tab.interface": "介面",
   "settings.tab.cli": "CLI",
   "settings.tab.connection": "連線",
   "settings.tab.network": "網路",
@@ -868,13 +870,58 @@ export const zhTW: Record<MessageKey, string> = {
   "settings.skin.ember": "餘燼",
   "settings.wallpaper": "背景圖",
   "settings.wallpaperDesc":
-    "點擊預覽區選擇壁紙（JPEG/PNG/WebP、GIF 或 MP4/WebM）。靜態圖會壓縮後保存在本機；影片和 GIF 會作為動態背景播放。",
+    "可本機選圖、從 X 搜尋帶圖內容，或用 Imagine 生成（JPEG/PNG/WebP、GIF 或 MP4/WebM）。靜態圖會壓縮後保存在本機；影片和 GIF 會作為動態背景播放。",
   "settings.wallpaperEmpty": "點擊選擇壁紙",
   "settings.wallpaperUpload": "選擇壁紙",
   "settings.wallpaperReplace": "更換壁紙",
   "settings.wallpaperClear": "移除",
   "settings.wallpaperWorking": "處理中…",
   "settings.wallpaperFind": "尋找壁紙",
+  "settings.wallpaperFromX": "從 X 搜尋",
+  "settings.wallpaperImagine": "Imagine 生成",
+  "settings.wallpaperSource.title": "尋找壁紙",
+  "settings.wallpaperSource.xHint":
+    "優先搜 AI 提示詞分享與高品質配圖；無法下載的連結會自動剔除。透過 Grok 的 X 工具完成（需登入）。",
+  "settings.wallpaperSource.xPlaceholder": "例如：賽博龐克城市 wallpaper",
+  "settings.wallpaperSource.imagineHint":
+    "輸入提示詞，Grok Imagine 生成圖片並儲存到應用壁紙目錄，再一鍵設為背景。",
+  "settings.wallpaperSource.imaginePlaceholder":
+    "例如：日出時分的雲海山湖，電影感 16:9 壁紙，柔光",
+  "settings.wallpaperSource.search": "搜尋",
+  "settings.wallpaperSource.searching": "正在搜尋 X…",
+  "settings.wallpaperSource.generate": "生成",
+  "settings.wallpaperSource.generating": "正在生成…",
+  "settings.wallpaperSource.apply": "設為背景",
+  "settings.wallpaperSource.applying": "正在套用…",
+  "settings.wallpaperSource.sort": "排序",
+  "settings.wallpaperSource.sortTop": "熱門",
+  "settings.wallpaperSource.sortLatest": "最新",
+  "settings.wallpaperSource.aspect": "畫面比例",
+  "settings.wallpaperSource.gallery": "壁紙畫廊",
+  "settings.wallpaperSource.emptyGallery":
+    "結果會以瀑布流展示。請先搜尋或生成。",
+  "settings.wallpaperSource.goLogin": "去登入",
+  "settings.wallpaperSource.loadingOriginal": "正在載入原圖…",
+  "settings.wallpaperSource.openPreview": "開啟大圖預覽",
+  "settings.wallpaperSource.clickToPreview": "點擊縮圖載入原圖並預覽。",
+  "settings.wallpaperSource.previewThenApply":
+    "已開啟預覽 — 確認後點「設為背景」。",
+  "settings.wallpaperSource.err.auth_required":
+    "搜尋 X 或使用 Imagine 需要先登入 Grok Build。",
+  "settings.wallpaperSource.err.cli_missing":
+    "找不到 Grok Build CLI。請安裝，或在設定 → 執行階段 設定 CLI 路徑。",
+  "settings.wallpaperSource.err.search_failed":
+    "搜尋失敗，請檢查網路後重試。",
+  "settings.wallpaperSource.err.empty":
+    "沒有找到圖片，請換個關鍵字或提示詞。",
+  "settings.wallpaperSource.err.download_failed": "無法下載該圖片。",
+  "settings.wallpaperSource.err.url_blocked": "該媒體網址不允許作為壁紙下載。",
+  "settings.wallpaperSource.err.imagine_failed":
+    "Imagine 生成失敗，請換個提示詞試試。",
+  "settings.wallpaperSource.err.timeout": "逾時，請重試。",
+  "settings.wallpaperSource.err.generic": "出了點問題。",
+  "settings.wallpaperSource.err.desktopOnly":
+    "從 X 搜尋與 Imagine 生成僅支援桌面端。",
   "settings.wallpaperFocus": "調整位置",
   "settings.wallpaperFocusTitle": "背景位置",
   "settings.wallpaperFocusHint":

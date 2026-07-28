@@ -42,6 +42,10 @@ pub fn ensure_app_dirs() -> std::io::Result<PathBuf> {
     std::fs::create_dir_all(root.join("accounts"))?;
     // Default workspace for chats with no user-picked project (agent file I/O).
     std::fs::create_dir_all(general_workspace_dir())?;
+    // Wallpaper library (X downloads + Imagine outputs).
+    std::fs::create_dir_all(root.join("wallpapers").join("x"))?;
+    std::fs::create_dir_all(root.join("wallpapers").join("imagine"))?;
+    std::fs::create_dir_all(root.join("wallpapers").join("library"))?;
     Ok(root)
 }
 

@@ -182,6 +182,7 @@ export function ImageViewerProvider({
           closeOnBackdropClick: true,
         }}
         styles={{
+          // z-index via .yarl__portal in app.css (above GlassModal 12000)
           container: { backgroundColor: "rgba(0, 0, 0, 0.92)" },
         }}
         labels={{

@@ -67,6 +67,8 @@ export function Select({
             role="listbox"
             id={listId}
             style={style}
+            /* Keep modal from treating option clicks as outside / drag */
+            onMouseDown={(e) => e.stopPropagation()}
           >
             {options.map((o) => (
               <li key={o.value} role="option" aria-selected={o.value === value}>

@@ -1,5 +1,9 @@
 import { describe, expect, it, beforeAll } from "vitest";
-import { computeFloatingPos, floatingStyle } from "./floatingMenu";
+import {
+  FLOATING_MENU_Z_INDEX,
+  computeFloatingPos,
+  floatingStyle,
+} from "./floatingMenu";
 
 beforeAll(() => {
   Object.defineProperty(globalThis, "innerWidth", {
@@ -103,6 +107,20 @@ describe("floatingStyle", () => {
     expect(s?.transform).toContain("translateY(-100%)");
     expect(s?.position).toBe("fixed");
     expect(s?.width).toBe(200);
+  });
+
+  it("stacks above modal overlay (z-index 12000)", () => {
+    const s = floatingStyle({
+      left: 10,
+      top: 100,
+      width: 200,
+      placeAbove: false,
+      maxHeight: 200,
+      maxWidth: 1000,
+      fitContent: false,
+    });
+    expect(s?.zIndex).toBe(FLOATING_MENU_Z_INDEX);
+    expect(FLOATING_MENU_Z_INDEX).toBeGreaterThan(12000);
   });
 
   it("hides panel until settled to avoid open flash", () => {

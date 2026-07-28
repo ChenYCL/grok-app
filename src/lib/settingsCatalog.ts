@@ -43,6 +43,9 @@ export type SettingsTabId =
   | "permissions"
   | "agent"
   | "app"
+  // appearance
+  | "theme"
+  | "interface"
   // account
   | "official"
   | "providers"
@@ -129,7 +132,11 @@ export const SETTINGS_NAV: readonly SettingsNavDef[] = [
     icon: "appearance",
     labelKey: "settings.nav.appearance",
     group: "personal",
-    tabs: [],
+    defaultTab: "theme",
+    tabs: [
+      { id: "theme", labelKey: "settings.tab.theme" },
+      { id: "interface", labelKey: "settings.tab.interface" },
+    ],
   },
   {
     id: "account",
@@ -474,10 +481,11 @@ export const SETTINGS_ENTRIES: readonly SettingsEntry[] = [
     descKeys: ["settings.openTargetDesc", "settings.openFinder"],
     keywords: ["open in", "finder", "editor"],
   },
-  // ── appearance ──
+  // ── appearance · theme ──
   {
     id: "appearance.theme",
     section: "appearance",
+    tab: "theme",
     anchorId: "settings-anchor-theme",
     labelKey: "settings.theme",
     descKeys: [
@@ -491,6 +499,7 @@ export const SETTINGS_ENTRIES: readonly SettingsEntry[] = [
   {
     id: "appearance.skin",
     section: "appearance",
+    tab: "theme",
     anchorId: "settings-anchor-skin",
     labelKey: "settings.skin",
     descKeys: ["settings.skinDesc"],
@@ -499,18 +508,32 @@ export const SETTINGS_ENTRIES: readonly SettingsEntry[] = [
   {
     id: "appearance.wallpaper",
     section: "appearance",
+    tab: "theme",
     anchorId: "settings-anchor-wallpaper",
     labelKey: "settings.wallpaper",
     descKeys: [
       "settings.wallpaperDesc",
       "settings.wallpaperScrim",
       "settings.wallpaperScrimDesc",
+      "settings.wallpaperFromX",
+      "settings.wallpaperImagine",
     ],
-    keywords: ["wallpaper", "background", "scrim"],
+    keywords: [
+      "wallpaper",
+      "background",
+      "scrim",
+      "x",
+      "twitter",
+      "imagine",
+      "背景",
+      "壁纸",
+    ],
   },
+  // ── appearance · interface (chat chrome) ──
   {
     id: "appearance.thinkingExpand",
     section: "appearance",
+    tab: "interface",
     anchorId: "settings-anchor-thinkingExpand",
     labelKey: "settings.thinkingExpand",
     descKeys: [
@@ -534,6 +557,7 @@ export const SETTINGS_ENTRIES: readonly SettingsEntry[] = [
   {
     id: "appearance.chatFontScale",
     section: "appearance",
+    tab: "interface",
     anchorId: "settings-anchor-chatFontScale",
     labelKey: "settings.chatFontScale",
     descKeys: [
@@ -547,6 +571,7 @@ export const SETTINGS_ENTRIES: readonly SettingsEntry[] = [
   {
     id: "appearance.codeWrapDefault",
     section: "appearance",
+    tab: "interface",
     anchorId: "settings-anchor-codeWrapDefault",
     labelKey: "settings.codeWrapDefault",
     descKeys: ["settings.codeWrapDefaultDesc"],
@@ -563,6 +588,7 @@ export const SETTINGS_ENTRIES: readonly SettingsEntry[] = [
   {
     id: "appearance.messageActions",
     section: "appearance",
+    tab: "interface",
     anchorId: "settings-anchor-messageActions",
     labelKey: "settings.messageActions",
     descKeys: [
@@ -586,6 +612,7 @@ export const SETTINGS_ENTRIES: readonly SettingsEntry[] = [
   {
     id: "appearance.messageTimestamps",
     section: "appearance",
+    tab: "interface",
     anchorId: "settings-anchor-messageTimestamps",
     labelKey: "settings.messageTimestamps",
     descKeys: ["settings.messageTimestampsDesc"],

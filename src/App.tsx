@@ -49,6 +49,7 @@ import {
 } from "@/lib/messageTimestampsPref";
 import { WallpaperMediaLayer } from "@/components/WallpaperMediaLayer";
 import {
+  ASIDE_WIDTH_MIN,
   DEFAULT_LAYOUT,
   WINDOW_CONTROLS_INSET,
   clampAsideWidth,
@@ -61,7 +62,10 @@ import {
   withMirrorPhoneDrawerDefault,
   type AsideLayoutHint,
 } from "@/lib/layout";
-import { ensureWindowFitsLayout } from "@/lib/windowFit";
+import {
+  ensureWindowFitsLayout,
+  isWindowFitSuppressed,
+} from "@/lib/windowFit";
 import {
   PHONE_KEYBOARD_INSET_VAR,
   keyboardInsetBottom,
@@ -1327,66 +1331,138 @@ export default function App() {
    * tabs). Never auto-shrink a wider user width; always enforce chrome-safe min
    * so action icons do not sit under window controls.
    */
+  /**
+   * Single grow + optional aside clamp. One setSize only — no multi-pass
+   * measure loops (those caused grow↔clamp flicker).
+   */
+  const fitWindowThenClampAside = useCallback(
+    async (projected: {
+      sidebarCollapsed: boolean;
+      sidebarWidth: number;
+      asideCollapsed: boolean;
+      asideWidth: number;
+    }) => {
+      if (phoneLayout) return projected.asideWidth;
+      const preferredAside = projected.asideCollapsed
+        ? projected.asideWidth
+        : Math.max(
+            projected.asideWidth || 0,
+            DEFAULT_LAYOUT.asideWidth,
+            ASIDE_WIDTH_MIN,
+          );
+      const target = {
+        ...projected,
+        sidebarWidth: projected.sidebarWidth || SIDEBAR_DEFAULT_WIDTH,
+        asideWidth: preferredAside,
+      };
+      await ensureWindowFitsLayout(target);
+      if (projected.asideCollapsed) return projected.asideWidth;
+      const opts = {
+        ...asideClampOpts(),
+        viewportWidth:
+          typeof window !== "undefined" ? window.innerWidth : undefined,
+        sidebarOccupiedWidth: projected.sidebarCollapsed
+          ? 0
+          : target.sidebarWidth,
+      };
+      return clampAsideWidth(preferredAside, opts);
+    },
+    [asideClampOpts, phoneLayout],
+  );
+
   const applyAsideLayoutHint = useCallback(
     (hint: AsideLayoutHint) => {
-      if (phoneLayout) return;
+      if (phoneLayout || isWindowFitSuppressed()) return;
+      const cur = layoutRef.current;
+      if (cur.asideCollapsed) return;
       const opts = asideClampOpts();
       const suggested = suggestAsideWidth(
         { ...hint, windowControlsInset: opts.windowControlsInset },
         opts,
       );
+      // Soft-grow only; do not auto-expand the OS window on every content hint
+      // (that stacked with open-pane fit and flickered).
+      const nextW = mergeAsideWidth(cur.asideWidth, suggested, opts);
+      if (nextW === cur.asideWidth) return;
       setLayout((l) => {
-        if (l.asideCollapsed) return l;
-        const nextW = mergeAsideWidth(l.asideWidth, suggested, opts);
-        if (nextW === l.asideWidth) {
-          void ensureWindowFitsLayout(l);
-          return l;
-        }
+        if (l.asideCollapsed || l.asideWidth === nextW) return l;
         const n = { ...l, asideWidth: nextW };
         saveLayout(localStorage, n);
-        void ensureWindowFitsLayout(n);
         return n;
       });
     },
     [asideClampOpts, phoneLayout],
   );
 
-  /** Open the right pane and clamp width to chrome-safe min (content hint may grow further). */
+  /** Open the right pane: open first, then one window fit + clamp. */
   const openAsidePane = useCallback(() => {
-    const opts = asideClampOpts();
-    setLayout((l) => {
-      // Phone overlay does not compete for horizontal room with chat.
-      const width = phoneLayout
-        ? l.asideWidth
-        : clampAsideWidth(l.asideWidth, opts);
-      const n = {
-        ...l,
-        asideCollapsed: false,
-        asideWidth: width,
-      };
-      if (!l.asideCollapsed && width === l.asideWidth) {
-        if (!phoneLayout) void ensureWindowFitsLayout(n);
-        return l;
-      }
-      saveLayout(localStorage, n);
-      if (!phoneLayout) void ensureWindowFitsLayout(n);
-      return n;
+    if (phoneLayout) {
+      setLayout((l) => {
+        if (!l.asideCollapsed) return l;
+        const n = { ...l, asideCollapsed: false };
+        saveLayout(localStorage, n);
+        return n;
+      });
+      return;
+    }
+    const cur = layoutRef.current;
+    const preferredAside = Math.max(
+      cur.asideWidth || 0,
+      DEFAULT_LAYOUT.asideWidth,
+    );
+    const projected = {
+      sidebarCollapsed: cur.sidebarCollapsed,
+      sidebarWidth: cur.sidebarWidth || SIDEBAR_DEFAULT_WIDTH,
+      asideCollapsed: false as const,
+      asideWidth: preferredAside,
+    };
+    void fitWindowThenClampAside(projected).then((width) => {
+      setLayout((l) => {
+        const n = {
+          ...l,
+          asideCollapsed: false,
+          asideWidth: width,
+        };
+        saveLayout(localStorage, n);
+        return n;
+      });
     });
-  }, [asideClampOpts, phoneLayout]);
+  }, [fitWindowThenClampAside, phoneLayout]);
 
-  /** Open the left project rail; grow the window when the frame is too narrow. */
+  /** Open the left project rail; one window fit (+ reclamp open files pane). */
   const openSidebarPane = useCallback(() => {
-    setLayout((l) => {
-      const n = { ...l, sidebarCollapsed: false };
-      if (!l.sidebarCollapsed) {
-        if (!phoneLayout) void ensureWindowFitsLayout(n);
-        return l;
-      }
-      saveLayout(localStorage, n);
-      if (!phoneLayout) void ensureWindowFitsLayout(n);
-      return n;
+    if (phoneLayout) {
+      setLayout((l) => {
+        if (!l.sidebarCollapsed) return l;
+        const n = { ...l, sidebarCollapsed: false };
+        saveLayout(localStorage, n);
+        return n;
+      });
+      return;
+    }
+    const cur = layoutRef.current;
+    const projected = {
+      sidebarCollapsed: false as const,
+      sidebarWidth: cur.sidebarWidth || SIDEBAR_DEFAULT_WIDTH,
+      asideCollapsed: cur.asideCollapsed,
+      asideWidth: cur.asideCollapsed
+        ? cur.asideWidth
+        : Math.max(cur.asideWidth || 0, DEFAULT_LAYOUT.asideWidth),
+    };
+    void fitWindowThenClampAside(projected).then((width) => {
+      setLayout((l) => {
+        let n = { ...l, sidebarCollapsed: false };
+        if (!projected.asideCollapsed) {
+          n = { ...n, asideWidth: width };
+        }
+        saveLayout(localStorage, n);
+        return n;
+      });
     });
-  }, [phoneLayout]);
+  }, [fitWindowThenClampAside, phoneLayout]);
+
+  const openAsidePaneRef = useRef(openAsidePane);
+  openAsidePaneRef.current = openAsidePane;
 
   // Keep data-theme + native chrome in sync with the resolved theme.
   // When preference is "system", native must stay unlocked (null) so the
@@ -2129,23 +2205,64 @@ export default function App() {
     return () => window.removeEventListener("resize", sync);
   }, []);
 
-  // Keep open aside within chrome-safe min / viewport max when the window resizes.
+  // User-driven window resize only: clamp open aside. Ignore programmatic setSize
+  // (isWindowFitSuppressed) so open-pane fit does not fight resize handlers.
   useEffect(() => {
     if (phoneLayout) return;
+    let resizeTimer: number | null = null;
     const onResize = () => {
-      const opts = asideClampOpts();
-      setLayout((l) => {
-        if (l.asideCollapsed) return l;
-        const next = clampAsideWidth(l.asideWidth, opts);
-        if (next === l.asideWidth) return l;
-        const n = { ...l, asideWidth: next };
-        saveLayout(localStorage, n);
-        return n;
-      });
+      if (isWindowFitSuppressed()) return;
+      if (resizeTimer != null) window.clearTimeout(resizeTimer);
+      resizeTimer = window.setTimeout(() => {
+        if (isWindowFitSuppressed()) return;
+        const opts = asideClampOpts();
+        setLayout((l) => {
+          if (l.asideCollapsed) return l;
+          const next = clampAsideWidth(l.asideWidth, opts);
+          if (next === l.asideWidth) return l;
+          const n = { ...l, asideWidth: next };
+          saveLayout(localStorage, n);
+          return n;
+        });
+      }, 150);
     };
     window.addEventListener("resize", onResize);
-    return () => window.removeEventListener("resize", onResize);
+    return () => {
+      window.removeEventListener("resize", onResize);
+      if (resizeTimer != null) window.clearTimeout(resizeTimer);
+    };
   }, [asideClampOpts, phoneLayout]);
+
+  // Cold start once: if panes restored open and chat would be crushed, grow once.
+  // Pane open/close is handled by openSidebarPane / openAsidePane only — do not
+  // re-fit on every collapse toggle (that stacked with open handlers and flickered).
+  useEffect(() => {
+    if (phoneLayout || !api.isDesktopHost()) return;
+    let cancelled = false;
+    const t = window.setTimeout(() => {
+      if (cancelled) return;
+      const l = layoutRef.current;
+      void fitWindowThenClampAside({
+        sidebarCollapsed: l.sidebarCollapsed,
+        sidebarWidth: l.sidebarWidth || SIDEBAR_DEFAULT_WIDTH,
+        asideCollapsed: l.asideCollapsed,
+        asideWidth: l.asideWidth,
+      }).then((width) => {
+        if (cancelled || l.asideCollapsed) return;
+        setLayout((prev) => {
+          if (prev.asideCollapsed || prev.asideWidth === width) return prev;
+          const n = { ...prev, asideWidth: width };
+          saveLayout(localStorage, n);
+          return n;
+        });
+      });
+    }, 200);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(t);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- mount-only cold fit
+  }, [phoneLayout]);
 
   // Keep composer above the soft keyboard via visualViewport inset.
   useEffect(() => {
@@ -2946,33 +3063,10 @@ export default function App() {
                 (prev.rpcId == null || !prev.visible);
               if (becameReview && next.visible && !next.userClosed) {
                 // Auto-open resource Plan workbench when gate is ready.
+                // openAsidePane grows the window first, then clamps aside.
                 queueMicrotask(() => {
                   planOpenedAsideRef.current = true;
-                  setLayout((l) => {
-                    const opts = {
-                      windowControlsInset:
-                        platform === "win" || platform === "other"
-                          ? WINDOW_CONTROLS_INSET
-                          : 0,
-                      viewportWidth: window.innerWidth,
-                      sidebarOccupiedWidth: l.sidebarCollapsed
-                        ? 0
-                        : l.sidebarWidth || SIDEBAR_DEFAULT_WIDTH,
-                    };
-                    const width = clampAsideWidth(l.asideWidth, opts);
-                    const n = {
-                      ...l,
-                      asideCollapsed: false,
-                      asideWidth: width,
-                    };
-                    if (!l.asideCollapsed && width === l.asideWidth) {
-                      void ensureWindowFitsLayout(n);
-                      return l;
-                    }
-                    saveLayout(localStorage, n);
-                    void ensureWindowFitsLayout(n);
-                    return n;
-                  });
+                  openAsidePaneRef.current();
                   setPlanFocusKey((k) => k + 1);
                 });
               }
@@ -5680,32 +5774,39 @@ export default function App() {
     hitDragZone,
   ]);
 
-  // Drag-resize right resource pane
+  // Drag-resize right resource pane (clamp only while dragging — grow once on up).
   useEffect(() => {
     if (!resizingAside) return;
     const onMove = (e: PointerEvent) => {
+      if (isWindowFitSuppressed()) return;
       const desired = Math.round(window.innerWidth - e.clientX);
-      // Expand the OS window when the drag needs more room than chat min allows.
-      void ensureWindowFitsLayout({
-        sidebarCollapsed: layoutRef.current.sidebarCollapsed,
-        sidebarWidth: layoutRef.current.sidebarWidth,
-        asideCollapsed: false,
-        asideWidth: desired,
-      });
       const next = clampAsideWidth(desired, {
         ...asideClampOpts(),
         viewportWidth: window.innerWidth,
       });
       setLayout((l) => {
-        const n = { ...l, asideWidth: next, asideCollapsed: false };
-        return n;
+        if (l.asideWidth === next && !l.asideCollapsed) return l;
+        return { ...l, asideWidth: next, asideCollapsed: false };
       });
     };
     const onUp = () => {
       setResizingAside(false);
-      setLayout((l) => {
-        saveLayout(localStorage, l);
-        return l;
+      const cur = layoutRef.current;
+      void fitWindowThenClampAside({
+        sidebarCollapsed: cur.sidebarCollapsed,
+        sidebarWidth: cur.sidebarWidth || SIDEBAR_DEFAULT_WIDTH,
+        asideCollapsed: false,
+        asideWidth: cur.asideWidth,
+      }).then((width) => {
+        setLayout((l) => {
+          const n = {
+            ...l,
+            asideCollapsed: false,
+            asideWidth: width,
+          };
+          saveLayout(localStorage, n);
+          return n;
+        });
       });
       document.body.style.cursor = "";
       document.body.style.userSelect = "";
@@ -5718,7 +5819,7 @@ export default function App() {
       window.removeEventListener("pointermove", onMove);
       window.removeEventListener("pointerup", onUp);
     };
-  }, [asideClampOpts, resizingAside]);
+  }, [asideClampOpts, fitWindowThenClampAside, resizingAside]);
 
   const resizeComposer = (el: HTMLElement) => {
     const line = 22; // ~line-height

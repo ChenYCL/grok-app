@@ -22,6 +22,7 @@ import {
   IconChevronRight,
   IconCrop,
   IconDoctor,
+  IconHelp,
   IconInfo,
   IconKeyboard,
   IconLanguage,
@@ -33,6 +34,7 @@ import {
   IconTrash,
   IconUser,
 } from "@/components/icons";
+import { Tip } from "@/components/ui/tooltip";
 import {
   detectShortcutPlatform,
   shortcutsByGroup,
@@ -63,6 +65,10 @@ import {
   type WallpaperFocusApplyResult,
 } from "@/components/WallpaperFocusEditor";
 import { WallpaperMediaLayer } from "@/components/WallpaperMediaLayer";
+import {
+  WallpaperSourceModal,
+  type WallpaperSourceTab,
+} from "@/components/WallpaperSourceModal";
 import type {
   ComposerPrefsScope,
   ModelOption,
@@ -628,6 +634,41 @@ function SettingsTabStrip({
   );
 }
 
+/**
+ * Module title + optional “?” help tip (description no longer inline under the label).
+ */
+function SettingsLabelWithTip({
+  label,
+  tip,
+  leading,
+}: {
+  label: ReactNode;
+  tip: string;
+  leading?: ReactNode;
+}) {
+  return (
+    <div className="settings-row__label">
+      {leading}
+      <span className="settings-row__label-text">{label}</span>
+      {tip ? (
+        <Tip label={tip} placement="top" className="ui-tip--wrap" delayMs={280}>
+          <button
+            type="button"
+            className="settings-label-help"
+            aria-label={tip}
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+            }}
+          >
+            <IconHelp size={14} stroke={1.75} />
+          </button>
+        </Tip>
+      ) : null}
+    </div>
+  );
+}
+
 export function SettingsPage({
   section,
   tab: tabProp = null,
@@ -781,6 +822,9 @@ export function SettingsPage({
   const [wallpaperBusy, setWallpaperBusy] = useState(false);
   const [wallpaperError, setWallpaperError] = useState<string | null>(null);
   const [wallpaperFocusOpen, setWallpaperFocusOpen] = useState(false);
+  const [wallpaperSourceOpen, setWallpaperSourceOpen] = useState(false);
+  const [wallpaperSourceTab, setWallpaperSourceTab] =
+    useState<WallpaperSourceTab>("x");
   /** Thinking block expand preference (localStorage; self-contained). */
   const [thinkingExpand, setThinkingExpand] = useState<ThinkingExpandPref>(
     () => loadThinkingExpandPref(),
@@ -866,6 +910,12 @@ export function SettingsPage({
     },
     [t],
   );
+
+  const openWallpaperSource = useCallback((tab: WallpaperSourceTab) => {
+    setWallpaperError(null);
+    setWallpaperSourceTab(tab);
+    setWallpaperSourceOpen(true);
+  }, []);
 
   const onWallpaperFile = useCallback(
     async (file: File | null | undefined) => {
@@ -2084,483 +2134,560 @@ export function SettingsPage({
 
         {section === "appearance" && (
           <>
-            <div
-              className={"settings-card" + rowHighlight("settings-anchor-theme")}
-              id="settings-anchor-theme"
-            >
-              <div className="settings-row">
-                <div className="settings-row__text">
-                  <div className="settings-row__label">
-                    <IconAppearance size={16} />
-                    {t("settings.theme")}
-                  </div>
-                  <div className="settings-row__desc">
-                    {t("settings.themeDesc")}
-                  </div>
-                </div>
-                <div className="settings-seg" role="radiogroup" aria-label={t("settings.theme")}>
-                  <button
-                    type="button"
-                    role="radio"
-                    aria-checked={themePreference === "system"}
-                    className={
-                      "settings-seg__btn" +
-                      (themePreference === "system" ? " is-on" : "")
-                    }
-                    onClick={() => onTheme("system")}
-                  >
-                    {t("settings.themeSystem")}
-                  </button>
-                  <button
-                    type="button"
-                    role="radio"
-                    aria-checked={themePreference === "light"}
-                    className={
-                      "settings-seg__btn" +
-                      (themePreference === "light" ? " is-on" : "")
-                    }
-                    onClick={() => onTheme("light")}
-                  >
-                    {t("settings.themeLight")}
-                  </button>
-                  <button
-                    type="button"
-                    role="radio"
-                    aria-checked={themePreference === "dark"}
-                    className={
-                      "settings-seg__btn" +
-                      (themePreference === "dark" ? " is-on" : "")
-                    }
-                    onClick={() => onTheme("dark")}
-                  >
-                    {t("settings.themeDark")}
-                  </button>
-                </div>
-              </div>
-            </div>
-            <div
-              className={
-                "settings-card" + rowHighlight("settings-anchor-thinkingExpand")
-              }
-              id="settings-anchor-thinkingExpand"
-            >
-              <div className="settings-row">
-                <div className="settings-row__text">
-                  <div className="settings-row__label">
-                    {t("settings.thinkingExpand")}
-                  </div>
-                  <div className="settings-row__desc">
-                    {t("settings.thinkingExpandDesc")}
-                  </div>
-                </div>
-                <Select
-                  value={thinkingExpand}
-                  aria-label={t("settings.thinkingExpand")}
-                  onChange={(v) => {
-                    const pref: ThinkingExpandPref =
-                      v === "keep-open" ? "keep-open" : "auto-collapse";
-                    saveThinkingExpandPref(pref);
-                    setThinkingExpand(pref);
-                  }}
-                  options={[
-                    {
-                      value: "auto-collapse",
-                      label: t("settings.thinkingExpand.autoCollapse"),
-                    },
-                    {
-                      value: "keep-open",
-                      label: t("settings.thinkingExpand.keepOpen"),
-                    },
-                  ]}
-                />
-              </div>
-            </div>
-            <div
-              className={
-                "settings-card" + rowHighlight("settings-anchor-chatFontScale")
-              }
-              id="settings-anchor-chatFontScale"
-            >
-              <div className="settings-row">
-                <div className="settings-row__text">
-                  <div className="settings-row__label">
-                    {t("settings.chatFontScale")}
-                  </div>
-                  <div className="settings-row__desc">
-                    {t("settings.chatFontScaleDesc")}
-                  </div>
-                </div>
+            <SettingsTabStrip
+              tabs={sectionNav?.tabs ?? []}
+              active={activeTab}
+              onChange={setSectionTab}
+              ariaLabel={title}
+              t={(k) => t(k)}
+            />
+
+            {(activeTab === "theme" || activeTab == null) && (
+              <>
+                <h2 className="settings-page__h2">
+                  {t("settings.tab.theme")}
+                </h2>
                 <div
-                  className="settings-seg"
-                  role="radiogroup"
-                  aria-label={t("settings.chatFontScale")}
+                  className={
+                    "settings-card" + rowHighlight("settings-anchor-theme")
+                  }
+                  id="settings-anchor-theme"
                 >
-                  {CHAT_FONT_SCALES.map((scale) => (
-                    <button
-                      key={scale}
-                      type="button"
-                      role="radio"
-                      aria-checked={chatFontScale === scale}
-                      className={
-                        "settings-seg__btn" +
-                        (chatFontScale === scale ? " is-on" : "")
-                      }
-                      onClick={() => onChatFontScale(scale)}
+                  <div className="settings-row">
+                    <div className="settings-row__text">
+                      <SettingsLabelWithTip
+                        leading={<IconAppearance size={16} />}
+                        label={t("settings.theme")}
+                        tip={t("settings.themeDesc")}
+                      />
+                    </div>
+                    <div
+                      className="settings-seg"
+                      role="radiogroup"
+                      aria-label={t("settings.theme")}
                     >
-                      {t(`settings.chatFontScale.${scale}`)}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            </div>
-            <div
-              className={
-                "settings-card" +
-                rowHighlight("settings-anchor-messageActions")
-              }
-              id="settings-anchor-messageActions"
-            >
-              <div className="settings-row">
-                <div className="settings-row__text">
-                  <div className="settings-row__label">
-                    {t("settings.messageActions")}
-                  </div>
-                  <div className="settings-row__desc">
-                    {t("settings.messageActionsDesc")}
-                  </div>
-                </div>
-                <div
-                  className="settings-seg"
-                  role="radiogroup"
-                  aria-label={t("settings.messageActions")}
-                >
-                  {MESSAGE_ACTIONS_VISIBILITIES.map((mode) => (
-                    <button
-                      key={mode}
-                      type="button"
-                      role="radio"
-                      aria-checked={messageActionsVisibility === mode}
-                      className={
-                        "settings-seg__btn" +
-                        (messageActionsVisibility === mode ? " is-on" : "")
-                      }
-                      onClick={() => onMessageActionsVisibility(mode)}
-                    >
-                      {t(`settings.messageActions.${mode}`)}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            </div>
-            {onSkin || onWallpaper ? (
-              <div className="settings-appearance-duo">
-                {onSkin ? (
-                  <div
-                    className={
-                      "settings-card settings-card--appearance-col" +
-                      rowHighlight("settings-anchor-skin")
-                    }
-                    id="settings-anchor-skin"
-                  >
-                    <div className="settings-row settings-row--stack">
-                      <div className="settings-row__text">
-                        <div className="settings-row__label">
-                          {t("settings.skin")}
-                        </div>
-                        <div className="settings-row__desc">
-                          {t("settings.skinDesc")}
-                        </div>
-                      </div>
-                      <div
-                        className="settings-skin-grid"
-                        role="listbox"
-                        aria-label={t("settings.skin")}
+                      <button
+                        type="button"
+                        role="radio"
+                        aria-checked={themePreference === "system"}
+                        className={
+                          "settings-seg__btn" +
+                          (themePreference === "system" ? " is-on" : "")
+                        }
+                        onClick={() => onTheme("system")}
                       >
-                        {THEME_SKINS.map((pack) => {
-                          const selected = skin === pack.id;
-                          const label = t(
-                            `settings.skin.${pack.id}` as "settings.skin.default",
-                          );
-                          return (
-                            <button
-                              key={pack.id}
-                              type="button"
-                              role="option"
-                              aria-selected={selected}
-                              className={
-                                "settings-skin-card" +
-                                (selected ? " is-on" : "")
-                              }
-                              onClick={() => onSkin(pack.id)}
-                            >
-                              <span
-                                className="settings-skin-card__swatch"
-                                style={{
-                                  background: `linear-gradient(135deg, ${pack.swatch} 0%, ${pack.swatchAlt} 100%)`,
-                                }}
-                                aria-hidden
-                              />
-                              <span className="settings-skin-card__name">
-                                {label}
-                              </span>
-                            </button>
-                          );
-                        })}
-                      </div>
+                        {t("settings.themeSystem")}
+                      </button>
+                      <button
+                        type="button"
+                        role="radio"
+                        aria-checked={themePreference === "light"}
+                        className={
+                          "settings-seg__btn" +
+                          (themePreference === "light" ? " is-on" : "")
+                        }
+                        onClick={() => onTheme("light")}
+                      >
+                        {t("settings.themeLight")}
+                      </button>
+                      <button
+                        type="button"
+                        role="radio"
+                        aria-checked={themePreference === "dark"}
+                        className={
+                          "settings-seg__btn" +
+                          (themePreference === "dark" ? " is-on" : "")
+                        }
+                        onClick={() => onTheme("dark")}
+                      >
+                        {t("settings.themeDark")}
+                      </button>
                     </div>
                   </div>
-                ) : null}
-                {onWallpaper ? (
-                  <div
-                    className={
-                      "settings-card settings-card--appearance-col" +
-                      rowHighlight("settings-anchor-wallpaper")
-                    }
-                    id="settings-anchor-wallpaper"
-                  >
-                    <div className="settings-row settings-row--stack">
-                      <div className="settings-row__text">
-                        <div className="settings-row__label">
-                          {t("settings.wallpaper")}
-                        </div>
-                        <div className="settings-row__desc">
-                          {t("settings.wallpaperDesc")}
+                </div>
+                {onSkin || onWallpaper ? (
+                  <div className="settings-appearance-duo">
+                    {onSkin ? (
+                      <div
+                        className={
+                          "settings-card settings-card--appearance-col" +
+                          rowHighlight("settings-anchor-skin")
+                        }
+                        id="settings-anchor-skin"
+                      >
+                        <div className="settings-row settings-row--stack">
+                          <div className="settings-row__text">
+                            <SettingsLabelWithTip
+                              label={t("settings.skin")}
+                              tip={t("settings.skinDesc")}
+                            />
+                          </div>
+                          <div
+                            className="settings-skin-grid"
+                            role="listbox"
+                            aria-label={t("settings.skin")}
+                          >
+                            {THEME_SKINS.map((pack) => {
+                              const selected = skin === pack.id;
+                              const label = t(
+                                `settings.skin.${pack.id}` as "settings.skin.default",
+                              );
+                              return (
+                                <button
+                                  key={pack.id}
+                                  type="button"
+                                  role="option"
+                                  aria-selected={selected}
+                                  className={
+                                    "settings-skin-card" +
+                                    (selected ? " is-on" : "")
+                                  }
+                                  onClick={() => onSkin(pack.id)}
+                                >
+                                  <span
+                                    className="settings-skin-card__swatch"
+                                    style={{
+                                      background: `linear-gradient(135deg, ${pack.swatch} 0%, ${pack.swatchAlt} 100%)`,
+                                    }}
+                                    aria-hidden
+                                  />
+                                  <span className="settings-skin-card__name">
+                                    {label}
+                                  </span>
+                                </button>
+                              );
+                            })}
+                          </div>
                         </div>
                       </div>
-                      <div className="settings-wallpaper">
-                        <input
-                          ref={wallpaperInputRef}
-                          type="file"
-                          accept={WALLPAPER_ACCEPT}
-                          hidden
-                          onChange={(e) => {
-                            void onWallpaperFile(e.target.files?.[0]);
-                          }}
-                        />
-                        <div className="settings-wallpaper__preview-wrap">
-                          {wallpaperUrl ? (
-                            <div
-                              className={
-                                "settings-wallpaper__preview settings-wallpaper__preview--set" +
-                                (wallpaperBusy
-                                  ? " settings-wallpaper__preview--busy"
-                                  : "")
-                              }
-                            >
-                              <WallpaperMediaLayer
-                                url={wallpaperUrl}
-                                kind={wallpaperKind ?? "image"}
-                                focus={
-                                  wallpaperFocus ?? DEFAULT_WALLPAPER_FOCUS
-                                }
-                                clip={wallpaperClip}
-                                intrinsicSize={wallpaperMediaSize}
-                                onIntrinsicSize={onWallpaperMediaSize}
-                                className="settings-wallpaper__media"
-                                mediaClassName="settings-wallpaper__media-el"
-                              />
-                              {wallpaperBusy ? (
-                                <span
-                                  className="settings-wallpaper__busy"
-                                  aria-hidden
+                    ) : null}
+                    {onWallpaper ? (
+                      <div
+                        className={
+                          "settings-card settings-card--appearance-col" +
+                          rowHighlight("settings-anchor-wallpaper")
+                        }
+                        id="settings-anchor-wallpaper"
+                      >
+                        <div className="settings-row settings-row--stack">
+                          <div className="settings-row__text">
+                            <SettingsLabelWithTip
+                              label={t("settings.wallpaper")}
+                              tip={t("settings.wallpaperDesc")}
+                            />
+                          </div>
+                          <div className="settings-wallpaper">
+                            <input
+                              ref={wallpaperInputRef}
+                              type="file"
+                              accept={WALLPAPER_ACCEPT}
+                              hidden
+                              onChange={(e) => {
+                                void onWallpaperFile(e.target.files?.[0]);
+                              }}
+                            />
+                            <div className="settings-wallpaper__preview-wrap">
+                              {wallpaperUrl ? (
+                                <div
+                                  className={
+                                    "settings-wallpaper__preview settings-wallpaper__preview--set" +
+                                    (wallpaperBusy
+                                      ? " settings-wallpaper__preview--busy"
+                                      : "")
+                                  }
                                 >
-                                  {t("settings.wallpaperWorking")}
-                                </span>
-                              ) : null}
-                              <div className="settings-wallpaper__hover">
+                                  <WallpaperMediaLayer
+                                    url={wallpaperUrl}
+                                    kind={wallpaperKind ?? "image"}
+                                    focus={
+                                      wallpaperFocus ?? DEFAULT_WALLPAPER_FOCUS
+                                    }
+                                    clip={wallpaperClip}
+                                    intrinsicSize={wallpaperMediaSize}
+                                    onIntrinsicSize={onWallpaperMediaSize}
+                                    className="settings-wallpaper__media"
+                                    mediaClassName="settings-wallpaper__media-el"
+                                  />
+                                  {wallpaperBusy ? (
+                                    <span
+                                      className="settings-wallpaper__busy"
+                                      aria-hidden
+                                    >
+                                      {t("settings.wallpaperWorking")}
+                                    </span>
+                                  ) : null}
+                                  <div className="settings-wallpaper__hover">
+                                    <button
+                                      type="button"
+                                      className="btn btn--solid btn--sm"
+                                      disabled={wallpaperBusy}
+                                      onClick={() =>
+                                        wallpaperInputRef.current?.click()
+                                      }
+                                    >
+                                      {t("settings.wallpaperReplace")}
+                                    </button>
+                                    {onWallpaperAdjust ? (
+                                      <button
+                                        type="button"
+                                        className="btn btn--solid btn--sm"
+                                        disabled={wallpaperBusy}
+                                        onClick={() =>
+                                          setWallpaperFocusOpen(true)
+                                        }
+                                      >
+                                        <IconCrop size={14} />
+                                        {t("settings.wallpaperFocus")}
+                                      </button>
+                                    ) : null}
+                                  </div>
+                                  <button
+                                    type="button"
+                                    className="settings-wallpaper__clear btn btn--ghost btn--sm"
+                                    disabled={wallpaperBusy}
+                                    onClick={() => {
+                                      setWallpaperError(null);
+                                      setWallpaperFocusOpen(false);
+                                      void onWallpaper(null);
+                                    }}
+                                  >
+                                    {t("settings.wallpaperClear")}
+                                  </button>
+                                </div>
+                              ) : (
                                 <button
                                   type="button"
-                                  className="btn btn--solid btn--sm"
+                                  className={
+                                    "settings-wallpaper__preview" +
+                                    (wallpaperBusy
+                                      ? " settings-wallpaper__preview--busy"
+                                      : "")
+                                  }
                                   disabled={wallpaperBusy}
+                                  aria-label={
+                                    wallpaperBusy
+                                      ? t("settings.wallpaperWorking")
+                                      : t("settings.wallpaperUpload")
+                                  }
                                   onClick={() =>
                                     wallpaperInputRef.current?.click()
                                   }
                                 >
-                                  {t("settings.wallpaperReplace")}
+                                  <span className="settings-wallpaper__preview-empty">
+                                    {wallpaperBusy
+                                      ? t("settings.wallpaperWorking")
+                                      : t("settings.wallpaperEmpty")}
+                                  </span>
                                 </button>
-                                {onWallpaperAdjust ? (
-                                  <button
-                                    type="button"
-                                    className="btn btn--solid btn--sm"
-                                    disabled={wallpaperBusy}
-                                    onClick={() => setWallpaperFocusOpen(true)}
-                                  >
-                                    <IconCrop size={14} />
-                                    {t("settings.wallpaperFocus")}
-                                  </button>
-                                ) : null}
-                              </div>
+                              )}
+                            </div>
+                            <div className="settings-wallpaper__actions">
                               <button
                                 type="button"
-                                className="settings-wallpaper__clear btn btn--ghost btn--sm"
+                                className="btn btn--ghost btn--sm"
                                 disabled={wallpaperBusy}
-                                onClick={() => {
-                                  setWallpaperError(null);
-                                  setWallpaperFocusOpen(false);
-                                  void onWallpaper(null);
-                                }}
+                                onClick={() =>
+                                  wallpaperInputRef.current?.click()
+                                }
                               >
-                                {t("settings.wallpaperClear")}
+                                {wallpaperUrl
+                                  ? t("settings.wallpaperReplace")
+                                  : t("settings.wallpaperUpload")}
+                              </button>
+                              <button
+                                type="button"
+                                className="btn btn--ghost btn--sm"
+                                disabled={wallpaperBusy}
+                                onClick={() => openWallpaperSource("x")}
+                              >
+                                {t("settings.wallpaperFromX")}
+                              </button>
+                              <button
+                                type="button"
+                                className="btn btn--ghost btn--sm"
+                                disabled={wallpaperBusy}
+                                onClick={() => openWallpaperSource("imagine")}
+                              >
+                                {t("settings.wallpaperImagine")}
                               </button>
                             </div>
-                          ) : (
-                            <button
-                              type="button"
-                              className={
-                                "settings-wallpaper__preview" +
-                                (wallpaperBusy
-                                  ? " settings-wallpaper__preview--busy"
-                                  : "")
-                              }
-                              disabled={wallpaperBusy}
-                              aria-label={
-                                wallpaperBusy
-                                  ? t("settings.wallpaperWorking")
-                                  : t("settings.wallpaperUpload")
-                              }
-                              onClick={() =>
-                                wallpaperInputRef.current?.click()
-                              }
-                            >
-                              <span className="settings-wallpaper__preview-empty">
-                                {wallpaperBusy
-                                  ? t("settings.wallpaperWorking")
-                                  : t("settings.wallpaperEmpty")}
-                              </span>
-                            </button>
-                          )}
-                        </div>
-                        {wallpaperUrl && onWallpaperAdjust ? (
-                          <WallpaperFocusEditor
-                            open={wallpaperFocusOpen}
-                            onClose={() => setWallpaperFocusOpen(false)}
-                            onApply={(result) => onWallpaperAdjust(result)}
-                            mediaUrl={wallpaperUrl}
-                            kind={wallpaperKind ?? "image"}
-                            initialFocus={
-                              wallpaperFocus ?? DEFAULT_WALLPAPER_FOCUS
-                            }
-                            initialClip={wallpaperClip}
-                            labels={{
-                              title: t("settings.wallpaperFocusTitle"),
-                              hint: t("settings.wallpaperFocusHint"),
-                              hintVideo: t("settings.wallpaperFocusHintVideo"),
-                              zoom: t("settings.wallpaperFocusZoom"),
-                              clip: t("settings.wallpaperClip"),
-                              clipStart: t("settings.wallpaperClipStart"),
-                              clipEnd: t("settings.wallpaperClipEnd"),
-                              reset: t("settings.wallpaperFocusReset"),
-                              cancel: t("common.cancel"),
-                              apply: t("settings.wallpaperFocusApply"),
-                              close: t("common.close"),
-                            }}
-                          />
-                        ) : null}
-                        {wallpaperUrl && onWallpaperScrim ? (
-                          <div className="settings-wallpaper__scrim">
-                            <div className="settings-wallpaper__scrim-head">
-                              <label
-                                className="settings-wallpaper__scrim-label"
-                                htmlFor="settings-wallpaper-scrim"
-                              >
-                                {t("settings.wallpaperScrim")}
-                              </label>
-                              <span
-                                className="settings-wallpaper__scrim-value"
-                                aria-hidden
-                              >
-                                {Math.round(wallpaperScrim)}%
-                              </span>
-                            </div>
-                            <input
-                              id="settings-wallpaper-scrim"
-                              type="range"
-                              className="settings-wallpaper__scrim-range"
-                              min={0}
-                              max={100}
-                              step={1}
-                              value={wallpaperScrim}
-                              aria-valuemin={0}
-                              aria-valuemax={100}
-                              aria-valuenow={Math.round(wallpaperScrim)}
-                              aria-label={t("settings.wallpaperScrim")}
-                              onChange={(e) => {
-                                onWallpaperScrim(Number(e.target.value));
+                            <WallpaperSourceModal
+                              open={wallpaperSourceOpen}
+                              onClose={() => setWallpaperSourceOpen(false)}
+                              initialTab={wallpaperSourceTab}
+                              t={t}
+                              onPickFile={(file) => onWallpaperFile(file)}
+                              onRequestLogin={() => {
+                                setWallpaperSourceOpen(false);
+                                onSection("account");
                               }}
                             />
-                            <p className="settings-wallpaper__scrim-hint">
-                              {t("settings.wallpaperScrimDesc")}
-                            </p>
+                            {wallpaperUrl && onWallpaperAdjust ? (
+                              <WallpaperFocusEditor
+                                open={wallpaperFocusOpen}
+                                onClose={() => setWallpaperFocusOpen(false)}
+                                onApply={(result) => onWallpaperAdjust(result)}
+                                mediaUrl={wallpaperUrl}
+                                kind={wallpaperKind ?? "image"}
+                                initialFocus={
+                                  wallpaperFocus ?? DEFAULT_WALLPAPER_FOCUS
+                                }
+                                initialClip={wallpaperClip}
+                                labels={{
+                                  title: t("settings.wallpaperFocusTitle"),
+                                  hint: t("settings.wallpaperFocusHint"),
+                                  hintVideo: t(
+                                    "settings.wallpaperFocusHintVideo",
+                                  ),
+                                  zoom: t("settings.wallpaperFocusZoom"),
+                                  clip: t("settings.wallpaperClip"),
+                                  clipStart: t("settings.wallpaperClipStart"),
+                                  clipEnd: t("settings.wallpaperClipEnd"),
+                                  reset: t("settings.wallpaperFocusReset"),
+                                  cancel: t("common.cancel"),
+                                  apply: t("settings.wallpaperFocusApply"),
+                                  close: t("common.close"),
+                                }}
+                              />
+                            ) : null}
+                            {wallpaperUrl && onWallpaperScrim ? (
+                              <div className="settings-wallpaper__scrim">
+                                <div className="settings-wallpaper__scrim-head">
+                                  <label
+                                    className="settings-wallpaper__scrim-label"
+                                    htmlFor="settings-wallpaper-scrim"
+                                  >
+                                    <span>{t("settings.wallpaperScrim")}</span>
+                                    <Tip
+                                      label={t("settings.wallpaperScrimDesc")}
+                                      placement="top"
+                                      className="ui-tip--wrap"
+                                      delayMs={280}
+                                    >
+                                      <button
+                                        type="button"
+                                        className="settings-label-help"
+                                        aria-label={t(
+                                          "settings.wallpaperScrimDesc",
+                                        )}
+                                        onClick={(e) => {
+                                          e.preventDefault();
+                                          e.stopPropagation();
+                                        }}
+                                      >
+                                        <IconHelp size={14} stroke={1.75} />
+                                      </button>
+                                    </Tip>
+                                  </label>
+                                  <span
+                                    className="settings-wallpaper__scrim-value"
+                                    aria-hidden
+                                  >
+                                    {Math.round(wallpaperScrim)}%
+                                  </span>
+                                </div>
+                                <input
+                                  id="settings-wallpaper-scrim"
+                                  type="range"
+                                  className="settings-wallpaper__scrim-range"
+                                  min={0}
+                                  max={100}
+                                  step={1}
+                                  value={wallpaperScrim}
+                                  aria-valuemin={0}
+                                  aria-valuemax={100}
+                                  aria-valuenow={Math.round(wallpaperScrim)}
+                                  aria-label={t("settings.wallpaperScrim")}
+                                  onChange={(e) => {
+                                    onWallpaperScrim(Number(e.target.value));
+                                  }}
+                                />
+                              </div>
+                            ) : null}
+                            {wallpaperError ? (
+                              <p
+                                className="settings-wallpaper__error"
+                                role="alert"
+                              >
+                                {wallpaperError}
+                              </p>
+                            ) : null}
                           </div>
-                        ) : null}
-                        {wallpaperError ? (
-                          <p
-                            className="settings-wallpaper__error"
-                            role="alert"
-                          >
-                            {wallpaperError}
-                          </p>
-                        ) : null}
+                        </div>
                       </div>
+                    ) : null}
+                  </div>
+                ) : null}
+              </>
+            )}
+
+            {activeTab === "interface" && (
+              <>
+                <h2 className="settings-page__h2">
+                  {t("settings.tab.interface")}
+                </h2>
+                <div
+                  className={
+                    "settings-card" +
+                    rowHighlight("settings-anchor-thinkingExpand")
+                  }
+                  id="settings-anchor-thinkingExpand"
+                >
+                  <div className="settings-row">
+                    <div className="settings-row__text">
+                      <SettingsLabelWithTip
+                        label={t("settings.thinkingExpand")}
+                        tip={t("settings.thinkingExpandDesc")}
+                      />
+                    </div>
+                    <Select
+                      value={thinkingExpand}
+                      aria-label={t("settings.thinkingExpand")}
+                      onChange={(v) => {
+                        const pref: ThinkingExpandPref =
+                          v === "keep-open" ? "keep-open" : "auto-collapse";
+                        saveThinkingExpandPref(pref);
+                        setThinkingExpand(pref);
+                      }}
+                      options={[
+                        {
+                          value: "auto-collapse",
+                          label: t("settings.thinkingExpand.autoCollapse"),
+                        },
+                        {
+                          value: "keep-open",
+                          label: t("settings.thinkingExpand.keepOpen"),
+                        },
+                      ]}
+                    />
+                  </div>
+                </div>
+                <div
+                  className={
+                    "settings-card" +
+                    rowHighlight("settings-anchor-chatFontScale")
+                  }
+                  id="settings-anchor-chatFontScale"
+                >
+                  <div className="settings-row">
+                    <div className="settings-row__text">
+                      <SettingsLabelWithTip
+                        label={t("settings.chatFontScale")}
+                        tip={t("settings.chatFontScaleDesc")}
+                      />
+                    </div>
+                    <div
+                      className="settings-seg"
+                      role="radiogroup"
+                      aria-label={t("settings.chatFontScale")}
+                    >
+                      {CHAT_FONT_SCALES.map((scale) => (
+                        <button
+                          key={scale}
+                          type="button"
+                          role="radio"
+                          aria-checked={chatFontScale === scale}
+                          className={
+                            "settings-seg__btn" +
+                            (chatFontScale === scale ? " is-on" : "")
+                          }
+                          onClick={() => onChatFontScale(scale)}
+                        >
+                          {t(`settings.chatFontScale.${scale}`)}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+                <div
+                  className={
+                    "settings-card" +
+                    rowHighlight("settings-anchor-messageActions")
+                  }
+                  id="settings-anchor-messageActions"
+                >
+                  <div className="settings-row">
+                    <div className="settings-row__text">
+                      <SettingsLabelWithTip
+                        label={t("settings.messageActions")}
+                        tip={t("settings.messageActionsDesc")}
+                      />
+                    </div>
+                    <div
+                      className="settings-seg"
+                      role="radiogroup"
+                      aria-label={t("settings.messageActions")}
+                    >
+                      {MESSAGE_ACTIONS_VISIBILITIES.map((mode) => (
+                        <button
+                          key={mode}
+                          type="button"
+                          role="radio"
+                          aria-checked={messageActionsVisibility === mode}
+                          className={
+                            "settings-seg__btn" +
+                            (messageActionsVisibility === mode ? " is-on" : "")
+                          }
+                          onClick={() => onMessageActionsVisibility(mode)}
+                        >
+                          {t(`settings.messageActions.${mode}`)}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+                <div
+                  className={
+                    "settings-card" +
+                    rowHighlight("settings-anchor-codeWrapDefault")
+                  }
+                  id="settings-anchor-codeWrapDefault"
+                >
+                  <div className="settings-row">
+                    <div className="settings-row__text">
+                      <SettingsLabelWithTip
+                        label={t("settings.codeWrapDefault")}
+                        tip={t("settings.codeWrapDefaultDesc")}
+                      />
+                    </div>
+                    <UiCheck
+                      checked={codeWrapDefault}
+                      onChange={() => {
+                        const next = !codeWrapDefault;
+                        setCodeWrapDefault(next);
+                        saveCodeWrapPref(next);
+                      }}
+                      ariaLabel={t("settings.codeWrapDefault")}
+                    />
+                  </div>
+                </div>
+                {onShowMessageTimestamps ? (
+                  <div
+                    className={
+                      "settings-card" +
+                      rowHighlight("settings-anchor-messageTimestamps")
+                    }
+                    id="settings-anchor-messageTimestamps"
+                  >
+                    <div className="settings-row">
+                      <div className="settings-row__text">
+                        <SettingsLabelWithTip
+                          label={t("settings.messageTimestamps")}
+                          tip={t("settings.messageTimestampsDesc")}
+                        />
+                      </div>
+                      <UiCheck
+                        checked={!!showMessageTimestamps}
+                        onChange={() =>
+                          onShowMessageTimestamps(!showMessageTimestamps)
+                        }
+                        ariaLabel={t("settings.messageTimestamps")}
+                      />
                     </div>
                   </div>
                 ) : null}
-              </div>
-            ) : null}
-            <div
-              className={
-                "settings-card" +
-                rowHighlight("settings-anchor-codeWrapDefault")
-              }
-              id="settings-anchor-codeWrapDefault"
-            >
-              <div className="settings-row">
-                <div className="settings-row__text">
-                  <div className="settings-row__label">
-                    {t("settings.codeWrapDefault")}
-                  </div>
-                  <div className="settings-row__desc">
-                    {t("settings.codeWrapDefaultDesc")}
-                  </div>
-                </div>
-                <UiCheck
-                  checked={codeWrapDefault}
-                  onChange={() => {
-                    const next = !codeWrapDefault;
-                    setCodeWrapDefault(next);
-                    saveCodeWrapPref(next);
-                  }}
-                  ariaLabel={t("settings.codeWrapDefault")}
-                />
-              </div>
-            </div>
-            {onShowMessageTimestamps ? (
-              <div
-                className={
-                  "settings-card" +
-                  rowHighlight("settings-anchor-messageTimestamps")
-                }
-                id="settings-anchor-messageTimestamps"
-              >
-                <div className="settings-row">
-                  <div className="settings-row__text">
-                    <div className="settings-row__label">
-                      {t("settings.messageTimestamps")}
-                    </div>
-                    <div className="settings-row__desc">
-                      {t("settings.messageTimestampsDesc")}
-                    </div>
-                  </div>
-                  <UiCheck
-                    checked={!!showMessageTimestamps}
-                    onChange={() =>
-                      onShowMessageTimestamps(!showMessageTimestamps)
-                    }
-                    ariaLabel={t("settings.messageTimestamps")}
-                  />
-                </div>
-              </div>
-            ) : null}
+              </>
+            )}
           </>
         )}
 
