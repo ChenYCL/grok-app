@@ -1725,13 +1725,14 @@ export async function providersCcSwitchScan() {
 /** Import selected CC Switch providers into agent-home config.toml. */
 export async function providersCcSwitchImport(body: {
   sourceIds: string[];
+  /** Default overwrite — same id updates key/base_url. */
   onConflict?: "skip" | "overwrite" | "rename";
   activateId?: string | null;
 }) {
   return invoke<CcSwitchImportResult>("providers_cc_switch_import", {
     body: {
       sourceIds: body.sourceIds,
-      onConflict: body.onConflict ?? "skip",
+      onConflict: body.onConflict ?? "overwrite",
       activateId: body.activateId ?? null,
     },
   });

@@ -10756,31 +10756,6 @@ textarea::-webkit-scrollbar-thumb:active,
   color: var(--success, #6ee7b7);
 }
 
-.prov-cc-options {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  padding-top: 4px;
-  border-top: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.06));
-}
-
-.prov-cc-option {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  font-size: 12.5px;
-  color: var(--text-secondary);
-}
-
-.prov-cc-check {
-  display: flex;
-  align-items: flex-start;
-  gap: 8px;
-  font-size: 12.5px;
-  color: var(--text-secondary);
-  cursor: pointer;
-}
-
 .prov-cc-result {
   margin: 0;
   font-size: 13px;

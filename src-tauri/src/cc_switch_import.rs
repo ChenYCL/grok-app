@@ -312,10 +312,11 @@ pub fn scan_cc_switch_providers() -> CcSwitchScanResult {
 }
 
 pub fn import_cc_switch_providers(req: CcSwitchImportRequest) -> Result<CcSwitchImportResult, String> {
+    // Default overwrite: re-importing the same slug updates key/base_url in place.
     let on_conflict = req
         .on_conflict
         .as_deref()
-        .unwrap_or("skip")
+        .unwrap_or("overwrite")
         .trim()
         .to_ascii_lowercase();
     if req.source_ids.is_empty() {
@@ -551,7 +552,8 @@ fn row_to_preview(row: DbRow, existing: &std::collections::HashSet<String>) -> C
                     Some("local proxy takeover — import may not work".into());
             } else if existing.contains(&suggested) {
                 preview.status = "exists".into();
-                preview.status_detail = Some(format!("id `{suggested}` already in Grok App"));
+                preview.status_detail =
+                    Some(format!("id `{suggested}` already present — will overwrite"));
             } else {
                 preview.status = "importable".into();
             }

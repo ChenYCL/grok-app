@@ -123,10 +123,6 @@ export function ProvidersPanel({
   const [ccScanBusy, setCcScanBusy] = useState(false);
   const [ccImportBusy, setCcImportBusy] = useState(false);
   const [ccSelected, setCcSelected] = useState<Set<string>>(new Set());
-  const [ccConflict, setCcConflict] = useState<"skip" | "overwrite" | "rename">(
-    "skip",
-  );
-  const [ccActivateCurrent, setCcActivateCurrent] = useState(false);
   const [ccImportMsg, setCcImportMsg] = useState<string | null>(null);
 
   const protocolOptions = useMemo(
@@ -196,8 +192,6 @@ export function ProvidersPanel({
     setCcImportMsg(null);
     setCcScan(null);
     setCcSelected(new Set());
-    setCcConflict("skip");
-    setCcActivateCurrent(false);
     void runCcScan();
   };
 
@@ -219,7 +213,10 @@ export function ProvidersPanel({
       if (r.status === "ok") {
         const next = new Set<string>();
         for (const it of r.items) {
-          if (it.status === "importable") next.add(it.sourceId);
+          // Default conflict = overwrite, so existing ids are selectable too.
+          if (it.status === "importable" || it.status === "exists") {
+            next.add(it.sourceId);
+          }
         }
         setCcSelected(next);
       } else {
@@ -252,18 +249,11 @@ export function ProvidersPanel({
     setCcImportBusy(true);
     setCcImportMsg(null);
     try {
-      const items = ccScan?.items ?? [];
-      let activateId: string | null = null;
-      if (ccActivateCurrent) {
-        const cur = items.find(
-          (i) => i.isCurrent && ccSelected.has(i.sourceId),
-        );
-        activateId = cur?.suggestedId ?? null;
-      }
+      // Always overwrite same id; never auto-activate route after import.
       const r = await api.providersCcSwitchImport({
         sourceIds: Array.from(ccSelected),
-        onConflict: ccConflict,
-        activateId,
+        onConflict: "overwrite",
+        activateId: null,
       });
       if (r.providers) setList(r.providers);
       const failN = r.failed?.length ?? 0;
@@ -275,11 +265,7 @@ export function ProvidersPanel({
         }),
       );
       if (r.imported > 0) {
-        onProviderActivated?.();
         await reload();
-      }
-      if (failN === 0 && r.imported > 0) {
-        // Keep dialog open briefly so user sees summary; they can close.
       }
     } catch (e) {
       setCcImportMsg(String(e));
@@ -1118,8 +1104,7 @@ export function ProvidersPanel({
               <ul className="prov-cc-list" role="list">
                 {ccScan.items.map((it) => {
                   const selectable =
-                    it.status === "importable" ||
-                    (it.status === "exists" && ccConflict !== "skip");
+                    it.status === "importable" || it.status === "exists";
                   const checked = ccSelected.has(it.sourceId);
                   return (
                     <li
@@ -1173,42 +1158,6 @@ export function ProvidersPanel({
                 })}
               </ul>
             )}
-
-            <div className="prov-cc-options">
-              <label className="prov-cc-option">
-                <span>{tr("prov.ccSwitch.conflict")}</span>
-                <Select
-                  value={ccConflict}
-                  onChange={(v) =>
-                    setCcConflict(v as "skip" | "overwrite" | "rename")
-                  }
-                  options={[
-                    {
-                      value: "skip",
-                      label: tr("prov.ccSwitch.conflict.skip"),
-                    },
-                    {
-                      value: "overwrite",
-                      label: tr("prov.ccSwitch.conflict.overwrite"),
-                    },
-                    {
-                      value: "rename",
-                      label: tr("prov.ccSwitch.conflict.rename"),
-                    },
-                  ]}
-                  disabled={ccImportBusy}
-                />
-              </label>
-              <label className="prov-cc-check">
-                <input
-                  type="checkbox"
-                  checked={ccActivateCurrent}
-                  disabled={ccImportBusy}
-                  onChange={(e) => setCcActivateCurrent(e.target.checked)}
-                />
-                <span>{tr("prov.ccSwitch.activateCurrent")}</span>
-              </label>
-            </div>
           </>
         ) : null}
 

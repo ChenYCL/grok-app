@@ -89,7 +89,7 @@ Settings → Account → Custom providers → **Import from CC Switch**.
 | Detect | Resolve `cc-switch.db` (see paths below); open SQLite **read-only** |
 | Scope | `providers` where `app_type = 'grokbuild'` |
 | Preview | Multi-select list (no full API keys; status badges) |
-| Import | Map TOML → `providers_upsert` into current agent-home `config.toml` |
+| Import | Map TOML → `providers_upsert` into current agent-home `config.toml`; **same id overwrites** (no UI toggle); does not auto-activate route |
 
 ### CC Switch data paths (cross-platform)
 
