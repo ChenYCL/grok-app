@@ -544,6 +544,23 @@ export const SETTINGS_ENTRIES: readonly SettingsEntry[] = [
     ],
     keywords: ["font", "size", "text size", "字号", "字號", "字体", "字體"],
   },
+  {
+    id: "appearance.codeWrapDefault",
+    section: "appearance",
+    anchorId: "settings-anchor-codeWrapDefault",
+    labelKey: "settings.codeWrapDefault",
+    descKeys: ["settings.codeWrapDefaultDesc"],
+    keywords: [
+      "code wrap",
+      "line wrap",
+      "word wrap",
+      "soft wrap",
+      "代码换行",
+      "自動換行",
+      "自动换行",
+    ],
+  },
+
   // ── account ──
   {
     id: "account.official",

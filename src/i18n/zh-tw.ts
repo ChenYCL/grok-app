@@ -847,6 +847,10 @@ export const zhTW: Record<MessageKey, string> = {
   "settings.chatFontScale.sm": "小",
   "settings.chatFontScale.md": "中",
   "settings.chatFontScale.lg": "大",
+  "settings.codeWrapDefault": "預設自動換行程式碼",
+  "settings.codeWrapDefaultDesc":
+    "新的聊天程式碼區塊預設開啟軟換行。仍可在每個區塊上單獨切換。",
+
   "settings.skin": "配色皮膚",
   "settings.skinDesc": "強調色與表面色板（可與淺/深色疊加）",
   "settings.skin.default": "預設",
