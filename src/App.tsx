@@ -138,6 +138,7 @@ import {
   type StopLatchState,
   STOP_LATCH_MS,
 } from "@/lib/stopLatch";
+import { shouldEscapeStopGeneration } from "@/lib/escapeStop";
 import {
   isSameView,
   isViewingSendTarget,
@@ -880,7 +881,7 @@ export default function App() {
     return () => window.clearTimeout(t);
   }, [searchQuery, showSearch]);
 
-  // Global shortcuts: search, find-in-chat, help, doctor, new chat, settings, voice.
+  // Global shortcuts: search, find-in-chat, help, doctor, new chat, settings, voice, Esc-stop.
   // Handlers go through refs so we don't re-bind every render.
   const shortcutHandlersRef = useRef({
     newChat: () => {},
@@ -888,6 +889,17 @@ export default function App() {
     openChatFind: () => {},
     toggleVoice: () => {},
     cancelVoice: () => {},
+    stopGeneration: () => {},
+  });
+  /** Live Esc→stop gate (overlays / menus / busy) for the capture-phase handler. */
+  const escapeStopLiveRef = useRef({
+    streamingOrBusy: false,
+    overlayOpen: false,
+    permOpen: false,
+    askUserOpen: false,
+    chatFindOpen: false,
+    slashOrMenuOpen: false,
+    promptHistoryOpen: false,
   });
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -898,6 +910,21 @@ export default function App() {
         e.stopPropagation();
         shortcutHandlersRef.current.cancelVoice();
         return;
+      }
+      // Esc stops the active turn when nothing else owns Escape (catalog: shortcuts.stop).
+      if (e.key === "Escape") {
+        const gate = escapeStopLiveRef.current;
+        if (
+          shouldEscapeStopGeneration({
+            ...gate,
+            voiceStealsEscape: voiceStealsEscape(voiceRef.current.phase),
+          })
+        ) {
+          e.preventDefault();
+          e.stopPropagation();
+          shortcutHandlersRef.current.stopGeneration();
+          return;
+        }
       }
       // Ctrl+Space toggles voice (not Cmd+Space — Spotlight on macOS).
       if (isVoiceToggleKey(e)) {
@@ -7632,6 +7659,9 @@ export default function App() {
     cancelVoice: () => {
       cancelVoice();
     },
+    stopGeneration: () => {
+      void stop();
+    },
   };
   trayHandlersRef.current = {
     newChat: () => {
@@ -8716,6 +8746,30 @@ export default function App() {
     for (const k of keys) out[k] = tr(k);
     return out;
   }, [tr]);
+
+  // Keep Esc→stop gate current for the capture-phase shortcut listener.
+  escapeStopLiveRef.current = {
+    streamingOrBusy: effectiveCanStop,
+    overlayOpen: Boolean(
+      appDialog ||
+        showSearch ||
+        showDoctor ||
+        showShortcuts ||
+        showStatusModal ||
+        showMcpModal ||
+        showCompactModal ||
+        exportMdTarget ||
+        rewindConfirm ||
+        worktreeCreateOpen ||
+        projectRulesTarget,
+    ),
+    permOpen: !!perm,
+    askUserOpen: !!askUser,
+    chatFindOpen: showChatFind,
+    slashOrMenuOpen:
+      composerMenuOpen || phoneToolsOpen || !!ctxMenu || showUserMenu,
+    promptHistoryOpen,
+  };
 
   return (
     <ImageViewerProvider locale={locale}>

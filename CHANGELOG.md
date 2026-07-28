@@ -21,6 +21,7 @@ See `docs/llm-wiki/release.md`.
 
 ### Added
 
+- **Esc stops generation**: when a turn is streaming (Stop available) and no dialog/menu/find/permission/voice owns Escape, Esc calls the same `stop()` as the composer Stop button (honors shortcuts catalog)
 - **General workspace**: app-managed `{app_data}/workspaces/general` project (`system:general`) for chats without a user folder — agent can create/edit files without the “bind a project first” toast; always trusted, pinned, not removable
 - **Session Markdown export options**: choose thinking + tool summaries; download `.md` or copy to clipboard (session menu / `/export`)
 - **Updater production status**: About shows silent vs GitHub update channel; Host `updater_status` DTO; `scripts/verify-updater-setup.sh` for maintainer/CI prerequisites (no secret values printed)
