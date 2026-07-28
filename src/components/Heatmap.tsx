@@ -1,30 +1,59 @@
 /**
  * Contribution-style activity heatmap — adapted from sister project grok-go.
  * Levels use GitHub-green palette; layout stretches cells to fill width.
- * Day detail tip is portaled (fixed) so overflow parents cannot clip it.
+ *
+ * Granularity: day (7×N grid) or week (1×N row of aggregated weeks).
+ * Hover: instant portaled tip (token usage) — no Tip delay.
+ * Click: select a day or week range for parent (call-log filter).
  */
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import type { HeatmapDay } from "@/lib/api";
-import { Tip } from "@/components/ui/tooltip";
+import { formatCompactNumber } from "@/lib/accountUi";
+
+export type HeatGranularity = "day" | "week";
+
+/** Inclusive local calendar range (YYYY-MM-DD). Day mode: start === end. */
+export type HeatRange = {
+  start: string;
+  end: string;
+};
 
 type Metric = "requests" | "tokens";
 
-type Cell = {
+type DayCell = {
+  kind: "day";
   date: string | null;
   day: HeatmapDay | null;
+  tokens: number;
+  requests: number;
   value: number;
   level: 0 | 1 | 2 | 3 | 4;
   empty: boolean;
+  range: HeatRange | null;
+};
+
+type WeekCell = {
+  kind: "week";
+  /** First in-range day of the week column (or padded start). */
+  start: string;
+  end: string;
+  tokens: number;
+  requests: number;
+  value: number;
+  level: 0 | 1 | 2 | 3 | 4;
+  empty: boolean;
+  range: HeatRange;
 };
 
 const GAP = 3;
 const LABEL_COL = 22;
 const MONTH_ROW = 16;
-/** Prefer ≥10px so a full year (~53 weeks) stays readable when content is ≥ ~900px. */
 const MIN_CELL = 10;
 const MAX_CELL = 14;
+/** Week mode: taller bars for a single row. */
+const WEEK_CELL_H = 28;
 
 const LEVEL_COLORS = [
   "var(--heatmap-0, #ebedf0)",
@@ -33,6 +62,34 @@ const LEVEL_COLORS = [
   "var(--heatmap-3, #30a14e)",
   "var(--heatmap-4, #216e39)",
 ] as const;
+
+export function heatRangesEqual(
+  a: HeatRange | null | undefined,
+  b: HeatRange | null | undefined,
+): boolean {
+  if (!a && !b) return true;
+  if (!a || !b) return false;
+  return a.start === b.start && a.end === b.end;
+}
+
+export function dateInHeatRange(ymd: string, range: HeatRange): boolean {
+  return ymd >= range.start && ymd <= range.end;
+}
+
+export function sumHeatInRange(
+  days: HeatmapDay[],
+  range: HeatRange,
+): { requests: number; tokens: number } {
+  let requests = 0;
+  let tokens = 0;
+  for (const d of days) {
+    if (dateInHeatRange(d.date, range)) {
+      requests += d.requests;
+      tokens += d.tokens;
+    }
+  }
+  return { requests, tokens };
+}
 
 function metricValue(day: HeatmapDay, metric: Metric): number {
   if (metric === "tokens") return day.tokens;
@@ -79,10 +136,29 @@ function weekdaySun0(d: Date): number {
   return d.getDay();
 }
 
-function buildGrid(
+function tipPosFromRect(rect: DOMRect): {
+  left: number;
+  top: number;
+  placeAbove: boolean;
+} {
+  const tipW = 188;
+  const tipH = 56;
+  const gap = 6;
+  const pad = 8;
+  const placeAbove = rect.top - tipH - gap >= pad;
+  let left = rect.left + rect.width / 2 - tipW / 2;
+  left = Math.min(
+    Math.max(pad, left),
+    Math.max(pad, window.innerWidth - tipW - pad),
+  );
+  const top = placeAbove ? rect.top - gap : rect.bottom + gap;
+  return { left, top, placeAbove };
+}
+
+function buildDayGrid(
   days: HeatmapDay[],
   metric: Metric,
-): { weeks: Cell[][]; monthLabels: { week: number; label: string }[] } {
+): { weeks: DayCell[][]; monthLabels: { week: number; label: string }[] } {
   if (days.length === 0) return { weeks: [], monthLabels: [] };
 
   const byDate = new Map(days.map((d) => [d.date, d]));
@@ -95,33 +171,34 @@ function buildGrid(
   const end = new Date(last);
   end.setDate(end.getDate() + (6 - weekdaySun0(end)));
 
-  const raw: {
-    date: string | null;
-    day: HeatmapDay | null;
-    value: number;
-    empty: boolean;
-  }[] = [];
+  const raw: Omit<DayCell, "level">[] = [];
   for (let cur = new Date(start); cur <= end; cur.setDate(cur.getDate() + 1)) {
     const key = formatYmd(cur);
     const inRange = cur >= first && cur <= last;
     const day = byDate.get(key) ?? null;
+    const tokens = day?.tokens ?? 0;
+    const requests = day?.requests ?? 0;
     raw.push({
+      kind: "day",
       date: inRange ? key : null,
       day: inRange ? day : null,
+      tokens,
+      requests,
       value: day ? metricValue(day, metric) : 0,
       empty: !inRange,
+      range: inRange ? { start: key, end: key } : null,
     });
   }
 
   const thresholds = levelThresholds(
     raw.filter((c) => !c.empty).map((c) => c.value),
   );
-  const cells: Cell[] = raw.map((c) => ({
+  const cells: DayCell[] = raw.map((c) => ({
     ...c,
     level: c.empty ? 0 : computeLevel(c.value, thresholds),
   }));
 
-  const weeks: Cell[][] = [];
+  const weeks: DayCell[][] = [];
   for (let i = 0; i < cells.length; i += 7) {
     weeks.push(cells.slice(i, i + 7));
   }
@@ -141,14 +218,86 @@ function buildGrid(
   return { weeks, monthLabels };
 }
 
+function buildWeekRow(
+  days: HeatmapDay[],
+  metric: Metric,
+): {
+  weekCells: WeekCell[];
+  monthLabels: { week: number; label: string }[];
+} {
+  const { weeks, monthLabels } = buildDayGrid(days, metric);
+  if (weeks.length === 0) return { weekCells: [], monthLabels: [] };
+
+  const raw: Omit<WeekCell, "level">[] = weeks.map((week) => {
+    const inRange = week.filter((c) => !c.empty && c.date);
+    if (inRange.length === 0) {
+      // Padded-only column (should be rare)
+      const padStart = week[0]?.date ?? formatYmd(new Date());
+      const padEnd = week[6]?.date ?? padStart;
+      return {
+        kind: "week" as const,
+        start: padStart,
+        end: padEnd,
+        tokens: 0,
+        requests: 0,
+        value: 0,
+        empty: true,
+        range: { start: padStart, end: padEnd },
+      };
+    }
+    const start = inRange[0]!.date!;
+    const end = inRange[inRange.length - 1]!.date!;
+    let tokens = 0;
+    let requests = 0;
+    for (const c of inRange) {
+      tokens += c.tokens;
+      requests += c.requests;
+    }
+    const value = metric === "tokens" ? tokens : requests;
+    return {
+      kind: "week" as const,
+      start,
+      end,
+      tokens,
+      requests,
+      value,
+      empty: false,
+      range: { start, end },
+    };
+  });
+
+  const thresholds = levelThresholds(
+    raw.filter((c) => !c.empty).map((c) => c.value),
+  );
+  const weekCells: WeekCell[] = raw.map((c) => ({
+    ...c,
+    level: c.empty ? 0 : computeLevel(c.value, thresholds),
+  }));
+
+  return { weekCells, monthLabels };
+}
+
+function formatRangeLabel(range: HeatRange): string {
+  if (range.start === range.end) return range.start;
+  // Compact same-year: 2026-04-06 – 04-12
+  if (range.start.slice(0, 4) === range.end.slice(0, 4)) {
+    return `${range.start} – ${range.end.slice(5)}`;
+  }
+  return `${range.start} – ${range.end}`;
+}
+
 export function Heatmap({
   days,
-  metric = "requests",
+  metric = "tokens",
+  granularity = "day",
   locale = "en",
   labels,
+  selectedRange = null,
+  onSelectRange,
 }: {
   days: HeatmapDay[];
   metric?: Metric;
+  granularity?: HeatGranularity;
   locale?: string;
   labels: {
     less: string;
@@ -158,23 +307,36 @@ export function Heatmap({
     requests: string;
     tokens: string;
   };
+  selectedRange?: HeatRange | null;
+  onSelectRange?: (range: HeatRange | null) => void;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [containerWidth, setContainerWidth] = useState(0);
-  /** Viewport coords for fixed portal tip (not clipped by overflow parents). */
-  const [tip, setTip] = useState<{
-    date: string;
-    requests: number;
+  const [hover, setHover] = useState<{
+    label: string;
     tokens: number;
     left: number;
     top: number;
     placeAbove: boolean;
   } | null>(null);
 
-  const { weeks, monthLabels } = useMemo(
-    () => buildGrid(days, metric),
-    [days, metric],
+  const dayGrid = useMemo(
+    () => (granularity === "day" ? buildDayGrid(days, metric) : null),
+    [days, metric, granularity],
   );
+  const weekRow = useMemo(
+    () => (granularity === "week" ? buildWeekRow(days, metric) : null),
+    [days, metric, granularity],
+  );
+
+  const weekCount =
+    granularity === "day"
+      ? (dayGrid?.weeks.length ?? 0)
+      : (weekRow?.weekCells.length ?? 0);
+  const monthLabels =
+    granularity === "day"
+      ? (dayGrid?.monthLabels ?? [])
+      : (weekRow?.monthLabels ?? []);
 
   useEffect(() => {
     const el = containerRef.current;
@@ -188,49 +350,46 @@ export function Heatmap({
     return () => ro.disconnect();
   }, []);
 
+  // Leaving day/week mode clears hover; parent clears selection separately.
   useEffect(() => {
-    if (!tip) return;
-    const onDown = (e: PointerEvent) => {
-      const t = e.target as HTMLElement | null;
-      if (t?.closest("[data-heatmap-tip]") || t?.closest("button[role='gridcell']"))
-        return;
-      setTip(null);
-    };
+    setHover(null);
+  }, [granularity]);
+
+  useEffect(() => {
+    if (!hover) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setTip(null);
+      if (e.key === "Escape") setHover(null);
     };
-    const onScroll = () => setTip(null);
-    document.addEventListener("pointerdown", onDown, true);
+    const onScroll = () => setHover(null);
     document.addEventListener("keydown", onKey);
-    // Any scroll (heatmap body / modal / window) can move the anchor — dismiss.
     window.addEventListener("scroll", onScroll, true);
     return () => {
-      document.removeEventListener("pointerdown", onDown, true);
       document.removeEventListener("keydown", onKey);
       window.removeEventListener("scroll", onScroll, true);
     };
-  }, [tip]);
+  }, [hover]);
 
   const cell = useMemo(() => {
-    if (weeks.length === 0) return MIN_CELL;
-    // Reserve a little right padding so the last month label ("7月") is not clipped.
+    if (weekCount === 0) return MIN_CELL;
     const rightPad = 12;
+    const labelW = granularity === "day" ? LABEL_COL : 0;
     if (containerWidth <= 0) return MIN_CELL;
-    const available = Math.max(0, containerWidth - LABEL_COL - rightPad);
+    const available = Math.max(0, containerWidth - labelW - rightPad);
     const size = Math.floor(
-      (available - (weeks.length - 1) * GAP) / weeks.length,
+      (available - (weekCount - 1) * GAP) / weekCount,
     );
     return Math.max(MIN_CELL, Math.min(MAX_CELL, size));
-  }, [containerWidth, weeks.length]);
+  }, [containerWidth, weekCount, granularity]);
 
   const dayLabels = useMemo(() => {
-    if (locale === "zh") return ["日", "一", "二", "三", "四", "五", "六"];
+    if (locale === "zh" || locale === "zh-TW")
+      return ["日", "一", "二", "三", "四", "五", "六"];
     return ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
   }, [locale]);
 
   const monthName = (mm: string) => {
     const idx = Number(mm) - 1;
-    if (locale === "zh") return `${idx + 1}月`;
+    if (locale === "zh" || locale === "zh-TW") return `${idx + 1}月`;
     return (
       ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"][
         idx
@@ -238,22 +397,32 @@ export function Heatmap({
     );
   };
 
-  if (weeks.length === 0) {
+  if (weekCount === 0) {
     return <div className="account-heatmap__empty">{labels.noData}</div>;
   }
 
-  const graphWidth = weeks.length * (cell + GAP) - GAP;
-  const graphHeight = 7 * (cell + GAP) - GAP;
-  // Extra trailing space so the last month label is not cut at the card edge.
+  const graphWidth = weekCount * (cell + GAP) - GAP;
+  const graphHeight =
+    granularity === "day" ? 7 * (cell + GAP) - GAP : WEEK_CELL_H;
   const monthTrail = 16;
-  const totalWidth = LABEL_COL + graphWidth + monthTrail;
+  const labelCol = granularity === "day" ? LABEL_COL : 0;
+  const totalWidth = labelCol + graphWidth + monthTrail;
+
+  const selectRange = (range: HeatRange | null) => {
+    if (!onSelectRange) return;
+    if (range && heatRangesEqual(selectedRange, range)) {
+      onSelectRange(null);
+    } else {
+      onSelectRange(range);
+    }
+  };
 
   return (
     <div ref={containerRef} className="gh-heatmap">
       <div className="gh-heatmap__inner" style={{ width: totalWidth }}>
         <div
           className="gh-heatmap__months"
-          style={{ height: MONTH_ROW, marginLeft: LABEL_COL }}
+          style={{ height: MONTH_ROW, marginLeft: labelCol }}
         >
           {monthLabels.map(({ week, label }) => (
             <span
@@ -267,105 +436,151 @@ export function Heatmap({
         </div>
 
         <div className="gh-heatmap__body">
-          <div
-            className="gh-heatmap__dow"
-            style={{ width: LABEL_COL, height: graphHeight, gap: GAP }}
-          >
-            {dayLabels.map((label, i) => (
-              <div
-                key={label + i}
-                className="gh-heatmap__dow-label"
-                style={{
-                  height: cell,
-                  visibility: i % 2 === 1 ? "visible" : "hidden",
-                }}
-              >
-                {label}
-              </div>
-            ))}
-          </div>
+          {granularity === "day" ? (
+            <div
+              className="gh-heatmap__dow"
+              style={{ width: LABEL_COL, height: graphHeight, gap: GAP }}
+            >
+              {dayLabels.map((label, i) => (
+                <div
+                  key={label + i}
+                  className="gh-heatmap__dow-label"
+                  style={{
+                    height: cell,
+                    visibility: i % 2 === 1 ? "visible" : "hidden",
+                  }}
+                >
+                  {label}
+                </div>
+              ))}
+            </div>
+          ) : null}
 
-          <div
-            className="gh-heatmap__grid"
-            role="grid"
-            aria-label={labels.aria}
-            style={{
-              gridTemplateColumns: `repeat(${weeks.length}, ${cell}px)`,
-              gridTemplateRows: `repeat(7, ${cell}px)`,
-              columnGap: GAP,
-              rowGap: GAP,
-              width: graphWidth,
-              height: graphHeight,
-            }}
-          >
-            {weeks.map((week, wi) =>
-              week.map((cellItem, di) => {
-                const hoverLabel = cellItem.date
-                  ? `${cellItem.date}: ${cellItem.value}`
-                  : "";
-                return (
-                  <Tip
+          {granularity === "day" && dayGrid ? (
+            <div
+              className="gh-heatmap__grid"
+              role="grid"
+              aria-label={labels.aria}
+              style={{
+                gridTemplateColumns: `repeat(${weekCount}, ${cell}px)`,
+                gridTemplateRows: `repeat(7, ${cell}px)`,
+                columnGap: GAP,
+                rowGap: GAP,
+                width: graphWidth,
+                height: graphHeight,
+              }}
+              onPointerLeave={() => setHover(null)}
+            >
+              {dayGrid.weeks.map((week, wi) =>
+                week.map((cellItem, di) => (
+                  <button
                     key={`${wi}-${di}`}
-                    label={hoverLabel}
-                    disabled={!hoverLabel}
-                  >
-                    <button
-                      type="button"
-                      role="gridcell"
-                      disabled={cellItem.empty || !cellItem.date}
-                      className={
-                        "gh-heatmap__cell" +
-                        (cellItem.empty ? " is-empty" : "") +
-                        (tip?.date === cellItem.date ? " is-selected" : "")
-                      }
-                      style={{
-                        gridColumn: wi + 1,
-                        gridRow: di + 1,
-                        width: cell,
-                        height: cell,
-                        backgroundColor: cellItem.empty
-                          ? "transparent"
-                          : LEVEL_COLORS[cellItem.level],
-                      }}
-                      onClick={(e) => {
-                        if (!cellItem.date || cellItem.empty) return;
-                        // Toggle off if same cell already open
-                        if (tip?.date === cellItem.date) {
-                          setTip(null);
-                          return;
-                        }
-                        const rect = (
-                          e.currentTarget as HTMLElement
-                        ).getBoundingClientRect();
-                        const tipW = 200;
-                        const tipH = 78; // approx date + 2 rows
-                        const gap = 8;
-                        const pad = 8;
-                        // Prefer above the cell; flip below if not enough room
-                        const placeAbove = rect.top - tipH - gap >= pad;
-                        let left = rect.left + rect.width / 2 - tipW / 2;
-                        left = Math.min(
-                          Math.max(pad, left),
-                          Math.max(pad, window.innerWidth - tipW - pad),
-                        );
-                        const top = placeAbove
-                          ? rect.top - gap
-                          : rect.bottom + gap;
-                        setTip({
-                          date: cellItem.date,
-                          requests: cellItem.day?.requests ?? 0,
-                          tokens: cellItem.day?.tokens ?? 0,
-                          left,
-                          top,
-                          placeAbove,
-                        });
-                      }}
-                    />
-                  </Tip>
-                );
-              }),
-            )}
-          </div>
+                    type="button"
+                    role="gridcell"
+                    disabled={cellItem.empty || !cellItem.range}
+                    aria-label={
+                      cellItem.date
+                        ? `${cellItem.date}, ${labels.tokens} ${formatCompactNumber(cellItem.tokens)}`
+                        : undefined
+                    }
+                    aria-pressed={
+                      !!cellItem.range &&
+                      heatRangesEqual(selectedRange, cellItem.range)
+                    }
+                    className={
+                      "gh-heatmap__cell" +
+                      (cellItem.empty ? " is-empty" : "") +
+                      (cellItem.range &&
+                      heatRangesEqual(selectedRange, cellItem.range)
+                        ? " is-selected"
+                        : "")
+                    }
+                    style={{
+                      gridColumn: wi + 1,
+                      gridRow: di + 1,
+                      width: cell,
+                      height: cell,
+                      backgroundColor: cellItem.empty
+                        ? "transparent"
+                        : LEVEL_COLORS[cellItem.level],
+                    }}
+                    onPointerEnter={(e) => {
+                      if (!cellItem.date || cellItem.empty) return;
+                      const rect = (
+                        e.currentTarget as HTMLElement
+                      ).getBoundingClientRect();
+                      setHover({
+                        label: cellItem.date,
+                        tokens: cellItem.tokens,
+                        ...tipPosFromRect(rect),
+                      });
+                    }}
+                    onClick={() => {
+                      if (!cellItem.range || cellItem.empty) return;
+                      selectRange(cellItem.range);
+                    }}
+                  />
+                )),
+              )}
+            </div>
+          ) : weekRow ? (
+            <div
+              className="gh-heatmap__grid gh-heatmap__grid--weeks"
+              role="grid"
+              aria-label={labels.aria}
+              style={{
+                gridTemplateColumns: `repeat(${weekCount}, ${cell}px)`,
+                gridTemplateRows: `${WEEK_CELL_H}px`,
+                columnGap: GAP,
+                rowGap: GAP,
+                width: graphWidth,
+                height: graphHeight,
+              }}
+              onPointerLeave={() => setHover(null)}
+            >
+              {weekRow.weekCells.map((w, wi) => (
+                <button
+                  key={`w-${wi}-${w.start}`}
+                  type="button"
+                  role="gridcell"
+                  disabled={w.empty}
+                  aria-label={`${formatRangeLabel(w.range)}, ${labels.tokens} ${formatCompactNumber(w.tokens)}`}
+                  aria-pressed={heatRangesEqual(selectedRange, w.range)}
+                  className={
+                    "gh-heatmap__cell gh-heatmap__cell--week" +
+                    (w.empty ? " is-empty" : "") +
+                    (heatRangesEqual(selectedRange, w.range)
+                      ? " is-selected"
+                      : "")
+                  }
+                  style={{
+                    gridColumn: wi + 1,
+                    gridRow: 1,
+                    width: cell,
+                    height: WEEK_CELL_H,
+                    backgroundColor: w.empty
+                      ? "transparent"
+                      : LEVEL_COLORS[w.level],
+                  }}
+                  onPointerEnter={(e) => {
+                    if (w.empty) return;
+                    const rect = (
+                      e.currentTarget as HTMLElement
+                    ).getBoundingClientRect();
+                    setHover({
+                      label: formatRangeLabel(w.range),
+                      tokens: w.tokens,
+                      ...tipPosFromRect(rect),
+                    });
+                  }}
+                  onClick={() => {
+                    if (w.empty) return;
+                    selectRange(w.range);
+                  }}
+                />
+              ))}
+            </div>
+          ) : null}
         </div>
 
         <div className="gh-heatmap__legend">
@@ -385,31 +600,28 @@ export function Heatmap({
         </div>
       </div>
 
-      {tip &&
+      {hover &&
         typeof document !== "undefined" &&
         createPortal(
           <div
             data-heatmap-tip
             className={
-              "gh-heatmap__tip" +
-              (tip.placeAbove
+              "gh-heatmap__tip gh-heatmap__tip--hover" +
+              (hover.placeAbove
                 ? " gh-heatmap__tip--above"
                 : " gh-heatmap__tip--below")
             }
             role="tooltip"
             style={{
-              left: tip.left,
-              top: tip.top,
+              left: hover.left,
+              top: hover.top,
+              width: 188,
             }}
           >
-            <div className="gh-heatmap__tip-date">{tip.date}</div>
-            <div className="gh-heatmap__tip-row">
-              <span>{labels.requests}</span>
-              <span>{tip.requests}</span>
-            </div>
+            <div className="gh-heatmap__tip-date">{hover.label}</div>
             <div className="gh-heatmap__tip-row">
               <span>{labels.tokens}</span>
-              <span>{tip.tokens.toLocaleString()}</span>
+              <span>{formatCompactNumber(hover.tokens)}</span>
             </div>
           </div>,
           document.body,

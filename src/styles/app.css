@@ -3110,11 +3110,16 @@ html.platform-mac[data-theme="light"] .settings-page__content {
 
 .gh-heatmap__cell {
   border-radius: 2px;
-  border: 1px solid rgba(0, 0, 0, 0.06);
+  /* Soft edge like GitHub cells — not a hard black frame */
+  border: 1px solid color-mix(in srgb, var(--text-primary) 9%, transparent);
   padding: 0;
   outline: none;
   cursor: pointer;
   background: var(--heatmap-0);
+  box-sizing: border-box;
+  transition:
+    box-shadow 0.1s ease,
+    border-color 0.1s ease;
 }
 
 .gh-heatmap__cell.is-empty {
@@ -3124,12 +3129,78 @@ html.platform-mac[data-theme="light"] .settings-page__content {
   cursor: default;
 }
 
+/*
+ * Selected / focus: thin outer ring (clearer than inset), kept restrained:
+ * 1px canvas gap + ~1.5px soft green — fits the 3px gutters without a heavy halo.
+ */
 .gh-heatmap__cell.is-selected {
-  box-shadow: 0 0 0 2px var(--text-primary);
+  z-index: 2;
+  border-color: transparent;
+  box-shadow:
+    0 0 0 1px var(--bg-elevated, var(--surface-1, var(--bg, #fff))),
+    0 0 0 2.5px color-mix(in srgb, var(--heatmap-3, #30a14e) 72%, transparent);
 }
 
-.gh-heatmap__cell:not(.is-empty):hover {
-  box-shadow: 0 0 0 1px var(--text-tertiary);
+.gh-heatmap__cell:not(.is-empty):hover:not(.is-selected) {
+  z-index: 1;
+  border-color: color-mix(in srgb, var(--text-primary) 20%, transparent);
+  box-shadow: 0 0 0 1px
+    color-mix(in srgb, var(--text-primary) 16%, transparent);
+}
+
+.gh-heatmap__cell:not(.is-empty):focus-visible {
+  z-index: 2;
+  border-color: transparent;
+  box-shadow:
+    0 0 0 1px var(--bg-elevated, var(--surface-1, var(--bg, #fff))),
+    0 0 0 2.5px color-mix(in srgb, var(--heatmap-3, #30a14e) 72%, transparent);
+}
+
+.account-section__title--row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.account-heat-toggle {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px;
+  border-radius: 8px;
+  background: var(--surface-2, rgba(127, 127, 127, 0.12));
+  border: 1px solid var(--border-subtle, rgba(127, 127, 127, 0.2));
+  gap: 2px;
+}
+
+.account-heat-toggle__btn {
+  appearance: none;
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1;
+  padding: 5px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition:
+    background 0.1s ease,
+    color 0.1s ease;
+}
+
+.account-heat-toggle__btn:hover {
+  color: var(--text-primary);
+}
+
+.account-heat-toggle__btn.is-active {
+  background: var(--bg-elevated, var(--surface-1, #fff));
+  color: var(--text-primary);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
+}
+
+.gh-heatmap__cell--week {
+  border-radius: 3px;
 }
 
 .gh-heatmap__legend {
@@ -3146,9 +3217,9 @@ html.platform-mac[data-theme="light"] .settings-page__content {
 .gh-heatmap__tip {
   position: fixed;
   z-index: 10060;
-  width: 200px;
+  width: 168px;
   box-sizing: border-box;
-  padding: 8px 12px;
+  padding: 7px 10px;
   border-radius: 8px;
   background: var(--glass-surface-solid, var(--bg-elevated, #fff));
   color: var(--text-primary);
@@ -3163,6 +3234,21 @@ html.platform-mac[data-theme="light"] .settings-page__content {
     saturate(var(--glass-saturate, 1.4));
   font-size: 12px;
   pointer-events: none;
+  /* Instant feel — no enter delay; light fade only */
+  animation: gh-heatmap-tip-in 0.06s ease-out;
+}
+
+.gh-heatmap__tip--hover {
+  width: 168px;
+}
+
+@keyframes gh-heatmap-tip-in {
+  from {
+    opacity: 0.55;
+  }
+  to {
+    opacity: 1;
+  }
 }
 
 .gh-heatmap__tip--above {
@@ -3175,8 +3261,9 @@ html.platform-mac[data-theme="light"] .settings-page__content {
 
 .gh-heatmap__tip-date {
   font-weight: 600;
-  margin-bottom: 6px;
+  margin-bottom: 4px;
   color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
 }
 
 .gh-heatmap__tip-row {
@@ -3190,6 +3277,11 @@ html.platform-mac[data-theme="light"] .settings-page__content {
 .gh-heatmap__tip-row span:last-child {
   color: var(--text-primary);
   font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+
+.account-logs__row.is-day-hit {
+  background: color-mix(in srgb, var(--accent, #30a14e) 8%, transparent);
 }
 
 .account-logs__empty {
