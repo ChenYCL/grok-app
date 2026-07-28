@@ -213,9 +213,23 @@ pub async fn acp_test_connection(
 }
 
 /// Download + install latest Grok Build (multi-mirror, progress via `setup://cli-install-progress`).
+///
+/// `allow_unverified`: optional; when omitted, uses Settings
+/// `allowUnverifiedCliInstall` (default false → checksum required).
 #[tauri::command]
-pub async fn cli_install_latest(app: tauri::AppHandle) -> Result<crate::cli_install::CliInstallResult, String> {
-    crate::cli_install::install_cli_latest(app).await
+pub async fn cli_install_latest(
+    app: tauri::AppHandle,
+    allow_unverified: Option<bool>,
+) -> Result<crate::cli_install::CliInstallResult, String> {
+    let allow = allow_unverified.unwrap_or_else(|| {
+        store::load_settings().allow_unverified_cli_install
+    });
+    let result = crate::cli_install::install_cli_latest(app, allow).await?;
+    // Remember last install verification for Doctor.
+    let mut s = store::load_settings();
+    s.last_cli_checksum_verified = result.checksum_verified;
+    let _ = store::save_settings(&s);
+    Ok(result)
 }
 
 /// Platform install command + docs URL for manual fallback.

@@ -332,9 +332,17 @@ export interface CliInstallCommands {
   mirrors: string[];
 }
 
-/** Download + install latest Grok Build (multi-mirror). Progress via setup://cli-install-progress. */
-export async function cliInstallLatest() {
-  return invoke<CliInstallResult>("cli_install_latest");
+/**
+ * Download + install latest Grok Build (multi-mirror).
+ * Progress via setup://cli-install-progress.
+ * When `allowUnverified` is omitted, Host uses Settings `allowUnverifiedCliInstall`.
+ */
+export async function cliInstallLatest(opts?: {
+  allowUnverified?: boolean | null;
+}) {
+  return invoke<CliInstallResult>("cli_install_latest", {
+    allowUnverified: opts?.allowUnverified ?? null,
+  });
 }
 
 export async function cliInstallCommands() {
@@ -955,6 +963,13 @@ export interface AppSettings {
   voiceKeepAgentsOnEnd?: boolean;
   /** Window close hides to tray when true (default). */
   closeToTray?: boolean;
+  /**
+   * Allow CLI install when the mirror has no published SHA-256 (default false).
+   * Mismatch always fails. Prefer fixing the mirror over enabling this.
+   */
+  allowUnverifiedCliInstall?: boolean;
+  /** Last App-managed CLI install checksum result (`true` = verified). */
+  lastCliChecksumVerified?: boolean | null;
 }
 
 export interface ReasoningEffort {

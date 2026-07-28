@@ -168,6 +168,11 @@ export interface SettingsPageProps {
   manualCliPath: string;
   onManualCliPath: (v: string) => void;
   onCliBlur: (v: string) => void;
+  /** Escape hatch: allow CLI install without published checksum (default off). */
+  allowUnverifiedCliInstall?: boolean;
+  onAllowUnverifiedCliInstall?: (v: boolean) => void;
+  /** Last install checksum status from Host settings. */
+  lastCliChecksumVerified?: boolean | null;
   /** API mode: remote ACP server `host:port` (empty = local CLI spawn). */
   acpServerAddr: string;
   onAcpServerAddr: (v: string) => void;
@@ -621,6 +626,9 @@ export function SettingsPage({
   manualCliPath,
   onManualCliPath,
   onCliBlur,
+  allowUnverifiedCliInstall = false,
+  onAllowUnverifiedCliInstall,
+  lastCliChecksumVerified = null,
   acpServerAddr,
   onAcpServerAddr,
   proxyMode = "system",
@@ -2707,9 +2715,39 @@ export function SettingsPage({
                       {cliInfo.cliAuthPresent
                         ? ` · ${t("account.cliAuthOk")}`
                         : ` · ${t("account.cliAuthMissing")}`}
+                      {lastCliChecksumVerified === true
+                        ? ` · ${t("settings.cliChecksumVerified")}`
+                        : lastCliChecksumVerified === false
+                          ? ` · ${t("settings.cliChecksumUnverified")}`
+                          : ""}
                     </div>
                   )}
                 </div>
+                {onAllowUnverifiedCliInstall ? (
+                  <div
+                    className={
+                      "settings-row" +
+                      rowHighlight("settings-anchor-allowUnverifiedCli")
+                    }
+                    id="settings-anchor-allowUnverifiedCli"
+                  >
+                    <div className="settings-row__text">
+                      <div className="settings-row__label">
+                        {t("settings.allowUnverifiedCli")}
+                      </div>
+                      <div className="settings-row__desc">
+                        {t("settings.allowUnverifiedCliDesc")}
+                      </div>
+                    </div>
+                    <UiCheck
+                      checked={!!allowUnverifiedCliInstall}
+                      onChange={() =>
+                        onAllowUnverifiedCliInstall(!allowUnverifiedCliInstall)
+                      }
+                      ariaLabel={t("settings.allowUnverifiedCli")}
+                    />
+                  </div>
+                ) : null}
               </div>
             )}
             {activeTab === "connection" && (

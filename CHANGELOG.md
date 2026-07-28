@@ -11,6 +11,10 @@ See `docs/llm-wiki/release.md`.
 
 ## [Unreleased]
 
+### Security
+
+- **CLI install fail-closed on missing checksum**: App-managed Grok Build download refuses install when the mirror has no published SHA-256 (default). Mismatch still always aborts. Escape hatch: Settings → Runtime → “Allow unverified CLI install”, or `GROK_CLI_ALLOW_UNVERIFIED=1`. Last install verification is remembered for Doctor/CLI status.
+
 ### Added
 
 - **Import providers from CC Switch** (#167): Settings → Account → Custom providers → scan local `cc-switch.db` (Grok Build tab), multi-select preview, import into agent-home (macOS / Windows / Linux path resolution + optional override)

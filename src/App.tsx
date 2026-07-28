@@ -1047,6 +1047,11 @@ export default function App() {
   const [voiceId, setVoiceId] = useState("eve");
   const [voiceDictationAutoSend, setVoiceDictationAutoSend] = useState(false);
   const [voiceKeepAgentsOnEnd, setVoiceKeepAgentsOnEnd] = useState(true);
+  const [allowUnverifiedCliInstall, setAllowUnverifiedCliInstall] =
+    useState(false);
+  const [lastCliChecksumVerified, setLastCliChecksumVerified] = useState<
+    boolean | null
+  >(null);
   const voiceDictationAutoSendRef = useRef(false);
   const sendRef = useRef<(() => Promise<void>) | null>(null);
   const [subagentsEnabled, setSubagentsEnabled] = useState(true);
@@ -1558,6 +1563,12 @@ export default function App() {
       setVoiceDictationAutoSend(!!settings.voiceDictationAutoSend);
       setVoiceKeepAgentsOnEnd(
         settings.voiceKeepAgentsOnEnd !== false,
+      );
+      setAllowUnverifiedCliInstall(!!settings.allowUnverifiedCliInstall);
+      setLastCliChecksumVerified(
+        typeof settings.lastCliChecksumVerified === "boolean"
+          ? settings.lastCliChecksumVerified
+          : null,
       );
       setSubagentsEnabled(settings.subagentsEnabled !== false);
       setPlanEnabled(settings.planEnabled !== false);
@@ -8735,6 +8746,14 @@ export default function App() {
                 auth: prev.auth || !!cli.cliAuthPresent,
               }));
             });
+          }}
+          allowUnverifiedCliInstall={allowUnverifiedCliInstall}
+          lastCliChecksumVerified={lastCliChecksumVerified}
+          onAllowUnverifiedCliInstall={(v) => {
+            setAllowUnverifiedCliInstall(v);
+            void api.settingsGet().then((s) =>
+              api.settingsSet({ ...s, allowUnverifiedCliInstall: v }),
+            );
           }}
           acpServerAddr={acpServerAddr}
           onAcpServerAddr={(v) => {
