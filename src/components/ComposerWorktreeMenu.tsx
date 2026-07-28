@@ -1,5 +1,5 @@
 /**
- * Composer branch / worktree chip — switch linked worktrees, create, GC.
+ * Composer branch / worktree chip — switch linked worktrees, create, remove, GC.
  * Lives next to the project picker on the new-session context bar.
  */
 
@@ -13,7 +13,11 @@ import {
 } from "@/components/icons";
 import { Tip } from "@/components/ui/tooltip";
 import { useFloatingMenu } from "@/lib/floatingMenu";
-import { pathsEqual, worktreeLabel } from "@/lib/gitWorktree";
+import {
+  canRemoveWorktree,
+  pathsEqual,
+  worktreeLabel,
+} from "@/lib/gitWorktree";
 import type { GitWorktreeEntry } from "@/lib/api";
 
 export type ComposerWorktreeMenuLabels = {
@@ -29,6 +33,9 @@ export type ComposerWorktreeMenuLabels = {
   worktreeNew: string;
   worktreeNewChat: string;
   worktreeGc: string;
+  /** Per-row remove control (non-main only). */
+  worktreeRemove?: string;
+  worktreeRemoveTip?: string;
 };
 
 type Props = {
@@ -53,6 +60,8 @@ type Props = {
   onCreate: () => void;
   onCreateAndChat: () => void;
   onGc: () => void;
+  /** Remove a live linked worktree (never main). Parent confirms + calls host. */
+  onRemove?: (wt: GitWorktreeEntry) => void;
   onOpen?: () => void;
 };
 
@@ -70,6 +79,7 @@ export function ComposerWorktreeMenu({
   onCreate,
   onCreateAndChat,
   onGc,
+  onRemove,
   onOpen,
 }: Props) {
   const [open, setOpen] = useState(false);
@@ -95,6 +105,10 @@ export function ComposerWorktreeMenu({
   );
   // Soft-refresh loading should not re-anchor / dim when we already have rows.
   const showLoading = worktreesLoading && worktrees.length === 0;
+  const removeLabel =
+    labels.worktreeRemoveTip ||
+    labels.worktreeRemove ||
+    "Remove worktree";
 
   const { pos, style: popStyle } = useFloatingMenu({
     open,
@@ -186,34 +200,62 @@ export function ComposerWorktreeMenu({
                   ]
                     .filter(Boolean)
                     .join(" · ");
+                  const showRemove =
+                    !!onRemove && canRemoveWorktree(wt);
                   return (
                     <li key={wt.path} className="cwm__row">
-                      <button
-                        type="button"
-                        role="menuitem"
-                        className={
-                          "cmm__opt cwm__item" + (isCurrent ? " is-active" : "")
-                        }
-                        title={wt.path}
-                        disabled={isCurrent}
-                        onClick={() => {
-                          if (isCurrent) return;
-                          setOpen(false);
-                          onSwitch(wt);
-                        }}
-                      >
-                        <span className="cwm__item-main">
-                          <span className="cwm__item-name">{name}</span>
-                          {meta ? (
-                            <span className="cwm__item-meta">{meta}</span>
-                          ) : null}
-                        </span>
-                        {isCurrent ? (
-                          <span className="cmm__opt-check" aria-hidden>
-                            <IconCheck size={16} />
+                      <div className="cwm__row-inner">
+                        <button
+                          type="button"
+                          role="menuitem"
+                          className={
+                            "cmm__opt cwm__item" +
+                            (isCurrent ? " is-active" : "")
+                          }
+                          title={wt.path}
+                          disabled={isCurrent}
+                          onClick={() => {
+                            if (isCurrent) return;
+                            setOpen(false);
+                            onSwitch(wt);
+                          }}
+                        >
+                          <span className="cwm__item-main">
+                            <span className="cwm__item-name">{name}</span>
+                            {meta ? (
+                              <span className="cwm__item-meta">{meta}</span>
+                            ) : null}
                           </span>
+                          {isCurrent ? (
+                            <span className="cmm__opt-check" aria-hidden>
+                              <IconCheck size={16} />
+                            </span>
+                          ) : null}
+                        </button>
+                        {showRemove ? (
+                          <Tip label={removeLabel}>
+                            <button
+                              type="button"
+                              className="cwm__row-remove"
+                              aria-label={
+                                labels.worktreeRemove || removeLabel
+                              }
+                              title={removeLabel}
+                              disabled={
+                                disabled || worktreesLoading || showLoading
+                              }
+                              onClick={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                setOpen(false);
+                                onRemove?.(wt);
+                              }}
+                            >
+                              <IconTrash size={14} aria-hidden />
+                            </button>
+                          </Tip>
                         ) : null}
-                      </button>
+                      </div>
                     </li>
                   );
                 })}

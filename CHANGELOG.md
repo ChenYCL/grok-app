@@ -21,6 +21,7 @@ See `docs/llm-wiki/release.md`.
 
 ### Added
 
+- **Remove linked git worktree from UI**: branch/worktree menu trash on non-main rows; in-app confirm (force retry if dirty); host `git_worktree_remove`; switches to main when removing the active cwd
 - **General workspace**: app-managed `{app_data}/workspaces/general` project (`system:general`) for chats without a user folder — agent can create/edit files without the “bind a project first” toast; always trusted, pinned, not removable
 - **Session Markdown export options**: choose thinking + tool summaries; download `.md` or copy to clipboard (session menu / `/export`)
 - **Updater production status**: About shows silent vs GitHub update channel; Host `updater_status` DTO; `scripts/verify-updater-setup.sh` for maintainer/CI prerequisites (no secret values printed)

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildWorktreeGcArgs,
   buildWorktreeSiblingPath,
+  canRemoveWorktree,
   countWorktreePruneLines,
   findWorktreeAt,
   mainWorktreePath,
@@ -12,6 +13,7 @@ import {
   sanitizeWorktreeName,
   siblingWorktrees,
   worktreeLabel,
+  worktreeRemoveErrorSuggestsForce,
 } from "./gitWorktree";
 
 const SAMPLE = `worktree /Users/me/repo
@@ -98,6 +100,31 @@ describe("worktree path builder", () => {
     // Path preview uses main even when active cwd is a linked worktree.
     const main = mainWorktreePath(parseWorktreePorcelain(SAMPLE))!;
     expect(buildWorktreeSiblingPath(main, "new")).toBe("/Users/me/repo-new");
+  });
+});
+
+describe("canRemoveWorktree", () => {
+  it("allows linked worktrees only", () => {
+    const list = parseWorktreePorcelain(SAMPLE);
+    expect(canRemoveWorktree(list[0])).toBe(false);
+    expect(canRemoveWorktree(list[1])).toBe(true);
+    expect(canRemoveWorktree(list[2])).toBe(true);
+    expect(canRemoveWorktree(null)).toBe(false);
+    expect(canRemoveWorktree(undefined)).toBe(false);
+  });
+});
+
+describe("worktreeRemoveErrorSuggestsForce", () => {
+  it("detects dirty / force hints from git", () => {
+    expect(
+      worktreeRemoveErrorSuggestsForce(
+        "fatal: '/tmp/repo-feat' contains modified or untracked files, use --force to delete it",
+      ),
+    ).toBe(true);
+    expect(worktreeRemoveErrorSuggestsForce("use -f to delete")).toBe(true);
+    expect(worktreeRemoveErrorSuggestsForce("worktree is locked")).toBe(true);
+    expect(worktreeRemoveErrorSuggestsForce("not a worktree")).toBe(false);
+    expect(worktreeRemoveErrorSuggestsForce("")).toBe(false);
   });
 });
 

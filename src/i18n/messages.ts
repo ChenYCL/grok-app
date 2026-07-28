@@ -1870,6 +1870,18 @@ const en = {
   "composer.worktreeGcConfirm": "Clean up",
   "composer.worktreeGcDone": "Cleaned {n} stale worktree record(s)",
   "composer.worktreeGcDoneNone": "Nothing to clean",
+  "composer.worktreeRemove": "Remove worktree",
+  "composer.worktreeRemoveTip": "Remove this linked worktree",
+  "composer.worktreeRemoveTitle": "Remove git worktree",
+  "composer.worktreeRemoveHint":
+    "Permanently deletes this worktree folder via git worktree remove. The branch is kept. This cannot be undone.",
+  "composer.worktreeRemoveConfirm": "{branch}\n{path}",
+  "composer.worktreeRemoveDone": "Removed worktree {name}",
+  "composer.worktreeRemoveFailed": "Could not remove worktree",
+  "composer.worktreeRemoveForce":
+    "This worktree has local changes (or is locked). Force-remove and delete the folder?",
+  "composer.worktreeRemoveCurrentWarn":
+    "You are currently using this worktree. After removal, the session will switch to the main worktree.",
   "settings.preferredAgent": "Agent definition",
   "settings.preferredAgent.source.project": "project",
   "settings.preferredAgent.source.user": "user",
@@ -3929,6 +3941,18 @@ const zh: Record<MessageKey, string> = {
   "composer.worktreeGcConfirm": "清理",
   "composer.worktreeGcDone": "已清理 {n} 条失效 worktree 记录",
   "composer.worktreeGcDoneNone": "没有需要清理的内容",
+  "composer.worktreeRemove": "移除 worktree",
+  "composer.worktreeRemoveTip": "移除此关联 worktree",
+  "composer.worktreeRemoveTitle": "移除 Git worktree",
+  "composer.worktreeRemoveHint":
+    "将通过 git worktree remove 永久删除该 worktree 目录。分支会保留。此操作不可撤销。",
+  "composer.worktreeRemoveConfirm": "{branch}\n{path}",
+  "composer.worktreeRemoveDone": "已移除 worktree {name}",
+  "composer.worktreeRemoveFailed": "无法移除 worktree",
+  "composer.worktreeRemoveForce":
+    "该 worktree 有本地修改（或已锁定）。是否强制移除并删除目录？",
+  "composer.worktreeRemoveCurrentWarn":
+    "当前正在使用此 worktree。移除后会话将切换到主 worktree。",
   "settings.preferredAgent": "Agent definition",
   "settings.preferredAgent.source.project": "project",
   "settings.preferredAgent.source.user": "user",
