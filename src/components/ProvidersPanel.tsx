@@ -257,15 +257,29 @@ export function ProvidersPanel({
       });
       if (r.providers) setList(r.providers);
       const failN = r.failed?.length ?? 0;
-      setCcImportMsg(
-        tr("prov.ccSwitch.importDone", {
-          n: String(r.imported),
-          skipped: String(r.skipped),
-          failed: String(failN),
-        }),
-      );
       if (r.imported > 0) {
         await reload();
+      }
+      // Success with at least one imported → close dialog (toast-style summary optional).
+      if (r.imported > 0 && failN === 0) {
+        setCcImportOpen(false);
+        setCcImportMsg(null);
+        setHint(
+          tr("prov.ccSwitch.importDone", {
+            n: String(r.imported),
+            skipped: String(r.skipped),
+            failed: String(failN),
+          }),
+        );
+        setHintTone("ok");
+      } else {
+        setCcImportMsg(
+          tr("prov.ccSwitch.importDone", {
+            n: String(r.imported),
+            skipped: String(r.skipped),
+            failed: String(failN),
+          }),
+        );
       }
     } catch (e) {
       setCcImportMsg(String(e));
