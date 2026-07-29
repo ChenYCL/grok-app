@@ -67,7 +67,16 @@ export function parseWallpaperSourceError(err: unknown): WallpaperSourceErrorCod
   if (s.includes("auth_required")) return "auth_required";
   if (s.includes("cli_missing")) return "cli_missing";
   if (s.includes("url_blocked")) return "url_blocked";
-  if (s.includes("download_failed") || s.includes("download")) return "download_failed";
+  // Local media:// / path reads used when applying Imagine / library items
+  if (
+    s.includes("download_failed") ||
+    s.includes("download") ||
+    s.includes("read_failed") ||
+    s.includes("short read")
+  ) {
+    return "download_failed";
+  }
+  if (s.includes("desktop_only")) return "generic";
   if (s.includes("imagine_failed") || s.includes("imagine")) return "imagine_failed";
   if (s.includes("timeout")) return "timeout";
   if (s.includes("empty")) return "empty";
@@ -117,8 +126,97 @@ function mimeFromName(name: string): string {
 }
 
 /**
+ * media:// answers bare GETs of large files with **206 + first 2 MiB only**
+ * (video Range streaming). A naive `fetch(url).blob()` therefore truncates
+ * Imagine PNGs / large X downloads and `prepareWallpaperFromFile` fails with
+ * a cryptic decode error. Always reassemble via Range (or accept a true 200).
+ *
+ * Exported for unit tests.
+ */
+export const MEDIA_PROTO_CHUNK = 2 * 1024 * 1024;
+
+/** Parse `Content-Range: bytes start-end/total` → total length. */
+export function parseContentRangeTotal(header: string | null): number | null {
+  if (!header) return null;
+  const m = /bytes\s+\d+-\d+\/(\d+)\s*$/i.exec(header.trim());
+  if (!m) return null;
+  const n = Number(m[1]);
+  return Number.isFinite(n) && n >= 0 ? n : null;
+}
+
+/**
+ * Fetch an entire media:// (or http) resource, reassembling Range chunks.
+ */
+export async function fetchEntireMediaBlob(
+  url: string,
+  fetchImpl: typeof fetch = fetch,
+): Promise<Blob> {
+  // Probe total size with a 1-byte Range (media protocol always supports it).
+  const probe = await fetchImpl(url, {
+    headers: { Range: "bytes=0-0" },
+  });
+  if (!(probe.ok || probe.status === 206)) {
+    throw new Error(`read_failed: HTTP ${probe.status}`);
+  }
+
+  const totalFromRange = parseContentRangeTotal(
+    probe.headers.get("content-range"),
+  );
+  // Consume probe body so the connection can close cleanly.
+  try {
+    await probe.arrayBuffer();
+  } catch {
+    /* ignore */
+  }
+
+  if (totalFromRange === 0) {
+    return new Blob([]);
+  }
+
+  // No Content-Range → host returned a full 200 for the probe; just GET once.
+  if (totalFromRange == null) {
+    const full = await fetchImpl(url);
+    if (!full.ok) {
+      throw new Error(`read_failed: HTTP ${full.status}`);
+    }
+    return full.blob();
+  }
+
+  if (totalFromRange <= MEDIA_PROTO_CHUNK) {
+    const one = await fetchImpl(url, {
+      headers: { Range: `bytes=0-${totalFromRange - 1}` },
+    });
+    if (!(one.ok || one.status === 206)) {
+      throw new Error(`read_failed: HTTP ${one.status}`);
+    }
+    return one.blob();
+  }
+
+  const parts: Blob[] = [];
+  let got = 0;
+  for (let start = 0; start < totalFromRange; start += MEDIA_PROTO_CHUNK) {
+    const end = Math.min(start + MEDIA_PROTO_CHUNK - 1, totalFromRange - 1);
+    const part = await fetchImpl(url, {
+      headers: { Range: `bytes=${start}-${end}` },
+    });
+    if (!(part.ok || part.status === 206)) {
+      throw new Error(`read_failed: HTTP ${part.status} at ${start}-${end}`);
+    }
+    const blob = await part.blob();
+    got += blob.size;
+    parts.push(blob);
+  }
+  if (got < totalFromRange) {
+    throw new Error(
+      `read_failed: short read (${got}/${totalFromRange} bytes)`,
+    );
+  }
+  return new Blob(parts);
+}
+
+/**
  * Load a local absolute path into a File for prepareWallpaperFromFile.
- * Uses Tauri media:// protocol when available.
+ * Uses Tauri media:// with **full Range reassembly** (not a single bare GET).
  */
 export async function fileFromAbsolutePath(
   absolutePath: string,
@@ -145,12 +243,22 @@ export async function fileFromAbsolutePath(
   } catch {
     url = convertFileSrc(absolutePath);
   }
-  const res = await fetch(url);
-  if (!res.ok) {
-    throw new Error(`read_failed: HTTP ${res.status}`);
+
+  let blob: Blob;
+  try {
+    blob = await fetchEntireMediaBlob(url);
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    if (msg.startsWith("read_failed")) throw e instanceof Error ? e : new Error(msg);
+    throw new Error(`read_failed: ${msg}`);
   }
-  const blob = await res.blob();
-  const type = blob.type && blob.type !== "application/octet-stream" ? blob.type : mime;
+
+  if (!blob.size) {
+    throw new Error("read_failed: empty file");
+  }
+
+  const type =
+    blob.type && blob.type !== "application/octet-stream" ? blob.type : mime;
   return new File([blob], name, { type });
 }
 

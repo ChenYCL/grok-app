@@ -4905,7 +4905,9 @@ html[data-theme="light"] .ui-check.is-mixed .ui-check__box {
 /* ── Wallpaper source modal (X + Imagine) ── */
 .modal.wallpaper-source-modal {
   width: min(860px, calc(100vw - 28px));
-  max-height: min(92vh, 820px);
+  max-height: min(92vh, 860px);
+  /* Prefer a tall shell so multi-result galleries can use the viewport */
+  min-height: min(72vh, 640px);
 }
 
 .wallpaper-source-modal__body {
@@ -4913,7 +4915,9 @@ html[data-theme="light"] .ui-check.is-mixed .ui-check__box {
   flex-direction: column;
   gap: 12px;
   min-height: 0;
-  max-height: min(72vh, 640px);
+  /* Body fills modal; gallery scroll lives inside (not on multi-column) */
+  flex: 1 1 auto;
+  /* Override base .modal-body { overflow: auto } — scroll only the gallery */
   overflow: hidden;
 }
 
@@ -5092,26 +5096,49 @@ html[data-theme="light"] .ui-check.is-mixed .ui-check__box {
   flex: 1 1 auto;
 }
 
-/* X search: true 3-col masonry — height follows image, no fixed crop box */
-.wallpaper-masonry {
+/*
+ * X search gallery scroll + masonry
+ *
+ * CSS multi-column MUST NOT be the overflow scroller. With max-height +
+ * overflow-y on the same element, WebKit/Blink pack overflow into extra
+ * columns to the *right* (not taller content). overflow-x:hidden then
+ * clips those columns — only the first “page” of thumbs is visible and
+ * the rest of a long X search is unreachable (wasted results).
+ *
+ * Scroll lives on the outer shell; multi-column lives on the inner track
+ * with unconstrained height so all cards participate in 3 columns and
+ * the shell scrolls vertically.
+ */
+.wallpaper-masonry-scroll {
   flex: 1 1 auto;
-  min-height: 160px;
-  max-height: min(48vh, 420px);
+  min-height: 180px;
+  /* Prefer remaining modal body height over a short fixed cap */
+  max-height: none;
   overflow-x: hidden;
   overflow-y: auto;
-  column-count: 3;
-  column-gap: 10px;
-  column-fill: balance;
-  column-rule: none;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
   padding: 2px;
   border: none;
   outline: none;
   background: transparent;
 }
 
-.wallpaper-masonry:focus,
-.wallpaper-masonry:focus-visible {
+.wallpaper-masonry-scroll:focus,
+.wallpaper-masonry-scroll:focus-visible {
   outline: none;
+}
+
+/* True 3-col masonry — height follows image, no fixed crop box */
+.wallpaper-masonry {
+  column-count: 3;
+  column-gap: 10px;
+  column-fill: balance;
+  column-rule: none;
+  width: 100%;
+  /* Never constrain height here — see .wallpaper-masonry-scroll */
+  max-height: none;
+  overflow: visible;
 }
 
 /* Imagine: one full-width column */
@@ -5202,6 +5229,19 @@ html[data-theme="light"] .ui-check.is-mixed .ui-check__box {
   .wallpaper-masonry:not(.wallpaper-masonry--full) {
     column-count: 2;
   }
+}
+
+/* Ensure flex children above the gallery don’t shrink the scroll region away */
+.wallpaper-source-modal__body > .wallpaper-source-tabs,
+.wallpaper-source-modal__body > .wallpaper-source-form,
+.wallpaper-source-modal__body > .wallpaper-source-status,
+.wallpaper-source-modal__body > .wallpaper-source-error {
+  flex: 0 0 auto;
+}
+
+.wallpaper-source-modal__body > .wallpaper-masonry-scroll {
+  flex: 1 1 auto;
+  min-height: 0; /* critical: allow flex child to scroll */
 }
 
 .settings-wallpaper__preview-wrap {

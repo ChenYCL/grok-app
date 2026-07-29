@@ -208,6 +208,7 @@ export const VideoUi = memo(function VideoUi({
     localPath ? (posterUrlCache.get(localPath) ?? null) : null,
   );
   const posterSavedRef = useRef(false);
+  const videoElRef = useRef<HTMLVideoElement | null>(null);
 
   const applyNaturalSize = useCallback(
     (nw: number, nh: number) => {
@@ -278,6 +279,25 @@ export const VideoUi = memo(function VideoUi({
       cancelled = true;
     };
   }, [started, src]);
+
+  // Pause when the window is backgrounded so WebKit cancels fewer in-flight
+  // media:// Range tasks (focus-away → focus-back used to race WKURLSchemeTask
+  // respond and SIGABRT the host on older builds).
+  useEffect(() => {
+    if (!started || !resolvedSrc) return;
+    const onVis = () => {
+      if (document.visibilityState !== "hidden") return;
+      const v = videoElRef.current;
+      if (!v || v.paused) return;
+      try {
+        v.pause();
+      } catch {
+        /* ignore */
+      }
+    };
+    document.addEventListener("visibilitychange", onVis);
+    return () => document.removeEventListener("visibilitychange", onVis);
+  }, [started, resolvedSrc]);
 
   const trySaveClientPoster = useCallback(
     (video: HTMLVideoElement) => {
@@ -460,6 +480,7 @@ export const VideoUi = memo(function VideoUi({
             </div>
           ) : started && resolvedSrc ? (
             <video
+              ref={videoElRef}
               className="md-body__video-card__el"
               src={resolvedSrc}
               controls

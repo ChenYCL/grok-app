@@ -4,7 +4,8 @@
  *
  * UX:
  * - Custom Select (not native <select>)
- * - X results: 3-col masonry, natural image height
+ * - X results: 3-col masonry, natural image height (scroll on outer shell —
+ *   never overflow-y on the column-count element or later cards vanish)
  * - Imagine results: full-width cards
  * - Click loads original → ImageViewer preview → footer to set background
  */
@@ -24,6 +25,7 @@ import {
   type WallpaperGalleryItem,
   type WallpaperSourceErrorCode,
 } from "@/lib/wallpaperSource";
+import { WallpaperPrepareError } from "@/lib/themeSkin";
 import { resolveImageSrcSync } from "@/lib/imageSrc";
 import type { MessageKey } from "@/i18n";
 
@@ -327,6 +329,14 @@ export function WallpaperSourceModal({
       await onPickFile(file);
       onClose();
     } catch (e) {
+      // prepareWallpaperFromFile errors use settings.wallpaper.err.* keys
+      if (e instanceof WallpaperPrepareError) {
+        const key = `settings.wallpaper.err.${e.code}` as MessageKey;
+        const msg = t(key);
+        setErrorCode("generic");
+        setError(msg === key ? t("settings.wallpaper.err.generic") : msg);
+        return;
+      }
       const code = parseWallpaperSourceError(e);
       setErrorCode(code);
       setError(errorMessage(t, code));
@@ -514,63 +524,73 @@ export function WallpaperSourceModal({
         </div>
       ) : null}
 
+      {/*
+        Scroll shell must wrap multi-column masonry. Putting overflow-y +
+        max-height on the column-count element packs overflow into extra
+        horizontal columns that get clipped (only the first few thumbs show).
+      */}
       <div
-        className={
-          "wallpaper-masonry" +
-          (isImagineLayout ? " wallpaper-masonry--full" : "")
-        }
+        className="wallpaper-masonry-scroll"
         role="list"
         aria-label={t("settings.wallpaperSource.gallery")}
         aria-busy={busy || previewingId !== null}
+        tabIndex={items.length > 0 ? 0 : undefined}
       >
-        {items.length === 0 && !busy && !error ? (
-          <p className="wallpaper-masonry__empty">
-            {t("settings.wallpaperSource.emptyGallery")}
-          </p>
-        ) : null}
-        {items.map((item) => {
-          const active = item.id === selectedId;
-          const loadingThis = previewingId === item.id;
-          const src = itemThumbSrc(item);
-          return (
-            <button
-              key={item.id}
-              type="button"
-              className={
-                "wallpaper-masonry__card" +
-                (active ? " wallpaper-masonry__card--selected" : "") +
-                (loadingThis ? " wallpaper-masonry__card--loading" : "")
-              }
-              disabled={locked && !loadingThis}
-              onClick={() => void openItemPreview(item)}
-              aria-label={t("settings.wallpaperSource.openPreview")}
-            >
-              <img
-                src={src}
-                alt={item.textPreview || item.prompt || item.username || ""}
-                className="wallpaper-masonry__img"
-                loading="lazy"
-                referrerPolicy="no-referrer"
-                onError={() => {
-                  // Thumb failed — remove undownloadable / broken entry
-                  dropItem(item.id);
-                }}
-              />
-              <span className="wallpaper-masonry__meta">
-                {loadingThis
-                  ? t("settings.wallpaperSource.loadingOriginal")
-                  : null}
-                {!loadingThis && item.username ? `@${item.username}` : null}
-                {!loadingThis && item.likes != null
-                  ? ` · ♥ ${item.likes}`
-                  : null}
-                {!loadingThis && item.source === "imagine"
-                  ? t("settings.wallpaperImagine")
-                  : null}
-              </span>
-            </button>
-          );
-        })}
+        <div
+          className={
+            "wallpaper-masonry" +
+            (isImagineLayout ? " wallpaper-masonry--full" : "")
+          }
+        >
+          {items.length === 0 && !busy && !error ? (
+            <p className="wallpaper-masonry__empty">
+              {t("settings.wallpaperSource.emptyGallery")}
+            </p>
+          ) : null}
+          {items.map((item) => {
+            const active = item.id === selectedId;
+            const loadingThis = previewingId === item.id;
+            const src = itemThumbSrc(item);
+            return (
+              <button
+                key={item.id}
+                type="button"
+                className={
+                  "wallpaper-masonry__card" +
+                  (active ? " wallpaper-masonry__card--selected" : "") +
+                  (loadingThis ? " wallpaper-masonry__card--loading" : "")
+                }
+                disabled={locked && !loadingThis}
+                onClick={() => void openItemPreview(item)}
+                aria-label={t("settings.wallpaperSource.openPreview")}
+              >
+                <img
+                  src={src}
+                  alt={item.textPreview || item.prompt || item.username || ""}
+                  className="wallpaper-masonry__img"
+                  loading="lazy"
+                  referrerPolicy="no-referrer"
+                  onError={() => {
+                    // Thumb failed — remove undownloadable / broken entry
+                    dropItem(item.id);
+                  }}
+                />
+                <span className="wallpaper-masonry__meta">
+                  {loadingThis
+                    ? t("settings.wallpaperSource.loadingOriginal")
+                    : null}
+                  {!loadingThis && item.username ? `@${item.username}` : null}
+                  {!loadingThis && item.likes != null
+                    ? ` · ♥ ${item.likes}`
+                    : null}
+                  {!loadingThis && item.source === "imagine"
+                    ? t("settings.wallpaperImagine")
+                    : null}
+                </span>
+              </button>
+            );
+          })}
+        </div>
       </div>
     </GlassModal>
   );

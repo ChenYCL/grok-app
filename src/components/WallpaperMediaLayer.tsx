@@ -194,6 +194,28 @@ export function WallpaperMediaLayer({
     return undefined;
   }, [kind, clip, url]);
 
+  // Pause wallpaper video while the window is hidden (save decode + avoid
+  // thrashing media pipelines when the user Cmd-Tabs away and back).
+  useEffect(() => {
+    if (kind !== "video") return;
+    const onVis = () => {
+      const el = mediaRef.current;
+      if (!(el instanceof HTMLVideoElement)) return;
+      if (document.visibilityState === "hidden") {
+        try {
+          if (!el.paused) el.pause();
+        } catch {
+          /* ignore */
+        }
+        return;
+      }
+      // Resume muted autoplay wallpaper when visible again.
+      void el.play().catch(() => {});
+    };
+    document.addEventListener("visibilitychange", onVis);
+    return () => document.removeEventListener("visibilitychange", onVis);
+  }, [kind, url]);
+
   const layout =
     media.w > 0 && media.h > 0 && view.w > 0 && view.h > 0
       ? wallpaperMediaLayout(media.w, media.h, view.w, view.h, f)

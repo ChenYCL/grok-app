@@ -42,3 +42,9 @@ All user-facing strings under `ext.plugins.*` / `ext.market.*` (en + zh + zh-TW)
 - Publishing plugins from the App.
 - Parallel package managers (npm/pip) outside `grok plugin`.
 - Hand-maintained catalog under app data (always CLI marketplace sources).
+
+## Roadmap (v2)
+
+Codex-first store + workbench + `@plugin.command` design:  
+[docs/plans/2026-07-29-plugin-system-v2-design.md](../plans/2026-07-29-plugin-system-v2-design.md).  
+（以 v2 为准；已删 panel-host 试验方向作废。）

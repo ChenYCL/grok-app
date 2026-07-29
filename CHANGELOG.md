@@ -14,13 +14,10 @@ See `docs/llm-wiki/release.md`.
 ### Fixed
 
 - **Agent PATH parity (GUI vs Terminal)**: enrich spawn PATH with existing conda/mamba/miniforge, pyenv, nvm, asdf, volta roots so tools like `conda` resolve without loading shell rc (Dock launches)
-
-**中文 · 修复**
-
-- Agent PATH 对齐终端：spawn 时注入本机已存在的 conda/mamba/pyenv/nvm 等目录，减少「终端能跑、客户端 bash 失败」
-
-
 - **Stuck busy spinner (#225)**: late stream tokens no longer re-promote settled chats to streaming; empty-run, hard stream-stall end, and idle recycle settle the sidebar liveMap
+- **Video focus-switch crash (macOS)**: release builds use `panic = "unwind"` so `media://` worker `catch_unwind` can actually absorb Range/WebKit races; chat/resource/wallpaper video pause while the window is hidden to cut cancelled scheme-task thrash (0.2.0 SIGABRT when switching away and back during playback)
+- **Wallpaper X search gallery**: long result lists are scrollable again — multi-column masonry no longer clips overflow into hidden horizontal columns (only the first few thumbs used to show)
+- **Imagine / library “Set as background”**: reassemble full file via media:// Range (bare GET only returned the first 2 MiB, so large generated PNGs failed with a generic error); surface prepare errors in the modal; raise source size cap to 40 MB
 
 ### Added
 
@@ -59,7 +56,11 @@ See `docs/llm-wiki/release.md`.
 
 **中文 · 修复**
 
+- Agent PATH 对齐终端：spawn 时注入本机已存在的 conda/mamba/pyenv/nvm 等目录，减少「终端能跑、客户端 bash 失败」
 - 侧栏「执行中」卡住（#225）：已结束回合不被延迟 stream 分片重新标忙；空回合 / 硬超时 / idle 回收时结算 liveMap
+- 视频切焦点崩溃（macOS）：Release 用 panic=unwind 使 media:// catch_unwind 生效；隐藏窗口时暂停视频减轻 WebKit Range 竞态
+- 壁纸 X 搜索画廊：长列表可纵向滚动（瀑布流不再裁切）
+- Imagine/库「设为背景」：media:// Range 拼完整文件（避免仅 2MiB 导致大图失败）；错误展示；上限 40MB
 
 **中文 · 新增**
 
@@ -95,7 +96,6 @@ See `docs/llm-wiki/release.md`.
 - 快捷键列表 / 帮助：发送键随对话偏好（Enter 或 ⌘/Ctrl+Enter）实时更新
 - 默认发送键展示为 Enter；说明可在设置 → 对话偏好改用 ⌘/Ctrl+Enter
 - 快捷键注册表：全局 mod 组合键与帮助/设置目录同模块匹配（Esc 停止、Ctrl+Space 语音仍在 App 特殊处理）
-
 ## [0.2.1] - 2026-07-29
 
 > **Highlight:** Per-project draft memory, video covers, durable relay retries, and calmer chat errors.

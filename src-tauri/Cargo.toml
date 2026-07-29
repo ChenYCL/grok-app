@@ -90,5 +90,9 @@ windows = { version = "0.61", features = [
 codegen-units = 1
 lto = true
 opt-level = 3
-panic = "abort"
+# Must be "unwind" (not "abort"): media:// workers wrap handler +
+# UriSchemeResponder::respond in catch_unwind so a single Range/WebKit race
+# cannot SIGABRT the whole desktop process. panic=abort makes catch_unwind
+# a no-op and was the residual crash path after 0.2.1 pool hardening.
+panic = "unwind"
 strip = true

@@ -12,10 +12,16 @@
 //! WKWebView custom-protocol responses run through wry's ObjC bridge. A Rust panic
 //! on a bare `std::thread::spawn` worker (or unbounded fan-out of Range requests)
 //! has historically aborted the whole desktop process (`panic in a function that
-//! cannot unwind` / SIGABRT). This module:
+//! cannot unwind` / SIGABRT) — especially when the user focuses away/back while
+//! a `<video>` is mid-Range stream and WebKit cancels scheme tasks.
+//! This module:
 //! - serves work on a **bounded named thread pool**
 //! - wraps `handle_request` + `responder.respond` in **`catch_unwind`**
 //! - returns `503` when the queue is full instead of spawning forever
+//!
+//! **Release profile must use `panic = "unwind"`** (`src-tauri/Cargo.toml`).
+//! With `panic = "abort"`, `catch_unwind` cannot catch anything and the host
+//! still dies on the first protocol panic.
 
 use std::fs::File;
 use std::io::{Read, Seek, SeekFrom};

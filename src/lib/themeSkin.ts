@@ -84,8 +84,12 @@ export const WALLPAPER_MAX_EDGE = 1920;
 /** Max still-image blob bytes after JPEG compress (~1.6 MiB payload). */
 export const WALLPAPER_MAX_IMAGE_BYTES = 1_600_000;
 
-/** Reject image / gif source files larger than this before decode. */
-export const WALLPAPER_MAX_SOURCE_BYTES = 12 * 1024 * 1024;
+/**
+ * Reject image / gif source files larger than this before decode.
+ * Imagine / X originals are often multi‑MB PNG; we still compress to
+ * {@link WALLPAPER_MAX_IMAGE_BYTES} for IDB — the cap is only the source ceiling.
+ */
+export const WALLPAPER_MAX_SOURCE_BYTES = 40 * 1024 * 1024;
 
 /** Reject video source files larger than this (videos are stored as-is). */
 export const WALLPAPER_MAX_VIDEO_BYTES = 200 * 1024 * 1024;

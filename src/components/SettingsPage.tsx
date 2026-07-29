@@ -1061,6 +1061,9 @@ export function SettingsPage({
         await onWallpaper(record);
       } catch (e) {
         setWallpaperError(wallpaperErrorMessage(e));
+        // Re-throw so WallpaperSourceModal can show the same error inline
+        // instead of closing as if apply succeeded.
+        throw e;
       } finally {
         setWallpaperBusy(false);
         if (wallpaperInputRef.current) wallpaperInputRef.current.value = "";
@@ -2676,7 +2679,11 @@ export function SettingsPage({
                               accept={WALLPAPER_ACCEPT}
                               hidden
                               onChange={(e) => {
-                                void onWallpaperFile(e.target.files?.[0]);
+                                void onWallpaperFile(e.target.files?.[0]).catch(
+                                  () => {
+                                    /* error already surfaced via wallpaperError */
+                                  },
+                                );
                               }}
                             />
                             <div className="settings-wallpaper__preview-wrap">

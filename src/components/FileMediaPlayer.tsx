@@ -153,8 +153,21 @@ export function FileMediaPlayer({
       }
     }, 12_000);
 
+    // Background the window → pause, so WebKit tears down fewer media://
+    // Range scheme tasks while the OS window is not visible.
+    const onVis = () => {
+      if (document.visibilityState !== "hidden") return;
+      try {
+        if (!el.paused) el.pause();
+      } catch {
+        /* ignore */
+      }
+    };
+    document.addEventListener("visibilitychange", onVis);
+
     return () => {
       window.clearTimeout(timer);
+      document.removeEventListener("visibilitychange", onVis);
       el.removeEventListener("error", onError);
       el.removeEventListener("loadedmetadata", onMeta);
       el.removeEventListener("canplay", onCanPlay);

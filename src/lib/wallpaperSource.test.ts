@@ -1,7 +1,10 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   dedupeGalleryItems,
   errorCodeFromSearchResult,
+  fetchEntireMediaBlob,
+  MEDIA_PROTO_CHUNK,
+  parseContentRangeTotal,
   parseWallpaperSourceError,
   resolveApplySource,
   type WallpaperGalleryItem,
@@ -63,5 +66,74 @@ describe("wallpaperSource", () => {
     expect(
       resolveApplySource(item({ id: "3", fullUrl: "https://pbs.twimg.com/a.jpg" })),
     ).toEqual({ kind: "url", url: "https://pbs.twimg.com/a.jpg" });
+  });
+
+  it("maps read_failed to download_failed", () => {
+    expect(parseWallpaperSourceError(new Error("read_failed: HTTP 403"))).toBe(
+      "download_failed",
+    );
+    expect(
+      parseWallpaperSourceError(new Error("read_failed: short read (10/99 bytes)")),
+    ).toBe("download_failed");
+  });
+
+  it("parses Content-Range totals", () => {
+    expect(parseContentRangeTotal("bytes 0-0/4096")).toBe(4096);
+    expect(parseContentRangeTotal("bytes 0-2097151/5000000")).toBe(5_000_000);
+    expect(parseContentRangeTotal(null)).toBeNull();
+    expect(parseContentRangeTotal("bytes */100")).toBeNull();
+  });
+
+  it("reassembles multi-chunk media:// style responses", async () => {
+    const total = MEDIA_PROTO_CHUNK + 1234;
+    const bytes = new Uint8Array(total);
+    for (let i = 0; i < total; i++) bytes[i] = i % 251;
+
+    const fetchImpl: typeof fetch = async (_input, init) => {
+      const headers = init?.headers;
+      let range: string | undefined;
+      if (headers instanceof Headers) {
+        range = headers.get("Range") ?? undefined;
+      } else if (Array.isArray(headers)) {
+        range = headers.find(([k]) => k.toLowerCase() === "range")?.[1];
+      } else if (headers && typeof headers === "object") {
+        range = (headers as Record<string, string>).Range;
+      }
+      if (!range) {
+        // Bare GET would only return first chunk (the bug we avoid)
+        return new Response(bytes.slice(0, MEDIA_PROTO_CHUNK), {
+          status: 206,
+          headers: {
+            "Content-Range": `bytes 0-${MEDIA_PROTO_CHUNK - 1}/${total}`,
+            "Content-Type": "image/png",
+          },
+        });
+      }
+      const m = /^bytes=(\d+)-(\d+)$/.exec(range);
+      if (!m) return new Response(null, { status: 400 });
+      const start = Number(m[1]);
+      const end = Number(m[2]);
+      const slice = bytes.slice(start, end + 1);
+      return new Response(slice, {
+        status: 206,
+        headers: {
+          "Content-Range": `bytes ${start}-${end}/${total}`,
+          "Content-Type": "image/png",
+          "Content-Length": String(slice.length),
+        },
+      });
+    };
+
+    const spy = vi.fn(fetchImpl);
+    const blob = await fetchEntireMediaBlob("media://localhost/x.png", spy);
+    expect(blob.size).toBe(total);
+    const out = new Uint8Array(await blob.arrayBuffer());
+    expect(out).toEqual(bytes);
+    // Every request must carry a Range header (no truncated bare GET body).
+    expect(spy).toHaveBeenCalled();
+    for (const call of spy.mock.calls) {
+      const headers = call[1]?.headers as Record<string, string> | undefined;
+      expect(headers?.Range).toMatch(/^bytes=\d+-\d+$/);
+    }
   });
 });
