@@ -122,11 +122,11 @@ pub fn run() {
         .manage(voice_host)
         .manage(remote_im_state)
         // Range-capable media streaming (video/audio/pdf) — never loads multi‑GB into RAM.
+        // Bounded pool + catch_unwind: unbounded spawn + protocol panics have aborted the
+        // whole process (SIGABRT / "panic in a function that cannot unwind") when chat
+        // fan-out many concurrent Range/image loads (e.g. large session mp4 + QC frames).
         .register_asynchronous_uri_scheme_protocol("media", |_ctx, request, responder| {
-            std::thread::spawn(move || {
-                let response = media_protocol::handle_request(request);
-                responder.respond(response);
-            });
+            media_protocol::dispatch(request, responder);
         })
         // Close button / Alt+F4: hide to tray (default) or quit — Settings → General.
         // Full exit always available via tray "Quit Grok" or Cmd+Q.

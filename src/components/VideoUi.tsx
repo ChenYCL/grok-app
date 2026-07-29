@@ -5,6 +5,11 @@
  * Frame always reserves a non-zero size (default 16:9, then natural ratio)
  * so streaming remounts / metadata decode never collapse scrollHeight —
  * that thrash + stick-to-bottom follow was the chat flicker with video output.
+ *
+ * **Click-to-play**: do not attach `src` / fire media:// Range until the user
+ * starts playback. Opening a long agent session with a large mp4 previously
+ * auto-mounted the player and fan-out concurrent protocol workers, which
+ * contributed to host SIGABRT crashes on WKURLSchemeTask respond paths.
  */
 
 import {
@@ -28,6 +33,8 @@ export interface VideoUiLabels {
   reveal: string;
   copyPath: string;
   loadError?: string;
+  /** Primary CTA on the idle poster (click-to-play). */
+  play?: string;
 }
 
 interface VideoUiProps {
@@ -116,9 +123,9 @@ export const VideoUi = memo(function VideoUi({
       ? src
       : undefined;
 
-  const [resolvedSrc, setResolvedSrc] = useState<string | null>(() =>
-    readCachedSrc(src),
-  );
+  /** User has asked to play — only then resolve media:// and mount <video>. */
+  const [started, setStarted] = useState(false);
+  const [resolvedSrc, setResolvedSrc] = useState<string | null>(null);
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
   const [error, setError] = useState(false);
   const [aspectRatio, setAspectRatio] = useState<number>(
@@ -137,24 +144,31 @@ export const VideoUi = memo(function VideoUi({
     [src, path, localPath],
   );
 
+  // Reset play state when the underlying path changes (stream remount / new card).
   useEffect(() => {
-    let cancelled = false;
+    setStarted(false);
+    setResolvedSrc(null);
     setError(false);
     const cachedAr = readCachedAr(src, path);
     if (cachedAr != null) setAspectRatio(cachedAr);
     else setAspectRatio(DEFAULT_AR);
+  }, [src, path]);
+
+  // Resolve media URL only after click-to-play (or if already viewable & started).
+  useEffect(() => {
+    if (!started) return;
+    let cancelled = false;
+    setError(false);
 
     if (isViewableVideoSrc(src)) {
       setResolvedSrc(src);
       return;
     }
-    const cached = srcCache.get(src);
+    const cached = readCachedSrc(src);
     if (cached) {
       setResolvedSrc(cached);
       return;
     }
-    // Keep previous frame size; only clear resolved when we have nothing cached
-    // so a path resolve does not collapse the reserved box.
     void pathToPreviewUrl(src, "video").then((url) => {
       if (cancelled) return;
       if (url) {
@@ -168,7 +182,12 @@ export const VideoUi = memo(function VideoUi({
     return () => {
       cancelled = true;
     };
-  }, [src, path]);
+  }, [started, src]);
+
+  const startPlayback = () => {
+    setError(false);
+    setStarted(true);
+  };
 
   const openExternal = async () => {
     if (!localPath || !api.isTauri()) return;
@@ -198,6 +217,7 @@ export const VideoUi = memo(function VideoUi({
   };
 
   const displayTitle = title || (localPath ? pathBasename(localPath) : "");
+  const playLabel = labels.play || "Play";
 
   const menuItems: ContextMenuItem[] = [];
   if (localPath) {
@@ -245,9 +265,11 @@ export const VideoUi = memo(function VideoUi({
 
   const stateClass = error
     ? "is-error"
-    : resolvedSrc
+    : started && resolvedSrc
       ? "is-ready"
-      : "is-pending";
+      : started
+        ? "is-pending"
+        : "is-idle";
 
   return (
     <>
@@ -268,23 +290,34 @@ export const VideoUi = memo(function VideoUi({
           {error ? (
             <div className="md-body__video-card__error">
               <span>{labels.loadError || "Failed to load video"}</span>
-              {localPath && (
+              <div className="md-body__video-card__actions">
                 <button
                   type="button"
                   className="md-body__video-card__btn"
-                  onClick={() => void openExternal()}
+                  onClick={startPlayback}
                 >
-                  {labels.open}
+                  {playLabel}
                 </button>
-              )}
+                {localPath && (
+                  <button
+                    type="button"
+                    className="md-body__video-card__btn"
+                    onClick={() => void openExternal()}
+                  >
+                    {labels.open}
+                  </button>
+                )}
+              </div>
             </div>
-          ) : resolvedSrc ? (
+          ) : started && resolvedSrc ? (
             <video
               className="md-body__video-card__el"
               src={resolvedSrc}
               controls
               playsInline
+              // metadata only — full Range fan-out waits for user seek/play
               preload="metadata"
+              autoPlay
               onLoadedMetadata={(e) => {
                 const el = e.currentTarget;
                 applyNaturalSize(el.videoWidth, el.videoHeight);
@@ -292,11 +325,20 @@ export const VideoUi = memo(function VideoUi({
               onError={() => setError(true)}
             />
           ) : (
-            <div className="md-body__video-card__placeholder" aria-hidden>
-              <span className="md-body__video-card__name">
-                {displayTitle || "…"}
+            <button
+              type="button"
+              className="md-body__video-card__poster"
+              onClick={startPlayback}
+              aria-label={playLabel}
+            >
+              <span className="md-body__video-card__play" aria-hidden>
+                ▶
               </span>
-            </div>
+              <span className="md-body__video-card__name">
+                {displayTitle || playLabel}
+              </span>
+              <span className="md-body__video-card__hint">{playLabel}</span>
+            </button>
           )}
         </div>
         {displayTitle ? (
@@ -324,5 +366,6 @@ export function videoUiLabels(locale: Locale): VideoUiLabels {
     reveal: tr("attach.reveal"),
     copyPath: tr("attach.copyPath"),
     loadError: tr("video.loadError"),
+    play: tr("video.play"),
   };
 }

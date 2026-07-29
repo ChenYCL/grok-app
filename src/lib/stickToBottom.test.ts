@@ -138,12 +138,32 @@ describe("nextStickPinState", () => {
     expect(next).toEqual({ pinned: false, escaped: true });
   });
 
-  it("scroll-down clears escape; re-pins when near", () => {
+  it("scroll-down + intent clears escape; re-pins when near", () => {
     const next = nextStickPinState(
       { pinned: false, escaped: true },
-      { scrollingUp: false, scrollingDown: true, nearBottom: true },
+      {
+        scrollingUp: false,
+        scrollingDown: true,
+        nearBottom: true,
+        userIntentDown: true,
+      },
     );
     expect(next).toEqual({ pinned: true, escaped: false });
+  });
+
+  it("layout thrash scrollingDown without intent does not re-pin while escaped", () => {
+    // Height shrink clamp raises scrollTop → synthetic scrollingDown + near.
+    // Must not re-engage stick (media-heavy chat bounce after scroll-up).
+    const next = nextStickPinState(
+      { pinned: false, escaped: true },
+      {
+        scrollingUp: false,
+        scrollingDown: true,
+        nearBottom: true,
+        userIntentDown: false,
+      },
+    );
+    expect(next).toEqual({ pinned: false, escaped: true });
   });
 
   it("scroll-down while still far keeps escape (no mid-list re-pin)", () => {

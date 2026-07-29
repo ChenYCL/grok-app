@@ -110,6 +110,11 @@ export const MarkdownChat = memo(function MarkdownChat({
   locale = "en",
   className,
   muted,
+  /**
+   * When false, links/paths stay as plain text / normal anchors (no FilePathCard).
+   * Used for thinking blocks; assistant body keeps the default cards.
+   */
+  pathCards = true,
   imagePathMap,
   projectPath,
   onOpenResource,
@@ -122,6 +127,8 @@ export const MarkdownChat = memo(function MarkdownChat({
   locale?: Locale;
   className?: string;
   muted?: boolean;
+  /** Default true. Thinking passes false so URLs/paths render as original text. */
+  pathCards?: boolean;
   imagePathMap?: Record<string, string>;
   projectPath?: string | null;
   onOpenResource?: (target: ResourceOpenTarget) => void;
@@ -208,6 +215,12 @@ export const MarkdownChat = memo(function MarkdownChat({
     if (!rawIn) return null;
     // Prefer ellipsis-stripped form for open/search; keep original for display map
     const raw = normalizePathToken(rawIn) || rawIn;
+
+    // Thinking: keep URL/path as original text (no FilePathCard). Media still
+    // handled below when pathCards is on; when off, skip cards entirely.
+    if (!pathCards) {
+      return null;
+    }
 
     if (isHttpUrl(rawIn) || isHttpUrl(raw)) {
       const url = isHttpUrl(rawIn) ? rawIn : raw;

@@ -156,10 +156,10 @@ pub fn refine_title_in_background(
     id: String,
     first_message: String,
 ) {
-    std::thread::spawn(move || {
+    crate::process_util::spawn_named_catch("session-title-refine", move || {
         let (tx, rx) = std::sync::mpsc::channel();
         let msg = first_message.clone();
-        std::thread::spawn(move || {
+        crate::process_util::spawn_named_catch("session-title-cli", move || {
             let _ = tx.send(llm_title_via_cli(&msg));
         });
         let refined = rx.recv_timeout(Duration::from_secs(20)).ok().flatten();

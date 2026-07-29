@@ -6,7 +6,10 @@
  * Bounce defenses:
  * - Content-aware estimates (caller) so scrollHeight is not wildly short.
  * - Ignore shrink thrash / sub-pixel remeasure.
- * - Only shift scrollTop when a row *above* the viewport changes height.
+ * - Only shift scrollTop when a row **fully above** the viewport changes height
+ *   (tall media assistants that straddle the fold expand in place).
+ * - Per-row ResizeObserver so image/video decode updates height cache (callback
+ *   refs alone only fire on mount).
  * - Debounced recompute so measure storms cannot oscillate the window.
  */
 
@@ -94,12 +97,16 @@ export function useChatMessageVirtualizer(
   const recomputeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   /** Programmatic scrollTop from height correction — ignore once for stick. */
   const ignoreScrollAdjustRef = useRef(false);
+  /** Per-index ResizeObserver so media decode updates height after mount. */
+  const rowObserversRef = useRef<Map<number, ResizeObserver>>(new Map());
 
   const [win, setWin] = useState<ChatVirtualWindow>(() => full(itemCount));
 
   // Drop height cache on conversation change.
   useEffect(() => {
     heightsRef.current.clear();
+    for (const ro of rowObserversRef.current.values()) ro.disconnect();
+    rowObserversRef.current.clear();
     setWin(full(itemCount));
   }, [conversationKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -108,7 +115,10 @@ export function useChatMessageVirtualizer(
     const measured = heightsRef.current.get(key);
     if (measured != null) return measured;
     const est = estimateRef.current?.(index);
-    return est != null && est > 0 ? est : CHAT_DEFAULT_ROW_ESTIMATE_PX;
+    // Allow 0 (inlined tool_step spacers). Previously `est > 0` fell through to
+    // DEFAULT and invented ~120px × N empty rows after long agent turns.
+    if (est != null && Number.isFinite(est) && est >= 0) return est;
+    return CHAT_DEFAULT_ROW_ESTIMATE_PX;
   }, []);
 
   const recomputeNow = useCallback(() => {
@@ -196,9 +206,16 @@ export function useChatMessageVirtualizer(
     recomputeNow();
   }, [virtualized, itemCount, forceIndices, recomputeNow]);
 
-  const measureRef = useCallback(
-    (index: number) => (el: HTMLElement | null) => {
-      if (!el || !virtualized) return;
+  // Drop row observers when virtualization turns off.
+  useEffect(() => {
+    if (virtualized) return;
+    for (const ro of rowObserversRef.current.values()) ro.disconnect();
+    rowObserversRef.current.clear();
+  }, [virtualized]);
+
+  const commitRowHeight = useCallback(
+    (index: number, el: HTMLElement) => {
+      if (!virtualized) return;
       const key = getKeyRef.current(index);
       const nextH = Math.round(el.getBoundingClientRect().height);
       const prevH = heightsRef.current.get(key);
@@ -219,6 +236,7 @@ export function useChatMessageVirtualizer(
         const adjusted = scrollTopAfterHeightChange({
           scrollTop: viewport.scrollTop,
           rowOffset,
+          prevHeight: prevH,
           delta,
           pinToBottom: false,
         });
@@ -232,6 +250,26 @@ export function useChatMessageVirtualizer(
       recompute();
     },
     [virtualized, itemCount, getHeight, isPinnedRef, viewportRef, recompute],
+  );
+
+  const measureRef = useCallback(
+    (index: number) => (el: HTMLElement | null) => {
+      const prevRo = rowObserversRef.current.get(index);
+      if (prevRo) {
+        prevRo.disconnect();
+        rowObserversRef.current.delete(index);
+      }
+      if (!el || !virtualized) return;
+
+      // Immediate sample (mount) + observe media/layout growth afterward.
+      commitRowHeight(index, el);
+      const ro = new ResizeObserver(() => {
+        commitRowHeight(index, el);
+      });
+      ro.observe(el);
+      rowObserversRef.current.set(index, ro);
+    },
+    [virtualized, commitRowHeight],
   );
 
   if (!virtualized) {

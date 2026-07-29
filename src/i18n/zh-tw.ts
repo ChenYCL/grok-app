@@ -519,6 +519,7 @@ export const zhTW: Record<MessageKey, string> = {
   "image.zoomOut": "縮小",
   "video.loadError": "影片載入失敗",
   "video.open": "開啟影片",
+  "video.play": "播放影片",
   "resources.openInPanel": "在資源面板開啟",
   "resources.openExternal": "以系統應用程式開啟",
   "resources.browserReload": "重新整理",

@@ -194,7 +194,7 @@ export function Thinking({
       {open && hasBody ? (
         <div className="lobe-chat-thinking__body">
           {typeof content === "string" ? (
-            <MarkdownChat locale={locale} muted>
+            <MarkdownChat locale={locale} muted pathCards={false}>
               {content}
             </MarkdownChat>
           ) : (

@@ -32,6 +32,7 @@ import {
   reconcileOptimisticDuplicates,
   isClientOptimisticId,
   weaveToolsIntoAssistantSegments,
+  filterTranscriptMessages,
   stripAnsi,
   truncateBeforeLastUser,
   truncateThroughUserPrompt,
@@ -593,6 +594,57 @@ describe("session projection", () => {
       { kind: "thought", text: "p1\n\np2" },
       { kind: "content", text: "done" },
       { kind: "thought", text: "p3" },
+    ]);
+  });
+
+  it("filterTranscriptMessages drops inlined tool_step rows", () => {
+    const woven = weaveToolsIntoAssistantSegments([
+      { id: "u1", role: "user", content: "hi" },
+      {
+        id: "a1",
+        role: "assistant",
+        content: "done",
+        thought: "think",
+      },
+      {
+        id: "tool-call-1",
+        role: "tool",
+        content: "tool_step|completed||run",
+        marker: "tool_step",
+        toolCallId: "call-1",
+      },
+      {
+        id: "tool-call-2",
+        role: "tool",
+        content: "tool_step|completed||run2",
+        marker: "tool_step",
+        toolCallId: "call-2",
+      },
+    ]);
+    const asst = woven.find((m) => m.id === "a1")!;
+    expect(
+      asst.segments?.filter((s) => s.kind === "tool").length,
+    ).toBeGreaterThanOrEqual(2);
+    // All journal tools in the turn are woven → paint list is user+assistant only.
+    const out = filterTranscriptMessages(woven);
+    expect(out.map((m) => m.id)).toEqual(["u1", "a1"]);
+    expect(out).toHaveLength(2);
+  });
+
+  it("filterTranscriptMessages keeps standalone tools not on any assistant", () => {
+    const rows = [
+      { id: "u1", role: "user" as const, content: "hi" },
+      {
+        id: "tool-only",
+        role: "tool" as const,
+        content: "tool_step|completed||solo",
+        marker: "tool_step",
+        toolCallId: "solo",
+      },
+    ];
+    expect(filterTranscriptMessages(rows).map((m) => m.id)).toEqual([
+      "u1",
+      "tool-only",
     ]);
   });
 

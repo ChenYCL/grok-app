@@ -17,6 +17,7 @@ import type { Locale } from "@/i18n";
 import { createT } from "@/i18n";
 import {
   formatTurnErrorBody,
+  filterTranscriptMessages,
   isToolInlinedInAssistants,
   lastRegenerableAssistantId,
   messageSegments,
@@ -751,6 +752,16 @@ export function ConversationThread({
     !liveTool &&
     !turnBusy;
 
+  /**
+   * Paint list: drop inlined tool_step journal rows. Full `messages` stays for
+   * path maps / live tools / nodes — only the virtual list + render loop use this.
+   * (64 woven tools otherwise force virtualization and thrash near-bottom stick.)
+   */
+  const transcriptMessages = useMemo(
+    () => filterTranscriptMessages(messages),
+    [messages],
+  );
+
   // Force-mount only what must stay in DOM. Do NOT always force the last N
   // rows while reading history — that expanded every window to the tail and
   // remounted huge answers (org charts) mid-scroll → bounce.
@@ -758,7 +769,7 @@ export function ConversationThread({
     const out: number[] = [];
     const pushId = (id: string | null | undefined) => {
       if (!id) return;
-      const i = messages.findIndex((m) => m.id === id);
+      const i = transcriptMessages.findIndex((m) => m.id === id);
       if (i >= 0) out.push(i);
     };
     pushId(findActive?.messageId);
@@ -767,12 +778,16 @@ export function ConversationThread({
     // While following the live turn, keep the last user + tail mounted.
     if (turnBusy) {
       pushId(lastUserMessageId);
-      const n = messages.length;
+      const n = transcriptMessages.length;
       for (let i = Math.max(0, n - 2); i < n; i++) out.push(i);
+    } else {
+      // Idle: last transcript row only (assistant). Indices are post-filter.
+      const n = transcriptMessages.length;
+      if (n > 0) out.push(n - 1);
     }
     return out;
   }, [
-    messages,
+    transcriptMessages,
     findActive?.messageId,
     locateTargetId,
     activeAssistantId,
@@ -782,15 +797,30 @@ export function ConversationThread({
 
   const getEstimateHeight = useCallback(
     (i: number) => {
-      const m = messages[i];
+      const m = transcriptMessages[i];
       if (!m) return 120;
+      // Standalone (non-inlined) tool rows only — inlined tools are filtered out.
+      if (isToolStepMessage(m)) {
+        return estimateChatRowHeight({
+          contentLength: m.content?.length ?? 0,
+          role: "tool",
+        });
+      }
+      const body = m.content || "";
+      const hasVideoCard =
+        m.role === "assistant" &&
+        (/\.(mp4|webm|mov|mkv)(\b|$)/i.test(body) ||
+          body.includes("media.localhost") ||
+          body.includes("media://"));
       return estimateChatRowHeight({
-        contentLength: m.content?.length ?? 0,
+        contentLength: body.length,
         thoughtLength: m.thought?.length ?? 0,
         role: m.role,
+        attachmentCount: m.attachments?.length ?? 0,
+        hasVideoCard,
       });
     },
-    [messages],
+    [transcriptMessages],
   );
 
   const {
@@ -801,8 +831,8 @@ export function ConversationThread({
     paddingBottom,
     measureRef,
   } = useChatMessageVirtualizer({
-    itemCount: messages.length,
-    getKey: (i) => messages[i]?.id ?? `i-${i}`,
+    itemCount: transcriptMessages.length,
+    getKey: (i) => transcriptMessages[i]?.id ?? `i-${i}`,
     getEstimateHeight,
     viewportRef: scrollRef,
     isPinnedRef,
@@ -811,14 +841,16 @@ export function ConversationThread({
   });
 
   const visibleMessages = useMemo(() => {
-    if (!virtualized) return messages.map((m, index) => ({ m, index }));
+    if (!virtualized) {
+      return transcriptMessages.map((m, index) => ({ m, index }));
+    }
     const slice: { m: ChatMessage; index: number }[] = [];
     for (let i = virtStart; i < virtEnd; i++) {
-      const m = messages[i];
+      const m = transcriptMessages[i];
       if (m) slice.push({ m, index: i });
     }
     return slice;
-  }, [messages, virtualized, virtStart, virtEnd]);
+  }, [transcriptMessages, virtualized, virtStart, virtEnd]);
 
   return (
     <div className="lobe-chat" data-slot="lobe-chat">

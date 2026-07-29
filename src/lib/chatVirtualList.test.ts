@@ -99,6 +99,43 @@ describe("shouldCommitRowHeight", () => {
     expect(shouldCommitRowHeight(120, 3000)).toBe(true);
   });
 
+  it("commits zero height for inlined tool spacers (not phantom scroll)", () => {
+    expect(shouldCommitRowHeight(undefined, 0)).toBe(true);
+    expect(shouldCommitRowHeight(40, 0)).toBe(true);
+    expect(shouldCommitRowHeight(0, 0)).toBe(false);
+  });
+
+  it("pin window still reaches early rows when trailing heights are 0", () => {
+    // user + assistant + 64 zero-height tools (cc6d8b01-style journal)
+    const heights = [80, 2000, ...Array(64).fill(0)];
+    const w = computeChatVirtualWindow({
+      count: heights.length,
+      getHeight: (i) => heights[i] ?? 0,
+      scrollTop: 0,
+      viewportHeight: 600,
+      pinToBottom: true,
+      overscanPx: 1600,
+    });
+    expect(w.end).toBe(heights.length);
+    // Must include the assistant at index 1 (not only trailing zeros).
+    expect(w.start).toBeLessThanOrEqual(1);
+    expect(w.totalHeight).toBe(2080);
+  });
+
+  it("pin window with inflated tool estimates misses early content (regression)", () => {
+    // Pre-fix: 64 tools estimated at 40px each — pin only sees the tail.
+    const heights = [80, 2000, ...Array(64).fill(40)];
+    const w = computeChatVirtualWindow({
+      count: heights.length,
+      getHeight: (i) => heights[i] ?? 0,
+      scrollTop: 0,
+      viewportHeight: 600,
+      pinToBottom: true,
+      overscanPx: 400,
+    });
+    expect(w.start).toBeGreaterThan(1);
+  });
+
   it("ignores tiny flicker and small shrink thrash", () => {
     expect(shouldCommitRowHeight(400, 401)).toBe(false);
     expect(shouldCommitRowHeight(400, 390)).toBe(false);
@@ -111,21 +148,37 @@ describe("scrollTopAfterHeightChange", () => {
       scrollTopAfterHeightChange({
         scrollTop: 500,
         rowOffset: 100,
+        prevHeight: 80,
         delta: 40,
         pinToBottom: true,
       }),
     ).toBe(500);
   });
 
-  it("shifts when row above viewport grows", () => {
+  it("shifts when entire row was above viewport and grows", () => {
     expect(
       scrollTopAfterHeightChange({
         scrollTop: 500,
         rowOffset: 100,
+        prevHeight: 80,
         delta: 40,
         pinToBottom: false,
       }),
     ).toBe(540);
+  });
+
+  it("does not shift tall straddling media row growth (near-bottom bounce)", () => {
+    // Assistant starts at 100, height 800; user reading lower half at scrollTop 500.
+    // Images load (+200) at bottom of the same row — must not yank down.
+    expect(
+      scrollTopAfterHeightChange({
+        scrollTop: 500,
+        rowOffset: 100,
+        prevHeight: 800,
+        delta: 200,
+        pinToBottom: false,
+      }),
+    ).toBe(500);
   });
 
   it("ignores rows at or below viewport top", () => {
@@ -133,6 +186,7 @@ describe("scrollTopAfterHeightChange", () => {
       scrollTopAfterHeightChange({
         scrollTop: 500,
         rowOffset: 500,
+        prevHeight: 120,
         delta: 40,
         pinToBottom: false,
       }),

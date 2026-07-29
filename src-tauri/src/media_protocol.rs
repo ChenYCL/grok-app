@@ -6,15 +6,178 @@
 //!
 //! This `media://` handler always streams in bounded chunks and answers Range
 //! requests with `206 Partial Content`, which is what video/audio elements need.
+//!
+//! ## Crash hardening
+//!
+//! WKWebView custom-protocol responses run through wry's ObjC bridge. A Rust panic
+//! on a bare `std::thread::spawn` worker (or unbounded fan-out of Range requests)
+//! has historically aborted the whole desktop process (`panic in a function that
+//! cannot unwind` / SIGABRT). This module:
+//! - serves work on a **bounded named thread pool**
+//! - wraps `handle_request` + `responder.respond` in **`catch_unwind`**
+//! - returns `503` when the queue is full instead of spawning forever
 
 use std::fs::File;
 use std::io::{Read, Seek, SeekFrom};
+use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::path::PathBuf;
+use std::sync::mpsc::{self, SyncSender};
+use std::sync::{Arc, Mutex, OnceLock};
+use std::thread;
 
 use tauri::http::{header, Method, Request, Response, StatusCode};
+use tauri::UriSchemeResponder;
 
 /// Max bytes returned per request (keeps memory bounded).
 const MAX_CHUNK: u64 = 2 * 1024 * 1024; // 2 MiB
+
+/// Concurrent media protocol workers (Range + image loads share this).
+const POOL_WORKERS: usize = 4;
+
+/// Pending jobs before we refuse new ones with HTTP 503.
+const POOL_QUEUE_CAP: usize = 48;
+
+struct MediaJob {
+    request: Request<Vec<u8>>,
+    responder: UriSchemeResponder,
+}
+
+struct MediaPool {
+    tx: SyncSender<MediaJob>,
+}
+
+fn media_pool() -> &'static MediaPool {
+    static POOL: OnceLock<MediaPool> = OnceLock::new();
+    POOL.get_or_init(|| {
+        let (tx, rx) = mpsc::sync_channel::<MediaJob>(POOL_QUEUE_CAP);
+        let rx = Arc::new(Mutex::new(rx));
+        for i in 0..POOL_WORKERS {
+            let rx = Arc::clone(&rx);
+            let name = format!("media-proto-{i}");
+            let builder = thread::Builder::new().name(name.clone());
+            if let Err(e) = builder.spawn(move || media_worker_loop(rx)) {
+                // Init-time only — log and continue with fewer workers.
+                eprintln!("media protocol: failed to spawn {name}: {e}");
+            }
+        }
+        MediaPool { tx }
+    })
+}
+
+fn media_worker_loop(rx: Arc<Mutex<mpsc::Receiver<MediaJob>>>) {
+    loop {
+        let job = {
+            let Ok(guard) = rx.lock() else {
+                // Poisoned mutex — stop this worker rather than panic.
+                break;
+            };
+            guard.recv()
+        };
+        match job {
+            Ok(MediaJob {
+                request,
+                responder,
+            }) => {
+                // Outer catch: a job must never take down the pool thread.
+                let _ = catch_unwind(AssertUnwindSafe(|| {
+                    run_request_safe(request, responder);
+                }));
+            }
+            Err(_) => break, // sender dropped
+        }
+    }
+}
+
+/// Dispatch one media protocol request on the bounded pool.
+///
+/// Never panics. Queue overflow → HTTP 503 (true back-pressure). Handler /
+/// `responder.respond` panics are caught so the GUI process stays alive.
+pub fn dispatch(request: Request<Vec<u8>>, responder: UriSchemeResponder) {
+    let job = MediaJob {
+        request,
+        responder,
+    };
+    match media_pool().tx.try_send(job) {
+        Ok(()) => {}
+        Err(mpsc::TrySendError::Full(MediaJob { responder, .. })) => {
+            tracing::warn!(
+                queue_cap = POOL_QUEUE_CAP,
+                "media protocol: queue full — 503 media busy"
+            );
+            // Respond 503 off the WebKit callback stack.
+            let _ = thread::Builder::new()
+                .name("media-proto-busy".into())
+                .spawn(move || {
+                    let _ = catch_unwind(AssertUnwindSafe(|| {
+                        let response = error_response_static(
+                            StatusCode::SERVICE_UNAVAILABLE,
+                            "media busy",
+                        );
+                        safe_respond(responder, response);
+                    }));
+                });
+        }
+        Err(mpsc::TrySendError::Disconnected(MediaJob {
+            request,
+            responder,
+        })) => {
+            tracing::error!("media protocol: pool disconnected — one-shot fallback");
+            let _ = thread::Builder::new()
+                .name("media-proto-fallback".into())
+                .spawn(move || {
+                    let _ = catch_unwind(AssertUnwindSafe(|| {
+                        run_request_safe(request, responder);
+                    }));
+                });
+        }
+    }
+}
+
+fn run_request_safe(request: Request<Vec<u8>>, responder: UriSchemeResponder) {
+    let response = match catch_unwind(AssertUnwindSafe(|| handle_request(request))) {
+        Ok(r) => r,
+        Err(payload) => {
+            let msg = panic_payload_str(&payload);
+            tracing::error!(panic = %msg, "media protocol: handler panicked — returning 500");
+            error_response_static(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "media handler error",
+            )
+        }
+    };
+    safe_respond(responder, response);
+}
+
+fn safe_respond(responder: UriSchemeResponder, response: Response<Vec<u8>>) {
+    if let Err(payload) = catch_unwind(AssertUnwindSafe(|| {
+        responder.respond(response);
+    })) {
+        let msg = panic_payload_str(&payload);
+        tracing::error!(
+            panic = %msg,
+            "media protocol: responder.respond panicked (WebKit/wry) — process kept alive"
+        );
+    }
+}
+
+fn panic_payload_str(payload: &Box<dyn std::any::Any + Send>) -> String {
+    if let Some(s) = payload.downcast_ref::<&str>() {
+        (*s).to_string()
+    } else if let Some(s) = payload.downcast_ref::<String>() {
+        s.clone()
+    } else {
+        "unknown panic".into()
+    }
+}
+
+fn error_response_static(status: StatusCode, msg: &str) -> Response<Vec<u8>> {
+    Response::builder()
+        .status(status)
+        .header(header::CONTENT_TYPE, "text/plain; charset=utf-8")
+        .header(header::CACHE_CONTROL, "no-store")
+        .body(msg.as_bytes().to_vec())
+        .unwrap_or_else(|_| Response::new(Vec::new()))
+}
 
 fn mime_from_path(path: &str) -> &'static str {
     let ext = path
@@ -288,6 +451,21 @@ pub fn handle_request(request: Request<Vec<u8>>) -> Response<Vec<u8>> {
         end.saturating_sub(start).saturating_add(1)
     };
 
+    // Guard against absurd allocations if range math ever regresses.
+    if nbytes > MAX_CHUNK {
+        tracing::error!(
+            nbytes,
+            max = MAX_CHUNK,
+            path = %path_str,
+            "media protocol: chunk exceeds MAX_CHUNK — refusing"
+        );
+        return error_response(
+            &request,
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "chunk too large",
+        );
+    }
+
     if request.method() == Method::HEAD {
         let mut builder = Response::builder()
             .status(if partial {
@@ -391,5 +569,23 @@ mod tests {
             parse_range("bytes=0-", big),
             Some((0, MAX_CHUNK - 1))
         );
+    }
+
+    #[test]
+    fn pool_initializes_without_panic() {
+        // Touch OnceLock init path; safe to call many times.
+        let _ = media_pool();
+        let _ = media_pool();
+    }
+
+    #[test]
+    fn panic_payload_helpers() {
+        let r = catch_unwind(AssertUnwindSafe(|| {
+            panic!("handler boom");
+        }));
+        let Err(p) = r else {
+            panic!("expected panic");
+        };
+        assert!(panic_payload_str(&p).contains("handler boom"));
     }
 }

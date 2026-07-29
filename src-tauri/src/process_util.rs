@@ -1,7 +1,9 @@
 //! Cross-platform process / path helpers (Windows GUI spawn, home dir, PATH).
 
+use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::path::{Path, PathBuf};
 use std::process::Command as StdCommand;
+use std::thread;
 
 /// User home directory.
 ///
@@ -181,6 +183,35 @@ pub fn enriched_path_env() -> Option<String> {
     }
 }
 
+/// Fire-and-forget background work that **must not** take down the process.
+///
+/// Named thread + `catch_unwind`: panics become error logs instead of process abort
+/// when they would otherwise escape an unhandled thread (Rust default: abort on
+/// uncaught panic in non-main threads depends on panic strategy; release often
+/// aborts). Prefer this over bare `std::thread::spawn` for optional host chores.
+pub fn spawn_named_catch<F>(name: impl Into<String>, f: F)
+where
+    F: FnOnce() + Send + 'static,
+{
+    let name = name.into();
+    let label = name.clone();
+    let result = thread::Builder::new().name(name).spawn(move || {
+        if let Err(payload) = catch_unwind(AssertUnwindSafe(f)) {
+            let msg = if let Some(s) = payload.downcast_ref::<&str>() {
+                (*s).to_string()
+            } else if let Some(s) = payload.downcast_ref::<String>() {
+                s.clone()
+            } else {
+                "unknown panic".into()
+            };
+            tracing::error!(thread = %label, panic = %msg, "background task panicked (caught)");
+        }
+    });
+    if let Err(e) = result {
+        tracing::error!(error = %e, "failed to spawn named background task");
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -197,5 +228,17 @@ mod tests {
             #[cfg(target_os = "windows")]
             assert!(p.contains(';') || !p.contains(':'));
         }
+    }
+
+    #[test]
+    fn spawn_named_catch_swallows_panic() {
+        let (tx, rx) = std::sync::mpsc::channel();
+        spawn_named_catch("test-panic-catch", move || {
+            let _ = tx.send(());
+            panic!("expected test panic");
+        });
+        // Task should start; panic must not kill the test process.
+        let _ = rx.recv_timeout(std::time::Duration::from_secs(2));
+        std::thread::sleep(std::time::Duration::from_millis(50));
     }
 }

@@ -299,6 +299,34 @@ export function isToolInlinedInAssistants(
   return false;
 }
 
+/**
+ * Journal rows for the visible transcript (virtual list / paint).
+ *
+ * Drops tool_step rows already woven into an assistant timeline — keeping them
+ * as 0-height spacers still inflated itemCount past the virtualize threshold
+ * (e.g. 1 user + 1 assistant + 64 inlined tools → 66 ≥ 48), which thrashed
+ * spacers near the bottom and fought stick-to-bottom (flash-snap on scroll).
+ */
+export function filterTranscriptMessages(
+  messages: ChatMessage[],
+): ChatMessage[] {
+  if (!messages.length) return messages;
+  let anyInlined = false;
+  for (const m of messages) {
+    if (m.role === "assistant" && m.segments?.some((s) => s.kind === "tool")) {
+      anyInlined = true;
+      break;
+    }
+  }
+  if (!anyInlined) return messages;
+  return messages.filter((m) => {
+    if (!isToolStepMessage(m)) return true;
+    const tcid = toolCallIdOf(m);
+    if (!tcid) return true;
+    return !isToolInlinedInAssistants(messages, tcid);
+  });
+}
+
 /** Resolve stable toolCallId from a tool_step row. */
 export function toolCallIdOf(m: ChatMessage): string {
   const fromField = (m.toolCallId || "").trim();

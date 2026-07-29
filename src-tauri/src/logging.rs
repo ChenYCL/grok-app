@@ -72,6 +72,8 @@ pub fn logs_dir() -> PathBuf {
 ///
 /// Non-blocking `tracing-appender` can lose the final lines on `abort()`; this
 /// path uses plain `OpenOptions` so post-crash forensics still see the message.
+/// A force-captured backtrace is appended when available (release builds often
+/// lack symbols, but frame addresses still help post-mortem).
 fn install_panic_hook(log_dir: PathBuf) {
     let prev = std::panic::take_hook();
     std::panic::set_hook(Box::new(move |info| {
@@ -89,8 +91,10 @@ fn install_panic_hook(log_dir: PathBuf) {
             "Box<dyn Any>".into()
         };
         let ts = chrono::Local::now().format("%Y-%m-%d %H:%M:%S%.3f %z");
+        // force_capture works even when RUST_BACKTRACE is unset (Finder launches).
+        let bt = std::backtrace::Backtrace::force_capture();
         let line = format!(
-            "{ts} PANIC thread={name} at {location}: {payload}\n"
+            "{ts} PANIC thread={name} at {location}: {payload}\n{bt}\n"
         );
 
         // Best-effort sync writes — never panic inside the hook.

@@ -119,9 +119,15 @@ export function nextStickPinState(
   // scrollHeight matched real content — with virtualized/estimated heights
   // a short totalHeight made mid-document look "near bottom", then the next
   // frame re-pinned and yanked the viewport (bounce at tall messages).
+  //
+  // While escaped, also require userIntentDown: layout thrash / clamp after a
+  // height shrink produces synthetic scrollingDown without a user gesture and
+  // was re-pinning media-heavy sessions (scroll up → empty gap → snap back).
   if (input.scrollingDown && input.nearBottom) {
-    escaped = false;
-    pinned = true;
+    if (!escaped || input.userIntentDown) {
+      escaped = false;
+      pinned = true;
+    }
   } else if (!escaped && input.nearBottom) {
     pinned = true;
   }

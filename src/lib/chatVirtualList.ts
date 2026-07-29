@@ -26,11 +26,19 @@ export const CHAT_PIN_OVERSCAN_PX = 1600;
  * Content-aware row estimate so tall assistant answers (diagrams, tables)
  * are not first measured as ~120px (that underestimates scrollHeight and
  * makes mid-document look "near bottom" → stick bounce).
+ *
+ * Media: fixed-size attachment thumbs (~64px) and inline video cards (~240px)
+ * are not reflected in `contentLength` — include them so first paint is closer
+ * to final height (fewer remeasure snaps near the bottom).
  */
 export function estimateChatRowHeight(input: {
   contentLength?: number;
   thoughtLength?: number;
   role?: string;
+  /** Message attachment cards (images/files under the bubble). */
+  attachmentCount?: number;
+  /** True when body likely embeds a local video card. */
+  hasVideoCard?: boolean;
 }): number {
   const content = Math.max(0, input.contentLength ?? 0);
   const thought = Math.max(0, input.thoughtLength ?? 0);
@@ -38,7 +46,12 @@ export function estimateChatRowHeight(input: {
   // ~42 chars/line in the bubble, ~20px line height, role chrome.
   const lines = Math.ceil((content + thought * 0.5) / 42);
   const chrome = role === "user" ? 72 : role === "tool" ? 40 : 96;
-  const raw = chrome + lines * 20;
+  const atts = Math.max(0, input.attachmentCount ?? 0);
+  // 64px thumbs + gap, wrap ~5 per row in a ~360px stack.
+  const attRows = atts > 0 ? Math.ceil(atts / 5) : 0;
+  const attBoost = attRows * 74;
+  const videoBoost = input.hasVideoCard ? 260 : 0;
+  const raw = chrome + lines * 20 + attBoost + videoBoost;
   return Math.min(
     CHAT_MAX_ROW_ESTIMATE_PX,
     Math.max(CHAT_DEFAULT_ROW_ESTIMATE_PX, raw),
@@ -156,20 +169,30 @@ export function computeChatVirtualWindow(input: {
 /**
  * When a row above the viewport changes height, shift scrollTop so the
  * visible content does not jump (critical when reading history / escaped).
+ *
+ * Important: only shift when the **entire previous row** was above the
+ * viewport top. A tall media-heavy assistant often *straddles* the viewport
+ * (row top above, images/video at the bottom still on screen). Treating
+ * “row top above fold” as “fully above” used to add the full growth delta
+ * and yank the reader toward the bottom (flash-snap near end of chat).
  */
 export function scrollTopAfterHeightChange(input: {
   scrollTop: number;
   rowOffset: number;
+  /** Committed height before this remeasure (used for straddle detection). */
+  prevHeight: number;
   delta: number;
   pinToBottom: boolean;
 }): number {
   if (input.pinToBottom) return input.scrollTop;
   if (input.delta === 0) return input.scrollTop;
-  // Only rows strictly above the current viewport top affect scroll position.
-  // Rows that straddle or sit below the viewport top expand downward — do not
-  // shift scrollTop (that is what made tall diagram rows "bounce").
-  if (input.rowOffset >= input.scrollTop - 0.5) return input.scrollTop;
-  return Math.max(0, input.scrollTop + input.delta);
+  const oldBottom = input.rowOffset + Math.max(0, input.prevHeight);
+  // Entire old row was strictly above the viewport → keep anchor stable.
+  if (oldBottom <= input.scrollTop + 0.5) {
+    return Math.max(0, input.scrollTop + input.delta);
+  }
+  // Straddles or sits at/below the fold — grow/shrink in place.
+  return input.scrollTop;
 }
 
 /**
@@ -181,7 +204,14 @@ export function shouldCommitRowHeight(
   prev: number | undefined,
   next: number,
 ): boolean {
-  if (next <= 0) return false;
+  if (next < 0) return false;
+  // Zero-height rows are real (inlined tool_step journal spacers). Rejecting
+  // them left phantom scroll space (~40–120px × N tools) and pin-to-bottom
+  // only mounted empty spacers — chat history looked blank after long agent
+  // turns (tools woven into the assistant, rows still in the array).
+  if (next === 0) {
+    return prev == null || prev !== 0;
+  }
   if (prev == null) return true;
   const delta = next - prev;
   if (Math.abs(delta) < 2) return false;
