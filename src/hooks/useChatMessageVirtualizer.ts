@@ -117,6 +117,9 @@ export function useChatMessageVirtualizer(
     const est = estimateRef.current?.(index);
     // Allow 0 (inlined tool_step spacers). Previously `est > 0` fell through to
     // DEFAULT and invented ~120px × N empty rows after long agent turns.
+    // Allow explicit 0 estimates (collapsed/inlined tool rows). Previously
+    // `est > 0` forced a 120px default for 0, which inflated long tool tails
+    // and made the pin window land on a blank viewport.
     if (est != null && Number.isFinite(est) && est >= 0) return est;
     return CHAT_DEFAULT_ROW_ESTIMATE_PX;
   }, []);
@@ -149,27 +152,44 @@ export function useChatMessageVirtualizer(
       pinToBottom: pin,
       forceIndices: forceRef.current,
     });
-    setWin((prev) =>
-      prev.start === next.start &&
-      prev.end === next.end &&
-      prev.paddingTop === next.paddingTop &&
-      prev.paddingBottom === next.paddingBottom &&
-      prev.totalHeight === next.totalHeight
-        ? prev
-        : next,
-    );
+    setWin((prev) => {
+      if (
+        prev.start === next.start &&
+        prev.end === next.end &&
+        prev.paddingTop === next.paddingTop &&
+        prev.paddingBottom === next.paddingBottom &&
+        prev.totalHeight === next.totalHeight
+      ) {
+        return prev;
+      }
+      // Ignore sub-pixel spacer thrash while pinned (same window range) —
+      // that was a main source of bottom flash / bounce.
+      if (
+        pin &&
+        prev.start === next.start &&
+        prev.end === next.end &&
+        Math.abs(prev.paddingTop - next.paddingTop) < 3 &&
+        Math.abs(prev.paddingBottom - next.paddingBottom) < 3 &&
+        Math.abs(prev.totalHeight - next.totalHeight) < 6
+      ) {
+        return prev;
+      }
+      return next;
+    });
   }, [virtualized, itemCount, viewportRef, isPinnedRef, getHeight]);
 
   const recompute = useCallback(() => {
     // Coalesce measure storms (tall markdown + table reflow) into one window update.
+    // When pinned, use a longer debounce so spacer remeasure does not flash the tail.
     if (recomputeTimerRef.current != null) {
       clearTimeout(recomputeTimerRef.current);
     }
+    const delay = isPinnedRef.current ? 72 : 32;
     recomputeTimerRef.current = setTimeout(() => {
       recomputeTimerRef.current = null;
       recomputeNow();
-    }, 32);
-  }, [recomputeNow]);
+    }, delay);
+  }, [recomputeNow, isPinnedRef]);
 
   // Scroll → recompute (immediate so window tracks the gesture).
   useEffect(() => {
@@ -248,6 +268,19 @@ export function useChatMessageVirtualizer(
 
       heightsRef.current.set(key, nextH);
       recompute();
+      // Stay glued to the true bottom after a height commit while pinned —
+      // avoids one-frame empty play at the tail then snap-back flash.
+      if (pin && viewport) {
+        requestAnimationFrame(() => {
+          if (!isPinnedRef.current || !viewportRef.current) return;
+          const v = viewportRef.current;
+          const top = Math.max(0, v.scrollHeight - v.clientHeight);
+          if (Math.abs(v.scrollTop - top) > 0.5) {
+            ignoreScrollAdjustRef.current = true;
+            v.scrollTop = top;
+          }
+        });
+      }
     },
     [virtualized, itemCount, getHeight, isPinnedRef, viewportRef, recompute],
   );
