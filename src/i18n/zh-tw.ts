@@ -845,6 +845,11 @@ export const zhTW: Record<MessageKey, string> = {
   "settings.notifySound": "通知時播放提示音",
   "settings.notifySoundDesc":
     "顯示桌面通知時播放一聲輕柔短音。預設關閉。",
+  "settings.notifyQuietHours": "免打擾時段",
+  "settings.notifyQuietHoursDesc":
+    "在本地時間窗口內不發送桌面通知（例如夜間）。應用程式內提示不受影響。",
+  "settings.notifyQuietHoursStart": "開始",
+  "settings.notifyQuietHoursEnd": "結束",
   "settings.prefsScope": "模型與權限記憶範圍",
   "settings.prefsScopeDesc":
     "全域：所有對話共用。專案：依工作區記憶。對話：僅目前聊天。",

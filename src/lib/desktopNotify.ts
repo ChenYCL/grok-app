@@ -5,6 +5,7 @@
  */
 
 import { loadNotifySoundPref, playNotifySound } from "./notifySound";
+import { isQuietHoursActive } from "./notifyQuietHours";
 
 export type DesktopNotifyOptions = {
   title: string;
@@ -114,8 +115,10 @@ export function focusAppFromNotification(): void {
  * Show a system notification when permission is granted.
  * Returns true only when a Notification object was constructed.
  * Click focuses the app window when possible.
+ * Suppressed entirely during quiet hours (localStorage pref).
  */
 export function showDesktopNotification(opts: DesktopNotifyOptions): boolean {
+  if (isQuietHoursActive()) return false;
   if (notificationSupport() !== "granted") return false;
   if (!opts.force && typeof document !== "undefined" && document.hasFocus()) {
     // App is in front — prefer in-app toast; caller can pass force=true.

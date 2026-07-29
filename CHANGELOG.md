@@ -14,6 +14,7 @@ See `docs/llm-wiki/release.md`.
 ### Added
 
 - **Stop all** busy sessions from the Tasks panel (confirm, then cancel every streaming / awaiting-permission / connecting session; toast with success count)
+- **Quiet hours** for desktop notifications (Settings → General → App): optional local start/end window that suppresses system notifies overnight or any range; in-app toasts unchanged
 - **Composer draft stats**: muted character and word count when the input is non-empty (Settings → General → Composer; on by default)
 - **Relative message timestamps** (Settings → Appearance → Interface): absolute weekday+clock or relative (“2 minutes ago”); relative labels refresh about once a minute
 - Optional short notification sound when a desktop notification is shown (Settings → General → App; default off)
@@ -34,6 +35,7 @@ See `docs/llm-wiki/release.md`.
 **中文 · 新增**
 
 - 任务面板「全部停止」忙碌会话（确认后批量取消； toast 成功数）
+- 桌面通知免打扰时段（设置 → 通用 → 应用；本地起止时间）
 - 输入框草稿字数/词数（可关，默认开）
 - 消息时间戳可选相对时间（约每分钟刷新）
 - 可选通知提示音（桌面通知时轻柔短音，默认关）

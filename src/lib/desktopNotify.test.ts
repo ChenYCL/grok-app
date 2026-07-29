@@ -7,6 +7,10 @@ import {
   showDesktopNotification,
 } from "./desktopNotify";
 import * as notifySound from "./notifySound";
+import {
+  NOTIFY_QUIET_HOURS_STORAGE_KEY,
+  saveNotifyQuietHoursPref,
+} from "./notifyQuietHours";
 
 const originalNotification = globalThis.Notification;
 
@@ -16,6 +20,13 @@ afterEach(() => {
   } else {
     // @ts-expect-error cleanup mock
     delete globalThis.Notification;
+  }
+  try {
+    if (typeof localStorage !== "undefined") {
+      localStorage.removeItem(NOTIFY_QUIET_HOURS_STORAGE_KEY);
+    }
+  } catch {
+    /* ignore */
   }
   vi.restoreAllMocks();
 });
@@ -163,6 +174,19 @@ describe("desktopNotify", () => {
     vi.spyOn(notifySound, "loadNotifySoundPref").mockReturnValue(false);
     expect(showDesktopNotification({ title: "x", force: true })).toBe(true);
     expect(play).not.toHaveBeenCalled();
+  it("suppresses notifications during quiet hours", () => {
+    if (typeof localStorage === "undefined") return;
+    const { ctor } = mockNotification("granted");
+    // Cover full day so the test is independent of wall clock.
+    // start === end is zero-width; use overnight that always includes "now"
+    // by setting start=now-1h style is flaky — use 00:00–23:59 same-day.
+    saveNotifyQuietHoursPref({
+      enabled: true,
+      start: "00:00",
+      end: "23:59",
+    });
+    expect(showDesktopNotification({ title: "x", force: true })).toBe(false);
+    expect(ctor).not.toHaveBeenCalled();
   });
 
   it("focusAppFromNotification does not throw without Tauri", () => {

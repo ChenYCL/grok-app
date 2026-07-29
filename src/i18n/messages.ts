@@ -879,6 +879,11 @@ const en = {
   "settings.notifySound": "Play a sound with notifications",
   "settings.notifySoundDesc":
     "Play a short soft beep when a desktop notification is shown. Off by default.",
+  "settings.notifyQuietHours": "Quiet hours",
+  "settings.notifyQuietHoursDesc":
+    "Suppress desktop notifications during this local time window (for example overnight). In-app toasts are unchanged.",
+  "settings.notifyQuietHoursStart": "Start",
+  "settings.notifyQuietHoursEnd": "End",
   "settings.prefsScope": "Remember model & permission at",
   "settings.prefsScopeDesc":
     "Global: all chats. Project: each workspace. Session: only the current chat.",
@@ -3129,6 +3134,11 @@ const zh: Record<MessageKey, string> = {
   "settings.notifySound": "通知时播放提示音",
   "settings.notifySoundDesc":
     "显示桌面通知时播放一声轻柔短音。默认关闭。",
+  "settings.notifyQuietHours": "免打扰时段",
+  "settings.notifyQuietHoursDesc":
+    "在本地时间窗口内不发送桌面通知（例如夜间）。应用内提示不受影响。",
+  "settings.notifyQuietHoursStart": "开始",
+  "settings.notifyQuietHoursEnd": "结束",
   "settings.prefsScope": "模型与权限记忆范围",
   "settings.prefsScopeDesc":
     "全局：所有对话共用。项目：按工作区记忆。会话：仅当前聊天。",
