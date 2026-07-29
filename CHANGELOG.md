@@ -18,6 +18,7 @@ See `docs/llm-wiki/release.md`.
 - **Always-on-top window** (Settings → General → App): keep the desktop window above other apps (`localStorage` `grok.windowAlwaysOnTop`, default off; Tauri `setAlwaysOnTop`)
 - **Always-show back-to-bottom** control (Settings → Appearance → Interface; off by default): keep the scroll-to-latest button visible even when already at the bottom (`localStorage` `grok.backBottomAlways`)
 - **Remember last Settings section + tab**: generic open (⌘/Ctrl+,, gear, slash `/settings`, tray Settings…) restores the last place via `localStorage` `grok.settingsLastRoute`; explicit deep links and section jumps are unchanged
+- **Zen mode** (Settings → Appearance → Interface + top-bar control): hide left sidebar and right files pane to maximize chat; remembers prior collapse state and restores on exit (`localStorage` `grok.zenMode`). Escape still stops generation and does not exit zen.
 - **Copy last assistant reply** shortcut: ⌘/Ctrl+Shift+C (same action as slash `/copy`; listed in shortcuts catalog)
 - **Collapse all activity** in the current chat: top-bar control and session menu item collapse expanded tool phases and finished thinking blocks (streaming thoughts stay open)
 - **Sidebar session relative time** (Settings → Appearance → Interface; on by default): muted “2 hours ago” meta on session rows from `updatedAt`, refreshed about once a minute (`localStorage` `grok.sidebarShowRelativeTime`)
@@ -52,6 +53,7 @@ See `docs/llm-wiki/release.md`.
 - 窗口置顶（设置 → 通用 → 应用；`localStorage` `grok.windowAlwaysOnTop`，默认关）
 - **始终显示回到底部**（设置 → 外观 → 界面；默认关）：即使已在底部也保留「回到最新」按钮（`localStorage` `grok.backBottomAlways`）
 - **记住上次设置分区与页签**：通用入口（⌘/Ctrl+,、齿轮、斜杠 `/settings`、托盘设置）恢复上次位置（`localStorage` `grok.settingsLastRoute`）；显式深链与指定分区跳转不变
+- **禅模式**（设置 → 外观 → 界面 + 顶栏按钮）：隐藏左侧会话栏与右侧文件栏以最大化对话；记住进入前的折叠状态，关闭时恢复（`localStorage` `grok.zenMode`）。Esc 仍停止生成，不退出禅模式
 - 复制上一条助手回复快捷键：⌘/Ctrl+Shift+C（与 `/copy` 相同；快捷键列表已收录）
 - 当前对话「收起全部活动」：顶栏按钮与会话菜单可收起已展开的工具阶段与已完成思考（流式思考保持展开）
 - 侧栏会话相对更新时间（设置 → 外观 → 界面；默认开；约每分钟刷新）
