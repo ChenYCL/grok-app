@@ -13,6 +13,13 @@ See `docs/llm-wiki/release.md`.
 
 ### Fixed
 
+- **Agent PATH parity (GUI vs Terminal)**: enrich spawn PATH with existing conda/mamba/miniforge, pyenv, nvm, asdf, volta roots so tools like `conda` resolve without loading shell rc (Dock launches)
+
+**中文 · 修复**
+
+- Agent PATH 对齐终端：spawn 时注入本机已存在的 conda/mamba/pyenv/nvm 等目录，减少「终端能跑、客户端 bash 失败」
+
+
 - **Stuck busy spinner (#225)**: late stream tokens no longer re-promote settled chats to streaming; empty-run, hard stream-stall end, and idle recycle settle the sidebar liveMap
 
 ### Added

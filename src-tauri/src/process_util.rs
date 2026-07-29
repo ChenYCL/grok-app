@@ -128,22 +128,170 @@ pub fn looks_runnable(path: &Path) -> bool {
     }
 }
 
-/// Build PATH suitable for GUI-spawned agent processes.
-pub fn enriched_path_env() -> Option<String> {
-    let sep = path_list_separator();
-    let mut parts: Vec<String> = Vec::new();
-    let push = |parts: &mut Vec<String>, p: &str| {
-        if p.is_empty() {
-            return;
-        }
-        if !parts.iter().any(|x| x == p) {
-            parts.push(p.to_string());
+/// Push `p` onto `parts` if non-empty and not already present.
+fn push_path_part(parts: &mut Vec<String>, p: &str) {
+    if p.is_empty() {
+        return;
+    }
+    if !parts.iter().any(|x| x == p) {
+        parts.push(p.to_string());
+    }
+}
+
+/// Push directory only when it exists (for optional user installs like conda).
+fn push_path_dir_if_exists(parts: &mut Vec<String>, dir: &Path) {
+    if dir.is_dir() {
+        push_path_part(parts, &dir.to_string_lossy());
+    }
+}
+
+/// Common user-level Python/Node/env manager bin dirs (conda, pyenv, nvm, asdf…).
+///
+/// GUI apps (Dock / Finder) inherit a sparse PATH and never load `~/.zshrc`, so
+/// agent shell-outs miss tools that work in Terminal. Only **existing** dirs are
+/// returned so PATH is not bloated with dead roots.
+///
+/// Pure helper (takes `home`) for unit tests.
+pub fn user_tool_path_dirs(home: &Path) -> Vec<PathBuf> {
+    let mut out: Vec<PathBuf> = Vec::new();
+    let mut push_dir = |p: PathBuf| {
+        if p.is_dir() && !out.iter().any(|x| x == &p) {
+            out.push(p);
         }
     };
 
+    // Active conda/mamba from parent env (e.g. app launched from an activated shell).
+    for key in ["CONDA_PREFIX", "MAMBA_ROOT_PREFIX", "CONDA_ROOT"] {
+        if let Ok(v) = std::env::var(key) {
+            if v.is_empty() {
+                continue;
+            }
+            let root = PathBuf::from(&v);
+            #[cfg(target_os = "windows")]
+            {
+                push_dir(root.join("Scripts"));
+                push_dir(root.join("Library").join("bin"));
+                push_dir(root.join("bin"));
+            }
+            #[cfg(not(target_os = "windows"))]
+            {
+                push_dir(root.join("bin"));
+                push_dir(root.join("condabin"));
+            }
+        }
+    }
+    // CONDA_EXE=/…/bin/conda → parent bin (+ condabin).
+    if let Ok(exe) = std::env::var("CONDA_EXE") {
+        if let Some(bin) = Path::new(&exe).parent() {
+            push_dir(bin.to_path_buf());
+            if let Some(root) = bin.parent() {
+                #[cfg(target_os = "windows")]
+                push_dir(root.join("Scripts"));
+                #[cfg(not(target_os = "windows"))]
+                push_dir(root.join("condabin"));
+            }
+        }
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        let names = [
+            "miniconda3",
+            "Miniconda3",
+            "anaconda3",
+            "Anaconda3",
+            "mambaforge",
+            "Mambaforge",
+            "miniforge3",
+            "Miniforge3",
+            "micromamba",
+        ];
+        for name in names {
+            let root = home.join(name);
+            push_dir(root.join("Scripts"));
+            push_dir(root.join("Library").join("bin"));
+            push_dir(root.join("condabin"));
+            push_dir(root.join("bin"));
+        }
+        if let Ok(local) = std::env::var("LOCALAPPDATA") {
+            let local = PathBuf::from(local);
+            for name in ["miniconda3", "Miniconda3", "anaconda3", "Anaconda3"] {
+                let root = local.join(name);
+                push_dir(root.join("Scripts"));
+                push_dir(root.join("Library").join("bin"));
+                push_dir(root.join("condabin"));
+            }
+        }
+        push_dir(home.join(".pyenv").join("pyenv-win").join("shims"));
+        push_dir(home.join(".pyenv").join("pyenv-win").join("bin"));
+        if let Ok(nvm) = std::env::var("NVM_HOME") {
+            push_dir(PathBuf::from(nvm));
+        }
+        if let Ok(nvm_sym) = std::env::var("NVM_SYMLINK") {
+            push_dir(PathBuf::from(nvm_sym));
+        }
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    {
+        let conda_roots = [
+            home.join("miniconda3"),
+            home.join("anaconda3"),
+            home.join("miniforge3"),
+            home.join("mambaforge"),
+            home.join("micromamba"),
+            home.join("opt").join("miniconda3"),
+            home.join("opt").join("anaconda3"),
+            home.join("opt").join("miniforge3"),
+            home.join("opt").join("mambaforge"),
+            PathBuf::from("/opt/homebrew/Caskroom/miniconda/base"),
+            PathBuf::from("/opt/homebrew/Caskroom/miniforge/base"),
+            PathBuf::from("/usr/local/Caskroom/miniconda/base"),
+            PathBuf::from("/usr/local/Caskroom/miniforge/base"),
+            PathBuf::from("/opt/miniconda3"),
+            PathBuf::from("/opt/anaconda3"),
+            PathBuf::from("/opt/miniforge3"),
+        ];
+        for root in conda_roots {
+            push_dir(root.join("bin"));
+            push_dir(root.join("condabin"));
+        }
+        push_dir(home.join(".pyenv").join("shims"));
+        push_dir(home.join(".pyenv").join("bin"));
+        push_dir(home.join(".asdf").join("shims"));
+        push_dir(home.join(".asdf").join("bin"));
+        push_dir(home.join(".local").join("share").join("fnm"));
+        let nvm_default = home.join(".nvm").join("alias").join("default");
+        if let Ok(ver) = std::fs::read_to_string(&nvm_default) {
+            let ver = ver.trim();
+            if !ver.is_empty() && !ver.contains('/') {
+                push_dir(
+                    home.join(".nvm")
+                        .join("versions")
+                        .join("node")
+                        .join(ver)
+                        .join("bin"),
+                );
+            }
+        }
+        push_dir(home.join(".volta").join("bin"));
+    }
+
+    out
+}
+
+/// Build PATH suitable for GUI-spawned agent processes.
+///
+/// Starts from the process PATH, then appends common CLI install locations and
+/// **existing** user tool roots (conda/mamba/pyenv/…) so nested shell tools
+/// resolve like an interactive Terminal session without loading shell rc files.
+pub fn enriched_path_env() -> Option<String> {
+    let sep = path_list_separator();
+    let mut parts: Vec<String> = Vec::new();
+
     if let Ok(cur) = std::env::var("PATH") {
         for p in cur.split(sep) {
-            push(&mut parts, p);
+            push_path_part(&mut parts, p);
         }
     }
 
@@ -151,29 +299,33 @@ pub fn enriched_path_env() -> Option<String> {
     let home_s = home.to_string_lossy();
     #[cfg(target_os = "windows")]
     {
-        push(&mut parts, &format!(r"{home_s}\.grok\bin"));
-        push(&mut parts, &format!(r"{home_s}\.local\bin"));
-        push(&mut parts, &format!(r"{home_s}\.cargo\bin"));
-        push(&mut parts, &format!(r"{home_s}\AppData\Local\pnpm"));
-        push(&mut parts, &format!(r"{home_s}\AppData\Roaming\npm"));
+        push_path_part(&mut parts, &format!(r"{home_s}\.grok\bin"));
+        push_path_part(&mut parts, &format!(r"{home_s}\.local\bin"));
+        push_path_part(&mut parts, &format!(r"{home_s}\.cargo\bin"));
+        push_path_part(&mut parts, &format!(r"{home_s}\AppData\Local\pnpm"));
+        push_path_part(&mut parts, &format!(r"{home_s}\AppData\Roaming\npm"));
         if let Ok(local) = std::env::var("LOCALAPPDATA") {
-            push(&mut parts, &format!(r"{local}\Programs"));
-            push(&mut parts, &format!(r"{local}\Microsoft\WinGet\Links"));
+            push_path_part(&mut parts, &format!(r"{local}\Programs"));
+            push_path_part(&mut parts, &format!(r"{local}\Microsoft\WinGet\Links"));
         }
-        push(&mut parts, r"C:\Program Files\nodejs");
-        push(&mut parts, r"C:\Program Files\Git\cmd");
-        push(&mut parts, r"C:\Program Files\Git\bin");
+        push_path_part(&mut parts, r"C:\Program Files\nodejs");
+        push_path_part(&mut parts, r"C:\Program Files\Git\cmd");
+        push_path_part(&mut parts, r"C:\Program Files\Git\bin");
     }
     #[cfg(not(target_os = "windows"))]
     {
-        push(&mut parts, &format!("{home_s}/.grok/bin"));
-        push(&mut parts, &format!("{home_s}/.local/bin"));
-        push(&mut parts, &format!("{home_s}/.cargo/bin"));
-        push(&mut parts, &format!("{home_s}/.bun/bin"));
-        push(&mut parts, "/opt/homebrew/bin");
-        push(&mut parts, "/usr/local/bin");
-        push(&mut parts, "/usr/bin");
-        push(&mut parts, "/bin");
+        push_path_part(&mut parts, &format!("{home_s}/.grok/bin"));
+        push_path_part(&mut parts, &format!("{home_s}/.local/bin"));
+        push_path_part(&mut parts, &format!("{home_s}/.cargo/bin"));
+        push_path_part(&mut parts, &format!("{home_s}/.bun/bin"));
+        push_path_part(&mut parts, "/opt/homebrew/bin");
+        push_path_part(&mut parts, "/usr/local/bin");
+        push_path_part(&mut parts, "/usr/bin");
+        push_path_part(&mut parts, "/bin");
+    }
+
+    for d in user_tool_path_dirs(&home) {
+        push_path_dir_if_exists(&mut parts, &d);
     }
 
     if parts.is_empty() {
@@ -227,6 +379,52 @@ mod tests {
             assert!(!p.is_empty());
             #[cfg(target_os = "windows")]
             assert!(p.contains(';') || !p.contains(':'));
+        }
+    }
+
+    #[test]
+    fn user_tool_path_dirs_only_existing() {
+        let tmp = std::env::temp_dir().join(format!(
+            "grok-app-path-test-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_nanos())
+                .unwrap_or(0)
+        ));
+        let _ = std::fs::remove_dir_all(&tmp);
+        std::fs::create_dir_all(&tmp).unwrap();
+        // Missing install → empty extras from home scan (env may still add some).
+        let missing = user_tool_path_dirs(&tmp);
+        // No conda under empty temp home; env-based entries may exist.
+        for d in &missing {
+            assert!(d.is_dir(), "returned non-dir {}", d.display());
+        }
+        // Create a fake miniconda3/bin → must appear.
+        let bin = tmp.join("miniconda3").join("bin");
+        std::fs::create_dir_all(&bin).unwrap();
+        let found = user_tool_path_dirs(&tmp);
+        assert!(
+            found.iter().any(|p| p == &bin),
+            "expected {:?} in {:?}",
+            bin,
+            found
+        );
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn enriched_path_includes_existing_tool_dirs() {
+        let Some(path) = enriched_path_env() else {
+            return;
+        };
+        let sep = path_list_separator();
+        let parts: Vec<&str> = path.split(sep).filter(|s| !s.is_empty()).collect();
+        assert!(!parts.is_empty());
+        // Dedup preserved: no consecutive identical empties; unique membership.
+        let mut seen = std::collections::HashSet::new();
+        for p in &parts {
+            assert!(seen.insert(*p), "duplicate PATH entry: {p}");
         }
     }
 

@@ -1756,7 +1756,6 @@ dependencies = [
 [[package]]
 name = "grok-app"
 version = "0.2.1"
-version = "0.2.0"
 dependencies = [
  "arboard",
  "axum",
