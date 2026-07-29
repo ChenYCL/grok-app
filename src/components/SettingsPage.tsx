@@ -4250,7 +4250,6 @@ function ShortcutsSettingsPanel({
     };
   }, []);
   const groups = useMemo(() => shortcutsByGroup(sendPref), [sendPref]);
-  const groups = useMemo(() => shortcutsByGroup(), []);
   const filteredGroups = useMemo(
     () =>
       filterShortcutGroups(filterQuery, groups, (key) =>

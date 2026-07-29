@@ -1182,55 +1182,7 @@ export default function App() {
         tag === "input" ||
         tag === "textarea" ||
         !!target?.isContentEditable;
-      const key = e.key.toLowerCase();
-      // In-chat find — open even while typing in the composer.
-      if (key === "f" && !e.shiftKey) {
-        e.preventDefault();
-        shortcutHandlersRef.current.openChatFind();
-        return;
-      }
-      if (key === "k") {
-        e.preventDefault();
-        setShowSearch(true);
-        return;
-      }
-      if (key === "/") {
-        e.preventDefault();
-        setShowShortcuts((v) => !v);
-        return;
-      }
-      if (key === "," && !typing) {
-        e.preventDefault();
-        shortcutHandlersRef.current.openSettings();
-        return;
-      }
-      if (key === "n" && !typing) {
-        e.preventDefault();
-        shortcutHandlersRef.current.newChat();
-        return;
-      }
-      if (key === "d" && e.shiftKey) {
-        e.preventDefault();
-        setShowDoctor(true);
-        return;
-      }
-      // Copy last assistant reply: Cmd/Ctrl+Shift+C (always; not plain Cmd+C).
-      if (key === "c" && e.shiftKey) {
-        e.preventDefault();
-        shortcutHandlersRef.current.copyLastReply();
-        return;
-      }
-      // Toggle left session sidebar (desktop rail / phone drawer): Cmd/Ctrl+B.
-      if (key === "b" && !e.shiftKey) {
-        e.preventDefault();
-        shortcutHandlersRef.current.toggleSidebar();
-        return;
-      }
-      // Live Voice: Cmd/Ctrl+Shift+V (works while typing in composer).
-      if (key === "v" && e.shiftKey) {
-        e.preventDefault();
-        shortcutHandlersRef.current.startLiveVoice();
-        return;
+      // Catalog mod chords — single registry in shortcuts.ts (keep Esc / Ctrl+Space special-cased above).
       const matched = matchGlobalShortcut({
         key: e.key.toLowerCase(),
         mod: e.metaKey || e.ctrlKey,
@@ -1261,6 +1213,9 @@ export default function App() {
           return;
         case "copyLastReply":
           shortcutHandlersRef.current.copyLastReply();
+          return;
+        case "toggleSidebar":
+          shortcutHandlersRef.current.toggleSidebar();
           return;
         case "liveVoice":
           shortcutHandlersRef.current.startLiveVoice();

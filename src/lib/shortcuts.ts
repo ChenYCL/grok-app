@@ -14,6 +14,7 @@ export type ShortcutId =
   | "send"
   | "stop"
   | "copyLastReply"
+  | "toggleSidebar"
   | "settings"
   | "help"
   | "doctor"
@@ -43,20 +44,19 @@ export const SHORTCUT_IDS: readonly ShortcutId[] = [
   "send",
   "stop",
   "copyLastReply",
+  "toggleSidebar",
   "settings",
   "help",
   "doctor",
   "liveVoice",
   "dictation",
-] as const;
+];
 
 /**
- * Shipped shortcuts that already work in the app.
- * Keep this list honest — only document real bindings.
- * Single source for the help modal and Settings → Keyboard.
+ * Catalog of shortcuts shown in Settings → Keyboard / help.
  *
- * The `send` row stores the product default (plain Enter). Live display
- * patches via {@link sendShortcutDisplay} / optional send pref args.
+ * `send` display strings are patched via {@link sendShortcutDisplay} / optional
+ * send pref args (Settings → Composer Enter vs mod-enter).
  */
 export const SHORTCUTS: ShortcutRow[] = [
   {
@@ -103,18 +103,18 @@ export const SHORTCUTS: ShortcutRow[] = [
     win: "Ctrl Shift C",
   },
   {
-    id: "settings",
-    labelKey: "shortcuts.settings",
-    group: "navigation",
-    mac: "⌘ ,",
-    win: "Ctrl ,",
-  },
-  {
     id: "toggleSidebar",
     labelKey: "shortcuts.toggleSidebar",
     group: "navigation",
     mac: "⌘ B",
     win: "Ctrl B",
+  },
+  {
+    id: "settings",
+    labelKey: "shortcuts.settings",
+    group: "navigation",
+    mac: "⌘ ,",
+    win: "Ctrl ,",
   },
   {
     id: "help",
@@ -162,6 +162,7 @@ export const GLOBAL_MOD_SHORTCUT_IDS = [
   "doctor",
   "liveVoice",
   "copyLastReply",
+  "toggleSidebar",
 ] as const satisfies readonly ShortcutId[];
 
 export type GlobalModShortcutId = (typeof GLOBAL_MOD_SHORTCUT_IDS)[number];
@@ -187,7 +188,8 @@ export type ShortcutChordContext = {
  * Behavior preserved from the previous inline App handler:
  * - findInChat works while typing
  * - newChat / settings skip when typing
- * - search / help / doctor / copyLastReply / liveVoice work while typing
+ * - search / help / doctor / copyLastReply / liveVoice / toggleSidebar work while typing
+ *   (toggleSidebar works while typing so composers do not block layout chords)
  */
 export function matchGlobalShortcut(
   ctx: ShortcutChordContext,
@@ -210,6 +212,8 @@ export function matchGlobalShortcut(
   if (key === "d" && shift) return "doctor";
   if (key === "c" && shift) return "copyLastReply";
   if (key === "v" && shift) return "liveVoice";
+  // Toggle sidebar: mod+b without shift.
+  if (key === "b" && !shift) return "toggleSidebar";
 
   return null;
 }
@@ -222,14 +226,11 @@ export const SHORTCUT_GROUP_ORDER: ShortcutGroup[] = [
   "input",
 ];
 
-/**
- * Display chords for the Send shortcut based on Composer send-key preference.
- * - `enter`: mac `↵`, win `Enter`
- * - `mod-enter`: mac `⌘ ↵`, win `Ctrl Enter`
- */
-export function sendShortcutDisplay(
-  pref: ComposerSendKeyPref = "enter",
-): { mac: string; win: string } {
+/** Display keys for the Send catalog row from the composer send-key preference. */
+export function sendShortcutDisplay(pref: ComposerSendKeyPref): {
+  mac: string;
+  win: string;
+} {
   if (pref === "mod-enter") {
     return { mac: "⌘ ↵", win: "Ctrl Enter" };
   }
@@ -260,7 +261,12 @@ function withSendPref(
 export function shortcutsForPlatform(
   platform: "mac" | "win" | "other",
   sendPref?: ComposerSendKeyPref,
-): Array<{ id: string; labelKey: string; keys: string; group: ShortcutGroup }> {
+): Array<{
+  id: ShortcutId;
+  labelKey: string;
+  keys: string;
+  group: ShortcutGroup;
+}> {
   const pref = resolveSendPref(sendPref);
   return SHORTCUTS.map((s) => {
     const row = withSendPref(s, pref);
@@ -271,13 +277,6 @@ export function shortcutsForPlatform(
       keys: platform === "mac" ? row.mac : row.win,
     };
   });
-): Array<{ id: ShortcutId; labelKey: string; keys: string; group: ShortcutGroup }> {
-  return SHORTCUTS.map((s) => ({
-    id: s.id,
-    labelKey: s.labelKey,
-    group: s.group,
-    keys: platform === "mac" ? s.mac : s.win,
-  }));
 }
 
 /** Detect host OS for highlighting the active column in Settings. */
@@ -294,37 +293,29 @@ export function detectShortcutPlatform(): "mac" | "win" | "other" {
 
 export function shortcutsByGroup(
   sendPref?: ComposerSendKeyPref,
-): Array<{
-  group: ShortcutGroup;
-  rows: ShortcutRow[];
-}> {
+): Array<{ group: ShortcutGroup; rows: ShortcutRow[] }> {
   const pref = resolveSendPref(sendPref);
   return SHORTCUT_GROUP_ORDER.map((group) => ({
     group,
     rows: SHORTCUTS.filter((s) => s.group === group).map((s) =>
       withSendPref(s, pref),
     ),
-  })).filter((g) => g.rows.length > 0);
+  }));
 }
 
-/**
- * Append Latin aliases for display glyphs (cmd for ⌘, shift for ⇧, …).
- * Original key strings stay intact so queries like "⌘ k" still match.
- */
+/** Normalize catalog key glyphs for free-text search (⌘ → cmd, etc.). */
 function keySearchExtra(keys: string): string {
-  const parts: string[] = [];
-  if (keys.includes("⌘")) parts.push("cmd", "command", "meta");
-  if (keys.includes("⇧")) parts.push("shift");
-  if (keys.includes("↵")) parts.push("enter", "return");
-  if (keys.includes("⌥")) parts.push("option", "alt");
-  if (keys.includes("⌃")) parts.push("control", "ctrl");
-  return parts.join(" ");
+  return keys
+    .replace(/⌘/g, "cmd command")
+    .replace(/⇧/g, "shift")
+    .replace(/↵|Return/gi, "enter return")
+    .replace(/Esc/gi, "escape esc")
+    .toLowerCase();
 }
 
 /**
- * Filter shortcut rows by free-text query.
- * Case-insensitive match on id, localized label (via `t`), and mac/win key strings
- * (including expanded tokens like "cmd" for ⌘). Empty/whitespace query → all rows.
+ * Filter catalog rows by free-text query against id, translated label, and key chords.
+ * Empty / whitespace query returns all rows (same reference order).
  */
 export function filterShortcutRows(
   query: string,
@@ -334,7 +325,7 @@ export function filterShortcutRows(
   const q = query.trim().toLowerCase();
   if (!q) return rows;
   return rows.filter((row) => {
-    const label = t(row.labelKey).toLowerCase();
+    const label = t(row.labelKey);
     const haystack = [
       row.id,
       label,
