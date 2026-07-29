@@ -440,6 +440,8 @@ const en = {
   "composer.voiceErr.auth": "Speech auth failed. Sign in again under Account.",
   "composer.voiceErr.timeout": "Speech request timed out. Try a shorter clip.",
   "composer.voiceErr.unknown": "Voice dictation failed.",
+  "composer.draftStats": "{words} words · {chars} chars",
+  "composer.draftStatsAria": "Draft length: {words} words, {chars} characters",
   "composer.send": "Send",
   "composer.queue": "Queue — send after this turn (this chat)",
   "composer.queued":
@@ -880,6 +882,9 @@ const en = {
     "Choose whether plain Enter sends, or inserts a newline (⌘/Ctrl+Enter sends instead). Applies to the chat composer.",
   "settings.composerSendKey.enter": "Enter to send (Shift+Enter for newline)",
   "settings.composerSendKey.modEnter": "⌘/Ctrl+Enter to send (Enter for newline)",
+  "settings.composerDraftStats": "Draft character count",
+  "settings.composerDraftStatsDesc":
+    "Show a muted character and word count when the chat input is not empty.",
   "settings.composerSpellcheck": "Spellcheck",
   "settings.composerSpellcheckDesc":
     "Underline misspelled words in the chat input using the system dictionary. Off by default.",
@@ -921,6 +926,11 @@ const en = {
   "settings.messageTimestamps": "Show message timestamps",
   "settings.messageTimestampsDesc":
     "Show the send time next to message actions. Turn off for a cleaner transcript.",
+  "settings.messageTimeFormat": "Timestamp format",
+  "settings.messageTimeFormatDesc":
+    "Absolute shows weekday and clock time; relative shows \"2 minutes ago\" and refreshes about once a minute.",
+  "settings.messageTimeFormat.absolute": "Absolute",
+  "settings.messageTimeFormat.relative": "Relative",
   "settings.skin": "Color skin",
   "settings.skinDesc": "Accent and surface palette (works with light/dark)",
   "settings.skin.default": "Default",
@@ -2684,6 +2694,8 @@ const zh: Record<MessageKey, string> = {
   "composer.voiceErr.auth": "语音鉴权失败，请在账户中重新登录。",
   "composer.voiceErr.timeout": "转写超时，请缩短说话时长后重试。",
   "composer.voiceErr.unknown": "语音输入失败。",
+  "composer.draftStats": "{words} 词 · {chars} 字",
+  "composer.draftStatsAria": "草稿长度：{words} 词，{chars} 字",
   "composer.send": "发送",
   "composer.queue": "入队 — 本轮结束后发送（当前会话）",
   "composer.queued": "已入当前会话队列 — 留在本会话且本轮结束后自动发送",
@@ -3111,6 +3123,9 @@ const zh: Record<MessageKey, string> = {
   "settings.composerSpellcheck": "拼写检查",
   "settings.composerSpellcheckDesc":
     "在对话输入框用系统词典标出拼写错误。默认关闭。",
+  "settings.composerDraftStats": "草稿字数",
+  "settings.composerDraftStatsDesc":
+    "输入框有内容时以低调样式显示字符数与词数。",
   "settings.theme": "主题",
   "settings.themeDesc": "跟随系统，或固定浅色 / 深色",
   "settings.themeSystem": "跟随系统",
@@ -3147,6 +3162,11 @@ const zh: Record<MessageKey, string> = {
   "settings.messageTimestamps": "显示消息时间戳",
   "settings.messageTimestampsDesc":
     "在消息操作区显示发送时间。关闭后对话更简洁。",
+  "settings.messageTimeFormat": "时间戳格式",
+  "settings.messageTimeFormatDesc":
+    "绝对时间显示星期与钟点；相对时间为「2 分钟前」，约每分钟刷新。",
+  "settings.messageTimeFormat.absolute": "绝对",
+  "settings.messageTimeFormat.relative": "相对",
   "settings.skin": "配色皮肤",
   "settings.skinDesc": "强调色与表面色板（可与浅/深色叠加）",
   "settings.skin.default": "默认",

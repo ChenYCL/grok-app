@@ -47,6 +47,12 @@ import {
   MESSAGE_TIMESTAMPS_CHANGE_EVENT,
   saveMessageTimestampsPref,
 } from "@/lib/messageTimestampsPref";
+import {
+  loadMessageTimeFormatPref,
+  MESSAGE_TIME_FORMAT_CHANGE_EVENT,
+  saveMessageTimeFormatPref,
+  type MessageTimeFormat,
+} from "@/lib/messageTimeFormatPref";
 import { loadConfirmExternalLinksPref } from "@/lib/externalLinkPref";
 import { WallpaperMediaLayer } from "@/components/WallpaperMediaLayer";
 import {
@@ -276,6 +282,11 @@ import {
   shouldSendOnKeydown,
   type ComposerSendKeyPref,
 } from "@/lib/composerSendKey";
+import {
+  COMPOSER_DRAFT_STATS_CHANGED_EVENT,
+  computeDraftStats,
+  loadComposerDraftStatsPref,
+} from "@/lib/draftStats";
 import {
   COMPOSER_SPELLCHECK_CHANGED_EVENT,
   loadComposerSpellcheck,
@@ -622,6 +633,9 @@ export default function App() {
   );
   const [showMessageTimestamps, setShowMessageTimestamps] = useState(() =>
     loadMessageTimestampsPref(localStorage),
+  );
+  const [messageTimeFormat, setMessageTimeFormat] = useState<MessageTimeFormat>(
+    () => loadMessageTimeFormatPref(localStorage),
   );
   const [layout, setLayout] = useState(() => {
     // Platform UA is available at first paint; reserve window-control inset on Win.
@@ -1202,6 +1216,16 @@ export default function App() {
     window.addEventListener(COMPOSER_SEND_KEY_CHANGED_EVENT, reload);
     return () =>
       window.removeEventListener(COMPOSER_SEND_KEY_CHANGED_EVENT, reload);
+  }, []);
+  /** Muted char/word count on non-empty drafts (localStorage; Settings → Composer). */
+  const [showComposerDraftStats, setShowComposerDraftStats] = useState(() =>
+    loadComposerDraftStatsPref(),
+  );
+  useEffect(() => {
+    const reload = () => setShowComposerDraftStats(loadComposerDraftStatsPref());
+    window.addEventListener(COMPOSER_DRAFT_STATS_CHANGED_EVENT, reload);
+    return () =>
+      window.removeEventListener(COMPOSER_DRAFT_STATS_CHANGED_EVENT, reload);
   }, []);
   /** Browser spellcheck on main composer (localStorage; Settings → Composer). */
   const [composerSpellcheck, setComposerSpellcheck] = useState(() =>
@@ -2235,6 +2259,21 @@ export default function App() {
     window.addEventListener(MESSAGE_TIMESTAMPS_CHANGE_EVENT, onChange);
     return () =>
       window.removeEventListener(MESSAGE_TIMESTAMPS_CHANGE_EVENT, onChange);
+  }, []);
+
+  // Message time format absolute/relative (localStorage; Settings change event).
+  useEffect(() => {
+    const onChange = (ev: Event) => {
+      const detail = (ev as CustomEvent<unknown>).detail;
+      if (detail === "absolute" || detail === "relative") {
+        setMessageTimeFormat(detail);
+        return;
+      }
+      setMessageTimeFormat(loadMessageTimeFormatPref(localStorage));
+    };
+    window.addEventListener(MESSAGE_TIME_FORMAT_CHANGE_EVENT, onChange);
+    return () =>
+      window.removeEventListener(MESSAGE_TIME_FORMAT_CHANGE_EVENT, onChange);
   }, []);
 
   // Phone layout flag: mirror client + ≤820px only (desktop ≥821px unchanged).
@@ -7525,6 +7564,12 @@ export default function App() {
     [contextUsage, messages],
   );
 
+  /** Char/word counts for the muted composer counter (hidden when empty). */
+  const composerDraftStats = useMemo(
+    () => computeDraftStats(draft),
+    [draft],
+  );
+
   const sessionTasks = useMemo(
     () => collectSessionTasks(messages),
     [messages],
@@ -9862,6 +9907,11 @@ export default function App() {
             saveMessageTimestampsPref(v, localStorage);
             setShowMessageTimestamps(v);
           }}
+          messageTimeFormat={messageTimeFormat}
+          onMessageTimeFormat={(v) => {
+            saveMessageTimeFormatPref(v, localStorage);
+            setMessageTimeFormat(v);
+          }}
           skin={skin}
           onSkin={applySkinChoice}
           wallpaperUrl={wallpaperUrl}
@@ -11651,6 +11701,7 @@ export default function App() {
             findHitMessageIds={showChatFind ? chatFindHitIds : undefined}
             findActive={showChatFind ? chatFindActive : null}
             showTimestamps={showMessageTimestamps}
+            messageTimeFormat={messageTimeFormat}
           />
           </UiErrorBoundary>
 
@@ -12444,6 +12495,21 @@ export default function App() {
                       }}
                     />
                   </>
+                ) : null}
+                {showComposerDraftStats &&
+                !composerDraftStats.empty ? (
+                  <span
+                    className="composer__draft-stats"
+                    aria-label={tr("composer.draftStatsAria", {
+                      words: String(composerDraftStats.words),
+                      chars: String(composerDraftStats.chars),
+                    })}
+                  >
+                    {tr("composer.draftStats", {
+                      words: String(composerDraftStats.words),
+                      chars: String(composerDraftStats.chars),
+                    })}
+                  </span>
                 ) : null}
                 <span className="composer__spacer" />
                 {/* Dictation (mic) + Live Voice (headphones): official auth only. */}

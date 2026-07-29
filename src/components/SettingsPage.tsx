@@ -91,6 +91,10 @@ import {
   type ComposerSendKeyPref,
 } from "@/lib/composerSendKey";
 import {
+  loadComposerDraftStatsPref,
+  saveComposerDraftStatsPref,
+} from "@/lib/draftStats";
+import {
   loadComposerSpellcheck,
   saveComposerSpellcheck,
 } from "@/lib/composerSpellcheck";
@@ -131,6 +135,10 @@ import {
   saveMessageActionsVisibility,
   type MessageActionsVisibility,
 } from "@/lib/messageActionsPref";
+import {
+  MESSAGE_TIME_FORMATS,
+  type MessageTimeFormat,
+} from "@/lib/messageTimeFormatPref";
 import {
   SETTINGS_NAV,
   buildSettingsHash,
@@ -189,6 +197,9 @@ export interface SettingsPageProps {
   /** Show message timestamps in chat action rows (localStorage). */
   showMessageTimestamps?: boolean;
   onShowMessageTimestamps?: (v: boolean) => void;
+  /** Absolute vs relative message time labels (localStorage). */
+  messageTimeFormat?: MessageTimeFormat;
+  onMessageTimeFormat?: (v: MessageTimeFormat) => void;
   /** Color skin pack on top of light/dark (optional for older callers). */
   skin?: ThemeSkinId;
   onSkin?: (v: ThemeSkinId) => void;
@@ -702,6 +713,8 @@ export function SettingsPage({
   onTheme,
   showMessageTimestamps = true,
   onShowMessageTimestamps,
+  messageTimeFormat = "absolute",
+  onMessageTimeFormat,
   skin = "default",
   onSkin,
   wallpaperUrl = null,
@@ -814,6 +827,10 @@ export function SettingsPage({
   /** Browser spellcheck on main composer — localStorage only. */
   const [composerSpellcheck, setComposerSpellcheck] = useState(() =>
     loadComposerSpellcheck(),
+  );
+  /** Show muted char/word count on non-empty drafts — localStorage only. */
+  const [composerDraftStats, setComposerDraftStats] = useState(() =>
+    loadComposerDraftStatsPref(),
   );
   /** Pending scroll target after search jump / deep link. */
   const pendingAnchorRef = useRef<string | null>(null);
@@ -1622,6 +1639,31 @@ export function SettingsPage({
                     saveComposerSpellcheck(next);
                   }}
                   ariaLabel={t("settings.composerSpellcheck")}
+                />
+              </div>
+              <div
+                className={
+                  "settings-row" +
+                  rowHighlight("settings-anchor-composerDraftStats")
+                }
+                id="settings-anchor-composerDraftStats"
+              >
+                <div className="settings-row__text">
+                  <div className="settings-row__label">
+                    {t("settings.composerDraftStats")}
+                  </div>
+                  <div className="settings-row__desc">
+                    {t("settings.composerDraftStatsDesc")}
+                  </div>
+                </div>
+                <UiCheck
+                  checked={composerDraftStats}
+                  onChange={() => {
+                    const next = !composerDraftStats;
+                    setComposerDraftStats(next);
+                    saveComposerDraftStatsPref(next);
+                  }}
+                  ariaLabel={t("settings.composerDraftStats")}
                 />
               </div>
             </div>
@@ -2837,6 +2879,45 @@ export function SettingsPage({
                         }
                         ariaLabel={t("settings.messageTimestamps")}
                       />
+                    </div>
+                  </div>
+                ) : null}
+                {onMessageTimeFormat ? (
+                  <div
+                    className={
+                      "settings-card" +
+                      rowHighlight("settings-anchor-messageTimeFormat")
+                    }
+                    id="settings-anchor-messageTimeFormat"
+                  >
+                    <div className="settings-row">
+                      <div className="settings-row__text">
+                        <SettingsLabelWithTip
+                          label={t("settings.messageTimeFormat")}
+                          tip={t("settings.messageTimeFormatDesc")}
+                        />
+                      </div>
+                      <div
+                        className="settings-seg"
+                        role="radiogroup"
+                        aria-label={t("settings.messageTimeFormat")}
+                      >
+                        {MESSAGE_TIME_FORMATS.map((mode) => (
+                          <button
+                            key={mode}
+                            type="button"
+                            role="radio"
+                            aria-checked={messageTimeFormat === mode}
+                            className={
+                              "settings-seg__btn" +
+                              (messageTimeFormat === mode ? " is-on" : "")
+                            }
+                            onClick={() => onMessageTimeFormat(mode)}
+                          >
+                            {t(`settings.messageTimeFormat.${mode}`)}
+                          </button>
+                        ))}
+                      </div>
                     </div>
                   </div>
                 ) : null}
