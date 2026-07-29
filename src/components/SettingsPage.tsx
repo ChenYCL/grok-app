@@ -2161,7 +2161,9 @@ export function SettingsPage({
                 />
               </div>
               <div
-                className={"settings-row" + rowHighlight("settings-anchor-sessionDataMode")}
+                className={
+                  "settings-row" + rowHighlight("settings-anchor-sessionDataMode")
+                }
                 id="settings-anchor-sessionDataMode"
               >
                 <div className="settings-row__text">
@@ -2170,6 +2172,9 @@ export function SettingsPage({
                   </div>
                   <div className="settings-row__desc">
                     {t("settings.sessionDataModeDesc")}
+                  </div>
+                  <div className="settings-row__desc">
+                    {t("settings.sessionModeHelp")}
                   </div>
                 </div>
                 <Select
@@ -2184,9 +2189,6 @@ export function SettingsPage({
                   ]}
                 />
               </div>
-              <p className="settings-card__note" role="note">
-                {t("settings.sessionModeHelp")}
-              </p>
               {sessionDataMode === "shared" ? (
                 <CliSessionsPanel
                   t={t}
