@@ -2300,6 +2300,8 @@ export function SettingsPage({
                     onChange={() => onNotifySound(!notifySound)}
                     ariaLabel={t("settings.notifySound")}
                   />
+                </div>
+              ) : null}
               <div
                 className={
                   "settings-row" +

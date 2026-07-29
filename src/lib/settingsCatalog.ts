@@ -556,6 +556,9 @@ export const SETTINGS_ENTRIES: readonly SettingsEntry[] = [
       "notify",
       "通知声音",
       "提示音",
+    ],
+  },
+  {
     id: "general.notifyQuietHours",
     section: "general",
     tab: "app",

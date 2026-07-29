@@ -174,6 +174,8 @@ describe("desktopNotify", () => {
     vi.spyOn(notifySound, "loadNotifySoundPref").mockReturnValue(false);
     expect(showDesktopNotification({ title: "x", force: true })).toBe(true);
     expect(play).not.toHaveBeenCalled();
+  });
+
   it("suppresses notifications during quiet hours", () => {
     if (typeof localStorage === "undefined") return;
     const { ctor } = mockNotification("granted");
