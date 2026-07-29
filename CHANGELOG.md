@@ -11,6 +11,10 @@ See `docs/llm-wiki/release.md`.
 
 ## [Unreleased]
 
+### Fixed
+
+- **Stuck busy spinner (#225)**: late stream tokens no longer re-promote settled chats to streaming; empty-run, hard stream-stall end, and idle recycle settle the sidebar liveMap
+
 ### Added
 
 - **Toggle sidebar** shortcut: ⌘/Ctrl+B (desktop rail and phone drawer; listed in shortcuts catalog)
@@ -45,6 +49,10 @@ See `docs/llm-wiki/release.md`.
 - **Shortcuts catalog / help**: **Send** row reflects the Composer send-key preference (Enter vs ⌘/Ctrl+Enter) and updates live when the pref changes
 - **Shortcuts catalog**: default **Send** shows plain Enter (not ⌘/Ctrl+Enter); note points to Settings → Composer for mod-enter
 - **Shortcut registry**: App global mod chords (`⌘/Ctrl+K`, `F`, `N`, `,`, `/`, `⇧D`, `⇧C`, `⇧V`) match via `matchGlobalShortcut` in the same module as the help/Settings catalog (Esc-stop and Ctrl+Space dictation stay special-cased)
+
+**中文 · 修复**
+
+- 侧栏「执行中」卡住（#225）：已结束回合不被延迟 stream 分片重新标忙；空回合 / 硬超时 / idle 回收时结算 liveMap
 
 **中文 · 新增**
 

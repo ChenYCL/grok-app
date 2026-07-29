@@ -208,6 +208,7 @@ import {
 import {
   busySessionIds,
   projectHostIntoLiveMap,
+  mayPromoteStreamingFromStreamChunk,
   projectLiveToolFromMessages,
   markSawModelOutput,
   markSawToolActivity,
@@ -2813,15 +2814,25 @@ export default function App() {
             // Progress clears stall banner (I06).
             setStreamStall(null);
           }
-          // Keep multi-session busy projection alive for non-focused sessions.
-          if (chunk.sessionId && (chunk.text || !chunk.done)) {
-            setLiveMap((prev) =>
-              projectHostIntoLiveMap(prev, {
-                sessionId: chunk.sessionId!,
+          // Multi-session busy projection for in-progress streams only.
+          // Never re-promote a turn already settled to ready/idle (late/coalesced
+          // tokens after host ready — issue #225 stuck sidebar spinner).
+          if (chunk.sessionId && !chunk.done) {
+            setLiveMap((prev) => {
+              const sid = chunk.sessionId!;
+              if (
+                !mayPromoteStreamingFromStreamChunk(prev[sid], {
+                  done: chunk.done,
+                })
+              ) {
+                return prev;
+              }
+              return projectHostIntoLiveMap(prev, {
+                sessionId: sid,
                 state: "streaming",
                 streamingMessageId: chunk.messageId ?? null,
-              }),
-            );
+              });
+            });
           }
           if (chunk.done && chunk.sessionId) {
             setLiveMap((prev) =>
@@ -3030,6 +3041,12 @@ export default function App() {
             "session://idle_recycled",
             (p) => {
               if (cancelled || !p) return;
+              // Process gone — never leave sidebar spinner on a recycled chat.
+              if (p.sessionId) {
+                setLiveMap((prev) =>
+                  settleStoppedSessionInLiveMap(prev, p.sessionId!),
+                );
+              }
               if (p.reason === "capacity") {
                 // Housekeeping, NOT a failure: Host reclaimed an *idle parked*
                 // chat so this spawn could proceed. Reporting it as "process
@@ -3084,6 +3101,31 @@ export default function App() {
             toolCount?: number;
           }>("session://turn_empty_run", (p) => {
             if (cancelled || !p) return;
+            // Host already force-ended; ensure sidebar liveMap leaves busy even if
+            // stream `done` / state event was lost (issue #225).
+            if (p.sessionId) {
+              setLiveMap((prev) =>
+                settleStoppedSessionInLiveMap(prev, p.sessionId!),
+              );
+              if (p.sessionId === viewingSessionIdRef.current) {
+                setSession((prev) =>
+                  settleStoppedSessionSnapshot(prev, p.sessionId!),
+                );
+                setLiveHost((prev) => {
+                  const next = settleStoppedSessionSnapshot(prev, p.sessionId!);
+                  liveHostRef.current = next;
+                  return next;
+                });
+                setMessages((prev) => {
+                  if (!prev.some((m) => m.streaming)) return prev;
+                  const next = prev.map((m) =>
+                    m.streaming ? { ...m, streaming: false } : m,
+                  );
+                  messagesBySessionRef.current.set(p.sessionId!, next);
+                  return next;
+                });
+              }
+            }
             if (
               p.sessionId &&
               p.sessionId !== viewingSessionIdRef.current
@@ -3185,6 +3227,30 @@ export default function App() {
           }>("session://stream_stall_hard_end", (p) => {
             if (cancelled || !p) return;
             setStreamStall(null);
+            // Host force-ended the turn (runtime Ready already emitted). Settle
+            // client projection so the sidebar cannot stay spinning if a late
+            // stream token races after this event (issue #225).
+            if (p.sessionId) {
+              setLiveMap((prev) =>
+                settleStoppedSessionInLiveMap(prev, p.sessionId!),
+              );
+              if (p.sessionId === viewingSessionIdRef.current) {
+                setSession((prev) =>
+                  settleStoppedSessionSnapshot(prev, p.sessionId!),
+                );
+                setLiveHost((prev) => {
+                  const next = settleStoppedSessionSnapshot(prev, p.sessionId!);
+                  liveHostRef.current = next;
+                  return next;
+                });
+                setMessages((prev) => {
+                  if (!prev.some((m) => m.streaming)) return prev;
+                  return prev.map((m) =>
+                    m.streaming ? { ...m, streaming: false } : m,
+                  );
+                });
+              }
+            }
             if (
               !p.sessionId ||
               p.sessionId === viewingSessionIdRef.current

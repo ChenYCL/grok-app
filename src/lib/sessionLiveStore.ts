@@ -289,6 +289,33 @@ export function setTerminalReason(
   return upsertLiveSnapshot(map, patch, nowMs);
 }
 
+
+/**
+ * Whether an in-progress stream chunk may set/keep a session busy in liveMap.
+ *
+ * Late (coalesced / reordered) tokens after a turn already settled to
+ * ready/idle/error/disconnected must not re-stick the sidebar spinner
+ * (issue #225 multi-turn stuck "executing").
+ *
+ * Terminal `done` chunks settle via a separate ready projection — they never
+ * promote busy here.
+ */
+export function mayPromoteStreamingFromStreamChunk(
+  current: SessionLiveSnapshot | undefined,
+  chunk: { done?: boolean | null },
+): boolean {
+  if (chunk.done) return false;
+  if (!current) return true;
+  if (
+    current.state === "ready" ||
+    current.state === "idle" ||
+    current.state === "disconnected"
+  ) {
+    return false;
+  }
+  return true;
+}
+
 /** Session ids that should show sidebar busy/permission indicator. */
 export function busySessionIds(map: SessionLiveMap): Set<string> {
   const out = new Set<string>();

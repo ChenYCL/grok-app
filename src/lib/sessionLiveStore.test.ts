@@ -11,6 +11,7 @@ import {
   settleStoppedSessionInLiveMap,
   settleStoppedSessionSnapshot,
   upsertLiveSnapshot,
+  mayPromoteStreamingFromStreamChunk,
 } from "./sessionLiveStore";
 import type { ChatMessage } from "./session";
 
@@ -217,4 +218,38 @@ describe("sessionLiveStore", () => {
     expect(map.s!.sawModelOutput).toBe(true);
     expect(map.s!.sawToolActivity).toBe(true);
   });
+
+  it("does not re-promote settled sessions from late stream tokens (#225)", () => {
+    expect(mayPromoteStreamingFromStreamChunk(undefined, { done: false })).toBe(
+      true,
+    );
+    expect(mayPromoteStreamingFromStreamChunk(undefined, { done: true })).toBe(
+      false,
+    );
+    const streaming = projectHostIntoLiveMap(
+      {},
+      { sessionId: "a", state: "streaming" },
+    ).a!;
+    expect(mayPromoteStreamingFromStreamChunk(streaming, { done: false })).toBe(
+      true,
+    );
+    expect(mayPromoteStreamingFromStreamChunk(streaming, { done: true })).toBe(
+      false,
+    );
+    const ready = projectHostIntoLiveMap(
+      {},
+      { sessionId: "a", state: "ready" },
+    ).a!;
+    expect(mayPromoteStreamingFromStreamChunk(ready, { done: false })).toBe(
+      false,
+    );
+    const idle = projectHostIntoLiveMap(
+      {},
+      { sessionId: "a", state: "idle" },
+    ).a!;
+    expect(mayPromoteStreamingFromStreamChunk(idle, { done: false })).toBe(
+      false,
+    );
+  });
+
 });
