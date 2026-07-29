@@ -297,6 +297,9 @@ export interface SettingsPageProps {
   /** Start app at OS login (default off). */
   launchAtLogin?: boolean;
   onLaunchAtLogin?: (v: boolean) => void;
+  /** Keep main window above others (localStorage; default off). */
+  windowAlwaysOnTop?: boolean;
+  onWindowAlwaysOnTop?: (v: boolean) => void;
   /** Desktop notification when an agent turn finishes (default on). */
   notifyOnTurnDone?: boolean;
   onNotifyOnTurnDone?: (v: boolean) => void;
@@ -818,6 +821,8 @@ export function SettingsPage({
   onCloseToTray,
   launchAtLogin = false,
   onLaunchAtLogin,
+  windowAlwaysOnTop = false,
+  onWindowAlwaysOnTop,
   notifyOnTurnDone = true,
   onNotifyOnTurnDone,
   notifyOnPermission = true,
@@ -2308,6 +2313,29 @@ export function SettingsPage({
                     checked={!!launchAtLogin}
                     onChange={() => onLaunchAtLogin(!launchAtLogin)}
                     ariaLabel={t("settings.launchAtLogin")}
+                  />
+                </div>
+              ) : null}
+              {onWindowAlwaysOnTop ? (
+                <div
+                  className={
+                    "settings-row" +
+                    rowHighlight("settings-anchor-windowAlwaysOnTop")
+                  }
+                  id="settings-anchor-windowAlwaysOnTop"
+                >
+                  <div className="settings-row__text">
+                    <div className="settings-row__label">
+                      {t("settings.windowAlwaysOnTop")}
+                    </div>
+                    <div className="settings-row__desc">
+                      {t("settings.windowAlwaysOnTopDesc")}
+                    </div>
+                  </div>
+                  <UiCheck
+                    checked={!!windowAlwaysOnTop}
+                    onChange={() => onWindowAlwaysOnTop(!windowAlwaysOnTop)}
+                    ariaLabel={t("settings.windowAlwaysOnTop")}
                   />
                 </div>
               ) : null}

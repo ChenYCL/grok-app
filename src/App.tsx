@@ -69,6 +69,11 @@ import {
   saveNotifySoundPref,
 } from "@/lib/notifySound";
 import {
+  applyWindowAlwaysOnTop,
+  loadWindowAlwaysOnTopPref,
+  saveWindowAlwaysOnTopPref,
+} from "@/lib/windowAlwaysOnTop";
+import {
   loadPermissionTimeoutSec,
   PERMISSION_TIMEOUT_CHANGE_EVENT,
   permissionTimeoutRemainingSec,
@@ -692,6 +697,9 @@ export default function App() {
   }, []);
   const [notifySound, setNotifySound] = useState(() =>
     loadNotifySoundPref(localStorage),
+  );
+  const [windowAlwaysOnTop, setWindowAlwaysOnTop] = useState(() =>
+    loadWindowAlwaysOnTopPref(localStorage),
   );
   const [layout, setLayout] = useState(() => {
     // Platform UA is available at first paint; reserve window-control inset on Win.
@@ -1768,6 +1776,11 @@ export default function App() {
       unlisten?.();
     };
   }, [useCustomWindowChrome]);
+
+  // Apply always-on-top from localStorage on boot (and whenever state is set).
+  useEffect(() => {
+    void applyWindowAlwaysOnTop(windowAlwaysOnTop);
+  }, [windowAlwaysOnTop]);
 
   const applyComposerPrefs = useCallback(
     (prefs: api.ComposerPrefs, catalog: ModelOption[]) => {
@@ -10512,6 +10525,11 @@ export default function App() {
                 setLaunchAtLogin(!v);
               }),
             );
+          }}
+          windowAlwaysOnTop={windowAlwaysOnTop}
+          onWindowAlwaysOnTop={(v) => {
+            saveWindowAlwaysOnTopPref(v, localStorage);
+            setWindowAlwaysOnTop(v);
           }}
           notifyOnTurnDone={notifyOnTurnDone}
           onNotifyOnTurnDone={(v) => {
