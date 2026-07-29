@@ -45,6 +45,8 @@ const releaseConfig = {
     macOS: {
       minimumSystemVersion: "11.0",
     },
+    // `app` is required so Tauri emits signed .app.tar.gz for macOS silent update.
+    // Installer targets stay in base tauri.conf.json (dmg / nsis / appimage / …).
     createUpdaterArtifacts: true,
   },
   plugins: {

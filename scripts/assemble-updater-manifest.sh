@@ -11,6 +11,11 @@
 # Requires: gh, jq. Optional: GH_TOKEN for higher rate limit.
 set -euo pipefail
 
+# Capture script dir BEFORE any cd — WORK is under /tmp and relative
+# `scripts/…` paths break once we leave the repo root.
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+
 TAG="${TAG:-}"
 REPO="${REPO:-${GITHUB_REPOSITORY:-}}"
 ROLLING_TAG="${ROLLING_TAG:-grok-desktop-latest}"
@@ -179,7 +184,6 @@ for t in "${TRIPLES[@]}"; do
   echo "  $t"
 done
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 bash "$SCRIPT_DIR/generate-latest-json.sh" "$VERSION" "${TRIPLES[@]}" > latest.json
 echo "==> latest.json"
 cat latest.json

@@ -127,6 +127,8 @@ jobs:
           } >> "$GITHUB_ENV"
 
       # Detect updater secrets without failing unsigned community builds.
+      # Half-config (only one of pubkey/privkey) is a maintainer error — hard-fail
+      # so we never ship "looks signed" installers without in-app update enabled.
       - name: Detect updater secrets
         id: updater
         shell: bash
@@ -135,12 +137,19 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
         run: |
           set -euo pipefail
-          if [[ -n "${GROK_UPDATER_PUBLIC_KEY:-}" && -n "${TAURI_SIGNING_PRIVATE_KEY:-}" ]]; then
+          has_pub=0
+          has_priv=0
+          [[ -n "${GROK_UPDATER_PUBLIC_KEY:-}" ]] && has_pub=1
+          [[ -n "${TAURI_SIGNING_PRIVATE_KEY:-}" ]] && has_priv=1
+          if [[ $has_pub -eq 1 && $has_priv -eq 1 ]]; then
             echo "enabled=true" >> "$GITHUB_OUTPUT"
             echo "Updater secrets present — enabling in-app auto-update artifacts"
-          else
+          elif [[ $has_pub -eq 0 && $has_priv -eq 0 ]]; then
             echo "enabled=false" >> "$GITHUB_OUTPUT"
-            echo "Updater secrets missing — building without createUpdaterArtifacts"
+            echo "Updater secrets missing — building without createUpdaterArtifacts (GitHub manual path)"
+          else
+            echo "::error::Partial updater secrets: GROK_UPDATER_PUBLIC_KEY=${has_pub} TAURI_SIGNING_PRIVATE_KEY=${has_priv}. Set both or neither."
+            exit 1
           fi
 
       - name: Write release config (updater)
@@ -177,6 +186,52 @@ jobs:
           args: ${{ matrix.args }}${{ steps.updater.outputs.enabled == 'true' && ' --config src-tauri/tauri.release.conf.json' || '' }}
           # We assemble a multi-platform latest.json in assemble-updater-manifest.
           includeUpdaterJson: false
+
+      # macOS: tauri-action often uploads only the .dmg. Silent update needs the
+      # signed .app.tar.gz (+ .sig) with arch in the filename for assemble-updater.
+      - name: Upload macOS updater archives
+        if: startsWith(matrix.platform, 'macos') && steps.updater.outputs.enabled == 'true'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [[ "${{ github.ref_type }}" == "tag" ]]; then
+            TAG="${{ github.ref_name }}"
+          else
+            TAG="v$(python3 -c 'import json; print(json.load(open("package.json"))["version"])')"
+          fi
+          VER="${TAG#v}"
+          if [[ "${{ matrix.args }}" == *aarch64* ]]; then
+            ARCH=aarch64
+            TRIPLE=aarch64-apple-darwin
+          else
+            ARCH=x64
+            TRIPLE=x86_64-apple-darwin
+          fi
+          BUNDLE="src-tauri/target/${TRIPLE}/release/bundle/macos"
+          # Fallback if no --target dir (host arch build).
+          if [[ ! -d "$BUNDLE" ]]; then
+            BUNDLE="src-tauri/target/release/bundle/macos"
+          fi
+          SRC_TAR="$(find "$BUNDLE" -maxdepth 1 -name '*.app.tar.gz' ! -name '*.sig' | head -1 || true)"
+          if [[ -z "$SRC_TAR" || ! -f "$SRC_TAR" ]]; then
+            echo "::error::macOS updater archive missing under $BUNDLE (need bundle target 'app')"
+            ls -la "$BUNDLE" 2>/dev/null || true
+            exit 1
+          fi
+          SRC_SIG="${SRC_TAR}.sig"
+          if [[ ! -f "$SRC_SIG" ]]; then
+            echo "::error::missing signature for $SRC_TAR"
+            exit 1
+          fi
+          OUT_TAR="Grok_${VER}_${ARCH}.app.tar.gz"
+          OUT_SIG="${OUT_TAR}.sig"
+          cp "$SRC_TAR" "$OUT_TAR"
+          cp "$SRC_SIG" "$OUT_SIG"
+          echo "Uploading $OUT_TAR (+ .sig) to $TAG"
+          gh release upload "$TAG" "$OUT_TAR" "$OUT_SIG" --clobber
 
       # 绿色版：免安装 zip（单文件 exe + 说明）。WebView2 仍由系统提供。
       - name: Windows portable zip (绿色版)
@@ -221,11 +276,9 @@ jobs:
           else
             TAG="v$(python3 -c 'import json; print(json.load(open("package.json"))["version"])')"
           fi
-          # Fail soft if this tag has no updater archives (partial rebuild).
-          if ! TAG="$TAG" REPO="$GITHUB_REPOSITORY" bash scripts/assemble-updater-manifest.sh; then
-            echo "::warning::assemble-updater-manifest failed — release installers are still published"
-            exit 0
-          fi
+          # Hard-fail when secrets are present but rolling manifest cannot be built —
+          # otherwise clients stay stuck on the GitHub manual-download path.
+          TAG="$TAG" REPO="$GITHUB_REPOSITORY" bash scripts/assemble-updater-manifest.sh
 
   # Supply-chain floor (NEW-06): one SHA256SUMS over every published asset so
   # users can verify downloads. Runs after all platform builds have uploaded.
