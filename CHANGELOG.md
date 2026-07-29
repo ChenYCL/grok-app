@@ -14,6 +14,32 @@ See `docs/llm-wiki/release.md`.
 ### Added
 
 - Desktop notification when the agent asks a question (`session://ask_user`), gated by the existing “Notify on permission” setting
+- **Shortcuts catalog**: list **Find in conversation** (⌘/Ctrl+F) and **voice dictation** (Ctrl+Space; not Cmd)
+- **Composer spellcheck** (Settings → General → Composer): optional browser spellcheck on the main chat input (off by default)
+- **Session JSON export**: download chat as import-friendly JSON (`{ title, sessionId, exportedAt, messages: [{role,content}] }`) from the session menu; round-trips with existing transcript import
+- **Optional line numbers** on chat fenced code blocks (Settings → Appearance → Interface; default off)
+- **Chat density** (Settings → Appearance → Interface): comfortable (default) or compact transcript spacing — tighter message padding and gaps (`localStorage` `grok.chatDensity`)
+- **Optional confirm before opening external links** from chat markdown (Settings → Appearance → Interface; default off). Desktop opens http(s) via the system browser (`openExternalUrl`) instead of only `target=_blank`.
+- **Sidebar multi-select archive**: Select several chats in the tree and archive them in one confirm (restore remains in Settings → Archived)
+
+### Changed
+
+- **Shortcuts catalog**: default **Send** shows plain Enter (not ⌘/Ctrl+Enter); note points to Settings → Composer for mod-enter
+
+**中文 · 新增**
+
+- Agent 提问桌面通知（复用「需要授权时通知」开关）
+- 快捷键列表：对话内查找（⌘/Ctrl+F）、语音输入（Ctrl+Space）
+- 输入框可选拼写检查（默认关）
+- 会话 JSON 导出（可再导入）
+- 代码块可选行号（默认关）
+- 对话密度：舒适 / 紧凑
+- 聊天外链可选确认后在系统浏览器打开
+- 侧栏多选归档会话
+
+**中文 · 变更**
+
+- 默认发送键展示为 Enter；说明可在设置 → 对话偏好改用 ⌘/Ctrl+Enter
 
 ## [0.2.1] - 2026-07-29
 

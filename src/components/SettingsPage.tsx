@@ -61,6 +61,13 @@ import {
   type ChatFontScale,
 } from "@/lib/chatFontScale";
 import {
+  CHAT_DENSITIES,
+  applyChatDensity,
+  loadChatDensity,
+  saveChatDensity,
+  type ChatDensity,
+} from "@/lib/chatDensity";
+import {
   WallpaperFocusEditor,
   type WallpaperFocusApplyResult,
 } from "@/components/WallpaperFocusEditor";
@@ -83,6 +90,10 @@ import {
   saveComposerSendKeyPref,
   type ComposerSendKeyPref,
 } from "@/lib/composerSendKey";
+import {
+  loadComposerSpellcheck,
+  saveComposerSpellcheck,
+} from "@/lib/composerSpellcheck";
 import type { AccountStatus, DetectedEditor } from "@/lib/api";
 import * as api from "@/lib/api";
 import { AccountPanel } from "@/components/AccountPanel";
@@ -102,9 +113,17 @@ import {
 } from "@/i18n";
 import { useUpdaterContext } from "@/hooks/UpdaterProvider";
 import {
+  loadCodeLineNumbersPref,
+  saveCodeLineNumbersPref,
+} from "@/lib/codeLineNumbersPref";
+import {
   loadCodeWrapPref,
   saveCodeWrapPref,
 } from "@/lib/codeWrapPref";
+import {
+  loadConfirmExternalLinksPref,
+  saveConfirmExternalLinksPref,
+} from "@/lib/externalLinkPref";
 import {
   MESSAGE_ACTIONS_VISIBILITIES,
   applyMessageActionsVisibility,
@@ -792,6 +811,10 @@ export function SettingsPage({
   /** Composer Enter vs ⌘/Ctrl+Enter — localStorage only (no Host settings). */
   const [composerSendKeyPref, setComposerSendKeyPref] =
     useState<ComposerSendKeyPref>(() => loadComposerSendKeyPref());
+  /** Browser spellcheck on main composer — localStorage only. */
+  const [composerSpellcheck, setComposerSpellcheck] = useState(() =>
+    loadComposerSpellcheck(),
+  );
   /** Pending scroll target after search jump / deep link. */
   const pendingAnchorRef = useRef<string | null>(null);
   const [highlightAnchor, setHighlightAnchor] = useState<string | null>(null);
@@ -842,9 +865,28 @@ export function SettingsPage({
     saveChatFontScale(next);
     applyChatFontScale(next);
   }, []);
-/** Chat code-block wrap default — frontend-only localStorage. */
+  /** Chat transcript density — localStorage only (no AppSettings). */
+  const [chatDensity, setChatDensityState] = useState<ChatDensity>(() =>
+    loadChatDensity(),
+  );
+  useEffect(() => {
+    applyChatDensity(loadChatDensity());
+  }, []);
+  const onChatDensity = useCallback((next: ChatDensity) => {
+    setChatDensityState(next);
+    saveChatDensity(next);
+    applyChatDensity(next);
+  }, []);
+  /** Chat code-block wrap default — frontend-only localStorage. */
   const [codeWrapDefault, setCodeWrapDefault] = useState(() =>
     loadCodeWrapPref(),
+  );
+  /** Chat code-block line numbers — frontend-only localStorage. */
+  const [codeLineNumbers, setCodeLineNumbers] = useState(() =>
+    loadCodeLineNumbersPref(),
+  );
+  const [confirmExternalLinks, setConfirmExternalLinks] = useState(() =>
+    loadConfirmExternalLinksPref(),
   );
   /** Message action buttons: hover vs always visible. */
   const [messageActionsVisibility, setMessageActionsVisibilityState] =
@@ -1555,6 +1597,31 @@ export function SettingsPage({
                       label: t("settings.composerSendKey.modEnter"),
                     },
                   ]}
+                />
+              </div>
+              <div
+                className={
+                  "settings-row" +
+                  rowHighlight("settings-anchor-composerSpellcheck")
+                }
+                id="settings-anchor-composerSpellcheck"
+              >
+                <div className="settings-row__text">
+                  <div className="settings-row__label">
+                    {t("settings.composerSpellcheck")}
+                  </div>
+                  <div className="settings-row__desc">
+                    {t("settings.composerSpellcheckDesc")}
+                  </div>
+                </div>
+                <UiCheck
+                  checked={composerSpellcheck}
+                  onChange={() => {
+                    const next = !composerSpellcheck;
+                    setComposerSpellcheck(next);
+                    saveComposerSpellcheck(next);
+                  }}
+                  ariaLabel={t("settings.composerSpellcheck")}
                 />
               </div>
             </div>
@@ -2602,6 +2669,43 @@ export function SettingsPage({
                 <div
                   className={
                     "settings-card" +
+                    rowHighlight("settings-anchor-chatDensity")
+                  }
+                  id="settings-anchor-chatDensity"
+                >
+                  <div className="settings-row">
+                    <div className="settings-row__text">
+                      <SettingsLabelWithTip
+                        label={t("settings.chatDensity")}
+                        tip={t("settings.chatDensityDesc")}
+                      />
+                    </div>
+                    <div
+                      className="settings-seg"
+                      role="radiogroup"
+                      aria-label={t("settings.chatDensity")}
+                    >
+                      {CHAT_DENSITIES.map((density) => (
+                        <button
+                          key={density}
+                          type="button"
+                          role="radio"
+                          aria-checked={chatDensity === density}
+                          className={
+                            "settings-seg__btn" +
+                            (chatDensity === density ? " is-on" : "")
+                          }
+                          onClick={() => onChatDensity(density)}
+                        >
+                          {t(`settings.chatDensity.${density}`)}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+                <div
+                  className={
+                    "settings-card" +
                     rowHighlight("settings-anchor-messageActions")
                   }
                   id="settings-anchor-messageActions"
@@ -2658,6 +2762,56 @@ export function SettingsPage({
                         saveCodeWrapPref(next);
                       }}
                       ariaLabel={t("settings.codeWrapDefault")}
+                    />
+                  </div>
+                </div>
+                <div
+                  className={
+                    "settings-card" +
+                    rowHighlight("settings-anchor-codeLineNumbers")
+                  }
+                  id="settings-anchor-codeLineNumbers"
+                >
+                  <div className="settings-row">
+                    <div className="settings-row__text">
+                      <SettingsLabelWithTip
+                        label={t("settings.codeLineNumbers")}
+                        tip={t("settings.codeLineNumbersDesc")}
+                      />
+                    </div>
+                    <UiCheck
+                      checked={codeLineNumbers}
+                      onChange={() => {
+                        const next = !codeLineNumbers;
+                        setCodeLineNumbers(next);
+                        saveCodeLineNumbersPref(next);
+                      }}
+                      ariaLabel={t("settings.codeLineNumbers")}
+                    />
+                  </div>
+                </div>
+                <div
+                  className={
+                    "settings-card" +
+                    rowHighlight("settings-anchor-confirmExternalLinks")
+                  }
+                  id="settings-anchor-confirmExternalLinks"
+                >
+                  <div className="settings-row">
+                    <div className="settings-row__text">
+                      <SettingsLabelWithTip
+                        label={t("settings.confirmExternalLinks")}
+                        tip={t("settings.confirmExternalLinksDesc")}
+                      />
+                    </div>
+                    <UiCheck
+                      checked={confirmExternalLinks}
+                      onChange={() => {
+                        const next = !confirmExternalLinks;
+                        setConfirmExternalLinks(next);
+                        saveConfirmExternalLinksPref(next);
+                      }}
+                      ariaLabel={t("settings.confirmExternalLinks")}
                     />
                   </div>
                 </div>

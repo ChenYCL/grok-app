@@ -41,6 +41,17 @@ const en = {
   "sidebar.unarchive": "Unarchive",
   "sidebar.showArchived": "Show archived",
   "sidebar.sessionWorking": "Working…",
+  "sidebar.select": "Select",
+  "sidebar.selectedCount": "{n} selected",
+  "sidebar.archiveSelected": "Archive {n}",
+  "sidebar.restoreSelected": "Restore {n}",
+  "sidebar.archiveSelectedTitle": "Archive chats",
+  "sidebar.restoreSelectedTitle": "Restore chats",
+  "sidebar.archiveSelectedConfirm":
+    "Archive {n} chats? You can restore them later from Settings → Archived.",
+  "sidebar.restoreSelectedConfirm": "Restore {n} chats to the sidebar?",
+  "sidebar.archivedToast": "Archived {n} chats",
+  "sidebar.restoredToast": "Restored {n} chats",
   "user.menu": "Account menu",
   "user.theme": "Theme",
   "user.themeLight": "Switch to light",
@@ -699,7 +710,7 @@ const en = {
   "settings.shortcuts.group.diagnostics": "Diagnostics",
   "settings.shortcuts.group.input": "Input",
   "settings.shortcuts.note":
-    "Some chords may be taken by the OS (e.g. input sources). Composer buttons stay available as a fallback.",
+    "Default send is Enter; switch to ⌘/Ctrl+Enter in Settings → Composer. Some chords may be taken by the OS (e.g. input sources).",
   "settings.shortcuts.openHelp": "Open shortcuts help",
   "settings.archived.desc":
     "Chats you archived are listed by project. Select multiple to restore or delete.",
@@ -869,6 +880,9 @@ const en = {
     "Choose whether plain Enter sends, or inserts a newline (⌘/Ctrl+Enter sends instead). Applies to the chat composer.",
   "settings.composerSendKey.enter": "Enter to send (Shift+Enter for newline)",
   "settings.composerSendKey.modEnter": "⌘/Ctrl+Enter to send (Enter for newline)",
+  "settings.composerSpellcheck": "Spellcheck",
+  "settings.composerSpellcheckDesc":
+    "Underline misspelled words in the chat input using the system dictionary. Off by default.",
   "settings.theme": "Theme",
   "settings.themeDesc": "Follow the system, or lock light / dark",
   "settings.themeSystem": "System",
@@ -885,9 +899,20 @@ const en = {
   "settings.chatFontScale.sm": "Small",
   "settings.chatFontScale.md": "Medium",
   "settings.chatFontScale.lg": "Large",
+  "settings.chatDensity": "Chat density",
+  "settings.chatDensityDesc":
+    "Vertical spacing of the conversation transcript (message padding and gaps)",
+  "settings.chatDensity.comfortable": "Comfortable",
+  "settings.chatDensity.compact": "Compact",
   "settings.codeWrapDefault": "Wrap code lines by default",
   "settings.codeWrapDefaultDesc":
     "New chat code blocks start with soft wrap on. You can still toggle wrap on each block.",
+  "settings.codeLineNumbers": "Show line numbers on code blocks",
+  "settings.codeLineNumbersDesc":
+    "Display a line-number gutter on the left of fenced code in chat. Off by default.",
+  "settings.confirmExternalLinks": "Confirm before opening links",
+  "settings.confirmExternalLinksDesc":
+    "Ask before opening http(s) links from chat in your browser. Off by default.",
   "settings.messageActions": "Message actions",
   "settings.messageActionsDesc":
     "Show Copy, Export, Regenerate, and Edit on hover, or keep them always visible (better for trackpads and accessibility)",
@@ -1455,6 +1480,7 @@ const en = {
   "session.exportMdCopy": "Copy",
   "session.exportMdWorking": "Exporting…",
   "session.exportCopied": "Markdown copied to clipboard",
+  "session.exportJson": "Export chat as JSON",
   "session.exportTrace": "Export trace",
   "session.exportTraceDone": "Session trace saved",
   "session.exportTraceFail": "Trace export failed",
@@ -1811,6 +1837,11 @@ const en = {
   "chat.scrollBottom": "Scroll to latest",
   "chat.codeWrap": "Wrap lines",
   "chat.codeUnwrap": "No wrap",
+  "chat.lineNumbers": "Line numbers",
+  "chat.externalLinkConfirmTitle": "Open external link?",
+  "chat.externalLinkConfirmMessage":
+    "You are about to open this link in your browser:\n{url}",
+  "chat.externalLinkOpen": "Open link",
   "composer.effortPanelHint": "Drag to set reasoning depth",
   "automations.menu": "Create automation",
   "automations.menuHint": "Schedule a recurring task",
@@ -2264,6 +2295,17 @@ const zh: Record<MessageKey, string> = {
   "sidebar.unarchive": "取消归档",
   "sidebar.showArchived": "显示已归档",
   "sidebar.sessionWorking": "进行中…",
+  "sidebar.select": "选择",
+  "sidebar.selectedCount": "已选 {n} 项",
+  "sidebar.archiveSelected": "归档 {n}",
+  "sidebar.restoreSelected": "恢复 {n}",
+  "sidebar.archiveSelectedTitle": "归档会话",
+  "sidebar.restoreSelectedTitle": "恢复会话",
+  "sidebar.archiveSelectedConfirm":
+    "确定归档 {n} 个会话？之后可在「设置 → 已归档」中恢复。",
+  "sidebar.restoreSelectedConfirm": "确定将 {n} 个会话恢复到侧栏？",
+  "sidebar.archivedToast": "已归档 {n} 个会话",
+  "sidebar.restoredToast": "已恢复 {n} 个会话",
   "user.menu": "个人中心",
   "user.theme": "主题",
   "user.themeLight": "切换到浅色",
@@ -2899,7 +2941,7 @@ const zh: Record<MessageKey, string> = {
   "settings.shortcuts.group.diagnostics": "诊断",
   "settings.shortcuts.group.input": "输入",
   "settings.shortcuts.note":
-    "部分组合键可能被系统占用（如输入法切换）。输入区按钮仍可作为后备。",
+    "默认 Enter 发送；可在 设置 → 对话偏好 改为 ⌘/Ctrl+Enter。部分组合键可能被系统占用（如输入法切换）。",
   "settings.shortcuts.openHelp": "打开快捷键帮助",
   "settings.archived.desc":
     "已归档的会话按项目分组。可多选后批量还原或删除。",
@@ -3066,6 +3108,9 @@ const zh: Record<MessageKey, string> = {
     "选择 Enter 直接发送，还是 Enter 换行、⌘/Ctrl+Enter 发送。仅作用于对话输入框。",
   "settings.composerSendKey.enter": "Enter 发送（Shift+Enter 换行）",
   "settings.composerSendKey.modEnter": "⌘/Ctrl+Enter 发送（Enter 换行）",
+  "settings.composerSpellcheck": "拼写检查",
+  "settings.composerSpellcheckDesc":
+    "在对话输入框用系统词典标出拼写错误。默认关闭。",
   "settings.theme": "主题",
   "settings.themeDesc": "跟随系统，或固定浅色 / 深色",
   "settings.themeSystem": "跟随系统",
@@ -3081,9 +3126,19 @@ const zh: Record<MessageKey, string> = {
   "settings.chatFontScale.sm": "小",
   "settings.chatFontScale.md": "中",
   "settings.chatFontScale.lg": "大",
+  "settings.chatDensity": "对话密度",
+  "settings.chatDensityDesc": "会话消息区间距（气泡内边距与行距）",
+  "settings.chatDensity.comfortable": "舒适",
+  "settings.chatDensity.compact": "紧凑",
   "settings.codeWrapDefault": "默认自动换行代码",
   "settings.codeWrapDefaultDesc":
     "新的聊天代码块默认开启软换行。仍可在每个代码块上单独切换。",
+  "settings.codeLineNumbers": "代码块显示行号",
+  "settings.codeLineNumbersDesc":
+    "在聊天中的围栏代码块左侧显示行号栏。默认关闭。",
+  "settings.confirmExternalLinks": "打开链接前确认",
+  "settings.confirmExternalLinksDesc":
+    "从聊天打开 http(s) 链接前先询问。默认关闭，减少打扰。",
   "settings.messageActions": "消息操作按钮",
   "settings.messageActionsDesc":
     "复制、导出、重新生成、编辑：悬停显示，或始终可见（触控板与无障碍更友好）",
@@ -3634,6 +3689,7 @@ const zh: Record<MessageKey, string> = {
   "session.exportMdCopy": "复制",
   "session.exportMdWorking": "导出中…",
   "session.exportCopied": "Markdown 已复制到剪贴板",
+  "session.exportJson": "导出会话为 JSON",
   "session.exportTrace": "导出 trace",
   "session.exportTraceDone": "会话 trace 已保存",
   "session.exportTraceFail": "trace 导出失败",
@@ -3979,6 +4035,10 @@ const zh: Record<MessageKey, string> = {
   "chat.scrollBottom": "回到最新",
   "chat.codeWrap": "启用自动换行",
   "chat.codeUnwrap": "取消自动换行",
+  "chat.lineNumbers": "行号",
+  "chat.externalLinkConfirmTitle": "打开外部链接？",
+  "chat.externalLinkConfirmMessage": "即将在浏览器中打开：\n{url}",
+  "chat.externalLinkOpen": "打开链接",
   "composer.effortPanelHint": "拖动设置思考深度",
   "automations.menu": "创建自动化",
   "automations.menuHint": "安排周期任务",
