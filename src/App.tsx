@@ -494,12 +494,16 @@ import {
   type SettingsSectionId,
 } from "@/components/SettingsPage";
 import {
-  SETTINGS_SECTION_IDS,
   buildSettingsHash,
+  isSettingsSectionId,
   parseSettingsHash,
-  resolveTab,
   type SettingsTabId,
 } from "@/lib/settingsCatalog";
+import {
+  loadSettingsLastRoute,
+  resolveOpenSettingsLocation,
+  saveSettingsLastRoute,
+} from "@/lib/settingsLastRoute";
 import {
   accountDisplayName,
   accountInitials,
@@ -3596,20 +3600,32 @@ export default function App() {
     );
   }, []);
 
+  /**
+   * Open Settings at section/tab.
+   * - Omit `section` (generic open: ⌘,, gear, slash /settings, tray Settings…)
+   *   → restore last route when valid, else general.
+   * - Explicit section always wins (palette, deep link, account, errors).
+   * - Persists the resolved route to localStorage for the next generic open.
+   */
   const navigateSettings = useCallback(
-    (section: SettingsSectionId = "general", tab?: string | null) => {
-      const nextTab = resolveTab(section, tab);
-      setSettingsSection(section);
-      setSettingsTab(nextTab);
+    (section?: SettingsSectionId | null, tab?: string | null) => {
+      const loc = resolveOpenSettingsLocation({
+        section: section ?? undefined,
+        tab,
+        last: section == null ? loadSettingsLastRoute() : null,
+      });
+      setSettingsSection(loc.section);
+      setSettingsTab(loc.tab);
       setAppView("settings");
       setShowUserMenu(false);
+      saveSettingsLastRoute(loc);
       if (typeof window !== "undefined") {
         // Phone: generic settings open lands on the section index (SettingsPage
         // starts at phonePane=index). Specific sections still set the hash so a
         // later drill-in / deep-link matches the intended section.
         const hash = buildSettingsHash({
-          section,
-          tab: nextTab,
+          section: loc.section,
+          tab: loc.tab,
         });
         // Avoid no-op hash writes (some webviews skip hashchange; state still set above).
         if (window.location.hash !== hash) {
@@ -3621,17 +3637,33 @@ export default function App() {
   );
 
   // Hash route: #/settings[/section[/tab]] | #/automations | #/workbench
+  // Explicit #/settings/{section}… deep links always win; bare #/settings uses last.
   useEffect(() => {
     const syncFromHash = () => {
       const raw = (window.location.hash || "").replace(/^#\/?/, "");
       if (raw.startsWith("settings")) {
-        const loc = parseSettingsHash(raw);
-        if (loc) {
-          setSettingsSection(loc.section);
-          setSettingsTab(loc.tab ?? null);
+        const parts = raw.split("/").filter(Boolean);
+        // parts[0] === "settings"; parts[1] may be section
+        const sectionPart = parts[1];
+        const hasExplicitSection = isSettingsSectionId(sectionPart);
+        if (hasExplicitSection) {
+          const loc = parseSettingsHash(raw);
+          if (loc) {
+            setSettingsSection(loc.section);
+            setSettingsTab(loc.tab ?? null);
+            saveSettingsLastRoute(loc);
+          }
         } else {
-          setSettingsSection("general");
-          setSettingsTab(resolveTab("general"));
+          // Bare #/settings or unknown first segment → last route if valid.
+          const last = loadSettingsLastRoute();
+          const loc = resolveOpenSettingsLocation({ last });
+          setSettingsSection(loc.section);
+          setSettingsTab(loc.tab);
+          saveSettingsLastRoute(loc);
+          const hash = buildSettingsHash(loc);
+          if (window.location.hash !== hash) {
+            window.location.hash = hash;
+          }
         }
         setAppView("settings");
       } else if (raw === "automations" || raw.startsWith("automations")) {
@@ -7773,7 +7805,7 @@ export default function App() {
             setLiveVoiceOpen(true);
             return;
           case "settings":
-            navigateSettings("general");
+            navigateSettings();
             return;
           case "export":
             void exportActiveSessionMd();
@@ -8804,14 +8836,15 @@ export default function App() {
   const trayHandlersRef = useRef({
     newChat: () => {},
     openSessionById: (_id: string) => {},
-    openSettings: (_section: SettingsSectionId = "general") => {},
+    /** Omit section to restore last settings route. */
+    openSettings: (_section?: SettingsSectionId) => {},
     openDoctor: () => {},
   });
   shortcutHandlersRef.current = {
     newChat: () => {
       void newChat();
     },
-    openSettings: (section: SettingsSectionId = "general") => {
+    openSettings: (section?: SettingsSectionId) => {
       navigateSettings(section);
     },
     openChatFind: () => {
@@ -8897,7 +8930,7 @@ export default function App() {
         await openSession(row, proj);
       })();
     },
-    openSettings: (section: SettingsSectionId = "general") => {
+    openSettings: (section?: SettingsSectionId) => {
       navigateSettings(section);
     },
     openDoctor: () => {
@@ -8927,12 +8960,16 @@ export default function App() {
         );
         unsubs.push(
           await listen<{ section?: string }>("tray://open-settings", (ev) => {
-            const raw = (ev.payload?.section || "general") as string;
-            const section = (SETTINGS_SECTION_IDS as readonly string[]).includes(
-              raw,
-            )
-              ? (raw as SettingsSectionId)
-              : "general";
+            // No section (tray "Settings…") → restore last. Explicit section
+            // (e.g. Account) always wins; invalid ids fall back to general.
+            const raw = ev.payload?.section;
+            if (raw == null || raw === "") {
+              trayHandlersRef.current.openSettings();
+              return;
+            }
+            const section = isSettingsSectionId(raw)
+              ? raw
+              : ("general" as SettingsSectionId);
             trayHandlersRef.current.openSettings(section);
           }),
         );
@@ -11353,7 +11390,7 @@ export default function App() {
               customProvider: tr("prov.customProvider"),
               resetsAt: tr("account.resetsAt"),
             }}
-            onSettings={() => navigateSettings("general")}
+            onSettings={() => navigateSettings()}
             onAccountSettings={() => navigateSettings("account")}
             onToggleTheme={toggleThemeBtn}
             onLogin={() => void runAccountLogin("oauth")}
