@@ -4173,6 +4173,34 @@ html[data-theme="light"] .ui-check.is-mixed .ui-check__box {
   color: var(--text-tertiary);
 }
 
+/*
+ * Full-width explanatory note inside a .settings-card, between rows.
+ * Must carry its own padding + bottom border — a bare <p> had no styles and
+ * visually fused with the next settings-row (session mode help + keychain).
+ */
+.settings-card__note,
+.settings-page__hint {
+  margin: 0;
+  padding: 0 16px 14px;
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--text-tertiary);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+/* Read as a continuation of the preceding row (session data mode). */
+.settings-row + .settings-card__note,
+.settings-row + .settings-page__hint {
+  margin-top: -2px;
+  padding-top: 0;
+}
+
+.settings-card > .settings-card__note:last-child,
+.settings-card > .settings-page__hint:last-child {
+  border-bottom: none;
+  padding-bottom: 14px;
+}
+
 .settings-row__text {
   min-width: 0;
   flex: 1;
@@ -4648,7 +4676,12 @@ html[data-theme="light"] .ui-check.is-mixed .ui-check__box {
   font-size: 13px;
 }
 
-/* Settings → General → App · quiet hours start/end */
+/* Settings → General → App · quiet hours start/end (nested under toggle row) */
+.settings-quiet-hours {
+  /* settings-row already provides padding/border; keep times full width */
+  align-items: stretch;
+}
+
 .settings-quiet-hours__times {
   display: flex;
   flex-wrap: wrap;

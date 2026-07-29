@@ -2114,7 +2114,9 @@ export function SettingsPage({
                   ]}
                 />
               </div>
-              <p className="settings-page__hint">{t("settings.sessionModeHelp")}</p>
+              <p className="settings-card__note" role="note">
+                {t("settings.sessionModeHelp")}
+              </p>
               {sessionDataMode === "shared" ? (
                 <CliSessionsPanel
                   t={t}
@@ -2123,7 +2125,9 @@ export function SettingsPage({
               ) : null}
               {onStoreApiKeysInKeychain ? (
                 <div
-                  className={"settings-row" + rowHighlight("settings-anchor-keychain")}
+                  className={
+                    "settings-row" + rowHighlight("settings-anchor-keychain")
+                  }
                   id="settings-anchor-keychain"
                 >
                   <div className="settings-row__text">
