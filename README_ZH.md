@@ -26,13 +26,18 @@
 </p>
 
 <p align="center">
-  <strong>关注作者 · Follow</strong><br/>
+  <strong>关注作者 · 进交流群</strong><br/>
   <a href="https://x.com/cgnot996"><strong>X / Twitter → 铁柱AGI @cgnot996</strong></a><br/>
-  微信公众号搜索 <strong>「铁柱AGI」</strong> · 扫码或搜一搜关注
+  微信公众号搜索 <strong>「铁柱AGI」</strong> · 扫右侧码加入用户交流群
 </p>
 
 <p align="center">
-  <img src="assets/wechat/mp-search-scan.png" alt="微信搜一搜 铁柱AGI · 扫码关注公众号" width="480" />
+  <img src="assets/wechat/mp-search-scan.png" alt="微信搜一搜 铁柱AGI · 扫码关注公众号" width="420" />
+  &nbsp;&nbsp;
+  <img src="assets/wechat/community-group-qr.png" alt="微信交流群二维码 · 扫码进群" width="200" />
+</p>
+<p align="center">
+  <sub>左：公众号 · 右：<strong>微信交流群</strong></sub>
 </p>
 
 <p align="center">
@@ -280,19 +285,25 @@ pnpm build
 
 ## 关注作者
 
-项目更新、用法拆解与 AI 实战内容，优先看作者主页：
+项目更新、用法拆解与 AI 实战内容，优先看作者主页；用户互助可进微信群：
 
 | 渠道 | 入口 |
 |------|------|
 | **X / Twitter** | [铁柱AGI @cgnot996](https://x.com/cgnot996) ← 强烈推荐关注 |
-| **微信公众号** | 搜索 **「铁柱AGI」**，或扫下方码 / 搜一搜卡片 |
+| **微信公众号** | 搜索 **「铁柱AGI」**，或扫下方**左侧**码 / 搜一搜卡片 |
+| **微信交流群** | 扫下方**右侧**二维码，添加微信进入交流群 |
 
 <p align="center">
-  <img src="assets/wechat/mp-search-scan.png" alt="微信搜一搜 铁柱AGI" width="420" />
+  <img src="assets/wechat/mp-search-scan.png" alt="微信搜一搜 铁柱AGI" width="360" />
+  &nbsp;&nbsp;
+  <img src="assets/wechat/community-group-qr.png" alt="微信交流群二维码" width="200" />
+</p>
+<p align="center">
+  <sub>左：公众号 · 右：交流群</sub>
 </p>
 
 <p align="center">
   如果 Grok App 对你有帮助，请给仓库点个 Star，并在
-  <a href="https://x.com/cgnot996"><strong>X @cgnot996</strong></a>
-  与微信公众号 <strong>铁柱AGI</strong> 关注作者 🙏
+  <a href="https://x.com/cgnot996"><strong>X @cgnot996</strong></a>、
+  微信公众号 <strong>铁柱AGI</strong> 关注作者，欢迎扫码进群交流 🙏
 </p>

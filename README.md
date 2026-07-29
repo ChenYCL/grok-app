@@ -26,13 +26,18 @@
 </p>
 
 <p align="center">
-  <strong>Follow the author</strong><br/>
+  <strong>Follow the author · join the community</strong><br/>
   <a href="https://x.com/cgnot996"><strong>X / Twitter → 铁柱AGI @cgnot996</strong></a><br/>
-  WeChat Official Account: search <strong>「铁柱AGI」</strong> (scan or WeChat Search below)
+  WeChat Official Account: search <strong>「铁柱AGI」</strong> · scan the group QR to chat with users
 </p>
 
 <p align="center">
-  <img src="assets/wechat/mp-search-scan.png" alt="WeChat Search 铁柱AGI — scan to follow" width="480" />
+  <img src="assets/wechat/mp-search-scan.png" alt="WeChat Search 铁柱AGI — scan to follow" width="420" />
+  &nbsp;&nbsp;
+  <img src="assets/wechat/community-group-qr.png" alt="WeChat group QR — scan to join" width="200" />
+</p>
+<p align="center">
+  <sub>Left: official account · Right: <strong>WeChat community group</strong></sub>
 </p>
 
 <p align="center">
@@ -306,14 +311,20 @@ Updates, walkthroughs, and AI practice content land first on:
 | Channel | Link |
 |---------|------|
 | **X / Twitter** | [铁柱AGI @cgnot996](https://x.com/cgnot996) ← highly recommended |
-| **WeChat Official Account** | Search **「铁柱AGI」**, or scan / use the card below |
+| **WeChat Official Account** | Search **「铁柱AGI」**, or scan the left card below |
+| **WeChat community group** | Scan the **right** QR to join the discussion group |
 
 <p align="center">
-  <img src="assets/wechat/mp-search-scan.png" alt="WeChat Search 铁柱AGI" width="420" />
+  <img src="assets/wechat/mp-search-scan.png" alt="WeChat Search 铁柱AGI" width="360" />
+  &nbsp;&nbsp;
+  <img src="assets/wechat/community-group-qr.png" alt="WeChat community group QR" width="200" />
+</p>
+<p align="center">
+  <sub>Left: official account · Right: community group</sub>
 </p>
 
 <p align="center">
   If Grok App helps you, please star the repo and follow
-  <a href="https://x.com/cgnot996"><strong>@cgnot996</strong></a> on X
-  and the WeChat account <strong>铁柱AGI</strong> 🙏
+  <a href="https://x.com/cgnot996"><strong>@cgnot996</strong></a> on X,
+  the WeChat account <strong>铁柱AGI</strong>, and join the WeChat group 🙏
 </p>
