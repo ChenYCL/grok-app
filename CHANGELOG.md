@@ -11,6 +11,51 @@ See `docs/llm-wiki/release.md`.
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-07-29
+
+> **Highlight:** Per-project draft memory, video covers, durable relay retries, and calmer chat errors.
+>
+> **中文 · 亮点：** 按项目记住输入草稿、视频封面缓存、中转更耐断流、会话报错更低调。
+
+### Added
+
+- **Per-project composer drafts** (plus an orphan/“other chats” slot): half-typed new-chat text & attachments restore when you open new chat again
+- **Cached video posters** for idle chat cards (`~/.grok-app/cache/video-posters` via ffmpeg; canvas capture on first play as fallback)
+- **Session title LLM refine**: more reliable headless title generation (`max-turns 2`, longer timeout)
+
+### Changed
+
+- **Provider retries** for flaky custom relays / 中转: host cap and agent `max_retries` raised to **12**; soft `failed` status no longer aborts on the first blip
+- **Turn errors**: Codex-style muted info pill instead of red “turn failed” boxes; reconnect chip reads “Reconnecting n/max”
+- **Thinking live indicator**: dot and “Thinking…” share one pulse timing (no desync)
+
+### Fixed
+
+- **Composer newlines / blank lines** preserved after send; end-of-input ArrowRight no longer injects □ ghosts
+- **Thinking / tool work phases** auto-collapse when the segment ends (empty tool status no longer keeps groups open)
+- **History video paths** render as video cards again (absolute paths no longer stripped to document chips)
+- **Stick-to-bottom** re-engages when a turn becomes busy; user scroll-up pin/escape unchanged
+- **Long media chats**: stabilize virtual list / stick / media protocol workers (host crash hardening)
+
+**中文 · 新增**
+
+- 按项目（及无项目）记忆新建会话输入框与附件
+- 聊天视频封面截帧缓存（ffmpeg / 首次播放 canvas 补齐）
+- 会话短标题后台模型 refine 更稳
+
+**中文 · 变更**
+
+- 中转断流：重试上限 12，软失败不立刻熔断
+- 回合错误改为低调灰 pill；顶栏「正在重新连接 n/max」
+- 思考中圆点与文案同频闪烁
+
+**中文 · 修复**
+
+- 气泡保留换行/空行；输入框末尾右键不再出方框
+- 工具/思考组段落后自动折叠
+- 历史会话 mp4 恢复为视频卡
+- 任务开始立即吸底跟随；长媒体会话与 media 协议更稳
+
 ## [0.2.0] - 2026-07-29
 
 > **Highlight:** Wallpaper from X / Imagine; Appearance Theme · Interface; stabler long runs and chat prefs.
