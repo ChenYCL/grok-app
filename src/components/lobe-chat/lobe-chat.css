@@ -162,7 +162,7 @@
   width: 100%;
 }
 
-/* User bubble — soft fill, 12px radius */
+/* User bubble — soft fill, 12px radius; keep input newlines / blank lines */
 .lobe-chat-bubble {
   max-width: min(100%, 36rem);
   padding: 10px 14px;
@@ -175,6 +175,17 @@
   word-break: break-word;
   border: none;
   box-shadow: none;
+}
+
+/* Plain / skill-mixed user body — same newline policy as the composer */
+.lobe-chat-bubble .user-msg-body,
+.lobe-chat-user-msg__body .user-msg-body {
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.lobe-chat-bubble .user-msg-body__text {
+  white-space: pre-wrap;
 }
 
 

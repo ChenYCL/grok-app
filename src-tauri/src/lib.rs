@@ -21,6 +21,7 @@ mod editors;
 mod error;
 mod fs_browser;
 mod media_protocol;
+mod video_poster;
 mod path_scope;
 mod mirror;
 mod mock_acp;
@@ -331,6 +332,8 @@ pub fn run() {
             commands::paths_classify,
             commands::path_open,
             commands::path_reveal,
+            commands::media_video_poster,
+            commands::media_video_poster_save,
             commands::git_file_diff,
             commands::git_status,
             commands::git_worktrees_list,

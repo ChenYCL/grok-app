@@ -51,8 +51,11 @@ export type TimelineUnit =
 
 function toolRunning(t: MessageToolSegment): boolean {
   if (t.streaming) return true;
-  const s = (t.status || "").toLowerCase();
-  return s === "in_progress" || s === "pending" || s === "running" || s === "";
+  const s = (t.status || "").toLowerCase().trim();
+  // Empty status with streaming=false means done/unknown — do NOT treat as
+  // running (that kept work phases stuck open after the segment finished).
+  if (!s) return false;
+  return s === "in_progress" || s === "pending" || s === "running";
 }
 
 function toolFailed(t: MessageToolSegment): boolean {

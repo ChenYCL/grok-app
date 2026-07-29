@@ -28,7 +28,6 @@ import {
 import {
   detectSlashQuery,
   parseStoredContent,
-  serializeStored,
   type DraftSegment,
 } from "@/lib/draftDoc";
 
@@ -76,40 +75,41 @@ function renderSegmentsInto(el: HTMLElement, segments: DraftSegment[]) {
   }
 }
 
+/**
+ * Strip caret/layout ghosts WebKit injects into contenteditable
+ * (ZWSP, object-replacement “□”, BOM, word-joiner).
+ */
+function stripEditorGhostChars(s: string): string {
+  return s.replace(/[\u200B-\u200D\uFEFF\u2060\uFFFC]/g, "");
+}
+
+/**
+ * Serialize contenteditable → stored draft.
+ *
+ * Prefer clone + skill tokens + `innerText` so block-level Enter
+ * (`<div>line</div>`, empty `<div><br></div>`) keeps real newlines.
+ * A pure BR walk used to drop WebKit/DIV line breaks → bubble lost formatting.
+ */
 export function serializeDom(el: HTMLElement): string {
-  const segs: DraftSegment[] = [];
-  const walk = (node: Node) => {
-    if (node.nodeType === Node.TEXT_NODE) {
-      const t = node.textContent ?? "";
-      if (t) segs.push({ type: "text", text: t });
-      return;
-    }
-    if (node.nodeType !== Node.ELEMENT_NODE) return;
-    const he = node as HTMLElement;
-    if (he.dataset?.skill) {
-      segs.push({ type: "skill", name: he.dataset.skill });
-      return;
-    }
-    if (he.tagName === "BR") {
-      segs.push({ type: "text", text: "\n" });
-      return;
-    }
-    he.childNodes.forEach(walk);
-  };
-  el.childNodes.forEach(walk);
-  const merged: DraftSegment[] = [];
-  for (const s of segs) {
-    if (s.type === "text") {
-      const last = merged[merged.length - 1];
-      if (last?.type === "text") last.text += s.text;
-      else merged.push({ type: "text", text: s.text });
-    } else {
-      merged.push(s);
-    }
+  const clone = el.cloneNode(true) as HTMLElement;
+  clone.querySelectorAll("[data-skill]").forEach((chip) => {
+    const name =
+      (chip as HTMLElement).dataset?.skill ||
+      chip.getAttribute("data-skill") ||
+      "";
+    chip.replaceWith(document.createTextNode(`[[skill:${name}]]`));
+  });
+  // innerText honors block layout (DIV/P) as newlines; textContent would not.
+  let t = clone.innerText ?? clone.textContent ?? "";
+  t = stripEditorGhostChars(t)
+    .replace(/\u00a0/g, " ")
+    .replace(/\r\n/g, "\n")
+    .replace(/\r/g, "\n");
+  // Empty editor often yields a lone trailing newline from the caret <br>.
+  if (!t.replace(/\n/g, "").trim() && !/\[\[skill:/.test(t)) {
+    return "";
   }
-  return serializeStored(
-    merged.length ? merged : [{ type: "text", text: "" }],
-  );
+  return t;
 }
 
 function getTextBeforeCaret(el: HTMLElement): string | null {
@@ -158,6 +158,42 @@ function placeCaretAtEnd(el: HTMLElement) {
   range.collapse(false);
   sel.removeAllRanges();
   sel.addRange(range);
+}
+
+/** True when the caret is collapsed at (or past) the visual end of the editor. */
+function isCaretAtEditorEnd(el: HTMLElement): boolean {
+  const sel = window.getSelection();
+  if (!sel || sel.rangeCount === 0 || !sel.isCollapsed) return false;
+  const range = sel.getRangeAt(0);
+  if (!el.contains(range.endContainer)) return false;
+  const after = document.createRange();
+  after.selectNodeContents(el);
+  after.setStart(range.endContainer, range.endOffset);
+  const frag = after.cloneContents();
+  const tmp = document.createElement("div");
+  tmp.appendChild(frag);
+  const rest = stripEditorGhostChars(tmp.innerText ?? tmp.textContent ?? "")
+    .replace(/\u00a0/g, " ")
+    .replace(/[\n\r]+/g, "");
+  return rest.length === 0;
+}
+
+/** True when the caret is collapsed at the visual start of the editor. */
+function isCaretAtEditorStart(el: HTMLElement): boolean {
+  const sel = window.getSelection();
+  if (!sel || sel.rangeCount === 0 || !sel.isCollapsed) return false;
+  const range = sel.getRangeAt(0);
+  if (!el.contains(range.startContainer)) return false;
+  const before = document.createRange();
+  before.selectNodeContents(el);
+  before.setEnd(range.startContainer, range.startOffset);
+  const frag = before.cloneContents();
+  const tmp = document.createElement("div");
+  tmp.appendChild(frag);
+  const head = stripEditorGhostChars(tmp.innerText ?? tmp.textContent ?? "")
+    .replace(/\u00a0/g, " ")
+    .replace(/[\n\r]+/g, "");
+  return head.length === 0;
 }
 
 /**
@@ -536,7 +572,47 @@ export function ComposerEditor({
           if (ne.isComposing || ne.keyCode === 229 || composing.current) {
             return;
           }
+          const el = elRef.current;
+          // WebKit: ArrowRight past the last glyph can inject U+FFFC (□) /
+          // ZWSP ghosts that serialize as real characters and show as boxes.
+          if (
+            el &&
+            e.key === "ArrowRight" &&
+            !e.shiftKey &&
+            !e.altKey &&
+            !e.metaKey &&
+            !e.ctrlKey &&
+            isCaretAtEditorEnd(el)
+          ) {
+            e.preventDefault();
+            return;
+          }
+          if (
+            el &&
+            e.key === "ArrowLeft" &&
+            !e.shiftKey &&
+            !e.altKey &&
+            !e.metaKey &&
+            !e.ctrlKey &&
+            isCaretAtEditorStart(el)
+          ) {
+            e.preventDefault();
+            return;
+          }
+          // Parent handles send / menus (may preventDefault).
           onKeyDown?.(e);
+          if (e.defaultPrevented) return;
+          // Newline path (Shift+Enter, or plain Enter when send-key is mod-enter):
+          // force insertLineBreak so empty lines stay real breaks, not empty DIVs.
+          if (e.key === "Enter" && !e.altKey && !e.metaKey && !e.ctrlKey) {
+            try {
+              e.preventDefault();
+              document.execCommand("insertLineBreak");
+              if (el) commitFromDom(el);
+            } catch {
+              /* browser default */
+            }
+          }
         }}
       />
     </div>

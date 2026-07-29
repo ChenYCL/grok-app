@@ -3974,6 +3974,33 @@ pub fn paths_classify(paths: Vec<String>) -> Vec<PathEntry> {
         .collect()
 }
 
+/// Cached video cover for chat cards: path + mtime + size → JPEG under app cache.
+/// Prefer disk cache; extract with ffmpeg when missing. Frontend may also save a
+/// canvas capture via [`media_video_poster_save`].
+#[tauri::command]
+pub async fn media_video_poster(path: String) -> Result<crate::video_poster::VideoPosterResult, String> {
+    tokio::task::spawn_blocking(move || crate::video_poster::ensure_video_poster(&path))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+/// Persist a client-captured JPEG poster (canvas) into the same cache key.
+#[tauri::command]
+pub async fn media_video_poster_save(
+    path: String,
+    jpeg_base64: String,
+) -> Result<crate::video_poster::VideoPosterResult, String> {
+    tokio::task::spawn_blocking(move || {
+        use base64::Engine;
+        let bytes = base64::engine::general_purpose::STANDARD
+            .decode(jpeg_base64.trim())
+            .map_err(|e| format!("invalid base64: {e}"))?;
+        crate::video_poster::save_client_poster(&path, &bytes)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
 /// Open a file or folder with the OS default application.
 #[tauri::command]
 pub async fn path_open(path: String) -> Result<(), String> {

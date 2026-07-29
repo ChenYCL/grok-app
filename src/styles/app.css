@@ -8521,8 +8521,7 @@ button.composer__context-item {
 }
 
 .md-body__video-card__placeholder,
-.md-body__video-card__error,
-.md-body__video-card__poster {
+.md-body__video-card__error {
   position: absolute;
   inset: 0;
   display: flex;
@@ -8537,41 +8536,95 @@ button.composer__context-item {
   background: color-mix(in srgb, var(--bg-hover) 80%, #000 20%);
 }
 
-/* Click-to-play poster — no media:// until user starts (crash/load fan-out). */
+/* Click-to-play poster — no full video media:// until user starts. */
 .md-body__video-card__poster {
+  position: absolute;
+  inset: 0;
   width: 100%;
   height: 100%;
   border: none;
   cursor: pointer;
   text-align: left;
   font: inherit;
-  color: inherit;
+  color: #fff;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 8px;
+  padding: 12px;
+  box-sizing: border-box;
+  background: color-mix(in srgb, var(--bg-hover) 80%, #000 20%);
   transition: background 0.15s ease;
+  overflow: hidden;
+}
+.md-body__video-card__poster.has-cover {
+  background: #000;
 }
 .md-body__video-card__poster:hover {
   background: color-mix(in srgb, var(--bg-hover) 60%, #000 40%);
+}
+.md-body__video-card__poster.has-cover:hover .md-body__video-card__poster-shade {
+  background: rgba(0, 0, 0, 0.42);
 }
 .md-body__video-card__poster:focus-visible {
   outline: 2px solid var(--text-link, #3b82f6);
   outline-offset: -2px;
 }
+/* Cached still from host ffmpeg / client canvas — not a full video stream. */
+.md-body__video-card__cover {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center;
+  pointer-events: none;
+  user-select: none;
+  z-index: 0;
+}
+.md-body__video-card__poster-shade {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  background: linear-gradient(
+    180deg,
+    rgba(0, 0, 0, 0.15) 0%,
+    rgba(0, 0, 0, 0.35) 55%,
+    rgba(0, 0, 0, 0.55) 100%
+  );
+  pointer-events: none;
+  transition: background 0.15s ease;
+}
+.md-body__video-card__poster:not(.has-cover) .md-body__video-card__poster-shade {
+  display: none;
+}
 .md-body__video-card__play {
+  position: relative;
+  z-index: 2;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   width: 44px;
   height: 44px;
   border-radius: 999px;
-  background: color-mix(in srgb, #fff 18%, transparent);
+  background: color-mix(in srgb, #fff 22%, transparent);
   color: #fff;
   font-size: 16px;
   line-height: 1;
   padding-left: 3px; /* optical center for ▶ */
   box-shadow: 0 2px 10px rgba(0, 0, 0, 0.35);
+  backdrop-filter: blur(4px);
+}
+.md-body__video-card__name,
+.md-body__video-card__hint {
+  position: relative;
+  z-index: 2;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.55);
 }
 .md-body__video-card__hint {
   font-size: 12px;
-  color: var(--text-muted, var(--text-secondary));
+  color: color-mix(in srgb, #fff 78%, transparent);
 }
 .md-body__video-card__actions {
   display: flex;

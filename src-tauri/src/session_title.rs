@@ -49,6 +49,24 @@ fn truncate_chars(s: &str, max: usize) -> String {
 
 fn clean_llm_title(raw: &str) -> Option<String> {
     let mut t = raw.trim().to_string();
+    // Drop CLI chrome / error lines that sometimes pollute stdout.
+    let skip_line = |line: &str| -> bool {
+        let l = line.trim();
+        if l.is_empty() {
+            return true;
+        }
+        let lower = l.to_ascii_lowercase();
+        lower.starts_with("error:")
+            || lower.starts_with("max turns")
+            || lower.contains("max turns reached")
+            || lower.starts_with("usage:")
+            || lower.starts_with("{")
+    };
+    if let Some(line) = t.lines().map(str::trim).find(|l| !skip_line(l)) {
+        t = line.to_string();
+    } else {
+        return None;
+    }
     for _ in 0..3 {
         if (t.starts_with('"') && t.ends_with('"'))
             || (t.starts_with('「') && t.ends_with('」'))
@@ -66,10 +84,10 @@ fn clean_llm_title(raw: &str) -> Option<String> {
     {
         t = rest.trim().to_string();
     }
-    if let Some(line) = t.lines().next() {
-        t = line.trim().to_string();
-    }
     if t.is_empty() || t.len() > 120 || is_placeholder_title(&t) {
+        return None;
+    }
+    if skip_line(&t) {
         return None;
     }
     Some(truncate_chars(&t, 32))
@@ -99,17 +117,22 @@ fn llm_title_via_cli(message: &str) -> Option<String> {
     let snippet: String = message.chars().take(400).collect();
     let prompt = title_prompt(&snippet, tray_i18n::app_locale());
 
+    // Grok Build counts reasoning + answer as separate turns for some models;
+    // `--max-turns 1` exits with "Max turns reached" and never prints a title.
+    // Use 2, disable tools/subagents so the reply is plain text only.
     let mut cmd = Command::new(&path);
     cmd.arg("-p")
         .arg(&prompt)
         .arg("--effort")
         .arg("low")
         .arg("--max-turns")
-        .arg("1")
+        .arg("2")
         .arg("--always-approve")
+        .arg("--no-subagents")
+        .arg("--disable-web-search")
         .arg("--disallowed-tools")
         .arg(
-            "run_terminal_cmd,run_terminal_command,web_search,web_fetch,search_replace,write,Agent,spawn_subagent,bash",
+            "run_terminal_cmd,run_terminal_command,web_search,web_fetch,search_replace,write,Agent,spawn_subagent,bash,bash_tool",
         );
     crate::process_util::apply_no_window_std(&mut cmd);
     if let Some(path_env) = crate::process_util::enriched_path_env() {
@@ -121,14 +144,21 @@ fn llm_title_via_cli(message: &str) -> Option<String> {
         .ok()?
         .ok()?;
 
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
     if !output.status.success() {
+        // Prefer stdout when present (CLI sometimes prints the title then errors).
+        if let Some(title) = clean_llm_title(&stdout) {
+            return Some(title);
+        }
         tracing::debug!(
-            "session title cli failed: {}",
-            String::from_utf8_lossy(&output.stderr)
+            "session title cli failed: status={} stderr={} stdout={}",
+            output.status,
+            stderr.trim(),
+            stdout.trim()
         );
         return None;
     }
-    let stdout = String::from_utf8_lossy(&output.stdout);
     clean_llm_title(&stdout)
 }
 
@@ -162,7 +192,8 @@ pub fn refine_title_in_background(
         crate::process_util::spawn_named_catch("session-title-cli", move || {
             let _ = tx.send(llm_title_via_cli(&msg));
         });
-        let refined = rx.recv_timeout(Duration::from_secs(20)).ok().flatten();
+        // Headless title often needs ~2 model turns (~10–25s); 20s was racing the CLI.
+        let refined = rx.recv_timeout(Duration::from_secs(45)).ok().flatten();
         if let Some(title) = refined {
             // Do not clobber a manual rename: only replace placeholder / prior heuristic.
             let list = store::load_sessions_index();
@@ -223,6 +254,16 @@ mod tests {
         assert_eq!(
             clean_llm_title("Title: List open PRs\n"),
             Some("List open PRs".into())
+        );
+    }
+
+    #[test]
+    fn clean_rejects_max_turns_noise() {
+        assert_eq!(clean_llm_title("Max turns reached\n"), None);
+        assert_eq!(clean_llm_title("Error: max turns reached\n"), None);
+        assert_eq!(
+            clean_llm_title("修复登录样式\nMax turns reached\n"),
+            Some("修复登录样式".into())
         );
     }
 

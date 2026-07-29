@@ -151,28 +151,45 @@ function MessageResponseImpl({
 
     const pathToken = resolved || raw;
     const kind = classifyPathRef(pathToken);
-    if (kind === "image" && resolved && isImagePath(resolved)) {
-      return (
-        <ImageUi
-          className="md-body__img md-body__img--card"
-          src={resolved}
-          alt={linkText || pathBasename(resolved)}
-          path={resolved}
-          gallery={gallery}
-          labels={imageLabels}
-        />
-      );
+    const videoAbs =
+      (resolved && isAbsoluteFsPath(resolved) && isVideoPath(resolved) && resolved) ||
+      (mediaAbs && isVideoPath(mediaAbs) && mediaAbs) ||
+      (isAbsoluteFsPath(raw) && isVideoPath(raw) && raw.replace(/\\/g, "/")) ||
+      null;
+    const imageAbs =
+      (resolved && isAbsoluteFsPath(resolved) && isImagePath(resolved) && resolved) ||
+      (mediaAbs && isImagePath(mediaAbs) && mediaAbs) ||
+      (isAbsoluteFsPath(raw) && isImagePath(raw) && raw.replace(/\\/g, "/")) ||
+      null;
+
+    if (imageAbs || (kind === "image" && resolved && isImagePath(resolved))) {
+      const src = imageAbs || resolved!;
+      if (isAbsoluteFsPath(src) && isImagePath(src)) {
+        return (
+          <ImageUi
+            className="md-body__img md-body__img--card"
+            src={src}
+            alt={linkText || pathBasename(src)}
+            path={src}
+            gallery={gallery}
+            labels={imageLabels}
+          />
+        );
+      }
     }
-    if (kind === "video" && resolved && isVideoPath(resolved)) {
-      return (
-        <VideoUi
-          key={resolved}
-          src={resolved}
-          path={resolved}
-          title={linkText || pathBasename(resolved)}
-          labels={videoLabels}
-        />
-      );
+    if (videoAbs || (kind === "video" && resolved && isVideoPath(resolved))) {
+      const src = videoAbs || resolved!;
+      if (isVideoPath(src)) {
+        return (
+          <VideoUi
+            key={src}
+            src={src}
+            path={isAbsoluteFsPath(src) ? src : undefined}
+            title={linkText || pathBasename(src)}
+            labels={videoLabels}
+          />
+        );
+      }
     }
 
     return (

@@ -73,6 +73,30 @@
 python3 scripts/changelog-for-release.py 0.1.0
 ```
 
+## 贡献者 README（强制）
+
+每次正式发版 **必须** 刷新 README 贡献者圆形头像画廊，**不要**手写两套表格 / 方形图 / contrib.rocks。
+
+| 项 | 约定 |
+|----|------|
+| 脚本 | `python3 scripts/update-contributors.py` |
+| 数据源 | GitHub Contributors API（`RongleCat/grok-app`），过滤 bot |
+| 展示 | **仅圆形头像**（`border-radius:50%`），中英 README 同一结构 |
+| 写入位置 | `README.md` / `README_EN.md` / `README_ZH.md` 内 `<!-- CONTRIBUTORS:START -->` … `END` |
+| 禁止 | 贡献者表格 + 方形头像 + `contrib.rocks` 条带（避免双轨维护） |
+
+发版前（工作区可先 dirty）：
+
+```bash
+# 需要网络；有 token 时更稳：export GITHUB_TOKEN="$(gh auth token)"
+python3 scripts/update-contributors.py
+git add README.md README_EN.md README_ZH.md
+git commit -m "docs: refresh README contributors gallery"   # 若有变更
+```
+
+`scripts/release-tag.sh` 会在 bump 版本 **之前** 自动跑该脚本；若头像块有更新，一并打进 release commit。  
+手工 `git tag` 而不走脚本时，**仍须**先跑 `update-contributors.py` 并提交。
+
 ## 标准发版步骤（复制即用）
 
 ```bash
@@ -82,11 +106,16 @@ git pull origin main   # 若已有远程历史
 git status             # 必须 clean
 
 # 1) 写好 CHANGELOG.md → ## [X.Y.Z] - 日期
+# 1b) 刷新贡献者圆形头像（亦可交给 release-tag.sh 自动跑）
+export GITHUB_TOKEN="$(gh auth token)"   # 推荐，避免 API 限流
+python3 scripts/update-contributors.py
+# 若 README 有 diff：先 commit docs: refresh README contributors gallery
+
 # 2) 自测（至少）：
 pnpm typecheck && pnpm test
 # 可选本地装包：pnpm build:mac-arm / pnpm build:win
 
-# 3) 打 tag（会 bump 版本并 annotated tag）
+# 3) 打 tag（会 bump 版本、刷新贡献者、annotated tag）
 ./scripts/release-tag.sh X.Y.Z
 # 确认后推送：
 ./scripts/release-tag.sh X.Y.Z --push
@@ -96,12 +125,15 @@ pnpm typecheck && pnpm test
 若当前 **package 版本已经是 X.Y.Z** 且 CHANGELOG 已写好，只需：
 
 ```bash
+export GITHUB_TOKEN="$(gh auth token)"
+python3 scripts/update-contributors.py
+# commit README 变更（如有）
 git tag -a vX.Y.Z -m "Release vX.Y.Z"
 git push origin main
 git push origin vX.Y.Z
 ```
 
-（或仍走 `release-tag.sh`，脚本会校验 CHANGELOG。）
+（或仍走 `release-tag.sh`，脚本会校验 CHANGELOG 并刷新贡献者。）
 
 ## CI 行为
 

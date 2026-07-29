@@ -286,40 +286,52 @@ export const MarkdownChat = memo(function MarkdownChat({
     // Prefer multi-segment relative after ellipsis strip for smart open
     const pathToken = resolved || raw || rawIn;
     const kind = classifyPathRef(pathToken);
-    // Only inline media when we already have an absolute path; relative
-    // tokens go through FilePathCard → host smart open (sibling KB / suffix).
-    if (
-      kind === "image" &&
-      resolved &&
-      isAbsoluteFsPath(resolved) &&
-      isImagePath(resolved)
-    ) {
-      return (
-        <ImageUi
-          className="md-body__img md-body__img--card"
-          src={resolved}
-          alt={linkText || pathBasename(resolved)}
-          path={resolved}
-          gallery={gallery}
-          labels={imageLabels}
-        />
-      );
+    // Video/image by extension on any candidate — history reload often has
+    // absolute paths in prose without a populated pathMap; never demote those
+    // to a generic document FilePathCard.
+    const videoAbs =
+      (resolved && isAbsoluteFsPath(resolved) && isVideoPath(resolved) && resolved) ||
+      (mediaAbs && isVideoPath(mediaAbs) && mediaAbs) ||
+      (isAbsoluteFsPath(rawIn) && isVideoPath(rawIn) && rawIn.replace(/\\/g, "/")) ||
+      (isAbsoluteFsPath(raw) && isVideoPath(raw) && raw) ||
+      null;
+    const imageAbs =
+      (resolved && isAbsoluteFsPath(resolved) && isImagePath(resolved) && resolved) ||
+      (mediaAbs && isImagePath(mediaAbs) && mediaAbs) ||
+      (isAbsoluteFsPath(rawIn) && isImagePath(rawIn) && rawIn.replace(/\\/g, "/")) ||
+      (isAbsoluteFsPath(raw) && isImagePath(raw) && raw) ||
+      null;
+
+    if (imageAbs || (kind === "image" && resolved && isImagePath(resolved))) {
+      const src = imageAbs || resolved!;
+      if (isAbsoluteFsPath(src) && isImagePath(src)) {
+        return (
+          <ImageUi
+            className="md-body__img md-body__img--card"
+            src={src}
+            alt={linkText || pathBasename(src)}
+            path={src}
+            gallery={gallery}
+            labels={imageLabels}
+          />
+        );
+      }
     }
-    if (
-      kind === "video" &&
-      resolved &&
-      isAbsoluteFsPath(resolved) &&
-      isVideoPath(resolved)
-    ) {
-      return (
-        <VideoUi
-          key={resolved}
-          src={resolved}
-          path={resolved}
-          title={linkText || pathBasename(resolved)}
-          labels={videoLabels}
-        />
-      );
+    if (videoAbs || (kind === "video" && resolved && isVideoPath(resolved))) {
+      const src = videoAbs || resolved!;
+      if (isVideoPath(src)) {
+        // Absolute preferred; relative still shows a video card (poster / play)
+        // so history never falls back to a document chip for .mp4/.webm/…
+        return (
+          <VideoUi
+            key={src}
+            src={src}
+            path={isAbsoluteFsPath(src) ? src : undefined}
+            title={linkText || pathBasename(src)}
+            labels={videoLabels}
+          />
+        );
+      }
     }
 
     return (

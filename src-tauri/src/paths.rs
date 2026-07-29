@@ -46,7 +46,16 @@ pub fn ensure_app_dirs() -> std::io::Result<PathBuf> {
     std::fs::create_dir_all(root.join("wallpapers").join("x"))?;
     std::fs::create_dir_all(root.join("wallpapers").join("imagine"))?;
     std::fs::create_dir_all(root.join("wallpapers").join("library"))?;
+    // Chat video cover frames (ffmpeg / client canvas JPEG).
+    std::fs::create_dir_all(root.join("cache").join("video-posters"))?;
     Ok(root)
+}
+
+/// Disk cache for chat video posters: `{app_data}/cache/video-posters`.
+pub fn video_posters_dir() -> PathBuf {
+    let dir = app_data_root().join("cache").join("video-posters");
+    let _ = fs::create_dir_all(&dir);
+    dir
 }
 
 /// Stable cwd for orphan / unassigned chats — under app data so agents can

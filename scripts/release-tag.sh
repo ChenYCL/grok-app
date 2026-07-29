@@ -52,6 +52,20 @@ if ! python3 scripts/changelog-for-release.py "$VERSION" >/dev/null; then
 fi
 echo "==> CHANGELOG section for $VERSION OK (will become GitHub Release body)"
 
+# Refresh circular-avatar contributor galleries in README_*.md (see docs/llm-wiki/release.md).
+# Prefer authenticated GitHub API when gh is logged in (avoids anonymous rate limits).
+if [[ -z "${GITHUB_TOKEN:-}" && -z "${GH_TOKEN:-}" ]] && command -v gh >/dev/null 2>&1; then
+  if tok="$(gh auth token 2>/dev/null)" && [[ -n "$tok" ]]; then
+    export GITHUB_TOKEN="$tok"
+  fi
+fi
+echo "==> Refreshing README contributors (circular avatars)"
+if ! python3 scripts/update-contributors.py; then
+  echo "error: scripts/update-contributors.py failed (network / GitHub API)." >&2
+  echo "  export GITHUB_TOKEN=\"\$(gh auth token)\" and re-run, or update READMEs manually." >&2
+  exit 1
+fi
+
 echo "==> Bumping version to $VERSION"
 export VER="$VERSION"
 
@@ -98,7 +112,8 @@ for rel in ("src/i18n/messages.ts", "src/i18n/zh-tw.ts"):
         print(f"warn: versionFooter pattern not found in {rel}")
 PY
 
-git add package.json src-tauri/tauri.conf.json src-tauri/Cargo.toml src/i18n/messages.ts src/i18n/zh-tw.ts
+git add package.json src-tauri/tauri.conf.json src-tauri/Cargo.toml src/i18n/messages.ts src/i18n/zh-tw.ts \
+  README.md README_EN.md README_ZH.md 2>/dev/null || true
 if [[ -n "$(git status --porcelain)" ]]; then
   git commit -m "chore: release $TAG"
 fi

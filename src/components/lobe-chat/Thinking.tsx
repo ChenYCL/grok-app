@@ -101,13 +101,17 @@ export function Thinking({
       setOpen(true);
       userToggled.current = false;
       if (startRef.current == null) startRef.current = Date.now();
-    } else if (startRef.current != null) {
+      return;
+    }
+    // Segment finished (thought → content/tools, or turn idle).
+    if (startRef.current != null) {
       setLocalDuration(Date.now() - startRef.current);
       startRef.current = null;
-      // Collapse when done unless user prefers keep-open or just toggled open.
-      if (!userToggled.current) {
-        setOpen(thinkingDefaultOpenWhenDone(pref));
-      }
+    }
+    // Always auto-collapse when done unless user prefers keep-open or
+    // manually toggled this block open after it finished.
+    if (!userToggled.current) {
+      setOpen(thinkingDefaultOpenWhenDone(pref));
     }
   }, [thinking, pref]);
 

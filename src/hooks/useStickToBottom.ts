@@ -359,14 +359,22 @@ export function useStickToBottom(
     return () => cancelAnimationFrame(id);
   }, [conversationKey, enabled, scrollToBottom]);
 
-  // User sent a message → force follow even if they had scrolled up.
+  // User sent / turn became busy → force follow even if they had scrolled up.
+  // Double rAF: first paint may not have the new user/assistant row height yet.
   useEffect(() => {
     if (!enabled || forceStickKey == null || forceStickKey === "") return;
     escapedRef.current = false;
     isPinnedRef.current = true;
     userIntentDownRef.current = false;
-    const id = requestAnimationFrame(() => scrollToBottom("instant"));
-    return () => cancelAnimationFrame(id);
+    let raf2 = 0;
+    const raf1 = requestAnimationFrame(() => {
+      scrollToBottom("instant");
+      raf2 = requestAnimationFrame(() => scrollToBottom("instant"));
+    });
+    return () => {
+      cancelAnimationFrame(raf1);
+      if (raf2) cancelAnimationFrame(raf2);
+    };
   }, [forceStickKey, enabled, scrollToBottom]);
 
   // Content growth / shrink while pinned.

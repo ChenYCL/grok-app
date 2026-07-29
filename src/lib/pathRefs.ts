@@ -32,6 +32,26 @@ export function isHttpUrl(s: string): boolean {
 export function normalizePathToken(s: string): string {
   let t = s.trim().replace(/\\/g, "/");
   if (!t) return t;
+  // Absolute / home paths must keep their root — stripping leading `/` used to
+  // turn `/Users/.../clip.mp4` into a relative token and break video cards on
+  // history reload (FilePathCard instead of VideoUi).
+  const abs =
+    t.startsWith("/") ||
+    /^[A-Za-z]:\//.test(t) ||
+    t === "~" ||
+    t.startsWith("~/");
+  if (abs) {
+    // Still collapse mid-path ellipsis if agents truncated long abs paths.
+    if (t.includes("/.../") || t.includes("/…/")) {
+      const parts = t.split(/\/(?:\.\.\.|…)+\//u);
+      const tail = parts[parts.length - 1] || t;
+      // Prefer keeping a leading absolute root when possible.
+      if (tail.startsWith("/") || /^[A-Za-z]:\//.test(tail) || tail.startsWith("~/")) {
+        return tail;
+      }
+    }
+    return t;
+  }
   // Leading "..." / "…" / ".../" (ASCII or fullwidth)
   t = t.replace(/^(?:\.\.\.|…)+\/*/u, "");
   // Mid-path ellipsis (rare): keep the longest trailing segment run
@@ -39,6 +59,7 @@ export function normalizePathToken(s: string): string {
     const parts = t.split(/\/(?:\.\.\.|…)+\//u);
     t = parts[parts.length - 1] || t;
   }
+  // Relative only: drop leading ./ and accidental extra slashes
   return t.replace(/^\.\//, "").replace(/^\/+/, "");
 }
 

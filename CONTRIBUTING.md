@@ -43,7 +43,8 @@ Default is the real **Grok Build** CLI (`grok agent stdio`).
 5. 禁止在 UI 使用 `window.confirm` / `prompt` / `alert`（见 `docs/llm-wiki/dialogs.md`）
 6. 提交 PR，说明动机、改动与验证方式
 
-**维护者 / AI 协作者**：Issue 分拣、PR 采纳标准、社区反馈入库与发版闭环见 **[docs/llm-wiki/maintain.md](./docs/llm-wiki/maintain.md)**。
+**维护者 / AI 协作者**：Issue 分拣、PR 采纳标准、社区反馈入库与发版闭环见 **[docs/llm-wiki/maintain.md](./docs/llm-wiki/maintain.md)**。  
+发版时贡献者圆形头像画廊由 `scripts/update-contributors.py` 写入 README（规则见 **[docs/llm-wiki/release.md](./docs/llm-wiki/release.md)**），请勿手写第二套表格。
 
 ## 约定 / Guidelines
 

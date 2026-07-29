@@ -195,8 +195,9 @@ export function extractMediaPathsFromContent(content: string): Attachment[] {
   let m: RegExpExecArray | null;
   while ((m = tickRe.exec(content)) !== null) push(m[1] || "");
 
+  // Allow CJK punctuation / colon before absolute paths (e.g. "位置：/Users/…/a.mp4").
   const bareRe = new RegExp(
-    `(?:^|[\\s"'()])((?:\\/|[A-Za-z]:[\\\\/])[^\\s\`"'<>|*?]+\\.(?:${MEDIA_EXT_RE}))\\b`,
+    `(?:^|[\\s"'()：:，,、【\\[\\]])((?:\\/|[A-Za-z]:[\\\\/])[^\\s\`"'<>|*?]+\\.(?:${MEDIA_EXT_RE}))\\b`,
     "gi",
   );
   while ((m = bareRe.exec(content)) !== null) push(m[1] || "");

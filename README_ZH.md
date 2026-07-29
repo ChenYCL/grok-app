@@ -251,37 +251,26 @@ pnpm build
 
 ## 贡献者
 
-感谢所有为 Grok App 做出贡献的人！数据来自 GitHub Contributors（2026-07-24 拉取）。
+<!-- CONTRIBUTORS:START -->
+感谢所有为 Grok App 做出贡献的人！以下为 GitHub 仓库全部人类贡献者（按 commits 降序，2026-07-29 更新）。
 
 <p align="center">
-  <a href="https://github.com/RongleCat"><img src="https://github.com/RongleCat.png?size=80" width="80" height="80" alt="RongleCat" /></a>
-  &nbsp;&nbsp;
-  <a href="https://github.com/sonnemusk"><img src="https://github.com/sonnemusk.png?size=80" width="80" height="80" alt="sonnemusk" /></a>
-  &nbsp;&nbsp;
-  <a href="https://github.com/Sdefendre"><img src="https://github.com/Sdefendre.png?size=80" width="80" height="80" alt="Sdefendre" /></a>
-  &nbsp;&nbsp;
-  <a href="https://github.com/jason920612"><img src="https://github.com/jason920612.png?size=80" width="80" height="80" alt="jason920612" /></a>
-  &nbsp;&nbsp;
-  <a href="https://github.com/shiaho777"><img src="https://github.com/shiaho777.png?size=80" width="80" height="80" alt="shiaho777" /></a>
-  &nbsp;&nbsp;
-  <a href="https://github.com/2530185073"><img src="https://github.com/2530185073.png?size=80" width="80" height="80" alt="2530185073" /></a>
-  &nbsp;&nbsp;
-  <a href="https://github.com/tisrop"><img src="https://github.com/tisrop.png?size=80" width="80" height="80" alt="tisrop" /></a>
+  <a href="https://github.com/RongleCat" title="RongleCat"><img src="https://github.com/RongleCat.png?size=96" width="72" height="72" alt="RongleCat" style="border-radius:50%" /></a>
+  <a href="https://github.com/sonnemusk" title="sonnemusk"><img src="https://github.com/sonnemusk.png?size=96" width="72" height="72" alt="sonnemusk" style="border-radius:50%" /></a>
+  <a href="https://github.com/jason920612" title="jason920612"><img src="https://github.com/jason920612.png?size=96" width="72" height="72" alt="jason920612" style="border-radius:50%" /></a>
+  <a href="https://github.com/1parado" title="1parado"><img src="https://github.com/1parado.png?size=96" width="72" height="72" alt="1parado" style="border-radius:50%" /></a>
+  <a href="https://github.com/lunar-me" title="lunar-me"><img src="https://github.com/lunar-me.png?size=96" width="72" height="72" alt="lunar-me" style="border-radius:50%" /></a>
+  <a href="https://github.com/Sdefendre" title="Sdefendre"><img src="https://github.com/Sdefendre.png?size=96" width="72" height="72" alt="Sdefendre" style="border-radius:50%" /></a>
+  <a href="https://github.com/shiaho777" title="shiaho777"><img src="https://github.com/shiaho777.png?size=96" width="72" height="72" alt="shiaho777" style="border-radius:50%" /></a>
+  <a href="https://github.com/yuhaouno" title="yuhaouno"><img src="https://github.com/yuhaouno.png?size=96" width="72" height="72" alt="yuhaouno" style="border-radius:50%" /></a>
+  <a href="https://github.com/2530185073" title="2530185073"><img src="https://github.com/2530185073.png?size=96" width="72" height="72" alt="2530185073" style="border-radius:50%" /></a>
+  <a href="https://github.com/fannnzhang" title="fannnzhang"><img src="https://github.com/fannnzhang.png?size=96" width="72" height="72" alt="fannnzhang" style="border-radius:50%" /></a>
+  <a href="https://github.com/jchacker5" title="jchacker5"><img src="https://github.com/jchacker5.png?size=96" width="72" height="72" alt="jchacker5" style="border-radius:50%" /></a>
+  <a href="https://github.com/tisrop" title="tisrop"><img src="https://github.com/tisrop.png?size=96" width="72" height="72" alt="tisrop" style="border-radius:50%" /></a>
 </p>
 
-| | 贡献者 | Commits | 代表贡献（节选） |
-|:---:|:---|:---:|:---|
-| <img src="https://github.com/RongleCat.png?size=48" width="48" height="48" alt="RongleCat" /> | [**RongleCat**](https://github.com/RongleCat) · 维护者 | 59 | 产品架构、发版与社区合入 |
-| <img src="https://github.com/sonnemusk.png?size=48" width="48" height="48" alt="sonnemusk" /> | [**sonnemusk**](https://github.com/sonnemusk) | 21 | Changes / 分叉回退、MCP·Plugins、权限阶梯、worktree、资源编辑、粘贴截图、错误卡、多会话流式、CLI 会话导入、turn 收尾、store 写锁等 |
-| <img src="https://github.com/Sdefendre.png?size=48" width="48" height="48" alt="Sdefendre" /> | [**Sdefendre**](https://github.com/Sdefendre)<br/>Steve Defendre | 2 | 会话标题跟随语言；Grok Build 权限 optionId |
-| <img src="https://github.com/jason920612.png?size=48" width="48" height="48" alt="jason920612" /> | [**jason920612**](https://github.com/jason920612) | 2 | 远程 ACP（API 模式）；繁體中文 locale |
-| <img src="https://github.com/shiaho777.png?size=48" width="48" height="48" alt="shiaho777" /> | [**shiaho777**](https://github.com/shiaho777)<br/>shiaho | 2 | 登录可取消；切换历史会话不再重播流式回复 |
-| <img src="https://github.com/2530185073.png?size=48" width="48" height="48" alt="2530185073" /> | [**2530185073**](https://github.com/2530185073)<br/>Yun | 1 | 自定义中转账户与本地用量展示 |
-| <img src="https://github.com/tisrop.png?size=48" width="48" height="48" alt="tisrop" /> | [**tisrop**](https://github.com/tisrop)<br/>wanghang | — | Composer 忙时后续消息队列 |
-
 [完整贡献图 →](https://github.com/RongleCat/grok-app/graphs/contributors)
-
-[![Contributors](https://contrib.rocks/image?repo=RongleCat/grok-app)](https://github.com/RongleCat/grok-app/graphs/contributors)
+<!-- CONTRIBUTORS:END -->
 
 ## License
 

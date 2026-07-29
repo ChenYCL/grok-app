@@ -269,6 +269,13 @@ import {
   shouldSendOnKeydown,
   type ComposerSendKeyPref,
 } from "@/lib/composerSendKey";
+import {
+  clearComposerProjectDraft,
+  loadComposerProjectDraft,
+  projectDraftKey,
+  saveComposerProjectDraft,
+  type ComposerProjectDraft,
+} from "@/lib/composerProjectDraft";
 import { PromptHistoryPanel } from "@/components/PromptHistoryPanel";
 import {
   queuePreviewText,
@@ -660,6 +667,11 @@ export default function App() {
   >({});
   /** Composer stored form (may include [[skill:name]] tokens). */
   const [draft, setDraft] = useState("");
+  /**
+   * Skip debounced project-draft persist while programmatically loading a
+   * saved buffer into the composer (newChat restore).
+   */
+  const suppressProjectDraftPersistRef = useRef(false);
   /**
    * CLI-like prompt history browse index (0 = newest user msg).
    * null = not browsing; only engaged when draft empty (or already browsing).
@@ -3383,6 +3395,15 @@ export default function App() {
     // Phone drawer: selecting a session closes the overlay (does not push layout).
     if (phoneLayout) closePhoneDrawer();
 
+    // Leaving a new-chat page: stash composer under the project so newChat can restore.
+    if (viewingSessionIdRef.current == null) {
+      saveComposerProjectDraft(projectDraftKey(activeProject?.id ?? null), {
+        text: draft,
+        attachments,
+        goalMode,
+      });
+    }
+
     // User navigation: invalidate any in-flight work that wants the workbench.
     bumpViewEpoch();
     // Snapshot the outgoing thread so a mid-turn switch does not lose the user bubble.
@@ -3621,7 +3642,14 @@ export default function App() {
     }
     // Orphan sessions clear project context; project sessions select their folder.
     setActiveProject(proj);
+    // Existing session: clear composer UI (project buffer already saved above).
+    // Follow-ups start empty; new-chat buffers stay in per-project storage.
+    suppressProjectDraftPersistRef.current = true;
+    setDraft("");
     setAttachments([]);
+    requestAnimationFrame(() => {
+      suppressProjectDraftPersistRef.current = false;
+    });
     // Reattach live host snapshot when reopening the session that is still running.
     const live = liveHostRef.current;
     if (live.sessionId === s.id) {
@@ -3743,11 +3771,67 @@ export default function App() {
       .catch(() => {});
   }, [expandedProjects]);
 
+  /** Apply a saved project draft (or empty) into the composer UI. */
+  const applyComposerProjectDraft = useCallback(
+    (saved: ComposerProjectDraft | null, seedText?: string) => {
+      suppressProjectDraftPersistRef.current = true;
+      if (seedText != null) {
+        setDraft(seedText);
+        setAttachments([]);
+      } else if (saved) {
+        setDraft(saved.text || "");
+        setAttachments(saved.attachments ?? []);
+        if (typeof saved.goalMode === "boolean") {
+          setGoalMode(saved.goalMode);
+        }
+      } else {
+        setDraft("");
+        setAttachments([]);
+      }
+      // Allow debounced persist again after React commits the load.
+      requestAnimationFrame(() => {
+        suppressProjectDraftPersistRef.current = false;
+      });
+    },
+    [],
+  );
+
+  /**
+   * While on a new-chat page, keep the per-project buffer in sync so a crash
+   * or hard switch mid-type still restores on next newChat.
+   */
+  useEffect(() => {
+    if (suppressProjectDraftPersistRef.current) return;
+    // Real session follow-ups must not overwrite the new-task buffer.
+    if (session.sessionId != null || viewingSessionIdRef.current != null) {
+      return;
+    }
+    const key = projectDraftKey(activeProject?.id ?? null);
+    const t = window.setTimeout(() => {
+      if (suppressProjectDraftPersistRef.current) return;
+      if (session.sessionId != null || viewingSessionIdRef.current != null) {
+        return;
+      }
+      saveComposerProjectDraft(key, {
+        text: draft,
+        attachments,
+        goalMode,
+      });
+    }, 280);
+    return () => window.clearTimeout(t);
+  }, [draft, attachments, goalMode, activeProject?.id, session.sessionId]);
+
   useEffect(() => {
     if (appGate !== "ready") return;
     if (didRestoreLastRef.current) return;
     if (!api.isTauri()) {
       didRestoreLastRef.current = true;
+      // Browser / non-host: still restore orphan new-chat draft if any.
+      if (session.sessionId == null && viewingSessionIdRef.current == null) {
+        applyComposerProjectDraft(
+          loadComposerProjectDraft(projectDraftKey(activeProject?.id ?? null)),
+        );
+      }
       return;
     }
     const id = shouldRestoreLastSession({
@@ -3758,16 +3842,27 @@ export default function App() {
       currentSessionId: session.sessionId,
     });
     didRestoreLastRef.current = true;
-    if (!id) return;
-    const row = sessions.find((s) => s.id === id);
-    if (!row) return;
-    void openSessionRef.current(row);
+    if (id) {
+      const row = sessions.find((s) => s.id === id);
+      if (row) {
+        void openSessionRef.current(row);
+        return;
+      }
+    }
+    // Default launch = new chat: restore per-project (or orphan) buffer.
+    if (session.sessionId == null && viewingSessionIdRef.current == null) {
+      applyComposerProjectDraft(
+        loadComposerProjectDraft(projectDraftKey(activeProject?.id ?? null)),
+      );
+    }
   }, [
     appGate,
     reopenLastSession,
     lastSessionId,
     sessions,
     session.sessionId,
+    activeProject?.id,
+    applyComposerProjectDraft,
   ]);
 
   /**
@@ -3814,6 +3909,9 @@ export default function App() {
    * No store row / CLI until first successful send via ensureConnected.
    * Pass `null` for a project-less session (listed under “其他会话”).
    * Omit / pass undefined to use the active project (requires one).
+   *
+   * Composer text/attachments are restored from per-project memory so a
+   * half-typed task survives switching to another chat and back.
    */
   const newChat = async (
     project?: Project | null,
@@ -3835,6 +3933,18 @@ export default function App() {
       setLocalError(tr("project.pathMissing", { name: proj.name }));
       return;
     }
+
+    // Snapshot outgoing new-chat buffer under the *previous* project before switch.
+    const prevKey = projectDraftKey(activeProject?.id ?? null);
+    const wasDraftPage = viewingSessionIdRef.current == null;
+    if (wasDraftPage) {
+      saveComposerProjectDraft(prevKey, {
+        text: draft,
+        attachments,
+        goalMode,
+      });
+    }
+
     automationSetupDraftRef.current = !!opts?.automationSetup;
     if (opts?.switchToChat !== false) {
       setMainPane("chat");
@@ -3867,8 +3977,20 @@ export default function App() {
     viewingSessionIdRef.current = null;
     setMessages([]);
     setContextUsage(INITIAL_CONTEXT_USAGE);
-    setDraft(opts?.seedDraft ?? "");
-    setAttachments([]);
+
+    const nextKey = projectDraftKey(proj?.id ?? null);
+    if (opts?.seedDraft != null) {
+      applyComposerProjectDraft(null, opts.seedDraft);
+      // Explicit seed replaces the saved buffer for this project.
+      saveComposerProjectDraft(nextKey, {
+        text: opts.seedDraft,
+        attachments: [],
+        goalMode,
+      });
+    } else {
+      applyComposerProjectDraft(loadComposerProjectDraft(nextKey));
+    }
+
     sendQueue.clearDraftQueue();
     setPlan(emptySessionPlan(tr("plan.ready")));
     setPerm(null);
@@ -4766,12 +4888,18 @@ export default function App() {
     (title: string | undefined | null) => {
       const t = (title || "").trim();
       if (!t) return true;
+      // Keep in sync with src-tauri/src/session_title.rs PLACEHOLDERS so
+      // auto-title still runs after locale switches / tray copy.
       const placeholders = [
         tr("session.new"),
         tr("session.placeholderTitle"),
         tr("session.untitled"),
         "New chat",
+        "New conversation",
         "新会话",
+        "新对话",
+        "新對話",
+        "新建会话",
         "Untitled",
         "未命名",
       ];
@@ -5296,7 +5424,10 @@ export default function App() {
     }
   };
 
-  const clearComposerAfterSubmit = () => {
+  const clearComposerAfterSubmit = (opts?: {
+    /** Drop the per-project new-chat buffer (only when leaving a draft send). */
+    clearProjectDraft?: boolean;
+  }) => {
     setDraft("");
     promptHistoryIndexRef.current = null;
     setPromptHistoryIndex(null);
@@ -5306,6 +5437,9 @@ export default function App() {
     setPromptHistoryFocusFilter(false);
     setSlashQuery(null);
     setAttachments([]);
+    if (opts?.clearProjectDraft) {
+      clearComposerProjectDraft(projectDraftKey(activeProject?.id ?? null));
+    }
     requestAnimationFrame(() => {
       const el = document.querySelector<HTMLElement>(".composer__input");
       if (el) el.style.height = "auto";
@@ -5325,6 +5459,10 @@ export default function App() {
     // Unassigned chats use workspaces/general as cwd (no sidebar project).
     sendQueue.releaseFlushHold();
 
+    // New-chat page → after send, forget the project buffer so restore is empty.
+    // Existing-session follow-ups must not wipe a half-typed new-task draft.
+    const fromNewChatPage = session.sessionId == null;
+
     // Enqueue only when *this viewed chat* is busy/connecting (follow-ups).
     // Host mid-turn on another session → executeSend demotes + spawns concurrent
     // work. Never park a new-chat / other-session send into a fake local queue
@@ -5335,11 +5473,11 @@ export default function App() {
         attachments: att,
         goalMode,
       });
-      clearComposerAfterSubmit();
+      clearComposerAfterSubmit({ clearProjectDraft: fromNewChatPage });
       return;
     }
 
-    clearComposerAfterSubmit();
+    clearComposerAfterSubmit({ clearProjectDraft: fromNewChatPage });
     await executeSend({
       storedDisplay,
       att,

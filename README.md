@@ -271,37 +271,27 @@ Issues and PRs are welcome.
 
 ## Contributors
 
-Thanks to everyone who has contributed to Grok App. Data from the GitHub Contributors API (fetched 2026-07-24).
+<!-- CONTRIBUTORS:START -->
+Thanks to everyone who has contributed to Grok App. All human GitHub contributors (by commit count, updated 2026-07-29).
 
 <p align="center">
-  <a href="https://github.com/RongleCat"><img src="https://github.com/RongleCat.png?size=80" width="80" height="80" alt="RongleCat" /></a>
-  &nbsp;&nbsp;
-  <a href="https://github.com/sonnemusk"><img src="https://github.com/sonnemusk.png?size=80" width="80" height="80" alt="sonnemusk" /></a>
-  &nbsp;&nbsp;
-  <a href="https://github.com/Sdefendre"><img src="https://github.com/Sdefendre.png?size=80" width="80" height="80" alt="Sdefendre" /></a>
-  &nbsp;&nbsp;
-  <a href="https://github.com/jason920612"><img src="https://github.com/jason920612.png?size=80" width="80" height="80" alt="jason920612" /></a>
-  &nbsp;&nbsp;
-  <a href="https://github.com/shiaho777"><img src="https://github.com/shiaho777.png?size=80" width="80" height="80" alt="shiaho777" /></a>
-  &nbsp;&nbsp;
-  <a href="https://github.com/2530185073"><img src="https://github.com/2530185073.png?size=80" width="80" height="80" alt="2530185073" /></a>
-  &nbsp;&nbsp;
-  <a href="https://github.com/tisrop"><img src="https://github.com/tisrop.png?size=80" width="80" height="80" alt="tisrop" /></a>
+  <a href="https://github.com/RongleCat" title="RongleCat"><img src="https://github.com/RongleCat.png?size=96" width="72" height="72" alt="RongleCat" style="border-radius:50%" /></a>
+  <a href="https://github.com/sonnemusk" title="sonnemusk"><img src="https://github.com/sonnemusk.png?size=96" width="72" height="72" alt="sonnemusk" style="border-radius:50%" /></a>
+  <a href="https://github.com/jason920612" title="jason920612"><img src="https://github.com/jason920612.png?size=96" width="72" height="72" alt="jason920612" style="border-radius:50%" /></a>
+  <a href="https://github.com/1parado" title="1parado"><img src="https://github.com/1parado.png?size=96" width="72" height="72" alt="1parado" style="border-radius:50%" /></a>
+  <a href="https://github.com/lunar-me" title="lunar-me"><img src="https://github.com/lunar-me.png?size=96" width="72" height="72" alt="lunar-me" style="border-radius:50%" /></a>
+  <a href="https://github.com/Sdefendre" title="Sdefendre"><img src="https://github.com/Sdefendre.png?size=96" width="72" height="72" alt="Sdefendre" style="border-radius:50%" /></a>
+  <a href="https://github.com/shiaho777" title="shiaho777"><img src="https://github.com/shiaho777.png?size=96" width="72" height="72" alt="shiaho777" style="border-radius:50%" /></a>
+  <a href="https://github.com/yuhaouno" title="yuhaouno"><img src="https://github.com/yuhaouno.png?size=96" width="72" height="72" alt="yuhaouno" style="border-radius:50%" /></a>
+  <a href="https://github.com/2530185073" title="2530185073"><img src="https://github.com/2530185073.png?size=96" width="72" height="72" alt="2530185073" style="border-radius:50%" /></a>
+  <a href="https://github.com/fannnzhang" title="fannnzhang"><img src="https://github.com/fannnzhang.png?size=96" width="72" height="72" alt="fannnzhang" style="border-radius:50%" /></a>
+  <a href="https://github.com/jchacker5" title="jchacker5"><img src="https://github.com/jchacker5.png?size=96" width="72" height="72" alt="jchacker5" style="border-radius:50%" /></a>
+  <a href="https://github.com/tisrop" title="tisrop"><img src="https://github.com/tisrop.png?size=96" width="72" height="72" alt="tisrop" style="border-radius:50%" /></a>
 </p>
 
-| | Contributor | Commits | Highlights (selected) |
-|:---:|:---|:---:|:---|
-| <img src="https://github.com/RongleCat.png?size=48" width="48" height="48" alt="RongleCat" /> | [**RongleCat**](https://github.com/RongleCat) · maintainer | 59 | Product architecture, releases, community integration |
-| <img src="https://github.com/sonnemusk.png?size=48" width="48" height="48" alt="sonnemusk" /> | [**sonnemusk**](https://github.com/sonnemusk) | 21 | Changes / fork & rewind, MCP·Plugins, permission tiers, worktrees, resource edit, paste screenshots, error deck, multi-session stream, CLI session import, turn-complete, store locks, and more |
-| <img src="https://github.com/Sdefendre.png?size=48" width="48" height="48" alt="Sdefendre" /> | [**Sdefendre**](https://github.com/Sdefendre)<br/>Steve Defendre | 2 | Session titles follow locale; Grok Build permission optionIds |
-| <img src="https://github.com/jason920612.png?size=48" width="48" height="48" alt="jason920612" /> | [**jason920612**](https://github.com/jason920612) | 2 | Remote ACP (API mode); Traditional Chinese locale |
-| <img src="https://github.com/shiaho777.png?size=48" width="48" height="48" alt="shiaho777" /> | [**shiaho777**](https://github.com/shiaho777)<br/>shiaho | 2 | Cancelable login; stop re-streaming history on session switch |
-| <img src="https://github.com/2530185073.png?size=48" width="48" height="48" alt="2530185073" /> | [**2530185073**](https://github.com/2530185073)<br/>Yun | 1 | Custom provider account + local usage UI |
-| <img src="https://github.com/tisrop.png?size=48" width="48" height="48" alt="tisrop" /> | [**tisrop**](https://github.com/tisrop)<br/>wanghang | — | Composer follow-up send queue while agent is busy |
-
 [Full contributors graph →](https://github.com/RongleCat/grok-app/graphs/contributors)
+<!-- CONTRIBUTORS:END -->
 
-[![Contributors](https://contrib.rocks/image?repo=RongleCat/grok-app)](https://github.com/RongleCat/grok-app/graphs/contributors)
 
 ## License
 

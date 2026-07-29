@@ -57,14 +57,19 @@ export function TimelinePhaseBlock({
 }) {
   const tr = useMemo(() => createT(locale), [locale]);
   const title = useMemo(() => buildPhaseTitle(phase, tr), [phase, tr]);
-  const shouldExpand =
-    phase.live || phase.errorCount > 0 || phase.runningCount > 0;
+  // Expand while the phase is live or any tool failed (review errors).
+  // Do not keep open for runningCount after the phase closed — segment end
+  // (content / next thought / turn idle) must auto-collapse.
+  const shouldExpand = phase.live || phase.errorCount > 0;
   const [open, setOpen] = useState(shouldExpand);
 
   useEffect(() => {
-    if (shouldExpand) setOpen(true);
-    else if (!phase.live) setOpen(false);
-  }, [shouldExpand, phase.live, phase.errorCount, phase.id]);
+    if (shouldExpand) {
+      setOpen(true);
+    } else {
+      setOpen(false);
+    }
+  }, [shouldExpand, phase.id]);
 
   const toolDisplay = useMemo(() => {
     const segs: MessageSegment[] = phase.tools.map((t) => t);

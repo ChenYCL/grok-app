@@ -12,7 +12,8 @@ Related: [release.md](./release.md) (tag / CHANGELOG), [CONTRIBUTING.md](../../C
 2. **Triage** severity (`priority:p0|p1|p2`) and area labels within ~48h of report when possible.
 3. **Review** external PRs with a fixed checklist; merge small safe fixes fast.
 4. **Fix** P0/P1 on `main` with tests + i18n; close Issues from commit/PR body.
-5. **Ship** via CHANGELOG + `release-tag.sh` when a batch of fixes is ready (see release.md).
+5. **Ship** via CHANGELOG + `release-tag.sh` when a batch of fixes is ready (see [release.md](./release.md)).  
+   Each release **must** refresh README circular contributor avatars (`scripts/update-contributors.py`; no square table / contrib.rocks dual track).
 
 ---
 

@@ -100,6 +100,35 @@ describe("timelinePhases", () => {
     }
   });
 
+  it("empty tool status without streaming is not running", () => {
+    const segs: MessageSegment[] = [
+      { kind: "thought", text: "plan" },
+      {
+        kind: "tool",
+        toolCallId: "t1",
+        title: "Read",
+        toolKind: "read_file",
+        status: "",
+        streaming: false,
+      },
+      {
+        kind: "tool",
+        toolCallId: "t2",
+        title: "List",
+        toolKind: "list_dir",
+        status: "completed",
+        streaming: false,
+      },
+      { kind: "content", text: "done" },
+    ];
+    const units = buildTimelineUnits(segs, { streaming: false });
+    expect(units[0]!.kind).toBe("phase");
+    if (units[0]!.kind === "phase") {
+      expect(units[0]!.live).toBe(false);
+      expect(units[0]!.runningCount).toBe(0);
+    }
+  });
+
   it("single thought or single tool stays bare (not a phase chip)", () => {
     expect(
       buildTimelineUnits(

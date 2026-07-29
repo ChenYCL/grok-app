@@ -81,6 +81,15 @@ also /tmp/other.png and /tmp/clip.mp4 and not a file.`;
     expect(atts[0]!.name).toBe("1.jpg");
   });
 
+  it("extracts absolute video after CJK colon (history prose)", () => {
+    const atts = extractMediaPathsFromContent(
+      "成片位置：/Users/me/proj/out/moon-taste-story.mp4\n时长约 3 分钟",
+    );
+    expect(atts.map((a) => a.path)).toEqual([
+      "/Users/me/proj/out/moon-taste-story.mp4",
+    ]);
+  });
+
   it("mergeMessageAttachments combines stored + text paths", () => {
     const out = mergeMessageAttachments(
       [{ path: "/a.png", name: "a.png", isDir: false }],

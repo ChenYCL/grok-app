@@ -219,17 +219,20 @@ function UserPlainOrSkills({
 }) {
   const hydrated = hydrateDisplayContent(content);
   const segs = parseStoredContent(hydrated);
+  // Always use a pre-wrap host so input newlines / blank lines match the bubble.
   if (!segs.some((s) => s.type === "skill")) {
     if (findQuery?.trim()) {
       return (
-        <HighlightedText
-          text={content}
-          query={findQuery}
-          activeOccurrence={findActiveOccurrence ?? null}
-        />
+        <span className="user-msg-body">
+          <HighlightedText
+            text={content}
+            query={findQuery}
+            activeOccurrence={findActiveOccurrence ?? null}
+          />
+        </span>
       );
     }
-    return <>{content}</>;
+    return <span className="user-msg-body">{content}</span>;
   }
   return (
     <span className="user-msg-body">
@@ -244,7 +247,9 @@ function UserPlainOrSkills({
             activeOccurrence={findActiveOccurrence ?? null}
           />
         ) : (
-          <span key={`t-${i}`}>{s.text}</span>
+          <span key={`t-${i}`} className="user-msg-body__text">
+            {s.text}
+          </span>
         ),
       )}
     </span>
@@ -454,13 +459,35 @@ export function ConversationThread({
   void _onOpenSessionChanges;
   void _onOpenModifiedPath;
 
-  // Re-pin when user sends (even if they had scrolled up to read history).
-  const forceStickKey = useMemo(() => {
-    for (let i = messages.length - 1; i >= 0; i--) {
-      if (messages[i]?.role === "user") return messages[i]!.id;
+  /**
+   * Force stick-to-bottom when a new user turn starts **and** when the turn
+   * becomes busy (streaming / permission). Key must not change when the turn
+   * ends, or a user who scrolled up mid-stream would be yanked back.
+   */
+  const prevTurnBusyRef = useRef(false);
+  const [stickBump, setStickBump] = useState(0);
+  const turnBusyForStick =
+    sessionState === "streaming" || sessionState === "awaiting_permission";
+  useEffect(() => {
+    if (turnBusyForStick && !prevTurnBusyRef.current) {
+      // Task just started → re-enter auto-follow once.
+      setStickBump((n) => n + 1);
     }
-    return null;
-  }, [messages]);
+    prevTurnBusyRef.current = turnBusyForStick;
+  }, [turnBusyForStick]);
+
+  const forceStickKey = useMemo(() => {
+    let lastUserId: string | null = null;
+    for (let i = messages.length - 1; i >= 0; i--) {
+      if (messages[i]?.role === "user") {
+        lastUserId = messages[i]!.id;
+        break;
+      }
+    }
+    if (!lastUserId && stickBump === 0) return null;
+    // stickBump only increments on busy edge — end-of-turn leaves it stable.
+    return `${lastUserId ?? "turn"}:${stickBump}`;
+  }, [messages, stickBump]);
 
   /** Last non-streaming assistant in the current user turn — regenerate target. */
   const regenerableAssistantId = useMemo(

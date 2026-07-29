@@ -17,8 +17,10 @@ import { normalizeTaskStatus } from "@/lib/sessionTasks";
 
 export function toolSegmentIsRunning(seg: MessageToolSegment): boolean {
   if (seg.streaming) return true;
-  const s = (seg.status || "").toLowerCase();
-  return s === "in_progress" || s === "pending" || s === "running" || s === "";
+  const s = (seg.status || "").toLowerCase().trim();
+  // Empty + not streaming → finished (see timelinePhases.toolRunning).
+  if (!s) return false;
+  return s === "in_progress" || s === "pending" || s === "running";
 }
 
 export function toolSegmentFailed(seg: MessageToolSegment): boolean {

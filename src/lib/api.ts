@@ -711,6 +711,30 @@ export async function sessionAutoTitle(id: string, firstMessage: string) {
   }>("session_auto_title", { id, firstMessage });
 }
 
+/** Cached chat video cover (JPEG path under app cache). */
+export type VideoPosterResult = {
+  posterPath: string;
+  fromCache: boolean;
+};
+
+/**
+ * Get or create a still cover for a local video path.
+ * Host uses disk cache keyed by path+mtime+size; extracts via ffmpeg when missing.
+ */
+export async function mediaVideoPoster(path: string) {
+  return invoke<VideoPosterResult>("media_video_poster", { path });
+}
+
+/**
+ * Persist a client canvas capture (JPEG base64, no data: prefix) into the same cache key.
+ */
+export async function mediaVideoPosterSave(path: string, jpegBase64: string) {
+  return invoke<VideoPosterResult>("media_video_poster_save", {
+    path,
+    jpegBase64,
+  });
+}
+
 export async function projectTrust(id: string) {
   return invoke("project_trust", { id });
 }
