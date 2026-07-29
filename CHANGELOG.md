@@ -39,6 +39,7 @@ See `docs/llm-wiki/release.md`.
 
 - **Shortcuts catalog / help**: **Send** row reflects the Composer send-key preference (Enter vs ⌘/Ctrl+Enter) and updates live when the pref changes
 - **Shortcuts catalog**: default **Send** shows plain Enter (not ⌘/Ctrl+Enter); note points to Settings → Composer for mod-enter
+- **Shortcut registry**: App global mod chords (`⌘/Ctrl+K`, `F`, `N`, `,`, `/`, `⇧D`, `⇧C`, `⇧V`) match via `matchGlobalShortcut` in the same module as the help/Settings catalog (Esc-stop and Ctrl+Space dictation stay special-cased)
 
 **中文 · 新增**
 
@@ -68,6 +69,7 @@ See `docs/llm-wiki/release.md`.
 
 - 快捷键列表 / 帮助：发送键随对话偏好（Enter 或 ⌘/Ctrl+Enter）实时更新
 - 默认发送键展示为 Enter；说明可在设置 → 对话偏好改用 ⌘/Ctrl+Enter
+- 快捷键注册表：全局 mod 组合键与帮助/设置目录同模块匹配（Esc 停止、Ctrl+Space 语音仍在 App 特殊处理）
 
 ## [0.2.1] - 2026-07-29
 
