@@ -605,8 +605,7 @@ html.platform-mac[data-theme="light"] .settings-page__content {
 }
 
 .tree-l1:hover .tree-l1__actions,
-.tree-l1:focus-within .tree-l1__actions,
-.tree-l1__actions--always {
+.tree-l1:focus-within .tree-l1__actions {
   opacity: 1;
   pointer-events: auto;
 }
@@ -623,25 +622,6 @@ html.platform-mac[data-theme="light"] .settings-page__content {
 }
 
 .tree-l1__action:hover {
-  background: var(--bg-active);
-  color: var(--text-primary);
-}
-
-/* Multi-select entry ("Select" / "Cancel") next to Projects header */
-.tree-l1__text-btn {
-  height: 28px;
-  padding: 0 8px;
-  display: inline-flex;
-  align-items: center;
-  border-radius: var(--radius-sm);
-  color: var(--text-tertiary);
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.02em;
-  flex-shrink: 0;
-}
-
-.tree-l1__text-btn:hover {
   background: var(--bg-active);
   color: var(--text-primary);
 }

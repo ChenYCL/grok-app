@@ -45,6 +45,7 @@ const en = {
   "sidebar.selectedCount": "{n} selected",
   "sidebar.archiveSelected": "Archive {n}",
   "sidebar.restoreSelected": "Restore {n}",
+  "sidebar.deleteSelected": "Delete {n}",
   "sidebar.archiveSelectedTitle": "Archive chats",
   "sidebar.restoreSelectedTitle": "Restore chats",
   "sidebar.archiveSelectedConfirm":
@@ -52,6 +53,7 @@ const en = {
   "sidebar.restoreSelectedConfirm": "Restore {n} chats to the sidebar?",
   "sidebar.archivedToast": "Archived {n} chats",
   "sidebar.restoredToast": "Restored {n} chats",
+  "sidebar.deletedToast": "Deleted {n} chats",
   "user.menu": "Account menu",
   "user.theme": "Theme",
   "user.themeLight": "Switch to light",
@@ -2367,6 +2369,7 @@ const zh: Record<MessageKey, string> = {
   "sidebar.selectedCount": "已选 {n} 项",
   "sidebar.archiveSelected": "归档 {n}",
   "sidebar.restoreSelected": "恢复 {n}",
+  "sidebar.deleteSelected": "删除 {n}",
   "sidebar.archiveSelectedTitle": "归档会话",
   "sidebar.restoreSelectedTitle": "恢复会话",
   "sidebar.archiveSelectedConfirm":
@@ -2374,6 +2377,7 @@ const zh: Record<MessageKey, string> = {
   "sidebar.restoreSelectedConfirm": "确定将 {n} 个会话恢复到侧栏？",
   "sidebar.archivedToast": "已归档 {n} 个会话",
   "sidebar.restoredToast": "已恢复 {n} 个会话",
+  "sidebar.deletedToast": "已永久删除 {n} 个会话",
   "user.menu": "个人中心",
   "user.theme": "主题",
   "user.themeLight": "切换到浅色",

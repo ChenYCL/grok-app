@@ -441,6 +441,7 @@ import {
   IconPanelRight,
   IconUser,
   IconArchive,
+  IconListCheck,
   IconPin,
   IconPinOff,
   IconRename,
@@ -5330,12 +5331,17 @@ export default function App() {
           }
           sendQueue.dropSessions(deletedIds);
           await refreshSessions();
+          exitSessionSelectMode();
           if (wasViewing && viewingRow) {
             const proj = viewingRow.projectId
               ? projects.find((p) => p.id === viewingRow.projectId) ?? null
               : null;
             if (proj) await newChat(proj, { switchToChat: true });
             else await newChat(null, { switchToChat: true });
+          }
+          if (n > 0) {
+            setToast(tr("sidebar.deletedToast", { n: String(n) }));
+            window.setTimeout(() => setToast(null), 3200);
           }
           setLocalError(null);
         } catch (e) {
@@ -10889,36 +10895,35 @@ export default function App() {
                   {tr("sidebar.projects")}
                 </span>
               </button>
-              <div
-                className={
-                  "tree-l1__actions" +
-                  (sessionSelectMode || selectableSessionCount > 0
-                    ? " tree-l1__actions--always"
-                    : "")
-                }
-              >
+              <div className="tree-l1__actions">
                 {sessionSelectMode ? (
-                  <button
-                    type="button"
-                    className="tree-l1__text-btn"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      exitSessionSelectMode();
-                    }}
-                  >
-                    {tr("common.cancel")}
-                  </button>
+                  <Tip label={tr("common.cancel")}>
+                    <button
+                      type="button"
+                      className="tree-l1__action"
+                      aria-label={tr("common.cancel")}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        exitSessionSelectMode();
+                      }}
+                    >
+                      <IconClose size={15} />
+                    </button>
+                  </Tip>
                 ) : selectableSessionCount > 0 ? (
-                  <button
-                    type="button"
-                    className="tree-l1__text-btn"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      enterSessionSelectMode();
-                    }}
-                  >
-                    {tr("sidebar.select")}
-                  </button>
+                  <Tip label={tr("sidebar.select")}>
+                    <button
+                      type="button"
+                      className="tree-l1__action"
+                      aria-label={tr("sidebar.select")}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        enterSessionSelectMode();
+                      }}
+                    >
+                      <IconListCheck size={15} />
+                    </button>
+                  </Tip>
                 ) : null}
                 {projects.length > 0 && !sessionSelectMode ? (
                   <Tip label={tr("sidebar.collapseAllProjects")}>
@@ -10947,6 +10952,7 @@ export default function App() {
                     <button
                       type="button"
                       className="tree-l1__action"
+                      aria-label={tr("sidebar.addProject")}
                       onClick={() => void addProject(false)}
                     >
                       <IconPlus size={15} />
@@ -11455,6 +11461,21 @@ export default function App() {
                   onClick={() => confirmBulkSetArchived(true)}
                 >
                   {tr("sidebar.archiveSelected", {
+                    n: selectedSessionIds.size,
+                  })}
+                </button>
+                <button
+                  type="button"
+                  className="btn btn--ghost btn--sm btn--danger"
+                  disabled={selectedSessionIds.size === 0}
+                  onClick={() => {
+                    const rows = sessions.filter((s) =>
+                      selectedSessionIds.has(s.id),
+                    );
+                    deleteSessionsConfirm(rows);
+                  }}
+                >
+                  {tr("sidebar.deleteSelected", {
                     n: selectedSessionIds.size,
                   })}
                 </button>

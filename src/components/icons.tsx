@@ -55,6 +55,7 @@ import {
   IconLayoutSidebarRight as TbLayoutSidebarRight,
   IconLink as TbLink,
   IconList as TbList,
+  IconListCheck as TbListCheck,
   IconListNumbers as TbListNumbers,
   IconListTree as TbListTree,
   IconMarkdown as TbMarkdown,
@@ -260,6 +261,8 @@ export const IconPanelRight = wrap(TbLayoutSidebarRight);
 /** Open project in Finder / external app. */
 export const IconExternalLink = wrap(TbExternalLink);
 export const IconList = wrap(TbList);
+/** Sidebar multi-select / checklist mode. */
+export const IconListCheck = wrap(TbListCheck);
 export const IconInstructions = wrap(TbFileText);
 export const IconSettings = wrap(TbSettings);
 export const IconDoctor = wrap(TbFirstAidKit);

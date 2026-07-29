@@ -37,6 +37,7 @@ export const zhTW: Record<MessageKey, string> = {
   "sidebar.selectedCount": "已選 {n} 項",
   "sidebar.archiveSelected": "封存 {n}",
   "sidebar.restoreSelected": "還原 {n}",
+  "sidebar.deleteSelected": "刪除 {n}",
   "sidebar.archiveSelectedTitle": "封存對話",
   "sidebar.restoreSelectedTitle": "還原對話",
   "sidebar.archiveSelectedConfirm":
@@ -44,6 +45,7 @@ export const zhTW: Record<MessageKey, string> = {
   "sidebar.restoreSelectedConfirm": "確定將 {n} 個對話還原到側欄？",
   "sidebar.archivedToast": "已封存 {n} 個對話",
   "sidebar.restoredToast": "已還原 {n} 個對話",
+  "sidebar.deletedToast": "已永久刪除 {n} 個對話",
   "user.menu": "個人中心",
   "user.theme": "主題",
   "user.themeLight": "切換為淺色",
