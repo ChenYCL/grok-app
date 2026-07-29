@@ -78,6 +78,13 @@ export const SHORTCUTS: ShortcutRow[] = [
     win: "Ctrl ,",
   },
   {
+    id: "toggleSidebar",
+    labelKey: "shortcuts.toggleSidebar",
+    group: "navigation",
+    mac: "⌘ B",
+    win: "Ctrl B",
+  },
+  {
     id: "help",
     labelKey: "shortcuts.help",
     group: "navigation",
