@@ -146,11 +146,15 @@ export function parseContentRangeTotal(header: string | null): number | null {
 
 /**
  * Fetch an entire media:// (or http) resource, reassembling Range chunks.
+ *
+ * `opts.chunkSize` is for unit tests only (default = media protocol 2 MiB).
  */
 export async function fetchEntireMediaBlob(
   url: string,
   fetchImpl: typeof fetch = fetch,
+  opts?: { chunkSize?: number },
 ): Promise<Blob> {
+  const chunkSize = opts?.chunkSize ?? MEDIA_PROTO_CHUNK;
   // Probe total size with a 1-byte Range (media protocol always supports it).
   const probe = await fetchImpl(url, {
     headers: { Range: "bytes=0-0" },
@@ -182,7 +186,7 @@ export async function fetchEntireMediaBlob(
     return full.blob();
   }
 
-  if (totalFromRange <= MEDIA_PROTO_CHUNK) {
+  if (totalFromRange <= chunkSize) {
     const one = await fetchImpl(url, {
       headers: { Range: `bytes=0-${totalFromRange - 1}` },
     });
@@ -194,8 +198,8 @@ export async function fetchEntireMediaBlob(
 
   const parts: Blob[] = [];
   let got = 0;
-  for (let start = 0; start < totalFromRange; start += MEDIA_PROTO_CHUNK) {
-    const end = Math.min(start + MEDIA_PROTO_CHUNK - 1, totalFromRange - 1);
+  for (let start = 0; start < totalFromRange; start += chunkSize) {
+    const end = Math.min(start + chunkSize - 1, totalFromRange - 1);
     const part = await fetchImpl(url, {
       headers: { Range: `bytes=${start}-${end}` },
     });

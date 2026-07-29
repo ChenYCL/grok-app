@@ -11,91 +11,58 @@ See `docs/llm-wiki/release.md`.
 
 ## [Unreleased]
 
-### Fixed
+## [0.2.2] - 2026-07-30
 
-- **Agent PATH parity (GUI vs Terminal)**: enrich spawn PATH with existing conda/mamba/miniforge, pyenv, nvm, asdf, volta roots so tools like `conda` resolve without loading shell rc (Dock launches)
-- **Stuck busy spinner (#225)**: late stream tokens no longer re-promote settled chats to streaming; empty-run, hard stream-stall end, and idle recycle settle the sidebar liveMap
-- **Video focus-switch crash (macOS)**: release builds use `panic = "unwind"` so `media://` worker `catch_unwind` can actually absorb Range/WebKit races; chat/resource/wallpaper video pause while the window is hidden to cut cancelled scheme-task thrash (0.2.0 SIGABRT when switching away and back during playback)
-- **Wallpaper X search gallery**: long result lists are scrollable again — multi-column masonry no longer clips overflow into hidden horizontal columns (only the first few thumbs used to show)
-- **Imagine / library “Set as background”**: reassemble full file via media:// Range (bare GET only returned the first 2 MiB, so large generated PNGs failed with a generic error); surface prepare errors in the modal; raise source size cap to 40 MB
+> **Highlight:** In-app auto-update works for signed builds; calmer sidebar multi-select; PATH / busy / media reliability.
+>
+> **中文 · 亮点：** 正式版可应用内静默更新；侧栏多选更干净；PATH / 卡住忙碌 / 媒体更稳。
 
 ### Added
 
-- **Toggle sidebar** shortcut: ⌘/Ctrl+B (desktop rail and phone drawer; listed in shortcuts catalog)
-- **Keyboard shortcuts filter** (Settings → Keyboard): search the shortcut list by action label, id, or key chord (⌘/Ctrl tokens)
-- **Always-on-top window** (Settings → General → App): keep the desktop window above other apps (`localStorage` `grok.windowAlwaysOnTop`, default off; Tauri `setAlwaysOnTop`)
-- **Always-show back-to-bottom** control (Settings → Appearance → Interface; off by default): keep the scroll-to-latest button visible even when already at the bottom (`localStorage` `grok.backBottomAlways`)
-- **Remember last Settings section + tab**: generic open (⌘/Ctrl+,, gear, slash `/settings`, tray Settings…) restores the last place via `localStorage` `grok.settingsLastRoute`; explicit deep links and section jumps are unchanged
-- **Zen mode** (Settings → Appearance → Interface + top-bar control): hide left sidebar and right files pane to maximize chat; remembers prior collapse state and restores on exit (`localStorage` `grok.zenMode`). Escape still stops generation and does not exit zen.
-- **Copy last assistant reply** shortcut: ⌘/Ctrl+Shift+C (same action as slash `/copy`; listed in shortcuts catalog)
-- **Collapse all activity** in the current chat: top-bar control and session menu item collapse expanded tool phases and finished thinking blocks (streaming thoughts stay open)
-- **Sidebar session relative time** (Settings → Appearance → Interface; on by default): muted “2 hours ago” meta on session rows from `updatedAt`, refreshed about once a minute (`localStorage` `grok.sidebarShowRelativeTime`)
-- **Permission auto-deny timeout** (Settings → General → Permissions): optional Off / 30s / 1m / 2m / 5m; when the bar is open and the timer fires, uses the same deny path as Escape / Deny; subtle countdown on the bar (`localStorage` `grok.permissionTimeoutSec`, default off)
-- **Stop all** busy sessions from the Tasks panel (confirm, then cancel every streaming / awaiting-permission / connecting session; toast with success count)
-- **Quiet hours** for desktop notifications (Settings → General → App): optional local start/end window that suppresses system notifies overnight or any range; in-app toasts unchanged
-- **Clear composer draft**: small clear control on the input row when text or attachments are present; long drafts (>200 characters) confirm first
-- **Composer draft stats**: muted character and word count when the input is non-empty (Settings → General → Composer; on by default)
-- **Relative message timestamps** (Settings → Appearance → Interface): absolute weekday+clock or relative (“2 minutes ago”); relative labels refresh about once a minute
-- Optional short notification sound when a desktop notification is shown (Settings → General → App; default off)
-- Desktop notification when the agent asks a question (`session://ask_user`), gated by the existing “Notify on permission” setting
-- **Shortcuts catalog**: list **Find in conversation** (⌘/Ctrl+F) and **voice dictation** (Ctrl+Space; not Cmd)
-- **Composer spellcheck** (Settings → General → Composer): optional browser spellcheck on the main chat input (off by default)
-- **Session JSON export**: download chat as import-friendly JSON (`{ title, sessionId, exportedAt, messages: [{role,content}] }`) from the session menu; round-trips with existing transcript import
-- **Optional line numbers** on chat fenced code blocks (Settings → Appearance → Interface; default off)
-- **Chat density** (Settings → Appearance → Interface): comfortable (default) or compact transcript spacing — tighter message padding and gaps (`localStorage` `grok.chatDensity`)
-- **Sidebar density** (Settings → Appearance → Interface): comfortable (default) or compact session-list spacing — tighter row height and gaps (`localStorage` `grok.sidebarDensity`)
-- **Optional confirm before opening external links** from chat markdown (Settings → Appearance → Interface; default off). Desktop opens http(s) via the system browser (`openExternalUrl`) instead of only `target=_blank`.
-- **Sidebar multi-select archive**: Select several chats in the tree and archive them in one confirm (restore remains in Settings → Archived)
-- **Launch at login** (Settings → General → App): OS login item via `tauri-plugin-autostart`; opt-in, persisted in AppSettings and synced on change
+- **Sidebar multi-select polish**: list-check icon instead of a text button; project-row actions (select / collapse / add) show only on hover; multi-select bar can **permanently delete** selected chats with the existing danger confirm + toast
+- **Zen mode** (Settings → Appearance → Interface + top-bar): hide left sidebar and right files pane; remembers prior collapse and restores on exit (`localStorage` `grok.zenMode`). Escape still stops generation only
+- **Remember last Settings section + tab** for generic open (⌘/Ctrl+,, gear, `/settings`, tray); deep links unchanged (`localStorage` `grok.settingsLastRoute`)
+- **Always-show back-to-bottom** (Settings → Appearance → Interface; off by default)
+- **Always-on-top window** (Settings → General → App; `localStorage` `grok.windowAlwaysOnTop`)
+- **Keyboard shortcuts filter** (Settings → Keyboard): search by label, id, or chord
+- **Toggle sidebar** shortcut: ⌘/Ctrl+B (desktop rail and phone drawer)
+- **Copy last assistant reply** shortcut: ⌘/Ctrl+Shift+C (same as `/copy`)
+- **Collapse all activity** in the current chat (top-bar + session menu; streaming thoughts stay open)
+- **Sidebar session relative time** (on by default; about once a minute)
+- **Permission auto-deny timeout** (Settings → General → Permissions): Off / 30s / 1m / 2m / 5m with countdown on the bar
 
 ### Changed
 
-- **Shortcuts catalog / help**: **Send** row reflects the Composer send-key preference (Enter vs ⌘/Ctrl+Enter) and updates live when the pref changes
-- **Shortcuts catalog**: default **Send** shows plain Enter (not ⌘/Ctrl+Enter); note points to Settings → Composer for mod-enter
-- **Shortcut registry**: App global mod chords (`⌘/Ctrl+K`, `F`, `N`, `,`, `/`, `⇧D`, `⇧C`, `⇧V`) match via `matchGlobalShortcut` in the same module as the help/Settings catalog (Esc-stop and Ctrl+Space dictation stay special-cased)
+- **Shortcuts catalog / help**: **Send** row follows the Composer send-key preference (Enter vs ⌘/Ctrl+Enter)
+- **Shortcut registry**: global mod chords match via a shared catalog module with Settings/help
 
-**中文 · 修复**
+### Fixed
 
-- Agent PATH 对齐终端：spawn 时注入本机已存在的 conda/mamba/pyenv/nvm 等目录，减少「终端能跑、客户端 bash 失败」
-- 侧栏「执行中」卡住（#225）：已结束回合不被延迟 stream 分片重新标忙；空回合 / 硬超时 / idle 回收时结算 liveMap
-- 视频切焦点崩溃（macOS）：Release 用 panic=unwind 使 media:// catch_unwind 生效；隐藏窗口时暂停视频减轻 WebKit Range 竞态
-- 壁纸 X 搜索画廊：长列表可纵向滚动（瀑布流不再裁切）
-- Imagine/库「设为背景」：media:// Range 拼完整文件（避免仅 2MiB 导致大图失败）；错误展示；上限 40MB
+- **Desktop auto-update (production)**: GitHub secrets + release pipeline produce signed updater archives and rolling `grok-desktop-latest` / `latest.json` (darwin / linux AppImage / windows). Install this build (or later) once so Settings → About can use the silent channel
+- **Agent PATH parity (GUI vs Terminal)**: enrich spawn PATH with existing conda/mamba/miniforge, pyenv, nvm, asdf, volta roots without loading shell rc
+- **Stuck busy spinner (#225)**: late stream tokens no longer re-promote settled chats; empty-run / hard stall / idle recycle settle liveMap
+- **Video focus-switch crash (macOS)**: release `panic = "unwind"` so media:// `catch_unwind` works; pause video while the window is hidden
+- **Wallpaper X search gallery**: long lists scroll again (masonry overflow fix)
+- **Imagine / library “Set as background”**: reassemble full file via media:// Range (was truncated at 2 MiB); clearer errors; 40 MB cap
+- **Long tool-heavy threads**: blank-transcript / bottom bounce / virtual-list height fixes; Chinese token units (百 / 千 / 万)
 
 **中文 · 新增**
 
-- 切换侧栏快捷键：⌘/Ctrl+B（桌面侧栏与手机抽屉；快捷键列表已收录）
-- 键盘快捷键筛选（设置 → 键盘）：按操作名称、id 或按键组合过滤列表
-- 窗口置顶（设置 → 通用 → 应用；`localStorage` `grok.windowAlwaysOnTop`，默认关）
-- **始终显示回到底部**（设置 → 外观 → 界面；默认关）：即使已在底部也保留「回到最新」按钮（`localStorage` `grok.backBottomAlways`）
-- **记住上次设置分区与页签**：通用入口（⌘/Ctrl+,、齿轮、斜杠 `/settings`、托盘设置）恢复上次位置（`localStorage` `grok.settingsLastRoute`）；显式深链与指定分区跳转不变
-- **禅模式**（设置 → 外观 → 界面 + 顶栏按钮）：隐藏左侧会话栏与右侧文件栏以最大化对话；记住进入前的折叠状态，关闭时恢复（`localStorage` `grok.zenMode`）。Esc 仍停止生成，不退出禅模式
-- 复制上一条助手回复快捷键：⌘/Ctrl+Shift+C（与 `/copy` 相同；快捷键列表已收录）
-- 当前对话「收起全部活动」：顶栏按钮与会话菜单可收起已展开的工具阶段与已完成思考（流式思考保持展开）
-- 侧栏会话相对更新时间（设置 → 外观 → 界面；默认开；约每分钟刷新）
-- **权限超时自动拒绝**（设置 → 通用 → 权限）：可选关闭 / 30 秒 / 1 分 / 2 分 / 5 分；超时走与 Escape / 拒绝相同路径；权限条上轻量倒计时（`localStorage` `grok.permissionTimeoutSec`，默认关）
-- 任务面板「全部停止」忙碌会话（确认后批量取消； toast 成功数）
-- 桌面通知免打扰时段（设置 → 通用 → 应用；本地起止时间）
-- 输入框清空草稿（有内容时显示；超过 200 字需确认）
-- 输入框草稿字数/词数（可关，默认开）
-- 消息时间戳可选相对时间（约每分钟刷新）
-- 可选通知提示音（桌面通知时轻柔短音，默认关）
-- Agent 提问桌面通知（复用「需要授权时通知」开关）
-- 快捷键列表：对话内查找（⌘/Ctrl+F）、语音输入（Ctrl+Space）
-- 输入框可选拼写检查（默认关）
-- 会话 JSON 导出（可再导入）
-- 代码块可选行号（默认关）
-- 对话密度：舒适 / 紧凑
-- 侧栏会话列表密度：舒适 / 紧凑
-- 聊天外链可选确认后在系统浏览器打开
-- 侧栏多选归档会话
-- **登录时启动**（设置 → 通用 → 应用）：系统登录项（`tauri-plugin-autostart`），默认关，写入 AppSettings 并在变更/启动时同步
+- 侧栏多选：选择改为清单图标；项目行操作仅 hover 显示；支持二次确认后永久删除
+- 禅模式、记住上次设置页、始终显示回到底部、窗口置顶
+- 快捷键筛选；⌘/Ctrl+B 切换侧栏；⌘/Ctrl+Shift+C 复制上一条助手回复
+- 收起全部活动；侧栏相对时间；权限超时自动拒绝
 
 **中文 · 变更**
 
-- 快捷键列表 / 帮助：发送键随对话偏好（Enter 或 ⌘/Ctrl+Enter）实时更新
-- 默认发送键展示为 Enter；说明可在设置 → 对话偏好改用 ⌘/Ctrl+Enter
-- 快捷键注册表：全局 mod 组合键与帮助/设置目录同模块匹配（Esc 停止、Ctrl+Space 语音仍在 App 特殊处理）
+- 发送快捷键展示随对话偏好；全局快捷键与目录同模块匹配
+
+**中文 · 修复**
+
+- 正式版应用内静默更新链路打通（需安装本版或之后的签名包一次）
+- Agent PATH 对齐终端（conda 等）；侧栏卡住忙碌（#225）
+- macOS 切焦点视频崩溃；壁纸画廊滚动；Imagine 设背景大图；长会话虚拟列表与中文 token 单位
+
 ## [0.2.1] - 2026-07-29
 
 > **Highlight:** Per-project draft memory, video covers, durable relay retries, and calmer chat errors.

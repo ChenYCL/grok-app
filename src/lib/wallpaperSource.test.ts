@@ -85,7 +85,10 @@ describe("wallpaperSource", () => {
   });
 
   it("reassembles multi-chunk media:// style responses", async () => {
-    const total = MEDIA_PROTO_CHUNK + 1234;
+    // Use a small synthetic chunk size so the suite stays fast under load
+    // (production path still defaults to MEDIA_PROTO_CHUNK = 2 MiB).
+    const chunk = 4096;
+    const total = chunk + 1234;
     const bytes = new Uint8Array(total);
     for (let i = 0; i < total; i++) bytes[i] = i % 251;
 
@@ -101,10 +104,10 @@ describe("wallpaperSource", () => {
       }
       if (!range) {
         // Bare GET would only return first chunk (the bug we avoid)
-        return new Response(bytes.slice(0, MEDIA_PROTO_CHUNK), {
+        return new Response(bytes.slice(0, chunk), {
           status: 206,
           headers: {
-            "Content-Range": `bytes 0-${MEDIA_PROTO_CHUNK - 1}/${total}`,
+            "Content-Range": `bytes 0-${chunk - 1}/${total}`,
             "Content-Type": "image/png",
           },
         });
@@ -125,7 +128,9 @@ describe("wallpaperSource", () => {
     };
 
     const spy = vi.fn(fetchImpl);
-    const blob = await fetchEntireMediaBlob("media://localhost/x.png", spy);
+    const blob = await fetchEntireMediaBlob("media://localhost/x.png", spy, {
+      chunkSize: chunk,
+    });
     expect(blob.size).toBe(total);
     const out = new Uint8Array(await blob.arrayBuffer());
     expect(out).toEqual(bytes);
@@ -135,5 +140,9 @@ describe("wallpaperSource", () => {
       const headers = call[1]?.headers as Record<string, string> | undefined;
       expect(headers?.Range).toMatch(/^bytes=\d+-\d+$/);
     }
+    // multi-chunk path used more than probe+one full read
+    expect(spy.mock.calls.length).toBeGreaterThanOrEqual(3);
+    // production default remains 2 MiB
+    expect(MEDIA_PROTO_CHUNK).toBe(2 * 1024 * 1024);
   });
 });
