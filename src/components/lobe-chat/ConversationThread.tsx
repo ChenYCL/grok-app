@@ -1194,6 +1194,7 @@ export function ConversationThread({
               const isNodeFocus = focusMessageId === m.id;
               const canRegenError =
                 !!onRegenerateAssistant && regenerableAssistantId === m.id;
+              // Codex-style soft notice — muted pill, no red box.
               return wrap(
                 <div
                   key={m.id}
@@ -1203,42 +1204,44 @@ export function ConversationThread({
                     (isFindCurrent ? " lobe-chat-item--find-current" : "") +
                     (isNodeFocus ? " lobe-chat-item--node-focus" : "")
                   }
-                  role="alert"
+                  role="status"
                   data-testid="chat-turn-error"
                   data-message-id={m.id}
                 >
-                  <div className="lobe-chat-error__label">
-                    {tr("chat.turnFailed")}
+                  <div className="lobe-chat-error__pill">
+                    <span className="lobe-chat-error__icon" aria-hidden>
+                      ℹ
+                    </span>
+                    <span className="lobe-chat-error__text">
+                      {findQuery.trim() ? (
+                        <HighlightedText
+                          text={friendly}
+                          query={findQuery}
+                          activeOccurrence={
+                            isFindCurrent
+                              ? (findActive?.occurrence ?? null)
+                              : null
+                          }
+                        />
+                      ) : (
+                        friendly
+                      )}
+                    </span>
+                    {canRegenError ? (
+                      <span className="lobe-chat-error__actions">
+                        <MessageActionButton
+                          label={tr("message.regenerate")}
+                          disabled={!canRegenerate}
+                          onClick={() => {
+                            if (!canRegenerate) return;
+                            onRegenerateAssistant?.(m);
+                          }}
+                        >
+                          <IconRefresh size={14} />
+                        </MessageActionButton>
+                      </span>
+                    ) : null}
                   </div>
-                  <div className="lobe-chat-error__body">
-                    {findQuery.trim() ? (
-                      <HighlightedText
-                        text={friendly}
-                        query={findQuery}
-                        activeOccurrence={
-                          isFindCurrent
-                            ? (findActive?.occurrence ?? null)
-                            : null
-                        }
-                      />
-                    ) : (
-                      friendly
-                    )}
-                  </div>
-                  {canRegenError ? (
-                    <div className="lobe-chat-error__actions">
-                      <MessageActionButton
-                        label={tr("message.regenerate")}
-                        disabled={!canRegenerate}
-                        onClick={() => {
-                          if (!canRegenerate) return;
-                          onRegenerateAssistant?.(m);
-                        }}
-                      >
-                        <IconRefresh size={15} />
-                      </MessageActionButton>
-                    </div>
-                  ) : null}
                 </div>,
               );
             }

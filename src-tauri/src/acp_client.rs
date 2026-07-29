@@ -116,9 +116,11 @@ pub enum AcpEvent {
     },
 }
 
-/// Host circuit-breaker: after this many provider retries, cancel the turn
-/// (Codex-like). Agent may advertise a higher max (e.g. 15); we still stop at 5.
-pub const HOST_PROVIDER_MAX_RETRIES: u32 = 5;
+/// Host circuit-breaker: after this many provider retries, cancel the turn.
+/// Custom relays / 中转 often flap mid-stream; 5 was too low and left users
+/// stuck on "stream disconnected" after a few blips. Agent may advertise a
+/// higher max; we still cap here so a wedged provider cannot retry forever.
+pub const HOST_PROVIDER_MAX_RETRIES: u32 = 12;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum StreamKind {
@@ -2683,13 +2685,23 @@ fn classify_rpc_error(e: &str) -> AgentError {
         || lower.contains("network")
         || lower.contains("5xx")
         || lower.contains("503")
+        || lower.contains("502")
+        || lower.contains("504")
         || lower.contains("rpc channel closed")
         || lower.contains("shell_api_error")
         || lower.contains("no available channels")
         || lower.contains("provider retries")
         || lower.contains("service unavailable")
+        || lower.contains("stream disconnected")
+        || lower.contains("stream closed")
+        || lower.contains("before completion")
+        || lower.contains("response.completed")
+        || lower.contains("connection reset")
+        || lower.contains("broken pipe")
+        || lower.contains("econnreset")
+        || lower.contains("temporarily unavailable")
     {
-        // Timeouts / provider 503 / channel-empty are network-provider, not process crash.
+        // Timeouts / provider 5xx / mid-stream flaps are network-provider, not process crash.
         AgentError::new(AgentErrorCode::NetworkProvider, e)
     } else if lower.contains("not found") && lower.contains("cli") {
         AgentError::new(AgentErrorCode::CliNotFound, e)
@@ -2698,18 +2710,28 @@ fn classify_rpc_error(e: &str) -> AgentError {
     }
 }
 
-/// Whether host should stop waiting and fail the turn (Codex-like 5-retry cap).
+/// Whether host should stop waiting and fail the turn.
+///
+/// - Terminal statuses (`exhausted` / `gave_up`) always abort.
+/// - Bare `failed` / `error` only abort once we have used most of the budget —
+///   some relays emit `failed` on a single stream blip while still retrying.
+/// - Otherwise abort when `attempt` reaches the host/agent cap.
 pub fn should_abort_provider_retry(attempt: u32, max_retries: u32, status: &str) -> bool {
     let status = status.to_lowercase();
-    if status.contains("fail")
-        || status.contains("exhaust")
+    if status.contains("exhaust")
         || status.contains("gave_up")
         || status.contains("give_up")
-        || status == "error"
+        || status.contains("abort")
     {
         return true;
     }
     let cap = max_retries.min(HOST_PROVIDER_MAX_RETRIES).max(1);
+    // Soft-fail statuses: wait until we are near the cap so mid-stream flaps
+    // (common on 中转) get more reconnect room before the turn is killed.
+    if status.contains("fail") || status == "error" {
+        let soft_floor = (cap.saturating_mul(2) / 3).max(1);
+        return attempt >= soft_floor;
+    }
     attempt >= cap
 }
 
@@ -2797,15 +2819,18 @@ mod retry_tests {
 
     #[test]
     fn abort_at_host_cap_even_if_agent_allows_more() {
-        assert!(!should_abort_provider_retry(1, 15, "retrying"));
-        assert!(!should_abort_provider_retry(4, 15, "retrying"));
-        assert!(should_abort_provider_retry(5, 15, "retrying"));
-        assert!(should_abort_provider_retry(6, 15, "retrying"));
+        assert!(!should_abort_provider_retry(1, 20, "retrying"));
+        assert!(!should_abort_provider_retry(11, 20, "retrying"));
+        assert!(should_abort_provider_retry(12, 20, "retrying"));
+        assert!(should_abort_provider_retry(13, 20, "retrying"));
     }
 
     #[test]
-    fn abort_on_failed_status() {
-        assert!(should_abort_provider_retry(1, 15, "failed"));
+    fn soft_fail_waits_until_near_cap() {
+        // Bare "failed" mid-budget should not kill a flaky relay immediately.
+        assert!(!should_abort_provider_retry(1, 12, "failed"));
+        assert!(!should_abort_provider_retry(7, 12, "failed"));
+        assert!(should_abort_provider_retry(8, 12, "failed")); // 2/3 of 12
         assert!(should_abort_provider_retry(1, 15, "exhausted"));
     }
 

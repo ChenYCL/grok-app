@@ -1958,6 +1958,17 @@ export function agentDisconnectedCopy(locale: Locale = "en"): string {
   return `${card.problem} ${card.cause}`.trim();
 }
 
+/** Mid-stream disconnect / closed before response.completed (relay flap). */
+export function streamFlapCopy(locale: Locale = "en"): string {
+  if (locale === "en") {
+    return "Connection dropped mid-reply. The app will retry automatically; send again if it stays stuck.";
+  }
+  if (locale === "zh-TW") {
+    return "回覆中途連線中斷。應用會自動重試；若仍卡住請再傳送一次。";
+  }
+  return "回复中途连接中断。应用会自动重试；若仍卡住请再发送一次。";
+}
+
 const AGENT_ERROR_CODE_RE =
   /^(CLI_NOT_FOUND|AUTH_FAILED|NETWORK_PROVIDER|AGENT_CRASHED|QUOTA_EXCEEDED|CONNECT_FAILED|PROCESS_LIMIT|CLI_TOO_OLD)(?::\s*|\s+)([\s\S]*)$/;
 
@@ -2018,6 +2029,14 @@ export function formatTurnErrorBody(
   if (rest === "agent_disconnected" || /rpc channel closed|transport channel closed/i.test(lower)) {
     return agentDisconnectedCopy(locale);
   }
+  // Mid-stream flap (common on custom relays / 中转) — soft network copy, not crash.
+  if (
+    /stream disconnected|stream closed before|before response\.completed|connection reset|broken pipe/i.test(
+      lower,
+    )
+  ) {
+    return streamFlapCopy(locale);
+  }
 
   // Infer codes from common agent/host phrases when payload lacks a code.
   if (!code) {
@@ -2041,6 +2060,12 @@ export function formatTurnErrorBody(
       code = "AUTH_FAILED";
     } else if (/cli not found|command not found|grok.*not found/i.test(lower)) {
       code = "CLI_NOT_FOUND";
+    } else if (
+      /stream disconnected|stream closed|5xx|503|timeout|dns|provider retries|network/i.test(
+        lower,
+      )
+    ) {
+      code = "NETWORK_PROVIDER";
     }
   }
 

@@ -206,7 +206,7 @@ export function ConversationThread({
             );
           }
 
-          // Turn failure — friendly copy only (no raw RPC/MCP dumps)
+          // Turn notice — soft pill (no red alert box)
           if (m.isError) {
             const friendly = formatTurnErrorBody(
               { content: m.content, code: undefined, message: undefined },
@@ -216,13 +216,15 @@ export function ConversationThread({
               <div
                 key={m.id}
                 className="chat-turn-error"
-                role="alert"
+                role="status"
                 data-testid="chat-turn-error"
               >
-                <div className="chat-turn-error__label">
-                  {tr("chat.turnFailed")}
+                <div className="chat-turn-error__body">
+                  <span className="chat-turn-error__icon" aria-hidden>
+                    ℹ
+                  </span>
+                  <span>{friendly}</span>
                 </div>
-                <div className="chat-turn-error__body">{friendly}</div>
               </div>
             );
           }

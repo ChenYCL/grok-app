@@ -2943,7 +2943,7 @@ export default function App() {
               return;
             }
             const attempt = p.attempt ?? 0;
-            const maxRetries = p.maxRetries ?? 5;
+            const maxRetries = p.maxRetries ?? 12;
             const reason = (p.reason || "").trim();
             setRetryStatus({ attempt, maxRetries, reason });
           }),
@@ -10757,23 +10757,20 @@ export default function App() {
                   {/* Retry progress only — connection is silent; thinking lives in chat */}
                   {retryStatus && (
                     <Tip
-                      label={retryStatus.reason || ""}
+                      label={retryStatus.reason || tr("main.retrying", {
+                        attempt: String(retryStatus.attempt),
+                        max: String(retryStatus.maxRetries),
+                      })}
                       disabled={!retryStatus.reason}
                     >
-                      <span className="main__sub main__sub--retry">
-                        {retryStatus.reason
-                          ? tr("main.retryingWithReason", {
-                              attempt: String(retryStatus.attempt),
-                              max: String(retryStatus.maxRetries),
-                              reason:
-                                retryStatus.reason.length > 72
-                                  ? `${retryStatus.reason.slice(0, 72)}…`
-                                  : retryStatus.reason,
-                            })
-                          : tr("main.retrying", {
-                              attempt: String(retryStatus.attempt),
-                              max: String(retryStatus.maxRetries),
-                            })}
+                      <span
+                        className="main__sub main__sub--retry"
+                        role="status"
+                      >
+                        {tr("main.retrying", {
+                          attempt: String(retryStatus.attempt),
+                          max: String(retryStatus.maxRetries),
+                        })}
                       </span>
                     </Tip>
                   )}

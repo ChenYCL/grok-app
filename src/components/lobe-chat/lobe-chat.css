@@ -692,9 +692,10 @@ html[data-msg-actions="always"] .lobe-chat-item__actions {
   background: var(--chat-text-3);
   flex-shrink: 0;
 }
+/* Dot + label must share one pulse (same name/duration/easing) so they stay in phase. */
 .lobe-chat-thinking__dot--live {
   background: var(--chat-link);
-  animation: chat-pulse 1.2s ease-in-out infinite;
+  animation: chat-live-pulse 1.2s ease-in-out infinite;
 }
 
 /* CodePilot-style gist label (not "思考 1/2/3") */
@@ -709,13 +710,25 @@ html[data-msg-actions="always"] .lobe-chat-item__actions {
   color: color-mix(in srgb, var(--chat-text-2) 88%, transparent);
 }
 .lobe-chat-thinking__label--live {
-  opacity: 0.92;
+  animation: chat-live-pulse 1.2s ease-in-out infinite;
 }
 
+/* Shared live indicator — one keyframe for all thinking/tool pulse UIs */
+@keyframes chat-live-pulse {
+  0%,
+  100% {
+    opacity: 0.45;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+/* Keep alias so older selectors still work and stay phase-aligned */
 @keyframes chat-pulse {
   0%,
   100% {
-    opacity: 0.4;
+    opacity: 0.45;
   }
   50% {
     opacity: 1;
@@ -921,7 +934,7 @@ html[data-msg-actions="always"] .lobe-chat-item__actions {
 }
 .lobe-timeline-tool__status.is-running {
   background: var(--chat-link);
-  animation: chat-pulse 1.2s ease-in-out infinite;
+  animation: chat-live-pulse 1.2s ease-in-out infinite;
 }
 .lobe-timeline-tool__fail-hint {
   margin: 0 0 2px 6px;
@@ -1043,7 +1056,7 @@ html[data-msg-actions="always"] .lobe-chat-item__actions {
 }
 .lobe-turn-activity__dot.is-running {
   background: var(--chat-link);
-  animation: chat-pulse 1.2s ease-in-out infinite;
+  animation: chat-live-pulse 1.2s ease-in-out infinite;
 }
 .lobe-turn-activity__tool-name {
   min-width: 0;
@@ -1173,8 +1186,9 @@ html[data-msg-actions="always"] .lobe-chat-item__actions {
 .lobe-chat-live-tool__title--pulse {
   color: var(--chat-text);
 }
+/* Must match .lobe-chat-thinking__dot--live (was 1.4s vs 1.2s → visible desync). */
 .lobe-chat-live-tool__title--pulse {
-  animation: chat-pulse 1.4s ease-in-out infinite;
+  animation: chat-live-pulse 1.2s ease-in-out infinite;
 }
 .lobe-chat-live-tool__done {
   display: block;
@@ -1258,35 +1272,73 @@ html[data-msg-actions="always"] .lobe-chat-item__actions {
   color: var(--chat-text-2);
 }
 
-/* ── Error ── */
+/* ── Turn notice (Codex-style soft pill — not a red alert box) ── */
 .lobe-chat-error {
   width: 100%;
+  max-width: min(100%, 40rem);
   box-sizing: border-box;
-  padding: 12px 14px;
-  border-radius: var(--chat-r);
-  border: 1px solid color-mix(in srgb, var(--chat-danger) 40%, transparent);
-  background: color-mix(in srgb, var(--chat-danger) 12%, transparent);
-  color: var(--chat-text);
+  padding: 4px 0 8px;
+  border: none;
+  background: transparent;
+  color: var(--chat-text-2, var(--text-secondary));
 }
 
-.lobe-chat-error__label {
-  font-size: var(--chat-fs-xs);
+.lobe-chat-error__pill {
+  display: inline-flex;
+  align-items: flex-start;
+  gap: 8px;
+  max-width: 100%;
+  padding: 10px 14px;
+  border-radius: 14px;
+  border: 1px solid color-mix(in srgb, var(--chat-text, #fff) 10%, transparent);
+  background: color-mix(in srgb, var(--chat-text, #fff) 7%, transparent);
+  color: var(--chat-text-2, var(--text-secondary, #a1a1aa));
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.lobe-chat-error__icon {
+  flex: 0 0 auto;
+  margin-top: 1px;
+  width: 16px;
+  height: 16px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-style: normal;
   font-weight: 600;
-  color: var(--chat-danger);
-  margin-bottom: 6px;
+  line-height: 1;
+  color: var(--chat-text-2, var(--text-secondary));
+  opacity: 0.85;
+  border: 1px solid color-mix(in srgb, var(--chat-text, #fff) 18%, transparent);
 }
 
-.lobe-chat-error__body {
-  font-size: var(--chat-fs-sm);
-  line-height: var(--chat-lh-sm);
+.lobe-chat-error__text {
+  flex: 1 1 auto;
+  min-width: 0;
   word-break: break-word;
+  white-space: pre-wrap;
 }
 
 .lobe-chat-error__actions {
-  display: flex;
+  display: inline-flex;
   align-items: center;
-  gap: 4px;
-  margin-top: 8px;
+  gap: 2px;
+  flex: 0 0 auto;
+  margin-top: -2px;
+  margin-inline-end: -4px;
+  opacity: 0.85;
+}
+
+/* Legacy label kept for find-hit styles; no longer painted red. */
+.lobe-chat-error__label {
+  display: none;
+}
+
+.lobe-chat-error__body {
+  display: none;
 }
 
 /* ── Empty ── */

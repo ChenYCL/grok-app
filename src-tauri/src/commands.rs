@@ -5137,7 +5137,7 @@ pub async fn providers_list() -> Result<crate::providers::ProvidersListResult, S
         secrets.relay_api_key.as_deref(),
         secrets.default_model.as_deref(),
     );
-    // Cap agent transport retries (host still circuit-breaks at 5 via retry_state).
+    // Ensure agent transport retries are high enough for flaky custom relays.
     let _ = crate::providers::ensure_models_retry_cap();
     // Fix bases saved without /v1 (causes silent multi-minute inference retries).
     let _ = crate::providers::repair_custom_base_urls();

@@ -432,14 +432,20 @@ pub fn maybe_migrate_legacy_relay(
     Ok(())
 }
 
-/// Cap CLI transport retries (Codex-like). Host also circuit-breaks at 5 via retry_state.
-pub const PROVIDER_MAX_RETRIES: u32 = 5;
+/// Cap CLI transport retries for flaky custom relays / 中转.
+/// Host circuit-breaks at [`crate::acp_client::HOST_PROVIDER_MAX_RETRIES`].
+pub const PROVIDER_MAX_RETRIES: u32 = 12;
 
-/// Ensure `[models] max_retries = 5` so the agent does not spin 15× on 503.
+/// Ensure `[models] max_retries` is at least [`PROVIDER_MAX_RETRIES`].
+/// Never *lower* a user-raised value; only bump when missing or too small.
 pub fn ensure_models_retry_cap() -> Result<(), String> {
     let _ = ensure_agent_home()?;
     let path = agent_config_toml();
     let text = read_text(&path);
+    let current = read_models_u32_field(&text, "max_retries");
+    if current.is_some_and(|n| n >= PROVIDER_MAX_RETRIES) {
+        return Ok(());
+    }
     let next = set_models_u32_field(&text, "max_retries", PROVIDER_MAX_RETRIES);
     if next != text {
         write_text(&path, &next)?;
@@ -449,6 +455,32 @@ pub fn ensure_models_retry_cap() -> Result<(), String> {
         );
     }
     Ok(())
+}
+
+/// Read a u32 field under `[models]` if present.
+fn read_models_u32_field(text: &str, key: &str) -> Option<u32> {
+    let mut in_models = false;
+    for line in text.lines() {
+        let trimmed = line.trim();
+        if trimmed.starts_with('[') {
+            in_models = trimmed == "[models]" || trimmed.starts_with("[models.");
+            continue;
+        }
+        if !in_models {
+            continue;
+        }
+        let Some((k, v)) = trimmed.split_once('=') else {
+            continue;
+        };
+        if k.trim() != key {
+            continue;
+        }
+        let raw = v.trim().trim_matches('"').trim_matches('\'');
+        if let Ok(n) = raw.parse::<u32>() {
+            return Some(n);
+        }
+    }
+    None
 }
 
 fn set_models_u32_field(text: &str, key: &str, value: u32) -> String {
