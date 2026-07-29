@@ -304,6 +304,12 @@ export interface SettingsPageProps {
   /** Play a short beep with desktop notifications (localStorage; default off). */
   notifySound?: boolean;
   onNotifySound?: (v: boolean) => void;
+  /**
+   * Auto-deny permission bar after N seconds (localStorage; 0 = off).
+   * Presets: 0 / 30 / 60 / 120 / 300.
+   */
+  permissionTimeoutSec?: number;
+  onPermissionTimeoutSec?: (v: number) => void;
   planEnabled?: boolean;
   onPlanEnabled?: (v: boolean) => void;
   subagentsEnabled?: boolean;
@@ -816,6 +822,8 @@ export function SettingsPage({
   onNotifyOnPermission,
   notifySound = false,
   onNotifySound,
+  permissionTimeoutSec = 0,
+  onPermissionTimeoutSec,
   cliInfo,
   onDoctor,
   versionFooter,
@@ -1791,6 +1799,63 @@ export function SettingsPage({
                         label: t("settings.sandbox.devbox"),
                       },
                     ]}
+                  />
+                </div>
+              ) : null}
+              {onPermissionTimeoutSec ? (
+                <div
+                  className={
+                    "settings-row settings-row--stack" +
+                    rowHighlight("settings-anchor-permissionTimeout")
+                  }
+                  id="settings-anchor-permissionTimeout"
+                >
+                  <div className="settings-row__text">
+                    <div className="settings-row__label">
+                      {t("settings.permissionTimeout")}
+                    </div>
+                    <div className="settings-row__desc">
+                      {t("settings.permissionTimeoutDesc")}
+                    </div>
+                  </div>
+                  <Select
+                    value={String(permissionTimeoutSec ?? 0)}
+                    onChange={(v) => onPermissionTimeoutSec(Number(v))}
+                    options={(() => {
+                      const presets = [
+                        {
+                          value: "0",
+                          label: t("settings.permissionTimeout.off"),
+                        },
+                        {
+                          value: "30",
+                          label: t("settings.permissionTimeout.30"),
+                        },
+                        {
+                          value: "60",
+                          label: t("settings.permissionTimeout.60"),
+                        },
+                        {
+                          value: "120",
+                          label: t("settings.permissionTimeout.120"),
+                        },
+                        {
+                          value: "300",
+                          label: t("settings.permissionTimeout.300"),
+                        },
+                      ];
+                      const cur = Math.max(0, Math.round(permissionTimeoutSec ?? 0));
+                      if (
+                        cur > 0 &&
+                        !presets.some((o) => o.value === String(cur))
+                      ) {
+                        return [
+                          ...presets,
+                          { value: String(cur), label: `${cur}s` },
+                        ];
+                      }
+                      return presets;
+                    })()}
                   />
                 </div>
               ) : null}

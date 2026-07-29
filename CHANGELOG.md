@@ -16,6 +16,7 @@ See `docs/llm-wiki/release.md`.
 - **Copy last assistant reply** shortcut: ⌘/Ctrl+Shift+C (same action as slash `/copy`; listed in shortcuts catalog)
 - **Collapse all activity** in the current chat: top-bar control and session menu item collapse expanded tool phases and finished thinking blocks (streaming thoughts stay open)
 - **Sidebar session relative time** (Settings → Appearance → Interface; on by default): muted “2 hours ago” meta on session rows from `updatedAt`, refreshed about once a minute (`localStorage` `grok.sidebarShowRelativeTime`)
+- **Permission auto-deny timeout** (Settings → General → Permissions): optional Off / 30s / 1m / 2m / 5m; when the bar is open and the timer fires, uses the same deny path as Escape / Deny; subtle countdown on the bar (`localStorage` `grok.permissionTimeoutSec`, default off)
 - **Stop all** busy sessions from the Tasks panel (confirm, then cancel every streaming / awaiting-permission / connecting session; toast with success count)
 - **Quiet hours** for desktop notifications (Settings → General → App): optional local start/end window that suppresses system notifies overnight or any range; in-app toasts unchanged
 - **Clear composer draft**: small clear control on the input row when text or attachments are present; long drafts (>200 characters) confirm first
@@ -42,6 +43,7 @@ See `docs/llm-wiki/release.md`.
 - 复制上一条助手回复快捷键：⌘/Ctrl+Shift+C（与 `/copy` 相同；快捷键列表已收录）
 - 当前对话「收起全部活动」：顶栏按钮与会话菜单可收起已展开的工具阶段与已完成思考（流式思考保持展开）
 - 侧栏会话相对更新时间（设置 → 外观 → 界面；默认开；约每分钟刷新）
+- **权限超时自动拒绝**（设置 → 通用 → 权限）：可选关闭 / 30 秒 / 1 分 / 2 分 / 5 分；超时走与 Escape / 拒绝相同路径；权限条上轻量倒计时（`localStorage` `grok.permissionTimeoutSec`，默认关）
 - 任务面板「全部停止」忙碌会话（确认后批量取消； toast 成功数）
 - 桌面通知免打扰时段（设置 → 通用 → 应用；本地起止时间）
 - 输入框清空草稿（有内容时显示；超过 200 字需确认）
