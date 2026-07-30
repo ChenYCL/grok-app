@@ -246,6 +246,55 @@ describe("matchGlobalShortcut", () => {
       }
     }
   });
+
+  it("does not match liveVoice when the hotkey preference is off", () => {
+    expect(
+      matchGlobalShortcut(
+        chord({ key: "v", shift: true }),
+        noRemaps,
+        { voiceHotkeyEnabled: false },
+      ),
+    ).toBeNull();
+    expect(
+      matchGlobalShortcut(
+        chord({ key: "v", shift: true, typing: true }),
+        noRemaps,
+        { voiceHotkeyEnabled: false },
+      ),
+    ).toBeNull();
+    // Other chords still work.
+    expect(
+      matchGlobalShortcut(
+        chord({ key: "k" }),
+        noRemaps,
+        { voiceHotkeyEnabled: false },
+      ),
+    ).toBe("search");
+  });
+
+  it("matches liveVoice when the hotkey preference is on", () => {
+    expect(
+      matchGlobalShortcut(
+        chord({ key: "v", shift: true }),
+        noRemaps,
+        { voiceHotkeyEnabled: true },
+      ),
+    ).toBe("liveVoice");
+  });
+});
+
+describe("liveVoice hotkey display Off", () => {
+  it("shows Off for liveVoice when hotkey disabled", () => {
+    const mac = shortcutsForPlatform("mac", "enter", {}, false);
+    const win = shortcutsForPlatform("win", "enter", {}, false);
+    expect(mac.find((s) => s.id === "liveVoice")?.keys).toBe("Off");
+    expect(win.find((s) => s.id === "liveVoice")?.keys).toBe("Off");
+  });
+
+  it("keeps liveVoice chord when hotkey enabled", () => {
+    const mac = shortcutsForPlatform("mac", "enter", {}, true);
+    expect(mac.find((s) => s.id === "liveVoice")?.keys).toMatch(/⇧|Shift/i);
+  });
 });
 
 describe("filterShortcutRows", () => {

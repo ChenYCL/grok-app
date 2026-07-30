@@ -13,6 +13,7 @@ See `docs/llm-wiki/release.md`.
 
 ### Added
 
+- **Disable Live Voice hotkey only** (Settings → General → App → Voice): turns off the catalog Live Voice shortcut (default ⌘/Ctrl+Shift+V / remaps) while composer button, slash, and menus still open Live Voice; shortcuts help shows Off when disabled
 - **Per-session mute** for desktop notifications (context menu Mute / Unmute; sidebar muted icon; in-app toasts still show)
 - **Desktop notification click** opens the session that fired turn-done / permission / ask_user
 - **Send queue Edit** for follow-up items (GlassModal; empty text blocked unless attachments remain)
@@ -35,6 +36,7 @@ See `docs/llm-wiki/release.md`.
 
 **中文 · 新增**
 
+- 可单独关闭实时语音快捷键（设置 → 语音；输入框/菜单入口仍可用；帮助里显示「关闭」）
 - 按会话静音桌面通知（菜单 Mute/Unmute；侧栏静音图标；应用内 Toast 仍显示）
 - 通知点击跳转会话；发送队列可编辑；上下文 System/Tools/History；Compact 增强
 - Worktree 会话徽章与管理；Fork 可选恢复代码；沙箱项目覆盖

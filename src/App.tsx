@@ -318,6 +318,13 @@ import {
   type ShortcutRemapMap,
 } from "@/lib/shortcutRemap";
 import {
+  SHORTCUT_KEYS_OFF,
+  loadVoiceHotkeyEnabled,
+  shouldFireLiveVoiceHotkey,
+  VOICE_HOTKEY_CHANGED_EVENT,
+  VOICE_HOTKEY_STORAGE_KEY,
+} from "@/lib/voiceHotkeyPref";
+import {
   ensureNotifyPermission,
   setDesktopNotifySessionFocusHandler,
   shouldShowDesktopNotify,
@@ -1333,6 +1340,24 @@ export default function App() {
   );
   const shortcutRemapsRef = useRef<ShortcutRemapMap>(shortcutRemaps);
   shortcutRemapsRef.current = shortcutRemaps;
+  /** Live Voice catalog hotkey on/off (localStorage; Settings → Voice). */
+  const [voiceHotkeyEnabled, setVoiceHotkeyEnabled] = useState(() =>
+    typeof localStorage !== "undefined" ? loadVoiceHotkeyEnabled() : true,
+  );
+  const voiceHotkeyEnabledRef = useRef(voiceHotkeyEnabled);
+  voiceHotkeyEnabledRef.current = voiceHotkeyEnabled;
+  useEffect(() => {
+    const reload = () => setVoiceHotkeyEnabled(loadVoiceHotkeyEnabled());
+    window.addEventListener(VOICE_HOTKEY_CHANGED_EVENT, reload);
+    const onStorage = (e: StorageEvent) => {
+      if (e.key === VOICE_HOTKEY_STORAGE_KEY || e.key === null) reload();
+    };
+    window.addEventListener("storage", onStorage);
+    return () => {
+      window.removeEventListener(VOICE_HOTKEY_CHANGED_EVENT, reload);
+      window.removeEventListener("storage", onStorage);
+    };
+  }, []);
   useEffect(() => {
     const reload = () => setShortcutRemaps(loadShortcutRemaps());
     window.addEventListener(SHORTCUT_REMAP_CHANGED_EVENT, reload);
@@ -1399,6 +1424,7 @@ export default function App() {
           typing,
         },
         shortcutRemapsRef.current,
+        { voiceHotkeyEnabled: voiceHotkeyEnabledRef.current },
       );
       if (!matched) return;
       e.preventDefault();
@@ -1428,6 +1454,10 @@ export default function App() {
           shortcutHandlersRef.current.toggleSidebar();
           return;
         case "liveVoice":
+          // Defense in depth: Settings can disable only this hotkey.
+          if (!shouldFireLiveVoiceHotkey(voiceHotkeyEnabledRef.current)) {
+            return;
+          }
           shortcutHandlersRef.current.startLiveVoice();
           return;
         default:
@@ -14810,12 +14840,17 @@ export default function App() {
             platform === "mac" ? "mac" : platform === "win" ? "win" : "other",
             composerSendKeyPref,
             shortcutRemaps,
+            voiceHotkeyEnabled,
           ).map((row) => (
             <li key={row.id} className="shortcuts-list__row">
               <span className="shortcuts-list__label">
                 {tr(row.labelKey as MessageKey)}
               </span>
-              <kbd className="shortcuts-list__keys">{row.keys}</kbd>
+              <kbd className="shortcuts-list__keys">
+                {row.keys === SHORTCUT_KEYS_OFF
+                  ? tr("shortcuts.off")
+                  : row.keys}
+              </kbd>
             </li>
           ))}
         </ul>
