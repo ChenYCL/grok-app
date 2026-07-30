@@ -38,6 +38,18 @@ See `docs/llm-wiki/release.md`.
 **中文 · 变更**
 
 - **压缩对话框**：展示当前上下文用量、简要说明与可选保留备注 chips；会话忙碌时禁用压缩；手动压缩时用 UI 估算补全 banner 的 before tokens
+### Added
+
+- **Worktree session badge**: sidebar **WT** chip for chats bound to a linked git worktree (meta from “New worktree & chat”, or auto when the project path matches `git worktree list`); tooltip shows branch + path
+- **Worktree session manage**: session context menu → reveal worktree folder, copy path, remove worktree (in-app confirm + force retry; never main)
+
+### Changed
+
+- Session index stores optional `worktreePath` / `worktreeBranch` / `isWorktreeSession` (migration-safe defaults); forks inherit linkage
+
+**中文 · 新增**
+
+- 侧栏 worktree 会话 **WT** 标记；右键可打开/复制路径/移除 worktree（应用内确认）
 
 ## [0.2.2] - 2026-07-30
 
