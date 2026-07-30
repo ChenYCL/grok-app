@@ -66,6 +66,7 @@ import {
   isResourceDraftDirty,
 } from "@/lib/resourceEdit";
 import { ExtensionsBuildExtras } from "@/components/ExtensionsBuildExtras";
+import { ExtensionsHooksPanel } from "@/components/ExtensionsHooksPanel";
 import {
   installedPluginDetailModel,
   type AvailablePluginDetailModel,
@@ -1645,6 +1646,14 @@ export function ExtensionsPanel({
       )}
 
       {(tab === "hooks" || tab === "market" || tab === "agents") && (
+      {tab === "hooks" && (
+        <ExtensionsHooksPanel
+          locale={locale}
+          projectPath={projectPath}
+          cliFound={cliFound && !cliMissing}
+        />
+      )}
+      {tab === "market" && (
         <ExtensionsBuildExtras
           locale={locale}
           projectPath={projectPath}
@@ -1652,6 +1661,7 @@ export function ExtensionsPanel({
           mode={
             tab === "hooks" ? "hooks" : tab === "agents" ? "agents" : "market"
           }
+          mode="market"
           installedPlugins={plugins.map((p) => ({
             name: p.name,
             marketplace: p.marketplace,

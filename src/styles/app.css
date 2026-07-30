@@ -18313,6 +18313,129 @@ div.composer__input:empty::before {
   color: var(--danger, var(--text-secondary));
 }
 
+.ext-hooks-try {
+  margin-top: 12px;
+}
+
+.ext-hooks-try__toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 2px 0;
+  background: transparent;
+  border: 0;
+  color: var(--text-primary);
+  font: inherit;
+  font-weight: 600;
+  font-size: 13px;
+  cursor: pointer;
+  text-align: left;
+}
+
+.ext-hooks-try__toggle:hover {
+  opacity: 0.9;
+}
+
+.ext-hooks-try__chevron {
+  width: 1em;
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.ext-hooks-try__body {
+  margin-top: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.ext-hooks-try__row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: flex-end;
+}
+
+.ext-hooks-try__field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1 1 160px;
+  min-width: 0;
+}
+
+.ext-hooks-try__field--block {
+  flex: 1 1 100%;
+}
+
+.ext-hooks-try__label {
+  font-size: 11px;
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+
+.ext-hooks-try__textarea {
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 12px;
+  line-height: 1.4;
+  min-height: 120px;
+  resize: vertical;
+  white-space: pre;
+}
+
+.ext-hooks-try__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.ext-hooks-try__msg--ok {
+  color: var(--ok, var(--text-secondary));
+}
+
+.ext-hooks-try__msg--err {
+  color: var(--danger, var(--error, #c44));
+}
+
+.ext-hooks-try__result {
+  margin-top: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.ext-hooks-try__result-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+
+.ext-hooks-try__result-path {
+  margin: 0;
+  font-size: 11px;
+  color: var(--text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ext-hooks-try__output {
+  margin: 0;
+  padding: 8px 10px;
+  max-height: 220px;
+  overflow: auto;
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 11px;
+  line-height: 1.4;
+  white-space: pre-wrap;
+  word-break: break-word;
+  background: var(--surface-2, rgba(127, 127, 127, 0.08));
+  border-radius: 8px;
+  border: 1px solid var(--border-subtle, rgba(127, 127, 127, 0.18));
+}
+
 .ext-list {
   list-style: none;
   margin: 0;
