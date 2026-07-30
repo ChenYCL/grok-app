@@ -293,6 +293,7 @@ pnpm build
 | **X / Twitter** | [铁柱AGI @cgnot996](https://x.com/cgnot996) ← 强烈推荐关注 |
 | **微信公众号** | 搜索 **「铁柱AGI」**，或扫下方**左侧**码 / 搜一搜卡片 |
 | **微信交流群** | 扫下方**右侧**二维码，添加微信进入交流群 |
+| **L站** | [linux.do](https://linux.do/) 学AI，上L站 |
 
 <p align="center">
   <img src="assets/wechat/mp-search-scan.png" alt="微信搜一搜 铁柱AGI" width="360" />
@@ -304,7 +305,8 @@ pnpm build
 </p>
 
 <p align="center">
-  如果 Grok App 对你有帮助，请给仓库点个 Star，并在
-  <a href="https://x.com/cgnot996"><strong>X @cgnot996</strong></a>、
-  微信公众号 <strong>铁柱AGI</strong> 关注作者，欢迎扫码进群交流 🙏
+如果 Grok App 对你有帮助，请给仓库点个 Star，并在
+<a href="https://x.com/cgnot996"><strong>X @cgnot996</strong></a>、
+微信公众号 <strong>铁柱AGI</strong> 关注作者，欢迎扫码进群交流；
+在 <a href="https://linux.do">L站</a> 学AI，上L站 🙏
 </p>
