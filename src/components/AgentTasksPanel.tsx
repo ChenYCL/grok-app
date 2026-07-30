@@ -6,17 +6,21 @@
  * Cross-session rows are UI projections only (jump / stop).
  * Nested tools under spawn_subagent render as an indented tree when parent
  * linkage (explicit or inferred) is available.
+ * Subagent cwd / worktree paths surface as a compact WT badge when present
+ * in tool_step data (UI-only; no new agent runtime).
  */
 
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState, type MouseEvent } from "react";
 import type { MessageKey } from "@/i18n";
 import type { ChatMessage } from "@/lib/session";
+import * as api from "@/lib/api";
 import {
   buildTaskTree,
   collectSessionTasks,
   countRunningTasks,
   filterSessionTasks,
   filterTaskTree,
+  formatTaskCwdLabel,
   taskStatusMessageKey,
   taskTreeHasNesting,
   taskTreeHasRunning,
@@ -35,6 +39,8 @@ import {
   IconChevronDown,
   IconChevronRight,
   IconClose,
+  IconCopy,
+  IconFolder,
   IconList,
 } from "@/components/icons";
 
@@ -56,6 +62,19 @@ export type AgentTasksPanelProps = {
   onOpenDashboard?: () => void;
 };
 
+async function revealOrCopyCwd(cwd: string): Promise<"revealed" | "copied"> {
+  if (api.isTauri()) {
+    try {
+      await api.pathReveal(cwd);
+      return "revealed";
+    } catch {
+      // Fall through to copy when reveal fails (missing path, etc.).
+    }
+  }
+  await navigator.clipboard.writeText(cwd);
+  return "copied";
+}
+
 function TaskRow({
   task,
   t,
@@ -75,11 +94,48 @@ function TaskRow({
   showTreeChrome?: boolean;
 }) {
   const [open, setOpen] = useState(false);
+  const [cwdActionHint, setCwdActionHint] = useState<string | null>(null);
   const statusKey = taskStatusMessageKey(task.status);
   const pad =
     showTreeChrome && depth > 0
       ? { paddingLeft: 8 + depth * 14 }
       : undefined;
+
+  const onRevealCwd = useCallback(
+    (e: MouseEvent) => {
+      e.stopPropagation();
+      e.preventDefault();
+      if (!task.cwd) return;
+      void revealOrCopyCwd(task.cwd)
+        .then((mode) => {
+          setCwdActionHint(
+            mode === "revealed"
+              ? t("tasks.cwdRevealed")
+              : t("tasks.cwdCopied"),
+          );
+        })
+        .catch(() => {
+          setCwdActionHint(t("tasks.cwdRevealFailed"));
+        });
+    },
+    [task.cwd, t],
+  );
+
+  const onCopyCwd = useCallback(
+    (e: MouseEvent) => {
+      e.stopPropagation();
+      e.preventDefault();
+      if (!task.cwd) return;
+      void navigator.clipboard
+        .writeText(task.cwd)
+        .then(() => setCwdActionHint(t("tasks.cwdCopied")))
+        .catch(() => setCwdActionHint(t("tasks.cwdRevealFailed")));
+    },
+    [task.cwd, t],
+  );
+
+  const cwdLabel = task.cwd ? formatTaskCwdLabel(task.cwd) : null;
+
   return (
     <li
       className={
@@ -122,25 +178,40 @@ function TaskRow({
             <span className="agent-tasks__tree-spacer" aria-hidden />
           )
         ) : null}
-        <button
-          type="button"
+        <div
           className={
             "agent-tasks__row-main" +
             (showTreeChrome ? "" : " agent-tasks__row-main--flat")
           }
-          onClick={() => setOpen((v) => !v)}
-          aria-expanded={open}
-          aria-label={open ? t("tasks.collapse") : t("tasks.expand")}
         >
-          <span
-            className={`agent-tasks__dot agent-tasks__dot--${task.status}`}
-            aria-hidden
-          />
-          <span className="agent-tasks__name" title={task.name}>
-            {task.name}
-          </span>
+          <button
+            type="button"
+            className="agent-tasks__row-toggle"
+            onClick={() => setOpen((v) => !v)}
+            aria-expanded={open}
+            aria-label={open ? t("tasks.collapse") : t("tasks.expand")}
+          >
+            <span
+              className={`agent-tasks__dot agent-tasks__dot--${task.status}`}
+              aria-hidden
+            />
+            <span className="agent-tasks__name" title={task.name}>
+              {task.name}
+            </span>
+          </button>
+          {task.cwd && cwdLabel ? (
+            <button
+              type="button"
+              className="agent-tasks__wt"
+              title={t("tasks.cwdBadgeTitle", { path: task.cwd })}
+              aria-label={t("tasks.revealCwd")}
+              onClick={onRevealCwd}
+            >
+              {cwdLabel}
+            </button>
+          ) : null}
           <span className="agent-tasks__status">{t(statusKey)}</span>
-        </button>
+        </div>
       </div>
       {open ? (
         <div className="agent-tasks__detail">
@@ -165,6 +236,39 @@ function TaskRow({
                 {task.path}
               </code>
             </div>
+          ) : null}
+          {task.cwd ? (
+            <>
+              <div className="agent-tasks__meta">
+                <span className="agent-tasks__meta-k">{t("tasks.cwd")}</span>
+                <code className="agent-tasks__meta-v" title={task.cwd}>
+                  {task.cwd}
+                </code>
+              </div>
+              <div className="agent-tasks__cwd-actions">
+                <button
+                  type="button"
+                  className="btn btn--ghost btn--sm"
+                  onClick={onRevealCwd}
+                  title={t("tasks.revealCwd")}
+                >
+                  <IconFolder size={13} />
+                  {t("tasks.revealCwd")}
+                </button>
+                <button
+                  type="button"
+                  className="btn btn--ghost btn--sm"
+                  onClick={onCopyCwd}
+                  title={t("tasks.copyCwd")}
+                >
+                  <IconCopy size={13} />
+                  {t("tasks.copyCwd")}
+                </button>
+              </div>
+              {cwdActionHint ? (
+                <p className="agent-tasks__hint">{cwdActionHint}</p>
+              ) : null}
+            </>
           ) : null}
           {task.parentId ? (
             <div className="agent-tasks__meta">

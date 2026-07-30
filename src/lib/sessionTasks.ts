@@ -12,6 +12,7 @@ import {
   parseToolStepContent,
   toolStepDisplayTitle,
 } from "./session";
+import { isAbsoluteFsPath } from "./pathRefs";
 
 /** Normalized UI status for a tool task row. */
 export type AgentTaskStatus =
@@ -32,6 +33,12 @@ export interface AgentTask {
   detail?: string;
   /** Optional path from tool payload. */
   path?: string;
+  /**
+   * Optional working directory / worktree path for spawn_subagent / Agent /
+   * subagent kinds. Best-effort parse from title/detail/path/content — never
+   * invented when absent from tool_step data.
+   */
+  cwd?: string;
   /** ISO timestamp of last update when available. */
   updatedAt?: string;
   /**
@@ -46,6 +53,174 @@ export interface AgentTask {
    * spawn_subagent (honest best-effort — see that helper).
    */
   parentId?: string;
+}
+
+/** Fields scanned when extracting a subagent cwd / worktree path. */
+export interface SubagentCwdSource {
+  kind?: string | null;
+  title?: string | null;
+  detail?: string | null;
+  path?: string | null;
+  /** Full tool_step journal content (optional). */
+  content?: string | null;
+}
+
+/** Keys often used for working directory / worktree in tool payloads. */
+const CWD_JSON_KEYS = [
+  "cwd",
+  "worktree",
+  "worktree_path",
+  "worktreePath",
+  "working_directory",
+  "workingDirectory",
+  "work_dir",
+  "workDir",
+  "working_dir",
+  "workingDir",
+] as const;
+
+/**
+ * Normalize a candidate path token: strip quotes/trailing punctuation, require
+ * absolute (or `~/…`) form. Returns undefined when not a real path.
+ */
+export function normalizeExtractedCwdPath(
+  raw: string | null | undefined,
+): string | undefined {
+  if (raw == null) return undefined;
+  let s = String(raw).trim();
+  if (!s) return undefined;
+  // Strip wrapping quotes.
+  if (
+    (s.startsWith('"') && s.endsWith('"')) ||
+    (s.startsWith("'") && s.endsWith("'"))
+  ) {
+    s = s.slice(1, -1).trim();
+  }
+  // Drop trailing sentence punctuation common in prose titles.
+  s = s.replace(/[,;.)\]}]+$/g, "").trim();
+  if (!s || !isAbsoluteFsPath(s)) return undefined;
+  // Reject obvious multi-token garbage after strip (spaces in mid-path ok on
+  // Unix rarely; keep single-token-ish except drive paths).
+  if (/\n|\r|\t/.test(s)) return undefined;
+  return s;
+}
+
+/**
+ * Pull labeled cwd / worktree values from free-form text (JSON keys, `cwd:`,
+ * `--cwd`, etc.). Best-effort; first match wins per blob.
+ */
+function extractCwdFromText(text: string | null | undefined): string | undefined {
+  const blob = (text || "").trim();
+  if (!blob) return undefined;
+
+  // Whole blob is a path (common when detail/path is only the worktree).
+  const asWhole = normalizeExtractedCwdPath(blob);
+  if (asWhole && !/[\n\r]/.test(blob) && blob.length < 512) {
+    // Only accept whole-blob when it looks path-only (no spaces around prose).
+    const stripped = blob
+      .replace(/^["']|["']$/g, "")
+      .replace(/[,;.)\]}]+$/g, "")
+      .trim();
+    if (stripped === asWhole || stripped.replace(/\\/g, "/") === asWhole) {
+      return asWhole;
+    }
+  }
+
+  // Try JSON object (full blob or first `{…}` slice).
+  const jsonTry = tryExtractCwdFromJson(blob);
+  if (jsonTry) return jsonTry;
+
+  // Labeled forms: cwd: /path, worktree=/path, "cwd": "/path"
+  const labelRe =
+    /(?:^|[\s,{["'])(?:cwd|worktree(?:[_-]?path)?|working[_-]?dir(?:ectory)?|work[_-]?dir)\s*[:=]\s*("([^"\n]+)"|'([^'\n]+)'|([^\s,"'}\]]+))/gi;
+  let m: RegExpExecArray | null;
+  while ((m = labelRe.exec(blob)) !== null) {
+    const cand = m[2] || m[3] || m[4] || m[1];
+    const hit = normalizeExtractedCwdPath(cand);
+    if (hit) return hit;
+  }
+
+  // CLI flags: --cwd /path, --worktree=/path, -C /path
+  const flagRe =
+    /(?:--cwd|--worktree|-C)\s*(?:=|\s+)\s*("([^"\n]+)"|'([^'\n]+)'|([^\s"']+))/gi;
+  while ((m = flagRe.exec(blob)) !== null) {
+    const cand = m[2] || m[3] || m[4] || m[1];
+    const hit = normalizeExtractedCwdPath(cand);
+    if (hit) return hit;
+  }
+
+  return undefined;
+}
+
+function tryExtractCwdFromJson(blob: string): string | undefined {
+  const tryParse = (raw: string): string | undefined => {
+    try {
+      const v = JSON.parse(raw) as unknown;
+      if (!v || typeof v !== "object" || Array.isArray(v)) return undefined;
+      const obj = v as Record<string, unknown>;
+      for (const key of CWD_JSON_KEYS) {
+        const val = obj[key];
+        if (typeof val === "string") {
+          const hit = normalizeExtractedCwdPath(val);
+          if (hit) return hit;
+        }
+      }
+    } catch {
+      /* not JSON */
+    }
+    return undefined;
+  };
+
+  const full = tryParse(blob);
+  if (full) return full;
+
+  const start = blob.indexOf("{");
+  const end = blob.lastIndexOf("}");
+  if (start >= 0 && end > start) {
+    return tryParse(blob.slice(start, end + 1));
+  }
+  return undefined;
+}
+
+/**
+ * Best-effort extract of a subagent working directory / worktree path from
+ * tool_step fields. Only for spawn_subagent / Agent / subagent kinds.
+ * Never invents a path when none is present in the source data.
+ */
+export function extractSubagentCwd(
+  source: SubagentCwdSource,
+): string | undefined {
+  if (!isSubagentSpawnKind(source.kind)) return undefined;
+
+  // Prefer structured path field when it is already an absolute directory path.
+  const fromPath = normalizeExtractedCwdPath(source.path);
+  if (fromPath) return fromPath;
+
+  // Labeled / JSON / flag patterns in detail (richest), then title, then body.
+  for (const field of [source.detail, source.title, source.content]) {
+    const hit = extractCwdFromText(field);
+    if (hit) return hit;
+  }
+
+  return undefined;
+}
+
+/**
+ * Compact Tasks-panel badge label for a cwd: short path when it fits, else "WT".
+ */
+export function formatTaskCwdLabel(cwd: string, maxLen = 18): string {
+  const p = (cwd || "").trim();
+  if (!p) return "WT";
+  if (p.length <= maxLen) return p;
+  const sep = p.includes("\\") && !p.includes("/") ? "\\" : "/";
+  const parts = p.split(/[/\\]/).filter(Boolean);
+  const base = parts[parts.length - 1] || p;
+  if (base.length > 0 && base.length <= maxLen) return base;
+  if (parts.length >= 2) {
+    const tail = parts.slice(-2).join(sep);
+    if (tail.length <= maxLen) return tail;
+  }
+  return "WT";
 }
 
 /** Tree node for nested task display (Tasks panel). */
@@ -198,16 +373,26 @@ export function taskFromToolMessage(m: ChatMessage): AgentTask | null {
   const status = normalizeTaskStatus(statusRaw, m.streaming);
   const name = toolStepDisplayTitle(m) || kind.replace(/_/g, " ") || id;
   const parentId = resolveParentId(m);
+  const detail = resolveDetail(m);
+  const path = resolvePath(m);
+  const cwd = extractSubagentCwd({
+    kind,
+    title: name,
+    detail,
+    path,
+    content: m.content,
+  });
   return {
     id,
     name,
     kind,
     status,
-    detail: resolveDetail(m),
-    path: resolvePath(m),
+    detail,
+    path,
     updatedAt: m.createdAt,
     longRunning: isLongRunningToolKind(kind),
     ...(parentId ? { parentId } : {}),
+    ...(cwd ? { cwd } : {}),
   };
 }
 
@@ -349,6 +534,7 @@ export function filterTaskTree(
     t.kind.toLowerCase().includes(q) ||
     (t.detail || "").toLowerCase().includes(q) ||
     (t.path || "").toLowerCase().includes(q) ||
+    (t.cwd || "").toLowerCase().includes(q) ||
     t.id.toLowerCase().includes(q);
 
   const walk = (node: TaskTreeNode): TaskTreeNode | null => {
@@ -447,6 +633,7 @@ export function filterSessionTasks(
       t.kind.toLowerCase().includes(q) ||
       (t.detail || "").toLowerCase().includes(q) ||
       (t.path || "").toLowerCase().includes(q) ||
+      (t.cwd || "").toLowerCase().includes(q) ||
       t.id.toLowerCase().includes(q),
   );
 }
