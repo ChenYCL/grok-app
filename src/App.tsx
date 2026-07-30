@@ -546,6 +546,7 @@ import {
   IconBellOff,
   IconRename,
   IconCopy,
+  IconFiles,
   IconTrash,
   IconExternalLink,
   IconFork,
@@ -8452,6 +8453,81 @@ export default function App() {
       });
     },
     [],
+  );
+
+  /**
+   * Duplicate a session: full journal clone via sessionFork (no cut, no restore-code).
+   * Idle-only so we don't snapshot a mid-turn journal.
+   */
+  const runDuplicateSession = useCallback(
+    async (source: SessionRow) => {
+      if (!api.isTauri()) {
+        showToast(tr("error.needTauri"));
+        return;
+      }
+      const isOpenSource =
+        session.sessionId === source.id ||
+        viewingSessionIdRef.current === source.id;
+      if (
+        busyIds.has(source.id) ||
+        (isOpenSource && !canRewindSession)
+      ) {
+        showToast(tr("session.duplicateBusy"), 3500);
+        return;
+      }
+      setCtxMenu(null);
+      setForkBusy(true);
+      try {
+        const base = (source.title || tr("session.untitled")).trim();
+        // Avoid double-prefix when duplicating a copy (any locale).
+        const title = /^(copy of|副本：|副本:)\s*/i.test(base)
+          ? base
+          : tr("session.duplicateTitleOf", { name: base || "chat" });
+        const meta = await api.sessionFork(source.id, {
+          throughUserPromptIndex: null,
+          title,
+        });
+        await refreshSessions();
+        const projectId = meta.projectId ?? source.projectId;
+        const row = normalizeSessionRow({
+          ...source,
+          ...(meta as SessionRow),
+          id: meta.id,
+          title: meta.title || title,
+          projectId,
+          updatedAt: meta.updatedAt || new Date().toISOString(),
+          modelId: meta.modelId ?? source.modelId ?? null,
+          effort: source.effort ?? null,
+          archived: meta.archived,
+          pinned: !!(meta as SessionRow).pinned,
+          scheduled: meta.scheduled,
+        });
+        const openProj = projectId
+          ? projects.find((p) => p.id === projectId) ?? null
+          : null;
+        if (row.projectId) {
+          setExpandedProjects((e) => ({ ...e, [row.projectId!]: true }));
+        } else {
+          setHistoryOpen(true);
+        }
+        await openSession(row, openProj);
+        showToast(tr("session.duplicateOk"), 2800);
+      } catch (e) {
+        showToast(tr("session.duplicateFailed") + ": " + String(e), 4500);
+      } finally {
+        setForkBusy(false);
+      }
+    },
+    // openSession / refreshSessions via closure
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [
+      busyIds,
+      canRewindSession,
+      projects,
+      session.sessionId,
+      showToast,
+      tr,
+    ],
   );
 
   /**
@@ -16575,6 +16651,18 @@ export default function App() {
                 label: tr("session.fork"),
                 icon: <IconFork size={16} />,
                 onClick: () => confirmForkSession(s),
+              },
+              {
+                id: "duplicate",
+                label: tr("session.duplicate"),
+                icon: <IconFiles size={16} />,
+                disabled:
+                  forkBusy ||
+                  busyIds.has(s.id) ||
+                  (isOpen && !canRewindSession),
+                onClick: () => {
+                  void runDuplicateSession(s);
+                },
               },
               {
                 id: "session-plugin-add",

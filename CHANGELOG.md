@@ -13,6 +13,7 @@ See `docs/llm-wiki/release.md`.
 
 ### Added
 
+- **Duplicate chat** from the session menu: full journal clone titled “Copy of {name}”, same project, opens the new session (idle only; no worktree restore)
 - **Send queue reorder**: Up/Down on each queued follow-up before auto-flush
 - **Chat reading width** (Settings → Appearance): narrow / medium (default) / wide / full (`grok.chatWidth`)
 - **Phone mirror write guard**: confirm when enabling write; persistent warning banner; audit log (no secrets)
@@ -33,10 +34,12 @@ See `docs/llm-wiki/release.md`.
 
 **中文 · 新增**
 
+- 会话菜单「复制会话」：整段 journal 克隆为「副本：{name}」，同项目并打开新会话（仅空闲；不恢复 worktree）
 - 发送队列上下排序；对话阅读宽度；镜像写权限确认与警告；整段对话复制为 Markdown
 - 可单独关闭实时语音快捷键；任务面板子代理树；计划历史归档；侧栏日期分组
 - 程序坞/托盘忙碌角标；按会话静音桌面通知
 - 以及此前合入的通知聚焦、队列编辑、上下文拆分、Compact、Worktree、沙箱、MCP、Memory、教程、Dashboard、Trace、快捷键重映射、CLI 更新提示、可靠性中心、Leader、JSON Schema、会话插件目录、CLI 会话恢复、Hooks、SKILL 编辑器等
+
 
 **中文 · 修复**
 
