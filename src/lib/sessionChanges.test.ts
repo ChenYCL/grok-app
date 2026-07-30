@@ -1,12 +1,14 @@
 import { describe, expect, it } from "vitest";
 import {
   buildUnifiedDiff,
+  countLineDelta,
   isEditToolKind,
   mergeSessionChange,
   normalizePath,
   pathBaseName,
   pathRelativeToProject,
   sessionChangesFromMessages,
+  summarizeSessionChanges,
   type SessionFileChange,
 } from "./sessionChanges";
 import type { ChatMessage } from "./session";
@@ -177,5 +179,91 @@ describe("buildUnifiedDiff", () => {
     expect(d).toContain("+++ b/a.ts");
     expect(d).toContain("-line2");
     expect(d).toContain("+line2-changed");
+  });
+});
+
+describe("countLineDelta", () => {
+  it("counts replacements as remove + add", () => {
+    expect(countLineDelta("a\nb\nc\n", "a\nB\nc\n")).toEqual({
+      added: 1,
+      removed: 1,
+    });
+  });
+
+  it("counts pure additions and deletions", () => {
+    expect(countLineDelta("a\n", "a\nb\nc\n")).toEqual({
+      added: 2,
+      removed: 0,
+    });
+    expect(countLineDelta("a\nb\nc\n", "a\n")).toEqual({
+      added: 0,
+      removed: 2,
+    });
+  });
+
+  it("returns zeros when identical", () => {
+    expect(countLineDelta("same\n", "same\n")).toEqual({
+      added: 0,
+      removed: 0,
+    });
+  });
+});
+
+describe("summarizeSessionChanges", () => {
+  const base = (
+    partial: Partial<SessionFileChange> & Pick<SessionFileChange, "path">,
+  ): SessionFileChange => ({
+    name: partial.path.split("/").pop() || partial.path,
+    toolKind: "write",
+    status: "completed",
+    updatedAt: "2026-01-01T00:00:00.000Z",
+    ...partial,
+  });
+
+  it("returns null for empty list (hide chip)", () => {
+    expect(summarizeSessionChanges([])).toBeNull();
+  });
+
+  it("files mode when no before/after content", () => {
+    const s = summarizeSessionChanges([
+      base({ path: "/a.ts" }),
+      base({ path: "/b.ts" }),
+    ]);
+    expect(s).toEqual({
+      fileCount: 2,
+      addedLines: null,
+      removedLines: null,
+      mode: "files",
+    });
+  });
+
+  it("diff mode when at least one file has before+after", () => {
+    const s = summarizeSessionChanges([
+      base({ path: "/a.ts", before: "x\n", after: "x\ny\n" }),
+      base({ path: "/b.ts" }), // no snippets — still counted as a file
+      base({
+        path: "/c.ts",
+        before: "old\nline\n",
+        after: "new\nline\n",
+      }),
+    ]);
+    expect(s).not.toBeNull();
+    expect(s!.fileCount).toBe(3);
+    expect(s!.mode).toBe("diff");
+    // a: +1; c: −1 +1
+    expect(s!.addedLines).toBe(2);
+    expect(s!.removedLines).toBe(1);
+  });
+
+  it("diff mode with zero line delta still prefers +0 −0", () => {
+    const s = summarizeSessionChanges([
+      base({ path: "/same.ts", before: "x\n", after: "x\n" }),
+    ]);
+    expect(s).toEqual({
+      fileCount: 1,
+      addedLines: 0,
+      removedLines: 0,
+      mode: "diff",
+    });
   });
 });

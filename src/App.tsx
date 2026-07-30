@@ -556,6 +556,7 @@ import {
   IconList,
   IconPlan,
   IconActivity,
+  IconFileDiff,
   IconFileText,
   IconSettings,
   IconDoctor,
@@ -595,6 +596,7 @@ import { ProjectRulesModal } from "@/components/ProjectRulesModal";
 import {
   mergeSessionChange,
   sessionChangesFromMessages,
+  summarizeSessionChanges,
   type SessionFileChange,
 } from "@/lib/sessionChanges";
 import { ConversationThread } from "@/components/lobe-chat";
@@ -8872,6 +8874,13 @@ export default function App() {
     [contextUsage, messages, locale],
   );
 
+  /** Session file-changes chip (+/− or N files); hidden when empty. */
+  const sessionChangesSummary = useMemo(() => {
+    const sid = session.sessionId || "";
+    const list = sid ? (sessionChangesById[sid] ?? []) : [];
+    return summarizeSessionChanges(list);
+  }, [session.sessionId, sessionChangesById]);
+
   /** Char/word counts for the muted composer counter (hidden when empty). */
   const composerDraftStats = useMemo(
     () => computeDraftStats(draft),
@@ -14559,6 +14568,55 @@ export default function App() {
                         setShowCompactModal(true);
                       }}
                     />
+                    {sessionChangesSummary ? (
+                      <Tip label={tr("changes.chipTip")}>
+                        <button
+                          type="button"
+                          className="chip chip--changes"
+                          data-testid="session-changes-chip"
+                          aria-label={
+                            sessionChangesSummary.mode === "diff"
+                              ? `${tr("changes.chipAria")}: ${tr(
+                                  "changes.chipDiff",
+                                  {
+                                    a: String(
+                                      sessionChangesSummary.addedLines ?? 0,
+                                    ),
+                                    d: String(
+                                      sessionChangesSummary.removedLines ?? 0,
+                                    ),
+                                  },
+                                )}`
+                              : `${tr("changes.chipAria")}: ${tr(
+                                  "changes.chipFiles",
+                                  {
+                                    n: String(sessionChangesSummary.fileCount),
+                                  },
+                                )}`
+                          }
+                          onClick={() => {
+                            openAsidePane();
+                            setResourceOpenTarget({ type: "changes" });
+                          }}
+                        >
+                          <IconFileDiff size={14} aria-hidden />
+                          <span className="chip__label chip__label--nums">
+                            {sessionChangesSummary.mode === "diff"
+                              ? tr("changes.chipDiff", {
+                                  a: String(
+                                    sessionChangesSummary.addedLines ?? 0,
+                                  ),
+                                  d: String(
+                                    sessionChangesSummary.removedLines ?? 0,
+                                  ),
+                                })
+                              : tr("changes.chipFiles", {
+                                  n: String(sessionChangesSummary.fileCount),
+                                })}
+                          </span>
+                        </button>
+                      </Tip>
+                    ) : null}
                   </>
                 ) : null}
                 {showComposerDraftStats &&
