@@ -205,6 +205,143 @@ export function sessionExportJsonFilename(title: string, sessionId?: string | nu
   return `${sessionExportBasename(title, sessionId)}.json`;
 }
 
+/** Safe download filename for HTML session export. */
+export function sessionExportHtmlFilename(title: string, sessionId?: string | null): string {
+  return `${sessionExportBasename(title, sessionId)}.html`;
+}
+
+/** Escape text for safe inclusion in HTML text/attributes. */
+export function escapeHtml(text: string): string {
+  return (text || "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+export type MessagesToHtmlOptions = MessagesToMarkdownOptions;
+
+/**
+ * Pure message list → simple readable HTML fragments (no document chrome).
+ * Content is escaped; whitespace preserved via CSS. Defaults match
+ * {@link messagesToMarkdown}: thoughts on, tool_step noise off.
+ */
+export function messagesToHtml(
+  messages: ExportableMessage[],
+  opts?: MessagesToHtmlOptions,
+): string {
+  const includeThoughts = opts?.includeThoughts !== false;
+  const includeToolSummary = opts?.includeToolSummary === true;
+
+  const parts: string[] = [];
+
+  for (const m of messages) {
+    const body = (m.content || "").trim();
+    const thought = (m.thought || "").trim();
+
+    if (isToolish(m)) {
+      if (!includeToolSummary) continue;
+      const line = formatToolSummaryLine(body, m.marker);
+      if (!line) continue;
+      const time =
+        m.createdAt && m.createdAt.trim()
+          ? `\n  <time datetime="${escapeHtml(m.createdAt)}">${escapeHtml(m.createdAt)}</time>`
+          : "";
+      parts.push(
+        `<section class="msg msg--tool">\n  <h2>Tool</h2>${time}\n  <ul>\n    <li>${escapeHtml(line)}</li>\n  </ul>\n</section>`,
+      );
+      continue;
+    }
+
+    if (!body && !thought) continue;
+
+    const role = roleHeading(m.role);
+    const roleClass =
+      m.role === "user" ? "user" : m.role === "assistant" ? "assistant" : "other";
+    const time =
+      m.createdAt && m.createdAt.trim()
+        ? `\n  <time datetime="${escapeHtml(m.createdAt)}">${escapeHtml(m.createdAt)}</time>`
+        : "";
+    const thoughtBlock =
+      includeThoughts && thought
+        ? `\n  <details class="thought">\n    <summary>Thinking</summary>\n    <pre>${escapeHtml(thought)}</pre>\n  </details>`
+        : "";
+    const bodyBlock = body
+      ? `\n  <div class="content"><pre>${escapeHtml(body)}</pre></div>`
+      : "";
+
+    parts.push(
+      `<section class="msg msg--${roleClass}">\n  <h2>${escapeHtml(role)}</h2>${time}${thoughtBlock}${bodyBlock}\n</section>`,
+    );
+  }
+
+  return parts.join("\n\n");
+}
+
+const HTML_EXPORT_STYLES = `body{font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;line-height:1.5;max-width:48rem;margin:1.5rem auto;padding:0 1rem;color:#111;background:#fff}
+h1{font-size:1.5rem;margin:0 0 .75rem}
+.meta{list-style:none;padding:0;margin:0 0 1rem;color:#555;font-size:.875rem}
+.meta li{margin:.15rem 0}
+hr{border:none;border-top:1px solid #ddd;margin:1.25rem 0}
+.msg{margin:1.25rem 0;padding:.75rem 0;border-bottom:1px solid #eee}
+.msg h2{font-size:1rem;margin:0 0 .35rem}
+.msg time{display:block;font-size:.75rem;color:#777;margin-bottom:.5rem}
+.msg .content pre,.msg .thought pre{white-space:pre-wrap;word-break:break-word;margin:.5rem 0 0;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:.875rem}
+.msg .thought{margin:.5rem 0;color:#444}
+.msg--tool ul{margin:.35rem 0 0;padding-left:1.25rem}
+@media (prefers-color-scheme:dark){body{color:#e8e8e8;background:#121212}.meta,.msg time{color:#aaa}hr,.msg{border-color:#333}.msg .thought{color:#ccc}}`;
+
+/**
+ * Render a session as a standalone HTML document.
+ * Export defaults keep tool summaries on (unlike {@link messagesToHtml}).
+ */
+export function sessionToHtml(input: SessionExportInput): string {
+  const opts = input.options ?? {};
+  const includeThoughts = opts.includeThoughts !== false;
+  const includeToolSummary = opts.includeToolSummary !== false;
+
+  const title = (input.title || "Untitled").trim() || "Untitled";
+  const exportedAt = input.exportedAt || new Date().toISOString();
+
+  const metaItems: string[] = [];
+  if (input.projectName) {
+    metaItems.push(`<li>Project: ${escapeHtml(input.projectName)}</li>`);
+  }
+  if (input.projectPath) {
+    metaItems.push(`<li>Path: ${escapeHtml(input.projectPath)}</li>`);
+  }
+  if (input.sessionId) {
+    metaItems.push(`<li>Session: ${escapeHtml(input.sessionId)}</li>`);
+  }
+  metaItems.push(`<li>Exported: ${escapeHtml(exportedAt)}</li>`);
+
+  const body = messagesToHtml(input.messages, {
+    includeThoughts,
+    includeToolSummary,
+  });
+
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>${escapeHtml(title)}</title>
+<style>
+${HTML_EXPORT_STYLES}
+</style>
+</head>
+<body>
+<h1>${escapeHtml(title)}</h1>
+<ul class="meta">
+${metaItems.join("\n")}
+</ul>
+<hr>
+${body ? `${body}\n` : ""}</body>
+</html>
+`;
+}
+
 export type SessionJsonMessage = {
   role: "user" | "assistant";
   content: string;
