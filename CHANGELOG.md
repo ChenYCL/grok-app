@@ -11,6 +11,14 @@ See `docs/llm-wiki/release.md`.
 
 ## [Unreleased]
 
+### Added
+
+- **Fork chat · optional restore-code**: confirm dialog checkbox (default off) creates a sibling git worktree at the source project’s HEAD and binds the new chat there; refuses when the working tree is dirty so uncommitted work is never destroyed
+
+### 中文 · 新增
+
+- **分叉会话 · 可选恢复代码**：确认框可勾选（默认关）在源项目 HEAD 创建关联 worktree 并绑定新会话；工作区有未提交改动时拒绝，不破坏本地工作
+
 ## [0.2.2] - 2026-07-30
 
 > **Highlight:** In-app auto-update works for signed builds; calmer sidebar multi-select; PATH / busy / media reliability.
