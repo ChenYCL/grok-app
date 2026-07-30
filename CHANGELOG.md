@@ -56,6 +56,7 @@ See `docs/llm-wiki/release.md`.
 - **Install failure recovery**: last install error stays on that plugin row with **Retry**; cleared on success
 - Installed **Details** shows structured marketplace/provides summary when available (plus CLI `plugin details` body)
 - **Delete CLI sessions from disk** (Settings → Agent / CLI sessions): per-row delete + delete all unlinked; path-scoped under active `GROK_HOME/sessions`; linked App chats stay
+- **Project inspect depth** (Settings → Runtime): secret-safe hooks rows + skill name lists from `grok inspect --json`; section chips (plugins / skills / MCP / hooks / agents / rules / config / models / permissions); expand long lists; per-section copy JSON / copy path / reveal; pure filter helpers + tests
 
 ### Fixed
 
@@ -69,7 +70,7 @@ See `docs/llm-wiki/release.md`.
 - **Agent**：禁用内置工具（芯片 + 自由列表 → `--disallowed-tools`；与禁用网页搜索并存；更改 soft-respawn）；可选 profile 路径（`--agent-profile`）
 - **系统**：**Agent serve** 启停（设置 → 运行时 → 连接）；**手机镜像写入审计**（本地 ring、无密钥/URL）；**Trace 历史管理**（搜索/移除/清空确认/可选大小）；任务面板子代理 **WT/cwd** 标记；**Agent 仪表盘** 状态/搜索/项目筛选
 - **计划**：**请求修改** 可选修订说明；计划历史搜索/决策筛选、清空确认、会话仍在时可打开
-- **扩展/市场**：目录插件详情面板（描述/版本/组件徽章 + 安装/重装）；安装失败行内重试；已安装 provides 结构化摘要
+- **扩展/市场**：目录插件详情面板（描述/版本/组件徽章 + 安装/重装）；安装失败行内重试；已安装 provides 结构化摘要；**项目检查深度**（分区芯片、钩子/技能名清单、展开列表、分节复制 JSON/路径）
 - **权限/CLI**：`--permission-mode` 映射与 spawn；设置页 CLI 标签与高级选择；**Auto** 策略；Doctor 安全批量修复；**删除磁盘 CLI 会话**（单条/全部未关联；限定 `GROK_HOME/sessions`）
 
 
