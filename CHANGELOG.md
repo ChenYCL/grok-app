@@ -13,6 +13,7 @@ See `docs/llm-wiki/release.md`.
 
 ### Added
 
+- **Sidebar date groups**: project and Other session lists bucket chats into Today / Yesterday / Previous 7 days / Older (local day boundaries; sticky section headers; pins stay at the top of each group)
 - **Per-session mute** for desktop notifications (context menu Mute / Unmute; sidebar muted icon; in-app toasts still show)
 - **Desktop notification click** opens the session that fired turn-done / permission / ask_user
 - **Send queue Edit** for follow-up items (GlassModal; empty text blocked unless attachments remain)
@@ -35,6 +36,7 @@ See `docs/llm-wiki/release.md`.
 
 **中文 · 新增**
 
+- 侧栏会话按相对日期分组（今天 / 昨天 / 近 7 天 / 更早；置顶仍在组内靠前）
 - 按会话静音桌面通知（菜单 Mute/Unmute；侧栏静音图标；应用内 Toast 仍显示）
 - 通知点击跳转会话；发送队列可编辑；上下文 System/Tools/History；Compact 增强
 - Worktree 会话徽章与管理；Fork 可选恢复代码；沙箱项目覆盖
