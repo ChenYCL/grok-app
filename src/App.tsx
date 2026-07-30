@@ -354,6 +354,15 @@ import {
   toggle as toggleSessionMute,
 } from "@/lib/sessionMute";
 import {
+  SESSION_NOTE_MAX_LENGTH,
+  SESSION_NOTES_CHANGE_EVENT,
+  clearNote as clearSessionNote,
+  getNote as getSessionNote,
+  loadSessionNotes,
+  notePreview,
+  setNote as setSessionNote,
+} from "@/lib/sessionNotes";
+import {
   dismissCliUpdateNotice,
   shouldOfferCliUpdateNotice,
 } from "@/lib/cliUpdateNotice";
@@ -544,6 +553,7 @@ import {
   IconPinOff,
   IconBell,
   IconBellOff,
+  IconNotes,
   IconRename,
   IconCopy,
   IconTrash,
@@ -904,6 +914,21 @@ export default function App() {
     window.addEventListener(SESSION_MUTE_CHANGE_EVENT, onChange);
     return () => window.removeEventListener(SESSION_MUTE_CHANGE_EVENT, onChange);
   }, []);
+  /** Per-session sticky notes (localStorage map; never sent to agent). */
+  const [sessionNotesMap, setSessionNotesMap] = useState<
+    Record<string, string>
+  >(() => loadSessionNotes());
+  useEffect(() => {
+    const onChange = () => setSessionNotesMap(loadSessionNotes());
+    window.addEventListener(SESSION_NOTES_CHANGE_EVENT, onChange);
+    return () =>
+      window.removeEventListener(SESSION_NOTES_CHANGE_EVENT, onChange);
+  }, []);
+  const [sessionNoteTarget, setSessionNoteTarget] = useState<{
+    id: string;
+    title: string;
+  } | null>(null);
+  const [sessionNoteDraft, setSessionNoteDraft] = useState("");
   const [notifySound, setNotifySound] = useState(() =>
     loadNotifySoundPref(localStorage),
   );
@@ -7566,6 +7591,53 @@ export default function App() {
     }, ms);
   }, []);
 
+  const openSessionNote = useCallback(
+    (s: SessionRow) => {
+      setCtxMenu(null);
+      setSessionNoteDraft(getSessionNote(s.id));
+      setSessionNoteTarget({
+        id: s.id,
+        title: s.title || tr("session.untitled"),
+      });
+    },
+    [tr],
+  );
+
+  const closeSessionNoteModal = useCallback(() => {
+    setSessionNoteTarget(null);
+    setSessionNoteDraft("");
+  }, []);
+
+  const saveSessionNoteModal = useCallback(() => {
+    const target = sessionNoteTarget;
+    if (!target) return;
+    setSessionNote(target.id, sessionNoteDraft);
+    setSessionNotesMap(loadSessionNotes());
+    closeSessionNoteModal();
+    showToast(
+      sessionNoteDraft.trim()
+        ? tr("session.noteSaved")
+        : tr("session.noteCleared"),
+      2000,
+    );
+  }, [
+    sessionNoteTarget,
+    sessionNoteDraft,
+    closeSessionNoteModal,
+    tr,
+    showToast,
+  ]);
+
+  const clearSessionNoteModal = useCallback(() => {
+    const target = sessionNoteTarget;
+    if (!target) return;
+    clearSessionNote(target.id);
+    setSessionNotesMap(loadSessionNotes());
+    setSessionNoteDraft("");
+    closeSessionNoteModal();
+    showToast(tr("session.noteCleared"), 2000);
+  }, [sessionNoteTarget, closeSessionNoteModal, tr, showToast]);
+
   /** Confirm then stop every stoppable busy session from the Tasks panel. */
   const stopAllBusySessions = useCallback(() => {
     const rows = stoppableActivitySessions(
@@ -12407,6 +12479,19 @@ export default function App() {
                                               <IconBellOff size={12} />
                                             </span>
                                           ) : null}
+                                          {sessionNotesMap[s.id]?.trim() ? (
+                                            <span
+                                              className="tree-l3__kind"
+                                              title={
+                                                notePreview(
+                                                  sessionNotesMap[s.id],
+                                                ) || tr("session.noteAria")
+                                              }
+                                              aria-label={tr("session.noteAria")}
+                                            >
+                                              <IconNotes size={12} />
+                                            </span>
+                                          ) : null}
                                           {s.scheduled ? (
                                             <span
                                               className="tree-l3__kind"
@@ -12666,6 +12751,18 @@ export default function App() {
                                     aria-label={tr("session.muted")}
                                   >
                                     <IconBellOff size={12} />
+                                  </span>
+                                ) : null}
+                                {sessionNotesMap[s.id]?.trim() ? (
+                                  <span
+                                    className="tree-l3__kind"
+                                    title={
+                                      notePreview(sessionNotesMap[s.id]) ||
+                                      tr("session.noteAria")
+                                    }
+                                    aria-label={tr("session.noteAria")}
+                                  >
+                                    <IconNotes size={12} />
                                   </span>
                                 ) : null}
                                 {s.scheduled ? (
@@ -15764,6 +15861,76 @@ export default function App() {
       </GlassModal>
 
       <GlassModal
+        open={!!sessionNoteTarget}
+        onClose={closeSessionNoteModal}
+        title={tr("session.noteTitle")}
+        size="md"
+        closeLabel={tr("common.close")}
+        wrapBody
+        className="session-note-modal"
+        footer={
+          <div className="session-note-modal__actions">
+            {sessionNoteTarget &&
+            (sessionNotesMap[sessionNoteTarget.id]?.trim() ||
+              sessionNoteDraft.trim()) ? (
+              <button
+                type="button"
+                className="btn btn--ghost"
+                onClick={clearSessionNoteModal}
+              >
+                {tr("session.noteClear")}
+              </button>
+            ) : null}
+            <button
+              type="button"
+              className="btn btn--ghost"
+              onClick={closeSessionNoteModal}
+            >
+              {tr("common.cancel")}
+            </button>
+            <button
+              type="button"
+              className="btn btn--primary"
+              onClick={saveSessionNoteModal}
+            >
+              {tr("common.save")}
+            </button>
+          </div>
+        }
+      >
+        <p className="session-note-modal__hint">
+          {tr("session.noteHint", { n: String(SESSION_NOTE_MAX_LENGTH) })}
+        </p>
+        {sessionNoteTarget ? (
+          <p
+            className="session-note-modal__session"
+            title={sessionNoteTarget.title}
+          >
+            {sessionNoteTarget.title}
+          </p>
+        ) : null}
+        <textarea
+          className="session-note-modal__textarea"
+          value={sessionNoteDraft}
+          onChange={(e) =>
+            setSessionNoteDraft(
+              e.target.value.slice(0, SESSION_NOTE_MAX_LENGTH),
+            )
+          }
+          placeholder={tr("session.notePlaceholder")}
+          maxLength={SESSION_NOTE_MAX_LENGTH}
+          spellCheck
+          aria-label={tr("session.noteTitle")}
+        />
+        <p className="session-note-modal__count" aria-live="polite">
+          {tr("session.noteChars", {
+            n: String(sessionNoteDraft.length),
+            max: String(SESSION_NOTE_MAX_LENGTH),
+          })}
+        </p>
+      </GlassModal>
+
+      <GlassModal
         open={!!exportMdTarget}
         onClose={() => {
           if (exportMdBusy) return;
@@ -16563,6 +16730,12 @@ export default function App() {
                   <IconBellOff size={16} />
                 ),
                 onClick: () => handleToggleSessionMute(s.id),
+              },
+              {
+                id: "session-note",
+                label: tr("session.note"),
+                icon: <IconNotes size={16} />,
+                onClick: () => openSessionNote(s),
               },
               {
                 id: "rename",
