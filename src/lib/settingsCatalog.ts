@@ -1214,6 +1214,24 @@ export const SETTINGS_ENTRIES: readonly SettingsEntry[] = [
     ],
     keywords: ["archive", "archived chats"],
   },
+  {
+    id: "archived.archiveOlder",
+    section: "archived",
+    anchorId: "settings-anchor-archive-older",
+    labelKey: "settings.archived.archiveOlder",
+    descKeys: ["settings.archived.archiveOlderDesc"],
+    keywords: [
+      "archive older",
+      "bulk archive",
+      "old chats",
+      "7 days",
+      "30 days",
+      "90 days",
+      "归档超过",
+      "按时间归档",
+      "封存超過",
+    ],
+  },
   // ── extensions ──
   {
     id: "ext.plugins",

@@ -50,6 +50,12 @@ export const zhTW: Record<MessageKey, string> = {
   "sidebar.archivedToast": "已封存 {n} 個對話",
   "sidebar.restoredToast": "已還原 {n} 個對話",
   "sidebar.deletedToast": "已永久刪除 {n} 個對話",
+  "sidebar.archiveOlder": "封存超過…天的對話",
+  "sidebar.archiveOlderDays": "超過 {days} 天",
+  "sidebar.archiveOlderTitle": "依時間封存",
+  "sidebar.archiveOlderConfirm":
+    "將封存 {n} 個超過 {days} 天未更新的對話？已置頂對話會保留。之後可在「設定 → 已封存對話」中還原。",
+  "sidebar.archiveOlderNone": "沒有超過 {days} 天且未置頂的對話。",
   "user.menu": "個人中心",
   "user.theme": "主題",
   "user.themeLight": "切換為淺色",
@@ -824,6 +830,10 @@ export const zhTW: Record<MessageKey, string> = {
   "settings.archived.deselectAll": "取消全選",
   "settings.archived.selectedCount": "已選 {n} 項",
   "settings.archived.totalCount": "共 {n} 條",
+  "settings.archived.archiveOlder": "封存超過…天的對話",
+  "settings.archived.archiveOlderDesc":
+    "批次封存最後更新時間超過閾值的活躍對話。已置頂對話會略過。",
+  "settings.archived.archiveOlderDays": "{days} 天",
   "settings.section.permissions": "權限",
   "settings.section.composer": "對話偏好",
   "settings.section.voice": "語音",

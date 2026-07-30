@@ -3958,6 +3958,18 @@ html[data-sidebar-density="compact"] .session-row__meta {
   color: var(--text-tertiary);
 }
 
+.settings-archived-age {
+  margin: 0 0 14px;
+}
+
+.settings-archived-age__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-top: 10px;
+}
+
 .settings-archived-toolbar {
   display: flex;
   align-items: center;
