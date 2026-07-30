@@ -63,6 +63,19 @@ export function defaultPaletteActions(): PaletteActionDef[] {
       group: "diagnose",
     },
     {
+      id: "traces",
+      labelKey: "session.traces",
+      keywords: [
+        "trace",
+        "traces",
+        "session trace",
+        "grok trace",
+        "export history",
+        "diagnostic archive",
+      ],
+      group: "diagnose",
+    },
+    {
       id: "shortcuts-help",
       labelKey: "shortcuts.help",
       keywords: ["shortcuts", "keyboard", "hotkeys", "keymap", "help", "?"],

@@ -11,6 +11,14 @@ See `docs/llm-wiki/release.md`.
 
 ## [Unreleased]
 
+### Added
+
+- **Trace center**: after a successful session trace export (`grok trace --local`), keep a local history (paths only, max ~20) with Open in folder / Copy path from the session menu, command palette, and Settings → Runtime → Diagnostics
+
+### 中文 · 新增
+
+- **Trace 中心**：成功导出会话 trace 后写入本地历史（仅路径，约 20 条）；会话菜单 / 命令面板 / 设置 · 运行时 · 诊断 可打开文件夹或复制路径
+
 ## [0.2.2] - 2026-07-30
 
 > **Highlight:** In-app auto-update works for signed builds; calmer sidebar multi-select; PATH / busy / media reliability.
