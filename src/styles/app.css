@@ -9524,7 +9524,8 @@ button.composer__context-item {
 
 .composer__input {
   width: 100%;
-  min-height: 22px;
+  /* Default = 2 rows; overridden by html[data-composer-min-rows] (Settings). */
+  min-height: 44px;
   max-height: 220px; /* ~10 lines */
   resize: none;
   border: none !important;
@@ -9539,6 +9540,24 @@ button.composer__context-item {
   /* room for floating native thumb (track stays transparent) */
   padding: 2px 10px 2px 4px;
   field-sizing: content;
+}
+
+/*
+ * Composer empty min-height (Settings → General → Composer).
+ * Prefer html[data-composer-min-rows] so every composer instance picks it up.
+ * Values = approximate text rows × 22px line-height.
+ */
+html[data-composer-min-rows="2"] .composer__input {
+  min-height: 44px;
+}
+html[data-composer-min-rows="3"] .composer__input {
+  min-height: 66px;
+}
+html[data-composer-min-rows="5"] .composer__input {
+  min-height: 110px;
+}
+html[data-composer-min-rows="8"] .composer__input {
+  min-height: 176px;
 }
 
 /* If any rich HTML still lands, strip visual styles (skill chips keep own classes). */
@@ -15292,7 +15311,7 @@ textarea::-webkit-scrollbar-thumb:active,
 div.composer__input {
   white-space: pre-wrap;
   word-break: break-word;
-  min-height: 22px;
+  /* min-height owned by .composer__input + data-composer-min-rows above */
   max-height: 220px;
   outline: none;
 }

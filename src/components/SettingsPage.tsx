@@ -106,6 +106,13 @@ import {
   type ChatWidth,
 } from "@/lib/chatWidthPref";
 import {
+  COMPOSER_MIN_ROWS_OPTIONS,
+  applyComposerMinRows,
+  loadComposerMinRows,
+  saveComposerMinRows,
+  type ComposerMinRows,
+} from "@/lib/composerMinRows";
+import {
   SIDEBAR_DENSITIES,
   applySidebarDensity,
   loadSidebarDensity,
@@ -945,6 +952,18 @@ export function SettingsPage({
   trustedProjects = [],
 }: SettingsPageProps) {
   const [query, setQuery] = useState("");
+  /** Composer empty min-height (rows) — localStorage only (no AppSettings). */
+  const [composerMinRows, setComposerMinRowsState] = useState<ComposerMinRows>(
+    () => loadComposerMinRows(),
+  );
+  useEffect(() => {
+    applyComposerMinRows(loadComposerMinRows());
+  }, []);
+  const onComposerMinRows = useCallback((next: ComposerMinRows) => {
+    setComposerMinRowsState(next);
+    saveComposerMinRows(next);
+    applyComposerMinRows(next);
+  }, []);
   /** Composer Enter vs ⌘/Ctrl+Enter — localStorage only (no Host settings). */
   const [composerSendKeyPref, setComposerSendKeyPref] =
     useState<ComposerSendKeyPref>(() => loadComposerSendKeyPref());
@@ -1770,6 +1789,43 @@ export function SettingsPage({
                       </div>
                     ))
                   )}
+                </div>
+              </div>
+              <div
+                className={
+                  "settings-row" +
+                  rowHighlight("settings-anchor-composerMinRows")
+                }
+                id="settings-anchor-composerMinRows"
+              >
+                <div className="settings-row__text">
+                  <div className="settings-row__label">
+                    {t("settings.composerMinRows")}
+                  </div>
+                  <div className="settings-row__desc">
+                    {t("settings.composerMinRowsDesc")}
+                  </div>
+                </div>
+                <div
+                  className="settings-seg"
+                  role="radiogroup"
+                  aria-label={t("settings.composerMinRows")}
+                >
+                  {COMPOSER_MIN_ROWS_OPTIONS.map((rows) => (
+                    <button
+                      key={rows}
+                      type="button"
+                      role="radio"
+                      aria-checked={composerMinRows === rows}
+                      className={
+                        "settings-seg__btn" +
+                        (composerMinRows === rows ? " is-on" : "")
+                      }
+                      onClick={() => onComposerMinRows(rows)}
+                    >
+                      {t(`settings.composerMinRows.${rows}`)}
+                    </button>
+                  ))}
                 </div>
               </div>
               <div
