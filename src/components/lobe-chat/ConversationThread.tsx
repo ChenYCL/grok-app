@@ -17,7 +17,6 @@ import type { Locale } from "@/i18n";
 import { createT } from "@/i18n";
 import {
   formatTurnErrorBody,
-  filterTranscriptMessages,
   isToolInlinedInAssistants,
   lastRegenerableAssistantId,
   messageSegments,
@@ -109,6 +108,13 @@ import {
   TOOL_STEPS_AUTO_COLLAPSE_CHANGE_EVENT,
   loadToolStepsAutoCollapsePref,
 } from "@/lib/toolStepsAutoCollapsePref";
+import {
+  TRANSCRIPT_FILTER_CHANGE_EVENT,
+  filterMessagesForTranscript,
+  loadTranscriptFilterPref,
+  shouldShowTranscriptToolChrome,
+  type TranscriptFilterMode,
+} from "@/lib/transcriptFilterPref";
 import "./lobe-chat.css";
 
 type AttachLabels = {
@@ -595,6 +601,24 @@ export function ConversationThread({
       window.removeEventListener(TOOL_STEPS_AUTO_COLLAPSE_CHANGE_EVENT, onPref);
   }, []);
 
+  /** all | conversation — hide tool_step rows / tool chrome when conversation. */
+  const [transcriptFilter, setTranscriptFilter] =
+    useState<TranscriptFilterMode>(() => loadTranscriptFilterPref());
+  useEffect(() => {
+    const onPref = (ev: Event) => {
+      const detail = (ev as CustomEvent).detail;
+      if (detail === "all" || detail === "conversation") {
+        setTranscriptFilter(detail);
+      } else {
+        setTranscriptFilter(loadTranscriptFilterPref());
+      }
+    };
+    window.addEventListener(TRANSCRIPT_FILTER_CHANGE_EVENT, onPref);
+    return () =>
+      window.removeEventListener(TRANSCRIPT_FILTER_CHANGE_EVENT, onPref);
+  }, []);
+  const showToolChrome = shouldShowTranscriptToolChrome(transcriptFilter);
+
   const messageNodes = useMemo(
     () => buildSessionMessageNodes(messages),
     [messages],
@@ -868,13 +892,14 @@ export function ConversationThread({
     !turnBusy;
 
   /**
-   * Paint list: drop inlined tool_step journal rows. Full `messages` stays for
+   * Paint list: drop inlined tool_step journal rows; when filter is
+   * `conversation`, also drop every tool_step row. Full `messages` stays for
    * path maps / live tools / nodes — only the virtual list + render loop use this.
    * (64 woven tools otherwise force virtualization and thrash near-bottom stick.)
    */
   const transcriptMessages = useMemo(
-    () => filterTranscriptMessages(messages),
-    [messages],
+    () => filterMessagesForTranscript(messages, transcriptFilter),
+    [messages, transcriptFilter],
   );
 
   // Force-mount only what must stay in DOM. Do NOT always force the last N
@@ -1049,7 +1074,19 @@ export function ConversationThread({
 
             // Standalone tool_step only when not already woven into an assistant
             // timeline (tools before first assistant bubble, edge cases).
+            // Conversation filter hides tool chrome entirely.
             if (isToolStepMessage(m)) {
+              if (!showToolChrome) {
+                return virtualized ? (
+                  <div
+                    key={m.id}
+                    ref={measureRef(msgIndex)}
+                    data-virt-index={msgIndex}
+                    style={{ height: 0, overflow: "hidden" }}
+                    aria-hidden
+                  />
+                ) : null;
+              }
               const tcid =
                 (m.toolCallId || "").trim() ||
                 (m.id.startsWith("tool-") ? m.id.slice(5) : "");
@@ -1384,8 +1421,12 @@ export function ConversationThread({
               (s) => s.kind === "tool" && toolSegmentIsRunning(s),
             );
             // Fallback live line only when tool not yet woven into segments.
+            // Conversation filter hides tool chrome (including live tool text).
             const showLiveToolBelow =
-              !!liveTool && isActiveAssistant && !hasInlinedRunningTool;
+              showToolChrome &&
+              !!liveTool &&
+              isActiveAssistant &&
+              !hasInlinedRunningTool;
             const showThinkingPlaceholder =
               !!m.streaming &&
               segs.length === 0 &&
@@ -1444,6 +1485,30 @@ export function ConversationThread({
                       let contentOccBase = 0;
                       return timelineUnits.map((unit) => {
                         if (unit.kind === "phase") {
+                          // Conversation filter: keep thoughts, drop tool chrome.
+                          if (!showToolChrome) {
+                            const thoughts = unit.thoughts.filter((t) =>
+                              t.trim(),
+                            );
+                            if (!thoughts.length) return null;
+                            return (
+                              <div key={`${m.id}-${unit.id}`}>
+                                {thoughts.map((text, ti) => (
+                                  <Thinking
+                                    key={`${m.id}-${unit.id}-th-${ti}`}
+                                    locale={locale}
+                                    content={text}
+                                    thinking={false}
+                                    streamingLabel={tr("chat.thinking")}
+                                    doneLabel={tr("chat.thoughtDone")}
+                                    thoughtForLabel={(n) =>
+                                      tr("chat.thoughtFor", { n })
+                                    }
+                                  />
+                                ))}
+                              </div>
+                            );
+                          }
                           return (
                             <TimelinePhaseBlock
                               key={`${m.id}-${unit.id}`}
@@ -1455,6 +1520,7 @@ export function ConversationThread({
                           );
                         }
                         if (unit.kind === "tool") {
+                          if (!showToolChrome) return null;
                           return (
                             <div
                               key={`${m.id}-tool-${unit.tool.toolCallId || unit.si}`}
@@ -1639,7 +1705,8 @@ export function ConversationThread({
           ) : null}
 
           {/* Tool before any assistant bubble — only if not already a message row. */}
-          {liveTool &&
+          {showToolChrome &&
+          liveTool &&
           !activeAssistantId &&
           !(
             liveTool.toolCallId &&

@@ -1193,6 +1193,15 @@ const en = {
   "settings.toolStepsAutoCollapse": "Auto-collapse finished tools",
   "settings.toolStepsAutoCollapseDesc":
     "Completed and failed tool steps start collapsed in the timeline. Running tools stay expanded. Turn off to keep finished tools open. Separate from “Collapse all activity” (manual one-shot).",
+  "settings.transcriptFilter": "Transcript filter",
+  "settings.transcriptFilterDesc":
+    "What to show in the chat transcript. “Conversation only” hides tool steps and tool-only chrome; user messages, assistant replies, and errors stay visible.",
+  "settings.transcriptFilter.all": "All activity",
+  "settings.transcriptFilter.conversation": "Conversation only",
+  "session.transcriptFilter.hideTools": "Hide tool steps",
+  "session.transcriptFilter.showTools": "Show tool steps",
+  "session.transcriptFilter.hint":
+    "Toggle transcript filter: hide or show tool steps in this chat view",
   "settings.zenMode": "Zen mode",
   "settings.zenModeDesc":
     "Hide the left sidebar and right files pane to maximize the chat. Turning off restores the panes as they were. Escape still stops generation — it does not exit zen.",
@@ -3911,6 +3920,14 @@ const zh: Record<MessageKey, string> = {
   "settings.toolStepsAutoCollapse": "完成后自动折叠工具步骤",
   "settings.toolStepsAutoCollapseDesc":
     "已完成或失败的工具步骤在时间线中默认折叠。运行中的工具保持展开。关闭后，完成的工具也会保持展开。与「收起全部活动」（手动一次）是不同能力。",
+  "settings.transcriptFilter": "对话内容过滤",
+  "settings.transcriptFilterDesc":
+    "聊天记录显示范围。「仅对话」隐藏工具步骤与工具相关界面；用户消息、助手回复与错误仍会显示。",
+  "settings.transcriptFilter.all": "全部活动",
+  "settings.transcriptFilter.conversation": "仅对话",
+  "session.transcriptFilter.hideTools": "隐藏工具步骤",
+  "session.transcriptFilter.showTools": "显示工具步骤",
+  "session.transcriptFilter.hint": "切换对话过滤：在当前视图隐藏或显示工具步骤",
   "settings.zenMode": "禅模式",
   "settings.zenModeDesc":
     "隐藏左侧会话栏与右侧文件栏，最大化对话区域。关闭时恢复进入前的栏状态。Esc 仍用于停止生成，不会退出禅模式。",

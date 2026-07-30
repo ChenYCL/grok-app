@@ -109,6 +109,12 @@ import {
   saveZenModePrior,
 } from "@/lib/zenMode";
 import {
+  TRANSCRIPT_FILTER_CHANGE_EVENT,
+  loadTranscriptFilterPref,
+  saveTranscriptFilterPref,
+  type TranscriptFilterMode,
+} from "@/lib/transcriptFilterPref";
+import {
   ensureWindowFitsLayout,
   isWindowFitSuppressed,
 } from "@/lib/windowFit";
@@ -557,6 +563,7 @@ import {
   IconFolderPlus,
   IconArrowsVerticalCollapse,
   IconArrowsMinimize,
+  IconChat,
   IconZen,
   IconClock,
   IconClose,
@@ -1006,6 +1013,9 @@ export default function App() {
   const [zenMode, setZenModeState] = useState(() => loadZenMode(localStorage));
   const zenModeRef = useRef(zenMode);
   zenModeRef.current = zenMode;
+  /** Transcript filter: all activity vs conversation-only (hide tool steps). */
+  const [transcriptFilter, setTranscriptFilter] =
+    useState<TranscriptFilterMode>(() => loadTranscriptFilterPref());
 
   const [session, setSession] = useState<SessionSnapshot>(IDLE_SNAPSHOT);
   /** Host live agent (may differ from the session currently viewed in the UI). */
@@ -2091,6 +2101,33 @@ export default function App() {
     zenModeRef.current = enabled;
     setZenModeState(enabled);
     saveZenMode(enabled, localStorage);
+  }, []);
+
+  /** Toggle transcript filter (all ↔ conversation) — Settings + chat chrome. */
+  const setTranscriptFilterMode = useCallback((mode: TranscriptFilterMode) => {
+    const next: TranscriptFilterMode =
+      mode === "conversation" ? "conversation" : "all";
+    setTranscriptFilter(next);
+    saveTranscriptFilterPref(next);
+  }, []);
+  const toggleTranscriptFilter = useCallback(() => {
+    setTranscriptFilterMode(
+      transcriptFilter === "conversation" ? "all" : "conversation",
+    );
+  }, [transcriptFilter, setTranscriptFilterMode]);
+
+  useEffect(() => {
+    const onPref = (ev: Event) => {
+      const detail = (ev as CustomEvent).detail;
+      if (detail === "all" || detail === "conversation") {
+        setTranscriptFilter(detail);
+      } else {
+        setTranscriptFilter(loadTranscriptFilterPref());
+      }
+    };
+    window.addEventListener(TRANSCRIPT_FILTER_CHANGE_EVENT, onPref);
+    return () =>
+      window.removeEventListener(TRANSCRIPT_FILTER_CHANGE_EVENT, onPref);
   }, []);
 
   // Settings (or another surface) may flip zen via localStorage + event.
@@ -13670,6 +13707,27 @@ export default function App() {
                     </Tip>
                   ) : null}
                   {mainPane === "chat" && session.sessionId ? (
+                    <Tip label={tr("session.transcriptFilter.hint")}>
+                      <button
+                        type="button"
+                        className={
+                          "chrome-btn main__pane-toggle" +
+                          (transcriptFilter === "conversation" ? " is-on" : "")
+                        }
+                        onClick={() => toggleTranscriptFilter()}
+                        aria-pressed={transcriptFilter === "conversation"}
+                        aria-label={
+                          transcriptFilter === "conversation"
+                            ? tr("session.transcriptFilter.showTools")
+                            : tr("session.transcriptFilter.hideTools")
+                        }
+                        data-testid="transcript-filter-toggle"
+                      >
+                        <IconChat size={16} />
+                      </button>
+                    </Tip>
+                  ) : null}
+                  {mainPane === "chat" && session.sessionId ? (
                     <Tip
                       label={
                         tasksPanelOpen
@@ -17367,6 +17425,18 @@ export default function App() {
                 disabled: !isOpen,
                 onClick: () => {
                   dispatchCollapseAllActivity();
+                },
+              },
+              {
+                id: "transcript-filter",
+                label:
+                  transcriptFilter === "conversation"
+                    ? tr("session.transcriptFilter.showTools")
+                    : tr("session.transcriptFilter.hideTools"),
+                icon: <IconChat size={16} />,
+                disabled: !isOpen,
+                onClick: () => {
+                  toggleTranscriptFilter();
                 },
               },
               ...wtItems,

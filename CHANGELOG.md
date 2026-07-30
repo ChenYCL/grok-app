@@ -17,6 +17,7 @@ See `docs/llm-wiki/release.md`.
 - **Send queue**: edit, reorder Up/Down
 - **Cross-session recent prompt history** (`/history` → Recent all chats) + per-chat ↑/↓ history
 - **Chat reading width** · **chat / code font size** (independent) · **tool auto-collapse** (finished tools; separate from Collapse all activity)
+- **Transcript filter** (Appearance + chat header / session menu): show all activity or conversation only (hide tool steps; `localStorage` `grok.transcriptFilter`)
 - **Regenerate last reply** with optional model pick
 - **File changes chip** (count / +a −d → Resources Changes)
 
@@ -39,7 +40,7 @@ See `docs/llm-wiki/release.md`.
 
 **中文 · 新增（按域）**
 
-- **输入与对话**：队列编辑/排序、跨会话提示历史、阅读宽度与字号、工具默认折叠、重新生成可选模型、变更芯片
+- **输入与对话**：队列编辑/排序、跨会话提示历史、阅读宽度与字号、工具默认折叠、对话过滤（隐藏工具步骤）、重新生成可选模型、变更芯片
 - **会话与侧栏**：复制会话（vs 分叉+worktree）、便签、静音、插件目录、按天归档、日期分组、项目颜色、复制 Markdown
 - **任务与系统**：子代理树、Stop all 可跳过确认、计划历史、忙碌角标、镜像写权限等
 
