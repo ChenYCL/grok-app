@@ -1477,6 +1477,37 @@ export async function exportSessionBundle(sessionId: string) {
   });
 }
 
+export interface ExportBytesSaveResult {
+  ok: boolean;
+  cancelled?: boolean;
+  path?: string | null;
+}
+
+/**
+ * Save raw bytes (base64, no data: prefix) via native save dialog.
+ * Used for share-card PNG so Tauri WebView does not depend on `<a download>`.
+ */
+export async function exportBytesSave(opts: {
+  bytesBase64: string;
+  defaultName: string;
+  dialogTitle?: string;
+  filterName?: string;
+  extensions?: string[];
+}) {
+  return invoke<ExportBytesSaveResult>("export_bytes_save", {
+    bytesBase64: opts.bytesBase64,
+    defaultName: opts.defaultName,
+    dialogTitle: opts.dialogTitle ?? null,
+    filterName: opts.filterName ?? null,
+    extensions: opts.extensions ?? null,
+  });
+}
+
+/** Put a PNG (base64, no data: prefix) on the OS clipboard via arboard. */
+export async function clipboardWriteImage(bytesBase64: string) {
+  return invoke<void>("clipboard_write_image", { bytesBase64 });
+}
+
 /**
  * Export Grok Build CLI session trace via `grok trace <agentSessionId> --local`.
  * Requires a linked agent session id. Opens a native save dialog for the `.tar.gz`.

@@ -74,6 +74,7 @@
     "@types/react-dom": "^19.1.6",
     "@types/xlsx": "^0.0.36",
     "@vitejs/plugin-react": "^4.5.2",
+    "canvas": "^3.2.3",
     "tailwindcss": "^4.3.3",
     "typescript": "~5.8.3",
     "vite": "^6.3.5",

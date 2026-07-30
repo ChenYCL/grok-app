@@ -6,6 +6,10 @@
  */
 
 import { escapeHtml, type ExportableMessage } from "@/lib/sessionExport";
+import {
+  buildSmartShareSummary,
+  type SmartShareSummary,
+} from "@/lib/shareCardSmart";
 
 export const GROK_APP_SHARE_FOOTER = "Generated with Grok App";
 
@@ -566,18 +570,35 @@ function loadImage(src: string): Promise<HTMLImageElement> {
   });
 }
 
-/** Download a PNG blob via temporary anchor. */
+/** Download a PNG blob via temporary anchor (browser fallback only). */
 export function downloadPngBlob(blob: Blob, filename: string): void {
   const url = URL.createObjectURL(blob);
   try {
     const a = document.createElement("a");
     a.href = url;
     a.download = filename;
+    // Required in some WebViews so the synthetic click is not ignored.
+    a.rel = "noopener";
+    a.style.display = "none";
+    document.body.appendChild(a);
     a.click();
+    a.remove();
   } finally {
     // Delay revoke so the download can start.
     setTimeout(() => URL.revokeObjectURL(url), 2_000);
   }
+}
+
+/** Blob → base64 (no data: prefix) for Host `export_bytes_save`. */
+export async function blobToBase64(blob: Blob): Promise<string> {
+  const buf = await blob.arrayBuffer();
+  const bytes = new Uint8Array(buf);
+  const chunk = 0x8000;
+  let binary = "";
+  for (let i = 0; i < bytes.length; i += chunk) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + chunk));
+  }
+  return btoa(binary);
 }
 
 /** Copy PNG blob to clipboard when supported. */
@@ -606,4 +627,420 @@ export async function copyPngBlob(blob: Blob): Promise<boolean> {
   } catch {
     return false;
   }
+}
+
+
+/**
+ * Rasterize a smart summary poster (auto theme + bullets + takeaway).
+ * Canvas-only; no foreignObject. Footer always credits Grok App.
+ */
+export async function rasterizeSmartShareCardPng(
+  summary: SmartShareSummary,
+  opts?: {
+    pixelRatio?: number;
+    logoDataUrl?: string | null;
+    footerText?: string;
+    widthPx?: number;
+    exportedAt?: string;
+  },
+): Promise<Blob> {
+  if (typeof document === "undefined") {
+    throw new Error("rasterizeSmartShareCardPng requires a DOM");
+  }
+  const pixelRatio = opts?.pixelRatio ?? 2;
+  const width = opts?.widthPx ?? 720;
+  const theme = summary.theme;
+  const footerText = (opts?.footerText || GROK_APP_SHARE_FOOTER).trim();
+  const exportedAt = (opts?.exportedAt || new Date().toISOString())
+    .slice(0, 19)
+    .replace("T", " ");
+
+  const padX = 28;
+  const contentW = width - padX * 2;
+  const lineH = 22;
+  const fontTitle =
+    '700 26px ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif';
+  const fontSub =
+    '13px ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif';
+  const fontBody =
+    '14.5px ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif';
+  const fontBadge =
+    '600 11px ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif';
+  const fontFooter =
+    '600 11px ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif';
+  const fontTakeLabel =
+    '700 10px ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif';
+
+  const measureCanvas = document.createElement("canvas");
+  const mctx = measureCanvas.getContext("2d");
+  if (!mctx) throw new Error("no 2d context");
+
+  const wrapLines = (text: string, maxWidth: number, font: string): string[] => {
+    mctx.font = font;
+    const paragraphs = (text || "").split("\n");
+    const lines: string[] = [];
+    for (const para of paragraphs) {
+      if (!para) {
+        lines.push("");
+        continue;
+      }
+      // Prefer CJK-friendly character wrap when no spaces.
+      const hasSpace = /\s/.test(para);
+      if (!hasSpace) {
+        let line = "";
+        for (const ch of para) {
+          const trial = line + ch;
+          if (mctx.measureText(trial).width <= maxWidth || !line) line = trial;
+          else {
+            lines.push(line);
+            line = ch;
+          }
+        }
+        if (line) lines.push(line);
+        continue;
+      }
+      const words = para.split(/(\s+)/);
+      let line = "";
+      for (const w of words) {
+        const trial = line + w;
+        if (mctx.measureText(trial).width <= maxWidth || !line) line = trial;
+        else {
+          lines.push(line);
+          line = w.trimStart();
+        }
+      }
+      if (line) lines.push(line);
+    }
+    return lines.length ? lines : [""];
+  };
+
+  const titleLines = wrapLines(summary.headline, contentW - 8, fontTitle);
+  const subLines = summary.subtitle
+    ? wrapLines(summary.subtitle, contentW - 8, fontSub)
+    : [];
+  const bulletBlocks = summary.bullets.map((b) =>
+    wrapLines(b, contentW - 36, fontBody),
+  );
+  const takeLines = summary.takeaway
+    ? wrapLines(summary.takeaway, contentW - 28, fontBody)
+    : [];
+
+  // Layout
+  let height = 0;
+  const headerH = 96;
+  const footerH = 44;
+  height += headerH;
+  height += 8;
+  height += titleLines.length * 32 + 8;
+  if (subLines.length) height += subLines.length * 18 + 10;
+  height += 12;
+  for (const bl of bulletBlocks) {
+    height += Math.max(1, bl.length) * lineH + 14;
+  }
+  if (takeLines.length) {
+    height += 16 + 14 + takeLines.length * lineH + 20;
+  }
+  height += footerH + 12;
+  height = Math.max(height, 320);
+
+  let logoImg: HTMLImageElement | null = null;
+  if (opts?.logoDataUrl) {
+    try {
+      logoImg = await loadImage(opts.logoDataUrl);
+    } catch {
+      logoImg = null;
+    }
+  }
+
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.round(width * pixelRatio);
+  canvas.height = Math.round(height * pixelRatio);
+  const ctx = canvas.getContext("2d");
+  if (!ctx) throw new Error("no 2d context");
+  ctx.scale(pixelRatio, pixelRatio);
+
+  // Background gradient
+  const bg = ctx.createLinearGradient(0, 0, width, height);
+  bg.addColorStop(0, theme.bg0);
+  bg.addColorStop(1, theme.bg1);
+  roundRect(ctx, 0, 0, width, height, 18);
+  ctx.fillStyle = bg;
+  ctx.fill();
+
+  // Decorative orbs
+  ctx.save();
+  ctx.globalCompositeOperation = "lighter";
+  const orb = (x: number, y: number, r: number, color: string) => {
+    const g = ctx.createRadialGradient(x, y, 0, x, y, r);
+    g.addColorStop(0, color);
+    g.addColorStop(1, "rgba(0,0,0,0)");
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.arc(x, y, r, 0, Math.PI * 2);
+    ctx.fill();
+  };
+  orb(width * 0.85, 40, 120, theme.orbA);
+  orb(40, height * 0.7, 140, theme.orbB);
+  ctx.restore();
+
+  // Border
+  ctx.strokeStyle = "rgba(255,255,255,0.08)";
+  ctx.lineWidth = 1;
+  roundRect(ctx, 0.5, 0.5, width - 1, height - 1, 18);
+  ctx.stroke();
+
+  // Header bar
+  ctx.fillStyle = "rgba(0,0,0,0.18)";
+  ctx.fillRect(0, 0, width, headerH);
+
+  const logoSize = 40;
+  const logoX = padX;
+  const logoY = 28;
+  if (logoImg) {
+    ctx.save();
+    roundRect(ctx, logoX, logoY, logoSize, logoSize, 12);
+    ctx.clip();
+    ctx.drawImage(logoImg, logoX, logoY, logoSize, logoSize);
+    ctx.restore();
+  } else {
+    const g = ctx.createLinearGradient(
+      logoX,
+      logoY,
+      logoX + logoSize,
+      logoY + logoSize,
+    );
+    g.addColorStop(0, theme.accent);
+    g.addColorStop(1, theme.badge);
+    ctx.fillStyle = g;
+    roundRect(ctx, logoX, logoY, logoSize, logoSize, 12);
+    ctx.fill();
+    ctx.fillStyle = "#fff";
+    ctx.font =
+      '700 18px ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif';
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText("G", logoX + logoSize / 2, logoY + logoSize / 2 + 1);
+    ctx.textAlign = "left";
+    ctx.textBaseline = "alphabetic";
+  }
+
+  // Style badge (layout + hue id — not a domain label)
+  const badgeText = (theme.badgeText || "AUTO").toUpperCase();
+  ctx.font = fontBadge;
+  const badgeW = Math.ceil(ctx.measureText(badgeText).width) + 16;
+  const badgeH = 22;
+  const badgeX = width - padX - badgeW;
+  const badgeY = logoY + 9;
+  ctx.fillStyle = theme.accentSoft;
+  roundRect(ctx, badgeX, badgeY, badgeW, badgeH, 999);
+  ctx.fill();
+  ctx.fillStyle = theme.accent;
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText(badgeText, badgeX + badgeW / 2, badgeY + badgeH / 2 + 0.5);
+  ctx.textAlign = "left";
+  ctx.textBaseline = "alphabetic";
+
+  ctx.fillStyle = theme.muted;
+  ctx.font = fontSub;
+  ctx.fillText(exportedAt, logoX + logoSize + 14, logoY + 26);
+
+  let y = headerH + 20;
+
+  // Headline
+  ctx.fillStyle = theme.text;
+  ctx.font = fontTitle;
+  for (const line of titleLines) {
+    ctx.fillText(line, padX, y + 22);
+    y += 32;
+  }
+  y += 4;
+
+  if (subLines.length) {
+    ctx.fillStyle = theme.muted;
+    ctx.font = fontSub;
+    for (const line of subLines) {
+      ctx.fillText(line, padX, y + 12);
+      y += 18;
+    }
+    y += 8;
+  } else {
+    y += 6;
+  }
+
+  // Accent rule
+  ctx.strokeStyle = theme.accent;
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(padX, y);
+  ctx.lineTo(padX + 48, y);
+  ctx.stroke();
+  y += 18;
+
+  // Bullets
+  for (const bl of bulletBlocks) {
+    const blockH = Math.max(1, bl.length) * lineH + 10;
+    ctx.fillStyle = theme.card;
+    roundRect(ctx, padX, y, contentW, blockH, 12);
+    ctx.fill();
+
+    // bullet dot
+    ctx.fillStyle = theme.bullet;
+    ctx.beginPath();
+    ctx.arc(padX + 16, y + 16, 4, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.fillStyle = theme.text;
+    ctx.font = fontBody;
+    let ly = y + 20;
+    for (const line of bl) {
+      ctx.fillText(line, padX + 30, ly);
+      ly += lineH;
+    }
+    y += blockH + 8;
+  }
+
+  // Takeaway card
+  if (takeLines.length) {
+    y += 6;
+    const th = 14 + 12 + takeLines.length * lineH + 14;
+    ctx.fillStyle = theme.accentSoft;
+    roundRect(ctx, padX, y, contentW, th, 14);
+    ctx.fill();
+    ctx.strokeStyle = theme.accent;
+    ctx.globalAlpha = 0.35;
+    ctx.lineWidth = 1;
+    roundRect(ctx, padX + 0.5, y + 0.5, contentW - 1, th - 1, 14);
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+
+    ctx.fillStyle = theme.accent;
+    ctx.font = fontTakeLabel;
+    ctx.fillText("KEY TAKEAWAY", padX + 16, y + 18);
+
+    ctx.fillStyle = theme.text;
+    ctx.font = fontBody;
+    let ly = y + 36;
+    for (const line of takeLines) {
+      ctx.fillText(line, padX + 16, ly);
+      ly += lineH;
+    }
+    y += th + 8;
+  }
+
+  // Footer
+  const footerY = height - footerH;
+  ctx.strokeStyle = "rgba(255,255,255,0.08)";
+  ctx.beginPath();
+  ctx.moveTo(0, footerY);
+  ctx.lineTo(width, footerY);
+  ctx.stroke();
+  ctx.fillStyle = theme.muted;
+  ctx.font = fontFooter;
+  ctx.textAlign = "right";
+  ctx.fillText(footerText, width - padX, footerY + 26);
+  ctx.textAlign = "left";
+
+  const blob = await new Promise<Blob | null>((resolve) =>
+    canvas.toBlob((b) => resolve(b), "image/png"),
+  );
+  if (!blob) throw new Error("toBlob failed");
+  return blob;
+}
+
+
+/** Options for the pure share-card export pipeline (no React / Tauri). */
+export type ExportImagePipelineInput = {
+  title: string;
+  projectName?: string | null;
+  sessionId?: string | null;
+  messages: ShareCardMessage[];
+  /** Smart summary poster vs full transcript card. Default true. */
+  smart?: boolean;
+  logoDataUrl?: string | null;
+  pixelRatio?: number;
+};
+
+export type ExportImagePipelineResult = {
+  blob: Blob;
+  mode: "smart" | "full";
+  /** Present when mode === "smart". */
+  styleLabel?: string | null;
+  layout?: string | null;
+  bulletCount?: number;
+  messageCount: number;
+  byteLength: number;
+};
+
+/**
+ * Real export pipeline used by the UI (and e2e tests):
+ * messages → model/summary → canvas rasterize → PNG Blob.
+ */
+export async function buildExportImagePipeline(
+  input: ExportImagePipelineInput,
+): Promise<ExportImagePipelineResult> {
+  const smart = input.smart !== false;
+  const logoDataUrl = input.logoDataUrl ?? null;
+  const pixelRatio = input.pixelRatio ?? 2;
+  const msgs = input.messages ?? [];
+
+  if (smart) {
+    const summary = buildSmartShareSummary({
+      title: input.title,
+      messages: msgs,
+      includeThoughts: false,
+    });
+    if (!summary.bullets.length && !summary.headline) {
+      const err = new Error("empty");
+      (err as Error & { code?: string }).code = "empty";
+      throw err;
+    }
+    // Domain theme buckets must not exist on the universal theme.
+    const themeAny = summary.theme as { id?: string; themeId?: string };
+    if (themeAny.id === "fitness" || themeAny.themeId === "fitness") {
+      throw new Error("domain theme buckets must not be used");
+    }
+    const blob = await rasterizeSmartShareCardPng(summary, {
+      pixelRatio,
+      logoDataUrl,
+    });
+    if (!blob || blob.size < 256) {
+      throw new Error("smart rasterize produced empty/small blob");
+    }
+    return {
+      blob,
+      mode: "smart",
+      styleLabel: summary.theme.layout,
+      layout: summary.theme.layout,
+      bulletCount: summary.bullets.length,
+      messageCount: summary.sourceMessageCount,
+      byteLength: blob.size,
+    };
+  }
+
+  const model = buildShareCardModel({
+    title: input.title,
+    projectName: input.projectName,
+    sessionId: input.sessionId,
+    logoDataUrl,
+    includeThoughts: false,
+    messages: msgs,
+  });
+  if (model.messages.length === 0) {
+    const err = new Error("empty");
+    (err as Error & { code?: string }).code = "empty";
+    throw err;
+  }
+  const blob = await rasterizeShareCardPng(model, { pixelRatio });
+  if (!blob || blob.size < 256) {
+    throw new Error("full rasterize produced empty/small blob");
+  }
+  return {
+    blob,
+    mode: "full",
+    styleLabel: null,
+    layout: null,
+    messageCount: model.messages.length,
+    byteLength: blob.size,
+  };
 }

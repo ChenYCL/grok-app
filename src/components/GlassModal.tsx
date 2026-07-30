@@ -75,6 +75,10 @@ export function GlassModal({
   const titleId = titleIdProp || autoId;
   const panelRef = useRef<HTMLDivElement>(null);
   const prevFocusRef = useRef<HTMLElement | null>(null);
+  // Stable close handler — parent often passes inline onClose; re-running this
+  // effect on every parent render steals focus and makes modals flicker.
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
 
   useEffect(() => {
     if (!open) return;
@@ -89,7 +93,7 @@ export function GlassModal({
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
         e.preventDefault();
-        onClose();
+        onCloseRef.current();
         return;
       }
       trapTabKey(e, panelRef.current);
@@ -107,7 +111,7 @@ export function GlassModal({
         }
       }
     };
-  }, [open, onClose]);
+  }, [open]);
 
   if (!open || typeof document === "undefined") return null;
 

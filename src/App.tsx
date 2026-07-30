@@ -354,11 +354,11 @@ import {
   sessionToMarkdown,
 } from "@/lib/sessionExport";
 import {
-  buildShareCardModel,
+  blobToBase64 as pngBlobToBase64,
+  buildExportImagePipeline,
   copyPngBlob,
   downloadPngBlob,
   exportableToShareMessages,
-  rasterizeShareCardPng,
   sessionExportImageFilename,
 } from "@/lib/sessionExportImage";
 import { loadExportLogoPref } from "@/lib/exportLogoPref";
@@ -11684,9 +11684,26 @@ export default function App() {
   };
   const [exportImageTarget, setExportImageTarget] =
     useState<ExportImageTarget | null>(null);
-  const [exportImageIncludeThoughts, setExportImageIncludeThoughts] =
-    useState(false);
+  /** Smart summary poster (auto style) vs full transcript card. */
+  const [exportImageSmart, setExportImageSmart] = useState(true);
+  const [exportImageStyleLabel, setExportImageStyleLabel] = useState<string | null>(
+    null,
+  );
   const [exportImageBusy, setExportImageBusy] = useState(false);
+  /** Object URL for share-card preview (revoked on close / re-render). */
+  const [exportImagePreviewUrl, setExportImagePreviewUrl] = useState<
+    string | null
+  >(null);
+  const [exportImagePreviewError, setExportImagePreviewError] = useState<
+    string | null
+  >(null);
+  const exportImagePreviewBlobRef = useRef<Blob | null>(null);
+  /**
+   * Freeze chat rows when the export dialog opens so live streaming does not
+   * re-trigger rasterization (modal flicker).
+   */
+  const exportImageMsgsSnapRef = useRef<ChatMessage[] | null>(null);
+  const exportImageGenRef = useRef(0);
 
   /** Build markdown for a session; used by download + copy. */
   const buildSessionMarkdown = useCallback(
@@ -11938,6 +11955,22 @@ export default function App() {
     ],
   );
 
+  const revokeExportImagePreview = useCallback(() => {
+    setExportImagePreviewUrl((prev) => {
+      if (prev) URL.revokeObjectURL(prev);
+      return null;
+    });
+    exportImagePreviewBlobRef.current = null;
+    setExportImagePreviewError(null);
+  }, []);
+
+  const closeExportSessionImage = useCallback(() => {
+    if (exportImageBusy) return;
+    revokeExportImagePreview();
+    exportImageMsgsSnapRef.current = null;
+    setExportImageTarget(null);
+  }, [exportImageBusy, revokeExportImagePreview]);
+
   /** Open share-card export (PNG) options dialog. */
   const openExportSessionImage = useCallback(
     (sessionMeta?: {
@@ -11950,7 +11983,22 @@ export default function App() {
         showToast(tr("session.exportImageFail"));
         return;
       }
-      setExportImageIncludeThoughts(false);
+      // Invalidate any prior session's preview immediately so session B never
+      // shows/saves session A's blob while B is still rendering (AC cross-session).
+      exportImageGenRef.current += 1;
+      revokeExportImagePreview();
+      setExportImageStyleLabel(null);
+      setExportImagePreviewError(null);
+      setExportImageBusy(true);
+
+      // Snapshot live transcript once — do not follow streaming updates.
+      // Other sessions: null → builder loads via sessionMessages(id).
+      const snap =
+        id === session.sessionId
+          ? (messages as ChatMessage[]).map((m) => ({ ...m }))
+          : null;
+      exportImageMsgsSnapRef.current = snap;
+      setExportImageSmart(true);
       setExportImageTarget({
         id,
         title:
@@ -11964,77 +12012,224 @@ export default function App() {
           null,
       });
     },
-    [session.sessionId, session.title, sessions, showToast, tr],
+    [
+      session.sessionId,
+      session.title,
+      sessions,
+      messages,
+      showToast,
+      tr,
+      revokeExportImagePreview,
+    ],
   );
+
+  /** Build share-card model + PNG blob for the open export dialog. */
+  const buildExportImageBlob = useCallback(async () => {
+    if (!exportImageTarget) throw new Error("no target");
+    const id = exportImageTarget.id;
+    const title =
+      exportImageTarget.title ||
+      sessions.find((s) => s.id === id)?.title ||
+      session.title ||
+      tr("session.untitled");
+    const projectId =
+      exportImageTarget.projectId ??
+      sessions.find((s) => s.id === id)?.projectId ??
+      null;
+    const proj =
+      projects.find((p) => p.id === projectId) || activeProject || null;
+
+    let msgs = exportImageMsgsSnapRef.current;
+    if (!msgs) {
+      if (id !== session.sessionId) {
+        msgs = (await api.sessionMessages(id)) as ChatMessage[];
+      } else {
+        msgs = messages as ChatMessage[];
+      }
+      exportImageMsgsSnapRef.current = msgs.map((m) => ({ ...m }));
+    }
+
+    const shareMsgs = exportableToShareMessages(
+      msgs.map((m) => ({
+        role: m.role,
+        content: m.content,
+        thought: m.thought,
+        createdAt: m.createdAt,
+        marker: m.marker,
+      })),
+    );
+    const logoDataUrl = loadExportLogoPref();
+    const result = await buildExportImagePipeline({
+      title,
+      projectName: proj?.name,
+      sessionId: id,
+      messages: shareMsgs,
+      smart: exportImageSmart,
+      logoDataUrl,
+      pixelRatio: 2,
+    });
+    const styleLabel =
+      result.mode === "smart" && result.layout
+        ? result.layout === "stack"
+          ? tr("session.exportImageLayout.stack")
+          : result.layout === "compact"
+            ? tr("session.exportImageLayout.compact")
+            : tr("session.exportImageLayout.editorial")
+        : null;
+    return { blob: result.blob, title, id, styleLabel };
+  }, [
+    exportImageTarget,
+    exportImageSmart,
+    session.sessionId,
+    session.title,
+    sessions,
+    messages,
+    projects,
+    activeProject,
+    tr,
+  ]);
+
+  // Keep latest builder without re-firing the preview effect on every stream tick.
+  const buildExportImageBlobRef = useRef(buildExportImageBlob);
+  buildExportImageBlobRef.current = buildExportImageBlob;
+
+  /** Preview refresh: only when dialog target or smart toggle changes. */
+  useEffect(() => {
+    if (!exportImageTarget) {
+      revokeExportImagePreview();
+      exportImageMsgsSnapRef.current = null;
+      return;
+    }
+    const gen = ++exportImageGenRef.current;
+    let cancelled = false;
+    const showBusy = !exportImagePreviewBlobRef.current;
+    if (showBusy) setExportImageBusy(true);
+    setExportImagePreviewError(null);
+    void (async () => {
+      try {
+        const built = await buildExportImageBlobRef.current();
+        if (cancelled || gen !== exportImageGenRef.current) return;
+        // Guard: never attach a blob built for another session id.
+        const targetId = exportImageTarget?.id;
+        if (targetId && built.id !== targetId) return;
+        const { blob, styleLabel } = built;
+        const url = URL.createObjectURL(blob);
+        setExportImagePreviewUrl((prev) => {
+          if (prev) URL.revokeObjectURL(prev);
+          return url;
+        });
+        exportImagePreviewBlobRef.current = blob;
+        setExportImageStyleLabel(styleLabel);
+        setExportImagePreviewError(null);
+      } catch (e) {
+        if (cancelled || gen !== exportImageGenRef.current) return;
+        const code = (e as { code?: string } | null)?.code;
+        if (code === "empty" || String(e).includes("empty")) {
+          revokeExportImagePreview();
+          setExportImagePreviewError(tr("session.exportImageEmpty"));
+        } else if (!exportImagePreviewBlobRef.current) {
+          setExportImagePreviewError(
+            `${tr("session.exportImageFail")}: ${String(e)}`,
+          );
+        }
+      } finally {
+        if (!cancelled && gen === exportImageGenRef.current) {
+          setExportImageBusy(false);
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    exportImageTarget?.id,
+    exportImageTarget?.title,
+    exportImageTarget?.projectId,
+    exportImageSmart,
+    revokeExportImagePreview,
+    tr,
+  ]);
 
   const runExportSessionImage = useCallback(
     async (mode: "download" | "copy") => {
       if (!exportImageTarget) return;
       setExportImageBusy(true);
       try {
-        const id = exportImageTarget.id;
-        const title =
-          exportImageTarget.title ||
-          sessions.find((s) => s.id === id)?.title ||
-          session.title ||
-          tr("session.untitled");
-        const projectId =
-          exportImageTarget.projectId ??
-          sessions.find((s) => s.id === id)?.projectId ??
-          null;
-        const proj =
-          projects.find((p) => p.id === projectId) || activeProject || null;
-        let msgs = messages;
-        if (id !== session.sessionId) {
-          msgs = (await api.sessionMessages(id)) as ChatMessage[];
-        }
-        const model = buildShareCardModel({
-          title,
-          projectName: proj?.name,
-          sessionId: id,
-          logoDataUrl: loadExportLogoPref(),
-          includeThoughts: exportImageIncludeThoughts,
-          messages: exportableToShareMessages(
-            msgs.map((m) => ({
-              role: m.role,
-              content: m.content,
-              thought: m.thought,
-              createdAt: m.createdAt,
-              marker: m.marker,
-            })),
-          ),
-        });
-        if (model.messages.length === 0) {
-          showToast(tr("session.exportImageEmpty"));
-          return;
-        }
-        const blob = await rasterizeShareCardPng(model, { pixelRatio: 2 });
-        if (mode === "copy") {
-          const ok = await copyPngBlob(blob);
-          if (!ok) throw new Error("clipboard");
-          showToast(tr("session.exportImageCopied"));
+        let blob = exportImagePreviewBlobRef.current;
+        let title = exportImageTarget.title;
+        let id = exportImageTarget.id;
+        if (!blob) {
+          const built = await buildExportImageBlob();
+          blob = built.blob;
+          title = built.title;
+          id = built.id;
         } else {
-          downloadPngBlob(blob, sessionExportImageFilename(title, id));
+          title =
+            exportImageTarget.title ||
+            sessions.find((s) => s.id === id)?.title ||
+            session.title ||
+            tr("session.untitled");
+        }
+        const filename = sessionExportImageFilename(title, id);
+        if (mode === "copy") {
+          // Prefer native OS clipboard (arboard). WebView ClipboardItem often fails.
+          if (api.isTauri()) {
+            const b64 = await pngBlobToBase64(blob);
+            await api.clipboardWriteImage(b64);
+          } else {
+            const ok = await copyPngBlob(blob);
+            if (!ok) throw new Error(tr("session.exportImageClipboardFail"));
+          }
+          showToast(tr("session.exportImageCopied"));
+        } else if (api.isTauri()) {
+          const b64 = await pngBlobToBase64(blob);
+          const result = await api.exportBytesSave({
+            bytesBase64: b64,
+            defaultName: filename,
+            dialogTitle: tr("session.exportImageSaveTitle"),
+            filterName: "PNG",
+            extensions: ["png"],
+          });
+          if (result.cancelled) {
+            // User dismissed the native save dialog — keep modal open.
+            return;
+          }
+          if (!result.ok) {
+            throw new Error(result.path || "save failed");
+          }
+          showToast(
+            result.path
+              ? `${tr("session.exportImageDone")}: ${result.path}`
+              : tr("session.exportImageDone"),
+          );
+        } else {
+          // Browser / non-Tauri fallback.
+          downloadPngBlob(blob, filename);
           showToast(tr("session.exportImageDone"));
         }
+        revokeExportImagePreview();
+        exportImageMsgsSnapRef.current = null;
         setExportImageTarget(null);
       } catch (e) {
-        showToast(`${tr("session.exportImageFail")}: ${String(e)}`);
+        const code = (e as { code?: string } | null)?.code;
+        if (code === "empty" || String(e).includes("empty")) {
+          showToast(tr("session.exportImageEmpty"));
+        } else {
+          showToast(`${tr("session.exportImageFail")}: ${String(e)}`);
+        }
       } finally {
         setExportImageBusy(false);
       }
     },
     [
       exportImageTarget,
-      exportImageIncludeThoughts,
+      buildExportImageBlob,
       session.sessionId,
       session.title,
       sessions,
-      messages,
-      projects,
-      activeProject,
       showToast,
       tr,
+      revokeExportImagePreview,
     ],
   );
 
@@ -17817,46 +18012,78 @@ export default function App() {
 
       <GlassModal
         open={!!exportImageTarget}
-        onClose={() => {
-          if (exportImageBusy) return;
-          setExportImageTarget(null);
-        }}
+        onClose={closeExportSessionImage}
         title={tr("session.exportImageTitle")}
-        size="sm"
+        size="md"
         closeLabel={tr("common.close")}
         closeOnOverlay={!exportImageBusy}
         showClose={!exportImageBusy}
         wrapBody
-        className="export-md-modal"
+        className="export-md-modal export-image-modal"
       >
         <div className="export-md-options">
           <p className="export-md-options__msg">
             {tr("session.exportImageHint")}
           </p>
+          <div
+            className="export-image-preview"
+            aria-busy={exportImageBusy}
+            aria-live="polite"
+          >
+            {exportImagePreviewUrl ? (
+              <img
+                src={exportImagePreviewUrl}
+                alt={tr("session.exportImagePreview")}
+                className="export-image-preview__img"
+              />
+            ) : exportImagePreviewError ? (
+              <p className="export-image-preview__err">
+                {exportImagePreviewError}
+              </p>
+            ) : (
+              <p className="export-image-preview__placeholder">
+                {exportImageBusy
+                  ? tr("session.exportImageWorking")
+                  : tr("session.exportImagePreview")}
+              </p>
+            )}
+          </div>
           <label className="export-md-options__row">
             <input
               type="checkbox"
-              checked={exportImageIncludeThoughts}
+              checked={exportImageSmart}
               disabled={exportImageBusy}
-              onChange={(e) =>
-                setExportImageIncludeThoughts(e.target.checked)
-              }
+              onChange={(e) => setExportImageSmart(e.target.checked)}
             />
-            <span>{tr("session.exportImageIncludeThoughts")}</span>
+            <span>
+              {tr("session.exportImageSmart")}
+              {exportImageSmart && exportImageStyleLabel ? (
+                <span className="export-image-style-chip">
+                  {" · "}
+                  {tr("session.exportImageStyleAuto", {
+                    style: exportImageStyleLabel,
+                  })}
+                </span>
+              ) : null}
+            </span>
           </label>
           <div className="export-md-options__actions" role="group">
             <button
               type="button"
               className="btn btn--ghost"
               disabled={exportImageBusy}
-              onClick={() => setExportImageTarget(null)}
+              onClick={closeExportSessionImage}
             >
               {tr("common.cancel")}
             </button>
             <button
               type="button"
               className="btn btn--ghost"
-              disabled={exportImageBusy || !exportImageTarget}
+              disabled={
+                exportImageBusy ||
+                !exportImageTarget ||
+                !!exportImagePreviewError
+              }
               onClick={() => void runExportSessionImage("copy")}
             >
               {tr("session.exportImageCopy")}
@@ -17864,7 +18091,11 @@ export default function App() {
             <button
               type="button"
               className="btn btn--solid"
-              disabled={exportImageBusy || !exportImageTarget}
+              disabled={
+                exportImageBusy ||
+                !exportImageTarget ||
+                !!exportImagePreviewError
+              }
               onClick={() => void runExportSessionImage("download")}
             >
               {exportImageBusy
@@ -18798,7 +19029,19 @@ export default function App() {
                 },
               },
               ...wtItems,
-              // Export group — not at top of menu (after edit/rename-style actions)
+              // Export group — image first (most user-facing); menu scrolls if tall.
+              {
+                id: "export-image",
+                label: tr("session.exportImage"),
+                icon: <IconExportImage size={16} />,
+                onClick: () => {
+                  openExportSessionImage({
+                    id: s.id,
+                    title: s.title,
+                    projectId: s.projectId,
+                  });
+                },
+              },
               {
                 id: "copy-md",
                 label: tr("session.copyMd"),
@@ -18841,18 +19084,6 @@ export default function App() {
                 icon: <IconCopy size={16} />,
                 onClick: () => {
                   void exportSessionHtml({
-                    id: s.id,
-                    title: s.title,
-                    projectId: s.projectId,
-                  });
-                },
-              },
-              {
-                id: "export-image",
-                label: tr("session.exportImage"),
-                icon: <IconExportImage size={16} />,
-                onClick: () => {
-                  openExportSessionImage({
                     id: s.id,
                     title: s.title,
                     projectId: s.projectId,
@@ -18927,7 +19158,14 @@ export default function App() {
             onClose={() => setCtxMenu(null)}
             items={items}
             estimatedHeight={
-              ctxMenu?.kind === "project-policy" ? 280 : 240
+              ctxMenu?.kind === "session"
+                ? Math.min(
+                    typeof window !== "undefined" ? window.innerHeight * 0.7 : 480,
+                    520,
+                  )
+                : ctxMenu?.kind === "project-policy"
+                  ? 280
+                  : 240
             }
           />
         );
