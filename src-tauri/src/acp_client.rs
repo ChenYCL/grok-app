@@ -259,6 +259,10 @@ pub struct SpawnOptions {
     /// Per-session max turns override → top-level `grok --max-turns N`.
     /// When set (after normalize), wins over `AppSettings.max_agent_turns`.
     pub max_agent_turns: Option<u32>,
+    /// Per-session system prompt override → top-level
+    /// `grok --system-prompt-override <TEXT>` (before `agent`).
+    /// Never log the full value (may contain secrets / PII).
+    pub system_prompt_override: Option<String>,
 }
 
 /// Pure helper: top-level CLI args for session extra rules (before `agent`).
@@ -268,6 +272,20 @@ pub fn extra_rules_spawn_flags(rules: Option<&str>) -> Vec<String> {
     let normalized = crate::store::sanitize_extra_rules(rules.map(|s| s.to_string()));
     match normalized {
         Some(text) => vec!["--rules".into(), text],
+        None => Vec::new(),
+    }
+}
+
+/// Pure helper: top-level CLI args for system prompt override (before `agent`).
+///
+/// `["--system-prompt-override", text]` — empty when none.
+/// Trims, strips NUL, drops empty, clamps length. Prefer the long flag name
+/// (CLI also accepts `--system-prompt`).
+pub fn system_prompt_override_spawn_flags(prompt: Option<&str>) -> Vec<String> {
+    let normalized =
+        crate::store::sanitize_system_prompt_override(prompt.map(|s| s.to_string()));
+    match normalized {
+        Some(text) => vec!["--system-prompt-override".into(), text],
         None => Vec::new(),
     }
 }
@@ -699,6 +717,12 @@ impl AcpClient {
         // Top-level `grok --rules <RULES>` (before `agent`) — session-only
         // system-prompt append; not accepted under `grok agent` / `stdio`.
         for a in extra_rules_spawn_flags(opts.extra_rules.as_deref()) {
+            cmd.arg(a);
+        }
+        // Top-level `grok --system-prompt-override <PROMPT>` (before `agent`) —
+        // session-only full system prompt replacement (alias: --system-prompt).
+        // Do not log the prompt body (may contain secrets / PII).
+        for a in system_prompt_override_spawn_flags(opts.system_prompt_override.as_deref()) {
             cmd.arg(a);
         }
         for f in disable_web_search_spawn_flags(disable_web) {
@@ -3605,6 +3629,43 @@ mod extra_rules_spawn_tests {
         assert_eq!(
             args,
             vec!["--rules".to_string(), "Always write tests".to_string()]
+        );
+    }
+}
+
+#[cfg(test)]
+mod system_prompt_override_spawn_tests {
+    use super::*;
+
+    #[test]
+    fn empty_yields_no_flags() {
+        assert!(system_prompt_override_spawn_flags(None).is_empty());
+        assert!(system_prompt_override_spawn_flags(Some("")).is_empty());
+        assert!(system_prompt_override_spawn_flags(Some("   \n")).is_empty());
+        assert!(system_prompt_override_spawn_flags(Some("\0\0")).is_empty());
+    }
+
+    #[test]
+    fn builds_top_level_override_pair() {
+        let args = system_prompt_override_spawn_flags(Some("  You are helpful  "));
+        assert_eq!(
+            args,
+            vec![
+                "--system-prompt-override".to_string(),
+                "You are helpful".to_string()
+            ]
+        );
+    }
+
+    #[test]
+    fn strips_nul_before_spawn() {
+        let args = system_prompt_override_spawn_flags(Some("a\0b\0c"));
+        assert_eq!(
+            args,
+            vec![
+                "--system-prompt-override".to_string(),
+                "abc".to_string()
+            ]
         );
     }
 }

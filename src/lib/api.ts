@@ -862,6 +862,8 @@ export async function sessionsList() {
       extraRules?: string | null;
       /** Per-session max agent turns (`--max-turns`); null/omit = inherit global */
       maxAgentTurns?: number | null;
+      /** Per-session system prompt override (`--system-prompt-override`); empty/omit = none */
+      systemPromptOverride?: string | null;
     }>
   >("sessions_list");
 }
@@ -900,6 +902,27 @@ export async function sessionSetMaxAgentTurns(
   }>("session_set_max_agent_turns", {
     id,
     maxAgentTurns: n,
+  });
+}
+
+/**
+ * Set or clear per-session system prompt override (`grok --system-prompt-override`).
+ * Empty clears. Soft-respawns live agent. Do not log the prompt body.
+ */
+export async function sessionSetSystemPromptOverride(
+  id: string,
+  systemPromptOverride: string | null,
+) {
+  return invoke<{
+    id: string;
+    title: string;
+    systemPromptOverride?: string | null;
+  }>("session_set_system_prompt_override", {
+    id,
+    systemPromptOverride:
+      systemPromptOverride && systemPromptOverride.trim()
+        ? systemPromptOverride
+        : null,
   });
 }
 

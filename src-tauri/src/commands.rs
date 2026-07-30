@@ -687,6 +687,26 @@ pub async fn session_set_max_agent_turns(
     Ok(meta)
 }
 
+/// Set or clear per-session system prompt override
+/// (`grok --system-prompt-override` at next spawn).
+/// Empty / whitespace clears. Soft-respawns the live agent for this chat.
+/// Never logs the prompt body (may contain secrets / PII).
+#[tauri::command]
+pub async fn session_set_system_prompt_override(
+    app: tauri::AppHandle,
+    mgr: State<'_, Arc<SessionManager>>,
+    id: String,
+    system_prompt_override: Option<String>,
+) -> Result<SessionMeta, String> {
+    let meta = store::set_session_system_prompt_override(&id, system_prompt_override)?;
+    let snap = mgr.snapshot();
+    if snap.session_id.as_deref() == Some(meta.id.as_str()) {
+        mgr.soft_respawn_with_reason(&app, "session_system_prompt_override")
+            .await;
+    }
+    Ok(meta)
+}
+
 #[tauri::command]
 pub async fn session_messages(
     id: String,

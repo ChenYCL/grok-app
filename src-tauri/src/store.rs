@@ -166,6 +166,12 @@ pub struct SessionMeta {
     /// `None` / 0 → inherit global `AppSettings.max_agent_turns`. Soft-respawn on change.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub max_agent_turns: Option<u32>,
+    /// Optional per-session system prompt override via top-level
+    /// `grok --system-prompt-override` (alias `--system-prompt`).
+    /// Empty / unset → no flag. Soft-respawn reloads on change.
+    /// Never log the full value (may contain secrets / PII).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub system_prompt_override: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1028,6 +1034,7 @@ pub fn create_session(
         plugin_dirs: Vec::new(),
         extra_rules: None,
         max_agent_turns: None,
+        system_prompt_override: None,
     };
     let mut list = load_sessions_index();
     list.insert(0, meta.clone());
@@ -1226,6 +1233,9 @@ pub fn set_session_plugin_dirs(
 /// Soft cap aligned with the frontend helper (~32 KiB).
 const EXTRA_RULES_MAX_CHARS: usize = 32 * 1024;
 
+/// Soft cap for system prompt override (~32 KiB), aligned with the frontend helper.
+const SYSTEM_PROMPT_OVERRIDE_MAX_CHARS: usize = 32 * 1024;
+
 /// Trim + clamp session extra rules. Empty after trim → `None` (clear).
 pub fn sanitize_extra_rules(raw: Option<String>) -> Option<String> {
     match raw {
@@ -1236,6 +1246,26 @@ pub fn sanitize_extra_rules(raw: Option<String>) -> Option<String> {
                 None
             } else if t.len() > EXTRA_RULES_MAX_CHARS {
                 Some(t.chars().take(EXTRA_RULES_MAX_CHARS).collect())
+            } else {
+                Some(t.to_string())
+            }
+        }
+    }
+}
+
+/// Trim, strip NUL bytes, and clamp session system prompt override.
+/// Empty after sanitize → `None` (clear). Never log the returned value.
+pub fn sanitize_system_prompt_override(raw: Option<String>) -> Option<String> {
+    match raw {
+        None => None,
+        Some(s) => {
+            // Strip NULs so the value cannot break argv / TOML / log lines.
+            let cleaned: String = s.chars().filter(|c| *c != '\0').collect();
+            let t = cleaned.trim();
+            if t.is_empty() {
+                None
+            } else if t.chars().count() > SYSTEM_PROMPT_OVERRIDE_MAX_CHARS {
+                Some(t.chars().take(SYSTEM_PROMPT_OVERRIDE_MAX_CHARS).collect())
             } else {
                 Some(t.to_string())
             }
@@ -1277,6 +1307,26 @@ pub fn set_session_max_agent_turns(
         .find(|s| s.id == id)
         .ok_or_else(|| "session not found".to_string())?;
     s.max_agent_turns = normalized;
+    s.updated_at = Utc::now();
+    let clone = s.clone();
+    save_sessions_index(&list)?;
+    Ok(clone)
+}
+
+/// Set or clear per-session system prompt override
+/// (`grok --system-prompt-override` on next spawn).
+/// Pass `None` or empty/whitespace to clear. Soft-respawn is handled by the command.
+pub fn set_session_system_prompt_override(
+    id: &str,
+    system_prompt_override: Option<String>,
+) -> Result<SessionMeta, String> {
+    let normalized = sanitize_system_prompt_override(system_prompt_override);
+    let mut list = load_sessions_index();
+    let s = list
+        .iter_mut()
+        .find(|s| s.id == id)
+        .ok_or_else(|| "session not found".to_string())?;
+    s.system_prompt_override = normalized;
     s.updated_at = Utc::now();
     let clone = s.clone();
     save_sessions_index(&list)?;
@@ -1432,6 +1482,7 @@ pub fn fork_session(
     meta.plugin_dirs = source.plugin_dirs.clone();
     meta.extra_rules = source.extra_rules.clone();
     meta.max_agent_turns = source.max_agent_turns;
+    meta.system_prompt_override = source.system_prompt_override.clone();
     meta.updated_at = Utc::now();
     update_session_meta(&meta)?;
 
@@ -2284,6 +2335,7 @@ mod tests {
             plugin_dirs: Vec::new(),
             extra_rules: None,
             max_agent_turns: None,
+            system_prompt_override: None,
         }
     }
 
@@ -2327,6 +2379,29 @@ mod tests {
             crate::acp_client::normalize_max_agent_turns(Some(999)),
             Some(200)
         );
+    }
+
+    #[test]
+    fn session_system_prompt_override_default_none_and_sanitize() {
+        let raw = r#"{"id":"s1","projectId":null,"title":"t","agentSessionId":null,"createdAt":"2020-01-01T00:00:00Z","updatedAt":"2020-01-01T00:00:00Z"}"#;
+        let m: SessionMeta =
+            serde_json::from_str(raw).expect("legacy session without systemPromptOverride");
+        assert!(m.system_prompt_override.is_none());
+        assert_eq!(sanitize_system_prompt_override(None), None);
+        assert_eq!(sanitize_system_prompt_override(Some("  ".into())), None);
+        assert_eq!(
+            sanitize_system_prompt_override(Some("  You are helpful  ".into())).as_deref(),
+            Some("You are helpful")
+        );
+        // Strip NUL bytes.
+        assert_eq!(
+            sanitize_system_prompt_override(Some("a\0b\0c".into())).as_deref(),
+            Some("abc")
+        );
+        assert_eq!(sanitize_system_prompt_override(Some("\0\0".into())), None);
+        let long = "x".repeat(SYSTEM_PROMPT_OVERRIDE_MAX_CHARS + 10);
+        let capped = sanitize_system_prompt_override(Some(long)).expect("capped");
+        assert_eq!(capped.chars().count(), SYSTEM_PROMPT_OVERRIDE_MAX_CHARS);
     }
 
     #[test]
@@ -2469,6 +2544,7 @@ mod tests {
                 plugin_dirs: Vec::new(),
                 extra_rules: None,
                 max_agent_turns: None,
+                system_prompt_override: None,
             },
         );
         write_json(&sessions_index_file(), &sessions).expect("seed sessions");
