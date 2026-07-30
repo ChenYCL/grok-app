@@ -2590,6 +2590,25 @@ export async function memoryDeleteFile(path: string) {
   });
 }
 
+/** Redacted agent `config.toml` for the active session data mode. */
+export type AgentConfigTomlReadResult = {
+  path: string;
+  exists: boolean;
+  /** independent | shared */
+  mode: string;
+  grokHome: string;
+  /** Secrets redacted by host. */
+  text: string;
+  /** `[table]` headers in document order. */
+  sections: string[];
+  truncated: boolean;
+};
+
+/** Read agent config.toml (path + redacted text). View-only. */
+export async function agentConfigTomlRead() {
+  return invoke<AgentConfigTomlReadResult>("agent_config_toml_read");
+}
+
 export type HookDto = {
   name: string;
   path: string;

@@ -180,6 +180,7 @@ import { ManagedSetupPanel } from "@/components/ManagedSetupPanel";
 import { TraceHistoryList } from "@/components/TraceHistoryList";
 import { GlassModal } from "@/components/GlassModal";
 import { MemoryBrowserPanel } from "@/components/MemoryBrowserPanel";
+import { AgentConfigTomlPanel } from "@/components/AgentConfigTomlPanel";
 import { RemoteImLayout } from "@/components/RemoteImLayout";
 import { MirrorConnectPanel } from "@/components/MirrorConnectPanel";
 import { LeaderServePanel } from "@/components/LeaderServePanel";
@@ -2359,6 +2360,11 @@ export function SettingsPage({
                   </div>
                 </div>
               ) : null}
+              <div
+                className={rowHighlight("settings-anchor-configTomlView")}
+              >
+                <AgentConfigTomlPanel locale={resolveLocale(locale)} />
+              </div>
               {onExperimentalMemory ? (
                 <div
                   className={"settings-row" + rowHighlight("settings-anchor-experimentalMemory")}
