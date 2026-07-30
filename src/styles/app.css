@@ -18365,6 +18365,19 @@ div.composer__input:empty::before {
   color: var(--text-secondary);
 }
 
+.settings-memory-browser__snippet {
+  margin: 6px 0 0;
+  padding: 0;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--text-tertiary);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  word-break: break-word;
+}
+
 .settings-memory-browser__empty {
   margin: 0;
 }

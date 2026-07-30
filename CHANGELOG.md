@@ -68,6 +68,7 @@ See `docs/llm-wiki/release.md`.
 - **CLI worktree list**: host runs `grok worktree list --json` (text fallback); branch menu **CLI worktrees** section with refresh, reveal path, open as session cwd when the folder exists; soft-fail when CLI missing; pure JSON/text parsers + tests
 - **CLI sessions search** (Settings → Agent / CLI sessions): host `cli_sessions_search` runs `grok sessions search` (tries `--json`, else text parse of summaries + first prompts); enriches with local dir / linked state for import·open·delete; falls back to disk filter including first user prompt when CLI is unavailable
 - **Permission rules simulator**: Settings → Permissions → try a tool call (e.g. `Bash(git status)`) and see allow / deny / ask / no-match from current compact rules (deny > ask > allow); pure client helpers + tests — does not write config
+- **Memory content search** (Settings → Agent → Workspace memory files): host `memory_search` scans file bodies under active `GROK_HOME/memory` (path-scoped; hit + per-file byte caps); redacted snippets; Open / Reveal per row (previews stay redacted)
 
 #### Extensions / marketplace
 - **Marketplace plugin detail**: clicking a catalog plugin opens a real detail panel (name, description, marketplace, version, skill/hooks/agents/MCP badges) with Install / Reinstall — not a stub
@@ -118,6 +119,7 @@ See `docs/llm-wiki/release.md`.
 - **权限/CLI**：`--permission-mode` 映射与 spawn；设置页 CLI 标签与高级选择；**Auto** 策略；Doctor 安全批量修复；**删除磁盘 CLI 会话**（单条/全部未关联；限定 `GROK_HOME/sessions`）；**CLI worktree 列表**（`grok worktree list`；分支菜单刷新/显示/安全打开为 cwd）
 - **权限/CLI**：`--permission-mode` 映射与 spawn；设置页 CLI 标签与高级选择；**Auto** 策略；Doctor 安全批量修复；**删除磁盘 CLI 会话**（单条/全部未关联；限定 `GROK_HOME/sessions`）；**CLI 会话搜索**（`grok sessions search` 摘要+首条提示，失败则本地磁盘含首条提示筛选）
 - **权限/CLI**：`--permission-mode` 映射与 spawn；设置页 CLI 标签与高级选择；**Auto** 策略；Doctor 安全批量修复；**删除磁盘 CLI 会话**（单条/全部未关联；限定 `GROK_HOME/sessions`）；**权限规则试算**（输入工具调用预览 allow/deny/ask，不写配置）
+- **权限/CLI**：`--permission-mode` 映射与 spawn；设置页 CLI 标签与高级选择；**Auto** 策略；Doctor 安全批量修复；**删除磁盘 CLI 会话**（单条/全部未关联；限定 `GROK_HOME/sessions`）；**记忆正文搜索**（`GROK_HOME/memory` 路径限定 + 上限；脱敏摘录；打开/显示）
 
 
 **中文 · 修复**

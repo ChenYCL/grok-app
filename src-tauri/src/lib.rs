@@ -313,6 +313,7 @@ pub fn run() {
             commands::memory_list,
             commands::memory_delete_file,
             commands::agent_config_toml_read,
+            commands::memory_search,
             commands::settings_remember_last_session,
             commands::models_list_available,
             commands::agents_catalog,
