@@ -360,6 +360,7 @@ pub fn run() {
             commands::hooks_reveal,
             commands::hooks_open_dir,
             commands::hooks_ensure_dir,
+            commands::hooks_try_run,
             commands::setup_preview,
             commands::setup_install,
             commands::marketplace_list,

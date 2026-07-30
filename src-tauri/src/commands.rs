@@ -6503,6 +6503,35 @@ pub async fn hooks_reveal(path: String) -> Result<(), String> {
     path_reveal(path).await
 }
 
+/// Real try-run of a hook script (optional JSON stdin, timeout, path-scoped to hooks dirs).
+///
+/// Returns a structured result; `ok` is true only when the process exited 0 without
+/// timing out. Unsafe paths / invalid stdin are refused (`refused: true`) — never
+/// reported as success.
+#[tauri::command]
+pub async fn hooks_try_run(
+    path: String,
+    project_path: Option<String>,
+    stdin_json: Option<String>,
+    timeout_secs: Option<u64>,
+) -> Result<crate::hooks::HooksTryRunResult, String> {
+    let project = project_path
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(|s| s.to_string());
+    tauri::async_runtime::spawn_blocking(move || {
+        crate::hooks::try_run_hook_script(
+            &path,
+            project.as_deref(),
+            stdin_json.as_deref(),
+            timeout_secs,
+        )
+    })
+    .await
+    .map_err(|e| e.to_string())
+}
+
 // from PR #77
 
 fn is_agent_def_file(name: &str) -> bool {

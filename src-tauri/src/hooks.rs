@@ -218,6 +218,538 @@ pub fn ensure_hooks_dir(scope: &str, project_path: Option<&str>) -> Result<PathB
     Ok(dir)
 }
 
+// ── Try-run (real process, path-scoped to hooks dirs only) ───────────────────
+
+/// Default timeout for try-run (matches Grok Build hook default for most events).
+pub const HOOKS_TRY_DEFAULT_TIMEOUT_SECS: u64 = 5;
+/// Hard upper bound so the UI cannot hang the host.
+pub const HOOKS_TRY_MAX_TIMEOUT_SECS: u64 = 60;
+/// Minimum timeout (seconds).
+pub const HOOKS_TRY_MIN_TIMEOUT_SECS: u64 = 1;
+/// Max stdin JSON size (~32 KiB).
+pub const HOOKS_TRY_MAX_STDIN_BYTES: usize = 32 * 1024;
+/// Max stdout/stderr characters returned after redaction.
+pub const HOOKS_TRY_MAX_OUTPUT_CHARS: usize = 16 * 1024;
+
+/// Result of a real hook-script try-run (never invents success).
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct HooksTryRunResult {
+    /// True only when the process exited 0 and did not time out.
+    pub ok: bool,
+    /// Host refused before spawn (path / stdin / etc.).
+    pub refused: bool,
+    /// Timed out and the child was killed.
+    pub timed_out: bool,
+    /// Process exit code when known (None when refused or timed out without status).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub exit_code: Option<i32>,
+    /// Redacted + truncated stdout.
+    pub stdout: String,
+    /// Redacted + truncated stderr.
+    pub stderr: String,
+    pub duration_ms: u64,
+    /// Resolved absolute path (empty when refuse before resolve).
+    pub path: String,
+    /// `user` | `project` when resolved under a hooks root.
+    pub scope: String,
+    pub timeout_secs: u64,
+    /// Machine reason when refused or spawn failed: `empty_path`, `path_outside_hooks`,
+    /// `not_a_file`, `stdin_too_large`, `invalid_json`, `spawn_failed`, `timeout`, …
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reason: Option<String>,
+    /// Short human message (redacted); empty when success with no detail.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub message: Option<String>,
+}
+
+impl HooksTryRunResult {
+    fn refused(reason: &str, message: &str, timeout_secs: u64) -> Self {
+        Self {
+            ok: false,
+            refused: true,
+            timed_out: false,
+            exit_code: None,
+            stdout: String::new(),
+            stderr: String::new(),
+            duration_ms: 0,
+            path: String::new(),
+            scope: String::new(),
+            timeout_secs,
+            reason: Some(reason.to_string()),
+            message: Some(redact_hooks_output(message)),
+        }
+    }
+}
+
+/// Clamp optional timeout into `[MIN, MAX]`, defaulting when unset.
+pub fn clamp_hooks_try_timeout(secs: Option<u64>) -> u64 {
+    let raw = secs.unwrap_or(HOOKS_TRY_DEFAULT_TIMEOUT_SECS);
+    raw.clamp(HOOKS_TRY_MIN_TIMEOUT_SECS, HOOKS_TRY_MAX_TIMEOUT_SECS)
+}
+
+/// Component-wise: `path` equals `root` or is a descendant (no string-prefix tricks).
+pub fn path_under_hooks_root(path: &Path, root: &Path) -> bool {
+    if path == root {
+        return true;
+    }
+    let mut path_comps = path.components();
+    for rc in root.components() {
+        match path_comps.next() {
+            Some(pc) if pc == rc => {}
+            _ => return false,
+        }
+    }
+    // path must have remaining components OR equal (handled above) — equal already returned.
+    // Being under root means all root components matched; path may equal or go deeper.
+    true
+}
+
+/// Allowed try-run roots: `(absolute_or_logical_dir, scope_label)`.
+pub fn hooks_try_roots(project_path: Option<&str>) -> Vec<(PathBuf, String)> {
+    let mut roots = vec![(user_hooks_dir(), "user".to_string())];
+    if let Some(p) = project_path.and_then(project_hooks_dir) {
+        roots.push((p, "project".to_string()));
+    }
+    roots
+}
+
+/// Resolve `path` to a real file under one of the allowed hooks roots.
+/// Returns `(canonical_path, scope)` or a refuse reason + message.
+pub fn resolve_hooks_try_path(
+    path: &str,
+    roots: &[(PathBuf, String)],
+) -> Result<(PathBuf, String), (String, String)> {
+    let raw = path.trim();
+    if raw.is_empty() {
+        return Err(("empty_path".into(), "path is required".into()));
+    }
+    if raw.contains('\0') {
+        return Err(("invalid_path".into(), "path contains NUL".into()));
+    }
+    let p = PathBuf::from(raw);
+    // Reject relative paths — callers must pass absolute paths from the list API.
+    if !p.is_absolute() {
+        return Err((
+            "path_not_absolute".into(),
+            "hook try-run requires an absolute path under a hooks folder".into(),
+        ));
+    }
+    // Must exist and be a regular file (canonicalize fails for missing).
+    let meta = fs::symlink_metadata(&p).map_err(|e| {
+        (
+            "not_found".into(),
+            format!("path not found: {e}"),
+        )
+    })?;
+    if meta.file_type().is_dir() {
+        return Err(("not_a_file".into(), "path is a directory, not a script".into()));
+    }
+    // Follow symlinks for the final path; gate on the resolved target.
+    let canonical = fs::canonicalize(&p).map_err(|e| {
+        (
+            "not_found".into(),
+            format!("path not found: {e}"),
+        )
+    })?;
+    if !canonical.is_file() {
+        return Err(("not_a_file".into(), "path is not a regular file".into()));
+    }
+
+    for (root, scope) in roots {
+        let root_canon = fs::canonicalize(root).unwrap_or_else(|_| root.clone());
+        if path_under_hooks_root(&canonical, &root_canon) {
+            // Disallow the root directory itself as a "script".
+            if canonical == root_canon {
+                return Err(("not_a_file".into(), "path is the hooks folder, not a script".into()));
+            }
+            return Ok((canonical, scope.clone()));
+        }
+    }
+    Err((
+        "path_outside_hooks".into(),
+        "refused: path is outside user/project hooks directories".into(),
+    ))
+}
+
+/// Validate optional stdin: empty OK; non-empty must be JSON and within size cap.
+pub fn validate_hooks_try_stdin(stdin: Option<&str>) -> Result<Option<String>, (String, String)> {
+    let Some(raw) = stdin else {
+        return Ok(None);
+    };
+    if raw.is_empty() {
+        return Ok(None);
+    }
+    // Cap on raw bytes (UTF-8 length).
+    if raw.len() > HOOKS_TRY_MAX_STDIN_BYTES {
+        return Err((
+            "stdin_too_large".into(),
+            format!(
+                "stdin exceeds {HOOKS_TRY_MAX_STDIN_BYTES} byte limit (got {})",
+                raw.len()
+            ),
+        ));
+    }
+    // Whitespace-only → treat as empty (no JSON parse).
+    if raw.trim().is_empty() {
+        return Ok(None);
+    }
+    serde_json::from_str::<serde_json::Value>(raw).map_err(|e| {
+        (
+            "invalid_json".into(),
+            format!("stdin is not valid JSON: {e}"),
+        )
+    })?;
+    Ok(Some(raw.to_string()))
+}
+
+/// Redact secrets in hook try-run output (best-effort; pure).
+pub fn redact_hooks_output(input: &str) -> String {
+    let mut out = String::with_capacity(input.len());
+    for (i, line) in input.lines().enumerate() {
+        if i > 0 {
+            out.push('\n');
+        }
+        out.push_str(&redact_hooks_line(line));
+    }
+    // Preserve a single trailing newline if present.
+    if input.ends_with('\n') && !out.ends_with('\n') {
+        out.push('\n');
+    }
+    // Also scrub whole-blob token spans when no newlines.
+    if !input.contains('\n') {
+        out = redact_hooks_line(input);
+    }
+    truncate_chars(&out, HOOKS_TRY_MAX_OUTPUT_CHARS)
+}
+
+fn redact_hooks_line(line: &str) -> String {
+    let lower = line.to_ascii_lowercase();
+    let secret_keys = [
+        "api_key",
+        "apikey",
+        "api-key",
+        "secret",
+        "password",
+        "passwd",
+        "token",
+        "authorization",
+        "bearer",
+        "private_key",
+        "private-key",
+        "access_key",
+        "secret_key",
+        "client_secret",
+        "xai_api_key",
+        "openai_api_key",
+    ];
+    for key in secret_keys {
+        if lower.contains(key) && (line.contains('=') || line.contains(':')) {
+            if let Some(idx) = line.find(['=', ':']) {
+                let (head, _) = line.split_at(idx + 1);
+                return format!("{head} [REDACTED]");
+            }
+            return "[REDACTED]".to_string();
+        }
+    }
+    redact_hooks_token_spans(line)
+}
+
+fn redact_hooks_token_spans(line: &str) -> String {
+    let prefixes = [
+        "sk-", "sk_", "rk-", "xai-", "ghp_", "gho_", "ghu_", "ghs_", "ghr_", "xoxb-", "xoxp-",
+        "AKIA", "ASIA",
+    ];
+    let mut result = line.to_string();
+    for pref in prefixes {
+        let mut search_from = 0;
+        while let Some(rel) = result[search_from..].find(pref) {
+            let start = search_from + rel;
+            let rest = &result[start + pref.len()..];
+            let token_len = rest
+                .chars()
+                .take_while(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.'))
+                .count();
+            if token_len >= 12 {
+                let end = start + pref.len() + token_len;
+                result.replace_range(start..end, &format!("{pref}[REDACTED]"));
+                search_from = start + pref.len() + "[REDACTED]".len();
+            } else {
+                search_from = start + pref.len();
+            }
+        }
+    }
+    // Bearer tokens
+    if let Some(idx) = result.to_ascii_lowercase().find("bearer ") {
+        let after = idx + "bearer ".len();
+        if after < result.len() {
+            let rest = &result[after..];
+            let tok_len = rest
+                .chars()
+                .take_while(|c| !c.is_whitespace())
+                .count();
+            if tok_len >= 8 {
+                let end = after + tok_len;
+                result.replace_range(after..end, "[REDACTED]");
+            }
+        }
+    }
+    result
+}
+
+fn truncate_chars(s: &str, max: usize) -> String {
+    if s.chars().count() <= max {
+        return s.to_string();
+    }
+    let mut out: String = s.chars().take(max.saturating_sub(1)).collect();
+    out.push('…');
+    out
+}
+
+/// Build a process command for a hook script path (no freeform shell string).
+pub fn hooks_try_command(script: &Path) -> std::process::Command {
+    use crate::process_util::{self, looks_runnable};
+
+    if looks_runnable(script) {
+        // Direct exec — no freeform shell string.
+        return process_util::command(script);
+    }
+
+    // Non-executable script files: interpret via a known shell, path as arg only.
+    #[cfg(windows)]
+    {
+        let ext = script
+            .extension()
+            .and_then(|e| e.to_str())
+            .unwrap_or("")
+            .to_ascii_lowercase();
+        if ext == "ps1" {
+            let mut cmd = process_util::command("powershell");
+            cmd.arg("-NoProfile").arg("-ExecutionPolicy").arg("Bypass").arg("-File");
+            cmd.arg(script);
+            return cmd;
+        }
+        if ext == "bat" || ext == "cmd" {
+            let mut cmd = process_util::command("cmd");
+            cmd.arg("/C");
+            cmd.arg(script);
+            return cmd;
+        }
+        // Prefer Git-Bash / MSYS sh when available; else cmd /C.
+        let mut cmd = process_util::command("cmd");
+        cmd.arg("/C");
+        cmd.arg(script);
+        return cmd;
+    }
+    #[cfg(not(windows))]
+    {
+        let mut cmd = process_util::command("/bin/sh");
+        cmd.arg(script);
+        cmd
+    }
+}
+
+/// Real try-run: spawn the script under hooks roots only, optional JSON stdin, timeout, redacted output.
+///
+/// Never returns `ok: true` unless the process actually exited 0 without timing out.
+pub fn try_run_hook_script(
+    path: &str,
+    project_path: Option<&str>,
+    stdin_json: Option<&str>,
+    timeout_secs: Option<u64>,
+) -> HooksTryRunResult {
+    let roots = hooks_try_roots(project_path);
+    try_run_hook_script_with_roots(path, &roots, stdin_json, timeout_secs)
+}
+
+/// Same as [`try_run_hook_script`] with injectable roots (unit tests).
+pub fn try_run_hook_script_with_roots(
+    path: &str,
+    roots: &[(PathBuf, String)],
+    stdin_json: Option<&str>,
+    timeout_secs: Option<u64>,
+) -> HooksTryRunResult {
+    let timeout = clamp_hooks_try_timeout(timeout_secs);
+
+    let stdin_body = match validate_hooks_try_stdin(stdin_json) {
+        Ok(v) => v,
+        Err((reason, msg)) => return HooksTryRunResult::refused(&reason, &msg, timeout),
+    };
+
+    let (script, scope) = match resolve_hooks_try_path(path, roots) {
+        Ok(v) => v,
+        Err((reason, msg)) => {
+            let mut r = HooksTryRunResult::refused(&reason, &msg, timeout);
+            r.path = path.trim().to_string();
+            return r;
+        }
+    };
+
+    let cwd = script
+        .parent()
+        .map(|p| p.to_path_buf())
+        .unwrap_or_else(|| PathBuf::from("."));
+
+    let start = std::time::Instant::now();
+    let mut cmd = hooks_try_command(&script);
+    cmd.current_dir(&cwd);
+    cmd.stdin(std::process::Stdio::piped());
+    cmd.stdout(std::process::Stdio::piped());
+    cmd.stderr(std::process::Stdio::piped());
+    if let Some(path_env) = crate::process_util::enriched_path_env() {
+        cmd.env("PATH", path_env);
+    }
+
+    let mut child = match cmd.spawn() {
+        Ok(c) => c,
+        Err(e) => {
+            return HooksTryRunResult {
+                ok: false,
+                refused: false,
+                timed_out: false,
+                exit_code: None,
+                stdout: String::new(),
+                stderr: String::new(),
+                duration_ms: start.elapsed().as_millis() as u64,
+                path: script.to_string_lossy().to_string(),
+                scope,
+                timeout_secs: timeout,
+                reason: Some("spawn_failed".into()),
+                message: Some(redact_hooks_output(&format!("failed to spawn: {e}"))),
+            };
+        }
+    };
+
+    // Write stdin (if any), then close so the child sees EOF.
+    if let Some(mut stdin) = child.stdin.take() {
+        if let Some(ref body) = stdin_body {
+            use std::io::Write;
+            let _ = stdin.write_all(body.as_bytes());
+        }
+        drop(stdin);
+    }
+
+    // Drain pipes on background threads to avoid pipe-buffer deadlock.
+    let stdout_handle = child.stdout.take().map(|mut pipe| {
+        std::thread::spawn(move || {
+            use std::io::Read;
+            let mut buf = Vec::new();
+            let _ = pipe.read_to_end(&mut buf);
+            buf
+        })
+    });
+    let stderr_handle = child.stderr.take().map(|mut pipe| {
+        std::thread::spawn(move || {
+            use std::io::Read;
+            let mut buf = Vec::new();
+            let _ = pipe.read_to_end(&mut buf);
+            buf
+        })
+    });
+
+    let deadline = std::time::Duration::from_secs(timeout);
+    let mut timed_out = false;
+    let mut exit_code: Option<i32> = None;
+
+    loop {
+        match child.try_wait() {
+            Ok(Some(status)) => {
+                exit_code = status.code();
+                break;
+            }
+            Ok(None) => {
+                if start.elapsed() >= deadline {
+                    timed_out = true;
+                    let _ = child.kill();
+                    let _ = child.wait();
+                    break;
+                }
+                std::thread::sleep(std::time::Duration::from_millis(15));
+            }
+            Err(e) => {
+                let stdout = join_pipe(stdout_handle);
+                let stderr = join_pipe(stderr_handle);
+                return HooksTryRunResult {
+                    ok: false,
+                    refused: false,
+                    timed_out: false,
+                    exit_code: None,
+                    stdout: redact_hooks_output(&stdout),
+                    stderr: redact_hooks_output(&stderr),
+                    duration_ms: start.elapsed().as_millis() as u64,
+                    path: script.to_string_lossy().to_string(),
+                    scope,
+                    timeout_secs: timeout,
+                    reason: Some("wait_failed".into()),
+                    message: Some(redact_hooks_output(&format!("wait failed: {e}"))),
+                };
+            }
+        }
+    }
+
+    let stdout_raw = join_pipe(stdout_handle);
+    let stderr_raw = join_pipe(stderr_handle);
+    let duration_ms = start.elapsed().as_millis() as u64;
+    let stdout = redact_hooks_output(&stdout_raw);
+    let stderr = redact_hooks_output(&stderr_raw);
+
+    if timed_out {
+        return HooksTryRunResult {
+            ok: false,
+            refused: false,
+            timed_out: true,
+            exit_code,
+            stdout,
+            stderr,
+            duration_ms,
+            path: script.to_string_lossy().to_string(),
+            scope,
+            timeout_secs: timeout,
+            reason: Some("timeout".into()),
+            message: Some(format!("timed out after {timeout}s")),
+        };
+    }
+
+    let ok = matches!(exit_code, Some(0));
+    HooksTryRunResult {
+        ok,
+        refused: false,
+        timed_out: false,
+        exit_code,
+        stdout,
+        stderr,
+        duration_ms,
+        path: script.to_string_lossy().to_string(),
+        scope,
+        timeout_secs: timeout,
+        reason: if ok {
+            None
+        } else {
+            Some("exit_nonzero".into())
+        },
+        message: if ok {
+            None
+        } else {
+            Some(format!(
+                "exit {}",
+                exit_code
+                    .map(|c| c.to_string())
+                    .unwrap_or_else(|| "unknown".into())
+            ))
+        },
+    }
+}
+
+fn join_pipe(handle: Option<std::thread::JoinHandle<Vec<u8>>>) -> String {
+    match handle {
+        Some(h) => match h.join() {
+            Ok(buf) => String::from_utf8_lossy(&buf).to_string(),
+            Err(_) => String::new(),
+        },
+        None => String::new(),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -347,5 +879,226 @@ mod tests {
         assert_eq!(entry_ext("A.JSON", false), "json");
         assert_eq!(entry_ext("noext", false), "");
         assert_eq!(entry_ext("scripts", true), "");
+    }
+
+    #[test]
+    fn clamp_timeout_bounds() {
+        assert_eq!(
+            clamp_hooks_try_timeout(None),
+            HOOKS_TRY_DEFAULT_TIMEOUT_SECS
+        );
+        assert_eq!(clamp_hooks_try_timeout(Some(0)), HOOKS_TRY_MIN_TIMEOUT_SECS);
+        assert_eq!(
+            clamp_hooks_try_timeout(Some(9999)),
+            HOOKS_TRY_MAX_TIMEOUT_SECS
+        );
+        assert_eq!(clamp_hooks_try_timeout(Some(10)), 10);
+    }
+
+    #[test]
+    fn path_under_hooks_root_component_wise() {
+        let root = PathBuf::from("/tmp/hooks");
+        assert!(path_under_hooks_root(Path::new("/tmp/hooks"), &root));
+        assert!(path_under_hooks_root(Path::new("/tmp/hooks/a.sh"), &root));
+        assert!(path_under_hooks_root(
+            Path::new("/tmp/hooks/sub/b.sh"),
+            &root
+        ));
+        assert!(!path_under_hooks_root(Path::new("/tmp/hooksother/x"), &root));
+        assert!(!path_under_hooks_root(Path::new("/tmp/other"), &root));
+        assert!(!path_under_hooks_root(Path::new("/tmp"), &root));
+    }
+
+    #[test]
+    fn validate_stdin_empty_and_json() {
+        assert_eq!(validate_hooks_try_stdin(None).unwrap(), None);
+        assert_eq!(validate_hooks_try_stdin(Some("")).unwrap(), None);
+        assert_eq!(validate_hooks_try_stdin(Some("   \n")).unwrap(), None);
+        let ok = validate_hooks_try_stdin(Some(r#"{"hookEventName":"PreToolUse"}"#)).unwrap();
+        assert!(ok.is_some());
+        let err = validate_hooks_try_stdin(Some("not-json")).unwrap_err();
+        assert_eq!(err.0, "invalid_json");
+        let big = "x".repeat(HOOKS_TRY_MAX_STDIN_BYTES + 1);
+        let err2 = validate_hooks_try_stdin(Some(&big)).unwrap_err();
+        assert_eq!(err2.0, "stdin_too_large");
+    }
+
+    #[test]
+    fn redact_output_scrubs_keys_and_tokens() {
+        let s = redact_hooks_output("api_key = sk-abcdefghijklmnopqrstuvwxyz0123\nhello");
+        assert!(s.contains("[REDACTED]"), "{s}");
+        assert!(!s.contains("abcdefghijklmnopqrstuvwxyz"), "{s}");
+        let s2 = redact_hooks_output("token: ghp_ABCDEFGHIJKLMNOPQRSTUVWX");
+        assert!(s2.contains("[REDACTED]"), "{s2}");
+        let s3 = redact_hooks_output("Authorization: Bearer supersecrettokenvalue");
+        assert!(s3.contains("[REDACTED]"), "{s3}");
+        assert!(!s3.contains("supersecrettokenvalue"), "{s3}");
+        let normal = redact_hooks_output("ok exit 0");
+        assert_eq!(normal, "ok exit 0");
+    }
+
+    #[test]
+    fn resolve_refuses_outside_and_accepts_inside() {
+        let tmp = std::env::temp_dir().join(format!(
+            "grok-app-hooks-try-{}",
+            std::process::id()
+        ));
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(&tmp).expect("mkdir");
+        let script = tmp.join("echo-ok.sh");
+        {
+            let mut f = fs::File::create(&script).expect("create");
+            writeln!(f, "#!/bin/sh").unwrap();
+            writeln!(f, "echo hello-try").unwrap();
+            writeln!(f, "cat").unwrap(); // echo stdin
+            writeln!(f, "exit 0").unwrap();
+        }
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mut perms = fs::metadata(&script).unwrap().permissions();
+            perms.set_mode(0o755);
+            fs::set_permissions(&script, perms).unwrap();
+        }
+
+        let roots = vec![(tmp.clone(), "user".to_string())];
+        let (resolved, scope) =
+            resolve_hooks_try_path(&script.to_string_lossy(), &roots).expect("inside");
+        assert_eq!(scope, "user");
+        assert!(resolved.ends_with("echo-ok.sh"));
+
+        let outside = std::env::temp_dir().join(format!(
+            "grok-app-hooks-outside-{}",
+            std::process::id()
+        ));
+        let _ = fs::write(&outside, "#!/bin/sh\necho no\n");
+        let err = resolve_hooks_try_path(&outside.to_string_lossy(), &roots).unwrap_err();
+        assert_eq!(err.0, "path_outside_hooks");
+
+        let err_rel = resolve_hooks_try_path("relative.sh", &roots).unwrap_err();
+        assert_eq!(err_rel.0, "path_not_absolute");
+
+        let err_empty = resolve_hooks_try_path("  ", &roots).unwrap_err();
+        assert_eq!(err_empty.0, "empty_path");
+
+        let _ = fs::remove_file(&outside);
+        let _ = fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn try_run_real_script_with_stdin_and_refuse_outside() {
+        let tmp = std::env::temp_dir().join(format!(
+            "grok-app-hooks-tryrun-{}",
+            std::process::id()
+        ));
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(tmp.join("sub")).expect("mkdir");
+        let script = tmp.join("sub").join("echo-ok.sh");
+        {
+            let mut f = fs::File::create(&script).expect("create");
+            writeln!(f, "#!/bin/sh").unwrap();
+            writeln!(f, "echo OUT").unwrap();
+            writeln!(f, "cat").unwrap();
+            writeln!(f, "exit 0").unwrap();
+        }
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mut perms = fs::metadata(&script).unwrap().permissions();
+            perms.set_mode(0o755);
+            fs::set_permissions(&script, perms).unwrap();
+        }
+
+        let roots = vec![(tmp.clone(), "user".to_string())];
+        let ok = try_run_hook_script_with_roots(
+            &script.to_string_lossy(),
+            &roots,
+            Some(r#"{"hookEventName":"PreToolUse"}"#),
+            Some(5),
+        );
+        assert!(ok.ok, "{ok:?}");
+        assert!(!ok.refused);
+        assert!(!ok.timed_out);
+        assert_eq!(ok.exit_code, Some(0));
+        assert!(ok.stdout.contains("OUT"), "{ok:?}");
+        assert!(ok.stdout.contains("PreToolUse"), "{ok:?}");
+        assert_eq!(ok.scope, "user");
+
+        // Fail exit is honest (not ok).
+        let fail_script = tmp.join("fail.sh");
+        {
+            let mut f = fs::File::create(&fail_script).expect("create");
+            writeln!(f, "#!/bin/sh").unwrap();
+            writeln!(f, "echo boom 1>&2").unwrap();
+            writeln!(f, "exit 2").unwrap();
+        }
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mut perms = fs::metadata(&fail_script).unwrap().permissions();
+            perms.set_mode(0o755);
+            fs::set_permissions(&fail_script, perms).unwrap();
+        }
+        let fail = try_run_hook_script_with_roots(
+            &fail_script.to_string_lossy(),
+            &roots,
+            None,
+            Some(5),
+        );
+        assert!(!fail.ok, "{fail:?}");
+        assert!(!fail.refused);
+        assert_eq!(fail.exit_code, Some(2));
+        assert!(fail.stderr.contains("boom") || fail.stdout.contains("boom"), "{fail:?}");
+
+        // Timeout is honest (not ok).
+        let slow = tmp.join("slow.sh");
+        {
+            let mut f = fs::File::create(&slow).expect("create");
+            writeln!(f, "#!/bin/sh").unwrap();
+            writeln!(f, "sleep 5").unwrap();
+        }
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mut perms = fs::metadata(&slow).unwrap().permissions();
+            perms.set_mode(0o755);
+            fs::set_permissions(&slow, perms).unwrap();
+        }
+        let timed = try_run_hook_script_with_roots(
+            &slow.to_string_lossy(),
+            &roots,
+            None,
+            Some(1),
+        );
+        assert!(!timed.ok, "{timed:?}");
+        assert!(timed.timed_out, "{timed:?}");
+        assert_eq!(timed.reason.as_deref(), Some("timeout"));
+
+        // Full try_run_hook_script refuses paths outside real user/project hooks dirs.
+        let refused = try_run_hook_script(
+            &script.to_string_lossy(),
+            None,
+            Some(r#"{"a":1}"#),
+            Some(5),
+        );
+        assert!(!refused.ok);
+        assert!(refused.refused, "{refused:?}");
+        assert_eq!(refused.reason.as_deref(), Some("path_outside_hooks"));
+
+        let _ = fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn try_run_refuses_invalid_json_without_spawn() {
+        let r = try_run_hook_script(
+            "/tmp/does-not-matter.sh",
+            None,
+            Some("not-json{"),
+            Some(5),
+        );
+        assert!(!r.ok);
+        assert!(r.refused);
+        assert_eq!(r.reason.as_deref(), Some("invalid_json"));
+        assert!(r.duration_ms == 0);
     }
 }

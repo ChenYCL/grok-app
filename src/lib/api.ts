@@ -2641,6 +2641,40 @@ export async function hooksEnsureDir(opts?: {
   });
 }
 
+/** Result of host `hooks_try_run` — real process; never invents success. */
+export type HooksTryRunResult = {
+  ok: boolean;
+  refused: boolean;
+  timedOut: boolean;
+  exitCode?: number | null;
+  stdout: string;
+  stderr: string;
+  durationMs: number;
+  path: string;
+  scope: string;
+  timeoutSecs: number;
+  reason?: string | null;
+  message?: string | null;
+};
+
+/**
+ * Real try-run of a hook script under user/project hooks dirs only.
+ * Optional JSON stdin; host redacts stdout/stderr and enforces timeout.
+ */
+export async function hooksTryRun(opts: {
+  path: string;
+  projectPath?: string | null;
+  stdinJson?: string | null;
+  timeoutSecs?: number | null;
+}) {
+  return invoke<HooksTryRunResult>("hooks_try_run", {
+    path: opts.path,
+    projectPath: opts.projectPath ?? null,
+    stdinJson: opts.stdinJson ?? null,
+    timeoutSecs: opts.timeoutSecs ?? null,
+  });
+}
+
 
 export type SetupPreviewResult = {
   ok: boolean;

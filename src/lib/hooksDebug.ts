@@ -21,7 +21,13 @@ export const HOOK_DETAIL_MAX = 160;
 
 export type HookActivityOutcome = "ok" | "fail" | "skip" | "info";
 
-export type HookActivitySource = "host" | "stderr" | "tool" | "stream";
+export type HookActivitySource =
+  | "host"
+  | "stderr"
+  | "tool"
+  | "stream"
+  /** Real host try-run from Extensions → Hooks. */
+  | "try";
 
 export type HookActivityRecord = {
   id: string;
