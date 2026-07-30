@@ -268,3 +268,67 @@ export function planHistoryListSnippet(
 export function planHistoryEntryKey(entry: PlanHistoryEntry): string {
   return `${entry.sessionId}|${entry.decision}|${entry.at}`;
 }
+
+/**
+ * Filter history by free-text query and/or decision chips.
+ * Empty / whitespace query matches all (still respects decision filter).
+ * Query matches title, body preview, list label, or session id (case-insensitive substring).
+ * Empty `decisions` / omitted / `"all"` means every decision.
+ */
+export function filterPlanHistory(
+  entries: readonly PlanHistoryEntry[],
+  opts?: {
+    query?: string | null;
+    decisions?: readonly PlanHistoryDecision[] | "all" | null;
+  },
+): PlanHistoryEntry[] {
+  const q = (opts?.query ?? "").trim().toLowerCase();
+  const raw = opts?.decisions;
+  let decisionSet: Set<PlanHistoryDecision> | null = null;
+  if (raw && raw !== "all" && Array.isArray(raw) && raw.length > 0) {
+    decisionSet = new Set(
+      raw.filter((d): d is PlanHistoryDecision => DECISIONS.has(d)),
+    );
+    if (decisionSet.size === 0) decisionSet = null;
+  }
+
+  if (!q && !decisionSet) return entries.slice();
+
+  return entries.filter((e) => {
+    if (decisionSet && !decisionSet.has(e.decision)) return false;
+    if (!q) return true;
+    const title = (e.title || "").toLowerCase();
+    const preview = (e.bodyPreview || "").toLowerCase();
+    const label = planHistoryLabel(e).toLowerCase();
+    const sessionId = e.sessionId.toLowerCase();
+    return (
+      title.includes(q) ||
+      preview.includes(q) ||
+      label.includes(q) ||
+      sessionId.includes(q)
+    );
+  });
+}
+
+/**
+ * Wipe the local plan history archive (empty list + notify listeners).
+ * Returns the empty list. Safe no-op on storage failure.
+ */
+export function clearPlanHistory(
+  storage: PlanHistoryStorage = defaultStorage(),
+): PlanHistoryEntry[] {
+  savePlanHistory([], storage);
+  if (
+    typeof window !== "undefined" &&
+    typeof window.dispatchEvent === "function"
+  ) {
+    try {
+      window.dispatchEvent(
+        new CustomEvent(PLAN_HISTORY_CHANGE_EVENT, { detail: [] }),
+      );
+    } catch {
+      /* ignore */
+    }
+  }
+  return [];
+}

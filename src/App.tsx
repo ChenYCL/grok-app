@@ -354,7 +354,7 @@ import {
   sessionToMarkdown,
 } from "@/lib/sessionExport";
 import { recordTraceExport } from "@/lib/traceHistory";
-import { recordPlanHistory } from "@/lib/planHistory";
+import { clearPlanHistory, recordPlanHistory } from "@/lib/planHistory";
 import type { PlanHistoryEntry } from "@/lib/planHistory";
 import { planDisplayMarkdown } from "@/lib/planBody";
 import {
@@ -1768,6 +1768,9 @@ export default function App() {
   const [showPlanHistory, setShowPlanHistory] = useState(false);
   const [planHistoryPreview, setPlanHistoryPreview] =
     useState<PlanHistoryEntry | null>(null);
+  /** Request-changes note modal (optional free-form feedback). */
+  const [planReviseOpen, setPlanReviseOpen] = useState(false);
+  const [planReviseNote, setPlanReviseNote] = useState("");
   /**
    * Dedupe plan-complete history rows per session+toolCall cycle
    * (session://plan can emit multiple “all done” updates).
@@ -8802,26 +8805,110 @@ export default function App() {
     }
   }, [archivePlanDecision, plan.rpcId, showToast, tr, writePlanForViewing]);
 
-  const requestPlanChanges = useCallback(async () => {
-    try {
-      await api.sessionResolvePlan({
-        decision: "cancelled",
-        feedback: tr("plan.reviseFeedback"),
-        rpcId: plan.rpcId,
-        sessionId: viewingSessionIdRef.current,
-      });
-      writePlanForViewing({
-        ...planRef.current,
-        visible: false,
-        waiting: false,
-        rpcId: null,
-        userClosed: false,
-      });
-      showToast(tr("plan.reviseToast"), 2800);
-    } catch (e) {
-      showToast(String(e), 4500);
-    }
-  }, [plan.rpcId, showToast, tr, writePlanForViewing]);
+  /**
+   * Resolve pending plan review as "cancelled" (revise).
+   * `note` is optional free-form feedback; empty falls back to the default
+   * revise prompt so the agent still knows to rework the plan.
+   */
+  const requestPlanChanges = useCallback(
+    async (note?: string) => {
+      const trimmed = typeof note === "string" ? note.trim() : "";
+      const feedback = trimmed || tr("plan.reviseFeedback");
+      try {
+        await api.sessionResolvePlan({
+          decision: "cancelled",
+          feedback,
+          rpcId: plan.rpcId,
+          sessionId: viewingSessionIdRef.current,
+        });
+        writePlanForViewing({
+          ...planRef.current,
+          visible: false,
+          waiting: false,
+          rpcId: null,
+          userClosed: false,
+        });
+        setPlanReviseOpen(false);
+        setPlanReviseNote("");
+        showToast(tr("plan.reviseToast"), 2800);
+      } catch (e) {
+        showToast(String(e), 4500);
+      }
+    },
+    [plan.rpcId, showToast, tr, writePlanForViewing],
+  );
+
+  /** Open optional revision-note modal, then call requestPlanChanges. */
+  const openRequestPlanChanges = useCallback(() => {
+    setPlanReviseNote("");
+    setPlanReviseOpen(true);
+  }, []);
+
+  /** Clear local plan history after in-app confirm (no window.confirm). */
+  const confirmClearPlanHistory = useCallback(() => {
+    setAppDialog({
+      kind: "confirm",
+      title: tr("plan.historyClearTitle"),
+      message: tr("plan.historyClearMessage"),
+      confirmLabel: tr("plan.historyClearConfirm"),
+      danger: true,
+      onConfirm: () => {
+        try {
+          clearPlanHistory();
+          setPlanHistoryPreview(null);
+          showToast(tr("plan.historyClearedToast"), 2200);
+        } catch {
+          /* private mode */
+        }
+      },
+    });
+  }, [showToast, tr]);
+
+  /** Open the session that produced a plan history entry, if it still exists. */
+  const openPlanHistorySession = useCallback(
+    (entry: PlanHistoryEntry) => {
+      const id = entry.sessionId?.trim();
+      if (!id) {
+        showToast(tr("plan.historySessionMissing"), 2800);
+        return;
+      }
+      const row = sessions.find((s) => s.id === id);
+      if (!row) {
+        // Try openSessionById (refreshes list); toast if still missing.
+        void (async () => {
+          let found =
+            sessionsRef.current.find((s) => s.id === id) ?? null;
+          if (!found) {
+            try {
+              const list = await api.sessionsList();
+              const hit = list.find((s) => s.id === id);
+              if (hit) {
+                found = mapSessionListRow(hit);
+                setSessions(list.map((s) => mapSessionListRow(s)));
+              }
+            } catch {
+              /* ignore */
+            }
+          }
+          if (!found) {
+            showToast(tr("plan.historySessionMissing"), 2800);
+            return;
+          }
+          setShowPlanHistory(false);
+          setPlanHistoryPreview(null);
+          const proj =
+            projects.find((p) => p.id === found!.projectId) ?? null;
+          await openSessionRef.current(found, proj);
+        })();
+        return;
+      }
+      setShowPlanHistory(false);
+      setPlanHistoryPreview(null);
+      const proj = projects.find((p) => p.id === row.projectId) ?? null;
+      void openSession(row, proj);
+    },
+    [openSession, projects, sessions, showToast, tr],
+  );
 
   /**
    * User closes plan chrome (top bar / resource panel).
@@ -12766,6 +12853,7 @@ export default function App() {
         showTraces ||
         showPlanHistory ||
         planHistoryPreview ||
+        planReviseOpen ||
         showShortcuts ||
         showProductTutorial ||
         showStatusModal ||
@@ -14975,7 +15063,7 @@ export default function App() {
                 aria: tr("planBar.aria"),
               }}
               onApprove={() => void approvePlan()}
-              onRequestChanges={() => void requestPlanChanges()}
+              onRequestChanges={() => openRequestPlanChanges()}
               onDismiss={() => void dismissPlan()}
               onClearGoal={() => setGoalMode(false)}
               onOpenDetails={() => openPlanInResource()}
@@ -16391,7 +16479,7 @@ export default function App() {
               plan={plan}
               planFocusKey={planFocusKey}
               onApprovePlan={() => void approvePlan()}
-              onRequestPlanChanges={() => void requestPlanChanges()}
+              onRequestPlanChanges={() => openRequestPlanChanges()}
               onDismissPlan={() => void dismissPlan()}
               onOpenPlanHistory={() => setShowPlanHistory(true)}
               onAsideLayoutHint={applyAsideLayoutHint}
@@ -17302,13 +17390,21 @@ export default function App() {
         <PlanHistoryList
           labels={{
             empty: tr("plan.historyEmpty"),
+            emptyFilter: tr("plan.historyEmptyFilter"),
             open: tr("plan.historyOpen"),
+            openSession: tr("plan.historyOpenSession"),
+            clearAll: tr("plan.historyClear"),
+            searchPlaceholder: tr("plan.historySearchPlaceholder"),
+            filterAll: tr("plan.historyFilterAll"),
             decisionApproved: tr("plan.historyDecisionApproved"),
             decisionAbandoned: tr("plan.historyDecisionAbandoned"),
             decisionCompleted: tr("plan.historyDecisionCompleted"),
             listAria: tr("plan.historyTitle"),
           }}
+          existingSessionIds={sessions.map((s) => s.id)}
           onOpen={(entry) => setPlanHistoryPreview(entry)}
+          onOpenSession={(entry) => openPlanHistorySession(entry)}
+          onRequestClearAll={confirmClearPlanHistory}
         />
       </GlassModal>
 
@@ -17321,13 +17417,29 @@ export default function App() {
         wrapBody
         className="plan-history-preview-modal"
         footer={
-          <button
-            type="button"
-            className="btn btn--ghost"
-            onClick={() => setPlanHistoryPreview(null)}
-          >
-            {tr("common.close")}
-          </button>
+          <>
+            {planHistoryPreview &&
+            sessions.some((s) => s.id === planHistoryPreview.sessionId) ? (
+              <button
+                type="button"
+                className="btn btn--ghost"
+                onClick={() => {
+                  if (planHistoryPreview) {
+                    openPlanHistorySession(planHistoryPreview);
+                  }
+                }}
+              >
+                {tr("plan.historyOpenSession")}
+              </button>
+            ) : null}
+            <button
+              type="button"
+              className="btn btn--ghost"
+              onClick={() => setPlanHistoryPreview(null)}
+            >
+              {tr("common.close")}
+            </button>
+          </>
         }
       >
         {planHistoryPreview ? (
@@ -17370,6 +17482,55 @@ export default function App() {
             )}
           </div>
         ) : null}
+      </GlassModal>
+
+      <GlassModal
+        open={planReviseOpen}
+        onClose={() => {
+          setPlanReviseOpen(false);
+          setPlanReviseNote("");
+        }}
+        title={tr("plan.reviseNoteTitle")}
+        size="sm"
+        closeLabel={tr("common.close")}
+        wrapBody
+        className="plan-revise-modal"
+        footer={
+          <>
+            <button
+              type="button"
+              className="btn btn--ghost"
+              onClick={() => {
+                setPlanReviseOpen(false);
+                setPlanReviseNote("");
+              }}
+            >
+              {tr("common.cancel")}
+            </button>
+            <button
+              type="button"
+              className="btn btn--solid"
+              onClick={() => void requestPlanChanges(planReviseNote)}
+              data-testid="plan-revise-submit"
+            >
+              {tr("plan.reviseNoteSubmit")}
+            </button>
+          </>
+        }
+      >
+        <p className="plan-revise-modal__desc">{tr("plan.reviseNoteDesc")}</p>
+        <label className="plan-revise-modal__field">
+          <span className="sr-only">{tr("plan.reviseNotePlaceholder")}</span>
+          <textarea
+            className="plan-revise-modal__textarea"
+            value={planReviseNote}
+            onChange={(e) => setPlanReviseNote(e.target.value)}
+            placeholder={tr("plan.reviseNotePlaceholder")}
+            rows={4}
+            autoFocus
+            data-testid="plan-revise-note"
+          />
+        </label>
       </GlassModal>
 
       <GlassModal
