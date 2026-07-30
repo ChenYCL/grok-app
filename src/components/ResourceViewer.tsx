@@ -50,9 +50,12 @@ import { GlassModal } from "@/components/GlassModal";
 import type { MessageKey } from "@/i18n";
 import {
   buildUnifiedDiff,
+  changeListKey,
+  nextChangeListKey,
   normalizePath,
   pathBaseName,
   pathRelativeToProject,
+  sessionFileLineDelta,
   type SessionFileChange,
 } from "@/lib/sessionChanges";
 import {
@@ -152,6 +155,8 @@ export interface ResourceViewerProps {
 
 type SideMode = "files" | "changes" | "plan";
 
+type DiffLayout = "unified" | "split";
+
 type DiffViewState = {
   path: string;
   name: string;
@@ -162,7 +167,28 @@ type DiffViewState = {
   afterOnly: string | null;
   error: string | null;
   source: "payload" | "git" | "head" | "after" | null;
+  /** Snapshots for side-by-side when both sides are known. */
+  beforeText?: string | null;
+  afterText?: string | null;
 };
+
+function emptyDiffView(
+  path: string,
+  name: string,
+  loading: boolean,
+): DiffViewState {
+  return {
+    path,
+    name,
+    loading,
+    unified: null,
+    afterOnly: null,
+    error: null,
+    source: null,
+    beforeText: null,
+    afterText: null,
+  };
+}
 
 type ChangeSelectionSource = "session" | "workspace";
 
@@ -295,6 +321,9 @@ export function ResourceViewer({
   const [selectedChangeSource, setSelectedChangeSource] =
     useState<ChangeSelectionSource | null>(null);
   const [diffView, setDiffView] = useState<DiffViewState | null>(null);
+  /** Unified vs side-by-side when both before/after snapshots exist. */
+  const [diffLayout, setDiffLayout] = useState<DiffLayout>("unified");
+  const changesListRef = useRef<HTMLDivElement>(null);
   const diffLoadSeq = useRef(0);
   const workspaceLoadSeq = useRef(0);
   /** Workspace git status (project-wide), independent of session tool edits. */
@@ -331,6 +360,30 @@ export function ResourceViewer({
     () => filterWorkspaceGitEntries(workspaceFiles, query),
     [workspaceFiles, query],
   );
+
+  /** Flat j/k order: session rows then workspace rows (filtered). */
+  const changeNavKeys = useMemo(() => {
+    const keys: string[] = [];
+    for (const c of filteredChanges) {
+      keys.push(changeListKey("session", c.path));
+    }
+    for (const w of filteredWorkspace) {
+      const abs =
+        normalizePath(w.absolutePath) ||
+        resolveWorkspaceAbsolutePath(projectPath, w.path) ||
+        w.path;
+      keys.push(changeListKey("workspace", abs || w.path));
+    }
+    return keys;
+  }, [filteredChanges, filteredWorkspace, projectPath]);
+
+  const selectedChangeKey = useMemo(() => {
+    if (!selectedChangePath || !selectedChangeSource) return null;
+    return changeListKey(selectedChangeSource, selectedChangePath);
+  }, [selectedChangePath, selectedChangeSource]);
+
+  const canShowChangesTab =
+    workspaceAvailable || changeCount > 0 || sideMode === "changes";
 
   // Report content surface → App soft-grows the aside so chrome stays usable.
   const activePreviewKind = activeTab?.preview?.kind ?? null;
@@ -421,19 +474,6 @@ export function ResourceViewer({
     void refreshWorkspaceStatus();
   }, [projectPath, refreshWorkspaceStatus]);
 
-  // Non-git projects cannot surface workspace status — leave Changes mode and hide chrome.
-  useEffect(() => {
-    if (workspaceLoading) return;
-    if (workspaceAvailable) return;
-    if (sideMode === "changes") {
-      setSideMode("files");
-      setTreeVisible(false);
-      setDiffView(null);
-      setSelectedChangePath(null);
-      setSelectedChangeSource(null);
-    }
-  }, [workspaceAvailable, workspaceLoading, sideMode]);
-
   // Drop selection if neither session nor workspace still lists the path.
   useEffect(() => {
     if (!selectedChangePath) return;
@@ -458,20 +498,13 @@ export function ResourceViewer({
       const path = normalizePath(change.path);
       if (!path) return;
       const seq = ++diffLoadSeq.current;
+      const name = change.name || pathBaseName(path);
       setSelectedChangePath(path);
       setSelectedChangeSource("session");
-      setDiffView({
-        path,
-        name: change.name || pathBaseName(path),
-        loading: true,
-        unified: null,
-        afterOnly: null,
-        error: null,
-        source: null,
-      });
+      setDiffView(emptyDiffView(path, name, true));
 
       const relName =
-        pathRelativeToProject(path, projectPath) || change.name || pathBaseName(path);
+        pathRelativeToProject(path, projectPath) || name;
 
       // 1) Tool payload before/after → local unified diff
       if (
@@ -482,12 +515,14 @@ export function ResourceViewer({
         if (seq !== diffLoadSeq.current) return;
         setDiffView({
           path,
-          name: change.name || pathBaseName(path),
+          name,
           loading: false,
           unified,
           afterOnly: null,
           error: null,
           source: "payload",
+          beforeText: change.before,
+          afterText: change.after,
         });
         return;
       }
@@ -500,12 +535,14 @@ export function ResourceViewer({
           if (g.available && g.diff?.trim()) {
             setDiffView({
               path,
-              name: change.name || pathBaseName(path),
+              name,
               loading: false,
               unified: g.diff,
               afterOnly: null,
               error: null,
               source: "git",
+              beforeText: null,
+              afterText: null,
             });
             return;
           }
@@ -542,12 +579,14 @@ export function ResourceViewer({
             const unified = buildUnifiedDiff(relName, head.content, afterText);
             setDiffView({
               path,
-              name: change.name || pathBaseName(path),
+              name,
               loading: false,
               unified,
               afterOnly: null,
               error: null,
               source: "head",
+              beforeText: head.content,
+              afterText,
             });
             return;
           }
@@ -565,12 +604,14 @@ export function ResourceViewer({
         const unified = buildUnifiedDiff(relName, change.before, afterText);
         setDiffView({
           path,
-          name: change.name || pathBaseName(path),
+          name,
           loading: false,
           unified,
           afterOnly: null,
           error: null,
           source: "payload",
+          beforeText: change.before,
+          afterText,
         });
         return;
       }
@@ -578,25 +619,19 @@ export function ResourceViewer({
       if (afterText != null) {
         setDiffView({
           path,
-          name: change.name || pathBaseName(path),
+          name,
           loading: false,
           unified: null,
           afterOnly: afterText,
           error: null,
           source: "after",
+          beforeText: null,
+          afterText,
         });
         return;
       }
 
-      setDiffView({
-        path,
-        name: change.name || pathBaseName(path),
-        loading: false,
-        unified: null,
-        afterOnly: null,
-        error: null,
-        source: null,
-      });
+      setDiffView(emptyDiffView(path, name, false));
     },
     [projectPath],
   );
@@ -609,17 +644,10 @@ export function ResourceViewer({
       const path = abs || normalizePath(entry.path);
       if (!path) return;
       const seq = ++diffLoadSeq.current;
+      const name = entry.name || pathBaseName(path);
       setSelectedChangePath(path);
       setSelectedChangeSource("workspace");
-      setDiffView({
-        path,
-        name: entry.name || pathBaseName(path),
-        loading: true,
-        unified: null,
-        afterOnly: null,
-        error: null,
-        source: null,
-      });
+      setDiffView(emptyDiffView(path, name, true));
 
       const relName = entry.path || pathBaseName(path);
 
@@ -629,14 +657,32 @@ export function ResourceViewer({
           const g = await api.gitFileDiff(projectPath, path);
           if (seq !== diffLoadSeq.current) return;
           if (g.available && g.diff?.trim()) {
+            // Also try to load sides for optional split view
+            let beforeText: string | null = null;
+            let afterText: string | null = null;
+            try {
+              const [head, cur] = await Promise.all([
+                api.gitShowFile(projectPath, path).catch(() => null),
+                api.fsOpenPath(path, projectPath).catch(() => null),
+              ]);
+              if (head?.available && typeof head.content === "string") {
+                beforeText = head.content;
+              }
+              if (cur?.text != null) afterText = cur.text;
+            } catch {
+              /* optional */
+            }
+            if (seq !== diffLoadSeq.current) return;
             setDiffView({
               path,
-              name: entry.name || pathBaseName(path),
+              name,
               loading: false,
               unified: g.diff,
               afterOnly: null,
               error: null,
               source: "git",
+              beforeText,
+              afterText,
             });
             return;
           }
@@ -656,34 +702,31 @@ export function ResourceViewer({
             const unified = buildUnifiedDiff(relName, head.content, afterText);
             setDiffView({
               path,
-              name: entry.name || pathBaseName(path),
+              name,
               loading: false,
               unified,
               afterOnly: null,
               error: null,
               source: "head",
+              beforeText: head.content,
+              afterText,
             });
             return;
           }
           if (afterText != null) {
-            // Untracked / new: show full file as after-only
+            // Untracked / new: show full file as after-only / +diff
+            const isNew =
+              entry.kind === "untracked" || entry.kind === "added";
             setDiffView({
               path,
-              name: entry.name || pathBaseName(path),
+              name,
               loading: false,
-              unified:
-                entry.kind === "untracked" || entry.kind === "added"
-                  ? buildUnifiedDiff(relName, "", afterText)
-                  : null,
-              afterOnly:
-                entry.kind === "untracked" || entry.kind === "added"
-                  ? null
-                  : afterText,
+              unified: isNew ? buildUnifiedDiff(relName, "", afterText) : null,
+              afterOnly: isNew ? null : afterText,
               error: null,
-              source:
-                entry.kind === "untracked" || entry.kind === "added"
-                  ? "git"
-                  : "after",
+              source: isNew ? "git" : "after",
+              beforeText: isNew ? "" : null,
+              afterText,
             });
             return;
           }
@@ -693,15 +736,7 @@ export function ResourceViewer({
       }
 
       if (seq !== diffLoadSeq.current) return;
-      setDiffView({
-        path,
-        name: entry.name || pathBaseName(path),
-        loading: false,
-        unified: null,
-        afterOnly: null,
-        error: null,
-        source: null,
-      });
+      setDiffView(emptyDiffView(path, name, false));
     },
     [projectPath],
   );
@@ -1201,6 +1236,15 @@ export function ResourceViewer({
     [projectPath, tabs, tr],
   );
 
+  const openChangeInPane = useCallback(
+    (path: string) => {
+      const p = normalizePath(path);
+      if (!p) return;
+      void openAbsoluteFile(p, pathBaseName(p));
+    },
+    [openAbsoluteFile],
+  );
+
   const openUrl = useCallback(
     (url: string, title?: string) => {
       const u = url.trim();
@@ -1235,7 +1279,17 @@ export function ResourceViewer({
     [tabs],
   );
 
-  // External open requests (from chat file/url cards)
+  /** Force-open Changes side panel (never toggle off — used by chip / deep links). */
+  const openChangesPanel = useCallback(() => {
+    setSideMode("changes");
+    setTreeVisible(true);
+    // Focus list on next paint so j/k works without an extra click.
+    requestAnimationFrame(() => {
+      changesListRef.current?.focus({ preventScroll: true });
+    });
+  }, []);
+
+  // External open requests (from chat file/url cards, session-changes chip, …)
   useEffect(() => {
     if (!openRequest) return;
     if (openRequest.type === "file") {
@@ -1246,9 +1300,34 @@ export function ResourceViewer({
       setSideMode("files");
       openUrl(openRequest.url, openRequest.title);
     } else if (openRequest.type === "changes") {
-      showSidePanel("changes");
-      if (openRequest.path) {
-        void openAbsoluteFile(openRequest.path, openRequest.path);
+      openChangesPanel();
+      const want = openRequest.path ? normalizePath(openRequest.path) : "";
+      if (want) {
+        const sc = sessionChanges.find(
+          (c) =>
+            normalizePath(c.path) === want ||
+            pathRelativeToProject(c.path, projectPath) === want,
+        );
+        if (sc) {
+          void loadChangeDiff(sc);
+        } else {
+          const w = workspaceFiles.find((entry) => {
+            const abs =
+              normalizePath(entry.absolutePath) ||
+              resolveWorkspaceAbsolutePath(projectPath, entry.path);
+            return (
+              abs === want ||
+              normalizePath(entry.path) === want ||
+              pathBaseName(entry.path) === pathBaseName(want)
+            );
+          });
+          if (w) {
+            void loadWorkspaceDiff(w);
+          } else {
+            // Fall back: open the file so the user still lands on something useful.
+            void openAbsoluteFile(want, pathBaseName(want));
+          }
+        }
       }
     }
     onOpenRequestConsumed?.();
@@ -1256,7 +1335,84 @@ export function ResourceViewer({
     openRequest,
     openAbsoluteFile,
     openUrl,
+    openChangesPanel,
     onOpenRequestConsumed,
+    sessionChanges,
+    workspaceFiles,
+    projectPath,
+    loadChangeDiff,
+    loadWorkspaceDiff,
+  ]);
+
+  // j/k in Changes list (when list is focused or focus is within the side tree).
+  useEffect(() => {
+    if (!treeVisible || sideMode !== "changes") return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "j" && e.key !== "k" && e.key !== "Enter") return;
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      const target = e.target as HTMLElement | null;
+      if (!target) return;
+      const tag = (target.tagName || "").toLowerCase();
+      if (
+        tag === "input" ||
+        tag === "textarea" ||
+        tag === "select" ||
+        target.isContentEditable
+      ) {
+        return;
+      }
+      const listEl = changesListRef.current;
+      const treeEl = listEl?.closest(".rp-split__tree") ?? null;
+      const within =
+        (listEl && listEl.contains(target)) ||
+        (treeEl && treeEl.contains(target)) ||
+        document.activeElement === listEl;
+      if (!within) return;
+
+      if (e.key === "Enter") {
+        if (selectedChangePath) {
+          e.preventDefault();
+          openChangeInPane(selectedChangePath);
+        }
+        return;
+      }
+
+      const dir = e.key === "j" ? "next" : "prev";
+      const nextKey = nextChangeListKey(changeNavKeys, selectedChangeKey, dir);
+      if (!nextKey || nextKey === selectedChangeKey) return;
+      e.preventDefault();
+      if (nextKey.startsWith("session:")) {
+        const path = nextKey.slice("session:".length);
+        const hit = filteredChanges.find(
+          (c) => normalizePath(c.path) === path,
+        );
+        if (hit) void loadChangeDiff(hit);
+      } else if (nextKey.startsWith("workspace:")) {
+        const path = nextKey.slice("workspace:".length);
+        const hit = filteredWorkspace.find((w) => {
+          const abs =
+            normalizePath(w.absolutePath) ||
+            resolveWorkspaceAbsolutePath(projectPath, w.path) ||
+            normalizePath(w.path);
+          return abs === path || normalizePath(w.path) === path;
+        });
+        if (hit) void loadWorkspaceDiff(hit);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [
+    treeVisible,
+    sideMode,
+    changeNavKeys,
+    selectedChangeKey,
+    selectedChangePath,
+    filteredChanges,
+    filteredWorkspace,
+    projectPath,
+    loadChangeDiff,
+    loadWorkspaceDiff,
+    openChangeInPane,
   ]);
 
   /** Last tab gone → collapse the right pane (user can still re-open it manually). */
@@ -1442,38 +1598,160 @@ export function ResourceViewer({
   );
 
   const previewBody = useMemo(() => {
-    // Session change diff takes over the preview when selected in Changes mode.
+    // Session / workspace change diff takes over the preview in Changes mode.
     if (sideMode === "changes" && diffView) {
       if (diffView.loading) {
         return (
           <div className="rp-preview__msg">{tr("changes.loadingDiff")}</div>
         );
       }
-      if (diffView.unified) {
-        const srcLabel =
-          diffView.source === "git"
-            ? tr("changes.sourceGit")
-            : diffView.source === "head"
-              ? tr("changes.sourceHead")
-              : diffView.source === "payload"
-                ? tr("changes.sourcePayload")
+
+      const srcLabel =
+        diffView.source === "git"
+          ? tr("changes.sourceGit")
+          : diffView.source === "head"
+            ? tr("changes.sourceHead")
+            : diffView.source === "payload"
+              ? tr("changes.sourcePayload")
+              : diffView.source === "after"
+                ? tr("changes.sourceAfter")
                 : null;
+      const hasSplitSides =
+        typeof diffView.beforeText === "string" &&
+        typeof diffView.afterText === "string";
+      const showSplit = diffLayout === "split" && hasSplitSides;
+
+      const toolbar = (
+        <div className="rp-diff-toolbar" role="toolbar" aria-label={tr("changes.title")}>
+          <span className="rp-diff-toolbar__name" title={diffView.path}>
+            {diffView.name}
+          </span>
+          {srcLabel ? (
+            <span className="rp-diff-toolbar__source">{srcLabel}</span>
+          ) : null}
+          <span className="rp-diff-toolbar__spacer" />
+          {hasSplitSides ? (
+            <div className="rp-diff-toolbar__toggle" role="group">
+              <button
+                type="button"
+                className={
+                  "rp-diff-toolbar__btn" +
+                  (diffLayout === "unified" ? " is-active" : "")
+                }
+                aria-pressed={diffLayout === "unified"}
+                onClick={() => setDiffLayout("unified")}
+              >
+                {tr("changes.viewUnified")}
+              </button>
+              <button
+                type="button"
+                className={
+                  "rp-diff-toolbar__btn" +
+                  (diffLayout === "split" ? " is-active" : "")
+                }
+                aria-pressed={diffLayout === "split"}
+                onClick={() => setDiffLayout("split")}
+              >
+                {tr("changes.viewSplit")}
+              </button>
+            </div>
+          ) : null}
+          <Tip label={tr("changes.openFile")}>
+            <button
+              type="button"
+              className="chrome-btn"
+              onClick={() => openChangeInPane(diffView.path)}
+              aria-label={tr("changes.openFile")}
+            >
+              <IconFiles size={14} />
+            </button>
+          </Tip>
+          <Tip label={tr("changes.openInEditor")}>
+            <button
+              type="button"
+              className="chrome-btn"
+              onClick={() => void openChangeInEditor(diffView.path)}
+              aria-label={tr("changes.openInEditor")}
+            >
+              <IconExternalLink size={14} />
+            </button>
+          </Tip>
+          <Tip label={tr("changes.reveal")}>
+            <button
+              type="button"
+              className="chrome-btn"
+              onClick={() => void revealChangePath(diffView.path)}
+              aria-label={tr("changes.reveal")}
+            >
+              <IconFolder size={14} />
+            </button>
+          </Tip>
+          <Tip label={pathCopyFlash ? tr("changes.pathCopied") : tr("changes.copyPath")}>
+            <button
+              type="button"
+              className="chrome-btn"
+              onClick={() => void copyChangePath(diffView.path)}
+              aria-label={tr("changes.copyPath")}
+            >
+              <IconCopy size={14} />
+            </button>
+          </Tip>
+        </div>
+      );
+
+      if (showSplit) {
         return (
-          <CodePreview
-            code={diffView.unified}
-            fileName={`${diffView.name}.diff`}
-            language="diff"
-            footer={srcLabel}
-          />
+          <div className="rp-diff-host">
+            {toolbar}
+            <div className="rp-diff-split">
+              <div className="rp-diff-split__pane">
+                <div className="rp-diff-split__label">
+                  {tr("changes.split.before")}
+                </div>
+                <CodePreview
+                  code={diffView.beforeText ?? ""}
+                  fileName={diffView.name}
+                  className="rp-diff-split__code"
+                />
+              </div>
+              <div className="rp-diff-split__pane">
+                <div className="rp-diff-split__label">
+                  {tr("changes.split.after")}
+                </div>
+                <CodePreview
+                  code={diffView.afterText ?? ""}
+                  fileName={diffView.name}
+                  className="rp-diff-split__code"
+                />
+              </div>
+            </div>
+          </div>
+        );
+      }
+
+      if (diffView.unified) {
+        return (
+          <div className="rp-diff-host">
+            {toolbar}
+            <CodePreview
+              code={diffView.unified}
+              fileName={`${diffView.name}.diff`}
+              language="diff"
+              footer={srcLabel}
+            />
+          </div>
         );
       }
       if (diffView.afterOnly) {
         return (
-          <CodePreview
-            code={diffView.afterOnly}
-            fileName={diffView.name}
-            footer={tr("changes.afterOnly")}
-          />
+          <div className="rp-diff-host">
+            {toolbar}
+            <CodePreview
+              code={diffView.afterOnly}
+              fileName={diffView.name}
+              footer={tr("changes.afterOnly")}
+            />
+          </div>
         );
       }
       return (
@@ -1481,6 +1759,16 @@ export function ResourceViewer({
           <div className="rp-changes-empty__title">{tr("changes.noDiff")}</div>
           <div className="rp-changes-empty__hint">{tr("changes.noDiffHint")}</div>
           <div className="rp-changes-empty__actions">
+            <button
+              type="button"
+              className="rp-tool-btn"
+              onClick={() => openChangeInPane(diffView.path)}
+            >
+              <IconFiles size={14} />
+              <span className="rp-tool-btn__label">
+                {tr("changes.openFile")}
+              </span>
+            </button>
             <button
               type="button"
               className="rp-tool-btn"
@@ -1838,7 +2126,9 @@ export function ResourceViewer({
     locale,
     sideMode,
     diffView,
+    diffLayout,
     openChangeInEditor,
+    openChangeInPane,
     revealChangePath,
     copyChangePath,
     pathCopyFlash,
@@ -2020,7 +2310,7 @@ export function ResourceViewer({
               </button>
             </Tip>
           ) : null}
-          {workspaceAvailable ? (
+          {canShowChangesTab ? (
             <Tip
               label={
                 treeVisible && sideMode === "changes"
@@ -2164,7 +2454,7 @@ export function ResourceViewer({
                 workspaceCount === 0
                   ? tr("changes.empty")
                   : sideMode === "changes"
-                    ? tr("changes.title")
+                    ? tr("changes.pickTitle")
                     : tr("resources.emptyPreview")}
               </div>
               <div className="rp__empty-desc">
@@ -2173,9 +2463,15 @@ export function ResourceViewer({
                 workspaceCount === 0
                   ? tr("changes.emptyHint")
                   : sideMode === "changes"
-                    ? tr("changes.workspace.emptyHint")
+                    ? tr("changes.pickHint")
                     : tr("resources.emptyPreviewHint")}
               </div>
+              {sideMode === "changes" &&
+              (changeCount > 0 || workspaceCount > 0) ? (
+                <div className="rp__empty-desc rp__empty-desc--muted">
+                  {tr("changes.navHint")}
+                </div>
+              ) : null}
             </div>
           ) : activeTab.loading ? (
             <div className="rp__empty-state">
@@ -2253,7 +2549,7 @@ export function ResourceViewer({
                 >
                   {tr("changes.files")}
                 </button>
-                {workspaceAvailable ? (
+                {canShowChangesTab ? (
                   <button
                     type="button"
                     role="tab"
@@ -2320,7 +2616,14 @@ export function ResourceViewer({
               </div>
               <OverlayScroll className="rp-tree-scroll">
                 {sideMode === "changes" ? (
-                  <div className="rp-changes-list" role="list">
+                  <div
+                    className="rp-changes-list"
+                    role="list"
+                    ref={changesListRef}
+                    tabIndex={0}
+                    aria-label={tr("changes.title")}
+                    data-testid="changes-list"
+                  >
                     {/* ── Session (agent tool edits) ── */}
                     <div className="rp-changes-section">
                       <div className="rp-changes-section__head">
@@ -2335,7 +2638,9 @@ export function ResourceViewer({
                       </div>
                       {filteredChanges.length === 0 ? (
                         <div className="rp-changes-section__empty">
-                          {tr("changes.empty")}
+                          {query.trim()
+                            ? tr("changes.filterEmpty")
+                            : tr("changes.empty")}
                         </div>
                       ) : (
                         filteredChanges.map((c) => {
@@ -2347,14 +2652,16 @@ export function ResourceViewer({
                           const rel =
                             pathRelativeToProject(c.path, projectPath) ||
                             c.path;
+                          const delta = sessionFileLineDelta(c);
                           return (
                             <div
-                              key={`session:${c.path}`}
+                              key={changeListKey("session", c.path)}
                               className={
                                 "rp-changes-row" +
                                 (active ? " is-active" : "")
                               }
                               role="listitem"
+                              aria-selected={active}
                             >
                               <button
                                 type="button"
@@ -2364,8 +2671,26 @@ export function ResourceViewer({
                               >
                                 <FileKindMark name={c.name} isDir={false} />
                                 <span className="rp-changes-row__meta">
-                                  <span className="rp-changes-row__name">
-                                    {c.name}
+                                  <span className="rp-changes-row__name-row">
+                                    <span className="rp-changes-row__name">
+                                      {c.name}
+                                    </span>
+                                    {delta ? (
+                                      <span
+                                        className="rp-changes-row__delta"
+                                        aria-label={tr("changes.lineDelta", {
+                                          a: String(delta.added),
+                                          d: String(delta.removed),
+                                        })}
+                                      >
+                                        <span className="rp-changes-row__add">
+                                          +{delta.added}
+                                        </span>
+                                        <span className="rp-changes-row__del">
+                                          −{delta.removed}
+                                        </span>
+                                      </span>
+                                    ) : null}
                                   </span>
                                   <span className="rp-changes-row__path">
                                     {rel}
@@ -2379,6 +2704,18 @@ export function ResourceViewer({
                                 </span>
                               </button>
                               <div className="rp-changes-row__actions">
+                                <Tip label={tr("changes.openFile")}>
+                                  <button
+                                    type="button"
+                                    className="chrome-btn"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      openChangeInPane(c.path);
+                                    }}
+                                  >
+                                    <IconFiles size={13} />
+                                  </button>
+                                </Tip>
                                 <Tip label={tr("changes.openInEditor")}>
                                   <button
                                     type="button"
@@ -2454,7 +2791,9 @@ export function ResourceViewer({
                         </div>
                       ) : filteredWorkspace.length === 0 ? (
                         <div className="rp-changes-section__empty">
-                          {tr("changes.workspace.empty")}
+                          {query.trim()
+                            ? tr("changes.filterEmpty")
+                            : tr("changes.workspace.empty")}
                         </div>
                       ) : (
                         filteredWorkspace.map((w) => {
@@ -2472,12 +2811,16 @@ export function ResourceViewer({
                                 normalizePath(w.path));
                           return (
                             <div
-                              key={`ws:${w.path}`}
+                              key={changeListKey(
+                                "workspace",
+                                abs || w.path,
+                              )}
                               className={
                                 "rp-changes-row" +
                                 (active ? " is-active" : "")
                               }
                               role="listitem"
+                              aria-selected={active}
                             >
                               <button
                                 type="button"
@@ -2510,6 +2853,18 @@ export function ResourceViewer({
                                 </span>
                               </button>
                               <div className="rp-changes-row__actions">
+                                <Tip label={tr("changes.openFile")}>
+                                  <button
+                                    type="button"
+                                    className="chrome-btn"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      openChangeInPane(abs || w.path);
+                                    }}
+                                  >
+                                    <IconFiles size={13} />
+                                  </button>
+                                </Tip>
                                 <Tip label={tr("changes.openInEditor")}>
                                   <button
                                     type="button"

@@ -256,6 +256,19 @@ export function countLineDelta(
 }
 
 /**
+ * Per-file +/− line stats when both before and after snapshots exist.
+ * Returns `null` when either side is missing (row shows no line chips).
+ */
+export function sessionFileLineDelta(
+  change: Pick<SessionFileChange, "before" | "after">,
+): { added: number; removed: number } | null {
+  if (typeof change.before !== "string" || typeof change.after !== "string") {
+    return null;
+  }
+  return countLineDelta(change.before, change.after);
+}
+
+/**
  * Summarize session file changes for the composer chip.
  * Returns `null` when there are zero changes (chip should be hidden).
  * Line totals only include files that have both before and after content.
@@ -270,8 +283,8 @@ export function summarizeSessionChanges(
   let removed = 0;
   let hasLineStats = false;
   for (const c of changes) {
-    if (typeof c.before === "string" && typeof c.after === "string") {
-      const d = countLineDelta(c.before, c.after);
+    const d = sessionFileLineDelta(c);
+    if (d) {
       added += d.added;
       removed += d.removed;
       hasLineStats = true;
@@ -292,6 +305,60 @@ export function summarizeSessionChanges(
     removedLines: null,
     mode: "files",
   };
+}
+
+/** Source segment of a Changes-list navigation key (`session:…` / `workspace:…`). */
+export type ChangeListSource = "session" | "workspace";
+
+/**
+ * Stable key for j/k navigation and selection restore in the Changes list.
+ * Format: `session:<normalizedPath>` or `workspace:<normalizedPath>`.
+ */
+export function changeListKey(
+  source: ChangeListSource,
+  path: string,
+): string {
+  return `${source}:${normalizePath(path)}`;
+}
+
+export type ChangeListNavDir = "next" | "prev";
+
+/**
+ * Resolve next/previous change-list key (same clamp semantics as sidebar j/k).
+ * Empty list → null; missing current → first (`next`) / last (`prev`).
+ */
+export function nextChangeListKey(
+  keys: readonly string[],
+  current: string | null | undefined,
+  dir: ChangeListNavDir,
+): string | null {
+  if (keys.length === 0) return null;
+  const idx =
+    current == null || current === "" ? -1 : keys.indexOf(current);
+  if (dir === "next") {
+    if (idx < 0) return keys[0] ?? null;
+    if (idx >= keys.length - 1) return keys[keys.length - 1] ?? null;
+    return keys[idx + 1] ?? null;
+  }
+  if (idx < 0) return keys[keys.length - 1] ?? null;
+  if (idx <= 0) return keys[0] ?? null;
+  return keys[idx - 1] ?? null;
+}
+
+/** Parse a {@link changeListKey} back into source + path (best-effort). */
+export function parseChangeListKey(
+  key: string,
+): { source: ChangeListSource; path: string } | null {
+  const raw = (key || "").trim();
+  if (raw.startsWith("session:")) {
+    const path = normalizePath(raw.slice("session:".length));
+    return path ? { source: "session", path } : null;
+  }
+  if (raw.startsWith("workspace:")) {
+    const path = normalizePath(raw.slice("workspace:".length));
+    return path ? { source: "workspace", path } : null;
+  }
+  return null;
 }
 
 /**
