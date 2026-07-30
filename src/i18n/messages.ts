@@ -732,6 +732,18 @@ const en = {
   "plan.openInResources": "Open in resources",
   "plan.expandDetails": "Show steps & details",
   "plan.collapseDetails": "Hide steps & details",
+  "plan.history": "Plan history",
+  "plan.historyTitle": "Plan history",
+  "plan.historyDesc":
+    "Local archive of plans you approved, abandoned, or that finished. Previews only — no secrets. Up to 30 recent entries.",
+  "plan.historyEmpty":
+    "No reviewed plans yet. Approve, dismiss, or finish a plan in a chat to archive it here.",
+  "plan.historyOpen": "Open preview",
+  "plan.historyPreviewTitle": "Plan preview",
+  "plan.historyPreviewEmpty": "(no plan body stored)",
+  "plan.historyDecisionApproved": "Approved",
+  "plan.historyDecisionAbandoned": "Abandoned",
+  "plan.historyDecisionCompleted": "Completed",
 
   // Sticky plan/goal bar
   "planBar.aria": "Plan and goal status",
@@ -3380,6 +3392,18 @@ const zh: Record<MessageKey, string> = {
   "plan.openInResources": "在资源中打开",
   "plan.expandDetails": "展开步骤与详情",
   "plan.collapseDetails": "收起步骤与详情",
+  "plan.history": "计划历史",
+  "plan.historyTitle": "计划历史",
+  "plan.historyDesc":
+    "本地保存你批准、放弃或已完成的计划预览（已脱敏、最多 30 条），不含密钥。",
+  "plan.historyEmpty":
+    "还没有归档的计划。在对话中批准、关闭或完成计划后会出现在这里。",
+  "plan.historyOpen": "打开预览",
+  "plan.historyPreviewTitle": "计划预览",
+  "plan.historyPreviewEmpty": "（未保存计划正文）",
+  "plan.historyDecisionApproved": "已批准",
+  "plan.historyDecisionAbandoned": "已放弃",
+  "plan.historyDecisionCompleted": "已完成",
 
   // Sticky plan/goal bar
   "planBar.aria": "计划与目标状态",

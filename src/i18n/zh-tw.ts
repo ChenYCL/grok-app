@@ -695,6 +695,18 @@ export const zhTW: Record<MessageKey, string> = {
   "plan.openInResources": "在資源中開啟",
   "plan.expandDetails": "展開步驟與詳情",
   "plan.collapseDetails": "收起步驟與詳情",
+  "plan.history": "計劃歷史",
+  "plan.historyTitle": "計劃歷史",
+  "plan.historyDesc":
+    "本機保存你核准、放棄或已完成的計劃預覽（已脫敏、最多 30 筆），不含金鑰。",
+  "plan.historyEmpty":
+    "還沒有封存的計劃。在對話中核准、關閉或完成計劃後會出現在這裡。",
+  "plan.historyOpen": "開啟預覽",
+  "plan.historyPreviewTitle": "計劃預覽",
+  "plan.historyPreviewEmpty": "（未儲存計劃正文）",
+  "plan.historyDecisionApproved": "已核准",
+  "plan.historyDecisionAbandoned": "已放棄",
+  "plan.historyDecisionCompleted": "已完成",
 
   // Sticky plan/goal bar
   "planBar.aria": "計劃與目標狀態",
