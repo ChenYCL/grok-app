@@ -584,6 +584,99 @@ pub fn app_force_quit(app: tauri::AppHandle) {
     app.exit(0);
 }
 
+/// Secondary session window label prefix (`session-<uuid>`). Matches frontend `multiWindow.ts`.
+const SESSION_WINDOW_LABEL_PREFIX: &str = "session-";
+
+/// Sanitize a session id for Tauri window labels (ASCII alnum / `-` / `_` only).
+fn sanitize_session_id_for_label(session_id: &str) -> Option<&str> {
+    let id = session_id.trim();
+    if id.is_empty() {
+        return None;
+    }
+    if !id
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+    {
+        return None;
+    }
+    Some(id)
+}
+
+fn session_window_label(session_id: &str) -> Option<String> {
+    sanitize_session_id_for_label(session_id)
+        .map(|id| format!("{SESSION_WINDOW_LABEL_PREFIX}{id}"))
+}
+
+/// Open (or focus) a secondary webview window for a chat (`#/session/<id>`).
+///
+/// Secondary windows are view-focused: the frontend skips warm-connect / send so
+/// they never steal the Host live slot from the main window. Re-opening the same
+/// session focuses the existing window instead of spawning a third copy.
+#[tauri::command]
+pub fn open_session_window(
+    app: tauri::AppHandle,
+    session_id: String,
+    title: Option<String>,
+) -> Result<(), String> {
+    use tauri::{Manager, WebviewUrl, WebviewWindowBuilder};
+
+    let sid = sanitize_session_id_for_label(&session_id)
+        .ok_or_else(|| "invalid session id for window label".to_string())?;
+    let label = session_window_label(sid).expect("sid already sanitized");
+
+    let win_title = title
+        .as_ref()
+        .map(|s| s.trim())
+        .filter(|s| !s.is_empty())
+        .map(|t| format!("Grok · {t}"))
+        .unwrap_or_else(|| "Grok".to_string());
+
+    if let Some(w) = app.get_webview_window(&label) {
+        let _ = w.set_title(&win_title);
+        let _ = w.show();
+        let _ = w.unminimize();
+        let _ = w.set_focus();
+        return Ok(());
+    }
+
+    // Deep link: frontend parses `#/session/<id>` on boot (view-only mode).
+    let url = format!("index.html#/session/{sid}");
+    WebviewWindowBuilder::new(&app, &label, WebviewUrl::App(url.into()))
+        .title(win_title)
+        .inner_size(1000.0, 720.0)
+        .min_inner_size(720.0, 480.0)
+        .resizable(true)
+        .decorations(true)
+        .center()
+        .build()
+        .map_err(|e| format!("open session window: {e}"))?;
+    Ok(())
+}
+
+#[cfg(test)]
+mod multi_window_tests {
+    use super::*;
+
+    #[test]
+    fn sanitize_session_id_accepts_uuid() {
+        let id = "a1b2c3d4-e5f6-7890-abcd-ef1234567890";
+        assert_eq!(sanitize_session_id_for_label(id), Some(id));
+        assert_eq!(
+            session_window_label(id).as_deref(),
+            Some("session-a1b2c3d4-e5f6-7890-abcd-ef1234567890")
+        );
+    }
+
+    #[test]
+    fn sanitize_session_id_rejects_path_junk() {
+        assert!(sanitize_session_id_for_label("").is_none());
+        assert!(sanitize_session_id_for_label("bad id").is_none());
+        assert!(sanitize_session_id_for_label("../x").is_none());
+        assert!(sanitize_session_id_for_label("a/b").is_none());
+        assert!(session_window_label(" ").is_none());
+    }
+}
+
 #[tauri::command]
 pub async fn session_delete(id: String) -> Result<(), String> {
     store::delete_session(&id)

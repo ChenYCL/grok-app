@@ -143,6 +143,11 @@ pub fn run() {
         // When close-to-tray is off, prevent default so App can confirm if agents are busy
         // — unless keep_tray_for_schedules is on and any automation is enabled (still tray).
         // Tray "Quit Grok" emits the same event (see tray.rs). Force exit: `app_force_quit`.
+        // Close button / Alt+F4 on **main**: hide to tray (default) or ask frontend to quit.
+        // Secondary session windows (`session-*`) always close for real — they must not
+        // hide the whole app to tray or trigger busy-quit confirm for a view-only pane.
+        // Tray "Quit Grok" emits app://close-requested on main (see tray.rs).
+        // Force exit: `app_force_quit`.
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                 use tauri::{Emitter, Manager};
@@ -154,6 +159,12 @@ pub fn run() {
                     any_enabled,
                 );
                 if hide {
+                // Only the primary workbench owns tray-hide / quit-confirm.
+                if window.label() != "main" {
+                    return;
+                }
+                let close_to_tray = store::load_settings().close_to_tray;
+                if close_to_tray {
                     api.prevent_close();
                     tray::hide_to_tray(window.app_handle());
                 } else {
@@ -304,6 +315,7 @@ pub fn run() {
             commands::cli_sessions_import_all,
             commands::cli_sessions_delete,
             commands::session_create,
+            commands::open_session_window,
             commands::session_delete,
             commands::session_rename,
             commands::session_set_archived,
