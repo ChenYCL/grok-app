@@ -55,7 +55,6 @@ import {
   IconClock,
   IconExportMd,
   IconFork,
-  IconRefresh,
   IconRename,
   IconRewind,
   IconTarget,
@@ -63,6 +62,7 @@ import {
 import { formatMessageTime, formatRelativeTime } from "@/lib/accountUi";
 import type { MessageTimeFormat } from "@/lib/messageTimeFormatPref";
 import { formatTokenCount } from "@/lib/contextUsage";
+import type { ModelOption } from "@/lib/grokCatalog";
 import { useStickToBottom } from "@/hooks/useStickToBottom";
 import { useChatMessageVirtualizer } from "@/hooks/useChatMessageVirtualizer";
 import { estimateChatRowHeight } from "@/lib/chatVirtualList";
@@ -70,6 +70,7 @@ import { StructuredJsonPanel } from "./StructuredJsonPanel";
 import {
   MessageActionButton,
   MessageCopyButton,
+  MessageRegenerateButton,
 } from "./MessageAction";
 import { ChatItem } from "./ChatItem";
 import { MarkdownChat } from "./MarkdownChat";
@@ -392,9 +393,17 @@ export interface ConversationThreadProps {
   /**
    * Regenerate last assistant reply (resend last user turn unchanged).
    * Gated like edit-last-user: idle session, last completed assistant only.
+   * Optional `modelId` switches session model before resend when it differs.
    */
   canRegenerate?: boolean;
-  onRegenerateAssistant?: (message: ChatMessage) => void;
+  onRegenerateAssistant?: (
+    message: ChatMessage,
+    opts?: { modelId?: string },
+  ) => void;
+  /** Live model catalog for regenerate-with-model menu (optional). */
+  regenerateModels?: ModelOption[];
+  /** Current composer/session model id (highlight + same-model baseline). */
+  regenerateModelId?: string;
   /** Idle session — allow rewind / fork from user bubbles. */
   canRewindSession?: boolean;
   onRewindToUserMessage?: (message: ChatMessage) => void;
@@ -469,6 +478,8 @@ export function ConversationThread({
   onRemoveEditAttachment,
   canRegenerate = false,
   onRegenerateAssistant,
+  regenerateModels = [],
+  regenerateModelId = "",
   canRewindSession = false,
   onRewindToUserMessage,
   onForkFromUserMessage,
@@ -1321,16 +1332,22 @@ export function ConversationThread({
                     </span>
                     {canRegenError ? (
                       <span className="lobe-chat-error__actions">
-                        <MessageActionButton
+                        <MessageRegenerateButton
                           label={tr("message.regenerate")}
+                          sameModelLabel={tr("message.regenerateSameModel")}
+                          pickModelLabel={tr("message.regeneratePickModel")}
                           disabled={!canRegenerate}
-                          onClick={() => {
+                          models={regenerateModels}
+                          currentModelId={regenerateModelId}
+                          iconSize={14}
+                          onRegenerate={(modelId) => {
                             if (!canRegenerate) return;
-                            onRegenerateAssistant?.(m);
+                            onRegenerateAssistant?.(
+                              m,
+                              modelId ? { modelId } : undefined,
+                            );
                           }}
-                        >
-                          <IconRefresh size={14} />
-                        </MessageActionButton>
+                        />
                       </span>
                     ) : null}
                   </div>
@@ -1564,16 +1581,21 @@ export function ConversationThread({
                         </>
                       ) : null}
                       {showRegen ? (
-                        <MessageActionButton
+                        <MessageRegenerateButton
                           label={tr("message.regenerate")}
+                          sameModelLabel={tr("message.regenerateSameModel")}
+                          pickModelLabel={tr("message.regeneratePickModel")}
                           disabled={!canRegenerate}
-                          onClick={() => {
+                          models={regenerateModels}
+                          currentModelId={regenerateModelId}
+                          onRegenerate={(modelId) => {
                             if (!canRegenerate) return;
-                            onRegenerateAssistant?.(m);
+                            onRegenerateAssistant?.(
+                              m,
+                              modelId ? { modelId } : undefined,
+                            );
                           }}
-                        >
-                          <IconRefresh size={15} />
-                        </MessageActionButton>
+                        />
                       ) : null}
                     </>
                   );

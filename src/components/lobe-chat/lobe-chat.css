@@ -358,6 +358,21 @@ html[data-msg-actions="always"] .lobe-chat-item__actions {
   color: var(--success, #3ecf8e);
 }
 
+/* Regenerate: primary refresh + optional model chevron (split control). */
+.lobe-chat-regen {
+  display: inline-flex;
+  align-items: center;
+  gap: 0;
+  vertical-align: middle;
+}
+.lobe-chat-regen .lobe-chat-action {
+  border-radius: 8px;
+}
+.lobe-chat-regen__chevron {
+  width: 20px;
+  margin-inline-start: -2px;
+}
+
 /* ── Markdown body ── */
 .chat-md,
 .lobe-chat-md {
