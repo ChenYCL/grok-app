@@ -1001,6 +1001,17 @@ export const zhTW: Record<MessageKey, string> = {
   "settings.cliSessionsSource": "掃描路徑 {path}",
   "settings.cliSessionsIndependentNote":
     "獨立模式使用應用程式 agent-home（~/.grok-app/agent-home），可能與終端機 CLI 的 ~/.grok 工作階段不一致。仍可匯入聊天紀錄到應用程式；若需與終端機同一 on-disk 工作階段繼續，請切換到共用模式。",
+  "settings.cliSessionsDelete": "刪除",
+  "settings.cliSessionsDeleting": "刪除中…",
+  "settings.cliSessionsDeleted": "已從磁碟刪除「{title}」",
+  "settings.cliSessionsDeletedN": "已刪除 {n} 個磁碟工作階段",
+  "settings.cliSessionsDeleteConfirmTitle": "從磁碟刪除 CLI 工作階段？",
+  "settings.cliSessionsDeleteConfirmMsg":
+    "將刪除 GROK_HOME 下的 on-disk CLI 工作階段「{title}」。已關聯的應用程式內聊天會保留。此操作無法復原。",
+  "settings.cliSessionsDeleteUnlinked": "刪除全部未關聯（{n}）",
+  "settings.cliSessionsDeleteUnlinkedConfirmTitle": "刪除全部未關聯 CLI 工作階段？",
+  "settings.cliSessionsDeleteUnlinkedConfirmMsg":
+    "將刪除 GROK_HOME 下 {n} 個未關聯的 on-disk CLI 工作階段。已關聯的應用程式內聊天會保留。此操作無法復原。",
   "settings.storeApiKeysInKeychain": "以系統鑰匙圈儲存 API Key",
   "settings.storeApiKeysInKeychainDesc":
     "預設關閉：金鑰寫在應用資料目錄（0600）。開啟後寫入系統鑰匙圈，系統可能要求一次授權。官方登入仍走 Grok Build 驗證，不受此項影響。",

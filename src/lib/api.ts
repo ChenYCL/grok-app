@@ -964,6 +964,20 @@ export async function cliSessionsImportAll(limit?: number) {
   >("cli_sessions_import_all", { limit: limit ?? 50 });
 }
 
+/**
+ * Delete one on-disk CLI session under active GROK_HOME.
+ * Prefer passing `dir` from list. Does not delete App chats.
+ */
+export async function cliSessionDelete(
+  agentSessionId: string,
+  opts?: { dir?: string | null },
+) {
+  return invoke<void>("cli_sessions_delete", {
+    agentSessionId,
+    dir: opts?.dir ?? null,
+  });
+}
+
 export async function sessionCreate(
   projectId?: string,
   title?: string,

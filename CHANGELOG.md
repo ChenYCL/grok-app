@@ -54,6 +54,7 @@ See `docs/llm-wiki/release.md`.
 - **Marketplace plugin detail**: clicking a catalog plugin opens a real detail panel (name, description, marketplace, version, skill/hooks/agents/MCP badges) with Install / Reinstall — not a stub
 - **Install failure recovery**: last install error stays on that plugin row with **Retry**; cleared on success
 - Installed **Details** shows structured marketplace/provides summary when available (plus CLI `plugin details` body)
+- **Delete CLI sessions from disk** (Settings → Agent / CLI sessions): per-row delete + delete all unlinked; path-scoped under active `GROK_HOME/sessions`; linked App chats stay
 
 ### Fixed
 
@@ -74,6 +75,7 @@ See `docs/llm-wiki/release.md`.
 - **权限/CLI**：对齐 `--permission-mode` 映射与 spawn；设置页展示 CLI 标签与高级选择；新增 **Auto** 策略
 - **扩展/市场**：目录插件详情面板（描述/版本/组件徽章 + 安装/重装）；安装失败保留行内错误与重试；已安装详情在有 provides 时展示结构化摘要
 - **权限/CLI**：对齐 `--permission-mode` 映射与 spawn；设置页展示 CLI 标签与高级选择；新增 **Auto** 策略；Doctor 修复深度（安全批量修复横幅 / 破坏性逐条确认）
+- **权限/CLI**：对齐 `--permission-mode` 映射与 spawn；设置页展示 CLI 标签与高级选择；新增 **Auto** 策略；**删除磁盘 CLI 会话**（单条 / 全部未关联；限定 `GROK_HOME/sessions`；应用内已关联聊天保留）
 
 **中文 · 修复**
 

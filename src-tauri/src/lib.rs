@@ -286,6 +286,7 @@ pub fn run() {
             commands::cli_sessions_list,
             commands::cli_session_import,
             commands::cli_sessions_import_all,
+            commands::cli_sessions_delete,
             commands::session_create,
             commands::session_delete,
             commands::session_rename,

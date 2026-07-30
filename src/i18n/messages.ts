@@ -1055,6 +1055,18 @@ const en = {
   "settings.cliSessionsSource": "Scanning {path}",
   "settings.cliSessionsIndependentNote":
     "Independent mode uses the app agent-home (~/.grok-app/agent-home), which may differ from terminal CLI sessions under ~/.grok. Import still copies chat history into the app; agent resume may not find the same on-disk session unless you switch to shared mode.",
+  "settings.cliSessionsDelete": "Delete",
+  "settings.cliSessionsDeleting": "Deleting…",
+  "settings.cliSessionsDeleted": "Deleted “{title}” from disk",
+  "settings.cliSessionsDeletedN": "Deleted {n} on-disk session(s)",
+  "settings.cliSessionsDeleteConfirmTitle": "Delete CLI session from disk?",
+  "settings.cliSessionsDeleteConfirmMsg":
+    "Deletes the on-disk CLI session under GROK_HOME (“{title}”). Linked App chats stay. This cannot be undone.",
+  "settings.cliSessionsDeleteUnlinked": "Delete all unlinked ({n})",
+  "settings.cliSessionsDeleteUnlinkedConfirmTitle":
+    "Delete all unlinked CLI sessions?",
+  "settings.cliSessionsDeleteUnlinkedConfirmMsg":
+    "Deletes {n} unlinked on-disk CLI session(s) under GROK_HOME. Linked App chats stay. This cannot be undone.",
   "settings.storeApiKeysInKeychain": "Store API keys in system keychain",
   "settings.storeApiKeysInKeychainDesc":
     "Off by default: keys stay in the app data folder (mode 0600). Turn on to use the OS keychain — the system may ask once. Official login still uses Grok Build auth.",
@@ -4033,6 +4045,17 @@ const zh: Record<MessageKey, string> = {
   "settings.cliSessionsSource": "扫描路径 {path}",
   "settings.cliSessionsIndependentNote":
     "独立模式使用应用 agent-home（~/.grok-app/agent-home），可能与终端 CLI 的 ~/.grok 会话不一致。仍可导入聊天记录到应用；若需与终端同一 on-disk 会话继续，请切换到共享模式。",
+  "settings.cliSessionsDelete": "删除",
+  "settings.cliSessionsDeleting": "删除中…",
+  "settings.cliSessionsDeleted": "已从磁盘删除「{title}」",
+  "settings.cliSessionsDeletedN": "已删除 {n} 个磁盘会话",
+  "settings.cliSessionsDeleteConfirmTitle": "从磁盘删除 CLI 会话？",
+  "settings.cliSessionsDeleteConfirmMsg":
+    "将删除 GROK_HOME 下的 on-disk CLI 会话「{title}」。已关联的应用内聊天会保留。此操作不可撤销。",
+  "settings.cliSessionsDeleteUnlinked": "删除全部未关联（{n}）",
+  "settings.cliSessionsDeleteUnlinkedConfirmTitle": "删除全部未关联 CLI 会话？",
+  "settings.cliSessionsDeleteUnlinkedConfirmMsg":
+    "将删除 GROK_HOME 下 {n} 个未关联的 on-disk CLI 会话。已关联的应用内聊天会保留。此操作不可撤销。",
   "settings.storeApiKeysInKeychain": "用系统钥匙串保存 API Key",
   "settings.storeApiKeysInKeychainDesc":
     "默认关闭：密钥写在应用数据目录（0600）。开启后写入系统钥匙串，系统可能要求一次授权。官方登录仍走 Grok Build 鉴权，不受此项影响。",

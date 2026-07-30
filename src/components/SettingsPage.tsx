@@ -5675,7 +5675,7 @@ function ShortcutsSettingsPanel({
   );
 }
 
-/** List / import / open Grok Build CLI sessions from active GROK_HOME. */
+/** List / import / open / delete Grok Build CLI sessions from active GROK_HOME. */
 function CliSessionsPanel({
   t,
   sessionDataMode,
@@ -5694,6 +5694,11 @@ function CliSessionsPanel({
   const [status, setStatus] = useState<string | null>(null);
   const [filterQuery, setFilterQuery] = useState("");
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [deleteConfirm, setDeleteConfirm] = useState<
+    | null
+    | { kind: "one"; row: api.CliSessionSummary }
+    | { kind: "unlinked"; count: number }
+  >(null);
   const isIndependent = sessionDataMode !== "shared";
 
   const refresh = useCallback(async () => {
@@ -5719,7 +5724,7 @@ function CliSessionsPanel({
     () => filterCliSessions(rows, filterQuery),
     [rows, filterQuery],
   );
-  /** Bulk import always targets the full list (not the filter). */
+  /** Bulk import / delete unlinked always targets the full list (not the filter). */
   const pending = countUnlinkedCliSessions(rows);
   const sourceHome =
     rows.find((r) => r.sourceHome)?.sourceHome ??
@@ -5786,6 +5791,60 @@ function CliSessionsPanel({
     }
   };
 
+  const runDeleteOne = async (row: api.CliSessionSummary) => {
+    setBusyId(row.agentSessionId);
+    setError(null);
+    setStatus(null);
+    try {
+      await api.cliSessionDelete(row.agentSessionId, { dir: row.dir });
+      setDeleteConfirm(null);
+      setStatus(t("settings.cliSessionsDeleted", { title: row.title }));
+      await refresh();
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  const runDeleteUnlinked = async () => {
+    const targets = rows.filter((r) => !r.alreadyLinked);
+    if (targets.length === 0) {
+      setDeleteConfirm(null);
+      return;
+    }
+    setBusyId("__delete_unlinked__");
+    setError(null);
+    setStatus(null);
+    let deleted = 0;
+    const errors: string[] = [];
+    try {
+      for (const row of targets) {
+        try {
+          await api.cliSessionDelete(row.agentSessionId, { dir: row.dir });
+          deleted += 1;
+        } catch (e) {
+          errors.push(`${row.agentSessionId}: ${String(e)}`);
+        }
+      }
+      setDeleteConfirm(null);
+      setStatus(
+        t("settings.cliSessionsDeletedN", { n: String(deleted) }),
+      );
+      if (errors.length > 0) {
+        setError(errors.slice(0, 3).join("; "));
+      }
+      await refresh();
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  const deleteBusy =
+    busyId === "__delete_unlinked__" ||
+    (deleteConfirm?.kind === "one" &&
+      busyId === deleteConfirm.row.agentSessionId);
+
   return (
     <div
       className="settings-row settings-row--stack"
@@ -5822,6 +5881,20 @@ function CliSessionsPanel({
             {busyId === "__all__"
               ? t("settings.cliSessionsImporting")
               : t("settings.cliSessionsImportAll", { n: String(pending) })}
+          </button>
+          <button
+            type="button"
+            className="btn btn--ghost btn--danger"
+            disabled={loading || !!busyId || pending === 0}
+            onClick={() =>
+              setDeleteConfirm({ kind: "unlinked", count: pending })
+            }
+          >
+            {busyId === "__delete_unlinked__"
+              ? t("settings.cliSessionsDeleting")
+              : t("settings.cliSessionsDeleteUnlinked", {
+                  n: String(pending),
+                })}
           </button>
         </div>
         {rows.length > 0 ? (
@@ -5942,6 +6015,25 @@ function CliSessionsPanel({
                           : t("settings.cliSessionsImportOpen")}
                       </button>
                     )}
+                    <button
+                      type="button"
+                      className="btn btn--ghost btn--sm btn--danger"
+                      disabled={!!busyId}
+                      title={t("settings.cliSessionsDeleteConfirmMsg", {
+                        title: r.title,
+                      })}
+                      aria-label={t("settings.cliSessionsDelete")}
+                      onClick={() =>
+                        setDeleteConfirm({ kind: "one", row: r })
+                      }
+                    >
+                      <IconTrash size={13} />
+                      <span>
+                        {busy
+                          ? t("settings.cliSessionsDeleting")
+                          : t("settings.cliSessionsDelete")}
+                      </span>
+                    </button>
                   </div>
                 </li>
               );
@@ -5949,6 +6041,60 @@ function CliSessionsPanel({
           </ul>
         )}
       </div>
+
+      <GlassModal
+        open={!!deleteConfirm}
+        onClose={() => {
+          if (!deleteBusy) setDeleteConfirm(null);
+        }}
+        title={
+          deleteConfirm?.kind === "unlinked"
+            ? t("settings.cliSessionsDeleteUnlinkedConfirmTitle")
+            : t("settings.cliSessionsDeleteConfirmTitle")
+        }
+        size="sm"
+        closeLabel={t("common.close")}
+        closeOnOverlay={!deleteBusy}
+        footer={
+          <>
+            <button
+              type="button"
+              className="btn btn--ghost"
+              disabled={deleteBusy}
+              onClick={() => setDeleteConfirm(null)}
+            >
+              {t("common.cancel")}
+            </button>
+            <button
+              type="button"
+              className="btn btn--danger"
+              disabled={deleteBusy || !deleteConfirm}
+              onClick={() => {
+                if (!deleteConfirm) return;
+                if (deleteConfirm.kind === "unlinked") {
+                  void runDeleteUnlinked();
+                } else {
+                  void runDeleteOne(deleteConfirm.row);
+                }
+              }}
+            >
+              {deleteBusy
+                ? t("settings.cliSessionsDeleting")
+                : t("settings.cliSessionsDelete")}
+            </button>
+          </>
+        }
+      >
+        <p className="settings-row__desc" style={{ margin: 0 }}>
+          {deleteConfirm?.kind === "unlinked"
+            ? t("settings.cliSessionsDeleteUnlinkedConfirmMsg", {
+                n: String(deleteConfirm.count),
+              })
+            : t("settings.cliSessionsDeleteConfirmMsg", {
+                title: deleteConfirm?.row.title ?? "",
+              })}
+        </p>
+      </GlassModal>
     </div>
   );
 }

@@ -616,14 +616,18 @@ export const SETTINGS_ENTRIES: readonly SettingsEntry[] = [
       "settings.cliSessionsDesc",
       "settings.cliSessionsIndependentNote",
       "settings.cliSessionsImportOpen",
+      "settings.cliSessionsDelete",
+      "settings.cliSessionsDeleteUnlinked",
     ],
     keywords: [
       "cli sessions",
       "import session",
       "agent session id",
       "resume",
+      "delete session",
       "CLI 会话",
       "导入会话",
+      "删除会话",
     ],
   },
   {
