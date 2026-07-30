@@ -1,13 +1,17 @@
 import { describe, expect, it } from "vitest";
 import {
+  countMcpDoctorFindings,
   detectAuthToneFromText,
+  filterMcpDoctorFindings,
   indexDoctorServerStatuses,
   inferMcpStatusTone,
   lookupServerStatus,
   mapIssuesToServers,
   mcpAuthGuidanceKey,
+  mcpDoctorFindingTone,
   mcpStatusBadgeMod,
   mcpStatusLabelKey,
+  normalizeMcpDoctorFindings,
   redactMcpText,
   statusFromDoctorServer,
   type McpDoctorReportLike,
@@ -262,5 +266,119 @@ describe("label / badge / guidance helpers", () => {
       "ext.mcp.auth.requiredHint",
     );
     expect(mcpAuthGuidanceKey("error")).toBeNull();
+  });
+});
+
+describe("normalizeMcpDoctorFindings", () => {
+  it("flattens checks into { id, level, title, detail, server }", () => {
+    const rows = normalizeMcpDoctorFindings(DOCTOR_FIXTURE);
+    expect(rows.length).toBeGreaterThanOrEqual(3);
+
+    const ok = rows.find((r) => r.server === "context7");
+    expect(ok?.level).toBe("ok");
+    expect(ok?.title).toMatch(/server started/i);
+    expect(ok?.id).toBeTruthy();
+
+    const gh = rows.find(
+      (r) => r.server === "github" && /handshake/i.test(r.title),
+    );
+    expect(gh?.level).toBe("fail");
+    expect(gh?.detail).toMatch(/401|expired|re-authenticate/i);
+
+    const broken = rows.find((r) => r.server === "broken");
+    expect(broken?.level).toBe("fail");
+    expect(broken?.detail).toMatch(/refused|check remote/i);
+  });
+
+  it("includes top-level issues with optional server", () => {
+    const rows = normalizeMcpDoctorFindings(DOCTOR_FIXTURE);
+    const orphan = rows.find((r) => r.server === "orphan-svc");
+    expect(orphan?.level).toBe("fail");
+    expect(orphan?.title).toMatch(/auth required/i);
+
+    const unscoped = rows.find(
+      (r) => !r.server && /slow startup/i.test(r.title),
+    );
+    expect(unscoped?.level).toBe("warn");
+  });
+
+  it("filters by server name (case-insensitive) and skips unscoped by default", () => {
+    const rows = normalizeMcpDoctorFindings(DOCTOR_FIXTURE, {
+      server: "GITHUB",
+    });
+    expect(rows.length).toBeGreaterThan(0);
+    expect(rows.every((r) => r.server?.toLowerCase() === "github")).toBe(
+      true,
+    );
+    // Unscoped "slow startup" must not appear when filter is set.
+    expect(rows.some((r) => /slow startup/i.test(r.title))).toBe(false);
+  });
+
+  it("can include unscoped rows when filtering", () => {
+    const rows = normalizeMcpDoctorFindings(DOCTOR_FIXTURE, {
+      server: "github",
+      includeUnscoped: true,
+    });
+    expect(rows.some((r) => r.server?.toLowerCase() === "github")).toBe(true);
+    expect(rows.some((r) => !r.server && /slow/i.test(r.title))).toBe(true);
+  });
+
+  it("never invents servers — empty report yields no rows", () => {
+    expect(normalizeMcpDoctorFindings(null)).toEqual([]);
+    expect(normalizeMcpDoctorFindings({})).toEqual([]);
+    expect(
+      normalizeMcpDoctorFindings({
+        servers: [{ healthy: true }], // no name → skipped
+      }),
+    ).toEqual([]);
+  });
+
+  it("redacts secrets in title/detail", () => {
+    const rows = normalizeMcpDoctorFindings({
+      servers: [
+        {
+          name: "leaky",
+          healthy: false,
+          checks: [
+            {
+              label: "auth",
+              passed: false,
+              detail: "API_TOKEN=supersecretvalue123 failed",
+            },
+          ],
+        },
+      ],
+    });
+    const joined = rows.map((r) => `${r.title} ${r.detail}`).join(" ");
+    expect(joined).not.toContain("supersecretvalue123");
+    expect(joined).toContain("[REDACTED]");
+  });
+
+  it("emits rawText fallback when no structured findings", () => {
+    const rows = normalizeMcpDoctorFindings({
+      rawText: "doctor crashed: connection reset",
+    });
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.level).toBe("fail");
+    expect(rows[0]?.detail).toMatch(/connection reset/i);
+  });
+
+  it("counts and filters findings", () => {
+    const rows = normalizeMcpDoctorFindings(DOCTOR_FIXTURE);
+    const counts = countMcpDoctorFindings(rows);
+    expect(counts.total).toBe(rows.length);
+    expect(counts.ok + counts.warn + counts.fail).toBe(counts.total);
+
+    const filtered = filterMcpDoctorFindings(rows, "github");
+    expect(filtered.every((r) => /github/i.test(`${r.server} ${r.title} ${r.detail}`))).toBe(
+      true,
+    );
+    expect(filterMcpDoctorFindings(rows, "").length).toBe(rows.length);
+  });
+
+  it("maps finding levels to status tones", () => {
+    expect(mcpDoctorFindingTone("ok")).toBe("ok");
+    expect(mcpDoctorFindingTone("warn")).toBe("warn");
+    expect(mcpDoctorFindingTone("fail")).toBe("error");
   });
 });

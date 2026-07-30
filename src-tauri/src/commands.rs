@@ -6821,6 +6821,10 @@ pub fn refuse_remove_main_worktree(
 // from PR #68
 
 /// Invoke CLI doctor with GROK_HOME matching session_data_mode.
+///
+/// Runs `grok mcp doctor --json [NAME]` with a hard timeout. Errors are
+/// redacted/truncated so secrets never leave the host. Returns a structured
+/// report (JSON-serializable) — never invents servers.
 fn run_mcp_doctor(name: Option<&str>) -> Result<crate::extensions::McpDoctorReport, String> {
     let settings = store::load_settings();
     let probe = cli_probe::probe_cli(settings.manual_cli_path.as_deref());
@@ -6831,7 +6835,15 @@ fn run_mcp_doctor(name: Option<&str>) -> Result<crate::extensions::McpDoctorRepo
 
     let mut args: Vec<String> = vec!["mcp".into(), "doctor".into(), "--json".into()];
     if let Some(n) = name {
-        args.push(n.to_string());
+        // Reject flag-like / path injection in the optional server name.
+        let n = n.trim();
+        if n.is_empty() {
+            // no-op
+        } else if n.starts_with('-') || n.contains('/') || n.contains('\\') || n.contains('\0') {
+            return Err("invalid MCP server name".into());
+        } else {
+            args.push(n.to_string());
+        }
     }
 
     let (tx, rx) = std::sync::mpsc::channel();
@@ -6858,14 +6870,18 @@ fn run_mcp_doctor(name: Option<&str>) -> Result<crate::extensions::McpDoctorRepo
             };
             if blob.is_empty() {
                 return Err(if !stderr.is_empty() {
-                    stderr.chars().take(400).collect()
+                    // Never surface raw secrets from CLI stderr.
+                    redact_doctor_fix_output(&stderr, 400)
                 } else {
                     "mcp doctor returned no output".into()
                 });
             }
             Ok(crate::extensions::parse_mcp_doctor_json(&blob))
         }
-        Ok(Err(e)) => Err(format!("Failed to run grok mcp doctor: {e}")),
+        Ok(Err(e)) => Err(format!(
+            "Failed to run grok mcp doctor: {}",
+            redact_doctor_fix_output(&e.to_string(), 240)
+        )),
         Err(_) => Err(format!(
             "grok mcp doctor timed out after {MCP_DOCTOR_TIMEOUT_SECS}s"
         )),

@@ -519,3 +519,282 @@ export function mcpAuthGuidanceKey(
   if (tone === "auth_required") return "ext.mcp.auth.requiredHint";
   return null;
 }
+
+// ── Flat doctor finding rows (McpStatusModal / Extensions findings list) ─────
+
+/** Finding severity for MCP doctor rows. */
+export type McpDoctorFindingLevel = "ok" | "warn" | "fail";
+
+/**
+ * One normalized finding for UI lists.
+ * Built only from CLI/host report data — never invents servers.
+ */
+export type McpDoctorFindingRow = {
+  id: string;
+  level: McpDoctorFindingLevel;
+  title: string;
+  detail: string;
+  /** Server name when the finding is scoped; omit/null for global. */
+  server?: string | null;
+};
+
+function levelFromPassed(passed: boolean | null | undefined): McpDoctorFindingLevel {
+  if (passed === true) return "ok";
+  if (passed === false) return "fail";
+  return "warn";
+}
+
+function levelFromIssueLike(
+  issue: string | McpDoctorIssueLike,
+  text: string,
+): McpDoctorFindingLevel {
+  if (typeof issue !== "string") {
+    const raw =
+      asString(issue.level) ||
+      asString(issue.status) ||
+      "";
+    const l = raw.trim().toLowerCase();
+    if (["ok", "pass", "passed", "healthy", "info", "note"].includes(l)) {
+      return "ok";
+    }
+    if (["warn", "warning", "degraded", "recommend", "recommendation"].includes(l)) {
+      return "warn";
+    }
+    if (
+      ["fail", "failed", "error", "critical", "issue", "unhealthy", "bad"].includes(l)
+    ) {
+      return "fail";
+    }
+  }
+  const auth = detectAuthToneFromText(text);
+  if (auth) return "fail";
+  if (ERROR_RE.test(text)) return "fail";
+  if (WARN_RE.test(text)) return "warn";
+  // Unscoped free-text issues default to warn (not inventing hard fail).
+  return "warn";
+}
+
+function slugIdPart(s: string): string {
+  return s
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9._-]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 48);
+}
+
+/**
+ * Normalize a doctor report into flat finding rows.
+ *
+ * Sources (in order):
+ * 1. Per-server `checks[]` (label/passed/detail/hint)
+ * 2. Per-server `issues[]` / error / message
+ * 3. Top-level `issues[]`
+ *
+ * Does **not** invent servers — only emits rows for names present in the report.
+ * Optional `server` filter keeps rows for that name (case-insensitive) plus
+ * unscoped rows when `includeUnscoped` is true (default false when filtering).
+ */
+export function normalizeMcpDoctorFindings(
+  report: McpDoctorReportLike | null | undefined,
+  opts?: {
+    /** When set, only rows for this server (and optional unscoped). */
+    server?: string | null;
+    /** Include unscoped (no server) rows when filtering. Default false. */
+    includeUnscoped?: boolean;
+  },
+): McpDoctorFindingRow[] {
+  if (!report) return [];
+
+  const filterName = opts?.server?.trim() || null;
+  const filterLower = filterName ? filterName.toLowerCase() : null;
+  const includeUnscoped =
+    opts?.includeUnscoped ?? (filterLower == null ? true : false);
+
+  const rows: McpDoctorFindingRow[] = [];
+  const seen = new Set<string>();
+
+  const push = (row: McpDoctorFindingRow) => {
+    const title = redactMcpText(row.title).trim();
+    if (!title) return;
+    const detail = redactMcpText(row.detail).trim();
+    const server = row.server?.trim() || null;
+
+    if (filterLower) {
+      const sLower = server?.toLowerCase() ?? null;
+      if (sLower == null) {
+        if (!includeUnscoped) return;
+      } else if (sLower !== filterLower) {
+        return;
+      }
+    }
+
+    const id = row.id || `finding-${rows.length}`;
+    // Dedupe by id+title+server to avoid double-mapping the same check.
+    const dedupeKey = `${id}|${title}|${server ?? ""}`;
+    if (seen.has(dedupeKey)) return;
+    seen.add(dedupeKey);
+
+    rows.push({
+      id,
+      level: row.level,
+      title: title.slice(0, 200),
+      detail: detail.slice(0, 600),
+      server,
+    });
+  };
+
+  const servers = Array.isArray(report.servers) ? report.servers : [];
+  for (const server of servers) {
+    if (!server) continue;
+    const name = asString(server.name);
+    if (!name) continue; // never invent a server name
+
+    const checks = Array.isArray(server.checks) ? server.checks : [];
+    checks.forEach((c, i) => {
+      if (!c) return;
+      const label = asString(c.label) ?? `check-${i + 1}`;
+      const detailParts = [asString(c.detail), asString(c.hint), asString(c.message)]
+        .filter(Boolean) as string[];
+      const passed =
+        typeof c.passed === "boolean" ? c.passed : null;
+      push({
+        id: `${slugIdPart(name)}.check.${i}.${slugIdPart(label) || i}`,
+        level: levelFromPassed(passed),
+        title: label,
+        detail: detailParts.join(" — "),
+        server: name,
+      });
+    });
+
+    // Server-level issues / error when no structured checks (or extra signal).
+    const serverIssues = Array.isArray(server.issues) ? server.issues : [];
+    serverIssues.forEach((issue, i) => {
+      const text =
+        typeof issue === "string"
+          ? issue
+          : issueText(issue as McpDoctorIssueLike);
+      if (!text.trim()) return;
+      push({
+        id: `${slugIdPart(name)}.issue.${i}`,
+        level: levelFromIssueLike(issue as string | McpDoctorIssueLike, text),
+        title: text.slice(0, 120),
+        detail: text,
+        server: name,
+      });
+    });
+
+    if (server.error) {
+      const text = String(server.error);
+      push({
+        id: `${slugIdPart(name)}.error`,
+        level: "fail",
+        title: "Server error",
+        detail: text,
+        server: name,
+      });
+    } else if (server.message && checks.length === 0 && serverIssues.length === 0) {
+      const text = String(server.message);
+      const healthy =
+        typeof server.healthy === "boolean" ? server.healthy : null;
+      push({
+        id: `${slugIdPart(name)}.message`,
+        level:
+          healthy === true
+            ? "ok"
+            : healthy === false
+              ? "fail"
+              : levelFromIssueLike(text, text),
+        title: text.slice(0, 120),
+        detail: text,
+        server: name,
+      });
+    }
+
+    // Healthy server with zero checks → one synthetic ok row so the list
+    // still shows the server was examined (name still comes from CLI).
+    if (
+      checks.length === 0 &&
+      serverIssues.length === 0 &&
+      !server.error &&
+      !server.message &&
+      server.healthy === true
+    ) {
+      push({
+        id: `${slugIdPart(name)}.healthy`,
+        level: "ok",
+        title: "Healthy",
+        detail: "",
+        server: name,
+      });
+    }
+  }
+
+  // Top-level issues (may reference servers by name or be unscoped).
+  const topIssues = Array.isArray(report.issues) ? report.issues : [];
+  topIssues.forEach((issue, i) => {
+    const text = issueText(issue);
+    if (!text.trim()) return;
+    const server = issueServerName(issue);
+    push({
+      id: `issue.${i}.${slugIdPart(server || text) || i}`,
+      level: levelFromIssueLike(issue, text),
+      title: text.slice(0, 120),
+      detail: text,
+      server,
+    });
+  });
+
+  // Raw non-JSON fallback excerpt (unscoped fail).
+  if (rows.length === 0 && report.rawText) {
+    const excerpt = redactMcpText(String(report.rawText)).trim();
+    if (excerpt) {
+      push({
+        id: "raw",
+        level: "fail",
+        title: "Doctor output",
+        detail: excerpt.slice(0, 600),
+        server: null,
+      });
+    }
+  }
+
+  return rows;
+}
+
+/** Count finding rows by level (for summary chips). */
+export function countMcpDoctorFindings(
+  rows: McpDoctorFindingRow[],
+): { ok: number; warn: number; fail: number; total: number } {
+  let ok = 0;
+  let warn = 0;
+  let fail = 0;
+  for (const r of rows) {
+    if (r.level === "ok") ok += 1;
+    else if (r.level === "warn") warn += 1;
+    else fail += 1;
+  }
+  return { ok, warn, fail, total: rows.length };
+}
+
+/** Filter finding rows by free-text query (title / detail / server). */
+export function filterMcpDoctorFindings(
+  rows: McpDoctorFindingRow[],
+  query: string | null | undefined,
+): McpDoctorFindingRow[] {
+  const q = (query ?? "").trim().toLowerCase();
+  if (!q) return rows;
+  return rows.filter((r) => {
+    const hay = `${r.title} ${r.detail} ${r.server ?? ""} ${r.id}`.toLowerCase();
+    return hay.includes(q);
+  });
+}
+
+/** CSS / badge level → tone for existing badge helpers. */
+export function mcpDoctorFindingTone(
+  level: McpDoctorFindingLevel,
+): McpStatusTone {
+  if (level === "ok") return "ok";
+  if (level === "warn") return "warn";
+  return "error";
+}
