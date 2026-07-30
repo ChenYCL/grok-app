@@ -114,7 +114,7 @@ export const zhTW: Record<MessageKey, string> = {
   "session.unmute": "取消靜音通知",
   "session.muted": "已靜音桌面通知",
   "session.unreadAria": "未讀 — 背景回合已完成",
-  "session.note": "對話備註…",
+  "session.note": "對話備註",
   "session.noteTitle": "對話備註",
   "session.notePlaceholder": "此對話的私人備註（不會傳送給 Agent）",
   "session.noteHint":
@@ -124,7 +124,7 @@ export const zhTW: Record<MessageKey, string> = {
   "session.noteCleared": "備註已清除",
   "session.noteAria": "此對話有備註",
   "session.noteChars": "{n}/{max}",
-  "session.rules": "工作階段規則…",
+  "session.rules": "工作階段規則",
   "session.rulesTitle": "工作階段規則",
   "session.rulesPlaceholder": "僅本對話的額外規則（透過 --rules 附加）",
   "session.rulesHint":
@@ -133,8 +133,8 @@ export const zhTW: Record<MessageKey, string> = {
   "session.rulesSaved": "工作階段規則已儲存 — 下一回合將重新載入 Agent",
   "session.rulesCleared": "已清除工作階段規則",
   "session.rulesChars": "{n}/{max}",
-  "session.maxTurns": "最大 Agent 輪次…",
-  "session.maxTurnsCount": "最大 Agent 輪次…（{n}）",
+  "session.maxTurns": "最大 Agent 輪次",
+  "session.maxTurnsCount": "最大 Agent 輪次（{n}）",
   "session.maxTurnsTitle": "工作階段最大 Agent 輪次",
   "session.maxTurnsPlaceholder": "繼承全域（留空或 0）",
   "session.maxTurnsHint":
@@ -143,8 +143,8 @@ export const zhTW: Record<MessageKey, string> = {
   "session.maxTurnsClear": "使用全域",
   "session.maxTurnsSaved": "工作階段最大輪次已儲存 — 下一回合將重新載入 Agent",
   "session.maxTurnsCleared": "已清除工作階段最大輪次 — 使用全域設定",
-  "session.sysPrompt": "系統提示詞覆蓋…",
-  "session.sysPromptActive": "系統提示詞覆蓋…（已設定）",
+  "session.sysPrompt": "系統提示詞覆蓋",
+  "session.sysPromptActive": "系統提示詞覆蓋（已設定）",
   "session.sysPromptTitle": "系統提示詞覆蓋",
   "session.sysPromptPlaceholder":
     "僅本對話的完整系統提示詞（取代預設，非附加）",
@@ -175,6 +175,11 @@ export const zhTW: Record<MessageKey, string> = {
   "session.deleteManyTitle": "刪除對話",
   "session.deleteManyConfirm": "確定永久刪除 {n} 個對話？此操作無法復原。",
   "session.menu": "對話選單",
+  "session.menuSettings": "對話設定",
+  "session.menuConversation": "對話操作",
+  "session.menuCopy": "複製",
+  "session.menuExport": "匯出",
+  "session.menuWorktree": "Worktree",
   "session.openInNewWindow": "在新視窗中開啟對話",
   "session.openInNewWindowOk": "已在新視窗開啟",
   "session.openInNewWindowFailed": "無法開啟對話視窗",
@@ -188,7 +193,7 @@ export const zhTW: Record<MessageKey, string> = {
   "session.newShort": "新增",
   "session.placeholderTitle": "新對話",
   "session.untitled": "未命名",
-  "session.fork": "分叉對話…",
+  "session.fork": "分叉對話",
   "session.forkTitle": "分叉對話",
   "session.forkTitleOf": "分叉：{name}",
   "session.forkConfirm":
@@ -220,7 +225,7 @@ export const zhTW: Record<MessageKey, string> = {
   "session.resumeRestoreOkCli":
     "已恢復 · 新 agent 工作階段 · 已在乾淨 worktree 中開啟",
   "session.forkCliFailed": "無法啟用 CLI Agent 工作階段分叉",
-  "session.resumeRestore": "恢復對話並還原程式碼…",
+  "session.resumeRestore": "恢復對話並還原程式碼",
   "session.resumeRestoreTitle": "恢復對話並還原程式碼",
   "session.resumeRestoreConfirm":
     "在專案目前 HEAD 建立乾淨的關聯 git worktree，並在該目錄開啟本對話（代理改動與主檢出隔離）。對話內容不變，僅工作目錄切換。工作區有未提交變更時會拒絕。",
@@ -242,8 +247,8 @@ export const zhTW: Record<MessageKey, string> = {
   "session.duplicateOk": "已複製 · 已開啟新對話",
   "session.duplicateFailed": "複製對話失敗",
   "session.duplicateBusy": "請等待目前回合結束後再複製",
-  "session.pluginDirsAdd": "新增工作階段外掛目錄…",
-  "session.pluginDirsAddCount": "新增工作階段外掛目錄…（{n}）",
+  "session.pluginDirsAdd": "新增工作階段外掛目錄",
+  "session.pluginDirsAddCount": "新增工作階段外掛目錄（{n}）",
   "session.pluginDirsClear": "清除工作階段外掛",
   "session.pluginDirsAdded":
     "已附加工作階段外掛目錄 — 下次啟動僅本對話使用 --plugin-dir，不影響擴充功能中的全域外掛",
@@ -2338,7 +2343,7 @@ export const zhTW: Record<MessageKey, string> = {
     "無法複製圖片到剪貼簿（WebView 限制）。請改用「儲存 PNG…」。",
   "session.exportTrace": "匯出 trace",
   "session.exportTraceLocal": "僅本機匯出",
-  "session.exportTraceUpload": "匯出並上傳…",
+  "session.exportTraceUpload": "匯出並上傳",
   "session.exportTraceUploadTitle": "匯出並上傳對話 trace？",
   "session.exportTraceUploadMessage":
     "將執行不帶 --local 的 grok trace，CLI 可能透過網路將對話封存上傳至 xAI。僅在你確實要分享此對話 trace 以供支援或除錯時繼續。",
@@ -2373,7 +2378,7 @@ export const zhTW: Record<MessageKey, string> = {
   "session.tracesSearch": "依標題或路徑篩選…",
   "session.tracesEmptyFilter": "沒有相符的 trace",
   "session.tracesUploadedBadge": "已上傳",
-  "session.exportBundle": "匯出完整診斷包…",
+  "session.exportBundle": "匯出完整診斷包",
   "session.exportBundleDone": "診斷包已儲存",
   "session.exportBundleFail": "診斷包匯出失敗",
   "session.exportDone": "對話已匯出",

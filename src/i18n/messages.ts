@@ -124,7 +124,7 @@ const en = {
   "session.unmute": "Unmute notifications",
   "session.muted": "Notifications muted",
   "session.unreadAria": "Unread — reply finished in background",
-  "session.note": "Session note…",
+  "session.note": "Session note",
   "session.noteTitle": "Session note",
   "session.notePlaceholder":
     "Private notes for this chat (not sent to the agent)",
@@ -135,7 +135,7 @@ const en = {
   "session.noteCleared": "Note cleared",
   "session.noteAria": "Session has a note",
   "session.noteChars": "{n}/{max}",
-  "session.rules": "Session rules…",
+  "session.rules": "Session rules",
   "session.rulesTitle": "Session rules",
   "session.rulesPlaceholder":
     "Extra rules for this chat only (appended via --rules)",
@@ -145,8 +145,8 @@ const en = {
   "session.rulesSaved": "Session rules saved — agent will reload on next turn",
   "session.rulesCleared": "Session rules cleared",
   "session.rulesChars": "{n}/{max}",
-  "session.maxTurns": "Max agent turns…",
-  "session.maxTurnsCount": "Max agent turns… ({n})",
+  "session.maxTurns": "Max agent turns",
+  "session.maxTurnsCount": "Max agent turns ({n})",
   "session.maxTurnsTitle": "Session max agent turns",
   "session.maxTurnsPlaceholder": "Inherit global (empty or 0)",
   "session.maxTurnsHint":
@@ -156,8 +156,8 @@ const en = {
   "session.maxTurnsSaved":
     "Session max turns saved — agent will reload on next turn",
   "session.maxTurnsCleared": "Session max turns cleared — using global setting",
-  "session.sysPrompt": "System prompt override…",
-  "session.sysPromptActive": "System prompt override… (set)",
+  "session.sysPrompt": "System prompt override",
+  "session.sysPromptActive": "System prompt override (set)",
   "session.sysPromptTitle": "System prompt override",
   "session.sysPromptPlaceholder":
     "Full system prompt for this chat only (replaces the default)",
@@ -190,6 +190,11 @@ const en = {
   "session.deleteManyConfirm":
     "Delete {n} chats permanently? This cannot be undone.",
   "session.menu": "Session menu",
+  "session.menuSettings": "Session settings",
+  "session.menuConversation": "Conversation",
+  "session.menuCopy": "Copy",
+  "session.menuExport": "Export",
+  "session.menuWorktree": "Worktree",
   "session.openInNewWindow": "Open session in new window",
   "session.openInNewWindowOk": "Opened in new window",
   "session.openInNewWindowFailed": "Could not open session window",
@@ -205,7 +210,7 @@ const en = {
   "session.newShort": "New",
   "session.placeholderTitle": "New chat",
   "session.untitled": "Untitled",
-  "session.fork": "Fork chat…",
+  "session.fork": "Fork chat",
   "session.forkTitle": "Fork chat",
   "session.forkTitleOf": "Fork of {name}",
   "session.forkConfirm":
@@ -241,7 +246,7 @@ const en = {
   "session.resumeRestoreOkCli":
     "Resumed · new agent session · opened on a clean worktree",
   "session.forkCliFailed": "Could not arm CLI agent session fork",
-  "session.resumeRestore": "Resume with code restore…",
+  "session.resumeRestore": "Resume with code restore",
   "session.resumeRestoreTitle": "Resume with code restore",
   "session.resumeRestoreConfirm":
     "Open this chat on a clean linked git worktree at the project’s current HEAD (isolates agent edits from your main checkout). The conversation stays the same; only the working directory changes. Refuses if the tree has uncommitted changes.",
@@ -269,8 +274,8 @@ const en = {
   "session.duplicateFailed": "Could not duplicate chat",
   "session.duplicateBusy":
     "Wait for the current turn to finish before duplicating",
-  "session.pluginDirsAdd": "Add session plugin folder…",
-  "session.pluginDirsAddCount": "Add session plugin folder… ({n})",
+  "session.pluginDirsAdd": "Add session plugin folder",
+  "session.pluginDirsAddCount": "Add session plugin folder ({n})",
   "session.pluginDirsClear": "Clear session plugins",
   "session.pluginDirsAdded":
     "Session plugin folder attached — next agent spawn uses --plugin-dir for this chat only",
@@ -2427,7 +2432,7 @@ const en = {
     "Could not copy image to the clipboard (WebView blocked). Try Save PNG instead.",
   "session.exportTrace": "Export trace",
   "session.exportTraceLocal": "Export local",
-  "session.exportTraceUpload": "Export and upload…",
+  "session.exportTraceUpload": "Export and upload",
   "session.exportTraceUploadTitle": "Export and upload session trace?",
   "session.exportTraceUploadMessage":
     "This runs grok trace without --local so the CLI may upload the session archive over the network to xAI. Only continue if you intend to share this session’s trace for support or debugging.",
@@ -2462,7 +2467,7 @@ const en = {
   "session.tracesSearch": "Filter by title or path…",
   "session.tracesEmptyFilter": "No traces match this filter",
   "session.tracesUploadedBadge": "Uploaded",
-  "session.exportBundle": "Export diagnostic package…",
+  "session.exportBundle": "Export diagnostic package",
   "session.exportBundleDone": "Diagnostic package saved",
   "session.exportBundleFail": "Diagnostic export failed",
   "session.exportDone": "Chat exported",
@@ -3845,7 +3850,7 @@ const zh: Record<MessageKey, string> = {
   "session.unmute": "取消静音通知",
   "session.muted": "已静音桌面通知",
   "session.unreadAria": "未读 — 后台回合已完成",
-  "session.note": "会话备注…",
+  "session.note": "会话备注",
   "session.noteTitle": "会话备注",
   "session.notePlaceholder": "此对话的私人备注（不会发送给 Agent）",
   "session.noteHint":
@@ -3855,7 +3860,7 @@ const zh: Record<MessageKey, string> = {
   "session.noteCleared": "备注已清除",
   "session.noteAria": "此会话有备注",
   "session.noteChars": "{n}/{max}",
-  "session.rules": "会话规则…",
+  "session.rules": "会话规则",
   "session.rulesTitle": "会话规则",
   "session.rulesPlaceholder": "仅本会话的额外规则（通过 --rules 附加）",
   "session.rulesHint":
@@ -3864,8 +3869,8 @@ const zh: Record<MessageKey, string> = {
   "session.rulesSaved": "会话规则已保存 — 下一回合将重新加载 Agent",
   "session.rulesCleared": "已清除会话规则",
   "session.rulesChars": "{n}/{max}",
-  "session.maxTurns": "最大 Agent 轮次…",
-  "session.maxTurnsCount": "最大 Agent 轮次…（{n}）",
+  "session.maxTurns": "最大 Agent 轮次",
+  "session.maxTurnsCount": "最大 Agent 轮次（{n}）",
   "session.maxTurnsTitle": "会话最大 Agent 轮次",
   "session.maxTurnsPlaceholder": "继承全局（留空或 0）",
   "session.maxTurnsHint":
@@ -3874,8 +3879,8 @@ const zh: Record<MessageKey, string> = {
   "session.maxTurnsClear": "使用全局",
   "session.maxTurnsSaved": "会话最大轮次已保存 — 下一回合将重新加载 Agent",
   "session.maxTurnsCleared": "已清除会话最大轮次 — 使用全局设置",
-  "session.sysPrompt": "系统提示词覆盖…",
-  "session.sysPromptActive": "系统提示词覆盖…（已设置）",
+  "session.sysPrompt": "系统提示词覆盖",
+  "session.sysPromptActive": "系统提示词覆盖（已设置）",
   "session.sysPromptTitle": "系统提示词覆盖",
   "session.sysPromptPlaceholder":
     "仅本会话的完整系统提示词（替换默认，非追加）",
@@ -3906,6 +3911,11 @@ const zh: Record<MessageKey, string> = {
   "session.deleteManyTitle": "删除会话",
   "session.deleteManyConfirm": "确定永久删除 {n} 个会话？此操作不可撤销。",
   "session.menu": "会话菜单",
+  "session.menuSettings": "会话设置",
+  "session.menuConversation": "对话操作",
+  "session.menuCopy": "复制",
+  "session.menuExport": "导出",
+  "session.menuWorktree": "Worktree",
   "session.openInNewWindow": "在新窗口中打开会话",
   "session.openInNewWindowOk": "已在新窗口打开",
   "session.openInNewWindowFailed": "无法打开会话窗口",
@@ -3919,7 +3929,7 @@ const zh: Record<MessageKey, string> = {
   "session.newShort": "新建",
   "session.placeholderTitle": "新会话",
   "session.untitled": "未命名",
-  "session.fork": "分叉会话…",
+  "session.fork": "分叉会话",
   "session.forkTitle": "分叉会话",
   "session.forkTitleOf": "分叉：{name}",
   "session.forkConfirm":
@@ -3952,7 +3962,7 @@ const zh: Record<MessageKey, string> = {
   "session.resumeRestoreOkCli":
     "已恢复 · 新 agent 会话 · 已在干净 worktree 中打开",
   "session.forkCliFailed": "无法启用 CLI Agent 会话分叉",
-  "session.resumeRestore": "恢复对话并还原代码…",
+  "session.resumeRestore": "恢复对话并还原代码",
   "session.resumeRestoreTitle": "恢复对话并还原代码",
   "session.resumeRestoreConfirm":
     "在项目当前 HEAD 创建干净的关联 git worktree，并在该目录打开本会话（代理改动与主检出隔离）。对话内容不变，仅工作目录切换。工作区有未提交改动时会拒绝。",
@@ -3974,8 +3984,8 @@ const zh: Record<MessageKey, string> = {
   "session.duplicateOk": "已复制 · 已打开新会话",
   "session.duplicateFailed": "复制会话失败",
   "session.duplicateBusy": "请等待当前回合结束后再复制",
-  "session.pluginDirsAdd": "添加会话插件目录…",
-  "session.pluginDirsAddCount": "添加会话插件目录…（{n}）",
+  "session.pluginDirsAdd": "添加会话插件目录",
+  "session.pluginDirsAddCount": "添加会话插件目录（{n}）",
   "session.pluginDirsClear": "清除会话插件",
   "session.pluginDirsAdded":
     "已附加会话插件目录 — 下次启动仅本会话使用 --plugin-dir，不影响扩展中的全局插件",
@@ -6067,7 +6077,7 @@ const zh: Record<MessageKey, string> = {
     "无法复制图片到剪贴板（WebView 限制）。请改用「保存 PNG…」。",
   "session.exportTrace": "导出 trace",
   "session.exportTraceLocal": "仅本地导出",
-  "session.exportTraceUpload": "导出并上传…",
+  "session.exportTraceUpload": "导出并上传",
   "session.exportTraceUploadTitle": "导出并上传会话 trace？",
   "session.exportTraceUploadMessage":
     "将运行不带 --local 的 grok trace，CLI 可能通过网络将会话归档上传到 xAI。仅在你确实要分享该会话 trace 用于支持或调试时继续。",
@@ -6102,7 +6112,7 @@ const zh: Record<MessageKey, string> = {
   "session.tracesSearch": "按标题或路径筛选…",
   "session.tracesEmptyFilter": "没有匹配的 trace",
   "session.tracesUploadedBadge": "已上传",
-  "session.exportBundle": "导出完整诊断包…",
+  "session.exportBundle": "导出完整诊断包",
   "session.exportBundleDone": "诊断包已保存",
   "session.exportBundleFail": "诊断包导出失败",
   "session.exportDone": "会话已导出",

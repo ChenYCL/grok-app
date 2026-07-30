@@ -20514,105 +20514,14 @@ export default function App() {
               session.sessionId === s.id ||
               viewingSessionIdRef.current === s.id;
             const wtBadge = sessionWorktreeBadgeFor(s);
-            const wtItems: ContextMenuItem[] = wtBadge
-              ? [
-                  {
-                    id: "wt-reveal",
-                    label: tr("session.worktreeReveal"),
-                    icon: <IconExternalLink size={16} />,
-                    onClick: () => {
-                      void (async () => {
-                        try {
-                          await api.fsOpenPath(wtBadge.path);
-                        } catch (e) {
-                          showToast(String(e), 4000);
-                        }
-                      })();
-                    },
-                  },
-                  {
-                    id: "wt-copy-path",
-                    label: tr("session.worktreeCopyPath"),
-                    icon: <IconCopy size={16} />,
-                    onClick: () => {
-                      void (async () => {
-                        try {
-                          await navigator.clipboard.writeText(wtBadge.path);
-                          showToast(tr("session.worktreePathCopied"), 2200);
-                        } catch {
-                          setLocalError(wtBadge.path);
-                        }
-                      })();
-                    },
-                  },
-                  {
-                    id: "wt-remove",
-                    label: tr("composer.worktreeRemove"),
-                    icon: <IconTrash size={16} />,
-                    danger: true,
-                    onClick: () => {
-                      const fromList =
-                        gitWorktrees.find((w) =>
-                          pathsEqual(w.path, wtBadge.path),
-                        ) ?? null;
-                      const wt: api.GitWorktreeEntry = fromList ?? {
-                        path: wtBadge.path,
-                        branch: wtBadge.branch,
-                        detached: !wtBadge.branch,
-                        isMain: false,
-                        locked: false,
-                        prunable: false,
-                      };
-                      if (!canRemoveWorktree(wt) && fromList?.isMain) {
-                        showToast(tr("composer.worktreeRemoveFailed"), 3500);
-                        return;
-                      }
-                      confirmRemoveWorktree({ ...wt, isMain: false });
-                    },
-                  },
-                ]
-              : [];
             const sessionMuted = mutedSessionIds.has(s.id);
             const canPopOut = canOpenSessionInNewWindow({
               isDesktopHost: api.isDesktopHost(),
               isSecondaryWindow,
               sessionId: s.id,
             });
-            items = [
-              {
-                id: "pin",
-                label: s.pinned ? tr("session.unpin") : tr("session.pin"),
-                icon: s.pinned ? (
-                  <IconPinOff size={16} />
-                ) : (
-                  <IconPin size={16} />
-                ),
-                onClick: () => {
-                  void pinSession(s, !s.pinned);
-                },
-              },
-              ...(canPopOut
-                ? [
-                    {
-                      id: "open-new-window",
-                      label: tr("session.openInNewWindow"),
-                      icon: <IconExternalLink size={16} />,
-                      onClick: () => openSessionInNewWindow(s),
-                    } satisfies ContextMenuItem,
-                  ]
-                : []),
-              {
-                id: "mute",
-                label: sessionMuted
-                  ? tr("session.unmute")
-                  : tr("session.mute"),
-                icon: sessionMuted ? (
-                  <IconBell size={16} />
-                ) : (
-                  <IconBellOff size={16} />
-                ),
-                onClick: () => handleToggleSessionMute(s.id),
-              },
+
+            const settingsChildren: ContextMenuItem[] = [
               {
                 id: "session-note",
                 label: tr("session.note"),
@@ -20645,62 +20554,6 @@ export default function App() {
                 onClick: () => openSessionMaxTurns(s),
               },
               {
-                id: "rename",
-                label: tr("session.rename"),
-                icon: <IconRename size={16} />,
-                onClick: () => renameSession(s),
-              },
-              {
-                id: "fork",
-                label: tr("session.fork"),
-                icon: <IconFork size={16} />,
-                onClick: () => confirmForkSession(s),
-              },
-              {
-                id: "duplicate",
-                label: tr("session.duplicate"),
-                icon: <IconFiles size={16} />,
-                disabled:
-                  forkBusy ||
-                  busyIds.has(s.id) ||
-                  (isOpen && !canRewindSession),
-                onClick: () => {
-                  void runDuplicateSession(s);
-                },
-              },
-              ...(() => {
-                const proj = s.projectId
-                  ? projects.find((p) => p.id === s.projectId) ?? null
-                  : null;
-                const path = proj?.path?.trim() || "";
-                const gitKnown =
-                  activeProject &&
-                  path &&
-                  pathsEqual(activeProject.path, path)
-                    ? gitWorktreesAvailable
-                    : null;
-                if (
-                  !canOfferResumeWithCodeRestore(path, {
-                    gitAvailable: gitKnown,
-                  })
-                ) {
-                  return [];
-                }
-                return [
-                  {
-                    id: "resume-restore",
-                    label: tr("session.resumeRestore"),
-                    icon: <IconGitBranch size={16} />,
-                    disabled:
-                      resumeRestoreBusy ||
-                      forkBusy ||
-                      busyIds.has(s.id) ||
-                      (isOpen && !canRewindSession),
-                    onClick: () => confirmResumeWithCodeRestore(s),
-                  } satisfies ContextMenuItem,
-                ];
-              })(),
-              {
                 id: "session-plugin-add",
                 label:
                   (s.pluginDirs?.length ?? 0) > 0
@@ -20725,6 +20578,9 @@ export default function App() {
                     } satisfies ContextMenuItem,
                   ]
                 : []),
+            ];
+
+            const conversationChildren: ContextMenuItem[] = [
               {
                 id: "rewind",
                 label: tr("session.rewind"),
@@ -20755,14 +20611,23 @@ export default function App() {
                   toggleTranscriptFilter();
                 },
               },
-              ...wtItems,
-              // Export group — image first (most user-facing); menu scrolls if tall.
               {
-                id: "export-image",
-                label: tr("session.exportImage"),
-                icon: <IconExportImage size={16} />,
+                id: "plan-history",
+                label: tr("plan.history"),
+                icon: <IconPlan size={16} />,
                 onClick: () => {
-                  openExportSessionImage({
+                  setShowPlanHistory(true);
+                },
+              },
+            ];
+
+            const copyChildren: ContextMenuItem[] = [
+              {
+                id: "copy-md",
+                label: tr("session.copyMd"),
+                icon: <IconCopy size={16} />,
+                onClick: () => {
+                  void copyConversationMarkdown({
                     id: s.id,
                     title: s.title,
                     projectId: s.projectId,
@@ -20770,11 +20635,41 @@ export default function App() {
                 },
               },
               {
-                id: "copy-md",
-                label: tr("session.copyMd"),
+                id: "copy-id",
+                label: tr("session.copyId"),
                 icon: <IconCopy size={16} />,
                 onClick: () => {
-                  void copyConversationMarkdown({
+                  void copySessionId(s);
+                },
+              },
+              ...(wtBadge
+                ? [
+                    {
+                      id: "wt-copy-path",
+                      label: tr("session.worktreeCopyPath"),
+                      icon: <IconCopy size={16} />,
+                      onClick: () => {
+                        void (async () => {
+                          try {
+                            await navigator.clipboard.writeText(wtBadge.path);
+                            showToast(tr("session.worktreePathCopied"), 2200);
+                          } catch {
+                            setLocalError(wtBadge.path);
+                          }
+                        })();
+                      },
+                    } satisfies ContextMenuItem,
+                  ]
+                : []),
+            ];
+
+            const exportChildren: ContextMenuItem[] = [
+              {
+                id: "export-image",
+                label: tr("session.exportImage"),
+                icon: <IconExportImage size={16} />,
+                onClick: () => {
+                  openExportSessionImage({
                     id: s.id,
                     title: s.title,
                     projectId: s.projectId,
@@ -20846,22 +20741,6 @@ export default function App() {
                 },
               },
               {
-                id: "traces",
-                label: tr("session.traces"),
-                icon: <IconFolder size={16} />,
-                onClick: () => {
-                  setShowTraces(true);
-                },
-              },
-              {
-                id: "plan-history",
-                label: tr("plan.history"),
-                icon: <IconPlan size={16} />,
-                onClick: () => {
-                  setShowPlanHistory(true);
-                },
-              },
-              {
                 id: "export-bundle",
                 label: tr("session.exportBundle"),
                 icon: <IconCopy size={16} />,
@@ -20870,12 +20749,198 @@ export default function App() {
                 },
               },
               {
-                id: "copy-id",
-                label: tr("session.copyId"),
-                icon: <IconCopy size={16} />,
+                id: "traces",
+                label: tr("session.traces"),
+                icon: <IconFolder size={16} />,
                 onClick: () => {
-                  void copySessionId(s);
+                  setShowTraces(true);
                 },
+              },
+            ];
+
+            const worktreeChildren: ContextMenuItem[] = wtBadge
+              ? [
+                  {
+                    id: "wt-reveal",
+                    label: tr("session.worktreeReveal"),
+                    icon: <IconExternalLink size={16} />,
+                    onClick: () => {
+                      void (async () => {
+                        try {
+                          await api.fsOpenPath(wtBadge.path);
+                        } catch (e) {
+                          showToast(String(e), 4000);
+                        }
+                      })();
+                    },
+                  },
+                  {
+                    id: "wt-copy-path-sub",
+                    label: tr("session.worktreeCopyPath"),
+                    icon: <IconCopy size={16} />,
+                    onClick: () => {
+                      void (async () => {
+                        try {
+                          await navigator.clipboard.writeText(wtBadge.path);
+                          showToast(tr("session.worktreePathCopied"), 2200);
+                        } catch {
+                          setLocalError(wtBadge.path);
+                        }
+                      })();
+                    },
+                  },
+                  {
+                    id: "wt-remove",
+                    label: tr("composer.worktreeRemove"),
+                    icon: <IconTrash size={16} />,
+                    danger: true,
+                    onClick: () => {
+                      const fromList =
+                        gitWorktrees.find((w) =>
+                          pathsEqual(w.path, wtBadge.path),
+                        ) ?? null;
+                      const wt: api.GitWorktreeEntry = fromList ?? {
+                        path: wtBadge.path,
+                        branch: wtBadge.branch,
+                        detached: !wtBadge.branch,
+                        isMain: false,
+                        locked: false,
+                        prunable: false,
+                      };
+                      if (!canRemoveWorktree(wt) && fromList?.isMain) {
+                        showToast(tr("composer.worktreeRemoveFailed"), 3500);
+                        return;
+                      }
+                      confirmRemoveWorktree({ ...wt, isMain: false });
+                    },
+                  },
+                ]
+              : [];
+
+            const resumeRestoreItem = (() => {
+              const proj = s.projectId
+                ? projects.find((p) => p.id === s.projectId) ?? null
+                : null;
+              const path = proj?.path?.trim() || "";
+              const gitKnown =
+                activeProject &&
+                path &&
+                pathsEqual(activeProject.path, path)
+                  ? gitWorktreesAvailable
+                  : null;
+              if (
+                !canOfferResumeWithCodeRestore(path, {
+                  gitAvailable: gitKnown,
+                })
+              ) {
+                return null;
+              }
+              return {
+                id: "resume-restore",
+                label: tr("session.resumeRestore"),
+                icon: <IconGitBranch size={16} />,
+                disabled:
+                  resumeRestoreBusy ||
+                  forkBusy ||
+                  busyIds.has(s.id) ||
+                  (isOpen && !canRewindSession),
+                onClick: () => confirmResumeWithCodeRestore(s),
+              } satisfies ContextMenuItem;
+            })();
+
+            items = [
+              {
+                id: "pin",
+                label: s.pinned ? tr("session.unpin") : tr("session.pin"),
+                icon: s.pinned ? (
+                  <IconPinOff size={16} />
+                ) : (
+                  <IconPin size={16} />
+                ),
+                onClick: () => {
+                  void pinSession(s, !s.pinned);
+                },
+              },
+              ...(canPopOut
+                ? [
+                    {
+                      id: "open-new-window",
+                      label: tr("session.openInNewWindow"),
+                      icon: <IconExternalLink size={16} />,
+                      onClick: () => openSessionInNewWindow(s),
+                    } satisfies ContextMenuItem,
+                  ]
+                : []),
+              {
+                id: "mute",
+                label: sessionMuted
+                  ? tr("session.unmute")
+                  : tr("session.mute"),
+                icon: sessionMuted ? (
+                  <IconBell size={16} />
+                ) : (
+                  <IconBellOff size={16} />
+                ),
+                onClick: () => handleToggleSessionMute(s.id),
+              },
+              {
+                id: "rename",
+                label: tr("session.rename"),
+                icon: <IconRename size={16} />,
+                onClick: () => renameSession(s),
+              },
+              {
+                id: "session-settings",
+                label: tr("session.menuSettings"),
+                icon: <IconSettings size={16} />,
+                children: settingsChildren,
+              },
+              {
+                id: "fork",
+                label: tr("session.fork"),
+                icon: <IconFork size={16} />,
+                onClick: () => confirmForkSession(s),
+              },
+              {
+                id: "duplicate",
+                label: tr("session.duplicate"),
+                icon: <IconFiles size={16} />,
+                disabled:
+                  forkBusy ||
+                  busyIds.has(s.id) ||
+                  (isOpen && !canRewindSession),
+                onClick: () => {
+                  void runDuplicateSession(s);
+                },
+              },
+              ...(resumeRestoreItem ? [resumeRestoreItem] : []),
+              {
+                id: "conversation",
+                label: tr("session.menuConversation"),
+                icon: <IconChat size={16} />,
+                children: conversationChildren,
+              },
+              ...(worktreeChildren.length > 0
+                ? [
+                    {
+                      id: "worktree",
+                      label: tr("session.menuWorktree"),
+                      icon: <IconGitBranch size={16} />,
+                      children: worktreeChildren,
+                    } satisfies ContextMenuItem,
+                  ]
+                : []),
+              {
+                id: "copy",
+                label: tr("session.menuCopy"),
+                icon: <IconCopy size={16} />,
+                children: copyChildren,
+              },
+              {
+                id: "export",
+                label: tr("session.menuExport"),
+                icon: <IconExportImage size={16} />,
+                children: exportChildren,
               },
               {
                 id: "archive",
@@ -20906,10 +20971,7 @@ export default function App() {
             items={items}
             estimatedHeight={
               ctxMenu?.kind === "session"
-                ? Math.min(
-                    typeof window !== "undefined" ? window.innerHeight * 0.7 : 480,
-                    520,
-                  )
+                ? 360
                 : ctxMenu?.kind === "project-policy"
                   ? 280
                   : 240
