@@ -7464,6 +7464,33 @@ pub async fn memory_delete_file(
     .map_err(|e| format!("memory delete task failed: {e}"))?
 }
 
+/// Search path-scoped memory files (name + content) under agent GROK_HOME/memory.
+/// Snippets are redacted; hard caps on hits and bytes read per file.
+#[tauri::command]
+pub async fn memory_search(
+    query: String,
+    cwd: Option<String>,
+    limit: Option<usize>,
+) -> Result<crate::agent_memory::MemorySearchResult, String> {
+    let settings = store::load_settings();
+    let path = cwd
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(std::path::PathBuf::from);
+    let q = query;
+    tokio::task::spawn_blocking(move || {
+        Ok(crate::agent_memory::search_workspace_memory(
+            &q,
+            path.as_deref(),
+            &settings.session_data_mode,
+            limit,
+        ))
+    })
+    .await
+    .map_err(|e| format!("memory search task failed: {e}"))?
+}
+
 /// List agent definitions available for session agent selection.
 #[tauri::command]
 pub async fn agents_catalog(

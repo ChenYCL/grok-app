@@ -2590,6 +2590,48 @@ export async function memoryDeleteFile(path: string) {
   });
 }
 
+/** Content/name hit under `{GROK_HOME}/memory` (host-capped, redacted snippet). */
+export type MemorySearchHit = {
+  path: string;
+  name: string;
+  relativePath: string;
+  kind: string;
+  workspaceSlug?: string | null;
+  size: number;
+  mtimeMs: number;
+  /** Redacted excerpt; empty for name-only matches. */
+  snippet: string;
+  contentMatch: boolean;
+  matched: boolean;
+};
+
+export type MemorySearchResult = {
+  hits: MemorySearchHit[];
+  memoryRoot: string;
+  memoryRootExists: boolean;
+  grokHome: string;
+  cwd?: string | null;
+  query: string;
+  limit: number;
+  truncated: boolean;
+};
+
+/**
+ * Search path-scoped memory files (name + body) under agent GROK_HOME/memory.
+ * Host enforces read/hit caps and redacts snippets.
+ */
+export async function memorySearch(opts: {
+  query: string;
+  cwd?: string | null;
+  limit?: number;
+}) {
+  return invoke<MemorySearchResult>("memory_search", {
+    query: opts.query,
+    cwd: opts.cwd ?? null,
+    limit: opts.limit ?? null,
+  });
+}
+
 export type HookDto = {
   name: string;
   path: string;
