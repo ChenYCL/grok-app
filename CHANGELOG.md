@@ -42,6 +42,11 @@ See `docs/llm-wiki/release.md`.
 **中文 · 修复**
 
 - CLI 安装因缺少 SHA-256 失败（#227）
+- **可自定义快捷键**（设置 → 键盘）：逐项录制 / 重置、全部重置、冲突检测；全局组合键（搜索面板、设置、新建会话、侧栏等）即时生效
+- **Reliability center** (Doctor / Settings → Runtime → Tools / command palette): aggregate busy sessions, stall / end-of-turn stall signals, and recent error-deck cards; export support zip or open Doctor. Honest empty states when nothing is in flight.
+
+
+- **可靠性中心**（Doctor / 设置 → 运行环境 → 工具 / 命令面板）：汇总忙碌会话、卡顿与 end-of-turn 卡顿信号、最近错误卡片；可导出支持包或打开 Doctor。无信号时显示诚实空态。
 
 ## [0.2.2] - 2026-07-30
 
