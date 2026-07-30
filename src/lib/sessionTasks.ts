@@ -39,6 +39,19 @@ export interface AgentTask {
    * monitors). Used only for grouping / badge — not a separate protocol type.
    */
   longRunning: boolean;
+  /**
+   * Parent tool call id when this tool is nested (e.g. under spawn_subagent).
+   * Prefer explicit payload / message metadata (`toolParentId`); when ACP omits
+   * parent, {@link buildTaskTree} may infer under the last long-running
+   * spawn_subagent (honest best-effort — see that helper).
+   */
+  parentId?: string;
+}
+
+/** Tree node for nested task display (Tasks panel). */
+export interface TaskTreeNode {
+  task: AgentTask;
+  children: TaskTreeNode[];
 }
 
 /** Max completed/failed/cancelled rows kept after the active ones. */
@@ -111,6 +124,26 @@ export function isLongRunningToolKind(kind: string | null | undefined): boolean 
   return false;
 }
 
+/**
+ * Tool kinds that open a subagent / nested agent session and can own child tools.
+ */
+export function isSubagentSpawnKind(kind: string | null | undefined): boolean {
+  const k = (kind || "").toLowerCase().trim().replace(/-/g, "_");
+  if (!k) return false;
+  if (
+    k === "spawn_subagent" ||
+    k === "subagent" ||
+    k === "agent" ||
+    k === "spawn_agent"
+  ) {
+    return true;
+  }
+  if (k.includes("spawn_subagent") || k.includes("spawn_agent")) return true;
+  // Bare "subagent*" but not get_command_or_subagent_output / kill_…
+  if (k.startsWith("subagent")) return true;
+  return false;
+}
+
 function resolveKind(m: ChatMessage): string {
   if (m.toolKind?.trim()) return m.toolKind.trim();
   if (m.content?.startsWith("tool_step|")) {
@@ -149,6 +182,12 @@ function resolveId(m: ChatMessage): string {
   return m.id;
 }
 
+function resolveParentId(m: ChatMessage): string | undefined {
+  const fromField = (m.toolParentId || "").trim();
+  if (fromField) return fromField;
+  return undefined;
+}
+
 /** Build one task row from a tool_step chat message. */
 export function taskFromToolMessage(m: ChatMessage): AgentTask | null {
   if (!isToolStepMessage(m)) return null;
@@ -158,6 +197,7 @@ export function taskFromToolMessage(m: ChatMessage): AgentTask | null {
   const statusRaw = resolveStatusRaw(m);
   const status = normalizeTaskStatus(statusRaw, m.streaming);
   const name = toolStepDisplayTitle(m) || kind.replace(/_/g, " ") || id;
+  const parentId = resolveParentId(m);
   return {
     id,
     name,
@@ -167,7 +207,161 @@ export function taskFromToolMessage(m: ChatMessage): AgentTask | null {
     path: resolvePath(m),
     updatedAt: m.createdAt,
     longRunning: isLongRunningToolKind(kind),
+    ...(parentId ? { parentId } : {}),
   };
+}
+
+/**
+ * Fill missing parentId via stream-order inference.
+ *
+ * Explicit `parentId` values are kept when the parent exists in the list.
+ * Otherwise: tools after a longRunning spawn_subagent nest under that spawn
+ * until the next top-level longRunning spawn_subagent. ACP often omits parent
+ * linkage — this is a best-effort UI heuristic, not protocol truth.
+ *
+ * Pure; does not mutate input. Returns the same array reference when nothing changes.
+ */
+export function assignInferredParentIds(tasks: AgentTask[]): AgentTask[] {
+  if (tasks.length === 0) return tasks;
+  const idSet = new Set(tasks.map((t) => t.id));
+  let openSpawnId: string | null = null;
+  let changed = false;
+  const out: AgentTask[] = new Array(tasks.length);
+
+  for (let i = 0; i < tasks.length; i++) {
+    const task = tasks[i]!;
+    const explicit =
+      task.parentId &&
+      task.parentId !== task.id &&
+      idSet.has(task.parentId)
+        ? task.parentId
+        : undefined;
+
+    let parentId = explicit;
+    const isSpawn = isSubagentSpawnKind(task.kind) && task.longRunning;
+
+    if (!parentId && openSpawnId && task.id !== openSpawnId && !isSpawn) {
+      parentId = openSpawnId;
+    }
+
+    // New top-level long-running spawn: never nest under previous spawn.
+    if (isSpawn) {
+      parentId = explicit; // only keep if explicitly linked; else top-level
+      openSpawnId = task.id;
+    }
+
+    if (parentId !== task.parentId) {
+      changed = true;
+      out[i] = parentId
+        ? { ...task, parentId }
+        : (() => {
+            const { parentId: _drop, ...rest } = task;
+            return rest;
+          })();
+    } else {
+      out[i] = task;
+    }
+  }
+
+  return changed ? out : tasks;
+}
+
+/**
+ * Build a forest of task trees for the Tasks panel.
+ *
+ * - Uses explicit `parentId` when the parent is present in `tasks`.
+ * - Otherwise applies {@link assignInferredParentIds} (spawn_subagent heuristic).
+ * - Cycles / missing parents → treated as roots.
+ * - When no nesting applies, one root per task in input order (flat; no chrome).
+ *
+ * Children preserve first-seen order among siblings; roots preserve input order
+ * among tasks that are roots after linking.
+ */
+export function buildTaskTree(tasks: AgentTask[]): TaskTreeNode[] {
+  if (tasks.length === 0) return [];
+
+  const linked = assignInferredParentIds(tasks);
+  const byId = new Map<string, TaskTreeNode>();
+  const order: string[] = [];
+
+  for (const task of linked) {
+    if (byId.has(task.id)) {
+      // Last write wins for task payload; keep first order slot.
+      byId.get(task.id)!.task = task;
+      continue;
+    }
+    byId.set(task.id, { task, children: [] });
+    order.push(task.id);
+  }
+
+  const childIds = new Set<string>();
+  for (const id of order) {
+    const node = byId.get(id)!;
+    const pid = node.task.parentId;
+    if (!pid || pid === id || !byId.has(pid)) continue;
+    // Cycle guard: walk ancestors; if we hit self, skip link.
+    let walk: string | undefined = pid;
+    let cyclic = false;
+    const seen = new Set<string>([id]);
+    while (walk) {
+      if (seen.has(walk)) {
+        cyclic = true;
+        break;
+      }
+      seen.add(walk);
+      walk = byId.get(walk)?.task.parentId;
+      if (walk && !byId.has(walk)) break;
+    }
+    if (cyclic) continue;
+    byId.get(pid)!.children.push(node);
+    childIds.add(id);
+  }
+
+  return order
+    .filter((id) => !childIds.has(id))
+    .map((id) => byId.get(id)!);
+}
+
+/** True when any node in the forest has children (tree chrome useful). */
+export function taskTreeHasNesting(nodes: TaskTreeNode[]): boolean {
+  return nodes.some((n) => n.children.length > 0);
+}
+
+/** Whether this subtree has a running task (for Active vs Recent section). */
+export function taskTreeHasRunning(node: TaskTreeNode): boolean {
+  if (node.task.status === "running") return true;
+  return node.children.some(taskTreeHasRunning);
+}
+
+/**
+ * Filter a task forest by query; keeps ancestors of matches.
+ * Empty query returns nodes unchanged.
+ */
+export function filterTaskTree(
+  nodes: TaskTreeNode[],
+  query: string,
+): TaskTreeNode[] {
+  const q = query.trim().toLowerCase();
+  if (!q) return nodes;
+
+  const matches = (t: AgentTask): boolean =>
+    t.name.toLowerCase().includes(q) ||
+    t.kind.toLowerCase().includes(q) ||
+    (t.detail || "").toLowerCase().includes(q) ||
+    (t.path || "").toLowerCase().includes(q) ||
+    t.id.toLowerCase().includes(q);
+
+  const walk = (node: TaskTreeNode): TaskTreeNode | null => {
+    const kids = node.children
+      .map(walk)
+      .filter((n): n is TaskTreeNode => n != null);
+    if (matches(node.task) || kids.length > 0) {
+      return { task: node.task, children: kids };
+    }
+    return null;
+  };
+
+  return nodes.map(walk).filter((n): n is TaskTreeNode => n != null);
 }
 
 export interface CollectSessionTasksOptions {

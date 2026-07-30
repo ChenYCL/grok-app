@@ -1,15 +1,31 @@
 import { describe, expect, it } from "vitest";
 import type { ChatMessage } from "./session";
 import {
+  assignInferredParentIds,
+  buildTaskTree,
   collectSessionTasks,
   countRunningTasks,
   filterSessionTasks,
+  filterTaskTree,
   isLongRunningToolKind,
   isRunningToolStatus,
+  isSubagentSpawnKind,
   normalizeTaskStatus,
   taskFromToolMessage,
   taskStatusMessageKey,
+  taskTreeHasNesting,
+  taskTreeHasRunning,
+  type AgentTask,
 } from "./sessionTasks";
+
+function task(partial: Partial<AgentTask> & { id: string; name: string }): AgentTask {
+  return {
+    kind: partial.kind ?? "read_file",
+    status: partial.status ?? "completed",
+    longRunning: partial.longRunning ?? false,
+    ...partial,
+  };
+}
 
 function tool(
   partial: Partial<ChatMessage> & { id: string; toolCallId: string },
@@ -241,5 +257,190 @@ describe("taskStatusMessageKey", () => {
     expect(taskStatusMessageKey("completed")).toBe("activity.done");
     expect(taskStatusMessageKey("failed")).toBe("activity.failed");
     expect(taskStatusMessageKey("cancelled")).toBe("activity.cancelled");
+  });
+});
+
+describe("isSubagentSpawnKind", () => {
+  it("recognizes spawn / subagent parents", () => {
+    expect(isSubagentSpawnKind("spawn_subagent")).toBe(true);
+    expect(isSubagentSpawnKind("subagent")).toBe(true);
+    expect(isSubagentSpawnKind("Agent")).toBe(true);
+  });
+
+  it("does not treat helper tools as spawn parents", () => {
+    expect(isSubagentSpawnKind("get_command_or_subagent_output")).toBe(false);
+    expect(isSubagentSpawnKind("kill_command_or_subagent")).toBe(false);
+    expect(isSubagentSpawnKind("read_file")).toBe(false);
+  });
+});
+
+describe("taskFromToolMessage parentId", () => {
+  it("reads toolParentId from message metadata", () => {
+    const t = taskFromToolMessage(
+      tool({
+        id: "tool-child",
+        toolCallId: "child",
+        content: "read",
+        toolKind: "read_file",
+        toolStatus: "completed",
+        streaming: false,
+        toolParentId: "spawn-1",
+      }),
+    );
+    expect(t?.parentId).toBe("spawn-1");
+  });
+});
+
+describe("buildTaskTree", () => {
+  it("returns a flat forest when no parents (identical order)", () => {
+    const tasks = [
+      task({ id: "a", name: "A", status: "completed" }),
+      task({ id: "b", name: "B", status: "running" }),
+      task({ id: "c", name: "C", status: "completed" }),
+    ];
+    const tree = buildTaskTree(tasks);
+    expect(taskTreeHasNesting(tree)).toBe(false);
+    expect(tree.map((n) => n.task.id)).toEqual(["a", "b", "c"]);
+    expect(tree.every((n) => n.children.length === 0)).toBe(true);
+  });
+
+  it("nests children under explicit parentId", () => {
+    const tasks = [
+      // Before the spawn stays top-level (not inferred under a later parent).
+      task({ id: "z", name: "other", status: "completed" }),
+      task({
+        id: "p",
+        name: "spawn",
+        kind: "spawn_subagent",
+        longRunning: true,
+        status: "running",
+      }),
+      task({ id: "c1", name: "read", parentId: "p", status: "completed" }),
+      task({ id: "c2", name: "grep", parentId: "p", status: "running" }),
+    ];
+    const tree = buildTaskTree(tasks);
+    expect(tree.map((n) => n.task.id)).toEqual(["z", "p"]);
+    expect(tree[1]!.children.map((c) => c.task.id)).toEqual(["c1", "c2"]);
+    expect(taskTreeHasNesting(tree)).toBe(true);
+    expect(taskTreeHasRunning(tree[1]!)).toBe(true);
+  });
+
+  it("infers nesting after longRunning spawn_subagent until next top-level spawn", () => {
+    const tasks = [
+      task({ id: "pre", name: "before", kind: "read_file", status: "completed" }),
+      task({
+        id: "spawn1",
+        name: "spawn A",
+        kind: "spawn_subagent",
+        longRunning: true,
+        status: "running",
+      }),
+      task({ id: "child1", name: "work", kind: "grep", status: "completed" }),
+      task({ id: "child2", name: "shell", kind: "bash", status: "running" }),
+      task({
+        id: "spawn2",
+        name: "spawn B",
+        kind: "spawn_subagent",
+        longRunning: true,
+        status: "completed",
+      }),
+      task({ id: "child3", name: "after", kind: "write", status: "completed" }),
+    ];
+    const tree = buildTaskTree(tasks);
+    expect(tree.map((n) => n.task.id)).toEqual(["pre", "spawn1", "spawn2"]);
+    expect(tree[1]!.children.map((c) => c.task.id)).toEqual(["child1", "child2"]);
+    expect(tree[2]!.children.map((c) => c.task.id)).toEqual(["child3"]);
+  });
+
+  it("does not invent nesting without a spawn parent", () => {
+    const tasks = [
+      task({
+        id: "shell",
+        name: "shell",
+        kind: "run_terminal_command",
+        longRunning: true,
+        status: "running",
+      }),
+      task({ id: "r", name: "read", kind: "read_file", status: "completed" }),
+    ];
+    const tree = buildTaskTree(tasks);
+    expect(taskTreeHasNesting(tree)).toBe(false);
+    expect(tree.map((n) => n.task.id)).toEqual(["shell", "r"]);
+  });
+
+  it("treats missing parent id as root", () => {
+    const tasks = [
+      task({ id: "orphan", name: "o", parentId: "missing", status: "completed" }),
+      task({ id: "solo", name: "s", status: "completed" }),
+    ];
+    const tree = buildTaskTree(tasks);
+    expect(tree.map((n) => n.task.id)).toEqual(["orphan", "solo"]);
+  });
+
+  it("breaks simple parent cycles", () => {
+    const tasks = [
+      task({ id: "a", name: "A", parentId: "b", status: "completed" }),
+      task({ id: "b", name: "B", parentId: "a", status: "completed" }),
+    ];
+    const tree = buildTaskTree(tasks);
+    // Both become roots (cycle skipped) — no infinite structure.
+    expect(tree).toHaveLength(2);
+    expect(tree.every((n) => n.children.length === 0)).toBe(true);
+  });
+});
+
+describe("assignInferredParentIds", () => {
+  it("preserves explicit parentId over inference", () => {
+    const tasks = [
+      task({
+        id: "s1",
+        name: "spawn",
+        kind: "spawn_subagent",
+        longRunning: true,
+        status: "running",
+      }),
+      task({
+        id: "s2",
+        name: "other spawn",
+        kind: "spawn_subagent",
+        longRunning: true,
+        status: "running",
+      }),
+      task({
+        id: "c",
+        name: "child",
+        kind: "read_file",
+        parentId: "s2",
+        status: "completed",
+      }),
+    ];
+    // After s1 is open, c has explicit parent s2 — keep it.
+    const linked = assignInferredParentIds(tasks);
+    expect(linked.find((t) => t.id === "c")?.parentId).toBe("s2");
+  });
+});
+
+describe("filterTaskTree", () => {
+  it("keeps ancestors of matching children", () => {
+    const tree = buildTaskTree([
+      task({
+        id: "p",
+        name: "spawn",
+        kind: "spawn_subagent",
+        longRunning: true,
+        status: "completed",
+      }),
+      task({
+        id: "c",
+        name: "pnpm test",
+        kind: "run_terminal_command",
+        parentId: "p",
+        status: "completed",
+      }),
+      task({ id: "x", name: "unrelated", status: "completed" }),
+    ]);
+    const filtered = filterTaskTree(tree, "pnpm");
+    expect(filtered.map((n) => n.task.id)).toEqual(["p"]);
+    expect(filtered[0]!.children.map((c) => c.task.id)).toEqual(["c"]);
   });
 });

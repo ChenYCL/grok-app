@@ -96,6 +96,11 @@ export interface ChatMessage {
   toolKind?: string;
   toolDetail?: string;
   toolPath?: string;
+  /**
+   * Parent tool call id when the host/ACP marks nested tools (e.g. subagent
+   * children). Optional — Tasks panel may infer when missing.
+   */
+  toolParentId?: string;
 }
 
 export interface ToolEventPayload {
@@ -106,6 +111,8 @@ export interface ToolEventPayload {
   status?: string;
   path?: string | null;
   detail?: string | null;
+  /** Parent tool call id when the wire event includes nesting. */
+  parentId?: string | null;
 }
 
 export interface TurnMarkerPayload {
@@ -595,6 +602,7 @@ export function applyToolEvent(
   );
   const prev = idx >= 0 ? messages[idx]! : null;
   const title = resolveToolDisplayTitle(payload, prev?.content);
+  const parentId = (payload.parentId || "").trim() || undefined;
   const nextRow: ChatMessage = {
     id,
     role: "tool",
@@ -604,6 +612,7 @@ export function applyToolEvent(
     toolStatus: status || "in_progress",
     toolDetail: payload.detail?.trim() || undefined,
     toolPath: payload.path?.trim() || undefined,
+    toolParentId: parentId,
     streaming: running,
     marker: "tool_step",
     createdAt: now,
@@ -636,6 +645,7 @@ export function applyToolEvent(
       toolDetail: nextRow.toolDetail || prev!.toolDetail,
       toolPath: nextRow.toolPath || prev!.toolPath,
       toolKind: nextRow.toolKind || prev!.toolKind,
+      toolParentId: nextRow.toolParentId || prev!.toolParentId,
     };
   }
 
