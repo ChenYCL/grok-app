@@ -2,5 +2,8 @@ export * from "./types";
 export * from "./channelSchemas";
 export * from "./controlPlane";
 export * from "./secretsApi";
+export * from "./secretField";
 export * from "./store";
 export * from "./bridgeClient";
+export * from "./eventTimeline";
+export * from "./channelHealth";

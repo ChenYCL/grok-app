@@ -47,4 +47,25 @@ describe("Remote IM UI chrome guard", () => {
     expect(src).toContain("RimSeg");
     expect(src).toContain("showsPublicUrlCallout");
   });
+
+  it("ChannelPanel secrets use RimSecretField (masked by default)", () => {
+    const src = readFileSync(join(ROOT, "RemoteImChannelPanel.tsx"), "utf8");
+    expect(src).toContain("RimSecretField");
+    expect(src).toContain("classifyChannelHealth");
+    expect(src).toContain("channelHasDeepHealth");
+  });
+
+  it("Overview has local event timeline without window.confirm", () => {
+    const src = readFileSync(join(ROOT, "RemoteImOverview.tsx"), "utf8");
+    expect(src).toContain("loadRimEventTimeline");
+    expect(src).toContain("clearRimEventTimeline");
+    expect(src).toContain("GlassModal");
+    expect(src).not.toMatch(/window\.confirm/);
+  });
+
+  it("RimControls exports RimSecretField", () => {
+    const src = readFileSync(join(ROOT, "remoteIm/RimControls.tsx"), "utf8");
+    expect(src).toContain("export function RimSecretField");
+    expect(src).toContain('type={revealed ? "text" : "password"}');
+  });
 });

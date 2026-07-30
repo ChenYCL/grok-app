@@ -19749,6 +19749,239 @@ html[data-theme="dark"] .rim-badge--err { color: #ff6961; }
   min-width: 0;
 }
 
+.rim-pair-paste {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+}
+
+.rim-pair-paste > .btn {
+  align-self: flex-start;
+}
+
+/* Channel health depth card (Feishu/Lark + Telegram) */
+.rim-health {
+  margin: 0 0 14px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-input);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.rim-health--ok {
+  border-color: color-mix(in srgb, #34c759 40%, var(--border-subtle));
+  background: color-mix(in srgb, #34c759 7%, var(--bg-input));
+}
+
+.rim-health--warn {
+  border-color: color-mix(in srgb, #ffd60a 40%, var(--border-subtle));
+  background: color-mix(in srgb, #ffd60a 7%, var(--bg-input));
+}
+
+.rim-health--err {
+  border-color: color-mix(in srgb, #ff6961 45%, var(--border-subtle));
+  background: color-mix(in srgb, #ff6961 8%, var(--bg-input));
+}
+
+.rim-health__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 6px 12px;
+}
+
+.rim-health__title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.rim-health__transport {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.rim-health__mode {
+  color: var(--text-tertiary);
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 11px;
+}
+
+.rim-health__facts {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.rim-health__facts li {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+  font-size: 12px;
+}
+
+.rim-health__k {
+  color: var(--text-tertiary);
+  min-width: 4.5em;
+}
+
+.rim-health__v {
+  color: var(--text-secondary);
+}
+
+.rim-health__v--warn {
+  color: color-mix(in srgb, #c99100 80%, var(--text-primary));
+}
+
+html[data-theme="dark"] .rim-health__v--warn {
+  color: #ffd60a;
+}
+
+.rim-health__error {
+  margin-top: 2px;
+}
+
+.rim-health__error code {
+  display: block;
+  font-size: 11px;
+  word-break: break-word;
+  color: var(--text-secondary);
+  background: color-mix(in srgb, #ff6961 10%, transparent);
+  padding: 6px 8px;
+  border-radius: 8px;
+}
+
+.rim-health__hints {
+  margin: 2px 0 0;
+  padding: 0 0 0 1.1em;
+  font-size: 12px;
+  color: var(--text-secondary);
+  line-height: 1.45;
+}
+
+.rim-health__hints li + li {
+  margin-top: 2px;
+}
+
+/* Bridge event timeline (local ring) */
+.rim-timeline {
+  padding-bottom: 4px;
+}
+
+.rim-timeline__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 4px 0 2px;
+}
+
+.rim-timeline__toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border: 0;
+  background: transparent;
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 4px 0;
+  min-width: 0;
+}
+
+.rim-timeline__toggle:hover {
+  color: var(--accent, #6b9fff);
+}
+
+.rim-timeline__chevron {
+  color: var(--text-tertiary);
+  font-size: 12px;
+  width: 1em;
+}
+
+.rim-timeline__title {
+  min-width: 0;
+}
+
+.rim-timeline__count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.4em;
+  height: 1.4em;
+  padding: 0 6px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  background: var(--bg-hover, color-mix(in srgb, var(--text-primary) 8%, transparent));
+}
+
+.rim-timeline__desc {
+  margin: 0 0 8px;
+  padding: 0 2px;
+}
+
+.rim-timeline__empty {
+  margin: 0;
+  padding: 8px 2px 12px;
+  font-size: 13px;
+  color: var(--text-tertiary);
+}
+
+.rim-timeline__list {
+  list-style: none;
+  margin: 0;
+  padding: 0 0 8px;
+  max-height: 220px;
+  overflow: auto;
+}
+
+.rim-timeline__row {
+  display: flex;
+  gap: 10px;
+  align-items: baseline;
+  padding: 6px 2px;
+  border-top: 1px solid var(--border-subtle);
+  font-size: 12px;
+}
+
+.rim-timeline__row:first-child {
+  border-top: none;
+}
+
+.rim-timeline__when {
+  flex: 0 0 auto;
+  color: var(--text-tertiary);
+  font-variant-numeric: tabular-nums;
+  font-size: 11px;
+  min-width: 4.5em;
+}
+
+.rim-timeline__label {
+  color: var(--text-secondary);
+  min-width: 0;
+  word-break: break-word;
+}
+
+.rim-timeline__meta {
+  color: var(--text-tertiary);
+}
+
+.rim-timeline__note {
+  color: var(--text-tertiary);
+}
+
 .rim-instance-bar {
   display: flex;
   flex-wrap: wrap;

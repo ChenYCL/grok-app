@@ -196,3 +196,57 @@ export function RimBadge({
   const t = tone && tone !== "neutral" ? ` rim-badge--${tone}` : "";
   return <span className={"rim-badge" + t}>{children}</span>;
 }
+
+/**
+ * Secret input — masked by default with show/hide.
+ * Never hydrates vault plaintext; empty value + placeholder when saved.
+ */
+export function RimSecretField({
+  value,
+  onChange,
+  revealed,
+  onToggleReveal,
+  placeholder,
+  ariaLabel,
+  showLabel,
+  hideLabel,
+  disabled,
+  autoComplete = "off",
+}: {
+  value: string;
+  onChange: (next: string) => void;
+  revealed: boolean;
+  onToggleReveal: () => void;
+  placeholder?: string;
+  ariaLabel?: string;
+  showLabel: string;
+  hideLabel: string;
+  disabled?: boolean;
+  autoComplete?: string;
+}) {
+  return (
+    <div className="rim-secret-row">
+      <input
+        className="settings-input"
+        type={revealed ? "text" : "password"}
+        autoComplete={autoComplete}
+        spellCheck={false}
+        data-secret="1"
+        aria-label={ariaLabel}
+        placeholder={placeholder}
+        disabled={disabled}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+      />
+      <button
+        type="button"
+        className="btn btn--ghost btn--sm"
+        disabled={disabled}
+        aria-pressed={revealed}
+        onClick={onToggleReveal}
+      >
+        {revealed ? hideLabel : showLabel}
+      </button>
+    </div>
+  );
+}
