@@ -619,6 +619,7 @@ import {
   IconPlan,
   IconActivity,
   IconFileDiff,
+  IconGitBranch,
   IconFileText,
   IconSettings,
   IconDoctor,
@@ -661,6 +662,10 @@ import {
   summarizeSessionChanges,
   type SessionFileChange,
 } from "@/lib/sessionChanges";
+import {
+  summarizeGitDirty,
+  type GitDirtySummary,
+} from "@/lib/workspaceGit";
 import { ConversationThread } from "@/components/lobe-chat";
 import { dispatchCollapseAllActivity } from "@/lib/collapseAllActivity";
 import {
@@ -1094,6 +1099,12 @@ export default function App() {
   const [sessionChangesById, setSessionChangesById] = useState<
     Record<string, SessionFileChange[]>
   >({});
+  /**
+   * Workspace git dirty summary for the active project (composer chip).
+   * Null when not a repo, unavailable, clean, or no active project.
+   */
+  const [gitDirtySummary, setGitDirtySummary] =
+    useState<GitDirtySummary | null>(null);
   /** Composer stored form (may include [[skill:name]] tokens). */
   const [draft, setDraft] = useState("");
   /**
@@ -9937,6 +9948,53 @@ export default function App() {
   }, [refreshGitWorktrees]);
 
   /**
+   * Poll workspace git status for the active project so the composer dirty chip
+   * stays current (hide when clean / not a repo). Soft-fail; no toast spam.
+   */
+  const gitDirtyReqRef = useRef(0);
+  const refreshGitDirtyStatus = useCallback(async () => {
+    const path = activeProject?.path?.trim() || null;
+    if (!path || !api.isTauri()) {
+      gitDirtyReqRef.current += 1;
+      setGitDirtySummary(null);
+      return;
+    }
+    const reqId = ++gitDirtyReqRef.current;
+    try {
+      const status = await api.gitStatus(path);
+      if (reqId !== gitDirtyReqRef.current) return;
+      setGitDirtySummary(summarizeGitDirty(status));
+    } catch {
+      if (reqId !== gitDirtyReqRef.current) return;
+      setGitDirtySummary(null);
+    }
+  }, [activeProject?.path]);
+
+  useEffect(() => {
+    void refreshGitDirtyStatus();
+    // Soft poll while a project is bound; refresh sooner on focus.
+    const path = activeProject?.path?.trim() || null;
+    if (!path || !api.isTauri()) return;
+    const intervalMs = 8000;
+    const id = window.setInterval(() => {
+      void refreshGitDirtyStatus();
+    }, intervalMs);
+    const onFocus = () => {
+      void refreshGitDirtyStatus();
+    };
+    const onVisibility = () => {
+      if (document.visibilityState === "visible") onFocus();
+    };
+    window.addEventListener("focus", onFocus);
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      window.clearInterval(id);
+      window.removeEventListener("focus", onFocus);
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
+  }, [activeProject?.path, refreshGitDirtyStatus]);
+
+  /**
    * After a project is created/updated: refresh list, expand, optionally trust
    * via in-app confirm, then set active (+ bind session when requested).
    */
@@ -15475,6 +15533,45 @@ export default function App() {
                               : tr("changes.chipFiles", {
                                   n: String(sessionChangesSummary.fileCount),
                                 })}
+                          </span>
+                        </button>
+                      </Tip>
+                    ) : null}
+                    {gitDirtySummary ? (
+                      <Tip label={tr("changes.workspace.chipTip")}>
+                        <button
+                          type="button"
+                          className="chip chip--git-dirty"
+                          data-testid="git-dirty-chip"
+                          aria-label={`${tr("changes.workspace.chipAria")}: ${tr(
+                            "changes.workspace.chip",
+                            { n: String(gitDirtySummary.count) },
+                          )}`}
+                          onClick={() => {
+                            const path = activeProject?.path?.trim() || "";
+                            // Desktop Resources pane: open Changes. Otherwise toast path.
+                            if (
+                              api.isTauri() &&
+                              !isMirrorClient() &&
+                              path
+                            ) {
+                              openAsidePane();
+                              setResourceOpenTarget({ type: "changes" });
+                            } else if (path) {
+                              showToast(
+                                tr("changes.workspace.toastPath", {
+                                  path,
+                                }),
+                                4000,
+                              );
+                            }
+                          }}
+                        >
+                          <IconGitBranch size={14} aria-hidden />
+                          <span className="chip__label chip__label--nums">
+                            {tr("changes.workspace.chip", {
+                              n: String(gitDirtySummary.count),
+                            })}
                           </span>
                         </button>
                       </Tip>

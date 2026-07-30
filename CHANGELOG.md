@@ -22,6 +22,7 @@ See `docs/llm-wiki/release.md`.
 - **Regenerate last reply** with optional model pick
 - **File changes chip** (count / +a −d → Resources Changes)
 - **Optional assistant reply length** (Settings → Appearance → Show reply length; word/char under finished replies; off by default)
+- **Workspace dirty chip** (“N changed” from git status → Resources Changes; hidden when clean / not a repo)
 
 #### Sessions & sidebar
 - **Duplicate chat** (one-click journal clone; no worktree dialog — use **Fork…** for optional worktree restore)
@@ -52,6 +53,7 @@ See `docs/llm-wiki/release.md`.
 - **输入与对话**：队列编辑/排序、跨会话提示历史、阅读宽度与字号、工具默认折叠、重新生成可选模型、变更芯片、可选助手回复字数
 - **输入与对话**：队列编辑/排序、跨会话提示历史、输入框最小高度（2/3/5/8 行）、阅读宽度与字号、工具默认折叠、重新生成可选模型、变更芯片
 - **输入与对话**：队列编辑/排序、跨会话提示历史、阅读宽度与字号、工具默认折叠、对话过滤（隐藏工具步骤）、重新生成可选模型、变更芯片
+- **输入与对话**：队列编辑/排序、跨会话提示历史、阅读宽度与字号、工具默认折叠、重新生成可选模型、变更芯片、工作区脏文件芯片
 - **会话与侧栏**：复制会话（vs 分叉+worktree）、便签、静音、插件目录、按天归档、日期分组、项目颜色、复制 Markdown
 - **外观**：按时切换浅色/深色（跟随系统下的可选计划；固定浅/深仍优先）
 - **会话与侧栏**：复制会话（vs 分叉+worktree）、便签、静音、插件目录、后台回合完成未读圆点、按天归档、日期分组、项目颜色、复制 Markdown
