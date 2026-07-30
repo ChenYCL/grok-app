@@ -2786,6 +2786,11 @@ impl SessionManager {
                 .map(|s| s.trim().to_string())
                 .filter(|s| !s.is_empty()),
             plugin_dirs: meta.plugin_dirs.clone(),
+            extra_rules: meta
+                .extra_rules
+                .as_ref()
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty()),
         };
 
         let (client, mut events) = match AcpClient::spawn_with_options(cli_path, cwd, spawn_opts)
@@ -5816,6 +5821,7 @@ mod connect_preserve_tests {
                 worktree_branch: None,
                 is_worktree_session: false,
                 plugin_dirs: Vec::new(),
+                extra_rules: None,
             },
             fsm,
             backend: "grok_agent_stdio".into(),
@@ -5999,6 +6005,7 @@ mod session_routing_tests {
                 worktree_branch: None,
                 is_worktree_session: false,
                 plugin_dirs: Vec::new(),
+                extra_rules: None,
             },
             fsm,
             backend: "mock_acp".into(),
@@ -6163,6 +6170,7 @@ mod session_routing_tests {
                 worktree_branch: None,
                 is_worktree_session: false,
                 plugin_dirs: Vec::new(),
+                extra_rules: None,
             },
             fsm,
             backend: "mock_acp".into(),
@@ -6264,6 +6272,7 @@ mod session_routing_tests {
                 worktree_branch: None,
                 is_worktree_session: false,
                 plugin_dirs: Vec::new(),
+                extra_rules: None,
             },
             fsm,
             backend: "mock_acp".into(),

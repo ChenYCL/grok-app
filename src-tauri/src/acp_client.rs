@@ -252,6 +252,19 @@ pub struct SpawnOptions {
     pub json_schema: Option<String>,
     /// Session-only plugin directories → `grok agent --plugin-dir <DIR>` (repeatable).
     pub plugin_dirs: Vec<String>,
+    /// Per-session extra rules → top-level `grok --rules <TEXT>` (before `agent`).
+    pub extra_rules: Option<String>,
+}
+
+/// Pure helper: top-level CLI args for session extra rules (before `agent`).
+///
+/// `["--rules", text]` — empty when none. Trims, drops empty, clamps length.
+pub fn extra_rules_spawn_flags(rules: Option<&str>) -> Vec<String> {
+    let normalized = crate::store::sanitize_extra_rules(rules.map(|s| s.to_string()));
+    match normalized {
+        Some(text) => vec!["--rules".into(), text],
+        None => Vec::new(),
+    }
 }
 
 /// Pure helper: agent-option CLI args for session plugin dirs (before `stdio`).
@@ -550,6 +563,11 @@ impl AcpClient {
                 cmd.arg("--json-schema");
                 cmd.arg(s);
             }
+        }
+        // Top-level `grok --rules <RULES>` (before `agent`) — session-only
+        // system-prompt append; not accepted under `grok agent` / `stdio`.
+        for a in extra_rules_spawn_flags(opts.extra_rules.as_deref()) {
+            cmd.arg(a);
         }
         for f in disable_web_search_spawn_flags(disable_web) {
             cmd.arg(f);
@@ -3242,6 +3260,27 @@ mod plugin_dir_spawn_tests {
                 "--plugin-dir".to_string(),
                 "/tmp/p2".to_string(),
             ]
+        );
+    }
+}
+
+#[cfg(test)]
+mod extra_rules_spawn_tests {
+    use super::*;
+
+    #[test]
+    fn empty_yields_no_flags() {
+        assert!(extra_rules_spawn_flags(None).is_empty());
+        assert!(extra_rules_spawn_flags(Some("")).is_empty());
+        assert!(extra_rules_spawn_flags(Some("   \n")).is_empty());
+    }
+
+    #[test]
+    fn builds_top_level_rules_pair() {
+        let args = extra_rules_spawn_flags(Some("  Always write tests  "));
+        assert_eq!(
+            args,
+            vec!["--rules".to_string(), "Always write tests".to_string()]
         );
     }
 }

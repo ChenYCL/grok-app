@@ -210,7 +210,8 @@ mod tests {
             worktree_path: None,
             worktree_branch: None,
             is_worktree_session: false,
-        plugin_dirs: Vec::new(),
+            plugin_dirs: Vec::new(),
+            extra_rules: None,
         }
     }
 

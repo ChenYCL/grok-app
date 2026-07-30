@@ -24,6 +24,7 @@ See `docs/llm-wiki/release.md`.
 #### Sessions & sidebar
 - **Duplicate chat** (vs **Fork…** + optional worktree) · **session notes** · **mute** · **unread dot**
 - **Resume with code restore** — open an existing chat on a clean sibling git worktree at HEAD (session menu + command palette; dirty tree refused; same safety as Fork → restore code)
+- **Session rules** (per-chat `grok --rules`; session menu → GlassModal; soft-respawn on change)
 - **Export** Markdown copy + **HTML export** · **bulk archive by age** · **date groups** · **project color**
 - **Sidebar j/k** navigation (when list focused)
 
@@ -41,7 +42,7 @@ See `docs/llm-wiki/release.md`.
 **中文 · 新增（按域）**
 
 - **输入/对话**：队列、高度、提示历史、宽度字号、工具折叠/过滤、重生选模型、字数、变更芯片、工作区 dirty 芯片、结构化 JSON 回复面板、上下文用量/费用粗估
-- **会话/侧栏**：复制 vs 分叉、恢复并还原代码（干净 worktree）、便签、静音、未读点、HTML 导出、按天归档、日期分组、项目色、j/k 导航
+- **会话/侧栏**：复制 vs 分叉、恢复并还原代码（干净 worktree）、便签、会话规则（`--rules`）、静音、未读点、HTML 导出、按天归档、日期分组、项目色、j/k 导航
 - **外观/壳**：主题定时、跟随系统语言、忙碌退出确认、托盘角标
 
 **中文 · 修复**

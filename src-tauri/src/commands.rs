@@ -614,6 +614,23 @@ pub async fn session_set_plugin_dirs(
     Ok(meta)
 }
 
+/// Set or clear per-session extra rules (`grok --rules` at next spawn).
+/// Empty / whitespace clears. Soft-respawns the live agent for this chat.
+#[tauri::command]
+pub async fn session_set_extra_rules(
+    app: tauri::AppHandle,
+    mgr: State<'_, Arc<SessionManager>>,
+    id: String,
+    extra_rules: Option<String>,
+) -> Result<SessionMeta, String> {
+    let meta = store::set_session_extra_rules(&id, extra_rules)?;
+    let snap = mgr.snapshot();
+    if snap.session_id.as_deref() == Some(meta.id.as_str()) {
+        mgr.soft_respawn_with_reason(&app, "session_extra_rules").await;
+    }
+    Ok(meta)
+}
+
 #[tauri::command]
 pub async fn session_messages(
     id: String,

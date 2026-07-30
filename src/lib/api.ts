@@ -846,8 +846,25 @@ export async function sessionsList() {
       jsonSchema?: string | null;
       /** Session-only plugin dirs (`--plugin-dir`); empty/omit = none */
       pluginDirs?: string[];
+      /** Per-session extra rules (`--rules`); empty/omit = none */
+      extraRules?: string | null;
     }>
   >("sessions_list");
+}
+
+/** Set or clear per-session extra rules (`grok --rules`). Empty clears. */
+export async function sessionSetExtraRules(
+  id: string,
+  extraRules: string | null,
+) {
+  return invoke<{
+    id: string;
+    title: string;
+    extraRules?: string | null;
+  }>("session_set_extra_rules", {
+    id,
+    extraRules: extraRules && extraRules.trim() ? extraRules : null,
+  });
 }
 
 /** Set or clear per-session JSON Schema structured output. */
@@ -1015,6 +1032,7 @@ export async function sessionSetPluginDirs(id: string, pluginDirs: string[]) {
     pluginDirs?: string[];
   }>("session_set_plugin_dirs", { id, pluginDirs });
 }
+
 
 export async function sessionDelete(id: string) {
   return invoke("session_delete", { id });

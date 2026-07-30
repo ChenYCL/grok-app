@@ -451,6 +451,10 @@ import {
   wrapAgentTextWithJsonSchema,
 } from "@/lib/jsonSchema";
 import {
+  SESSION_EXTRA_RULES_MAX_CHARS,
+  sanitizeExtraRules,
+} from "@/lib/sessionExtraRules";
+import {
   collectUserPromptHistory,
   filterPromptHistory,
   shouldHandlePromptHistoryKey,
@@ -854,6 +858,8 @@ interface SessionRow {
   jsonSchema?: string | null;
   /** Session-only plugin directories (`--plugin-dir`). */
   pluginDirs?: string[];
+  /** Per-session extra rules (`--rules`). */
+  extraRules?: string | null;
 }
 
 /** Normalize sessions_list / create rows into sidebar SessionRow shape. */
@@ -893,6 +899,7 @@ function mapSessionListRow(
     effort?: string | null;
     jsonSchema?: string | null;
     pluginDirs?: string[] | null;
+    extraRules?: string | null;
   },
 ): SessionRow {
   const schema =
@@ -902,12 +909,16 @@ function mapSessionListRow(
   const pluginDirs = Array.isArray(x.pluginDirs)
     ? x.pluginDirs.map((d) => String(d).trim()).filter(Boolean)
     : [];
+  const extraRules = sanitizeExtraRules(
+    typeof x.extraRules === "string" ? x.extraRules : null,
+  );
   return {
     ...normalizeSessionRow(x),
     modelId: x.modelId ?? null,
     effort: x.effort ?? null,
     jsonSchema: schema,
     pluginDirs,
+    extraRules: extraRules || null,
   };
 }
 
@@ -1049,6 +1060,12 @@ export default function App() {
     title: string;
   } | null>(null);
   const [sessionNoteDraft, setSessionNoteDraft] = useState("");
+  /** Per-session extra rules editor (`--rules`). */
+  const [sessionRulesTarget, setSessionRulesTarget] = useState<{
+    id: string;
+    title: string;
+  } | null>(null);
+  const [sessionRulesDraft, setSessionRulesDraft] = useState("");
   const [notifySound, setNotifySound] = useState(() =>
     loadNotifySoundPref(localStorage),
   );
@@ -6279,6 +6296,73 @@ export default function App() {
       await api.sessionSetPluginDirs(s.id, []);
       await refreshSessions();
       setToast(tr("session.pluginDirsCleared"));
+      window.setTimeout(() => setToast(null), 3200);
+    } catch (e) {
+      setLocalError(String(e));
+    }
+  };
+
+  /** Open GlassModal to edit per-session extra rules (`grok --rules`). */
+  const openSessionRules = (s: SessionRow) => {
+    setCtxMenu(null);
+    setSessionRulesDraft(
+      typeof s.extraRules === "string" ? s.extraRules : "",
+    );
+    setSessionRulesTarget({
+      id: s.id,
+      title: s.title || tr("session.untitled"),
+    });
+  };
+
+  const closeSessionRulesModal = () => {
+    setSessionRulesTarget(null);
+    setSessionRulesDraft("");
+  };
+
+  const saveSessionRulesModal = async () => {
+    const target = sessionRulesTarget;
+    if (!target) return;
+    const next = sanitizeExtraRules(sessionRulesDraft);
+    try {
+      if (!api.isTauri()) {
+        setLocalError(tr("error.needTauri"));
+        return;
+      }
+      const saved = await api.sessionSetExtraRules(target.id, next || null);
+      const stored =
+        typeof saved.extraRules === "string" && saved.extraRules.trim()
+          ? saved.extraRules
+          : next || null;
+      setSessions((list) =>
+        list.map((row) =>
+          row.id === target.id ? { ...row, extraRules: stored } : row,
+        ),
+      );
+      closeSessionRulesModal();
+      setToast(stored ? tr("session.rulesSaved") : tr("session.rulesCleared"));
+      window.setTimeout(() => setToast(null), 3200);
+    } catch (e) {
+      setLocalError(String(e));
+    }
+  };
+
+  const clearSessionRulesModal = async () => {
+    const target = sessionRulesTarget;
+    if (!target) return;
+    try {
+      if (!api.isTauri()) {
+        setLocalError(tr("error.needTauri"));
+        return;
+      }
+      await api.sessionSetExtraRules(target.id, null);
+      setSessions((list) =>
+        list.map((row) =>
+          row.id === target.id ? { ...row, extraRules: null } : row,
+        ),
+      );
+      setSessionRulesDraft("");
+      closeSessionRulesModal();
+      setToast(tr("session.rulesCleared"));
       window.setTimeout(() => setToast(null), 3200);
     } catch (e) {
       setLocalError(String(e));
@@ -17320,6 +17404,86 @@ export default function App() {
       </GlassModal>
 
       <GlassModal
+        open={!!sessionRulesTarget}
+        onClose={closeSessionRulesModal}
+        title={tr("session.rulesTitle")}
+        size="md"
+        closeLabel={tr("common.close")}
+        wrapBody
+        className="session-rules-modal"
+        footer={
+          <div className="session-rules-modal__actions">
+            {sessionRulesTarget &&
+            (sessionRulesDraft.trim() ||
+              sessions.some(
+                (row) =>
+                  row.id === sessionRulesTarget.id &&
+                  !!sanitizeExtraRules(row.extraRules),
+              )) ? (
+              <button
+                type="button"
+                className="btn btn--ghost"
+                onClick={() => {
+                  void clearSessionRulesModal();
+                }}
+              >
+                {tr("session.rulesClear")}
+              </button>
+            ) : null}
+            <button
+              type="button"
+              className="btn btn--ghost"
+              onClick={closeSessionRulesModal}
+            >
+              {tr("common.cancel")}
+            </button>
+            <button
+              type="button"
+              className="btn btn--primary"
+              onClick={() => {
+                void saveSessionRulesModal();
+              }}
+            >
+              {tr("common.save")}
+            </button>
+          </div>
+        }
+      >
+        <p className="session-rules-modal__hint">
+          {tr("session.rulesHint", {
+            n: String(SESSION_EXTRA_RULES_MAX_CHARS),
+          })}
+        </p>
+        {sessionRulesTarget ? (
+          <p
+            className="session-rules-modal__session"
+            title={sessionRulesTarget.title}
+          >
+            {sessionRulesTarget.title}
+          </p>
+        ) : null}
+        <textarea
+          className="session-rules-modal__textarea"
+          value={sessionRulesDraft}
+          onChange={(e) =>
+            setSessionRulesDraft(
+              e.target.value.slice(0, SESSION_EXTRA_RULES_MAX_CHARS),
+            )
+          }
+          placeholder={tr("session.rulesPlaceholder")}
+          maxLength={SESSION_EXTRA_RULES_MAX_CHARS}
+          spellCheck={false}
+          aria-label={tr("session.rulesTitle")}
+        />
+        <p className="session-rules-modal__count" aria-live="polite">
+          {tr("session.rulesChars", {
+            n: String(sessionRulesDraft.length),
+            max: String(SESSION_EXTRA_RULES_MAX_CHARS),
+          })}
+        </p>
+      </GlassModal>
+
+      <GlassModal
         open={!!exportMdTarget}
         onClose={() => {
           if (exportMdBusy) return;
@@ -18191,6 +18355,12 @@ export default function App() {
                 label: tr("session.note"),
                 icon: <IconNotes size={16} />,
                 onClick: () => openSessionNote(s),
+              },
+              {
+                id: "session-rules",
+                label: tr("session.rules"),
+                icon: <IconList size={16} />,
+                onClick: () => openSessionRules(s),
               },
               {
                 id: "rename",
