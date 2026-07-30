@@ -77,6 +77,11 @@ import {
 import { loadConfirmExternalLinksPref } from "@/lib/externalLinkPref";
 import { loadStopAllSkipConfirmPref } from "@/lib/stopAllSkipConfirmPref";
 import {
+  APP_CLOSE_REQUESTED_EVENT,
+  loadAlwaysQuitWithoutAskingPref,
+  shouldConfirmQuit,
+} from "@/lib/confirmQuit";
+import {
   loadNotifySoundPref,
   NOTIFY_SOUND_CHANGE_EVENT,
   saveNotifySoundPref,
@@ -10895,6 +10900,59 @@ export default function App() {
       for (const u of unsubs) u();
     };
   }, []);
+
+  /**
+   * Real app exit (window close when not close-to-tray, or tray Quit).
+   * Host always prevent_close + emits app://close-requested; we confirm if busy.
+   */
+  const requestAppQuit = useCallback(() => {
+    let busyCount = countBusyLiveMapSessions(liveMapRef.current);
+    // liveHost may be streaming before liveMap has the row (same as sidebar busyIds).
+    const host = liveHostRef.current;
+    if (
+      host.sessionId &&
+      isSessionLiveStreaming(host.state) &&
+      !liveMapRef.current[host.sessionId]
+    ) {
+      busyCount += 1;
+    }
+    if (
+      !shouldConfirmQuit(busyCount, loadAlwaysQuitWithoutAskingPref())
+    ) {
+      void api.appForceQuit();
+      return;
+    }
+    setAppDialog({
+      kind: "confirm",
+      title: tr("app.quitBusy.title"),
+      message: tr("app.quitBusy.message", { n: String(busyCount) }),
+      confirmLabel: tr("app.quitBusy.confirm"),
+      danger: true,
+      onConfirm: () => {
+        void api.appForceQuit();
+      },
+    });
+  }, [tr]);
+
+  useEffect(() => {
+    if (!api.isTauri()) return;
+    let cancelled = false;
+    let unlisten: (() => void) | undefined;
+    void (async () => {
+      try {
+        unlisten = await api.listen(APP_CLOSE_REQUESTED_EVENT, () => {
+          requestAppQuit();
+        });
+        if (cancelled) unlisten();
+      } catch (e) {
+        console.warn("close-requested listener failed", e);
+      }
+    })();
+    return () => {
+      cancelled = true;
+      unlisten?.();
+    };
+  }, [requestAppQuit]);
 
   const error = session.lastError;
   const errorBanner = useMemo(

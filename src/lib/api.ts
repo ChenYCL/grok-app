@@ -1897,6 +1897,19 @@ export async function traySetBusyCount(count: number) {
   }
 }
 
+/**
+ * Exit the desktop process immediately (after busy-quit confirm, or when none needed).
+ * No-op outside Tauri / mirror clients.
+ */
+export async function appForceQuit() {
+  if (!isDesktopHost()) return;
+  try {
+    await invoke<void>("app_force_quit");
+  } catch {
+    /* ignore — process may already be exiting */
+  }
+}
+
 // ── Custom providers (agent-home config.toml) ───────────────────────────────
 
 export interface CustomProvider {

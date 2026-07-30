@@ -210,6 +210,10 @@ import {
   saveStopAllSkipConfirmPref,
 } from "@/lib/stopAllSkipConfirmPref";
 import {
+  loadAlwaysQuitWithoutAskingPref,
+  saveAlwaysQuitWithoutAskingPref,
+} from "@/lib/confirmQuit";
+import {
   loadNotifyQuietHoursPref,
   normalizeHHmm,
   saveNotifyQuietHoursPref,
@@ -1131,6 +1135,10 @@ export function SettingsPage({
   /** Skip Stop-all confirm — frontend-only localStorage. */
   const [stopAllSkipConfirm, setStopAllSkipConfirm] = useState(() =>
     loadStopAllSkipConfirmPref(),
+  );
+  /** Skip busy-quit confirm — frontend-only localStorage. */
+  const [alwaysQuitWithoutAsking, setAlwaysQuitWithoutAsking] = useState(() =>
+    loadAlwaysQuitWithoutAskingPref(),
   );
   /** Desktop notification quiet hours — localStorage only. */
   const [notifyQuietHours, setNotifyQuietHours] =
@@ -2809,6 +2817,31 @@ export function SettingsPage({
                     saveStopAllSkipConfirmPref(next);
                   }}
                   ariaLabel={t("settings.stopAllSkipConfirm")}
+                />
+              </div>
+              <div
+                className={
+                  "settings-row" +
+                  rowHighlight("settings-anchor-alwaysQuitWithoutAsking")
+                }
+                id="settings-anchor-alwaysQuitWithoutAsking"
+              >
+                <div className="settings-row__text">
+                  <div className="settings-row__label">
+                    {t("settings.alwaysQuitWithoutAsking")}
+                  </div>
+                  <div className="settings-row__desc">
+                    {t("settings.alwaysQuitWithoutAskingDesc")}
+                  </div>
+                </div>
+                <UiCheck
+                  checked={alwaysQuitWithoutAsking}
+                  onChange={() => {
+                    const next = !alwaysQuitWithoutAsking;
+                    setAlwaysQuitWithoutAsking(next);
+                    saveAlwaysQuitWithoutAskingPref(next);
+                  }}
+                  ariaLabel={t("settings.alwaysQuitWithoutAsking")}
                 />
               </div>
               {onDefaultOpenTarget && (

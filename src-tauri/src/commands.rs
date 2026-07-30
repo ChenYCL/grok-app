@@ -516,6 +516,13 @@ pub async fn session_set_scheduled(
     store::set_session_scheduled(&id, scheduled)
 }
 
+/// Force-quit the process after frontend busy-session confirm (or when no confirm needed).
+/// Bypasses CloseRequested so we do not re-enter the confirm loop.
+#[tauri::command]
+pub fn app_force_quit(app: tauri::AppHandle) {
+    app.exit(0);
+}
+
 #[tauri::command]
 pub async fn session_delete(id: String) -> Result<(), String> {
     store::delete_session(&id)

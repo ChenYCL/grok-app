@@ -257,7 +257,12 @@ pub fn show_main_window(app: &AppHandle) {
 fn handle_menu_event(app: &AppHandle, event: MenuEvent) {
     let id = event.id().as_ref();
     match id {
-        "quit" => app.exit(0),
+        // Real exit: show the window so the in-app busy confirm can render, then
+        // let the frontend decide (same event as window close when not close-to-tray).
+        "quit" => {
+            show_main_window(app);
+            let _ = app.emit("app://close-requested", ());
+        }
         "open_app" => show_main_window(app),
         "new_chat" => {
             show_main_window(app);
