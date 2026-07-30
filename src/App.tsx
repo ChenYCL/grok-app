@@ -337,7 +337,12 @@ import { VoiceOverlay } from "@/components/VoiceOverlay";
 import {
   filterSessionSearch,
   mergeSessionSearchHits,
+  sessionSearchBadge,
+  sessionSearchBadgeLabelKey,
+  shouldScanSessionContent,
   type SessionContentHit,
+  type SessionSearchMode,
+  SESSION_SEARCH_MODES,
 } from "@/lib/sessionSearch";
 import {
   defaultPaletteActions,
@@ -1374,6 +1379,9 @@ export default function App() {
   appDialogRef.current = appDialog;
   const [showSearch, setShowSearch] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+  /** Keyword hybrid scope: all | title | content (no embeddings). */
+  const [searchMode, setSearchMode] = useState<SessionSearchMode>("all");
+  const [searchIncludeArchived, setSearchIncludeArchived] = useState(false);
   /** Debounced journal content hits from `sessions_search`. */
   const [contentSearchHits, setContentSearchHits] = useState<
     SessionContentHit[]
@@ -1502,6 +1510,7 @@ export default function App() {
   }, [sessionSelectMode]);
 
   // Debounced content search over App journals (title filter stays instant).
+  // Title-only mode skips the journal scan entirely.
   useEffect(() => {
     if (!showSearch) {
       setContentSearchHits([]);
@@ -1509,7 +1518,7 @@ export default function App() {
       return;
     }
     const q = searchQuery.trim();
-    if (!q) {
+    if (!shouldScanSessionContent(q, searchMode)) {
       setContentSearchHits([]);
       setContentSearchLoading(false);
       return;
@@ -1543,7 +1552,7 @@ export default function App() {
       })();
     }, 280);
     return () => window.clearTimeout(t);
-  }, [searchQuery, showSearch]);
+  }, [searchQuery, showSearch, searchMode]);
 
   // Global shortcuts: search, find-in-chat, help, doctor, copy last reply, toggle sidebar, new chat, settings, voice, Esc-stop.
   // Handlers go through refs so we don't re-bind every render.
@@ -6779,8 +6788,12 @@ export default function App() {
           archived: s.archived,
         })),
         projects.map((p) => ({ id: p.id, name: p.name, path: p.path })),
+        {
+          includeArchived: searchIncludeArchived,
+          mode: searchMode,
+        },
       ),
-    [searchQuery, sessions, projects],
+    [searchQuery, sessions, projects, searchIncludeArchived, searchMode],
   );
 
   const mergedSessionHits = useMemo(
@@ -6789,8 +6802,18 @@ export default function App() {
         searchQuery,
         searchHits.matchedSessions,
         contentSearchHits,
+        {
+          includeArchived: searchIncludeArchived,
+          mode: searchMode,
+        },
       ),
-    [searchQuery, searchHits.matchedSessions, contentSearchHits],
+    [
+      searchQuery,
+      searchHits.matchedSessions,
+      contentSearchHits,
+      searchIncludeArchived,
+      searchMode,
+    ],
   );
 
   const paletteActionHits = useMemo(
@@ -18228,6 +18251,45 @@ export default function App() {
                 <IconClose size={16} />
               </button>
             </div>
+            <div className="search-panel__filters">
+              <div
+                className="search-panel__modes"
+                role="tablist"
+                aria-label={tr("search.modeLabel")}
+              >
+                {SESSION_SEARCH_MODES.map((mode) => {
+                  const labelKey =
+                    mode === "all"
+                      ? ("search.modeAll" as const)
+                      : mode === "title"
+                        ? ("search.modeTitle" as const)
+                        : ("search.modeContent" as const);
+                  return (
+                    <button
+                      key={mode}
+                      type="button"
+                      role="tab"
+                      aria-selected={searchMode === mode}
+                      className={
+                        "search-panel__mode" +
+                        (searchMode === mode ? " is-active" : "")
+                      }
+                      onClick={() => setSearchMode(mode)}
+                    >
+                      {tr(labelKey)}
+                    </button>
+                  );
+                })}
+              </div>
+              <label className="search-panel__archived">
+                <input
+                  type="checkbox"
+                  checked={searchIncludeArchived}
+                  onChange={(e) => setSearchIncludeArchived(e.target.checked)}
+                />
+                <span>{tr("search.includeArchived")}</span>
+              </label>
+            </div>
             {paletteActionHits.length > 0 && (
               <>
                 <div className="search-panel__section">
@@ -18274,7 +18336,8 @@ export default function App() {
             )}
             <div className="search-panel__section">
               {tr("search.chats")}
-              {contentSearchLoading && searchQuery.trim()
+              {contentSearchLoading &&
+              shouldScanSessionContent(searchQuery, searchMode)
                 ? ` · ${tr("search.searchingContent")}`
                 : null}
             </div>
@@ -18291,10 +18354,12 @@ export default function App() {
                 title: hit.title,
                 projectId: hit.projectId ?? null,
                 updatedAt: "",
+                archived: hit.archived,
               });
               const proj = projects.find(
                 (p) => p.id === (row.projectId ?? hit.projectId),
               );
+              const badge = sessionSearchBadge(hit);
               const metaParts: string[] = [];
               if (proj?.name) metaParts.push(proj.name);
               if (hit.contentMatch && hit.matchCount && hit.matchCount > 0) {
@@ -18316,7 +18381,23 @@ export default function App() {
                   <IconSquarePen size={15} />
                   <span className="search-panel__body">
                     <span className="search-panel__title">
-                      {hit.title || s?.title || "Untitled"}
+                      <span className="search-panel__title-text">
+                        {hit.title || s?.title || "Untitled"}
+                      </span>
+                      {badge ? (
+                        <span
+                          className={
+                            "search-panel__badge" +
+                            (badge === "content"
+                              ? " search-panel__badge--content"
+                              : badge === "both"
+                                ? " search-panel__badge--both"
+                                : "")
+                          }
+                        >
+                          {tr(sessionSearchBadgeLabelKey(badge))}
+                        </span>
+                      ) : null}
                     </span>
                     {hit.snippet ? (
                       <span className="search-panel__snippet">

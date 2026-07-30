@@ -29,6 +29,33 @@ export type SessionSearchHits = {
   matchedProjects: SearchableProject[];
 };
 
+/**
+ * Keyword hybrid search scope (no embeddings).
+ * - `all` — title/project + message content (default hybrid)
+ * - `title` — session title / id / project only; skip journal scan
+ * - `content` — message body only; prefer content ranking
+ */
+export type SessionSearchMode = "all" | "title" | "content";
+
+export const SESSION_SEARCH_MODES: readonly SessionSearchMode[] = [
+  "all",
+  "title",
+  "content",
+] as const;
+
+export type SessionSearchFilterOpts = {
+  maxSessions?: number;
+  maxProjects?: number;
+  includeArchived?: boolean;
+  mode?: SessionSearchMode;
+};
+
+export type SessionSearchMergeOpts = {
+  maxSessions?: number;
+  includeArchived?: boolean;
+  mode?: SessionSearchMode;
+};
+
 /** Palette row: title/project hit and/or content match. */
 export type MergedSessionHit = {
   id: string;
@@ -41,22 +68,73 @@ export type MergedSessionHit = {
   titleMatch: boolean;
   /** True when message body matched. */
   contentMatch: boolean;
+  archived?: boolean;
 };
+
+/** Compact badge kind for a merged row (UI labels via i18n). */
+export type SessionSearchBadge = "title" | "content" | "both";
+
+/**
+ * Whether the UI should invoke `sessions_search` for this query + mode.
+ * Title-only mode skips the journal scan; empty query never scans.
+ */
+export function shouldScanSessionContent(
+  query: string,
+  mode: SessionSearchMode = "all",
+): boolean {
+  if (mode === "title") return false;
+  return query.trim().length > 0;
+}
+
+/**
+ * Badge kind from match flags. Null when neither (e.g. empty-query recents).
+ */
+export function sessionSearchBadge(
+  hit: Pick<MergedSessionHit, "titleMatch" | "contentMatch">,
+): SessionSearchBadge | null {
+  if (hit.titleMatch && hit.contentMatch) return "both";
+  if (hit.titleMatch) return "title";
+  if (hit.contentMatch) return "content";
+  return null;
+}
+
+/**
+ * Stable i18n message key for a search badge.
+ * Callers pass the key to `tr()` / `t()`.
+ */
+export function sessionSearchBadgeLabelKey(
+  badge: SessionSearchBadge,
+): "search.badgeTitle" | "search.badgeContent" | "search.badgeBoth" {
+  switch (badge) {
+    case "title":
+      return "search.badgeTitle";
+    case "content":
+      return "search.badgeContent";
+    case "both":
+      return "search.badgeBoth";
+  }
+}
 
 /**
  * Filter sessions and projects by a free-text query.
  * Matches session title / id, and project name / path.
  * When a query matches a project, its sessions are also included.
+ *
+ * Mode:
+ * - `content` + non-empty query → no title/project session hits (content merge only)
+ * - `title` / `all` → normal title/project matching
+ * Empty query always returns recent items (respecting includeArchived).
  */
 export function filterSessionSearch(
   query: string,
   sessions: SearchableSession[],
   projects: SearchableProject[],
-  opts?: { maxSessions?: number; maxProjects?: number; includeArchived?: boolean },
+  opts?: SessionSearchFilterOpts,
 ): SessionSearchHits {
   const maxSessions = opts?.maxSessions ?? 20;
   const maxProjects = opts?.maxProjects ?? 10;
   const includeArchived = opts?.includeArchived ?? false;
+  const mode: SessionSearchMode = opts?.mode ?? "all";
 
   const live = includeArchived
     ? sessions
@@ -68,6 +146,11 @@ export function filterSessionSearch(
       matchedSessions: live.slice(0, Math.min(12, maxSessions)),
       matchedProjects: projects.slice(0, Math.min(6, maxProjects)),
     };
+  }
+
+  // Content-only mode: title/project filters stay empty; content hits fill the list.
+  if (mode === "content") {
+    return { matchedSessions: [], matchedProjects: [] };
   }
 
   const projectById = new Map(projects.map((p) => [p.id, p]));
@@ -159,30 +242,67 @@ export function makeContentSnippet(
 
 /**
  * Merge title/project hits with journal content hits for the palette.
- * Title matches first; content-only rows append. Empty query → title list only.
+ *
+ * Mode:
+ * - `all` (default) — title matches first; content-only rows append
+ * - `title` — ignore content hits entirely
+ * - `content` — content hits first (by matchCount); no title-only rows
+ *
+ * Empty query → title list only (recents), no content-only rows.
  */
 export function mergeSessionSearchHits(
   query: string,
   titleHits: SearchableSession[],
   contentHits: SessionContentHit[],
-  opts?: { maxSessions?: number; includeArchived?: boolean },
+  opts?: SessionSearchMergeOpts,
 ): MergedSessionHit[] {
   const maxSessions = opts?.maxSessions ?? 20;
   const includeArchived = opts?.includeArchived ?? false;
+  const mode: SessionSearchMode = opts?.mode ?? "all";
   const q = query.trim();
 
   const contentById = new Map<string, SessionContentHit>();
-  for (const h of contentHits) {
-    if (!includeArchived && h.archived) continue;
-    contentById.set(h.id, h);
+  if (mode !== "title") {
+    for (const h of contentHits) {
+      if (!includeArchived && h.archived) continue;
+      contentById.set(h.id, h);
+    }
   }
 
   const out: MergedSessionHit[] = [];
   const seen = new Set<string>();
 
+  if (mode === "content" && q) {
+    // Prefer content: higher match counts first; no title-only rows.
+    const ranked = contentHits
+      .filter((h) => includeArchived || !h.archived)
+      .slice()
+      .sort((a, b) => (b.matchCount ?? 0) - (a.matchCount ?? 0));
+
+    for (const h of ranked) {
+      if (seen.has(h.id)) continue;
+      // Title match flag when the same id also appeared in titleHits (rare in content mode).
+      const titleHit = titleHits.find((s) => s.id === h.id);
+      out.push({
+        id: h.id,
+        title: h.title || titleHit?.title || "",
+        projectId: h.projectId ?? titleHit?.projectId,
+        snippet: h.snippet,
+        matchCount: h.matchCount,
+        titleMatch: !!titleHit,
+        contentMatch: true,
+        archived: h.archived ?? titleHit?.archived,
+      });
+      seen.add(h.id);
+      if (out.length >= maxSessions) break;
+    }
+    return out;
+  }
+
+  // title / all: title hits first (with optional content snippets).
   for (const s of titleHits) {
     if (!includeArchived && s.archived) continue;
-    const c = contentById.get(s.id);
+    const c = mode === "title" ? undefined : contentById.get(s.id);
     out.push({
       id: s.id,
       title: s.title,
@@ -191,14 +311,15 @@ export function mergeSessionSearchHits(
       matchCount: c?.matchCount,
       titleMatch: q.length > 0,
       contentMatch: !!c,
+      archived: s.archived,
     });
     seen.add(s.id);
     if (out.length >= maxSessions) return out;
   }
 
-  if (!q) return out;
+  if (!q || mode === "title") return out;
 
-  // Content-only: prefer higher match counts, then original order.
+  // Content-only (all mode): prefer higher match counts, then original order.
   const contentOnly = contentHits
     .filter((h) => !seen.has(h.id) && (includeArchived || !h.archived))
     .slice()
@@ -213,6 +334,7 @@ export function mergeSessionSearchHits(
       matchCount: h.matchCount,
       titleMatch: false,
       contentMatch: true,
+      archived: h.archived,
     });
     if (out.length >= maxSessions) break;
   }
