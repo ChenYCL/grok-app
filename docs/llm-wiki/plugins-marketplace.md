@@ -20,8 +20,9 @@ Skills / MCP enable toggles remain App-side (`extensions.json` + ACP inject). **
 
 1. **Default filter** is **xAI Official** (about a dozen curated plugins). Other sources (e.g. Claude official) are available under “All sources” or per-source chips.
 2. **Cache**: first load runs CLI; re-entering Marketplace within ~6h uses in-memory cache. “Refresh catalog” forces a reload. Install/add/remove sources invalidate or patch the cache.
-3. **Install** uses GlassModal confirm (no `window.confirm`). On success the plugin is **trusted and enabled**, then the agent soft-respawns so skills/MCP appear on the next turn.
-4. **Empty Plugins tab** links to Marketplace (“Browse official plugins”).
+3. **Detail panel**: clicking a catalog row opens a GlassModal detail (name, description, marketplace, version, skill/hooks/agents/MCP badges, install source). **Install** / **Reinstall** from the detail or row still use GlassModal confirm (no `window.confirm`). On success the plugin is **trusted and enabled**, then the agent soft-respawns so skills/MCP appear on the next turn.
+4. **Install failure recovery**: errors stick to that plugin row (and detail) with **Retry**; cleared on success. Do not only show a global banner.
+5. **Empty Plugins tab** links to Marketplace (“Browse official plugins”). Installed **Details** may show structured provides/marketplace summary when the CLI list includes it, plus `plugin details` text.
 
 ## Component counts
 

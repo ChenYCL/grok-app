@@ -58,6 +58,11 @@ import {
   isResourceDraftDirty,
 } from "@/lib/resourceEdit";
 import { ExtensionsBuildExtras } from "@/components/ExtensionsBuildExtras";
+import {
+  installedPluginDetailModel,
+  type AvailablePluginDetailModel,
+  type PluginComponentBadgeKind,
+} from "@/lib/pluginMarketplace";
 
 type SkillEditorState = {
   skill: api.SkillDto;
@@ -127,6 +132,9 @@ export function ExtensionsPanel({
   const [detailsTitle, setDetailsTitle] = useState("");
   const [detailsBody, setDetailsBody] = useState("");
   const [detailsLoading, setDetailsLoading] = useState(false);
+  /** Structured detail when provides / marketplace meta is available. */
+  const [detailsModel, setDetailsModel] =
+    useState<AvailablePluginDetailModel | null>(null);
   /** Grok Build Plugins tab filter: all | enabled | disabled */
   const [pluginFilter, setPluginFilter] = useState<PluginFilter>("all");
   const [installSource, setInstallSource] = useState("");
@@ -535,6 +543,22 @@ export function ExtensionsPanel({
   const showDetails = async (p: api.PluginDto) => {
     setDetailsTitle(p.name);
     setDetailsBody("");
+    setDetailsModel(
+      installedPluginDetailModel({
+        name: p.name,
+        version: p.version,
+        marketplace: p.marketplace,
+        status: p.status || "installed",
+        provides: p.provides
+          ? {
+              skills: p.provides.skills,
+              agents: p.provides.agents,
+              hooks: p.provides.hooks,
+              mcpServers: p.provides.mcpServers,
+            }
+          : null,
+      }),
+    );
     setDetailsOpen(true);
     setDetailsLoading(true);
     setActionError(null);
@@ -547,6 +571,24 @@ export function ExtensionsPanel({
       setDetailsLoading(false);
     }
   };
+
+  const badgeLabel = useCallback(
+    (kind: PluginComponentBadgeKind, count?: number | null) => {
+      if (kind === "skills" && typeof count === "number" && count > 0) {
+        return tr("ext.market.badge.skillsCount", { n: String(count) });
+      }
+      const key =
+        kind === "skills"
+          ? "ext.market.badge.skills"
+          : kind === "hooks"
+            ? "ext.market.badge.hooks"
+            : kind === "agents"
+              ? "ext.market.badge.agents"
+              : "ext.market.badge.mcp";
+      return tr(key);
+    },
+    [tr],
+  );
 
   const resetAddForm = () => {
     setAddName("");
@@ -1309,6 +1351,10 @@ export function ExtensionsPanel({
           projectPath={projectPath}
           cliFound={cliFound && !cliMissing}
           mode={tab === "hooks" ? "hooks" : "market"}
+          installedPlugins={plugins.map((p) => ({
+            name: p.name,
+            marketplace: p.marketplace,
+          }))}
           onPluginsChanged={() => {
             void refresh();
           }}
@@ -1353,7 +1399,10 @@ export function ExtensionsPanel({
 
       <GlassModal
         open={detailsOpen}
-        onClose={() => setDetailsOpen(false)}
+        onClose={() => {
+          setDetailsOpen(false);
+          setDetailsModel(null);
+        }}
         title={tr("ext.plugins.detailsTitle", { name: detailsTitle })}
         size="lg"
         closeLabel={tr("common.close")}
@@ -1362,12 +1411,54 @@ export function ExtensionsPanel({
           <button
             type="button"
             className="btn btn--ghost"
-            onClick={() => setDetailsOpen(false)}
+            onClick={() => {
+              setDetailsOpen(false);
+              setDetailsModel(null);
+            }}
           >
             {tr("common.close")}
           </button>
         }
       >
+        {detailsModel ? (
+          <div className="ext-market-detail">
+            <dl className="ext-market-detail__meta">
+              <div className="ext-market-detail__row">
+                <dt>{tr("ext.market.field.marketplace")}</dt>
+                <dd>
+                  {detailsModel.marketplace?.trim() ||
+                    tr("ext.market.field.unknown")}
+                </dd>
+              </div>
+              <div className="ext-market-detail__row">
+                <dt>{tr("ext.market.field.version")}</dt>
+                <dd>
+                  {detailsModel.versionLabel
+                    ? `v${detailsModel.versionLabel}`
+                    : tr("ext.market.field.unknown")}
+                </dd>
+              </div>
+            </dl>
+            {detailsModel.badges.length > 0 ? (
+              <div
+                className="ext-component-badges ext-component-badges--detail"
+                aria-label={tr("ext.market.componentsLabel")}
+              >
+                {detailsModel.badges.map((b) => (
+                  <span
+                    key={b.kind}
+                    className={
+                      "ext-badge ext-badge--component ext-badge--component-" +
+                      b.kind
+                    }
+                  >
+                    {badgeLabel(b.kind, b.count)}
+                  </span>
+                ))}
+              </div>
+            ) : null}
+          </div>
+        ) : null}
         {detailsLoading ? (
           <p className="ext-empty">{tr("ext.plugins.detailsLoading")}</p>
         ) : (

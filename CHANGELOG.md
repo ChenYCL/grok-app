@@ -43,6 +43,11 @@ See `docs/llm-wiki/release.md`.
 #### Permissions / CLI
 - **CLI `--permission-mode` alignment**: pure App policy / YOLO / plan-mode map (`default` · `acceptEdits` · `auto` · `dontAsk` · `bypassPermissions` · `plan`); spawn pins top-level `--permission-mode` (+ agent `--always-approve` for YOLO); Settings shows CLI label + advanced mode selector; product **Auto** policy
 
+#### Extensions / marketplace
+- **Marketplace plugin detail**: clicking a catalog plugin opens a real detail panel (name, description, marketplace, version, skill/hooks/agents/MCP badges) with Install / Reinstall — not a stub
+- **Install failure recovery**: last install error stays on that plugin row with **Retry**; cleared on success
+- Installed **Details** shows structured marketplace/provides summary when available (plus CLI `plugin details` body)
+
 ### Fixed
 
 - CLI install missing SHA-256 (#227) · app.css rewind/fork selectors (#259)
@@ -55,6 +60,7 @@ See `docs/llm-wiki/release.md`.
 - **Agent**：禁用内置工具（芯片 + 自由列表 → `--disallowed-tools`；与禁用网页搜索并存；更改 soft-respawn）；可选 profile 路径（`--agent-profile`）
 - **系统**：**Agent serve** 在设置 → 运行时 → 连接启停（掩码密钥 + 启动时复制连接 URL）
 - **权限/CLI**：对齐 `--permission-mode` 映射与 spawn；设置页展示 CLI 标签与高级选择；新增 **Auto** 策略
+- **扩展/市场**：目录插件详情面板（描述/版本/组件徽章 + 安装/重装）；安装失败保留行内错误与重试；已安装详情在有 provides 时展示结构化摘要
 
 **中文 · 修复**
 

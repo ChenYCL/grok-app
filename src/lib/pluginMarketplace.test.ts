@@ -1,10 +1,15 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import {
+  availablePluginDetailModel,
   availablePluginMetaLine,
+  availablePluginRowKey,
+  clearPluginRowError,
   enrichAvailableFromComponents,
   filterAvailableByMarketplace,
   filterAvailablePlugins,
   filterPluginsByQuery,
+  formatComponentBadges,
+  installedPluginDetailModel,
   isXaiOfficialMarketplace,
   marketplaceQualifiedInstallSource,
   marketplaceRemoveTarget,
@@ -16,6 +21,7 @@ import {
   parsePluginListAvailableJson,
   pickDefaultMarketplaceFilter,
   resolveMarketplaceRemoveArg,
+  setPluginRowError,
   sortMarketplaceSourcesByName,
   takePluginsPage,
   XAI_OFFICIAL_MARKETPLACE,
@@ -325,5 +331,114 @@ describe("marketplaceCatalogCache", () => {
 
     invalidateMarketplaceCatalogCache();
     expect(isMarketplaceCatalogFresh()).toBe(false);
+  });
+});
+
+describe("availablePluginDetailModel / formatComponentBadges", () => {
+  it("builds badges from skill/hooks/agents/mcp flags", () => {
+    expect(
+      formatComponentBadges({
+        skillCount: 1,
+        hasHooks: true,
+        hasAgents: false,
+        hasMcp: true,
+      }),
+    ).toEqual([
+      { kind: "skills", label: "1 skill", count: 1 },
+      { kind: "hooks", label: "hooks" },
+      { kind: "mcp", label: "MCP" },
+    ]);
+    expect(
+      formatComponentBadges({
+        skillCount: 0,
+        hasHooks: false,
+        hasAgents: false,
+        hasMcp: false,
+      }),
+    ).toEqual([]);
+    expect(
+      formatComponentBadges({
+        skillCount: 2,
+        hasHooks: false,
+        hasAgents: true,
+        hasMcp: false,
+      }),
+    ).toEqual([
+      { kind: "skills", label: "2 skills", count: 2 },
+      { kind: "agents", label: "agents" },
+    ]);
+  });
+
+  it("builds a full detail model for available catalog rows", () => {
+    const detail = availablePluginDetailModel({
+      name: "vercel",
+      status: "available",
+      marketplace: "xAI Official",
+      description: "Vercel deploy",
+      version: "v1.2.0",
+      skillCount: 2,
+      hasHooks: false,
+      hasAgents: true,
+      hasMcp: false,
+    });
+    expect(detail.name).toBe("vercel");
+    expect(detail.description).toBe("Vercel deploy");
+    expect(detail.marketplace).toBe("xAI Official");
+    expect(detail.versionLabel).toBe("1.2.0");
+    expect(detail.isInstalled).toBe(false);
+    expect(detail.installSource).toBe("vercel@xAI Official");
+    expect(detail.badges.map((b) => b.kind)).toEqual(["skills", "agents"]);
+    expect(detail.metaLine).toContain("xAI Official");
+    expect(availablePluginRowKey(detail)).toBe("xAI Official:vercel");
+  });
+
+  it("marks non-available status as installed", () => {
+    const detail = availablePluginDetailModel({
+      name: "cloudflare",
+      status: "installed",
+      marketplace: "xAI Official",
+    });
+    expect(detail.isInstalled).toBe(true);
+  });
+
+  it("installedPluginDetailModel uses provides when present; null when empty", () => {
+    expect(
+      installedPluginDetailModel({
+        name: "empty-only",
+      }),
+    ).toBeNull();
+
+    const detail = installedPluginDetailModel({
+      name: "cloudflare",
+      marketplace: "xAI Official",
+      version: "0.3.1",
+      provides: { skills: 3, agents: 1, hooks: true, mcpServers: 0 },
+    });
+    expect(detail).not.toBeNull();
+    expect(detail!.isInstalled).toBe(true);
+    expect(detail!.badges.map((b) => b.kind)).toEqual([
+      "skills",
+      "hooks",
+      "agents",
+    ]);
+    expect(detail!.versionLabel).toBe("0.3.1");
+  });
+});
+
+describe("plugin row install errors", () => {
+  it("sets and clears errors immutably", () => {
+    const empty: Record<string, string> = {};
+    const withErr = setPluginRowError(empty, "xAI Official:vercel", " boom ");
+    expect(withErr).toEqual({ "xAI Official:vercel": "boom" });
+    expect(empty).toEqual({});
+    // Same message → same object
+    expect(setPluginRowError(withErr, "xAI Official:vercel", "boom")).toBe(
+      withErr,
+    );
+    const cleared = clearPluginRowError(withErr, "xAI Official:vercel");
+    expect(cleared).toEqual({});
+    expect(clearPluginRowError(cleared, "missing")).toBe(cleared);
+    expect(setPluginRowError(empty, "", "x")).toBe(empty);
+    expect(setPluginRowError(empty, "k", "  ")).toBe(empty);
   });
 });
