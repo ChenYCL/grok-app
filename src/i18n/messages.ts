@@ -2260,6 +2260,8 @@ const en = {
     "Wait for the current turn to finish before regenerating",
   "message.regenerateOnlyLast":
     "Only the latest assistant reply can be regenerated",
+  "message.regenerateSameModel": "Same model",
+  "message.regeneratePickModel": "Regenerate with model…",
   "composer.editing": "Editing message",
   "composer.editingCancel": "Cancel edit",
   "chat.thinking": "Thinking…",
@@ -4884,6 +4886,8 @@ const zh: Record<MessageKey, string> = {
   "message.regenerate": "重新生成",
   "message.regenerateBusy": "请等待当前回合结束后再重新生成",
   "message.regenerateOnlyLast": "只能重新生成最后一条助手回复",
+  "message.regenerateSameModel": "使用当前模型",
+  "message.regeneratePickModel": "选择模型重新生成…",
   "composer.editing": "正在编辑消息",
   "composer.editingCancel": "取消编辑",
   "chat.thinking": "思考中…",

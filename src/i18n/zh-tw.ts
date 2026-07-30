@@ -2180,6 +2180,8 @@ export const zhTW: Record<MessageKey, string> = {
   "message.regenerate": "重新生成",
   "message.regenerateBusy": "請等待目前回合結束後再重新生成",
   "message.regenerateOnlyLast": "只能重新生成最後一則助手回覆",
+  "message.regenerateSameModel": "使用目前模型",
+  "message.regeneratePickModel": "選擇模型重新生成…",
   "composer.editing": "正在編輯訊息",
   "composer.editingCancel": "取消編輯",
   "chat.thinking": "思考中…",

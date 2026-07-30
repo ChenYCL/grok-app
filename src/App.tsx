@@ -10826,7 +10826,12 @@ export default function App() {
       msg: ChatMessage,
       storedDisplay: string,
       att: Attachment[],
-      opts?: { onlyLastToastKey?: "message.editOnlyLast" | "message.regenerateOnlyLast"; busyToastKey?: "message.editBusy" | "message.regenerateBusy" },
+      opts?: {
+        onlyLastToastKey?: "message.editOnlyLast" | "message.regenerateOnlyLast";
+        busyToastKey?: "message.editBusy" | "message.regenerateBusy";
+        /** When set and different from current, apply before resend. */
+        modelId?: string;
+      },
     ) => {
       if (msg.role !== "user" || msg.id !== lastUserMessageId) {
         showToast(tr(opts?.onlyLastToastKey ?? "message.editOnlyLast"));
@@ -10855,6 +10860,16 @@ export default function App() {
       let sendTargetId = session.sessionId;
       let cacheKey = sendTargetId ?? "__draft__";
       const nowIso = new Date().toISOString();
+      const nextModelId = opts?.modelId?.trim() || "";
+      const switchModel =
+        !!nextModelId &&
+        nextModelId !== modelId &&
+        isValidModelId(nextModelId, availableModels);
+
+      // Optimistic UI + prefs: live agent model is applied after connect.
+      if (switchModel) {
+        setModelId(nextModelId);
+      }
 
       setEditSubmitting(true);
 
@@ -10955,6 +10970,28 @@ export default function App() {
           }
         }
 
+        if (switchModel && api.isTauri()) {
+          try {
+            await api.sessionSetModel(nextModelId, {
+              sessionId,
+              projectId: activeProject?.id ?? null,
+            });
+          } catch (e) {
+            console.warn("session set model before resend failed", e);
+            // Soft-fail: UI model already switched; resend may still use prior agent model.
+          }
+        } else if (switchModel) {
+          void api
+            .composerPrefsSet({
+              projectId: activeProject?.id ?? null,
+              sessionId,
+              modelId: nextModelId,
+            })
+            .catch(() => {
+              /* ignore */
+            });
+        }
+
         await api.sessionSend(agentText, storedDisplay, sessionId);
         // Mirror-allowlisted (`session.autoTitle`) — safe for phone clients.
         if (shouldAutoTitle && api.hasHost()) {
@@ -10988,6 +11025,9 @@ export default function App() {
       goalMode,
       session.title,
       session.sessionId,
+      modelId,
+      availableModels,
+      activeProject?.id,
       // ensureConnected / patchSessionMessages / applySessionTitle via closure
     ],
   );
@@ -11008,9 +11048,10 @@ export default function App() {
   /**
    * Regenerate last assistant reply: resend the last user turn unchanged
    * (same content + attachments) via the edit-resend pipeline.
+   * Optional `modelId` switches session model for this turn when it differs.
    */
   const regenerateLastAssistant = useCallback(
-    async (message: ChatMessage) => {
+    async (message: ChatMessage, opts?: { modelId?: string }) => {
       if (message.role !== "assistant") return;
       if (!canEditLastUser || editSubmitting) {
         showToast(tr("message.regenerateBusy"));
@@ -11030,9 +11071,12 @@ export default function App() {
         name: a.name,
         isDir: a.isDir,
       }));
+      const pick = opts?.modelId?.trim();
       await resendLastUserTurn(userMsg, userMsg.content, att, {
         onlyLastToastKey: "message.regenerateOnlyLast",
         busyToastKey: "message.regenerateBusy",
+        modelId:
+          pick && isValidModelId(pick, availableModels) ? pick : undefined,
       });
     },
     [
@@ -11043,6 +11087,7 @@ export default function App() {
       resendLastUserTurn,
       showToast,
       tr,
+      availableModels,
     ],
   );
 
@@ -13677,9 +13722,11 @@ export default function App() {
               )
             }
             canRegenerate={canEditLastUser && !editSubmitting}
-            onRegenerateAssistant={(msg) => {
-              void regenerateLastAssistant(msg);
+            onRegenerateAssistant={(msg, opts) => {
+              void regenerateLastAssistant(msg, opts);
             }}
+            regenerateModels={availableModels}
+            regenerateModelId={modelId}
             canRewindSession={canRewindSession && !!session.sessionId}
             onRewindToUserMessage={onRewindToUserMessage}
             onForkFromUserMessage={onForkFromUserMessage}
