@@ -2,6 +2,7 @@
  * Collapsible work phase (CodePilot ToolActionsGroup–style).
  * Header: count badge + summary · caret right.
  * Body: single left rail with thinking + tool rows (flat, even spacing).
+ * Finished phases honor `grok.toolStepsAutoCollapse` (default: start collapsed).
  */
 
 import { useEffect, useMemo, useState } from "react";
@@ -10,6 +11,11 @@ import { createT } from "@/i18n";
 import { COLLAPSE_ALL_ACTIVITY_EVENT } from "@/lib/collapseAllActivity";
 import type { TimelinePhase } from "@/lib/timelinePhases";
 import { phaseTitleModel } from "@/lib/timelinePhases";
+import {
+  loadToolStepsAutoCollapsePref,
+  toolStepDefaultOpen,
+  TOOL_STEPS_AUTO_COLLAPSE_CHANGE_EVENT,
+} from "@/lib/toolStepsAutoCollapsePref";
 import { IconChevronRight } from "@/components/icons";
 import { Thinking } from "./Thinking";
 import {
@@ -51,17 +57,43 @@ export function TimelinePhaseBlock({
   phase,
   locale,
   messageStreaming,
+  autoCollapse: autoCollapseProp,
 }: {
   phase: TimelinePhase;
   locale: Locale;
   messageStreaming?: boolean;
+  /** Override stored auto-collapse pref (tests / parent). */
+  autoCollapse?: boolean;
 }) {
   const tr = useMemo(() => createT(locale), [locale]);
   const title = useMemo(() => buildPhaseTitle(phase, tr), [phase, tr]);
-  // Expand while the phase is live or any tool failed (review errors).
-  // Do not keep open for runningCount after the phase closed — segment end
-  // (content / next thought / turn idle) must auto-collapse.
-  const shouldExpand = phase.live || phase.errorCount > 0;
+  const [autoCollapse, setAutoCollapse] = useState(
+    () => autoCollapseProp ?? loadToolStepsAutoCollapsePref(),
+  );
+
+  useEffect(() => {
+    if (autoCollapseProp != null) setAutoCollapse(autoCollapseProp);
+  }, [autoCollapseProp]);
+
+  useEffect(() => {
+    if (autoCollapseProp != null) return;
+    const onPref = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      setAutoCollapse(
+        typeof detail === "boolean"
+          ? detail
+          : loadToolStepsAutoCollapsePref(),
+      );
+    };
+    window.addEventListener(TOOL_STEPS_AUTO_COLLAPSE_CHANGE_EVENT, onPref);
+    return () => {
+      window.removeEventListener(TOOL_STEPS_AUTO_COLLAPSE_CHANGE_EVENT, onPref);
+    };
+  }, [autoCollapseProp]);
+
+  // Running / live phases stay expanded. Finished (incl. failed) follow pref.
+  const phaseRunning = phase.live || phase.runningCount > 0;
+  const shouldExpand = toolStepDefaultOpen(phaseRunning, autoCollapse);
   const [open, setOpen] = useState(shouldExpand);
 
   useEffect(() => {
@@ -160,6 +192,7 @@ export function TimelinePhaseBlock({
                   key={`${phase.id}-ctx-${item.startSi}`}
                   tools={item.tools}
                   locale={locale}
+                  autoCollapse={autoCollapse}
                 />
               );
             }
@@ -168,6 +201,7 @@ export function TimelinePhaseBlock({
                 <TimelineToolRow
                   key={`${phase.id}-tool-${item.seg.toolCallId || item.si}`}
                   tool={item.seg}
+                  autoCollapse={autoCollapse}
                 />
               );
             }

@@ -104,6 +104,10 @@ import {
   loadBackBottomAlwaysPref,
   shouldShowBackBottom,
 } from "@/lib/backBottomAlwaysPref";
+import {
+  TOOL_STEPS_AUTO_COLLAPSE_CHANGE_EVENT,
+  loadToolStepsAutoCollapsePref,
+} from "@/lib/toolStepsAutoCollapsePref";
 import "./lobe-chat.css";
 
 type AttachLabels = {
@@ -564,6 +568,21 @@ export function ConversationThread({
       window.removeEventListener(BACK_BOTTOM_ALWAYS_CHANGE_EVENT, onPref);
   }, []);
   const backBottomVisible = shouldShowBackBottom(backBottomAlways, showBack);
+
+  /** Finished tool steps start collapsed when true (default). */
+  const [toolStepsAutoCollapse, setToolStepsAutoCollapse] = useState(() =>
+    loadToolStepsAutoCollapsePref(),
+  );
+  useEffect(() => {
+    const onPref = (ev: Event) => {
+      const detail = (ev as CustomEvent).detail;
+      if (typeof detail === "boolean") setToolStepsAutoCollapse(detail);
+      else setToolStepsAutoCollapse(loadToolStepsAutoCollapsePref());
+    };
+    window.addEventListener(TOOL_STEPS_AUTO_COLLAPSE_CHANGE_EVENT, onPref);
+    return () =>
+      window.removeEventListener(TOOL_STEPS_AUTO_COLLAPSE_CHANGE_EVENT, onPref);
+  }, []);
 
   const messageNodes = useMemo(
     () => buildSessionMessageNodes(messages),
@@ -1049,7 +1068,10 @@ export function ConversationThread({
               return wrap(
                 <div key={m.id} className="lobe-chat-assistant-timeline">
                   <div className="lobe-timeline-rail">
-                    <TimelineToolRow tool={toolSeg} />
+                    <TimelineToolRow
+                      tool={toolSeg}
+                      autoCollapse={toolStepsAutoCollapse}
+                    />
                   </div>
                 </div>,
               );
@@ -1411,6 +1433,7 @@ export function ConversationThread({
                               phase={unit}
                               locale={locale}
                               messageStreaming={!!m.streaming}
+                              autoCollapse={toolStepsAutoCollapse}
                             />
                           );
                         }
@@ -1420,7 +1443,10 @@ export function ConversationThread({
                               key={`${m.id}-tool-${unit.tool.toolCallId || unit.si}`}
                               className="lobe-timeline-rail"
                             >
-                              <TimelineToolRow tool={unit.tool} />
+                              <TimelineToolRow
+                                tool={unit.tool}
+                                autoCollapse={toolStepsAutoCollapse}
+                              />
                             </div>
                           );
                         }

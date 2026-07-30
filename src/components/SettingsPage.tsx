@@ -166,6 +166,10 @@ import {
   saveBackBottomAlwaysPref,
 } from "@/lib/backBottomAlwaysPref";
 import {
+  loadToolStepsAutoCollapsePref,
+  saveToolStepsAutoCollapsePref,
+} from "@/lib/toolStepsAutoCollapsePref";
+import {
   loadCodeWrapPref,
   saveCodeWrapPref,
 } from "@/lib/codeWrapPref";
@@ -975,6 +979,10 @@ export function SettingsPage({
   /** Thinking block expand preference (localStorage; self-contained). */
   const [thinkingExpand, setThinkingExpand] = useState<ThinkingExpandPref>(
     () => loadThinkingExpandPref(),
+  );
+  /** Finished tool steps auto-collapse (localStorage; default on). */
+  const [toolStepsAutoCollapse, setToolStepsAutoCollapse] = useState(() =>
+    loadToolStepsAutoCollapsePref(),
   );
   /** Chat transcript font scale — localStorage only (no AppSettings). */
   const [chatFontScale, setChatFontScaleState] = useState<ChatFontScale>(() =>
@@ -3138,6 +3146,31 @@ export function SettingsPage({
                           label: t("settings.thinkingExpand.keepOpen"),
                         },
                       ]}
+                    />
+                  </div>
+                </div>
+                <div
+                  className={
+                    "settings-card" +
+                    rowHighlight("settings-anchor-toolStepsAutoCollapse")
+                  }
+                  id="settings-anchor-toolStepsAutoCollapse"
+                >
+                  <div className="settings-row">
+                    <div className="settings-row__text">
+                      <SettingsLabelWithTip
+                        label={t("settings.toolStepsAutoCollapse")}
+                        tip={t("settings.toolStepsAutoCollapseDesc")}
+                      />
+                    </div>
+                    <UiCheck
+                      checked={toolStepsAutoCollapse}
+                      onChange={() => {
+                        const next = !toolStepsAutoCollapse;
+                        setToolStepsAutoCollapse(next);
+                        saveToolStepsAutoCollapsePref(next);
+                      }}
+                      ariaLabel={t("settings.toolStepsAutoCollapse")}
                     />
                   </div>
                 </div>
