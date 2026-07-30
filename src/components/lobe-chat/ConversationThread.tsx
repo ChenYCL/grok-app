@@ -465,14 +465,23 @@ export interface ConversationThreadProps {
    */
   showReplyLength?: boolean;
   /**
-   * When true, completed assistant replies that look like JSON get a
-   * copyable structured-output panel (session JSON Schema mode).
+   * When true, completed assistant replies get a structured-output panel
+   * (session JSON Schema mode): parse + light schema check, copy/export.
    */
   structuredOutputActive?: boolean;
+  /** Active session schema text for required-field validation. */
+  structuredOutputSchema?: string | null;
   structuredOutputLabels?: {
     title: string;
+    badge: string;
     copy: string;
     copied: string;
+    export: string;
+    invalidJson: string;
+    empty: string;
+    valid: string;
+    schemaMismatch: string;
+    missingRequired: string;
   };
 }
 
@@ -512,6 +521,7 @@ export function ConversationThread({
   messageTimeFormat = "absolute",
   showReplyLength = false,
   structuredOutputActive = false,
+  structuredOutputSchema = null,
   structuredOutputLabels,
 }: ConversationThreadProps) {
   const tr = useMemo(() => createT(locale), [locale]);
@@ -1634,9 +1644,8 @@ export function ConversationThread({
                     structuredOutputLabels ? (
                       <StructuredJsonPanel
                         content={m.content}
-                        title={structuredOutputLabels.title}
-                        copyLabel={structuredOutputLabels.copy}
-                        copiedLabel={structuredOutputLabels.copied}
+                        schemaText={structuredOutputSchema}
+                        labels={structuredOutputLabels}
                       />
                     ) : null}
                     {(() => {

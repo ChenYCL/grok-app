@@ -1,9 +1,12 @@
 import { describe, expect, it } from "vitest";
 import {
+  assessStructuredReply,
   extractStructuredJson,
   isActiveJsonSchema,
   JSON_SCHEMA_MAX_CHARS,
   parseJsonSchemaText,
+  parseStructuredJsonContent,
+  validateJsonAgainstSchema,
   wrapAgentTextWithJsonSchema,
 } from "./jsonSchema";
 
@@ -123,5 +126,123 @@ describe("wrapAgentTextWithJsonSchema", () => {
 
   it("is a no-op when schema empty", () => {
     expect(wrapAgentTextWithJsonSchema("hi", "  ")).toBe("hi");
+  });
+});
+
+describe("parseStructuredJsonContent", () => {
+  it("returns empty for blank replies", () => {
+    const r = parseStructuredJsonContent("  \n");
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.error).toBe("empty");
+  });
+
+  it("reports not_json honestly without throwing", () => {
+    expect(() => parseStructuredJsonContent("Just prose.")).not.toThrow();
+    const r = parseStructuredJsonContent("Just prose.");
+    expect(r.ok).toBe(false);
+    if (!r.ok) {
+      expect(r.error).toBe("not_json");
+      expect(r.message).toMatch(/not valid json/i);
+    }
+  });
+
+  it("parses object and array roots", () => {
+    const obj = parseStructuredJsonContent('{"a":1}');
+    expect(obj.ok).toBe(true);
+    if (obj.ok) {
+      expect(obj.value).toEqual({ a: 1 });
+      expect(obj.pretty).toContain('"a": 1');
+    }
+    const arr = parseStructuredJsonContent("[1, 2]");
+    expect(arr.ok).toBe(true);
+    if (arr.ok) expect(arr.value).toEqual([1, 2]);
+  });
+});
+
+describe("validateJsonAgainstSchema", () => {
+  it("is a no-op with no schema", () => {
+    expect(validateJsonAgainstSchema({ a: 1 }, null).ok).toBe(true);
+    expect(validateJsonAgainstSchema({ a: 1 }, undefined).ok).toBe(true);
+  });
+
+  it("checks root type object vs array", () => {
+    const schema = { type: "object" };
+    expect(validateJsonAgainstSchema({ a: 1 }, schema).ok).toBe(true);
+    const bad = validateJsonAgainstSchema([1], schema);
+    expect(bad.ok).toBe(false);
+    expect(bad.issues.some((i) => i.kind === "type_mismatch")).toBe(true);
+  });
+
+  it("reports missing required fields", () => {
+    const schema = {
+      type: "object",
+      required: ["name", "age"],
+      properties: {
+        name: { type: "string" },
+        age: { type: "number" },
+      },
+    };
+    const ok = validateJsonAgainstSchema({ name: "Ada", age: 36 }, schema);
+    expect(ok.ok).toBe(true);
+    expect(ok.missingRequired).toEqual([]);
+
+    const miss = validateJsonAgainstSchema({ name: "Ada" }, schema);
+    expect(miss.ok).toBe(false);
+    expect(miss.missingRequired).toEqual(["age"]);
+    expect(miss.issues.some((i) => i.field === "age")).toBe(true);
+  });
+
+  it("treats missing required on non-object as all missing", () => {
+    // type mismatch + required fields all reported missing
+    const r = validateJsonAgainstSchema([1], {
+      type: "object",
+      required: ["x"],
+    });
+    expect(r.ok).toBe(false);
+    expect(r.missingRequired).toEqual(["x"]);
+    expect(r.issues.some((i) => i.kind === "type_mismatch")).toBe(true);
+  });
+
+  it("accepts multi-type root", () => {
+    const schema = { type: ["object", "array"] };
+    expect(validateJsonAgainstSchema({}, schema).ok).toBe(true);
+    expect(validateJsonAgainstSchema([], schema).ok).toBe(true);
+    expect(validateJsonAgainstSchema("x", schema).ok).toBe(false);
+  });
+});
+
+describe("assessStructuredReply", () => {
+  const schema = JSON.stringify({
+    type: "object",
+    required: ["name"],
+    properties: { name: { type: "string" } },
+  });
+
+  it("marks valid replies that satisfy required fields", () => {
+    const a = assessStructuredReply('{"name":"Ada"}', schema);
+    expect(a.status).toBe("valid");
+    expect(a.pretty).toContain('"name"');
+    expect(a.schema?.ok).toBe(true);
+  });
+
+  it("marks schema_mismatch when required field absent", () => {
+    const a = assessStructuredReply('{"other":1}', schema);
+    expect(a.status).toBe("schema_mismatch");
+    expect(a.pretty).not.toBeNull();
+    expect(a.schema?.missingRequired).toEqual(["name"]);
+  });
+
+  it("marks invalid_json without crashing", () => {
+    expect(() => assessStructuredReply("nope", schema)).not.toThrow();
+    const a = assessStructuredReply("nope", schema);
+    expect(a.status).toBe("invalid_json");
+    expect(a.pretty).toBeNull();
+    expect(a.schema).toBeNull();
+  });
+
+  it("works without a schema (parse only)", () => {
+    const a = assessStructuredReply('{"ok":true}', null);
+    expect(a.status).toBe("valid");
+    expect(a.schema).toBeNull();
   });
 });
