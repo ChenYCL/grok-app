@@ -94,6 +94,54 @@ pub fn agent_profile_spawn_cli_args(raw: &str) -> Option<Vec<String>> {
     Some(vec!["--agent-profile".into(), path])
 }
 
+/// Soft cap for Settings / spawn argv (~64 KiB).
+pub const AGENTS_JSON_MAX_CHARS: usize = 64 * 1024;
+
+/// Pure: validate + normalize inline agents JSON for Settings / spawn.
+///
+/// - Blank → `Ok("")` (omit `--agents`)
+/// - Valid JSON **object** map → `Ok(compact)` for storage / CLI
+/// - Invalid syntax, non-object, or too large → `Err(message)`
+///
+/// CLI currently expects a map (`--agents: … expected a map`); arrays and
+/// primitives are rejected so save fails honestly instead of at next spawn.
+pub fn normalize_agents_json(raw: &str) -> Result<String, String> {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return Ok(String::new());
+    }
+    if trimmed.len() > AGENTS_JSON_MAX_CHARS {
+        return Err(format!(
+            "Agents JSON is too large (max {AGENTS_JSON_MAX_CHARS} characters)."
+        ));
+    }
+    let value: serde_json::Value = serde_json::from_str(trimmed)
+        .map_err(|_| "Invalid JSON — fix syntax before saving.".to_string())?;
+    if !value.is_object() {
+        return Err(
+            "Agents JSON must be a JSON object map (e.g. {\"reviewer\":{…}})."
+                .into(),
+        );
+    }
+    let compact = serde_json::to_string(&value)
+        .map_err(|_| "Invalid JSON — fix syntax before saving.".to_string())?;
+    if compact.len() > AGENTS_JSON_MAX_CHARS {
+        return Err(format!(
+            "Agents JSON is too large (max {AGENTS_JSON_MAX_CHARS} characters)."
+        ));
+    }
+    Ok(compact)
+}
+
+/// Pure: top-level CLI args `["--agents", json]` when set.
+/// Empty / invalid → `None` (omit flag; invalid should not reach spawn).
+pub fn agents_json_spawn_cli_args(raw: &str) -> Option<Vec<String>> {
+    match normalize_agents_json(raw) {
+        Ok(s) if !s.is_empty() => Some(vec!["--agents".into(), s]),
+        _ => None,
+    }
+}
+
 /// File stem for agent def (`explore.md` → `explore`).
 pub fn agent_name_from_file_name(file_name: &str) -> Option<String> {
     let base = Path::new(file_name)
@@ -552,6 +600,46 @@ mod tests {
         assert_eq!(
             agent_profile_spawn_cli_args("  /tmp/a.md  "),
             Some(vec!["--agent-profile".into(), "/tmp/a.md".into()])
+        );
+    }
+
+    #[test]
+    fn normalize_agents_json_empty() {
+        assert_eq!(normalize_agents_json("").as_deref(), Ok(""));
+        assert_eq!(normalize_agents_json("  \n").as_deref(), Ok(""));
+    }
+
+    #[test]
+    fn normalize_agents_json_object() {
+        assert_eq!(
+            normalize_agents_json(r#"  { "a": { "prompt": "x" } }  "#).as_deref(),
+            Ok(r#"{"a":{"prompt":"x"}}"#)
+        );
+        assert_eq!(normalize_agents_json("{}").as_deref(), Ok("{}"));
+    }
+
+    #[test]
+    fn normalize_agents_json_rejects_bad_shapes() {
+        assert!(normalize_agents_json("{").is_err());
+        assert!(normalize_agents_json("[]").is_err());
+        assert!(normalize_agents_json("null").is_err());
+        assert!(normalize_agents_json(r#""x""#).is_err());
+        assert!(normalize_agents_json("1").is_err());
+    }
+
+    #[test]
+    fn normalize_agents_json_size_cap() {
+        let big = format!(r#"{{"a":"{}"}}"#, "x".repeat(AGENTS_JSON_MAX_CHARS));
+        assert!(normalize_agents_json(&big).is_err());
+    }
+
+    #[test]
+    fn agents_json_spawn_args() {
+        assert!(agents_json_spawn_cli_args("").is_none());
+        assert!(agents_json_spawn_cli_args("[]").is_none());
+        assert_eq!(
+            agents_json_spawn_cli_args(r#"  {"x":1}  "#),
+            Some(vec!["--agents".into(), r#"{"x":1}"#.into()])
         );
     }
 

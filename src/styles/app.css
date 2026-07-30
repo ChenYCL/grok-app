@@ -5171,6 +5171,19 @@ html[data-theme="light"] .ui-check.is-mixed .ui-check__box {
   font-size: 13px;
 }
 
+/* Settings → Agent · inline --agents JSON (multi-line). */
+textarea.settings-input.settings-agents-json__textarea {
+  height: auto;
+  min-height: 120px;
+  padding: 10px 12px;
+  resize: vertical;
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 12px;
+  line-height: 1.45;
+  white-space: pre;
+  overflow-x: auto;
+}
+
 /* Settings → General → App · quiet hours start/end (nested under toggle row) */
 .settings-quiet-hours {
   /* settings-row already provides padding/border; keep times full width */

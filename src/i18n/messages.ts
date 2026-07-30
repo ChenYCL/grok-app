@@ -3068,6 +3068,14 @@ const en = {
   "settings.configTomlView.truncated": "Truncated (file large)",
   "settings.configTomlView.needTauri":
     "Viewing config.toml requires the desktop app.",
+  "settings.agentsJson": "Agents JSON",
+  "settings.agentsJsonDesc":
+    "Optional inline subagent definitions passed as top-level grok --agents <JSON> on spawn. Must be a JSON object map (name → definition). Empty omits the flag. Invalid JSON blocks save. Soft-respawns live agents when applied. Does not write into shared ~/.grok.",
+  "settings.agentsJsonPlaceholder":
+    'e.g. {"reviewer":{"description":"Reviews code","prompt":"You are a careful code reviewer."}}',
+  "settings.agentsJsonInvalid": "Invalid Agents JSON — fix before saving.",
+  "settings.agentsJsonApply": "Apply",
+  "settings.agentsJsonClear": "Clear",
   "settings.permissionRules": "Permission rules",
   "settings.permissionRulesAdd": "Add rule",
   "settings.permissionRulesAddWorking": "Saving…",
@@ -6274,6 +6282,14 @@ const zh: Record<MessageKey, string> = {
   "settings.configTomlView.refresh": "刷新",
   "settings.configTomlView.truncated": "已截断（文件过大）",
   "settings.configTomlView.needTauri": "查看 config.toml 需要桌面应用。",
+  "settings.agentsJson": "Agents JSON",
+  "settings.agentsJsonDesc":
+    "可选的内联子代理定义，启动时以顶层 grok --agents <JSON> 传入。须为 JSON 对象映射（名称 → 定义）。留空则省略该参数。无效 JSON 会阻止保存。应用后 soft-respawn 已连接 Agent。不会写入共享的 ~/.grok。",
+  "settings.agentsJsonPlaceholder":
+    '例如 {"reviewer":{"description":"审查代码","prompt":"你是一名仔细的代码审查者。"}}',
+  "settings.agentsJsonInvalid": "Agents JSON 无效 — 请修正后再保存。",
+  "settings.agentsJsonApply": "应用",
+  "settings.agentsJsonClear": "清除",
   "settings.permissionRules": "Permission rules",
   "settings.permissionRulesAdd": "Add rule",
   "settings.permissionRulesAddWorking": "Saving…",

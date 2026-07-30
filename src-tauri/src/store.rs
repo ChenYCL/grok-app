@@ -290,6 +290,12 @@ pub struct AppSettings {
     /// Spawn-time only; does not rewrite shared `~/.grok`. Soft-respawns on change.
     #[serde(default)]
     pub agent_profile_path: String,
+    /// Optional inline subagent definitions JSON for top-level
+    /// `grok --agents <JSON>`. Empty → omit the flag. Must be a JSON object map
+    /// when set; invalid values are rejected on save. Spawn-time only — does
+    /// not write into shared `~/.grok`. Soft-respawns on change.
+    #[serde(default)]
+    pub agents_json: String,
     /// Connect local ACP agents to a shared Grok Build leader process
     /// (`grok agent --leader`). Default **false** — each agent is a standalone
     /// process (`--no-leader`). Advanced; multiple clients can share one backend.
@@ -426,6 +432,7 @@ impl Default for AppSettings {
             subagents_enabled: true,
             preferred_agent: String::new(),
             agent_profile_path: String::new(),
+            agents_json: String::new(),
             use_leader: false,
             voice_id: default_voice_id(),
             voice_dictation_auto_send: false,
@@ -2141,6 +2148,7 @@ mod tests {
         assert!(s.subagents_enabled);
         assert_eq!(s.preferred_agent, "");
         assert_eq!(s.agent_profile_path, "");
+        assert_eq!(s.agents_json, "");
         assert!(!s.use_leader);
     }
 
@@ -2210,6 +2218,22 @@ mod tests {
     fn agent_profile_path_defaults_when_missing_from_json() {
         let s: AppSettings = serde_json::from_str(legacy_settings_json()).expect("deserialize");
         assert_eq!(s.agent_profile_path, "");
+    }
+
+    #[test]
+    fn agents_json_defaults_when_missing_from_json() {
+        let s: AppSettings = serde_json::from_str(legacy_settings_json()).expect("deserialize");
+        assert_eq!(s.agents_json, "");
+    }
+
+    #[test]
+    fn agents_json_round_trips_camel_case() {
+        let mut s = AppSettings::default();
+        s.agents_json = r#"{"reviewer":{"prompt":"x"}}"#.into();
+        let json = serde_json::to_string(&s).expect("serialize");
+        assert!(json.contains("\"agentsJson\""));
+        let back: AppSettings = serde_json::from_str(&json).expect("deserialize");
+        assert_eq!(back.agents_json, r#"{"reviewer":{"prompt":"x"}}"#);
     }
 
     #[test]

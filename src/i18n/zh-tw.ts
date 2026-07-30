@@ -2958,6 +2958,14 @@ export const zhTW: Record<MessageKey, string> = {
   "settings.configTomlView.refresh": "重新整理",
   "settings.configTomlView.truncated": "已截斷（檔案過大）",
   "settings.configTomlView.needTauri": "檢視 config.toml 需要桌面應用程式。",
+  "settings.agentsJson": "Agents JSON",
+  "settings.agentsJsonDesc":
+    "可選的內聯子代理定義，啟動時以頂層 grok --agents <JSON> 傳入。須為 JSON 物件對應（名稱 → 定義）。留空則省略該參數。無效 JSON 會阻止儲存。套用後 soft-respawn 已連線 Agent。不會寫入共用的 ~/.grok。",
+  "settings.agentsJsonPlaceholder":
+    '例如 {"reviewer":{"description":"審查程式碼","prompt":"你是一名仔細的程式碼審查者。"}}',
+  "settings.agentsJsonInvalid": "Agents JSON 無效 — 請修正後再儲存。",
+  "settings.agentsJsonApply": "套用",
+  "settings.agentsJsonClear": "清除",
   "settings.permissionRules": "Permission rules",
   "settings.permissionRulesAdd": "Add rule",
   "settings.permissionRulesAddWorking": "Saving…",

@@ -2007,6 +2007,8 @@ export default function App() {
   const [preferredAgent, setPreferredAgent] = useState("");
   /** Optional `grok agent --agent-profile <PATH>` (empty = omit). */
   const [agentProfilePath, setAgentProfilePath] = useState("");
+  /** Optional top-level `grok --agents <JSON>` (empty = omit). */
+  const [agentsJson, setAgentsJson] = useState("");
   const [agentCatalog, setAgentCatalog] = useState<
     Array<{ name: string; source: string }>
   >([]);
@@ -2775,6 +2777,7 @@ export default function App() {
       }
       setPreferredAgent((settings.preferredAgent || "").trim());
       setAgentProfilePath((settings.agentProfilePath || "").trim());
+      setAgentsJson((settings.agentsJson || "").trim());
       setExperimentalMemory(!!settings.experimentalMemory);
       setVoiceId((settings.voiceId || "eve").trim() || "eve");
       setVoiceDictationAutoSend(!!settings.voiceDictationAutoSend);
@@ -13102,6 +13105,12 @@ export default function App() {
       "settings.agentProfilePathBrowse",
       "settings.agentProfilePathClear",
       "settings.agentProfilePathPlaceholder",
+      "settings.agentsJson",
+      "settings.agentsJsonDesc",
+      "settings.agentsJsonPlaceholder",
+      "settings.agentsJsonInvalid",
+      "settings.agentsJsonApply",
+      "settings.agentsJsonClear",
       "settings.prefsScope",
       "settings.prefsScopeDesc",
       "settings.prefsScope.global",
@@ -13599,6 +13608,14 @@ export default function App() {
             void api.settingsGet().then((s) =>
               api.settingsSet({ ...s, agentProfilePath: next }),
             );
+          }}
+          agentsJson={agentsJson}
+          onAgentsJson={setAgentsJson}
+          onAgentsJsonCommit={async (v) => {
+            const next = (v || "").trim();
+            setAgentsJson(next);
+            const s = await api.settingsGet();
+            await api.settingsSet({ ...s, agentsJson: next });
           }}
           agentCatalog={agentCatalog}
           experimentalMemory={experimentalMemory}

@@ -547,6 +547,11 @@ pub fn agent_profile_spawn_flags(raw: &str) -> Option<Vec<String>> {
     crate::agents_catalog::agent_profile_spawn_cli_args(raw)
 }
 
+/// Pure: top-level `["--agents", json]` when Settings agents JSON is set.
+pub fn agents_json_spawn_flags(raw: &str) -> Option<Vec<String>> {
+    crate::agents_catalog::agents_json_spawn_cli_args(raw)
+}
+
 
 impl AcpClient {
     pub fn use_mock() -> bool {
@@ -667,6 +672,7 @@ impl AcpClient {
         let preferred_agent = AgentSpawnSpec::from_setting(&settings.preferred_agent);
         let agent_profile =
             crate::agents_catalog::normalize_agent_profile_path(&settings.agent_profile_path);
+        let agents_json_args = agents_json_spawn_flags(&settings.agents_json);
         let subagents_enabled = settings.subagents_enabled;
         let memory_enabled = settings.experimental_memory;
         let use_leader = settings.use_leader;
@@ -742,6 +748,13 @@ impl AcpClient {
                 cmd.arg(a);
             }
         }
+        // Top-level `grok --agents <JSON>` — inline subagent defs; empty omits.
+        // Does not write into shared ~/.grok (spawn argv only).
+        if let Some(ref aa) = agents_json_args {
+            for a in aa {
+                cmd.arg(a);
+            }
+        }
         crate::agent_subagents::apply_subagents_to_command(&mut cmd, subagents_enabled);
         crate::agent_memory::apply_memory_to_command(&mut cmd, memory_enabled);
         cmd.arg("agent");
@@ -788,7 +801,7 @@ impl AcpClient {
             cmd.env(k, v);
         }
         tracing::info!(
-            "acp: spawn home={} mode={} sandbox={:?} max_turns={:?} leader={} subagents={} memory={} agent_profile={:?}",
+            "acp: spawn home={} mode={} sandbox={:?} max_turns={:?} leader={} subagents={} memory={} agent_profile={:?} agents_json={}",
             grok_home.display(),
             session_data_mode,
             sandbox.as_ref().map(|s| s.profile.as_str()),
@@ -797,6 +810,7 @@ impl AcpClient {
             subagents_enabled,
             memory_enabled,
             agent_profile.as_deref(),
+            agents_json_args.is_some(),
         );
 
         let mut child = cmd.spawn().map_err(|e| {
@@ -3523,6 +3537,30 @@ mod agent_profile_spawn_tests {
             Some(vec![
                 "--agent-profile".to_string(),
                 "/tmp/agent.md".to_string()
+            ])
+        );
+    }
+}
+
+#[cfg(test)]
+mod agents_json_spawn_tests {
+    use super::*;
+
+    #[test]
+    fn empty_or_invalid_omits_flag() {
+        assert!(agents_json_spawn_flags("").is_none());
+        assert!(agents_json_spawn_flags("  ").is_none());
+        assert!(agents_json_spawn_flags("[]").is_none());
+        assert!(agents_json_spawn_flags("{").is_none());
+    }
+
+    #[test]
+    fn builds_top_level_pair() {
+        assert_eq!(
+            agents_json_spawn_flags(r#"  {"x":{"prompt":"hi"}}  "#),
+            Some(vec![
+                "--agents".to_string(),
+                r#"{"x":{"prompt":"hi"}}"#.to_string()
             ])
         );
     }

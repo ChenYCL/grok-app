@@ -49,6 +49,7 @@ import {
   parseDisallowedToolsInput,
   toggleDisallowedTool,
 } from "@/lib/disallowedTools";
+import { parseAgentsJson } from "@/lib/agentsJson";
 import {
   COMMON_ALLOWED_TOOLS,
   bothToolListsSet,
@@ -419,6 +420,14 @@ export interface SettingsPageProps {
   agentProfilePath?: string;
   onAgentProfilePath?: (v: string) => void;
   onAgentProfilePathCommit?: (v: string) => void;
+  /**
+   * Optional inline agents JSON for top-level `grok --agents <JSON>`.
+   * Empty = omit flag. Local draft via `onAgentsJson`; persist via
+   * `onAgentsJsonCommit` after client-side validation (invalid blocks save).
+   */
+  agentsJson?: string;
+  onAgentsJson?: (v: string) => void;
+  onAgentsJsonCommit?: (v: string) => void | Promise<void>;
   /** Catalog rows for preferred-agent select. */
   agentCatalog?: Array<{ name: string; source: string }>;
   /** Cross-session memory toggle. */
@@ -962,6 +971,9 @@ export function SettingsPage({
   agentProfilePath = "",
   onAgentProfilePath,
   onAgentProfilePathCommit,
+  agentsJson = "",
+  onAgentsJson,
+  onAgentsJsonCommit,
   agentCatalog = [],
   experimentalMemory = false,
   onExperimentalMemory,
@@ -1037,6 +1049,9 @@ export function SettingsPage({
   trustedProjects = [],
 }: SettingsPageProps) {
   const [query, setQuery] = useState("");
+  /** Client-side validation error for Agents JSON (invalid blocks save). */
+  const [agentsJsonError, setAgentsJsonError] = useState<string | null>(null);
+  const [agentsJsonSaving, setAgentsJsonSaving] = useState(false);
   /** Composer empty min-height (rows) — localStorage only (no AppSettings). */
   const [composerMinRows, setComposerMinRowsState] = useState<ComposerMinRows>(
     () => loadComposerMinRows(),
@@ -2378,6 +2393,102 @@ export function SettingsPage({
               >
                 <AgentConfigTomlPanel locale={resolveLocale(locale)} />
               </div>
+              {onAgentsJson ? (
+                <div
+                  className={
+                    "settings-row settings-row--stack" +
+                    rowHighlight("settings-anchor-agentsJson")
+                  }
+                  id="settings-anchor-agentsJson"
+                >
+                  <div className="settings-row__text">
+                    <div className="settings-row__label">
+                      {t("settings.agentsJson")}
+                    </div>
+                    <div className="settings-row__desc">
+                      {t("settings.agentsJsonDesc")}
+                    </div>
+                  </div>
+                  <textarea
+                    className="settings-input settings-agents-json__textarea"
+                    value={agentsJson || ""}
+                    placeholder={t("settings.agentsJsonPlaceholder")}
+                    onChange={(e) => {
+                      setAgentsJsonError(null);
+                      onAgentsJson(e.target.value);
+                    }}
+                    rows={6}
+                    spellCheck={false}
+                    autoComplete="off"
+                    autoCorrect="off"
+                    autoCapitalize="off"
+                    aria-label={t("settings.agentsJson")}
+                    aria-invalid={agentsJsonError ? true : undefined}
+                  />
+                  {agentsJsonError ? (
+                    <div
+                      className="settings-row__desc"
+                      role="alert"
+                      style={{ color: "var(--danger, #e35)" }}
+                    >
+                      {agentsJsonError}
+                    </div>
+                  ) : null}
+                  <div
+                    className="settings-row__actions"
+                    style={{ display: "flex", gap: 8, flexWrap: "wrap" }}
+                  >
+                    <button
+                      type="button"
+                      className="btn btn--ghost btn--sm"
+                      disabled={agentsJsonSaving}
+                      onClick={() => {
+                        const draft = agentsJson || "";
+                        const parsed = parseAgentsJson(draft);
+                        if (!parsed.ok) {
+                          setAgentsJsonError(
+                            t("settings.agentsJsonInvalid") +
+                              (parsed.message ? ` ${parsed.message}` : ""),
+                          );
+                          return;
+                        }
+                        setAgentsJsonError(null);
+                        const next = parsed.normalized;
+                        onAgentsJson(next);
+                        setAgentsJsonSaving(true);
+                        void Promise.resolve(onAgentsJsonCommit?.(next))
+                          .catch((e) => {
+                            setAgentsJsonError(
+                              String(e || t("settings.agentsJsonInvalid")),
+                            );
+                          })
+                          .finally(() => setAgentsJsonSaving(false));
+                      }}
+                    >
+                      {t("settings.agentsJsonApply")}
+                    </button>
+                    {agentsJson ? (
+                      <button
+                        type="button"
+                        className="btn btn--ghost btn--sm"
+                        disabled={agentsJsonSaving}
+                        onClick={() => {
+                          setAgentsJsonError(null);
+                          onAgentsJson("");
+                          setAgentsJsonSaving(true);
+                          void Promise.resolve(onAgentsJsonCommit?.(""))
+                            .catch((e) => {
+                              setAgentsJsonError(String(e));
+                            })
+                            .finally(() => setAgentsJsonSaving(false));
+                        }}
+                      >
+                        {t("settings.agentsJsonClear")}
+                      </button>
+                    ) : null}
+                  </div>
+                </div>
+              ) : null}
               {onExperimentalMemory ? (
                 <div
                   className={"settings-row" + rowHighlight("settings-anchor-experimentalMemory")}

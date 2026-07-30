@@ -886,6 +886,9 @@ pub async fn settings_set(
     settings.agent_profile_path =
         crate::agents_catalog::normalize_agent_profile_path(&settings.agent_profile_path)
             .unwrap_or_default();
+    // Normalize / validate optional agents JSON (reject invalid non-empty).
+    settings.agents_json =
+        crate::agents_catalog::normalize_agents_json(&settings.agents_json)?;
     let keychain_flip =
         prev.store_api_keys_in_keychain != settings.store_api_keys_in_keychain;
     let session_data_mode_changed =
@@ -906,6 +909,7 @@ pub async fn settings_set(
     let preferred_agent_flip =
         prev.preferred_agent.trim() != settings.preferred_agent.trim();
     let agent_profile_flip = prev.agent_profile_path.trim() != settings.agent_profile_path.trim();
+    let agents_json_flip = prev.agents_json.trim() != settings.agents_json.trim();
     let max_turns_flip = prev.max_agent_turns != settings.max_agent_turns;
     let sandbox_flip = prev.sandbox_profile.trim() != settings.sandbox_profile.trim();
     let launch_at_login_flip = prev.launch_at_login != settings.launch_at_login;
@@ -969,6 +973,7 @@ pub async fn settings_set(
         || use_leader_changed
         || preferred_agent_flip
         || agent_profile_flip
+        || agents_json_flip
         || max_turns_flip
         || sandbox_flip
     {
