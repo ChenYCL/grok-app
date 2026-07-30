@@ -482,6 +482,7 @@ import { StatusModal } from "@/components/StatusModal";
 import { McpStatusModal } from "@/components/McpStatusModal";
 import {
   IconChevronDown,
+  IconChevronUp,
   IconChevronRight,
   IconMore,
   IconPlus,
@@ -13627,7 +13628,12 @@ export default function App() {
                     </div>
                   ) : null}
                   <ul className="composer__queue-list">
-                    {sendQueue.activeQueue.map((item, idx) => (
+                    {sendQueue.activeQueue.map((item, idx) => {
+                      const queueLen = sendQueue.activeQueue.length;
+                      const rowBusy =
+                        guidingQueueItemId === item.id ||
+                        queueEditItemId !== null;
+                      return (
                       <li key={item.id} className="composer__queue-item">
                         <span className="composer__queue-idx" aria-hidden>
                           {idx + 1}
@@ -13648,16 +13654,41 @@ export default function App() {
                             queuePreviewLabels,
                           )}
                         </span>
+                        <div className="composer__queue-move">
+                          <button
+                            type="button"
+                            className="composer__queue-move-btn"
+                            data-testid="queue-move-up"
+                            aria-label={tr("composer.queueMoveUp")}
+                            title={tr("composer.queueMoveUp")}
+                            disabled={rowBusy || idx === 0}
+                            onClick={() =>
+                              sendQueue.moveItem(item.id, "up")
+                            }
+                          >
+                            <IconChevronUp size={12} aria-hidden />
+                          </button>
+                          <button
+                            type="button"
+                            className="composer__queue-move-btn"
+                            data-testid="queue-move-down"
+                            aria-label={tr("composer.queueMoveDown")}
+                            title={tr("composer.queueMoveDown")}
+                            disabled={rowBusy || idx >= queueLen - 1}
+                            onClick={() =>
+                              sendQueue.moveItem(item.id, "down")
+                            }
+                          >
+                            <IconChevronDown size={12} aria-hidden />
+                          </button>
+                        </div>
                         <button
                           type="button"
                           className="composer__queue-edit"
                           data-testid="queue-edit"
                           aria-label={tr("composer.queueEdit")}
                           title={tr("composer.queueEdit")}
-                          disabled={
-                            guidingQueueItemId === item.id ||
-                            queueEditItemId !== null
-                          }
+                          disabled={rowBusy}
                           onClick={() => openQueueEdit(item)}
                         >
                           {tr("composer.queueEdit")}
@@ -13701,7 +13732,8 @@ export default function App() {
                           <IconClose size={12} />
                         </button>
                       </li>
-                    ))}
+                      );
+                    })}
                   </ul>
                 </div>
               )}

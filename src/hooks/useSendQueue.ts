@@ -16,6 +16,7 @@ import {
   getQueueForKey,
   makeQueuedSend,
   migrateDraftQueue,
+  moveQueuedSend,
   queueSessionKey,
   removeQueuedSend,
   requeueAfterFlushFail,
@@ -24,6 +25,7 @@ import {
   shouldEnqueueSend,
   shouldHoldFlushForLive,
   updateQueuedSend,
+  type QueueMoveDirection,
   type QueuedSend,
   type QueuedSendPatch,
 } from "@/lib/sendQueue";
@@ -150,6 +152,19 @@ export function useSendQueue({
       const key = queueSessionKey(sessionId);
       const prev = getQueueForKey(sendQueueByKeyRef.current, key);
       const updated = updateQueuedSend(prev, id, patch);
+      if (updated === prev) return false;
+      writeMap(setQueueForKey(sendQueueByKeyRef.current, key, updated));
+      return true;
+    },
+    [sessionId, writeMap],
+  );
+
+  /** Reorder one step; does not pause or trigger flush beyond normal state. */
+  const moveItem = useCallback(
+    (id: string, direction: QueueMoveDirection) => {
+      const key = queueSessionKey(sessionId);
+      const prev = getQueueForKey(sendQueueByKeyRef.current, key);
+      const updated = moveQueuedSend(prev, id, direction);
       if (updated === prev) return false;
       writeMap(setQueueForKey(sendQueueByKeyRef.current, key, updated));
       return true;
@@ -304,6 +319,7 @@ export function useSendQueue({
     enqueue,
     removeItem,
     updateItem,
+    moveItem,
     clearQueue,
     clearDraftQueue,
     dropSessions,

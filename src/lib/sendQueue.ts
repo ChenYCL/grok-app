@@ -152,6 +152,50 @@ export function removeQueuedSend(
   return queue.filter((q) => q.id !== id);
 }
 
+export type QueueMoveDirection = "up" | "down";
+
+/**
+ * Move a queued item one step toward the head (`up`) or tail (`down`).
+ * Immutable; returns the same array ref when id is missing, the move would
+ * leave the bounds, or the queue has fewer than two items.
+ */
+export function moveQueuedSend(
+  queue: QueuedSend[],
+  id: string,
+  direction: QueueMoveDirection,
+): QueuedSend[] {
+  if (queue.length < 2) return queue;
+  const idx = queue.findIndex((q) => q.id === id);
+  if (idx < 0) return queue;
+  const target = direction === "up" ? idx - 1 : idx + 1;
+  if (target < 0 || target >= queue.length) return queue;
+  const next = queue.slice();
+  const [item] = next.splice(idx, 1);
+  next.splice(target, 0, item!);
+  return next;
+}
+
+/**
+ * Move the item at `fromIndex` to `toIndex`. Both indices are clamped into
+ * `[0, length-1]`. Immutable; returns the same array ref when the queue has
+ * fewer than two items or the clamped indices are equal (no-op).
+ */
+export function reorderQueuedSend(
+  queue: QueuedSend[],
+  fromIndex: number,
+  toIndex: number,
+): QueuedSend[] {
+  if (queue.length < 2) return queue;
+  if (!Number.isFinite(fromIndex) || !Number.isFinite(toIndex)) return queue;
+  const from = Math.max(0, Math.min(queue.length - 1, Math.trunc(fromIndex)));
+  const to = Math.max(0, Math.min(queue.length - 1, Math.trunc(toIndex)));
+  if (from === to) return queue;
+  const next = queue.slice();
+  const [item] = next.splice(from, 1);
+  next.splice(to, 0, item!);
+  return next;
+}
+
 export type QueuedSendPatch = {
   storedDisplay?: string;
   attachments?: Attachment[];

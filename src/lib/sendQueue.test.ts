@@ -9,9 +9,11 @@ import {
   isForeignLiveBusy,
   makeQueuedSend,
   migrateDraftQueue,
+  moveQueuedSend,
   queuePreviewText,
   queueSessionKey,
   removeQueuedSend,
+  reorderQueuedSend,
   requeueAfterFlushFail,
   requeueAtFront,
   setQueueForKey,
@@ -107,6 +109,83 @@ describe("sendQueue", () => {
     expect(head?.id).toBe(a.id);
     expect(rest).toHaveLength(1);
     expect(removeQueuedSend(rest, b.id)).toEqual([]);
+  });
+
+  it("moveQueuedSend swaps one step up/down and no-ops at bounds", () => {
+    const a = makeQueuedSend({
+      storedDisplay: "a",
+      attachments: [],
+      goalMode: false,
+      now: 1,
+    });
+    const b = makeQueuedSend({
+      storedDisplay: "b",
+      attachments: [],
+      goalMode: false,
+      now: 2,
+    });
+    const c = makeQueuedSend({
+      storedDisplay: "c",
+      attachments: [],
+      goalMode: false,
+      now: 3,
+    });
+    const q = [a, b, c];
+    const up = moveQueuedSend(q, b.id, "up");
+    expect(up).not.toBe(q);
+    expect(up.map((x) => x.id)).toEqual([b.id, a.id, c.id]);
+    expect(up[0]).toBe(b);
+    expect(up[1]).toBe(a);
+
+    const down = moveQueuedSend(q, b.id, "down");
+    expect(down.map((x) => x.id)).toEqual([a.id, c.id, b.id]);
+
+    expect(moveQueuedSend(q, a.id, "up")).toBe(q);
+    expect(moveQueuedSend(q, c.id, "down")).toBe(q);
+    expect(moveQueuedSend(q, "missing", "up")).toBe(q);
+    const single = [a];
+    expect(moveQueuedSend(single, a.id, "up")).toBe(single);
+    expect(moveQueuedSend(single, a.id, "down")).toBe(single);
+  });
+
+  it("reorderQueuedSend clamps indices and returns same ref for no-op", () => {
+    const a = makeQueuedSend({
+      storedDisplay: "a",
+      attachments: [],
+      goalMode: false,
+      now: 1,
+    });
+    const b = makeQueuedSend({
+      storedDisplay: "b",
+      attachments: [],
+      goalMode: false,
+      now: 2,
+    });
+    const c = makeQueuedSend({
+      storedDisplay: "c",
+      attachments: [],
+      goalMode: false,
+      now: 3,
+    });
+    const q = [a, b, c];
+
+    const moved = reorderQueuedSend(q, 0, 2);
+    expect(moved).not.toBe(q);
+    expect(moved.map((x) => x.id)).toEqual([b.id, c.id, a.id]);
+
+    const midToFront = reorderQueuedSend(q, 2, 0);
+    expect(midToFront.map((x) => x.id)).toEqual([c.id, a.id, b.id]);
+
+    expect(reorderQueuedSend(q, 1, 1)).toBe(q);
+    // Clamp out-of-range: from -10 → 0, to 99 → last; move head to tail.
+    const clamped = reorderQueuedSend(q, -10, 99);
+    expect(clamped.map((x) => x.id)).toEqual([b.id, c.id, a.id]);
+    // Clamp both to same end → no-op same ref.
+    expect(reorderQueuedSend(q, -5, -1)).toBe(q);
+    expect(reorderQueuedSend(q, 99, 50)).toBe(q);
+    expect(reorderQueuedSend(q, Number.NaN, 1)).toBe(q);
+    const single = [a];
+    expect(reorderQueuedSend(single, 0, 0)).toBe(single);
   });
 
   it("updateQueuedSend patches text and goalMode", () => {
