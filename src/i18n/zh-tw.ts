@@ -2503,6 +2503,12 @@ export const zhTW: Record<MessageKey, string> = {
   "settings.preferredAgent": "Agent definition",
   "settings.preferredAgent.source.project": "project",
   "settings.preferredAgent.source.user": "user",
+  "settings.agentProfilePath": "Agent profile 檔案",
+  "settings.agentProfilePathDesc":
+    "可選路徑，啟動時傳給 grok agent --agent-profile <PATH>。留空則用 CLI 預設。變更後 soft-respawn 已連線 Agent。不會改寫共用的 ~/.grok。",
+  "settings.agentProfilePathBrowse": "瀏覽…",
+  "settings.agentProfilePathClear": "清除",
+  "settings.agentProfilePathPlaceholder": "例如 ~/agents/my-agent.md",
   "settings.permissionRules": "Permission rules",
   "settings.permissionRulesAdd": "Add rule",
   "settings.permissionRulesAddWorking": "Saving…",

@@ -345,6 +345,7 @@ pub async fn dispatch(
         "pick_directory"
         | "pick_attach_files"
         | "pick_cli_binary"
+        | "pick_agent_profile"
         | "path_open"
         | "path_reveal"
         | "open_in_editor"

@@ -398,6 +398,11 @@ pub fn preferred_agent_spawn_flags(raw: &str) -> Option<Vec<String>> {
     crate::agents_catalog::agent_spawn_cli_args(raw)
 }
 
+/// Pure: agent-option `["--agent-profile", path]` when Settings path is set.
+pub fn agent_profile_spawn_flags(raw: &str) -> Option<Vec<String>> {
+    crate::agents_catalog::agent_profile_spawn_cli_args(raw)
+}
+
 
 impl AcpClient {
     pub fn use_mock() -> bool {
@@ -512,6 +517,8 @@ impl AcpClient {
         let sandbox = SandboxSpawnSpec::from_setting(sandbox_raw);
         let max_turns = MaxTurnsSpawnSpec::from_setting(settings.max_agent_turns);
         let preferred_agent = AgentSpawnSpec::from_setting(&settings.preferred_agent);
+        let agent_profile =
+            crate::agents_catalog::normalize_agent_profile_path(&settings.agent_profile_path);
         let subagents_enabled = settings.subagents_enabled;
         let memory_enabled = settings.experimental_memory;
         let use_leader = settings.use_leader;
@@ -566,6 +573,12 @@ impl AcpClient {
         crate::agent_memory::apply_memory_to_command(&mut cmd, memory_enabled);
         cmd.arg("agent");
         cmd.arg(leader_spawn_flag(use_leader));
+        // Agent option: `--agent-profile <PATH>` (before `stdio`). Path only —
+        // does not rewrite app agent-home or shared ~/.grok.
+        if let Some(ref profile_path) = agent_profile {
+            cmd.arg("--agent-profile");
+            cmd.arg(profile_path);
+        }
         if !spawn_model.is_empty() {
             cmd.args(["--model", &spawn_model]);
         }
@@ -604,14 +617,15 @@ impl AcpClient {
             cmd.env(k, v);
         }
         tracing::info!(
-            "acp: spawn home={} mode={} sandbox={:?} max_turns={:?} leader={} subagents={} memory={}",
+            "acp: spawn home={} mode={} sandbox={:?} max_turns={:?} leader={} subagents={} memory={} agent_profile={:?}",
             grok_home.display(),
             session_data_mode,
             sandbox.as_ref().map(|s| s.profile.as_str()),
             max_turns.as_ref().map(|m| m.turns),
             use_leader,
             subagents_enabled,
-            memory_enabled
+            memory_enabled,
+            agent_profile.as_deref(),
         );
 
         let mut child = cmd.spawn().map_err(|e| {
@@ -3213,6 +3227,29 @@ mod prompt_wait_timeout_tests {
         assert_eq!(
             prompt_wait_should_timeout(Some(last), started, now, idle(), absolute()),
             Some("absolute")
+        );
+    }
+}
+
+#[cfg(test)]
+mod agent_profile_spawn_tests {
+    use super::*;
+
+    #[test]
+    fn empty_yields_no_flags() {
+        assert!(agent_profile_spawn_flags("").is_none());
+        assert!(agent_profile_spawn_flags("  ").is_none());
+        assert!(agent_profile_spawn_flags("a\nb").is_none());
+    }
+
+    #[test]
+    fn builds_agent_option_pair() {
+        assert_eq!(
+            agent_profile_spawn_flags("  /tmp/agent.md  "),
+            Some(vec![
+                "--agent-profile".to_string(),
+                "/tmp/agent.md".to_string()
+            ])
         );
     }
 }

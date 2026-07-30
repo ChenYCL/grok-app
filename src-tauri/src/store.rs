@@ -259,6 +259,11 @@ pub struct AppSettings {
     /// Applied at spawn only; changing it soft-respawns the live agent.
     #[serde(default)]
     pub preferred_agent: String,
+    /// Optional path to a Grok Build agent profile file
+    /// (`grok agent --agent-profile <PATH>`). Empty → omit the flag.
+    /// Spawn-time only; does not rewrite shared `~/.grok`. Soft-respawns on change.
+    #[serde(default)]
+    pub agent_profile_path: String,
     /// Connect local ACP agents to a shared Grok Build leader process
     /// (`grok agent --leader`). Default **false** — each agent is a standalone
     /// process (`--no-leader`). Advanced; multiple clients can share one backend.
@@ -392,6 +397,7 @@ impl Default for AppSettings {
             plan_enabled: default_plan_enabled(),
             subagents_enabled: true,
             preferred_agent: String::new(),
+            agent_profile_path: String::new(),
             use_leader: false,
             voice_id: default_voice_id(),
             voice_dictation_auto_send: false,
@@ -1995,6 +2001,7 @@ mod tests {
         assert!(s.plan_enabled);
         assert!(s.subagents_enabled);
         assert_eq!(s.preferred_agent, "");
+        assert_eq!(s.agent_profile_path, "");
         assert!(!s.use_leader);
     }
 
@@ -2058,6 +2065,12 @@ mod tests {
     fn preferred_agent_defaults_when_missing_from_json() {
         let s: AppSettings = serde_json::from_str(legacy_settings_json()).expect("deserialize");
         assert_eq!(s.preferred_agent, "");
+    }
+
+    #[test]
+    fn agent_profile_path_defaults_when_missing_from_json() {
+        let s: AppSettings = serde_json::from_str(legacy_settings_json()).expect("deserialize");
+        assert_eq!(s.agent_profile_path, "");
     }
 
     #[test]

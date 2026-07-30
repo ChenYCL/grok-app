@@ -258,6 +258,24 @@ pub async fn pick_cli_binary() -> Result<Option<String>, String> {
     Ok(file.map(|p| p.display().to_string()))
 }
 
+/// Native file picker for an agent profile (markdown / any file).
+#[tauri::command]
+pub async fn pick_agent_profile() -> Result<Option<String>, String> {
+    let file = tauri::async_runtime::spawn_blocking(|| {
+        rfd::FileDialog::new()
+            .set_title("Select agent profile / 选择 Agent profile 文件")
+            .add_filter("Agent profile", &["md", "markdown", "json", "toml"])
+            .add_filter("All files", &["*"])
+            .pick_file()
+    })
+    .await
+    .map_err(|e| e.to_string())?;
+    Ok(file.map(|p| {
+        crate::path_scope::grant_path(&p);
+        p.display().to_string()
+    }))
+}
+
 /// Query GitHub Releases for a newer App version (Settings → About).
 #[tauri::command]
 pub async fn app_check_update() -> Result<crate::app_update::AppUpdateCheck, String> {
@@ -780,9 +798,13 @@ pub fn store_take_quarantine() -> Option<String> {
 pub async fn settings_set(
     app: tauri::AppHandle,
     mgr: State<'_, Arc<SessionManager>>,
-    settings: AppSettings,
+    mut settings: AppSettings,
 ) -> Result<AppSettings, String> {
     let prev = store::load_settings();
+    // Normalize optional agent profile path (trim / drop control chars).
+    settings.agent_profile_path =
+        crate::agents_catalog::normalize_agent_profile_path(&settings.agent_profile_path)
+            .unwrap_or_default();
     let keychain_flip =
         prev.store_api_keys_in_keychain != settings.store_api_keys_in_keychain;
     let session_data_mode_changed =
@@ -794,6 +816,7 @@ pub async fn settings_set(
     let subagents_flip = prev.subagents_enabled != settings.subagents_enabled;
     let preferred_agent_flip =
         prev.preferred_agent.trim() != settings.preferred_agent.trim();
+    let agent_profile_flip = prev.agent_profile_path.trim() != settings.agent_profile_path.trim();
     let max_turns_flip = prev.max_agent_turns != settings.max_agent_turns;
     let sandbox_flip = prev.sandbox_profile.trim() != settings.sandbox_profile.trim();
     let launch_at_login_flip = prev.launch_at_login != settings.launch_at_login;
@@ -854,6 +877,7 @@ pub async fn settings_set(
         || plan_enabled_flip
         || use_leader_changed
         || preferred_agent_flip
+        || agent_profile_flip
         || max_turns_flip
         || sandbox_flip
     {

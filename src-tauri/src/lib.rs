@@ -255,6 +255,7 @@ pub fn run() {
             commands::cli_update_check,
             commands::cli_update_install,
             commands::pick_cli_binary,
+            commands::pick_agent_profile,
             commands::open_external_url,
             commands::app_check_update,
             updater::is_auto_update_supported,

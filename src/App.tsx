@@ -1936,6 +1936,8 @@ export default function App() {
   const [sandboxProfile, setSandboxProfile] = useState("off");
   /** Preferred CLI agent definition for spawn (`""` = CLI default). */
   const [preferredAgent, setPreferredAgent] = useState("");
+  /** Optional `grok agent --agent-profile <PATH>` (empty = omit). */
+  const [agentProfilePath, setAgentProfilePath] = useState("");
   const [agentCatalog, setAgentCatalog] = useState<
     Array<{ name: string; source: string }>
   >([]);
@@ -2687,6 +2689,7 @@ export default function App() {
         setSandboxProfile(known.includes(sb) ? sb : "off");
       }
       setPreferredAgent((settings.preferredAgent || "").trim());
+      setAgentProfilePath((settings.agentProfilePath || "").trim());
       setExperimentalMemory(!!settings.experimentalMemory);
       setVoiceId((settings.voiceId || "eve").trim() || "eve");
       setVoiceDictationAutoSend(!!settings.voiceDictationAutoSend);
@@ -12487,6 +12490,11 @@ export default function App() {
       "settings.preferredAgent.source.bundled",
       "settings.preferredAgent.source.user",
       "settings.preferredAgent.source.project",
+      "settings.agentProfilePath",
+      "settings.agentProfilePathDesc",
+      "settings.agentProfilePathBrowse",
+      "settings.agentProfilePathClear",
+      "settings.agentProfilePathPlaceholder",
       "settings.prefsScope",
       "settings.prefsScopeDesc",
       "settings.prefsScope.global",
@@ -12972,6 +12980,15 @@ export default function App() {
             setPreferredAgent(v);
             void api.settingsGet().then((s) =>
               api.settingsSet({ ...s, preferredAgent: v }),
+            );
+          }}
+          agentProfilePath={agentProfilePath}
+          onAgentProfilePath={setAgentProfilePath}
+          onAgentProfilePathCommit={(v) => {
+            const next = (v || "").trim();
+            setAgentProfilePath(next);
+            void api.settingsGet().then((s) =>
+              api.settingsSet({ ...s, agentProfilePath: next }),
             );
           }}
           agentCatalog={agentCatalog}
