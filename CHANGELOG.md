@@ -20,6 +20,7 @@ See `docs/llm-wiki/release.md`.
 - **Disable Live Voice hotkey only** (Settings → General → App → Voice): turns off the catalog Live Voice shortcut (default ⌘/Ctrl+Shift+V / remaps) while composer button, slash, and menus still open Live Voice; shortcuts help shows Off when disabled
 - **Tasks panel tree**: nest tool activity under `spawn_subagent` (explicit `parentId` / `toolParentId` when present; otherwise infer tools after a long-running spawn until the next top-level spawn). Expand/collapse children; flat list when no parents
 - **Plan history archive**: when a plan is approved, abandoned, or completes, store a redacted body preview in a local ring (max 30); session menu / Resources open a read-only list + preview
+- **Sidebar date groups**: project and Other session lists bucket chats into Today / Yesterday / Previous 7 days / Older (local day boundaries; sticky section headers; pins stay at the top of each group)
 - **Per-session mute** for desktop notifications (context menu Mute / Unmute; sidebar muted icon; in-app toasts still show)
 - **Desktop notification click** opens the session that fired turn-done / permission / ask_user
 - **Send queue Edit** for follow-up items (GlassModal; empty text blocked unless attachments remain)
@@ -49,6 +50,7 @@ See `docs/llm-wiki/release.md`.
 - 可单独关闭实时语音快捷键（设置 → 语音；输入框/菜单入口仍可用；帮助里显示「关闭」）
 - 任务面板树形展示：子代理（spawn_subagent）下嵌套工具；无父子时仍为扁平列表
 - 计划历史归档（批准/放弃/完成后本地预览，最多 30 条；会话菜单 / 资源面板只读查看）
+- 侧栏会话按相对日期分组（今天 / 昨天 / 近 7 天 / 更早；置顶仍在组内靠前）
 - 按会话静音桌面通知（菜单 Mute/Unmute；侧栏静音图标；应用内 Toast 仍显示）
 - 通知点击跳转会话；发送队列可编辑；上下文 System/Tools/History；Compact 增强
 - Worktree 会话徽章与管理；Fork 可选恢复代码；沙箱项目覆盖

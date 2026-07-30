@@ -771,6 +771,53 @@ html.platform-mac[data-theme="light"] .settings-page__content {
   gap: 2px;
 }
 
+/* Relative-date section under a project / Other (Today / Yesterday / …). */
+.tree-date-group {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.tree-date-group + .tree-date-group {
+  margin-top: 4px;
+}
+
+.tree-date-group__head {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  height: 22px;
+  min-height: 22px;
+  padding: 0 6px 0 12px;
+  margin: 0;
+  box-sizing: border-box;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  line-height: 22px;
+  color: var(--text-tertiary);
+  /* Prefer solid so rows do not show through sticky heads on translucent sidebars. */
+  background: var(--bg-sidebar-solid, var(--bg-sidebar));
+  box-shadow: 0 1px 0 color-mix(in srgb, var(--border-subtle, transparent) 70%, transparent);
+  user-select: none;
+  pointer-events: none;
+}
+
+.tree-orphan-list .tree-date-group__head,
+.tree-date-group--orphan .tree-date-group__head {
+  padding-left: 8px;
+}
+
+html[data-sidebar-density="compact"] .tree-date-group__head {
+  height: 18px;
+  min-height: 18px;
+  line-height: 18px;
+  font-size: 10px;
+}
+
 .virtual-list__spacer {
   flex-shrink: 0;
   pointer-events: none;
