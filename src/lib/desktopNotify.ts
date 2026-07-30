@@ -6,6 +6,7 @@
 
 import { loadNotifySoundPref, playNotifySound } from "./notifySound";
 import { isQuietHoursActive } from "./notifyQuietHours";
+import { isMuted as isSessionMuted } from "./sessionMute";
 
 export type DesktopNotifyOptions = {
   title: string;
@@ -138,9 +139,12 @@ export function focusAppFromNotification(): void {
  * Click focuses the app window when possible, then deep-links to
  * `sessionId` via the registered session focus handler (if any).
  * Suppressed entirely during quiet hours (localStorage pref).
+ * Suppressed when `sessionId` is in the per-session mute set (in-app
+ * toasts are not gated here — callers still show those).
  */
 export function showDesktopNotification(opts: DesktopNotifyOptions): boolean {
   if (isQuietHoursActive()) return false;
+  if (opts.sessionId && isSessionMuted(opts.sessionId)) return false;
   if (notificationSupport() !== "granted") return false;
   if (!opts.force && typeof document !== "undefined" && document.hasFocus()) {
     // App is in front — prefer in-app toast; caller can pass force=true.

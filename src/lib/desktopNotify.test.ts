@@ -12,6 +12,10 @@ import {
   NOTIFY_QUIET_HOURS_STORAGE_KEY,
   saveNotifyQuietHoursPref,
 } from "./notifyQuietHours";
+import {
+  SESSION_MUTE_STORAGE_KEY,
+  saveMutedSessionIds,
+} from "./sessionMute";
 
 const originalNotification = globalThis.Notification;
 
@@ -26,6 +30,7 @@ afterEach(() => {
   try {
     if (typeof localStorage !== "undefined") {
       localStorage.removeItem(NOTIFY_QUIET_HOURS_STORAGE_KEY);
+      localStorage.removeItem(SESSION_MUTE_STORAGE_KEY);
     }
   } catch {
     /* ignore */
@@ -335,6 +340,29 @@ describe("desktopNotify", () => {
     });
     expect(showDesktopNotification({ title: "x", force: true })).toBe(false);
     expect(ctor).not.toHaveBeenCalled();
+  });
+
+  it("suppresses desktop notifications for muted sessionId", () => {
+    if (typeof localStorage === "undefined") return;
+    const { ctor } = mockNotification("granted");
+    saveMutedSessionIds(["muted-sess"]);
+    expect(
+      showDesktopNotification({
+        title: "x",
+        force: true,
+        sessionId: "muted-sess",
+      }),
+    ).toBe(false);
+    expect(ctor).not.toHaveBeenCalled();
+    // Other sessions still notify.
+    expect(
+      showDesktopNotification({
+        title: "y",
+        force: true,
+        sessionId: "other-sess",
+      }),
+    ).toBe(true);
+    expect(ctor).toHaveBeenCalledOnce();
   });
 
   it("focusAppFromNotification does not throw without Tauri", () => {

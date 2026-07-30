@@ -13,6 +13,8 @@ import {
   IconArrowsMinimize as TbArrowsMinimize,
   IconFocus2 as TbFocus2,
   IconBlockquote as TbBlockquote,
+  IconBell as TbBell,
+  IconBellOff as TbBellOff,
   IconBold as TbBold,
   IconBolt as TbBolt,
   IconGitBranch as TbGitBranch,
@@ -302,6 +304,9 @@ export const IconMaximize = wrap(TbSquare);
 export const IconPlan = wrap(TbList);
 export const IconPin = wrap(TbPinned);
 export const IconPinOff = wrap(TbPinnedOff);
+/** Per-session desktop notification mute (sidebar / context menu). */
+export const IconBell = wrap(TbBell);
+export const IconBellOff = wrap(TbBellOff);
 export const IconHandStop = wrap(TbHandStop);
 export const IconShield = wrap(TbShield);
 export const IconShieldCheck = wrap(TbShieldCheck);

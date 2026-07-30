@@ -324,6 +324,11 @@ import {
   showDesktopNotification,
 } from "@/lib/desktopNotify";
 import {
+  loadMutedSessionIds,
+  SESSION_MUTE_CHANGE_EVENT,
+  toggle as toggleSessionMute,
+} from "@/lib/sessionMute";
+import {
   dismissCliUpdateNotice,
   shouldOfferCliUpdateNotice,
 } from "@/lib/cliUpdateNotice";
@@ -507,6 +512,8 @@ import {
   IconListCheck,
   IconPin,
   IconPinOff,
+  IconBell,
+  IconBellOff,
   IconRename,
   IconCopy,
   IconTrash,
@@ -854,6 +861,15 @@ export default function App() {
         SIDEBAR_SHOW_RELATIVE_TIME_CHANGE_EVENT,
         reload,
       );
+  }, []);
+  /** Per-session desktop notification mute (localStorage Set). */
+  const [mutedSessionIds, setMutedSessionIds] = useState<Set<string>>(
+    () => loadMutedSessionIds(),
+  );
+  useEffect(() => {
+    const onChange = () => setMutedSessionIds(loadMutedSessionIds());
+    window.addEventListener(SESSION_MUTE_CHANGE_EVENT, onChange);
+    return () => window.removeEventListener(SESSION_MUTE_CHANGE_EVENT, onChange);
   }, []);
   const [notifySound, setNotifySound] = useState(() =>
     loadNotifySoundPref(localStorage),
@@ -5864,6 +5880,11 @@ export default function App() {
     e.stopPropagation();
     setCtxMenu({ kind: "session", id: s.id, x: e.clientX, y: e.clientY });
   };
+
+  const handleToggleSessionMute = useCallback((sessionId: string) => {
+    toggleSessionMute(sessionId);
+    setMutedSessionIds(loadMutedSessionIds());
+  }, []);
 
   const openProjectMenu = (e: ReactMouseEvent, proj: Project) => {
     e.preventDefault();
@@ -12091,6 +12112,15 @@ export default function App() {
                                         />
                                       </span>
                                     ) : null}
+                                    {mutedSessionIds.has(s.id) ? (
+                                      <span
+                                        className="tree-l3__kind"
+                                        title={tr("session.muted")}
+                                        aria-label={tr("session.muted")}
+                                      >
+                                        <IconBellOff size={12} />
+                                      </span>
+                                    ) : null}
                                     {s.scheduled ? (
                                       <span
                                         className="tree-l3__kind"
@@ -12317,6 +12347,15 @@ export default function App() {
                               size={12}
                               className="tree-l3__pin"
                             />
+                          </span>
+                        ) : null}
+                        {mutedSessionIds.has(s.id) ? (
+                          <span
+                            className="tree-l3__kind"
+                            title={tr("session.muted")}
+                            aria-label={tr("session.muted")}
+                          >
+                            <IconBellOff size={12} />
                           </span>
                         ) : null}
                         {s.scheduled ? (
@@ -16052,6 +16091,7 @@ export default function App() {
                   },
                 ]
               : [];
+            const sessionMuted = mutedSessionIds.has(s.id);
             items = [
               {
                 id: "pin",
@@ -16064,6 +16104,18 @@ export default function App() {
                 onClick: () => {
                   void pinSession(s, !s.pinned);
                 },
+              },
+              {
+                id: "mute",
+                label: sessionMuted
+                  ? tr("session.unmute")
+                  : tr("session.mute"),
+                icon: sessionMuted ? (
+                  <IconBell size={16} />
+                ) : (
+                  <IconBellOff size={16} />
+                ),
+                onClick: () => handleToggleSessionMute(s.id),
               },
               {
                 id: "rename",
