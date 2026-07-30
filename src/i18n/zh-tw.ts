@@ -852,6 +852,9 @@ export const zhTW: Record<MessageKey, string> = {
   "settings.cliUpdateLatest": "CLI 已是最新（{version}）。",
   "settings.cliUpdateAvailable":
     "有新 CLI 版本 {latest}（目前 {current}）。",
+  "cliUpdate.notice": "Grok Build CLI {current} → {latest} 可更新",
+  "cliUpdate.action": "更新 CLI",
+  "cliUpdate.later": "稍後",
   "settings.cliUpdateInstall": "更新 CLI",
   "settings.cliUpdateInstalling": "更新中…",
   "settings.cliUpdateDone": "CLI 已更新到 {version}。",

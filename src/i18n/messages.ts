@@ -892,6 +892,10 @@ const en = {
   "settings.cliUpdateLatest": "CLI is up to date ({version}).",
   "settings.cliUpdateAvailable":
     "CLI {latest} is available (you have {current}).",
+  "cliUpdate.notice":
+    "Grok Build CLI {current} → {latest} available",
+  "cliUpdate.action": "Update CLI",
+  "cliUpdate.later": "Later",
   "settings.cliUpdateInstall": "Update CLI",
   "settings.cliUpdateInstalling": "Updating…",
   "settings.cliUpdateDone": "CLI updated to {version}.",
@@ -3377,6 +3381,9 @@ const zh: Record<MessageKey, string> = {
   "settings.cliUpdateLatest": "CLI 已是最新（{version}）。",
   "settings.cliUpdateAvailable":
     "有新 CLI 版本 {latest}（当前 {current}）。",
+  "cliUpdate.notice": "Grok Build CLI {current} → {latest} 可更新",
+  "cliUpdate.action": "更新 CLI",
+  "cliUpdate.later": "稍后",
   "settings.cliUpdateInstall": "更新 CLI",
   "settings.cliUpdateInstalling": "更新中…",
   "settings.cliUpdateDone": "CLI 已更新到 {version}。",

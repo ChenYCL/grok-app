@@ -312,6 +312,10 @@ import {
   shouldShowDesktopNotify,
   showDesktopNotification,
 } from "@/lib/desktopNotify";
+import {
+  dismissCliUpdateNotice,
+  shouldOfferCliUpdateNotice,
+} from "@/lib/cliUpdateNotice";
 import { GlassModal } from "@/components/GlassModal";
 import { ProductTutorial } from "@/components/ProductTutorial";
 import {
@@ -1377,6 +1381,36 @@ export default function App() {
   useEffect(() => {
     if (appGate !== "ready") return;
     void ensureNotifyPermission();
+  }, [appGate]);
+  /** Soft CLI update offer after Ready (#238) — never blocks startup. */
+  const [cliUpdateOffer, setCliUpdateOffer] = useState<{
+    current: string;
+    latest: string;
+  } | null>(null);
+  const [cliUpdateBusy, setCliUpdateBusy] = useState(false);
+  useEffect(() => {
+    if (appGate !== "ready" || !api.isTauri() || isMirrorClient()) return;
+    let cancelled = false;
+    const timer = window.setTimeout(() => {
+      void (async () => {
+        try {
+          const r = await api.cliUpdateCheck();
+          if (cancelled || r.error || !r.updateAvailable) return;
+          const current = String(
+            r.currentVersion || r.current || r.version || "",
+          ).trim();
+          const latest = String(r.latestVersion || r.latest || "").trim();
+          if (!latest || !shouldOfferCliUpdateNotice(latest)) return;
+          setCliUpdateOffer({ current: current || "—", latest });
+        } catch {
+          /* network / CLI missing: silent */
+        }
+      })();
+    }, 4500);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
   }, [appGate]);
   const [setupCliSeed, setSetupCliSeed] = useState<SetupCliInfo | null>(null);
   const [showDoctor, setShowDoctor] = useState(false);
@@ -12607,6 +12641,78 @@ export default function App() {
               <span style={{ fontSize: 12, opacity: 0.85 }}>
                 {tr("automations.emptySession")}
               </span>
+            </div>
+          )}
+
+          {cliUpdateOffer && mainPane === "chat" && (
+            <div className="conn-bar cli-update-notice" role="status">
+              <span style={{ fontSize: 12, flex: 1 }}>
+                {tr("cliUpdate.notice", {
+                  current: cliUpdateOffer.current,
+                  latest: cliUpdateOffer.latest,
+                })}
+              </span>
+              <button
+                type="button"
+                className="btn btn--primary"
+                style={{ height: 24, fontSize: 11 }}
+                disabled={cliUpdateBusy}
+                onClick={() => {
+                  void (async () => {
+                    setCliUpdateBusy(true);
+                    try {
+                      const r = await api.cliUpdateInstall();
+                      if (!r.ok) {
+                        showToast(
+                          tr("settings.cliUpdateInstallFailed", {
+                            error: r.message || "failed",
+                          }),
+                          4500,
+                        );
+                        return;
+                      }
+                      dismissCliUpdateNotice(cliUpdateOffer.latest);
+                      setCliUpdateOffer(null);
+                      showToast(
+                        tr("settings.cliUpdateDone", {
+                          version: r.version || cliUpdateOffer.latest,
+                        }),
+                        3600,
+                      );
+                      try {
+                        await api.agentsRecycleAll();
+                      } catch {
+                        /* soft */
+                      }
+                    } catch (e) {
+                      showToast(
+                        tr("settings.cliUpdateInstallFailed", {
+                          error: String(e),
+                        }),
+                        4500,
+                      );
+                    } finally {
+                      setCliUpdateBusy(false);
+                    }
+                  })();
+                }}
+              >
+                {cliUpdateBusy
+                  ? tr("settings.cliUpdateInstalling")
+                  : tr("cliUpdate.action")}
+              </button>
+              <button
+                type="button"
+                className="btn btn--ghost"
+                style={{ height: 24, fontSize: 11 }}
+                disabled={cliUpdateBusy}
+                onClick={() => {
+                  dismissCliUpdateNotice(cliUpdateOffer.latest);
+                  setCliUpdateOffer(null);
+                }}
+              >
+                {tr("cliUpdate.later")}
+              </button>
             </div>
           )}
 

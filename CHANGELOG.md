@@ -11,97 +11,37 @@ See `docs/llm-wiki/release.md`.
 
 ## [Unreleased]
 
+### Added
+
+- **Desktop notification click** opens the session that fired turn-done / permission / ask_user
+- **Send queue Edit** for follow-up items (GlassModal; empty text blocked unless attachments remain)
+- **Context usage chip**: System / Tools / History breakdown (estimate or agent-known buckets)
+- **Richer Compact dialog**: current usage, keep-note chips, disabled while streaming; unified `/compact`
+- **Worktree-bound sessions**: WT badge, meta fields, context menu (reveal / copy path / remove worktree)
+- **Fork chat optional worktree restore** (clean tree only; never force-checkout the live tree)
+- **Sandbox presets**: per-preset help, Off/Devbox danger confirm, project-level override
+- **MCP server status lamps** from Doctor (auth expired guidance + refresh steps; secret redaction)
+- **Memory browser** in Settings → Agent (list / filter / preview / delete under `{GROK_HOME}/memory`)
+- **Optional product tutorial** (menu / About / palette / `/tutorial`; soft one-time offer after setup)
+- **Agent dashboard** modal: cross-session status, focus chat, Stop all busy
+- **Trace export history** (session menu / palette / Settings diagnostics)
+- **Remappable keyboard shortcuts** (Settings → Keyboard Record/Reset; Send/Esc-stop fixed)
+- **Launch-time CLI update notice** (#238): soft banner after Ready; Update CLI / Later; 24h dismiss cooldown
+
 ### Fixed
 
-- **CLI install blocked by missing SHA-256 (#227)**: official x.ai / GCS mirrors do not publish checksum sidecars (same as `install.sh` / `install.ps1`). First-run / in-app install no longer fails closed on a missing sidecar; **mismatch still always aborts**. Strict mode: `GROK_CLI_REQUIRE_CHECKSUM=1` (override with Settings → Runtime “Allow unverified CLI install” or `GROK_CLI_ALLOW_UNVERIFIED=1`). Setup wizard shows a clear retry path when strict mode blocks.
+- **CLI install blocked by missing SHA-256 (#227)**: missing official sidecar allowed by default; mismatch still aborts; strict mode via `GROK_CLI_REQUIRE_CHECKSUM=1`
+
+**中文 · 新增**
+
+- 通知点击跳转会话；发送队列可编辑；上下文 System/Tools/History；Compact 增强
+- Worktree 会话徽章与管理；Fork 可选恢复代码；沙箱项目覆盖
+- MCP 状态灯；Memory 浏览器；产品教程；Agent 总览；Trace 历史；快捷键重映射
+- 启动后 CLI 更新轻提示（#238）
 
 **中文 · 修复**
 
-- **CLI 安装因缺少 SHA-256 失败（#227）**：官方镜像通常不发布校验文件；缺少 sidecar 时默认继续安装（不一致仍拒绝）。严格模式用 `GROK_CLI_REQUIRE_CHECKSUM=1`。
-### Added
-
-- **Desktop notification click opens the session** that fired turn-done / permission / ask_user (falls back to focusing the app when the session is unknown)
-### Added
-
-- **Edit queued follow-ups** in the composer send queue (text before auto-send)
-### Added
-
-- **Context usage chip**: fuller breakdown with System / Tools / History rows (estimated from journal when possible; agent-reported buckets preferred without `~`). User / assistant / thought remain estimated with honest `~`
-
-### Added (中文)
-
-- **上下文用量芯片**：补充系统 / 工具 / 历史拆分（有信号时估算；Agent 上报时优先精确值、不加 `~`）
-### Changed
-
-- **Compact dialog**: shows current context usage (known or estimated), a short explanation of what compact does, optional keep-note chips (empty note still allowed), and disables Compact while the session is busy. Manual compact stores a UI-side before estimate so the post-compact banner can still show `{before} → {after}` when the agent omits `tokensBefore`
-
-**中文 · 变更**
-
-- **压缩对话框**：展示当前上下文用量、简要说明与可选保留备注 chips；会话忙碌时禁用压缩；手动压缩时用 UI 估算补全 banner 的 before tokens
-### Added
-
-- **Worktree session badge**: sidebar **WT** chip for chats bound to a linked git worktree (meta from “New worktree & chat”, or auto when the project path matches `git worktree list`); tooltip shows branch + path
-- **Worktree session manage**: session context menu → reveal worktree folder, copy path, remove worktree (in-app confirm + force retry; never main)
-
-### Changed
-
-- Session index stores optional `worktreePath` / `worktreeBranch` / `isWorktreeSession` (migration-safe defaults); forks inherit linkage
-
-**中文 · 新增**
-
-- 侧栏 worktree 会话 **WT** 标记；右键可打开/复制路径/移除 worktree（应用内确认）
-### Added
-
-- **Fork chat · optional restore-code**: confirm dialog checkbox (default off) creates a sibling git worktree at the source project’s HEAD and binds the new chat there; refuses when the working tree is dirty so uncommitted work is never destroyed
-
-### 中文 · 新增
-
-- **分叉会话 · 可选恢复代码**：确认框可勾选（默认关）在源项目 HEAD 创建关联 worktree 并绑定新会话；工作区有未提交改动时拒绝，不破坏本地工作
-### Added
-
-- **Sandbox presets (productized)**: longer per-profile help in Settings → Permissions; in-app danger confirm when switching to **Off** or **Devbox**; optional **per-project sandbox override** (project context menu; Host spawn prefers project over global Settings via `resolveSandboxProfile`)
-
-**中文 · 新增**
-
-- **沙箱预设产品化**：设置中各档位说明；切换到关闭/Devbox 需应用内确认；项目级沙箱覆盖（spawn 优先项目设置）
-### Added
-
-- **MCP auth / health status** (Settings → Extensions → MCP): after Doctor runs, each server shows a status lamp (OK / warn / error / auth expired / auth required); auth issues get short guidance and an in-app **How to refresh** modal (re-auth, re-add, check remote URL — no fake auto-refresh). Secrets stay redacted.
-
-**中文 · 新增**
-
-- **MCP 认证/健康状态**：诊断后在列表显示状态灯；过期/需认证提供「如何刷新」引导（无假自动刷新）；密钥脱敏
-### Added
-
-- **Workspace memory browser** (Settings → General → Agent): list / preview / search on-disk Grok Build memory under `{GROK_HOME}/memory` (MEMORY.md, session logs, index); single-file delete with in-app confirm; empty state when experimental memory is off. Host `memory_list` / `memory_delete_file` with path-scope safety + preview redaction
-### Added
-
-- **In-app product tour**: optional multi-step walkthrough (projects, permissions/YOLO, worktrees, send queue, context compact, shortcuts, extensions). Replay from account menu, Settings → About, command palette, or `/tutorial`. Soft one-time offer after first-run setup (`localStorage` `grok.productTutorial.v1`)
-
-**中文 · 新增**
-
-- **应用内产品导览**：可选多步介绍（项目、权限/YOLO、工作树、发送队列、上下文压缩、快捷键、扩展）；账户菜单 / 设置 → 关于 / 命令面板 / `/tutorial` 可重播；完成首次设置后软提示一次
-### Added
-
-- **Agent dashboard**: cross-session status panel (title, project/cwd, model, effort, busy/idle/error, last activity). Open from Tasks, command palette, or the top-bar control; click a row to focus that chat; **Stop all busy** reuses the existing confirm flow. Distinct from the per-turn Tasks tools panel.
-
-**中文 · 新增**
-
-- **Agent 仪表盘**：跨会话状态面板（标题、项目/路径、模型、推理强度、忙碌/空闲/错误、最近活动）。可从任务区、命令面板或顶栏打开；点击行聚焦会话；**全部停止忙碌**复用现有确认。与当前回合的「任务」工具面板不同。
-### Added
-
-- **Trace center**: after a successful session trace export (`grok trace --local`), keep a local history (paths only, max ~20) with Open in folder / Copy path from the session menu, command palette, and Settings → Runtime → Diagnostics
-
-### 中文 · 新增
-
-- **Trace 中心**：成功导出会话 trace 后写入本地历史（仅路径，约 20 条）；会话菜单 / 命令面板 / 设置 · 运行时 · 诊断 可打开文件夹或复制路径
-### Added
-
-- **Remappable keyboard shortcuts** (Settings → Keyboard): Record / Reset per action, Reset all, conflict detection; custom chords stored in `localStorage` (`grok.shortcutRemap`). Global mod actions (palette, settings, new chat, toggle sidebar, help, doctor, copy last reply, find in chat, live voice) honor remaps; help table shows effective bindings
-
-### Added (中文)
-
-- **可自定义快捷键**（设置 → 键盘）：逐项录制 / 重置、全部重置、冲突检测；全局组合键（搜索面板、设置、新建会话、侧栏等）即时生效
+- CLI 安装因缺少 SHA-256 失败（#227）
 
 ## [0.2.2] - 2026-07-30
 
