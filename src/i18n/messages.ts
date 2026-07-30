@@ -123,6 +123,7 @@ const en = {
   "session.mute": "Mute notifications",
   "session.unmute": "Unmute notifications",
   "session.muted": "Notifications muted",
+  "session.unreadAria": "Unread — reply finished in background",
   "session.note": "Session note…",
   "session.noteTitle": "Session note",
   "session.notePlaceholder":
@@ -2896,6 +2897,7 @@ const zh: Record<MessageKey, string> = {
   "session.mute": "静音桌面通知",
   "session.unmute": "取消静音通知",
   "session.muted": "已静音桌面通知",
+  "session.unreadAria": "未读 — 后台回合已完成",
   "session.note": "会话备注…",
   "session.noteTitle": "会话备注",
   "session.notePlaceholder": "此对话的私人备注（不会发送给 Agent）",

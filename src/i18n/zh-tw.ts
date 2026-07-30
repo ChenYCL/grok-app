@@ -113,6 +113,7 @@ export const zhTW: Record<MessageKey, string> = {
   "session.mute": "靜音桌面通知",
   "session.unmute": "取消靜音通知",
   "session.muted": "已靜音桌面通知",
+  "session.unreadAria": "未讀 — 背景回合已完成",
   "session.note": "對話備註…",
   "session.noteTitle": "對話備註",
   "session.notePlaceholder": "此對話的私人備註（不會傳送給 Agent）",
