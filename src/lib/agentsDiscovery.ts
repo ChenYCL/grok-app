@@ -301,6 +301,115 @@ export function personaMetaLine(persona: {
   return (persona.scope ?? "").trim() || "unknown";
 }
 
+/** Max length for agent definition file stems / CLI `--agent` names. */
+export const AGENT_STEM_NAME_MAX = 64;
+
+/**
+ * Sanitize a user-typed agent name into a filesystem + CLI `--agent` stem.
+ *
+ * - trims; collapses whitespace to `-`
+ * - allows letters, digits, `.`, `_`, `-` only
+ * - must start with a letter or digit (not `-` — CLI flag confusion)
+ * - rejects empty, `.` / `..`, path separators, control chars, `readme`
+ *
+ * Throws `Error` with a short English reason (UI maps via i18n keys).
+ */
+export function sanitizeAgentFileStemName(
+  raw: string | null | undefined,
+): string {
+  let name = (raw ?? "").trim().replace(/\s+/g, "-");
+  if (!name) {
+    throw new Error("agent name is required");
+  }
+  if (name === "." || name === "..") {
+    throw new Error("invalid agent name");
+  }
+  if (name.length > AGENT_STEM_NAME_MAX) {
+    throw new Error(`agent name too long (max ${AGENT_STEM_NAME_MAX})`);
+  }
+  if (
+    name.includes("/") ||
+    name.includes("\\") ||
+    name.includes("\0") ||
+    /[\r\n]/.test(name)
+  ) {
+    throw new Error("agent name must not contain path separators");
+  }
+  if (!/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(name)) {
+    throw new Error(
+      "agent name may only contain letters, digits, '.', '_' and '-'",
+    );
+  }
+  if (name.toLowerCase() === "readme") {
+    throw new Error("reserved agent name");
+  }
+  return name;
+}
+
+/** True when {@link sanitizeAgentFileStemName} would succeed. */
+export function isValidAgentFileStemName(
+  raw: string | null | undefined,
+): boolean {
+  try {
+    sanitizeAgentFileStemName(raw);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Default SKILL-like agent definition markdown (no secrets).
+ * Frontmatter mirrors Grok Build bundled agents (`name`, `description`, …).
+ */
+export function defaultAgentMarkdownTemplate(
+  name: string,
+  description?: string | null,
+): string {
+  const stem = sanitizeAgentFileStemName(name);
+  const desc = (description ?? "").trim().replace(/\s+/g, " ");
+  const descLine =
+    desc ||
+    `Custom agent definition for \`${stem}\`. Edit when to use it and preferred tools — do not put secrets here.`;
+  return `---
+name: ${stem}
+description: >
+  ${descLine}
+prompt_mode: full
+agents_md: true
+---
+
+You are the **${stem}** agent.
+
+## Role
+
+Describe this agent's specialist role and when the parent session should delegate to it.
+
+## Strengths
+
+- Focused task execution within the declared scope
+- Prefer existing project conventions and patterns
+- Small, reviewable changes
+
+## Guidelines
+
+- Prefer read/search tools before editing.
+- Match existing style; avoid unrelated refactors.
+- Do not commit secrets, auth tokens, or local credentials.
+- Stay within the workspace unless the user asks otherwise.
+
+## Tools hints
+
+- Use list/search/read tools to orient before writes.
+- Prefer targeted edits over broad rewrites.
+- Report absolute paths and concise findings when returning to the parent.
+
+Workspace boundary:
+- Default scope is the active project workspace.
+- Do not expand search outside the workspace unless asked.
+`;
+}
+
 /**
  * Merge multi-scope directory listings into one sorted agent list.
  * Later scopes do not dedupe — Grok keeps same-name defs visible per scope;

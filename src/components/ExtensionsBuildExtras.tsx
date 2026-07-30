@@ -1,11 +1,12 @@
 /**
- * Settings → Extensions: Hooks list + Plugin marketplace browser.
+ * Settings → Extensions: Hooks list + Plugin marketplace browser + Agents list.
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import * as api from "@/lib/api";
 import { createT, type Locale, type MessageKey } from "@/i18n";
 import { GlassModal } from "@/components/GlassModal";
+import { Select } from "@/components/Select";
 import {
   IconExternalLink,
   IconFolder,
@@ -13,9 +14,18 @@ import {
   IconPlus,
   IconPuzzle,
   IconRefresh,
+  IconRobot,
   IconTrash,
 } from "@/components/icons";
-import { isCliMissingError } from "@/lib/extensionsUi";
+import { isCliMissingError, shortPathLabel } from "@/lib/extensionsUi";
+import {
+  agentMetaLine,
+  agentScopeTone,
+  isValidAgentFileStemName,
+  sanitizeAgentFileStemName,
+  sortAgentDefs,
+  type AgentDefLike,
+} from "@/lib/agentsDiscovery";
 import {
   formatHookMtime,
   formatHookSize,
@@ -59,8 +69,8 @@ export type ExtensionsBuildExtrasProps = {
   locale: Locale;
   projectPath?: string | null;
   cliFound?: boolean;
-  /** Which block(s) to render — settings page tabs use hooks | market. */
-  mode?: "hooks" | "market" | "all";
+  /** Which block(s) to render — settings page tabs use hooks | market | agents. */
+  mode?: "hooks" | "market" | "agents" | "all";
   /** After plugin install — parent can refresh plugins list. */
   onPluginsChanged?: () => void;
   /**
@@ -138,6 +148,7 @@ export function ExtensionsBuildExtras({
   const cliMissing = !cliFound;
   const showHooks = mode === "all" || mode === "hooks";
   const showMarket = mode === "all" || mode === "market";
+  const showAgents = mode === "all" || mode === "agents";
 
   const [hooks, setHooks] = useState<HookLike[]>([]);
   const [hooksUserDir, setHooksUserDir] = useState("");
@@ -146,6 +157,24 @@ export function ExtensionsBuildExtras({
   const [hooksError, setHooksError] = useState<string | null>(null);
   const [hooksLoading, setHooksLoading] = useState(true);
   const [hooksBusy, setHooksBusy] = useState<string | null>(null);
+
+  const [agents, setAgents] = useState<AgentDefLike[]>([]);
+  const [agentsUserDir, setAgentsUserDir] = useState("");
+  const [agentsProjectDir, setAgentsProjectDir] = useState<string | null>(null);
+  const [agentsError, setAgentsError] = useState<string | null>(null);
+  const [agentsLoading, setAgentsLoading] = useState(true);
+  const [agentsBusy, setAgentsBusy] = useState<string | null>(null);
+  const [agentsHint, setAgentsHint] = useState<string | null>(null);
+  const [newAgentOpen, setNewAgentOpen] = useState(false);
+  const [newAgentName, setNewAgentName] = useState("");
+  const [newAgentScope, setNewAgentScope] = useState<"user" | "project">(
+    "user",
+  );
+  const [newAgentError, setNewAgentError] = useState<string | null>(null);
+  const [overwriteTarget, setOverwriteTarget] = useState<{
+    name: string;
+    scope: "user" | "project";
+  } | null>(null);
 
   const [sources, setSources] = useState<MarketplaceSourceLike[]>([]);
   const [available, setAvailable] = useState<AvailablePluginLike[]>([]);
@@ -242,6 +271,130 @@ export function ExtensionsBuildExtras({
     }
   }, [projectPath]);
 
+  const loadAgents = useCallback(async () => {
+    if (!api.isTauri()) {
+      setAgents([]);
+      setAgentsLoading(false);
+      return;
+    }
+    setAgentsLoading(true);
+    setAgentsError(null);
+    try {
+      const res = await api.agentsList(projectPath);
+      const list = sortAgentDefs(
+        (res.agents ?? []).map(
+          (a): AgentDefLike => ({
+            name: a.name,
+            path: a.path,
+            scope: (a.scope as AgentDefLike["scope"]) || "user",
+            description: a.description ?? null,
+          }),
+        ),
+      );
+      setAgents(list);
+      setAgentsUserDir(res.userAgentsDir || "");
+      setAgentsProjectDir(res.projectAgentsDir ?? null);
+    } catch (e) {
+      setAgents([]);
+      setAgentsError(String(e));
+    } finally {
+      setAgentsLoading(false);
+    }
+  }, [projectPath]);
+
+  const revealAgentPath = useCallback(
+    async (path: string | null | undefined) => {
+      const p = (path ?? "").trim();
+      if (!p || !api.isTauri()) return;
+      try {
+        await api.pathReveal(p);
+      } catch (e) {
+        setAgentsError(String(e));
+      }
+    },
+    [],
+  );
+
+  const openAgentFile = useCallback(async (path: string | null | undefined) => {
+    const p = (path ?? "").trim();
+    if (!p || !api.isTauri()) return;
+    try {
+      await api.openInEditor({ path: p });
+    } catch (e) {
+      // Fallback: reveal in folder when no editor is configured.
+      try {
+        await api.pathReveal(p);
+      } catch (e2) {
+        setAgentsError(String(e2 || e));
+      }
+    }
+  }, []);
+
+  const runScaffold = useCallback(
+    async (opts: {
+      name: string;
+      scope: "user" | "project";
+      force?: boolean;
+    }) => {
+      if (!api.isTauri()) return;
+      let stem: string;
+      try {
+        stem = sanitizeAgentFileStemName(opts.name);
+      } catch {
+        setNewAgentError(tr("ext.agents.nameInvalid"));
+        return;
+      }
+      if (opts.scope === "project" && !projectPath?.trim()) {
+        setNewAgentError(tr("ext.agents.needProject"));
+        return;
+      }
+      setAgentsBusy("scaffold");
+      setNewAgentError(null);
+      setAgentsHint(null);
+      try {
+        const res = await api.agentsScaffold({
+          name: stem,
+          scope: opts.scope,
+          projectPath,
+          force: opts.force ?? false,
+        });
+        setNewAgentOpen(false);
+        setOverwriteTarget(null);
+        setNewAgentName("");
+        await loadAgents();
+        setAgentsHint(
+          res.overwritten
+            ? tr("ext.agents.overwritten", { name: res.name })
+            : tr("ext.agents.created", { name: res.name }),
+        );
+        if (res.path) {
+          void openAgentFile(res.path);
+        }
+      } catch (e) {
+        const msg = String(e || "");
+        if (/already exists/i.test(msg) && !opts.force) {
+          setOverwriteTarget({ name: stem, scope: opts.scope });
+          setNewAgentError(null);
+        } else if (/required|invalid|letters|reserved|long|path/i.test(msg)) {
+          setNewAgentError(tr("ext.agents.nameInvalid"));
+        } else {
+          setNewAgentError(msg || tr("ext.agents.createError"));
+        }
+      } finally {
+        setAgentsBusy(null);
+      }
+    },
+    [loadAgents, openAgentFile, projectPath, tr],
+  );
+
+  const submitNewAgent = useCallback(() => {
+    void runScaffold({
+      name: newAgentName,
+      scope: newAgentScope,
+      force: false,
+    });
+  }, [newAgentName, newAgentScope, runScaffold]);
+
   const loadMarket = useCallback(async (force = false) => {
     if (!api.isTauri()) {
       setSources([]);
@@ -305,6 +458,10 @@ export function ExtensionsBuildExtras({
   useEffect(() => {
     if (showMarket) void loadMarket(false);
   }, [loadMarket, showMarket]);
+
+  useEffect(() => {
+    if (showAgents) void loadAgents();
+  }, [loadAgents, showAgents]);
 
   const marketChips = useMemo(() => {
     const chips: { id: string; label: string }[] = [
@@ -503,11 +660,338 @@ export function ExtensionsBuildExtras({
 
   const scopeLabel = (scope: string) => {
     if (scope === "project") return tr("ext.hooks.scope.project");
+    if (scope === "bundled" || scope === "builtin") {
+      return tr("ext.agents.scope.bundled");
+    }
     return tr("ext.hooks.scope.user");
   };
 
+  const agentNamePreview = useMemo(() => {
+    try {
+      return sanitizeAgentFileStemName(newAgentName);
+    } catch {
+      return "";
+    }
+  }, [newAgentName]);
+
+  const canSubmitNewAgent =
+    isValidAgentFileStemName(newAgentName) &&
+    (newAgentScope !== "project" || !!projectPath?.trim()) &&
+    agentsBusy !== "scaffold";
+
   return (
     <>
+      {/* ── Agents ── */}
+      {showAgents ? (
+        <>
+          <h2 className="settings-page__h2" id="settings-anchor-ext-agents">
+            <IconRobot size={15} />
+            {tr("ext.agents.title")}
+            {!agentsLoading ? (
+              <span className="ext-count">{agents.length}</span>
+            ) : null}
+            <span className="ext-h2-actions">
+              <button
+                type="button"
+                className="btn btn--ghost ext-bulk-btn"
+                disabled={!!agentsBusy}
+                onClick={() => void loadAgents()}
+              >
+                <IconRefresh size={13} />
+                <span>
+                  {agentsBusy === "scaffold"
+                    ? tr("ext.agents.creating")
+                    : tr("ext.refresh")}
+                </span>
+              </button>
+              <button
+                type="button"
+                className="btn btn--solid ext-bulk-btn"
+                disabled={!!agentsBusy}
+                onClick={() => {
+                  setNewAgentError(null);
+                  setAgentsHint(null);
+                  setNewAgentName("");
+                  setNewAgentScope(projectPath?.trim() ? "project" : "user");
+                  setNewAgentOpen(true);
+                }}
+              >
+                <IconPlus size={13} />
+                <span>{tr("ext.agents.new")}</span>
+              </button>
+            </span>
+          </h2>
+          <div className="settings-card ext-card">
+            <p className="ext-section-note ext-section-note--top">
+              {tr("ext.agents.desc")}
+            </p>
+            <div className="ext-folder-actions">
+              {agentsUserDir ? (
+                <button
+                  type="button"
+                  className="btn btn--ghost btn--sm"
+                  disabled={!!agentsBusy}
+                  onClick={() => void revealAgentPath(agentsUserDir)}
+                  title={agentsUserDir}
+                >
+                  <IconFolder size={13} />
+                  <span>{tr("ext.agents.openUser")}</span>
+                </button>
+              ) : null}
+              {projectPath?.trim() && agentsProjectDir ? (
+                <button
+                  type="button"
+                  className="btn btn--ghost btn--sm"
+                  disabled={!!agentsBusy}
+                  onClick={() => void revealAgentPath(agentsProjectDir)}
+                  title={agentsProjectDir}
+                >
+                  <IconFolder size={13} />
+                  <span>{tr("ext.agents.openProject")}</span>
+                </button>
+              ) : (
+                <span className="ext-field-hint">
+                  {tr("ext.agents.needProjectHint")}
+                </span>
+              )}
+            </div>
+            {agentsError ? (
+              <div className="ext-alert ext-alert--error" role="alert">
+                <div className="ext-alert__title">{tr("ext.agents.error")}</div>
+                <p className="ext-alert__body">{agentsError}</p>
+              </div>
+            ) : null}
+            {agentsHint ? (
+              <p className="ext-section-note" role="status">
+                {agentsHint}
+              </p>
+            ) : null}
+            {agentsLoading ? (
+              <p className="ext-empty">{tr("ext.agents.loading")}</p>
+            ) : agents.length === 0 ? (
+              <p className="ext-empty">{tr("ext.agents.empty")}</p>
+            ) : (
+              <ul className="ext-list">
+                {agents.map((a) => {
+                  const tone = agentScopeTone(a.scope);
+                  return (
+                    <li
+                      key={`${a.scope}:${a.name}:${a.path}`}
+                      className="ext-item"
+                    >
+                      <div className="ext-item__head">
+                        <strong className="ext-item__name">{a.name}</strong>
+                        <span className={`ext-badge ext-badge--${tone}`}>
+                          {scopeLabel(a.scope)}
+                        </span>
+                      </div>
+                      {a.description ? (
+                        <p className="ext-item__desc">{a.description}</p>
+                      ) : null}
+                      <div className="ext-item__meta">
+                        <span>
+                          {agentMetaLine({
+                            scope: a.scope,
+                            description: null,
+                          })}
+                        </span>
+                        {a.path ? (
+                          <button
+                            type="button"
+                            className="ext-path-btn"
+                            title={a.path}
+                            onClick={() => void revealAgentPath(a.path)}
+                          >
+                            <IconFolder size={13} />
+                            <span>{shortPathLabel(a.path, 42)}</span>
+                          </button>
+                        ) : null}
+                      </div>
+                      {a.path && a.scope !== "bundled" ? (
+                        <div className="ext-item__actions">
+                          <button
+                            type="button"
+                            className="btn btn--ghost btn--sm"
+                            disabled={!!agentsBusy}
+                            onClick={() => void openAgentFile(a.path)}
+                          >
+                            <IconExternalLink size={13} />
+                            <span>{tr("ext.agents.open")}</span>
+                          </button>
+                          <button
+                            type="button"
+                            className="btn btn--ghost btn--sm"
+                            disabled={!!agentsBusy}
+                            onClick={() => void revealAgentPath(a.path)}
+                          >
+                            <IconFolder size={13} />
+                            <span>{tr("ext.agents.reveal")}</span>
+                          </button>
+                        </div>
+                      ) : a.path ? (
+                        <div className="ext-item__actions">
+                          <button
+                            type="button"
+                            className="btn btn--ghost btn--sm"
+                            disabled={!!agentsBusy}
+                            onClick={() => void revealAgentPath(a.path)}
+                          >
+                            <IconFolder size={13} />
+                            <span>{tr("ext.agents.reveal")}</span>
+                          </button>
+                        </div>
+                      ) : null}
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </div>
+
+          <GlassModal
+            open={newAgentOpen}
+            onClose={() => {
+              if (agentsBusy !== "scaffold") setNewAgentOpen(false);
+            }}
+            title={tr("ext.agents.newTitle")}
+            size="md"
+            closeLabel={tr("common.close")}
+            wrapBody
+            footer={
+              <>
+                <button
+                  type="button"
+                  className="btn btn--ghost"
+                  disabled={agentsBusy === "scaffold"}
+                  onClick={() => setNewAgentOpen(false)}
+                >
+                  {tr("common.cancel")}
+                </button>
+                <button
+                  type="button"
+                  className="btn btn--solid"
+                  disabled={!canSubmitNewAgent}
+                  onClick={() => submitNewAgent()}
+                >
+                  {agentsBusy === "scaffold"
+                    ? tr("ext.agents.creating")
+                    : tr("ext.agents.create")}
+                </button>
+              </>
+            }
+          >
+            <form
+              className="app-dialog__form"
+              onSubmit={(e) => {
+                e.preventDefault();
+                if (canSubmitNewAgent) submitNewAgent();
+              }}
+            >
+              <p className="ext-field-hint">{tr("ext.agents.newHint")}</p>
+              <label className="field">
+                <span>{tr("ext.agents.name")}</span>
+                <input
+                  className="app-dialog__input"
+                  value={newAgentName}
+                  onChange={(e) => {
+                    setNewAgentName(e.target.value);
+                    setNewAgentError(null);
+                  }}
+                  placeholder={tr("ext.agents.namePlaceholder")}
+                  autoComplete="off"
+                  spellCheck={false}
+                  disabled={agentsBusy === "scaffold"}
+                  autoFocus
+                />
+                {agentNamePreview && agentNamePreview !== newAgentName.trim() ? (
+                  <span className="ext-field-hint">
+                    {tr("ext.agents.namePreview", { name: agentNamePreview })}
+                  </span>
+                ) : null}
+              </label>
+              <label className="field">
+                <span>{tr("ext.agents.scope")}</span>
+                <Select
+                  value={newAgentScope}
+                  aria-label={tr("ext.agents.scope")}
+                  disabled={agentsBusy === "scaffold"}
+                  onChange={(v) => {
+                    setNewAgentScope(v === "project" ? "project" : "user");
+                    setNewAgentError(null);
+                  }}
+                  options={[
+                    {
+                      value: "user",
+                      label: tr("ext.agents.scope.user"),
+                    },
+                    {
+                      value: "project",
+                      label: tr("ext.agents.scope.project"),
+                      disabled: !projectPath?.trim(),
+                    },
+                  ]}
+                />
+                {!projectPath?.trim() ? (
+                  <span className="ext-field-hint">
+                    {tr("ext.agents.needProjectHint")}
+                  </span>
+                ) : null}
+              </label>
+              {newAgentError ? (
+                <div className="ext-alert ext-alert--error" role="alert">
+                  <p className="ext-alert__body">{newAgentError}</p>
+                </div>
+              ) : null}
+            </form>
+          </GlassModal>
+
+          <GlassModal
+            open={!!overwriteTarget}
+            onClose={() => {
+              if (agentsBusy !== "scaffold") setOverwriteTarget(null);
+            }}
+            title={tr("ext.agents.overwriteTitle")}
+            size="sm"
+            closeLabel={tr("common.close")}
+            footer={
+              <>
+                <button
+                  type="button"
+                  className="btn btn--ghost"
+                  disabled={agentsBusy === "scaffold"}
+                  onClick={() => setOverwriteTarget(null)}
+                >
+                  {tr("common.cancel")}
+                </button>
+                <button
+                  type="button"
+                  className="btn btn--solid"
+                  disabled={agentsBusy === "scaffold"}
+                  onClick={() => {
+                    if (!overwriteTarget) return;
+                    void runScaffold({
+                      name: overwriteTarget.name,
+                      scope: overwriteTarget.scope,
+                      force: true,
+                    });
+                  }}
+                >
+                  {agentsBusy === "scaffold"
+                    ? tr("ext.agents.creating")
+                    : tr("ext.agents.overwrite")}
+                </button>
+              </>
+            }
+          >
+            <p className="app-dialog__msg">
+              {tr("ext.agents.overwriteBody", {
+                name: overwriteTarget?.name ?? "",
+              })}
+            </p>
+          </GlassModal>
+        </>
+      ) : null}
+
       {/* ── Hooks ── */}
       {showHooks ? (
         <>

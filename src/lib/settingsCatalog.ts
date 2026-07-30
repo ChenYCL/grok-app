@@ -53,6 +53,7 @@ export type SettingsTabId =
   | "plugins"
   | "skills"
   | "mcp"
+  | "agents"
   | "hooks"
   | "market"
   // runtime
@@ -166,6 +167,7 @@ export const SETTINGS_NAV: readonly SettingsNavDef[] = [
       { id: "plugins", labelKey: "ext.plugins.title" },
       { id: "skills", labelKey: "ext.skills.title" },
       { id: "mcp", labelKey: "ext.mcp.title" },
+      { id: "agents", labelKey: "ext.agents.title" },
       { id: "hooks", labelKey: "ext.hooks.title" },
       { id: "market", labelKey: "ext.market.title" },
     ],
@@ -1573,6 +1575,23 @@ export const SETTINGS_ENTRIES: readonly SettingsEntry[] = [
     labelKey: "ext.mcp.title",
     descKeys: ["ext.mcp.doctor", "ext.mcp.add"],
     keywords: ["mcp", "model context protocol", "server"],
+  },
+  {
+    id: "ext.agents",
+    section: "extensions",
+    tab: "agents",
+    anchorId: "settings-anchor-ext-agents",
+    labelKey: "ext.agents.title",
+    descKeys: ["ext.agents.desc", "ext.agents.new"],
+    keywords: [
+      "agents",
+      "agent definition",
+      "persona",
+      "scaffold",
+      "new agent",
+      "代理",
+      "新建代理",
+    ],
   },
   {
     id: "ext.hooks",

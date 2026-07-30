@@ -6,14 +6,17 @@ import {
   agentScopeTone,
   collectAgentDefs,
   collectPersonaDefs,
+  defaultAgentMarkdownTemplate,
   definitionNameFromFileName,
   extractAgentDescription,
   grokHomeFromUserHome,
   isAgentDefinitionFileName,
   isPersonaDefinitionFileName,
+  isValidAgentFileStemName,
   personaEntriesFromFileNames,
   resolveAgentsDirs,
   resolvePersonasDirs,
+  sanitizeAgentFileStemName,
   sortAgentDefs,
 } from "./agentsDiscovery";
 
@@ -205,5 +208,62 @@ describe("meta line", () => {
     });
     expect(line.startsWith("project · ")).toBe(true);
     expect(line.endsWith("…")).toBe(true);
+  });
+});
+
+describe("sanitizeAgentFileStemName", () => {
+  it("trims and collapses whitespace to hyphens", () => {
+    expect(sanitizeAgentFileStemName("  my agent  ")).toBe("my-agent");
+    expect(sanitizeAgentFileStemName("code reviewer")).toBe("code-reviewer");
+  });
+
+  it("keeps valid stems", () => {
+    expect(sanitizeAgentFileStemName("explore")).toBe("explore");
+    expect(sanitizeAgentFileStemName("general-purpose")).toBe(
+      "general-purpose",
+    );
+    expect(sanitizeAgentFileStemName("My.Agent_1")).toBe("My.Agent_1");
+  });
+
+  it("rejects empty, path-like, flag-like, and reserved names", () => {
+    expect(() => sanitizeAgentFileStemName("")).toThrow(/required/);
+    expect(() => sanitizeAgentFileStemName("   ")).toThrow(/required/);
+    expect(() => sanitizeAgentFileStemName("a/b")).toThrow(/path/);
+    expect(() => sanitizeAgentFileStemName("-sneaky")).toThrow(/letters/);
+    expect(() => sanitizeAgentFileStemName("README")).toThrow(/reserved/);
+    expect(() => sanitizeAgentFileStemName("has space!")).toThrow(/letters/);
+    expect(() => sanitizeAgentFileStemName("x".repeat(65))).toThrow(/long/);
+  });
+
+  it("isValidAgentFileStemName mirrors sanitize", () => {
+    expect(isValidAgentFileStemName("ok-name")).toBe(true);
+    expect(isValidAgentFileStemName("")).toBe(false);
+    expect(isValidAgentFileStemName("../x")).toBe(false);
+  });
+});
+
+describe("defaultAgentMarkdownTemplate", () => {
+  it("emits SKILL-like frontmatter with name and body", () => {
+    const md = defaultAgentMarkdownTemplate("code-review");
+    expect(md.startsWith("---\n")).toBe(true);
+    expect(md).toContain("name: code-review");
+    expect(md).toContain("description: >");
+    expect(md).toContain("prompt_mode: full");
+    expect(md).toContain("agents_md: true");
+    expect(md).toContain("You are the **code-review** agent.");
+    expect(md).toContain("Tools hints");
+    expect(md.toLowerCase()).not.toContain("api_key");
+    expect(md.toLowerCase()).not.toMatch(/sk-[a-z0-9]{8,}/);
+    expect(extractAgentDescription(md)).toMatch(/code-review/);
+  });
+
+  it("accepts an optional short description", () => {
+    const md = defaultAgentMarkdownTemplate("docs", "Write docs only");
+    expect(extractAgentDescription(md)).toBe("Write docs only");
+  });
+
+  it("sanitizes the name before writing", () => {
+    const md = defaultAgentMarkdownTemplate("  my agent  ");
+    expect(md).toContain("name: my-agent");
   });
 });

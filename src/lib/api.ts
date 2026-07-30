@@ -2496,6 +2496,67 @@ export async function agentsCatalog(projectPath?: string | null) {
   });
 }
 
+/** Agent definition row from host `agents_list` (filesystem discovery). */
+export type AgentDefDto = {
+  name: string;
+  path: string;
+  /** "project" | "user" | "bundled" */
+  scope: string;
+  description?: string | null;
+};
+
+export type PersonaDefDto = {
+  name: string;
+  path: string;
+  scope: string;
+};
+
+export type AgentsListResult = {
+  agents: AgentDefDto[];
+  personas: PersonaDefDto[];
+  userAgentsDir?: string;
+  projectAgentsDir?: string | null;
+  bundledAgentsDir?: string;
+  userPersonasDir?: string;
+  projectPersonasDir?: string | null;
+  bundledPersonasDir?: string;
+};
+
+/** List agent + persona definition files (no CLI required). */
+export async function agentsList(projectPath?: string | null) {
+  return invoke<AgentsListResult>("agents_list", {
+    projectPath: projectPath ?? null,
+  });
+}
+
+export type AgentsScaffoldResult = {
+  name: string;
+  path: string;
+  scope: string;
+  created: boolean;
+  overwritten: boolean;
+};
+
+/**
+ * Create `{name}.md` under user GROK_HOME agents or project `.grok/agents`.
+ * Rejects overwrite unless `force` is true.
+ */
+export async function agentsScaffold(opts: {
+  name: string;
+  scope?: "user" | "project" | string;
+  projectPath?: string | null;
+  force?: boolean;
+  description?: string | null;
+}) {
+  return invoke<AgentsScaffoldResult>("agents_scaffold", {
+    name: opts.name,
+    scope: opts.scope ?? "user",
+    projectPath: opts.projectPath ?? null,
+    force: opts.force ?? false,
+    description: opts.description ?? null,
+  });
+}
+
 export type GitWorktreeGcResult = {
   dryRun?: boolean;
   force?: boolean;

@@ -81,6 +81,7 @@ export type ExtensionsTabId =
   | "plugins"
   | "skills"
   | "mcp"
+  | "agents"
   | "hooks"
   | "market";
 
@@ -798,6 +799,7 @@ export function ExtensionsPanel({
                 ["plugins", "ext.plugins.title"],
                 ["skills", "ext.skills.title"],
                 ["mcp", "ext.mcp.title"],
+                ["agents", "ext.agents.title"],
                 ["hooks", "ext.hooks.title"],
                 ["market", "ext.market.title"],
               ] as const
@@ -1435,12 +1437,14 @@ export function ExtensionsPanel({
       </>
       )}
 
-      {(tab === "hooks" || tab === "market") && (
+      {(tab === "hooks" || tab === "market" || tab === "agents") && (
         <ExtensionsBuildExtras
           locale={locale}
           projectPath={projectPath}
           cliFound={cliFound && !cliMissing}
-          mode={tab === "hooks" ? "hooks" : "market"}
+          mode={
+            tab === "hooks" ? "hooks" : tab === "agents" ? "agents" : "market"
+          }
           installedPlugins={plugins.map((p) => ({
             name: p.name,
             marketplace: p.marketplace,
