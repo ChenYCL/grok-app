@@ -3665,6 +3665,221 @@ pub async fn plugin_update(
     }))
 }
 
+// ── plugin validate (`grok plugin validate [path]`) ─────────────────────────
+
+/// Split stdout + stderr into non-empty lines (stderr first, de-duped).
+pub fn parse_plugin_validate_messages(stdout: &str, stderr: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut seen = std::collections::HashSet::new();
+    for part in [stderr, stdout] {
+        for line in part.lines() {
+            let t = line.trim();
+            if t.is_empty() || seen.contains(t) {
+                continue;
+            }
+            seen.insert(t.to_string());
+            out.push(t.to_string());
+        }
+    }
+    out
+}
+
+/// Old CLI rejects `plugin validate` as an unknown subcommand (clap-style).
+pub fn looks_like_unsupported_plugin_validate(stderr: &str, stdout: &str) -> bool {
+    let s = format!("{stderr}\n{stdout}").to_ascii_lowercase();
+    if s.trim().is_empty() {
+        return false;
+    }
+    if s.contains("unrecognized subcommand")
+        || s.contains("unknown subcommand")
+        || s.contains("unexpected subcommand")
+        || s.contains("invalid subcommand")
+    {
+        return true;
+    }
+    if s.contains("validate")
+        && (s.contains("unexpected argument")
+            || s.contains("unrecognized")
+            || s.contains("unknown command")
+            || s.contains("unknown argument"))
+    {
+        return true;
+    }
+    false
+}
+
+/// True when `s` looks like a filesystem path (not a bare plugin name / owner/repo).
+pub fn looks_like_plugin_validate_path(s: &str) -> bool {
+    let s = s.trim();
+    if s.is_empty() {
+        return false;
+    }
+    if s.starts_with("git@") || s.contains("://") {
+        return false;
+    }
+    if s.starts_with('/')
+        || s.starts_with('~')
+        || s.starts_with("./")
+        || s.starts_with("../")
+        || s.starts_with(".\\")
+        || s.starts_with("..\\")
+    {
+        return true;
+    }
+    // Windows drive: C:\… or D:/…
+    let bytes = s.as_bytes();
+    if bytes.len() >= 3
+        && bytes[0].is_ascii_alphabetic()
+        && bytes[1] == b':'
+        && (bytes[2] == b'\\' || bytes[2] == b'/')
+    {
+        return true;
+    }
+    // Relative path segments with separators
+    s.contains('/') || s.contains('\\')
+}
+
+/// Normalize optional path/name; empty → None (CLI defaults to `.`).
+pub fn normalize_plugin_validate_target(path_or_name: Option<&str>) -> Option<String> {
+    path_or_name
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(|s| s.to_string())
+}
+
+/// Resolve bare plugin name to installed path via `plugin list --json` (best-effort).
+fn resolve_installed_plugin_path(name: &str) -> Option<String> {
+    let name = name.trim();
+    if name.is_empty() {
+        return None;
+    }
+    let (stdout, _stderr, ok) =
+        run_grok_cli_args(&["plugin", "list", "--json"], PLUGIN_CMD_TIMEOUT_SECS).ok()?;
+    if !ok || stdout.is_empty() {
+        return None;
+    }
+    let value: serde_json::Value = serde_json::from_str(&stdout).ok()?;
+    let arr = value.as_array()?;
+    // Prefer exact name match with a path; if several, first with path.
+    let mut fallback: Option<String> = None;
+    for item in arr {
+        let n = item
+            .get("name")
+            .and_then(|x| x.as_str())
+            .unwrap_or("")
+            .trim();
+        if n != name {
+            continue;
+        }
+        let path = item
+            .get("path")
+            .and_then(|x| x.as_str())
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .map(|s| s.to_string());
+        if let Some(p) = path {
+            return Some(p);
+        }
+        if fallback.is_none() {
+            fallback = Some(name.to_string());
+        }
+    }
+    fallback
+}
+
+/// Resolve validate target: path as-is; bare name → installed path when known.
+pub fn resolve_plugin_validate_path(path_or_name: Option<&str>) -> Option<String> {
+    let raw = normalize_plugin_validate_target(path_or_name)?;
+    if looks_like_plugin_validate_path(&raw) {
+        return Some(raw);
+    }
+    // Bare name (or name@market) — strip @marketplace for list match
+    let name = raw.split_once('@').map(|(l, _)| l).unwrap_or(&raw).trim();
+    if name.is_empty() {
+        return Some(raw);
+    }
+    resolve_installed_plugin_path(name).or(Some(if name == raw {
+        raw
+    } else {
+        name.to_string()
+    }))
+}
+
+/// Validate a plugin manifest via `grok plugin validate [path]`.
+///
+/// - `path_or_name`: local path, installed plugin name, or omit (CLI default `.`)
+/// - Always returns an envelope `{ ok, messages[] }` (never hard-fails on CLI-too-old)
+/// - Soft-fail: older CLIs without `plugin validate` → `ok: false`, `reason: "cli_too_old"`
+#[tauri::command]
+pub async fn plugin_validate(
+    path_or_name: Option<String>,
+) -> Result<serde_json::Value, String> {
+    let path_or_name_owned = path_or_name.clone();
+    let result = tauri::async_runtime::spawn_blocking(move || {
+        let resolved = resolve_plugin_validate_path(path_or_name_owned.as_deref());
+        let run = match resolved.as_deref() {
+            Some(p) => run_grok_cli_args(
+                &["plugin", "validate", p],
+                PLUGIN_CMD_TIMEOUT_SECS,
+            ),
+            None => run_grok_cli_args(&["plugin", "validate"], PLUGIN_CMD_TIMEOUT_SECS),
+        };
+        (resolved, run)
+    })
+    .await
+    .map_err(|e| e.to_string())?;
+
+    let (resolved, run) = result;
+    match run {
+        Err(e) => {
+            // CLI missing / spawn failure — surface as envelope so UI can show in-panel.
+            let msg = e;
+            let reason = if msg.to_ascii_lowercase().contains("not found") {
+                Some("cli_missing")
+            } else {
+                None
+            };
+            Ok(serde_json::json!({
+                "ok": false,
+                "messages": [msg],
+                "path": resolved,
+                "reason": reason,
+            }))
+        }
+        Ok((stdout, stderr, exit_ok)) => {
+            if looks_like_unsupported_plugin_validate(&stderr, &stdout) {
+                return Ok(serde_json::json!({
+                    "ok": false,
+                    "messages": [
+                        format!(
+                            "This Grok CLI does not support `plugin validate`; version {} or newer is required. Run `grok update`, then fully restart the app.",
+                            crate::cli_probe::min_cli_version_str()
+                        )
+                    ],
+                    "path": resolved,
+                    "reason": "cli_too_old",
+                }));
+            }
+            let messages = parse_plugin_validate_messages(&stdout, &stderr);
+            let messages = if messages.is_empty() {
+                if exit_ok {
+                    vec!["Plugin manifest is valid.".to_string()]
+                } else {
+                    vec!["Plugin validation failed.".to_string()]
+                }
+            } else {
+                messages
+            };
+            Ok(serde_json::json!({
+                "ok": exit_ok,
+                "messages": messages,
+                "path": resolved,
+                "reason": serde_json::Value::Null,
+            }))
+        }
+    }
+}
+
 #[cfg(test)]
 mod plugin_config_tests {
     use super::*;
@@ -3834,6 +4049,64 @@ disabled = ["yes"]
         assert_eq!(normalize_plugin_update_name(Some("")), None);
         assert_eq!(normalize_plugin_update_name(Some("   ")), None);
         assert_eq!(normalize_plugin_update_name(None), None);
+    }
+
+    #[test]
+    fn parse_validate_messages_stderr_first_dedupe() {
+        let msgs = parse_plugin_validate_messages(
+            "Plugin manifest is valid.\n  name: demo\n",
+            "  name: demo\n",
+        );
+        assert_eq!(
+            msgs,
+            vec![
+                "name: demo".to_string(),
+                "Plugin manifest is valid.".to_string()
+            ]
+        );
+    }
+
+    #[test]
+    fn looks_like_unsupported_validate_clap() {
+        assert!(looks_like_unsupported_plugin_validate(
+            "error: unrecognized subcommand 'validate'\n\nUsage: grok plugin …",
+            ""
+        ));
+        assert!(looks_like_unsupported_plugin_validate(
+            "error: unexpected argument 'validate' found",
+            ""
+        ));
+        assert!(!looks_like_unsupported_plugin_validate(
+            "Error: Not a directory: /nope",
+            ""
+        ));
+        assert!(!looks_like_unsupported_plugin_validate(
+            "Error: Failed to load manifest: missing field `name`",
+            ""
+        ));
+    }
+
+    #[test]
+    fn looks_like_validate_path_variants() {
+        assert!(looks_like_plugin_validate_path("/tmp/my-plugin"));
+        assert!(looks_like_plugin_validate_path("~/code/plugin"));
+        assert!(looks_like_plugin_validate_path("./plugin"));
+        assert!(looks_like_plugin_validate_path("C:\\Users\\a\\plugin"));
+        assert!(looks_like_plugin_validate_path("owner/repo")); // has slash → path-ish for CLI
+        assert!(!looks_like_plugin_validate_path("chrome-devtools-mcp"));
+        assert!(!looks_like_plugin_validate_path("https://github.com/a/b.git"));
+        assert!(!looks_like_plugin_validate_path("git@github.com:a/b.git"));
+    }
+
+    #[test]
+    fn normalize_validate_target_empty() {
+        assert_eq!(normalize_plugin_validate_target(None), None);
+        assert_eq!(normalize_plugin_validate_target(Some("")), None);
+        assert_eq!(normalize_plugin_validate_target(Some("  ")), None);
+        assert_eq!(
+            normalize_plugin_validate_target(Some("  /tmp/p  ")).as_deref(),
+            Some("/tmp/p")
+        );
     }
 }
 

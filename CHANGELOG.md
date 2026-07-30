@@ -55,6 +55,7 @@ See `docs/llm-wiki/release.md`.
 - **Marketplace plugin detail**: clicking a catalog plugin opens a real detail panel (name, description, marketplace, version, skill/hooks/agents/MCP badges) with Install / Reinstall — not a stub
 - **Install failure recovery**: last install error stays on that plugin row with **Retry**; cleared on success
 - Installed **Details** shows structured marketplace/provides summary when available (plus CLI `plugin details` body)
+- **Plugin validate** (`grok plugin validate`): **Validate** on installed plugin rows and on a local path before advanced install; multi-line CLI messages stay in an in-panel result (not only toast); soft-fail when the CLI is too old
 - **Delete CLI sessions from disk** (Settings → Agent / CLI sessions): per-row delete + delete all unlinked; path-scoped under active `GROK_HOME/sessions`; linked App chats stay
 
 ### Fixed
@@ -69,7 +70,7 @@ See `docs/llm-wiki/release.md`.
 - **Agent**：禁用内置工具（芯片 + 自由列表 → `--disallowed-tools`；与禁用网页搜索并存；更改 soft-respawn）；可选 profile 路径（`--agent-profile`）
 - **系统**：**Agent serve** 启停（设置 → 运行时 → 连接）；**手机镜像写入审计**（本地 ring、无密钥/URL）；**Trace 历史管理**（搜索/移除/清空确认/可选大小）；任务面板子代理 **WT/cwd** 标记；**Agent 仪表盘** 状态/搜索/项目筛选
 - **计划**：**请求修改** 可选修订说明；计划历史搜索/决策筛选、清空确认、会话仍在时可打开
-- **扩展/市场**：目录插件详情面板（描述/版本/组件徽章 + 安装/重装）；安装失败行内重试；已安装 provides 结构化摘要
+- **扩展/市场**：目录插件详情面板（描述/版本/组件徽章 + 安装/重装）；安装失败行内重试；已安装 provides 结构化摘要；**插件校验**（`plugin validate`：已安装行 + 本地路径安装前；行内结果面板；旧 CLI 软失败）
 - **权限/CLI**：`--permission-mode` 映射与 spawn；设置页 CLI 标签与高级选择；**Auto** 策略；Doctor 安全批量修复；**删除磁盘 CLI 会话**（单条/全部未关联；限定 `GROK_HOME/sessions`）
 
 

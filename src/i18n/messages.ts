@@ -2376,6 +2376,16 @@ const en = {
   "ext.plugins.update": "Update",
   "ext.plugins.updateAll": "Update all",
   "ext.plugins.updating": "Updating…",
+  "ext.plugins.validate": "Validate",
+  "ext.plugins.validating": "Validating…",
+  "ext.plugins.validateOk": "Manifest is valid",
+  "ext.plugins.validateFailed": "Validation failed",
+  "ext.plugins.validateCliTooOld":
+    "This Grok CLI does not support plugin validate — update the CLI and restart the app.",
+  "ext.plugins.validatePathOnly":
+    "Validate before install works on a local folder path (not git URL or owner/repo).",
+  "ext.plugins.validateHint":
+    "Run `grok plugin validate` on a local path before install",
   "ext.skills.title": "Skills",
   "ext.skills.loading": "Loading skills…",
   "ext.skills.empty": "No skills discovered",
@@ -5341,6 +5351,15 @@ const zh: Record<MessageKey, string> = {
   "ext.plugins.update": "更新",
   "ext.plugins.updateAll": "全部更新",
   "ext.plugins.updating": "正在更新…",
+  "ext.plugins.validate": "校验",
+  "ext.plugins.validating": "正在校验…",
+  "ext.plugins.validateOk": "清单有效",
+  "ext.plugins.validateFailed": "校验失败",
+  "ext.plugins.validateCliTooOld":
+    "当前 Grok CLI 不支持 plugin validate — 请更新 CLI 并完全重启应用。",
+  "ext.plugins.validatePathOnly":
+    "安装前校验仅支持本地文件夹路径（不支持 git URL 或 owner/repo）。",
+  "ext.plugins.validateHint": "对本地路径运行 `grok plugin validate` 后再安装",
   "ext.skills.title": "技能",
   "ext.skills.loading": "正在加载技能…",
   "ext.skills.empty": "未发现技能",
