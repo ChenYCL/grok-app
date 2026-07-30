@@ -5,11 +5,14 @@ import {
   buildTaskTree,
   collectSessionTasks,
   countRunningTasks,
+  extractSubagentCwd,
   filterSessionTasks,
   filterTaskTree,
+  formatTaskCwdLabel,
   isLongRunningToolKind,
   isRunningToolStatus,
   isSubagentSpawnKind,
+  normalizeExtractedCwdPath,
   normalizeTaskStatus,
   taskFromToolMessage,
   taskStatusMessageKey,
@@ -442,5 +445,222 @@ describe("filterTaskTree", () => {
     const filtered = filterTaskTree(tree, "pnpm");
     expect(filtered.map((n) => n.task.id)).toEqual(["p"]);
     expect(filtered[0]!.children.map((c) => c.task.id)).toEqual(["c"]);
+  });
+
+  it("matches cwd on nested tasks", () => {
+    const tree = buildTaskTree([
+      task({
+        id: "p",
+        name: "spawn",
+        kind: "spawn_subagent",
+        longRunning: true,
+        status: "completed",
+        cwd: "/tmp/wt-feature-login",
+      }),
+      task({
+        id: "c",
+        name: "read",
+        kind: "read_file",
+        parentId: "p",
+        status: "completed",
+      }),
+    ]);
+    const filtered = filterTaskTree(tree, "feature-login");
+    expect(filtered.map((n) => n.task.id)).toEqual(["p"]);
+  });
+});
+
+describe("normalizeExtractedCwdPath", () => {
+  it("accepts absolute and home-relative paths", () => {
+    expect(normalizeExtractedCwdPath("/Users/me/proj")).toBe("/Users/me/proj");
+    expect(normalizeExtractedCwdPath('"/tmp/wt"')).toBe("/tmp/wt");
+    expect(normalizeExtractedCwdPath("~/Code/app")).toBe("~/Code/app");
+    expect(normalizeExtractedCwdPath("C:\\Users\\me\\wt")).toBe(
+      "C:\\Users\\me\\wt",
+    );
+  });
+
+  it("rejects relative or empty", () => {
+    expect(normalizeExtractedCwdPath("relative/path")).toBeUndefined();
+    expect(normalizeExtractedCwdPath("")).toBeUndefined();
+    expect(normalizeExtractedCwdPath(null)).toBeUndefined();
+  });
+});
+
+describe("extractSubagentCwd", () => {
+  it("returns undefined for non-subagent kinds (never invents)", () => {
+    expect(
+      extractSubagentCwd({
+        kind: "read_file",
+        path: "/tmp/file.ts",
+        detail: "cwd: /tmp/other",
+      }),
+    ).toBeUndefined();
+    expect(
+      extractSubagentCwd({
+        kind: "run_terminal_command",
+        detail: "cwd: /tmp/shell",
+      }),
+    ).toBeUndefined();
+  });
+
+  it("reads absolute path field for spawn_subagent", () => {
+    expect(
+      extractSubagentCwd({
+        kind: "spawn_subagent",
+        path: "/Users/me/.grok/worktrees/app/feat-x",
+        detail: "research the feature",
+      }),
+    ).toBe("/Users/me/.grok/worktrees/app/feat-x");
+  });
+
+  it("parses cwd: / worktree: labels in detail", () => {
+    expect(
+      extractSubagentCwd({
+        kind: "Agent",
+        detail: "cwd: /tmp/agent-wt\nImplement the fix",
+      }),
+    ).toBe("/tmp/agent-wt");
+    expect(
+      extractSubagentCwd({
+        kind: "subagent",
+        detail: "worktree=/var/tmp/wt-1",
+      }),
+    ).toBe("/var/tmp/wt-1");
+  });
+
+  it("parses JSON detail with cwd / worktree keys", () => {
+    expect(
+      extractSubagentCwd({
+        kind: "spawn_subagent",
+        detail: JSON.stringify({
+          prompt: "do work",
+          cwd: "/home/u/wt",
+        }),
+      }),
+    ).toBe("/home/u/wt");
+    expect(
+      extractSubagentCwd({
+        kind: "spawn_subagent",
+        detail: 'prefix {"worktreePath":"/opt/trees/a","task":"x"} tail',
+      }),
+    ).toBe("/opt/trees/a");
+  });
+
+  it("parses --cwd / -C flags", () => {
+    expect(
+      extractSubagentCwd({
+        kind: "spawn_subagent",
+        title: "helper",
+        detail: "grok --cwd /data/wt-cli --prompt hi",
+      }),
+    ).toBe("/data/wt-cli");
+    expect(
+      extractSubagentCwd({
+        kind: "spawn_subagent",
+        detail: "run -C '/tmp/quoted-wt' something",
+      }),
+    ).toBe("/tmp/quoted-wt");
+  });
+
+  it("accepts whole-blob absolute path as detail", () => {
+    expect(
+      extractSubagentCwd({
+        kind: "spawn_subagent",
+        detail: "/tmp/only-path",
+      }),
+    ).toBe("/tmp/only-path");
+  });
+
+  it("does not invent when no path present", () => {
+    expect(
+      extractSubagentCwd({
+        kind: "spawn_subagent",
+        title: "Research docs",
+        detail: "look through the repository and summarize",
+      }),
+    ).toBeUndefined();
+  });
+});
+
+describe("formatTaskCwdLabel", () => {
+  it("returns short paths as-is and long paths as basename or WT", () => {
+    expect(formatTaskCwdLabel("/tmp/wt")).toBe("/tmp/wt");
+    expect(formatTaskCwdLabel("/Users/me/.grok/worktrees/app/feat-login")).toBe(
+      "feat-login",
+    );
+    expect(
+      formatTaskCwdLabel(
+        "/Users/me/.grok/worktrees/very-long-repo-name/very-long-branch-name-here",
+        10,
+      ),
+    ).toBe("WT");
+  });
+});
+
+describe("taskFromToolMessage cwd", () => {
+  it("attaches cwd when spawn tool_step carries worktree path", () => {
+    const t = taskFromToolMessage(
+      tool({
+        id: "tool-s",
+        toolCallId: "s1",
+        content: "spawn helper",
+        toolKind: "spawn_subagent",
+        toolStatus: "in_progress",
+        toolPath: "/tmp/sub-wt",
+        streaming: true,
+      }),
+    );
+    expect(t?.cwd).toBe("/tmp/sub-wt");
+  });
+
+  it("parses journal tool_step detail labels", () => {
+    const t = taskFromToolMessage({
+      id: "tool-j2",
+      role: "tool",
+      marker: "tool_step",
+      content:
+        "tool_step|running|spawn_subagent|Subagent\ncwd: /Users/me/wt-j",
+      toolCallId: "j2",
+    });
+    expect(t?.kind).toBe("spawn_subagent");
+    expect(t?.cwd).toBe("/Users/me/wt-j");
+  });
+
+  it("omits cwd for ordinary tools even with absolute path", () => {
+    const t = taskFromToolMessage(
+      tool({
+        id: "tool-r",
+        toolCallId: "r1",
+        content: "read file",
+        toolKind: "read_file",
+        toolStatus: "completed",
+        toolPath: "/tmp/file.ts",
+        streaming: false,
+      }),
+    );
+    expect(t?.cwd).toBeUndefined();
+    expect(t?.path).toBe("/tmp/file.ts");
+  });
+});
+
+describe("buildTaskTree with cwd", () => {
+  it("preserves cwd on nested spawn roots", () => {
+    const tasks = [
+      task({
+        id: "p",
+        name: "spawn",
+        kind: "spawn_subagent",
+        longRunning: true,
+        status: "running",
+        cwd: "/tmp/nested-wt",
+      }),
+      task({ id: "c1", name: "read", parentId: "p", status: "completed" }),
+    ];
+    const tree = buildTaskTree(tasks);
+    expect(tree).toHaveLength(1);
+    expect(tree[0]!.task.cwd).toBe("/tmp/nested-wt");
+    expect(tree[0]!.children).toHaveLength(1);
+    expect(taskTreeHasNesting(tree)).toBe(true);
   });
 });

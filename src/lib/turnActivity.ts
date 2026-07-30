@@ -16,6 +16,7 @@ import {
   toolDetailTail,
 } from "./toolDisplay";
 import {
+  extractSubagentCwd,
   isLongRunningToolKind,
   normalizeTaskStatus,
   type AgentTask,
@@ -230,17 +231,26 @@ export function buildTurnActivity(
 export function tasksFromTurnActivity(
   activity: TurnActivity,
 ): AgentTask[] {
-  return activity.tools.map((t) => ({
-    id: t.id,
-    name: t.name,
-    kind: t.kind,
-    status: t.status,
-    detail: t.detail,
-    path: t.path,
-    updatedAt: t.updatedAt,
-    longRunning: t.longRunning,
-    ...(t.parentId ? { parentId: t.parentId } : {}),
-  }));
+  return activity.tools.map((t) => {
+    const cwd = extractSubagentCwd({
+      kind: t.kind,
+      title: t.name,
+      detail: t.detail,
+      path: t.path,
+    });
+    return {
+      id: t.id,
+      name: t.name,
+      kind: t.kind,
+      status: t.status,
+      detail: t.detail,
+      path: t.path,
+      updatedAt: t.updatedAt,
+      longRunning: t.longRunning,
+      ...(t.parentId ? { parentId: t.parentId } : {}),
+      ...(cwd ? { cwd } : {}),
+    };
+  });
 }
 
 /**

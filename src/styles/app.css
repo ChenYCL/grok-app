@@ -19656,8 +19656,23 @@ html[data-theme="light"] .rim-sidebar {
   width: 22px;
 }
 .agent-tasks__row-main {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+  min-width: 0;
+  padding: 3px 8px 3px 0;
+  border-radius: 8px;
+  color: inherit;
+}
+/* Flat list (no nesting): restore original row padding. */
+.agent-tasks__row-main--flat {
+  width: 100%;
+  padding: 3px 8px;
+}
+.agent-tasks__row-toggle {
   display: grid;
-  grid-template-columns: 10px minmax(0, 1fr) auto;
+  grid-template-columns: 10px minmax(0, 1fr);
   gap: 8px;
   align-items: center;
   flex: 1;
@@ -19666,17 +19681,20 @@ html[data-theme="light"] .rim-sidebar {
   background: transparent;
   color: inherit;
   text-align: left;
-  padding: 7px 8px 7px 0;
-  border-radius: 8px;
+  padding: 4px 2px;
+  border-radius: 6px;
   cursor: pointer;
 }
-/* Flat list (no nesting): restore original row padding. */
-.agent-tasks__row-main--flat {
-  width: 100%;
-  padding: 7px 8px;
-}
-.agent-tasks__row-main:hover {
+.agent-tasks__row-toggle:hover {
   background: var(--hover-bg, rgba(127, 127, 127, 0.1));
+}
+.agent-tasks__row-main--static {
+  /* Activity session rows keep static layout. */
+  display: grid;
+  grid-template-columns: 10px minmax(0, 1fr) auto;
+  gap: 8px;
+  padding: 7px 8px;
+  cursor: default;
 }
 .agent-tasks__dot {
   width: 7px;
@@ -19703,10 +19721,40 @@ html[data-theme="light"] .rim-sidebar {
   white-space: nowrap;
   font-size: 13px;
 }
+/* Compact worktree / cwd badge on subagent spawn tasks. */
+.agent-tasks__wt {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  max-width: 9em;
+  height: 16px;
+  padding: 0 5px;
+  border-radius: 4px;
+  border: 1px solid color-mix(in srgb, var(--text-tertiary, #888) 28%, transparent);
+  background: color-mix(in srgb, var(--text-tertiary, #888) 14%, transparent);
+  color: var(--text-secondary, inherit);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  line-height: 1;
+  text-transform: none;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+  font-family: var(--font-mono, ui-monospace, monospace);
+}
+.agent-tasks__wt:hover {
+  border-color: color-mix(in srgb, var(--accent, #5b8def) 40%, transparent);
+  background: color-mix(in srgb, var(--accent, #5b8def) 14%, transparent);
+  color: var(--accent, inherit);
+}
 .agent-tasks__status {
   font-size: 11px;
   opacity: 0.7;
   white-space: nowrap;
+  flex-shrink: 0;
 }
 .agent-tasks__detail {
   padding: 0 10px 8px 26px;
@@ -19727,6 +19775,17 @@ html[data-theme="light"] .rim-sidebar {
   white-space: nowrap;
   font-family: var(--font-mono, ui-monospace, monospace);
   font-size: 11px;
+}
+.agent-tasks__cwd-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 4px 0 2px;
+}
+.agent-tasks__cwd-actions .btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
 }
 .agent-tasks__hint {
   margin: 6px 0 0;
