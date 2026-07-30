@@ -67,6 +67,7 @@ See `docs/llm-wiki/release.md`.
 
 
 - **Hooks 最近活动**（设置 → 扩展 → Hooks）：本会话内最近运行记录（ACP 通知 / 工具失败 / agent 日志），脱敏展示
+- **In-app SKILL.md editor** (Settings → Extensions → Skills): open user/project skills under allowlisted roots (`~/.grok/skills`, agent-home `skills`, project `.grok/skills`), edit in a modal textarea, save via Host `skill_read` / `skill_write` with path-traversal guards; disabled skills stay editable but note they stay out of the slash picker until re-enabled
 
 ## [0.2.2] - 2026-07-30
 
