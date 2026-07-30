@@ -535,7 +535,12 @@ pub fn hooks_try_command(script: &Path) -> std::process::Command {
             cmd.arg(script);
             return cmd;
         }
-        // Prefer Git-Bash / MSYS sh when available; else cmd /C.
+        // Prefer bash (Git for Windows) for `.sh` hooks; fall back to cmd /C.
+        if ext == "sh" {
+            let mut cmd = process_util::command("bash");
+            cmd.arg(script);
+            return cmd;
+        }
         let mut cmd = process_util::command("cmd");
         cmd.arg("/C");
         cmd.arg(script);
@@ -993,13 +998,32 @@ mod tests {
         ));
         let _ = fs::remove_dir_all(&tmp);
         fs::create_dir_all(tmp.join("sub")).expect("mkdir");
-        let script = tmp.join("sub").join("echo-ok.sh");
+
+        // Platform-native scripts: Unix /bin/sh vs Windows cmd.exe (`.sh` via cmd /C fails).
+        #[cfg(windows)]
+        let (ok_name, fail_name, slow_name) = ("echo-ok.cmd", "fail.cmd", "slow.cmd");
+        #[cfg(not(windows))]
+        let (ok_name, fail_name, slow_name) = ("echo-ok.sh", "fail.sh", "slow.sh");
+
+        let script = tmp.join("sub").join(ok_name);
         {
             let mut f = fs::File::create(&script).expect("create");
-            writeln!(f, "#!/bin/sh").unwrap();
-            writeln!(f, "echo OUT").unwrap();
-            writeln!(f, "cat").unwrap();
-            writeln!(f, "exit 0").unwrap();
+            #[cfg(windows)]
+            {
+                // stdin is not piped into `type` easily; print fixed OUT + any stdin via more.
+                writeln!(f, "@echo off").unwrap();
+                writeln!(f, "echo OUT").unwrap();
+                // Read all stdin and echo it (findstr matches every line).
+                writeln!(f, "findstr /r \".*\"").unwrap();
+                writeln!(f, "exit /b 0").unwrap();
+            }
+            #[cfg(not(windows))]
+            {
+                writeln!(f, "#!/bin/sh").unwrap();
+                writeln!(f, "echo OUT").unwrap();
+                writeln!(f, "cat").unwrap();
+                writeln!(f, "exit 0").unwrap();
+            }
         }
         #[cfg(unix)]
         {
@@ -1025,12 +1049,21 @@ mod tests {
         assert_eq!(ok.scope, "user");
 
         // Fail exit is honest (not ok).
-        let fail_script = tmp.join("fail.sh");
+        let fail_script = tmp.join(fail_name);
         {
             let mut f = fs::File::create(&fail_script).expect("create");
-            writeln!(f, "#!/bin/sh").unwrap();
-            writeln!(f, "echo boom 1>&2").unwrap();
-            writeln!(f, "exit 2").unwrap();
+            #[cfg(windows)]
+            {
+                writeln!(f, "@echo off").unwrap();
+                writeln!(f, "echo boom 1>&2").unwrap();
+                writeln!(f, "exit /b 2").unwrap();
+            }
+            #[cfg(not(windows))]
+            {
+                writeln!(f, "#!/bin/sh").unwrap();
+                writeln!(f, "echo boom 1>&2").unwrap();
+                writeln!(f, "exit 2").unwrap();
+            }
         }
         #[cfg(unix)]
         {
@@ -1051,11 +1084,20 @@ mod tests {
         assert!(fail.stderr.contains("boom") || fail.stdout.contains("boom"), "{fail:?}");
 
         // Timeout is honest (not ok).
-        let slow = tmp.join("slow.sh");
+        let slow = tmp.join(slow_name);
         {
             let mut f = fs::File::create(&slow).expect("create");
-            writeln!(f, "#!/bin/sh").unwrap();
-            writeln!(f, "sleep 5").unwrap();
+            #[cfg(windows)]
+            {
+                writeln!(f, "@echo off").unwrap();
+                // ~5s hang without requiring external tools.
+                writeln!(f, "ping -n 6 127.0.0.1 >nul").unwrap();
+            }
+            #[cfg(not(windows))]
+            {
+                writeln!(f, "#!/bin/sh").unwrap();
+                writeln!(f, "sleep 5").unwrap();
+            }
         }
         #[cfg(unix)]
         {
