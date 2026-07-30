@@ -2967,6 +2967,22 @@ export async function serveStop(): Promise<ServeStatus> {
   return invoke<ServeStatus>("serve_stop");
 }
 
+/**
+ * TCP-only health probe for agent serve / remote bind (`host:port`, ~2s).
+ * No secrets, no WebSocket handshake. Frontend must strip secrets from pasted URLs.
+ */
+export type ServeTcpProbeResult = {
+  ok: boolean;
+  latencyMs?: number | null;
+  error?: string | null;
+  /** Bare host:port that was probed. */
+  target: string;
+};
+
+export async function serveTcpProbe(addr: string): Promise<ServeTcpProbeResult> {
+  return invoke<ServeTcpProbeResult>("serve_tcp_probe", { addr });
+}
+
 // ── Wallpaper sources (X search + Imagine) ──────────────────────────────────
 
 export async function wallpaperXSearch(
