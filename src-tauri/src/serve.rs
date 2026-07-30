@@ -745,6 +745,111 @@ pub async fn serve_stop() -> Result<ServeStatusDto, String> {
     .map_err(|e| e.to_string())?
 }
 
+/// TCP health probe result (latency only — no secrets, no WebSocket handshake).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ServeTcpProbeResult {
+    pub ok: bool,
+    pub latency_ms: Option<u64>,
+    pub error: Option<String>,
+    /// Bare `host:port` that was probed (never includes query/secret).
+    pub target: String,
+}
+
+/// Normalize a probe address to bare `host:port`.
+/// Rejects schemes, paths, query strings (so secrets never reach the probe path).
+pub fn normalize_probe_addr(raw: &str) -> Result<String, String> {
+    let s = raw.trim();
+    if s.is_empty() {
+        return Err("empty address".into());
+    }
+    // Fail closed on anything that might carry a secret or non-TCP target.
+    if s.contains("://") || s.contains('/') || s.contains('?') || s.contains('#') {
+        return Err(
+            "probe address must be host:port only (no URL scheme, path, or query)".into(),
+        );
+    }
+    if s.to_ascii_lowercase().contains("server-key") || s.to_ascii_lowercase().contains("secret=") {
+        return Err("probe address must not include a secret".into());
+    }
+    if s.contains(' ') {
+        return Err("invalid probe address".into());
+    }
+    // Must resolve.
+    let addrs: Vec<SocketAddr> = s
+        .to_socket_addrs()
+        .map_err(|e| format!("invalid probe address `{s}`: {e}"))?
+        .collect();
+    if addrs.is_empty() {
+        return Err(format!("invalid probe address `{s}`: no addresses"));
+    }
+    Ok(s.to_string())
+}
+
+/// TCP connect to `host:port` with a ~2s timeout. Network path only — no
+/// WebSocket upgrade, no auth. Used by the SDK Connect wizard health check.
+/// Callers must pass bare host:port (frontend strips secrets from pasted URLs).
+#[tauri::command]
+pub async fn serve_tcp_probe(addr: String) -> Result<ServeTcpProbeResult, String> {
+    let target = match normalize_probe_addr(&addr) {
+        Ok(t) => t,
+        Err(e) => {
+            return Ok(ServeTcpProbeResult {
+                ok: false,
+                latency_ms: None,
+                error: Some(e),
+                target: addr.trim().to_string(),
+            });
+        }
+    };
+
+    // Log only the bare target — never a URL with credentials.
+    tracing::debug!(
+        target: "grok_app::serve",
+        target = %target,
+        "tcp probe"
+    );
+
+    let target_for_thread = target.clone();
+    let result = tauri::async_runtime::spawn_blocking(move || {
+        let started = std::time::Instant::now();
+        let Ok(mut addrs) = target_for_thread.to_socket_addrs() else {
+            return ServeTcpProbeResult {
+                ok: false,
+                latency_ms: None,
+                error: Some(format!("could not resolve {target_for_thread}")),
+                target: target_for_thread,
+            };
+        };
+        let Some(sock) = addrs.next() else {
+            return ServeTcpProbeResult {
+                ok: false,
+                latency_ms: None,
+                error: Some(format!("no addresses for {target_for_thread}")),
+                target: target_for_thread,
+            };
+        };
+        match TcpStream::connect_timeout(&sock, Duration::from_secs(2)) {
+            Ok(_stream) => ServeTcpProbeResult {
+                ok: true,
+                latency_ms: Some(started.elapsed().as_millis() as u64),
+                error: None,
+                target: target_for_thread,
+            },
+            Err(e) => ServeTcpProbeResult {
+                ok: false,
+                latency_ms: Some(started.elapsed().as_millis() as u64),
+                error: Some(e.to_string()),
+                target: target_for_thread,
+            },
+        }
+    })
+    .await
+    .map_err(|e| e.to_string())?;
+
+    Ok(result)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -915,5 +1020,18 @@ Options:
         assert!(v.get("connectionCli").is_none() || v.get("connectionCli").unwrap().is_null());
         // Never a raw "secret" field.
         assert!(v.get("secret").is_none());
+    }
+
+    #[test]
+    fn normalize_probe_addr_accepts_host_port_only() {
+        assert_eq!(
+            normalize_probe_addr("127.0.0.1:2419").unwrap(),
+            "127.0.0.1:2419"
+        );
+        assert!(normalize_probe_addr("").is_err());
+        assert!(normalize_probe_addr("ws://127.0.0.1:2419/ws?server-key=x").is_err());
+        assert!(normalize_probe_addr("127.0.0.1:2419/ws").is_err());
+        assert!(normalize_probe_addr("127.0.0.1:2419?server-key=abc").is_err());
+        assert!(normalize_probe_addr("host with space:1").is_err());
     }
 }

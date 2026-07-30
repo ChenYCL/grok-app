@@ -206,6 +206,7 @@ import { AgentConfigTomlPanel } from "@/components/AgentConfigTomlPanel";
 import { RemoteImLayout } from "@/components/RemoteImLayout";
 import { MirrorConnectPanel } from "@/components/MirrorConnectPanel";
 import { LeaderServePanel } from "@/components/LeaderServePanel";
+import { SdkConnectWizard } from "@/components/SdkConnectWizard";
 import {
   createT,
   resolveLocale,
@@ -5281,6 +5282,16 @@ export function SettingsPage({
                       navigateTo("general", "agent", "settings-anchor-useLeader")
                     }
                   />
+                </div>
+                <h2 className="settings-page__h2">{t("settings.sdkConnect.title")}</h2>
+                <div
+                  className={
+                    rowHighlight("settings-anchor-sdkConnect") +
+                    " " +
+                    rowHighlight("settings-anchor-agentServe")
+                  }
+                >
+                  <SdkConnectWizard t={t} />
                 </div>
               </>
             )}

@@ -417,6 +417,7 @@ pub fn run() {
             serve::serve_status,
             serve::serve_start,
             serve::serve_stop,
+            serve::serve_tcp_probe,
             commands::pick_directory,
             commands::pick_attach_files,
             commands::pick_attach_folder,

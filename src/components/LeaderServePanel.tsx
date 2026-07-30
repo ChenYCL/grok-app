@@ -3,6 +3,8 @@
  * Surfaces `grok leader list|info|kill` with in-app confirm for stop.
  * Settings → Runtime → Connection: Agent leader / serve status + start/stop.
  * Serve: optional `--remote` (proxy mode) + client connection string templates.
+ * Settings → Runtime → Connection: Agent leader status + start/stop.
+ * Agent serve (WebSocket) lives in SdkConnectWizard on the same tab.
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -22,6 +24,7 @@ import {
   normalizeServeRemoteUrl,
   type ServeRemoteUrlError,
 } from "@/lib/serveRemote";
+import type { LeaderStatus } from "@/lib/api";
 
 function formatAge(
   secs: number | null | undefined,
@@ -74,9 +77,7 @@ export function LeaderServePanel({
   /** Optional proxy-mode `--remote` URL (local UI; applied on next start). */
   const [remoteDraft, setRemoteDraft] = useState("");
   const [busy, setBusy] = useState<"refresh" | "start" | "stop" | null>(null);
-  const [serveBusy, setServeBusy] = useState<"refresh" | "start" | "stop" | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [serveError, setServeError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [serveCopied, setServeCopied] = useState(false);
   const [confirmStop, setConfirmStop] = useState(false);
@@ -131,12 +132,12 @@ export function LeaderServePanel({
   }, [refreshLeader, refreshServe]);
 
   useEffect(() => {
-    void refresh();
+    void refreshLeader();
     const id = window.setInterval(() => {
-      void refresh();
+      void refreshLeader();
     }, 8000);
     return () => window.clearInterval(id);
-  }, [refresh]);
+  }, [refreshLeader]);
 
   const onStart = async () => {
     setBusy("start");
