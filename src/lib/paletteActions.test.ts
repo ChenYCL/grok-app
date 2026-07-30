@@ -22,6 +22,7 @@ describe("defaultPaletteActions", () => {
       "shortcuts-help",
       "product-tutorial",
       "copy-conversation-md",
+      "resume-with-code-restore",
       "settings-general",
       "settings-appearance",
       "settings-account",
