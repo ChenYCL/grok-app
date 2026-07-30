@@ -2,17 +2,41 @@ import { describe, expect, it } from "vitest";
 import {
   assembleReliabilityCenter,
   buildReliabilityCenter,
+  clearStallHistory,
   collectLiveStallSignals,
   collectReliabilityBusySessions,
+  filterStallHistory,
+  loadStallHistory,
   mergeErrorEntries,
   mergeStallSignals,
+  parseStallHistory,
+  parseStallHistoryEntry,
   prependReliabilityRing,
+  recordStallHistory,
+  recordStallHistoryFromSignal,
   reliabilityErrorFromDeck,
   reliabilityStallFromEvent,
+  STALL_HISTORY_MAX,
   type ReliabilityErrorEntry,
   type ReliabilityStallSignal,
+  type StallHistoryEntry,
+  type StallHistoryStorage,
 } from "./reliabilityCenter";
 import { emptyLiveSnapshot, type SessionLiveMap } from "./sessionLiveStore";
+
+function memStorage(seed?: string): StallHistoryStorage & { store: Map<string, string> } {
+  const store = new Map<string, string>();
+  if (seed != null) store.set("grok.stallHistory", seed);
+  return {
+    store,
+    getItem(key: string) {
+      return store.has(key) ? store.get(key)! : null;
+    },
+    setItem(key: string, value: string) {
+      store.set(key, value);
+    },
+  };
+}
 
 describe("prependReliabilityRing", () => {
   it("prepends newest and caps length", () => {
@@ -279,5 +303,204 @@ describe("buildReliabilityCenter", () => {
       sessions: [{ id: "x", title: "Idle" }],
     });
     expect(view.empty).toBe(true);
+  });
+});
+
+describe("stall history (localStorage ring)", () => {
+  it("parseStallHistoryEntry keeps only known fields and caps title", () => {
+    const e = parseStallHistoryEntry({
+      id: "h1",
+      sessionId: "s1",
+      title: "  Fix CI  ",
+      kind: "hard_end",
+      stallSeconds: 120.6,
+      reason: "stall",
+      at: 1_700_000_000_000,
+      secret: "should-drop",
+      tier: "ignored",
+    });
+    expect(e).toEqual({
+      id: "h1",
+      sessionId: "s1",
+      title: "Fix CI",
+      kind: "hard_end",
+      stallSeconds: 121,
+      reason: "stall",
+      at: 1_700_000_000_000,
+    });
+    expect(e && "secret" in e).toBe(false);
+    expect(e && "tier" in e).toBe(false);
+  });
+
+  it("parseStallHistoryEntry rejects invalid kind / empty object", () => {
+    expect(parseStallHistoryEntry(null)).toBeNull();
+    expect(parseStallHistoryEntry({ kind: "nope" })).toBeNull();
+    expect(parseStallHistoryEntry({ id: "x" })).toBeNull();
+  });
+
+  it("parseStallHistory tolerates corrupt JSON and caps length", () => {
+    expect(parseStallHistory("not-json")).toEqual([]);
+    expect(parseStallHistory(null)).toEqual([]);
+    const many = Array.from({ length: 60 }, (_, i) => ({
+      id: `id-${i}`,
+      sessionId: `s${i}`,
+      kind: "hard_end",
+      at: 1000 - i,
+      reason: "stall",
+    }));
+    const parsed = parseStallHistory(many, STALL_HISTORY_MAX);
+    expect(parsed).toHaveLength(STALL_HISTORY_MAX);
+    expect(parsed[0]!.id).toBe("id-0");
+  });
+
+  it("recordStallHistory prepends and caps at max", () => {
+    const storage = memStorage();
+    for (let i = 0; i < 5; i++) {
+      recordStallHistory(
+        {
+          kind: "hard_end",
+          sessionId: `s${i}`,
+          title: `T${i}`,
+          stallSeconds: 60 + i,
+          at: 1000 + i,
+        },
+        storage,
+        3,
+      );
+    }
+    const list = loadStallHistory(storage, 3);
+    expect(list).toHaveLength(3);
+    // Newest first (highest at)
+    expect(list[0]!.sessionId).toBe("s4");
+    expect(list[1]!.sessionId).toBe("s3");
+    expect(list[2]!.sessionId).toBe("s2");
+  });
+
+  it("soft active stalls replace by stable session id (no flood)", () => {
+    const storage = memStorage();
+    recordStallHistory(
+      {
+        kind: "active",
+        sessionId: "a",
+        stallSeconds: 90,
+        at: 10,
+      },
+      storage,
+    );
+    recordStallHistory(
+      {
+        kind: "active",
+        sessionId: "a",
+        stallSeconds: 180,
+        at: 20,
+      },
+      storage,
+    );
+    const list = loadStallHistory(storage);
+    expect(list).toHaveLength(1);
+    expect(list[0]!.stallSeconds).toBe(180);
+    expect(list[0]!.id).toBe("hist:active:a");
+  });
+
+  it("recordStallHistoryFromSignal strips tier and records hard_end", () => {
+    const storage = memStorage();
+    const signal = reliabilityStallFromEvent({
+      kind: "hard_end",
+      sessionId: "x",
+      title: "Long run",
+      stallSeconds: 300,
+      tier: "hard",
+      reason: "stall",
+      at: 42,
+    });
+    recordStallHistoryFromSignal(signal, storage);
+    const list = loadStallHistory(storage);
+    expect(list).toHaveLength(1);
+    expect(list[0]!.kind).toBe("hard_end");
+    expect(list[0]!.title).toBe("Long run");
+    expect(list[0]!.stallSeconds).toBe(300);
+    expect(list[0] && "tier" in list[0]).toBe(false);
+  });
+
+  it("filterStallHistory matches query and kind", () => {
+    const rows: StallHistoryEntry[] = [
+      {
+        id: "1",
+        sessionId: "s-oauth",
+        title: "Fix OAuth",
+        kind: "hard_end",
+        stallSeconds: 120,
+        reason: "stall",
+        at: 3,
+      },
+      {
+        id: "2",
+        sessionId: "s-ui",
+        title: "UI polish",
+        kind: "active",
+        stallSeconds: 60,
+        reason: "stall",
+        at: 2,
+      },
+      {
+        id: "3",
+        sessionId: "s-term",
+        title: "Terminal",
+        kind: "terminal",
+        stallSeconds: null,
+        reason: "stall",
+        at: 1,
+      },
+    ];
+    expect(filterStallHistory(rows)).toHaveLength(3);
+    expect(filterStallHistory(rows, { query: "  " })).toHaveLength(3);
+    expect(
+      filterStallHistory(rows, { query: "oauth" }).map((e) => e.id),
+    ).toEqual(["1"]);
+    expect(
+      filterStallHistory(rows, { query: "S-UI" }).map((e) => e.id),
+    ).toEqual(["2"]);
+    expect(
+      filterStallHistory(rows, { kind: "hard_end" }).map((e) => e.kind),
+    ).toEqual(["hard_end"]);
+    expect(
+      filterStallHistory(rows, { kind: "active", query: "polish" }).map(
+        (e) => e.id,
+      ),
+    ).toEqual(["2"]);
+    expect(filterStallHistory(rows, { query: "xyz" })).toEqual([]);
+    expect(filterStallHistory(rows, { kind: "all" })).toHaveLength(3);
+  });
+
+  it("clearStallHistory wipes storage", () => {
+    const storage = memStorage();
+    recordStallHistory(
+      { kind: "hard_end", sessionId: "a", at: 1 },
+      storage,
+    );
+    expect(loadStallHistory(storage)).toHaveLength(1);
+    const next = clearStallHistory(storage);
+    expect(next).toEqual([]);
+    expect(loadStallHistory(storage)).toEqual([]);
+  });
+
+  it("never stores free-form secret-like extra fields", () => {
+    const storage = memStorage();
+    recordStallHistory(
+      {
+        kind: "hard_end",
+        sessionId: "s",
+        title: "Safe title",
+        reason: "stall",
+        at: 1,
+      },
+      storage,
+    );
+    const raw = storage.getItem("grok.stallHistory");
+    expect(raw).toBeTruthy();
+    const parsed = JSON.parse(raw!) as Record<string, unknown>[];
+    expect(Object.keys(parsed[0]!).sort()).toEqual(
+      ["at", "id", "kind", "reason", "sessionId", "stallSeconds", "title"].sort(),
+    );
   });
 });

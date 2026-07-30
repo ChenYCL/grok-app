@@ -415,3 +415,346 @@ export function buildReliabilityCenter(opts: {
     maxErrors: opts.maxErrors,
   });
 }
+
+/* ── Stall timeline history (localStorage ring) ─────────────────────────── */
+
+/**
+ * Persisted stall timeline row. Subset of {@link ReliabilityStallSignal}
+ * without `tier` — ids/titles/reasons only; never secrets or log bodies.
+ */
+export type StallHistoryEntry = {
+  id: string;
+  sessionId: string | null;
+  title: string | null;
+  kind: ReliabilityStallKind;
+  stallSeconds: number | null;
+  reason: string | null;
+  /** Epoch ms. */
+  at: number;
+};
+
+export const STALL_HISTORY_STORAGE_KEY = "grok.stallHistory";
+/** Cap for historical stall signals (localStorage ring, newest first). */
+export const STALL_HISTORY_MAX = 40;
+/** Cap stored title length — no multi-kb blobs. */
+export const STALL_HISTORY_TITLE_MAX = 200;
+/** Cap stored reason string. */
+export const STALL_HISTORY_REASON_MAX = 120;
+
+/** Fired on `window` after record / clear (detail = entries). */
+export const STALL_HISTORY_CHANGE_EVENT = "grok-stall-history-change";
+
+const STALL_KINDS = new Set<ReliabilityStallKind>([
+  "active",
+  "hard_end",
+  "terminal",
+  "end_of_turn",
+]);
+
+/** Minimal storage surface so unit tests need no jsdom. */
+export interface StallHistoryStorage {
+  getItem(key: string): string | null;
+  setItem(key: string, value: string): void;
+}
+
+function defaultStallHistoryStorage(): StallHistoryStorage {
+  if (typeof localStorage !== "undefined") return localStorage;
+  return { getItem: () => null, setItem: () => {} };
+}
+
+function notifyStallHistoryChange(entries: StallHistoryEntry[]): void {
+  if (
+    typeof window !== "undefined" &&
+    typeof window.dispatchEvent === "function"
+  ) {
+    try {
+      window.dispatchEvent(
+        new CustomEvent(STALL_HISTORY_CHANGE_EVENT, { detail: entries }),
+      );
+    } catch {
+      /* ignore */
+    }
+  }
+}
+
+function capTitle(raw: unknown): string | null {
+  if (typeof raw !== "string") return null;
+  const t = raw.replace(/\u0000/g, "").trim();
+  if (!t) return null;
+  return t.slice(0, STALL_HISTORY_TITLE_MAX);
+}
+
+function capReason(raw: unknown): string | null {
+  if (typeof raw !== "string") return null;
+  const t = raw.replace(/\u0000/g, "").trim();
+  if (!t) return null;
+  return t.slice(0, STALL_HISTORY_REASON_MAX);
+}
+
+function parseAtMs(raw: unknown, fallback: number): number {
+  if (typeof raw === "number" && Number.isFinite(raw) && raw >= 0) {
+    return Math.floor(raw);
+  }
+  if (typeof raw === "string" && raw.trim()) {
+    const n = Date.parse(raw);
+    if (Number.isFinite(n) && n >= 0) return n;
+    const asNum = Number(raw);
+    if (Number.isFinite(asNum) && asNum >= 0) return Math.floor(asNum);
+  }
+  return fallback;
+}
+
+/**
+ * Normalize one raw object into a StallHistoryEntry, or null if invalid.
+ * Only known fields; drops unknown keys that could carry secrets.
+ */
+export function parseStallHistoryEntry(raw: unknown): StallHistoryEntry | null {
+  if (!raw || typeof raw !== "object") return null;
+  const o = raw as Record<string, unknown>;
+
+  const kindRaw = typeof o.kind === "string" ? o.kind.trim() : "";
+  if (!STALL_KINDS.has(kindRaw as ReliabilityStallKind)) return null;
+  const kind = kindRaw as ReliabilityStallKind;
+
+  const at = parseAtMs(o.at, 0);
+  const sidRaw = o.sessionId;
+  const sessionId =
+    typeof sidRaw === "string"
+      ? sidRaw.trim() || null
+      : sidRaw == null
+        ? null
+        : null;
+
+  const idRaw = typeof o.id === "string" ? o.id.trim() : "";
+  const id =
+    idRaw ||
+    (kind === "active"
+      ? `hist:active:${sessionId ?? "unknown"}`
+      : `hist:${kind}:${sessionId ?? "unknown"}:${at || 0}`);
+
+  let stallSeconds: number | null = null;
+  if (typeof o.stallSeconds === "number" && Number.isFinite(o.stallSeconds)) {
+    const n = Math.round(o.stallSeconds);
+    if (n > 0) stallSeconds = n;
+  }
+
+  return {
+    id,
+    sessionId,
+    title: capTitle(o.title),
+    kind,
+    stallSeconds,
+    reason: capReason(o.reason) ?? "stall",
+    at: at || 0,
+  };
+}
+
+/**
+ * Parse stored JSON into a clean, newest-first list (capped).
+ * Tolerates corrupt / partial data.
+ */
+export function parseStallHistory(
+  raw: unknown,
+  max: number = STALL_HISTORY_MAX,
+): StallHistoryEntry[] {
+  let list: unknown[] = [];
+  if (typeof raw === "string") {
+    try {
+      const parsed = JSON.parse(raw) as unknown;
+      if (Array.isArray(parsed)) list = parsed;
+    } catch {
+      return [];
+    }
+  } else if (Array.isArray(raw)) {
+    list = raw;
+  } else {
+    return [];
+  }
+
+  const out: StallHistoryEntry[] = [];
+  const seen = new Set<string>();
+  for (const item of list) {
+    const e = parseStallHistoryEntry(item);
+    if (!e) continue;
+    if (seen.has(e.id)) continue;
+    seen.add(e.id);
+    out.push(e);
+    if (out.length >= Math.max(0, Math.floor(max))) break;
+  }
+  return out;
+}
+
+export function loadStallHistory(
+  storage: StallHistoryStorage = defaultStallHistoryStorage(),
+  max: number = STALL_HISTORY_MAX,
+): StallHistoryEntry[] {
+  try {
+    return parseStallHistory(
+      storage.getItem(STALL_HISTORY_STORAGE_KEY),
+      max,
+    );
+  } catch {
+    /* private mode */
+    return [];
+  }
+}
+
+export function saveStallHistory(
+  entries: readonly StallHistoryEntry[],
+  storage: StallHistoryStorage = defaultStallHistoryStorage(),
+  max: number = STALL_HISTORY_MAX,
+): void {
+  const clean = parseStallHistory(entries, max);
+  try {
+    storage.setItem(STALL_HISTORY_STORAGE_KEY, JSON.stringify(clean));
+  } catch {
+    /* private mode / quota */
+  }
+}
+
+/**
+ * Pure ring push: newest first, max length, replace exact id.
+ * Soft-active rows share a stable id so repeated soft stalls update in place.
+ */
+export function pushStallHistory(
+  existing: readonly StallHistoryEntry[],
+  entry: StallHistoryEntry,
+  max: number = STALL_HISTORY_MAX,
+): StallHistoryEntry[] {
+  const next = parseStallHistoryEntry(entry);
+  if (!next) return parseStallHistory(existing, max);
+  return prependReliabilityRing(
+    parseStallHistory(existing, max),
+    next,
+    max,
+  );
+}
+
+/**
+ * Record a stall signal into the localStorage ring.
+ * Never stores secrets — only id, sessionId, title, kind, stallSeconds, reason, at.
+ * Soft `active` stalls use a stable per-session id so the ring is not flooded.
+ */
+export function recordStallHistory(
+  input: {
+    id?: string;
+    sessionId?: string | null;
+    title?: string | null;
+    kind: ReliabilityStallKind;
+    stallSeconds?: number | null;
+    reason?: string | null;
+    at?: number;
+  },
+  storage: StallHistoryStorage = defaultStallHistoryStorage(),
+  max: number = STALL_HISTORY_MAX,
+): StallHistoryEntry[] {
+  if (!STALL_KINDS.has(input.kind)) {
+    return loadStallHistory(storage, max);
+  }
+  const at =
+    typeof input.at === "number" && Number.isFinite(input.at)
+      ? Math.floor(input.at)
+      : Date.now();
+  const sessionId =
+    typeof input.sessionId === "string"
+      ? input.sessionId.trim() || null
+      : input.sessionId ?? null;
+
+  const id =
+    (typeof input.id === "string" && input.id.trim()) ||
+    (input.kind === "active"
+      ? `hist:active:${sessionId ?? "unknown"}`
+      : `hist:${input.kind}:${sessionId ?? "unknown"}:${at}`);
+
+  const entry = parseStallHistoryEntry({
+    id,
+    sessionId,
+    title: input.title ?? null,
+    kind: input.kind,
+    stallSeconds: input.stallSeconds ?? null,
+    reason: input.reason ?? "stall",
+    at,
+  });
+  if (!entry) return loadStallHistory(storage, max);
+
+  const next = pushStallHistory(loadStallHistory(storage, max), entry, max);
+  saveStallHistory(next, storage, max);
+  notifyStallHistoryChange(next);
+  return next;
+}
+
+/**
+ * Record from an existing in-memory reliability stall signal.
+ * Strips `tier` and re-ids soft-active rows for stable ring replace.
+ */
+export function recordStallHistoryFromSignal(
+  signal: ReliabilityStallSignal,
+  storage: StallHistoryStorage = defaultStallHistoryStorage(),
+  max: number = STALL_HISTORY_MAX,
+): StallHistoryEntry[] {
+  return recordStallHistory(
+    {
+      // Drop live/event ids; history uses its own stable scheme for active.
+      sessionId: signal.sessionId,
+      title: signal.title,
+      kind: signal.kind,
+      stallSeconds: signal.stallSeconds,
+      reason: signal.reason,
+      at: signal.at,
+    },
+    storage,
+    max,
+  );
+}
+
+/**
+ * Filter history by free-text query and/or kind chip.
+ * Empty / whitespace query matches all (still respects kind filter).
+ * Query matches title, reason, kind, or session id (case-insensitive substring).
+ * `kind` omitted / `"all"` / null means every kind.
+ */
+export function filterStallHistory(
+  entries: readonly StallHistoryEntry[],
+  opts?: {
+    query?: string | null;
+    kind?: ReliabilityStallKind | "all" | null;
+  },
+): StallHistoryEntry[] {
+  const q = (opts?.query ?? "").trim().toLowerCase();
+  const kindFilter =
+    opts?.kind && opts.kind !== "all" && STALL_KINDS.has(opts.kind)
+      ? opts.kind
+      : null;
+
+  if (!q && !kindFilter) return entries.slice();
+
+  return entries.filter((e) => {
+    if (kindFilter && e.kind !== kindFilter) return false;
+    if (!q) return true;
+    const title = (e.title || "").toLowerCase();
+    const reason = (e.reason || "").toLowerCase();
+    const kind = e.kind.toLowerCase();
+    const sessionId = (e.sessionId || "").toLowerCase();
+    const secs =
+      e.stallSeconds != null ? String(e.stallSeconds) : "";
+    return (
+      title.includes(q) ||
+      reason.includes(q) ||
+      kind.includes(q) ||
+      sessionId.includes(q) ||
+      secs.includes(q)
+    );
+  });
+}
+
+/**
+ * Wipe the local stall timeline (empty list + notify listeners).
+ * Returns the empty list. Safe no-op on storage failure.
+ */
+export function clearStallHistory(
+  storage: StallHistoryStorage = defaultStallHistoryStorage(),
+): StallHistoryEntry[] {
+  saveStallHistory([], storage);
+  notifyStallHistoryChange([]);
+  return [];
+}

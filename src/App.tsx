@@ -226,6 +226,7 @@ import {
   DEFAULT_RELIABILITY_MAX_ERRORS,
   DEFAULT_RELIABILITY_MAX_STALLS,
   prependReliabilityRing,
+  recordStallHistoryFromSignal,
   reliabilityErrorFromDeck,
   reliabilityStallFromEvent,
   type ReliabilityErrorEntry,
@@ -4017,19 +4018,22 @@ export default function App() {
               sawToolActivity: p.sawToolActivity,
             });
             // Reliability center ring — title resolved at view assembly time.
+            const activeStall = reliabilityStallFromEvent({
+              kind: "active",
+              sessionId: p.sessionId ?? null,
+              stallSeconds: secs,
+              tier: p.tier ?? null,
+              reason: "stall",
+            });
             setRecentStallSignals((prev) =>
               prependReliabilityRing(
                 prev,
-                reliabilityStallFromEvent({
-                  kind: "active",
-                  sessionId: p.sessionId ?? null,
-                  stallSeconds: secs,
-                  tier: p.tier ?? null,
-                  reason: "stall",
-                }),
+                activeStall,
                 DEFAULT_RELIABILITY_MAX_STALLS,
               ),
             );
+            // Persist stall timeline (localStorage ring; no secrets).
+            recordStallHistoryFromSignal(activeStall);
           }),
         );
         // Long-tool heartbeat: Host re-armed stall; clear soft banner for this chat.
@@ -4055,19 +4059,22 @@ export default function App() {
           }>("session://stream_stall_hard_end", (p) => {
             if (cancelled || !p) return;
             setStreamStall(null);
+            const hardEndStall = reliabilityStallFromEvent({
+              kind: "hard_end",
+              sessionId: p.sessionId ?? null,
+              stallSeconds:
+                typeof p.stallSeconds === "number" ? p.stallSeconds : null,
+              reason: "stall",
+            });
             setRecentStallSignals((prev) =>
               prependReliabilityRing(
                 prev,
-                reliabilityStallFromEvent({
-                  kind: "hard_end",
-                  sessionId: p.sessionId ?? null,
-                  stallSeconds:
-                    typeof p.stallSeconds === "number" ? p.stallSeconds : null,
-                  reason: "stall",
-                }),
+                hardEndStall,
                 DEFAULT_RELIABILITY_MAX_STALLS,
               ),
             );
+            // Persist stall timeline (localStorage ring; no secrets).
+            recordStallHistoryFromSignal(hardEndStall);
             // Host force-ended the turn (runtime Ready already emitted). Settle
             // client projection so the sidebar cannot stay spinning if a late
             // stream token races after this event (issue #225).

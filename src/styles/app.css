@@ -11241,6 +11241,47 @@ html[data-composer-min-rows="8"] .composer__input {
   flex-shrink: 0;
 }
 
+.reliab-timeline__toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 4px 0 8px;
+}
+
+.reliab-timeline__search {
+  flex: 1;
+  min-width: 0;
+}
+
+.reliab-timeline__search-input {
+  width: 100%;
+  box-sizing: border-box;
+  margin: 0;
+  padding: 6px 10px;
+  border-radius: 8px;
+  border: 1px solid color-mix(in srgb, var(--border, #444) 80%, transparent);
+  background: color-mix(in srgb, var(--surface-2, rgba(0, 0, 0, 0.18)) 80%, transparent);
+  color: var(--text-primary);
+  font-size: 12px;
+  line-height: 1.3;
+}
+
+.reliab-timeline__search-input::placeholder {
+  color: var(--text-secondary);
+  opacity: 0.75;
+}
+
+.reliab-timeline__chips {
+  flex-wrap: wrap;
+  margin: 0 0 8px;
+  gap: 4px;
+}
+
+.reliab-timeline__chip {
+  font-size: 11px;
+  padding: 3px 8px;
+}
+
 /* Compact confirm / rename dialogs (project remove, session rename, …) */
 .app-dialog-overlay {
   z-index: 14000;
