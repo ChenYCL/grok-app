@@ -5706,8 +5706,8 @@ pub struct PersonaDefDto {
 // from PR #77
 
 /// List agent + persona definition files from user / project / bundled scopes.
-/// Does not require the CLI binary (pure filesystem discovery under `~/.grok`
-/// and optional `{project}/.grok`). Always returns Ok.
+/// Does not require the CLI binary (pure filesystem discovery under `~/.grok`,
+/// active GROK_HOME / agent-home, and optional `{project}/.grok`). Always returns Ok.
 #[tauri::command]
 pub async fn agents_list(project_path: Option<String>) -> Result<serde_json::Value, String> {
     let project = project_path
@@ -5731,11 +5731,27 @@ pub async fn agents_list(project_path: Option<String>) -> Result<serde_json::Val
             std::path::PathBuf::from(p).join(".grok").join("personas")
         });
 
+        let settings = store::load_settings();
+        let active_home =
+            crate::paths::resolve_agent_grok_home(&settings.session_data_mode);
+        let active_user_agents = active_home.join("agents");
+
         let mut agents = Vec::new();
         if let Some(ref dir) = project_agents {
             agents.extend(scan_agent_dir(dir, "project"));
         }
         agents.extend(scan_agent_dir(&user_agents, "user"));
+        if active_user_agents != user_agents {
+            // Independent mode: defs under agent-home count as user scope.
+            for a in scan_agent_dir(&active_user_agents, "user") {
+                if !agents
+                    .iter()
+                    .any(|e| e.scope == "user" && e.name.eq_ignore_ascii_case(&a.name))
+                {
+                    agents.push(a);
+                }
+            }
+        }
         agents.extend(scan_agent_dir(&bundled_agents, "bundled"));
         let agents = sort_agent_defs(agents);
 
@@ -5747,10 +5763,16 @@ pub async fn agents_list(project_path: Option<String>) -> Result<serde_json::Val
         personas.extend(scan_persona_dir(&bundled_personas, "bundled"));
         let personas = sort_persona_defs(personas);
 
+        let user_agents_dir = if active_user_agents != user_agents {
+            active_user_agents.to_string_lossy().to_string()
+        } else {
+            user_agents.to_string_lossy().to_string()
+        };
+
         serde_json::json!({
             "agents": agents,
             "personas": personas,
-            "userAgentsDir": user_agents.to_string_lossy(),
+            "userAgentsDir": user_agents_dir,
             "projectAgentsDir": project_agents
                 .as_ref()
                 .map(|p| p.to_string_lossy().to_string()),
@@ -5766,6 +5788,31 @@ pub async fn agents_list(project_path: Option<String>) -> Result<serde_json::Val
     .map_err(|e| e.to_string())?;
 
     Ok(result)
+}
+
+/// Create a SKILL-like agent definition markdown under user GROK_HOME or
+/// project `.grok/agents`. Path-scoped; rejects overwrite unless `force`.
+#[tauri::command]
+pub async fn agents_scaffold(
+    name: String,
+    scope: Option<String>,
+    project_path: Option<String>,
+    force: Option<bool>,
+    description: Option<String>,
+) -> Result<crate::agents_catalog::AgentsScaffoldResult, String> {
+    let scope = scope.unwrap_or_else(|| "user".into());
+    let force = force.unwrap_or(false);
+    tauri::async_runtime::spawn_blocking(move || {
+        crate::agents_catalog::scaffold_agent(
+            &name,
+            &scope,
+            project_path.as_deref(),
+            force,
+            description.as_deref(),
+        )
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 // from PR #83

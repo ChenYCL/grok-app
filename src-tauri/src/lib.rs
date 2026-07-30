@@ -339,6 +339,7 @@ pub fn run() {
             commands::skill_write,
             commands::skill_roots,
             commands::agents_list,
+            commands::agents_scaffold,
             commands::inspect_mcp,
             commands::project_inspect,
             commands::extensions_get,

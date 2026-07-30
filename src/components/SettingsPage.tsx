@@ -4605,6 +4605,7 @@ export function SettingsPage({
                 | "plugins"
                 | "skills"
                 | "mcp"
+                | "agents"
                 | "hooks"
                 | "market"
                 | null) ?? "plugins"
