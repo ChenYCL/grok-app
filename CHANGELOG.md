@@ -18,6 +18,9 @@ See `docs/llm-wiki/release.md`.
 **中文 · 修复**
 
 - **CLI 安装因缺少 SHA-256 失败（#227）**：官方镜像通常不发布校验文件；缺少 sidecar 时默认继续安装（不一致仍拒绝）。严格模式用 `GROK_CLI_REQUIRE_CHECKSUM=1`。
+### Added
+
+- **Desktop notification click opens the session** that fired turn-done / permission / ask_user (falls back to focusing the app when the session is unknown)
 
 ## [0.2.2] - 2026-07-30
 
