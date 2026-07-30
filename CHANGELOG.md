@@ -13,6 +13,7 @@ See `docs/llm-wiki/release.md`.
 
 ### Added
 
+- **Cross-session recent prompt history** (`/history` picker): **This chat** tab plus **Recent (all chats)** localStorage ring (max 50, consecutive-dedupe); select inserts into composer
 - **Send queue reorder**: Up/Down on each queued follow-up before auto-flush
 - **Chat reading width** (Settings → Appearance): narrow / medium (default) / wide / full (`grok.chatWidth`)
 - **Phone mirror write guard**: confirm when enabling write; persistent warning banner; audit log (no secrets)
@@ -33,6 +34,7 @@ See `docs/llm-wiki/release.md`.
 
 **中文 · 新增**
 
+- **跨会话最近提示历史**（`/history`）：「当前会话」与「最近（全部会话）」标签；localStorage 环形缓冲最多 50 条；选择后填入输入框
 - 发送队列上下排序；对话阅读宽度；镜像写权限确认与警告；整段对话复制为 Markdown
 - 可单独关闭实时语音快捷键；任务面板子代理树；计划历史归档；侧栏日期分组
 - 程序坞/托盘忙碌角标；按会话静音桌面通知

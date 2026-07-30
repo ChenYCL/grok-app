@@ -1,7 +1,9 @@
 /**
- * Composer prompt history — CLI-like ↑/↓ recall + `/history` picker.
+ * Composer prompt history — CLI-like ↑/↓ recall + `/history` **This chat** tab.
  *
- * Scope matches Grok Build: **current session only** (not cross-session).
+ * Session scope matches Grok Build (current chat only). Cross-session recent
+ * lives in `recentPromptHistory.ts` (localStorage ring) and shares the same
+ * picker UI under the **Recent (all chats)** tab.
  * History is newest-first (index 0 = most recent user message).
  * Index `null` means not browsing (live draft).
  */

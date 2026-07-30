@@ -397,6 +397,14 @@ import {
   type PromptHistoryEntry,
 } from "@/lib/composerPromptHistory";
 import {
+  filterRecentPromptHistory,
+  loadRecentPromptHistory,
+  recordRecentPrompt,
+  RECENT_PROMPT_HISTORY_CHANGE_EVENT,
+  RECENT_PROMPT_HISTORY_STORAGE_KEY,
+  type RecentPromptEntry,
+} from "@/lib/recentPromptHistory";
+import {
   ingestHookLogLine,
   ingestHostHookPayload,
   ingestToolHookSignal,
@@ -424,7 +432,10 @@ import {
   saveComposerProjectDraft,
   type ComposerProjectDraft,
 } from "@/lib/composerProjectDraft";
-import { PromptHistoryPanel } from "@/components/PromptHistoryPanel";
+import {
+  PromptHistoryPanel,
+  type PromptHistoryScope,
+} from "@/components/PromptHistoryPanel";
 import {
   queuePreviewText,
   shouldEnqueueSend,
@@ -996,7 +1007,7 @@ export default function App() {
   const promptHistoryIndexRef = useRef<number | null>(null);
   promptHistoryIndexRef.current = promptHistoryIndex;
   /**
-   * `/history` + empty-↑ picker — current session prompts only (Build-aligned).
+   * `/history` + empty-↑ picker — session tab (Build) + cross-session recent.
    * Filter focuses on slash open; empty ↑ keeps focus in the composer.
    */
   const [promptHistoryOpen, setPromptHistoryOpen] = useState(false);
@@ -1004,6 +1015,15 @@ export default function App() {
   const [promptHistoryActive, setPromptHistoryActive] = useState(0);
   const [promptHistoryFocusFilter, setPromptHistoryFocusFilter] =
     useState(false);
+  const [promptHistoryScope, setPromptHistoryScope] =
+    useState<PromptHistoryScope>("session");
+  const promptHistoryScopeRef = useRef<PromptHistoryScope>("session");
+  promptHistoryScopeRef.current = promptHistoryScope;
+  const [recentPromptHistory, setRecentPromptHistory] = useState<
+    RecentPromptEntry[]
+  >(() =>
+    typeof localStorage !== "undefined" ? loadRecentPromptHistory() : [],
+  );
   const promptHistoryPanelRef = useRef<HTMLDivElement>(null);
   const promptHistoryOpenRef = useRef(false);
   promptHistoryOpenRef.current = promptHistoryOpen;
@@ -2593,7 +2613,8 @@ export default function App() {
     viewingSessionIdRef.current = session.sessionId;
   }, [session.sessionId]);
 
-  // Prompt history is per viewed session — leave browse mode on switch / new chat.
+  // Prompt history browse is per viewed session — leave browse mode on switch / new chat.
+  // Cross-session recent ring is not cleared (lives in localStorage).
   useEffect(() => {
     promptHistoryIndexRef.current = null;
     setPromptHistoryIndex(null);
@@ -2601,7 +2622,27 @@ export default function App() {
     setPromptHistoryFilter("");
     setPromptHistoryActive(0);
     setPromptHistoryFocusFilter(false);
+    setPromptHistoryScope("session");
   }, [session.sessionId]);
+
+  // Keep recent-prompt ring in sync (this window + storage events / own writes).
+  useEffect(() => {
+    const reload = () => {
+      setRecentPromptHistory(loadRecentPromptHistory());
+    };
+    const onCustom = () => reload();
+    const onStorage = (e: StorageEvent) => {
+      if (e.key === RECENT_PROMPT_HISTORY_STORAGE_KEY || e.key === null) {
+        reload();
+      }
+    };
+    window.addEventListener(RECENT_PROMPT_HISTORY_CHANGE_EVENT, onCustom);
+    window.addEventListener("storage", onStorage);
+    return () => {
+      window.removeEventListener(RECENT_PROMPT_HISTORY_CHANGE_EVENT, onCustom);
+      window.removeEventListener("storage", onStorage);
+    };
+  }, []);
 
   useEffect(() => {
     liveHostRef.current = liveHost;
@@ -6633,6 +6674,17 @@ export default function App() {
       if (!sendTargetId) {
         sendQueue.migrateDraft(sessionId);
       }
+      // Cross-session recent prompts (localStorage ring, max 50).
+      // Store display form so chips/skill tokens rehydrate in the composer.
+      if (storedDisplay.trim()) {
+        setRecentPromptHistory(
+          recordRecentPrompt({
+            text: storedDisplay,
+            sessionId,
+            at: nowIso,
+          }),
+        );
+      }
       // `session.autoTitle` is on the mirror allowlist, so phone chats get a
       // real title instead of staying on the "new chat" placeholder forever.
       if (shouldAutoTitle && api.hasHost()) {
@@ -6666,6 +6718,7 @@ export default function App() {
     setPromptHistoryFilter("");
     setPromptHistoryActive(0);
     setPromptHistoryFocusFilter(false);
+    setPromptHistoryScope("session");
     setSlashQuery(null);
     setAttachments([]);
     if (opts?.clearProjectDraft) {
@@ -7460,25 +7513,45 @@ export default function App() {
     () => collectUserPromptHistory(messages),
     [messages],
   );
-  const promptHistoryEntries = useMemo(
+  const sessionPromptHistoryEntries = useMemo(
     () => filterPromptHistory(sessionPromptHistory, promptHistoryFilter),
     [sessionPromptHistory, promptHistoryFilter],
   );
+  const recentPromptHistoryEntries = useMemo(
+    () =>
+      filterRecentPromptHistory(recentPromptHistory, promptHistoryFilter).map(
+        (e) => ({ historyIndex: e.historyIndex, text: e.text }),
+      ),
+    [recentPromptHistory, promptHistoryFilter],
+  );
+  const promptHistoryEntries =
+    promptHistoryScope === "recent"
+      ? recentPromptHistoryEntries
+      : sessionPromptHistoryEntries;
 
   const closePromptHistory = useCallback(() => {
     setPromptHistoryOpen(false);
     setPromptHistoryFilter("");
     setPromptHistoryActive(0);
     setPromptHistoryFocusFilter(false);
+    setPromptHistoryScope("session");
   }, []);
 
   const applyPromptHistoryEntry = useCallback(
     (
       entry: PromptHistoryEntry,
-      opts?: { close?: boolean; listIndex?: number },
+      opts?: { close?: boolean; listIndex?: number; scope?: PromptHistoryScope },
     ) => {
-      promptHistoryIndexRef.current = entry.historyIndex;
-      setPromptHistoryIndex(entry.historyIndex);
+      const scope = opts?.scope ?? promptHistoryScopeRef.current;
+      if (scope === "session") {
+        // Session tab: keep CLI-like browse index aligned with this chat.
+        promptHistoryIndexRef.current = entry.historyIndex;
+        setPromptHistoryIndex(entry.historyIndex);
+      } else {
+        // Recent tab is cross-session — not part of ↑/↓ session browse.
+        promptHistoryIndexRef.current = null;
+        setPromptHistoryIndex(null);
+      }
       if (typeof opts?.listIndex === "number") {
         setPromptHistoryActive(opts.listIndex);
       }
@@ -7503,17 +7576,26 @@ export default function App() {
     fitContent: false,
     matchTriggerWidth: true,
     minWidth: 280,
-    estHeight: 280,
+    estHeight: 300,
     gap: 8,
-    deps: [promptHistoryFilter, promptHistoryEntries.length],
+    deps: [
+      promptHistoryFilter,
+      promptHistoryEntries.length,
+      promptHistoryScope,
+    ],
   });
 
-  // Keep highlight in range when the filtered list shrinks; reset on filter text.
+  // Keep highlight in range when the filtered list shrinks; reset on filter/scope.
   const prevPromptHistoryFilterRef = useRef(promptHistoryFilter);
+  const prevPromptHistoryScopeRef = useRef(promptHistoryScope);
   useEffect(() => {
     if (!promptHistoryOpen) return;
-    if (prevPromptHistoryFilterRef.current !== promptHistoryFilter) {
+    if (
+      prevPromptHistoryFilterRef.current !== promptHistoryFilter ||
+      prevPromptHistoryScopeRef.current !== promptHistoryScope
+    ) {
       prevPromptHistoryFilterRef.current = promptHistoryFilter;
+      prevPromptHistoryScopeRef.current = promptHistoryScope;
       setPromptHistoryActive(0);
       return;
     }
@@ -7523,7 +7605,12 @@ export default function App() {
         ? promptHistoryEntries.length - 1
         : i;
     });
-  }, [promptHistoryEntries.length, promptHistoryFilter, promptHistoryOpen]);
+  }, [
+    promptHistoryEntries.length,
+    promptHistoryFilter,
+    promptHistoryOpen,
+    promptHistoryScope,
+  ]);
 
   // Reset highlight only when the filter *string* changes.
   const prevFilterQueryRef = useRef(slashFilterQuery);
@@ -7623,14 +7710,16 @@ export default function App() {
   ]);
 
   /**
-   * Open current-session prompt history picker (Build `/history`).
+   * Open prompt history picker (Build `/history` + cross-session recent).
    * @param focusFilter — true for slash `/history` (search box); false for empty ↑.
-   * @param seedDraft — fill composer with the active row (empty ↑).
+   * @param seedDraft — fill composer with the active row (empty ↑, session tab).
    */
   const openPromptHistory = useCallback(
     (opts?: { focusFilter?: boolean; seedDraft?: boolean }) => {
       const history = collectUserPromptHistory(messagesRef.current);
-      if (history.length === 0) {
+      const recent = loadRecentPromptHistory();
+      setRecentPromptHistory(recent);
+      if (history.length === 0 && recent.length === 0) {
         showToast(tr("slash.historyEmpty"), 2400);
         return;
       }
@@ -7640,11 +7729,16 @@ export default function App() {
       setLiveSlash({ present: false, query: "", start: 0, end: 0 });
       liveSlashRef.current = { present: false, query: "", start: 0, end: 0 };
 
+      // Prefer this chat; fall back to recent when the session has no prompts yet.
+      const initialScope: PromptHistoryScope =
+        history.length > 0 ? "session" : "recent";
+      setPromptHistoryScope(initialScope);
       setPromptHistoryFilter("");
       setPromptHistoryActive(0);
       setPromptHistoryFocusFilter(opts?.focusFilter === true);
       setPromptHistoryOpen(true);
-      if (opts?.seedDraft !== false) {
+      // Empty-↑ browse only seeds from current-session history (Build-aligned).
+      if (opts?.seedDraft !== false && history.length > 0) {
         promptHistoryIndexRef.current = 0;
         setPromptHistoryIndex(0);
         setDraft(history[0] ?? "");
@@ -10956,6 +11050,15 @@ export default function App() {
         }
 
         await api.sessionSend(agentText, storedDisplay, sessionId);
+        if (storedDisplay.trim()) {
+          setRecentPromptHistory(
+            recordRecentPrompt({
+              text: storedDisplay,
+              sessionId,
+              at: new Date().toISOString(),
+            }),
+          );
+        }
         // Mirror-allowlisted (`session.autoTitle`) — safe for phone clients.
         if (shouldAutoTitle && api.hasHost()) {
           void api
@@ -14119,30 +14222,52 @@ export default function App() {
                   <PromptHistoryPanel
                     open
                     panelRef={promptHistoryPanelRef}
+                    scope={promptHistoryScope}
+                    onScopeChange={(next) => {
+                      setPromptHistoryScope(next);
+                      setPromptHistoryActive(0);
+                      // Leaving session browse when switching to recent.
+                      if (next === "recent") {
+                        promptHistoryIndexRef.current = null;
+                        setPromptHistoryIndex(null);
+                      }
+                    }}
                     entries={promptHistoryEntries}
                     query={promptHistoryFilter}
                     activeIndex={promptHistoryActive}
                     focusFilter={promptHistoryFocusFilter}
                     labels={{
-                      title: tr("promptHistory.title"),
+                      tabSession: tr("promptHistory.tabSession"),
+                      tabRecent: tr("promptHistory.tabRecent"),
                       placeholder: tr("promptHistory.placeholder"),
                       empty: tr("promptHistory.empty"),
                       emptyFilter: tr("promptHistory.emptyFilter"),
+                      emptyRecent: tr("promptHistory.emptyRecent"),
+                      emptyRecentFilter: tr("promptHistory.emptyRecentFilter"),
                       aria: tr("promptHistory.aria"),
                     }}
                     onQueryChange={setPromptHistoryFilter}
                     onActiveIndexChange={(i) => {
                       setPromptHistoryActive(i);
                       const entry = promptHistoryEntries[i];
-                      if (entry && !promptHistoryFocusFilter) {
+                      if (
+                        entry &&
+                        !promptHistoryFocusFilter &&
+                        promptHistoryScope === "session"
+                      ) {
                         // Empty-↑ browse: mirror Build — each step lands in the input.
                         applyPromptHistoryEntry(entry, {
                           close: false,
                           listIndex: i,
+                          scope: "session",
                         });
                       }
                     }}
-                    onSelect={(entry) => applyPromptHistoryEntry(entry)}
+                    onSelect={(entry) =>
+                      applyPromptHistoryEntry(entry, {
+                        scope: promptHistoryScope,
+                      })
+                    }
                     onClose={closePromptHistory}
                     style={{
                       ...promptHistoryStyle,
@@ -14259,6 +14384,9 @@ export default function App() {
                     if (e.key === "ArrowUp" || e.key === "ArrowDown") {
                       e.preventDefault();
                       if (promptHistoryEntries.length === 0) return;
+                      const liveSeed =
+                        !promptHistoryFocusFilter &&
+                        promptHistoryScope === "session";
                       if (e.key === "ArrowUp") {
                         const next = Math.min(
                           promptHistoryActive + 1,
@@ -14266,29 +14394,36 @@ export default function App() {
                         );
                         setPromptHistoryActive(next);
                         const entry = promptHistoryEntries[next];
-                        if (entry) {
+                        if (entry && liveSeed) {
                           applyPromptHistoryEntry(entry, {
                             close: false,
                             listIndex: next,
+                            scope: "session",
                           });
                         }
                         return;
                       }
-                      // ArrowDown: newer; past newest closes like Build.
+                      // ArrowDown: newer; past newest closes like Build (session browse).
                       if (promptHistoryActive <= 0) {
-                        promptHistoryIndexRef.current = null;
-                        setPromptHistoryIndex(null);
-                        setDraft("");
-                        closePromptHistory();
+                        if (liveSeed) {
+                          promptHistoryIndexRef.current = null;
+                          setPromptHistoryIndex(null);
+                          setDraft("");
+                          closePromptHistory();
+                        } else {
+                          // Recent / filter mode: stay on newest row.
+                          setPromptHistoryActive(0);
+                        }
                         return;
                       }
                       const next = promptHistoryActive - 1;
                       setPromptHistoryActive(next);
                       const entry = promptHistoryEntries[next];
-                      if (entry) {
+                      if (entry && liveSeed) {
                         applyPromptHistoryEntry(entry, {
                           close: false,
                           listIndex: next,
+                          scope: "session",
                         });
                       }
                       return;
