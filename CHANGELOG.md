@@ -19,6 +19,7 @@ See `docs/llm-wiki/release.md`.
 - **Regenerate** with optional model pick · **assistant word count** (optional)
 - **File-changes chip** (session edits) · **git dirty chip** (workspace porcelain)
 - **Structured JSON replies**: when a session JSON Schema is active, finished assistant turns show a Structured panel — parse + light required-field validation, honest “not valid JSON” on failure, copy / export, and a Structured badge
+- **Context usage / cost estimates**: chip menu shows input/output/total when known; optional crude USD estimate from a static rates table (never invoice-grade); Settings → Appearance → **Show usage estimates** (on by default, with disclaimer)
 
 #### Sessions & sidebar
 - **Duplicate chat** (vs **Fork…** + optional worktree) · **session notes** · **mute** · **unread dot**
@@ -40,6 +41,7 @@ See `docs/llm-wiki/release.md`.
 **中文 · 新增（按域）**
 
 - **输入/对话**：队列、高度、提示历史、宽度字号、工具折叠/过滤、重生选模型、字数、变更芯片、工作区 dirty 芯片、结构化 JSON 回复面板（校验/复制/导出）
+- **输入/对话**：队列、高度、提示历史、宽度字号、工具折叠/过滤、重生选模型、字数、变更芯片、工作区 dirty 芯片、上下文用量/费用粗估
 - **会话/侧栏**：复制 vs 分叉、便签、静音、未读点、HTML 导出、按天归档、日期分组、项目色、j/k 导航
 - **输入/对话**：队列、高度、提示历史、宽度字号、工具折叠/过滤、重生选模型、字数、变更芯片、工作区 dirty 芯片
 - **会话/侧栏**：复制 vs 分叉、恢复对话并还原代码（干净 worktree）、便签、静音、未读点、HTML 导出、按天归档、日期分组、项目色、j/k 导航

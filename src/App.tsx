@@ -60,6 +60,11 @@ import {
   SHOW_REPLY_LENGTH_CHANGE_EVENT,
 } from "@/lib/messageLength";
 import {
+  loadShowUsageEstimatesPref,
+  saveShowUsageEstimatesPref,
+  USAGE_ESTIMATES_CHANGE_EVENT,
+} from "@/lib/usageEstimatesPref";
+import {
   loadMessageTimeFormatPref,
   MESSAGE_TIME_FORMAT_CHANGE_EVENT,
   saveMessageTimeFormatPref,
@@ -978,6 +983,9 @@ export default function App() {
   );
   const [showReplyLength, setShowReplyLength] = useState(() =>
     loadShowReplyLengthPref(localStorage),
+  );
+  const [showUsageEstimates, setShowUsageEstimates] = useState(() =>
+    loadShowUsageEstimatesPref(localStorage),
   );
   const [messageTimeFormat, setMessageTimeFormat] = useState<MessageTimeFormat>(
     () => loadMessageTimeFormatPref(localStorage),
@@ -3062,6 +3070,21 @@ export default function App() {
     window.addEventListener(SHOW_REPLY_LENGTH_CHANGE_EVENT, onChange);
     return () =>
       window.removeEventListener(SHOW_REPLY_LENGTH_CHANGE_EVENT, onChange);
+  }, []);
+
+  // Context chip usage / optional cost estimates (localStorage; Settings event).
+  useEffect(() => {
+    const onChange = (ev: Event) => {
+      const detail = (ev as CustomEvent<unknown>).detail;
+      if (typeof detail === "boolean") {
+        setShowUsageEstimates(detail);
+        return;
+      }
+      setShowUsageEstimates(loadShowUsageEstimatesPref(localStorage));
+    };
+    window.addEventListener(USAGE_ESTIMATES_CHANGE_EVENT, onChange);
+    return () =>
+      window.removeEventListener(USAGE_ESTIMATES_CHANGE_EVENT, onChange);
   }, []);
 
   // Message time format absolute/relative (localStorage; Settings change event).
@@ -12752,6 +12775,11 @@ export default function App() {
             saveShowReplyLengthPref(v, localStorage);
             setShowReplyLength(v);
           }}
+          showUsageEstimates={showUsageEstimates}
+          onShowUsageEstimates={(v) => {
+            saveShowUsageEstimatesPref(v, localStorage);
+            setShowUsageEstimates(v);
+          }}
           messageTimeFormat={messageTimeFormat}
           onMessageTimeFormat={(v) => {
             saveMessageTimeFormatPref(v, localStorage);
@@ -15836,6 +15864,8 @@ export default function App() {
                     <ContextUsageChip
                       display={contextUsageDisplay}
                       locale={locale}
+                      showUsageEstimates={showUsageEstimates}
+                      modelId={modelId}
                       labels={{
                         aria: tr("context.chipAria"),
                         tipUnknown: tr("context.chipTipUnknown"),
@@ -15866,6 +15896,12 @@ export default function App() {
                         knownOutput: tr("context.knownOutput"),
                         knownTotal: tr("context.knownTotal"),
                         knownFromAgent: tr("context.knownFromAgent"),
+                        costSection: tr("context.costSection"),
+                        costInput: tr("context.costInput"),
+                        costOutput: tr("context.costOutput"),
+                        costTotal: tr("context.costTotal"),
+                        costDisclaimer: tr("context.costDisclaimer"),
+                        costUnavailable: tr("context.costUnavailable"),
                       }}
                       onCompact={() => {
                         setCompactNote("");

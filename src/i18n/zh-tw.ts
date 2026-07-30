@@ -1250,6 +1250,9 @@ export const zhTW: Record<MessageKey, string> = {
   "settings.messageTimestamps": "顯示訊息時間戳",
   "settings.messageTimestampsDesc":
     "在訊息操作區顯示傳送時間。關閉後對話更簡潔。",
+  "settings.showUsageEstimates": "顯示用量估算",
+  "settings.showUsageEstimatesDesc":
+    "在上下文晶片選單中，當模型在粗略費率表內時顯示可選美元費用估算。始終標註為估算，非帳單。預設開啟。",
   "settings.showReplyLength": "顯示回覆長度",
   "settings.showReplyLengthDesc":
     "在已完成的助手回覆下方顯示詞數與字數。預設關閉。",
@@ -1978,6 +1981,13 @@ export const zhTW: Record<MessageKey, string> = {
   "context.knownInput": "輸入 tokens",
   "context.knownOutput": "輸出 tokens",
   "context.knownTotal": "合計 / 上下文",
+  "context.costSection": "費用估算",
+  "context.costInput": "估算輸入 $",
+  "context.costOutput": "估算輸出 $",
+  "context.costTotal": "估算合計 $",
+  "context.costDisclaimer":
+    "基於靜態費率表的粗估，不是帳單。未知模型僅顯示 token。",
+  "context.costUnavailable": "目前模型無費率表 — 僅顯示 token。",
   "activity.running": "進行中",
   "activity.done": "完成",
   "activity.failed": "失敗",

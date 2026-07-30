@@ -303,6 +303,12 @@ export interface SettingsPageProps {
   /** Show word/char count under finished assistant replies (localStorage). */
   showReplyLength?: boolean;
   onShowReplyLength?: (v: boolean) => void;
+  /**
+   * Show optional USD cost estimates in the context chip menu (localStorage).
+   * Always labeled as an estimate when shown.
+   */
+  showUsageEstimates?: boolean;
+  onShowUsageEstimates?: (v: boolean) => void;
   /** Absolute vs relative message time labels (localStorage). */
   messageTimeFormat?: MessageTimeFormat;
   onMessageTimeFormat?: (v: MessageTimeFormat) => void;
@@ -856,6 +862,8 @@ export function SettingsPage({
   onShowMessageTimestamps,
   showReplyLength = false,
   onShowReplyLength,
+  showUsageEstimates = true,
+  onShowUsageEstimates,
   messageTimeFormat = "absolute",
   onMessageTimeFormat,
   sidebarShowRelativeTime = true,
@@ -3814,6 +3822,31 @@ export function SettingsPage({
                           onShowMessageTimestamps(!showMessageTimestamps)
                         }
                         ariaLabel={t("settings.messageTimestamps")}
+                      />
+                    </div>
+                  </div>
+                ) : null}
+                {onShowUsageEstimates ? (
+                  <div
+                    className={
+                      "settings-card" +
+                      rowHighlight("settings-anchor-showUsageEstimates")
+                    }
+                    id="settings-anchor-showUsageEstimates"
+                  >
+                    <div className="settings-row">
+                      <div className="settings-row__text">
+                        <SettingsLabelWithTip
+                          label={t("settings.showUsageEstimates")}
+                          tip={t("settings.showUsageEstimatesDesc")}
+                        />
+                      </div>
+                      <UiCheck
+                        checked={!!showUsageEstimates}
+                        onChange={() =>
+                          onShowUsageEstimates(!showUsageEstimates)
+                        }
+                        ariaLabel={t("settings.showUsageEstimates")}
                       />
                     </div>
                   </div>
