@@ -3324,6 +3324,46 @@ const en = {
   "settings.agentsJsonInvalid": "Invalid Agents JSON — fix before saving.",
   "settings.agentsJsonApply": "Apply",
   "settings.agentsJsonClear": "Clear",
+  "settings.configTomlEdit": "Agent config.toml (sections)",
+  "settings.configTomlEditDesc":
+    "Safe section edit for independent agent-home config.toml — [ui] permission_mode / yolo, [subagents] enabled, [memory] enabled only. Never rewrites secrets or full files. Writes soft-respawn the agent.",
+  "settings.configTomlEdit.path": "Config: {path}",
+  "settings.configTomlEdit.loading": "Loading agent-home config…",
+  "settings.configTomlEdit.error": "Could not update agent config.toml",
+  "settings.configTomlEdit.sharedWarning":
+    "Shared mode uses ~/.grok as live GROK_HOME. This panel only edits independent agent-home and is read-only while shared. Switch session data mode to Independent to save.",
+  "settings.configTomlEdit.redactNote":
+    "Preview redacts secret-looking keys. Save never writes redacted placeholders back to disk.",
+  "settings.configTomlEdit.mode.independent": "Independent (agent-home)",
+  "settings.configTomlEdit.mode.shared": "Shared (~/.grok)",
+  "settings.configTomlEdit.missing": "File not found yet",
+  "settings.configTomlEdit.writable": "Editable",
+  "settings.configTomlEdit.readOnly": "Read-only",
+  "settings.configTomlEdit.uiPermission": "[ui] permission_mode",
+  "settings.configTomlEdit.uiPermissionDesc":
+    "Grok Build [ui].permission_mode in agent-home config.toml (default · acceptEdits · auto · dontAsk · always-approve).",
+  "settings.configTomlEdit.uiYolo": "[ui] yolo",
+  "settings.configTomlEdit.uiYoloDesc":
+    "YOLO / always-approve flag under [ui]. Prefer explicit permission_mode when possible.",
+  "settings.configTomlEdit.subagents": "[subagents] enabled",
+  "settings.configTomlEdit.subagentsDesc":
+    "Allow subagent spawning in agent-home config.toml. Mirrored to App Settings.",
+  "settings.configTomlEdit.memory": "[memory] enabled",
+  "settings.configTomlEdit.memoryDesc":
+    "Experimental cross-session memory flag in agent-home config.toml. Mirrored to App Settings.",
+  "settings.configTomlEdit.permissionMode.unset": "Leave unset / missing",
+  "settings.configTomlEdit.permissionMode.default": "default (ask)",
+  "settings.configTomlEdit.permissionMode.acceptEdits": "acceptEdits",
+  "settings.configTomlEdit.permissionMode.auto": "auto",
+  "settings.configTomlEdit.permissionMode.dontAsk": "dontAsk",
+  "settings.configTomlEdit.permissionMode.always-approve": "always-approve (YOLO)",
+  "settings.configTomlEdit.preview": "Allowlisted sections (redacted)",
+  "settings.configTomlEdit.refresh": "Refresh",
+  "settings.configTomlEdit.reset": "Reset",
+  "settings.configTomlEdit.save": "Save sections",
+  "settings.configTomlEdit.saving": "Saving…",
+  "settings.configTomlEdit.needTauri":
+    "Config edit requires the desktop app (Tauri host).",
   "settings.permissionRules": "Permission rules",
   "settings.permissionRulesAdd": "Add rule",
   "settings.permissionRulesAddWorking": "Saving…",
@@ -6845,6 +6885,46 @@ const zh: Record<MessageKey, string> = {
   "settings.agentsJsonInvalid": "Agents JSON 无效 — 请修正后再保存。",
   "settings.agentsJsonApply": "应用",
   "settings.agentsJsonClear": "清除",
+  "settings.configTomlEdit": "Agent config.toml（分区编辑）",
+  "settings.configTomlEditDesc":
+    "独立 agent-home 下安全分区写入：仅 [ui] permission_mode / yolo、[subagents] enabled、[memory] enabled。不会整文件改写密钥。保存后 soft-respawn Agent。",
+  "settings.configTomlEdit.path": "配置：{path}",
+  "settings.configTomlEdit.loading": "正在加载 agent-home 配置…",
+  "settings.configTomlEdit.error": "无法更新 agent config.toml",
+  "settings.configTomlEdit.sharedWarning":
+    "共享模式的活动 GROK_HOME 是 ~/.grok。此面板只编辑独立 agent-home，共享模式下只读。请切换到「独立」会话数据模式后再保存。",
+  "settings.configTomlEdit.redactNote":
+    "预览会脱敏疑似密钥字段。保存不会把 [REDACTED] 写回磁盘。",
+  "settings.configTomlEdit.mode.independent": "独立（agent-home）",
+  "settings.configTomlEdit.mode.shared": "共享（~/.grok）",
+  "settings.configTomlEdit.missing": "文件尚不存在",
+  "settings.configTomlEdit.writable": "可编辑",
+  "settings.configTomlEdit.readOnly": "只读",
+  "settings.configTomlEdit.uiPermission": "[ui] permission_mode",
+  "settings.configTomlEdit.uiPermissionDesc":
+    "agent-home config.toml 中的 Grok Build [ui].permission_mode（default · acceptEdits · auto · dontAsk · always-approve）。",
+  "settings.configTomlEdit.uiYolo": "[ui] yolo",
+  "settings.configTomlEdit.uiYoloDesc":
+    "[ui] 下的 YOLO / always-approve 开关。优先使用明确的 permission_mode。",
+  "settings.configTomlEdit.subagents": "[subagents] enabled",
+  "settings.configTomlEdit.subagentsDesc":
+    "agent-home 中是否允许子代理。会同步到应用设置。",
+  "settings.configTomlEdit.memory": "[memory] enabled",
+  "settings.configTomlEdit.memoryDesc":
+    "agent-home 中的实验性跨会话记忆开关。会同步到应用设置。",
+  "settings.configTomlEdit.permissionMode.unset": "未设置 / 缺失",
+  "settings.configTomlEdit.permissionMode.default": "default（询问）",
+  "settings.configTomlEdit.permissionMode.acceptEdits": "acceptEdits",
+  "settings.configTomlEdit.permissionMode.auto": "auto",
+  "settings.configTomlEdit.permissionMode.dontAsk": "dontAsk",
+  "settings.configTomlEdit.permissionMode.always-approve": "always-approve（YOLO）",
+  "settings.configTomlEdit.preview": "白名单分区预览（已脱敏）",
+  "settings.configTomlEdit.refresh": "刷新",
+  "settings.configTomlEdit.reset": "重置",
+  "settings.configTomlEdit.save": "保存分区",
+  "settings.configTomlEdit.saving": "保存中…",
+  "settings.configTomlEdit.needTauri":
+    "配置编辑需要桌面应用（Tauri host）。",
   "settings.permissionRules": "Permission rules",
   "settings.permissionRulesAdd": "Add rule",
   "settings.permissionRulesAddWorking": "Saving…",

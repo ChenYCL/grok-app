@@ -3210,6 +3210,46 @@ export const zhTW: Record<MessageKey, string> = {
   "settings.agentsJsonInvalid": "Agents JSON 無效 — 請修正後再儲存。",
   "settings.agentsJsonApply": "套用",
   "settings.agentsJsonClear": "清除",
+  "settings.configTomlEdit": "Agent config.toml（分區編輯）",
+  "settings.configTomlEditDesc":
+    "獨立 agent-home 下安全分區寫入：僅 [ui] permission_mode / yolo、[subagents] enabled、[memory] enabled。不會整檔改寫金鑰。儲存後 soft-respawn Agent。",
+  "settings.configTomlEdit.path": "設定：{path}",
+  "settings.configTomlEdit.loading": "正在載入 agent-home 設定…",
+  "settings.configTomlEdit.error": "無法更新 agent config.toml",
+  "settings.configTomlEdit.sharedWarning":
+    "共用模式的活動 GROK_HOME 是 ~/.grok。此面板只編輯獨立 agent-home，共用模式下唯讀。請切換到「獨立」工作階段資料模式後再儲存。",
+  "settings.configTomlEdit.redactNote":
+    "預覽會脫敏疑似金鑰欄位。儲存不會把 [REDACTED] 寫回磁碟。",
+  "settings.configTomlEdit.mode.independent": "獨立（agent-home）",
+  "settings.configTomlEdit.mode.shared": "共用（~/.grok）",
+  "settings.configTomlEdit.missing": "檔案尚不存在",
+  "settings.configTomlEdit.writable": "可編輯",
+  "settings.configTomlEdit.readOnly": "唯讀",
+  "settings.configTomlEdit.uiPermission": "[ui] permission_mode",
+  "settings.configTomlEdit.uiPermissionDesc":
+    "agent-home config.toml 中的 Grok Build [ui].permission_mode（default · acceptEdits · auto · dontAsk · always-approve）。",
+  "settings.configTomlEdit.uiYolo": "[ui] yolo",
+  "settings.configTomlEdit.uiYoloDesc":
+    "[ui] 下的 YOLO / always-approve 開關。優先使用明確的 permission_mode。",
+  "settings.configTomlEdit.subagents": "[subagents] enabled",
+  "settings.configTomlEdit.subagentsDesc":
+    "agent-home 中是否允許子代理。會同步到應用程式設定。",
+  "settings.configTomlEdit.memory": "[memory] enabled",
+  "settings.configTomlEdit.memoryDesc":
+    "agent-home 中的實驗性跨工作階段記憶開關。會同步到應用程式設定。",
+  "settings.configTomlEdit.permissionMode.unset": "未設定 / 缺失",
+  "settings.configTomlEdit.permissionMode.default": "default（詢問）",
+  "settings.configTomlEdit.permissionMode.acceptEdits": "acceptEdits",
+  "settings.configTomlEdit.permissionMode.auto": "auto",
+  "settings.configTomlEdit.permissionMode.dontAsk": "dontAsk",
+  "settings.configTomlEdit.permissionMode.always-approve": "always-approve（YOLO）",
+  "settings.configTomlEdit.preview": "白名單分區預覽（已脫敏）",
+  "settings.configTomlEdit.refresh": "重新整理",
+  "settings.configTomlEdit.reset": "重設",
+  "settings.configTomlEdit.save": "儲存分區",
+  "settings.configTomlEdit.saving": "儲存中…",
+  "settings.configTomlEdit.needTauri":
+    "設定編輯需要桌面應用程式（Tauri host）。",
   "settings.permissionRules": "Permission rules",
   "settings.permissionRulesAdd": "Add rule",
   "settings.permissionRulesAddWorking": "Saving…",

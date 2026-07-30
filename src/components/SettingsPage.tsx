@@ -197,6 +197,7 @@ import { ProvidersPanel } from "@/components/ProvidersPanel";
 import { ExtensionsPanel } from "@/components/ExtensionsPanel";
 import { ProjectInspectPanel } from "@/components/ProjectInspectPanel";
 import { PermissionRulesPanel } from "@/components/PermissionRulesPanel";
+import { AgentConfigEditPanel } from "@/components/AgentConfigEditPanel";
 import { ManagedSetupPanel } from "@/components/ManagedSetupPanel";
 import { TraceHistoryList } from "@/components/TraceHistoryList";
 import { GlassModal } from "@/components/GlassModal";
@@ -2961,6 +2962,9 @@ export function SettingsPage({
                   />
                 </div>
               ) : null}
+              <div className={rowHighlight("settings-anchor-configTomlEdit")}>
+                <AgentConfigEditPanel locale={resolveLocale(locale)} />
+              </div>
             </div>
             </>
             )}

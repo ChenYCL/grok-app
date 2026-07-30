@@ -4358,6 +4358,51 @@ html[data-sidebar-density="compact"] .session-row__meta {
   margin-right: 2px;
 }
 
+/* Agent-home config.toml allowlisted section editor */
+.settings-config-edit {
+  margin-top: 8px;
+  padding-top: 12px;
+  border-top: 1px solid color-mix(in srgb, var(--border, #333) 70%, transparent);
+}
+
+.settings-config-edit__badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 8px 0 4px;
+}
+
+.settings-config-edit__fields {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 4px;
+}
+
+.settings-config-edit__preview {
+  margin-top: 12px;
+}
+
+.settings-config-edit__pre {
+  margin: 6px 0 0;
+  max-height: 180px;
+  overflow: auto;
+  padding: 10px 12px;
+  border-radius: 8px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.45;
+  white-space: pre;
+  background: color-mix(in srgb, var(--bg-elevated, #1a1a1a) 92%, transparent);
+  border: 1px solid color-mix(in srgb, var(--border, #333) 80%, transparent);
+  color: var(--text-secondary, #b0b0b0);
+}
+
+html[data-theme="light"] .settings-config-edit__pre {
+  background: color-mix(in srgb, #f4f4f5 96%, transparent);
+  color: #3f3f46;
+}
+
 /* Marquee surface for rubber-band multi-select */
 .settings-archived-surface {
   position: relative;
