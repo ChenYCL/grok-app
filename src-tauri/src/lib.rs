@@ -69,6 +69,7 @@ mod voice_tools;
 mod remote_im;
 mod wallpaper_source;
 mod leader;
+mod serve;
 
 use std::sync::Arc;
 
@@ -367,6 +368,9 @@ pub fn run() {
             leader::leader_start,
             leader::leader_stop,
             leader::leader_kill_all,
+            serve::serve_status,
+            serve::serve_start,
+            serve::serve_stop,
             commands::pick_directory,
             commands::pick_attach_files,
             commands::pick_attach_folder,

@@ -2852,6 +2852,41 @@ export async function leaderList(): Promise<{
   return invoke("leader_list");
 }
 
+// ── Agent serve (Runtime WebSocket server) ──────────────────────────────────
+
+export type ServeStatus = {
+  state: "stopped" | "running" | "error" | "unsupported" | string;
+  bind: string;
+  /** Masked secret (`••••` + last 4); never the full token. */
+  secretMasked?: string | null;
+  /** Last 4 chars of secret when known. */
+  secretLast4?: string | null;
+  /**
+   * Full connection URL with secret — only present on `serve_start` response
+   * (one-time copy). Status polls omit this.
+   */
+  connectionUrl?: string | null;
+  pid?: number | null;
+  trackedPid?: number | null;
+  portOpen: boolean;
+  cliFound: boolean;
+  cliSupportsServe: boolean;
+  message?: string | null;
+};
+
+export async function serveStatus(): Promise<ServeStatus> {
+  return invoke<ServeStatus>("serve_status");
+}
+
+/** Start serve; response may include one-time `connectionUrl` for clipboard copy. */
+export async function serveStart(bind?: string | null): Promise<ServeStatus> {
+  return invoke<ServeStatus>("serve_start", { bind: bind ?? null });
+}
+
+export async function serveStop(): Promise<ServeStatus> {
+  return invoke<ServeStatus>("serve_stop");
+}
+
 // ── Wallpaper sources (X search + Imagine) ──────────────────────────────────
 
 export async function wallpaperXSearch(

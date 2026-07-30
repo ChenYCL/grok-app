@@ -484,7 +484,7 @@ fn collect_status_sync() -> LeaderStatusDto {
         message,
         leaders,
         serve_hint: Some(
-            "Optional: `grok agent serve` (WebSocket; secrets auto-generated — never shown here)."
+            "Managed in Settings → Runtime → Agent serve (`grok agent serve`; secret masked)."
                 .into(),
         ),
     }

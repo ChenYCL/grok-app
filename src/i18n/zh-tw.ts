@@ -1109,7 +1109,37 @@ export const zhTW: Record<MessageKey, string> = {
   "settings.leader.unsupportedBody":
     "目前 Grok Build CLI 版本沒有 agent leader / leader 管理命令。請在「執行環境 → CLI」更新，或在應用外管理行程。用戶端 use-leader 開關仍可用。",
   "settings.leader.serveHint":
-    "可選 WebSocket 服務：`grok agent serve`（監聽位址 + 自動產生密鑰）。本面板永不顯示密鑰。",
+    "WebSocket serve 由下方區塊管理（`grok agent serve`）。啟動後密鑰僅顯示遮罩。",
+  "settings.serve.title": "Agent serve（WebSocket）",
+  "settings.serve.desc":
+    "將 `grok agent serve` 作為本機 WebSocket ACP 服務執行。預設監聽 127.0.0.1:2419。密鑰自動產生；完整權杖僅在啟動時提供一次以便複製。",
+  "settings.serve.stateRunning": "執行中",
+  "settings.serve.stateStopped": "已停止",
+  "settings.serve.stateError": "錯誤",
+  "settings.serve.stateUnsupported": "CLI 不支援",
+  "settings.serve.refresh": "重新整理",
+  "settings.serve.bind": "監聽位址",
+  "settings.serve.bindDefault": "127.0.0.1:2419",
+  "settings.serve.portOpen": "連接埠已開啟",
+  "settings.serve.portClosed": "連接埠未開啟",
+  "settings.serve.secret": "密鑰",
+  "settings.serve.secretNone": "—（啟動時產生）",
+  "settings.serve.secretHint":
+    "完整密鑰永不寫入日誌，啟動後也不會再次拉取。介面僅顯示末 4 碼。",
+  "settings.serve.copyUrl": "複製連線 URL",
+  "settings.serve.copyUrlHint": "複製含密鑰的完整 ws:// URL（僅啟動後一次可用）。",
+  "settings.serve.copyUrlUnavailable":
+    "連線 URL 僅在本應用工作階段中啟動後可用。若要再次複製，請重新啟動 serve。",
+  "settings.serve.copied": "已複製",
+  "settings.serve.actions": "操作",
+  "settings.serve.start": "啟動 serve",
+  "settings.serve.starting": "啟動中…",
+  "settings.serve.stop": "停止 serve",
+  "settings.serve.stopping": "停止中…",
+  "settings.serve.startHint":
+    "背景啟動 `grok agent serve --bind 127.0.0.1:2419 --secret <自動>`。啟動時會複製一次連線 URL（ws://…/ws?server-key=…）。停止僅作用於本應用拉起的行程。",
+  "settings.serve.unsupportedBody":
+    "目前 Grok Build CLI 版本沒有 `agent serve`。請在「執行環境 → CLI」更新，或在應用外執行 serve。",
   "settings.closeToTray": "關閉視窗時縮到系統匣",
   "settings.closeToTrayDesc":
     "開啟後，關閉按鈕會隱藏到選單列/系統匣。關閉此項則關閉視窗即結束（系統匣「結束」始終可用）。",

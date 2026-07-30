@@ -33,6 +33,7 @@ See `docs/llm-wiki/release.md`.
 
 #### Tasks / system
 - Tasks tree · Stop-all skip-confirm · Plan history · Mirror write guard · Reliability / Leader / Memory / MCP / CLI notice (prior)
+- **Agent serve** start/stop from Settings → Runtime → Connection (`grok agent serve --bind/--secret`; default `127.0.0.1:2419`; masked secret + one-time connection URL copy)
 
 ### Fixed
 
@@ -43,6 +44,7 @@ See `docs/llm-wiki/release.md`.
 - **输入/对话**：队列、高度、提示历史、宽度字号、工具折叠/过滤、重生选模型、字数、变更芯片、工作区 dirty 芯片、结构化 JSON 回复面板、上下文用量/费用粗估
 - **会话/侧栏**：复制 vs 分叉、恢复并还原代码（干净 worktree）、便签、静音、未读点、HTML 导出、按天归档、日期分组、项目色、j/k 导航
 - **外观/壳**：主题定时、跟随系统语言、忙碌退出确认、托盘角标
+- **系统**：**Agent serve** 在设置 → 运行时 → 连接启停（掩码密钥 + 启动时复制连接 URL）
 
 **中文 · 修复**
 
