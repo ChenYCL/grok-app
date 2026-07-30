@@ -515,3 +515,62 @@ export function formatFactValue(key: keyof CliDoctorSafeFacts, value: unknown): 
   if (value == null || value === "") return "—";
   return String(value);
 }
+
+/** Counts for the Doctor fix-plan banner / Apply safe fixes button. */
+export type DoctorFixPlanSummary = {
+  /** Checks (or unique fix handles) with a valid fixId. */
+  total: number;
+  /** Non-destructive fixes that can auto-apply without confirm. */
+  safe: number;
+  /** Destructive fixes that need per-row confirm. */
+  needsConfirm: number;
+};
+
+/**
+ * Checks that expose a valid automatic fix handle.
+ * Dedupes by fixId (case-insensitive), keeping first occurrence order.
+ */
+export function listFixableChecks(
+  view: CliDoctorView | null | undefined,
+): CliDoctorCheck[] {
+  if (!view?.available) return [];
+  const seen = new Set<string>();
+  const out: CliDoctorCheck[] = [];
+  for (const c of view.checks) {
+    const fixId = c.fixId?.trim();
+    if (!fixId || !isValidDoctorFixId(fixId)) continue;
+    const key = fixId.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(c);
+  }
+  return out;
+}
+
+/**
+ * Fixable checks whose fixId is non-destructive (`!isDestructiveDoctorFix`).
+ * Safe for sequential “Apply safe fixes” without confirm dialogs.
+ */
+export function listSafeAutoFixes(
+  view: CliDoctorView | null | undefined,
+): CliDoctorCheck[] {
+  return listFixableChecks(view).filter(
+    (c) => c.fixId != null && !isDestructiveDoctorFix(c.fixId),
+  );
+}
+
+/** Summarize fixable / safe / needs-confirm counts for the Doctor banner. */
+export function summarizeFixPlan(
+  view: CliDoctorView | null | undefined,
+): DoctorFixPlanSummary {
+  const fixable = listFixableChecks(view);
+  let safe = 0;
+  for (const c of fixable) {
+    if (c.fixId != null && !isDestructiveDoctorFix(c.fixId)) safe += 1;
+  }
+  return {
+    total: fixable.length,
+    safe,
+    needsConfirm: fixable.length - safe,
+  };
+}

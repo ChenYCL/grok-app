@@ -1939,6 +1939,18 @@ const en = {
   "doctor.cliDoctorFixDone": "Applied fix “{id}”. Doctor re-ran.",
   "doctor.cliDoctorFixDoneDetail": "Applied fix “{id}”. {detail}",
   "doctor.cliDoctorFixFail": "Could not apply CLI doctor fix",
+  "doctor.cliDoctorFixFailWithId": "Could not apply fix “{id}”: {error}",
+  "doctor.cliDoctorFixPlanBanner":
+    "{total} automatic fixes available ({confirm} need confirm)",
+  "doctor.cliDoctorApplySafeFixes": "Apply safe fixes",
+  "doctor.cliDoctorApplySafeFixesHint":
+    "Run non-destructive doctor fixes sequentially, then re-run doctor",
+  "doctor.cliDoctorFixBatchProgress":
+    "Applying fix {current}/{total}: {id}…",
+  "doctor.cliDoctorFixBatchDone":
+    "Applied {count} safe fix(es). Doctor re-ran.",
+  "doctor.cliDoctorFixBatchPartial":
+    "Applied {ok} safe fix(es); stopped on “{id}”: {error}",
   "doctor.openReliability": "Reliability center",
   "doctor.openReliabilityHint":
     "Busy sessions, stall signals, and recent error cards.",
@@ -4808,6 +4820,18 @@ const zh: Record<MessageKey, string> = {
   "doctor.cliDoctorFixDone": "已应用修复「{id}」。Doctor 已重新运行。",
   "doctor.cliDoctorFixDoneDetail": "已应用修复「{id}」。{detail}",
   "doctor.cliDoctorFixFail": "无法应用 CLI doctor 修复",
+  "doctor.cliDoctorFixFailWithId": "无法应用修复「{id}」：{error}",
+  "doctor.cliDoctorFixPlanBanner":
+    "有 {total} 项自动修复可用（{confirm} 项需确认）",
+  "doctor.cliDoctorApplySafeFixes": "应用安全修复",
+  "doctor.cliDoctorApplySafeFixesHint":
+    "依次运行非破坏性 doctor 修复，然后重新运行 doctor",
+  "doctor.cliDoctorFixBatchProgress":
+    "正在应用修复 {current}/{total}：{id}…",
+  "doctor.cliDoctorFixBatchDone":
+    "已应用 {count} 项安全修复。Doctor 已重新运行。",
+  "doctor.cliDoctorFixBatchPartial":
+    "已应用 {ok} 项安全修复；在「{id}」处停止：{error}",
   "doctor.openReliability": "可靠性中心",
   "doctor.openReliabilityHint": "忙碌会话、卡顿信号与最近错误卡片。",
 

@@ -1896,6 +1896,18 @@ export const zhTW: Record<MessageKey, string> = {
   "doctor.cliDoctorFixDone": "已套用修復「{id}」。Doctor 已重新執行。",
   "doctor.cliDoctorFixDoneDetail": "已套用修復「{id}」。{detail}",
   "doctor.cliDoctorFixFail": "無法套用 CLI doctor 修復",
+  "doctor.cliDoctorFixFailWithId": "無法套用修復「{id}」：{error}",
+  "doctor.cliDoctorFixPlanBanner":
+    "有 {total} 項自動修復可用（{confirm} 項需確認）",
+  "doctor.cliDoctorApplySafeFixes": "套用安全修復",
+  "doctor.cliDoctorApplySafeFixesHint":
+    "依序執行非破壞性 doctor 修復，然後重新執行 doctor",
+  "doctor.cliDoctorFixBatchProgress":
+    "正在套用修復 {current}/{total}：{id}…",
+  "doctor.cliDoctorFixBatchDone":
+    "已套用 {count} 項安全修復。Doctor 已重新執行。",
+  "doctor.cliDoctorFixBatchPartial":
+    "已套用 {ok} 項安全修復；在「{id}」處停止：{error}",
 
   "conn.idle": "閒置",
   "conn.connecting": "連線中",
