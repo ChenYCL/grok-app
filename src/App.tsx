@@ -12024,6 +12024,8 @@ export default function App() {
             sessionId: id,
             path: res.path,
             title: row?.title ?? null,
+            sizeBytes:
+              typeof res.sizeBytes === "number" ? res.sizeBytes : null,
           });
           showToast(tr("session.exportTraceDone"), 4200);
         } else {
@@ -17260,9 +17262,17 @@ export default function App() {
         <TraceHistoryList
           labels={{
             empty: tr("session.tracesEmpty"),
+            emptyFilter: tr("session.tracesEmptyFilter"),
             reveal: tr("session.tracesReveal"),
             copyPath: tr("session.tracesCopyPath"),
             copied: tr("session.tracesCopied"),
+            remove: tr("session.tracesRemove"),
+            clearAll: tr("session.tracesClearAll"),
+            clearConfirmTitle: tr("session.tracesClearConfirmTitle"),
+            clearConfirmMessage: tr("session.tracesClearConfirmMessage"),
+            clearConfirmAction: tr("session.tracesClearConfirmAction"),
+            cancel: tr("common.cancel"),
+            searchPlaceholder: tr("session.tracesSearch"),
             listAria: tr("session.tracesTitle"),
           }}
           onCopied={() => showToast(tr("session.tracesCopied"), 2000)}

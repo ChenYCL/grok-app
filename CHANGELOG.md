@@ -39,6 +39,7 @@ See `docs/llm-wiki/release.md`.
 - **Disallowed built-in tools** (Settings → General → Agent): chips + freeform list → `AppSettings.disallowedTools` / CLI `--disallowed-tools a,b`; coexists with Disable web search; soft-respawn on change
 - **Agent profile path** (Settings → General → Agent): optional file for `grok agent --agent-profile`; soft-respawns on change
 - **Agent serve** start/stop from Settings → Runtime → Connection (`grok agent serve --bind/--secret`; default `127.0.0.1:2419`; masked secret + one-time connection URL copy)
+- **Trace history manage** (Traces modal + Settings → Runtime): search by title/path, remove row, clear all (in-app confirm), optional file size from host `stat` after export — still paths only, never loads archive contents
 
 #### Permissions / CLI
 - **CLI `--permission-mode` alignment**: pure App policy / YOLO / plan-mode map (`default` · `acceptEdits` · `auto` · `dontAsk` · `bypassPermissions` · `plan`); spawn pins top-level `--permission-mode` (+ agent `--always-approve` for YOLO); Settings shows CLI label + advanced mode selector; product **Auto** policy
@@ -53,7 +54,7 @@ See `docs/llm-wiki/release.md`.
 - **会话/侧栏**：复制 vs 分叉、恢复对话并还原代码（干净 worktree）、便签、会话规则（`--rules`）、静音、未读点、HTML 导出、按天归档、日期分组、项目色、j/k 导航、CLI 对齐 worktree（默认 `~/.grok/worktrees`、侧栏 CLI/WT 标记）
 - **外观/壳**：主题定时、跟随系统语言、忙碌退出确认、托盘角标
 - **Agent**：禁用内置工具（芯片 + 自由列表 → `--disallowed-tools`；与禁用网页搜索并存；更改 soft-respawn）；可选 profile 路径（`--agent-profile`）
-- **系统**：**Agent serve** 在设置 → 运行时 → 连接启停（掩码密钥 + 启动时复制连接 URL）
+- **系统**：**Agent serve** 在设置 → 运行时 → 连接启停（掩码密钥 + 启动时复制连接 URL）；**Trace 历史管理**（搜索/单条移除/全部清除确认/可选文件大小；仍仅路径，不加载归档内容）
 - **权限/CLI**：对齐 `--permission-mode` 映射与 spawn；设置页展示 CLI 标签与高级选择；新增 **Auto** 策略
 
 **中文 · 修复**
