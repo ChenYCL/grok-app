@@ -96,6 +96,7 @@ describe("settingsCatalog", () => {
   it("keywordKeysForSection includes appearance prefs and remote control", () => {
     const appearance = keywordKeysForSection("appearance");
     expect(appearance).toContain("settings.skin");
+    expect(appearance).toContain("settings.themeSchedule");
     expect(appearance).toContain("settings.wallpaper");
     expect(appearance).toContain("settings.thinkingExpand");
     expect(appearance).toContain("settings.toolStepsAutoCollapse");
@@ -153,6 +154,14 @@ describe("settingsCatalog", () => {
     expect(wallpaperHits.some((h) => h.entry.id === "appearance.wallpaper")).toBe(
       true,
     );
+    const schedule = searchSettingsEntries("schedule", tZh, tEn);
+    expect(
+      schedule.some((h) => h.entry.id === "appearance.themeSchedule"),
+    ).toBe(true);
+    const scheduleZh = searchSettingsEntries("按时切换", tZh, tEn);
+    expect(
+      scheduleZh.some((h) => h.entry.id === "appearance.themeSchedule"),
+    ).toBe(true);
     const thinking = searchSettingsEntries("thinking", tZh, tEn);
     expect(thinking.some((h) => h.entry.id === "appearance.thinkingExpand")).toBe(
       true,

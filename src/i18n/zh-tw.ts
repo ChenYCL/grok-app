@@ -1145,6 +1145,11 @@ export const zhTW: Record<MessageKey, string> = {
   "settings.themeSystem": "跟隨系統",
   "settings.themeLight": "淺色",
   "settings.themeDark": "深色",
+  "settings.themeSchedule": "按時切換淺色 / 深色",
+  "settings.themeScheduleDesc":
+    "主題為「跟隨系統」時，按本地時間在淺色與深色之間切換，而不是跟隨系統外觀。固定淺色或深色時忽略此排程。",
+  "settings.themeScheduleLightFrom": "淺色開始",
+  "settings.themeScheduleDarkFrom": "深色開始",
   "settings.thinkingExpand": "思考過程",
   "settings.thinkingExpandDesc":
     "回覆完成後，思考/推理區塊保持展開，或自動摺疊。串流生成時仍會即時展開。",

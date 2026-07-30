@@ -16,6 +16,11 @@ import {
   resolveTheme,
 } from "./lib/theme";
 import {
+  isThemeScheduleActive,
+  loadThemeSchedule,
+  resolveThemeFromSchedule,
+} from "./lib/themeSchedule";
+import {
   applySkinToDocument,
   applyWallpaperFlag,
   applyWallpaperScrimToDocument,
@@ -57,8 +62,12 @@ import {
 } from "./lib/windowAlwaysOnTop";
 
 // Apply persisted theme preference (default: system) before first React paint.
+// Optional clock schedule (under System) wins over OS scheme when enabled.
 const bootPref = loadThemePreference(localStorage);
-const bootTheme = resolveTheme(bootPref, getSystemTheme());
+const bootSchedule = loadThemeSchedule(localStorage);
+const bootTheme = isThemeScheduleActive(bootPref, bootSchedule)
+  ? resolveThemeFromSchedule(new Date(), bootSchedule)
+  : resolveTheme(bootPref, getSystemTheme());
 applyThemeToDocument(bootTheme);
 applySkinToDocument(loadSkin(localStorage));
 // Chat transcript font scale (Appearance) — html[data-chat-font].
@@ -81,8 +90,11 @@ applyComposerMinRows(loadComposerMinRows(localStorage));
 // the IndexedDB blob is loaded — no synchronous access to IDB is possible.
 applyWallpaperFlag(loadWallpaperMeta(localStorage) !== null);
 applyWallpaperScrimToDocument(loadWallpaperScrim(localStorage));
-// Native: null = follow OS (required for live system theme); light/dark locks chrome.
-void applyNativeWindowTheme(bootPref === "system" ? null : bootTheme);
+// Native: null = follow OS (required for live system theme); light/dark or
+// schedule-resolved theme locks chrome so WebView matchMedia cannot fight us.
+void applyNativeWindowTheme(
+  bootPref === "system" && !bootSchedule.enabled ? null : bootTheme,
+);
 // Desktop always-on-top (localStorage; fail-closed outside Tauri).
 void applyWindowAlwaysOnTop(loadWindowAlwaysOnTopPref(localStorage));
 

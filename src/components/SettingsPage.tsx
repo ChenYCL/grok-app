@@ -64,6 +64,7 @@ import {
   type ShortcutRemapMap,
 } from "@/lib/shortcutRemap";
 import type { Theme, ThemePreference } from "@/lib/theme";
+import type { ThemeScheduleConfig } from "@/lib/themeSchedule";
 import {
   DEFAULT_WALLPAPER_FOCUS,
   THEME_SKINS,
@@ -275,6 +276,12 @@ export interface SettingsPageProps {
   /** User preference including "system" (drives the appearance segment). */
   themePreference?: ThemePreference;
   onTheme: (v: ThemePreference) => void;
+  /**
+   * Optional light/dark-by-clock schedule (sub-option under System).
+   * Only applies when preference is System — light/dark locks ignore it.
+   */
+  themeSchedule?: ThemeScheduleConfig;
+  onThemeSchedule?: (v: ThemeScheduleConfig) => void;
   /** Show message timestamps in chat action rows (localStorage). */
   showMessageTimestamps?: boolean;
   onShowMessageTimestamps?: (v: boolean) => void;
@@ -827,6 +834,8 @@ export function SettingsPage({
   theme,
   themePreference: themePreferenceProp,
   onTheme,
+  themeSchedule: themeScheduleProp,
+  onThemeSchedule,
   showMessageTimestamps = true,
   onShowMessageTimestamps,
   showReplyLength = false,
@@ -1148,6 +1157,11 @@ export function SettingsPage({
   /** Segment selection: prefer explicit preference; fall back to resolved theme. */
   const themePreference: ThemePreference =
     themePreferenceProp ?? theme;
+  const themeSchedule: ThemeScheduleConfig = themeScheduleProp ?? {
+    enabled: false,
+    lightFrom: "07:00",
+    darkFrom: "19:00",
+  };
 
   const workspaceCwd = (projectPath || "").trim() || null;
   const showSettingsToast = useCallback((msg: string, ms = 3500) => {
@@ -2882,6 +2896,84 @@ export function SettingsPage({
                       </button>
                     </div>
                   </div>
+                  {onThemeSchedule ? (
+                    <>
+                      <div
+                        className={
+                          "settings-row" +
+                          rowHighlight("settings-anchor-themeSchedule")
+                        }
+                        id="settings-anchor-themeSchedule"
+                      >
+                        <div className="settings-row__text">
+                          <SettingsLabelWithTip
+                            label={t("settings.themeSchedule")}
+                            tip={t("settings.themeScheduleDesc")}
+                          />
+                        </div>
+                        <UiCheck
+                          checked={!!themeSchedule.enabled}
+                          onChange={() =>
+                            onThemeSchedule({
+                              ...themeSchedule,
+                              enabled: !themeSchedule.enabled,
+                            })
+                          }
+                          ariaLabel={t("settings.themeSchedule")}
+                        />
+                      </div>
+                      {themeSchedule.enabled ? (
+                        <div className="settings-row settings-row--stack settings-quiet-hours">
+                          <div className="settings-quiet-hours__times">
+                            <label className="settings-quiet-hours__field">
+                              <span className="settings-quiet-hours__label">
+                                {t("settings.themeScheduleLightFrom")}
+                              </span>
+                              <input
+                                type="time"
+                                className="settings-input settings-quiet-hours__input"
+                                value={themeSchedule.lightFrom}
+                                onChange={(e) => {
+                                  const next =
+                                    normalizeHHmm(e.target.value) ??
+                                    themeSchedule.lightFrom;
+                                  onThemeSchedule({
+                                    ...themeSchedule,
+                                    lightFrom: next,
+                                  });
+                                }}
+                                aria-label={t(
+                                  "settings.themeScheduleLightFrom",
+                                )}
+                              />
+                            </label>
+                            <label className="settings-quiet-hours__field">
+                              <span className="settings-quiet-hours__label">
+                                {t("settings.themeScheduleDarkFrom")}
+                              </span>
+                              <input
+                                type="time"
+                                className="settings-input settings-quiet-hours__input"
+                                value={themeSchedule.darkFrom}
+                                onChange={(e) => {
+                                  const next =
+                                    normalizeHHmm(e.target.value) ??
+                                    themeSchedule.darkFrom;
+                                  onThemeSchedule({
+                                    ...themeSchedule,
+                                    darkFrom: next,
+                                  });
+                                }}
+                                aria-label={t(
+                                  "settings.themeScheduleDarkFrom",
+                                )}
+                              />
+                            </label>
+                          </div>
+                        </div>
+                      ) : null}
+                    </>
+                  ) : null}
                 </div>
                 {onSkin || onWallpaper ? (
                   <div className="settings-appearance-duo">
