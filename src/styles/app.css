@@ -17690,6 +17690,118 @@ div.composer__input:empty::before {
   padding-top: 4px;
 }
 
+/* Local write-ACL audit log (ring buffer; never stores tokens/URLs) */
+.mirror-connect__audit {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 4px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border-subtle);
+}
+
+.mirror-connect__audit-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.mirror-connect__audit-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  flex: 1;
+  margin: 0;
+  padding: 2px 0;
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 12.5px;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+}
+
+.mirror-connect__audit-toggle:hover {
+  color: var(--text-primary);
+}
+
+.mirror-connect__audit-chevron {
+  flex-shrink: 0;
+  width: 1em;
+  color: var(--text-tertiary);
+  font-size: 11px;
+}
+
+.mirror-connect__audit-title {
+  min-width: 0;
+}
+
+.mirror-connect__audit-count {
+  flex-shrink: 0;
+  min-width: 1.25em;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--bg-hover);
+  color: var(--text-tertiary);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.5;
+  text-align: center;
+}
+
+.mirror-connect__audit-clear {
+  flex-shrink: 0;
+}
+
+.mirror-connect__audit-empty {
+  margin: 0;
+  padding: 8px 0 2px;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--text-tertiary);
+}
+
+.mirror-connect__audit-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 180px;
+  overflow: auto;
+}
+
+.mirror-connect__audit-row {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding: 5px 2px;
+  font-size: 12px;
+  line-height: 1.35;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.mirror-connect__audit-row:last-child {
+  border-bottom: none;
+}
+
+.mirror-connect__audit-when {
+  flex-shrink: 0;
+  min-width: 7.5em;
+  color: var(--text-tertiary);
+  font-variant-numeric: tabular-nums;
+  font-size: 11.5px;
+}
+
+.mirror-connect__audit-label {
+  min-width: 0;
+  color: var(--text-secondary);
+}
+
 /* ── Phone mirror layout (DESIGN §4.3 / TASK-mobile-redesign) ───────────── */
 .app-shell--mirror {
   /* iOS / Android safe areas */

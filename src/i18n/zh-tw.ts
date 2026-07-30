@@ -2552,6 +2552,18 @@ export const zhTW: Record<MessageKey, string> = {
   "mirror.writeConfirmOk": "允許寫入",
   "mirror.writeEnabledBanner":
     "已允許寫入：手機可在本機傳送訊息並核准工具。",
+  "mirror.audit.title": "寫入稽核",
+  "mirror.audit.empty": "尚無寫入 ACL 事件。",
+  "mirror.audit.clear": "清空紀錄",
+  "mirror.audit.clearConfirmTitle": "清空寫入稽核紀錄？",
+  "mirror.audit.clearConfirmMessage":
+    "將刪除本機記錄的寫入開啟/關閉、連結重新產生與主機啟停事件。不會改變目前的唯讀設定。",
+  "mirror.audit.clearConfirmOk": "清空紀錄",
+  "mirror.audit.type.write_enabled": "已允許寫入",
+  "mirror.audit.type.write_disabled": "已關閉寫入（唯讀）",
+  "mirror.audit.type.token_rotated": "已重新產生連結",
+  "mirror.audit.type.host_started": "主機已啟動",
+  "mirror.audit.type.host_stopped": "主機已停止",
   "mirror.chrome.connected": "已連線主機",
   "mirror.chrome.reconnecting": "重新連線中…",
   "mirror.chrome.accountHost": "主機帳戶",

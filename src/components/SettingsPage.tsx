@@ -4678,6 +4678,29 @@ export function SettingsPage({
                       writeConfirmMessage: t("mirror.writeConfirmMessage"),
                       writeConfirmOk: t("mirror.writeConfirmOk"),
                       writeEnabledBanner: t("mirror.writeEnabledBanner"),
+                      auditTitle: t("mirror.audit.title"),
+                      auditEmpty: t("mirror.audit.empty"),
+                      auditClear: t("mirror.audit.clear"),
+                      auditClearConfirmTitle: t("mirror.audit.clearConfirmTitle"),
+                      auditClearConfirmMessage: t(
+                        "mirror.audit.clearConfirmMessage",
+                      ),
+                      auditClearConfirmOk: t("mirror.audit.clearConfirmOk"),
+                      auditTypeWriteEnabled: t(
+                        "mirror.audit.type.write_enabled",
+                      ),
+                      auditTypeWriteDisabled: t(
+                        "mirror.audit.type.write_disabled",
+                      ),
+                      auditTypeTokenRotated: t(
+                        "mirror.audit.type.token_rotated",
+                      ),
+                      auditTypeHostStarted: t(
+                        "mirror.audit.type.host_started",
+                      ),
+                      auditTypeHostStopped: t(
+                        "mirror.audit.type.host_stopped",
+                      ),
                     }}
                     onRequestConfirm={(opts) => setMirrorConfirm(opts)}
                     showToast={showSettingsToast}
