@@ -1192,7 +1192,37 @@ const en = {
   "settings.leader.unsupportedBody":
     "This Grok Build CLI version does not expose agent leader / leader management commands. Update the CLI under Runtime → CLI, or manage the process outside the app. The use-leader client toggle is still available.",
   "settings.leader.serveHint":
-    "Optional WebSocket server: `grok agent serve` (bind + auto-generated secret). Secrets are never shown in this panel.",
+    "WebSocket serve is managed in the section below (`grok agent serve`). Secrets are masked after start.",
+  "settings.serve.title": "Agent serve (WebSocket)",
+  "settings.serve.desc":
+    "Run `grok agent serve` as a local WebSocket ACP server. Default bind 127.0.0.1:2419. Secret is auto-generated; full token is shown only once on start for copy.",
+  "settings.serve.stateRunning": "Running",
+  "settings.serve.stateStopped": "Stopped",
+  "settings.serve.stateError": "Error",
+  "settings.serve.stateUnsupported": "Unsupported CLI",
+  "settings.serve.refresh": "Refresh",
+  "settings.serve.bind": "Bind address",
+  "settings.serve.bindDefault": "127.0.0.1:2419",
+  "settings.serve.portOpen": "Port open",
+  "settings.serve.portClosed": "Port closed",
+  "settings.serve.secret": "Secret",
+  "settings.serve.secretNone": "— (generated on start)",
+  "settings.serve.secretHint":
+    "Full secret is never logged and is not re-fetched after start. Only the last 4 characters are shown.",
+  "settings.serve.copyUrl": "Copy connection URL",
+  "settings.serve.copyUrlHint": "Copies the full ws:// URL including secret (available once after start).",
+  "settings.serve.copyUrlUnavailable":
+    "Connection URL is only available right after Start in this app session. Restart serve to copy again.",
+  "settings.serve.copied": "Copied",
+  "settings.serve.actions": "Controls",
+  "settings.serve.start": "Start serve",
+  "settings.serve.starting": "Starting…",
+  "settings.serve.stop": "Stop serve",
+  "settings.serve.stopping": "Stopping…",
+  "settings.serve.startHint":
+    "Starts `grok agent serve --bind 127.0.0.1:2419 --secret <auto>`. On start, the connection URL is copied once (ws://…/ws?server-key=…). Stop only affects processes started from this app.",
+  "settings.serve.unsupportedBody":
+    "This Grok Build CLI version does not expose `agent serve`. Update the CLI under Runtime → CLI, or run serve outside the app.",
   "settings.closeToTray": "Close window to tray",
   "settings.closeToTrayDesc":
     "When on, the red close button hides the app to the menu bar / system tray. Turn off to quit the app on close (Quit from the tray still works either way).",
@@ -4021,7 +4051,37 @@ const zh: Record<MessageKey, string> = {
   "settings.leader.unsupportedBody":
     "当前 Grok Build CLI 版本没有 agent leader / leader 管理命令。请在「运行时 → CLI」更新，或在应用外管理进程。客户端 use-leader 开关仍可用。",
   "settings.leader.serveHint":
-    "可选 WebSocket 服务：`grok agent serve`（监听地址 + 自动生成密钥）。本面板永不展示密钥。",
+    "WebSocket serve 由下方区块管理（`grok agent serve`）。启动后密钥仅显示掩码。",
+  "settings.serve.title": "Agent serve（WebSocket）",
+  "settings.serve.desc":
+    "将 `grok agent serve` 作为本地 WebSocket ACP 服务运行。默认监听 127.0.0.1:2419。密钥自动生成；完整令牌仅在启动时提供一次以便复制。",
+  "settings.serve.stateRunning": "运行中",
+  "settings.serve.stateStopped": "已停止",
+  "settings.serve.stateError": "错误",
+  "settings.serve.stateUnsupported": "CLI 不支持",
+  "settings.serve.refresh": "刷新",
+  "settings.serve.bind": "监听地址",
+  "settings.serve.bindDefault": "127.0.0.1:2419",
+  "settings.serve.portOpen": "端口已打开",
+  "settings.serve.portClosed": "端口未打开",
+  "settings.serve.secret": "密钥",
+  "settings.serve.secretNone": "—（启动时生成）",
+  "settings.serve.secretHint":
+    "完整密钥永不写入日志，启动后也不会再次拉取。界面仅显示末 4 位。",
+  "settings.serve.copyUrl": "复制连接 URL",
+  "settings.serve.copyUrlHint": "复制含密钥的完整 ws:// URL（仅启动后一次可用）。",
+  "settings.serve.copyUrlUnavailable":
+    "连接 URL 仅在本应用会话中启动后可用。若要再次复制，请重新启动 serve。",
+  "settings.serve.copied": "已复制",
+  "settings.serve.actions": "操作",
+  "settings.serve.start": "启动 serve",
+  "settings.serve.starting": "启动中…",
+  "settings.serve.stop": "停止 serve",
+  "settings.serve.stopping": "停止中…",
+  "settings.serve.startHint":
+    "后台启动 `grok agent serve --bind 127.0.0.1:2419 --secret <自动>`。启动时会复制一次连接 URL（ws://…/ws?server-key=…）。停止仅作用于本应用拉起的进程。",
+  "settings.serve.unsupportedBody":
+    "当前 Grok Build CLI 版本没有 `agent serve`。请在「运行时 → CLI」更新，或在应用外运行 serve。",
   "settings.closeToTray": "关闭窗口时最小化到托盘",
   "settings.closeToTrayDesc":
     "开启后，关闭按钮会隐藏到菜单栏/系统托盘。关闭此项则关闭窗口即退出（托盘「退出」始终可用）。",
