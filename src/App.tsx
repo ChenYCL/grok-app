@@ -17,7 +17,6 @@ import {
   loadThemePreference,
   saveThemePreference,
   subscribeSystemTheme,
-  toggleThemePreference,
   type Theme,
   type ThemePreference,
 } from "@/lib/theme";
@@ -531,10 +530,7 @@ import {
   sidebarSessionRowMetrics,
   type SidebarDensity,
 } from "@/lib/sidebarDensity";
-import {
-  groupSessionsByDate,
-  SIDEBAR_DATE_GROUP_I18N_KEYS,
-} from "@/lib/sidebarDateGroups";
+import { sortSessionsForSidebar } from "@/lib/sidebarDateGroups";
 import { GrokLogo } from "@/components/GrokLogo";
 import { SetupWizard, type SetupCliInfo } from "@/components/SetupWizard";
 import {
@@ -599,6 +595,7 @@ import {
 import {
   ComposerPlusPanel,
   buildComposerPlusEntries,
+  jsonSchemaMatchesQuery,
   uploadMatchesQuery,
 } from "@/components/ComposerPlusPanel";
 import { StatusModal } from "@/components/StatusModal";
@@ -4432,17 +4429,6 @@ export default function App() {
     };
   }, [patchSessionMessages, tryApplyAutomationFromSession]);
 
-  const toggleThemeBtn = () => {
-    const nextPref = toggleThemePreference(themePreference, theme);
-    saveThemePreference(localStorage, nextPref);
-    setThemePreference(nextPref);
-    void applyThemePreference(nextPref, {
-      onResolved: (_resolved, system) => {
-        setSystemTheme(system);
-      },
-    });
-  };
-
   const applyThemeChoice = (next: ThemePreference) => {
     saveThemePreference(localStorage, next);
     setThemePreference(next);
@@ -5367,7 +5353,6 @@ export default function App() {
    */
   const sidebarNavSessionIds = useMemo(() => {
     const ids: string[] = [];
-    const now = new Date();
     const projectIdSet = new Set(projects.map((p) => p.id));
     if (projectsOpen) {
       for (const proj of projects) {
@@ -5375,9 +5360,7 @@ export default function App() {
         const projSessions = sessions.filter(
           (s) => s.projectId === proj.id && !s.archived,
         );
-        for (const group of groupSessionsByDate(projSessions, now)) {
-          for (const s of group.sessions) ids.push(s.id);
-        }
+        for (const s of sortSessionsForSidebar(projSessions)) ids.push(s.id);
       }
     }
     if (historyOpen) {
@@ -5385,9 +5368,7 @@ export default function App() {
         (s) =>
           (!s.projectId || !projectIdSet.has(s.projectId)) && !s.archived,
       );
-      for (const group of groupSessionsByDate(orphans, now)) {
-        for (const s of group.sessions) ids.push(s.id);
-      }
+      for (const s of sortSessionsForSidebar(orphans)) ids.push(s.id);
     }
     return ids;
   }, [projectsOpen, projects, expandedProjects, sessions, historyOpen]);
@@ -8133,14 +8114,28 @@ export default function App() {
       }),
     [slashFilterQuery, tr],
   );
+  const showJsonSchemaInMenu = useMemo(
+    () =>
+      jsonSchemaMatchesQuery(slashFilterQuery, {
+        title: tr("composer.jsonSchema"),
+        hint: tr("composer.jsonSchemaHint"),
+      }),
+    [slashFilterQuery, tr],
+  );
   const composerMenuEntries = useMemo(
     () =>
       buildComposerPlusEntries({
         showUpload: showUploadInMenu,
+        showJsonSchema: showJsonSchemaInMenu,
         commands: slashFiltered.commands,
         skills: slashFiltered.skills,
       }),
-    [showUploadInMenu, slashFiltered.commands, slashFiltered.skills],
+    [
+      showUploadInMenu,
+      showJsonSchemaInMenu,
+      slashFiltered.commands,
+      slashFiltered.skills,
+    ],
   );
   const composerMenuEntriesRef = useRef(composerMenuEntries);
   composerMenuEntriesRef.current = composerMenuEntries;
@@ -13853,30 +13848,19 @@ export default function App() {
                           </button>
                         )}
                         {projSessions.length > 0
-                          ? groupSessionsByDate(
-                              projSessions,
-                              // Rebucket around midnight via relative-time tick.
-                              new Date(),
-                            ).map((group) => (
-                              <div
-                                key={group.id}
-                                className="tree-date-group"
-                              >
-                                <div
-                                  className="tree-date-group__head"
-                                  role="presentation"
-                                >
-                                  {tr(SIDEBAR_DATE_GROUP_I18N_KEYS[group.id])}
-                                </div>
+                          ? (() => {
+                              const sortedSessions =
+                                sortSessionsForSidebar(projSessions);
+                              return (
                                 <VirtualList
                                   className="tree-l3-list"
-                                  items={group.sessions}
+                                  items={sortedSessions}
                                   getKey={(s) => s.id}
                                   rowHeight={sidebarRowMetrics.rowHeight}
                                   gap={sidebarRowMetrics.gap}
                                   scrollToKey={
                                     session.sessionId &&
-                                    group.sessions.some(
+                                    sortedSessions.some(
                                       (x) => x.id === session.sessionId,
                                     )
                                       ? session.sessionId
@@ -14142,8 +14126,8 @@ export default function App() {
                                     );
                                   }}
                                 />
-                              </div>
-                            ))
+                              );
+                            })()
                           : null}
                         {projSessions.length === 0 && proj.trusted && (
                           <div className="sidebar-empty" style={{ padding: "4px 10px" }}>
@@ -14174,27 +14158,18 @@ export default function App() {
               </button>
             </div>
             {historyOpen && orphanSessions.length > 0
-              ? groupSessionsByDate(orphanSessions, new Date()).map(
-                  (group) => (
-                    <div
-                      key={group.id}
-                      className="tree-date-group tree-date-group--orphan"
-                    >
-                      <div
-                        className="tree-date-group__head"
-                        role="presentation"
-                      >
-                        {tr(SIDEBAR_DATE_GROUP_I18N_KEYS[group.id])}
-                      </div>
+              ? (() => {
+                  const sortedOrphans = sortSessionsForSidebar(orphanSessions);
+                  return (
                       <VirtualList
                         className="tree-orphan-list"
-                        items={group.sessions}
+                        items={sortedOrphans}
                         getKey={(s) => s.id}
                         rowHeight={sidebarRowMetrics.rowHeight}
                         gap={sidebarRowMetrics.gap}
                         scrollToKey={
                           session.sessionId &&
-                          group.sessions.some(
+                          sortedOrphans.some(
                             (x) => x.id === session.sessionId,
                           )
                             ? session.sessionId
@@ -14413,9 +14388,8 @@ export default function App() {
                           );
                         }}
                       />
-                    </div>
-                  ),
-                )
+                  );
+                })()
               : null}
           </OverlayScroll>
 
@@ -14467,6 +14441,7 @@ export default function App() {
             open={showUserMenu}
             onClose={() => setShowUserMenu(false)}
             theme={theme}
+            themePreference={themePreference}
             account={account}
             activeProvider={activeCustomProvider}
             accountBusy={accountBusy}
@@ -14474,8 +14449,9 @@ export default function App() {
               settings: tr("sidebar.settings"),
               tutorial: tr("tutorial.menu"),
               theme: tr("user.theme"),
-              themeLight: tr("user.themeLight"),
-              themeDark: tr("user.themeDark"),
+              themeSystem: tr("settings.themeSystem"),
+              themeLight: tr("settings.themeLight"),
+              themeDark: tr("settings.themeDark"),
               local: tr("common.local"),
               signedIn: tr("account.signedIn"),
               signedOut: tr("account.signedOut"),
@@ -14488,7 +14464,7 @@ export default function App() {
             onSettings={() => navigateSettings()}
             onAccountSettings={() => navigateSettings("account")}
             onTutorial={() => setShowProductTutorial(true)}
-            onToggleTheme={toggleThemeBtn}
+            onTheme={applyThemeChoice}
             onLogin={() => void runAccountLogin("oauth")}
             onLogout={() => void runAccountLogout()}
           >
@@ -15779,6 +15755,11 @@ export default function App() {
                     onSelectUpload={() => {
                       void pickComposerFiles();
                     }}
+                    onSelectJsonSchema={() => {
+                      closeComposerMenu();
+                      setJsonSchemaDraft(sessionJsonSchema ?? "");
+                      setShowJsonSchemaModal(true);
+                    }}
                     onSelectSlash={applySlashItem}
                     resolveTitle={resolveSlashTitle}
                     resolveDescription={resolveSlashDescription}
@@ -15915,7 +15896,11 @@ export default function App() {
                         ];
                       if (!entry) return;
                       if (entry.kind === "upload") void pickComposerFiles();
-                      else applySlashItem(entry.item);
+                      else if (entry.kind === "json-schema") {
+                        closeComposerMenu();
+                        setJsonSchemaDraft(sessionJsonSchema ?? "");
+                        setShowJsonSchemaModal(true);
+                      } else applySlashItem(entry.item);
                       return;
                     }
                     if (e.key === "Escape") {
@@ -15933,7 +15918,11 @@ export default function App() {
                           )
                         ]!;
                       if (entry.kind === "upload") void pickComposerFiles();
-                      else applySlashItem(entry.item);
+                      else if (entry.kind === "json-schema") {
+                        closeComposerMenu();
+                        setJsonSchemaDraft(sessionJsonSchema ?? "");
+                        setShowJsonSchemaModal(true);
+                      } else applySlashItem(entry.item);
                       return;
                     }
                   }
@@ -16120,28 +16109,24 @@ export default function App() {
                         </button>
                       </Tip>
                     ) : null}
-                    <Tip label={tr("composer.jsonSchemaHint")}>
-                      <button
-                        type="button"
-                        className={
-                          "chip chip--json-schema" +
-                          (sessionJsonSchema ? " is-active" : "")
-                        }
-                        onClick={() => {
-                          setJsonSchemaDraft(sessionJsonSchema ?? "");
-                          setShowJsonSchemaModal(true);
-                        }}
-                        aria-label={tr("composer.jsonSchema")}
+                    {sessionJsonSchema ? (
+                      <Tip
+                        label={sessionJsonSchema}
+                        className="ui-tip--wrap ui-tip--mono"
                       >
-                        <IconCode size={14} />
-                        <span className="chip__label">
-                          {sessionJsonSchema
-                            ? tr("composer.jsonSchemaActive")
-                            : tr("composer.jsonSchema")}
-                        </span>
-                        {sessionJsonSchema ? <IconClose size={12} /> : null}
-                      </button>
-                    </Tip>
+                        <button
+                          type="button"
+                          className="icon-btn chip--json-schema is-active"
+                          onClick={() => {
+                            setJsonSchemaDraft(sessionJsonSchema);
+                            setShowJsonSchemaModal(true);
+                          }}
+                          aria-label={tr("composer.jsonSchemaActive")}
+                        >
+                          <IconCode size={16} />
+                        </button>
+                      </Tip>
+                    ) : null}
                     <ComposerModelMenu
                       modelId={modelId}
                       effort={effort}

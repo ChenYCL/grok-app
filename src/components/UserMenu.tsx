@@ -2,16 +2,29 @@
  * Personal center — compact upward menu: account card · settings · theme · logout.
  */
 
-import { useRef, type ReactNode } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type CSSProperties,
+  type ReactNode,
+} from "react";
 import { createPortal } from "react-dom";
 import {
+  IconCheck,
+  IconChevronRight,
   IconHelp,
   IconSettings,
   IconThemeMoon,
   IconThemeSun,
 } from "@/components/icons";
-import type { Theme } from "@/lib/theme";
-import { useFloatingMenu } from "@/lib/floatingMenu";
+import type { Theme, ThemePreference } from "@/lib/theme";
+import {
+  FLOATING_MENU_Z_INDEX,
+  useFloatingMenu,
+} from "@/lib/floatingMenu";
 import type { AccountStatus, CustomProvider } from "@/lib/api";
 import {
   accountDisplayName,
@@ -24,12 +37,16 @@ import {
 export interface UserMenuProps {
   open: boolean;
   onClose: () => void;
+  /** Resolved light/dark for icons. */
   theme: Theme;
+  /** Preference driving the theme submenu selection. */
+  themePreference: ThemePreference;
   labels: {
     settings: string;
     /** Optional product tour entry label */
     tutorial?: string;
     theme: string;
+    themeSystem: string;
     themeLight: string;
     themeDark: string;
     local: string;
@@ -49,7 +66,7 @@ export interface UserMenuProps {
   onAccountSettings: () => void;
   /** Open optional in-app product tour */
   onTutorial?: () => void;
-  onToggleTheme: () => void;
+  onTheme: (preference: ThemePreference) => void;
   onLogin: () => void;
   onLogout: () => void;
   children: ReactNode;
@@ -66,10 +83,48 @@ export function remainingPercent(account: AccountStatus | null): number | null {
   return Math.max(0, Math.min(100, 100 - used));
 }
 
+const THEME_OPTIONS: ThemePreference[] = ["system", "light", "dark"];
+const FLYOUT_GAP = 4;
+const FLYOUT_MIN_W = 148;
+const FLYOUT_EST_H = 120;
+
+function computeThemeFlyoutStyle(
+  anchor: DOMRect,
+  panelW: number,
+  panelH: number,
+): CSSProperties {
+  const vw =
+    typeof window.innerWidth === "number" ? window.innerWidth : 1024;
+  const vh =
+    typeof window.innerHeight === "number" ? window.innerHeight : 768;
+  const margin = 8;
+
+  // Prefer open to the right of the theme row (sidebar sits left).
+  let left = anchor.right + FLYOUT_GAP;
+  if (left + panelW > vw - margin) {
+    left = anchor.left - FLYOUT_GAP - panelW;
+  }
+  left = Math.max(margin, Math.min(left, vw - margin - panelW));
+
+  // Vertically center the flyout on the theme menu item.
+  let top = anchor.top + anchor.height / 2 - panelH / 2;
+  top = Math.max(margin, Math.min(top, vh - margin - panelH));
+
+  return {
+    position: "fixed",
+    top,
+    left,
+    minWidth: FLYOUT_MIN_W,
+    // Above the account menu (FLOATING_MENU_Z_INDEX) so the flyout is not clipped under it.
+    zIndex: FLOATING_MENU_Z_INDEX + 1,
+  };
+}
+
 export function UserMenu({
   open,
   onClose,
   theme,
+  themePreference,
   labels,
   account,
   activeProvider,
@@ -77,7 +132,7 @@ export function UserMenu({
   onSettings,
   onAccountSettings,
   onTutorial,
-  onToggleTheme,
+  onTheme,
   onLogin,
   onLogout,
   children,
@@ -85,12 +140,74 @@ export function UserMenu({
   const rootRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLDivElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
+  const themeItemRef = useRef<HTMLButtonElement>(null);
+  const themeFlyoutRef = useRef<HTMLDivElement>(null);
+  const [themeSubOpen, setThemeSubOpen] = useState(false);
+  const [flyoutStyle, setFlyoutStyle] = useState<CSSProperties | null>(null);
+  const closeTimerRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    if (!open) setThemeSubOpen(false);
+  }, [open]);
+
+  const clearCloseTimer = useCallback(() => {
+    if (closeTimerRef.current != null) {
+      window.clearTimeout(closeTimerRef.current);
+      closeTimerRef.current = null;
+    }
+  }, []);
+
+  const scheduleCloseThemeSub = useCallback(() => {
+    clearCloseTimer();
+    closeTimerRef.current = window.setTimeout(() => {
+      setThemeSubOpen(false);
+      closeTimerRef.current = null;
+    }, 160);
+  }, [clearCloseTimer]);
+
+  const openThemeSub = useCallback(() => {
+    clearCloseTimer();
+    setThemeSubOpen(true);
+  }, [clearCloseTimer]);
+
+  useEffect(() => () => clearCloseTimer(), [clearCloseTimer]);
+
+  const updateFlyoutPos = useCallback(() => {
+    const el = themeItemRef.current;
+    if (!el) return;
+    const r = el.getBoundingClientRect();
+    const fly = themeFlyoutRef.current;
+    const pw = fly?.offsetWidth || FLYOUT_MIN_W;
+    const ph = fly?.offsetHeight || FLYOUT_EST_H;
+    setFlyoutStyle(computeThemeFlyoutStyle(r, pw, ph));
+  }, []);
+
+  useLayoutEffect(() => {
+    if (!open || !themeSubOpen) {
+      setFlyoutStyle(null);
+      return;
+    }
+    updateFlyoutPos();
+    const onMove = () => updateFlyoutPos();
+    window.addEventListener("resize", onMove);
+    window.addEventListener("scroll", onMove, true);
+    return () => {
+      window.removeEventListener("resize", onMove);
+      window.removeEventListener("scroll", onMove, true);
+    };
+  }, [open, themeSubOpen, updateFlyoutPos]);
+
+  // Refine after flyout mounts (real size).
+  useLayoutEffect(() => {
+    if (!open || !themeSubOpen || !themeFlyoutRef.current) return;
+    updateFlyoutPos();
+  }, [open, themeSubOpen, updateFlyoutPos, themePreference]);
 
   const { pos, style } = useFloatingMenu({
     open,
     triggerRef,
     panelRef,
-    roots: [rootRef],
+    roots: [rootRef, themeFlyoutRef],
     onClose,
     placement: "up",
     fitContent: true,
@@ -125,6 +242,57 @@ export function UserMenu({
     : signedIn
       ? "Grok Build"
       : "—";
+
+  const themeLabel = (pref: ThemePreference) => {
+    if (pref === "system") return labels.themeSystem;
+    if (pref === "light") return labels.themeLight;
+    return labels.themeDark;
+  };
+
+  const themeFlyout =
+    open &&
+    themeSubOpen &&
+    flyoutStyle &&
+    typeof document !== "undefined"
+      ? createPortal(
+          <div
+            ref={themeFlyoutRef}
+            className="menu-panel user-menu__flyout"
+            role="menu"
+            aria-label={labels.theme}
+            style={flyoutStyle}
+            onMouseEnter={openThemeSub}
+            onMouseLeave={scheduleCloseThemeSub}
+          >
+            {THEME_OPTIONS.map((pref) => {
+              const selected = themePreference === pref;
+              return (
+                <button
+                  key={pref}
+                  type="button"
+                  className={
+                    "user-menu__item user-menu__item--flyout" +
+                    (selected ? " is-selected" : "")
+                  }
+                  role="menuitemradio"
+                  aria-checked={selected}
+                  onClick={() => {
+                    onTheme(pref);
+                  }}
+                >
+                  <span className="user-menu__check" aria-hidden>
+                    {selected ? <IconCheck size={14} stroke={2.4} /> : null}
+                  </span>
+                  <span className="user-menu__item-label">
+                    {themeLabel(pref)}
+                  </span>
+                </button>
+              );
+            })}
+          </div>,
+          document.body,
+        )
+      : null;
 
   const panel =
     open && pos && typeof document !== "undefined"
@@ -231,24 +399,36 @@ export function UserMenu({
             ) : null}
 
             <button
+              ref={themeItemRef}
               type="button"
-              className="user-menu__item"
+              className={
+                "user-menu__item user-menu__item--submenu" +
+                (themeSubOpen ? " is-open" : "")
+              }
               role="menuitem"
+              aria-haspopup="menu"
+              aria-expanded={themeSubOpen}
               onClick={() => {
-                onToggleTheme();
+                if (themeSubOpen) {
+                  setThemeSubOpen(false);
+                } else {
+                  openThemeSub();
+                }
               }}
+              onMouseEnter={openThemeSub}
+              onMouseLeave={scheduleCloseThemeSub}
             >
               {theme === "dark" ? (
-                <IconThemeSun size={16} />
-              ) : (
                 <IconThemeMoon size={16} />
+              ) : (
+                <IconThemeSun size={16} />
               )}
-              <span>
-                {labels.theme}
-                <em>
-                  {theme === "dark" ? labels.themeLight : labels.themeDark}
-                </em>
-              </span>
+              <span className="user-menu__item-label">{labels.theme}</span>
+              <IconChevronRight
+                size={14}
+                className="user-menu__sub-chev"
+                aria-hidden
+              />
             </button>
 
             {isCustomProvider ? null : signedIn ? (
@@ -289,6 +469,7 @@ export function UserMenu({
         {children}
       </div>
       {panel}
+      {themeFlyout}
     </div>
   );
 }

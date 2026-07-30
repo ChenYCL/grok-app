@@ -119,7 +119,18 @@ export function compareSessionsPinThenUpdated(
 }
 
 /**
+ * Flat sidebar order: pinned first, then newest last-run time.
+ * Does not mutate the input array. No date-section grouping.
+ */
+export function sortSessionsForSidebar<T extends DateGroupableSession>(
+  sessions: readonly T[],
+): T[] {
+  return sessions.slice().sort(compareSessionsPinThenUpdated);
+}
+
+/**
  * Group sessions into relative-date sections.
+ * @deprecated Sidebar UI no longer groups by date; prefer {@link sortSessionsForSidebar}.
  * Does not mutate the input array. Empty groups omitted.
  */
 export function groupSessionsByDate<T extends DateGroupableSession>(

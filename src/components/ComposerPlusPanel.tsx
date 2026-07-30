@@ -23,6 +23,7 @@ import {
   IconBox,
   IconCircleDashed,
   IconClipboardList,
+  IconCode,
   IconDoctor,
   IconNewChat,
   IconPlug,
@@ -39,6 +40,7 @@ const ICON_SIZE = 16;
 /** Selectable row (keyboard + click). */
 export type ComposerPlusEntry =
   | { id: "upload"; kind: "upload" }
+  | { id: "json-schema"; kind: "json-schema" }
   | { id: string; kind: "slash"; item: SlashItem };
 
 /** Visual row including section headers (headers are not in keyboard nav). */
@@ -84,14 +86,17 @@ function slashItemIcon(item: SlashItem): ReactNode {
   }
 }
 
-/** Build keyboard-nav flat list: optional upload + commands + skills. */
+/** Build keyboard-nav flat list: optional upload / json-schema + commands + skills. */
 export function buildComposerPlusEntries(opts: {
   showUpload: boolean;
+  /** Structured JSON Schema entry under the Add section. */
+  showJsonSchema?: boolean;
   commands: SlashItem[];
   skills: SlashItem[];
 }): ComposerPlusEntry[] {
   const out: ComposerPlusEntry[] = [];
   if (opts.showUpload) out.push({ id: "upload", kind: "upload" });
+  if (opts.showJsonSchema) out.push({ id: "json-schema", kind: "json-schema" });
   for (const item of opts.commands) {
     out.push({ id: item.id, kind: "slash", item });
   }
@@ -121,7 +126,7 @@ export function buildComposerPlusRows(
   let addedSkillSection = false;
 
   for (const entry of entries) {
-    if (entry.kind === "upload") {
+    if (entry.kind === "upload" || entry.kind === "json-schema") {
       if (!addedAddSection) {
         rows.push({ type: "section", id: "sec-add", label: labels.add });
         addedAddSection = true;
@@ -173,6 +178,27 @@ export function uploadMatchesQuery(
   return hay.includes(q);
 }
 
+/** Whether the JSON Schema row matches a slash filter query. */
+export function jsonSchemaMatchesQuery(
+  query: string,
+  labels: { title: string; hint: string },
+): boolean {
+  const q = query.trim().toLowerCase();
+  if (!q) return true;
+  const hay = [
+    labels.title,
+    labels.hint,
+    "json",
+    "schema",
+    "structured",
+    "json schema",
+    "结构化",
+  ]
+    .join(" ")
+    .toLowerCase();
+  return hay.includes(q);
+}
+
 export function ComposerPlusPanel({
   open,
   locale,
@@ -186,6 +212,7 @@ export function ComposerPlusPanel({
   activeIndex,
   onActiveIndexChange,
   onSelectUpload,
+  onSelectJsonSchema,
   onSelectSlash,
   resolveTitle,
   resolveDescription,
@@ -206,6 +233,8 @@ export function ComposerPlusPanel({
   activeIndex: number;
   onActiveIndexChange: (i: number) => void;
   onSelectUpload: () => void;
+  /** Optional: open structured JSON Schema modal. */
+  onSelectJsonSchema?: () => void;
   onSelectSlash: (item: SlashItem) => void;
   resolveTitle: (item: SlashItem) => string;
   resolveDescription: (item: SlashItem) => string;
@@ -327,6 +356,34 @@ export function ComposerPlusPanel({
               </span>
               <span className="composer-plus__desc">
                 {tr("composer.addFilesHint")}
+              </span>
+            </button>
+          );
+        }
+
+        if (entry.kind === "json-schema") {
+          return (
+            <button
+              key={`json-schema-${navIndex}`}
+              id={`plus-opt-${navIndex}`}
+              type="button"
+              role="option"
+              aria-selected={active}
+              data-plus-idx={navIndex}
+              className={
+                "composer-plus__item" + (active ? " is-active" : "")
+              }
+              onMouseEnter={() => onActiveIndexChange(navIndex)}
+              onClick={() => onSelectJsonSchema?.()}
+            >
+              <span className="composer-plus__ico" aria-hidden>
+                <IconCode size={ICON_SIZE} />
+              </span>
+              <span className="composer-plus__title">
+                {tr("composer.jsonSchema")}
+              </span>
+              <span className="composer-plus__desc">
+                {tr("composer.jsonSchemaHint")}
               </span>
             </button>
           );

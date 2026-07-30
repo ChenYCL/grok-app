@@ -7,6 +7,7 @@ import {
   SIDEBAR_DATE_GROUP_I18N_KEYS,
   SIDEBAR_DATE_GROUP_ORDER,
   sidebarDateGroupId,
+  sortSessionsForSidebar,
   startOfLocalDay,
 } from "./sidebarDateGroups";
 
@@ -103,6 +104,48 @@ describe("compareSessionsPinThenUpdated", () => {
     const d = { updatedAt: isoLocal(2026, 2, 15, 9), pinned: false };
     const list = [a, b, c, d].sort(compareSessionsPinThenUpdated);
     expect(list).toEqual([c, b, a, d]);
+  });
+});
+
+describe("sortSessionsForSidebar", () => {
+  it("is flat pin-then-updated order without date buckets", () => {
+    const sessions = [
+      {
+        id: "old-pin",
+        updatedAt: isoLocal(2026, 1, 1, 12),
+        pinned: true,
+      },
+      {
+        id: "today-a",
+        updatedAt: isoLocal(2026, 2, 15, 10),
+        pinned: false,
+      },
+      {
+        id: "today-pin",
+        updatedAt: isoLocal(2026, 2, 15, 8),
+        pinned: true,
+      },
+      {
+        id: "yest",
+        updatedAt: isoLocal(2026, 2, 14, 18),
+        pinned: false,
+      },
+    ];
+    const sorted = sortSessionsForSidebar(sessions);
+    // All pins first (newest pin first), then unpinned by updatedAt.
+    expect(sorted.map((s) => s.id)).toEqual([
+      "today-pin",
+      "old-pin",
+      "today-a",
+      "yest",
+    ]);
+    // Does not mutate input.
+    expect(sessions.map((s) => s.id)).toEqual([
+      "old-pin",
+      "today-a",
+      "today-pin",
+      "yest",
+    ]);
   });
 });
 
