@@ -2390,6 +2390,31 @@ pub async fn skill_roots(project_path: Option<String>) -> Result<Vec<String>, St
     Ok(crate::skill_edit::skill_roots_list(project_path.as_deref()))
 }
 
+/// Scaffold a new skill directory + SKILL.md under user (path-scoped GROK_HOME)
+/// or project skills root. Does not overwrite an existing SKILL.md.
+#[tauri::command]
+pub async fn skill_create(
+    name: String,
+    description: Option<String>,
+    project_path: Option<String>,
+    scope: Option<String>,
+) -> Result<crate::skill_edit::SkillCreateResult, String> {
+    let name = name.clone();
+    let description = description.unwrap_or_default();
+    let project_path = project_path.clone();
+    let scope = scope.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        crate::skill_edit::skill_create(
+            &name,
+            &description,
+            project_path.as_deref(),
+            scope.as_deref(),
+        )
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
 /// List MCP servers from `grok inspect --json`.
 /// Always returns Ok; on CLI missing / timeout, `servers` is empty and `error` is set.
 /// Each server includes `enabled` from App Extensions prefs (default true).

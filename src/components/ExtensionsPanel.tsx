@@ -53,6 +53,7 @@ import {
   isSkillEditable,
   resolveSkillMdPath,
 } from "@/lib/skillEditPath";
+import { sanitizeSkillFolderName } from "@/lib/skillScaffold";
 import {
   isFsWriteConflict,
   isResourceDraftDirty,
@@ -143,6 +144,12 @@ export function ExtensionsPanel({
   const [skillDiscardOpen, setSkillDiscardOpen] = useState(false);
   const [skillConflictOpen, setSkillConflictOpen] = useState(false);
   const skillEditorSeq = useRef(0);
+  /** New skill scaffold modal (Extensions → Skills). */
+  const [skillNewOpen, setSkillNewOpen] = useState(false);
+  const [skillNewName, setSkillNewName] = useState("");
+  const [skillNewDesc, setSkillNewDesc] = useState("");
+  const [skillNewScope, setSkillNewScope] = useState<"user" | "project">("user");
+  const [skillNewError, setSkillNewError] = useState<string | null>(null);
   const [addOpen, setAddOpen] = useState(false);
   const [addName, setAddName] = useState("");
   const [addCommand, setAddCommand] = useState("");
@@ -351,12 +358,13 @@ export function ExtensionsPanel({
   }, [closeSkillEditor, skillEditor?.saving, skillEditorDirty]);
 
   const openSkillEditor = useCallback(
-    async (skill: api.SkillDto) => {
+    async (skill: api.SkillDto, opts?: { force?: boolean }) => {
       if (!api.isTauri()) {
         setPathHint(tr("ext.needTauri"));
         return;
       }
-      if (!isSkillEditable(skill, skillRoots)) return;
+      // `force` skips client allowlist (e.g. right after create, roots state may lag).
+      if (!opts?.force && !isSkillEditable(skill, skillRoots)) return;
       const mdPath = resolveSkillMdPath(skill.path) ?? skill.path?.trim() ?? "";
       if (!mdPath) return;
       const seq = ++skillEditorSeq.current;
@@ -471,6 +479,77 @@ export function ExtensionsPanel({
     },
     [onSkillsPrefsChanged, projectPath, refresh, skillEditor, tr],
   );
+
+  const skillNewSanitized = useMemo(
+    () => sanitizeSkillFolderName(skillNewName),
+    [skillNewName],
+  );
+
+  const openSkillNew = useCallback(() => {
+    setSkillNewName("");
+    setSkillNewDesc("");
+    setSkillNewScope("user");
+    setSkillNewError(null);
+    setSkillNewOpen(true);
+  }, []);
+
+  const submitSkillNew = useCallback(async () => {
+    if (!api.isTauri() || actionBusy) return;
+    const safe = sanitizeSkillFolderName(skillNewName);
+    if (!safe) {
+      setSkillNewError(tr("ext.skills.newNameInvalid"));
+      return;
+    }
+    const scope: "user" | "project" =
+      skillNewScope === "project" && projectPath?.trim()
+        ? "project"
+        : "user";
+    if (skillNewScope === "project" && !projectPath?.trim()) {
+      setSkillNewError(tr("ext.skills.newScopeProjectNeed"));
+      return;
+    }
+    setActionBusy("skill:create");
+    setSkillNewError(null);
+    setActionError(null);
+    try {
+      const res = await api.skillCreate({
+        name: safe,
+        description: skillNewDesc,
+        projectPath,
+        scope,
+      });
+      setSkillNewOpen(false);
+      setSkillNewName("");
+      setSkillNewDesc("");
+      await refresh();
+      onSkillsPrefsChanged?.();
+      // Reuse existing SKILL.md editor open flow.
+      const dto: api.SkillDto = {
+        name: res.name,
+        description: skillNewDesc.trim(),
+        source: scope === "project" ? "project" : "user",
+        path: res.path,
+        userInvocable: true,
+        enabled: true,
+      };
+      // Roots React state may lag one frame after refresh — force open by path.
+      void openSkillEditor(dto, { force: true });
+    } catch (e) {
+      setSkillNewError(String(e) || tr("ext.skills.newError"));
+    } finally {
+      setActionBusy(null);
+    }
+  }, [
+    actionBusy,
+    onSkillsPrefsChanged,
+    openSkillEditor,
+    projectPath,
+    refresh,
+    skillNewDesc,
+    skillNewName,
+    skillNewScope,
+    tr,
+  ]);
 
   const runPluginAction = async (
     key: string,
@@ -1075,16 +1154,27 @@ export function ExtensionsPanel({
         {!loading ? (
           <span className="ext-count">{skills.length}</span>
         ) : null}
-        {!loading && skills.length > 0 && skillsOffCount > 0 ? (
+        <span className="ext-h2-actions">
           <button
             type="button"
             className="btn btn--ghost ext-bulk-btn"
-            disabled={!!busyKey}
-            onClick={() => void enableAllSkills()}
+            disabled={!!actionBusy || !!busyKey || !api.isTauri() || !!skillEditor}
+            onClick={openSkillNew}
           >
-            {tr("ext.enableAll")}
+            <IconPlus size={14} />
+            <span>{tr("ext.skills.new")}</span>
           </button>
-        ) : null}
+          {!loading && skills.length > 0 && skillsOffCount > 0 ? (
+            <button
+              type="button"
+              className="btn btn--ghost ext-bulk-btn"
+              disabled={!!busyKey}
+              onClick={() => void enableAllSkills()}
+            >
+              {tr("ext.enableAll")}
+            </button>
+          ) : null}
+        </span>
       </h2>
       <div className="settings-card ext-card">
         {loading && (
@@ -1842,6 +1932,121 @@ export function ExtensionsPanel({
           <li>{tr("ext.mcp.auth.stepDoctor")}</li>
         </ol>
         <p className="ext-field-hint">{tr("ext.mcp.auth.noAutoRefresh")}</p>
+      </GlassModal>
+
+      <GlassModal
+        open={skillNewOpen}
+        onClose={() => {
+          if (actionBusy !== "skill:create") setSkillNewOpen(false);
+        }}
+        title={tr("ext.skills.newTitle")}
+        size="md"
+        closeLabel={tr("common.close")}
+        wrapBody
+        footer={
+          <>
+            <button
+              type="button"
+              className="btn btn--ghost"
+              disabled={actionBusy === "skill:create"}
+              onClick={() => setSkillNewOpen(false)}
+            >
+              {tr("common.cancel")}
+            </button>
+            <button
+              type="button"
+              className="btn btn--solid"
+              disabled={
+                actionBusy === "skill:create" || !skillNewSanitized
+              }
+              onClick={() => void submitSkillNew()}
+            >
+              {actionBusy === "skill:create"
+                ? tr("ext.skills.newWorking")
+                : tr("ext.skills.newSubmit")}
+            </button>
+          </>
+        }
+      >
+        <form
+          className="app-dialog__form"
+          onSubmit={(e) => {
+            e.preventDefault();
+            void submitSkillNew();
+          }}
+        >
+          <label className="field">
+            <span>{tr("ext.skills.newName")}</span>
+            <input
+              className="app-dialog__input"
+              value={skillNewName}
+              onChange={(e) => {
+                setSkillNewName(e.target.value);
+                setSkillNewError(null);
+              }}
+              placeholder={tr("ext.skills.newNamePlaceholder")}
+              autoComplete="off"
+              spellCheck={false}
+              disabled={actionBusy === "skill:create"}
+              autoFocus
+            />
+            <span className="ext-field-hint">
+              {skillNewSanitized
+                ? tr("ext.skills.newNameHintOk", { name: skillNewSanitized })
+                : tr("ext.skills.newNameHint")}
+            </span>
+          </label>
+          <label className="field">
+            <span>{tr("ext.skills.newDescription")}</span>
+            <textarea
+              className="app-dialog__input ext-env-textarea"
+              value={skillNewDesc}
+              onChange={(e) => {
+                setSkillNewDesc(e.target.value);
+                setSkillNewError(null);
+              }}
+              placeholder={tr("ext.skills.newDescriptionPlaceholder")}
+              rows={3}
+              spellCheck
+              disabled={actionBusy === "skill:create"}
+            />
+            <span className="ext-field-hint">
+              {tr("ext.skills.newDescriptionHint")}
+            </span>
+          </label>
+          <fieldset className="field" disabled={actionBusy === "skill:create"}>
+            <legend>{tr("ext.skills.newScope")}</legend>
+            <label className="ext-radio-row">
+              <input
+                type="radio"
+                name="skill-new-scope"
+                checked={skillNewScope === "user"}
+                onChange={() => setSkillNewScope("user")}
+              />
+              <span>{tr("ext.skills.newScopeUser")}</span>
+            </label>
+            <label className="ext-radio-row">
+              <input
+                type="radio"
+                name="skill-new-scope"
+                checked={skillNewScope === "project"}
+                onChange={() => setSkillNewScope("project")}
+                disabled={!projectPath?.trim()}
+              />
+              <span>
+                {projectPath?.trim()
+                  ? tr("ext.skills.newScopeProject")
+                  : tr("ext.skills.newScopeProjectDisabled")}
+              </span>
+            </label>
+            <span className="ext-field-hint">{tr("ext.skills.newScopeHint")}</span>
+          </fieldset>
+          {skillNewError ? (
+            <p className="ext-alert" role="alert">
+              <span className="ext-alert__body">{skillNewError}</span>
+            </p>
+          ) : null}
+        </form>
       </GlassModal>
 
       <GlassModal

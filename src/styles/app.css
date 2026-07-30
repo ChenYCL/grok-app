@@ -17450,6 +17450,26 @@ div.composer__input:empty::before {
   color: #e05a5a;
 }
 
+.ext-radio-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 4px 0;
+  font-size: 13px;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.ext-radio-row input[type="radio"] {
+  margin: 0;
+  flex-shrink: 0;
+}
+
+.ext-radio-row:has(input:disabled) {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
 /* Settings → Agent: workspace memory browser */
 .settings-memory-browser {
   gap: 10px;

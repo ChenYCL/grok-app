@@ -2400,6 +2400,30 @@ const en = {
     "This SKILL.md was modified outside the app. Reload the file or overwrite with your draft.",
   "ext.skills.editConflictReload": "Reload",
   "ext.skills.editConflictOverwrite": "Overwrite",
+  "ext.skills.new": "New skill",
+  "ext.skills.newTitle": "New skill",
+  "ext.skills.newSubmit": "Create",
+  "ext.skills.newWorking": "Creating…",
+  "ext.skills.newName": "Name",
+  "ext.skills.newNamePlaceholder": "e.g. deploy-k8s",
+  "ext.skills.newNameHint":
+    "Lowercase letters, digits, and hyphens; 2–64 characters (slash command /name).",
+  "ext.skills.newNameHintOk": "Will create as /{name}",
+  "ext.skills.newNameInvalid":
+    "Enter a valid skill name (a-z, 0-9, hyphens; 2–64 chars).",
+  "ext.skills.newDescription": "Description",
+  "ext.skills.newDescriptionPlaceholder":
+    "What it does and when to use it (trigger phrases help auto-invoke)…",
+  "ext.skills.newDescriptionHint":
+    "Written into SKILL.md frontmatter. You can edit the full body after create.",
+  "ext.skills.newScope": "Location",
+  "ext.skills.newScopeUser": "User (path-scoped GROK_HOME /skills)",
+  "ext.skills.newScopeProject": "Project (.grok/skills in active project)",
+  "ext.skills.newScopeProjectDisabled": "Project (open a project first)",
+  "ext.skills.newScopeProjectNeed": "Open a project to create a project skill.",
+  "ext.skills.newScopeHint":
+    "User skills follow the active agent home (independent GROK_HOME or ~/.grok). Project skills ship with the repo.",
+  "ext.skills.newError": "Could not create skill",
   "ext.mcp.title": "MCP servers",
   "ext.mcp.loading": "Loading MCP servers…",
   "ext.mcp.empty": "No MCP servers discovered",
@@ -5364,6 +5388,30 @@ const zh: Record<MessageKey, string> = {
     "此 SKILL.md 已在应用外被修改。可重新加载文件，或用当前草稿覆盖。",
   "ext.skills.editConflictReload": "重新加载",
   "ext.skills.editConflictOverwrite": "覆盖",
+  "ext.skills.new": "新建技能",
+  "ext.skills.newTitle": "新建技能",
+  "ext.skills.newSubmit": "创建",
+  "ext.skills.newWorking": "正在创建…",
+  "ext.skills.newName": "名称",
+  "ext.skills.newNamePlaceholder": "例如 deploy-k8s",
+  "ext.skills.newNameHint":
+    "小写字母、数字与连字符；2–64 个字符（斜杠命令 /name）。",
+  "ext.skills.newNameHintOk": "将创建为 /{name}",
+  "ext.skills.newNameInvalid":
+    "请输入有效技能名（a-z、0-9、连字符；2–64 字符）。",
+  "ext.skills.newDescription": "描述",
+  "ext.skills.newDescriptionPlaceholder":
+    "做什么、何时使用（触发短语有助于自动调用）…",
+  "ext.skills.newDescriptionHint":
+    "写入 SKILL.md 前置元数据。创建后可继续编辑正文。",
+  "ext.skills.newScope": "位置",
+  "ext.skills.newScopeUser": "用户（路径作用域 GROK_HOME /skills）",
+  "ext.skills.newScopeProject": "项目（当前项目 .grok/skills）",
+  "ext.skills.newScopeProjectDisabled": "项目（请先打开项目）",
+  "ext.skills.newScopeProjectNeed": "请先打开项目以创建项目技能。",
+  "ext.skills.newScopeHint":
+    "用户技能跟随当前 agent home（独立 GROK_HOME 或 ~/.grok）。项目技能随仓库共享。",
+  "ext.skills.newError": "无法创建技能",
   "ext.mcp.title": "MCP 服务器",
   "ext.mcp.loading": "正在加载 MCP…",
   "ext.mcp.empty": "未发现 MCP 服务器",
