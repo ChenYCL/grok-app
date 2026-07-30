@@ -4334,6 +4334,68 @@ html[data-theme="light"] .ui-check.is-mixed .ui-check__box {
   color: var(--text-primary);
 }
 
+/* Chord conflict visualization (Settings → Keyboard) */
+.settings-shortcuts-conflicts {
+  margin: 0 16px 10px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid color-mix(in srgb, var(--danger, #e55) 35%, var(--border-subtle));
+  background: color-mix(in srgb, var(--danger, #e55) 10%, transparent);
+}
+
+.settings-shortcuts-conflicts__header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px 12px;
+}
+
+.settings-shortcuts-conflicts__title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.settings-shortcuts-conflicts__desc {
+  margin-top: 2px;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--text-secondary);
+}
+
+.settings-shortcuts-conflicts__list {
+  list-style: none;
+  margin: 10px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.settings-shortcuts-conflicts__item {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 10px;
+  font-size: 12.5px;
+  color: var(--text-primary);
+}
+
+.settings-shortcuts-conflicts__actions {
+  color: var(--text-secondary);
+  line-height: 1.35;
+}
+
+.settings-shortcuts-row--conflict td {
+  background: color-mix(in srgb, var(--danger, #e55) 7%, transparent);
+}
+
+.settings-shortcuts-kbd.is-conflict {
+  border-color: color-mix(in srgb, var(--danger, #e55) 45%, var(--border-subtle));
+  color: var(--text-primary);
+}
+
 .settings-shortcuts-group {
   padding: 8px 16px 14px;
   border-bottom: 1px solid var(--border-subtle);

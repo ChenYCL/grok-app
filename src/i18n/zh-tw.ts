@@ -911,7 +911,11 @@ export const zhTW: Record<MessageKey, string> = {
   "settings.shortcuts.pressKeys": "請按鍵…",
   "settings.shortcuts.recordingHint":
     "按下新的快捷鍵（需包含 ⌘/Ctrl）。Esc 取消錄製。",
-  "settings.shortcuts.conflict": "該組合鍵已被「{action}」占用。",
+  "settings.shortcuts.conflict": "該組合鍵已被「{action}」占用。請換一組鍵，或取消錄製。",
+  "settings.shortcuts.conflictsTitle": "衝突",
+  "settings.shortcuts.conflictsDesc":
+    "以下組合鍵綁定了多個操作。執行時只會生效其中一個——請重設或重新錄製多餘的綁定。",
+  "settings.shortcuts.conflictsReset": "將衝突項重設為預設",
   "settings.shortcuts.customBadge": "自訂綁定",
   "settings.shortcuts.fixed": "固定",
   "settings.shortcuts.fixedSend": "對話偏好",

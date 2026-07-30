@@ -64,9 +64,12 @@ import {
   chordFromKeyboardEvent,
   clearAllShortcutRemaps,
   findChordConflict,
+  findChordConflicts,
+  formatChordDisplay,
   hasAnyShortcutRemaps,
   isRemappableShortcutId,
   loadShortcutRemaps,
+  resetConflictingShortcutRemaps,
   setShortcutRecordingActive,
   setShortcutRemap,
   type ShortcutRemapMap,
@@ -5361,6 +5364,23 @@ function ShortcutsSettingsPanel({
     [filterQuery, groups, t],
   );
 
+  const conflictGroups = useMemo(
+    () => findChordConflicts(remaps),
+    [remaps],
+  );
+  const conflictIdSet = useMemo(() => {
+    const s = new Set<ShortcutId>();
+    for (const g of conflictGroups) {
+      for (const id of g.ids) s.add(id);
+    }
+    return s;
+  }, [conflictGroups]);
+
+  const shortcutLabel = (id: ShortcutId): string => {
+    const row = SHORTCUTS.find((s) => s.id === id);
+    return row ? t(row.labelKey as MessageKey) : id;
+  };
+
   const groupLabel = (g: ShortcutGroup) =>
     t(`settings.shortcuts.group.${g}` as MessageKey);
 
@@ -5381,6 +5401,12 @@ function ShortcutsSettingsPanel({
 
   const resetAll = () => {
     setRemaps(clearAllShortcutRemaps());
+    setRecordingId(null);
+    setRecordError(null);
+  };
+
+  const resetConflicting = () => {
+    setRemaps(resetConflictingShortcutRemaps(remaps));
     setRecordingId(null);
     setRecordError(null);
   };
@@ -5426,6 +5452,47 @@ function ShortcutsSettingsPanel({
           disabled={!!recordingId}
         />
       </div>
+      {conflictGroups.length > 0 ? (
+        <div
+          className="settings-shortcuts-conflicts"
+          role="region"
+          aria-label={t("settings.shortcuts.conflictsTitle")}
+        >
+          <div className="settings-shortcuts-conflicts__header">
+            <div className="settings-shortcuts-conflicts__text">
+              <div className="settings-shortcuts-conflicts__title">
+                {t("settings.shortcuts.conflictsTitle")}
+              </div>
+              <div className="settings-shortcuts-conflicts__desc">
+                {t("settings.shortcuts.conflictsDesc")}
+              </div>
+            </div>
+            <button
+              type="button"
+              className="btn btn--ghost btn--sm"
+              disabled={!!recordingId}
+              onClick={() => resetConflicting()}
+            >
+              {t("settings.shortcuts.conflictsReset")}
+            </button>
+          </div>
+          <ul className="settings-shortcuts-conflicts__list">
+            {conflictGroups.map((group) => (
+              <li key={group.chord} className="settings-shortcuts-conflicts__item">
+                <kbd className="settings-shortcuts-kbd">
+                  {formatChordDisplay(
+                    group.chord,
+                    platform === "mac" ? "mac" : "win",
+                  )}
+                </kbd>
+                <span className="settings-shortcuts-conflicts__actions">
+                  {group.ids.map((id) => shortcutLabel(id)).join(" · ")}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
       {recordError ? (
         <p className="settings-shortcuts-error" role="alert">
           {recordError}
@@ -5477,16 +5544,18 @@ function ShortcutsSettingsPanel({
                   const remappable = isRemappableShortcutId(row.id);
                   const isCustom = remappable && !!remaps[row.id];
                   const isRecording = recordingId === row.id;
+                  const isConflict = conflictIdSet.has(row.id);
+                  const rowClass = [
+                    isRecording ? "settings-shortcuts-row--recording" : "",
+                    isCustom ? "settings-shortcuts-row--custom" : "",
+                    isConflict ? "settings-shortcuts-row--conflict" : "",
+                  ]
+                    .filter(Boolean)
+                    .join(" ");
                   return (
                     <tr
                       key={row.id}
-                      className={
-                        isRecording
-                          ? "settings-shortcuts-row--recording"
-                          : isCustom
-                            ? "settings-shortcuts-row--custom"
-                            : undefined
-                      }
+                      className={rowClass || undefined}
                     >
                       <td>
                         {t(row.labelKey as MessageKey)}
@@ -5500,7 +5569,8 @@ function ShortcutsSettingsPanel({
                         <kbd
                           className={
                             "settings-shortcuts-kbd" +
-                            (isRecording ? " is-recording" : "")
+                            (isRecording ? " is-recording" : "") +
+                            (isConflict && !isRecording ? " is-conflict" : "")
                           }
                         >
                           {isRecording
@@ -5514,7 +5584,8 @@ function ShortcutsSettingsPanel({
                         <kbd
                           className={
                             "settings-shortcuts-kbd" +
-                            (isRecording ? " is-recording" : "")
+                            (isRecording ? " is-recording" : "") +
+                            (isConflict && !isRecording ? " is-conflict" : "")
                           }
                         >
                           {isRecording
