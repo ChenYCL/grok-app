@@ -519,3 +519,201 @@ export function mcpAuthGuidanceKey(
   if (tone === "auth_required") return "ext.mcp.auth.requiredHint";
   return null;
 }
+
+// ---------------------------------------------------------------------------
+// Inspect-row health (McpStatusModal) — from compatibilityStatus / transport
+// Never invents servers; empty list stays empty. Auth-ish tones collapse to
+// "error" for the four-chip filter bar (all / ok / warn / error / unknown).
+// ---------------------------------------------------------------------------
+
+/** Coarse health for inspect MCP rows (chips in the status modal). */
+export type McpRowHealth = "ok" | "warn" | "error" | "unknown";
+
+/** Inspect-shaped server row (name + optional meta). */
+export type McpRowLike = {
+  name?: string | null;
+  transport?: string | null;
+  target?: string | null;
+  vendor?: string | null;
+  compatibilityStatus?: string | null;
+};
+
+/** Status chip filter values for the MCP modal. */
+export type McpRowStatusFilter = "all" | McpRowHealth;
+
+/** Ordered chip list: all · ok · warn · error · unknown. */
+export const MCP_ROW_STATUS_FILTERS: readonly McpRowStatusFilter[] = [
+  "all",
+  "ok",
+  "warn",
+  "error",
+  "unknown",
+] as const;
+
+const COMPAT_OK = new Set([
+  "ok",
+  "healthy",
+  "compatible",
+  "pass",
+  "passed",
+  "up",
+  "supported",
+  "ready",
+  "good",
+  "success",
+  "available",
+]);
+const COMPAT_WARN = new Set([
+  "warn",
+  "warning",
+  "degraded",
+  "partial",
+  "slow",
+  "limited",
+]);
+const COMPAT_ERROR = new Set([
+  "error",
+  "fail",
+  "failed",
+  "unhealthy",
+  "down",
+  "bad",
+  "incompatible",
+  "broken",
+  "unsupported",
+  "disabled",
+  "offline",
+  "unreachable",
+]);
+
+/** Collapse doctor/auth tones into the four modal chip buckets. */
+export function mcpRowHealthFromTone(tone: McpStatusTone): McpRowHealth {
+  switch (tone) {
+    case "ok":
+      return "ok";
+    case "warn":
+      return "warn";
+    case "error":
+    case "auth_expired":
+    case "auth_required":
+      return "error";
+    case "unknown":
+    default:
+      return "unknown";
+  }
+}
+
+/**
+ * Classify one inspect MCP row for modal lamps / chips.
+ *
+ * Priority: `compatibilityStatus` tokens → free-text tone on status →
+ * free-text tone on `transport` → `unknown`. Presence of transport alone
+ * does **not** imply healthy (no invented ok).
+ */
+export function classifyMcpRowHealth(
+  row: McpRowLike | null | undefined,
+): McpRowHealth {
+  if (!row) return "unknown";
+  const status = (row.compatibilityStatus ?? "").trim();
+  if (status) {
+    const lower = status.toLowerCase();
+    if (COMPAT_OK.has(lower)) return "ok";
+    if (COMPAT_WARN.has(lower)) return "warn";
+    if (COMPAT_ERROR.has(lower)) return "error";
+    // Multi-word / free-form compatibility strings.
+    return mcpRowHealthFromTone(inferMcpStatusTone([status], null));
+  }
+  const transport = (row.transport ?? "").trim();
+  if (transport) {
+    const tone = inferMcpStatusTone([transport], null);
+    // Transport labels like "stdio" / "http" yield unknown — keep that.
+    // Only promote when transport string itself carries health keywords.
+    if (tone !== "unknown") return mcpRowHealthFromTone(tone);
+  }
+  return "unknown";
+}
+
+/** Per-health counts plus total under `all`. */
+export type McpRowHealthCounts = Record<McpRowStatusFilter, number>;
+
+/** Count rows per health tone (and total under `all`). */
+export function countMcpRowsByHealth(
+  rows: readonly McpRowLike[],
+): McpRowHealthCounts {
+  const counts: McpRowHealthCounts = {
+    all: rows.length,
+    ok: 0,
+    warn: 0,
+    error: 0,
+    unknown: 0,
+  };
+  for (const r of rows) {
+    counts[classifyMcpRowHealth(r)] += 1;
+  }
+  return counts;
+}
+
+/** Combined MCP modal list filters (status chip + free text). */
+export interface McpRowFilter {
+  /** Free-text over name, transport, target, vendor, status, health. */
+  query?: string;
+  /** Status chip; default `"all"`. */
+  status?: McpRowStatusFilter;
+}
+
+/**
+ * Match a row against a free-text query (case-insensitive substring).
+ * Empty query matches everything.
+ */
+export function matchMcpRowQuery(
+  row: McpRowLike,
+  query: string | null | undefined,
+): boolean {
+  const q = (query ?? "").trim().toLowerCase();
+  if (!q) return true;
+  const health = classifyMcpRowHealth(row);
+  const hay = [
+    row.name ?? "",
+    row.transport ?? "",
+    row.target ?? "",
+    row.vendor ?? "",
+    row.compatibilityStatus ?? "",
+    health,
+  ]
+    .join("\n")
+    .toLowerCase();
+  return hay.includes(q);
+}
+
+/**
+ * Filter inspect MCP rows by free-text query and/or status chip.
+ * Filters combine with AND. Does not invent rows.
+ */
+export function filterMcpRows<T extends McpRowLike>(
+  rows: readonly T[],
+  filter: McpRowFilter | string = {},
+): T[] {
+  const opts: McpRowFilter =
+    typeof filter === "string" ? { query: filter } : filter ?? {};
+  const status = opts.status ?? "all";
+  let out: T[] = rows as T[];
+  if (status !== "all") {
+    out = out.filter((r) => classifyMcpRowHealth(r) === status);
+  }
+  const q = (opts.query ?? "").trim();
+  if (!q) return out;
+  return out.filter((r) => matchMcpRowQuery(r, q));
+}
+
+/** Preferred clipboard text for a row: target when present, else name. */
+export function mcpRowCopyText(
+  row: McpRowLike | null | undefined,
+  field: "name" | "target" | "auto" = "auto",
+): string {
+  if (!row) return "";
+  const name = (row.name ?? "").trim();
+  const target = (row.target ?? "").trim();
+  if (field === "name") return name;
+  if (field === "target") return target;
+  return target || name;
+}

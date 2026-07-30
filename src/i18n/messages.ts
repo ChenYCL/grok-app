@@ -2322,6 +2322,18 @@ const en = {
   "mcpModal.loading": "Loading MCP servers…",
   "mcpModal.empty": "No MCP servers discovered",
   "mcpModal.manage": "Manage in Settings",
+  "mcpModal.searchPlaceholder": "Filter by name, target, transport…",
+  "mcpModal.filter.statusLabel": "Filter by status",
+  "mcpModal.filter.all": "All",
+  "mcpModal.refresh": "Refresh",
+  "mcpModal.refreshing": "Refreshing…",
+  "mcpModal.summary": "{n} servers",
+  "mcpModal.summaryFiltered": "{shown} of {total}",
+  "mcpModal.filterEmpty": "No servers match these filters",
+  "mcpModal.clearFilters": "Clear filters",
+  "mcpModal.copyName": "Copy name",
+  "mcpModal.copyTarget": "Copy target",
+  "mcpModal.copied": "Copied",
 
   // Settings → Extensions (Plugins + Skills + MCP)
   "ext.lead":
@@ -5288,6 +5300,18 @@ const zh: Record<MessageKey, string> = {
   "mcpModal.loading": "正在加载 MCP…",
   "mcpModal.empty": "未发现 MCP 服务器",
   "mcpModal.manage": "在设置中管理",
+  "mcpModal.searchPlaceholder": "按名称、目标、传输筛选…",
+  "mcpModal.filter.statusLabel": "按状态筛选",
+  "mcpModal.filter.all": "全部",
+  "mcpModal.refresh": "刷新",
+  "mcpModal.refreshing": "刷新中…",
+  "mcpModal.summary": "{n} 个服务器",
+  "mcpModal.summaryFiltered": "{shown} / {total}",
+  "mcpModal.filterEmpty": "没有符合筛选条件的服务器",
+  "mcpModal.clearFilters": "清除筛选",
+  "mcpModal.copyName": "复制名称",
+  "mcpModal.copyTarget": "复制目标",
+  "mcpModal.copied": "已复制",
 
   // Settings → Extensions (Plugins + Skills + MCP)
   "ext.lead":

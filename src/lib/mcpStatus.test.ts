@@ -1,16 +1,24 @@
 import { describe, expect, it } from "vitest";
 import {
+  classifyMcpRowHealth,
+  countMcpRowsByHealth,
   detectAuthToneFromText,
+  filterMcpRows,
   indexDoctorServerStatuses,
   inferMcpStatusTone,
   lookupServerStatus,
   mapIssuesToServers,
+  matchMcpRowQuery,
   mcpAuthGuidanceKey,
+  mcpRowCopyText,
+  mcpRowHealthFromTone,
   mcpStatusBadgeMod,
   mcpStatusLabelKey,
+  MCP_ROW_STATUS_FILTERS,
   redactMcpText,
   statusFromDoctorServer,
   type McpDoctorReportLike,
+  type McpRowLike,
 } from "./mcpStatus";
 
 /** Fixture shaped like host `mcp_doctor` / `grok mcp doctor --json`. */
@@ -262,5 +270,162 @@ describe("label / badge / guidance helpers", () => {
       "ext.mcp.auth.requiredHint",
     );
     expect(mcpAuthGuidanceKey("error")).toBeNull();
+  });
+});
+
+const INSPECT_ROWS: McpRowLike[] = [
+  {
+    name: "context7",
+    transport: "stdio",
+    target: "npx -y @context7/mcp",
+    compatibilityStatus: "ok",
+    vendor: "context7",
+  },
+  {
+    name: "github",
+    transport: "http",
+    target: "https://api.github.com/mcp",
+    compatibilityStatus: "warn",
+  },
+  {
+    name: "broken",
+    transport: "http",
+    target: "https://example.com/mcp",
+    compatibilityStatus: "error",
+  },
+  {
+    name: "mystery",
+    transport: "stdio",
+    target: "/usr/local/bin/mystery-mcp",
+  },
+];
+
+describe("classifyMcpRowHealth", () => {
+  it("maps known compatibilityStatus tokens", () => {
+    expect(classifyMcpRowHealth({ compatibilityStatus: "ok" })).toBe("ok");
+    expect(classifyMcpRowHealth({ compatibilityStatus: "compatible" })).toBe(
+      "ok",
+    );
+    expect(classifyMcpRowHealth({ compatibilityStatus: "WARN" })).toBe("warn");
+    expect(classifyMcpRowHealth({ compatibilityStatus: "degraded" })).toBe(
+      "warn",
+    );
+    expect(classifyMcpRowHealth({ compatibilityStatus: "error" })).toBe(
+      "error",
+    );
+    expect(classifyMcpRowHealth({ compatibilityStatus: "incompatible" })).toBe(
+      "error",
+    );
+  });
+
+  it("infers free-form compatibility text", () => {
+    expect(
+      classifyMcpRowHealth({
+        compatibilityStatus: "token expired for this server",
+      }),
+    ).toBe("error");
+    expect(
+      classifyMcpRowHealth({
+        compatibilityStatus: "slow handshake warning",
+      }),
+    ).toBe("warn");
+  });
+
+  it("does not invent ok from transport alone", () => {
+    expect(classifyMcpRowHealth({ transport: "stdio" })).toBe("unknown");
+    expect(classifyMcpRowHealth({ transport: "http", name: "x" })).toBe(
+      "unknown",
+    );
+    expect(classifyMcpRowHealth({})).toBe("unknown");
+    expect(classifyMcpRowHealth(null)).toBe("unknown");
+  });
+
+  it("uses transport text only when it carries health keywords", () => {
+    expect(
+      classifyMcpRowHealth({ transport: "failed to start stdio" }),
+    ).toBe("error");
+  });
+
+  it("collapses doctor tones for chip buckets", () => {
+    expect(mcpRowHealthFromTone("ok")).toBe("ok");
+    expect(mcpRowHealthFromTone("warn")).toBe("warn");
+    expect(mcpRowHealthFromTone("auth_expired")).toBe("error");
+    expect(mcpRowHealthFromTone("auth_required")).toBe("error");
+    expect(mcpRowHealthFromTone("unknown")).toBe("unknown");
+  });
+});
+
+describe("countMcpRowsByHealth / filterMcpRows", () => {
+  it("counts per health including all", () => {
+    const counts = countMcpRowsByHealth(INSPECT_ROWS);
+    expect(counts.all).toBe(4);
+    expect(counts.ok).toBe(1);
+    expect(counts.warn).toBe(1);
+    expect(counts.error).toBe(1);
+    expect(counts.unknown).toBe(1);
+    expect(MCP_ROW_STATUS_FILTERS).toEqual([
+      "all",
+      "ok",
+      "warn",
+      "error",
+      "unknown",
+    ]);
+  });
+
+  it("filters by status chip", () => {
+    expect(filterMcpRows(INSPECT_ROWS, { status: "ok" }).map((r) => r.name)).toEqual([
+      "context7",
+    ]);
+    expect(
+      filterMcpRows(INSPECT_ROWS, { status: "error" }).map((r) => r.name),
+    ).toEqual(["broken"]);
+    expect(filterMcpRows(INSPECT_ROWS, { status: "all" })).toHaveLength(4);
+  });
+
+  it("filters by free-text query across name/target/transport/status", () => {
+    expect(
+      filterMcpRows(INSPECT_ROWS, { query: "github" }).map((r) => r.name),
+    ).toEqual(["github"]);
+    expect(
+      filterMcpRows(INSPECT_ROWS, { query: "api.github" }).map((r) => r.name),
+    ).toEqual(["github"]);
+    expect(
+      filterMcpRows(INSPECT_ROWS, { query: "stdio" }).map((r) => r.name),
+    ).toEqual(["context7", "mystery"]);
+    expect(filterMcpRows(INSPECT_ROWS, "context7").map((r) => r.name)).toEqual([
+      "context7",
+    ]);
+  });
+
+  it("combines query and status with AND", () => {
+    expect(
+      filterMcpRows(INSPECT_ROWS, { query: "http", status: "error" }).map(
+        (r) => r.name,
+      ),
+    ).toEqual(["broken"]);
+    expect(
+      filterMcpRows(INSPECT_ROWS, { query: "http", status: "ok" }),
+    ).toHaveLength(0);
+  });
+
+  it("never invents rows for empty input", () => {
+    expect(filterMcpRows([], { status: "ok" })).toEqual([]);
+    expect(countMcpRowsByHealth([]).all).toBe(0);
+  });
+
+  it("matchMcpRowQuery treats empty as match-all", () => {
+    expect(matchMcpRowQuery(INSPECT_ROWS[0]!, "")).toBe(true);
+    expect(matchMcpRowQuery(INSPECT_ROWS[0]!, "nope")).toBe(false);
+  });
+});
+
+describe("mcpRowCopyText", () => {
+  it("prefers target for auto, with field overrides", () => {
+    const row = INSPECT_ROWS[0]!;
+    expect(mcpRowCopyText(row, "auto")).toBe("npx -y @context7/mcp");
+    expect(mcpRowCopyText(row, "name")).toBe("context7");
+    expect(mcpRowCopyText(row, "target")).toBe("npx -y @context7/mcp");
+    expect(mcpRowCopyText({ name: "solo" }, "auto")).toBe("solo");
+    expect(mcpRowCopyText(null)).toBe("");
   });
 });
