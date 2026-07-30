@@ -1,6 +1,7 @@
 /**
  * Settings → Agent: browse on-disk Grok Build workspace memory files.
  * When experimental memory is off, shows an honest empty state.
+ * Client-side search + kind chips filter the host list (preview stays redacted).
  */
 import { useCallback, useEffect, useMemo, useState } from "react";
 import * as api from "@/lib/api";
@@ -8,6 +9,14 @@ import type { MemoryFileEntry } from "@/lib/api";
 import { createT, type Locale, type MessageKey } from "@/i18n";
 import { GlassModal } from "@/components/GlassModal";
 import { IconRefresh, IconTrash } from "@/components/icons";
+import {
+  MEMORY_BROWSER_KIND_FILTERS,
+  countMemoryEntriesByKind,
+  filterMemoryEntries,
+  hasActiveMemoryBrowserFilters,
+  normalizeMemoryBrowserKind,
+  type MemoryBrowserKindFilter,
+} from "@/lib/memoryBrowserFilter";
 
 function formatSize(n: number): string {
   if (!Number.isFinite(n) || n < 0) return "—";
@@ -29,7 +38,7 @@ function formatMtime(ms: number, locale: Locale): string {
 }
 
 function kindLabelKey(kind: string): MessageKey {
-  switch (kind) {
+  switch (normalizeMemoryBrowserKind(kind)) {
     case "global":
       return "settings.memoryBrowser.kind.global";
     case "workspace":
@@ -41,6 +50,11 @@ function kindLabelKey(kind: string): MessageKey {
     default:
       return "settings.memoryBrowser.kind.other";
   }
+}
+
+function kindFilterLabelKey(filter: MemoryBrowserKindFilter): MessageKey {
+  if (filter === "all") return "settings.memoryBrowser.kind.all";
+  return kindLabelKey(filter);
 }
 
 export function MemoryBrowserPanel({
@@ -64,7 +78,8 @@ export function MemoryBrowserPanel({
   const [memoryRoot, setMemoryRoot] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [filter, setFilter] = useState("");
+  const [query, setQuery] = useState("");
+  const [kindFilter, setKindFilter] = useState<MemoryBrowserKindFilter>("all");
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set());
   const [deleteTarget, setDeleteTarget] = useState<MemoryFileEntry | null>(null);
   const [deleteBusy, setDeleteBusy] = useState(false);
@@ -101,14 +116,22 @@ export function MemoryBrowserPanel({
     void load();
   }, [load]);
 
-  const filtered = useMemo(() => {
-    const q = filter.trim().toLowerCase();
-    if (!q) return entries;
-    return entries.filter((e) => {
-      const hay = `${e.name} ${e.relativePath} ${e.kind} ${e.preview}`.toLowerCase();
-      return hay.includes(q);
-    });
-  }, [entries, filter]);
+  const filtered = useMemo(
+    () => filterMemoryEntries(entries, { query, kind: kindFilter }),
+    [entries, query, kindFilter],
+  );
+  const kindCounts = useMemo(() => countMemoryEntriesByKind(entries), [entries]);
+  const activeFilters = hasActiveMemoryBrowserFilters({
+    query,
+    kind: kindFilter,
+  });
+  const isEmptyCatalog = entries.length === 0;
+  const isEmptyFilter = !isEmptyCatalog && filtered.length === 0;
+
+  const clearFilters = () => {
+    setQuery("");
+    setKindFilter("all");
+  };
 
   const toggleExpand = (path: string) => {
     setExpanded((prev) => {
@@ -149,16 +172,55 @@ export function MemoryBrowserPanel({
         </p>
       ) : (
         <>
+          <div
+            className="settings-memory-browser__chips"
+            role="tablist"
+            aria-label={t("settings.memoryBrowser.kindFilterLabel")}
+          >
+            {MEMORY_BROWSER_KIND_FILTERS.map((id) => {
+              const n = kindCounts[id];
+              // Hide zero-count kind chips except "all" and the active selection.
+              if (id !== "all" && n === 0 && kindFilter !== id) return null;
+              return (
+                <button
+                  key={id}
+                  type="button"
+                  role="tab"
+                  aria-selected={kindFilter === id}
+                  className={
+                    "settings-memory-browser__chip" +
+                    (kindFilter === id ? " is-active" : "")
+                  }
+                  onClick={() => setKindFilter(id)}
+                >
+                  <span>{t(kindFilterLabelKey(id))}</span>
+                  <span className="settings-memory-browser__chip-count">{n}</span>
+                </button>
+              );
+            })}
+          </div>
+
           <div className="settings-memory-browser__toolbar">
             <input
               type="search"
               className="settings-input settings-memory-browser__search"
-              value={filter}
-              onChange={(e) => setFilter(e.target.value)}
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
               placeholder={t("settings.memoryBrowser.searchPlaceholder")}
               aria-label={t("settings.memoryBrowser.searchPlaceholder")}
+              autoComplete="off"
+              spellCheck={false}
             />
             <div className="settings-memory-browser__actions">
+              {activeFilters ? (
+                <button
+                  type="button"
+                  className="btn btn--ghost btn--sm"
+                  onClick={clearFilters}
+                >
+                  <span>{t("settings.memoryBrowser.clearFilters")}</span>
+                </button>
+              ) : null}
               <button
                 type="button"
                 className="btn btn--ghost btn--sm"
@@ -205,8 +267,26 @@ export function MemoryBrowserPanel({
 
           {loading ? (
             <p className="ext-field-hint">{t("settings.memoryBrowser.loading")}</p>
-          ) : filtered.length === 0 ? (
-            <p className="ext-field-hint">{t("settings.memoryBrowser.empty")}</p>
+          ) : isEmptyCatalog ? (
+            <p className="ext-field-hint settings-memory-browser__empty">
+              {t("settings.memoryBrowser.empty")}
+            </p>
+          ) : isEmptyFilter ? (
+            <div className="settings-memory-browser__filter-empty">
+              <p className="ext-field-hint settings-memory-browser__empty">
+                {t("settings.memoryBrowser.filterEmpty")}
+              </p>
+              <p className="ext-field-hint">{t("settings.memoryBrowser.filterEmptyHint")}</p>
+              {activeFilters ? (
+                <button
+                  type="button"
+                  className="btn btn--ghost btn--sm settings-memory-browser__clear-filters"
+                  onClick={clearFilters}
+                >
+                  {t("settings.memoryBrowser.clearFilters")}
+                </button>
+              ) : null}
+            </div>
           ) : (
             <ul className="ext-list settings-memory-browser__list">
               {filtered.map((e) => {

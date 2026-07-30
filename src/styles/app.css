@@ -17455,6 +17455,51 @@ div.composer__input:empty::before {
   gap: 10px;
 }
 
+.settings-memory-browser__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  width: 100%;
+}
+
+.settings-memory-browser__chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--border-subtle);
+  background: transparent;
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: 12px;
+  line-height: 1.3;
+  cursor: pointer;
+}
+
+.settings-memory-browser__chip:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.settings-memory-browser__chip.is-active {
+  border-color: color-mix(in srgb, var(--accent, #6b8cff) 30%, transparent);
+  background: color-mix(in srgb, var(--accent, #6b8cff) 14%, transparent);
+  color: var(--text-primary);
+  font-weight: 560;
+}
+
+.settings-memory-browser__chip-count {
+  font-size: 11px;
+  opacity: 0.75;
+  font-variant-numeric: tabular-nums;
+}
+
+.settings-memory-browser__chip.is-active .settings-memory-browser__chip-count {
+  opacity: 0.9;
+}
+
 .settings-memory-browser__toolbar {
   display: flex;
   flex-wrap: wrap;
@@ -17498,6 +17543,18 @@ div.composer__input:empty::before {
 
 .settings-memory-browser__empty {
   margin: 0;
+}
+
+.settings-memory-browser__filter-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  width: 100%;
+}
+
+.settings-memory-browser__clear-filters {
+  margin-top: 4px;
 }
 
 .ext-badge--plugin-enabled {

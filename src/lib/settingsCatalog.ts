@@ -507,6 +507,7 @@ export const SETTINGS_ENTRIES: readonly SettingsEntry[] = [
     descKeys: [
       "settings.memoryBrowserDesc",
       "settings.memoryBrowser.off",
+      "settings.memoryBrowser.filterEmpty",
       "settings.clearWorkspaceMemory",
     ],
     keywords: [
@@ -514,6 +515,8 @@ export const SETTINGS_ENTRIES: readonly SettingsEntry[] = [
       "MEMORY.md",
       "workspace memory",
       "browse memory",
+      "memory filter",
+      "memory search",
       "记忆",
       "記憶",
       "memory files",
