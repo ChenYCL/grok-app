@@ -1410,7 +1410,7 @@ const en = {
     "WebSocket serve is managed in the section below (`grok agent serve`). Secrets are masked after start.",
   "settings.serve.title": "Agent serve (WebSocket)",
   "settings.serve.desc":
-    "Run `grok agent serve` as a local WebSocket ACP server. Default bind 127.0.0.1:2419. Secret is auto-generated; full token is shown only once on start for copy.",
+    "Run `grok agent serve` as a local WebSocket ACP server. Default bind 127.0.0.1:2419. Optional `--remote` for proxy mode. Secret is auto-generated; full token is shown only once on start for copy.",
   "settings.serve.stateRunning": "Running",
   "settings.serve.stateStopped": "Stopped",
   "settings.serve.stateError": "Error",
@@ -1420,14 +1420,38 @@ const en = {
   "settings.serve.bindDefault": "127.0.0.1:2419",
   "settings.serve.portOpen": "Port open",
   "settings.serve.portClosed": "Port closed",
+  "settings.serve.healthNote":
+    "Health checks local bind TCP only. Optional proxy `--remote` upstream is not probed. Full secrets never appear in logs.",
+  "settings.serve.remote": "Remote URL (proxy, optional)",
+  "settings.serve.remoteDesc":
+    "When set, starts serve with `grok agent serve --remote <URL>` (proxy mode). Leave empty for a normal local WebSocket server.",
+  "settings.serve.remotePlaceholder": "ws://upstream.example:9000/agent",
+  "settings.serve.remoteHint":
+    "Optional. Use ws:// or wss:// (http(s) is rewritten). Do not put secrets in the URL.",
+  "settings.serve.remoteActive": "Active proxy remote: {url}",
+  "settings.serve.remoteUnsupported":
+    "This Grok Build CLI version does not support `agent serve --remote`. Clear the remote field or update the CLI.",
+  "settings.serve.remoteErrorWhitespace": "Remote URL cannot contain whitespace.",
+  "settings.serve.remoteErrorScheme": "Remote URL must start with ws:// or wss://.",
+  "settings.serve.remoteErrorHost": "Remote URL is missing a host.",
+  "settings.serve.remoteErrorSecret":
+    "Do not include secrets (server-key, token, …) in the remote URL query.",
   "settings.serve.secret": "Secret",
   "settings.serve.secretNone": "— (generated on start)",
   "settings.serve.secretHint":
     "Full secret is never logged and is not re-fetched after start. Only the last 4 characters are shown.",
+  "settings.serve.connectionTemplate": "Client connection string",
+  "settings.serve.connectionTemplateNone":
+    "— (available after start; secret masked in status)",
+  "settings.serve.connectionTemplateHint":
+    "Clients attach with `grok --remote ws://{bind}/ws --secret <token>` (or the ws URL with `?server-key=`). Full values are copyable once after Start.",
   "settings.serve.copyUrl": "Copy connection URL",
   "settings.serve.copyUrlHint": "Copies the full ws:// URL including secret (available once after start).",
+  "settings.serve.copyCli": "Copy CLI string",
+  "settings.serve.copyCliHint":
+    "Copies `grok --remote ws://…/ws --secret …` (available once after start).",
   "settings.serve.copyUrlUnavailable":
-    "Connection URL is only available right after Start in this app session. Restart serve to copy again.",
+    "Full connection values are only available right after Start in this app session. Restart serve to copy again.",
   "settings.serve.copied": "Copied",
   "settings.serve.actions": "Controls",
   "settings.serve.start": "Start serve",
@@ -1435,7 +1459,7 @@ const en = {
   "settings.serve.stop": "Stop serve",
   "settings.serve.stopping": "Stopping…",
   "settings.serve.startHint":
-    "Starts `grok agent serve --bind 127.0.0.1:2419 --secret <auto>`. On start, the connection URL is copied once (ws://…/ws?server-key=…). Stop only affects processes started from this app.",
+    "Starts `grok agent serve --bind 127.0.0.1:2419 --secret <auto> [--remote <url>]`. On start, the client CLI string is copied once. Stop only affects processes started from this app.",
   "settings.serve.unsupportedBody":
     "This Grok Build CLI version does not expose `agent serve`. Update the CLI under Runtime → CLI, or run serve outside the app.",
   "settings.closeToTray": "Close window to tray",
@@ -4925,7 +4949,7 @@ const zh: Record<MessageKey, string> = {
     "WebSocket serve 由下方区块管理（`grok agent serve`）。启动后密钥仅显示掩码。",
   "settings.serve.title": "Agent serve（WebSocket）",
   "settings.serve.desc":
-    "将 `grok agent serve` 作为本地 WebSocket ACP 服务运行。默认监听 127.0.0.1:2419。密钥自动生成；完整令牌仅在启动时提供一次以便复制。",
+    "将 `grok agent serve` 作为本地 WebSocket ACP 服务运行。默认监听 127.0.0.1:2419。可选 `--remote` 代理模式。密钥自动生成；完整令牌仅在启动时提供一次以便复制。",
   "settings.serve.stateRunning": "运行中",
   "settings.serve.stateStopped": "已停止",
   "settings.serve.stateError": "错误",
@@ -4935,14 +4959,37 @@ const zh: Record<MessageKey, string> = {
   "settings.serve.bindDefault": "127.0.0.1:2419",
   "settings.serve.portOpen": "端口已打开",
   "settings.serve.portClosed": "端口未打开",
+  "settings.serve.healthNote":
+    "健康检查仅探测本地 bind 的 TCP。可选代理 `--remote` 上游不会被探测。完整密钥永不写入日志。",
+  "settings.serve.remote": "远程 URL（代理，可选）",
+  "settings.serve.remoteDesc":
+    "填写后以 `grok agent serve --remote <URL>` 启动（代理模式）。留空则为普通本地 WebSocket 服务。",
+  "settings.serve.remotePlaceholder": "ws://upstream.example:9000/agent",
+  "settings.serve.remoteHint":
+    "可选。使用 ws:// 或 wss://（http(s) 会改写）。不要在 URL 中放入密钥。",
+  "settings.serve.remoteActive": "当前代理远程：{url}",
+  "settings.serve.remoteUnsupported":
+    "当前 Grok Build CLI 版本不支持 `agent serve --remote`。请清空远程字段或更新 CLI。",
+  "settings.serve.remoteErrorWhitespace": "远程 URL 不能包含空白字符。",
+  "settings.serve.remoteErrorScheme": "远程 URL 必须以 ws:// 或 wss:// 开头。",
+  "settings.serve.remoteErrorHost": "远程 URL 缺少主机名。",
+  "settings.serve.remoteErrorSecret":
+    "不要在远程 URL 查询参数中包含密钥（server-key、token 等）。",
   "settings.serve.secret": "密钥",
   "settings.serve.secretNone": "—（启动时生成）",
   "settings.serve.secretHint":
     "完整密钥永不写入日志，启动后也不会再次拉取。界面仅显示末 4 位。",
+  "settings.serve.connectionTemplate": "客户端连接字符串",
+  "settings.serve.connectionTemplateNone": "—（启动后可用；状态中密钥已脱敏）",
+  "settings.serve.connectionTemplateHint":
+    "客户端使用 `grok --remote ws://{bind}/ws --secret <token>`（或带 `?server-key=` 的 ws URL）连接。完整值仅在启动后可复制一次。",
   "settings.serve.copyUrl": "复制连接 URL",
   "settings.serve.copyUrlHint": "复制含密钥的完整 ws:// URL（仅启动后一次可用）。",
+  "settings.serve.copyCli": "复制 CLI 字符串",
+  "settings.serve.copyCliHint":
+    "复制 `grok --remote ws://…/ws --secret …`（仅启动后一次可用）。",
   "settings.serve.copyUrlUnavailable":
-    "连接 URL 仅在本应用会话中启动后可用。若要再次复制，请重新启动 serve。",
+    "完整连接值仅在本应用会话中启动后可用。若要再次复制，请重新启动 serve。",
   "settings.serve.copied": "已复制",
   "settings.serve.actions": "操作",
   "settings.serve.start": "启动 serve",
@@ -4950,7 +4997,7 @@ const zh: Record<MessageKey, string> = {
   "settings.serve.stop": "停止 serve",
   "settings.serve.stopping": "停止中…",
   "settings.serve.startHint":
-    "后台启动 `grok agent serve --bind 127.0.0.1:2419 --secret <自动>`。启动时会复制一次连接 URL（ws://…/ws?server-key=…）。停止仅作用于本应用拉起的进程。",
+    "后台启动 `grok agent serve --bind 127.0.0.1:2419 --secret <自动> [--remote <url>]`。启动时会复制一次客户端 CLI 字符串。停止仅作用于本应用拉起的进程。",
   "settings.serve.unsupportedBody":
     "当前 Grok Build CLI 版本没有 `agent serve`。请在「运行时 → CLI」更新，或在应用外运行 serve。",
   "settings.closeToTray": "关闭窗口时最小化到托盘",

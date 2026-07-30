@@ -1347,7 +1347,7 @@ export const zhTW: Record<MessageKey, string> = {
     "WebSocket serve 由下方區塊管理（`grok agent serve`）。啟動後密鑰僅顯示遮罩。",
   "settings.serve.title": "Agent serve（WebSocket）",
   "settings.serve.desc":
-    "將 `grok agent serve` 作為本機 WebSocket ACP 服務執行。預設監聽 127.0.0.1:2419。密鑰自動產生；完整權杖僅在啟動時提供一次以便複製。",
+    "將 `grok agent serve` 作為本機 WebSocket ACP 服務執行。預設監聽 127.0.0.1:2419。可選 `--remote` 代理模式。密鑰自動產生；完整權杖僅在啟動時提供一次以便複製。",
   "settings.serve.stateRunning": "執行中",
   "settings.serve.stateStopped": "已停止",
   "settings.serve.stateError": "錯誤",
@@ -1357,14 +1357,37 @@ export const zhTW: Record<MessageKey, string> = {
   "settings.serve.bindDefault": "127.0.0.1:2419",
   "settings.serve.portOpen": "連接埠已開啟",
   "settings.serve.portClosed": "連接埠未開啟",
+  "settings.serve.healthNote":
+    "健康檢查僅探測本機 bind 的 TCP。可選代理 `--remote` 上游不會被探測。完整密鑰永不寫入日誌。",
+  "settings.serve.remote": "遠端 URL（代理，可選）",
+  "settings.serve.remoteDesc":
+    "填寫後以 `grok agent serve --remote <URL>` 啟動（代理模式）。留空則為普通本機 WebSocket 服務。",
+  "settings.serve.remotePlaceholder": "ws://upstream.example:9000/agent",
+  "settings.serve.remoteHint":
+    "可選。使用 ws:// 或 wss://（http(s) 會改寫）。不要在 URL 中放入密鑰。",
+  "settings.serve.remoteActive": "目前代理遠端：{url}",
+  "settings.serve.remoteUnsupported":
+    "目前 Grok Build CLI 版本不支援 `agent serve --remote`。請清空遠端欄位或更新 CLI。",
+  "settings.serve.remoteErrorWhitespace": "遠端 URL 不能包含空白字元。",
+  "settings.serve.remoteErrorScheme": "遠端 URL 必須以 ws:// 或 wss:// 開頭。",
+  "settings.serve.remoteErrorHost": "遠端 URL 缺少主機名。",
+  "settings.serve.remoteErrorSecret":
+    "不要在遠端 URL 查詢參數中包含密鑰（server-key、token 等）。",
   "settings.serve.secret": "密鑰",
   "settings.serve.secretNone": "—（啟動時產生）",
   "settings.serve.secretHint":
     "完整密鑰永不寫入日誌，啟動後也不會再次拉取。介面僅顯示末 4 碼。",
+  "settings.serve.connectionTemplate": "用戶端連線字串",
+  "settings.serve.connectionTemplateNone": "—（啟動後可用；狀態中密鑰已去敏）",
+  "settings.serve.connectionTemplateHint":
+    "用戶端使用 `grok --remote ws://{bind}/ws --secret <token>`（或帶 `?server-key=` 的 ws URL）連線。完整值僅在啟動後可複製一次。",
   "settings.serve.copyUrl": "複製連線 URL",
   "settings.serve.copyUrlHint": "複製含密鑰的完整 ws:// URL（僅啟動後一次可用）。",
+  "settings.serve.copyCli": "複製 CLI 字串",
+  "settings.serve.copyCliHint":
+    "複製 `grok --remote ws://…/ws --secret …`（僅啟動後一次可用）。",
   "settings.serve.copyUrlUnavailable":
-    "連線 URL 僅在本應用工作階段中啟動後可用。若要再次複製，請重新啟動 serve。",
+    "完整連線值僅在本應用工作階段中啟動後可用。若要再次複製，請重新啟動 serve。",
   "settings.serve.copied": "已複製",
   "settings.serve.actions": "操作",
   "settings.serve.start": "啟動 serve",
@@ -1372,7 +1395,7 @@ export const zhTW: Record<MessageKey, string> = {
   "settings.serve.stop": "停止 serve",
   "settings.serve.stopping": "停止中…",
   "settings.serve.startHint":
-    "背景啟動 `grok agent serve --bind 127.0.0.1:2419 --secret <自動>`。啟動時會複製一次連線 URL（ws://…/ws?server-key=…）。停止僅作用於本應用拉起的行程。",
+    "背景啟動 `grok agent serve --bind 127.0.0.1:2419 --secret <自動> [--remote <url>]`。啟動時會複製一次用戶端 CLI 字串。停止僅作用於本應用拉起的行程。",
   "settings.serve.unsupportedBody":
     "目前 Grok Build CLI 版本沒有 `agent serve`。請在「執行環境 → CLI」更新，或在應用外執行 serve。",
   "settings.closeToTray": "關閉視窗時縮到系統匣",

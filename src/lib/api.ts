@@ -3432,6 +3432,8 @@ export async function leaderKillAll(): Promise<{
 export type ServeStatus = {
   state: "stopped" | "running" | "error" | "unsupported" | string;
   bind: string;
+  /** Optional proxy-mode upstream URL when started with `--remote`. */
+  remote?: string | null;
   /** Masked secret (`••••` + last 4); never the full token. */
   secretMasked?: string | null;
   /** Last 4 chars of secret when known. */
@@ -3441,11 +3443,20 @@ export type ServeStatus = {
    * (one-time copy). Status polls omit this.
    */
   connectionUrl?: string | null;
+  /**
+   * Full client CLI string (`grok --remote ws://…/ws --secret …`) — only on start.
+   */
+  connectionCli?: string | null;
+  /** Masked CLI template for status polls (secret last-4 only). */
+  connectionCliMasked?: string | null;
   pid?: number | null;
   trackedPid?: number | null;
+  /** Local bind TCP probe only — does not check optional `--remote` upstream. */
   portOpen: boolean;
   cliFound: boolean;
   cliSupportsServe: boolean;
+  /** CLI exposes `agent serve --remote` (proxy mode). */
+  cliSupportsRemote?: boolean;
   message?: string | null;
 };
 
@@ -3453,9 +3464,18 @@ export async function serveStatus(): Promise<ServeStatus> {
   return invoke<ServeStatus>("serve_status");
 }
 
-/** Start serve; response may include one-time `connectionUrl` for clipboard copy. */
-export async function serveStart(bind?: string | null): Promise<ServeStatus> {
-  return invoke<ServeStatus>("serve_start", { bind: bind ?? null });
+/**
+ * Start serve; response may include one-time `connectionUrl` / `connectionCli`.
+ * Optional `remote` → `grok agent serve --remote <URL>` (proxy mode).
+ */
+export async function serveStart(
+  bind?: string | null,
+  remote?: string | null,
+): Promise<ServeStatus> {
+  return invoke<ServeStatus>("serve_start", {
+    bind: bind ?? null,
+    remote: remote ?? null,
+  });
 }
 
 export async function serveStop(): Promise<ServeStatus> {
