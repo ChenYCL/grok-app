@@ -40,6 +40,7 @@ See `docs/llm-wiki/release.md`.
 - Tasks tree · Stop-all skip-confirm · Plan history · Mirror write guard · Reliability / Leader / Memory / MCP / CLI notice (prior)
 - **Mirror write audit log** (Settings → Remote → Phone mirror): localStorage ring (~50) of write enable/disable, link regenerate, host start/stop — no tokens/URLs stored; collapsible list + in-app clear confirm
 - **Subagent worktree (cwd) badge**: when `spawn_subagent` / Agent / subagent tool_step data includes a cwd or worktree path (labeled fields, JSON, or absolute path), Tasks panel shows a compact **WT** / truncated-path badge and can reveal or copy the path — UI-only over existing tool_step data; nested tree unchanged
+- **Subagent worktree bind (Tasks)**: from a task row with known cwd, **Use as chat folder** (badge click or detail action) binds the open chat to that path as agent cwd — reuses worktree switch / `project_add`, marks session WT meta; still reveal + copy; no “bind next subagent” session menu
 - **Plan depth**: request-changes optional revision note (in-app modal → `session_resolve_plan` feedback); plan history search/filter by title·preview + decision chips, clear-all (in-app confirm), open chat when session still present
 - **Disallowed built-in tools** (Settings → General → Agent): chips + freeform list → `AppSettings.disallowedTools` / CLI `--disallowed-tools a,b`; coexists with Disable web search; soft-respawn on change
 - **Agent profile path** (Settings → General → Agent): optional file for `grok agent --agent-profile`; soft-respawns on change
@@ -67,7 +68,7 @@ See `docs/llm-wiki/release.md`.
 - **会话/侧栏**：复制 vs 分叉、恢复对话并还原代码（干净 worktree）、便签、会话规则（`--rules`）、会话最大轮次（`--max-turns` 覆盖；空/0 继承全局）、静音、未读点、HTML 导出、按天归档、日期分组、项目色、j/k 导航、CLI 对齐 worktree（默认 `~/.grok/worktrees`、侧栏 CLI/WT 标记）
 - **外观/壳**：主题定时、跟随系统语言、忙碌退出确认、托盘角标、快捷键冲突面板（录制警告 + 重置冲突项）
 - **Agent**：禁用内置工具（芯片 + 自由列表 → `--disallowed-tools`；与禁用网页搜索并存；更改 soft-respawn）；可选 profile 路径（`--agent-profile`）
-- **系统**：**Agent serve** 启停（设置 → 运行时 → 连接）；**手机镜像写入审计**（本地 ring、无密钥/URL）；**Trace 历史管理**（搜索/移除/清空确认/可选大小）；任务面板子代理 **WT/cwd** 标记；**Agent 仪表盘** 状态/搜索/项目筛选
+- **系统**：**Agent serve** 启停（设置 → 运行时 → 连接）；**手机镜像写入审计**（本地 ring、无密钥/URL）；**Trace 历史管理**（搜索/移除/清空确认/可选大小）；任务面板子代理 **WT/cwd** 标记与 **用作对话目录**（绑定当前会话 cwd）；**Agent 仪表盘** 状态/搜索/项目筛选
 - **计划**：**请求修改** 可选修订说明；计划历史搜索/决策筛选、清空确认、会话仍在时可打开
 - **扩展/市场**：目录插件详情面板（描述/版本/组件徽章 + 安装/重装）；安装失败行内重试；已安装 provides 结构化摘要
 - **权限/CLI**：`--permission-mode` 映射与 spawn；设置页 CLI 标签与高级选择；**Auto** 策略；Doctor 安全批量修复；**删除磁盘 CLI 会话**（单条/全部未关联；限定 `GROK_HOME/sessions`）
