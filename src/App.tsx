@@ -17043,7 +17043,23 @@ export default function App() {
         }
         voiceId={voiceId}
         keepAgentsOnEnd={voiceKeepAgentsOnEnd}
+        hasActiveSession={Boolean(session.sessionId)}
         onClose={() => setLiveVoiceOpen(false)}
+        onSendTranscriptAsPrompt={
+          session.sessionId
+            ? async (prompt) => {
+                const ok = await executeSend({
+                  storedDisplay: prompt,
+                  att: [],
+                  goalMode: false,
+                  targetSessionId: session.sessionId,
+                });
+                if (ok) {
+                  showToast(tr("voice.transcriptSent"), 2800);
+                }
+              }
+            : undefined
+        }
         onOpenSession={(id) => {
           setLiveVoiceOpen(false);
           void (async () => {

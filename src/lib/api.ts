@@ -2734,6 +2734,8 @@ export interface VoiceSessionState {
   mock?: boolean;
   listening?: boolean;
   speaking?: boolean;
+  /** Host: model / tool turn in progress (from voice://state). */
+  thinking?: boolean;
 }
 
 export async function voiceState(): Promise<VoiceSessionState> {
