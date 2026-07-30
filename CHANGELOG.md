@@ -13,7 +13,7 @@ See `docs/llm-wiki/release.md`.
 
 ### Added
 
-- **Per-session mute** for desktop notifications (context menu Mute / Unmute; sidebar muted icon; in-app toasts still show)
+- **Send queue reorder**: Up/Down controls on each queued follow-up so send order can be changed before auto-flush
 - **Desktop notification click** opens the session that fired turn-done / permission / ask_user
 - **Send queue Edit** for follow-up items (GlassModal; empty text blocked unless attachments remain)
 - **Context usage chip**: System / Tools / History breakdown (estimate or agent-known buckets)
@@ -35,8 +35,7 @@ See `docs/llm-wiki/release.md`.
 
 **中文 · 新增**
 
-- 按会话静音桌面通知（菜单 Mute/Unmute；侧栏静音图标；应用内 Toast 仍显示）
-- 通知点击跳转会话；发送队列可编辑；上下文 System/Tools/History；Compact 增强
+- 发送队列可上下调整顺序；通知点击跳转会话；发送队列可编辑；上下文 System/Tools/History；Compact 增强
 - Worktree 会话徽章与管理；Fork 可选恢复代码；沙箱项目覆盖
 - MCP 状态灯；Memory 浏览器；产品教程；Agent 总览；Trace 历史；快捷键重映射
 - 启动后 CLI 更新轻提示（#238）

@@ -8548,6 +8548,39 @@ button.composer__context-item {
   color: var(--text-primary);
 }
 
+.composer__queue-move {
+  flex: 0 0 auto;
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+}
+
+.composer__queue-move-btn {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 14px;
+  padding: 0;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  line-height: 0;
+}
+
+.composer__queue-move-btn:hover:not(:disabled) {
+  background: var(--bg-elevated, var(--bg-hover));
+  color: var(--text-primary);
+}
+
+.composer__queue-move-btn:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
 
 .composer__queue-edit {
   flex: 0 0 auto;

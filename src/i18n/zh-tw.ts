@@ -554,6 +554,8 @@ export const zhTW: Record<MessageKey, string> = {
   "composer.queueHoldRetry": "重試",
   "composer.queueClear": "清空",
   "composer.queueRemove": "從佇列移除",
+  "composer.queueMoveUp": "在佇列中上移",
+  "composer.queueMoveDown": "在佇列中下移",
   "composer.queueEdit": "編輯",
   "composer.queueEditTitle": "編輯佇列訊息",
   "composer.queueEditSave": "儲存",
