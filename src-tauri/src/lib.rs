@@ -135,17 +135,20 @@ pub fn run() {
         .register_asynchronous_uri_scheme_protocol("media", |_ctx, request, responder| {
             media_protocol::dispatch(request, responder);
         })
-        // Close button / Alt+F4: hide to tray (default) or quit — Settings → General.
-        // Full exit always available via tray "Quit Grok" or Cmd+Q.
+        // Close button / Alt+F4: hide to tray (default) or ask frontend to quit.
+        // When close-to-tray is off, prevent default so App can confirm if agents are busy.
+        // Tray "Quit Grok" emits the same event (see tray.rs). Force exit: `app_force_quit`.
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
-                use tauri::Manager;
+                use tauri::{Emitter, Manager};
                 let close_to_tray = store::load_settings().close_to_tray;
                 if close_to_tray {
                     api.prevent_close();
                     tray::hide_to_tray(window.app_handle());
+                } else {
+                    api.prevent_close();
+                    let _ = window.emit("app://close-requested", ());
                 }
-                // else: allow default close → process exit
             }
         })
         .setup(|app| {
@@ -387,6 +390,7 @@ pub fn run() {
             commands::fs_write_absolute,
             tray::tray_refresh,
             tray::tray_set_busy_count,
+            commands::app_force_quit,
             commands::fs_read_absolute,
             commands::fs_open_path,
             commands::session_auto_title,

@@ -1159,6 +1159,13 @@ const en = {
   "settings.stopAllSkipConfirm": "Skip confirm when stopping all",
   "settings.stopAllSkipConfirmDesc":
     "When on, Stop all on Tasks / Agent dashboard runs immediately without a confirmation dialog. Off by default.",
+  "settings.alwaysQuitWithoutAsking": "Always quit without asking",
+  "settings.alwaysQuitWithoutAskingDesc":
+    "When on, quit immediately even if agents are still busy (window close with close-to-tray off, or Quit from the tray). Off by default — you get a confirmation dialog while sessions are running.",
+  "app.quitBusy.title": "Quit while agents are busy?",
+  "app.quitBusy.message":
+    "{n} session(s) are still running. Quitting will stop in-progress agent work.",
+  "app.quitBusy.confirm": "Quit",
   "settings.prefsScope": "Remember model & permission at",
   "settings.prefsScopeDesc":
     "Global: all chats. Project: each workspace. Session: only the current chat.",
@@ -3877,6 +3884,13 @@ const zh: Record<MessageKey, string> = {
   "settings.stopAllSkipConfirm": "全部停止时跳过确认",
   "settings.stopAllSkipConfirmDesc":
     "开启后，任务面板 / Agent 总览中的「全部停止」不再弹出确认对话框，立即执行。默认关闭。",
+  "settings.alwaysQuitWithoutAsking": "退出时不再询问",
+  "settings.alwaysQuitWithoutAskingDesc":
+    "开启后，即使仍有 Agent 忙碌也立即退出（关闭到托盘关闭时，或托盘「退出」）。默认关闭——有忙碌会话时会弹出确认。",
+  "app.quitBusy.title": "仍有 Agent 忙碌，确定退出？",
+  "app.quitBusy.message":
+    "还有 {n} 个会话在运行。退出会中断进行中的 Agent 工作。",
+  "app.quitBusy.confirm": "退出",
   "settings.prefsScope": "模型与权限记忆范围",
   "settings.prefsScopeDesc":
     "全局：所有对话共用。项目：按工作区记忆。会话：仅当前聊天。",

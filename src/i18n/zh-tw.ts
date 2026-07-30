@@ -1112,6 +1112,13 @@ export const zhTW: Record<MessageKey, string> = {
   "settings.stopAllSkipConfirm": "全部停止時跳過確認",
   "settings.stopAllSkipConfirmDesc":
     "開啟後，任務面板 / Agent 總覽中的「全部停止」不再彈出確認對話框，立即執行。預設關閉。",
+  "settings.alwaysQuitWithoutAsking": "結束時不再詢問",
+  "settings.alwaysQuitWithoutAskingDesc":
+    "開啟後，即使仍有 Agent 忙碌也立即結束（關閉到系統匣關閉時，或系統匣「結束」）。預設關閉——有忙碌對話時會彈出確認。",
+  "app.quitBusy.title": "仍有 Agent 忙碌，確定結束？",
+  "app.quitBusy.message":
+    "還有 {n} 個對話在執行。結束會中斷進行中的 Agent 工作。",
+  "app.quitBusy.confirm": "結束",
   "settings.prefsScope": "模型與權限記憶範圍",
   "settings.prefsScopeDesc":
     "全域：所有對話共用。專案：依工作區記憶。對話：僅目前聊天。",
