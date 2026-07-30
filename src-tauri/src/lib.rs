@@ -39,6 +39,7 @@ mod cli_sessions;
 mod turn_complete;
 mod store_lock;
 mod automation_runner;
+mod schedules_launch_agent;
 mod permission;
 mod project_rules;
 mod skill_edit;
@@ -137,13 +138,20 @@ pub fn run() {
             media_protocol::dispatch(request, responder);
         })
         // Close button / Alt+F4: hide to tray (default) or ask frontend to quit.
-        // When close-to-tray is off, prevent default so App can confirm if agents are busy.
+        // When close-to-tray is off, prevent default so App can confirm if agents are busy
+        // — unless keep_tray_for_schedules is on and any automation is enabled (still tray).
         // Tray "Quit Grok" emits the same event (see tray.rs). Force exit: `app_force_quit`.
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                 use tauri::{Emitter, Manager};
-                let close_to_tray = store::load_settings().close_to_tray;
-                if close_to_tray {
+                let settings = store::load_settings();
+                let any_enabled = store::load_automations().iter().any(|a| a.enabled);
+                let hide = automation_runner::should_hide_to_tray_on_close(
+                    settings.close_to_tray,
+                    settings.keep_tray_for_schedules,
+                    any_enabled,
+                );
+                if hide {
                     api.prevent_close();
                     tray::hide_to_tray(window.app_handle());
                 } else {
@@ -192,8 +200,13 @@ pub fn run() {
                 let mgr = app.state::<Arc<SessionManager>>().inner().clone();
                 mgr.start_idle_watchdog(app.handle().clone());
                 mgr.start_stream_stall_watchdog(app.handle().clone());
-                // Scheduled automations: host tick works while window is in tray.
+                // Scheduled automations: host tick works while window is in tray
+                // (and with --start-in-tray / keep_tray_for_schedules). No daemon.
                 automation_runner::start(app.handle().clone(), mgr);
+            }
+            // LaunchAgent / helper: open into tray so schedules fire without focus steal.
+            if schedules_launch_agent::wants_start_in_tray() {
+                tray::hide_to_tray(app.handle());
             }
             // Remote IM: restore Feishu/Weixin connectors after App restart so
             // already-bound channels keep receiving messages without a manual Start.
@@ -408,6 +421,10 @@ pub fn run() {
             commands::automation_set_enabled,
             commands::automation_mark_run,
             commands::automation_delete,
+            commands::automation_runner_status,
+            commands::schedules_launch_agent_status,
+            commands::schedules_launch_agent_set_enabled,
+            commands::schedules_launch_agent_reveal_helper,
             commands::account_status,
             commands::account_login,
             commands::account_login_cancel,

@@ -424,6 +424,12 @@ export interface SettingsPageProps {
   onReopenLastSession?: (v: boolean) => void;
   closeToTray?: boolean;
   onCloseToTray?: (v: boolean) => void;
+  /**
+   * When any scheduled task is enabled, still hide to tray on close so
+   * automation_runner keeps ticking (default on). Not a daemon.
+   */
+  keepTrayForSchedules?: boolean;
+  onKeepTrayForSchedules?: (v: boolean) => void;
   /** Show busy session count on dock badge / tray tooltip (localStorage; default on). */
   trayBusyBadge?: boolean;
   onTrayBusyBadge?: (v: boolean) => void;
@@ -973,6 +979,8 @@ export function SettingsPage({
   onReopenLastSession,
   closeToTray = true,
   onCloseToTray,
+  keepTrayForSchedules = true,
+  onKeepTrayForSchedules,
   trayBusyBadge = true,
   onTrayBusyBadge,
   launchAtLogin = false,
@@ -2861,6 +2869,31 @@ export function SettingsPage({
                     checked={!!closeToTray}
                     onChange={() => onCloseToTray(!closeToTray)}
                     ariaLabel={t("settings.closeToTray")}
+                  />
+                </div>
+              ) : null}
+              {onKeepTrayForSchedules ? (
+                <div
+                  className={
+                    "settings-row" +
+                    rowHighlight("settings-anchor-keepTrayForSchedules")
+                  }
+                  id="settings-anchor-keepTrayForSchedules"
+                >
+                  <div className="settings-row__text">
+                    <div className="settings-row__label">
+                      {t("settings.keepTrayForSchedules")}
+                    </div>
+                    <div className="settings-row__desc">
+                      {t("settings.keepTrayForSchedulesDesc")}
+                    </div>
+                  </div>
+                  <UiCheck
+                    checked={!!keepTrayForSchedules}
+                    onChange={() =>
+                      onKeepTrayForSchedules(!keepTrayForSchedules)
+                    }
+                    ariaLabel={t("settings.keepTrayForSchedules")}
                   />
                 </div>
               ) : null}

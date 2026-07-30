@@ -2002,6 +2002,7 @@ export default function App() {
   /** Default off → launch on draft new-chat page. */
   const [reopenLastSession, setReopenLastSession] = useState(false);
   const [closeToTray, setCloseToTray] = useState(true);
+  const [keepTrayForSchedules, setKeepTrayForSchedules] = useState(true);
   const [launchAtLogin, setLaunchAtLogin] = useState(false);
   /** Desktop notification prefs (default on). Refs keep event listeners fresh. */
   const [notifyOnTurnDone, setNotifyOnTurnDone] = useState(true);
@@ -2764,6 +2765,7 @@ export default function App() {
       // Opt-in only (missing key / false → draft new chat on launch).
       setReopenLastSession(settings.reopenLastSession === true);
       setCloseToTray(settings.closeToTray !== false);
+      setKeepTrayForSchedules(settings.keepTrayForSchedules !== false);
       setLaunchAtLogin(settings.launchAtLogin === true);
       setNotifyOnTurnDone(settings.notifyOnTurnDone !== false);
       setNotifyOnPermission(settings.notifyOnPermission !== false);
@@ -13379,6 +13381,13 @@ export default function App() {
               api.settingsSet({ ...s, closeToTray: v }),
             );
           }}
+          keepTrayForSchedules={keepTrayForSchedules}
+          onKeepTrayForSchedules={(v) => {
+            setKeepTrayForSchedules(v);
+            void api.settingsGet().then((s) =>
+              api.settingsSet({ ...s, keepTrayForSchedules: v }),
+            );
+          }}
           trayBusyBadge={trayBusyBadge}
           onTrayBusyBadge={(v) => {
             saveTrayBusyBadgePref(v, localStorage);
@@ -14917,6 +14926,30 @@ export default function App() {
               defaultModelId={modelId}
               defaultEffort={effort}
               models={availableModels}
+              closeToTray={closeToTray}
+              keepTrayForSchedules={keepTrayForSchedules}
+              onKeepTrayForSchedules={(v) => {
+                setKeepTrayForSchedules(v);
+                void api.settingsGet().then((s) =>
+                  api.settingsSet({ ...s, keepTrayForSchedules: v }),
+                );
+              }}
+              onOpenKeepTraySetting={() => {
+                navigateSettings("general", "app");
+                window.setTimeout(() => {
+                  const el = document.getElementById(
+                    "settings-anchor-keepTrayForSchedules",
+                  );
+                  if (el) {
+                    el.scrollIntoView({ block: "center", behavior: "smooth" });
+                    el.classList.add("is-search-hit");
+                    window.setTimeout(
+                      () => el.classList.remove("is-search-hit"),
+                      1600,
+                    );
+                  }
+                }, 120);
+              }}
               onAiCreate={() => {
                 void newChat(null, {
                   seedDraft: aiCreateSeedPrompt("Grok"),

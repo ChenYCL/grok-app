@@ -1254,6 +1254,9 @@ export const zhTW: Record<MessageKey, string> = {
   "settings.closeToTray": "關閉視窗時縮到系統匣",
   "settings.closeToTrayDesc":
     "開啟後，關閉按鈕會隱藏到選單列/系統匣。關閉此項則關閉視窗即結束（系統匣「結束」始終可用）。",
+  "settings.keepTrayForSchedules": "為已排程任務保留系統匣",
+  "settings.keepTrayForSchedulesDesc":
+    "只要有已啟用的已排程任務，關閉視窗仍會收到系統匣以便繼續排程——即使關閉了「關閉視窗時縮到系統匣」。完全結束應用仍會暫停任務。沒有獨立的背景守護行程。",
   "settings.trayBusyBadge": "在 Dock/系統匣顯示忙碌數",
   "settings.trayBusyBadgeDesc":
     "有 Agent 忙碌時，在 macOS Dock 角標（或其他平台系統匣提示）顯示忙碌工作階段數。關閉則清除角標。",
@@ -2531,7 +2534,7 @@ export const zhTW: Record<MessageKey, string> = {
   "automations.loading": "載入中…",
   "automations.emptyTitle": "還沒有已排程任務",
   "automations.emptyHint":
-    "可用 AI 建立或填寫表單。應用程式開啟時會依排程觸發任務。",
+    "可用 AI 建立或填寫表單。應用開啟或收到系統匣時會依排程觸發；完全結束後暫停。",
   "automations.formTitle": "新增已排程任務",
   "automations.editTitle": "編輯已排程任務",
   "automations.edit": "編輯",
@@ -2573,6 +2576,24 @@ export const zhTW: Record<MessageKey, string> = {
   "automations.hostRunFailed": "已排程任務「{title}」失敗：{detail}",
   "automations.trayHint":
     "應用開啟或收進選單列時都會執行已排程任務；完全結束應用後暫停。",
+  "automations.runner.section": "背景排程",
+  "automations.runner.statusLabel": "Host 排程器",
+  "automations.runner.statusRunning":
+    "已在本行程中執行（每 {secs} 秒檢查一次）。不需要主視窗——僅系統匣即可。",
+  "automations.runner.statusIdle":
+    "目前環境未啟動排程器（桌面端會在應用啟動時啟動）。",
+  "automations.runner.lastTick": "上次檢查 {time}",
+  "automations.runner.activeTray":
+    "有 {n} 個已啟用的已排程任務：僅在 Grok 開啟或收到系統匣時執行。關閉視窗可保留行程以便繼續排程。完全結束仍會暫停——沒有獨立的背景守護行程。",
+  "automations.runner.needsTray":
+    "有 {n} 個已啟用的已排程任務需要應用行程。請開啟「為已排程任務保留系統匣」（或「關閉到系統匣」），避免關窗即停。完全結束仍會暫停——沒有獨立守護行程。",
+  "automations.runner.quitPauses":
+    "有 {n} 個已開啟的已排程任務。排程僅在本應用行程執行時觸發——沒有獨立的背景守護行程。",
+  "automations.runner.openSettings": "開啟系統匣相關設定",
+  "automations.launchAgent.title": "macOS LaunchAgent 助手",
+  "automations.launchAgent.desc":
+    "可選：在應用資料目錄產生助手腳本，並安裝使用者級 LaunchAgent，在登入時啟動完整 Grok 應用，並在崩潰後重新啟動。不是無介面排程守護行程——任務仍在應用行程內（視窗或系統匣）觸發。",
+  "automations.launchAgent.reveal": "顯示助手檔案",
   "automations.aiComposerHint":
     "用自然語言描述要做什麼、多久一次——準備好後 Grok 會自動建立已排程任務。",
   "automations.createdToast": "已排程：{title}",
