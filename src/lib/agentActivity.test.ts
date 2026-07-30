@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   collectActivitySessions,
+  countBusyLiveMapSessions,
   isActiveSessionSnapshot,
   otherBusySessions,
   stoppableActivitySessions,
@@ -92,5 +93,31 @@ describe("collectActivitySessions", () => {
       "a",
       "c",
     ]);
+  });
+});
+
+describe("countBusyLiveMapSessions", () => {
+  it("counts streaming / permission / connecting only", () => {
+    const liveMap: SessionLiveMap = {
+      a: { ...emptyLiveSnapshot("a", 1), state: "streaming" },
+      b: {
+        ...emptyLiveSnapshot("b", 2),
+        state: "ready",
+        awaitingPermission: true,
+      },
+      c: { ...emptyLiveSnapshot("c", 3), state: "connecting" },
+      d: { ...emptyLiveSnapshot("d", 4), state: "ready" },
+      e: { ...emptyLiveSnapshot("e", 5), state: "idle" },
+    };
+    expect(countBusyLiveMapSessions(liveMap)).toBe(3);
+  });
+
+  it("returns 0 for empty / idle maps", () => {
+    expect(countBusyLiveMapSessions({})).toBe(0);
+    expect(
+      countBusyLiveMapSessions({
+        x: { ...emptyLiveSnapshot("x", 1), state: "ready" },
+      }),
+    ).toBe(0);
   });
 });

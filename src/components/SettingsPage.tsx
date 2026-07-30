@@ -342,6 +342,9 @@ export interface SettingsPageProps {
   onReopenLastSession?: (v: boolean) => void;
   closeToTray?: boolean;
   onCloseToTray?: (v: boolean) => void;
+  /** Show busy session count on dock badge / tray tooltip (localStorage; default on). */
+  trayBusyBadge?: boolean;
+  onTrayBusyBadge?: (v: boolean) => void;
   /** Start app at OS login (default off). */
   launchAtLogin?: boolean;
   onLaunchAtLogin?: (v: boolean) => void;
@@ -874,6 +877,8 @@ export function SettingsPage({
   onReopenLastSession,
   closeToTray = true,
   onCloseToTray,
+  trayBusyBadge = true,
+  onTrayBusyBadge,
   launchAtLogin = false,
   onLaunchAtLogin,
   windowAlwaysOnTop = false,
@@ -2435,6 +2440,29 @@ export function SettingsPage({
                     checked={!!closeToTray}
                     onChange={() => onCloseToTray(!closeToTray)}
                     ariaLabel={t("settings.closeToTray")}
+                  />
+                </div>
+              ) : null}
+              {onTrayBusyBadge ? (
+                <div
+                  className={
+                    "settings-row" +
+                    rowHighlight("settings-anchor-trayBusyBadge")
+                  }
+                  id="settings-anchor-trayBusyBadge"
+                >
+                  <div className="settings-row__text">
+                    <div className="settings-row__label">
+                      {t("settings.trayBusyBadge")}
+                    </div>
+                    <div className="settings-row__desc">
+                      {t("settings.trayBusyBadgeDesc")}
+                    </div>
+                  </div>
+                  <UiCheck
+                    checked={!!trayBusyBadge}
+                    onChange={() => onTrayBusyBadge(!trayBusyBadge)}
+                    ariaLabel={t("settings.trayBusyBadge")}
                   />
                 </div>
               ) : null}
