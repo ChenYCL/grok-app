@@ -338,8 +338,15 @@ import { VoiceOverlay } from "@/components/VoiceOverlay";
 import {
   filterSessionSearch,
   mergeSessionSearchHits,
+  SESSION_SEARCH_RANK_MODES,
   type SessionContentHit,
+  type SessionSearchRankMode,
 } from "@/lib/sessionSearch";
+import {
+  loadSessionSearchRankPref,
+  saveSessionSearchRankPref,
+  SESSION_SEARCH_RANK_CHANGE_EVENT,
+} from "@/lib/sessionSearchRankPref";
 import {
   defaultPaletteActions,
   filterPaletteActions,
@@ -1377,6 +1384,10 @@ export default function App() {
   appDialogRef.current = appDialog;
   const [showSearch, setShowSearch] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+  /** Keyword vs local hybrid ranking for palette session search. */
+  const [searchRankMode, setSearchRankMode] = useState<SessionSearchRankMode>(
+    () => loadSessionSearchRankPref(),
+  );
   /** Debounced journal content hits from `sessions_search`. */
   const [contentSearchHits, setContentSearchHits] = useState<
     SessionContentHit[]
@@ -1490,6 +1501,25 @@ export default function App() {
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
   }, [showSearch]);
+
+  // Settings (or other windows) may change hybrid rank pref via localStorage event.
+  useEffect(() => {
+    const sync = () => setSearchRankMode(loadSessionSearchRankPref());
+    const onCustom = (e: Event) => {
+      const detail = (e as CustomEvent<SessionSearchRankMode>).detail;
+      if (detail === "hybrid" || detail === "keyword") {
+        setSearchRankMode(detail);
+      } else {
+        sync();
+      }
+    };
+    window.addEventListener(SESSION_SEARCH_RANK_CHANGE_EVENT, onCustom);
+    window.addEventListener("storage", sync);
+    return () => {
+      window.removeEventListener(SESSION_SEARCH_RANK_CHANGE_EVENT, onCustom);
+      window.removeEventListener("storage", sync);
+    };
+  }, []);
 
   useEffect(() => {
     if (!sessionSelectMode) return;
@@ -6798,8 +6828,9 @@ export default function App() {
           archived: s.archived,
         })),
         projects.map((p) => ({ id: p.id, name: p.name, path: p.path })),
+        { rankMode: searchRankMode },
       ),
-    [searchQuery, sessions, projects],
+    [searchQuery, sessions, projects, searchRankMode],
   );
 
   const mergedSessionHits = useMemo(
@@ -6808,8 +6839,9 @@ export default function App() {
         searchQuery,
         searchHits.matchedSessions,
         contentSearchHits,
+        { rankMode: searchRankMode },
       ),
-    [searchQuery, searchHits.matchedSessions, contentSearchHits],
+    [searchQuery, searchHits.matchedSessions, contentSearchHits, searchRankMode],
   );
 
   const paletteActionHits = useMemo(
@@ -18242,6 +18274,43 @@ export default function App() {
               >
                 <IconClose size={16} />
               </button>
+            </div>
+            <div className="search-panel__filters">
+              <div
+                className="search-panel__modes"
+                role="tablist"
+                aria-label={tr("search.rankModeLabel")}
+              >
+                {SESSION_SEARCH_RANK_MODES.map((mode) => {
+                  const labelKey =
+                    mode === "hybrid"
+                      ? ("search.rankHybrid" as const)
+                      : ("search.rankKeyword" as const);
+                  return (
+                    <button
+                      key={mode}
+                      type="button"
+                      role="tab"
+                      aria-selected={searchRankMode === mode}
+                      className={
+                        "search-panel__mode" +
+                        (searchRankMode === mode ? " is-active" : "")
+                      }
+                      onClick={() => {
+                        setSearchRankMode(mode);
+                        saveSessionSearchRankPref(mode);
+                      }}
+                    >
+                      {tr(labelKey)}
+                    </button>
+                  );
+                })}
+              </div>
+              {searchRankMode === "hybrid" ? (
+                <span className="search-panel__rank-hint">
+                  {tr("search.rankHybridHint")}
+                </span>
+              ) : null}
             </div>
             {paletteActionHits.length > 0 && (
               <>

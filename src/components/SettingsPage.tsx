@@ -199,6 +199,11 @@ import {
   saveBackBottomAlwaysPref,
 } from "@/lib/backBottomAlwaysPref";
 import {
+  loadSessionSearchRankPref,
+  saveSessionSearchRankPref,
+} from "@/lib/sessionSearchRankPref";
+import type { SessionSearchRankMode } from "@/lib/sessionSearch";
+import {
   loadToolStepsAutoCollapsePref,
   saveToolStepsAutoCollapsePref,
 } from "@/lib/toolStepsAutoCollapsePref";
@@ -1166,6 +1171,9 @@ export function SettingsPage({
   const [backBottomAlways, setBackBottomAlways] = useState(() =>
     loadBackBottomAlwaysPref(),
   );
+  /** Session search ranking (keyword vs local hybrid) — frontend-only. */
+  const [sessionSearchRank, setSessionSearchRank] =
+    useState<SessionSearchRankMode>(() => loadSessionSearchRankPref());
   /** Live Voice catalog hotkey on/off — frontend-only localStorage. */
   const [voiceHotkeyEnabled, setVoiceHotkeyEnabled] = useState(() =>
     loadVoiceHotkeyEnabled(),
@@ -4045,6 +4053,42 @@ export function SettingsPage({
                         saveBackBottomAlwaysPref(next);
                       }}
                       ariaLabel={t("settings.backBottomAlways")}
+                    />
+                  </div>
+                </div>
+                <div
+                  className={
+                    "settings-card" +
+                    rowHighlight("settings-anchor-sessionSearchRank")
+                  }
+                  id="settings-anchor-sessionSearchRank"
+                >
+                  <div className="settings-row">
+                    <div className="settings-row__text">
+                      <SettingsLabelWithTip
+                        label={t("settings.sessionSearchRank")}
+                        tip={t("settings.sessionSearchRankDesc")}
+                      />
+                    </div>
+                    <Select
+                      value={sessionSearchRank}
+                      aria-label={t("settings.sessionSearchRank")}
+                      onChange={(v) => {
+                        const next: SessionSearchRankMode =
+                          v === "hybrid" ? "hybrid" : "keyword";
+                        setSessionSearchRank(next);
+                        saveSessionSearchRankPref(next);
+                      }}
+                      options={[
+                        {
+                          value: "keyword",
+                          label: t("settings.sessionSearchRank.keyword"),
+                        },
+                        {
+                          value: "hybrid",
+                          label: t("settings.sessionSearchRank.hybrid"),
+                        },
+                      ]}
                     />
                   </div>
                 </div>

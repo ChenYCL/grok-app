@@ -800,6 +800,16 @@ export const zhTW: Record<MessageKey, string> = {
   "search.addProject": "新增專案",
   "search.matchCount": "{n} 處相符",
   "search.searchingContent": "正在搜尋訊息…",
+  "search.rankModeLabel": "搜尋排序",
+  "search.rankKeyword": "關鍵字",
+  "search.rankHybrid": "混合",
+  "search.rankHybridHint":
+    "本機混合：關鍵字 + 標題/摘要詞元重疊排序（非雲端嵌入）",
+  "settings.sessionSearchRank": "對話搜尋排序",
+  "settings.sessionSearchRankDesc":
+    "命令面板排序：關鍵字（子字串）或混合（關鍵字 + 標題/摘要本機詞元重疊）。非雲端嵌入，無 embedding API。",
+  "settings.sessionSearchRank.keyword": "關鍵字",
+  "settings.sessionSearchRank.hybrid": "混合（本機詞元）",
 
   "chatFind.placeholder": "在對話中尋找…",
   "chatFind.prev": "上一個相符",
