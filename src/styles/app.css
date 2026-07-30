@@ -4942,6 +4942,65 @@ html[data-theme="light"] .ui-check.is-mixed .ui-check__box {
   font-variant-numeric: tabular-nums;
 }
 
+/* Settings → Agent: disallowed built-in tools chips */
+.settings-tool-deny__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.settings-tool-deny__chip {
+  height: 28px;
+  padding: 0 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  color: var(--text-secondary);
+  background: var(--bg-hover);
+  border: 1px solid var(--border-subtle);
+  cursor: pointer;
+}
+
+.settings-tool-deny__chip:hover {
+  color: var(--text-primary);
+  border-color: color-mix(in srgb, var(--text-secondary) 35%, var(--border-subtle));
+}
+
+.settings-tool-deny__chip.is-on {
+  background: color-mix(in srgb, var(--accent, #6b8afd) 16%, var(--bg-elevated));
+  color: var(--text-primary);
+  font-weight: 600;
+  border-color: color-mix(in srgb, var(--accent, #6b8afd) 40%, var(--border-subtle));
+}
+
+.settings-tool-deny__chip.is-caution.is-on {
+  background: color-mix(in srgb, var(--danger, #e55) 14%, var(--bg-elevated));
+  border-color: color-mix(in srgb, var(--danger, #e55) 40%, var(--border-subtle));
+}
+
+.settings-tool-deny__chip.is-covered {
+  opacity: 0.72;
+  cursor: default;
+}
+
+.settings-tool-deny__row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.settings-tool-deny__input {
+  flex: 1;
+  min-width: 160px;
+}
+
+.settings-tool-deny__clear {
+  flex-shrink: 0;
+}
+
 .settings-seg {
   display: inline-flex;
   padding: 3px;

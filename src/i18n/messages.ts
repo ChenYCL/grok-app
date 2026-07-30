@@ -1123,6 +1123,15 @@ const en = {
   "settings.disableWebSearch": "Disable web search & fetch",
   "settings.disableWebSearchDesc":
     "Spawn agents with --disable-web-search so web_search and web_fetch tools are unavailable. Live agents soft-respawn when this changes.",
+  "settings.disallowedTools": "Disallowed tools",
+  "settings.disallowedToolsDesc":
+    "Remove selected built-in tools via --disallowed-tools. Coexists with Disable web search. Live agents soft-respawn when this changes.",
+  "settings.disallowedToolsPlaceholder":
+    "Extra tool ids, comma-separated (e.g. bash,grep)",
+  "settings.disallowedTools.caution": "Caution: blocks shell / coding tools",
+  "settings.disallowedTools.clear": "Clear all",
+  "settings.disallowedTools.webCovered":
+    "web_search / web_fetch also blocked by Disable web search above",
     "settings.section.agent": "Agent",
   "settings.subagentsEnabled": "Allow subagents",
   "settings.subagentsEnabledDesc": "When off, spawn with --no-subagents so nested Agent / task tools cannot start child sessions. Soft-respawns after change.",
@@ -3917,6 +3926,15 @@ const zh: Record<MessageKey, string> = {
   "settings.disableWebSearch": "禁用网页搜索与抓取",
   "settings.disableWebSearchDesc":
     "启动 Agent 时加上 --disable-web-search，移除 web_search / web_fetch 工具。更改后会 soft-respawn 已连接的 Agent。",
+  "settings.disallowedTools": "禁用内置工具",
+  "settings.disallowedToolsDesc":
+    "通过 --disallowed-tools 移除所选内置工具。可与上方「禁用网页搜索」并存。更改后会 soft-respawn。",
+  "settings.disallowedToolsPlaceholder":
+    "额外工具 id，逗号分隔（如 bash,grep）",
+  "settings.disallowedTools.caution": "注意：会屏蔽终端 / 编码类工具",
+  "settings.disallowedTools.clear": "全部清除",
+  "settings.disallowedTools.webCovered":
+    "web_search / web_fetch 也受上方「禁用网页搜索」约束",
     "settings.section.agent": "Agent",
   "settings.subagentsEnabled": "允许子代理",
   "settings.subagentsEnabledDesc": "关闭时启动加上 --no-subagents，无法拉起嵌套 Agent / 任务。更改后 soft-respawn。",

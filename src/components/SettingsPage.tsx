@@ -42,6 +42,14 @@ import {
 } from "@/lib/cliSessionsFilter";
 import { ARCHIVE_AGE_DAY_OPTIONS } from "@/lib/sessionArchiveAge";
 import {
+  COMMON_DISALLOWED_TOOLS,
+  isToolDisallowed,
+  isWebSearchTool,
+  normalizeDisallowedTools,
+  parseDisallowedToolsInput,
+  toggleDisallowedTool,
+} from "@/lib/disallowedTools";
+import {
   SHORTCUTS,
   detectShortcutPlatform,
   filterShortcutGroups,
@@ -392,6 +400,9 @@ export interface SettingsPageProps {
   onExperimentalMemory?: (v: boolean) => void;
   disableWebSearch?: boolean;
   onDisableWebSearch?: (v: boolean) => void;
+  /** Built-in tool denylist (`--disallowed-tools`). */
+  disallowedTools?: string[];
+  onDisallowedTools?: (v: string[]) => void;
   reopenLastSession?: boolean;
   onReopenLastSession?: (v: boolean) => void;
   closeToTray?: boolean;
@@ -928,6 +939,8 @@ export function SettingsPage({
   onPlanEnabled,
   disableWebSearch = false,
   onDisableWebSearch,
+  disallowedTools = [],
+  onDisallowedTools,
   useLeader = false,
   onUseLeader,
   voiceId = "eve",
@@ -2300,6 +2313,120 @@ export function SettingsPage({
                     onChange={() => onDisableWebSearch(!disableWebSearch)}
                     ariaLabel={t("settings.disableWebSearch")}
                   />
+                </div>
+              ) : null}
+              {onDisallowedTools ? (
+                <div
+                  className={
+                    "settings-row settings-row--stack" +
+                    rowHighlight("settings-anchor-disallowedTools")
+                  }
+                  id="settings-anchor-disallowedTools"
+                >
+                  <div className="settings-row__text">
+                    <div className="settings-row__label">
+                      {t("settings.disallowedTools")}
+                    </div>
+                    <div className="settings-row__desc">
+                      {t("settings.disallowedToolsDesc")}
+                    </div>
+                    {disableWebSearch ? (
+                      <div className="settings-row__hint">
+                        {t("settings.disallowedTools.webCovered")}
+                      </div>
+                    ) : null}
+                  </div>
+                  <div
+                    className="settings-tool-deny__chips"
+                    role="group"
+                    aria-label={t("settings.disallowedTools")}
+                  >
+                    {COMMON_DISALLOWED_TOOLS.map((tool) => {
+                      const selected =
+                        isToolDisallowed(disallowedTools, tool.id) ||
+                        (!!disableWebSearch && isWebSearchTool(tool.id));
+                      const coveredByWeb =
+                        !!disableWebSearch && isWebSearchTool(tool.id);
+                      return (
+                        <button
+                          key={tool.id}
+                          type="button"
+                          className={
+                            "settings-tool-deny__chip" +
+                            (selected ? " is-on" : "") +
+                            (tool.caution ? " is-caution" : "") +
+                            (coveredByWeb ? " is-covered" : "")
+                          }
+                          aria-pressed={selected}
+                          title={
+                            tool.caution
+                              ? t("settings.disallowedTools.caution")
+                              : coveredByWeb
+                                ? t("settings.disallowedTools.webCovered")
+                                : tool.id
+                          }
+                          onClick={() => {
+                            if (coveredByWeb) return;
+                            onDisallowedTools(
+                              toggleDisallowedTool(disallowedTools, tool.id),
+                            );
+                          }}
+                        >
+                          {tool.id}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <div className="settings-tool-deny__row">
+                    <input
+                      type="text"
+                      className="settings-input settings-tool-deny__input"
+                      placeholder={t("settings.disallowedToolsPlaceholder")}
+                      defaultValue={normalizeDisallowedTools(disallowedTools)
+                        .filter(
+                          (id) =>
+                            !COMMON_DISALLOWED_TOOLS.some(
+                              (c) => c.id.toLowerCase() === id.toLowerCase(),
+                            ),
+                        )
+                        .join(", ")}
+                      key={normalizeDisallowedTools(disallowedTools)
+                        .filter(
+                          (id) =>
+                            !COMMON_DISALLOWED_TOOLS.some(
+                              (c) => c.id.toLowerCase() === id.toLowerCase(),
+                            ),
+                        )
+                        .join(",")}
+                      onBlur={(e) => {
+                        const custom = parseDisallowedToolsInput(e.target.value);
+                        const keptCommon = normalizeDisallowedTools(
+                          disallowedTools,
+                        ).filter((id) =>
+                          COMMON_DISALLOWED_TOOLS.some(
+                            (c) => c.id.toLowerCase() === id.toLowerCase(),
+                          ),
+                        );
+                        onDisallowedTools(
+                          normalizeDisallowedTools([...keptCommon, ...custom]),
+                        );
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          (e.target as HTMLInputElement).blur();
+                        }
+                      }}
+                    />
+                    {normalizeDisallowedTools(disallowedTools).length > 0 ? (
+                      <button
+                        type="button"
+                        className="btn btn--sm settings-tool-deny__clear"
+                        onClick={() => onDisallowedTools([])}
+                      >
+                        {t("settings.disallowedTools.clear")}
+                      </button>
+                    ) : null}
+                  </div>
                 </div>
               ) : null}
               {onUseLeader ? (

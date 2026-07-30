@@ -1953,6 +1953,7 @@ export default function App() {
   const [subagentsEnabled, setSubagentsEnabled] = useState(true);
   const [planEnabled, setPlanEnabled] = useState(true);
   const [disableWebSearch, setDisableWebSearch] = useState(false);
+  const [disallowedTools, setDisallowedTools] = useState<string[]>([]);
   const [useLeader, setUseLeader] = useState(false);
   /** Default off → launch on draft new-chat page. */
   const [reopenLastSession, setReopenLastSession] = useState(false);
@@ -2702,6 +2703,13 @@ export default function App() {
       setSubagentsEnabled(settings.subagentsEnabled !== false);
       setPlanEnabled(settings.planEnabled !== false);
       setDisableWebSearch(!!settings.disableWebSearch);
+      setDisallowedTools(
+        Array.isArray(settings.disallowedTools)
+          ? settings.disallowedTools.filter(
+              (x): x is string => typeof x === "string",
+            )
+          : [],
+      );
       setUseLeader(!!settings.useLeader);
       // Opt-in only (missing key / false → draft new chat on launch).
       setReopenLastSession(settings.reopenLastSession === true);
@@ -13023,6 +13031,13 @@ export default function App() {
             setDisableWebSearch(v);
             void api.settingsGet().then((s) =>
               api.settingsSet({ ...s, disableWebSearch: v }),
+            );
+          }}
+          disallowedTools={disallowedTools}
+          onDisallowedTools={(v) => {
+            setDisallowedTools(v);
+            void api.settingsGet().then((s) =>
+              api.settingsSet({ ...s, disallowedTools: v }),
             );
           }}
           useLeader={useLeader}
