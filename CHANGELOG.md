@@ -71,6 +71,9 @@ See `docs/llm-wiki/release.md`.
 **中文 · 新增**
 
 - **MCP 认证/健康状态**：诊断后在列表显示状态灯；过期/需认证提供「如何刷新」引导（无假自动刷新）；密钥脱敏
+### Added
+
+- **Workspace memory browser** (Settings → General → Agent): list / preview / search on-disk Grok Build memory under `{GROK_HOME}/memory` (MEMORY.md, session logs, index); single-file delete with in-app confirm; empty state when experimental memory is off. Host `memory_list` / `memory_delete_file` with path-scope safety + preview redaction
 
 ## [0.2.2] - 2026-07-30
 
