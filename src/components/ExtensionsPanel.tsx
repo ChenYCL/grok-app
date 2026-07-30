@@ -49,6 +49,7 @@ import {
   type McpServerStatus,
   type McpStatusIndex,
 } from "@/lib/mcpStatus";
+import {
   isSkillEditable,
   resolveSkillMdPath,
 } from "@/lib/skillEditPath";
@@ -1708,16 +1709,6 @@ export function ExtensionsPanel({
         size="md"
         closeLabel={tr("common.close")}
         wrapBody
-        open={!!skillEditor}
-        onClose={requestCloseSkillEditor}
-        title={
-          skillEditor
-            ? tr("ext.skills.editTitle", { name: skillEditor.skill.name })
-            : tr("ext.skills.edit")
-        }
-        size="lg"
-        closeOnOverlay={!skillEditor?.saving}
-        bodyClassName="ext-skill-editor"
         footer={
           <>
             <button
@@ -1732,9 +1723,6 @@ export function ExtensionsPanel({
             >
               <IconDoctor size={14} />
               <span>{tr("ext.mcp.doctorRerun")}</span>
-              disabled={!!skillEditor?.saving}
-              onClick={requestCloseSkillEditor}
-              {tr("common.cancel")}
             </button>
             <button
               type="button"
@@ -1742,17 +1730,6 @@ export function ExtensionsPanel({
               onClick={() => setAuthHelpTarget(null)}
             >
               {tr("common.close")}
-              disabled={
-                !skillEditor ||
-                skillEditor.loading ||
-                skillEditor.saving ||
-                !!skillEditor.error ||
-                !skillEditorDirty
-              }
-              onClick={() => void saveSkillEditor()}
-              {skillEditor?.saving
-                ? tr("ext.skills.editSaving")
-                : tr("common.save")}
             </button>
           </>
         }
@@ -1774,6 +1751,50 @@ export function ExtensionsPanel({
           <li>{tr("ext.mcp.auth.stepDoctor")}</li>
         </ol>
         <p className="ext-field-hint">{tr("ext.mcp.auth.noAutoRefresh")}</p>
+      </GlassModal>
+
+      <GlassModal
+        open={!!skillEditor}
+        onClose={requestCloseSkillEditor}
+        title={
+          skillEditor
+            ? tr("ext.skills.editTitle", { name: skillEditor.skill.name })
+            : tr("ext.skills.edit")
+        }
+        size="lg"
+        closeLabel={tr("common.close")}
+        closeOnOverlay={!skillEditor?.saving}
+        wrapBody
+        bodyClassName="ext-skill-editor"
+        footer={
+          <>
+            <button
+              type="button"
+              className="btn btn--ghost"
+              disabled={!!skillEditor?.saving}
+              onClick={requestCloseSkillEditor}
+            >
+              {tr("common.cancel")}
+            </button>
+            <button
+              type="button"
+              className="btn btn--solid"
+              disabled={
+                !skillEditor ||
+                skillEditor.loading ||
+                skillEditor.saving ||
+                !!skillEditor.error ||
+                !skillEditorDirty
+              }
+              onClick={() => void saveSkillEditor()}
+            >
+              {skillEditor?.saving
+                ? tr("ext.skills.editSaving")
+                : tr("common.save")}
+            </button>
+          </>
+        }
+      >
         {skillEditor ? (
           <>
             {!isExtensionEnabled(skillEditor.skill.enabled) ? (
@@ -1784,11 +1805,14 @@ export function ExtensionsPanel({
             {skillEditor.path ? (
               <p className="ext-skill-editor__path" title={skillEditor.path}>
                 {shortPathLabel(skillEditor.path, 72) || skillEditor.path}
+              </p>
+            ) : null}
             {skillEditor.loading ? (
               <p className="ext-empty">{tr("ext.skills.editLoading")}</p>
             ) : skillEditor.error && !skillEditor.baselineText ? (
               <p className="ext-alert ext-alert--error" role="alert">
                 <span className="ext-alert__body">{skillEditor.error}</span>
+              </p>
             ) : (
               <textarea
                 className="ext-skill-editor__textarea"
@@ -1816,10 +1840,15 @@ export function ExtensionsPanel({
             {skillEditor.error && skillEditor.baselineText ? (
               <p className="ext-skill-editor__error" role="alert">
                 {skillEditor.error}
+              </p>
+            ) : null}
             {skillEditor.savedHint ? (
               <p className="ext-skill-editor__saved" role="status">
                 {skillEditor.savedHint}
+              </p>
+            ) : null}
           </>
+        ) : null}
       </GlassModal>
 
       <GlassModal
@@ -1829,6 +1858,7 @@ export function ExtensionsPanel({
         size="sm"
         closeLabel={tr("common.close")}
         footer={
+          <>
             <button
               type="button"
               className="btn btn--ghost"
@@ -1836,25 +1866,53 @@ export function ExtensionsPanel({
             >
               {tr("common.cancel")}
             </button>
+            <button
+              type="button"
               className="btn btn--danger"
               onClick={() => {
                 setSkillDiscardOpen(false);
                 closeSkillEditor();
               }}
+            >
               {tr("ext.skills.editDiscard")}
+            </button>
+          </>
         }
       >
         <p className="app-dialog__msg">{tr("ext.skills.editDiscardBody")}</p>
+      </GlassModal>
 
+      <GlassModal
         open={skillConflictOpen}
         onClose={() => setSkillConflictOpen(false)}
         title={tr("ext.skills.editConflictTitle")}
+        size="sm"
+        closeLabel={tr("common.close")}
+        footer={
+          <>
+            <button
+              type="button"
+              className="btn btn--ghost"
+              onClick={() => {
                 setSkillConflictOpen(false);
                 if (skillEditor) void openSkillEditor(skillEditor.skill);
+              }}
+            >
               {tr("ext.skills.editConflictReload")}
+            </button>
+            <button
+              type="button"
               className="btn btn--solid"
+              onClick={() => {
+                setSkillConflictOpen(false);
                 void saveSkillEditor({ force: true });
+              }}
+            >
               {tr("ext.skills.editConflictOverwrite")}
+            </button>
+          </>
+        }
+      >
         <p className="app-dialog__msg">{tr("ext.skills.editConflictBody")}</p>
       </GlassModal>
     </div>

@@ -1255,13 +1255,19 @@ export const SETTINGS_ENTRIES: readonly SettingsEntry[] = [
       "export history",
       "诊断",
       "追踪",
+    ],
+  },
+  {
     id: "runtime.reliability",
+    section: "runtime",
+    tab: "tools",
     anchorId: "settings-anchor-reliability",
     labelKey: "reliability.title",
     descKeys: [
       "reliability.settingsDesc",
       "reliability.openFromSettings",
     ],
+    keywords: [
       "reliability",
       "observability",
       "busy",

@@ -544,13 +544,18 @@ pub async fn session_set_worktree(
     worktree_branch: Option<String>,
 ) -> Result<SessionMeta, String> {
     store::set_session_worktree(&id, worktree_path, worktree_branch)
+}
+
 /// Set or clear the optional JSON Schema for structured model output.
 /// When the session is live, disconnect so the next connect re-spawns with
 /// top-level `grok --json-schema` (prompt-side wrap still applies immediately).
+#[tauri::command]
 pub async fn session_set_json_schema(
     app: tauri::AppHandle,
     mgr: State<'_, Arc<SessionManager>>,
+    id: String,
     json_schema: Option<String>,
+) -> Result<SessionMeta, String> {
     let meta = store::set_session_json_schema(&id, json_schema)?;
     let snap = mgr.snapshot();
     if snap.session_id.as_deref() == Some(meta.id.as_str()) {

@@ -87,8 +87,13 @@ export function defaultPaletteActions(): PaletteActionDef[] {
         "grok trace",
         "export history",
         "diagnostic archive",
+      ],
+      group: "diagnose",
+    },
+    {
       id: "reliability",
       labelKey: "reliability.title",
+      keywords: [
         "reliability",
         "observability",
         "busy sessions",

@@ -37,11 +37,11 @@ import {
 } from "@/components/icons";
 import { Tip } from "@/components/ui/tooltip";
 import {
-  SHORTCUTS,
   countUnlinkedCliSessions,
   filterCliSessions,
 } from "@/lib/cliSessionsFilter";
 import {
+  SHORTCUTS,
   detectShortcutPlatform,
   filterShortcutGroups,
   shortcutsByGroup,
@@ -4168,6 +4168,7 @@ export function SettingsPage({
                       </div>
                       <div className="settings-row__desc">
                         {t("session.tracesDesc")}
+                      </div>
                     </div>
                   </div>
                   <div className="trace-history-settings">
@@ -4183,12 +4184,24 @@ export function SettingsPage({
                         showSettingsToast(t("session.tracesCopied"), 2000)
                       }
                     />
+                  </div>
+                </div>
+                <div
+                  className={
                     "settings-card" +
                     rowHighlight("settings-anchor-reliability")
+                  }
                   id="settings-anchor-reliability"
+                >
                   <div className="settings-row">
+                    <div className="settings-row__text">
+                      <div className="settings-row__label">
                         {t("reliability.title")}
+                      </div>
+                      <div className="settings-row__desc">
                         {t("reliability.settingsDesc")}
+                      </div>
+                    </div>
                     <button
                       type="button"
                       className="btn btn--ghost settings-row__action"

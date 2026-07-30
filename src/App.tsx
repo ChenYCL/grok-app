@@ -183,6 +183,7 @@ import {
   collectAgentDashboardRows,
   countBusyDashboardRows,
 } from "@/lib/agentDashboard";
+import {
   buildReliabilityCenter,
   DEFAULT_RELIABILITY_MAX_ERRORS,
   DEFAULT_RELIABILITY_MAX_STALLS,
@@ -520,7 +521,6 @@ import {
   IconFileText,
   IconSettings,
   IconDoctor,
-  IconActivity,
   IconKeyboard,
   IconAppearance,
   IconInfo,
@@ -1473,6 +1473,7 @@ export default function App() {
   /** In-session ring of recent error-deck cards. */
   const [recentErrorEntries, setRecentErrorEntries] = useState<
     ReliabilityErrorEntry[]
+  >([]);
   const [showShortcuts, setShowShortcuts] = useState(false);
   /** Optional product tour (not first-run account setup). */
   const [showProductTutorial, setShowProductTutorial] = useState(false);
@@ -2117,7 +2118,6 @@ export default function App() {
           (s as Array<Parameters<typeof mapSessionListRow>[0]>).map(
             mapSessionListRow,
           ),
-          ).map((x) => mapSessionListRow(x)),
         );
         void api
           .generalWorkspacePath()
@@ -9716,6 +9716,7 @@ export default function App() {
         break;
       case "traces":
         setShowTraces(true);
+        break;
       case "reliability":
         setShowReliability(true);
         break;
@@ -15161,10 +15162,18 @@ export default function App() {
           }}
           onCopied={() => showToast(tr("session.tracesCopied"), 2000)}
           onError={(msg) => showToast(msg, 4000)}
+        />
+      </GlassModal>
+
+      <GlassModal
         open={showJsonSchemaModal}
         onClose={() => setShowJsonSchemaModal(false)}
         title={tr("composer.jsonSchemaTitle")}
+        size="md"
+        closeLabel={tr("common.close")}
+        wrapBody
         className="json-schema-modal"
+        footer={
           <div className="json-schema-modal__actions">
             {sessionJsonSchema ? (
               <button
@@ -15189,6 +15198,7 @@ export default function App() {
                           row.id === sid ? { ...row, jsonSchema: null } : row,
                         ),
                       );
+                    }
                     showToast(tr("composer.jsonSchemaCleared"));
                   })();
                 }}
@@ -15196,8 +15206,17 @@ export default function App() {
                 {tr("composer.jsonSchemaClear")}
               </button>
             ) : null}
+            <button
+              type="button"
+              className="btn btn--ghost"
               onClick={() => setShowJsonSchemaModal(false)}
+            >
+              {tr("common.cancel")}
+            </button>
+            <button
+              type="button"
               className="btn btn--primary"
+              onClick={() => {
                 void (async () => {
                   const parsed = parseJsonSchemaText(jsonSchemaDraft);
                   if (!parsed.ok) {
@@ -15211,30 +15230,43 @@ export default function App() {
                       const saved = await api.sessionSetJsonSchema(
                         sid,
                         parsed.normalized,
+                      );
                       const next =
                         typeof saved.jsonSchema === "string" &&
                         saved.jsonSchema.trim()
                           ? saved.jsonSchema
                           : parsed.normalized;
                       setSessionJsonSchema(next);
+                      setSessions((list) =>
+                        list.map((row) =>
                           row.id === sid
                             ? { ...row, jsonSchema: next }
                             : row,
+                        ),
+                      );
                     } catch (e) {
                       showToast(String(e), 4000);
                       return;
+                    }
                   } else if (!sid) {
                     showToast(tr("composer.jsonSchemaEmptySession"), 3200);
+                  }
                   setShowJsonSchemaModal(false);
                   showToast(tr("composer.jsonSchemaApplied"));
                 })();
+              }}
+            >
               {tr("composer.jsonSchemaApply")}
+            </button>
           </div>
+        }
+      >
         <p className="json-schema-modal__hint">
           {tr("composer.jsonSchemaHint")}
         </p>
         <p className="json-schema-modal__experimental">
           {tr("composer.jsonSchemaExperimental")}
+        </p>
         <textarea
           className="json-schema-modal__textarea"
           value={jsonSchemaDraft}
