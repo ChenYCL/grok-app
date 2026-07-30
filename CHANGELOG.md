@@ -13,6 +13,7 @@ See `docs/llm-wiki/release.md`.
 
 ### Added
 
+- **Project color accent**: optional sidebar color (tokens blue/green/orange/purple/pink/gray or `#hex`); color dot on project header; set via context menu; Host `project_set_color`
 - **Send queue reorder**: Up/Down on each queued follow-up before auto-flush
 - **Chat reading width** (Settings → Appearance): narrow / medium (default) / wide / full (`grok.chatWidth`)
 - **Phone mirror write guard**: confirm when enabling write; persistent warning banner; audit log (no secrets)
@@ -33,6 +34,7 @@ See `docs/llm-wiki/release.md`.
 
 **中文 · 新增**
 
+- **项目颜色标记**：侧栏可选色点（命名色或 `#hex`）；右键设置；Host `project_set_color`
 - 发送队列上下排序；对话阅读宽度；镜像写权限确认与警告；整段对话复制为 Markdown
 - 可单独关闭实时语音快捷键；任务面板子代理树；计划历史归档；侧栏日期分组
 - 程序坞/托盘忙碌角标；按会话静音桌面通知

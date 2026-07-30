@@ -271,6 +271,7 @@ pub fn run() {
             commands::project_set_sandbox_profile,
             commands::project_rename,
             commands::project_set_pinned,
+            commands::project_set_color,
             commands::project_reveal,
             commands::project_rules_list,
             commands::project_rules_ensure_template,

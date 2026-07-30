@@ -799,6 +799,22 @@ export async function projectSetPinned(id: string, pinned: boolean) {
   return invoke("project_set_pinned", { id, pinned });
 }
 
+/**
+ * Set or clear a project sidebar accent color.
+ * Pass `null` / `"none"` to clear. Accepts tokens (`blue`|…) or `#rgb`/`#rrggbb`.
+ */
+export async function projectSetColor(id: string, color: string | null) {
+  return invoke<{
+    id: string;
+    name: string;
+    path: string;
+    trusted: boolean;
+    pathOk: boolean;
+    pinned?: boolean;
+    color?: string | null;
+  }>("project_set_color", { id, color });
+}
+
 export async function projectReveal(id: string) {
   return invoke("project_reveal", { id });
 }

@@ -400,6 +400,14 @@ pub async fn project_set_pinned(id: String, pinned: bool) -> Result<Project, Str
     store::set_project_pinned(&id, pinned)
 }
 
+/// Set or clear a project sidebar accent color.
+/// `color = null` / empty / `"none"` clears the accent.
+/// Accepts named tokens (`blue`|`green`|…) or `#rgb`/`#rrggbb`.
+#[tauri::command]
+pub async fn project_set_color(id: String, color: Option<String>) -> Result<Project, String> {
+    store::set_project_color(&id, color)
+}
+
 /// Reveal project folder in the OS file manager (Finder / Explorer).
 #[tauri::command]
 pub async fn project_reveal(id: String) -> Result<(), String> {
