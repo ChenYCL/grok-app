@@ -931,8 +931,8 @@ export function SettingsPage({
   /** Bump to remount MemoryBrowserPanel after clear-all. */
   const [memoryBrowserEpoch, setMemoryBrowserEpoch] = useState(0);
   const [settingsToast, setSettingsToast] = useState<string | null>(null);
-  /** Phone-mirror stop confirm (settings → remote control → mirror tab). */
-  const [mirrorStopConfirm, setMirrorStopConfirm] = useState<{
+  /** Phone-mirror stop / enable-write confirm (settings → remote control → mirror). */
+  const [mirrorConfirm, setMirrorConfirm] = useState<{
     title: string;
     message: string;
     confirmLabel: string;
@@ -3822,8 +3822,12 @@ export function SettingsPage({
                       allowWrite: t("mirror.allowWrite"),
                       readOnlyOn: t("mirror.readOnlyOn"),
                       readOnlyHint: t("mirror.readOnlyHint"),
+                      writeConfirmTitle: t("mirror.writeConfirmTitle"),
+                      writeConfirmMessage: t("mirror.writeConfirmMessage"),
+                      writeConfirmOk: t("mirror.writeConfirmOk"),
+                      writeEnabledBanner: t("mirror.writeEnabledBanner"),
                     }}
-                    onConfirmStop={(opts) => setMirrorStopConfirm(opts)}
+                    onRequestConfirm={(opts) => setMirrorConfirm(opts)}
                     showToast={showSettingsToast}
                   />
                 ) : (
@@ -4366,9 +4370,9 @@ export function SettingsPage({
       </GlassModal>
 
       <GlassModal
-        open={!!mirrorStopConfirm}
-        onClose={() => setMirrorStopConfirm(null)}
-        title={mirrorStopConfirm?.title ?? t("mirror.stopConfirmTitle")}
+        open={!!mirrorConfirm}
+        onClose={() => setMirrorConfirm(null)}
+        title={mirrorConfirm?.title ?? t("mirror.stopConfirmTitle")}
         size="sm"
         closeLabel={t("common.close")}
         footer={
@@ -4376,7 +4380,7 @@ export function SettingsPage({
             <button
               type="button"
               className="btn btn--ghost"
-              onClick={() => setMirrorStopConfirm(null)}
+              onClick={() => setMirrorConfirm(null)}
             >
               {t("common.cancel")}
             </button>
@@ -4384,18 +4388,18 @@ export function SettingsPage({
               type="button"
               className="btn btn--danger"
               onClick={() => {
-                const action = mirrorStopConfirm?.onConfirm;
-                setMirrorStopConfirm(null);
+                const action = mirrorConfirm?.onConfirm;
+                setMirrorConfirm(null);
                 action?.();
               }}
             >
-              {mirrorStopConfirm?.confirmLabel ?? t("mirror.stopConfirmOk")}
+              {mirrorConfirm?.confirmLabel ?? t("mirror.stopConfirmOk")}
             </button>
           </>
         }
       >
         <p className="settings-row__desc" style={{ margin: 0 }}>
-          {mirrorStopConfirm?.message ?? t("mirror.stopConfirmMessage")}
+          {mirrorConfirm?.message ?? t("mirror.stopConfirmMessage")}
         </p>
       </GlassModal>
     </div>

@@ -197,9 +197,22 @@ impl MirrorHost {
 
     pub fn set_read_only(&self, read_only: bool) {
         let mut g = self.inner.lock();
+        let prev = g
+            .runtime
+            .as_ref()
+            .map(|r| r.read_only)
+            .unwrap_or(g.read_only);
         g.read_only = read_only;
         if let Some(r) = g.runtime.as_mut() {
             r.read_only = read_only;
+        }
+        // Audit line for support bundles / app.log — no tokens or URLs.
+        if prev != read_only {
+            tracing::info!(
+                read_only,
+                allow_write = !read_only,
+                "mirror: phone write access toggled"
+            );
         }
     }
 

@@ -17034,6 +17034,46 @@ div.composer__input:empty::before {
   color: var(--text-tertiary);
 }
 
+/* Persistent warning while phone write (send / tool approve) is enabled */
+.mirror-connect__write-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 0;
+  padding: 9px 11px;
+  border-radius: 10px;
+  background: rgba(220, 140, 40, 0.12);
+  border: 1px solid rgba(220, 140, 40, 0.35);
+  color: var(--text-primary);
+  font-size: 12.5px;
+  line-height: 1.4;
+}
+
+.mirror-connect__write-banner-chip {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  margin-top: 1px;
+  border-radius: 999px;
+  background: rgba(220, 140, 40, 0.28);
+  color: var(--text-primary);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.mirror-connect__write-banner-text {
+  min-width: 0;
+  flex: 1;
+}
+
+.mirror-connect__write-toggle--on {
+  color: var(--danger, #e55);
+}
+
 .mirror-connect__footer {
   display: flex;
   gap: 8px;
