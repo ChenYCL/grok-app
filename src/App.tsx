@@ -299,6 +299,12 @@ import {
   showDesktopNotification,
 } from "@/lib/desktopNotify";
 import { GlassModal } from "@/components/GlassModal";
+import { ProductTutorial } from "@/components/ProductTutorial";
+import {
+  loadDone as loadProductTutorialDone,
+  markDone as markProductTutorialDone,
+  shouldAutoOffer as shouldAutoOfferProductTutorial,
+} from "@/lib/productTutorial";
 import { ChatFindBar } from "@/components/ChatFindBar";
 import {
   applyResolvedSessionMedia,
@@ -476,6 +482,7 @@ import {
   IconKeyboard,
   IconAppearance,
   IconInfo,
+  IconHelp,
   IconPlug,
 } from "@/components/icons";
 import { PhoneAccountSheet } from "@/components/PhoneAccountSheet";
@@ -568,6 +575,8 @@ function paletteActionIcon(id: string) {
     case "shortcuts-help":
     case "settings-shortcuts":
       return <IconKeyboard size={size} />;
+    case "product-tutorial":
+      return <IconHelp size={size} />;
     case "settings-appearance":
       return <IconAppearance size={size} />;
     case "settings-account":
@@ -1307,6 +1316,22 @@ export default function App() {
   const [setupCliSeed, setSetupCliSeed] = useState<SetupCliInfo | null>(null);
   const [showDoctor, setShowDoctor] = useState(false);
   const [showShortcuts, setShowShortcuts] = useState(false);
+  /** Optional product tour (not first-run account setup). */
+  const [showProductTutorial, setShowProductTutorial] = useState(false);
+  const productTutorialAutoOfferedRef = useRef(false);
+  // Soft one-time product tour after setup gate — never blocks setup wizard.
+  useEffect(() => {
+    if (appGate !== "ready") return;
+    if (productTutorialAutoOfferedRef.current) return;
+    if (!shouldAutoOfferProductTutorial(true, loadProductTutorialDone())) {
+      return;
+    }
+    productTutorialAutoOfferedRef.current = true;
+    const t = window.setTimeout(() => {
+      setShowProductTutorial(true);
+    }, 700);
+    return () => window.clearTimeout(t);
+  }, [appGate]);
   /** In-conversation find (Cmd/Ctrl+F) — not the palette/session search. */
   const [showChatFind, setShowChatFind] = useState(false);
   const [chatFindQuery, setChatFindQuery] = useState("");
@@ -8232,6 +8257,9 @@ export default function App() {
           case "doctor":
             openDoctor();
             return;
+          case "tutorial":
+            setShowProductTutorial(true);
+            return;
           case "status":
             setShowStatusModal(true);
             return;
@@ -9355,6 +9383,9 @@ export default function App() {
         break;
       case "shortcuts-help":
         setShowShortcuts(true);
+        break;
+      case "product-tutorial":
+        setShowProductTutorial(true);
         break;
       case "settings-general":
         navigateSettings("general");
@@ -10707,6 +10738,7 @@ export default function App() {
         showSearch ||
         showDoctor ||
         showShortcuts ||
+        showProductTutorial ||
         showStatusModal ||
         showMcpModal ||
         showCompactModal ||
@@ -11144,6 +11176,7 @@ export default function App() {
           cliInfo={cliInfo}
           onDoctor={() => void openDoctor()}
           onOpenShortcutsHelp={() => setShowShortcuts(true)}
+          onOpenProductTutorial={() => setShowProductTutorial(true)}
           versionFooter={tr("app.versionFooter")}
           account={account}
           accountLoading={accountLoading}
@@ -11993,6 +12026,7 @@ export default function App() {
             accountBusy={accountBusy}
             labels={{
               settings: tr("sidebar.settings"),
+              tutorial: tr("tutorial.menu"),
               theme: tr("user.theme"),
               themeLight: tr("user.themeLight"),
               themeDark: tr("user.themeDark"),
@@ -12007,6 +12041,7 @@ export default function App() {
             }}
             onSettings={() => navigateSettings()}
             onAccountSettings={() => navigateSettings("account")}
+            onTutorial={() => setShowProductTutorial(true)}
             onToggleTheme={toggleThemeBtn}
             onLogin={() => void runAccountLogin("oauth")}
             onLogout={() => void runAccountLogout()}
@@ -14166,6 +14201,22 @@ export default function App() {
           ))}
         </ul>
       </GlassModal>
+      <ProductTutorial
+        open={showProductTutorial}
+        locale={locale}
+        onClose={() => {
+          markProductTutorialDone();
+          setShowProductTutorial(false);
+        }}
+        onSkip={() => {
+          markProductTutorialDone();
+          setShowProductTutorial(false);
+        }}
+        onDone={() => {
+          markProductTutorialDone();
+          setShowProductTutorial(false);
+        }}
+      />
       <VoiceOverlay
         locale={resolveLocale(locale)}
         open={liveVoiceOpen}
