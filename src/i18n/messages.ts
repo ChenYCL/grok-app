@@ -1169,6 +1169,13 @@ const en = {
   "settings.availableModelsDesc":
     "Official Grok Build model IDs from the CLI catalog. Providers are channels — switch them under Account → Providers.",
   "settings.availableModelsEmpty": "No models detected — check Grok Build CLI login.",
+  "settings.composerMinRows": "Composer height",
+  "settings.composerMinRowsDesc":
+    "Minimum height of the empty chat input (in text rows). Grows as you type either way.",
+  "settings.composerMinRows.2": "2 rows",
+  "settings.composerMinRows.3": "3 rows",
+  "settings.composerMinRows.5": "5 rows",
+  "settings.composerMinRows.8": "8 rows",
   "settings.composerSendKey": "Send message with",
   "settings.composerSendKeyDesc":
     "Choose whether plain Enter sends, or inserts a newline (⌘/Ctrl+Enter sends instead). Applies to the chat composer.",
@@ -3893,6 +3900,13 @@ const zh: Record<MessageKey, string> = {
   "settings.availableModelsDesc":
     "来自 Grok Build CLI 官方目录的模型。服务商是后端渠道，请在「账户 → 自定义提供商」切换，不会出现在模型选择里。",
   "settings.availableModelsEmpty": "未检测到模型 — 请检查 Grok Build CLI 登录。",
+  "settings.composerMinRows": "输入框高度",
+  "settings.composerMinRowsDesc":
+    "空输入框的最小高度（按文本行数）。输入内容后仍会自动增高。",
+  "settings.composerMinRows.2": "2 行",
+  "settings.composerMinRows.3": "3 行",
+  "settings.composerMinRows.5": "5 行",
+  "settings.composerMinRows.8": "8 行",
   "settings.composerSendKey": "发送消息快捷键",
   "settings.composerSendKeyDesc":
     "选择 Enter 直接发送，还是 Enter 换行、⌘/Ctrl+Enter 发送。仅作用于对话输入框。",

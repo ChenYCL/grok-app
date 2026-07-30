@@ -1122,6 +1122,13 @@ export const zhTW: Record<MessageKey, string> = {
   "settings.availableModelsDesc":
     "來自 Grok Build CLI 官方目錄的模型。服務商是後端通道，請在「帳戶 → 自訂供應商」切換，不會出現在模型選擇裡。",
   "settings.availableModelsEmpty": "未偵測到模型 — 請檢查 Grok Build CLI 登入。",
+  "settings.composerMinRows": "輸入框高度",
+  "settings.composerMinRowsDesc":
+    "空輸入框的最小高度（依文字行數）。輸入內容後仍會自動增高。",
+  "settings.composerMinRows.2": "2 行",
+  "settings.composerMinRows.3": "3 行",
+  "settings.composerMinRows.5": "5 行",
+  "settings.composerMinRows.8": "8 行",
   "settings.composerSendKey": "傳送訊息快捷鍵",
   "settings.composerSendKeyDesc":
     "選擇 Enter 直接傳送，或 Enter 換行、⌘/Ctrl+Enter 傳送。僅作用於對話輸入框。",

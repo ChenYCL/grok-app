@@ -48,6 +48,10 @@ import {
   loadMessageActionsVisibility,
 } from "./lib/messageActionsPref";
 import {
+  applyComposerMinRows,
+  loadComposerMinRows,
+} from "./lib/composerMinRows";
+import {
   applyWindowAlwaysOnTop,
   loadWindowAlwaysOnTopPref,
 } from "./lib/windowAlwaysOnTop";
@@ -70,6 +74,8 @@ applyChatWidth(loadChatWidth(localStorage));
 applySidebarDensity(loadSidebarDensity(localStorage), undefined, false);
 // Message action buttons (Appearance) — html[data-msg-actions].
 applyMessageActionsVisibility(loadMessageActionsVisibility(localStorage));
+// Composer empty min-height (General → Composer) — html[data-composer-min-rows].
+applyComposerMinRows(loadComposerMinRows(localStorage));
 // Only the data-wallpaper flag is set synchronously (so the shell flips to
 // transparent + scrim instantly). The media layer is rendered by App after
 // the IndexedDB blob is loaded — no synchronous access to IDB is possible.
