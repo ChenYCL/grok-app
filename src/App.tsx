@@ -1356,6 +1356,12 @@ export default function App() {
   const [mcpServers, setMcpServers] = useState<api.McpDto[]>([]);
   const [mcpError, setMcpError] = useState<string | null>(null);
   const [mcpLoading, setMcpLoading] = useState(false);
+  /** MCP doctor report (coexists with inspect list; host `mcp_doctor`). */
+  const [mcpDoctorReport, setMcpDoctorReport] =
+    useState<api.McpDoctorReport | null>(null);
+  const [mcpDoctorError, setMcpDoctorError] = useState<string | null>(null);
+  const [mcpDoctorLoading, setMcpDoctorLoading] = useState(false);
+  const [mcpDoctorFocus, setMcpDoctorFocus] = useState<string | null>(null);
   /** Rewind timeline picker (session menu / status). */
   const [rewindTimeline, setRewindTimeline] = useState<{
     sessionId: string;
@@ -8764,6 +8770,8 @@ export default function App() {
   }, [composerMenuEntries.length]);
 
   const refreshMcpModal = useCallback(async () => {
+  /** Re-run inspect list only — does not clear doctor findings. */
+  const refreshMcpModal = useCallback(async () => {
     setMcpLoading(true);
     setMcpError(null);
     try {
@@ -8783,6 +8791,39 @@ export default function App() {
     setShowMcpModal(true);
     await refreshMcpModal();
   }, [refreshMcpModal]);
+
+  const openMcpModal = useCallback(async () => {
+    setShowMcpModal(true);
+    // Keep prior doctor results when re-opening; only refresh inspect list.
+    await refreshMcpModal();
+  }, [refreshMcpModal]);
+
+  /**
+   * Run `grok mcp doctor --json [name]`. Optional name focuses one server
+   * (must already exist in CLI config — host does not invent servers).
+   */
+  const runMcpDoctor = useCallback(
+    async (name?: string | null) => {
+      if (!api.isTauri()) {
+        setMcpDoctorError(tr("ext.needTauri"));
+        return;
+      }
+      const focus = name?.trim() || null;
+      setMcpDoctorFocus(focus);
+      setMcpDoctorLoading(true);
+      setMcpDoctorError(null);
+      try {
+        const report = await api.mcpDoctor(focus);
+        setMcpDoctorReport(report);
+      } catch (e) {
+        setMcpDoctorReport(null);
+        setMcpDoctorError(String(e));
+      } finally {
+        setMcpDoctorLoading(false);
+      }
+    },
+    [tr],
+  );
 
   const showToast = useCallback((msg: string, ms = 3200) => {
     setToast(msg);
@@ -18006,6 +18047,12 @@ export default function App() {
         onClose={() => setShowMcpModal(false)}
         onManage={() => navigateSettings("extensions")}
         onRefresh={() => void refreshMcpModal()}
+        onRefresh={() => void refreshMcpModal()}
+        doctorReport={mcpDoctorReport}
+        doctorError={mcpDoctorError}
+        doctorLoading={mcpDoctorLoading}
+        doctorFocus={mcpDoctorFocus}
+        onRunDoctor={(name) => void runMcpDoctor(name)}
       />
       {rewindTimeline && (
         <div

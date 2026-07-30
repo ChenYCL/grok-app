@@ -3262,12 +3262,22 @@ export async function agentsRecycleAll() {
   return invoke<void>("agents_recycle_all");
 }
 
+/**
+ * Host `mcp_doctor` report — `grok mcp doctor --json [NAME]`.
+ * Shape matches `extensions::McpDoctorReport` (camelCase). Pure TS helpers
+ * accept this loosely via `McpDoctorReportLike`.
+ */
 export type McpDoctorReport = {
   ok: boolean;
   servers?: Array<Record<string, any>>;
   sources?: Array<Record<string, any>>;
-  issues?: Array<Record<string, any>>;
-  summary?: any;
+  issues?: Array<Record<string, any> | string>;
+  summary?: {
+    total?: number;
+    healthy?: number;
+    unhealthy?: number;
+    [key: string]: unknown;
+  };
   rawText?: string | null;
   message?: string | null;
   error?: string | null;
@@ -3287,9 +3297,14 @@ export async function mcpRemove(name: string) {
   return invoke<{ ok: boolean; error?: string }>("mcp_remove", { name });
 }
 
-export async function mcpDoctor(projectPath?: string | null) {
+/**
+ * Run `grok mcp doctor --json [name]` under the active GROK_HOME.
+ * Optional `name` filters to one configured server — never invents servers.
+ */
+export async function mcpDoctor(name?: string | null) {
+  const trimmed = typeof name === "string" ? name.trim() : "";
   return invoke<McpDoctorReport>("mcp_doctor", {
-    projectPath: projectPath ?? null,
+    name: trimmed || null,
   });
 }
 

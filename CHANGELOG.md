@@ -88,6 +88,7 @@ See `docs/llm-wiki/release.md`.
 - **New skill scaffold** (Settings → Extensions → Skills): modal name/description + user (path-scoped GROK_HOME `/skills`) or project scope; host creates folder + default `SKILL.md` (no overwrite); refresh list and open existing SKILL.md editor
 - **Agents tab + scaffold**: Settings → Extensions → **Agents** lists user / project / bundled definition files; **New agent** modal (name + user/project scope) writes a SKILL-like `{name}.md` under active `GROK_HOME/agents` or project `.grok/agents` (no overwrite unless confirmed); open/reveal after create; preferred agent still chosen later in Settings → Agent
 - **Project inspect depth** (Settings → Runtime): secret-safe hooks rows + skill name lists from `grok inspect --json`; section chips (plugins / skills / MCP / hooks / agents / rules / config / models / permissions); expand long lists; per-section copy JSON / copy path / reveal; pure filter helpers + tests
+- **MCP doctor findings** (slash MCP modal + Extensions): host `mcp_doctor(name?)` runs `grok mcp doctor --json` with timeout and redacted errors; pure helpers flatten checks/issues into `{ id, level, title, detail, server? }` rows (no invented servers); **Run MCP doctor** shows findings with server filter + search; inspect refresh coexists with doctor results
 
 ### Fixed
 
@@ -128,6 +129,7 @@ See `docs/llm-wiki/release.md`.
 - **扩展/市场**：目录插件详情面板（描述/版本/组件徽章 + 安装/重装）；安装失败行内重试；已安装 provides 结构化摘要；**Agents** 页列出定义文件并支持 **新建 Agent** 脚手架（用户/项目作用域、`Name.md` 模板、覆盖确认、打开/显示）
 - **扩展/市场**：目录插件详情面板（描述/版本/组件徽章 + 安装/重装）；安装失败行内重试；已安装 provides 结构化摘要；**插件校验**（`plugin validate`：已安装行 + 本地路径安装前；行内结果面板；旧 CLI 软失败）
 - **扩展/市场**：目录插件详情面板（描述/版本/组件徽章 + 安装/重装）；安装失败行内重试；已安装 provides 结构化摘要；**项目检查深度**（分区芯片、钩子/技能名清单、展开列表、分节复制 JSON/路径）
+- **扩展/市场**：目录插件详情面板（描述/版本/组件徽章 + 安装/重装）；安装失败行内重试；已安装 provides 结构化摘要；**MCP doctor** 诊断结果列表（`mcp_doctor` + 扁平 findings；斜杠 MCP 弹窗可运行/筛选；与 inspect 刷新共存）
 - **权限/CLI**：`--permission-mode` 映射与 spawn；设置页 CLI 标签与高级选择；**Auto** 策略；Doctor 安全批量修复；**删除磁盘 CLI 会话**（单条/全部未关联；限定 `GROK_HOME/sessions`）
 - **扩展/市场**：目录插件详情面板（描述/版本/组件徽章 + 安装/重装）；安装失败行内重试；已安装 provides 结构化摘要
 - **权限/CLI**：`--permission-mode` 映射与 spawn；设置页 CLI 标签与高级选择；**Auto** 策略；Doctor 安全批量修复；**删除磁盘 CLI 会话**（单条/全部未关联；限定 `GROK_HOME/sessions`）；**CLI worktree 列表**（`grok worktree list`；分支菜单刷新/显示/安全打开为 cwd）
