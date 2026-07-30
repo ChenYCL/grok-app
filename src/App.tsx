@@ -12183,26 +12183,42 @@ export default function App() {
     [session.sessionId, showToast, tr],
   );
 
-  /** Export Grok Build CLI session trace (`grok trace --local`). */
+  /**
+   * Export Grok Build CLI session trace.
+   * `localOnly` default true → `grok trace --local`. False omits `--local` (may upload).
+   */
   const exportSessionTrace = useCallback(
-    async (sessionId?: string | null) => {
+    async (
+      sessionId?: string | null,
+      opts?: { localOnly?: boolean },
+    ) => {
       const id = sessionId || session.sessionId;
+      const localOnly = opts?.localOnly !== false;
       if (!id) {
         showToast(tr("session.exportTraceFail"));
         return;
       }
       try {
-        const res = await api.sessionTraceExport(id);
+        const res = await api.sessionTraceExport(id, { localOnly });
         if (res?.ok && res.path) {
           const row = sessions.find((s) => s.id === id);
+          const uploaded = res.uploaded === true;
           recordTraceExport({
             sessionId: id,
             path: res.path,
             title: row?.title ?? null,
             sizeBytes:
               typeof res.sizeBytes === "number" ? res.sizeBytes : null,
+            uploaded: uploaded || null,
           });
-          showToast(tr("session.exportTraceDone"), 4200);
+          if (uploaded) {
+            showToast(tr("session.exportTraceUploaded"), 4200);
+          } else if (!localOnly) {
+            // Network allowed but CLI only wrote local (upload disabled / fallback).
+            showToast(tr("session.exportTraceDoneLocalFallback"), 5000);
+          } else {
+            showToast(tr("session.exportTraceDone"), 4200);
+          }
         } else {
           showToast(tr("session.exportTraceFail"));
         }
@@ -12210,12 +12226,46 @@ export default function App() {
         const msg = String(e);
         if (/no agent session/i.test(msg)) {
           showToast(tr("session.exportTraceNoAgent"), 5000);
+        } else if (/cli not found|grok build cli not found/i.test(msg)) {
+          showToast(`${tr("session.exportTraceFail")}: ${tr("session.exportTraceNoCli")}`, 5500);
+        } else if (/timed out/i.test(msg)) {
+          showToast(
+            `${tr("session.exportTraceFail")}: ${tr("session.exportTraceTimeout")}`,
+            5500,
+          );
+        } else if (!localOnly && /upload|network|telemetry|403|401|forbidden/i.test(msg)) {
+          showToast(
+            `${tr("session.exportTraceUploadFail")}: ${msg}`,
+            6000,
+          );
         } else {
-          showToast(`${tr("session.exportTraceFail")}: ${msg}`, 5000);
+          // Actionable: surface host/CLI reason (already redacted server-side).
+          showToast(`${tr("session.exportTraceFail")}: ${msg}`, 5500);
         }
       }
     },
     [session.sessionId, sessions, showToast, tr],
+  );
+
+  /** Confirm network upload before `grok trace` without `--local`. */
+  const confirmExportSessionTraceUpload = useCallback(
+    (sessionId?: string | null) => {
+      const id = sessionId || session.sessionId;
+      if (!id) {
+        showToast(tr("session.exportTraceFail"));
+        return;
+      }
+      setAppDialog({
+        kind: "confirm",
+        title: tr("session.exportTraceUploadTitle"),
+        message: tr("session.exportTraceUploadMessage"),
+        confirmLabel: tr("session.exportTraceUploadConfirm"),
+        onConfirm: () => {
+          void exportSessionTrace(id, { localOnly: false });
+        },
+      });
+    },
+    [exportSessionTrace, session.sessionId, showToast, tr],
   );
 
   const beginEditLastUser = useCallback(
@@ -17450,6 +17500,7 @@ export default function App() {
             cancel: tr("common.cancel"),
             searchPlaceholder: tr("session.tracesSearch"),
             listAria: tr("session.tracesTitle"),
+            uploadedBadge: tr("session.tracesUploadedBadge"),
           }}
           onCopied={() => showToast(tr("session.tracesCopied"), 2000)}
           onError={(msg) => showToast(msg, 4000)}
@@ -19025,11 +19076,19 @@ export default function App() {
                 },
               },
               {
-                id: "export-trace",
-                label: tr("session.exportTrace"),
+                id: "export-trace-local",
+                label: tr("session.exportTraceLocal"),
                 icon: <IconArchive size={16} />,
                 onClick: () => {
-                  void exportSessionTrace(s.id);
+                  void exportSessionTrace(s.id, { localOnly: true });
+                },
+              },
+              {
+                id: "export-trace-upload",
+                label: tr("session.exportTraceUpload"),
+                icon: <IconArchive size={16} />,
+                onClick: () => {
+                  confirmExportSessionTraceUpload(s.id);
                 },
               },
               {

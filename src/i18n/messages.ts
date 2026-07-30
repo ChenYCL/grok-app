@@ -2127,16 +2127,30 @@ const en = {
   "session.exportJson": "Export chat as JSON",
   "session.exportHtml": "Export chat as HTML",
   "session.exportTrace": "Export trace",
+  "session.exportTraceLocal": "Export local",
+  "session.exportTraceUpload": "Export and upload…",
+  "session.exportTraceUploadTitle": "Export and upload session trace?",
+  "session.exportTraceUploadMessage":
+    "This runs grok trace without --local so the CLI may upload the session archive over the network to xAI. Only continue if you intend to share this session’s trace for support or debugging.",
+  "session.exportTraceUploadConfirm": "Export and upload",
   "session.exportTraceDone": "Session trace saved",
+  "session.exportTraceUploaded": "Session trace saved and uploaded",
+  "session.exportTraceDoneLocalFallback":
+    "Session trace saved locally (upload was not reported by the CLI — check telemetry / network if you expected a remote upload).",
   "session.exportTraceFail": "Trace export failed",
+  "session.exportTraceUploadFail": "Trace upload failed",
   "session.exportTraceNoAgent":
     "No agent session linked yet. Start a conversation first, then export the trace.",
+  "session.exportTraceNoCli":
+    "Grok Build CLI not found. Install or set the CLI path in Settings, then retry.",
+  "session.exportTraceTimeout":
+    "Timed out waiting for grok trace. Try again, or use Export local for a faster archive-only path.",
   "session.traces": "Traces",
   "session.tracesTitle": "Recent traces",
   "session.tracesDesc":
     "Local history of session trace exports (paths only). Open the folder or copy the path — large archives are not loaded into the app.",
   "session.tracesEmpty":
-    "No traces exported yet. Use Export trace from a chat menu after a conversation has an agent session.",
+    "No traces exported yet. Use Export local or Export and upload from a chat menu after a conversation has an agent session.",
   "session.tracesReveal": "Reveal in folder",
   "session.tracesCopyPath": "Copy path",
   "session.tracesCopied": "Path copied",
@@ -2148,6 +2162,7 @@ const en = {
   "session.tracesClearConfirmAction": "Clear all",
   "session.tracesSearch": "Filter by title or path…",
   "session.tracesEmptyFilter": "No traces match this filter",
+  "session.tracesUploadedBadge": "Uploaded",
   "session.exportBundle": "Export diagnostic package…",
   "session.exportBundleDone": "Diagnostic package saved",
   "session.exportBundleFail": "Diagnostic export failed",
@@ -5097,16 +5112,30 @@ const zh: Record<MessageKey, string> = {
   "session.exportJson": "导出会话为 JSON",
   "session.exportHtml": "导出会话为 HTML",
   "session.exportTrace": "导出 trace",
+  "session.exportTraceLocal": "仅本地导出",
+  "session.exportTraceUpload": "导出并上传…",
+  "session.exportTraceUploadTitle": "导出并上传会话 trace？",
+  "session.exportTraceUploadMessage":
+    "将运行不带 --local 的 grok trace，CLI 可能通过网络将会话归档上传到 xAI。仅在你确实要分享该会话 trace 用于支持或调试时继续。",
+  "session.exportTraceUploadConfirm": "导出并上传",
   "session.exportTraceDone": "会话 trace 已保存",
+  "session.exportTraceUploaded": "会话 trace 已保存并上传",
+  "session.exportTraceDoneLocalFallback":
+    "会话 trace 已保存到本地（CLI 未报告上传成功 — 若期望远程上传，请检查 telemetry / 网络）。",
   "session.exportTraceFail": "trace 导出失败",
+  "session.exportTraceUploadFail": "trace 上传失败",
   "session.exportTraceNoAgent":
     "尚未关联 agent 会话。请先发起对话，再导出 trace。",
+  "session.exportTraceNoCli":
+    "未找到 Grok Build CLI。请先安装或在设置中配置 CLI 路径后再试。",
+  "session.exportTraceTimeout":
+    "等待 grok trace 超时。可重试，或改用「仅本地导出」以更快生成归档。",
   "session.traces": "Traces",
   "session.tracesTitle": "最近的 trace",
   "session.tracesDesc":
     "会话 trace 导出的本地历史（仅路径）。可在文件夹中显示或复制路径 — 大文件不会加载进应用。",
   "session.tracesEmpty":
-    "还没有导出过 trace。在有 agent 会话的对话菜单中选择「导出 trace」。",
+    "还没有导出过 trace。在有 agent 会话的对话菜单中选择「仅本地导出」或「导出并上传」。",
   "session.tracesReveal": "在文件夹中显示",
   "session.tracesCopyPath": "复制路径",
   "session.tracesCopied": "路径已复制",
@@ -5118,6 +5147,7 @@ const zh: Record<MessageKey, string> = {
   "session.tracesClearConfirmAction": "全部清除",
   "session.tracesSearch": "按标题或路径筛选…",
   "session.tracesEmptyFilter": "没有匹配的 trace",
+  "session.tracesUploadedBadge": "已上传",
   "session.exportBundle": "导出完整诊断包…",
   "session.exportBundleDone": "诊断包已保存",
   "session.exportBundleFail": "诊断包导出失败",

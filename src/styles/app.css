@@ -16595,6 +16595,18 @@ div.composer__input:empty::before {
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
+.trace-history-row__uploaded {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  padding: 1px 6px;
+  border-radius: 999px;
+  white-space: nowrap;
+  color: var(--accent-fg, var(--text-primary));
+  background: color-mix(in srgb, var(--accent, #6b8cff) 22%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent, #6b8cff) 35%, transparent);
+}
 .trace-history-row__actions {
   display: flex;
   flex-shrink: 0;

@@ -1693,7 +1693,11 @@ export const SETTINGS_ENTRIES: readonly SettingsEntry[] = [
     tab: "tools",
     anchorId: "settings-anchor-traces",
     labelKey: "session.tracesTitle",
-    descKeys: ["session.tracesDesc", "session.exportTrace"],
+    descKeys: [
+      "session.tracesDesc",
+      "session.exportTraceLocal",
+      "session.exportTraceUpload",
+    ],
     keywords: [
       "trace",
       "traces",
