@@ -29,6 +29,7 @@ export type ShortcutId =
   | "stop"
   | "copyLastReply"
   | "toggleSidebar"
+  | "sidebarSessionNav"
   | "settings"
   | "help"
   | "doctor"
@@ -48,8 +49,8 @@ export type ShortcutRow = {
 
 /**
  * Stable catalog id order — same as SHORTCUTS.
- * Includes display-only rows (send, stop, dictation) that are not matched by
- * {@link matchGlobalShortcut}.
+ * Includes display-only rows (send, stop, dictation, sidebarSessionNav) that
+ * are not matched by {@link matchGlobalShortcut}.
  */
 export const SHORTCUT_IDS: readonly ShortcutId[] = [
   "search",
@@ -59,6 +60,7 @@ export const SHORTCUT_IDS: readonly ShortcutId[] = [
   "stop",
   "copyLastReply",
   "toggleSidebar",
+  "sidebarSessionNav",
   "settings",
   "help",
   "doctor",
@@ -124,6 +126,15 @@ export const SHORTCUTS: ShortcutRow[] = [
     win: "Ctrl B",
   },
   {
+    // Sidebar-local j/k (not global mod). App handles when focus is in the
+    // session list / sidebar; never steals from inputs. Display-only here.
+    id: "sidebarSessionNav",
+    labelKey: "shortcuts.sidebarSessionNav",
+    group: "navigation",
+    mac: "J / K",
+    win: "J / K",
+  },
+  {
     id: "settings",
     labelKey: "shortcuts.settings",
     group: "navigation",
@@ -165,7 +176,8 @@ export const SHORTCUTS: ShortcutRow[] = [
  * Catalog ids handled by {@link matchGlobalShortcut} (mod-based App capture handler).
  * Not included: `send` (composer-local), `stop` (Esc special-cased in App for order
  * vs voice cancel / overlays), `dictation` (Ctrl+Space via `isVoiceToggleKey` —
- * must not use meta, and runs before the mod branch).
+ * must not use meta, and runs before the mod branch), `sidebarSessionNav` (plain
+ * j/k when focus is in the sidebar session list).
  */
 export const GLOBAL_MOD_SHORTCUT_IDS = [
   "search",

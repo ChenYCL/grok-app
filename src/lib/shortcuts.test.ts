@@ -34,6 +34,7 @@ const tStub = (key: string) => {
     "shortcuts.stop": "Stop",
     "shortcuts.copyLastReply": "Copy last reply",
     "shortcuts.toggleSidebar": "Toggle sidebar",
+    "shortcuts.sidebarSessionNav": "Next / previous chat in sidebar",
     "shortcuts.settings": "Settings",
     "shortcuts.help": "Keyboard shortcuts",
     "shortcuts.doctor": "Doctor",
@@ -70,6 +71,19 @@ describe("shortcuts catalog", () => {
     expect(side).toBeDefined();
     expect(side!.labelKey).toBe("shortcuts.toggleSidebar");
     expect(side!.group).toBe("navigation");
+  });
+
+  it("lists sidebar j/k session navigation (display-only)", () => {
+    const row = SHORTCUTS.find((s) => s.id === "sidebarSessionNav");
+    expect(row).toBeDefined();
+    expect(row!.labelKey).toBe("shortcuts.sidebarSessionNav");
+    expect(row!.group).toBe("navigation");
+    expect(row!.mac.toLowerCase()).toMatch(/j/);
+    expect(row!.mac.toLowerCase()).toMatch(/k/);
+    expect(row!.win.toLowerCase()).toMatch(/j/);
+    expect(
+      (GLOBAL_MOD_SHORTCUT_IDS as readonly string[]).includes("sidebarSessionNav"),
+    ).toBe(false);
   });
 
   it("lists default send as plain Enter", () => {
@@ -236,8 +250,13 @@ describe("matchGlobalShortcut", () => {
     ).toBeNull();
   });
 
-  it("does not claim send / stop / dictation (special-cased elsewhere)", () => {
-    const special = new Set(["send", "stop", "dictation"]);
+  it("does not claim send / stop / dictation / sidebar j/k (special-cased elsewhere)", () => {
+    const special = new Set([
+      "send",
+      "stop",
+      "dictation",
+      "sidebarSessionNav",
+    ]);
     for (const id of SHORTCUT_IDS) {
       if (special.has(id)) {
         expect(

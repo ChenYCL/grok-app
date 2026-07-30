@@ -333,6 +333,7 @@ import {
   matchGlobalShortcut,
   shortcutsForPlatform,
 } from "@/lib/shortcuts";
+import { nextSessionId } from "@/lib/sidebarSessionNav";
 import {
   isShortcutRecordingActive,
   loadShortcutRemaps,
@@ -1418,7 +1419,13 @@ export default function App() {
     cancelVoice: () => {},
     startLiveVoice: () => {},
     stopGeneration: () => {},
+    /** Open a sidebar session by id (j/k nav + tray). */
+    openSessionById: (_id: string) => {},
   });
+  /** Ordered visible session ids for sidebar j/k (visual tree order). */
+  const sidebarNavIdsRef = useRef<string[]>([]);
+  /** Active / viewing session id for j/k relative moves. */
+  const sidebarNavCurrentIdRef = useRef<string | null>(null);
   /** Live Esc→stop gate (overlays / menus / busy) for the capture-phase handler. */
   const escapeStopLiveRef = useRef({
     streamingOrBusy: false,
@@ -1509,6 +1516,36 @@ export default function App() {
         tag === "input" ||
         tag === "textarea" ||
         !!target?.isContentEditable;
+      // Sidebar j/k: next/prev chat when focus is inside the open sidebar list.
+      // Never steals from inputs/textareas/contenteditable or when modifiers held.
+      if (
+        !typing &&
+        !e.metaKey &&
+        !e.ctrlKey &&
+        !e.altKey &&
+        !e.shiftKey
+      ) {
+        const key = e.key.length === 1 ? e.key.toLowerCase() : e.key;
+        if (key === "j" || key === "k") {
+          const sidebar = querySidebarEl();
+          if (sidebar && target && sidebar.contains(target)) {
+            const dir = key === "j" ? "next" : "prev";
+            const nextId = nextSessionId(
+              sidebarNavIdsRef.current,
+              sidebarNavCurrentIdRef.current,
+              dir,
+            );
+            if (nextId) {
+              e.preventDefault();
+              e.stopPropagation();
+              if (nextId !== sidebarNavCurrentIdRef.current) {
+                shortcutHandlersRef.current.openSessionById(nextId);
+              }
+            }
+            return;
+          }
+        }
+      }
       // Catalog mod chords — defaults + user remaps (keep Esc / Ctrl+Space special-cased above).
       const matched = matchGlobalShortcut(
         {
@@ -4983,6 +5020,40 @@ export default function App() {
       (!s.projectId || !projects.some((p) => p.id === s.projectId)) &&
       !s.archived,
   );
+
+  /**
+   * Visual order of sessions in the open sidebar (expanded projects + orphans).
+   * Used by j/k navigation via {@link nextSessionId}.
+   */
+  const sidebarNavSessionIds = useMemo(() => {
+    const ids: string[] = [];
+    const now = new Date();
+    const projectIdSet = new Set(projects.map((p) => p.id));
+    if (projectsOpen) {
+      for (const proj of projects) {
+        if (expandedProjects[proj.id] === false) continue;
+        const projSessions = sessions.filter(
+          (s) => s.projectId === proj.id && !s.archived,
+        );
+        for (const group of groupSessionsByDate(projSessions, now)) {
+          for (const s of group.sessions) ids.push(s.id);
+        }
+      }
+    }
+    if (historyOpen) {
+      const orphans = sessions.filter(
+        (s) =>
+          (!s.projectId || !projectIdSet.has(s.projectId)) && !s.archived,
+      );
+      for (const group of groupSessionsByDate(orphans, now)) {
+        for (const s of group.sessions) ids.push(s.id);
+      }
+    }
+    return ids;
+  }, [projectsOpen, projects, expandedProjects, sessions, historyOpen]);
+  sidebarNavIdsRef.current = sidebarNavSessionIds;
+  sidebarNavCurrentIdRef.current =
+    session.sessionId ?? viewingSessionIdRef.current ?? null;
 
   /** Active (non-archived) session ids visible in the sidebar tree. */
   const selectableSessionIds = useMemo(() => {
@@ -10375,6 +10446,34 @@ export default function App() {
     openSettings: (_section?: SettingsSectionId) => {},
     openDoctor: () => {},
   });
+  const openSessionByIdHandler = (id: string) => {
+    void (async () => {
+      let row = sessions.find((s) => s.id === id) ?? null;
+      if (!row) {
+        try {
+          const list = await api.sessionsList();
+          const hit = list.find((s) => s.id === id);
+          if (hit) {
+            row = mapSessionListRow(hit);
+            setSessions(list.map((s) => mapSessionListRow(s)));
+          }
+        } catch {
+          /* ignore */
+        }
+      }
+      if (!row) return;
+      const proj = projects.find((p) => p.id === row!.projectId) ?? null;
+      await openSession(row, proj);
+      // Keep keyboard focus on the active sidebar row so j/k can continue.
+      requestAnimationFrame(() => {
+        const sidebar = querySidebarEl();
+        const active = sidebar?.querySelector(
+          ".tree-l3--active",
+        ) as HTMLElement | null;
+        active?.focus?.({ preventScroll: true });
+      });
+    })();
+  };
   shortcutHandlersRef.current = {
     newChat: () => {
       void newChat();
@@ -10423,44 +10522,13 @@ export default function App() {
     stopGeneration: () => {
       void stop();
     },
+    openSessionById: openSessionByIdHandler,
   };
   trayHandlersRef.current = {
     newChat: () => {
       void newChat();
     },
-    openSessionById: (id: string) => {
-      void (async () => {
-        let row = sessions.find((s) => s.id === id) ?? null;
-        if (!row) {
-          try {
-            const list = await api.sessionsList();
-            const hit = list.find((s) => s.id === id);
-            if (hit) {
-              row = normalizeSessionRow(hit);
-              setSessions(
-                list.map((s) => normalizeSessionRow(s)),
-              );
-              row = mapSessionListRow(hit);
-              row = {
-                id: hit.id,
-                title: hit.title,
-                projectId: hit.projectId,
-                updatedAt: hit.updatedAt,
-                archived: !!hit.archived,
-                scheduled: !!hit.scheduled,
-              };
-              setSessions(list.map((s) => mapSessionListRow(s)));
-            }
-          } catch {
-            /* ignore */
-          }
-        }
-        if (!row) return;
-        const proj =
-          projects.find((p) => p.id === row!.projectId) ?? null;
-        await openSession(row, proj);
-      })();
-    },
+    openSessionById: openSessionByIdHandler,
     openSettings: (section?: SettingsSectionId) => {
       navigateSettings(section);
     },

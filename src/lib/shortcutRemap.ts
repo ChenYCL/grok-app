@@ -39,6 +39,8 @@ export const DEFAULT_SHORTCUT_CHORDS: Record<ShortcutId, ChordString> = {
   stop: "escape",
   copyLastReply: "mod+shift+c",
   toggleSidebar: "mod+b",
+  // Display-only (j/k pair); App handles when focus is in the sidebar list.
+  sidebarSessionNav: "j",
   settings: "mod+,",
   help: "mod+/",
   doctor: "mod+shift+d",
