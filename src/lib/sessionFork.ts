@@ -1,6 +1,12 @@
 /**
- * Pure helpers for chat fork + optional restore-code (git worktree bind).
- * Host `session_fork` stays journal-only; worktree + project bind run in UI.
+ * Pure helpers for chat fork + optional restore-code (git worktree bind)
+ * and CLI `--fork-session` (new agent session id on resume) semantics.
+ *
+ * Host `session_fork` clones the App journal; worktree + project bind run in UI.
+ * When the user opts into CLI fork, Host sets `forkAgentSession` and on next
+ * connect uses ACP `session/fork` (CLI `--fork-session` semantics) so the
+ * child agent session gets a **new** id with the parent’s context, leaving
+ * the source agent session unchanged.
  */
 
 import { sanitizeWorktreeName } from "@/lib/gitWorktree";
@@ -11,6 +17,45 @@ export type ForkGitStatusSnapshot = {
   files?: readonly unknown[] | null;
   reason?: string | null;
 };
+
+/**
+ * CLI top-level flag: `grok --fork-session` (requires `--resume` / `--continue`
+ * in the TUI). Host ACP path implements the same semantics via `session/fork`.
+ */
+export const FORK_SESSION_CLI_FLAG = "--fork-session";
+
+/**
+ * Top-level CLI args for fork-session: `["--fork-session"]` or `[]`.
+ * Host spawn for `agent stdio` does **not** pass this alone (CLI requires
+ * `--resume`/`--continue`); use for docs / parity tests. Runtime uses ACP.
+ */
+export function forkSessionSpawnArgs(enabled: boolean): string[] {
+  return enabled ? [FORK_SESSION_CLI_FLAG] : [];
+}
+
+/**
+ * Whether the UI should offer “fork CLI agent session” (new agent id).
+ * Needs a non-empty source agent session id to fork from.
+ */
+export function canOfferForkAgentSession(
+  agentSessionId: string | null | undefined,
+): boolean {
+  return (agentSessionId ?? "").trim().length > 0;
+}
+
+/**
+ * Resolve whether connect should fork the agent session.
+ * `wantFork` is the UI checkbox; `agentSessionId` is the source to fork.
+ */
+export function resolveForkAgentSession(input: {
+  wantFork?: boolean | null;
+  agentSessionId?: string | null;
+}): { fork: boolean; sourceAgentId: string | null } {
+  const source = (input.agentSessionId ?? "").trim();
+  if (!source) return { fork: false, sourceAgentId: null };
+  if (!input.wantFork) return { fork: false, sourceAgentId: source };
+  return { fork: true, sourceAgentId: source };
+}
 
 /**
  * True when porcelain lists any changed / untracked paths.
@@ -86,3 +131,4 @@ export function buildForkWorktreeName(
   }
   return sanitizeWorktreeName(candidate);
 }
+

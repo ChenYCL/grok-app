@@ -1,10 +1,49 @@
 import { describe, expect, it } from "vitest";
 import {
   buildForkWorktreeName,
+  canOfferForkAgentSession,
   canRestoreCodeOnFork,
+  FORK_SESSION_CLI_FLAG,
+  forkSessionSpawnArgs,
   isGitWorkingTreeDirty,
+  resolveForkAgentSession,
   sanitizeForkNameFragment,
 } from "./sessionFork";
+
+describe("forkSessionSpawnArgs / CLI --fork-session", () => {
+  it("emits the top-level flag only when enabled", () => {
+    expect(forkSessionSpawnArgs(false)).toEqual([]);
+    expect(forkSessionSpawnArgs(true)).toEqual([FORK_SESSION_CLI_FLAG]);
+    expect(FORK_SESSION_CLI_FLAG).toBe("--fork-session");
+  });
+});
+
+describe("canOfferForkAgentSession", () => {
+  it("requires a non-empty agent session id", () => {
+    expect(canOfferForkAgentSession(null)).toBe(false);
+    expect(canOfferForkAgentSession(undefined)).toBe(false);
+    expect(canOfferForkAgentSession("")).toBe(false);
+    expect(canOfferForkAgentSession("   ")).toBe(false);
+    expect(canOfferForkAgentSession("abc-123")).toBe(true);
+  });
+});
+
+describe("resolveForkAgentSession", () => {
+  it("forks only when requested and source id present", () => {
+    expect(
+      resolveForkAgentSession({ wantFork: true, agentSessionId: "sid-1" }),
+    ).toEqual({ fork: true, sourceAgentId: "sid-1" });
+    expect(
+      resolveForkAgentSession({ wantFork: false, agentSessionId: "sid-1" }),
+    ).toEqual({ fork: false, sourceAgentId: "sid-1" });
+    expect(
+      resolveForkAgentSession({ wantFork: true, agentSessionId: "" }),
+    ).toEqual({ fork: false, sourceAgentId: null });
+    expect(
+      resolveForkAgentSession({ wantFork: true, agentSessionId: "  " }),
+    ).toEqual({ fork: false, sourceAgentId: null });
+  });
+});
 
 describe("isGitWorkingTreeDirty", () => {
   it("is false when unavailable or empty", () => {

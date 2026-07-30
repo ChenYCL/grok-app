@@ -595,7 +595,9 @@ import {
 import { filterCliWorktreesForProject } from "@/lib/cliWorktrees";
 import {
   buildForkWorktreeName,
+  canOfferForkAgentSession,
   canRestoreCodeOnFork,
+  resolveForkAgentSession,
 } from "@/lib/sessionFork";
 import {
   buildResumeWorktreeName,
@@ -910,6 +912,8 @@ interface SessionRow {
   maxAgentTurns?: number | null;
   /** Per-session system prompt override (`--system-prompt-override`). */
   systemPromptOverride?: string | null;
+  /** Linked Grok agent session id (for CLI `--fork-session` / session/load). */
+  agentSessionId?: string | null;
 }
 
 /** Normalize sessions_list / create rows into sidebar SessionRow shape. */
@@ -919,11 +923,13 @@ function normalizeSessionRow(
     title?: string;
     projectId?: string | null;
     updatedAt?: string;
+    agentSessionId?: string | null;
   },
 ): SessionRow {
   const worktreePath = (x.worktreePath || "").trim() || null;
   const worktreeBranch = (x.worktreeBranch || "").trim() || null;
   const isWorktreeSession = !!(x.isWorktreeSession || worktreePath);
+  const agentSessionId = (x.agentSessionId || "").trim() || null;
   return {
     id: x.id,
     title: x.title || "",
@@ -935,6 +941,7 @@ function normalizeSessionRow(
     worktreePath,
     worktreeBranch,
     isWorktreeSession,
+    agentSessionId,
   };
 }
 
@@ -952,6 +959,7 @@ function mapSessionListRow(
     extraRules?: string | null;
     maxAgentTurns?: number | null;
     systemPromptOverride?: string | null;
+    agentSessionId?: string | null;
   },
 ): SessionRow {
   const schema =
@@ -1382,16 +1390,19 @@ export default function App() {
     preview?: string;
   } | null>(null);
   const [rewindRestoreFiles, setRewindRestoreFiles] = useState(false);
-  /** Fork chat confirm + optional restore-code (default off). */
+  /** Fork chat confirm + optional restore-code / CLI --fork-session (default off). */
   const [forkConfirm, setForkConfirm] = useState<{
     source: SessionRow;
     throughUserPromptIndex?: number | null;
   } | null>(null);
   const [forkRestoreCode, setForkRestoreCode] = useState(false);
+  /** CLI `--fork-session`: new agent session id with parent context. */
+  const [forkCliSession, setForkCliSession] = useState(false);
   const [forkBusy, setForkBusy] = useState(false);
   /** Resume existing chat on a clean worktree (restore-code). */
   const [resumeRestoreConfirm, setResumeRestoreConfirm] =
     useState<SessionRow | null>(null);
+  const [resumeForkCliSession, setResumeForkCliSession] = useState(false);
   const [resumeRestoreBusy, setResumeRestoreBusy] = useState(false);
   /** Last user message open in inline edit (not main composer). */
   const [editingUserMessageId, setEditingUserMessageId] = useState<
@@ -9717,6 +9728,7 @@ export default function App() {
    * Fork a session (full history or through a user-prompt index) and open it.
    * Optional restore-code: when clean git work tree, create a sibling worktree
    * at HEAD and bind the forked session to that path (never force on dirty).
+   * Optional CLI `--fork-session`: new agent session id with parent context.
    */
   const runForkSession = useCallback(
     async (
@@ -9724,6 +9736,7 @@ export default function App() {
       opts?: {
         throughUserPromptIndex?: number | null;
         restoreCode?: boolean;
+        forkCliSession?: boolean;
       },
     ) => {
       if (!api.isTauri()) {
@@ -9731,6 +9744,10 @@ export default function App() {
         return;
       }
       const restoreCode = !!opts?.restoreCode;
+      const forkResolved = resolveForkAgentSession({
+        wantFork: !!opts?.forkCliSession,
+        agentSessionId: source.agentSessionId,
+      });
       setForkBusy(true);
       try {
         const sourceProjectId = normalizeProjectId(source.projectId);
@@ -9834,6 +9851,7 @@ export default function App() {
         const meta = await api.sessionFork(source.id, {
           throughUserPromptIndex: opts?.throughUserPromptIndex ?? null,
           title,
+          forkAgentSession: forkResolved.fork,
         });
 
         // Rebind fork to the worktree project when restore-code succeeded.
@@ -9859,6 +9877,7 @@ export default function App() {
 
         setForkConfirm(null);
         setForkRestoreCode(false);
+        setForkCliSession(false);
         await refreshSessions();
         const row = normalizeSessionRow({
           ...source,
@@ -9872,6 +9891,9 @@ export default function App() {
           archived: meta.archived,
           pinned: !!(meta as SessionRow).pinned,
           scheduled: meta.scheduled,
+          agentSessionId:
+            (meta as SessionRow).agentSessionId ??
+            (forkResolved.fork ? forkResolved.sourceAgentId : null),
         });
         const proj =
           (projectId
@@ -9891,8 +9913,12 @@ export default function App() {
         await openSession(row, openProj);
         showToast(
           restoredWorktree
-            ? tr("session.forkOkRestore")
-            : tr("session.forkOk"),
+            ? forkResolved.fork
+              ? tr("session.forkOkRestoreCli")
+              : tr("session.forkOkRestore")
+            : forkResolved.fork
+              ? tr("session.forkOkCli")
+              : tr("session.forkOk"),
           2800,
         );
       } catch (e) {
@@ -9910,20 +9936,31 @@ export default function App() {
     (source: SessionRow, throughUserPromptIndex?: number | null) => {
       setCtxMenu(null);
       setForkRestoreCode(false);
+      // Prefer live snapshot agent id when forking the open chat.
+      const agentId =
+        source.agentSessionId ||
+        (session.sessionId === source.id ? session.agentSessionId : null);
+      const enriched = { ...source, agentSessionId: agentId ?? null };
+      // Default on when the source has an agent session to fork (full context).
+      setForkCliSession(canOfferForkAgentSession(enriched.agentSessionId));
       setForkConfirm({
-        source,
+        source: enriched,
         throughUserPromptIndex: throughUserPromptIndex ?? null,
       });
     },
-    [],
+    [session.sessionId, session.agentSessionId],
   );
 
   /**
    * Resume an existing session on a clean sibling worktree at current HEAD.
    * Reuses the fork restore-code dirty gate; does not clone the journal.
+   * Optional CLI `--fork-session`: new agent session id (source agent left intact).
    */
   const runResumeWithCodeRestore = useCallback(
-    async (source: SessionRow) => {
+    async (
+      source: SessionRow,
+      opts?: { forkCliSession?: boolean },
+    ) => {
       if (!api.isTauri()) {
         showToast(tr("error.needTauri"));
         return;
@@ -9938,6 +9975,10 @@ export default function App() {
         showToast(tr("session.resumeRestoreBusy"), 3500);
         return;
       }
+      const forkResolved = resolveForkAgentSession({
+        wantFork: !!opts?.forkCliSession,
+        agentSessionId: source.agentSessionId,
+      });
       setResumeRestoreBusy(true);
       try {
         const sourceProjectId = normalizeProjectId(source.projectId);
@@ -10043,7 +10084,20 @@ export default function App() {
           /* soft-fail badge meta */
         }
 
+        if (forkResolved.fork) {
+          try {
+            await api.sessionSetForkAgentSession(source.id, true);
+          } catch (e) {
+            showToast(
+              tr("session.forkCliFailed") + ": " + String(e),
+              4500,
+            );
+            // Worktree rebind still succeeded — continue without agent fork.
+          }
+        }
+
         setResumeRestoreConfirm(null);
+        setResumeForkCliSession(false);
         await refreshSessions();
         await refreshGitWorktrees();
         const row = normalizeSessionRow({
@@ -10056,7 +10110,12 @@ export default function App() {
         });
         setExpandedProjects((e) => ({ ...e, [bindProject!.id]: true }));
         await openSession(row, bindProject);
-        showToast(tr("session.resumeRestoreOk"), 2800);
+        showToast(
+          forkResolved.fork
+            ? tr("session.resumeRestoreOkCli")
+            : tr("session.resumeRestoreOk"),
+          2800,
+        );
       } catch (e) {
         showToast(
           tr("session.resumeRestoreFailed") + ": " + String(e),
@@ -10071,10 +10130,21 @@ export default function App() {
     [projects, showToast, tr, session.sessionId],
   );
 
-  const confirmResumeWithCodeRestore = useCallback((source: SessionRow) => {
-    setCtxMenu(null);
-    setResumeRestoreConfirm(source);
-  }, []);
+  const confirmResumeWithCodeRestore = useCallback(
+    (source: SessionRow) => {
+      setCtxMenu(null);
+      const agentId =
+        source.agentSessionId ||
+        (session.sessionId === source.id ? session.agentSessionId : null);
+      // Default off (reuse agent id); user can opt into CLI --fork-session.
+      setResumeForkCliSession(false);
+      setResumeRestoreConfirm({
+        ...source,
+        agentSessionId: agentId ?? null,
+      });
+    },
+    [session.sessionId, session.agentSessionId],
+  );
 
   /**
    * Duplicate a session: full journal clone via sessionFork (no cut, no restore-code).
@@ -18245,6 +18315,7 @@ export default function App() {
           if (forkBusy) return;
           setForkConfirm(null);
           setForkRestoreCode(false);
+          setForkCliSession(false);
         }}
         title={tr("session.forkTitle")}
         size="sm"
@@ -18262,6 +18333,7 @@ export default function App() {
               onClick={() => {
                 setForkConfirm(null);
                 setForkRestoreCode(false);
+                setForkCliSession(false);
               }}
             >
               {tr("common.cancel")}
@@ -18276,6 +18348,7 @@ export default function App() {
                   throughUserPromptIndex:
                     forkConfirm.throughUserPromptIndex ?? null,
                   restoreCode: forkRestoreCode,
+                  forkCliSession,
                 });
               }}
             >
@@ -18303,6 +18376,22 @@ export default function App() {
           <p className="fork-confirm__hint">
             {tr("session.forkRestoreCodeHint")}
           </p>
+          {canOfferForkAgentSession(forkConfirm?.source.agentSessionId) ? (
+            <>
+              <label className="fork-confirm__restore">
+                <input
+                  type="checkbox"
+                  checked={forkCliSession}
+                  disabled={forkBusy}
+                  onChange={(e) => setForkCliSession(e.target.checked)}
+                />
+                <span>{tr("session.forkCliSession")}</span>
+              </label>
+              <p className="fork-confirm__hint">
+                {tr("session.forkCliSessionHint")}
+              </p>
+            </>
+          ) : null}
         </div>
       </GlassModal>
 
@@ -18311,6 +18400,7 @@ export default function App() {
         onClose={() => {
           if (resumeRestoreBusy) return;
           setResumeRestoreConfirm(null);
+          setResumeForkCliSession(false);
         }}
         title={tr("session.resumeRestoreTitle")}
         size="sm"
@@ -18325,7 +18415,10 @@ export default function App() {
               type="button"
               className="btn btn--ghost"
               disabled={resumeRestoreBusy}
-              onClick={() => setResumeRestoreConfirm(null)}
+              onClick={() => {
+                setResumeRestoreConfirm(null);
+                setResumeForkCliSession(false);
+              }}
             >
               {tr("common.cancel")}
             </button>
@@ -18335,7 +18428,9 @@ export default function App() {
               disabled={resumeRestoreBusy || !resumeRestoreConfirm}
               onClick={() => {
                 if (!resumeRestoreConfirm) return;
-                void runResumeWithCodeRestore(resumeRestoreConfirm);
+                void runResumeWithCodeRestore(resumeRestoreConfirm, {
+                  forkCliSession: resumeForkCliSession,
+                });
               }}
             >
               {resumeRestoreBusy
@@ -18352,6 +18447,26 @@ export default function App() {
           <p className="fork-confirm__hint">
             {tr("session.resumeRestoreHint")}
           </p>
+          {canOfferForkAgentSession(
+            resumeRestoreConfirm?.agentSessionId,
+          ) ? (
+            <>
+              <label className="fork-confirm__restore">
+                <input
+                  type="checkbox"
+                  checked={resumeForkCliSession}
+                  disabled={resumeRestoreBusy}
+                  onChange={(e) =>
+                    setResumeForkCliSession(e.target.checked)
+                  }
+                />
+                <span>{tr("session.forkCliSession")}</span>
+              </label>
+              <p className="fork-confirm__hint">
+                {tr("session.resumeForkCliSessionHint")}
+              </p>
+            </>
+          ) : null}
         </div>
       </GlassModal>
 

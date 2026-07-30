@@ -2494,11 +2494,70 @@ impl SessionManager {
         let policy = PermissionPolicy::parse(&prefs.permission_policy);
         let agent_model = crate::providers::agent_spawn_model_id(&prefs.model_id);
 
+        // Pending CLI --fork-session: must cold-spawn so open can call session/fork.
+        // Never no-op / unpark a warm process that still holds the source agent id.
+        let pending_fork = meta.fork_agent_session
+            && meta
+                .agent_session_id
+                .as_deref()
+                .map(str::trim)
+                .is_some_and(|s| !s.is_empty());
+        if pending_fork {
+            // Drop live/bg/parked shells for this App session so cold spawn can fork.
+            let acp_to_kill = {
+                let mut guard = self.inner.lock();
+                if let Some(s) = guard.as_mut() {
+                    if s.app_session_id == meta.id {
+                        if Self::live_session_is_busy(s) {
+                            tracing::warn!(
+                                "connect fork pending but live mid-turn; deferring fork sid={}",
+                                meta.id
+                            );
+                            return Ok(self.snapshot());
+                        }
+                        let acp = s.acp.take();
+                        s.needs_history_bootstrap = false;
+                        s.fsm.soft_disconnect();
+                        s.process_id = String::new();
+                        acp
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                }
+            };
+            let bg_acp = self
+                .background
+                .lock()
+                .remove(&meta.id)
+                .and_then(|mut bg| bg.acp.take());
+            let parked_acp = self
+                .parked
+                .lock()
+                .remove(&meta.id)
+                .map(|p| p.acp);
+            if let Some(acp) = acp_to_kill {
+                acp.kill().await;
+            }
+            if let Some(acp) = bg_acp {
+                acp.kill().await;
+            }
+            if let Some(acp) = parked_acp {
+                acp.kill().await;
+            }
+            tracing::info!(
+                target: "session",
+                session = %meta.id,
+                "connect pending fork_agent_session — forced cold spawn"
+            );
+        }
+
         // Already live on this App session with a healthy agent → no-op.
         // Includes mid-turn (streaming / open tools): never respawn or cancel.
         // Never no-op on Disconnected/Idle — leftover busy flags after fail_with
         // must not block reconnect (see `should_preserve_live_process`).
-        {
+        if !pending_fork {
             let mut guard = self.inner.lock();
             if let Some(s) = guard.as_mut() {
                 if s.app_session_id == meta.id
@@ -2525,7 +2584,7 @@ impl SessionManager {
         }
 
         // Target already streaming in background → promote to focus.
-        if self.background.lock().contains_key(&meta.id) {
+        if !pending_fork && self.background.lock().contains_key(&meta.id) {
             if let Err(e) = self.try_park_live_emit(&app) {
                 Self::emit_process_limit(&app, Some(&meta.id), max_concurrent);
                 return Err(format!("{}: {}", e.code.as_str(), e.message));
@@ -2540,7 +2599,7 @@ impl SessionManager {
         }
 
         // Target already parked (warm multi-session) → unpark.
-        if self.parked.lock().contains_key(&meta.id) {
+        if !pending_fork && self.parked.lock().contains_key(&meta.id) {
             // Park current live if needed (busy → demote to background / park).
             if let Err(e) = self.try_park_live_emit(&app) {
                 Self::emit_process_limit(&app, Some(&meta.id), max_concurrent);
@@ -2775,6 +2834,12 @@ impl SessionManager {
             &settings.sandbox_profile,
             project_sandbox.as_deref(),
         );
+        // One-shot CLI --fork-session: only when meta asks and we have a source id.
+        let fork_agent = meta.fork_agent_session
+            && resume_agent_sid
+                .as_deref()
+                .map(str::trim)
+                .is_some_and(|s| !s.is_empty());
         let spawn_opts = crate::acp_client::SpawnOptions {
             model_id: Some(agent_model.clone()),
             effort: Some(prefs.effort.clone()),
@@ -2798,6 +2863,7 @@ impl SessionManager {
                 .as_ref()
                 .map(|s| s.to_string())
                 .and_then(|s| crate::store::sanitize_system_prompt_override(Some(s))),
+            fork_session: fork_agent,
         };
 
         let (client, mut events) = match AcpClient::spawn_with_options(cli_path, cwd, spawn_opts)
@@ -2807,6 +2873,7 @@ impl SessionManager {
                     target: "session",
                     session = %meta.id,
                     process = %process_id,
+                    fork_session = fork_agent,
                     "connect spawn_ok"
                 );
                 v
@@ -2847,11 +2914,17 @@ impl SessionManager {
             target: "session",
             session = %meta.id,
             resume_agent = ?resume_agent_sid,
+            fork_session = fork_agent,
             "connect session_open_begin"
         );
         let open_result = client
-            .initialize_and_open_session(resume_agent_sid.as_deref())
+            .initialize_and_open_session(resume_agent_sid.as_deref(), fork_agent)
             .await;
+
+        // One-shot flag: clear whether fork succeeded or fell through to new/load.
+        if meta.fork_agent_session {
+            let _ = store::clear_session_fork_agent_session(&meta.id);
+        }
 
         match open_result {
             Ok((agent_sid, resumed)) => {
@@ -2862,14 +2935,15 @@ impl SessionManager {
                 if let Err(e) = client.set_mode(&prefs.mode).await {
                     tracing::warn!("acp set_mode after session open soft-fail: {e}");
                 }
-                // Native resume = full agent context. Fresh session + existing UI
-                // journal → bootstrap history into the next prompt.
+                // Native resume / successful fork = full agent context. Fresh
+                // session + existing UI journal → bootstrap history into the next prompt.
                 let need_bootstrap = !resumed && journal_has_history;
                 if resumed {
                     tracing::info!(
                         target: "session",
                         session = %meta.id,
                         agent = %agent_sid,
+                        forked = fork_agent,
                         "connect session_open_ok resumed=true (full context)"
                     );
                 } else if need_bootstrap {
@@ -2894,6 +2968,7 @@ impl SessionManager {
                         s.acp = Some(client);
                         s.process_id = process_id;
                         s.meta.agent_session_id = Some(agent_sid);
+                        s.meta.fork_agent_session = false;
                         s.meta.model_id = Some(prefs.model_id.clone());
                         s.meta.mode = Some(prefs.mode.clone());
                         s.meta.effort = Some(prefs.effort.clone());
@@ -5831,6 +5906,7 @@ mod connect_preserve_tests {
                 extra_rules: None,
                 max_agent_turns: None,
                 system_prompt_override: None,
+                fork_agent_session: false,
             },
             fsm,
             backend: "grok_agent_stdio".into(),
@@ -6017,6 +6093,7 @@ mod session_routing_tests {
                 extra_rules: None,
                 max_agent_turns: None,
                 system_prompt_override: None,
+                fork_agent_session: false,
             },
             fsm,
             backend: "mock_acp".into(),
@@ -6184,6 +6261,7 @@ mod session_routing_tests {
                 extra_rules: None,
                 max_agent_turns: None,
                 system_prompt_override: None,
+                fork_agent_session: false,
             },
             fsm,
             backend: "mock_acp".into(),
@@ -6288,6 +6366,7 @@ mod session_routing_tests {
                 extra_rules: None,
                 max_agent_turns: None,
                 system_prompt_override: None,
+                fork_agent_session: false,
             },
             fsm,
             backend: "mock_acp".into(),

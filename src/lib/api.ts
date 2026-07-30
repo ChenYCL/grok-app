@@ -189,6 +189,8 @@ export async function sessionFork(
   opts?: {
     throughUserPromptIndex?: number | null;
     title?: string | null;
+    /** CLI `--fork-session`: new agent id with parent context on next connect. */
+    forkAgentSession?: boolean | null;
   },
 ) {
   return invoke<{
@@ -199,10 +201,31 @@ export async function sessionFork(
     modelId: string | null;
     archived?: boolean;
     scheduled?: boolean;
+    agentSessionId?: string | null;
+    forkAgentSession?: boolean;
   }>("session_fork", {
     sourceId,
     throughUserPromptIndex: opts?.throughUserPromptIndex ?? null,
     title: opts?.title ?? null,
+    forkAgentSession: opts?.forkAgentSession ?? false,
+  });
+}
+
+/**
+ * Arm or clear the one-shot CLI `--fork-session` flag on a session.
+ * Soft-respawns the live agent when arming so the next connect can fork.
+ */
+export async function sessionSetForkAgentSession(
+  id: string,
+  forkAgentSession: boolean,
+) {
+  return invoke<{
+    id: string;
+    agentSessionId?: string | null;
+    forkAgentSession?: boolean;
+  }>("session_set_fork_agent_session", {
+    id,
+    forkAgentSession,
   });
 }
 
