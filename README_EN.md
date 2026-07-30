@@ -313,6 +313,7 @@ Updates, walkthroughs, and AI practice content land first on:
 | **X / Twitter** | [铁柱AGI @cgnot996](https://x.com/cgnot996) ← highly recommended |
 | **WeChat Official Account** | Search **「铁柱AGI」**, or scan the left card below |
 | **WeChat community group** | Scan the **right** QR to join the discussion group |
+| **L站** | [linux.do](https://linux.do/) Learn AI on LinuxDo |
 
 <p align="center">
   <img src="assets/wechat/mp-search-scan.png" alt="WeChat Search 铁柱AGI" width="360" />
@@ -324,7 +325,8 @@ Updates, walkthroughs, and AI practice content land first on:
 </p>
 
 <p align="center">
-  If Grok App helps you, please star the repo and follow
-  <a href="https://x.com/cgnot996"><strong>@cgnot996</strong></a> on X,
-  the WeChat account <strong>铁柱AGI</strong>, and join the WeChat group 🙏
+If Grok App helps you, please star the repo and follow
+<a href="https://x.com/cgnot996"><strong>@cgnot996</strong></a> on X,
+the WeChat account <strong>铁柱AGI</strong>, and join the WeChat group;
+learn AI on <a href="https://linux.do">L站</a> 🙏
 </p>
