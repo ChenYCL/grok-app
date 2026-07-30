@@ -35,6 +35,8 @@ pub struct VoiceSessionState {
     pub mock: bool,
     pub listening: bool,
     pub speaking: bool,
+    /// Model / host-tool turn in progress (not listening, not speaking).
+    pub thinking: bool,
     pub error: Option<String>,
     pub delegated_session_ids: Vec<String>,
 }
@@ -50,6 +52,7 @@ impl Default for VoiceSessionState {
             mock: false,
             listening: false,
             speaking: false,
+            thinking: false,
             error: None,
             delegated_session_ids: vec![],
         }
@@ -128,6 +131,7 @@ impl VoiceHost {
                 mock,
                 listening: true,
                 speaking: false,
+                thinking: false,
                 error: None,
                 delegated_session_ids: vec![],
             };
@@ -204,6 +208,7 @@ impl VoiceHost {
             g.state.active = false;
             g.state.listening = false;
             g.state.speaking = false;
+            g.state.thinking = false;
             g.state.mode = "idle".into();
             g.stop.clone()
         };
@@ -256,7 +261,34 @@ impl VoiceHost {
     }
 }
 
+fn set_thinking(host: &VoiceHost, app: &AppHandle, thinking: bool) {
+    let mut st = host.snapshot();
+    st.thinking = thinking;
+    if thinking {
+        st.listening = false;
+        st.speaking = false;
+    } else if st.active && !st.speaking {
+        st.listening = true;
+    }
+    host.inner.lock().state = st;
+    host.emit_state(app);
+}
+
 async fn execute_tool(
+    app: &AppHandle,
+    mgr: &Arc<SessionManager>,
+    host: &VoiceHost,
+    snap: &VoiceSessionState,
+    name: &str,
+    args_json: &str,
+) -> Result<Value, String> {
+    set_thinking(host, app, true);
+    let result = execute_tool_inner(app, mgr, host, snap, name, args_json).await;
+    set_thinking(host, app, false);
+    result
+}
+
+async fn execute_tool_inner(
     app: &AppHandle,
     mgr: &Arc<SessionManager>,
     host: &VoiceHost,
@@ -539,18 +571,37 @@ async fn handle_server_event(
     let ty = v.get("type").and_then(|x| x.as_str()).unwrap_or("");
 
     match ty {
+        "response.created" | "response.output_item.added" => {
+            let mut st = host.snapshot();
+            st.thinking = true;
+            st.listening = false;
+            st.speaking = false;
+            host.inner.lock().state = st;
+            host.emit_state(app);
+        }
+        "input_audio_buffer.speech_started" | "input_audio_buffer.speech_stopped" => {
+            let mut st = host.snapshot();
+            st.listening = true;
+            st.thinking = false;
+            st.speaking = false;
+            host.inner.lock().state = st;
+            host.emit_state(app);
+        }
         "response.output_audio.delta" | "response.audio.delta" => {
             if let Some(delta) = v.get("delta").and_then(|x| x.as_str()) {
                 let _ = app.emit("voice://audio", json!({ "delta": delta }));
             }
             let mut st = host.snapshot();
             st.speaking = true;
+            st.thinking = false;
+            st.listening = false;
             host.inner.lock().state = st;
             host.emit_state(app);
         }
         "response.output_audio.done" | "response.audio.done" | "response.done" => {
             let mut st = host.snapshot();
             st.speaking = false;
+            st.thinking = false;
             st.listening = true;
             host.inner.lock().state = st;
             host.emit_state(app);
