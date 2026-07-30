@@ -167,6 +167,22 @@ export const zhTW: Record<MessageKey, string> = {
   "session.forkRestoreUnavailable": "還原程式碼需要此專案是 git 儲存庫。",
   "session.forkRestoreFailed": "無法為還原建立 worktree",
   "session.forkRestoreBindFailed": "對話已分叉，但未能繫結到新 worktree",
+  "session.resumeRestore": "恢復對話並還原程式碼…",
+  "session.resumeRestoreTitle": "恢復對話並還原程式碼",
+  "session.resumeRestoreConfirm":
+    "在專案目前 HEAD 建立乾淨的關聯 git worktree，並在該目錄開啟本對話（代理改動與主檢出隔離）。對話內容不變，僅工作目錄切換。工作區有未提交變更時會拒絕。",
+  "session.resumeRestoreHint":
+    "建立同級 worktree（分支 resume-…）並將本對話繫結到該目錄。髒樹安全規則與「分叉 → 還原程式碼」相同。確認後才會執行。",
+  "session.resumeRestoreWorking": "正在恢復…",
+  "session.resumeRestoreOk": "已恢復 · 已在乾淨 worktree 中開啟對話",
+  "session.resumeRestoreFailed": "無法以程式碼還原方式恢復對話",
+  "session.resumeRestoreDirty":
+    "工作區有未提交變更。請先提交或暫存後再試。",
+  "session.resumeRestoreNoProject": "還原程式碼需要此對話已繫結專案資料夾。",
+  "session.resumeRestoreUnavailable": "還原程式碼需要此專案是 git 儲存庫。",
+  "session.resumeRestoreCreateFailed": "無法為恢復建立 worktree",
+  "session.resumeRestoreBindFailed": "未能將本對話繫結到新 worktree",
+  "session.resumeRestoreBusy": "請等待目前回合結束後再使用「恢復並還原程式碼」",
   "session.duplicate": "複製對話",
   "session.duplicateTitleOf": "副本：{name}",
   "session.duplicateWorking": "正在複製…",

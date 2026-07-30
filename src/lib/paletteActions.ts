@@ -142,6 +142,22 @@ export function defaultPaletteActions(): PaletteActionDef[] {
       group: "session",
     },
     {
+      id: "resume-with-code-restore",
+      labelKey: "session.resumeRestore",
+      keywords: [
+        "resume",
+        "continue",
+        "restore",
+        "restore code",
+        "code restore",
+        "worktree",
+        "clean worktree",
+        "isolate",
+        "git restore",
+      ],
+      group: "session",
+    },
+    {
       id: "settings-general",
       labelKey: "settings.nav.general",
       keywords: ["settings", "general", "preferences", "prefs", "composer"],

@@ -185,6 +185,27 @@ const en = {
   "session.forkRestoreFailed": "Could not create a worktree for restore",
   "session.forkRestoreBindFailed":
     "Forked the chat, but could not bind it to the new worktree",
+  "session.resumeRestore": "Resume with code restore…",
+  "session.resumeRestoreTitle": "Resume with code restore",
+  "session.resumeRestoreConfirm":
+    "Open this chat on a clean linked git worktree at the project’s current HEAD (isolates agent edits from your main checkout). The conversation stays the same; only the working directory changes. Refuses if the tree has uncommitted changes.",
+  "session.resumeRestoreHint":
+    "Creates a sibling worktree (branch resume-…) and rebinds this session there. Same dirty-tree safety as Fork → restore code. Off until you confirm.",
+  "session.resumeRestoreWorking": "Resuming…",
+  "session.resumeRestoreOk": "Resumed · opened chat on a clean worktree",
+  "session.resumeRestoreFailed": "Could not resume with code restore",
+  "session.resumeRestoreDirty":
+    "Working tree has uncommitted changes. Commit or stash first, then try again.",
+  "session.resumeRestoreNoProject":
+    "Code restore needs a project folder bound to this chat.",
+  "session.resumeRestoreUnavailable":
+    "Code restore needs a git repository for this project.",
+  "session.resumeRestoreCreateFailed":
+    "Could not create a worktree for resume restore",
+  "session.resumeRestoreBindFailed":
+    "Could not bind this chat to the new worktree",
+  "session.resumeRestoreBusy":
+    "Wait for the current turn to finish before resuming with code restore",
   "session.duplicate": "Duplicate chat",
   "session.duplicateTitleOf": "Copy of {name}",
   "session.duplicateWorking": "Duplicating…",
@@ -2977,6 +2998,22 @@ const zh: Record<MessageKey, string> = {
   "session.forkRestoreUnavailable": "恢复代码需要该项目是 git 仓库。",
   "session.forkRestoreFailed": "无法为恢复创建 worktree",
   "session.forkRestoreBindFailed": "会话已分叉，但未能绑定到新 worktree",
+  "session.resumeRestore": "恢复对话并还原代码…",
+  "session.resumeRestoreTitle": "恢复对话并还原代码",
+  "session.resumeRestoreConfirm":
+    "在项目当前 HEAD 创建干净的关联 git worktree，并在该目录打开本会话（代理改动与主检出隔离）。对话内容不变，仅工作目录切换。工作区有未提交改动时会拒绝。",
+  "session.resumeRestoreHint":
+    "创建同级 worktree（分支 resume-…）并将本会话绑定到该目录。脏树安全规则与「分叉 → 恢复代码」相同。确认后才会执行。",
+  "session.resumeRestoreWorking": "正在恢复…",
+  "session.resumeRestoreOk": "已恢复 · 已在干净 worktree 中打开会话",
+  "session.resumeRestoreFailed": "无法以代码还原方式恢复会话",
+  "session.resumeRestoreDirty":
+    "工作区有未提交改动。请先提交或暂存后再试。",
+  "session.resumeRestoreNoProject": "代码还原需要该会话已绑定项目文件夹。",
+  "session.resumeRestoreUnavailable": "代码还原需要该项目是 git 仓库。",
+  "session.resumeRestoreCreateFailed": "无法为恢复创建 worktree",
+  "session.resumeRestoreBindFailed": "未能将本会话绑定到新 worktree",
+  "session.resumeRestoreBusy": "请等待当前回合结束后再使用「恢复并还原代码」",
   "session.duplicate": "复制会话",
   "session.duplicateTitleOf": "副本：{name}",
   "session.duplicateWorking": "正在复制…",

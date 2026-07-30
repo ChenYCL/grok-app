@@ -546,6 +546,11 @@ import {
   buildForkWorktreeName,
   canRestoreCodeOnFork,
 } from "@/lib/sessionFork";
+import {
+  buildResumeWorktreeName,
+  canOfferResumeWithCodeRestore,
+  canRestoreCodeOnResume,
+} from "@/lib/sessionResumeRestore";
 import { isProjectPathMissing } from "@/lib/projectPath";
 import {
   PROJECT_COLOR_TOKENS,
@@ -1250,6 +1255,10 @@ export default function App() {
   } | null>(null);
   const [forkRestoreCode, setForkRestoreCode] = useState(false);
   const [forkBusy, setForkBusy] = useState(false);
+  /** Resume existing chat on a clean worktree (restore-code). */
+  const [resumeRestoreConfirm, setResumeRestoreConfirm] =
+    useState<SessionRow | null>(null);
+  const [resumeRestoreBusy, setResumeRestoreBusy] = useState(false);
   /** Last user message open in inline edit (not main composer). */
   const [editingUserMessageId, setEditingUserMessageId] = useState<
     string | null
@@ -9097,6 +9106,164 @@ export default function App() {
   );
 
   /**
+   * Resume an existing session on a clean sibling worktree at current HEAD.
+   * Reuses the fork restore-code dirty gate; does not clone the journal.
+   */
+  const runResumeWithCodeRestore = useCallback(
+    async (source: SessionRow) => {
+      if (!api.isTauri()) {
+        showToast(tr("error.needTauri"));
+        return;
+      }
+      const isOpenSource =
+        session.sessionId === source.id ||
+        viewingSessionIdRef.current === source.id;
+      if (
+        busyIds.has(source.id) ||
+        (isOpenSource && !canRewindSession)
+      ) {
+        showToast(tr("session.resumeRestoreBusy"), 3500);
+        return;
+      }
+      setResumeRestoreBusy(true);
+      try {
+        const sourceProjectId = normalizeProjectId(source.projectId);
+        const sourceProject = sourceProjectId
+          ? projects.find((p) => p.id === sourceProjectId) ?? null
+          : null;
+        const projectPath = sourceProject?.path?.trim() || "";
+        if (!projectPath) {
+          showToast(tr("session.resumeRestoreNoProject"), 4500);
+          return;
+        }
+
+        let status: api.GitStatusResult;
+        try {
+          status = await api.gitStatus(projectPath);
+        } catch (e) {
+          showToast(
+            tr("session.resumeRestoreUnavailable") + ": " + String(e),
+            4500,
+          );
+          return;
+        }
+        const gate = canRestoreCodeOnResume(projectPath, status);
+        if (!gate.ok) {
+          if (gate.reason === "dirty") {
+            showToast(tr("session.resumeRestoreDirty"), 5200);
+          } else if (gate.reason === "no_project") {
+            showToast(tr("session.resumeRestoreNoProject"), 4500);
+          } else {
+            showToast(tr("session.resumeRestoreUnavailable"), 4500);
+          }
+          return;
+        }
+
+        let created: api.GitWorktreeAddResult | null = null;
+        let lastErr: unknown = null;
+        for (let attempt = 0; attempt < 3; attempt++) {
+          const name = buildResumeWorktreeName(source.id, {
+            attempt,
+            now: Date.now() + attempt,
+          });
+          try {
+            created = await api.gitWorktreeAdd(projectPath, name, null);
+            break;
+          } catch (e) {
+            lastErr = e;
+            const msg = String(e).toLowerCase();
+            if (
+              !msg.includes("already exists") &&
+              !msg.includes("already registered") &&
+              !msg.includes("already checked out")
+            ) {
+              break;
+            }
+          }
+        }
+        if (!created) {
+          showToast(
+            tr("session.resumeRestoreCreateFailed") +
+              (lastErr ? ": " + String(lastErr) : ""),
+            5200,
+          );
+          return;
+        }
+
+        const trust = !!sourceProject?.trusted;
+        const existing = projects.find((p) =>
+          pathsEqual(p.path, created!.path),
+        );
+        let bindProject: Project | null = existing ?? null;
+        if (!bindProject) {
+          const added = (await api.projectAdd(created.path, trust)) as Project;
+          const list = mapProjectsList(
+            (await api.projectsList()) as Project[],
+          );
+          setProjects(list);
+          bindProject =
+            list.find((p) => p.id === added.id) ??
+            list.find((p) => pathsEqual(p.path, created!.path)) ??
+            normalizeProject(added);
+        }
+
+        try {
+          await api.sessionSetProject(source.id, bindProject.id);
+        } catch (e) {
+          showToast(
+            tr("session.resumeRestoreBindFailed") + ": " + String(e),
+            4500,
+          );
+          return;
+        }
+
+        const branch =
+          created.branch?.trim() ||
+          created.name ||
+          tr("composer.worktreeDetached");
+        try {
+          await api.sessionSetWorktree(source.id, {
+            worktreePath: created.path,
+            worktreeBranch: branch,
+          });
+        } catch {
+          /* soft-fail badge meta */
+        }
+
+        setResumeRestoreConfirm(null);
+        await refreshSessions();
+        await refreshGitWorktrees();
+        const row = normalizeSessionRow({
+          ...source,
+          projectId: bindProject.id,
+          worktreePath: created.path,
+          worktreeBranch: branch,
+          isWorktreeSession: true,
+          updatedAt: new Date().toISOString(),
+        });
+        setExpandedProjects((e) => ({ ...e, [bindProject!.id]: true }));
+        await openSession(row, bindProject);
+        showToast(tr("session.resumeRestoreOk"), 2800);
+      } catch (e) {
+        showToast(
+          tr("session.resumeRestoreFailed") + ": " + String(e),
+          4500,
+        );
+      } finally {
+        setResumeRestoreBusy(false);
+      }
+    },
+    // openSession / refreshSessions / busyIds / canRewindSession via closure
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [projects, showToast, tr, session.sessionId],
+  );
+
+  const confirmResumeWithCodeRestore = useCallback((source: SessionRow) => {
+    setCtxMenu(null);
+    setResumeRestoreConfirm(source);
+  }, []);
+
+  /**
    * Duplicate a session: full journal clone via sessionFork (no cut, no restore-code).
    * Idle-only so we don't snapshot a mid-turn journal.
    */
@@ -10713,6 +10880,48 @@ export default function App() {
             : undefined,
         );
         break;
+      case "resume-with-code-restore": {
+        const sid = session.sessionId || viewingSessionIdRef.current;
+        if (!sid) {
+          showToast(tr("session.resumeRestoreNoProject"), 3500);
+          break;
+        }
+        const row =
+          sessions.find((s) => s.id === sid) ??
+          (sid
+            ? normalizeSessionRow({
+                id: sid,
+                title: session.title || tr("session.untitled"),
+                projectId: activeProject?.id ?? null,
+                updatedAt: new Date().toISOString(),
+              })
+            : null);
+        if (!row) {
+          showToast(tr("session.resumeRestoreNoProject"), 3500);
+          break;
+        }
+        const proj = row.projectId
+          ? projects.find((p) => p.id === row.projectId) ?? activeProject
+          : activeProject;
+        if (
+          !canOfferResumeWithCodeRestore(proj?.path, {
+            gitAvailable: gitWorktreesAvailable,
+          })
+        ) {
+          showToast(
+            proj?.path
+              ? tr("session.resumeRestoreUnavailable")
+              : tr("session.resumeRestoreNoProject"),
+            3500,
+          );
+          break;
+        }
+        confirmResumeWithCodeRestore({
+          ...row,
+          projectId: row.projectId ?? proj?.id ?? null,
+        });
+        break;
+      }
       case "settings-general":
         navigateSettings("general");
         break;
@@ -12401,6 +12610,7 @@ export default function App() {
         exportMdTarget ||
         rewindConfirm ||
         forkConfirm ||
+        resumeRestoreConfirm ||
         worktreeCreateOpen ||
         projectRulesTarget ||
         agentDashboardOpen,
@@ -16711,6 +16921,55 @@ export default function App() {
       </GlassModal>
 
       <GlassModal
+        open={!!resumeRestoreConfirm}
+        onClose={() => {
+          if (resumeRestoreBusy) return;
+          setResumeRestoreConfirm(null);
+        }}
+        title={tr("session.resumeRestoreTitle")}
+        size="sm"
+        closeLabel={tr("common.close")}
+        closeOnOverlay={!resumeRestoreBusy}
+        showClose={!resumeRestoreBusy}
+        wrapBody
+        className="fork-confirm-modal"
+        footer={
+          <>
+            <button
+              type="button"
+              className="btn btn--ghost"
+              disabled={resumeRestoreBusy}
+              onClick={() => setResumeRestoreConfirm(null)}
+            >
+              {tr("common.cancel")}
+            </button>
+            <button
+              type="button"
+              className="btn"
+              disabled={resumeRestoreBusy || !resumeRestoreConfirm}
+              onClick={() => {
+                if (!resumeRestoreConfirm) return;
+                void runResumeWithCodeRestore(resumeRestoreConfirm);
+              }}
+            >
+              {resumeRestoreBusy
+                ? tr("session.resumeRestoreWorking")
+                : tr("session.resumeRestore")}
+            </button>
+          </>
+        }
+      >
+        <div className="fork-confirm">
+          <p className="fork-confirm__msg">
+            {tr("session.resumeRestoreConfirm")}
+          </p>
+          <p className="fork-confirm__hint">
+            {tr("session.resumeRestoreHint")}
+          </p>
+        </div>
+      </GlassModal>
+
+      <GlassModal
         open={showTraces}
         onClose={() => setShowTraces(false)}
         title={tr("session.tracesTitle")}
@@ -17913,6 +18172,38 @@ export default function App() {
                   void runDuplicateSession(s);
                 },
               },
+              ...(() => {
+                const proj = s.projectId
+                  ? projects.find((p) => p.id === s.projectId) ?? null
+                  : null;
+                const path = proj?.path?.trim() || "";
+                const gitKnown =
+                  activeProject &&
+                  path &&
+                  pathsEqual(activeProject.path, path)
+                    ? gitWorktreesAvailable
+                    : null;
+                if (
+                  !canOfferResumeWithCodeRestore(path, {
+                    gitAvailable: gitKnown,
+                  })
+                ) {
+                  return [];
+                }
+                return [
+                  {
+                    id: "resume-restore",
+                    label: tr("session.resumeRestore"),
+                    icon: <IconGitBranch size={16} />,
+                    disabled:
+                      resumeRestoreBusy ||
+                      forkBusy ||
+                      busyIds.has(s.id) ||
+                      (isOpen && !canRewindSession),
+                    onClick: () => confirmResumeWithCodeRestore(s),
+                  } satisfies ContextMenuItem,
+                ];
+              })(),
               {
                 id: "session-plugin-add",
                 label:
