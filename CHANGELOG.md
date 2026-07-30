@@ -59,6 +59,7 @@ See `docs/llm-wiki/release.md`.
 #### Permissions / CLI
 - **CLI `--permission-mode` alignment**: pure App policy / YOLO / plan-mode map (`default` · `acceptEdits` · `auto` · `dontAsk` · `bypassPermissions` · `plan`); spawn pins top-level `--permission-mode` (+ agent `--always-approve` for YOLO); Settings shows CLI label + advanced mode selector; product **Auto** policy
 - **Doctor fix depth**: plan banner (“N automatic fixes available (M need confirm)”), **Apply safe fixes** for non-destructive CLI remediations (sequential host `cli_doctor_fix`, then re-run doctor); destructive fixes stay per-row with in-app confirm; clearer fix-id + host errors
+- **CLI worktree list**: host runs `grok worktree list --json` (text fallback); branch menu **CLI worktrees** section with refresh, reveal path, open as session cwd when the folder exists; soft-fail when CLI missing; pure JSON/text parsers + tests
 
 #### Extensions / marketplace
 - **Marketplace plugin detail**: clicking a catalog plugin opens a real detail panel (name, description, marketplace, version, skill/hooks/agents/MCP badges) with Install / Reinstall — not a stub
@@ -99,6 +100,8 @@ See `docs/llm-wiki/release.md`.
 - **扩展/市场**：目录插件详情面板（描述/版本/组件徽章 + 安装/重装）；安装失败行内重试；已安装 provides 结构化摘要；**插件校验**（`plugin validate`：已安装行 + 本地路径安装前；行内结果面板；旧 CLI 软失败）
 - **扩展/市场**：目录插件详情面板（描述/版本/组件徽章 + 安装/重装）；安装失败行内重试；已安装 provides 结构化摘要；**项目检查深度**（分区芯片、钩子/技能名清单、展开列表、分节复制 JSON/路径）
 - **权限/CLI**：`--permission-mode` 映射与 spawn；设置页 CLI 标签与高级选择；**Auto** 策略；Doctor 安全批量修复；**删除磁盘 CLI 会话**（单条/全部未关联；限定 `GROK_HOME/sessions`）
+- **扩展/市场**：目录插件详情面板（描述/版本/组件徽章 + 安装/重装）；安装失败行内重试；已安装 provides 结构化摘要
+- **权限/CLI**：`--permission-mode` 映射与 spawn；设置页 CLI 标签与高级选择；**Auto** 策略；Doctor 安全批量修复；**删除磁盘 CLI 会话**（单条/全部未关联；限定 `GROK_HOME/sessions`）；**CLI worktree 列表**（`grok worktree list`；分支菜单刷新/显示/安全打开为 cwd）
 
 
 **中文 · 修复**

@@ -471,6 +471,44 @@ export async function gitWorktreesList(projectPath: string) {
   return invoke<GitWorktreesResult>("git_worktrees_list", { projectPath });
 }
 
+/** One CLI-tracked worktree from `grok worktree list` (JSON or text). */
+export interface CliWorktreeEntry {
+  id: string;
+  name: string;
+  path: string;
+  branch?: string | null;
+  status?: string | null;
+  kind?: string | null;
+  repoName?: string | null;
+  sourceRepo?: string | null;
+  /** True when path exists as a directory (safe to open as cwd). */
+  pathOk?: boolean;
+  head?: string | null;
+}
+
+export interface CliWorktreesResult {
+  available: boolean;
+  worktrees: CliWorktreeEntry[];
+  reason?: string | null;
+  cliFound: boolean;
+  /** `json` | `text` | `none` */
+  source?: string | null;
+}
+
+/**
+ * List Grok Build CLI-tracked worktrees (`grok worktree list --json`).
+ * Soft-fails when CLI is missing or the command is unsupported.
+ */
+export async function cliWorktreesList(opts?: {
+  all?: boolean | null;
+  repo?: string | null;
+}) {
+  return invoke<CliWorktreesResult>("cli_worktrees_list", {
+    all: opts?.all ?? null,
+    repo: opts?.repo?.trim() || null,
+  });
+}
+
 /** Result of creating a linked worktree (`git worktree add`). */
 export interface GitWorktreeAddResult {
   path: string;

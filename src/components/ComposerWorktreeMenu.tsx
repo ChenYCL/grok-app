@@ -1,5 +1,6 @@
 /**
  * Composer branch / worktree chip — switch linked worktrees, create, remove, GC.
+ * Also lists Grok Build CLI-tracked worktrees (`grok worktree list`).
  * Lives next to the project picker on the new-session context bar.
  */
 
@@ -7,18 +8,24 @@ import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { createPortal } from "react-dom";
 import {
   IconCheck,
+  IconFolder,
   IconGitBranch,
   IconPlus,
+  IconRefresh,
   IconTrash,
 } from "@/components/icons";
 import { Tip } from "@/components/ui/tooltip";
 import { useFloatingMenu } from "@/lib/floatingMenu";
 import {
+  canOpenCliWorktreeAsCwd,
+  cliWorktreeMetaLabel,
+} from "@/lib/cliWorktrees";
+import {
   canRemoveWorktree,
   pathsEqual,
   worktreeLabel,
 } from "@/lib/gitWorktree";
-import type { GitWorktreeEntry } from "@/lib/api";
+import type { CliWorktreeEntry, GitWorktreeEntry } from "@/lib/api";
 
 export type ComposerWorktreeMenuLabels = {
   worktrees: string;
@@ -36,6 +43,16 @@ export type ComposerWorktreeMenuLabels = {
   /** Per-row remove control (non-main only). */
   worktreeRemove?: string;
   worktreeRemoveTip?: string;
+  /** CLI-tracked worktrees section (`grok worktree list`). */
+  cliWorktrees?: string;
+  cliWorktreesEmpty?: string;
+  cliWorktreesUnavailable?: string;
+  cliWorktreesLoading?: string;
+  cliWorktreeRefresh?: string;
+  cliWorktreeReveal?: string;
+  cliWorktreeOpen?: string;
+  cliWorktreeOpenUnavailable?: string;
+  cliWorktreeMissingPath?: string;
 };
 
 type Props = {
@@ -49,6 +66,11 @@ type Props = {
   worktreesAvailable?: boolean | null;
   worktreesLoading?: boolean;
   worktreesReason?: string | null;
+  /** CLI-tracked worktrees from `grok worktree list` (soft-fail). */
+  cliWorktrees?: CliWorktreeEntry[];
+  cliWorktreesLoading?: boolean;
+  cliWorktreesAvailable?: boolean | null;
+  cliWorktreesReason?: string | null;
   disabled?: boolean;
   /**
    * `chip` — generic toolbar.
@@ -63,15 +85,29 @@ type Props = {
   /** Remove a live linked worktree (never main). Parent confirms + calls host. */
   onRemove?: (wt: GitWorktreeEntry) => void;
   onOpen?: () => void;
+  /** Refresh CLI-tracked list (does not close menu). */
+  onCliRefresh?: () => void;
+  /** Reveal CLI worktree path in file manager. */
+  onCliReveal?: (wt: CliWorktreeEntry) => void;
+  /**
+   * Open CLI worktree as session cwd when safe (path exists).
+   * Parent reuses project-bind path like git worktree switch.
+   */
+  onCliOpen?: (wt: CliWorktreeEntry) => void;
 };
 
 const LIST_MAX_H = 200;
+const CLI_LIST_MAX_H = 160;
 
 export function ComposerWorktreeMenu({
   activePath,
   worktrees = [],
   worktreesLoading = false,
   worktreesReason = null,
+  cliWorktrees = [],
+  cliWorktreesLoading = false,
+  cliWorktreesAvailable = null,
+  cliWorktreesReason = null,
   disabled,
   variant = "context",
   labels,
@@ -81,6 +117,9 @@ export function ComposerWorktreeMenu({
   onGc,
   onRemove,
   onOpen,
+  onCliRefresh,
+  onCliReveal,
+  onCliOpen,
 }: Props) {
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
@@ -97,18 +136,41 @@ export function ComposerWorktreeMenu({
       ? labels.worktreesLoading || "…"
       : "—";
 
+  const showCliSection =
+    !!labels.cliWorktrees &&
+    (cliWorktreesAvailable !== null ||
+      cliWorktreesLoading ||
+      cliWorktrees.length > 0 ||
+      !!onCliRefresh);
+
   // Fixed size estimate so first paint matches final layout (avoids open flash).
   const listCount = Math.max(worktrees.length, 1);
+  const cliCount = showCliSection
+    ? Math.max(cliWorktrees.length, 1)
+    : 0;
   const estHeight = Math.min(
-    420,
-    44 + Math.min(LIST_MAX_H, listCount * 36 + 8) + 3 * 36 + 16,
+    520,
+    44 +
+      Math.min(LIST_MAX_H, listCount * 36 + 8) +
+      3 * 36 +
+      16 +
+      (showCliSection
+        ? 28 + Math.min(CLI_LIST_MAX_H, cliCount * 36 + 8) + 28
+        : 0),
   );
   // Soft-refresh loading should not re-anchor / dim when we already have rows.
   const showLoading = worktreesLoading && worktrees.length === 0;
+  const showCliLoading = cliWorktreesLoading && cliWorktrees.length === 0;
   const removeLabel =
     labels.worktreeRemoveTip ||
     labels.worktreeRemove ||
     "Remove worktree";
+  const cliHead = labels.cliWorktrees || "CLI worktrees";
+  const cliRefreshLabel = labels.cliWorktreeRefresh || "Refresh";
+  const cliRevealLabel = labels.cliWorktreeReveal || "Reveal";
+  const cliOpenLabel = labels.cliWorktreeOpen || "Open as project";
+  const cliOpenBlocked =
+    labels.cliWorktreeOpenUnavailable || "Path missing — cannot open";
 
   const { pos, style: popStyle } = useFloatingMenu({
     open,
@@ -125,7 +187,7 @@ export function ComposerWorktreeMenu({
     estHeight,
     gap: 8,
     // Only re-anchor when row count changes, not on soft-refresh loading toggles.
-    deps: [worktrees.length],
+    deps: [worktrees.length, cliWorktrees.length, showCliSection],
   });
 
   useEffect(() => {
@@ -306,6 +368,151 @@ export function ComposerWorktreeMenu({
                 <span>{labels.worktreeGc}</span>
               </button>
             </div>
+
+            {showCliSection ? (
+              <div className="cwm__cli">
+                <div className="cwm__cli-head">
+                  <span className="cwm__head cwm__head--inline">{cliHead}</span>
+                  {onCliRefresh ? (
+                    <Tip label={cliRefreshLabel}>
+                      <button
+                        type="button"
+                        className="cwm__cli-refresh"
+                        aria-label={cliRefreshLabel}
+                        disabled={disabled || cliWorktreesLoading}
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          onCliRefresh();
+                        }}
+                      >
+                        <IconRefresh
+                          size={14}
+                          aria-hidden
+                          className={
+                            cliWorktreesLoading ? "is-spin" : undefined
+                          }
+                        />
+                      </button>
+                    </Tip>
+                  ) : null}
+                </div>
+                {cliWorktreesAvailable === false &&
+                cliWorktrees.length === 0 ? (
+                  <p className="cwm__empty">
+                    {cliWorktreesReason?.trim()
+                      ? labels.cliWorktreesUnavailable ||
+                        labels.worktreesUnavailable
+                      : labels.cliWorktreesEmpty || labels.worktreesEmpty}
+                  </p>
+                ) : cliWorktrees.length > 0 ? (
+                  <ul
+                    className={
+                      "cwm__list cwm__list--cli" +
+                      (showCliLoading ? " is-loading" : "")
+                    }
+                    aria-busy={showCliLoading || undefined}
+                    style={{ maxHeight: CLI_LIST_MAX_H }}
+                  >
+                    {cliWorktrees.map((wt) => {
+                      const isCurrent = pathsEqual(wt.path, activePath);
+                      const canOpen =
+                        !!onCliOpen &&
+                        canOpenCliWorktreeAsCwd(wt) &&
+                        !isCurrent;
+                      const meta = cliWorktreeMetaLabel(wt, {
+                        current: isCurrent
+                          ? labels.worktreeCurrent
+                          : undefined,
+                      });
+                      const tipLine = [
+                        canOpen ? cliOpenLabel : !isCurrent ? cliOpenBlocked : null,
+                        wt.path,
+                        wt.status ? `status: ${wt.status}` : null,
+                        !wt.pathOk
+                          ? labels.cliWorktreeMissingPath || null
+                          : null,
+                      ]
+                        .filter(Boolean)
+                        .join("\n");
+                      return (
+                        <li key={wt.id || wt.path} className="cwm__row">
+                          <div className="cwm__row-inner">
+                            <button
+                              type="button"
+                              role="menuitem"
+                              className={
+                                "cmm__opt cwm__item" +
+                                (isCurrent ? " is-active" : "") +
+                                (!canOpen && !isCurrent
+                                  ? " is-muted"
+                                  : "")
+                              }
+                              title={tipLine}
+                              disabled={
+                                disabled ||
+                                isCurrent ||
+                                !canOpen
+                              }
+                              onClick={() => {
+                                if (!canOpen) return;
+                                setOpen(false);
+                                onCliOpen?.(wt);
+                              }}
+                            >
+                              <span className="cwm__item-main">
+                                <span className="cwm__item-name">
+                                  {wt.name}
+                                </span>
+                                {meta ? (
+                                  <span className="cwm__item-meta">
+                                    {meta}
+                                  </span>
+                                ) : null}
+                              </span>
+                              {isCurrent ? (
+                                <span className="cmm__opt-check" aria-hidden>
+                                  <IconCheck size={16} />
+                                </span>
+                              ) : null}
+                            </button>
+                            {onCliReveal && wt.path ? (
+                              <Tip label={cliRevealLabel}>
+                                <button
+                                  type="button"
+                                  className="cwm__row-remove cwm__row-reveal"
+                                  aria-label={cliRevealLabel}
+                                  title={cliRevealLabel}
+                                  disabled={
+                                    disabled ||
+                                    !wt.pathOk
+                                  }
+                                  onClick={(e) => {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                    onCliReveal(wt);
+                                  }}
+                                >
+                                  <IconFolder size={14} aria-hidden />
+                                </button>
+                              </Tip>
+                            ) : null}
+                          </div>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                ) : (
+                  <p className="cwm__empty">
+                    {showCliLoading
+                      ? labels.cliWorktreesLoading ||
+                        labels.worktreesLoading ||
+                        "…"
+                      : labels.cliWorktreesEmpty || labels.worktreesEmpty}
+                  </p>
+                )}
+              </div>
+            ) : null}
           </div>,
           document.body,
         )}

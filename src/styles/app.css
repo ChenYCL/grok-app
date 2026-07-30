@@ -8772,6 +8772,81 @@ button.composer__context-item {
   min-width: 0;
 }
 
+/* CLI-tracked worktrees (`grok worktree list`) section under git worktrees */
+.cwm__cli {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: 4px;
+  padding-top: 6px;
+  border-top: 1px solid var(--border-subtle);
+  min-width: 0;
+}
+
+.cwm__cli-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  min-width: 0;
+}
+
+.cwm__head--inline {
+  flex: 1;
+  min-width: 0;
+  padding-bottom: 0;
+}
+
+.cwm__cli-refresh {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  margin: 0 2px 0 0;
+  padding: 0;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-tertiary);
+  cursor: pointer;
+}
+
+.cwm__cli-refresh:hover:not(:disabled) {
+  background: var(--bg-hover);
+  color: var(--text-secondary);
+}
+
+.cwm__cli-refresh:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.cwm__cli-refresh .is-spin,
+.cwm__cli-refresh .g-icon.is-spin {
+  animation: cwm-spin 0.8s linear infinite;
+}
+
+@keyframes cwm-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.cwm__list--cli {
+  /* slightly tighter secondary list */
+}
+
+.cwm__item.is-muted {
+  opacity: 0.55;
+}
+
+.cwm__row-reveal:hover:not(:disabled) {
+  color: var(--text-secondary);
+  background: var(--bg-hover);
+}
+
 .cwm__action:hover {
   background: var(--bg-hover);
   color: var(--text-primary);

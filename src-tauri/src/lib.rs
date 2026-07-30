@@ -37,6 +37,7 @@ mod stream_emit;
 mod stream_stall;
 mod tool_heartbeat;
 mod cli_sessions;
+mod cli_worktrees;
 mod turn_complete;
 mod store_lock;
 mod automation_runner;
@@ -397,6 +398,7 @@ pub fn run() {
             commands::git_worktree_add,
             commands::git_worktree_remove,
             commands::git_worktree_gc,
+            cli_worktrees::cli_worktrees_list,
             commands::git_show_file,
             commands::fs_list_dir,
             commands::fs_read_file,

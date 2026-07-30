@@ -76,21 +76,38 @@ Per-row trash icon on linked (non-main) entries in the branch menu:
 
 Menu action **Clean stale worktrees…** → GlassModal dry-run preview (`git worktree prune -v --dry-run`), then apply. Optional force → `--expire now`. Does **not** delete live worktrees. Host: `git_worktree_gc`.
 
+### CLI worktrees list (`grok worktree list`)
+
+The branch menu also shows a **CLI worktrees** section fed by the Grok Build index (not only `git worktree list`):
+
+```bash
+grok worktree list --json   # preferred
+grok worktree list          # text fallback when --json unsupported
+```
+
+- Host: `cli_worktrees_list` (`src-tauri/src/cli_worktrees.rs`) — soft-fail when CLI missing; optional `--all` / `--repo`.
+- Pure parsers: JSON + text table → `{ id, name, path, branch?, status?, kind?, pathOk, … }` (+ Rust/TS unit tests).
+- UI: section under create/GC actions — **Refresh**, per-row **Reveal**, click row to **open as session cwd** only when `pathOk` (folder exists). Does not replace App create/remove/GC for git-linked trees.
+- Rows are filtered to the active project when `source_repo` / `repo_name` / path slug match; otherwise the full (capped) list is shown.
+
 ## Non-goals (MVP)
 
 - Full branch browser / remote fetch / same-directory `git checkout`
 - In-place checkout of an arbitrary local branch without a worktree
 - Apply / merge worktree branch back onto main from the session menu (open folder + remove only)
 - Registering App-created trees into the CLI `worktrees.db` index (git porcelain list is enough for switch/remove)
+- CLI `worktree rm` / `gc` / `show` from the App (list + open/reveal only)
 
 ## Implementation
 
 - Host: `git_worktrees_list` (includes `cliGrokHome`), `git_worktree_add` (`layout`: `cli` \| `sibling`), `git_worktree_remove`, `git_worktree_gc`, `session_set_worktree` (`src-tauri/src/commands.rs`) — argv only, no shell
+- Host: `cli_worktrees_list` (`src-tauri/src/cli_worktrees.rs`) — `grok worktree list [--json]` soft-fail envelope
 - Store: optional `SessionMeta.worktree_path` / `worktree_branch` / `is_worktree_session` (serde defaults; skip empty)
 - Pure path / name helpers: `sanitize_worktree_name`, `sanitize_worktree_ref`, `build_worktree_cli_path`, `build_worktree_sibling_path`, `build_worktree_path_for_layout` (+ unit tests)
 - Frontend pure helpers: `src/lib/gitWorktree.ts` — list/parse + path builders + `resolveSessionWorktreeBadge` / tooltip / layout detect (+ unit tests)
+- Frontend pure helpers: `src/lib/cliWorktrees.ts` — CLI JSON/text parse, project filter, open-as-cwd gate (+ unit tests)
 - UI:
   - Project: `ComposerProjectMenu` (folder only)
-  - Branch / worktree: `ComposerWorktreeMenu` (context bar chip; per-row remove)
+  - Branch / worktree: `ComposerWorktreeMenu` (context bar chip; per-row remove; **CLI worktrees** section)
   - Sidebar **CLI** / **WT** badge + session context menu manage actions
   - Create (layout radios + ref validation) + remove confirm + GC dialogs in `App.tsx`
