@@ -2167,6 +2167,28 @@ const en = {
   "reliability.settingsDesc":
     "Aggregate busy chats, stall signals, and recent error cards; export support zip.",
 
+  // Cost rollup (Settings → Runtime → Tools) — known tokens only, never invoice-grade
+  "costRollup.title": "Cost rollup",
+  "costRollup.settingsDesc":
+    "Known token usage by project and day (from live usage and session journals when available). Estimates only — not billing.",
+  "costRollup.lead":
+    "Rolling {days}-day view of agent-reported token counts grouped by project. Sessions without known usage stay Unknown.",
+  "costRollup.disclaimer":
+    "Rough estimate from a static rates table — never invoice-grade. Missing usage is Unknown, not $0.",
+  "costRollup.refresh": "Refresh",
+  "costRollup.clear": "Clear local samples",
+  "costRollup.emptyTitle": "No known usage yet",
+  "costRollup.emptyBody":
+    "Token counts appear when the agent reports usage (or a journal compact includes tokensAfter). Until then, rows stay Unknown.",
+  "costRollup.knownTokens": "Known tokens",
+  "costRollup.estCost": "Est. cost",
+  "costRollup.sessionsKnown": "Sessions known",
+  "costRollup.sessionsUnknown": "Sessions unknown",
+  "costRollup.tokens": "Tokens",
+  "costRollup.costUnknown": "—",
+  "costRollup.noProject": "No project",
+  "costRollup.unknownCount": "{count} unknown",
+
   // Connection status pill
   "conn.idle": "Idle",
   "conn.connecting": "Connecting",
@@ -5528,6 +5550,27 @@ const zh: Record<MessageKey, string> = {
   "reliability.openFromSettings": "打开可靠性中心",
   "reliability.settingsDesc":
     "汇总忙碌会话、卡顿信号与最近错误卡片；可导出支持包。",
+
+  "costRollup.title": "费用汇总",
+  "costRollup.settingsDesc":
+    "按项目与日期汇总已知 token 用量（来自实时 usage 与会话 journal，若有）。仅为估算 — 非账单。",
+  "costRollup.lead":
+    "近 {days} 天按项目分组的 agent 上报 token。无已知用量的会话记为「未知」。",
+  "costRollup.disclaimer":
+    "基于静态费率表的粗估 — 绝非账单级精度。缺失用量显示为未知，而非 $0。",
+  "costRollup.refresh": "刷新",
+  "costRollup.clear": "清除本地样本",
+  "costRollup.emptyTitle": "暂无已知用量",
+  "costRollup.emptyBody":
+    "当 agent 上报 usage（或 journal 的 compact 含 tokensAfter）时会出现数字。此前保持「未知」。",
+  "costRollup.knownTokens": "已知 token",
+  "costRollup.estCost": "估算费用",
+  "costRollup.sessionsKnown": "已知会话",
+  "costRollup.sessionsUnknown": "未知会话",
+  "costRollup.tokens": "Token",
+  "costRollup.costUnknown": "—",
+  "costRollup.noProject": "无项目",
+  "costRollup.unknownCount": "{count} 未知",
 
   "conn.idle": "空闲",
   "conn.connecting": "连接中",

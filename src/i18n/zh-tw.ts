@@ -2048,6 +2048,28 @@ export const zhTW: Record<MessageKey, string> = {
   "reliability.openFromSettings": "開啟可靠性中心",
   "reliability.settingsDesc":
     "彙總忙碌工作階段、停滯訊號與最近錯誤卡片；可匯出支援包。",
+
+  "costRollup.title": "費用彙總",
+  "costRollup.settingsDesc":
+    "依專案與日期彙總已知 token 用量（來自即時 usage 與工作階段 journal，若有）。僅為估算 — 非帳單。",
+  "costRollup.lead":
+    "近 {days} 天依專案分組的 agent 回報 token。無已知用量的工作階段記為「未知」。",
+  "costRollup.disclaimer":
+    "基於靜態費率表的粗估 — 絕非帳單級精度。缺失用量顯示為未知，而非 $0。",
+  "costRollup.refresh": "重新整理",
+  "costRollup.clear": "清除本機樣本",
+  "costRollup.emptyTitle": "尚無已知用量",
+  "costRollup.emptyBody":
+    "當 agent 回報 usage（或 journal 的 compact 含 tokensAfter）時會出現數字。此前保持「未知」。",
+  "costRollup.knownTokens": "已知 token",
+  "costRollup.estCost": "估算費用",
+  "costRollup.sessionsKnown": "已知工作階段",
+  "costRollup.sessionsUnknown": "未知工作階段",
+  "costRollup.tokens": "Token",
+  "costRollup.costUnknown": "—",
+  "costRollup.noProject": "無專案",
+  "costRollup.unknownCount": "{count} 未知",
+
   "doctor.advanced": "進階",
   "doctor.cliDoctor": "Grok Build CLI doctor",
   "doctor.cliDoctorHint": "來自 `grok doctor --json`（終端機、剪貼簿、色彩）。",

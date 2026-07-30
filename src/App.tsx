@@ -64,6 +64,10 @@ import {
   USAGE_ESTIMATES_CHANGE_EVENT,
 } from "@/lib/usageEstimatesPref";
 import {
+  recordCostUsageSample,
+  sampleFromUsageEvent,
+} from "@/lib/costRollup";
+import {
   loadMessageTimeFormatPref,
   MESSAGE_TIME_FORMAT_CHANGE_EVENT,
   saveMessageTimeFormatPref,
@@ -1352,6 +1356,8 @@ export default function App() {
   editingUserMessageIdRef.current = editingUserMessageId;
   const [editSubmitting, setEditSubmitting] = useState(false);
   const [projects, setProjects] = useState<Project[]>([]);
+  const projectsRef = useRef(projects);
+  projectsRef.current = projects;
   const [sessions, setSessions] = useState<SessionRow[]>([]);
   const sessionsRef = useRef(sessions);
   sessionsRef.current = sessions;
@@ -3758,6 +3764,23 @@ export default function App() {
             patchSessionMessages(sid, (prev) =>
               applyContextCompact(prev, payload),
             );
+            // Cost rollup: compact tokensAfter is a known context snapshot (not spend).
+            if (p.tokensAfter != null) {
+              const row = sessionsRef.current.find((s) => s.id === sid);
+              const project = row?.projectId
+                ? projectsRef.current.find((pr) => pr.id === row.projectId)
+                : null;
+              recordCostUsageSample(
+                sampleFromUsageEvent({
+                  sessionId: sid,
+                  projectId: row?.projectId ?? null,
+                  projectName: project?.name ?? null,
+                  modelId: row?.modelId ?? null,
+                  totalTokens: p.tokensAfter,
+                  source: "journal_compact",
+                }),
+              );
+            }
             if (sid === viewingSessionIdRef.current) {
               setContextUsage((prev) =>
                 reduceContextUsage(prev, {
@@ -3793,7 +3816,25 @@ export default function App() {
           }>("session://usage", (p) => {
             if (cancelled || !p) return;
             const sid = p.sessionId;
-            if (!sid || sid !== viewingSessionIdRef.current) return;
+            if (!sid) return;
+            // Cost rollup: record known usage for any session (not only focused).
+            const row = sessionsRef.current.find((s) => s.id === sid);
+            const project = row?.projectId
+              ? projectsRef.current.find((pr) => pr.id === row.projectId)
+              : null;
+            recordCostUsageSample(
+              sampleFromUsageEvent({
+                sessionId: sid,
+                projectId: row?.projectId ?? null,
+                projectName: project?.name ?? null,
+                modelId: row?.modelId ?? null,
+                inputTokens: p.inputTokens,
+                outputTokens: p.outputTokens,
+                totalTokens: p.totalTokens,
+                source: p.source ?? "usage",
+              }),
+            );
+            if (sid !== viewingSessionIdRef.current) return;
             setContextUsage((prev) =>
               reduceContextUsage(prev, {
                 type: "usage",
@@ -13883,6 +13924,17 @@ export default function App() {
           cliInfo={cliInfo}
           onDoctor={() => void openDoctor()}
           onOpenReliability={() => openReliability()}
+          costRollupSessions={sessions.map((s) => ({
+            id: s.id,
+            projectId: s.projectId,
+            title: s.title,
+            modelId: s.modelId,
+            updatedAt: s.updatedAt,
+          }))}
+          costRollupProjects={projects.map((p) => ({
+            id: p.id,
+            name: p.name,
+          }))}
           onOpenShortcutsHelp={() => setShowShortcuts(true)}
           onOpenProductTutorial={() => setShowProductTutorial(true)}
           versionFooter={tr("app.versionFooter")}

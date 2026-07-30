@@ -22034,3 +22034,104 @@ html[data-theme="light"] .rim-sidebar {
   opacity: 0.7;
   line-height: 1.45;
 }
+
+/* ── Cost rollup (Settings → Runtime → Tools) ───────────────────────── */
+.cost-rollup {
+  padding: 0 12px 12px;
+}
+.cost-rollup__lead {
+  margin: 0 0 4px;
+}
+.cost-rollup__disclaimer {
+  margin: 0 0 10px;
+  font-style: italic;
+  opacity: 0.85;
+}
+.cost-rollup__toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+.cost-rollup__empty {
+  padding: 8px 0 4px;
+}
+.cost-rollup__empty-title {
+  font-size: 13px;
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+.cost-rollup__summary {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px 12px;
+  margin-bottom: 12px;
+}
+@media (min-width: 520px) {
+  .cost-rollup__summary {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+.cost-rollup__stat {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.cost-rollup__stat-label {
+  font-size: 11px;
+  opacity: 0.7;
+}
+.cost-rollup__stat-value {
+  font-size: 14px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.cost-rollup__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 280px;
+  overflow: auto;
+}
+.cost-rollup__row {
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: var(--surface-2, color-mix(in srgb, var(--fg, #fff) 6%, transparent));
+  border: 1px solid var(--border-subtle, color-mix(in srgb, var(--fg, #fff) 10%, transparent));
+}
+.cost-rollup__row-main {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px 10px;
+  margin-bottom: 4px;
+}
+.cost-rollup__day {
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  opacity: 0.75;
+  font-family: var(--font-mono, ui-monospace, monospace);
+}
+.cost-rollup__project {
+  font-size: 13px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+.cost-rollup__row-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  font-size: 12px;
+  opacity: 0.8;
+  font-variant-numeric: tabular-nums;
+}
+.cost-rollup__unknown {
+  color: var(--warning, #c9a227);
+}
