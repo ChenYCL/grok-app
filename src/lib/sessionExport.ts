@@ -74,31 +74,34 @@ function isToolish(m: ExportableMessage): boolean {
   return c.startsWith("tool_step|") || c.startsWith("tool_step");
 }
 
+export type MessagesToMarkdownOptions = {
+  /**
+   * Include assistant thinking in collapsed `<details>` (default true).
+   */
+  includeThoughts?: boolean;
+  /**
+   * Include tool_step / tool rows as short summary lines.
+   * Default **false** — skip pure tool-step noise for clipboard / paste.
+   * Full session export opts in via {@link sessionToMarkdown}.
+   */
+  includeToolSummary?: boolean;
+};
+
 /**
- * Render a session as GitHub-flavored markdown.
- * Skips empty shells; optional thinking + tool summaries.
+ * Pure message list → GitHub-flavored markdown (no title / meta header).
+ * Skips empty shells. Defaults: thoughts on, tool_step noise off.
  */
-export function sessionToMarkdown(input: SessionExportInput): string {
-  const opts = input.options ?? {};
-  const includeThoughts = opts.includeThoughts !== false;
-  const includeToolSummary = opts.includeToolSummary !== false;
+export function messagesToMarkdown(
+  messages: ExportableMessage[],
+  opts?: MessagesToMarkdownOptions,
+): string {
+  const includeThoughts = opts?.includeThoughts !== false;
+  // Opt-in: clipboard copy should not dump every tool_step by default.
+  const includeToolSummary = opts?.includeToolSummary === true;
 
   const lines: string[] = [];
-  const title = (input.title || "Untitled").trim() || "Untitled";
-  lines.push(`# ${title}`);
-  lines.push("");
 
-  const meta: string[] = [];
-  if (input.projectName) meta.push(`Project: ${input.projectName}`);
-  if (input.projectPath) meta.push(`Path: ${input.projectPath}`);
-  if (input.sessionId) meta.push(`Session: ${input.sessionId}`);
-  meta.push(`Exported: ${input.exportedAt || new Date().toISOString()}`);
-  lines.push(meta.map((m) => `- ${m}`).join("\n"));
-  lines.push("");
-  lines.push("---");
-  lines.push("");
-
-  for (const m of input.messages) {
+  for (const m of messages) {
     const body = (m.content || "").trim();
     const thought = (m.thought || "").trim();
 
@@ -136,6 +139,44 @@ export function sessionToMarkdown(input: SessionExportInput): string {
       lines.push(body);
       lines.push("");
     }
+  }
+
+  return lines.join("\n").replace(/\n{3,}/g, "\n\n").trim();
+}
+
+/**
+ * Render a session as GitHub-flavored markdown.
+ * Skips empty shells; optional thinking + tool summaries.
+ * Export defaults keep tool summaries on (unlike {@link messagesToMarkdown}).
+ */
+export function sessionToMarkdown(input: SessionExportInput): string {
+  const opts = input.options ?? {};
+  const includeThoughts = opts.includeThoughts !== false;
+  // Session file export historically includes tools unless explicitly off.
+  const includeToolSummary = opts.includeToolSummary !== false;
+
+  const lines: string[] = [];
+  const title = (input.title || "Untitled").trim() || "Untitled";
+  lines.push(`# ${title}`);
+  lines.push("");
+
+  const meta: string[] = [];
+  if (input.projectName) meta.push(`Project: ${input.projectName}`);
+  if (input.projectPath) meta.push(`Path: ${input.projectPath}`);
+  if (input.sessionId) meta.push(`Session: ${input.sessionId}`);
+  meta.push(`Exported: ${input.exportedAt || new Date().toISOString()}`);
+  lines.push(meta.map((m) => `- ${m}`).join("\n"));
+  lines.push("");
+  lines.push("---");
+  lines.push("");
+
+  const body = messagesToMarkdown(input.messages, {
+    includeThoughts,
+    includeToolSummary,
+  });
+  if (body) {
+    lines.push(body);
+    lines.push("");
   }
 
   return lines.join("\n").replace(/\n{3,}/g, "\n\n").trim() + "\n";

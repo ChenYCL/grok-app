@@ -1,11 +1,101 @@
 import { describe, expect, it } from "vitest";
 import {
   formatToolSummaryLine,
+  messagesToMarkdown,
   sessionExportFilename,
   sessionExportJsonFilename,
   sessionToJson,
   sessionToMarkdown,
 } from "./sessionExport";
+
+describe("messagesToMarkdown", () => {
+  it("renders user and assistant sections without a document header", () => {
+    const md = messagesToMarkdown([
+      { role: "user", content: "Add reset data" },
+      {
+        role: "assistant",
+        content: "Done.",
+        thought: "Need double confirm.",
+      },
+    ]);
+    // No session document title (# Title) — only ## role headings.
+    expect(md).not.toMatch(/^# /m);
+    expect(md).toContain("## User");
+    expect(md).toContain("Add reset data");
+    expect(md).toContain("## Assistant");
+    expect(md).toContain("<summary>Thinking</summary>");
+    expect(md).toContain("Need double confirm.");
+    expect(md).toContain("Done.");
+  });
+
+  it("skips tool_step noise by default", () => {
+    const md = messagesToMarkdown([
+      {
+        role: "tool",
+        content: "tool_step|bash|completed|ran tests",
+        marker: "tool_step",
+      },
+      { role: "assistant", content: "All green." },
+    ]);
+    expect(md).not.toContain("## Tool");
+    expect(md).not.toContain("bash");
+    expect(md).toContain("All green.");
+  });
+
+  it("includes tool summaries when opted in", () => {
+    const md = messagesToMarkdown(
+      [
+        {
+          role: "tool",
+          content: "tool_step|bash|completed|ran tests",
+          marker: "tool_step",
+        },
+        { role: "assistant", content: "All green." },
+      ],
+      { includeToolSummary: true },
+    );
+    expect(md).toContain("## Tool");
+    expect(md).toContain("- bash (completed)");
+    expect(md).toContain("All green.");
+  });
+
+  it("omits thoughts when includeThoughts is false", () => {
+    const md = messagesToMarkdown(
+      [
+        {
+          role: "assistant",
+          content: "Body only.",
+          thought: "secret plan",
+        },
+      ],
+      { includeThoughts: false },
+    );
+    expect(md).not.toContain("secret plan");
+    expect(md).not.toContain("<summary>Thinking</summary>");
+    expect(md).toContain("Body only.");
+  });
+
+  it("skips empty shells and returns empty string for no content", () => {
+    expect(messagesToMarkdown([])).toBe("");
+    expect(
+      messagesToMarkdown([
+        { role: "tool", content: "" },
+        { role: "assistant", content: "   " },
+      ]),
+    ).toBe("");
+  });
+
+  it("includes createdAt when present", () => {
+    const md = messagesToMarkdown([
+      {
+        role: "user",
+        content: "hi",
+        createdAt: "2026-07-24T00:00:00.000Z",
+      },
+    ]);
+    expect(md).toContain("*2026-07-24T00:00:00.000Z*");
+  });
+});
 
 describe("sessionToMarkdown", () => {
   it("builds a title, meta block, and role sections", () => {

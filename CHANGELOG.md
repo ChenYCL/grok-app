@@ -16,6 +16,8 @@ See `docs/llm-wiki/release.md`.
 - **Send queue reorder**: Up/Down controls on each queued follow-up so send order can be changed before auto-flush
 - **Chat reading width** (Settings → Appearance): narrow (~640) / medium (~800, default) / wide (~1000) / full; `localStorage` `grok.chatWidth` + `html[data-chat-width]`
 - **Phone mirror write guard**: enabling “Allow phone to send” requires an in-app confirm dialog; persistent warning banner while write is on; audit log line when write access is toggled (no secrets)
+- **Copy conversation as Markdown** (session menu + command palette): one-click clipboard copy of the full chat; skips pure tool_step noise by default (export dialog still offers tools/thoughts options)
+- **Per-session mute** for desktop notifications (context menu Mute / Unmute; sidebar muted icon; in-app toasts still show)
 - **Desktop notification click** opens the session that fired turn-done / permission / ask_user
 - **Send queue Edit** for follow-up items (GlassModal; empty text blocked unless attachments remain)
 - **Context usage chip**: System / Tools / History breakdown (estimate or agent-known buckets)
@@ -40,6 +42,8 @@ See `docs/llm-wiki/release.md`.
 - 发送队列可上下调整顺序；通知点击跳转会话；发送队列可编辑；上下文 System/Tools/History；Compact 增强
 - **对话阅读宽度**（设置 → 外观）：窄 / 中（默认）/ 宽 / 全宽
 - 手机镜像写权限确认与持续警告横幅；切换时写审计日志（无密钥）
+- 一键复制整段对话为 Markdown（会话菜单 / 命令面板；默认跳过 tool_step 噪音）
+- 按会话静音桌面通知（菜单 Mute/Unmute；侧栏静音图标；应用内 Toast 仍显示）
 - 通知点击跳转会话；发送队列可编辑；上下文 System/Tools/History；Compact 增强
 - Worktree 会话徽章与管理；Fork 可选恢复代码；沙箱项目覆盖
 - MCP 状态灯；Memory 浏览器；产品教程；Agent 总览；Trace 历史；快捷键重映射

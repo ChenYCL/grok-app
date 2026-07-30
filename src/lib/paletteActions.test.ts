@@ -21,6 +21,7 @@ describe("defaultPaletteActions", () => {
       "reliability",
       "shortcuts-help",
       "product-tutorial",
+      "copy-conversation-md",
       "settings-general",
       "settings-appearance",
       "settings-account",

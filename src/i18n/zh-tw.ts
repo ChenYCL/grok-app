@@ -1732,6 +1732,10 @@ export const zhTW: Record<MessageKey, string> = {
   "slash.tutorial": "產品導覽",
   "slash.tutorialDesc": "開啟可選的應用內產品導覽",
 
+  "session.copyMd": "複製對話為 Markdown",
+  "session.copyMdDone": "已複製對話為 Markdown",
+  "session.copyMdFail": "無法複製對話",
+  "session.copyMdEmpty": "此對話沒有可複製的內容",
   "session.exportMd": "匯出對話為 Markdown",
   "session.exportMdTitle": "匯出 Markdown",
   "session.exportMdHint": "選擇要包含的內容，然後下載 .md 檔或複製到剪貼簿。",

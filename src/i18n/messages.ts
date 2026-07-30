@@ -1799,6 +1799,10 @@ const en = {
   "slash.tutorialDesc": "Open the optional in-app product tour",
 
   // Session export
+  "session.copyMd": "Copy conversation as Markdown",
+  "session.copyMdDone": "Conversation copied as Markdown",
+  "session.copyMdFail": "Could not copy conversation",
+  "session.copyMdEmpty": "Nothing to copy in this conversation",
   "session.exportMd": "Export chat as Markdown",
   "session.exportMdTitle": "Export Markdown",
   "session.exportMdHint":
@@ -4406,6 +4410,10 @@ const zh: Record<MessageKey, string> = {
   "slash.tutorial": "产品导览",
   "slash.tutorialDesc": "打开可选的应用内产品导览",
 
+  "session.copyMd": "复制对话为 Markdown",
+  "session.copyMdDone": "已复制对话为 Markdown",
+  "session.copyMdFail": "无法复制对话",
+  "session.copyMdEmpty": "此对话没有可复制的内容",
   "session.exportMd": "导出会话为 Markdown",
   "session.exportMdTitle": "导出 Markdown",
   "session.exportMdHint": "选择要包含的内容，然后下载 .md 文件或复制到剪贴板。",

@@ -126,6 +126,22 @@ export function defaultPaletteActions(): PaletteActionDef[] {
       group: "help",
     },
     {
+      id: "copy-conversation-md",
+      labelKey: "session.copyMd",
+      keywords: [
+        "copy",
+        "conversation",
+        "markdown",
+        "md",
+        "clipboard",
+        "export text",
+        "copy chat",
+        "copy session",
+        "copy thread",
+      ],
+      group: "session",
+    },
+    {
       id: "settings-general",
       labelKey: "settings.nav.general",
       keywords: ["settings", "general", "preferences", "prefs", "composer"],
