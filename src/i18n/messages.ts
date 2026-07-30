@@ -891,6 +891,16 @@ const en = {
   "search.badgeTitle": "Title",
   "search.badgeContent": "Content",
   "search.badgeBoth": "Title + content",
+  "search.rankModeLabel": "Search ranking",
+  "search.rankKeyword": "Keyword",
+  "search.rankHybrid": "Hybrid",
+  "search.rankHybridHint":
+    "Local hybrid: keyword + token overlap on titles/snippets (not cloud embeddings)",
+  "settings.sessionSearchRank": "Session search ranking",
+  "settings.sessionSearchRankDesc":
+    "Command palette ranking: Keyword (substring) or Hybrid (keyword + local token overlap on titles/snippets). Not cloud embeddings — no embedding API.",
+  "settings.sessionSearchRank.keyword": "Keyword",
+  "settings.sessionSearchRank.hybrid": "Hybrid (local tokens)",
 
   // In-conversation find (Cmd/Ctrl+F)
   "chatFind.placeholder": "Find in conversation…",
@@ -4408,6 +4418,16 @@ const zh: Record<MessageKey, string> = {
   "search.badgeTitle": "标题",
   "search.badgeContent": "内容",
   "search.badgeBoth": "标题+内容",
+  "search.rankModeLabel": "搜索排序",
+  "search.rankKeyword": "关键词",
+  "search.rankHybrid": "混合",
+  "search.rankHybridHint":
+    "本地混合：关键词 + 标题/摘要词元重叠排序（非云端嵌入）",
+  "settings.sessionSearchRank": "会话搜索排序",
+  "settings.sessionSearchRankDesc":
+    "命令面板排序：关键词（子串）或混合（关键词 + 标题/摘要本地词元重叠）。非云端嵌入，无 embedding API。",
+  "settings.sessionSearchRank.keyword": "关键词",
+  "settings.sessionSearchRank.hybrid": "混合（本地词元）",
 
   "chatFind.placeholder": "在对话中查找…",
   "chatFind.prev": "上一个匹配",

@@ -6,6 +6,10 @@ import {
   sessionSearchBadge,
   sessionSearchBadgeLabelKey,
   shouldScanSessionContent,
+  parseSessionSearchRankMode,
+  scoreSessionSearchHit,
+  tokenizeSearchText,
+  tokenOverlapScore,
 } from "./sessionSearch";
 
 const projects = [
@@ -253,5 +257,130 @@ describe("mergeSessionSearchHits", () => {
         includeArchived: true,
       }).map((h) => h.id),
     ).toEqual(["s-arch"]);
+  });
+});
+
+describe("tokenizeSearchText / tokenOverlapScore", () => {
+  it("tokenizes latin and drops short noise", () => {
+    expect(tokenizeSearchText("Fix doctor reset!")).toEqual([
+      "fix",
+      "doctor",
+      "reset",
+    ]);
+    expect(tokenizeSearchText("a to of")).toEqual([]);
+  });
+
+  it("keeps CJK characters as tokens", () => {
+    expect(tokenizeSearchText("修复医生重置")).toEqual([
+      "修",
+      "复",
+      "医",
+      "生",
+      "重",
+      "置",
+    ]);
+  });
+
+  it("scores token recall over the query", () => {
+    expect(tokenOverlapScore(["doctor", "button"], "Fix doctor reset")).toBe(
+      0.5,
+    );
+    expect(
+      tokenOverlapScore(["doctor", "button"], "Doctor reset button"),
+    ).toBe(1);
+    expect(tokenOverlapScore([], "anything")).toBe(0);
+  });
+});
+
+describe("parseSessionSearchRankMode", () => {
+  it("accepts hybrid aliases and defaults to keyword", () => {
+    expect(parseSessionSearchRankMode("hybrid")).toBe("hybrid");
+    expect(parseSessionSearchRankMode("semantic")).toBe("hybrid");
+    expect(parseSessionSearchRankMode("keyword")).toBe("keyword");
+    expect(parseSessionSearchRankMode("nope")).toBe("keyword");
+    expect(parseSessionSearchRankMode(null)).toBe("keyword");
+  });
+});
+
+describe("hybrid rank mode", () => {
+  const hybridSessions = [
+    { id: "s1", title: "Fix doctor reset", projectId: "p1" },
+    { id: "s2", title: "Weekly plan", projectId: "p2" },
+    { id: "s5", title: "Doctor dashboard UI", projectId: "p1" },
+    { id: "s6", title: "Button styles", projectId: "p2" },
+  ];
+
+  it("keyword mode requires full substring", () => {
+    const hits = filterSessionSearch(
+      "doctor button",
+      hybridSessions,
+      projects,
+      { rankMode: "keyword" },
+    );
+    expect(hits.matchedSessions.map((s) => s.id)).toEqual([]);
+  });
+
+  it("hybrid expands to token matches and ranks phrase hits first", () => {
+    const hits = filterSessionSearch(
+      "doctor button",
+      hybridSessions,
+      projects,
+      { rankMode: "hybrid" },
+    );
+    const ids = hits.matchedSessions.map((s) => s.id);
+    // doctor token → s1, s5; button token → s6
+    expect(ids).toContain("s1");
+    expect(ids).toContain("s5");
+    expect(ids).toContain("s6");
+    expect(ids).not.toContain("s2");
+  });
+
+  it("scoreSessionSearchHit prefers full phrase + more token overlap", () => {
+    const q = "doctor reset";
+    const phrase = scoreSessionSearchHit(q, {
+      title: "Fix doctor reset",
+      titleMatch: true,
+    });
+    const partial = scoreSessionSearchHit(q, {
+      title: "Doctor dashboard UI",
+      titleMatch: true,
+    });
+    const weak = scoreSessionSearchHit(q, {
+      title: "Unrelated chat",
+      snippet: "mentions doctor once",
+      contentMatch: true,
+      matchCount: 1,
+    });
+    expect(phrase).toBeGreaterThan(partial);
+    expect(partial).toBeGreaterThan(0);
+    expect(phrase).toBeGreaterThan(weak);
+  });
+
+  it("merge hybrid re-ranks content-only above weak title hits", () => {
+    const title = [
+      { id: "s6", title: "Button styles", projectId: "p2" },
+      { id: "s1", title: "Fix doctor reset", projectId: "p1" },
+    ];
+    const content = [
+      {
+        id: "s9",
+        title: "Other",
+        snippet: "Please fix the doctor reset button now",
+        matchCount: 3,
+      },
+    ];
+    const keyword = mergeSessionSearchHits("doctor reset", title, content, {
+      rankMode: "keyword",
+    });
+    // Keyword keeps title-first order.
+    expect(keyword.map((h) => h.id)).toEqual(["s6", "s1", "s9"]);
+
+    const hybrid = mergeSessionSearchHits("doctor reset", title, content, {
+      rankMode: "hybrid",
+    });
+    // s1 has full phrase in title → top; s9 strong snippet; s6 only "button" unrelated.
+    expect(hybrid[0].id).toBe("s1");
+    expect(hybrid.map((h) => h.id)).toContain("s9");
+    expect(hybrid.every((h) => typeof h.score === "number")).toBe(true);
   });
 });
