@@ -792,7 +792,7 @@ const en = {
   "settings.clearWorkspaceMemoryDone": "Workspace memory cleared",
   "settings.allowUnverifiedCli": "Allow unverified CLI install",
   "settings.allowUnverifiedCliDesc":
-    "When off (default), install fails if the official mirror has no published SHA-256. Turn on only if checksums are temporarily unavailable. A mismatched checksum always fails.",
+    "Official mirrors often omit SHA-256 sidecars; missing checksums are allowed by default (HTTPS allowlist + binary probe). Turn this on to install even when GROK_CLI_REQUIRE_CHECKSUM=1. A mismatched checksum always fails.",
   "settings.cliChecksumVerified": "last install checksum OK",
   "settings.cliChecksumUnverified": "last install unverified",
   "settings.cliPath": "CLI path",
@@ -1402,6 +1402,9 @@ const en = {
   "setup.cli.path": "Path: {path}",
   "setup.cli.missing": "Grok Build not found",
   "setup.install": "Install Grok Build",
+  "setup.installUnverified": "Install without checksum",
+  "setup.checksumMissingHint":
+    "The official mirror has no published SHA-256. You can install with HTTPS allowlist + binary checks, or use the shell command / pick a local binary.",
   "setup.installing": "Installing…",
   "setup.recheck": "Already installed — recheck",
   "setup.pickBinary": "Choose local binary…",
@@ -3089,7 +3092,7 @@ const zh: Record<MessageKey, string> = {
   "settings.clearWorkspaceMemoryDone": "已清除工作区记忆",
   "settings.allowUnverifiedCli": "允许未校验的 CLI 安装",
   "settings.allowUnverifiedCliDesc":
-    "关闭时（默认）若官方镜像没有发布 SHA-256 则拒绝安装。仅在校验文件暂时不可用时开启。校验和不一致始终拒绝。",
+    "官方镜像通常不发布 SHA-256 校验文件；缺少校验时默认仍可安装（HTTPS 白名单 + 二进制探测）。开启此项可在设置了 GROK_CLI_REQUIRE_CHECKSUM=1 时仍允许安装。校验和不一致始终拒绝。",
   "settings.cliChecksumVerified": "上次安装校验通过",
   "settings.cliChecksumUnverified": "上次安装未校验",
   "settings.cliPath": "CLI 路径",
@@ -3682,6 +3685,9 @@ const zh: Record<MessageKey, string> = {
   "setup.cli.path": "路径：{path}",
   "setup.cli.missing": "未找到 Grok Build",
   "setup.install": "安装 Grok Build",
+  "setup.installUnverified": "跳过校验并安装",
+  "setup.checksumMissingHint":
+    "官方镜像未发布 SHA-256。可继续用 HTTPS 白名单 + 二进制检查安装，或复制 shell 命令 / 选择本地文件。",
   "setup.installing": "正在安装…",
   "setup.recheck": "已安装，重新检测",
   "setup.pickBinary": "选择本地二进制…",

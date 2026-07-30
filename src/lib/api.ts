@@ -348,6 +348,8 @@ export interface CliInstallCommands {
  * Download + install latest Grok Build (multi-mirror).
  * Progress via setup://cli-install-progress.
  * When `allowUnverified` is omitted, Host uses Settings `allowUnverifiedCliInstall`.
+ * Missing published checksums are allowed by default; pass `allowUnverified: true`
+ * to override strict `GROK_CLI_REQUIRE_CHECKSUM` mode.
  */
 export async function cliInstallLatest(opts?: {
   allowUnverified?: boolean | null;

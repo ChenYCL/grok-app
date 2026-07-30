@@ -11,6 +11,14 @@ See `docs/llm-wiki/release.md`.
 
 ## [Unreleased]
 
+### Fixed
+
+- **CLI install blocked by missing SHA-256 (#227)**: official x.ai / GCS mirrors do not publish checksum sidecars (same as `install.sh` / `install.ps1`). First-run / in-app install no longer fails closed on a missing sidecar; **mismatch still always aborts**. Strict mode: `GROK_CLI_REQUIRE_CHECKSUM=1` (override with Settings → Runtime “Allow unverified CLI install” or `GROK_CLI_ALLOW_UNVERIFIED=1`). Setup wizard shows a clear retry path when strict mode blocks.
+
+**中文 · 修复**
+
+- **CLI 安装因缺少 SHA-256 失败（#227）**：官方镜像通常不发布校验文件；缺少 sidecar 时默认继续安装（不一致仍拒绝）。严格模式用 `GROK_CLI_REQUIRE_CHECKSUM=1`。
+
 ## [0.2.2] - 2026-07-30
 
 > **Highlight:** In-app auto-update works for signed builds; calmer sidebar multi-select; PATH / busy / media reliability.

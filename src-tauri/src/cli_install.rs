@@ -4,12 +4,15 @@
 //! 1. Direct GCS `https://storage.googleapis.com/grok-build-public-artifacts/cli`
 //! 2. Cloudflare-fronted `https://x.ai/cli`
 //!
-//! Trust chain (fail-closed by default):
+//! Trust chain:
 //! - HTTPS only, URL must be under a known mirror base
 //! - Streaming SHA-256 of the downloaded bytes
 //! - Published checksum sidecar (`.sha256` / `SHA256SUMS` / `checksums.txt`);
-//!   **mismatch always aborts**; **missing sidecar aborts** unless the user opts
-//!   into unverified install (settings or `GROK_CLI_ALLOW_UNVERIFIED=1`)
+//!   **mismatch always aborts**. Official x.ai / GCS mirrors currently omit
+//!   sidecars (same as `install.sh` / `install.ps1`), so **missing sidecar
+//!   is allowed by default** and recorded as `checksum_verified: false`.
+//!   Strict fail-closed: `GROK_CLI_REQUIRE_CHECKSUM=1` (override with settings
+//!   allow-unverified or `GROK_CLI_ALLOW_UNVERIFIED=1`).
 //! - Architecture match via platform triple; size / `--version` gates after install
 //!
 //! Each mirror is retried a few times before falling through. Progress is emitted
@@ -655,23 +658,21 @@ async fn try_download_all_mirrors(
     ))
 }
 
-/// Whether a published checksum is **required** (fail-closed).
+/// Whether a published checksum is **required** when the mirror has none.
 ///
-/// Default **true**. Unverified install is allowed only when:
-/// - `allow_unverified` argument is true (from App settings), or
-/// - env `GROK_CLI_ALLOW_UNVERIFIED` is 1/true/yes/on
+/// Default **false**: official x.ai / GCS CLI mirrors do not publish SHA-256
+/// sidecars today (and the official install scripts do not verify them).
+/// Requiring a missing sidecar made first-run install fail on every platform
+/// (#227). Mismatch always fails regardless of this flag.
 ///
-/// Mismatch always fails regardless of this flag.
+/// Fail-closed on **missing** sidecar only when:
+/// - env `GROK_CLI_REQUIRE_CHECKSUM` is 1/true/yes/on, **and**
+/// - neither `allow_unverified` (Settings) nor `GROK_CLI_ALLOW_UNVERIFIED` is set
 pub fn require_published_checksum(allow_unverified: bool) -> bool {
-    if env_flag_truthy("GROK_CLI_ALLOW_UNVERIFIED") {
+    if env_flag_truthy("GROK_CLI_ALLOW_UNVERIFIED") || allow_unverified {
         return false;
     }
-    if allow_unverified {
-        return false;
-    }
-    // Legacy force-require stays redundant (default already requires).
-    // `GROK_CLI_REQUIRE_CHECKSUM=0` is **not** honored — use ALLOW_UNVERIFIED.
-    true
+    env_flag_truthy("GROK_CLI_REQUIRE_CHECKSUM")
 }
 
 fn env_flag_truthy(name: &str) -> bool {
@@ -761,9 +762,10 @@ pub async fn install_cli_latest(
             if require_published_checksum(allow_unverified) {
                 let _ = fs::remove_file(&tmp_path);
                 return Err(format!(
-                    "No published SHA-256 for {artifact_name}. Refusing install (checksum required). \
-                     Enable “Allow unverified CLI install” in Settings → Runtime, or set \
-                     GROK_CLI_ALLOW_UNVERIFIED=1. hash={digest}"
+                    "No published SHA-256 for {artifact_name}. Refusing install \
+                     (GROK_CLI_REQUIRE_CHECKSUM is set). Enable “Allow unverified CLI install” \
+                     in Settings → Runtime, set GROK_CLI_ALLOW_UNVERIFIED=1, or unset \
+                     GROK_CLI_REQUIRE_CHECKSUM. hash={digest}"
                 ));
             }
             warn!(
@@ -951,11 +953,26 @@ bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb *other-file
     }
 
     #[test]
-    fn require_checksum_defaults_fail_closed() {
-        // Clear both envs for the test process when possible.
+    fn require_checksum_policy_default_and_strict_env() {
+        // Env mutation must be serialized — cargo runs unit tests in parallel.
+        static LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+        let _guard = LOCK.lock().unwrap_or_else(|e| e.into_inner());
+
+        // Official mirrors omit sidecars; default must not block install (#227).
         std::env::remove_var("GROK_CLI_ALLOW_UNVERIFIED");
+        std::env::remove_var("GROK_CLI_REQUIRE_CHECKSUM");
+        assert!(!require_published_checksum(false));
+        assert!(!require_published_checksum(true));
+
+        // Strict env fails closed unless allow_unverified / ALLOW_UNVERIFIED.
+        std::env::set_var("GROK_CLI_REQUIRE_CHECKSUM", "1");
         assert!(require_published_checksum(false));
         assert!(!require_published_checksum(true));
+        std::env::set_var("GROK_CLI_ALLOW_UNVERIFIED", "1");
+        assert!(!require_published_checksum(false));
+
+        std::env::remove_var("GROK_CLI_REQUIRE_CHECKSUM");
+        std::env::remove_var("GROK_CLI_ALLOW_UNVERIFIED");
     }
 
     #[test]

@@ -144,39 +144,53 @@ export function SetupWizard({
     void recheck();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const runInstall = useCallback(async () => {
-    if (installing) return;
-    setInstalling(true);
-    setError(null);
-    setProgress({
-      phase: "resolving",
-      message: tr("setup.detecting"),
-      percent: 0,
-    });
-    try {
-      const res = await api.cliInstallLatest();
-      if (!res.ok) {
-        setError(res.message || tr("setup.error"));
-        return;
+  const runInstall = useCallback(
+    async (opts?: { allowUnverified?: boolean }) => {
+      if (installing) return;
+      setInstalling(true);
+      setError(null);
+      setProgress({
+        phase: "resolving",
+        message: tr("setup.detecting"),
+        percent: 0,
+      });
+      try {
+        const res = await api.cliInstallLatest(
+          opts?.allowUnverified ? { allowUnverified: true } : undefined,
+        );
+        if (!res.ok) {
+          setError(res.message || tr("setup.error"));
+          return;
+        }
+        const next = await recheck(res.path);
+        if (next?.found) {
+          setStep("account");
+        } else {
+          setError(tr("setup.cli.missing"));
+        }
+      } catch (e) {
+        const msg = String(e);
+        setError(msg);
+        setProgress((p) =>
+          p
+            ? { ...p, phase: "error", message: msg }
+            : { phase: "error", message: msg },
+        );
+      } finally {
+        setInstalling(false);
       }
-      const next = await recheck(res.path);
-      if (next?.found) {
-        setStep("account");
-      } else {
-        setError(tr("setup.cli.missing"));
-      }
-    } catch (e) {
-      const msg = String(e);
-      setError(msg);
-      setProgress((p) =>
-        p
-          ? { ...p, phase: "error", message: msg }
-          : { phase: "error", message: msg },
-      );
-    } finally {
-      setInstalling(false);
-    }
-  }, [installing, recheck, tr]);
+    },
+    [installing, recheck, tr],
+  );
+
+  const checksumMissing = useMemo(
+    () =>
+      !!error &&
+      /No published SHA-256|checksum required|GROK_CLI_REQUIRE_CHECKSUM|未发布 SHA-256|未發佈 SHA-256/i.test(
+        error,
+      ),
+    [error],
+  );
 
   const pickBinary = useCallback(async () => {
     setError(null);
@@ -498,6 +512,16 @@ export function SetupWizard({
                     )}
                   </button>
                 )}
+                {checksumMissing && !cli.found && !installing && (
+                  <button
+                    type="button"
+                    className="btn btn--primary setup-btn-primary"
+                    disabled={probing}
+                    onClick={() => void runInstall({ allowUnverified: true })}
+                  >
+                    {tr("setup.installUnverified")}
+                  </button>
+                )}
                 <div className="setup-actions__row">
                   <button
                     type="button"
@@ -760,6 +784,11 @@ export function SetupWizard({
             <div className="setup-error" role="alert">
               <strong>{tr("setup.error")}</strong>
               <span>{error}</span>
+              {checksumMissing && (
+                <span className="setup-error__hint">
+                  {tr("setup.checksumMissingHint")}
+                </span>
+              )}
               {/network|timeout|mirror|download|HTTP|failed/i.test(error) && (
                 <span className="setup-error__hint">
                   {tr("setup.networkHint")}

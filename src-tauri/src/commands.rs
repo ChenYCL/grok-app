@@ -215,7 +215,9 @@ pub async fn acp_test_connection(
 /// Download + install latest Grok Build (multi-mirror, progress via `setup://cli-install-progress`).
 ///
 /// `allow_unverified`: optional; when omitted, uses Settings
-/// `allowUnverifiedCliInstall` (default false → checksum required).
+/// `allowUnverifiedCliInstall`. Missing published checksums are allowed by
+/// default; this flag (or env) only overrides `GROK_CLI_REQUIRE_CHECKSUM`.
+/// Checksum **mismatch** always aborts.
 #[tauri::command]
 pub async fn cli_install_latest(
     app: tauri::AppHandle,

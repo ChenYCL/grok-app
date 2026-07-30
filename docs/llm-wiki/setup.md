@@ -34,6 +34,8 @@ Mirrors (order):
 
 Each mirror is tried multiple times before failing over.
 
+**Checksum trust:** download is HTTPS-allowlisted; streamed SHA-256 is always computed. If the mirror publishes a sidecar, **mismatch aborts**. Official mirrors currently omit sidecars (same as `install.sh` / `install.ps1`), so **missing checksum is allowed by default** and stored as `checksum_verified: false`. Strict fail-closed: `GROK_CLI_REQUIRE_CHECKSUM=1` (override with Settings → Runtime “Allow unverified CLI install” or `GROK_CLI_ALLOW_UNVERIFIED=1`).
+
 ### Step 2 — Account (skippable)
 
 OAuth, official key, relay, import CLI / grok-go. No `window.prompt`.

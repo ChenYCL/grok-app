@@ -757,7 +757,7 @@ export const zhTW: Record<MessageKey, string> = {
   "settings.clearWorkspaceMemoryDone": "已清除工作區記憶",
   "settings.allowUnverifiedCli": "允許未校驗的 CLI 安裝",
   "settings.allowUnverifiedCliDesc":
-    "關閉時（預設）若官方鏡像沒有發佈 SHA-256 則拒絕安裝。僅在校驗檔暫時不可用時開啟。校驗和不一致一律拒絕。",
+    "官方鏡像通常不發佈 SHA-256 校驗檔；缺少校驗時預設仍可安裝（HTTPS 白名單 + 二進位探測）。開啟此項可在設定了 GROK_CLI_REQUIRE_CHECKSUM=1 時仍允許安裝。校驗和不一致一律拒絕。",
   "settings.cliChecksumVerified": "上次安裝校驗通過",
   "settings.cliChecksumUnverified": "上次安裝未校驗",
   "settings.cliPath": "CLI 路徑",
@@ -1350,6 +1350,9 @@ export const zhTW: Record<MessageKey, string> = {
   "setup.cli.path": "路徑：{path}",
   "setup.cli.missing": "未找到 Grok Build",
   "setup.install": "安裝 Grok Build",
+  "setup.installUnverified": "略過校驗並安裝",
+  "setup.checksumMissingHint":
+    "官方鏡像未發佈 SHA-256。可繼續以 HTTPS 白名單 + 二進位檢查安裝，或複製 shell 指令 / 選擇本機檔案。",
   "setup.installing": "正在安裝…",
   "setup.recheck": "已安裝，重新偵測",
   "setup.pickBinary": "選擇本機二進位檔…",

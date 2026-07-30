@@ -275,8 +275,9 @@ pub struct AppSettings {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub proxy_no_proxy: Option<String>,
     /// Allow CLI download/install when the mirror has **no** published SHA-256
-    /// sidecar. Default **false** (fail-closed). Mismatch always aborts.
-    /// Escape hatch for air-gapped / broken sidecars; prefer fixing the mirror.
+    /// sidecar even if `GROK_CLI_REQUIRE_CHECKSUM=1`. Default **false**.
+    /// Missing sidecars are already allowed by default (official mirrors omit
+    /// them); mismatch always aborts. See `cli_install::require_published_checksum`.
     #[serde(default)]
     pub allow_unverified_cli_install: bool,
     /// Result of the last App-managed CLI install (`Some(true)` = sidecar matched).
