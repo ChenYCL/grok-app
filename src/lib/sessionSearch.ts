@@ -43,19 +43,6 @@ export const SESSION_SEARCH_MODES: readonly SessionSearchMode[] = [
   "content",
 ] as const;
 
-export type SessionSearchFilterOpts = {
-  maxSessions?: number;
-  maxProjects?: number;
-  includeArchived?: boolean;
-  mode?: SessionSearchMode;
-};
-
-export type SessionSearchMergeOpts = {
-  maxSessions?: number;
-  includeArchived?: boolean;
-  mode?: SessionSearchMode;
-};
-
 /**
  * Ranking strategy for session search.
  * - `keyword` — substring match only (default; stable order)
@@ -77,6 +64,7 @@ export type SessionSearchFilterOpts = {
   maxSessions?: number;
   maxProjects?: number;
   includeArchived?: boolean;
+  mode?: SessionSearchMode;
   /** Ranking / match expansion mode. Default `keyword`. */
   rankMode?: SessionSearchRankMode;
 };
@@ -84,6 +72,7 @@ export type SessionSearchFilterOpts = {
 export type SessionSearchMergeOpts = {
   maxSessions?: number;
   includeArchived?: boolean;
+  mode?: SessionSearchMode;
   /** Re-rank merged rows when `hybrid`. Default `keyword`. */
   rankMode?: SessionSearchRankMode;
 };

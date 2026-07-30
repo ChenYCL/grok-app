@@ -1660,8 +1660,6 @@ export interface SessionTraceExportResult extends SupportBundleResult {
   uploaded?: boolean;
 }
 
-/** Build a redacted support zip (Doctor + logs) and save via native dialog. */
-export async function exportSupportBundle(doctorJson?: string | null) {
 /**
  * Build a redacted support zip (Doctor + logs + optional stall timeline)
  * and save via native dialog.

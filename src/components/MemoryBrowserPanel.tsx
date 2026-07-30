@@ -10,7 +10,12 @@ import * as api from "@/lib/api";
 import type { MemoryFileEntry, MemorySearchHit } from "@/lib/api";
 import { createT, type Locale, type MessageKey } from "@/i18n";
 import { GlassModal } from "@/components/GlassModal";
-import { IconRefresh, IconTrash } from "@/components/icons";
+import {
+  IconExternalLink,
+  IconFolder,
+  IconRefresh,
+  IconTrash,
+} from "@/components/icons";
 import {
   MEMORY_BROWSER_KIND_FILTERS,
   countMemoryEntriesByKind,
@@ -19,12 +24,6 @@ import {
   normalizeMemoryBrowserKind,
   type MemoryBrowserKindFilter,
 } from "@/lib/memoryBrowserFilter";
-import {
-  IconExternalLink,
-  IconFolder,
-  IconRefresh,
-  IconTrash,
-} from "@/components/icons";
 import {
   MEMORY_SEARCH_DEBOUNCE_MS,
   mergeMemoryBrowserRows,
@@ -94,7 +93,6 @@ export function MemoryBrowserPanel({
   const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [kindFilter, setKindFilter] = useState<MemoryBrowserKindFilter>("all");
-  const [filter, setFilter] = useState("");
   const [debouncedFilter, setDebouncedFilter] = useState("");
   const [searchHits, setSearchHits] = useState<MemorySearchHit[]>([]);
   const [searching, setSearching] = useState(false);
@@ -153,14 +151,15 @@ export function MemoryBrowserPanel({
   const clearFilters = () => {
     setQuery("");
     setKindFilter("all");
+    setDebouncedFilter("");
   };
   // Debounce free-text before host content search.
   useEffect(() => {
     const id = window.setTimeout(() => {
-      setDebouncedFilter(filter);
+      setDebouncedFilter(query);
     }, MEMORY_SEARCH_DEBOUNCE_MS);
     return () => window.clearTimeout(id);
-  }, [filter]);
+  }, [query]);
 
   // Host content search (path-scoped, capped, redacted snippets).
   useEffect(() => {
@@ -204,8 +203,8 @@ export function MemoryBrowserPanel({
   }, [cwd, debouncedFilter, experimentalMemory]);
 
   const rows: MemoryBrowserRow[] = useMemo(
-    () => mergeMemoryBrowserRows(entries, searchHits, filter),
-    [entries, searchHits, filter],
+    () => mergeMemoryBrowserRows(entries, searchHits, query),
+    [entries, searchHits, query],
   );
 
   const toggleExpand = (path: string) => {
@@ -257,7 +256,7 @@ export function MemoryBrowserPanel({
     }
   };
 
-  const queryActive = shouldRunMemoryContentSearch(filter);
+  const queryActive = shouldRunMemoryContentSearch(query);
   const showTruncated = queryActive && searchTruncated && rows.length > 0;
 
   return (

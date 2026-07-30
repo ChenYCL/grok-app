@@ -27,12 +27,7 @@ export type HookActivitySource =
   | "tool"
   | "stream"
   /** Synthetic dry-run / Try override (does not execute hooks). */
-  | "debug";
-export type HookActivitySource =
-  | "host"
-  | "stderr"
-  | "tool"
-  | "stream"
+  | "debug"
   /** Real host try-run from Extensions → Hooks. */
   | "try";
 

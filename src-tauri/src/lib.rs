@@ -152,6 +152,11 @@ pub fn run() {
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                 use tauri::{Emitter, Manager};
+                // Only the primary workbench owns tray-hide / quit-confirm.
+                // Secondary session windows (`session-*`) close for real.
+                if window.label() != "main" {
+                    return;
+                }
                 let settings = store::load_settings();
                 let any_enabled = store::load_automations().iter().any(|a| a.enabled);
                 let hide = automation_runner::should_hide_to_tray_on_close(
@@ -160,12 +165,6 @@ pub fn run() {
                     any_enabled,
                 );
                 if hide {
-                // Only the primary workbench owns tray-hide / quit-confirm.
-                if window.label() != "main" {
-                    return;
-                }
-                let close_to_tray = store::load_settings().close_to_tray;
-                if close_to_tray {
                     api.prevent_close();
                     tray::hide_to_tray(window.app_handle());
                 } else {

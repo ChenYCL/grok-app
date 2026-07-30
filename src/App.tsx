@@ -7216,11 +7216,10 @@ export default function App() {
         {
           includeArchived: searchIncludeArchived,
           mode: searchMode,
+          rankMode: searchRankMode,
         },
-        { rankMode: searchRankMode },
       ),
-    [searchQuery, sessions, projects, searchIncludeArchived, searchMode],
-    [searchQuery, sessions, projects, searchRankMode],
+    [searchQuery, sessions, projects, searchIncludeArchived, searchMode, searchRankMode],
   );
 
   const mergedSessionHits = useMemo(
@@ -7232,8 +7231,8 @@ export default function App() {
         {
           includeArchived: searchIncludeArchived,
           mode: searchMode,
+          rankMode: searchRankMode,
         },
-        { rankMode: searchRankMode },
       ),
     [
       searchQuery,
@@ -7241,8 +7240,8 @@ export default function App() {
       contentSearchHits,
       searchIncludeArchived,
       searchMode,
+      searchRankMode,
     ],
-    [searchQuery, searchHits.matchedSessions, contentSearchHits, searchRankMode],
   );
 
   const paletteActionHits = useMemo(
@@ -8824,7 +8823,6 @@ export default function App() {
     });
   }, [composerMenuEntries.length]);
 
-  const refreshMcpModal = useCallback(async () => {
   /** Re-run inspect list only — does not clear doctor findings. */
   const refreshMcpModal = useCallback(async () => {
     setMcpLoading(true);
@@ -8841,11 +8839,6 @@ export default function App() {
       setMcpLoading(false);
     }
   }, [activeProject?.path]);
-
-  const openMcpModal = useCallback(async () => {
-    setShowMcpModal(true);
-    await refreshMcpModal();
-  }, [refreshMcpModal]);
 
   const openMcpModal = useCallback(async () => {
     setShowMcpModal(true);
@@ -18475,7 +18468,6 @@ export default function App() {
         loading={mcpLoading}
         onClose={() => setShowMcpModal(false)}
         onManage={() => navigateSettings("extensions")}
-        onRefresh={() => void refreshMcpModal()}
         onRefresh={() => void refreshMcpModal()}
         doctorReport={mcpDoctorReport}
         doctorError={mcpDoctorError}

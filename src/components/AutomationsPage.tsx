@@ -260,11 +260,6 @@ export function AutomationsPage({
     return rows;
   }, [list, filter, query]);
 
-  const enabledCount = useMemo(
-    () => list.filter((a) => a.enabled).length,
-    [list],
-  );
-
   /** Honest quit / background status — no fake detached daemon. */
   const bgStatus = useMemo(
     () =>

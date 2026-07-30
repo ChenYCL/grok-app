@@ -17,9 +17,11 @@ import {
 import { createT, type Locale, type MessageKey } from "@/i18n";
 import * as api from "@/lib/api";
 import {
+  buildStallTimelineSnapshot,
   clearStallHistory,
   filterStallHistory,
   loadStallHistory,
+  serializeStallTimelineSnapshot,
   STALL_HISTORY_CHANGE_EVENT,
   STALL_HISTORY_STORAGE_KEY,
   type ReliabilityBusySession,
@@ -28,13 +30,6 @@ import {
   type ReliabilityStallKind,
   type ReliabilityStallSignal,
   type StallHistoryEntry,
-import {
-  buildStallTimelineSnapshot,
-  serializeStallTimelineSnapshot,
-  type ReliabilityBusySession,
-  type ReliabilityCenterView,
-  type ReliabilityErrorEntry,
-  type ReliabilityStallSignal,
 } from "@/lib/reliabilityCenter";
 
 export type ReliabilityCenterModalProps = {

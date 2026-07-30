@@ -19,7 +19,6 @@ use std::time::Duration;
 
 use chrono::{Datelike, Duration as ChronoDuration, Local, Timelike, Utc, Weekday};
 use serde::Serialize;
-use chrono::{Datelike, Duration as ChronoDuration, Local, Utc, Weekday};
 use tauri::{AppHandle, Emitter};
 use tracing::{info, warn};
 

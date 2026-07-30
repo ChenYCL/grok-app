@@ -263,7 +263,44 @@ pub struct SpawnOptions {
     /// `grok --system-prompt-override <TEXT>` (before `agent`).
     /// Never log the full value (may contain secrets / PII).
     pub system_prompt_override: Option<String>,
+    /// CLI `--fork-session` semantics: on open, fork the resume agent session
+    /// into a **new** agent id (ACP `session/fork`) instead of `session/load`.
+    /// Host sets this from `SessionMeta.fork_agent_session` for one-shot connect.
+    pub fork_session: bool,
 }
+
+
+/// Pure helper: top-level CLI args for `--fork-session`.
+///
+/// `["--fork-session"]` when enabled; empty otherwise. The TUI requires this
+/// with `--resume`/`--continue`. Host `agent stdio` uses ACP `session/fork`
+/// instead of bare CLI flags (CLI errors without resume).
+pub fn fork_session_spawn_flags(enabled: bool) -> Vec<&'static str> {
+    if enabled {
+        vec!["--fork-session"]
+    } else {
+        vec![]
+    }
+}
+
+/// Extract the forked agent session id from an ACP fork response.
+///
+/// Accepts standard `sessionId` or Grok extension `newSessionId`. Rejects empty
+/// and equal-to-source ids (fork must allocate a **new** id).
+pub fn parse_fork_session_id(result: &serde_json::Value, source_session_id: &str) -> Option<String> {
+    let raw = result
+        .get("sessionId")
+        .and_then(|v| v.as_str())
+        .or_else(|| result.get("newSessionId").and_then(|v| v.as_str()))
+        .map(str::trim)
+        .filter(|s| !s.is_empty())?;
+    // Fork semantics require a distinct id; reuse would mutate the source.
+    if raw == source_session_id.trim() {
+        return None;
+    }
+    Some(raw.to_string())
+}
+
 
 /// Pure helper: top-level CLI args for session extra rules (before `agent`).
 ///
@@ -801,8 +838,7 @@ impl AcpClient {
             cmd.env(k, v);
         }
         tracing::info!(
-            "acp: spawn home={} mode={} sandbox={:?} max_turns={:?} leader={} subagents={} memory={} agent_profile={:?} agents_json={}",
-            "acp: spawn home={} mode={} sandbox={:?} max_turns={:?} fork_session={} leader={} subagents={} memory={} agent_profile={:?}",
+            "acp: spawn home={} mode={} sandbox={:?} max_turns={:?} fork_session={} leader={} subagents={} memory={} agent_profile={:?} agents_json={}",
             grok_home.display(),
             session_data_mode,
             sandbox.as_ref().map(|s| s.profile.as_str()),

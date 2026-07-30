@@ -1645,7 +1645,6 @@ export function ExtensionsPanel({
       </>
       )}
 
-      {(tab === "hooks" || tab === "market" || tab === "agents") && (
       {tab === "hooks" && (
         <ExtensionsHooksPanel
           locale={locale}
@@ -1653,15 +1652,12 @@ export function ExtensionsPanel({
           cliFound={cliFound && !cliMissing}
         />
       )}
-      {tab === "market" && (
+      {(tab === "market" || tab === "agents") && (
         <ExtensionsBuildExtras
           locale={locale}
           projectPath={projectPath}
           cliFound={cliFound && !cliMissing}
-          mode={
-            tab === "hooks" ? "hooks" : tab === "agents" ? "agents" : "market"
-          }
-          mode="market"
+          mode={tab === "agents" ? "agents" : "market"}
           installedPlugins={plugins.map((p) => ({
             name: p.name,
             marketplace: p.marketplace,

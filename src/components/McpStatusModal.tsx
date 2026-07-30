@@ -1,32 +1,26 @@
 import { useCallback, useMemo, useState } from "react";
 import type { Locale, MessageKey } from "@/i18n";
-import { useMemo, useState } from "react";
-import type { Locale, MessageKey } from "@/i18n";
 import { createT } from "@/i18n";
 import { GlassModal } from "@/components/GlassModal";
-import { IconCopy, IconRefresh } from "@/components/icons";
-import { IconDoctor, IconRefresh } from "@/components/icons";
+import { IconCopy, IconDoctor, IconRefresh } from "@/components/icons";
 import { mcpMetaLine } from "@/lib/extensionsUi";
 import {
   classifyMcpRowHealth,
+  countMcpDoctorFindings,
   countMcpRowsByHealth,
+  filterMcpDoctorFindings,
   filterMcpRows,
+  mcpDoctorFindingTone,
   mcpRowCopyText,
   mcpStatusBadgeMod,
   mcpStatusLabelKey,
-  MCP_ROW_STATUS_FILTERS,
-  type McpRowHealth,
-  type McpRowStatusFilter,
-} from "@/lib/mcpStatus";
-import {
-  countMcpDoctorFindings,
-  filterMcpDoctorFindings,
-  mcpDoctorFindingTone,
-  mcpStatusBadgeMod,
   normalizeMcpDoctorFindings,
+  MCP_ROW_STATUS_FILTERS,
   type McpDoctorFindingLevel,
   type McpDoctorFindingRow,
   type McpDoctorReportLike,
+  type McpRowHealth,
+  type McpRowStatusFilter,
 } from "@/lib/mcpStatus";
 
 export type McpServerRow = {
@@ -57,6 +51,7 @@ function healthDotClass(health: McpRowHealth): string {
       return "mcp-modal__dot--unknown";
   }
 }
+
 
 function levelLabelKey(level: McpDoctorFindingLevel): MessageKey {
   if (level === "ok") return "mcpModal.doctor.level.ok";
@@ -106,7 +101,6 @@ export function McpStatusModal({
   onClose,
   onManage,
   onRefresh,
-  onRefresh,
   doctorReport,
   doctorError,
   doctorLoading,
@@ -123,18 +117,13 @@ export function McpStatusModal({
   onManage?: () => void;
   /** Re-run inspect while the modal stays open. */
   onRefresh?: () => void;
-  /** Re-run inspect while the modal stays open (coexists with doctor). */
-  onRefresh?: () => void;
-  /** Latest `mcp_doctor` report (host JSON). Null until first run. */
+  /** Optional doctor report from last host `mcp_doctor` call. */
   doctorReport?: McpDoctorReportLike | null;
   doctorError?: string | null;
   doctorLoading?: boolean;
-  /** Optional server name filter applied when doctor last ran. */
+  /** Focused server name when doctor was run with a name. */
   doctorFocus?: string | null;
-  /**
-   * Run MCP doctor. Pass a server name to focus one host-reported server,
-   * or null/undefined for all. Host never invents servers.
-   */
+  /** Run host doctor; optional name scopes to one server. */
   onRunDoctor?: (name?: string | null) => void;
 }) {
   const tr = useMemo(() => createT(locale), [locale]);
@@ -154,28 +143,10 @@ export function McpStatusModal({
   const isEmptyFilter =
     !loading && servers.length > 0 && filtered.length === 0;
 
-  const copyField = useCallback(
-    async (row: McpServerRow, field: "name" | "target") => {
-      const text = mcpRowCopyText(row, field);
-      if (!text) return;
-      try {
-        await navigator.clipboard.writeText(text);
-        const key = `${row.name}:${field}`;
-        setCopiedKey(key);
-        window.setTimeout(() => {
-          setCopiedKey((cur) => (cur === key ? null : cur));
-        }, 1600);
-      } catch {
-        // Clipboard may be denied; leave UI unchanged.
-      }
-    },
-    [],
-  );
   const [findingQuery, setFindingQuery] = useState("");
   const [serverFilter, setServerFilter] = useState<string>("");
 
   const findingRows = useMemo(() => {
-    // Client-side filter only — host already scoped when doctor ran with a name.
     const filter = serverFilter.trim() || null;
     return normalizeMcpDoctorFindings(doctorReport ?? null, {
       server: filter,
@@ -198,7 +169,6 @@ export function McpStatusModal({
     for (const r of normalizeMcpDoctorFindings(doctorReport ?? null)) {
       if (r.server) names.add(r.server);
     }
-    // Prefer inspect list order when present (still host-discovered only).
     const ordered: string[] = [];
     const seen = new Set<string>();
     for (const s of servers) {
@@ -215,6 +185,25 @@ export function McpStatusModal({
 
   const hasDoctorResult = !!doctorReport || !!doctorError;
   const canDoctor = typeof onRunDoctor === "function";
+
+
+  const copyField = useCallback(
+    async (row: McpServerRow, field: "name" | "target") => {
+      const text = mcpRowCopyText(row, field);
+      if (!text) return;
+      try {
+        await navigator.clipboard.writeText(text);
+        const key = `${row.name}:${field}`;
+        setCopiedKey(key);
+        window.setTimeout(() => {
+          setCopiedKey((cur) => (cur === key ? null : cur));
+        }, 1600);
+      } catch {
+        // Clipboard may be denied; leave UI unchanged.
+      }
+    },
+    [],
+  );
 
   return (
     <GlassModal
@@ -274,6 +263,28 @@ export function McpStatusModal({
             <span>{loading ? tr("mcpModal.refreshing") : tr("mcpModal.refresh")}</span>
           </button>
         ) : null}
+        {canDoctor ? (
+          <button
+            type="button"
+            className="btn btn--ghost btn--sm"
+            onClick={() => {
+              setServerFilter("");
+              onRunDoctor?.(null);
+            }}
+            disabled={!!doctorLoading}
+            title={tr("mcpModal.doctor.run")}
+            aria-label={tr("mcpModal.doctor.run")}
+          >
+            <IconDoctor size={14} />
+            <span>
+              {doctorLoading
+                ? tr("mcpModal.doctor.running")
+                : hasDoctorResult
+                  ? tr("mcpModal.doctor.rerun")
+                  : tr("mcpModal.doctor.run")}
+            </span>
+          </button>
+        ) : null}
       </div>
 
       {servers.length > 0 || hasActiveFilters ? (
@@ -319,50 +330,6 @@ export function McpStatusModal({
       {loading && servers.length === 0 && (
         <p className="modal-status">{tr("mcpModal.loading")}</p>
       )}
-
-      <div className="mcp-modal__toolbar">
-        {onRefresh ? (
-          <button
-            type="button"
-            className="btn btn--ghost btn--sm"
-            onClick={() => onRefresh()}
-            disabled={!!loading}
-            title={tr("mcpModal.refresh")}
-            aria-label={tr("mcpModal.refresh")}
-          >
-            <IconRefresh size={14} />
-            <span>
-              {loading ? tr("mcpModal.refreshing") : tr("mcpModal.refresh")}
-            </span>
-          </button>
-        ) : null}
-        {canDoctor ? (
-          <button
-            type="button"
-            className="btn btn--ghost btn--sm"
-            onClick={() => {
-              setServerFilter("");
-              onRunDoctor?.(null);
-            }}
-            disabled={!!doctorLoading}
-            title={tr("mcpModal.doctor.run")}
-            aria-label={tr("mcpModal.doctor.run")}
-          >
-            <IconDoctor size={14} />
-            <span>
-              {doctorLoading
-                ? tr("mcpModal.doctor.running")
-                : hasDoctorResult
-                  ? tr("mcpModal.doctor.rerun")
-                  : tr("mcpModal.doctor.run")}
-            </span>
-          </button>
-        ) : null}
-      </div>
-
-      {loading && servers.length === 0 && (
-        <p className="modal-status">{tr("mcpModal.loading")}</p>
-      )}
       {error && (
         <p className="modal-status modal-status--error">{error}</p>
       )}
@@ -388,10 +355,6 @@ export function McpStatusModal({
       {filtered.length > 0 ? (
         <ul className="mcp-modal__list" role="list">
           {filtered.map((s) => {
-
-      {servers.length > 0 ? (
-        <ul className="mcp-modal__list" role="list">
-          {servers.map((s) => {
             const meta = mcpMetaLine(s);
             const health = classifyMcpRowHealth(s);
             const badgeMod = mcpStatusBadgeMod(
@@ -468,31 +431,6 @@ export function McpStatusModal({
                     {s.target}
                   </em>
                 ) : null}
-                <div className="mcp-modal__item-head">
-                  <strong className="mcp-modal__name" title={s.name}>
-                    {s.name}
-                  </strong>
-                  {canDoctor ? (
-                    <button
-                      type="button"
-                      className="btn btn--ghost btn--sm mcp-modal__row-doctor"
-                      disabled={!!doctorLoading}
-                      onClick={() => {
-                        setServerFilter(s.name);
-                        onRunDoctor?.(s.name);
-                      }}
-                      title={tr("mcpModal.doctor.runFor", { name: s.name })}
-                      aria-label={tr("mcpModal.doctor.runFor", {
-                        name: s.name,
-                      })}
-                    >
-                      <IconDoctor size={13} />
-                      <span>{tr("mcpModal.doctor.short")}</span>
-                    </button>
-                  ) : null}
-                </div>
-                {meta ? <span>{meta}</span> : null}
-                {s.target ? <em title={s.target}>{s.target}</em> : null}
               </li>
             );
           })}
@@ -500,10 +438,7 @@ export function McpStatusModal({
       ) : null}
 
       {canDoctor ? (
-        <section
-          className="mcp-modal__doctor"
-          aria-label={tr("mcpModal.doctor.section")}
-        >
+        <section className="mcp-modal__doctor" aria-label={tr("mcpModal.doctor.section")}>
           <div className="mcp-modal__doctor-head">
             <h3 className="mcp-modal__doctor-title">
               {tr("mcpModal.doctor.section")}
