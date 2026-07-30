@@ -1194,6 +1194,9 @@ export const zhTW: Record<MessageKey, string> = {
   "settings.messageTimestamps": "顯示訊息時間戳",
   "settings.messageTimestampsDesc":
     "在訊息操作區顯示傳送時間。關閉後對話更簡潔。",
+  "settings.showReplyLength": "顯示回覆長度",
+  "settings.showReplyLengthDesc":
+    "在已完成的助手回覆下方顯示詞數與字數。預設關閉。",
   "settings.messageTimeFormat": "時間戳格式",
   "settings.messageTimeFormatDesc":
     "絕對時間顯示星期與鐘點；相對時間為「2 分鐘前」，約每分鐘刷新。",
@@ -2226,6 +2229,8 @@ export const zhTW: Record<MessageKey, string> = {
   "message.copied": "已複製",
   "message.edit": "編輯",
   "message.exportMd": "匯出 MD",
+  "message.replyLength": "{words} 詞 · {chars} 字",
+  "message.replyLengthAria": "回覆長度：{words} 詞，{chars} 字",
   "message.editOnlyLast": "只能編輯最後一則使用者訊息",
   "message.editBusy": "請等待目前回合結束後再編輯",
   "message.editCancel": "取消",

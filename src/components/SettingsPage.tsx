@@ -271,6 +271,9 @@ export interface SettingsPageProps {
   /** Show message timestamps in chat action rows (localStorage). */
   showMessageTimestamps?: boolean;
   onShowMessageTimestamps?: (v: boolean) => void;
+  /** Show word/char count under finished assistant replies (localStorage). */
+  showReplyLength?: boolean;
+  onShowReplyLength?: (v: boolean) => void;
   /** Absolute vs relative message time labels (localStorage). */
   messageTimeFormat?: MessageTimeFormat;
   onMessageTimeFormat?: (v: MessageTimeFormat) => void;
@@ -819,6 +822,8 @@ export function SettingsPage({
   onTheme,
   showMessageTimestamps = true,
   onShowMessageTimestamps,
+  showReplyLength = false,
+  onShowReplyLength,
   messageTimeFormat = "absolute",
   onMessageTimeFormat,
   sidebarShowRelativeTime = true,
@@ -3573,6 +3578,29 @@ export function SettingsPage({
                           onShowMessageTimestamps(!showMessageTimestamps)
                         }
                         ariaLabel={t("settings.messageTimestamps")}
+                      />
+                    </div>
+                  </div>
+                ) : null}
+                {onShowReplyLength ? (
+                  <div
+                    className={
+                      "settings-card" +
+                      rowHighlight("settings-anchor-showReplyLength")
+                    }
+                    id="settings-anchor-showReplyLength"
+                  >
+                    <div className="settings-row">
+                      <div className="settings-row__text">
+                        <SettingsLabelWithTip
+                          label={t("settings.showReplyLength")}
+                          tip={t("settings.showReplyLengthDesc")}
+                        />
+                      </div>
+                      <UiCheck
+                        checked={!!showReplyLength}
+                        onChange={() => onShowReplyLength(!showReplyLength)}
+                        ariaLabel={t("settings.showReplyLength")}
                       />
                     </div>
                   </div>

@@ -1245,6 +1245,9 @@ const en = {
   "settings.messageTimestamps": "Show message timestamps",
   "settings.messageTimestampsDesc":
     "Show the send time next to message actions. Turn off for a cleaner transcript.",
+  "settings.showReplyLength": "Show reply length",
+  "settings.showReplyLengthDesc":
+    "Show a muted word and character count under finished assistant replies. Off by default.",
   "settings.messageTimeFormat": "Timestamp format",
   "settings.messageTimeFormatDesc":
     "Absolute shows weekday and clock time; relative shows \"2 minutes ago\" and refreshes about once a minute.",
@@ -2305,6 +2308,8 @@ const en = {
   "message.copied": "Copied",
   "message.edit": "Edit",
   "message.exportMd": "Export MD",
+  "message.replyLength": "{words} words · {chars} chars",
+  "message.replyLengthAria": "Reply length: {words} words, {chars} characters",
   "message.editOnlyLast": "Only the latest user message can be edited",
   "message.editBusy": "Wait for the current turn to finish before editing",
   "message.editCancel": "Cancel",
@@ -3959,6 +3964,9 @@ const zh: Record<MessageKey, string> = {
   "settings.messageTimestamps": "显示消息时间戳",
   "settings.messageTimestampsDesc":
     "在消息操作区显示发送时间。关闭后对话更简洁。",
+  "settings.showReplyLength": "显示回复长度",
+  "settings.showReplyLengthDesc":
+    "在已完成的助手回复下方显示词数与字数。默认关闭。",
   "settings.messageTimeFormat": "时间戳格式",
   "settings.messageTimeFormatDesc":
     "绝对时间显示星期与钟点；相对时间为「2 分钟前」，约每分钟刷新。",
@@ -4991,6 +4999,8 @@ const zh: Record<MessageKey, string> = {
   "message.copied": "已复制",
   "message.edit": "编辑",
   "message.exportMd": "导出 MD",
+  "message.replyLength": "{words} 词 · {chars} 字",
+  "message.replyLengthAria": "回复长度：{words} 词，{chars} 字",
   "message.editOnlyLast": "只能编辑最后一条用户消息",
   "message.editBusy": "请等待当前回合结束后再编辑",
   "message.editCancel": "取消",
