@@ -13,55 +13,39 @@ See `docs/llm-wiki/release.md`.
 
 ### Added
 
-- **Skip confirm on Stop all** (Settings → General → App): optional pref so Tasks / Agent dashboard Stop all runs without a confirmation dialog (default off)
-- **Code block font size** preference (Settings → Appearance → Interface): Small / Medium / Large for fenced code in chat; independent of chat text size; localStorage `grok.codeFontScale`
-- **Session file-changes chip** in the composer: shows `N files` or `+a −d` when the agent has edited files; click opens Resources → Changes; hidden when empty
-- **Duplicate chat** from the session menu: full journal clone titled “Copy of {name}”, same project, opens the new session (idle only; no worktree restore)
-- **Archive older than…** (sidebar Projects actions + Settings → Archived): bulk-archive unpinned chats last updated more than 7 / 30 / 90 days ago; in-app confirm with count; existing `session_set_archived` API
-- **Regenerate with model pick**: one-click still uses the current model; chevron / right-click / long-press opens a menu (Same model + catalog) and switches session model before resend when different
-- **Cross-session recent prompt history** (`/history` picker): **This chat** tab plus **Recent (all chats)** localStorage ring (max 50, consecutive-dedupe); select inserts into composer
-- **Per-session sticky notes** (context menu “Session note…”; localStorage only, max ~2k; sidebar note icon + preview tip; never sent to the agent unless you paste)
-- **Auto-collapse finished tool steps** in the chat timeline (default on; Settings → Appearance; running tools stay expanded)
-- **Project color accent**: optional sidebar color (tokens blue/green/orange/purple/pink/gray or `#hex`); color dot on project header; set via context menu; Host `project_set_color`
-- **Send queue reorder**: Up/Down on each queued follow-up before auto-flush
-- **Chat reading width** (Settings → Appearance): narrow / medium (default) / wide / full (`grok.chatWidth`)
-- **Phone mirror write guard**: confirm when enabling write; persistent warning banner; audit log (no secrets)
-- **Copy conversation as Markdown** (session menu + command palette); skips pure tool_step by default
-- **Disable Live Voice hotkey only** (Settings → Voice): catalog shortcut off; button/slash/menus still open Live Voice
-- **Tasks panel tree**: nest tools under `spawn_subagent` (parentId or infer); expand/collapse; flat when no parents
-- **Plan history archive**: approved/abandoned/completed plan previews in a local ring (max 30)
-- **Sidebar date groups**: Today / Yesterday / Previous 7 days / Older (pins stay top of each group)
-- **Dock / tray busy badge**: busy session count on macOS Dock (or tray tooltip); Settings toggle (default on)
-- **Per-session mute** for desktop notifications (menu + sidebar icon; in-app toasts still show)
-- **Desktop notification click** opens the session that fired the event
-- **Send queue Edit**, **context usage breakdown**, **richer Compact**, **worktree sessions**, **fork restore**, **sandbox presets**, **MCP status**, **Memory browser**, **product tutorial**, **Agent dashboard**, **Trace history**, **remappable shortcuts**, **CLI launch update notice** (#238), **Reliability center**, **Leader/serve panel**, **JSON Schema output**, **session plugin dirs**, **CLI session resume**, **Hooks activity**, **SKILL.md editor** (see prior Unreleased bullets / integrate notes)
+#### Composer & chat
+- **Send queue**: edit, reorder Up/Down
+- **Cross-session recent prompt history** (`/history` → Recent all chats) + per-chat ↑/↓ history
+- **Chat reading width** · **chat / code font size** (independent) · **tool auto-collapse** (finished tools; separate from Collapse all activity)
+- **Regenerate last reply** with optional model pick
+- **File changes chip** (count / +a −d → Resources Changes)
+
+#### Sessions & sidebar
+- **Duplicate chat** (one-click journal clone; no worktree dialog — use **Fork…** for optional worktree restore)
+- **Fork** optional worktree restore (existing)
+- **Session sticky notes** (client-only, never sent to agent)
+- **Per-session mute** desktop notifications · **session plugin dirs**
+- **Bulk archive older than 7/30/90 days** · **date groups** · **project color accent**
+- **Copy conversation as Markdown**
+
+#### Tasks / system
+- **Tasks tree** (nest under spawn_subagent) · **Stop all skip-confirm** option
+- **Plan history** archive · **Dock/tray busy badge**
+- **Phone mirror write guard** · **CLI launch update notice** · Reliability / Leader / Memory / MCP / etc. (prior integrate)
 
 ### Fixed
 
-- **CLI install blocked by missing SHA-256 (#227)**: missing official sidecar allowed by default; mismatch still aborts
-- **CSS**: close broken rewind/fork selectors in `app.css` (#259)
+- **CLI install missing SHA-256 (#227)**; **app.css** rewind/fork selectors (#259)
 
-**中文 · 新增**
+**中文 · 新增（按域）**
 
-- **全部停止跳过确认**（设置 → 常规 → 应用）：可选偏好，任务面板 / Agent 总览「全部停止」不再二次确认（默认关闭）
-- **代码块字号**（设置 → 外观 → 界面）：小/中/大，与对话字号独立；localStorage `grok.codeFontScale`
-- 会话文件变更 chip（作曲栏：`N 个文件` 或 `+a −d`；点击打开资源变更面板；无变更时隐藏）
-- 会话菜单「复制会话」：整段 journal 克隆为「副本：{name}」，同项目并打开新会话（仅空闲；不恢复 worktree）
-- **按时间归档**（侧栏项目区操作 + 设置 → 已归档）：批量归档超过 7 / 30 / 90 天未更新的非置顶会话；应用内确认数量；沿用现有归档 API
-- **重新生成可选模型**：单击仍用当前模型；箭头 / 右键 / 长按打开菜单（当前模型 + 目录），选不同模型时先切换会话模型再重发
-- **跨会话最近提示历史**（`/history`）：「当前会话」与「最近（全部会话）」标签；localStorage 环形缓冲最多 50 条；选择后填入输入框
-- 按会话粘性备注（菜单「会话备注…」；仅本机 localStorage，约 2k 字；侧栏图标与预览；除非粘贴否则不进入 Agent）
-- 完成后自动折叠工具步骤（默认开启；设置 → 外观；运行中保持展开）
-- **项目颜色标记**：侧栏可选色点（命名色或 `#hex`）；右键设置；Host `project_set_color`
-- 发送队列上下排序；对话阅读宽度；镜像写权限确认与警告；整段对话复制为 Markdown
-- 可单独关闭实时语音快捷键；任务面板子代理树；计划历史归档；侧栏日期分组
-- 程序坞/托盘忙碌角标；按会话静音桌面通知
-- 以及此前合入的通知聚焦、队列编辑、上下文拆分、Compact、Worktree、沙箱、MCP、Memory、教程、Dashboard、Trace、快捷键重映射、CLI 更新提示、可靠性中心、Leader、JSON Schema、会话插件目录、CLI 会话恢复、Hooks、SKILL 编辑器等
-
+- **输入与对话**：队列编辑/排序、跨会话提示历史、阅读宽度与字号、工具默认折叠、重新生成可选模型、变更芯片
+- **会话与侧栏**：复制会话（vs 分叉+worktree）、便签、静音、插件目录、按天归档、日期分组、项目颜色、复制 Markdown
+- **任务与系统**：子代理树、Stop all 可跳过确认、计划历史、忙碌角标、镜像写权限等
 
 **中文 · 修复**
 
-- CLI 安装缺 SHA-256（#227）；app.css rewind/fork 选择器未闭合（#259）
+- CLI 安装缺 SHA-256（#227）；CSS 选择器（#259）
 
 
 ## [0.2.2] - 2026-07-30

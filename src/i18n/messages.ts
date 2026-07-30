@@ -160,11 +160,11 @@ const en = {
   "session.newShort": "New",
   "session.placeholderTitle": "New chat",
   "session.untitled": "Untitled",
-  "session.fork": "Fork chat",
+  "session.fork": "Fork chat…",
   "session.forkTitle": "Fork chat",
   "session.forkTitleOf": "Fork of {name}",
   "session.forkConfirm":
-    "Create a new chat with a copy of this conversation? The original stays unchanged.",
+    "Create a new chat with a copy of this conversation (original unchanged). Optionally open on a clean git worktree. For a one-click same-folder copy, use Duplicate chat.",
   "session.forkConfirmPartial":
     "Create a new chat with messages up to this point? Later turns are not copied.",
   "session.forkRestoreCode":
@@ -1192,7 +1192,7 @@ const en = {
   "settings.thinkingExpand.keepOpen": "Keep expanded",
   "settings.toolStepsAutoCollapse": "Auto-collapse finished tools",
   "settings.toolStepsAutoCollapseDesc":
-    "Completed and failed tool steps start collapsed in the timeline. Running tools stay expanded. Turn off to keep finished tools open.",
+    "Completed and failed tool steps start collapsed in the timeline. Running tools stay expanded. Turn off to keep finished tools open. Separate from “Collapse all activity” (manual one-shot).",
   "settings.zenMode": "Zen mode",
   "settings.zenModeDesc":
     "Hide the left sidebar and right files pane to maximize the chat. Turning off restores the panes as they were. Escape still stops generation — it does not exit zen.",
@@ -1204,7 +1204,7 @@ const en = {
   "settings.chatFontScale.lg": "Large",
   "settings.codeFontScale": "Code block text size",
   "settings.codeFontScaleDesc":
-    "Font size for fenced code blocks in chat (independent of chat text size)",
+    "Font size for fenced code blocks only (independent of Chat text size above).",
   "settings.codeFontScale.sm": "Small",
   "settings.codeFontScale.md": "Medium",
   "settings.codeFontScale.lg": "Large",
@@ -2911,11 +2911,11 @@ const zh: Record<MessageKey, string> = {
   "session.newShort": "新建",
   "session.placeholderTitle": "新会话",
   "session.untitled": "未命名",
-  "session.fork": "分叉会话",
+  "session.fork": "分叉会话…",
   "session.forkTitle": "分叉会话",
   "session.forkTitleOf": "分叉：{name}",
   "session.forkConfirm":
-    "基于当前对话复制新建一个会话？原会话保持不变。",
+    "基于当前对话复制新建一个会话（原会话不变）。可选在干净 worktree 中打开。若只需同项目一键复制，请用「复制会话」。",
   "session.forkConfirmPartial":
     "复制到此为止的消息并新建会话？之后的回合不会复制。",
   "session.forkRestoreCode": "同时将工作区文件恢复到本会话最近的 git 状态",
@@ -3910,7 +3910,7 @@ const zh: Record<MessageKey, string> = {
   "settings.thinkingExpand.keepOpen": "保持展开",
   "settings.toolStepsAutoCollapse": "完成后自动折叠工具步骤",
   "settings.toolStepsAutoCollapseDesc":
-    "已完成或失败的工具步骤在时间线中默认折叠。运行中的工具保持展开。关闭后，完成的工具也会保持展开。",
+    "已完成或失败的工具步骤在时间线中默认折叠。运行中的工具保持展开。关闭后，完成的工具也会保持展开。与「收起全部活动」（手动一次）是不同能力。",
   "settings.zenMode": "禅模式",
   "settings.zenModeDesc":
     "隐藏左侧会话栏与右侧文件栏，最大化对话区域。关闭时恢复进入前的栏状态。Esc 仍用于停止生成，不会退出禅模式。",
@@ -3921,7 +3921,7 @@ const zh: Record<MessageKey, string> = {
   "settings.chatFontScale.lg": "大",
   "settings.codeFontScale": "代码块字号",
   "settings.codeFontScaleDesc":
-    "聊天中围栏代码块的文字大小（与对话字号相互独立）",
+    "仅聊天围栏代码块字号（与上方「对话字号」独立）。",
   "settings.codeFontScale.sm": "小",
   "settings.codeFontScale.md": "中",
   "settings.codeFontScale.lg": "大",

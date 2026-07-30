@@ -146,11 +146,11 @@ export const zhTW: Record<MessageKey, string> = {
   "session.newShort": "新增",
   "session.placeholderTitle": "新對話",
   "session.untitled": "未命名",
-  "session.fork": "分叉對話",
+  "session.fork": "分叉對話…",
   "session.forkTitle": "分叉對話",
   "session.forkTitleOf": "分叉：{name}",
   "session.forkConfirm":
-    "基於目前對話複製並建立新對話？原對話保持不變。",
+    "基於目前對話複製並建立新對話（原對話不變）。可選在乾淨 worktree 中開啟。若只需同專案一鍵複製，請用「複製對話」。",
   "session.forkConfirmPartial":
     "複製到此為止的訊息並建立新對話？之後的回合不會複製。",
   "session.forkRestoreCode": "同時將工作區檔案還原到本對話最近的 git 狀態",
@@ -1145,7 +1145,7 @@ export const zhTW: Record<MessageKey, string> = {
   "settings.thinkingExpand.keepOpen": "保持展開",
   "settings.toolStepsAutoCollapse": "完成後自動摺疊工具步驟",
   "settings.toolStepsAutoCollapseDesc":
-    "已完成或失敗的工具步驟在時間線中預設摺疊。執行中的工具保持展開。關閉後，完成的工具也會保持展開。",
+    "已完成或失敗的工具步驟在時間線中預設摺疊。執行中的工具保持展開。關閉後，完成的工具也會保持展開。與「收合全部活動」（手動一次）是不同能力。",
   "settings.zenMode": "禪模式",
   "settings.zenModeDesc":
     "隱藏左側會話欄與右側檔案欄，最大化對話區域。關閉時恢復進入前的欄狀態。Esc 仍用於停止生成，不會退出禪模式。",
@@ -1156,7 +1156,7 @@ export const zhTW: Record<MessageKey, string> = {
   "settings.chatFontScale.lg": "大",
   "settings.codeFontScale": "程式碼區塊字號",
   "settings.codeFontScaleDesc":
-    "聊天中圍欄程式碼區塊的文字大小（與對話字號相互獨立）",
+    "僅聊天圍欄程式碼區塊字號（與上方「對話字號」獨立）。",
   "settings.codeFontScale.sm": "小",
   "settings.codeFontScale.md": "中",
   "settings.codeFontScale.lg": "大",
