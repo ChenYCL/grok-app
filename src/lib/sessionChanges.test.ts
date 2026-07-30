@@ -1,13 +1,17 @@
 import { describe, expect, it } from "vitest";
 import {
   buildUnifiedDiff,
+  changeListKey,
   countLineDelta,
   isEditToolKind,
   mergeSessionChange,
+  nextChangeListKey,
   normalizePath,
+  parseChangeListKey,
   pathBaseName,
   pathRelativeToProject,
   sessionChangesFromMessages,
+  sessionFileLineDelta,
   summarizeSessionChanges,
   type SessionFileChange,
 } from "./sessionChanges";
@@ -265,5 +269,50 @@ describe("summarizeSessionChanges", () => {
       removedLines: 0,
       mode: "diff",
     });
+  });
+});
+
+describe("sessionFileLineDelta", () => {
+  it("returns null when before or after is missing", () => {
+    expect(sessionFileLineDelta({})).toBeNull();
+    expect(sessionFileLineDelta({ before: "a\n" })).toBeNull();
+    expect(sessionFileLineDelta({ after: "b\n" })).toBeNull();
+  });
+
+  it("counts per-file line delta", () => {
+    expect(
+      sessionFileLineDelta({ before: "a\nb\n", after: "a\nc\nd\n" }),
+    ).toEqual({ added: 2, removed: 1 });
+  });
+});
+
+describe("changeListKey / nextChangeListKey", () => {
+  const KEYS = [
+    changeListKey("session", "/a.ts"),
+    changeListKey("session", "/b.ts"),
+    changeListKey("workspace", "src/c.ts"),
+  ] as const;
+
+  it("builds and parses stable keys", () => {
+    expect(changeListKey("session", "/proj\\x.ts")).toBe("session:/proj/x.ts");
+    expect(parseChangeListKey("session:/proj/x.ts")).toEqual({
+      source: "session",
+      path: "/proj/x.ts",
+    });
+    expect(parseChangeListKey("workspace:src/c.ts")).toEqual({
+      source: "workspace",
+      path: "src/c.ts",
+    });
+    expect(parseChangeListKey("bogus")).toBeNull();
+  });
+
+  it("navigates j/k style with clamp at ends", () => {
+    expect(nextChangeListKey(KEYS, KEYS[0], "next")).toBe(KEYS[1]);
+    expect(nextChangeListKey(KEYS, KEYS[2], "next")).toBe(KEYS[2]);
+    expect(nextChangeListKey(KEYS, KEYS[1], "prev")).toBe(KEYS[0]);
+    expect(nextChangeListKey(KEYS, KEYS[0], "prev")).toBe(KEYS[0]);
+    expect(nextChangeListKey(KEYS, null, "next")).toBe(KEYS[0]);
+    expect(nextChangeListKey(KEYS, null, "prev")).toBe(KEYS[2]);
+    expect(nextChangeListKey([], "x", "next")).toBeNull();
   });
 });
