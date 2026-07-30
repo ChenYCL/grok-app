@@ -13,6 +13,7 @@ See `docs/llm-wiki/release.md`.
 
 ### Added
 
+- **Archive older than…** (sidebar Projects actions + Settings → Archived): bulk-archive unpinned chats last updated more than 7 / 30 / 90 days ago; in-app confirm with count; existing `session_set_archived` API
 - **Send queue reorder**: Up/Down on each queued follow-up before auto-flush
 - **Chat reading width** (Settings → Appearance): narrow / medium (default) / wide / full (`grok.chatWidth`)
 - **Phone mirror write guard**: confirm when enabling write; persistent warning banner; audit log (no secrets)
@@ -33,6 +34,7 @@ See `docs/llm-wiki/release.md`.
 
 **中文 · 新增**
 
+- **按时间归档**（侧栏项目区操作 + 设置 → 已归档）：批量归档超过 7 / 30 / 90 天未更新的非置顶会话；应用内确认数量；沿用现有归档 API
 - 发送队列上下排序；对话阅读宽度；镜像写权限确认与警告；整段对话复制为 Markdown
 - 可单独关闭实时语音快捷键；任务面板子代理树；计划历史归档；侧栏日期分组
 - 程序坞/托盘忙碌角标；按会话静音桌面通知

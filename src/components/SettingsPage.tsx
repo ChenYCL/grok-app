@@ -40,6 +40,7 @@ import {
   countUnlinkedCliSessions,
   filterCliSessions,
 } from "@/lib/cliSessionsFilter";
+import { ARCHIVE_AGE_DAY_OPTIONS } from "@/lib/sessionArchiveAge";
 import {
   SHORTCUTS,
   detectShortcutPlatform,
@@ -429,6 +430,8 @@ export interface SettingsPageProps {
   onRestoreArchivedSessions?: (ids: string[]) => void;
   /** Delete one or more archived sessions after confirm (ids). */
   onDeleteArchivedSessions?: (ids: string[]) => void;
+  /** Bulk-archive active chats older than N days (confirm lives in App). */
+  onArchiveOlderThan?: (days: number) => void;
   /** Active project path for Skills/MCP inspect cwd. */
   projectPath?: string | null;
   /** After skill enable toggle — refresh slash palette in App. */
@@ -919,6 +922,7 @@ export function SettingsPage({
   archivedGroups = [],
   onRestoreArchivedSessions,
   onDeleteArchivedSessions,
+  onArchiveOlderThan,
   projectPath = null,
   onSkillsPrefsChanged,
   onOpenShortcutsHelp,
@@ -3689,6 +3693,41 @@ export function SettingsPage({
             <p className="settings-page__lead">
               {t("settings.archived.desc")}
             </p>
+            {onArchiveOlderThan ? (
+              <div
+                className="settings-card settings-archived-age"
+                id="settings-anchor-archive-older"
+              >
+                <div className="settings-row settings-row--stack">
+                  <div className="settings-row__meta">
+                    <div className="settings-row__label">
+                      {t("settings.archived.archiveOlder")}
+                    </div>
+                    <div className="settings-row__desc">
+                      {t("settings.archived.archiveOlderDesc")}
+                    </div>
+                  </div>
+                  <div
+                    className="settings-archived-age__actions"
+                    role="group"
+                    aria-label={t("settings.archived.archiveOlder")}
+                  >
+                    {ARCHIVE_AGE_DAY_OPTIONS.map((days) => (
+                      <button
+                        key={days}
+                        type="button"
+                        className="btn btn--ghost btn--sm"
+                        onClick={() => onArchiveOlderThan(days)}
+                      >
+                        {t("settings.archived.archiveOlderDays", {
+                          days: String(days),
+                        })}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            ) : null}
             {archivedTotal === 0 ? (
               <div className="settings-card">
                 <div className="settings-archived-empty">

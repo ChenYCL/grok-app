@@ -211,6 +211,10 @@ import {
 } from "@/lib/sandboxProfile";
 import { shouldRestoreLastSession } from "@/lib/sessionRestore";
 import {
+  ARCHIVE_AGE_DAY_OPTIONS,
+  filterSessionsOlderThanDays,
+} from "@/lib/sessionArchiveAge";
+import {
   collapsedIdsFromExpandMap,
   expandMapFromCollapsedIds,
   sameCollapsedIdSet,
@@ -820,6 +824,7 @@ type ContextMenuState =
   | { kind: "project-policy"; id: string; x: number; y: number }
   | { kind: "project-sandbox"; id: string; x: number; y: number }
   | { kind: "session"; id: string; x: number; y: number }
+  | { kind: "archive-older"; x: number; y: number }
   | null;
 
 /** In-app dialogs — window.prompt/confirm are unreliable in Tauri WebView. */
@@ -5819,6 +5824,75 @@ export default function App() {
     } catch (e) {
       setLocalError(String(e));
     }
+  };
+
+  /**
+   * Bulk-archive chats whose last update is older than `days`.
+   * Skips pinned + already-archived; confirms count via in-app dialog.
+   */
+  const confirmArchiveOlderThan = (days: number) => {
+    setCtxMenu(null);
+    const rows = filterSessionsOlderThanDays(sessions, days);
+    if (!rows.length) {
+      setToast(tr("sidebar.archiveOlderNone", { days: String(days) }));
+      window.setTimeout(() => setToast(null), 3200);
+      return;
+    }
+    const n = rows.length;
+    setAppDialog({
+      kind: "confirm",
+      title: tr("sidebar.archiveOlderTitle"),
+      message: tr("sidebar.archiveOlderConfirm", {
+        n: String(n),
+        days: String(days),
+      }),
+      confirmLabel: tr("sidebar.archiveSelected", { n: String(n) }),
+      onConfirm: async () => {
+        try {
+          if (!api.isTauri()) {
+            setLocalError(tr("error.needTauri"));
+            return;
+          }
+          const openId =
+            session.sessionId ?? viewingSessionIdRef.current ?? null;
+          const wasViewing =
+            !!openId && rows.some((s) => s.id === openId);
+          const viewingRow = wasViewing
+            ? rows.find((s) => s.id === openId) ?? null
+            : null;
+
+          const results = await Promise.allSettled(
+            rows.map((s) => api.sessionSetArchived(s.id, true)),
+          );
+          const ok = results.filter((r) => r.status === "fulfilled").length;
+          const firstFail = results.find(
+            (r): r is PromiseRejectedResult => r.status === "rejected",
+          );
+
+          await refreshSessions();
+
+          if (wasViewing && viewingRow) {
+            const proj = viewingRow.projectId
+              ? projects.find((p) => p.id === viewingRow.projectId) ?? null
+              : null;
+            if (proj) await newChat(proj, { switchToChat: true });
+            else await newChat(null, { switchToChat: true });
+          }
+
+          if (ok > 0) {
+            setToast(tr("sidebar.archivedToast", { n: String(ok) }));
+            window.setTimeout(() => setToast(null), 3200);
+          }
+          if (firstFail) {
+            setLocalError(String(firstFail.reason));
+          } else {
+            setLocalError(null);
+          }
+        } catch (e) {
+          setLocalError(String(e));
+        }
+      },
+    });
   };
 
   /**
@@ -11287,6 +11361,9 @@ export default function App() {
       "settings.archived.deselectAll",
       "settings.archived.selectedCount",
       "settings.archived.totalCount",
+      "settings.archived.archiveOlder",
+      "settings.archived.archiveOlderDesc",
+      "settings.archived.archiveOlderDays",
       "session.untitled",
       "settings.section.permissions",
       "settings.section.composer",
@@ -11937,6 +12014,9 @@ export default function App() {
               .filter((s): s is SessionRow => !!s);
             deleteSessionsConfirm(rows);
           }}
+          onArchiveOlderThan={(days) => {
+            confirmArchiveOlderThan(days);
+          }}
           projectPath={effectiveProjectPath}
           onSkillsPrefsChanged={() =>
             setSkillsReloadToken((n) => n + 1)
@@ -12115,19 +12195,38 @@ export default function App() {
                     </button>
                   </Tip>
                 ) : selectableSessionCount > 0 ? (
-                  <Tip label={tr("sidebar.select")}>
-                    <button
-                      type="button"
-                      className="tree-l1__action"
-                      aria-label={tr("sidebar.select")}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        enterSessionSelectMode();
-                      }}
-                    >
-                      <IconListCheck size={15} />
-                    </button>
-                  </Tip>
+                  <>
+                    <Tip label={tr("sidebar.select")}>
+                      <button
+                        type="button"
+                        className="tree-l1__action"
+                        aria-label={tr("sidebar.select")}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          enterSessionSelectMode();
+                        }}
+                      >
+                        <IconListCheck size={15} />
+                      </button>
+                    </Tip>
+                    <Tip label={tr("sidebar.archiveOlder")}>
+                      <button
+                        type="button"
+                        className="tree-l1__action"
+                        aria-label={tr("sidebar.archiveOlder")}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setCtxMenu({
+                            kind: "archive-older",
+                            x: e.clientX,
+                            y: e.clientY,
+                          });
+                        }}
+                      >
+                        <IconArchive size={15} />
+                      </button>
+                    </Tip>
+                  </>
                 ) : null}
                 {projects.length > 0 && !sessionSelectMode ? (
                   <Tip label={tr("sidebar.collapseAllProjects")}>
@@ -16303,7 +16402,16 @@ export default function App() {
       {/* Floating context menu (project / session) — unified ContextMenu */}
       {(() => {
         let items: ContextMenuItem[] = [];
-        if (ctxMenu?.kind === "project") {
+        if (ctxMenu?.kind === "archive-older") {
+          items = ARCHIVE_AGE_DAY_OPTIONS.map((days) => ({
+            id: `archive-older-${days}`,
+            label: tr("sidebar.archiveOlderDays", { days: String(days) }),
+            icon: <IconArchive size={16} />,
+            onClick: () => {
+              confirmArchiveOlderThan(days);
+            },
+          }));
+        } else if (ctxMenu?.kind === "project") {
           const proj = projects.find((p) => p.id === ctxMenu.id);
           if (proj) {
             items = [

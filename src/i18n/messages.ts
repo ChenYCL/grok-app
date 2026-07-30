@@ -58,6 +58,13 @@ const en = {
   "sidebar.archivedToast": "Archived {n} chats",
   "sidebar.restoredToast": "Restored {n} chats",
   "sidebar.deletedToast": "Deleted {n} chats",
+  "sidebar.archiveOlder": "Archive older than…",
+  "sidebar.archiveOlderDays": "Older than {days} days",
+  "sidebar.archiveOlderTitle": "Archive older chats",
+  "sidebar.archiveOlderConfirm":
+    "Archive {n} chats not updated in the last {days} days? Pinned chats are kept. You can restore them later from Settings → Archived.",
+  "sidebar.archiveOlderNone":
+    "No unpinned chats older than {days} days.",
   "user.menu": "Account menu",
   "user.theme": "Theme",
   "user.themeLight": "Switch to light",
@@ -853,6 +860,10 @@ const en = {
   "settings.archived.deselectAll": "Deselect all",
   "settings.archived.selectedCount": "{n} selected",
   "settings.archived.totalCount": "{n} archived",
+  "settings.archived.archiveOlder": "Archive older than…",
+  "settings.archived.archiveOlderDesc":
+    "Bulk-archive active chats whose last update is older than the threshold. Pinned chats are skipped.",
+  "settings.archived.archiveOlderDays": "{days} days",
   "settings.section.permissions": "Permissions",
   "settings.section.composer": "Composer prefs",
   "settings.section.voice": "Voice",
@@ -2754,6 +2765,12 @@ const zh: Record<MessageKey, string> = {
   "sidebar.archivedToast": "已归档 {n} 个会话",
   "sidebar.restoredToast": "已恢复 {n} 个会话",
   "sidebar.deletedToast": "已永久删除 {n} 个会话",
+  "sidebar.archiveOlder": "归档超过…天的会话",
+  "sidebar.archiveOlderDays": "超过 {days} 天",
+  "sidebar.archiveOlderTitle": "按时间归档",
+  "sidebar.archiveOlderConfirm":
+    "将归档 {n} 个超过 {days} 天未更新的会话？置顶会话会保留。之后可在「设置 → 已归档会话」中还原。",
+  "sidebar.archiveOlderNone": "没有超过 {days} 天且未置顶的会话。",
   "user.menu": "个人中心",
   "user.theme": "主题",
   "user.themeLight": "切换到浅色",
@@ -3518,6 +3535,10 @@ const zh: Record<MessageKey, string> = {
   "settings.archived.deselectAll": "取消全选",
   "settings.archived.selectedCount": "已选 {n} 项",
   "settings.archived.totalCount": "共 {n} 条",
+  "settings.archived.archiveOlder": "归档超过…天的会话",
+  "settings.archived.archiveOlderDesc":
+    "批量归档最后更新时间超过阈值的活跃会话。置顶会话会跳过。",
+  "settings.archived.archiveOlderDays": "{days} 天",
   "settings.section.permissions": "权限",
   "settings.section.composer": "对话偏好",
   "settings.section.voice": "语音",
