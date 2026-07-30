@@ -11,6 +11,14 @@ See `docs/llm-wiki/release.md`.
 
 ## [Unreleased]
 
+### Added
+
+- **Context usage chip**: fuller breakdown with System / Tools / History rows (estimated from journal when possible; agent-reported buckets preferred without `~`). User / assistant / thought remain estimated with honest `~`
+
+### Added (中文)
+
+- **上下文用量芯片**：补充系统 / 工具 / 历史拆分（有信号时估算；Agent 上报时优先精确值、不加 `~`）
+
 ## [0.2.2] - 2026-07-30
 
 > **Highlight:** In-app auto-update works for signed builds; calmer sidebar multi-select; PATH / busy / media reliability.
