@@ -82,22 +82,49 @@ export function isActiveJsonSchema(raw: string | null | undefined): boolean {
 /**
  * Extract pretty JSON from an assistant reply for the structured-output panel.
  * Prefers whole-message JSON; falls back to a fenced ```json block.
+ * Returns null when the reply is not parseable object/array JSON.
  */
 export function extractStructuredJson(content: string): string | null {
-  const text = (content ?? "").trim();
-  if (!text) return null;
+  const parsed = parseStructuredJsonContent(content);
+  return parsed.ok ? parsed.pretty : null;
+}
 
-  const direct = tryPrettyJson(text);
-  if (direct) return direct;
+export type StructuredJsonParseOk = {
+  ok: true;
+  value: unknown;
+  pretty: string;
+};
+
+export type StructuredJsonParseErr = {
+  ok: false;
+  error: "empty" | "not_json";
+  /** Stable English diagnostic for tests / logs (UI uses i18n). */
+  message: string;
+};
+
+export type StructuredJsonParseResult =
+  | StructuredJsonParseOk
+  | StructuredJsonParseErr;
+
+/**
+ * Parse assistant reply as structured JSON (object or array root).
+ * Honest failure — never throws.
+ */
+export function parseStructuredJsonContent(
+  content: string,
+): StructuredJsonParseResult {
+  const text = (content ?? "").trim();
+  if (!text) {
+    return { ok: false, error: "empty", message: "Reply is empty." };
+  }
+
+  const candidates: string[] = [text];
 
   // Fenced code block (```json … ``` or bare ``` … ```)
   const fence =
     /```(?:json|JSON)?\s*\n([\s\S]*?)```/m.exec(text) ??
     /```(?:json|JSON)?\s*([\s\S]*?)```/m.exec(text);
-  if (fence?.[1]) {
-    const inner = tryPrettyJson(fence[1].trim());
-    if (inner) return inner;
-  }
+  if (fence?.[1]) candidates.push(fence[1].trim());
 
   // Leading/trailing prose around a single top-level object/array
   const startObj = text.indexOf("{");
@@ -107,35 +134,215 @@ export function extractStructuredJson(content: string): string | null {
   else start = Math.max(startObj, startArr);
   if (start >= 0) {
     const slice = text.slice(start);
-    const pretty = tryPrettyJson(slice);
-    if (pretty) return pretty;
-    // Balance braces for object
+    candidates.push(slice);
     if (slice.startsWith("{")) {
       const balanced = extractBalanced(slice, "{", "}");
-      if (balanced) {
-        const p = tryPrettyJson(balanced);
-        if (p) return p;
-      }
+      if (balanced) candidates.push(balanced);
     } else if (slice.startsWith("[")) {
       const balanced = extractBalanced(slice, "[", "]");
-      if (balanced) {
-        const p = tryPrettyJson(balanced);
-        if (p) return p;
+      if (balanced) candidates.push(balanced);
+    }
+  }
+
+  for (const raw of candidates) {
+    const parsed = tryParseObjectOrArray(raw);
+    if (parsed) return parsed;
+  }
+
+  return {
+    ok: false,
+    error: "not_json",
+    message: "Not valid JSON.",
+  };
+}
+
+function tryParseObjectOrArray(raw: string): StructuredJsonParseOk | null {
+  try {
+    const v = JSON.parse(raw);
+    if (v === null || typeof v !== "object") return null;
+    return { ok: true, value: v, pretty: JSON.stringify(v, null, 2) };
+  } catch {
+    return null;
+  }
+}
+
+export type SchemaValidationIssue = {
+  /** Dot-path; empty string means root. */
+  path: string;
+  kind: "missing_required" | "type_mismatch" | "not_object";
+  message: string;
+  /** Field name when kind is missing_required. */
+  field?: string;
+};
+
+export type SchemaValidationResult = {
+  ok: boolean;
+  issues: SchemaValidationIssue[];
+  /** Missing required property names (convenience for UI). */
+  missingRequired: string[];
+};
+
+/**
+ * Lightweight client-side check of a parsed value against a JSON Schema object.
+ * Supports: root `type` (object/array/string/number/boolean/null), and
+ * top-level `required` field presence when the value is a plain object.
+ * Does not run a full draft validator.
+ */
+export function validateJsonAgainstSchema(
+  value: unknown,
+  schema: Record<string, unknown> | null | undefined,
+): SchemaValidationResult {
+  if (!schema || typeof schema !== "object" || Array.isArray(schema)) {
+    return { ok: true, issues: [], missingRequired: [] };
+  }
+
+  const issues: SchemaValidationIssue[] = [];
+
+  const typeSpec = schema.type;
+  if (typeof typeSpec === "string") {
+    if (!matchesJsonSchemaType(value, typeSpec)) {
+      issues.push({
+        path: "",
+        kind: "type_mismatch",
+        message: `Expected type "${typeSpec}", got ${jsonTypeName(value)}.`,
+      });
+    }
+  } else if (Array.isArray(typeSpec)) {
+    const allowed = typeSpec.filter((t): t is string => typeof t === "string");
+    if (allowed.length && !allowed.some((t) => matchesJsonSchemaType(value, t))) {
+      issues.push({
+        path: "",
+        kind: "type_mismatch",
+        message: `Expected type ${allowed.join(" | ")}, got ${jsonTypeName(value)}.`,
+      });
+    }
+  }
+
+  const required = Array.isArray(schema.required)
+    ? schema.required.filter((k): k is string => typeof k === "string" && k.length > 0)
+    : [];
+
+  const missingRequired: string[] = [];
+  if (required.length > 0) {
+    if (
+      value === null ||
+      typeof value !== "object" ||
+      Array.isArray(value)
+    ) {
+      issues.push({
+        path: "",
+        kind: "not_object",
+        message: "Expected a JSON object to check required fields.",
+      });
+      for (const field of required) {
+        missingRequired.push(field);
+        issues.push({
+          path: field,
+          kind: "missing_required",
+          field,
+          message: `Missing required field "${field}".`,
+        });
+      }
+    } else {
+      const obj = value as Record<string, unknown>;
+      for (const field of required) {
+        if (!Object.prototype.hasOwnProperty.call(obj, field)) {
+          missingRequired.push(field);
+          issues.push({
+            path: field,
+            kind: "missing_required",
+            field,
+            message: `Missing required field "${field}".`,
+          });
+        }
       }
     }
   }
 
-  return null;
+  return { ok: issues.length === 0, issues, missingRequired };
 }
 
-function tryPrettyJson(raw: string): string | null {
-  try {
-    const v = JSON.parse(raw);
-    if (v === null || typeof v !== "object") return null;
-    return JSON.stringify(v, null, 2);
-  } catch {
-    return null;
+function matchesJsonSchemaType(value: unknown, type: string): boolean {
+  switch (type) {
+    case "object":
+      return value !== null && typeof value === "object" && !Array.isArray(value);
+    case "array":
+      return Array.isArray(value);
+    case "string":
+      return typeof value === "string";
+    case "number":
+      return typeof value === "number" && Number.isFinite(value);
+    case "integer":
+      return typeof value === "number" && Number.isInteger(value);
+    case "boolean":
+      return typeof value === "boolean";
+    case "null":
+      return value === null;
+    default:
+      return true;
   }
+}
+
+function jsonTypeName(value: unknown): string {
+  if (value === null) return "null";
+  if (Array.isArray(value)) return "array";
+  return typeof value;
+}
+
+export type StructuredReplyStatus =
+  | "valid"
+  | "invalid_json"
+  | "schema_mismatch"
+  | "empty";
+
+export type StructuredReplyAssessment = {
+  parse: StructuredJsonParseResult;
+  schema: SchemaValidationResult | null;
+  status: StructuredReplyStatus;
+  pretty: string | null;
+};
+
+/**
+ * Combined parse + optional schema check for an assistant reply.
+ * Never throws; safe for render paths.
+ */
+export function assessStructuredReply(
+  content: string,
+  schemaText: string | null | undefined,
+): StructuredReplyAssessment {
+  const parse = parseStructuredJsonContent(content);
+  if (!parse.ok) {
+    return {
+      parse,
+      schema: null,
+      status: parse.error === "empty" ? "empty" : "invalid_json",
+      pretty: null,
+    };
+  }
+
+  let schemaResult: SchemaValidationResult | null = null;
+  if (schemaText && String(schemaText).trim()) {
+    const schemaParsed = parseJsonSchemaText(String(schemaText));
+    if (schemaParsed.ok) {
+      schemaResult = validateJsonAgainstSchema(parse.value, schemaParsed.value);
+    }
+  }
+
+  if (schemaResult && !schemaResult.ok) {
+    return {
+      parse,
+      schema: schemaResult,
+      status: "schema_mismatch",
+      pretty: parse.pretty,
+    };
+  }
+
+  return {
+    parse,
+    schema: schemaResult,
+    status: "valid",
+    pretty: parse.pretty,
+  };
 }
 
 function extractBalanced(

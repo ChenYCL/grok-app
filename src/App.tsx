@@ -14770,10 +14770,18 @@ export default function App() {
             messageTimeFormat={messageTimeFormat}
             showReplyLength={showReplyLength}
             structuredOutputActive={!!sessionJsonSchema}
+            structuredOutputSchema={sessionJsonSchema}
             structuredOutputLabels={{
               title: tr("message.structuredJson"),
+              badge: tr("message.structuredJsonBadge"),
               copy: tr("message.structuredJsonCopy"),
               copied: tr("message.copied"),
+              export: tr("message.structuredJsonExport"),
+              invalidJson: tr("message.structuredJsonInvalid"),
+              empty: tr("message.structuredJsonEmpty"),
+              valid: tr("message.structuredJsonValid"),
+              schemaMismatch: tr("message.structuredJsonSchemaMismatch"),
+              missingRequired: tr("message.structuredJsonMissingRequired"),
             }}
           />
           </UiErrorBoundary>
