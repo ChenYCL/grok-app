@@ -2228,6 +2228,26 @@ export const zhTW: Record<MessageKey, string> = {
   "slash.compactNoteChipErrors": "最近錯誤",
   "slash.compactNoteChipFiles": "開啟的檔案與路徑",
   "slash.compactNoteChipTodos": "未完成待辦",
+  "slash.compactPresets": "壓縮強度",
+  "slash.compactPreset.light": "輕度",
+  "slash.compactPreset.standard": "標準",
+  "slash.compactPreset.aggressive": "激進",
+  "slash.compactPresetHint.light": "保留更多細節；主要壓縮工具輸出",
+  "slash.compactPresetHint.standard": "均衡摘要目前對話",
+  "slash.compactPresetHint.aggressive": "盡量騰空間；只留要點",
+  "slash.compactPresetNote.light":
+    "輕度壓縮：保留詳細決策、開啟的檔案、最近錯誤與未完成待辦；主要壓縮冗長工具輸出與重複探索。",
+  "slash.compactPresetNote.standard":
+    "標準壓縮：保留關鍵決策、目前任務、開啟的檔案/路徑與未完成待辦。",
+  "slash.compactPresetNote.aggressive":
+    "激進壓縮：只保留目前目標與必要決策/路徑；丟棄中間探索與工具雜訊。",
+  "slash.compactPresetCliNote":
+    "CLI 尚無強度參數 — 預設會以備註模板隨 /compact 傳給代理。",
+  "slash.compactBefore": "壓縮前",
+  "slash.compactAfterEst": "壓縮後（估）",
+  "slash.compactAfterUnknown": "用量未知時無法估算",
+  "slash.compactEstimateHint":
+    "壓縮後估值為所選預設的粗略保留比例（~），非模型精確分詞。應用內聊天紀錄不會被改寫。",
   "compact.bannerAuto": "上下文已自動壓縮",
   "compact.bannerManual": "上下文已壓縮",
   "compact.tokensRange": "{before} → {after} tokens",
