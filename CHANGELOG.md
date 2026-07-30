@@ -13,6 +13,7 @@ See `docs/llm-wiki/release.md`.
 
 ### Added
 
+- **Dock / tray busy badge**: show the count of busy sessions on the macOS Dock badge (or tray tooltip elsewhere); optional Settings → General → App toggle (default on); count 0 clears
 - **Per-session mute** for desktop notifications (context menu Mute / Unmute; sidebar muted icon; in-app toasts still show)
 - **Desktop notification click** opens the session that fired turn-done / permission / ask_user
 - **Send queue Edit** for follow-up items (GlassModal; empty text blocked unless attachments remain)
@@ -35,6 +36,7 @@ See `docs/llm-wiki/release.md`.
 
 **中文 · 新增**
 
+- **程序坞/托盘忙碌角标**：忙碌会话数显示在 macOS Dock（或其他平台托盘提示）；设置 → 通用 → 应用可关（默认开）；0 清除
 - 按会话静音桌面通知（菜单 Mute/Unmute；侧栏静音图标；应用内 Toast 仍显示）
 - 通知点击跳转会话；发送队列可编辑；上下文 System/Tools/History；Compact 增强
 - Worktree 会话徽章与管理；Fork 可选恢复代码；沙箱项目覆盖

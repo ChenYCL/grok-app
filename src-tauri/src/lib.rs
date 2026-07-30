@@ -385,6 +385,7 @@ pub fn run() {
             commands::fs_write_file,
             commands::fs_write_absolute,
             tray::tray_refresh,
+            tray::tray_set_busy_count,
             commands::fs_read_absolute,
             commands::fs_open_path,
             commands::session_auto_title,

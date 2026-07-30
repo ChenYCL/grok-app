@@ -1020,6 +1020,9 @@ export const zhTW: Record<MessageKey, string> = {
   "settings.closeToTray": "關閉視窗時縮到系統匣",
   "settings.closeToTrayDesc":
     "開啟後，關閉按鈕會隱藏到選單列/系統匣。關閉此項則關閉視窗即結束（系統匣「結束」始終可用）。",
+  "settings.trayBusyBadge": "在 Dock/系統匣顯示忙碌數",
+  "settings.trayBusyBadgeDesc":
+    "有 Agent 忙碌時，在 macOS Dock 角標（或其他平台系統匣提示）顯示忙碌工作階段數。關閉則清除角標。",
   "settings.launchAtLogin": "登入時啟動",
   "settings.launchAtLoginDesc":
     "在你登入此電腦時自動啟動 Grok。使用系統登入項目（macOS 為 Launch Agent）。",

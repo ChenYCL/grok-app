@@ -1064,6 +1064,9 @@ const en = {
   "settings.closeToTray": "Close window to tray",
   "settings.closeToTrayDesc":
     "When on, the red close button hides the app to the menu bar / system tray. Turn off to quit the app on close (Quit from the tray still works either way).",
+  "settings.trayBusyBadge": "Show busy count on dock/tray",
+  "settings.trayBusyBadgeDesc":
+    "When agents are busy, show the session count on the macOS Dock badge (or tray tooltip on other platforms). Off clears the badge.",
   "settings.launchAtLogin": "Launch at login",
   "settings.launchAtLoginDesc":
     "Start Grok automatically when you log into this computer. Uses the OS login items list (Launch Agent on macOS).",
@@ -3679,6 +3682,9 @@ const zh: Record<MessageKey, string> = {
   "settings.closeToTray": "关闭窗口时最小化到托盘",
   "settings.closeToTrayDesc":
     "开启后，关闭按钮会隐藏到菜单栏/系统托盘。关闭此项则关闭窗口即退出（托盘「退出」始终可用）。",
+  "settings.trayBusyBadge": "在程序坞/托盘显示忙碌数",
+  "settings.trayBusyBadgeDesc":
+    "有 Agent 忙碌时，在 macOS 程序坞角标（或其他平台托盘提示）显示忙碌会话数。关闭则清除角标。",
   "settings.launchAtLogin": "登录时启动",
   "settings.launchAtLoginDesc":
     "在你登录此电脑时自动启动 Grok。使用系统登录项（macOS 为 Launch Agent）。",

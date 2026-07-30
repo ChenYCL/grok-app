@@ -177,8 +177,13 @@ import { AgentDashboardModal } from "@/components/AgentDashboardModal";
 import { ReliabilityCenterModal } from "@/components/ReliabilityCenterModal";
 import {
   collectActivitySessions,
+  countBusyLiveMapSessions,
   stoppableActivitySessions,
 } from "@/lib/agentActivity";
+import {
+  loadTrayBusyBadgePref,
+  saveTrayBusyBadgePref,
+} from "@/lib/trayBusyBadgePref";
 import {
   collectAgentDashboardRows,
   countBusyDashboardRows,
@@ -876,6 +881,9 @@ export default function App() {
   );
   const [windowAlwaysOnTop, setWindowAlwaysOnTop] = useState(() =>
     loadWindowAlwaysOnTopPref(localStorage),
+  );
+  const [trayBusyBadge, setTrayBusyBadge] = useState(() =>
+    loadTrayBusyBadgePref(localStorage),
   );
   const [layout, setLayout] = useState(() => {
     // Platform UA is available at first paint; reserve window-control inset on Win.
@@ -2082,6 +2090,16 @@ export default function App() {
   useEffect(() => {
     void applyWindowAlwaysOnTop(windowAlwaysOnTop);
   }, [windowAlwaysOnTop]);
+
+  // Dock / tray busy-session badge from liveMap projection.
+  useEffect(() => {
+    if (!trayBusyBadge) {
+      void api.traySetBusyCount(0);
+      return;
+    }
+    const n = countBusyLiveMapSessions(liveMap);
+    void api.traySetBusyCount(n);
+  }, [liveMap, trayBusyBadge]);
 
   const applyComposerPrefs = useCallback(
     (prefs: api.ComposerPrefs, catalog: ModelOption[]) => {
@@ -11597,6 +11615,11 @@ export default function App() {
             void api.settingsGet().then((s) =>
               api.settingsSet({ ...s, closeToTray: v }),
             );
+          }}
+          trayBusyBadge={trayBusyBadge}
+          onTrayBusyBadge={(v) => {
+            saveTrayBusyBadgePref(v, localStorage);
+            setTrayBusyBadge(v);
           }}
           launchAtLogin={launchAtLogin}
           onLaunchAtLogin={(v) => {

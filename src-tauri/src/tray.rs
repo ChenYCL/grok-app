@@ -370,3 +370,93 @@ pub fn refresh_menu(app: &AppHandle) -> Result<(), String> {
 pub fn tray_refresh(app: AppHandle) -> Result<(), String> {
     refresh_menu(&app)
 }
+
+/// Pure: dock badge count value. `0` → clear (`None`).
+pub fn badge_count_value(count: u32) -> Option<i64> {
+    if count == 0 {
+        None
+    } else {
+        Some(i64::from(count))
+    }
+}
+
+/// Pure: macOS dock badge label text. `0` → clear (`None`).
+pub fn badge_label_value(count: u32) -> Option<String> {
+    if count == 0 {
+        None
+    } else {
+        Some(count.to_string())
+    }
+}
+
+/// Pure: tray tooltip with optional busy count suffix.
+/// `0` restores the base product tooltip only.
+pub fn busy_tooltip(base: &str, count: u32) -> String {
+    if count == 0 {
+        base.to_string()
+    } else {
+        format!("{base} · {count}")
+    }
+}
+
+/// Show busy session count on the dock badge (macOS) or tray tooltip (elsewhere).
+///
+/// - **macOS**: `set_badge_count` + `set_badge_label` on the main window.
+/// - **Other platforms**: tray tooltip `Grok · N` (or platform tooltip base).
+/// - Count `0` clears the badge / restores default tooltip.
+/// - Fail-closed: missing tray/window or platform errors are ignored (Ok).
+pub fn set_busy_count(app: &AppHandle, count: u32) {
+    #[cfg(target_os = "macos")]
+    {
+        if let Some(w) = app.get_webview_window("main") {
+            let _ = w.set_badge_count(badge_count_value(count));
+            let _ = w.set_badge_label(badge_label_value(count));
+        }
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    {
+        // Linux may also support dock-like badge count via libunity; best-effort.
+        if let Some(w) = app.get_webview_window("main") {
+            let _ = w.set_badge_count(badge_count_value(count));
+        }
+        let base = tray_i18n::t().tooltip;
+        let tip = busy_tooltip(base, count);
+        if let Some(tray) = app.try_state::<Mutex<tauri::tray::TrayIcon>>() {
+            if let Ok(t) = tray.lock() {
+                let _ = t.set_tooltip(Some(tip.as_str()));
+            }
+        }
+    }
+}
+
+/// Frontend → host: update dock/tray busy-session badge.
+#[tauri::command]
+pub fn tray_set_busy_count(app: AppHandle, count: u32) -> Result<(), String> {
+    set_busy_count(&app, count);
+    Ok(())
+}
+
+#[cfg(test)]
+mod badge_tests {
+    use super::*;
+
+    #[test]
+    fn badge_count_clears_at_zero() {
+        assert_eq!(badge_count_value(0), None);
+        assert_eq!(badge_count_value(1), Some(1));
+        assert_eq!(badge_count_value(12), Some(12));
+    }
+
+    #[test]
+    fn badge_label_is_decimal_or_clear() {
+        assert_eq!(badge_label_value(0), None);
+        assert_eq!(badge_label_value(3).as_deref(), Some("3"));
+    }
+
+    #[test]
+    fn busy_tooltip_suffix() {
+        assert_eq!(busy_tooltip("Grok", 0), "Grok");
+        assert_eq!(busy_tooltip("Grok", 2), "Grok · 2");
+    }
+}

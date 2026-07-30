@@ -1867,6 +1867,20 @@ export async function trayRefresh() {
   return invoke<void>("tray_refresh");
 }
 
+/**
+ * Show busy session count on dock badge (macOS) or tray tooltip (elsewhere).
+ * Pass `0` to clear. Fail-closed outside Tauri / on host errors.
+ */
+export async function traySetBusyCount(count: number) {
+  if (!isTauri()) return;
+  const n = Number.isFinite(count) ? Math.max(0, Math.floor(count)) : 0;
+  try {
+    await invoke<void>("tray_set_busy_count", { count: n });
+  } catch {
+    /* fail-closed */
+  }
+}
+
 // ── Custom providers (agent-home config.toml) ───────────────────────────────
 
 export interface CustomProvider {

@@ -120,3 +120,15 @@ export function stoppableActivitySessions(
 ): ActivitySessionRow[] {
   return rows.filter((r) => isStoppableActivityStatus(r.status));
 }
+
+/**
+ * Count busy / connecting sessions in a liveMap (stream, permission, connect).
+ * Pure helper for dock/tray badge — same predicate as Tasks activity rows.
+ */
+export function countBusyLiveMapSessions(liveMap: SessionLiveMap): number {
+  let n = 0;
+  for (const snap of Object.values(liveMap)) {
+    if (isActiveSessionSnapshot(snap)) n += 1;
+  }
+  return n;
+}
