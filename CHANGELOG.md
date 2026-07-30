@@ -62,6 +62,7 @@ See `docs/llm-wiki/release.md`.
 - **Delete CLI sessions from disk** (Settings → Agent / CLI sessions): per-row delete + delete all unlinked; path-scoped under active `GROK_HOME/sessions`; linked App chats stay
 - **Hooks Try / override**: validate sample stdin JSON (object only, ~32 KB cap), record synthetic dry-run activity (does **not** execute shell hooks); activity outcome filter chips (all/ok/fail/skip) + clear activity (in-app confirm)
 - **MCP status modal depth**: search filter, status chips (all / ok / warn / error / unknown) from inspect `compatibilityStatus`/`transport`, count summary, refresh while open, copy name/target — host list only (no fake servers)
+- **New skill scaffold** (Settings → Extensions → Skills): modal name/description + user (path-scoped GROK_HOME `/skills`) or project scope; host creates folder + default `SKILL.md` (no overwrite); refresh list and open existing SKILL.md editor
 
 ### Fixed
 
@@ -79,6 +80,7 @@ See `docs/llm-wiki/release.md`.
 - **计划**：**请求修改** 可选修订说明；计划历史搜索/决策筛选、清空确认、会话仍在时可打开
 - **扩展/市场**：目录插件详情面板（描述/版本/组件徽章 + 安装/重装）；安装失败行内重试；已安装 provides 结构化摘要；**Hooks 试跑/覆盖**（校验 stdin JSON、合成 dry-run 活动、结果筛选与清空确认；不执行 shell hook）
 - **扩展/市场**：目录插件详情面板（描述/版本/组件徽章 + 安装/重装）；安装失败行内重试；已安装 provides 结构化摘要；**MCP 状态弹层**（搜索/状态芯片/计数/刷新/复制名称与目标）
+- **扩展/市场**：目录插件详情面板（描述/版本/组件徽章 + 安装/重装）；安装失败行内重试；已安装 provides 结构化摘要；**新建技能脚手架**（名称/描述/用户或项目作用域 → 默认 SKILL.md + 打开编辑器）
 - **权限/CLI**：`--permission-mode` 映射与 spawn；设置页 CLI 标签与高级选择；**Auto** 策略；Doctor 安全批量修复；**删除磁盘 CLI 会话**（单条/全部未关联；限定 `GROK_HOME/sessions`）
 
 

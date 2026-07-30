@@ -338,6 +338,7 @@ pub fn run() {
             commands::skill_read,
             commands::skill_write,
             commands::skill_roots,
+            commands::skill_create,
             commands::agents_list,
             commands::inspect_mcp,
             commands::project_inspect,

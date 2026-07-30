@@ -2350,6 +2350,30 @@ export const zhTW: Record<MessageKey, string> = {
     "此 SKILL.md 已在應用外被修改。可重新載入檔案，或用目前草稿覆寫。",
   "ext.skills.editConflictReload": "重新載入",
   "ext.skills.editConflictOverwrite": "覆寫",
+  "ext.skills.new": "新增技能",
+  "ext.skills.newTitle": "新增技能",
+  "ext.skills.newSubmit": "建立",
+  "ext.skills.newWorking": "正在建立…",
+  "ext.skills.newName": "名稱",
+  "ext.skills.newNamePlaceholder": "例如 deploy-k8s",
+  "ext.skills.newNameHint":
+    "小寫字母、數字與連字號；2–64 個字元（斜線指令 /name）。",
+  "ext.skills.newNameHintOk": "將建立為 /{name}",
+  "ext.skills.newNameInvalid":
+    "請輸入有效技能名（a-z、0-9、連字號；2–64 字元）。",
+  "ext.skills.newDescription": "描述",
+  "ext.skills.newDescriptionPlaceholder":
+    "做什麼、何時使用（觸發片語有助於自動呼叫）…",
+  "ext.skills.newDescriptionHint":
+    "寫入 SKILL.md 前置中繼資料。建立後可繼續編輯正文。",
+  "ext.skills.newScope": "位置",
+  "ext.skills.newScopeUser": "使用者（路徑作用域 GROK_HOME /skills）",
+  "ext.skills.newScopeProject": "專案（目前專案 .grok/skills）",
+  "ext.skills.newScopeProjectDisabled": "專案（請先開啟專案）",
+  "ext.skills.newScopeProjectNeed": "請先開啟專案以建立專案技能。",
+  "ext.skills.newScopeHint":
+    "使用者技能跟隨目前 agent home（獨立 GROK_HOME 或 ~/.grok）。專案技能隨倉庫共用。",
+  "ext.skills.newError": "無法建立技能",
   "ext.mcp.title": "MCP 伺服器",
   "ext.mcp.loading": "正在載入 MCP…",
   "ext.mcp.empty": "未發現 MCP 伺服器",

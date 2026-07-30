@@ -1435,6 +1435,15 @@ export interface SkillWriteResult {
   mtimeMs: number;
 }
 
+/** Result of Host `skill_create` (scaffold folder + SKILL.md). */
+export interface SkillCreateResult {
+  path: string;
+  name: string;
+  root: string;
+  created: boolean;
+  alreadyExisted: boolean;
+}
+
 export interface InspectMcpResult {
   servers: McpDto[];
   error?: string;
@@ -1578,6 +1587,25 @@ export async function skillWrite(
     content,
     expectedMtimeMs: expectedMtimeMs ?? null,
     projectPath: projectPath ?? null,
+  });
+}
+
+/**
+ * Scaffold a new skill (`{root}/{name}/SKILL.md`).
+ * @param scope `"user"` (path-scoped GROK_HOME skills) or `"project"` (requires projectPath).
+ * Does not overwrite an existing SKILL.md.
+ */
+export async function skillCreate(opts: {
+  name: string;
+  description?: string | null;
+  projectPath?: string | null;
+  scope?: "user" | "project" | null;
+}) {
+  return invoke<SkillCreateResult>("skill_create", {
+    name: opts.name,
+    description: opts.description ?? null,
+    projectPath: opts.projectPath ?? null,
+    scope: opts.scope ?? "user",
   });
 }
 
