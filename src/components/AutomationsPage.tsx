@@ -29,6 +29,7 @@ import {
   GROK_BUILD_MODELS,
   type ModelOption,
 } from "@/lib/grokCatalog";
+import { automationsBackgroundStatus } from "@/lib/automationsBackgroundStatus";
 
 export type AutomationsFilter = "all" | "enabled" | "paused";
 
@@ -46,6 +47,10 @@ export interface AutomationsPageProps {
   models?: ModelOption[];
   onAiCreate: () => void;
   onRunNow?: (auto: Automation) => void;
+  /** AppSettings.launchAtLogin — honest background status banner. */
+  openAtLogin?: boolean;
+  /** Deep-link to Settings → general/app → Launch at login. */
+  onOpenLaunchAtLogin?: () => void;
 }
 
 type FormState = {
@@ -80,6 +85,8 @@ export function AutomationsPage({
   models,
   onAiCreate,
   onRunNow,
+  openAtLogin = false,
+  onOpenLaunchAtLogin,
 }: AutomationsPageProps) {
   const [list, setList] = useState<Automation[]>([]);
   const [loading, setLoading] = useState(true);
@@ -179,6 +186,23 @@ export function AutomationsPage({
     }
     return rows;
   }, [list, filter, query]);
+
+  const enabledCount = useMemo(
+    () => list.filter((a) => a.enabled).length,
+    [list],
+  );
+
+  /** Honest quit / background status — no fake detached daemon. */
+  const bgStatus = useMemo(
+    () =>
+      automationsBackgroundStatus({
+        openAtLogin,
+        enabledCount,
+        // Desktop host owns automation_runner; browser dev falls back to unknown.
+        runnerKnown: api.isTauri(),
+      }),
+    [openAtLogin, enabledCount],
+  );
 
   const openCreateManual = () => {
     setCreateMenu(false);
@@ -374,9 +398,11 @@ export function AutomationsPage({
         <div className="auto-page__titles">
           <h1 className="auto-page__title">{t("automations.title")}</h1>
           <p className="auto-page__subtitle">{t("automations.subtitle")}</p>
-          <p className="auto-page__subtitle auto-page__subtitle--hint">
-            {t("automations.trayHint")}
-          </p>
+          {bgStatus.severity === "none" ? (
+            <p className="auto-page__subtitle auto-page__subtitle--hint">
+              {t("automations.trayHint")}
+            </p>
+          ) : null}
         </div>
         <div className="auto-page__create-wrap">
           <button
@@ -427,6 +453,31 @@ export function AutomationsPage({
           )}
         </div>
       </div>
+
+      {bgStatus.severity !== "none" && bgStatus.messageKey ? (
+        <div
+          className={
+            "auto-page__bg-banner" +
+            (bgStatus.severity === "warn"
+              ? " auto-page__bg-banner--warn"
+              : " auto-page__bg-banner--info")
+          }
+          role="status"
+        >
+          <p className="auto-page__bg-banner-text">
+            {t(bgStatus.messageKey, { n: bgStatus.enabledCount })}
+          </p>
+          {bgStatus.showOpenAtLoginLink && onOpenLaunchAtLogin ? (
+            <button
+              type="button"
+              className="auto-page__bg-banner-link"
+              onClick={onOpenLaunchAtLogin}
+            >
+              {t("automations.bg.openAtLoginLink")}
+            </button>
+          ) : null}
+        </div>
+      ) : null}
 
       <div className="auto-page__toolbar">
         <div className="auto-page__search">

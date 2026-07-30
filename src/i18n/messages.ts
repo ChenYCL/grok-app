@@ -1318,7 +1318,7 @@ const en = {
     "When agents are busy, show the session count on the macOS Dock badge (or tray tooltip on other platforms). Off clears the badge.",
   "settings.launchAtLogin": "Launch at login",
   "settings.launchAtLoginDesc":
-    "Start Grok automatically when you log into this computer. Uses the OS login items list (Launch Agent on macOS).",
+    "Start Grok automatically when you log into this computer (OS login items / Launch Agent on macOS). Scheduled tasks only run while the app is open or in the tray — launch at login helps them resume after reboot. There is no separate background daemon.",
   "settings.windowAlwaysOnTop": "Keep window on top",
   "settings.windowAlwaysOnTopDesc":
     "Keep the Grok window above other apps. Off by default. Desktop only.",
@@ -1348,6 +1348,10 @@ const en = {
   "app.quitBusy.message":
     "{n} session(s) are still running. Quitting will stop in-progress agent work.",
   "app.quitBusy.confirm": "Quit",
+  "app.quitBusy.automationsNote":
+    "Enabled scheduled tasks will pause after quit until you reopen Grok. There is no separate background daemon.",
+  "app.quitBusy.automationsNoteLogin":
+    "Enabled scheduled tasks pause after quit; Launch at login will restart Grok after your next sign-in (not immediately).",
   "settings.prefsScope": "Remember model & permission at",
   "settings.prefsScopeDesc":
     "Global: all chats. Project: each workspace. Session: only the current chat.",
@@ -2673,6 +2677,13 @@ const en = {
   "automations.hostRunFailed": "Scheduled “{title}” failed: {detail}",
   "automations.trayHint":
     "Scheduled tasks run while Grok App is open or in the tray. Fully quitting the app pauses them.",
+  "automations.bg.withLoginItem":
+    "{n} enabled scheduled task(s) run only while Grok is open or in the tray. Launch at login is on — after you sign in again the app restarts and schedules resume. Fully quitting still pauses them until then (no separate background daemon).",
+  "automations.bg.needsApp":
+    "{n} enabled scheduled task(s) run only while Grok is open or in the tray. Fully quitting pauses them until you reopen the app. There is no separate background daemon.",
+  "automations.bg.runnerUnknown":
+    "{n} scheduled task(s) are enabled. Schedules only fire while this app process is running — there is no separate background daemon.",
+  "automations.bg.openAtLoginLink": "Open Launch at login setting",
   "automations.aiComposerHint":
     "Describe what to run and how often — Grok will schedule it for you when ready.",
   "automations.createdToast": "Scheduled: {title}",
@@ -4314,7 +4325,7 @@ const zh: Record<MessageKey, string> = {
     "有 Agent 忙碌时，在 macOS 程序坞角标（或其他平台托盘提示）显示忙碌会话数。关闭则清除角标。",
   "settings.launchAtLogin": "登录时启动",
   "settings.launchAtLoginDesc":
-    "在你登录此电脑时自动启动 Grok。使用系统登录项（macOS 为 Launch Agent）。",
+    "在你登录此电脑时自动启动 Grok（系统登录项 / macOS 为 Launch Agent）。已安排任务仅在应用打开或收起到托盘时运行——开启登录启动有助于重启后恢复调度。没有独立的后台守护进程。",
   "settings.windowAlwaysOnTop": "窗口置顶",
   "settings.windowAlwaysOnTopDesc":
     "保持 Grok 窗口在其他应用之上。默认关闭。仅桌面端有效。",
@@ -4344,6 +4355,10 @@ const zh: Record<MessageKey, string> = {
   "app.quitBusy.message":
     "还有 {n} 个会话在运行。退出会中断进行中的 Agent 工作。",
   "app.quitBusy.confirm": "退出",
+  "app.quitBusy.automationsNote":
+    "已开启的已安排任务会在退出后暂停，直到你再次打开 Grok。没有独立的后台守护进程。",
+  "app.quitBusy.automationsNoteLogin":
+    "已开启的已安排任务会在退出后暂停；「登录时启动」会在你下次登录后重新打开 Grok（不会立刻重启）。",
   "settings.prefsScope": "模型与权限记忆范围",
   "settings.prefsScopeDesc":
     "全局：所有对话共用。项目：按工作区记忆。会话：仅当前聊天。",
@@ -5628,6 +5643,13 @@ const zh: Record<MessageKey, string> = {
   "automations.hostRunFailed": "已安排任务「{title}」失败：{detail}",
   "automations.trayHint":
     "应用打开或收起到托盘时都会执行已安排任务；完全退出应用后暂停。",
+  "automations.bg.withLoginItem":
+    "有 {n} 个已开启的已安排任务：仅在 Grok 打开或收起到托盘时运行。已开启「登录时启动」——下次登录后应用会重新启动并恢复调度。完全退出仍会暂停到那时（没有独立后台守护进程）。",
+  "automations.bg.needsApp":
+    "有 {n} 个已开启的已安排任务：仅在 Grok 打开或收起到托盘时运行。完全退出后会暂停，直到你再次打开应用。没有独立的后台守护进程。",
+  "automations.bg.runnerUnknown":
+    "有 {n} 个已开启的已安排任务。调度仅在本应用进程运行时触发——没有独立的后台守护进程。",
+  "automations.bg.openAtLoginLink": "打开「登录时启动」设置",
   "automations.aiComposerHint":
     "用自然语言描述要做什么、多久一次——准备好后 Grok 会自动创建已安排任务。",
   "automations.createdToast": "已安排：{title}",

@@ -678,6 +678,7 @@ import {
   parseScheduledUserContent,
   type Automation,
 } from "@/lib/automations";
+import { automationsBackgroundStatus } from "@/lib/automationsBackgroundStatus";
 import {
   extractAutomationPayload,
   looksLikeScheduleIntent,
@@ -11444,6 +11445,8 @@ export default function App() {
   /**
    * Real app exit (window close when not close-to-tray, or tray Quit).
    * Host always prevent_close + emits app://close-requested; we confirm if busy.
+   * When confirming, optionally append an honest automations-after-quit note
+   * (no fake detached daemon — schedules pause until the app is reopened).
    */
   const requestAppQuit = useCallback(() => {
     let busyCount = countBusyLiveMapSessions(liveMapRef.current);
@@ -11462,17 +11465,36 @@ export default function App() {
       void api.appForceQuit();
       return;
     }
-    setAppDialog({
-      kind: "confirm",
-      title: tr("app.quitBusy.title"),
-      message: tr("app.quitBusy.message", { n: String(busyCount) }),
-      confirmLabel: tr("app.quitBusy.confirm"),
-      danger: true,
-      onConfirm: () => {
-        void api.appForceQuit();
-      },
-    });
-  }, [tr]);
+    const busyMessage = tr("app.quitBusy.message", { n: String(busyCount) });
+    // Enrich with automations note when list is available; fail soft.
+    void (async () => {
+      let message = busyMessage;
+      try {
+        const rows = await api.automationsList();
+        const enabledCount = rows.filter((r) => r.enabled).length;
+        const bg = automationsBackgroundStatus({
+          openAtLogin: launchAtLogin,
+          enabledCount,
+          runnerKnown: api.isTauri(),
+        });
+        if (bg.quitNoteKey) {
+          message = `${busyMessage}\n\n${tr(bg.quitNoteKey)}`;
+        }
+      } catch {
+        /* ignore — busy confirm still works without the note */
+      }
+      setAppDialog({
+        kind: "confirm",
+        title: tr("app.quitBusy.title"),
+        message,
+        confirmLabel: tr("app.quitBusy.confirm"),
+        danger: true,
+        onConfirm: () => {
+          void api.appForceQuit();
+        },
+      });
+    })();
+  }, [tr, launchAtLogin]);
 
   useEffect(() => {
     if (!api.isTauri()) return;
@@ -14917,6 +14939,24 @@ export default function App() {
               defaultModelId={modelId}
               defaultEffort={effort}
               models={availableModels}
+              openAtLogin={launchAtLogin}
+              onOpenLaunchAtLogin={() => {
+                navigateSettings("general", "app");
+                // Scroll/highlight Launch at login after Settings mounts.
+                window.setTimeout(() => {
+                  const el = document.getElementById(
+                    "settings-anchor-launchAtLogin",
+                  );
+                  if (el) {
+                    el.scrollIntoView({ block: "center", behavior: "smooth" });
+                    el.classList.add("is-search-hit");
+                    window.setTimeout(
+                      () => el.classList.remove("is-search-hit"),
+                      1600,
+                    );
+                  }
+                }, 120);
+              }}
               onAiCreate={() => {
                 void newChat(null, {
                   seedDraft: aiCreateSeedPrompt("Grok"),

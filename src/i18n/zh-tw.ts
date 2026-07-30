@@ -1259,7 +1259,7 @@ export const zhTW: Record<MessageKey, string> = {
     "有 Agent 忙碌時，在 macOS Dock 角標（或其他平台系統匣提示）顯示忙碌工作階段數。關閉則清除角標。",
   "settings.launchAtLogin": "登入時啟動",
   "settings.launchAtLoginDesc":
-    "在你登入此電腦時自動啟動 Grok。使用系統登入項目（macOS 為 Launch Agent）。",
+    "在你登入此電腦時自動啟動 Grok（系統登入項目 / macOS 為 Launch Agent）。已排程任務僅在應用開啟或收進選單列時執行——開啟登入啟動有助於重啟後恢復排程。沒有獨立的背景守護行程。",
   "settings.windowAlwaysOnTop": "視窗置頂",
   "settings.windowAlwaysOnTopDesc":
     "保持 Grok 視窗在其他應用程式之上。預設關閉。僅桌面端有效。",
@@ -1289,6 +1289,10 @@ export const zhTW: Record<MessageKey, string> = {
   "app.quitBusy.message":
     "還有 {n} 個對話在執行。結束會中斷進行中的 Agent 工作。",
   "app.quitBusy.confirm": "結束",
+  "app.quitBusy.automationsNote":
+    "已開啟的已排程任務會在結束後暫停，直到你再次開啟 Grok。沒有獨立的背景守護行程。",
+  "app.quitBusy.automationsNoteLogin":
+    "已開啟的已排程任務會在結束後暫停；「登入時啟動」會在你下次登入後重新開啟 Grok（不會立刻重啟）。",
   "settings.prefsScope": "模型與權限記憶範圍",
   "settings.prefsScopeDesc":
     "全域：所有對話共用。專案：依工作區記憶。對話：僅目前聊天。",
@@ -2573,6 +2577,13 @@ export const zhTW: Record<MessageKey, string> = {
   "automations.hostRunFailed": "已排程任務「{title}」失敗：{detail}",
   "automations.trayHint":
     "應用開啟或收進選單列時都會執行已排程任務；完全結束應用後暫停。",
+  "automations.bg.withLoginItem":
+    "有 {n} 個已開啟的已排程任務：僅在 Grok 開啟或收進選單列時執行。已開啟「登入時啟動」——下次登入後應用會重新啟動並恢復排程。完全結束仍會暫停到那時（沒有獨立背景守護行程）。",
+  "automations.bg.needsApp":
+    "有 {n} 個已開啟的已排程任務：僅在 Grok 開啟或收進選單列時執行。完全結束後會暫停，直到你再次開啟應用。沒有獨立的背景守護行程。",
+  "automations.bg.runnerUnknown":
+    "有 {n} 個已開啟的已排程任務。排程僅在本應用行程執行時觸發——沒有獨立的背景守護行程。",
+  "automations.bg.openAtLoginLink": "開啟「登入時啟動」設定",
   "automations.aiComposerHint":
     "用自然語言描述要做什麼、多久一次——準備好後 Grok 會自動建立已排程任務。",
   "automations.createdToast": "已排程：{title}",
