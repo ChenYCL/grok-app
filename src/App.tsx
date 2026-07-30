@@ -97,6 +97,13 @@ import {
   saveWindowAlwaysOnTopPref,
 } from "@/lib/windowAlwaysOnTop";
 import {
+  canOpenSessionInNewWindow,
+  isSessionWindowLabel,
+  parseSessionDeepLinkHash,
+  resolveSecondarySessionId,
+  shouldSkipAgentSpawn,
+} from "@/lib/multiWindow";
+import {
   applyChatWidth,
   loadChatWidth,
 } from "@/lib/chatWidthPref";
@@ -1142,6 +1149,33 @@ export default function App() {
   const [session, setSession] = useState<SessionSnapshot>(IDLE_SNAPSHOT);
   /** Host live agent (may differ from the session currently viewed in the UI). */
   const [liveHost, setLiveHost] = useState<SessionSnapshot>(IDLE_SNAPSHOT);
+  /**
+   * Secondary session window (`session-*` label / `#/session/<id>` deep link).
+   * View-focused: loads journal + follows streams, but never warm-connects / sends
+   * so it cannot steal the Host live slot from the main window.
+   */
+  // True only for real `session-*` windows (set after label detect). Hash alone
+  // on main must not disable send.
+  const [isSecondaryWindow, setIsSecondaryWindow] = useState(false);
+  const isSecondaryWindowRef = useRef(false);
+  isSecondaryWindowRef.current = isSecondaryWindow;
+  /** Session id this secondary window should open (from hash or label). */
+  const [secondaryFocusSessionId, setSecondaryFocusSessionId] = useState<
+    string | null
+  >(() =>
+    typeof window !== "undefined"
+      ? parseSessionDeepLinkHash(window.location.hash)
+      : null,
+  );
+  const secondaryFocusSessionIdRef = useRef<string | null>(
+    secondaryFocusSessionId,
+  );
+  secondaryFocusSessionIdRef.current = secondaryFocusSessionId;
+  /** False until desktop window label is resolved (or non-desktop path). */
+  const [windowRoleReady, setWindowRoleReady] = useState(
+    () => !api.isDesktopHost(),
+  );
+  const secondaryOpenedRef = useRef(false);
   /** Multi-session live projection (busy / permission badges). */
   const [liveMap, setLiveMap] = useState<SessionLiveMap>({});
   /** Latest live map for callbacks that must not close over a stale render. */
@@ -2475,15 +2509,76 @@ export default function App() {
   useEffect(() => {
     applyChatWidth(loadChatWidth());
   }, []);
-  // Dock / tray busy-session badge from liveMap projection.
+
+  /**
+   * Detect secondary session window early (label + deep-link hash).
+   * Sets view-only mode before warm-connect / last-session restore can run.
+   */
   useEffect(() => {
+    if (!api.isDesktopHost()) {
+      // Browser / mirror: still honor `#/session/<id>` for manual testing.
+      const fromHash = parseSessionDeepLinkHash(
+        typeof window !== "undefined" ? window.location.hash : "",
+      );
+      if (fromHash) {
+        setSecondaryFocusSessionId(fromHash);
+        setIsSecondaryWindow(true);
+        isSecondaryWindowRef.current = true;
+      }
+      setWindowRoleReady(true);
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      try {
+        const { getCurrentWindow } = await import("@tauri-apps/api/window");
+        if (cancelled) return;
+        const label = getCurrentWindow().label;
+        const secondary = isSessionWindowLabel(label);
+        const focusId = resolveSecondarySessionId({
+          hash: window.location.hash,
+          windowLabel: label,
+        });
+        // Label wins for view-only: only real session-* windows skip spawn.
+        // Hash alone on main should not disable send (e.g. manual hash edit).
+        setIsSecondaryWindow(secondary);
+        isSecondaryWindowRef.current = secondary;
+        if (focusId) {
+          setSecondaryFocusSessionId(focusId);
+          secondaryFocusSessionIdRef.current = focusId;
+        }
+        // Collapse chrome in secondary so the chat is front-and-center.
+        if (secondary) {
+          setLayout((l) => {
+            if (l.sidebarCollapsed && l.asideCollapsed) return l;
+            // Do not persist secondary layout over the main window's prefs.
+            return { ...l, sidebarCollapsed: true, asideCollapsed: true };
+          });
+          setAppView("workbench");
+          setMainPane("chat");
+        }
+      } catch (e) {
+        console.warn("multi-window role detect failed", e);
+      } finally {
+        if (!cancelled) setWindowRoleReady(true);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // Dock / tray busy-session badge from liveMap projection.
+  // Secondary windows must not overwrite the dock badge from a view-only pane.
+  useEffect(() => {
+    if (isSecondaryWindow) return;
     if (!trayBusyBadge) {
       void api.traySetBusyCount(0);
       return;
     }
     const n = countBusyLiveMapSessions(liveMap);
     void api.traySetBusyCount(n);
-  }, [liveMap, trayBusyBadge]);
+  }, [liveMap, trayBusyBadge, isSecondaryWindow]);
 
   const applyComposerPrefs = useCallback(
     (prefs: api.ComposerPrefs, catalog: ModelOption[]) => {
@@ -3338,13 +3433,13 @@ export default function App() {
         if (!cancelled) {
           setLiveHost(snap);
           liveHostRef.current = snap;
-          // Only bind the viewed session when Host already has a live row.
+          // Project Host live row into liveMap for sidebar busy badges.
+          // Secondary windows keep their deep-link focus — never adopt the
+          // Host live slot as the viewed session (that would fight main).
+          const secondary =
+            isSecondaryWindowRef.current ||
+            !!secondaryFocusSessionIdRef.current;
           if (snap.sessionId) {
-            setSession((prev) => ({
-              ...snap,
-              state: reconcileSessionState(snap.state, prev.state),
-            }));
-            viewingSessionIdRef.current = snap.sessionId;
             setLiveMap((prev) =>
               projectHostIntoLiveMap(prev, {
                 sessionId: snap.sessionId,
@@ -3352,6 +3447,24 @@ export default function App() {
                 streamingMessageId: snap.streamingMessageId,
               }),
             );
+            if (!secondary) {
+              setSession((prev) => ({
+                ...snap,
+                state: reconcileSessionState(snap.state, prev.state),
+              }));
+              viewingSessionIdRef.current = snap.sessionId;
+            } else if (
+              secondaryFocusSessionIdRef.current &&
+              snap.sessionId === secondaryFocusSessionIdRef.current
+            ) {
+              // Same chat is already live on Host — mirror state without
+              // warm-connect (view-only still follows streams by session id).
+              setSession((prev) => ({
+                ...snap,
+                state: reconcileSessionState(snap.state, prev.state),
+              }));
+              viewingSessionIdRef.current = snap.sessionId;
+            }
           }
         }
 
@@ -5005,7 +5118,8 @@ export default function App() {
       setRetryStatus(null);
     }
 
-    if (api.isTauri()) {
+    // Secondary windows must not rewrite "last session" for the main workbench.
+    if (api.isTauri() && !isSecondaryWindowRef.current) {
       setLastSessionId(s.id);
       void api
         .settingsRememberLastSession(s.id, proj?.id ?? null)
@@ -5020,6 +5134,12 @@ export default function App() {
     // deferring warm connect avoids demote/spawn churn while browsing other chats.
     // The next send on this chat will `ensureConnected` intentionally.
     // Skip when project folder is missing (D05) — user must relocate first.
+    //
+    // Secondary (view-only) windows never warm-connect — Host live slot is shared
+    // process-wide; connecting from a second webview steals focus from main.
+    if (shouldSkipAgentSpawn(isSecondaryWindowRef.current)) {
+      return;
+    }
     const foreignBusy =
       Object.entries(liveMap).some(
         ([id, snap]) =>
@@ -5043,6 +5163,7 @@ export default function App() {
       void (async () => {
         if (viewingSessionIdRef.current !== warmId) return;
         if (sendInFlightRef.current || connectingRef.current) return;
+        if (shouldSkipAgentSpawn(isSecondaryWindowRef.current)) return;
         try {
           const snap = await api.sessionConnect({
             projectPath:
@@ -5147,6 +5268,32 @@ export default function App() {
   useEffect(() => {
     if (appGate !== "ready") return;
     if (didRestoreLastRef.current) return;
+    // Wait for window role so main does not restore last while a secondary
+    // deep-link is still resolving (or vice versa).
+    if (!windowRoleReady) return;
+    // Secondary / deep-link: open the focused session once list is ready.
+    // Prefer this over "reopen last session" so multi-window does not fight.
+    const deepFocus =
+      secondaryFocusSessionIdRef.current ||
+      parseSessionDeepLinkHash(
+        typeof window !== "undefined" ? window.location.hash : "",
+      );
+    // Secondary window or explicit deep-link hash → open that session first.
+    if (deepFocus && (isSecondaryWindowRef.current || secondaryFocusSessionId)) {
+      if (sessions.length === 0) {
+        // Wait until sessions load (another effect tick).
+        return;
+      }
+      didRestoreLastRef.current = true;
+      secondaryOpenedRef.current = true;
+      const row = sessions.find((s) => s.id === deepFocus);
+      if (row) {
+        void openSessionRef.current(row);
+      } else {
+        setLocalError(tr("session.openInNewWindowMissing"));
+      }
+      return;
+    }
     if (!api.isTauri()) {
       didRestoreLastRef.current = true;
       // Browser / non-host: still restore orphan new-chat draft if any.
@@ -5155,6 +5302,11 @@ export default function App() {
           loadComposerProjectDraft(projectDraftKey(activeProject?.id ?? null)),
         );
       }
+      return;
+    }
+    // Main window only: reopen last session.
+    if (isSecondaryWindowRef.current) {
+      didRestoreLastRef.current = true;
       return;
     }
     const id = shouldRestoreLastSession({
@@ -5180,13 +5332,44 @@ export default function App() {
     }
   }, [
     appGate,
+    windowRoleReady,
     reopenLastSession,
     lastSessionId,
     sessions,
     session.sessionId,
     activeProject?.id,
     applyComposerProjectDraft,
+    tr,
+    secondaryFocusSessionId,
+    isSecondaryWindow,
   ]);
+
+  /** Open (or focus) a chat in a secondary view-only webview window. */
+  const openSessionInNewWindow = useCallback(
+    (s: SessionRow) => {
+      if (
+        !canOpenSessionInNewWindow({
+          isDesktopHost: api.isDesktopHost(),
+          isSecondaryWindow: isSecondaryWindowRef.current,
+          sessionId: s.id,
+        })
+      ) {
+        return;
+      }
+      void (async () => {
+        try {
+          await api.openSessionWindow(s.id, s.title || null);
+          showToast(tr("session.openInNewWindowOk"), 2200);
+        } catch (e) {
+          showToast(
+            tr("session.openInNewWindowFailed") + ": " + String(e),
+            4500,
+          );
+        }
+      })();
+    },
+    [tr],
+  );
 
   /**
    * Focus composer after React commit. Retries until the textarea is mounted
@@ -5498,8 +5681,11 @@ export default function App() {
       }),
     [session.state, stopLatch],
   );
-  const effectiveCanSend = stopGate.sendable;
-  const effectiveCanStop = canStopWithStopLatch(session.state, stopLatch);
+  const effectiveCanSend =
+    stopGate.sendable && !shouldSkipAgentSpawn(isSecondaryWindow);
+  // Secondary is view-only: stop belongs to the main window's live slot.
+  const effectiveCanStop =
+    !isSecondaryWindow && canStopWithStopLatch(session.state, stopLatch);
 
   const refreshSessions = async () => {
     try {
@@ -6893,6 +7079,10 @@ export default function App() {
       | boolean
       | { force?: boolean; sessionId?: string | null } = false,
   ): Promise<string | null> => {
+    // View-only secondary window: never connect / demote / spawn.
+    if (shouldSkipAgentSpawn(isSecondaryWindowRef.current)) {
+      return null;
+    }
     const opts =
       typeof forceOrOpts === "boolean"
         ? { force: forceOrOpts, sessionId: undefined as string | null | undefined }
@@ -7161,6 +7351,11 @@ export default function App() {
     fromQueue?: boolean;
     targetSessionId?: string | null;
   }): Promise<boolean> => {
+    // Secondary windows are view-only — never spawn/send from here.
+    if (shouldSkipAgentSpawn(isSecondaryWindowRef.current)) {
+      setLocalError(tr("session.viewOnlyBanner"));
+      return false;
+    }
     if (sendInFlightRef.current) return false;
     sendInFlightRef.current = true;
     const { storedDisplay, att, goalMode: useGoal, fromQueue } = opts;
@@ -7487,6 +7682,10 @@ export default function App() {
 
   /** Enqueue when agent is busy; otherwise send immediately. */
   const send = async () => {
+    if (shouldSkipAgentSpawn(isSecondaryWindowRef.current)) {
+      showToast(tr("session.viewOnlyBanner"), 4000);
+      return;
+    }
     const segments = parseStoredContent(draft);
     const storedDisplay = draft;
     const att = attachments;
@@ -11392,8 +11591,10 @@ export default function App() {
   }, []);
 
   // System tray / menu-bar (Codex-style): Recent · More · Usage · New Chat · Open · Quit
+  // Secondary windows ignore tray navigation — main owns app chrome.
   useEffect(() => {
     if (!api.isTauri()) return;
+    if (isSecondaryWindow) return;
     let cancelled = false;
     const unsubs: Array<() => void> = [];
     void (async () => {
@@ -11439,13 +11640,15 @@ export default function App() {
       cancelled = true;
       for (const u of unsubs) u();
     };
-  }, []);
+  }, [isSecondaryWindow]);
 
   /**
    * Real app exit (window close when not close-to-tray, or tray Quit).
    * Host always prevent_close + emits app://close-requested; we confirm if busy.
+   * Secondary windows never quit the process from their chrome.
    */
   const requestAppQuit = useCallback(() => {
+    if (isSecondaryWindowRef.current) return;
     let busyCount = countBusyLiveMapSessions(liveMapRef.current);
     // liveHost may be streaming before liveMap has the row (same as sidebar busyIds).
     const host = liveHostRef.current;
@@ -15037,6 +15240,22 @@ export default function App() {
               >
                 {tr("cliUpdate.later")}
               </button>
+            </div>
+          )}
+
+          {/* Secondary multi-window: honest view-only (no spawn / send from this pane). */}
+          {isSecondaryWindow && mainPane === "chat" && (
+            <div
+              className="view-only-banner"
+              role="status"
+              aria-label={tr("session.viewOnlyTitle")}
+            >
+              <div className="view-only-banner__title">
+                {tr("session.viewOnlyTitle")}
+              </div>
+              <div className="view-only-banner__body">
+                {tr("session.viewOnlyBanner")}
+              </div>
             </div>
           )}
 
@@ -18815,6 +19034,11 @@ export default function App() {
                 ]
               : [];
             const sessionMuted = mutedSessionIds.has(s.id);
+            const canPopOut = canOpenSessionInNewWindow({
+              isDesktopHost: api.isDesktopHost(),
+              isSecondaryWindow,
+              sessionId: s.id,
+            });
             items = [
               {
                 id: "pin",
@@ -18828,6 +19052,16 @@ export default function App() {
                   void pinSession(s, !s.pinned);
                 },
               },
+              ...(canPopOut
+                ? [
+                    {
+                      id: "open-new-window",
+                      label: tr("session.openInNewWindow"),
+                      icon: <IconExternalLink size={16} />,
+                      onClick: () => openSessionInNewWindow(s),
+                    } satisfies ContextMenuItem,
+                  ]
+                : []),
               {
                 id: "mute",
                 label: sessionMuted

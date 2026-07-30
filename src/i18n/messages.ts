@@ -178,6 +178,14 @@ const en = {
   "session.deleteManyConfirm":
     "Delete {n} chats permanently? This cannot be undone.",
   "session.menu": "Session menu",
+  "session.openInNewWindow": "Open session in new window",
+  "session.openInNewWindowOk": "Opened in new window",
+  "session.openInNewWindowFailed": "Could not open session window",
+  "session.openInNewWindowMissing":
+    "That chat was not found — it may have been deleted.",
+  "session.viewOnlyTitle": "View only",
+  "session.viewOnlyBanner":
+    "This window is view-only. Agent spawn and send stay in the main window so sessions do not fight over the live slot.",
   "session.collapseAllActivity": "Collapse all activity",
   "session.collapseAllActivityHint":
     "Collapse expanded tool phases and finished thinking blocks",
@@ -3218,6 +3226,13 @@ const zh: Record<MessageKey, string> = {
   "session.deleteManyTitle": "删除会话",
   "session.deleteManyConfirm": "确定永久删除 {n} 个会话？此操作不可撤销。",
   "session.menu": "会话菜单",
+  "session.openInNewWindow": "在新窗口中打开会话",
+  "session.openInNewWindowOk": "已在新窗口打开",
+  "session.openInNewWindowFailed": "无法打开会话窗口",
+  "session.openInNewWindowMissing": "未找到该会话 — 可能已被删除。",
+  "session.viewOnlyTitle": "仅查看",
+  "session.viewOnlyBanner":
+    "此窗口为仅查看。Agent 启动与发送仍在主窗口，避免多窗口争抢 live 槽位。",
   "session.collapseAllActivity": "收起全部活动",
   "session.collapseAllActivityHint": "收起已展开的工具阶段与已完成的思考块",
   "session.new": "新会话",

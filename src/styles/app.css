@@ -8083,6 +8083,28 @@ button.settings-wallpaper__preview:hover:not(:disabled) {
   gap: 10px 12px;
 }
 
+/* Secondary multi-window: honest view-only notice (not an error). */
+.view-only-banner {
+  margin: 0 var(--space-5) var(--space-2);
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--accent, #6b8afd) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent, #6b8afd) 35%, transparent);
+  font-size: var(--text-sm);
+  line-height: 1.45;
+  color: var(--text-primary);
+}
+
+.view-only-banner__title {
+  font-weight: 600;
+  margin-bottom: 2px;
+}
+
+.view-only-banner__body {
+  color: var(--text-secondary, var(--text-primary));
+  opacity: 0.92;
+}
+
 /* Prefer warning palette even when combined with error-banner utility classes. */
 .stall-banner.error-banner {
   background: var(--warning-muted);

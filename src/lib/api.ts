@@ -1990,6 +1990,23 @@ export async function appForceQuit() {
   }
 }
 
+/**
+ * Open (or focus) a secondary webview window for a chat (`#/session/<id>`).
+ * Desktop Tauri only. Secondary windows are view-only (no agent spawn/send).
+ */
+export async function openSessionWindow(
+  sessionId: string,
+  title?: string | null,
+): Promise<void> {
+  if (!isDesktopHost()) {
+    throw new Error("openSessionWindow requires desktop Tauri");
+  }
+  await invoke<void>("open_session_window", {
+    sessionId,
+    title: title ?? null,
+  });
+}
+
 // ── Custom providers (agent-home config.toml) ───────────────────────────────
 
 export interface CustomProvider {
