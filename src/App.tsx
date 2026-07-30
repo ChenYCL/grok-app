@@ -540,16 +540,19 @@ import {
 import { ComposerProjectMenu } from "@/components/ComposerProjectMenu";
 import { ComposerWorktreeMenu } from "@/components/ComposerWorktreeMenu";
 import {
-  buildWorktreeSiblingPath,
+  buildWorktreePath,
   canRemoveWorktree,
   mainWorktreePath,
+  normalizeWorktreeLayout,
   pathsEqual,
   resolveSessionWorktreeBadge,
   sanitizeWorktreeName,
+  sanitizeWorktreeRef,
   sessionWorktreeTooltip,
   worktreeLabel,
   worktreeRemoveErrorSuggestsForce,
   type SessionWorktreeBadge,
+  type WorktreeLayout,
 } from "@/lib/gitWorktree";
 import {
   buildForkWorktreeName,
@@ -1999,16 +2002,21 @@ export default function App() {
   const [gitWorktreesReason, setGitWorktreesReason] = useState<string | null>(
     null,
   );
-  /** New worktree dialog (name + optional start-point). */
+  /** New worktree dialog (name + optional start-point + layout). */
   const [worktreeCreateOpen, setWorktreeCreateOpen] = useState(false);
   const [worktreeCreateName, setWorktreeCreateName] = useState("");
   const [worktreeCreateRef, setWorktreeCreateRef] = useState("");
+  /** Default CLI-aligned (`~/.grok/worktrees`); optional sibling. */
+  const [worktreeCreateLayout, setWorktreeCreateLayout] =
+    useState<WorktreeLayout>("cli");
   const [worktreeCreateBusy, setWorktreeCreateBusy] = useState(false);
   const [worktreeCreateError, setWorktreeCreateError] = useState<string | null>(
     null,
   );
   /** When true, after create bind cwd and open a draft chat on that path. */
   const [worktreeCreateStartChat, setWorktreeCreateStartChat] = useState(false);
+  /** Absolute `~/.grok` from host list (CLI path preview + badge detection). */
+  const [cliGrokHome, setCliGrokHome] = useState<string | null>(null);
   /** Clean stale worktrees (git worktree prune) dialog. */
   const [worktreeGcOpen, setWorktreeGcOpen] = useState(false);
   const [worktreeGcForce, setWorktreeGcForce] = useState(false);
@@ -10302,6 +10310,7 @@ export default function App() {
       setGitWorktrees([]);
       setGitWorktreesAvailable(null);
       setGitWorktreesReason(null);
+      setCliGrokHome(null);
       setGitWorktreesLoading(false);
       return;
     }
@@ -10318,6 +10327,8 @@ export default function App() {
     try {
       const res = await api.gitWorktreesList(path);
       if (reqId !== gitWorktreesReqRef.current) return;
+      const home = (res.cliGrokHome || "").trim() || null;
+      if (home) setCliGrokHome(home);
       if (!res.available) {
         setGitWorktrees([]);
         setGitWorktreesAvailable(false);
@@ -10690,6 +10701,7 @@ export default function App() {
   const openWorktreeCreate = useCallback((opts?: { startNewChat?: boolean }) => {
     setWorktreeCreateName("");
     setWorktreeCreateRef("");
+    setWorktreeCreateLayout("cli");
     setWorktreeCreateError(null);
     setWorktreeCreateBusy(false);
     setWorktreeCreateStartChat(!!opts?.startNewChat);
@@ -10700,7 +10712,22 @@ export default function App() {
     try {
       const main = mainWorktreePath(gitWorktrees) || activeProject?.path || "";
       if (!main || !worktreeCreateName.trim()) return null;
-      return buildWorktreeSiblingPath(main, worktreeCreateName.trim());
+      const layout = normalizeWorktreeLayout(worktreeCreateLayout);
+      if (layout === "cli" && !cliGrokHome) {
+        // Host has not reported home yet — show tilde form for CLI layout.
+        return buildWorktreePath(
+          "cli",
+          main,
+          worktreeCreateName.trim(),
+          "~/.grok",
+        );
+      }
+      return buildWorktreePath(
+        layout,
+        main,
+        worktreeCreateName.trim(),
+        cliGrokHome,
+      );
     } catch {
       return null;
     }
@@ -10734,7 +10761,7 @@ export default function App() {
     [],
   );
 
-  /** Resolve WT badge for a session row (meta first, git list fallback). */
+  /** Resolve WT/CLI badge for a session row (meta first, git list fallback). */
   const sessionWorktreeBadgeFor = useCallback(
     (s: SessionRow): SessionWorktreeBadge | null => {
       const proj = s.projectId
@@ -10748,9 +10775,10 @@ export default function App() {
         },
         proj?.path ?? s.worktreePath,
         gitWorktrees,
+        { grokHome: cliGrokHome },
       );
     },
-    [gitWorktrees, projects],
+    [cliGrokHome, gitWorktrees, projects],
   );
 
   /**
@@ -10772,14 +10800,22 @@ export default function App() {
       setWorktreeCreateError(tr("composer.worktreeNameInvalid"));
       return;
     }
+    let start: string | null;
+    try {
+      start = sanitizeWorktreeRef(worktreeCreateRef);
+    } catch {
+      setWorktreeCreateError(tr("composer.worktreeRefInvalid"));
+      return;
+    }
+    const layout = normalizeWorktreeLayout(worktreeCreateLayout);
     setWorktreeCreateBusy(true);
     setWorktreeCreateError(null);
     try {
-      const start = worktreeCreateRef.trim() || null;
       const created = await api.gitWorktreeAdd(
         activeProject.path,
         safeName,
         start,
+        layout,
       );
       setWorktreeCreateOpen(false);
       await refreshGitWorktrees();
@@ -10869,6 +10905,7 @@ export default function App() {
     session.sessionId,
     showToast,
     tr,
+    worktreeCreateLayout,
     worktreeCreateName,
     worktreeCreateRef,
     worktreeCreateStartChat,
@@ -13800,22 +13837,40 @@ export default function App() {
                                                 detachedLabel: tr(
                                                   "composer.worktreeDetached",
                                                 ),
+                                                cliLayoutLabel: tr(
+                                                  "session.worktreeLayoutCli",
+                                                ),
+                                                siblingLayoutLabel: tr(
+                                                  "session.worktreeLayoutSibling",
+                                                ),
+                                                otherLayoutLabel: tr(
+                                                  "session.worktreeBadge",
+                                                ),
                                               },
                                             );
+                                            const ariaKey =
+                                              wtBadge.layoutKind === "cli"
+                                                ? "session.worktreeBadgeCliAria"
+                                                : "session.worktreeBadgeAria";
                                             return (
                                               <span
-                                                className="tree-l3__wt"
+                                                className={
+                                                  "tree-l3__wt" +
+                                                  (wtBadge.layoutKind === "cli"
+                                                    ? " tree-l3__wt--cli"
+                                                    : wtBadge.layoutKind ===
+                                                        "sibling"
+                                                      ? " tree-l3__wt--sibling"
+                                                      : "")
+                                                }
                                                 title={tip}
-                                                aria-label={tr(
-                                                  "session.worktreeBadgeAria",
-                                                  {
-                                                    branch:
-                                                      wtBadge.branch ||
-                                                      tr(
-                                                        "composer.worktreeDetached",
-                                                      ),
-                                                  },
-                                                )}
+                                                aria-label={tr(ariaKey, {
+                                                  branch:
+                                                    wtBadge.branch ||
+                                                    tr(
+                                                      "composer.worktreeDetached",
+                                                    ),
+                                                })}
                                               >
                                                 {wtBadge.label}
                                               </span>
@@ -14077,19 +14132,36 @@ export default function App() {
                                     detachedLabel: tr(
                                       "composer.worktreeDetached",
                                     ),
+                                    cliLayoutLabel: tr(
+                                      "session.worktreeLayoutCli",
+                                    ),
+                                    siblingLayoutLabel: tr(
+                                      "session.worktreeLayoutSibling",
+                                    ),
+                                    otherLayoutLabel: tr(
+                                      "session.worktreeBadge",
+                                    ),
                                   });
+                                  const ariaKey =
+                                    wtBadge.layoutKind === "cli"
+                                      ? "session.worktreeBadgeCliAria"
+                                      : "session.worktreeBadgeAria";
                                   return (
                                     <span
-                                      className="tree-l3__wt"
+                                      className={
+                                        "tree-l3__wt" +
+                                        (wtBadge.layoutKind === "cli"
+                                          ? " tree-l3__wt--cli"
+                                          : wtBadge.layoutKind === "sibling"
+                                            ? " tree-l3__wt--sibling"
+                                            : "")
+                                      }
                                       title={tip}
-                                      aria-label={tr(
-                                        "session.worktreeBadgeAria",
-                                        {
-                                          branch:
-                                            wtBadge.branch ||
-                                            tr("composer.worktreeDetached"),
-                                        },
-                                      )}
+                                      aria-label={tr(ariaKey, {
+                                        branch:
+                                          wtBadge.branch ||
+                                          tr("composer.worktreeDetached"),
+                                      })}
                                     >
                                       {wtBadge.label}
                                     </span>
@@ -16565,6 +16637,37 @@ export default function App() {
               spellCheck={false}
             />
           </label>
+          <fieldset className="wt-create__field wt-create__layout" disabled={worktreeCreateBusy}>
+            <legend className="wt-create__label">
+              {tr("composer.worktreeLayout")}
+            </legend>
+            <label className="wt-create__radio">
+              <input
+                type="radio"
+                name="worktree-layout"
+                value="cli"
+                checked={worktreeCreateLayout === "cli"}
+                onChange={() => {
+                  setWorktreeCreateLayout("cli");
+                  setWorktreeCreateError(null);
+                }}
+              />
+              <span>{tr("composer.worktreeLayoutCli")}</span>
+            </label>
+            <label className="wt-create__radio">
+              <input
+                type="radio"
+                name="worktree-layout"
+                value="sibling"
+                checked={worktreeCreateLayout === "sibling"}
+                onChange={() => {
+                  setWorktreeCreateLayout("sibling");
+                  setWorktreeCreateError(null);
+                }}
+              />
+              <span>{tr("composer.worktreeLayoutSibling")}</span>
+            </label>
+          </fieldset>
           <label className="wt-create__field">
             <span className="wt-create__label">
               {tr("composer.worktreeRef")}

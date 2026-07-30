@@ -147,6 +147,9 @@ const en = {
   "session.rulesChars": "{n}/{max}",
   "session.worktreeBadge": "Worktree",
   "session.worktreeBadgeAria": "Worktree session · {branch}",
+  "session.worktreeBadgeCliAria": "CLI worktree session · {branch}",
+  "session.worktreeLayoutCli": "CLI worktrees home (~/.grok/worktrees)",
+  "session.worktreeLayoutSibling": "Sibling of main checkout",
   "session.worktreeReveal": "Reveal worktree",
   "session.worktreeCopyPath": "Copy worktree path",
   "session.worktreePathCopied": "Worktree path copied",
@@ -684,13 +687,20 @@ const en = {
   "composer.worktreeNewTitle": "New git worktree",
   "composer.worktreeNewChatTitle": "New worktree & chat",
   "composer.worktreeNewHint":
-    "Creates a sibling folder next to the main worktree and checks out a new branch.",
+    "Creates a linked git worktree (default: CLI layout under ~/.grok/worktrees) and checks out a new branch. Same idea as grok --worktree=name.",
   "composer.worktreeNewChatHint":
-    "Creates a sibling worktree, then starts a new chat with that folder as the project.",
+    "Creates a linked worktree, then starts a new chat with that folder as the project cwd (session meta bound for the CLI/WT badge).",
   "composer.worktreeName": "Name",
   "composer.worktreeNamePlaceholder": "feat-login",
+  "composer.worktreeLayout": "Location",
+  "composer.worktreeLayoutCli":
+    "CLI home — ~/.grok/worktrees/<repo>/<name> (matches grok --worktree)",
+  "composer.worktreeLayoutSibling":
+    "Sibling — next to main checkout (<repo>-<name>)",
   "composer.worktreeRef": "Start point (optional)",
   "composer.worktreeRefPlaceholder": "main, origin/main, or commit",
+  "composer.worktreeRefInvalid":
+    "Start point must not start with '-' or contain line breaks",
   "composer.worktreePathPreview": "Path: {path}",
   "composer.worktreeCreate": "Create",
   "composer.worktreeCreateChat": "Create & open chat",
@@ -3048,6 +3058,9 @@ const zh: Record<MessageKey, string> = {
   "session.rulesChars": "{n}/{max}",
   "session.worktreeBadge": "Worktree",
   "session.worktreeBadgeAria": "Worktree 会话 · {branch}",
+  "session.worktreeBadgeCliAria": "CLI worktree 会话 · {branch}",
+  "session.worktreeLayoutCli": "CLI worktrees 目录（~/.grok/worktrees）",
+  "session.worktreeLayoutSibling": "主检出旁的同级 worktree",
   "session.worktreeReveal": "在文件管理器中显示 worktree",
   "session.worktreeCopyPath": "复制 worktree 路径",
   "session.worktreePathCopied": "已复制 worktree 路径",
@@ -3555,13 +3568,20 @@ const zh: Record<MessageKey, string> = {
   "composer.worktreeNewTitle": "新建 Git worktree",
   "composer.worktreeNewChatTitle": "新建 worktree 并开聊",
   "composer.worktreeNewHint":
-    "在主 worktree 旁创建同级目录，并检出一条新分支。",
+    "创建关联 git worktree（默认 CLI 布局 ~/.grok/worktrees），并检出新分支。对齐 grok --worktree=name。",
   "composer.worktreeNewChatHint":
-    "创建同级 worktree，并以该目录为项目开始新对话。",
+    "创建关联 worktree，并以该目录为项目 cwd 开启新对话（写入会话 meta，侧栏显示 CLI/WT 标记）。",
   "composer.worktreeName": "名称",
   "composer.worktreeNamePlaceholder": "feat-login",
+  "composer.worktreeLayout": "位置",
+  "composer.worktreeLayoutCli":
+    "CLI 目录 — ~/.grok/worktrees/<repo>/<name>（对齐 grok --worktree）",
+  "composer.worktreeLayoutSibling":
+    "同级目录 — 主检出旁（<repo>-<name>）",
   "composer.worktreeRef": "起始点（可选）",
   "composer.worktreeRefPlaceholder": "main、origin/main 或 commit",
+  "composer.worktreeRefInvalid":
+    "起始点不能以 '-' 开头，也不能包含换行",
   "composer.worktreePathPreview": "路径：{path}",
   "composer.worktreeCreate": "创建",
   "composer.worktreeCreateChat": "创建并开聊",

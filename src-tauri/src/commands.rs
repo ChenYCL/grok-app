@@ -4946,6 +4946,9 @@ pub struct GitWorktreesResult {
     pub available: bool,
     pub worktrees: Vec<GitWorktreeEntry>,
     pub reason: Option<String>,
+    /// Absolute `~/.grok` used for CLI-aligned worktree placement / detection.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cli_grok_home: Option<String>,
 }
 
 /// Parse `git worktree list --porcelain` (pure; unit-tested).
@@ -5025,12 +5028,17 @@ pub fn parse_worktree_porcelain(raw: &str) -> Vec<GitWorktreeEntry> {
 /// List linked git worktrees for a project folder. Soft-fails without git / non-repo.
 #[tauri::command]
 pub async fn git_worktrees_list(project_path: String) -> Result<GitWorktreesResult, String> {
+    let cli_home = shared_cli_grok_home()
+        .to_string_lossy()
+        .replace('\\', "/");
+    let cli_grok_home = Some(normalize_fs_path(&cli_home));
     let project = normalize_fs_path(&project_path);
     if project.is_empty() {
         return Ok(GitWorktreesResult {
             available: false,
             worktrees: vec![],
             reason: Some("empty path".into()),
+            cli_grok_home,
         });
     }
     let proj = std::path::PathBuf::from(&project);
@@ -5039,6 +5047,7 @@ pub async fn git_worktrees_list(project_path: String) -> Result<GitWorktreesResu
             available: false,
             worktrees: vec![],
             reason: Some("project not a directory".into()),
+            cli_grok_home,
         });
     }
     if let Err(reason) = git_probe_work_tree(&project) {
@@ -5046,6 +5055,7 @@ pub async fn git_worktrees_list(project_path: String) -> Result<GitWorktreesResu
             available: false,
             worktrees: vec![],
             reason: Some(reason),
+            cli_grok_home,
         });
     }
 
@@ -5064,6 +5074,7 @@ pub async fn git_worktrees_list(project_path: String) -> Result<GitWorktreesResu
             } else {
                 err.chars().take(200).collect()
             }),
+            cli_grok_home,
         });
     }
 
@@ -5073,6 +5084,7 @@ pub async fn git_worktrees_list(project_path: String) -> Result<GitWorktreesResu
         available: true,
         worktrees,
         reason: None,
+        cli_grok_home,
     })
 }
 
@@ -5765,13 +5777,73 @@ pub fn build_worktree_gc_args(
 
 // from PR #64
 
+/// Path placement for new linked worktrees (`cli` default, or `sibling`).
+pub fn normalize_worktree_layout(raw: Option<&str>) -> &'static str {
+    match raw.map(str::trim).filter(|s| !s.is_empty()) {
+        Some(s) if s.eq_ignore_ascii_case("sibling") => "sibling",
+        _ => "cli",
+    }
+}
+
+/// Shared CLI GROK_HOME (`~/.grok`) used for worktree placement.
+/// Matches Grok Build 0.2.x `~/.grok/worktrees/<repo>/…` regardless of
+/// App independent agent-home (git worktrees are filesystem layout, not session store).
+pub fn shared_cli_grok_home() -> std::path::PathBuf {
+    crate::process_util::user_home().join(".grok")
+}
+
+/// CLI worktrees root: `{GROK_HOME}/worktrees`.
+pub fn cli_worktrees_home(grok_home: &std::path::Path) -> std::path::PathBuf {
+    grok_home.join("worktrees")
+}
+
+/// Repo folder slug for CLI layout (main worktree basename).
+pub fn worktree_repo_slug(main_worktree_path: &str) -> Result<String, String> {
+    let main = normalize_fs_path(main_worktree_path);
+    if main.is_empty() {
+        return Err("empty main worktree path".into());
+    }
+    let main_pb = std::path::PathBuf::from(&main);
+    main_pb
+        .file_name()
+        .and_then(|s| s.to_str())
+        .filter(|s| !s.is_empty())
+        .map(|s| s.to_string())
+        .ok_or_else(|| "cannot derive repo folder name".to_string())
+}
+
+/// CLI-aligned path: `{GROK_HOME}/worktrees/<main_basename>/<name>`.
+///
+/// Example: grok_home `~/.grok`, main `/Users/me/Code/oss-grok-app`, name `feat`
+/// → `~/.grok/worktrees/oss-grok-app/feat`.
+///
+/// Matches Grok Build 0.2.x (`grok --worktree=…`, `grok worktree list`).
+pub fn build_worktree_cli_path(
+    main_worktree_path: &str,
+    name: &str,
+    grok_home: &std::path::Path,
+) -> Result<String, String> {
+    let main = normalize_fs_path(main_worktree_path);
+    if main.is_empty() {
+        return Err("empty main worktree path".into());
+    }
+    let safe = sanitize_worktree_name(name)?;
+    let slug = worktree_repo_slug(&main)?;
+    let path = cli_worktrees_home(grok_home).join(slug).join(safe);
+    let s = path.to_string_lossy().replace('\\', "/");
+    let s = normalize_fs_path(&s);
+    if s == main || s.is_empty() {
+        return Err("resolved worktree path is invalid".into());
+    }
+    Ok(s)
+}
+
 /// Build sibling worktree path: `<parent>/<main_basename>-<name>`.
 ///
 /// Example: main `/Users/me/repo` + name `feat` → `/Users/me/repo-feat`.
 ///
-/// Choice (documented in `docs/llm-wiki/git-worktrees.md`): sibling of the
-/// **main** worktree root, not `.worktrees/<name>` inside the repo. Matches
-/// common `git worktree add ../repo-feat` layout and existing list samples.
+/// Optional alternative to CLI home layout — matches common
+/// `git worktree add ../repo-feat` practice.
 pub fn build_worktree_sibling_path(main_worktree_path: &str, name: &str) -> Result<String, String> {
     let main = normalize_fs_path(main_worktree_path);
     if main.is_empty() {
@@ -5795,6 +5867,18 @@ pub fn build_worktree_sibling_path(main_worktree_path: &str, name: &str) -> Resu
         return Err("resolved worktree path is invalid".into());
     }
     Ok(s)
+}
+
+/// Resolve create path for layout (`cli` default, or `sibling`).
+pub fn build_worktree_path_for_layout(
+    layout: Option<&str>,
+    main_worktree_path: &str,
+    name: &str,
+) -> Result<String, String> {
+    match normalize_worktree_layout(layout) {
+        "sibling" => build_worktree_sibling_path(main_worktree_path, name),
+        _ => build_worktree_cli_path(main_worktree_path, name, &shared_cli_grok_home()),
+    }
 }
 
 // from PR #88
@@ -5942,7 +6026,11 @@ fn extract_agent_description_from_content(content: &str) -> Option<String> {
 
 // from PR #64
 
-/// Create a linked git worktree under a sibling path, then return its path.
+/// Create a linked git worktree, then return its path.
+///
+/// Default layout (`cli` / omitted): `{GROK_HOME}/worktrees/<repo>/<name>`
+/// aligned with Grok Build 0.2.x (`grok --worktree=…`).
+/// Optional `layout = "sibling"`: `<parent>/<main_basename>-<name>`.
 ///
 /// Args are passed to `git` as an argv array (no shell) to avoid injection.
 /// - Without `start_point`: `git worktree add -b <name> <path>` (branch from HEAD).
@@ -5952,6 +6040,7 @@ pub async fn git_worktree_add(
     project_path: String,
     name: String,
     start_point: Option<String>,
+    layout: Option<String>,
 ) -> Result<GitWorktreeAddResult, String> {
     let project = normalize_fs_path(&project_path);
     if project.is_empty() {
@@ -5965,8 +6054,9 @@ pub async fn git_worktree_add(
 
     let safe_name = sanitize_worktree_name(&name)?;
     let start = sanitize_worktree_ref(start_point.as_deref())?;
+    let layout_kind = normalize_worktree_layout(layout.as_deref());
 
-    // Resolve main worktree path (first porcelain entry) for sibling placement.
+    // Resolve main worktree path (first porcelain entry) for path placement.
     let list_out = crate::process_util::command("git")
         .args(["-C", &project, "worktree", "list", "--porcelain"])
         .output()
@@ -5986,7 +6076,7 @@ pub async fn git_worktree_add(
         .filter(|p| !p.is_empty())
         .ok_or_else(|| "could not resolve main worktree path".to_string())?;
 
-    let target = build_worktree_sibling_path(&main_path, &safe_name)?;
+    let target = build_worktree_path_for_layout(Some(layout_kind), &main_path, &safe_name)?;
     let target_pb = std::path::PathBuf::from(&target);
     if target_pb.exists() {
         return Err(format!("path already exists: {target}"));
@@ -5997,6 +6087,13 @@ pub async fn git_worktree_add(
         p.eq_ignore_ascii_case(&target) || p == target
     }) {
         return Err(format!("worktree already registered: {target}"));
+    }
+
+    // CLI layout nests under ~/.grok/worktrees/<repo>/ — ensure parents exist.
+    if let Some(parent) = target_pb.parent() {
+        std::fs::create_dir_all(parent).map_err(|e| {
+            format!("could not create worktree parent {}: {e}", parent.display())
+        })?;
     }
 
     // Safe argv — never go through a shell.
@@ -6819,6 +6916,51 @@ pub fn sanitize_worktree_ref(raw: Option<&str>) -> Result<Option<String>, String
         return Err("branch / ref must not start with '-'".into());
     }
     Ok(Some(s.to_string()))
+}
+
+#[cfg(test)]
+mod worktree_path_tests {
+    use super::*;
+    use std::path::Path;
+
+    #[test]
+    fn layout_defaults_to_cli() {
+        assert_eq!(normalize_worktree_layout(None), "cli");
+        assert_eq!(normalize_worktree_layout(Some("")), "cli");
+        assert_eq!(normalize_worktree_layout(Some("CLI")), "cli");
+        assert_eq!(normalize_worktree_layout(Some("sibling")), "sibling");
+    }
+
+    #[test]
+    fn sibling_path_next_to_main() {
+        assert_eq!(
+            build_worktree_sibling_path("/Users/me/repo", "feat").unwrap(),
+            "/Users/me/repo-feat"
+        );
+    }
+
+    #[test]
+    fn cli_path_under_grok_worktrees() {
+        let home = Path::new("/Users/me/.grok");
+        assert_eq!(
+            build_worktree_cli_path("/Users/me/Code/oss-grok-app", "feat", home).unwrap(),
+            "/Users/me/.grok/worktrees/oss-grok-app/feat"
+        );
+        assert_eq!(
+            worktree_repo_slug("/Users/me/Code/oss-grok-app").unwrap(),
+            "oss-grok-app"
+        );
+    }
+
+    #[test]
+    fn sanitize_ref_rejects_flags() {
+        assert!(sanitize_worktree_ref(Some("-b")).is_err());
+        assert_eq!(
+            sanitize_worktree_ref(Some("  origin/main  ")).unwrap().as_deref(),
+            Some("origin/main")
+        );
+        assert_eq!(sanitize_worktree_ref(None).unwrap(), None);
+    }
 }
 
 // from PR #77

@@ -1,6 +1,7 @@
 # Git worktrees
 
-Community request: [issue #42](https://github.com/RongleCat/grok-app/issues/42).
+Community request: [issue #42](https://github.com/RongleCat/grok-app/issues/42).  
+CLI alignment: Grok Build **0.2.114+** `--worktree` / `--worktree-ref` and `~/.grok/worktrees/`.
 
 ## Behavior
 
@@ -16,8 +17,11 @@ git worktree list --porcelain
 - **UI:** branch chip is hidden until host confirms `available: true` (non-git → no branch chip). Project menu no longer embeds worktrees.
 - **Create / remove / GC** live in the branch menu (not the project menu).
 - **Remove:** per-row trash on **non-main** linked worktrees → in-app confirm → host `git_worktree_remove` (force retry if dirty). Never removes main. Removing the active cwd switches to main. Use **GC** for stale admin records of folders already gone.
-- **Session badge:** worktree-bound chats show a compact **WT** chip in the sidebar. Meta is written when **New worktree & chat** creates the session (`worktreePath` / `worktreeBranch` / `isWorktreeSession` on `SessionMeta`). Fallback: if the session’s project path matches a **non-main** entry from `git worktree list`, badge without meta.
-- **Session menu (WT only):** Reveal worktree · Copy path · Remove worktree (same in-app confirm / force path as the branch menu). Apply/merge onto main is out of scope.
+- **Session badge:** worktree-bound chats show a compact chip in the sidebar:
+  - **`CLI`** — path under `~/.grok/worktrees/` (Grok Build CLI home layout)
+  - **`WT`** — sibling / other linked worktree
+  Meta is written when **New worktree & chat** creates the session (`worktreePath` / `worktreeBranch` / `isWorktreeSession` on `SessionMeta`). Fallback: if the session’s project path matches a **non-main** entry from `git worktree list`, badge without meta.
+- **Session menu (WT/CLI only):** Reveal worktree · Copy path · Remove worktree (same in-app confirm / force path as the branch menu). Apply/merge onto main is out of scope.
 
 ### Create worktree
 
@@ -26,11 +30,21 @@ From the branch / worktree menu:
 - **New worktree…** — create + bind current session/cwd to the new path.
 - **New worktree & chat…** — create, then open a **new session** whose project path is the worktree (agent cwd) and persist worktree meta on that session.
 
-1. User enters a **name** (required) and optional **start point** (branch / tag / commit).
+1. User enters a **name** (required), chooses **location** (default CLI home; optional sibling), and optional **start point** (branch / tag / commit — same idea as CLI `--worktree-ref` / `--ref`).
 2. Host runs `git worktree add -b <name> <path> [<start_point>]` with argv (no shell).
 3. On success: refresh the list, `project_add` with trust inherited from the source project when possible, then either bind the open session (and tag it) or `session_create` + `session_set_worktree` and open that session.
 
-**Path layout (sibling of main worktree):**
+**Path layout (default — CLI-aligned):**
+
+```text
+{GROK_HOME}/worktrees/<main_basename>/<name>
+```
+
+Example: main `/Users/me/Code/oss-grok-app` + name `feat` → `~/.grok/worktrees/oss-grok-app/feat`.
+
+This matches Grok Build 0.2.x (`grok --worktree=feat`, `grok worktree list` paths under `~/.grok/worktrees/<repo>/…`). `GROK_HOME` for placement is always the shared CLI home (`~/.grok`), not App independent agent-home — worktrees are filesystem layout shared with the terminal CLI.
+
+**Optional sibling layout:**
 
 ```text
 <main_parent>/<main_basename>-<name>
@@ -40,10 +54,12 @@ Example: main `/Users/me/repo` + name `feat` → `/Users/me/repo-feat`.
 
 | Choice | Why |
 |--------|-----|
-| **Sibling** `../<repo>-<name>` (preferred) | Matches common `git worktree add ../repo-feat` practice; checkouts sit next to the primary clone; same pattern as porcelain list samples. |
-| In-repo `.worktrees/<name>` | Avoided for create — keeps build/tooling ignore noise out of the main tree and matches sibling-first docs. |
+| **CLI home** `~/.grok/worktrees/<repo>/<name>` (**default**) | Aligns with Grok Build `--worktree` / subagent worktrees; keeps checkouts out of the project parent; same path family as `grok worktree list`. |
+| **Sibling** `../<repo>-<name>` | Classic `git worktree add ../repo-feat` practice when you want the tree next to the primary clone. |
+| In-repo `.worktrees/<name>` | Avoided for create — keeps build/tooling ignore noise out of the main tree. |
 
-Name rules: letters, digits, `.` `_` `-` only; max 64; no path separators; must not start with `-` (so it cannot look like a git flag).
+Name rules: letters, digits, `.` `_` `-` only; max 64; no path separators; must not start with `-` (so it cannot look like a git flag).  
+Start-point rules: optional; max 256; no NUL/newlines; must not start with `-`.
 
 Errors are shown when the folder is not a git repository, `git` is missing, the path already exists, or `git worktree add` fails (message surfaced in the dialog).
 
@@ -65,15 +81,16 @@ Menu action **Clean stale worktrees…** → GlassModal dry-run preview (`git wo
 - Full branch browser / remote fetch / same-directory `git checkout`
 - In-place checkout of an arbitrary local branch without a worktree
 - Apply / merge worktree branch back onto main from the session menu (open folder + remove only)
+- Registering App-created trees into the CLI `worktrees.db` index (git porcelain list is enough for switch/remove)
 
 ## Implementation
 
-- Host: `git_worktrees_list`, `git_worktree_add`, `git_worktree_remove`, `git_worktree_gc`, `session_set_worktree` (`src-tauri/src/commands.rs`) — argv only, no shell
+- Host: `git_worktrees_list` (includes `cliGrokHome`), `git_worktree_add` (`layout`: `cli` \| `sibling`), `git_worktree_remove`, `git_worktree_gc`, `session_set_worktree` (`src-tauri/src/commands.rs`) — argv only, no shell
 - Store: optional `SessionMeta.worktree_path` / `worktree_branch` / `is_worktree_session` (serde defaults; skip empty)
-- Pure path / name helpers: `sanitize_worktree_name`, `build_worktree_sibling_path` (+ unit tests)
-- Frontend pure helpers: `src/lib/gitWorktree.ts` — list/parse + `resolveSessionWorktreeBadge` / tooltip (+ unit tests)
+- Pure path / name helpers: `sanitize_worktree_name`, `sanitize_worktree_ref`, `build_worktree_cli_path`, `build_worktree_sibling_path`, `build_worktree_path_for_layout` (+ unit tests)
+- Frontend pure helpers: `src/lib/gitWorktree.ts` — list/parse + path builders + `resolveSessionWorktreeBadge` / tooltip / layout detect (+ unit tests)
 - UI:
   - Project: `ComposerProjectMenu` (folder only)
   - Branch / worktree: `ComposerWorktreeMenu` (context bar chip; per-row remove)
-  - Sidebar **WT** badge + session context menu manage actions
-  - Create + remove confirm + GC dialogs in `App.tsx`
+  - Sidebar **CLI** / **WT** badge + session context menu manage actions
+  - Create (layout radios + ref validation) + remove confirm + GC dialogs in `App.tsx`

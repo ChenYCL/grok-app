@@ -462,6 +462,8 @@ export interface GitWorktreesResult {
   available: boolean;
   worktrees: GitWorktreeEntry[];
   reason?: string | null;
+  /** Absolute `~/.grok` for CLI-aligned worktree placement / badge detection. */
+  cliGrokHome?: string | null;
 }
 
 /** List worktrees for a project folder. Soft-fails when git/repo missing. */
@@ -479,18 +481,23 @@ export interface GitWorktreeAddResult {
 
 /**
  * Create a linked worktree for a project folder.
- * Path: `<parent>/<main_basename>-<name>` (see docs/llm-wiki/git-worktrees.md).
+ *
+ * Default layout `cli`: `~/.grok/worktrees/<repo>/<name>` (Grok Build 0.2.x).
+ * Optional `sibling`: `<parent>/<main_basename>-<name>`.
+ * See docs/llm-wiki/git-worktrees.md.
  * Throws when not a git repo / git missing / path exists / invalid name.
  */
 export async function gitWorktreeAdd(
   projectPath: string,
   name: string,
   startPoint?: string | null,
+  layout?: "cli" | "sibling" | null,
 ) {
   return invoke<GitWorktreeAddResult>("git_worktree_add", {
     projectPath,
     name,
     startPoint: startPoint?.trim() || null,
+    layout: layout === "sibling" ? "sibling" : "cli",
   });
 }
 
