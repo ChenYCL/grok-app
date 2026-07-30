@@ -227,6 +227,34 @@ export function countBusyDashboardRows(rows: AgentDashboardRow[]): number {
 }
 
 /**
+ * Among the current selection, keep only rows that can be stopped.
+ *
+ * Idle / error / missing rows may still be selected in the UI; **Stop selected**
+ * targets only {@link AgentDashboardRow.stoppable} members. Order follows `rows`.
+ */
+export function filterStoppableAmongSelection(
+  rows: readonly AgentDashboardRow[],
+  selectedIds: ReadonlySet<string> | readonly string[],
+): AgentDashboardRow[] {
+  const selected =
+    selectedIds instanceof Set
+      ? selectedIds
+      : new Set(selectedIds);
+  if (selected.size === 0) return [];
+  return rows.filter((r) => selected.has(r.sessionId) && r.stoppable);
+}
+
+/** Session ids for **Stop selected** (stoppable ∩ selection, row order). */
+export function stoppableSelectedSessionIds(
+  rows: readonly AgentDashboardRow[],
+  selectedIds: ReadonlySet<string> | readonly string[],
+): string[] {
+  return filterStoppableAmongSelection(rows, selectedIds).map(
+    (r) => r.sessionId,
+  );
+}
+
+/**
  * Status chip filter values (single-select).
  * `"all"` shows every row; other values match {@link AgentDashboardStatus}.
  */

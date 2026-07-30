@@ -8421,6 +8421,68 @@ export default function App() {
     showToast(tr("session.noteCleared"), 2000);
   }, [sessionNoteTarget, closeSessionNoteModal, tr, showToast]);
 
+  /** Confirm then stop the given session ids (dashboard / multi-select). */
+  const stopBusySessionsByIds = useCallback(
+    (
+      idsIn: string[],
+      labels?: {
+        title?: string;
+        message?: string;
+        confirmLabel?: string;
+      },
+    ) => {
+      const ids = [...new Set(idsIn.filter(Boolean))];
+      if (!ids.length) return;
+      const n = ids.length;
+      const runStop = async () => {
+        const results = await Promise.allSettled(
+          ids.map((id) => api.sessionStop(id)),
+        );
+        let ok = 0;
+        let fail = 0;
+        for (let i = 0; i < results.length; i++) {
+          const r = results[i]!;
+          const id = ids[i]!;
+          if (r.status === "fulfilled") {
+            ok += 1;
+            settleStoppedSessionUi(id);
+          } else {
+            fail += 1;
+          }
+        }
+        if (fail === 0) {
+          showToast(tr("tasks.activity.stopAllDone", { n: String(ok) }), 3200);
+        } else {
+          showToast(
+            tr("tasks.activity.stopAllPartial", {
+              ok: String(ok),
+              fail: String(fail),
+            }),
+            4000,
+          );
+        }
+      };
+      if (loadStopAllSkipConfirmPref()) {
+        void runStop();
+        return;
+      }
+      setAppDialog({
+        kind: "confirm",
+        title: labels?.title ?? tr("tasks.activity.stopAllTitle"),
+        message:
+          labels?.message ??
+          tr("tasks.activity.stopAllConfirm", { n: String(n) }),
+        confirmLabel:
+          labels?.confirmLabel ?? tr("tasks.activity.stopAll"),
+        danger: true,
+        onConfirm: () => {
+          void runStop();
+        },
+      });
+    },
+    [settleStoppedSessionUi, showToast, tr],
+  );
+
   /** Confirm then stop every stoppable busy session from the Tasks panel. */
   const stopAllBusySessions = useCallback(() => {
     const rows = stoppableActivitySessions(
@@ -8432,55 +8494,11 @@ export default function App() {
       }),
     );
     if (!rows.length) return;
-    const n = rows.length;
-    const ids = rows.map((r) => r.sessionId);
-    const runStopAll = async () => {
-      const results = await Promise.allSettled(
-        ids.map((id) => api.sessionStop(id)),
-      );
-      let ok = 0;
-      let fail = 0;
-      for (let i = 0; i < results.length; i++) {
-        const r = results[i]!;
-        const id = ids[i]!;
-        if (r.status === "fulfilled") {
-          ok += 1;
-          settleStoppedSessionUi(id);
-        } else {
-          fail += 1;
-        }
-      }
-      if (fail === 0) {
-        showToast(tr("tasks.activity.stopAllDone", { n: String(ok) }), 3200);
-      } else {
-        showToast(
-          tr("tasks.activity.stopAllPartial", {
-            ok: String(ok),
-            fail: String(fail),
-          }),
-          4000,
-        );
-      }
-    };
-    if (loadStopAllSkipConfirmPref()) {
-      void runStopAll();
-      return;
-    }
-    setAppDialog({
-      kind: "confirm",
-      title: tr("tasks.activity.stopAllTitle"),
-      message: tr("tasks.activity.stopAllConfirm", { n: String(n) }),
-      confirmLabel: tr("tasks.activity.stopAll"),
-      danger: true,
-      onConfirm: () => {
-        void runStopAll();
-      },
-    });
+    stopBusySessionsByIds(rows.map((r) => r.sessionId));
   }, [
     sessions,
     session.sessionId,
-    settleStoppedSessionUi,
-    showToast,
+    stopBusySessionsByIds,
     tr,
   ]);
 
@@ -17139,6 +17157,14 @@ export default function App() {
           void openSession(row, proj);
         }}
         onStopAllBusy={stopAllBusySessions}
+        onStopSessions={(ids) => {
+          const n = ids.length;
+          stopBusySessionsByIds(ids, {
+            title: tr("dashboard.stopSelectedTitle", { n }),
+            message: tr("dashboard.stopSelectedConfirm", { n: String(n) }),
+            confirmLabel: tr("dashboard.stopSelected", { n }),
+          });
+        }}
       />
       <McpStatusModal
         open={showMcpModal}
