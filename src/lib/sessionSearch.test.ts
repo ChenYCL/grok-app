@@ -3,6 +3,9 @@ import {
   filterSessionSearch,
   matchMessageContent,
   mergeSessionSearchHits,
+  sessionSearchBadge,
+  sessionSearchBadgeLabelKey,
+  shouldScanSessionContent,
 } from "./sessionSearch";
 
 const projects = [
@@ -50,6 +53,62 @@ describe("filterSessionSearch", () => {
       includeArchived: true,
     });
     expect(hits.matchedSessions.map((s) => s.id)).toEqual(["s4"]);
+  });
+
+  it("empty query with includeArchived includes archived recents", () => {
+    const hits = filterSessionSearch("", sessions, projects, {
+      includeArchived: true,
+    });
+    expect(hits.matchedSessions.map((s) => s.id)).toContain("s4");
+  });
+
+  it("mode=content returns no title/project hits for a query", () => {
+    const hits = filterSessionSearch("doctor", sessions, projects, {
+      mode: "content",
+    });
+    expect(hits.matchedSessions).toEqual([]);
+    expect(hits.matchedProjects).toEqual([]);
+  });
+
+  it("mode=title still matches titles", () => {
+    const hits = filterSessionSearch("doctor", sessions, projects, {
+      mode: "title",
+    });
+    expect(hits.matchedSessions.map((s) => s.id)).toEqual(["s1"]);
+  });
+});
+
+describe("shouldScanSessionContent", () => {
+  it("skips empty query and title mode", () => {
+    expect(shouldScanSessionContent("", "all")).toBe(false);
+    expect(shouldScanSessionContent("  ", "content")).toBe(false);
+    expect(shouldScanSessionContent("doctor", "title")).toBe(false);
+  });
+
+  it("scans for all/content with a query", () => {
+    expect(shouldScanSessionContent("doctor", "all")).toBe(true);
+    expect(shouldScanSessionContent("doctor", "content")).toBe(true);
+    expect(shouldScanSessionContent("doctor")).toBe(true);
+  });
+});
+
+describe("sessionSearchBadge", () => {
+  it("maps match flags to badge kinds and label keys", () => {
+    expect(sessionSearchBadge({ titleMatch: true, contentMatch: false })).toBe(
+      "title",
+    );
+    expect(sessionSearchBadge({ titleMatch: false, contentMatch: true })).toBe(
+      "content",
+    );
+    expect(sessionSearchBadge({ titleMatch: true, contentMatch: true })).toBe(
+      "both",
+    );
+    expect(sessionSearchBadge({ titleMatch: false, contentMatch: false })).toBe(
+      null,
+    );
+    expect(sessionSearchBadgeLabelKey("title")).toBe("search.badgeTitle");
+    expect(sessionSearchBadgeLabelKey("content")).toBe("search.badgeContent");
+    expect(sessionSearchBadgeLabelKey("both")).toBe("search.badgeBoth");
   });
 });
 
@@ -104,6 +163,8 @@ describe("mergeSessionSearchHits", () => {
     expect(merged[0].snippet).toContain("Doctor");
     expect(merged[1].titleMatch).toBe(false);
     expect(merged[1].matchCount).toBe(1);
+    expect(sessionSearchBadge(merged[0])).toBe("both");
+    expect(sessionSearchBadge(merged[1])).toBe("content");
   });
 
   it("empty query does not append content-only rows", () => {
@@ -118,5 +179,79 @@ describe("mergeSessionSearchHits", () => {
     ];
     const merged = mergeSessionSearchHits("", title, content);
     expect(merged.map((h) => h.id)).toEqual(["s1"]);
+  });
+
+  it("mode=title ignores content hits", () => {
+    const title = [{ id: "s1", title: "Fix doctor reset", projectId: "p1" }];
+    const content = [
+      {
+        id: "s1",
+        title: "Fix doctor reset",
+        snippet: "…Doctor…",
+        matchCount: 2,
+      },
+      {
+        id: "s9",
+        title: "Other",
+        snippet: "doctor body",
+        matchCount: 5,
+      },
+    ];
+    const merged = mergeSessionSearchHits("doctor", title, content, {
+      mode: "title",
+    });
+    expect(merged.map((h) => h.id)).toEqual(["s1"]);
+    expect(merged[0].contentMatch).toBe(false);
+    expect(merged[0].snippet).toBeUndefined();
+  });
+
+  it("mode=content prefers content ranking and skips title-only", () => {
+    const title = [
+      { id: "s1", title: "Fix doctor reset", projectId: "p1" },
+      { id: "s-title-only", title: "doctor in title only", projectId: null },
+    ];
+    const content = [
+      {
+        id: "s9",
+        title: "Other chat",
+        snippet: "body mentions doctor",
+        matchCount: 1,
+      },
+      {
+        id: "s1",
+        title: "Fix doctor reset",
+        snippet: "…fix the Doctor…",
+        matchCount: 4,
+      },
+    ];
+    const merged = mergeSessionSearchHits("doctor", title, content, {
+      mode: "content",
+    });
+    expect(merged.map((h) => h.id)).toEqual(["s1", "s9"]);
+    expect(merged[0].matchCount).toBe(4);
+    expect(merged[0].contentMatch).toBe(true);
+    expect(merged.every((h) => h.contentMatch)).toBe(true);
+    expect(merged.find((h) => h.id === "s-title-only")).toBeUndefined();
+  });
+
+  it("honors includeArchived on content-only rows", () => {
+    const title: { id: string; title: string }[] = [];
+    const content = [
+      {
+        id: "s-arch",
+        title: "Archived body hit",
+        snippet: "doctor inside",
+        matchCount: 2,
+        archived: true,
+      },
+    ];
+    expect(
+      mergeSessionSearchHits("doctor", title, content).map((h) => h.id),
+    ).toEqual([]);
+    expect(
+      mergeSessionSearchHits("doctor", title, content, {
+        includeArchived: true,
+      }).map((h) => h.id),
+    ).toEqual(["s-arch"]);
   });
 });
