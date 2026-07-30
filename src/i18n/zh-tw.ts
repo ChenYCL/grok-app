@@ -2082,16 +2082,30 @@ export const zhTW: Record<MessageKey, string> = {
   "session.exportJson": "匯出對話為 JSON",
   "session.exportHtml": "匯出對話為 HTML",
   "session.exportTrace": "匯出 trace",
+  "session.exportTraceLocal": "僅本機匯出",
+  "session.exportTraceUpload": "匯出並上傳…",
+  "session.exportTraceUploadTitle": "匯出並上傳對話 trace？",
+  "session.exportTraceUploadMessage":
+    "將執行不帶 --local 的 grok trace，CLI 可能透過網路將對話封存上傳至 xAI。僅在你確實要分享此對話 trace 以供支援或除錯時繼續。",
+  "session.exportTraceUploadConfirm": "匯出並上傳",
   "session.exportTraceDone": "對話 trace 已儲存",
+  "session.exportTraceUploaded": "對話 trace 已儲存並上傳",
+  "session.exportTraceDoneLocalFallback":
+    "對話 trace 已儲存至本機（CLI 未回報上傳成功 — 若預期遠端上傳，請檢查 telemetry / 網路）。",
   "session.exportTraceFail": "trace 匯出失敗",
+  "session.exportTraceUploadFail": "trace 上傳失敗",
   "session.exportTraceNoAgent":
     "尚未關聯 agent 對話。請先發起對話，再匯出 trace。",
+  "session.exportTraceNoCli":
+    "找不到 Grok Build CLI。請先安裝或在設定中設定 CLI 路徑後再試。",
+  "session.exportTraceTimeout":
+    "等待 grok trace 逾時。可重試，或改用「僅本機匯出」以更快產生封存。",
   "session.traces": "Traces",
   "session.tracesTitle": "最近的 trace",
   "session.tracesDesc":
     "對話 trace 匯出的本機歷史（僅路徑）。可在資料夾中顯示或複製路徑 — 大檔不會載入應用。",
   "session.tracesEmpty":
-    "還沒有匯出過 trace。在有 agent 對話的選單中選擇「匯出 trace」。",
+    "還沒有匯出過 trace。在有 agent 對話的選單中選擇「僅本機匯出」或「匯出並上傳」。",
   "session.tracesReveal": "在資料夾中顯示",
   "session.tracesCopyPath": "複製路徑",
   "session.tracesCopied": "路徑已複製",
@@ -2103,6 +2117,7 @@ export const zhTW: Record<MessageKey, string> = {
   "session.tracesClearConfirmAction": "全部清除",
   "session.tracesSearch": "依標題或路徑篩選…",
   "session.tracesEmptyFilter": "沒有相符的 trace",
+  "session.tracesUploadedBadge": "已上傳",
   "session.exportBundle": "匯出完整診斷包…",
   "session.exportBundleDone": "診斷包已儲存",
   "session.exportBundleFail": "診斷包匯出失敗",

@@ -6,9 +6,11 @@ import {
   filterTraceHistory,
   formatTraceHistorySize,
   loadTraceHistory,
+  parseTraceExportUploadedFlag,
   parseTraceHistory,
   parseTraceHistoryEntry,
   parseTraceHistorySizeBytes,
+  parseTraceHistoryUploaded,
   pushTraceHistory,
   recordTraceExport,
   removeTraceHistory,
@@ -88,6 +90,29 @@ describe("parseTraceHistoryEntry", () => {
         sizeBytes: Number.NaN,
       }),
     ).not.toHaveProperty("sizeBytes");
+  });
+
+  it("keeps uploaded=true only (paths still; no secrets)", () => {
+    expect(
+      parseTraceHistoryEntry({
+        sessionId: "s",
+        path: "/p",
+        uploaded: true,
+        remote_url: "https://evil.example/secret",
+      }),
+    ).toEqual({
+      sessionId: "s",
+      path: "/p",
+      exportedAt: new Date(0).toISOString(),
+      uploaded: true,
+    });
+    expect(
+      parseTraceHistoryEntry({
+        sessionId: "s",
+        path: "/p",
+        uploaded: false,
+      }),
+    ).not.toHaveProperty("uploaded");
   });
 
   it("rejects missing sessionId or path", () => {
@@ -275,6 +300,24 @@ describe("load / save / recordTraceExport", () => {
     expect(loadTraceHistory(storage)[0]!.path).toBe("/tmp/new.tar.gz");
   });
 
+  it("recordTraceExport can note uploaded=true without URLs", () => {
+    const storage = memStorage();
+    const next = recordTraceExport(
+      {
+        sessionId: "sess-up",
+        path: "/tmp/up.tar.gz",
+        uploaded: true,
+      },
+      storage,
+    );
+    expect(next[0]).toMatchObject({
+      sessionId: "sess-up",
+      path: "/tmp/up.tar.gz",
+      uploaded: true,
+    });
+    expect(JSON.stringify(next[0])).not.toMatch(/https?:\/\//);
+  });
+
   it("load returns empty when storage throws or missing", () => {
     expect(loadTraceHistory(memStorage())).toEqual([]);
     const bad: TraceHistoryStorage = {
@@ -330,5 +373,56 @@ describe("display helpers", () => {
     expect(parseTraceHistorySizeBytes(100)).toBe(100);
     expect(parseTraceHistorySizeBytes("99.7")).toBe(99);
     expect(parseTraceHistorySizeBytes(-3)).toBeUndefined();
+  });
+});
+
+describe("parseTraceExportUploadedFlag / parseTraceHistoryUploaded", () => {
+  it("parseTraceHistoryUploaded coerces common truthy forms", () => {
+    expect(parseTraceHistoryUploaded(true)).toBe(true);
+    expect(parseTraceHistoryUploaded(false)).toBe(false);
+    expect(parseTraceHistoryUploaded("true")).toBe(true);
+    expect(parseTraceHistoryUploaded("no")).toBe(false);
+    expect(parseTraceHistoryUploaded(undefined)).toBeUndefined();
+  });
+
+  it("detects host result uploaded flag", () => {
+    expect(
+      parseTraceExportUploadedFlag({
+        ok: true,
+        path: "/tmp/a.tar.gz",
+        uploaded: true,
+      }),
+    ).toBe(true);
+    expect(
+      parseTraceExportUploadedFlag({
+        ok: true,
+        path: "/tmp/a.tar.gz",
+        localOnly: true,
+      }),
+    ).toBe(false);
+  });
+
+  it("detects CLI-style remote info without requiring secrets", () => {
+    expect(
+      parseTraceExportUploadedFlag({
+        session_id: "abc",
+        status: "exported",
+        local_path: "/tmp/x.tar.gz",
+      }),
+    ).toBe(false);
+    expect(
+      parseTraceExportUploadedFlag({
+        session_id: "abc",
+        status: "uploaded",
+        local_path: "/tmp/x.tar.gz",
+      }),
+    ).toBe(true);
+    expect(
+      parseTraceExportUploadedFlag({
+        local_path: "/tmp/x.tar.gz",
+        remote_url: "https://example.invalid/t",
+      }),
+    ).toBe(true);
+    expect(parseTraceExportUploadedFlag(null)).toBe(false);
   });
 });

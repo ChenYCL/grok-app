@@ -52,6 +52,7 @@ See `docs/llm-wiki/release.md`.
 - **Agent dashboard multi-select stop**: row checkboxes + select-all visible; **Stop selected (n)** only targets stoppable rows among the selection (idle/error ignored); pure `filterStoppableAmongSelection` + tests; live tool title shown more prominently; status as permission/busy badges — no invented metrics
 - **Trace history manage** (Traces modal + Settings → Runtime): search by title/path, remove row, clear all (in-app confirm), optional file size from host `stat` after export — still paths only, never loads archive contents
 - **Memory browser filters** (Settings → Agent): free-text search + kind chips (all / global / workspace / session / index / other) with counts, empty-filter state + clear; preview redact and clear-all workspace memory unchanged
+- **Trace export + upload** (`grok trace`): session menu **Export local** (default, `--local`) vs **Export and upload…** with in-app confirm (network to xAI); host `session_trace_export` `localOnly` (default true); history may note `uploaded=true` when CLI reports remote info (paths only, no URLs/secrets); actionable failure toasts
 
 #### Permissions / CLI
 - **CLI `--permission-mode` alignment**: pure App policy / YOLO / plan-mode map (`default` · `acceptEdits` · `auto` · `dontAsk` · `bypassPermissions` · `plan`); spawn pins top-level `--permission-mode` (+ agent `--always-approve` for YOLO); Settings shows CLI label + advanced mode selector; product **Auto** policy
@@ -83,6 +84,7 @@ See `docs/llm-wiki/release.md`.
 - **Agent**：禁用内置工具（芯片 + 自由列表 → `--disallowed-tools`；与禁用网页搜索并存；更改 soft-respawn）；可选 profile 路径（`--agent-profile`）；**config.toml 安全查看**（脱敏 monospaced、分区跳转、复制路径/在文件夹显示/外部编辑器；非自由写入）
 - **系统**：**Agent serve** 启停（设置 → 运行时 → 连接）；**手机镜像写入审计**（本地 ring、无密钥/URL）；**Trace 历史管理**（搜索/移除/清空确认/可选大小）；任务面板子代理 **WT/cwd** 标记；**Agent 仪表盘** 状态/搜索/项目筛选
 - **系统**：**Agent serve** 启停（设置 → 运行时 → 连接）；**手机镜像写入审计**（本地 ring、无密钥/URL）；**Trace 历史管理**（搜索/移除/清空确认/可选大小）；任务面板子代理 **WT/cwd** 标记；**Agent 仪表盘** 状态/搜索/项目筛选、多选停止（仅可停止行）、工具标题与权限徽章
+- **系统**：**Agent serve** 启停（设置 → 运行时 → 连接）；**手机镜像写入审计**（本地 ring、无密钥/URL）；**Trace 历史管理**（搜索/移除/清空确认/可选大小）；**Trace 本地导出 vs 导出并上传**（确认弹窗、`localOnly` 默认 true、历史上传标记、失败 toast）；任务面板子代理 **WT/cwd** 标记；**Agent 仪表盘** 状态/搜索/项目筛选
 - **计划**：**请求修改** 可选修订说明；计划历史搜索/决策筛选、清空确认、会话仍在时可打开
 - **扩展/市场**：目录插件详情面板（描述/版本/组件徽章 + 安装/重装）；安装失败行内重试；已安装 provides 结构化摘要；**Hooks 试跑/覆盖**（校验 stdin JSON、合成 dry-run 活动、结果筛选与清空确认；不执行 shell hook）
 - **扩展/市场**：目录插件详情面板（描述/版本/组件徽章 + 安装/重装）；安装失败行内重试；已安装 provides 结构化摘要；**MCP 状态弹层**（搜索/状态芯片/计数/刷新/复制名称与目标）

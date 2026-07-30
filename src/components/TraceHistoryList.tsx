@@ -37,6 +37,8 @@ export type TraceHistoryListLabels = {
   searchPlaceholder: string;
   /** Optional column/section aria */
   listAria?: string;
+  /** Optional badge when history notes uploaded=true (no URLs). */
+  uploadedBadge?: string;
 };
 
 export type TraceHistoryListProps = {
@@ -265,6 +267,14 @@ export function TraceHistoryList({
                     {sizeLabel ? (
                       <span className="trace-history-row__size">
                         {sizeLabel}
+                      </span>
+                    ) : null}
+                    {e.uploaded && labels.uploadedBadge ? (
+                      <span
+                        className="trace-history-row__uploaded"
+                        title={labels.uploadedBadge}
+                      >
+                        {labels.uploadedBadge}
                       </span>
                     ) : null}
                     {e.exportedAt ? (

@@ -1874,18 +1874,26 @@ pub async fn export_session_bundle(
     .await
 }
 
-/// Export the Grok Build CLI session trace (`grok trace <agent_id> --local`).
-/// Resolves `agent_session_id` from live/parked runtime or session meta.
-/// Opens a save dialog for the `.tar.gz` and reveals the file.
+/// Export the Grok Build CLI session trace (`grok trace <agent_id>`).
+///
+/// - `local_only` (default **true** for safety): when true, pass `--local` so the
+///   CLI only writes a local archive. When false, omit `--local` so the CLI may
+///   also upload (network).
+/// - Resolves `agent_session_id` from live/parked runtime or session meta.
+/// - Opens a save dialog for the `.tar.gz` and reveals the file.
+/// - Returns `{ ok, path, sizeBytes?, uploaded?, localOnly }` — never secrets/URLs.
 #[tauri::command]
 pub async fn session_trace_export(
     session_id: String,
+    local_only: Option<bool>,
     mgr: State<'_, Arc<SessionManager>>,
 ) -> Result<serde_json::Value, String> {
     let sid = session_id.trim().to_string();
     if sid.is_empty() {
         return Err("session id is empty".into());
     }
+    // Default true: local-only is the safe path; upload requires explicit false.
+    let local_only = local_only.unwrap_or(true);
 
     // Prefer live/parked agent id (may be newer than the index), then meta.
     let live_agent = mgr.diagnostic_runtime_for(&sid).and_then(|rt| {
@@ -1897,17 +1905,53 @@ pub async fn session_trace_export(
     });
 
     tauri::async_runtime::spawn_blocking(move || {
-        session_trace_export_blocking(&sid, live_agent.as_deref())
+        session_trace_export_blocking(&sid, live_agent.as_deref(), local_only)
     })
     .await
     .map_err(|e| e.to_string())?
 }
 
 const TRACE_EXPORT_TIMEOUT_SECS: u64 = 90;
+/// Upload may need extra time for network transfer of large archives.
+const TRACE_EXPORT_UPLOAD_TIMEOUT_SECS: u64 = 180;
+
+/// Detect whether CLI JSON indicates a remote upload completed.
+/// Presence-only: never returns or stores remote URLs / tokens.
+fn trace_cli_reports_uploaded(cli_json: Option<&serde_json::Value>) -> bool {
+    let Some(v) = cli_json else {
+        return false;
+    };
+    if v.get("uploaded").and_then(|x| x.as_bool()) == Some(true) {
+        return true;
+    }
+    let status = v
+        .get("status")
+        .and_then(|s| s.as_str())
+        .unwrap_or("")
+        .trim()
+        .to_ascii_lowercase();
+    if matches!(
+        status.as_str(),
+        "uploaded" | "upload_complete" | "upload-complete" | "ok_uploaded"
+    ) {
+        return true;
+    }
+    // Remote info keys — truthy non-empty string means upload path ran.
+    // Do not persist these values (may contain URLs).
+    for key in ["remote_url", "upload_url", "share_url", "object_path"] {
+        if let Some(s) = v.get(key).and_then(|x| x.as_str()) {
+            if !s.trim().is_empty() {
+                return true;
+            }
+        }
+    }
+    false
+}
 
 fn session_trace_export_blocking(
     session_id: &str,
     live_agent_session_id: Option<&str>,
+    local_only: bool,
 ) -> Result<serde_json::Value, String> {
     let meta = store::load_sessions_index()
         .into_iter()
@@ -1942,14 +1986,14 @@ fn session_trace_export_blocking(
     let tmp = std::env::temp_dir().join(format!("grok-trace-{short}-{stamp}.tar.gz"));
     let tmp_s = tmp.to_string_lossy().to_string();
 
-    let args = vec![
-        "trace".to_string(),
-        agent_sid.clone(),
-        "--local".to_string(),
-        "-o".to_string(),
-        tmp_s.clone(),
-        "--json".to_string(),
-    ];
+    // `grok trace <id>` uploads unless `--local`. Default App path keeps `--local`.
+    let mut args = vec!["trace".to_string(), agent_sid.clone()];
+    if local_only {
+        args.push("--local".to_string());
+    }
+    args.push("-o".to_string());
+    args.push(tmp_s.clone());
+    args.push("--json".to_string());
 
     let (tx, rx) = std::sync::mpsc::channel();
     std::thread::spawn(move || {
@@ -1963,15 +2007,18 @@ fn session_trace_export_blocking(
         let _ = tx.send(cmd.output());
     });
 
-    let output = match rx.recv_timeout(std::time::Duration::from_secs(TRACE_EXPORT_TIMEOUT_SECS)) {
+    let timeout_secs = if local_only {
+        TRACE_EXPORT_TIMEOUT_SECS
+    } else {
+        TRACE_EXPORT_UPLOAD_TIMEOUT_SECS
+    };
+    let output = match rx.recv_timeout(std::time::Duration::from_secs(timeout_secs)) {
         Ok(Ok(o)) => o,
         Ok(Err(e)) => {
             return Err(store::redact_text(&format!("Failed to run grok trace: {e}")));
         }
         Err(_) => {
-            return Err(format!(
-                "grok trace timed out after {TRACE_EXPORT_TIMEOUT_SECS}s"
-            ));
+            return Err(format!("grok trace timed out after {timeout_secs}s"));
         }
     };
 
@@ -1993,17 +2040,19 @@ fn session_trace_export_blocking(
             .collect());
     }
 
+    let cli_json = serde_json::from_str::<serde_json::Value>(&stdout).ok();
+    // Only claim uploaded when we intentionally allowed network upload.
+    let uploaded = !local_only && trace_cli_reports_uploaded(cli_json.as_ref());
+
     // Prefer the archive we asked for; fall back to JSON local_path from CLI.
     let archive = if tmp.is_file() {
         tmp
     } else {
-        let from_json = serde_json::from_str::<serde_json::Value>(&stdout)
-            .ok()
-            .and_then(|v| {
-                v.get("local_path")
-                    .and_then(|p| p.as_str())
-                    .map(|s| std::path::PathBuf::from(s))
-            });
+        let from_json = cli_json.as_ref().and_then(|v| {
+            v.get("local_path")
+                .and_then(|p| p.as_str())
+                .map(std::path::PathBuf::from)
+        });
         match from_json {
             Some(p) if p.is_file() => p,
             _ => {
@@ -2022,13 +2071,21 @@ fn session_trace_export_blocking(
 
     let suggested = format!("grok-trace-{short}.tar.gz");
     // Already on a blocking thread (session_trace_export spawns us).
-    save_and_reveal_file_blocking(
+    let mut result = save_and_reveal_file_blocking(
         archive,
         "Save session trace",
         &suggested,
         "Trace archive",
         &["tar.gz".into(), "gz".into(), "tgz".into()],
-    )
+    )?;
+    if let Some(obj) = result.as_object_mut() {
+        obj.insert("localOnly".into(), serde_json::json!(local_only));
+        // Paths-only history may note uploaded=true; never attach remote URLs.
+        if uploaded {
+            obj.insert("uploaded".into(), serde_json::json!(true));
+        }
+    }
+    Ok(result)
 }
 
 /// Save dialog + reveal. Always runs rfd/copy on a blocking thread so async

@@ -2,7 +2,8 @@
  * Recent session-trace export history (localStorage ring buffer).
  *
  * Stores **paths only** — never file contents (traces can be large).
- * Entries: { sessionId, title?, path, exportedAt, sizeBytes? }, max ~20, newest first.
+ * Entries: { sessionId, title?, path, exportedAt, sizeBytes?, uploaded? }, max ~20, newest first.
+ * Optional `uploaded=true` notes that the CLI reported a remote upload — never URLs/secrets.
  */
 
 export type TraceHistoryEntry = {
@@ -12,6 +13,11 @@ export type TraceHistoryEntry = {
   exportedAt: string;
   /** Optional file size in bytes (from host stat after export). Never load contents. */
   sizeBytes?: number;
+  /**
+   * True when export used network upload and CLI JSON indicated remote success.
+   * Omitted / false for local-only exports. Never stores remote URLs or tokens.
+   */
+  uploaded?: boolean;
 };
 
 export const TRACE_HISTORY_STORAGE_KEY = "grok.traceHistory";
@@ -74,6 +80,54 @@ export function parseTraceHistorySizeBytes(raw: unknown): number | undefined {
 }
 
 /**
+ * Coerce a host/CLI-style boolean for the optional `uploaded` history flag.
+ * Only true when clearly true — never invents upload from paths alone.
+ */
+export function parseTraceHistoryUploaded(raw: unknown): boolean | undefined {
+  if (raw === true || raw === 1) return true;
+  if (raw === false || raw === 0) return false;
+  if (typeof raw === "string") {
+    const s = raw.trim().toLowerCase();
+    if (s === "true" || s === "1" || s === "yes") return true;
+    if (s === "false" || s === "0" || s === "no") return false;
+  }
+  return undefined;
+}
+
+/**
+ * Pure: did host / CLI JSON report a successful remote upload?
+ * Accepts the `session_trace_export` result or a subset of CLI `--json` fields.
+ * Presence of remote *info* (not the URL values) may set uploaded — callers must
+ * not persist those URL strings into history.
+ */
+export function parseTraceExportUploadedFlag(raw: unknown): boolean {
+  if (!raw || typeof raw !== "object") return false;
+  const o = raw as Record<string, unknown>;
+
+  const direct = parseTraceHistoryUploaded(o.uploaded);
+  if (direct === true) return true;
+  if (direct === false) return false;
+
+  const status =
+    typeof o.status === "string" ? o.status.trim().toLowerCase() : "";
+  if (
+    status === "uploaded" ||
+    status === "upload_complete" ||
+    status === "upload-complete" ||
+    status === "ok_uploaded"
+  ) {
+    return true;
+  }
+
+  // Remote info keys: non-empty string means upload path reported success.
+  for (const key of ["remote_url", "upload_url", "share_url", "object_path"]) {
+    const v = o[key];
+    if (typeof v === "string" && v.trim()) return true;
+  }
+  return false;
+}
+
+/**
  * Human-readable size for list rows. Returns null when unknown.
  * Pure — no i18n (B/KB/MB/GB are universal unit abbreviations).
  */
@@ -122,12 +176,16 @@ export function parseTraceHistoryEntry(raw: unknown): TraceHistoryEntry | null {
     parseTraceHistorySizeBytes(o.sizeBytes) ??
     parseTraceHistorySizeBytes(o.size_bytes);
 
+  // Only persist true — omit false to keep history lean / local-default.
+  const uploaded = parseTraceHistoryUploaded(o.uploaded) === true;
+
   return {
     sessionId,
     path,
     exportedAt,
     ...(title ? { title } : {}),
     ...(sizeBytes != null ? { sizeBytes } : {}),
+    ...(uploaded ? { uploaded: true } : {}),
   };
 }
 
@@ -278,11 +336,17 @@ export function recordTraceExport(
     exportedAt?: string;
     /** Optional size from host `stat` after export — never file contents. */
     sizeBytes?: number | null;
+    /**
+     * Optional: CLI/host reported remote upload success.
+     * Paths-only history still; never store URLs or secrets here.
+     */
+    uploaded?: boolean | null;
   },
   storage: TraceHistoryStorage = defaultStorage(),
   max = TRACE_HISTORY_MAX,
 ): TraceHistoryEntry[] {
   const sizeBytes = parseTraceHistorySizeBytes(input.sizeBytes ?? undefined);
+  const uploaded = input.uploaded === true;
   const entry: TraceHistoryEntry = {
     sessionId: input.sessionId,
     path: input.path,
@@ -291,6 +355,7 @@ export function recordTraceExport(
       ? { title: String(input.title).trim().slice(0, 200) }
       : {}),
     ...(sizeBytes != null ? { sizeBytes } : {}),
+    ...(uploaded ? { uploaded: true } : {}),
   };
   const next = pushTraceHistory(loadTraceHistory(storage, max), entry, max);
   saveTraceHistory(next, storage, max);

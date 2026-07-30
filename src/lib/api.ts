@@ -1508,6 +1508,18 @@ export interface SupportBundleResult {
   sizeBytes?: number;
 }
 
+/**
+ * Result of `session_trace_export`.
+ * History may record `uploaded` when the CLI reported a remote upload —
+ * never secrets or remote URLs.
+ */
+export interface SessionTraceExportResult extends SupportBundleResult {
+  /** Host default is true (`grok trace --local`). */
+  localOnly?: boolean;
+  /** True only when export allowed network upload and CLI reported remote info. */
+  uploaded?: boolean;
+}
+
 /** Build a redacted support zip (Doctor + logs) and save via native dialog. */
 export async function exportSupportBundle(doctorJson?: string | null) {
   return invoke<SupportBundleResult>("export_support_bundle", {
@@ -1527,12 +1539,19 @@ export async function exportSessionBundle(sessionId: string) {
 }
 
 /**
- * Export Grok Build CLI session trace via `grok trace <agentSessionId> --local`.
+ * Export Grok Build CLI session trace via `grok trace <agentSessionId>`.
  * Requires a linked agent session id. Opens a native save dialog for the `.tar.gz`.
+ *
+ * @param localOnly default **true** (safe): pass `--local`. Set false to omit
+ *   `--local` so the CLI may upload over the network.
  */
-export async function sessionTraceExport(sessionId: string) {
-  return invoke<SupportBundleResult>("session_trace_export", {
+export async function sessionTraceExport(
+  sessionId: string,
+  opts?: { localOnly?: boolean },
+) {
+  return invoke<SessionTraceExportResult>("session_trace_export", {
     sessionId,
+    localOnly: opts?.localOnly ?? true,
   });
 }
 

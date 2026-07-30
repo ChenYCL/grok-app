@@ -5077,6 +5077,7 @@ export function SettingsPage({
                         cancel: t("common.cancel"),
                         searchPlaceholder: t("session.tracesSearch"),
                         listAria: t("session.tracesTitle"),
+                        uploadedBadge: t("session.tracesUploadedBadge"),
                       }}
                       onCopied={() =>
                         showSettingsToast(t("session.tracesCopied"), 2000)
