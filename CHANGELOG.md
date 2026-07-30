@@ -11,6 +11,10 @@ See `docs/llm-wiki/release.md`.
 
 ## [Unreleased]
 
+### Added
+
+- **Workspace memory browser** (Settings → General → Agent): list / preview / search on-disk Grok Build memory under `{GROK_HOME}/memory` (MEMORY.md, session logs, index); single-file delete with in-app confirm; empty state when experimental memory is off. Host `memory_list` / `memory_delete_file` with path-scope safety + preview redaction
+
 ## [0.2.2] - 2026-07-30
 
 > **Highlight:** In-app auto-update works for signed builds; calmer sidebar multi-select; PATH / busy / media reliability.
