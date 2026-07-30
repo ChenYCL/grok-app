@@ -61,6 +61,7 @@ import {
 } from "@/components/icons";
 import { formatMessageTime, formatRelativeTime } from "@/lib/accountUi";
 import type { MessageTimeFormat } from "@/lib/messageTimeFormatPref";
+import { computeMessageLength } from "@/lib/messageLength";
 import { formatTokenCount } from "@/lib/contextUsage";
 import type { ModelOption } from "@/lib/grokCatalog";
 import { useStickToBottom } from "@/hooks/useStickToBottom";
@@ -453,6 +454,11 @@ export interface ConversationThreadProps {
    */
   messageTimeFormat?: MessageTimeFormat;
   /**
+   * When true, show muted word/char count under finished assistant replies.
+   * Default false (Settings → Appearance → Show reply length).
+   */
+  showReplyLength?: boolean;
+  /**
    * When true, completed assistant replies that look like JSON get a
    * copyable structured-output panel (session JSON Schema mode).
    */
@@ -498,6 +504,7 @@ export function ConversationThread({
   onOpenModifiedPath: _onOpenModifiedPath,
   showTimestamps = true,
   messageTimeFormat = "absolute",
+  showReplyLength = false,
   structuredOutputActive = false,
   structuredOutputLabels,
 }: ConversationThreadProps) {
@@ -1566,6 +1573,24 @@ export function ConversationThread({
                         copiedLabel={structuredOutputLabels.copied}
                       />
                     ) : null}
+                    {(() => {
+                      if (m.streaming || !showReplyLength) return null;
+                      const stats = computeMessageLength(m.content);
+                      if (stats.empty) return null;
+                      const words = String(stats.words);
+                      const chars = String(stats.chars);
+                      return (
+                        <div
+                          className="lobe-chat-reply-length"
+                          aria-label={tr("message.replyLengthAria", {
+                            words,
+                            chars,
+                          })}
+                        >
+                          {tr("message.replyLength", { words, chars })}
+                        </div>
+                      );
+                    })()}
                   </div>
                 }
                 belowMessage={

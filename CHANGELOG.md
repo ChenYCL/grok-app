@@ -19,6 +19,7 @@ See `docs/llm-wiki/release.md`.
 - **Chat reading width** · **chat / code font size** (independent) · **tool auto-collapse** (finished tools; separate from Collapse all activity)
 - **Regenerate last reply** with optional model pick
 - **File changes chip** (count / +a −d → Resources Changes)
+- **Optional assistant reply length** (Settings → Appearance → Show reply length; word/char under finished replies; off by default)
 
 #### Sessions & sidebar
 - **Duplicate chat** (one-click journal clone; no worktree dialog — use **Fork…** for optional worktree restore)
@@ -42,6 +43,8 @@ See `docs/llm-wiki/release.md`.
 
 - **输入与对话**：队列编辑/排序、跨会话提示历史、阅读宽度与字号、工具默认折叠、重新生成可选模型、变更芯片
 - **会话与侧栏**：复制会话（vs 分叉+worktree）、便签、静音、插件目录、按天归档、日期分组、项目颜色、复制 Markdown、导出 HTML
+- **输入与对话**：队列编辑/排序、跨会话提示历史、阅读宽度与字号、工具默认折叠、重新生成可选模型、变更芯片、可选助手回复字数
+- **会话与侧栏**：复制会话（vs 分叉+worktree）、便签、静音、插件目录、按天归档、日期分组、项目颜色、复制 Markdown
 - **任务与系统**：子代理树、Stop all 可跳过确认、计划历史、忙碌角标、镜像写权限等
 
 **中文 · 修复**

@@ -48,6 +48,11 @@ import {
   saveMessageTimestampsPref,
 } from "@/lib/messageTimestampsPref";
 import {
+  loadShowReplyLengthPref,
+  saveShowReplyLengthPref,
+  SHOW_REPLY_LENGTH_CHANGE_EVENT,
+} from "@/lib/messageLength";
+import {
   loadMessageTimeFormatPref,
   MESSAGE_TIME_FORMAT_CHANGE_EVENT,
   saveMessageTimeFormatPref,
@@ -911,6 +916,9 @@ export default function App() {
   );
   const [showMessageTimestamps, setShowMessageTimestamps] = useState(() =>
     loadMessageTimestampsPref(localStorage),
+  );
+  const [showReplyLength, setShowReplyLength] = useState(() =>
+    loadShowReplyLengthPref(localStorage),
   );
   const [messageTimeFormat, setMessageTimeFormat] = useState<MessageTimeFormat>(
     () => loadMessageTimeFormatPref(localStorage),
@@ -2847,6 +2855,21 @@ export default function App() {
     window.addEventListener(MESSAGE_TIMESTAMPS_CHANGE_EVENT, onChange);
     return () =>
       window.removeEventListener(MESSAGE_TIMESTAMPS_CHANGE_EVENT, onChange);
+  }, []);
+
+  // Assistant reply word/char count under bubble (localStorage; Settings event).
+  useEffect(() => {
+    const onChange = (ev: Event) => {
+      const detail = (ev as CustomEvent<unknown>).detail;
+      if (typeof detail === "boolean") {
+        setShowReplyLength(detail);
+        return;
+      }
+      setShowReplyLength(loadShowReplyLengthPref(localStorage));
+    };
+    window.addEventListener(SHOW_REPLY_LENGTH_CHANGE_EVENT, onChange);
+    return () =>
+      window.removeEventListener(SHOW_REPLY_LENGTH_CHANGE_EVENT, onChange);
   }, []);
 
   // Message time format absolute/relative (localStorage; Settings change event).
@@ -12107,6 +12130,11 @@ export default function App() {
             saveMessageTimestampsPref(v, localStorage);
             setShowMessageTimestamps(v);
           }}
+          showReplyLength={showReplyLength}
+          onShowReplyLength={(v) => {
+            saveShowReplyLengthPref(v, localStorage);
+            setShowReplyLength(v);
+          }}
           messageTimeFormat={messageTimeFormat}
           onMessageTimeFormat={(v) => {
             saveMessageTimeFormatPref(v, localStorage);
@@ -14292,6 +14320,7 @@ export default function App() {
             findActive={showChatFind ? chatFindActive : null}
             showTimestamps={showMessageTimestamps}
             messageTimeFormat={messageTimeFormat}
+            showReplyLength={showReplyLength}
             structuredOutputActive={!!sessionJsonSchema}
             structuredOutputLabels={{
               title: tr("message.structuredJson"),
