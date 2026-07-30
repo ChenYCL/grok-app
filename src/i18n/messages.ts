@@ -1283,6 +1283,9 @@ const en = {
   "settings.showReplyLength": "Show reply length",
   "settings.showReplyLengthDesc":
     "Show a muted word and character count under finished assistant replies. Off by default.",
+  "settings.showUsageEstimates": "Show usage estimates",
+  "settings.showUsageEstimatesDesc":
+    "In the context chip menu, show optional USD cost estimates when a model is in the crude rates table. Always labeled as an estimate — not billing. On by default.",
   "settings.messageTimeFormat": "Timestamp format",
   "settings.messageTimeFormatDesc":
     "Absolute shows weekday and clock time; relative shows \"2 minutes ago\" and refreshes about once a minute.",
@@ -2032,6 +2035,14 @@ const en = {
   "context.knownInput": "Input tokens",
   "context.knownOutput": "Output tokens",
   "context.knownTotal": "Total / context",
+  "context.costSection": "Cost estimate",
+  "context.costInput": "Est. input $",
+  "context.costOutput": "Est. output $",
+  "context.costTotal": "Est. total $",
+  "context.costDisclaimer":
+    "Rough estimate from a static rates table — not an invoice. Unknown models show tokens only.",
+  "context.costUnavailable":
+    "No rate table for this model — showing tokens only.",
   "activity.running": "Running",
   "activity.done": "Done",
   "activity.failed": "Failed",
@@ -4038,6 +4049,9 @@ const zh: Record<MessageKey, string> = {
   "settings.showReplyLength": "显示回复长度",
   "settings.showReplyLengthDesc":
     "在已完成的助手回复下方显示词数与字数。默认关闭。",
+  "settings.showUsageEstimates": "显示用量估算",
+  "settings.showUsageEstimatesDesc":
+    "在上下文芯片菜单中，当模型在粗略费率表内时显示可选美元费用估算。始终标注为估算，非账单。默认开启。",
   "settings.messageTimeFormat": "时间戳格式",
   "settings.messageTimeFormatDesc":
     "绝对时间显示星期与钟点；相对时间为「2 分钟前」，约每分钟刷新。",
@@ -4763,6 +4777,13 @@ const zh: Record<MessageKey, string> = {
   "context.knownInput": "输入 tokens",
   "context.knownOutput": "输出 tokens",
   "context.knownTotal": "合计 / 上下文",
+  "context.costSection": "费用估算",
+  "context.costInput": "估算输入 $",
+  "context.costOutput": "估算输出 $",
+  "context.costTotal": "估算合计 $",
+  "context.costDisclaimer":
+    "基于静态费率表的粗估，不是账单。未知模型仅显示 token。",
+  "context.costUnavailable": "当前模型无费率表 — 仅显示 token。",
   "activity.running": "进行中",
   "activity.done": "完成",
   "activity.failed": "失败",

@@ -18,6 +18,7 @@ See `docs/llm-wiki/release.md`.
 - **Chat width** · **chat / code font** · **tool auto-collapse** · **transcript filter** (hide tool steps)
 - **Regenerate** with optional model pick · **assistant word count** (optional)
 - **File-changes chip** (session edits) · **git dirty chip** (workspace porcelain)
+- **Context usage / cost estimates**: chip menu shows input/output/total when known; optional crude USD estimate from a static rates table (never invoice-grade); Settings → Appearance → **Show usage estimates** (on by default, with disclaimer)
 
 #### Sessions & sidebar
 - **Duplicate chat** (vs **Fork…** + optional worktree) · **session notes** · **mute** · **unread dot**
@@ -37,7 +38,7 @@ See `docs/llm-wiki/release.md`.
 
 **中文 · 新增（按域）**
 
-- **输入/对话**：队列、高度、提示历史、宽度字号、工具折叠/过滤、重生选模型、字数、变更芯片、工作区 dirty 芯片
+- **输入/对话**：队列、高度、提示历史、宽度字号、工具折叠/过滤、重生选模型、字数、变更芯片、工作区 dirty 芯片、上下文用量/费用粗估
 - **会话/侧栏**：复制 vs 分叉、便签、静音、未读点、HTML 导出、按天归档、日期分组、项目色、j/k 导航
 - **外观/壳**：主题定时、跟随系统语言、忙碌退出确认、托盘角标
 
