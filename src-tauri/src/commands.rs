@@ -7474,6 +7474,42 @@ pub async fn agents_catalog(
     ))
 }
 
+/// Read allowlisted agent-home config.toml keys (redact-on-read preview).
+#[tauri::command]
+pub async fn agent_config_edit_get(
+) -> Result<crate::agent_config_edit::AgentConfigEditSnapshot, String> {
+    tauri::async_runtime::spawn_blocking(crate::agent_config_edit::load_agent_config_edit)
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+/// Write allowlisted keys into agent-home config.toml only (independent mode).
+/// Soft-respawns so the next turn reloads profile.
+#[tauri::command]
+pub async fn agent_config_edit_set(
+    app: tauri::AppHandle,
+    mgr: State<'_, Arc<SessionManager>>,
+    permission_mode: Option<String>,
+    yolo: Option<bool>,
+    subagents_enabled: Option<bool>,
+    memory_enabled: Option<bool>,
+) -> Result<crate::agent_config_edit::AgentConfigEditSnapshot, String> {
+    let patch = crate::agent_config_edit::AgentConfigEditPatch {
+        permission_mode,
+        yolo,
+        subagents_enabled,
+        memory_enabled,
+    };
+    let result = tauri::async_runtime::spawn_blocking(move || {
+        crate::agent_config_edit::save_agent_config_edit(&patch)
+    })
+    .await
+    .map_err(|e| e.to_string())??;
+
+    mgr.soft_respawn_with_reason(&app, "agent_config_edit").await;
+    Ok(result)
+}
+
 // marketplace
 // ── Plugin marketplace (`grok plugin marketplace …` + available list) ───────
 //

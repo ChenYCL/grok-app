@@ -2721,6 +2721,42 @@ export async function permissionRulesSet(rules: PermissionRules) {
   return invoke<PermissionRules>("permission_rules_set", { rules });
 }
 
+/** Allowlisted agent-home config.toml section edit (independent GROK_HOME only). */
+export type AgentConfigEditSnapshot = {
+  path: string;
+  grokHome: string;
+  mode: string;
+  writable: boolean;
+  fileExists: boolean;
+  permissionMode?: string | null;
+  yolo?: boolean | null;
+  subagentsEnabled?: boolean | null;
+  memoryEnabled?: boolean | null;
+  redactedPreview: string;
+};
+
+export type AgentConfigEditPatch = {
+  permissionMode?: string | null;
+  yolo?: boolean | null;
+  subagentsEnabled?: boolean | null;
+  memoryEnabled?: boolean | null;
+};
+
+export async function agentConfigEditGet(): Promise<AgentConfigEditSnapshot> {
+  return invoke<AgentConfigEditSnapshot>("agent_config_edit_get");
+}
+
+export async function agentConfigEditSet(
+  patch: AgentConfigEditPatch,
+): Promise<AgentConfigEditSnapshot> {
+  return invoke<AgentConfigEditSnapshot>("agent_config_edit_set", {
+    permissionMode: patch.permissionMode ?? null,
+    yolo: patch.yolo ?? null,
+    subagentsEnabled: patch.subagentsEnabled ?? null,
+    memoryEnabled: patch.memoryEnabled ?? null,
+  });
+}
+
 export interface VoiceSessionState {
   active: boolean;
   mode?: string;
