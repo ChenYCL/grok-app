@@ -455,6 +455,10 @@ import {
   sanitizeExtraRules,
 } from "@/lib/sessionExtraRules";
 import {
+  MAX_AGENT_TURNS_CAP,
+  normalizeMaxAgentTurns,
+} from "@/lib/sessionMaxAgentTurns";
+import {
   collectUserPromptHistory,
   filterPromptHistory,
   shouldHandlePromptHistoryKey,
@@ -647,6 +651,7 @@ import {
   IconShield,
   IconCheck,
   IconList,
+  IconListNumbers,
   IconPlan,
   IconActivity,
   IconFileDiff,
@@ -863,6 +868,8 @@ interface SessionRow {
   pluginDirs?: string[];
   /** Per-session extra rules (`--rules`). */
   extraRules?: string | null;
+  /** Per-session max agent turns (`--max-turns`); null = inherit global. */
+  maxAgentTurns?: number | null;
 }
 
 /** Normalize sessions_list / create rows into sidebar SessionRow shape. */
@@ -903,6 +910,7 @@ function mapSessionListRow(
     jsonSchema?: string | null;
     pluginDirs?: string[] | null;
     extraRules?: string | null;
+    maxAgentTurns?: number | null;
   },
 ): SessionRow {
   const schema =
@@ -915,6 +923,9 @@ function mapSessionListRow(
   const extraRules = sanitizeExtraRules(
     typeof x.extraRules === "string" ? x.extraRules : null,
   );
+  const maxAgentTurns = normalizeMaxAgentTurns(
+    typeof x.maxAgentTurns === "number" ? x.maxAgentTurns : null,
+  );
   return {
     ...normalizeSessionRow(x),
     modelId: x.modelId ?? null,
@@ -922,6 +933,7 @@ function mapSessionListRow(
     jsonSchema: schema,
     pluginDirs,
     extraRules: extraRules || null,
+    maxAgentTurns,
   };
 }
 
@@ -1069,6 +1081,13 @@ export default function App() {
     title: string;
   } | null>(null);
   const [sessionRulesDraft, setSessionRulesDraft] = useState("");
+  /** Per-session max agent turns editor (`--max-turns`). */
+  const [sessionMaxTurnsTarget, setSessionMaxTurnsTarget] = useState<{
+    id: string;
+    title: string;
+  } | null>(null);
+  /** Draft as string so empty input means inherit global. */
+  const [sessionMaxTurnsDraft, setSessionMaxTurnsDraft] = useState("");
   const [notifySound, setNotifySound] = useState(() =>
     loadNotifySoundPref(localStorage),
   );
@@ -6386,6 +6405,75 @@ export default function App() {
       setSessionRulesDraft("");
       closeSessionRulesModal();
       setToast(tr("session.rulesCleared"));
+      window.setTimeout(() => setToast(null), 3200);
+    } catch (e) {
+      setLocalError(String(e));
+    }
+  };
+
+  /** Open GlassModal to edit per-session max agent turns (`grok --max-turns`). */
+  const openSessionMaxTurns = (s: SessionRow) => {
+    setCtxMenu(null);
+    const n = normalizeMaxAgentTurns(s.maxAgentTurns);
+    setSessionMaxTurnsDraft(n != null ? String(n) : "");
+    setSessionMaxTurnsTarget({
+      id: s.id,
+      title: s.title || tr("session.untitled"),
+    });
+  };
+
+  const closeSessionMaxTurnsModal = () => {
+    setSessionMaxTurnsTarget(null);
+    setSessionMaxTurnsDraft("");
+  };
+
+  const saveSessionMaxTurnsModal = async () => {
+    const target = sessionMaxTurnsTarget;
+    if (!target) return;
+    const next = normalizeMaxAgentTurns(sessionMaxTurnsDraft);
+    try {
+      if (!api.isTauri()) {
+        setLocalError(tr("error.needTauri"));
+        return;
+      }
+      const saved = await api.sessionSetMaxAgentTurns(target.id, next);
+      const stored = normalizeMaxAgentTurns(
+        typeof saved.maxAgentTurns === "number" ? saved.maxAgentTurns : next,
+      );
+      setSessions((list) =>
+        list.map((row) =>
+          row.id === target.id ? { ...row, maxAgentTurns: stored } : row,
+        ),
+      );
+      closeSessionMaxTurnsModal();
+      setToast(
+        stored != null
+          ? tr("session.maxTurnsSaved")
+          : tr("session.maxTurnsCleared"),
+      );
+      window.setTimeout(() => setToast(null), 3200);
+    } catch (e) {
+      setLocalError(String(e));
+    }
+  };
+
+  const clearSessionMaxTurnsModal = async () => {
+    const target = sessionMaxTurnsTarget;
+    if (!target) return;
+    try {
+      if (!api.isTauri()) {
+        setLocalError(tr("error.needTauri"));
+        return;
+      }
+      await api.sessionSetMaxAgentTurns(target.id, null);
+      setSessions((list) =>
+        list.map((row) =>
+          row.id === target.id ? { ...row, maxAgentTurns: null } : row,
+        ),
+      );
+      setSessionMaxTurnsDraft("");
+      closeSessionMaxTurnsModal();
+      setToast(tr("session.maxTurnsCleared"));
       window.setTimeout(() => setToast(null), 3200);
     } catch (e) {
       setLocalError(String(e));
@@ -17796,6 +17884,95 @@ export default function App() {
       </GlassModal>
 
       <GlassModal
+        open={!!sessionMaxTurnsTarget}
+        onClose={closeSessionMaxTurnsModal}
+        title={tr("session.maxTurnsTitle")}
+        size="sm"
+        closeLabel={tr("common.close")}
+        wrapBody
+        className="session-max-turns-modal"
+        footer={
+          <div className="session-max-turns-modal__actions">
+            {sessionMaxTurnsTarget &&
+            (sessionMaxTurnsDraft.trim() ||
+              sessions.some(
+                (row) =>
+                  row.id === sessionMaxTurnsTarget.id &&
+                  normalizeMaxAgentTurns(row.maxAgentTurns) != null,
+              )) ? (
+              <button
+                type="button"
+                className="btn btn--ghost"
+                onClick={() => {
+                  void clearSessionMaxTurnsModal();
+                }}
+              >
+                {tr("session.maxTurnsClear")}
+              </button>
+            ) : null}
+            <button
+              type="button"
+              className="btn btn--ghost"
+              onClick={closeSessionMaxTurnsModal}
+            >
+              {tr("common.cancel")}
+            </button>
+            <button
+              type="button"
+              className="btn btn--primary"
+              onClick={() => {
+                void saveSessionMaxTurnsModal();
+              }}
+            >
+              {tr("common.save")}
+            </button>
+          </div>
+        }
+      >
+        <p className="session-max-turns-modal__hint">
+          {tr("session.maxTurnsHint", {
+            max: String(MAX_AGENT_TURNS_CAP),
+            global:
+              maxAgentTurns > 0
+                ? String(maxAgentTurns)
+                : tr("session.maxTurnsGlobalUnlimited"),
+          })}
+        </p>
+        {sessionMaxTurnsTarget ? (
+          <p
+            className="session-max-turns-modal__session"
+            title={sessionMaxTurnsTarget.title}
+          >
+            {sessionMaxTurnsTarget.title}
+          </p>
+        ) : null}
+        <input
+          className="session-max-turns-modal__input"
+          type="number"
+          min={0}
+          max={MAX_AGENT_TURNS_CAP}
+          step={1}
+          value={sessionMaxTurnsDraft}
+          onChange={(e) => {
+            const raw = e.target.value;
+            if (!raw.trim()) {
+              setSessionMaxTurnsDraft("");
+              return;
+            }
+            const n = Number(raw);
+            if (!Number.isFinite(n)) return;
+            const clamped = Math.min(
+              MAX_AGENT_TURNS_CAP,
+              Math.max(0, Math.round(n)),
+            );
+            setSessionMaxTurnsDraft(String(clamped));
+          }}
+          placeholder={tr("session.maxTurnsPlaceholder")}
+          aria-label={tr("session.maxTurnsTitle")}
+        />
+      </GlassModal>
+
+      <GlassModal
         open={!!exportMdTarget}
         onClose={() => {
           if (exportMdBusy) return;
@@ -18674,6 +18851,17 @@ export default function App() {
                 label: tr("session.rules"),
                 icon: <IconList size={16} />,
                 onClick: () => openSessionRules(s),
+              },
+              {
+                id: "session-max-turns",
+                label:
+                  normalizeMaxAgentTurns(s.maxAgentTurns) != null
+                    ? tr("session.maxTurnsCount", {
+                        n: String(normalizeMaxAgentTurns(s.maxAgentTurns)),
+                      })
+                    : tr("session.maxTurns"),
+                icon: <IconListNumbers size={16} />,
+                onClick: () => openSessionMaxTurns(s),
               },
               {
                 id: "rename",

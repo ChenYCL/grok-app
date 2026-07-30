@@ -256,6 +256,9 @@ pub struct SpawnOptions {
     pub plugin_dirs: Vec<String>,
     /// Per-session extra rules → top-level `grok --rules <TEXT>` (before `agent`).
     pub extra_rules: Option<String>,
+    /// Per-session max turns override → top-level `grok --max-turns N`.
+    /// When set (after normalize), wins over `AppSettings.max_agent_turns`.
+    pub max_agent_turns: Option<u32>,
 }
 
 /// Pure helper: top-level CLI args for session extra rules (before `agent`).
@@ -400,6 +403,11 @@ impl MaxTurnsSpawnSpec {
 
 pub fn normalize_max_agent_turns(raw: Option<u32>) -> Option<u32> {
     MaxTurnsSpawnSpec::from_setting(raw).map(|s| s.turns)
+}
+
+/// Session override wins when set (1–200); else global settings. 0 / None = inherit.
+pub fn resolve_max_agent_turns(session: Option<u32>, global: Option<u32>) -> Option<u32> {
+    normalize_max_agent_turns(session).or_else(|| normalize_max_agent_turns(global))
 }
 
 pub fn max_turns_cli_args(raw: Option<u32>) -> Option<Vec<String>> {
@@ -614,7 +622,11 @@ impl AcpClient {
             .filter(|s| !s.is_empty())
             .unwrap_or(settings.sandbox_profile.as_str());
         let sandbox = SandboxSpawnSpec::from_setting(sandbox_raw);
-        let max_turns = MaxTurnsSpawnSpec::from_setting(settings.max_agent_turns);
+        // Session override if set (1–200); else global Settings. 0 / None = inherit.
+        let max_turns = MaxTurnsSpawnSpec::from_setting(resolve_max_agent_turns(
+            opts.max_agent_turns,
+            settings.max_agent_turns,
+        ));
         let preferred_agent = AgentSpawnSpec::from_setting(&settings.preferred_agent);
         let agent_profile =
             crate::agents_catalog::normalize_agent_profile_path(&settings.agent_profile_path);
@@ -3521,6 +3533,47 @@ mod extra_rules_spawn_tests {
             args,
             vec!["--rules".to_string(), "Always write tests".to_string()]
         );
+    }
+}
+
+#[cfg(test)]
+mod max_turns_spawn_tests {
+    use super::*;
+
+    #[test]
+    fn normalize_clamps_and_clears_zero() {
+        assert_eq!(normalize_max_agent_turns(None), None);
+        assert_eq!(normalize_max_agent_turns(Some(0)), None);
+        assert_eq!(normalize_max_agent_turns(Some(1)), Some(1));
+        assert_eq!(normalize_max_agent_turns(Some(50)), Some(50));
+        assert_eq!(normalize_max_agent_turns(Some(200)), Some(200));
+        assert_eq!(normalize_max_agent_turns(Some(999)), Some(200));
+    }
+
+    #[test]
+    fn resolve_prefers_session_over_global() {
+        assert_eq!(
+            resolve_max_agent_turns(Some(40), Some(10)),
+            Some(40)
+        );
+        assert_eq!(resolve_max_agent_turns(None, Some(10)), Some(10));
+        assert_eq!(resolve_max_agent_turns(Some(0), Some(10)), Some(10));
+        assert_eq!(resolve_max_agent_turns(None, None), None);
+        assert_eq!(resolve_max_agent_turns(Some(0), Some(0)), None);
+        assert_eq!(
+            resolve_max_agent_turns(Some(999), Some(10)),
+            Some(200)
+        );
+    }
+
+    #[test]
+    fn cli_args_pair() {
+        assert_eq!(
+            max_turns_cli_args(Some(25)),
+            Some(vec!["--max-turns".into(), "25".into()])
+        );
+        assert!(max_turns_cli_args(None).is_none());
+        assert!(max_turns_cli_args(Some(0)).is_none());
     }
 }
 

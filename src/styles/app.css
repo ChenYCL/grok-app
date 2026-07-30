@@ -16057,6 +16057,44 @@ div.composer__input:empty::before {
   margin-top: 4px;
 }
 
+/* Per-session max agent turns (`--max-turns`) */
+.session-max-turns-modal__hint {
+  margin: 0 0 8px;
+  font-size: 13px;
+  color: var(--text-secondary);
+  line-height: 1.45;
+}
+.session-max-turns-modal__session {
+  margin: 0 0 10px;
+  font-size: 12px;
+  color: var(--text-tertiary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.session-max-turns-modal__input {
+  width: 100%;
+  font-size: 14px;
+  line-height: 1.4;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.1));
+  background: var(--bg-elevated, rgba(0, 0, 0, 0.2));
+  color: var(--text-primary);
+  box-sizing: border-box;
+}
+.session-max-turns-modal__input:focus {
+  outline: none;
+  border-color: color-mix(in srgb, var(--accent) 50%, transparent);
+}
+.session-max-turns-modal__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+  margin-top: 4px;
+}
+
 /* Status modal */
 .status-modal__dl {
   margin: 0;

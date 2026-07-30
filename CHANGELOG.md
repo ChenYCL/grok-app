@@ -26,6 +26,7 @@ See `docs/llm-wiki/release.md`.
 - **Duplicate chat** (vs **Fork…** + optional worktree) · **session notes** · **mute** · **unread dot**
 - **Resume with code restore** — open an existing chat on a clean sibling git worktree at HEAD (session menu + command palette; dirty tree refused; same safety as Fork → restore code)
 - **Session rules** (per-chat `grok --rules`; session menu → GlassModal; soft-respawn on change)
+- **Session max agent turns** (per-chat `grok --max-turns` override; session menu → number input; 0/empty inherits global Settings 1–200; soft-respawn on change)
 - **Export** Markdown copy + **HTML export** · **bulk archive by age** · **date groups** · **project color**
 - **Sidebar j/k** navigation (when list focused)
 - **CLI-aligned worktrees**: create under `~/.grok/worktrees/<repo>/<name>` by default (matches `grok --worktree`); optional sibling layout; start-ref validation; sidebar **CLI** vs **WT** badge
@@ -65,6 +66,8 @@ See `docs/llm-wiki/release.md`.
 - **输入/对话**：队列、高度、提示历史、宽度字号、工具折叠/过滤、重生选模型、字数、变更芯片、工作区 dirty 芯片、会话变更审阅（+/− · 并排 diff · j/k）、结构化 JSON 回复面板（校验/复制/导出）、上下文用量/费用粗估
 - **会话/侧栏**：复制 vs 分叉、恢复对话并还原代码（干净 worktree）、便签、会话规则（`--rules`）、静音、未读点、HTML 导出、按天归档、日期分组、项目色、j/k 导航、CLI 对齐 worktree（默认 `~/.grok/worktrees`、侧栏 CLI/WT 标记）
 - **外观/壳**：主题定时、跟随系统语言、忙碌退出确认、托盘角标、快捷键冲突面板（录制警告 + 重置冲突项）
+- **会话/侧栏**：复制 vs 分叉、恢复对话并还原代码（干净 worktree）、便签、会话规则（`--rules`）、会话最大轮次（`--max-turns` 覆盖；空/0 继承全局）、静音、未读点、HTML 导出、按天归档、日期分组、项目色、j/k 导航、CLI 对齐 worktree（默认 `~/.grok/worktrees`、侧栏 CLI/WT 标记）
+- **外观/壳**：主题定时、跟随系统语言、忙碌退出确认、托盘角标
 - **Agent**：禁用内置工具（芯片 + 自由列表 → `--disallowed-tools`；与禁用网页搜索并存；更改 soft-respawn）；可选 profile 路径（`--agent-profile`）
 - **系统**：**Agent serve** 在设置 → 运行时 → 连接启停（掩码密钥 + 启动时复制连接 URL）
 - **Agent 仪表盘筛选**：状态芯片（计数）、会话搜索、项目筛选、无匹配空态；「全部停止忙碌」仍针对全局可停止会话（非仅筛选结果）

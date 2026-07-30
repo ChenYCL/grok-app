@@ -162,6 +162,10 @@ pub struct SessionMeta {
     /// Empty / unset → no flag. Soft-respawn reloads on change.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub extra_rules: Option<String>,
+    /// Optional per-session `--max-turns` override (1–200).
+    /// `None` / 0 → inherit global `AppSettings.max_agent_turns`. Soft-respawn on change.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_agent_turns: Option<u32>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1015,6 +1019,7 @@ pub fn create_session(
         is_worktree_session: false,
         plugin_dirs: Vec::new(),
         extra_rules: None,
+        max_agent_turns: None,
     };
     let mut list = load_sessions_index();
     list.insert(0, meta.clone());
@@ -1249,6 +1254,27 @@ pub fn set_session_extra_rules(
     Ok(clone)
 }
 
+/// Set or clear per-session max agent turns (`grok --max-turns` on next spawn).
+///
+/// Pass `None` or `0` to clear (inherit global settings). Values are clamped to 1–200
+/// via [`crate::acp_client::normalize_max_agent_turns`].
+pub fn set_session_max_agent_turns(
+    id: &str,
+    max_agent_turns: Option<u32>,
+) -> Result<SessionMeta, String> {
+    let normalized = crate::acp_client::normalize_max_agent_turns(max_agent_turns);
+    let mut list = load_sessions_index();
+    let s = list
+        .iter_mut()
+        .find(|s| s.id == id)
+        .ok_or_else(|| "session not found".to_string())?;
+    s.max_agent_turns = normalized;
+    s.updated_at = Utc::now();
+    let clone = s.clone();
+    save_sessions_index(&list)?;
+    Ok(clone)
+}
+
 /// Bind (or clear) a session's project folder. Used to attach orphan / legacy
 /// chats to a project added later. Clearing (`None`) returns the chat to
 /// "其他会话"; agent cwd still uses the general workspace directory.
@@ -1397,6 +1423,7 @@ pub fn fork_session(
     meta.is_worktree_session = source.is_worktree_session;
     meta.plugin_dirs = source.plugin_dirs.clone();
     meta.extra_rules = source.extra_rules.clone();
+    meta.max_agent_turns = source.max_agent_turns;
     meta.updated_at = Utc::now();
     update_session_meta(&meta)?;
 
@@ -2228,6 +2255,7 @@ mod tests {
             is_worktree_session: false,
             plugin_dirs: Vec::new(),
             extra_rules: None,
+            max_agent_turns: None,
         }
     }
 
@@ -2245,6 +2273,32 @@ mod tests {
         let long = "x".repeat(EXTRA_RULES_MAX_CHARS + 10);
         let capped = sanitize_extra_rules(Some(long)).expect("capped");
         assert_eq!(capped.chars().count(), EXTRA_RULES_MAX_CHARS);
+    }
+
+    #[test]
+    fn session_max_agent_turns_default_none_and_normalize() {
+        let raw = r#"{"id":"s1","projectId":null,"title":"t","agentSessionId":null,"createdAt":"2020-01-01T00:00:00Z","updatedAt":"2020-01-01T00:00:00Z"}"#;
+        let m: SessionMeta =
+            serde_json::from_str(raw).expect("legacy session without maxAgentTurns");
+        assert!(m.max_agent_turns.is_none());
+        assert_eq!(crate::acp_client::normalize_max_agent_turns(None), None);
+        assert_eq!(crate::acp_client::normalize_max_agent_turns(Some(0)), None);
+        assert_eq!(
+            crate::acp_client::normalize_max_agent_turns(Some(50)),
+            Some(50)
+        );
+        assert_eq!(
+            crate::acp_client::normalize_max_agent_turns(Some(1)),
+            Some(1)
+        );
+        assert_eq!(
+            crate::acp_client::normalize_max_agent_turns(Some(200)),
+            Some(200)
+        );
+        assert_eq!(
+            crate::acp_client::normalize_max_agent_turns(Some(999)),
+            Some(200)
+        );
     }
 
     #[test]
@@ -2386,6 +2440,7 @@ mod tests {
                 is_worktree_session: false,
                 plugin_dirs: Vec::new(),
                 extra_rules: None,
+                max_agent_turns: None,
             },
         );
         write_json(&sessions_index_file(), &sessions).expect("seed sessions");

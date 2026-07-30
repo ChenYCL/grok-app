@@ -860,6 +860,8 @@ export async function sessionsList() {
       pluginDirs?: string[];
       /** Per-session extra rules (`--rules`); empty/omit = none */
       extraRules?: string | null;
+      /** Per-session max agent turns (`--max-turns`); null/omit = inherit global */
+      maxAgentTurns?: number | null;
     }>
   >("sessions_list");
 }
@@ -876,6 +878,28 @@ export async function sessionSetExtraRules(
   }>("session_set_extra_rules", {
     id,
     extraRules: extraRules && extraRules.trim() ? extraRules : null,
+  });
+}
+
+/**
+ * Set or clear per-session max agent turns (`grok --max-turns`).
+ * Pass `null` / `0` to inherit global Settings. Soft-respawns live agent.
+ */
+export async function sessionSetMaxAgentTurns(
+  id: string,
+  maxAgentTurns: number | null,
+) {
+  const n =
+    typeof maxAgentTurns === "number" && maxAgentTurns > 0
+      ? Math.min(200, Math.max(1, Math.round(maxAgentTurns)))
+      : null;
+  return invoke<{
+    id: string;
+    title: string;
+    maxAgentTurns?: number | null;
+  }>("session_set_max_agent_turns", {
+    id,
+    maxAgentTurns: n,
   });
 }
 
