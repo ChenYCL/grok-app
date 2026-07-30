@@ -455,6 +455,200 @@ export function availablePluginMetaLine(plugin: AvailablePluginLike): string {
   return parts.join(" · ");
 }
 
+/** Stable list / error-map key for an available (or catalog-matched) plugin. */
+export function availablePluginRowKey(
+  plugin: Pick<AvailablePluginLike, "name" | "marketplace">,
+): string {
+  return `${(plugin.marketplace ?? "").trim()}:${plugin.name}`;
+}
+
+/** Component chip kinds for marketplace detail UI. */
+export type PluginComponentBadgeKind =
+  | "skills"
+  | "hooks"
+  | "agents"
+  | "mcp";
+
+/**
+ * Badge for skills / hooks / agents / MCP.
+ * `label` is a short English technical token for tests / meta lines;
+ * UI maps `kind` through i18n.
+ */
+export type PluginComponentBadge = {
+  kind: PluginComponentBadgeKind;
+  label: string;
+  /** Present for skills (and optionally others) when a count is known. */
+  count?: number | null;
+};
+
+export type AvailablePluginDetailModel = {
+  name: string;
+  description: string | null;
+  marketplace: string | null;
+  version: string | null;
+  /** Normalized version label without a leading `v`, or null. */
+  versionLabel: string | null;
+  status: string;
+  skillCount: number | null;
+  hasHooks: boolean;
+  hasAgents: boolean;
+  hasMcp: boolean;
+  badges: PluginComponentBadge[];
+  metaLine: string;
+  /** Qualified source for `plugin install` (`name@marketplace` when known). */
+  installSource: string;
+  /**
+   * True when CLI status is not installable "available"
+   * (e.g. already installed, or unknown non-available).
+   */
+  isInstalled: boolean;
+};
+
+function normalizeVersionLabel(version: string | null | undefined): string | null {
+  const ver = (version ?? "").trim();
+  if (!ver) return null;
+  return ver.replace(/^v/i, "");
+}
+
+/**
+ * Format skill/hooks/agents/MCP badges from counts/flags.
+ * Omits zero / false components.
+ */
+export function formatComponentBadges(
+  plugin: Pick<
+    AvailablePluginLike,
+    "skillCount" | "hasHooks" | "hasAgents" | "hasMcp"
+  >,
+): PluginComponentBadge[] {
+  const badges: PluginComponentBadge[] = [];
+  const skills = Number(plugin.skillCount ?? 0);
+  if (skills > 0) {
+    badges.push({
+      kind: "skills",
+      label: `${skills} skill${skills === 1 ? "" : "s"}`,
+      count: skills,
+    });
+  }
+  if (plugin.hasHooks) {
+    badges.push({ kind: "hooks", label: "hooks" });
+  }
+  if (plugin.hasAgents) {
+    badges.push({ kind: "agents", label: "agents" });
+  }
+  if (plugin.hasMcp) {
+    badges.push({ kind: "mcp", label: "MCP" });
+  }
+  return badges;
+}
+
+/** Pure detail model for marketplace catalog / available rows. */
+export function availablePluginDetailModel(
+  plugin: AvailablePluginLike,
+): AvailablePluginDetailModel {
+  const status = (plugin.status ?? "").trim() || "available";
+  const st = status.toLowerCase();
+  const isInstalled = st !== "" && st !== "available";
+  const marketplace = (plugin.marketplace ?? "").trim() || null;
+  const version = (plugin.version ?? "").trim() || null;
+  const description = (plugin.description ?? "").trim() || null;
+  const badges = formatComponentBadges(plugin);
+  return {
+    name: plugin.name,
+    description,
+    marketplace,
+    version,
+    versionLabel: normalizeVersionLabel(version),
+    status,
+    skillCount:
+      typeof plugin.skillCount === "number" ? plugin.skillCount : null,
+    hasHooks: !!plugin.hasHooks,
+    hasAgents: !!plugin.hasAgents,
+    hasMcp: !!plugin.hasMcp,
+    badges,
+    metaLine: availablePluginMetaLine(plugin),
+    installSource: marketplaceQualifiedInstallSource(
+      plugin.name,
+      marketplace,
+    ),
+    isInstalled,
+  };
+}
+
+/**
+ * Build a detail model from an installed plugin when catalog/provides data exists.
+ * Returns null when there is nothing useful beyond the name.
+ */
+export function installedPluginDetailModel(plugin: {
+  name: string;
+  version?: string | null;
+  marketplace?: string | null;
+  status?: string | null;
+  description?: string | null;
+  provides?: {
+    skills?: number | null;
+    agents?: number | null;
+    hooks?: boolean | null;
+    mcpServers?: number | null;
+  } | null;
+}): AvailablePluginDetailModel | null {
+  const name = (plugin.name ?? "").trim();
+  if (!name) return null;
+  const provides = plugin.provides;
+  const skillCount =
+    typeof provides?.skills === "number" ? provides.skills : null;
+  const hasHooks = !!provides?.hooks;
+  const hasAgents = (Number(provides?.agents ?? 0) || 0) > 0;
+  const hasMcp = (Number(provides?.mcpServers ?? 0) || 0) > 0;
+  const description = (plugin.description ?? "").trim() || null;
+  const marketplace = (plugin.marketplace ?? "").trim() || null;
+  const version = (plugin.version ?? "").trim() || null;
+  const hasMeta =
+    !!description ||
+    !!marketplace ||
+    !!version ||
+    (skillCount ?? 0) > 0 ||
+    hasHooks ||
+    hasAgents ||
+    hasMcp;
+  if (!hasMeta) return null;
+  return availablePluginDetailModel({
+    name,
+    status: (plugin.status ?? "").trim() || "installed",
+    marketplace,
+    description,
+    version,
+    skillCount,
+    hasHooks,
+    hasAgents,
+    hasMcp,
+  });
+}
+
+/** Set last install/update error for a plugin row key (immutable). */
+export function setPluginRowError(
+  errors: Record<string, string>,
+  rowKey: string,
+  message: string,
+): Record<string, string> {
+  const key = (rowKey ?? "").trim();
+  const msg = (message ?? "").trim();
+  if (!key || !msg) return errors;
+  if (errors[key] === msg) return errors;
+  return { ...errors, [key]: msg };
+}
+
+/** Clear last install/update error for a plugin row key (immutable). */
+export function clearPluginRowError(
+  errors: Record<string, string>,
+  rowKey: string,
+): Record<string, string> {
+  const key = (rowKey ?? "").trim();
+  if (!key || !(key in errors)) return errors;
+  const next = { ...errors };
+  delete next[key];
+  return next;
+}
+
 /** Cap large catalogs for UI rendering; prefer filtered lists before calling. */
 export function takePluginsPage<T>(plugins: T[], limit = 40): T[] {
   const n = Math.max(0, Math.floor(limit));

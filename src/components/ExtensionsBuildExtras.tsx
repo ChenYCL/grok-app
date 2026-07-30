@@ -4,7 +4,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import * as api from "@/lib/api";
-import { createT, type Locale } from "@/i18n";
+import { createT, type Locale, type MessageKey } from "@/i18n";
 import { GlassModal } from "@/components/GlassModal";
 import {
   IconExternalLink,
@@ -31,7 +31,10 @@ import {
   removeAvailablePluginFromCache,
 } from "@/lib/marketplaceCatalogCache";
 import {
+  availablePluginDetailModel,
   availablePluginMetaLine,
+  availablePluginRowKey,
+  clearPluginRowError,
   enrichAvailableFromComponents,
   filterAvailableByMarketplace,
   filterAvailablePlugins,
@@ -42,11 +45,14 @@ import {
   marketplaceSourceLabel,
   normalizeMarketplaceAddSource,
   pickDefaultMarketplaceFilter,
+  setPluginRowError,
   sortAvailablePluginsByName,
   sortMarketplaceSourcesByName,
   XAI_OFFICIAL_MARKETPLACE,
+  type AvailablePluginDetailModel,
   type AvailablePluginLike,
   type MarketplaceSourceLike,
+  type PluginComponentBadgeKind,
 } from "@/lib/pluginMarketplace";
 
 export type ExtensionsBuildExtrasProps = {
@@ -57,6 +63,21 @@ export type ExtensionsBuildExtrasProps = {
   mode?: "hooks" | "market" | "all";
   /** After plugin install — parent can refresh plugins list. */
   onPluginsChanged?: () => void;
+  /**
+   * Installed plugin names (and optional marketplace) so catalog rows can
+   * offer Reinstall and match “already installed” state.
+   */
+  installedPlugins?: Array<{
+    name: string;
+    marketplace?: string | null;
+  }>;
+};
+
+const BADGE_LABEL_KEY: Record<PluginComponentBadgeKind, MessageKey> = {
+  skills: "ext.market.badge.skills",
+  hooks: "ext.market.badge.hooks",
+  agents: "ext.market.badge.agents",
+  mcp: "ext.market.badge.mcp",
 };
 
 const PAGE_SIZE = 40;
@@ -111,6 +132,7 @@ export function ExtensionsBuildExtras({
   cliFound = true,
   mode = "all",
   onPluginsChanged,
+  installedPlugins = [],
 }: ExtensionsBuildExtrasProps) {
   const tr = useMemo(() => createT(locale), [locale]);
   const cliMissing = !cliFound;
@@ -139,8 +161,51 @@ export function ExtensionsBuildExtras({
   const [removeSource, setRemoveSource] = useState<MarketplaceSourceLike | null>(
     null,
   );
+  /** Catalog row opened in the detail drawer (rich panel, not install stub). */
+  const [detailPlugin, setDetailPlugin] = useState<AvailablePluginLike | null>(
+    null,
+  );
+  /** Confirm step after Install / Reinstall from detail or row. */
   const [installTarget, setInstallTarget] =
     useState<AvailablePluginLike | null>(null);
+  /** Per-plugin last install/update error (row + detail Retry). */
+  const [installErrors, setInstallErrors] = useState<Record<string, string>>(
+    {},
+  );
+
+  const installedNameSet = useMemo(() => {
+    const set = new Set<string>();
+    for (const p of installedPlugins) {
+      const n = (p.name ?? "").trim().toLowerCase();
+      if (n) set.add(n);
+    }
+    return set;
+  }, [installedPlugins]);
+
+  const isPluginInstalled = useCallback(
+    (p: AvailablePluginLike) => {
+      const detail = availablePluginDetailModel(p);
+      if (detail.isInstalled) return true;
+      return installedNameSet.has(p.name.trim().toLowerCase());
+    },
+    [installedNameSet],
+  );
+
+  const badgeLabel = useCallback(
+    (kind: PluginComponentBadgeKind, count?: number | null) => {
+      const base = tr(BADGE_LABEL_KEY[kind]);
+      if (kind === "skills" && typeof count === "number" && count > 0) {
+        return tr("ext.market.badge.skillsCount", { n: String(count) });
+      }
+      return base;
+    },
+    [tr],
+  );
+
+  const detailModel: AvailablePluginDetailModel | null = useMemo(
+    () => (detailPlugin ? availablePluginDetailModel(detailPlugin) : null),
+    [detailPlugin],
+  );
 
   const loadHooks = useCallback(async () => {
     if (!api.isTauri()) {
@@ -374,42 +439,66 @@ export function ExtensionsBuildExtras({
     }
   };
 
-  const confirmInstall = async () => {
-    if (!installTarget) return;
+  const runInstall = async (
+    target: AvailablePluginLike,
+    opts?: { closeConfirm?: boolean },
+  ) => {
+    const rowKey = availablePluginRowKey(target);
     const source = marketplaceQualifiedInstallSource(
-      installTarget.name,
-      installTarget.marketplace,
+      target.name,
+      target.marketplace,
     );
-    setMarketBusy(`inst:${installTarget.name}`);
+    setMarketBusy(`inst:${rowKey}`);
     setMarketError(null);
     try {
       const res = await api.pluginInstall(source);
       if (res && typeof res === "object" && "ok" in res && res.ok === false) {
-        setMarketError(
-          (res as { error?: string }).error?.trim() || tr("ext.market.error"),
-        );
+        const err =
+          (res as { error?: string; message?: string }).error?.trim() ||
+          (res as { message?: string }).message?.trim() ||
+          tr("ext.market.error");
+        setInstallErrors((prev) => setPluginRowError(prev, rowKey, err));
+        if (opts?.closeConfirm !== false) setInstallTarget(null);
         return;
       }
-      removeAvailablePluginFromCache(
-        installTarget.name,
-        installTarget.marketplace,
-      );
+      setInstallErrors((prev) => clearPluginRowError(prev, rowKey));
+      removeAvailablePluginFromCache(target.name, target.marketplace);
       setAvailable((prev) =>
         prev.filter(
           (p) =>
             !(
-              p.name === installTarget.name &&
-              (p.marketplace ?? "") === (installTarget.marketplace ?? "")
+              p.name === target.name &&
+              (p.marketplace ?? "") === (target.marketplace ?? "")
             ),
         ),
       );
       setInstallTarget(null);
+      setDetailPlugin(null);
       onPluginsChanged?.();
     } catch (e) {
-      setMarketError(String(e));
+      const err = String(e);
+      setInstallErrors((prev) => setPluginRowError(prev, rowKey, err));
+      if (opts?.closeConfirm !== false) setInstallTarget(null);
     } finally {
       setMarketBusy(null);
     }
+  };
+
+  const confirmInstall = async () => {
+    if (!installTarget) return;
+    await runInstall(installTarget);
+  };
+
+  const retryInstall = async (target: AvailablePluginLike) => {
+    await runInstall(target, { closeConfirm: true });
+  };
+
+  const openDetail = (p: AvailablePluginLike) => {
+    setDetailPlugin(p);
+  };
+
+  const requestInstall = (p: AvailablePluginLike) => {
+    setInstallTarget(p);
   };
 
   const scopeLabel = (scope: string) => {
@@ -633,39 +722,114 @@ export function ExtensionsBuildExtras({
               <p className="ext-empty">{tr("ext.market.availableEmpty")}</p>
             ) : (
               <ul className="ext-list ext-market-browse__list">
-                {visibleAvailable.map((p) => (
-                  <li
-                    key={`${p.marketplace ?? ""}:${p.name}`}
-                    className="ext-item"
-                  >
-                    <div className="ext-item__head">
-                      <span className="ext-item__name">{p.name}</span>
-                      {p.marketplace ? (
-                        <span className="ext-badge ext-badge--plugin">
-                          {p.marketplace}
-                        </span>
-                      ) : null}
-                    </div>
-                    {p.description ? (
-                      <div className="ext-item__desc">{p.description}</div>
-                    ) : null}
-                    <div className="ext-item__meta">
-                      {availablePluginMetaLine(p)}
-                    </div>
-                    <div className="ext-item__actions">
+                {visibleAvailable.map((p) => {
+                  const rowKey = availablePluginRowKey(p);
+                  const busy =
+                    marketBusy === `inst:${rowKey}` ||
+                    marketBusy === `inst:${p.name}`;
+                  const rowError = installErrors[rowKey] ?? null;
+                  const installed = isPluginInstalled(p);
+                  const badges = availablePluginDetailModel(p).badges;
+                  return (
+                    <li
+                      key={rowKey}
+                      className={
+                        "ext-item ext-item--clickable" +
+                        (detailPlugin &&
+                        availablePluginRowKey(detailPlugin) === rowKey
+                          ? " is-selected"
+                          : "")
+                      }
+                    >
                       <button
                         type="button"
-                        className="btn btn--solid btn--sm"
-                        disabled={!!marketBusy || cliMissing}
-                        onClick={() => setInstallTarget(p)}
+                        className="ext-item__hit"
+                        onClick={() => openDetail(p)}
+                        aria-label={tr("ext.market.viewDetailsAria", {
+                          name: p.name,
+                        })}
                       >
-                        {marketBusy === `inst:${p.name}`
-                          ? tr("ext.market.installing")
-                          : tr("ext.market.install")}
+                        <div className="ext-item__head">
+                          <span className="ext-item__name">{p.name}</span>
+                          {p.marketplace ? (
+                            <span className="ext-badge ext-badge--plugin">
+                              {p.marketplace}
+                            </span>
+                          ) : null}
+                          {installed ? (
+                            <span className="ext-badge ext-badge--muted">
+                              {tr("ext.market.installedBadge")}
+                            </span>
+                          ) : null}
+                        </div>
+                        {p.description ? (
+                          <div className="ext-item__desc">{p.description}</div>
+                        ) : null}
+                        <div className="ext-item__meta">
+                          {availablePluginMetaLine(p)}
+                        </div>
+                        {badges.length > 0 ? (
+                          <div
+                            className="ext-component-badges"
+                            aria-hidden="true"
+                          >
+                            {badges.map((b) => (
+                              <span
+                                key={b.kind}
+                                className={
+                                  "ext-badge ext-badge--component ext-badge--component-" +
+                                  b.kind
+                                }
+                              >
+                                {badgeLabel(b.kind, b.count)}
+                              </span>
+                            ))}
+                          </div>
+                        ) : null}
                       </button>
-                    </div>
-                  </li>
-                ))}
+                      {rowError ? (
+                        <div
+                          className="ext-item__row-error"
+                          role="alert"
+                        >
+                          <p className="ext-item__row-error-text">{rowError}</p>
+                          <button
+                            type="button"
+                            className="btn btn--ghost btn--sm"
+                            disabled={!!marketBusy || cliMissing}
+                            onClick={() => void retryInstall(p)}
+                          >
+                            {busy
+                              ? tr("ext.market.installing")
+                              : tr("ext.market.retry")}
+                          </button>
+                        </div>
+                      ) : null}
+                      <div className="ext-item__actions">
+                        <button
+                          type="button"
+                          className="btn btn--ghost btn--sm"
+                          disabled={!!marketBusy}
+                          onClick={() => openDetail(p)}
+                        >
+                          {tr("ext.market.viewDetails")}
+                        </button>
+                        <button
+                          type="button"
+                          className="btn btn--solid btn--sm"
+                          disabled={!!marketBusy || cliMissing}
+                          onClick={() => requestInstall(p)}
+                        >
+                          {busy
+                            ? tr("ext.market.installing")
+                            : installed
+                              ? tr("ext.market.reinstall")
+                              : tr("ext.market.install")}
+                        </button>
+                      </div>
+                    </li>
+                  );
+                })}
               </ul>
             )}
             {hasMore ? (
@@ -832,11 +996,141 @@ export function ExtensionsBuildExtras({
           </GlassModal>
 
           <GlassModal
+            open={!!detailPlugin && !!detailModel}
+            onClose={() => {
+              if (!marketBusy?.startsWith("inst:")) setDetailPlugin(null);
+            }}
+            title={detailModel?.name ?? tr("ext.market.detailTitle")}
+            size="md"
+            closeLabel={tr("common.close")}
+            wrapBody
+            footer={
+              detailPlugin && detailModel ? (
+                <>
+                  <button
+                    type="button"
+                    className="btn btn--ghost"
+                    disabled={!!marketBusy?.startsWith("inst:")}
+                    onClick={() => setDetailPlugin(null)}
+                  >
+                    {tr("common.close")}
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn--solid"
+                    disabled={!!marketBusy || cliMissing}
+                    onClick={() => requestInstall(detailPlugin)}
+                  >
+                    {marketBusy ===
+                      `inst:${availablePluginRowKey(detailPlugin)}` ||
+                    marketBusy === `inst:${detailPlugin.name}`
+                      ? tr("ext.market.installing")
+                      : isPluginInstalled(detailPlugin)
+                        ? tr("ext.market.reinstall")
+                        : tr("ext.market.install")}
+                  </button>
+                </>
+              ) : null
+            }
+          >
+            {detailModel ? (
+              <div className="ext-market-detail">
+                {detailModel.description ? (
+                  <p className="ext-market-detail__desc">
+                    {detailModel.description}
+                  </p>
+                ) : (
+                  <p className="ext-market-detail__desc ext-market-detail__desc--muted">
+                    {tr("ext.market.noDescription")}
+                  </p>
+                )}
+                <dl className="ext-market-detail__meta">
+                  <div className="ext-market-detail__row">
+                    <dt>{tr("ext.market.field.marketplace")}</dt>
+                    <dd>
+                      {detailModel.marketplace?.trim() ||
+                        tr("ext.market.field.unknown")}
+                    </dd>
+                  </div>
+                  <div className="ext-market-detail__row">
+                    <dt>{tr("ext.market.field.version")}</dt>
+                    <dd>
+                      {detailModel.versionLabel
+                        ? `v${detailModel.versionLabel}`
+                        : tr("ext.market.field.unknown")}
+                    </dd>
+                  </div>
+                  <div className="ext-market-detail__row">
+                    <dt>{tr("ext.market.field.source")}</dt>
+                    <dd>
+                      <code className="ext-market-detail__code">
+                        {detailModel.installSource}
+                      </code>
+                    </dd>
+                  </div>
+                </dl>
+                {detailModel.badges.length > 0 ? (
+                  <div
+                    className="ext-component-badges ext-component-badges--detail"
+                    aria-label={tr("ext.market.componentsLabel")}
+                  >
+                    {detailModel.badges.map((b) => (
+                      <span
+                        key={b.kind}
+                        className={
+                          "ext-badge ext-badge--component ext-badge--component-" +
+                          b.kind
+                        }
+                      >
+                        {badgeLabel(b.kind, b.count)}
+                      </span>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="ext-field-hint">
+                    {tr("ext.market.noComponents")}
+                  </p>
+                )}
+                {detailPlugin &&
+                installErrors[availablePluginRowKey(detailPlugin)] ? (
+                  <div
+                    className="ext-item__row-error ext-item__row-error--detail"
+                    role="alert"
+                  >
+                    <p className="ext-item__row-error-text">
+                      {installErrors[availablePluginRowKey(detailPlugin)]}
+                    </p>
+                    <button
+                      type="button"
+                      className="btn btn--ghost btn--sm"
+                      disabled={!!marketBusy || cliMissing}
+                      onClick={() => void retryInstall(detailPlugin)}
+                    >
+                      {marketBusy ===
+                        `inst:${availablePluginRowKey(detailPlugin)}` ||
+                      marketBusy === `inst:${detailPlugin.name}`
+                        ? tr("ext.market.installing")
+                        : tr("ext.market.retry")}
+                    </button>
+                  </div>
+                ) : null}
+                <p className="ext-market-detail__trust">
+                  {tr("ext.market.installTrustNote")}
+                </p>
+              </div>
+            ) : null}
+          </GlassModal>
+
+          <GlassModal
             open={!!installTarget}
             onClose={() => {
               if (!marketBusy) setInstallTarget(null);
             }}
-            title={tr("ext.market.installTitle")}
+            title={
+              installTarget && isPluginInstalled(installTarget)
+                ? tr("ext.market.reinstallTitle")
+                : tr("ext.market.installTitle")
+            }
             size="sm"
             closeLabel={tr("common.close")}
             footer={
@@ -857,15 +1151,21 @@ export function ExtensionsBuildExtras({
                 >
                   {marketBusy?.startsWith("inst:")
                     ? tr("ext.market.installing")
-                    : tr("ext.market.install")}
+                    : installTarget && isPluginInstalled(installTarget)
+                      ? tr("ext.market.reinstall")
+                      : tr("ext.market.install")}
                 </button>
               </>
             }
           >
             <p className="app-dialog__msg">
-              {tr("ext.market.installConfirm", {
-                name: installTarget?.name ?? "",
-              })}
+              {installTarget && isPluginInstalled(installTarget)
+                ? tr("ext.market.reinstallConfirm", {
+                    name: installTarget?.name ?? "",
+                  })
+                : tr("ext.market.installConfirm", {
+                    name: installTarget?.name ?? "",
+                  })}
             </p>
           </GlassModal>
         </>
