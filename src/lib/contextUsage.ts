@@ -638,8 +638,124 @@ export function mergeCompactTokensBefore(
   return finiteToken(uiTokensBefore);
 }
 
-/** Build `/compact` slash command; empty/whitespace note → bare `/compact`. */
-export function buildCompactSlashCommand(note: string): string {
+/**
+ * Compact intensity presets in the App dialog.
+ * Grok Build CLI only accepts `/compact [note]` today — no light/standard/
+ * aggressive flag — so presets seed **note templates** for the agent.
+ * When CLI gains intensity flags, flip {@link COMPACT_PRESET_CLI_INTENSITY}.
+ */
+export type CompactPresetId = "light" | "standard" | "aggressive";
+
+export const COMPACT_PRESET_IDS: readonly CompactPresetId[] = [
+  "light",
+  "standard",
+  "aggressive",
+] as const;
+
+export const DEFAULT_COMPACT_PRESET: CompactPresetId = "standard";
+
+/**
+ * When true, {@link buildCompactSlashCommand} would emit a CLI intensity flag.
+ * Kept false until Grok Build documents `/compact --intensity=…` (or similar).
+ */
+export const COMPACT_PRESET_CLI_INTENSITY = false;
+
+/**
+ * Rough keep-ratio for **honest** after-estimate in the dialog only.
+ * Not model-grade; labels always show `~` so users know it is a guess.
+ */
+export const COMPACT_PRESET_KEEP_RATIO: Record<CompactPresetId, number> = {
+  light: 0.55,
+  standard: 0.35,
+  aggressive: 0.15,
+};
+
+export function isCompactPresetId(value: unknown): value is CompactPresetId {
+  return (
+    value === "light" || value === "standard" || value === "aggressive"
+  );
+}
+
+/**
+ * Project tokens after a manual compact from current size + preset.
+ * Returns null when before is unknown/invalid (dialog shows unknown).
+ */
+export function estimateCompactAfterTokens(
+  beforeTokens: number | null | undefined,
+  preset: CompactPresetId = DEFAULT_COMPACT_PRESET,
+): number | null {
+  const before = finiteToken(beforeTokens);
+  if (before == null || before <= 0) return null;
+  const ratio = COMPACT_PRESET_KEEP_RATIO[preset] ?? COMPACT_PRESET_KEEP_RATIO.standard;
+  return Math.max(1, Math.floor(before * ratio));
+}
+
+/**
+ * Combine optional preset note template with free-form keep note.
+ * Custom text wins over the template when both are set and the custom field
+ * is not exactly the template (user edited). Prefer calling with the current
+ * field value; App seeds the field from the template on preset change.
+ */
+export function resolveCompactNoteBody(
+  fieldNote: string,
+  presetNoteTemplate: string | null | undefined,
+): string {
+  const field = fieldNote.trim();
+  if (field) return field;
+  const preset = (presetNoteTemplate ?? "").trim();
+  return preset;
+}
+
+/**
+ * Build `/compact` slash command; empty/whitespace note → bare `/compact`.
+ * When {@link COMPACT_PRESET_CLI_INTENSITY} is true and a preset is given,
+ * appends `intensity=<id>` so the agent/CLI can prefer a level; today that
+ * flag is off and the note alone carries light/standard/aggressive intent.
+ */
+export function buildCompactSlashCommand(
+  note: string,
+  opts?: { preset?: CompactPresetId | null },
+): string {
   const n = note.trim();
+  if (
+    COMPACT_PRESET_CLI_INTENSITY &&
+    opts?.preset &&
+    isCompactPresetId(opts.preset)
+  ) {
+    const flag = `intensity=${opts.preset}`;
+    return n ? `/compact ${flag} ${n}` : `/compact ${flag}`;
+  }
   return n ? `/compact ${n}` : "/compact";
+}
+
+/**
+ * Format before → after range for the compact dialog (and banners).
+ * Uses `~` on either side when that side is an estimate.
+ * Returns null when both sides are unknown.
+ */
+export function formatCompactBeforeAfterRange(
+  before: number | null | undefined,
+  after: number | null | undefined,
+  opts: {
+    beforeEstimated?: boolean;
+    afterEstimated?: boolean;
+    locale?: string;
+    template: string;
+  },
+): string | null {
+  const b = finiteToken(before);
+  const a = finiteToken(after);
+  if (b == null && a == null) return null;
+  const locale = opts.locale ?? "zh";
+  const fmt = (n: number, estimated: boolean) => {
+    const s = formatTokenCount(n, locale);
+    return estimated ? `~${s}` : s;
+  };
+  const beforeLabel =
+    b != null ? fmt(b, !!opts.beforeEstimated) : "—";
+  const afterLabel =
+    a != null ? fmt(a, !!opts.afterEstimated) : "—";
+  return opts.template
+    .replace("{before}", beforeLabel)
+    .replace("{after}", afterLabel);
 }

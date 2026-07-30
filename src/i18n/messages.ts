@@ -2198,6 +2198,26 @@ const en = {
   "slash.compactNoteChipErrors": "Recent errors",
   "slash.compactNoteChipFiles": "Open files & paths",
   "slash.compactNoteChipTodos": "Open TODOs",
+  "slash.compactPresets": "Compact intensity",
+  "slash.compactPreset.light": "Light",
+  "slash.compactPreset.standard": "Standard",
+  "slash.compactPreset.aggressive": "Aggressive",
+  "slash.compactPresetHint.light": "Keep more detail; compress tool dumps",
+  "slash.compactPresetHint.standard": "Balanced summary of the session",
+  "slash.compactPresetHint.aggressive": "Max free space; essentials only",
+  "slash.compactPresetNote.light":
+    "Light compact: keep detailed decisions, open files, recent errors, and open TODOs; only compress verbose tool dumps and repeated exploration.",
+  "slash.compactPresetNote.standard":
+    "Standard compact: keep key decisions, the current task, open files/paths, and open TODOs.",
+  "slash.compactPresetNote.aggressive":
+    "Aggressive compact: keep only the current goal and essential decisions/paths; drop intermediate exploration and tool noise.",
+  "slash.compactPresetCliNote":
+    "CLI has no intensity flag yet — presets send note templates with /compact.",
+  "slash.compactBefore": "Before",
+  "slash.compactAfterEst": "After (est.)",
+  "slash.compactAfterUnknown": "Unknown until usage is known",
+  "slash.compactEstimateHint":
+    "After estimate is a rough keep-ratio guess for the selected preset (~), not the model’s tokenizer. Host chat history is not rewritten.",
   "compact.bannerAuto": "Context auto-compacted",
   "compact.bannerManual": "Context compacted",
   "compact.tokensRange": "{before} → {after} tokens",
@@ -5165,6 +5185,26 @@ const zh: Record<MessageKey, string> = {
   "slash.compactNoteChipErrors": "最近错误",
   "slash.compactNoteChipFiles": "打开的文件与路径",
   "slash.compactNoteChipTodos": "未完成待办",
+  "slash.compactPresets": "压缩强度",
+  "slash.compactPreset.light": "轻度",
+  "slash.compactPreset.standard": "标准",
+  "slash.compactPreset.aggressive": "激进",
+  "slash.compactPresetHint.light": "保留更多细节；主要压缩工具输出",
+  "slash.compactPresetHint.standard": "均衡摘要当前会话",
+  "slash.compactPresetHint.aggressive": "尽量腾空间；只留要点",
+  "slash.compactPresetNote.light":
+    "轻度压缩：保留详细决策、打开的文件、最近错误与未完成待办；主要压缩冗长工具输出与重复探索。",
+  "slash.compactPresetNote.standard":
+    "标准压缩：保留关键决策、当前任务、打开的文件/路径与未完成待办。",
+  "slash.compactPresetNote.aggressive":
+    "激进压缩：只保留当前目标与必要决策/路径；丢弃中间探索与工具噪声。",
+  "slash.compactPresetCliNote":
+    "CLI 尚无强度参数 — 预设会以备注模板随 /compact 发给代理。",
+  "slash.compactBefore": "压缩前",
+  "slash.compactAfterEst": "压缩后（估）",
+  "slash.compactAfterUnknown": "用量未知时无法估算",
+  "slash.compactEstimateHint":
+    "压缩后估值为所选预设的粗略保留比例（~），非模型精确分词。应用内聊天记录不会被改写。",
   "compact.bannerAuto": "上下文已自动压缩",
   "compact.bannerManual": "上下文已压缩",
   "compact.tokensRange": "{before} → {after} tokens",

@@ -16698,7 +16698,7 @@ div.composer__input:empty::before {
 
 /* Compact confirm */
 .compact-modal {
-  width: min(var(--modal-width-sm, 420px), 100%);
+  width: min(var(--modal-width-md, 480px), 100%);
   gap: var(--modal-gap, 16px);
 }
 
@@ -16709,15 +16709,80 @@ div.composer__input:empty::before {
   line-height: 1.5;
 }
 
+.compact-modal__presets {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.compact-modal__preset {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  margin: 0;
+  padding: 10px 10px 9px;
+  border-radius: var(--menu-item-radius, 8px);
+  border: 1px solid var(--border-subtle);
+  background: transparent;
+  color: var(--text-secondary);
+  text-align: left;
+  cursor: pointer;
+  min-width: 0;
+}
+
+.compact-modal__preset:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.compact-modal__preset.is-active {
+  border-color: color-mix(in srgb, var(--text-primary) 28%, var(--border-subtle));
+  background: color-mix(in srgb, var(--text-primary) 10%, transparent);
+  color: var(--text-primary);
+}
+
+.compact-modal__preset-label {
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.25;
+}
+
+.compact-modal__preset-hint {
+  font-size: 11px;
+  line-height: 1.35;
+  color: var(--text-tertiary, var(--text-secondary));
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.compact-modal__preset.is-active .compact-modal__preset-hint {
+  color: color-mix(in srgb, var(--text-primary) 72%, var(--text-secondary));
+}
+
 .compact-modal__usage {
   display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 12px;
+  flex-direction: column;
+  gap: 8px;
   padding: 10px 12px;
   border-radius: var(--menu-item-radius, 8px);
   border: 1px solid var(--border-subtle);
   background: color-mix(in srgb, var(--bg-code) 55%, transparent);
+}
+
+.compact-modal__usage-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.compact-modal__usage-row--range .compact-modal__usage-tokens,
+.compact-modal__usage-row--last .compact-modal__usage-tokens {
+  font-size: 12px;
+  font-weight: 500;
 }
 
 .compact-modal__usage-k {
@@ -16751,6 +16816,10 @@ div.composer__input:empty::before {
   font-size: 12px;
   line-height: 1.45;
   color: var(--text-tertiary, var(--text-secondary));
+}
+
+.compact-modal__hint--presets {
+  margin-top: -6px;
 }
 
 .compact-modal__field-label {

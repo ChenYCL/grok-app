@@ -21,6 +21,7 @@ See `docs/llm-wiki/release.md`.
 - **Session change review**: per-file +/−, unified / side-by-side diff, open in Resources, j/k in Changes list; chip always opens Changes tab (works without git)
 - **Structured JSON replies**: when a session JSON Schema is active, finished assistant turns show a Structured panel — parse + light required-field validation, honest “not valid JSON” on failure, copy / export, and a Structured badge
 - **Context usage / cost estimates**: chip menu shows input/output/total when known; optional crude USD estimate from a static rates table (never invoice-grade); Settings → Appearance → **Show usage estimates** (on by default, with disclaimer)
+- **Compact dialog presets** (light / standard / aggressive): note templates for `/compact` (CLI has no intensity flag yet); optional keep-note + chips; before → after estimate when tokens known; last compact range when available
 
 #### Sessions & sidebar
 - **Duplicate chat** (vs **Fork…** + optional worktree) · **session notes** · **mute** · **unread dot**
@@ -63,7 +64,7 @@ See `docs/llm-wiki/release.md`.
 
 **中文 · 新增（按域）**
 
-- **输入/对话**：队列、高度、提示历史、宽度字号、工具折叠/过滤、重生选模型、字数、变更芯片、工作区 dirty 芯片、会话变更审阅（+/− · 并排 diff · j/k）、结构化 JSON 回复面板（校验/复制/导出）、上下文用量/费用粗估
+- **输入/对话**：队列、高度、提示历史、宽度字号、工具折叠/过滤、重生选模型、字数、变更芯片、工作区 dirty 芯片、会话变更审阅（+/− · 并排 diff · j/k）、结构化 JSON 回复面板（校验/复制/导出）、上下文用量/费用粗估、压缩对话框强度预设（轻/标/激 · 备注模板 · 前后估值）
 - **会话/侧栏**：复制 vs 分叉、恢复对话并还原代码（干净 worktree）、便签、会话规则（`--rules`）、会话最大轮次（`--max-turns` 覆盖；空/0 继承全局）、静音、未读点、HTML 导出、按天归档、日期分组、项目色、j/k 导航、CLI 对齐 worktree（默认 `~/.grok/worktrees`、侧栏 CLI/WT 标记）
 - **外观/壳**：主题定时、跟随系统语言、忙碌退出确认、托盘角标、快捷键冲突面板（录制警告 + 重置冲突项）
 - **Agent**：禁用内置工具（芯片 + 自由列表 → `--disallowed-tools`；与禁用网页搜索并存；更改 soft-respawn）；可选 profile 路径（`--agent-profile`）

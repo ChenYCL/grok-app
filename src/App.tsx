@@ -191,10 +191,17 @@ import { StreamCoalescer } from "@/lib/streamCoalesce";
 import { UiErrorBoundary } from "@/components/UiErrorBoundary";
 import {
   buildCompactSlashCommand,
+  COMPACT_PRESET_IDS,
+  DEFAULT_COMPACT_PRESET,
+  estimateCompactAfterTokens,
+  formatCompactBeforeAfterRange,
+  formatTokenCount,
   INITIAL_CONTEXT_USAGE,
   mergeCompactTokensBefore,
   reduceContextUsage,
+  resolveCompactNoteBody,
   resolveContextUsageDisplay,
+  type CompactPresetId,
   type ContextUsageState,
 } from "@/lib/contextUsage";
 import { ContextUsageChip } from "@/components/ContextUsageChip";
@@ -1269,6 +1276,9 @@ export default function App() {
   const [showMcpModal, setShowMcpModal] = useState(false);
   const [showCompactModal, setShowCompactModal] = useState(false);
   const [compactNote, setCompactNote] = useState("");
+  /** light / standard / aggressive — seeds note templates (CLI has no intensity flag). */
+  const [compactPreset, setCompactPreset] =
+    useState<CompactPresetId>(DEFAULT_COMPACT_PRESET);
   const compactNoteRef = useRef<HTMLInputElement>(null);
   /**
    * UI estimate of tokens-before captured when the user confirms manual compact.
@@ -7106,13 +7116,27 @@ export default function App() {
   };
 
   /**
-   * `/compact [note]` — richer compact dialog (current usage + optional keep-note).
+   * `/compact [note]` — richer compact dialog:
+   * presets (light/standard/aggressive as note templates; CLI has no intensity flag),
+   * optional keep-note, current usage + honest after estimate when tokens known.
    * Empty note → `/compact`; non-empty → `/compact {note}`.
    * Never uses window.prompt (unreliable in Tauri WebView).
    */
   const openCompactWithNote = () => {
-    setCompactNote("");
+    setCompactPreset(DEFAULT_COMPACT_PRESET);
+    setCompactNote(tr("slash.compactPresetNote.standard"));
     setShowCompactModal(true);
+  };
+
+  const compactPresetNote = (id: CompactPresetId): string => {
+    if (id === "light") return tr("slash.compactPresetNote.light");
+    if (id === "aggressive") return tr("slash.compactPresetNote.aggressive");
+    return tr("slash.compactPresetNote.standard");
+  };
+
+  const selectCompactPreset = (id: CompactPresetId) => {
+    setCompactPreset(id);
+    setCompactNote(compactPresetNote(id));
   };
 
   const attachLabels = useMemo(
@@ -18048,6 +18072,7 @@ export default function App() {
           onClick={() => {
             setShowCompactModal(false);
             setCompactNote("");
+            setCompactPreset(DEFAULT_COMPACT_PRESET);
           }}
         >
           <form
@@ -18064,12 +18089,17 @@ export default function App() {
               ) {
                 return;
               }
-              const note = compactNote;
+              const note = resolveCompactNoteBody(
+                compactNote,
+                compactPresetNote(compactPreset),
+              );
               const uiBefore = contextUsageDisplay.tokens;
+              const preset = compactPreset;
               setShowCompactModal(false);
               setCompactNote("");
+              setCompactPreset(DEFAULT_COMPACT_PRESET);
               void (async () => {
-                const cmd = buildCompactSlashCommand(note);
+                const cmd = buildCompactSlashCommand(note, { preset });
                 try {
                   const sid = await ensureConnected();
                   if (!sid) return;
@@ -18099,6 +18129,7 @@ export default function App() {
                 onClick={() => {
                   setShowCompactModal(false);
                   setCompactNote("");
+                  setCompactPreset(DEFAULT_COMPACT_PRESET);
                 }}
                 aria-label={tr("common.close")}
               >
@@ -18108,29 +18139,131 @@ export default function App() {
             <p className="compact-modal__msg">
               {tr("slash.compactExplain")}
             </p>
+            <div
+              className="compact-modal__presets"
+              role="radiogroup"
+              aria-label={tr("slash.compactPresets")}
+            >
+              {COMPACT_PRESET_IDS.map((id) => {
+                const labelKey =
+                  id === "light"
+                    ? "slash.compactPreset.light"
+                    : id === "aggressive"
+                      ? "slash.compactPreset.aggressive"
+                      : "slash.compactPreset.standard";
+                const hintKey =
+                  id === "light"
+                    ? "slash.compactPresetHint.light"
+                    : id === "aggressive"
+                      ? "slash.compactPresetHint.aggressive"
+                      : "slash.compactPresetHint.standard";
+                const active = compactPreset === id;
+                return (
+                  <button
+                    key={id}
+                    type="button"
+                    role="radio"
+                    aria-checked={active}
+                    className={
+                      "compact-modal__preset" + (active ? " is-active" : "")
+                    }
+                    title={tr(hintKey)}
+                    onClick={() => selectCompactPreset(id)}
+                  >
+                    <span className="compact-modal__preset-label">
+                      {tr(labelKey)}
+                    </span>
+                    <span className="compact-modal__preset-hint">
+                      {tr(hintKey)}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+            <p className="compact-modal__hint compact-modal__hint--presets">
+              {tr("slash.compactPresetCliNote")}
+            </p>
             <div className="compact-modal__usage" aria-live="polite">
-              <span className="compact-modal__usage-k">
-                {tr("slash.compactCurrent")}
-              </span>
-              <span className="compact-modal__usage-v">
-                <span className="compact-modal__usage-tokens">
-                  {contextUsageDisplay.tokens != null
-                    ? contextUsageDisplay.label
-                    : tr("slash.compactCurrentUnknown")}
+              <div className="compact-modal__usage-row">
+                <span className="compact-modal__usage-k">
+                  {tr("slash.compactBefore")}
                 </span>
-                {contextUsageDisplay.tokens != null ? (
-                  <span className="compact-modal__usage-src">
-                    {contextUsageDisplay.source === "known"
-                      ? tr("context.sourceKnown")
-                      : contextUsageDisplay.source === "estimated"
-                        ? tr("context.sourceEstimated")
-                        : tr("context.sourceUnknown")}
+                <span className="compact-modal__usage-v">
+                  <span className="compact-modal__usage-tokens">
+                    {contextUsageDisplay.tokens != null
+                      ? contextUsageDisplay.label
+                      : tr("slash.compactCurrentUnknown")}
                   </span>
-                ) : null}
-              </span>
+                  {contextUsageDisplay.tokens != null ? (
+                    <span className="compact-modal__usage-src">
+                      {contextUsageDisplay.source === "known"
+                        ? tr("context.sourceKnown")
+                        : contextUsageDisplay.source === "estimated"
+                          ? tr("context.sourceEstimated")
+                          : tr("context.sourceUnknown")}
+                    </span>
+                  ) : null}
+                </span>
+              </div>
+              {(() => {
+                const afterEst = estimateCompactAfterTokens(
+                  contextUsageDisplay.tokens,
+                  compactPreset,
+                );
+                if (afterEst == null) {
+                  return (
+                    <div className="compact-modal__usage-row">
+                      <span className="compact-modal__usage-k">
+                        {tr("slash.compactAfterEst")}
+                      </span>
+                      <span className="compact-modal__usage-v">
+                        <span className="compact-modal__usage-tokens">
+                          {tr("slash.compactAfterUnknown")}
+                        </span>
+                      </span>
+                    </div>
+                  );
+                }
+                return (
+                  <div className="compact-modal__usage-row">
+                    <span className="compact-modal__usage-k">
+                      {tr("slash.compactAfterEst")}
+                    </span>
+                    <span className="compact-modal__usage-v">
+                      <span className="compact-modal__usage-tokens">
+                        ~{formatTokenCount(afterEst, locale)}
+                      </span>
+                      <span className="compact-modal__usage-src">
+                        {tr("context.sourceEstimated")}
+                      </span>
+                    </span>
+                  </div>
+                );
+              })()}
+              {contextUsageDisplay.lastCompact &&
+              (contextUsageDisplay.lastCompact.tokensBefore != null ||
+                contextUsageDisplay.lastCompact.tokensAfter != null) ? (
+                <div className="compact-modal__usage-row compact-modal__usage-row--last">
+                  <span className="compact-modal__usage-k">
+                    {tr("context.lastCompact")}
+                  </span>
+                  <span className="compact-modal__usage-v">
+                    <span className="compact-modal__usage-tokens">
+                      {formatCompactBeforeAfterRange(
+                        contextUsageDisplay.lastCompact.tokensBefore,
+                        contextUsageDisplay.lastCompact.tokensAfter,
+                        {
+                          locale,
+                          template: tr("compact.tokensRange"),
+                        },
+                      ) ?? tr("context.lastCompactNone")}
+                    </span>
+                  </span>
+                </div>
+              ) : null}
             </div>
             <p className="compact-modal__hint">
-              {tr("slash.compactNoteHint")}
+              {tr("slash.compactEstimateHint")}
             </p>
             <label className="compact-modal__field-label" htmlFor="compact-note">
               {tr("slash.compactNote")}
@@ -18192,6 +18325,7 @@ export default function App() {
                 onClick={() => {
                   setShowCompactModal(false);
                   setCompactNote("");
+                  setCompactPreset(DEFAULT_COMPACT_PRESET);
                 }}
               >
                 {tr("slash.compactConfirmCancel")}
