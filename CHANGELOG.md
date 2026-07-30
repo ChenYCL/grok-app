@@ -19,6 +19,7 @@ See `docs/llm-wiki/release.md`.
 - **Duplicate chat** from the session menu: full journal clone titled “Copy of {name}”, same project, opens the new session (idle only; no worktree restore)
 - **Archive older than…** (sidebar Projects actions + Settings → Archived): bulk-archive unpinned chats last updated more than 7 / 30 / 90 days ago; in-app confirm with count; existing `session_set_archived` API
 - **Regenerate with model pick**: one-click still uses the current model; chevron / right-click / long-press opens a menu (Same model + catalog) and switches session model before resend when different
+- **Cross-session recent prompt history** (`/history` picker): **This chat** tab plus **Recent (all chats)** localStorage ring (max 50, consecutive-dedupe); select inserts into composer
 - **Send queue reorder**: Up/Down on each queued follow-up before auto-flush
 - **Chat reading width** (Settings → Appearance): narrow / medium (default) / wide / full (`grok.chatWidth`)
 - **Phone mirror write guard**: confirm when enabling write; persistent warning banner; audit log (no secrets)
@@ -45,6 +46,7 @@ See `docs/llm-wiki/release.md`.
 - 会话菜单「复制会话」：整段 journal 克隆为「副本：{name}」，同项目并打开新会话（仅空闲；不恢复 worktree）
 - **按时间归档**（侧栏项目区操作 + 设置 → 已归档）：批量归档超过 7 / 30 / 90 天未更新的非置顶会话；应用内确认数量；沿用现有归档 API
 - **重新生成可选模型**：单击仍用当前模型；箭头 / 右键 / 长按打开菜单（当前模型 + 目录），选不同模型时先切换会话模型再重发
+- **跨会话最近提示历史**（`/history`）：「当前会话」与「最近（全部会话）」标签；localStorage 环形缓冲最多 50 条；选择后填入输入框
 - 发送队列上下排序；对话阅读宽度；镜像写权限确认与警告；整段对话复制为 Markdown
 - 可单独关闭实时语音快捷键；任务面板子代理树；计划历史归档；侧栏日期分组
 - 程序坞/托盘忙碌角标；按会话静音桌面通知

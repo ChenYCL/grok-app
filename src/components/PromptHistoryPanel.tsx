@@ -1,5 +1,6 @@
 /**
- * Current-session prompt history picker (Grok Build `/history`).
+ * Prompt history picker (Grok Build `/history`).
+ * Tabs: current-session prompts + cross-session recent (localStorage ring).
  * Newest-first list + optional fuzzy filter; Enter/click selects into composer.
  */
 
@@ -11,16 +12,25 @@ import {
 import { previewStoredAsSlash } from "@/lib/draftDoc";
 import { IconClock } from "@/components/icons";
 
+export type PromptHistoryScope = "session" | "recent";
+
 export type PromptHistoryPanelLabels = {
-  title: string;
+  /** "This chat" tab */
+  tabSession: string;
+  /** "Recent (all chats)" tab */
+  tabRecent: string;
   placeholder: string;
   empty: string;
   emptyFilter: string;
+  emptyRecent: string;
+  emptyRecentFilter: string;
   aria: string;
 };
 
 export type PromptHistoryPanelProps = {
   open: boolean;
+  scope: PromptHistoryScope;
+  onScopeChange: (scope: PromptHistoryScope) => void;
   entries: PromptHistoryEntry[];
   query: string;
   activeIndex: number;
@@ -37,6 +47,8 @@ export type PromptHistoryPanelProps = {
 
 export function PromptHistoryPanel({
   open,
+  scope,
+  onScopeChange,
   entries,
   query,
   activeIndex,
@@ -75,11 +87,17 @@ export function PromptHistoryPanel({
       `[data-ph-idx="${activeIndex}"]`,
     );
     el?.scrollIntoView({ block: "nearest" });
-  }, [activeIndex, open, entries.length]);
+  }, [activeIndex, open, entries.length, scope]);
 
   if (!open) return null;
 
-  const emptyText = query.trim() ? labels.emptyFilter : labels.empty;
+  const emptyText = query.trim()
+    ? scope === "recent"
+      ? labels.emptyRecentFilter
+      : labels.emptyFilter
+    : scope === "recent"
+      ? labels.emptyRecent
+      : labels.empty;
 
   return (
     <div
@@ -89,9 +107,41 @@ export function PromptHistoryPanel({
       style={style}
       ref={setRefs}
       data-testid="prompt-history-panel"
+      data-scope={scope}
     >
       <div className="prompt-history__head">
-        <span className="prompt-history__title">{labels.title}</span>
+        <div
+          className="prompt-history__tabs settings-seg"
+          role="tablist"
+          aria-label={labels.aria}
+        >
+          <button
+            type="button"
+            role="tab"
+            className={
+              "settings-seg__btn prompt-history__tab" +
+              (scope === "session" ? " is-on" : "")
+            }
+            aria-selected={scope === "session"}
+            data-testid="prompt-history-tab-session"
+            onClick={() => onScopeChange("session")}
+          >
+            {labels.tabSession}
+          </button>
+          <button
+            type="button"
+            role="tab"
+            className={
+              "settings-seg__btn prompt-history__tab" +
+              (scope === "recent" ? " is-on" : "")
+            }
+            aria-selected={scope === "recent"}
+            data-testid="prompt-history-tab-recent"
+            onClick={() => onScopeChange("recent")}
+          >
+            {labels.tabRecent}
+          </button>
+        </div>
       </div>
       <div className="prompt-history__filter">
         <span className="prompt-history__filter-ico" aria-hidden>
@@ -148,7 +198,7 @@ export function PromptHistoryPanel({
             );
             return (
               <button
-                key={`${entry.historyIndex}:${i}`}
+                key={`${scope}:${entry.historyIndex}:${i}`}
                 type="button"
                 role="option"
                 aria-selected={active}

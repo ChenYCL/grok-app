@@ -15315,7 +15315,10 @@ div.composer__input:empty::before {
   overflow: hidden;
 }
 .prompt-history__head {
-  padding: 2px 8px 0;
+  padding: 2px 4px 0;
+  display: flex;
+  align-items: center;
+  min-width: 0;
 }
 .prompt-history__title {
   font-size: 11px;
@@ -15323,6 +15326,21 @@ div.composer__input:empty::before {
   color: var(--text-tertiary);
   letter-spacing: 0.02em;
   user-select: none;
+}
+.prompt-history__tabs {
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+.prompt-history__tab {
+  flex: 1 1 0;
+  min-width: 0;
+  height: 26px;
+  padding: 0 8px;
+  font-size: 11px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .prompt-history__filter {
   display: flex;

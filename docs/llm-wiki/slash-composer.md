@@ -35,15 +35,21 @@ While the palette is open, Enter does **not** send the message.
 
 ## Prompt history (`/history` · empty ↑)
 
-Aligned with Grok Build — **current session only** (no cross-session search).
+Two scopes in one picker:
+
+| Tab | Source |
+|-----|--------|
+| **This chat** | Current session user prompts (Build-aligned ↑/↓ browse) |
+| **Recent (all chats)** | Cross-session ring in `localStorage` (`grok.recentPromptHistory`): `{ text, sessionId, at }`, max 50, consecutive identical text deduped, text truncated for storage |
 
 | Entry | Behavior |
 |-------|----------|
-| `/history` | Opens picker above composer; filter focuses; newest-first list of this chat’s user prompts |
-| Empty composer **↑** | Opens the same picker and fills the newest prompt; further **↑/↓** step (older / newer); **↓** past newest closes and clears |
+| `/history` | Opens picker above composer; filter focuses; newest-first list (defaults to **This chat**, falls back to **Recent** if empty) |
+| Empty composer **↑** | Opens the same picker on **This chat** and fills the newest session prompt; further **↑/↓** step (older / newer); **↓** past newest closes and clears |
 | Select | Click / Enter / Tab drops the prompt into the composer (keeps `[[skill:…]]` tokens) |
+| Successful send | Appends display text + session id to the recent ring |
 
-Helpers: `src/lib/composerPromptHistory.ts`. UI: `PromptHistoryPanel`.
+Helpers: `src/lib/composerPromptHistory.ts` (session), `src/lib/recentPromptHistory.ts` (cross-session). UI: `PromptHistoryPanel`.
 
 ## Doctor
 
