@@ -1,5 +1,6 @@
 import { describe, expect, it, beforeEach } from "vitest";
 import {
+  CHORD_CONFLICT_IGNORE_IDS,
   DEFAULT_SHORTCUT_CHORDS,
   REMAPPABLE_SHORTCUT_IDS,
   SHORTCUT_REMAP_STORAGE_KEY,
@@ -9,10 +10,12 @@ import {
   clearAllShortcutRemaps,
   effectiveShortcutChord,
   findChordConflict,
+  findChordConflicts,
   formatChordDisplay,
   loadShortcutRemaps,
   normalizeChordString,
   parseChord,
+  resetConflictingShortcutRemaps,
   saveShortcutRemaps,
   serializeChord,
   setShortcutRemap,
@@ -231,6 +234,122 @@ describe("findChordConflict", () => {
     const effective = buildEffectiveChordMap({ search: "mod+p" });
     expect(findChordConflict("search", "mod+p", effective)).toBeNull();
     expect(findChordConflict("help", "mod+p", effective)).toBe("search");
+  });
+
+  it("skips display-only conflict-ignore ids", () => {
+    const effective = buildEffectiveChordMap();
+    // send default is enter — ignored even if present in the map
+    expect(findChordConflict("stop", "enter", effective)).toBeNull();
+  });
+});
+
+describe("findChordConflicts", () => {
+  it("returns empty when all defaults are unique", () => {
+    expect(findChordConflicts({})).toEqual([]);
+    expect(findChordConflicts(null)).toEqual([]);
+  });
+
+  it("groups ids that share a normalized chord after remaps", () => {
+    // newChat remapped onto search's default mod+k
+    const groups = findChordConflicts({ newChat: "mod+k" });
+    expect(groups).toEqual([
+      { chord: "mod+k", ids: ["newChat", "search"] },
+    ]);
+  });
+
+  it("detects two remaps colliding on a free chord", () => {
+    const groups = findChordConflicts({
+      search: "mod+p",
+      help: "mod+p",
+    });
+    expect(groups).toEqual([{ chord: "mod+p", ids: ["help", "search"] }]);
+  });
+
+  it("normalizes aliases before comparing", () => {
+    const groups = findChordConflicts({
+      search: "Cmd+P",
+      settings: "mod+p",
+    });
+    expect(groups).toEqual([
+      { chord: "mod+p", ids: ["search", "settings"] },
+    ]);
+  });
+
+  it("reports three-way collisions", () => {
+    const groups = findChordConflicts({
+      newChat: "mod+k",
+      help: "mod+k",
+    });
+    expect(groups).toEqual([
+      { chord: "mod+k", ids: ["help", "newChat", "search"] },
+    ]);
+  });
+
+  it("excludes display-only ignore ids (send / sidebarSessionNav)", () => {
+    expect(CHORD_CONFLICT_IGNORE_IDS.has("send")).toBe(true);
+    expect(CHORD_CONFLICT_IGNORE_IDS.has("sidebarSessionNav")).toBe(true);
+    // Even if a remap used bare "j", sidebarSessionNav must not join a group.
+    // (Recording UI cannot bind bare j; this guards the pure helper.)
+    const groups = findChordConflicts({
+      // force a map that would collide with sidebarSessionNav's default "j"
+      // if it were included — use a custom defaults override instead:
+    });
+    expect(groups).toEqual([]);
+    // Custom defaults: pretend search default is "j" alongside sidebarSessionNav
+    const withDefaults = findChordConflicts(
+      {},
+      { ...DEFAULT_SHORTCUT_CHORDS, search: "j" },
+    );
+    // sidebarSessionNav ignored → search alone on "j" → no conflict group
+    expect(withDefaults.some((g) => g.chord === "j")).toBe(false);
+  });
+
+  it("accepts an explicit defaults map", () => {
+    const groups = findChordConflicts(
+      { search: "mod+x" },
+      {
+        search: "mod+a",
+        help: "mod+x",
+      },
+    );
+    expect(groups).toEqual([{ chord: "mod+x", ids: ["help", "search"] }]);
+  });
+});
+
+describe("resetConflictingShortcutRemaps", () => {
+  let storage: Storage;
+
+  beforeEach(() => {
+    storage = memoryStorage();
+  });
+
+  it("clears remaps that participate in conflicts and leaves others", () => {
+    setShortcutRemap("search", "mod+p", storage);
+    setShortcutRemap("help", "mod+p", storage);
+    setShortcutRemap("doctor", "mod+shift+x", storage);
+
+    const next = resetConflictingShortcutRemaps(
+      loadShortcutRemaps(storage),
+      storage,
+    );
+    expect(next).toEqual({ doctor: "mod+shift+x" });
+    expect(findChordConflicts(next)).toEqual([]);
+  });
+
+  it("resets a remap that steals another action's default chord", () => {
+    setShortcutRemap("newChat", "mod+k", storage);
+    const next = resetConflictingShortcutRemaps(undefined, storage);
+    expect(next).toEqual({});
+    expect(findChordConflicts(next)).toEqual([]);
+  });
+
+  it("is a no-op when there are no conflicts", () => {
+    setShortcutRemap("search", "mod+p", storage);
+    const next = resetConflictingShortcutRemaps(
+      loadShortcutRemaps(storage),
+      storage,
+    );
+    expect(next).toEqual({ search: "mod+p" });
   });
 });
 

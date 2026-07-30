@@ -349,8 +349,90 @@ export function buildEffectiveChordMap(
 }
 
 /**
+ * Catalog ids excluded from multi-id conflict grouping / capture collision checks.
+ *
+ * These are display-only (or composer-owned) rows that do not share the global
+ * remappable capture handler, so an overlapping “chord” is not a real runtime
+ * collision in the App mod-key path:
+ * - `sidebarSessionNav` — j/k when the sidebar list is focused (not a single global chord)
+ * - `send` — Composer Enter / mod-enter preference (not remappable here)
+ */
+export const CHORD_CONFLICT_IGNORE_IDS: ReadonlySet<ShortcutId> = new Set([
+  "sidebarSessionNav",
+  "send",
+]);
+
+/** One normalized chord shared by two or more catalog ids. */
+export type ChordConflictGroup = {
+  /** Canonical chord string (e.g. `"mod+k"`). */
+  chord: ChordString;
+  /** Ids currently bound to {@link chord}, sorted for stable UI / tests. */
+  ids: ShortcutId[];
+};
+
+/**
+ * Group shortcut ids that share the same normalized effective chord.
+ *
+ * @param remaps user remaps (partial); defaults fill the rest
+ * @param defaults catalog defaults (defaults to {@link DEFAULT_SHORTCUT_CHORDS})
+ * @returns conflict groups (length ≥ 2 ids each), sorted by chord; empty when none
+ */
+export function findChordConflicts(
+  remaps?: ShortcutRemapMap | null,
+  defaults: Readonly<Partial<Record<ShortcutId, ChordString>>> = DEFAULT_SHORTCUT_CHORDS,
+): ChordConflictGroup[] {
+  const effective: Partial<Record<ShortcutId, ChordString>> = {};
+
+  for (const id of Object.keys(defaults) as ShortcutId[]) {
+    if (CHORD_CONFLICT_IGNORE_IDS.has(id)) continue;
+    const custom = remaps?.[id];
+    if (custom) {
+      const n = normalizeChordString(custom);
+      if (n) {
+        effective[id] = n;
+        continue;
+      }
+    }
+    const d = defaults[id];
+    if (!d) continue;
+    const n = normalizeChordString(d);
+    if (n) effective[id] = n;
+  }
+
+  // Include remaps for known ids even if omitted from a custom `defaults` map.
+  if (remaps) {
+    for (const id of Object.keys(remaps) as ShortcutId[]) {
+      if (CHORD_CONFLICT_IGNORE_IDS.has(id)) continue;
+      if (effective[id]) continue;
+      if (!KNOWN_IDS.has(id)) continue;
+      const n = remaps[id] ? normalizeChordString(remaps[id]!) : null;
+      if (n) effective[id] = n;
+    }
+  }
+
+  const byChord = new Map<ChordString, ShortcutId[]>();
+  for (const id of Object.keys(effective) as ShortcutId[]) {
+    const chord = effective[id]!;
+    const list = byChord.get(chord);
+    if (list) list.push(id);
+    else byChord.set(chord, [id]);
+  }
+
+  const groups: ChordConflictGroup[] = [];
+  for (const [chord, ids] of byChord) {
+    if (ids.length < 2) continue;
+    ids.sort((a, b) => a.localeCompare(b));
+    groups.push({ chord, ids });
+  }
+  groups.sort((a, b) => a.chord.localeCompare(b.chord));
+  return groups;
+}
+
+/**
  * If `candidateChord` is already used by another shortcut id in `effectiveMap`,
  * return that id; otherwise null.
+ *
+ * Skips {@link CHORD_CONFLICT_IGNORE_IDS} (display-only / composer-owned rows).
  */
 export function findChordConflict(
   candidateId: ShortcutId,
@@ -361,11 +443,43 @@ export function findChordConflict(
   if (!norm) return null;
   for (const id of Object.keys(effectiveMap) as ShortcutId[]) {
     if (id === candidateId) continue;
+    if (CHORD_CONFLICT_IGNORE_IDS.has(id)) continue;
     const other = effectiveMap[id];
     if (!other) continue;
     if (normalizeChordString(other) === norm) return id;
   }
   return null;
+}
+
+/**
+ * Drop custom remaps that participate in a chord conflict (restores those ids
+ * to catalog defaults). Non-remappable / default-only rows are left as-is.
+ * Returns the saved map after write.
+ */
+export function resetConflictingShortcutRemaps(
+  remaps?: ShortcutRemapMap | null,
+  storage: Storage = localStorage,
+): ShortcutRemapMap {
+  const map: ShortcutRemapMap = {
+    ...(remaps ?? loadShortcutRemaps(storage)),
+  };
+  const groups = findChordConflicts(map);
+  if (groups.length === 0) {
+    return loadShortcutRemaps(storage);
+  }
+  let changed = false;
+  for (const group of groups) {
+    for (const id of group.ids) {
+      if (!isRemappableShortcutId(id)) continue;
+      if (map[id] === undefined) continue;
+      delete map[id];
+      changed = true;
+    }
+  }
+  if (changed) {
+    saveShortcutRemaps(map, storage);
+  }
+  return loadShortcutRemaps(storage);
 }
 
 export function loadShortcutRemaps(
