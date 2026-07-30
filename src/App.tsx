@@ -691,32 +691,6 @@ function mapProjectsList(list: Project[]): Project[] {
     .map((p) => normalizeProject({ ...p, pinned: !!p.pinned }));
 }
 
-/** Normalize sessions_list / search rows into sidebar SessionRow. */
-function mapSessionRow(x: {
-  id: string;
-  title: string;
-  projectId: string | null;
-  updatedAt: string;
-  archived?: boolean;
-  pinned?: boolean;
-  scheduled?: boolean;
-  pluginDirs?: string[] | null;
-}): SessionRow {
-  const pluginDirs = Array.isArray(x.pluginDirs)
-    ? x.pluginDirs.map((d) => String(d).trim()).filter(Boolean)
-    : [];
-  return {
-    id: x.id,
-    title: x.title,
-    projectId: normalizeProjectId(x.projectId),
-    updatedAt: x.updatedAt,
-    archived: !!x.archived,
-    pinned: !!x.pinned,
-    scheduled: !!x.scheduled,
-    pluginDirs: pluginDirs.length ? pluginDirs : undefined,
-  };
-}
-
 interface SessionRow {
   id: string;
   title: string;
@@ -2138,7 +2112,7 @@ export default function App() {
           (s as Array<Parameters<typeof mapSessionListRow>[0]>).map(
             mapSessionListRow,
           ),
-          ).map((x) => mapSessionRow(x)),
+          ).map((x) => mapSessionListRow(x)),
         );
         void api
           .generalWorkspacePath()
@@ -3800,7 +3774,7 @@ export default function App() {
                   const list = await api.sessionsList();
                   if (cancelled) return;
                   setSessions(list.map(mapSessionListRow));
-                  setSessions(list.map((s) => mapSessionRow(s)));
+                  setSessions(list.map((s) => mapSessionListRow(s)));
                   const sid = p?.sessionId;
                   if (
                     !sid ||
@@ -4849,7 +4823,7 @@ export default function App() {
     try {
       const list = await api.sessionsList();
       setSessions(list.map(mapSessionListRow));
-      setSessions(list.map((s) => mapSessionRow(s)));
+      setSessions(list.map((s) => mapSessionListRow(s)));
       void api.trayRefresh();
     } catch {
       /* ignore */
@@ -9817,7 +9791,7 @@ export default function App() {
               setSessions(
                 list.map((s) => normalizeSessionRow(s)),
               );
-              row = mapSessionRow(hit);
+              row = mapSessionListRow(hit);
               row = {
                 id: hit.id,
                 title: hit.title,
@@ -9826,7 +9800,7 @@ export default function App() {
                 archived: !!hit.archived,
                 scheduled: !!hit.scheduled,
               };
-              setSessions(list.map((s) => mapSessionRow(s)));
+              setSessions(list.map((s) => mapSessionListRow(s)));
             }
           } catch {
             /* ignore */
