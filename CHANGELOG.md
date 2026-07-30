@@ -11,6 +11,14 @@ See `docs/llm-wiki/release.md`.
 
 ## [Unreleased]
 
+### Added
+
+- **In-app product tour**: optional multi-step walkthrough (projects, permissions/YOLO, worktrees, send queue, context compact, shortcuts, extensions). Replay from account menu, Settings → About, command palette, or `/tutorial`. Soft one-time offer after first-run setup (`localStorage` `grok.productTutorial.v1`)
+
+**中文 · 新增**
+
+- **应用内产品导览**：可选多步介绍（项目、权限/YOLO、工作树、发送队列、上下文压缩、快捷键、扩展）；账户菜单 / 设置 → 关于 / 命令面板 / `/tutorial` 可重播；完成首次设置后软提示一次
+
 ## [0.2.2] - 2026-07-30
 
 > **Highlight:** In-app auto-update works for signed builds; calmer sidebar multi-select; PATH / busy / media reliability.
