@@ -57,6 +57,13 @@ See `docs/llm-wiki/release.md`.
 ### 中文 · 新增
 
 - **分叉会话 · 可选恢复代码**：确认框可勾选（默认关）在源项目 HEAD 创建关联 worktree 并绑定新会话；工作区有未提交改动时拒绝，不破坏本地工作
+### Added
+
+- **Sandbox presets (productized)**: longer per-profile help in Settings → Permissions; in-app danger confirm when switching to **Off** or **Devbox**; optional **per-project sandbox override** (project context menu; Host spawn prefers project over global Settings via `resolveSandboxProfile`)
+
+**中文 · 新增**
+
+- **沙箱预设产品化**：设置中各档位说明；切换到关闭/Devbox 需应用内确认；项目级沙箱覆盖（spawn 优先项目设置）
 
 ## [0.2.2] - 2026-07-30
 
