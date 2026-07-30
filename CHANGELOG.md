@@ -11,6 +11,14 @@ See `docs/llm-wiki/release.md`.
 
 ## [Unreleased]
 
+### Added
+
+- **Sandbox presets (productized)**: longer per-profile help in Settings → Permissions; in-app danger confirm when switching to **Off** or **Devbox**; optional **per-project sandbox override** (project context menu; Host spawn prefers project over global Settings via `resolveSandboxProfile`)
+
+**中文 · 新增**
+
+- **沙箱预设产品化**：设置中各档位说明；切换到关闭/Devbox 需应用内确认；项目级沙箱覆盖（spawn 优先项目设置）
+
 ## [0.2.2] - 2026-07-30
 
 > **Highlight:** In-app auto-update works for signed builds; calmer sidebar multi-select; PATH / busy / media reliability.
