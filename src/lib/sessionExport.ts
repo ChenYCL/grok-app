@@ -210,6 +210,82 @@ export function sessionExportHtmlFilename(title: string, sessionId?: string | nu
   return `${sessionExportBasename(title, sessionId)}.html`;
 }
 
+/** Safe download filename for plain-text session export. */
+export function sessionExportPlainFilename(title: string, sessionId?: string | null): string {
+  return `${sessionExportBasename(title, sessionId)}.txt`;
+}
+
+/**
+ * Transcript export formats aligned with CLI / headless naming:
+ * - `markdown` — `grok export` (App journal or CLI when linked)
+ * - `plain` — headless `--output-format plain` style (role labels + body)
+ * - `json` — import-friendly / headless-style structured transcript
+ * - `html` — standalone readable page (App-only)
+ */
+export type SessionExportFormat = "markdown" | "plain" | "json" | "html";
+
+/** MIME type for a blob download of the given format. */
+export function sessionExportMimeType(format: SessionExportFormat): string {
+  switch (format) {
+    case "markdown":
+      return "text/markdown;charset=utf-8";
+    case "plain":
+      return "text/plain;charset=utf-8";
+    case "json":
+      return "application/json;charset=utf-8";
+    case "html":
+      return "text/html;charset=utf-8";
+  }
+}
+
+/** Download filename for a session export format. */
+export function sessionExportFilenameFor(
+  format: SessionExportFormat,
+  title: string,
+  sessionId?: string | null,
+): string {
+  switch (format) {
+    case "markdown":
+      return sessionExportFilename(title, sessionId);
+    case "plain":
+      return sessionExportPlainFilename(title, sessionId);
+    case "json":
+      return sessionExportJsonFilename(title, sessionId);
+    case "html":
+      return sessionExportHtmlFilename(title, sessionId);
+  }
+}
+
+/** Render a session in the chosen export format (local journal path). */
+export function renderSessionExport(
+  format: SessionExportFormat,
+  input: SessionExportInput,
+): string {
+  switch (format) {
+    case "markdown":
+      return sessionToMarkdown(input);
+    case "plain":
+      return sessionToPlain(input);
+    case "json":
+      return sessionToJson(input);
+    case "html":
+      return sessionToHtml(input);
+  }
+}
+
+/**
+ * Whether Markdown download may prefer `grok export` (CLI) over the local
+ * journal. Only when export options match a full transcript (CLI has no
+ * thought/tool toggles). Callers soft-fail to {@link sessionToMarkdown}.
+ */
+export function shouldPreferCliMarkdownExport(
+  options?: SessionExportOptions | null,
+): boolean {
+  const opts = options ?? {};
+  // Defaults for full session MD export: thoughts + tools on.
+  return opts.includeThoughts !== false && opts.includeToolSummary !== false;
+}
+
 /** Escape text for safe inclusion in HTML text/attributes. */
 export function escapeHtml(text: string): string {
   return (text || "")
@@ -340,6 +416,97 @@ ${metaItems.join("\n")}
 ${body ? `${body}\n` : ""}</body>
 </html>
 `;
+}
+
+export type MessagesToPlainOptions = MessagesToMarkdownOptions;
+
+/**
+ * Pure message list → plain text (no markdown chrome).
+ * Role lines as `User:` / `Assistant:`; thoughts as indented `Thinking:`.
+ * Defaults match {@link messagesToMarkdown}: thoughts on, tool_step noise off.
+ */
+export function messagesToPlain(
+  messages: ExportableMessage[],
+  opts?: MessagesToPlainOptions,
+): string {
+  const includeThoughts = opts?.includeThoughts !== false;
+  const includeToolSummary = opts?.includeToolSummary === true;
+
+  const blocks: string[] = [];
+
+  for (const m of messages) {
+    const body = (m.content || "").trim();
+    const thought = (m.thought || "").trim();
+
+    if (isToolish(m)) {
+      if (!includeToolSummary) continue;
+      const line = formatToolSummaryLine(body, m.marker);
+      if (!line) continue;
+      const head = m.createdAt?.trim()
+        ? `Tool (${m.createdAt.trim()}):\n${line}`
+        : `Tool:\n${line}`;
+      blocks.push(head);
+      continue;
+    }
+
+    if (!body && !thought) continue;
+
+    const role = roleHeading(m.role);
+    const lines: string[] = [];
+    if (m.createdAt?.trim()) {
+      lines.push(`${role} (${m.createdAt.trim()}):`);
+    } else {
+      lines.push(`${role}:`);
+    }
+    if (includeThoughts && thought) {
+      lines.push("Thinking:");
+      lines.push(thought);
+      if (body) lines.push("");
+    }
+    if (body) {
+      lines.push(body);
+    }
+    blocks.push(lines.join("\n"));
+  }
+
+  return blocks.join("\n\n").replace(/\n{3,}/g, "\n\n").trim();
+}
+
+/**
+ * Render a session as plain text (aligned with headless `--output-format plain`).
+ * Export defaults keep tool summaries on (unlike {@link messagesToPlain}).
+ */
+export function sessionToPlain(input: SessionExportInput): string {
+  const opts = input.options ?? {};
+  const includeThoughts = opts.includeThoughts !== false;
+  const includeToolSummary = opts.includeToolSummary !== false;
+
+  const lines: string[] = [];
+  const title = (input.title || "Untitled").trim() || "Untitled";
+  lines.push(title);
+  lines.push("=".repeat(Math.min(title.length, 72)));
+  lines.push("");
+
+  const meta: string[] = [];
+  if (input.projectName) meta.push(`Project: ${input.projectName}`);
+  if (input.projectPath) meta.push(`Path: ${input.projectPath}`);
+  if (input.sessionId) meta.push(`Session: ${input.sessionId}`);
+  meta.push(`Exported: ${input.exportedAt || new Date().toISOString()}`);
+  lines.push(...meta);
+  lines.push("");
+  lines.push("---");
+  lines.push("");
+
+  const body = messagesToPlain(input.messages, {
+    includeThoughts,
+    includeToolSummary,
+  });
+  if (body) {
+    lines.push(body);
+    lines.push("");
+  }
+
+  return lines.join("\n").replace(/\n{3,}/g, "\n\n").trim() + "\n";
 }
 
 export type SessionJsonMessage = {

@@ -4,12 +4,19 @@ import {
   formatToolSummaryLine,
   messagesToHtml,
   messagesToMarkdown,
+  messagesToPlain,
+  renderSessionExport,
   sessionExportFilename,
+  sessionExportFilenameFor,
   sessionExportHtmlFilename,
   sessionExportJsonFilename,
+  sessionExportMimeType,
+  sessionExportPlainFilename,
   sessionToHtml,
   sessionToJson,
   sessionToMarkdown,
+  sessionToPlain,
+  shouldPreferCliMarkdownExport,
 } from "./sessionExport";
 
 describe("messagesToMarkdown", () => {
@@ -242,6 +249,49 @@ describe("sessionExportHtmlFilename", () => {
   });
 });
 
+describe("sessionExportPlainFilename", () => {
+  it("uses .txt extension", () => {
+    expect(sessionExportPlainFilename("Fix Doctor Reset!", "abcdef12-xxxx")).toBe(
+      "grok-fix-doctor-reset-abcdef12.txt",
+    );
+  });
+
+  it("handles empty title", () => {
+    expect(sessionExportPlainFilename("", null)).toBe("grok-session.txt");
+  });
+});
+
+describe("sessionExportFilenameFor / mime / prefer CLI", () => {
+  it("maps formats to filenames and mime types", () => {
+    expect(sessionExportFilenameFor("markdown", "T", "abcdef12")).toBe(
+      sessionExportFilename("T", "abcdef12"),
+    );
+    expect(sessionExportFilenameFor("plain", "T", "abcdef12")).toBe(
+      sessionExportPlainFilename("T", "abcdef12"),
+    );
+    expect(sessionExportFilenameFor("json", "T", "abcdef12")).toBe(
+      sessionExportJsonFilename("T", "abcdef12"),
+    );
+    expect(sessionExportFilenameFor("html", "T", "abcdef12")).toBe(
+      sessionExportHtmlFilename("T", "abcdef12"),
+    );
+    expect(sessionExportMimeType("markdown")).toContain("markdown");
+    expect(sessionExportMimeType("plain")).toContain("text/plain");
+    expect(sessionExportMimeType("json")).toContain("json");
+    expect(sessionExportMimeType("html")).toContain("html");
+  });
+
+  it("prefers CLI only for full transcript options", () => {
+    expect(shouldPreferCliMarkdownExport(undefined)).toBe(true);
+    expect(shouldPreferCliMarkdownExport({})).toBe(true);
+    expect(shouldPreferCliMarkdownExport({ includeThoughts: true, includeToolSummary: true })).toBe(
+      true,
+    );
+    expect(shouldPreferCliMarkdownExport({ includeThoughts: false })).toBe(false);
+    expect(shouldPreferCliMarkdownExport({ includeToolSummary: false })).toBe(false);
+  });
+});
+
 describe("escapeHtml", () => {
   it("escapes &, <, >, quotes", () => {
     expect(escapeHtml(`a & b <c> "d" 'e'`)).toBe(
@@ -426,6 +476,146 @@ describe("sessionToHtml", () => {
     });
     expect(html).toContain("<title>Untitled</title>");
     expect(html).toContain("<h1>Untitled</h1>");
+  });
+});
+
+describe("messagesToPlain", () => {
+  it("renders role labels without markdown headings", () => {
+    const text = messagesToPlain([
+      { role: "user", content: "Add reset data" },
+      {
+        role: "assistant",
+        content: "Done.",
+        thought: "Need double confirm.",
+      },
+    ]);
+    expect(text).not.toContain("## ");
+    expect(text).toContain("User:");
+    expect(text).toContain("Add reset data");
+    expect(text).toContain("Assistant:");
+    expect(text).toContain("Thinking:");
+    expect(text).toContain("Need double confirm.");
+    expect(text).toContain("Done.");
+  });
+
+  it("skips tool_step noise by default", () => {
+    const text = messagesToPlain([
+      {
+        role: "tool",
+        content: "tool_step|bash|completed|ran tests",
+        marker: "tool_step",
+      },
+      { role: "assistant", content: "All green." },
+    ]);
+    expect(text).not.toContain("Tool:");
+    expect(text).not.toContain("bash");
+    expect(text).toContain("All green.");
+  });
+
+  it("includes tool summaries when opted in", () => {
+    const text = messagesToPlain(
+      [
+        {
+          role: "tool",
+          content: "tool_step|bash|completed|ran tests",
+          marker: "tool_step",
+        },
+        { role: "assistant", content: "All green." },
+      ],
+      { includeToolSummary: true },
+    );
+    expect(text).toContain("Tool:");
+    expect(text).toContain("bash (completed)");
+    expect(text).toContain("All green.");
+  });
+
+  it("omits thoughts when includeThoughts is false", () => {
+    const text = messagesToPlain(
+      [
+        {
+          role: "assistant",
+          content: "Body only.",
+          thought: "secret plan",
+        },
+      ],
+      { includeThoughts: false },
+    );
+    expect(text).not.toContain("secret plan");
+    expect(text).not.toContain("Thinking:");
+    expect(text).toContain("Body only.");
+  });
+});
+
+describe("sessionToPlain", () => {
+  it("builds a title, meta block, and role sections", () => {
+    const text = sessionToPlain({
+      title: "Doctor reset",
+      projectName: "grok-app",
+      projectPath: "/tmp/grok-app",
+      sessionId: "abc12345-full",
+      exportedAt: "2026-07-24T00:00:00.000Z",
+      messages: [
+        { role: "user", content: "Add reset data" },
+        {
+          role: "assistant",
+          content: "Done.",
+          thought: "Need double confirm.",
+        },
+      ],
+    });
+    expect(text).toContain("Doctor reset");
+    expect(text).toContain("Project: grok-app");
+    expect(text).toContain("Session: abc12345-full");
+    expect(text).toContain("User:");
+    expect(text).toContain("Add reset data");
+    expect(text).toContain("Assistant:");
+    expect(text).toContain("Thinking:");
+    expect(text).toContain("Done.");
+    expect(text.endsWith("\n")).toBe(true);
+  });
+
+  it("includes tool summaries by default for full session export", () => {
+    const text = sessionToPlain({
+      title: "tools",
+      exportedAt: "2026-07-24T00:00:00.000Z",
+      messages: [
+        {
+          role: "tool",
+          content: "tool_step|bash|completed|ran tests",
+          marker: "tool_step",
+        },
+        { role: "assistant", content: "All green." },
+      ],
+    });
+    expect(text).toContain("Tool:");
+    expect(text).toContain("bash (completed)");
+  });
+
+  it("falls back to Untitled", () => {
+    const text = sessionToPlain({
+      title: "   ",
+      exportedAt: "2026-07-24T00:00:00.000Z",
+      messages: [],
+    });
+    expect(text.startsWith("Untitled")).toBe(true);
+  });
+});
+
+describe("renderSessionExport", () => {
+  it("dispatches markdown / plain / json / html", () => {
+    const input = {
+      title: "Round trip",
+      sessionId: "abc",
+      exportedAt: "2026-07-24T00:00:00.000Z",
+      messages: [{ role: "user" as const, content: "hi" }],
+      options: { includeThoughts: false, includeToolSummary: false },
+    };
+    expect(renderSessionExport("markdown", input)).toContain("# Round trip");
+    expect(renderSessionExport("plain", input)).toContain("User:");
+    expect(JSON.parse(renderSessionExport("json", input)).messages).toEqual([
+      { role: "user", content: "hi" },
+    ]);
+    expect(renderSessionExport("html", input)).toContain("<!DOCTYPE html>");
   });
 });
 

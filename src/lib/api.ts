@@ -1635,6 +1635,25 @@ export async function exportSessionBundle(sessionId: string) {
 
 /**
  * Export Grok Build CLI session trace via `grok trace <agentSessionId>`.
+ * Export Grok Build CLI session transcript via `grok export <agentSessionId> [OUTPUT]`.
+ * Requires a linked agent session id. Returns markdown text for blob download.
+ * Callers should soft-fail to the local App journal when this rejects.
+ */
+export type SessionCliExportResult = {
+  ok: boolean;
+  markdown?: string;
+  agentSessionId?: string;
+  source?: string;
+};
+
+export async function sessionCliExport(sessionId: string) {
+  return invoke<SessionCliExportResult>("session_cli_export", {
+    sessionId,
+  });
+}
+
+/**
+ * Export Grok Build CLI session trace via `grok trace <agentSessionId> --local`.
  * Requires a linked agent session id. Opens a native save dialog for the `.tar.gz`.
  *
  * @param localOnly default **true** (safe): pass `--local`. Set false to omit

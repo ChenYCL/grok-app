@@ -337,6 +337,7 @@ pub fn run() {
             commands::cli_doctor_fix,
             commands::export_support_bundle,
             commands::export_session_bundle,
+            commands::session_cli_export,
             commands::session_trace_export,
             commands::reset_app_data,
             commands::skills_list,

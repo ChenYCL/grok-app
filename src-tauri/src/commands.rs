@@ -1937,6 +1937,153 @@ pub async fn export_session_bundle(
 /// - Resolves `agent_session_id` from live/parked runtime or session meta.
 /// - Opens a save dialog for the `.tar.gz` and reveals the file.
 /// - Returns `{ ok, path, sizeBytes?, uploaded?, localOnly }` — never secrets/URLs.
+/// Export a CLI-linked session transcript via `grok export <agentSessionId> [OUTPUT]`.
+///
+/// Resolves `agent_session_id` from live/parked runtime or session meta.
+/// Returns markdown text for the frontend to download (blob). Callers should
+/// soft-fail to the local App journal when this errors (no agent, CLI missing,
+/// timeout, etc.).
+#[tauri::command]
+pub async fn session_cli_export(
+    session_id: String,
+    mgr: State<'_, Arc<SessionManager>>,
+) -> Result<serde_json::Value, String> {
+    let sid = session_id.trim().to_string();
+    if sid.is_empty() {
+        return Err("session id is empty".into());
+    }
+
+    let live_agent = mgr.diagnostic_runtime_for(&sid).and_then(|rt| {
+        rt.get("agentSessionId")
+            .and_then(|v| v.as_str())
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .map(|s| s.to_string())
+    });
+
+    tauri::async_runtime::spawn_blocking(move || {
+        session_cli_export_blocking(&sid, live_agent.as_deref())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+const CLI_EXPORT_TIMEOUT_SECS: u64 = 60;
+
+fn session_cli_export_blocking(
+    session_id: &str,
+    live_agent_session_id: Option<&str>,
+) -> Result<serde_json::Value, String> {
+    let meta = store::load_sessions_index()
+        .into_iter()
+        .find(|s| s.id == session_id)
+        .ok_or_else(|| format!("session not found: {session_id}"))?;
+
+    let agent_sid = live_agent_session_id
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(|s| s.to_string())
+        .or_else(|| {
+            meta.agent_session_id
+                .as_deref()
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+                .map(|s| s.to_string())
+        })
+        .ok_or_else(|| {
+            "No agent session linked. Start a conversation first so the App has an agent session id."
+                .to_string()
+        })?;
+
+    let settings = store::load_settings();
+    let probe = cli_probe::probe_cli(settings.manual_cli_path.as_deref());
+    let Some(cli_path) = probe.path.filter(|_| probe.found) else {
+        return Err("Grok Build CLI not found".into());
+    };
+    let grok_home = crate::paths::resolve_agent_grok_home(&settings.session_data_mode);
+
+    let short: String = agent_sid.chars().take(8).collect();
+    let stamp = chrono::Utc::now().format("%Y%m%d-%H%M%S");
+    let tmp = std::env::temp_dir().join(format!("grok-export-{short}-{stamp}.md"));
+    let tmp_s = tmp.to_string_lossy().to_string();
+
+    // `grok export <SESSION_ID> [OUTPUT]` — positional output path (not -o).
+    let args = vec![
+        "export".to_string(),
+        agent_sid.clone(),
+        tmp_s.clone(),
+    ];
+
+    let (tx, rx) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        let mut cmd = std::process::Command::new(&cli_path);
+        cmd.args(&args);
+        cmd.env("GROK_HOME", &grok_home);
+        crate::process_util::apply_no_window_std(&mut cmd);
+        if let Some(path_env) = crate::process_util::enriched_path_env() {
+            cmd.env("PATH", path_env);
+        }
+        let _ = tx.send(cmd.output());
+    });
+
+    let output = match rx.recv_timeout(std::time::Duration::from_secs(CLI_EXPORT_TIMEOUT_SECS)) {
+        Ok(Ok(o)) => o,
+        Ok(Err(e)) => {
+            return Err(store::redact_text(&format!("Failed to run grok export: {e}")));
+        }
+        Err(_) => {
+            return Err(format!(
+                "grok export timed out after {CLI_EXPORT_TIMEOUT_SECS}s"
+            ));
+        }
+    };
+
+    let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+
+    if !output.status.success() {
+        let msg = if !stderr.is_empty() {
+            stderr
+        } else if !stdout.is_empty() {
+            stdout
+        } else {
+            "grok export failed".into()
+        };
+        return Err(store::redact_text(&msg)
+            .trim()
+            .chars()
+            .take(1200)
+            .collect());
+    }
+
+    // Prefer the file we asked for; fall back to stdout (CLI may print MD when path fails).
+    let markdown = if tmp.is_file() {
+        let body = std::fs::read_to_string(&tmp).map_err(|e| {
+            store::redact_text(&format!("Failed to read grok export output: {e}"))
+        })?;
+        let _ = std::fs::remove_file(&tmp);
+        body
+    } else if !stdout.is_empty() {
+        stdout
+    } else {
+        return Err("grok export succeeded but produced no markdown".into());
+    };
+
+    if markdown.trim().is_empty() {
+        return Err("grok export produced empty markdown".into());
+    }
+
+    Ok(serde_json::json!({
+        "ok": true,
+        "markdown": markdown,
+        "agentSessionId": agent_sid,
+        "source": "cli",
+    }))
+}
+
+/// Export the Grok Build CLI session trace (`grok trace <agent_id> --local`).
+/// Resolves `agent_session_id` from live/parked runtime or session meta.
+/// Opens a save dialog for the `.tar.gz` and reveals the file.
 #[tauri::command]
 pub async fn session_trace_export(
     session_id: String,
