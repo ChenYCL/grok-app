@@ -11,6 +11,19 @@ See `docs/llm-wiki/release.md`.
 
 ## [Unreleased]
 
+### Added
+
+- **Worktree session badge**: sidebar **WT** chip for chats bound to a linked git worktree (meta from “New worktree & chat”, or auto when the project path matches `git worktree list`); tooltip shows branch + path
+- **Worktree session manage**: session context menu → reveal worktree folder, copy path, remove worktree (in-app confirm + force retry; never main)
+
+### Changed
+
+- Session index stores optional `worktreePath` / `worktreeBranch` / `isWorktreeSession` (migration-safe defaults); forks inherit linkage
+
+**中文 · 新增**
+
+- 侧栏 worktree 会话 **WT** 标记；右键可打开/复制路径/移除 worktree（应用内确认）
+
 ## [0.2.2] - 2026-07-30
 
 > **Highlight:** In-app auto-update works for signed builds; calmer sidebar multi-select; PATH / busy / media reliability.

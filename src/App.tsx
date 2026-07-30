@@ -380,9 +380,12 @@ import {
   canRemoveWorktree,
   mainWorktreePath,
   pathsEqual,
+  resolveSessionWorktreeBadge,
   sanitizeWorktreeName,
+  sessionWorktreeTooltip,
   worktreeLabel,
   worktreeRemoveErrorSuggestsForce,
+  type SessionWorktreeBadge,
 } from "@/lib/gitWorktree";
 import { isProjectPathMissing } from "@/lib/projectPath";
 import {
@@ -630,6 +633,36 @@ interface SessionRow {
   pinned?: boolean;
   /** Shell scheduled-automation run */
   scheduled?: boolean;
+  /** Linked git worktree this chat was opened against (optional). */
+  worktreePath?: string | null;
+  worktreeBranch?: string | null;
+  isWorktreeSession?: boolean;
+}
+
+/** Normalize sessions_list / create rows into sidebar SessionRow shape. */
+function normalizeSessionRow(
+  x: Partial<SessionRow> & {
+    id: string;
+    title?: string;
+    projectId?: string | null;
+    updatedAt?: string;
+  },
+): SessionRow {
+  const worktreePath = (x.worktreePath || "").trim() || null;
+  const worktreeBranch = (x.worktreeBranch || "").trim() || null;
+  const isWorktreeSession = !!(x.isWorktreeSession || worktreePath);
+  return {
+    id: x.id,
+    title: x.title || "",
+    projectId: normalizeProjectId(x.projectId),
+    updatedAt: x.updatedAt || "",
+    archived: !!x.archived,
+    pinned: !!x.pinned,
+    scheduled: !!x.scheduled,
+    worktreePath,
+    worktreeBranch,
+    isWorktreeSession,
+  };
 }
 
 type ContextMenuState =
@@ -1863,14 +1896,7 @@ export default function App() {
         setSessions(
           (
             s as Array<SessionRow & { archived?: boolean; scheduled?: boolean }>
-          ).map((x) => ({
-            id: x.id,
-            title: x.title,
-            projectId: normalizeProjectId(x.projectId),
-            updatedAt: x.updatedAt,
-            archived: !!x.archived,
-            scheduled: !!x.scheduled,
-          })),
+          ).map((x) => normalizeSessionRow(x)),
         );
         void api
           .generalWorkspacePath()
@@ -1942,15 +1968,7 @@ export default function App() {
               scheduled?: boolean;
             }
           >
-        ).map((x) => ({
-          id: x.id,
-          title: x.title,
-          projectId: normalizeProjectId(x.projectId),
-          updatedAt: x.updatedAt,
-          archived: !!x.archived,
-          pinned: !!x.pinned,
-          scheduled: !!x.scheduled,
-        })),
+        ).map((x) => normalizeSessionRow(x)),
       );
       void api
         .generalWorkspacePath()
@@ -3486,15 +3504,7 @@ export default function App() {
                   const list = await api.sessionsList();
                   if (cancelled) return;
                   setSessions(
-                    list.map((s) => ({
-                      id: s.id,
-                      title: s.title,
-                      projectId: normalizeProjectId(s.projectId),
-                      updatedAt: s.updatedAt,
-                      archived: !!s.archived,
-                      pinned: !!s.pinned,
-                      scheduled: !!s.scheduled,
-                    })),
+                    list.map((s) => normalizeSessionRow(s)),
                   );
                   const sid = p?.sessionId;
                   if (
@@ -4536,15 +4546,7 @@ export default function App() {
     try {
       const list = await api.sessionsList();
       setSessions(
-        list.map((s) => ({
-          id: s.id,
-          title: s.title,
-          projectId: normalizeProjectId(s.projectId),
-          updatedAt: s.updatedAt,
-          archived: !!s.archived,
-          pinned: !!s.pinned,
-          scheduled: !!s.scheduled,
-        })),
+        list.map((s) => normalizeSessionRow(s)),
       );
       void api.trayRefresh();
     } catch {
@@ -5573,6 +5575,24 @@ export default function App() {
         if (draftMsgs?.length) {
           messagesBySessionRef.current.set(meta.id, draftMsgs);
           messagesBySessionRef.current.delete("__draft__");
+        }
+        // Auto-tag worktree-bound chats when cwd is a linked worktree.
+        if (api.isTauri() && connectProject?.path) {
+          const linked = resolveSessionWorktreeBadge(
+            null,
+            connectProject.path,
+            gitWorktrees,
+          );
+          if (linked?.path) {
+            try {
+              await api.sessionSetWorktree(meta.id, {
+                worktreePath: linked.path,
+                worktreeBranch: linked.branch,
+              });
+            } catch {
+              /* soft-fail */
+            }
+          }
         }
         // Only take over the workbench if the user has not navigated since.
         // `viewingSessionIdRef.current === null` used to pass here, which is how
@@ -7501,7 +7521,9 @@ export default function App() {
           title,
         });
         await refreshSessions();
-        const row: SessionRow = {
+        const row = normalizeSessionRow({
+          ...source,
+          ...(meta as SessionRow),
           id: meta.id,
           title: meta.title || title,
           projectId: meta.projectId ?? source.projectId,
@@ -7509,7 +7531,7 @@ export default function App() {
           archived: meta.archived,
           pinned: !!(meta as SessionRow).pinned,
           scheduled: meta.scheduled,
-        };
+        });
         const proj = row.projectId
           ? projects.find((p) => p.id === row.projectId) ?? null
           : null;
@@ -8618,6 +8640,32 @@ export default function App() {
           worktreePath: wt.path,
           force,
         });
+        // Drop WT meta on sessions that pointed at the removed tree.
+        try {
+          const linked = sessions.filter(
+            (s) =>
+              s.isWorktreeSession ||
+              pathsEqual(s.worktreePath, wt.path),
+          );
+          for (const s of linked) {
+            if (
+              pathsEqual(s.worktreePath, wt.path) ||
+              (!s.worktreePath &&
+                pathsEqual(
+                  projects.find((p) => p.id === s.projectId)?.path,
+                  wt.path,
+                ))
+            ) {
+              await api.sessionSetWorktree(s.id, {
+                worktreePath: null,
+                worktreeBranch: null,
+              });
+            }
+          }
+          if (linked.length) await refreshSessions();
+        } catch {
+          /* soft-fail */
+        }
         if (wasCurrent) {
           const main =
             gitWorktrees.find((w) => w.isMain) ??
@@ -8659,6 +8707,9 @@ export default function App() {
     [
       activeProject?.path,
       gitWorktrees,
+      projects,
+      // refreshSessions via closure
+      sessions,
       refreshGitWorktrees,
       showToast,
       switchToWorktree,
@@ -8716,8 +8767,56 @@ export default function App() {
   })();
 
   /**
+   * Persist worktree path/branch on a session (sidebar WT badge + manage menu).
+   * Soft-fails so create/switch UX is never blocked by meta write errors.
+   */
+  const markSessionWorktree = useCallback(
+    async (
+      sessionId: string | null | undefined,
+      path: string,
+      branch: string | null | undefined,
+    ) => {
+      if (!sessionId || !api.isTauri()) return;
+      const p = path.trim();
+      if (!p) return;
+      try {
+        await api.sessionSetWorktree(sessionId, {
+          worktreePath: p,
+          worktreeBranch: (branch || "").trim() || null,
+        });
+        await refreshSessions();
+      } catch {
+        /* soft-fail */
+      }
+    },
+    // refreshSessions is stable enough via closure
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [],
+  );
+
+  /** Resolve WT badge for a session row (meta first, git list fallback). */
+  const sessionWorktreeBadgeFor = useCallback(
+    (s: SessionRow): SessionWorktreeBadge | null => {
+      const proj = s.projectId
+        ? projects.find((p) => p.id === s.projectId) ?? null
+        : null;
+      return resolveSessionWorktreeBadge(
+        {
+          worktreePath: s.worktreePath,
+          worktreeBranch: s.worktreeBranch,
+          isWorktreeSession: s.isWorktreeSession,
+        },
+        proj?.path ?? s.worktreePath,
+        gitWorktrees,
+      );
+    },
+    [gitWorktrees, projects],
+  );
+
+  /**
    * Create worktree → refresh list → add as project (trust inherited) →
    * either bind current session or start a draft chat on that path.
+   * Worktree+chat creates a real session immediately so meta can be persisted.
    */
   const submitWorktreeCreate = useCallback(async () => {
     if (!api.isTauri() || !activeProject?.path) return;
@@ -8775,7 +8874,21 @@ export default function App() {
       }
 
       if (startChat) {
-        await newChat(target, { switchToChat: true });
+        // Materialize session now so worktree meta survives before first send.
+        const meta = (await api.sessionCreate(
+          target.id,
+          tr("session.new"),
+        )) as SessionRow & { id: string; title?: string };
+        await markSessionWorktree(meta.id, path, branch);
+        const row = normalizeSessionRow({
+          ...meta,
+          projectId: target.id,
+          worktreePath: path,
+          worktreeBranch: branch,
+          isWorktreeSession: true,
+        });
+        setExpandedProjects((e) => ({ ...e, [target!.id]: true }));
+        await openSession(row, target);
         showToast(
           tr("composer.worktreeCreatedChat", {
             name: created.name,
@@ -8785,6 +8898,12 @@ export default function App() {
         );
       } else {
         await bindSessionProject(target, { silent: true });
+        // Tag the currently open chat when switching cwd into the new worktree.
+        const liveId =
+          viewingSessionIdRef.current || session.sessionId || null;
+        if (liveId) {
+          await markSessionWorktree(liveId, path, branch);
+        }
         showToast(
           tr("composer.worktreeCreated", {
             name: created.name,
@@ -8803,9 +8922,11 @@ export default function App() {
     activeProject?.trusted,
     bindSessionProject,
     finalizeAddedProject,
-    newChat,
+    markSessionWorktree,
+    openSession,
     projects,
     refreshGitWorktrees,
+    session.sessionId,
     showToast,
     tr,
     worktreeCreateName,
@@ -8998,23 +9119,9 @@ export default function App() {
             const list = await api.sessionsList();
             const hit = list.find((s) => s.id === id);
             if (hit) {
-              row = {
-                id: hit.id,
-                title: hit.title,
-                projectId: hit.projectId,
-                updatedAt: hit.updatedAt,
-                archived: !!hit.archived,
-                scheduled: !!hit.scheduled,
-              };
+              row = normalizeSessionRow(hit);
               setSessions(
-                list.map((s) => ({
-                  id: s.id,
-                  title: s.title,
-                  projectId: s.projectId,
-                  updatedAt: s.updatedAt,
-                  archived: !!s.archived,
-                  scheduled: !!s.scheduled,
-                })),
+                list.map((s) => normalizeSessionRow(s)),
               );
             }
           } catch {
@@ -11173,6 +11280,37 @@ export default function App() {
                                         <IconClock size={13} />
                                       </span>
                                     ) : null}
+                                    {(() => {
+                                      const wtBadge =
+                                        sessionWorktreeBadgeFor(s);
+                                      if (!wtBadge) return null;
+                                      const tip = sessionWorktreeTooltip(
+                                        wtBadge,
+                                        {
+                                          detachedLabel: tr(
+                                            "composer.worktreeDetached",
+                                          ),
+                                        },
+                                      );
+                                      return (
+                                        <span
+                                          className="tree-l3__wt"
+                                          title={tip}
+                                          aria-label={tr(
+                                            "session.worktreeBadgeAria",
+                                            {
+                                              branch:
+                                                wtBadge.branch ||
+                                                tr(
+                                                  "composer.worktreeDetached",
+                                                ),
+                                            },
+                                          )}
+                                        >
+                                          {wtBadge.label}
+                                        </span>
+                                      );
+                                    })()}
                                     <span className="tree-l3__name">
                                       {s.title || "Untitled"}
                                     </span>
@@ -11370,6 +11508,26 @@ export default function App() {
                             <IconClock size={13} />
                           </span>
                         ) : null}
+                        {(() => {
+                          const wtBadge = sessionWorktreeBadgeFor(s);
+                          if (!wtBadge) return null;
+                          const tip = sessionWorktreeTooltip(wtBadge, {
+                            detachedLabel: tr("composer.worktreeDetached"),
+                          });
+                          return (
+                            <span
+                              className="tree-l3__wt"
+                              title={tip}
+                              aria-label={tr("session.worktreeBadgeAria", {
+                                branch:
+                                  wtBadge.branch ||
+                                  tr("composer.worktreeDetached"),
+                              })}
+                            >
+                              {wtBadge.label}
+                            </span>
+                          );
+                        })()}
                         <span className="tree-l3__name">
                           {s.title || "Untitled"}
                         </span>
@@ -13671,11 +13829,10 @@ export default function App() {
                 const list = await api.sessionsList();
                 const hit = list.find((s) => s.id === id);
                 if (hit) {
-                  row = {
-                    id: hit.id,
+                  row = normalizeSessionRow({
+                    ...hit,
                     title: hit.title || tr("session.untitled"),
-                    projectId: hit.projectId ?? null,
-                  } as SessionRow;
+                  });
                 }
               } catch {
                 /* ignore */
@@ -14145,12 +14302,12 @@ export default function App() {
             {mergedSessionHits.map((hit, i) => {
               const s = sessions.find((x) => x.id === hit.id);
               // Content-only hits may lack a live row if the list is stale; still open by id.
-              const row: SessionRow = s ?? {
+              const row: SessionRow = s ?? normalizeSessionRow({
                 id: hit.id,
                 title: hit.title,
                 projectId: hit.projectId ?? null,
                 updatedAt: "",
-              };
+              });
               const proj = projects.find(
                 (p) => p.id === (row.projectId ?? hit.projectId),
               );
@@ -14439,6 +14596,65 @@ export default function App() {
             const isOpen =
               session.sessionId === s.id ||
               viewingSessionIdRef.current === s.id;
+            const wtBadge = sessionWorktreeBadgeFor(s);
+            const wtItems: ContextMenuItem[] = wtBadge
+              ? [
+                  {
+                    id: "wt-reveal",
+                    label: tr("session.worktreeReveal"),
+                    icon: <IconExternalLink size={16} />,
+                    onClick: () => {
+                      void (async () => {
+                        try {
+                          await api.fsOpenPath(wtBadge.path);
+                        } catch (e) {
+                          showToast(String(e), 4000);
+                        }
+                      })();
+                    },
+                  },
+                  {
+                    id: "wt-copy-path",
+                    label: tr("session.worktreeCopyPath"),
+                    icon: <IconCopy size={16} />,
+                    onClick: () => {
+                      void (async () => {
+                        try {
+                          await navigator.clipboard.writeText(wtBadge.path);
+                          showToast(tr("session.worktreePathCopied"), 2200);
+                        } catch {
+                          setLocalError(wtBadge.path);
+                        }
+                      })();
+                    },
+                  },
+                  {
+                    id: "wt-remove",
+                    label: tr("composer.worktreeRemove"),
+                    icon: <IconTrash size={16} />,
+                    danger: true,
+                    onClick: () => {
+                      const fromList =
+                        gitWorktrees.find((w) =>
+                          pathsEqual(w.path, wtBadge.path),
+                        ) ?? null;
+                      const wt: api.GitWorktreeEntry = fromList ?? {
+                        path: wtBadge.path,
+                        branch: wtBadge.branch,
+                        detached: !wtBadge.branch,
+                        isMain: false,
+                        locked: false,
+                        prunable: false,
+                      };
+                      if (!canRemoveWorktree(wt) && fromList?.isMain) {
+                        showToast(tr("composer.worktreeRemoveFailed"), 3500);
+                        return;
+                      }
+                      confirmRemoveWorktree({ ...wt, isMain: false });
+                    },
+                  },
+                ]
+              : [];
             items = [
               {
                 id: "pin",
@@ -14482,6 +14698,7 @@ export default function App() {
                   dispatchCollapseAllActivity();
                 },
               },
+              ...wtItems,
               // Export group — not at top of menu (after edit/rename-style actions)
               {
                 id: "export-md",
