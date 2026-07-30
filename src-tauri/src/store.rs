@@ -240,6 +240,13 @@ pub struct AppSettings {
     /// [`Self::disable_web_search`]; changing the list soft-respawns agents.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub disallowed_tools: Vec<String>,
+    /// Built-in tool ids to allow via top-level `grok --tools a,b`.
+    /// Default empty = omit flag (CLI default — all tools). When non-empty,
+    /// restricts the agent to the listed tools. Coexists with
+    /// [`Self::disallowed_tools`] (allowlist restricts; denylist still applies).
+    /// Changing the list soft-respawns agents.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub allowed_tools: Vec<String>,
     /// Reopen the last active chat once after launch (default **false** —
     /// start on a draft new-chat page; opt-in via Settings).
     #[serde(default = "default_reopen_last_session")]
@@ -402,6 +409,7 @@ impl Default for AppSettings {
             max_agent_turns: None,
             disable_web_search: false,
             disallowed_tools: Vec::new(),
+            allowed_tools: Vec::new(),
             reopen_last_session: default_reopen_last_session(),
             last_session_id: None,
             last_project_id: None,
@@ -2077,6 +2085,7 @@ mod tests {
         assert_eq!(s.max_agent_turns, None);
         assert!(!s.disable_web_search);
         assert!(s.disallowed_tools.is_empty());
+        assert!(s.allowed_tools.is_empty());
         assert!(s.plan_enabled);
         assert!(s.subagents_enabled);
         assert_eq!(s.preferred_agent, "");
@@ -2179,6 +2188,25 @@ mod tests {
         let back: AppSettings = serde_json::from_str(&json).expect("deserialize");
         assert_eq!(
             back.disallowed_tools,
+            vec!["web_search".to_string(), "write".to_string()]
+        );
+    }
+
+    #[test]
+    fn allowed_tools_defaults_empty_when_missing_from_json() {
+        let s: AppSettings = serde_json::from_str(legacy_settings_json()).expect("deserialize");
+        assert!(s.allowed_tools.is_empty());
+    }
+
+    #[test]
+    fn allowed_tools_round_trips_camel_case() {
+        let mut s = AppSettings::default();
+        s.allowed_tools = vec!["web_search".into(), "write".into()];
+        let json = serde_json::to_string(&s).expect("serialize");
+        assert!(json.contains("\"allowedTools\""));
+        let back: AppSettings = serde_json::from_str(&json).expect("deserialize");
+        assert_eq!(
+            back.allowed_tools,
             vec!["web_search".to_string(), "write".to_string()]
         );
     }

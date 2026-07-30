@@ -2006,6 +2006,7 @@ export default function App() {
   const [planEnabled, setPlanEnabled] = useState(true);
   const [disableWebSearch, setDisableWebSearch] = useState(false);
   const [disallowedTools, setDisallowedTools] = useState<string[]>([]);
+  const [allowedTools, setAllowedTools] = useState<string[]>([]);
   const [useLeader, setUseLeader] = useState(false);
   /** Default off → launch on draft new-chat page. */
   const [reopenLastSession, setReopenLastSession] = useState(false);
@@ -2764,6 +2765,13 @@ export default function App() {
       setDisallowedTools(
         Array.isArray(settings.disallowedTools)
           ? settings.disallowedTools.filter(
+              (x): x is string => typeof x === "string",
+            )
+          : [],
+      );
+      setAllowedTools(
+        Array.isArray(settings.allowedTools)
+          ? settings.allowedTools.filter(
               (x): x is string => typeof x === "string",
             )
           : [],
@@ -13476,6 +13484,13 @@ export default function App() {
             setDisallowedTools(v);
             void api.settingsGet().then((s) =>
               api.settingsSet({ ...s, disallowedTools: v }),
+            );
+          }}
+          allowedTools={allowedTools}
+          onAllowedTools={(v) => {
+            setAllowedTools(v);
+            void api.settingsGet().then((s) =>
+              api.settingsSet({ ...s, allowedTools: v }),
             );
           }}
           useLeader={useLeader}

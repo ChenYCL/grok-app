@@ -469,6 +469,25 @@ pub fn disallowed_tools_equal(a: &[String], b: &[String]) -> bool {
     aa == bb
 }
 
+/// Normalize tool ids for `--tools` allowlist: same rules as denylist.
+pub fn normalize_allowed_tools(tools: &[String]) -> Vec<String> {
+    normalize_disallowed_tools(tools)
+}
+
+/// Spawn argv for allowlist: `["--tools", "a,b"]` or empty (CLI default = all).
+pub fn allowed_tools_spawn_flags(tools: &[String]) -> Vec<String> {
+    let cleaned = normalize_allowed_tools(tools);
+    if cleaned.is_empty() {
+        return Vec::new();
+    }
+    vec!["--tools".into(), cleaned.join(",")]
+}
+
+/// Order-independent, case-insensitive equality for soft-respawn flip checks.
+pub fn allowed_tools_equal(a: &[String], b: &[String]) -> bool {
+    disallowed_tools_equal(a, b)
+}
+
 pub fn no_plan_spawn_flags(plan_enabled: bool) -> Vec<&'static str> {
     if plan_enabled {
         vec![]
@@ -636,6 +655,7 @@ impl AcpClient {
         let plan_enabled = settings.plan_enabled;
         let disable_web = settings.disable_web_search;
         let disallowed_tools = settings.disallowed_tools.clone();
+        let allowed_tools = settings.allowed_tools.clone();
         let spawn_policy = opts.permission_policy.as_deref().unwrap_or("ask");
         let spawn_product_mode = opts.product_mode.as_deref();
 
@@ -683,6 +703,9 @@ impl AcpClient {
         }
         for f in disable_web_search_spawn_flags(disable_web) {
             cmd.arg(f);
+        }
+        for a in allowed_tools_spawn_flags(&allowed_tools) {
+            cmd.arg(a);
         }
         for a in disallowed_tools_spawn_flags(&disallowed_tools) {
             cmd.arg(a);
@@ -3405,6 +3428,56 @@ mod disallowed_tools_spawn_tests {
             &["B".into(), "A".into()]
         ));
         assert!(!disallowed_tools_equal(&["a".into()], &["a".into(), "b".into()]));
+    }
+}
+
+#[cfg(test)]
+mod allowed_tools_spawn_tests {
+    use super::*;
+
+    #[test]
+    fn empty_yields_no_flags() {
+        assert!(allowed_tools_spawn_flags(&[]).is_empty());
+        assert!(allowed_tools_spawn_flags(&["".into(), "  ".into()]).is_empty());
+    }
+
+    #[test]
+    fn builds_comma_separated_flag() {
+        let args = allowed_tools_spawn_flags(&[
+            "  web_search  ".into(),
+            "write".into(),
+            "web_search".into(),
+        ]);
+        assert_eq!(
+            args,
+            vec!["--tools".to_string(), "web_search,write".to_string(),]
+        );
+    }
+
+    #[test]
+    fn splits_embedded_commas_and_dedupes_case_insensitively() {
+        let cleaned = normalize_allowed_tools(&[
+            "Web_Search,write".into(),
+            "WEB_SEARCH".into(),
+            "Agent".into(),
+        ]);
+        assert_eq!(
+            cleaned,
+            vec![
+                "Web_Search".to_string(),
+                "write".to_string(),
+                "Agent".to_string(),
+            ]
+        );
+    }
+
+    #[test]
+    fn equality_is_order_and_case_insensitive() {
+        assert!(allowed_tools_equal(
+            &["a".into(), "b".into()],
+            &["B".into(), "A".into()]
+        ));
+        assert!(!allowed_tools_equal(&["a".into()], &["a".into(), "b".into()]));
     }
 }
 

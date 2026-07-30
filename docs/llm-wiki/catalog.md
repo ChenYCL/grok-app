@@ -50,16 +50,23 @@ Spawn：`--reasoning-effort <id>`。无模型级默认时 App 默认 **`medium`*
 2. 中途切换：优先 `set_mode`；失败则 soft-respawn。  
 3. 按 `composerPrefsScope` 记忆。
 
-## 禁用内置工具（disallowed tools）
+## 内置工具 allowlist / denylist
 
 | App 设置 | Spawn | 说明 |
 |----------|-------|------|
 | `disableWebSearch` | top-level `--disable-web-search` | 移除 `web_search` / `web_fetch` |
-| `disallowedTools: string[]` | top-level `--disallowed-tools a,b` | 逗号分隔 tool id denylist |
+| `allowedTools: string[]` | top-level `--tools a,b` | 逗号分隔 tool id **allowlist**；空 = 省略（CLI 默认全部） |
+| `disallowedTools: string[]` | top-level `--disallowed-tools a,b` | 逗号分隔 tool id **denylist** |
 
-两者**并存**：网页开关不写入 `disallowedTools` 数组，但 UI 把 web 工具视为已覆盖；纯 helper `effectiveDisallowedTools` 可合并展示。常见芯片：`web_search` · `web_fetch` · `run_terminal_command`（caution）· `search_replace` · `write` · `Agent` · `spawn_subagent`；另支持 freeform 逗号列表。
+**并存规则：**
 
-更改后 soft-respawn（`settings_spawn`）。源码：`src/lib/disallowedTools.ts`、Host `AppSettings.disallowed_tools`、`acp_client::disallowed_tools_spawn_flags`。
+- 两者皆空 + 未关网页搜索 → CLI 默认（全部工具）。
+- `allowedTools` 非空 → 仅允许列出的工具；`disallowedTools` 若也非空仍会从该集合中移除。
+- 网页开关不写入 `disallowedTools` 数组，但 UI 把 web 工具视为已覆盖；纯 helper `effectiveDisallowedTools` 可合并展示。
+
+常见芯片：`web_search` · `web_fetch` · `run_terminal_command`（caution）· `search_replace` · `write` · `Agent` · `spawn_subagent`；另支持 freeform 逗号列表。
+
+更改后 soft-respawn（`settings_spawn`）。源码：`src/lib/allowedTools.ts`、`src/lib/disallowedTools.ts`、Host `AppSettings.allowed_tools` / `disallowed_tools`、`acp_client::allowed_tools_spawn_flags` / `disallowed_tools_spawn_flags`。
 
 ## 权限（含 YOLO）与 CLI `--permission-mode`
 

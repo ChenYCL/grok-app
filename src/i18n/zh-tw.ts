@@ -1196,9 +1196,19 @@ export const zhTW: Record<MessageKey, string> = {
   "settings.disableWebSearch": "停用網頁搜尋與抓取",
   "settings.disableWebSearchDesc":
     "啟動 Agent 時加上 --disable-web-search，移除 web_search / web_fetch 工具。變更後會 soft-respawn 已連線的 Agent。",
+  "settings.allowedTools": "允許的工具",
+  "settings.allowedToolsDesc":
+    "透過 --tools（逗號分隔）限制可用內建工具。留空 = 全部工具（CLI 預設）。設定後僅列出的工具可用。可與下方「停用內建工具」並存（denylist 仍生效）。變更後會 soft-respawn。",
+  "settings.allowedToolsPlaceholder":
+    "額外工具 id，逗號分隔（如 bash,grep）",
+  "settings.allowedTools.caution":
+    "注意：僅允許終端機 / 編碼類工具仍可能權限較大",
+  "settings.allowedTools.clear": "全部清除（預設：全部工具）",
+  "settings.allowedTools.bothSet":
+    "允許清單與停用清單均已設定：--tools 先收窄範圍，--disallowed-tools 仍會從中移除列出的工具。",
   "settings.disallowedTools": "停用內建工具",
   "settings.disallowedToolsDesc":
-    "透過 --disallowed-tools 移除所選內建工具。可與上方「停用網頁搜尋」並存。變更後會 soft-respawn。",
+    "透過 --disallowed-tools 移除所選內建工具。可與「停用網頁搜尋」及上方「允許的工具」並存。變更後會 soft-respawn。",
   "settings.disallowedToolsPlaceholder":
     "額外工具 id，逗號分隔（如 bash,grep）",
   "settings.disallowedTools.caution": "注意：會封鎖終端機 / 編碼類工具",
