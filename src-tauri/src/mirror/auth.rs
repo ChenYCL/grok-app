@@ -45,6 +45,38 @@ pub fn path_after_token(path: &str) -> Option<String> {
     Some(after.to_string())
 }
 
+/// Safe path for logs: `/t/<redacted>/…` so candidate or real tokens never hit disk.
+pub fn path_for_log(path: &str) -> String {
+    if let Some(after) = path_after_token(path) {
+        if after.is_empty() {
+            "/t/<redacted>/".into()
+        } else {
+            format!("/t/<redacted>/{after}")
+        }
+    } else if path.starts_with("/t/") {
+        "/t/<redacted>".into()
+    } else {
+        // No token segment — still avoid dumping huge / unexpected paths.
+        let s: String = path.chars().take(120).collect();
+        s
+    }
+}
+
+/// Last `n` characters of a token for safe status chips / logs (never the full secret).
+pub fn token_tail(token: &str, n: usize) -> String {
+    if n == 0 || token.is_empty() {
+        return String::new();
+    }
+    token
+        .chars()
+        .rev()
+        .take(n)
+        .collect::<String>()
+        .chars()
+        .rev()
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -75,5 +107,24 @@ mod tests {
         assert_eq!(path_after_token("/t/secret/api/health").as_deref(), Some("api/health"));
         assert_eq!(path_after_token("/t/secret/").as_deref(), Some(""));
         assert_eq!(path_after_token("/t/secret").as_deref(), Some(""));
+    }
+
+    #[test]
+    fn path_for_log_redacts_token_segment() {
+        assert_eq!(
+            path_for_log("/t/super-secret-token/api/health"),
+            "/t/<redacted>/api/health"
+        );
+        assert_eq!(path_for_log("/t/super-secret-token/"), "/t/<redacted>/");
+        assert_eq!(path_for_log("/t/super-secret-token"), "/t/<redacted>/");
+        assert_eq!(path_for_log("/nope"), "/nope");
+        assert!(!path_for_log("/t/abc123/ws").contains("abc123"));
+    }
+
+    #[test]
+    fn token_tail_takes_suffix() {
+        assert_eq!(token_tail("abcdefghij", 6), "efghij");
+        assert_eq!(token_tail("abc", 6), "abc");
+        assert_eq!(token_tail("", 6), "");
     }
 }

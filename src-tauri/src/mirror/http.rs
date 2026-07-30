@@ -16,7 +16,7 @@ use serde::Deserialize;
 use tokio::net::TcpListener;
 use tokio::sync::oneshot;
 
-use super::auth::{extract_token_from_path, path_after_token, tokens_equal};
+use super::auth::{extract_token_from_path, path_after_token, path_for_log, tokens_equal};
 use super::ws;
 use super::MirrorHost;
 
@@ -96,19 +96,21 @@ async fn token_gate_middleware(
     next: Next,
 ) -> Response {
     let path = req.uri().path().to_string();
+    // Never log raw path — it embeds the token (or attacker-supplied candidates).
+    let log_path = path_for_log(&path);
     let Some(path_token) = extract_token_from_path(&path) else {
-        tracing::warn!(path = %path, "mirror auth rejected: missing token path");
+        tracing::warn!(path = %log_path, "mirror auth rejected: missing token path");
         return unauthorized();
     };
 
     let active = state.host.active_token();
     let Some(active) = active else {
-        tracing::warn!(path = %path, "mirror auth rejected: host not running");
+        tracing::warn!(path = %log_path, "mirror auth rejected: host not running");
         return unauthorized();
     };
 
     if !tokens_equal(&path_token, &active) {
-        tracing::warn!(path = %path, "mirror auth rejected: bad token");
+        tracing::warn!(path = %log_path, "mirror auth rejected: bad token");
         return unauthorized();
     }
 
@@ -155,6 +157,23 @@ async fn ws_handler(
     }
 
     let host = state.host.clone();
+
+    // Cap concurrent WS clients (DoS / resource bound). Default 4; panel can raise.
+    if host.is_at_client_limit() {
+        let clients = host.hub().client_count();
+        let max = host.max_clients();
+        tracing::warn!(
+            clients,
+            max_clients = max,
+            "mirror ws: rejected — client limit reached"
+        );
+        return (
+            StatusCode::SERVICE_UNAVAILABLE,
+            "Mirror client limit reached",
+        )
+            .into_response();
+    }
+
     let (app, mgr) = match host.rpc_ctx() {
         Some(ctx) => (Some(ctx.0), Some(ctx.1)),
         None => {
@@ -168,6 +187,7 @@ async fn ws_handler(
         .and_then(|v| v.to_str().ok())
         .unwrap_or("-");
     let ua_snip: String = ua.chars().take(120).collect();
+    // UA only — never log URL / token.
     tracing::info!(ua = %ua_snip, "mirror: websocket upgrade accepted");
 
     ws.on_upgrade(move |socket| ws::handle_socket(socket, host, app, mgr))

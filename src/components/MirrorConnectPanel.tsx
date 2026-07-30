@@ -6,6 +6,8 @@
  *
  * Write-ACL audit (localStorage ring) records write enable/disable,
  * token rotate, and optional host start/stop — never stores secrets.
+ *
+ * Harden: write categories + broad warning, max clients, rotate confirm.
  */
 
 import { useCallback, useEffect, useState } from "react";
@@ -23,6 +25,15 @@ import {
   type MirrorWriteAuditEvent,
   type MirrorWriteAuditType,
 } from "@/lib/mirrorWriteAudit";
+import {
+  MIRROR_DEFAULT_MAX_CLIENTS,
+  MIRROR_MAX_CLIENTS_CAP,
+  MIRROR_MIN_CLIENTS,
+  MIRROR_WRITE_CATEGORIES,
+  isBroadMirrorWriteSurface,
+  normalizeMirrorMaxClients,
+  type MirrorWriteCategoryId,
+} from "@/lib/mirrorWriteSurface";
 
 export type MirrorConnectLabels = {
   title: string;
@@ -51,6 +62,11 @@ export type MirrorConnectLabels = {
   linkLabel: string;
   rotate: string;
   rotateDone: string;
+  /** Confirm before regenerating the link (invalidates old QR). */
+  rotateConfirmTitle: string;
+  rotateConfirmMessage: string;
+  rotateConfirmMessageClients: string;
+  rotateConfirmOk: string;
   allowWrite: string;
   readOnlyOn: string;
   readOnlyHint: string;
@@ -60,6 +76,22 @@ export type MirrorConnectLabels = {
   writeConfirmOk: string;
   /** Persistent banner while phone write is enabled. */
   writeEnabledBanner: string;
+  /** Write-category section while write is on. */
+  writeCategoriesTitle: string;
+  writeCategoriesHint: string;
+  writeBroadWarn: string;
+  writeCategorySend: string;
+  writeCategoryStop: string;
+  writeCategorySessions: string;
+  writeCategoryPermissions: string;
+  writeCategoryAskUser: string;
+  writeCategoryPlan: string;
+  writeCategoryDelete: string;
+  writeCategoryRename: string;
+  /** Optional concurrent phone client cap. */
+  maxClientsLabel: string;
+  maxClientsHint: string;
+  maxClientsValue: string;
   /** Collapsible local write-ACL audit log. */
   auditTitle: string;
   auditEmpty: string;
@@ -136,10 +168,37 @@ function emptyStatus(): MirrorStatus {
     token: null,
     tokenTail: null,
     clients: 0,
+    maxClients: MIRROR_DEFAULT_MAX_CLIENTS,
     phase: "stopped",
     error: null,
     readOnly: true,
   };
+}
+
+function categoryLabel(
+  id: MirrorWriteCategoryId,
+  labels: MirrorConnectLabels,
+): string {
+  switch (id) {
+    case "send":
+      return labels.writeCategorySend;
+    case "stop":
+      return labels.writeCategoryStop;
+    case "sessions":
+      return labels.writeCategorySessions;
+    case "permissions":
+      return labels.writeCategoryPermissions;
+    case "askUser":
+      return labels.writeCategoryAskUser;
+    case "plan":
+      return labels.writeCategoryPlan;
+    case "delete":
+      return labels.writeCategoryDelete;
+    case "rename":
+      return labels.writeCategoryRename;
+    default:
+      return id;
+  }
 }
 
 function formatAuditAt(iso: string): string {
@@ -267,12 +326,41 @@ function MirrorWriteAuditSection({
   );
 }
 
+function MirrorWriteCategories({ labels }: { labels: MirrorConnectLabels }) {
+  const broad = isBroadMirrorWriteSurface();
+  return (
+    <div className="mirror-connect__write-surface" role="region" aria-label={labels.writeCategoriesTitle}>
+      <div className="mirror-connect__write-surface-head">
+        <span className="mirror-connect__write-surface-title">
+          {labels.writeCategoriesTitle}
+        </span>
+        {broad ? (
+          <span className="mirror-connect__write-surface-broad" role="status">
+            {labels.writeBroadWarn}
+          </span>
+        ) : null}
+      </div>
+      <p className="mirror-connect__write-surface-hint">{labels.writeCategoriesHint}</p>
+      <ul className="mirror-connect__write-cats">
+        {MIRROR_WRITE_CATEGORIES.map((c) => (
+          <li key={c.id} className="mirror-connect__write-cat">
+            {categoryLabel(c.id, labels)}
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
 function MirrorConnectBody({
   labels,
   status,
   busy,
   err,
   qrDataUrl,
+  maxClientsDraft,
+  onMaxClientsChange,
+  onMaxClientsCommit,
   onCopy,
   onStart,
   onStop,
@@ -285,6 +373,9 @@ function MirrorConnectBody({
   busy: boolean;
   err: string | null;
   qrDataUrl: string | null;
+  maxClientsDraft: number;
+  onMaxClientsChange: (n: number) => void;
+  onMaxClientsCommit: () => void;
   onCopy: () => void;
   onStart: () => void;
   onStop: () => void;
@@ -294,6 +385,7 @@ function MirrorConnectBody({
 }) {
   const phase = status.phase;
   const showQr = !!status.publicUrl && (phase === "live" || phase === "local");
+  const writeOn = status.running && status.readOnly === false;
 
   return (
     <>
@@ -366,6 +458,45 @@ function MirrorConnectBody({
         </div>
       ) : null}
 
+      <div className="mirror-connect__max-clients">
+        <label className="mirror-connect__max-clients-label" htmlFor="mirror-max-clients">
+          {labels.maxClientsLabel}
+        </label>
+        <div className="mirror-connect__max-clients-row">
+          <input
+            id="mirror-max-clients"
+            className="mirror-connect__max-clients-input"
+            type="number"
+            min={MIRROR_MIN_CLIENTS}
+            max={MIRROR_MAX_CLIENTS_CAP}
+            step={1}
+            disabled={busy}
+            value={maxClientsDraft}
+            onChange={(e) => {
+              const n = normalizeMirrorMaxClients(e.target.value);
+              onMaxClientsChange(n);
+            }}
+            onBlur={() => onMaxClientsCommit()}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                onMaxClientsCommit();
+                (e.target as HTMLInputElement).blur();
+              }
+            }}
+            aria-describedby="mirror-max-clients-hint"
+          />
+          <span className="mirror-connect__max-clients-value" aria-hidden>
+            {labels.maxClientsValue
+              .replace("{n}", String(maxClientsDraft))
+              .replace("{max}", String(MIRROR_MAX_CLIENTS_CAP))}
+          </span>
+        </div>
+        <p id="mirror-max-clients-hint" className="mirror-connect__max-clients-hint">
+          {labels.maxClientsHint}
+        </p>
+      </div>
+
       <div className="mirror-connect__footer">
         {status.running ? (
           <button
@@ -414,19 +545,22 @@ function MirrorConnectBody({
       {status.running && status.readOnly ? (
         <p className="mirror-connect__hint">{labels.readOnlyHint}</p>
       ) : null}
-      {status.running && !status.readOnly ? (
-        <div
-          className="mirror-connect__write-banner"
-          role="status"
-          aria-live="polite"
-        >
-          <span className="mirror-connect__write-banner-chip" aria-hidden>
-            !
-          </span>
-          <span className="mirror-connect__write-banner-text">
-            {labels.writeEnabledBanner}
-          </span>
-        </div>
+      {writeOn ? (
+        <>
+          <div
+            className="mirror-connect__write-banner"
+            role="status"
+            aria-live="polite"
+          >
+            <span className="mirror-connect__write-banner-chip" aria-hidden>
+              !
+            </span>
+            <span className="mirror-connect__write-banner-text">
+              {labels.writeEnabledBanner}
+            </span>
+          </div>
+          <MirrorWriteCategories labels={labels} />
+        </>
       ) : null}
 
       <MirrorWriteAuditSection
@@ -450,18 +584,37 @@ export function MirrorConnectPanel({
   const [busy, setBusy] = useState(false);
   const [qrDataUrl, setQrDataUrl] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
+  const [maxClientsDraft, setMaxClientsDraft] = useState(
+    MIRROR_DEFAULT_MAX_CLIENTS,
+  );
 
   const active = variant === "inline" ? open !== false : !!open;
+
+  /** Update status/error. Optionally sync max-clients draft (not on poll — would clobber edits). */
+  const applyStatus = useCallback(
+    (st: MirrorStatus, opts?: { syncMaxClients?: boolean }) => {
+      setStatus(st);
+      setErr(st.error);
+      if (opts?.syncMaxClients) {
+        setMaxClientsDraft(
+          normalizeMirrorMaxClients(
+            st.maxClients ?? MIRROR_DEFAULT_MAX_CLIENTS,
+          ),
+        );
+      }
+    },
+    [],
+  );
 
   const refresh = useCallback(async () => {
     try {
       const st = await api.mirrorStatus();
-      setStatus(st);
-      setErr(st.error);
+      // Poll: keep status.clients/phase fresh; leave maxClientsDraft alone.
+      applyStatus(st);
     } catch (e) {
       setErr(String(e));
     }
-  }, []);
+  }, [applyStatus]);
 
   // When active: optionally auto-start, then poll status.
   useEffect(() => {
@@ -474,10 +627,14 @@ export function MirrorConnectPanel({
         if (autoStart) {
           const st = await api.mirrorStart();
           if (cancelled) return;
-          setStatus(st);
-          setErr(st.error);
+          applyStatus(st, { syncMaxClients: true });
         } else {
-          await refresh();
+          try {
+            const st = await api.mirrorStatus();
+            if (!cancelled) applyStatus(st, { syncMaxClients: true });
+          } catch (e) {
+            if (!cancelled) setErr(String(e));
+          }
         }
       } catch (e) {
         if (!cancelled) {
@@ -496,7 +653,7 @@ export function MirrorConnectPanel({
       cancelled = true;
       window.clearInterval(id);
     };
-  }, [active, autoStart, refresh]);
+  }, [active, autoStart, refresh, applyStatus]);
 
   // Render QR whenever public URL is available.
   useEffect(() => {
@@ -523,11 +680,11 @@ export function MirrorConnectPanel({
     };
   }, [status.publicUrl]);
 
-  const handleRotate = () => {
+  const doRotate = () => {
     void (async () => {
       try {
         const st = await api.mirrorRotateToken();
-        setStatus(st);
+        applyStatus(st, { syncMaxClients: true });
         // Never log token/URL — type only.
         recordMirrorWriteAudit({ type: "token_rotated" });
         showToast?.(labels.rotateDone);
@@ -537,11 +694,26 @@ export function MirrorConnectPanel({
     })();
   };
 
+  const handleRotate = () => {
+    // Regenerating the link invalidates every phone session — confirm in-app.
+    const n = status.clients ?? 0;
+    const message =
+      n > 0
+        ? labels.rotateConfirmMessageClients.replace("{n}", String(n))
+        : labels.rotateConfirmMessage;
+    onRequestConfirm({
+      title: labels.rotateConfirmTitle,
+      message,
+      confirmLabel: labels.rotateConfirmOk,
+      onConfirm: doRotate,
+    });
+  };
+
   const applyReadOnly = (readOnly: boolean) => {
     void (async () => {
       try {
         const st = await api.mirrorSetReadOnly(readOnly);
-        setStatus(st);
+        applyStatus(st, { syncMaxClients: true });
         recordMirrorWriteAudit({
           type: readOnly ? "write_disabled" : "write_enabled",
         });
@@ -566,6 +738,24 @@ export function MirrorConnectPanel({
     applyReadOnly(true);
   };
 
+  const handleMaxClientsCommit = () => {
+    const next = normalizeMirrorMaxClients(maxClientsDraft);
+    setMaxClientsDraft(next);
+    const current = normalizeMirrorMaxClients(
+      status.maxClients ?? MIRROR_DEFAULT_MAX_CLIENTS,
+    );
+    if (next === current) return;
+    void (async () => {
+      try {
+        const st = await api.mirrorSetMaxClients(next);
+        applyStatus(st, { syncMaxClients: true });
+      } catch (e) {
+        setErr(String(e));
+        setMaxClientsDraft(current);
+      }
+    })();
+  };
+
   const handleCopy = async () => {
     const url = status.publicUrl;
     if (!url) return;
@@ -582,8 +772,7 @@ export function MirrorConnectPanel({
     void api
       .mirrorStart()
       .then((st) => {
-        setStatus(st);
-        setErr(st.error);
+        applyStatus(st, { syncMaxClients: true });
         // Explicit user start only (auto-start on open does not audit).
         if (st.running) {
           recordMirrorWriteAudit({ type: "host_started" });
@@ -603,7 +792,7 @@ export function MirrorConnectPanel({
         void api
           .mirrorStop()
           .then((st) => {
-            setStatus(st);
+            applyStatus(st, { syncMaxClients: true });
             setErr(null);
             recordMirrorWriteAudit({ type: "host_stopped" });
             showToast(labels.phaseStopped, 2000);
@@ -621,6 +810,9 @@ export function MirrorConnectPanel({
       busy={busy}
       err={err}
       qrDataUrl={qrDataUrl}
+      maxClientsDraft={maxClientsDraft}
+      onMaxClientsChange={setMaxClientsDraft}
+      onMaxClientsCommit={handleMaxClientsCommit}
       onCopy={() => void handleCopy()}
       onStart={handleStart}
       onStop={handleStop}

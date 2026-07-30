@@ -2390,10 +2390,16 @@ export type MirrorStatus = {
   running: boolean;
   publicUrl: string | null;
   localPort: number | null;
+  /**
+   * Full token while host is running (QR / copy). Memory-only —
+   * never persist to localStorage, audit logs, or support bundles.
+   */
   token: string | null;
   /** Last 6 chars of token for safe display. */
   tokenTail?: string | null;
   clients: number;
+  /** Concurrent WebSocket client cap (1–16, default 4). */
+  maxClients?: number;
   phase: MirrorPhase;
   error: string | null;
   /** When true, phone cannot send / resolve permissions. Default true. */
@@ -2410,6 +2416,7 @@ export async function mirrorStatus(): Promise<MirrorStatus> {
       token: null,
       tokenTail: null,
       clients: 0,
+      maxClients: 4,
       phase: "stopped",
       error: null,
       readOnly: true,
@@ -2444,6 +2451,16 @@ export async function mirrorSetReadOnly(readOnly: boolean): Promise<MirrorStatus
     throw new Error("mirror host requires desktop app");
   }
   return invoke<MirrorStatus>("mirror_set_read_only", { readOnly });
+}
+
+/** Cap concurrent phone WebSocket clients (1–16). Host-only; no secrets. */
+export async function mirrorSetMaxClients(
+  maxClients: number,
+): Promise<MirrorStatus> {
+  if (!isDesktopHost()) {
+    throw new Error("mirror host requires desktop app");
+  }
+  return invoke<MirrorStatus>("mirror_set_max_clients", { maxClients });
 }
 
 // ── Automations (scheduled tasks) ───────────────────────────────────────────
