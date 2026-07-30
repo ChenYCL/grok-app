@@ -683,6 +683,25 @@ html.platform-mac[data-theme="light"] .settings-page__content {
   flex-shrink: 0;
 }
 
+/* Optional project accent (token or #hex) — sits between folder icon and name. */
+.tree-l2__color-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  background: var(--project-color, var(--accent));
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.18);
+}
+
+.project-color-swatch {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.2);
+}
+
 .tree-l2__name {
   flex: 1;
   min-width: 0;

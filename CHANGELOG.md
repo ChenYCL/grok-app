@@ -22,6 +22,7 @@ See `docs/llm-wiki/release.md`.
 - **Cross-session recent prompt history** (`/history` picker): **This chat** tab plus **Recent (all chats)** localStorage ring (max 50, consecutive-dedupe); select inserts into composer
 - **Per-session sticky notes** (context menu “Session note…”; localStorage only, max ~2k; sidebar note icon + preview tip; never sent to the agent unless you paste)
 - **Auto-collapse finished tool steps** in the chat timeline (default on; Settings → Appearance; running tools stay expanded)
+- **Project color accent**: optional sidebar color (tokens blue/green/orange/purple/pink/gray or `#hex`); color dot on project header; set via context menu; Host `project_set_color`
 - **Send queue reorder**: Up/Down on each queued follow-up before auto-flush
 - **Chat reading width** (Settings → Appearance): narrow / medium (default) / wide / full (`grok.chatWidth`)
 - **Phone mirror write guard**: confirm when enabling write; persistent warning banner; audit log (no secrets)
@@ -51,6 +52,7 @@ See `docs/llm-wiki/release.md`.
 - **跨会话最近提示历史**（`/history`）：「当前会话」与「最近（全部会话）」标签；localStorage 环形缓冲最多 50 条；选择后填入输入框
 - 按会话粘性备注（菜单「会话备注…」；仅本机 localStorage，约 2k 字；侧栏图标与预览；除非粘贴否则不进入 Agent）
 - 完成后自动折叠工具步骤（默认开启；设置 → 外观；运行中保持展开）
+- **项目颜色标记**：侧栏可选色点（命名色或 `#hex`）；右键设置；Host `project_set_color`
 - 发送队列上下排序；对话阅读宽度；镜像写权限确认与警告；整段对话复制为 Markdown
 - 可单独关闭实时语音快捷键；任务面板子代理树；计划历史归档；侧栏日期分组
 - 程序坞/托盘忙碌角标；按会话静音桌面通知

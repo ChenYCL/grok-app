@@ -102,6 +102,10 @@ pub struct Project {
     /// `None` → use app Settings `sandboxProfile`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub sandbox_profile: Option<String>,
+    /// Optional sidebar accent color: named token (`blue` / `green` / …) or `#rgb` / `#rrggbb`.
+    /// `None` → no color accent (migration-safe default).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub color: Option<String>,
 }
 
 impl Project {
@@ -659,6 +663,7 @@ pub fn add_project(path: String, trust: bool) -> Result<Project, String> {
         mode: None,
         permission_policy: None,
         sandbox_profile: None,
+        color: None,
     };
     list.push(p.clone());
     save_projects(&list)?;
@@ -723,6 +728,92 @@ pub fn set_project_pinned(id: &str, pinned: bool) -> Result<Project, String> {
         .find(|p| p.id == id)
         .ok_or_else(|| "project not found".to_string())?;
     p.pinned = pinned;
+    let clone = p.clone();
+    save_projects(&list)?;
+    Ok(clone)
+}
+
+/// Named project accent tokens (sidebar color dot).
+pub const PROJECT_COLOR_TOKENS: &[&str] =
+    &["blue", "green", "orange", "purple", "pink", "gray"];
+
+/// Normalize a project color value.
+///
+/// Accepts:
+/// - named tokens: `blue` | `green` | `orange` | `purple` | `pink` | `gray`
+/// - hex: `#rgb` / `#rrggbb` (case-insensitive; output lowercased)
+///
+/// Empty / `none` / `inherit` / `default` / `clear` → `None`.
+/// Unknown values → `None` (treat as clear so bad data cannot stick).
+pub fn normalize_project_color(raw: &str) -> Option<String> {
+    let t = raw.trim();
+    if t.is_empty() {
+        return None;
+    }
+    let lower = t.to_ascii_lowercase();
+    if matches!(
+        lower.as_str(),
+        "none" | "inherit" | "default" | "clear" | "null" | "undefined"
+    ) {
+        return None;
+    }
+    if PROJECT_COLOR_TOKENS.iter().any(|tok| *tok == lower) {
+        return Some(lower);
+    }
+    if let Some(hex) = normalize_hex_color(&lower) {
+        return Some(hex);
+    }
+    None
+}
+
+/// Validate and canonicalize `#rgb` / `#rrggbb` to lowercase hex.
+fn normalize_hex_color(raw: &str) -> Option<String> {
+    let s = raw.trim();
+    if !s.starts_with('#') {
+        return None;
+    }
+    let body = &s[1..];
+    let ok = matches!(body.len(), 3 | 6)
+        && body.bytes().all(|b| b.is_ascii_hexdigit());
+    if !ok {
+        return None;
+    }
+    Some(format!("#{}", body.to_ascii_lowercase()))
+}
+
+/// Set or clear a project sidebar accent color.
+///
+/// `color = None` / empty / `"none"` clears the accent.
+/// Invalid values are rejected (not silently cleared) so the UI can show an error.
+pub fn set_project_color(id: &str, color: Option<String>) -> Result<Project, String> {
+    let next = match color {
+        None => None,
+        Some(raw) => {
+            let t = raw.trim();
+            if t.is_empty()
+                || t.eq_ignore_ascii_case("none")
+                || t.eq_ignore_ascii_case("inherit")
+                || t.eq_ignore_ascii_case("default")
+                || t.eq_ignore_ascii_case("clear")
+            {
+                None
+            } else {
+                Some(
+                    normalize_project_color(t).ok_or_else(|| {
+                        format!(
+                            "invalid project color (use blue|green|orange|purple|pink|gray or #hex): {t}"
+                        )
+                    })?,
+                )
+            }
+        }
+    };
+    let mut list = load_projects();
+    let p = list
+        .iter_mut()
+        .find(|p| p.id == id)
+        .ok_or_else(|| "project not found".to_string())?;
+    p.color = next;
     let clone = p.clone();
     save_projects(&list)?;
     Ok(clone)
@@ -1784,6 +1875,62 @@ mod tests {
     }
 
     #[test]
+    fn normalize_project_color_tokens_and_hex() {
+        for tok in PROJECT_COLOR_TOKENS {
+            assert_eq!(
+                normalize_project_color(tok).as_deref(),
+                Some(*tok),
+                "token {tok}"
+            );
+            assert_eq!(
+                normalize_project_color(&format!("  {}  ", tok.to_uppercase())).as_deref(),
+                Some(*tok)
+            );
+        }
+        assert_eq!(
+            normalize_project_color("#ABC").as_deref(),
+            Some("#abc")
+        );
+        assert_eq!(
+            normalize_project_color("#a1b2c3").as_deref(),
+            Some("#a1b2c3")
+        );
+        assert_eq!(
+            normalize_project_color("  #FfEeDd  ").as_deref(),
+            Some("#ffeedd")
+        );
+    }
+
+    #[test]
+    fn normalize_project_color_clears_and_rejects() {
+        for raw in ["", "   ", "none", "NONE", "inherit", "default", "clear", "null"] {
+            assert_eq!(normalize_project_color(raw), None, "raw={raw:?}");
+        }
+        assert_eq!(normalize_project_color("red"), None);
+        assert_eq!(normalize_project_color("#gg0000"), None);
+        assert_eq!(normalize_project_color("#12"), None);
+        assert_eq!(normalize_project_color("#12345"), None);
+        assert_eq!(normalize_project_color("abc"), None);
+        assert_eq!(normalize_project_color("a1b2c3"), None); // missing #
+    }
+
+    #[test]
+    fn project_color_serde_default_missing_field() {
+        // Legacy projects.json rows without `color` deserialize to None.
+        let json = r#"{
+            "id": "p1",
+            "name": "Demo",
+            "path": "/tmp/demo",
+            "trusted": true,
+            "lastOpenedAt": "2026-01-01T00:00:00Z",
+            "pathOk": true
+        }"#;
+        let p: Project = serde_json::from_str(json).expect("legacy project");
+        assert!(p.color.is_none());
+        assert!(!p.pinned);
+    }
+
+    #[test]
     fn take_store_quarantine_is_one_shot() {
         // Seed the static as if a corrupt file was recovered.
         {
@@ -2111,6 +2258,7 @@ mod tests {
             mode: None,
             permission_policy: None,
             sandbox_profile: None,
+            color: None,
         });
         write_json(&projects_file(), &projects).expect("seed projects");
         let mut sessions: Vec<SessionMeta> = read_json_recover(&sessions_index_file());

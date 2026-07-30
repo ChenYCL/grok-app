@@ -505,6 +505,12 @@ import {
   canRestoreCodeOnFork,
 } from "@/lib/sessionFork";
 import { isProjectPathMissing } from "@/lib/projectPath";
+import {
+  PROJECT_COLOR_TOKENS,
+  normalizeProjectColor,
+  resolveProjectColorCss,
+  type ProjectColorToken,
+} from "@/lib/projectColor";
 import { appendPluginDir } from "@/lib/sessionPluginDirs";
 import {
   classifyVoiceError,
@@ -726,6 +732,8 @@ interface Project {
   permissionPolicy?: string | null;
   /** Project-level OS sandbox profile. Null/undefined → app Settings. */
   sandboxProfile?: string | null;
+  /** Optional sidebar accent: token or #hex. Null/undefined → none. */
+  color?: string | null;
 }
 
 /** Retired sidebar project id — sessions rehomed to orphan ("其他会话"). */
@@ -756,6 +764,7 @@ function normalizeProject(x: Project): Project {
     system: false,
     pinned: !!x.pinned,
     trusted: !!x.trusted,
+    color: normalizeProjectColor(x.color) ?? null,
   };
 }
 
@@ -848,6 +857,7 @@ type ContextMenuState =
   | { kind: "project"; id: string; x: number; y: number }
   | { kind: "project-policy"; id: string; x: number; y: number }
   | { kind: "project-sandbox"; id: string; x: number; y: number }
+  | { kind: "project-color"; id: string; x: number; y: number }
   | { kind: "session"; id: string; x: number; y: number }
   | { kind: "archive-older"; x: number; y: number }
   | null;
@@ -5691,6 +5701,58 @@ export default function App() {
     }
 
     void commit();
+  };
+
+  const projectColorLabel = (token: ProjectColorToken) =>
+    tr(
+      (
+        {
+          blue: "project.colorBlue",
+          green: "project.colorGreen",
+          orange: "project.colorOrange",
+          purple: "project.colorPurple",
+          pink: "project.colorPink",
+          gray: "project.colorGray",
+        } as const
+      )[token],
+    );
+
+  /** Set or clear a project sidebar accent color. `null` clears. */
+  const applyProjectColor = (proj: Project, next: string | null) => {
+    setCtxMenu(null);
+    void (async () => {
+      try {
+        const updated = (await api.projectSetColor(proj.id, next)) as Project;
+        await refreshProjects();
+        if (activeProject?.id === proj.id) {
+          setActiveProject((p) =>
+            p
+              ? {
+                  ...p,
+                  color: normalizeProjectColor(updated.color) ?? null,
+                }
+              : p,
+          );
+        }
+        const stored = normalizeProjectColor(updated.color);
+        const msg = stored
+          ? tr("project.colorSet", {
+              name: proj.name,
+              color:
+                PROJECT_COLOR_TOKENS.includes(stored as ProjectColorToken)
+                  ? projectColorLabel(stored as ProjectColorToken)
+                  : stored,
+            })
+          : tr("project.colorCleared", { name: proj.name });
+        setToast(msg);
+        window.setTimeout(
+          () => setToast((cur) => (cur === msg ? null : cur)),
+          2800,
+        );
+      } catch (e) {
+        setLocalError(String(e));
+      }
+    })();
   };
 
   /** Persist global sandbox Settings; confirm when switching to off/devbox. */
@@ -12622,6 +12684,19 @@ export default function App() {
                       <span className="tree-l2__icon">
                         <IconFolder size={15} />
                       </span>
+                      {resolveProjectColorCss(proj.color) ? (
+                        <span
+                          className="tree-l2__color-dot"
+                          style={
+                            {
+                              "--project-color": resolveProjectColorCss(
+                                proj.color,
+                              ),
+                            } as CSSProperties
+                          }
+                          aria-hidden
+                        />
+                      ) : null}
                       <Tip
                         label={
                           isProjectPathMissing(proj.pathOk)
@@ -16924,6 +16999,30 @@ export default function App() {
                 },
               },
               {
+                id: "color",
+                label: tr("project.color"),
+                icon: (() => {
+                  const css = resolveProjectColorCss(proj.color);
+                  return css ? (
+                    <span
+                      className="project-color-swatch"
+                      style={{ background: css }}
+                      aria-hidden
+                    />
+                  ) : (
+                    <IconAppearance size={16} />
+                  );
+                })(),
+                onClick: () => {
+                  setCtxMenu({
+                    kind: "project-color",
+                    id: proj.id,
+                    x: ctxMenu.x,
+                    y: ctxMenu.y,
+                  });
+                },
+              },
+              {
                 id: "reveal",
                 label: tr("project.reveal"),
                 icon: <IconExternalLink size={16} />,
@@ -17069,6 +17168,39 @@ export default function App() {
                     icon: current === id ? <IconCheck size={16} /> : undefined,
                     danger: isDangerousSandboxProfile(id),
                     onClick: () => applyProjectSandboxProfile(proj, id),
+                  }) satisfies ContextMenuItem,
+              ),
+            ];
+          }
+        } else if (ctxMenu?.kind === "project-color") {
+          const proj = projects.find((p) => p.id === ctxMenu.id);
+          if (proj) {
+            const current = normalizeProjectColor(proj.color);
+            items = [
+              {
+                id: "color-none",
+                label: tr("project.colorNone"),
+                icon: !current ? <IconCheck size={16} /> : undefined,
+                onClick: () => applyProjectColor(proj, null),
+              },
+              ...PROJECT_COLOR_TOKENS.map(
+                (tok) =>
+                  ({
+                    id: `color-${tok}`,
+                    label: projectColorLabel(tok),
+                    icon:
+                      current === tok ? (
+                        <IconCheck size={16} />
+                      ) : (
+                        <span
+                          className="project-color-swatch"
+                          style={{
+                            background: resolveProjectColorCss(tok) ?? undefined,
+                          }}
+                          aria-hidden
+                        />
+                      ),
+                    onClick: () => applyProjectColor(proj, tok),
                   }) satisfies ContextMenuItem,
               ),
             ];
