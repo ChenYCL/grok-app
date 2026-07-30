@@ -2375,6 +2375,15 @@ export const zhTW: Record<MessageKey, string> = {
   "ext.plugins.update": "更新",
   "ext.plugins.updateAll": "全部更新",
   "ext.plugins.updating": "正在更新…",
+  "ext.plugins.validate": "驗證",
+  "ext.plugins.validating": "正在驗證…",
+  "ext.plugins.validateOk": "清單有效",
+  "ext.plugins.validateFailed": "驗證失敗",
+  "ext.plugins.validateCliTooOld":
+    "目前 Grok CLI 不支援 plugin validate — 請更新 CLI 並完全重新啟動應用程式。",
+  "ext.plugins.validatePathOnly":
+    "安裝前驗證僅支援本機資料夾路徑（不支援 git URL 或 owner/repo）。",
+  "ext.plugins.validateHint": "對本機路徑執行 `grok plugin validate` 後再安裝",
   "ext.skills.title": "技能",
   "ext.skills.loading": "正在載入技能…",
   "ext.skills.empty": "未發現技能",

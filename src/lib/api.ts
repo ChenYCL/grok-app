@@ -1773,6 +1773,27 @@ export async function pluginUpdate(name?: string | null) {
   });
 }
 
+/** Result of `grok plugin validate` (host always returns envelope; soft-fail when CLI too old). */
+export interface PluginValidateResult {
+  ok: boolean;
+  messages: string[];
+  path?: string | null;
+  /** e.g. `cli_too_old` when the probed CLI lacks `plugin validate`. */
+  reason?: string | null;
+}
+
+/**
+ * Validate a plugin manifest via `grok plugin validate [path|name]`.
+ * Pass an installed plugin path/name, or a local path before install.
+ * Soft-fails (ok:false + reason) when CLI is too old — does not throw for that case.
+ */
+export async function pluginValidate(pathOrName?: string | null) {
+  const raw = (pathOrName ?? "").trim();
+  return invoke<PluginValidateResult>("plugin_validate", {
+    pathOrName: raw ? raw : null,
+  });
+}
+
 // ── Official Grok Build account ─────────────────────────────────────────────
 
 export interface AccountProfile {

@@ -361,6 +361,7 @@ pub fn run() {
             commands::plugin_details,
             commands::plugin_install,
             commands::plugin_update,
+            commands::plugin_validate,
             commands::hooks_list,
             commands::hooks_reveal,
             commands::hooks_open_dir,

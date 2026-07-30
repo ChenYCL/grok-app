@@ -40,6 +40,13 @@ import {
   type PluginFilter,
 } from "@/lib/extensionsUi";
 import {
+  formatPluginValidateMessages,
+  isLocalPluginPath,
+  isPluginValidateCliTooOld,
+  pluginValidateTarget,
+  type PluginValidateResult,
+} from "@/lib/pluginValidate";
+import {
   indexDoctorServerStatuses,
   lookupServerStatus,
   mcpAuthGuidanceKey,
@@ -140,6 +147,13 @@ export function ExtensionsPanel({
   /** Grok Build Plugins tab filter: all | enabled | disabled */
   const [pluginFilter, setPluginFilter] = useState<PluginFilter>("all");
   const [installSource, setInstallSource] = useState("");
+  /** Per-row `plugin validate` result (keyed by pluginRowKey). Shown in-panel. */
+  const [validateByKey, setValidateByKey] = useState<
+    Record<string, PluginValidateResult>
+  >({});
+  /** Pre-install validate for advanced path/git install field. */
+  const [installValidate, setInstallValidate] =
+    useState<PluginValidateResult | null>(null);
   /** In-app SKILL.md light editor (Settings → Extensions → Skills). */
   const [skillEditor, setSkillEditor] = useState<SkillEditorState | null>(null);
   const [skillDiscardOpen, setSkillDiscardOpen] = useState(false);
@@ -620,6 +634,98 @@ export function ExtensionsPanel({
     });
   };
 
+  const applyValidateResult = (
+    res: api.PluginValidateResult,
+  ): PluginValidateResult => ({
+    ok: !!res.ok,
+    messages: Array.isArray(res.messages)
+      ? res.messages.filter((m): m is string => typeof m === "string")
+      : [],
+    path: res.path ?? null,
+    reason: res.reason ?? null,
+  });
+
+  /** Validate an installed plugin (path preferred) — result stays on the row. */
+  const validatePlugin = (p: api.PluginDto) => {
+    if (!api.isTauri() || actionBusy || cliMissing) return;
+    const key = pluginRowKey(p);
+    const target = pluginValidateTarget(p);
+    setActionBusy(`validate:${key}`);
+    setActionError(null);
+    setActionErrorSource(null);
+    void (async () => {
+      try {
+        const res = applyValidateResult(await api.pluginValidate(target));
+        setValidateByKey((prev) => ({ ...prev, [key]: res }));
+        // Soft-fail (CLI too old) also surfaces in the top action panel for visibility.
+        if (!res.ok && isPluginValidateCliTooOld(res)) {
+          setActionError(
+            formatPluginValidateMessages(
+              res.messages,
+              tr("ext.plugins.validateCliTooOld"),
+            ),
+          );
+          setActionErrorSource("plugin");
+        }
+      } catch (e) {
+        const msg = String(e);
+        setValidateByKey((prev) => ({
+          ...prev,
+          [key]: { ok: false, messages: [msg] },
+        }));
+        setActionError(msg);
+        setActionErrorSource("plugin");
+      } finally {
+        setActionBusy(null);
+      }
+    })();
+  };
+
+  /** Pre-install validate for a local path in the advanced install field. */
+  const validateInstallSource = () => {
+    if (!api.isTauri() || actionBusy || cliMissing) return;
+    const source = normalizePluginInstallSource(installSource);
+    if (!source) {
+      setInstallValidate({
+        ok: false,
+        messages: [tr("ext.plugins.installEmpty")],
+      });
+      return;
+    }
+    if (!isLocalPluginPath(source)) {
+      setInstallValidate({
+        ok: false,
+        messages: [tr("ext.plugins.validatePathOnly")],
+      });
+      return;
+    }
+    setActionBusy("validate:install");
+    setActionError(null);
+    setActionErrorSource(null);
+    void (async () => {
+      try {
+        const res = applyValidateResult(await api.pluginValidate(source));
+        setInstallValidate(res);
+        if (!res.ok && isPluginValidateCliTooOld(res)) {
+          setActionError(
+            formatPluginValidateMessages(
+              res.messages,
+              tr("ext.plugins.validateCliTooOld"),
+            ),
+          );
+          setActionErrorSource("plugin");
+        }
+      } catch (e) {
+        const msg = String(e);
+        setInstallValidate({ ok: false, messages: [msg] });
+        setActionError(msg);
+        setActionErrorSource("plugin");
+      } finally {
+        setActionBusy(null);
+      }
+    })();
+  };
+
   const showDetails = async (p: api.PluginDto) => {
     setDetailsTitle(p.name);
     setDetailsBody("");
@@ -1000,10 +1106,12 @@ export function ExtensionsPanel({
               const key = pluginRowKey(p);
               const rowBusy = actionBusy === key;
               const updating = actionBusy === `update:${key}`;
-              const busy = rowBusy || updating;
+              const validating = actionBusy === `validate:${key}`;
+              const busy = rowBusy || updating || validating;
               const tone = pluginStatusTone(p.status, p.enabled);
               const meta = pluginMetaLine(p);
               const provides = pluginProvidesLine(p);
+              const vResult = validateByKey[key] ?? null;
               return (
                 <li
                   key={key}
@@ -1075,6 +1183,16 @@ export function ExtensionsPanel({
                     <button
                       type="button"
                       className="btn btn--ghost btn--sm"
+                      disabled={busy || !!actionBusy || cliMissing}
+                      onClick={() => validatePlugin(p)}
+                    >
+                      {validating
+                        ? tr("ext.plugins.validating")
+                        : tr("ext.plugins.validate")}
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn--ghost btn--sm"
                       disabled={busy || !!actionBusy}
                       onClick={() => void showDetails(p)}
                     >
@@ -1090,6 +1208,43 @@ export function ExtensionsPanel({
                       <span>{tr("ext.plugins.uninstall")}</span>
                     </button>
                   </div>
+                  {vResult ? (
+                    <div
+                      className={
+                        "ext-item__validate" +
+                        (vResult.ok
+                          ? " ext-item__validate--ok"
+                          : " ext-item__validate--err")
+                      }
+                      role={vResult.ok ? "status" : "alert"}
+                    >
+                      <div className="ext-item__validate-title">
+                        {vResult.ok
+                          ? tr("ext.plugins.validateOk")
+                          : isPluginValidateCliTooOld(vResult)
+                            ? tr("ext.plugins.validateCliTooOld")
+                            : tr("ext.plugins.validateFailed")}
+                      </div>
+                      {vResult.messages.length > 0 ? (
+                        <pre className="ext-item__validate-body">
+                          {formatPluginValidateMessages(vResult.messages)}
+                        </pre>
+                      ) : null}
+                      <button
+                        type="button"
+                        className="btn btn--ghost btn--sm"
+                        onClick={() =>
+                          setValidateByKey((prev) => {
+                            const next = { ...prev };
+                            delete next[key];
+                            return next;
+                          })
+                        }
+                      >
+                        {tr("common.close")}
+                      </button>
+                    </div>
+                  ) : null}
                 </li>
               );
             })}
@@ -1117,7 +1272,10 @@ export function ExtensionsPanel({
                   disabled={!!actionBusy || cliMissing}
                   autoComplete="off"
                   spellCheck={false}
-                  onChange={(e) => setInstallSource(e.target.value)}
+                  onChange={(e) => {
+                    setInstallSource(e.target.value);
+                    if (installValidate) setInstallValidate(null);
+                  }}
                   onKeyDown={(e) => {
                     if (e.key === "Enter") {
                       e.preventDefault();
@@ -1125,6 +1283,21 @@ export function ExtensionsPanel({
                     }
                   }}
                 />
+                <button
+                  type="button"
+                  className="btn btn--ghost btn--sm"
+                  disabled={
+                    !!actionBusy ||
+                    cliMissing ||
+                    !normalizePluginInstallSource(installSource)
+                  }
+                  title={tr("ext.plugins.validateHint")}
+                  onClick={() => validateInstallSource()}
+                >
+                  {actionBusy === "validate:install"
+                    ? tr("ext.plugins.validating")
+                    : tr("ext.plugins.validate")}
+                </button>
                 <button
                   type="button"
                   className="btn btn--solid btn--sm"
@@ -1140,6 +1313,40 @@ export function ExtensionsPanel({
                     : tr("ext.plugins.install")}
                 </button>
               </div>
+              <p className="ext-plugin-install__hint">
+                {tr("ext.plugins.installHint")}
+              </p>
+              {installValidate ? (
+                <div
+                  className={
+                    "ext-item__validate" +
+                    (installValidate.ok
+                      ? " ext-item__validate--ok"
+                      : " ext-item__validate--err")
+                  }
+                  role={installValidate.ok ? "status" : "alert"}
+                >
+                  <div className="ext-item__validate-title">
+                    {installValidate.ok
+                      ? tr("ext.plugins.validateOk")
+                      : isPluginValidateCliTooOld(installValidate)
+                        ? tr("ext.plugins.validateCliTooOld")
+                        : tr("ext.plugins.validateFailed")}
+                  </div>
+                  {installValidate.messages.length > 0 ? (
+                    <pre className="ext-item__validate-body">
+                      {formatPluginValidateMessages(installValidate.messages)}
+                    </pre>
+                  ) : null}
+                  <button
+                    type="button"
+                    className="btn btn--ghost btn--sm"
+                    onClick={() => setInstallValidate(null)}
+                  >
+                    {tr("common.close")}
+                  </button>
+                </div>
+              ) : null}
             </div>
           </details>
         ) : null}
