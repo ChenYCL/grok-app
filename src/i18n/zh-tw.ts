@@ -189,6 +189,18 @@ export const zhTW: Record<MessageKey, string> = {
   "session.forkRestoreUnavailable": "還原程式碼需要此專案是 git 儲存庫。",
   "session.forkRestoreFailed": "無法為還原建立 worktree",
   "session.forkRestoreBindFailed": "對話已分叉，但未能繫結到新 worktree",
+  "session.forkCliSession":
+    "分叉 CLI Agent 工作階段（新 agent id — grok --fork-session）",
+  "session.forkCliSessionHint":
+    "以父工作階段完整內容建立新的 agent session id（ACP session/fork）。原 agent 工作階段保持不變。尚未關聯 agent 工作階段時不可用。",
+  "session.resumeForkCliSessionHint":
+    "在此 worktree 上分配新的 agent session id，而不是沿用原工作階段（CLI --fork-session）。不勾選則繼續同一 agent 工作階段。",
+  "session.forkOkCli": "已分叉 · 新 agent 工作階段 · 已開啟新對話",
+  "session.forkOkRestoreCli":
+    "已分叉 · 新 agent 工作階段 · 已在乾淨 worktree 中開啟",
+  "session.resumeRestoreOkCli":
+    "已恢復 · 新 agent 工作階段 · 已在乾淨 worktree 中開啟",
+  "session.forkCliFailed": "無法啟用 CLI Agent 工作階段分叉",
   "session.resumeRestore": "恢復對話並還原程式碼…",
   "session.resumeRestoreTitle": "恢復對話並還原程式碼",
   "session.resumeRestoreConfirm":

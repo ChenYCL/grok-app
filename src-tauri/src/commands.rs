@@ -119,13 +119,41 @@ pub async fn session_rewind_execute(
 }
 
 /// Fork a session into a new chat (same project, messages up to optional cut).
+///
+/// When `fork_agent_session` is true and the source has an agent id, the new
+/// chat carries that id with a one-shot fork flag so the next connect uses
+/// CLI `--fork-session` semantics (ACP `session/fork` → new agent id).
 #[tauri::command]
 pub fn session_fork(
     source_id: String,
     through_user_prompt_index: Option<u32>,
     title: Option<String>,
+    fork_agent_session: Option<bool>,
 ) -> Result<store::SessionMeta, String> {
-    store::fork_session(&source_id, through_user_prompt_index, title)
+    store::fork_session(
+        &source_id,
+        through_user_prompt_index,
+        title,
+        fork_agent_session.unwrap_or(false),
+    )
+}
+
+/// Set the one-shot CLI `--fork-session` flag (new agent id on next connect).
+/// Soft-respawns the live agent for this chat when the flag is armed so the
+/// next connect can fork instead of reusing the warm process.
+#[tauri::command]
+pub async fn session_set_fork_agent_session(
+    app: tauri::AppHandle,
+    mgr: State<'_, Arc<SessionManager>>,
+    id: String,
+    fork_agent_session: bool,
+) -> Result<store::SessionMeta, String> {
+    let meta = store::set_session_fork_agent_session(&id, fork_agent_session)?;
+    let snap = mgr.snapshot();
+    if fork_agent_session && snap.session_id.as_deref() == Some(meta.id.as_str()) {
+        mgr.soft_respawn_with_reason(&app, "session_fork_agent").await;
+    }
+    Ok(meta)
 }
 
 #[tauri::command]

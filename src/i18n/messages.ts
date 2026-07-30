@@ -209,6 +209,18 @@ const en = {
   "session.forkRestoreFailed": "Could not create a worktree for restore",
   "session.forkRestoreBindFailed":
     "Forked the chat, but could not bind it to the new worktree",
+  "session.forkCliSession":
+    "Fork CLI agent session (new agent id — grok --fork-session)",
+  "session.forkCliSessionHint":
+    "Creates a new agent session id with the parent’s full context (ACP session/fork). The original agent session stays unchanged. Off when no agent session is linked yet.",
+  "session.resumeForkCliSessionHint":
+    "On this worktree, allocate a new agent session id instead of reusing the original (CLI --fork-session). Leave unchecked to continue the same agent session.",
+  "session.forkOkCli": "Forked · new agent session · opened new chat",
+  "session.forkOkRestoreCli":
+    "Forked · new agent session · opened on a clean worktree",
+  "session.resumeRestoreOkCli":
+    "Resumed · new agent session · opened on a clean worktree",
+  "session.forkCliFailed": "Could not arm CLI agent session fork",
   "session.resumeRestore": "Resume with code restore…",
   "session.resumeRestoreTitle": "Resume with code restore",
   "session.resumeRestoreConfirm":
@@ -3246,6 +3258,17 @@ const zh: Record<MessageKey, string> = {
   "session.forkRestoreUnavailable": "恢复代码需要该项目是 git 仓库。",
   "session.forkRestoreFailed": "无法为恢复创建 worktree",
   "session.forkRestoreBindFailed": "会话已分叉，但未能绑定到新 worktree",
+  "session.forkCliSession":
+    "分叉 CLI Agent 会话（新 agent id — grok --fork-session）",
+  "session.forkCliSessionHint":
+    "用父会话完整上下文创建新的 agent session id（ACP session/fork）。原 agent 会话保持不变。尚未关联 agent 会话时不可用。",
+  "session.resumeForkCliSessionHint":
+    "在本 worktree 上分配新的 agent session id，而不是复用原会话（CLI --fork-session）。不勾选则继续同一 agent 会话。",
+  "session.forkOkCli": "已分叉 · 新 agent 会话 · 已打开新会话",
+  "session.forkOkRestoreCli": "已分叉 · 新 agent 会话 · 已在干净 worktree 中打开",
+  "session.resumeRestoreOkCli":
+    "已恢复 · 新 agent 会话 · 已在干净 worktree 中打开",
+  "session.forkCliFailed": "无法启用 CLI Agent 会话分叉",
   "session.resumeRestore": "恢复对话并还原代码…",
   "session.resumeRestoreTitle": "恢复对话并还原代码",
   "session.resumeRestoreConfirm":

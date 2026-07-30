@@ -213,6 +213,7 @@ mod tests {
             plugin_dirs: Vec::new(),
             extra_rules: None,
             max_agent_turns: None,
+            fork_agent_session: false,
         }
     }
 

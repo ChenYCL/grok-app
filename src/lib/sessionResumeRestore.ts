@@ -11,8 +11,10 @@
 
 import { sanitizeWorktreeName } from "@/lib/gitWorktree";
 import {
+  canOfferForkAgentSession,
   canRestoreCodeOnFork,
   isGitWorkingTreeDirty,
+  resolveForkAgentSession,
   sanitizeForkNameFragment,
   type ForkGitStatusSnapshot,
   type ForkRestoreCodeGate,
@@ -23,6 +25,9 @@ export type ResumeCodeRestoreGate = ForkRestoreCodeGate;
 
 /** Re-export dirty check used by both fork and resume restore-code paths. */
 export { isGitWorkingTreeDirty };
+
+/** Re-export CLI `--fork-session` offer gate for resume-with-code UI. */
+export { canOfferForkAgentSession, resolveForkAgentSession };
 
 /**
  * Gate for restore-code on resume (same rules as fork):

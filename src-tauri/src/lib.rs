@@ -298,6 +298,7 @@ pub fn run() {
             commands::session_set_plugin_dirs,
             commands::session_set_extra_rules,
             commands::session_set_max_agent_turns,
+            commands::session_set_fork_agent_session,
             commands::session_set_scheduled,
             commands::session_messages,
             commands::session_media_root,

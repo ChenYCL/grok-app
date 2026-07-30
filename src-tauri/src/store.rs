@@ -166,6 +166,12 @@ pub struct SessionMeta {
     /// `None` / 0 → inherit global `AppSettings.max_agent_turns`. Soft-respawn on change.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub max_agent_turns: Option<u32>,
+    /// One-shot CLI `--fork-session` semantics: on next connect, fork the agent
+    /// session (ACP `session/fork`) so the chat gets a **new** agent session id
+    /// with the source’s context instead of reusing via `session/load`.
+    /// Requires `agent_session_id` as the source; cleared after connect attempt.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub fork_agent_session: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1020,6 +1026,7 @@ pub fn create_session(
         plugin_dirs: Vec::new(),
         extra_rules: None,
         max_agent_turns: None,
+        fork_agent_session: false,
     };
     let mut list = load_sessions_index();
     list.insert(0, meta.clone());
@@ -1379,12 +1386,20 @@ pub fn truncate_through_user_prompt(
     Ok(messages[..end].to_vec())
 }
 
-/// Fork a session: new journal + meta, same project, no agent session id.
+/// Fork a session: new journal + meta, same project.
+///
+/// By default the fork has **no** `agent_session_id` (next connect → `session/new`
+/// + journal bootstrap). When `fork_agent_session` is true and the source has an
+/// agent id, the fork carries that id with `fork_agent_session=true` so the next
+/// connect uses CLI `--fork-session` semantics (ACP `session/fork` → new agent id,
+/// full parent context, source agent session left untouched).
+///
 /// `through_user_prompt_index`: when set, copy only through that user turn (inclusive).
 pub fn fork_session(
     source_id: &str,
     through_user_prompt_index: Option<u32>,
     title: Option<String>,
+    fork_agent_session: bool,
 ) -> Result<SessionMeta, String> {
     let list = load_sessions_index();
     let source = list
@@ -1424,6 +1439,19 @@ pub fn fork_session(
     meta.plugin_dirs = source.plugin_dirs.clone();
     meta.extra_rules = source.extra_rules.clone();
     meta.max_agent_turns = source.max_agent_turns;
+    // CLI --fork-session: resume parent agent context under a new agent id.
+    let source_agent = source
+        .agent_session_id
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(|s| s.to_string());
+    if fork_agent_session {
+        if let Some(aid) = source_agent {
+            meta.agent_session_id = Some(aid);
+            meta.fork_agent_session = true;
+        }
+    }
     meta.updated_at = Utc::now();
     update_session_meta(&meta)?;
 
@@ -1439,6 +1467,36 @@ pub fn fork_session(
         .collect();
     save_messages(&meta.id, &forked)?;
     Ok(meta)
+}
+
+/// Set or clear the one-shot CLI `--fork-session` flag on a session.
+///
+/// When `true`, next connect forks `agent_session_id` into a new agent id.
+/// Requires a non-empty `agent_session_id` to enable; otherwise stores `false`.
+pub fn set_session_fork_agent_session(
+    id: &str,
+    fork_agent_session: bool,
+) -> Result<SessionMeta, String> {
+    let mut list = load_sessions_index();
+    let s = list
+        .iter_mut()
+        .find(|s| s.id == id)
+        .ok_or_else(|| "session not found".to_string())?;
+    let has_agent = s
+        .agent_session_id
+        .as_deref()
+        .map(str::trim)
+        .is_some_and(|a| !a.is_empty());
+    s.fork_agent_session = fork_agent_session && has_agent;
+    s.updated_at = Utc::now();
+    let clone = s.clone();
+    save_sessions_index(&list)?;
+    Ok(clone)
+}
+
+/// Clear the one-shot fork flag after a connect attempt (success or fallthrough).
+pub fn clear_session_fork_agent_session(id: &str) -> Result<SessionMeta, String> {
+    set_session_fork_agent_session(id, false)
 }
 
 // ─── Automations (scheduled tasks shell) ───────────────────────────────────
@@ -2256,6 +2314,7 @@ mod tests {
             plugin_dirs: Vec::new(),
             extra_rules: None,
             max_agent_turns: None,
+            fork_agent_session: false,
         }
     }
 
@@ -2441,6 +2500,7 @@ mod tests {
                 plugin_dirs: Vec::new(),
                 extra_rules: None,
                 max_agent_turns: None,
+                fork_agent_session: false,
             },
         );
         write_json(&sessions_index_file(), &sessions).expect("seed sessions");

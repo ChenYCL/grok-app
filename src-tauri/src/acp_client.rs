@@ -259,6 +259,41 @@ pub struct SpawnOptions {
     /// Per-session max turns override → top-level `grok --max-turns N`.
     /// When set (after normalize), wins over `AppSettings.max_agent_turns`.
     pub max_agent_turns: Option<u32>,
+    /// CLI `--fork-session` semantics: on open, fork the resume agent session
+    /// into a **new** agent id (ACP `session/fork`) instead of `session/load`.
+    /// Host sets this from `SessionMeta.fork_agent_session` for one-shot connect.
+    pub fork_session: bool,
+}
+
+/// Pure helper: top-level CLI args for `--fork-session`.
+///
+/// `["--fork-session"]` when enabled; empty otherwise. The TUI requires this
+/// with `--resume`/`--continue`. Host `agent stdio` uses ACP `session/fork`
+/// instead of bare CLI flags (CLI errors without resume).
+pub fn fork_session_spawn_flags(enabled: bool) -> Vec<&'static str> {
+    if enabled {
+        vec!["--fork-session"]
+    } else {
+        vec![]
+    }
+}
+
+/// Extract the forked agent session id from an ACP fork response.
+///
+/// Accepts standard `sessionId` or Grok extension `newSessionId`. Rejects empty
+/// and equal-to-source ids (fork must allocate a **new** id).
+pub fn parse_fork_session_id(result: &serde_json::Value, source_session_id: &str) -> Option<String> {
+    let raw = result
+        .get("sessionId")
+        .and_then(|v| v.as_str())
+        .or_else(|| result.get("newSessionId").and_then(|v| v.as_str()))
+        .map(str::trim)
+        .filter(|s| !s.is_empty())?;
+    // Fork semantics require a distinct id; reuse would mutate the source.
+    if raw == source_session_id.trim() {
+        return None;
+    }
+    Some(raw.to_string())
 }
 
 /// Pure helper: top-level CLI args for session extra rules (before `agent`).
@@ -741,11 +776,12 @@ impl AcpClient {
             cmd.env(k, v);
         }
         tracing::info!(
-            "acp: spawn home={} mode={} sandbox={:?} max_turns={:?} leader={} subagents={} memory={} agent_profile={:?}",
+            "acp: spawn home={} mode={} sandbox={:?} max_turns={:?} fork_session={} leader={} subagents={} memory={} agent_profile={:?}",
             grok_home.display(),
             session_data_mode,
             sandbox.as_ref().map(|s| s.profile.as_str()),
             max_turns.as_ref().map(|m| m.turns),
+            opts.fork_session,
             use_leader,
             subagents_enabled,
             memory_enabled,
@@ -1616,11 +1652,14 @@ impl AcpClient {
 
     /// Initialize + auth, then open a session.
     /// Prefer `session/load` when `resume_session_id` is set (Grok persists agent
-    /// sessions under GROK_HOME). Fall back to `session/new`.
+    /// sessions under GROK_HOME). When `fork_session` is true, use ACP
+    /// `session/fork` (CLI `--fork-session` semantics) for a **new** agent id
+    /// with the source context. Fall back to `session/new`.
     /// Returns `(session_id, resumed)`.
     pub async fn initialize_and_open_session(
         &self,
         resume_session_id: Option<&str>,
+        fork_session: bool,
     ) -> Result<(String, bool), AgentError> {
         // Do not advertise client fs methods we do not implement — avoids agent
         // hanging on fs/readTextFile while we never reply.
@@ -1634,11 +1673,12 @@ impl AcpClient {
             .map_err(|e| self.map_handshake_err("initialize", e))?;
 
         info!(
-            "acp initialized agentVersion={:?} loadSession={:?}",
+            "acp initialized agentVersion={:?} loadSession={:?} forkSession={}",
             init.pointer("/_meta/agentVersion")
                 .or_else(|| init.pointer("/agentVersion")),
             init.pointer("/agentCapabilities/loadSession")
-                .or_else(|| init.pointer("/capabilities/loadSession"))
+                .or_else(|| init.pointer("/capabilities/loadSession")),
+            fork_session
         );
 
         // Best-effort cached auth — short timeout so a hung auth cannot burn 120s.
@@ -1654,7 +1694,7 @@ impl AcpClient {
             Err(e) => warn!("acp authenticate soft-fail (continuing): {e}"),
         }
 
-        self.open_session(resume_session_id).await
+        self.open_session(resume_session_id, fork_session).await
     }
 
     /// Open or resume an ACP session on an already-initialized agent process.
@@ -1664,9 +1704,15 @@ impl AcpClient {
     ///
     /// Injects **enabled** MCP servers (App Extensions prefs + `grok mcp list`)
     /// into `mcpServers` so independent GROK_HOME and shared mode both see tools.
+    ///
+    /// When `fork_session` is true and `resume_session_id` is set, tries
+    /// `session/fork` (standard ACP) then `_x.ai/session/fork` (Grok extension)
+    /// before falling back to `session/new` — never `session/load` (would reuse
+    /// the source id and violate `--fork-session` semantics).
     pub async fn open_session(
         &self,
         resume_session_id: Option<&str>,
+        fork_session: bool,
     ) -> Result<(String, bool), AgentError> {
         let cwd = self.cwd.to_string_lossy().to_string();
         if !self.cwd.is_dir() {
@@ -1686,44 +1732,66 @@ impl AcpClient {
         let mcp_count = mcp_servers.as_array().map(|a| a.len()).unwrap_or(0);
         info!("acp session open injecting mcpServers count={mcp_count}");
 
-        // Prefer resuming the previous agent session for full native context.
-        // Note: session/load replays history as ACP notifications; Host must
-        // gate stream/tool side effects on `prompt_in_flight` (see session_manager).
         if let Some(rid) = resume_session_id.map(str::trim).filter(|s| !s.is_empty()) {
-            info!("acp session/load begin sessionId={rid} cwd={cwd}");
-            match self
-                .request_timeout(
-                    "session/load",
-                    json!({
-                        "sessionId": rid,
-                        "cwd": cwd,
-                        "mcpServers": mcp_servers.clone()
-                    }),
-                    HANDSHAKE_TIMEOUT_SECS,
-                )
-                .await
-            {
-                Ok(result) => {
-                    let sid = result
-                        .get("sessionId")
-                        .and_then(|v| v.as_str())
-                        .unwrap_or(rid)
-                        .to_string();
-                    info!("acp session/load ok sessionId={sid}");
+            // CLI `--fork-session`: new agent session id with parent context.
+            if fork_session {
+                if let Some((sid, model_id)) = self
+                    .try_fork_session(rid, &cwd, &mcp_servers)
+                    .await
+                {
                     *self.agent_session_id.lock() = Some(sid.clone());
-                    let model_id = result
-                        .pointer("/models/currentModelId")
-                        .and_then(|v| v.as_str())
-                        .map(|s| s.to_string());
                     let _ = self.event_tx.send(AcpEvent::State {
                         backend: "grok_agent_stdio".into(),
                         agent_session_id: Some(sid.clone()),
                         model_id,
                     });
+                    // Full parent context was forked — treat like a successful resume
+                    // for bootstrap purposes (no journal rewrite needed).
                     return Ok((sid, true));
                 }
-                Err(e) => {
-                    warn!("acp session/load fail ({e}); falling back to session/new");
+                warn!(
+                    "acp session/fork failed for source={rid}; falling back to session/new (will not reuse source id)"
+                );
+                // Fall through to session/new — do not session/load (would mutate source).
+            } else {
+                // Prefer resuming the previous agent session for full native context.
+                // Note: session/load replays history as ACP notifications; Host must
+                // gate stream/tool side effects on `prompt_in_flight` (see session_manager).
+                info!("acp session/load begin sessionId={rid} cwd={cwd}");
+                match self
+                    .request_timeout(
+                        "session/load",
+                        json!({
+                            "sessionId": rid,
+                            "cwd": cwd,
+                            "mcpServers": mcp_servers.clone()
+                        }),
+                        HANDSHAKE_TIMEOUT_SECS,
+                    )
+                    .await
+                {
+                    Ok(result) => {
+                        let sid = result
+                            .get("sessionId")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or(rid)
+                            .to_string();
+                        info!("acp session/load ok sessionId={sid}");
+                        *self.agent_session_id.lock() = Some(sid.clone());
+                        let model_id = result
+                            .pointer("/models/currentModelId")
+                            .and_then(|v| v.as_str())
+                            .map(|s| s.to_string());
+                        let _ = self.event_tx.send(AcpEvent::State {
+                            backend: "grok_agent_stdio".into(),
+                            agent_session_id: Some(sid.clone()),
+                            model_id,
+                        });
+                        return Ok((sid, true));
+                    }
+                    Err(e) => {
+                        warn!("acp session/load fail ({e}); falling back to session/new");
+                    }
                 }
             }
         }
@@ -1769,9 +1837,81 @@ impl AcpClient {
         Ok((sid, false))
     }
 
+    /// Try standard ACP `session/fork`, then Grok `_x.ai/session/fork`.
+    /// Returns `(new_session_id, model_id)` on success.
+    async fn try_fork_session(
+        &self,
+        source_session_id: &str,
+        cwd: &str,
+        mcp_servers: &serde_json::Value,
+    ) -> Option<(String, Option<String>)> {
+        info!(
+            "acp session/fork begin sourceSessionId={source_session_id} cwd={cwd}"
+        );
+        // Standard ACP ForkSessionRequest: sessionId + cwd + mcpServers.
+        match self
+            .request_timeout(
+                "session/fork",
+                json!({
+                    "sessionId": source_session_id,
+                    "cwd": cwd,
+                    "mcpServers": mcp_servers.clone()
+                }),
+                HANDSHAKE_TIMEOUT_SECS,
+            )
+            .await
+        {
+            Ok(result) => {
+                if let Some(sid) = parse_fork_session_id(&result, source_session_id) {
+                    info!("acp session/fork ok newSessionId={sid}");
+                    let model_id = result
+                        .pointer("/models/currentModelId")
+                        .and_then(|v| v.as_str())
+                        .map(|s| s.to_string());
+                    return Some((sid, model_id));
+                }
+                warn!("acp session/fork response missing sessionId");
+            }
+            Err(e) => {
+                warn!("acp session/fork fail ({e}); trying _x.ai/session/fork");
+            }
+        }
+
+        // Grok Build extension (vscode / older agents): sourceSessionId + sourceCwd + newCwd.
+        match self
+            .request_timeout(
+                "_x.ai/session/fork",
+                json!({
+                    "sourceSessionId": source_session_id,
+                    "sourceCwd": cwd,
+                    "newCwd": cwd,
+                }),
+                HANDSHAKE_TIMEOUT_SECS,
+            )
+            .await
+        {
+            Ok(result) => {
+                if let Some(sid) = parse_fork_session_id(&result, source_session_id) {
+                    info!("acp _x.ai/session/fork ok newSessionId={sid}");
+                    let model_id = result
+                        .pointer("/models/currentModelId")
+                        .and_then(|v| v.as_str())
+                        .or_else(|| result.get("newModelId").and_then(|v| v.as_str()))
+                        .map(|s| s.to_string());
+                    return Some((sid, model_id));
+                }
+                warn!("acp _x.ai/session/fork response missing sessionId");
+            }
+            Err(e) => {
+                warn!("acp _x.ai/session/fork fail ({e})");
+            }
+        }
+        None
+    }
+
     /// Back-compat: always create a new session.
     pub async fn initialize_and_new_session(&self) -> Result<String, AgentError> {
-        self.initialize_and_open_session(None)
+        self.initialize_and_open_session(None, false)
             .await
             .map(|(sid, _)| sid)
     }
@@ -3405,6 +3545,34 @@ mod disallowed_tools_spawn_tests {
             &["B".into(), "A".into()]
         ));
         assert!(!disallowed_tools_equal(&["a".into()], &["a".into(), "b".into()]));
+    }
+}
+
+#[cfg(test)]
+mod fork_session_spawn_tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn spawn_flags_toggle() {
+        assert!(fork_session_spawn_flags(false).is_empty());
+        assert_eq!(fork_session_spawn_flags(true), vec!["--fork-session"]);
+    }
+
+    #[test]
+    fn parse_fork_id_standard_and_extension() {
+        assert_eq!(
+            parse_fork_session_id(&json!({ "sessionId": "child-1" }), "parent"),
+            Some("child-1".into())
+        );
+        assert_eq!(
+            parse_fork_session_id(&json!({ "newSessionId": "child-2" }), "parent"),
+            Some("child-2".into())
+        );
+        // Reject empty / same-as-source (would not be a real fork).
+        assert!(parse_fork_session_id(&json!({ "sessionId": "parent" }), "parent").is_none());
+        assert!(parse_fork_session_id(&json!({ "sessionId": "  " }), "parent").is_none());
+        assert!(parse_fork_session_id(&json!({}), "parent").is_none());
     }
 }
 
