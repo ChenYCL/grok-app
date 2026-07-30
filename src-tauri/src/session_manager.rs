@@ -2793,6 +2793,11 @@ impl SessionManager {
                 .map(|s| s.trim().to_string())
                 .filter(|s| !s.is_empty()),
             max_agent_turns: meta.max_agent_turns,
+            system_prompt_override: meta
+                .system_prompt_override
+                .as_ref()
+                .map(|s| s.to_string())
+                .and_then(|s| crate::store::sanitize_system_prompt_override(Some(s))),
         };
 
         let (client, mut events) = match AcpClient::spawn_with_options(cli_path, cwd, spawn_opts)
@@ -5825,6 +5830,7 @@ mod connect_preserve_tests {
                 plugin_dirs: Vec::new(),
                 extra_rules: None,
                 max_agent_turns: None,
+                system_prompt_override: None,
             },
             fsm,
             backend: "grok_agent_stdio".into(),
@@ -6010,6 +6016,7 @@ mod session_routing_tests {
                 plugin_dirs: Vec::new(),
                 extra_rules: None,
                 max_agent_turns: None,
+                system_prompt_override: None,
             },
             fsm,
             backend: "mock_acp".into(),
@@ -6176,6 +6183,7 @@ mod session_routing_tests {
                 plugin_dirs: Vec::new(),
                 extra_rules: None,
                 max_agent_turns: None,
+                system_prompt_override: None,
             },
             fsm,
             backend: "mock_acp".into(),
@@ -6279,6 +6287,7 @@ mod session_routing_tests {
                 plugin_dirs: Vec::new(),
                 extra_rules: None,
                 max_agent_turns: None,
+                system_prompt_override: None,
             },
             fsm,
             backend: "mock_acp".into(),

@@ -156,6 +156,18 @@ const en = {
   "session.maxTurnsSaved":
     "Session max turns saved — agent will reload on next turn",
   "session.maxTurnsCleared": "Session max turns cleared — using global setting",
+  "session.sysPrompt": "System prompt override…",
+  "session.sysPromptActive": "System prompt override… (set)",
+  "session.sysPromptTitle": "System prompt override",
+  "session.sysPromptPlaceholder":
+    "Full system prompt for this chat only (replaces the default)",
+  "session.sysPromptHint":
+    "Passed as grok --system-prompt-override for this chat only. Replaces the default system prompt (not append). Max {n} characters. Live agent soft-respawns on save; empty clears.",
+  "session.sysPromptClear": "Clear",
+  "session.sysPromptSaved":
+    "System prompt override saved — agent will reload on next turn",
+  "session.sysPromptCleared": "System prompt override cleared",
+  "session.sysPromptChars": "{n}/{max}",
   "session.worktreeBadge": "Worktree",
   "session.worktreeBadgeAria": "Worktree session · {branch}",
   "session.worktreeBadgeCliAria": "CLI worktree session · {branch}",
@@ -3198,6 +3210,18 @@ const zh: Record<MessageKey, string> = {
   "session.maxTurnsClear": "使用全局",
   "session.maxTurnsSaved": "会话最大轮次已保存 — 下一回合将重新加载 Agent",
   "session.maxTurnsCleared": "已清除会话最大轮次 — 使用全局设置",
+  "session.sysPrompt": "系统提示词覆盖…",
+  "session.sysPromptActive": "系统提示词覆盖…（已设置）",
+  "session.sysPromptTitle": "系统提示词覆盖",
+  "session.sysPromptPlaceholder":
+    "仅本会话的完整系统提示词（替换默认，非追加）",
+  "session.sysPromptHint":
+    "仅本会话以 grok --system-prompt-override 传入。替换默认系统提示词（不是追加）。最多 {n} 个字符。保存后 live Agent 会 soft-respawn；清空即清除。",
+  "session.sysPromptClear": "清除",
+  "session.sysPromptSaved":
+    "系统提示词覆盖已保存 — 下一回合将重新加载 Agent",
+  "session.sysPromptCleared": "已清除系统提示词覆盖",
+  "session.sysPromptChars": "{n}/{max}",
   "session.worktreeBadge": "Worktree",
   "session.worktreeBadgeAria": "Worktree 会话 · {branch}",
   "session.worktreeBadgeCliAria": "CLI worktree 会话 · {branch}",

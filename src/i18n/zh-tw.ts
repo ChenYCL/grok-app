@@ -143,6 +143,18 @@ export const zhTW: Record<MessageKey, string> = {
   "session.maxTurnsClear": "使用全域",
   "session.maxTurnsSaved": "工作階段最大輪次已儲存 — 下一回合將重新載入 Agent",
   "session.maxTurnsCleared": "已清除工作階段最大輪次 — 使用全域設定",
+  "session.sysPrompt": "系統提示詞覆蓋…",
+  "session.sysPromptActive": "系統提示詞覆蓋…（已設定）",
+  "session.sysPromptTitle": "系統提示詞覆蓋",
+  "session.sysPromptPlaceholder":
+    "僅本對話的完整系統提示詞（取代預設，非附加）",
+  "session.sysPromptHint":
+    "僅本對話以 grok --system-prompt-override 傳入。取代預設系統提示詞（不是附加）。最多 {n} 個字元。儲存後 live Agent 會 soft-respawn；清空即清除。",
+  "session.sysPromptClear": "清除",
+  "session.sysPromptSaved":
+    "系統提示詞覆蓋已儲存 — 下一回合將重新載入 Agent",
+  "session.sysPromptCleared": "已清除系統提示詞覆蓋",
+  "session.sysPromptChars": "{n}/{max}",
   "session.worktreeBadge": "Worktree",
   "session.worktreeBadgeAria": "Worktree 對話 · {branch}",
   "session.worktreeBadgeCliAria": "CLI worktree 對話 · {branch}",

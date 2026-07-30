@@ -459,6 +459,10 @@ import {
   normalizeMaxAgentTurns,
 } from "@/lib/sessionMaxAgentTurns";
 import {
+  SESSION_SYSTEM_PROMPT_MAX_CHARS,
+  sanitizeSystemPromptOverride,
+} from "@/lib/sessionSystemPrompt";
+import {
   collectUserPromptHistory,
   filterPromptHistory,
   shouldHandlePromptHistoryKey,
@@ -652,6 +656,7 @@ import {
   IconCheck,
   IconList,
   IconListNumbers,
+  IconRobot,
   IconPlan,
   IconActivity,
   IconFileDiff,
@@ -870,6 +875,8 @@ interface SessionRow {
   extraRules?: string | null;
   /** Per-session max agent turns (`--max-turns`); null = inherit global. */
   maxAgentTurns?: number | null;
+  /** Per-session system prompt override (`--system-prompt-override`). */
+  systemPromptOverride?: string | null;
 }
 
 /** Normalize sessions_list / create rows into sidebar SessionRow shape. */
@@ -911,6 +918,7 @@ function mapSessionListRow(
     pluginDirs?: string[] | null;
     extraRules?: string | null;
     maxAgentTurns?: number | null;
+    systemPromptOverride?: string | null;
   },
 ): SessionRow {
   const schema =
@@ -926,6 +934,9 @@ function mapSessionListRow(
   const maxAgentTurns = normalizeMaxAgentTurns(
     typeof x.maxAgentTurns === "number" ? x.maxAgentTurns : null,
   );
+  const systemPromptOverride = sanitizeSystemPromptOverride(
+    typeof x.systemPromptOverride === "string" ? x.systemPromptOverride : null,
+  );
   return {
     ...normalizeSessionRow(x),
     modelId: x.modelId ?? null,
@@ -934,6 +945,7 @@ function mapSessionListRow(
     pluginDirs,
     extraRules: extraRules || null,
     maxAgentTurns,
+    systemPromptOverride: systemPromptOverride || null,
   };
 }
 
@@ -1088,6 +1100,12 @@ export default function App() {
   } | null>(null);
   /** Draft as string so empty input means inherit global. */
   const [sessionMaxTurnsDraft, setSessionMaxTurnsDraft] = useState("");
+  /** Per-session system prompt override editor (`--system-prompt-override`). */
+  const [sessionSysPromptTarget, setSessionSysPromptTarget] = useState<{
+    id: string;
+    title: string;
+  } | null>(null);
+  const [sessionSysPromptDraft, setSessionSysPromptDraft] = useState("");
   const [notifySound, setNotifySound] = useState(() =>
     loadNotifySoundPref(localStorage),
   );
@@ -6474,6 +6492,85 @@ export default function App() {
       setSessionMaxTurnsDraft("");
       closeSessionMaxTurnsModal();
       setToast(tr("session.maxTurnsCleared"));
+      window.setTimeout(() => setToast(null), 3200);
+    } catch (e) {
+      setLocalError(String(e));
+    }
+  };
+
+  /** Open GlassModal to edit per-session system prompt override. */
+  const openSessionSysPrompt = (s: SessionRow) => {
+    setCtxMenu(null);
+    setSessionSysPromptDraft(
+      typeof s.systemPromptOverride === "string" ? s.systemPromptOverride : "",
+    );
+    setSessionSysPromptTarget({
+      id: s.id,
+      title: s.title || tr("session.untitled"),
+    });
+  };
+
+  const closeSessionSysPromptModal = () => {
+    setSessionSysPromptTarget(null);
+    setSessionSysPromptDraft("");
+  };
+
+  const saveSessionSysPromptModal = async () => {
+    const target = sessionSysPromptTarget;
+    if (!target) return;
+    const next = sanitizeSystemPromptOverride(sessionSysPromptDraft);
+    try {
+      if (!api.isTauri()) {
+        setLocalError(tr("error.needTauri"));
+        return;
+      }
+      const saved = await api.sessionSetSystemPromptOverride(
+        target.id,
+        next || null,
+      );
+      const stored =
+        typeof saved.systemPromptOverride === "string" &&
+        saved.systemPromptOverride.trim()
+          ? saved.systemPromptOverride
+          : next || null;
+      setSessions((list) =>
+        list.map((row) =>
+          row.id === target.id
+            ? { ...row, systemPromptOverride: stored }
+            : row,
+        ),
+      );
+      closeSessionSysPromptModal();
+      setToast(
+        stored
+          ? tr("session.sysPromptSaved")
+          : tr("session.sysPromptCleared"),
+      );
+      window.setTimeout(() => setToast(null), 3200);
+    } catch (e) {
+      setLocalError(String(e));
+    }
+  };
+
+  const clearSessionSysPromptModal = async () => {
+    const target = sessionSysPromptTarget;
+    if (!target) return;
+    try {
+      if (!api.isTauri()) {
+        setLocalError(tr("error.needTauri"));
+        return;
+      }
+      await api.sessionSetSystemPromptOverride(target.id, null);
+      setSessions((list) =>
+        list.map((row) =>
+          row.id === target.id
+            ? { ...row, systemPromptOverride: null }
+            : row,
+        ),
+      );
+      setSessionSysPromptDraft("");
+      closeSessionSysPromptModal();
+      setToast(tr("session.sysPromptCleared"));
       window.setTimeout(() => setToast(null), 3200);
     } catch (e) {
       setLocalError(String(e));
@@ -17973,6 +18070,86 @@ export default function App() {
       </GlassModal>
 
       <GlassModal
+        open={!!sessionSysPromptTarget}
+        onClose={closeSessionSysPromptModal}
+        title={tr("session.sysPromptTitle")}
+        size="md"
+        closeLabel={tr("common.close")}
+        wrapBody
+        className="session-sys-prompt-modal"
+        footer={
+          <div className="session-sys-prompt-modal__actions">
+            {sessionSysPromptTarget &&
+            (sessionSysPromptDraft.trim() ||
+              sessions.some(
+                (row) =>
+                  row.id === sessionSysPromptTarget.id &&
+                  !!sanitizeSystemPromptOverride(row.systemPromptOverride),
+              )) ? (
+              <button
+                type="button"
+                className="btn btn--ghost"
+                onClick={() => {
+                  void clearSessionSysPromptModal();
+                }}
+              >
+                {tr("session.sysPromptClear")}
+              </button>
+            ) : null}
+            <button
+              type="button"
+              className="btn btn--ghost"
+              onClick={closeSessionSysPromptModal}
+            >
+              {tr("common.cancel")}
+            </button>
+            <button
+              type="button"
+              className="btn btn--primary"
+              onClick={() => {
+                void saveSessionSysPromptModal();
+              }}
+            >
+              {tr("common.save")}
+            </button>
+          </div>
+        }
+      >
+        <p className="session-sys-prompt-modal__hint">
+          {tr("session.sysPromptHint", {
+            n: String(SESSION_SYSTEM_PROMPT_MAX_CHARS),
+          })}
+        </p>
+        {sessionSysPromptTarget ? (
+          <p
+            className="session-sys-prompt-modal__session"
+            title={sessionSysPromptTarget.title}
+          >
+            {sessionSysPromptTarget.title}
+          </p>
+        ) : null}
+        <textarea
+          className="session-sys-prompt-modal__textarea"
+          value={sessionSysPromptDraft}
+          onChange={(e) =>
+            setSessionSysPromptDraft(
+              e.target.value.slice(0, SESSION_SYSTEM_PROMPT_MAX_CHARS),
+            )
+          }
+          placeholder={tr("session.sysPromptPlaceholder")}
+          maxLength={SESSION_SYSTEM_PROMPT_MAX_CHARS}
+          spellCheck={false}
+          aria-label={tr("session.sysPromptTitle")}
+        />
+        <p className="session-sys-prompt-modal__count" aria-live="polite">
+          {tr("session.sysPromptChars", {
+            n: String(sessionSysPromptDraft.length),
+            max: String(SESSION_SYSTEM_PROMPT_MAX_CHARS),
+          })}
+        </p>
+      </GlassModal>
+
+      <GlassModal
         open={!!exportMdTarget}
         onClose={() => {
           if (exportMdBusy) return;
@@ -18851,6 +19028,14 @@ export default function App() {
                 label: tr("session.rules"),
                 icon: <IconList size={16} />,
                 onClick: () => openSessionRules(s),
+              },
+              {
+                id: "session-sys-prompt",
+                label: sanitizeSystemPromptOverride(s.systemPromptOverride)
+                  ? tr("session.sysPromptActive")
+                  : tr("session.sysPrompt"),
+                icon: <IconRobot size={16} />,
+                onClick: () => openSessionSysPrompt(s),
               },
               {
                 id: "session-max-turns",
