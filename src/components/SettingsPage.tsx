@@ -5693,12 +5693,21 @@ function CliSessionsPanel({
   const [error, setError] = useState<string | null>(null);
   const [status, setStatus] = useState<string | null>(null);
   const [filterQuery, setFilterQuery] = useState("");
+  /** Host CLI search results when query is non-empty; null = show local list/filter. */
+  const [searchHits, setSearchHits] = useState<api.CliSessionSearchHit[] | null>(
+    null,
+  );
+  const [searching, setSearching] = useState(false);
+  const [searchNote, setSearchNote] = useState<string | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<
     | null
     | { kind: "one"; row: api.CliSessionSummary }
     | { kind: "unlinked"; count: number }
   >(null);
+  const searchSeq = useRef(0);
+  /** Bumps after list refresh so active CLI search re-enriches linked state. */
+  const [listEpoch, setListEpoch] = useState(0);
   const isIndependent = sessionDataMode !== "shared";
 
   const refresh = useCallback(async () => {
@@ -5708,6 +5717,7 @@ function CliSessionsPanel({
     try {
       const list = await api.cliSessionsList();
       setRows(list);
+      setListEpoch((n) => n + 1);
     } catch (e) {
       setError(String(e));
       setRows([]);
@@ -5720,10 +5730,56 @@ function CliSessionsPanel({
     void refresh();
   }, [refresh, sessionDataMode]);
 
-  const filtered = useMemo(
-    () => filterCliSessions(rows, filterQuery),
-    [rows, filterQuery],
-  );
+  // When the search box is non-empty, call host `cli_sessions_search`
+  // (`grok sessions search` + local first-prompt fallback). Debounced.
+  useEffect(() => {
+    const q = filterQuery.trim();
+    if (!q) {
+      setSearchHits(null);
+      setSearching(false);
+      setSearchNote(null);
+      return;
+    }
+    if (!api.isTauri()) {
+      setSearchHits(null);
+      return;
+    }
+    const seq = ++searchSeq.current;
+    setSearching(true);
+    const timer = window.setTimeout(() => {
+      void (async () => {
+        try {
+          const hits = await api.cliSessionsSearch(q, 40);
+          if (searchSeq.current !== seq) return;
+          setSearchHits(hits);
+          const viaCli = hits.some((h) => h.source === "cli");
+          setSearchNote(
+            viaCli
+              ? t("settings.cliSessionsSearchViaCli")
+              : t("settings.cliSessionsSearchViaLocal"),
+          );
+        } catch {
+          if (searchSeq.current !== seq) return;
+          // Host failed — fall back to client-side title/id/cwd/firstPrompt filter.
+          setSearchHits(null);
+          setSearchNote(t("settings.cliSessionsSearchFallback"));
+        } finally {
+          if (searchSeq.current === seq) setSearching(false);
+        }
+      })();
+    }, 280);
+    return () => {
+      window.clearTimeout(timer);
+    };
+  }, [filterQuery, sessionDataMode, listEpoch, t]);
+
+  const filtered = useMemo(() => {
+    const q = filterQuery.trim();
+    if (!q) return rows;
+    if (searchHits) return searchHits;
+    // Host still loading or failed → local filter (incl. firstPrompt when present).
+    return filterCliSessions(rows, q);
+  }, [rows, filterQuery, searchHits]);
   /** Bulk import / delete unlinked always targets the full list (not the filter). */
   const pending = countUnlinkedCliSessions(rows);
   const sourceHome =
@@ -5897,16 +5953,29 @@ function CliSessionsPanel({
                 })}
           </button>
         </div>
-        {rows.length > 0 ? (
-          <div className="settings-cli-sessions__filter">
-            <IconSearch size={14} />
-            <input
-              type="search"
-              value={filterQuery}
-              onChange={(e) => setFilterQuery(e.target.value)}
-              placeholder={t("settings.cliSessionsFilterPlaceholder")}
-              aria-label={t("settings.cliSessionsFilterPlaceholder")}
-            />
+        <div className="settings-cli-sessions__filter">
+          <IconSearch size={14} />
+          <input
+            type="search"
+            value={filterQuery}
+            onChange={(e) => {
+              setFilterQuery(e.target.value);
+              // Clear stale host error when the user edits the query.
+              if (error) setError(null);
+            }}
+            placeholder={t("settings.cliSessionsFilterPlaceholder")}
+            aria-label={t("settings.cliSessionsFilterPlaceholder")}
+          />
+        </div>
+        {searchNote && filterQuery.trim() ? (
+          <div className="settings-cli-sessions__search-note" role="status">
+            {searching
+              ? t("settings.cliSessionsSearching")
+              : searchNote}
+          </div>
+        ) : searching && filterQuery.trim() ? (
+          <div className="settings-cli-sessions__search-note" role="status">
+            {t("settings.cliSessionsSearching")}
           </div>
         ) : null}
         {error ? (
@@ -5919,17 +5988,23 @@ function CliSessionsPanel({
             {status}
           </div>
         ) : null}
-        {loading && rows.length === 0 ? (
+        {loading && rows.length === 0 && !filterQuery.trim() ? (
           <div className="settings-cli-sessions__empty">
             {t("settings.cliSessionsLoading")}
           </div>
-        ) : rows.length === 0 ? (
+        ) : rows.length === 0 && !filterQuery.trim() ? (
           <div className="settings-cli-sessions__empty">
             {t("settings.cliSessionsEmpty")}
           </div>
+        ) : searching && filtered.length === 0 ? (
+          <div className="settings-cli-sessions__empty">
+            {t("settings.cliSessionsSearching")}
+          </div>
         ) : filtered.length === 0 ? (
           <div className="settings-cli-sessions__empty">
-            {t("settings.cliSessionsFilterEmpty")}
+            {filterQuery.trim()
+              ? t("settings.cliSessionsSearchEmpty")
+              : t("settings.cliSessionsFilterEmpty")}
           </div>
         ) : (
           <ul className="settings-cli-sessions__list">
@@ -5939,6 +6014,11 @@ function CliSessionsPanel({
                 r.agentSessionId.length > 14
                   ? `${r.agentSessionId.slice(0, 8)}…${r.agentSessionId.slice(-4)}`
                   : r.agentSessionId;
+              const firstPrompt =
+                "firstPrompt" in r
+                  ? (r as { firstPrompt?: string | null }).firstPrompt
+                  : undefined;
+              const remoteOnly = !r.dir;
               return (
                 <li
                   key={r.agentSessionId}
@@ -5960,6 +6040,14 @@ function CliSessionsPanel({
                         </span>
                       ) : null}
                     </div>
+                    {firstPrompt ? (
+                      <div
+                        className="settings-cli-sessions__prompt"
+                        title={firstPrompt}
+                      >
+                        {firstPrompt}
+                      </div>
+                    ) : null}
                     <div className="settings-cli-sessions__sub">
                       {r.cwd ? `${r.cwd} · ` : ""}
                       {r.numMessages
@@ -6018,10 +6106,14 @@ function CliSessionsPanel({
                     <button
                       type="button"
                       className="btn btn--ghost btn--sm btn--danger"
-                      disabled={!!busyId}
-                      title={t("settings.cliSessionsDeleteConfirmMsg", {
-                        title: r.title,
-                      })}
+                      disabled={!!busyId || remoteOnly}
+                      title={
+                        remoteOnly
+                          ? t("settings.cliSessionsDeleteRemoteOnly")
+                          : t("settings.cliSessionsDeleteConfirmMsg", {
+                              title: r.title,
+                            })
+                      }
                       aria-label={t("settings.cliSessionsDelete")}
                       onClick={() =>
                         setDeleteConfirm({ kind: "one", row: r })

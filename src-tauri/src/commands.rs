@@ -493,6 +493,29 @@ pub async fn cli_sessions_list() -> Result<Vec<crate::cli_sessions::CliSessionSu
     crate::cli_sessions::list_cli_sessions(&mode)
 }
 
+/// Search CLI sessions via `grok sessions search` (summaries + first prompts).
+/// Falls back to local disk filter (incl. first prompt) when CLI is unavailable.
+#[tauri::command]
+pub async fn cli_sessions_search(
+    query: String,
+    limit: Option<u32>,
+) -> Result<Vec<crate::cli_sessions::CliSessionSearchHit>, String> {
+    let settings = store::load_settings();
+    let mode = settings.session_data_mode.clone();
+    let probe = cli_probe::probe_cli(settings.manual_cli_path.as_deref());
+    let cli_path = probe.path.filter(|_| probe.found).map(std::path::PathBuf::from);
+    tauri::async_runtime::spawn_blocking(move || {
+        crate::cli_sessions::search_cli_sessions(
+            &query,
+            limit,
+            &mode,
+            cli_path.as_deref(),
+        )
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
 /// Import one CLI session (chat_history.jsonl) into the App journal.
 #[tauri::command]
 pub async fn cli_session_import(

@@ -1006,8 +1006,17 @@ export const zhTW: Record<MessageKey, string> = {
   "settings.cliSessionsAgentId": "id {id}",
   "settings.cliSessionsCopyId": "複製 id",
   "settings.cliSessionsCopied": "已複製",
-  "settings.cliSessionsFilterPlaceholder": "依標題或 id 篩選…",
+  "settings.cliSessionsFilterPlaceholder": "搜尋摘要與首則提示…",
   "settings.cliSessionsFilterEmpty": "沒有符合篩選條件的工作階段。",
+  "settings.cliSessionsSearching": "正在搜尋 CLI 工作階段…",
+  "settings.cliSessionsSearchEmpty": "沒有符合搜尋條件的 CLI 工作階段。",
+  "settings.cliSessionsSearchViaCli":
+    "來自 grok sessions search（摘要 + 首則提示）",
+  "settings.cliSessionsSearchViaLocal":
+    "本機磁碟搜尋（標題、id、路徑、首則提示）",
+  "settings.cliSessionsSearchFallback": "CLI 搜尋不可用 — 正在篩選本機列表",
+  "settings.cliSessionsDeleteRemoteOnly":
+    "此結果在 GROK_HOME 下沒有本機目錄（僅遠端）",
   "settings.cliSessionsSource": "掃描路徑 {path}",
   "settings.cliSessionsIndependentNote":
     "獨立模式使用應用程式 agent-home（~/.grok-app/agent-home），可能與終端機 CLI 的 ~/.grok 工作階段不一致。仍可匯入聊天紀錄到應用程式；若需與終端機同一 on-disk 工作階段繼續，請切換到共用模式。",

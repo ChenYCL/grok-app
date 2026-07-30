@@ -955,10 +955,31 @@ export type CliSessionSummary = {
   appSessionId?: string | null;
   /** GROK_HOME used for discovery (path clarity). */
   sourceHome?: string;
+  /** First user prompt when known (search / enriched). */
+  firstPrompt?: string | null;
+};
+
+/** Hit from `grok sessions search` (or local first-prompt fallback). */
+export type CliSessionSearchHit = CliSessionSummary & {
+  /** CLI status token: local | remote. */
+  status?: string | null;
+  /** `"cli"` from `grok sessions search`, `"local"` for disk fallback. */
+  source: "cli" | "local" | string;
 };
 
 export async function cliSessionsList() {
   return invoke<CliSessionSummary[]>("cli_sessions_list");
+}
+
+/**
+ * Search CLI sessions (summaries + first prompts) via host
+ * `grok sessions search`. Falls back to local disk filter when CLI fails.
+ */
+export async function cliSessionsSearch(query: string, limit?: number) {
+  return invoke<CliSessionSearchHit[]>("cli_sessions_search", {
+    query,
+    limit: limit ?? 40,
+  });
 }
 
 export async function cliSessionImport(
