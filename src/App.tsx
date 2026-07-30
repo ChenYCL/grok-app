@@ -354,6 +354,11 @@ import {
   serializeForAgent,
 } from "@/lib/draftDoc";
 import {
+  isActiveJsonSchema,
+  parseJsonSchemaText,
+  wrapAgentTextWithJsonSchema,
+} from "@/lib/jsonSchema";
+import {
   collectUserPromptHistory,
   filterPromptHistory,
   shouldHandlePromptHistoryKey,
@@ -482,6 +487,7 @@ import {
   IconZen,
   IconClock,
   IconClose,
+  IconCode,
   IconNewChat as IconSquarePen,
   IconNewChat,
   IconImagine,
@@ -701,6 +707,8 @@ interface SessionRow {
   worktreePath?: string | null;
   worktreeBranch?: string | null;
   isWorktreeSession?: boolean;
+  /** Optional JSON Schema for structured model output. */
+  jsonSchema?: string | null;
 }
 
 /** Normalize sessions_list / create rows into sidebar SessionRow shape. */
@@ -738,12 +746,18 @@ function mapSessionListRow(
     updatedAt?: string;
     modelId?: string | null;
     effort?: string | null;
+    jsonSchema?: string | null;
   },
 ): SessionRow {
+  const schema =
+    typeof x.jsonSchema === "string" && x.jsonSchema.trim()
+      ? x.jsonSchema
+      : null;
   return {
     ...normalizeSessionRow(x),
     modelId: x.modelId ?? null,
     effort: x.effort ?? null,
+    jsonSchema: schema,
   };
 }
 
@@ -944,6 +958,14 @@ export default function App() {
   /** Caret in draft string captured when stop is requested. */
   const voiceCaretRef = useRef<number | null>(null);
   const [goalMode, setGoalMode] = useState(false);
+  /** Per-session (or draft) JSON Schema for structured output. */
+  const [sessionJsonSchema, setSessionJsonSchema] = useState<string | null>(
+    null,
+  );
+  const sessionJsonSchemaRef = useRef<string | null>(null);
+  sessionJsonSchemaRef.current = sessionJsonSchema;
+  const [showJsonSchemaModal, setShowJsonSchemaModal] = useState(false);
+  const [jsonSchemaDraft, setJsonSchemaDraft] = useState("");
   /** Prevent overlapping executeSend / queue auto-flush races. */
   const sendInFlightRef = useRef(false);
   const executeSendFromQueueRef = useRef<ExecuteSendFromQueue>(
@@ -2081,6 +2103,7 @@ export default function App() {
           (s as Array<Parameters<typeof mapSessionListRow>[0]>).map(
             mapSessionListRow,
           ),
+          ).map((x) => mapSessionRow(x)),
         );
         void api
           .generalWorkspacePath()
@@ -2147,6 +2170,7 @@ export default function App() {
         (s as Array<Parameters<typeof mapSessionListRow>[0]>).map(
           mapSessionListRow,
         ),
+        ).map((x) => mapSessionRow(x)),
       );
       void api
         .generalWorkspacePath()
@@ -3742,6 +3766,7 @@ export default function App() {
                   const list = await api.sessionsList();
                   if (cancelled) return;
                   setSessions(list.map(mapSessionListRow));
+                  setSessions(list.map((s) => mapSessionRow(s)));
                   const sid = p?.sessionId;
                   if (
                     !sid ||
@@ -4066,6 +4091,12 @@ export default function App() {
     );
     setEditingUserMessageId(null);
     setEditAttachments([]);
+    setSessionJsonSchema(
+      typeof s.jsonSchema === "string" && s.jsonSchema.trim()
+        ? s.jsonSchema
+        : null,
+    );
+    setShowJsonSchemaModal(false);
 
     try {
       const stored = await api.sessionMessages(s.id);
@@ -4632,6 +4663,8 @@ export default function App() {
     setPerm(null);
     setAskUser(null);
     setRetryStatus(null);
+    setSessionJsonSchema(null);
+    setShowJsonSchemaModal(false);
     setSession({
       ...IDLE_SNAPSHOT,
       sessionId: null,
@@ -4782,6 +4815,7 @@ export default function App() {
     try {
       const list = await api.sessionsList();
       setSessions(list.map(mapSessionListRow));
+      setSessions(list.map((s) => mapSessionRow(s)));
       void api.trayRefresh();
     } catch {
       /* ignore */
@@ -5945,6 +5979,28 @@ export default function App() {
           tr("session.new"),
         )) as { id: string; title?: string };
         sessionId = meta.id;
+        // Persist draft-page JSON Schema onto the new session before connect
+        // so spawn can take top-level `grok --json-schema`.
+        const pendingSchema = sessionJsonSchemaRef.current?.trim() || "";
+        if (
+          pendingSchema &&
+          isActiveJsonSchema(pendingSchema) &&
+          api.isTauri()
+        ) {
+          try {
+            const saved = await api.sessionSetJsonSchema(
+              meta.id,
+              pendingSchema,
+            );
+            const next =
+              typeof saved.jsonSchema === "string" && saved.jsonSchema.trim()
+                ? saved.jsonSchema
+                : pendingSchema;
+            setSessionJsonSchema(next);
+          } catch {
+            /* best-effort; prompt wrap still applies */
+          }
+        }
         // Bind draft messages cache to the new id (was under null / unkeyed).
         const draftMsgs = messagesBySessionRef.current.get("__draft__");
         if (draftMsgs?.length) {
@@ -6127,6 +6183,10 @@ export default function App() {
 
     const agentBody = serializeForAgent(segments, { goalMode: useGoal });
     let agentText = buildAgentPrompt(agentBody, att);
+    const schemaForSend = sessionJsonSchemaRef.current?.trim() || "";
+    if (schemaForSend && isActiveJsonSchema(schemaForSend)) {
+      agentText = wrapAgentTextWithJsonSchema(agentText, schemaForSend);
+    }
     const scheduleIntent = looksLikeScheduleIntent(agentText);
     const inAutomationSetup =
       automationSetupDraftRef.current ||
@@ -7853,7 +7913,11 @@ export default function App() {
       }
       const segments = parseStoredContent(item.storedDisplay);
       const agentBody = serializeForAgent(segments, { goalMode: item.goalMode });
-      const agentText = buildAgentPrompt(agentBody, item.attachments);
+      let agentText = buildAgentPrompt(agentBody, item.attachments);
+      const schemaForGuide = sessionJsonSchemaRef.current?.trim() || "";
+      if (schemaForGuide && isActiveJsonSchema(schemaForGuide)) {
+        agentText = wrapAgentTextWithJsonSchema(agentText, schemaForGuide);
+      }
       if (!agentText.trim()) return;
 
       setGuidingQueueItemId(item.id);
@@ -9679,6 +9743,8 @@ export default function App() {
               setSessions(
                 list.map((s) => normalizeSessionRow(s)),
               );
+              row = mapSessionRow(hit);
+              setSessions(list.map((s) => mapSessionRow(s)));
             }
           } catch {
             /* ignore */
@@ -10411,7 +10477,11 @@ export default function App() {
       if (isDraftEmpty(segments) && !att.length) return;
 
       const agentBody = serializeForAgent(segments, { goalMode });
-      const agentText = buildAgentPrompt(agentBody, att);
+      let agentText = buildAgentPrompt(agentBody, att);
+      const schemaForEdit = sessionJsonSchemaRef.current?.trim() || "";
+      if (schemaForEdit && isActiveJsonSchema(schemaForEdit)) {
+        agentText = wrapAgentTextWithJsonSchema(agentText, schemaForEdit);
+      }
       const titleSeed =
         serializeForAgent(segments).replace(/\n/g, " ").trim() ||
         att.map((a) => a.name).join(", ");
@@ -13180,6 +13250,12 @@ export default function App() {
             findActive={showChatFind ? chatFindActive : null}
             showTimestamps={showMessageTimestamps}
             messageTimeFormat={messageTimeFormat}
+            structuredOutputActive={!!sessionJsonSchema}
+            structuredOutputLabels={{
+              title: tr("message.structuredJson"),
+              copy: tr("message.structuredJsonCopy"),
+              copied: tr("message.copied"),
+            }}
           />
           </UiErrorBoundary>
 
@@ -13848,6 +13924,28 @@ export default function App() {
                         </button>
                       </Tip>
                     ) : null}
+                    <Tip label={tr("composer.jsonSchemaHint")}>
+                      <button
+                        type="button"
+                        className={
+                          "chip chip--json-schema" +
+                          (sessionJsonSchema ? " is-active" : "")
+                        }
+                        onClick={() => {
+                          setJsonSchemaDraft(sessionJsonSchema ?? "");
+                          setShowJsonSchemaModal(true);
+                        }}
+                        aria-label={tr("composer.jsonSchema")}
+                      >
+                        <IconCode size={14} />
+                        <span className="chip__label">
+                          {sessionJsonSchema
+                            ? tr("composer.jsonSchemaActive")
+                            : tr("composer.jsonSchema")}
+                        </span>
+                        {sessionJsonSchema ? <IconClose size={12} /> : null}
+                      </button>
+                    </Tip>
                     <ComposerModelMenu
                       modelId={modelId}
                       effort={effort}
@@ -14965,6 +15063,87 @@ export default function App() {
           }}
           onCopied={() => showToast(tr("session.tracesCopied"), 2000)}
           onError={(msg) => showToast(msg, 4000)}
+        open={showJsonSchemaModal}
+        onClose={() => setShowJsonSchemaModal(false)}
+        title={tr("composer.jsonSchemaTitle")}
+        className="json-schema-modal"
+          <div className="json-schema-modal__actions">
+            {sessionJsonSchema ? (
+              <button
+                type="button"
+                className="btn btn--ghost"
+                onClick={() => {
+                  void (async () => {
+                    const sid = session.sessionId;
+                    setSessionJsonSchema(null);
+                    setJsonSchemaDraft("");
+                    setShowJsonSchemaModal(false);
+                    if (sid && api.isTauri()) {
+                      try {
+                        await api.sessionSetJsonSchema(sid, null);
+                      } catch {
+                        /* ignore */
+                      }
+                    }
+                    if (sid) {
+                      setSessions((list) =>
+                        list.map((row) =>
+                          row.id === sid ? { ...row, jsonSchema: null } : row,
+                        ),
+                      );
+                    showToast(tr("composer.jsonSchemaCleared"));
+                  })();
+                }}
+              >
+                {tr("composer.jsonSchemaClear")}
+              </button>
+            ) : null}
+              onClick={() => setShowJsonSchemaModal(false)}
+              className="btn btn--primary"
+                void (async () => {
+                  const parsed = parseJsonSchemaText(jsonSchemaDraft);
+                  if (!parsed.ok) {
+                    showToast(tr("composer.jsonSchemaInvalid"), 4000);
+                    return;
+                  }
+                  const sid = session.sessionId;
+                  setSessionJsonSchema(parsed.normalized);
+                  if (sid && api.isTauri()) {
+                    try {
+                      const saved = await api.sessionSetJsonSchema(
+                        sid,
+                        parsed.normalized,
+                      const next =
+                        typeof saved.jsonSchema === "string" &&
+                        saved.jsonSchema.trim()
+                          ? saved.jsonSchema
+                          : parsed.normalized;
+                      setSessionJsonSchema(next);
+                          row.id === sid
+                            ? { ...row, jsonSchema: next }
+                            : row,
+                    } catch (e) {
+                      showToast(String(e), 4000);
+                      return;
+                  } else if (!sid) {
+                    showToast(tr("composer.jsonSchemaEmptySession"), 3200);
+                  setShowJsonSchemaModal(false);
+                  showToast(tr("composer.jsonSchemaApplied"));
+                })();
+              {tr("composer.jsonSchemaApply")}
+          </div>
+        <p className="json-schema-modal__hint">
+          {tr("composer.jsonSchemaHint")}
+        </p>
+        <p className="json-schema-modal__experimental">
+          {tr("composer.jsonSchemaExperimental")}
+        <textarea
+          className="json-schema-modal__textarea"
+          value={jsonSchemaDraft}
+          onChange={(e) => setJsonSchemaDraft(e.target.value)}
+          placeholder={tr("composer.jsonSchemaPlaceholder")}
+          spellCheck={false}
+          aria-label={tr("composer.jsonSchemaTitle")}
         />
       </GlassModal>
 
