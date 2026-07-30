@@ -186,6 +186,11 @@ import {
   saveToolStepsAutoCollapsePref,
 } from "@/lib/toolStepsAutoCollapsePref";
 import {
+  loadTranscriptFilterPref,
+  saveTranscriptFilterPref,
+  type TranscriptFilterMode,
+} from "@/lib/transcriptFilterPref";
+import {
   loadCodeWrapPref,
   saveCodeWrapPref,
 } from "@/lib/codeWrapPref";
@@ -1032,6 +1037,9 @@ export function SettingsPage({
   const [toolStepsAutoCollapse, setToolStepsAutoCollapse] = useState(() =>
     loadToolStepsAutoCollapsePref(),
   );
+  /** Transcript paint filter — all activity vs conversation only. */
+  const [transcriptFilter, setTranscriptFilter] =
+    useState<TranscriptFilterMode>(() => loadTranscriptFilterPref());
   /** Chat transcript font scale — localStorage only (no AppSettings). */
   const [chatFontScale, setChatFontScaleState] = useState<ChatFontScale>(() =>
     loadChatFontScale(),
@@ -3380,6 +3388,42 @@ export function SettingsPage({
                         saveToolStepsAutoCollapsePref(next);
                       }}
                       ariaLabel={t("settings.toolStepsAutoCollapse")}
+                    />
+                  </div>
+                </div>
+                <div
+                  className={
+                    "settings-card" +
+                    rowHighlight("settings-anchor-transcriptFilter")
+                  }
+                  id="settings-anchor-transcriptFilter"
+                >
+                  <div className="settings-row">
+                    <div className="settings-row__text">
+                      <SettingsLabelWithTip
+                        label={t("settings.transcriptFilter")}
+                        tip={t("settings.transcriptFilterDesc")}
+                      />
+                    </div>
+                    <Select
+                      value={transcriptFilter}
+                      aria-label={t("settings.transcriptFilter")}
+                      onChange={(v) => {
+                        const next: TranscriptFilterMode =
+                          v === "conversation" ? "conversation" : "all";
+                        saveTranscriptFilterPref(next);
+                        setTranscriptFilter(next);
+                      }}
+                      options={[
+                        {
+                          value: "all",
+                          label: t("settings.transcriptFilter.all"),
+                        },
+                        {
+                          value: "conversation",
+                          label: t("settings.transcriptFilter.conversation"),
+                        },
+                      ]}
                     />
                   </div>
                 </div>

@@ -1159,6 +1159,14 @@ export const zhTW: Record<MessageKey, string> = {
   "settings.toolStepsAutoCollapse": "完成後自動摺疊工具步驟",
   "settings.toolStepsAutoCollapseDesc":
     "已完成或失敗的工具步驟在時間線中預設摺疊。執行中的工具保持展開。關閉後，完成的工具也會保持展開。與「收合全部活動」（手動一次）是不同能力。",
+  "settings.transcriptFilter": "對話內容過濾",
+  "settings.transcriptFilterDesc":
+    "聊天記錄顯示範圍。「僅對話」隱藏工具步驟與工具相關介面；使用者訊息、助手回覆與錯誤仍會顯示。",
+  "settings.transcriptFilter.all": "全部活動",
+  "settings.transcriptFilter.conversation": "僅對話",
+  "session.transcriptFilter.hideTools": "隱藏工具步驟",
+  "session.transcriptFilter.showTools": "顯示工具步驟",
+  "session.transcriptFilter.hint": "切換對話過濾：在目前視圖隱藏或顯示工具步驟",
   "settings.zenMode": "禪模式",
   "settings.zenModeDesc":
     "隱藏左側會話欄與右側檔案欄，最大化對話區域。關閉時恢復進入前的欄狀態。Esc 仍用於停止生成，不會退出禪模式。",

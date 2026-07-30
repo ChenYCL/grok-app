@@ -100,6 +100,7 @@ describe("settingsCatalog", () => {
     expect(appearance).toContain("settings.wallpaper");
     expect(appearance).toContain("settings.thinkingExpand");
     expect(appearance).toContain("settings.toolStepsAutoCollapse");
+    expect(appearance).toContain("settings.transcriptFilter");
     expect(appearance).toContain("settings.chatFontScale");
     expect(appearance).toContain("settings.codeFontScale");
     expect(appearance).toContain("settings.chatDensity");
@@ -270,6 +271,22 @@ describe("settingsCatalog", () => {
       toolCollapseZh.some(
         (h) => h.entry.id === "appearance.toolStepsAutoCollapse",
       ),
+    ).toBe(true);
+    const transcriptFilter = searchSettingsEntries("transcript filter", tZh, tEn);
+    expect(
+      transcriptFilter.some(
+        (h) => h.entry.id === "appearance.transcriptFilter",
+      ),
+    ).toBe(true);
+    const transcriptFilterZh = searchSettingsEntries("仅对话", tZh, tEn);
+    expect(
+      transcriptFilterZh.some(
+        (h) => h.entry.id === "appearance.transcriptFilter",
+      ),
+    ).toBe(true);
+    const hideTools = searchSettingsEntries("hide tools", tZh, tEn);
+    expect(
+      hideTools.some((h) => h.entry.id === "appearance.transcriptFilter"),
     ).toBe(true);
     const cli = searchSettingsEntries("CLI", tZh, tEn);
     expect(cli.some((h) => h.entry.section === "runtime")).toBe(true);
