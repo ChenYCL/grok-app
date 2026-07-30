@@ -11,6 +11,14 @@ See `docs/llm-wiki/release.md`.
 
 ## [Unreleased]
 
+### Added
+
+- **Agent dashboard**: cross-session status panel (title, project/cwd, model, effort, busy/idle/error, last activity). Open from Tasks, command palette, or the top-bar control; click a row to focus that chat; **Stop all busy** reuses the existing confirm flow. Distinct from the per-turn Tasks tools panel.
+
+**中文 · 新增**
+
+- **Agent 仪表盘**：跨会话状态面板（标题、项目/路径、模型、推理强度、忙碌/空闲/错误、最近活动）。可从任务区、命令面板或顶栏打开；点击行聚焦会话；**全部停止忙碌**复用现有确认。与当前回合的「任务」工具面板不同。
+
 ## [0.2.2] - 2026-07-30
 
 > **Highlight:** In-app auto-update works for signed builds; calmer sidebar multi-select; PATH / busy / media reliability.
