@@ -41,6 +41,11 @@ import {
   filterCliSessions,
 } from "@/lib/cliSessionsFilter";
 import { ARCHIVE_AGE_DAY_OPTIONS } from "@/lib/sessionArchiveAge";
+import { CostRollupPanel } from "@/components/CostRollupPanel";
+import type {
+  CostRollupProjectMeta,
+  CostRollupSessionMeta,
+} from "@/lib/costRollup";
 import {
   COMMON_DISALLOWED_TOOLS,
   isToolDisallowed,
@@ -479,6 +484,10 @@ export interface SettingsPageProps {
   onDoctor: () => void;
   /** Open Reliability / Observability center (busy · stalls · error deck). */
   onOpenReliability?: () => void;
+  /** Session index for cost rollup unknown-session counts (Settings → Runtime). */
+  costRollupSessions?: readonly CostRollupSessionMeta[];
+  /** Project names for cost rollup labels. */
+  costRollupProjects?: readonly CostRollupProjectMeta[];
   versionFooter: string;
   /** Official Grok Build account (membership / usage). */
   account: AccountStatus | null;
@@ -990,6 +999,8 @@ export function SettingsPage({
   cliInfo,
   onDoctor,
   onOpenReliability,
+  costRollupSessions = [],
+  costRollupProjects = [],
   versionFooter,
   account,
   accountLoading,
@@ -5102,6 +5113,30 @@ export function SettingsPage({
                       {t("reliability.openFromSettings")}
                     </button>
                   </div>
+                </div>
+                <div
+                  className={
+                    "settings-card" +
+                    rowHighlight("settings-anchor-cost-rollup")
+                  }
+                  id="settings-anchor-cost-rollup"
+                >
+                  <div className="settings-row settings-row--stack">
+                    <div className="settings-row__text">
+                      <div className="settings-row__label">
+                        {t("costRollup.title")}
+                      </div>
+                      <div className="settings-row__desc">
+                        {t("costRollup.settingsDesc")}
+                      </div>
+                    </div>
+                  </div>
+                  <CostRollupPanel
+                    locale={resolveLocale(locale)}
+                    sessions={costRollupSessions}
+                    projects={costRollupProjects}
+                    embedded
+                  />
                 </div>
                 <div
                   className={
