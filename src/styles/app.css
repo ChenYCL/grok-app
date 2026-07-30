@@ -17180,8 +17180,21 @@ div.composer__input:empty::before {
   margin-top: 12px;
 }
 
+.ext-hooks-activity__head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
 .ext-hooks-activity__title {
   margin-bottom: 4px;
+  flex: 1 1 auto;
+}
+
+.ext-hooks-activity__chips {
+  margin: 8px 0 4px;
+  flex-wrap: wrap;
 }
 
 .ext-hooks-activity__list {
@@ -17190,6 +17203,97 @@ div.composer__input:empty::before {
 
 .ext-hooks-activity__detail {
   word-break: break-word;
+}
+
+.ext-hooks-try {
+  margin-top: 12px;
+}
+
+.ext-hooks-try__toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 2px 0;
+  background: transparent;
+  border: 0;
+  color: var(--text-primary);
+  font: inherit;
+  font-weight: 600;
+  font-size: 13px;
+  cursor: pointer;
+  text-align: left;
+}
+
+.ext-hooks-try__toggle:hover {
+  color: var(--text-primary);
+  opacity: 0.9;
+}
+
+.ext-hooks-try__chevron {
+  width: 1em;
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.ext-hooks-try__body {
+  margin-top: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.ext-hooks-try__row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: flex-end;
+}
+
+.ext-hooks-try__row--outcome {
+  align-items: center;
+  gap: 8px;
+}
+
+.ext-hooks-try__field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1 1 160px;
+  min-width: 0;
+}
+
+.ext-hooks-try__field--block {
+  flex: 1 1 100%;
+}
+
+.ext-hooks-try__label {
+  font-size: 11px;
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+
+.ext-hooks-try__textarea {
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 12px;
+  line-height: 1.4;
+  min-height: 120px;
+  resize: vertical;
+  white-space: pre;
+}
+
+.ext-hooks-try__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.ext-hooks-try__msg--ok {
+  color: var(--ok, var(--text-secondary));
+}
+
+.ext-hooks-try__msg--err {
+  color: var(--danger, var(--text-secondary));
 }
 
 .ext-list {
