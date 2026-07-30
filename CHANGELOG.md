@@ -48,7 +48,8 @@ See `docs/llm-wiki/release.md`.
 - **Disallowed built-in tools** (Settings → General → Agent): chips + freeform list → `AppSettings.disallowedTools` / CLI `--disallowed-tools a,b`; coexists with Disable web search; soft-respawn on change
 - **Agent profile path** (Settings → General → Agent): optional file for `grok agent --agent-profile`; soft-respawns on change
 - **Agent serve** start/stop from Settings → Runtime → Connection (`grok agent serve --bind/--secret`; default `127.0.0.1:2419`; masked secret + one-time connection URL copy)
-- **Agent dashboard filters**: status chips with per-status counts (all / busy / permission / connecting / idle / error), free-text session search, project id/name/path filter, empty-filter state + clear; **Stop all busy** still targets every stoppable session globally (not only the filtered list)
+- **Agent dashboard filters**: status chips with per-status counts (all / busy / permission / connecting / idle / error), free-text session search, project id/name/path filter, empty-filter state + clear; **Stop all busy (app-wide)** still targets every stoppable session globally (not only the filtered list)
+- **Agent dashboard multi-select stop**: row checkboxes + select-all visible; **Stop selected (n)** only targets stoppable rows among the selection (idle/error ignored); pure `filterStoppableAmongSelection` + tests; live tool title shown more prominently; status as permission/busy badges — no invented metrics
 - **Trace history manage** (Traces modal + Settings → Runtime): search by title/path, remove row, clear all (in-app confirm), optional file size from host `stat` after export — still paths only, never loads archive contents
 - **Memory browser filters** (Settings → Agent): free-text search + kind chips (all / global / workspace / session / index / other) with counts, empty-filter state + clear; preview redact and clear-all workspace memory unchanged
 
@@ -81,6 +82,7 @@ See `docs/llm-wiki/release.md`.
 - **系统**：**Agent serve** 启停（设置 → 运行时 → 连接）；**可靠性卡顿时间线**（localStorage ring ~40、筛选/清空确认、无密钥）；**手机镜像写入审计**（本地 ring、无密钥/URL）；**Trace 历史管理**（搜索/移除/清空确认/可选大小）；任务面板子代理 **WT/cwd** 标记；**Agent 仪表盘** 状态/搜索/项目筛选
 - **Agent**：禁用内置工具（芯片 + 自由列表 → `--disallowed-tools`；与禁用网页搜索并存；更改 soft-respawn）；可选 profile 路径（`--agent-profile`）；**config.toml 安全查看**（脱敏 monospaced、分区跳转、复制路径/在文件夹显示/外部编辑器；非自由写入）
 - **系统**：**Agent serve** 启停（设置 → 运行时 → 连接）；**手机镜像写入审计**（本地 ring、无密钥/URL）；**Trace 历史管理**（搜索/移除/清空确认/可选大小）；任务面板子代理 **WT/cwd** 标记；**Agent 仪表盘** 状态/搜索/项目筛选
+- **系统**：**Agent serve** 启停（设置 → 运行时 → 连接）；**手机镜像写入审计**（本地 ring、无密钥/URL）；**Trace 历史管理**（搜索/移除/清空确认/可选大小）；任务面板子代理 **WT/cwd** 标记；**Agent 仪表盘** 状态/搜索/项目筛选、多选停止（仅可停止行）、工具标题与权限徽章
 - **计划**：**请求修改** 可选修订说明；计划历史搜索/决策筛选、清空确认、会话仍在时可打开
 - **扩展/市场**：目录插件详情面板（描述/版本/组件徽章 + 安装/重装）；安装失败行内重试；已安装 provides 结构化摘要；**Hooks 试跑/覆盖**（校验 stdin JSON、合成 dry-run 活动、结果筛选与清空确认；不执行 shell hook）
 - **扩展/市场**：目录插件详情面板（描述/版本/组件徽章 + 安装/重装）；安装失败行内重试；已安装 provides 结构化摘要；**MCP 状态弹层**（搜索/状态芯片/计数/刷新/复制名称与目标）

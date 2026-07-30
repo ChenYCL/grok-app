@@ -6,10 +6,12 @@ import {
   countDashboardRowsByStatus,
   dashboardStatusFromSessionState,
   filterAgentDashboardRows,
+  filterStoppableAmongSelection,
   isStoppableDashboardStatus,
   mapDashboardStatus,
   matchAgentDashboardProject,
   stoppableDashboardRows,
+  stoppableSelectedSessionIds,
   type AgentDashboardRow,
 } from "./agentDashboard";
 import { emptyLiveSnapshot, type SessionLiveMap } from "./sessionLiveStore";
@@ -505,5 +507,103 @@ describe("matchAgentDashboardProject", () => {
     expect(matchAgentDashboardProject(row, "GROK")).toBe(true);
     expect(matchAgentDashboardProject(row, "/users/me")).toBe(true);
     expect(matchAgentDashboardProject(row, "missing")).toBe(false);
+  });
+});
+
+describe("filterStoppableAmongSelection", () => {
+  const rows: AgentDashboardRow[] = [
+    {
+      sessionId: "busy-1",
+      title: "A",
+      projectId: null,
+      projectName: null,
+      projectPath: null,
+      modelId: null,
+      effort: null,
+      status: "busy",
+      liveToolTitle: "bash",
+      isCurrent: false,
+      lastActivityAt: 3,
+      updatedAtIso: null,
+      stoppable: true,
+    },
+    {
+      sessionId: "idle-1",
+      title: "B",
+      projectId: null,
+      projectName: null,
+      projectPath: null,
+      modelId: null,
+      effort: null,
+      status: "idle",
+      liveToolTitle: null,
+      isCurrent: false,
+      lastActivityAt: 2,
+      updatedAtIso: null,
+      stoppable: false,
+    },
+    {
+      sessionId: "perm-1",
+      title: "C",
+      projectId: null,
+      projectName: null,
+      projectPath: null,
+      modelId: null,
+      effort: null,
+      status: "permission",
+      liveToolTitle: null,
+      isCurrent: false,
+      lastActivityAt: 1,
+      updatedAtIso: null,
+      stoppable: true,
+    },
+    {
+      sessionId: "err-1",
+      title: "D",
+      projectId: null,
+      projectName: null,
+      projectPath: null,
+      modelId: null,
+      effort: null,
+      status: "error",
+      liveToolTitle: null,
+      isCurrent: false,
+      lastActivityAt: 0,
+      updatedAtIso: null,
+      stoppable: false,
+    },
+  ];
+
+  it("returns only stoppable rows in the selection (Set or array)", () => {
+    expect(
+      filterStoppableAmongSelection(
+        rows,
+        new Set(["busy-1", "idle-1", "perm-1", "err-1", "ghost"]),
+      ).map((r) => r.sessionId),
+    ).toEqual(["busy-1", "perm-1"]);
+    expect(
+      filterStoppableAmongSelection(rows, [
+        "idle-1",
+        "perm-1",
+        "busy-1",
+      ]).map((r) => r.sessionId),
+    ).toEqual(["busy-1", "perm-1"]);
+  });
+
+  it("returns empty when selection is empty or only non-stoppable", () => {
+    expect(filterStoppableAmongSelection(rows, new Set())).toEqual([]);
+    expect(
+      filterStoppableAmongSelection(rows, new Set(["idle-1", "err-1"])),
+    ).toEqual([]);
+    expect(
+      filterStoppableAmongSelection(rows, new Set(["missing"])),
+    ).toEqual([]);
+  });
+
+  it("preserves row order and exposes session ids helper", () => {
+    // Selection order must not reorder — follow catalog row order.
+    expect(
+      stoppableSelectedSessionIds(rows, ["perm-1", "busy-1", "idle-1"]),
+    ).toEqual(["busy-1", "perm-1"]);
   });
 });

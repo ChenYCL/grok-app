@@ -3,7 +3,7 @@
  * Distinct from AgentTasksPanel (per-turn tools for the focused chat).
  */
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { Locale, MessageKey } from "@/i18n";
 import { createT } from "@/i18n";
 import { GlassModal } from "@/components/GlassModal";
@@ -12,12 +12,15 @@ import {
   countBusyDashboardRows,
   countDashboardRowsByStatus,
   filterAgentDashboardRows,
+  filterStoppableAmongSelection,
   stoppableDashboardRows,
+  stoppableSelectedSessionIds,
   type AgentDashboardRow,
   type AgentDashboardStatus,
   type AgentDashboardStatusFilter,
 } from "@/lib/agentDashboard";
 import { formatRelativeTime } from "@/lib/accountUi";
+import { pruneSelectedIds, toggleIdInSet } from "@/lib/sessionSelect";
 
 type TFn = (key: MessageKey, vars?: Record<string, string | number>) => string;
 
@@ -58,15 +61,34 @@ function statusDotClass(status: AgentDashboardStatus): string {
   }
 }
 
+function statusBadgeClass(status: AgentDashboardStatus): string {
+  switch (status) {
+    case "busy":
+      return "agent-dash__status-badge--busy";
+    case "permission":
+      return "agent-dash__status-badge--perm";
+    case "connecting":
+      return "agent-dash__status-badge--connecting";
+    case "error":
+      return "agent-dash__status-badge--error";
+    default:
+      return "agent-dash__status-badge--idle";
+  }
+}
+
 function DashboardRow({
   row,
   t,
   locale,
+  selected,
+  onToggleSelect,
   onSelect,
 }: {
   row: AgentDashboardRow;
   t: TFn;
   locale: Locale;
+  selected: boolean;
+  onToggleSelect: (sessionId: string) => void;
   onSelect?: (sessionId: string) => void;
 }) {
   const metaParts: string[] = [];
@@ -81,61 +103,94 @@ function DashboardRow({
       : null;
 
   const cwd = row.projectPath || null;
+  const toolTitle = row.liveToolTitle?.trim() || null;
 
   return (
     <li
       className={
         "agent-dash__row" +
         (row.isCurrent ? " is-current" : "") +
-        (row.stoppable ? " is-busy" : "")
+        (row.stoppable ? " is-busy" : "") +
+        (selected ? " is-selected" : "") +
+        (row.status === "permission" ? " is-permission" : "")
       }
     >
-      <button
-        type="button"
-        className="agent-dash__row-main"
-        onClick={() => onSelect?.(row.sessionId)}
-        title={t("dashboard.openSession")}
-      >
-        <span
-          className={`agent-dash__dot ${statusDotClass(row.status)}`}
-          aria-hidden
-        />
-        <span className="agent-dash__body">
-          <span className="agent-dash__title-line">
-            <span className="agent-dash__title" title={row.title}>
-              {row.title}
+      <div className="agent-dash__row-inner">
+        <button
+          type="button"
+          role="checkbox"
+          aria-checked={selected}
+          className={
+            "agent-dash__check" + (selected ? " is-on" : "")
+          }
+          aria-label={
+            selected
+              ? t("dashboard.deselectRow", { title: row.title })
+              : t("dashboard.selectRow", { title: row.title })
+          }
+          onClick={(e) => {
+            e.stopPropagation();
+            onToggleSelect(row.sessionId);
+          }}
+        >
+          <span className="agent-dash__check-box" aria-hidden>
+            {selected ? "✓" : ""}
+          </span>
+        </button>
+        <button
+          type="button"
+          className="agent-dash__row-main"
+          onClick={() => onSelect?.(row.sessionId)}
+          title={t("dashboard.openSession")}
+        >
+          <span
+            className={`agent-dash__dot ${statusDotClass(row.status)}`}
+            aria-hidden
+          />
+          <span className="agent-dash__body">
+            <span className="agent-dash__title-line">
+              <span className="agent-dash__title" title={row.title}>
+                {row.title}
+              </span>
+              {row.isCurrent ? (
+                <span className="agent-dash__current">
+                  {t("dashboard.current")}
+                </span>
+              ) : null}
+              <span
+                className={
+                  "agent-dash__status-badge " + statusBadgeClass(row.status)
+                }
+              >
+                {statusLabel(row.status, t)}
+              </span>
             </span>
-            {row.isCurrent ? (
-              <span className="agent-dash__current">
-                {t("dashboard.current")}
+            {toolTitle ? (
+              <span className="agent-dash__tool is-live" title={toolTitle}>
+                <span className="agent-dash__tool-label">
+                  {t("dashboard.toolLabel")}
+                </span>
+                <span className="agent-dash__tool-name">{toolTitle}</span>
               </span>
             ) : null}
-            <span className="agent-dash__status">
-              {statusLabel(row.status, t)}
-            </span>
+            {metaParts.length > 0 ? (
+              <span className="agent-dash__meta" title={metaParts.join(" · ")}>
+                {metaParts.join(" · ")}
+              </span>
+            ) : null}
+            {cwd ? (
+              <span className="agent-dash__cwd" title={cwd}>
+                {cwd}
+              </span>
+            ) : null}
+            {activity ? (
+              <span className="agent-dash__activity">
+                {t("dashboard.lastActivity", { time: activity })}
+              </span>
+            ) : null}
           </span>
-          {metaParts.length > 0 ? (
-            <span className="agent-dash__meta" title={metaParts.join(" · ")}>
-              {metaParts.join(" · ")}
-            </span>
-          ) : null}
-          {cwd ? (
-            <span className="agent-dash__cwd" title={cwd}>
-              {cwd}
-            </span>
-          ) : null}
-          {row.liveToolTitle ? (
-            <span className="agent-dash__tool" title={row.liveToolTitle}>
-              {t("dashboard.tool", { name: row.liveToolTitle })}
-            </span>
-          ) : null}
-          {activity ? (
-            <span className="agent-dash__activity">
-              {t("dashboard.lastActivity", { time: activity })}
-            </span>
-          ) : null}
-        </span>
-      </button>
+        </button>
+      </div>
     </li>
   );
 }
@@ -151,6 +206,11 @@ export type AgentDashboardModalProps = {
    * Stops **all** busy sessions globally — not only the currently filtered list.
    */
   onStopAllBusy?: () => void;
+  /**
+   * Stop the given session ids (already filtered to stoppable).
+   * Confirm / toast lives in App.
+   */
+  onStopSessions?: (sessionIds: string[]) => void;
 };
 
 export function AgentDashboardModal({
@@ -160,12 +220,14 @@ export function AgentDashboardModal({
   onClose,
   onSelectSession,
   onStopAllBusy,
+  onStopSessions,
 }: AgentDashboardModalProps) {
   const tr = useMemo(() => createT(locale), [locale]);
   const [query, setQuery] = useState("");
   const [projectQuery, setProjectQuery] = useState("");
   const [statusFilter, setStatusFilter] =
     useState<AgentDashboardStatusFilter>("all");
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
 
   const filtered = useMemo(
     () =>
@@ -182,12 +244,76 @@ export function AgentDashboardModal({
   const stoppable = useMemo(() => stoppableDashboardRows(rows), [rows]);
   const showStopAll = !!onStopAllBusy && stoppable.length > 0;
 
+  const filteredIds = useMemo(
+    () => new Set(filtered.map((r) => r.sessionId)),
+    [filtered],
+  );
+
+  // Drop selections that left the catalog (session ended / archived idle).
+  useEffect(() => {
+    const live = new Set(rows.map((r) => r.sessionId));
+    setSelectedIds((prev) => pruneSelectedIds(prev, live));
+  }, [rows]);
+
+  // Clear multi-select when the modal closes so the next open is fresh.
+  useEffect(() => {
+    if (!open) setSelectedIds(new Set());
+  }, [open]);
+
+  const selectedStoppable = useMemo(
+    () => filterStoppableAmongSelection(rows, selectedIds),
+    [rows, selectedIds],
+  );
+  const selectedStoppableCount = selectedStoppable.length;
+  const showStopSelected =
+    !!onStopSessions && selectedStoppableCount > 0;
+
+  const visibleSelectedCount = useMemo(() => {
+    let n = 0;
+    for (const id of selectedIds) {
+      if (filteredIds.has(id)) n += 1;
+    }
+    return n;
+  }, [selectedIds, filteredIds]);
+
+  const allVisibleSelected =
+    filtered.length > 0 && visibleSelectedCount === filtered.length;
+  const someVisibleSelected =
+    visibleSelectedCount > 0 && !allVisibleSelected;
+
   const hasActiveFilters =
     statusFilter !== "all" ||
     query.trim().length > 0 ||
     projectQuery.trim().length > 0;
   const isEmptyCatalog = rows.length === 0;
   const isEmptyFilter = !isEmptyCatalog && filtered.length === 0;
+
+  const toggleRow = (sessionId: string) => {
+    setSelectedIds((prev) => toggleIdInSet(prev, sessionId));
+  };
+
+  const toggleSelectAllVisible = () => {
+    setSelectedIds((prev) => {
+      if (allVisibleSelected) {
+        // Deselect only currently visible rows.
+        const next = new Set(prev);
+        for (const id of filteredIds) next.delete(id);
+        return next;
+      }
+      const next = new Set(prev);
+      for (const id of filteredIds) next.add(id);
+      return next;
+    });
+  };
+
+  const handleStopSelected = () => {
+    if (!onStopSessions) return;
+    const ids = stoppableSelectedSessionIds(rows, selectedIds);
+    if (!ids.length) return;
+    onStopSessions(ids);
+    // Clear selection after dispatch so the footer doesn't stale-count.
+    setSelectedIds(new Set());
+  };
 
   return (
     <GlassModal
@@ -202,16 +328,30 @@ export function AgentDashboardModal({
       bodyClassName="agent-dash-modal__body"
       footer={
         <div className="agent-dash-modal__footer">
-          {showStopAll ? (
-            <button
-              type="button"
-              className="btn btn--ghost"
-              onClick={onStopAllBusy}
-              title={tr("dashboard.stopAllTitle")}
-            >
-              {tr("dashboard.stopAll")}
-            </button>
-          ) : null}
+          <div className="agent-dash-modal__footer-actions">
+            {showStopSelected ? (
+              <button
+                type="button"
+                className="btn btn--ghost"
+                onClick={handleStopSelected}
+                title={tr("dashboard.stopSelectedTitle", {
+                  n: selectedStoppableCount,
+                })}
+              >
+                {tr("dashboard.stopSelected", { n: selectedStoppableCount })}
+              </button>
+            ) : null}
+            {showStopAll ? (
+              <button
+                type="button"
+                className="btn btn--ghost"
+                onClick={onStopAllBusy}
+                title={tr("dashboard.stopAllTitle")}
+              >
+                {tr("dashboard.stopAll")}
+              </button>
+            ) : null}
+          </div>
           <button type="button" className="btn btn--solid" onClick={onClose}>
             {tr("common.close")}
           </button>
@@ -300,20 +440,65 @@ export function AgentDashboardModal({
           ) : null}
         </div>
       ) : (
-        <ul className="agent-dash__list" role="list">
-          {filtered.map((row) => (
-            <DashboardRow
-              key={row.sessionId}
-              row={row}
-              t={(k, vars) => tr(k, vars)}
-              locale={locale}
-              onSelect={(id) => {
-                onSelectSession?.(id);
-                onClose();
-              }}
-            />
-          ))}
-        </ul>
+        <>
+          <div className="agent-dash__select-bar">
+            <button
+              type="button"
+              role="checkbox"
+              aria-checked={
+                allVisibleSelected
+                  ? true
+                  : someVisibleSelected
+                    ? "mixed"
+                    : false
+              }
+              className={
+                "agent-dash__check agent-dash__check--all" +
+                (allVisibleSelected ? " is-on" : "") +
+                (someVisibleSelected ? " is-mixed" : "")
+              }
+              onClick={toggleSelectAllVisible}
+              aria-label={
+                allVisibleSelected
+                  ? tr("dashboard.deselectAllVisible")
+                  : tr("dashboard.selectAllVisible")
+              }
+            >
+              <span className="agent-dash__check-box" aria-hidden>
+                {allVisibleSelected ? "✓" : someVisibleSelected ? "–" : ""}
+              </span>
+              <span className="agent-dash__select-label">
+                {allVisibleSelected
+                  ? tr("dashboard.deselectAllVisible")
+                  : tr("dashboard.selectAllVisible")}
+              </span>
+            </button>
+            {selectedIds.size > 0 ? (
+              <span className="agent-dash__select-count">
+                {tr("dashboard.selectedCount", {
+                  n: selectedIds.size,
+                  stoppable: selectedStoppableCount,
+                })}
+              </span>
+            ) : null}
+          </div>
+          <ul className="agent-dash__list" role="list">
+            {filtered.map((row) => (
+              <DashboardRow
+                key={row.sessionId}
+                row={row}
+                t={(k, vars) => tr(k, vars)}
+                locale={locale}
+                selected={selectedIds.has(row.sessionId)}
+                onToggleSelect={toggleRow}
+                onSelect={(id) => {
+                  onSelectSession?.(id);
+                  onClose();
+                }}
+              />
+            ))}
+          </ul>
+        </>
       )}
     </GlassModal>
   );
