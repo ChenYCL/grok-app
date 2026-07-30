@@ -59,6 +59,10 @@ See `docs/llm-wiki/release.md`.
 
 
 - **会话级插件目录**：在会话右键菜单附加插件文件夹；仅该会话 spawn 时传入 `--plugin-dir`，不影响扩展/全局已装插件；变更后会 soft-respawn 空闲中的 Agent。
+- **CLI sessions bridge** (Settings → General → App): search/filter by title or agent id, show + copy agent session id, one-click **Import & open** / **Open in app** for linked sessions, clearer linked badge; available in independent mode with an honest note that agent-home may differ from terminal `~/.grok`
+
+
+- CLI session import no longer requires shared mode (already-linked rows skip re-import and open the existing app session)
 
 ## [0.2.2] - 2026-07-30
 

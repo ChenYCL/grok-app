@@ -873,7 +873,7 @@ export async function sessionsSearch(query: string, limit = 20) {
   });
 }
 
-/** CLI sessions under GROK_HOME (shared-mode discovery). */
+/** CLI sessions under GROK_HOME (session_data_mode discovery). */
 export type CliSessionSummary = {
   agentSessionId: string;
   title: string;
@@ -882,6 +882,10 @@ export type CliSessionSummary = {
   dir: string;
   numMessages: number;
   alreadyLinked: boolean;
+  /** App session id when already linked (one-click open). */
+  appSessionId?: string | null;
+  /** GROK_HOME used for discovery (path clarity). */
+  sourceHome?: string;
 };
 
 export async function cliSessionsList() {
