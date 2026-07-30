@@ -828,6 +828,8 @@ export async function sessionsList() {
       isWorktreeSession?: boolean;
       /** Optional JSON Schema for structured model output */
       jsonSchema?: string | null;
+      /** Session-only plugin dirs (`--plugin-dir`); empty/omit = none */
+      pluginDirs?: string[];
     }>
   >("sessions_list");
 }
@@ -979,6 +981,19 @@ export async function sessionSetProject(
     projectId: string | null;
     title: string;
   }>("session_set_project", { id, projectId });
+}
+
+/**
+ * Set session-only plugin directories for spawn (`--plugin-dir`).
+ * Pass `[]` to clear. Does not change global Extensions plugins.
+ * Soft-respawns when this chat is the live agent.
+ */
+export async function sessionSetPluginDirs(id: string, pluginDirs: string[]) {
+  return invoke<{
+    id: string;
+    title: string;
+    pluginDirs?: string[];
+  }>("session_set_plugin_dirs", { id, pluginDirs });
 }
 
 export async function sessionDelete(id: string) {

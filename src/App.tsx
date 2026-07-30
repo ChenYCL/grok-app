@@ -440,6 +440,7 @@ import {
   canRestoreCodeOnFork,
 } from "@/lib/sessionFork";
 import { isProjectPathMissing } from "@/lib/projectPath";
+import { appendPluginDir } from "@/lib/sessionPluginDirs";
 import {
   classifyVoiceError,
   initialVoiceState,
@@ -520,6 +521,7 @@ import {
   IconInfo,
   IconHelp,
   IconPlug,
+  IconPuzzle,
 } from "@/components/icons";
 import { PhoneAccountSheet } from "@/components/PhoneAccountSheet";
 import { PhoneComposerToolsSheet } from "@/components/PhoneComposerToolsSheet";
@@ -689,6 +691,32 @@ function mapProjectsList(list: Project[]): Project[] {
     .map((p) => normalizeProject({ ...p, pinned: !!p.pinned }));
 }
 
+/** Normalize sessions_list / search rows into sidebar SessionRow. */
+function mapSessionRow(x: {
+  id: string;
+  title: string;
+  projectId: string | null;
+  updatedAt: string;
+  archived?: boolean;
+  pinned?: boolean;
+  scheduled?: boolean;
+  pluginDirs?: string[] | null;
+}): SessionRow {
+  const pluginDirs = Array.isArray(x.pluginDirs)
+    ? x.pluginDirs.map((d) => String(d).trim()).filter(Boolean)
+    : [];
+  return {
+    id: x.id,
+    title: x.title,
+    projectId: normalizeProjectId(x.projectId),
+    updatedAt: x.updatedAt,
+    archived: !!x.archived,
+    pinned: !!x.pinned,
+    scheduled: !!x.scheduled,
+    pluginDirs: pluginDirs.length ? pluginDirs : undefined,
+  };
+}
+
 interface SessionRow {
   id: string;
   title: string;
@@ -709,6 +737,8 @@ interface SessionRow {
   isWorktreeSession?: boolean;
   /** Optional JSON Schema for structured model output. */
   jsonSchema?: string | null;
+  /** Session-only plugin directories (`--plugin-dir`). */
+  pluginDirs?: string[];
 }
 
 /** Normalize sessions_list / create rows into sidebar SessionRow shape. */
@@ -747,17 +777,22 @@ function mapSessionListRow(
     modelId?: string | null;
     effort?: string | null;
     jsonSchema?: string | null;
+    pluginDirs?: string[] | null;
   },
 ): SessionRow {
   const schema =
     typeof x.jsonSchema === "string" && x.jsonSchema.trim()
       ? x.jsonSchema
       : null;
+  const pluginDirs = Array.isArray(x.pluginDirs)
+    ? x.pluginDirs.map((d) => String(d).trim()).filter(Boolean)
+    : [];
   return {
     ...normalizeSessionRow(x),
     modelId: x.modelId ?? null,
     effort: x.effort ?? null,
     jsonSchema: schema,
+    pluginDirs,
   };
 }
 
@@ -2170,7 +2205,6 @@ export default function App() {
         (s as Array<Parameters<typeof mapSessionListRow>[0]>).map(
           mapSessionListRow,
         ),
-        ).map((x) => mapSessionRow(x)),
       );
       void api
         .generalWorkspacePath()
@@ -5556,6 +5590,46 @@ export default function App() {
     try {
       await api.sessionSetPinned(s.id, pinned);
       await refreshSessions();
+    } catch (e) {
+      setLocalError(String(e));
+    }
+  };
+
+  /**
+   * Attach a folder as a session-only `--plugin-dir` (does not change Extensions).
+   * Soft-respawns when this chat is the live agent.
+   */
+  const addSessionPluginDir = async (s: SessionRow) => {
+    setCtxMenu(null);
+    try {
+      if (!api.isTauri()) {
+        setLocalError(tr("error.needTauri"));
+        return;
+      }
+      const folder = await api.pickAttachFolder();
+      if (!folder) return;
+      const next = appendPluginDir(s.pluginDirs, folder);
+      await api.sessionSetPluginDirs(s.id, next);
+      await refreshSessions();
+      setToast(tr("session.pluginDirsAdded"));
+      window.setTimeout(() => setToast(null), 3200);
+    } catch (e) {
+      setLocalError(String(e));
+    }
+  };
+
+  /** Clear session-only plugin dirs (global Extensions unchanged). */
+  const clearSessionPluginDirs = async (s: SessionRow) => {
+    setCtxMenu(null);
+    try {
+      if (!api.isTauri()) {
+        setLocalError(tr("error.needTauri"));
+        return;
+      }
+      await api.sessionSetPluginDirs(s.id, []);
+      await refreshSessions();
+      setToast(tr("session.pluginDirsCleared"));
+      window.setTimeout(() => setToast(null), 3200);
     } catch (e) {
       setLocalError(String(e));
     }
@@ -9744,6 +9818,14 @@ export default function App() {
                 list.map((s) => normalizeSessionRow(s)),
               );
               row = mapSessionRow(hit);
+              row = {
+                id: hit.id,
+                title: hit.title,
+                projectId: hit.projectId,
+                updatedAt: hit.updatedAt,
+                archived: !!hit.archived,
+                scheduled: !!hit.scheduled,
+              };
               setSessions(list.map((s) => mapSessionRow(s)));
             }
           } catch {
@@ -15947,6 +16029,31 @@ export default function App() {
                 icon: <IconFork size={16} />,
                 onClick: () => confirmForkSession(s),
               },
+              {
+                id: "session-plugin-add",
+                label:
+                  (s.pluginDirs?.length ?? 0) > 0
+                    ? tr("session.pluginDirsAddCount", {
+                        n: String(s.pluginDirs!.length),
+                      })
+                    : tr("session.pluginDirsAdd"),
+                icon: <IconPuzzle size={16} />,
+                onClick: () => {
+                  void addSessionPluginDir(s);
+                },
+              },
+              ...((s.pluginDirs?.length ?? 0) > 0
+                ? [
+                    {
+                      id: "session-plugin-clear",
+                      label: tr("session.pluginDirsClear"),
+                      icon: <IconPuzzle size={16} />,
+                      onClick: () => {
+                        void clearSessionPluginDirs(s);
+                      },
+                    } satisfies ContextMenuItem,
+                  ]
+                : []),
               {
                 id: "rewind",
                 label: tr("session.rewind"),

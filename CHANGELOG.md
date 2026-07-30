@@ -55,6 +55,10 @@ See `docs/llm-wiki/release.md`.
 
 
 - **结构化 JSON Schema 输出**（输入框高级）：为本对话粘贴 Schema、客户端校验与 Toast、清除、持久化；启动 agent 时传 `--json-schema`，提示词附实验性说明；助手 JSON 回复下显示可复制面板
+- **Session plugin folders**: attach one or more plugin directories to a single chat (session context menu → Add session plugin folder). Spawn passes CLI `--plugin-dir` for that session only; clear leaves global Extensions / installed plugins unchanged. Changing dirs soft-respawns a live agent when idle.
+
+
+- **会话级插件目录**：在会话右键菜单附加插件文件夹；仅该会话 spawn 时传入 `--plugin-dir`，不影响扩展/全局已装插件；变更后会 soft-respawn 空闲中的 Agent。
 
 ## [0.2.2] - 2026-07-30
 
