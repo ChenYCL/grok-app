@@ -633,6 +633,8 @@ function paletteActionIcon(id: string) {
       return <IconKeyboard size={size} />;
     case "product-tutorial":
       return <IconHelp size={size} />;
+    case "copy-conversation-md":
+      return <IconCopy size={size} />;
     case "settings-appearance":
       return <IconAppearance size={size} />;
     case "settings-account":
@@ -9747,6 +9749,20 @@ export default function App() {
       case "product-tutorial":
         setShowProductTutorial(true);
         break;
+      case "copy-conversation-md":
+        void copyConversationMarkdown(
+          session.sessionId
+            ? {
+                id: session.sessionId,
+                title: session.title || tr("session.untitled"),
+                projectId:
+                  sessions.find((s) => s.id === session.sessionId)?.projectId ??
+                  activeProject?.id ??
+                  null,
+              }
+            : undefined,
+        );
+        break;
       case "settings-general":
         navigateSettings("general");
         break;
@@ -10402,6 +10418,60 @@ export default function App() {
       exportMdTarget,
       exportMdIncludeThoughts,
       exportMdIncludeTools,
+      buildSessionMarkdown,
+      showToast,
+      tr,
+    ],
+  );
+
+  /**
+   * One-click copy of the full conversation as Markdown.
+   * Skips pure tool_step noise by default (unlike the export dialog).
+   */
+  const copyConversationMarkdown = useCallback(
+    async (sessionMeta?: {
+      id: string;
+      title: string;
+      projectId?: string | null;
+    }) => {
+      const id = sessionMeta?.id ?? session.sessionId;
+      if (!id) {
+        showToast(tr("session.copyMdFail"));
+        return;
+      }
+      try {
+        const { md } = await buildSessionMarkdown(
+          {
+            id,
+            title:
+              sessionMeta?.title ||
+              sessions.find((s) => s.id === id)?.title ||
+              session.title ||
+              tr("session.untitled"),
+            projectId:
+              sessionMeta?.projectId ??
+              sessions.find((s) => s.id === id)?.projectId ??
+              null,
+          },
+          {
+            includeThoughts: true,
+            includeToolSummary: false,
+          },
+        );
+        if (!md.trim()) {
+          showToast(tr("session.copyMdEmpty"));
+          return;
+        }
+        await navigator.clipboard.writeText(md);
+        showToast(tr("session.copyMdDone"));
+      } catch (e) {
+        showToast(`${tr("session.copyMdFail")}: ${String(e)}`);
+      }
+    },
+    [
+      session.sessionId,
+      session.title,
+      sessions,
       buildSessionMarkdown,
       showToast,
       tr,
@@ -16174,6 +16244,18 @@ export default function App() {
               },
               ...wtItems,
               // Export group — not at top of menu (after edit/rename-style actions)
+              {
+                id: "copy-md",
+                label: tr("session.copyMd"),
+                icon: <IconCopy size={16} />,
+                onClick: () => {
+                  void copyConversationMarkdown({
+                    id: s.id,
+                    title: s.title,
+                    projectId: s.projectId,
+                  });
+                },
+              },
               {
                 id: "export-md",
                 label: tr("session.exportMd"),
