@@ -15,13 +15,20 @@ import {
   applyThemeToDocument,
   getSystemTheme,
   loadThemePreference,
-  resolveTheme,
   saveThemePreference,
   subscribeSystemTheme,
   toggleThemePreference,
   type Theme,
   type ThemePreference,
 } from "@/lib/theme";
+import {
+  THEME_SCHEDULE_TICK_MS,
+  isThemeScheduleActive,
+  loadThemeSchedule,
+  resolveThemeWithSchedule,
+  saveThemeSchedule,
+  type ThemeScheduleConfig,
+} from "@/lib/themeSchedule";
 import {
   applySkinToDocument,
   applyWallpaperFlag,
@@ -893,9 +900,22 @@ export default function App() {
     loadThemePreference(localStorage),
   );
   const [systemTheme, setSystemTheme] = useState<Theme>(() => getSystemTheme());
+  /** Optional light/dark-by-clock schedule (sub-option under Theme → System). */
+  const [themeSchedule, setThemeSchedule] = useState<ThemeScheduleConfig>(() =>
+    loadThemeSchedule(localStorage),
+  );
+  /** Bumped on interval / visibility so schedule resolve re-runs without Date.now in render. */
+  const [scheduleClock, setScheduleClock] = useState(() => new Date());
+  const scheduleActive = isThemeScheduleActive(themePreference, themeSchedule);
   const theme = useMemo(
-    () => resolveTheme(themePreference, systemTheme),
-    [themePreference, systemTheme],
+    () =>
+      resolveThemeWithSchedule(
+        themePreference,
+        systemTheme,
+        themeSchedule,
+        scheduleClock,
+      ),
+    [themePreference, systemTheme, themeSchedule, scheduleClock],
   );
   const [skin, setSkin] = useState<ThemeSkinId>(() => loadSkin(localStorage));
   const [wallpaperRecord, setWallpaperRecord] = useState<WallpaperRecord | null>(
@@ -2106,18 +2126,19 @@ export default function App() {
   }, [setZenModeEnabled]);
 
   // Keep data-theme + native chrome in sync with the resolved theme.
-  // When preference is "system", native must stay unlocked (null) so the
-  // WebView continues to receive OS scheme changes via matchMedia.
+  // When preference is "system" without schedule, native stays unlocked (null)
+  // so the WebView continues to receive OS scheme changes via matchMedia.
+  // Schedule-active or forced light/dark lock native to the concrete theme.
   useEffect(() => {
     applyThemeToDocument(theme);
     void applyNativeWindowTheme(
-      themePreference === "system" ? null : theme,
+      themePreference === "system" && !themeSchedule.enabled ? null : theme,
     );
-  }, [theme, themePreference]);
+  }, [theme, themePreference, themeSchedule.enabled]);
 
-  // Follow OS light/dark: re-read immediately on enter, then live-subscribe.
+  // Follow OS light/dark only when System is selected and schedule is off.
   useEffect(() => {
-    if (themePreference !== "system") return;
+    if (themePreference !== "system" || themeSchedule.enabled) return;
     let cancelled = false;
     void (async () => {
       // Unlock native first so getSystemTheme() sees the real OS scheme.
@@ -2137,7 +2158,23 @@ export default function App() {
       cancelled = true;
       unsub();
     };
-  }, [themePreference]);
+  }, [themePreference, themeSchedule.enabled]);
+
+  // Clock schedule: re-resolve on load, every 60s, and when tab becomes visible.
+  useEffect(() => {
+    if (!scheduleActive) return;
+    const tick = () => setScheduleClock(new Date());
+    tick();
+    const id = window.setInterval(tick, THEME_SCHEDULE_TICK_MS);
+    const onVis = () => {
+      if (document.visibilityState === "visible") tick();
+    };
+    document.addEventListener("visibilitychange", onVis);
+    return () => {
+      window.clearInterval(id);
+      document.removeEventListener("visibilitychange", onVis);
+    };
+  }, [scheduleActive]);
 
   useEffect(() => {
     applySkinToDocument(skin);
@@ -4111,6 +4148,20 @@ export default function App() {
   const applyThemeChoice = (next: ThemePreference) => {
     saveThemePreference(localStorage, next);
     setThemePreference(next);
+    // When schedule is active under System, lock to scheduled light/dark
+    // instead of unlocking native / following OS.
+    if (next === "system" && themeSchedule.enabled) {
+      const resolved = resolveThemeWithSchedule(
+        next,
+        getSystemTheme(),
+        themeSchedule,
+        new Date(),
+      );
+      setScheduleClock(new Date());
+      applyThemeToDocument(resolved);
+      void applyNativeWindowTheme(resolved);
+      return;
+    }
     // System: unlock native → re-read OS → set data-theme immediately.
     // Light/dark: lock native + CSS to that value.
     void applyThemePreference(next, {
@@ -4119,6 +4170,32 @@ export default function App() {
         setSystemTheme(next === "system" ? resolved : system);
       },
     });
+  };
+
+  const applyThemeScheduleChoice = (next: ThemeScheduleConfig) => {
+    saveThemeSchedule(next, localStorage);
+    setThemeSchedule(next);
+    setScheduleClock(new Date());
+    // Immediate apply so toggling schedule / times does not wait for interval.
+    const resolved = resolveThemeWithSchedule(
+      themePreference,
+      getSystemTheme(),
+      next,
+      new Date(),
+    );
+    applyThemeToDocument(resolved);
+    if (themePreference === "system" && next.enabled) {
+      void applyNativeWindowTheme(resolved);
+    } else if (themePreference === "system" && !next.enabled) {
+      void applyThemePreference("system", {
+        onResolved: (r, system) => {
+          setSystemTheme(r);
+          void system;
+        },
+      });
+    } else {
+      void applyNativeWindowTheme(resolved);
+    }
   };
 
   const applySkinChoice = (next: ThemeSkinId) => {
@@ -12031,6 +12108,8 @@ export default function App() {
           theme={theme}
           themePreference={themePreference}
           onTheme={applyThemeChoice}
+          themeSchedule={themeSchedule}
+          onThemeSchedule={applyThemeScheduleChoice}
           showMessageTimestamps={showMessageTimestamps}
           onShowMessageTimestamps={(v) => {
             saveMessageTimestampsPref(v, localStorage);

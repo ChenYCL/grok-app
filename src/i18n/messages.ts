@@ -1185,6 +1185,11 @@ const en = {
   "settings.themeSystem": "System",
   "settings.themeLight": "Light",
   "settings.themeDark": "Dark",
+  "settings.themeSchedule": "Schedule light / dark",
+  "settings.themeScheduleDesc":
+    "When Theme is System, switch light and dark by local clock instead of the OS. Forced Light or Dark ignore this schedule.",
+  "settings.themeScheduleLightFrom": "Light from",
+  "settings.themeScheduleDarkFrom": "Dark from",
   "settings.thinkingExpand": "Thinking blocks",
   "settings.thinkingExpandDesc":
     "After a reply finishes, keep reasoning expanded or collapse it automatically. Streaming still opens live.",
@@ -3903,6 +3908,11 @@ const zh: Record<MessageKey, string> = {
   "settings.themeSystem": "跟随系统",
   "settings.themeLight": "浅色",
   "settings.themeDark": "深色",
+  "settings.themeSchedule": "按时切换浅色 / 深色",
+  "settings.themeScheduleDesc":
+    "主题为「跟随系统」时，按本地时间在浅色与深色之间切换，而不是跟随系统外观。固定浅色或深色时忽略此计划。",
+  "settings.themeScheduleLightFrom": "浅色开始",
+  "settings.themeScheduleDarkFrom": "深色开始",
   "settings.thinkingExpand": "思考过程",
   "settings.thinkingExpandDesc":
     "回复完成后，思考/推理块保持展开，或自动折叠。流式生成时仍会实时展开。",

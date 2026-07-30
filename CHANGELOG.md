@@ -28,6 +28,9 @@ See `docs/llm-wiki/release.md`.
 - **Bulk archive older than 7/30/90 days** · **date groups** · **project color accent**
 - **Copy conversation as Markdown**
 
+#### Appearance
+- **Scheduled light/dark theme** (Settings → Appearance → Theme): optional clock schedule under System — `lightFrom` / `darkFrom` (HH:mm); reapplies on load, every 60s, and on tab visibility. Forced Light/Dark still ignore the schedule
+
 #### Tasks / system
 - **Tasks tree** (nest under spawn_subagent) · **Stop all skip-confirm** option
 - **Plan history** archive · **Dock/tray busy badge**
@@ -41,6 +44,7 @@ See `docs/llm-wiki/release.md`.
 
 - **输入与对话**：队列编辑/排序、跨会话提示历史、阅读宽度与字号、工具默认折叠、重新生成可选模型、变更芯片
 - **会话与侧栏**：复制会话（vs 分叉+worktree）、便签、静音、插件目录、按天归档、日期分组、项目颜色、复制 Markdown
+- **外观**：按时切换浅色/深色（跟随系统下的可选计划；固定浅/深仍优先）
 - **任务与系统**：子代理树、Stop all 可跳过确认、计划历史、忙碌角标、镜像写权限等
 
 **中文 · 修复**
