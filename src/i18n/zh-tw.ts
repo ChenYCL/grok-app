@@ -2287,6 +2287,12 @@ export const zhTW: Record<MessageKey, string> = {
   "mirror.readOnlyOn": "唯讀（安全）",
   "mirror.readOnlyHint":
     "唯讀模式：手機可檢視會話，但不能傳送訊息或核准工具，直到你允許寫入。",
+  "mirror.writeConfirmTitle": "允許手機傳送？",
+  "mirror.writeConfirmMessage":
+    "已連線的手機會傳送訊息、核准工具，並控制本機上的 Agent。僅在你信任所有能開啟鏡像連結的人時啟用。可隨時切回唯讀。",
+  "mirror.writeConfirmOk": "允許寫入",
+  "mirror.writeEnabledBanner":
+    "已允許寫入：手機可在本機傳送訊息並核准工具。",
   "mirror.chrome.connected": "已連線主機",
   "mirror.chrome.reconnecting": "重新連線中…",
   "mirror.chrome.accountHost": "主機帳戶",

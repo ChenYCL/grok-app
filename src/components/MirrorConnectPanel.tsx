@@ -42,6 +42,19 @@ export type MirrorConnectLabels = {
   allowWrite: string;
   readOnlyOn: string;
   readOnlyHint: string;
+  /** Confirm dialog when enabling phone writes. */
+  writeConfirmTitle: string;
+  writeConfirmMessage: string;
+  writeConfirmOk: string;
+  /** Persistent banner while phone write is enabled. */
+  writeEnabledBanner: string;
+};
+
+export type MirrorConfirmRequest = {
+  title: string;
+  message: string;
+  confirmLabel: string;
+  onConfirm: () => void;
 };
 
 export type MirrorConnectPanelProps = {
@@ -57,13 +70,11 @@ export type MirrorConnectPanelProps = {
   open?: boolean;
   onClose?: () => void;
   labels: MirrorConnectLabels;
-  /** In-app confirm for stop (no window.confirm). */
-  onConfirmStop: (opts: {
-    title: string;
-    message: string;
-    confirmLabel: string;
-    onConfirm: () => void;
-  }) => void;
+  /**
+   * In-app confirm for stop / enable-write (no window.confirm).
+   * Prefer GlassModal / setAppDialog from the parent.
+   */
+  onRequestConfirm: (opts: MirrorConfirmRequest) => void;
   showToast: (msg: string, ms?: number) => void;
   /**
    * Inline only: auto-start host when the panel becomes active (default true).
@@ -236,9 +247,13 @@ function MirrorConnectBody({
             </button>
             <button
               type="button"
-              className="btn btn--ghost"
+              className={
+                "btn btn--ghost" +
+                (status.readOnly ? "" : " mirror-connect__write-toggle--on")
+              }
               disabled={busy}
               onClick={onToggleReadOnly}
+              aria-pressed={!status.readOnly}
             >
               {status.readOnly ? labels.allowWrite : labels.readOnlyOn}
             </button>
@@ -247,6 +262,20 @@ function MirrorConnectBody({
       </div>
       {status.running && status.readOnly ? (
         <p className="mirror-connect__hint">{labels.readOnlyHint}</p>
+      ) : null}
+      {status.running && !status.readOnly ? (
+        <div
+          className="mirror-connect__write-banner"
+          role="status"
+          aria-live="polite"
+        >
+          <span className="mirror-connect__write-banner-chip" aria-hidden>
+            !
+          </span>
+          <span className="mirror-connect__write-banner-text">
+            {labels.writeEnabledBanner}
+          </span>
+        </div>
       ) : null}
     </>
   );
@@ -257,7 +286,7 @@ export function MirrorConnectPanel({
   open = true,
   onClose,
   labels,
-  onConfirmStop,
+  onRequestConfirm,
   showToast,
   autoStart = true,
 }: MirrorConnectPanelProps) {
@@ -350,15 +379,30 @@ export function MirrorConnectPanel({
     })();
   };
 
-  const handleToggleReadOnly = () => {
+  const applyReadOnly = (readOnly: boolean) => {
     void (async () => {
       try {
-        const st = await api.mirrorSetReadOnly(!status.readOnly);
+        const st = await api.mirrorSetReadOnly(readOnly);
         setStatus(st);
       } catch (e) {
         setErr(String(e));
       }
     })();
+  };
+
+  const handleToggleReadOnly = () => {
+    // Enabling write is a high-risk action — always confirm in-app (never window.confirm).
+    if (status.readOnly) {
+      onRequestConfirm({
+        title: labels.writeConfirmTitle,
+        message: labels.writeConfirmMessage,
+        confirmLabel: labels.writeConfirmOk,
+        onConfirm: () => applyReadOnly(false),
+      });
+      return;
+    }
+    // Reverting to read-only is safe; no confirm.
+    applyReadOnly(true);
   };
 
   const handleCopy = async () => {
@@ -385,7 +429,7 @@ export function MirrorConnectPanel({
   };
 
   const handleStop = () => {
-    onConfirmStop({
+    onRequestConfirm({
       title: labels.stopConfirmTitle,
       message: labels.stopConfirmMessage,
       confirmLabel: labels.stopConfirmOk,

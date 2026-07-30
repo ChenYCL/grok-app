@@ -2370,6 +2370,12 @@ const en = {
   "mirror.readOnlyOn": "Read-only (safe)",
   "mirror.readOnlyHint":
     "Read-only: the phone can view sessions but cannot send messages or approve tools until you allow writes.",
+  "mirror.writeConfirmTitle": "Allow phone to send?",
+  "mirror.writeConfirmMessage":
+    "The linked phone will be able to send messages, approve tools, and control the agent on this machine. Only enable this if you trust every person who can open the mirror link. You can switch back to read-only at any time.",
+  "mirror.writeConfirmOk": "Allow writes",
+  "mirror.writeEnabledBanner":
+    "Write enabled: phone can send messages and approve tools on this machine.",
   "mirror.chrome.connected": "Linked to host",
   "mirror.chrome.reconnecting": "Reconnecting…",
   "mirror.chrome.accountHost": "Host account",
@@ -4955,6 +4961,12 @@ const zh: Record<MessageKey, string> = {
   "mirror.readOnlyOn": "只读（安全）",
   "mirror.readOnlyHint":
     "只读模式：手机可查看会话，但不能发消息或批准工具，直到你允许写入。",
+  "mirror.writeConfirmTitle": "允许手机发送？",
+  "mirror.writeConfirmMessage":
+    "已连接的手机会发送消息、批准工具，并控制本机上的 Agent。仅在你信任所有能打开镜像链接的人时启用。可随时切回只读。",
+  "mirror.writeConfirmOk": "允许写入",
+  "mirror.writeEnabledBanner":
+    "已允许写入：手机可在本机发送消息并批准工具。",
   "mirror.chrome.connected": "已连接主机",
   "mirror.chrome.reconnecting": "重新连接中…",
   "mirror.chrome.accountHost": "主机账户",
