@@ -10676,6 +10676,26 @@ html[data-composer-min-rows="8"] .composer__input {
   word-break: break-word;
 }
 
+.doctor-cli-fix-plan {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 10px 12px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-elevated, var(--bg-main));
+}
+
+.doctor-cli-fix-plan__banner {
+  margin: 0;
+  flex: 1 1 12rem;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--text-secondary);
+}
+
 .doctor-cli-section {
   margin-top: 16px;
   padding-top: 12px;

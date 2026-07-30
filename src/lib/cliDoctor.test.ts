@@ -8,9 +8,12 @@ import {
   hasAnySafeFact,
   isDestructiveDoctorFix,
   isValidDoctorFixId,
+  listFixableChecks,
+  listSafeAutoFixes,
   parseCliDoctorEnvelope,
   parseCliDoctorReport,
   parseFinding,
+  summarizeFixPlan,
 } from "./cliDoctor";
 
 /** Minimal fixture shaped like `grok doctor --json` (schemaVersion 1). */
@@ -315,5 +318,119 @@ describe("formatFactValue", () => {
     expect(formatFactValue("ssh", true)).toBe("yes");
     expect(formatFactValue("ssh", false)).toBe("no");
     expect(formatFactValue("terminal", "iterm2")).toBe("iterm2");
+  });
+});
+
+describe("listFixableChecks / listSafeAutoFixes / summarizeFixPlan", () => {
+  function viewWithChecks(
+    checks: Array<{
+      id: string;
+      fixId?: string | null;
+      level?: "ok" | "warn" | "fail";
+      title?: string;
+    }>,
+  ) {
+    return parseCliDoctorEnvelope({
+      available: true,
+      report: {
+        schemaVersion: "1",
+        findings: checks.map((c) => ({
+          id: c.id,
+          disposition:
+            c.level === "fail"
+              ? "issue"
+              : c.level === "ok"
+                ? "ok"
+                : "recommendation",
+          message: c.title ?? c.id,
+          automaticRemediation: c.fixId ?? null,
+        })),
+      },
+    });
+  }
+
+  it("lists checks that carry a valid fixId", () => {
+    const view = viewWithChecks([
+      { id: "a", fixId: "noop" },
+      { id: "b", fixId: null },
+      { id: "c", fixId: "ssh-wrap" },
+      { id: "d", fixId: "--bad" },
+    ]);
+    const fixable = listFixableChecks(view);
+    expect(fixable.map((c) => c.fixId)).toEqual(["noop", "ssh-wrap"]);
+  });
+
+  it("dedupes the same fixId across checks", () => {
+    const view = viewWithChecks([
+      { id: "a", fixId: "noop" },
+      { id: "b", fixId: "NOOP" },
+    ]);
+    expect(listFixableChecks(view)).toHaveLength(1);
+  });
+
+  it("returns only non-destructive fixes for safe auto-apply", () => {
+    const view = viewWithChecks([
+      { id: "a", fixId: "noop" },
+      { id: "b", fixId: "ssh-wrap" },
+      { id: "c", fixId: "info" },
+      { id: "d", fixId: "tmux-clipboard" },
+    ]);
+    const safe = listSafeAutoFixes(view);
+    expect(safe.map((c) => c.fixId).sort()).toEqual(["info", "noop"]);
+    for (const c of safe) {
+      expect(isDestructiveDoctorFix(c.fixId!)).toBe(false);
+    }
+  });
+
+  it("summarizeFixPlan counts total / safe / needsConfirm", () => {
+    const view = viewWithChecks([
+      { id: "a", fixId: "noop" },
+      { id: "b", fixId: "ssh-wrap" },
+      { id: "c", fixId: "info" },
+      { id: "d" },
+    ]);
+    expect(summarizeFixPlan(view)).toEqual({
+      total: 3,
+      safe: 2,
+      needsConfirm: 1,
+    });
+  });
+
+  it("returns empty plan when doctor unavailable or has no fixes", () => {
+    expect(listFixableChecks(null)).toEqual([]);
+    expect(listSafeAutoFixes(undefined)).toEqual([]);
+    expect(summarizeFixPlan(null)).toEqual({
+      total: 0,
+      safe: 0,
+      needsConfirm: 0,
+    });
+
+    const unavailable = parseCliDoctorEnvelope({
+      available: false,
+      error: "missing",
+      report: null,
+    });
+    expect(summarizeFixPlan(unavailable)).toEqual({
+      total: 0,
+      safe: 0,
+      needsConfirm: 0,
+    });
+
+    const clean = parseCliDoctorEnvelope({
+      available: true,
+      report: { schemaVersion: "1", findings: [] },
+    });
+    expect(listFixableChecks(clean)).toEqual([]);
+    expect(summarizeFixPlan(clean).total).toBe(0);
+  });
+
+  it("works on fixture view (ssh-wrap is destructive only)", () => {
+    const view = parseCliDoctorEnvelope(FIXTURE);
+    const plan = summarizeFixPlan(view);
+    expect(plan.total).toBe(1);
+    expect(plan.safe).toBe(0);
+    expect(plan.needsConfirm).toBe(1);
+    expect(listSafeAutoFixes(view)).toEqual([]);
+    expect(listFixableChecks(view)[0]?.fixId).toBe("ssh-wrap");
   });
 });

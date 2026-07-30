@@ -20,7 +20,9 @@ import {
   extractFixIds,
   formatFactValue,
   hasAnySafeFact,
+  listSafeAutoFixes,
   parseCliDoctorEnvelope,
+  summarizeFixPlan,
   type CliDoctorCheck,
   type CliDoctorSafeFacts,
   type CliDoctorView,
@@ -254,6 +256,42 @@ export function DoctorModal({
     return extractFixIds(report.cliDoctor);
   }, [report]);
 
+  const fixPlan = useMemo(
+    () => summarizeFixPlan(cliDoctor),
+    [cliDoctor],
+  );
+
+  const safeAutoFixes = useMemo(
+    () => listSafeAutoFixes(cliDoctor),
+    [cliDoctor],
+  );
+
+  /** Host/stdout/stderr detail for a failed fix (no fix id prefix). */
+  const fixHostDetail = useCallback(
+    (res: api.CliDoctorFixResult | null, caught?: unknown) => {
+      if (caught != null) return redact(String(caught)).slice(0, 320);
+      return redact(
+        (
+          res?.error ||
+          res?.stderr ||
+          res?.stdout ||
+          t("doctor.cliDoctorFixFail")
+        ).trim(),
+      ).slice(0, 320);
+    },
+    [t],
+  );
+
+  const formatFixHostError = useCallback(
+    (fixId: string, res: api.CliDoctorFixResult | null, caught?: unknown) => {
+      return t("doctor.cliDoctorFixFailWithId", {
+        id: fixId,
+        error: fixHostDetail(res, caught),
+      });
+    },
+    [fixHostDetail, t],
+  );
+
   const applyFix = useCallback(
     async (fixId: string) => {
       setBusy("fix");
@@ -276,25 +314,97 @@ export function DoctorModal({
               : t("doctor.cliDoctorFixDone", { id: fixId }),
           );
         } else {
-          const detail = redact(
-            (
-              res.error ||
-              res.stderr ||
-              res.stdout ||
-              t("doctor.cliDoctorFixFail")
-            ).trim(),
-          ).slice(0, 320);
-          setError(`${t("doctor.cliDoctorFixFail")}: ${detail}`);
+          setError(formatFixHostError(fixId, res));
         }
       } catch (e) {
-        setError(`${t("doctor.cliDoctorFixFail")}: ${String(e)}`);
+        setError(formatFixHostError(fixId, null, e));
       } finally {
         setBusy(null);
         setFixingId(null);
       }
     },
-    [run, t],
+    [formatFixHostError, run, t],
   );
+
+  /**
+   * Run all non-destructive fixIds sequentially via the host path,
+   * then re-run doctor once. Stops on first failure.
+   */
+  const applySafeFixes = useCallback(async () => {
+    const safe = listSafeAutoFixes(cliDoctor);
+    if (safe.length === 0) return;
+
+    setBusy("fix");
+    setError(null);
+    setStatusMsg(null);
+
+    const applied: string[] = [];
+    let failedId: string | null = null;
+    let failedMsg: string | null = null;
+    let lastFixId: string | null = null;
+
+    try {
+      for (let i = 0; i < safe.length; i += 1) {
+        const fixId = safe[i].fixId;
+        if (!fixId) continue;
+        lastFixId = fixId;
+        setFixingId(fixId);
+        setStatusMsg(
+          t("doctor.cliDoctorFixBatchProgress", {
+            current: i + 1,
+            total: safe.length,
+            id: fixId,
+          }),
+        );
+        try {
+          const res = await api.cliDoctorFix(fixId);
+          if (res.ok) {
+            applied.push(fixId);
+          } else {
+            failedId = fixId;
+            failedMsg = fixHostDetail(res);
+            break;
+          }
+        } catch (e) {
+          failedId = fixId;
+          failedMsg = fixHostDetail(null, e);
+          break;
+        }
+      }
+
+      // Refresh findings after the batch (success or partial).
+      await run();
+
+      if (failedId && failedMsg) {
+        setError(
+          applied.length > 0
+            ? t("doctor.cliDoctorFixBatchPartial", {
+                ok: applied.length,
+                id: failedId,
+                error: failedMsg,
+              })
+            : t("doctor.cliDoctorFixFailWithId", {
+                id: failedId,
+                error: failedMsg,
+              }),
+        );
+      } else {
+        setStatusMsg(
+          t("doctor.cliDoctorFixBatchDone", { count: applied.length }),
+        );
+      }
+    } catch (e) {
+      setError(
+        t("doctor.cliDoctorFixFailWithId", {
+          id: lastFixId || "batch",
+          error: redact(String(e)).slice(0, 320),
+        }),
+      );
+    } finally {
+      setBusy(null);
+      setFixingId(null);
+    }
+  }, [cliDoctor, fixHostDetail, run, t]);
 
   const onApplyFix = useCallback(
     (handle: { fixId: string; message?: string; destructive?: boolean }) => {
@@ -553,6 +663,36 @@ export function DoctorModal({
                         cliDoctor.error ? `: ${cliDoctor.error}` : ""
                       }`}
                 </p>
+              )}
+
+              {cliDoctor.available && fixPlan.total > 0 && (
+                <div
+                  className="doctor-cli-fix-plan"
+                  role="status"
+                  aria-live="polite"
+                >
+                  <p className="doctor-cli-fix-plan__banner">
+                    {t("doctor.cliDoctorFixPlanBanner", {
+                      total: fixPlan.total,
+                      confirm: fixPlan.needsConfirm,
+                    })}
+                  </p>
+                  {fixPlan.safe > 0 ? (
+                    <button
+                      type="button"
+                      className="btn btn--ghost btn--sm"
+                      disabled={!!busy || loading}
+                      onClick={() => void applySafeFixes()}
+                      title={t("doctor.cliDoctorApplySafeFixesHint")}
+                    >
+                      {busy === "fix" &&
+                      fixingId &&
+                      safeAutoFixes.some((c) => c.fixId === fixingId)
+                        ? "…"
+                        : t("doctor.cliDoctorApplySafeFixes")}
+                    </button>
+                  ) : null}
+                </div>
               )}
 
               {cliDoctor.available && cliDoctor.checks.length > 0 && (
