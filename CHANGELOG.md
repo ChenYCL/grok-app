@@ -63,6 +63,10 @@ See `docs/llm-wiki/release.md`.
 
 
 - CLI session import no longer requires shared mode (already-linked rows skip re-import and open the existing app session)
+- **Hooks recent activity** (Settings → Extensions → Hooks): session-local last runs from ACP `hook_execution` / `hook_annotation`, tool failures mentioning hooks, and agent log lines — type, ok/fail, time, redacted detail
+
+
+- **Hooks 最近活动**（设置 → 扩展 → Hooks）：本会话内最近运行记录（ACP 通知 / 工具失败 / agent 日志），脱敏展示
 
 ## [0.2.2] - 2026-07-30
 
