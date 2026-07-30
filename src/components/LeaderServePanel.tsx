@@ -1,11 +1,19 @@
 /**
- * Settings → Runtime → Connection: Agent leader / serve status + start/stop.
+ * Settings → Runtime → Connection: Agent leader fleet + serve status.
+ * Surfaces `grok leader list|info|kill` with in-app confirm for stop.
  */
 
 import { useCallback, useEffect, useState } from "react";
 import type { MessageKey, Vars } from "@/i18n";
+import { GlassModal } from "@/components/GlassModal";
 import * as api from "@/lib/api";
-import type { LeaderStatus, ServeStatus } from "@/lib/api";
+import type { LeaderInfo, LeaderProcess, LeaderStatus, ServeStatus } from "@/lib/api";
+import {
+  formatLeaderRowSummary,
+  hasLeaderFleet,
+  leaderInfoDetailRows,
+  leaderRowKey,
+} from "@/lib/leaderFleet";
 
 function formatAge(
   secs: number | null | undefined,
@@ -34,12 +42,17 @@ export function LeaderServePanel({
   const [serve, setServe] = useState<ServeStatus | null>(null);
   /** One-time full connection URL from serve_start (not re-fetched by status). */
   const [serveConnectionUrl, setServeConnectionUrl] = useState<string | null>(null);
-  const [busy, setBusy] = useState<"refresh" | "start" | "stop" | null>(null);
+  const [busy, setBusy] = useState<"refresh" | "start" | "stop" | "info" | null>(null);
   const [serveBusy, setServeBusy] = useState<"refresh" | "start" | "stop" | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [serveError, setServeError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [serveCopied, setServeCopied] = useState(false);
+  const [confirmStop, setConfirmStop] = useState(false);
+  const [infoOpen, setInfoOpen] = useState(false);
+  const [infoLoadingPid, setInfoLoadingPid] = useState<number | "default" | null>(null);
+  const [info, setInfo] = useState<LeaderInfo | null>(null);
+  const [infoError, setInfoError] = useState<string | null>(null);
 
   const refreshLeader = useCallback(async () => {
     setBusy("refresh");
@@ -101,9 +114,10 @@ export function LeaderServePanel({
     }
   };
 
-  const onStop = async () => {
+  const onStopConfirmed = async () => {
     setBusy("stop");
     setError(null);
+    setConfirmStop(false);
     try {
       const st = await api.leaderStop();
       setStatus(st);
@@ -115,6 +129,27 @@ export function LeaderServePanel({
         /* ignore */
       }
     } finally {
+      setBusy(null);
+    }
+  };
+
+  const onShowInfo = async (row?: LeaderProcess) => {
+    const pid = row?.pid ?? null;
+    setInfoOpen(true);
+    setInfo(null);
+    setInfoError(null);
+    setInfoLoadingPid(pid != null ? pid : "default");
+    setBusy("info");
+    try {
+      const detail = await api.leaderInfo(pid);
+      setInfo(detail);
+      if (detail.error && !detail.pid && !detail.socketPath) {
+        setInfoError(detail.error);
+      }
+    } catch (e) {
+      setInfoError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setInfoLoadingPid(null);
       setBusy(null);
     }
   };
@@ -199,6 +234,10 @@ export function LeaderServePanel({
     status?.cliFound !== false &&
     status?.cliSupportsLeader !== false;
   const canStop = !busy && (running || state === "error");
+
+  const leaders = status?.leaders ?? [];
+  const fleetCount = leaders.length;
+  const infoRows = leaderInfoDetailRows(info);
 
   const stateLabel =
     state === "running"
@@ -318,6 +357,72 @@ export function LeaderServePanel({
             </div>
           </div>
 
+          {/* Fleet list from grok leader list */}
+          <div className="settings-row settings-row--stack">
+            <div className="settings-row__text">
+              <div className="settings-row__label">
+                {t("settings.leader.fleetTitle", { n: fleetCount })}
+              </div>
+              <div className="settings-row__desc">{t("settings.leader.fleetDesc")}</div>
+            </div>
+            {hasLeaderFleet(leaders) ? (
+              <ul
+                className="settings-row__list"
+                style={{
+                  listStyle: "none",
+                  margin: "6px 0 0",
+                  padding: 0,
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: 6,
+                  width: "100%",
+                }}
+                aria-label={t("settings.leader.fleetTitle", { n: fleetCount })}
+              >
+                {leaders.map((row, i) => {
+                  const loadingThis =
+                    infoLoadingPid !== null &&
+                    ((row.pid != null && infoLoadingPid === row.pid) ||
+                      (row.pid == null && infoLoadingPid === "default"));
+                  return (
+                    <li
+                      key={leaderRowKey(row, i)}
+                      className="settings-row"
+                      style={{
+                        alignItems: "center",
+                        gap: 8,
+                        padding: "6px 0",
+                        borderTop: i === 0 ? undefined : "1px solid var(--border, rgba(128,128,128,0.2))",
+                      }}
+                    >
+                      <div className="settings-row__text" style={{ minWidth: 0, flex: 1 }}>
+                        <div
+                          className="settings-row__desc"
+                          style={{ wordBreak: "break-all" }}
+                          title={formatLeaderRowSummary(row)}
+                        >
+                          {formatLeaderRowSummary(row)}
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        className="btn btn--ghost"
+                        disabled={!!busy}
+                        onClick={() => void onShowInfo(row)}
+                      >
+                        {loadingThis
+                          ? t("settings.leader.infoLoading")
+                          : t("settings.leader.info")}
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+            ) : (
+              <div className="settings-row__hint">{t("settings.leader.fleetEmpty")}</div>
+            )}
+          </div>
+
           <div className="settings-row settings-row--stack">
             <div className="settings-row__label">{t("settings.leader.actions")}</div>
             <div className="rim-btn-row">
@@ -333,10 +438,20 @@ export function LeaderServePanel({
                 type="button"
                 className="btn btn--ghost"
                 disabled={!canStop}
-                onClick={() => void onStop()}
+                onClick={() => setConfirmStop(true)}
               >
                 {busy === "stop" ? t("settings.leader.stopping") : t("settings.leader.stop")}
               </button>
+              {running || fleetCount > 0 ? (
+                <button
+                  type="button"
+                  className="btn btn--ghost"
+                  disabled={!!busy}
+                  onClick={() => void onShowInfo(leaders[0])}
+                >
+                  {t("settings.leader.info")}
+                </button>
+              ) : null}
             </div>
             <div className="settings-row__hint">{t("settings.leader.startHint")}</div>
           </div>
@@ -477,6 +592,103 @@ export function LeaderServePanel({
           </div>
         </div>
       )}
+
+      <GlassModal
+        open={confirmStop}
+        onClose={() => {
+          if (busy !== "stop") setConfirmStop(false);
+        }}
+        title={t("settings.leader.stopConfirmTitle")}
+        size="sm"
+        closeLabel={t("common.close")}
+        footer={
+          <>
+            <button
+              type="button"
+              className="btn btn--ghost"
+              disabled={busy === "stop"}
+              onClick={() => setConfirmStop(false)}
+            >
+              {t("common.cancel")}
+            </button>
+            <button
+              type="button"
+              className="btn btn--solid"
+              disabled={busy === "stop"}
+              onClick={() => void onStopConfirmed()}
+            >
+              {busy === "stop" ? t("settings.leader.stopping") : t("settings.leader.stopConfirmAction")}
+            </button>
+          </>
+        }
+      >
+        <p className="app-dialog__msg">
+          {t("settings.leader.stopConfirmBody", { n: Math.max(fleetCount, running ? 1 : 0) })}
+        </p>
+      </GlassModal>
+
+      <GlassModal
+        open={infoOpen}
+        onClose={() => {
+          if (infoLoadingPid == null) {
+            setInfoOpen(false);
+            setInfo(null);
+            setInfoError(null);
+          }
+        }}
+        title={t("settings.leader.infoTitle")}
+        size="md"
+        closeLabel={t("common.close")}
+        wrapBody
+        footer={
+          <button
+            type="button"
+            className="btn btn--ghost"
+            disabled={infoLoadingPid != null}
+            onClick={() => {
+              setInfoOpen(false);
+              setInfo(null);
+              setInfoError(null);
+            }}
+          >
+            {t("common.close")}
+          </button>
+        }
+      >
+        {infoLoadingPid != null ? (
+          <p className="app-dialog__msg">{t("settings.leader.infoLoading")}</p>
+        ) : (
+          <div>
+            {(infoError || info?.error) && (
+              <p className="settings-row__hint is-danger" role="alert">
+                {infoError || info?.error || t("settings.leader.infoFailed")}
+              </p>
+            )}
+            {info?.unsupported ? (
+              <p className="settings-row__hint">{t("settings.leader.infoUnsupported")}</p>
+            ) : null}
+            {infoRows.length > 0 ? (
+              <dl style={{ margin: infoError || info?.error ? "8px 0 0" : 0, display: "grid", gap: 8 }}>
+                {infoRows.map((r) => (
+                  <div key={r.key}>
+                    <dt className="settings-row__label" style={{ fontSize: "0.85em" }}>
+                      {r.label}
+                    </dt>
+                    <dd
+                      className="settings-row__desc"
+                      style={{ margin: 0, wordBreak: "break-all", whiteSpace: "pre-wrap" }}
+                    >
+                      {r.value}
+                    </dd>
+                  </div>
+                ))}
+              </dl>
+            ) : !infoError && !info?.error ? (
+              <p className="app-dialog__msg">{t("settings.leader.infoEmpty")}</p>
+            ) : null}
+          </div>
+        )}
+      </GlassModal>
     </div>
   );
 }

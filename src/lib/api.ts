@@ -3219,6 +3219,8 @@ export type LeaderProcess = {
   socketPath?: string | null;
   version?: string | null;
   classification?: string | null;
+  lockPath?: string | null;
+  wsUrlSuffix?: string | null;
   raw?: unknown;
 };
 
@@ -3238,6 +3240,22 @@ export type LeaderStatus = {
   serveHint?: string | null;
 };
 
+/** `grok leader info --json` DTO (soft-fail: unsupported/error without throw). */
+export type LeaderInfo = {
+  pid?: number | null;
+  socketPath?: string | null;
+  lockPath?: string | null;
+  version?: string | null;
+  protocolVersion?: string | null;
+  classification?: string | null;
+  uptimeMs?: number | null;
+  activeToolCalls?: number | null;
+  wsUrlSuffix?: string | null;
+  unsupported?: boolean;
+  error?: string | null;
+  raw?: unknown;
+};
+
 export async function leaderStatus(): Promise<LeaderStatus> {
   return invoke<LeaderStatus>("leader_status");
 }
@@ -3255,6 +3273,22 @@ export async function leaderList(): Promise<{
   error?: string;
 }> {
   return invoke("leader_list");
+}
+
+/** Details for a leader (`grok leader info --json`); optional pid from list. Soft-fails. */
+export async function leaderInfo(pid?: number | null): Promise<LeaderInfo> {
+  return invoke<LeaderInfo>("leader_info", {
+    pid: pid == null ? null : pid,
+  });
+}
+
+/** Alias for stop-all (`grok leader kill`); soft-respawns when useLeader. */
+export async function leaderKillAll(): Promise<{
+  ok: boolean;
+  state?: string;
+  message?: string | null;
+}> {
+  return invoke("leader_kill_all");
 }
 
 // ── Agent serve (Runtime WebSocket server) ──────────────────────────────────

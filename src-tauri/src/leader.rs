@@ -50,6 +50,33 @@ pub struct LeaderProcessDto {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub classification: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub lock_path: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ws_url_suffix: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub raw: Option<serde_json::Value>,
+}
+
+/// Details from `grok leader info --json` (fields vary by CLI version).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LeaderInfoDto {
+    pub pid: Option<u64>,
+    pub socket_path: Option<String>,
+    pub lock_path: Option<String>,
+    pub version: Option<String>,
+    pub protocol_version: Option<String>,
+    pub classification: Option<String>,
+    pub uptime_ms: Option<u64>,
+    pub active_tool_calls: Option<u64>,
+    pub ws_url_suffix: Option<String>,
+    /// True when CLI has no `leader info` (old Build).
+    #[serde(default)]
+    pub unsupported: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+    /// Full JSON object for UI detail rows (never includes secrets).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub raw: Option<serde_json::Value>,
 }
 
@@ -170,15 +197,145 @@ pub fn parse_leader_list_json(stdout: &str) -> Result<Vec<LeaderProcessDto>, Str
             .get("classification")
             .and_then(|v| v.as_str())
             .map(|s| s.to_string());
+        let lock_path = item
+            .get("lock_path")
+            .or_else(|| item.get("lockPath"))
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string());
+        let ws_url_suffix = item
+            .get("ws_url_suffix")
+            .or_else(|| item.get("wsUrlSuffix"))
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string());
         out.push(LeaderProcessDto {
             pid,
             socket_path,
             version,
             classification,
+            lock_path,
+            ws_url_suffix,
             raw: Some(item),
         });
     }
     Ok(out)
+}
+
+fn json_u64(v: &serde_json::Value, keys: &[&str]) -> Option<u64> {
+    for k in keys {
+        if let Some(n) = v.get(*k).and_then(|x| x.as_u64().or_else(|| x.as_i64().map(|i| i as u64)))
+        {
+            return Some(n);
+        }
+    }
+    None
+}
+
+fn json_str(v: &serde_json::Value, keys: &[&str]) -> Option<String> {
+    for k in keys {
+        if let Some(s) = v.get(*k).and_then(|x| x.as_str()) {
+            let t = s.trim();
+            if !t.is_empty() {
+                return Some(t.to_string());
+            }
+        }
+    }
+    None
+}
+
+/// Pure parse helper for `grok leader info --json`.
+pub fn parse_leader_info_json(stdout: &str) -> Result<LeaderInfoDto, String> {
+    let trimmed = stdout.trim();
+    if trimmed.is_empty() {
+        return Err("empty leader info response".into());
+    }
+    let value: serde_json::Value = serde_json::from_str(trimmed)
+        .map_err(|e| format!("invalid leader info JSON: {e}"))?;
+    // Some CLIs wrap under `info` / `leader`.
+    let root = value
+        .get("info")
+        .or_else(|| value.get("leader"))
+        .cloned()
+        .unwrap_or(value);
+
+    let pid = json_u64(
+        &root,
+        &["pid", "leader_pid", "leaderPid", "pidLive", "pidFromLock"],
+    );
+    let socket_path = json_str(
+        &root,
+        &["socket_path", "socketPath", "socket", "leader_socket"],
+    );
+    let lock_path = json_str(&root, &["lock_path", "lockPath"]);
+    let version = json_str(
+        &root,
+        &[
+            "version",
+            "leader_binary_version",
+            "leaderBinaryVersion",
+            "leader_version",
+            "leaderVersion",
+        ],
+    )
+    .or_else(|| {
+        root.get("info")
+            .and_then(|i| json_str(i, &["leader_binary_version", "leaderBinaryVersion"]))
+    });
+    let protocol_version = json_str(
+        &root,
+        &[
+            "protocol_version",
+            "protocolVersion",
+            "leader_protocol_version",
+            "leaderProtocolVersion",
+        ],
+    );
+    let classification = json_str(&root, &["classification"]);
+    let uptime_ms = json_u64(&root, &["uptime_ms", "uptimeMs", "uptime"]);
+    let active_tool_calls = json_u64(
+        &root,
+        &["active_tool_calls", "activeToolCalls", "active_tools"],
+    );
+    let ws_url_suffix = json_str(&root, &["ws_url_suffix", "wsUrlSuffix"]);
+
+    Ok(LeaderInfoDto {
+        pid,
+        socket_path,
+        lock_path,
+        version,
+        protocol_version,
+        classification,
+        uptime_ms,
+        active_tool_calls,
+        ws_url_suffix,
+        unsupported: false,
+        error: None,
+        raw: Some(root),
+    })
+}
+
+/// Soft-fail envelope when list/info cannot run (old CLI, missing binary, timeout).
+fn soft_list_error(msg: impl Into<String>) -> serde_json::Value {
+    serde_json::json!({
+        "leaders": [],
+        "error": msg.into().chars().take(400).collect::<String>(),
+    })
+}
+
+fn soft_info_error(msg: impl Into<String>, unsupported: bool) -> LeaderInfoDto {
+    LeaderInfoDto {
+        pid: None,
+        socket_path: None,
+        lock_path: None,
+        version: None,
+        protocol_version: None,
+        classification: None,
+        uptime_ms: None,
+        active_tool_calls: None,
+        ws_url_suffix: None,
+        unsupported,
+        error: Some(msg.into().chars().take(400).collect()),
+        raw: None,
+    }
 }
 
 /// Derive panel state from socket probe + list rows + CLI capability.
@@ -558,43 +715,113 @@ pub async fn leader_status() -> Result<LeaderStatusDto, String> {
         .map_err(|e| e.to_string())
 }
 
-/// List running leader processes (`grok leader list --json`).
+/// List running leader processes (`grok leader list --json`). Soft-fails on old CLI.
 #[tauri::command]
 pub async fn leader_list() -> Result<serde_json::Value, String> {
     let result = tauri::async_runtime::spawn_blocking(|| {
-        run_grok_cli_args(&["leader", "list", "--json"], LEADER_CMD_TIMEOUT_SECS)
+        let (cli_found, cli_supports, support_msg) = probe_cli_supports_leader();
+        if !cli_found {
+            return soft_list_error(support_msg.unwrap_or_else(|| "Grok Build CLI not found".into()));
+        }
+        if !cli_supports {
+            return soft_list_error(
+                support_msg.unwrap_or_else(|| {
+                    "This Grok Build CLI version does not expose `grok leader list`.".into()
+                }),
+            );
+        }
+        match run_grok_cli_args(&["leader", "list", "--json"], LEADER_CMD_TIMEOUT_SECS) {
+            Ok((stdout, stderr, ok)) => {
+                if !ok {
+                    let msg = if !stderr.is_empty() {
+                        stderr
+                    } else if !stdout.is_empty() {
+                        stdout
+                    } else {
+                        "grok leader list failed".into()
+                    };
+                    // Unknown subcommand → soft empty list (old CLI edge).
+                    let lower = msg.to_ascii_lowercase();
+                    if lower.contains("unrecognized")
+                        || lower.contains("unknown")
+                        || lower.contains("not found")
+                        || lower.contains("no such")
+                    {
+                        return soft_list_error(msg);
+                    }
+                    return soft_list_error(msg);
+                }
+                match parse_leader_list_json(&stdout) {
+                    Ok(leaders) => serde_json::json!({ "leaders": leaders }),
+                    Err(e) => soft_list_error(e),
+                }
+            }
+            Err(e) => soft_list_error(e),
+        }
     })
     .await
     .map_err(|e| e.to_string())?;
+    Ok(result)
+}
 
-    match result {
-        Ok((stdout, stderr, ok)) => {
-            if !ok {
-                let msg = if !stderr.is_empty() {
-                    stderr
-                } else if !stdout.is_empty() {
-                    stdout
-                } else {
-                    "grok leader list failed".into()
-                };
-                return Ok(serde_json::json!({
-                    "leaders": [],
-                    "error": msg.chars().take(400).collect::<String>(),
-                }));
-            }
-            match parse_leader_list_json(&stdout) {
-                Ok(leaders) => Ok(serde_json::json!({ "leaders": leaders })),
-                Err(e) => Ok(serde_json::json!({
-                    "leaders": [],
-                    "error": e,
-                })),
-            }
+/// Details for a leader process (`grok leader info --json [--pid]`). Soft-fails on old CLI.
+#[tauri::command]
+pub async fn leader_info(pid: Option<u64>) -> Result<LeaderInfoDto, String> {
+    let result = tauri::async_runtime::spawn_blocking(move || {
+        let (cli_found, cli_supports, support_msg) = probe_cli_supports_leader();
+        if !cli_found {
+            return soft_info_error(
+                support_msg.unwrap_or_else(|| "Grok Build CLI not found".into()),
+                false,
+            );
         }
-        Err(e) => Ok(serde_json::json!({
-            "leaders": [],
-            "error": e,
-        })),
-    }
+        if !cli_supports {
+            return soft_info_error(
+                support_msg.unwrap_or_else(|| {
+                    "This Grok Build CLI version does not expose `grok leader info`.".into()
+                }),
+                true,
+            );
+        }
+
+        let mut args: Vec<String> = vec!["leader".into(), "info".into(), "--json".into()];
+        if let Some(p) = pid {
+            args.push("--pid".into());
+            args.push(p.to_string());
+        }
+        let args_ref: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
+        match run_grok_cli_args(&args_ref, LEADER_CMD_TIMEOUT_SECS) {
+            Ok((stdout, stderr, ok)) => {
+                if !ok {
+                    let msg = if !stderr.is_empty() {
+                        stderr
+                    } else if !stdout.is_empty() {
+                        stdout
+                    } else {
+                        "grok leader info failed".into()
+                    };
+                    let lower = msg.to_ascii_lowercase();
+                    let unsupported = lower.contains("unrecognized")
+                        || lower.contains("unknown subcommand")
+                        || lower.contains("unknown command");
+                    return soft_info_error(msg, unsupported);
+                }
+                match parse_leader_info_json(&stdout) {
+                    Ok(mut info) => {
+                        if info.pid.is_none() {
+                            info.pid = pid;
+                        }
+                        info
+                    }
+                    Err(e) => soft_info_error(e, false),
+                }
+            }
+            Err(e) => soft_info_error(e, false),
+        }
+    })
+    .await
+    .map_err(|e| e.to_string())?;
+    Ok(result)
 }
 
 /// Start `grok agent leader` in the background (tracked PID + process group).
@@ -774,6 +1001,54 @@ mod tests {
             Some("/Users/x/.grok/leader.sock")
         );
         assert_eq!(rows[0].classification.as_deref(), Some("Reachable"));
+        assert_eq!(
+            rows[0].lock_path.as_deref(),
+            Some("/Users/x/.grok/leader.lock")
+        );
+    }
+
+    #[test]
+    fn parse_info_nested_and_flat() {
+        let raw = r#"{
+            "pid": 42,
+            "socket_path": "/tmp/l.sock",
+            "lock_path": "/tmp/l.lock",
+            "leader_binary_version": "0.3.1",
+            "leader_protocol_version": "1",
+            "classification": "Reachable",
+            "uptime_ms": 12000,
+            "active_tool_calls": 2,
+            "ws_url_suffix": ""
+        }"#;
+        let info = parse_leader_info_json(raw).unwrap();
+        assert_eq!(info.pid, Some(42));
+        assert_eq!(info.socket_path.as_deref(), Some("/tmp/l.sock"));
+        assert_eq!(info.version.as_deref(), Some("0.3.1"));
+        assert_eq!(info.protocol_version.as_deref(), Some("1"));
+        assert_eq!(info.uptime_ms, Some(12000));
+        assert_eq!(info.active_tool_calls, Some(2));
+        assert!(!info.unsupported);
+        assert!(info.error.is_none());
+
+        let wrapped = r#"{"info":{"leaderPid":9,"socketPath":"/a.sock","leaderBinaryVersion":"1.0.0"}}"#;
+        let info2 = parse_leader_info_json(wrapped).unwrap();
+        assert_eq!(info2.pid, Some(9));
+        assert_eq!(info2.socket_path.as_deref(), Some("/a.sock"));
+        assert_eq!(info2.version.as_deref(), Some("1.0.0"));
+    }
+
+    #[test]
+    fn parse_info_empty_and_invalid() {
+        assert!(parse_leader_info_json("").is_err());
+        assert!(parse_leader_info_json("not-json").is_err());
+    }
+
+    #[test]
+    fn soft_info_error_marks_unsupported() {
+        let e = soft_info_error("unknown subcommand info", true);
+        assert!(e.unsupported);
+        assert!(e.error.as_deref().unwrap().contains("unknown"));
+        assert!(e.pid.is_none());
     }
 
     #[test]
@@ -806,6 +1081,8 @@ mod tests {
             socket_path: Some("/tmp/x".into()),
             version: None,
             classification: Some("Reachable".into()),
+            lock_path: None,
+            ws_url_suffix: None,
             raw: None,
         }];
         let (s, m) = derive_leader_state(true, &leaders, true, true, None);
