@@ -1,11 +1,14 @@
 import { describe, expect, it } from "vitest";
 import {
+  AGENT_DASHBOARD_STATUS_FILTERS,
   collectAgentDashboardRows,
   countBusyDashboardRows,
+  countDashboardRowsByStatus,
   dashboardStatusFromSessionState,
   filterAgentDashboardRows,
   isStoppableDashboardStatus,
   mapDashboardStatus,
+  matchAgentDashboardProject,
   stoppableDashboardRows,
   type AgentDashboardRow,
 } from "./agentDashboard";
@@ -261,18 +264,246 @@ describe("filterAgentDashboardRows", () => {
       updatedAtIso: null,
       stoppable: false,
     },
+    {
+      sessionId: "c",
+      title: "Auth gate",
+      projectId: "p2",
+      projectName: "api-server",
+      projectPath: "/code/api-server",
+      modelId: "grok-4",
+      effort: "high",
+      status: "permission",
+      liveToolTitle: null,
+      isCurrent: false,
+      lastActivityAt: 8,
+      updatedAtIso: null,
+      stoppable: true,
+    },
+    {
+      sessionId: "d",
+      title: "Spin up",
+      projectId: "p1",
+      projectName: "grok-app",
+      projectPath: "/code/grok-app",
+      modelId: null,
+      effort: null,
+      status: "connecting",
+      liveToolTitle: null,
+      isCurrent: false,
+      lastActivityAt: 7,
+      updatedAtIso: null,
+      stoppable: true,
+    },
+    {
+      sessionId: "e",
+      title: "Dropped",
+      projectId: "p2",
+      projectName: "api-server",
+      projectPath: "/code/api-server",
+      modelId: "grok-3",
+      effort: null,
+      status: "error",
+      liveToolTitle: null,
+      isCurrent: false,
+      lastActivityAt: 1,
+      updatedAtIso: null,
+      stoppable: false,
+    },
   ];
 
-  it("filters by title / project / model", () => {
+  it("filters by title / project / model (string form)", () => {
     expect(filterAgentDashboardRows(sample, "ci").map((r) => r.sessionId)).toEqual(
       ["a"],
     );
     expect(
       filterAgentDashboardRows(sample, "grok-3").map((r) => r.sessionId),
-    ).toEqual(["b"]);
+    ).toEqual(["b", "e"]);
     expect(
       filterAgentDashboardRows(sample, "grok-app").map((r) => r.sessionId),
+    ).toEqual(["a", "d"]);
+    expect(filterAgentDashboardRows(sample, "  ")).toHaveLength(5);
+  });
+
+  it("filters by status chip", () => {
+    expect(
+      filterAgentDashboardRows(sample, { status: "all" }).map((r) => r.sessionId),
+    ).toEqual(["a", "b", "c", "d", "e"]);
+    expect(
+      filterAgentDashboardRows(sample, { status: "busy" }).map((r) => r.sessionId),
     ).toEqual(["a"]);
-    expect(filterAgentDashboardRows(sample, "  ")).toHaveLength(2);
+    expect(
+      filterAgentDashboardRows(sample, { status: "permission" }).map(
+        (r) => r.sessionId,
+      ),
+    ).toEqual(["c"]);
+    expect(
+      filterAgentDashboardRows(sample, { status: "idle" }).map((r) => r.sessionId),
+    ).toEqual(["b"]);
+    expect(
+      filterAgentDashboardRows(sample, { status: "error" }).map((r) => r.sessionId),
+    ).toEqual(["e"]);
+  });
+
+  it("filters by project id / name / path substring", () => {
+    expect(
+      filterAgentDashboardRows(sample, { projectQuery: "p1" }).map(
+        (r) => r.sessionId,
+      ),
+    ).toEqual(["a", "d"]);
+    expect(
+      filterAgentDashboardRows(sample, { projectQuery: "API" }).map(
+        (r) => r.sessionId,
+      ),
+    ).toEqual(["c", "e"]);
+    expect(
+      filterAgentDashboardRows(sample, { projectQuery: "/code/grok" }).map(
+        (r) => r.sessionId,
+      ),
+    ).toEqual(["a", "d"]);
+    expect(
+      filterAgentDashboardRows(sample, { projectQuery: "   " }),
+    ).toHaveLength(5);
+  });
+
+  it("combines status + project + free-text with AND", () => {
+    expect(
+      filterAgentDashboardRows(sample, {
+        status: "busy",
+        projectQuery: "p1",
+        query: "ci",
+      }).map((r) => r.sessionId),
+    ).toEqual(["a"]);
+    expect(
+      filterAgentDashboardRows(sample, {
+        status: "busy",
+        projectQuery: "api",
+      }),
+    ).toHaveLength(0);
+    expect(
+      filterAgentDashboardRows(sample, {
+        status: "permission",
+        query: "auth",
+      }).map((r) => r.sessionId),
+    ).toEqual(["c"]);
+  });
+});
+
+describe("countDashboardRowsByStatus", () => {
+  it("returns total and per-status counts", () => {
+    const rows: AgentDashboardRow[] = [
+      {
+        sessionId: "a",
+        title: "A",
+        projectId: null,
+        projectName: null,
+        projectPath: null,
+        modelId: null,
+        effort: null,
+        status: "busy",
+        liveToolTitle: null,
+        isCurrent: false,
+        lastActivityAt: 1,
+        updatedAtIso: null,
+        stoppable: true,
+      },
+      {
+        sessionId: "b",
+        title: "B",
+        projectId: null,
+        projectName: null,
+        projectPath: null,
+        modelId: null,
+        effort: null,
+        status: "busy",
+        liveToolTitle: null,
+        isCurrent: false,
+        lastActivityAt: 1,
+        updatedAtIso: null,
+        stoppable: true,
+      },
+      {
+        sessionId: "c",
+        title: "C",
+        projectId: null,
+        projectName: null,
+        projectPath: null,
+        modelId: null,
+        effort: null,
+        status: "idle",
+        liveToolTitle: null,
+        isCurrent: false,
+        lastActivityAt: 1,
+        updatedAtIso: null,
+        stoppable: false,
+      },
+      {
+        sessionId: "d",
+        title: "D",
+        projectId: null,
+        projectName: null,
+        projectPath: null,
+        modelId: null,
+        effort: null,
+        status: "error",
+        liveToolTitle: null,
+        isCurrent: false,
+        lastActivityAt: 1,
+        updatedAtIso: null,
+        stoppable: false,
+      },
+    ];
+    expect(countDashboardRowsByStatus(rows)).toEqual({
+      all: 4,
+      busy: 2,
+      permission: 0,
+      connecting: 0,
+      idle: 1,
+      error: 1,
+    });
+    expect(countDashboardRowsByStatus([])).toEqual({
+      all: 0,
+      busy: 0,
+      permission: 0,
+      connecting: 0,
+      idle: 0,
+      error: 0,
+    });
+  });
+
+  it("lists every chip status in AGENT_DASHBOARD_STATUS_FILTERS", () => {
+    expect([...AGENT_DASHBOARD_STATUS_FILTERS]).toEqual([
+      "all",
+      "busy",
+      "permission",
+      "connecting",
+      "idle",
+      "error",
+    ]);
+  });
+});
+
+describe("matchAgentDashboardProject", () => {
+  const row: AgentDashboardRow = {
+    sessionId: "a",
+    title: "Fix",
+    projectId: "proj-42",
+    projectName: "grok-app",
+    projectPath: "/Users/me/Code/grok-app",
+    modelId: null,
+    effort: null,
+    status: "idle",
+    liveToolTitle: null,
+    isCurrent: false,
+    lastActivityAt: 0,
+    updatedAtIso: null,
+    stoppable: false,
+  };
+
+  it("matches id, name, or path substring", () => {
+    expect(matchAgentDashboardProject(row, "")).toBe(true);
+    expect(matchAgentDashboardProject(row, "proj-42")).toBe(true);
+    expect(matchAgentDashboardProject(row, "GROK")).toBe(true);
+    expect(matchAgentDashboardProject(row, "/users/me")).toBe(true);
+    expect(matchAgentDashboardProject(row, "missing")).toBe(false);
   });
 });

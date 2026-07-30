@@ -8,11 +8,14 @@ import type { Locale, MessageKey } from "@/i18n";
 import { createT } from "@/i18n";
 import { GlassModal } from "@/components/GlassModal";
 import {
+  AGENT_DASHBOARD_STATUS_FILTERS,
   countBusyDashboardRows,
+  countDashboardRowsByStatus,
   filterAgentDashboardRows,
   stoppableDashboardRows,
   type AgentDashboardRow,
   type AgentDashboardStatus,
+  type AgentDashboardStatusFilter,
 } from "@/lib/agentDashboard";
 import { formatRelativeTime } from "@/lib/accountUi";
 
@@ -31,6 +34,14 @@ function statusLabel(status: AgentDashboardStatus, t: TFn): string {
     default:
       return t("dashboard.status.idle");
   }
+}
+
+function statusFilterLabel(
+  filter: AgentDashboardStatusFilter,
+  t: TFn,
+): string {
+  if (filter === "all") return t("dashboard.filter.all");
+  return statusLabel(filter, t);
 }
 
 function statusDotClass(status: AgentDashboardStatus): string {
@@ -135,7 +146,10 @@ export type AgentDashboardModalProps = {
   rows: AgentDashboardRow[];
   onClose: () => void;
   onSelectSession?: (sessionId: string) => void;
-  /** Reuse App stop-all (confirm lives in App). */
+  /**
+   * Reuse App stop-all (confirm lives in App).
+   * Stops **all** busy sessions globally — not only the currently filtered list.
+   */
   onStopAllBusy?: () => void;
 };
 
@@ -149,13 +163,31 @@ export function AgentDashboardModal({
 }: AgentDashboardModalProps) {
   const tr = useMemo(() => createT(locale), [locale]);
   const [query, setQuery] = useState("");
+  const [projectQuery, setProjectQuery] = useState("");
+  const [statusFilter, setStatusFilter] =
+    useState<AgentDashboardStatusFilter>("all");
+
   const filtered = useMemo(
-    () => filterAgentDashboardRows(rows, query),
-    [rows, query],
+    () =>
+      filterAgentDashboardRows(rows, {
+        query,
+        projectQuery,
+        status: statusFilter,
+      }),
+    [rows, query, projectQuery, statusFilter],
   );
+  const statusCounts = useMemo(() => countDashboardRowsByStatus(rows), [rows]);
   const busyCount = useMemo(() => countBusyDashboardRows(rows), [rows]);
+  // Stop-all targets every stoppable row in the dashboard, not only the filter.
   const stoppable = useMemo(() => stoppableDashboardRows(rows), [rows]);
   const showStopAll = !!onStopAllBusy && stoppable.length > 0;
+
+  const hasActiveFilters =
+    statusFilter !== "all" ||
+    query.trim().length > 0 ||
+    projectQuery.trim().length > 0;
+  const isEmptyCatalog = rows.length === 0;
+  const isEmptyFilter = !isEmptyCatalog && filtered.length === 0;
 
   return (
     <GlassModal
@@ -175,6 +207,7 @@ export function AgentDashboardModal({
               type="button"
               className="btn btn--ghost"
               onClick={onStopAllBusy}
+              title={tr("dashboard.stopAllTitle")}
             >
               {tr("dashboard.stopAll")}
             </button>
@@ -186,6 +219,32 @@ export function AgentDashboardModal({
       }
     >
       <p className="agent-dash__hint">{tr("dashboard.hint")}</p>
+      <div
+        className="agent-dash__chips"
+        role="tablist"
+        aria-label={tr("dashboard.filter.statusLabel")}
+      >
+        {AGENT_DASHBOARD_STATUS_FILTERS.map((id) => {
+          const n = statusCounts[id];
+          // Hide zero-count status chips except "all" and the active selection.
+          if (id !== "all" && n === 0 && statusFilter !== id) return null;
+          return (
+            <button
+              key={id}
+              type="button"
+              role="tab"
+              aria-selected={statusFilter === id}
+              className={
+                "agent-dash__chip" + (statusFilter === id ? " is-active" : "")
+              }
+              onClick={() => setStatusFilter(id)}
+            >
+              <span>{statusFilterLabel(id, (k, vars) => tr(k, vars))}</span>
+              <span className="agent-dash__chip-count">{n}</span>
+            </button>
+          );
+        })}
+      </div>
       <div className="agent-dash__toolbar">
         <input
           type="search"
@@ -197,16 +256,48 @@ export function AgentDashboardModal({
           spellCheck={false}
           aria-label={tr("dashboard.searchPlaceholder")}
         />
+        <input
+          type="search"
+          className="settings-input agent-dash__search agent-dash__search--project"
+          value={projectQuery}
+          onChange={(e) => setProjectQuery(e.target.value)}
+          placeholder={tr("dashboard.projectSearchPlaceholder")}
+          autoComplete="off"
+          spellCheck={false}
+          aria-label={tr("dashboard.projectSearchPlaceholder")}
+        />
         {busyCount > 0 ? (
           <span className="agent-dash__badge">
             {tr("dashboard.busyCount", { n: busyCount })}
           </span>
         ) : null}
       </div>
-      {filtered.length === 0 ? (
+      {isEmptyCatalog ? (
         <div className="agent-dash__empty">
           <p className="agent-dash__empty-title">{tr("dashboard.empty")}</p>
           <p className="agent-dash__empty-hint">{tr("dashboard.emptyHint")}</p>
+        </div>
+      ) : isEmptyFilter ? (
+        <div className="agent-dash__empty">
+          <p className="agent-dash__empty-title">
+            {tr("dashboard.filterEmpty")}
+          </p>
+          <p className="agent-dash__empty-hint">
+            {tr("dashboard.filterEmptyHint")}
+          </p>
+          {hasActiveFilters ? (
+            <button
+              type="button"
+              className="btn btn--ghost btn--sm agent-dash__clear-filters"
+              onClick={() => {
+                setQuery("");
+                setProjectQuery("");
+                setStatusFilter("all");
+              }}
+            >
+              {tr("dashboard.clearFilters")}
+            </button>
+          ) : null}
         </div>
       ) : (
         <ul className="agent-dash__list" role="list">

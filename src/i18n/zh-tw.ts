@@ -505,11 +505,18 @@ export const zhTW: Record<MessageKey, string> = {
   "dashboard.hint":
     "應用程式內活躍與最近工作階段。點一列可聚焦該對話。與「任務」面板（目前回合工具）不同。",
   "dashboard.searchPlaceholder": "篩選工作階段…",
+  "dashboard.projectSearchPlaceholder": "依專案篩選…",
+  "dashboard.filter.statusLabel": "依狀態篩選",
+  "dashboard.filter.all": "全部",
   "dashboard.empty": "尚無工作階段",
   "dashboard.emptyHint":
     "開始對話或等待 Agent 回合 — 忙碌與最近工作階段會出現在這裡。",
+  "dashboard.filterEmpty": "沒有符合篩選條件的工作階段",
+  "dashboard.filterEmptyHint": "清空搜尋或換一個狀態以查看更多工作階段。",
+  "dashboard.clearFilters": "清除篩選",
   "dashboard.busyCount": "{n} 個忙碌",
   "dashboard.stopAll": "全部停止忙碌",
+  "dashboard.stopAllTitle": "停止應用程式內全部忙碌工作階段（不僅限於目前篩選結果）",
   "dashboard.openSession": "開啟工作階段",
   "dashboard.current": "（目前）",
   "dashboard.status.busy": "忙碌",

@@ -226,18 +226,102 @@ export function countBusyDashboardRows(rows: AgentDashboardRow[]): number {
   return rows.filter((r) => isStoppableDashboardStatus(r.status)).length;
 }
 
-/** Filter rows by free-text query (title, project, model, path, status). */
+/**
+ * Status chip filter values (single-select).
+ * `"all"` shows every row; other values match {@link AgentDashboardStatus}.
+ */
+export type AgentDashboardStatusFilter = "all" | AgentDashboardStatus;
+
+/** Ordered chip list for the dashboard status filter bar. */
+export const AGENT_DASHBOARD_STATUS_FILTERS: readonly AgentDashboardStatusFilter[] =
+  ["all", "busy", "permission", "connecting", "idle", "error"] as const;
+
+/** Per-status counts plus total (`all`). Used for chip badges. */
+export type AgentDashboardStatusCounts = Record<
+  AgentDashboardStatusFilter,
+  number
+>;
+
+/** Count rows per status (and total under `all`). */
+export function countDashboardRowsByStatus(
+  rows: AgentDashboardRow[],
+): AgentDashboardStatusCounts {
+  const counts: AgentDashboardStatusCounts = {
+    all: rows.length,
+    busy: 0,
+    permission: 0,
+    connecting: 0,
+    idle: 0,
+    error: 0,
+  };
+  for (const r of rows) {
+    counts[r.status] += 1;
+  }
+  return counts;
+}
+
+/**
+ * Match a row against a project id / name / path substring (case-insensitive).
+ * Empty query matches everything.
+ */
+export function matchAgentDashboardProject(
+  row: AgentDashboardRow,
+  projectQuery: string,
+): boolean {
+  const q = projectQuery.trim().toLowerCase();
+  if (!q) return true;
+  const hay = [row.projectId || "", row.projectName || "", row.projectPath || ""]
+    .join("\n")
+    .toLowerCase();
+  return hay.includes(q);
+}
+
+/** Combined dashboard list filters (status chips + text + project). */
+export interface AgentDashboardFilter {
+  /** Free-text over title, project, model, path, status, tool, sessionId. */
+  query?: string;
+  /** Status chip; default `"all"`. */
+  status?: AgentDashboardStatusFilter;
+  /** Project id / name / path substring. */
+  projectQuery?: string;
+}
+
+function normalizeDashboardFilter(
+  queryOrFilter: string | AgentDashboardFilter | undefined,
+): AgentDashboardFilter {
+  if (queryOrFilter == null) return {};
+  if (typeof queryOrFilter === "string") return { query: queryOrFilter };
+  return queryOrFilter;
+}
+
+/**
+ * Filter rows by free-text query, status chip, and/or project substring.
+ *
+ * Accepts a plain string (legacy free-text only) or a structured
+ * {@link AgentDashboardFilter}. Filters combine with AND.
+ */
 export function filterAgentDashboardRows(
   rows: AgentDashboardRow[],
-  query: string,
+  queryOrFilter: string | AgentDashboardFilter = "",
 ): AgentDashboardRow[] {
-  const q = query.trim().toLowerCase();
-  if (!q) return rows;
-  return rows.filter((r) => {
+  const filter = normalizeDashboardFilter(queryOrFilter);
+  const status = filter.status ?? "all";
+  let out = rows;
+  if (status !== "all") {
+    out = out.filter((r) => r.status === status);
+  }
+  if (filter.projectQuery?.trim()) {
+    const pq = filter.projectQuery;
+    out = out.filter((r) => matchAgentDashboardProject(r, pq));
+  }
+  const q = (filter.query ?? "").trim().toLowerCase();
+  if (!q) return out;
+  return out.filter((r) => {
     const hay = [
       r.title,
       r.projectName || "",
       r.projectPath || "",
+      r.projectId || "",
       r.modelId || "",
       r.effort || "",
       r.status,

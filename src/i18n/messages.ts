@@ -537,11 +537,20 @@ const en = {
   "dashboard.hint":
     "Active and recent sessions across the app. Open a row to focus that chat. Distinct from Tasks (tools for the current turn).",
   "dashboard.searchPlaceholder": "Filter sessions…",
+  "dashboard.projectSearchPlaceholder": "Filter by project…",
+  "dashboard.filter.statusLabel": "Filter by status",
+  "dashboard.filter.all": "All",
   "dashboard.empty": "No sessions to show",
   "dashboard.emptyHint":
     "Start a chat or wait for an agent turn — busy and recent sessions appear here.",
+  "dashboard.filterEmpty": "No sessions match these filters",
+  "dashboard.filterEmptyHint":
+    "Clear the search or pick another status to see more sessions.",
+  "dashboard.clearFilters": "Clear filters",
   "dashboard.busyCount": "{n} busy",
   "dashboard.stopAll": "Stop all busy",
+  "dashboard.stopAllTitle":
+    "Stop every busy session in the app (not only the filtered list)",
   "dashboard.openSession": "Open session",
   "dashboard.current": "(this chat)",
   "dashboard.status.busy": "Busy",
@@ -3446,11 +3455,18 @@ const zh: Record<MessageKey, string> = {
   "dashboard.hint":
     "应用内活跃与最近会话。点击一行可聚焦该对话。与「任务」面板（当前回合工具）不同。",
   "dashboard.searchPlaceholder": "筛选会话…",
+  "dashboard.projectSearchPlaceholder": "按项目筛选…",
+  "dashboard.filter.statusLabel": "按状态筛选",
+  "dashboard.filter.all": "全部",
   "dashboard.empty": "暂无会话",
   "dashboard.emptyHint":
     "开始对话或等待 Agent 回合 — 忙碌与最近会话会出现在这里。",
+  "dashboard.filterEmpty": "没有符合筛选条件的会话",
+  "dashboard.filterEmptyHint": "清空搜索或换一个状态以查看更多会话。",
+  "dashboard.clearFilters": "清除筛选",
   "dashboard.busyCount": "{n} 个忙碌",
   "dashboard.stopAll": "全部停止忙碌",
+  "dashboard.stopAllTitle": "停止应用内全部忙碌会话（不仅限于当前筛选结果）",
   "dashboard.openSession": "打开会话",
   "dashboard.current": "（当前）",
   "dashboard.status.busy": "忙碌",
