@@ -2612,9 +2612,11 @@ fn build_project_inspect_summary(
                 "userInvocable": 0,
                 "bySource": {},
                 "sample": [],
+                "names": [],
             },
             "mcp": [],
             "agents": [],
+            "hooks": [],
             "hooksCount": 0,
             "configLayers": [],
             "modelsHints": models_hints,
@@ -2680,16 +2682,18 @@ fn build_project_inspect_summary(
         }
     }
 
-    // Skills — counts + short invocable sample (no descriptions).
+    // Skills — counts + all names + short invocable sample (no descriptions).
     let mut by_source: serde_json::Map<String, serde_json::Value> = serde_json::Map::new();
     let mut user_invocable: u64 = 0;
     let mut sample_names: Vec<String> = Vec::new();
+    let mut all_skill_names: Vec<String> = Vec::new();
     let skill_arr = v.get("skills").and_then(|x| x.as_array());
     let skill_total = skill_arr.map(|a| a.len()).unwrap_or(0);
     if let Some(arr) = skill_arr {
         for item in arr {
             let name = json_str(item.get("name"));
             let Some(name) = name else { continue };
+            all_skill_names.push(name.clone());
             let src = skill_source_label(
                 item.get("source").unwrap_or(&serde_json::Value::Null),
             );
@@ -2711,8 +2715,9 @@ fn build_project_inspect_summary(
     }
     sample_names.sort();
     sample_names.truncate(PROJECT_INSPECT_SKILL_SAMPLE);
+    all_skill_names.sort();
 
-    // MCP — name/transport/target only (never env/headers).
+    // MCP — name/transport/target/source type only (never env/headers).
     let mut mcp = Vec::new();
     let mcp_arr = v
         .get("mcpServers")
@@ -2722,10 +2727,15 @@ fn build_project_inspect_summary(
         for item in arr {
             let name = json_str(item.get("name"));
             let Some(name) = name else { continue };
+            let source = item
+                .get("source")
+                .map(|s| skill_source_label(s))
+                .filter(|s| s != "unknown");
             mcp.push(serde_json::json!({
                 "name": name,
                 "transport": json_str(item.get("transport")),
                 "target": json_str(item.get("target")),
+                "source": source,
             }));
         }
     }
@@ -2742,6 +2752,38 @@ fn build_project_inspect_summary(
             agents.push(serde_json::json!({
                 "name": name,
                 "source": source,
+            }));
+        }
+    }
+
+    // Hooks — event / type / target / source type only (no env / command bodies).
+    let mut hooks = Vec::new();
+    if let Some(arr) = v.get("hooks").and_then(|x| x.as_array()) {
+        for item in arr {
+            if let Some(s) = item.as_str().map(str::trim).filter(|s| !s.is_empty()) {
+                hooks.push(serde_json::json!({ "event": s }));
+                continue;
+            }
+            let Some(obj) = item.as_object() else { continue };
+            let event = json_str(obj.get("event")).or_else(|| json_str(obj.get("name")));
+            let hook_type = json_str(obj.get("hookType"))
+                .or_else(|| json_str(obj.get("hook_type")))
+                .or_else(|| json_str(obj.get("type")));
+            let target = json_str(obj.get("target")).or_else(|| json_str(obj.get("path")));
+            let source = obj
+                .get("source")
+                .map(skill_source_label)
+                .or_else(|| json_str(obj.get("plugin")));
+            let matcher = json_str(obj.get("matcher"));
+            if event.is_none() && hook_type.is_none() && target.is_none() {
+                continue;
+            }
+            hooks.push(serde_json::json!({
+                "event": event,
+                "hookType": hook_type,
+                "target": target,
+                "source": source,
+                "matcher": matcher,
             }));
         }
     }
@@ -2801,11 +2843,14 @@ fn build_project_inspect_summary(
         push_model(dm);
     }
 
-    let hooks_count = v
-        .get("hooks")
-        .and_then(|x| x.as_array())
-        .map(|a| a.len())
-        .unwrap_or(0);
+    let hooks_count = if !hooks.is_empty() {
+        hooks.len()
+    } else {
+        v.get("hooks")
+            .and_then(|x| x.as_array())
+            .map(|a| a.len())
+            .unwrap_or(0)
+    };
 
     let mut out = serde_json::json!({
         "projectPath": project_path_out,
@@ -2824,9 +2869,11 @@ fn build_project_inspect_summary(
             "userInvocable": user_invocable,
             "bySource": by_source,
             "sample": sample_names,
+            "names": all_skill_names,
         },
         "mcp": mcp,
         "agents": agents,
+        "hooks": hooks,
         "hooksCount": hooks_count,
         "configLayers": config_layers,
         "modelsHints": models_hints,
@@ -5963,8 +6010,14 @@ mod project_inspect_tests {
                 "env": { "API_KEY": "sk-secretsecretsecret" }
             }],
             "plugins": [{ "name": "p1", "scope": "user", "enabled": true }],
+            "agents": [{ "name": "explore", "source": { "type": "builtin" } }],
             "projectInstructions": [{ "path": "/tmp/p/AGENTS.md", "scope": "project" }],
-            "hooks": [1],
+            "hooks": [{
+                "event": "stop",
+                "hookType": "file",
+                "target": "/tmp/p/.grok/hooks/stop.json",
+                "source": { "type": "project" }
+            }],
             "permissions": { "loaded": 0, "sources": [], "managedSettingsActive": false }
         });
         let out = build_project_inspect_summary(
@@ -5981,8 +6034,13 @@ mod project_inspect_tests {
         assert!(!s.contains("API_KEY"));
         assert!(!s.contains("sk-abcdefghijklmnopqrstuvwxyz"));
         assert_eq!(out["skills"]["total"], 1);
+        assert_eq!(out["skills"]["names"][0], "help");
         assert_eq!(out["mcp"][0]["name"], "ctx");
         assert!(out["mcp"][0].get("env").is_none());
+        assert_eq!(out["hooksCount"], 1);
+        assert_eq!(out["hooks"][0]["event"], "stop");
+        assert_eq!(out["hooks"][0]["source"], "project");
+        assert_eq!(out["agents"][0]["name"], "explore");
         assert!(out["modelsHints"]
             .as_array()
             .unwrap()

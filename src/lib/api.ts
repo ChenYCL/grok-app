@@ -1673,8 +1673,10 @@ export type {
   ProjectInspectMcp,
   ProjectInspectRule,
   ProjectInspectAgent,
+  ProjectInspectHook,
   ProjectInspectSkills,
   ProjectInspectPermissions,
+  InspectSectionId,
 } from "./projectInspect";
 
 /**

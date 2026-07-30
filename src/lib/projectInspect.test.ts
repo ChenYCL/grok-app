@@ -1,11 +1,21 @@
 import { describe, expect, it } from "vitest";
 import {
   emptyProjectInspectSummary,
+  filterInspectSections,
   formatInspectJsonForCopy,
+  formatInspectSectionJson,
   inspectCountsLine,
+  inspectSectionCount,
+  inspectSectionCounts,
+  inspectSectionDocsUrl,
+  inspectSectionHasContent,
+  inspectSectionPaths,
+  inspectSectionSlice,
   isSensitiveKey,
   redactSensitiveValue,
+  sliceInspectList,
   summarizeInspectJson,
+  INSPECT_SECTION_IDS,
 } from "./projectInspect";
 
 const SAMPLE_INSPECT = {
@@ -50,11 +60,20 @@ const SAMPLE_INSPECT = {
       name: "context7",
       transport: "stdio",
       target: "/usr/bin/npx",
+      source: { type: "configToml", path: "/home/u/.grok/config.toml" },
       env: { API_KEY: "sk-secretsecretsecretsecret" },
     },
   ],
   agents: [{ name: "explore", source: { type: "builtin" } }],
-  hooks: [{ event: "stop" }],
+  hooks: [
+    {
+      event: "stop",
+      hookType: "file",
+      target: "/tmp/demo/.grok/hooks/stop.json",
+      source: { type: "project" },
+      matcher: null,
+    },
+  ],
   configSources: {
     layers: [{ role: "user", path: "/home/u/.grok/config.toml" }],
   },
@@ -85,7 +104,7 @@ describe("isSensitiveKey", () => {
 });
 
 describe("summarizeInspectJson", () => {
-  it("extracts counts, rules, plugins, mcp without env", () => {
+  it("extracts counts, rules, plugins, mcp, hooks without env", () => {
     const s = summarizeInspectJson(SAMPLE_INSPECT, {
       projectPath: "/tmp/demo",
       hasProjectGrokDir: true,
@@ -108,14 +127,25 @@ describe("summarizeInspectJson", () => {
     expect(s.skills.bySource.user).toBe(1);
     expect(s.skills.bySource.plugin).toBe(1);
     expect(s.skills.sample).toEqual(["help"]);
+    expect(s.skills.names).toEqual(["help", "internal"]);
     expect(s.mcp).toEqual([
-      { name: "context7", transport: "stdio", target: "/usr/bin/npx" },
+      {
+        name: "context7",
+        transport: "stdio",
+        target: "/usr/bin/npx",
+        source: "configToml",
+      },
     ]);
     // Must not leak env
     expect(JSON.stringify(s.mcp)).not.toContain("API_KEY");
     expect(JSON.stringify(s.mcp)).not.toContain("sk-secret");
     expect(s.agents[0].name).toBe("explore");
     expect(s.hooksCount).toBe(1);
+    expect(s.hooks).toHaveLength(1);
+    expect(s.hooks[0].event).toBe("stop");
+    expect(s.hooks[0].hookType).toBe("file");
+    expect(s.hooks[0].target).toContain("stop.json");
+    expect(s.hooks[0].source).toBe("project");
     expect(s.configLayers[0].path).toContain("config.toml");
     expect(s.modelsHints).toContain("grok-3");
     expect(s.modelsHints).toContain("grok-4");
@@ -133,9 +163,18 @@ describe("summarizeInspectJson", () => {
 
   it("handles null / invalid payload", () => {
     expect(emptyProjectInspectSummary().skills.total).toBe(0);
+    expect(emptyProjectInspectSummary().skills.names).toEqual([]);
+    expect(emptyProjectInspectSummary().hooks).toEqual([]);
     const bad = summarizeInspectJson("nope");
     expect(bad.error).toMatch(/Invalid/);
     expect(bad.plugins).toEqual([]);
+    expect(bad.hooks).toEqual([]);
+  });
+
+  it("counts bare hook numbers without inventing rows", () => {
+    const s = summarizeInspectJson({ hooks: [1, 2] });
+    expect(s.hooks).toEqual([]);
+    expect(s.hooksCount).toBe(2);
   });
 });
 
@@ -157,6 +196,7 @@ describe("redactSensitiveValue / formatInspectJsonForCopy", () => {
     const s = summarizeInspectJson(SAMPLE_INSPECT);
     const text = formatInspectJsonForCopy(s);
     expect(text).toContain('"plugins"');
+    expect(text).toContain('"hooks"');
     expect(text).not.toContain("sk-secret");
     expect(text).not.toContain("API_KEY");
     expect(() => JSON.parse(text)).not.toThrow();
@@ -164,7 +204,7 @@ describe("redactSensitiveValue / formatInspectJsonForCopy", () => {
 });
 
 describe("inspectCountsLine", () => {
-  it("returns length counters", () => {
+  it("returns length counters including hooks", () => {
     const s = summarizeInspectJson(SAMPLE_INSPECT);
     expect(inspectCountsLine(s)).toEqual({
       plugins: 1,
@@ -172,6 +212,106 @@ describe("inspectCountsLine", () => {
       mcp: 1,
       rules: 1,
       agents: 1,
+      hooks: 1,
     });
+  });
+});
+
+describe("section chips / filter helpers", () => {
+  const s = summarizeInspectJson(SAMPLE_INSPECT, {
+    projectPath: "/tmp/demo",
+    hasProjectGrokDir: true,
+    projectGrokPath: "/tmp/demo/.grok",
+  });
+
+  it("counts per section including all", () => {
+    const counts = inspectSectionCounts(s);
+    expect(counts.plugins).toBe(1);
+    expect(counts.skills).toBe(2);
+    expect(counts.mcp).toBe(1);
+    expect(counts.hooks).toBe(1);
+    expect(counts.agents).toBe(1);
+    expect(counts.rules).toBe(1);
+    expect(counts.config).toBe(1);
+    expect(counts.models).toBeGreaterThan(0);
+    expect(counts.permissions).toBe(1);
+    expect(counts.all).toBeGreaterThan(counts.plugins);
+    expect(INSPECT_SECTION_IDS[0]).toBe("all");
+  });
+
+  it("filterInspectSections returns non-empty inventory for all", () => {
+    const ids = filterInspectSections(s, "all");
+    expect(ids).toContain("plugins");
+    expect(ids).toContain("skills");
+    expect(ids).toContain("hooks");
+    expect(ids).toContain("mcp");
+    expect(ids).not.toContain("all" as never);
+  });
+
+  it("filterInspectSections narrows to one section", () => {
+    expect(filterInspectSections(s, "hooks")).toEqual(["hooks"]);
+    expect(filterInspectSections(s, "plugins")).toEqual(["plugins"]);
+  });
+
+  it("empty summary yields empty filter", () => {
+    const empty = emptyProjectInspectSummary();
+    expect(filterInspectSections(empty, "all")).toEqual([]);
+    expect(inspectSectionHasContent(empty, "plugins")).toBe(false);
+    expect(inspectSectionCount(empty, "all")).toBe(0);
+  });
+
+  it("formatInspectSectionJson is secret-safe per section", () => {
+    const hooksJson = formatInspectSectionJson(s, "hooks");
+    expect(hooksJson).toContain("stop");
+    expect(hooksJson).not.toContain("sk-secret");
+    const skillsJson = formatInspectSectionJson(s, "skills");
+    expect(skillsJson).toContain("help");
+    expect(skillsJson).not.toContain("Help skill");
+    const allJson = formatInspectSectionJson(s, "all");
+    expect(() => JSON.parse(allJson)).not.toThrow();
+  });
+
+  it("inspectSectionSlice returns focused payload", () => {
+    expect(inspectSectionSlice(s, "agents")).toEqual(s.agents);
+    expect(inspectSectionSlice(s, "mcp")).toEqual(s.mcp);
+    const hooks = inspectSectionSlice(s, "hooks") as {
+      count: number;
+      hooks: unknown[];
+    };
+    expect(hooks.count).toBe(1);
+    expect(hooks.hooks).toHaveLength(1);
+  });
+
+  it("inspectSectionPaths collects reveal-able paths only", () => {
+    expect(inspectSectionPaths(s, "rules")).toEqual(["/tmp/demo/AGENTS.md"]);
+    expect(inspectSectionPaths(s, "plugins")[0]).toContain("installed-plugins");
+    expect(inspectSectionPaths(s, "hooks")[0]).toContain("stop.json");
+    expect(inspectSectionPaths(s, "config")[0]).toContain("config.toml");
+    // HTTP targets are skipped
+    const withHttp = summarizeInspectJson({
+      mcpServers: [
+        {
+          name: "remote",
+          transport: "http",
+          target: "https://example.com/mcp",
+        },
+      ],
+    });
+    expect(inspectSectionPaths(withHttp, "mcp")).toEqual([]);
+  });
+
+  it("inspectSectionDocsUrl is null without homepage fields", () => {
+    expect(inspectSectionDocsUrl(s, "plugins")).toBeNull();
+    expect(inspectSectionDocsUrl(s, "all")).toBeNull();
+  });
+
+  it("sliceInspectList expands long lists", () => {
+    const items = Array.from({ length: 20 }, (_, i) => i);
+    const collapsed = sliceInspectList(items, { limit: 8, expanded: false });
+    expect(collapsed.visible).toHaveLength(8);
+    expect(collapsed.hidden).toBe(12);
+    const expanded = sliceInspectList(items, { limit: 8, expanded: true });
+    expect(expanded.visible).toHaveLength(20);
+    expect(expanded.hidden).toBe(0);
   });
 });
