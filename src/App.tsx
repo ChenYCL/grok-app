@@ -568,6 +568,7 @@ import {
   sanitizeWorktreeName,
   sanitizeWorktreeRef,
   sessionWorktreeTooltip,
+  worktreeEntryForPath,
   worktreeLabel,
   worktreeRemoveErrorSuggestsForce,
   type SessionWorktreeBadge,
@@ -15669,6 +15670,19 @@ export default function App() {
               }}
               onStopAllSessions={stopAllBusySessions}
               onOpenDashboard={() => setAgentDashboardOpen(true)}
+              activeCwd={activeProject?.path ?? null}
+              onOpenCwd={(cwd) => {
+                const wt = worktreeEntryForPath(cwd, gitWorktrees);
+                if (!wt) return;
+                void (async () => {
+                  await switchToWorktree(wt);
+                  const liveId =
+                    viewingSessionIdRef.current || session.sessionId || null;
+                  if (liveId) {
+                    await markSessionWorktree(liveId, wt.path, wt.branch);
+                  }
+                })();
+              }}
             />
           ) : null}
 

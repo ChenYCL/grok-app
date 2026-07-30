@@ -7,13 +7,14 @@
  * Nested tools under spawn_subagent render as an indented tree when parent
  * linkage (explicit or inferred) is available.
  * Subagent cwd / worktree paths surface as a compact WT badge when present
- * in tool_step data (UI-only; no new agent runtime).
+ * in tool_step data — open as chat cwd, reveal, or copy (UI-only).
  */
 
 import { useCallback, useMemo, useState, type MouseEvent } from "react";
 import type { MessageKey } from "@/i18n";
 import type { ChatMessage } from "@/lib/session";
 import * as api from "@/lib/api";
+import { pathsEqual } from "@/lib/gitWorktree";
 import {
   buildTaskTree,
   collectSessionTasks,
@@ -41,6 +42,7 @@ import {
   IconClose,
   IconCopy,
   IconFolder,
+  IconFolderPlus,
   IconList,
 } from "@/components/icons";
 
@@ -60,6 +62,13 @@ export type AgentTasksPanelProps = {
   onStopAllSessions?: () => void;
   /** Open the cross-session Agent dashboard (distinct from this tools panel). */
   onOpenDashboard?: () => void;
+  /**
+   * Bind this chat to a subagent cwd / worktree path (agent project cwd).
+   * Parent owns project_add / session bind / toast.
+   */
+  onOpenCwd?: (cwd: string) => void;
+  /** Current chat project path — used to mark cwd as already active. */
+  activeCwd?: string | null;
 };
 
 async function revealOrCopyCwd(cwd: string): Promise<"revealed" | "copied"> {
@@ -83,6 +92,8 @@ function TaskRow({
   childrenOpen = true,
   onToggleChildren,
   showTreeChrome = false,
+  onOpenCwd,
+  activeCwd,
 }: {
   task: AgentTask;
   t: TFn;
@@ -92,6 +103,8 @@ function TaskRow({
   onToggleChildren?: () => void;
   /** When false, omit tree toggle/spacer so flat lists match pre-tree layout. */
   showTreeChrome?: boolean;
+  onOpenCwd?: (cwd: string) => void;
+  activeCwd?: string | null;
 }) {
   const [open, setOpen] = useState(false);
   const [cwdActionHint, setCwdActionHint] = useState<string | null>(null);
@@ -100,6 +113,12 @@ function TaskRow({
     showTreeChrome && depth > 0
       ? { paddingLeft: 8 + depth * 14 }
       : undefined;
+  const cwdIsActive = !!(
+    task.cwd &&
+    activeCwd &&
+    pathsEqual(task.cwd, activeCwd)
+  );
+  const canOpenCwd = !!onOpenCwd && !!task.cwd;
 
   const onRevealCwd = useCallback(
     (e: MouseEvent) => {
@@ -132,6 +151,33 @@ function TaskRow({
         .catch(() => setCwdActionHint(t("tasks.cwdRevealFailed")));
     },
     [task.cwd, t],
+  );
+
+  const onUseCwd = useCallback(
+    (e: MouseEvent) => {
+      e.stopPropagation();
+      e.preventDefault();
+      if (!task.cwd || !onOpenCwd) return;
+      if (cwdIsActive) {
+        setCwdActionHint(t("tasks.cwdAlreadyActive"));
+        return;
+      }
+      onOpenCwd(task.cwd);
+      setCwdActionHint(t("tasks.cwdOpened"));
+    },
+    [cwdIsActive, onOpenCwd, t, task.cwd],
+  );
+
+  /** Badge: prefer open-as-cwd when wired; otherwise reveal. */
+  const onBadgeCwd = useCallback(
+    (e: MouseEvent) => {
+      if (canOpenCwd) {
+        onUseCwd(e);
+        return;
+      }
+      onRevealCwd(e);
+    },
+    [canOpenCwd, onRevealCwd, onUseCwd],
   );
 
   const cwdLabel = task.cwd ? formatTaskCwdLabel(task.cwd) : null;
@@ -202,10 +248,18 @@ function TaskRow({
           {task.cwd && cwdLabel ? (
             <button
               type="button"
-              className="agent-tasks__wt"
-              title={t("tasks.cwdBadgeTitle", { path: task.cwd })}
-              aria-label={t("tasks.revealCwd")}
-              onClick={onRevealCwd}
+              className={
+                "agent-tasks__wt" + (cwdIsActive ? " is-active" : "")
+              }
+              title={
+                canOpenCwd
+                  ? t("tasks.cwdBadgeOpenTitle", { path: task.cwd })
+                  : t("tasks.cwdBadgeTitle", { path: task.cwd })
+              }
+              aria-label={
+                canOpenCwd ? t("tasks.openCwd") : t("tasks.revealCwd")
+              }
+              onClick={onBadgeCwd}
             >
               {cwdLabel}
             </button>
@@ -246,6 +300,18 @@ function TaskRow({
                 </code>
               </div>
               <div className="agent-tasks__cwd-actions">
+                {canOpenCwd ? (
+                  <button
+                    type="button"
+                    className="btn btn--ghost btn--sm"
+                    onClick={onUseCwd}
+                    title={t("tasks.openCwd")}
+                    disabled={cwdIsActive}
+                  >
+                    <IconFolderPlus size={13} />
+                    {t("tasks.openCwd")}
+                  </button>
+                ) : null}
                 <button
                   type="button"
                   className="btn btn--ghost btn--sm"
@@ -299,11 +365,15 @@ function TaskTreeItem({
   t,
   depth = 0,
   showTreeChrome = false,
+  onOpenCwd,
+  activeCwd,
 }: {
   node: TaskTreeNode;
   t: TFn;
   depth?: number;
   showTreeChrome?: boolean;
+  onOpenCwd?: (cwd: string) => void;
+  activeCwd?: string | null;
 }) {
   const hasChildren = node.children.length > 0;
   const [childrenOpen, setChildrenOpen] = useState(true);
@@ -317,6 +387,8 @@ function TaskTreeItem({
         childrenOpen={childrenOpen}
         onToggleChildren={() => setChildrenOpen((v) => !v)}
         showTreeChrome={showTreeChrome}
+        onOpenCwd={onOpenCwd}
+        activeCwd={activeCwd}
       />
       {hasChildren && childrenOpen
         ? node.children.map((child) => (
@@ -326,6 +398,8 @@ function TaskTreeItem({
               t={t}
               depth={depth + 1}
               showTreeChrome={showTreeChrome}
+              onOpenCwd={onOpenCwd}
+              activeCwd={activeCwd}
             />
           ))
         : null}
@@ -425,6 +499,8 @@ export function AgentTasksPanel({
   onStopSession,
   onStopAllSessions,
   onOpenDashboard,
+  onOpenCwd,
+  activeCwd = null,
 }: AgentTasksPanelProps) {
   const [query, setQuery] = useState("");
   const tasks = useMemo(() => {
@@ -564,6 +640,8 @@ export function AgentTasksPanel({
                     node={node}
                     t={t}
                     showTreeChrome={showTreeChrome}
+                    onOpenCwd={onOpenCwd}
+                    activeCwd={activeCwd}
                   />
                 ))}
               </ul>
@@ -581,6 +659,8 @@ export function AgentTasksPanel({
                     node={node}
                     t={t}
                     showTreeChrome={showTreeChrome}
+                    onOpenCwd={onOpenCwd}
+                    activeCwd={activeCwd}
                   />
                 ))}
               </ul>

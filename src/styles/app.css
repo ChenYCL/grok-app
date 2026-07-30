@@ -21263,6 +21263,11 @@ html[data-theme="light"] .rim-sidebar {
   background: color-mix(in srgb, var(--accent, #5b8def) 14%, transparent);
   color: var(--accent, inherit);
 }
+.agent-tasks__wt.is-active {
+  border-color: color-mix(in srgb, var(--accent, #5b8def) 45%, transparent);
+  background: color-mix(in srgb, var(--accent, #5b8def) 18%, transparent);
+  color: var(--accent, inherit);
+}
 .agent-tasks__status {
   font-size: 11px;
   opacity: 0.7;
