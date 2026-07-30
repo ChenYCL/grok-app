@@ -2246,6 +2246,18 @@ export const zhTW: Record<MessageKey, string> = {
   "mcpModal.loading": "正在載入 MCP…",
   "mcpModal.empty": "未發現 MCP 伺服器",
   "mcpModal.manage": "在設定中管理",
+  "mcpModal.searchPlaceholder": "依名稱、目標、傳輸篩選…",
+  "mcpModal.filter.statusLabel": "依狀態篩選",
+  "mcpModal.filter.all": "全部",
+  "mcpModal.refresh": "重新整理",
+  "mcpModal.refreshing": "重新整理中…",
+  "mcpModal.summary": "{n} 個伺服器",
+  "mcpModal.summaryFiltered": "{shown} / {total}",
+  "mcpModal.filterEmpty": "沒有符合篩選條件的伺服器",
+  "mcpModal.clearFilters": "清除篩選",
+  "mcpModal.copyName": "複製名稱",
+  "mcpModal.copyTarget": "複製目標",
+  "mcpModal.copied": "已複製",
 
   // Settings → Extensions (Plugins + Skills + MCP)
   "ext.lead":

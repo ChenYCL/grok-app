@@ -8368,12 +8368,12 @@ export default function App() {
     });
   }, [composerMenuEntries.length]);
 
-  const openMcpModal = useCallback(async () => {
-    setShowMcpModal(true);
+  const refreshMcpModal = useCallback(async () => {
     setMcpLoading(true);
     setMcpError(null);
     try {
       const res = await api.inspectMcp(activeProject?.path ?? null);
+      // Host list only — never invent placeholder servers.
       setMcpServers(res.servers ?? []);
       if (res.error) setMcpError(res.error);
     } catch (e) {
@@ -8383,6 +8383,11 @@ export default function App() {
       setMcpLoading(false);
     }
   }, [activeProject?.path]);
+
+  const openMcpModal = useCallback(async () => {
+    setShowMcpModal(true);
+    await refreshMcpModal();
+  }, [refreshMcpModal]);
 
   const showToast = useCallback((msg: string, ms = 3200) => {
     setToast(msg);
@@ -17156,6 +17161,7 @@ export default function App() {
         loading={mcpLoading}
         onClose={() => setShowMcpModal(false)}
         onManage={() => navigateSettings("extensions")}
+        onRefresh={() => void refreshMcpModal()}
       />
       {rewindTimeline && (
         <div
