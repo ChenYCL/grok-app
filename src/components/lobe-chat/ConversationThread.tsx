@@ -27,10 +27,7 @@ import {
 import {
   adjacentNode,
   buildSessionMessageNodes,
-  estimateMessageIndexAtY,
   estimateStartScrollTop,
-  nearestNodeForMessageIndex,
-  pickActiveNodeIdFromRects,
   type SessionMessageNode,
 } from "@/lib/sessionMessageNodes";
 import { MessageNodeRail } from "./MessageNodeRail";
@@ -653,50 +650,23 @@ export function ConversationThread({
   /** Authoritative cursor for prev/next — survives brief active-id flicker. */
   const railCursorRef = useRef<string | null>(null);
 
-  const syncActiveNodeFromScroll = useCallback(() => {
-    const el = scrollRef.current;
-    if (!el || messageNodes.length === 0) return;
-    // Programmatic next/prev owns the highlight until the jump settles.
+  /**
+   * Free-scroll rail highlight lives in MessageNodeRail (rAF + no parent
+   * setState). This only updates railCursorRef after programmatic jumps settle
+   * so prev/next keep a stable cursor without re-rendering the transcript.
+   */
+  const syncRailCursorAfterNav = useCallback(() => {
     if (performance.now() < navLockUntilRef.current) return;
-
-    const viewportRect = el.getBoundingClientRect();
-    const focusY = viewportRect.top + el.clientHeight * 0.28;
-
-    const rects: { id: string; top: number; bottom: number }[] = [];
-    for (const node of messageNodes) {
-      const row = el.querySelector(
-        `[data-message-id="${CSS.escape(node.id)}"]`,
-      ) as HTMLElement | null;
-      if (!row) continue;
-      const r = row.getBoundingClientRect();
-      rects.push({ id: node.id, top: r.top, bottom: r.bottom });
-    }
-
-    let bestId = pickActiveNodeIdFromRects(rects, focusY);
-
-    if (!bestId) {
-      const y = el.scrollTop + el.clientHeight * 0.28;
-      const msgIdx = estimateMessageIndexAtY(messages, y);
-      bestId = nearestNodeForMessageIndex(messageNodes, msgIdx)?.id ?? null;
-    }
-
-    if (bestId) railCursorRef.current = bestId;
-    setActiveNodeId((prev) => (prev === bestId ? prev : bestId));
-  }, [messageNodes, messages, scrollRef]);
+    // Cursor already set by scrollToMessageNode / select; nothing else needed.
+  }, []);
 
   const onScroll = useCallback(
     (e: UIEvent<HTMLDivElement>) => {
       onStickScroll(e);
-      syncActiveNodeFromScroll();
+      // Do NOT setActiveNodeId here — MessageNodeRail owns free-scroll highlight (#280).
     },
-    [onStickScroll, syncActiveNodeFromScroll],
+    [onStickScroll],
   );
-
-  // Keep rail highlight in sync on mount / message growth / session switch.
-  useEffect(() => {
-    const t = window.requestAnimationFrame(() => syncActiveNodeFromScroll());
-    return () => window.cancelAnimationFrame(t);
-  }, [syncActiveNodeFromScroll, sessionKey, messages.length]);
 
   const applyScrollToNodeDom = useCallback(
     (node: SessionMessageNode, attempt = 0) => {
@@ -737,10 +707,10 @@ export function ConversationThread({
         locateClearTimerRef.current = null;
         // Release nav lock shortly after so free scroll can update the rail.
         navLockUntilRef.current = performance.now() + 120;
-        syncActiveNodeFromScroll();
+        syncRailCursorAfterNav();
       }, 700);
     },
-    [scrollRef, syncActiveNodeFromScroll],
+    [scrollRef, syncRailCursorAfterNav],
   );
 
   const scrollToMessageNode = useCallback(
@@ -945,12 +915,14 @@ export function ConversationThread({
     // Even when idle, pin-window must include the last user + last assistant
     // (not only trailing tool_step zeros), or reopening a long tool-heavy
     // thread can paint an empty viewport at the bottom.
-    if (!turnBusy && messages.length > 0) {
+    // Always resolve via pushId (transcript indices) — never push messages[]
+    // offsets into the virtual list (idle path used to force wrong rows / thrash).
+    if (!turnBusy && transcriptMessages.length > 0) {
       pushId(lastUserMessageId);
-      for (let i = messages.length - 1; i >= 0; i--) {
-        const row = messages[i]!;
+      for (let i = transcriptMessages.length - 1; i >= 0; i--) {
+        const row = transcriptMessages[i]!;
         if (row.role === "assistant" && !row.isError) {
-          out.push(i);
+          pushId(row.id);
           break;
         }
       }
@@ -1777,6 +1749,9 @@ export function ConversationThread({
         onPrev={onNodePrev}
         onNext={onNodeNext}
         labels={railLabels}
+        scrollParentRef={scrollRef}
+        messages={messages}
+        navLockUntilRef={navLockUntilRef}
       />
 
       <BackBottom

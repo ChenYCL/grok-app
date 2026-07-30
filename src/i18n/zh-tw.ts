@@ -1593,6 +1593,14 @@ export const zhTW: Record<MessageKey, string> = {
   "settings.showUsageEstimates": "顯示用量估算",
   "settings.showUsageEstimatesDesc":
     "在上下文晶片選單中，當模型在粗略費率表內時顯示可選美元費用估算。始終標註為估算，非帳單。預設開啟。",
+  "settings.exportLogo": "分享卡片 Logo",
+  "settings.exportLogoDesc":
+    "用於「匯出為圖片」分享卡片的自訂 Logo。上傳方形 PNG/JPEG/WebP（≤1.5 MB）；清除後使用預設 G 標記。卡片頁尾固定標註 “Generated with Grok App”。",
+  "settings.exportLogoUpload": "上傳 Logo",
+  "settings.exportLogoClear": "清除 Logo",
+  "settings.exportLogoPreview": "Logo 預覽",
+  "settings.exportLogoTooLarge": "圖片過大（最大 1.5 MB）",
+  "settings.exportLogoInvalid": "無法讀取該圖片",
   "settings.showReplyLength": "顯示回覆長度",
   "settings.showReplyLengthDesc":
     "在已完成的助手回覆下方顯示詞數與字數。預設關閉。",
@@ -2307,6 +2315,28 @@ export const zhTW: Record<MessageKey, string> = {
   "session.exportPlain": "匯出對話為純文字",
   "session.exportJson": "匯出對話為 JSON",
   "session.exportHtml": "匯出對話為 HTML",
+  "session.exportImage": "匯出為圖片",
+  "session.exportImageTitle": "匯出分享卡片",
+  "session.exportImageHint":
+    "下方預覽分享卡片，確認後複製或選擇儲存位置。頁尾固定 “Generated with Grok App”。自訂 Logo 可在 設定 → 外觀 → 介面 上傳。",
+  "session.exportImageSmart": "智慧總結海報",
+  "session.exportImageSmartDesc":
+    "將對話壓縮為品牌海報；配色與版式依內容結構自動生成（非固定主題分類）。",
+  "session.exportImageStyleAuto": "版式：{style}",
+  "session.exportImageLayout.editorial": "編排",
+  "session.exportImageLayout.stack": "列表",
+  "session.exportImageLayout.compact": "緊湊",
+  "session.exportImageDownload": "儲存 PNG…",
+  "session.exportImageCopy": "複製圖片",
+  "session.exportImageWorking": "渲染中…",
+  "session.exportImageDone": "分享卡片已儲存",
+  "session.exportImageCopied": "分享卡片已複製",
+  "session.exportImageFail": "匯出分享卡片失敗",
+  "session.exportImageEmpty": "目前對話沒有可匯出的內容",
+  "session.exportImagePreview": "分享卡片預覽",
+  "session.exportImageSaveTitle": "儲存分享卡片 PNG",
+  "session.exportImageClipboardFail":
+    "無法複製圖片到剪貼簿（WebView 限制）。請改用「儲存 PNG…」。",
   "session.exportTrace": "匯出 trace",
   "session.exportTraceLocal": "僅本機匯出",
   "session.exportTraceUpload": "匯出並上傳…",

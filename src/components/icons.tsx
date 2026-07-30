@@ -96,6 +96,7 @@ import {
   IconTrash as TbTrash,
   IconUpload as TbUpload,
   IconUser as TbUser,
+  IconPhoto as TbPhoto,
   IconWand as TbWand,
   IconX as TbX,
 } from "@tabler/icons-react";
@@ -295,6 +296,8 @@ export const IconCopy = wrap(TbCopy);
 /** Connect phone / remote mirror. */
 export const IconDeviceMobile = wrap(TbDeviceMobile);
 export const IconExportMd = wrap(TbMarkdown);
+/** Conversation share-card / export as image. */
+export const IconExportImage = wrap(TbPhoto);
 export const IconArchive = wrap(TbArchive);
 export const IconChat = wrap(TbMessage);
 export const IconFileText = wrap(TbFileText);

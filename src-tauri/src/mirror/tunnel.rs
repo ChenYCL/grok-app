@@ -12,8 +12,8 @@ use tokio::process::{Child, Command};
 use tokio::sync::oneshot;
 use tokio::time::timeout;
 
-#[cfg(unix)]
-use std::os::unix::process::CommandExt;
+// tokio::process::Command::pre_exec is available on Unix without importing
+// std::os::unix::process::CommandExt. Windows uses creation_flags via CommandExt.
 #[cfg(windows)]
 use std::os::windows::process::CommandExt;
 
@@ -259,13 +259,13 @@ fn kill_process_group(pid: Option<u32>, pgid: Option<i32>) {
     #[cfg(unix)]
     {
         if let Some(g) = pgid.or(pid.map(|p| p as i32)) {
-            // Negative pid → kill process group.
-            let rc = unsafe { libc_kill(-g, 15) }; // SIGTERM
+            // Negative pid → kill process group. libc_kill already wraps the FFI unsafe.
+            let rc = libc_kill(-g, 15); // SIGTERM
             if rc != 0 {
                 tracing::debug!(pgid = g, "mirror tunnel SIGTERM group failed; trying SIGKILL");
             }
             std::thread::sleep(Duration::from_millis(200));
-            let _ = unsafe { libc_kill(-g, 9) };
+            let _ = libc_kill(-g, 9);
             return;
         }
     }

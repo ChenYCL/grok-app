@@ -195,7 +195,7 @@ pub async fn scan_begin(options: Option<&HashMap<String, String>>) -> Result<Sca
 }
 
 pub async fn scan_poll(_device_code: &str) -> Result<ScanPollDto, String> {
-    let (mut qr_key, base, route_tag, bot_type, fetched_at, mut refresh_count) = {
+    let (qr_key, base, route_tag, bot_type, fetched_at, mut refresh_count) = {
         let g = QR_STATE.lock().map_err(|e| e.to_string())?;
         let st = g.as_ref().ok_or_else(|| "weixin: no active QR session".to_string())?;
         (

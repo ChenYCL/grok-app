@@ -285,22 +285,42 @@ export function useChatMessageVirtualizer(
     [virtualized, itemCount, getHeight, isPinnedRef, viewportRef, recompute],
   );
 
-  const measureRef = useCallback(
-    (index: number) => (el: HTMLElement | null) => {
-      const prevRo = rowObserversRef.current.get(index);
-      if (prevRo) {
-        prevRo.disconnect();
-        rowObserversRef.current.delete(index);
-      }
-      if (!el || !virtualized) return;
+  /**
+   * Stable per-index ref callbacks. Returning a fresh function from measureRef(i)
+   * on every render makes React detach/reattach the ref → ResizeObserver thrash
+   * and scroll jank on multi-turn chats (#280).
+   */
+  const measureCallbackCacheRef = useRef<
+    Map<number, (el: HTMLElement | null) => void>
+  >(new Map());
 
-      // Immediate sample (mount) + observe media/layout growth afterward.
-      commitRowHeight(index, el);
-      const ro = new ResizeObserver(() => {
+  // Drop cached callbacks when virtualization turns off or conversation changes.
+  useEffect(() => {
+    measureCallbackCacheRef.current.clear();
+  }, [conversationKey, virtualized]);
+
+  const measureRef = useCallback(
+    (index: number) => {
+      const cached = measureCallbackCacheRef.current.get(index);
+      if (cached) return cached;
+      const cb = (el: HTMLElement | null) => {
+        const prevRo = rowObserversRef.current.get(index);
+        if (prevRo) {
+          prevRo.disconnect();
+          rowObserversRef.current.delete(index);
+        }
+        if (!el || !virtualized) return;
+
+        // Immediate sample (mount) + observe media/layout growth afterward.
         commitRowHeight(index, el);
-      });
-      ro.observe(el);
-      rowObserversRef.current.set(index, ro);
+        const ro = new ResizeObserver(() => {
+          commitRowHeight(index, el);
+        });
+        ro.observe(el);
+        rowObserversRef.current.set(index, ro);
+      };
+      measureCallbackCacheRef.current.set(index, cb);
+      return cb;
     },
     [virtualized, commitRowHeight],
   );

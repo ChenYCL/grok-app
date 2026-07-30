@@ -37,6 +37,7 @@ See `docs/llm-wiki/release.md`.
 - **Session max agent turns** (per-chat `grok --max-turns` override; session menu → number input; 0/empty inherits global Settings 1–200; soft-respawn on change)
 - **Export** Markdown copy + **HTML export** · **bulk archive by age** · **date groups** · **project color**
 - **Session export formats** (menu): Markdown (existing options) · **plain text** (`.txt`, headless-style) · JSON · HTML; full-transcript Markdown download prefers CLI `grok export <agentSessionId>` when linked and soft-falls back to the local journal
+- **Export** Markdown copy + **HTML export** · **share-card PNG** (session menu → Export as image; optional thinking; footer **Generated with Grok App**; custom logo in Settings) · **bulk archive by age** · **date groups** · **project color**
 - **Sidebar j/k** navigation (when list focused)
 - **CLI-aligned worktrees**: create under `~/.grok/worktrees/<repo>/<name>` by default (matches `grok --worktree`); optional sibling layout; start-ref validation; sidebar **CLI** vs **WT** badge
 - **Hybrid session search** (command palette): mode chips **All / Title / Content**, optional **Include archived**, keyword content snippets + Title/Content badges — no embeddings (honest keyword hybrid only)
@@ -47,6 +48,7 @@ See `docs/llm-wiki/release.md`.
 - **Confirm quit while busy** (in-app dialog; optional skip) · **dock/tray busy badge**
 - **Shortcut conflicts** (Settings → Keyboard): panel lists chords shared by multiple actions; capture warns in-app before save; optional **Reset conflicting to default** (pure `findChordConflicts` + tests)
 - **Shortcut scopes** (Settings → Keyboard): each catalog row is tagged **Global** vs **Chat**; optional **Allow same chord across scopes** ignores cross-scope conflicts in capture/panel only (stored remaps + App matching unchanged)
+- **Share-card logo** (Settings → Appearance → Interface): upload custom PNG/JPEG/WebP for conversation image export
 
 #### Tasks / system
 - **Automations background honesty** (AUTO-DETACH lite): pure `automationsBackgroundStatus` helper + tests; Scheduled tasks page banner when any task is enabled (app/tray must stay running; optional deep-link to **Launch at login**); busy-quit dialog extra note; Launch at login desc clarifies schedules pause on full quit (no fake detached daemon)
@@ -103,6 +105,7 @@ See `docs/llm-wiki/release.md`.
 ### Fixed
 
 - CLI install missing SHA-256 (#227) · app.css rewind/fork selectors (#259)
+- **Multi-turn chat scroll jank (#280)**: free-scroll node-rail highlight no longer `setState`s the transcript parent each frame; virtual-list `measureRef` callbacks are stable per index (stops ResizeObserver thrash); idle force-mount uses transcript indices only; rail `scrollIntoView` is instant
 
 **中文 · 新增（按域）**
 
@@ -118,6 +121,8 @@ See `docs/llm-wiki/release.md`.
 - **会话/侧栏**：复制 vs 分叉、恢复对话并还原代码（干净 worktree）、便签、会话规则（`--rules`）、会话最大轮次（`--max-turns` 覆盖；空/0 继承全局）、静音、未读点、HTML 导出、按天归档、日期分组、项目色、j/k 导航、CLI 对齐 worktree（默认 `~/.grok/worktrees`、侧栏 CLI/WT 标记）；**混合会话搜索排序**（命令面板 Keyword/Hybrid + 设置；本地词元重叠，非云端嵌入）
 - **会话/侧栏**：复制 vs 分叉、恢复对话并还原代码（干净 worktree）、分叉/恢复可选 CLI `--fork-session`（新 agent session id，ACP `session/fork`）、便签、会话规则（`--rules`）、会话最大轮次（`--max-turns` 覆盖；空/0 继承全局）、静音、未读点、HTML 导出、按天归档、日期分组、项目色、j/k 导航、CLI 对齐 worktree（默认 `~/.grok/worktrees`、侧栏 CLI/WT 标记）
 - **外观/壳**：主题定时、跟随系统语言、忙碌退出确认、托盘角标、快捷键冲突面板（录制警告 + 重置冲突项）
+- **会话/侧栏**：复制 vs 分叉、恢复对话并还原代码（干净 worktree）、便签、会话规则（`--rules`）、静音、未读点、HTML 导出、**分享卡片 PNG**（会话菜单 → 导出为图片；页脚 Generated with Grok App；设置可上传自定义 Logo）、按天归档、日期分组、项目色、j/k 导航、CLI 对齐 worktree（默认 `~/.grok/worktrees`、侧栏 CLI/WT 标记）
+- **外观/壳**：主题定时、跟随系统语言、忙碌退出确认、托盘角标、**分享卡片 Logo**（外观 → 界面）
 - **Agent**：禁用内置工具（芯片 + 自由列表 → `--disallowed-tools`；与禁用网页搜索并存；更改 soft-respawn）；可选 profile 路径（`--agent-profile`）
 - **系统**：**Agent serve** 启停（设置 → 运行时 → 连接）；**手机镜像写入审计**（本地 ring、无密钥/URL）；**Trace 历史管理**（搜索/移除/清空确认/可选大小）；任务面板子代理 **WT/cwd** 标记；**Agent 仪表盘** 状态/搜索/项目筛选；**记忆浏览器** 搜索 + 类型芯片筛选（空结果/清除）
 - **系统**：**已安排任务后台诚实说明**（无独立守护进程；横幅 + 忙碌退出附注 + 登录启动说明）；**Agent serve** 启停（设置 → 运行时 → 连接）；**手机镜像写入审计**（本地 ring、无密钥/URL）；**Trace 历史管理**（搜索/移除/清空确认/可选大小）；任务面板子代理 **WT/cwd** 标记；**Agent 仪表盘** 状态/搜索/项目筛选
@@ -158,7 +163,7 @@ See `docs/llm-wiki/release.md`.
 
 **中文 · 修复**
 
-- CLI SHA-256（#227）；CSS（#259）
+- CLI SHA-256（#227）；CSS（#259）；多轮对话滚动卡顿（#280）
 
 
 ## [0.2.2] - 2026-07-30

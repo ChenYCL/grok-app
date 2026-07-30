@@ -1518,6 +1518,12 @@ html[data-sidebar-density="compact"] .tree-date-group__head {
   flex-direction: column;
   gap: var(--menu-context-gap, 1px);
   pointer-events: auto;
+  /* Session menus have 20+ rows; without a cap the lower items (export image,
+   * archive, delete) render past the viewport with no way to reach them. */
+  max-height: min(70vh, calc(100vh - 16px));
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 /* Leading icon slot in context / item menus (app-picker open-loc keeps its own ico) */
@@ -17695,6 +17701,46 @@ div.composer__input:empty::before {
   .plan-history-row__actions {
     width: 100%;
   }
+}
+
+/* Share-card PNG export: live preview before save/copy */
+.export-image-modal .modal-body {
+  max-height: min(78vh, 720px);
+}
+.export-image-preview {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 160px;
+  max-height: min(48vh, 420px);
+  overflow: auto;
+  border-radius: 12px;
+  border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.1));
+  background: var(--bg-hover, rgba(0, 0, 0, 0.18));
+  padding: 10px;
+}
+.export-image-preview__img {
+  display: block;
+  width: 100%;
+  height: auto;
+  max-width: 100%;
+  border-radius: 10px;
+}
+.export-image-preview__placeholder,
+.export-image-preview__err {
+  margin: 0;
+  padding: 16px;
+  text-align: center;
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--text-secondary, rgba(255, 255, 255, 0.72));
+}
+.export-image-preview__err {
+  color: var(--danger, #f87171);
+}
+.export-image-style-chip {
+  color: var(--text-tertiary, rgba(255, 255, 255, 0.55));
+  font-weight: 500;
 }
 
 /* Session trace export history (paths only — never file contents) */

@@ -284,14 +284,20 @@ pub async fn cli_install_commands() -> Result<serde_json::Value, String> {
 #[tauri::command]
 pub async fn pick_cli_binary() -> Result<Option<String>, String> {
     let file = tauri::async_runtime::spawn_blocking(|| {
-        // `mut` required on Windows: we rebind after add_filter.
-        let mut dlg =
-            rfd::FileDialog::new().set_title("Select Grok Build binary / 选择 Grok Build 可执行文件");
+        // Windows rebinds after add_filter; other platforms keep the builder immutable.
         #[cfg(target_os = "windows")]
         {
-            dlg = dlg.add_filter("Executable", &["exe", "cmd", "bat"]);
+            let dlg = rfd::FileDialog::new()
+                .set_title("Select Grok Build binary / 选择 Grok Build 可执行文件")
+                .add_filter("Executable", &["exe", "cmd", "bat"]);
+            return dlg.pick_file();
         }
-        dlg.pick_file()
+        #[cfg(not(target_os = "windows"))]
+        {
+            rfd::FileDialog::new()
+                .set_title("Select Grok Build binary / 选择 Grok Build 可执行文件")
+                .pick_file()
+        }
     })
     .await
     .map_err(|e| e.to_string())?;
@@ -1076,7 +1082,7 @@ pub fn store_take_quarantine() -> Option<String> {
 pub async fn settings_set(
     app: tauri::AppHandle,
     mgr: State<'_, Arc<SessionManager>>,
-    mut settings: AppSettings,
+    settings: AppSettings,
 ) -> Result<AppSettings, String> {
     let prev = store::load_settings();
     let mut settings = settings;
@@ -2515,6 +2521,117 @@ fn session_trace_export_blocking(
         }
     }
     Ok(result)
+}
+
+/// Save arbitrary bytes via native save dialog (share-card PNG, etc.).
+/// Returns `{ ok, path, cancelled }`. Cancel → `ok:false, cancelled:true` (not an error).
+#[tauri::command]
+pub async fn export_bytes_save(
+    bytes_base64: String,
+    default_name: String,
+    dialog_title: Option<String>,
+    filter_name: Option<String>,
+    extensions: Option<Vec<String>>,
+) -> Result<serde_json::Value, String> {
+    let raw = bytes_base64.trim();
+    if raw.is_empty() {
+        return Err("export payload is empty".into());
+    }
+    use base64::Engine;
+    let bytes = base64::engine::general_purpose::STANDARD
+        .decode(raw)
+        .map_err(|e| format!("invalid base64: {e}"))?;
+    if bytes.is_empty() {
+        return Err("export payload is empty".into());
+    }
+    // Soft cap ~40 MiB decoded — share cards stay well under this.
+    if bytes.len() > 40 * 1024 * 1024 {
+        return Err("export payload too large".into());
+    }
+
+    let name = default_name.trim();
+    let name = if name.is_empty() {
+        "export.bin".to_string()
+    } else {
+        // Keep basename only (no path separators).
+        name.replace(['/', '\\'], "_")
+    };
+    let title = dialog_title
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .unwrap_or("Save file")
+        .to_string();
+    let filter = filter_name
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .unwrap_or("File")
+        .to_string();
+    let exts: Vec<String> = extensions
+        .unwrap_or_else(|| vec!["bin".into()])
+        .into_iter()
+        .map(|s| s.trim().trim_start_matches('.').to_string())
+        .filter(|s| !s.is_empty())
+        .collect();
+    let exts = if exts.is_empty() {
+        vec!["bin".into()]
+    } else {
+        exts
+    };
+
+    tauri::async_runtime::spawn_blocking(move || {
+        let ext_refs: Vec<&str> = exts.iter().map(String::as_str).collect();
+        let dest = rfd::FileDialog::new()
+            .set_title(&title)
+            .set_file_name(&name)
+            .add_filter(&filter, &ext_refs)
+            .save_file();
+
+        let Some(path) = dest else {
+            return Ok(serde_json::json!({
+                "ok": false,
+                "cancelled": true,
+                "path": serde_json::Value::Null,
+            }));
+        };
+
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent)
+                .map_err(|e| format!("create parent dir: {e}"))?;
+        }
+        std::fs::write(&path, &bytes).map_err(|e| format!("write file: {e}"))?;
+
+        let path_s = path.display().to_string();
+        #[cfg(target_os = "macos")]
+        {
+            let _ = crate::process_util::command("open")
+                .args(["-R", &path_s])
+                .status();
+        }
+        #[cfg(target_os = "windows")]
+        {
+            let _ = crate::process_util::command("explorer")
+                .args(["/select,", &path_s])
+                .status();
+        }
+        #[cfg(all(unix, not(target_os = "macos")))]
+        {
+            if let Some(parent) = path.parent() {
+                let _ = crate::process_util::command("xdg-open")
+                    .arg(parent)
+                    .spawn();
+            }
+        }
+
+        Ok(serde_json::json!({
+            "ok": true,
+            "cancelled": false,
+            "path": path_s,
+        }))
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 /// Save dialog + reveal. Always runs rfd/copy on a blocking thread so async
@@ -4787,6 +4904,52 @@ pub async fn clipboard_paste_image() -> Result<Option<PathEntry>, String> {
     tauri::async_runtime::spawn_blocking(|| clipboard_paste_image_sync())
         .await
         .map_err(|e| format!("clipboard task: {e}"))?
+}
+
+/// Write a PNG (base64, no data: prefix) to the OS clipboard as an image.
+/// WebView `navigator.clipboard.write(image/png)` is unreliable in Tauri.
+#[tauri::command]
+pub async fn clipboard_write_image(bytes_base64: String) -> Result<(), String> {
+    let raw = bytes_base64.trim().to_string();
+    if raw.is_empty() {
+        return Err("clipboard image payload is empty".into());
+    }
+    tauri::async_runtime::spawn_blocking(move || clipboard_write_image_sync(&raw))
+        .await
+        .map_err(|e| format!("clipboard write task: {e}"))?
+}
+
+fn clipboard_write_image_sync(bytes_base64: &str) -> Result<(), String> {
+    use arboard::{Clipboard, ImageData};
+    use base64::Engine;
+
+    let bytes = base64::engine::general_purpose::STANDARD
+        .decode(bytes_base64.trim())
+        .map_err(|e| format!("invalid base64: {e}"))?;
+    if bytes.is_empty() {
+        return Err("clipboard image payload is empty".into());
+    }
+    if bytes.len() > 40 * 1024 * 1024 {
+        return Err("clipboard image too large (max 40 MiB)".into());
+    }
+
+    let dyn_img = image::load_from_memory(&bytes)
+        .map_err(|e| format!("decode image: {e}"))?;
+    let rgba = dyn_img.to_rgba8();
+    let (w, h) = rgba.dimensions();
+    if w == 0 || h == 0 {
+        return Err("empty image".into());
+    }
+
+    let mut cb = Clipboard::new().map_err(|e| format!("clipboard open: {e}"))?;
+    let data = ImageData {
+        width: w as usize,
+        height: h as usize,
+        bytes: rgba.into_raw().into(),
+    };
+    cb.set_image(data)
+        .map_err(|e| format!("clipboard set image: {e}"))?;
+    Ok(())
 }
 
 fn clipboard_paste_image_sync() -> Result<Option<PathEntry>, String> {
