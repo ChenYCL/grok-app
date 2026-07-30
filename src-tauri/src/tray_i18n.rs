@@ -12,11 +12,55 @@ pub enum Locale {
 
 impl Locale {
     pub fn parse(raw: &str) -> Self {
-        match raw.trim().to_ascii_lowercase().as_str() {
+        let v = raw.trim().to_ascii_lowercase();
+        match v.as_str() {
+            "system" => Locale::from_system(),
             "en" | "en-us" | "en_us" | "en-gb" => Locale::En,
             "zh-tw" | "zh_tw" | "zh-hant" | "zh_hant" => Locale::ZhTw,
             "zh" | "zh-cn" | "zh_cn" | "zh-hans" | "zh_hans" => Locale::Zh,
             // Default product locale is en (matches AppSettings::default).
+            _ => Locale::En,
+        }
+    }
+
+    /// Best-effort map of OS language (LANG / LC_ALL / LC_MESSAGES) → catalog.
+    /// Mirrors frontend `resolveLocaleFromSystem` for tray copy when preference
+    /// is `"system"`.
+    pub fn from_system() -> Self {
+        let tag = std::env::var("LC_ALL")
+            .or_else(|_| std::env::var("LC_MESSAGES"))
+            .or_else(|_| std::env::var("LANG"))
+            .unwrap_or_default();
+        Self::from_lang_tag(&tag)
+    }
+
+    /// Map a BCP-47 / POSIX language tag to a tray locale (pure; testable).
+    pub fn from_lang_tag(raw: &str) -> Self {
+        let bare = raw
+            .trim()
+            .split('.')
+            .next()
+            .unwrap_or("")
+            .to_ascii_lowercase()
+            .replace('_', "-");
+        if bare.is_empty() {
+            return Locale::En;
+        }
+        let primary = bare.split('-').next().unwrap_or("");
+        if primary == "zh" {
+            let is_trad = bare.split('-').any(|p| {
+                p == "hant" || p == "tw" || p == "hk" || p == "mo"
+            });
+            return if is_trad { Locale::ZhTw } else { Locale::Zh };
+        }
+        if primary == "en" {
+            return Locale::En;
+        }
+        // Fall through to exact alias parse (without re-entering "system").
+        match bare.as_str() {
+            "zh-tw" | "zh-hant" => Locale::ZhTw,
+            "zh" | "zh-cn" | "zh-hans" => Locale::Zh,
+            "en" | "en-us" | "en-gb" => Locale::En,
             _ => Locale::En,
         }
     }
@@ -136,6 +180,18 @@ mod tests {
         assert_eq!(Locale::parse("zh-TW"), Locale::ZhTw);
         assert_eq!(Locale::parse("zh-Hant"), Locale::ZhTw);
         assert_eq!(strings(Locale::ZhTw).settings, "設定…");
+    }
+
+    #[test]
+    fn from_lang_tag_maps_system_tags() {
+        assert_eq!(Locale::from_lang_tag("en-US"), Locale::En);
+        assert_eq!(Locale::from_lang_tag("zh_CN.UTF-8"), Locale::Zh);
+        assert_eq!(Locale::from_lang_tag("zh-Hans-CN"), Locale::Zh);
+        assert_eq!(Locale::from_lang_tag("zh-TW"), Locale::ZhTw);
+        assert_eq!(Locale::from_lang_tag("zh-Hant-TW"), Locale::ZhTw);
+        assert_eq!(Locale::from_lang_tag("zh-HK"), Locale::ZhTw);
+        assert_eq!(Locale::from_lang_tag("fr_FR.UTF-8"), Locale::En);
+        assert_eq!(Locale::from_lang_tag(""), Locale::En);
     }
 
     #[test]

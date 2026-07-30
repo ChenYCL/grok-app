@@ -919,7 +919,8 @@ const en = {
   "settings.voiceKeepAgentsOnEndDesc":
     "If off, ending Live Voice may stop sessions started from voice.",
   "settings.language": "Language",
-  "settings.languageDesc": "App UI language",
+  "settings.languageDesc": "App UI language — follow the system, or lock a language",
+  "settings.languageSystem": "System",
   "store.quarantineNotice":
     "A damaged settings/sessions file was set aside ({path}). The app started with defaults for that file.",
   "settings.sessionDataMode": "Session data mode",
@@ -3675,7 +3676,8 @@ const zh: Record<MessageKey, string> = {
   "settings.voiceKeepAgentsOnEndDesc":
     "关闭后，结束实时语音可能会停止由语音发起的编码会话。",
   "settings.language": "语言",
-  "settings.languageDesc": "应用界面语言",
+  "settings.languageDesc": "应用界面语言 — 跟随系统，或固定一种语言",
+  "settings.languageSystem": "跟随系统",
   "store.quarantineNotice":
     "检测到损坏的配置/会话文件，已隔离备份（{path}）。该文件已按默认值启动。",
   "settings.sessionDataMode": "会话数据模式",

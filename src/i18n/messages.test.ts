@@ -2,7 +2,10 @@ import { describe, expect, it } from "vitest";
 import {
   createT,
   messages,
+  parseLocalePreference,
   resolveLocale,
+  resolveLocaleFromSystem,
+  resolveLocalePreference,
   t,
   type MessageKey,
 } from "./index";
@@ -71,5 +74,74 @@ describe("resolveLocale", () => {
     expect(resolveLocale("")).toBe("en");
     expect(resolveLocale(undefined)).toBe("en");
     expect(resolveLocale(null)).toBe("en");
+  });
+});
+
+describe("resolveLocaleFromSystem", () => {
+  it("maps English tags to en", () => {
+    expect(resolveLocaleFromSystem("en")).toBe("en");
+    expect(resolveLocaleFromSystem("en-US")).toBe("en");
+    expect(resolveLocaleFromSystem("en_GB")).toBe("en");
+    expect(resolveLocaleFromSystem("en-AU")).toBe("en");
+  });
+
+  it("maps Simplified Chinese tags to zh", () => {
+    expect(resolveLocaleFromSystem("zh")).toBe("zh");
+    expect(resolveLocaleFromSystem("zh-CN")).toBe("zh");
+    expect(resolveLocaleFromSystem("zh_CN")).toBe("zh");
+    expect(resolveLocaleFromSystem("zh-Hans")).toBe("zh");
+    expect(resolveLocaleFromSystem("zh-Hans-CN")).toBe("zh");
+    expect(resolveLocaleFromSystem("zh-SG")).toBe("zh");
+    expect(resolveLocaleFromSystem("zh_CN.UTF-8")).toBe("zh");
+  });
+
+  it("maps Traditional Chinese tags to zh-TW", () => {
+    expect(resolveLocaleFromSystem("zh-TW")).toBe("zh-TW");
+    expect(resolveLocaleFromSystem("zh_TW")).toBe("zh-TW");
+    expect(resolveLocaleFromSystem("zh-Hant")).toBe("zh-TW");
+    expect(resolveLocaleFromSystem("zh-Hant-TW")).toBe("zh-TW");
+    expect(resolveLocaleFromSystem("zh-HK")).toBe("zh-TW");
+    expect(resolveLocaleFromSystem("zh-MO")).toBe("zh-TW");
+    expect(resolveLocaleFromSystem("zh_TW.UTF-8")).toBe("zh-TW");
+  });
+
+  it("falls back to en for unknown or empty tags", () => {
+    expect(resolveLocaleFromSystem("fr")).toBe("en");
+    expect(resolveLocaleFromSystem("ja-JP")).toBe("en");
+    expect(resolveLocaleFromSystem("")).toBe("en");
+    expect(resolveLocaleFromSystem("   ")).toBe("en");
+    expect(resolveLocaleFromSystem(undefined)).toBe("en");
+    expect(resolveLocaleFromSystem(null)).toBe("en");
+  });
+});
+
+describe("parseLocalePreference / resolveLocalePreference", () => {
+  it("keeps system and canonical locales", () => {
+    expect(parseLocalePreference("system")).toBe("system");
+    expect(parseLocalePreference("System")).toBe("system");
+    expect(parseLocalePreference("en")).toBe("en");
+    expect(parseLocalePreference("zh")).toBe("zh");
+    expect(parseLocalePreference("zh-TW")).toBe("zh-TW");
+  });
+
+  it("normalizes aliases and invalid values", () => {
+    expect(parseLocalePreference("zh-cn")).toBe("zh");
+    expect(parseLocalePreference("zh-hant")).toBe("zh-TW");
+    expect(parseLocalePreference("fr")).toBe("en");
+    expect(parseLocalePreference("")).toBe("en");
+    expect(parseLocalePreference(undefined)).toBe("en");
+  });
+
+  it("resolves system preference via an explicit lang tag", () => {
+    expect(resolveLocalePreference("system", "zh-CN")).toBe("zh");
+    expect(resolveLocalePreference("system", "zh-TW")).toBe("zh-TW");
+    expect(resolveLocalePreference("system", "en-US")).toBe("en");
+    expect(resolveLocalePreference("system", "de")).toBe("en");
+  });
+
+  it("returns explicit preferences unchanged", () => {
+    expect(resolveLocalePreference("zh", "en-US")).toBe("zh");
+    expect(resolveLocalePreference("en", "zh-CN")).toBe("en");
+    expect(resolveLocalePreference("zh-TW", "en")).toBe("zh-TW");
   });
 });
