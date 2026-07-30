@@ -17,8 +17,17 @@ use crate::store;
 const MAX_LOG_FILES: usize = 12;
 const MAX_LOG_BYTES_EACH: u64 = 512 * 1024;
 
+/// Max bytes accepted for an optional stall-timeline snapshot from the UI.
+const MAX_STALL_TIMELINE_BYTES: usize = 256 * 1024;
+
 /// Build a support zip under the system temp dir (caller may move/reveal it).
-pub fn write_support_bundle(doctor_json: &str) -> Result<PathBuf, String> {
+///
+/// `stall_timeline_json` is an optional Reliability-center stall timeline snapshot
+/// (structured signals only). Always redacted; never required.
+pub fn write_support_bundle(
+    doctor_json: &str,
+    stall_timeline_json: Option<&str>,
+) -> Result<PathBuf, String> {
     let root = paths::app_data_root();
     let stamp = Utc::now().format("%Y%m%d-%H%M%S");
     let out = std::env::temp_dir().join(format!("grok-app-support-{stamp}.zip"));
@@ -52,12 +61,30 @@ pub fn write_support_bundle(doctor_json: &str) -> Result<PathBuf, String> {
         "dataRootExists": root.is_dir(),
         "sessionCount": store::load_sessions_index().len(),
         "projectCount": store::load_projects().len(),
+        "hasStallTimeline": stall_timeline_json
+            .map(|s| !s.trim().is_empty())
+            .unwrap_or(false),
     });
     let meta_s = serde_json::to_string_pretty(&meta).map_err(|e| e.to_string())?;
     zip.start_file("meta.json", opts)
         .map_err(|e| format!("zip meta: {e}"))?;
     zip.write_all(meta_s.as_bytes())
         .map_err(|e| format!("write meta: {e}"))?;
+
+    // 3b) Optional Reliability-center stall timeline (redacted structured snapshot)
+    if let Some(raw) = stall_timeline_json.map(str::trim).filter(|s| !s.is_empty()) {
+        let capped = if raw.len() > MAX_STALL_TIMELINE_BYTES {
+            // Prefer keeping a truncated valid-ish prefix over dropping entirely.
+            &raw[..MAX_STALL_TIMELINE_BYTES]
+        } else {
+            raw
+        };
+        let scrubbed = store::redact_text(capped);
+        zip.start_file("stall-timeline.json", opts)
+            .map_err(|e| format!("zip stall-timeline: {e}"))?;
+        zip.write_all(scrubbed.as_bytes())
+            .map_err(|e| format!("write stall-timeline: {e}"))?;
+    }
 
     // 4) Recent log files (capped + redacted)
     let log_dir = root.join("logs");
@@ -102,6 +129,7 @@ Contents:\n\
 - doctor.json — health checks (paths only, no keys)\n\
 - settings.json — app settings with secrets redacted\n\
 - meta.json — app/OS versions and counts\n\
+- stall-timeline.json — optional Reliability-center stall snapshot (redacted)\n\
 - logs/ — recent log files (redacted, size-capped)\n\
 \n\
 This archive never includes secrets.json or account auth snapshots.\n\
@@ -724,13 +752,77 @@ mod tests {
         fs::write(tmp.join("secrets.json"), r#"{"officialApiKey":"sk-secret"}"#).unwrap();
 
         std::env::set_var("GROK_APP_HOME", &tmp);
-        let zip_path = write_support_bundle(r#"{"summary":{"ok":1}}"#).expect("bundle");
+        let zip_path = write_support_bundle(r#"{"summary":{"ok":1}}"#, None).expect("bundle");
         assert!(zip_path.is_file());
         let bytes = fs::read(&zip_path).unwrap();
         // secrets.json must not appear as a zip entry name / content
         let as_str = String::from_utf8_lossy(&bytes);
         assert!(!as_str.contains("secrets.json"));
         assert!(!as_str.contains("sk-secret"));
+        assert!(!as_str.contains("stall-timeline.json"));
+        let _ = fs::remove_file(&zip_path);
+        std::env::remove_var("GROK_APP_HOME");
+        let _ = fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn support_bundle_includes_redacted_stall_timeline() {
+        let _g = crate::paths::APP_HOME_ENV_LOCK.lock().unwrap();
+        let tmp = std::env::temp_dir().join(format!(
+            "grok-app-bundle-stall-{}",
+            std::process::id()
+        ));
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(&tmp).unwrap();
+        fs::write(tmp.join("settings.json"), r#"{"locale":"en"}"#).unwrap();
+        // Present so redact_text can scrub known key material if it leaks into the snapshot.
+        fs::write(
+            tmp.join("secrets.json"),
+            r#"{"officialApiKey":"sk-stall-secret-key-value"}"#,
+        )
+        .unwrap();
+
+        std::env::set_var("GROK_APP_HOME", &tmp);
+        let timeline = r#"{
+  "kind": "stall_timeline",
+  "source": "reliability_center",
+  "count": 1,
+  "signals": [{
+    "id": "evt:hard_end:s1:1",
+    "sessionId": "s1",
+    "title": "Long run",
+    "kind": "hard_end",
+    "stallSeconds": 90,
+    "tier": "hard",
+    "reason": "stall sk-stall-secret-key-value",
+    "at": 1
+  }]
+}"#;
+        let zip_path =
+            write_support_bundle(r#"{"summary":{"ok":1}}"#, Some(timeline)).expect("bundle");
+        assert!(zip_path.is_file());
+        let bytes = fs::read(&zip_path).unwrap();
+        let as_str = String::from_utf8_lossy(&bytes);
+        // Entry name lives in the central directory (uncompressed).
+        assert!(as_str.contains("stall-timeline.json"));
+        assert!(!as_str.contains("secrets.json"));
+
+        // Deflated payload: open the archive and read the entry.
+        let file = fs::File::open(&zip_path).unwrap();
+        let mut archive = zip::ZipArchive::new(file).expect("open zip");
+        let mut entry = archive
+            .by_name("stall-timeline.json")
+            .expect("stall-timeline entry");
+        let mut body = String::new();
+        entry.read_to_string(&mut body).expect("read timeline");
+        assert!(body.contains("stall_timeline") || body.contains("hard_end"));
+        assert!(body.contains("Long run"));
+        assert!(
+            !body.contains("sk-stall-secret-key-value"),
+            "secret must be redacted from stall timeline: {body}"
+        );
+        assert!(body.contains("[REDACTED]") || !body.contains("sk-stall"));
+
         let _ = fs::remove_file(&zip_path);
         std::env::remove_var("GROK_APP_HOME");
         let _ = fs::remove_dir_all(&tmp);

@@ -415,3 +415,125 @@ export function buildReliabilityCenter(opts: {
     maxErrors: opts.maxErrors,
   });
 }
+
+/** Cap for support-bundle stall timeline rows (UI view is smaller; allow a bit more headroom). */
+export const STALL_TIMELINE_SNAPSHOT_MAX = 40;
+/** Cap title/reason fields so the zip never carries multi-kb blobs. */
+export const STALL_TIMELINE_FIELD_MAX = 200;
+
+/** One row in the support-bundle stall timeline (known fields only). */
+export type StallTimelineSnapshotSignal = {
+  id: string;
+  sessionId: string | null;
+  title: string | null;
+  kind: ReliabilityStallKind;
+  stallSeconds: number | null;
+  tier: string | null;
+  reason: string | null;
+  at: number;
+};
+
+/**
+ * Redacted stall timeline for support zip export.
+ * Never includes secrets, log bodies, or free-form diagnostic dumps —
+ * only structured stall fields already shown in Reliability center.
+ */
+export type StallTimelineSnapshot = {
+  kind: "stall_timeline";
+  generatedAt: string;
+  source: "reliability_center";
+  count: number;
+  signals: StallTimelineSnapshotSignal[];
+};
+
+const STALL_TIMELINE_KINDS = new Set<ReliabilityStallKind>([
+  "active",
+  "hard_end",
+  "terminal",
+  "end_of_turn",
+]);
+
+function capStallField(raw: unknown, max: number = STALL_TIMELINE_FIELD_MAX): string | null {
+  if (typeof raw !== "string") return null;
+  const t = raw.replace(/\u0000/g, "").trim();
+  if (!t) return null;
+  return t.slice(0, Math.max(0, max));
+}
+
+/**
+ * Build a support-bundle-ready stall timeline from Reliability center signals.
+ * Drops unknown kinds / empty ids; caps title/reason/tier; never invents data.
+ */
+export function buildStallTimelineSnapshot(
+  signals: readonly ReliabilityStallSignal[],
+  opts?: {
+    nowMs?: number;
+    max?: number;
+    generatedAt?: string;
+  },
+): StallTimelineSnapshot {
+  const max = Math.max(
+    0,
+    Math.floor(opts?.max ?? STALL_TIMELINE_SNAPSHOT_MAX),
+  );
+  const generatedAt =
+    opts?.generatedAt ??
+    new Date(opts?.nowMs ?? Date.now()).toISOString();
+
+  const out: StallTimelineSnapshotSignal[] = [];
+  const seen = new Set<string>();
+  for (const s of signals) {
+    if (!s || typeof s !== "object") continue;
+    const kind = s.kind;
+    if (!STALL_TIMELINE_KINDS.has(kind)) continue;
+    const id = typeof s.id === "string" ? s.id.trim() : "";
+    if (!id || seen.has(id)) continue;
+    seen.add(id);
+
+    const sidRaw = s.sessionId;
+    const sessionId =
+      typeof sidRaw === "string"
+        ? sidRaw.trim() || null
+        : sidRaw == null
+          ? null
+          : null;
+
+    let stallSeconds: number | null = null;
+    if (typeof s.stallSeconds === "number" && Number.isFinite(s.stallSeconds)) {
+      const n = Math.round(s.stallSeconds);
+      if (n > 0) stallSeconds = n;
+    }
+
+    const at =
+      typeof s.at === "number" && Number.isFinite(s.at) && s.at >= 0
+        ? Math.floor(s.at)
+        : 0;
+
+    out.push({
+      id: id.slice(0, STALL_TIMELINE_FIELD_MAX),
+      sessionId,
+      title: capStallField(s.title),
+      kind,
+      stallSeconds,
+      tier: capStallField(s.tier, 64),
+      reason: capStallField(s.reason, 120) ?? "stall",
+      at,
+    });
+    if (out.length >= max) break;
+  }
+
+  return {
+    kind: "stall_timeline",
+    generatedAt,
+    source: "reliability_center",
+    count: out.length,
+    signals: out,
+  };
+}
+
+/** JSON string for Host `export_support_bundle` (pretty, known fields only). */
+export function serializeStallTimelineSnapshot(
+  snapshot: StallTimelineSnapshot,
+): string {
+  return JSON.stringify(snapshot, null, 2);
+}

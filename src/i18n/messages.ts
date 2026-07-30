@@ -2041,6 +2041,8 @@ const en = {
   "reliability.openFromSettings": "Open reliability center",
   "reliability.settingsDesc":
     "Aggregate busy chats, stall signals, and recent error cards; export support zip.",
+  "reliability.supportZipHint":
+    "Redacted Doctor report, recent logs, and stall timeline snapshot (no secrets).",
 
   // Connection status pill
   "conn.idle": "Idle",
@@ -5017,6 +5019,8 @@ const zh: Record<MessageKey, string> = {
   "reliability.openFromSettings": "打开可靠性中心",
   "reliability.settingsDesc":
     "汇总忙碌会话、卡顿信号与最近错误卡片；可导出支持包。",
+  "reliability.supportZipHint":
+    "脱敏后的 Doctor 报告、近期日志与卡顿时间线快照（不含密钥）。",
 
   "conn.idle": "空闲",
   "conn.connecting": "连接中",

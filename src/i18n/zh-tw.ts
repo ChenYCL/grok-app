@@ -1926,6 +1926,8 @@ export const zhTW: Record<MessageKey, string> = {
   "reliability.openFromSettings": "開啟可靠性中心",
   "reliability.settingsDesc":
     "彙總忙碌工作階段、停滯訊號與最近錯誤卡片；可匯出支援包。",
+  "reliability.supportZipHint":
+    "脫敏後的 Doctor 報告、近期日誌與停滯時間線快照（不含金鑰）。",
   "doctor.advanced": "進階",
   "doctor.cliDoctor": "Grok Build CLI doctor",
   "doctor.cliDoctorHint": "來自 `grok doctor --json`（終端機、剪貼簿、色彩）。",

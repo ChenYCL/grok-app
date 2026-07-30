@@ -1814,11 +1814,14 @@ fn truncate_cli_err(s: &str, max: usize) -> String {
     format!("{head}…")
 }
 
-/// Write a redacted support zip (Doctor JSON + logs) and return its path.
+/// Write a redacted support zip (Doctor JSON + logs + optional stall timeline) and return its path.
 /// Optionally opens a save dialog so the user can pick the destination.
+///
+/// `stall_timeline_json` is optional Reliability-center snapshot JSON (structured only).
 #[tauri::command]
 pub async fn export_support_bundle(
     doctor_json: Option<String>,
+    stall_timeline_json: Option<String>,
 ) -> Result<serde_json::Value, String> {
     let doctor = if let Some(j) = doctor_json.filter(|s| !s.trim().is_empty()) {
         j
@@ -1828,9 +1831,13 @@ pub async fn export_support_bundle(
         serde_json::to_string_pretty(&report).map_err(|e| e.to_string())?
     };
 
+    let stall = stall_timeline_json
+        .filter(|s| !s.trim().is_empty())
+        .map(|s| s.to_string());
+
     // Zip + native save dialog must not block the async runtime (macOS rfd hangs).
     let tmp = tauri::async_runtime::spawn_blocking(move || {
-        crate::support_bundle::write_support_bundle(&doctor)
+        crate::support_bundle::write_support_bundle(&doctor, stall.as_deref())
     })
     .await
     .map_err(|e| e.to_string())??;

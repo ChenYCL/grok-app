@@ -13,11 +13,13 @@ import {
 } from "@/components/icons";
 import { createT, type Locale, type MessageKey } from "@/i18n";
 import * as api from "@/lib/api";
-import type {
-  ReliabilityBusySession,
-  ReliabilityCenterView,
-  ReliabilityErrorEntry,
-  ReliabilityStallSignal,
+import {
+  buildStallTimelineSnapshot,
+  serializeStallTimelineSnapshot,
+  type ReliabilityBusySession,
+  type ReliabilityCenterView,
+  type ReliabilityErrorEntry,
+  type ReliabilityStallSignal,
 } from "@/lib/reliabilityCenter";
 
 export type ReliabilityCenterModalProps = {
@@ -220,14 +222,17 @@ export function ReliabilityCenterModal({
     setStatusMsg(null);
     setErrorMsg(null);
     try {
-      const res = await api.exportSupportBundle(null);
+      // Structured stall timeline only (titles/kinds/seconds) — host redacts secrets.
+      const timeline = buildStallTimelineSnapshot(view.stalls.signals);
+      const stallJson = serializeStallTimelineSnapshot(timeline);
+      const res = await api.exportSupportBundle(null, stallJson);
       setStatusMsg(`${t("doctor.supportZipDone")}: ${res.path}`);
     } catch (e) {
       setErrorMsg(`${t("doctor.supportZipFail")}: ${String(e)}`);
     } finally {
       setBusy(null);
     }
-  }, [t]);
+  }, [t, view.stalls.signals]);
 
   const openDoctor = () => {
     onClose();
@@ -362,7 +367,7 @@ export function ReliabilityCenterModal({
             className="btn btn--ghost btn--sm"
             disabled={!!busy}
             onClick={() => void onSupportZip()}
-            title={t("doctor.supportZipHint")}
+            title={t("reliability.supportZipHint")}
           >
             {busy === "zip" ? "…" : t("doctor.supportZip")}
           </button>

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   assembleReliabilityCenter,
   buildReliabilityCenter,
+  buildStallTimelineSnapshot,
   collectLiveStallSignals,
   collectReliabilityBusySessions,
   mergeErrorEntries,
@@ -9,6 +10,8 @@ import {
   prependReliabilityRing,
   reliabilityErrorFromDeck,
   reliabilityStallFromEvent,
+  serializeStallTimelineSnapshot,
+  STALL_TIMELINE_FIELD_MAX,
   type ReliabilityErrorEntry,
   type ReliabilityStallSignal,
 } from "./reliabilityCenter";
@@ -279,5 +282,113 @@ describe("buildReliabilityCenter", () => {
       sessions: [{ id: "x", title: "Idle" }],
     });
     expect(view.empty).toBe(true);
+  });
+});
+
+describe("buildStallTimelineSnapshot", () => {
+  it("builds a redacted support-bundle snapshot from stall signals", () => {
+    const signals: ReliabilityStallSignal[] = [
+      reliabilityStallFromEvent({
+        kind: "hard_end",
+        sessionId: "s1",
+        title: "Long run",
+        stallSeconds: 120,
+        tier: "hard",
+        reason: "stall",
+        at: 1000,
+      }),
+      {
+        id: "active:s2:45",
+        sessionId: "s2",
+        title: "Soft quiet",
+        kind: "active",
+        stallSeconds: 45,
+        tier: "soft",
+        reason: "stall",
+        at: 2000,
+      },
+    ];
+    const snap = buildStallTimelineSnapshot(signals, {
+      generatedAt: "2026-07-30T12:00:00.000Z",
+    });
+    expect(snap.kind).toBe("stall_timeline");
+    expect(snap.source).toBe("reliability_center");
+    expect(snap.generatedAt).toBe("2026-07-30T12:00:00.000Z");
+    expect(snap.count).toBe(2);
+    expect(snap.signals).toHaveLength(2);
+    expect(snap.signals[0]).toMatchObject({
+      sessionId: "s1",
+      title: "Long run",
+      kind: "hard_end",
+      stallSeconds: 120,
+      tier: "hard",
+      reason: "stall",
+      at: 1000,
+    });
+    // Only known keys — no accidental secret-bearing fields.
+    for (const row of snap.signals) {
+      expect(Object.keys(row).sort()).toEqual(
+        [
+          "at",
+          "id",
+          "kind",
+          "reason",
+          "sessionId",
+          "stallSeconds",
+          "tier",
+          "title",
+        ].sort(),
+      );
+    }
+    const json = serializeStallTimelineSnapshot(snap);
+    expect(json).toContain('"kind": "stall_timeline"');
+    expect(json).not.toContain("sk-");
+  });
+
+  it("caps title length and drops invalid kinds / duplicate ids", () => {
+    const long = "t".repeat(STALL_TIMELINE_FIELD_MAX + 40);
+    const signals = [
+      reliabilityStallFromEvent({
+        kind: "terminal",
+        sessionId: "a",
+        title: long,
+        at: 1,
+      }),
+      reliabilityStallFromEvent({
+        kind: "terminal",
+        sessionId: "a",
+        title: "dup-id-will-lose",
+        at: 1,
+      }),
+      {
+        id: "bad",
+        sessionId: null,
+        title: null,
+        kind: "not_a_kind" as ReliabilityStallSignal["kind"],
+        stallSeconds: null,
+        tier: null,
+        reason: null,
+        at: 2,
+      },
+    ];
+    // Force same id on second row
+    signals[1] = { ...signals[1]!, id: signals[0]!.id };
+    const snap = buildStallTimelineSnapshot(signals, { max: 10 });
+    expect(snap.count).toBe(1);
+    expect(snap.signals[0]!.title!.length).toBe(STALL_TIMELINE_FIELD_MAX);
+  });
+
+  it("honors max and empty input", () => {
+    expect(buildStallTimelineSnapshot([], { max: 5 }).count).toBe(0);
+    const many = Array.from({ length: 8 }, (_, i) =>
+      reliabilityStallFromEvent({
+        kind: "hard_end",
+        sessionId: `s${i}`,
+        at: i + 1,
+      }),
+    );
+    expect(buildStallTimelineSnapshot(many, { max: 3 }).signals).toHaveLength(
+      3,
+    );
   });
 });

@@ -1499,10 +1499,20 @@ export interface SupportBundleResult {
   sizeBytes?: number;
 }
 
-/** Build a redacted support zip (Doctor + logs) and save via native dialog. */
-export async function exportSupportBundle(doctorJson?: string | null) {
+/**
+ * Build a redacted support zip (Doctor + logs + optional stall timeline)
+ * and save via native dialog.
+ *
+ * `stallTimelineJson` is optional Reliability-center snapshot JSON
+ * (structured stall signals only; host redacts secrets).
+ */
+export async function exportSupportBundle(
+  doctorJson?: string | null,
+  stallTimelineJson?: string | null,
+) {
   return invoke<SupportBundleResult>("export_support_bundle", {
     doctorJson: doctorJson ?? null,
+    stallTimelineJson: stallTimelineJson ?? null,
   });
 }
 
