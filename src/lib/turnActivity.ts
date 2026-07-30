@@ -38,6 +38,8 @@ export interface TurnActivityTool {
   isContext: boolean;
   longRunning: boolean;
   updatedAt?: string;
+  /** Parent tool call id when known (subagent nesting). */
+  parentId?: string;
 }
 
 export type TurnActivitySegment =
@@ -124,6 +126,7 @@ export function activityToolFromMessage(
     detail,
     path,
   });
+  const parentId = (m.toolParentId || "").trim() || undefined;
   return {
     id,
     name,
@@ -137,6 +140,7 @@ export function activityToolFromMessage(
     isContext: isContextToolKind(kind, name),
     longRunning: isLongRunningToolKind(kind),
     updatedAt: m.createdAt,
+    ...(parentId ? { parentId } : {}),
   };
 }
 
@@ -235,6 +239,7 @@ export function tasksFromTurnActivity(
     path: t.path,
     updatedAt: t.updatedAt,
     longRunning: t.longRunning,
+    ...(t.parentId ? { parentId: t.parentId } : {}),
   }));
 }
 

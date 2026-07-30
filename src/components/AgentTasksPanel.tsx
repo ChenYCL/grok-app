@@ -4,17 +4,24 @@
  *
  * No separate ACP task API; tools via collectSessionTasks / turnActivity.
  * Cross-session rows are UI projections only (jump / stop).
+ * Nested tools under spawn_subagent render as an indented tree when parent
+ * linkage (explicit or inferred) is available.
  */
 
 import { useMemo, useState } from "react";
 import type { MessageKey } from "@/i18n";
 import type { ChatMessage } from "@/lib/session";
 import {
+  buildTaskTree,
   collectSessionTasks,
   countRunningTasks,
   filterSessionTasks,
+  filterTaskTree,
   taskStatusMessageKey,
+  taskTreeHasNesting,
+  taskTreeHasRunning,
   type AgentTask,
+  type TaskTreeNode,
 } from "@/lib/sessionTasks";
 import {
   buildTurnActivity,
@@ -24,7 +31,12 @@ import {
   stoppableActivitySessions,
   type ActivitySessionRow,
 } from "@/lib/agentActivity";
-import { IconClose, IconList } from "@/components/icons";
+import {
+  IconChevronDown,
+  IconChevronRight,
+  IconClose,
+  IconList,
+} from "@/components/icons";
 
 type TFn = (key: MessageKey, vars?: Record<string, string | number>) => string;
 
@@ -47,36 +59,89 @@ export type AgentTasksPanelProps = {
 function TaskRow({
   task,
   t,
+  depth = 0,
+  hasChildren = false,
+  childrenOpen = true,
+  onToggleChildren,
+  showTreeChrome = false,
 }: {
   task: AgentTask;
   t: TFn;
+  depth?: number;
+  hasChildren?: boolean;
+  childrenOpen?: boolean;
+  onToggleChildren?: () => void;
+  /** When false, omit tree toggle/spacer so flat lists match pre-tree layout. */
+  showTreeChrome?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const statusKey = taskStatusMessageKey(task.status);
+  const pad =
+    showTreeChrome && depth > 0
+      ? { paddingLeft: 8 + depth * 14 }
+      : undefined;
   return (
     <li
       className={
         "agent-tasks__row" +
         (task.status === "running" ? " is-running" : "") +
-        (task.longRunning ? " is-long" : "")
+        (task.longRunning ? " is-long" : "") +
+        (showTreeChrome && depth > 0 ? " is-child" : "")
       }
+      style={pad}
     >
-      <button
-        type="button"
-        className="agent-tasks__row-main"
-        onClick={() => setOpen((v) => !v)}
-        aria-expanded={open}
-        aria-label={open ? t("tasks.collapse") : t("tasks.expand")}
-      >
-        <span
-          className={`agent-tasks__dot agent-tasks__dot--${task.status}`}
-          aria-hidden
-        />
-        <span className="agent-tasks__name" title={task.name}>
-          {task.name}
-        </span>
-        <span className="agent-tasks__status">{t(statusKey)}</span>
-      </button>
+      <div className="agent-tasks__row-line">
+        {showTreeChrome ? (
+          hasChildren ? (
+            <button
+              type="button"
+              className="agent-tasks__tree-toggle"
+              onClick={(e) => {
+                e.stopPropagation();
+                onToggleChildren?.();
+              }}
+              aria-expanded={childrenOpen}
+              aria-label={
+                childrenOpen
+                  ? t("tasks.collapseChildren")
+                  : t("tasks.expandChildren")
+              }
+              title={
+                childrenOpen
+                  ? t("tasks.collapseChildren")
+                  : t("tasks.expandChildren")
+              }
+            >
+              {childrenOpen ? (
+                <IconChevronDown size={14} />
+              ) : (
+                <IconChevronRight size={14} />
+              )}
+            </button>
+          ) : (
+            <span className="agent-tasks__tree-spacer" aria-hidden />
+          )
+        ) : null}
+        <button
+          type="button"
+          className={
+            "agent-tasks__row-main" +
+            (showTreeChrome ? "" : " agent-tasks__row-main--flat")
+          }
+          onClick={() => setOpen((v) => !v)}
+          aria-expanded={open}
+          aria-label={open ? t("tasks.collapse") : t("tasks.expand")}
+        >
+          <span
+            className={`agent-tasks__dot agent-tasks__dot--${task.status}`}
+            aria-hidden
+          />
+          <span className="agent-tasks__name" title={task.name}>
+            {task.name}
+          </span>
+          <span className="agent-tasks__status">{t(statusKey)}</span>
+        </button>
+      </div>
       {open ? (
         <div className="agent-tasks__detail">
           {task.kind ? (
@@ -101,6 +166,14 @@ function TaskRow({
               </code>
             </div>
           ) : null}
+          {task.parentId ? (
+            <div className="agent-tasks__meta">
+              <span className="agent-tasks__meta-k">{t("tasks.parent")}</span>
+              <code className="agent-tasks__meta-v" title={task.parentId}>
+                {task.parentId}
+              </code>
+            </div>
+          ) : null}
           <div className="agent-tasks__meta">
             <span className="agent-tasks__meta-k">{t("tasks.id")}</span>
             <code className="agent-tasks__meta-v">{task.id}</code>
@@ -114,6 +187,45 @@ function TaskRow({
         </div>
       ) : null}
     </li>
+  );
+}
+
+function TaskTreeItem({
+  node,
+  t,
+  depth = 0,
+  showTreeChrome = false,
+}: {
+  node: TaskTreeNode;
+  t: TFn;
+  depth?: number;
+  showTreeChrome?: boolean;
+}) {
+  const hasChildren = node.children.length > 0;
+  const [childrenOpen, setChildrenOpen] = useState(true);
+  return (
+    <>
+      <TaskRow
+        task={node.task}
+        t={t}
+        depth={depth}
+        hasChildren={hasChildren}
+        childrenOpen={childrenOpen}
+        onToggleChildren={() => setChildrenOpen((v) => !v)}
+        showTreeChrome={showTreeChrome}
+      />
+      {hasChildren && childrenOpen
+        ? node.children.map((child) => (
+            <TaskTreeItem
+              key={child.task.id}
+              node={child}
+              t={t}
+              depth={depth + 1}
+              showTreeChrome={showTreeChrome}
+            />
+          ))
+        : null}
+    </>
   );
 }
 
@@ -224,9 +336,20 @@ export function AgentTasksPanel({
     () => filterSessionTasks(tasks, query),
     [tasks, query],
   );
+  const tree = useMemo(() => {
+    // Build from full list so parent linkage survives filter, then filter tree.
+    const full = buildTaskTree(tasks);
+    return filterTaskTree(full, query);
+  }, [tasks, query]);
   const running = useMemo(() => countRunningTasks(filtered), [filtered]);
-  const active = filtered.filter((x) => x.status === "running");
-  const recent = filtered.filter((x) => x.status !== "running");
+  const activeTree = useMemo(
+    () => tree.filter((n) => taskTreeHasRunning(n)),
+    [tree],
+  );
+  const recentTree = useMemo(
+    () => tree.filter((n) => !taskTreeHasRunning(n)),
+    [tree],
+  );
   const otherSessions = useMemo(
     () => activitySessions.filter((r) => !r.isCurrent),
     [activitySessions],
@@ -238,6 +361,8 @@ export function AgentTasksPanel({
   const totalBusy = running + otherSessions.length;
   const showStopAll =
     !!onStopAllSessions && stoppableSessions.length > 0;
+  const hasTaskRows = activeTree.length > 0 || recentTree.length > 0;
+  const showTreeChrome = taskTreeHasNesting(tree);
 
   return (
     <section className="agent-tasks" aria-label={t("tasks.title")}>
@@ -298,7 +423,7 @@ export function AgentTasksPanel({
         />
       </div>
 
-      {filtered.length === 0 && otherSessions.length === 0 ? (
+      {!hasTaskRows && otherSessions.length === 0 ? (
         <div className="agent-tasks__empty">
           <p className="agent-tasks__empty-title">{t("tasks.empty")}</p>
           <p className="agent-tasks__empty-hint">{t("tasks.emptyHint")}</p>
@@ -323,26 +448,36 @@ export function AgentTasksPanel({
               </ul>
             </div>
           ) : null}
-          {active.length > 0 ? (
+          {activeTree.length > 0 ? (
             <div className="agent-tasks__section">
               <h3 className="agent-tasks__section-title">
                 {t("tasks.section.active")}
               </h3>
               <ul className="agent-tasks__list">
-                {active.map((task) => (
-                  <TaskRow key={task.id} task={task} t={t} />
+                {activeTree.map((node) => (
+                  <TaskTreeItem
+                    key={node.task.id}
+                    node={node}
+                    t={t}
+                    showTreeChrome={showTreeChrome}
+                  />
                 ))}
               </ul>
             </div>
           ) : null}
-          {recent.length > 0 ? (
+          {recentTree.length > 0 ? (
             <div className="agent-tasks__section">
               <h3 className="agent-tasks__section-title">
                 {t("tasks.section.recent")}
               </h3>
               <ul className="agent-tasks__list">
-                {recent.map((task) => (
-                  <TaskRow key={task.id} task={task} t={t} />
+                {recentTree.map((node) => (
+                  <TaskTreeItem
+                    key={node.task.id}
+                    node={node}
+                    t={t}
+                    showTreeChrome={showTreeChrome}
+                  />
                 ))}
               </ul>
             </div>

@@ -13,6 +13,7 @@ See `docs/llm-wiki/release.md`.
 
 ### Added
 
+- **Tasks panel tree**: nest tool activity under `spawn_subagent` (explicit `parentId` / `toolParentId` when present; otherwise infer tools after a long-running spawn until the next top-level spawn). Expand/collapse children; flat list when no parents
 - **Per-session mute** for desktop notifications (context menu Mute / Unmute; sidebar muted icon; in-app toasts still show)
 - **Desktop notification click** opens the session that fired turn-done / permission / ask_user
 - **Send queue Edit** for follow-up items (GlassModal; empty text blocked unless attachments remain)
@@ -35,6 +36,7 @@ See `docs/llm-wiki/release.md`.
 
 **中文 · 新增**
 
+- 任务面板树形展示：子代理（spawn_subagent）下嵌套工具；无父子时仍为扁平列表
 - 按会话静音桌面通知（菜单 Mute/Unmute；侧栏静音图标；应用内 Toast 仍显示）
 - 通知点击跳转会话；发送队列可编辑；上下文 System/Tools/History；Compact 增强
 - Worktree 会话徽章与管理；Fork 可选恢复代码；沙箱项目覆盖
