@@ -34,6 +34,9 @@ See `docs/llm-wiki/release.md`.
 #### Tasks / system
 - Tasks tree · Stop-all skip-confirm · Plan history · Mirror write guard · Reliability / Leader / Memory / MCP / CLI notice (prior)
 
+#### Permissions / CLI
+- **CLI `--permission-mode` alignment**: pure App policy / YOLO / plan-mode map (`default` · `acceptEdits` · `auto` · `dontAsk` · `bypassPermissions` · `plan`); spawn pins top-level `--permission-mode` (+ agent `--always-approve` for YOLO); Settings shows CLI label + advanced mode selector; product **Auto** policy
+
 ### Fixed
 
 - CLI install missing SHA-256 (#227) · app.css rewind/fork selectors (#259)
@@ -43,6 +46,7 @@ See `docs/llm-wiki/release.md`.
 - **输入/对话**：队列、高度、提示历史、宽度字号、工具折叠/过滤、重生选模型、字数、变更芯片、工作区 dirty 芯片、结构化 JSON 回复面板、上下文用量/费用粗估
 - **会话/侧栏**：复制 vs 分叉、恢复并还原代码（干净 worktree）、便签、静音、未读点、HTML 导出、按天归档、日期分组、项目色、j/k 导航
 - **外观/壳**：主题定时、跟随系统语言、忙碌退出确认、托盘角标
+- **权限/CLI**：对齐 `--permission-mode` 映射与 spawn；设置页展示 CLI 标签与高级选择；新增 **Auto** 策略
 
 **中文 · 修复**
 

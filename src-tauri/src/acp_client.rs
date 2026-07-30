@@ -243,6 +243,8 @@ pub struct SpawnOptions {
     pub effort: Option<String>,
     /// App permission policy id (ask / accept_edits / …).
     pub permission_policy: Option<String>,
+    /// Product session mode (`agent` | `plan` | `ask`) — plan maps to CLI `--permission-mode plan`.
+    pub product_mode: Option<String>,
     /// Effective OS sandbox profile (`off` / `workspace` / …).
     /// When set, overrides `AppSettings.sandbox_profile` for this spawn.
     pub sandbox_profile: Option<String>,
@@ -267,12 +269,15 @@ pub fn plugin_dir_spawn_flags(dirs: &[String]) -> Vec<String> {
     out
 }
 
-/// Map App policy → CLI `--permission-mode` value.
+/// Map App policy → CLI `--permission-mode` value (policy only; no plan/YOLO override).
+///
+/// Official CLI enum: `default | acceptEdits | auto | dontAsk | bypassPermissions | plan`.
 pub fn cli_permission_mode(policy: &str) -> &'static str {
     use crate::permission::PermissionPolicy;
     match PermissionPolicy::parse(policy) {
         PermissionPolicy::AcceptEdits => "acceptEdits",
         PermissionPolicy::DontAsk => "dontAsk",
+        PermissionPolicy::Auto => "auto",
         PermissionPolicy::AlwaysApprove => "bypassPermissions",
         // Host session allow-list is applied in-process; CLI still asks.
         PermissionPolicy::AllowForSession
@@ -280,6 +285,41 @@ pub fn cli_permission_mode(policy: &str) -> &'static str {
         | PermissionPolicy::Deny
         | PermissionPolicy::Ask => "default",
     }
+}
+
+/// Resolve effective CLI `--permission-mode` from App policy + product session mode.
+///
+/// Precedence (Grok Build): YOLO / `always_approve` → `bypassPermissions`;
+/// product `plan` mode → `plan`; else policy table.
+pub fn resolve_cli_permission_mode(policy: &str, product_mode: Option<&str>) -> &'static str {
+    use crate::permission::PermissionPolicy;
+    if matches!(
+        PermissionPolicy::parse(policy),
+        PermissionPolicy::AlwaysApprove
+    ) {
+        return "bypassPermissions";
+    }
+    if product_mode
+        .map(|m| m.trim().eq_ignore_ascii_case("plan"))
+        .unwrap_or(false)
+    {
+        return "plan";
+    }
+    cli_permission_mode(policy)
+}
+
+/// Top-level spawn args: `["--permission-mode", "<mode>"]`.
+pub fn permission_mode_spawn_flags(
+    policy: &str,
+    product_mode: Option<&str>,
+) -> [String; 2] {
+    let mode = resolve_cli_permission_mode(policy, product_mode);
+    ["--permission-mode".into(), mode.into()]
+}
+
+/// Whether agent should also get `--always-approve` (YOLO / bypassPermissions).
+pub fn should_pass_always_approve(policy: &str, product_mode: Option<&str>) -> bool {
+    resolve_cli_permission_mode(policy, product_mode) == "bypassPermissions"
 }
 
 /// Pure spawn plan for the OS-level sandbox profile.
@@ -472,10 +512,10 @@ impl AcpClient {
         // so nested tools (npx, node, git) resolve when the agent shells out.
         //
         // Flag placement (CLI 0.2.x):
-        //   `grok agent [OPTIONS] stdio`  — model / effort / always-approve are **agent** options
+        //   top-level: `grok --no-auto-update --permission-mode <MODE> [--sandbox …] agent …`
+        //   agent opts: `--model` / `--reasoning-effort` / `--always-approve` before `stdio`
         //   Flags after `stdio` are rejected (`unexpected argument '--model'`).
-        //   `--permission-mode` is top-level `grok` only — not accepted by `grok agent`;
-        //   Host enforces permission policy on session/request_permission; YOLO uses --always-approve.
+        //   `--permission-mode` is top-level `grok` only — not under `grok agent`.
         let grok_home = crate::paths::resolve_agent_grok_home(session_data_mode);
         let _ = std::fs::create_dir_all(&grok_home);
         if session_data_mode != "shared" {
@@ -496,10 +536,10 @@ impl AcpClient {
         );
 
         // Flag placement (CLI 0.2.x):
-        //   top-level: `grok --no-auto-update [--sandbox PROFILE] agent …`
+        //   top-level: `grok --no-auto-update --permission-mode <MODE> [--sandbox PROFILE] agent …`
         //   agent opts: `--model` / `--reasoning-effort` / `--always-approve` before `stdio`
         // Skip background update checks so ACP handshakes are not delayed on launch.
-        // `--sandbox` is top-level only (not accepted by `grok agent` / `stdio`);
+        // `--sandbox` / `--permission-mode` are top-level only (not under `grok agent`);
         // also set GROK_SANDBOX so nested tools inherit the same profile.
         let settings = crate::store::load_settings();
         // Project override (via SpawnOptions) wins over global Settings.
@@ -517,6 +557,8 @@ impl AcpClient {
         let use_leader = settings.use_leader;
         let plan_enabled = settings.plan_enabled;
         let disable_web = settings.disable_web_search;
+        let spawn_policy = opts.permission_policy.as_deref().unwrap_or("ask");
+        let spawn_product_mode = opts.product_mode.as_deref();
 
         if session_data_mode != "shared" {
             let _ = crate::agent_subagents::sync_subagents_to_agent_profile(
@@ -531,6 +573,10 @@ impl AcpClient {
 
         let mut cmd = Command::new(&cli_path);
         cmd.arg("--no-auto-update");
+        // Pin CLI permission mode so agent-side enforcement matches App policy / plan.
+        for a in permission_mode_spawn_flags(spawn_policy, spawn_product_mode) {
+            cmd.arg(a);
+        }
         if let Some(ref sb) = sandbox {
             for a in sb.cli_args() {
                 cmd.arg(a);
@@ -575,10 +621,8 @@ impl AcpClient {
                 cmd.args(["--reasoning-effort", e]);
             }
         }
-        if let Some(ref pol) = opts.permission_policy {
-            if cli_permission_mode(pol) == "bypassPermissions" {
-                cmd.arg("--always-approve");
-            }
+        if should_pass_always_approve(spawn_policy, spawn_product_mode) {
+            cmd.arg("--always-approve");
         }
         // Session-only plugins (Agent SDKs / App): process-scoped, always trusted.
         // Does not write global Extensions or `~/.grok` install state.
@@ -3214,6 +3258,60 @@ mod prompt_wait_timeout_tests {
             prompt_wait_should_timeout(Some(last), started, now, idle(), absolute()),
             Some("absolute")
         );
+    }
+}
+
+#[cfg(test)]
+mod permission_mode_spawn_tests {
+    use super::*;
+
+    #[test]
+    fn maps_app_policies_to_cli_modes() {
+        assert_eq!(cli_permission_mode("ask"), "default");
+        assert_eq!(cli_permission_mode("accept_edits"), "acceptEdits");
+        assert_eq!(cli_permission_mode("allow_for_session"), "default");
+        assert_eq!(cli_permission_mode("auto"), "auto");
+        assert_eq!(cli_permission_mode("dont_ask"), "dontAsk");
+        assert_eq!(cli_permission_mode("always_approve"), "bypassPermissions");
+        assert_eq!(cli_permission_mode("yolo"), "bypassPermissions");
+    }
+
+    #[test]
+    fn resolve_yolo_beats_plan_and_policy() {
+        assert_eq!(
+            resolve_cli_permission_mode("always_approve", Some("plan")),
+            "bypassPermissions"
+        );
+        assert_eq!(
+            resolve_cli_permission_mode("accept_edits", Some("plan")),
+            "plan"
+        );
+        assert_eq!(
+            resolve_cli_permission_mode("ask", Some("agent")),
+            "default"
+        );
+        assert_eq!(
+            resolve_cli_permission_mode("auto", Some("agent")),
+            "auto"
+        );
+    }
+
+    #[test]
+    fn spawn_flags_pin_permission_mode_and_yolo() {
+        assert_eq!(
+            permission_mode_spawn_flags("accept_edits", Some("agent")),
+            [
+                "--permission-mode".to_string(),
+                "acceptEdits".to_string()
+            ]
+        );
+        assert_eq!(
+            permission_mode_spawn_flags("ask", Some("plan")),
+            ["--permission-mode".to_string(), "plan".to_string()]
+        );
+        assert!(should_pass_always_approve("always_approve", None));
+        assert!(!should_pass_always_approve("auto", None));
+        assert!(!should_pass_always_approve("ask", Some("plan")));
     }
 }
 

@@ -12,6 +12,8 @@ pub enum PermissionPolicy {
     Ask,
     AllowOnce,
     AllowForSession,
+    /// Grok Build CLI `auto` — fewer prompts with safety checks (Host treats like Ask when prompted).
+    Auto,
     /// Grok Build `dontAsk` — deny anything not pre-approved (no interactive prompt).
     DontAsk,
     /// Grok Build `acceptEdits` — auto-approve file edit tools inside project.
@@ -29,15 +31,19 @@ impl Default for PermissionPolicy {
 
 impl PermissionPolicy {
     pub fn parse(s: &str) -> Self {
-        match s {
-            "allow_for_session" | "allow_session" => Self::AllowForSession,
-            "allow_once" => Self::AllowOnce,
+        let t = s.trim();
+        let lower = t.to_ascii_lowercase().replace(['_', '-'], "");
+        match lower.as_str() {
+            "allowforsession" | "allowsession" => Self::AllowForSession,
+            "allowonce" => Self::AllowOnce,
             "deny" => Self::Deny,
-            "dont_ask" | "dontask" => Self::DontAsk,
-            "accept_edits" | "acceptedits" => Self::AcceptEdits,
-            "always_approve" | "always" | "bypass_permissions" | "bypasspermissions" | "yolo" => {
-                Self::AlwaysApprove
-            }
+            "dontask" => Self::DontAsk,
+            "acceptedits" => Self::AcceptEdits,
+            "auto" => Self::Auto,
+            "alwaysapprove" | "always" | "bypasspermissions" | "yolo" => Self::AlwaysApprove,
+            // CLI tokens
+            "default" | "ask" => Self::Ask,
+            "plan" => Self::Ask, // product plan is session mode; policy baseline stays ask
             _ => Self::Ask,
         }
     }
@@ -47,6 +53,7 @@ impl PermissionPolicy {
             Self::Ask => "ask",
             Self::AllowOnce => "allow_once",
             Self::AllowForSession => "allow_for_session",
+            Self::Auto => "auto",
             Self::DontAsk => "dont_ask",
             Self::AcceptEdits => "accept_edits",
             Self::Deny => "deny",

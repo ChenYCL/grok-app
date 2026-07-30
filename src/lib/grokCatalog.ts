@@ -33,17 +33,22 @@ export interface SessionModeOption {
 
 /**
  * Permission policies (composer + settings), aligned with Grok Build modes:
- * | Build mode           | App id            |
- * | default              | ask               |
- * | acceptEdits          | accept_edits      |
- * | (session grant UX)   | allow_for_session |
- * | dontAsk              | dont_ask          |
- * | bypassPermissions    | always_approve    |
+ * | Build / CLI `--permission-mode` | App id            |
+ * | default                         | ask               |
+ * | acceptEdits                     | accept_edits      |
+ * | (session grant UX → default)    | allow_for_session |
+ * | auto                            | auto              |
+ * | dontAsk                         | dont_ask          |
+ * | bypassPermissions               | always_approve    |
+ * | plan                            | (product mode `plan`, not a policy) |
+ *
+ * Pure map helpers: `src/lib/permissionModeMap.ts`.
  */
 export type PermissionPolicyId =
   | "ask"
   | "accept_edits"
   | "allow_for_session"
+  | "auto"
   | "dont_ask"
   | "always_approve";
 
@@ -91,7 +96,9 @@ export const SESSION_MODES: SessionModeOption[] = [
 
 /**
  * Permission policies (composer + settings).
- * `always_approve` = YOLO / unrestricted (CLI `--always-approve`, config yolo).
+ * `always_approve` = YOLO / unrestricted (CLI `--always-approve` + `bypassPermissions`).
+ * `auto` = CLI auto mode (fewer prompts with safety checks).
+ * Product **plan** is a session mode, not a row here — see `permissionModeMap`.
  */
 export const PERMISSION_POLICIES: {
   id: PermissionPolicyId;
@@ -100,6 +107,7 @@ export const PERMISSION_POLICIES: {
   { id: "ask" },
   { id: "accept_edits" },
   { id: "allow_for_session" },
+  { id: "auto" },
   { id: "dont_ask" },
   { id: "always_approve", dangerous: true },
 ];

@@ -710,21 +710,31 @@ export const zhTW: Record<MessageKey, string> = {
   "policy.ask": "請求核准",
   "policy.accept_edits": "接受編輯",
   "policy.allow_for_session": "替我審批",
+  "policy.auto": "自動",
   "policy.dont_ask": "不詢問（拒絕）",
   "policy.always_approve": "完全存取",
   "policy.askDesc": "編輯外部檔案或存取網路時一律詢問",
   "policy.accept_editsDesc": "自動核准專案內檔案編輯；其他工具仍詢問",
   "policy.allow_for_sessionDesc": "僅對偵測到的高風險操作請求核准",
+  "policy.autoDesc":
+    "CLI auto 模式 — 減少彈窗；常規本機操作經安全檢查後可自動放行",
   "policy.dont_askDesc": "需要核准的工具直接拒絕（不彈出視窗）",
   "policy.always_approveDesc": "可不受限制地存取網路與本機檔案",
   "policy.short.ask": "詢問",
   "policy.short.accept_edits": "編輯",
   "policy.short.allow_for_session": "對話",
+  "policy.short.auto": "自動",
   "policy.short.dont_ask": "拒絕",
   "policy.short.always_approve": "完全存取",
   "policy.yoloConfirm":
     "啟用完全存取 / 無限制自動核准工具？存在風險，請確認。",
   "policy.yoloConfirm2": "再次確認：啟用一律核准？工具將不再彈出視窗詢問。",
+  "cliPermission.default": "default — 需要核准時詢問",
+  "cliPermission.acceptEdits": "acceptEdits — 自動核准檔案編輯",
+  "cliPermission.auto": "auto — 安全檢查後減少彈窗",
+  "cliPermission.dontAsk": "dontAsk — 不彈窗直接拒絕",
+  "cliPermission.bypassPermissions": "bypassPermissions — YOLO 完全存取",
+  "cliPermission.plan": "plan — 產品「計劃」模式（輸入區切換）",
 
   "search.title": "搜尋",
   "search.placeholder": "搜尋對話、專案、操作或訊息內容…",
@@ -1036,6 +1046,14 @@ export const zhTW: Record<MessageKey, string> = {
   "settings.permissionDeep": "預設權限",
   "settings.permissionDeepDesc":
     "對新一輪對話生效，並依上方選擇的範圍記憶。YOLO 會自動核准工具呼叫。",
+  "settings.permissionCliMode": "CLI --permission-mode：{mode}",
+  "settings.permissionCliModeNotOneToOne":
+    "（僅 Host 工作階段層 — 與「詢問」共用 CLI default。）",
+  "settings.permissionCliAdvanced": "CLI 權限模式",
+  "settings.permissionCliAdvancedDesc":
+    "將應用權限對應為 Grok Build `--permission-mode`（default | acceptEdits | auto | dontAsk | bypassPermissions | plan）。plan 由輸入區「計劃」模式設定。",
+  "settings.permissionCliAdvancedHint":
+    "啟動時傳入 --permission-mode {mode}（YOLO 時另加 --always-approve）。",
   "settings.permissionTimeout": "逾時自動拒絕",
   "settings.permissionTimeoutDesc":
     "若在時限內未回應權限請求，將自動拒絕。預設關閉。",

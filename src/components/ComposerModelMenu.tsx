@@ -450,16 +450,19 @@ export interface ComposerAccessMenuProps {
     policyAsk: string;
     policyAcceptEdits: string;
     policySession: string;
+    policyAuto: string;
     policyDontAsk: string;
     policyYolo: string;
     policyAskDesc: string;
     policyAcceptEditsDesc: string;
     policySessionDesc: string;
+    policyAutoDesc: string;
     policyDontAskDesc: string;
     policyYoloDesc: string;
     policyShortAsk: string;
     policyShortAccept: string;
     policyShortSession: string;
+    policyShortAuto: string;
     policyShortDontAsk: string;
     policyShortYolo: string;
   };
@@ -488,6 +491,8 @@ function policyLabel(
       return labels.policyAcceptEdits;
     case "allow_for_session":
       return labels.policySession;
+    case "auto":
+      return labels.policyAuto;
     case "dont_ask":
       return labels.policyDontAsk;
     case "always_approve":
@@ -506,6 +511,8 @@ function policyShort(
       return labels.policyShortAccept;
     case "allow_for_session":
       return labels.policyShortSession;
+    case "auto":
+      return labels.policyShortAuto;
     case "dont_ask":
       return labels.policyShortDontAsk;
     case "always_approve":
@@ -524,6 +531,8 @@ function policyDesc(
       return labels.policyAcceptEditsDesc;
     case "allow_for_session":
       return labels.policySessionDesc;
+    case "auto":
+      return labels.policyAutoDesc;
     case "dont_ask":
       return labels.policyDontAskDesc;
     case "always_approve":
@@ -539,6 +548,8 @@ function policyIcon(id: string) {
       return <IconShieldCheck size={18} />;
     case "allow_for_session":
       return <IconShield size={18} />;
+    case "auto":
+      return <IconBolt size={18} />;
     case "dont_ask":
       return <IconHandStop size={18} />;
     case "always_approve":

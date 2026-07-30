@@ -15,6 +15,7 @@ pub fn ui_permission_mode(policy: &str) -> &'static str {
     match PermissionPolicy::parse(policy) {
         PermissionPolicy::AcceptEdits => "acceptEdits",
         PermissionPolicy::DontAsk => "dontAsk",
+        PermissionPolicy::Auto => "auto",
         PermissionPolicy::AlwaysApprove => "always-approve",
         PermissionPolicy::AllowForSession
         | PermissionPolicy::AllowOnce
@@ -28,6 +29,7 @@ pub fn claude_default_mode(policy: &str) -> &'static str {
     match PermissionPolicy::parse(policy) {
         PermissionPolicy::AcceptEdits => "acceptEdits",
         PermissionPolicy::DontAsk => "dontAsk",
+        PermissionPolicy::Auto => "auto",
         PermissionPolicy::AlwaysApprove => "bypassPermissions",
         _ => "default",
     }
@@ -153,9 +155,11 @@ mod tests {
     fn maps_policies() {
         assert_eq!(ui_permission_mode("ask"), "default");
         assert_eq!(ui_permission_mode("accept_edits"), "acceptEdits");
+        assert_eq!(ui_permission_mode("auto"), "auto");
         assert_eq!(ui_permission_mode("dont_ask"), "dontAsk");
         assert_eq!(ui_permission_mode("always_approve"), "always-approve");
         assert_eq!(claude_default_mode("always_approve"), "bypassPermissions");
+        assert_eq!(claude_default_mode("auto"), "auto");
     }
 
     #[test]
