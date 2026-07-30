@@ -126,6 +126,9 @@ export const zhTW: Record<MessageKey, string> = {
   "session.noteChars": "{n}/{max}",
   "session.worktreeBadge": "Worktree",
   "session.worktreeBadgeAria": "Worktree 對話 · {branch}",
+  "session.worktreeBadgeCliAria": "CLI worktree 對話 · {branch}",
+  "session.worktreeLayoutCli": "CLI worktrees 目錄（~/.grok/worktrees）",
+  "session.worktreeLayoutSibling": "主檢出旁的同級 worktree",
   "session.worktreeReveal": "在檔案管理員中顯示 worktree",
   "session.worktreeCopyPath": "複製 worktree 路徑",
   "session.worktreePathCopied": "已複製 worktree 路徑",
@@ -529,13 +532,20 @@ export const zhTW: Record<MessageKey, string> = {
   "composer.worktreeNewTitle": "新建 Git worktree",
   "composer.worktreeNewChatTitle": "新建 worktree 並開聊",
   "composer.worktreeNewHint":
-    "在主 worktree 旁建立同級目錄，並檢出一條新分支。",
+    "建立關聯 git worktree（預設 CLI 佈局 ~/.grok/worktrees），並檢出新分支。對齊 grok --worktree=name。",
   "composer.worktreeNewChatHint":
-    "建立同級 worktree，並以該目錄為專案開始新對話。",
+    "建立關聯 worktree，並以該目錄為專案 cwd 開啟新對話（寫入對話 meta，側欄顯示 CLI/WT 標記）。",
   "composer.worktreeName": "名稱",
   "composer.worktreeNamePlaceholder": "feat-login",
+  "composer.worktreeLayout": "位置",
+  "composer.worktreeLayoutCli":
+    "CLI 目錄 — ~/.grok/worktrees/<repo>/<name>（對齊 grok --worktree）",
+  "composer.worktreeLayoutSibling":
+    "同級目錄 — 主檢出旁（<repo>-<name>）",
   "composer.worktreeRef": "起始點（可選）",
   "composer.worktreeRefPlaceholder": "main、origin/main 或 commit",
+  "composer.worktreeRefInvalid":
+    "起始點不能以 '-' 開頭，也不能包含換行",
   "composer.worktreePathPreview": "路徑：{path}",
   "composer.worktreeCreate": "建立",
   "composer.worktreeCreateChat": "建立並開聊",

@@ -1,23 +1,33 @@
 import { describe, expect, it } from "vitest";
 import {
+  buildWorktreeCliPath,
   buildWorktreeGcArgs,
+  buildWorktreePath,
   buildWorktreeSiblingPath,
   canRemoveWorktree,
+  cliWorktreesHome,
   countWorktreePruneLines,
+  detectWorktreeLayoutKind,
   findWorktreeAt,
+  grokHomeFromUserHome,
   isLinkedWorktreeEntry,
+  isSiblingWorktreePath,
+  isUnderCliWorktreesHome,
   mainWorktreePath,
+  normalizeWorktreeLayout,
   normalizeWorktreePath,
   parseWorktreePorcelain,
   pathsEqual,
   resolveSessionWorktreeBadge,
   sanitizeWorktreeGcMaxAge,
   sanitizeWorktreeName,
+  sanitizeWorktreeRef,
   sessionWorktreeBadgeLabel,
   sessionWorktreeTooltip,
   siblingWorktrees,
   worktreeLabel,
   worktreeRemoveErrorSuggestsForce,
+  worktreeRepoSlug,
 } from "./gitWorktree";
 
 const SAMPLE = `worktree /Users/me/repo
@@ -91,6 +101,23 @@ describe("worktree path builder", () => {
     expect(() => sanitizeWorktreeName("has space")).toThrow();
   });
 
+  it("sanitizes optional start refs", () => {
+    expect(sanitizeWorktreeRef("  main  ")).toBe("main");
+    expect(sanitizeWorktreeRef("origin/main")).toBe("origin/main");
+    expect(sanitizeWorktreeRef("")).toBeNull();
+    expect(sanitizeWorktreeRef(null)).toBeNull();
+    expect(() => sanitizeWorktreeRef("-b")).toThrow(/start/);
+    expect(() => sanitizeWorktreeRef("a\nb")).toThrow(/invalid/);
+  });
+
+  it("normalizes layout ids (default cli)", () => {
+    expect(normalizeWorktreeLayout(undefined)).toBe("cli");
+    expect(normalizeWorktreeLayout("")).toBe("cli");
+    expect(normalizeWorktreeLayout("CLI")).toBe("cli");
+    expect(normalizeWorktreeLayout("sibling")).toBe("sibling");
+    expect(normalizeWorktreeLayout("other")).toBe("cli");
+  });
+
   it("builds sibling path next to main worktree", () => {
     expect(buildWorktreeSiblingPath("/Users/me/repo", "feat")).toBe(
       "/Users/me/repo-feat",
@@ -104,6 +131,71 @@ describe("worktree path builder", () => {
     // Path preview uses main even when active cwd is a linked worktree.
     const main = mainWorktreePath(parseWorktreePorcelain(SAMPLE))!;
     expect(buildWorktreeSiblingPath(main, "new")).toBe("/Users/me/repo-new");
+  });
+
+  it("builds CLI home path under ~/.grok/worktrees/<repo>/<name>", () => {
+    expect(grokHomeFromUserHome("/Users/me")).toBe("/Users/me/.grok");
+    expect(cliWorktreesHome("/Users/me/.grok")).toBe(
+      "/Users/me/.grok/worktrees",
+    );
+    expect(cliWorktreesHome("/Users/me", { fromUserHome: true })).toBe(
+      "/Users/me/.grok/worktrees",
+    );
+    expect(worktreeRepoSlug("/Users/me/Code/oss-grok-app")).toBe(
+      "oss-grok-app",
+    );
+    expect(
+      buildWorktreeCliPath(
+        "/Users/me/Code/oss-grok-app",
+        "feat",
+        "/Users/me/.grok",
+      ),
+    ).toBe("/Users/me/.grok/worktrees/oss-grok-app/feat");
+    expect(
+      buildWorktreePath(
+        "cli",
+        "/Users/me/repo",
+        "hot-fix",
+        "/Users/me/.grok",
+      ),
+    ).toBe("/Users/me/.grok/worktrees/repo/hot-fix");
+    expect(buildWorktreePath("sibling", "/Users/me/repo", "feat")).toBe(
+      "/Users/me/repo-feat",
+    );
+  });
+
+  it("detects CLI home vs sibling paths", () => {
+    expect(
+      isUnderCliWorktreesHome(
+        "/Users/me/.grok/worktrees/oss-grok-app/feat",
+        "/Users/me/.grok",
+      ),
+    ).toBe(true);
+    expect(
+      isUnderCliWorktreesHome("/Users/me/.grok/worktrees/oss-grok-app/feat"),
+    ).toBe(true);
+    expect(isUnderCliWorktreesHome("/Users/me/repo-feat")).toBe(false);
+    expect(isSiblingWorktreePath("/Users/me/repo-feat", "/Users/me/repo")).toBe(
+      true,
+    );
+    expect(
+      isSiblingWorktreePath(
+        "/Users/me/.grok/worktrees/repo/feat",
+        "/Users/me/repo",
+      ),
+    ).toBe(false);
+    expect(
+      detectWorktreeLayoutKind(
+        "/Users/me/.grok/worktrees/repo/feat",
+        "/Users/me/repo",
+      ),
+    ).toBe("cli");
+    expect(
+      detectWorktreeLayoutKind("/Users/me/repo-feat", "/Users/me/repo"),
+    ).toBe("sibling");
+    expect(detectWorktreeLayoutKind("/tmp/other-wt", "/Users/me/repo")).toBe(
+      "other",
+    );
   });
 });
 
@@ -119,8 +211,11 @@ describe("canRemoveWorktree", () => {
 });
 
 describe("session worktree badge helpers", () => {
-  it("labels compact badge as WT", () => {
+  it("labels CLI home as CLI and sibling as WT", () => {
     expect(sessionWorktreeBadgeLabel()).toBe("WT");
+    expect(sessionWorktreeBadgeLabel("sibling")).toBe("WT");
+    expect(sessionWorktreeBadgeLabel("other")).toBe("WT");
+    expect(sessionWorktreeBadgeLabel("cli")).toBe("CLI");
   });
 
   it("detects linked (non-main) worktree entries", () => {
@@ -142,10 +237,27 @@ describe("session worktree badge helpers", () => {
     );
     expect(badge).not.toBeNull();
     expect(badge!.label).toBe("WT");
+    expect(badge!.layoutKind).toBe("other");
     expect(badge!.path).toBe("/Users/me/repo-feat");
     expect(badge!.branch).toBe("feat/x");
     expect(badge!.fromMeta).toBe(true);
     expect(badge!.fromGitList).toBe(false);
+  });
+
+  it("badges CLI-home meta with CLI label", () => {
+    const badge = resolveSessionWorktreeBadge(
+      {
+        isWorktreeSession: true,
+        worktreePath: "/Users/me/.grok/worktrees/repo/feat",
+        worktreeBranch: "feat",
+      },
+      "/Users/me/.grok/worktrees/repo/feat",
+      [],
+      { grokHome: "/Users/me/.grok" },
+    );
+    expect(badge).not.toBeNull();
+    expect(badge!.label).toBe("CLI");
+    expect(badge!.layoutKind).toBe("cli");
   });
 
   it("falls back to git list when project path is a linked worktree", () => {
@@ -157,6 +269,7 @@ describe("session worktree badge helpers", () => {
     );
     expect(badge).not.toBeNull();
     expect(badge!.label).toBe("WT");
+    expect(badge!.layoutKind).toBe("sibling");
     expect(pathsEqual(badge!.path, "/Users/me/repo-feat")).toBe(true);
     expect(badge!.branch).toBe("feat/x");
     expect(badge!.fromMeta).toBe(false);
@@ -172,16 +285,27 @@ describe("session worktree badge helpers", () => {
     expect(resolveSessionWorktreeBadge(null, null, list)).toBeNull();
   });
 
-  it("builds tooltip with branch and path", () => {
+  it("builds tooltip with layout, branch and path", () => {
     expect(
-      sessionWorktreeTooltip({ path: "/Users/me/repo-feat", branch: "feat/x" }),
-    ).toBe("feat/x\n/Users/me/repo-feat");
+      sessionWorktreeTooltip({
+        path: "/Users/me/repo-feat",
+        branch: "feat/x",
+        layoutKind: "sibling",
+      }),
+    ).toBe("Sibling worktree\nfeat/x\n/Users/me/repo-feat");
     expect(
       sessionWorktreeTooltip(
-        { path: "/Users/me/repo-feat", branch: null },
-        { detachedLabel: "detached" },
+        {
+          path: "/Users/me/.grok/worktrees/repo/feat",
+          branch: null,
+          layoutKind: "cli",
+        },
+        {
+          detachedLabel: "detached",
+          cliLayoutLabel: "CLI home",
+        },
       ),
-    ).toBe("detached\n/Users/me/repo-feat");
+    ).toBe("CLI home\ndetached\n/Users/me/.grok/worktrees/repo/feat");
   });
 });
 

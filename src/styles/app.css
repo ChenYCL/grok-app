@@ -941,6 +941,13 @@ html[data-sidebar-density="compact"] .tree-date-group__head {
   opacity: 0.95;
 }
 
+/* CLI home (`~/.grok/worktrees`) — slightly accented so it is distinct from sibling WT. */
+.tree-l3__wt--cli {
+  color: var(--accent, var(--text-secondary));
+  background: color-mix(in srgb, var(--accent, var(--text-tertiary)) 16%, transparent);
+  border-color: color-mix(in srgb, var(--accent, var(--text-tertiary)) 32%, transparent);
+}
+
 .tree-l3__name {
   min-width: 0;
   overflow: hidden;
@@ -3031,6 +3038,34 @@ html[data-sidebar-density="compact"] .session-row__meta {
   font-size: 12.5px;
   font-weight: 500;
   color: var(--text-secondary);
+}
+
+.wt-create__layout {
+  border: none;
+  margin: 0;
+  padding: 0;
+  min-width: 0;
+}
+
+.wt-create__layout .wt-create__label {
+  padding: 0;
+  margin: 0 0 2px;
+}
+
+.wt-create__radio {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.4;
+  color: var(--text-primary);
+  cursor: pointer;
+}
+
+.wt-create__radio input {
+  margin-top: 2px;
+  flex-shrink: 0;
 }
 
 .wt-create__preview {
