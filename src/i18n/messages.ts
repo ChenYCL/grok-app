@@ -1092,8 +1092,19 @@ const en = {
   "settings.cliSessionsAgentId": "id {id}",
   "settings.cliSessionsCopyId": "Copy id",
   "settings.cliSessionsCopied": "Copied",
-  "settings.cliSessionsFilterPlaceholder": "Filter by title or id…",
+  "settings.cliSessionsFilterPlaceholder":
+    "Search summaries and first prompts…",
   "settings.cliSessionsFilterEmpty": "No sessions match this filter.",
+  "settings.cliSessionsSearching": "Searching CLI sessions…",
+  "settings.cliSessionsSearchEmpty": "No CLI sessions match this search.",
+  "settings.cliSessionsSearchViaCli":
+    "Results from grok sessions search (summaries + first prompts)",
+  "settings.cliSessionsSearchViaLocal":
+    "Local disk search (title, id, cwd, first prompt)",
+  "settings.cliSessionsSearchFallback":
+    "CLI search unavailable — filtering the local list",
+  "settings.cliSessionsDeleteRemoteOnly":
+    "No on-disk folder under GROK_HOME for this hit (remote-only)",
   "settings.cliSessionsSource": "Scanning {path}",
   "settings.cliSessionsIndependentNote":
     "Independent mode uses the app agent-home (~/.grok-app/agent-home), which may differ from terminal CLI sessions under ~/.grok. Import still copies chat history into the app; agent resume may not find the same on-disk session unless you switch to shared mode.",
@@ -4361,8 +4372,17 @@ const zh: Record<MessageKey, string> = {
   "settings.cliSessionsAgentId": "id {id}",
   "settings.cliSessionsCopyId": "复制 id",
   "settings.cliSessionsCopied": "已复制",
-  "settings.cliSessionsFilterPlaceholder": "按标题或 id 筛选…",
+  "settings.cliSessionsFilterPlaceholder": "搜索摘要与首条提示…",
   "settings.cliSessionsFilterEmpty": "没有符合筛选条件的会话。",
+  "settings.cliSessionsSearching": "正在搜索 CLI 会话…",
+  "settings.cliSessionsSearchEmpty": "没有符合搜索条件的 CLI 会话。",
+  "settings.cliSessionsSearchViaCli":
+    "来自 grok sessions search（摘要 + 首条提示）",
+  "settings.cliSessionsSearchViaLocal":
+    "本地磁盘搜索（标题、id、路径、首条提示）",
+  "settings.cliSessionsSearchFallback": "CLI 搜索不可用 — 正在筛选本地列表",
+  "settings.cliSessionsDeleteRemoteOnly":
+    "此结果在 GROK_HOME 下没有本地目录（仅远程）",
   "settings.cliSessionsSource": "扫描路径 {path}",
   "settings.cliSessionsIndependentNote":
     "独立模式使用应用 agent-home（~/.grok-app/agent-home），可能与终端 CLI 的 ~/.grok 会话不一致。仍可导入聊天记录到应用；若需与终端同一 on-disk 会话继续，请切换到共享模式。",

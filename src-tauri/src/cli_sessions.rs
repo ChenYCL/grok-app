@@ -32,6 +32,34 @@ pub struct CliSessionSummary {
     pub app_session_id: Option<String>,
     /// GROK_HOME used for discovery (path clarity independent vs shared).
     pub source_home: String,
+    /// First user prompt when known (search / enriched list only).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub first_prompt: Option<String>,
+}
+
+/// Search hit from `grok sessions search` or local first-prompt fallback.
+/// Compatible with list rows for import / open / delete in the UI.
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CliSessionSearchHit {
+    pub agent_session_id: String,
+    pub title: String,
+    pub cwd: Option<String>,
+    pub updated_at: String,
+    /// May be empty for remote-only hits not present under local GROK_HOME.
+    pub dir: String,
+    pub num_messages: u32,
+    pub already_linked: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub app_session_id: Option<String>,
+    pub source_home: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub first_prompt: Option<String>,
+    /// CLI status token when known (`local` / `remote`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub status: Option<String>,
+    /// `"cli"` when from `grok sessions search`, `"local"` for disk fallback.
+    pub source: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -125,6 +153,7 @@ pub fn list_cli_sessions(session_data_mode: &str) -> Result<Vec<CliSessionSummar
                 dir: dir.display().to_string(),
                 num_messages: n,
                 source_home: source_home.clone(),
+                first_prompt: None,
             });
         }
     }
@@ -135,6 +164,574 @@ pub fn list_cli_sessions(session_data_mode: &str) -> Result<Vec<CliSessionSummar
         out.truncate(200);
     }
     Ok(out)
+}
+
+/// Clamp search limit (1–100). Default 40.
+pub fn clamp_search_limit(limit: Option<u32>) -> u32 {
+    limit.unwrap_or(40).clamp(1, 100)
+}
+
+/// Run `grok sessions search <query>` under the active GROK_HOME.
+///
+/// Prefers `--json` when the CLI accepts it; otherwise parses text output.
+/// On CLI failure / missing binary, falls back to local disk filter that also
+/// matches first user prompts from `chat_history.jsonl`.
+pub fn search_cli_sessions(
+    query: &str,
+    limit: Option<u32>,
+    session_data_mode: &str,
+    cli_path: Option<&Path>,
+) -> Result<Vec<CliSessionSearchHit>, String> {
+    let q = query.trim();
+    if q.is_empty() {
+        return Ok(Vec::new());
+    }
+    let lim = clamp_search_limit(limit);
+    let home = resolve_agent_grok_home(session_data_mode);
+    let source_home = home.display().to_string();
+
+    // Prefer real CLI when a binary is available.
+    if let Some(path) = cli_path.filter(|p| p.is_file()) {
+        match run_sessions_search_cli(path, &home, q, lim) {
+            Ok(hits) if !hits.is_empty() => {
+                return Ok(enrich_search_hits(hits, session_data_mode, &source_home, "cli"));
+            }
+            Ok(_empty) => {
+                // CLI succeeded with zero hits — still try local first-prompt
+                // match (CLI may only search remote index / different store).
+                let local = search_local_sessions(q, lim, session_data_mode)?;
+                if !local.is_empty() {
+                    return Ok(local);
+                }
+                return Ok(Vec::new());
+            }
+            Err(e) => {
+                tracing::warn!(
+                    target: "session",
+                    error = %e,
+                    "grok sessions search failed; falling back to local filter"
+                );
+            }
+        }
+    }
+
+    search_local_sessions(q, lim, session_data_mode)
+}
+
+/// Pure text parser for `grok sessions search` human output.
+pub fn parse_sessions_search_text(raw: &str) -> Vec<RawSearchHit> {
+    let text = raw.replace("\r\n", "\n");
+    if text.trim().is_empty() {
+        return Vec::new();
+    }
+
+    let mut hits: Vec<RawSearchHit> = Vec::new();
+    let mut current: Option<RawSearchHitBuilder> = None;
+
+    for line in text.lines() {
+        let trimmed = line.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+        if trimmed.to_ascii_lowercase().starts_with("total:") {
+            if let Some(b) = current.take() {
+                hits.push(b.finish());
+            }
+            break;
+        }
+        let lower = trimmed.to_ascii_lowercase();
+        if lower.starts_with("warning:") || lower.starts_with("error:") {
+            continue;
+        }
+
+        let is_indented = line.starts_with("  ") || line.starts_with('\t');
+        if let Some(id) = extract_session_id_prefix(trimmed) {
+            if !is_indented {
+                if let Some(b) = current.take() {
+                    hits.push(b.finish());
+                }
+                let rest = trimmed[id.len()..].trim();
+                let (status, updated) = parse_status_and_date(rest);
+                current = Some(RawSearchHitBuilder {
+                    agent_session_id: id.to_string(),
+                    status,
+                    updated_label: updated,
+                    body: Vec::new(),
+                });
+                continue;
+            }
+        }
+
+        if let Some(ref mut b) = current {
+            if is_indented {
+                b.body.push(line.trim_start().to_string());
+            } else if !b.body.is_empty() && extract_session_id_prefix(trimmed).is_none() {
+                // Rare unindented continuation of first prompt.
+                b.body.push(trimmed.to_string());
+            }
+        }
+    }
+    if let Some(b) = current.take() {
+        hits.push(b.finish());
+    }
+    hits
+}
+
+/// Pure JSON parser for future `grok sessions search --json`.
+pub fn parse_sessions_search_json(raw: &str) -> Option<Vec<RawSearchHit>> {
+    let trimmed = raw.trim();
+    if trimmed.is_empty()
+        || !(trimmed.starts_with('{') || trimmed.starts_with('['))
+    {
+        return None;
+    }
+    let value: Value = serde_json::from_str(trimmed).ok()?;
+    let rows: Vec<Value> = match value {
+        Value::Array(arr) => arr,
+        Value::Object(map) => {
+            for key in ["sessions", "results", "items", "data", "hits"] {
+                if let Some(Value::Array(arr)) = map.get(key) {
+                    return Some(json_rows_to_hits(arr.clone()));
+                }
+            }
+            // Single object
+            if json_pick_str(&Value::Object(map.clone()), &[
+                "agentSessionId",
+                "agent_session_id",
+                "sessionId",
+                "session_id",
+                "id",
+            ])
+            .is_some()
+            {
+                vec![Value::Object(map)]
+            } else {
+                return None;
+            }
+        }
+        _ => return None,
+    };
+    Some(json_rows_to_hits(rows))
+}
+
+fn json_rows_to_hits(rows: Vec<Value>) -> Vec<RawSearchHit> {
+    let mut out = Vec::new();
+    for row in rows {
+        let id = match json_pick_str(&row, &[
+            "agentSessionId",
+            "agent_session_id",
+            "sessionId",
+            "session_id",
+            "id",
+        ]) {
+            Some(id) => id,
+            None => continue,
+        };
+        let title = json_pick_str(&row, &[
+            "title",
+            "summary",
+            "generatedTitle",
+            "generated_title",
+            "sessionSummary",
+            "session_summary",
+        ])
+        .unwrap_or_else(|| format!("CLI {}", id.chars().take(8).collect::<String>()));
+        let first_prompt = json_pick_str(&row, &[
+            "firstPrompt",
+            "first_prompt",
+            "prompt",
+            "firstUserPrompt",
+            "first_user_prompt",
+        ]);
+        let status = json_pick_str(&row, &["status", "location", "source"]);
+        let updated_label = json_pick_str(&row, &[
+            "updatedLabel",
+            "updatedAt",
+            "updated_at",
+            "updated",
+            "lastActiveAt",
+            "last_active_at",
+        ]);
+        out.push(RawSearchHit {
+            agent_session_id: id,
+            title,
+            first_prompt,
+            status,
+            updated_label,
+        });
+    }
+    out
+}
+
+fn json_pick_str(v: &Value, keys: &[&str]) -> Option<String> {
+    let obj = v.as_object()?;
+    for k in keys {
+        if let Some(s) = obj.get(*k).and_then(|x| x.as_str()).map(str::trim) {
+            if !s.is_empty() {
+                return Some(s.to_string());
+            }
+        }
+    }
+    None
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RawSearchHit {
+    pub agent_session_id: String,
+    pub title: String,
+    pub first_prompt: Option<String>,
+    pub status: Option<String>,
+    pub updated_label: Option<String>,
+}
+
+struct RawSearchHitBuilder {
+    agent_session_id: String,
+    status: Option<String>,
+    updated_label: Option<String>,
+    body: Vec<String>,
+}
+
+impl RawSearchHitBuilder {
+    fn finish(self) -> RawSearchHit {
+        let body: Vec<String> = self
+            .body
+            .into_iter()
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+            .collect();
+        let title = body
+            .first()
+            .cloned()
+            .unwrap_or_else(|| {
+                format!(
+                    "CLI {}",
+                    self.agent_session_id.chars().take(8).collect::<String>()
+                )
+            });
+        let first_prompt = if body.len() > 1 {
+            Some(body[1..].join("\n"))
+        } else {
+            None
+        };
+        RawSearchHit {
+            agent_session_id: self.agent_session_id,
+            title,
+            first_prompt,
+            status: self.status,
+            updated_label: self.updated_label,
+        }
+    }
+}
+
+fn extract_session_id_prefix(s: &str) -> Option<&str> {
+    // UUID-shaped agent session ids (Grok uses UUID v7-ish).
+    let bytes = s.as_bytes();
+    if bytes.len() < 36 {
+        return None;
+    }
+    let cand = &s[..36];
+    let ok = cand.as_bytes().iter().enumerate().all(|(i, &c)| match i {
+        8 | 13 | 18 | 23 => c == b'-',
+        _ => c.is_ascii_hexdigit(),
+    });
+    if ok {
+        Some(cand)
+    } else {
+        None
+    }
+}
+
+fn parse_status_and_date(rest: &str) -> (Option<String>, Option<String>) {
+    let rest = rest.trim();
+    if rest.is_empty() {
+        return (None, None);
+    }
+    if rest.starts_with('(') {
+        if let Some(end) = rest.find(')') {
+            let status = rest[1..end].trim();
+            let after = rest[end + 1..].trim();
+            return (
+                if status.is_empty() {
+                    None
+                } else {
+                    Some(status.to_string())
+                },
+                if after.is_empty() {
+                    None
+                } else {
+                    Some(after.to_string())
+                },
+            );
+        }
+    }
+    (None, Some(rest.to_string()))
+}
+
+fn looks_like_unsupported_flag(stderr: &str) -> bool {
+    let s = stderr.to_ascii_lowercase();
+    s.contains("unexpected argument")
+        || s.contains("unrecognized option")
+        || s.contains("unknown flag")
+        || s.contains("unknown option")
+        || s.contains("invalid option")
+        || s.contains("unrecognized subcommand")
+        || s.contains("unexpected subcommand")
+}
+
+const SESSIONS_SEARCH_TIMEOUT_SECS: u64 = 25;
+
+fn run_sessions_search_cli(
+    cli_path: &Path,
+    grok_home: &Path,
+    query: &str,
+    limit: u32,
+) -> Result<Vec<RawSearchHit>, String> {
+    // Try --json first (future CLI); fall back to text on unsupported flag.
+    let json_attempt = run_grok_sessions_search(cli_path, grok_home, query, limit, true);
+    match json_attempt {
+        Ok((stdout, stderr, ok)) => {
+            if let Some(hits) = parse_sessions_search_json(&stdout) {
+                return Ok(hits);
+            }
+            // Some CLIs print JSON errors on stderr only.
+            if looks_like_unsupported_flag(&stderr) {
+                // retry without --json below
+            } else if !stdout.trim().is_empty() {
+                // Might still be text despite requesting json.
+                let hits = parse_sessions_search_text(&stdout);
+                if !hits.is_empty() || ok {
+                    return Ok(hits);
+                }
+            } else if looks_like_unsupported_flag(&stderr) {
+                // fall through
+            } else if !ok {
+                return Err(format!(
+                    "grok sessions search failed: {}",
+                    truncate_err(if stderr.is_empty() { &stdout } else { &stderr }, 240)
+                ));
+            }
+        }
+        Err(e) => {
+            // Spawn failure — do not retry.
+            return Err(e);
+        }
+    }
+
+    let (stdout, stderr, ok) =
+        run_grok_sessions_search(cli_path, grok_home, query, limit, false)?;
+    if !ok && stdout.trim().is_empty() {
+        return Err(format!(
+            "grok sessions search failed: {}",
+            truncate_err(if stderr.is_empty() { &stdout } else { &stderr }, 240)
+        ));
+    }
+    // Prefer JSON if it somehow worked without flag.
+    if let Some(hits) = parse_sessions_search_json(&stdout) {
+        return Ok(hits);
+    }
+    Ok(parse_sessions_search_text(&stdout))
+}
+
+fn run_grok_sessions_search(
+    cli_path: &Path,
+    grok_home: &Path,
+    query: &str,
+    limit: u32,
+    with_json: bool,
+) -> Result<(String, String, bool), String> {
+    let mut args: Vec<String> = vec![
+        "sessions".into(),
+        "search".into(),
+        query.into(),
+        "-n".into(),
+        limit.to_string(),
+    ];
+    if with_json {
+        args.push("--json".into());
+    }
+
+    let cli_path = cli_path.to_path_buf();
+    let grok_home = grok_home.to_path_buf();
+    let (tx, rx) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        let mut cmd = crate::process_util::command(&cli_path);
+        cmd.args(&args);
+        cmd.env("GROK_HOME", &grok_home);
+        if let Some(path_env) = crate::process_util::enriched_path_env() {
+            cmd.env("PATH", path_env);
+        }
+        let _ = tx.send(cmd.output());
+    });
+
+    match rx.recv_timeout(std::time::Duration::from_secs(SESSIONS_SEARCH_TIMEOUT_SECS)) {
+        Ok(Ok(output)) => {
+            let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+            let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+            Ok((stdout, stderr, output.status.success()))
+        }
+        Ok(Err(e)) => Err(format!("Failed to run grok sessions search: {e}")),
+        Err(_) => Err(format!(
+            "grok sessions search timed out after {SESSIONS_SEARCH_TIMEOUT_SECS}s"
+        )),
+    }
+}
+
+fn truncate_err(s: &str, max: usize) -> String {
+    let t = s.trim();
+    if t.chars().count() <= max {
+        return t.to_string();
+    }
+    let head: String = t.chars().take(max).collect();
+    format!("{head}…")
+}
+
+fn enrich_search_hits(
+    hits: Vec<RawSearchHit>,
+    session_data_mode: &str,
+    source_home: &str,
+    source: &str,
+) -> Vec<CliSessionSearchHit> {
+    let local = list_cli_sessions(session_data_mode).unwrap_or_default();
+    let by_id: std::collections::HashMap<String, CliSessionSummary> = local
+        .into_iter()
+        .map(|s| (s.agent_session_id.clone(), s))
+        .collect();
+
+    hits.into_iter()
+        .map(|h| {
+            if let Some(loc) = by_id.get(&h.agent_session_id) {
+                CliSessionSearchHit {
+                    agent_session_id: h.agent_session_id,
+                    title: if h.title.is_empty() {
+                        loc.title.clone()
+                    } else {
+                        h.title
+                    },
+                    cwd: loc.cwd.clone(),
+                    updated_at: if loc.updated_at.is_empty() {
+                        h.updated_label.unwrap_or_default()
+                    } else {
+                        loc.updated_at.clone()
+                    },
+                    dir: loc.dir.clone(),
+                    num_messages: loc.num_messages,
+                    already_linked: loc.already_linked,
+                    app_session_id: loc.app_session_id.clone(),
+                    source_home: loc.source_home.clone(),
+                    first_prompt: h.first_prompt.or_else(|| loc.first_prompt.clone()),
+                    status: h.status,
+                    source: source.to_string(),
+                }
+            } else {
+                CliSessionSearchHit {
+                    agent_session_id: h.agent_session_id,
+                    title: h.title,
+                    cwd: None,
+                    updated_at: h.updated_label.unwrap_or_default(),
+                    dir: String::new(),
+                    num_messages: 0,
+                    already_linked: false,
+                    app_session_id: None,
+                    source_home: source_home.to_string(),
+                    first_prompt: h.first_prompt,
+                    status: h.status,
+                    source: source.to_string(),
+                }
+            }
+        })
+        .collect()
+}
+
+/// Local disk search: title / id / cwd / first user prompt.
+fn search_local_sessions(
+    query: &str,
+    limit: u32,
+    session_data_mode: &str,
+) -> Result<Vec<CliSessionSearchHit>, String> {
+    let q = query.trim().to_ascii_lowercase();
+    if q.is_empty() {
+        return Ok(Vec::new());
+    }
+    let list = list_cli_sessions(session_data_mode)?;
+    let mut out = Vec::new();
+    for mut row in list {
+        // Lazy first-prompt only when title/id/cwd did not already match —
+        // but CLI search is meant to hit first prompts, so always load when
+        // cheap enough. Cap body read via first user message only.
+        let prompt = read_first_user_prompt(Path::new(&row.dir));
+        row.first_prompt = prompt.clone();
+
+        let hay_title = row.title.to_ascii_lowercase();
+        let hay_id = row.agent_session_id.to_ascii_lowercase();
+        let hay_cwd = row.cwd.as_deref().unwrap_or("").to_ascii_lowercase();
+        let hay_prompt = prompt.as_deref().unwrap_or("").to_ascii_lowercase();
+        if !(hay_title.contains(&q)
+            || hay_id.contains(&q)
+            || (!hay_cwd.is_empty() && hay_cwd.contains(&q))
+            || (!hay_prompt.is_empty() && hay_prompt.contains(&q)))
+        {
+            continue;
+        }
+        out.push(CliSessionSearchHit {
+            agent_session_id: row.agent_session_id,
+            title: row.title,
+            cwd: row.cwd,
+            updated_at: row.updated_at,
+            dir: row.dir,
+            num_messages: row.num_messages,
+            already_linked: row.already_linked,
+            app_session_id: row.app_session_id,
+            source_home: row.source_home,
+            first_prompt: prompt,
+            status: Some("local".into()),
+            source: "local".into(),
+        });
+        if out.len() >= limit as usize {
+            break;
+        }
+    }
+    Ok(out)
+}
+
+/// First user message body from chat_history.jsonl (best-effort, capped).
+pub fn read_first_user_prompt(dir: &Path) -> Option<String> {
+    let history = dir.join("chat_history.jsonl");
+    if !history.is_file() {
+        return None;
+    }
+    let raw = fs::read_to_string(&history).ok()?;
+    for line in raw.lines() {
+        let line = line.trim();
+        if line.is_empty() {
+            continue;
+        }
+        let v: Value = match serde_json::from_str(line) {
+            Ok(v) => v,
+            Err(_) => continue,
+        };
+        let typ = v
+            .get("type")
+            .or_else(|| v.get("role"))
+            .and_then(|x| x.as_str())
+            .unwrap_or("");
+        if typ != "user" {
+            continue;
+        }
+        let content = v.get("content").map(content_to_text).unwrap_or_default();
+        let content = content.trim().to_string();
+        if content.is_empty() {
+            continue;
+        }
+        let content = extract_user_query(&content).unwrap_or(content);
+        let content = content.trim();
+        if content.is_empty() {
+            continue;
+        }
+        // Cap length for UI / filter.
+        let capped: String = content.chars().take(500).collect();
+        return Some(capped);
+    }
+    None
 }
 
 fn read_summary_bits(
@@ -850,5 +1447,85 @@ mod tests {
         // sibling under home must remain
         assert!(sessions.is_dir() || !home.join("sessions").exists() || home.exists());
         let _ = fs::remove_dir_all(&home);
+    }
+
+    #[test]
+    fn parse_sessions_search_text_basic() {
+        let raw = r#"019f3fc7-485c-7ef1-ba71-624d6c014657 (remote)  Jul 08, 11:42am
+  Test Message
+  test
+019f3fc7-fd3a-72b1-b0a7-5d0c3e0b02bc (local)  Jul 08, 11:42am
+  Test Session
+  测试 session
+
+Total: 2
+"#;
+        let hits = parse_sessions_search_text(raw);
+        assert_eq!(hits.len(), 2);
+        assert_eq!(
+            hits[0].agent_session_id,
+            "019f3fc7-485c-7ef1-ba71-624d6c014657"
+        );
+        assert_eq!(hits[0].title, "Test Message");
+        assert_eq!(hits[0].first_prompt.as_deref(), Some("test"));
+        assert_eq!(hits[0].status.as_deref(), Some("remote"));
+        assert_eq!(hits[1].title, "Test Session");
+        assert_eq!(hits[1].status.as_deref(), Some("local"));
+    }
+
+    #[test]
+    fn parse_sessions_search_text_empty_and_warnings() {
+        assert!(parse_sessions_search_text("\nTotal: 0\n").is_empty());
+        let raw = r#"warning: remote session search timed out, showing local results only
+019ea630-1bd7-7f20-9ee4-78325ae16994 (local)  Jun 08,  6:17pm
+  GatePath Software Download
+
+Total: 1
+"#;
+        let hits = parse_sessions_search_text(raw);
+        assert_eq!(hits.len(), 1);
+        assert_eq!(hits[0].title, "GatePath Software Download");
+        assert!(hits[0].first_prompt.is_none());
+    }
+
+    #[test]
+    fn parse_sessions_search_json_array() {
+        let raw = r#"[
+          {
+            "agentSessionId": "abc-1111-uuid-xxxx-yyyyyyyyyyyy",
+            "title": "Hello",
+            "firstPrompt": "hi there",
+            "status": "local"
+          }
+        ]"#;
+        let hits = parse_sessions_search_json(raw).expect("json");
+        assert_eq!(hits.len(), 1);
+        assert_eq!(hits[0].title, "Hello");
+        assert_eq!(hits[0].first_prompt.as_deref(), Some("hi there"));
+    }
+
+    #[test]
+    fn read_first_user_prompt_from_history() {
+        let dir = std::env::temp_dir().join(format!("cli-fp-{}", Uuid::new_v4()));
+        fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("chat_history.jsonl");
+        let mut f = fs::File::create(&path).unwrap();
+        writeln!(f, r#"{{"type":"system","content":"sys"}}"#).unwrap();
+        writeln!(
+            f,
+            r#"{{"type":"user","content":[{{"type":"text","text":"<user_query>\nsearch me please\n</user_query>"}}]}}"#
+        )
+        .unwrap();
+        let p = read_first_user_prompt(&dir).unwrap();
+        assert_eq!(p, "search me please");
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn clamp_search_limit_bounds() {
+        assert_eq!(clamp_search_limit(None), 40);
+        assert_eq!(clamp_search_limit(Some(0)), 1);
+        assert_eq!(clamp_search_limit(Some(200)), 100);
+        assert_eq!(clamp_search_limit(Some(25)), 25);
     }
 }

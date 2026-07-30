@@ -692,6 +692,8 @@ export const SETTINGS_ENTRIES: readonly SettingsEntry[] = [
       "settings.cliSessionsImportOpen",
       "settings.cliSessionsDelete",
       "settings.cliSessionsDeleteUnlinked",
+      "settings.cliSessionsFilterPlaceholder",
+      "settings.cliSessionsSearchViaCli",
     ],
     keywords: [
       "cli sessions",
@@ -699,9 +701,13 @@ export const SETTINGS_ENTRIES: readonly SettingsEntry[] = [
       "agent session id",
       "resume",
       "delete session",
+      "search sessions",
+      "first prompt",
       "CLI 会话",
       "导入会话",
       "删除会话",
+      "搜索会话",
+      "首条提示",
     ],
   },
   {
