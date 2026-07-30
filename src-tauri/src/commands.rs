@@ -857,9 +857,11 @@ pub async fn settings_set(
 ) -> Result<AppSettings, String> {
     let prev = store::load_settings();
     let mut settings = settings;
-    // Normalize denylist so spawn / equality see a stable list.
+    // Normalize denylist / allowlist so spawn / equality see stable lists.
     settings.disallowed_tools =
         crate::acp_client::normalize_disallowed_tools(&settings.disallowed_tools);
+    settings.allowed_tools =
+        crate::acp_client::normalize_allowed_tools(&settings.allowed_tools);
     // Normalize optional agent profile path (trim / drop control chars).
     settings.agent_profile_path =
         crate::agents_catalog::normalize_agent_profile_path(&settings.agent_profile_path)
@@ -873,6 +875,10 @@ pub async fn settings_set(
     let disallowed_tools_flip = !crate::acp_client::disallowed_tools_equal(
         &prev.disallowed_tools,
         &settings.disallowed_tools,
+    );
+    let allowed_tools_flip = !crate::acp_client::allowed_tools_equal(
+        &prev.allowed_tools,
+        &settings.allowed_tools,
     );
     let plan_enabled_flip = prev.plan_enabled != settings.plan_enabled;
     let use_leader_changed = prev.use_leader != settings.use_leader;
@@ -938,6 +944,7 @@ pub async fn settings_set(
     }
     if web_search_flip
         || disallowed_tools_flip
+        || allowed_tools_flip
         || plan_enabled_flip
         || use_leader_changed
         || preferred_agent_flip

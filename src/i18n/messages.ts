@@ -1231,9 +1231,19 @@ const en = {
   "settings.disableWebSearch": "Disable web search & fetch",
   "settings.disableWebSearchDesc":
     "Spawn agents with --disable-web-search so web_search and web_fetch tools are unavailable. Live agents soft-respawn when this changes.",
+  "settings.allowedTools": "Allowed tools",
+  "settings.allowedToolsDesc":
+    "Restrict built-in tools via --tools (comma-separated). Empty = all tools (CLI default). When set, only listed tools are available. Coexists with Disallowed tools below (denylist still applies). Live agents soft-respawn when this changes.",
+  "settings.allowedToolsPlaceholder":
+    "Extra tool ids, comma-separated (e.g. bash,grep)",
+  "settings.allowedTools.caution":
+    "Caution: allowlisting only shell / coding tools may still be powerful",
+  "settings.allowedTools.clear": "Clear all (default: all tools)",
+  "settings.allowedTools.bothSet":
+    "Both allowlist and denylist are set: --tools restricts the set first; --disallowed-tools still removes listed tools from that set.",
   "settings.disallowedTools": "Disallowed tools",
   "settings.disallowedToolsDesc":
-    "Remove selected built-in tools via --disallowed-tools. Coexists with Disable web search. Live agents soft-respawn when this changes.",
+    "Remove selected built-in tools via --disallowed-tools. Coexists with Disable web search and Allowed tools above. Live agents soft-respawn when this changes.",
   "settings.disallowedToolsPlaceholder":
     "Extra tool ids, comma-separated (e.g. bash,grep)",
   "settings.disallowedTools.caution": "Caution: blocks shell / coding tools",
@@ -4227,9 +4237,19 @@ const zh: Record<MessageKey, string> = {
   "settings.disableWebSearch": "禁用网页搜索与抓取",
   "settings.disableWebSearchDesc":
     "启动 Agent 时加上 --disable-web-search，移除 web_search / web_fetch 工具。更改后会 soft-respawn 已连接的 Agent。",
+  "settings.allowedTools": "允许的工具",
+  "settings.allowedToolsDesc":
+    "通过 --tools（逗号分隔）限制可用内置工具。留空 = 全部工具（CLI 默认）。设置后仅列出的工具可用。可与下方「禁用内置工具」并存（denylist 仍生效）。更改后会 soft-respawn。",
+  "settings.allowedToolsPlaceholder":
+    "额外工具 id，逗号分隔（如 bash,grep）",
+  "settings.allowedTools.caution":
+    "注意：仅允许终端 / 编码类工具仍可能权限较大",
+  "settings.allowedTools.clear": "全部清除（默认：全部工具）",
+  "settings.allowedTools.bothSet":
+    "允许列表与禁用列表均已设置：--tools 先收窄范围，--disallowed-tools 仍会从中移除列出的工具。",
   "settings.disallowedTools": "禁用内置工具",
   "settings.disallowedToolsDesc":
-    "通过 --disallowed-tools 移除所选内置工具。可与上方「禁用网页搜索」并存。更改后会 soft-respawn。",
+    "通过 --disallowed-tools 移除所选内置工具。可与「禁用网页搜索」及上方「允许的工具」并存。更改后会 soft-respawn。",
   "settings.disallowedToolsPlaceholder":
     "额外工具 id，逗号分隔（如 bash,grep）",
   "settings.disallowedTools.caution": "注意：会屏蔽终端 / 编码类工具",

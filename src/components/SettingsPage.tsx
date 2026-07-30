@@ -50,6 +50,14 @@ import {
   toggleDisallowedTool,
 } from "@/lib/disallowedTools";
 import {
+  COMMON_ALLOWED_TOOLS,
+  bothToolListsSet,
+  isToolAllowed,
+  normalizeAllowedTools,
+  parseAllowedToolsInput,
+  toggleAllowedTool,
+} from "@/lib/allowedTools";
+import {
   SHORTCUTS,
   detectShortcutPlatform,
   filterShortcutGroups,
@@ -420,6 +428,9 @@ export interface SettingsPageProps {
   /** Built-in tool denylist (`--disallowed-tools`). */
   disallowedTools?: string[];
   onDisallowedTools?: (v: string[]) => void;
+  /** Built-in tool allowlist (`--tools`). Empty = CLI default (all tools). */
+  allowedTools?: string[];
+  onAllowedTools?: (v: string[]) => void;
   reopenLastSession?: boolean;
   onReopenLastSession?: (v: boolean) => void;
   closeToTray?: boolean;
@@ -961,6 +972,8 @@ export function SettingsPage({
   onDisableWebSearch,
   disallowedTools = [],
   onDisallowedTools,
+  allowedTools = [],
+  onAllowedTools,
   useLeader = false,
   onUseLeader,
   voiceId = "eve",
@@ -2460,6 +2473,112 @@ export function SettingsPage({
                   />
                 </div>
               ) : null}
+              {onAllowedTools ? (
+                <div
+                  className={
+                    "settings-row settings-row--stack" +
+                    rowHighlight("settings-anchor-allowedTools")
+                  }
+                  id="settings-anchor-allowedTools"
+                >
+                  <div className="settings-row__text">
+                    <div className="settings-row__label">
+                      {t("settings.allowedTools")}
+                    </div>
+                    <div className="settings-row__desc">
+                      {t("settings.allowedToolsDesc")}
+                    </div>
+                    {bothToolListsSet(allowedTools, disallowedTools) ? (
+                      <div className="settings-row__hint">
+                        {t("settings.allowedTools.bothSet")}
+                      </div>
+                    ) : null}
+                  </div>
+                  <div
+                    className="settings-tool-deny__chips"
+                    role="group"
+                    aria-label={t("settings.allowedTools")}
+                  >
+                    {COMMON_ALLOWED_TOOLS.map((tool) => {
+                      const selected = isToolAllowed(allowedTools, tool.id);
+                      return (
+                        <button
+                          key={tool.id}
+                          type="button"
+                          className={
+                            "settings-tool-deny__chip" +
+                            (selected ? " is-on" : "") +
+                            (tool.caution ? " is-caution" : "")
+                          }
+                          aria-pressed={selected}
+                          title={
+                            tool.caution
+                              ? t("settings.allowedTools.caution")
+                              : tool.id
+                          }
+                          onClick={() => {
+                            onAllowedTools(
+                              toggleAllowedTool(allowedTools, tool.id),
+                            );
+                          }}
+                        >
+                          {tool.id}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <div className="settings-tool-deny__row">
+                    <input
+                      type="text"
+                      className="settings-input settings-tool-deny__input"
+                      placeholder={t("settings.allowedToolsPlaceholder")}
+                      defaultValue={normalizeAllowedTools(allowedTools)
+                        .filter(
+                          (id) =>
+                            !COMMON_ALLOWED_TOOLS.some(
+                              (c) => c.id.toLowerCase() === id.toLowerCase(),
+                            ),
+                        )
+                        .join(", ")}
+                      key={normalizeAllowedTools(allowedTools)
+                        .filter(
+                          (id) =>
+                            !COMMON_ALLOWED_TOOLS.some(
+                              (c) => c.id.toLowerCase() === id.toLowerCase(),
+                            ),
+                        )
+                        .join(",")}
+                      onBlur={(e) => {
+                        const custom = parseAllowedToolsInput(e.target.value);
+                        const keptCommon = normalizeAllowedTools(
+                          allowedTools,
+                        ).filter((id) =>
+                          COMMON_ALLOWED_TOOLS.some(
+                            (c) => c.id.toLowerCase() === id.toLowerCase(),
+                          ),
+                        );
+                        onAllowedTools(
+                          normalizeAllowedTools([...keptCommon, ...custom]),
+                        );
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          (e.target as HTMLInputElement).blur();
+                        }
+                      }}
+                    />
+                    {normalizeAllowedTools(allowedTools).length > 0 ? (
+                      <button
+                        type="button"
+                        className="btn btn--sm settings-tool-deny__clear"
+                        onClick={() => onAllowedTools([])}
+                      >
+                        {t("settings.allowedTools.clear")}
+                      </button>
+                    ) : null}
+                  </div>
+                </div>
+              ) : null}
               {onDisallowedTools ? (
                 <div
                   className={
@@ -2478,6 +2597,11 @@ export function SettingsPage({
                     {disableWebSearch ? (
                       <div className="settings-row__hint">
                         {t("settings.disallowedTools.webCovered")}
+                      </div>
+                    ) : null}
+                    {bothToolListsSet(allowedTools, disallowedTools) ? (
+                      <div className="settings-row__hint">
+                        {t("settings.allowedTools.bothSet")}
                       </div>
                     ) : null}
                   </div>

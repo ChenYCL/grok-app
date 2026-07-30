@@ -1180,6 +1180,13 @@ export interface AppSettings {
    * Default empty. Coexists with `disableWebSearch`; changes soft-respawn.
    */
   disallowedTools?: string[];
+  /**
+   * Built-in tool ids allowlisted via CLI `--tools a,b`.
+   * Default empty = omit flag (CLI default all tools). When non-empty,
+   * restricts the agent to listed tools. Coexists with `disallowedTools`
+   * (allowlist restricts; denylist still applies). Changes soft-respawn.
+   */
+  allowedTools?: string[];
   planEnabled?: boolean;
   subagentsEnabled?: boolean;
   useLeader?: boolean;

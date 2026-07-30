@@ -547,6 +547,26 @@ export const SETTINGS_ENTRIES: readonly SettingsEntry[] = [
     keywords: ["web search"],
   },
   {
+    id: "general.allowedTools",
+    section: "general",
+    tab: "agent",
+    anchorId: "settings-anchor-allowedTools",
+    labelKey: "settings.allowedTools",
+    descKeys: [
+      "settings.allowedToolsDesc",
+      "settings.allowedTools.bothSet",
+    ],
+    keywords: [
+      "allowed tools",
+      "allowlist",
+      "tools allow",
+      "--tools",
+      "web_search",
+      "run_terminal_command",
+      "tool allow",
+    ],
+  },
+  {
     id: "general.disallowedTools",
     section: "general",
     tab: "agent",
@@ -555,6 +575,7 @@ export const SETTINGS_ENTRIES: readonly SettingsEntry[] = [
     descKeys: [
       "settings.disallowedToolsDesc",
       "settings.disallowedTools.webCovered",
+      "settings.allowedTools.bothSet",
     ],
     keywords: [
       "disallowed tools",
