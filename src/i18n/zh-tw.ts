@@ -2120,6 +2120,8 @@ export const zhTW: Record<MessageKey, string> = {
   "costRollup.noProject": "無專案",
   "costRollup.unknownCount": "{count} 未知",
 
+  "reliability.supportZipHint":
+    "脫敏後的 Doctor 報告、近期日誌與停滯時間線快照（不含金鑰）。",
   "doctor.advanced": "進階",
   "doctor.cliDoctor": "Grok Build CLI doctor",
   "doctor.cliDoctorHint": "來自 `grok doctor --json`（終端機、剪貼簿、色彩）。",
