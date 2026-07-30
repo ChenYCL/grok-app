@@ -362,6 +362,52 @@ pub fn disable_web_search_spawn_flags(disable: bool) -> Vec<&'static str> {
     }
 }
 
+/// Normalize tool ids for `--disallowed-tools`: trim, drop empty, dedupe
+/// case-insensitively (first spelling wins).
+pub fn normalize_disallowed_tools(tools: &[String]) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    let mut seen = std::collections::HashSet::new();
+    for raw in tools {
+        for piece in raw.split(',') {
+            let t = piece.trim();
+            if t.is_empty() {
+                continue;
+            }
+            let key = t.to_ascii_lowercase();
+            if seen.contains(&key) {
+                continue;
+            }
+            seen.insert(key);
+            out.push(t.to_string());
+        }
+    }
+    out
+}
+
+/// Spawn argv for denylist: `["--disallowed-tools", "a,b"]` or empty.
+pub fn disallowed_tools_spawn_flags(tools: &[String]) -> Vec<String> {
+    let cleaned = normalize_disallowed_tools(tools);
+    if cleaned.is_empty() {
+        return Vec::new();
+    }
+    vec!["--disallowed-tools".into(), cleaned.join(",")]
+}
+
+/// Order-independent, case-insensitive equality for soft-respawn flip checks.
+pub fn disallowed_tools_equal(a: &[String], b: &[String]) -> bool {
+    let mut aa: Vec<String> = normalize_disallowed_tools(a)
+        .into_iter()
+        .map(|s| s.to_ascii_lowercase())
+        .collect();
+    let mut bb: Vec<String> = normalize_disallowed_tools(b)
+        .into_iter()
+        .map(|s| s.to_ascii_lowercase())
+        .collect();
+    aa.sort();
+    bb.sort();
+    aa == bb
+}
+
 pub fn no_plan_spawn_flags(plan_enabled: bool) -> Vec<&'static str> {
     if plan_enabled {
         vec![]
@@ -517,6 +563,7 @@ impl AcpClient {
         let use_leader = settings.use_leader;
         let plan_enabled = settings.plan_enabled;
         let disable_web = settings.disable_web_search;
+        let disallowed_tools = settings.disallowed_tools.clone();
 
         if session_data_mode != "shared" {
             let _ = crate::agent_subagents::sync_subagents_to_agent_profile(
@@ -553,6 +600,9 @@ impl AcpClient {
         }
         for f in disable_web_search_spawn_flags(disable_web) {
             cmd.arg(f);
+        }
+        for a in disallowed_tools_spawn_flags(&disallowed_tools) {
+            cmd.arg(a);
         }
         for f in no_plan_spawn_flags(plan_enabled) {
             cmd.arg(f);
@@ -3214,6 +3264,59 @@ mod prompt_wait_timeout_tests {
             prompt_wait_should_timeout(Some(last), started, now, idle(), absolute()),
             Some("absolute")
         );
+    }
+}
+
+#[cfg(test)]
+mod disallowed_tools_spawn_tests {
+    use super::*;
+
+    #[test]
+    fn empty_yields_no_flags() {
+        assert!(disallowed_tools_spawn_flags(&[]).is_empty());
+        assert!(disallowed_tools_spawn_flags(&["".into(), "  ".into()]).is_empty());
+    }
+
+    #[test]
+    fn builds_comma_separated_flag() {
+        let args = disallowed_tools_spawn_flags(&[
+            "  web_search  ".into(),
+            "write".into(),
+            "web_search".into(),
+        ]);
+        assert_eq!(
+            args,
+            vec![
+                "--disallowed-tools".to_string(),
+                "web_search,write".to_string(),
+            ]
+        );
+    }
+
+    #[test]
+    fn splits_embedded_commas_and_dedupes_case_insensitively() {
+        let cleaned = normalize_disallowed_tools(&[
+            "Web_Search,write".into(),
+            "WEB_SEARCH".into(),
+            "Agent".into(),
+        ]);
+        assert_eq!(
+            cleaned,
+            vec![
+                "Web_Search".to_string(),
+                "write".to_string(),
+                "Agent".to_string(),
+            ]
+        );
+    }
+
+    #[test]
+    fn equality_is_order_and_case_insensitive() {
+        assert!(disallowed_tools_equal(
+            &["a".into(), "b".into()],
+            &["B".into(), "A".into()]
+        ));
+        assert!(!disallowed_tools_equal(&["a".into()], &["a".into(), "b".into()]));
     }
 }
 

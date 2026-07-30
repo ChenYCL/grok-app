@@ -1102,6 +1102,11 @@ export interface AppSettings {
   preferredAgent?: string;
   experimentalMemory?: boolean;
   disableWebSearch?: boolean;
+  /**
+   * Built-in tool ids denied via CLI `--disallowed-tools a,b`.
+   * Default empty. Coexists with `disableWebSearch`; changes soft-respawn.
+   */
+  disallowedTools?: string[];
   planEnabled?: boolean;
   subagentsEnabled?: boolean;
   useLeader?: boolean;

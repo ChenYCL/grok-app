@@ -783,12 +783,20 @@ pub async fn settings_set(
     settings: AppSettings,
 ) -> Result<AppSettings, String> {
     let prev = store::load_settings();
+    let mut settings = settings;
+    // Normalize denylist so spawn / equality see a stable list.
+    settings.disallowed_tools =
+        crate::acp_client::normalize_disallowed_tools(&settings.disallowed_tools);
     let keychain_flip =
         prev.store_api_keys_in_keychain != settings.store_api_keys_in_keychain;
     let session_data_mode_changed =
         prev.session_data_mode != settings.session_data_mode;
     let memory_flip = prev.experimental_memory != settings.experimental_memory;
     let web_search_flip = prev.disable_web_search != settings.disable_web_search;
+    let disallowed_tools_flip = !crate::acp_client::disallowed_tools_equal(
+        &prev.disallowed_tools,
+        &settings.disallowed_tools,
+    );
     let plan_enabled_flip = prev.plan_enabled != settings.plan_enabled;
     let use_leader_changed = prev.use_leader != settings.use_leader;
     let subagents_flip = prev.subagents_enabled != settings.subagents_enabled;
@@ -851,6 +859,7 @@ pub async fn settings_set(
         need_soft_respawn = true;
     }
     if web_search_flip
+        || disallowed_tools_flip
         || plan_enabled_flip
         || use_leader_changed
         || preferred_agent_flip

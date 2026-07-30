@@ -227,6 +227,11 @@ pub struct AppSettings {
     /// `web_search` / `web_fetch` tools are removed. Default false (CLI default).
     #[serde(default)]
     pub disable_web_search: bool,
+    /// Built-in tool ids to deny via top-level `grok --disallowed-tools a,b`.
+    /// Default empty (CLI default — all tools available). Coexists with
+    /// [`Self::disable_web_search`]; changing the list soft-respawns agents.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub disallowed_tools: Vec<String>,
     /// Reopen the last active chat once after launch (default **false** —
     /// start on a draft new-chat page; opt-in via Settings).
     #[serde(default = "default_reopen_last_session")]
@@ -383,6 +388,7 @@ impl Default for AppSettings {
             experimental_memory: false,
             max_agent_turns: None,
             disable_web_search: false,
+            disallowed_tools: Vec::new(),
             reopen_last_session: default_reopen_last_session(),
             last_session_id: None,
             last_project_id: None,
@@ -1992,6 +1998,7 @@ mod tests {
         assert!(!s.experimental_memory);
         assert_eq!(s.max_agent_turns, None);
         assert!(!s.disable_web_search);
+        assert!(s.disallowed_tools.is_empty());
         assert!(s.plan_enabled);
         assert!(s.subagents_enabled);
         assert_eq!(s.preferred_agent, "");
@@ -2070,6 +2077,25 @@ mod tests {
     fn disable_web_search_defaults_when_missing_from_json() {
         let s: AppSettings = serde_json::from_str(legacy_settings_json()).expect("deserialize");
         assert!(!s.disable_web_search);
+    }
+
+    #[test]
+    fn disallowed_tools_defaults_empty_when_missing_from_json() {
+        let s: AppSettings = serde_json::from_str(legacy_settings_json()).expect("deserialize");
+        assert!(s.disallowed_tools.is_empty());
+    }
+
+    #[test]
+    fn disallowed_tools_round_trips_camel_case() {
+        let mut s = AppSettings::default();
+        s.disallowed_tools = vec!["web_search".into(), "write".into()];
+        let json = serde_json::to_string(&s).expect("serialize");
+        assert!(json.contains("\"disallowedTools\""));
+        let back: AppSettings = serde_json::from_str(&json).expect("deserialize");
+        assert_eq!(
+            back.disallowed_tools,
+            vec!["web_search".to_string(), "write".to_string()]
+        );
     }
 
     #[test]
