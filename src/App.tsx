@@ -311,7 +311,9 @@ import {
 } from "@/lib/paletteActions";
 import {
   sessionExportFilename,
+  sessionExportHtmlFilename,
   sessionExportJsonFilename,
+  sessionToHtml,
   sessionToJson,
   sessionToMarkdown,
 } from "@/lib/sessionExport";
@@ -11127,6 +11129,75 @@ export default function App() {
     ],
   );
 
+  /**
+   * Download session as a standalone HTML page (blob save).
+   * Defaults match Markdown file export: thoughts + tool summaries on.
+   */
+  const exportSessionHtml = useCallback(
+    async (sessionMeta?: {
+      id: string;
+      title: string;
+      projectId?: string | null;
+    }) => {
+      const id = sessionMeta?.id ?? session.sessionId;
+      if (!id) {
+        showToast(tr("session.exportFail"));
+        return;
+      }
+      const title =
+        sessionMeta?.title ||
+        sessions.find((s) => s.id === id)?.title ||
+        session.title ||
+        tr("session.untitled");
+      const projectId =
+        sessionMeta?.projectId ??
+        sessions.find((s) => s.id === id)?.projectId ??
+        null;
+      const proj =
+        projects.find((p) => p.id === projectId) || activeProject || null;
+      try {
+        let msgs = messages;
+        if (id !== session.sessionId) {
+          msgs = (await api.sessionMessages(id)) as ChatMessage[];
+        }
+        const html = sessionToHtml({
+          title,
+          projectName: proj?.name,
+          projectPath: proj?.path,
+          sessionId: id,
+          options: { includeThoughts: true, includeToolSummary: true },
+          messages: msgs.map((m) => ({
+            role: m.role,
+            content: m.content,
+            thought: m.thought,
+            createdAt: m.createdAt,
+            marker: m.marker,
+          })),
+        });
+        const blob = new Blob([html], { type: "text/html;charset=utf-8" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = sessionExportHtmlFilename(title, id);
+        a.click();
+        URL.revokeObjectURL(url);
+        showToast(tr("session.exportDone"));
+      } catch (e) {
+        showToast(`${tr("session.exportFail")}: ${String(e)}`);
+      }
+    },
+    [
+      session.sessionId,
+      session.title,
+      sessions,
+      messages,
+      projects,
+      activeProject,
+      showToast,
+      tr,
+    ],
+  );
+
   /** Full diagnostic zip (messages + agent trail + logs) for bug reports. */
   const exportSessionDiagnostic = useCallback(
     async (sessionId?: string | null) => {
@@ -17401,6 +17472,18 @@ export default function App() {
                 icon: <IconCopy size={16} />,
                 onClick: () => {
                   void exportSessionJson({
+                    id: s.id,
+                    title: s.title,
+                    projectId: s.projectId,
+                  });
+                },
+              },
+              {
+                id: "export-html",
+                label: tr("session.exportHtml"),
+                icon: <IconCopy size={16} />,
+                onClick: () => {
+                  void exportSessionHtml({
                     id: s.id,
                     title: s.title,
                     projectId: s.projectId,

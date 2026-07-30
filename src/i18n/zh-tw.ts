@@ -1824,6 +1824,7 @@ export const zhTW: Record<MessageKey, string> = {
   "session.exportMdWorking": "匯出中…",
   "session.exportCopied": "Markdown 已複製到剪貼簿",
   "session.exportJson": "匯出對話為 JSON",
+  "session.exportHtml": "匯出對話為 HTML",
   "session.exportTrace": "匯出 trace",
   "session.exportTraceDone": "對話 trace 已儲存",
   "session.exportTraceFail": "trace 匯出失敗",

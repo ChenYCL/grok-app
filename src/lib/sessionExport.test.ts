@@ -1,9 +1,13 @@
 import { describe, expect, it } from "vitest";
 import {
+  escapeHtml,
   formatToolSummaryLine,
+  messagesToHtml,
   messagesToMarkdown,
   sessionExportFilename,
+  sessionExportHtmlFilename,
   sessionExportJsonFilename,
+  sessionToHtml,
   sessionToJson,
   sessionToMarkdown,
 } from "./sessionExport";
@@ -223,6 +227,205 @@ describe("sessionExportJsonFilename", () => {
 
   it("handles empty title", () => {
     expect(sessionExportJsonFilename("", null)).toBe("grok-session.json");
+  });
+});
+
+describe("sessionExportHtmlFilename", () => {
+  it("uses .html extension", () => {
+    expect(sessionExportHtmlFilename("Fix Doctor Reset!", "abcdef12-xxxx")).toBe(
+      "grok-fix-doctor-reset-abcdef12.html",
+    );
+  });
+
+  it("handles empty title", () => {
+    expect(sessionExportHtmlFilename("", null)).toBe("grok-session.html");
+  });
+});
+
+describe("escapeHtml", () => {
+  it("escapes &, <, >, quotes", () => {
+    expect(escapeHtml(`a & b <c> "d" 'e'`)).toBe(
+      "a &amp; b &lt;c&gt; &quot;d&quot; &#39;e&#39;",
+    );
+  });
+
+  it("handles empty / nullish", () => {
+    expect(escapeHtml("")).toBe("");
+  });
+});
+
+describe("messagesToHtml", () => {
+  it("renders user and assistant sections with escaped content", () => {
+    const html = messagesToHtml([
+      { role: "user", content: "Add <reset> & data" },
+      {
+        role: "assistant",
+        content: "Done.",
+        thought: "Need <double> confirm.",
+      },
+    ]);
+    expect(html).not.toContain("<!DOCTYPE");
+    expect(html).toContain('<section class="msg msg--user">');
+    expect(html).toContain("<h2>User</h2>");
+    expect(html).toContain("Add &lt;reset&gt; &amp; data");
+    expect(html).not.toContain("Add <reset>");
+    expect(html).toContain('<section class="msg msg--assistant">');
+    expect(html).toContain("<h2>Assistant</h2>");
+    expect(html).toContain("<summary>Thinking</summary>");
+    expect(html).toContain("Need &lt;double&gt; confirm.");
+    expect(html).toContain("Done.");
+  });
+
+  it("skips tool_step noise by default", () => {
+    const html = messagesToHtml([
+      {
+        role: "tool",
+        content: "tool_step|bash|completed|ran tests",
+        marker: "tool_step",
+      },
+      { role: "assistant", content: "All green." },
+    ]);
+    expect(html).not.toContain("msg--tool");
+    expect(html).not.toContain("bash");
+    expect(html).toContain("All green.");
+  });
+
+  it("includes tool summaries when opted in", () => {
+    const html = messagesToHtml(
+      [
+        {
+          role: "tool",
+          content: "tool_step|bash|completed|ran tests",
+          marker: "tool_step",
+        },
+        { role: "assistant", content: "All green." },
+      ],
+      { includeToolSummary: true },
+    );
+    expect(html).toContain('class="msg msg--tool"');
+    expect(html).toContain("bash (completed)");
+    expect(html).toContain("All green.");
+  });
+
+  it("omits thoughts when includeThoughts is false", () => {
+    const html = messagesToHtml(
+      [
+        {
+          role: "assistant",
+          content: "Body only.",
+          thought: "secret plan",
+        },
+      ],
+      { includeThoughts: false },
+    );
+    expect(html).not.toContain("secret plan");
+    expect(html).not.toContain("<summary>Thinking</summary>");
+    expect(html).toContain("Body only.");
+  });
+
+  it("skips empty shells and returns empty string for no content", () => {
+    expect(messagesToHtml([])).toBe("");
+    expect(
+      messagesToHtml([
+        { role: "tool", content: "" },
+        { role: "assistant", content: "   " },
+      ]),
+    ).toBe("");
+  });
+
+  it("includes createdAt when present", () => {
+    const html = messagesToHtml([
+      {
+        role: "user",
+        content: "hi",
+        createdAt: "2026-07-24T00:00:00.000Z",
+      },
+    ]);
+    expect(html).toContain('datetime="2026-07-24T00:00:00.000Z"');
+    expect(html).toContain(">2026-07-24T00:00:00.000Z</time>");
+  });
+});
+
+describe("sessionToHtml", () => {
+  it("builds a full HTML document with title, meta, and role sections", () => {
+    const html = sessionToHtml({
+      title: "Doctor <reset>",
+      projectName: "grok-app",
+      projectPath: "/tmp/grok-app",
+      sessionId: "abc12345-full",
+      exportedAt: "2026-07-24T00:00:00.000Z",
+      messages: [
+        { role: "user", content: "Add reset data" },
+        {
+          role: "assistant",
+          content: "Done.",
+          thought: "Need double confirm.",
+        },
+      ],
+    });
+    expect(html.startsWith("<!DOCTYPE html>")).toBe(true);
+    expect(html).toContain("<title>Doctor &lt;reset&gt;</title>");
+    expect(html).toContain("<h1>Doctor &lt;reset&gt;</h1>");
+    expect(html).toContain("Project: grok-app");
+    expect(html).toContain("Session: abc12345-full");
+    expect(html).toContain("<h2>User</h2>");
+    expect(html).toContain("Add reset data");
+    expect(html).toContain("<h2>Assistant</h2>");
+    expect(html).toContain("<summary>Thinking</summary>");
+    expect(html).toContain("Need double confirm.");
+    expect(html).toContain("Done.");
+  });
+
+  it("summarizes tool_step rows when includeToolSummary is on by default", () => {
+    const html = sessionToHtml({
+      title: "tools",
+      exportedAt: "2026-07-24T00:00:00.000Z",
+      messages: [
+        {
+          role: "tool",
+          content: "tool_step|bash|completed|ran tests",
+          marker: "tool_step",
+        },
+        { role: "assistant", content: "All green." },
+      ],
+    });
+    expect(html).toContain("msg--tool");
+    expect(html).toContain("bash (completed)");
+    expect(html).toContain("All green.");
+  });
+
+  it("omits tools and thoughts when options say so", () => {
+    const html = sessionToHtml({
+      title: "opts",
+      exportedAt: "2026-07-24T00:00:00.000Z",
+      options: { includeThoughts: false, includeToolSummary: false },
+      messages: [
+        {
+          role: "tool",
+          content: "tool_step|edit|completed",
+          marker: "tool_step",
+        },
+        {
+          role: "assistant",
+          content: "Body only.",
+          thought: "secret plan",
+        },
+      ],
+    });
+    expect(html).not.toContain('class="msg msg--tool"');
+    expect(html).not.toContain("secret plan");
+    expect(html).not.toContain("<summary>Thinking</summary>");
+    expect(html).toContain("Body only.");
+  });
+
+  it("falls back to Untitled", () => {
+    const html = sessionToHtml({
+      title: "   ",
+      exportedAt: "2026-07-24T00:00:00.000Z",
+      messages: [],
+    });
+    expect(html).toContain("<title>Untitled</title>");
+    expect(html).toContain("<h1>Untitled</h1>");
   });
 });
 
