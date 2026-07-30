@@ -13,6 +13,7 @@ See `docs/llm-wiki/release.md`.
 
 ### Added
 
+- **Plan history archive**: when a plan is approved, abandoned, or completes, store a redacted body preview in a local ring (max 30); session menu / Resources open a read-only list + preview
 - **Per-session mute** for desktop notifications (context menu Mute / Unmute; sidebar muted icon; in-app toasts still show)
 - **Desktop notification click** opens the session that fired turn-done / permission / ask_user
 - **Send queue Edit** for follow-up items (GlassModal; empty text blocked unless attachments remain)
@@ -35,6 +36,7 @@ See `docs/llm-wiki/release.md`.
 
 **中文 · 新增**
 
+- 计划历史归档（批准/放弃/完成后本地预览，最多 30 条；会话菜单 / 资源面板只读查看）
 - 按会话静音桌面通知（菜单 Mute/Unmute；侧栏静音图标；应用内 Toast 仍显示）
 - 通知点击跳转会话；发送队列可编辑；上下文 System/Tools/History；Compact 增强
 - Worktree 会话徽章与管理；Fork 可选恢复代码；沙箱项目覆盖

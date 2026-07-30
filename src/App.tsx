@@ -282,6 +282,8 @@ import {
 import { AskUserModal } from "@/components/AskUserModal";
 import { DoctorModal } from "@/components/DoctorModal";
 import { TraceHistoryList } from "@/components/TraceHistoryList";
+import { PlanHistoryList } from "@/components/PlanHistoryList";
+import { MarkdownBody } from "@/components/MarkdownBody";
 import { VoiceOverlay } from "@/components/VoiceOverlay";
 import {
   filterSessionSearch,
@@ -300,6 +302,13 @@ import {
   sessionToMarkdown,
 } from "@/lib/sessionExport";
 import { recordTraceExport } from "@/lib/traceHistory";
+import { recordPlanHistory } from "@/lib/planHistory";
+import type { PlanHistoryEntry } from "@/lib/planHistory";
+import { planDisplayMarkdown } from "@/lib/planBody";
+import {
+  computePlanProgress,
+  parsePlanEntries,
+} from "@/lib/planStatus";
 import {
   findChatMatches,
   stepChatFindIndex,
@@ -524,6 +533,7 @@ import {
   IconShield,
   IconCheck,
   IconList,
+  IconPlan,
   IconActivity,
   IconFileText,
   IconSettings,
@@ -1075,6 +1085,8 @@ export default function App() {
   const [editSubmitting, setEditSubmitting] = useState(false);
   const [projects, setProjects] = useState<Project[]>([]);
   const [sessions, setSessions] = useState<SessionRow[]>([]);
+  const sessionsRef = useRef(sessions);
+  sessionsRef.current = sessions;
   const [activeProject, setActiveProject] = useState<Project | null>(null);
   /**
    * On-disk default cwd for unbound chats (`workspaces/general`).
@@ -1480,6 +1492,15 @@ export default function App() {
   const [setupCliSeed, setSetupCliSeed] = useState<SetupCliInfo | null>(null);
   const [showDoctor, setShowDoctor] = useState(false);
   const [showTraces, setShowTraces] = useState(false);
+  /** Local plan review archive (approved / abandoned / completed). */
+  const [showPlanHistory, setShowPlanHistory] = useState(false);
+  const [planHistoryPreview, setPlanHistoryPreview] =
+    useState<PlanHistoryEntry | null>(null);
+  /**
+   * Dedupe plan-complete history rows per session+toolCall cycle
+   * (session://plan can emit multiple “all done” updates).
+   */
+  const planCompletedRecordedRef = useRef(new Set<string>());
   /** Reliability / Observability center (busy · stalls · error deck). */
   const [showReliability, setShowReliability] = useState(false);
   /** In-session ring of recent stall events (soft/hard); no secrets. */
@@ -3743,6 +3764,54 @@ export default function App() {
               viewingSessionIdRef.current ||
               null;
 
+            const planJustCompleted = (
+              prev: PlanState,
+              next: PlanState,
+              sid: string | null,
+            ) => {
+              if (!sid) return;
+              const prevProg = computePlanProgress(
+                parsePlanEntries(prev.entries),
+              );
+              const nextProg = computePlanProgress(
+                parsePlanEntries(next.entries),
+              );
+              const wasDone =
+                prevProg.total > 0 &&
+                prevProg.completed + prevProg.cancelled >= prevProg.total &&
+                prevProg.inProgress === 0 &&
+                prevProg.pending === 0;
+              const nowDone =
+                nextProg.total > 0 &&
+                nextProg.completed + nextProg.cancelled >= nextProg.total &&
+                nextProg.inProgress === 0 &&
+                nextProg.pending === 0;
+              if (!nowDone || wasDone) return;
+              const cycleKey = `${sid}|${next.toolCallId ?? "notool"}`;
+              if (planCompletedRecordedRef.current.has(cycleKey)) return;
+              planCompletedRecordedRef.current.add(cycleKey);
+              // Bound the dedupe set.
+              if (planCompletedRecordedRef.current.size > 80) {
+                const first = planCompletedRecordedRef.current.values().next()
+                  .value;
+                if (first != null) planCompletedRecordedRef.current.delete(first);
+              }
+              const bodyMd = planDisplayMarkdown(next.body, next.entries);
+              if (!bodyMd.trim()) return;
+              const row = sessionsRef.current.find((s) => s.id === sid);
+              const sessionTitle = row?.title?.trim() || undefined;
+              try {
+                recordPlanHistory({
+                  sessionId: sid,
+                  decision: "completed",
+                  title: sessionTitle,
+                  bodyPreview: bodyMd,
+                });
+              } catch {
+                /* private mode */
+              }
+            };
+
             // Background session: keep plan cache warm without stealing the bar.
             if (
               p.sessionId &&
@@ -3758,6 +3827,7 @@ export default function App() {
                 composerMode,
               );
               planBySessionRef.current.set(p.sessionId, next);
+              planJustCompleted(prev, next, p.sessionId);
               return;
             }
 
@@ -3786,6 +3856,7 @@ export default function App() {
               }
               if (targetSid) {
                 planBySessionRef.current.set(targetSid, next);
+                planJustCompleted(prev, next, targetSid);
               }
               return next;
             });
@@ -7831,14 +7902,52 @@ export default function App() {
     setPlan(next);
   }, []);
 
+  /** Archive a plan decision to localStorage (preview only; no secrets). */
+  const archivePlanDecision = useCallback(
+    (
+      decision: "approved" | "abandoned" | "completed",
+      snapshot: Pick<PlanState, "body" | "entries" | "title">,
+      sessionId: string | null | undefined,
+    ) => {
+      const sid = (sessionId || "").trim();
+      if (!sid) return;
+      const bodyMd = planDisplayMarkdown(snapshot.body, snapshot.entries);
+      if (!bodyMd.trim() && decision !== "abandoned" && decision !== "approved") {
+        // Completing with no body/steps is not useful to archive.
+        return;
+      }
+      const row = sessionsRef.current.find((s) => s.id === sid);
+      const sessionTitle = row?.title?.trim() || undefined;
+      const planTitle =
+        snapshot.title?.trim() &&
+        snapshot.title.trim() !== trRef.current("plan.ready")
+          ? snapshot.title.trim()
+          : undefined;
+      try {
+        recordPlanHistory({
+          sessionId: sid,
+          decision,
+          title: sessionTitle || planTitle,
+          bodyPreview: bodyMd,
+        });
+      } catch {
+        /* private mode / quota */
+      }
+    },
+    [],
+  );
+
   const approvePlan = useCallback(async () => {
     try {
+      const snap = planRef.current;
+      const sid = viewingSessionIdRef.current;
       await api.sessionResolvePlan({
         decision: "approved",
         rpcId: plan.rpcId,
         // Plan chrome is per-viewed-session; the gate may sit on a demoted turn.
-        sessionId: viewingSessionIdRef.current,
+        sessionId: sid,
       });
+      archivePlanDecision("approved", snap, sid);
       writePlanForViewing({
         ...planRef.current,
         visible: false,
@@ -7850,7 +7959,7 @@ export default function App() {
     } catch (e) {
       showToast(String(e), 4500);
     }
-  }, [plan.rpcId, showToast, tr, writePlanForViewing]);
+  }, [archivePlanDecision, plan.rpcId, showToast, tr, writePlanForViewing]);
 
   const requestPlanChanges = useCallback(async () => {
     try {
@@ -7893,16 +8002,25 @@ export default function App() {
       onConfirm: async () => {
         const latest = planRef.current;
         const abandonedRpcId = latest.rpcId ?? null;
+        const sid = viewingSessionIdRef.current;
         if (abandonedRpcId != null) {
           try {
             await api.sessionResolvePlan({
               decision: "abandoned",
               rpcId: abandonedRpcId,
-              sessionId: viewingSessionIdRef.current,
+              sessionId: sid,
             });
           } catch {
             /* clear UI anyway */
           }
+        }
+        // Archive when user abandons review or dismisses an in-flight plan.
+        if (
+          latest.body.trim() ||
+          latest.entries.length > 0 ||
+          abandonedRpcId != null
+        ) {
+          archivePlanDecision("abandoned", latest, sid);
         }
         writePlanForViewing(
           closedSessionPlan(
@@ -7924,7 +8042,7 @@ export default function App() {
         }
       },
     });
-  }, [tr, writePlanForViewing]);
+  }, [archivePlanDecision, tr, writePlanForViewing]);
 
   /** Open resource pane Plan review (replaces scroll-to-card “详情”). */
   const openPlanInResource = useCallback(() => {
@@ -11194,6 +11312,8 @@ export default function App() {
         showSearch ||
         showDoctor ||
         showTraces ||
+        showPlanHistory ||
+        planHistoryPreview ||
         showShortcuts ||
         showProductTutorial ||
         showStatusModal ||
@@ -14412,6 +14532,7 @@ export default function App() {
               onApprovePlan={() => void approvePlan()}
               onRequestPlanChanges={() => void requestPlanChanges()}
               onDismissPlan={() => void dismissPlan()}
+              onOpenPlanHistory={() => setShowPlanHistory(true)}
               onAsideLayoutHint={applyAsideLayoutHint}
               onClose={() => {
                 // Manual close — do not treat as plan-owned pane on later dismiss.
@@ -15202,6 +15323,98 @@ export default function App() {
           onCopied={() => showToast(tr("session.tracesCopied"), 2000)}
           onError={(msg) => showToast(msg, 4000)}
         />
+      </GlassModal>
+
+      <GlassModal
+        open={showPlanHistory}
+        onClose={() => setShowPlanHistory(false)}
+        title={tr("plan.historyTitle")}
+        size="md"
+        closeLabel={tr("common.close")}
+        wrapBody
+        className="plan-history-modal"
+        footer={
+          <button
+            type="button"
+            className="btn btn--ghost"
+            onClick={() => setShowPlanHistory(false)}
+          >
+            {tr("common.close")}
+          </button>
+        }
+      >
+        <p className="plan-history-modal__desc">{tr("plan.historyDesc")}</p>
+        <PlanHistoryList
+          labels={{
+            empty: tr("plan.historyEmpty"),
+            open: tr("plan.historyOpen"),
+            decisionApproved: tr("plan.historyDecisionApproved"),
+            decisionAbandoned: tr("plan.historyDecisionAbandoned"),
+            decisionCompleted: tr("plan.historyDecisionCompleted"),
+            listAria: tr("plan.historyTitle"),
+          }}
+          onOpen={(entry) => setPlanHistoryPreview(entry)}
+        />
+      </GlassModal>
+
+      <GlassModal
+        open={!!planHistoryPreview}
+        onClose={() => setPlanHistoryPreview(null)}
+        title={tr("plan.historyPreviewTitle")}
+        size="md"
+        closeLabel={tr("common.close")}
+        wrapBody
+        className="plan-history-preview-modal"
+        footer={
+          <button
+            type="button"
+            className="btn btn--ghost"
+            onClick={() => setPlanHistoryPreview(null)}
+          >
+            {tr("common.close")}
+          </button>
+        }
+      >
+        {planHistoryPreview ? (
+          <div className="plan-history-preview">
+            <div className="plan-history-preview__meta">
+              <span>
+                {planHistoryPreview.decision === "approved"
+                  ? tr("plan.historyDecisionApproved")
+                  : planHistoryPreview.decision === "abandoned"
+                    ? tr("plan.historyDecisionAbandoned")
+                    : tr("plan.historyDecisionCompleted")}
+              </span>
+              {planHistoryPreview.title ? (
+                <span title={planHistoryPreview.title}>
+                  {planHistoryPreview.title}
+                </span>
+              ) : null}
+              {planHistoryPreview.at ? (
+                <span>
+                  {(() => {
+                    const d = Date.parse(planHistoryPreview.at);
+                    if (!Number.isFinite(d)) return planHistoryPreview.at;
+                    try {
+                      return new Date(d).toLocaleString();
+                    } catch {
+                      return planHistoryPreview.at;
+                    }
+                  })()}
+                </span>
+              ) : null}
+            </div>
+            {planHistoryPreview.bodyPreview.trim() ? (
+              <MarkdownBody locale={locale}>
+                {planHistoryPreview.bodyPreview}
+              </MarkdownBody>
+            ) : (
+              <div className="plan-history-preview__empty">
+                {tr("plan.historyPreviewEmpty")}
+              </div>
+            )}
+          </div>
+        ) : null}
       </GlassModal>
 
       <GlassModal
@@ -16212,6 +16425,14 @@ export default function App() {
                 icon: <IconFolder size={16} />,
                 onClick: () => {
                   setShowTraces(true);
+                },
+              },
+              {
+                id: "plan-history",
+                label: tr("plan.history"),
+                icon: <IconPlan size={16} />,
+                onClick: () => {
+                  setShowPlanHistory(true);
                 },
               },
               {

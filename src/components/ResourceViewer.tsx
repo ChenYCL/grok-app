@@ -25,6 +25,7 @@ import { ImageUi } from "@/components/ImageUi";
 import {
   IconChevronDown,
   IconChevronRight,
+  IconClock,
   IconClose,
   IconCopy,
   IconEdit,
@@ -140,6 +141,8 @@ export interface ResourceViewerProps {
   onApprovePlan?: () => void;
   onRequestPlanChanges?: () => void;
   onDismissPlan?: () => void;
+  /** Open local plan review history archive (session menu / Resources). */
+  onOpenPlanHistory?: () => void;
   /**
    * Content-aware right-pane layout hint (preview kind, tree open, tabs).
    * App soft-grows aside width so chrome icons never collide with window controls.
@@ -262,6 +265,7 @@ export function ResourceViewer({
   onApprovePlan,
   onRequestPlanChanges,
   onDismissPlan,
+  onOpenPlanHistory,
   onAsideLayoutHint,
 }: ResourceViewerProps) {
   const tr = useMemo(() => createT(locale), [locale]);
@@ -2004,6 +2008,18 @@ export function ResourceViewer({
               </button>
             </Tip>
           ) : null}
+          {onOpenPlanHistory ? (
+            <Tip label={tr("plan.history")}>
+              <button
+                type="button"
+                className="chrome-btn main__pane-toggle"
+                onClick={onOpenPlanHistory}
+                aria-label={tr("plan.history")}
+              >
+                <IconClock size={16} />
+              </button>
+            </Tip>
+          ) : null}
           {workspaceAvailable ? (
             <Tip
               label={
@@ -2119,6 +2135,16 @@ export function ResourceViewer({
             <div className="rp__empty-state">
               <div className="rp__empty-title">{tr("resources.plan")}</div>
               <div className="rp__empty-desc">{tr("resources.planEmpty")}</div>
+              {onOpenPlanHistory ? (
+                <button
+                  type="button"
+                  className="btn btn--ghost btn--sm"
+                  style={{ marginTop: 12 }}
+                  onClick={onOpenPlanHistory}
+                >
+                  {tr("plan.history")}
+                </button>
+              ) : null}
             </div>
           ) : sideMode === "changes" && diffView ? (
             diffView.loading ? (
