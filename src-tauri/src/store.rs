@@ -158,6 +158,10 @@ pub struct SessionMeta {
     /// (repeatable). Does not change global Extensions / `~/.grok` plugins.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub plugin_dirs: Vec<String>,
+    /// Optional per-session extra rules appended via top-level `grok --rules`.
+    /// Empty / unset → no flag. Soft-respawn reloads on change.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub extra_rules: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1010,6 +1014,7 @@ pub fn create_session(
         worktree_branch: None,
         is_worktree_session: false,
         plugin_dirs: Vec::new(),
+        extra_rules: None,
     };
     let mut list = load_sessions_index();
     list.insert(0, meta.clone());
@@ -1205,6 +1210,45 @@ pub fn set_session_plugin_dirs(
     Ok(clone)
 }
 
+/// Soft cap aligned with the frontend helper (~32 KiB).
+const EXTRA_RULES_MAX_CHARS: usize = 32 * 1024;
+
+/// Trim + clamp session extra rules. Empty after trim → `None` (clear).
+pub fn sanitize_extra_rules(raw: Option<String>) -> Option<String> {
+    match raw {
+        None => None,
+        Some(s) => {
+            let t = s.trim();
+            if t.is_empty() {
+                None
+            } else if t.len() > EXTRA_RULES_MAX_CHARS {
+                Some(t.chars().take(EXTRA_RULES_MAX_CHARS).collect())
+            } else {
+                Some(t.to_string())
+            }
+        }
+    }
+}
+
+/// Set or clear per-session extra rules (`grok --rules` on next spawn).
+/// Pass `None` or empty/whitespace to clear.
+pub fn set_session_extra_rules(
+    id: &str,
+    extra_rules: Option<String>,
+) -> Result<SessionMeta, String> {
+    let normalized = sanitize_extra_rules(extra_rules);
+    let mut list = load_sessions_index();
+    let s = list
+        .iter_mut()
+        .find(|s| s.id == id)
+        .ok_or_else(|| "session not found".to_string())?;
+    s.extra_rules = normalized;
+    s.updated_at = Utc::now();
+    let clone = s.clone();
+    save_sessions_index(&list)?;
+    Ok(clone)
+}
+
 /// Bind (or clear) a session's project folder. Used to attach orphan / legacy
 /// chats to a project added later. Clearing (`None`) returns the chat to
 /// "其他会话"; agent cwd still uses the general workspace directory.
@@ -1352,6 +1396,7 @@ pub fn fork_session(
     meta.worktree_branch = source.worktree_branch.clone();
     meta.is_worktree_session = source.is_worktree_session;
     meta.plugin_dirs = source.plugin_dirs.clone();
+    meta.extra_rules = source.extra_rules.clone();
     meta.updated_at = Utc::now();
     update_session_meta(&meta)?;
 
@@ -2182,7 +2227,24 @@ mod tests {
             worktree_branch: None,
             is_worktree_session: false,
             plugin_dirs: Vec::new(),
+            extra_rules: None,
         }
+    }
+
+    #[test]
+    fn session_extra_rules_default_none_and_sanitize() {
+        let raw = r#"{"id":"s1","projectId":null,"title":"t","agentSessionId":null,"createdAt":"2020-01-01T00:00:00Z","updatedAt":"2020-01-01T00:00:00Z"}"#;
+        let m: SessionMeta = serde_json::from_str(raw).expect("legacy session without extraRules");
+        assert!(m.extra_rules.is_none());
+        assert_eq!(sanitize_extra_rules(None), None);
+        assert_eq!(sanitize_extra_rules(Some("  ".into())), None);
+        assert_eq!(
+            sanitize_extra_rules(Some("  prefer tests  ".into())).as_deref(),
+            Some("prefer tests")
+        );
+        let long = "x".repeat(EXTRA_RULES_MAX_CHARS + 10);
+        let capped = sanitize_extra_rules(Some(long)).expect("capped");
+        assert_eq!(capped.chars().count(), EXTRA_RULES_MAX_CHARS);
     }
 
     #[test]
@@ -2323,6 +2385,7 @@ mod tests {
                 worktree_branch: None,
                 is_worktree_session: false,
                 plugin_dirs: Vec::new(),
+                extra_rules: None,
             },
         );
         write_json(&sessions_index_file(), &sessions).expect("seed sessions");
