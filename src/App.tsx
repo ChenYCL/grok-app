@@ -63,6 +63,7 @@ import {
   formatRelativeTime,
 } from "@/lib/accountUi";
 import { loadConfirmExternalLinksPref } from "@/lib/externalLinkPref";
+import { loadStopAllSkipConfirmPref } from "@/lib/stopAllSkipConfirmPref";
 import {
   loadNotifySoundPref,
   NOTIFY_SOUND_CHANGE_EVENT,
@@ -7566,7 +7567,7 @@ export default function App() {
     }, ms);
   }, []);
 
-  /** Confirm then stop every stoppable busy session from the Tasks panel. */
+  /** Confirm (unless pref) then stop every stoppable busy session from the Tasks panel. */
   const stopAllBusySessions = useCallback(() => {
     const rows = stoppableActivitySessions(
       collectActivitySessions({
@@ -7579,39 +7580,46 @@ export default function App() {
     if (!rows.length) return;
     const n = rows.length;
     const ids = rows.map((r) => r.sessionId);
+    const runStopAll = async () => {
+      const results = await Promise.allSettled(
+        ids.map((id) => api.sessionStop(id)),
+      );
+      let ok = 0;
+      let fail = 0;
+      for (let i = 0; i < results.length; i++) {
+        const r = results[i]!;
+        const id = ids[i]!;
+        if (r.status === "fulfilled") {
+          ok += 1;
+          settleStoppedSessionUi(id);
+        } else {
+          fail += 1;
+        }
+      }
+      if (fail === 0) {
+        showToast(tr("tasks.activity.stopAllDone", { n: String(ok) }), 3200);
+      } else {
+        showToast(
+          tr("tasks.activity.stopAllPartial", {
+            ok: String(ok),
+            fail: String(fail),
+          }),
+          4000,
+        );
+      }
+    };
+    if (loadStopAllSkipConfirmPref()) {
+      void runStopAll();
+      return;
+    }
     setAppDialog({
       kind: "confirm",
       title: tr("tasks.activity.stopAllTitle"),
       message: tr("tasks.activity.stopAllConfirm", { n: String(n) }),
       confirmLabel: tr("tasks.activity.stopAll"),
       danger: true,
-      onConfirm: async () => {
-        const results = await Promise.allSettled(
-          ids.map((id) => api.sessionStop(id)),
-        );
-        let ok = 0;
-        let fail = 0;
-        for (let i = 0; i < results.length; i++) {
-          const r = results[i]!;
-          const id = ids[i]!;
-          if (r.status === "fulfilled") {
-            ok += 1;
-            settleStoppedSessionUi(id);
-          } else {
-            fail += 1;
-          }
-        }
-        if (fail === 0) {
-          showToast(tr("tasks.activity.stopAllDone", { n: String(ok) }), 3200);
-        } else {
-          showToast(
-            tr("tasks.activity.stopAllPartial", {
-              ok: String(ok),
-              fail: String(fail),
-            }),
-            4000,
-          );
-        }
+      onConfirm: () => {
+        void runStopAll();
       },
     });
   }, [

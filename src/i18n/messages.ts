@@ -1113,6 +1113,9 @@ const en = {
     "Suppress desktop notifications during this local time window (for example overnight). In-app toasts are unchanged.",
   "settings.notifyQuietHoursStart": "Start",
   "settings.notifyQuietHoursEnd": "End",
+  "settings.stopAllSkipConfirm": "Skip confirm when stopping all",
+  "settings.stopAllSkipConfirmDesc":
+    "When on, Stop all on Tasks / Agent dashboard runs immediately without a confirmation dialog. Off by default.",
   "settings.prefsScope": "Remember model & permission at",
   "settings.prefsScopeDesc":
     "Global: all chats. Project: each workspace. Session: only the current chat.",
@@ -3773,6 +3776,9 @@ const zh: Record<MessageKey, string> = {
     "在本地时间窗口内不发送桌面通知（例如夜间）。应用内提示不受影响。",
   "settings.notifyQuietHoursStart": "开始",
   "settings.notifyQuietHoursEnd": "结束",
+  "settings.stopAllSkipConfirm": "全部停止时跳过确认",
+  "settings.stopAllSkipConfirmDesc":
+    "开启后，任务面板 / Agent 总览中的「全部停止」不再弹出确认对话框，立即执行。默认关闭。",
   "settings.prefsScope": "模型与权限记忆范围",
   "settings.prefsScopeDesc":
     "全局：所有对话共用。项目：按工作区记忆。会话：仅当前聊天。",
