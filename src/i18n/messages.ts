@@ -1408,6 +1408,9 @@ const en = {
   "settings.closeToTray": "Close window to tray",
   "settings.closeToTrayDesc":
     "When on, the red close button hides the app to the menu bar / system tray. Turn off to quit the app on close (Quit from the tray still works either way).",
+  "settings.keepTrayForSchedules": "Keep tray for schedules",
+  "settings.keepTrayForSchedulesDesc":
+    "When any scheduled task is enabled, closing the window still hides to the tray so schedules keep firing — even if “Close window to tray” is off. Fully quitting the app still pauses schedules. There is no separate background daemon.",
   "settings.trayBusyBadge": "Show busy count on dock/tray",
   "settings.trayBusyBadgeDesc":
     "When agents are busy, show the session count on the macOS Dock badge (or tray tooltip on other platforms). Off clears the badge.",
@@ -2940,7 +2943,7 @@ const en = {
   "automations.loading": "Loading…",
   "automations.emptyTitle": "No scheduled tasks yet",
   "automations.emptyHint":
-    "Create one with AI or fill in the form. Tasks run while the app is open.",
+    "Create one with AI or fill in the form. Tasks run while the app is open or in the tray (not after full quit).",
   "automations.formTitle": "New scheduled task",
   "automations.editTitle": "Edit scheduled task",
   "automations.edit": "Edit",
@@ -2989,6 +2992,24 @@ const en = {
   "automations.bg.runnerUnknown":
     "{n} scheduled task(s) are enabled. Schedules only fire while this app process is running — there is no separate background daemon.",
   "automations.bg.openAtLoginLink": "Open Launch at login setting",
+  "automations.runner.section": "Background runner",
+  "automations.runner.statusLabel": "Host scheduler",
+  "automations.runner.statusRunning":
+    "Active in this process (tick every {secs}s). Window not required — tray-only is fine.",
+  "automations.runner.statusIdle":
+    "Scheduler not active in this environment (desktop host starts it on launch).",
+  "automations.runner.lastTick": "Last tick {time}",
+  "automations.runner.activeTray":
+    "{n} enabled scheduled task(s) run only while Grok is open or in the tray. Close can keep the process alive for them. Fully quitting still pauses schedules — there is no separate background daemon.",
+  "automations.runner.needsTray":
+    "{n} enabled scheduled task(s) need the app process. Turn on “Keep tray for schedules” (or Close to tray) so closing the window does not stop them. Full quit still pauses — no separate daemon.",
+  "automations.runner.quitPauses":
+    "{n} scheduled task(s) are enabled. Schedules only fire while this app process is running — there is no separate background daemon.",
+  "automations.runner.openSettings": "Open tray setting",
+  "automations.launchAgent.title": "macOS LaunchAgent helper",
+  "automations.launchAgent.desc":
+    "Optional: generate a helper under app data and install a user LaunchAgent that starts the full Grok App at login and restarts it after a crash only. Not a headless schedule daemon — tasks still tick inside the app (window or tray).",
+  "automations.launchAgent.reveal": "Show helper files",
   "automations.aiComposerHint":
     "Describe what to run and how often — Grok will schedule it for you when ready.",
   "automations.createdToast": "Scheduled: {title}",
@@ -4847,6 +4868,9 @@ const zh: Record<MessageKey, string> = {
   "settings.serve.unsupportedBody":
     "当前 Grok Build CLI 版本没有 `agent serve`。请在「运行时 → CLI」更新，或在应用外运行 serve。",
   "settings.closeToTray": "关闭窗口时最小化到托盘",
+  "settings.keepTrayForSchedules": "为已安排任务保留托盘",
+  "settings.keepTrayForSchedulesDesc":
+    "只要有已启用的已安排任务，关闭窗口仍会收起到托盘以便继续调度——即使关闭了「关闭窗口时最小化到托盘」。完全退出应用仍会暂停任务。没有独立的后台守护进程。",
   "settings.closeToTrayDesc":
     "开启后，关闭按钮会隐藏到菜单栏/系统托盘。关闭此项则关闭窗口即退出（托盘「退出」始终可用）。",
   "settings.trayBusyBadge": "在程序坞/托盘显示忙碌数",
@@ -6335,7 +6359,7 @@ const zh: Record<MessageKey, string> = {
   "automations.loading": "加载中…",
   "automations.emptyTitle": "还没有已安排任务",
   "automations.emptyHint":
-    "可用 AI 创建或填写表单。应用打开时会按计划触发任务。",
+    "可用 AI 创建或填写表单。应用打开或收起到托盘时会按计划触发；完全退出后暂停。",
   "automations.formTitle": "新建已安排任务",
   "automations.editTitle": "编辑已安排任务",
   "automations.edit": "编辑",
@@ -6384,6 +6408,24 @@ const zh: Record<MessageKey, string> = {
   "automations.bg.runnerUnknown":
     "有 {n} 个已开启的已安排任务。调度仅在本应用进程运行时触发——没有独立的后台守护进程。",
   "automations.bg.openAtLoginLink": "打开「登录时启动」设置",
+  "automations.runner.section": "后台调度",
+  "automations.runner.statusLabel": "Host 调度器",
+  "automations.runner.statusRunning":
+    "已在本进程中运行（每 {secs} 秒检查一次）。不需要主窗口——仅托盘即可。",
+  "automations.runner.statusIdle":
+    "当前环境未启动调度器（桌面端会在应用启动时启动）。",
+  "automations.runner.lastTick": "上次检查 {time}",
+  "automations.runner.activeTray":
+    "有 {n} 个已启用的已安排任务：仅在 Grok 打开或收起到托盘时运行。关闭窗口可保留进程以便继续调度。完全退出仍会暂停——没有独立的后台守护进程。",
+  "automations.runner.needsTray":
+    "有 {n} 个已启用的已安排任务需要应用进程。请开启「为已安排任务保留托盘」（或「关闭到托盘」），避免关窗即停。完全退出仍会暂停——没有独立守护进程。",
+  "automations.runner.quitPauses":
+    "有 {n} 个已开启的已安排任务。调度仅在本应用进程运行时触发——没有独立的后台守护进程。",
+  "automations.runner.openSettings": "打开托盘相关设置",
+  "automations.launchAgent.title": "macOS LaunchAgent 助手",
+  "automations.launchAgent.desc":
+    "可选：在应用数据目录生成助手脚本，并安装用户级 LaunchAgent，在登录时启动完整 Grok 应用，并在崩溃后重启。不是无界面调度守护进程——任务仍在应用进程内（窗口或托盘）触发。",
+  "automations.launchAgent.reveal": "显示助手文件",
   "automations.aiComposerHint":
     "用自然语言描述要做什么、多久一次——准备好后 Grok 会自动创建已安排任务。",
   "automations.createdToast": "已安排：{title}",

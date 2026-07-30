@@ -881,6 +881,53 @@ pub async fn automation_delete(id: String) -> Result<(), String> {
     store::delete_automation(&id)
 }
 
+/// Host automation_runner snapshot (tray-only ok; not a separate daemon).
+#[tauri::command]
+pub async fn automation_runner_status(
+) -> Result<crate::automation_runner::AutomationRunnerStatus, String> {
+    Ok(crate::automation_runner::status())
+}
+
+/// macOS schedules LaunchAgent helper status (honest full-app restart only).
+#[tauri::command]
+pub async fn schedules_launch_agent_status(
+) -> Result<crate::schedules_launch_agent::SchedulesLaunchAgentStatus, String> {
+    let enabled = store::load_settings().schedules_launch_agent;
+    Ok(crate::schedules_launch_agent::status(enabled))
+}
+
+/// Enable/disable the optional schedules LaunchAgent helper and persist setting.
+#[tauri::command]
+pub async fn schedules_launch_agent_set_enabled(
+    enabled: bool,
+) -> Result<crate::schedules_launch_agent::SchedulesLaunchAgentStatus, String> {
+    let status = if enabled {
+        crate::schedules_launch_agent::enable()?
+    } else {
+        crate::schedules_launch_agent::disable()?
+    };
+    let mut settings = store::load_settings();
+    // Non-macOS never claims enabled; install is a no-op there.
+    settings.schedules_launch_agent = enabled && status.supported;
+    store::save_settings(&settings)?;
+    Ok(crate::schedules_launch_agent::status(
+        settings.schedules_launch_agent,
+    ))
+}
+
+/// Reveal the generated helper directory in Finder / Explorer (when present).
+#[tauri::command]
+pub async fn schedules_launch_agent_reveal_helper() -> Result<String, String> {
+    let dir = crate::schedules_launch_agent::helper_dir();
+    if !dir.is_dir() {
+        // Generate files so the user can inspect without enabling the agent.
+        crate::schedules_launch_agent::generate_helper_files()?;
+    }
+    let path = dir.display().to_string();
+    path_reveal(path.clone()).await?;
+    Ok(path)
+}
+
 #[tauri::command]
 pub async fn settings_get() -> Result<AppSettings, String> {
     Ok(store::load_settings())
@@ -936,8 +983,32 @@ pub async fn settings_set(
     let max_turns_flip = prev.max_agent_turns != settings.max_agent_turns;
     let sandbox_flip = prev.sandbox_profile.trim() != settings.sandbox_profile.trim();
     let launch_at_login_flip = prev.launch_at_login != settings.launch_at_login;
+    let schedules_launch_agent_flip =
+        prev.schedules_launch_agent != settings.schedules_launch_agent;
 
     store::save_settings(&settings)?;
+
+    if schedules_launch_agent_flip {
+        let res = if settings.schedules_launch_agent {
+            crate::schedules_launch_agent::enable()
+        } else {
+            crate::schedules_launch_agent::disable()
+        };
+        if let Err(e) = res {
+            let mut rolled = settings.clone();
+            rolled.schedules_launch_agent = prev.schedules_launch_agent;
+            let _ = store::save_settings(&rolled);
+            return Err(format!("schedules LaunchAgent: {e}"));
+        }
+        // Non-macOS enable is unsupported — keep flag false.
+        #[cfg(not(target_os = "macos"))]
+        if settings.schedules_launch_agent {
+            let mut rolled = settings.clone();
+            rolled.schedules_launch_agent = false;
+            let _ = store::save_settings(&rolled);
+            settings.schedules_launch_agent = false;
+        }
+    }
 
     if keychain_flip {
         if let Err(e) =

@@ -307,6 +307,15 @@ pub struct AppSettings {
     /// When true, window close hides to tray. When false, close quits the app.
     #[serde(default = "default_close_to_tray")]
     pub close_to_tray: bool,
+    /// When true (default), if any scheduled automation is **enabled**, window
+    /// close still hides to tray even when [`Self::close_to_tray`] is off — so
+    /// `automation_runner` keeps ticking. Not a daemon: full quit still pauses.
+    #[serde(default = "default_true")]
+    pub keep_tray_for_schedules: bool,
+    /// macOS only: user opted into the schedules LaunchAgent helper (login +
+    /// crash restart of the **full app**). Default false. Not a headless daemon.
+    #[serde(default)]
+    pub schedules_launch_agent: bool,
     /// Register an OS login item so the app starts at user login (default off).
     /// Synced to the OS via tauri-plugin-autostart on change / setup.
     #[serde(default)]
@@ -438,6 +447,8 @@ impl Default for AppSettings {
             voice_dictation_auto_send: false,
             voice_keep_agents_on_end: true,
             close_to_tray: default_close_to_tray(),
+            keep_tray_for_schedules: true,
+            schedules_launch_agent: false,
             launch_at_login: false,
             notify_on_turn_done: true,
             notify_on_permission: true,
@@ -2313,6 +2324,15 @@ mod tests {
         let s: AppSettings = serde_json::from_str(legacy_settings_json()).expect("deserialize");
         assert!(!s.launch_at_login);
         assert!(!AppSettings::default().launch_at_login);
+    }
+
+    #[test]
+    fn keep_tray_for_schedules_defaults_true_when_missing() {
+        let s: AppSettings = serde_json::from_str(legacy_settings_json()).expect("deserialize");
+        assert!(s.keep_tray_for_schedules);
+        assert!(AppSettings::default().keep_tray_for_schedules);
+        assert!(!s.schedules_launch_agent);
+        assert!(!AppSettings::default().schedules_launch_agent);
     }
 
     #[test]

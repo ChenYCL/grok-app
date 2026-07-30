@@ -12,6 +12,7 @@ import {
   formatScheduleSummary,
   type Automation,
 } from "@/lib/automations";
+import { automationsRunnerBanner } from "@/lib/automationsRunnerPolicy";
 import { Select } from "@/components/Select";
 import {
   IconAutomations,
@@ -51,6 +52,13 @@ export interface AutomationsPageProps {
   openAtLogin?: boolean;
   /** Deep-link to Settings → general/app → Launch at login. */
   onOpenLaunchAtLogin?: () => void;
+  /** AppSettings.closeToTray */
+  closeToTray?: boolean;
+  /** AppSettings.keepTrayForSchedules — hide to tray when schedules are on. */
+  keepTrayForSchedules?: boolean;
+  onKeepTrayForSchedules?: (v: boolean) => void;
+  /** Deep-link to Settings → general/app → Keep tray for schedules. */
+  onOpenKeepTraySetting?: () => void;
 }
 
 type FormState = {
@@ -87,6 +95,10 @@ export function AutomationsPage({
   onRunNow,
   openAtLogin = false,
   onOpenLaunchAtLogin,
+  closeToTray = true,
+  keepTrayForSchedules = true,
+  onKeepTrayForSchedules,
+  onOpenKeepTraySetting,
 }: AutomationsPageProps) {
   const [list, setList] = useState<Automation[]>([]);
   const [loading, setLoading] = useState(true);
@@ -103,6 +115,11 @@ export function AutomationsPage({
   /** Pending delete — never use window.confirm in Tauri WebView. */
   const [deleteTarget, setDeleteTarget] = useState<Automation | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [runnerStatus, setRunnerStatus] =
+    useState<api.AutomationRunnerStatusDto | null>(null);
+  const [launchAgent, setLaunchAgent] =
+    useState<api.SchedulesLaunchAgentStatusDto | null>(null);
+  const [launchAgentBusy, setLaunchAgentBusy] = useState(false);
   const createBtnRef = useRef<HTMLButtonElement>(null);
   const createMenuRef = useRef<HTMLDivElement>(null);
   const deleteConfirmBtnRef = useRef<HTMLButtonElement>(null);
@@ -125,9 +142,65 @@ export function AutomationsPage({
     }
   }, []);
 
+  const refreshRunner = useCallback(async () => {
+    try {
+      const [st, la] = await Promise.all([
+        api.automationRunnerStatus(),
+        api.schedulesLaunchAgentStatus(),
+      ]);
+      setRunnerStatus(st);
+      setLaunchAgent(la);
+    } catch {
+      // Browser / missing host — keep prior snapshot.
+    }
+  }, []);
+
   useEffect(() => {
     void refresh();
-  }, [refresh]);
+    void refreshRunner();
+  }, [refresh, refreshRunner]);
+
+  // Refresh runner status occasionally while page is open.
+  useEffect(() => {
+    const id = window.setInterval(() => void refreshRunner(), 45_000);
+    return () => window.clearInterval(id);
+  }, [refreshRunner]);
+
+  const enabledCount = useMemo(
+    () => list.filter((a) => a.enabled).length,
+    [list],
+  );
+
+  const banner = useMemo(
+    () =>
+      automationsRunnerBanner({
+        enabledCount,
+        keepTrayForSchedules,
+        closeToTray,
+        launchAgentSupported: !!launchAgent?.supported,
+        launchAgentEnabled: !!launchAgent?.enabled,
+        runnerKnown: api.isTauri(),
+      }),
+    [
+      enabledCount,
+      keepTrayForSchedules,
+      closeToTray,
+      launchAgent?.supported,
+      launchAgent?.enabled,
+    ],
+  );
+
+  const onToggleLaunchAgent = async (next: boolean) => {
+    setLaunchAgentBusy(true);
+    try {
+      const st = await api.schedulesLaunchAgentSetEnabled(next);
+      setLaunchAgent(st);
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setLaunchAgentBusy(false);
+    }
+  };
 
   // Refresh relative "next run" labels once a minute.
   useEffect(() => {
@@ -478,6 +551,117 @@ export function AutomationsPage({
           ) : null}
         </div>
       ) : null}
+
+      <div className="auto-page__bg-panel" role="region" aria-label={t("automations.runner.section")}>
+        {banner.messageKey ? (
+          <div
+            className={
+              "auto-page__bg-banner" +
+              (banner.severity === "warn"
+                ? " auto-page__bg-banner--warn"
+                : " auto-page__bg-banner--info")
+            }
+            role="status"
+          >
+            <p className="auto-page__bg-banner-text">
+              {t(banner.messageKey, { n: enabledCount })}
+            </p>
+            {onOpenKeepTraySetting ? (
+              <button
+                type="button"
+                className="auto-page__bg-banner-link"
+                onClick={onOpenKeepTraySetting}
+              >
+                {t("automations.runner.openSettings")}
+              </button>
+            ) : null}
+          </div>
+        ) : null}
+
+        <div className="auto-page__bg-rows">
+          <div className="auto-page__bg-row">
+            <div className="auto-page__bg-row-text">
+              <div className="auto-page__bg-row-label">
+                {t("automations.runner.statusLabel")}
+              </div>
+              <div className="auto-page__bg-row-desc">
+                {runnerStatus?.running
+                  ? t("automations.runner.statusRunning", {
+                      secs: runnerStatus.tickIntervalSecs,
+                    })
+                  : t("automations.runner.statusIdle")}
+                {runnerStatus?.lastTickAt
+                  ? ` · ${t("automations.runner.lastTick", {
+                      time: new Date(runnerStatus.lastTickAt).toLocaleTimeString(),
+                    })}`
+                  : ""}
+              </div>
+            </div>
+          </div>
+
+          {banner.showKeepTrayToggle && onKeepTrayForSchedules ? (
+            <div className="auto-page__bg-row">
+              <div className="auto-page__bg-row-text">
+                <div className="auto-page__bg-row-label">
+                  {t("settings.keepTrayForSchedules")}
+                </div>
+                <div className="auto-page__bg-row-desc">
+                  {t("settings.keepTrayForSchedulesDesc")}
+                </div>
+              </div>
+              <label className="auto-page__switch">
+                <input
+                  type="checkbox"
+                  checked={!!keepTrayForSchedules}
+                  onChange={() =>
+                    onKeepTrayForSchedules(!keepTrayForSchedules)
+                  }
+                  aria-label={t("settings.keepTrayForSchedules")}
+                />
+                <span className="auto-page__switch-ui" aria-hidden />
+              </label>
+            </div>
+          ) : null}
+
+          {banner.showLaunchAgent && launchAgent?.supported ? (
+            <div className="auto-page__bg-row">
+              <div className="auto-page__bg-row-text">
+                <div className="auto-page__bg-row-label">
+                  {t("automations.launchAgent.title")}
+                </div>
+                <div className="auto-page__bg-row-desc">
+                  {t("automations.launchAgent.desc")}
+                </div>
+                <div className="auto-page__bg-row-actions">
+                  <button
+                    type="button"
+                    className="auto-page__bg-banner-link"
+                    onClick={() => {
+                      void api
+                        .schedulesLaunchAgentRevealHelper()
+                        .catch((e) => setError(String(e)));
+                    }}
+                  >
+                    {t("automations.launchAgent.reveal")}
+                  </button>
+                </div>
+              </div>
+              <label className="auto-page__switch">
+                <input
+                  type="checkbox"
+                  checked={!!launchAgent.enabled}
+                  disabled={launchAgentBusy}
+                  onChange={() =>
+                    void onToggleLaunchAgent(!launchAgent.enabled)
+                  }
+                  aria-label={t("automations.launchAgent.title")}
+                />
+                <span className="auto-page__switch-ui" aria-hidden />
+              </label>
+            </div>
+          ) : null}
+        </div>
+      </div>
 
       <div className="auto-page__toolbar">
         <div className="auto-page__search">

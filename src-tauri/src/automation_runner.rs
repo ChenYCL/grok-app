@@ -1,16 +1,24 @@
 //! Host-side automation scheduler.
 //!
-//! Runs while the process is alive — including when the main window is hidden
-//! to the tray — so due tasks do not depend on WebView timers.
+//! Runs while the **process** is alive — including when the main window is
+//! hidden to the tray (`close_to_tray` / **Keep tray for schedules**) or when
+//! launched with `--start-in-tray`. Due tasks do **not** depend on WebView
+//! timers or a visible window.
+//!
+//! **Honest limits:** there is no separate headless daemon. Fully quitting the
+//! app pauses schedules until the process is started again (login item,
+//! optional schedules LaunchAgent helper, or manual open).
 //!
 //! Execution reuses `SessionManager` (create → connect → send). UI is notified
 //! via `automation://ran` / `automation://skipped` / `automation://error`.
 
 use std::collections::HashSet;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, LazyLock, Mutex};
 use std::time::Duration;
 
 use chrono::{Datelike, Duration as ChronoDuration, Local, Timelike, Utc, Weekday};
+use serde::Serialize;
 use tauri::{AppHandle, Emitter};
 use tracing::{info, warn};
 
@@ -25,13 +33,94 @@ const BOOT_DELAY: Duration = Duration::from_secs(12);
 static FIRED: LazyLock<Mutex<HashSet<String>>> =
     LazyLock::new(|| Mutex::new(HashSet::new()));
 
+static STARTED: AtomicBool = AtomicBool::new(false);
+static LAST_TICK_RFC3339: LazyLock<Mutex<Option<String>>> =
+    LazyLock::new(|| Mutex::new(None));
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AutomationRunnerStatus {
+    /// Tick loop has been spawned for this process.
+    pub running: bool,
+    /// RFC3339 of last completed tick (Ok or Err); null before first tick.
+    pub last_tick_at: Option<String>,
+    pub tick_interval_secs: u64,
+    /// Always false — runner does not need a visible main window.
+    pub window_required: bool,
+    /// Always true — fully quitting pauses schedules.
+    pub process_required: bool,
+    /// Count of enabled automations on disk.
+    pub enabled_count: u64,
+    /// AppSettings.keep_tray_for_schedules.
+    pub keep_tray_for_schedules: bool,
+    /// Short honesty note (English; UI has translated copy).
+    pub honesty: String,
+}
+
+/// Pure policy: should window-close hide to tray so schedules keep ticking?
+///
+/// `close_to_tray` always hides. When it is off, `keep_tray_for_schedules`
+/// still hides **if** any automation is enabled — so users can quit freely
+/// when nothing is scheduled, but keep the process alive for due tasks.
+pub fn should_hide_to_tray_on_close(
+    close_to_tray: bool,
+    keep_tray_for_schedules: bool,
+    any_enabled_automation: bool,
+) -> bool {
+    if close_to_tray {
+        return true;
+    }
+    keep_tray_for_schedules && any_enabled_automation
+}
+
+/// Snapshot for UI / diagnostics. Safe to call before `start`.
+pub fn status() -> AutomationRunnerStatus {
+    let enabled_count = store::load_automations()
+        .iter()
+        .filter(|a| a.enabled)
+        .count() as u64;
+    let settings = store::load_settings();
+    let last = LAST_TICK_RFC3339
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .clone();
+    AutomationRunnerStatus {
+        running: STARTED.load(Ordering::Relaxed),
+        last_tick_at: last,
+        tick_interval_secs: TICK.as_secs(),
+        window_required: false,
+        process_required: true,
+        enabled_count,
+        keep_tray_for_schedules: settings.keep_tray_for_schedules,
+        honesty: "Schedules tick only while this app process is alive \
+                  (main window or tray). There is no separate background daemon."
+            .into(),
+    }
+}
+
+fn mark_tick() {
+    let now = Utc::now().to_rfc3339();
+    if let Ok(mut g) = LAST_TICK_RFC3339.lock() {
+        *g = Some(now);
+    }
+}
+
 /// Start the background tick loop (call once from app setup).
 pub fn start(app: AppHandle, mgr: Arc<SessionManager>) {
+    if STARTED.swap(true, Ordering::SeqCst) {
+        warn!(target: "automation_runner", "start called more than once; ignoring");
+        return;
+    }
     tauri::async_runtime::spawn(async move {
         tokio::time::sleep(BOOT_DELAY).await;
-        info!(target: "automation_runner", "host automation scheduler started");
+        info!(
+            target: "automation_runner",
+            "host automation scheduler started (window not required; tray-only ok)"
+        );
         loop {
-            if let Err(e) = tick_once(&app, &mgr).await {
+            let result = tick_once(&app, &mgr).await;
+            mark_tick();
+            if let Err(e) = result {
                 warn!(target: "automation_runner", "tick error: {e}");
             }
             tokio::time::sleep(TICK).await;
@@ -332,5 +421,16 @@ mod tests {
         let after = Utc::now() - ChronoDuration::minutes(5);
         let next = compute_next_run_at(&a, after).expect("next");
         assert!(next > after);
+    }
+
+    #[test]
+    fn hide_to_tray_policy() {
+        // Default close-to-tray wins.
+        assert!(should_hide_to_tray_on_close(true, false, false));
+        assert!(should_hide_to_tray_on_close(true, true, true));
+        // Close quits unless keep-tray-for-schedules + enabled tasks.
+        assert!(!should_hide_to_tray_on_close(false, false, true));
+        assert!(!should_hide_to_tray_on_close(false, true, false));
+        assert!(should_hide_to_tray_on_close(false, true, true));
     }
 }

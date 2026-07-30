@@ -1291,6 +1291,17 @@ export interface AppSettings {
   voiceKeepAgentsOnEnd?: boolean;
   /** Window close hides to tray when true (default). */
   closeToTray?: boolean;
+  /**
+   * When true (default), closing the window still hides to tray if any
+   * scheduled task is enabled — so host automation_runner keeps ticking.
+   * Not a daemon; full quit still pauses schedules.
+   */
+  keepTrayForSchedules?: boolean;
+  /**
+   * macOS: optional LaunchAgent helper that starts the full app at login /
+   * after crash. Default false. Not a headless scheduler.
+   */
+  schedulesLaunchAgent?: boolean;
   /** Start the app when the user logs into the OS (default false). */
   launchAtLogin?: boolean;
   /** Desktop notification when an agent turn finishes (default true). */
@@ -2503,6 +2514,76 @@ export async function automationsList(): Promise<AutomationDto[]> {
     return loadAutomationsLocal() as AutomationDto[];
   }
   return invoke<AutomationDto[]>("automations_list");
+}
+
+export interface AutomationRunnerStatusDto {
+  running: boolean;
+  lastTickAt?: string | null;
+  tickIntervalSecs: number;
+  windowRequired: boolean;
+  processRequired: boolean;
+  enabledCount: number;
+  keepTrayForSchedules: boolean;
+  honesty: string;
+}
+
+export async function automationRunnerStatus(): Promise<AutomationRunnerStatusDto> {
+  if (!isTauri()) {
+    return {
+      running: false,
+      lastTickAt: null,
+      tickIntervalSecs: 30,
+      windowRequired: false,
+      processRequired: true,
+      enabledCount: 0,
+      keepTrayForSchedules: true,
+      honesty:
+        "Schedules tick only while this app process is alive (main window or tray). There is no separate background daemon.",
+    };
+  }
+  return invoke<AutomationRunnerStatusDto>("automation_runner_status");
+}
+
+export interface SchedulesLaunchAgentStatusDto {
+  supported: boolean;
+  enabled: boolean;
+  helperDir?: string | null;
+  installedPlist?: string | null;
+  installed: boolean;
+  appPath?: string | null;
+  honesty: string;
+}
+
+export async function schedulesLaunchAgentStatus(): Promise<SchedulesLaunchAgentStatusDto> {
+  if (!isTauri()) {
+    return {
+      supported: false,
+      enabled: false,
+      installed: false,
+      honesty:
+        "Not a headless daemon. The LaunchAgent only starts the full Grok App.",
+    };
+  }
+  return invoke<SchedulesLaunchAgentStatusDto>("schedules_launch_agent_status");
+}
+
+export async function schedulesLaunchAgentSetEnabled(
+  enabled: boolean,
+): Promise<SchedulesLaunchAgentStatusDto> {
+  if (!isTauri()) {
+    return schedulesLaunchAgentStatus();
+  }
+  return invoke<SchedulesLaunchAgentStatusDto>(
+    "schedules_launch_agent_set_enabled",
+    { enabled },
+  );
+}
+
+export async function schedulesLaunchAgentRevealHelper(): Promise<string> {
+  if (!isTauri()) {
+    throw new Error("Desktop only");
+  }
+  return invoke<string>("schedules_launch_agent_reveal_helper");
 }
 
 export async function automationCreate(

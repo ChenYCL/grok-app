@@ -44,6 +44,7 @@ See `docs/llm-wiki/release.md`.
 
 #### Tasks / system
 - **Automations background honesty** (AUTO-DETACH lite): pure `automationsBackgroundStatus` helper + tests; Scheduled tasks page banner when any task is enabled (app/tray must stay running; optional deep-link to **Launch at login**); busy-quit dialog extra note; Launch at login desc clarifies schedules pause on full quit (no fake detached daemon)
+- **Auto-runner / schedules tray residency** (AUTO-RUNNER): host `automation_runner` status API (tray-only ticks; process required; no fake daemon); setting **Keep tray for schedules** (default on — close still hides to tray when any task is enabled); optional **macOS LaunchAgent helper** (generates script+plist under app data; user LaunchAgent starts full app at login / crash-only KeepAlive); `--start-in-tray` / `GROK_START_IN_TRAY`; Scheduled tasks page background panel + Settings registration; pure policy tests + Rust unit tests
 - Tasks tree · Stop-all skip-confirm · Plan history · Mirror write guard · Reliability / Leader / Memory / MCP / CLI notice (prior)
 - **Reliability stall timeline**: localStorage ring (~40) of historical stall signals (id · session · title · kind · stallSeconds · reason · at); recorded on soft / hard stream-stall; Reliability center **Stall timeline** card with search + kind chips + clear (in-app confirm); never stores secrets
 - **Agent config.toml safe viewer** (Settings → General → Agent): redacted monospaced view of active-mode `config.toml` (independent agent-home or shared `~/.grok` with warning); section jump chips; copy path / reveal / open in external editor — no freeform writer
@@ -115,6 +116,7 @@ See `docs/llm-wiki/release.md`.
 - **系统**：**Agent serve** 启停（设置 → 运行时 → 连接）；**手机镜像写入审计**（本地 ring、无密钥/URL）；**Trace 历史管理**（搜索/移除/清空确认/可选大小）；任务面板子代理 **WT/cwd** 标记；**Agent 仪表盘** 状态/搜索/项目筛选；**费用汇总**（设置 → 运行时 → 诊断：按项目/日汇总已知 token，缺失为未知，粗估非账单）
 - **系统**：**Agent serve** 启停（设置 → 运行时 → 连接）；**手机镜像写入审计**（本地 ring、无密钥/URL）；**镜像加固**（写入类别列表/宽面警告、最大连接数、轮换确认、日志脱敏）；**Trace 历史管理**（搜索/移除/清空确认/可选大小）；任务面板子代理 **WT/cwd** 标记；**Agent 仪表盘** 状态/搜索/项目筛选
 - **系统**：**Leader fleet**（list / info / kill 确认；旧 CLI 软失败）；**Agent serve** 启停（设置 → 运行时 → 连接）；**手机镜像写入审计**（本地 ring、无密钥/URL）；**Trace 历史管理**（搜索/移除/清空确认/可选大小）；任务面板子代理 **WT/cwd** 标记；**Agent 仪表盘** 状态/搜索/项目筛选
+- **系统**：**已安排任务托盘驻留 / AUTO-RUNNER**（Host 调度状态 API、为已安排保留托盘、可选 macOS LaunchAgent 助手生成与安装——非假 daemon）；**Agent serve** 启停（设置 → 运行时 → 连接）；**手机镜像写入审计**（本地 ring、无密钥/URL）；**Trace 历史管理**（搜索/移除/清空确认/可选大小）；任务面板子代理 **WT/cwd** 标记；**Agent 仪表盘** 状态/搜索/项目筛选
 - **计划**：**请求修改** 可选修订说明；计划历史搜索/决策筛选、清空确认、会话仍在时可打开
 - **扩展/市场**：目录插件详情面板（描述/版本/组件徽章 + 安装/重装）；安装失败行内重试；已安装 provides 结构化摘要；**Hooks 试跑/覆盖**（校验 stdin JSON、合成 dry-run 活动、结果筛选与清空确认；不执行 shell hook）
 - **扩展/市场**：目录插件详情面板（描述/版本/组件徽章 + 安装/重装）；安装失败行内重试；已安装 provides 结构化摘要；**MCP 状态弹层**（搜索/状态芯片/计数/刷新/复制名称与目标）
