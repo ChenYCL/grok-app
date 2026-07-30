@@ -1,11 +1,17 @@
 /**
  * Settings → Runtime → Connection: Agent leader / serve status + start/stop.
+ * Serve: optional `--remote` (proxy mode) + client connection string templates.
  */
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import type { MessageKey, Vars } from "@/i18n";
 import * as api from "@/lib/api";
 import type { LeaderStatus, ServeStatus } from "@/lib/api";
+import {
+  buildServeConnectionCliMasked,
+  normalizeServeRemoteUrl,
+  type ServeRemoteUrlError,
+} from "@/lib/serveRemote";
 
 function formatAge(
   secs: number | null | undefined,
@@ -22,6 +28,24 @@ function formatAge(
   return t("settings.leader.ageDays", { n: Math.floor(secs / 86400) });
 }
 
+function remoteUrlErrorKey(err: ServeRemoteUrlError): MessageKey {
+  switch (err) {
+    case "whitespace":
+      return "settings.serve.remoteErrorWhitespace";
+    case "scheme":
+      return "settings.serve.remoteErrorScheme";
+    case "empty_host":
+      return "settings.serve.remoteErrorHost";
+    case "secret_in_query":
+      return "settings.serve.remoteErrorSecret";
+    case "junk":
+      return "settings.serve.remoteErrorScheme";
+    case "empty":
+    default:
+      return "settings.serve.remoteErrorScheme";
+  }
+}
+
 export function LeaderServePanel({
   t,
   onOpenUseLeader,
@@ -34,12 +58,21 @@ export function LeaderServePanel({
   const [serve, setServe] = useState<ServeStatus | null>(null);
   /** One-time full connection URL from serve_start (not re-fetched by status). */
   const [serveConnectionUrl, setServeConnectionUrl] = useState<string | null>(null);
+  /** One-time full client CLI string from serve_start. */
+  const [serveConnectionCli, setServeConnectionCli] = useState<string | null>(null);
+  /** Optional proxy-mode `--remote` URL (local UI; applied on next start). */
+  const [remoteDraft, setRemoteDraft] = useState("");
   const [busy, setBusy] = useState<"refresh" | "start" | "stop" | null>(null);
   const [serveBusy, setServeBusy] = useState<"refresh" | "start" | "stop" | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [serveError, setServeError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
-  const [serveCopied, setServeCopied] = useState(false);
+  const [serveCopied, setServeCopied] = useState<"url" | "cli" | false>(false);
+
+  const remoteParsed = useMemo(
+    () => normalizeServeRemoteUrl(remoteDraft),
+    [remoteDraft],
+  );
 
   const refreshLeader = useCallback(async () => {
     setBusy("refresh");
@@ -60,9 +93,14 @@ export function LeaderServePanel({
     try {
       const st = await api.serveStatus();
       setServe(st);
-      // Status never returns full URL — clear one-time URL if serve stopped.
+      // Status never returns full URL/CLI — clear one-time secrets if serve stopped.
       if (st.state !== "running") {
         setServeConnectionUrl(null);
+        setServeConnectionCli(null);
+      }
+      // Prefill remote draft from tracked process when the field is still empty.
+      if (st.remote) {
+        setRemoteDraft((prev) => (prev.trim() ? prev : st.remote || ""));
       }
     } catch (e) {
       setServeError(e instanceof Error ? e.message : String(e));
@@ -123,16 +161,34 @@ export function LeaderServePanel({
     setServeBusy("start");
     setServeError(null);
     try {
-      const st = await api.serveStart();
+      if (!remoteParsed.ok) {
+        setServeError(t(remoteUrlErrorKey(remoteParsed.error)));
+        return;
+      }
+      if (
+        remoteParsed.value &&
+        serve?.cliSupportsRemote === false
+      ) {
+        setServeError(t("settings.serve.remoteUnsupported"));
+        return;
+      }
+      const st = await api.serveStart(null, remoteParsed.value);
       setServe(st);
       if (st.connectionUrl) {
         setServeConnectionUrl(st.connectionUrl);
+      }
+      if (st.connectionCli) {
+        setServeConnectionCli(st.connectionCli);
+      }
+      // Prefer CLI template for clipboard (matches `grok --remote … --secret …`).
+      const toCopy = st.connectionCli || st.connectionUrl;
+      if (toCopy) {
         try {
-          await navigator.clipboard.writeText(st.connectionUrl);
-          setServeCopied(true);
+          await navigator.clipboard.writeText(toCopy);
+          setServeCopied(st.connectionCli ? "cli" : "url");
           window.setTimeout(() => setServeCopied(false), 2000);
         } catch {
-          /* clipboard optional — URL still held for manual copy */
+          /* clipboard optional — values still held for manual copy */
         }
       }
     } catch (e) {
@@ -154,6 +210,7 @@ export function LeaderServePanel({
       const st = await api.serveStop();
       setServe(st);
       setServeConnectionUrl(null);
+      setServeConnectionCli(null);
     } catch (e) {
       setServeError(e instanceof Error ? e.message : String(e));
       try {
@@ -182,7 +239,18 @@ export function LeaderServePanel({
     if (!serveConnectionUrl) return;
     try {
       await navigator.clipboard.writeText(serveConnectionUrl);
-      setServeCopied(true);
+      setServeCopied("url");
+      window.setTimeout(() => setServeCopied(false), 1600);
+    } catch (e) {
+      setServeError(e instanceof Error ? e.message : String(e));
+    }
+  };
+
+  const onCopyServeCli = async () => {
+    if (!serveConnectionCli) return;
+    try {
+      await navigator.clipboard.writeText(serveConnectionCli);
+      setServeCopied("cli");
       window.setTimeout(() => setServeCopied(false), 1600);
     } catch (e) {
       setServeError(e instanceof Error ? e.message : String(e));
@@ -216,12 +284,14 @@ export function LeaderServePanel({
   const serveRunning = serveState === "running";
   const serveUnsupported =
     serveState === "unsupported" || serve?.cliSupportsServe === false;
+  const remoteOk = remoteParsed.ok;
   const canServeStart =
     !serveBusy &&
     !serveRunning &&
     !serveUnsupported &&
     serve?.cliFound !== false &&
-    serve?.cliSupportsServe !== false;
+    serve?.cliSupportsServe !== false &&
+    remoteOk;
   const canServeStop = !serveBusy && (serveRunning || serveState === "error");
 
   const serveStateLabel =
@@ -243,6 +313,13 @@ export function LeaderServePanel({
   const secretDisplay =
     serve?.secretMasked ||
     (serve?.secretLast4 ? `••••${serve.secretLast4}` : null);
+
+  // Prefer host-provided masked CLI; fall back to pure helper when last4 is known.
+  const cliTemplateDisplay =
+    serve?.connectionCliMasked ||
+    (serveRunning && serve?.bind && serve.secretLast4
+      ? buildServeConnectionCliMasked(serve.bind, `xxxx${serve.secretLast4}`)
+      : null);
 
   return (
     <div className="settings-card" id="settings-anchor-leaderServe">
@@ -417,6 +494,40 @@ export function LeaderServePanel({
                   : t("settings.serve.portClosed")}
                 {serve?.pid != null ? ` · PID ${serve.pid}` : ""}
               </div>
+              <div className="settings-row__hint">{t("settings.serve.healthNote")}</div>
+            </div>
+          </div>
+
+          <div className="settings-row settings-row--stack">
+            <div className="settings-row__text" style={{ flex: 1, minWidth: 0 }}>
+              <div className="settings-row__label">{t("settings.serve.remote")}</div>
+              <div className="settings-row__desc">{t("settings.serve.remoteDesc")}</div>
+              <input
+                type="text"
+                className="settings-input"
+                style={{ marginTop: 6, width: "100%", maxWidth: 480 }}
+                value={remoteDraft}
+                onChange={(e) => setRemoteDraft(e.target.value)}
+                placeholder={t("settings.serve.remotePlaceholder")}
+                disabled={serveRunning || !!serveBusy}
+                spellCheck={false}
+                autoComplete="off"
+                aria-invalid={!remoteOk}
+                aria-describedby="settings-serve-remote-hint"
+              />
+              <div
+                id="settings-serve-remote-hint"
+                className={
+                  "settings-row__hint" + (!remoteOk ? " is-danger" : "")
+                }
+                role={!remoteOk ? "alert" : undefined}
+              >
+                {!remoteOk
+                  ? t(remoteUrlErrorKey(remoteParsed.error))
+                  : serve?.remote
+                    ? t("settings.serve.remoteActive", { url: serve.remote })
+                    : t("settings.serve.remoteHint")}
+              </div>
             </div>
           </div>
 
@@ -428,7 +539,32 @@ export function LeaderServePanel({
               </div>
               <div className="settings-row__hint">{t("settings.serve.secretHint")}</div>
             </div>
+          </div>
+
+          <div className="settings-row settings-row--stack">
+            <div className="settings-row__text" style={{ flex: 1, minWidth: 0 }}>
+              <div className="settings-row__label">{t("settings.serve.connectionTemplate")}</div>
+              <div className="settings-row__desc" style={{ wordBreak: "break-all" }}>
+                {cliTemplateDisplay || t("settings.serve.connectionTemplateNone")}
+              </div>
+              <div className="settings-row__hint">{t("settings.serve.connectionTemplateHint")}</div>
+            </div>
             <div className="rim-btn-row">
+              <button
+                type="button"
+                className="btn btn--ghost"
+                disabled={!serveConnectionCli}
+                onClick={() => void onCopyServeCli()}
+                title={
+                  serveConnectionCli
+                    ? t("settings.serve.copyCliHint")
+                    : t("settings.serve.copyUrlUnavailable")
+                }
+              >
+                {serveCopied === "cli"
+                  ? t("settings.serve.copied")
+                  : t("settings.serve.copyCli")}
+              </button>
               <button
                 type="button"
                 className="btn btn--ghost"
@@ -440,7 +576,9 @@ export function LeaderServePanel({
                     : t("settings.serve.copyUrlUnavailable")
                 }
               >
-                {serveCopied ? t("settings.serve.copied") : t("settings.serve.copyUrl")}
+                {serveCopied === "url"
+                  ? t("settings.serve.copied")
+                  : t("settings.serve.copyUrl")}
               </button>
             </div>
           </div>
@@ -470,9 +608,15 @@ export function LeaderServePanel({
         </>
       )}
 
-      {(serveError || (serve?.message && serveState === "error")) && (
+      {(serveError ||
+        (serve?.message && (serveState === "error" || serveState === "running"))) && (
         <div className="settings-row settings-row--stack">
-          <div className="settings-row__hint is-danger" role="alert">
+          <div
+            className={
+              "settings-row__hint" + (serveState === "error" || serveError ? " is-danger" : "")
+            }
+            role={serveState === "error" || serveError ? "alert" : "status"}
+          >
             {serveError || serve?.message}
           </div>
         </div>
