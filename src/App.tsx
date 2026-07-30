@@ -359,6 +359,14 @@ import {
   toggle as toggleSessionMute,
 } from "@/lib/sessionMute";
 import {
+  clearUnread as clearSessionUnread,
+  isTurnDoneReadyTransition,
+  loadUnreadSessionIds,
+  markUnread as markSessionUnread,
+  SESSION_UNREAD_CHANGE_EVENT,
+  shouldMarkUnreadOnTurnDone,
+} from "@/lib/sessionUnread";
+import {
   SESSION_NOTE_MAX_LENGTH,
   SESSION_NOTES_CHANGE_EVENT,
   clearNote as clearSessionNote,
@@ -943,6 +951,19 @@ export default function App() {
     const onChange = () => setMutedSessionIds(loadMutedSessionIds());
     window.addEventListener(SESSION_MUTE_CHANGE_EVENT, onChange);
     return () => window.removeEventListener(SESSION_MUTE_CHANGE_EVENT, onChange);
+  }, []);
+  /**
+   * Sessions that finished a turn while not viewed (localStorage Set).
+   * Independent of mute — muted chats still show the sidebar unread dot.
+   */
+  const [unreadSessionIds, setUnreadSessionIds] = useState<Set<string>>(
+    () => loadUnreadSessionIds(),
+  );
+  useEffect(() => {
+    const onChange = () => setUnreadSessionIds(loadUnreadSessionIds());
+    window.addEventListener(SESSION_UNREAD_CHANGE_EVENT, onChange);
+    return () =>
+      window.removeEventListener(SESSION_UNREAD_CHANGE_EVENT, onChange);
   }, []);
   /** Per-session sticky notes (localStorage map; never sent to agent). */
   const [sessionNotesMap, setSessionNotesMap] = useState<
@@ -3062,6 +3083,9 @@ export default function App() {
             if (cancelled) return;
             // Host focus slot (the process under the live cursor). Multi-session
             // busy demotions also emit session://runtime so liveMap stays honest.
+            const prevLiveState = s.sessionId
+              ? liveMapRef.current[s.sessionId]?.state
+              : undefined;
             setLiveHost(s);
             liveHostRef.current = s;
             setLiveMap((prev) =>
@@ -3071,6 +3095,19 @@ export default function App() {
                 streamingMessageId: s.streamingMessageId,
               }),
             );
+            // Background turn finished while user is elsewhere → unread dot.
+            // Mute only suppresses desktop notify; unread still applies.
+            if (
+              s.sessionId &&
+              s.state === "ready" &&
+              isTurnDoneReadyTransition(prevLiveState, s.state) &&
+              shouldMarkUnreadOnTurnDone({
+                sessionId: s.sessionId,
+                viewingSessionId: viewingSessionIdRef.current,
+              })
+            ) {
+              markSessionUnread(s.sessionId);
+            }
             if (
               s.state !== "streaming" &&
               s.state !== "awaiting_permission" &&
@@ -3177,6 +3214,7 @@ export default function App() {
         await track(
           api.listen<SessionSnapshot>("session://runtime", (s) => {
             if (cancelled || !s.sessionId) return;
+            const prevLiveState = liveMapRef.current[s.sessionId]?.state;
             setLiveMap((prev) =>
               projectHostIntoLiveMap(prev, {
                 sessionId: s.sessionId,
@@ -3184,6 +3222,17 @@ export default function App() {
                 streamingMessageId: s.streamingMessageId,
               }),
             );
+            // Background turn finished (demoted agent) → unread; mute is separate.
+            if (
+              s.state === "ready" &&
+              isTurnDoneReadyTransition(prevLiveState, s.state) &&
+              shouldMarkUnreadOnTurnDone({
+                sessionId: s.sessionId,
+                viewingSessionId: viewingSessionIdRef.current,
+              })
+            ) {
+              markSessionUnread(s.sessionId);
+            }
             // If user is viewing this demoted session, keep workbench state in sync.
             if (s.sessionId === viewingSessionIdRef.current) {
               setSession((prev) => ({
@@ -3263,6 +3312,15 @@ export default function App() {
                 streamingMessageId: null,
               }),
             );
+            // Stream done for a non-viewed session → unread (mute still allows this).
+            if (
+              shouldMarkUnreadOnTurnDone({
+                sessionId: chunk.sessionId,
+                viewingSessionId: viewingSessionIdRef.current,
+              })
+            ) {
+              markSessionUnread(chunk.sessionId);
+            }
           }
           patchSessionMessages(chunk.sessionId, (prev) => {
             const next = applyStreamChunk(prev, chunk);
@@ -4363,6 +4421,8 @@ export default function App() {
     // Point viewing id immediately so late stream chunks land in the right cache.
     openingSessionIdRef.current = s.id;
     viewingSessionIdRef.current = s.id;
+    // Opening/viewing clears the sidebar unread dot for this chat.
+    clearSessionUnread(s.id);
     // Swap plan chrome to this session (or hide if none / not yet streamed).
     setPlan(
       planBySessionRef.current.get(s.id) ??
@@ -6225,6 +6285,13 @@ export default function App() {
     toggleSessionMute(sessionId);
     setMutedSessionIds(loadMutedSessionIds());
   }, []);
+
+  // Any path that binds the workbench to a session clears its unread marker.
+  useEffect(() => {
+    if (session.sessionId) {
+      clearSessionUnread(session.sessionId);
+    }
+  }, [session.sessionId]);
 
   const openProjectMenu = (e: ReactMouseEvent, proj: Project) => {
     e.preventDefault();
@@ -12809,6 +12876,7 @@ export default function App() {
                                     const working = busyIds.has(s.id);
                                     const checked =
                                       selectedSessionIds.has(s.id);
+                                    const unread = unreadSessionIds.has(s.id);
                                     return (
                                       <div
                                         className={
@@ -12820,6 +12888,7 @@ export default function App() {
                                             ? " tree-l3--archived"
                                             : "") +
                                           (working ? " tree-l3--working" : "") +
+                                          (unread ? " tree-l3--unread" : "") +
                                           (sessionSelectMode
                                             ? " tree-l3--select-mode"
                                             : "") +
@@ -12874,6 +12943,15 @@ export default function App() {
                                           </span>
                                         ) : null}
                                         <span className="tree-l3__title">
+                                          {unread ? (
+                                            <span
+                                              className="tree-l3__unread"
+                                              title={tr("session.unreadAria")}
+                                              aria-label={tr(
+                                                "session.unreadAria",
+                                              )}
+                                            />
+                                          ) : null}
                                           {s.pinned ? (
                                             <span
                                               className="tree-l3__kind"
@@ -13097,6 +13175,7 @@ export default function App() {
                         renderItem={(s) => {
                           const working = busyIds.has(s.id);
                           const checked = selectedSessionIds.has(s.id);
+                          const unread = unreadSessionIds.has(s.id);
                           return (
                             <div
                               className={
@@ -13105,6 +13184,7 @@ export default function App() {
                                   ? " tree-l3--active"
                                   : "") +
                                 (working ? " tree-l3--working" : "") +
+                                (unread ? " tree-l3--unread" : "") +
                                 (sessionSelectMode
                                   ? " tree-l3--select-mode"
                                   : "") +
@@ -13148,6 +13228,13 @@ export default function App() {
                                 </span>
                               ) : null}
                               <span className="tree-l3__title">
+                                {unread ? (
+                                  <span
+                                    className="tree-l3__unread"
+                                    title={tr("session.unreadAria")}
+                                    aria-label={tr("session.unreadAria")}
+                                  />
+                                ) : null}
                                 {s.pinned ? (
                                   <span
                                     className="tree-l3__kind"

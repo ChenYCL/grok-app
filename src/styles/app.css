@@ -904,6 +904,23 @@ html[data-sidebar-density="compact"] .tree-date-group__head {
   opacity: 0.9;
 }
 
+/* Unread dot: background chat finished a turn while not viewed. */
+.tree-l3__unread {
+  width: 7px;
+  height: 7px;
+  min-width: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  background: var(--accent, #6b9fff);
+  box-shadow: 0 0 0 1px
+    color-mix(in srgb, var(--accent, #6b9fff) 28%, transparent);
+}
+
+.tree-l3--unread .tree-l3__name {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
 /* Compact worktree-bound session badge (sidebar). */
 .tree-l3__wt {
   display: inline-flex;
