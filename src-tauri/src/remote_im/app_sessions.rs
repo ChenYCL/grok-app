@@ -212,6 +212,7 @@ mod tests {
             is_worktree_session: false,
             plugin_dirs: Vec::new(),
             extra_rules: None,
+            max_agent_turns: None,
         }
     }
 

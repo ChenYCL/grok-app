@@ -649,6 +649,24 @@ pub async fn session_set_extra_rules(
     Ok(meta)
 }
 
+/// Set or clear per-session max agent turns (`grok --max-turns` at next spawn).
+/// `None` / `0` clears (inherit global). Soft-respawns the live agent for this chat.
+#[tauri::command]
+pub async fn session_set_max_agent_turns(
+    app: tauri::AppHandle,
+    mgr: State<'_, Arc<SessionManager>>,
+    id: String,
+    max_agent_turns: Option<u32>,
+) -> Result<SessionMeta, String> {
+    let meta = store::set_session_max_agent_turns(&id, max_agent_turns)?;
+    let snap = mgr.snapshot();
+    if snap.session_id.as_deref() == Some(meta.id.as_str()) {
+        mgr.soft_respawn_with_reason(&app, "session_max_agent_turns")
+            .await;
+    }
+    Ok(meta)
+}
+
 #[tauri::command]
 pub async fn session_messages(
     id: String,

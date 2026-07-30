@@ -2792,6 +2792,7 @@ impl SessionManager {
                 .as_ref()
                 .map(|s| s.trim().to_string())
                 .filter(|s| !s.is_empty()),
+            max_agent_turns: meta.max_agent_turns,
         };
 
         let (client, mut events) = match AcpClient::spawn_with_options(cli_path, cwd, spawn_opts)
@@ -5823,6 +5824,7 @@ mod connect_preserve_tests {
                 is_worktree_session: false,
                 plugin_dirs: Vec::new(),
                 extra_rules: None,
+                max_agent_turns: None,
             },
             fsm,
             backend: "grok_agent_stdio".into(),
@@ -6007,6 +6009,7 @@ mod session_routing_tests {
                 is_worktree_session: false,
                 plugin_dirs: Vec::new(),
                 extra_rules: None,
+                max_agent_turns: None,
             },
             fsm,
             backend: "mock_acp".into(),
@@ -6172,6 +6175,7 @@ mod session_routing_tests {
                 is_worktree_session: false,
                 plugin_dirs: Vec::new(),
                 extra_rules: None,
+                max_agent_turns: None,
             },
             fsm,
             backend: "mock_acp".into(),
@@ -6274,6 +6278,7 @@ mod session_routing_tests {
                 is_worktree_session: false,
                 plugin_dirs: Vec::new(),
                 extra_rules: None,
+                max_agent_turns: None,
             },
             fsm,
             backend: "mock_acp".into(),
