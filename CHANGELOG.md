@@ -47,6 +47,10 @@ See `docs/llm-wiki/release.md`.
 
 
 - **可靠性中心**（Doctor / 设置 → 运行环境 → 工具 / 命令面板）：汇总忙碌会话、卡顿与 end-of-turn 卡顿信号、最近错误卡片；可导出支持包或打开 Doctor。无信号时显示诚实空态。
+- **Agent leader / serve panel** (Settings → Runtime → Connection): probe `~/.grok/leader.sock` (or `GROK_LEADER_SOCKET`), show stopped/running/error, copy socket path, start `grok agent leader` in the background, stop via `grok leader kill` + tracked PID; honest message when CLI lacks leader commands; never shows serve secrets. Link to General → Agent “use leader” toggle.
+
+
+- **Agent leader / serve 面板**（设置 → 运行时 → 连接）：探测 leader socket、状态与复制路径、后台启动/停止共享后端；CLI 不支持时如实提示；不展示 serve 密钥；链到「共享 Agent 后端」开关
 
 ## [0.2.2] - 2026-07-30
 
