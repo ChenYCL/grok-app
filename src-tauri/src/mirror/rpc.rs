@@ -12,6 +12,19 @@ use crate::store;
 /// Protocol version advertised in `mirror://hello`.
 pub const PROTOCOL_VERSION: u32 = 1;
 
+/// Write RPC methods blocked when the host is in read-only mode.
+/// Keep in sync with `src/lib/mirrorWriteSurface.ts` (UI category list).
+pub const WRITE_METHODS: &[&str] = &[
+    "session.send",
+    "session.stop",
+    "session.create",
+    "session.resolvePermission",
+    "session.answerAskUser",
+    "session.reviewPlan",
+    "session.delete",
+    "session.rename",
+];
+
 #[derive(Debug, Clone)]
 pub struct RpcError {
     pub code: &'static str,
@@ -57,20 +70,8 @@ pub async fn dispatch(
     mgr: Option<&Arc<SessionManager>>,
 ) -> Result<Value, RpcError> {
     // Read-only sessions can observe but not drive the agent.
-    if host.is_read_only() {
-        const WRITE: &[&str] = &[
-            "session.send",
-            "session.stop",
-            "session.create",
-            "session.resolvePermission",
-            "session.answerAskUser",
-            "session.reviewPlan",
-            "session.delete",
-            "session.rename",
-        ];
-        if WRITE.iter().any(|m| *m == method) {
-            return Err(RpcError::unsupported("mirror is in read-only mode"));
-        }
+    if host.is_read_only() && WRITE_METHODS.iter().any(|m| *m == method) {
+        return Err(RpcError::unsupported("mirror is in read-only mode"));
     }
 
     match method {

@@ -21,6 +21,18 @@ pub use auth::generate_token;
 
 use crate::session_manager::SessionManager;
 
+/// Default concurrent phone WebSocket clients (SEC-08c). Overridable via env / panel.
+pub const DEFAULT_MAX_CLIENTS: u32 = 4;
+/// Hard upper clamp for max clients (avoid unbounded fan-out).
+pub const MAX_CLIENTS_CAP: u32 = 16;
+/// Minimum concurrent clients setting.
+pub const MIN_CLIENTS: u32 = 1;
+
+/// Clamp user/env max-clients to a safe range.
+pub fn normalize_max_clients(raw: u32) -> u32 {
+    raw.clamp(MIN_CLIENTS, MAX_CLIENTS_CAP)
+}
+
 /// Environment contract (DESIGN §12).
 #[derive(Debug, Clone)]
 pub struct MirrorEnvConfig {
@@ -34,6 +46,8 @@ pub struct MirrorEnvConfig {
     pub no_tunnel: bool,
     /// Override static SPA root (`GROK_MIRROR_DIST`).
     pub dist: Option<PathBuf>,
+    /// Concurrent WS client cap (`GROK_MIRROR_MAX_CLIENTS`, default 4).
+    pub max_clients: u32,
 }
 
 impl MirrorEnvConfig {
@@ -52,12 +66,18 @@ impl MirrorEnvConfig {
             .ok()
             .map(|s| PathBuf::from(s.trim()))
             .filter(|p| !p.as_os_str().is_empty());
+        let max_clients = std::env::var("GROK_MIRROR_MAX_CLIENTS")
+            .ok()
+            .and_then(|s| s.trim().parse::<u32>().ok())
+            .map(normalize_max_clients)
+            .unwrap_or(DEFAULT_MAX_CLIENTS);
         Self {
             headless,
             token,
             port,
             no_tunnel,
             dist,
+            max_clients,
         }
     }
 }
@@ -95,10 +115,13 @@ pub struct MirrorStatus {
     pub public_url: Option<String>,
     pub local_port: Option<u16>,
     /// Full token for QR / copy while host is running. Prefer publicUrl for display.
+    /// Memory-only — never persist to disk / localStorage / support bundles.
     pub token: Option<String>,
     /// Last 6 chars of token for safe display in logs / status chips.
     pub token_tail: Option<String>,
     pub clients: u32,
+    /// Concurrent WebSocket client cap (1–16, default 4).
+    pub max_clients: u32,
     pub phase: MirrorPhase,
     pub error: Option<String>,
     /// When true, mirror RPC rejects write methods (send / permissions / create).
@@ -131,6 +154,8 @@ struct Inner {
     ctx: Option<HostCtx>,
     /// Default for new starts; also applied to live runtime via set_read_only.
     read_only: bool,
+    /// Concurrent WS client cap (panel + env). Survives stop/start in-process.
+    max_clients: u32,
 }
 
 /// Process-wide mirror host (memory-only token; not persisted).
@@ -141,13 +166,16 @@ pub struct MirrorHost {
 
 impl MirrorHost {
     pub fn from_env() -> Self {
+        let env = MirrorEnvConfig::from_env();
+        let max_clients = env.max_clients;
         Self {
             inner: Mutex::new(Inner {
-                env: MirrorEnvConfig::from_env(),
+                env,
                 runtime: None,
                 ctx: None,
                 // Safe default: phone can observe until the user opts into write access.
                 read_only: true,
+                max_clients,
             }),
             hub: Arc::new(ws::WsHub::new()),
         }
@@ -195,6 +223,33 @@ impl MirrorHost {
             .unwrap_or(g.read_only)
     }
 
+    pub fn max_clients(&self) -> u32 {
+        self.inner.lock().max_clients
+    }
+
+    /// True when connected WS clients are already at the configured cap.
+    pub fn is_at_client_limit(&self) -> bool {
+        let max = self.max_clients();
+        self.hub.client_count() as u32 >= max
+    }
+
+    pub fn set_max_clients(&self, max_clients: u32) -> u32 {
+        let next = normalize_max_clients(max_clients);
+        let mut g = self.inner.lock();
+        let prev = g.max_clients;
+        g.max_clients = next;
+        g.env.max_clients = next;
+        if prev != next {
+            // No tokens / URLs — numeric policy only.
+            tracing::info!(
+                max_clients = next,
+                prev,
+                "mirror: max concurrent clients updated"
+            );
+        }
+        next
+    }
+
     pub fn set_read_only(&self, read_only: bool) {
         let mut g = self.inner.lock();
         let prev = g
@@ -218,11 +273,13 @@ impl MirrorHost {
 
     /// Mint a new token, drop WS clients, keep the same port/tunnel when possible.
     pub fn rotate_token(&self) -> Result<MirrorStatus, String> {
+        let clients_before = self.hub.client_count() as u32;
         let mut g = self.inner.lock();
         let Some(r) = g.runtime.as_mut() else {
             return Err("mirror is not running".into());
         };
         r.token = generate_token();
+        let tail = auth::token_tail(&r.token, 6);
         if let Some(url) = r.public_url.clone() {
             if let Some(base) = url.split("/t/").next() {
                 let base = base.trim_end_matches('/');
@@ -233,6 +290,12 @@ impl MirrorHost {
         }
         drop(g);
         self.hub.disconnect_all();
+        // Audit: token_tail only — never full token or public URL.
+        tracing::info!(
+            token_tail = %tail,
+            clients_disconnected = clients_before,
+            "mirror: token rotated (old QR/sessions invalidated)"
+        );
         Ok(self.status())
     }
 
@@ -361,11 +424,14 @@ impl MirrorHost {
             }
         }
 
+        // Log phase/port/token_tail only — never the full public URL (embeds token).
+        let tail = auth::token_tail(&token, 6);
         tracing::info!(
             port = bound_port,
-            public_url = %public_url,
+            token_tail = %tail,
             phase = ?phase,
             no_tunnel = env.no_tunnel,
+            max_clients = self.max_clients(),
             "mirror host started"
         );
 
@@ -408,6 +474,7 @@ impl MirrorHost {
 
     fn status_unlocked(&self, g: &Inner) -> MirrorStatus {
         let clients = self.hub.client_count() as u32;
+        let max_clients = g.max_clients;
         match &g.runtime {
             None => MirrorStatus {
                 running: false,
@@ -416,20 +483,13 @@ impl MirrorHost {
                 token: None,
                 token_tail: None,
                 clients: 0,
+                max_clients,
                 phase: MirrorPhase::Stopped,
                 error: None,
                 read_only: g.read_only,
             },
             Some(r) => {
-                let tail = r
-                    .token
-                    .chars()
-                    .rev()
-                    .take(6)
-                    .collect::<String>()
-                    .chars()
-                    .rev()
-                    .collect::<String>();
+                let tail = auth::token_tail(&r.token, 6);
                 MirrorStatus {
                     running: true,
                     public_url: r.public_url.clone().or_else(|| {
@@ -439,6 +499,7 @@ impl MirrorHost {
                     token: Some(r.token.clone()),
                     token_tail: Some(tail),
                     clients,
+                    max_clients,
                     phase: r.phase,
                     error: r.error.clone(),
                     read_only: r.read_only,
@@ -542,6 +603,14 @@ mod tests {
         let c = MirrorEnvConfig::from_env();
         let _ = c.headless;
         let _ = c.no_tunnel;
+        assert!(c.max_clients >= MIN_CLIENTS && c.max_clients <= MAX_CLIENTS_CAP);
+    }
+
+    #[test]
+    fn normalize_max_clients_clamps() {
+        assert_eq!(normalize_max_clients(0), MIN_CLIENTS);
+        assert_eq!(normalize_max_clients(4), 4);
+        assert_eq!(normalize_max_clients(99), MAX_CLIENTS_CAP);
     }
 
     #[test]
@@ -549,6 +618,17 @@ mod tests {
         let p = resolve_dist_dir(None);
         // Path is absolute-ish or relative; just ensure function returns something.
         assert!(!p.as_os_str().is_empty());
+    }
+
+    #[test]
+    fn set_max_clients_clamps_and_status() {
+        let host = MirrorHost::from_env();
+        assert_eq!(host.set_max_clients(0), MIN_CLIENTS);
+        assert_eq!(host.max_clients(), MIN_CLIENTS);
+        assert_eq!(host.set_max_clients(100), MAX_CLIENTS_CAP);
+        let st = host.status();
+        assert_eq!(st.max_clients, MAX_CLIENTS_CAP);
+        assert!(!st.running);
     }
 
     #[tokio::test]
@@ -561,10 +641,12 @@ mod tests {
                     port: Some(0), // ephemeral
                     no_tunnel: true,
                     dist: Some(resolve_dist_dir(None)),
+                    max_clients: DEFAULT_MAX_CLIENTS,
                 },
                 runtime: None,
                 ctx: None,
                 read_only: true,
+                max_clients: DEFAULT_MAX_CLIENTS,
             }),
             hub: Arc::new(ws::WsHub::new()),
         });
@@ -640,10 +722,12 @@ mod tests {
                     port: Some(0),
                     no_tunnel: true,
                     dist: Some(missing.clone()),
+                    max_clients: DEFAULT_MAX_CLIENTS,
                 },
                 runtime: None,
                 ctx: None,
                 read_only: true,
+                max_clients: DEFAULT_MAX_CLIENTS,
             }),
             hub: Arc::new(ws::WsHub::new()),
         });
@@ -691,5 +775,14 @@ pub async fn mirror_set_read_only(
     read_only: bool,
 ) -> Result<MirrorStatus, String> {
     host.set_read_only(read_only);
+    Ok(host.status())
+}
+
+#[tauri::command]
+pub async fn mirror_set_max_clients(
+    host: State<'_, Arc<MirrorHost>>,
+    max_clients: u32,
+) -> Result<MirrorStatus, String> {
+    host.set_max_clients(max_clients);
     Ok(host.status())
 }

@@ -18111,6 +18111,116 @@ div.composer__input:empty::before {
   color: var(--danger, #e55);
 }
 
+/* Max concurrent phone clients (1–16) */
+.mirror-connect__max-clients {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 2px 0 4px;
+}
+
+.mirror-connect__max-clients-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.mirror-connect__max-clients-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.mirror-connect__max-clients-input {
+  width: 4.5rem;
+  padding: 6px 8px;
+  border-radius: 8px;
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-elevated, var(--bg-secondary));
+  color: var(--text-primary);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+
+.mirror-connect__max-clients-input:focus {
+  outline: none;
+  border-color: var(--accent, #6b8cff);
+}
+
+.mirror-connect__max-clients-value {
+  font-size: 12px;
+  color: var(--text-tertiary);
+  font-variant-numeric: tabular-nums;
+}
+
+.mirror-connect__max-clients-hint {
+  margin: 0;
+  font-size: 11.5px;
+  line-height: 1.4;
+  color: var(--text-tertiary);
+}
+
+/* Write-on: allowlisted RPC categories + broad warning */
+.mirror-connect__write-surface {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 2px 0 4px;
+  padding: 10px 11px;
+  border-radius: 10px;
+  border: 1px solid rgba(220, 140, 40, 0.28);
+  background: rgba(220, 140, 40, 0.06);
+}
+
+.mirror-connect__write-surface-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px 12px;
+}
+
+.mirror-connect__write-surface-title {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.mirror-connect__write-surface-broad {
+  font-size: 11.5px;
+  font-weight: 600;
+  color: rgb(180, 100, 20);
+  line-height: 1.3;
+}
+
+.mirror-connect__write-surface-hint {
+  margin: 0;
+  font-size: 11.5px;
+  line-height: 1.4;
+  color: var(--text-tertiary);
+}
+
+.mirror-connect__write-cats {
+  list-style: none;
+  margin: 2px 0 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.mirror-connect__write-cat {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: var(--bg-hover, rgba(0, 0, 0, 0.06));
+  border: 1px solid var(--border-subtle);
+  color: var(--text-secondary);
+  font-size: 11.5px;
+  font-weight: 500;
+  line-height: 1.35;
+}
+
 .mirror-connect__footer {
   display: flex;
   gap: 8px;

@@ -2628,6 +2628,12 @@ export const zhTW: Record<MessageKey, string> = {
   "mirror.linkLabel": "公開網址",
   "mirror.rotate": "重新產生連結",
   "mirror.rotateDone": "新連結已就緒 — 舊 QR 失效。",
+  "mirror.rotateConfirmTitle": "重新產生鏡像連結？",
+  "mirror.rotateConfirmMessage":
+    "將產生新的 QR 與網址。仍在使用舊連結的裝置會中斷，且無法再用舊碼重連。",
+  "mirror.rotateConfirmMessageClients":
+    "目前有 {n} 台手機已連線。重新產生會中斷它們並使目前 QR 失效。繼續？",
+  "mirror.rotateConfirmOk": "重新產生連結",
   "mirror.allowWrite": "允許手機傳送",
   "mirror.readOnlyOn": "唯讀（安全）",
   "mirror.readOnlyHint":
@@ -2638,6 +2644,22 @@ export const zhTW: Record<MessageKey, string> = {
   "mirror.writeConfirmOk": "允許寫入",
   "mirror.writeEnabledBanner":
     "已允許寫入：手機可在本機傳送訊息並核准工具。",
+  "mirror.write.categoriesTitle": "已開放的寫入操作",
+  "mirror.write.categoriesHint":
+    "開啟寫入後，以下主機 RPC 類別可用。檔案系統與僅桌面端指令仍會被攔截。",
+  "mirror.write.broadWarn": "寫入面較寬 — 完整允許列表均已開放",
+  "mirror.write.category.send": "傳送訊息",
+  "mirror.write.category.stop": "停止 Agent",
+  "mirror.write.category.sessions": "建立會話",
+  "mirror.write.category.permissions": "核准工具",
+  "mirror.write.category.askUser": "回答提問",
+  "mirror.write.category.plan": "審閱計劃",
+  "mirror.write.category.delete": "刪除會話",
+  "mirror.write.category.rename": "重新命名會話",
+  "mirror.maxClients": "最大手機連線數",
+  "mirror.maxClientsHint":
+    "限制並發 WebSocket 連線（1–16）。超出上限的手機會收到 HTTP 503，直到有空位。",
+  "mirror.maxClientsValue": "{n} / {max}",
   "mirror.audit.title": "寫入稽核",
   "mirror.audit.empty": "尚無寫入 ACL 事件。",
   "mirror.audit.clear": "清空紀錄",

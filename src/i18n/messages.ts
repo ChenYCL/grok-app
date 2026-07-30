@@ -2729,6 +2729,12 @@ const en = {
   "mirror.linkLabel": "Public URL",
   "mirror.rotate": "Regenerate link",
   "mirror.rotateDone": "New link ready — old QR codes no longer work.",
+  "mirror.rotateConfirmTitle": "Regenerate mirror link?",
+  "mirror.rotateConfirmMessage":
+    "A new QR and URL will be created. Anyone still using the old link will be disconnected and cannot reconnect without the new code.",
+  "mirror.rotateConfirmMessageClients":
+    "{n} phone(s) are connected. Regenerating will disconnect them and invalidate the current QR. Continue?",
+  "mirror.rotateConfirmOk": "Regenerate link",
   "mirror.allowWrite": "Allow phone to send",
   "mirror.readOnlyOn": "Read-only (safe)",
   "mirror.readOnlyHint":
@@ -2739,6 +2745,22 @@ const en = {
   "mirror.writeConfirmOk": "Allow writes",
   "mirror.writeEnabledBanner":
     "Write enabled: phone can send messages and approve tools on this machine.",
+  "mirror.write.categoriesTitle": "Allowed write actions",
+  "mirror.write.categoriesHint":
+    "These host RPC categories are open while write is enabled. Filesystem and desktop-only commands stay blocked.",
+  "mirror.write.broadWarn": "Broad write surface — full allowlist is open",
+  "mirror.write.category.send": "Send messages",
+  "mirror.write.category.stop": "Stop agent",
+  "mirror.write.category.sessions": "Create sessions",
+  "mirror.write.category.permissions": "Approve tools",
+  "mirror.write.category.askUser": "Answer questions",
+  "mirror.write.category.plan": "Review plans",
+  "mirror.write.category.delete": "Delete sessions",
+  "mirror.write.category.rename": "Rename sessions",
+  "mirror.maxClients": "Max phone clients",
+  "mirror.maxClientsHint":
+    "Limit concurrent WebSocket connections (1–16). Extra phones get HTTP 503 until a slot frees.",
+  "mirror.maxClientsValue": "{n} / {max}",
   "mirror.audit.title": "Write audit",
   "mirror.audit.empty": "No write-ACL events yet.",
   "mirror.audit.clear": "Clear log",
@@ -5683,6 +5705,12 @@ const zh: Record<MessageKey, string> = {
   "mirror.linkLabel": "公开地址",
   "mirror.rotate": "重新生成链接",
   "mirror.rotateDone": "新链接已就绪 — 旧二维码失效。",
+  "mirror.rotateConfirmTitle": "重新生成镜像链接？",
+  "mirror.rotateConfirmMessage":
+    "将生成新的二维码与地址。仍在使用旧链接的设备会断开，且无法再用旧码重连。",
+  "mirror.rotateConfirmMessageClients":
+    "当前有 {n} 台手机已连接。重新生成会断开它们并使当前二维码失效。继续？",
+  "mirror.rotateConfirmOk": "重新生成链接",
   "mirror.allowWrite": "允许手机发送",
   "mirror.readOnlyOn": "只读（安全）",
   "mirror.readOnlyHint":
@@ -5693,6 +5721,22 @@ const zh: Record<MessageKey, string> = {
   "mirror.writeConfirmOk": "允许写入",
   "mirror.writeEnabledBanner":
     "已允许写入：手机可在本机发送消息并批准工具。",
+  "mirror.write.categoriesTitle": "已开放的写入操作",
+  "mirror.write.categoriesHint":
+    "开启写入后，以下主机 RPC 类别可用。文件系统与仅桌面端命令仍被拦截。",
+  "mirror.write.broadWarn": "写入面较宽 — 完整允许列表均已开放",
+  "mirror.write.category.send": "发送消息",
+  "mirror.write.category.stop": "停止 Agent",
+  "mirror.write.category.sessions": "创建会话",
+  "mirror.write.category.permissions": "批准工具",
+  "mirror.write.category.askUser": "回答提问",
+  "mirror.write.category.plan": "审阅计划",
+  "mirror.write.category.delete": "删除会话",
+  "mirror.write.category.rename": "重命名会话",
+  "mirror.maxClients": "最大手机连接数",
+  "mirror.maxClientsHint":
+    "限制并发 WebSocket 连接（1–16）。超出上限的手机会收到 HTTP 503，直到有空位。",
+  "mirror.maxClientsValue": "{n} / {max}",
   "mirror.audit.title": "写入审计",
   "mirror.audit.empty": "尚无写入 ACL 事件。",
   "mirror.audit.clear": "清空日志",
