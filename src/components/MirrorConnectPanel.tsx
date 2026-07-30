@@ -3,6 +3,9 @@
  * - `modal`: legacy GlassModal (optional; settings uses inline).
  * - `inline`: settings card body (Remote control → Phone mirror tab).
  * Closing the UI does NOT stop the host — only 停止主机 does.
+ *
+ * Write-ACL audit (localStorage ring) records write enable/disable,
+ * token rotate, and optional host start/stop — never stores secrets.
  */
 
 import { useCallback, useEffect, useState } from "react";
@@ -11,6 +14,15 @@ import { GlassModal } from "@/components/GlassModal";
 import { IconCopy, IconDeviceMobile } from "@/components/icons";
 import type { MirrorPhase, MirrorStatus } from "@/lib/api";
 import * as api from "@/lib/api";
+import {
+  MIRROR_WRITE_AUDIT_CHANGE_EVENT,
+  MIRROR_WRITE_AUDIT_STORAGE_KEY,
+  clearMirrorWriteAudit,
+  loadMirrorWriteAudit,
+  recordMirrorWriteAudit,
+  type MirrorWriteAuditEvent,
+  type MirrorWriteAuditType,
+} from "@/lib/mirrorWriteAudit";
 
 export type MirrorConnectLabels = {
   title: string;
@@ -48,6 +60,18 @@ export type MirrorConnectLabels = {
   writeConfirmOk: string;
   /** Persistent banner while phone write is enabled. */
   writeEnabledBanner: string;
+  /** Collapsible local write-ACL audit log. */
+  auditTitle: string;
+  auditEmpty: string;
+  auditClear: string;
+  auditClearConfirmTitle: string;
+  auditClearConfirmMessage: string;
+  auditClearConfirmOk: string;
+  auditTypeWriteEnabled: string;
+  auditTypeWriteDisabled: string;
+  auditTypeTokenRotated: string;
+  auditTypeHostStarted: string;
+  auditTypeHostStopped: string;
 };
 
 export type MirrorConfirmRequest = {
@@ -118,6 +142,131 @@ function emptyStatus(): MirrorStatus {
   };
 }
 
+function formatAuditAt(iso: string): string {
+  const d = Date.parse(iso);
+  if (!Number.isFinite(d)) return iso || "";
+  try {
+    return new Date(d).toLocaleString(undefined, {
+      year: "numeric",
+      month: "short",
+      day: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  } catch {
+    return iso;
+  }
+}
+
+function auditTypeLabel(
+  type: MirrorWriteAuditType,
+  labels: MirrorConnectLabels,
+): string {
+  switch (type) {
+    case "write_enabled":
+      return labels.auditTypeWriteEnabled;
+    case "write_disabled":
+      return labels.auditTypeWriteDisabled;
+    case "token_rotated":
+      return labels.auditTypeTokenRotated;
+    case "host_started":
+      return labels.auditTypeHostStarted;
+    case "host_stopped":
+      return labels.auditTypeHostStopped;
+    default:
+      return type;
+  }
+}
+
+function MirrorWriteAuditSection({
+  labels,
+  onRequestConfirm,
+}: {
+  labels: MirrorConnectLabels;
+  onRequestConfirm: (opts: MirrorConfirmRequest) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [events, setEvents] = useState<MirrorWriteAuditEvent[]>(() =>
+    loadMirrorWriteAudit(),
+  );
+
+  useEffect(() => {
+    const refresh = () => setEvents(loadMirrorWriteAudit());
+    refresh();
+    const onChange = () => refresh();
+    window.addEventListener(MIRROR_WRITE_AUDIT_CHANGE_EVENT, onChange);
+    const onStorage = (e: StorageEvent) => {
+      if (e.key === null || e.key === MIRROR_WRITE_AUDIT_STORAGE_KEY) refresh();
+    };
+    window.addEventListener("storage", onStorage);
+    return () => {
+      window.removeEventListener(MIRROR_WRITE_AUDIT_CHANGE_EVENT, onChange);
+      window.removeEventListener("storage", onStorage);
+    };
+  }, []);
+
+  const handleClear = () => {
+    onRequestConfirm({
+      title: labels.auditClearConfirmTitle,
+      message: labels.auditClearConfirmMessage,
+      confirmLabel: labels.auditClearConfirmOk,
+      onConfirm: () => {
+        setEvents(clearMirrorWriteAudit());
+      },
+    });
+  };
+
+  return (
+    <div className="mirror-connect__audit">
+      <div className="mirror-connect__audit-head">
+        <button
+          type="button"
+          className="mirror-connect__audit-toggle"
+          aria-expanded={open}
+          onClick={() => setOpen((v) => !v)}
+        >
+          <span className="mirror-connect__audit-chevron" aria-hidden>
+            {open ? "▾" : "▸"}
+          </span>
+          <span className="mirror-connect__audit-title">{labels.auditTitle}</span>
+          {events.length > 0 ? (
+            <span className="mirror-connect__audit-count">{events.length}</span>
+          ) : null}
+        </button>
+        {open && events.length > 0 ? (
+          <button
+            type="button"
+            className="btn btn--ghost btn--sm mirror-connect__audit-clear"
+            onClick={handleClear}
+          >
+            {labels.auditClear}
+          </button>
+        ) : null}
+      </div>
+      {open ? (
+        events.length === 0 ? (
+          <p className="mirror-connect__audit-empty" role="status">
+            {labels.auditEmpty}
+          </p>
+        ) : (
+          <ul className="mirror-connect__audit-list" aria-label={labels.auditTitle}>
+            {events.map((e) => (
+              <li key={e.id} className="mirror-connect__audit-row">
+                <span className="mirror-connect__audit-when" title={e.at}>
+                  {formatAuditAt(e.at)}
+                </span>
+                <span className="mirror-connect__audit-label">
+                  {auditTypeLabel(e.type, labels)}
+                </span>
+              </li>
+            ))}
+          </ul>
+        )
+      ) : null}
+    </div>
+  );
+}
+
 function MirrorConnectBody({
   labels,
   status,
@@ -129,6 +278,7 @@ function MirrorConnectBody({
   onStop,
   onRotate,
   onToggleReadOnly,
+  onRequestConfirm,
 }: {
   labels: MirrorConnectLabels;
   status: MirrorStatus;
@@ -140,6 +290,7 @@ function MirrorConnectBody({
   onStop: () => void;
   onRotate: () => void;
   onToggleReadOnly: () => void;
+  onRequestConfirm: (opts: MirrorConfirmRequest) => void;
 }) {
   const phase = status.phase;
   const showQr = !!status.publicUrl && (phase === "live" || phase === "local");
@@ -277,6 +428,11 @@ function MirrorConnectBody({
           </span>
         </div>
       ) : null}
+
+      <MirrorWriteAuditSection
+        labels={labels}
+        onRequestConfirm={onRequestConfirm}
+      />
     </>
   );
 }
@@ -372,6 +528,8 @@ export function MirrorConnectPanel({
       try {
         const st = await api.mirrorRotateToken();
         setStatus(st);
+        // Never log token/URL — type only.
+        recordMirrorWriteAudit({ type: "token_rotated" });
         showToast?.(labels.rotateDone);
       } catch (e) {
         setErr(String(e));
@@ -384,6 +542,9 @@ export function MirrorConnectPanel({
       try {
         const st = await api.mirrorSetReadOnly(readOnly);
         setStatus(st);
+        recordMirrorWriteAudit({
+          type: readOnly ? "write_disabled" : "write_enabled",
+        });
       } catch (e) {
         setErr(String(e));
       }
@@ -423,6 +584,10 @@ export function MirrorConnectPanel({
       .then((st) => {
         setStatus(st);
         setErr(st.error);
+        // Explicit user start only (auto-start on open does not audit).
+        if (st.running) {
+          recordMirrorWriteAudit({ type: "host_started" });
+        }
       })
       .catch((e) => setErr(String(e)))
       .finally(() => setBusy(false));
@@ -440,6 +605,7 @@ export function MirrorConnectPanel({
           .then((st) => {
             setStatus(st);
             setErr(null);
+            recordMirrorWriteAudit({ type: "host_stopped" });
             showToast(labels.phaseStopped, 2000);
           })
           .catch((e) => setErr(String(e)))
@@ -460,6 +626,7 @@ export function MirrorConnectPanel({
       onStop={handleStop}
       onRotate={handleRotate}
       onToggleReadOnly={handleToggleReadOnly}
+      onRequestConfirm={onRequestConfirm}
     />
   );
 
