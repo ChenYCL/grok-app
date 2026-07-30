@@ -558,6 +558,7 @@ import {
   type SessionWorktreeBadge,
   type WorktreeLayout,
 } from "@/lib/gitWorktree";
+import { filterCliWorktreesForProject } from "@/lib/cliWorktrees";
 import {
   buildForkWorktreeName,
   canRestoreCodeOnFork,
@@ -2039,6 +2040,15 @@ export default function App() {
   const [worktreeCreateStartChat, setWorktreeCreateStartChat] = useState(false);
   /** Absolute `~/.grok` from host list (CLI path preview + badge detection). */
   const [cliGrokHome, setCliGrokHome] = useState<string | null>(null);
+  /** CLI-tracked worktrees from `grok worktree list` (soft-fail). */
+  const [cliWorktrees, setCliWorktrees] = useState<api.CliWorktreeEntry[]>([]);
+  const [cliWorktreesAvailable, setCliWorktreesAvailable] = useState<
+    boolean | null
+  >(null);
+  const [cliWorktreesLoading, setCliWorktreesLoading] = useState(false);
+  const [cliWorktreesReason, setCliWorktreesReason] = useState<string | null>(
+    null,
+  );
   /** Clean stale worktrees (git worktree prune) dialog. */
   const [worktreeGcOpen, setWorktreeGcOpen] = useState(false);
   const [worktreeGcForce, setWorktreeGcForce] = useState(false);
@@ -10530,6 +10540,71 @@ export default function App() {
     void refreshGitWorktrees();
   }, [refreshGitWorktrees]);
 
+  const cliWorktreesReqRef = useRef(0);
+  const refreshCliWorktrees = useCallback(async () => {
+    if (!api.isTauri()) {
+      cliWorktreesReqRef.current += 1;
+      setCliWorktrees([]);
+      setCliWorktreesAvailable(null);
+      setCliWorktreesReason(null);
+      setCliWorktreesLoading(false);
+      return;
+    }
+    const reqId = ++cliWorktreesReqRef.current;
+    setCliWorktreesLoading(true);
+    try {
+      const projectPath = activeProject?.path?.trim() || null;
+      const repoSlug = projectPath
+        ? projectPath.replace(/\\/g, "/").split("/").filter(Boolean).pop() ||
+          null
+        : null;
+      const res = await api.cliWorktreesList({
+        all: false,
+        // CLI --repo matches repo_name (e.g. grok-app), not folder basename.
+        // Leave unfiltered; UI filters by source path / worktrees slug.
+        repo: null,
+      });
+      if (reqId !== cliWorktreesReqRef.current) return;
+      if (!res.available) {
+        setCliWorktrees([]);
+        setCliWorktreesAvailable(false);
+        setCliWorktreesReason(res.reason?.trim() || "unavailable");
+      } else {
+        // Prefer rows for the active project when we can match source/repo.
+        const filtered = filterCliWorktreesForProject(
+          res.worktrees ?? [],
+          projectPath,
+          repoSlug,
+        );
+        setCliWorktrees(filtered);
+        setCliWorktreesAvailable(true);
+        setCliWorktreesReason(null);
+      }
+    } catch (e) {
+      if (reqId !== cliWorktreesReqRef.current) return;
+      setCliWorktrees([]);
+      setCliWorktreesAvailable(false);
+      setCliWorktreesReason(String(e));
+    } finally {
+      if (reqId === cliWorktreesReqRef.current) {
+        setCliWorktreesLoading(false);
+      }
+    }
+  }, [activeProject?.path]);
+
+  useEffect(() => {
+    // Load CLI list when the branch menu can appear (git work tree confirmed).
+    if (gitWorktreesAvailable === true) {
+      void refreshCliWorktrees();
+    } else if (gitWorktreesAvailable === false) {
+      cliWorktreesReqRef.current += 1;
+      setCliWorktrees([]);
+      setCliWorktreesAvailable(null);
+      setCliWorktreesReason(null);
+      setCliWorktreesLoading(false);
+    }
+  }, [gitWorktreesAvailable, refreshCliWorktrees]);
+
   /**
    * Poll workspace git status for the active project so the composer dirty chip
    * stays current (hide when clean / not a repo). Soft-fail; no toast spam.
@@ -15543,6 +15618,10 @@ export default function App() {
                     worktreesAvailable={gitWorktreesAvailable}
                     worktreesLoading={gitWorktreesLoading}
                     worktreesReason={gitWorktreesReason}
+                    cliWorktrees={cliWorktrees}
+                    cliWorktreesAvailable={cliWorktreesAvailable}
+                    cliWorktreesLoading={cliWorktreesLoading}
+                    cliWorktreesReason={cliWorktreesReason}
                     disabled={
                       session.state === "streaming" ||
                       session.state === "awaiting_permission"
@@ -15563,6 +15642,21 @@ export default function App() {
                       worktreeGc: tr("composer.worktreeGc"),
                       worktreeRemove: tr("composer.worktreeRemove"),
                       worktreeRemoveTip: tr("composer.worktreeRemoveTip"),
+                      cliWorktrees: tr("composer.cliWorktrees"),
+                      cliWorktreesEmpty: tr("composer.cliWorktreesEmpty"),
+                      cliWorktreesUnavailable: tr(
+                        "composer.cliWorktreesUnavailable",
+                      ),
+                      cliWorktreesLoading: tr("composer.cliWorktreesLoading"),
+                      cliWorktreeRefresh: tr("composer.cliWorktreeRefresh"),
+                      cliWorktreeReveal: tr("composer.cliWorktreeReveal"),
+                      cliWorktreeOpen: tr("composer.cliWorktreeOpen"),
+                      cliWorktreeOpenUnavailable: tr(
+                        "composer.cliWorktreeOpenUnavailable",
+                      ),
+                      cliWorktreeMissingPath: tr(
+                        "composer.cliWorktreeMissingPath",
+                      ),
                     }}
                     onSwitch={(wt) => {
                       void switchToWorktree(wt);
@@ -15573,7 +15667,38 @@ export default function App() {
                     }
                     onGc={openWorktreeGc}
                     onRemove={confirmRemoveWorktree}
-                    onOpen={refreshGitWorktrees}
+                    onOpen={() => {
+                      void refreshGitWorktrees();
+                      void refreshCliWorktrees();
+                    }}
+                    onCliRefresh={() => {
+                      void refreshCliWorktrees();
+                    }}
+                    onCliReveal={(wt) => {
+                      const p = wt.path?.trim();
+                      if (!p) return;
+                      void api
+                        .pathReveal(p)
+                        .catch((e) => showToast(String(e), 3500));
+                    }}
+                    onCliOpen={(wt) => {
+                      if (!wt.pathOk || !wt.path?.trim()) {
+                        showToast(
+                          tr("composer.cliWorktreeOpenUnavailable"),
+                          3500,
+                        );
+                        return;
+                      }
+                      void switchToWorktree({
+                        path: wt.path,
+                        branch: wt.branch ?? null,
+                        detached: !wt.branch || wt.branch === "HEAD",
+                        isMain: false,
+                        locked: false,
+                        prunable: false,
+                        head: wt.head ?? null,
+                      });
+                    }}
                   />
                 ) : null}
               </div>
