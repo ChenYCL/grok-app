@@ -11,6 +11,10 @@ See `docs/llm-wiki/release.md`.
 
 ## [Unreleased]
 
+### Added
+
+- **Edit queued follow-ups** in the composer send queue (text before auto-send)
+
 ## [0.2.2] - 2026-07-30
 
 > **Highlight:** In-app auto-update works for signed builds; calmer sidebar multi-select; PATH / busy / media reliability.
