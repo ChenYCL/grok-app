@@ -74,6 +74,10 @@ import {
   saveWindowAlwaysOnTopPref,
 } from "@/lib/windowAlwaysOnTop";
 import {
+  applyChatWidth,
+  loadChatWidth,
+} from "@/lib/chatWidthPref";
+import {
   loadPermissionTimeoutSec,
   PERMISSION_TIMEOUT_CHANGE_EVENT,
   permissionTimeoutRemainingSec,
@@ -2082,6 +2086,11 @@ export default function App() {
   useEffect(() => {
     void applyWindowAlwaysOnTop(windowAlwaysOnTop);
   }, [windowAlwaysOnTop]);
+
+  // Chat transcript reading width (Appearance) — html[data-chat-width].
+  useEffect(() => {
+    applyChatWidth(loadChatWidth());
+  }, []);
 
   const applyComposerPrefs = useCallback(
     (prefs: api.ComposerPrefs, catalog: ModelOption[]) => {
