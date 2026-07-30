@@ -1,11 +1,18 @@
 import { describe, expect, it } from "vitest";
 import {
   TRACE_HISTORY_MAX,
+  clearTraceHistory,
+  clearTraceHistoryEntries,
+  filterTraceHistory,
+  formatTraceHistorySize,
   loadTraceHistory,
   parseTraceHistory,
   parseTraceHistoryEntry,
+  parseTraceHistorySizeBytes,
   pushTraceHistory,
   recordTraceExport,
+  removeTraceHistory,
+  removeTraceHistoryEntry,
   saveTraceHistory,
   traceHistoryFileName,
   traceHistoryLabel,
@@ -50,6 +57,37 @@ describe("parseTraceHistoryEntry", () => {
       title: "Hello",
       exportedAt: "2026-01-01T00:00:00.000Z",
     });
+  });
+
+  it("accepts optional sizeBytes and drops invalid sizes", () => {
+    expect(
+      parseTraceHistoryEntry({
+        sessionId: "s",
+        path: "/p",
+        sizeBytes: 4096,
+      }),
+    ).toMatchObject({ sizeBytes: 4096 });
+    expect(
+      parseTraceHistoryEntry({
+        sessionId: "s",
+        path: "/p",
+        size_bytes: "2048",
+      }),
+    ).toMatchObject({ sizeBytes: 2048 });
+    expect(
+      parseTraceHistoryEntry({
+        sessionId: "s",
+        path: "/p",
+        sizeBytes: -1,
+      }),
+    ).not.toHaveProperty("sizeBytes");
+    expect(
+      parseTraceHistoryEntry({
+        sessionId: "s",
+        path: "/p",
+        sizeBytes: Number.NaN,
+      }),
+    ).not.toHaveProperty("sizeBytes");
   });
 
   it("rejects missing sessionId or path", () => {
@@ -151,6 +189,62 @@ describe("pushTraceHistory (ring buffer)", () => {
   });
 });
 
+describe("remove / clear / filter", () => {
+  it("removeTraceHistoryEntry by path string", () => {
+    const a = sample(1, { path: "/a.tar.gz" });
+    const b = sample(2, { path: "/b.tar.gz" });
+    expect(removeTraceHistoryEntry([a, b], "/a.tar.gz")).toEqual([b]);
+    expect(removeTraceHistoryEntry([a, b], "  /b.tar.gz  ")).toEqual([a]);
+    expect(removeTraceHistoryEntry([a, b], "/missing")).toEqual([a, b]);
+  });
+
+  it("removeTraceHistoryEntry by path or sessionId object", () => {
+    const a = sample(1, { path: "/a.tar.gz", sessionId: "sess-a" });
+    const b = sample(2, { path: "/b.tar.gz", sessionId: "sess-a" });
+    const c = sample(3, { path: "/c.tar.gz", sessionId: "sess-c" });
+    expect(removeTraceHistoryEntry([a, b, c], { path: "/b.tar.gz" })).toEqual([
+      a,
+      c,
+    ]);
+    expect(
+      removeTraceHistoryEntry([a, b, c], { sessionId: "sess-a" }),
+    ).toEqual([c]);
+  });
+
+  it("clearTraceHistoryEntries returns empty", () => {
+    expect(clearTraceHistoryEntries()).toEqual([]);
+  });
+
+  it("filterTraceHistory matches title and path (case-insensitive)", () => {
+    const a = sample(1, {
+      title: "Refactor login",
+      path: "/tmp/traces/login.tar.gz",
+    });
+    const b = sample(2, {
+      title: "Other",
+      path: "/tmp/traces/other.tar.gz",
+    });
+    const list = [a, b];
+    expect(filterTraceHistory(list, "")).toEqual(list);
+    expect(filterTraceHistory(list, "  ")).toEqual(list);
+    expect(filterTraceHistory(list, "LOGIN")).toEqual([a]);
+    expect(filterTraceHistory(list, "other.tar")).toEqual([b]);
+    expect(filterTraceHistory(list, "refactor")).toEqual([a]);
+    expect(filterTraceHistory(list, "xyz")).toEqual([]);
+  });
+
+  it("removeTraceHistory / clearTraceHistory persist", () => {
+    const storage = memStorage();
+    saveTraceHistory([sample(1), sample(2)], storage);
+    const afterRemove = removeTraceHistory(sample(1).path, storage);
+    expect(afterRemove).toHaveLength(1);
+    expect(afterRemove[0]!.path).toBe(sample(2).path);
+    expect(loadTraceHistory(storage)).toHaveLength(1);
+    expect(clearTraceHistory(storage)).toEqual([]);
+    expect(loadTraceHistory(storage)).toEqual([]);
+  });
+});
+
 describe("load / save / recordTraceExport", () => {
   it("round-trips via storage", () => {
     const storage = memStorage();
@@ -167,6 +261,7 @@ describe("load / save / recordTraceExport", () => {
         sessionId: "sess-new",
         path: "/tmp/new.tar.gz",
         title: "New chat",
+        sizeBytes: 12_345,
       },
       storage,
     );
@@ -174,6 +269,7 @@ describe("load / save / recordTraceExport", () => {
       sessionId: "sess-new",
       path: "/tmp/new.tar.gz",
       title: "New chat",
+      sizeBytes: 12_345,
     });
     expect(next).toHaveLength(2);
     expect(loadTraceHistory(storage)[0]!.path).toBe("/tmp/new.tar.gz");
@@ -222,5 +318,17 @@ describe("display helpers", () => {
         exportedAt: "",
       }),
     ).toBe("short");
+  });
+
+  it("formatTraceHistorySize / parseTraceHistorySizeBytes", () => {
+    expect(formatTraceHistorySize(undefined)).toBeNull();
+    expect(formatTraceHistorySize(null)).toBeNull();
+    expect(formatTraceHistorySize(-1)).toBeNull();
+    expect(formatTraceHistorySize(500)).toBe("500 B");
+    expect(formatTraceHistorySize(2048)).toBe("2.0 KB");
+    expect(formatTraceHistorySize(2 * 1024 * 1024)).toBe("2.0 MB");
+    expect(parseTraceHistorySizeBytes(100)).toBe(100);
+    expect(parseTraceHistorySizeBytes("99.7")).toBe(99);
+    expect(parseTraceHistorySizeBytes(-3)).toBeUndefined();
   });
 });

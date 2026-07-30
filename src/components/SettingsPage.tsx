@@ -5054,9 +5054,21 @@ export function SettingsPage({
                     <TraceHistoryList
                       labels={{
                         empty: t("session.tracesEmpty"),
+                        emptyFilter: t("session.tracesEmptyFilter"),
                         reveal: t("session.tracesReveal"),
                         copyPath: t("session.tracesCopyPath"),
                         copied: t("session.tracesCopied"),
+                        remove: t("session.tracesRemove"),
+                        clearAll: t("session.tracesClearAll"),
+                        clearConfirmTitle: t("session.tracesClearConfirmTitle"),
+                        clearConfirmMessage: t(
+                          "session.tracesClearConfirmMessage",
+                        ),
+                        clearConfirmAction: t(
+                          "session.tracesClearConfirmAction",
+                        ),
+                        cancel: t("common.cancel"),
+                        searchPlaceholder: t("session.tracesSearch"),
                         listAria: t("session.tracesTitle"),
                       }}
                       onCopied={() =>

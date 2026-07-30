@@ -1457,6 +1457,8 @@ export async function cliDoctorFix(id: string) {
 export interface SupportBundleResult {
   ok: boolean;
   path: string;
+  /** Optional file size in bytes (cheap host `stat` after save). */
+  sizeBytes?: number;
 }
 
 /** Build a redacted support zip (Doctor + logs) and save via native dialog. */

@@ -2050,6 +2050,8 @@ fn save_and_reveal_file_blocking(
     };
 
     let path_s = final_path.display().to_string();
+    // Cheap metadata only — never read archive contents into the App.
+    let size_bytes = std::fs::metadata(&final_path).ok().map(|m| m.len());
     #[cfg(target_os = "macos")]
     {
         let _ = crate::process_util::command("open")
@@ -2066,6 +2068,7 @@ fn save_and_reveal_file_blocking(
     Ok(serde_json::json!({
         "ok": true,
         "path": path_s,
+        "sizeBytes": size_bytes,
     }))
 }
 
