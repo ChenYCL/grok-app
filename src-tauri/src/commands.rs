@@ -913,6 +913,9 @@ pub async fn session_resolve_relative_media(
         let Some(full) = full else {
             continue;
         };
+        // Allow media:// previews for session/project skill outputs (including
+        // untrusted project roots that are not in the global path_scope list).
+        crate::path_scope::grant_path(&full);
         let path = full.to_string_lossy().to_string();
         if !seen.insert(path.clone()) {
             continue;
@@ -1192,6 +1195,9 @@ pub async fn settings_set(
     }
 
     if session_data_mode_changed {
+        // Rebuild media/fs roots so shared (`~/.grok`) vs independent agent-home
+        // switch takes effect for media:// previews immediately.
+        crate::path_scope::refresh_from_store();
         mgr.recycle_all_agents(&app, "session_data_mode").await;
     }
 
@@ -5195,6 +5201,12 @@ pub fn paths_classify(paths: Vec<String>) -> Vec<PathEntry> {
             let meta = std::fs::metadata(&pb).ok();
             let exists = meta.is_some();
             let is_dir = meta.map(|m| m.is_dir()).unwrap_or(false);
+            // User-attached / chat-history paths often sit outside trusted project
+            // roots (Desktop, Downloads, Screenshots). Grant them so media://
+            // previews in the composer and thread can load.
+            if exists {
+                crate::path_scope::grant_path(&pb);
+            }
             PathEntry {
                 path: p,
                 name,

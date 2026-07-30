@@ -41,6 +41,18 @@ pub fn refresh_from_store() {
         next.push(std::env::temp_dir());
     }
 
+    // Agent session media (`images/`, `videos/`) lives under GROK_HOME.
+    // Independent mode is already under app_data; shared mode is `~/.grok` and
+    // must be listed so chat image/video cards can load via media://.
+    let settings = crate::store::load_settings();
+    let agent_home =
+        crate::paths::resolve_agent_grok_home(&settings.session_data_mode);
+    if let Ok(c) = agent_home.canonicalize() {
+        next.push(c);
+    } else {
+        next.push(agent_home);
+    }
+
     // Dedup while preserving order.
     let mut seen = std::collections::HashSet::new();
     next.retain(|p| seen.insert(p.clone()));

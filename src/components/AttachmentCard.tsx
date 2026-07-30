@@ -189,6 +189,7 @@ export function AttachmentCard({
                 src={thumbSrc}
                 alt={attachment.name}
                 draggable={false}
+                onError={() => setThumbSrc(null)}
               />
             ) : (
               <>
@@ -263,6 +264,7 @@ export function AttachmentCard({
               src={thumbSrc}
               alt={attachment.name}
               draggable={false}
+              onError={() => setThumbSrc(null)}
             />
           ) : (
             <span className="att-card__thumb att-card__thumb--placeholder">

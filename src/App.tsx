@@ -5117,12 +5117,39 @@ export default function App() {
       // Prefer in-memory cache (optimistic user msg + partial stream) over disk.
       // Weave journal tool_step rows into preceding assistant segments so reload
       // still shows tools on the message timeline (live already interleaves).
-      const chosen = weaveToolsIntoAssistantSegments(
+      let chosen = weaveToolsIntoAssistantSegments(
         preferSessionMessages(
           messagesBySessionRef.current.get(s.id),
           mapped,
         ),
       );
+      // Grant media:// access + refine isDir before first paint so history
+      // thumbnails (Desktop/Downloads drops, etc.) do not flash broken.
+      const allPaths = chosen.flatMap(
+        (m) => m.attachments?.map((a) => a.path) ?? [],
+      );
+      if (allPaths.length && api.isTauri()) {
+        try {
+          const list = await api.pathsClassify(allPaths);
+          if (list.length) {
+            const byPath = new Map(list.map((c) => [c.path, c]));
+            chosen = chosen.map((msg) => {
+              if (!msg.attachments?.length) return msg;
+              return {
+                ...msg,
+                attachments: msg.attachments.map((a) => {
+                  const c = byPath.get(a.path);
+                  return c
+                    ? { path: c.path, name: c.name, isDir: c.isDir }
+                    : a;
+                }),
+              };
+            });
+          }
+        } catch {
+          /* classify is best-effort */
+        }
+      }
       if (viewingSessionIdRef.current !== s.id) {
         // User switched again while we were loading — keep cache warm, skip UI write.
         messagesBySessionRef.current.set(s.id, chosen);
@@ -5186,28 +5213,6 @@ export default function App() {
         if (api.isTauri()) {
           void api.sessionSetScheduled(s.id, true).catch(() => {});
         }
-      }
-      // Refine isDir via classify when possible
-      const allPaths = chosen.flatMap((m) => m.attachments?.map((a) => a.path) ?? []);
-      if (allPaths.length && api.isTauri()) {
-        void api.pathsClassify(allPaths).then((list) => {
-          if (viewingSessionIdRef.current !== s.id) return;
-          const byPath = new Map(list.map((c) => [c.path, c]));
-          setMessages((prev) =>
-            prev.map((msg) => {
-              if (!msg.attachments?.length) return msg;
-              return {
-                ...msg,
-                attachments: msg.attachments.map((a) => {
-                  const c = byPath.get(a.path);
-                  return c
-                    ? { path: c.path, name: c.name, isDir: c.isDir }
-                    : a;
-                }),
-              };
-            }),
-          );
-        });
       }
     } catch {
       if (viewingSessionIdRef.current !== s.id) {
