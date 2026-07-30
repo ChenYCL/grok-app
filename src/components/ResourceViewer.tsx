@@ -142,7 +142,8 @@ export interface ResourceViewerProps {
   /** Increment / change to force switch into Plan mode (详情 / auto-open). */
   planFocusKey?: number | null;
   onApprovePlan?: () => void;
-  onRequestPlanChanges?: () => void;
+  /** Optional revision note when requesting changes (empty allowed). */
+  onRequestPlanChanges?: (note?: string) => void;
   onDismissPlan?: () => void;
   /** Open local plan review history archive (session menu / Resources). */
   onOpenPlanHistory?: () => void;

@@ -16200,6 +16200,186 @@ div.composer__input:empty::before {
   border-top: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.08));
 }
 
+/* Local plan review archive (body previews only) */
+.plan-history-modal__desc {
+  margin: 0 0 12px;
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--text-secondary);
+}
+.plan-history {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+.plan-history__toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.plan-history__search {
+  flex: 1;
+  min-width: 0;
+}
+.plan-history__search-input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 8px 10px;
+  border-radius: var(--radius-sm, 8px);
+  border: 1px solid var(--border-subtle, rgba(127, 127, 127, 0.18));
+  background: var(--surface-2, rgba(127, 127, 127, 0.08));
+  color: var(--text-primary);
+  font-size: 13px;
+  outline: none;
+}
+.plan-history__search-input:focus,
+.plan-history__search-input:focus-visible {
+  border-color: color-mix(in srgb, var(--text-primary) 28%, var(--border-subtle));
+}
+.plan-history__clear {
+  flex-shrink: 0;
+}
+.plan-history__chips {
+  flex-wrap: wrap;
+}
+.plan-history-empty {
+  padding: 12px 4px;
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--text-tertiary, var(--text-secondary));
+}
+.plan-history-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: min(360px, 50vh);
+  overflow: auto;
+}
+.plan-history-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: var(--radius-sm, 8px);
+  background: var(--surface-2, rgba(127, 127, 127, 0.08));
+  border: 1px solid var(--border-subtle, rgba(127, 127, 127, 0.12));
+}
+.plan-history-row__btn {
+  flex: 1;
+  min-width: 0;
+  display: block;
+  text-align: left;
+  background: transparent;
+  border: 0;
+  padding: 0;
+  color: inherit;
+  cursor: pointer;
+}
+.plan-history-row__text {
+  min-width: 0;
+  flex: 1;
+}
+.plan-history-row__title {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.plan-history-row__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+  margin-top: 2px;
+  font-size: 11px;
+  color: var(--text-tertiary, var(--text-secondary));
+}
+.plan-history-row__decision {
+  font-weight: 500;
+}
+.plan-history-row__decision--approved {
+  color: var(--success, #3d9a5f);
+}
+.plan-history-row__decision--abandoned {
+  color: var(--text-tertiary, var(--text-secondary));
+}
+.plan-history-row__decision--completed {
+  color: var(--accent, var(--text-primary));
+}
+.plan-history-row__snippet {
+  margin-top: 4px;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.plan-history-row__actions {
+  display: flex;
+  flex-shrink: 0;
+  flex-wrap: wrap;
+  gap: 4px;
+  align-items: center;
+}
+.plan-history-preview__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+  margin-bottom: 12px;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+.plan-history-preview__empty {
+  font-size: 13px;
+  color: var(--text-tertiary, var(--text-secondary));
+}
+.plan-revise-modal__desc {
+  margin: 0 0 10px;
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--text-secondary);
+}
+.plan-revise-modal__field {
+  display: block;
+  width: 100%;
+  min-width: 0;
+}
+.plan-revise-modal__textarea {
+  width: 100%;
+  box-sizing: border-box;
+  min-height: 96px;
+  resize: vertical;
+  padding: 10px 12px;
+  border-radius: var(--menu-item-radius, 8px);
+  border: 1px solid var(--glass-border, var(--border-subtle));
+  background: color-mix(in srgb, var(--bg-code, var(--bg-app)) 70%, transparent);
+  color: var(--text-primary);
+  font-size: var(--text-sm, 13px);
+  line-height: 1.45;
+  outline: none;
+  font-family: inherit;
+}
+.plan-revise-modal__textarea:focus,
+.plan-revise-modal__textarea:focus-visible {
+  border-color: color-mix(in srgb, var(--text-primary) 28%, var(--border-subtle));
+}
+@media (max-width: 520px) {
+  .plan-history-row {
+    flex-direction: column;
+  }
+  .plan-history-row__actions {
+    width: 100%;
+  }
+}
+
 /* Session trace export history (paths only — never file contents) */
 .trace-history-modal__desc {
   margin: 0 0 12px;

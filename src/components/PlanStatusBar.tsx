@@ -35,7 +35,8 @@ export type PlanStatusBarProps = {
   entries: unknown[];
   labels: PlanStatusBarLabels;
   onApprove?: () => void;
-  onRequestChanges?: () => void;
+  /** Optional revision note (same contract as PlanReviewPanel). */
+  onRequestChanges?: (note?: string) => void;
   onDismiss?: () => void;
   /** Exit goal mode from the sticky goal strip. */
   onClearGoal?: () => void;
@@ -174,7 +175,7 @@ export function PlanStatusBar({
           <button
             type="button"
             className="btn btn--ghost btn--sm plan-bar__btn"
-            onClick={onRequestChanges}
+            onClick={() => onRequestChanges()}
           >
             {labels.changes}
           </button>

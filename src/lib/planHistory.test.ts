@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   PLAN_HISTORY_BODY_PREVIEW_MAX,
   PLAN_HISTORY_MAX,
+  clearPlanHistory,
+  filterPlanHistory,
   loadPlanHistory,
   parsePlanHistory,
   parsePlanHistoryEntry,
@@ -309,5 +311,83 @@ describe("display helpers", () => {
     expect(planHistoryEntryKey(e)).toBe(
       `${e.sessionId}|${e.decision}|${e.at}`,
     );
+  });
+});
+
+describe("filterPlanHistory", () => {
+  const rows: PlanHistoryEntry[] = [
+    sample(1, {
+      title: "Auth rewrite",
+      bodyPreview: "Add OAuth and session cookies",
+      decision: "approved",
+    }),
+    sample(2, {
+      title: "UI polish",
+      bodyPreview: "Tighten spacing on the plan bar",
+      decision: "abandoned",
+    }),
+    sample(3, {
+      title: "Ship release",
+      bodyPreview: "Tag and publish 0.2.2",
+      decision: "completed",
+    }),
+  ];
+
+  it("returns a copy when no filters", () => {
+    const out = filterPlanHistory(rows);
+    expect(out).toEqual(rows);
+    expect(out).not.toBe(rows);
+  });
+
+  it("matches title, preview, and session id (case-insensitive)", () => {
+    expect(filterPlanHistory(rows, { query: "oauth" }).map((e) => e.sessionId)).toEqual([
+      "sess-1",
+    ]);
+    expect(filterPlanHistory(rows, { query: "UI" }).map((e) => e.sessionId)).toEqual([
+      "sess-2",
+    ]);
+    expect(filterPlanHistory(rows, { query: "SESS-3" }).map((e) => e.sessionId)).toEqual([
+      "sess-3",
+    ]);
+    expect(filterPlanHistory(rows, { query: "  " })).toHaveLength(3);
+  });
+
+  it("filters by decision chips", () => {
+    expect(
+      filterPlanHistory(rows, { decisions: ["approved"] }).map((e) => e.decision),
+    ).toEqual(["approved"]);
+    expect(
+      filterPlanHistory(rows, { decisions: ["abandoned", "completed"] }).map(
+        (e) => e.decision,
+      ),
+    ).toEqual(["abandoned", "completed"]);
+    expect(filterPlanHistory(rows, { decisions: "all" })).toHaveLength(3);
+    expect(filterPlanHistory(rows, { decisions: [] })).toHaveLength(3);
+  });
+
+  it("combines query and decision", () => {
+    expect(
+      filterPlanHistory(rows, {
+        query: "plan",
+        decisions: ["abandoned"],
+      }).map((e) => e.sessionId),
+    ).toEqual(["sess-2"]);
+    expect(
+      filterPlanHistory(rows, {
+        query: "oauth",
+        decisions: ["completed"],
+      }),
+    ).toEqual([]);
+  });
+});
+
+describe("clearPlanHistory", () => {
+  it("wipes storage and returns empty", () => {
+    const storage = memStorage();
+    savePlanHistory([sample(1), sample(2)], storage);
+    expect(loadPlanHistory(storage)).toHaveLength(2);
+    const next = clearPlanHistory(storage);
+    expect(next).toEqual([]);
+    expect(loadPlanHistory(storage)).toEqual([]);
   });
 });

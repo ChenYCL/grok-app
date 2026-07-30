@@ -47,7 +47,11 @@ export type PlanReviewPanelProps = {
   /** When set, forces expand (e.g. user clicked 详情 during progress). */
   forceExpandKey?: number | null;
   onApprove?: () => void;
-  onRequestChanges?: () => void;
+  /**
+   * Request plan revisions. Optional `note` is free-form feedback for the agent.
+   * Callers may open a note modal first, then invoke with the string (empty ok).
+   */
+  onRequestChanges?: (note?: string) => void;
   onDismiss?: () => void;
 };
 
@@ -212,7 +216,7 @@ export function PlanReviewPanel({
             <button
               type="button"
               className="btn btn--ghost btn--sm"
-              onClick={onRequestChanges}
+              onClick={() => onRequestChanges()}
             >
               {labels.changes}
             </button>
