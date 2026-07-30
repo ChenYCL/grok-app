@@ -347,11 +347,13 @@ import {
 } from "@/lib/paletteActions";
 import {
   sessionExportFilename,
-  sessionExportHtmlFilename,
-  sessionExportJsonFilename,
+  sessionExportFilenameFor,
+  sessionExportMimeType,
   sessionToHtml,
   sessionToJson,
   sessionToMarkdown,
+  sessionToPlain,
+  shouldPreferCliMarkdownExport,
 } from "@/lib/sessionExport";
 import { recordTraceExport } from "@/lib/traceHistory";
 import { clearPlanHistory, recordPlanHistory } from "@/lib/planHistory";
@@ -11930,15 +11932,48 @@ export default function App() {
       if (!exportMdTarget) return;
       setExportMdBusy(true);
       try {
-        const { id, title, md } = await buildSessionMarkdown(exportMdTarget, {
+        const exportOpts = {
           includeThoughts: exportMdIncludeThoughts,
           includeToolSummary: exportMdIncludeTools,
-        });
+        };
+        // Prefer CLI `grok export` for full-transcript download when linked;
+        // soft-fail to local journal (thoughts/tools options always apply locally).
+        if (
+          mode === "download" &&
+          shouldPreferCliMarkdownExport(exportOpts)
+        ) {
+          try {
+            const cli = await api.sessionCliExport(exportMdTarget.id);
+            const md = typeof cli?.markdown === "string" ? cli.markdown : "";
+            if (cli?.ok && md.trim()) {
+              const blob = new Blob([md], {
+                type: sessionExportMimeType("markdown"),
+              });
+              const url = URL.createObjectURL(blob);
+              const a = document.createElement("a");
+              a.href = url;
+              a.download = sessionExportFilename(
+                exportMdTarget.title,
+                exportMdTarget.id,
+              );
+              a.click();
+              URL.revokeObjectURL(url);
+              showToast(tr("session.exportDoneCli"), 4200);
+              setExportMdTarget(null);
+              return;
+            }
+          } catch {
+            // Soft-fail: local journal below.
+          }
+        }
+        const { id, title, md } = await buildSessionMarkdown(exportMdTarget, exportOpts);
         if (mode === "copy") {
           await navigator.clipboard.writeText(md);
           showToast(tr("session.exportCopied"));
         } else {
-          const blob = new Blob([md], { type: "text/markdown;charset=utf-8" });
+          const blob = new Blob([md], {
+            type: sessionExportMimeType("markdown"),
+          });
           const url = URL.createObjectURL(blob);
           const a = document.createElement("a");
           a.href = url;
@@ -12069,12 +12104,12 @@ export default function App() {
           })),
         });
         const blob = new Blob([json], {
-          type: "application/json;charset=utf-8",
+          type: sessionExportMimeType("json"),
         });
         const url = URL.createObjectURL(blob);
         const a = document.createElement("a");
         a.href = url;
-        a.download = sessionExportJsonFilename(title, id);
+        a.download = sessionExportFilenameFor("json", title, id);
         a.click();
         URL.revokeObjectURL(url);
         showToast(tr("session.exportDone"));
@@ -12087,6 +12122,77 @@ export default function App() {
       session.title,
       sessions,
       messages,
+      showToast,
+      tr,
+    ],
+  );
+
+  /**
+   * Download session as plain text (headless `--output-format plain` style).
+   * Local journal only; no modal. Thoughts + tool summaries on by default.
+   */
+  const exportSessionPlain = useCallback(
+    async (sessionMeta?: {
+      id: string;
+      title: string;
+      projectId?: string | null;
+    }) => {
+      const id = sessionMeta?.id ?? session.sessionId;
+      if (!id) {
+        showToast(tr("session.exportFail"));
+        return;
+      }
+      const title =
+        sessionMeta?.title ||
+        sessions.find((s) => s.id === id)?.title ||
+        session.title ||
+        tr("session.untitled");
+      const projectId =
+        sessionMeta?.projectId ??
+        sessions.find((s) => s.id === id)?.projectId ??
+        null;
+      const proj =
+        projects.find((p) => p.id === projectId) || activeProject || null;
+      try {
+        let msgs = messages;
+        if (id !== session.sessionId) {
+          msgs = (await api.sessionMessages(id)) as ChatMessage[];
+        }
+        const text = sessionToPlain({
+          title,
+          projectName: proj?.name,
+          projectPath: proj?.path,
+          sessionId: id,
+          options: { includeThoughts: true, includeToolSummary: true },
+          messages: msgs.map((m) => ({
+            role: m.role,
+            content: m.content,
+            thought: m.thought,
+            createdAt: m.createdAt,
+            marker: m.marker,
+          })),
+        });
+        const blob = new Blob([text], {
+          type: sessionExportMimeType("plain"),
+        });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = sessionExportFilenameFor("plain", title, id);
+        a.click();
+        URL.revokeObjectURL(url);
+        showToast(tr("session.exportDone"));
+      } catch (e) {
+        showToast(`${tr("session.exportFail")}: ${String(e)}`);
+      }
+    },
+    [
+      session.sessionId,
+      session.title,
+      sessions,
+      messages,
+      projects,
+      activeProject,
       showToast,
       tr,
     ],
@@ -12137,11 +12243,13 @@ export default function App() {
             marker: m.marker,
           })),
         });
-        const blob = new Blob([html], { type: "text/html;charset=utf-8" });
+        const blob = new Blob([html], {
+          type: sessionExportMimeType("html"),
+        });
         const url = URL.createObjectURL(blob);
         const a = document.createElement("a");
         a.href = url;
-        a.download = sessionExportHtmlFilename(title, id);
+        a.download = sessionExportFilenameFor("html", title, id);
         a.click();
         URL.revokeObjectURL(url);
         showToast(tr("session.exportDone"));
@@ -18994,6 +19102,18 @@ export default function App() {
                 icon: <IconCopy size={16} />,
                 onClick: () => {
                   openExportSessionMd({
+                    id: s.id,
+                    title: s.title,
+                    projectId: s.projectId,
+                  });
+                },
+              },
+              {
+                id: "export-plain",
+                label: tr("session.exportPlain"),
+                icon: <IconCopy size={16} />,
+                onClick: () => {
+                  void exportSessionPlain({
                     id: s.id,
                     title: s.title,
                     projectId: s.projectId,
