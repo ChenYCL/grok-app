@@ -369,6 +369,7 @@ pub fn run() {
             commands::marketplace_update,
             leader::leader_status,
             leader::leader_list,
+            leader::leader_info,
             leader::leader_start,
             leader::leader_stop,
             leader::leader_kill_all,

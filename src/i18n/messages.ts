@@ -1272,7 +1272,22 @@ const en = {
   "settings.leader.stop": "Stop leader",
   "settings.leader.stopping": "Stopping…",
   "settings.leader.startHint":
-    "Starts `grok agent leader --no-exit-on-disconnect` in the background. Stop runs `grok leader kill` and clears the tracked process.",
+    "Starts `grok agent leader --no-exit-on-disconnect` in the background. Stop runs `grok leader kill` (all leaders) after confirm and clears the tracked process.",
+  "settings.leader.fleetTitle": "Running leaders ({n})",
+  "settings.leader.fleetDesc":
+    "From `grok leader list --json`. Open details for `grok leader info`; Stop runs `grok leader kill` on every listed process.",
+  "settings.leader.fleetEmpty": "No running leader processes listed.",
+  "settings.leader.info": "Details",
+  "settings.leader.infoTitle": "Leader details",
+  "settings.leader.infoLoading": "Loading…",
+  "settings.leader.infoEmpty": "No details available for this leader.",
+  "settings.leader.infoFailed": "Could not load leader details.",
+  "settings.leader.infoUnsupported":
+    "This Grok Build CLI version does not expose `grok leader info`. Update the CLI under Runtime → CLI.",
+  "settings.leader.stopConfirmTitle": "Stop all leaders?",
+  "settings.leader.stopConfirmBody":
+    "This runs `grok leader kill` and stops every running leader process ({n} listed). Clients using --leader will need to reconnect (app soft-respawns when Share agent backend is on).",
+  "settings.leader.stopConfirmAction": "Stop all",
   "settings.leader.useLeaderLinkDesc":
     "Turn on “Share agent backend” so this app connects with --leader instead of spawning a private agent.",
   "settings.leader.openUseLeader": "Open use-leader setting",
@@ -4268,7 +4283,22 @@ const zh: Record<MessageKey, string> = {
   "settings.leader.stop": "停止 leader",
   "settings.leader.stopping": "停止中…",
   "settings.leader.startHint":
-    "后台启动 `grok agent leader --no-exit-on-disconnect`。停止时执行 `grok leader kill` 并清理本应用跟踪的进程。",
+    "后台启动 `grok agent leader --no-exit-on-disconnect`。停止会在确认后执行 `grok leader kill`（全部 leader）并清理本应用跟踪的进程。",
+  "settings.leader.fleetTitle": "运行中的 leader（{n}）",
+  "settings.leader.fleetDesc":
+    "来自 `grok leader list --json`。详情对应 `grok leader info`；停止会对列表中的全部进程执行 `grok leader kill`。",
+  "settings.leader.fleetEmpty": "未列出正在运行的 leader 进程。",
+  "settings.leader.info": "详情",
+  "settings.leader.infoTitle": "Leader 详情",
+  "settings.leader.infoLoading": "加载中…",
+  "settings.leader.infoEmpty": "暂无此 leader 的详情。",
+  "settings.leader.infoFailed": "无法加载 leader 详情。",
+  "settings.leader.infoUnsupported":
+    "当前 Grok Build CLI 版本没有 `grok leader info`。请在「运行时 → CLI」更新。",
+  "settings.leader.stopConfirmTitle": "停止全部 leader？",
+  "settings.leader.stopConfirmBody":
+    "将执行 `grok leader kill`，停止所有正在运行的 leader 进程（列表中 {n} 个）。使用 --leader 的客户端需重新连接（若已开启「共享 Agent 后端」，本应用会 soft-respawn）。",
+  "settings.leader.stopConfirmAction": "全部停止",
   "settings.leader.useLeaderLinkDesc":
     "打开「共享 Agent 后端」，让本应用以 --leader 连接，而不是各自拉起私有 Agent。",
   "settings.leader.openUseLeader": "打开 use-leader 开关",

@@ -1213,7 +1213,22 @@ export const zhTW: Record<MessageKey, string> = {
   "settings.leader.stop": "停止 leader",
   "settings.leader.stopping": "停止中…",
   "settings.leader.startHint":
-    "背景啟動 `grok agent leader --no-exit-on-disconnect`。停止時執行 `grok leader kill` 並清除本應用追蹤的行程。",
+    "背景啟動 `grok agent leader --no-exit-on-disconnect`。停止會在確認後執行 `grok leader kill`（全部 leader）並清除本應用追蹤的行程。",
+  "settings.leader.fleetTitle": "執行中的 leader（{n}）",
+  "settings.leader.fleetDesc":
+    "來自 `grok leader list --json`。詳情對應 `grok leader info`；停止會對列表中的全部行程執行 `grok leader kill`。",
+  "settings.leader.fleetEmpty": "未列出正在執行的 leader 行程。",
+  "settings.leader.info": "詳情",
+  "settings.leader.infoTitle": "Leader 詳情",
+  "settings.leader.infoLoading": "載入中…",
+  "settings.leader.infoEmpty": "暫無此 leader 的詳情。",
+  "settings.leader.infoFailed": "無法載入 leader 詳情。",
+  "settings.leader.infoUnsupported":
+    "目前 Grok Build CLI 版本沒有 `grok leader info`。請在「執行環境 → CLI」更新。",
+  "settings.leader.stopConfirmTitle": "停止全部 leader？",
+  "settings.leader.stopConfirmBody":
+    "將執行 `grok leader kill`，停止所有正在執行的 leader 行程（列表中 {n} 個）。使用 --leader 的用戶端需重新連線（若已開啟「共用 Agent 後端」，本應用會 soft-respawn）。",
+  "settings.leader.stopConfirmAction": "全部停止",
   "settings.leader.useLeaderLinkDesc":
     "開啟「共用 Agent 後端」，讓本應用以 --leader 連線，而不是各自拉起私有 Agent。",
   "settings.leader.openUseLeader": "開啟 use-leader 開關",
