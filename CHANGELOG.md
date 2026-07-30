@@ -11,6 +11,14 @@ See `docs/llm-wiki/release.md`.
 
 ## [Unreleased]
 
+### Added
+
+- **Remappable keyboard shortcuts** (Settings → Keyboard): Record / Reset per action, Reset all, conflict detection; custom chords stored in `localStorage` (`grok.shortcutRemap`). Global mod actions (palette, settings, new chat, toggle sidebar, help, doctor, copy last reply, find in chat, live voice) honor remaps; help table shows effective bindings
+
+### Added (中文)
+
+- **可自定义快捷键**（设置 → 键盘）：逐项录制 / 重置、全部重置、冲突检测；全局组合键（搜索面板、设置、新建会话、侧栏等）即时生效
+
 ## [0.2.2] - 2026-07-30
 
 > **Highlight:** In-app auto-update works for signed builds; calmer sidebar multi-select; PATH / busy / media reliability.
