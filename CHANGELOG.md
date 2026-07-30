@@ -13,81 +13,35 @@ See `docs/llm-wiki/release.md`.
 
 ### Added
 
-- **Send queue reorder**: Up/Down controls on each queued follow-up so send order can be changed before auto-flush
-- **Chat reading width** (Settings → Appearance): narrow (~640) / medium (~800, default) / wide (~1000) / full; `localStorage` `grok.chatWidth` + `html[data-chat-width]`
-- **Phone mirror write guard**: enabling “Allow phone to send” requires an in-app confirm dialog; persistent warning banner while write is on; audit log line when write access is toggled (no secrets)
-- **Copy conversation as Markdown** (session menu + command palette): one-click clipboard copy of the full chat; skips pure tool_step noise by default (export dialog still offers tools/thoughts options)
-- **Disable Live Voice hotkey only** (Settings → General → App → Voice): turns off the catalog Live Voice shortcut (default ⌘/Ctrl+Shift+V / remaps) while composer button, slash, and menus still open Live Voice; shortcuts help shows Off when disabled
-- **Tasks panel tree**: nest tool activity under `spawn_subagent` (explicit `parentId` / `toolParentId` when present; otherwise infer tools after a long-running spawn until the next top-level spawn). Expand/collapse children; flat list when no parents
-- **Plan history archive**: when a plan is approved, abandoned, or completes, store a redacted body preview in a local ring (max 30); session menu / Resources open a read-only list + preview
-- **Sidebar date groups**: project and Other session lists bucket chats into Today / Yesterday / Previous 7 days / Older (local day boundaries; sticky section headers; pins stay at the top of each group)
-- **Dock / tray busy badge**: show the count of busy sessions on the macOS Dock badge (or tray tooltip elsewhere); optional Settings → General → App toggle (default on); count 0 clears
-- **Per-session mute** for desktop notifications (context menu Mute / Unmute; sidebar muted icon; in-app toasts still show)
-- **Desktop notification click** opens the session that fired turn-done / permission / ask_user
-- **Send queue Edit** for follow-up items (GlassModal; empty text blocked unless attachments remain)
-- **Context usage chip**: System / Tools / History breakdown (estimate or agent-known buckets)
-- **Richer Compact dialog**: current usage, keep-note chips, disabled while streaming; unified `/compact`
-- **Worktree-bound sessions**: WT badge, meta fields, context menu (reveal / copy path / remove worktree)
-- **Fork chat optional worktree restore** (clean tree only; never force-checkout the live tree)
-- **Sandbox presets**: per-preset help, Off/Devbox danger confirm, project-level override
-- **MCP server status lamps** from Doctor (auth expired guidance + refresh steps; secret redaction)
-- **Memory browser** in Settings → Agent (list / filter / preview / delete under `{GROK_HOME}/memory`)
-- **Optional product tutorial** (menu / About / palette / `/tutorial`; soft one-time offer after setup)
-- **Agent dashboard** modal: cross-session status, focus chat, Stop all busy
-- **Trace export history** (session menu / palette / Settings diagnostics)
-- **Remappable keyboard shortcuts** (Settings → Keyboard Record/Reset; Send/Esc-stop fixed)
-- **Launch-time CLI update notice** (#238): soft banner after Ready; Update CLI / Later; 24h dismiss cooldown
+- **Send queue reorder**: Up/Down on each queued follow-up before auto-flush
+- **Chat reading width** (Settings → Appearance): narrow / medium (default) / wide / full (`grok.chatWidth`)
+- **Phone mirror write guard**: confirm when enabling write; persistent warning banner; audit log (no secrets)
+- **Copy conversation as Markdown** (session menu + command palette); skips pure tool_step by default
+- **Disable Live Voice hotkey only** (Settings → Voice): catalog shortcut off; button/slash/menus still open Live Voice
+- **Tasks panel tree**: nest tools under `spawn_subagent` (parentId or infer); expand/collapse; flat when no parents
+- **Plan history archive**: approved/abandoned/completed plan previews in a local ring (max 30)
+- **Sidebar date groups**: Today / Yesterday / Previous 7 days / Older (pins stay top of each group)
+- **Dock / tray busy badge**: busy session count on macOS Dock (or tray tooltip); Settings toggle (default on)
+- **Per-session mute** for desktop notifications (menu + sidebar icon; in-app toasts still show)
+- **Desktop notification click** opens the session that fired the event
+- **Send queue Edit**, **context usage breakdown**, **richer Compact**, **worktree sessions**, **fork restore**, **sandbox presets**, **MCP status**, **Memory browser**, **product tutorial**, **Agent dashboard**, **Trace history**, **remappable shortcuts**, **CLI launch update notice** (#238), **Reliability center**, **Leader/serve panel**, **JSON Schema output**, **session plugin dirs**, **CLI session resume**, **Hooks activity**, **SKILL.md editor** (see prior Unreleased bullets / integrate notes)
 
 ### Fixed
 
-- **CLI install blocked by missing SHA-256 (#227)**: missing official sidecar allowed by default; mismatch still aborts; strict mode via `GROK_CLI_REQUIRE_CHECKSUM=1`
+- **CLI install blocked by missing SHA-256 (#227)**: missing official sidecar allowed by default; mismatch still aborts
+- **CSS**: close broken rewind/fork selectors in `app.css` (#259)
 
 **中文 · 新增**
 
-- 发送队列可上下调整顺序；通知点击跳转会话；发送队列可编辑；上下文 System/Tools/History；Compact 增强
-- **对话阅读宽度**（设置 → 外观）：窄 / 中（默认）/ 宽 / 全宽
-- 手机镜像写权限确认与持续警告横幅；切换时写审计日志（无密钥）
-- 一键复制整段对话为 Markdown（会话菜单 / 命令面板；默认跳过 tool_step 噪音）
-- 可单独关闭实时语音快捷键（设置 → 语音；输入框/菜单入口仍可用；帮助里显示「关闭」）
-- 任务面板树形展示：子代理（spawn_subagent）下嵌套工具；无父子时仍为扁平列表
-- 计划历史归档（批准/放弃/完成后本地预览，最多 30 条；会话菜单 / 资源面板只读查看）
-- 侧栏会话按相对日期分组（今天 / 昨天 / 近 7 天 / 更早；置顶仍在组内靠前）
-- **程序坞/托盘忙碌角标**：忙碌会话数显示在 macOS Dock（或其他平台托盘提示）；设置 → 通用 → 应用可关（默认开）；0 清除
-- 按会话静音桌面通知（菜单 Mute/Unmute；侧栏静音图标；应用内 Toast 仍显示）
-- 通知点击跳转会话；发送队列可编辑；上下文 System/Tools/History；Compact 增强
-- Worktree 会话徽章与管理；Fork 可选恢复代码；沙箱项目覆盖
-- MCP 状态灯；Memory 浏览器；产品教程；Agent 总览；Trace 历史；快捷键重映射
-- 启动后 CLI 更新轻提示（#238）
+- 发送队列上下排序；对话阅读宽度；镜像写权限确认与警告；整段对话复制为 Markdown
+- 可单独关闭实时语音快捷键；任务面板子代理树；计划历史归档；侧栏日期分组
+- 程序坞/托盘忙碌角标；按会话静音桌面通知
+- 以及此前合入的通知聚焦、队列编辑、上下文拆分、Compact、Worktree、沙箱、MCP、Memory、教程、Dashboard、Trace、快捷键重映射、CLI 更新提示、可靠性中心、Leader、JSON Schema、会话插件目录、CLI 会话恢复、Hooks、SKILL 编辑器等
 
 **中文 · 修复**
 
-- CLI 安装因缺少 SHA-256 失败（#227）
-- **可自定义快捷键**（设置 → 键盘）：逐项录制 / 重置、全部重置、冲突检测；全局组合键（搜索面板、设置、新建会话、侧栏等）即时生效
-- **Reliability center** (Doctor / Settings → Runtime → Tools / command palette): aggregate busy sessions, stall / end-of-turn stall signals, and recent error-deck cards; export support zip or open Doctor. Honest empty states when nothing is in flight.
+- CLI 安装缺 SHA-256（#227）；app.css rewind/fork 选择器未闭合（#259）
 
-
-- **可靠性中心**（Doctor / 设置 → 运行环境 → 工具 / 命令面板）：汇总忙碌会话、卡顿与 end-of-turn 卡顿信号、最近错误卡片；可导出支持包或打开 Doctor。无信号时显示诚实空态。
-- **Agent leader / serve panel** (Settings → Runtime → Connection): probe `~/.grok/leader.sock` (or `GROK_LEADER_SOCKET`), show stopped/running/error, copy socket path, start `grok agent leader` in the background, stop via `grok leader kill` + tracked PID; honest message when CLI lacks leader commands; never shows serve secrets. Link to General → Agent “use leader” toggle.
-
-
-- **Agent leader / serve 面板**（设置 → 运行时 → 连接）：探测 leader socket、状态与复制路径、后台启动/停止共享后端；CLI 不支持时如实提示；不展示 serve 密钥；链到「共享 Agent 后端」开关
-- **Structured JSON Schema output** (composer Advanced): paste a JSON Schema for the current chat; client-side JSON validation with toast on errors; clear control; persists on `SessionMeta.jsonSchema`. When set, spawns agent with top-level `grok --json-schema` and prefixes prompts with a labeled experimental instruction. Matching assistant JSON replies show a copyable structured JSON panel
-
-
-- **结构化 JSON Schema 输出**（输入框高级）：为本对话粘贴 Schema、客户端校验与 Toast、清除、持久化；启动 agent 时传 `--json-schema`，提示词附实验性说明；助手 JSON 回复下显示可复制面板
-- **Session plugin folders**: attach one or more plugin directories to a single chat (session context menu → Add session plugin folder). Spawn passes CLI `--plugin-dir` for that session only; clear leaves global Extensions / installed plugins unchanged. Changing dirs soft-respawns a live agent when idle.
-
-
-- **会话级插件目录**：在会话右键菜单附加插件文件夹；仅该会话 spawn 时传入 `--plugin-dir`，不影响扩展/全局已装插件；变更后会 soft-respawn 空闲中的 Agent。
-- **CLI sessions bridge** (Settings → General → App): search/filter by title or agent id, show + copy agent session id, one-click **Import & open** / **Open in app** for linked sessions, clearer linked badge; available in independent mode with an honest note that agent-home may differ from terminal `~/.grok`
-
-
-- CLI session import no longer requires shared mode (already-linked rows skip re-import and open the existing app session)
-- **Hooks recent activity** (Settings → Extensions → Hooks): session-local last runs from ACP `hook_execution` / `hook_annotation`, tool failures mentioning hooks, and agent log lines — type, ok/fail, time, redacted detail
-
-
-- **Hooks 最近活动**（设置 → 扩展 → Hooks）：本会话内最近运行记录（ACP 通知 / 工具失败 / agent 日志），脱敏展示
-- **In-app SKILL.md editor** (Settings → Extensions → Skills): open user/project skills under allowlisted roots (`~/.grok/skills`, agent-home `skills`, project `.grok/skills`), edit in a modal textarea, save via Host `skill_read` / `skill_write` with path-traversal guards; disabled skills stay editable but note they stay out of the slash picker until re-enabled
 
 ## [0.2.2] - 2026-07-30
 
