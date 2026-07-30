@@ -32,6 +32,10 @@ import {
   loadChatDensity,
 } from "./lib/chatDensity";
 import {
+  applyChatWidth,
+  loadChatWidth,
+} from "./lib/chatWidthPref";
+import {
   applySidebarDensity,
   loadSidebarDensity,
 } from "./lib/sidebarDensity";
@@ -53,6 +57,8 @@ applySkinToDocument(loadSkin(localStorage));
 applyChatFontScale(loadChatFontScale(localStorage));
 // Chat transcript density (Appearance) — html[data-chat-density].
 applyChatDensity(loadChatDensity(localStorage));
+// Chat transcript reading width (Appearance) — html[data-chat-width].
+applyChatWidth(loadChatWidth(localStorage));
 // Sidebar session list density (Appearance) — html[data-sidebar-density].
 // Boot: skip notify (no listeners yet); App will load metrics from localStorage.
 applySidebarDensity(loadSidebarDensity(localStorage), undefined, false);

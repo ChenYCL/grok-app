@@ -100,6 +100,7 @@ describe("settingsCatalog", () => {
     expect(appearance).toContain("settings.thinkingExpand");
     expect(appearance).toContain("settings.chatFontScale");
     expect(appearance).toContain("settings.chatDensity");
+    expect(appearance).toContain("settings.chatWidth");
     expect(appearance).toContain("settings.sidebarDensity");
     expect(appearance).toContain("settings.zenMode");
     expect(appearance).toContain("settings.messageActions");
@@ -183,6 +184,19 @@ describe("settingsCatalog", () => {
     expect(
       densityEn.some((h) => h.entry.id === "appearance.sidebarDensity"),
     ).toBe(true);
+    const width = searchSettingsEntries("宽度", tZh, tEn);
+    const widthHits =
+      width.length > 0 &&
+      width.some((h) => h.entry.id === "appearance.chatWidth")
+        ? width
+        : searchSettingsEntries("reading width", tZh, tEn);
+    expect(widthHits.some((h) => h.entry.id === "appearance.chatWidth")).toBe(
+      true,
+    );
+    const widthEn = searchSettingsEntries("narrow", tZh, tEn);
+    expect(widthEn.some((h) => h.entry.id === "appearance.chatWidth")).toBe(
+      true,
+    );
     const sidebar = searchSettingsEntries("侧栏", tZh, tEn);
     const sidebarHits =
       sidebar.length > 0

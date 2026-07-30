@@ -90,6 +90,14 @@ import {
   type ChatDensity,
 } from "@/lib/chatDensity";
 import {
+  CHAT_WIDTHS,
+  applyChatWidth,
+  loadChatWidth,
+  saveChatWidth,
+  dispatchChatWidthChange,
+  type ChatWidth,
+} from "@/lib/chatWidthPref";
+import {
   SIDEBAR_DENSITIES,
   applySidebarDensity,
   loadSidebarDensity,
@@ -980,6 +988,19 @@ export function SettingsPage({
     setChatDensityState(next);
     saveChatDensity(next);
     applyChatDensity(next);
+  }, []);
+  /** Chat transcript reading width — localStorage only (no AppSettings). */
+  const [chatWidth, setChatWidthState] = useState<ChatWidth>(() =>
+    loadChatWidth(),
+  );
+  useEffect(() => {
+    applyChatWidth(loadChatWidth());
+  }, []);
+  const onChatWidth = useCallback((next: ChatWidth) => {
+    setChatWidthState(next);
+    saveChatWidth(next);
+    applyChatWidth(next);
+    dispatchChatWidthChange(next);
   }, []);
   /** Sidebar session list density — localStorage only (no AppSettings). */
   const [sidebarDensity, setSidebarDensityState] = useState<SidebarDensity>(
@@ -3125,6 +3146,43 @@ export function SettingsPage({
                           onClick={() => onChatDensity(density)}
                         >
                           {t(`settings.chatDensity.${density}`)}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+                <div
+                  className={
+                    "settings-card" +
+                    rowHighlight("settings-anchor-chatWidth")
+                  }
+                  id="settings-anchor-chatWidth"
+                >
+                  <div className="settings-row">
+                    <div className="settings-row__text">
+                      <SettingsLabelWithTip
+                        label={t("settings.chatWidth")}
+                        tip={t("settings.chatWidthDesc")}
+                      />
+                    </div>
+                    <div
+                      className="settings-seg"
+                      role="radiogroup"
+                      aria-label={t("settings.chatWidth")}
+                    >
+                      {CHAT_WIDTHS.map((width) => (
+                        <button
+                          key={width}
+                          type="button"
+                          role="radio"
+                          aria-checked={chatWidth === width}
+                          className={
+                            "settings-seg__btn" +
+                            (chatWidth === width ? " is-on" : "")
+                          }
+                          onClick={() => onChatWidth(width)}
+                        >
+                          {t(`settings.chatWidth.${width}`)}
                         </button>
                       ))}
                     </div>

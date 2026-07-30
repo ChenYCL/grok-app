@@ -128,7 +128,8 @@
 .lobe-chat__inner {
   box-sizing: border-box;
   width: 100%;
-  max-width: 720px;
+  /* Default = medium; overridden by html[data-chat-width] (Appearance). */
+  max-width: var(--chat-width-max, 800px);
   margin: 0 auto;
   padding: 20px 20px 32px;
   display: flex;
@@ -1924,6 +1925,31 @@ html[data-chat-density="comfortable"] .lobe-chat,
   --chat-item-body-gap: 10px;
   --chat-bubble-pad-y: 10px;
   --chat-bubble-pad-x: 14px;
+}
+
+/*
+ * Chat reading width (Settings → Appearance). Prefer html[data-chat-width] so
+ * every .lobe-chat__inner picks it up without prop drilling.
+ * narrow ~640 · medium ~800 · wide ~1000 · full = none
+ */
+html[data-chat-width="narrow"] .lobe-chat,
+.lobe-chat[data-chat-width="narrow"] {
+  --chat-width-max: 640px;
+}
+
+html[data-chat-width="medium"] .lobe-chat,
+.lobe-chat[data-chat-width="medium"] {
+  --chat-width-max: 800px;
+}
+
+html[data-chat-width="wide"] .lobe-chat,
+.lobe-chat[data-chat-width="wide"] {
+  --chat-width-max: 1000px;
+}
+
+html[data-chat-width="full"] .lobe-chat,
+.lobe-chat[data-chat-width="full"] {
+  --chat-width-max: none;
 }
 
 /* Structured JSON output panel (optional session JSON Schema) */
