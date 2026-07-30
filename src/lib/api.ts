@@ -319,6 +319,17 @@ export async function acpTestConnection(addr: string) {
   return invoke<AcpProbeResult>("acp_test_connection", { addr });
 }
 
+/** TCP-only ACP server health probe (~2s). No secrets / no RPC handshake. */
+export interface AcpServerProbeResult {
+  ok: boolean;
+  latencyMs?: number | null;
+  error?: string | null;
+}
+
+export async function acpServerProbe(addr: string) {
+  return invoke<AcpServerProbeResult>("acp_server_probe", { addr });
+}
+
 export interface CliInstallProgress {
   phase: string;
   message: string;

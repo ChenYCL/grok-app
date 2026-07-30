@@ -1228,10 +1228,25 @@ const en = {
   "settings.acpServer": "ACP server (API mode)",
   "settings.acpServerDesc":
     "Connect to a remote ACP agent over TCP (host:port) instead of spawning the local CLI — e.g. an agent in WSL, a container, or another host. Leave empty for local spawn.",
-  "settings.acpTest": "Test",
+  "settings.acpServerModeHelp":
+    "API mode uses a network ACP endpoint; local mode (empty) spawns Grok Build CLI on this machine. Changing the address soft-respawns live agents.",
+  "settings.acpServerLocalHint":
+    "Empty = local CLI. Use Agent serve below if you want this app to expose an agent for other clients.",
+  "settings.acpServerServeLink": "Open Agent serve settings",
+  "settings.acpTest": "Test connection",
   "settings.acpTesting": "Testing…",
   "settings.acpTestOk": "Connected — {version} · model {model}",
   "settings.acpTestFail": "Failed: {error}",
+  "settings.acpProbeOk": "Reachable · {ms}ms",
+  "settings.acpProbeFail": "Unreachable: {error}",
+  "settings.acpStatusOk": "OK",
+  "settings.acpStatusFail": "Fail",
+  "settings.acpInvalid": "Invalid address: {error}",
+  "settings.acpErrEmptyHost": "host is empty",
+  "settings.acpErrMissingPort": "use host:port",
+  "settings.acpErrInvalidPort": "port must be 1–65535",
+  "settings.acpErrInvalidHost": "invalid host",
+  "settings.acpErrJunk": "not a host:port address",
   "settings.acpSetupHint":
     "On the machine that runs the agent, expose stdio over TCP (example with socat):",
   "settings.maxConcurrentAgents": "Max concurrent agents",
@@ -4698,10 +4713,25 @@ const zh: Record<MessageKey, string> = {
   "settings.acpServer": "ACP 服务器（API 模式）",
   "settings.acpServerDesc":
     "通过 TCP（host:port）连接远程 ACP Agent，替代启动本地 CLI —— 例如运行在 WSL、容器或另一台主机上的 Agent。留空则使用本地启动。",
+  "settings.acpServerModeHelp":
+    "API 模式连接网络上的 ACP 端点；本地模式（留空）在本机启动 Grok Build CLI。更改地址会 soft-respawn 已连接的 Agent。",
+  "settings.acpServerLocalHint":
+    "留空 = 本地 CLI。若要让本应用对外暴露 Agent，请使用下方的 Agent serve。",
+  "settings.acpServerServeLink": "打开 Agent serve 设置",
   "settings.acpTest": "测试连接",
   "settings.acpTesting": "测试中…",
   "settings.acpTestOk": "已连接 — {version} · 模型 {model}",
   "settings.acpTestFail": "失败：{error}",
+  "settings.acpProbeOk": "可达 · {ms}ms",
+  "settings.acpProbeFail": "不可达：{error}",
+  "settings.acpStatusOk": "正常",
+  "settings.acpStatusFail": "失败",
+  "settings.acpInvalid": "地址无效：{error}",
+  "settings.acpErrEmptyHost": "主机为空",
+  "settings.acpErrMissingPort": "请使用 host:port",
+  "settings.acpErrInvalidPort": "端口须为 1–65535",
+  "settings.acpErrInvalidHost": "主机无效",
+  "settings.acpErrJunk": "不是 host:port 地址",
   "settings.acpSetupHint":
     "在运行 agent 的机器上，用类似 socat 的方式把 stdio 暴露到 TCP：",
   "settings.maxConcurrentAgents": "最大并发 Agent 数",

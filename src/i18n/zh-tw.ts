@@ -1166,10 +1166,25 @@ export const zhTW: Record<MessageKey, string> = {
   "settings.acpServer": "ACP 伺服器（API 模式）",
   "settings.acpServerDesc":
     "透過 TCP（host:port）連線遠端 ACP Agent，取代啟動本機 CLI —— 例如執行在 WSL、容器或另一台主機上的 Agent。留空則使用本機啟動。",
+  "settings.acpServerModeHelp":
+    "API 模式連線網路上的 ACP 端點；本機模式（留空）在本機啟動 Grok Build CLI。變更地址會 soft-respawn 已連線的 Agent。",
+  "settings.acpServerLocalHint":
+    "留空 = 本機 CLI。若要讓本應用對外暴露 Agent，請使用下方的 Agent serve。",
+  "settings.acpServerServeLink": "開啟 Agent serve 設定",
   "settings.acpTest": "測試連線",
   "settings.acpTesting": "測試中…",
   "settings.acpTestOk": "已連線 — {version} · 模型 {model}",
   "settings.acpTestFail": "失敗：{error}",
+  "settings.acpProbeOk": "可達 · {ms}ms",
+  "settings.acpProbeFail": "不可達：{error}",
+  "settings.acpStatusOk": "正常",
+  "settings.acpStatusFail": "失敗",
+  "settings.acpInvalid": "位址無效：{error}",
+  "settings.acpErrEmptyHost": "主機為空",
+  "settings.acpErrMissingPort": "請使用 host:port",
+  "settings.acpErrInvalidPort": "連接埠須為 1–65535",
+  "settings.acpErrInvalidHost": "主機無效",
+  "settings.acpErrJunk": "不是 host:port 位址",
   "settings.acpSetupHint":
     "在執行 agent 的機器上，用類似 socat 的方式把 stdio 暴露到 TCP：",
   "settings.maxConcurrentAgents": "最大並發 Agent 數",

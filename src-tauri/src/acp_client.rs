@@ -3218,6 +3218,155 @@ pub fn should_abort_provider_retry(attempt: u32, max_retries: u32, status: &str)
     attempt >= cap
 }
 
+/// Parsed ACP API-mode server address (`host:port`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ParsedAcpServerAddr {
+    pub host: String,
+    pub port: u16,
+}
+
+impl ParsedAcpServerAddr {
+    /// Target string for `TcpStream::connect` (brackets IPv6 hosts).
+    pub fn connect_target(&self) -> String {
+        if self.host.contains(':') {
+            format!("[{}]:{}", self.host, self.port)
+        } else {
+            format!("{}:{}", self.host, self.port)
+        }
+    }
+}
+
+/// Parse `host:port` for API-mode ACP. Optional `ws://` / `wss://` / `tcp://` /
+/// `http(s)://` scheme is stripped. Rejects empty host, invalid port, paths.
+pub fn parse_acp_server_addr(raw: &str) -> Result<ParsedAcpServerAddr, String> {
+    let mut s = raw.trim().to_string();
+    if s.is_empty() {
+        return Err("empty address".into());
+    }
+
+    // Optional scheme strip (paste-friendly).
+    for prefix in ["ws://", "wss://", "tcp://", "http://", "https://"] {
+        if let Some(rest) = s
+            .get(..prefix.len())
+            .filter(|p| p.eq_ignore_ascii_case(prefix))
+            .and_then(|_| s.get(prefix.len()..))
+        {
+            s = rest.to_string();
+            break;
+        }
+    }
+    if let Some(at) = s.rfind('@') {
+        s = s[at + 1..].to_string();
+    }
+    if s.contains('/') || s.contains('?') || s.contains('#') {
+        return Err("not a host:port address".into());
+    }
+    let s = s.trim();
+    if s.is_empty() {
+        return Err("empty address".into());
+    }
+
+    let (host, port_raw): (String, String) = if s.starts_with('[') {
+        let close = s.find(']').ok_or_else(|| "invalid host".to_string())?;
+        if close <= 1 {
+            return Err("empty host".into());
+        }
+        let host = s[1..close].to_string();
+        let rest = &s[close + 1..];
+        if !rest.starts_with(':') {
+            return Err("missing port".into());
+        }
+        (host, rest[1..].to_string())
+    } else {
+        let Some(colon) = s.rfind(':') else {
+            return Err("missing port".into());
+        };
+        // Bare IPv6 without brackets (multiple colons) — require [addr]:port.
+        if s.find(':') != Some(colon) {
+            return Err("not a host:port address".into());
+        }
+        (s[..colon].to_string(), s[colon + 1..].to_string())
+    };
+
+    let host = host.trim();
+    let port_raw = port_raw.trim();
+    if host.is_empty() {
+        return Err("empty host".into());
+    }
+    if port_raw.is_empty() {
+        return Err("missing port".into());
+    }
+    if host.chars().any(|c| c.is_whitespace() || c == '/' || c == '?' || c == '#') {
+        return Err("invalid host".into());
+    }
+    let host_ok = host
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '~' | '%' | '-'))
+        || host.chars().all(|c| c.is_ascii_hexdigit() || c == ':');
+    if !host_ok {
+        return Err("invalid host".into());
+    }
+    if !port_raw.chars().all(|c| c.is_ascii_digit()) || port_raw.len() > 5 {
+        return Err("invalid port".into());
+    }
+    let port: u16 = port_raw
+        .parse()
+        .map_err(|_| "invalid port".to_string())?;
+    if port == 0 {
+        return Err("invalid port".into());
+    }
+
+    Ok(ParsedAcpServerAddr {
+        host: host.to_string(),
+        port,
+    })
+}
+
+/// TCP-only reachability probe for Settings → ACP server (no secrets, no RPC).
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AcpServerProbeResult {
+    pub ok: bool,
+    pub latency_ms: Option<u64>,
+    pub error: Option<String>,
+}
+
+impl AcpServerProbeResult {
+    fn fail(error: impl Into<String>) -> Self {
+        Self {
+            ok: false,
+            latency_ms: None,
+            error: Some(error.into()),
+        }
+    }
+}
+
+/// TCP connect to `host:port` with a ~2s timeout. Network path only — no
+/// ACP handshake, no auth. Used by the Settings health check.
+pub async fn acp_server_probe(addr: &str) -> AcpServerProbeResult {
+    use tokio::time::{timeout, Duration};
+
+    let parsed = match parse_acp_server_addr(addr) {
+        Ok(p) => p,
+        Err(e) => return AcpServerProbeResult::fail(e),
+    };
+    let target = parsed.connect_target();
+    let started = Instant::now();
+    match timeout(Duration::from_secs(2), TcpStream::connect(&target)).await {
+        Ok(Ok(_stream)) => AcpServerProbeResult {
+            ok: true,
+            latency_ms: Some(started.elapsed().as_millis() as u64),
+            error: None,
+        },
+        Ok(Err(e)) => AcpServerProbeResult {
+            ok: false,
+            latency_ms: Some(started.elapsed().as_millis() as u64),
+            error: Some(format!("connect failed: {e}")),
+        },
+        Err(_) => AcpServerProbeResult::fail("connect timed out (2s)"),
+    }
+}
+
 /// Result of an API-mode connectivity probe (see [`probe_acp_server`]).
 #[derive(Debug, Clone, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -3241,7 +3390,7 @@ impl AcpProbeResult {
     }
 }
 
-/// Lightweight connectivity check for **API mode**: TCP-connect to an ACP
+/// Deeper connectivity check for **API mode**: TCP-connect to an ACP
 /// server (`host:port`), perform the `initialize` handshake, and report the
 /// agent version / current model. Creates no client and no session — just
 /// confirms the address is reachable and speaks ACP. Bounded by timeouts so
@@ -3249,7 +3398,12 @@ impl AcpProbeResult {
 pub async fn probe_acp_server(addr: &str) -> AcpProbeResult {
     use tokio::time::{timeout, Duration};
 
-    let stream = match timeout(Duration::from_secs(5), TcpStream::connect(addr)).await {
+    let target = match parse_acp_server_addr(addr) {
+        Ok(p) => p.connect_target(),
+        Err(e) => return AcpProbeResult::fail(e),
+    };
+
+    let stream = match timeout(Duration::from_secs(5), TcpStream::connect(&target)).await {
         Ok(Ok(s)) => s,
         Ok(Err(e)) => return AcpProbeResult::fail(format!("connect failed: {e}")),
         Err(_) => return AcpProbeResult::fail("connect timed out (5s)"),
@@ -3293,6 +3447,62 @@ pub async fn probe_acp_server(addr: &str) -> AcpProbeResult {
         }
         Ok(Err(e)) => AcpProbeResult::fail(format!("read failed: {e}")),
         Err(_) => AcpProbeResult::fail("connected, but no ACP response within 20s"),
+    }
+}
+
+#[cfg(test)]
+mod acp_server_addr_tests {
+    use super::*;
+
+    #[test]
+    fn parse_accepts_host_port() {
+        let p = parse_acp_server_addr("127.0.0.1:8799").unwrap();
+        assert_eq!(p.host, "127.0.0.1");
+        assert_eq!(p.port, 8799);
+        assert_eq!(p.connect_target(), "127.0.0.1:8799");
+    }
+
+    #[test]
+    fn parse_strips_ws_scheme() {
+        let p = parse_acp_server_addr("ws://localhost:2419").unwrap();
+        assert_eq!(p.host, "localhost");
+        assert_eq!(p.port, 2419);
+    }
+
+    #[test]
+    fn parse_ipv6_brackets() {
+        let p = parse_acp_server_addr("[::1]:8799").unwrap();
+        assert_eq!(p.host, "::1");
+        assert_eq!(p.port, 8799);
+        assert_eq!(p.connect_target(), "[::1]:8799");
+    }
+
+    #[test]
+    fn parse_rejects_empty_host_and_bad_port() {
+        assert!(parse_acp_server_addr("").is_err());
+        assert!(parse_acp_server_addr(":8799").is_err());
+        assert!(parse_acp_server_addr("localhost").is_err());
+        assert!(parse_acp_server_addr("localhost:0").is_err());
+        assert!(parse_acp_server_addr("localhost:65536").is_err());
+        assert!(parse_acp_server_addr("localhost:abc").is_err());
+        assert!(parse_acp_server_addr("127.0.0.1:8799/path").is_err());
+        assert!(parse_acp_server_addr("fe80::1").is_err());
+    }
+
+    #[tokio::test]
+    async fn probe_invalid_addr_fails_fast() {
+        let r = acp_server_probe("").await;
+        assert!(!r.ok);
+        assert!(r.error.is_some());
+        assert!(r.latency_ms.is_none());
+    }
+
+    #[tokio::test]
+    async fn probe_closed_port_reports_error() {
+        // Connect to a high port that almost certainly has no listener.
+        let r = acp_server_probe("127.0.0.1:1").await;
+        assert!(!r.ok);
+        assert!(r.error.is_some());
     }
 }
 

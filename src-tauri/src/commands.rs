@@ -212,6 +212,18 @@ pub async fn acp_test_connection(
     Ok(crate::acp_client::probe_acp_server(addr).await)
 }
 
+/// Settings health check: TCP connect only (~2s). No secrets, no ACP RPC.
+#[tauri::command]
+pub async fn acp_server_probe(
+    addr: String,
+) -> Result<crate::acp_client::AcpServerProbeResult, String> {
+    let addr = addr.trim();
+    if addr.is_empty() {
+        return Err("empty address".into());
+    }
+    Ok(crate::acp_client::acp_server_probe(addr).await)
+}
+
 /// Download + install latest Grok Build (multi-mirror, progress via `setup://cli-install-progress`).
 ///
 /// `allow_unverified`: optional; when omitted, uses Settings
@@ -1075,6 +1087,21 @@ pub async fn settings_set(
     let agents_json_flip = prev.agents_json.trim() != settings.agents_json.trim();
     let max_turns_flip = prev.max_agent_turns != settings.max_agent_turns;
     let sandbox_flip = prev.sandbox_profile.trim() != settings.sandbox_profile.trim();
+    // API-mode address is a spawn-path flip (local CLI ↔ TCP). Soft-respawn so
+    // the next connect uses the new target; mid-turn sessions stay skipped.
+    let acp_addr_flip = {
+        let a = prev
+            .acp_server_addr
+            .as_deref()
+            .map(str::trim)
+            .filter(|s| !s.is_empty());
+        let b = settings
+            .acp_server_addr
+            .as_deref()
+            .map(str::trim)
+            .filter(|s| !s.is_empty());
+        a != b
+    };
     let launch_at_login_flip = prev.launch_at_login != settings.launch_at_login;
     let schedules_launch_agent_flip =
         prev.schedules_launch_agent != settings.schedules_launch_agent;
@@ -1163,6 +1190,7 @@ pub async fn settings_set(
         || agents_json_flip
         || max_turns_flip
         || sandbox_flip
+        || acp_addr_flip
     {
         need_soft_respawn = true;
     }

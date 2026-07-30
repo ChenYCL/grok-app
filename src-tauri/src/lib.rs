@@ -277,6 +277,7 @@ pub fn run() {
             commands::session_resolve_ask_user,
             commands::probe_cli,
             commands::acp_test_connection,
+            commands::acp_server_probe,
             commands::cli_install_latest,
             commands::cli_install_commands,
             commands::cli_update_check,

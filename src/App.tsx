@@ -13894,7 +13894,8 @@ export default function App() {
             );
           }}
           acpServerAddr={acpServerAddr}
-          onAcpServerAddr={(v) => {
+          onAcpServerAddr={setAcpServerAddr}
+          onAcpServerBlur={(v) => {
             setAcpServerAddr(v);
             void api.settingsGet().then((s) =>
               api.settingsSet({ ...s, acpServerAddr: v.trim() || null }),
