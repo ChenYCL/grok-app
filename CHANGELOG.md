@@ -26,13 +26,14 @@ See `docs/llm-wiki/release.md`.
 - **Duplicate chat** (vs **Fork…** + optional worktree) · **session notes** · **mute** · **unread dot**
 - **Resume with code restore** — open an existing chat on a clean sibling git worktree at HEAD (session menu + command palette; dirty tree refused; same safety as Fork → restore code)
 - **Session rules** (per-chat `grok --rules`; session menu → GlassModal; soft-respawn on change)
-- **Export** Markdown copy + **HTML export** · **bulk archive by age** · **date groups** · **project color**
+- **Export** Markdown copy + **HTML export** · **share-card PNG** (session menu → Export as image; optional thinking; footer **Generated with Grok App**; custom logo in Settings) · **bulk archive by age** · **date groups** · **project color**
 - **Sidebar j/k** navigation (when list focused)
 - **CLI-aligned worktrees**: create under `~/.grok/worktrees/<repo>/<name>` by default (matches `grok --worktree`); optional sibling layout; start-ref validation; sidebar **CLI** vs **WT** badge
 
 #### Appearance / app shell
 - **Theme schedule** (System + clock) · **follow system language**
 - **Confirm quit while busy** (in-app dialog; optional skip) · **dock/tray busy badge**
+- **Share-card logo** (Settings → Appearance → Interface): upload custom PNG/JPEG/WebP for conversation image export
 
 #### Tasks / system
 - Tasks tree · Stop-all skip-confirm · Plan history · Mirror write guard · Reliability / Leader / Memory / MCP / CLI notice (prior)
@@ -46,19 +47,20 @@ See `docs/llm-wiki/release.md`.
 ### Fixed
 
 - CLI install missing SHA-256 (#227) · app.css rewind/fork selectors (#259)
+- **Multi-turn chat scroll jank (#280)**: free-scroll node-rail highlight no longer `setState`s the transcript parent each frame; virtual-list `measureRef` callbacks are stable per index (stops ResizeObserver thrash); idle force-mount uses transcript indices only; rail `scrollIntoView` is instant
 
 **中文 · 新增（按域）**
 
 - **输入/对话**：队列、高度、提示历史、宽度字号、工具折叠/过滤、重生选模型、字数、变更芯片、工作区 dirty 芯片、会话变更审阅（+/− · 并排 diff · j/k）、结构化 JSON 回复面板（校验/复制/导出）、上下文用量/费用粗估
-- **会话/侧栏**：复制 vs 分叉、恢复对话并还原代码（干净 worktree）、便签、会话规则（`--rules`）、静音、未读点、HTML 导出、按天归档、日期分组、项目色、j/k 导航、CLI 对齐 worktree（默认 `~/.grok/worktrees`、侧栏 CLI/WT 标记）
-- **外观/壳**：主题定时、跟随系统语言、忙碌退出确认、托盘角标
+- **会话/侧栏**：复制 vs 分叉、恢复对话并还原代码（干净 worktree）、便签、会话规则（`--rules`）、静音、未读点、HTML 导出、**分享卡片 PNG**（会话菜单 → 导出为图片；页脚 Generated with Grok App；设置可上传自定义 Logo）、按天归档、日期分组、项目色、j/k 导航、CLI 对齐 worktree（默认 `~/.grok/worktrees`、侧栏 CLI/WT 标记）
+- **外观/壳**：主题定时、跟随系统语言、忙碌退出确认、托盘角标、**分享卡片 Logo**（外观 → 界面）
 - **Agent**：禁用内置工具（芯片 + 自由列表 → `--disallowed-tools`；与禁用网页搜索并存；更改 soft-respawn）；可选 profile 路径（`--agent-profile`）
 - **系统**：**Agent serve** 在设置 → 运行时 → 连接启停（掩码密钥 + 启动时复制连接 URL）
 - **权限/CLI**：对齐 `--permission-mode` 映射与 spawn；设置页展示 CLI 标签与高级选择；新增 **Auto** 策略
 
 **中文 · 修复**
 
-- CLI SHA-256（#227）；CSS（#259）
+- CLI SHA-256（#227）；CSS（#259）；多轮对话滚动卡顿（#280）
 
 
 ## [0.2.2] - 2026-07-30

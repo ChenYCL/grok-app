@@ -1340,6 +1340,14 @@ export const zhTW: Record<MessageKey, string> = {
   "settings.showUsageEstimates": "顯示用量估算",
   "settings.showUsageEstimatesDesc":
     "在上下文晶片選單中，當模型在粗略費率表內時顯示可選美元費用估算。始終標註為估算，非帳單。預設開啟。",
+  "settings.exportLogo": "分享卡片 Logo",
+  "settings.exportLogoDesc":
+    "用於「匯出為圖片」分享卡片的自訂 Logo。上傳方形 PNG/JPEG/WebP（≤1.5 MB）；清除後使用預設 G 標記。卡片頁尾固定標註 “Generated with Grok App”。",
+  "settings.exportLogoUpload": "上傳 Logo",
+  "settings.exportLogoClear": "清除 Logo",
+  "settings.exportLogoPreview": "Logo 預覽",
+  "settings.exportLogoTooLarge": "圖片過大（最大 1.5 MB）",
+  "settings.exportLogoInvalid": "無法讀取該圖片",
   "settings.showReplyLength": "顯示回覆長度",
   "settings.showReplyLengthDesc":
     "在已完成的助手回覆下方顯示詞數與字數。預設關閉。",
@@ -1975,6 +1983,18 @@ export const zhTW: Record<MessageKey, string> = {
   "session.exportCopied": "Markdown 已複製到剪貼簿",
   "session.exportJson": "匯出對話為 JSON",
   "session.exportHtml": "匯出對話為 HTML",
+  "session.exportImage": "匯出為圖片",
+  "session.exportImageTitle": "匯出分享卡片",
+  "session.exportImageHint":
+    "將對話渲染為帶品牌的 PNG 卡片。頁尾固定 “Generated with Grok App”。自訂 Logo 可在 設定 → 外觀 → 介面 上傳。",
+  "session.exportImageIncludeThoughts": "包含思考",
+  "session.exportImageDownload": "下載 PNG",
+  "session.exportImageCopy": "複製圖片",
+  "session.exportImageWorking": "渲染中…",
+  "session.exportImageDone": "分享卡片已儲存",
+  "session.exportImageCopied": "分享卡片已複製",
+  "session.exportImageFail": "匯出分享卡片失敗",
+  "session.exportImageEmpty": "目前對話沒有可匯出的內容",
   "session.exportTrace": "匯出 trace",
   "session.exportTraceDone": "對話 trace 已儲存",
   "session.exportTraceFail": "trace 匯出失敗",

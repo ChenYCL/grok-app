@@ -115,6 +115,11 @@ import {
   type ChatWidth,
 } from "@/lib/chatWidthPref";
 import {
+  loadExportLogoPref,
+  readImageFileAsDataUrl,
+  saveExportLogoPref,
+} from "@/lib/exportLogoPref";
+import {
   COMPOSER_MIN_ROWS_OPTIONS,
   applyComposerMinRows,
   loadComposerMinRows,
@@ -1139,6 +1144,11 @@ export function SettingsPage({
     applyChatWidth(next);
     dispatchChatWidthChange(next);
   }, []);
+  /** Share-card export logo — localStorage data URL (no AppSettings). */
+  const [exportLogo, setExportLogo] = useState<string | null>(() =>
+    loadExportLogoPref(),
+  );
+  const exportLogoInputRef = useRef<HTMLInputElement | null>(null);
   /** Sidebar session list density — localStorage only (no AppSettings). */
   const [sidebarDensity, setSidebarDensityState] = useState<SidebarDensity>(
     () => loadSidebarDensity(),
@@ -1246,6 +1256,32 @@ export function SettingsPage({
       setClearMemoryBusy(false);
     }
   }, [workspaceCwd, clearMemoryBusy, showSettingsToast, t]);
+
+  const onExportLogoFile = useCallback(
+    async (file: File | null) => {
+      if (!file) return;
+      try {
+        const dataUrl = await readImageFileAsDataUrl(file);
+        saveExportLogoPref(dataUrl);
+        setExportLogo(dataUrl);
+      } catch (e) {
+        const msg = String(e);
+        if (msg.includes("too-large")) {
+          showSettingsToast(t("settings.exportLogoTooLarge"), 4000);
+        } else {
+          showSettingsToast(t("settings.exportLogoInvalid"), 4000);
+        }
+      } finally {
+        if (exportLogoInputRef.current) exportLogoInputRef.current.value = "";
+      }
+    },
+    [showSettingsToast, t],
+  );
+  const onClearExportLogo = useCallback(() => {
+    saveExportLogoPref(null);
+    setExportLogo(null);
+    if (exportLogoInputRef.current) exportLogoInputRef.current.value = "";
+  }, []);
 
   const wallpaperErrorMessage = useCallback(
     (err: unknown): string => {
@@ -4120,6 +4156,91 @@ export function SettingsPage({
                     </div>
                   </div>
                 ) : null}
+                <div
+                  className={
+                    "settings-card" +
+                    rowHighlight("settings-anchor-exportLogo")
+                  }
+                  id="settings-anchor-exportLogo"
+                >
+                  <div className="settings-row settings-row--stack">
+                    <div className="settings-row__text">
+                      <SettingsLabelWithTip
+                        label={t("settings.exportLogo")}
+                        tip={t("settings.exportLogoDesc")}
+                      />
+                    </div>
+                    <div
+                      className="settings-export-logo"
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 12,
+                        flexWrap: "wrap",
+                        marginTop: 8,
+                      }}
+                    >
+                      <div
+                        className="settings-export-logo__preview"
+                        aria-label={t("settings.exportLogoPreview")}
+                        style={{
+                          width: 40,
+                          height: 40,
+                          borderRadius: 10,
+                          overflow: "hidden",
+                          background: "var(--bg-elevated, #18181b)",
+                          border: "1px solid var(--border, #27272a)",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          fontWeight: 700,
+                          flexShrink: 0,
+                        }}
+                      >
+                        {exportLogo ? (
+                          <img
+                            src={exportLogo}
+                            alt=""
+                            width={40}
+                            height={40}
+                            style={{
+                              width: "100%",
+                              height: "100%",
+                              objectFit: "cover",
+                            }}
+                          />
+                        ) : (
+                          <span aria-hidden>G</span>
+                        )}
+                      </div>
+                      <input
+                        ref={exportLogoInputRef}
+                        type="file"
+                        accept="image/png,image/jpeg,image/webp,image/svg+xml"
+                        hidden
+                        onChange={(e) => {
+                          const f = e.target.files?.[0] ?? null;
+                          void onExportLogoFile(f);
+                        }}
+                      />
+                      <button
+                        type="button"
+                        className="btn btn--ghost"
+                        onClick={() => exportLogoInputRef.current?.click()}
+                      >
+                        {t("settings.exportLogoUpload")}
+                      </button>
+                      <button
+                        type="button"
+                        className="btn btn--ghost"
+                        disabled={!exportLogo}
+                        onClick={onClearExportLogo}
+                      >
+                        {t("settings.exportLogoClear")}
+                      </button>
+                    </div>
+                  </div>
+                </div>
                 {onShowReplyLength ? (
                   <div
                     className={
