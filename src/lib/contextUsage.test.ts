@@ -11,6 +11,7 @@ import {
   formatCompactBeforeAfterRange,
   formatContextChipLabel,
   formatTokenCount,
+  hasContextUsageData,
   hydrateContextUsageFromMessages,
   INITIAL_CONTEXT_USAGE,
   isCompactPresetId,
@@ -362,6 +363,42 @@ describe("reduceContextUsage", () => {
     expect(s.knownTokens).toBe(200);
     expect(s.lastCompactMessageId).toBe("c2");
     expect(s.lastCompact?.trigger).toBe("manual");
+  });
+});
+
+describe("hasContextUsageData", () => {
+  it("is false for empty new sessions (no — chip)", () => {
+    const d = resolveContextUsageDisplay(INITIAL_CONTEXT_USAGE, []);
+    expect(hasContextUsageData(d)).toBe(false);
+  });
+
+  it("is true once estimated or known tokens exist", () => {
+    const estimated = resolveContextUsageDisplay(INITIAL_CONTEXT_USAGE, [
+      { id: "u", role: "user", content: "a".repeat(40) },
+    ]);
+    expect(hasContextUsageData(estimated)).toBe(true);
+
+    const known = resolveContextUsageDisplay(
+      reduceContextUsage(INITIAL_CONTEXT_USAGE, {
+        type: "usage",
+        totalTokens: 1200,
+      }),
+      [],
+    );
+    expect(hasContextUsageData(known)).toBe(true);
+  });
+
+  it("is false when compact left tokens unknown", () => {
+    const state = reduceContextUsage(INITIAL_CONTEXT_USAGE, {
+      type: "compact",
+      trigger: "manual",
+      messageId: "c1",
+    });
+    const d = resolveContextUsageDisplay(state, [
+      { id: "c1", role: "tool", marker: "context_compact" },
+    ]);
+    expect(d.source).toBe("unknown");
+    expect(hasContextUsageData(d)).toBe(false);
   });
 });
 

@@ -27,7 +27,10 @@ import {
   type PermissionPolicyId,
 } from "@/lib/grokCatalog";
 import type { ContextUsageDisplay } from "@/lib/contextUsage";
-import { formatTokenCount } from "@/lib/contextUsage";
+import {
+  formatTokenCount,
+  hasContextUsageData,
+} from "@/lib/contextUsage";
 
 export type PhoneToolsPanel =
   | "root"
@@ -311,13 +314,15 @@ export function PhoneComposerToolsSheet({
                 chevron
                 onClick={() => setPanel("access")}
               />
-              <SheetRow
-                icon={<IconActivity size={20} />}
-                label={labels.context}
-                value={contextValue}
-                chevron
-                onClick={() => setPanel("context")}
-              />
+              {hasContextUsageData(contextDisplay) ? (
+                <SheetRow
+                  icon={<IconActivity size={20} />}
+                  label={labels.context}
+                  value={contextValue}
+                  chevron
+                  onClick={() => setPanel("context")}
+                />
+              ) : null}
             </>
           )}
 

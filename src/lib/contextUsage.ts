@@ -517,6 +517,15 @@ export interface ContextUsageDisplay {
   knownUsage: KnownUsageBreakdown | null;
 }
 
+/**
+ * Whether the composer should surface context usage.
+ * New / empty sessions stay hidden (no "—" placeholder); show only once
+ * there is a known or estimated token figure after real activity.
+ */
+export function hasContextUsageData(display: ContextUsageDisplay): boolean {
+  return display.tokens != null && display.source !== "unknown";
+}
+
 function breakdownOrNull(
   messages: ContextUsageMessage[],
   knownUsage: KnownUsageBreakdown | null = null,

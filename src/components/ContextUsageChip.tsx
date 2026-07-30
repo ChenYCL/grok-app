@@ -11,6 +11,7 @@ import { Tip } from "@/components/ui/tooltip";
 import { useFloatingMenu } from "@/lib/floatingMenu";
 import {
   formatTokenCount,
+  hasContextUsageData,
   type ContextUsageBreakdown,
   type ContextUsageDisplay,
   type LastCompactSummary,
@@ -359,6 +360,9 @@ export function ContextUsageChip({
   const lastDetail = display.lastCompact
     ? formatLastCompactDetail(display.lastCompact, labels, locale)
     : null;
+
+  // New sessions: no empty "—" chip until agent/transcript has usage data.
+  if (!hasContextUsageData(display)) return null;
 
   return (
     <div ref={rootRef} className={`ctx-chip${open ? " is-open" : ""}`}>
