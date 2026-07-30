@@ -230,3 +230,38 @@ export function isSafeDiscardCandidate(entry: WorkspaceGitFile): boolean {
   const wt = entry.worktreeStatus || " ";
   return idx === " " && wt !== " " && wt !== "?" && wt !== "!";
 }
+
+/** Minimal git-status shape for the composer dirty chip. */
+export type GitDirtyStatusSnapshot = {
+  available?: boolean | null;
+  files?: readonly unknown[] | null;
+  reason?: string | null;
+};
+
+/** Summarized dirty count for the composer workspace chip. */
+export type GitDirtySummary = {
+  /** Number of porcelain paths (modified / added / untracked / …). */
+  count: number;
+  /**
+   * Neutral English label (`N changed`) for tests / non-i18n fallbacks.
+   * UI should prefer localized `changes.count` / `changes.workspace.chip`.
+   */
+  label: string;
+};
+
+/**
+ * Summarize workspace git dirty files for the composer chip.
+ * Returns `null` when not a git repo, status unavailable, or the tree is clean
+ * (chip should be hidden).
+ */
+export function summarizeGitDirty(
+  status: GitDirtyStatusSnapshot | null | undefined,
+): GitDirtySummary | null {
+  if (!status?.available) return null;
+  const count = Array.isArray(status.files) ? status.files.length : 0;
+  if (count <= 0) return null;
+  return {
+    count,
+    label: `${count} changed`,
+  };
+}

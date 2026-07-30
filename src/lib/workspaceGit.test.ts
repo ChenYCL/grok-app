@@ -7,6 +7,7 @@ import {
   normalizeWorkspaceGitEntries,
   normalizeWorkspaceGitEntry,
   resolveWorkspaceAbsolutePath,
+  summarizeGitDirty,
   workspaceGitKindBadge,
   workspaceGitKindMessageKey,
   type WorkspaceGitFile,
@@ -160,5 +161,33 @@ describe("labels / badge / discard", () => {
         name: "n.ts",
       }),
     ).toBe(false);
+  });
+});
+
+describe("summarizeGitDirty", () => {
+  it("returns null when status missing, unavailable, or clean", () => {
+    expect(summarizeGitDirty(null)).toBeNull();
+    expect(summarizeGitDirty(undefined)).toBeNull();
+    expect(
+      summarizeGitDirty({ available: false, reason: "not a git repo" }),
+    ).toBeNull();
+    expect(summarizeGitDirty({ available: true, files: [] })).toBeNull();
+    expect(summarizeGitDirty({ available: true, files: null })).toBeNull();
+    expect(summarizeGitDirty({ available: true })).toBeNull();
+  });
+
+  it("counts porcelain paths and builds N changed label", () => {
+    expect(
+      summarizeGitDirty({
+        available: true,
+        files: [{ path: "a.ts" }, { path: "b.ts" }, { path: "c.ts" }],
+      }),
+    ).toEqual({ count: 3, label: "3 changed" });
+    expect(
+      summarizeGitDirty({
+        available: true,
+        files: [{ path: "only.ts" }],
+      }),
+    ).toEqual({ count: 1, label: "1 changed" });
   });
 });

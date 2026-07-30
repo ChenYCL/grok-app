@@ -9659,6 +9659,17 @@ button.composer__context-item {
   letter-spacing: 0.01em;
 }
 
+/* Workspace git dirty chip (composer row) — opens Resources → Changes */
+.chip--git-dirty {
+  font-variant-numeric: tabular-nums;
+  max-width: 120px;
+}
+
+.chip--git-dirty .chip__label--nums {
+  font-feature-settings: "tnum";
+  letter-spacing: 0.01em;
+}
+
 .ctx-chip {
   display: inline-flex;
   flex-shrink: 0;
