@@ -170,6 +170,13 @@ import {
   saveCodeWrapPref,
 } from "@/lib/codeWrapPref";
 import {
+  SHORTCUT_KEYS_OFF,
+  VOICE_HOTKEY_CHANGED_EVENT,
+  VOICE_HOTKEY_STORAGE_KEY,
+  loadVoiceHotkeyEnabled,
+  saveVoiceHotkeyEnabled,
+} from "@/lib/voiceHotkeyPref";
+import {
   loadConfirmExternalLinksPref,
   saveConfirmExternalLinksPref,
 } from "@/lib/externalLinkPref";
@@ -1025,6 +1032,10 @@ export function SettingsPage({
   /** Always-show back-to-bottom control — frontend-only localStorage. */
   const [backBottomAlways, setBackBottomAlways] = useState(() =>
     loadBackBottomAlwaysPref(),
+  );
+  /** Live Voice catalog hotkey on/off — frontend-only localStorage. */
+  const [voiceHotkeyEnabled, setVoiceHotkeyEnabled] = useState(() =>
+    loadVoiceHotkeyEnabled(),
   );
   const [confirmExternalLinks, setConfirmExternalLinks] = useState(() =>
     loadConfirmExternalLinksPref(),
@@ -2166,6 +2177,31 @@ export function SettingsPage({
             <>
             <h2 className="settings-page__h2">{t("settings.section.voice")}</h2>
             <div className="settings-card" id="settings-voice-card">
+              <div
+                className={
+                  "settings-row" +
+                  rowHighlight("settings-anchor-voiceHotkeyEnabled")
+                }
+                id="settings-anchor-voiceHotkeyEnabled"
+              >
+                <div className="settings-row__text">
+                  <div className="settings-row__label">
+                    {t("settings.voiceHotkeyEnabled")}
+                  </div>
+                  <div className="settings-row__desc">
+                    {t("settings.voiceHotkeyEnabledDesc")}
+                  </div>
+                </div>
+                <UiCheck
+                  checked={voiceHotkeyEnabled}
+                  onChange={() => {
+                    const next = !voiceHotkeyEnabled;
+                    setVoiceHotkeyEnabled(next);
+                    saveVoiceHotkeyEnabled(next);
+                  }}
+                  ariaLabel={t("settings.voiceHotkeyEnabled")}
+                />
+              </div>
               {onVoiceId ? (
                 <div
                   className={
@@ -4480,24 +4516,34 @@ function ShortcutsSettingsPanel({
   const [remaps, setRemaps] = useState<ShortcutRemapMap>(() =>
     loadShortcutRemaps(),
   );
+  const [voiceHotkeyEnabled, setVoiceHotkeyEnabled] = useState(() =>
+    loadVoiceHotkeyEnabled(),
+  );
   const [recordingId, setRecordingId] = useState<ShortcutId | null>(null);
   const [recordError, setRecordError] = useState<string | null>(null);
 
   useEffect(() => {
     const reloadSend = () => setSendPref(loadComposerSendKeyPref());
     const reloadRemaps = () => setRemaps(loadShortcutRemaps());
+    const reloadVoiceHotkey = () =>
+      setVoiceHotkeyEnabled(loadVoiceHotkeyEnabled());
     window.addEventListener(COMPOSER_SEND_KEY_CHANGED_EVENT, reloadSend);
     window.addEventListener(SHORTCUT_REMAP_CHANGED_EVENT, reloadRemaps);
+    window.addEventListener(VOICE_HOTKEY_CHANGED_EVENT, reloadVoiceHotkey);
     const onStorage = (e: StorageEvent) => {
       if (e.key === "grok.composerSendKey" || e.key === null) reloadSend();
       if (e.key === SHORTCUT_REMAP_STORAGE_KEY || e.key === null) {
         reloadRemaps();
+      }
+      if (e.key === VOICE_HOTKEY_STORAGE_KEY || e.key === null) {
+        reloadVoiceHotkey();
       }
     };
     window.addEventListener("storage", onStorage);
     return () => {
       window.removeEventListener(COMPOSER_SEND_KEY_CHANGED_EVENT, reloadSend);
       window.removeEventListener(SHORTCUT_REMAP_CHANGED_EVENT, reloadRemaps);
+      window.removeEventListener(VOICE_HOTKEY_CHANGED_EVENT, reloadVoiceHotkey);
       window.removeEventListener("storage", onStorage);
     };
   }, []);
@@ -4549,8 +4595,8 @@ function ShortcutsSettingsPanel({
   }, [recordingId, remaps, t]);
 
   const groups = useMemo(
-    () => shortcutsByGroup(sendPref, remaps),
-    [sendPref, remaps],
+    () => shortcutsByGroup(sendPref, remaps, voiceHotkeyEnabled),
+    [sendPref, remaps, voiceHotkeyEnabled],
   );
   const filteredGroups = useMemo(
     () =>
@@ -4704,7 +4750,9 @@ function ShortcutsSettingsPanel({
                         >
                           {isRecording
                             ? t("settings.shortcuts.pressKeys")
-                            : row.mac}
+                            : row.mac === SHORTCUT_KEYS_OFF
+                              ? t("shortcuts.off")
+                              : row.mac}
                         </kbd>
                       </td>
                       <td>
@@ -4716,7 +4764,9 @@ function ShortcutsSettingsPanel({
                         >
                           {isRecording
                             ? t("settings.shortcuts.pressKeys")
-                            : row.win}
+                            : row.win === SHORTCUT_KEYS_OFF
+                              ? t("shortcuts.off")
+                              : row.win}
                         </kbd>
                       </td>
                       <td className="settings-shortcuts-col-actions">

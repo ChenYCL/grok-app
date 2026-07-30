@@ -799,6 +799,9 @@ export const zhTW: Record<MessageKey, string> = {
   "settings.section.composer": "對話偏好",
   "settings.section.voice": "語音",
   "settings.section.general": "一般",
+  "settings.voiceHotkeyEnabled": "即時語音快捷鍵",
+  "settings.voiceHotkeyEnabledDesc":
+    "關閉後，即時語音熱鍵（預設 ⌘/Ctrl+Shift+V，或你的自訂綁定）不會開啟即時語音。輸入框按鈕、斜線命令與選單入口仍可用。聽寫 Ctrl+Space 不受影響。預設開啟。",
   "settings.voiceId": "即時語音音色",
   "settings.voiceIdDesc": "全雙工即時語音使用的音色（xAI realtime）。",
   "settings.voiceDictationAutoSend": "聽寫結束後直接傳送",
@@ -1688,6 +1691,7 @@ export const zhTW: Record<MessageKey, string> = {
   "shortcuts.toggleSidebar": "切換側欄",
   "shortcuts.doctor": "Doctor",
   "shortcuts.liveVoice": "開始即時語音",
+  "shortcuts.off": "關閉",
   "shortcuts.stop": "停止產生 / 關閉浮層",
   "shortcuts.send": "傳送訊息",
   "shortcuts.help": "顯示快捷鍵",

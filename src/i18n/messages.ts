@@ -838,6 +838,9 @@ const en = {
   "settings.section.composer": "Composer prefs",
   "settings.section.voice": "Voice",
   "settings.section.general": "General",
+  "settings.voiceHotkeyEnabled": "Live Voice keyboard shortcut",
+  "settings.voiceHotkeyEnabledDesc":
+    "When off, the Live Voice hotkey (default ⌘/Ctrl+Shift+V, or your remap) does nothing. Composer button, slash command, and menus still open Live Voice. Dictation Ctrl+Space is separate. On by default.",
   "settings.voiceId": "Live voice speaker",
   "settings.voiceIdDesc":
     "Voice used for full-duplex Live Voice (xAI realtime).",
@@ -1753,6 +1756,7 @@ const en = {
   "shortcuts.toggleSidebar": "Toggle sidebar",
   "shortcuts.doctor": "Doctor",
   "shortcuts.liveVoice": "Start Live Voice",
+  "shortcuts.off": "Off",
   "shortcuts.stop": "Stop generation / close overlay",
   "shortcuts.send": "Send message",
   "shortcuts.help": "Show shortcuts",
@@ -3477,6 +3481,9 @@ const zh: Record<MessageKey, string> = {
   "settings.section.composer": "对话偏好",
   "settings.section.voice": "语音",
   "settings.section.general": "常规",
+  "settings.voiceHotkeyEnabled": "实时语音快捷键",
+  "settings.voiceHotkeyEnabledDesc":
+    "关闭后，实时语音热键（默认 ⌘/Ctrl+Shift+V，或你的自定义绑定）不会打开实时语音。输入框按钮、斜杠命令与菜单入口仍可用。听写 Ctrl+Space 不受影响。默认开启。",
   "settings.voiceId": "实时语音音色",
   "settings.voiceIdDesc": "全双工实时语音使用的音色（xAI realtime）。",
   "settings.voiceDictationAutoSend": "听写结束后直接发送",
@@ -4366,6 +4373,7 @@ const zh: Record<MessageKey, string> = {
   "shortcuts.toggleSidebar": "切换侧栏",
   "shortcuts.doctor": "Doctor",
   "shortcuts.liveVoice": "开始实时语音",
+  "shortcuts.off": "关闭",
   "shortcuts.stop": "停止生成 / 关闭浮层",
   "shortcuts.send": "发送消息",
   "shortcuts.help": "显示快捷键",

@@ -17,6 +17,7 @@ See `docs/llm-wiki/release.md`.
 - **Chat reading width** (Settings → Appearance): narrow (~640) / medium (~800, default) / wide (~1000) / full; `localStorage` `grok.chatWidth` + `html[data-chat-width]`
 - **Phone mirror write guard**: enabling “Allow phone to send” requires an in-app confirm dialog; persistent warning banner while write is on; audit log line when write access is toggled (no secrets)
 - **Copy conversation as Markdown** (session menu + command palette): one-click clipboard copy of the full chat; skips pure tool_step noise by default (export dialog still offers tools/thoughts options)
+- **Disable Live Voice hotkey only** (Settings → General → App → Voice): turns off the catalog Live Voice shortcut (default ⌘/Ctrl+Shift+V / remaps) while composer button, slash, and menus still open Live Voice; shortcuts help shows Off when disabled
 - **Per-session mute** for desktop notifications (context menu Mute / Unmute; sidebar muted icon; in-app toasts still show)
 - **Desktop notification click** opens the session that fired turn-done / permission / ask_user
 - **Send queue Edit** for follow-up items (GlassModal; empty text blocked unless attachments remain)
@@ -43,6 +44,7 @@ See `docs/llm-wiki/release.md`.
 - **对话阅读宽度**（设置 → 外观）：窄 / 中（默认）/ 宽 / 全宽
 - 手机镜像写权限确认与持续警告横幅；切换时写审计日志（无密钥）
 - 一键复制整段对话为 Markdown（会话菜单 / 命令面板；默认跳过 tool_step 噪音）
+- 可单独关闭实时语音快捷键（设置 → 语音；输入框/菜单入口仍可用；帮助里显示「关闭」）
 - 按会话静音桌面通知（菜单 Mute/Unmute；侧栏静音图标；应用内 Toast 仍显示）
 - 通知点击跳转会话；发送队列可编辑；上下文 System/Tools/History；Compact 增强
 - Worktree 会话徽章与管理；Fork 可选恢复代码；沙箱项目覆盖
