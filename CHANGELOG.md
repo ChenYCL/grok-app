@@ -15,6 +15,7 @@ See `docs/llm-wiki/release.md`.
 
 - **Skip confirm on Stop all** (Settings → General → App): optional pref so Tasks / Agent dashboard Stop all runs without a confirmation dialog (default off)
 - **Code block font size** preference (Settings → Appearance → Interface): Small / Medium / Large for fenced code in chat; independent of chat text size; localStorage `grok.codeFontScale`
+- **Session file-changes chip** in the composer: shows `N files` or `+a −d` when the agent has edited files; click opens Resources → Changes; hidden when empty
 - **Send queue reorder**: Up/Down on each queued follow-up before auto-flush
 - **Chat reading width** (Settings → Appearance): narrow / medium (default) / wide / full (`grok.chatWidth`)
 - **Phone mirror write guard**: confirm when enabling write; persistent warning banner; audit log (no secrets)
@@ -37,6 +38,7 @@ See `docs/llm-wiki/release.md`.
 
 - **全部停止跳过确认**（设置 → 常规 → 应用）：可选偏好，任务面板 / Agent 总览「全部停止」不再二次确认（默认关闭）
 - **代码块字号**（设置 → 外观 → 界面）：小/中/大，与对话字号独立；localStorage `grok.codeFontScale`
+- 会话文件变更 chip（作曲栏：`N 个文件` 或 `+a −d`；点击打开资源变更面板；无变更时隐藏）
 - 发送队列上下排序；对话阅读宽度；镜像写权限确认与警告；整段对话复制为 Markdown
 - 可单独关闭实时语音快捷键；任务面板子代理树；计划历史归档；侧栏日期分组
 - 程序坞/托盘忙碌角标；按会话静音桌面通知

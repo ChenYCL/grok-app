@@ -217,6 +217,83 @@ export function sessionChangesFromMessages(
   return list;
 }
 
+/** Aggregate stats for the composer session-changes chip. */
+export interface SessionChangesSummary {
+  /** Distinct files touched in this session. */
+  fileCount: number;
+  /**
+   * Total added lines across files that have both `before` and `after`.
+   * `null` when no file has usable before/after for line stats.
+   */
+  addedLines: number | null;
+  /** Total removed lines (same availability as `addedLines`). */
+  removedLines: number | null;
+  /**
+   * Prefer compact `+a −d` when line stats exist; otherwise file count.
+   * Never `"empty"` — callers should hide the chip when `fileCount === 0`.
+   */
+  mode: "files" | "diff";
+}
+
+/**
+ * Count added/removed lines between two text snapshots (line-level LCS).
+ * Empty strings are valid (new / deleted file).
+ */
+export function countLineDelta(
+  before: string,
+  after: string,
+): { added: number; removed: number } {
+  if (before === after) return { added: 0, removed: 0 };
+  const a = splitLines(before);
+  const b = splitLines(after);
+  let added = 0;
+  let removed = 0;
+  for (const op of diffLines(a, b)) {
+    if (op.type === "add") added++;
+    else if (op.type === "delete") removed++;
+  }
+  return { added, removed };
+}
+
+/**
+ * Summarize session file changes for the composer chip.
+ * Returns `null` when there are zero changes (chip should be hidden).
+ * Line totals only include files that have both before and after content.
+ */
+export function summarizeSessionChanges(
+  changes: readonly SessionFileChange[],
+): SessionChangesSummary | null {
+  const fileCount = changes.length;
+  if (fileCount <= 0) return null;
+
+  let added = 0;
+  let removed = 0;
+  let hasLineStats = false;
+  for (const c of changes) {
+    if (typeof c.before === "string" && typeof c.after === "string") {
+      const d = countLineDelta(c.before, c.after);
+      added += d.added;
+      removed += d.removed;
+      hasLineStats = true;
+    }
+  }
+
+  if (hasLineStats) {
+    return {
+      fileCount,
+      addedLines: added,
+      removedLines: removed,
+      mode: "diff",
+    };
+  }
+  return {
+    fileCount,
+    addedLines: null,
+    removedLines: null,
+    mode: "files",
+  };
+}
+
 /**
  * Minimal unified diff (Myers-ish line LCS). Good enough for preview panes;
  * large files should be truncated by the caller before calling.

@@ -9617,6 +9617,17 @@ button.composer__context-item {
   color: var(--text-primary);
 }
 
+/* Session file-changes chip (composer row) — opens Resources → Changes */
+.chip--changes {
+  font-variant-numeric: tabular-nums;
+  max-width: 120px;
+}
+
+.chip--changes .chip__label--nums {
+  font-feature-settings: "tnum";
+  letter-spacing: 0.01em;
+}
+
 .ctx-chip {
   display: inline-flex;
   flex-shrink: 0;
