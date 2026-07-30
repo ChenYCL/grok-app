@@ -474,7 +474,15 @@ export const SETTINGS_ENTRIES: readonly SettingsEntry[] = [
     anchorId: "settings-anchor-language",
     labelKey: "settings.language",
     descKeys: ["settings.languageDesc", "settings.section.general"],
-    keywords: ["language", "locale", "中文", "english"],
+    keywords: [
+      "language",
+      "locale",
+      "中文",
+      "english",
+      "system",
+      "跟随系统",
+      "跟隨系統",
+    ],
   },
   {
     id: "general.sessionDataMode",

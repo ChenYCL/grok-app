@@ -271,7 +271,15 @@ import {
   mirrorWsConnected,
 } from "@/lib/mirrorTransport";
 
-import { createT, resolveLocale, type Locale } from "@/i18n";
+import {
+  createT,
+  parseLocalePreference,
+  resolveLocale,
+  resolveLocaleFromSystem,
+  resolveLocalePreference,
+  type Locale,
+  type LocalePreference,
+} from "@/i18n";
 import {
   DEFAULT_EFFORT,
   DEFAULT_MODEL_ID,
@@ -1692,7 +1700,11 @@ export default function App() {
    * Hard-dismiss sets `userClosed` so reopen stays empty until a new plan cycle.
    */
   const planBySessionRef = useRef(new Map<string, PlanState>());
-  const [locale, setLocale] = useState<Locale>("zh");
+  const [localePreference, setLocalePreference] =
+    useState<LocalePreference>("en");
+  const [locale, setLocale] = useState<Locale>(() =>
+    resolveLocalePreference("en"),
+  );
   const localeRef = useRef(locale);
   localeRef.current = locale;
   const tr = useMemo(() => createT(locale), [locale]);
@@ -2139,6 +2151,23 @@ export default function App() {
     };
   }, [themePreference]);
 
+  // Follow OS / browser UI language when preference is "system".
+  useEffect(() => {
+    if (localePreference !== "system") return;
+    const applySystem = () => {
+      const next = resolveLocaleFromSystem(
+        typeof navigator !== "undefined" ? navigator.language : null,
+      );
+      setLocale(next);
+    };
+    applySystem();
+    if (typeof window === "undefined" || !("addEventListener" in window)) {
+      return;
+    }
+    window.addEventListener("languagechange", applySystem);
+    return () => window.removeEventListener("languagechange", applySystem);
+  }, [localePreference]);
+
   useEffect(() => {
     applySkinToDocument(skin);
   }, [skin]);
@@ -2288,7 +2317,9 @@ export default function App() {
           .then((path) => setGeneralWorkspacePath(path || null))
           .catch(() => {});
         if (settings) {
-          setLocale(resolveLocale(settings.locale));
+          const pref = parseLocalePreference(settings.locale);
+          setLocalePreference(pref);
+          setLocale(resolveLocalePreference(pref));
           if (
             settings.composerPrefsScope &&
             isValidPrefsScope(settings.composerPrefsScope)
@@ -2354,7 +2385,11 @@ export default function App() {
         .then((path) => setGeneralWorkspacePath(path || null))
         .catch(() => {});
       void api.trayRefresh();
-      setLocale(resolveLocale(settings.locale));
+      {
+        const pref = parseLocalePreference(settings.locale);
+        setLocalePreference(pref);
+        setLocale(resolveLocalePreference(pref));
+      }
       const catalog: ModelOption[] =
         modelsRes?.models?.length
           ? modelsRes.models.map((m) => {
@@ -11746,6 +11781,7 @@ export default function App() {
       "settings.section.general",
       "settings.language",
       "settings.languageDesc",
+      "settings.languageSystem",
       "settings.sessionDataMode",
       "settings.sessionDataModeDesc",
       "settings.cliPath",
@@ -12019,11 +12055,15 @@ export default function App() {
           phoneLayout={phoneLayout}
           labels={settingsLabels}
           locale={locale}
+          localePreference={localePreference}
           onLocale={(v) => {
-            const next = resolveLocale(v);
+            const pref = parseLocalePreference(v);
+            setLocalePreference(pref);
+            const next = resolveLocalePreference(pref);
             setLocale(next);
             void api.settingsGet().then(async (s) => {
-              await api.settingsSet({ ...s, locale: next });
+              // Persist preference including "system" (not the resolved catalog id).
+              await api.settingsSet({ ...s, locale: pref });
               // settings_set also refreshes tray; call again so UI stays in sync if invoke fails mid-way.
               void api.trayRefresh();
             });

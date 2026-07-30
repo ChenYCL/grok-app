@@ -32,6 +32,7 @@ See `docs/llm-wiki/release.md`.
 - **Tasks tree** (nest under spawn_subagent) · **Stop all skip-confirm** option
 - **Plan history** archive · **Dock/tray busy badge**
 - **Phone mirror write guard** · **CLI launch update notice** · Reliability / Leader / Memory / MCP / etc. (prior integrate)
+- **Language: follow system** (Settings → General): option **System** maps OS / browser language to `en` / `zh` / `zh-TW`; persists as `"system"` and live-updates on `languagechange`
 
 ### Fixed
 
@@ -41,7 +42,7 @@ See `docs/llm-wiki/release.md`.
 
 - **输入与对话**：队列编辑/排序、跨会话提示历史、阅读宽度与字号、工具默认折叠、重新生成可选模型、变更芯片
 - **会话与侧栏**：复制会话（vs 分叉+worktree）、便签、静音、插件目录、按天归档、日期分组、项目颜色、复制 Markdown
-- **任务与系统**：子代理树、Stop all 可跳过确认、计划历史、忙碌角标、镜像写权限等
+- **任务与系统**：子代理树、Stop all 可跳过确认、计划历史、忙碌角标、镜像写权限等；**语言跟随系统**（`system` → en/zh/zh-TW）
 
 **中文 · 修复**
 

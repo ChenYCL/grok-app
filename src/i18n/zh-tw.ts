@@ -870,7 +870,8 @@ export const zhTW: Record<MessageKey, string> = {
   "settings.voiceKeepAgentsOnEndDesc":
     "關閉後，結束即時語音可能會停止由語音發起的編碼工作階段。",
   "settings.language": "語言",
-  "settings.languageDesc": "應用程式介面語言",
+  "settings.languageDesc": "應用程式介面語言 — 跟隨系統，或固定一種語言",
+  "settings.languageSystem": "跟隨系統",
   "store.quarantineNotice":
     "偵測到損壞的設定/工作階段檔，已隔離備份（{path}）。該檔已以預設值啟動。",
   "settings.sessionDataMode": "對話資料模式",

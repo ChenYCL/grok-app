@@ -261,7 +261,13 @@ export interface SettingsPageProps {
    */
   phoneLayout?: boolean;
   labels: Record<string, string>;
+  /** Resolved catalog locale used for Settings copy (`en` | `zh` | `zh-TW`). */
   locale: string;
+  /**
+   * Durable language preference including `"system"`. When omitted, the Select
+   * falls back to `locale` (explicit lock).
+   */
+  localePreference?: string;
   onLocale: (v: string) => void;
   /** Resolved light/dark currently applied (for display-only consumers). */
   theme: Theme;
@@ -813,6 +819,7 @@ export function SettingsPage({
   phoneLayout = false,
   labels: _legacyLabels,
   locale,
+  localePreference: localePreferenceProp,
   onLocale,
   theme,
   themePreference: themePreferenceProp,
@@ -1116,11 +1123,14 @@ export function SettingsPage({
   } | null>(null);
   // Full catalog via createT — do not depend on App's partial `labels` whitelist
   // (missing keys used to render raw "settings.acpServer" etc.).
+  // `locale` is the resolved catalog locale (never "system").
   const tr = useMemo(() => createT(resolveLocale(locale)), [locale]);
   const t = useCallback(
     (k: string, vars?: Vars) => tr(k as MessageKey, vars),
     [tr],
   );
+  /** Language Select: durable preference including "system". */
+  const localePreference = localePreferenceProp ?? locale;
   /** Segment selection: prefer explicit preference; fall back to resolved theme. */
   const themePreference: ThemePreference =
     themePreferenceProp ?? theme;
@@ -2347,12 +2357,13 @@ export function SettingsPage({
                   </div>
                 </div>
                 <Select
-                  value={locale}
+                  value={localePreference}
                   onChange={onLocale}
                   options={[
+                    { value: "system", label: t("settings.languageSystem") },
+                    { value: "en", label: "English" },
                     { value: "zh", label: "简体中文" },
                     { value: "zh-TW", label: "繁體中文" },
-                    { value: "en", label: "English" },
                   ]}
                 />
               </div>
