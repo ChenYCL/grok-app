@@ -21,6 +21,16 @@ import {
 
 export type ShortcutGroup = "workbench" | "navigation" | "diagnostics" | "input";
 
+/**
+ * When a remappable chord may fire:
+ * - `global` — app shell / workbench (palette, settings, sidebar, doctor, …)
+ * - `chat-focus` — conversation surface (find-in-chat, copy last reply, send, stop)
+ *
+ * Used for Settings scope column and optional cross-scope conflict ignoring.
+ * Does not change App capture matching by itself.
+ */
+export type ShortcutScope = "global" | "chat-focus";
+
 export type ShortcutId =
   | "search"
   | "findInChat"
@@ -41,6 +51,8 @@ export type ShortcutRow = {
   /** i18n message key for the action label */
   labelKey: string;
   group: ShortcutGroup;
+  /** Where the action applies (Settings column + conflict scope). */
+  scope: ShortcutScope;
   /** Display keys for mac (⌘ is replaced at render time if needed) */
   mac: string;
   /** Display keys for win/linux */
@@ -79,6 +91,7 @@ export const SHORTCUTS: ShortcutRow[] = [
     id: "search",
     labelKey: "shortcuts.search",
     group: "workbench",
+    scope: "global",
     mac: "⌘ K",
     win: "Ctrl K",
   },
@@ -86,6 +99,7 @@ export const SHORTCUTS: ShortcutRow[] = [
     id: "findInChat",
     labelKey: "shortcuts.findInChat",
     group: "workbench",
+    scope: "chat-focus",
     mac: "⌘ F",
     win: "Ctrl F",
   },
@@ -93,6 +107,7 @@ export const SHORTCUTS: ShortcutRow[] = [
     id: "newChat",
     labelKey: "shortcuts.newChat",
     group: "workbench",
+    scope: "global",
     mac: "⌘ N",
     win: "Ctrl N",
   },
@@ -100,6 +115,7 @@ export const SHORTCUTS: ShortcutRow[] = [
     id: "send",
     labelKey: "shortcuts.send",
     group: "workbench",
+    scope: "chat-focus",
     // Product default: plain Enter (mod-enter only when Settings → Composer pref is set).
     mac: "↵",
     win: "Enter",
@@ -108,6 +124,7 @@ export const SHORTCUTS: ShortcutRow[] = [
     id: "stop",
     labelKey: "shortcuts.stop",
     group: "workbench",
+    scope: "chat-focus",
     mac: "Esc",
     win: "Esc",
   },
@@ -115,6 +132,7 @@ export const SHORTCUTS: ShortcutRow[] = [
     id: "copyLastReply",
     labelKey: "shortcuts.copyLastReply",
     group: "workbench",
+    scope: "chat-focus",
     mac: "⌘ ⇧ C",
     win: "Ctrl Shift C",
   },
@@ -122,6 +140,7 @@ export const SHORTCUTS: ShortcutRow[] = [
     id: "toggleSidebar",
     labelKey: "shortcuts.toggleSidebar",
     group: "navigation",
+    scope: "global",
     mac: "⌘ B",
     win: "Ctrl B",
   },
@@ -131,6 +150,7 @@ export const SHORTCUTS: ShortcutRow[] = [
     id: "sidebarSessionNav",
     labelKey: "shortcuts.sidebarSessionNav",
     group: "navigation",
+    scope: "global",
     mac: "J / K",
     win: "J / K",
   },
@@ -138,6 +158,7 @@ export const SHORTCUTS: ShortcutRow[] = [
     id: "settings",
     labelKey: "shortcuts.settings",
     group: "navigation",
+    scope: "global",
     mac: "⌘ ,",
     win: "Ctrl ,",
   },
@@ -145,6 +166,7 @@ export const SHORTCUTS: ShortcutRow[] = [
     id: "help",
     labelKey: "shortcuts.help",
     group: "navigation",
+    scope: "global",
     mac: "⌘ /",
     win: "Ctrl /",
   },
@@ -152,6 +174,7 @@ export const SHORTCUTS: ShortcutRow[] = [
     id: "doctor",
     labelKey: "shortcuts.doctor",
     group: "diagnostics",
+    scope: "global",
     mac: "⌘ ⇧ D",
     win: "Ctrl Shift D",
   },
@@ -159,6 +182,7 @@ export const SHORTCUTS: ShortcutRow[] = [
     id: "liveVoice",
     labelKey: "shortcuts.liveVoice",
     group: "input",
+    scope: "global",
     mac: "⌘ ⇧ V",
     win: "Ctrl Shift V",
   },
@@ -167,10 +191,17 @@ export const SHORTCUTS: ShortcutRow[] = [
     id: "dictation",
     labelKey: "shortcuts.voice",
     group: "input",
+    scope: "global",
     mac: "Ctrl Space",
     win: "Ctrl Space",
   },
 ];
+
+/** Resolve catalog scope for an id (defaults to `global` for unknown ids). */
+export function shortcutScope(id: ShortcutId): ShortcutScope {
+  const row = SHORTCUTS.find((s) => s.id === id);
+  return row?.scope ?? "global";
+}
 
 /**
  * Catalog ids handled by {@link matchGlobalShortcut} (mod-based App capture handler).
@@ -458,6 +489,8 @@ export function filterShortcutRows(
     const haystack = [
       row.id,
       label,
+      row.scope,
+      row.scope === "chat-focus" ? "chat focus" : "global",
       row.mac,
       row.win,
       keySearchExtra(row.mac),

@@ -1012,15 +1012,25 @@ const en = {
   "settings.shortcuts.desc":
     "Click Record and press a chord to remap global actions. Reset restores the default; Reset all clears every custom binding.",
   "settings.shortcuts.colAction": "Action",
+  "settings.shortcuts.colScope": "Scope",
   "settings.shortcuts.colMac": "macOS",
   "settings.shortcuts.colWin": "Windows / Linux",
   "settings.shortcuts.colEdit": "Edit",
+  "settings.shortcuts.scope.global": "Global",
+  "settings.shortcuts.scope.chatFocus": "Chat",
+  "settings.shortcuts.scope.globalHint":
+    "App-wide shell action (palette, settings, sidebar, diagnostics, …).",
+  "settings.shortcuts.scope.chatFocusHint":
+    "Conversation surface (find in chat, copy last reply, send, stop).",
+  "settings.shortcuts.ignoreCrossScope": "Allow same chord across scopes",
+  "settings.shortcuts.ignoreCrossScopeDesc":
+    "When on, a Global action and a Chat action may share a chord without counting as a conflict in this list. Same-scope collisions still warn. Does not change how App matches keys at runtime.",
   "settings.shortcuts.group.workbench": "Workbench",
   "settings.shortcuts.group.navigation": "Navigation",
   "settings.shortcuts.group.diagnostics": "Diagnostics",
   "settings.shortcuts.group.input": "Input",
   "settings.shortcuts.note":
-    "Default send is Enter; switch to ⌘/Ctrl+Enter in Settings → Composer. Esc, Ctrl+Space dictation, and Send are fixed. Some chords may be taken by the OS (e.g. input sources).",
+    "Default send is Enter; switch to ⌘/Ctrl+Enter in Settings → Composer. Esc, Ctrl+Space dictation, and Send are fixed. Scope marks Global vs Chat actions; optional cross-scope sharing only affects conflict checks. Some chords may be taken by the OS (e.g. input sources).",
   "settings.shortcuts.openHelp": "Open shortcuts help",
   "settings.shortcuts.filterPlaceholder": "Filter shortcuts…",
   "settings.shortcuts.filterEmpty": "No shortcuts match this filter.",
@@ -4329,15 +4339,25 @@ const zh: Record<MessageKey, string> = {
   "settings.shortcuts.desc":
     "点击「录制」后按下组合键即可改绑全局操作。「重置」恢复默认；「全部重置」清除所有自定义。",
   "settings.shortcuts.colAction": "操作",
+  "settings.shortcuts.colScope": "范围",
   "settings.shortcuts.colMac": "macOS",
   "settings.shortcuts.colWin": "Windows / Linux",
   "settings.shortcuts.colEdit": "编辑",
+  "settings.shortcuts.scope.global": "全局",
+  "settings.shortcuts.scope.chatFocus": "对话",
+  "settings.shortcuts.scope.globalHint":
+    "应用级壳操作（命令面板、设置、侧栏、诊断等）。",
+  "settings.shortcuts.scope.chatFocusHint":
+    "对话界面操作（会话内查找、复制上一条回复、发送、停止）。",
+  "settings.shortcuts.ignoreCrossScope": "允许跨范围共用组合键",
+  "settings.shortcuts.ignoreCrossScopeDesc":
+    "开启后，全局操作与对话操作共用同一组合键时，本列表不视为冲突；同范围内的冲突仍会提示。不会改变应用运行时如何匹配按键。",
   "settings.shortcuts.group.workbench": "工作台",
   "settings.shortcuts.group.navigation": "导航",
   "settings.shortcuts.group.diagnostics": "诊断",
   "settings.shortcuts.group.input": "输入",
   "settings.shortcuts.note":
-    "默认 Enter 发送；可在 设置 → 对话偏好 改为 ⌘/Ctrl+Enter。Esc、Ctrl+Space 语音输入与发送键为固定绑定。部分组合键可能被系统占用（如输入法切换）。",
+    "默认 Enter 发送；可在 设置 → 对话偏好 改为 ⌘/Ctrl+Enter。Esc、Ctrl+Space 语音输入与发送键为固定绑定。范围区分全局与对话；可选跨范围共用仅影响冲突检查。部分组合键可能被系统占用（如输入法切换）。",
   "settings.shortcuts.openHelp": "打开快捷键帮助",
   "settings.shortcuts.filterPlaceholder": "筛选快捷键…",
   "settings.shortcuts.filterEmpty": "没有符合筛选条件的快捷键。",

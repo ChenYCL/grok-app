@@ -7,6 +7,7 @@ import {
   sendShortcutDisplay,
   SHORTCUT_IDS,
   SHORTCUTS,
+  shortcutScope,
   shortcutsByGroup,
   shortcutsForPlatform,
   type GlobalModShortcutId,
@@ -54,13 +55,26 @@ describe("shortcuts catalog", () => {
     expect([...SHORTCUT_IDS]).toEqual(SHORTCUTS.map((s) => s.id));
   });
 
-  it("every row has mac and win bindings and a group", () => {
+  it("every row has mac and win bindings, a group, and a scope", () => {
     for (const s of SHORTCUTS) {
       expect(s.mac.trim().length).toBeGreaterThan(0);
       expect(s.win.trim().length).toBeGreaterThan(0);
       expect(s.labelKey.startsWith("shortcuts.")).toBe(true);
       expect(s.group).toBeTruthy();
+      expect(s.scope === "global" || s.scope === "chat-focus").toBe(true);
+      expect(shortcutScope(s.id)).toBe(s.scope);
     }
+  });
+
+  it("tags chat-surface actions as chat-focus and shell actions as global", () => {
+    expect(shortcutScope("findInChat")).toBe("chat-focus");
+    expect(shortcutScope("copyLastReply")).toBe("chat-focus");
+    expect(shortcutScope("send")).toBe("chat-focus");
+    expect(shortcutScope("stop")).toBe("chat-focus");
+    expect(shortcutScope("search")).toBe("global");
+    expect(shortcutScope("settings")).toBe("global");
+    expect(shortcutScope("toggleSidebar")).toBe("global");
+    expect(shortcutScope("doctor")).toBe("global");
   });
 
   it("lists find-in-chat and toggle sidebar", () => {
@@ -327,6 +341,14 @@ describe("filterShortcutRows", () => {
     expect(hits.some((r) => r.id === "findInChat")).toBe(true);
     const doctor = filterShortcutRows("DOCTOR", SHORTCUTS, tStub);
     expect(doctor.some((r) => r.id === "doctor")).toBe(true);
+  });
+
+  it("matches scope tokens", () => {
+    const chat = filterShortcutRows("chat-focus", SHORTCUTS, tStub);
+    expect(chat.some((r) => r.id === "findInChat")).toBe(true);
+    expect(chat.every((r) => r.scope === "chat-focus")).toBe(true);
+    const globalHits = filterShortcutRows("global", SHORTCUTS, tStub);
+    expect(globalHits.some((r) => r.id === "search")).toBe(true);
   });
 
   it("matches key chord text", () => {

@@ -4442,6 +4442,32 @@ html[data-theme="light"] .ui-check.is-mixed .ui-check__box {
   gap: 6px;
 }
 
+.settings-shortcuts-scope-pref {
+  margin: 0 0 4px;
+  padding-left: 16px;
+  padding-right: 16px;
+}
+
+.settings-shortcuts-scope {
+  display: inline-block;
+  font-size: 11.5px;
+  font-weight: 500;
+  line-height: 1.3;
+  padding: 2px 7px;
+  border-radius: 999px;
+  border: 1px solid var(--border-subtle);
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+.settings-shortcuts-scope--global {
+  background: color-mix(in srgb, var(--accent, #6b8afd) 10%, transparent);
+}
+
+.settings-shortcuts-scope--chat {
+  background: color-mix(in srgb, var(--text-tertiary) 12%, transparent);
+}
+
 .settings-shortcuts-filter {
   display: flex;
   align-items: center;

@@ -62,11 +62,15 @@ import {
   SHORTCUTS,
   detectShortcutPlatform,
   filterShortcutGroups,
+  shortcutScope,
   shortcutsByGroup,
   type ShortcutGroup,
   type ShortcutId,
+  type ShortcutScope,
 } from "@/lib/shortcuts";
 import {
+  SHORTCUT_IGNORE_CROSS_SCOPE_CHANGED_EVENT,
+  SHORTCUT_IGNORE_CROSS_SCOPE_STORAGE_KEY,
   SHORTCUT_REMAP_CHANGED_EVENT,
   SHORTCUT_REMAP_STORAGE_KEY,
   buildEffectiveChordMap,
@@ -77,10 +81,13 @@ import {
   formatChordDisplay,
   hasAnyShortcutRemaps,
   isRemappableShortcutId,
+  loadIgnoreCrossScopeConflicts,
   loadShortcutRemaps,
   resetConflictingShortcutRemaps,
+  saveIgnoreCrossScopeConflicts,
   setShortcutRecordingActive,
   setShortcutRemap,
+  type ChordConflictOpts,
   type ShortcutRemapMap,
 } from "@/lib/shortcutRemap";
 import type { Theme, ThemePreference } from "@/lib/theme";
@@ -5555,17 +5562,34 @@ function ShortcutsSettingsPanel({
   const [voiceHotkeyEnabled, setVoiceHotkeyEnabled] = useState(() =>
     loadVoiceHotkeyEnabled(),
   );
+  const [ignoreCrossScope, setIgnoreCrossScope] = useState(() =>
+    loadIgnoreCrossScopeConflicts(),
+  );
   const [recordingId, setRecordingId] = useState<ShortcutId | null>(null);
   const [recordError, setRecordError] = useState<string | null>(null);
+
+  const conflictOpts = useMemo<ChordConflictOpts>(
+    () => ({
+      ignoreCrossScope,
+      scopeOf: shortcutScope,
+    }),
+    [ignoreCrossScope],
+  );
 
   useEffect(() => {
     const reloadSend = () => setSendPref(loadComposerSendKeyPref());
     const reloadRemaps = () => setRemaps(loadShortcutRemaps());
     const reloadVoiceHotkey = () =>
       setVoiceHotkeyEnabled(loadVoiceHotkeyEnabled());
+    const reloadIgnoreCross = () =>
+      setIgnoreCrossScope(loadIgnoreCrossScopeConflicts());
     window.addEventListener(COMPOSER_SEND_KEY_CHANGED_EVENT, reloadSend);
     window.addEventListener(SHORTCUT_REMAP_CHANGED_EVENT, reloadRemaps);
     window.addEventListener(VOICE_HOTKEY_CHANGED_EVENT, reloadVoiceHotkey);
+    window.addEventListener(
+      SHORTCUT_IGNORE_CROSS_SCOPE_CHANGED_EVENT,
+      reloadIgnoreCross,
+    );
     const onStorage = (e: StorageEvent) => {
       if (e.key === "grok.composerSendKey" || e.key === null) reloadSend();
       if (e.key === SHORTCUT_REMAP_STORAGE_KEY || e.key === null) {
@@ -5574,12 +5598,22 @@ function ShortcutsSettingsPanel({
       if (e.key === VOICE_HOTKEY_STORAGE_KEY || e.key === null) {
         reloadVoiceHotkey();
       }
+      if (
+        e.key === SHORTCUT_IGNORE_CROSS_SCOPE_STORAGE_KEY ||
+        e.key === null
+      ) {
+        reloadIgnoreCross();
+      }
     };
     window.addEventListener("storage", onStorage);
     return () => {
       window.removeEventListener(COMPOSER_SEND_KEY_CHANGED_EVENT, reloadSend);
       window.removeEventListener(SHORTCUT_REMAP_CHANGED_EVENT, reloadRemaps);
       window.removeEventListener(VOICE_HOTKEY_CHANGED_EVENT, reloadVoiceHotkey);
+      window.removeEventListener(
+        SHORTCUT_IGNORE_CROSS_SCOPE_CHANGED_EVENT,
+        reloadIgnoreCross,
+      );
       window.removeEventListener("storage", onStorage);
     };
   }, []);
@@ -5605,7 +5639,12 @@ function ShortcutsSettingsPanel({
       const chord = chordFromKeyboardEvent(e);
       if (!chord) return;
       const effective = buildEffectiveChordMap(remaps);
-      const conflict = findChordConflict(recordingId, chord, effective);
+      const conflict = findChordConflict(
+        recordingId,
+        chord,
+        effective,
+        conflictOpts,
+      );
       if (conflict) {
         const conflictRow = SHORTCUTS.find((s) => s.id === conflict);
         const action = conflictRow
@@ -5628,7 +5667,7 @@ function ShortcutsSettingsPanel({
       window.removeEventListener("keydown", onKey, true);
       setShortcutRecordingActive(false);
     };
-  }, [recordingId, remaps, t]);
+  }, [recordingId, remaps, t, conflictOpts]);
 
   const groups = useMemo(
     () => shortcutsByGroup(sendPref, remaps, voiceHotkeyEnabled),
@@ -5643,8 +5682,8 @@ function ShortcutsSettingsPanel({
   );
 
   const conflictGroups = useMemo(
-    () => findChordConflicts(remaps),
-    [remaps],
+    () => findChordConflicts(remaps, undefined, conflictOpts),
+    [remaps, conflictOpts],
   );
   const conflictIdSet = useMemo(() => {
     const s = new Set<ShortcutId>();
@@ -5658,6 +5697,11 @@ function ShortcutsSettingsPanel({
     const row = SHORTCUTS.find((s) => s.id === id);
     return row ? t(row.labelKey as MessageKey) : id;
   };
+
+  const scopeLabel = (scope: ShortcutScope) =>
+    scope === "chat-focus"
+      ? t("settings.shortcuts.scope.chatFocus")
+      : t("settings.shortcuts.scope.global");
 
   const groupLabel = (g: ShortcutGroup) =>
     t(`settings.shortcuts.group.${g}` as MessageKey);
@@ -5684,7 +5728,7 @@ function ShortcutsSettingsPanel({
   };
 
   const resetConflicting = () => {
-    setRemaps(resetConflictingShortcutRemaps(remaps));
+    setRemaps(resetConflictingShortcutRemaps(remaps, localStorage, conflictOpts));
     setRecordingId(null);
     setRecordError(null);
   };
@@ -5718,6 +5762,25 @@ function ShortcutsSettingsPanel({
             {t("settings.shortcuts.resetAll")}
           </button>
         </div>
+      </div>
+      <div className="settings-row settings-shortcuts-scope-pref">
+        <div className="settings-row__text">
+          <div className="settings-row__label">
+            {t("settings.shortcuts.ignoreCrossScope")}
+          </div>
+          <div className="settings-row__desc">
+            {t("settings.shortcuts.ignoreCrossScopeDesc")}
+          </div>
+        </div>
+        <UiCheck
+          checked={ignoreCrossScope}
+          onChange={() => {
+            const next = !ignoreCrossScope;
+            setIgnoreCrossScope(next);
+            saveIgnoreCrossScopeConflicts(next);
+          }}
+          ariaLabel={t("settings.shortcuts.ignoreCrossScope")}
+        />
       </div>
       <div className="settings-shortcuts-filter">
         <IconSearch size={14} />
@@ -5756,7 +5819,10 @@ function ShortcutsSettingsPanel({
           </div>
           <ul className="settings-shortcuts-conflicts__list">
             {conflictGroups.map((group) => (
-              <li key={group.chord} className="settings-shortcuts-conflicts__item">
+              <li
+                key={`${group.chord}:${group.ids.join(",")}`}
+                className="settings-shortcuts-conflicts__item"
+              >
                 <kbd className="settings-shortcuts-kbd">
                   {formatChordDisplay(
                     group.chord,
@@ -5794,6 +5860,7 @@ function ShortcutsSettingsPanel({
               <thead>
                 <tr>
                   <th scope="col">{t("settings.shortcuts.colAction")}</th>
+                  <th scope="col">{t("settings.shortcuts.colScope")}</th>
                   <th
                     scope="col"
                     className={
@@ -5842,6 +5909,23 @@ function ShortcutsSettingsPanel({
                             ·
                           </span>
                         ) : null}
+                      </td>
+                      <td>
+                        <span
+                          className={
+                            "settings-shortcuts-scope" +
+                            (row.scope === "chat-focus"
+                              ? " settings-shortcuts-scope--chat"
+                              : " settings-shortcuts-scope--global")
+                          }
+                          title={
+                            row.scope === "chat-focus"
+                              ? t("settings.shortcuts.scope.chatFocusHint")
+                              : t("settings.shortcuts.scope.globalHint")
+                          }
+                        >
+                          {scopeLabel(row.scope)}
+                        </span>
                       </td>
                       <td>
                         <kbd
