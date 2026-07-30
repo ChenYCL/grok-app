@@ -393,6 +393,14 @@ export interface SettingsPageProps {
   /** Preferred agent definition name for spawn (`""` = CLI default). */
   preferredAgent?: string;
   onPreferredAgent?: (v: string) => void;
+  /**
+   * Optional agent profile file path for `grok agent --agent-profile`.
+   * Empty = omit flag. Local edits via `onAgentProfilePath`; persist via
+   * `onAgentProfilePathCommit` (blur / browse / clear) to avoid mid-type respawns.
+   */
+  agentProfilePath?: string;
+  onAgentProfilePath?: (v: string) => void;
+  onAgentProfilePathCommit?: (v: string) => void;
   /** Catalog rows for preferred-agent select. */
   agentCatalog?: Array<{ name: string; source: string }>;
   /** Cross-session memory toggle. */
@@ -930,6 +938,9 @@ export function SettingsPage({
   onMaxAgentTurns,
   preferredAgent = "",
   onPreferredAgent,
+  agentProfilePath = "",
+  onAgentProfilePath,
+  onAgentProfilePathCommit,
   agentCatalog = [],
   experimentalMemory = false,
   onExperimentalMemory,
@@ -2212,6 +2223,68 @@ export function SettingsPage({
                       }),
                     ]}
                   />
+                </div>
+              ) : null}
+              {onAgentProfilePath ? (
+                <div
+                  className={
+                    "settings-row settings-row--stack" +
+                    rowHighlight("settings-anchor-agentProfilePath")
+                  }
+                  id="settings-anchor-agentProfilePath"
+                >
+                  <div className="settings-row__text">
+                    <div className="settings-row__label">
+                      {t("settings.agentProfilePath")}
+                    </div>
+                    <div className="settings-row__desc">
+                      {t("settings.agentProfilePathDesc")}
+                    </div>
+                  </div>
+                  <input
+                    className="settings-input"
+                    value={agentProfilePath || ""}
+                    placeholder={t("settings.agentProfilePathPlaceholder")}
+                    onChange={(e) => onAgentProfilePath(e.target.value)}
+                    onBlur={(e) => {
+                      const next = e.target.value.trim();
+                      onAgentProfilePath(next);
+                      onAgentProfilePathCommit?.(next);
+                    }}
+                    spellCheck={false}
+                    autoComplete="off"
+                    aria-label={t("settings.agentProfilePath")}
+                  />
+                  <div
+                    className="settings-row__actions"
+                    style={{ display: "flex", gap: 8, flexWrap: "wrap" }}
+                  >
+                    <button
+                      type="button"
+                      className="btn btn--ghost btn--sm"
+                      onClick={() => {
+                        void api.pickAgentProfile().then((path) => {
+                          if (!path) return;
+                          onAgentProfilePath(path);
+                          onAgentProfilePathCommit?.(path);
+                        });
+                      }}
+                    >
+                      {t("settings.agentProfilePathBrowse")}
+                    </button>
+                    {agentProfilePath ? (
+                      <button
+                        type="button"
+                        className="btn btn--ghost btn--sm"
+                        onClick={() => {
+                          onAgentProfilePath("");
+                          onAgentProfilePathCommit?.("");
+                        }}
+                      >
+                        {t("settings.agentProfilePathClear")}
+                      </button>
+                    ) : null}
+                  </div>
                 </div>
               ) : null}
               {onExperimentalMemory ? (

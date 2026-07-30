@@ -430,6 +430,27 @@ export const SETTINGS_ENTRIES: readonly SettingsEntry[] = [
     keywords: ["preferred agent", "agent definition"],
   },
   {
+    id: "general.agentProfilePath",
+    section: "general",
+    tab: "agent",
+    anchorId: "settings-anchor-agentProfilePath",
+    labelKey: "settings.agentProfilePath",
+    descKeys: [
+      "settings.agentProfilePathDesc",
+      "settings.agentProfilePathBrowse",
+      "settings.agentProfilePathClear",
+    ],
+    keywords: [
+      "agent profile",
+      "agent-profile",
+      "profile path",
+      "agent profile path",
+      "profile 文件",
+      "profile 路徑",
+      "agent profile 路径",
+    ],
+  },
+  {
     id: "general.experimentalMemory",
     section: "general",
     tab: "agent",

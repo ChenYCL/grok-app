@@ -67,6 +67,27 @@ pub fn agent_spawn_cli_args(raw: &str) -> Option<Vec<String>> {
     Some(vec!["--agent".into(), name])
 }
 
+/// Pure: normalize Settings → Agent profile path for spawn.
+/// Empty / control chars → `None` (omit `--agent-profile`).
+/// Does not check filesystem existence.
+pub fn normalize_agent_profile_path(raw: &str) -> Option<String> {
+    let path = raw.trim();
+    if path.is_empty() {
+        return None;
+    }
+    if path.chars().any(|c| c == '\0' || c == '\n' || c == '\r') {
+        return None;
+    }
+    Some(path.to_string())
+}
+
+/// Pure: agent-option CLI args `["--agent-profile", path]` when set.
+/// Placement: after `grok agent` and before `stdio` (not top-level).
+pub fn agent_profile_spawn_cli_args(raw: &str) -> Option<Vec<String>> {
+    let path = normalize_agent_profile_path(raw)?;
+    Some(vec!["--agent-profile".into(), path])
+}
+
 /// File stem for agent def (`explore.md` → `explore`).
 pub fn agent_name_from_file_name(file_name: &str) -> Option<String> {
     let base = Path::new(file_name)
@@ -267,6 +288,35 @@ mod tests {
         assert_eq!(
             agent_spawn_cli_args("  plan  "),
             Some(vec!["--agent".into(), "plan".into()])
+        );
+    }
+
+    #[test]
+    fn normalize_agent_profile_path_empty_and_controls() {
+        assert!(normalize_agent_profile_path("").is_none());
+        assert!(normalize_agent_profile_path("  ").is_none());
+        assert!(normalize_agent_profile_path("/tmp/a\nb.md").is_none());
+        assert!(normalize_agent_profile_path("x\0y").is_none());
+    }
+
+    #[test]
+    fn normalize_agent_profile_path_trims() {
+        assert_eq!(
+            normalize_agent_profile_path("  /tmp/my-agent.md  ").as_deref(),
+            Some("/tmp/my-agent.md")
+        );
+        assert_eq!(
+            normalize_agent_profile_path("./agents/custom.md").as_deref(),
+            Some("./agents/custom.md")
+        );
+    }
+
+    #[test]
+    fn agent_profile_spawn_args() {
+        assert!(agent_profile_spawn_cli_args("").is_none());
+        assert_eq!(
+            agent_profile_spawn_cli_args("  /tmp/a.md  "),
+            Some(vec!["--agent-profile".into(), "/tmp/a.md".into()])
         );
     }
 

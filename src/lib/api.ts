@@ -367,6 +367,11 @@ export async function pickCliBinary() {
   return invoke<string | null>("pick_cli_binary");
 }
 
+/** Native file picker for Settings → Agent profile path. */
+export async function pickAgentProfile() {
+  return invoke<string | null>("pick_agent_profile");
+}
+
 export async function openExternalUrl(url: string) {
   return invoke<void>("open_external_url", { url });
 }
@@ -1100,6 +1105,11 @@ export interface AppSettings {
 
   maxAgentTurns?: number | null;
   preferredAgent?: string;
+  /**
+   * Optional path for `grok agent --agent-profile <PATH>`.
+   * Empty = omit flag (CLI default). Soft-respawns on change.
+   */
+  agentProfilePath?: string;
   experimentalMemory?: boolean;
   disableWebSearch?: boolean;
   /**
