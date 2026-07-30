@@ -12102,8 +12102,11 @@ export default function App() {
     }
     const gen = ++exportImageGenRef.current;
     let cancelled = false;
-    const showBusy = !exportImagePreviewBlobRef.current;
-    if (showBusy) setExportImageBusy(true);
+    // Always invalidate prior preview when rebuilding (session change OR smart
+    // toggle). Leaving the old blob makes Save/Copy export the wrong mode.
+    revokeExportImagePreview();
+    setExportImageStyleLabel(null);
+    setExportImageBusy(true);
     setExportImagePreviewError(null);
     void (async () => {
       try {
@@ -12127,7 +12130,7 @@ export default function App() {
         if (code === "empty" || String(e).includes("empty")) {
           revokeExportImagePreview();
           setExportImagePreviewError(tr("session.exportImageEmpty"));
-        } else if (!exportImagePreviewBlobRef.current) {
+        } else {
           setExportImagePreviewError(
             `${tr("session.exportImageFail")}: ${String(e)}`,
           );
@@ -12153,16 +12156,20 @@ export default function App() {
   const runExportSessionImage = useCallback(
     async (mode: "download" | "copy") => {
       if (!exportImageTarget) return;
+      // Never save a mid-rebuild preview (smart toggle / session switch).
+      if (exportImageBusy && !exportImagePreviewBlobRef.current) return;
       setExportImageBusy(true);
       try {
         let blob = exportImagePreviewBlobRef.current;
         let title = exportImageTarget.title;
         let id = exportImageTarget.id;
+        // Always rebuild when no ready blob (cleared on smart toggle / open).
         if (!blob) {
           const built = await buildExportImageBlob();
           blob = built.blob;
           title = built.title;
           id = built.id;
+          exportImagePreviewBlobRef.current = blob;
         } else {
           title =
             exportImageTarget.title ||
@@ -12222,6 +12229,7 @@ export default function App() {
       }
     },
     [
+      exportImageBusy,
       exportImageTarget,
       buildExportImageBlob,
       session.sessionId,
