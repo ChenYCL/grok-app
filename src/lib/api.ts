@@ -1173,6 +1173,12 @@ export interface AppSettings {
    * Empty = omit flag (CLI default). Soft-respawns on change.
    */
   agentProfilePath?: string;
+  /**
+   * Optional inline subagent definitions JSON for top-level `grok --agents <JSON>`.
+   * Empty = omit flag. Must be a JSON object map when set; invalid values reject save.
+   * Soft-respawns on change. Does not write into shared ~/.grok.
+   */
+  agentsJson?: string;
   experimentalMemory?: boolean;
   disableWebSearch?: boolean;
   /**
