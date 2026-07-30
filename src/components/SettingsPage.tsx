@@ -181,6 +181,10 @@ import {
   saveConfirmExternalLinksPref,
 } from "@/lib/externalLinkPref";
 import {
+  loadStopAllSkipConfirmPref,
+  saveStopAllSkipConfirmPref,
+} from "@/lib/stopAllSkipConfirmPref";
+import {
   loadNotifyQuietHoursPref,
   normalizeHHmm,
   saveNotifyQuietHoursPref,
@@ -1044,6 +1048,10 @@ export function SettingsPage({
   );
   const [confirmExternalLinks, setConfirmExternalLinks] = useState(() =>
     loadConfirmExternalLinksPref(),
+  );
+  /** Skip Stop-all confirm — frontend-only localStorage. */
+  const [stopAllSkipConfirm, setStopAllSkipConfirm] = useState(() =>
+    loadStopAllSkipConfirmPref(),
   );
   /** Desktop notification quiet hours — localStorage only. */
   const [notifyQuietHours, setNotifyQuietHours] =
@@ -2653,6 +2661,31 @@ export function SettingsPage({
                   </div>
                 </div>
               ) : null}
+              <div
+                className={
+                  "settings-row" +
+                  rowHighlight("settings-anchor-stopAllSkipConfirm")
+                }
+                id="settings-anchor-stopAllSkipConfirm"
+              >
+                <div className="settings-row__text">
+                  <div className="settings-row__label">
+                    {t("settings.stopAllSkipConfirm")}
+                  </div>
+                  <div className="settings-row__desc">
+                    {t("settings.stopAllSkipConfirmDesc")}
+                  </div>
+                </div>
+                <UiCheck
+                  checked={stopAllSkipConfirm}
+                  onChange={() => {
+                    const next = !stopAllSkipConfirm;
+                    setStopAllSkipConfirm(next);
+                    saveStopAllSkipConfirmPref(next);
+                  }}
+                  ariaLabel={t("settings.stopAllSkipConfirm")}
+                />
+              </div>
               {onDefaultOpenTarget && (
                 <div
                   className={"settings-row" + rowHighlight("settings-anchor-openTarget")}

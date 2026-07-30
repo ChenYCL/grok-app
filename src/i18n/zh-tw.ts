@@ -1069,6 +1069,9 @@ export const zhTW: Record<MessageKey, string> = {
     "在本地時間窗口內不發送桌面通知（例如夜間）。應用程式內提示不受影響。",
   "settings.notifyQuietHoursStart": "開始",
   "settings.notifyQuietHoursEnd": "結束",
+  "settings.stopAllSkipConfirm": "全部停止時跳過確認",
+  "settings.stopAllSkipConfirmDesc":
+    "開啟後，任務面板 / Agent 總覽中的「全部停止」不再彈出確認對話框，立即執行。預設關閉。",
   "settings.prefsScope": "模型與權限記憶範圍",
   "settings.prefsScopeDesc":
     "全域：所有對話共用。專案：依工作區記憶。對話：僅目前聊天。",
