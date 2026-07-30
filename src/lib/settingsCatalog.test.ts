@@ -99,6 +99,7 @@ describe("settingsCatalog", () => {
     expect(appearance).toContain("settings.wallpaper");
     expect(appearance).toContain("settings.thinkingExpand");
     expect(appearance).toContain("settings.chatFontScale");
+    expect(appearance).toContain("settings.codeFontScale");
     expect(appearance).toContain("settings.chatDensity");
     expect(appearance).toContain("settings.chatWidth");
     expect(appearance).toContain("settings.sidebarDensity");

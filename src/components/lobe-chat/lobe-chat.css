@@ -15,6 +15,8 @@
   --chat-fs: 14px;
   --chat-fs-sm: 12.5px;
   --chat-fs-xs: 11.5px;
+  /* Code block font; overridden by html[data-code-font] (Appearance). */
+  --code-fs: 12.5px;
   --chat-lh: 1.65;
   --chat-lh-sm: 1.5;
 
@@ -548,7 +550,7 @@ html[data-msg-actions="always"] .lobe-chat-item__actions {
   padding: 10px 14px 14px;
   overflow-x: auto;
   font-family: var(--chat-mono);
-  font-size: var(--chat-fs-sm);
+  font-size: var(--code-fs, var(--chat-fs-sm));
   line-height: 1.55;
   /* Explicit fg — never inherit a muted/wrong parent color */
   color: var(--chat-code-fg) !important;
@@ -592,7 +594,7 @@ html[data-msg-actions="always"] .lobe-chat-item__actions {
   padding: 10px 0 14px 12px;
   margin: 0;
   font-family: var(--chat-mono);
-  font-size: var(--chat-fs-sm);
+  font-size: var(--code-fs, var(--chat-fs-sm));
   line-height: 1.55;
   color: var(--chat-text-3);
   user-select: none;
@@ -1901,6 +1903,32 @@ html[data-chat-font="lg"] .lobe-chat,
   --chat-fs: 16px;
   --chat-fs-sm: 14px;
   --chat-fs-xs: 12.5px;
+}
+
+/*
+ * Code block font scale (Settings → Appearance). Prefer html[data-code-font]
+ * so fenced code / pre size is independent of chat body text size.
+ */
+html[data-code-font="sm"] .lobe-chat,
+.lobe-chat[data-code-font="sm"] {
+  --code-fs: 11.5px;
+}
+
+html[data-code-font="md"] .lobe-chat,
+.lobe-chat[data-code-font="md"] {
+  --code-fs: 12.5px;
+}
+
+html[data-code-font="lg"] .lobe-chat,
+.lobe-chat[data-code-font="lg"] {
+  --code-fs: 14px;
+}
+
+/* Alias selectors for generic code-block / pre surfaces in chat. */
+html[data-code-font] .lobe-chat .code-block,
+html[data-code-font] .lobe-chat .code-block pre,
+html[data-code-font] .lobe-chat pre.code-block {
+  font-size: var(--code-fs, var(--chat-fs-sm));
 }
 
 /*

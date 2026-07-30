@@ -83,6 +83,13 @@ import {
   type ChatFontScale,
 } from "@/lib/chatFontScale";
 import {
+  CODE_FONT_SCALES,
+  applyCodeFontScale,
+  loadCodeFontScale,
+  saveCodeFontScale,
+  type CodeFontScale,
+} from "@/lib/codeFontScalePref";
+import {
   CHAT_DENSITIES,
   applyChatDensity,
   loadChatDensity,
@@ -992,6 +999,18 @@ export function SettingsPage({
     setChatFontScaleState(next);
     saveChatFontScale(next);
     applyChatFontScale(next);
+  }, []);
+  /** Chat code-block font scale — localStorage only (no AppSettings). */
+  const [codeFontScale, setCodeFontScaleState] = useState<CodeFontScale>(() =>
+    loadCodeFontScale(),
+  );
+  useEffect(() => {
+    applyCodeFontScale(loadCodeFontScale());
+  }, []);
+  const onCodeFontScale = useCallback((next: CodeFontScale) => {
+    setCodeFontScaleState(next);
+    saveCodeFontScale(next);
+    applyCodeFontScale(next);
   }, []);
   /** Chat transcript density — localStorage only (no AppSettings). */
   const [chatDensity, setChatDensityState] = useState<ChatDensity>(() =>
@@ -3206,6 +3225,43 @@ export function SettingsPage({
                           onClick={() => onChatFontScale(scale)}
                         >
                           {t(`settings.chatFontScale.${scale}`)}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+                <div
+                  className={
+                    "settings-card" +
+                    rowHighlight("settings-anchor-codeFontScale")
+                  }
+                  id="settings-anchor-codeFontScale"
+                >
+                  <div className="settings-row">
+                    <div className="settings-row__text">
+                      <SettingsLabelWithTip
+                        label={t("settings.codeFontScale")}
+                        tip={t("settings.codeFontScaleDesc")}
+                      />
+                    </div>
+                    <div
+                      className="settings-seg"
+                      role="radiogroup"
+                      aria-label={t("settings.codeFontScale")}
+                    >
+                      {CODE_FONT_SCALES.map((scale) => (
+                        <button
+                          key={scale}
+                          type="button"
+                          role="radio"
+                          aria-checked={codeFontScale === scale}
+                          className={
+                            "settings-seg__btn" +
+                            (codeFontScale === scale ? " is-on" : "")
+                          }
+                          onClick={() => onCodeFontScale(scale)}
+                        >
+                          {t(`settings.codeFontScale.${scale}`)}
                         </button>
                       ))}
                     </div>

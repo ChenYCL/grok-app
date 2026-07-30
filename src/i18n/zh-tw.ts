@@ -1111,6 +1111,12 @@ export const zhTW: Record<MessageKey, string> = {
   "settings.chatFontScale.sm": "小",
   "settings.chatFontScale.md": "中",
   "settings.chatFontScale.lg": "大",
+  "settings.codeFontScale": "程式碼區塊字號",
+  "settings.codeFontScaleDesc":
+    "聊天中圍欄程式碼區塊的文字大小（與對話字號相互獨立）",
+  "settings.codeFontScale.sm": "小",
+  "settings.codeFontScale.md": "中",
+  "settings.codeFontScale.lg": "大",
   "settings.chatDensity": "對話密度",
   "settings.chatDensityDesc": "會話訊息區間距（氣泡內邊距與行距）",
   "settings.chatDensity.comfortable": "舒適",
