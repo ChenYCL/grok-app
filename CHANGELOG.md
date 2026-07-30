@@ -42,6 +42,7 @@ See `docs/llm-wiki/release.md`.
 
 #### Permissions / CLI
 - **CLI `--permission-mode` alignment**: pure App policy / YOLO / plan-mode map (`default` · `acceptEdits` · `auto` · `dontAsk` · `bypassPermissions` · `plan`); spawn pins top-level `--permission-mode` (+ agent `--always-approve` for YOLO); Settings shows CLI label + advanced mode selector; product **Auto** policy
+- **Delete CLI sessions from disk** (Settings → Agent / CLI sessions): per-row delete + delete all unlinked; path-scoped under active `GROK_HOME/sessions`; linked App chats stay
 
 ### Fixed
 
@@ -54,7 +55,7 @@ See `docs/llm-wiki/release.md`.
 - **外观/壳**：主题定时、跟随系统语言、忙碌退出确认、托盘角标
 - **Agent**：禁用内置工具（芯片 + 自由列表 → `--disallowed-tools`；与禁用网页搜索并存；更改 soft-respawn）；可选 profile 路径（`--agent-profile`）
 - **系统**：**Agent serve** 在设置 → 运行时 → 连接启停（掩码密钥 + 启动时复制连接 URL）
-- **权限/CLI**：对齐 `--permission-mode` 映射与 spawn；设置页展示 CLI 标签与高级选择；新增 **Auto** 策略
+- **权限/CLI**：对齐 `--permission-mode` 映射与 spawn；设置页展示 CLI 标签与高级选择；新增 **Auto** 策略；**删除磁盘 CLI 会话**（单条 / 全部未关联；限定 `GROK_HOME/sessions`；应用内已关联聊天保留）
 
 **中文 · 修复**
 

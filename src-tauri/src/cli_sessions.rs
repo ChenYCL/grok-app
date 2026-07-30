@@ -538,6 +538,132 @@ pub fn import_all_cli_sessions(
     Ok(imported)
 }
 
+/// Reject empty / traversal-looking agent session ids before any path join.
+pub fn validate_agent_session_id(agent_session_id: &str) -> Result<&str, String> {
+    let id = agent_session_id.trim();
+    if id.is_empty() {
+        return Err("empty agent_session_id".into());
+    }
+    if id.contains('\0') {
+        return Err("invalid agent_session_id".into());
+    }
+    // Single path segment only — no separators or relative components.
+    if id.contains('/') || id.contains('\\') || id == "." || id == ".." || id.contains("..") {
+        return Err("invalid agent_session_id".into());
+    }
+    Ok(id)
+}
+
+/// True when `path` is exactly `{sessions_root}/{cwd_enc}/{agent_id}` (2 levels).
+fn is_strict_cli_session_dir(path: &Path, sessions_root: &Path, agent_id: &str) -> bool {
+    let name = match path.file_name().and_then(|s| s.to_str()) {
+        Some(n) if n == agent_id => n,
+        _ => return false,
+    };
+    let Ok(rel) = path.strip_prefix(sessions_root) else {
+        return false;
+    };
+    let mut depth = 0usize;
+    for c in rel.components() {
+        match c {
+            std::path::Component::Normal(os) => {
+                // First segment is percent-encoded cwd; second must be agent id.
+                if depth == 1 {
+                    if os.to_str() != Some(name) {
+                        return false;
+                    }
+                }
+                depth += 1;
+                if depth > 2 {
+                    return false;
+                }
+            }
+            _ => return false,
+        }
+    }
+    depth == 2
+}
+
+/// Resolve a deletable CLI session directory under `sessions_root`.
+///
+/// When `dir` is provided it is preferred (from list), but must still canonicalize
+/// under `{sessions_root}/{cwd}/{agent_session_id}`. Path traversal and id mismatch
+/// are rejected. Does not touch App journals.
+pub fn resolve_deletable_cli_session_dir(
+    agent_session_id: &str,
+    dir: Option<&str>,
+    sessions_root: &Path,
+) -> Result<PathBuf, String> {
+    let agent_id = validate_agent_session_id(agent_session_id)?;
+
+    let sessions_canon = sessions_root.canonicalize().map_err(|e| {
+        format!("sessions root not available: {e}")
+    })?;
+
+    let candidate = if let Some(d) = dir.map(str::trim).filter(|s| !s.is_empty()) {
+        if d.contains('\0') {
+            return Err("invalid session dir".into());
+        }
+        PathBuf::from(d)
+    } else {
+        // Scan sessions_root/{cwd_enc}/{agent_id}/
+        let Ok(cwd_dirs) = fs::read_dir(&sessions_canon) else {
+            return Err(format!("CLI session dir not found for {agent_id}"));
+        };
+        let mut found: Option<PathBuf> = None;
+        for ent in cwd_dirs.flatten() {
+            let cwd_path = ent.path();
+            if !cwd_path.is_dir() {
+                continue;
+            }
+            let hit = cwd_path.join(agent_id);
+            if hit.is_dir() {
+                if found.is_some() {
+                    return Err(format!(
+                        "ambiguous CLI session dir for {agent_id}; pass dir from list"
+                    ));
+                }
+                found = Some(hit);
+            }
+        }
+        found.ok_or_else(|| format!("CLI session dir not found for {agent_id}"))?
+    };
+
+    let target = candidate
+        .canonicalize()
+        .map_err(|e| format!("session dir not found: {e}"))?;
+
+    if !target.is_dir() {
+        return Err(format!("not a directory: {}", target.display()));
+    }
+    if !is_strict_cli_session_dir(&target, &sessions_canon, agent_id) {
+        return Err("path not allowed: outside GROK_HOME/sessions or id mismatch".into());
+    }
+    Ok(target)
+}
+
+/// Delete one CLI session directory under the active GROK_HOME only.
+///
+/// Removes the on-disk tree (`summary.json`, `chat_history.jsonl`, …).
+/// Does **not** delete or unlink App chats — linked sidebar rows stay.
+pub fn delete_cli_session(
+    agent_session_id: &str,
+    dir: Option<&str>,
+    session_data_mode: &str,
+) -> Result<(), String> {
+    let home = resolve_agent_grok_home(session_data_mode);
+    let sessions = home.join("sessions");
+    let target = resolve_deletable_cli_session_dir(agent_session_id, dir, &sessions)?;
+    fs::remove_dir_all(&target).map_err(|e| format!("delete failed: {e}"))?;
+    tracing::info!(
+        target: "session",
+        agent = %agent_session_id,
+        dir = %target.display(),
+        "deleted on-disk CLI session under GROK_HOME"
+    );
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -627,5 +753,102 @@ mod tests {
             journal_covers_assistant(&full, "基于已有调研，产出矩阵。"),
             CoverKind::Covered
         );
+    }
+
+    #[test]
+    fn validate_agent_session_id_rejects_traversal() {
+        assert!(validate_agent_session_id("").is_err());
+        assert!(validate_agent_session_id("   ").is_err());
+        assert!(validate_agent_session_id("../etc").is_err());
+        assert!(validate_agent_session_id("a/b").is_err());
+        assert!(validate_agent_session_id("a\\b").is_err());
+        assert!(validate_agent_session_id("..").is_err());
+        assert!(validate_agent_session_id("sess-ok-123").is_ok());
+    }
+
+    fn make_fake_cli_session(home: &Path, agent_id: &str) -> PathBuf {
+        let cwd_enc = percent_encode_path_component("/Users/me/proj");
+        let dir = home.join("sessions").join(cwd_enc).join(agent_id);
+        fs::create_dir_all(&dir).unwrap();
+        fs::write(dir.join("summary.json"), r#"{"generated_title":"t"}"#).unwrap();
+        fs::write(dir.join("chat_history.jsonl"), "").unwrap();
+        dir
+    }
+
+    #[test]
+    fn resolve_delete_accepts_strict_session_dir() {
+        let home = std::env::temp_dir().join(format!("cli-del-ok-{}", Uuid::new_v4()));
+        let agent_id = "agent-sess-aaaa";
+        let dir = make_fake_cli_session(&home, agent_id);
+        let sessions = home.join("sessions");
+        let resolved =
+            resolve_deletable_cli_session_dir(agent_id, Some(dir.to_str().unwrap()), &sessions)
+                .unwrap();
+        assert_eq!(resolved, dir.canonicalize().unwrap());
+        // Discover by id alone
+        let by_id = resolve_deletable_cli_session_dir(agent_id, None, &sessions).unwrap();
+        assert_eq!(by_id, dir.canonicalize().unwrap());
+        let _ = fs::remove_dir_all(&home);
+    }
+
+    #[test]
+    fn resolve_delete_rejects_outside_sessions_and_id_mismatch() {
+        let home = std::env::temp_dir().join(format!("cli-del-bad-{}", Uuid::new_v4()));
+        let agent_id = "agent-sess-bbbb";
+        let _dir = make_fake_cli_session(&home, agent_id);
+        let sessions = home.join("sessions");
+
+        // Outside sessions root
+        let outside = home.join("other").join(agent_id);
+        fs::create_dir_all(&outside).unwrap();
+        assert!(
+            resolve_deletable_cli_session_dir(agent_id, Some(outside.to_str().unwrap()), &sessions)
+                .is_err()
+        );
+
+        // Id does not match directory name
+        let wrong_name = sessions
+            .join(percent_encode_path_component("/Users/me/proj"))
+            .join("not-the-agent");
+        fs::create_dir_all(&wrong_name).unwrap();
+        assert!(resolve_deletable_cli_session_dir(
+            agent_id,
+            Some(wrong_name.to_str().unwrap()),
+            &sessions
+        )
+        .is_err());
+
+        // sessions root itself
+        assert!(
+            resolve_deletable_cli_session_dir(agent_id, Some(sessions.to_str().unwrap()), &sessions)
+                .is_err()
+        );
+
+        // cwd folder (only one level under sessions)
+        let cwd_only = sessions.join(percent_encode_path_component("/Users/me/proj"));
+        assert!(resolve_deletable_cli_session_dir(
+            agent_id,
+            Some(cwd_only.to_str().unwrap()),
+            &sessions
+        )
+        .is_err());
+
+        let _ = fs::remove_dir_all(&home);
+    }
+
+    #[test]
+    fn delete_cli_session_removes_tree() {
+        let home = std::env::temp_dir().join(format!("cli-del-rm-{}", Uuid::new_v4()));
+        let agent_id = "agent-sess-cccc";
+        let dir = make_fake_cli_session(&home, agent_id);
+        let sessions = home.join("sessions");
+        let target =
+            resolve_deletable_cli_session_dir(agent_id, Some(dir.to_str().unwrap()), &sessions)
+                .unwrap();
+        fs::remove_dir_all(&target).unwrap();
+        assert!(!dir.exists());
+        // sibling under home must remain
+        assert!(sessions.is_dir() || !home.join("sessions").exists() || home.exists());
+        let _ = fs::remove_dir_all(&home);
     }
 }
