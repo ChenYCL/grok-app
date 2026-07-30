@@ -7489,6 +7489,19 @@ pub async fn memory_delete_file(
     .map_err(|e| format!("memory delete task failed: {e}"))?
 }
 
+/// Read agent `config.toml` for the active session data mode (secrets redacted).
+///
+/// Independent → App agent-home; shared → `~/.grok/config.toml` (UI should warn).
+#[tauri::command]
+pub async fn agent_config_toml_read(
+) -> Result<crate::agent_config_view::AgentConfigTomlReadResult, String> {
+    let settings = store::load_settings();
+    let mode = settings.session_data_mode.clone();
+    tokio::task::spawn_blocking(move || crate::agent_config_view::read_agent_config_toml(&mode))
+        .await
+        .map_err(|e| format!("agent config.toml read task failed: {e}"))
+}
+
 /// List agent definitions available for session agent selection.
 #[tauri::command]
 pub async fn agents_catalog(

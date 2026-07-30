@@ -3,6 +3,7 @@
 mod account;
 mod account_profiles;
 mod acp_client;
+mod agent_config_view;
 mod agent_memory;
 mod agents_catalog;
 mod agent_prefs;
@@ -308,6 +309,7 @@ pub fn run() {
             commands::memory_clear,
             commands::memory_list,
             commands::memory_delete_file,
+            commands::agent_config_toml_read,
             commands::settings_remember_last_session,
             commands::models_list_available,
             commands::agents_catalog,
