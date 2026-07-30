@@ -147,6 +147,12 @@ import {
   PERMISSION_POLICIES,
 } from "@/lib/grokCatalog";
 import {
+  CLI_PERMISSION_MODES,
+  cliPermissionModeToPolicy,
+  isPolicyCliOneToOne,
+  policyToCliPermissionMode,
+} from "@/lib/permissionModeMap";
+import {
   COMPOSER_SEND_KEY_CHANGED_EVENT,
   loadComposerSendKeyPref,
   saveComposerSendKeyPref,
@@ -2021,6 +2027,7 @@ export function SettingsPage({
                           ask: "policy.ask",
                           accept_edits: "policy.accept_edits",
                           allow_for_session: "policy.allow_for_session",
+                          auto: "policy.auto",
                           dont_ask: "policy.dont_ask",
                           always_approve: "policy.always_approve",
                         } as const
@@ -2028,6 +2035,68 @@ export function SettingsPage({
                     ),
                   }))}
                 />
+                <div
+                  className="settings-row__desc"
+                  style={{ marginTop: 8 }}
+                  id="settings-anchor-cliPermissionMode"
+                >
+                  {t("settings.permissionCliMode", {
+                    mode: policyToCliPermissionMode(policy),
+                  })}
+                  {!isPolicyCliOneToOne(policy) ? (
+                    <>
+                      {" "}
+                      {t("settings.permissionCliModeNotOneToOne")}
+                    </>
+                  ) : null}
+                </div>
+              </div>
+              <div
+                className={
+                  "settings-row settings-row--stack" +
+                  rowHighlight("settings-anchor-cliPermissionModeAdvanced")
+                }
+                id="settings-anchor-cliPermissionModeAdvanced"
+              >
+                <div className="settings-row__text">
+                  <div className="settings-row__label">
+                    {t("settings.permissionCliAdvanced")}
+                  </div>
+                  <div className="settings-row__desc">
+                    {t("settings.permissionCliAdvancedDesc")}
+                  </div>
+                </div>
+                <Select
+                  value={policyToCliPermissionMode(policy)}
+                  onChange={(v) => {
+                    if (v === "plan") {
+                      // Plan is a product session mode, not a stored policy.
+                      // Keep current policy; user switches Plan from the composer.
+                      return;
+                    }
+                    onPolicy(cliPermissionModeToPolicy(v));
+                  }}
+                  options={CLI_PERMISSION_MODES.map((mode) => ({
+                    value: mode,
+                    label: t(
+                      (
+                        {
+                          default: "cliPermission.default",
+                          acceptEdits: "cliPermission.acceptEdits",
+                          auto: "cliPermission.auto",
+                          dontAsk: "cliPermission.dontAsk",
+                          bypassPermissions: "cliPermission.bypassPermissions",
+                          plan: "cliPermission.plan",
+                        } as const
+                      )[mode],
+                    ),
+                  }))}
+                />
+                <div className="settings-row__desc" style={{ marginTop: 8 }}>
+                  {t("settings.permissionCliAdvancedHint", {
+                    mode: policyToCliPermissionMode(policy),
+                  })}
+                </div>
               </div>
               {onSandboxProfile ? (
                 <div

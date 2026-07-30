@@ -16,7 +16,7 @@
 Spawn 顺序（CLI 0.2.x）：
 
 ```text
-grok agent --model <id> --reasoning-effort <e> [--always-approve] stdio
+grok --permission-mode <mode> agent --model <id> --reasoning-effort <e> [--always-approve] stdio
 ```
 
 Flags **必须在** `stdio` 之前。连接后 `session/set_model` 再对齐一次。
@@ -61,19 +61,35 @@ Spawn：`--reasoning-effort <id>`。无模型级默认时 App 默认 **`medium`*
 
 更改后 soft-respawn（`settings_spawn`）。源码：`src/lib/disallowedTools.ts`、Host `AppSettings.disallowed_tools`、`acp_client::disallowed_tools_spawn_flags`。
 
-## 权限（含 YOLO）
+## 权限（含 YOLO）与 CLI `--permission-mode`
 
-| App ID | Agent 配置 `[ui] permission_mode` | Claude `defaultMode` | Spawn |
-|--------|-----------------------------------|----------------------|-------|
-| `ask` | `default` | `default` | — |
-| `accept_edits` | `acceptEdits` | `acceptEdits` | — |
-| `allow_for_session` | `default` + Host 会话缓存 | `default` | — |
-| `dont_ask` | `dontAsk` | `dontAsk` | — |
-| `always_approve` | `always-approve` + `yolo=true` | `bypassPermissions` | `--always-approve` |
+CLI enum（`grok --help`）：`default | acceptEdits | auto | dontAsk | bypassPermissions | plan`。
+
+纯映射：`src/lib/permissionModeMap.ts`（前端）与 `src-tauri/src/acp_client.rs`（`cli_permission_mode` / `resolve_cli_permission_mode`）。
+
+| App ID | CLI `--permission-mode` | Agent 配置 `[ui] permission_mode` | Claude `defaultMode` | 额外 Spawn |
+|--------|-------------------------|-----------------------------------|----------------------|------------|
+| `ask` | `default` | `default` | `default` | `--permission-mode default` |
+| `accept_edits` | `acceptEdits` | `acceptEdits` | `acceptEdits` | `--permission-mode acceptEdits` |
+| `allow_for_session` | `default`（Host 会话缓存） | `default` | `default` | `--permission-mode default` |
+| `auto` | `auto` | `auto` | `auto` | `--permission-mode auto` |
+| `dont_ask` | `dontAsk` | `dontAsk` | `dontAsk` | `--permission-mode dontAsk` |
+| `always_approve` | `bypassPermissions` | `always-approve` + `yolo=true` | `bypassPermissions` | `--permission-mode bypassPermissions` + `--always-approve` |
+| （产品 mode=`plan`） | `plan`（YOLO 优先） | 不变 | 不变 | `--permission-mode plan` |
+
+**优先级**：YOLO / `always_approve` → `bypassPermissions`；否则产品会话 mode=`plan` → `plan`；否则策略表。
+
+Spawn（CLI 0.2.x）示例：
+
+```text
+grok --no-auto-update --permission-mode <mode> agent [--always-approve] … stdio
+```
+
+`--permission-mode` 为 **top-level**；`--always-approve` 为 **agent** option。
 
 **Independent 模式**（默认）：写入 `~/.grok-app/agent-home/config.toml` 与 `agent-home/.claude/settings.json`，agent 进程侧真正按策略执行。
 
-**Shared 模式**：不改写用户 `~/.grok/config.toml`；Host 策略 + YOLO 时的 `--always-approve`。
+**Shared 模式**：不改写用户 `~/.grok/config.toml`；Host 策略 + spawn flags（含 `--permission-mode` / YOLO 时的 `--always-approve`）。
 
 中途改权限：同步配置 + soft-respawn（含 YOLO 降级）。Host 在收到 `session/request_permission` 时仍按 live policy 自动放行/拒绝。
 

@@ -66,6 +66,7 @@ export type PhoneComposerToolsSheetProps = {
     policyAsk: string;
     policyAcceptEdits: string;
     policySession: string;
+    policyAuto: string;
     policyDontAsk: string;
     policyYolo: string;
     effortHigh: string;
@@ -124,6 +125,8 @@ function policyLabel(
       return labels.policyAcceptEdits;
     case "allow_for_session":
       return labels.policySession;
+    case "auto":
+      return labels.policyAuto;
     case "dont_ask":
       return labels.policyDontAsk;
     case "always_approve":

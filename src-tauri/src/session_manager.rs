@@ -2779,6 +2779,7 @@ impl SessionManager {
             model_id: Some(agent_model.clone()),
             effort: Some(prefs.effort.clone()),
             permission_policy: Some(prefs.permission_policy.clone()),
+            product_mode: Some(prefs.mode.clone()),
             sandbox_profile: Some(effective_sandbox),
             json_schema: meta
                 .json_schema

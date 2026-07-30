@@ -783,22 +783,32 @@ const en = {
   "policy.ask": "Request approval",
   "policy.accept_edits": "Accept edits",
   "policy.allow_for_session": "Approve for me",
+  "policy.auto": "Auto",
   "policy.dont_ask": "Don't ask (deny)",
   "policy.always_approve": "Full access",
   "policy.askDesc": "Always ask when editing external files or using the internet",
   "policy.accept_editsDesc": "Auto-approve in-project file edits; ask for other tools",
   "policy.allow_for_sessionDesc": "Only ask for risky actions detected this session",
+  "policy.autoDesc":
+    "CLI auto mode — fewer prompts; routine local work may proceed after safety checks",
   "policy.dont_askDesc": "Deny tools that need approval (no interactive prompt)",
   "policy.always_approveDesc": "Unrestricted internet and file access without prompts",
   "policy.short.ask": "Ask",
   "policy.short.accept_edits": "Edits",
   "policy.short.allow_for_session": "Session",
+  "policy.short.auto": "Auto",
   "policy.short.dont_ask": "Deny",
   "policy.short.always_approve": "Full",
   "policy.yoloConfirm":
     "Enable full access / unrestricted auto-approve for tools? This is dangerous. Confirm?",
   "policy.yoloConfirm2":
     "Really enable Always approve (YOLO)? Tools run without prompts.",
+  "cliPermission.default": "default — ask for approvals",
+  "cliPermission.acceptEdits": "acceptEdits — auto-approve file edits",
+  "cliPermission.auto": "auto — safety-checked fewer prompts",
+  "cliPermission.dontAsk": "dontAsk — deny without prompts",
+  "cliPermission.bypassPermissions": "bypassPermissions — YOLO full access",
+  "cliPermission.plan": "plan — product Plan mode (composer)",
 
   // Search panel
   "search.title": "Search",
@@ -1120,6 +1130,14 @@ const en = {
   "settings.permissionDeep": "Default permission",
   "settings.permissionDeepDesc":
     "Applied to new turns and remembered at the scope chosen above. YOLO auto-approves tools.",
+  "settings.permissionCliMode": "CLI --permission-mode: {mode}",
+  "settings.permissionCliModeNotOneToOne":
+    "(Host-only tier — shares CLI default with Ask.)",
+  "settings.permissionCliAdvanced": "CLI permission mode",
+  "settings.permissionCliAdvancedDesc":
+    "Maps App policy to Grok Build `--permission-mode` (default | acceptEdits | auto | dontAsk | bypassPermissions | plan). Plan is set via composer Plan mode.",
+  "settings.permissionCliAdvancedHint":
+    "Spawn passes --permission-mode {mode} (and --always-approve when YOLO).",
   "settings.permissionTimeout": "Auto-deny after",
   "settings.permissionTimeoutDesc":
     "If you don't respond, automatically deny the permission request after this time. Off by default.",
@@ -3663,21 +3681,31 @@ const zh: Record<MessageKey, string> = {
   "policy.ask": "请求批准",
   "policy.accept_edits": "接受编辑",
   "policy.allow_for_session": "替我审批",
+  "policy.auto": "自动",
   "policy.dont_ask": "不询问（拒绝）",
   "policy.always_approve": "完全访问",
   "policy.askDesc": "编辑外部文件或访问网络时始终询问",
   "policy.accept_editsDesc": "自动批准项目内文件编辑；其他工具仍询问",
   "policy.allow_for_sessionDesc": "仅对检测到的高风险操作请求批准",
+  "policy.autoDesc":
+    "CLI auto 模式 — 减少弹窗；常规本地操作经安全检查后可自动放行",
   "policy.dont_askDesc": "需要批准的工具直接拒绝（不弹窗）",
   "policy.always_approveDesc": "可不受限制地访问网络与本机文件",
   "policy.short.ask": "询问",
   "policy.short.accept_edits": "编辑",
   "policy.short.allow_for_session": "会话",
+  "policy.short.auto": "自动",
   "policy.short.dont_ask": "拒绝",
   "policy.short.always_approve": "完全访问",
   "policy.yoloConfirm":
     "启用完全访问 / 无限制自动批准工具？存在风险，请确认。",
   "policy.yoloConfirm2": "再次确认：启用始终批准？工具将不再弹窗询问。",
+  "cliPermission.default": "default — 需要批准时询问",
+  "cliPermission.acceptEdits": "acceptEdits — 自动批准文件编辑",
+  "cliPermission.auto": "auto — 安全检查后减少弹窗",
+  "cliPermission.dontAsk": "dontAsk — 不弹窗直接拒绝",
+  "cliPermission.bypassPermissions": "bypassPermissions — YOLO 完全访问",
+  "cliPermission.plan": "plan — 产品「计划」模式（输入区切换）",
 
   "search.title": "搜索",
   "search.placeholder": "搜索会话、项目、操作或消息内容…",
@@ -3989,6 +4017,14 @@ const zh: Record<MessageKey, string> = {
   "settings.permissionDeep": "默认权限",
   "settings.permissionDeepDesc":
     "对新一轮对话生效，并按上方选择的范围记忆。YOLO 会自动批准工具调用。",
+  "settings.permissionCliMode": "CLI --permission-mode：{mode}",
+  "settings.permissionCliModeNotOneToOne":
+    "（仅 Host 会话层 — 与「询问」共用 CLI default。）",
+  "settings.permissionCliAdvanced": "CLI 权限模式",
+  "settings.permissionCliAdvancedDesc":
+    "将应用权限映射为 Grok Build `--permission-mode`（default | acceptEdits | auto | dontAsk | bypassPermissions | plan）。plan 由输入区「计划」模式设置。",
+  "settings.permissionCliAdvancedHint":
+    "启动时传入 --permission-mode {mode}（YOLO 时另加 --always-approve）。",
   "settings.permissionTimeout": "超时自动拒绝",
   "settings.permissionTimeoutDesc":
     "若在时限内未响应权限请求，将自动拒绝。默认关闭。",

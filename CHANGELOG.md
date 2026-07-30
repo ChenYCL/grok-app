@@ -40,6 +40,9 @@ See `docs/llm-wiki/release.md`.
 - **Agent profile path** (Settings → General → Agent): optional file for `grok agent --agent-profile`; soft-respawns on change
 - **Agent serve** start/stop from Settings → Runtime → Connection (`grok agent serve --bind/--secret`; default `127.0.0.1:2419`; masked secret + one-time connection URL copy)
 
+#### Permissions / CLI
+- **CLI `--permission-mode` alignment**: pure App policy / YOLO / plan-mode map (`default` · `acceptEdits` · `auto` · `dontAsk` · `bypassPermissions` · `plan`); spawn pins top-level `--permission-mode` (+ agent `--always-approve` for YOLO); Settings shows CLI label + advanced mode selector; product **Auto** policy
+
 ### Fixed
 
 - CLI install missing SHA-256 (#227) · app.css rewind/fork selectors (#259)
@@ -53,6 +56,7 @@ See `docs/llm-wiki/release.md`.
 - **外观/壳**：主题定时、跟随系统语言、忙碌退出确认、托盘角标
 - **Agent**：禁用内置工具（芯片 + 自由列表 → `--disallowed-tools`；与禁用网页搜索并存；更改 soft-respawn）；可选 profile 路径（`--agent-profile`）
 - **系统**：**Agent serve** 在设置 → 运行时 → 连接启停（掩码密钥 + 启动时复制连接 URL）
+- **权限/CLI**：对齐 `--permission-mode` 映射与 spawn；设置页展示 CLI 标签与高级选择；新增 **Auto** 策略
 
 **中文 · 修复**
 

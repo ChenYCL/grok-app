@@ -5978,6 +5978,7 @@ export default function App() {
                     ask: "policy.short.ask",
                     accept_edits: "policy.short.accept_edits",
                     allow_for_session: "policy.short.allow_for_session",
+                    auto: "policy.short.auto",
                     dont_ask: "policy.short.dont_ask",
                     always_approve: "policy.short.always_approve",
                   } as const
@@ -12644,6 +12645,7 @@ export default function App() {
       "policy.ask",
       "policy.accept_edits",
       "policy.allow_for_session",
+      "policy.auto",
       "policy.dont_ask",
       "policy.always_approve",
       "settings.modeIndependent",
@@ -16017,6 +16019,7 @@ export default function App() {
                         policyAsk: tr("policy.ask"),
                         policyAcceptEdits: tr("policy.accept_edits"),
                         policySession: tr("policy.allow_for_session"),
+                        policyAuto: tr("policy.auto"),
                         policyDontAsk: tr("policy.dont_ask"),
                         policyYolo: tr("policy.always_approve"),
                         policyAskDesc: tr("policy.askDesc"),
@@ -16024,6 +16027,7 @@ export default function App() {
                         policySessionDesc: tr(
                           "policy.allow_for_sessionDesc",
                         ),
+                        policyAutoDesc: tr("policy.autoDesc"),
                         policyDontAskDesc: tr("policy.dont_askDesc"),
                         policyYoloDesc: tr("policy.always_approveDesc"),
                         policyShortAsk: tr("policy.short.ask"),
@@ -16031,6 +16035,7 @@ export default function App() {
                         policyShortSession: tr(
                           "policy.short.allow_for_session",
                         ),
+                        policyShortAuto: tr("policy.short.auto"),
                         policyShortDontAsk: tr("policy.short.dont_ask"),
                         policyShortYolo: tr("policy.short.always_approve"),
                       }}
@@ -16427,6 +16432,7 @@ export default function App() {
               policyAsk: tr("policy.ask"),
               policyAcceptEdits: tr("policy.accept_edits"),
               policySession: tr("policy.allow_for_session"),
+              policyAuto: tr("policy.auto"),
               policyDontAsk: tr("policy.dont_ask"),
               policyYolo: tr("policy.always_approve"),
               effortHigh: tr("effort.high"),
@@ -18312,6 +18318,7 @@ export default function App() {
                     ask: "policy.ask",
                     accept_edits: "policy.accept_edits",
                     allow_for_session: "policy.allow_for_session",
+                    auto: "policy.auto",
                     dont_ask: "policy.dont_ask",
                     always_approve: "policy.always_approve",
                   } as const
