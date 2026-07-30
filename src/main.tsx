@@ -28,6 +28,10 @@ import {
   loadChatFontScale,
 } from "./lib/chatFontScale";
 import {
+  applyCodeFontScale,
+  loadCodeFontScale,
+} from "./lib/codeFontScalePref";
+import {
   applyChatDensity,
   loadChatDensity,
 } from "./lib/chatDensity";
@@ -55,6 +59,8 @@ applyThemeToDocument(bootTheme);
 applySkinToDocument(loadSkin(localStorage));
 // Chat transcript font scale (Appearance) — html[data-chat-font].
 applyChatFontScale(loadChatFontScale(localStorage));
+// Chat code block font scale (Appearance) — html[data-code-font].
+applyCodeFontScale(loadCodeFontScale(localStorage));
 // Chat transcript density (Appearance) — html[data-chat-density].
 applyChatDensity(loadChatDensity(localStorage));
 // Chat transcript reading width (Appearance) — html[data-chat-width].

@@ -1153,6 +1153,12 @@ const en = {
   "settings.chatFontScale.sm": "Small",
   "settings.chatFontScale.md": "Medium",
   "settings.chatFontScale.lg": "Large",
+  "settings.codeFontScale": "Code block text size",
+  "settings.codeFontScaleDesc":
+    "Font size for fenced code blocks in chat (independent of chat text size)",
+  "settings.codeFontScale.sm": "Small",
+  "settings.codeFontScale.md": "Medium",
+  "settings.codeFontScale.lg": "Large",
   "settings.chatDensity": "Chat density",
   "settings.chatDensityDesc":
     "Vertical spacing of the conversation transcript (message padding and gaps)",
@@ -3812,6 +3818,12 @@ const zh: Record<MessageKey, string> = {
   "settings.chatFontScale.sm": "小",
   "settings.chatFontScale.md": "中",
   "settings.chatFontScale.lg": "大",
+  "settings.codeFontScale": "代码块字号",
+  "settings.codeFontScaleDesc":
+    "聊天中围栏代码块的文字大小（与对话字号相互独立）",
+  "settings.codeFontScale.sm": "小",
+  "settings.codeFontScale.md": "中",
+  "settings.codeFontScale.lg": "大",
   "settings.chatDensity": "对话密度",
   "settings.chatDensityDesc": "会话消息区间距（气泡内边距与行距）",
   "settings.chatDensity.comfortable": "舒适",
