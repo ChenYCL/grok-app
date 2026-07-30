@@ -40,6 +40,7 @@ See `docs/llm-wiki/release.md`.
 #### Tasks / system
 - **Automations background honesty** (AUTO-DETACH lite): pure `automationsBackgroundStatus` helper + tests; Scheduled tasks page banner when any task is enabled (app/tray must stay running; optional deep-link to **Launch at login**); busy-quit dialog extra note; Launch at login desc clarifies schedules pause on full quit (no fake detached daemon)
 - Tasks tree · Stop-all skip-confirm · Plan history · Mirror write guard · Reliability / Leader / Memory / MCP / CLI notice (prior)
+- **Reliability stall timeline**: localStorage ring (~40) of historical stall signals (id · session · title · kind · stallSeconds · reason · at); recorded on soft / hard stream-stall; Reliability center **Stall timeline** card with search + kind chips + clear (in-app confirm); never stores secrets
 - **Mirror write audit log** (Settings → Remote → Phone mirror): localStorage ring (~50) of write enable/disable, link regenerate, host start/stop — no tokens/URLs stored; collapsible list + in-app clear confirm
 - **Subagent worktree (cwd) badge**: when `spawn_subagent` / Agent / subagent tool_step data includes a cwd or worktree path (labeled fields, JSON, or absolute path), Tasks panel shows a compact **WT** / truncated-path badge and can reveal or copy the path — UI-only over existing tool_step data; nested tree unchanged
 - **Plan depth**: request-changes optional revision note (in-app modal → `session_resolve_plan` feedback); plan history search/filter by title·preview + decision chips, clear-all (in-app confirm), open chat when session still present
@@ -74,6 +75,7 @@ See `docs/llm-wiki/release.md`.
 - **Agent**：禁用内置工具（芯片 + 自由列表 → `--disallowed-tools`；与禁用网页搜索并存；更改 soft-respawn）；可选 profile 路径（`--agent-profile`）
 - **系统**：**Agent serve** 启停（设置 → 运行时 → 连接）；**手机镜像写入审计**（本地 ring、无密钥/URL）；**Trace 历史管理**（搜索/移除/清空确认/可选大小）；任务面板子代理 **WT/cwd** 标记；**Agent 仪表盘** 状态/搜索/项目筛选；**记忆浏览器** 搜索 + 类型芯片筛选（空结果/清除）
 - **系统**：**已安排任务后台诚实说明**（无独立守护进程；横幅 + 忙碌退出附注 + 登录启动说明）；**Agent serve** 启停（设置 → 运行时 → 连接）；**手机镜像写入审计**（本地 ring、无密钥/URL）；**Trace 历史管理**（搜索/移除/清空确认/可选大小）；任务面板子代理 **WT/cwd** 标记；**Agent 仪表盘** 状态/搜索/项目筛选
+- **系统**：**Agent serve** 启停（设置 → 运行时 → 连接）；**可靠性卡顿时间线**（localStorage ring ~40、筛选/清空确认、无密钥）；**手机镜像写入审计**（本地 ring、无密钥/URL）；**Trace 历史管理**（搜索/移除/清空确认/可选大小）；任务面板子代理 **WT/cwd** 标记；**Agent 仪表盘** 状态/搜索/项目筛选
 - **计划**：**请求修改** 可选修订说明；计划历史搜索/决策筛选、清空确认、会话仍在时可打开
 - **扩展/市场**：目录插件详情面板（描述/版本/组件徽章 + 安装/重装）；安装失败行内重试；已安装 provides 结构化摘要；**Hooks 试跑/覆盖**（校验 stdin JSON、合成 dry-run 活动、结果筛选与清空确认；不执行 shell hook）
 - **扩展/市场**：目录插件详情面板（描述/版本/组件徽章 + 安装/重装）；安装失败行内重试；已安装 provides 结构化摘要；**MCP 状态弹层**（搜索/状态芯片/计数/刷新/复制名称与目标）

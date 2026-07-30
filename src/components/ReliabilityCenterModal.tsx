@@ -1,10 +1,13 @@
 /**
  * Reliability / Observability center — aggregate long-task signals:
- * busy sessions, stall / end-of-turn stalls, recent error-deck cards.
- * Actions: export support bundle, open Doctor. No secrets from logs.
+ * busy sessions, stall / end-of-turn stalls, recent error-deck cards,
+ * plus a persisted stall timeline (localStorage ring).
+ * Actions: export support bundle, open Doctor, clear stall history.
+ * No secrets from logs.
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 import {
   IconActivity,
   IconAlertTriangle,
@@ -13,11 +16,18 @@ import {
 } from "@/components/icons";
 import { createT, type Locale, type MessageKey } from "@/i18n";
 import * as api from "@/lib/api";
-import type {
-  ReliabilityBusySession,
-  ReliabilityCenterView,
-  ReliabilityErrorEntry,
-  ReliabilityStallSignal,
+import {
+  clearStallHistory,
+  filterStallHistory,
+  loadStallHistory,
+  STALL_HISTORY_CHANGE_EVENT,
+  STALL_HISTORY_STORAGE_KEY,
+  type ReliabilityBusySession,
+  type ReliabilityCenterView,
+  type ReliabilityErrorEntry,
+  type ReliabilityStallKind,
+  type ReliabilityStallSignal,
+  type StallHistoryEntry,
 } from "@/lib/reliabilityCenter";
 
 export type ReliabilityCenterModalProps = {
@@ -29,6 +39,8 @@ export type ReliabilityCenterModalProps = {
   /** Jump to a busy session (optional). */
   onSelectSession?: (sessionId: string) => void;
 };
+
+type StallKindFilter = "all" | ReliabilityStallKind;
 
 function formatWhen(ms: number, locale: Locale): string {
   try {
@@ -128,7 +140,7 @@ function StallRow({
   t,
   locale,
 }: {
-  signal: ReliabilityStallSignal;
+  signal: ReliabilityStallSignal | StallHistoryEntry;
   t: ReturnType<typeof createT>;
   locale: Locale;
 }) {
@@ -149,7 +161,13 @@ function StallRow({
         <span className="reliab-card__meta">{t(stallKindKey(signal.kind))}</span>
       </div>
       <div className="reliab-card__sub">
-        {[secs, signal.tier, when].filter(Boolean).join(" · ")}
+        {[
+          secs,
+          "tier" in signal ? signal.tier : null,
+          when,
+        ]
+          .filter(Boolean)
+          .join(" · ")}
       </div>
     </li>
   );
@@ -199,21 +217,62 @@ export function ReliabilityCenterModal({
   const [statusMsg, setStatusMsg] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
+  const [stallHistory, setStallHistory] = useState<StallHistoryEntry[]>(() =>
+    loadStallHistory(),
+  );
+  const [historyQuery, setHistoryQuery] = useState("");
+  const [historyKind, setHistoryKind] = useState<StallKindFilter>("all");
+  const [confirmClearHistory, setConfirmClearHistory] = useState(false);
+
   useEffect(() => {
     if (!open) return;
     setStatusMsg(null);
     setErrorMsg(null);
     setBusy(null);
+    setHistoryQuery("");
+    setHistoryKind("all");
+    setConfirmClearHistory(false);
+    setStallHistory(loadStallHistory());
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+    const refresh = () => setStallHistory(loadStallHistory());
+    const onChange = () => refresh();
+    window.addEventListener(STALL_HISTORY_CHANGE_EVENT, onChange);
+    const onStorage = (e: StorageEvent) => {
+      if (e.key === null || e.key === STALL_HISTORY_STORAGE_KEY) refresh();
+    };
+    window.addEventListener("storage", onStorage);
+    return () => {
+      window.removeEventListener(STALL_HISTORY_CHANGE_EVENT, onChange);
+      window.removeEventListener("storage", onStorage);
+    };
   }, [open]);
 
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
+      if (e.key === "Escape") {
+        if (confirmClearHistory) {
+          setConfirmClearHistory(false);
+          return;
+        }
+        onClose();
+      }
     };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
-  }, [open, onClose]);
+  }, [open, onClose, confirmClearHistory]);
+
+  const filteredHistory = useMemo(
+    () =>
+      filterStallHistory(stallHistory, {
+        query: historyQuery,
+        kind: historyKind,
+      }),
+    [stallHistory, historyQuery, historyKind],
+  );
 
   const onSupportZip = useCallback(async () => {
     setBusy("zip");
@@ -229,12 +288,86 @@ export function ReliabilityCenterModal({
     }
   }, [t]);
 
+  const doClearHistory = useCallback(() => {
+    clearStallHistory();
+    setStallHistory([]);
+    setConfirmClearHistory(false);
+  }, []);
+
   const openDoctor = () => {
     onClose();
     onOpenDoctor();
   };
 
   if (!open) return null;
+
+  const historyChips: { id: StallKindFilter; label: string }[] = [
+    { id: "all", label: t("reliability.timeline.filterAll") },
+    { id: "active", label: t("reliability.stall.kind.active") },
+    { id: "hard_end", label: t("reliability.stall.kind.hardEnd") },
+    { id: "terminal", label: t("reliability.stall.kind.terminal") },
+    { id: "end_of_turn", label: t("reliability.stall.kind.endOfTurn") },
+  ];
+
+  const clearConfirmPortal =
+    confirmClearHistory &&
+    typeof document !== "undefined" &&
+    createPortal(
+      <div
+        className="overlay app-dialog-overlay"
+        role="presentation"
+        onMouseDown={(e) => {
+          if (e.target === e.currentTarget) setConfirmClearHistory(false);
+        }}
+      >
+        <div
+          className="modal app-dialog"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="reliab-stall-history-clear-title"
+          onMouseDown={(e) => e.stopPropagation()}
+        >
+          <header className="modal-head">
+            <h2
+              id="reliab-stall-history-clear-title"
+              className="modal-title"
+            >
+              {t("reliability.timeline.clearConfirmTitle")}
+            </h2>
+            <button
+              type="button"
+              className="icon-btn modal-close"
+              onClick={() => setConfirmClearHistory(false)}
+              aria-label={t("common.cancel")}
+            >
+              <IconClose size={16} />
+            </button>
+          </header>
+          <div className="app-dialog__form">
+            <p className="app-dialog__msg">
+              {t("reliability.timeline.clearConfirmMessage")}
+            </p>
+            <div className="app-dialog__actions modal-actions">
+              <button
+                type="button"
+                className="btn btn--ghost"
+                onClick={() => setConfirmClearHistory(false)}
+              >
+                {t("common.cancel")}
+              </button>
+              <button
+                type="button"
+                className="btn btn--danger"
+                onClick={doClearHistory}
+              >
+                {t("reliability.timeline.clearConfirmAction")}
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>,
+      document.body,
+    );
 
   return (
     <div
@@ -282,7 +415,7 @@ export function ReliabilityCenterModal({
         )}
 
         <div className="doctor-modal__body reliab-modal__body">
-          {view.empty ? (
+          {view.empty && stallHistory.length === 0 ? (
             <div className="reliab-empty" role="status">
               <IconAlertTriangle size={20} className="reliab-empty__icon" />
               <p className="reliab-empty__title">{t("reliability.empty.title")}</p>
@@ -335,6 +468,90 @@ export function ReliabilityCenterModal({
             )}
           </section>
 
+          <section
+            className="reliab-card"
+            aria-labelledby="reliab-timeline-title"
+          >
+            <header className="reliab-card__head">
+              <h3 id="reliab-timeline-title" className="reliab-card__title">
+                {t("reliability.timeline.title")}
+              </h3>
+              <span className="reliab-card__count">
+                {t("reliability.timeline.count", {
+                  count: stallHistory.length,
+                })}
+              </span>
+            </header>
+
+            {stallHistory.length === 0 ? (
+              <p className="reliab-card__empty">
+                {t("reliability.timeline.empty")}
+              </p>
+            ) : (
+              <>
+                <div className="reliab-timeline__toolbar">
+                  <label className="reliab-timeline__search">
+                    <span className="sr-only">
+                      {t("reliability.timeline.searchPlaceholder")}
+                    </span>
+                    <input
+                      type="search"
+                      className="reliab-timeline__search-input"
+                      value={historyQuery}
+                      onChange={(e) => setHistoryQuery(e.target.value)}
+                      placeholder={t("reliability.timeline.searchPlaceholder")}
+                      autoComplete="off"
+                      data-testid="reliab-timeline-search"
+                    />
+                  </label>
+                  <button
+                    type="button"
+                    className="btn btn--ghost btn--sm"
+                    onClick={() => setConfirmClearHistory(true)}
+                    data-testid="reliab-timeline-clear"
+                  >
+                    {t("reliability.timeline.clear")}
+                  </button>
+                </div>
+
+                <div
+                  className="reliab-timeline__chips settings-seg"
+                  role="tablist"
+                  aria-label={t("reliability.timeline.filterAria")}
+                >
+                  {historyChips.map((c) => (
+                    <button
+                      key={c.id}
+                      type="button"
+                      role="tab"
+                      className={
+                        "settings-seg__btn reliab-timeline__chip" +
+                        (historyKind === c.id ? " is-on" : "")
+                      }
+                      aria-selected={historyKind === c.id}
+                      data-testid={`reliab-timeline-filter-${c.id}`}
+                      onClick={() => setHistoryKind(c.id)}
+                    >
+                      {c.label}
+                    </button>
+                  ))}
+                </div>
+
+                {filteredHistory.length === 0 ? (
+                  <p className="reliab-card__empty">
+                    {t("reliability.timeline.emptyFilter")}
+                  </p>
+                ) : (
+                  <ul className="reliab-card__list">
+                    {filteredHistory.map((s) => (
+                      <StallRow key={s.id} signal={s} t={t} locale={locale} />
+                    ))}
+                  </ul>
+                )}
+              </>
+            )}
+          </section>
+
           <section className="reliab-card" aria-labelledby="reliab-err-title">
             <header className="reliab-card__head">
               <h3 id="reliab-err-title" className="reliab-card__title">
@@ -384,6 +601,7 @@ export function ReliabilityCenterModal({
           </button>
         </footer>
       </div>
+      {clearConfirmPortal}
     </div>
   );
 }
