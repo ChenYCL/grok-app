@@ -36,6 +36,7 @@ See `docs/llm-wiki/release.md`.
 
 #### Appearance
 - **Scheduled light/dark theme** (Settings → Appearance → Theme): optional clock schedule under System — `lightFrom` / `darkFrom` (HH:mm); reapplies on load, every 60s, and on tab visibility. Forced Light/Dark still ignore the schedule
+- **j / k** next/previous chat when focus is in the sidebar session list (Enter opens the focused row; never steals keys from inputs)
 
 #### Tasks / system
 - **Tasks tree** (nest under spawn_subagent) · **Stop all skip-confirm** option
@@ -57,6 +58,7 @@ See `docs/llm-wiki/release.md`.
 - **会话与侧栏**：复制会话（vs 分叉+worktree）、便签、静音、插件目录、按天归档、日期分组、项目颜色、复制 Markdown
 - **外观**：按时切换浅色/深色（跟随系统下的可选计划；固定浅/深仍优先）
 - **会话与侧栏**：复制会话（vs 分叉+worktree）、便签、静音、插件目录、后台回合完成未读圆点、按天归档、日期分组、项目颜色、复制 Markdown
+- **会话与侧栏**：复制会话（vs 分叉+worktree）、便签、静音、插件目录、按天归档、日期分组、项目颜色、复制 Markdown、侧栏 j/k 切换会话
 - **任务与系统**：子代理树、Stop all 可跳过确认、计划历史、忙碌角标、镜像写权限等
 
 **中文 · 修复**

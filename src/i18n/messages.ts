@@ -1861,6 +1861,8 @@ const en = {
   "shortcuts.copyLastReply": "Copy last assistant reply",
   "shortcuts.settings": "Settings",
   "shortcuts.toggleSidebar": "Toggle sidebar",
+  "shortcuts.sidebarSessionNav":
+    "Next / previous chat in sidebar (focus in list)",
   "shortcuts.doctor": "Doctor",
   "shortcuts.liveVoice": "Start Live Voice",
   "shortcuts.off": "Off",
@@ -4589,6 +4591,7 @@ const zh: Record<MessageKey, string> = {
   "shortcuts.copyLastReply": "复制上一条助手回复",
   "shortcuts.settings": "设置",
   "shortcuts.toggleSidebar": "切换侧栏",
+  "shortcuts.sidebarSessionNav": "侧栏上下切换会话（焦点在列表内）",
   "shortcuts.doctor": "Doctor",
   "shortcuts.liveVoice": "开始实时语音",
   "shortcuts.off": "关闭",
