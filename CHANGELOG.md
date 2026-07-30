@@ -14,60 +14,36 @@ See `docs/llm-wiki/release.md`.
 ### Added
 
 #### Composer & chat
-- **Send queue**: edit, reorder Up/Down
-- **Cross-session recent prompt history** (`/history` → Recent all chats) + per-chat ↑/↓ history
-- **Composer minimum height** (Settings → General → Composer; 2 / 3 / 5 / 8 rows; `localStorage` `grok.composerMinRows`)
-- **Chat reading width** · **chat / code font size** (independent) · **tool auto-collapse** (finished tools; separate from Collapse all activity)
-- **Transcript filter** (Appearance + chat header / session menu): show all activity or conversation only (hide tool steps; `localStorage` `grok.transcriptFilter`)
-- **Regenerate last reply** with optional model pick
-- **File changes chip** (count / +a −d → Resources Changes)
-- **Optional assistant reply length** (Settings → Appearance → Show reply length; word/char under finished replies; off by default)
-- **Workspace dirty chip** (“N changed” from git status → Resources Changes; hidden when clean / not a repo)
+- **Send queue** edit / reorder · **composer min height** · **cross-session recent prompts**
+- **Chat width** · **chat / code font** · **tool auto-collapse** · **transcript filter** (hide tool steps)
+- **Regenerate** with optional model pick · **assistant word count** (optional)
+- **File-changes chip** (session edits) · **git dirty chip** (workspace porcelain)
 
 #### Sessions & sidebar
-- **Duplicate chat** (one-click journal clone; no worktree dialog — use **Fork…** for optional worktree restore)
-- **Fork** optional worktree restore (existing)
-- **Session sticky notes** (client-only, never sent to agent)
-- **Per-session mute** desktop notifications · **session plugin dirs**
-- **Unread dot** on sidebar when a background chat finishes a turn (localStorage; independent of mute; clears on open)
-- **Bulk archive older than 7/30/90 days** · **date groups** · **project color accent**
-- **Copy conversation as Markdown**
-- **Export chat as HTML** (standalone readable page; escaped content; optional thoughts/tools)
+- **Duplicate chat** (vs **Fork…** + optional worktree) · **session notes** · **mute** · **unread dot**
+- **Export** Markdown copy + **HTML export** · **bulk archive by age** · **date groups** · **project color**
+- **Sidebar j/k** navigation (when list focused)
 
-#### Appearance
-- **Scheduled light/dark theme** (Settings → Appearance → Theme): optional clock schedule under System — `lightFrom` / `darkFrom` (HH:mm); reapplies on load, every 60s, and on tab visibility. Forced Light/Dark still ignore the schedule
-- **j / k** next/previous chat when focus is in the sidebar session list (Enter opens the focused row; never steals keys from inputs)
+#### Appearance / app shell
+- **Theme schedule** (System + clock) · **follow system language**
+- **Confirm quit while busy** (in-app dialog; optional skip) · **dock/tray busy badge**
 
 #### Tasks / system
-- **Tasks tree** (nest under spawn_subagent) · **Stop all skip-confirm** option
-- **Confirm quit while agents are busy** (window close when not close-to-tray, tray Quit; optional “Always quit without asking”)
-- **Plan history** archive · **Dock/tray busy badge**
-- **Phone mirror write guard** · **CLI launch update notice** · Reliability / Leader / Memory / MCP / etc. (prior integrate)
-- **Language: follow system** (Settings → General): option **System** maps OS / browser language to `en` / `zh` / `zh-TW`; persists as `"system"` and live-updates on `languagechange`
+- Tasks tree · Stop-all skip-confirm · Plan history · Mirror write guard · Reliability / Leader / Memory / MCP / CLI notice (prior)
 
 ### Fixed
 
-- **CLI install missing SHA-256 (#227)**; **app.css** rewind/fork selectors (#259)
+- CLI install missing SHA-256 (#227) · app.css rewind/fork selectors (#259)
 
 **中文 · 新增（按域）**
 
-- **输入与对话**：队列编辑/排序、跨会话提示历史、阅读宽度与字号、工具默认折叠、重新生成可选模型、变更芯片
-- **会话与侧栏**：复制会话（vs 分叉+worktree）、便签、静音、插件目录、按天归档、日期分组、项目颜色、复制 Markdown、导出 HTML
-- **输入与对话**：队列编辑/排序、跨会话提示历史、阅读宽度与字号、工具默认折叠、重新生成可选模型、变更芯片、可选助手回复字数
-- **输入与对话**：队列编辑/排序、跨会话提示历史、输入框最小高度（2/3/5/8 行）、阅读宽度与字号、工具默认折叠、重新生成可选模型、变更芯片
-- **输入与对话**：队列编辑/排序、跨会话提示历史、阅读宽度与字号、工具默认折叠、对话过滤（隐藏工具步骤）、重新生成可选模型、变更芯片
-- **输入与对话**：队列编辑/排序、跨会话提示历史、阅读宽度与字号、工具默认折叠、重新生成可选模型、变更芯片、工作区脏文件芯片
-- **会话与侧栏**：复制会话（vs 分叉+worktree）、便签、静音、插件目录、按天归档、日期分组、项目颜色、复制 Markdown
-- **外观**：按时切换浅色/深色（跟随系统下的可选计划；固定浅/深仍优先）
-- **会话与侧栏**：复制会话（vs 分叉+worktree）、便签、静音、插件目录、后台回合完成未读圆点、按天归档、日期分组、项目颜色、复制 Markdown
-- **会话与侧栏**：复制会话（vs 分叉+worktree）、便签、静音、插件目录、按天归档、日期分组、项目颜色、复制 Markdown、侧栏 j/k 切换会话
-- **任务与系统**：子代理树、Stop all 可跳过确认、计划历史、忙碌角标、镜像写权限等
-- **任务与系统**：子代理树、Stop all 可跳过确认、计划历史、忙碌角标、镜像写权限等；**语言跟随系统**（`system` → en/zh/zh-TW）
-- **任务与系统**：子代理树、Stop all 可跳过确认、忙碌退出确认（可「退出时不再询问」）、计划历史、忙碌角标、镜像写权限等
+- **输入/对话**：队列、高度、提示历史、宽度字号、工具折叠/过滤、重生选模型、字数、变更芯片、工作区 dirty 芯片
+- **会话/侧栏**：复制 vs 分叉、便签、静音、未读点、HTML 导出、按天归档、日期分组、项目色、j/k 导航
+- **外观/壳**：主题定时、跟随系统语言、忙碌退出确认、托盘角标
 
 **中文 · 修复**
 
-- CLI 安装缺 SHA-256（#227）；CSS 选择器（#259）
+- CLI SHA-256（#227）；CSS（#259）
 
 
 ## [0.2.2] - 2026-07-30
