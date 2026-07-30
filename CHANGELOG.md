@@ -11,6 +11,14 @@ See `docs/llm-wiki/release.md`.
 
 ## [Unreleased]
 
+### Added
+
+- **MCP auth / health status** (Settings → Extensions → MCP): after Doctor runs, each server shows a status lamp (OK / warn / error / auth expired / auth required); auth issues get short guidance and an in-app **How to refresh** modal (re-auth, re-add, check remote URL — no fake auto-refresh). Secrets stay redacted.
+
+**中文 · 新增**
+
+- **MCP 认证/健康状态**：诊断后在列表显示状态灯；过期/需认证提供「如何刷新」引导（无假自动刷新）；密钥脱敏
+
 ## [0.2.2] - 2026-07-30
 
 > **Highlight:** In-app auto-update works for signed builds; calmer sidebar multi-select; PATH / busy / media reliability.
