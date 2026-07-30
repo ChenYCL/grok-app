@@ -1180,6 +1180,9 @@ const en = {
     "After a reply finishes, keep reasoning expanded or collapse it automatically. Streaming still opens live.",
   "settings.thinkingExpand.autoCollapse": "Auto-collapse when done",
   "settings.thinkingExpand.keepOpen": "Keep expanded",
+  "settings.toolStepsAutoCollapse": "Auto-collapse finished tools",
+  "settings.toolStepsAutoCollapseDesc":
+    "Completed and failed tool steps start collapsed in the timeline. Running tools stay expanded. Turn off to keep finished tools open.",
   "settings.zenMode": "Zen mode",
   "settings.zenModeDesc":
     "Hide the left sidebar and right files pane to maximize the chat. Turning off restores the panes as they were. Escape still stops generation — it does not exit zen.",
@@ -3885,6 +3888,9 @@ const zh: Record<MessageKey, string> = {
     "回复完成后，思考/推理块保持展开，或自动折叠。流式生成时仍会实时展开。",
   "settings.thinkingExpand.autoCollapse": "完成后自动折叠",
   "settings.thinkingExpand.keepOpen": "保持展开",
+  "settings.toolStepsAutoCollapse": "完成后自动折叠工具步骤",
+  "settings.toolStepsAutoCollapseDesc":
+    "已完成或失败的工具步骤在时间线中默认折叠。运行中的工具保持展开。关闭后，完成的工具也会保持展开。",
   "settings.zenMode": "禅模式",
   "settings.zenModeDesc":
     "隐藏左侧会话栏与右侧文件栏，最大化对话区域。关闭时恢复进入前的栏状态。Esc 仍用于停止生成，不会退出禅模式。",

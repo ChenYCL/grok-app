@@ -964,8 +964,47 @@ html[data-msg-actions="always"] .lobe-chat-item__actions {
   padding: 4px 6px;
   border-radius: 4px;
 }
+.lobe-timeline-tool__row--toggle {
+  width: 100%;
+  margin: 0;
+  border: none;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
 .lobe-timeline-tool:hover .lobe-timeline-tool__row {
   background: color-mix(in srgb, var(--chat-border, #888) 10%, transparent);
+}
+.lobe-timeline-tool__caret {
+  display: inline-flex;
+  align-items: center;
+  color: var(--chat-text-3);
+  flex-shrink: 0;
+  transition: transform 0.15s ease;
+}
+.lobe-timeline-tool__caret.is-open {
+  transform: rotate(90deg);
+}
+.lobe-timeline-tool__body {
+  margin: 0 0 2px 6px;
+  padding: 0 6px 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.lobe-timeline-tool__detail {
+  margin: 0;
+  padding: 0;
+  max-width: 100%;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 11px;
+  line-height: 1.35;
+  color: var(--chat-text-3);
 }
 .lobe-timeline-tool__name {
   min-width: 0;

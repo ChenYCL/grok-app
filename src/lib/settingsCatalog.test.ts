@@ -98,6 +98,7 @@ describe("settingsCatalog", () => {
     expect(appearance).toContain("settings.skin");
     expect(appearance).toContain("settings.wallpaper");
     expect(appearance).toContain("settings.thinkingExpand");
+    expect(appearance).toContain("settings.toolStepsAutoCollapse");
     expect(appearance).toContain("settings.chatFontScale");
     expect(appearance).toContain("settings.codeFontScale");
     expect(appearance).toContain("settings.chatDensity");
@@ -247,6 +248,18 @@ describe("settingsCatalog", () => {
     const backBottomZh = searchSettingsEntries("回到底部", tZh, tEn);
     expect(
       backBottomZh.some((h) => h.entry.id === "appearance.backBottomAlways"),
+    ).toBe(true);
+    const toolCollapse = searchSettingsEntries("tool steps", tZh, tEn);
+    expect(
+      toolCollapse.some(
+        (h) => h.entry.id === "appearance.toolStepsAutoCollapse",
+      ),
+    ).toBe(true);
+    const toolCollapseZh = searchSettingsEntries("工具步骤", tZh, tEn);
+    expect(
+      toolCollapseZh.some(
+        (h) => h.entry.id === "appearance.toolStepsAutoCollapse",
+      ),
     ).toBe(true);
     const cli = searchSettingsEntries("CLI", tZh, tEn);
     expect(cli.some((h) => h.entry.section === "runtime")).toBe(true);

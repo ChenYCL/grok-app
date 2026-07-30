@@ -1,9 +1,10 @@
 /**
  * Inline tool step on the assistant timeline (stream order).
  * Quiet red mark on failure; no bottom activity dump.
+ * Finished rows honor `grok.toolStepsAutoCollapse` (default: start collapsed).
  */
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { Locale } from "@/i18n";
 import { createT } from "@/i18n";
 import type { ChatMessage, MessageSegment, MessageToolSegment } from "@/lib/session";
@@ -12,8 +13,14 @@ import {
   parseToolStepContent,
   toolStepDisplayTitle,
 } from "@/lib/session";
-import { isContextToolKind, summarizeToolDisplay } from "@/lib/toolDisplay";
+import { isContextToolKind, summarizeToolDisplay, toolDetailTail } from "@/lib/toolDisplay";
 import { normalizeTaskStatus } from "@/lib/sessionTasks";
+import {
+  loadToolStepsAutoCollapsePref,
+  toolStepDefaultOpen,
+  TOOL_STEPS_AUTO_COLLAPSE_CHANGE_EVENT,
+} from "@/lib/toolStepsAutoCollapsePref";
+import { IconChevronRight } from "@/components/icons";
 
 export function toolSegmentIsRunning(seg: MessageToolSegment): boolean {
   if (seg.streaming) return true;
@@ -39,61 +46,184 @@ function toolSummary(seg: MessageToolSegment): string {
   return display.summary || seg.title || seg.toolKind || seg.toolCallId;
 }
 
+function toolExpandBody(seg: MessageToolSegment, failed: boolean): {
+  failHint: string;
+  failHintShort: string;
+  detailTail: string;
+  hasBody: boolean;
+} {
+  const failHint = failed
+    ? (seg.path || seg.detail || "").trim().split("\n")[0] || ""
+    : "";
+  const failHintShort =
+    failHint.length > 72 ? `${failHint.slice(0, 71)}…` : failHint;
+  // Prefer multi-line detail when richer than the one-line fail hint.
+  const detailTail = toolDetailTail(seg.detail, 8);
+  const hasBody =
+    !!failHintShort ||
+    (!!detailTail && detailTail !== failHint && detailTail !== failHintShort);
+  return { failHint, failHintShort, detailTail, hasBody };
+}
+
 /** One timeline tool line (CodePilot ToolActionRow–style). */
 export function TimelineToolRow({
   tool,
+  autoCollapse: autoCollapseProp,
+  defaultExpanded,
 }: {
   tool: MessageToolSegment;
+  /** Override stored auto-collapse pref (tests / parent). */
+  autoCollapse?: boolean;
+  /** Explicit initial open; overrides pref helper when set. */
+  defaultExpanded?: boolean;
 }) {
   const failed = toolSegmentFailed(tool);
   const running = toolSegmentIsRunning(tool);
   const summary = toolSummary(tool);
-  const failHint = failed
-    ? (tool.path || tool.detail || "").trim().split("\n")[0] || ""
-    : "";
-  const failHintShort =
-    failHint.length > 72 ? `${failHint.slice(0, 71)}…` : failHint;
+  const { failHint, failHintShort, detailTail, hasBody } = toolExpandBody(
+    tool,
+    failed,
+  );
   const pathTail = tool.path
     ? tool.path.replace(/\\/g, "/").split("/").filter(Boolean).pop()
     : "";
+
+  const [autoCollapse, setAutoCollapse] = useState(
+    () => autoCollapseProp ?? loadToolStepsAutoCollapsePref(),
+  );
+  const userToggled = useRef(false);
+  const runningRef = useRef(running);
+  runningRef.current = running;
+
+  useEffect(() => {
+    if (autoCollapseProp != null) setAutoCollapse(autoCollapseProp);
+  }, [autoCollapseProp]);
+
+  useEffect(() => {
+    if (autoCollapseProp != null) return;
+    const apply = (next: boolean) => {
+      setAutoCollapse(next);
+      if (!runningRef.current && !userToggled.current) {
+        setOpen(toolStepDefaultOpen(false, next));
+      }
+    };
+    const onPref = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      apply(typeof detail === "boolean" ? detail : loadToolStepsAutoCollapsePref());
+    };
+    const onStorage = (e: StorageEvent) => {
+      if (e.key === "grok.toolStepsAutoCollapse") {
+        apply(loadToolStepsAutoCollapsePref());
+      }
+    };
+    window.addEventListener(TOOL_STEPS_AUTO_COLLAPSE_CHANGE_EVENT, onPref);
+    window.addEventListener("storage", onStorage);
+    return () => {
+      window.removeEventListener(TOOL_STEPS_AUTO_COLLAPSE_CHANGE_EVENT, onPref);
+      window.removeEventListener("storage", onStorage);
+    };
+  }, [autoCollapseProp]);
+
+  const prefOpen =
+    defaultExpanded != null
+      ? defaultExpanded
+      : toolStepDefaultOpen(running, autoCollapse);
+
+  const [open, setOpen] = useState(() => prefOpen);
+
+  useEffect(() => {
+    if (running) {
+      setOpen(true);
+      userToggled.current = false;
+      return;
+    }
+    if (!userToggled.current) {
+      setOpen(
+        defaultExpanded != null
+          ? defaultExpanded
+          : toolStepDefaultOpen(false, autoCollapse),
+      );
+    }
+  }, [running, autoCollapse, defaultExpanded, tool.toolCallId]);
+
+  const showBody = hasBody && open;
+
+  const rowInner = (
+    <>
+      <span
+        className={
+          "lobe-timeline-tool__name" + (failed ? " is-error" : "")
+        }
+      >
+        {summary}
+      </span>
+      {pathTail && pathTail !== summary ? (
+        <span className="lobe-timeline-tool__path" title={tool.path}>
+          {pathTail}
+        </span>
+      ) : null}
+      {hasBody ? (
+        <span
+          className={
+            "lobe-timeline-tool__caret" + (open ? " is-open" : "")
+          }
+          aria-hidden
+        >
+          <IconChevronRight size={11} />
+        </span>
+      ) : null}
+      <span
+        className={
+          "lobe-timeline-tool__status" +
+          (failed ? " is-error" : "") +
+          (running ? " is-running" : "")
+        }
+        aria-hidden
+      />
+    </>
+  );
 
   return (
     <div
       className={
         "lobe-timeline-tool" +
         (failed ? " is-error" : "") +
-        (running ? " is-running" : "")
+        (running ? " is-running" : "") +
+        (open && hasBody ? " is-open" : "")
       }
       role="status"
       data-tool-id={tool.toolCallId}
       data-testid="timeline-tool"
+      data-expanded={hasBody ? (open ? "1" : "0") : undefined}
       title={tool.detail || tool.path || summary}
     >
-      <div className="lobe-timeline-tool__row">
-        <span
-          className={
-            "lobe-timeline-tool__name" + (failed ? " is-error" : "")
-          }
+      {hasBody ? (
+        <button
+          type="button"
+          className="lobe-timeline-tool__row lobe-timeline-tool__row--toggle"
+          aria-expanded={open}
+          onClick={() => {
+            userToggled.current = true;
+            setOpen((v) => !v);
+          }}
         >
-          {summary}
-        </span>
-        {pathTail && pathTail !== summary ? (
-          <span className="lobe-timeline-tool__path" title={tool.path}>
-            {pathTail}
-          </span>
-        ) : null}
-        <span
-          className={
-            "lobe-timeline-tool__status" +
-            (failed ? " is-error" : "") +
-            (running ? " is-running" : "")
-          }
-          aria-hidden
-        />
-      </div>
-      {failHintShort ? (
-        <div className="lobe-timeline-tool__fail-hint" title={failHint}>
-          {failHintShort}
+          {rowInner}
+        </button>
+      ) : (
+        <div className="lobe-timeline-tool__row">{rowInner}</div>
+      )}
+      {showBody ? (
+        <div className="lobe-timeline-tool__body">
+          {failHintShort ? (
+            <div className="lobe-timeline-tool__fail-hint" title={failHint}>
+              {failHintShort}
+            </div>
+          ) : null}
+          {detailTail &&
+          detailTail !== failHint &&
+          detailTail !== failHintShort ? (
+            <pre className="lobe-timeline-tool__detail">{detailTail}</pre>
+          ) : null}
         </div>
       ) : null}
     </div>
@@ -104,14 +234,58 @@ export function TimelineToolRow({
 export function TimelineContextGroup({
   tools,
   locale,
+  autoCollapse: autoCollapseProp,
 }: {
   tools: MessageToolSegment[];
   locale: Locale;
+  autoCollapse?: boolean;
 }) {
   const tr = useMemo(() => createT(locale), [locale]);
-  const [open, setOpen] = useState(() => tools.some(toolSegmentFailed));
+  const [autoCollapse, setAutoCollapse] = useState(
+    () => autoCollapseProp ?? loadToolStepsAutoCollapsePref(),
+  );
   const running = tools.some(toolSegmentIsRunning);
   const hasErr = tools.some(toolSegmentFailed);
+  const userToggled = useRef(false);
+  const runningRef = useRef(running);
+  runningRef.current = running;
+
+  useEffect(() => {
+    if (autoCollapseProp != null) setAutoCollapse(autoCollapseProp);
+  }, [autoCollapseProp]);
+
+  useEffect(() => {
+    if (autoCollapseProp != null) return;
+    const apply = (next: boolean) => {
+      setAutoCollapse(next);
+      if (!runningRef.current && !userToggled.current) {
+        setOpen(toolStepDefaultOpen(false, next));
+      }
+    };
+    const onPref = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      apply(typeof detail === "boolean" ? detail : loadToolStepsAutoCollapsePref());
+    };
+    window.addEventListener(TOOL_STEPS_AUTO_COLLAPSE_CHANGE_EVENT, onPref);
+    return () => {
+      window.removeEventListener(TOOL_STEPS_AUTO_COLLAPSE_CHANGE_EVENT, onPref);
+    };
+  }, [autoCollapseProp]);
+
+  const [open, setOpen] = useState(() =>
+    toolStepDefaultOpen(running, autoCollapse),
+  );
+
+  useEffect(() => {
+    if (running) {
+      setOpen(true);
+      userToggled.current = false;
+      return;
+    }
+    if (!userToggled.current) {
+      setOpen(toolStepDefaultOpen(false, autoCollapse));
+    }
+  }, [running, autoCollapse]);
 
   return (
     <div
@@ -126,7 +300,10 @@ export function TimelineContextGroup({
         type="button"
         className="lobe-timeline-tool-group__trigger"
         aria-expanded={open}
-        onClick={() => setOpen((v) => !v)}
+        onClick={() => {
+          userToggled.current = true;
+          setOpen((v) => !v);
+        }}
       >
         <span className="lobe-timeline-tool-group__label">
           {running
@@ -145,7 +322,11 @@ export function TimelineContextGroup({
       {open ? (
         <div className="lobe-timeline-tool-group__list">
           {tools.map((t) => (
-            <TimelineToolRow key={t.toolCallId} tool={t} />
+            <TimelineToolRow
+              key={t.toolCallId}
+              tool={t}
+              autoCollapse={autoCollapse}
+            />
           ))}
         </div>
       ) : null}
