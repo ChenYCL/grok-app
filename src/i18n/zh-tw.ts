@@ -924,15 +924,25 @@ export const zhTW: Record<MessageKey, string> = {
   "settings.shortcuts.desc":
     "點「錄製」後按下組合鍵即可改綁全域操作。「重設」恢復預設；「全部重設」清除所有自訂。",
   "settings.shortcuts.colAction": "操作",
+  "settings.shortcuts.colScope": "範圍",
   "settings.shortcuts.colMac": "macOS",
   "settings.shortcuts.colWin": "Windows / Linux",
   "settings.shortcuts.colEdit": "編輯",
+  "settings.shortcuts.scope.global": "全域",
+  "settings.shortcuts.scope.chatFocus": "對話",
+  "settings.shortcuts.scope.globalHint":
+    "應用層殼操作（命令面板、設定、側欄、診斷等）。",
+  "settings.shortcuts.scope.chatFocusHint":
+    "對話介面操作（對話內尋找、複製上一則回覆、傳送、停止）。",
+  "settings.shortcuts.ignoreCrossScope": "允許跨範圍共用組合鍵",
+  "settings.shortcuts.ignoreCrossScopeDesc":
+    "開啟後，全域操作與對話操作共用同一組合鍵時，本列表不視為衝突；同範圍內的衝突仍會提示。不會改變應用執行時如何比對按鍵。",
   "settings.shortcuts.group.workbench": "工作台",
   "settings.shortcuts.group.navigation": "導覽",
   "settings.shortcuts.group.diagnostics": "診斷",
   "settings.shortcuts.group.input": "輸入",
   "settings.shortcuts.note":
-    "預設 Enter 傳送；可在 設定 → 對話偏好 改為 ⌘/Ctrl+Enter。Esc、Ctrl+Space 語音輸入與傳送鍵為固定綁定。部分組合鍵可能被系統占用（如輸入法切換）。",
+    "預設 Enter 傳送；可在 設定 → 對話偏好 改為 ⌘/Ctrl+Enter。Esc、Ctrl+Space 語音輸入與傳送鍵為固定綁定。範圍區分全域與對話；可選跨範圍共用僅影響衝突檢查。部分組合鍵可能被系統占用（如輸入法切換）。",
   "settings.shortcuts.openHelp": "開啟快捷鍵說明",
   "settings.shortcuts.filterPlaceholder": "篩選快捷鍵…",
   "settings.shortcuts.filterEmpty": "沒有符合篩選條件的快捷鍵。",
