@@ -1311,6 +1311,12 @@ export interface AppSettings {
   allowedTools?: string[];
   planEnabled?: boolean;
   subagentsEnabled?: boolean;
+  /**
+   * Enable CLI subagent worktree snapshot (CLI 0.2.117+).
+   * Default false. Writes agent-home `subagent_worktree_snapshot_enabled` in
+   * independent mode; spawn sets `GROK_SUBAGENT_WORKTREE_SNAPSHOT`. Soft-respawns.
+   */
+  subagentWorktreeSnapshotEnabled?: boolean;
   useLeader?: boolean;
   /** Reopen last active chat once after launch (default false → draft new chat). */
   reopenLastSession?: boolean;

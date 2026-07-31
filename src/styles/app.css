@@ -22314,6 +22314,15 @@ html[data-theme="light"] .rim-sidebar {
   display: flex;
   gap: 4px;
 }
+.agent-tasks__snap-note {
+  margin: 0 14px 8px;
+  padding: 6px 8px;
+  font-size: 11px;
+  line-height: 1.4;
+  opacity: 0.78;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--fg, #e8e8e8) 6%, transparent);
+}
 .agent-tasks__search {
   padding: 4px 12px 8px;
 }

@@ -11,6 +11,7 @@ mod agent_prefs;
 mod app_update;
 mod updater;
 mod agent_subagents;
+mod agent_subagent_wt_snap;
 mod extensions;
 mod hooks;
 mod supergrok_quota;

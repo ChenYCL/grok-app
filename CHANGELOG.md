@@ -15,6 +15,7 @@ See `docs/llm-wiki/release.md`.
 
 #### Runtime / connection
 - **SDK Connect wizard** (Settings → Runtime → Connection): start local `agent serve`, show masked secret + ws URL, TCP health probe, copy curl / websocat / `grok --remote` examples for external clients, and optional paste remote serve URL + probe. Secrets never logged; full token only via one-time clipboard after start.
+- **Subagent worktree snapshot** (Settings → General → Agent; CLI **0.2.117+** config `subagent_worktree_snapshot_enabled`): opt-in toggle so nested subagents can snapshot / rehydrate isolated worktrees. Independent mode writes the top-level agent-home key; spawn sets `GROK_SUBAGENT_WORKTREE_SNAPSHOT` (soft-fail when CLI is known older). Soft-respawn on change. Tasks panel shows a short note when enabled.
 
 #### Composer & chat
 - **Live Voice delegate status** (VOX-DELEG): overlay shows listening / thinking / speaking from host `voice://` events, **Stop**, honest empty transcript (no fake STT), delegated session chips, and optional **Send transcript to active session** when a chat is open

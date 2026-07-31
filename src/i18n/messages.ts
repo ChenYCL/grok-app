@@ -591,6 +591,8 @@ const en = {
   "tasks.collapseChildren": "Collapse nested tools",
   "tasks.parent": "Parent",
   "tasks.searchPlaceholder": "Filter tasks…",
+  "tasks.subagentWtSnapNote":
+    "Subagent worktree snapshot is on (CLI 0.2.117+). Nested agents may use isolated worktree snapshots.",
   "tasks.openDashboard": "Agent dashboard",
   "dashboard.title": "Agent dashboard",
   "dashboard.hint":
@@ -1372,6 +1374,9 @@ const en = {
     "settings.section.agent": "Agent",
   "settings.subagentsEnabled": "Allow subagents",
   "settings.subagentsEnabledDesc": "When off, spawn with --no-subagents so nested Agent / task tools cannot start child sessions. Soft-respawns after change.",
+  "settings.subagentWorktreeSnapshot": "Subagent worktree snapshot",
+  "settings.subagentWorktreeSnapshotDesc":
+    "When on, Grok Build may snapshot / rehydrate isolated worktrees for nested subagents (CLI 0.2.117+ config subagent_worktree_snapshot_enabled + GROK_SUBAGENT_WORKTREE_SNAPSHOT). Default off. Independent mode writes agent-home config.toml. Soft-respawns after change; older CLIs soft-fail (env omitted).",
   "settings.planEnabled": "Allow plan mode",
   "settings.planEnabledDesc": "When off, spawn with --no-plan so the agent cannot enter plan mode. Soft-respawns after change.",
   "settings.useLeader": "Share agent backend (leader)",
@@ -4297,6 +4302,8 @@ const zh: Record<MessageKey, string> = {
   "tasks.collapseChildren": "收起子工具",
   "tasks.parent": "父级",
   "tasks.searchPlaceholder": "筛选任务…",
+  "tasks.subagentWtSnapNote":
+    "子代理 worktree 快照已开启（CLI 0.2.117+）。嵌套 Agent 可能使用隔离 worktree 快照。",
   "tasks.openDashboard": "Agent 仪表盘",
   "dashboard.title": "Agent 仪表盘",
   "dashboard.hint":
@@ -5049,6 +5056,9 @@ const zh: Record<MessageKey, string> = {
     "settings.section.agent": "Agent",
   "settings.subagentsEnabled": "允许子代理",
   "settings.subagentsEnabledDesc": "关闭时启动加上 --no-subagents，无法拉起嵌套 Agent / 任务。更改后 soft-respawn。",
+  "settings.subagentWorktreeSnapshot": "子代理 worktree 快照",
+  "settings.subagentWorktreeSnapshotDesc":
+    "开启后，Grok Build 可为嵌套子代理快照 / 还原隔离 worktree（CLI 0.2.117+ 配置 subagent_worktree_snapshot_enabled 与 GROK_SUBAGENT_WORKTREE_SNAPSHOT）。默认关闭。独立模式写入 agent-home config.toml。更改后 soft-respawn；旧版 CLI soft-fail（省略 env）。",
   "settings.planEnabled": "允许计划模式",
   "settings.planEnabledDesc": "关闭时启动加上 --no-plan，Agent 无法进入计划模式。更改后 soft-respawn。",
   "settings.useLeader": "共享 Agent 后端（leader）",

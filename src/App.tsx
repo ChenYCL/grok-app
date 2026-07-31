@@ -2146,6 +2146,8 @@ export default function App() {
   const voiceDictationAutoSendRef = useRef(false);
   const sendRef = useRef<(() => Promise<void>) | null>(null);
   const [subagentsEnabled, setSubagentsEnabled] = useState(true);
+  const [subagentWorktreeSnapshotEnabled, setSubagentWorktreeSnapshotEnabled] =
+    useState(false);
   const [planEnabled, setPlanEnabled] = useState(true);
   const [disableWebSearch, setDisableWebSearch] = useState(false);
   const [disallowedTools, setDisallowedTools] = useState<string[]>([]);
@@ -2975,6 +2977,9 @@ export default function App() {
           : null,
       );
       setSubagentsEnabled(settings.subagentsEnabled !== false);
+      setSubagentWorktreeSnapshotEnabled(
+        !!settings.subagentWorktreeSnapshotEnabled,
+      );
       setPlanEnabled(settings.planEnabled !== false);
       setDisableWebSearch(!!settings.disableWebSearch);
       setDisallowedTools(
@@ -14571,6 +14576,13 @@ export default function App() {
               api.settingsSet({ ...s, subagentsEnabled: v }),
             );
           }}
+          subagentWorktreeSnapshotEnabled={subagentWorktreeSnapshotEnabled}
+          onSubagentWorktreeSnapshotEnabled={(v) => {
+            setSubagentWorktreeSnapshotEnabled(v);
+            void api.settingsGet().then((s) =>
+              api.settingsSet({ ...s, subagentWorktreeSnapshotEnabled: v }),
+            );
+          }}
           planEnabled={planEnabled}
           onPlanEnabled={(v) => {
             setPlanEnabled(v);
@@ -16485,6 +16497,9 @@ export default function App() {
               messages={messages}
               t={(k, vars) => tr(k, vars)}
               onClose={() => setTasksPanelOpen(false)}
+              subagentWorktreeSnapshotEnabled={
+                subagentWorktreeSnapshotEnabled
+              }
               activitySessions={collectActivitySessions({
                 liveMap,
                 sessions,

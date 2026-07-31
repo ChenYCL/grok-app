@@ -1118,6 +1118,8 @@ pub async fn settings_set(
     let plan_enabled_flip = prev.plan_enabled != settings.plan_enabled;
     let use_leader_changed = prev.use_leader != settings.use_leader;
     let subagents_flip = prev.subagents_enabled != settings.subagents_enabled;
+    let subagent_wt_snap_flip = prev.subagent_worktree_snapshot_enabled
+        != settings.subagent_worktree_snapshot_enabled;
     let preferred_agent_flip =
         prev.preferred_agent.trim() != settings.preferred_agent.trim();
     let agent_profile_flip = prev.agent_profile_path.trim() != settings.agent_profile_path.trim();
@@ -1217,6 +1219,15 @@ pub async fn settings_set(
             settings.subagents_enabled,
         ) {
             tracing::warn!("settings_set sync subagents profile: {e}");
+        }
+        need_soft_respawn = true;
+    }
+    if subagent_wt_snap_flip {
+        if let Err(e) = crate::agent_subagent_wt_snap::sync_subagent_wt_snap_to_agent_profile(
+            &settings.session_data_mode,
+            settings.subagent_worktree_snapshot_enabled,
+        ) {
+            tracing::warn!("settings_set sync subagent_wt_snap profile: {e}");
         }
         need_soft_respawn = true;
     }

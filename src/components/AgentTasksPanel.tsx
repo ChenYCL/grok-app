@@ -69,6 +69,11 @@ export type AgentTasksPanelProps = {
   onOpenCwd?: (cwd: string) => void;
   /** Current chat project path — used to mark cwd as already active. */
   activeCwd?: string | null;
+  /**
+   * When true, CLI subagent worktree snapshot mode is on
+   * (`subagent_worktree_snapshot_enabled`, CLI 0.2.117+). Shows a short note.
+   */
+  subagentWorktreeSnapshotEnabled?: boolean;
 };
 
 async function revealOrCopyCwd(cwd: string): Promise<"revealed" | "copied"> {
@@ -501,6 +506,7 @@ export function AgentTasksPanel({
   onOpenDashboard,
   onOpenCwd,
   activeCwd = null,
+  subagentWorktreeSnapshotEnabled = false,
 }: AgentTasksPanelProps) {
   const [query, setQuery] = useState("");
   const tasks = useMemo(() => {
@@ -590,6 +596,12 @@ export function AgentTasksPanel({
           ) : null}
         </div>
       </header>
+
+      {subagentWorktreeSnapshotEnabled ? (
+        <p className="agent-tasks__snap-note" role="note">
+          {t("tasks.subagentWtSnapNote")}
+        </p>
+      ) : null}
 
       <div className="agent-tasks__search">
         <input

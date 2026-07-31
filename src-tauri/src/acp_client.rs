@@ -711,6 +711,7 @@ impl AcpClient {
             crate::agents_catalog::normalize_agent_profile_path(&settings.agent_profile_path);
         let agents_json_args = agents_json_spawn_flags(&settings.agents_json);
         let subagents_enabled = settings.subagents_enabled;
+        let subagent_wt_snap = settings.subagent_worktree_snapshot_enabled;
         let memory_enabled = settings.experimental_memory;
         let use_leader = settings.use_leader;
         let plan_enabled = settings.plan_enabled;
@@ -719,6 +720,8 @@ impl AcpClient {
         let allowed_tools = settings.allowed_tools.clone();
         let spawn_policy = opts.permission_policy.as_deref().unwrap_or("ask");
         let spawn_product_mode = opts.product_mode.as_deref();
+        // Soft-fail older CLIs for GROK_SUBAGENT_WORKTREE_SNAPSHOT env.
+        let cli_ver = crate::cli_probe::read_version_of(&cli_path);
 
         if session_data_mode != "shared" {
             let _ = crate::agent_subagents::sync_subagents_to_agent_profile(
@@ -728,6 +731,10 @@ impl AcpClient {
             let _ = crate::agent_memory::sync_memory_to_agent_profile(
                 session_data_mode,
                 memory_enabled,
+            );
+            let _ = crate::agent_subagent_wt_snap::sync_subagent_wt_snap_to_agent_profile(
+                session_data_mode,
+                subagent_wt_snap,
             );
         }
 
@@ -794,6 +801,12 @@ impl AcpClient {
         }
         crate::agent_subagents::apply_subagents_to_command(&mut cmd, subagents_enabled);
         crate::agent_memory::apply_memory_to_command(&mut cmd, memory_enabled);
+        // Config-only surface (CLI 0.2.117+): env + independent agent-home key.
+        crate::agent_subagent_wt_snap::apply_subagent_wt_snap_to_command(
+            &mut cmd,
+            subagent_wt_snap,
+            cli_ver.as_deref(),
+        );
         cmd.arg("agent");
         cmd.arg(leader_spawn_flag(use_leader));
         // Agent option: `--agent-profile <PATH>` (before `stdio`). Path only —

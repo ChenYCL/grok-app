@@ -557,6 +557,8 @@ export const zhTW: Record<MessageKey, string> = {
   "tasks.collapseChildren": "收合子工具",
   "tasks.parent": "父級",
   "tasks.searchPlaceholder": "篩選任務…",
+  "tasks.subagentWtSnapNote":
+    "子代理 worktree 快照已開啟（CLI 0.2.117+）。巢狀 Agent 可能使用隔離 worktree 快照。",
   "tasks.openDashboard": "Agent 儀表板",
   "dashboard.title": "Agent 儀表板",
   "dashboard.hint":
@@ -1309,6 +1311,9 @@ export const zhTW: Record<MessageKey, string> = {
     "settings.section.agent": "Agent",
   "settings.subagentsEnabled": "允許子代理",
   "settings.subagentsEnabledDesc": "關閉時啟動加上 --no-subagents，無法拉起巢狀 Agent / 任務。變更後 soft-respawn。",
+  "settings.subagentWorktreeSnapshot": "子代理 worktree 快照",
+  "settings.subagentWorktreeSnapshotDesc":
+    "開啟後，Grok Build 可為巢狀子代理快照 / 還原隔離 worktree（CLI 0.2.117+ 設定 subagent_worktree_snapshot_enabled 與 GROK_SUBAGENT_WORKTREE_SNAPSHOT）。預設關閉。獨立模式寫入 agent-home config.toml。變更後 soft-respawn；舊版 CLI soft-fail（省略 env）。",
   "settings.planEnabled": "允許計畫模式",
   "settings.planEnabledDesc": "關閉時啟動加上 --no-plan，Agent 無法進入計畫模式。變更後 soft-respawn。",
   "settings.useLeader": "共用 Agent 後端（leader）",
