@@ -696,6 +696,27 @@ export const SETTINGS_ENTRIES: readonly SettingsEntry[] = [
     keywords: ["subagents", "sub-agent"],
   },
   {
+    id: "general.subagentWorktreeSnapshot",
+    section: "general",
+    tab: "agent",
+    anchorId: "settings-anchor-subagentWtSnap",
+    labelKey: "settings.subagentWorktreeSnapshot",
+    descKeys: [
+      "settings.subagentWorktreeSnapshotDesc",
+      "tasks.subagentWtSnapNote",
+    ],
+    keywords: [
+      "subagent worktree snapshot",
+      "subagent_worktree_snapshot_enabled",
+      "GROK_SUBAGENT_WORKTREE_SNAPSHOT",
+      "worktree snapshot",
+      "subagent snapshot",
+      "子代理 worktree 快照",
+      "子代理工作樹快照",
+      "快照",
+    ],
+  },
+  {
     id: "general.configTomlEdit",
     section: "general",
     tab: "agent",

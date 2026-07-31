@@ -551,6 +551,9 @@ export interface SettingsPageProps {
   onTodoGateMaxFiresPerPrompt?: (v: number) => void;
   subagentsEnabled?: boolean;
   onSubagentsEnabled?: (v: boolean) => void;
+  /** CLI subagent worktree snapshot (config 0.2.117+). */
+  subagentWorktreeSnapshotEnabled?: boolean;
+  onSubagentWorktreeSnapshotEnabled?: (v: boolean) => void;
   useLeader?: boolean;
   onUseLeader?: (v: boolean) => void;
   /** Live voice speaker id (xAI realtime), e.g. eve. */
@@ -1155,6 +1158,8 @@ export function SettingsPage({
   onCompactionDetail,
   subagentsEnabled = true,
   onSubagentsEnabled,
+  subagentWorktreeSnapshotEnabled = false,
+  onSubagentWorktreeSnapshotEnabled,
   planEnabled = true,
   onPlanEnabled,
   todoGateEnabled = false,
@@ -3009,6 +3014,33 @@ export function SettingsPage({
                     checked={!!subagentsEnabled}
                     onChange={() => onSubagentsEnabled(!subagentsEnabled)}
                     ariaLabel={t("settings.subagentsEnabled")}
+                  />
+                </div>
+              ) : null}
+              {onSubagentWorktreeSnapshotEnabled ? (
+                <div
+                  className={
+                    "settings-row" +
+                    rowHighlight("settings-anchor-subagentWtSnap")
+                  }
+                  id="settings-anchor-subagentWtSnap"
+                >
+                  <div className="settings-row__text">
+                    <div className="settings-row__label">
+                      {t("settings.subagentWorktreeSnapshot")}
+                    </div>
+                    <div className="settings-row__desc">
+                      {t("settings.subagentWorktreeSnapshotDesc")}
+                    </div>
+                  </div>
+                  <UiCheck
+                    checked={!!subagentWorktreeSnapshotEnabled}
+                    onChange={() =>
+                      onSubagentWorktreeSnapshotEnabled(
+                        !subagentWorktreeSnapshotEnabled,
+                      )
+                    }
+                    ariaLabel={t("settings.subagentWorktreeSnapshot")}
                   />
                 </div>
               ) : null}

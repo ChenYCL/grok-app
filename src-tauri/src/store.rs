@@ -328,6 +328,12 @@ pub struct AppSettings {
     /// and independent mode writes `[subagents] enabled = false`.
     #[serde(default = "default_true")]
     pub subagents_enabled: bool,
+    /// Enable CLI subagent worktree snapshot (CLI **0.2.117+** config
+    /// `subagent_worktree_snapshot_enabled` + env `GROK_SUBAGENT_WORKTREE_SNAPSHOT`).
+    /// Default **false** (opt-in). Independent mode writes the top-level agent-home
+    /// key; spawn sets env (soft-fail when CLI is known older). Soft-respawns.
+    #[serde(default)]
+    pub subagent_worktree_snapshot_enabled: bool,
     /// Preferred Grok Build agent definition for new agent processes
     /// (`explore` / `plan` / `general-purpose` / custom name under `~/.grok/agents`).
     /// Empty / `default` / `none` → omit top-level `--agent` (CLI default).
@@ -515,6 +521,7 @@ impl Default for AppSettings {
             startup_new_chat_default_migrated: true,
             plan_enabled: default_plan_enabled(),
             subagents_enabled: true,
+            subagent_worktree_snapshot_enabled: false,
             preferred_agent: String::new(),
             agent_profile_path: String::new(),
             agents_json: String::new(),
@@ -2310,6 +2317,7 @@ mod tests {
         assert!(s.allowed_tools.is_empty());
         assert!(s.plan_enabled);
         assert!(s.subagents_enabled);
+        assert!(!s.subagent_worktree_snapshot_enabled);
         assert_eq!(s.preferred_agent, "");
         assert_eq!(s.agent_profile_path, "");
         assert_eq!(s.agents_json, "");
@@ -2473,6 +2481,13 @@ mod tests {
     fn subagents_enabled_defaults_true_when_missing_from_json() {
         let s: AppSettings = serde_json::from_str(legacy_settings_json()).expect("deserialize");
         assert!(s.subagents_enabled);
+    }
+
+    #[test]
+    fn subagent_worktree_snapshot_defaults_false_when_missing_from_json() {
+        let s: AppSettings = serde_json::from_str(legacy_settings_json()).expect("deserialize");
+        assert!(!s.subagent_worktree_snapshot_enabled);
+        assert!(!AppSettings::default().subagent_worktree_snapshot_enabled);
     }
 
     #[test]
