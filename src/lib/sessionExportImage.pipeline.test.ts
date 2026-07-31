@@ -91,25 +91,29 @@ describe("export image pipeline e2e (shipped)", () => {
     await installCanvasPolyfill();
   });
 
-  it("smart path: structure theme + non-empty PNG blob", async () => {
+  it("smart path: curated skin + non-empty PNG blob", async () => {
     const summary = buildSmartShareSummary({
       title: "周报整理",
       messages: FIXTURE_MESSAGES,
+      skinId: "noir",
     });
     expect(summary.bullets.length).toBeGreaterThan(0);
     expect(summary.headline).toBeTruthy();
     expect((summary.theme as { id?: string }).id).toBeUndefined();
     expect(["editorial", "stack", "compact"]).toContain(summary.theme.layout);
-    expect(summary.theme.bg0).toMatch(/^hsl\(/);
+    expect(summary.theme.skinId).toBe("noir");
+    expect(summary.theme.bg0).toMatch(/^#/);
 
     const result = await buildExportImagePipeline({
       title: "周报整理",
       sessionId: "sess-e2e-001",
       messages: FIXTURE_MESSAGES,
       smart: true,
+      skinId: "noir",
       pixelRatio: 1,
     });
     expect(result.mode).toBe("smart");
+    expect(result.skinId).toBe("noir");
     expect(result.blob).toBeInstanceOf(Blob);
     expect(result.byteLength).toBeGreaterThanOrEqual(1024);
     const buf = new Uint8Array(await result.blob.arrayBuffer());
@@ -136,9 +140,11 @@ describe("export image pipeline e2e (shipped)", () => {
       sessionId: "sess-e2e-001",
       messages: FIXTURE_MESSAGES,
       smart: false,
+      skinId: "paper",
       pixelRatio: 1,
     });
     expect(result.mode).toBe("full");
+    expect(result.skinId).toBe("paper");
     expect(result.byteLength).toBeGreaterThanOrEqual(1024);
     const buf = new Uint8Array(await result.blob.arrayBuffer());
     expect(Array.from(buf.slice(0, 8))).toEqual([
@@ -157,16 +163,24 @@ describe("export image pipeline e2e (shipped)", () => {
     ).rejects.toMatchObject({ message: "empty" });
   });
 
-  it("theme differs by content seed (not fixed domain buckets)", () => {
+  it("seed tracks content; palette tracks skin (not domain buckets)", () => {
     const a = buildThemeFromContent(
       "A",
       "alpha unique seed corpus one two three",
+      0,
+      "terminal",
     );
     const b = buildThemeFromContent(
       "B",
       "completely different words for another hash",
+      0,
+      "terminal",
     );
+    const c = buildThemeFromContent("C", "same skin other", 0, "rose");
     expect(a.seed).not.toBe(b.seed);
-    expect(typeof a.hue).toBe("number");
+    expect(a.skinId).toBe("terminal");
+    expect(a.bg0).toBe(b.bg0);
+    expect(c.skinId).toBe("rose");
+    expect(c.bg0).not.toBe(a.bg0);
   });
 });

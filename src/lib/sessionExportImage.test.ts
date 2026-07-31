@@ -1,10 +1,12 @@
-import { describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
 import {
   GROK_APP_SHARE_FOOTER,
   buildShareCardModel,
+  buildShareContentParts,
   exportableToShareMessages,
   sessionExportImageFilename,
   shareCardToHtml,
+  wrapTextLines,
 } from "./sessionExportImage";
 
 describe("sessionExportImageFilename", () => {
@@ -98,5 +100,99 @@ describe("exportableToShareMessages", () => {
     expect(out).toEqual([
       { role: "user", content: "x", thought: "t", createdAt: "1" },
     ]);
+  });
+});
+
+describe("buildShareContentParts", () => {
+  it("extracts backtick + markdown image refs via pathMap", () => {
+    const pathMap = {
+      "images/1.jpg": "/sess/images/1.jpg",
+      "images/2.png": "/sess/images/2.png",
+    };
+    const parts = buildShareContentParts(
+      "封面：\n\n`images/1.jpg`\n\n说明文字\n\n![alt](images/2.png)\n\n结尾",
+      pathMap,
+    );
+    const kinds = parts.map((p) => p.kind);
+    expect(kinds).toContain("image");
+    expect(kinds).toContain("text");
+    const images = parts.filter((p) => p.kind === "image");
+    expect(images).toHaveLength(2);
+    expect(images[0]).toMatchObject({
+      kind: "image",
+      path: "/sess/images/1.jpg",
+    });
+    expect(images[1]).toMatchObject({
+      kind: "image",
+      path: "/sess/images/2.png",
+    });
+  });
+
+  it("appends attachment images not already inlined", () => {
+    const parts = buildShareContentParts("只有文字", null, [
+      {
+        path: "/abs/extra.png",
+        name: "extra.png",
+        isDir: false,
+      },
+    ]);
+    expect(parts.some((p) => p.kind === "image" && p.path === "/abs/extra.png")).toBe(
+      true,
+    );
+  });
+
+  it("keeps absolute image paths without pathMap", () => {
+    const abs = "/Users/me/pic.webp";
+    const parts = buildShareContentParts(`见 \`${abs}\``, null);
+    expect(parts.some((p) => p.kind === "image" && p.path === abs)).toBe(true);
+  });
+});
+
+describe("wrapTextLines", () => {
+  beforeAll(async () => {
+    const canvasMod = await import("canvas");
+    const { createCanvas } = canvasMod;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const g = globalThis as any;
+    if (!g.document) {
+      g.document = {
+        createElement(tag: string) {
+          if (tag !== "canvas") throw new Error(`unexpected ${tag}`);
+          return createCanvas(8, 8);
+        },
+      };
+    }
+  });
+
+  it("breaks long CJK / mixed paragraphs so no line exceeds maxWidth", () => {
+    const canvas = document.createElement("canvas");
+    const ctx = canvas.getContext("2d");
+    if (!ctx) throw new Error("no 2d");
+    const font =
+      '13.5px ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif';
+    const maxW = 200;
+    const long =
+      "先查深圳未来一周天气，再据此生成动漫风天气卡片。天气数据已齐：未来一周以雷雨为主，周末有暴雨风险。按技 HTML 天气卡片并导出为图片。把动漫画也复制到工作区，方便你直接使用。";
+    const lines = wrapTextLines(ctx, long, maxW, font);
+    expect(lines.length).toBeGreaterThan(1);
+    ctx.font = font;
+    for (const line of lines) {
+      expect(ctx.measureText(line).width).toBeLessThanOrEqual(maxW + 0.5);
+    }
+  });
+
+  it("breaks overlong tokens without spaces (URLs)", () => {
+    const canvas = document.createElement("canvas");
+    const ctx = canvas.getContext("2d");
+    if (!ctx) throw new Error("no 2d");
+    const font = "13.5px monospace";
+    const maxW = 120;
+    const url = "https://example.com/very/long/path/segment/without/spaces/here";
+    const lines = wrapTextLines(ctx, url, maxW, font);
+    expect(lines.length).toBeGreaterThan(1);
+    ctx.font = font;
+    for (const line of lines) {
+      expect(ctx.measureText(line).width).toBeLessThanOrEqual(maxW + 0.5);
+    }
   });
 });

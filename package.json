@@ -50,6 +50,7 @@
     "clsx": "^2.1.1",
     "docx-preview": "^0.4.0",
     "highlight.js": "^11.11.1",
+    "html-to-image": "^1.11.13",
     "pdfjs-dist": "^5.4.296",
     "plyr": "^3.8.4",
     "qrcode": "^1.5.4",

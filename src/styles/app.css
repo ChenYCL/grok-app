@@ -17631,20 +17631,108 @@ div.composer__input:empty::before {
 }
 
 /* Share-card PNG export: live preview before save/copy */
-.export-image-modal .modal-body {
-  max-height: min(78vh, 720px);
+.export-image-modal {
+  /* Wider preview so long cards stay readable while scrolling. */
+  width: min(560px, 100%);
+  max-height: min(90vh, 780px);
 }
-.export-image-preview {
+.export-image-modal .modal-body {
+  /* Single scroll owner is the preview pane — avoid nested scroll traps. */
+  max-height: none;
+  overflow: hidden;
+  min-height: 0;
+  flex: 1;
+}
+.export-image-modal .export-md-options {
+  min-height: 0;
+  flex: 1;
+  /* Skins + checkbox/actions stay put; only preview scrolls. */
   display: flex;
+  flex-direction: column;
+  gap: 10px;
+  overflow: hidden;
+}
+.export-image-skins {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0;
+  flex-shrink: 0;
+}
+.export-image-skin {
+  display: inline-flex;
   align-items: center;
-  justify-content: center;
-  min-height: 160px;
-  max-height: min(48vh, 420px);
-  overflow: auto;
+  gap: 7px;
+  padding: 6px 10px 6px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.12));
+  background: transparent;
+  color: var(--text-secondary, rgba(255, 255, 255, 0.78));
+  font-size: 12px;
+  font-weight: 550;
+  line-height: 1;
+  cursor: pointer;
+  transition:
+    border-color 0.15s ease,
+    background 0.15s ease,
+    color 0.15s ease;
+}
+.export-image-skin:hover:not(:disabled) {
+  border-color: var(--border-strong, rgba(255, 255, 255, 0.22));
+  color: var(--text-primary, #fff);
+}
+.export-image-skin:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+.export-image-skin--active {
+  border-color: var(--accent, #7c9cff);
+  background: color-mix(in srgb, var(--accent, #7c9cff) 14%, transparent);
+  color: var(--text-primary, #fff);
+}
+.export-image-skin__swatch {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.2);
+}
+.export-image-skin__swatch[data-skin="noir"] {
+  background: linear-gradient(135deg, #c4a574, #12141a);
+}
+.export-image-skin__swatch[data-skin="paper"] {
+  background: linear-gradient(135deg, #1e3a5f, #f3f4f6);
+}
+.export-image-skin__swatch[data-skin="terminal"] {
+  background: linear-gradient(135deg, #3dd6c6, #0b0f14);
+}
+.export-image-skin__swatch[data-skin="stone"] {
+  background: linear-gradient(135deg, #e4e4e7, #18181b);
+}
+.export-image-skin__swatch[data-skin="rose"] {
+  background: linear-gradient(135deg, #c9899a, #151218);
+}
+/*
+ * Preview scrollport.
+ * IMPORTANT: do NOT use align-items/justify-content: center here.
+ * Centering a tall flex child clips the top half — scroll never reaches it.
+ */
+.export-image-preview {
+  flex: 1 1 auto;
+  min-height: 180px;
+  max-height: min(56vh, 520px);
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
   border-radius: 12px;
   border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.1));
   background: var(--bg-hover, rgba(0, 0, 0, 0.18));
   padding: 10px;
+  box-sizing: border-box;
+  /* Block layout: content starts at top; full image is scrollable. */
+  display: block;
 }
 .export-image-preview__img {
   display: block;
@@ -17652,11 +17740,13 @@ div.composer__input:empty::before {
   height: auto;
   max-width: 100%;
   border-radius: 10px;
+  /* Anchor to top of scrollport so scrollTop=0 shows the card header. */
+  vertical-align: top;
 }
 .export-image-preview__placeholder,
 .export-image-preview__err {
   margin: 0;
-  padding: 16px;
+  padding: 40px 16px;
   text-align: center;
   font-size: 13px;
   line-height: 1.45;
@@ -17664,6 +17754,10 @@ div.composer__input:empty::before {
 }
 .export-image-preview__err {
   color: var(--danger, #f87171);
+}
+.export-image-modal .export-md-options__row,
+.export-image-modal .export-md-options__actions {
+  flex-shrink: 0;
 }
 .export-image-style-chip {
   color: var(--text-tertiary, rgba(255, 255, 255, 0.55));

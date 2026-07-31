@@ -392,7 +392,18 @@ import {
   downloadPngBlob,
   exportableToShareMessages,
   sessionExportImageFilename,
+  type ShareCardMessage,
 } from "@/lib/sessionExportImage";
+import {
+  buildSessionFilePathMap,
+  mergePathMaps,
+} from "@/lib/sessionPathMap";
+import {
+  loadExportImageSkinPref,
+  saveExportImageSkinPref,
+  SHARE_CARD_SKIN_IDS,
+  type ShareCardSkinId,
+} from "@/lib/shareCardSkins";
 import { loadExportLogoPref } from "@/lib/exportLogoPref";
 import { recordTraceExport } from "@/lib/traceHistory";
 import { clearPlanHistory, recordPlanHistory } from "@/lib/planHistory";
@@ -470,6 +481,7 @@ import { ChatFindBar } from "@/components/ChatFindBar";
 import {
   applyResolvedSessionMedia,
   buildAgentPrompt,
+  buildInlineMediaPathMap,
   collectSessionRelativeMediaRefs,
   isImagePath,
   mergeAttachments,
@@ -12528,10 +12540,11 @@ export default function App() {
   };
   const [exportImageTarget, setExportImageTarget] =
     useState<ExportImageTarget | null>(null);
-  /** Smart summary poster (auto style) vs full transcript card. */
+  /** Smart summary poster vs full transcript card. */
   const [exportImageSmart, setExportImageSmart] = useState(true);
-  const [exportImageStyleLabel, setExportImageStyleLabel] = useState<string | null>(
-    null,
+  /** Curated visual skin for smart + full export cards. */
+  const [exportImageSkin, setExportImageSkin] = useState<ShareCardSkinId>(() =>
+    loadExportImageSkinPref(),
   );
   const [exportImageBusy, setExportImageBusy] = useState(false);
   /** Object URL for share-card preview (revoked on close / re-render). */
@@ -12864,7 +12877,6 @@ export default function App() {
       // shows/saves session A's blob while B is still rendering (AC cross-session).
       exportImageGenRef.current += 1;
       revokeExportImagePreview();
-      setExportImageStyleLabel(null);
       setExportImagePreviewError(null);
       setExportImageBusy(true);
 
@@ -12876,6 +12888,7 @@ export default function App() {
           : null;
       exportImageMsgsSnapRef.current = snap;
       setExportImageSmart(true);
+      setExportImageSkin(loadExportImageSkinPref());
       setExportImageTarget({
         id,
         title:
@@ -12926,43 +12939,100 @@ export default function App() {
       exportImageMsgsSnapRef.current = msgs.map((m) => ({ ...m }));
     }
 
-    const shareMsgs = exportableToShareMessages(
-      msgs.map((m) => ({
-        role: m.role,
-        content: m.content,
-        thought: m.thought,
-        createdAt: m.createdAt,
-        marker: m.marker,
-      })),
-    );
+    // Resolve session-relative media (`images/1.jpg`) into message attachments —
+    // same path chat uses before MarkdownChat / ImageUi render.
+    let msgsForExport = msgs;
+    if (api.isTauri() && !exportImageSmart) {
+      try {
+        const rels = collectSessionRelativeMediaRefs(msgs);
+        if (rels.length) {
+          const list = await api.sessionResolveRelativeMedia(id, rels);
+          if (list.length) {
+            msgsForExport = applyResolvedSessionMedia(
+              msgs.map((m) => ({
+                ...m,
+                attachments: m.attachments?.map((a) => ({ ...a })),
+              })),
+              list.map((a) => ({
+                path: a.path,
+                name: a.name || a.path.split(/[/\\]/).pop() || a.path,
+                isDir: !!a.isDir,
+              })),
+            ) as typeof msgs;
+          }
+        }
+      } catch {
+        /* best-effort */
+      }
+    }
+
+    const projectPath = proj?.path ?? activeProject?.path ?? null;
+    let shareMsgs: ShareCardMessage[];
+    if (exportImageSmart) {
+      shareMsgs = exportableToShareMessages(
+        msgsForExport.map((m) => ({
+          role: m.role,
+          content: m.content,
+          thought: m.thought,
+          createdAt: m.createdAt,
+          marker: m.marker,
+        })),
+      );
+    } else {
+      // Mirror lobe ConversationThread path map construction.
+      const sessionPathMap = buildSessionFilePathMap(
+        msgsForExport as ChatMessage[],
+        projectPath,
+      );
+      shareMsgs = [];
+      for (const m of msgsForExport) {
+        if (m.role === "tool" || m.marker === "tool_step") continue;
+        const atts = (m.attachments ?? []).map((a) => ({
+          path: a.path,
+          name: a.name || a.path.split(/[/\\]/).pop() || a.path,
+          isDir: !!a.isDir,
+        }));
+        const imagePathMap = mergePathMaps(
+          buildInlineMediaPathMap(atts),
+          sessionPathMap,
+        );
+        shareMsgs.push({
+          role: m.role,
+          content: m.content || "",
+          thought: m.thought,
+          createdAt: m.createdAt,
+          attachments: atts.length ? atts : undefined,
+          imagePathMap:
+            Object.keys(imagePathMap).length > 0 ? imagePathMap : undefined,
+        });
+      }
+    }
+
     const logoDataUrl = loadExportLogoPref();
     const result = await buildExportImagePipeline({
       title,
       projectName: proj?.name,
+      projectPath,
       sessionId: id,
       messages: shareMsgs,
       smart: exportImageSmart,
+      skinId: exportImageSkin,
       logoDataUrl,
       pixelRatio: 2,
+      locale,
     });
-    const styleLabel =
-      result.mode === "smart" && result.layout
-        ? result.layout === "stack"
-          ? tr("session.exportImageLayout.stack")
-          : result.layout === "compact"
-            ? tr("session.exportImageLayout.compact")
-            : tr("session.exportImageLayout.editorial")
-        : null;
-    return { blob: result.blob, title, id, styleLabel };
+    return { blob: result.blob, title, id, skinId: result.skinId };
   }, [
     exportImageTarget,
     exportImageSmart,
+    exportImageSkin,
     session.sessionId,
     session.title,
     sessions,
     messages,
     projects,
     activeProject,
+    locale,
     tr,
   ]);
 
@@ -12970,7 +13040,7 @@ export default function App() {
   const buildExportImageBlobRef = useRef(buildExportImageBlob);
   buildExportImageBlobRef.current = buildExportImageBlob;
 
-  /** Preview refresh: only when dialog target or smart toggle changes. */
+  /** Preview refresh: dialog target, smart toggle, or skin change. */
   useEffect(() => {
     if (!exportImageTarget) {
       revokeExportImagePreview();
@@ -12979,10 +13049,9 @@ export default function App() {
     }
     const gen = ++exportImageGenRef.current;
     let cancelled = false;
-    // Always invalidate prior preview when rebuilding (session change OR smart
-    // toggle). Leaving the old blob makes Save/Copy export the wrong mode.
+    // Always invalidate prior preview when rebuilding (session / smart / skin).
+    // Leaving the old blob makes Save/Copy export the wrong mode or skin.
     revokeExportImagePreview();
-    setExportImageStyleLabel(null);
     setExportImageBusy(true);
     setExportImagePreviewError(null);
     void (async () => {
@@ -12992,14 +13061,13 @@ export default function App() {
         // Guard: never attach a blob built for another session id.
         const targetId = exportImageTarget?.id;
         if (targetId && built.id !== targetId) return;
-        const { blob, styleLabel } = built;
+        const { blob } = built;
         const url = URL.createObjectURL(blob);
         setExportImagePreviewUrl((prev) => {
           if (prev) URL.revokeObjectURL(prev);
           return url;
         });
         exportImagePreviewBlobRef.current = blob;
-        setExportImageStyleLabel(styleLabel);
         setExportImagePreviewError(null);
       } catch (e) {
         if (cancelled || gen !== exportImageGenRef.current) return;
@@ -13026,6 +13094,7 @@ export default function App() {
     exportImageTarget?.title,
     exportImageTarget?.projectId,
     exportImageSmart,
+    exportImageSkin,
     revokeExportImagePreview,
     tr,
   ]);
@@ -19510,10 +19579,53 @@ export default function App() {
         className="export-md-modal export-image-modal"
       >
         <div className="export-md-options">
-          <p className="export-md-options__msg">
-            {tr("session.exportImageHint")}
-          </p>
           <div
+            className="export-image-skins"
+            role="radiogroup"
+            aria-label={tr("session.exportImageTheme")}
+          >
+            {SHARE_CARD_SKIN_IDS.map((skinId) => (
+              <button
+                key={skinId}
+                type="button"
+                role="radio"
+                aria-checked={exportImageSkin === skinId}
+                className={
+                  "export-image-skin" +
+                  (exportImageSkin === skinId
+                    ? " export-image-skin--active"
+                    : "")
+                }
+                disabled={exportImageBusy}
+                data-skin={skinId}
+                onClick={() => {
+                  setExportImageSkin(skinId);
+                  saveExportImageSkinPref(skinId);
+                }}
+              >
+                <span
+                  className="export-image-skin__swatch"
+                  aria-hidden
+                  data-skin={skinId}
+                />
+                <span className="export-image-skin__label">
+                  {tr(
+                    (
+                      {
+                        noir: "session.exportImageSkin.noir",
+                        paper: "session.exportImageSkin.paper",
+                        terminal: "session.exportImageSkin.terminal",
+                        stone: "session.exportImageSkin.stone",
+                        rose: "session.exportImageSkin.rose",
+                      } as const
+                    )[skinId],
+                  )}
+                </span>
+              </button>
+            ))}
+          </div>
+          <div
+            key={exportImagePreviewUrl || "export-image-preview-empty"}
             className="export-image-preview"
             aria-busy={exportImageBusy}
             aria-live="polite"
@@ -19543,17 +19655,7 @@ export default function App() {
               disabled={exportImageBusy}
               onChange={(e) => setExportImageSmart(e.target.checked)}
             />
-            <span>
-              {tr("session.exportImageSmart")}
-              {exportImageSmart && exportImageStyleLabel ? (
-                <span className="export-image-style-chip">
-                  {" · "}
-                  {tr("session.exportImageStyleAuto", {
-                    style: exportImageStyleLabel,
-                  })}
-                </span>
-              ) : null}
-            </span>
+            <span>{tr("session.exportImageSmart")}</span>
           </label>
           <div className="export-md-options__actions" role="group">
             <button

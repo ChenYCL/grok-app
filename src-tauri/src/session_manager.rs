@@ -3558,6 +3558,19 @@ impl SessionManager {
                             "kind": if is_video_fs_path(path) { "video" } else { "image" },
                         }),
                     );
+                } else if let Some(path) = path_out
+                    .as_ref()
+                    .filter(|p| is_media_fs_path(p) && std::path::Path::new(p).is_file())
+                {
+                    // Write / read / copy of workspace media: persist as attachment so
+                    // history reload can render bare basenames after session switch.
+                    let att = attachment_from_path(path);
+                    let mut guard = self.inner.lock();
+                    if let Some(s) = guard.as_mut() {
+                        if !s.stream_attachments.iter().any(|a| a.path == att.path) {
+                            s.stream_attachments.push(att);
+                        }
+                    }
                 }
 
                 let (app_sid, empty_run) = {

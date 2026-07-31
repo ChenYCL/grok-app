@@ -20,3 +20,32 @@ describe("normalizePathToken", () => {
     expect(normalizePathToken("…/videos/1.mp4")).toBe("videos/1.mp4");
   });
 });
+
+describe("resolveFileToken bare media", () => {
+  it("does not invent sibling media under a unique pathMap parent", () => {
+    // After reload, only image_gen attachment remains under agent images/.
+    // Inventing images/shenzhen-weather-card.png caused broken ImageUi cards.
+    const pathMap = {
+      "/Users/me/agent-home/sessions/abc/images/1.jpg":
+        "/Users/me/agent-home/sessions/abc/images/1.jpg",
+      "1.jpg": "/Users/me/agent-home/sessions/abc/images/1.jpg",
+      "images/1.jpg": "/Users/me/agent-home/sessions/abc/images/1.jpg",
+    };
+    expect(
+      resolveFileToken("shenzhen-weather-card.png", { pathMap }),
+    ).toBeNull();
+    expect(resolveFileToken("1.jpg", { pathMap })).toBe(
+      "/Users/me/agent-home/sessions/abc/images/1.jpg",
+    );
+  });
+
+  it("still invents sibling non-media files under a unique parent", () => {
+    const pathMap = {
+      "/Users/me/proj/docs/a.md": "/Users/me/proj/docs/a.md",
+      "a.md": "/Users/me/proj/docs/a.md",
+    };
+    expect(resolveFileToken("b.md", { pathMap })).toBe(
+      "/Users/me/proj/docs/b.md",
+    );
+  });
+});

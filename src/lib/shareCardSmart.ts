@@ -1,23 +1,28 @@
 /**
- * Smart share-card summary + universal visual system (offline).
+ * Smart share-card summary (offline).
  *
- * No domain keyword maps (fitness/tech/…). Style is derived from content
- * *structure* + a stable content hash so every conversation gets a unique but
- * deterministic palette. Summary text is condensed from headings / lists /
- * emphasis / closing lines — topic-agnostic.
+ * Summary text is condensed from headings / lists / emphasis / closing lines
+ * (topic-agnostic). Visual palette comes from curated skins
+ * (`shareCardSkins.ts`); layout density still follows content structure.
  */
 
 import type { ShareCardMessage } from "@/lib/sessionExportImage";
+import {
+  getShareCardSkin,
+  type ShareCardSkinId,
+} from "@/lib/shareCardSkins";
 
 /** Structural layout modes — not topic labels. */
 export type ShareCardLayoutMode = "editorial" | "stack" | "compact";
 
 export type ShareCardTheme = {
-  /** Stable seed 0..1 from content hash (for debugging / chip). */
+  /** Stable seed 0..1 from content hash (for debugging). */
   seed: number;
-  /** Accent hue in degrees 0..360. */
+  /** Reserved: skin accent reference (0 for curated skins). */
   hue: number;
   layout: ShareCardLayoutMode;
+  /** Skin id applied to this card. */
+  skinId: ShareCardSkinId;
   bg0: string;
   bg1: string;
   accent: string;
@@ -27,10 +32,25 @@ export type ShareCardTheme = {
   card: string;
   bullet: string;
   badge: string;
+  /** @deprecated No glow orbs — kept empty/transparent for callers. */
   orbA: string;
   orbB: string;
-  /** Short machine id for badge, e.g. "H172" or "LIST". */
+  /** Short badge label from skin (e.g. "NOIR"). */
   badgeText: string;
+  /** Full skin tokens for canvas rasterizers. */
+  surfaceUser: string;
+  surfaceTakeaway: string;
+  border: string;
+  borderStrong: string;
+  faint: string;
+  logo0: string;
+  logo1: string;
+  footerBg: string;
+  radius: number;
+  radiusSm: number;
+  typeFace: "sans" | "mono";
+  decor: "none" | "grain" | "corner";
+  isLight: boolean;
 };
 
 export type SmartShareSummary = {
@@ -84,14 +104,6 @@ export function contentSeed(text: string): number {
 
 function clamp01(n: number): number {
   return Math.max(0, Math.min(1, n));
-}
-
-function hsl(h: number, s: number, l: number, a = 1): string {
-  const hh = ((h % 360) + 360) % 360;
-  const ss = clamp01(s) * 100;
-  const ll = clamp01(l) * 100;
-  if (a >= 1) return `hsl(${hh.toFixed(1)} ${ss.toFixed(1)}% ${ll.toFixed(1)}%)`;
-  return `hsl(${hh.toFixed(1)} ${ss.toFixed(1)}% ${ll.toFixed(1)}% / ${clamp01(a).toFixed(3)})`;
 }
 
 export type ContentStructure = {
@@ -177,66 +189,49 @@ function pickLayout(st: ContentStructure, bulletCount: number): ShareCardLayoutM
 }
 
 /**
- * Build a universal palette from structure + seed.
- * Hue comes from content hash (unique per chat); sat/light from structure.
+ * Build theme tokens: curated skin palette + structure-derived layout.
  */
 export function buildThemeFromContent(
   title: string,
   corpus: string,
   bulletCount = 0,
+  skinId?: string | null,
 ): ShareCardTheme {
   const seed = contentSeed(`${title}\n${corpus.slice(0, 2000)}`);
   const st = analyzeContentStructure(`${title}\n${corpus}`);
-
-  // Base hue from seed; slight structure nudges (not domain keywords).
-  let hue = seed * 360;
-  // Code-heavy → cooler band bias; high energy → warmer shift
-  hue = (hue + st.codeRatio * 40 - st.energy * 25 + st.cjkRatio * 12) % 360;
-  if (hue < 0) hue += 360;
-
-  // Saturation: calmer for code, punchier for lists/energy
-  const sat =
-    0.42 +
-    st.listRatio * 0.18 +
-    st.energy * 0.2 -
-    st.codeRatio * 0.22 +
-    (1 - st.cjkRatio) * 0.04;
-  const satClamped = clamp01(Math.max(0.28, Math.min(0.72, sat)));
-
-  // Dark poster base
-  const bg0 = hsl(hue, satClamped * 0.35, 0.07);
-  const bg1 = hsl((hue + 28) % 360, satClamped * 0.28, 0.11);
-  const accent = hsl(hue, Math.min(0.85, satClamped + 0.25), 0.62);
-  const accentSoft = hsl(hue, satClamped, 0.5, 0.16);
-  const text = hsl(hue, 0.12, 0.96);
-  const muted = hsl(hue, satClamped * 0.35, 0.72);
-  const card = hsl(hue, satClamped * 0.4, 0.18, 0.45);
-  const bullet = hsl(hue, Math.min(0.9, satClamped + 0.2), 0.7);
-  const badge = hsl(hue, satClamped + 0.1, 0.48);
-  const orbA = hsl(hue, satClamped, 0.5, 0.32);
-  const orbB = hsl((hue + 48) % 360, satClamped * 0.8, 0.45, 0.22);
-
   const layout = pickLayout(st, bulletCount);
-  const layoutTag =
-    layout === "stack" ? "LIST" : layout === "compact" ? "DENSE" : "EDIT";
-  const badgeText = `${layoutTag}·${Math.round(hue)}`;
+  const skin = getShareCardSkin(skinId);
 
   return {
     seed,
-    hue,
+    hue: 0,
     layout,
-    bg0,
-    bg1,
-    accent,
-    accentSoft,
-    text,
-    muted,
-    card,
-    bullet,
-    badge,
-    orbA,
-    orbB,
-    badgeText,
+    skinId: skin.id,
+    bg0: skin.bg0,
+    bg1: skin.bg1,
+    accent: skin.accent,
+    accentSoft: skin.accentSoft,
+    text: skin.text,
+    muted: skin.muted,
+    card: skin.surface,
+    bullet: skin.bullet,
+    badge: skin.accent,
+    orbA: "transparent",
+    orbB: "transparent",
+    badgeText: skin.badge,
+    surfaceUser: skin.surfaceUser,
+    surfaceTakeaway: skin.surfaceTakeaway,
+    border: skin.border,
+    borderStrong: skin.borderStrong,
+    faint: skin.faint,
+    logo0: skin.logo0,
+    logo1: skin.logo1,
+    footerBg: skin.footerBg,
+    radius: skin.radius,
+    radiusSm: skin.radiusSm,
+    typeFace: skin.typeFace,
+    decor: skin.decor,
+    isLight: skin.isLight,
   };
 }
 
@@ -326,6 +321,8 @@ export function buildSmartShareSummary(input: {
   title: string;
   messages: ShareCardMessage[];
   includeThoughts?: boolean;
+  /** Curated visual skin (default noir). */
+  skinId?: string | null;
 }): SmartShareSummary {
   const parts: string[] = [];
   let sourceMessageCount = 0;
@@ -373,20 +370,16 @@ export function buildSmartShareSummary(input: {
       ? bullets
       : [truncate(stripMarkdownLite(corpus) || headline, MAX_BULLET_CHARS)];
 
-  const theme = buildThemeFromContent(input.title, corpus, safeBullets.length);
-
-  const layoutHint =
-    theme.layout === "stack"
-      ? "list layout"
-      : theme.layout === "compact"
-        ? "dense layout"
-        : "editorial";
+  const theme = buildThemeFromContent(
+    input.title,
+    corpus,
+    safeBullets.length,
+    input.skinId,
+  );
 
   const subtitle =
     headings.find((h) => h !== headline)?.slice(0, 64) ||
-    (sourceMessageCount > 1
-      ? `${sourceMessageCount} turns · ${layoutHint}`
-      : layoutHint);
+    (sourceMessageCount > 1 ? `${sourceMessageCount} turns` : null);
 
   return {
     theme,

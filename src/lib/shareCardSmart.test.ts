@@ -6,6 +6,7 @@ import {
   contentSeed,
   stripMarkdownLite,
 } from "./shareCardSmart";
+import { DEFAULT_SHARE_CARD_SKIN, SHARE_CARD_SKIN_IDS } from "./shareCardSkins";
 
 describe("contentSeed", () => {
   it("is stable and in [0,1)", () => {
@@ -35,15 +36,27 @@ describe("analyzeContentStructure", () => {
 });
 
 describe("buildThemeFromContent", () => {
-  it("varies hue by content, not by fixed topic buckets", () => {
+  it("uses curated skin palette (not content-hash HSL rainbow)", () => {
     const a = buildThemeFromContent("A", "alpha beta gamma unique seed text one");
-    const b = buildThemeFromContent("B", "totally different corpus for another seed");
-    // Same API shape for any domain
-    expect(a.bg0).toMatch(/^hsl\(/);
-    expect(a.accent).toMatch(/^hsl\(/);
+    const b = buildThemeFromContent(
+      "B",
+      "totally different corpus for another seed",
+    );
+    expect(a.skinId).toBe(DEFAULT_SHARE_CARD_SKIN);
+    expect(a.bg0).toMatch(/^#|^rgba?\(/);
+    expect(a.accent).toMatch(/^#|^rgba?\(/);
     expect(["editorial", "stack", "compact"]).toContain(a.layout);
-    // Different content → usually different hue (hash-based)
+    // Seed still tracks content; palette is skin-fixed.
     expect(a.seed).not.toBe(b.seed);
+    expect(a.bg0).toBe(b.bg0);
+  });
+
+  it("applies each curated skin id", () => {
+    for (const id of SHARE_CARD_SKIN_IDS) {
+      const theme = buildThemeFromContent("T", "content", 3, id);
+      expect(theme.skinId).toBe(id);
+      expect(theme.badgeText.length).toBeGreaterThan(0);
+    }
   });
 
   it("prefers stack layout for list-heavy text", () => {
@@ -67,12 +80,12 @@ describe("buildSmartShareSummary", () => {
             "# 方案\n\n- 第一要点说明\n- 第二要点说明\n- 第三要点说明\n\n**一句话：** 先做结构再谈细节。",
         },
       ],
+      skinId: "paper",
     });
     expect(summary.headline).toBeTruthy();
     expect(summary.bullets.length).toBeGreaterThan(0);
-    expect(summary.theme.badgeText).toBeTruthy();
-    expect(summary.theme.hue).toBeGreaterThanOrEqual(0);
-    expect(summary.theme.hue).toBeLessThan(360);
+    expect(summary.theme.badgeText).toBe("PAPER");
+    expect(summary.theme.skinId).toBe("paper");
     // no domain id field
     expect((summary as { themeId?: string }).themeId).toBeUndefined();
   });

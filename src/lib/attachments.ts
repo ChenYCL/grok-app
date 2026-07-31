@@ -216,45 +216,58 @@ export function extractImagePathsFromContent(content: string): Attachment[] {
  * Project / session relative media paths:
  * - Grok Build: `images/1.jpg`, `videos/1.mp4` (agent session dir)
  * - Skill outputs: `outputs/xhx-media-gen/foo.png` (project cwd)
+ * - Bare basenames in ticks/links: `shenzhen-weather-card.png` (project cwd)
  * Also any multi-segment relative path with a media extension (no `..`).
+ *
+ * Bare unadorned prose filenames are intentionally skipped (too many false
+ * positives). Tick / markdown-link forms are how agents cite workspace copies.
  */
 export function extractSessionRelativeMediaRefs(content: string): string[] {
   if (!content) return [];
   const seen = new Set<string>();
   const out: string[] = [];
-  const push = (raw: string) => {
+  const push = (raw: string, allowBare: boolean) => {
     let p = raw.trim().replace(/^\.\//, "").replace(/\\/g, "/");
     if (!p || seen.has(p)) return;
     if (p.startsWith("/") || /^[A-Za-z]:\//.test(p)) return;
     if (p.includes("..")) return;
     if (!isMediaPath(p)) return;
-    // Require at least one directory segment (avoid bare `logo.png`)
-    if (!p.includes("/")) return;
+    // Bare basenames only when explicitly cited (ticks / md links).
+    if (!p.includes("/") && !allowBare) return;
     // Reject obvious URL-ish or protocol-ish
     if (p.includes("://")) return;
+    // Reject path-traversal-looking tokens and over-long noise
+    if (p.length > 260) return;
     seen.add(p);
     out.push(p);
   };
 
   const folder = `(?:${RELATIVE_MEDIA_ROOTS.join("|")})`;
-  // Any multi-segment relative media path (skill outputs under project cwd, etc.)
+  // Multi-segment relative media path (skill outputs under project cwd, etc.)
   const relMedia = `(?:${folder}\\/|[\\w.-]+\\/)[^\\s\`"'<>|*?\\n]+?\\.(?:${MEDIA_EXT_RE})`;
+  // Bare basename cited in ticks / links (workspace copies after write/cp)
+  const bareMedia = `[\\w.-]+\\.(?:${MEDIA_EXT_RE})`;
 
-  const tickRe = new RegExp(`\`(${relMedia})\``, "gi");
   let m: RegExpExecArray | null;
-  while ((m = tickRe.exec(content)) !== null) push(m[1] || "");
 
-  const linkRe = new RegExp(
-    `\\[[^\\]]*\\]\\((${relMedia})\\)`,
-    "gi",
-  );
-  while ((m = linkRe.exec(content)) !== null) push(m[1] || "");
+  const tickRelRe = new RegExp(`\`(${relMedia})\``, "gi");
+  while ((m = tickRelRe.exec(content)) !== null) push(m[1] || "", false);
 
+  const tickBareRe = new RegExp(`\`(${bareMedia})\``, "gi");
+  while ((m = tickBareRe.exec(content)) !== null) push(m[1] || "", true);
+
+  const linkRelRe = new RegExp(`\\[[^\\]]*\\]\\((${relMedia})\\)`, "gi");
+  while ((m = linkRelRe.exec(content)) !== null) push(m[1] || "", false);
+
+  const linkBareRe = new RegExp(`\\[[^\\]]*\\]\\((${bareMedia})\\)`, "gi");
+  while ((m = linkBareRe.exec(content)) !== null) push(m[1] || "", true);
+
+  // Unquoted multi-segment only (never bare prose)
   const bareRe = new RegExp(
     `(?:^|[\\s("'（【])(${relMedia})\\b`,
     "gi",
   );
-  while ((m = bareRe.exec(content)) !== null) push(m[1] || "");
+  while ((m = bareRe.exec(content)) !== null) push(m[1] || "", false);
 
   return out;
 }
