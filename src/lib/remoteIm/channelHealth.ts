@@ -18,6 +18,10 @@ import {
   feishuHealthHintKeys,
   validateFeishuConfig,
 } from "./feishuConfig";
+import {
+  matrixHealthHintKeys,
+  validateMatrixConfig,
+} from "./matrixConfig";
 
 
 /** Health tone for badges / callouts (maps to RimBadge). */
@@ -84,20 +88,26 @@ export type ClassifyChannelHealthInput = {
    */
   draftOptions?: Record<string, unknown>;
   /**
-   * When the form has a non-empty Telegram token, pass for format checks only
-   * (never stored by health helpers).
+   * When the form has a non-empty Telegram (or Matrix access) token, pass for
+   * format checks only (never stored by health helpers).
    */
   tokenValue?: string | null;
   /**
    * When the form has a non-empty Feishu app_id, pass for format check only.
    */
   appIdValue?: string | null;
+  /**
+   * When the form has a non-empty Matrix access_token, pass for format checks
+   * only (never stored). Prefer this over reusing tokenValue for Matrix.
+   */
+  accessTokenValue?: string | null;
 };
 
 const FEISHU_LIKE: RemoteChannelId[] = ["feishu", "lark"];
 const TELEGRAM_LIKE: RemoteChannelId[] = ["telegram"];
 const WECOM_LIKE: RemoteChannelId[] = ["wecom"];
 const DINGTALK_LIKE: RemoteChannelId[] = ["dingtalk"];
+const MATRIX_LIKE: RemoteChannelId[] = ["matrix"];
 
 /** Required secret bind keys per channel (for readiness, not values). */
 const SECRET_KEYS: Partial<Record<RemoteChannelId, string[]>> = {
@@ -245,6 +255,22 @@ export function channelModeLabel(
     const proxy = String(options.proxy ?? "").trim();
     return proxy ? "proxy=set" : "proxy=none";
   }
+  if (MATRIX_LIKE.includes(channel)) {
+    const hs = String(options.homeserver ?? "").trim().replace(/\/+$/, "");
+    const proxy = String(options.proxy ?? "").trim();
+    const parts: string[] = [];
+    if (hs) {
+      try {
+        parts.push(`hs=${new URL(hs).hostname}`);
+      } catch {
+        parts.push("hs=set");
+      }
+    } else {
+      parts.push("hs=none");
+    }
+    parts.push(proxy ? "proxy=set" : "proxy=none");
+    return parts.join(" · ");
+  }
   if (channel === "wecom") {
     const mode = String(options.connect_mode ?? options.mode ?? "websocket");
     return `mode=${mode === "webhook" ? "webhook" : "websocket"}`;
@@ -284,6 +310,8 @@ export function credentialReadiness(
   tokenValue?: string | null,
   /** Optional Feishu app_id for format checks (never stored). */
   appIdValue?: string | null,
+  /** Optional raw Matrix access_token for format checks (never stored). */
+  accessTokenValue?: string | null,
 ): { ready: boolean; missingKeys: string[] } {
   const opts = isRecord(instance.options) ? instance.options : {};
 
@@ -317,6 +345,16 @@ export function credentialReadiness(
       secretKeysFilled,
       hasCredentials: instance.hasCredentials,
       tokenValue,
+    });
+    return { ready: v.ok, missingKeys: [...v.missing] };
+  }
+
+  if (MATRIX_LIKE.includes(channel)) {
+    const v = validateMatrixConfig({
+      options: opts,
+      secretKeysFilled,
+      hasCredentials: instance.hasCredentials,
+      accessTokenValue: accessTokenValue ?? tokenValue,
     });
     return { ready: v.ok, missingKeys: [...v.missing] };
   }
@@ -384,6 +422,9 @@ export function classifyChannelHealth(
     readinessInstance,
     input.secretKeysFilled,
     savedOpts,
+    input.tokenValue,
+    input.appIdValue,
+    input.accessTokenValue,
   );
 
   // Honest status: incomplete mode-switch / missing keys cannot look "connected".
@@ -466,6 +507,20 @@ export function classifyChannelHealth(
     }
   }
 
+  if (MATRIX_LIKE.includes(channel)) {
+    const mxV = validateMatrixConfig({
+      options: opts,
+      secretKeysFilled: input.secretKeysFilled,
+      hasCredentials: instance.hasCredentials,
+      accessTokenValue: input.accessTokenValue ?? input.tokenValue,
+    });
+    for (const k of matrixHealthHintKeys(mxV, {
+      openAcl: openAcl && instance.hasCredentials,
+    })) {
+      hintKeys.push(k);
+    }
+  }
+
   if (WECOM_LIKE.includes(channel)) {
     const wecomV = validateWecomConfig({
       options: opts,
@@ -532,6 +587,7 @@ export function channelHasDeepHealth(channel: RemoteChannelId): boolean {
     FEISHU_LIKE.includes(channel) ||
     TELEGRAM_LIKE.includes(channel) ||
     WECOM_LIKE.includes(channel) ||
-    DINGTALK_LIKE.includes(channel)
+    DINGTALK_LIKE.includes(channel) ||
+    MATRIX_LIKE.includes(channel)
   );
 }

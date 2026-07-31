@@ -507,6 +507,15 @@ export function RemoteImChannelPanel({
         .filter(([, v]) => v.trim().length > 0)
         .map(([k]) => k),
     );
+    // Format checks only — never stored by health helpers
+    const tokenValue =
+      channelId === "telegram"
+        ? secrets.token || secrets.bot_token || null
+        : null;
+    const accessTokenValue =
+      channelId === "matrix"
+        ? secrets.access_token || secrets.token || null
+        : null;
     return classifyChannelHealth({
       instance,
       bridgeRunning,
@@ -514,8 +523,10 @@ export function RemoteImChannelPanel({
       secretKeysFilled: filled,
       // Live form options (e.g. WeCom connect_mode) for honest soft status
       draftOptions: values,
+      tokenValue,
+      accessTokenValue,
     });
-  }, [instance, bridgeRunning, bridgeLinked, secrets, values]);
+  }, [instance, bridgeRunning, bridgeLinked, secrets, values, channelId]);
 
   const statusTone = health.badgeTone;
   const statusLabel = t(health.statusKey);
@@ -856,6 +867,22 @@ export function RemoteImChannelPanel({
           </ol>
           <p className="settings-row__hint">
             {t("settings.remoteIm.telegram.guide.softFail")}
+          </p>
+        </div>
+      ) : null}
+      {channelId === "matrix" ? (
+        <div className="rim-callout" data-matrix-guide="1">
+          <div className="rim-callout__title">
+            {t("settings.remoteIm.matrix.guide.title")}
+          </div>
+          <ol className="rim-guide-steps">
+            <li>{t("settings.remoteIm.matrix.guide.step1")}</li>
+            <li>{t("settings.remoteIm.matrix.guide.step2")}</li>
+            <li>{t("settings.remoteIm.matrix.guide.step3")}</li>
+            <li>{t("settings.remoteIm.matrix.guide.step4")}</li>
+          </ol>
+          <p className="settings-row__hint">
+            {t("settings.remoteIm.matrix.guide.softFail")}
           </p>
         </div>
       ) : null}

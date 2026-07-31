@@ -65,6 +65,14 @@ describe("Remote IM UI chrome guard", () => {
     expect(src).not.toMatch(/window\.prompt/);
   });
 
+  it("ChannelPanel Matrix guide without window.confirm", () => {
+    const src = readFileSync(join(ROOT, "RemoteImChannelPanel.tsx"), "utf8");
+    expect(src).toContain("data-matrix-guide");
+    expect(src).toContain('channelId === "matrix"');
+    expect(src).toContain("accessTokenValue");
+    expect(src).not.toMatch(/window\.confirm/);
+  });
+
   it("Overview has local event timeline without window.confirm", () => {
     const src = readFileSync(join(ROOT, "RemoteImOverview.tsx"), "utf8");
     expect(src).toContain("loadRimEventTimeline");
