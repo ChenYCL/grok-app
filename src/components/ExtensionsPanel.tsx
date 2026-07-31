@@ -57,6 +57,12 @@ import {
   type McpStatusIndex,
 } from "@/lib/mcpStatus";
 import {
+  classifyMcpOauthFromStatus,
+  mcpOauthActionLabelKey,
+  planMcpOauthOpen,
+  redactMcpOauthText,
+} from "@/lib/mcpOauth";
+import {
   isSkillEditable,
   resolveSkillMdPath,
 } from "@/lib/skillEditPath";
@@ -1523,6 +1529,9 @@ export function ExtensionsPanel({
               const st = lookupServerStatus(doctorStatusIndex, s.name);
               const badgeMod = st ? mcpStatusBadgeMod(st.tone) : null;
               const guidanceKey = st ? mcpAuthGuidanceKey(st.tone) : null;
+              const oauthAction = st
+                ? classifyMcpOauthFromStatus(st)
+                : null;
               return (
                 <li
                   key={s.name}
@@ -1579,11 +1588,26 @@ export function ExtensionsPanel({
                       <button
                         type="button"
                         className="btn btn--ghost btn--sm"
-                        onClick={() =>
-                          setAuthHelpTarget({ name: s.name, status: st })
-                        }
+                        onClick={() => {
+                          const plan = planMcpOauthOpen(oauthAction);
+                          if (plan?.mode === "open_url") {
+                            void api
+                              .openExternalUrl(plan.url)
+                              .catch((e) => {
+                                console.error(
+                                  "[mcp] open auth url failed",
+                                  redactMcpOauthText(String(e)),
+                                );
+                              });
+                          }
+                          setAuthHelpTarget({ name: s.name, status: st });
+                        }}
                       >
-                        {tr("ext.mcp.auth.howToRefresh")}
+                        {tr(
+                          (oauthAction
+                            ? mcpOauthActionLabelKey(oauthAction.kind)
+                            : "ext.mcp.auth.howToRefresh") as MessageKey,
+                        )}
                       </button>
                     </div>
                   ) : null}
@@ -2001,6 +2025,9 @@ export function ExtensionsPanel({
                   const guidanceKey = st
                     ? mcpAuthGuidanceKey(st.tone)
                     : null;
+                  const oauthAction = st
+                    ? classifyMcpOauthFromStatus(st)
+                    : null;
                   return (
                     <li
                       key={s.name}
@@ -2044,14 +2071,29 @@ export function ExtensionsPanel({
                           <button
                             type="button"
                             className="btn btn--ghost btn--sm"
-                            onClick={() =>
+                            onClick={() => {
+                              const plan = planMcpOauthOpen(oauthAction);
+                              if (plan?.mode === "open_url") {
+                                void api
+                                  .openExternalUrl(plan.url)
+                                  .catch((e) => {
+                                    console.error(
+                                      "[mcp] open auth url failed",
+                                      redactMcpOauthText(String(e)),
+                                    );
+                                  });
+                              }
                               setAuthHelpTarget({
                                 name: s.name,
                                 status: st,
-                              })
-                            }
+                              });
+                            }}
                           >
-                            {tr("ext.mcp.auth.howToRefresh")}
+                            {tr(
+                              (oauthAction
+                                ? mcpOauthActionLabelKey(oauthAction.kind)
+                                : "ext.mcp.auth.howToRefresh") as MessageKey,
+                            )}
                           </button>
                         </div>
                       ) : null}
@@ -2143,12 +2185,14 @@ export function ExtensionsPanel({
           </p>
         ) : null}
         <ol className="ext-mcp-auth-steps">
+          <li>{tr("mcpModal.oauth.stepTui")}</li>
+          <li>{tr("mcpModal.oauth.stepBrowser")}</li>
           <li>{tr("ext.mcp.auth.stepReauth")}</li>
           <li>{tr("ext.mcp.auth.stepReadd")}</li>
           <li>{tr("ext.mcp.auth.stepRemoteUrl")}</li>
           <li>{tr("ext.mcp.auth.stepDoctor")}</li>
         </ol>
-        <p className="ext-field-hint">{tr("ext.mcp.auth.noAutoRefresh")}</p>
+        <p className="ext-field-hint">{tr("mcpModal.oauth.noCliHelper")}</p>
       </GlassModal>
 
       <GlassModal

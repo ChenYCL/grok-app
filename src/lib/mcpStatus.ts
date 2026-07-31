@@ -91,7 +91,7 @@ export type McpStatusIndex = Map<string, McpServerStatus>;
 const AUTH_EXPIRED_RE =
   /\b(expired|token\s+expir|credential[s]?\s+expir|session\s+expir|auth(?:entication)?\s+expir)\b/i;
 const AUTH_REQUIRED_RE =
-  /\b(unauthorized|unauthorised|401|403|auth(?:entication)?\s+required|not\s+authenticated|login\s+required|re[- ]?auth|invalid\s+token|missing\s+token|access\s+denied|forbidden)\b/i;
+  /\b(unauthorized|unauthorised|401|403|auth(?:entication|orization)?\s+required|oauth\s+authorization\s+required|AuthorizationRequired|AuthRequired|not\s+authenticated|login\s+required|re[- ]?auth|invalid\s+token|missing\s+token|access\s+denied|forbidden)\b/i;
 const AUTHISH_RE = /\b(token|auth(?:entication|orization)?|credential[s]?|bearer|oauth|api[_-]?key)\b/i;
 const WARN_RE = /\b(warn(?:ing)?|degraded|slow|timeout|timed\s+out|retry)\b/i;
 const ERROR_RE =

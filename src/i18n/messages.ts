@@ -3089,6 +3089,25 @@ const en = {
   "mcpModal.doctor.level.ok": "OK",
   "mcpModal.doctor.level.warn": "Warn",
   "mcpModal.doctor.level.fail": "Fail",
+  "mcpModal.oauth.authorize": "Authorize…",
+  "mcpModal.oauth.retry": "Retry OAuth",
+  "mcpModal.oauth.authorizeTitle": "Authorize MCP · {name}",
+  "mcpModal.oauth.retryTitle": "Retry MCP OAuth · {name}",
+  "mcpModal.oauth.authorizeLead":
+    "Doctor reports this MCP server needs OAuth. Complete the provider sign-in, then re-run doctor.",
+  "mcpModal.oauth.retryLead":
+    "Doctor reports expired or rejected OAuth credentials. Sign in again with the provider, then re-run doctor.",
+  "mcpModal.oauth.openUrl": "Open auth URL",
+  "mcpModal.oauth.urlLabel": "Auth URL",
+  "mcpModal.oauth.stepTui":
+    "In the Grok Build TUI, open `/mcps` and press `i` on this server to run the interactive OAuth flow (tokens stay in ~/.grok/mcp_credentials.json).",
+  "mcpModal.oauth.stepBrowser":
+    "If an auth URL is shown above, open it in your browser and finish the provider consent screen.",
+  "mcpModal.oauth.stepDoctor":
+    "Return here and re-run MCP doctor on this server to confirm health after tokens are saved.",
+  "mcpModal.oauth.noCliHelper":
+    "There is no headless `grok mcp oauth` command — authorization is interactive (TUI) or via a doctor-provided browser URL. The app never stores client secrets in logs.",
+  "mcpModal.oauth.unknownServer": "server",
 
   // Settings → Extensions (Plugins + Skills + MCP)
   "ext.lead":
@@ -7106,6 +7125,25 @@ const zh: Record<MessageKey, string> = {
   "mcpModal.doctor.level.ok": "正常",
   "mcpModal.doctor.level.warn": "警告",
   "mcpModal.doctor.level.fail": "失败",
+  "mcpModal.oauth.authorize": "授权…",
+  "mcpModal.oauth.retry": "重试 OAuth",
+  "mcpModal.oauth.authorizeTitle": "授权 MCP · {name}",
+  "mcpModal.oauth.retryTitle": "重试 MCP OAuth · {name}",
+  "mcpModal.oauth.authorizeLead":
+    "诊断显示该 MCP 服务器需要 OAuth。完成提供方登录后，请重新运行诊断。",
+  "mcpModal.oauth.retryLead":
+    "诊断显示 OAuth 凭证已过期或被拒绝。请向提供方重新登录，然后重新运行诊断。",
+  "mcpModal.oauth.openUrl": "打开授权 URL",
+  "mcpModal.oauth.urlLabel": "授权 URL",
+  "mcpModal.oauth.stepTui":
+    "在 Grok Build TUI 中打开 `/mcps`，对该服务器按 `i` 运行交互式 OAuth（令牌保存在 ~/.grok/mcp_credentials.json）。",
+  "mcpModal.oauth.stepBrowser":
+    "若上方显示授权 URL，请在浏览器中打开并完成提供方同意页。",
+  "mcpModal.oauth.stepDoctor":
+    "完成后回到此处，对该服务器重新运行 MCP 诊断以确认健康状态。",
+  "mcpModal.oauth.noCliHelper":
+    "没有无头的 `grok mcp oauth` 命令 — 授权需交互（TUI）或通过诊断提供的浏览器 URL。应用不会将客户端密钥写入日志。",
+  "mcpModal.oauth.unknownServer": "服务器",
 
   // Settings → Extensions (Plugins + Skills + MCP)
   "ext.lead":

@@ -2973,6 +2973,25 @@ export const zhTW: Record<MessageKey, string> = {
   "mcpModal.doctor.level.ok": "正常",
   "mcpModal.doctor.level.warn": "警告",
   "mcpModal.doctor.level.fail": "失敗",
+  "mcpModal.oauth.authorize": "授權…",
+  "mcpModal.oauth.retry": "重試 OAuth",
+  "mcpModal.oauth.authorizeTitle": "授權 MCP · {name}",
+  "mcpModal.oauth.retryTitle": "重試 MCP OAuth · {name}",
+  "mcpModal.oauth.authorizeLead":
+    "診斷顯示該 MCP 伺服器需要 OAuth。完成提供方登入後，請重新執行診斷。",
+  "mcpModal.oauth.retryLead":
+    "診斷顯示 OAuth 憑證已過期或被拒絕。請向提供方重新登入，然後再執行診斷。",
+  "mcpModal.oauth.openUrl": "開啟授權 URL",
+  "mcpModal.oauth.urlLabel": "授權 URL",
+  "mcpModal.oauth.stepTui":
+    "在 Grok Build TUI 中開啟 `/mcps`，對該伺服器按 `i` 執行互動式 OAuth（權杖保存在 ~/.grok/mcp_credentials.json）。",
+  "mcpModal.oauth.stepBrowser":
+    "若上方顯示授權 URL，請在瀏覽器中開啟並完成提供方同意頁。",
+  "mcpModal.oauth.stepDoctor":
+    "完成後回到此處，對該伺服器重新執行 MCP 診斷以確認健康狀態。",
+  "mcpModal.oauth.noCliHelper":
+    "沒有無頭的 `grok mcp oauth` 命令 — 授權需互動（TUI）或透過診斷提供的瀏覽器 URL。應用不會將用戶端密鑰寫入日誌。",
+  "mcpModal.oauth.unknownServer": "伺服器",
 
   // Settings → Extensions (Plugins + Skills + MCP)
   "ext.lead":
