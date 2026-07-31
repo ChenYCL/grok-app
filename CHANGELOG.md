@@ -13,6 +13,9 @@ See `docs/llm-wiki/release.md`.
 
 ### Added
 
+#### Accessibility
+- **Desktop a11y pack**: shared `installDialogFocus` focus trap (Tab cycle · Escape · restore) on confirm/prompt dialogs, command palette, Compact / Rewind modals, Doctor, Reliability center, phone sheets, and GlassModal; aria-labels for sidebar / settings nav / composer / resources pane and icon-only chrome; settings nav ArrowUp/Down/Home/End; sidebar session list ArrowUp/Down aliases for j/k; pure helpers + unit tests
+
 #### Agent / memory
 - **Memory embedding (CLI 0.2.117)** (Settings → Agent): host reads allowlisted `[memory.*]` keys from active GROK_HOME `config.toml` (`embedding.model` / `dimensions`, `search.*`, `search.mmr`, `search.temporal_decay`, `dream.*`, `watcher`, `initial_injection`) with soft-fail when missing; independent agent-home can write safe keys + soft-respawn (shared mode read-only). Memory browser shows honest **App keyword** vs **CLI hybrid/keyword** status and links to the panel. App `memory_search` stays path-scoped keyword scan — never invents embeddings client-side.
 

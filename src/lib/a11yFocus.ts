@@ -102,3 +102,145 @@ export function preferPermissionFocus(
   }
   return focusFirst(root);
 }
+
+/**
+ * True when the event target is an input surface where plain letter keys
+ * should type (not trigger sidebar j/k or similar chrome shortcuts).
+ */
+export function isTypingTarget(el: EventTarget | null | undefined): boolean {
+  if (!el || typeof (el as HTMLElement).tagName !== "string") return false;
+  const node = el as HTMLElement;
+  const tag = node.tagName.toLowerCase();
+  if (tag === "input" || tag === "textarea" || tag === "select") return true;
+  if (node.isContentEditable) return true;
+  // Nested editable (e.g. inside a contenteditable child).
+  if (typeof node.closest === "function") {
+    if (node.closest("input, textarea, select, [contenteditable='true']")) {
+      return true;
+    }
+  }
+  return false;
+}
+
+export type InstallDialogFocusOptions = {
+  /** Escape closes / cancels. */
+  onEscape?: () => void;
+  /** Use capture-phase keydown (default true — wins over body handlers). */
+  capture?: boolean;
+  /**
+   * Initial focus strategy after paint:
+   * - `"first"` (default) — {@link focusFirst}
+   * - `"none"` — caller focuses (e.g. confirm primary / prompt input)
+   * - getter — focus that element when present, else first
+   */
+  initialFocus?: "first" | "none" | (() => HTMLElement | null | undefined);
+  /** Restore previously focused element on cleanup (default true). */
+  restoreFocus?: boolean;
+};
+
+/**
+ * Wire a basic dialog focus lifecycle for an open panel:
+ * remember previous focus → optional initial focus → Tab trap → Escape.
+ *
+ * Returns cleanup (remove listeners + restore focus). Call from `useEffect`
+ * when the dialog is open.
+ */
+export function installDialogFocus(
+  getRoot: () => ParentNode | null | undefined,
+  opts: InstallDialogFocusOptions = {},
+): () => void {
+  const {
+    onEscape,
+    capture = true,
+    initialFocus = "first",
+    restoreFocus = true,
+  } = opts;
+
+  const prev =
+    typeof document !== "undefined"
+      ? (document.activeElement as HTMLElement | null)
+      : null;
+
+  let focusTimer: number | undefined;
+  if (initialFocus !== "none" && typeof window !== "undefined") {
+    focusTimer = window.setTimeout(() => {
+      if (typeof initialFocus === "function") {
+        const el = initialFocus();
+        if (el && typeof el.focus === "function") {
+          el.focus();
+          return;
+        }
+      }
+      focusFirst(getRoot());
+    }, 0) as unknown as number;
+  }
+
+  const onKey = (e: KeyboardEvent) => {
+    if (e.key === "Escape" && onEscape) {
+      e.preventDefault();
+      e.stopPropagation();
+      onEscape();
+      return;
+    }
+    trapTabKey(e, getRoot());
+  };
+
+  if (typeof document !== "undefined") {
+    document.addEventListener("keydown", onKey, capture);
+  }
+
+  return () => {
+    if (focusTimer != null && typeof window !== "undefined") {
+      window.clearTimeout(focusTimer);
+    }
+    if (typeof document !== "undefined") {
+      document.removeEventListener("keydown", onKey, capture);
+    }
+    if (restoreFocus && prev && typeof prev.focus === "function") {
+      try {
+        prev.focus();
+      } catch {
+        /* ignore */
+      }
+    }
+  };
+}
+
+/**
+ * Move selection among a linear list of focusable controls (settings nav,
+ * radiogroup, etc.). Clamps at ends. Returns the focused element or null.
+ */
+export function focusRelative(
+  list: readonly HTMLElement[],
+  current: HTMLElement | null | undefined,
+  dir: "next" | "prev",
+): HTMLElement | null {
+  if (list.length === 0) return null;
+  const idx = current ? list.indexOf(current) : -1;
+  let nextIdx: number;
+  if (dir === "next") {
+    nextIdx = idx < 0 ? 0 : Math.min(list.length - 1, idx + 1);
+  } else {
+    nextIdx = idx < 0 ? list.length - 1 : Math.max(0, idx - 1);
+  }
+  const el = list[nextIdx] ?? null;
+  el?.focus();
+  return el;
+}
+
+/**
+ * Index helper for arrow-key nav in pure tests / components.
+ * Same clamp semantics as {@link focusRelative}.
+ */
+export function nextIndex(
+  length: number,
+  current: number,
+  dir: "next" | "prev",
+): number {
+  if (length <= 0) return -1;
+  if (current < 0 || current >= length) {
+    return dir === "next" ? 0 : length - 1;
+  }
+  if (dir === "next") return Math.min(length - 1, current + 1);
+  return Math.max(0, current - 1);
+}

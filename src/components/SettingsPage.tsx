@@ -9,9 +9,11 @@ import {
   useMemo,
   useRef,
   useState,
+  type KeyboardEvent as ReactKeyboardEvent,
   type PointerEvent as ReactPointerEvent,
   type ReactNode,
 } from "react";
+import { nextIndex } from "@/lib/a11yFocus";
 import { Select } from "@/components/Select";
 import {
   IconArchive,
@@ -1928,15 +1930,62 @@ export function SettingsPage({
     (phoneIndex ? " settings-page--phone-index" : "") +
     (phoneDetail ? " settings-page--phone-detail" : "");
 
+  const visibleNav = useMemo(
+    () => [...personalNav, ...systemNav],
+    [personalNav, systemNav],
+  );
+
+  const onNavKeyDown = useCallback(
+    (e: ReactKeyboardEvent<HTMLButtonElement>, id: string) => {
+      if (
+        e.key !== "ArrowDown" &&
+        e.key !== "ArrowUp" &&
+        e.key !== "Home" &&
+        e.key !== "End"
+      ) {
+        return;
+      }
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      const ids = visibleNav.map((n) => n.id);
+      if (ids.length === 0) return;
+      const idx = ids.indexOf(id as (typeof ids)[number]);
+      let nextIdx = idx;
+      if (e.key === "ArrowDown") {
+        nextIdx = nextIndex(ids.length, idx, "next");
+      } else if (e.key === "ArrowUp") {
+        nextIdx = nextIndex(ids.length, idx, "prev");
+      } else if (e.key === "Home") {
+        nextIdx = 0;
+      } else {
+        nextIdx = ids.length - 1;
+      }
+      if (nextIdx < 0 || nextIdx === idx) {
+        e.preventDefault();
+        return;
+      }
+      e.preventDefault();
+      const nextId = ids[nextIdx];
+      if (!nextId) return;
+      const el = document.querySelector<HTMLElement>(
+        `[data-settings-nav="${nextId}"]`,
+      );
+      el?.focus();
+    },
+    [visibleNav],
+  );
+
   const renderNavItem = (n: (typeof SETTINGS_NAV)[number]) => (
     <button
       key={n.id}
       type="button"
+      data-settings-nav={n.id}
       className={
         "settings-page__nav-item" +
         (section === n.id && !phoneIndex ? " is-active" : "")
       }
+      aria-current={section === n.id && !phoneIndex ? "page" : undefined}
       onClick={() => openSection(n.id)}
+      onKeyDown={(e) => onNavKeyDown(e, n.id)}
     >
       <NavIcon name={n.icon} />
       <span className="settings-page__nav-label">{t(n.labelKey)}</span>
@@ -1971,6 +2020,7 @@ export function SettingsPage({
         className="settings-page__nav"
         hidden={phoneDetail || undefined}
         aria-hidden={phoneDetail || undefined}
+        aria-label={t("a11y.settingsNav")}
       >
         <div className="settings-page__nav-inner">
         <button

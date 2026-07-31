@@ -4,7 +4,7 @@
  * with labelled ≥44px rows. Not mounted on desktop (≥821px).
  */
 
-import { useEffect, useId, useState, type ReactNode } from "react";
+import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import {
   IconActivity,
@@ -17,6 +17,7 @@ import {
   IconHandStop,
   IconPlus,
 } from "@/components/icons";
+import { installDialogFocus } from "@/lib/a11yFocus";
 import {
   GROK_BUILD_EFFORTS,
   GROK_BUILD_MODELS,
@@ -193,6 +194,11 @@ export function PhoneComposerToolsSheet({
 }: PhoneComposerToolsSheetProps) {
   const titleId = useId();
   const [panel, setPanel] = useState<PhoneToolsPanel>("root");
+  const panelRef = useRef<HTMLDivElement>(null);
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+  const toolsPanelRef = useRef(panel);
+  toolsPanelRef.current = panel;
   const modelList = models.length > 0 ? models : GROK_BUILD_MODELS;
   const modelLabel =
     modelList.find((m) => m.id === modelId)?.label ?? modelId;
@@ -203,19 +209,22 @@ export function PhoneComposerToolsSheet({
 
   useEffect(() => {
     if (!open) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key !== "Escape") return;
-      e.preventDefault();
-      if (panel !== "root") {
-        if (panel === "effort") setPanel("model");
-        else setPanel("root");
-        return;
-      }
-      onClose();
-    };
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, [open, panel, onClose]);
+    // Escape: drill up sub-panels, then close. Tab cycles inside the sheet.
+    return installDialogFocus(() => panelRef.current, {
+      onEscape: () => {
+        const p = toolsPanelRef.current;
+        if (p !== "root") {
+          if (p === "effort") setPanel("model");
+          else setPanel("root");
+          return;
+        }
+        onCloseRef.current();
+      },
+      capture: true,
+      initialFocus: "first",
+      restoreFocus: true,
+    });
+  }, [open]);
 
   if (!open || typeof document === "undefined") return null;
 
@@ -248,6 +257,7 @@ export function PhoneComposerToolsSheet({
         onClick={onClose}
       />
       <div
+        ref={panelRef}
         className="phone-sheet__panel"
         role="dialog"
         aria-modal="true"

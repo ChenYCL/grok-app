@@ -3,7 +3,7 @@
  * support zip, reset app data, and Grok Build CLI `doctor --json` section.
  */
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   IconAlertTriangle,
   IconCheck,
@@ -29,6 +29,7 @@ import {
   type DoctorFixHandle,
 } from "@/lib/cliDoctor";
 import { CliUpdateRow } from "@/components/CliUpdateRow";
+import { installDialogFocus } from "@/lib/a11yFocus";
 import { redact } from "@/lib/redact";
 
 export type DoctorModalProps = {
@@ -163,14 +164,19 @@ export function DoctorModal({
     void run();
   }, [open, run]);
 
+  const panelRef = useRef<HTMLDivElement>(null);
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+
   useEffect(() => {
     if (!open) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
-    };
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, [open, onClose]);
+    return installDialogFocus(() => panelRef.current, {
+      onEscape: () => onCloseRef.current(),
+      capture: true,
+      initialFocus: "first",
+      restoreFocus: true,
+    });
+  }, [open]);
 
   const onCopy = async () => {
     if (!report) return;
@@ -499,6 +505,7 @@ export function DoctorModal({
       role="presentation"
     >
       <div
+        ref={panelRef}
         className="modal doctor-modal"
         onClick={(e) => e.stopPropagation()}
         role="dialog"
