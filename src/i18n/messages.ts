@@ -870,6 +870,15 @@ const en = {
     "Auto-send paused — retry or send again to resume",
   "composer.queueHoldRetry": "Retry",
   "composer.queueClear": "Clear all",
+  "composer.queueClearConfirmTitle": "Clear send queue?",
+  "composer.queueClearConfirmMessage":
+    "Remove all {n} queued follow-up(s) for this chat? They will not be sent.",
+  "composer.queueClearConfirmAction": "Clear queue",
+  "composer.queueClearedToast": "Cleared {n} queued message(s)",
+  "composer.queueClearEmpty": "Nothing to clear — queue is already empty",
+  "composer.queueEmptyTitle": "No queued follow-ups",
+  "composer.queueEmptyBody":
+    "While the agent is busy, queued messages for this chat wait here and send when the turn ends.",
   "composer.queueRemove": "Remove from queue",
   "composer.queueMoveUp": "Move up in queue",
   "composer.queueMoveDown": "Move down in queue",
@@ -5977,6 +5986,15 @@ const zh: Record<MessageKey, string> = {
   "composer.queueHold": "自动发送已暂停 — 点重试或再发送以继续",
   "composer.queueHoldRetry": "重试",
   "composer.queueClear": "清空",
+  "composer.queueClearConfirmTitle": "清空发送队列？",
+  "composer.queueClearConfirmMessage":
+    "将移除本会话全部 {n} 条排队跟进消息，它们不会被发送。",
+  "composer.queueClearConfirmAction": "清空队列",
+  "composer.queueClearedToast": "已清空 {n} 条排队消息",
+  "composer.queueClearEmpty": "没有可清空的消息 — 队列已空",
+  "composer.queueEmptyTitle": "暂无排队跟进",
+  "composer.queueEmptyBody":
+    "Agent 忙碌时，本会话的排队消息会出现在这里，并在本轮结束后自动发送。",
   "composer.queueRemove": "从队列移除",
   "composer.queueMoveUp": "在队列中上移",
   "composer.queueMoveDown": "在队列中下移",

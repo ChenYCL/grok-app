@@ -660,7 +660,9 @@ import {
   type PromptHistoryScope,
 } from "@/components/PromptHistoryPanel";
 import {
+  planClearSendQueue,
   queuePreviewText,
+  resolveSendQueueStripState,
   shouldEnqueueSend,
   type QueuedSend,
 } from "@/lib/sendQueue";
@@ -2518,6 +2520,8 @@ export default function App() {
   const [queueEditItemId, setQueueEditItemId] = useState<string | null>(null);
   const [queueEditText, setQueueEditText] = useState("");
   const queueEditTextareaRef = useRef<HTMLTextAreaElement>(null);
+  /** Clear-all send queue — App-level GlassModal (never window.confirm). */
+  const [sendQueueClearOpen, setSendQueueClearOpen] = useState(false);
 
   const [connecting, setConnecting] = useState(false);
   /** Sync gate for ensureConnected (React state alone races two rapid sends). */
@@ -10309,6 +10313,44 @@ export default function App() {
     },
     [sendQueue.pauseFlush],
   );
+
+  const sendQueueStrip = useMemo(
+    () =>
+      resolveSendQueueStripState({
+        queue: sendQueue.activeQueue,
+        flushHold: sendQueue.flushHold,
+      }),
+    [sendQueue.activeQueue, sendQueue.flushHold],
+  );
+
+  const sendQueueClearPlan = useMemo(
+    () => planClearSendQueue(sendQueue.activeQueue),
+    [sendQueue.activeQueue],
+  );
+
+  /** Open clear confirm when there is something to clear; no-op when empty. */
+  const requestClearSendQueue = useCallback(() => {
+    const plan = planClearSendQueue(sendQueue.activeQueue);
+    if (!plan.confirmNeeded) {
+      // Empty honesty: nothing to clear (strip should already be hidden).
+      showToast(tr("composer.queueClearEmpty"), 2000);
+      return;
+    }
+    setSendQueueClearOpen(true);
+  }, [sendQueue.activeQueue, showToast, tr]);
+
+  const confirmClearSendQueue = useCallback(() => {
+    const plan = sendQueue.clearQueue();
+    setSendQueueClearOpen(false);
+    if (plan.count > 0) {
+      showToast(
+        tr("composer.queueClearedToast", { n: String(plan.count) }),
+        2200,
+      );
+    } else {
+      showToast(tr("composer.queueClearEmpty"), 2000);
+    }
+  }, [sendQueue.clearQueue, showToast, tr]);
 
   const saveQueueEdit = useCallback(() => {
     if (!queueEditItemId) return;
@@ -18462,29 +18504,31 @@ export default function App() {
                 (dragZone === "main" ? " composer--drop-ready" : "")
               }
             >
-              {sendQueue.activeQueue.length > 0 && (
+              {sendQueueStrip.visible && (
                 <div
                   className="composer__queue"
                   aria-label={tr("composer.queueCount", {
-                    n: String(sendQueue.activeQueue.length),
+                    n: String(sendQueueStrip.count),
                   })}
                 >
                   <div className="composer__queue-head">
                     <IconClock size={14} aria-hidden />
                     <span className="composer__queue-title">
                       {tr("composer.queueCount", {
-                        n: String(sendQueue.activeQueue.length),
+                        n: String(sendQueueStrip.count),
                       })}
                     </span>
                     <button
                       type="button"
                       className="composer__queue-clear"
-                      onClick={sendQueue.clearQueue}
+                      data-testid="queue-clear"
+                      disabled={!sendQueueStrip.canClear}
+                      onClick={requestClearSendQueue}
                     >
                       {tr("composer.queueClear")}
                     </button>
                   </div>
-                  {sendQueue.flushHold ? (
+                  {sendQueueStrip.showHold ? (
                     <div className="composer__queue-hold" role="status">
                       <span className="composer__queue-hold-text">
                         {tr("composer.queueHold")}
@@ -22288,6 +22332,43 @@ export default function App() {
             }}
           />
         </label>
+      </GlassModal>
+
+      {/* Clear all queued follow-ups (GlassModal; never window.confirm) */}
+      <GlassModal
+        open={sendQueueClearOpen}
+        onClose={() => setSendQueueClearOpen(false)}
+        title={tr("composer.queueClearConfirmTitle")}
+        size="sm"
+        closeLabel={tr("common.close")}
+        footer={
+          <>
+            <button
+              type="button"
+              className="btn btn--ghost"
+              onClick={() => setSendQueueClearOpen(false)}
+            >
+              {tr("common.cancel")}
+            </button>
+            <button
+              type="button"
+              className="btn btn--danger"
+              data-testid="queue-clear-confirm"
+              disabled={!sendQueueClearPlan.confirmNeeded}
+              onClick={confirmClearSendQueue}
+            >
+              {tr("composer.queueClearConfirmAction")}
+            </button>
+          </>
+        }
+      >
+        <p style={{ margin: 0, whiteSpace: "pre-wrap" }}>
+          {sendQueueClearPlan.confirmNeeded
+            ? tr("composer.queueClearConfirmMessage", {
+                n: String(sendQueueClearPlan.count),
+              })
+            : tr("composer.queueClearEmpty")}
+        </p>
       </GlassModal>
 
       {/* In-app confirm / prompt (Tauri WebView has no reliable window.prompt/confirm) */}

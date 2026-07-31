@@ -856,6 +856,15 @@ export const zhTW: Record<MessageKey, string> = {
   "composer.queueHold": "自動傳送已暫停 — 點重試或再傳送以繼續",
   "composer.queueHoldRetry": "重試",
   "composer.queueClear": "清空",
+  "composer.queueClearConfirmTitle": "清空傳送佇列？",
+  "composer.queueClearConfirmMessage":
+    "將移除此對話全部 {n} 則排隊後續訊息，它們不會被傳送。",
+  "composer.queueClearConfirmAction": "清空佇列",
+  "composer.queueClearedToast": "已清空 {n} 則排隊訊息",
+  "composer.queueClearEmpty": "沒有可清空的訊息 — 佇列已空",
+  "composer.queueEmptyTitle": "暫無排隊後續",
+  "composer.queueEmptyBody":
+    "Agent 忙碌時，此對話的排隊訊息會出現在這裡，並在本輪結束後自動傳送。",
   "composer.queueRemove": "從佇列移除",
   "composer.queueMoveUp": "在佇列中上移",
   "composer.queueMoveDown": "在佇列中下移",
