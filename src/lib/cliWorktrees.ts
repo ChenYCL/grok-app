@@ -277,6 +277,271 @@ export function parseCliWorktreeListText(
   return out;
 }
 
+// ── CLI worktree DB (path / stats / rebuild) — Grok Build 0.2.117+ ──────────
+
+export type CliWorktreeDbStats = {
+  total?: number | null;
+  alive?: number | null;
+  dead?: number | null;
+  /** Human size from CLI, e.g. `48.0 KB`. */
+  dbSize?: string | null;
+  /** Best-effort byte size when parseable. */
+  dbSizeBytes?: number | null;
+};
+
+export type CliWorktreeDbPathResult = {
+  available: boolean;
+  path?: string | null;
+  pathOk?: boolean;
+  reason?: string | null;
+  cliFound: boolean;
+  unsupported?: boolean;
+};
+
+export type CliWorktreeDbStatsResult = {
+  available: boolean;
+  stats?: CliWorktreeDbStats | null;
+  summary?: string | null;
+  raw?: string | null;
+  reason?: string | null;
+  cliFound: boolean;
+  unsupported?: boolean;
+  /** `json` | `text` | `none` */
+  source?: string | null;
+};
+
+export type CliWorktreeDbRebuildResult = {
+  ok: boolean;
+  available: boolean;
+  message?: string | null;
+  discovered?: number | null;
+  registered?: number | null;
+  alreadyTracked?: number | null;
+  reason?: string | null;
+  cliFound: boolean;
+  unsupported?: boolean;
+};
+
+/** Extract the first integer from a value string. */
+export function parseFirstU64(s: string | null | undefined): number | null {
+  const t = (s ?? "").trim();
+  if (!t) return null;
+  const m = t.match(/\d+/);
+  if (!m) return null;
+  const n = Number(m[0]);
+  return Number.isFinite(n) ? n : null;
+}
+
+/** Best-effort parse of human size (`48.0 KB`, `1.2 MB`, `512 B`, bare bytes). */
+export function parseHumanSizeBytes(
+  s: string | null | undefined,
+): number | null {
+  const t = (s ?? "").trim().replace(/,/g, "");
+  if (!t) return null;
+  if (/^\d+$/.test(t)) {
+    const n = Number(t);
+    return Number.isFinite(n) ? n : null;
+  }
+  const m = t.toLowerCase().match(/^([\d.]+)\s*([a-z]+)?$/);
+  if (!m) return null;
+  const n = Number(m[1]);
+  if (!Number.isFinite(n) || n < 0) return null;
+  const unit = (m[2] ?? "").toLowerCase();
+  const mult =
+    unit === "" || unit === "b" || unit === "byte" || unit === "bytes"
+      ? 1
+      : unit === "k" || unit === "kb" || unit === "kib"
+        ? 1024
+        : unit === "m" || unit === "mb" || unit === "mib"
+          ? 1024 * 1024
+          : unit === "g" || unit === "gb" || unit === "gib"
+            ? 1024 * 1024 * 1024
+            : null;
+  if (mult == null) return null;
+  return Math.round(n * mult);
+}
+
+function splitStatsKv(line: string): { key: string; val: string } | null {
+  const t = line.trim();
+  if (!t) return null;
+  const idx = t.indexOf(":");
+  if (idx < 0) return null;
+  const key = t
+    .slice(0, idx)
+    .trim()
+    .replace(/^[-•*]\s*/, "")
+    .toLowerCase()
+    .replace(/_/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  const val = t.slice(idx + 1).trim();
+  if (!key || !val) return null;
+  return { key, val };
+}
+
+function applyStatsKv(
+  stats: CliWorktreeDbStats,
+  key: string,
+  val: string,
+): void {
+  switch (key) {
+    case "total":
+    case "total records":
+    case "records":
+    case "count":
+    case "total count":
+      if (stats.total == null) stats.total = parseFirstU64(val);
+      break;
+    case "alive":
+    case "alive records":
+    case "live":
+    case "active":
+      if (stats.alive == null) stats.alive = parseFirstU64(val);
+      break;
+    case "dead":
+    case "dead records":
+    case "stale":
+    case "gone":
+    case "missing":
+      if (stats.dead == null) stats.dead = parseFirstU64(val);
+      break;
+    case "db size":
+    case "size":
+    case "database size":
+    case "file size":
+      if (stats.dbSize == null) {
+        const cleaned = val.trim();
+        if (cleaned) {
+          stats.dbSize = cleaned;
+          stats.dbSizeBytes = parseHumanSizeBytes(cleaned);
+        }
+      }
+      break;
+    default:
+      break;
+  }
+}
+
+/** Pure parse helper for human `grok worktree db stats` output. */
+export function parseCliWorktreeDbStatsText(
+  raw: string | null | undefined,
+): CliWorktreeDbStats {
+  const stats: CliWorktreeDbStats = {};
+  for (const line of (raw ?? "").replace(/\r\n/g, "\n").split("\n")) {
+    const kv = splitStatsKv(line);
+    if (kv) applyStatsKv(stats, kv.key, kv.val);
+  }
+  return stats;
+}
+
+/**
+ * Pure parse helper for possible future JSON stats
+ * (`{ total, alive, dead, db_size }` or `{ stats: {...} }`).
+ */
+export function parseCliWorktreeDbStatsJson(
+  raw: string | null | undefined,
+): CliWorktreeDbStats | null {
+  const trimmed = (raw ?? "").trim();
+  if (!trimmed) return {};
+  const start = trimmed.indexOf("{");
+  if (start < 0) return null;
+  let value: unknown;
+  try {
+    value = JSON.parse(trimmed.slice(start));
+  } catch {
+    return null;
+  }
+  if (!value || typeof value !== "object") return null;
+  const obj = value as Record<string, unknown>;
+  const inner =
+    (obj.stats && typeof obj.stats === "object" ? obj.stats : null) ??
+    (obj.statistics && typeof obj.statistics === "object"
+      ? obj.statistics
+      : null) ??
+    (obj.data && typeof obj.data === "object" ? obj.data : null) ??
+    obj;
+  const map = inner as Record<string, unknown>;
+  const stats: CliWorktreeDbStats = {};
+  for (const [k, v] of Object.entries(map)) {
+    const key = k
+      .trim()
+      .toLowerCase()
+      .replace(/_/g, " ")
+      .replace(/-/g, " ")
+      .replace(/\s+/g, " ");
+    let val: string;
+    if (typeof v === "string") val = v;
+    else if (typeof v === "number" && Number.isFinite(v)) val = String(v);
+    else continue;
+    applyStatsKv(stats, key, val);
+  }
+  return stats;
+}
+
+/** Compact one-line summary for the UI. */
+export function formatCliWorktreeDbStatsSummary(
+  stats: CliWorktreeDbStats | null | undefined,
+): string | null {
+  if (!stats) return null;
+  const parts: string[] = [];
+  if (stats.total != null) parts.push(`${stats.total} total`);
+  if (stats.alive != null) parts.push(`${stats.alive} alive`);
+  if (stats.dead != null) parts.push(`${stats.dead} dead`);
+  if (stats.dbSize) parts.push(stats.dbSize);
+  else if (stats.dbSizeBytes != null) parts.push(`${stats.dbSizeBytes} B`);
+  return parts.length ? parts.join(" · ") : null;
+}
+
+export function cliWorktreeDbStatsHasData(
+  stats: CliWorktreeDbStats | null | undefined,
+): boolean {
+  if (!stats) return false;
+  return (
+    stats.total != null ||
+    stats.alive != null ||
+    stats.dead != null ||
+    !!stats.dbSize ||
+    stats.dbSizeBytes != null
+  );
+}
+
+/** Pure parse helper for `grok worktree db rebuild` report text. */
+export function parseCliWorktreeDbRebuildText(
+  raw: string | null | undefined,
+): {
+  discovered: number | null;
+  registered: number | null;
+  alreadyTracked: number | null;
+} {
+  let discovered: number | null = null;
+  let registered: number | null = null;
+  let alreadyTracked: number | null = null;
+  for (const line of (raw ?? "").replace(/\r\n/g, "\n").split("\n")) {
+    const kv = splitStatsKv(line);
+    if (!kv) continue;
+    switch (kv.key) {
+      case "discovered":
+      case "found":
+        if (discovered == null) discovered = parseFirstU64(kv.val);
+        break;
+      case "registered":
+      case "added":
+      case "new":
+        if (registered == null) registered = parseFirstU64(kv.val);
+        break;
+      case "already tracked":
+      case "already":
+      case "tracked":
+      case "unchanged":
+        if (alreadyTracked == null) alreadyTracked = parseFirstU64(kv.val);
+        break;
+      default:
+        break;
+    }
+  }
+  return { discovered, registered, alreadyTracked };
+}
+
 /** True when a CLI worktree row is safe to bind as session cwd. */
 export function canOpenCliWorktreeAsCwd(
   wt: Pick<CliWorktreeEntry, "path" | "pathOk" | "status">,

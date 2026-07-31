@@ -90,13 +90,27 @@ grok worktree list          # text fallback when --json unsupported
 - UI: section under create/GC actions — **Refresh**, per-row **Reveal**, click row to **open as session cwd** only when `pathOk` (folder exists). Does not replace App create/remove/GC for git-linked trees.
 - Rows are filtered to the active project when `source_repo` / `repo_name` / path slug match; otherwise the full (capped) list is shown.
 
+### CLI worktree DB (`grok worktree db`, 0.2.117+)
+
+Settings → **Runtime → CLI → CLI worktree DB** surfaces the Grok Build worktree index file:
+
+```bash
+grok worktree db path      # print DB path (often ~/.grok/worktrees.db)
+grok worktree db stats     # total / alive / dead / size (text; JSON parse ready)
+grok worktree db rebuild   # filesystem scan → rebuild index
+```
+
+- Host: `cli_worktree_db_path` · `cli_worktree_db_stats` · `cli_worktree_db_rebuild` in `cli_worktrees.rs` — timeout, soft-fail when CLI missing or pre-0.2.117 (unrecognized `db` subcommand).
+- Pure parsers: stats text + optional JSON; rebuild report (`Discovered` / `Registered` / `Already tracked`); Rust + TS unit tests.
+- UI: path (copy / reveal), stats summary, **Rebuild** with in-app confirm (`GlassModal` — never `window.confirm`). Rebuild does not delete worktree folders.
+
 ## Non-goals (MVP)
 
 - Full branch browser / remote fetch / same-directory `git checkout`
 - In-place checkout of an arbitrary local branch without a worktree
 - Apply / merge worktree branch back onto main from the session menu (open folder + remove only)
-- Registering App-created trees into the CLI `worktrees.db` index (git porcelain list is enough for switch/remove)
-- CLI `worktree rm` / `gc` / `show` from the App (list + open/reveal only)
+- Registering App-created trees into the CLI `worktrees.db` index from create UI (use **CLI worktree DB → Rebuild** to rescan)
+- CLI `worktree rm` / `gc` / `show` from the App (list + open/reveal only; DB path/stats/rebuild are separate)
 
 ## Implementation
 
