@@ -4591,8 +4591,8 @@ const en = {
   "ext.hooks.docs": "Hooks guide",
   "ext.hooks.activity.title": "Recent activity",
   "ext.hooks.activity.desc":
-    "Last hook runs observed this app session (ACP notifications, tool failures, and agent log lines). Secrets are redacted.",
-  "ext.hooks.activity.empty": "No hook activity recorded this session",
+    "Recent hook outcomes observed by this app (ACP notifications, tool failures, agent log lines, and try-runs). Stored locally on this device; secrets are redacted. Empty means nothing has been recorded yet — not that hooks never ran offline.",
+  "ext.hooks.activity.empty": "No hook activity recorded yet",
   "ext.hooks.activity.emptyFilter": "No activity matches this filter",
   "ext.hooks.activity.ok": "ok",
   "ext.hooks.activity.fail": "fail",
@@ -4603,7 +4603,7 @@ const en = {
   "ext.hooks.activity.clear": "Clear activity",
   "ext.hooks.activity.clearConfirmTitle": "Clear hook activity?",
   "ext.hooks.activity.clearConfirmMessage":
-    "Remove all recent hook activity rows for this app session. This cannot be undone.",
+    "Remove {count} recent hook activity row(s) stored on this device. This cannot be undone.",
   "ext.hooks.activity.clearConfirmOk": "Clear",
   "ext.hooks.activity.sourceDebug": "dry-run",
   "ext.hooks.try.hookName": "Hook name",
@@ -10526,8 +10526,8 @@ const zh: Record<MessageKey, string> = {
   "ext.hooks.docs": "Hooks 指南",
   "ext.hooks.activity.title": "最近活动",
   "ext.hooks.activity.desc":
-    "本应用会话内观察到的最近 hook 运行（ACP 通知、工具失败与 agent 日志）。密钥已脱敏。",
-  "ext.hooks.activity.empty": "本会话尚未记录 hook 活动",
+    "本应用观察到的最近 hook 结果（ACP 通知、工具失败、agent 日志与试跑）。保存在本机本地；密钥已脱敏。空列表表示尚未记录，不代表 hooks 从未在离线时运行。",
+  "ext.hooks.activity.empty": "尚未记录 hook 活动",
   "ext.hooks.activity.emptyFilter": "没有符合该筛选的活动",
   "ext.hooks.activity.ok": "成功",
   "ext.hooks.activity.fail": "失败",
@@ -10538,7 +10538,7 @@ const zh: Record<MessageKey, string> = {
   "ext.hooks.activity.clear": "清空活动",
   "ext.hooks.activity.clearConfirmTitle": "清空 hook 活动？",
   "ext.hooks.activity.clearConfirmMessage":
-    "将移除本应用会话内全部最近 hook 活动记录，此操作不可撤销。",
+    "将移除本机保存的 {count} 条最近 hook 活动记录，此操作不可撤销。",
   "ext.hooks.activity.clearConfirmOk": "清空",
   "ext.hooks.activity.sourceDebug": "试跑",
   "ext.hooks.try.hookName": "Hook 名称",
