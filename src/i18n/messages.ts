@@ -4268,6 +4268,7 @@ const en = {
   "mirror.phase.live": "Live",
   "mirror.phase.tunnel_dead": "Tunnel down",
   "mirror.phase.error": "Error",
+  "mirror.phase.softLocal": "Local only (tunnel failed)",
   "mirror.warningToken":
     "Anyone with this link can control the agent on this machine. Stop the host when finished.",
   "mirror.missingCloudflared":
@@ -4275,6 +4276,53 @@ const en = {
   "mirror.errorGeneric": "Something went wrong",
   "mirror.qrAlt": "QR code for phone mirror URL",
   "mirror.linkLabel": "Public URL",
+  "mirror.linkLabelLocal": "Local URL (not public)",
+  "mirror.softLocalBanner":
+    "Tunnel failed, but the local host is still running. Phones on the public internet cannot reach this link — only loopback/LAN debug works until the tunnel is fixed.",
+  "mirror.softTunnelDeadBanner":
+    "The public tunnel exited, but the local host is still running. Connected phones may drop; restart the host after cloudflared is healthy.",
+  "mirror.err.cloudflaredMissing": "cloudflared missing",
+  "mirror.err.tunnelTimeout": "Tunnel timeout",
+  "mirror.err.tunnelSpawn": "Tunnel start failed",
+  "mirror.err.tunnelNotRegistered": "Tunnel not registered",
+  "mirror.err.tunnelDead": "Tunnel exited",
+  "mirror.err.portBind": "Port in use",
+  "mirror.err.desktopOnly": "Desktop only",
+  "mirror.err.wsClosed": "Link closed",
+  "mirror.err.wsTimeout": "Connect timeout",
+  "mirror.err.rpcTimeout": "Request timeout",
+  "mirror.err.rpcUnsupported": "Unsupported",
+  "mirror.err.notConnected": "Not linked",
+  "mirror.err.clientsFull": "Client limit",
+  "mirror.err.other": "Error",
+  "mirror.hint.cloudflaredMissing":
+    "Install cloudflared on PATH, or set GROK_MIRROR_NO_TUNNEL=1 for local-only tests.",
+  "mirror.hint.tunnelTimeout":
+    "cloudflared did not become ready in time. Check network / firewall, then restart the host.",
+  "mirror.hint.tunnelSpawn":
+    "Could not start cloudflared. Confirm the binary runs from a terminal, then retry.",
+  "mirror.hint.tunnelNotRegistered":
+    "cloudflared printed a URL but never registered a connection. Retry or use local-only mode.",
+  "mirror.hint.tunnelDead":
+    "Public tunnel process exited (no auto-restart). Local host may still be up — restart when ready.",
+  "mirror.hint.portBind":
+    "The chosen port is busy. Stop the other process or set GROK_MIRROR_PORT to a free port.",
+  "mirror.hint.desktopOnly":
+    "Start and manage the phone mirror host from the desktop app.",
+  "mirror.hint.wsClosed":
+    "The phone WebSocket closed. The client will retry automatically.",
+  "mirror.hint.wsTimeout":
+    "Could not open the host WebSocket in time. Check that the desktop host is still live.",
+  "mirror.hint.rpcTimeout":
+    "A host request timed out. The desktop agent may be busy — retry shortly.",
+  "mirror.hint.rpcUnsupported":
+    "This action is not available over phone mirror — use the desktop app.",
+  "mirror.hint.notConnected":
+    "Not linked to the desktop host. Re-open the mirror URL from a fresh QR.",
+  "mirror.hint.clientsFull":
+    "Max phone clients reached. Disconnect another phone or raise the limit on the host.",
+  "mirror.hint.other":
+    "Something went wrong with the mirror host. Check the message and retry.",
   "mirror.rotate": "Regenerate link",
   "mirror.rotateDone": "New link ready — old QR codes no longer work.",
   "mirror.rotateConfirmTitle": "Regenerate mirror link?",
@@ -4323,6 +4371,8 @@ const en = {
   "mirror.audit.type.host_stopped": "Host stopped",
   "mirror.chrome.connected": "Linked to host",
   "mirror.chrome.reconnecting": "Reconnecting…",
+  "mirror.chrome.disconnected": "Disconnected",
+  "mirror.chrome.tokenMissing": "Invalid mirror link",
   "mirror.chrome.accountHost": "Host account",
   "mirror.chrome.signedOut": "Host signed out",
   "mirror.unsupported": "This action needs the desktop app",
@@ -9073,6 +9123,7 @@ const zh: Record<MessageKey, string> = {
   "mirror.phase.live": "已上线",
   "mirror.phase.tunnel_dead": "通道中断",
   "mirror.phase.error": "错误",
+  "mirror.phase.softLocal": "仅本机（隧道失败）",
   "mirror.warningToken":
     "持有此链接的人可以控制本机上的 Agent。用完后请停止主机。",
   "mirror.missingCloudflared":
@@ -9080,6 +9131,50 @@ const zh: Record<MessageKey, string> = {
   "mirror.errorGeneric": "出了点问题",
   "mirror.qrAlt": "手机镜像地址的二维码",
   "mirror.linkLabel": "公开地址",
+  "mirror.linkLabelLocal": "本机地址（非公网）",
+  "mirror.softLocalBanner":
+    "隧道启动失败，但本机主机仍在运行。公网手机无法访问此链接——修复隧道前仅本机/局域网调试可用。",
+  "mirror.softTunnelDeadBanner":
+    "公网隧道进程已退出，但本机主机仍在运行。已连接手机可能掉线；cloudflared 恢复后请重启主机。",
+  "mirror.err.cloudflaredMissing": "缺少 cloudflared",
+  "mirror.err.tunnelTimeout": "隧道超时",
+  "mirror.err.tunnelSpawn": "隧道启动失败",
+  "mirror.err.tunnelNotRegistered": "隧道未注册",
+  "mirror.err.tunnelDead": "隧道已退出",
+  "mirror.err.portBind": "端口占用",
+  "mirror.err.desktopOnly": "仅桌面端",
+  "mirror.err.wsClosed": "链路已关闭",
+  "mirror.err.wsTimeout": "连接超时",
+  "mirror.err.rpcTimeout": "请求超时",
+  "mirror.err.rpcUnsupported": "不支持",
+  "mirror.err.notConnected": "未连接",
+  "mirror.err.clientsFull": "连接数已满",
+  "mirror.err.other": "错误",
+  "mirror.hint.cloudflaredMissing":
+    "请安装 cloudflared 并加入 PATH，或设置 GROK_MIRROR_NO_TUNNEL=1 做仅本机测试。",
+  "mirror.hint.tunnelTimeout":
+    "cloudflared 未在时限内就绪。请检查网络/防火墙后重启主机。",
+  "mirror.hint.tunnelSpawn":
+    "无法启动 cloudflared。请在终端确认该二进制可运行后再试。",
+  "mirror.hint.tunnelNotRegistered":
+    "cloudflared 打印了 URL 但未完成注册。请重试或改用仅本机模式。",
+  "mirror.hint.tunnelDead":
+    "公网隧道进程已退出（不会自动重启）。本机主机可能仍可用——就绪后请重启。",
+  "mirror.hint.portBind":
+    "目标端口被占用。请结束占用进程，或通过 GROK_MIRROR_PORT 指定空闲端口。",
+  "mirror.hint.desktopOnly": "请在桌面应用中启动与管理手机镜像主机。",
+  "mirror.hint.wsClosed": "手机 WebSocket 已关闭。客户端会自动重试。",
+  "mirror.hint.wsTimeout":
+    "无法在时限内打开主机 WebSocket。请确认桌面主机仍在运行。",
+  "mirror.hint.rpcTimeout":
+    "主机请求超时。桌面 Agent 可能正忙——请稍后重试。",
+  "mirror.hint.rpcUnsupported":
+    "手机镜像不支持此操作——请使用桌面应用。",
+  "mirror.hint.notConnected":
+    "未连接到桌面主机。请用新的二维码重新打开镜像链接。",
+  "mirror.hint.clientsFull":
+    "已达最大手机连接数。请断开其他手机，或在主机上提高上限。",
+  "mirror.hint.other": "镜像主机出现问题。请查看说明后重试。",
   "mirror.rotate": "重新生成链接",
   "mirror.rotateDone": "新链接已就绪 — 旧二维码失效。",
   "mirror.rotateConfirmTitle": "重新生成镜像链接？",
@@ -9128,6 +9223,8 @@ const zh: Record<MessageKey, string> = {
   "mirror.audit.type.host_stopped": "主机已停止",
   "mirror.chrome.connected": "已连接主机",
   "mirror.chrome.reconnecting": "重新连接中…",
+  "mirror.chrome.disconnected": "已断开",
+  "mirror.chrome.tokenMissing": "镜像链接无效",
   "mirror.chrome.accountHost": "主机账户",
   "mirror.chrome.signedOut": "主机未登录",
   "mirror.unsupported": "此操作需在桌面端完成",

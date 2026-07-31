@@ -21,9 +21,16 @@ export type PhoneAccountSheetProps = {
     openFiles: string;
     connected: string;
     reconnecting: string;
+    /** Optional: disconnected / token-missing honesty (MIRROR-PRO). */
+    disconnected?: string;
+    tokenMissing?: string;
   };
   hostLabel: string | null;
   linkOk: boolean;
+  /** Honest link tone from deriveMirrorClientLinkStatus (default ok/warn). */
+  linkTone?: "ok" | "warn" | "err" | "muted";
+  /** Override link pill label (connected / reconnecting / disconnected). */
+  linkStatusLabel?: string | null;
   agentStatusLabel: string;
   agentTone: "ok" | "warn" | "err" | "muted";
   onOpenFiles: () => void;
@@ -35,6 +42,8 @@ export function PhoneAccountSheet({
   labels,
   hostLabel,
   linkOk,
+  linkTone,
+  linkStatusLabel,
   agentStatusLabel,
   agentTone,
   onOpenFiles,
@@ -106,11 +115,13 @@ export function PhoneAccountSheet({
               </span>
               <span
                 className={
-                  "status-pill status-pill--" + (linkOk ? "ok" : "warn")
+                  "status-pill status-pill--" +
+                  (linkTone ?? (linkOk ? "ok" : "warn"))
                 }
               >
                 <span className="status-pill__dot" aria-hidden />
-                {linkOk ? labels.connected : labels.reconnecting}
+                {linkStatusLabel ??
+                  (linkOk ? labels.connected : labels.reconnecting)}
               </span>
             </div>
             <div className="phone-account__status-row">

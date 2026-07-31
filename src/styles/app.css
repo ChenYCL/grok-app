@@ -20849,6 +20849,14 @@ div.composer__input:empty::before {
   background: #3ecf8e;
 }
 
+.mirror-connect__phase--warn {
+  color: var(--text-primary);
+}
+
+.mirror-connect__phase--warn .mirror-connect__phase-dot {
+  background: #e6a23c;
+}
+
 .mirror-connect__phase--err {
   color: var(--danger, #e55);
 }
@@ -20862,6 +20870,41 @@ div.composer__input:empty::before {
   font-weight: 400;
 }
 
+.mirror-connect__err-chip {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 6px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  background: rgba(230, 162, 60, 0.14);
+  color: var(--text-secondary);
+  border: 1px solid rgba(230, 162, 60, 0.35);
+}
+
+.mirror-connect__err-chip--err {
+  background: rgba(220, 60, 60, 0.12);
+  border-color: rgba(220, 60, 60, 0.3);
+  color: var(--danger, #e55);
+}
+
+.mirror-connect__err-chip--warn {
+  background: rgba(230, 162, 60, 0.14);
+  border-color: rgba(230, 162, 60, 0.35);
+}
+
+.mirror-connect__soft-banner {
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: rgba(230, 162, 60, 0.1);
+  border: 1px solid rgba(230, 162, 60, 0.28);
+  color: var(--text-primary);
+  font-size: 12.5px;
+  line-height: 1.45;
+}
+
 .mirror-connect__error {
   padding: 8px 10px;
   border-radius: 10px;
@@ -20869,6 +20912,22 @@ div.composer__input:empty::before {
   border: 1px solid rgba(220, 60, 60, 0.25);
   color: var(--text-primary);
   font-size: 12.5px;
+  line-height: 1.4;
+}
+
+.mirror-connect__error--soft {
+  background: rgba(230, 162, 60, 0.08);
+  border-color: rgba(230, 162, 60, 0.28);
+}
+
+.mirror-connect__error-msg {
+  font-weight: 500;
+}
+
+.mirror-connect__error-hint {
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--text-secondary);
   line-height: 1.4;
 }
 

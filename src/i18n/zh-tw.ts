@@ -4102,6 +4102,7 @@ export const zhTW: Record<MessageKey, string> = {
   "mirror.phase.live": "已上線",
   "mirror.phase.tunnel_dead": "通道中斷",
   "mirror.phase.error": "錯誤",
+  "mirror.phase.softLocal": "僅本機（通道失敗）",
   "mirror.warningToken":
     "持有此連結的人可以控制本機上的 Agent。用完後請停止主機。",
   "mirror.missingCloudflared":
@@ -4109,6 +4110,50 @@ export const zhTW: Record<MessageKey, string> = {
   "mirror.errorGeneric": "出了點問題",
   "mirror.qrAlt": "手機鏡像網址的 QR 碼",
   "mirror.linkLabel": "公開網址",
+  "mirror.linkLabelLocal": "本機網址（非公網）",
+  "mirror.softLocalBanner":
+    "通道啟動失敗，但本機主機仍在執行。公網手機無法存取此連結——修復通道前僅本機/區域網路除錯可用。",
+  "mirror.softTunnelDeadBanner":
+    "公網通道行程已結束，但本機主機仍在執行。已連線手機可能掉線；cloudflared 恢復後請重新啟動主機。",
+  "mirror.err.cloudflaredMissing": "缺少 cloudflared",
+  "mirror.err.tunnelTimeout": "通道逾時",
+  "mirror.err.tunnelSpawn": "通道啟動失敗",
+  "mirror.err.tunnelNotRegistered": "通道未註冊",
+  "mirror.err.tunnelDead": "通道已結束",
+  "mirror.err.portBind": "連接埠占用",
+  "mirror.err.desktopOnly": "僅桌面端",
+  "mirror.err.wsClosed": "連線已關閉",
+  "mirror.err.wsTimeout": "連線逾時",
+  "mirror.err.rpcTimeout": "請求逾時",
+  "mirror.err.rpcUnsupported": "不支援",
+  "mirror.err.notConnected": "未連線",
+  "mirror.err.clientsFull": "連線數已滿",
+  "mirror.err.other": "錯誤",
+  "mirror.hint.cloudflaredMissing":
+    "請安裝 cloudflared 並加入 PATH，或設定 GROK_MIRROR_NO_TUNNEL=1 做僅本機測試。",
+  "mirror.hint.tunnelTimeout":
+    "cloudflared 未在時限內就緒。請檢查網路/防火牆後重新啟動主機。",
+  "mirror.hint.tunnelSpawn":
+    "無法啟動 cloudflared。請在終端機確認該二進位檔可執行後再試。",
+  "mirror.hint.tunnelNotRegistered":
+    "cloudflared 印出了 URL 但未完成註冊。請重試或改用僅本機模式。",
+  "mirror.hint.tunnelDead":
+    "公網通道行程已結束（不會自動重啟）。本機主機可能仍可用——就緒後請重新啟動。",
+  "mirror.hint.portBind":
+    "目標連接埠被占用。請結束占用行程，或透過 GROK_MIRROR_PORT 指定空閒連接埠。",
+  "mirror.hint.desktopOnly": "請在桌面應用中啟動與管理手機鏡像主機。",
+  "mirror.hint.wsClosed": "手機 WebSocket 已關閉。用戶端會自動重試。",
+  "mirror.hint.wsTimeout":
+    "無法在時限內開啟主機 WebSocket。請確認桌面主機仍在執行。",
+  "mirror.hint.rpcTimeout":
+    "主機請求逾時。桌面 Agent 可能正忙——請稍後重試。",
+  "mirror.hint.rpcUnsupported":
+    "手機鏡像不支援此操作——請使用桌面應用。",
+  "mirror.hint.notConnected":
+    "未連線到桌面主機。請用新的 QR 重新開啟鏡像連結。",
+  "mirror.hint.clientsFull":
+    "已達最大手機連線數。請中斷其他手機，或在主機上提高上限。",
+  "mirror.hint.other": "鏡像主機出現問題。請查看說明後重試。",
   "mirror.rotate": "重新產生連結",
   "mirror.rotateDone": "新連結已就緒 — 舊 QR 失效。",
   "mirror.rotateConfirmTitle": "重新產生鏡像連結？",
@@ -4157,6 +4202,8 @@ export const zhTW: Record<MessageKey, string> = {
   "mirror.audit.type.host_stopped": "主機已停止",
   "mirror.chrome.connected": "已連線主機",
   "mirror.chrome.reconnecting": "重新連線中…",
+  "mirror.chrome.disconnected": "已中斷",
+  "mirror.chrome.tokenMissing": "鏡像連結無效",
   "mirror.chrome.accountHost": "主機帳戶",
   "mirror.chrome.signedOut": "主機未登入",
   "mirror.unsupported": "此操作需在桌面端完成",
