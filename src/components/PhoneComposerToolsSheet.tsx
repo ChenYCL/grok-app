@@ -67,6 +67,8 @@ export type PhoneComposerToolsSheetProps = {
     modeAgent: string;
     modePlan: string;
     modeAsk: string;
+    /** Caption under a current model that comes from a custom provider (optional). */
+    modelViaProvider?: string;
     policyAsk: string;
     policyAcceptEdits: string;
     policySession: string;
@@ -372,6 +374,30 @@ export function PhoneComposerToolsSheet({
           {panel === "model" && (
             <>
               <div className="phone-sheet__section">{labels.model}</div>
+              {!modelList.some((m) => m.id === modelId) && modelId ? (
+                <button
+                  type="button"
+                  className={
+                    "phone-sheet__row is-active" +
+                    (labels.modelViaProvider
+                      ? " phone-sheet__row--stacked"
+                      : "")
+                  }
+                  onClick={() => onClose()}
+                >
+                  <span className="phone-sheet__row-label">
+                    <span className="phone-sheet__row-title">{modelId}</span>
+                    {labels.modelViaProvider ? (
+                      <span className="phone-sheet__row-sub">
+                        {labels.modelViaProvider}
+                      </span>
+                    ) : null}
+                  </span>
+                  <span className="phone-sheet__row-value" aria-hidden>
+                    <IconCheck size={18} />
+                  </span>
+                </button>
+              ) : null}
               {modelList.map((m) => (
                 <button
                   key={m.id}

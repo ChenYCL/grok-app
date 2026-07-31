@@ -22137,6 +22137,33 @@ div.composer__input:empty::before {
   white-space: nowrap;
 }
 
+/* Stacked rows (e.g. current model via custom provider): title + sub caption. */
+.phone-sheet__row--stacked .phone-sheet__row-label {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  white-space: normal;
+}
+
+.phone-sheet__row-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  width: 100%;
+}
+
+.phone-sheet__row-sub {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  width: 100%;
+  font-size: 13px;
+  color: var(--text-tertiary);
+}
+
 .phone-sheet__row-value {
   flex-shrink: 1;
   max-width: 42%;

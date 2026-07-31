@@ -196,6 +196,8 @@ export interface ComposerModelMenuProps {
     modelSearchPlaceholder: string;
     /** Empty state when filter matches nothing. */
     modelSearchEmpty: string;
+    /** Caption on the active entry when the current model comes from a custom provider (optional). */
+    modelViaProvider?: string;
   };
   onModel: (id: string) => void;
   onEffort: (id: string) => void;
@@ -230,6 +232,9 @@ export function ComposerModelMenu({
   const filteredModels = filterModelsForMenu(modelList, modelQuery);
   const activeModel = findModel(modelId, modelList);
   const effortList = effortsForModel(activeModel);
+  /** Custom-provider route: the current model is not in the official catalog. */
+  const showViaProviderEntry =
+    !activeModel && modelId.trim().length > 0 && !modelQuery.trim();
 
   const clearModelQuery = () => setModelQuery("");
 
@@ -368,6 +373,25 @@ export function ComposerModelMenu({
                     }}
                   />
                 </div>
+                {showViaProviderEntry ? (
+                  <button
+                    type="button"
+                    className="cmm__opt is-active"
+                    onClick={() => setNested(null)}
+                  >
+                    <span className="cmm__opt-main">
+                      <span className="cmm__opt-title">{modelId}</span>
+                      {labels.modelViaProvider ? (
+                        <span className="cmm__opt-desc">
+                          {labels.modelViaProvider}
+                        </span>
+                      ) : null}
+                    </span>
+                    <span className="cmm__opt-check" aria-hidden>
+                      <IconCheck size={16} />
+                    </span>
+                  </button>
+                ) : null}
                 {filteredModels.length === 0 ? (
                   <div className="cmm__opt cmm__opt--muted" role="status">
                     <span className="cmm__opt-main">

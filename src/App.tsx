@@ -850,6 +850,7 @@ import {
   ComposerAccessMenu,
   ComposerModelMenu,
 } from "@/components/ComposerModelMenu";
+import { effectiveComposerModel } from "@/lib/effectiveModel";
 import {
   ResourceViewer,
   type ResourceOpenTarget,
@@ -11451,6 +11452,15 @@ export default function App() {
   const [activeCustomProvider, setActiveCustomProvider] =
     useState<api.CustomProvider | null>(null);
   const customRouteActive = activeCustomProvider != null;
+  /**
+   * Model the composer chip must show: on a custom relay the agent spawns with
+   * the provider request model (composer selection is ignored), so display it
+   * instead of a stale official pick like "Grok 4.5".
+   */
+  const effectiveModelId = effectiveComposerModel(
+    modelId,
+    customRouteActive ? activeCustomProvider?.model ?? null : null,
+  );
   const refreshProviderRoute = useCallback(async () => {
     if (!api.isTauri()) {
       setActiveCustomProvider(null);
@@ -18779,11 +18789,12 @@ export default function App() {
                       </Tip>
                     ) : null}
                     <ComposerModelMenu
-                      modelId={modelId}
+                      modelId={effectiveModelId}
                       effort={effort}
                       models={availableModels}
                       labels={{
                         model: tr("composer.model"),
+                        modelViaProvider: tr("composer.modelViaProvider"),
                         effort: tr("composer.effort"),
                         effortHigh: tr("effort.high"),
                         effortMedium: tr("effort.medium"),
@@ -19251,6 +19262,7 @@ export default function App() {
               modeAgent: tr("mode.agent"),
               modePlan: tr("mode.plan"),
               modeAsk: tr("mode.ask"),
+              modelViaProvider: tr("composer.modelViaProvider"),
               policyAsk: tr("policy.ask"),
               policyAcceptEdits: tr("policy.accept_edits"),
               policySession: tr("policy.allow_for_session"),
@@ -19270,7 +19282,7 @@ export default function App() {
             }}
             activeProject={activeProject}
             projects={projects}
-            modelId={modelId}
+            modelId={effectiveModelId}
             effort={effort}
             models={availableModels}
             mode={mode}
