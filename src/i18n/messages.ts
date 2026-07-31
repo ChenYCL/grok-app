@@ -996,6 +996,20 @@ const en = {
   "search.chats": "Chats",
   "search.actions": "Actions",
   "search.noMatches": "No matches",
+  "search.noRecent": "No recent chats",
+  "search.noRecentHint": "Start a new chat or add a project to see it here.",
+  "search.noMatchesHintTitle":
+    "No title matches. Switch to All or Content, or clear filters.",
+  "search.noMatchesHintContent":
+    "No message-body matches. Switch to All or Title, or clear filters.",
+  "search.noMatchesHintKeyword":
+    "Try Hybrid ranking for multi-word queries, or include archived chats.",
+  "search.noMatchesHintHybrid":
+    "No local matches. Try different keywords or include archived chats.",
+  "search.noMatchesHintArchived":
+    "No local matches. Try different keywords, or turn on Include archived.",
+  "search.searchingContentHint": "Scanning message journals…",
+  "search.clearFilters": "Clear filters",
   "search.newChat": "New chat",
   "search.addProject": "Add project",
   "search.matchCount": "{n} matches",
@@ -1011,11 +1025,13 @@ const en = {
   "search.rankModeLabel": "Search ranking",
   "search.rankKeyword": "Keyword",
   "search.rankHybrid": "Hybrid",
+  "search.rankKeywordHint":
+    "Substring match; stable title-then-content order",
   "search.rankHybridHint":
     "Local hybrid: keyword + token overlap on titles/snippets (not cloud embeddings)",
   "settings.sessionSearchRank": "Session search ranking",
   "settings.sessionSearchRankDesc":
-    "Command palette ranking: Keyword (substring) or Hybrid (keyword + local token overlap on titles/snippets). Not cloud embeddings — no embedding API.",
+    "Command palette ranking: Keyword (substring) or Hybrid (keyword + local token overlap on titles/snippets). Not cloud embeddings — no embedding API. Scope chips (All / Title / Content) and Include archived are remembered in this browser.",
   "settings.sessionSearchRank.keyword": "Keyword",
   "settings.sessionSearchRank.hybrid": "Hybrid (local tokens)",
 
@@ -5611,6 +5627,20 @@ const zh: Record<MessageKey, string> = {
   "search.chats": "会话",
   "search.actions": "操作",
   "search.noMatches": "无匹配结果",
+  "search.noRecent": "暂无最近会话",
+  "search.noRecentHint": "新建会话或添加项目后会出现在这里。",
+  "search.noMatchesHintTitle":
+    "没有标题匹配。可切换到「全部」或「内容」，或清除筛选。",
+  "search.noMatchesHintContent":
+    "没有消息正文匹配。可切换到「全部」或「标题」，或清除筛选。",
+  "search.noMatchesHintKeyword":
+    "可尝试「混合」排序以匹配多词查询，或包含已归档会话。",
+  "search.noMatchesHintHybrid":
+    "本地无匹配。可换关键词，或包含已归档会话。",
+  "search.noMatchesHintArchived":
+    "本地无匹配。可换关键词，或打开「包含已归档」。",
+  "search.searchingContentHint": "正在扫描消息日志…",
+  "search.clearFilters": "清除筛选",
   "search.newChat": "新建会话",
   "search.addProject": "添加项目",
   "search.matchCount": "{n} 处匹配",
@@ -5626,11 +5656,12 @@ const zh: Record<MessageKey, string> = {
   "search.rankModeLabel": "搜索排序",
   "search.rankKeyword": "关键词",
   "search.rankHybrid": "混合",
+  "search.rankKeywordHint": "子串匹配；标题优先、再内容的稳定顺序",
   "search.rankHybridHint":
     "本地混合：关键词 + 标题/摘要词元重叠排序（非云端嵌入）",
   "settings.sessionSearchRank": "会话搜索排序",
   "settings.sessionSearchRankDesc":
-    "命令面板排序：关键词（子串）或混合（关键词 + 标题/摘要本地词元重叠）。非云端嵌入，无 embedding API。",
+    "命令面板排序：关键词（子串）或混合（关键词 + 标题/摘要本地词元重叠）。非云端嵌入，无 embedding API。范围芯片（全部/标题/内容）与「包含已归档」会在本浏览器记住。",
   "settings.sessionSearchRank.keyword": "关键词",
   "settings.sessionSearchRank.hybrid": "混合（本地词元）",
 

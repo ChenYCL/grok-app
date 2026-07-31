@@ -395,10 +395,15 @@ import { PlanHistoryList } from "@/components/PlanHistoryList";
 import { MarkdownBody } from "@/components/MarkdownBody";
 import { VoiceOverlay } from "@/components/VoiceOverlay";
 import {
+  clearSessionSearchFilters,
   filterSessionSearch,
+  hasActiveSessionSearchFilters,
   mergeSessionSearchHits,
+  resolveSessionSearchEmptyState,
   sessionSearchBadge,
   sessionSearchBadgeLabelKey,
+  sessionSearchModeLabelKey,
+  sessionSearchRankModeLabelKey,
   shouldScanSessionContent,
   SESSION_SEARCH_RANK_MODES,
   type SessionContentHit,
@@ -406,6 +411,11 @@ import {
   SESSION_SEARCH_MODES,
   type SessionSearchRankMode,
 } from "@/lib/sessionSearch";
+import {
+  loadSessionSearchFilterPref,
+  saveSessionSearchFilterPref,
+  SESSION_SEARCH_FILTER_CHANGE_EVENT,
+} from "@/lib/sessionSearchFilterPref";
 import {
   loadSessionSearchRankPref,
   saveSessionSearchRankPref,
@@ -1589,9 +1599,13 @@ export default function App() {
   appDialogRef.current = appDialog;
   const [showSearch, setShowSearch] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
-  /** Keyword hybrid scope: all | title | content (no embeddings). */
-  const [searchMode, setSearchMode] = useState<SessionSearchMode>("all");
-  const [searchIncludeArchived, setSearchIncludeArchived] = useState(false);
+  /** Keyword hybrid scope: all | title | content (no embeddings). Persisted. */
+  const [searchMode, setSearchMode] = useState<SessionSearchMode>(
+    () => loadSessionSearchFilterPref().mode,
+  );
+  const [searchIncludeArchived, setSearchIncludeArchived] = useState(
+    () => loadSessionSearchFilterPref().includeArchived,
+  );
   /** Keyword vs local hybrid ranking for palette session search. */
   const [searchRankMode, setSearchRankMode] = useState<SessionSearchRankMode>(
     () => loadSessionSearchRankPref(),
@@ -1749,21 +1763,52 @@ export default function App() {
   }, [rewindTimeline, rewindBusy]);
 
   // Settings (or other windows) may change hybrid rank pref via localStorage event.
+  // Settings (or other windows) may change hybrid rank / filter prefs.
   useEffect(() => {
-    const sync = () => setSearchRankMode(loadSessionSearchRankPref());
-    const onCustom = (e: Event) => {
+    const syncRank = () => setSearchRankMode(loadSessionSearchRankPref());
+    const syncFilters = () => {
+      const f = loadSessionSearchFilterPref();
+      setSearchMode(f.mode);
+      setSearchIncludeArchived(f.includeArchived);
+    };
+    const syncAll = () => {
+      syncRank();
+      syncFilters();
+    };
+    const onRank = (e: Event) => {
       const detail = (e as CustomEvent<SessionSearchRankMode>).detail;
       if (detail === "hybrid" || detail === "keyword") {
         setSearchRankMode(detail);
       } else {
-        sync();
+        syncRank();
       }
     };
-    window.addEventListener(SESSION_SEARCH_RANK_CHANGE_EVENT, onCustom);
-    window.addEventListener("storage", sync);
+    const onFilter = (e: Event) => {
+      const detail = (
+        e as CustomEvent<{ mode?: SessionSearchMode; includeArchived?: boolean }>
+      ).detail;
+      if (detail && typeof detail === "object") {
+        if (
+          detail.mode === "all" ||
+          detail.mode === "title" ||
+          detail.mode === "content"
+        ) {
+          setSearchMode(detail.mode);
+        }
+        if (typeof detail.includeArchived === "boolean") {
+          setSearchIncludeArchived(detail.includeArchived);
+        }
+      } else {
+        syncFilters();
+      }
+    };
+    window.addEventListener(SESSION_SEARCH_RANK_CHANGE_EVENT, onRank);
+    window.addEventListener(SESSION_SEARCH_FILTER_CHANGE_EVENT, onFilter);
+    window.addEventListener("storage", syncAll);
     return () => {
-      window.removeEventListener(SESSION_SEARCH_RANK_CHANGE_EVENT, onCustom);
-      window.removeEventListener("storage", sync);
+      window.removeEventListener(SESSION_SEARCH_RANK_CHANGE_EVENT, onRank);
+      window.removeEventListener(SESSION_SEARCH_FILTER_CHANGE_EVENT, onFilter);
+      window.removeEventListener("storage", syncAll);
     };
   }, []);
 
@@ -7578,6 +7623,52 @@ export default function App() {
     () => filterPaletteActions(searchQuery, defaultPaletteActions(), tr),
     [searchQuery, tr],
   );
+
+  const searchEmptyState = useMemo(
+    () =>
+      resolveSessionSearchEmptyState({
+        query: searchQuery,
+        sessionHitCount: mergedSessionHits.length,
+        contentLoading: contentSearchLoading,
+        mode: searchMode,
+        includeArchived: searchIncludeArchived,
+        rankMode: searchRankMode,
+      }),
+    [
+      searchQuery,
+      mergedSessionHits.length,
+      contentSearchLoading,
+      searchMode,
+      searchIncludeArchived,
+      searchRankMode,
+    ],
+  );
+
+  const searchFiltersActive = useMemo(
+    () =>
+      hasActiveSessionSearchFilters({
+        mode: searchMode,
+        includeArchived: searchIncludeArchived,
+      }),
+    [searchMode, searchIncludeArchived],
+  );
+
+  const applySearchMode = useCallback((mode: SessionSearchMode) => {
+    setSearchMode(mode);
+    saveSessionSearchFilterPref({ mode });
+  }, []);
+
+  const applySearchIncludeArchived = useCallback((includeArchived: boolean) => {
+    setSearchIncludeArchived(includeArchived);
+    saveSessionSearchFilterPref({ includeArchived });
+  }, []);
+
+  const clearSearchFilters = useCallback(() => {
+    const next = clearSessionSearchFilters();
+    setSearchMode(next.mode);
+    setSearchIncludeArchived(next.includeArchived);
+    saveSessionSearchFilterPref(next);
+  }, []);
 
   const agentDashboardRows = useMemo(
     () =>
@@ -21143,38 +21234,41 @@ export default function App() {
                 role="tablist"
                 aria-label={tr("search.modeLabel")}
               >
-                {SESSION_SEARCH_MODES.map((mode) => {
-                  const labelKey =
-                    mode === "all"
-                      ? ("search.modeAll" as const)
-                      : mode === "title"
-                        ? ("search.modeTitle" as const)
-                        : ("search.modeContent" as const);
-                  return (
-                    <button
-                      key={mode}
-                      type="button"
-                      role="tab"
-                      aria-selected={searchMode === mode}
-                      className={
-                        "search-panel__mode" +
-                        (searchMode === mode ? " is-active" : "")
-                      }
-                      onClick={() => setSearchMode(mode)}
-                    >
-                      {tr(labelKey)}
-                    </button>
-                  );
-                })}
+                {SESSION_SEARCH_MODES.map((mode) => (
+                  <button
+                    key={mode}
+                    type="button"
+                    role="tab"
+                    aria-selected={searchMode === mode}
+                    className={
+                      "search-panel__mode" +
+                      (searchMode === mode ? " is-active" : "")
+                    }
+                    onClick={() => applySearchMode(mode)}
+                  >
+                    {tr(sessionSearchModeLabelKey(mode))}
+                  </button>
+                ))}
               </div>
               <label className="search-panel__archived">
                 <input
                   type="checkbox"
                   checked={searchIncludeArchived}
-                  onChange={(e) => setSearchIncludeArchived(e.target.checked)}
+                  onChange={(e) =>
+                    applySearchIncludeArchived(e.target.checked)
+                  }
                 />
                 <span>{tr("search.includeArchived")}</span>
               </label>
+              {searchFiltersActive ? (
+                <button
+                  type="button"
+                  className="search-panel__clear-filters"
+                  onClick={clearSearchFilters}
+                >
+                  {tr("search.clearFilters")}
+                </button>
+              ) : null}
             </div>
             <div className="search-panel__filters">
               <div
@@ -21182,36 +21276,30 @@ export default function App() {
                 role="tablist"
                 aria-label={tr("search.rankModeLabel")}
               >
-                {SESSION_SEARCH_RANK_MODES.map((mode) => {
-                  const labelKey =
-                    mode === "hybrid"
-                      ? ("search.rankHybrid" as const)
-                      : ("search.rankKeyword" as const);
-                  return (
-                    <button
-                      key={mode}
-                      type="button"
-                      role="tab"
-                      aria-selected={searchRankMode === mode}
-                      className={
-                        "search-panel__mode" +
-                        (searchRankMode === mode ? " is-active" : "")
-                      }
-                      onClick={() => {
-                        setSearchRankMode(mode);
-                        saveSessionSearchRankPref(mode);
-                      }}
-                    >
-                      {tr(labelKey)}
-                    </button>
-                  );
-                })}
+                {SESSION_SEARCH_RANK_MODES.map((mode) => (
+                  <button
+                    key={mode}
+                    type="button"
+                    role="tab"
+                    aria-selected={searchRankMode === mode}
+                    className={
+                      "search-panel__mode" +
+                      (searchRankMode === mode ? " is-active" : "")
+                    }
+                    onClick={() => {
+                      setSearchRankMode(mode);
+                      saveSessionSearchRankPref(mode);
+                    }}
+                  >
+                    {tr(sessionSearchRankModeLabelKey(mode))}
+                  </button>
+                ))}
               </div>
-              {searchRankMode === "hybrid" ? (
-                <span className="search-panel__rank-hint">
-                  {tr("search.rankHybridHint")}
-                </span>
-              ) : null}
+              <span className="search-panel__rank-hint">
+                {searchRankMode === "hybrid"
+                  ? tr("search.rankHybridHint")
+                  : tr("search.rankKeywordHint")}
+              </span>
             </div>
             {paletteActionHits.length > 0 && (
               <>
@@ -21264,11 +21352,29 @@ export default function App() {
                 ? ` · ${tr("search.searchingContent")}`
                 : null}
             </div>
-            {mergedSessionHits.length === 0 && !contentSearchLoading && (
-              <div className="sidebar-empty" style={{ padding: 12 }}>
-                {tr("search.noMatches")}
+            {searchEmptyState ? (
+              <div
+                className="search-panel__empty"
+                role="status"
+                data-kind={searchEmptyState.kind}
+              >
+                <p className="search-panel__empty-title">
+                  {tr(searchEmptyState.titleKey)}
+                </p>
+                <p className="search-panel__empty-hint">
+                  {tr(searchEmptyState.hintKey)}
+                </p>
+                {searchEmptyState.showClearFilters ? (
+                  <button
+                    type="button"
+                    className="btn btn--ghost btn--sm search-panel__empty-clear"
+                    onClick={clearSearchFilters}
+                  >
+                    {tr("search.clearFilters")}
+                  </button>
+                ) : null}
               </div>
-            )}
+            ) : null}
             {mergedSessionHits.map((hit, i) => {
               const s = sessions.find((x) => x.id === hit.id);
               // Content-only hits may lack a live row if the list is stale; still open by id.
