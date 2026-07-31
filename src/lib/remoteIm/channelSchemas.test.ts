@@ -129,6 +129,34 @@ describe("remoteIm channelSchemas", () => {
     expect(wecom.fields.some((f) => f.key === "enable_markdown")).toBe(true);
   });
 
+  it("qq OneBot schema: required ws_url, optional token, forward WS, no public URL", () => {
+    const qq = getChannelSchema("qq")!;
+    expect(qq.implemented).toBe(true);
+    expect(qq.scanSupport).toBe(false);
+    expect(qq.pasteSupport).toBe(true);
+    expect(qq.connectionKey).toContain("forwardWs");
+    const ws = qq.fields.find((f) => f.key === "ws_url");
+    expect(ws?.required).toBe(true);
+    expect(ws?.secret).not.toBe(true);
+    expect(ws?.helpKey).toBe("settings.remoteIm.qq.wsUrlHelp");
+    const tok = qq.fields.find((f) => f.key === "token");
+    expect(tok?.secret).toBe(true);
+    expect(tok?.required).not.toBe(true);
+    expect(tok?.helpKey).toBe("settings.remoteIm.qq.tokenHelp");
+    expect(showsPublicUrlCallout(qq, {})).toBe(false);
+    expect(validateBindFields(qq, {}).ok).toBe(false);
+    expect(
+      validateBindFields(qq, { ws_url: "ws://127.0.0.1:3001" }).ok,
+    ).toBe(true);
+    // Token optional
+    expect(
+      validateBindFields(qq, {
+        ws_url: "ws://127.0.0.1:3001",
+        token: "optional",
+      }).ok,
+    ).toBe(true);
+  });
+
   it("LINE always shows public-URL callout when flagged", () => {
     const line = getChannelSchema("line")!;
     expect(showsPublicUrlCallout(line, {})).toBe(true);

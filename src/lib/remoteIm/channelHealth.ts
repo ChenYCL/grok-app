@@ -18,6 +18,10 @@ import {
   feishuHealthHintKeys,
   validateFeishuConfig,
 } from "./feishuConfig";
+import {
+  qqHealthHintKeys,
+  validateQqConfig,
+} from "./qqConfig";
 
 
 /** Health tone for badges / callouts (maps to RimBadge). */
@@ -98,6 +102,7 @@ const FEISHU_LIKE: RemoteChannelId[] = ["feishu", "lark"];
 const TELEGRAM_LIKE: RemoteChannelId[] = ["telegram"];
 const WECOM_LIKE: RemoteChannelId[] = ["wecom"];
 const DINGTALK_LIKE: RemoteChannelId[] = ["dingtalk"];
+const QQ_LIKE: RemoteChannelId[] = ["qq"];
 
 /** Required secret bind keys per channel (for readiness, not values). */
 const SECRET_KEYS: Partial<Record<RemoteChannelId, string[]>> = {
@@ -110,6 +115,7 @@ const SECRET_KEYS: Partial<Record<RemoteChannelId, string[]>> = {
   slack: ["bot_token", "app_token"],
   // WeCom secrets are mode-aware — see credentialReadiness / wecomConfig
   weixin: ["token"],
+  // QQ OneBot: token optional; readiness via qqConfig (ws_url required)
   matrix: ["access_token"],
   line: ["channel_secret", "channel_access_token"],
 };
@@ -119,6 +125,7 @@ const NON_SECRET_REQUIRED: Partial<Record<RemoteChannelId, string[]>> = {
   lark: ["app_id"],
   telegram: [],
   dingtalk: ["client_id"],
+  // QQ validated via qqConfig (ws_url / url alias)
 };
 
 
@@ -252,6 +259,17 @@ export function channelModeLabel(
   if (channel === "dingtalk") {
     return "mode=stream";
   }
+  if (QQ_LIKE.includes(channel)) {
+    const ws =
+      optionString(options, "ws_url") || optionString(options, "url");
+    if (!ws) return "ws=missing";
+    const scheme = /^wss?:/i.test(ws)
+      ? ws.toLowerCase().startsWith("wss")
+        ? "wss"
+        : "ws"
+      : "bad";
+    return `forward_ws · ${scheme}`;
+  }
   return null;
 }
 
@@ -332,6 +350,15 @@ export function credentialReadiness(
     return { ready: v.ok, missingKeys: [...v.missing] };
   }
 
+  if (QQ_LIKE.includes(channel)) {
+    const v = validateQqConfig({
+      options: opts,
+      secretKeysFilled,
+      hasCredentials: instance.hasCredentials,
+    });
+    return { ready: v.ok, missingKeys: [...v.missing] };
+  }
+
   const missing: string[] = [];
 
   for (const k of NON_SECRET_REQUIRED[channel] ?? []) {
@@ -387,6 +414,7 @@ export function classifyChannelHealth(
   );
 
   // Honest status: incomplete mode-switch / missing keys cannot look "connected".
+  // QQ: token is optional, but save still sets hasCredentials when URL bind is ready.
   const credsUsable =
     !!instance.hasCredentials && (credentialsReady || channel !== "wecom");
 
@@ -499,6 +527,24 @@ export function classifyChannelHealth(
     }
   }
 
+  if (QQ_LIKE.includes(channel)) {
+    const qqV = validateQqConfig({
+      options: opts,
+      secretKeysFilled: input.secretKeysFilled,
+      hasCredentials: instance.hasCredentials,
+    });
+    const tokenInForm =
+      !!input.secretKeysFilled &&
+      (input.secretKeysFilled.has("token") ||
+        input.secretKeysFilled.has("access_token"));
+    for (const k of qqHealthHintKeys(qqV, {
+      openAcl: openAcl && (instance.hasCredentials || qqV.ok),
+      tokenInForm,
+    })) {
+      hintKeys.push(k);
+    }
+  }
+
   // Dedup preserve order
   const seen = new Set<string>();
   const uniqueHints = hintKeys.filter((k) => {
@@ -532,6 +578,7 @@ export function channelHasDeepHealth(channel: RemoteChannelId): boolean {
     FEISHU_LIKE.includes(channel) ||
     TELEGRAM_LIKE.includes(channel) ||
     WECOM_LIKE.includes(channel) ||
-    DINGTALK_LIKE.includes(channel)
+    DINGTALK_LIKE.includes(channel) ||
+    QQ_LIKE.includes(channel)
   );
 }

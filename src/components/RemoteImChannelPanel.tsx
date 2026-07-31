@@ -30,6 +30,7 @@ import {
   showsPublicUrlCallout,
   toggleSecretReveal,
   validateBindFields,
+  validateQqConfig,
 } from "@/lib/remoteIm";
 import type { TestConnectionResult } from "@/lib/remoteIm/bridgeClient";
 import {
@@ -229,7 +230,16 @@ export function RemoteImChannelPanel({
       }
 
       const hasNewSecrets = Object.keys(secretPayload).length > 0;
-      const hasCredentials = instance.hasCredentials || hasNewSecrets;
+      // QQ OneBot: access token is optional — forward WS URL alone is a valid bind (§6.10).
+      const qqUrlBindOk =
+        channelId === "qq" &&
+        validateQqConfig({
+          options: nextValues,
+          secretKeysFilled: filled,
+          hasCredentials: instance.hasCredentials,
+        }).ok;
+      const hasCredentials =
+        instance.hasCredentials || hasNewSecrets || qqUrlBindOk;
       if (!hasCredentials) {
         setFormError(t("settings.remoteIm.err.needSecrets"));
         return false;
@@ -859,6 +869,22 @@ export function RemoteImChannelPanel({
           </p>
         </div>
       ) : null}
+      {channelId === "qq" ? (
+        <div className="rim-callout" data-qq-guide="1">
+          <div className="rim-callout__title">
+            {t("settings.remoteIm.qq.guide.title")}
+          </div>
+          <ol className="rim-guide-steps">
+            <li>{t("settings.remoteIm.qq.guide.step1")}</li>
+            <li>{t("settings.remoteIm.qq.guide.step2")}</li>
+            <li>{t("settings.remoteIm.qq.guide.step3")}</li>
+            <li>{t("settings.remoteIm.qq.guide.step4")}</li>
+          </ol>
+          <p className="settings-row__hint">
+            {t("settings.remoteIm.qq.guide.softFail")}
+          </p>
+        </div>
+      ) : null}
 {channelId === "lark" ? (
         <div className="rim-callout" data-feishu-guide="1" data-validate="validateFeishuConfig">
           <div className="rim-callout__title">
@@ -1020,7 +1046,14 @@ export function RemoteImChannelPanel({
         ) : null}
 
         {channelId === "qq" ? (
-          <div className="rim-callout rim-callout--warn">
+          <div
+            className="rim-callout rim-callout--warn"
+            data-qq-risk="1"
+          >
+            <div className="rim-callout__title">
+              <IconAlertTriangle size={14} />
+              {t("settings.remoteIm.qq.riskTitle")}
+            </div>
             <p>{t("settings.remoteIm.qq.riskHint")}</p>
           </div>
         ) : null}

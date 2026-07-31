@@ -538,6 +538,8 @@ const QQ_FIELDS: ChannelSchema["fields"] = [
     control: "text",
     section: "bind",
     required: true,
+    helpKey: "settings.remoteIm.qq.wsUrlHelp",
+    placeholderKey: "settings.remoteIm.qq.wsUrlPlaceholder",
   },
   {
     key: "token",
@@ -545,8 +547,13 @@ const QQ_FIELDS: ChannelSchema["fields"] = [
     control: "password",
     section: "bind",
     secret: true,
+    helpKey: "settings.remoteIm.qq.tokenHelp",
+    placeholderKey: "settings.remoteIm.qq.tokenPlaceholder",
   },
-  ACL_ALLOW_FROM,
+  {
+    ...ACL_ALLOW_FROM,
+    helpKey: "settings.remoteIm.qq.allowFromHelp",
+  },
 ];
 
 const QQBOT_FIELDS: ChannelSchema["fields"] = [

@@ -64,6 +64,7 @@ pub async fn test_connection(
                 mock: false,
             })
         }
+        "qq" => test_qq(&creds),
         _ => {
             let ok = !creds.is_empty() || !secrets.is_empty();
             Ok(TestConnectionDto {
@@ -316,6 +317,58 @@ async fn test_telegram(
     }
 }
 
+/// QQ OneBot forward-WS URL: ws:// or wss:// with a non-empty host.
+/// Soft-fail only — never opens a WebSocket and never logs the URL.
+fn is_qq_ws_url(raw: &str) -> bool {
+    let t = raw.trim();
+    if t.is_empty() {
+        return false;
+    }
+    let lower = t.to_ascii_lowercase();
+    if !(lower.starts_with("ws://") || lower.starts_with("wss://")) {
+        return false;
+    }
+    // Host part after scheme — reject bare "ws://"
+    let rest = if lower.starts_with("wss://") {
+        &t[6..]
+    } else {
+        &t[5..]
+    };
+    let host = rest.split('/').next().unwrap_or("").trim();
+    !host.is_empty()
+}
+
+/// QQ OneBot (NapCat etc.): soft posture only — never claims live forward WS.
+/// Token is optional; missing / invalid URL soft-fails.
+fn test_qq(creds: &HashMap<String, String>) -> Result<TestConnectionDto, String> {
+    let ws = cred_get(creds, &["ws_url", "url"]);
+    if ws.is_empty() {
+        return Ok(TestConnectionDto {
+            ok: false,
+            message: "missing_qq_ws_url".into(),
+            mock: false,
+        });
+    }
+    if !is_qq_ws_url(ws) {
+        return Ok(TestConnectionDto {
+            ok: false,
+            message: "invalid_qq_ws_url".into(),
+            mock: false,
+        });
+    }
+    let token = cred_get(creds, &["token", "access_token"]);
+    Ok(TestConnectionDto {
+        ok: true,
+        // Honest: URL shape only — live WS requires Bridge + self-hosted OneBot.
+        message: if token.is_empty() {
+            "qq_forward_ws_url_present".into()
+        } else {
+            "qq_forward_ws_credentials_present".into()
+        },
+        mock: false,
+    })
+}
+
 async fn test_discord(
     secrets: &HashMap<String, String>,
 ) -> Result<TestConnectionDto, String> {
@@ -468,5 +521,47 @@ mod tests {
         let r = test_wecom(&c).unwrap();
         assert!(r.ok);
         assert_eq!(r.message, "wecom_ws_credentials_present");
+    }
+
+    #[test]
+    fn qq_ws_url_accepts_ws_and_wss() {
+        assert!(is_qq_ws_url("ws://127.0.0.1:3001"));
+        assert!(is_qq_ws_url("wss://onebot.example.com/ws"));
+        assert!(is_qq_ws_url("WS://localhost:8080/onebot/v11/ws"));
+        assert!(!is_qq_ws_url(""));
+        assert!(!is_qq_ws_url("http://127.0.0.1:3001"));
+        assert!(!is_qq_ws_url("not-a-url"));
+        assert!(!is_qq_ws_url("ws://"));
+    }
+
+    #[test]
+    fn qq_soft_fails_missing_and_invalid_url() {
+        let empty = HashMap::new();
+        let r = test_qq(&empty).unwrap();
+        assert!(!r.ok);
+        assert_eq!(r.message, "missing_qq_ws_url");
+        assert!(!r.mock);
+
+        let mut bad = HashMap::new();
+        bad.insert("ws_url".into(), "http://127.0.0.1:3001".into());
+        let r2 = test_qq(&bad).unwrap();
+        assert!(!r2.ok);
+        assert_eq!(r2.message, "invalid_qq_ws_url");
+        assert!(!r2.mock);
+    }
+
+    #[test]
+    fn qq_accepts_url_alias_token_optional() {
+        let mut c = HashMap::new();
+        c.insert("url".into(), "wss://bridge.local/onebot".into());
+        let r = test_qq(&c).unwrap();
+        assert!(r.ok);
+        assert_eq!(r.message, "qq_forward_ws_url_present");
+        assert!(!r.mock);
+
+        c.insert("token".into(), "optional-access-token".into());
+        let r2 = test_qq(&c).unwrap();
+        assert!(r2.ok);
+        assert_eq!(r2.message, "qq_forward_ws_credentials_present");
     }
 }
