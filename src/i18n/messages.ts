@@ -1040,8 +1040,58 @@ const en = {
   "settings.netProbeFailed": "unreachable",
   "settings.tab.pool": "Process pool",
   "settings.tab.tools": "Diagnostics",
+  "settings.tab.privacy": "Privacy",
   "settings.tab.remoteIm": "IM messaging",
   "settings.tab.phoneMirror": "Phone mirror",
+  "settings.privacy": "Privacy center",
+  "settings.privacyDesc":
+    "Honest view of Grok Build privacy-related keys in the active GROK_HOME config.toml (0.2.117+). Missing keys stay unset — this App never invents “off”. Writes apply only in independent agent-home mode.",
+  "settings.privacy.path": "Config: {path}",
+  "settings.privacy.loading": "Loading privacy config…",
+  "settings.privacy.error": "Could not load or update privacy config",
+  "settings.privacy.saved": "Privacy config saved (agent soft-respawned)",
+  "settings.privacy.sharedWarning":
+    "Shared mode shows ~/.grok/config.toml (read-only probe). Switch session data mode to independent to write allowlisted privacy keys into App agent-home.",
+  "settings.privacy.mode.independent": "Independent (agent-home)",
+  "settings.privacy.mode.shared": "Shared (~/.grok)",
+  "settings.privacy.missing": "File not found yet",
+  "settings.privacy.writable": "Editable",
+  "settings.privacy.readOnly": "Read-only",
+  "settings.privacy.presence.unset": "unset",
+  "settings.privacy.presence.on": "on",
+  "settings.privacy.presence.off": "off",
+  "settings.privacy.telemetry": "Product telemetry",
+  "settings.privacy.telemetryDesc":
+    "[features] telemetry — product-analytics master switch (GROK_TELEMETRY_ENABLED). Separate from coding-data sharing.",
+  "settings.privacy.traceUpload": "Session trace upload",
+  "settings.privacy.traceUploadDesc":
+    "[telemetry] trace_upload — upload session traces (GROK_TELEMETRY_TRACE_UPLOAD). When unset, CLI follows the telemetry toggle.",
+  "settings.privacy.mixpanel": "Mixpanel analytics",
+  "settings.privacy.mixpanelDesc":
+    "[telemetry] mixpanel_enabled — Mixpanel product analytics (GROK_TELEMETRY_MIXPANEL_ENABLED).",
+  "settings.privacy.disableCodebaseUpload": "Disable codebase upload",
+  "settings.privacy.disableCodebaseUploadDesc":
+    "[harness] disable_codebase_upload — when on, refuses codebase/index upload from the agent harness.",
+  "settings.privacy.disableWorkspaceTeleport": "Disable workspace teleport",
+  "settings.privacy.disableWorkspaceTeleportDesc":
+    "[harness] disable_workspace_teleport — related harness flag that blocks workspace teleport upload paths.",
+  "settings.privacy.codingData": "Coding data, retention, and training",
+  "settings.privacy.codingDataDesc":
+    "Not a config.toml key. Opt in or out in the Grok Build CLI Settings row opened by /privacy. Team accounts may show ZDR or Admin Managed. This App does not change that choice.",
+  "settings.privacy.codingDataHint":
+    "In a Grok Build TUI session, run {cmd}. Does not change telemetry or trace_upload.",
+  "settings.privacy.codingDataCopy": "Copy {cmd}",
+  "settings.privacy.codingDataCopied": "Copied",
+  "settings.privacy.preview": "Privacy sections (redacted)",
+  "settings.privacy.previewEmpty":
+    "No [features] / [telemetry] / [harness] privacy keys found yet in this config.",
+  "settings.privacy.redactNote":
+    "Secrets in these sections are redacted. Only allowlisted keys are written on save.",
+  "settings.privacy.refresh": "Refresh",
+  "settings.privacy.reset": "Reset",
+  "settings.privacy.save": "Save privacy keys",
+  "settings.privacy.saving": "Saving…",
+  "settings.privacy.needTauri": "Privacy center requires the desktop app.",
   "settings.searchResults": "Matching settings",
   "settings.searchOpen": "Open",
   "settings.inspect.manageInExtensions": "Manage in Extensions",
@@ -4727,6 +4777,56 @@ const zh: Record<MessageKey, string> = {
   "settings.netProbeFailed": "不可达",
   "settings.tab.pool": "进程池",
   "settings.tab.tools": "诊断",
+  "settings.tab.privacy": "隐私",
+  "settings.privacy": "隐私中心",
+  "settings.privacyDesc":
+    "如实展示当前 GROK_HOME config.toml 中与隐私相关的 Grok Build 键（0.2.117+）。缺失键保持「未设置」——本应用不会虚构为「关闭」。仅在独立 agent-home 模式下可写。",
+  "settings.privacy.path": "配置：{path}",
+  "settings.privacy.loading": "正在加载隐私配置…",
+  "settings.privacy.error": "无法加载或更新隐私配置",
+  "settings.privacy.saved": "隐私配置已保存（agent 已 soft-respawn）",
+  "settings.privacy.sharedWarning":
+    "共享模式显示 ~/.grok/config.toml（只读探测）。切换到独立会话数据模式后，才能将白名单隐私键写入 App agent-home。",
+  "settings.privacy.mode.independent": "独立（agent-home）",
+  "settings.privacy.mode.shared": "共享（~/.grok）",
+  "settings.privacy.missing": "文件尚不存在",
+  "settings.privacy.writable": "可编辑",
+  "settings.privacy.readOnly": "只读",
+  "settings.privacy.presence.unset": "未设置",
+  "settings.privacy.presence.on": "开",
+  "settings.privacy.presence.off": "关",
+  "settings.privacy.telemetry": "产品遥测",
+  "settings.privacy.telemetryDesc":
+    "[features] telemetry — 产品分析总开关（GROK_TELEMETRY_ENABLED）。与编码数据分享无关。",
+  "settings.privacy.traceUpload": "会话 trace 上传",
+  "settings.privacy.traceUploadDesc":
+    "[telemetry] trace_upload — 上传会话 trace（GROK_TELEMETRY_TRACE_UPLOAD）。未设置时 CLI 跟随 telemetry 开关。",
+  "settings.privacy.mixpanel": "Mixpanel 分析",
+  "settings.privacy.mixpanelDesc":
+    "[telemetry] mixpanel_enabled — Mixpanel 产品分析（GROK_TELEMETRY_MIXPANEL_ENABLED）。",
+  "settings.privacy.disableCodebaseUpload": "禁用代码库上传",
+  "settings.privacy.disableCodebaseUploadDesc":
+    "[harness] disable_codebase_upload — 开启后拒绝 agent harness 上传代码库/索引。",
+  "settings.privacy.disableWorkspaceTeleport": "禁用工作区 teleport",
+  "settings.privacy.disableWorkspaceTeleportDesc":
+    "[harness] disable_workspace_teleport — 相关 harness 标志，阻止工作区 teleport 上传路径。",
+  "settings.privacy.codingData": "编码数据、保留与训练",
+  "settings.privacy.codingDataDesc":
+    "不是 config.toml 键。请在 Grok Build CLI 中通过 /privacy 打开的设置行选择加入或退出。团队账户可能显示 ZDR 或 Admin Managed。本应用不会改写该选择。",
+  "settings.privacy.codingDataHint":
+    "在 Grok Build TUI 会话中运行 {cmd}。不会改动 telemetry 或 trace_upload。",
+  "settings.privacy.codingDataCopy": "复制 {cmd}",
+  "settings.privacy.codingDataCopied": "已复制",
+  "settings.privacy.preview": "隐私相关分区（已脱敏）",
+  "settings.privacy.previewEmpty":
+    "此配置中尚未找到 [features] / [telemetry] / [harness] 隐私键。",
+  "settings.privacy.redactNote":
+    "这些分区中的密钥会脱敏。保存时仅写入白名单键。",
+  "settings.privacy.refresh": "刷新",
+  "settings.privacy.reset": "重置",
+  "settings.privacy.save": "保存隐私键",
+  "settings.privacy.saving": "保存中…",
+  "settings.privacy.needTauri": "隐私中心需要桌面应用。",
   "settings.tab.remoteIm": "IM 通信",
   "settings.tab.phoneMirror": "手机镜像",
   "settings.searchResults": "匹配的设置",

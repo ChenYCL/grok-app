@@ -62,6 +62,7 @@ export type SettingsTabId =
   | "network"
   | "pool"
   | "tools"
+  | "privacy"
   // remote control (section id stays remote_im)
   | "im"
   | "mirror";
@@ -184,6 +185,7 @@ export const SETTINGS_NAV: readonly SettingsNavDef[] = [
       { id: "network", labelKey: "settings.tab.network" },
       { id: "pool", labelKey: "settings.tab.pool" },
       { id: "tools", labelKey: "settings.tab.tools" },
+      { id: "privacy", labelKey: "settings.tab.privacy" },
     ],
   },
   {
@@ -1764,6 +1766,97 @@ export const SETTINGS_ENTRIES: readonly SettingsEntry[] = [
     keywords: ["marketplace", "market", "install plugin"],
   },
   // ── runtime ──
+  {
+    id: "runtime.privacy",
+    section: "runtime",
+    tab: "privacy",
+    anchorId: "settings-anchor-privacy",
+    labelKey: "settings.privacy",
+    descKeys: [
+      "settings.privacyDesc",
+      "settings.privacy.telemetry",
+      "settings.privacy.telemetryDesc",
+      "settings.privacy.traceUpload",
+      "settings.privacy.traceUploadDesc",
+      "settings.privacy.mixpanel",
+      "settings.privacy.disableCodebaseUpload",
+      "settings.privacy.disableCodebaseUploadDesc",
+      "settings.privacy.disableWorkspaceTeleport",
+      "settings.privacy.codingData",
+      "settings.privacy.codingDataDesc",
+      "settings.privacy.sharedWarning",
+    ],
+    keywords: [
+      "privacy",
+      "telemetry",
+      "trace upload",
+      "codebase upload",
+      "disable_codebase_upload",
+      "trace_upload",
+      "mixpanel",
+      "GROK_TELEMETRY",
+      "/privacy",
+      "coding data",
+      "training",
+      "retention",
+      "隐私",
+      "遙測",
+      "遥测",
+      "隐私中心",
+      "隱私",
+    ],
+  },
+  {
+    id: "runtime.privacy.telemetry",
+    section: "runtime",
+    tab: "privacy",
+    anchorId: "settings-anchor-privacy-telemetry",
+    labelKey: "settings.privacy.telemetry",
+    descKeys: ["settings.privacy.telemetryDesc"],
+    keywords: ["telemetry", "features telemetry", "product analytics"],
+  },
+  {
+    id: "runtime.privacy.traceUpload",
+    section: "runtime",
+    tab: "privacy",
+    anchorId: "settings-anchor-privacy-traceUpload",
+    labelKey: "settings.privacy.traceUpload",
+    descKeys: ["settings.privacy.traceUploadDesc"],
+    keywords: ["trace_upload", "session trace", "trace upload"],
+  },
+  {
+    id: "runtime.privacy.codebaseUpload",
+    section: "runtime",
+    tab: "privacy",
+    anchorId: "settings-anchor-privacy-codebaseUpload",
+    labelKey: "settings.privacy.disableCodebaseUpload",
+    descKeys: ["settings.privacy.disableCodebaseUploadDesc"],
+    keywords: [
+      "disable_codebase_upload",
+      "codebase upload",
+      "upload codebase",
+      "index upload",
+    ],
+  },
+  {
+    id: "runtime.privacy.codingData",
+    section: "runtime",
+    tab: "privacy",
+    anchorId: "settings-anchor-privacy-codingData",
+    labelKey: "settings.privacy.codingData",
+    descKeys: [
+      "settings.privacy.codingDataDesc",
+      "settings.privacy.codingDataHint",
+    ],
+    keywords: [
+      "/privacy",
+      "coding data",
+      "training",
+      "retention",
+      "ZDR",
+      "opt out",
+    ],
+  },
   {
     id: "runtime.cliPath",
     section: "runtime",

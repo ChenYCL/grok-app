@@ -5,6 +5,7 @@ mod account_profiles;
 mod acp_client;
 mod agent_config_view;
 mod agent_config_edit;
+mod agent_privacy;
 mod agent_memory;
 mod agents_catalog;
 mod agent_prefs;
@@ -371,6 +372,8 @@ pub fn run() {
             commands::permission_rules_set,
             commands::agent_config_edit_get,
             commands::agent_config_edit_set,
+            commands::privacy_config_get,
+            commands::privacy_config_set,
             commands::session_set_model,
             commands::session_rewind_drop_last_user,
             commands::session_rewind_points,

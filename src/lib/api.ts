@@ -3294,6 +3294,51 @@ export async function agentConfigEditSet(
   });
 }
 
+/**
+ * Privacy center — allowlisted Grok Build 0.2.117 privacy keys from active
+ * GROK_HOME config.toml. Missing keys are null (soft-fail). Writes only in
+ * independent agent-home mode.
+ */
+export type PrivacyConfigSnapshot = {
+  path: string;
+  grokHome: string;
+  mode: string;
+  writable: boolean;
+  fileExists: boolean;
+  telemetry?: boolean | null;
+  traceUpload?: boolean | null;
+  mixpanelEnabled?: boolean | null;
+  disableCodebaseUpload?: boolean | null;
+  disableWorkspaceTeleport?: boolean | null;
+  redactedPreview: string;
+  cliPrivacyCommand: string;
+};
+
+export type PrivacyConfigPatch = {
+  telemetry?: boolean | null;
+  traceUpload?: boolean | null;
+  mixpanelEnabled?: boolean | null;
+  disableCodebaseUpload?: boolean | null;
+  disableWorkspaceTeleport?: boolean | null;
+};
+
+export async function privacyConfigGet(): Promise<PrivacyConfigSnapshot> {
+  return invoke<PrivacyConfigSnapshot>("privacy_config_get");
+}
+
+export async function privacyConfigSet(
+  patch: PrivacyConfigPatch,
+): Promise<PrivacyConfigSnapshot> {
+  // Tauri maps camelCase invoke keys → snake_case command args.
+  return invoke<PrivacyConfigSnapshot>("privacy_config_set", {
+    telemetry: patch.telemetry ?? null,
+    traceUpload: patch.traceUpload ?? null,
+    mixpanelEnabled: patch.mixpanelEnabled ?? null,
+    disableCodebaseUpload: patch.disableCodebaseUpload ?? null,
+    disableWorkspaceTeleport: patch.disableWorkspaceTeleport ?? null,
+  });
+}
+
 export interface VoiceSessionState {
   active: boolean;
   mode?: string;

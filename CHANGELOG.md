@@ -14,6 +14,7 @@ See `docs/llm-wiki/release.md`.
 ### Added
 
 #### Runtime / connection
+- **Privacy center** (Settings → Runtime → Privacy): honest Grok Build **0.2.117** privacy-related `config.toml` keys from the active `GROK_HOME` — `[features] telemetry`, `[telemetry] trace_upload` / `mixpanel_enabled`, `[harness] disable_codebase_upload` / `disable_workspace_teleport`. Missing keys stay unset (never invent “off”). Independent agent-home: allowlisted write + soft-respawn; shared mode: read-only probe of `~/.grok`. Coding-data / retention / training is **not** a config key — UI links to CLI `/privacy` only (no fake App toggle). Pure helpers + tests; `settingsCatalog` + en/zh/zh-TW
 - **SDK Connect wizard** (Settings → Runtime → Connection): start local `agent serve`, show masked secret + ws URL, TCP health probe, copy curl / websocat / `grok --remote` examples for external clients, and optional paste remote serve URL + probe. Secrets never logged; full token only via one-time clipboard after start.
 
 #### Composer & chat
