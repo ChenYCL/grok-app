@@ -315,8 +315,10 @@ import {
 } from "@/lib/sandboxProfile";
 import { shouldRestoreLastSession } from "@/lib/sessionRestore";
 import {
-  ARCHIVE_AGE_DAY_OPTIONS,
-  filterSessionsOlderThanDays,
+  archiveAgeEmptyMessageKey,
+  listArchiveAgeOptionPreviews,
+  planArchiveOlderThan,
+  type ArchiveAgePlan,
 } from "@/lib/sessionArchiveAge";
 import {
   collapsedIdsFromExpandMap,
@@ -447,7 +449,15 @@ import {
   filterPaletteActions,
   type PaletteActionDef,
 } from "@/lib/paletteActions";
-import { canOfferContinueCwd } from "@/lib/continueCwd";
+import {
+  canOfferContinueCwd,
+  classifyContinueCwdEmptyResult,
+  continueCwdSoftFailMessageKey,
+  evaluateContinueCwd,
+  resolveContinueCwdEmptyHonesty,
+  resolveContinueCwdSoftFail,
+  type ContinueCwdSoftFailKind,
+} from "@/lib/continueCwd";
 import {
   sessionExportMimeType,
   sessionToHtml,
@@ -774,9 +784,15 @@ import {
 } from "@/lib/prHubDeepLink";
 import {
   buildForkWorktreeName,
-  canOfferForkAgentSession,
   canRestoreCodeOnFork,
+  defaultForkAgentChecked,
+  forkSuccessToastKey,
+  isWorktreeNameCollisionError,
+  resolveForkAgentCheckbox,
   resolveForkAgentSession,
+  resolveSessionForkSoftFail,
+  resumeRestoreSuccessToastKey,
+  softFailKindFromRestoreGate,
 } from "@/lib/sessionFork";
 import {
   buildResumeWorktreeName,
@@ -1525,6 +1541,13 @@ export default function App() {
   );
   /** Clear recent prompts — App-level GlassModal (avoids floating-menu dismiss). */
   const [promptHistoryClearOpen, setPromptHistoryClearOpen] = useState(false);
+  /**
+   * Archive-by-age pro confirm (GlassModal with preview count + title samples).
+   * Null when closed. Built via pure `planArchiveOlderThan`.
+   */
+  const [archiveAgeConfirm, setArchiveAgeConfirm] =
+    useState<ArchiveAgePlan<SessionRow> | null>(null);
+  const [archiveAgeBusy, setArchiveAgeBusy] = useState(false);
   const promptHistoryPanelRef = useRef<HTMLDivElement>(null);
   const promptHistoryOpenRef = useRef(false);
   promptHistoryOpenRef.current = promptHistoryOpen;
@@ -7580,71 +7603,80 @@ export default function App() {
 
   /**
    * Bulk-archive chats whose last update is older than `days`.
-   * Skips pinned + already-archived; confirms count via in-app dialog.
+   * Skips pinned + already-archived. Preview count + GlassModal confirm
+   * (never window.confirm). Empty → classified honesty toast.
    */
   const confirmArchiveOlderThan = (days: number) => {
     setCtxMenu(null);
-    const rows = filterSessionsOlderThanDays(sessions, days);
-    if (!rows.length) {
-      setToast(tr("sidebar.archiveOlderNone", { days: String(days) }));
-      window.setTimeout(() => setToast(null), 3200);
+    const plan = planArchiveOlderThan(sessions, days);
+    if (!plan.confirmNeeded || plan.count === 0) {
+      const kind = plan.emptyKind ?? "all_recent";
+      const key = archiveAgeEmptyMessageKey(kind);
+      setToast(
+        tr(key as MessageKey, {
+          days: String(days),
+          n: "0",
+        }),
+      );
+      window.setTimeout(() => setToast(null), 3600);
       return;
     }
-    const n = rows.length;
-    setAppDialog({
-      kind: "confirm",
-      title: tr("sidebar.archiveOlderTitle"),
-      message: tr("sidebar.archiveOlderConfirm", {
-        n: String(n),
-        days: String(days),
-      }),
-      confirmLabel: tr("sidebar.archiveSelected", { n: String(n) }),
-      onConfirm: async () => {
-        try {
-          if (!api.isTauri()) {
-            setLocalError(tr("error.needTauri"));
-            return;
-          }
-          const openId =
-            session.sessionId ?? viewingSessionIdRef.current ?? null;
-          const wasViewing =
-            !!openId && rows.some((s) => s.id === openId);
-          const viewingRow = wasViewing
-            ? rows.find((s) => s.id === openId) ?? null
-            : null;
+    setArchiveAgeConfirm(plan);
+  };
 
-          const results = await Promise.allSettled(
-            rows.map((s) => api.sessionSetArchived(s.id, true)),
-          );
-          const ok = results.filter((r) => r.status === "fulfilled").length;
-          const firstFail = results.find(
-            (r): r is PromiseRejectedResult => r.status === "rejected",
-          );
+  /** Apply a planned archive-by-age batch (GlassModal confirm). */
+  const runArchiveAgePlan = async (plan: ArchiveAgePlan<SessionRow>) => {
+    const rows = plan.sessions;
+    if (!rows.length) {
+      setArchiveAgeConfirm(null);
+      return;
+    }
+    setArchiveAgeBusy(true);
+    try {
+      if (!api.isTauri()) {
+        setLocalError(tr("error.needTauri"));
+        return;
+      }
+      const openId =
+        session.sessionId ?? viewingSessionIdRef.current ?? null;
+      const wasViewing = !!openId && rows.some((s) => s.id === openId);
+      const viewingRow = wasViewing
+        ? rows.find((s) => s.id === openId) ?? null
+        : null;
 
-          await refreshSessions();
+      const results = await Promise.allSettled(
+        rows.map((s) => api.sessionSetArchived(s.id, true)),
+      );
+      const ok = results.filter((r) => r.status === "fulfilled").length;
+      const firstFail = results.find(
+        (r): r is PromiseRejectedResult => r.status === "rejected",
+      );
 
-          if (wasViewing && viewingRow) {
-            const proj = viewingRow.projectId
-              ? projects.find((p) => p.id === viewingRow.projectId) ?? null
-              : null;
-            if (proj) await newChat(proj, { switchToChat: true });
-            else await newChat(null, { switchToChat: true });
-          }
+      await refreshSessions();
 
-          if (ok > 0) {
-            setToast(tr("sidebar.archivedToast", { n: String(ok) }));
-            window.setTimeout(() => setToast(null), 3200);
-          }
-          if (firstFail) {
-            setLocalError(String(firstFail.reason));
-          } else {
-            setLocalError(null);
-          }
-        } catch (e) {
-          setLocalError(String(e));
-        }
-      },
-    });
+      if (wasViewing && viewingRow) {
+        const proj = viewingRow.projectId
+          ? projects.find((p) => p.id === viewingRow.projectId) ?? null
+          : null;
+        if (proj) await newChat(proj, { switchToChat: true });
+        else await newChat(null, { switchToChat: true });
+      }
+
+      if (ok > 0) {
+        setToast(tr("sidebar.archivedToast", { n: String(ok) }));
+        window.setTimeout(() => setToast(null), 3200);
+      }
+      if (firstFail) {
+        setLocalError(String(firstFail.reason));
+      } else {
+        setLocalError(null);
+      }
+      setArchiveAgeConfirm(null);
+    } catch (e) {
+      setLocalError(String(e));
+    } finally {
+      setArchiveAgeBusy(false);
+    }
   };
 
   /**
@@ -7814,16 +7846,22 @@ export default function App() {
   /**
    * CLI `grok -c/--continue` for a project folder: find newest agent session
    * under active GROK_HOME for that path, import if needed, open App chat.
-   * Soft-fails with a toast when no agent session exists.
+   * Classified soft-fail (no session / no CLI / untrusted / host-only / import)
+   * with empty honesty when none exist — never invents a session id.
    */
   const continueLastAgentForProject = async (proj: Project) => {
     setCtxMenu(null);
-    if (!canOfferContinueCwd(proj.path)) {
-      showToast(tr("project.continueCwdNoProject"), 3500);
-      return;
-    }
-    if (!api.isTauri()) {
-      setLocalError(tr("error.needTauri"));
+    const toastContinueSoftFail = (kind: ContinueCwdSoftFailKind, detail = "") => {
+      const key = continueCwdSoftFailMessageKey(kind) as MessageKey;
+      const base = tr(key);
+      showToast(detail ? `${base}: ${detail}` : base, kind === "no_session" ? 4200 : 4500);
+    };
+    const gate = evaluateContinueCwd(
+      { path: proj.path, trusted: proj.trusted },
+      { isTauri: api.isTauri() },
+    );
+    if (!gate.ok) {
+      toastContinueSoftFail(gate.kind);
       return;
     }
     showToast(tr("project.continueCwdWorking"), 2000);
@@ -7831,20 +7869,23 @@ export default function App() {
       const meta = await api.cliSessionContinueCwd(proj.path, {
         projectId: proj.id,
       });
-      if (!meta?.id) {
-        showToast(tr("project.continueCwdNone"), 4200);
+      const emptyKind = classifyContinueCwdEmptyResult(meta);
+      if (emptyKind) {
+        const honesty = resolveContinueCwdEmptyHonesty();
+        showToast(tr(honesty.messageKey as MessageKey), 4200);
         return;
       }
+      const id = meta!.id;
       await refreshSessions();
       const list = (await api.sessionsList()) as SessionRow[];
       const row =
-        list.map((s) => normalizeSessionRow(s)).find((s) => s.id === meta.id) ??
+        list.map((s) => normalizeSessionRow(s)).find((s) => s.id === id) ??
         normalizeSessionRow({
-          id: meta.id,
-          title: meta.title || tr("session.untitled"),
-          projectId: meta.projectId ?? proj.id,
-          updatedAt: meta.updatedAt || new Date().toISOString(),
-          agentSessionId: meta.agentSessionId ?? null,
+          id,
+          title: meta!.title || tr("session.untitled"),
+          projectId: meta!.projectId ?? proj.id,
+          updatedAt: meta!.updatedAt || new Date().toISOString(),
+          agentSessionId: meta!.agentSessionId ?? null,
         });
       const openProj =
         (row.projectId && projects.find((p) => p.id === row.projectId)) || proj;
@@ -7852,12 +7893,13 @@ export default function App() {
       await openSession(row, openProj);
       showToast(
         tr("project.continueCwdOk", {
-          title: row.title || meta.title || tr("session.untitled"),
+          title: row.title || meta!.title || tr("session.untitled"),
         }),
         2800,
       );
     } catch (e) {
-      showToast(tr("project.continueCwdFailed") + ": " + String(e), 4500);
+      const soft = resolveContinueCwdSoftFail(e);
+      toastContinueSoftFail(soft.kind, soft.detail);
     }
   };
 
@@ -10753,11 +10795,67 @@ export default function App() {
   );
 
 
+  /** Honest fork-agent checkbox presentation (never claims available without id). */
+  const forkAgentCheckbox = useMemo(
+    () =>
+      resolveForkAgentCheckbox(
+        forkConfirm?.source.agentSessionId,
+        "fork",
+        forkCliSession,
+      ),
+    [forkConfirm?.source.agentSessionId, forkCliSession],
+  );
+  const resumeAgentCheckbox = useMemo(
+    () =>
+      resolveForkAgentCheckbox(
+        resumeRestoreConfirm?.agentSessionId,
+        "resume",
+        resumeForkCliSession,
+      ),
+    [resumeRestoreConfirm?.agentSessionId, resumeForkCliSession],
+  );
+
+  /** Toast classified soft-fail for fork / resume-restore (silent on cancel). */
+  const toastSessionForkSoftFail = useCallback(
+    (
+      err: unknown,
+      opts?: {
+        op?: "fork" | "resume_restore";
+        preferredKind?:
+          | "need_tauri"
+          | "busy"
+          | "dirty"
+          | "no_project"
+          | "unavailable"
+          | "worktree_collision"
+          | "worktree_failed"
+          | "bind_failed"
+          | "fork_failed"
+          | "cli_arm_failed"
+          | "cancelled"
+          | "other"
+          | null;
+        durationMs?: number;
+      },
+    ) => {
+      const r = resolveSessionForkSoftFail(err, {
+        op: opts?.op ?? "fork",
+        preferredKind: opts?.preferredKind,
+      });
+      if (r.silent) return r;
+      const base = tr(r.messageKey as Parameters<typeof tr>[0]);
+      showToast(r.detail ? `${base}: ${r.detail}` : base, opts?.durationMs ?? 4500);
+      return r;
+    },
+    [showToast, tr],
+  );
+
   /**
    * Fork a session (full history or through a user-prompt index) and open it.
    * Optional restore-code: when clean git work tree, create a sibling worktree
    * at HEAD and bind the forked session to that path (never force on dirty).
    * Optional CLI `--fork-session`: new agent session id with parent context.
+   * Soft-fail on dirty / worktree / bind; never invents agent-fork success.
    */
   const runForkSession = useCallback(
     async (
@@ -10769,10 +10867,13 @@ export default function App() {
       },
     ) => {
       if (!api.isTauri()) {
-        showToast(tr("error.needTauri"));
+        toastSessionForkSoftFail("need tauri", {
+          preferredKind: "need_tauri",
+        });
         return;
       }
       const restoreCode = !!opts?.restoreCode;
+      // Checkbox honesty: never arm agent fork without a linked source id.
       const forkResolved = resolveForkAgentSession({
         wantFork: !!opts?.forkCliSession,
         agentSessionId: source.agentSessionId,
@@ -10790,28 +10891,30 @@ export default function App() {
         if (restoreCode) {
           const projectPath = sourceProject?.path?.trim() || "";
           if (!projectPath) {
-            showToast(tr("session.forkRestoreNoProject"), 4500);
+            toastSessionForkSoftFail("no project", {
+              preferredKind: "no_project",
+              durationMs: 4500,
+            });
+            // Keep dialog open so the user can uncheck restore and fork journal-only.
             return;
           }
           let status: api.GitStatusResult;
           try {
             status = await api.gitStatus(projectPath);
           } catch (e) {
-            showToast(
-              tr("session.forkRestoreUnavailable") + ": " + String(e),
-              4500,
-            );
+            toastSessionForkSoftFail(e, {
+              preferredKind: "unavailable",
+              durationMs: 4500,
+            });
             return;
           }
           const gate = canRestoreCodeOnFork(projectPath, status);
           if (!gate.ok) {
-            if (gate.reason === "dirty") {
-              showToast(tr("session.forkRestoreDirty"), 5200);
-            } else if (gate.reason === "no_project") {
-              showToast(tr("session.forkRestoreNoProject"), 4500);
-            } else {
-              showToast(tr("session.forkRestoreUnavailable"), 4500);
-            }
+            const kind = softFailKindFromRestoreGate(gate);
+            toastSessionForkSoftFail(gate.reason, {
+              preferredKind: kind,
+              durationMs: kind === "dirty" ? 5200 : 4500,
+            });
             // Keep dialog open so the user can uncheck restore and fork journal-only.
             return;
           }
@@ -10829,23 +10932,19 @@ export default function App() {
               break;
             } catch (e) {
               lastErr = e;
-              const msg = String(e).toLowerCase();
               // Retry only on path/branch collision; other errors are fatal.
-              if (
-                !msg.includes("already exists") &&
-                !msg.includes("already registered") &&
-                !msg.includes("already checked out")
-              ) {
+              if (!isWorktreeNameCollisionError(e)) {
                 break;
               }
             }
           }
           if (!created) {
-            showToast(
-              tr("session.forkRestoreFailed") +
-                (lastErr ? ": " + String(lastErr) : ""),
-              5200,
-            );
+            toastSessionForkSoftFail(lastErr ?? "worktree failed", {
+              preferredKind: isWorktreeNameCollisionError(lastErr)
+                ? "worktree_collision"
+                : "worktree_failed",
+              durationMs: 5200,
+            });
             return;
           }
 
@@ -10877,11 +10976,20 @@ export default function App() {
         const title = /^(fork of|分叉：|分叉:)\s*/i.test(base)
           ? base
           : tr("session.forkTitleOf", { name: base || "chat" });
-        const meta = await api.sessionFork(source.id, {
-          throughUserPromptIndex: opts?.throughUserPromptIndex ?? null,
-          title,
-          forkAgentSession: forkResolved.fork,
-        });
+        let meta: Awaited<ReturnType<typeof api.sessionFork>>;
+        try {
+          meta = await api.sessionFork(source.id, {
+            throughUserPromptIndex: opts?.throughUserPromptIndex ?? null,
+            title,
+            forkAgentSession: forkResolved.fork,
+          });
+        } catch (e) {
+          toastSessionForkSoftFail(e, {
+            preferredKind: "fork_failed",
+            durationMs: 4500,
+          });
+          return;
+        }
 
         // Rebind fork to the worktree project when restore-code succeeded.
         let projectId = meta.projectId ?? source.projectId;
@@ -10893,10 +11001,10 @@ export default function App() {
             );
             projectId = updated.projectId ?? bindProject.id;
           } catch (e) {
-            showToast(
-              tr("session.forkRestoreBindFailed") + ": " + String(e),
-              4500,
-            );
+            toastSessionForkSoftFail(e, {
+              preferredKind: "bind_failed",
+              durationMs: 4500,
+            });
             // Fall through: journal fork still exists on source project.
             bindProject = sourceProject;
             projectId = meta.projectId ?? source.projectId;
@@ -10941,24 +11049,23 @@ export default function App() {
         }
         await openSession(row, openProj);
         showToast(
-          restoredWorktree
-            ? forkResolved.fork
-              ? tr("session.forkOkRestoreCli")
-              : tr("session.forkOkRestore")
-            : forkResolved.fork
-              ? tr("session.forkOkCli")
-              : tr("session.forkOk"),
+          tr(
+            forkSuccessToastKey({
+              restoredWorktree,
+              forkedAgent: forkResolved.fork,
+            }) as Parameters<typeof tr>[0],
+          ),
           2800,
         );
       } catch (e) {
-        showToast(tr("session.forkFailed") + ": " + String(e), 4500);
+        toastSessionForkSoftFail(e, { preferredKind: "fork_failed" });
       } finally {
         setForkBusy(false);
       }
     },
     // openSession / refreshSessions via closure
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [projects, showToast, tr],
+    [projects, showToast, toastSessionForkSoftFail, tr],
   );
 
   const confirmForkSession = useCallback(
@@ -10970,8 +11077,10 @@ export default function App() {
         source.agentSessionId ||
         (session.sessionId === source.id ? session.agentSessionId : null);
       const enriched = { ...source, agentSessionId: agentId ?? null };
-      // Default on when the source has an agent session to fork (full context).
-      setForkCliSession(canOfferForkAgentSession(enriched.agentSessionId));
+      // Honest default: on only when a linked agent session exists.
+      setForkCliSession(
+        defaultForkAgentChecked(enriched.agentSessionId, "fork"),
+      );
       setForkConfirm({
         source: enriched,
         throughUserPromptIndex: throughUserPromptIndex ?? null,
@@ -10984,6 +11093,7 @@ export default function App() {
    * Resume an existing session on a clean sibling worktree at current HEAD.
    * Reuses the fork restore-code dirty gate; does not clone the journal.
    * Optional CLI `--fork-session`: new agent session id (source agent left intact).
+   * Soft-fail on dirty / worktree / bind; never invents agent-fork success.
    */
   const runResumeWithCodeRestore = useCallback(
     async (
@@ -10991,7 +11101,10 @@ export default function App() {
       opts?: { forkCliSession?: boolean },
     ) => {
       if (!api.isTauri()) {
-        showToast(tr("error.needTauri"));
+        toastSessionForkSoftFail("need tauri", {
+          op: "resume_restore",
+          preferredKind: "need_tauri",
+        });
         return;
       }
       const isOpenSource =
@@ -11001,9 +11114,14 @@ export default function App() {
         busyIds.has(source.id) ||
         (isOpenSource && !canRewindSession)
       ) {
-        showToast(tr("session.resumeRestoreBusy"), 3500);
+        toastSessionForkSoftFail("busy", {
+          op: "resume_restore",
+          preferredKind: "busy",
+          durationMs: 3500,
+        });
         return;
       }
+      // Checkbox honesty: never arm agent fork without a linked source id.
       const forkResolved = resolveForkAgentSession({
         wantFork: !!opts?.forkCliSession,
         agentSessionId: source.agentSessionId,
@@ -11016,7 +11134,11 @@ export default function App() {
           : null;
         const projectPath = sourceProject?.path?.trim() || "";
         if (!projectPath) {
-          showToast(tr("session.resumeRestoreNoProject"), 4500);
+          toastSessionForkSoftFail("no project", {
+            op: "resume_restore",
+            preferredKind: "no_project",
+            durationMs: 4500,
+          });
           return;
         }
 
@@ -11024,21 +11146,21 @@ export default function App() {
         try {
           status = await api.gitStatus(projectPath);
         } catch (e) {
-          showToast(
-            tr("session.resumeRestoreUnavailable") + ": " + String(e),
-            4500,
-          );
+          toastSessionForkSoftFail(e, {
+            op: "resume_restore",
+            preferredKind: "unavailable",
+            durationMs: 4500,
+          });
           return;
         }
         const gate = canRestoreCodeOnResume(projectPath, status);
         if (!gate.ok) {
-          if (gate.reason === "dirty") {
-            showToast(tr("session.resumeRestoreDirty"), 5200);
-          } else if (gate.reason === "no_project") {
-            showToast(tr("session.resumeRestoreNoProject"), 4500);
-          } else {
-            showToast(tr("session.resumeRestoreUnavailable"), 4500);
-          }
+          const kind = softFailKindFromRestoreGate(gate);
+          toastSessionForkSoftFail(gate.reason, {
+            op: "resume_restore",
+            preferredKind: kind,
+            durationMs: kind === "dirty" ? 5200 : 4500,
+          });
           return;
         }
 
@@ -11054,22 +11176,19 @@ export default function App() {
             break;
           } catch (e) {
             lastErr = e;
-            const msg = String(e).toLowerCase();
-            if (
-              !msg.includes("already exists") &&
-              !msg.includes("already registered") &&
-              !msg.includes("already checked out")
-            ) {
+            if (!isWorktreeNameCollisionError(e)) {
               break;
             }
           }
         }
         if (!created) {
-          showToast(
-            tr("session.resumeRestoreCreateFailed") +
-              (lastErr ? ": " + String(lastErr) : ""),
-            5200,
-          );
+          toastSessionForkSoftFail(lastErr ?? "worktree failed", {
+            op: "resume_restore",
+            preferredKind: isWorktreeNameCollisionError(lastErr)
+              ? "worktree_collision"
+              : "worktree_failed",
+            durationMs: 5200,
+          });
           return;
         }
 
@@ -11093,10 +11212,11 @@ export default function App() {
         try {
           await api.sessionSetProject(source.id, bindProject.id);
         } catch (e) {
-          showToast(
-            tr("session.resumeRestoreBindFailed") + ": " + String(e),
-            4500,
-          );
+          toastSessionForkSoftFail(e, {
+            op: "resume_restore",
+            preferredKind: "bind_failed",
+            durationMs: 4500,
+          });
           return;
         }
 
@@ -11113,14 +11233,17 @@ export default function App() {
           /* soft-fail badge meta */
         }
 
+        let agentForkArmed = false;
         if (forkResolved.fork) {
           try {
             await api.sessionSetForkAgentSession(source.id, true);
+            agentForkArmed = true;
           } catch (e) {
-            showToast(
-              tr("session.forkCliFailed") + ": " + String(e),
-              4500,
-            );
+            toastSessionForkSoftFail(e, {
+              op: "resume_restore",
+              preferredKind: "cli_arm_failed",
+              durationMs: 4500,
+            });
             // Worktree rebind still succeeded — continue without agent fork.
           }
         }
@@ -11140,23 +11263,25 @@ export default function App() {
         setExpandedProjects((e) => ({ ...e, [bindProject!.id]: true }));
         await openSession(row, bindProject);
         showToast(
-          forkResolved.fork
-            ? tr("session.resumeRestoreOkCli")
-            : tr("session.resumeRestoreOk"),
+          tr(
+            resumeRestoreSuccessToastKey({
+              forkedAgent: agentForkArmed,
+            }) as Parameters<typeof tr>[0],
+          ),
           2800,
         );
       } catch (e) {
-        showToast(
-          tr("session.resumeRestoreFailed") + ": " + String(e),
-          4500,
-        );
+        toastSessionForkSoftFail(e, {
+          op: "resume_restore",
+          preferredKind: "other",
+        });
       } finally {
         setResumeRestoreBusy(false);
       }
     },
     // openSession / refreshSessions / busyIds / canRewindSession via closure
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [projects, showToast, tr, session.sessionId],
+    [projects, showToast, toastSessionForkSoftFail, tr, session.sessionId],
   );
 
   const confirmResumeWithCodeRestore = useCallback(
@@ -11165,8 +11290,10 @@ export default function App() {
       const agentId =
         source.agentSessionId ||
         (session.sessionId === source.id ? session.agentSessionId : null);
-      // Default off (reuse agent id); user can opt into CLI --fork-session.
-      setResumeForkCliSession(false);
+      // Honest default: off (reuse agent id); opt-in only when available.
+      setResumeForkCliSession(
+        defaultForkAgentChecked(agentId, "resume"),
+      );
       setResumeRestoreConfirm({
         ...source,
         agentSessionId: agentId ?? null,
@@ -13538,7 +13665,12 @@ export default function App() {
       case "continue-cwd": {
         const proj = activeProject;
         if (!proj || !canOfferContinueCwd(proj.path)) {
-          showToast(tr("project.continueCwdNoProject"), 3500);
+          showToast(
+            tr(
+              continueCwdSoftFailMessageKey("no_project") as MessageKey,
+            ),
+            3500,
+          );
           break;
         }
         void continueLastAgentForProject(proj);
@@ -16713,9 +16845,11 @@ export default function App() {
             );
           }}
           todoGateMaxFiresPerPrompt={todoGateMaxFiresPerPrompt}
+          // Host has no fire-activity channel yet — Settings shows honest N/A.
+          todoGateFireSignal={null}
           onTodoGateMaxFiresPerPrompt={(v) => {
             const n =
-              typeof v === "number" && v > 0
+              typeof v === "number" && Number.isFinite(v) && v > 0
                 ? Math.min(20, Math.max(1, Math.round(v)))
                 : 3;
             setTodoGateMaxFiresPerPrompt(n);
@@ -16888,6 +17022,7 @@ export default function App() {
           onArchiveOlderThan={(days) => {
             confirmArchiveOlderThan(days);
           }}
+          archiveAgeSessions={sessions}
           projectPath={effectiveProjectPath}
           onOpenProjectFileInResources={({ path, relativePath }) => {
             const targetPath = (path || relativePath || "").trim();
@@ -20531,6 +20666,81 @@ export default function App() {
         </p>
       </GlassModal>
       <GlassModal
+        open={!!archiveAgeConfirm}
+        onClose={() => {
+          if (archiveAgeBusy) return;
+          setArchiveAgeConfirm(null);
+        }}
+        title={tr("sidebar.archiveOlderTitle")}
+        size="sm"
+        closeLabel={tr("common.close")}
+        closeOnOverlay={!archiveAgeBusy}
+        showClose={!archiveAgeBusy}
+        wrapBody
+        footer={
+          <>
+            <button
+              type="button"
+              className="btn btn--ghost"
+              disabled={archiveAgeBusy}
+              onClick={() => setArchiveAgeConfirm(null)}
+            >
+              {tr("common.cancel")}
+            </button>
+            <button
+              type="button"
+              className="btn btn--solid"
+              disabled={archiveAgeBusy || !archiveAgeConfirm?.count}
+              data-testid="archive-age-confirm"
+              onClick={() => {
+                if (!archiveAgeConfirm) return;
+                void runArchiveAgePlan(archiveAgeConfirm);
+              }}
+            >
+              {tr("sidebar.archiveOlderConfirmAction", {
+                n: String(archiveAgeConfirm?.count ?? 0),
+              })}
+            </button>
+          </>
+        }
+      >
+        {archiveAgeConfirm ? (
+          <div className="archive-age-modal">
+            <p className="archive-age-modal__msg">
+              {tr("sidebar.archiveOlderConfirm", {
+                n: String(archiveAgeConfirm.count),
+                days: String(archiveAgeConfirm.days),
+              })}
+            </p>
+            {archiveAgeConfirm.previewTitles.length > 0 ? (
+              <div className="archive-age-modal__preview">
+                <div className="archive-age-modal__preview-label">
+                  {tr("sidebar.archiveOlderPreviewLabel")}
+                </div>
+                <ul className="archive-age-modal__list">
+                  {archiveAgeConfirm.previewTitles.map((title, i) => {
+                    const row = archiveAgeConfirm.sessions[i];
+                    const key = row?.id ?? `preview-${i}`;
+                    return (
+                      <li key={key} className="archive-age-modal__item">
+                        {title || tr("session.untitled")}
+                      </li>
+                    );
+                  })}
+                </ul>
+                {archiveAgeConfirm.previewMore > 0 ? (
+                  <div className="archive-age-modal__more">
+                    {tr("sidebar.archiveOlderPreviewMore", {
+                      n: String(archiveAgeConfirm.previewMore),
+                    })}
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+      </GlassModal>
+      <GlassModal
         open={worktreeCreateOpen}
         onClose={() => {
           if (worktreeCreateBusy) return;
@@ -21354,7 +21564,8 @@ export default function App() {
                   throughUserPromptIndex:
                     forkConfirm.throughUserPromptIndex ?? null,
                   restoreCode: forkRestoreCode,
-                  forkCliSession,
+                  // Honesty: only pass true when checkbox is actually available.
+                  forkCliSession: forkAgentCheckbox.checked,
                 });
               }}
             >
@@ -21382,22 +21593,27 @@ export default function App() {
           <p className="fork-confirm__hint">
             {tr("session.forkRestoreCodeHint")}
           </p>
-          {canOfferForkAgentSession(forkConfirm?.source.agentSessionId) ? (
-            <>
-              <label className="fork-confirm__restore">
-                <input
-                  type="checkbox"
-                  checked={forkCliSession}
-                  disabled={forkBusy}
-                  onChange={(e) => setForkCliSession(e.target.checked)}
-                />
-                <span>{tr("session.forkCliSession")}</span>
-              </label>
-              <p className="fork-confirm__hint">
-                {tr("session.forkCliSessionHint")}
-              </p>
-            </>
-          ) : null}
+          <label
+            className={
+              "fork-confirm__restore" +
+              (forkAgentCheckbox.disabled ? " fork-confirm__restore--disabled" : "")
+            }
+          >
+            <input
+              type="checkbox"
+              checked={forkAgentCheckbox.checked}
+              disabled={forkBusy || forkAgentCheckbox.disabled}
+              onChange={(e) => {
+                if (forkAgentCheckbox.disabled) return;
+                setForkCliSession(e.target.checked);
+              }}
+              aria-disabled={forkAgentCheckbox.disabled || undefined}
+            />
+            <span>{tr("session.forkCliSession")}</span>
+          </label>
+          <p className="fork-confirm__hint">
+            {tr(forkAgentCheckbox.hintKey as Parameters<typeof tr>[0])}
+          </p>
         </div>
       </GlassModal>
 
@@ -21435,7 +21651,8 @@ export default function App() {
               onClick={() => {
                 if (!resumeRestoreConfirm) return;
                 void runResumeWithCodeRestore(resumeRestoreConfirm, {
-                  forkCliSession: resumeForkCliSession,
+                  // Honesty: only pass true when checkbox is actually available.
+                  forkCliSession: resumeAgentCheckbox.checked,
                 });
               }}
             >
@@ -21453,26 +21670,29 @@ export default function App() {
           <p className="fork-confirm__hint">
             {tr("session.resumeRestoreHint")}
           </p>
-          {canOfferForkAgentSession(
-            resumeRestoreConfirm?.agentSessionId,
-          ) ? (
-            <>
-              <label className="fork-confirm__restore">
-                <input
-                  type="checkbox"
-                  checked={resumeForkCliSession}
-                  disabled={resumeRestoreBusy}
-                  onChange={(e) =>
-                    setResumeForkCliSession(e.target.checked)
-                  }
-                />
-                <span>{tr("session.forkCliSession")}</span>
-              </label>
-              <p className="fork-confirm__hint">
-                {tr("session.resumeForkCliSessionHint")}
-              </p>
-            </>
-          ) : null}
+          <label
+            className={
+              "fork-confirm__restore" +
+              (resumeAgentCheckbox.disabled
+                ? " fork-confirm__restore--disabled"
+                : "")
+            }
+          >
+            <input
+              type="checkbox"
+              checked={resumeAgentCheckbox.checked}
+              disabled={resumeRestoreBusy || resumeAgentCheckbox.disabled}
+              onChange={(e) => {
+                if (resumeAgentCheckbox.disabled) return;
+                setResumeForkCliSession(e.target.checked);
+              }}
+              aria-disabled={resumeAgentCheckbox.disabled || undefined}
+            />
+            <span>{tr("session.forkCliSession")}</span>
+          </label>
+          <p className="fork-confirm__hint">
+            {tr(resumeAgentCheckbox.hintKey as Parameters<typeof tr>[0])}
+          </p>
         </div>
       </GlassModal>
 
@@ -23465,10 +23685,19 @@ export default function App() {
       {(() => {
         let items: ContextMenuItem[] = [];
         if (ctxMenu?.kind === "archive-older") {
-          items = ARCHIVE_AGE_DAY_OPTIONS.map((days) => ({
+          const agePreviews = listArchiveAgeOptionPreviews(sessions);
+          items = agePreviews.map(({ days, count }) => ({
             id: `archive-older-${days}`,
-            label: tr("sidebar.archiveOlderDays", { days: String(days) }),
+            label:
+              count > 0
+                ? tr("sidebar.archiveOlderDaysCount", {
+                    days: String(days),
+                    n: String(count),
+                  })
+                : tr("sidebar.archiveOlderDays", { days: String(days) }),
             icon: <IconArchive size={16} />,
+            // Keep rows clickable when empty so empty-honesty toast can fire.
+            disabled: false,
             onClick: () => {
               confirmArchiveOlderThan(days);
             },

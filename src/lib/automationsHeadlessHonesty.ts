@@ -1,15 +1,22 @@
 /**
- * AUTO-HEADLESS-LITE — honest process-bound scheduling.
+ * AUTO-HEADLESS-LITE + A2 one-shot — honest process-bound scheduling.
  *
  * Schedules tick only while the Grok App process is alive (main window or
  * tray). There is **no** detached headless daemon. Optional LaunchAgent /
  * Launch-at-login only restart the **full app** (login / crash), never run
  * tasks after a successful Quit without relaunch.
  *
+ * **One-shot helper** (`--fire-due-schedules` / `fire-due-schedules.sh`):
+ * boots the app, fires at most one due schedule, exits. Not KeepAlive;
+ * soft-fails when nothing is due or CLI/project is missing.
+ *
  * Pure helpers only — no I/O. UI translates returned message keys.
  */
 
 import { shouldHideToTrayOnClose } from "./automationsRunnerPolicy";
+
+/** Host CLI flag for headless one-shot fire (keep in sync with Rust FIRE_DUE_FLAG). */
+export const FIRE_DUE_SCHEDULES_FLAG = "--fire-due-schedules";
 
 /** Why schedules are paused or at risk (for status surface). */
 export type AutomationsPausedReason =
@@ -182,28 +189,37 @@ export function deriveAutomationsRunnerSurface(
   };
 }
 
-/** Product-truth rows: tray vs quit vs LaunchAgent (no fake daemon). */
-export type AutomationsHonestyMatrixRowId = "tray" | "quit" | "launchAgent";
+/** Product-truth rows: tray vs quit vs LaunchAgent vs one-shot (no fake daemon). */
+export type AutomationsHonestyMatrixRowId =
+  | "tray"
+  | "quit"
+  | "launchAgent"
+  | "oneShot";
 
 export type AutomationsHonestyMatrixRow = {
   id: AutomationsHonestyMatrixRowId;
   titleKey:
     | "automations.honesty.trayTitle"
     | "automations.honesty.quitTitle"
-    | "automations.honesty.launchAgentTitle";
+    | "automations.honesty.launchAgentTitle"
+    | "automations.honesty.oneShotTitle";
   bodyKey:
     | "automations.honesty.trayBody"
     | "automations.honesty.quitBody"
-    | "automations.honesty.launchAgentBody";
+    | "automations.honesty.launchAgentBody"
+    | "automations.honesty.oneShotBody";
 };
 
 /**
  * Fixed honesty matrix for Scheduled tasks background panel.
  * LaunchAgent row is always included so non-macOS still reads the limit
  * ("optional / macOS"); callers may hide it when unsupported.
+ * One-shot row is always included (flag works on all desktop platforms).
  */
 export function automationsHonestyMatrix(input?: {
   launchAgentSupported?: boolean;
+  /** Default true — include one-shot helper row. */
+  includeOneShot?: boolean;
 }): AutomationsHonestyMatrixRow[] {
   const rows: AutomationsHonestyMatrixRow[] = [
     {
@@ -224,7 +240,85 @@ export function automationsHonestyMatrix(input?: {
       bodyKey: "automations.honesty.launchAgentBody",
     });
   }
+  if (input?.includeOneShot !== false) {
+    rows.push({
+      id: "oneShot",
+      titleKey: "automations.honesty.oneShotTitle",
+      bodyKey: "automations.honesty.oneShotBody",
+    });
+  }
   return rows;
+}
+
+/** Host outcome kinds from `fire_due_once` / oneshot (stable contract). */
+export type FireDueOutcomeKind =
+  | "fired"
+  | "none_due"
+  | "busy"
+  | "error"
+  | "already_claimed";
+
+export type FireDueOutcomeMessageKey =
+  | "automations.oneshot.outcome.fired"
+  | "automations.oneshot.outcome.noneDue"
+  | "automations.oneshot.outcome.busy"
+  | "automations.oneshot.outcome.error"
+  | "automations.oneshot.outcome.alreadyClaimed"
+  | "automations.oneshot.outcome.unknown";
+
+/**
+ * Pure argv/env probe mirroring Rust `wants_fire_due_schedules_from`.
+ */
+export function wantsFireDueSchedules(input: {
+  argv?: readonly string[] | null;
+  envVal?: string | null;
+}): boolean {
+  const argv = input.argv ?? [];
+  if (argv.some((a) => a === FIRE_DUE_SCHEDULES_FLAG)) return true;
+  const v = (input.envVal ?? "").trim().toLowerCase();
+  return v === "1" || v === "true" || v === "yes";
+}
+
+/**
+ * Map host oneshot/tick outcome kind to i18n key (soft-fail friendly).
+ */
+export function fireDueOutcomeMessageKey(
+  kind: string | null | undefined,
+): FireDueOutcomeMessageKey {
+  switch ((kind ?? "").trim().toLowerCase()) {
+    case "fired":
+      return "automations.oneshot.outcome.fired";
+    case "none_due":
+      return "automations.oneshot.outcome.noneDue";
+    case "busy":
+      return "automations.oneshot.outcome.busy";
+    case "error":
+      return "automations.oneshot.outcome.error";
+    case "already_claimed":
+      return "automations.oneshot.outcome.alreadyClaimed";
+    default:
+      return "automations.oneshot.outcome.unknown";
+  }
+}
+
+/**
+ * Copy keys for the one-shot helper callout on the Scheduled tasks page.
+ * Contrasts tray residency vs one-shot after full quit.
+ */
+export function automationsOneShotHelperSurface(): {
+  titleKey: "automations.oneshot.title";
+  bodyKey: "automations.oneshot.desc";
+  flagHint: typeof FIRE_DUE_SCHEDULES_FLAG;
+  honestyKey: "automations.oneshot.honesty";
+  scriptName: "fire-due-schedules.sh";
+} {
+  return {
+    titleKey: "automations.oneshot.title",
+    bodyKey: "automations.oneshot.desc",
+    flagHint: FIRE_DUE_SCHEDULES_FLAG,
+    honestyKey: "automations.oneshot.honesty",
+    scriptName: "fire-due-schedules.sh",
+  };
 }
 
 export type LaunchAgentSoftFailAction = "enable" | "disable" | "reveal";

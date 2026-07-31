@@ -4,26 +4,54 @@ import {
   clearHookActivities,
   formatHookActivityTime,
   HOOK_ACTIVITY_MAX,
+  HOOK_ACTIVITY_STORAGE_KEY,
   ingestHookLogLine,
   ingestHostHookPayload,
   ingestToolHookSignal,
   isHookRelatedText,
   listHookActivities,
+  loadHookActivities,
   normalizeHookEventType,
   outcomeFromStatus,
+  parseHookActivityList,
+  parseHookActivityRecord,
   parseHookLogLine,
   parseHostHookPayload,
   parseToolHookSignal,
+  planClearHookActivities,
   pushHookActivity,
+  pushHookActivityList,
   redactHookDetail,
+  saveHookActivities,
   setHookActivityMax,
   subscribeHookActivities,
   type HookActivityRecord,
+  type HookActivityStorage,
 } from "./hooksDebug";
 
 afterEach(() => {
   __resetHookActivityStoreForTests();
 });
+
+function memStorage(seed?: string): HookActivityStorage {
+  let val: string | null = seed ?? null;
+  return {
+    getItem: () => val,
+    setItem: (_k, v) => {
+      val = v;
+    },
+  };
+}
+
+const baseRec: HookActivityRecord = {
+  id: "ha-1",
+  type: "TryRun",
+  outcome: "ok",
+  atMs: 1_700_000_000_000,
+  detail: "exit 0",
+  source: "try",
+  hookName: "demo.sh",
+};
 
 describe("redactHookDetail", () => {
   it("scrubs sk- tokens and collapses whitespace", () => {
@@ -259,5 +287,101 @@ describe("formatHookActivityTime", () => {
     const s = formatHookActivityTime(1_700_000_000_000, "en-US");
     expect(s.length).toBeGreaterThan(0);
     expect(formatHookActivityTime(0)).toBe("");
+  });
+});
+
+describe("parseHookActivityRecord / list / localStorage ring", () => {
+  it("accepts valid records and aliases", () => {
+    const e = parseHookActivityRecord({
+      id: "x",
+      event_name: "PreToolUse",
+      outcome: "fail",
+      detail: "boom sk-abcdefghijklmnop",
+      source: "try",
+      hook_name: "guard.sh",
+      atMs: 42,
+    });
+    expect(e).toMatchObject({
+      id: "x",
+      type: "PreToolUse",
+      outcome: "fail",
+      source: "try",
+      hookName: "guard.sh",
+      atMs: 42,
+    });
+    expect(e!.detail).not.toMatch(/sk-abcdefghijklmnop/);
+    expect(e!.detail).toContain("[REDACTED]");
+  });
+
+  it("rejects unknown outcomes and non-objects", () => {
+    expect(parseHookActivityRecord({ ...baseRec, outcome: "pending" })).toBeNull();
+    expect(parseHookActivityRecord(null)).toBeNull();
+    expect(parseHookActivityRecord("nope")).toBeNull();
+  });
+
+  it("soft-fails corrupt storage to empty (never invents rows)", () => {
+    expect(parseHookActivityList("{not json")).toEqual([]);
+    expect(parseHookActivityList(undefined)).toEqual([]);
+    expect(loadHookActivities(memStorage())).toEqual([]);
+    expect(HOOK_ACTIVITY_STORAGE_KEY).toMatch(/hookActivity/);
+  });
+
+  it("caps at max and keeps newest first on pure push", () => {
+    const many = Array.from({ length: 40 }, (_, i) => ({
+      ...baseRec,
+      id: `ha-${i}`,
+      atMs: 1_700_000_000_000 + i,
+    }));
+    const list = parseHookActivityList(many, 30);
+    expect(list).toHaveLength(30);
+    expect(list[0]!.id).toBe("ha-0");
+
+    let ring: HookActivityRecord[] = [];
+    for (let i = 0; i < 5; i++) {
+      ring = pushHookActivityList(
+        ring,
+        { ...baseRec, id: `p-${i}`, detail: `run ${i}`, atMs: 1000 + i },
+        3,
+      );
+    }
+    expect(ring).toHaveLength(3);
+    expect(ring[0]!.detail).toBe("run 4");
+  });
+
+  it("load / save / clear plan round-trip via injectable storage", () => {
+    const storage = memStorage();
+    saveHookActivities(
+      [
+        baseRec,
+        {
+          ...baseRec,
+          id: "ha-2",
+          outcome: "fail",
+          detail: "exit 1",
+          atMs: baseRec.atMs + 1,
+        },
+      ],
+      storage,
+    );
+    const loaded = loadHookActivities(storage);
+    expect(loaded).toHaveLength(2);
+    expect(loaded[0]!.id).toBe("ha-1");
+
+    const plan = planClearHookActivities(loaded);
+    expect(plan).toEqual({ count: 2, empty: false });
+    expect(planClearHookActivities([])).toEqual({ count: 0, empty: true });
+
+    saveHookActivities([], storage);
+    expect(loadHookActivities(storage)).toEqual([]);
+  });
+
+  it("dedupes identical type+detail within 1s on pure push", () => {
+    const a = pushHookActivityList([], baseRec, 10);
+    const b = pushHookActivityList(
+      a,
+      { ...baseRec, id: "ha-2", atMs: baseRec.atMs + 500 },
+      10,
+    );
+    expect(b).toHaveLength(1);
   });
 });

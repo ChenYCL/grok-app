@@ -3,11 +3,24 @@ import {
   buildForkWorktreeName,
   canOfferForkAgentSession,
   canRestoreCodeOnFork,
+  classifySessionForkError,
+  defaultForkAgentChecked,
   FORK_SESSION_CLI_FLAG,
+  forkRestoreGateMessageKey,
   forkSessionSpawnArgs,
+  forkSuccessToastKey,
   isGitWorkingTreeDirty,
+  isWorktreeNameCollisionError,
+  keepForkDialogOpenOnSoftFail,
+  resolveForkAgentCheckbox,
   resolveForkAgentSession,
+  resolveSessionForkSoftFail,
+  resumeRestoreGateMessageKey,
+  resumeRestoreSuccessToastKey,
   sanitizeForkNameFragment,
+  sessionForkSoftFailMessageKey,
+  sessionForkSoftFailSilent,
+  softFailKindFromRestoreGate,
 } from "./sessionFork";
 
 describe("forkSessionSpawnArgs / CLI --fork-session", () => {
@@ -42,6 +55,51 @@ describe("resolveForkAgentSession", () => {
     expect(
       resolveForkAgentSession({ wantFork: true, agentSessionId: "  " }),
     ).toEqual({ fork: false, sourceAgentId: null });
+  });
+
+  it("never returns fork:true without a source id (checkbox honesty)", () => {
+    expect(
+      resolveForkAgentSession({ wantFork: true, agentSessionId: null }),
+    ).toEqual({ fork: false, sourceAgentId: null });
+  });
+});
+
+describe("defaultForkAgentChecked / resolveForkAgentCheckbox", () => {
+  it("defaults fork on and resume off when agent linked", () => {
+    expect(defaultForkAgentChecked("sid", "fork")).toBe(true);
+    expect(defaultForkAgentChecked("sid", "resume")).toBe(false);
+  });
+
+  it("defaults off when no agent session", () => {
+    expect(defaultForkAgentChecked(null, "fork")).toBe(false);
+    expect(defaultForkAgentChecked("", "resume")).toBe(false);
+  });
+
+  it("forces unavailable checkbox off + disabled with honest reason", () => {
+    const state = resolveForkAgentCheckbox(null, "fork", true);
+    expect(state.available).toBe(false);
+    expect(state.checked).toBe(false);
+    expect(state.disabled).toBe(true);
+    expect(state.defaultChecked).toBe(false);
+    expect(state.unavailableReasonKey).toBe("session.forkCliSessionNoAgent");
+    expect(state.hintKey).toBe("session.forkCliSessionNoAgentHint");
+  });
+
+  it("respects live wantChecked only when available", () => {
+    const on = resolveForkAgentCheckbox("sid", "fork", true);
+    expect(on.available).toBe(true);
+    expect(on.checked).toBe(true);
+    expect(on.disabled).toBe(false);
+    expect(on.hintKey).toBe("session.forkCliSessionHint");
+    expect(on.unavailableReasonKey).toBeNull();
+
+    const off = resolveForkAgentCheckbox("sid", "fork", false);
+    expect(off.checked).toBe(false);
+
+    const resume = resolveForkAgentCheckbox("sid", "resume");
+    expect(resume.defaultChecked).toBe(false);
+    expect(resume.checked).toBe(false);
+    expect(resume.hintKey).toBe("session.resumeForkCliSessionHint");
   });
 });
 
@@ -142,5 +200,120 @@ describe("buildForkWorktreeName", () => {
   it("falls back when session id is empty", () => {
     const name = buildForkWorktreeName("", { now: 99, attempt: 0 });
     expect(name.startsWith("fork-chat-")).toBe(true);
+  });
+});
+
+describe("softFailKindFromRestoreGate / gate message keys", () => {
+  it("maps gate reasons and ignores ok", () => {
+    expect(softFailKindFromRestoreGate({ ok: true })).toBeNull();
+    expect(
+      softFailKindFromRestoreGate({ ok: false, reason: "dirty" }),
+    ).toBe("dirty");
+    expect(forkRestoreGateMessageKey("dirty")).toBe("session.forkRestoreDirty");
+    expect(forkRestoreGateMessageKey("no_project")).toBe(
+      "session.forkRestoreNoProject",
+    );
+    expect(resumeRestoreGateMessageKey("unavailable")).toBe(
+      "session.resumeRestoreUnavailable",
+    );
+  });
+});
+
+describe("isWorktreeNameCollisionError", () => {
+  it("detects collision phrases", () => {
+    expect(isWorktreeNameCollisionError("fatal: already exists")).toBe(true);
+    expect(
+      isWorktreeNameCollisionError(new Error("branch already checked out")),
+    ).toBe(true);
+    expect(isWorktreeNameCollisionError("permission denied")).toBe(false);
+    expect(isWorktreeNameCollisionError(null)).toBe(false);
+  });
+});
+
+describe("classifySessionForkError / resolveSessionForkSoftFail", () => {
+  it("prefers explicit code", () => {
+    const err = Object.assign(new Error("x"), { code: "dirty" });
+    expect(classifySessionForkError(err)).toBe("dirty");
+    const r = resolveSessionForkSoftFail(err, { op: "fork" });
+    expect(r.kind).toBe("dirty");
+    expect(r.messageKey).toBe("session.forkRestoreDirty");
+    expect(r.keepDialogOpen).toBe(true);
+    expect(r.silent).toBe(false);
+    expect(r.detail).toBe("");
+  });
+
+  it("classifies worktree collision and failed create", () => {
+    expect(classifySessionForkError("already registered")).toBe(
+      "worktree_collision",
+    );
+    expect(
+      classifySessionForkError(new Error("could not create worktree path")),
+    ).toBe("worktree_failed");
+  });
+
+  it("classifies bind / fork / cli-arm / need-tauri / busy", () => {
+    expect(
+      classifySessionForkError(new Error("could not bind project")),
+    ).toBe("bind_failed");
+    expect(classifySessionForkError(new Error("session fork failed"))).toBe(
+      "fork_failed",
+    );
+    expect(
+      classifySessionForkError(new Error("could not arm fork-session")),
+    ).toBe("cli_arm_failed");
+    expect(classifySessionForkError(new Error("need tauri host"))).toBe(
+      "need_tauri",
+    );
+    expect(classifySessionForkError(new Error("session busy"))).toBe("busy");
+  });
+
+  it("honors preferredKind and op-specific keys", () => {
+    const r = resolveSessionForkSoftFail("noise", {
+      op: "resume_restore",
+      preferredKind: "dirty",
+    });
+    expect(r.kind).toBe("dirty");
+    expect(r.messageKey).toBe("session.resumeRestoreDirty");
+    expect(r.keepDialogOpen).toBe(true);
+
+    expect(sessionForkSoftFailMessageKey("worktree_failed", "resume_restore")).toBe(
+      "session.resumeRestoreCreateFailed",
+    );
+    expect(sessionForkSoftFailMessageKey("bind_failed", "fork")).toBe(
+      "session.forkRestoreBindFailed",
+    );
+  });
+
+  it("stays silent on cancelled and keeps detail for other", () => {
+    expect(sessionForkSoftFailSilent("cancelled")).toBe(true);
+    expect(sessionForkSoftFailSilent("dirty")).toBe(false);
+    const r = resolveSessionForkSoftFail(new Error("weird host blowup"));
+    expect(r.kind).toBe("other");
+    expect(r.messageKey).toBe("session.forkFailed");
+    expect(r.detail).toMatch(/weird host blowup/i);
+    expect(r.keepDialogOpen).toBe(false);
+  });
+
+  it("keepForkDialogOpenOnSoftFail covers gate + worktree kinds", () => {
+    expect(keepForkDialogOpenOnSoftFail("dirty")).toBe(true);
+    expect(keepForkDialogOpenOnSoftFail("worktree_failed")).toBe(true);
+    expect(keepForkDialogOpenOnSoftFail("fork_failed")).toBe(false);
+  });
+});
+
+describe("forkSuccessToastKey / resumeRestoreSuccessToastKey", () => {
+  it("matches actual outcomes without inventing agent/worktree claims", () => {
+    expect(forkSuccessToastKey({})).toBe("session.forkOk");
+    expect(forkSuccessToastKey({ forkedAgent: true })).toBe("session.forkOkCli");
+    expect(forkSuccessToastKey({ restoredWorktree: true })).toBe(
+      "session.forkOkRestore",
+    );
+    expect(
+      forkSuccessToastKey({ restoredWorktree: true, forkedAgent: true }),
+    ).toBe("session.forkOkRestoreCli");
+    expect(resumeRestoreSuccessToastKey({})).toBe("session.resumeRestoreOk");
+    expect(resumeRestoreSuccessToastKey({ forkedAgent: true })).toBe(
+      "session.resumeRestoreOkCli",
+    );
   });
 });

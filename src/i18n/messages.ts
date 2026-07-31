@@ -60,11 +60,23 @@ const en = {
   "sidebar.deletedToast": "Deleted {n} chats",
   "sidebar.archiveOlder": "Archive older than…",
   "sidebar.archiveOlderDays": "Older than {days} days",
+  "sidebar.archiveOlderDaysCount": "Older than {days} days ({n})",
   "sidebar.archiveOlderTitle": "Archive older chats",
   "sidebar.archiveOlderConfirm":
     "Archive {n} chats not updated in the last {days} days? Pinned chats are kept. You can restore them later from Settings → Archived.",
   "sidebar.archiveOlderNone":
     "No unpinned chats older than {days} days.",
+  "sidebar.archiveOlderEmpty.no_sessions":
+    "No chats yet — nothing to archive by age.",
+  "sidebar.archiveOlderEmpty.none_active":
+    "Every chat is already archived. Nothing left to archive by age.",
+  "sidebar.archiveOlderEmpty.all_pinned":
+    "Older chats are pinned (or every active chat is pinned). Unpin to include them.",
+  "sidebar.archiveOlderEmpty.all_recent":
+    "No unpinned chats older than {days} days — all active chats are still recent.",
+  "sidebar.archiveOlderPreviewLabel": "Will archive:",
+  "sidebar.archiveOlderPreviewMore": "…and {n} more",
+  "sidebar.archiveOlderConfirmAction": "Archive {n}",
   "user.menu": "Account menu",
   "user.theme": "Theme",
   "user.themeLight": "Switch to light",
@@ -124,6 +136,14 @@ const en = {
   "project.continueCwdOk": "Continued “{title}”",
   "project.continueCwdFailed": "Could not continue last agent",
   "project.continueCwdNoProject": "Select a project first.",
+  "project.continueCwdNoCli":
+    "Grok Build CLI not found — install or set the CLI path, then try Continue again.",
+  "project.continueCwdUntrusted":
+    "Trust this project first, then continue the last agent session.",
+  "project.continueCwdHostOnly":
+    "Continue last agent requires the desktop app window.",
+  "project.continueCwdImportFailed":
+    "Found an agent session but could not import it into the app.",
 
   "session.pin": "Pin chat",
   "session.unpin": "Unpin chat",
@@ -304,7 +324,11 @@ const en = {
   "session.forkCliSession":
     "Fork CLI agent session (new agent id — grok --fork-session)",
   "session.forkCliSessionHint":
-    "Creates a new agent session id with the parent’s full context (ACP session/fork). The original agent session stays unchanged. Off when no agent session is linked yet.",
+    "Creates a new agent session id with the parent’s full context (ACP session/fork). The original agent session stays unchanged. Default on when a linked agent session exists.",
+  "session.forkCliSessionNoAgent":
+    "No linked agent session — cannot fork a new agent id",
+  "session.forkCliSessionNoAgentHint":
+    "Connect or send a message first so this chat has a linked agent session. Until then the journal can still be forked without a new agent id.",
   "session.resumeForkCliSessionHint":
     "On this worktree, allocate a new agent session id instead of reusing the original (CLI --fork-session). Leave unchecked to continue the same agent session.",
   "session.forkOkCli": "Forked · new agent session · opened new chat",
@@ -313,6 +337,9 @@ const en = {
   "session.resumeRestoreOkCli":
     "Resumed · new agent session · opened on a clean worktree",
   "session.forkCliFailed": "Could not arm CLI agent session fork",
+  "session.forkWorktreeCollision":
+    "Could not create a worktree — name or path already in use. Try again.",
+  "session.forkCancelled": "Fork cancelled",
   "session.resumeRestore": "Resume with code restore",
   "session.resumeRestoreTitle": "Resume with code restore",
   "session.resumeRestoreConfirm":
@@ -1460,6 +1487,45 @@ const en = {
   "settings.privacy.save": "Save privacy keys",
   "settings.privacy.saving": "Saving…",
   "settings.privacy.needTauri": "Privacy center requires the desktop app.",
+  "settings.privacy.unsetNotOff":
+    "Unset is not off. Missing privacy keys stay unset — this App never invents telemetry or uploads as disabled.",
+  "settings.privacy.summary.allUnset":
+    "All {total} privacy keys unset ({unset} unset · {set} set)",
+  "settings.privacy.summary.partial":
+    "{set} of {total} privacy keys set · {unset} still unset",
+  "settings.privacy.summary.allSet":
+    "All {total} privacy keys present in config ({set} set)",
+  "settings.privacy.default.telemetry":
+    "Unset — CLI / env decides product telemetry. App never invents “off”.",
+  "settings.privacy.default.traceUpload":
+    "Unset — when missing, CLI follows the telemetry toggle (not a forced off).",
+  "settings.privacy.default.mixpanel":
+    "Unset — CLI / env decides Mixpanel. App never invents “off”.",
+  "settings.privacy.default.disableCodebaseUpload":
+    "Unset — CLI harness default applies. App does not invent disabled.",
+  "settings.privacy.default.disableWorkspaceTeleport":
+    "Unset — CLI harness default applies. App does not invent disabled.",
+  "settings.privacy.probe.okMissing":
+    "Config file not found yet — keys unset (soft-ok, not claimed off)",
+  "settings.privacy.probe.okAllUnset":
+    "Config loaded — no privacy keys set yet (unset ≠ off)",
+  "settings.privacy.probe.okPartial": "Config loaded — some privacy keys set",
+  "settings.privacy.probe.okAllSet": "Config loaded — all privacy keys present",
+  "settings.privacy.probe.hostOnly":
+    "Privacy center requires the desktop app (host probe unavailable).",
+  "settings.privacy.probe.sharedMode":
+    "Shared mode cannot write privacy keys — switch to independent agent-home.",
+  "settings.privacy.probe.pathNotAllowed":
+    "Path not allowed — only independent agent-home config.toml may be edited.",
+  "settings.privacy.probe.io":
+    "Could not read or write the privacy config file (I/O soft-fail).",
+  "settings.privacy.probe.emptyPatch": "No privacy key changes to save.",
+  "settings.privacy.probe.other": "Could not load or update privacy config.",
+  "settings.privacy.probe.error": "Privacy config probe failed",
+  "settings.privacy.apply.softRespawn":
+    "Save writes allowlisted keys and soft-respawns the agent so the next turn reloads config.toml.",
+  "settings.privacy.apply.independentOnly":
+    "Writes apply only in independent agent-home mode. Shared mode is a read-only probe of ~/.grok.",
   "settings.searchResults": "Matching settings",
   "settings.searchOpen": "Open",
   "settings.inspect.manageInExtensions": "Manage in Extensions",
@@ -1526,8 +1592,13 @@ const en = {
   "settings.archived.totalCount": "{n} archived",
   "settings.archived.archiveOlder": "Archive older than…",
   "settings.archived.archiveOlderDesc":
-    "Bulk-archive active chats whose last update is older than the threshold. Pinned chats are skipped.",
+    "Bulk-archive active chats whose last update is older than the threshold. Pinned chats are skipped. Counts update from the live session list.",
   "settings.archived.archiveOlderDays": "{days} days",
+  "settings.archived.archiveOlderDaysCount": "{days} days ({n})",
+  "settings.archived.archiveOlderMatchHint":
+    "{n} chats match · pinned kept · restore from this page",
+  "settings.archived.archiveOlderNoneHint":
+    "No unpinned chats older than these thresholds right now.",
   "settings.section.permissions": "Permissions",
   "settings.section.composer": "Composer prefs",
   "settings.section.voice": "Voice",
@@ -2169,9 +2240,31 @@ const en = {
   "settings.todoGate": "Todo gate",
   "settings.todoGateDesc":
     "When the agent tries to end a turn with pending or in-progress todos, Grok Build can nudge before handing control back (CLI --todo-gate, 0.2.117+). Overrides remote todo_gate_enabled; default off. Independent mode also writes agent-home todo_gate_enabled. Soft-respawns after change.",
+  "settings.todoGate.softRespawnNote":
+    "Changing Todo gate or max fires soft-respawns live agents so the next process reloads the flag and independent agent-home config.",
+  "settings.todoGate.cliTooOld":
+    "This CLI looks older than {min} (TodoGate). Enable still saves in App settings; spawn may soft-fail if --todo-gate is unknown.",
+  "settings.todoGate.activity.na":
+    "Gate activity: N/A — App does not receive TodoGate fire signals from the host/CLI (never invents counts).",
+  "settings.todoGate.activity.unavailable":
+    "Gate activity: unavailable (host soft-fail) — not the same as zero fires.",
+  "settings.todoGate.activity.idle":
+    "Gate activity: 0 fires this prompt (cap {max}).",
+  "settings.todoGate.activity.fired":
+    "Gate activity: {n} / {max} fires this prompt.",
   "settings.todoGateMaxFires": "Todo gate max fires",
   "settings.todoGateMaxFiresDesc":
-    "Max TodoGate nudges per prompt (1–20, default 3). Written as todo_gate_max_fires_per_prompt in independent agent-home config.toml. Soft-respawns after change.",
+    "Max TodoGate nudges per prompt (1–20, default 3). Config-only key todo_gate_max_fires_per_prompt — no CLI flag. Independent agent-home writes apply; soft-respawns after change.",
+  "settings.todoGateMaxFires.effective":
+    "Effective max fires: {n} (clamp {min}–{max}, default {default}).",
+  "settings.todoGateMaxFires.clamped":
+    "Value was adjusted to the allowed range ({min}–{max}; empty/invalid → default {default}).",
+  "settings.todoGateMaxFires.inactive":
+    "Inactive while Todo gate is off. The value is still saved and will apply when you enable the gate (independent mode writes config).",
+  "settings.todoGateMaxFires.independent":
+    "Independent mode: App writes todo_gate_max_fires_per_prompt into agent-home config.toml. There is no --todo-gate-max-fires CLI flag.",
+  "settings.todoGateMaxFires.shared":
+    "Shared mode: App stores max fires but does not rewrite ~/.grok. Enable still applies via --todo-gate; max fires follows CLI / your ~/.grok config — App setting is not applied to shared config.",
   "settings.workflows": "Grok Build workflows",
   "settings.workflowsDesc":
     "When on, writes top-level workflows_enabled into independent agent-home config.toml so Grok Build can run Rhai workflow scripts. Default off. Soft-respawns after change. Shared mode does not rewrite ~/.grok.",
@@ -4505,8 +4598,8 @@ const en = {
   "ext.hooks.docs": "Hooks guide",
   "ext.hooks.activity.title": "Recent activity",
   "ext.hooks.activity.desc":
-    "Last hook runs observed this app session (ACP notifications, tool failures, and agent log lines). Secrets are redacted.",
-  "ext.hooks.activity.empty": "No hook activity recorded this session",
+    "Recent hook outcomes observed by this app (ACP notifications, tool failures, agent log lines, and try-runs). Stored locally on this device; secrets are redacted. Empty means nothing has been recorded yet — not that hooks never ran offline.",
+  "ext.hooks.activity.empty": "No hook activity recorded yet",
   "ext.hooks.activity.emptyFilter": "No activity matches this filter",
   "ext.hooks.activity.ok": "ok",
   "ext.hooks.activity.fail": "fail",
@@ -4517,7 +4610,7 @@ const en = {
   "ext.hooks.activity.clear": "Clear activity",
   "ext.hooks.activity.clearConfirmTitle": "Clear hook activity?",
   "ext.hooks.activity.clearConfirmMessage":
-    "Remove all recent hook activity rows for this app session. This cannot be undone.",
+    "Remove {count} recent hook activity row(s) stored on this device. This cannot be undone.",
   "ext.hooks.activity.clearConfirmOk": "Clear",
   "ext.hooks.activity.sourceDebug": "dry-run",
   "ext.hooks.try.hookName": "Hook name",
@@ -4941,6 +5034,9 @@ const en = {
   "automations.honesty.launchAgentTitle": "macOS LaunchAgent helper",
   "automations.honesty.launchAgentBody":
     "Optional: starts the full app at login and after a crash only — not a headless schedule daemon.",
+  "automations.honesty.oneShotTitle": "One-shot fire helper",
+  "automations.honesty.oneShotBody":
+    "After full Quit: run the app with --fire-due-schedules (or fire-due-schedules.sh). Fires at most one due task, then exits. Soft-fails when nothing is due or CLI is missing — not a KeepAlive daemon.",
   "automations.launchAgent.title": "macOS LaunchAgent helper",
   "automations.launchAgent.desc":
     "Optional: generate a helper under app data and install a user LaunchAgent that starts the full Grok App at login and restarts it after a crash only. Not a headless schedule daemon — tasks still tick inside the app (window or tray).",
@@ -4976,6 +5072,22 @@ const en = {
   "automations.history.clearBody":
     "Removes the local observed run list on this device. This cannot be undone. Schedules themselves are unchanged.",
   "automations.history.clearConfirm": "Clear",
+  "automations.oneshot.title": "One-shot schedule fire",
+  "automations.oneshot.desc":
+    "Tray residency keeps continuous ticks while the process is alive. After full Quit, invoke {flag} (helper script {script} under app data) to fire at most one due task without opening the full UI, then exit.",
+  "automations.oneshot.honesty":
+    "Not a KeepAlive daemon and not continuous background scheduling. Soft-fails when nothing is due, the CLI is missing, or the project is untrusted. Does not auto-approve tools (no YOLO invent).",
+  "automations.oneshot.reveal": "Show one-shot helper files",
+  "automations.oneshot.outcome.fired": "One-shot fired a due scheduled task.",
+  "automations.oneshot.outcome.noneDue":
+    "One-shot found no due scheduled task (nothing to run).",
+  "automations.oneshot.outcome.busy":
+    "One-shot skipped — an agent turn is already in progress.",
+  "automations.oneshot.outcome.error":
+    "One-shot could not fire (CLI missing, project untrusted, or connect failed). Soft-failed.",
+  "automations.oneshot.outcome.alreadyClaimed":
+    "One-shot skipped — this due slot was already claimed in this process.",
+  "automations.oneshot.outcome.unknown": "One-shot finished with an unknown result.",
   "automations.aiComposerHint":
     "Describe what to run and how often — Grok will schedule it for you when ready.",
   "automations.createdToast": "Scheduled: {title}",
@@ -6087,10 +6199,21 @@ const zh: Record<MessageKey, string> = {
   "sidebar.deletedToast": "已永久删除 {n} 个会话",
   "sidebar.archiveOlder": "归档超过…天的会话",
   "sidebar.archiveOlderDays": "超过 {days} 天",
+  "sidebar.archiveOlderDaysCount": "超过 {days} 天（{n}）",
   "sidebar.archiveOlderTitle": "按时间归档",
   "sidebar.archiveOlderConfirm":
     "将归档 {n} 个超过 {days} 天未更新的会话？置顶会话会保留。之后可在「设置 → 已归档会话」中还原。",
   "sidebar.archiveOlderNone": "没有超过 {days} 天且未置顶的会话。",
+  "sidebar.archiveOlderEmpty.no_sessions": "还没有会话，无法按时间归档。",
+  "sidebar.archiveOlderEmpty.none_active":
+    "所有会话都已归档，没有可再按时间归档的会话。",
+  "sidebar.archiveOlderEmpty.all_pinned":
+    "较旧的会话已置顶（或当前活跃会话全部置顶）。取消置顶后才会被纳入。",
+  "sidebar.archiveOlderEmpty.all_recent":
+    "没有超过 {days} 天且未置顶的会话——当前活跃会话都还比较新。",
+  "sidebar.archiveOlderPreviewLabel": "将归档：",
+  "sidebar.archiveOlderPreviewMore": "…还有 {n} 个",
+  "sidebar.archiveOlderConfirmAction": "归档 {n} 个",
   "user.menu": "个人中心",
   "user.theme": "主题",
   "user.themeLight": "切换到浅色",
@@ -6148,6 +6271,13 @@ const zh: Record<MessageKey, string> = {
   "project.continueCwdOk": "已继续「{title}」",
   "project.continueCwdFailed": "无法继续最近的 Agent",
   "project.continueCwdNoProject": "请先选择一个项目。",
+  "project.continueCwdNoCli":
+    "未找到 Grok Build CLI — 请先安装或设置 CLI 路径，再试「继续」。",
+  "project.continueCwdUntrusted":
+    "请先信任此项目，再继续最近的 Agent 会话。",
+  "project.continueCwdHostOnly": "继续最近的 Agent 需要在桌面应用窗口中操作。",
+  "project.continueCwdImportFailed":
+    "找到了 Agent 会话，但无法导入到应用中。",
 
   "session.pin": "置顶会话",
   "session.unpin": "取消置顶",
@@ -6311,7 +6441,10 @@ const zh: Record<MessageKey, string> = {
   "session.forkCliSession":
     "分叉 CLI Agent 会话（新 agent id — grok --fork-session）",
   "session.forkCliSessionHint":
-    "用父会话完整上下文创建新的 agent session id（ACP session/fork）。原 agent 会话保持不变。尚未关联 agent 会话时不可用。",
+    "用父会话完整上下文创建新的 agent session id（ACP session/fork）。原 agent 会话保持不变。已关联 agent 会话时默认开启。",
+  "session.forkCliSessionNoAgent": "尚未关联 agent 会话，无法分叉新的 agent id",
+  "session.forkCliSessionNoAgentHint":
+    "请先连接或发送消息，让本会话关联 agent session。在此之前仍可仅分叉对话内容（不新建 agent id）。",
   "session.resumeForkCliSessionHint":
     "在本 worktree 上分配新的 agent session id，而不是复用原会话（CLI --fork-session）。不勾选则继续同一 agent 会话。",
   "session.forkOkCli": "已分叉 · 新 agent 会话 · 已打开新会话",
@@ -6319,6 +6452,9 @@ const zh: Record<MessageKey, string> = {
   "session.resumeRestoreOkCli":
     "已恢复 · 新 agent 会话 · 已在干净 worktree 中打开",
   "session.forkCliFailed": "无法启用 CLI Agent 会话分叉",
+  "session.forkWorktreeCollision":
+    "无法创建 worktree — 名称或路径已被占用，请重试。",
+  "session.forkCancelled": "已取消分叉",
   "session.resumeRestore": "恢复对话并还原代码",
   "session.resumeRestoreTitle": "恢复对话并还原代码",
   "session.resumeRestoreConfirm":
@@ -7416,6 +7552,44 @@ const zh: Record<MessageKey, string> = {
   "settings.privacy.save": "保存隐私键",
   "settings.privacy.saving": "保存中…",
   "settings.privacy.needTauri": "隐私中心需要桌面应用。",
+  "settings.privacy.unsetNotOff":
+    "「未设置」不等于「关闭」。缺失的隐私键保持未设置——本应用不会把遥测或上传虚构为已禁用。",
+  "settings.privacy.summary.allUnset":
+    "全部 {total} 个隐私键未设置（{unset} 未设置 · {set} 已设置）",
+  "settings.privacy.summary.partial":
+    "已设置 {set}/{total} 个隐私键 · 仍有 {unset} 个未设置",
+  "settings.privacy.summary.allSet":
+    "全部 {total} 个隐私键已在配置中（{set} 已设置）",
+  "settings.privacy.default.telemetry":
+    "未设置 — 由 CLI / 环境变量决定产品遥测。本应用不会虚构为「关」。",
+  "settings.privacy.default.traceUpload":
+    "未设置 — 缺失时 CLI 跟随 telemetry 开关（不是强制关闭）。",
+  "settings.privacy.default.mixpanel":
+    "未设置 — 由 CLI / 环境变量决定 Mixpanel。本应用不会虚构为「关」。",
+  "settings.privacy.default.disableCodebaseUpload":
+    "未设置 — 使用 CLI harness 默认。本应用不会虚构为已禁用。",
+  "settings.privacy.default.disableWorkspaceTeleport":
+    "未设置 — 使用 CLI harness 默认。本应用不会虚构为已禁用。",
+  "settings.privacy.probe.okMissing":
+    "配置文件尚不存在 — 键均为未设置（软成功，不宣称已关闭）",
+  "settings.privacy.probe.okAllUnset":
+    "配置已加载 — 尚未设置任何隐私键（未设置 ≠ 关闭）",
+  "settings.privacy.probe.okPartial": "配置已加载 — 部分隐私键已设置",
+  "settings.privacy.probe.okAllSet": "配置已加载 — 全部隐私键均已存在",
+  "settings.privacy.probe.hostOnly":
+    "隐私中心需要桌面应用（主机探测不可用）。",
+  "settings.privacy.probe.sharedMode":
+    "共享模式无法写入隐私键 — 请切换到独立 agent-home。",
+  "settings.privacy.probe.pathNotAllowed":
+    "路径不允许 — 仅可编辑独立 agent-home 的 config.toml。",
+  "settings.privacy.probe.io": "无法读写隐私配置文件（I/O 软失败）。",
+  "settings.privacy.probe.emptyPatch": "没有可保存的隐私键变更。",
+  "settings.privacy.probe.other": "无法加载或更新隐私配置。",
+  "settings.privacy.probe.error": "隐私配置探测失败",
+  "settings.privacy.apply.softRespawn":
+    "保存会写入白名单键并 soft-respawn agent，使下一轮重新加载 config.toml。",
+  "settings.privacy.apply.independentOnly":
+    "仅在独立 agent-home 模式下可写。共享模式是对 ~/.grok 的只读探测。",
   "settings.tab.remoteIm": "IM 通信",
   "settings.tab.phoneMirror": "手机镜像",
   "settings.searchResults": "匹配的设置",
@@ -7484,8 +7658,13 @@ const zh: Record<MessageKey, string> = {
   "settings.archived.totalCount": "共 {n} 条",
   "settings.archived.archiveOlder": "归档超过…天的会话",
   "settings.archived.archiveOlderDesc":
-    "批量归档最后更新时间超过阈值的活跃会话。置顶会话会跳过。",
+    "批量归档最后更新时间超过阈值的活跃会话。置顶会话会跳过。数量来自当前会话列表实时预览。",
   "settings.archived.archiveOlderDays": "{days} 天",
+  "settings.archived.archiveOlderDaysCount": "{days} 天（{n}）",
+  "settings.archived.archiveOlderMatchHint":
+    "{n} 个会话符合条件 · 置顶保留 · 可在本页还原",
+  "settings.archived.archiveOlderNoneHint":
+    "当前没有超过这些阈值且未置顶的会话。",
   "settings.section.permissions": "权限",
   "settings.section.composer": "对话偏好",
   "settings.section.voice": "语音",
@@ -8091,9 +8270,31 @@ const zh: Record<MessageKey, string> = {
   "settings.todoGate": "Todo 门控",
   "settings.todoGateDesc":
     "当 Agent 在待办仍为 pending / in_progress 时尝试结束回合，Grok Build 可先催促再交还控制（CLI --todo-gate，0.2.117+）。会覆盖远端 todo_gate_enabled；默认关闭。独立模式同时写入 agent-home 的 todo_gate_enabled。更改后 soft-respawn。",
+  "settings.todoGate.softRespawnNote":
+    "更改 Todo 门控或最大触发次数会 soft-respawn 已连接的 Agent，以便下一进程重新加载 flag 与独立 agent-home 配置。",
+  "settings.todoGate.cliTooOld":
+    "当前 CLI 看起来低于 {min}（TodoGate）。启用仍会保存在应用设置中；若 --todo-gate 未知，启动可能 soft-fail。",
+  "settings.todoGate.activity.na":
+    "门控活动：N/A — 应用未从 host/CLI 接收 TodoGate 触发信号（不会编造次数）。",
+  "settings.todoGate.activity.unavailable":
+    "门控活动：不可用（host soft-fail）— 不等于 0 次触发。",
+  "settings.todoGate.activity.idle":
+    "门控活动：本 prompt 0 次触发（上限 {max}）。",
+  "settings.todoGate.activity.fired":
+    "门控活动：本 prompt 已触发 {n} / {max} 次。",
   "settings.todoGateMaxFires": "Todo 门控最大触发次数",
   "settings.todoGateMaxFiresDesc":
-    "每个 prompt 最多触发 TodoGate 次数（1–20，默认 3）。独立模式写入 agent-home config.toml 的 todo_gate_max_fires_per_prompt。更改后 soft-respawn。",
+    "每个 prompt 最多触发 TodoGate 次数（1–20，默认 3）。仅配置键 todo_gate_max_fires_per_prompt — 无 CLI flag。独立 agent-home 写入生效；更改后 soft-respawn。",
+  "settings.todoGateMaxFires.effective":
+    "有效最大触发次数：{n}（限制 {min}–{max}，默认 {default}）。",
+  "settings.todoGateMaxFires.clamped":
+    "值已调整到允许范围（{min}–{max}；空/无效 → 默认 {default}）。",
+  "settings.todoGateMaxFires.inactive":
+    "Todo 门控关闭时不生效。该值仍会保存，开启后门控时生效（独立模式写入配置）。",
+  "settings.todoGateMaxFires.independent":
+    "独立模式：应用将 todo_gate_max_fires_per_prompt 写入 agent-home config.toml。没有 --todo-gate-max-fires CLI flag。",
+  "settings.todoGateMaxFires.shared":
+    "共享模式：应用会保存最大触发次数，但不会改写 ~/.grok。启用仍通过 --todo-gate 生效；最大次数跟随 CLI / 你的 ~/.grok 配置 — 应用设置不会写入共享配置。",
   "settings.workflows": "Grok Build 工作流",
   "settings.workflowsDesc":
     "开启后，独立模式将顶层 workflows_enabled 写入 agent-home config.toml，以便 Grok Build 运行 Rhai 工作流脚本。默认关闭。更改后 soft-respawn。共享模式不会改写 ~/.grok。",
@@ -10357,8 +10558,8 @@ const zh: Record<MessageKey, string> = {
   "ext.hooks.docs": "Hooks 指南",
   "ext.hooks.activity.title": "最近活动",
   "ext.hooks.activity.desc":
-    "本应用会话内观察到的最近 hook 运行（ACP 通知、工具失败与 agent 日志）。密钥已脱敏。",
-  "ext.hooks.activity.empty": "本会话尚未记录 hook 活动",
+    "本应用观察到的最近 hook 结果（ACP 通知、工具失败、agent 日志与试跑）。保存在本机本地；密钥已脱敏。空列表表示尚未记录，不代表 hooks 从未在离线时运行。",
+  "ext.hooks.activity.empty": "尚未记录 hook 活动",
   "ext.hooks.activity.emptyFilter": "没有符合该筛选的活动",
   "ext.hooks.activity.ok": "成功",
   "ext.hooks.activity.fail": "失败",
@@ -10369,7 +10570,7 @@ const zh: Record<MessageKey, string> = {
   "ext.hooks.activity.clear": "清空活动",
   "ext.hooks.activity.clearConfirmTitle": "清空 hook 活动？",
   "ext.hooks.activity.clearConfirmMessage":
-    "将移除本应用会话内全部最近 hook 活动记录，此操作不可撤销。",
+    "将移除本机保存的 {count} 条最近 hook 活动记录，此操作不可撤销。",
   "ext.hooks.activity.clearConfirmOk": "清空",
   "ext.hooks.activity.sourceDebug": "试跑",
   "ext.hooks.try.hookName": "Hook 名称",
@@ -10768,6 +10969,9 @@ const zh: Record<MessageKey, string> = {
   "automations.honesty.launchAgentTitle": "macOS LaunchAgent 助手",
   "automations.honesty.launchAgentBody":
     "可选：仅在登录与崩溃后启动完整应用——不是无界面调度守护进程。",
+  "automations.honesty.oneShotTitle": "一次性触发助手",
+  "automations.honesty.oneShotBody":
+    "完全退出后：使用 --fire-due-schedules（或 fire-due-schedules.sh）启动应用。最多触发一个到期任务后退出；无到期任务或 CLI 缺失时软失败——不是 KeepAlive 守护进程。",
   "automations.launchAgent.title": "macOS LaunchAgent 助手",
   "automations.launchAgent.desc":
     "可选：在应用数据目录生成助手脚本，并安装用户级 LaunchAgent，在登录时启动完整 Grok 应用，并在崩溃后重启。不是无界面调度守护进程——任务仍在应用进程内（窗口或托盘）触发。",
@@ -10803,6 +11007,22 @@ const zh: Record<MessageKey, string> = {
   "automations.history.clearBody":
     "将删除本机已观察到的运行列表，且无法撤销。已安排任务本身不受影响。",
   "automations.history.clearConfirm": "清空",
+  "automations.oneshot.title": "一次性触发已安排任务",
+  "automations.oneshot.desc":
+    "托盘驻留可在进程存活期间持续检查。完全退出后，可用 {flag}（应用数据目录中的助手脚本 {script}）最多触发一个到期任务（无需完整交互界面），然后退出。",
+  "automations.oneshot.honesty":
+    "不是 KeepAlive 守护进程，也不是持续后台调度。无到期任务、CLI 缺失或项目未信任时软失败。不会自动批准工具（不发明 YOLO）。",
+  "automations.oneshot.reveal": "显示一次性助手文件",
+  "automations.oneshot.outcome.fired": "一次性助手已触发到期的已安排任务。",
+  "automations.oneshot.outcome.noneDue":
+    "一次性助手未找到到期任务（无需运行）。",
+  "automations.oneshot.outcome.busy":
+    "一次性助手已跳过——当前已有 Agent 回合进行中。",
+  "automations.oneshot.outcome.error":
+    "一次性助手无法触发（CLI 缺失、项目未信任或连接失败）。已软失败。",
+  "automations.oneshot.outcome.alreadyClaimed":
+    "一次性助手已跳过——此到期槽位已在本进程中认领。",
+  "automations.oneshot.outcome.unknown": "一次性助手以未知结果结束。",
   "automations.aiComposerHint":
     "用自然语言描述要做什么、多久一次——准备好后 Grok 会自动创建已安排任务。",
   "automations.createdToast": "已安排：{title}",

@@ -52,10 +52,21 @@ export const zhTW: Record<MessageKey, string> = {
   "sidebar.deletedToast": "已永久刪除 {n} 個對話",
   "sidebar.archiveOlder": "封存超過…天的對話",
   "sidebar.archiveOlderDays": "超過 {days} 天",
+  "sidebar.archiveOlderDaysCount": "超過 {days} 天（{n}）",
   "sidebar.archiveOlderTitle": "依時間封存",
   "sidebar.archiveOlderConfirm":
     "將封存 {n} 個超過 {days} 天未更新的對話？已置頂對話會保留。之後可在「設定 → 已封存對話」中還原。",
   "sidebar.archiveOlderNone": "沒有超過 {days} 天且未置頂的對話。",
+  "sidebar.archiveOlderEmpty.no_sessions": "還沒有對話，無法依時間封存。",
+  "sidebar.archiveOlderEmpty.none_active":
+    "所有對話都已封存，沒有可再依時間封存的對話。",
+  "sidebar.archiveOlderEmpty.all_pinned":
+    "較舊的對話已置頂（或目前活躍對話全部置頂）。取消置頂後才會被納入。",
+  "sidebar.archiveOlderEmpty.all_recent":
+    "沒有超過 {days} 天且未置頂的對話——目前活躍對話都還比較新。",
+  "sidebar.archiveOlderPreviewLabel": "將封存：",
+  "sidebar.archiveOlderPreviewMore": "…還有 {n} 個",
+  "sidebar.archiveOlderConfirmAction": "封存 {n} 個",
   "user.menu": "個人中心",
   "user.theme": "主題",
   "user.themeLight": "切換為淺色",
@@ -113,6 +124,13 @@ export const zhTW: Record<MessageKey, string> = {
   "project.continueCwdOk": "已繼續「{title}」",
   "project.continueCwdFailed": "無法繼續最近的 Agent",
   "project.continueCwdNoProject": "請先選擇一個專案。",
+  "project.continueCwdNoCli":
+    "找不到 Grok Build CLI — 請先安裝或設定 CLI 路徑，再試「繼續」。",
+  "project.continueCwdUntrusted":
+    "請先信任此專案，再繼續最近的 Agent 工作階段。",
+  "project.continueCwdHostOnly": "繼續最近的 Agent 需要在桌面應用視窗中操作。",
+  "project.continueCwdImportFailed":
+    "找到了 Agent 工作階段，但無法匯入到應用中。",
 
   "session.pin": "置頂對話",
   "session.unpin": "取消置頂",
@@ -274,7 +292,11 @@ export const zhTW: Record<MessageKey, string> = {
   "session.forkCliSession":
     "分叉 CLI Agent 工作階段（新 agent id — grok --fork-session）",
   "session.forkCliSessionHint":
-    "以父工作階段完整內容建立新的 agent session id（ACP session/fork）。原 agent 工作階段保持不變。尚未關聯 agent 工作階段時不可用。",
+    "以父工作階段完整內容建立新的 agent session id（ACP session/fork）。原 agent 工作階段保持不變。已關聯 agent 工作階段時預設開啟。",
+  "session.forkCliSessionNoAgent":
+    "尚未關聯 agent 工作階段，無法分叉新的 agent id",
+  "session.forkCliSessionNoAgentHint":
+    "請先連線或傳送訊息，讓本對話關聯 agent session。在此之前仍可僅分叉對話內容（不新建 agent id）。",
   "session.resumeForkCliSessionHint":
     "在此 worktree 上分配新的 agent session id，而不是沿用原工作階段（CLI --fork-session）。不勾選則繼續同一 agent 工作階段。",
   "session.forkOkCli": "已分叉 · 新 agent 工作階段 · 已開啟新對話",
@@ -283,6 +305,9 @@ export const zhTW: Record<MessageKey, string> = {
   "session.resumeRestoreOkCli":
     "已恢復 · 新 agent 工作階段 · 已在乾淨 worktree 中開啟",
   "session.forkCliFailed": "無法啟用 CLI Agent 工作階段分叉",
+  "session.forkWorktreeCollision":
+    "無法建立 worktree — 名稱或路徑已被占用，請重試。",
+  "session.forkCancelled": "已取消分叉",
   "session.resumeRestore": "恢復對話並還原程式碼",
   "session.resumeRestoreTitle": "恢復對話並還原程式碼",
   "session.resumeRestoreConfirm":
@@ -1382,6 +1407,44 @@ export const zhTW: Record<MessageKey, string> = {
   "settings.privacy.save": "儲存隱私鍵",
   "settings.privacy.saving": "儲存中…",
   "settings.privacy.needTauri": "隱私中心需要桌面應用程式。",
+  "settings.privacy.unsetNotOff":
+    "「未設定」不等於「關閉」。缺失的隱私鍵保持未設定——本應用不會把遙測或上傳虛構為已停用。",
+  "settings.privacy.summary.allUnset":
+    "全部 {total} 個隱私鍵未設定（{unset} 未設定 · {set} 已設定）",
+  "settings.privacy.summary.partial":
+    "已設定 {set}/{total} 個隱私鍵 · 仍有 {unset} 個未設定",
+  "settings.privacy.summary.allSet":
+    "全部 {total} 個隱私鍵已在設定中（{set} 已設定）",
+  "settings.privacy.default.telemetry":
+    "未設定 — 由 CLI / 環境變數決定產品遙測。本應用不會虛構為「關」。",
+  "settings.privacy.default.traceUpload":
+    "未設定 — 缺失時 CLI 跟隨 telemetry 開關（不是強制關閉）。",
+  "settings.privacy.default.mixpanel":
+    "未設定 — 由 CLI / 環境變數決定 Mixpanel。本應用不會虛構為「關」。",
+  "settings.privacy.default.disableCodebaseUpload":
+    "未設定 — 使用 CLI harness 預設。本應用不會虛構為已停用。",
+  "settings.privacy.default.disableWorkspaceTeleport":
+    "未設定 — 使用 CLI harness 預設。本應用不會虛構為已停用。",
+  "settings.privacy.probe.okMissing":
+    "設定檔尚不存在 — 鍵均為未設定（軟成功，不宣稱已關閉）",
+  "settings.privacy.probe.okAllUnset":
+    "設定已載入 — 尚未設定任何隱私鍵（未設定 ≠ 關閉）",
+  "settings.privacy.probe.okPartial": "設定已載入 — 部分隱私鍵已設定",
+  "settings.privacy.probe.okAllSet": "設定已載入 — 全部隱私鍵均已存在",
+  "settings.privacy.probe.hostOnly":
+    "隱私中心需要桌面應用程式（主機探測不可用）。",
+  "settings.privacy.probe.sharedMode":
+    "共用模式無法寫入隱私鍵 — 請切換到獨立 agent-home。",
+  "settings.privacy.probe.pathNotAllowed":
+    "路徑不允許 — 僅可編輯獨立 agent-home 的 config.toml。",
+  "settings.privacy.probe.io": "無法讀寫隱私設定檔（I/O 軟失敗）。",
+  "settings.privacy.probe.emptyPatch": "沒有可儲存的隱私鍵變更。",
+  "settings.privacy.probe.other": "無法載入或更新隱私設定。",
+  "settings.privacy.probe.error": "隱私設定探測失敗",
+  "settings.privacy.apply.softRespawn":
+    "儲存會寫入白名單鍵並 soft-respawn agent，使下一輪重新載入 config.toml。",
+  "settings.privacy.apply.independentOnly":
+    "僅在獨立 agent-home 模式下可寫。共用模式是對 ~/.grok 的唯讀探測。",
   "settings.tab.remoteIm": "IM 通訊",
   "settings.tab.phoneMirror": "手機鏡像",
   "settings.searchResults": "相符的設定",
@@ -1450,8 +1513,13 @@ export const zhTW: Record<MessageKey, string> = {
   "settings.archived.totalCount": "共 {n} 條",
   "settings.archived.archiveOlder": "封存超過…天的對話",
   "settings.archived.archiveOlderDesc":
-    "批次封存最後更新時間超過閾值的活躍對話。已置頂對話會略過。",
+    "批次封存最後更新時間超過閾值的活躍對話。已置頂對話會略過。數量來自目前對話列表即時預覽。",
   "settings.archived.archiveOlderDays": "{days} 天",
+  "settings.archived.archiveOlderDaysCount": "{days} 天（{n}）",
+  "settings.archived.archiveOlderMatchHint":
+    "{n} 個對話符合條件 · 置頂保留 · 可在本頁還原",
+  "settings.archived.archiveOlderNoneHint":
+    "目前沒有超過這些閾值且未置頂的對話。",
   "settings.section.permissions": "權限",
   "settings.section.composer": "對話偏好",
   "settings.section.voice": "語音",
@@ -2057,9 +2125,31 @@ export const zhTW: Record<MessageKey, string> = {
   "settings.todoGate": "Todo 門控",
   "settings.todoGateDesc":
     "當 Agent 在待辦仍為 pending / in_progress 時嘗試結束回合，Grok Build 可先催促再交還控制（CLI --todo-gate，0.2.117+）。會覆蓋遠端 todo_gate_enabled；預設關閉。獨立模式同時寫入 agent-home 的 todo_gate_enabled。變更後 soft-respawn。",
+  "settings.todoGate.softRespawnNote":
+    "變更 Todo 門控或最大觸發次數會 soft-respawn 已連線的 Agent，以便下一行程重新載入 flag 與獨立 agent-home 設定。",
+  "settings.todoGate.cliTooOld":
+    "目前 CLI 看起來低於 {min}（TodoGate）。啟用仍會保存在應用設定中；若 --todo-gate 未知，啟動可能 soft-fail。",
+  "settings.todoGate.activity.na":
+    "門控活動：N/A — 應用未從 host/CLI 接收 TodoGate 觸發訊號（不會編造次數）。",
+  "settings.todoGate.activity.unavailable":
+    "門控活動：不可用（host soft-fail）— 不等於 0 次觸發。",
+  "settings.todoGate.activity.idle":
+    "門控活動：本 prompt 0 次觸發（上限 {max}）。",
+  "settings.todoGate.activity.fired":
+    "門控活動：本 prompt 已觸發 {n} / {max} 次。",
   "settings.todoGateMaxFires": "Todo 門控最大觸發次數",
   "settings.todoGateMaxFiresDesc":
-    "每個 prompt 最多觸發 TodoGate 次數（1–20，預設 3）。獨立模式寫入 agent-home config.toml 的 todo_gate_max_fires_per_prompt。變更後 soft-respawn。",
+    "每個 prompt 最多觸發 TodoGate 次數（1–20，預設 3）。僅設定鍵 todo_gate_max_fires_per_prompt — 無 CLI flag。獨立 agent-home 寫入生效；變更後 soft-respawn。",
+  "settings.todoGateMaxFires.effective":
+    "有效最大觸發次數：{n}（限制 {min}–{max}，預設 {default}）。",
+  "settings.todoGateMaxFires.clamped":
+    "值已調整到允許範圍（{min}–{max}；空/無效 → 預設 {default}）。",
+  "settings.todoGateMaxFires.inactive":
+    "Todo 門控關閉時不生效。該值仍會儲存，開啟後門控時生效（獨立模式寫入設定）。",
+  "settings.todoGateMaxFires.independent":
+    "獨立模式：應用將 todo_gate_max_fires_per_prompt 寫入 agent-home config.toml。沒有 --todo-gate-max-fires CLI flag。",
+  "settings.todoGateMaxFires.shared":
+    "共用模式：應用會儲存最大觸發次數，但不會改寫 ~/.grok。啟用仍透過 --todo-gate 生效；最大次數跟隨 CLI / 你的 ~/.grok 設定 — 應用設定不會寫入共用設定。",
   "settings.workflows": "Grok Build 工作流程",
   "settings.workflowsDesc":
     "開啟後，獨立模式將頂層 workflows_enabled 寫入 agent-home config.toml，以便 Grok Build 執行 Rhai 工作流程腳本。預設關閉。變更後 soft-respawn。共享模式不會改寫 ~/.grok。",
@@ -4324,8 +4414,8 @@ export const zhTW: Record<MessageKey, string> = {
   "ext.hooks.docs": "Hooks 指南",
   "ext.hooks.activity.title": "最近活動",
   "ext.hooks.activity.desc":
-    "本應用程式工作階段內觀察到的最近 hook 執行（ACP 通知、工具失敗與 agent 日誌）。密鑰已脫敏。",
-  "ext.hooks.activity.empty": "本工作階段尚未記錄 hook 活動",
+    "本應用程式觀察到的最近 hook 結果（ACP 通知、工具失敗、agent 日誌與試跑）。保存在本機本地；密鑰已脫敏。空列表表示尚未記錄，不代表 hooks 從未在離線時執行。",
+  "ext.hooks.activity.empty": "尚未記錄 hook 活動",
   "ext.hooks.activity.emptyFilter": "沒有符合此篩選的活動",
   "ext.hooks.activity.ok": "成功",
   "ext.hooks.activity.fail": "失敗",
@@ -4336,7 +4426,7 @@ export const zhTW: Record<MessageKey, string> = {
   "ext.hooks.activity.clear": "清空活動",
   "ext.hooks.activity.clearConfirmTitle": "清空 hook 活動？",
   "ext.hooks.activity.clearConfirmMessage":
-    "將移除此應用程式工作階段內全部最近 hook 活動記錄，此操作無法復原。",
+    "將移除本機保存的 {count} 條最近 hook 活動記錄，此操作無法復原。",
   "ext.hooks.activity.clearConfirmOk": "清空",
   "ext.hooks.activity.sourceDebug": "試跑",
   "ext.hooks.try.hookName": "Hook 名稱",
@@ -4735,6 +4825,9 @@ export const zhTW: Record<MessageKey, string> = {
   "automations.honesty.launchAgentTitle": "macOS LaunchAgent 助手",
   "automations.honesty.launchAgentBody":
     "可選：僅在登入與崩潰後啟動完整應用——不是無介面排程守護行程。",
+  "automations.honesty.oneShotTitle": "一次性觸發助手",
+  "automations.honesty.oneShotBody":
+    "完全結束後：使用 --fire-due-schedules（或 fire-due-schedules.sh）啟動應用。最多觸發一個到期任務後退出；無到期任務或 CLI 缺失時軟失敗——不是 KeepAlive 守護行程。",
   "automations.launchAgent.title": "macOS LaunchAgent 助手",
   "automations.launchAgent.desc":
     "可選：在應用資料目錄產生助手腳本，並安裝使用者級 LaunchAgent，在登入時啟動完整 Grok 應用，並在崩潰後重新啟動。不是無介面排程守護行程——任務仍在應用行程內（視窗或系統匣）觸發。",
@@ -4770,6 +4863,22 @@ export const zhTW: Record<MessageKey, string> = {
   "automations.history.clearBody":
     "將刪除本機已觀察到的執行列表，且無法復原。已排程任務本身不受影響。",
   "automations.history.clearConfirm": "清除",
+  "automations.oneshot.title": "一次性觸發已排程任務",
+  "automations.oneshot.desc":
+    "系統匣駐留可在行程存活期間持續檢查。完全結束後，可用 {flag}（應用資料目錄中的助手腳本 {script}）最多觸發一個到期任務（無需完整互動介面），然後退出。",
+  "automations.oneshot.honesty":
+    "不是 KeepAlive 守護行程，也不是持續背景排程。無到期任務、CLI 缺失或專案未信任時軟失敗。不會自動批准工具（不發明 YOLO）。",
+  "automations.oneshot.reveal": "顯示一次性助手檔案",
+  "automations.oneshot.outcome.fired": "一次性助手已觸發到期的已排程任務。",
+  "automations.oneshot.outcome.noneDue":
+    "一次性助手未找到到期任務（無需執行）。",
+  "automations.oneshot.outcome.busy":
+    "一次性助手已略過——目前已有 Agent 回合進行中。",
+  "automations.oneshot.outcome.error":
+    "一次性助手無法觸發（CLI 缺失、專案未信任或連線失敗）。已軟失敗。",
+  "automations.oneshot.outcome.alreadyClaimed":
+    "一次性助手已略過——此到期槽位已在本行程中認領。",
+  "automations.oneshot.outcome.unknown": "一次性助手以未知結果結束。",
   "automations.aiComposerHint":
     "用自然語言描述要做什麼、多久一次——準備好後 Grok 會自動建立已排程任務。",
   "automations.createdToast": "已排程：{title}",

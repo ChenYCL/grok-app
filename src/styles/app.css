@@ -4464,6 +4464,80 @@ html[data-sidebar-density="compact"] .session-row__meta {
   margin-top: 10px;
 }
 
+.settings-archived-age__btn--empty {
+  opacity: 0.72;
+}
+
+.settings-archived-age__hint {
+  margin-top: 10px;
+  font-size: 12.5px;
+  line-height: 1.4;
+  color: var(--text-tertiary);
+}
+
+.settings-archived-age__hint--empty {
+  color: var(--text-tertiary);
+  font-style: italic;
+}
+
+/* Archive-by-age pro confirm (GlassModal body) */
+.archive-age-modal {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+}
+
+.archive-age-modal__msg {
+  margin: 0;
+  white-space: pre-wrap;
+  font-size: 13.5px;
+  line-height: 1.45;
+  color: var(--text-secondary);
+}
+
+.archive-age-modal__preview {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-elevated, var(--bg-card));
+}
+
+.archive-age-modal__preview-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-tertiary);
+}
+
+.archive-age-modal__list {
+  margin: 0;
+  padding: 0 0 0 1.1em;
+  list-style: disc;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  max-height: 180px;
+  overflow: auto;
+}
+
+.archive-age-modal__item {
+  font-size: 13px;
+  line-height: 1.35;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.archive-age-modal__more {
+  font-size: 12px;
+  color: var(--text-tertiary);
+}
+
 .settings-archived-toolbar {
   display: flex;
   align-items: center;
@@ -17520,6 +17594,11 @@ textarea::-webkit-scrollbar-thumb:active,
   color: var(--text-tertiary);
 }
 
+.auto-page__bg-row-desc--muted {
+  opacity: 0.88;
+  font-size: 11.5px;
+}
+
 .auto-page__bg-row-actions {
   margin-top: 6px;
 }
@@ -19420,6 +19499,11 @@ div.composer__input:empty::before {
   user-select: none;
 }
 
+.fork-confirm__restore--disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
 .rewind-confirm__restore input,
 .fork-confirm__restore input {
   margin-top: 2px;
@@ -20576,6 +20660,13 @@ div.composer__input:empty::before {
 .ext-hooks-activity__chips {
   margin: 8px 0 4px;
   flex-wrap: wrap;
+}
+
+.ext-hooks-activity__count {
+  margin-left: 4px;
+  opacity: 0.72;
+  font-variant-numeric: tabular-nums;
+  font-size: 0.92em;
 }
 
 .ext-hooks-activity__list {

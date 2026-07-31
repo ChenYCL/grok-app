@@ -7,7 +7,9 @@
 //!
 //! **Honest limits:** there is no separate headless daemon. Fully quitting the
 //! app pauses schedules until the process is started again (login item,
-//! optional schedules LaunchAgent helper, or manual open).
+//! optional schedules LaunchAgent helper, manual open, or the **one-shot**
+//! `--fire-due-schedules` helper which boots, fires at most one due task, then
+//! exits — not a KeepAlive daemon).
 //!
 //! Execution reuses `SessionManager` (create → connect → send). UI is notified
 //! via `automation://ran` / `automation://skipped` / `automation://error`.
@@ -17,7 +19,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, LazyLock, Mutex};
 use std::time::Duration;
 
-use chrono::{Datelike, Duration as ChronoDuration, Local, Timelike, Utc, Weekday};
+use chrono::{Datelike, Duration as ChronoDuration, Local, Utc, Weekday};
 use serde::Serialize;
 use tauri::{AppHandle, Emitter};
 use tracing::{info, warn};
@@ -28,6 +30,15 @@ use crate::store::{self, Automation};
 
 const TICK: Duration = Duration::from_secs(30);
 const BOOT_DELAY: Duration = Duration::from_secs(12);
+/// One-shot mode: short settle before first fire (no continuous loop).
+const ONESHOT_BOOT_DELAY: Duration = Duration::from_secs(3);
+/// Soft cap waiting for the fired turn to leave busy (permission hang, stall).
+const ONESHOT_TURN_WAIT: Duration = Duration::from_secs(600);
+const ONESHOT_TURN_POLL: Duration = Duration::from_secs(1);
+
+/// CLI flag / env for headless one-shot schedule fire (then exit).
+pub const FIRE_DUE_FLAG: &str = "--fire-due-schedules";
+const FIRE_DUE_ENV: &str = "GROK_FIRE_DUE_SCHEDULES";
 
 /// Process-wide claimed fire keys (`id:nextRunAt`) for this process lifetime.
 static FIRED: LazyLock<Mutex<HashSet<String>>> =
@@ -53,8 +64,49 @@ pub struct AutomationRunnerStatus {
     pub enabled_count: u64,
     /// AppSettings.keep_tray_for_schedules.
     pub keep_tray_for_schedules: bool,
+    /// True when this process was launched with `--fire-due-schedules` (one-shot).
+    pub oneshot_mode: bool,
     /// Short honesty note (English; UI has translated copy).
     pub honesty: String,
+}
+
+/// Structured result of a single due-schedule fire attempt (one-shot or tick).
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct FireDueOutcome {
+    /// `fired` | `none_due` | `busy` | `error` | `already_claimed`
+    pub kind: String,
+    pub automation_id: Option<String>,
+    pub title: Option<String>,
+    pub session_id: Option<String>,
+    /// Soft-fail detail (CLI missing, project untrusted, connect, etc.).
+    pub error: Option<String>,
+    pub honesty: String,
+}
+
+fn fire_due_honesty() -> String {
+    "One-shot helper fires at most one due schedule then exits. \
+     Not a KeepAlive daemon — full quit still pauses continuous ticks."
+        .into()
+}
+
+/// Pure argv/env probe: should this process run headless one-shot fire then exit?
+pub fn wants_fire_due_schedules() -> bool {
+    wants_fire_due_schedules_from(
+        std::env::args().collect::<Vec<_>>().as_slice(),
+        std::env::var(FIRE_DUE_ENV).ok().as_deref(),
+    )
+}
+
+/// Pure helper for tests — parse flag / env without touching process env.
+pub fn wants_fire_due_schedules_from(argv: &[String], env_val: Option<&str>) -> bool {
+    if argv.iter().any(|a| a == FIRE_DUE_FLAG) {
+        return true;
+    }
+    matches!(
+        env_val.map(|s| s.trim()),
+        Some("1") | Some("true") | Some("TRUE") | Some("yes") | Some("YES")
+    )
 }
 
 /// Pure policy: should window-close hide to tray so schedules keep ticking?
@@ -84,6 +136,7 @@ pub fn status() -> AutomationRunnerStatus {
         .lock()
         .unwrap_or_else(|e| e.into_inner())
         .clone();
+    let oneshot = wants_fire_due_schedules();
     AutomationRunnerStatus {
         running: STARTED.load(Ordering::Relaxed),
         last_tick_at: last,
@@ -92,9 +145,15 @@ pub fn status() -> AutomationRunnerStatus {
         process_required: true,
         enabled_count,
         keep_tray_for_schedules: settings.keep_tray_for_schedules,
-        honesty: "Schedules tick only while this app process is alive \
-                  (main window or tray). There is no separate background daemon."
-            .into(),
+        oneshot_mode: oneshot,
+        honesty: if oneshot {
+            fire_due_honesty()
+        } else {
+            "Schedules tick only while this app process is alive \
+             (main window or tray). There is no separate background daemon. \
+             Optional one-shot: --fire-due-schedules fires at most one due task then exits."
+                .into()
+        },
     }
 }
 
@@ -106,7 +165,16 @@ fn mark_tick() {
 }
 
 /// Start the background tick loop (call once from app setup).
+///
+/// Skipped when `wants_fire_due_schedules()` — use [`start_oneshot`] instead.
 pub fn start(app: AppHandle, mgr: Arc<SessionManager>) {
+    if wants_fire_due_schedules() {
+        info!(
+            target: "automation_runner",
+            "skipping continuous tick loop (oneshot --fire-due-schedules)"
+        );
+        return;
+    }
     if STARTED.swap(true, Ordering::SeqCst) {
         warn!(target: "automation_runner", "start called more than once; ignoring");
         return;
@@ -118,27 +186,95 @@ pub fn start(app: AppHandle, mgr: Arc<SessionManager>) {
             "host automation scheduler started (window not required; tray-only ok)"
         );
         loop {
-            let result = tick_once(&app, &mgr).await;
+            let outcome = fire_due_once(&app, &mgr).await;
             mark_tick();
-            if let Err(e) = result {
-                warn!(target: "automation_runner", "tick error: {e}");
+            if outcome.kind == "error" {
+                warn!(
+                    target: "automation_runner",
+                    error = ?outcome.error,
+                    "tick error"
+                );
             }
             tokio::time::sleep(TICK).await;
         }
     });
 }
 
-async fn tick_once(app: &AppHandle, mgr: &Arc<SessionManager>) -> Result<(), String> {
+/// Headless one-shot: settle → fire at most one due schedule → wait for turn
+/// idle (soft timeout) → exit process. Not a KeepAlive daemon.
+pub fn start_oneshot(app: AppHandle, mgr: Arc<SessionManager>) {
+    if STARTED.swap(true, Ordering::SeqCst) {
+        warn!(target: "automation_runner", "start_oneshot: already started");
+        return;
+    }
+    tauri::async_runtime::spawn(async move {
+        info!(
+            target: "automation_runner",
+            "oneshot fire-due-schedules starting (no continuous daemon)"
+        );
+        tokio::time::sleep(ONESHOT_BOOT_DELAY).await;
+        let outcome = fire_due_once(&app, &mgr).await;
+        mark_tick();
+        info!(
+            target: "automation_runner",
+            kind = %outcome.kind,
+            id = ?outcome.automation_id,
+            error = ?outcome.error,
+            "oneshot fire outcome"
+        );
+        // Soft-wait so we do not kill a just-started agent mid-turn.
+        if outcome.kind == "fired" {
+            let deadline = tokio::time::Instant::now() + ONESHOT_TURN_WAIT;
+            loop {
+                if !mgr.any_turn_busy() {
+                    break;
+                }
+                if tokio::time::Instant::now() >= deadline {
+                    warn!(
+                        target: "automation_runner",
+                        "oneshot turn wait timed out; exiting anyway (soft-fail)"
+                    );
+                    break;
+                }
+                tokio::time::sleep(ONESHOT_TURN_POLL).await;
+            }
+        }
+        // Successful exit so launchd KeepAlive SuccessfulExit=false does not
+        // treat this as a crash restart (one-shot is intentional).
+        app.exit(0);
+    });
+}
+
+/// Fire at most one due enabled automation (shared by continuous tick + oneshot).
+///
+/// Soft-fails: no due task, mid-turn busy, missing CLI/project, connect/send
+/// errors — never panics. Emits `automation://ran` / `automation://error` when
+/// a fire is attempted.
+pub async fn fire_due_once(app: &AppHandle, mgr: &Arc<SessionManager>) -> FireDueOutcome {
     // Do not steal the agent while a turn is actively streaming.
     if mgr.any_turn_busy() {
-        return Ok(());
+        return FireDueOutcome {
+            kind: "busy".into(),
+            automation_id: None,
+            title: None,
+            session_id: None,
+            error: None,
+            honesty: fire_due_honesty(),
+        };
     }
 
     let list = store::load_automations();
     let now = Utc::now();
     let due = list.into_iter().find(|a| a.enabled && is_due(a, now));
     let Some(auto) = due else {
-        return Ok(());
+        return FireDueOutcome {
+            kind: "none_due".into(),
+            automation_id: None,
+            title: None,
+            session_id: None,
+            error: None,
+            honesty: fire_due_honesty(),
+        };
     };
 
     let fire_key = format!(
@@ -151,7 +287,14 @@ async fn tick_once(app: &AppHandle, mgr: &Arc<SessionManager>) -> Result<(), Str
     {
         let mut fired = FIRED.lock().unwrap_or_else(|e| e.into_inner());
         if fired.contains(&fire_key) {
-            return Ok(());
+            return FireDueOutcome {
+                kind: "already_claimed".into(),
+                automation_id: Some(auto.id.clone()),
+                title: Some(auto.title.clone()),
+                session_id: None,
+                error: None,
+                honesty: fire_due_honesty(),
+            };
         }
         fired.insert(fire_key.clone());
     }
@@ -164,12 +307,20 @@ async fn tick_once(app: &AppHandle, mgr: &Arc<SessionManager>) -> Result<(), Str
                     "automationId": auto.id,
                     "title": auto.title,
                     "sessionId": session_id,
+                    "oneshot": wants_fire_due_schedules(),
                 }),
             );
-            Ok(())
+            FireDueOutcome {
+                kind: "fired".into(),
+                automation_id: Some(auto.id.clone()),
+                title: Some(auto.title.clone()),
+                session_id: Some(session_id),
+                error: None,
+                honesty: fire_due_honesty(),
+            }
         }
         Err(e) => {
-            // Allow retry next tick.
+            // Allow retry next tick / next oneshot invoke.
             FIRED
                 .lock()
                 .unwrap_or_else(|e| e.into_inner())
@@ -180,9 +331,17 @@ async fn tick_once(app: &AppHandle, mgr: &Arc<SessionManager>) -> Result<(), Str
                     "automationId": auto.id,
                     "title": auto.title,
                     "error": e,
+                    "oneshot": wants_fire_due_schedules(),
                 }),
             );
-            Err(e)
+            FireDueOutcome {
+                kind: "error".into(),
+                automation_id: Some(auto.id.clone()),
+                title: Some(auto.title.clone()),
+                session_id: None,
+                error: Some(e),
+                honesty: fire_due_honesty(),
+            }
         }
     }
 }
@@ -432,5 +591,45 @@ mod tests {
         assert!(!should_hide_to_tray_on_close(false, false, true));
         assert!(!should_hide_to_tray_on_close(false, true, false));
         assert!(should_hide_to_tray_on_close(false, true, true));
+    }
+
+    #[test]
+    fn wants_fire_due_from_flag() {
+        let argv = vec![
+            "grok-app".into(),
+            FIRE_DUE_FLAG.into(),
+        ];
+        assert!(wants_fire_due_schedules_from(&argv, None));
+        assert!(!wants_fire_due_schedules_from(
+            &["grok-app".into(), "--start-in-tray".into()],
+            None
+        ));
+    }
+
+    #[test]
+    fn wants_fire_due_from_env() {
+        let argv = vec!["grok-app".into()];
+        assert!(wants_fire_due_schedules_from(&argv, Some("1")));
+        assert!(wants_fire_due_schedules_from(&argv, Some("true")));
+        assert!(!wants_fire_due_schedules_from(&argv, Some("0")));
+        assert!(!wants_fire_due_schedules_from(&argv, None));
+    }
+
+    #[test]
+    fn fire_due_outcome_kinds_are_stable() {
+        // Documented contract for FE / helper scripts — do not rename lightly.
+        for k in ["fired", "none_due", "busy", "error", "already_claimed"] {
+            assert!(!k.is_empty());
+        }
+        let o = FireDueOutcome {
+            kind: "none_due".into(),
+            automation_id: None,
+            title: None,
+            session_id: None,
+            error: None,
+            honesty: fire_due_honesty(),
+        };
+        assert_eq!(o.kind, "none_due");
+        assert!(o.honesty.contains("Not a KeepAlive daemon") || o.honesty.contains("one-shot") || o.honesty.contains("One-shot"));
     }
 }

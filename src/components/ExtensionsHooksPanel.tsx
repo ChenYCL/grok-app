@@ -1,6 +1,7 @@
 /**
  * Settings → Extensions → Hooks: list / open folders, real try-run,
- * stdin Validate, classified GlassModal results, recent activity.
+ * stdin Validate, classified GlassModal results, recent activity
+ * (localStorage ring + filter chips + clear honesty).
  */
 import { useCallback, useEffect, useMemo, useState } from "react";
 import * as api from "@/lib/api";
@@ -15,14 +16,23 @@ import {
 } from "@/components/icons";
 import { isCliMissingError } from "@/lib/extensionsUi";
 import {
+  clearHookActivities,
   formatHookActivityTime,
   listHookActivities,
+  newHookActivityId,
+  planClearHookActivities,
   pushHookActivity,
   redactHookDetail,
   subscribeHookActivities,
   type HookActivityOutcome,
   type HookActivityRecord,
 } from "@/lib/hooksDebug";
+import {
+  countHookActivityOutcomes,
+  filterHookActivitiesByOutcome,
+  resolveHookActivityEmptyState,
+  type HookActivityOutcomeFilter,
+} from "@/lib/hookOverride";
 import {
   clampHooksTryTimeout,
   formatHooksTryRunOutput,
@@ -61,6 +71,13 @@ const SAMPLE_STDIN = `{
   "toolInput": { "command": "echo hi" }
 }`;
 
+const OUTCOME_FILTERS: HookActivityOutcomeFilter[] = [
+  "all",
+  "ok",
+  "fail",
+  "skip",
+];
+
 function outcomeBadgeClass(outcome: HookActivityOutcome): string {
   if (outcome === "ok") return "ext-badge ext-badge--ok";
   if (outcome === "fail") return "ext-badge ext-badge--fail";
@@ -75,6 +92,16 @@ function outcomeLabel(
   if (outcome === "fail") return tr("ext.hooks.activity.fail");
   if (outcome === "skip") return tr("ext.hooks.activity.skip");
   return tr("ext.hooks.activity.info");
+}
+
+function filterChipLabel(
+  id: HookActivityOutcomeFilter,
+  tr: ReturnType<typeof createT>,
+): string {
+  if (id === "all") return tr("ext.hooks.activity.filterAll");
+  if (id === "ok") return tr("ext.hooks.activity.ok");
+  if (id === "fail") return tr("ext.hooks.activity.fail");
+  return tr("ext.hooks.activity.skip");
 }
 
 function severityMsgClass(
@@ -106,6 +133,9 @@ export function ExtensionsHooksPanel({
   const [activity, setActivity] = useState<HookActivityRecord[]>(() => [
     ...listHookActivities(),
   ]);
+  const [outcomeFilter, setOutcomeFilter] =
+    useState<HookActivityOutcomeFilter>("all");
+  const [clearConfirmOpen, setClearConfirmOpen] = useState(false);
 
   // Real try-run panel
   const [tryOpen, setTryOpen] = useState(true);
@@ -204,6 +234,33 @@ export function ExtensionsHooksPanel({
     setActivity([...listHookActivities()]);
     return subscribeHookActivities((recs) => setActivity([...recs]));
   }, []);
+
+  const filteredActivity = useMemo(
+    () => filterHookActivitiesByOutcome(activity, outcomeFilter),
+    [activity, outcomeFilter],
+  );
+
+  const activityCounts = useMemo(
+    () => countHookActivityOutcomes(activity),
+    [activity],
+  );
+
+  const activityEmptyState = useMemo(
+    () =>
+      resolveHookActivityEmptyState(activity.length, filteredActivity.length),
+    [activity.length, filteredActivity.length],
+  );
+
+  const clearPlan = useMemo(
+    () => planClearHookActivities(activity),
+    [activity],
+  );
+
+  const confirmClearActivity = () => {
+    clearHookActivities();
+    setClearConfirmOpen(false);
+    setOutcomeFilter("all");
+  };
 
   const load = useCallback(async () => {
     if (!api.isTauri()) {
@@ -372,7 +429,7 @@ export function ExtensionsHooksPanel({
         }),
       });
       pushHookActivity({
-        id: `try-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
+        id: newHookActivityId(),
         type: "TryRun",
         outcome: hooksTryRunActivityOutcome(res),
         atMs: Date.now(),
@@ -395,6 +452,25 @@ export function ExtensionsHooksPanel({
         kinds: kindLabels,
       });
       openPresentation("try", presentation);
+      // Honest fail row when host throws (never invent success).
+      const baseName = path.split(/[/\\]/).pop() || path;
+      pushHookActivity({
+        id: newHookActivityId(),
+        type: "TryRun",
+        outcome: "fail",
+        atMs: Date.now(),
+        detail: redactHookDetail(
+          [
+            presentation.summary,
+            hooksValidateKindLabel(presentation.kind, kindLabels),
+            baseName,
+          ]
+            .filter(Boolean)
+            .join(" · "),
+        ),
+        source: "try",
+        hookName: baseName,
+      });
     } finally {
       setTryRunning(false);
       setBusy(null);
@@ -776,15 +852,57 @@ export function ExtensionsHooksPanel({
       </div>
 
       <div className="settings-card ext-card ext-hooks-activity">
-        <h3 className="settings-page__h2 ext-hooks-activity__title">
-          {tr("ext.hooks.activity.title")}
-        </h3>
+        <div className="ext-hooks-activity__head">
+          <h3 className="settings-page__h2 ext-hooks-activity__title">
+            {tr("ext.hooks.activity.title")}
+          </h3>
+          {!clearPlan.empty ? (
+            <button
+              type="button"
+              className="btn btn--ghost btn--sm"
+              onClick={() => setClearConfirmOpen(true)}
+            >
+              {tr("ext.hooks.activity.clear")}
+            </button>
+          ) : null}
+        </div>
         <p className="ext-section-note">{tr("ext.hooks.activity.desc")}</p>
-        {activity.length === 0 ? (
-          <p className="ext-field-hint">{tr("ext.hooks.activity.empty")}</p>
+        {activity.length > 0 ? (
+          <div
+            className="settings-seg ext-hooks-activity__chips"
+            role="tablist"
+            aria-label={tr("ext.hooks.activity.filterLabel")}
+          >
+            {OUTCOME_FILTERS.map((id) => (
+              <button
+                key={id}
+                type="button"
+                role="tab"
+                aria-selected={outcomeFilter === id}
+                className={
+                  "settings-seg__btn" + (outcomeFilter === id ? " is-on" : "")
+                }
+                onClick={() => setOutcomeFilter(id)}
+              >
+                {filterChipLabel(id, tr)}
+                <span className="ext-hooks-activity__count" aria-hidden>
+                  {activityCounts[id]}
+                </span>
+              </button>
+            ))}
+          </div>
+        ) : null}
+        {activityEmptyState === "empty" ? (
+          <p className="ext-field-hint" role="status">
+            {tr("ext.hooks.activity.empty")}
+          </p>
+        ) : activityEmptyState === "filtered" ? (
+          <p className="ext-field-hint" role="status">
+            {tr("ext.hooks.activity.emptyFilter")}
+          </p>
         ) : (
           <ul className="ext-list ext-hooks-activity__list">
-            {activity.map((row) => (
+            {filteredActivity.map((row) => (
               <li key={row.id} className="ext-item ext-hooks-activity__item">
                 <div className="ext-item__head">
                   <span className="ext-item__name">{row.type}</span>
@@ -797,6 +915,10 @@ export function ExtensionsHooksPanel({
                   {row.source === "try" ? (
                     <span className="ext-badge ext-badge--muted">
                       {tr("ext.hooks.try.badgeTry")}
+                    </span>
+                  ) : row.source === "debug" ? (
+                    <span className="ext-badge ext-badge--muted">
+                      {tr("ext.hooks.activity.sourceDebug")}
                     </span>
                   ) : null}
                 </div>
@@ -813,6 +935,38 @@ export function ExtensionsHooksPanel({
           </ul>
         )}
       </div>
+
+      <GlassModal
+        open={clearConfirmOpen && !clearPlan.empty}
+        onClose={() => setClearConfirmOpen(false)}
+        title={tr("ext.hooks.activity.clearConfirmTitle")}
+        size="sm"
+        closeLabel={tr("common.close")}
+        footer={
+          <>
+            <button
+              type="button"
+              className="btn btn--ghost"
+              onClick={() => setClearConfirmOpen(false)}
+            >
+              {tr("common.cancel")}
+            </button>
+            <button
+              type="button"
+              className="btn btn--solid"
+              onClick={confirmClearActivity}
+            >
+              {tr("ext.hooks.activity.clearConfirmOk")}
+            </button>
+          </>
+        }
+      >
+        <p>
+          {tr("ext.hooks.activity.clearConfirmMessage", {
+            count: String(clearPlan.count),
+          })}
+        </p>
+      </GlassModal>
 
       <GlassModal
         open={resultOpen && !!resultPresentation}
