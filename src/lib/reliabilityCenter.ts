@@ -11,6 +11,7 @@ import {
   type SessionTitleLookup,
 } from "./agentActivity";
 import type { EndOfTurnReason } from "./endOfTurn";
+import { redact } from "./redact";
 import type { SessionLiveMap } from "./sessionLiveStore";
 
 export type ReliabilityBusySession = {
@@ -707,6 +708,9 @@ export function recordStallHistoryFromSignal(
   );
 }
 
+/** Kind chip filter for stall history: `"all"` or a concrete kind. */
+export type StallHistoryKindFilter = ReliabilityStallKind | "all";
+
 /**
  * Filter history by free-text query and/or kind chip.
  * Empty / whitespace query matches all (still respects kind filter).
@@ -717,7 +721,7 @@ export function filterStallHistory(
   entries: readonly StallHistoryEntry[],
   opts?: {
     query?: string | null;
-    kind?: ReliabilityStallKind | "all" | null;
+    kind?: StallHistoryKindFilter | null;
   },
 ): StallHistoryEntry[] {
   const q = (opts?.query ?? "").trim().toLowerCase();
@@ -747,6 +751,73 @@ export function filterStallHistory(
   });
 }
 
+/** True when kind chip or free-text query would narrow the list. */
+export function hasActiveStallHistoryFilters(opts?: {
+  query?: string | null;
+  kind?: StallHistoryKindFilter | null;
+}): boolean {
+  const q = (opts?.query ?? "").trim();
+  if (q) return true;
+  const kind = opts?.kind;
+  return Boolean(kind && kind !== "all" && STALL_KINDS.has(kind));
+}
+
+/**
+ * Pure clear-all plan for the stall history ring.
+ * Never mutates storage; never includes titles/reasons in logMeta.
+ */
+export type ClearStallHistoryPlan = {
+  ok: true;
+  /** Rows that would be removed. */
+  count: number;
+  /** Distinct session ids present (sorted). No titles. */
+  sessionIds: string[];
+  /** Per-kind counts among rows being cleared. */
+  kindCounts: Partial<Record<ReliabilityStallKind, number>>;
+  /** Next list after clear (always empty). */
+  next: StallHistoryEntry[];
+  /** Safe meta for logs — count only. */
+  logMeta: { clearedCount: number } | null;
+};
+
+/**
+ * Plan wiping the stall history ring (pure).
+ * Use {@link applyClearStallHistoryPlan} / {@link clearStallHistory} to commit.
+ */
+export function planClearStallHistory(
+  entries: readonly StallHistoryEntry[] | null | undefined,
+): ClearStallHistoryPlan {
+  const list = Array.isArray(entries) ? parseStallHistory(entries) : [];
+  const kindCounts: Partial<Record<ReliabilityStallKind, number>> = {};
+  const sessionSet = new Set<string>();
+  for (const e of list) {
+    kindCounts[e.kind] = (kindCounts[e.kind] ?? 0) + 1;
+    if (e.sessionId) sessionSet.add(e.sessionId);
+  }
+  const count = list.length;
+  return {
+    ok: true,
+    count,
+    sessionIds: [...sessionSet].sort(),
+    kindCounts,
+    next: [],
+    logMeta: count > 0 ? { clearedCount: count } : null,
+  };
+}
+
+/**
+ * Apply a clear-all plan to storage and notify listeners.
+ * Returns the empty list.
+ */
+export function applyClearStallHistoryPlan(
+  plan: ClearStallHistoryPlan,
+  storage: StallHistoryStorage = defaultStallHistoryStorage(),
+): StallHistoryEntry[] {
+  saveStallHistory(plan.next, storage);
+  notifyStallHistoryChange([]);
+  return [];
+}
+
 /**
  * Wipe the local stall timeline (empty list + notify listeners).
  * Returns the empty list. Safe no-op on storage failure.
@@ -754,9 +825,116 @@ export function filterStallHistory(
 export function clearStallHistory(
   storage: StallHistoryStorage = defaultStallHistoryStorage(),
 ): StallHistoryEntry[] {
-  saveStallHistory([], storage);
-  notifyStallHistoryChange([]);
-  return [];
+  const plan = planClearStallHistory(loadStallHistory(storage));
+  return applyClearStallHistoryPlan(plan, storage);
+}
+
+/* ── Stall history export (redacted JSON download) ──────────────────────── */
+
+/** One row in a stall-history export file (known fields only; no tier/secrets). */
+export type StallHistoryExportSignal = {
+  id: string;
+  sessionId: string | null;
+  title: string | null;
+  kind: ReliabilityStallKind;
+  stallSeconds: number | null;
+  reason: string | null;
+  at: number;
+};
+
+/**
+ * Redacted stall history export (download / clipboard).
+ * Structured fields only — titles/reasons re-run through {@link redact}.
+ */
+export type StallHistoryExport = {
+  kind: "stall_history";
+  generatedAt: string;
+  source: "stall_timeline";
+  count: number;
+  /** Echo of filters used to select rows (never free-form secrets). */
+  filter: {
+    query: string | null;
+    kind: StallHistoryKindFilter;
+  };
+  signals: StallHistoryExportSignal[];
+};
+
+function redactStallField(
+  raw: string | null | undefined,
+  max: number,
+): string | null {
+  if (typeof raw !== "string") return null;
+  const t = redact(raw).replace(/\u0000/g, "").replace(/\s+/g, " ").trim();
+  if (!t) return null;
+  return t.slice(0, Math.max(0, max));
+}
+
+/**
+ * Build a download-ready redacted export from stall history rows.
+ * Prefer filtered rows from {@link filterStallHistory}. Never invents data.
+ */
+export function buildStallHistoryExport(
+  entries: readonly StallHistoryEntry[],
+  opts?: {
+    nowMs?: number;
+    max?: number;
+    generatedAt?: string;
+    query?: string | null;
+    kind?: StallHistoryKindFilter | null;
+  },
+): StallHistoryExport {
+  const max = Math.max(
+    0,
+    Math.floor(opts?.max ?? STALL_HISTORY_MAX),
+  );
+  const generatedAt =
+    opts?.generatedAt ??
+    new Date(opts?.nowMs ?? Date.now()).toISOString();
+  const queryRaw = (opts?.query ?? "").trim();
+  const kindFilter: StallHistoryKindFilter =
+    opts?.kind && opts.kind !== "all" && STALL_KINDS.has(opts.kind)
+      ? opts.kind
+      : "all";
+
+  const out: StallHistoryExportSignal[] = [];
+  const seen = new Set<string>();
+  for (const e of entries) {
+    if (!e || typeof e !== "object") continue;
+    const parsed = parseStallHistoryEntry(e);
+    if (!parsed) continue;
+    if (seen.has(parsed.id)) continue;
+    seen.add(parsed.id);
+
+    out.push({
+      id: parsed.id.slice(0, STALL_HISTORY_TITLE_MAX),
+      sessionId: parsed.sessionId,
+      title: redactStallField(parsed.title, STALL_HISTORY_TITLE_MAX),
+      kind: parsed.kind,
+      stallSeconds: parsed.stallSeconds,
+      reason: redactStallField(parsed.reason, STALL_HISTORY_REASON_MAX) ?? "stall",
+      at: parsed.at,
+    });
+    if (out.length >= max) break;
+  }
+
+  return {
+    kind: "stall_history",
+    generatedAt,
+    source: "stall_timeline",
+    count: out.length,
+    filter: {
+      query: queryRaw ? queryRaw.slice(0, STALL_HISTORY_TITLE_MAX) : null,
+      kind: kindFilter,
+    },
+    signals: out,
+  };
+}
+
+/** Pretty JSON for client download (known fields only). */
+export function serializeStallHistoryExport(
+  snapshot: StallHistoryExport,
+): string {
+  return JSON.stringify(snapshot, null, 2);
 }
 
 /** Cap for support-bundle stall timeline rows (UI view is smaller; allow a bit more headroom). */
