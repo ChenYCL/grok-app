@@ -9902,3 +9902,57 @@ pub async fn streaming_messages_json_probe(
     .map_err(|e| format!("streaming_messages_json_probe: {e}"))
 }
 
+// ─── Tool / permission audit ledger ─────────────────────────────────────────
+
+/// Recent cross-session tool/permission audit rows (newest first). Soft-fail → [].
+#[tauri::command]
+pub async fn audit_ledger_list(
+    limit: Option<u32>,
+) -> Result<Vec<crate::audit_ledger::AuditLedgerEntry>, String> {
+    Ok(tauri::async_runtime::spawn_blocking(move || {
+        crate::audit_ledger::list_recent(limit)
+    })
+    .await
+    .map_err(|e| format!("audit_ledger_list: {e}"))?)
+}
+
+/// Clear the on-disk audit ledger (`{app_data}/audit/tool_ledger.jsonl`).
+#[tauri::command]
+pub async fn audit_ledger_clear() -> Result<serde_json::Value, String> {
+    tauri::async_runtime::spawn_blocking(|| crate::audit_ledger::clear_ledger())
+        .await
+        .map_err(|e| format!("audit_ledger_clear: {e}"))??;
+    Ok(serde_json::json!({ "ok": true }))
+}
+
+/// Export redacted JSONL via native save dialog.
+#[tauri::command]
+pub async fn audit_ledger_export() -> Result<serde_json::Value, String> {
+    let text = tauri::async_runtime::spawn_blocking(crate::audit_ledger::export_redacted_jsonl)
+        .await
+        .map_err(|e| format!("audit_ledger_export: {e}"))?;
+    if text.trim().is_empty() {
+        return Err("audit ledger is empty".into());
+    }
+    let stamp = chrono::Local::now().format("%Y%m%d-%H%M%S");
+    let name = format!("grok-app-audit-ledger-{stamp}.jsonl");
+    let tmp_dir = std::env::temp_dir();
+    let tmp = tmp_dir.join(&name);
+    tauri::async_runtime::spawn_blocking({
+        let tmp = tmp.clone();
+        let text = text.clone();
+        move || std::fs::write(&tmp, text).map_err(|e| format!("write temp: {e}"))
+    })
+    .await
+    .map_err(|e| format!("audit_ledger_export: {e}"))??;
+
+    save_and_reveal_file(
+        tmp,
+        "Export audit ledger",
+        &name,
+        "JSONL",
+        &["jsonl", "json", "txt"],
+    )
+    .await
+}
+

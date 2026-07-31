@@ -56,7 +56,8 @@ use crate::stream_stall::{
     stall_tier_from_evidence, stream_stall_message, StallTier,
 };
 use crate::turn_complete::{
-    note_tool_open_status, release_tool_from_open, should_defer_prompt_complete,
+    is_terminal_tool_status, note_tool_open_status, release_tool_from_open,
+    should_defer_prompt_complete,
 };
 
 /// Outcome of one stall-watchdog pass on a single live/background session.
@@ -731,7 +732,8 @@ impl SessionManager {
     }
 
     /// Apply tool_call status to open/terminal sets (live + background paths).
-    fn note_tool_status_on_session(s: &mut LiveSession, tool_call_id: &str, status: &str) {
+    /// Returns true when open-set membership changed (insert or remove).
+    fn note_tool_status_on_session(s: &mut LiveSession, tool_call_id: &str, status: &str) -> bool {
         note_tool_open_status(
             &mut s.open_tool_ids,
             &mut s.terminal_tool_ids,
@@ -739,7 +741,44 @@ impl SessionManager {
             tool_call_id,
             status,
             Instant::now(),
-        );
+        )
+    }
+
+    /// Soft-fail audit row for a tool_call start/end (never panics).
+    fn audit_tool_call(
+        session_id: &str,
+        project_path: Option<&str>,
+        tool_name: &str,
+        status: &str,
+        summary: Option<&str>,
+        open_changed: bool,
+        already_terminal: bool,
+    ) {
+        if tool_name.is_empty() && summary.is_none() {
+            // Still record with "unknown" when we have a real lifecycle edge.
+        }
+        let name = if tool_name.is_empty() { "tool" } else { tool_name };
+        if is_terminal_tool_status(status) {
+            if already_terminal {
+                return;
+            }
+            let outcome = crate::audit_ledger::outcome_from_tool_status(status)
+                .unwrap_or(crate::audit_ledger::OUTCOME_ERR);
+            crate::audit_ledger::record_tool_end(
+                Some(session_id),
+                project_path,
+                name,
+                outcome,
+                summary,
+            );
+        } else if open_changed {
+            crate::audit_ledger::record_tool_start(
+                Some(session_id),
+                project_path,
+                name,
+                summary,
+            );
+        }
     }
 
     /// Release open-tool accounting for background tasks (no journal write).
@@ -3419,7 +3458,6 @@ impl SessionManager {
                         return;
                     }
                 };
-                let _ = project_path; // reserved for future UI badge
                 if auto {
                     let acp = self.inner.lock().as_ref().and_then(|s| s.acp.clone());
                     if let Some(acp) = acp {
@@ -3438,6 +3476,13 @@ impl SessionManager {
                                 PermissionOutcome::Selected { option_id },
                             )
                             .await;
+                        crate::audit_ledger::record_permission(
+                            Some(&session_id),
+                            project_path.as_deref(),
+                            &tool_name,
+                            "auto_allow",
+                            Some(&title),
+                        );
                         let empty = {
                             let mut guard = self.inner.lock();
                             if let Some(s) = guard.as_mut() {
@@ -3465,6 +3510,13 @@ impl SessionManager {
                                 PermissionOutcome::Selected { option_id },
                             )
                             .await;
+                        crate::audit_ledger::record_permission(
+                            Some(&session_id),
+                            project_path.as_deref(),
+                            &tool_name,
+                            "auto_deny",
+                            Some(&title),
+                        );
                         let empty = {
                             let mut guard = self.inner.lock();
                             if let Some(s) = guard.as_mut() {
@@ -3479,6 +3531,12 @@ impl SessionManager {
                         Self::emit_empty_run_if_any(app, empty);
                     }
                 } else {
+                    crate::audit_ledger::remember_permission(
+                        &session_id,
+                        rpc_id,
+                        &tool_name,
+                        Some(&title),
+                    );
                     let req = UiPermissionRequest {
                         rpc_id,
                         session_id,
@@ -3574,20 +3632,30 @@ impl SessionManager {
                     }
                 }
 
-                let (app_sid, empty_run) = {
+                let (app_sid, project_path, empty_run, open_changed, already_terminal) = {
                     let mut guard = self.inner.lock();
                     if let Some(s) = guard.as_mut() {
                         // Tool events count as progress so long tools never false-stall (I06).
                         Self::touch_stream_progress_locked(s);
-                        if !tool_call_id.is_empty() {
-                            Self::note_tool_status_on_session(s, &tool_call_id, &status);
-                        }
+                        let already_terminal = !tool_call_id.is_empty()
+                            && s.terminal_tool_ids.contains(&tool_call_id);
+                        let open_changed = if !tool_call_id.is_empty() {
+                            Self::note_tool_status_on_session(s, &tool_call_id, &status)
+                        } else {
+                            false
+                        };
                         s.tools_this_turn = s.tools_this_turn.saturating_add(1);
                         // Tools settled → apply deferred prompt_complete if any (#52).
                         let empty = Self::try_finish_deferred_prompt_complete(s).flatten();
-                        (s.app_session_id.clone(), empty)
+                        (
+                            s.app_session_id.clone(),
+                            s.project_path.clone(),
+                            empty,
+                            open_changed,
+                            already_terminal,
+                        )
                     } else {
-                        (String::new(), None)
+                        (String::new(), None, None, false, false)
                     }
                 };
                 Self::emit_empty_run_if_any(app, empty_run);
@@ -3604,6 +3672,30 @@ impl SessionManager {
                 } else {
                     String::new()
                 };
+                // Cross-session tool audit (soft-fail; redacted summary).
+                if !app_sid.is_empty() {
+                    let audit_name = if !kind.is_empty() {
+                        kind.as_str()
+                    } else if !title.is_empty() {
+                        title.as_str()
+                    } else {
+                        "tool"
+                    };
+                    let audit_summary = if !live_title.is_empty() {
+                        Some(live_title.as_str())
+                    } else {
+                        detail.as_deref().or(path_out.as_deref())
+                    };
+                    Self::audit_tool_call(
+                        &app_sid,
+                        project_path.as_deref(),
+                        audit_name,
+                        &status,
+                        audit_summary,
+                        open_changed,
+                        already_terminal,
+                    );
+                }
                 let _ = app.emit(
                     "session://tool",
                     serde_json::json!({
@@ -4268,7 +4360,6 @@ impl SessionManager {
                         return;
                     }
                 };
-                let _ = project_path;
                 if auto {
                     if let Some(acp) = acp {
                         let option_id = pick_option_id(&options, "allow_once")
@@ -4280,6 +4371,13 @@ impl SessionManager {
                                 PermissionOutcome::Selected { option_id },
                             )
                             .await;
+                        crate::audit_ledger::record_permission(
+                            Some(&session_id),
+                            project_path.as_deref(),
+                            &tool_name,
+                            "auto_allow",
+                            Some(&title),
+                        );
                         let mut bg = self.background.lock();
                         if let Some(s) = bg.get_mut(app_session_id) {
                             if s.fsm.state() == SessionState::AwaitingPermission {
@@ -4298,6 +4396,13 @@ impl SessionManager {
                                 PermissionOutcome::Selected { option_id },
                             )
                             .await;
+                        crate::audit_ledger::record_permission(
+                            Some(&session_id),
+                            project_path.as_deref(),
+                            &tool_name,
+                            "auto_deny",
+                            Some(&title),
+                        );
                         let mut bg = self.background.lock();
                         if let Some(s) = bg.get_mut(app_session_id) {
                             if s.fsm.state() == SessionState::AwaitingPermission {
@@ -4306,6 +4411,12 @@ impl SessionManager {
                         }
                     }
                 } else {
+                    crate::audit_ledger::remember_permission(
+                        &session_id,
+                        rpc_id,
+                        &tool_name,
+                        Some(&title),
+                    );
                     let req = UiPermissionRequest {
                         rpc_id,
                         session_id: session_id.clone(),
@@ -4342,7 +4453,7 @@ impl SessionManager {
                 status,
                 raw: _,
             } => {
-                let (app_sid, live_title, st, finished) = {
+                let (app_sid, project_path, live_title, st, finished, open_changed, already_terminal) = {
                     let mut bg = self.background.lock();
                     if let Some(s) = bg.get_mut(app_session_id) {
                         // Defensive: background turns never load-replay, but if
@@ -4355,9 +4466,13 @@ impl SessionManager {
                             return;
                         }
                         Self::touch_stream_progress_locked(s);
-                        if !tool_call_id.is_empty() {
-                            Self::note_tool_status_on_session(s, &tool_call_id, &status);
-                        }
+                        let already_terminal = !tool_call_id.is_empty()
+                            && s.terminal_tool_ids.contains(&tool_call_id);
+                        let open_changed = if !tool_call_id.is_empty() {
+                            Self::note_tool_status_on_session(s, &tool_call_id, &status)
+                        } else {
+                            false
+                        };
                         s.tools_this_turn = s.tools_this_turn.saturating_add(1);
                         let finished =
                             matches!(Self::try_finish_deferred_prompt_complete(s), Some(_));
@@ -4403,11 +4518,36 @@ impl SessionManager {
                                 );
                             }
                         }
-                        (s.app_session_id.clone(), live_title, st, finished)
+                        (
+                            s.app_session_id.clone(),
+                            s.project_path.clone(),
+                            live_title,
+                            st,
+                            finished,
+                            open_changed,
+                            already_terminal,
+                        )
                     } else {
                         return;
                     }
                 };
+                // Cross-session tool audit (background turn).
+                {
+                    let audit_name = if !kind.is_empty() {
+                        kind.as_str()
+                    } else {
+                        live_title.as_str()
+                    };
+                    Self::audit_tool_call(
+                        &app_sid,
+                        project_path.as_deref(),
+                        audit_name,
+                        &status,
+                        Some(live_title.as_str()),
+                        open_changed,
+                        already_terminal,
+                    );
+                }
                 let _ = app.emit(
                     "session://tool",
                     serde_json::json!({
@@ -5616,7 +5756,7 @@ impl SessionManager {
         session_id: Option<String>,
     ) -> Result<SessionSnapshot, String> {
         let target = self.resolve_target_session(session_id)?;
-        let (acp, empty_run) = self
+        let (acp, empty_run, project_path) = self
             .with_session_mut(&target, |s| {
                 Self::touch_activity_locked(s);
                 // "allow_session" decision caches scope_key for H05 (works under Ask chip too)
@@ -5630,7 +5770,7 @@ impl SessionManager {
                 }
                 // Permission cleared — may finish a deferred prompt_complete (#52).
                 let empty = Self::try_finish_deferred_prompt_complete(s).flatten();
-                (s.acp.clone(), empty)
+                (s.acp.clone(), empty, s.project_path.clone())
             })
             .ok_or("no session")?;
 
@@ -5647,6 +5787,13 @@ impl SessionManager {
             };
             acp.respond_permission(rpc_id, outcome).await?;
         }
+        // Cross-session permission audit (user decision). Soft-fail.
+        crate::audit_ledger::record_permission_resolve(
+            Some(&target),
+            project_path.as_deref(),
+            rpc_id,
+            &decision,
+        );
         self.emit_for_session(&app, &target);
         Self::emit_empty_run_if_any(&app, empty_run);
         Ok(self.snapshot())

@@ -13,6 +13,9 @@ See `docs/llm-wiki/release.md`.
 
 ### Added
 
+#### Runtime / diagnostics
+- **Tool audit ledger** (Reliability center + Settings → Runtime → Tools): append-only JSONL under `{app_data}/audit/tool_ledger.jsonl` records permission decisions (user + auto allow/deny) and tool start/end with redacted summaries, session id, project path, and outcome. Soft size rotate; soft-fail I/O; never logs secrets. View / filter / clear (in-app confirm) / export redacted JSONL. Pure `auditLedger` helpers + host/unit tests; `settingsCatalog` keywords; en/zh/zh-TW.
+
 #### Agent / memory
 - **Memory embedding (CLI 0.2.117)** (Settings → Agent): host reads allowlisted `[memory.*]` keys from active GROK_HOME `config.toml` (`embedding.model` / `dimensions`, `search.*`, `search.mmr`, `search.temporal_decay`, `dream.*`, `watcher`, `initial_injection`) with soft-fail when missing; independent agent-home can write safe keys + soft-respawn (shared mode read-only). Memory browser shows honest **App keyword** vs **CLI hybrid/keyword** status and links to the panel. App `memory_search` stays path-scoped keyword scan — never invents embeddings client-side.
 

@@ -2386,6 +2386,8 @@ export const SETTINGS_ENTRIES: readonly SettingsEntry[] = [
     descKeys: [
       "reliability.settingsDesc",
       "reliability.openFromSettings",
+      "reliability.audit.title",
+      "reliability.audit.lead",
     ],
     keywords: [
       "reliability",
@@ -2394,6 +2396,14 @@ export const SETTINGS_ENTRIES: readonly SettingsEntry[] = [
       "stall",
       "error deck",
       "support zip",
+      "audit",
+      "ledger",
+      "tool audit",
+      "permission log",
+      "审计",
+      "帳本",
+      "账本",
+      "稽核",
     ],
   },
   {
