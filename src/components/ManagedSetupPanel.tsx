@@ -1,24 +1,104 @@
 /**
  * Settings → Runtime: managed configuration via `grok setup` / `grok setup --json`.
- * Preview shows a secret-safe summary; Install confirms then writes ~/.grok.
+ * Guided steps, soft-fail local signature/artifact status, secret-safe preview.
+ * Install confirms with GlassModal (never window.confirm).
  */
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import * as api from "@/lib/api";
-import { createT, type Locale } from "@/i18n";
+import { createT, type Locale, type MessageKey } from "@/i18n";
 import {
+  buildManagedSetupSteps,
   classifySetupError,
+  deriveSignatureStatus,
+  emptyManagedLocalStatus,
+  extractPreviewMeta,
   summarizeSetupJson,
+  type ManagedLocalStatus,
+  type ManagedPreviewMeta,
   type ManagedSetupErrorKind,
+  type ManagedSetupStep,
+  type ManagedSetupStepId,
   type ManagedSetupSummary,
+  type ManagedSignatureStatus,
 } from "@/lib/managedSetup";
 import { isCliMissingError } from "@/lib/extensionsUi";
 import { GlassModal } from "@/components/GlassModal";
+import { IconRefresh } from "@/components/icons";
 
 export interface ManagedSetupPanelProps {
   locale: Locale;
   cliFound?: boolean;
   onOpenAccount?: () => void;
+}
+
+function mapApiStatus(
+  res: api.ManagedSetupStatusResult | null | undefined,
+): ManagedLocalStatus {
+  if (!res) return emptyManagedLocalStatus({ ok: false, reason: "unavailable" });
+  return {
+    ok: res.ok !== false,
+    cliFound: !!res.cliFound,
+    grokHome: res.grokHome ?? null,
+    managedConfigPresent: !!res.managedConfigPresent,
+    requirementsPresent: !!res.requirementsPresent,
+    configSignaturePresent: !!res.configSignaturePresent,
+    identitySignaturePresent: !!res.identitySignaturePresent,
+    systemManagedConfigPresent: !!res.systemManagedConfigPresent,
+    managedSettingsActive: res.managedSettingsActive ?? null,
+    managedSettingsExists: res.managedSettingsExists ?? null,
+    managedSettingsPath: res.managedSettingsPath ?? null,
+    reason: res.reason ?? null,
+  };
+}
+
+function stepLabelKey(id: ManagedSetupStepId): MessageKey {
+  switch (id) {
+    case "cli":
+      return "managedSetup.step.cli";
+    case "auth":
+      return "managedSetup.step.auth";
+    case "preview":
+      return "managedSetup.step.preview";
+    case "install":
+      return "managedSetup.step.install";
+    case "verify":
+      return "managedSetup.step.verify";
+  }
+}
+
+function stepStateKey(state: ManagedSetupStep["state"]): MessageKey {
+  switch (state) {
+    case "done":
+      return "managedSetup.stepState.done";
+    case "current":
+      return "managedSetup.stepState.current";
+    case "blocked":
+      return "managedSetup.stepState.blocked";
+    case "soft":
+      return "managedSetup.stepState.soft";
+    case "todo":
+    default:
+      return "managedSetup.stepState.todo";
+  }
+}
+
+function signatureLabelKey(status: ManagedSignatureStatus): MessageKey {
+  switch (status) {
+    case "none":
+      return "managedSetup.sig.none";
+    case "artifacts":
+      return "managedSetup.sig.artifacts";
+    case "sig_files":
+      return "managedSetup.sig.sigFiles";
+    case "active":
+      return "managedSetup.sig.active";
+    case "rejected":
+      return "managedSetup.sig.rejected";
+    case "unknown":
+    default:
+      return "managedSetup.sig.unknown";
+  }
 }
 
 export function ManagedSetupPanel({
@@ -28,8 +108,13 @@ export function ManagedSetupPanel({
 }: ManagedSetupPanelProps) {
   const tr = useMemo(() => createT(locale), [locale]);
 
+  const [local, setLocal] = useState<ManagedLocalStatus | null>(null);
+  const [loadingStatus, setLoadingStatus] = useState(false);
   const [summary, setSummary] = useState<ManagedSetupSummary | null>(null);
+  const [previewMeta, setPreviewMeta] = useState<ManagedPreviewMeta | null>(null);
   const [previewNote, setPreviewNote] = useState<string | null>(null);
+  const [previewDone, setPreviewDone] = useState(false);
+  const [installDone, setInstallDone] = useState(false);
   const [loadingPreview, setLoadingPreview] = useState(false);
   const [installing, setInstalling] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -37,12 +122,74 @@ export function ManagedSetupPanel({
   const [status, setStatus] = useState<string | null>(null);
   const [confirmOpen, setConfirmOpen] = useState(false);
 
-  const applyError = useCallback((msg: string, kind?: ManagedSetupErrorKind | null) => {
-    const text = (msg ?? "").trim() || tr("managedSetup.error.generic");
-    setError(text);
-    setErrorKind(kind ?? classifySetupError(text as any));
-    setStatus(null);
-  }, [tr]);
+  const refreshLocal = useCallback(async () => {
+    if (!api.isTauri()) {
+      setLocal(
+        emptyManagedLocalStatus({
+          ok: false,
+          cliFound: false,
+          reason: "need-tauri",
+        }),
+      );
+      return;
+    }
+    setLoadingStatus(true);
+    try {
+      const res = await api.managedSetupStatus();
+      setLocal(mapApiStatus(res));
+    } catch (e) {
+      // Soft-fail: keep panel usable without status.
+      setLocal(
+        emptyManagedLocalStatus({
+          ok: false,
+          cliFound,
+          reason: String(e),
+        }),
+      );
+    } finally {
+      setLoadingStatus(false);
+    }
+  }, [cliFound]);
+
+  useEffect(() => {
+    void refreshLocal();
+  }, [refreshLocal]);
+
+  const effectiveCliFound = local?.cliFound ?? cliFound;
+
+  const signatureStatus = useMemo(
+    () =>
+      deriveSignatureStatus({
+        local,
+        previewMeta,
+        errorKind,
+        installOk: installDone,
+      }),
+    [local, previewMeta, errorKind, installDone],
+  );
+
+  const steps = useMemo(
+    () =>
+      buildManagedSetupSteps({
+        cliFound: effectiveCliFound,
+        previewDone,
+        installDone,
+        errorKind,
+        local,
+        signatureStatus,
+      }),
+    [effectiveCliFound, previewDone, installDone, errorKind, local, signatureStatus],
+  );
+
+  const applyError = useCallback(
+    (msg: string, kind?: ManagedSetupErrorKind | null) => {
+      const text = (msg ?? "").trim() || tr("managedSetup.error.generic");
+      setError(text);
+      setErrorKind(kind ?? classifySetupError(text));
+      setStatus(null);
+    },
+    [tr],
+  );
 
   const onPreview = useCallback(async () => {
     if (!api.isTauri()) {
@@ -51,32 +198,40 @@ export function ManagedSetupPanel({
     }
     setLoadingPreview(true);
     setError(null);
-    setErrorKind(null as any);
+    setErrorKind(null);
     setStatus(null);
     setPreviewNote(null);
     try {
       const res = await api.setupPreview();
       if (!res.ok) {
         setSummary(null);
+        setPreviewMeta(null);
+        setPreviewDone(false);
         applyError(
           res.error?.trim() || tr("managedSetup.error.generic"),
-          (res.errorKind ?? classifySetupError(res.error)) as any,
+          (res.errorKind ?? classifySetupError(res.error)) as ManagedSetupErrorKind,
         );
         return;
       }
       if (res.payload != null) {
         setSummary(summarizeSetupJson(res.payload));
+        setPreviewMeta(extractPreviewMeta(res.payload));
         setPreviewNote(null);
       } else if (res.message?.trim()) {
         setSummary(summarizeSetupJson(res.message));
+        setPreviewMeta(extractPreviewMeta(res.message));
         setPreviewNote(res.message.trim());
       } else {
         setSummary(null);
+        setPreviewMeta(null);
         setPreviewNote(null);
       }
+      setPreviewDone(true);
       setStatus(tr("managedSetup.previewOk"));
     } catch (e) {
       setSummary(null);
+      setPreviewMeta(null);
+      setPreviewDone(false);
       applyError(String(e));
     } finally {
       setLoadingPreview(false);
@@ -91,31 +246,33 @@ export function ManagedSetupPanel({
     }
     setInstalling(true);
     setError(null);
-    setErrorKind(null as any);
+    setErrorKind(null);
     setStatus(null);
     try {
       const res = await api.setupInstall();
       if (!res.ok) {
+        setInstallDone(false);
         applyError(
           res.error?.trim() || tr("managedSetup.error.generic"),
-          (res.errorKind ?? classifySetupError(res.error)) as any,
+          (res.errorKind ?? classifySetupError(res.error)) as ManagedSetupErrorKind,
         );
         return;
       }
-      setStatus(
-        res.message?.trim() || tr("managedSetup.installOk"),
-      );
+      setInstallDone(true);
+      setStatus(res.message?.trim() || tr("managedSetup.installOk"));
+      void refreshLocal();
     } catch (e) {
+      setInstallDone(false);
       applyError(String(e));
     } finally {
       setInstalling(false);
       setConfirmOpen(false);
     }
-  }, [applyError, tr]);
+  }, [applyError, refreshLocal, tr]);
 
-  const busy = loadingPreview || installing;
+  const busy = loadingPreview || installing || loadingStatus;
   const cliMissing =
-    !cliFound ||
+    !effectiveCliFound ||
     errorKind === "cli_missing" ||
     isCliMissingError(error);
 
@@ -124,9 +281,18 @@ export function ManagedSetupPanel({
       ? tr("managedSetup.error.missingAuth")
       : errorKind === "rejected"
         ? tr("managedSetup.error.rejected")
-        : errorKind === "cli_missing"
-          ? tr("managedSetup.error.cliBody")
-          : null;
+        : errorKind === "signature_rejected"
+          ? tr("managedSetup.error.signatureRejected")
+          : errorKind === "cli_missing"
+            ? tr("managedSetup.error.cliBody")
+            : null;
+
+  const hasLocalArtifacts =
+    !!local?.managedConfigPresent ||
+    !!local?.systemManagedConfigPresent ||
+    !!local?.requirementsPresent ||
+    !!local?.configSignaturePresent ||
+    !!local?.identitySignaturePresent;
 
   return (
     <div className="managed-setup" data-testid="managed-setup-panel">
@@ -136,6 +302,129 @@ export function ManagedSetupPanel({
           <div className="settings-row__desc">{tr("managedSetup.desc")}</div>
         </div>
         <div className="settings-row__hint">{tr("managedSetup.authHint")}</div>
+
+        {/* Guided steps */}
+        <ol className="managed-setup__steps" data-testid="managed-setup-steps">
+          {steps.map((s, i) => (
+            <li
+              key={s.id}
+              className={
+                "managed-setup__step" +
+                (s.state === "done" ? " is-done" : "") +
+                (s.state === "current" ? " is-current" : "") +
+                (s.state === "blocked" ? " is-blocked" : "") +
+                (s.state === "soft" ? " is-soft" : "")
+              }
+              data-step={s.id}
+              data-state={s.state}
+            >
+              <span className="managed-setup__step-idx" aria-hidden>
+                {i + 1}
+              </span>
+              <span className="managed-setup__step-label">
+                {tr(stepLabelKey(s.id))}
+              </span>
+              <span className="managed-setup__step-state">
+                {tr(stepStateKey(s.state))}
+              </span>
+            </li>
+          ))}
+        </ol>
+        <p className="settings-row__hint managed-setup__steps-hint">
+          {tr("managedSetup.stepsHint")}
+        </p>
+
+        {/* Signature / local status */}
+        <div
+          className="managed-setup__status"
+          data-testid="managed-setup-status"
+          role="status"
+        >
+          <div className="managed-setup__status-row">
+            <span className="settings-row__label">
+              {tr("managedSetup.statusTitle")}
+            </span>
+            <button
+              type="button"
+              className="btn btn--ghost btn--sm"
+              disabled={busy}
+              onClick={() => void refreshLocal()}
+              title={tr("managedSetup.refreshStatus")}
+              aria-label={tr("managedSetup.refreshStatus")}
+            >
+              <IconRefresh size={14} />
+              <span>
+                {loadingStatus
+                  ? tr("managedSetup.refreshing")
+                  : tr("managedSetup.refreshStatus")}
+              </span>
+            </button>
+          </div>
+          <div className="managed-setup__chips">
+            <span
+              className={
+                "ext-badge" +
+                (signatureStatus === "active"
+                  ? ""
+                  : signatureStatus === "rejected"
+                    ? " ext-badge--error"
+                    : " ext-badge--muted")
+              }
+              data-sig={signatureStatus}
+            >
+              {tr(signatureLabelKey(signatureStatus))}
+            </span>
+            {local?.managedSettingsActive === true && (
+              <span className="ext-badge">
+                {tr("managedSetup.chip.managedActive")}
+              </span>
+            )}
+            {local?.managedConfigPresent && (
+              <span className="ext-badge ext-badge--muted">
+                {tr("managedSetup.chip.configToml")}
+              </span>
+            )}
+            {local?.configSignaturePresent && (
+              <span className="ext-badge ext-badge--muted">
+                {tr("managedSetup.chip.configSig")}
+              </span>
+            )}
+            {local?.identitySignaturePresent && (
+              <span className="ext-badge ext-badge--muted">
+                {tr("managedSetup.chip.identitySig")}
+              </span>
+            )}
+            {local?.requirementsPresent && (
+              <span className="ext-badge ext-badge--muted">
+                {tr("managedSetup.chip.requirements")}
+              </span>
+            )}
+            {local?.systemManagedConfigPresent && (
+              <span className="ext-badge ext-badge--muted">
+                {tr("managedSetup.chip.systemConfig")}
+              </span>
+            )}
+          </div>
+          <p className="settings-row__hint">
+            {tr("managedSetup.sigHint")}
+          </p>
+          {local?.grokHome && (
+            <p className="settings-row__hint managed-setup__path">
+              {tr("managedSetup.grokHome", { path: local.grokHome })}
+            </p>
+          )}
+          {local?.managedSettingsPath && (
+            <p className="settings-row__hint managed-setup__path">
+              {tr("managedSetup.managedSettingsPath", {
+                path: local.managedSettingsPath,
+              })}
+            </p>
+          )}
+          {local?.reason && !hasLocalArtifacts && (
+            <p className="settings-row__hint">{local.reason}</p>
+          )}
+        </div>
+
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
           <button
             type="button"
@@ -150,7 +439,7 @@ export function ManagedSetupPanel({
           <button
             type="button"
             className="btn btn--solid"
-            disabled={busy}
+            disabled={busy || cliMissing}
             onClick={() => setConfirmOpen(true)}
           >
             {installing
@@ -190,21 +479,24 @@ export function ManagedSetupPanel({
               ? tr("managedSetup.error.missingAuthTitle")
               : errorKind === "rejected"
                 ? tr("managedSetup.error.rejectedTitle")
-                : tr("managedSetup.error.title")}
+                : errorKind === "signature_rejected"
+                  ? tr("managedSetup.error.signatureRejectedTitle")
+                  : tr("managedSetup.error.title")}
           </div>
           {kindHint && <p className="ext-alert__body">{kindHint}</p>}
           <pre className="ext-alert__detail" style={{ whiteSpace: "pre-wrap" }}>
             {error}
           </pre>
-          {errorKind === "missing_auth" && onOpenAccount && (
-            <button
-              type="button"
-              className="btn btn--ghost ext-alert__cta"
-              onClick={onOpenAccount}
-            >
-              {tr("managedSetup.openAccount")}
-            </button>
-          )}
+          {(errorKind === "missing_auth" || errorKind === "rejected") &&
+            onOpenAccount && (
+              <button
+                type="button"
+                className="btn btn--ghost ext-alert__cta"
+                onClick={onOpenAccount}
+              >
+                {tr("managedSetup.openAccount")}
+              </button>
+            )}
         </div>
       )}
 
@@ -213,6 +505,42 @@ export function ManagedSetupPanel({
           <div className="settings-row__label" style={{ marginBottom: 6 }}>
             {tr("managedSetup.previewTitle")}
           </div>
+          {previewMeta && (previewMeta.deploymentId || previewMeta.teamId) && (
+            <ul className="managed-setup__facts">
+              {previewMeta.deploymentId && (
+                <li>
+                  <span className="managed-setup__fact-key">deploymentId</span>
+                  <span className="managed-setup__fact-val">
+                    {previewMeta.deploymentId}
+                  </span>
+                </li>
+              )}
+              {previewMeta.teamId && (
+                <li>
+                  <span className="managed-setup__fact-key">teamId</span>
+                  <span className="managed-setup__fact-val">
+                    {previewMeta.teamId}
+                  </span>
+                </li>
+              )}
+              {previewMeta.failClosed != null && (
+                <li>
+                  <span className="managed-setup__fact-key">failClosed</span>
+                  <span className="managed-setup__fact-val">
+                    {previewMeta.failClosed ? "true" : "false"}
+                  </span>
+                </li>
+              )}
+              {previewMeta.hasSignatureBlock && (
+                <li>
+                  <span className="managed-setup__fact-key">signatures</span>
+                  <span className="managed-setup__fact-val">
+                    {tr("managedSetup.preview.sigBlock")}
+                  </span>
+                </li>
+              )}
+            </ul>
+          )}
           {summary.facts.length > 0 && (
             <ul className="managed-setup__facts">
               {summary.facts.map((f) => (

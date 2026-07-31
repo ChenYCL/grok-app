@@ -1,10 +1,14 @@
 //! Bridge runtime: **in-process Rust** multi-IM connectors (no Node / agent-connect).
 
 use super::config;
+use super::resilience::{
+    can_attempt_restart, classify_rim_error, next_retry_after_failure_secs, now_unix_secs,
+    recovery_phase, seconds_until_retry, RimErrorKind,
+};
 use super::runtime::{self, RuntimeHandle};
 use super::{BridgeStatusDto, ConnectedChannelDto};
 use parking_lot::Mutex;
-use std::sync::atomic::{AtomicU32, Ordering};
+use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
 use std::sync::OnceLock;
 use std::time::Duration;
 use tokio::sync::Mutex as AsyncMutex;
@@ -30,6 +34,8 @@ fn runtime_slot() -> &'static AsyncMutex<RuntimeSlot> {
 
 /// Restart backoff attempt counter (process-wide).
 static RESTART_ATTEMPTS: AtomicU32 = AtomicU32::new(0);
+/// Unix seconds when next auto-restart is allowed (0 = try immediately).
+static NEXT_RETRY_UNIX: AtomicU64 = AtomicU64::new(0);
 
 #[derive(Debug)]
 pub struct BridgeRuntime {
@@ -78,6 +84,20 @@ impl BridgeRuntime {
         }
     }
 
+    fn error_kind_str(&self) -> Option<String> {
+        self.last_error
+            .as_deref()
+            .map(classify_rim_error)
+            .map(|k| k.as_str().to_string())
+    }
+
+    fn is_rate_limited(&self) -> bool {
+        matches!(
+            self.last_error.as_deref().map(classify_rim_error),
+            Some(RimErrorKind::RateLimit)
+        )
+    }
+
     pub fn status_dto(&self) -> BridgeStatusDto {
         let running = *self.running.lock();
         let phase = self.phase.lock().clone();
@@ -102,14 +122,29 @@ impl BridgeRuntime {
             "listening".into()
         } else if phase == "starting" {
             "starting".into()
-        } else if self.last_error.is_some() {
+        } else if self.last_error.is_some() && phase == "error" {
             "error".into()
-        } else if self.enabled && !connected.is_empty() {
+        } else if self.last_error.is_some() || (self.enabled && !connected.is_empty()) {
             // Enabled with credentials but not running yet (boot gap / crash).
             "degraded".into()
         } else {
             "stopped".into()
         };
+
+        let attempt = RESTART_ATTEMPTS.load(Ordering::SeqCst);
+        let now = now_unix_secs();
+        let next_unix = NEXT_RETRY_UNIX.load(Ordering::SeqCst);
+        let next_secs = seconds_until_retry(now, next_unix);
+        let rate_limited = self.is_rate_limited();
+        let recovery = recovery_phase(
+            running,
+            &phase,
+            self.enabled,
+            next_secs,
+            rate_limited,
+            self.last_error.is_some(),
+        );
+
         BridgeStatusDto {
             state,
             enabled: self.enabled,
@@ -124,6 +159,11 @@ impl BridgeRuntime {
             mock: false,
             remote_bridge_path: Some("rust://in-process".into()),
             backend: Some("rust".into()),
+            restart_attempt: attempt,
+            next_retry_secs: if next_secs > 0 { Some(next_secs) } else { None },
+            recovery_phase: Some(recovery.into()),
+            error_kind: self.error_kind_str(),
+            rate_limited,
         }
     }
 
@@ -168,6 +208,7 @@ impl BridgeRuntime {
                 *self.running.lock() = true;
                 *self.phase.lock() = "listening".into();
                 RESTART_ATTEMPTS.store(0, Ordering::SeqCst);
+                NEXT_RETRY_UNIX.store(0, Ordering::SeqCst);
                 {
                     let mut slot = runtime_slot().lock().await;
                     slot.handle = Some(handle);
@@ -183,7 +224,12 @@ impl BridgeRuntime {
                 tracing::error!(error = %e, "remote_im: bridge start failed");
                 self.last_error = Some(e.clone());
                 *self.running.lock() = false;
-                *self.phase.lock() = "error".into();
+                let kind = classify_rim_error(&e);
+                *self.phase.lock() = if kind == RimErrorKind::RateLimit {
+                    "error".into()
+                } else {
+                    "error".into()
+                };
                 Err(e)
             }
         }
@@ -199,13 +245,11 @@ impl BridgeRuntime {
         }
         *self.running.lock() = false;
         self.connected_cache.lock().clear();
-        *self.phase.lock() = if clear_enabled {
-            "stopped".into()
-        } else {
-            "stopped".into()
-        };
+        *self.phase.lock() = "stopped".into();
         if clear_enabled {
             self.enabled = false;
+            RESTART_ATTEMPTS.store(0, Ordering::SeqCst);
+            NEXT_RETRY_UNIX.store(0, Ordering::SeqCst);
             self.persist_config();
         }
         Ok(())
@@ -278,10 +322,17 @@ impl BridgeRuntime {
                 self.last_error = Some("bridge connectors exited unexpectedly".into());
             }
             *self.phase.lock() = "degraded".into();
+            // Schedule first recovery attempt immediately (attempt 0).
+            if NEXT_RETRY_UNIX.load(Ordering::SeqCst) == 0 {
+                NEXT_RETRY_UNIX.store(0, Ordering::SeqCst);
+            }
         }
     }
 
     /// One watchdog tick: recover enabled bridge that is not listening.
+    ///
+    /// **Does not sleep** while holding the runtime lock — schedules
+    /// `NEXT_RETRY_UNIX` and returns so status IPC stays responsive.
     pub async fn health_tick_async(&mut self) {
         if !self.enabled {
             return;
@@ -293,26 +344,41 @@ impl BridgeRuntime {
         if !config::has_ready_instances() {
             return;
         }
-        let attempt = RESTART_ATTEMPTS.fetch_add(1, Ordering::SeqCst);
-        // Exponential backoff: 2^attempt seconds, capped at 60s (tick is 15s so we skip).
-        let delay_secs = 2u64.saturating_pow(attempt.min(5));
-        if attempt > 0 {
-            tracing::info!(
-                attempt,
-                delay_secs,
-                "remote_im: backoff before restart"
+
+        let now = now_unix_secs();
+        let next = NEXT_RETRY_UNIX.load(Ordering::SeqCst);
+        if !can_attempt_restart(now, next) {
+            let rem = seconds_until_retry(now, next);
+            tracing::debug!(
+                remaining_secs = rem,
+                attempt = RESTART_ATTEMPTS.load(Ordering::SeqCst),
+                "remote_im: backoff wait (no restart this tick)"
             );
-            tokio::time::sleep(Duration::from_secs(delay_secs.min(60))).await;
-        }
-        if !self.enabled {
+            if *self.phase.lock() != "starting" {
+                *self.phase.lock() = "degraded".into();
+            }
             return;
         }
+
+        let attempt = RESTART_ATTEMPTS.fetch_add(1, Ordering::SeqCst);
+        *self.phase.lock() = "starting".into();
+        tracing::info!(attempt, "remote_im: watchdog restart attempt");
+
         match self.start_async().await {
             Ok(()) => {
                 tracing::info!(attempt, "remote_im: watchdog restart ok");
             }
             Err(e) => {
-                tracing::warn!(attempt, error = %e, "remote_im: watchdog restart failed");
+                let wait = next_retry_after_failure_secs(attempt);
+                let deadline = now_unix_secs().saturating_add(wait);
+                NEXT_RETRY_UNIX.store(deadline, Ordering::SeqCst);
+                tracing::warn!(
+                    attempt,
+                    wait_secs = wait,
+                    error = %e,
+                    "remote_im: watchdog restart failed; scheduled backoff"
+                );
+                *self.phase.lock() = "degraded".into();
             }
         }
     }
@@ -352,6 +418,9 @@ pub fn doctor_report() -> serde_json::Value {
                 )
             })
             .collect();
+    let attempt = RESTART_ATTEMPTS.load(Ordering::SeqCst);
+    let next = NEXT_RETRY_UNIX.load(Ordering::SeqCst);
+    let now = now_unix_secs();
     serde_json::json!({
         "backend": "rust",
         "inProcess": true,
@@ -362,5 +431,13 @@ pub fn doctor_report() -> serde_json::Value {
         "channelsSupported": super::channels::CATALOG_CHANNELS,
         "channelProtocols": channel_protocols,
         "scanSupported": ["feishu", "lark", "weixin"],
+        "resilience": {
+            "restartAttempt": attempt,
+            "nextRetrySecs": seconds_until_retry(now, next),
+            "backoffCapSecs": super::resilience::BACKOFF_CAP_SECS,
+            "ratePerChat": super::resilience::RATE_PER_CHAT,
+            "rateGlobal": super::resilience::RATE_GLOBAL,
+            "rateWindowSecs": super::resilience::RATE_WINDOW_SECS,
+        },
     })
 }

@@ -11,71 +11,221 @@ See `docs/llm-wiki/release.md`.
 
 ## [Unreleased]
 
+### Fixed
+
+- **Long chat virtualizer (PERF-A11Y-PACK / perf)**: history browse no longer expands the continuous window to the tail just because idle force-mount lists the last user/assistant (that mounted hundreds of rows mid-scroll). Force expand is nearby-only while escaped; pin still expands for blank-pin defense. Adaptive viewport-scaled overscan, binary-search range find, rAF-coalesced scroll recompute, and cached cumulative offsets keep long transcripts snappy. Pure helpers + tests in `chatVirtualList`.
+- **Custom provider save stuck on “Saving…” / requires restart** (#376): `providers_upsert` / activate / remove / set-default run file I/O on a blocking pool and recycle warm agents (`provider_route`) so the next message reloads `config.toml` + auth without a full app restart. Settings save uses a wall-clock timeout, always clears busy in `finally`, shows success / soft-fail apply toasts (en/zh/zh-TW), and no longer parks live agents via `sessionDisconnect` (which kept stale OIDC in memory). Pure `providerSave` helpers + tests.
+
 ### Added
 
+#### Runtime / workflows
+- **Grok Build workflows** (Settings → Runtime → Tools): opt-in `workflowsEnabled` AppSettings toggle writes top-level `workflows_enabled` into independent agent-home `config.toml` (shared mode never rewrites `~/.grok`); honest copy that workflows run via CLI / Rhai (`workflow` tool, `/workflow`, `/workflows`) — **no in-app runner/editor**; read-only soft-fail discovery of `~/.grok/workflows` + project `.grok/workflows` names; command palette **Open workflows docs** / jump to settings; pure helpers + tests; `settingsCatalog` + en/zh/zh-TW
+#### Composer & chat / reliability
+- **Goal orchestration panel** (CLI **0.2.117+** goal harness): Host soft-decodes ACP `sessionUpdate: goal_updated` (classifier / planner / strategist / verifier roles + deliverable progress) → `session://goal`. Reliability center shows a compact **Goal orchestration** timeline when events arrive; honest empty state when the CLI does not emit them (never invents goal progress). Display-only Settings toggle **Goal orchestration panel** (`goalOrchUiEnabled`, default on). Pure `goalOrch` helpers + fixtures/tests; ACP NDJSON diagnostics recognize `goal_updated`.
+#### Runtime / diagnostics
+- **Tool audit ledger** (Reliability center + Settings → Runtime → Tools): append-only JSONL under `{app_data}/audit/tool_ledger.jsonl` records permission decisions (user + auto allow/deny) and tool start/end with redacted summaries, session id, project path, and outcome. Soft size rotate; soft-fail I/O; never logs secrets. View / filter / clear (in-app confirm) / export redacted JSONL. Pure `auditLedger` helpers + host/unit tests; `settingsCatalog` keywords; en/zh/zh-TW.
+#### Accessibility
+- **Desktop a11y pack**: shared `installDialogFocus` focus trap (Tab cycle · Escape · restore) on confirm/prompt dialogs, command palette, Compact / Rewind modals, Doctor, Reliability center, phone sheets, and GlassModal; aria-labels for sidebar / settings nav / composer / resources pane and icon-only chrome; settings nav ArrowUp/Down/Home/End; sidebar session list ArrowUp/Down aliases for j/k; pure helpers + unit tests
+
+#### Agent / memory
+- **Auto-wake** (Settings → General → Agent; CLI config `auto_wake_enabled`): opt-in toggle so Grok Build may inject a synthetic turn after background work completes (bash / monitor / task / loop). Behavior is CLI-side when supported. Default off. Independent mode writes top-level agent-home `auto_wake_enabled` only (no invented env override — `GROK_AUTO_WAKE` is pattern-shaped). Soft-respawn on change; older CLIs that ignore the key soft-fail. Pure helpers + tests; `settingsCatalog` + en/zh/zh-TW.
+- **Batch agents (multi-project dispatch)**: select multiple trusted projects, one shared prompt — **Open sessions** (create + connect + send per project, multi-session concurrency) or **Headless summary** (`grok -p` one-shot per project with soft timeout). Soft-fails untrusted / missing path / CLI / timeout per project; progressive results + copy summary. Entry: Agent dashboard footer, Settings → Runtime → Tools, command palette. Pure `batchAgents` helpers + tests; host `batch_agents_headless`; en/zh/zh-TW; no `window.confirm`.
+- **Config workbench allowlist expand** (Settings → General → Agent → Agent config.toml sections): more safe bool keys under independent agent-home — `[workflows] enabled`, `[features] auto_wake` / `two_pass_compaction` / `lsp_tools` / `codebase_indexing` / `remote_fetch` (plus existing `[ui]` permission_mode / yolo, `[subagents]` / `[memory]` enabled). Shared mode remains read-only; never rewrites secrets or invents AppSettings for the new feature keys; soft-respawn on save; en/zh/zh-TW + pure helper tests
+- **Codebase indexing UX** (Settings → Agent; `[features].codebase_indexing`): honest enable/status for Grok Build **code graph** indexing (not memory embeddings). Missing key stays unset with CLI default **on** shown as effective status only; independent agent-home writes bool + soft-respawn; shared mode read-only; non-bool (glob) forms stay read-only custom; soft-fail when CLI is known older than 0.2.117. Pure helpers + tests; `settingsCatalog` + en/zh/zh-TW
+- **Memory embedding (CLI 0.2.117)** (Settings → Agent): host reads allowlisted `[memory.*]` keys from active GROK_HOME `config.toml` (`embedding.model` / `dimensions`, `search.*`, `search.mmr`, `search.temporal_decay`, `dream.*`, `watcher`, `initial_injection`) with soft-fail when missing; independent agent-home can write safe keys + soft-respawn (shared mode read-only). Memory browser shows honest **App keyword** vs **CLI hybrid/keyword** status and links to the panel. App `memory_search` stays path-scoped keyword scan — never invents embeddings client-side.
+
+#### Runtime / connection
+- **GitHub PR hub** (Settings → Runtime → Tools): list open PRs for the active project via `gh pr list --json` (number · title · author · mergeable · checks rollup); expand for `gh pr checks`; open in browser; soft-fail when `gh`/`git` missing or path is not a repo. Pure `gitPrHub` parsers + host commands + en/zh/zh-TW + `settingsCatalog`
+- **Managed setup pro** (Settings → Runtime → Managed setup): guided CLI → auth → preview → install → verify steps; host `managed_setup_status` soft-probes local `managed_config.toml` / signature sidecars / `requirements.toml` + inspect `managedSettings*` flags (never loads signature contents; App does not re-verify crypto); clearer signature-rejected errors; en/zh/zh-TW + `settingsCatalog`
+- **Leader fleet pro** (Settings → Runtime → Connection): honest connect status pill (never invents running from socket alone); soft-fail error kinds + hints (CLI missing / unsupported / timeout / parse / stale socket / list|info fail); useLeader honesty banners; classification chips on fleet rows; i18n detail-field labels; pure `leaderFleet` helpers + tests; en/zh/zh-TW + `settingsCatalog`
+- **Doctor findings triage** (DOCTOR-PRO): App + CLI doctor rows unify into classifiable findings with level / source / category / search filters, issues-only, per-row + visible copy, and **GlassModal** detail (fix id / disposition); pure `doctorFindings` helpers + tests; en/zh/zh-TW
+- **CLI update channels** (CLI ≥ **0.2.117**): Settings → Runtime → CLI and About show current version + channel (`stable` / `alpha` / unknown from `grok update --check --json` only — never invented). Switch via `grok update --alpha|--stable`, optional version pin (`--version <V>`) with in-app confirm; soft-fail on older CLIs / unknown channels. Host `cli_update_install` accepts optional channel/version/force; pure helpers + tests.
+- **Privacy center** (Settings → Runtime → Privacy): honest Grok Build **0.2.117** privacy-related `config.toml` keys from the active `GROK_HOME` — `[features] telemetry`, `[telemetry] trace_upload` / `mixpanel_enabled`, `[harness] disable_codebase_upload` / `disable_workspace_teleport`. Missing keys stay unset (never invent “off”). Independent agent-home: allowlisted write + soft-respawn; shared mode: read-only probe of `~/.grok`. Coding-data / retention / training is **not** a config key — UI links to CLI `/privacy` only (no fake App toggle). Pure helpers + tests; `settingsCatalog` + en/zh/zh-TW
+- **Streaming messages JSON** (Settings → Runtime → Tools): parse/preview headless `grok --output-format streaming-messages-json` NDJSON (Anthropic Messages wire format; **CLI 0.2.117+**) — pure `streamingMessagesJson` helpers + tests; offline NDJSON import; optional short headless probe (soft-fail older CLI); reconstruct assistant/user frames, `tool_use` / `tool_result`, usage, `stop_reason`; redacted export/copy (no secrets in logs)
+- **SDK Connect wizard** (Settings → Runtime → Connection): start local `agent serve`, show masked secret + ws URL, TCP health probe, copy curl / websocat / `grok --remote` examples for external clients, and optional paste remote serve URL + probe. Secrets never logged; full token only via one-time clipboard after start.
+- **Todo gate** (Settings → General → Agent; CLI **0.2.117+**): toggle enable TodoGate + max fires per prompt (1–20, default 3). When on, spawn passes top-level `--todo-gate` (overrides remote `todo_gate_enabled`; built-in default off). Independent mode also writes agent-home `todo_gate_enabled` / `todo_gate_max_fires_per_prompt`. Soft-respawn on change.
+- **Subagent worktree snapshot** (Settings → General → Agent; CLI **0.2.117+** config `subagent_worktree_snapshot_enabled`): opt-in toggle so nested subagents can snapshot / rehydrate isolated worktrees. Independent mode writes the top-level agent-home key; spawn sets `GROK_SUBAGENT_WORKTREE_SNAPSHOT` (soft-fail when CLI is known older). Soft-respawn on change. Tasks panel shows a short note when enabled.
+- **Streaming ACP NDJSON diagnostics** (Settings → Runtime → Tools; CLI **0.2.117+**): pure parser for headless `--output-format streaming-json` as agent-native ACP session-update NDJSON (not `streaming-messages-json`); import/paste or soft-gated headless probe; event type counts + copy summary
+
 #### Composer & chat
+- **Worktree Ship / Open PR**: from the branch menu, WT/CLI session menu, or Changes → Workspace — GlassModal for PR title/body/draft; host `git_push_branch` (`git push -u origin HEAD`, soft-fail) then optional `gh_pr_create` (fork-aware `--repo` / `--head owner:branch`); never `window.confirm`; never fake success when `gh` fails; pure `wtShipFlow` helpers + tests
+- **Live Voice → Build tool loop** (VOX-BUILD-LOOP): host emits tool **running → ok / soft_fail / error** on `voice://tool` with `activeTool` on state; overlay shows Build tool chip + system lines; **mic missing/denied soft-fails** (warn, keep session for playback/tools); **CLI missing soft-fails** tool results (`ok: false, reason: cli_missing`) so voice stays open; classified errors (`voice.err.*`) en/zh/zh-TW; pure helpers + tests
+- **Live Voice delegate status** (VOX-DELEG): overlay shows listening / thinking / speaking from host `voice://` events, **Stop**, honest empty transcript (no fake STT), delegated session chips, and optional **Send transcript to active session** when a chat is open
 - **Send queue** edit / reorder · **composer min height** · **cross-session recent prompts**
 - **Chat width** · **chat / code font** · **tool auto-collapse** · **transcript filter** (hide tool steps)
 - **Regenerate** with optional model pick · **assistant word count** (optional)
 - **File-changes chip** (session edits) · **git dirty chip** (workspace porcelain)
 - **Session change review**: per-file +/−, unified / side-by-side diff, open in Resources, j/k in Changes list; chip always opens Changes tab (works without git)
+- **Structured JSON replies**: when a session JSON Schema is active, assistant turns show a Structured panel — progressive parse + light required-field validation while streaming (partial keys, validation path timeline), honest “not valid JSON” on finished failure, copy / export when complete, optional known token usage from agent events, and a Structured badge
+- **Diff accept / reject / restore** (Changes panel): Accept keeps working tree (writes after snapshot when needed); Reject restores HEAD via path-scoped `git checkout` (or before snapshot / delete untracked with in-app confirm — never wipe untracked without confirm); Restore re-applies saved after content; per-hunk accept/reject when before+after exist; soft-fails outside git; pure `diffAccept` helpers + host `apply_file_patch` / `git_checkout_file` / `delete_project_file`
 - **Structured JSON replies**: when a session JSON Schema is active, finished assistant turns show a Structured panel — parse + light required-field validation, honest “not valid JSON” on failure, copy / export, and a Structured badge
 - **Context usage / cost estimates**: chip menu shows input/output/total when known; optional crude USD estimate from a static rates table (never invoice-grade); Settings → Appearance → **Show usage estimates** (on by default, with disclaimer)
+- **Compact dialog presets** (light / standard / aggressive): note templates for `/compact` (CLI has no intensity flag yet); optional keep-note + chips; before → after estimate when tokens known; last compact range when available
+- **Compaction mode / detail** (Grok Build CLI **0.2.117+**): Settings → Agent + Compact dialog selectors for `--compaction-mode` `summary|transcript|segments` and `--compaction-detail` `none|minimal|balanced|verbose` (segments only); Host always sets `GROK_COMPACTION_MODE` / `GROK_COMPACTION_DETAIL` env and passes CLI flags when the probed binary is ≥ 0.2.117 (soft-fail on older CLIs); soft-respawn on change
+- **Two-pass prefire compaction** (Settings → General → Agent; CLI **0.2.117+** config `two_pass_compaction_enabled`): opt-in toggle for hierarchical two-pass prefire compact. Independent mode writes the top-level agent-home key; spawn sets `GROK_TWO_PASS_COMPACTION` (soft-fail when CLI is known older); shared mode keeps App setting only (does not rewrite `~/.grok`). Soft-respawn on change. Pure helpers + tests; `settingsCatalog` + en/zh/zh-TW
 
 #### Sessions & sidebar
+- **Continue last agent for this project** (CLI `grok -c/--continue`): project menu + command palette finds the newest agent session under active `GROK_HOME` for the project path, then opens the linked App chat or imports history; soft-fails with a toast when none exist
 - **Duplicate chat** (vs **Fork…** + optional worktree) · **session notes** · **mute** · **unread dot**
+- **Open session in new window** — session menu opens a second Tauri webview with `#/session/<id>` deep link; re-open focuses the existing window; close secondary for real (main still tray/confirm)
+- **Multi-window live (lite)**: secondary session windows can **send / stop** via the shared Host (session-targeted); still skip *passive* warm-connect on open so browsing does not demote main’s agent; honest secondary tip + **Focus main window**; pure `canLiveParticipate` / `shouldSkipWarmConnect` policy + tests
 - **Resume with code restore** — open an existing chat on a clean sibling git worktree at HEAD (session menu + command palette; dirty tree refused; same safety as Fork → restore code)
+- **CLI `--fork-session` on Fork / Resume**: optional checkbox (when a linked agent session exists) creates a **new** agent session id with parent context via ACP `session/fork` (Grok `_x.ai/session/fork` fallback) instead of reusing via `session/load`; one-shot `SessionMeta.forkAgentSession`; source agent session left unchanged
 - **Session rules** (per-chat `grok --rules`; session menu → GlassModal; soft-respawn on change)
+- **Session system prompt override** (per-chat `grok --system-prompt-override` / `--system-prompt`; session menu → GlassModal textarea; Clear; soft-respawn on change; never logs full prompt body)
 - **Session max agent turns** (per-chat `grok --max-turns` override; session menu → number input; 0/empty inherits global Settings 1–200; soft-respawn on change)
 - **Export** Markdown copy + **HTML export** · **bulk archive by age** · **date groups** · **project color**
+- **Session export formats** (menu): Markdown (existing options) · **plain text** (`.txt`, headless-style) · JSON · HTML; full-transcript Markdown download prefers CLI `grok export <agentSessionId>` when linked and soft-falls back to the local journal
+- **Export** Markdown copy + **HTML export** · **share-card PNG** (session menu → Export as image; optional thinking; footer **Generated with Grok App**; custom logo in Settings) · **bulk archive by age** · **date groups** · **project color**
 - **Sidebar j/k** navigation (when list focused)
 - **CLI-aligned worktrees**: create under `~/.grok/worktrees/<repo>/<name>` by default (matches `grok --worktree`); optional sibling layout; start-ref validation; sidebar **CLI** vs **WT** badge
+- **Hybrid session search** (command palette): mode chips **All / Title / Content**, optional **Include archived**, keyword content snippets + Title/Content badges — no embeddings (honest keyword hybrid only)
+- **Hybrid session search ranking** (optional): command palette Keyword / Hybrid chips + Settings → Appearance → Interface; Hybrid = keyword + local token-overlap ranking on titles/snippets (honest local hybrid — not cloud embeddings / no embedding API); pref in localStorage
+- **Session search pro** (command palette): remembered scope chips + include-archived (localStorage); Keyword/Hybrid rank hints; contextual empty states (idle / loading / no matches / filtered) with mode-aware hints and **Clear filters**; pure `resolveSessionSearchEmptyState` / filter-pref helpers + tests; en/zh/zh-TW
 
 #### Appearance / app shell
 - **Theme schedule** (System + clock) · **follow system language**
 - **Confirm quit while busy** (in-app dialog; optional skip) · **dock/tray busy badge**
 - **Shortcut conflicts** (Settings → Keyboard): panel lists chords shared by multiple actions; capture warns in-app before save; optional **Reset conflicting to default** (pure `findChordConflicts` + tests)
+- **Shortcut scopes** (Settings → Keyboard): each catalog row is tagged **Global** vs **Chat**; optional **Allow same chord across scopes** ignores cross-scope conflicts in capture/panel only (stored remaps + App matching unchanged)
+- **Share-card logo** (Settings → Appearance → Interface): upload custom PNG/JPEG/WebP for conversation image export
 
 #### Tasks / system
+- **Remote IM resilience** (RIM-RESILIENCE): Bridge crash recovery with exponential reconnect backoff (cap 60s) without holding the runtime lock during waits; status DTO exposes `restartAttempt` / `nextRetrySecs` / `recoveryPhase` / `errorKind` / `rateLimited`; overview recovery card (honest rate-limit vs crash vs network); soft inbound turn rate limit (per-chat + global) with non-silent IM replies; agent quota/rate-limit errors mapped to clear copy. Pure `resilience` helpers + tests; i18n en/zh/zh-TW; GlassModal unchanged for other confirms.
+- **Automations background honesty** (AUTO-DETACH lite): pure `automationsBackgroundStatus` helper + tests; Scheduled tasks page banner when any task is enabled (app/tray must stay running; optional deep-link to **Launch at login**); busy-quit dialog extra note; Launch at login desc clarifies schedules pause on full quit (no fake detached daemon)
+- **Auto-runner / schedules tray residency** (AUTO-RUNNER): host `automation_runner` status API (tray-only ticks; process required; no fake daemon); setting **Keep tray for schedules** (default on — close still hides to tray when any task is enabled); optional **macOS LaunchAgent helper** (generates script+plist under app data; user LaunchAgent starts full app at login / crash-only KeepAlive); `--start-in-tray` / `GROK_START_IN_TRAY`; Scheduled tasks page background panel + Settings registration; pure policy tests + Rust unit tests
+- **AUTO-HEADLESS-LITE honesty** (Scheduled tasks): clear tray vs full-quit vs LaunchAgent matrix (no fake detached daemon); host runner status surface with **last tick** + **paused reason** (`process_bound` / `close_exits` / `awaiting_tick` / …); LaunchAgent install/remove/reveal **soft-fails** via `GlassModal` (toggle stays on last good status); pure `automationsHeadlessHonesty` helpers + tests; i18n en/zh/zh-TW
 - Tasks tree · Stop-all skip-confirm · Plan history · Mirror write guard · Reliability / Leader / Memory / MCP / CLI notice (prior)
+- **Reliability stall timeline**: localStorage ring (~40) of historical stall signals (id · session · title · kind · stallSeconds · reason · at); recorded on soft / hard stream-stall; Reliability center **Stall timeline** card with search + kind chips + clear (in-app confirm); never stores secrets
+- **Agent config.toml safe viewer** (Settings → General → Agent): redacted monospaced view of active-mode `config.toml` (independent agent-home or shared `~/.grok` with warning); section jump chips; copy path / reveal / open in external editor — no freeform writer
+- **Remote IM depth** (Settings → Remote control → IM): secrets **masked by default** with show/hide (`RimSecretField`); Bridge **event timeline** local ring (~50, no secrets) on overview with collapsible list + in-app clear; clearer **channel health** for Feishu/Lark (WebSocket) and Telegram (long poll) — credentials / bridge link / open ACL / transport hints
+- **WeCom channel pack** (Settings → Remote control → IM → 企业微信): mode-aware bind (WebSocket vs Webhook) with setup guide, field help, public-URL callout only in webhook mode; **deep health** card (transport / credentials / mode-switch soft-fail); pure `wecomConfig` validation + host test that only claims credential presence for the selected mode (never fakes live WS/public callback); i18n en/zh/zh-TW
+- **DingTalk channel pack** (Settings → Remote control → IM → 钉钉): Stream-mode setup guide + field help; **deep health** card (transport / credentials / AI-card + open-ACL hints); pure `dingtalkConfig` validation + host test that only claims Client ID/Secret presence (never fakes live Stream gateway); i18n en/zh/zh-TW
+- **Telegram channel pack** (Settings → Remote control → IM → Telegram): BotFather setup guide, field help (token / proxy / thread isolation), **deep health** (long poll · no webhook · proxy scheme · ACL); pure `telegramConfig` validation (token shape, proxy URL, soft proxy-auth warn); host test soft-fails invalid format/proxy before live `getMe` and never pretends getUpdates is live; i18n en/zh/zh-TW; no `window.confirm`
+- **Feishu/Lark channel pack** (Settings → Remote control → IM → 飞书/Lark): WS setup guide + field help; **deep health** card (no-webhook · domain · card events · open ACL); pure `feishuConfig` validation + host test soft-fails invalid App ID / missing custom domain before live `tenant_access_token` (never claims WS is online without Bridge link); i18n en/zh/zh-TW
+- **Cost rollup** (Settings → Runtime → Tools): aggregate **known** token usage by project/day from live `session://usage` (+ compact `tokensAfter` when present); honest **Unknown** when missing; crude `$` via static rates (never invoice-grade); local sample ring + pure `costRollup` helpers/tests
+- **Cost rollup** (Settings → Runtime → Tools): aggregate **known** token usage by project/day **or session/day** from live `session://usage` (+ compact `tokensAfter` when present); 7/14/30-day window; honest **Unknown** when missing; crude `~$` via static rates with estimate/partial badges (never invoice-grade); optional **Copy / Download** plain-text summary; clear samples via in-app confirm; local sample ring + pure `costRollup` helpers/tests
+- **Leader fleet** (Settings → Runtime → Connection): list running leaders via `grok leader list --json`, per-row / global **Details** (`grok leader info --json`), stop-all with in-app confirm (`grok leader kill`); host soft-fails on older CLIs without the management surface
+- **Reliability support zip**: export from Reliability center includes a redacted **stall timeline** snapshot (`stall-timeline.json` — structured stall kinds/seconds/session ids only; Host redacts secrets; never `secrets.json`)
 - **Mirror write audit log** (Settings → Remote → Phone mirror): localStorage ring (~50) of write enable/disable, link regenerate, host start/stop — no tokens/URLs stored; collapsible list + in-app clear confirm
+- **Mirror harden**: when write is on, show allowlisted write RPC categories + broad-surface warning; optional **max phone clients** (1–16, default 4, HTTP 503 when full); **regenerate link** in-app confirm (with connected count); host logs redact tokens/URLs (`token_tail` / `/t/<redacted>/…`)
 - **Subagent worktree (cwd) badge**: when `spawn_subagent` / Agent / subagent tool_step data includes a cwd or worktree path (labeled fields, JSON, or absolute path), Tasks panel shows a compact **WT** / truncated-path badge and can reveal or copy the path — UI-only over existing tool_step data; nested tree unchanged
+- **Subagent worktree bind (Tasks)**: from a task row with known cwd, **Use as chat folder** (badge click or detail action) binds the open chat to that path as agent cwd — reuses worktree switch / `project_add`, marks session WT meta; still reveal + copy; no “bind next subagent” session menu
 - **Plan depth**: request-changes optional revision note (in-app modal → `session_resolve_plan` feedback); plan history search/filter by title·preview + decision chips, clear-all (in-app confirm), open chat when session still present
 - **Disallowed built-in tools** (Settings → General → Agent): chips + freeform list → `AppSettings.disallowedTools` / CLI `--disallowed-tools a,b`; coexists with Disable web search; soft-respawn on change
+- **Allowed built-in tools** (Settings → General → Agent): chips + freeform list → `AppSettings.allowedTools` / CLI `--tools a,b`; empty = all tools (CLI default); when set restricts to listed tools; coexists with denylist (both-set UI hint); soft-respawn on change
 - **Agent profile path** (Settings → General → Agent): optional file for `grok agent --agent-profile`; soft-respawns on change
+- **Agents JSON spawn** (Settings → General → Agent): optional inline subagent definitions as JSON object → top-level `grok --agents <JSON>`; empty omits flag; invalid JSON blocks save; soft-respawns on apply; does not write shared `~/.grok`
+- **Agent config.toml safe section edit** (Settings → General → Agent): allowlisted keys only (`[ui]` permission_mode / yolo, `[subagents]` enabled, `[memory]` enabled) under independent agent-home; redact-on-read preview; shared mode clear warning + read-only; never freeform secret rewrite; soft-respawn on save
 - **Agent serve** start/stop from Settings → Runtime → Connection (`grok agent serve --bind/--secret`; default `127.0.0.1:2419`; masked secret + one-time connection URL copy)
+- **Agent dashboard filters**: status chips with per-status counts (all / busy / permission / connecting / idle / error), free-text session search, project id/name/path filter, empty-filter state + clear; **Stop all busy (app-wide)** still targets every stoppable session globally (not only the filtered list)
+- **Agent dashboard multi-select stop**: row checkboxes + select-all visible; **Stop selected (n)** only targets stoppable rows among the selection (idle/error ignored); pure `filterStoppableAmongSelection` + tests; live tool title shown more prominently; status as permission/busy badges — no invented metrics
+- **Agent serve `--remote`**: optional proxy-mode upstream URL in Settings → Runtime → Connection; client connection string template (`grok --remote ws://…/ws --secret …`) with masked status + one-time full copy; health note (local bind TCP only; no secret in logs)
 - **Agent dashboard filters**: status chips with per-status counts (all / busy / permission / connecting / idle / error), free-text session search, project id/name/path filter, empty-filter state + clear; **Stop all busy** still targets every stoppable session globally (not only the filtered list)
 - **Trace history manage** (Traces modal + Settings → Runtime): search by title/path, remove row, clear all (in-app confirm), optional file size from host `stat` after export — still paths only, never loads archive contents
+- **Memory browser filters** (Settings → Agent): free-text search + kind chips (all / global / workspace / session / index / other) with counts, empty-filter state + clear; preview redact and clear-all workspace memory unchanged
+- **Trace export + upload** (`grok trace`): session menu **Export local** (default, `--local`) vs **Export and upload…** with in-app confirm (network to xAI); host `session_trace_export` `localOnly` (default true); history may note `uploaded=true` when CLI reports remote info (paths only, no URLs/secrets); actionable failure toasts
 
 #### Permissions / CLI
+- **CLI `--no-ask-user`** (Settings → General → Agent; **CLI ≥ 0.2.117**): toggle spawns with top-level `--no-ask-user` so the agent does not emit `ask_user_question` questionnaires; optional per-session override (`SessionMeta.noAskUser` / `session_set_no_ask_user`, `null` inherits global); soft-respawn on change; pure resolve/spawn helpers + tests
+- **Background wait policy** (CLI **0.2.117+**, Settings → General → Agent): `wait` (default) · `no_wait` (`--no-wait-for-background`) · `timeout` (`--background-wait-timeout` 1–3600s). Headless first-turn wait for background bash/monitor/subagents; wired on Remote IM / wallpaper headless and soft-gated on ACP top-level spawn (older CLI omits flags — no crash). Pure helpers + tests (`backgroundWaitPolicy`)
+- **Include partial stream events** (CLI **0.2.117+**, Settings → Runtime → Pool): toggle `includePartialMessages` → headless paths using `--output-format streaming-messages-json` also pass `--include-partial-messages` for incremental `stream_event` text/thinking deltas. Remote IM upgrades format when on and CLI is new enough; older CLI soft-fails (flag omitted). Pure helpers + tests (`partialStream`)
 - **CLI `--permission-mode` alignment**: pure App policy / YOLO / plan-mode map (`default` · `acceptEdits` · `auto` · `dontAsk` · `bypassPermissions` · `plan`); spawn pins top-level `--permission-mode` (+ agent `--always-approve` for YOLO); Settings shows CLI label + advanced mode selector; product **Auto** policy
 - **Doctor fix depth**: plan banner (“N automatic fixes available (M need confirm)”), **Apply safe fixes** for non-destructive CLI remediations (sequential host `cli_doctor_fix`, then re-run doctor); destructive fixes stay per-row with in-app confirm; clearer fix-id + host errors
+- **CLI worktree list**: host runs `grok worktree list --json` (text fallback); branch menu **CLI worktrees** section with refresh, reveal path, open as session cwd when the folder exists; soft-fail when CLI missing; pure JSON/text parsers + tests
+- **CLI worktree DB** (Grok Build **0.2.117+**): host wraps `grok worktree db path|stats|rebuild` (timeout + soft-fail on older CLIs); pure text/JSON stats parsers + tests; Settings → Runtime → CLI **CLI worktree DB** shows path, stats summary, and **Rebuild** with in-app confirm (not `window.confirm`)
+- **CLI sessions search** (Settings → Agent / CLI sessions): host `cli_sessions_search` runs `grok sessions search` (tries `--json`, else text parse of summaries + first prompts); enriches with local dir / linked state for import·open·delete; falls back to disk filter including first user prompt when CLI is unavailable
+- **Permission rules simulator**: Settings → Permissions → try a tool call (e.g. `Bash(git status)`) and see allow / deny / ask / no-match from current compact rules (deny > ask > allow); pure client helpers + tests — does not write config
+- **Memory content search** (Settings → Agent → Workspace memory files): host `memory_search` scans file bodies under active `GROK_HOME/memory` (path-scoped; hit + per-file byte caps); redacted snippets; Open / Reveal per row (previews stay redacted)
+- **ACP server health** (Settings → Runtime → Connection): pure `parseAcpServerAddr` + host `acp_server_probe` (TCP ~2s, latency only, no secrets); blur validation, **Test connection**, ok/fail status chip; clearer API mode vs local CLI help + deep-link to Agent serve; soft-respawn when the address changes
 
 #### Extensions / marketplace
 - **Marketplace plugin detail**: clicking a catalog plugin opens a real detail panel (name, description, marketplace, version, skill/hooks/agents/MCP badges) with Install / Reinstall — not a stub
 - **Install failure recovery**: last install error stays on that plugin row with **Retry**; cleared on success
 - Installed **Details** shows structured marketplace/provides summary when available (plus CLI `plugin details` body)
+- **Plugin validate** (`grok plugin validate`): **Validate** on installed plugin rows and on a local path before advanced install; multi-line CLI messages stay in an in-panel result (not only toast); soft-fail when the CLI is too old
+- **Plugin validate pro**: classify outcomes (CLI too old / missing, path-only, parse/missing-field, not found, …) with severity chips + actionable hints in a **GlassModal** result (no `window.confirm`); soft-fail capability gaps stay warn (no hard action banner); pure `pluginValidate` helpers + tests; en/zh/zh-TW
 - **Delete CLI sessions from disk** (Settings → Agent / CLI sessions): per-row delete + delete all unlinked; path-scoped under active `GROK_HOME/sessions`; linked App chats stay
+- **Hooks Try / override**: validate sample stdin JSON (object only, ~32 KB cap), record synthetic dry-run activity (does **not** execute shell hooks); activity outcome filter chips (all/ok/fail/skip) + clear activity (in-app confirm)
+- **MCP status modal depth**: search filter, status chips (all / ok / warn / error / unknown) from inspect `compatibilityStatus`/`transport`, count summary, refresh while open, copy name/target — host list only (no fake servers)
+- **New skill scaffold** (Settings → Extensions → Skills): modal name/description + user (path-scoped GROK_HOME `/skills`) or project scope; host creates folder + default `SKILL.md` (no overwrite); refresh list and open existing SKILL.md editor
+- **Skill edit pro** (Settings → Extensions → Skills): **Validate** + save preflight for `SKILL.md` frontmatter (name/description/body), classified load/save/create errors with actionable hints in a **GlassModal** (no `window.confirm`); pure `skillEditFeedback` helpers + tests; en/zh/zh-TW
+- **Agents tab + scaffold**: Settings → Extensions → **Agents** lists user / project / bundled definition files; **New agent** modal (name + user/project scope) writes a SKILL-like `{name}.md` under active `GROK_HOME/agents` or project `.grok/agents` (no overwrite unless confirmed); open/reveal after create; preferred agent still chosen later in Settings → Agent
+- **Project inspect depth** (Settings → Runtime): secret-safe hooks rows + skill name lists from `grok inspect --json`; section chips (plugins / skills / MCP / hooks / agents / rules / config / models / permissions); expand long lists; per-section copy JSON / copy path / reveal; pure filter helpers + tests
+- **MCP doctor findings** (slash MCP modal + Extensions): host `mcp_doctor(name?)` runs `grok mcp doctor --json` with timeout and redacted errors; pure helpers flatten checks/issues into `{ id, level, title, detail, server? }` rows (no invented servers); **Run MCP doctor** shows findings with server filter + search; inspect refresh coexists with doctor results
+- **MCP OAuth GUI** (slash MCP modal): when doctor marks a server / finding as OAuth required or expired, show **Authorize…** / **Retry OAuth**; open sanitized auth URLs from doctor text (secrets stripped) via system browser; GlassModal instructions for TUI `/mcps` → `i` when no URL (CLI has no headless `mcp oauth`); pure classifiers + tests; never logs client secrets
+- **Hooks try-run**: Settings → Extensions → Hooks can **real-run** a script under `~/.grok/hooks` or project `.grok/hooks` only (host `hooks_try_run`, optional JSON stdin, timeout, redacted stdout/stderr); paths outside hooks dirs are refused; `ok` only on exit 0
+- **Hooks validate pro**: try-run / stdin **Validate** show classified outcomes (path refused, timeout, non-zero exit, invalid JSON, …) with actionable hints in a **GlassModal** result (no `window.confirm`); pure `hooksValidate` helpers + tests; en/zh/zh-TW
 
 ### Fixed
 
 - CLI install missing SHA-256 (#227) · app.css rewind/fork selectors (#259)
+- **Multi-turn chat scroll jank (#280)**: free-scroll node-rail highlight no longer `setState`s the transcript parent each frame; virtual-list `measureRef` callbacks are stable per index (stops ResizeObserver thrash); idle force-mount uses transcript indices only; rail `scrollIntoView` is instant
 
 **中文 · 新增（按域）**
 
+- **Agent**：**代码库索引 UX**（设置 → Agent；`[features].codebase_indexing`）：如实展示代码**图**索引开关与状态（非记忆 embedding）；缺失键保持未设置并标注 CLI 默认开启；独立 agent-home 写 bool + soft-respawn；共享只读；glob 自定义只读；旧 CLI soft-fail；纯助手与测试；en/zh/zh-TW + settingsCatalog
 - **输入/对话**：队列、高度、提示历史、宽度字号、工具折叠/过滤、重生选模型、字数、变更芯片、工作区 dirty 芯片、会话变更审阅（+/− · 并排 diff · j/k）、结构化 JSON 回复面板（校验/复制/导出）、上下文用量/费用粗估
+- **会话/侧栏**：复制 vs 分叉、恢复对话并还原代码（干净 worktree）、便签、会话规则（`--rules`）、会话最大轮次（`--max-turns` 覆盖；空/0 继承全局）、静音、未读点、HTML 导出、按天归档、日期分组、项目色、j/k 导航、CLI 对齐 worktree（默认 `~/.grok/worktrees`、侧栏 CLI/WT 标记）；**混合会话搜索**（全部/标题/内容芯片、含已归档、关键词片段与徽章，无向量）
+- **会话/侧栏**：复制 vs 分叉、恢复对话并还原代码（干净 worktree）、便签、会话规则（`--rules`）、系统提示词覆盖（`--system-prompt-override`）、会话最大轮次（`--max-turns` 覆盖；空/0 继承全局）、静音、未读点、HTML 导出、按天归档、日期分组、项目色、j/k 导航、CLI 对齐 worktree（默认 `~/.grok/worktrees`、侧栏 CLI/WT 标记）
+- **会话/侧栏**：复制 vs 分叉、恢复对话并还原代码（干净 worktree）、便签、会话规则（`--rules`）、会话最大轮次（`--max-turns` 覆盖；空/0 继承全局）、静音、未读点、HTML 导出、会话导出格式（Markdown / **纯文本** / JSON / HTML；完整 Markdown 优先 CLI `grok export`、失败回退本地会话）、按天归档、日期分组、项目色、j/k 导航、CLI 对齐 worktree（默认 `~/.grok/worktrees`、侧栏 CLI/WT 标记）
+- **输入/对话**：队列、高度、提示历史、宽度字号、工具折叠/过滤、重生选模型、字数、变更芯片、工作区 dirty 芯片、会话变更审阅（+/− · 并排 diff · j/k）、结构化 JSON 回复面板（校验/复制/导出）、上下文用量/费用粗估、压缩对话框强度预设（轻/标/激 · 备注模板 · 前后估值）
+- **输入/对话**：**实时语音委派状态**（听/思/说、停止、诚实空转写、可选发送转写到当前会话）、队列、高度、提示历史、宽度字号、工具折叠/过滤、重生选模型、字数、变更芯片、工作区 dirty 芯片、会话变更审阅（+/− · 并排 diff · j/k）、结构化 JSON 回复面板（校验/复制/导出）、上下文用量/费用粗估
 - **会话/侧栏**：复制 vs 分叉、恢复对话并还原代码（干净 worktree）、便签、会话规则（`--rules`）、会话最大轮次（`--max-turns` 覆盖；空/0 继承全局）、静音、未读点、HTML 导出、按天归档、日期分组、项目色、j/k 导航、CLI 对齐 worktree（默认 `~/.grok/worktrees`、侧栏 CLI/WT 标记）
+- **外观/壳**：主题定时、跟随系统语言、忙碌退出确认、托盘角标、快捷键冲突面板（录制警告 + 重置冲突项）、快捷键范围（全局/对话列 + 可选跨范围共用组合键）
+- **会话/侧栏**：复制 vs 分叉、**新窗口打开会话**（`#/session/<id>` 深链；副窗仅查看、不抢 live 槽）、恢复对话并还原代码（干净 worktree）、便签、会话规则（`--rules`）、会话最大轮次（`--max-turns` 覆盖；空/0 继承全局）、静音、未读点、HTML 导出、按天归档、日期分组、项目色、j/k 导航、CLI 对齐 worktree（默认 `~/.grok/worktrees`、侧栏 CLI/WT 标记）
+- **会话/侧栏**：复制 vs 分叉、恢复对话并还原代码（干净 worktree）、便签、会话规则（`--rules`）、会话最大轮次（`--max-turns` 覆盖；空/0 继承全局）、静音、未读点、HTML 导出、按天归档、日期分组、项目色、j/k 导航、CLI 对齐 worktree（默认 `~/.grok/worktrees`、侧栏 CLI/WT 标记）；**混合会话搜索排序**（命令面板 Keyword/Hybrid + 设置；本地词元重叠，非云端嵌入）
+- **会话/侧栏**：复制 vs 分叉、恢复对话并还原代码（干净 worktree）、分叉/恢复可选 CLI `--fork-session`（新 agent session id，ACP `session/fork`）、便签、会话规则（`--rules`）、会话最大轮次（`--max-turns` 覆盖；空/0 继承全局）、静音、未读点、HTML 导出、按天归档、日期分组、项目色、j/k 导航、CLI 对齐 worktree（默认 `~/.grok/worktrees`、侧栏 CLI/WT 标记）
 - **外观/壳**：主题定时、跟随系统语言、忙碌退出确认、托盘角标、快捷键冲突面板（录制警告 + 重置冲突项）
+- **会话/侧栏**：复制 vs 分叉、恢复对话并还原代码（干净 worktree）、便签、会话规则（`--rules`）、静音、未读点、HTML 导出、**分享卡片 PNG**（会话菜单 → 导出为图片；页脚 Generated with Grok App；设置可上传自定义 Logo）、按天归档、日期分组、项目色、j/k 导航、CLI 对齐 worktree（默认 `~/.grok/worktrees`、侧栏 CLI/WT 标记）
+- **外观/壳**：主题定时、跟随系统语言、忙碌退出确认、托盘角标、**分享卡片 Logo**（外观 → 界面）
 - **Agent**：禁用内置工具（芯片 + 自由列表 → `--disallowed-tools`；与禁用网页搜索并存；更改 soft-respawn）；可选 profile 路径（`--agent-profile`）
+- **系统**：**Agent serve** 启停（设置 → 运行时 → 连接）；**手机镜像写入审计**（本地 ring、无密钥/URL）；**Trace 历史管理**（搜索/移除/清空确认/可选大小）；任务面板子代理 **WT/cwd** 标记；**Agent 仪表盘** 状态/搜索/项目筛选；**记忆浏览器** 搜索 + 类型芯片筛选（空结果/清除）
+- **系统**：**已安排任务后台诚实说明**（无独立守护进程；横幅 + 忙碌退出附注 + 登录启动说明）；**Agent serve** 启停（设置 → 运行时 → 连接）；**手机镜像写入审计**（本地 ring、无密钥/URL）；**Trace 历史管理**（搜索/移除/清空确认/可选大小）；任务面板子代理 **WT/cwd** 标记；**Agent 仪表盘** 状态/搜索/项目筛选
+- **系统**：**Agent serve** 启停（设置 → 运行时 → 连接）；**可靠性卡顿时间线**（localStorage ring ~40、筛选/清空确认、无密钥）；**手机镜像写入审计**（本地 ring、无密钥/URL）；**Trace 历史管理**（搜索/移除/清空确认/可选大小）；任务面板子代理 **WT/cwd** 标记；**Agent 仪表盘** 状态/搜索/项目筛选
+- **Agent**：禁用内置工具（芯片 + 自由列表 → `--disallowed-tools`；与禁用网页搜索并存；更改 soft-respawn）；可选 profile 路径（`--agent-profile`）；**config.toml 安全查看**（脱敏 monospaced、分区跳转、复制路径/在文件夹显示/外部编辑器；非自由写入）
+- **Agent**：禁用内置工具（芯片 + 自由列表 → `--disallowed-tools`；与禁用网页搜索并存；更改 soft-respawn）；**允许的工具**（`--tools` allowlist；空=全部；与 denylist 并存提示；soft-respawn）；可选 profile 路径（`--agent-profile`）
+- **Agent**：禁用内置工具（芯片 + 自由列表 → `--disallowed-tools`；与禁用网页搜索并存；更改 soft-respawn）；可选 profile 路径（`--agent-profile`）；**Agents JSON** 启动注入（`--agents`；空省略；无效阻止保存；soft-respawn；不写共享 `~/.grok`）
+- **Agent**：禁用内置工具（芯片 + 自由列表 → `--disallowed-tools`；与禁用网页搜索并存；更改 soft-respawn）；可选 profile 路径（`--agent-profile`）；**config.toml 安全分区编辑**（独立 agent-home 白名单键、脱敏预览、共享模式只读警告、禁止整文件改写密钥）
 - **系统**：**Agent serve** 启停（设置 → 运行时 → 连接）；**手机镜像写入审计**（本地 ring、无密钥/URL）；**Trace 历史管理**（搜索/移除/清空确认/可选大小）；任务面板子代理 **WT/cwd** 标记；**Agent 仪表盘** 状态/搜索/项目筛选
+- **系统**：**Agent serve** 启停（设置 → 运行时 → 连接）；**手机镜像写入审计**（本地 ring、无密钥/URL）；**Trace 历史管理**（搜索/移除/清空确认/可选大小）；任务面板子代理 **WT/cwd** 标记；**Agent 仪表盘** 状态/搜索/项目筛选、多选停止（仅可停止行）、工具标题与权限徽章
+- **系统**：**Agent serve** 启停（设置 → 运行时 → 连接）；**手机镜像写入审计**（本地 ring、无密钥/URL）；**Trace 历史管理**（搜索/移除/清空确认/可选大小）；**Trace 本地导出 vs 导出并上传**（确认弹窗、`localOnly` 默认 true、历史上传标记、失败 toast）；任务面板子代理 **WT/cwd** 标记；**Agent 仪表盘** 状态/搜索/项目筛选
+- **系统**：**Agent serve** 启停（设置 → 运行时 → 连接）；**手机镜像写入审计**（本地 ring、无密钥/URL）；**Trace 历史管理**（搜索/移除/清空确认/可选大小）；任务面板子代理 **WT/cwd** 标记与 **用作对话目录**（绑定当前会话 cwd）；**Agent 仪表盘** 状态/搜索/项目筛选
+- **系统**：**Agent serve** 启停（设置 → 运行时 → 连接）；**远程 IM 深度**（密钥默认遮罩+显示/隐藏、Bridge 事件时间线 ring、飞书/Lark 与 Telegram 渠道健康卡）；**手机镜像写入审计**（本地 ring、无密钥/URL）；**Trace 历史管理**（搜索/移除/清空确认/可选大小）；任务面板子代理 **WT/cwd** 标记；**Agent 仪表盘** 状态/搜索/项目筛选
+- **系统**：**Agent serve** 启停（设置 → 运行时 → 连接）；**手机镜像写入审计**（本地 ring、无密钥/URL）；**Trace 历史管理**（搜索/移除/清空确认/可选大小）；任务面板子代理 **WT/cwd** 标记；**Agent 仪表盘** 状态/搜索/项目筛选；**费用汇总**（设置 → 运行时 → 诊断：按项目/日汇总已知 token，缺失为未知，粗估非账单）
+- **系统**：**Agent serve** 启停（设置 → 运行时 → 连接）；**手机镜像写入审计**（本地 ring、无密钥/URL）；**镜像加固**（写入类别列表/宽面警告、最大连接数、轮换确认、日志脱敏）；**Trace 历史管理**（搜索/移除/清空确认/可选大小）；任务面板子代理 **WT/cwd** 标记；**Agent 仪表盘** 状态/搜索/项目筛选
+- **系统**：**Leader fleet**（list / info / kill 确认；旧 CLI 软失败）；**Agent serve** 启停（设置 → 运行时 → 连接）；**手机镜像写入审计**（本地 ring、无密钥/URL）；**Trace 历史管理**（搜索/移除/清空确认/可选大小）；任务面板子代理 **WT/cwd** 标记；**Agent 仪表盘** 状态/搜索/项目筛选
+- **系统**：**已安排任务托盘驻留 / AUTO-RUNNER**（Host 调度状态 API、为已安排保留托盘、可选 macOS LaunchAgent 助手生成与安装——非假 daemon）；**Agent serve** 启停（设置 → 运行时 → 连接）；**手机镜像写入审计**（本地 ring、无密钥/URL）；**Trace 历史管理**（搜索/移除/清空确认/可选大小）；任务面板子代理 **WT/cwd** 标记；**Agent 仪表盘** 状态/搜索/项目筛选
+- **系统**：**Agent serve** 启停（设置 → 运行时 → 连接）；**手机镜像写入审计**（本地 ring、无密钥/URL）；**Trace 历史管理**（搜索/移除/清空确认/可选大小）；任务面板子代理 **WT/cwd** 标记；**Agent 仪表盘** 状态/搜索/项目筛选；**可靠性支持包**含脱敏卡顿时间线快照
+- **系统**：**Agent serve** 启停（设置 → 运行时 → 连接）；可选 **`--remote` 代理** + 客户端连接字符串模板（脱敏状态 / 启动时复制完整值；健康检查仅本机 TCP）；**手机镜像写入审计**（本地 ring、无密钥/URL）；**Trace 历史管理**（搜索/移除/清空确认/可选大小）；任务面板子代理 **WT/cwd** 标记；**Agent 仪表盘** 状态/搜索/项目筛选
+- **系统**：**SDK 连接向导**（设置 → 运行时 → 连接：本地 serve 启停、掩码密钥/ws URL、TCP 探测、curl/websocat/grok 示例、远程 URL 探测；密钥不落日志）；**Agent serve**；**手机镜像写入审计**（本地 ring、无密钥/URL）；**Trace 历史管理**（搜索/移除/清空确认/可选大小）；任务面板子代理 **WT/cwd** 标记；**Agent 仪表盘** 状态/搜索/项目筛选
 - **计划**：**请求修改** 可选修订说明；计划历史搜索/决策筛选、清空确认、会话仍在时可打开
-- **扩展/市场**：目录插件详情面板（描述/版本/组件徽章 + 安装/重装）；安装失败行内重试；已安装 provides 结构化摘要
+- **扩展/市场**：目录插件详情面板（描述/版本/组件徽章 + 安装/重装）；安装失败行内重试；已安装 provides 结构化摘要；**Hooks 试跑/覆盖**（校验 stdin JSON、合成 dry-run 活动、结果筛选与清空确认；不执行 shell hook）
+- **扩展/市场**：目录插件详情面板（描述/版本/组件徽章 + 安装/重装）；安装失败行内重试；已安装 provides 结构化摘要；**MCP 状态弹层**（搜索/状态芯片/计数/刷新/复制名称与目标）
+- **扩展/市场**：目录插件详情面板（描述/版本/组件徽章 + 安装/重装）；安装失败行内重试；已安装 provides 结构化摘要；**新建技能脚手架**（名称/描述/用户或项目作用域 → 默认 SKILL.md + 打开编辑器）
+- **扩展/市场**：**技能编辑 pro**（校验 + 保存前检查 SKILL.md 前置元数据；加载/保存/创建错误分类与可操作提示的 GlassModal；无 `window.confirm`）
+- **扩展/市场**：目录插件详情面板（描述/版本/组件徽章 + 安装/重装）；安装失败行内重试；已安装 provides 结构化摘要；**Agents** 页列出定义文件并支持 **新建 Agent** 脚手架（用户/项目作用域、`Name.md` 模板、覆盖确认、打开/显示）
+- **扩展/市场**：目录插件详情面板（描述/版本/组件徽章 + 安装/重装）；安装失败行内重试；已安装 provides 结构化摘要；**插件校验**（`plugin validate`：已安装行 + 本地路径安装前；行内结果面板；旧 CLI 软失败）
+- **扩展/市场**：**插件校验 pro**（分类结果 + GlassModal 提示；CLI 过旧/缺失 soft-fail；纯 helpers + 测试；en/zh/zh-TW）
+- **扩展/市场**：目录插件详情面板（描述/版本/组件徽章 + 安装/重装）；安装失败行内重试；已安装 provides 结构化摘要；**项目检查深度**（分区芯片、钩子/技能名清单、展开列表、分节复制 JSON/路径）
+- **扩展/市场**：目录插件详情面板（描述/版本/组件徽章 + 安装/重装）；安装失败行内重试；已安装 provides 结构化摘要；**MCP doctor** 诊断结果列表（`mcp_doctor` + 扁平 findings；斜杠 MCP 弹窗可运行/筛选；与 inspect 刷新共存）
+- **扩展/市场**：**MCP OAuth GUI**（诊断标记需 OAuth / 凭证过期时显示「授权…」/「重试 OAuth」；打开脱敏后的授权 URL；无 URL 时 GlassModal 指引 TUI `/mcps` → `i`；无头 CLI 无 `mcp oauth`；不写客户端密钥日志）
+- **扩展/市场**：目录插件详情面板（描述/版本/组件徽章 + 安装/重装）；安装失败行内重试；已安装 provides 结构化摘要；**Hooks 试跑**（仅 hooks 目录内脚本、可选 JSON stdin、超时、脱敏输出；目录外拒绝；仅 exit 0 成功）
+- **权限/CLI**：**`--no-ask-user`**（设置 → 通用 → Agent；**CLI ≥ 0.2.117**）：顶层 flag 禁用 ask_user 问卷；可选会话覆盖（`null` 继承全局）；soft-respawn；纯 resolve/spawn 助手与测试
+- **权限/CLI**：**包含部分流式事件**（CLI 0.2.117+：`--include-partial-messages`；仅 `streaming-messages-json`；设置 → 运行时 → 进程池；远程 IM 升级 format；旧 CLI soft-fail）
 - **权限/CLI**：`--permission-mode` 映射与 spawn；设置页 CLI 标签与高级选择；**Auto** 策略；Doctor 安全批量修复；**删除磁盘 CLI 会话**（单条/全部未关联；限定 `GROK_HOME/sessions`）
+- **权限/CLI**：**后台等待策略**（CLI 0.2.117+：`wait` / `no_wait` / `timeout`；设置 → Agent；无头与 ACP 顶层 soft-fail 旧 CLI）
+- **扩展/市场**：目录插件详情面板（描述/版本/组件徽章 + 安装/重装）；安装失败行内重试；已安装 provides 结构化摘要
+- **权限/CLI**：`--permission-mode` 映射与 spawn；设置页 CLI 标签与高级选择；**Auto** 策略；Doctor 安全批量修复；**删除磁盘 CLI 会话**（单条/全部未关联；限定 `GROK_HOME/sessions`）；**CLI worktree 列表**（`grok worktree list`；分支菜单刷新/显示/安全打开为 cwd）
+- **权限/CLI**：`--permission-mode` 映射与 spawn；设置页 CLI 标签与高级选择；**Auto** 策略；Doctor 安全批量修复；**删除磁盘 CLI 会话**（单条/全部未关联；限定 `GROK_HOME/sessions`）；**CLI 会话搜索**（`grok sessions search` 摘要+首条提示，失败则本地磁盘含首条提示筛选）
+- **权限/CLI**：`--permission-mode` 映射与 spawn；设置页 CLI 标签与高级选择；**Auto** 策略；Doctor 安全批量修复；**删除磁盘 CLI 会话**（单条/全部未关联；限定 `GROK_HOME/sessions`）；**权限规则试算**（输入工具调用预览 allow/deny/ask，不写配置）
+- **权限/CLI**：`--permission-mode` 映射与 spawn；设置页 CLI 标签与高级选择；**Auto** 策略；Doctor 安全批量修复；**删除磁盘 CLI 会话**（单条/全部未关联；限定 `GROK_HOME/sessions`）；**记忆正文搜索**（`GROK_HOME/memory` 路径限定 + 上限；脱敏摘录；打开/显示）
+- **权限/CLI**：`--permission-mode` 映射与 spawn；设置页 CLI 标签与高级选择；**Auto** 策略；Doctor 安全批量修复；**删除磁盘 CLI 会话**（单条/全部未关联；限定 `GROK_HOME/sessions`）；**ACP 服务器健康检查**（解析/TCP 探测/状态芯片/blur 校验；地址变更 soft-respawn）
 
 
 **中文 · 修复**
 
-- CLI SHA-256（#227）；CSS（#259）
+- CLI SHA-256（#227）；CSS（#259）；多轮对话滚动卡顿（#280）
 
 
 ## [0.2.2] - 2026-07-30
@@ -97,6 +247,7 @@ See `docs/llm-wiki/release.md`.
 - **Collapse all activity** in the current chat (top-bar + session menu; streaming thoughts stay open)
 - **Sidebar session relative time** (on by default; about once a minute)
 - **Permission auto-deny timeout** (Settings → General → Permissions): Off / 30s / 1m / 2m / 5m with countdown on the bar
+- **Ask User Question timeout** (Settings → General → Permissions): Off / 30s / 1m / 2m / 5m with countdown on the questionnaire modal; auto-dismisses (cancel) when the timer ends. **App-enforced** (localStorage); aligns with Grok Build CLI **0.2.117** `[toolset.ask_user_question]` `timeout_enabled` / `timeout_secs` conceptually — does not rewrite `~/.grok/config.toml`
 
 ### Changed
 
@@ -118,7 +269,7 @@ See `docs/llm-wiki/release.md`.
 - 侧栏多选：选择改为清单图标；项目行操作仅 hover 显示；支持二次确认后永久删除
 - 禅模式、记住上次设置页、始终显示回到底部、窗口置顶
 - 快捷键筛选；⌘/Ctrl+B 切换侧栏；⌘/Ctrl+Shift+C 复制上一条助手回复
-- 收起全部活动；侧栏相对时间；权限超时自动拒绝
+- 收起全部活动；侧栏相对时间；权限超时自动拒绝；Agent 提问超时自动忽略
 
 **中文 · 变更**
 

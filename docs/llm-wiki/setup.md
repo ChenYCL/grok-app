@@ -82,8 +82,24 @@ Persists `setupWizardCompleted: true`. If account skipped: `authSetupDeferred: t
 | `pick_cli_binary` | File picker |
 | `open_external_url` | Open install docs |
 
+## Managed configuration (enterprise, optional)
+
+Settings → Runtime → **Managed setup** (`ManagedSetupPanel`):
+
+1. **CLI ready** (hard dependency; same as first-run Runtime).
+2. **Team login / `GROK_DEPLOYMENT_KEY`** (or `[endpoints].deployment_key`).
+3. **Preview** — `grok setup --json` (writes nothing; secrets redacted).
+4. **Install** — `grok setup` with in-app confirm (no `window.confirm`); soft-respawns agent.
+5. **Verify local status** — host `managed_setup_status` soft-probes:
+   - `managed_config.toml` / `requirements.toml` / `managed_config.sig.json` / `managed_identity.sig.json` under active `GROK_HOME`
+   - system `/etc/grok/managed_config.toml` when present (Unix)
+   - `grok inspect` flags `managedSettingsActive` / `Exists` / `Path` when CLI works
+
+The App **does not re-verify cryptographic signatures**; it only shows artifact presence + inspect flags. CLI rejects bad signatures before writing. Soft-fail when CLI/inspect is missing.
+
 ## Non-goals
 
 - Embedding the CLI binary in the app package (B04).
 - Silent download without multi-mirror retry.
 - Forcing project selection before home.
+- App-side re-implementation of managed-config crypto verification.

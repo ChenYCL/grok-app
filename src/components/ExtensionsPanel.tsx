@@ -40,6 +40,21 @@ import {
   type PluginFilter,
 } from "@/lib/extensionsUi";
 import {
+  buildPluginValidateExceptionPresentation,
+  buildPluginValidatePreflightError,
+  buildPluginValidatePresentation,
+  formatPluginValidateMessages,
+  normalizePluginValidateResult,
+  pluginValidateBadgeTone,
+  pluginValidateHint,
+  pluginValidateKindLabel,
+  pluginValidateRowTone,
+  pluginValidateTarget,
+  type PluginValidateKind,
+  type PluginValidatePresentation,
+  type PluginValidateResult,
+} from "@/lib/pluginValidate";
+import {
   indexDoctorServerStatuses,
   lookupServerStatus,
   mcpAuthGuidanceKey,
@@ -50,14 +65,33 @@ import {
   type McpStatusIndex,
 } from "@/lib/mcpStatus";
 import {
+  classifyMcpOauthFromStatus,
+  mcpOauthActionLabelKey,
+  planMcpOauthOpen,
+  redactMcpOauthText,
+} from "@/lib/mcpOauth";
+import {
   isSkillEditable,
   resolveSkillMdPath,
 } from "@/lib/skillEditPath";
+import { sanitizeSkillFolderName } from "@/lib/skillScaffold";
+import {
+  buildSkillHostErrorPresentation,
+  buildSkillSaveOkPresentation,
+  buildSkillSavePreflightError,
+  buildSkillValidatePresentation,
+  skillEditBadgeTone,
+  skillEditHint,
+  skillEditKindLabel,
+  type SkillEditKind,
+  type SkillEditPresentation,
+} from "@/lib/skillEditFeedback";
 import {
   isFsWriteConflict,
   isResourceDraftDirty,
 } from "@/lib/resourceEdit";
 import { ExtensionsBuildExtras } from "@/components/ExtensionsBuildExtras";
+import { ExtensionsHooksPanel } from "@/components/ExtensionsHooksPanel";
 import {
   installedPluginDetailModel,
   type AvailablePluginDetailModel,
@@ -80,6 +114,7 @@ export type ExtensionsTabId =
   | "plugins"
   | "skills"
   | "mcp"
+  | "agents"
   | "hooks"
   | "market";
 
@@ -108,6 +143,56 @@ export function ExtensionsPanel({
   onSkillsPrefsChanged,
 }: ExtensionsPanelProps) {
   const tr = useMemo(() => createT(locale), [locale]);
+
+  const pluginValidateKindLabels = useMemo(
+    (): Partial<Record<PluginValidateKind, string>> => ({
+      ok: tr("ext.plugins.validate.kind.ok"),
+      cli_too_old: tr("ext.plugins.validate.kind.cliTooOld"),
+      cli_missing: tr("ext.plugins.validate.kind.cliMissing"),
+      empty_source: tr("ext.plugins.validate.kind.emptySource"),
+      path_only: tr("ext.plugins.validate.kind.pathOnly"),
+      not_found: tr("ext.plugins.validate.kind.notFound"),
+      not_a_directory: tr("ext.plugins.validate.kind.notADirectory"),
+      no_manifest: tr("ext.plugins.validate.kind.noManifest"),
+      parse_error: tr("ext.plugins.validate.kind.parseError"),
+      missing_field: tr("ext.plugins.validate.kind.missingField"),
+      invalid_manifest: tr("ext.plugins.validate.kind.invalidManifest"),
+      host_only: tr("ext.plugins.validate.kind.hostOnly"),
+      host_error: tr("ext.plugins.validate.kind.hostError"),
+      other: tr("ext.plugins.validate.kind.other"),
+    }),
+    [tr],
+  );
+
+  const pluginValidateKindHints = useMemo(
+    (): Partial<Record<PluginValidateKind, string>> => ({
+      ok: tr("ext.plugins.validate.hint.ok"),
+      cli_too_old: tr("ext.plugins.validate.hint.cliTooOld"),
+      cli_missing: tr("ext.plugins.validate.hint.cliMissing"),
+      empty_source: tr("ext.plugins.validate.hint.emptySource"),
+      path_only: tr("ext.plugins.validate.hint.pathOnly"),
+      not_found: tr("ext.plugins.validate.hint.notFound"),
+      not_a_directory: tr("ext.plugins.validate.hint.notADirectory"),
+      no_manifest: tr("ext.plugins.validate.hint.noManifest"),
+      parse_error: tr("ext.plugins.validate.hint.parseError"),
+      missing_field: tr("ext.plugins.validate.hint.missingField"),
+      invalid_manifest: tr("ext.plugins.validate.hint.invalidManifest"),
+      host_only: tr("ext.plugins.validate.hint.hostOnly"),
+      host_error: tr("ext.plugins.validate.hint.hostError"),
+      other: tr("ext.plugins.validate.hint.other"),
+    }),
+    [tr],
+  );
+
+  const openPluginValidatePresentation = useCallback(
+    (
+      presentation: PluginValidatePresentation,
+      pluginName: string | null,
+    ) => {
+      setValidateModal({ open: true, presentation, pluginName });
+    },
+    [],
+  );
   const [skills, setSkills] = useState<api.SkillDto[]>([]);
   const [skillRoots, setSkillRoots] = useState<string[]>([]);
   const [servers, setServers] = useState<api.McpDto[]>([]);
@@ -138,11 +223,41 @@ export function ExtensionsPanel({
   /** Grok Build Plugins tab filter: all | enabled | disabled */
   const [pluginFilter, setPluginFilter] = useState<PluginFilter>("all");
   const [installSource, setInstallSource] = useState("");
+  /** Per-row `plugin validate` result (keyed by pluginRowKey). Shown in-panel. */
+  const [validateByKey, setValidateByKey] = useState<
+    Record<string, PluginValidateResult>
+  >({});
+  /** Per-row classified presentation for kind chips / soft-fail tone. */
+  const [validatePresByKey, setValidatePresByKey] = useState<
+    Record<string, PluginValidatePresentation>
+  >({});
+  /** Pre-install validate for advanced path/git install field. */
+  const [installValidate, setInstallValidate] =
+    useState<PluginValidateResult | null>(null);
+  const [installValidatePres, setInstallValidatePres] =
+    useState<PluginValidatePresentation | null>(null);
+  /** GlassModal result for last validate (row or advanced install). */
+  const [validateModal, setValidateModal] = useState<{
+    open: boolean;
+    presentation: PluginValidatePresentation | null;
+    /** Installed plugin display name, or null for pre-install path. */
+    pluginName: string | null;
+  }>({ open: false, presentation: null, pluginName: null });
   /** In-app SKILL.md light editor (Settings → Extensions → Skills). */
   const [skillEditor, setSkillEditor] = useState<SkillEditorState | null>(null);
   const [skillDiscardOpen, setSkillDiscardOpen] = useState(false);
   const [skillConflictOpen, setSkillConflictOpen] = useState(false);
+  /** Classified validate / load / save feedback (GlassModal — no window.confirm). */
+  const [skillFeedback, setSkillFeedback] =
+    useState<SkillEditPresentation | null>(null);
+  const [skillFeedbackOpen, setSkillFeedbackOpen] = useState(false);
   const skillEditorSeq = useRef(0);
+  /** New skill scaffold modal (Extensions → Skills). */
+  const [skillNewOpen, setSkillNewOpen] = useState(false);
+  const [skillNewName, setSkillNewName] = useState("");
+  const [skillNewDesc, setSkillNewDesc] = useState("");
+  const [skillNewScope, setSkillNewScope] = useState<"user" | "project">("user");
+  const [skillNewError, setSkillNewError] = useState<string | null>(null);
   const [addOpen, setAddOpen] = useState(false);
   const [addName, setAddName] = useState("");
   const [addCommand, setAddCommand] = useState("");
@@ -334,11 +449,73 @@ export function ExtensionsPanel({
     skillEditor?.baselineText,
   );
 
+  const skillKindLabels = useMemo((): Partial<Record<SkillEditKind, string>> => {
+    return {
+      ok: tr("ext.skills.feedback.kind.ok"),
+      empty: tr("ext.skills.feedback.kind.empty"),
+      too_large: tr("ext.skills.feedback.kind.tooLarge"),
+      missing_frontmatter: tr("ext.skills.feedback.kind.missingFrontmatter"),
+      unclosed_frontmatter: tr("ext.skills.feedback.kind.unclosedFrontmatter"),
+      invalid_frontmatter: tr("ext.skills.feedback.kind.invalidFrontmatter"),
+      missing_name: tr("ext.skills.feedback.kind.missingName"),
+      invalid_name: tr("ext.skills.feedback.kind.invalidName"),
+      name_mismatch: tr("ext.skills.feedback.kind.nameMismatch"),
+      missing_description: tr("ext.skills.feedback.kind.missingDescription"),
+      empty_body: tr("ext.skills.feedback.kind.emptyBody"),
+      conflict: tr("ext.skills.feedback.kind.conflict"),
+      path_denied: tr("ext.skills.feedback.kind.pathDenied"),
+      path_outside: tr("ext.skills.feedback.kind.pathOutside"),
+      bundled_readonly: tr("ext.skills.feedback.kind.bundledReadonly"),
+      not_found: tr("ext.skills.feedback.kind.notFound"),
+      not_a_file: tr("ext.skills.feedback.kind.notAFile"),
+      already_exists: tr("ext.skills.feedback.kind.alreadyExists"),
+      host_only: tr("ext.skills.feedback.kind.hostOnly"),
+      host_error: tr("ext.skills.feedback.kind.hostError"),
+      other: tr("ext.skills.feedback.kind.other"),
+    };
+  }, [tr]);
+
+  const skillKindHints = useMemo((): Partial<Record<SkillEditKind, string>> => {
+    return {
+      ok: tr("ext.skills.feedback.hint.ok"),
+      empty: tr("ext.skills.feedback.hint.empty"),
+      too_large: tr("ext.skills.feedback.hint.tooLarge"),
+      missing_frontmatter: tr("ext.skills.feedback.hint.missingFrontmatter"),
+      unclosed_frontmatter: tr("ext.skills.feedback.hint.unclosedFrontmatter"),
+      invalid_frontmatter: tr("ext.skills.feedback.hint.invalidFrontmatter"),
+      missing_name: tr("ext.skills.feedback.hint.missingName"),
+      invalid_name: tr("ext.skills.feedback.hint.invalidName"),
+      name_mismatch: tr("ext.skills.feedback.hint.nameMismatch"),
+      missing_description: tr("ext.skills.feedback.hint.missingDescription"),
+      empty_body: tr("ext.skills.feedback.hint.emptyBody"),
+      conflict: tr("ext.skills.feedback.hint.conflict"),
+      path_denied: tr("ext.skills.feedback.hint.pathDenied"),
+      path_outside: tr("ext.skills.feedback.hint.pathOutside"),
+      bundled_readonly: tr("ext.skills.feedback.hint.bundledReadonly"),
+      not_found: tr("ext.skills.feedback.hint.notFound"),
+      not_a_file: tr("ext.skills.feedback.hint.notAFile"),
+      already_exists: tr("ext.skills.feedback.hint.alreadyExists"),
+      host_only: tr("ext.skills.feedback.hint.hostOnly"),
+      host_error: tr("ext.skills.feedback.hint.hostError"),
+      other: tr("ext.skills.feedback.hint.other"),
+    };
+  }, [tr]);
+
+  const openSkillFeedback = useCallback(
+    (presentation: SkillEditPresentation) => {
+      setSkillFeedback(presentation);
+      setSkillFeedbackOpen(true);
+    },
+    [],
+  );
+
   const closeSkillEditor = useCallback(() => {
     skillEditorSeq.current += 1;
     setSkillEditor(null);
     setSkillDiscardOpen(false);
     setSkillConflictOpen(false);
+    setSkillFeedbackOpen(false);
+    setSkillFeedback(null);
   }, []);
 
   const requestCloseSkillEditor = useCallback(() => {
@@ -351,17 +528,29 @@ export function ExtensionsPanel({
   }, [closeSkillEditor, skillEditor?.saving, skillEditorDirty]);
 
   const openSkillEditor = useCallback(
-    async (skill: api.SkillDto) => {
+    async (skill: api.SkillDto, opts?: { force?: boolean }) => {
       if (!api.isTauri()) {
+        const presentation = buildSkillHostErrorPresentation(
+          tr("ext.needTauri"),
+          "load",
+          {
+            labels: skillKindLabels,
+            fallbackTitle: tr("ext.skills.editLoadError"),
+          },
+        );
+        openSkillFeedback(presentation);
         setPathHint(tr("ext.needTauri"));
         return;
       }
-      if (!isSkillEditable(skill, skillRoots)) return;
+      // `force` skips client allowlist (e.g. right after create, roots state may lag).
+      if (!opts?.force && !isSkillEditable(skill, skillRoots)) return;
       const mdPath = resolveSkillMdPath(skill.path) ?? skill.path?.trim() ?? "";
       if (!mdPath) return;
       const seq = ++skillEditorSeq.current;
       setSkillDiscardOpen(false);
       setSkillConflictOpen(false);
+      setSkillFeedbackOpen(false);
+      setSkillFeedback(null);
       setSkillEditor({
         skill,
         path: mdPath,
@@ -392,6 +581,11 @@ export function ExtensionsPanel({
         });
       } catch (e) {
         if (seq !== skillEditorSeq.current) return;
+        const presentation = buildSkillHostErrorPresentation(e, "load", {
+          path: mdPath,
+          labels: skillKindLabels,
+          fallbackTitle: tr("ext.skills.editLoadError"),
+        });
         setSkillEditor({
           skill,
           path: mdPath,
@@ -400,29 +594,72 @@ export function ExtensionsPanel({
           mtimeMs: null,
           loading: false,
           saving: false,
-          error: String(e) || tr("ext.skills.editLoadError"),
+          error: presentation.summary || tr("ext.skills.editLoadError"),
           savedHint: null,
         });
+        openSkillFeedback(presentation);
       }
     },
-    [projectPath, skillRoots, tr],
+    [openSkillFeedback, projectPath, skillKindLabels, skillRoots, tr],
   );
+
+  const validateSkillEditor = useCallback(() => {
+    if (!skillEditor || skillEditor.loading) return;
+    const presentation = buildSkillValidatePresentation(skillEditor.draftText, {
+      expectedName: skillEditor.skill.name,
+      path: skillEditor.path,
+      labels: skillKindLabels,
+      titles: {
+        ok: tr("ext.skills.feedback.validateOk"),
+        fail: tr("ext.skills.feedback.validateFail"),
+      },
+    });
+    setSkillEditor((s) =>
+      s
+        ? {
+            ...s,
+            error: presentation.blocking ? presentation.summary : null,
+            savedHint: presentation.blocking
+              ? null
+              : presentation.summary || tr("ext.skills.feedback.validateOk"),
+          }
+        : s,
+    );
+    openSkillFeedback(presentation);
+  }, [openSkillFeedback, skillEditor, skillKindLabels, tr]);
 
   const saveSkillEditor = useCallback(
     async (opts?: { force?: boolean }) => {
       if (!skillEditor || skillEditor.loading || skillEditor.saving) return;
-      if (!api.isTauri()) {
-        setSkillEditor((s) =>
-          s ? { ...s, error: tr("ext.needTauri") } : s,
-        );
-        return;
-      }
       if (
         !isResourceDraftDirty(skillEditor.draftText, skillEditor.baselineText) &&
         !opts?.force
       ) {
         return;
       }
+
+      // Client-side SKILL.md validate before host write (force overwrite still validates).
+      const preflight = buildSkillSavePreflightError(skillEditor.draftText, {
+        isTauri: api.isTauri(),
+        expectedName: skillEditor.skill.name,
+        path: skillEditor.path,
+        labels: skillKindLabels,
+        hostOnlyTitle: tr("ext.needTauri"),
+      });
+      if (preflight) {
+        setSkillEditor((s) =>
+          s
+            ? {
+                ...s,
+                error: preflight.summary,
+                savedHint: null,
+              }
+            : s,
+        );
+        openSkillFeedback(preflight);
+        return;
+      }
+
       setSkillEditor((s) =>
         s ? { ...s, saving: true, error: null, savedHint: null } : s,
       );
@@ -435,6 +672,13 @@ export function ExtensionsPanel({
           projectPath,
         );
         const saved = skillEditor.draftText;
+        const okPresentation = buildSkillSaveOkPresentation({
+          path: w.path || skillEditor.path,
+          name: skillEditor.skill.name,
+          sizeBytes: w.size,
+          labels: skillKindLabels,
+          title: tr("ext.skills.editSaved"),
+        });
         setSkillEditor((s) =>
           s
             ? {
@@ -449,6 +693,7 @@ export function ExtensionsPanel({
               }
             : s,
         );
+        setSkillFeedback(okPresentation);
         // Reload Extensions list + composer skills picker.
         await refresh();
         onSkillsPrefsChanged?.();
@@ -458,19 +703,111 @@ export function ExtensionsPanel({
           setSkillConflictOpen(true);
           return;
         }
+        const presentation = buildSkillHostErrorPresentation(e, "save", {
+          path: skillEditor.path,
+          labels: skillKindLabels,
+          fallbackTitle: tr("ext.skills.editSaveError"),
+        });
         setSkillEditor((s) =>
           s
             ? {
                 ...s,
                 saving: false,
-                error: String(e) || tr("ext.skills.editSaveError"),
+                error: presentation.summary || tr("ext.skills.editSaveError"),
               }
             : s,
         );
+        openSkillFeedback(presentation);
       }
     },
-    [onSkillsPrefsChanged, projectPath, refresh, skillEditor, tr],
+    [
+      onSkillsPrefsChanged,
+      openSkillFeedback,
+      projectPath,
+      refresh,
+      skillEditor,
+      skillKindLabels,
+      tr,
+    ],
   );
+
+  const skillNewSanitized = useMemo(
+    () => sanitizeSkillFolderName(skillNewName),
+    [skillNewName],
+  );
+
+  const openSkillNew = useCallback(() => {
+    setSkillNewName("");
+    setSkillNewDesc("");
+    setSkillNewScope("user");
+    setSkillNewError(null);
+    setSkillNewOpen(true);
+  }, []);
+
+  const submitSkillNew = useCallback(async () => {
+    if (!api.isTauri() || actionBusy) return;
+    const safe = sanitizeSkillFolderName(skillNewName);
+    if (!safe) {
+      setSkillNewError(tr("ext.skills.newNameInvalid"));
+      return;
+    }
+    const scope: "user" | "project" =
+      skillNewScope === "project" && projectPath?.trim()
+        ? "project"
+        : "user";
+    if (skillNewScope === "project" && !projectPath?.trim()) {
+      setSkillNewError(tr("ext.skills.newScopeProjectNeed"));
+      return;
+    }
+    setActionBusy("skill:create");
+    setSkillNewError(null);
+    setActionError(null);
+    try {
+      const res = await api.skillCreate({
+        name: safe,
+        description: skillNewDesc,
+        projectPath,
+        scope,
+      });
+      setSkillNewOpen(false);
+      setSkillNewName("");
+      setSkillNewDesc("");
+      await refresh();
+      onSkillsPrefsChanged?.();
+      // Reuse existing SKILL.md editor open flow.
+      const dto: api.SkillDto = {
+        name: res.name,
+        description: skillNewDesc.trim(),
+        source: scope === "project" ? "project" : "user",
+        path: res.path,
+        userInvocable: true,
+        enabled: true,
+      };
+      // Roots React state may lag one frame after refresh — force open by path.
+      void openSkillEditor(dto, { force: true });
+    } catch (e) {
+      const presentation = buildSkillHostErrorPresentation(e, "create", {
+        labels: skillKindLabels,
+        fallbackTitle: tr("ext.skills.newError"),
+      });
+      setSkillNewError(presentation.summary || tr("ext.skills.newError"));
+      openSkillFeedback(presentation);
+    } finally {
+      setActionBusy(null);
+    }
+  }, [
+    actionBusy,
+    onSkillsPrefsChanged,
+    openSkillEditor,
+    openSkillFeedback,
+    projectPath,
+    refresh,
+    skillKindLabels,
+    skillNewDesc,
+    skillNewName,
+    skillNewScope,
+    tr,
+  ]);
 
   const runPluginAction = async (
     key: string,
@@ -538,6 +875,189 @@ export function ExtensionsPanel({
     void runPluginAction("update:all", async () => {
       await api.pluginUpdate(null);
     });
+  };
+
+  const applyValidateResult = (
+    res: api.PluginValidateResult,
+  ): PluginValidateResult => normalizePluginValidateResult(res);
+
+  const presentValidateResult = (
+    res: PluginValidateResult,
+  ): PluginValidatePresentation =>
+    buildPluginValidatePresentation(res, {
+      kinds: pluginValidateKindLabels,
+      okTitle: tr("ext.plugins.validateOk"),
+      failTitle: tr("ext.plugins.validateFailed"),
+    });
+
+  /** Validate an installed plugin (path preferred) — row + GlassModal soft-fail. */
+  const validatePlugin = (p: api.PluginDto) => {
+    if (actionBusy) return;
+    const key = pluginRowKey(p);
+    const target = pluginValidateTarget(p);
+
+    if (!api.isTauri()) {
+      const presentation = buildPluginValidateExceptionPresentation(
+        tr("ext.needTauri"),
+        { kinds: pluginValidateKindLabels },
+      );
+      // Force host_only if message didn't classify (needTauri string varies).
+      const forced: PluginValidatePresentation = {
+        ...presentation,
+        kind: "host_only",
+        severity: "warn",
+        softFail: true,
+        title: pluginValidateKindLabel("host_only", pluginValidateKindLabels),
+      };
+      setValidateByKey((prev) => ({
+        ...prev,
+        [key]: {
+          ok: false,
+          messages: forced.messages,
+          reason: "host_only",
+        },
+      }));
+      setValidatePresByKey((prev) => ({ ...prev, [key]: forced }));
+      openPluginValidatePresentation(forced, p.name);
+      return;
+    }
+
+    if (cliMissing) {
+      const presentation = presentValidateResult({
+        ok: false,
+        reason: "cli_missing",
+        messages: [tr("ext.plugins.validate.kind.cliMissing")],
+      });
+      setValidateByKey((prev) => ({
+        ...prev,
+        [key]: {
+          ok: false,
+          reason: "cli_missing",
+          messages: presentation.messages,
+        },
+      }));
+      setValidatePresByKey((prev) => ({ ...prev, [key]: presentation }));
+      openPluginValidatePresentation(presentation, p.name);
+      return;
+    }
+
+    setActionBusy(`validate:${key}`);
+    setActionError(null);
+    setActionErrorSource(null);
+    void (async () => {
+      try {
+        const res = applyValidateResult(await api.pluginValidate(target));
+        const presentation = presentValidateResult(res);
+        setValidateByKey((prev) => ({ ...prev, [key]: res }));
+        setValidatePresByKey((prev) => ({ ...prev, [key]: presentation }));
+        openPluginValidatePresentation(presentation, p.name);
+        // Soft-fail (cli too old / missing): modal + row only — not hard action error.
+        if (!res.ok && !presentation.softFail) {
+          setActionError(
+            formatPluginValidateMessages(
+              res.messages,
+              tr("ext.plugins.validateFailed"),
+            ),
+          );
+          setActionErrorSource("plugin");
+        }
+      } catch (e) {
+        const presentation = buildPluginValidateExceptionPresentation(e, {
+          kinds: pluginValidateKindLabels,
+        });
+        const envelope: PluginValidateResult = {
+          ok: false,
+          messages: presentation.messages,
+          reason: presentation.reason,
+        };
+        setValidateByKey((prev) => ({ ...prev, [key]: envelope }));
+        setValidatePresByKey((prev) => ({ ...prev, [key]: presentation }));
+        openPluginValidatePresentation(presentation, p.name);
+        if (!presentation.softFail) {
+          setActionError(presentation.summary || String(e));
+          setActionErrorSource("plugin");
+        }
+      } finally {
+        setActionBusy(null);
+      }
+    })();
+  };
+
+  /** Pre-install validate for a local path in the advanced install field. */
+  const validateInstallSource = () => {
+    if (actionBusy) return;
+    const source = normalizePluginInstallSource(installSource);
+    const preflight = buildPluginValidatePreflightError(source, {
+      isTauri: api.isTauri(),
+      emptyMessage: tr("ext.plugins.installEmpty"),
+      pathOnlyMessage: tr("ext.plugins.validatePathOnly"),
+      hostOnlyMessage: tr("ext.needTauri"),
+      labels: { kinds: pluginValidateKindLabels },
+    });
+    if (preflight) {
+      const envelope: PluginValidateResult = {
+        ok: false,
+        messages: preflight.messages,
+        reason: preflight.reason,
+      };
+      setInstallValidate(envelope);
+      setInstallValidatePres(preflight);
+      openPluginValidatePresentation(preflight, null);
+      return;
+    }
+    if (cliMissing) {
+      const presentation = presentValidateResult({
+        ok: false,
+        reason: "cli_missing",
+        messages: [tr("ext.plugins.validate.kind.cliMissing")],
+      });
+      setInstallValidate({
+        ok: false,
+        reason: "cli_missing",
+        messages: presentation.messages,
+      });
+      setInstallValidatePres(presentation);
+      openPluginValidatePresentation(presentation, null);
+      return;
+    }
+    setActionBusy("validate:install");
+    setActionError(null);
+    setActionErrorSource(null);
+    void (async () => {
+      try {
+        const res = applyValidateResult(await api.pluginValidate(source));
+        const presentation = presentValidateResult(res);
+        setInstallValidate(res);
+        setInstallValidatePres(presentation);
+        openPluginValidatePresentation(presentation, null);
+        if (!res.ok && !presentation.softFail) {
+          setActionError(
+            formatPluginValidateMessages(
+              res.messages,
+              tr("ext.plugins.validateFailed"),
+            ),
+          );
+          setActionErrorSource("plugin");
+        }
+      } catch (e) {
+        const presentation = buildPluginValidateExceptionPresentation(e, {
+          kinds: pluginValidateKindLabels,
+        });
+        setInstallValidate({
+          ok: false,
+          messages: presentation.messages,
+          reason: presentation.reason,
+        });
+        setInstallValidatePres(presentation);
+        openPluginValidatePresentation(presentation, null);
+        if (!presentation.softFail) {
+          setActionError(presentation.summary || String(e));
+          setActionErrorSource("plugin");
+        }
+      } finally {
+        setActionBusy(null);
+      }
+    })();
   };
 
   const showDetails = async (p: api.PluginDto) => {
@@ -719,6 +1239,7 @@ export function ExtensionsPanel({
                 ["plugins", "ext.plugins.title"],
                 ["skills", "ext.skills.title"],
                 ["mcp", "ext.mcp.title"],
+                ["agents", "ext.agents.title"],
                 ["hooks", "ext.hooks.title"],
                 ["market", "ext.market.title"],
               ] as const
@@ -919,10 +1440,24 @@ export function ExtensionsPanel({
               const key = pluginRowKey(p);
               const rowBusy = actionBusy === key;
               const updating = actionBusy === `update:${key}`;
-              const busy = rowBusy || updating;
+              const validating = actionBusy === `validate:${key}`;
+              const busy = rowBusy || updating || validating;
               const tone = pluginStatusTone(p.status, p.enabled);
               const meta = pluginMetaLine(p);
               const provides = pluginProvidesLine(p);
+              const vResult = validateByKey[key] ?? null;
+              const vPres =
+                validatePresByKey[key] ??
+                (vResult
+                  ? presentValidateResult(vResult)
+                  : null);
+              const vTone = vPres
+                ? pluginValidateRowTone(vPres.severity)
+                : vResult
+                  ? vResult.ok
+                    ? "ok"
+                    : "err"
+                  : null;
               return (
                 <li
                   key={key}
@@ -995,6 +1530,16 @@ export function ExtensionsPanel({
                       type="button"
                       className="btn btn--ghost btn--sm"
                       disabled={busy || !!actionBusy}
+                      onClick={() => validatePlugin(p)}
+                    >
+                      {validating
+                        ? tr("ext.plugins.validating")
+                        : tr("ext.plugins.validate")}
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn--ghost btn--sm"
+                      disabled={busy || !!actionBusy}
                       onClick={() => void showDetails(p)}
                     >
                       {tr("ext.plugins.details")}
@@ -1009,6 +1554,73 @@ export function ExtensionsPanel({
                       <span>{tr("ext.plugins.uninstall")}</span>
                     </button>
                   </div>
+                  {vResult && vPres ? (
+                    <div
+                      className={
+                        "ext-item__validate" +
+                        (vTone ? ` ext-item__validate--${vTone}` : "")
+                      }
+                      role={vPres.ok || vPres.softFail ? "status" : "alert"}
+                    >
+                      <div className="ext-item__validate-head">
+                        <span
+                          className={
+                            "ext-badge ext-badge--" +
+                            pluginValidateBadgeTone(vPres.severity)
+                          }
+                        >
+                          {pluginValidateKindLabel(
+                            vPres.kind,
+                            pluginValidateKindLabels,
+                          )}
+                        </span>
+                        <div className="ext-item__validate-title">
+                          {vPres.ok
+                            ? tr("ext.plugins.validateOk")
+                            : vPres.softFail
+                              ? pluginValidateKindLabel(
+                                  vPres.kind,
+                                  pluginValidateKindLabels,
+                                )
+                              : tr("ext.plugins.validateFailed")}
+                        </div>
+                      </div>
+                      {vResult.messages.length > 0 ? (
+                        <pre className="ext-item__validate-body">
+                          {formatPluginValidateMessages(vResult.messages)}
+                        </pre>
+                      ) : null}
+                      <div className="ext-item__validate-actions">
+                        <button
+                          type="button"
+                          className="btn btn--ghost btn--sm"
+                          onClick={() =>
+                            openPluginValidatePresentation(vPres, p.name)
+                          }
+                        >
+                          {tr("ext.plugins.validate.viewResult")}
+                        </button>
+                        <button
+                          type="button"
+                          className="btn btn--ghost btn--sm"
+                          onClick={() => {
+                            setValidateByKey((prev) => {
+                              const next = { ...prev };
+                              delete next[key];
+                              return next;
+                            });
+                            setValidatePresByKey((prev) => {
+                              const next = { ...prev };
+                              delete next[key];
+                              return next;
+                            });
+                          }}
+                        >
+                          {tr("common.close")}
+                        </button>
+                      </div>
+                    </div>
+                  ) : null}
                 </li>
               );
             })}
@@ -1036,7 +1648,11 @@ export function ExtensionsPanel({
                   disabled={!!actionBusy || cliMissing}
                   autoComplete="off"
                   spellCheck={false}
-                  onChange={(e) => setInstallSource(e.target.value)}
+                  onChange={(e) => {
+                    setInstallSource(e.target.value);
+                    if (installValidate) setInstallValidate(null);
+                    if (installValidatePres) setInstallValidatePres(null);
+                  }}
                   onKeyDown={(e) => {
                     if (e.key === "Enter") {
                       e.preventDefault();
@@ -1044,6 +1660,17 @@ export function ExtensionsPanel({
                     }
                   }}
                 />
+                <button
+                  type="button"
+                  className="btn btn--ghost btn--sm"
+                  disabled={!!actionBusy}
+                  title={tr("ext.plugins.validateHint")}
+                  onClick={() => validateInstallSource()}
+                >
+                  {actionBusy === "validate:install"
+                    ? tr("ext.plugins.validating")
+                    : tr("ext.plugins.validate")}
+                </button>
                 <button
                   type="button"
                   className="btn btn--solid btn--sm"
@@ -1059,6 +1686,78 @@ export function ExtensionsPanel({
                     : tr("ext.plugins.install")}
                 </button>
               </div>
+              <p className="ext-plugin-install__hint">
+                {tr("ext.plugins.installHint")}
+              </p>
+              {installValidate ? (
+                (() => {
+                  const iPres =
+                    installValidatePres ??
+                    presentValidateResult(installValidate);
+                  const iTone = pluginValidateRowTone(iPres.severity);
+                  return (
+                    <div
+                      className={
+                        "ext-item__validate" +
+                        ` ext-item__validate--${iTone}`
+                      }
+                      role={iPres.ok || iPres.softFail ? "status" : "alert"}
+                    >
+                      <div className="ext-item__validate-head">
+                        <span
+                          className={
+                            "ext-badge ext-badge--" +
+                            pluginValidateBadgeTone(iPres.severity)
+                          }
+                        >
+                          {pluginValidateKindLabel(
+                            iPres.kind,
+                            pluginValidateKindLabels,
+                          )}
+                        </span>
+                        <div className="ext-item__validate-title">
+                          {iPres.ok
+                            ? tr("ext.plugins.validateOk")
+                            : iPres.softFail
+                              ? pluginValidateKindLabel(
+                                  iPres.kind,
+                                  pluginValidateKindLabels,
+                                )
+                              : tr("ext.plugins.validateFailed")}
+                        </div>
+                      </div>
+                      {installValidate.messages.length > 0 ? (
+                        <pre className="ext-item__validate-body">
+                          {formatPluginValidateMessages(
+                            installValidate.messages,
+                          )}
+                        </pre>
+                      ) : null}
+                      <div className="ext-item__validate-actions">
+                        <button
+                          type="button"
+                          className="btn btn--ghost btn--sm"
+                          onClick={() =>
+                            openPluginValidatePresentation(iPres, null)
+                          }
+                        >
+                          {tr("ext.plugins.validate.viewResult")}
+                        </button>
+                        <button
+                          type="button"
+                          className="btn btn--ghost btn--sm"
+                          onClick={() => {
+                            setInstallValidate(null);
+                            setInstallValidatePres(null);
+                          }}
+                        >
+                          {tr("common.close")}
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })()
+              ) : null}
             </div>
           </details>
         ) : null}
@@ -1075,16 +1774,27 @@ export function ExtensionsPanel({
         {!loading ? (
           <span className="ext-count">{skills.length}</span>
         ) : null}
-        {!loading && skills.length > 0 && skillsOffCount > 0 ? (
+        <span className="ext-h2-actions">
           <button
             type="button"
             className="btn btn--ghost ext-bulk-btn"
-            disabled={!!busyKey}
-            onClick={() => void enableAllSkills()}
+            disabled={!!actionBusy || !!busyKey || !api.isTauri() || !!skillEditor}
+            onClick={openSkillNew}
           >
-            {tr("ext.enableAll")}
+            <IconPlus size={14} />
+            <span>{tr("ext.skills.new")}</span>
           </button>
-        ) : null}
+          {!loading && skills.length > 0 && skillsOffCount > 0 ? (
+            <button
+              type="button"
+              className="btn btn--ghost ext-bulk-btn"
+              disabled={!!busyKey}
+              onClick={() => void enableAllSkills()}
+            >
+              {tr("ext.enableAll")}
+            </button>
+          ) : null}
+        </span>
       </h2>
       <div className="settings-card ext-card">
         {loading && (
@@ -1223,6 +1933,9 @@ export function ExtensionsPanel({
               const st = lookupServerStatus(doctorStatusIndex, s.name);
               const badgeMod = st ? mcpStatusBadgeMod(st.tone) : null;
               const guidanceKey = st ? mcpAuthGuidanceKey(st.tone) : null;
+              const oauthAction = st
+                ? classifyMcpOauthFromStatus(st)
+                : null;
               return (
                 <li
                   key={s.name}
@@ -1279,11 +1992,26 @@ export function ExtensionsPanel({
                       <button
                         type="button"
                         className="btn btn--ghost btn--sm"
-                        onClick={() =>
-                          setAuthHelpTarget({ name: s.name, status: st })
-                        }
+                        onClick={() => {
+                          const plan = planMcpOauthOpen(oauthAction);
+                          if (plan?.mode === "open_url") {
+                            void api
+                              .openExternalUrl(plan.url)
+                              .catch((e) => {
+                                console.error(
+                                  "[mcp] open auth url failed",
+                                  redactMcpOauthText(String(e)),
+                                );
+                              });
+                          }
+                          setAuthHelpTarget({ name: s.name, status: st });
+                        }}
                       >
-                        {tr("ext.mcp.auth.howToRefresh")}
+                        {tr(
+                          (oauthAction
+                            ? mcpOauthActionLabelKey(oauthAction.kind)
+                            : "ext.mcp.auth.howToRefresh") as MessageKey,
+                        )}
                       </button>
                     </div>
                   ) : null}
@@ -1345,12 +2073,19 @@ export function ExtensionsPanel({
       </>
       )}
 
-      {(tab === "hooks" || tab === "market") && (
+      {tab === "hooks" && (
+        <ExtensionsHooksPanel
+          locale={locale}
+          projectPath={projectPath}
+          cliFound={cliFound && !cliMissing}
+        />
+      )}
+      {(tab === "market" || tab === "agents") && (
         <ExtensionsBuildExtras
           locale={locale}
           projectPath={projectPath}
           cliFound={cliFound && !cliMissing}
-          mode={tab === "hooks" ? "hooks" : "market"}
+          mode={tab === "agents" ? "agents" : "market"}
           installedPlugins={plugins.map((p) => ({
             name: p.name,
             marketplace: p.marketplace,
@@ -1395,6 +2130,118 @@ export function ExtensionsPanel({
             name: uninstallTarget?.name ?? "",
           })}
         </p>
+      </GlassModal>
+
+      <GlassModal
+        open={validateModal.open && !!validateModal.presentation}
+        onClose={() =>
+          setValidateModal((prev) => ({ ...prev, open: false }))
+        }
+        title={
+          validateModal.pluginName
+            ? tr("ext.plugins.validate.resultTitleNamed", {
+                name: validateModal.pluginName,
+              })
+            : tr("ext.plugins.validate.resultTitle")
+        }
+        size="lg"
+        closeLabel={tr("common.close")}
+        wrapBody
+        bodyClassName="ext-plugin-result-modal"
+        footer={
+          <button
+            type="button"
+            className="btn btn--solid"
+            onClick={() =>
+              setValidateModal((prev) => ({ ...prev, open: false }))
+            }
+          >
+            {tr("common.close")}
+          </button>
+        }
+      >
+        {validateModal.presentation ? (
+          <div className="ext-plugin-result">
+            <div className="ext-plugin-result__meta">
+              <span
+                className={
+                  "ext-badge ext-badge--" +
+                  pluginValidateBadgeTone(validateModal.presentation.severity)
+                }
+              >
+                {pluginValidateKindLabel(
+                  validateModal.presentation.kind,
+                  pluginValidateKindLabels,
+                )}
+              </span>
+              {validateModal.presentation.softFail ? (
+                <span className="ext-badge ext-badge--muted">
+                  {tr("ext.plugins.validate.softFail")}
+                </span>
+              ) : null}
+              {validateModal.presentation.ok ? (
+                <span className="ext-badge ext-badge--ok">
+                  {tr("ext.plugins.validateOk")}
+                </span>
+              ) : null}
+            </div>
+            <p
+              className={
+                "ext-plugin-result__summary" +
+                (validateModal.presentation.severity === "ok"
+                  ? " ext-plugin-result__summary--ok"
+                  : validateModal.presentation.severity === "err"
+                    ? " ext-plugin-result__summary--err"
+                    : " ext-plugin-result__summary--warn")
+              }
+            >
+              {validateModal.presentation.summary}
+            </p>
+            {pluginValidateHint(
+              validateModal.presentation.kind,
+              pluginValidateKindHints,
+            ) ? (
+              <p className="ext-plugin-result__hint">
+                {pluginValidateHint(
+                  validateModal.presentation.kind,
+                  pluginValidateKindHints,
+                )}
+              </p>
+            ) : null}
+            {validateModal.presentation.detail &&
+            validateModal.presentation.detail !==
+              validateModal.presentation.summary ? (
+              <pre className="ext-plugin-result__detail">
+                {validateModal.presentation.detail}
+              </pre>
+            ) : validateModal.presentation.messages.length > 1 ? (
+              <pre className="ext-plugin-result__detail">
+                {formatPluginValidateMessages(
+                  validateModal.presentation.messages,
+                )}
+              </pre>
+            ) : null}
+            {validateModal.presentation.reason ? (
+              <p className="ext-plugin-result__reason">
+                <span className="ext-plugin-result__label">
+                  {tr("ext.plugins.validate.reason")}
+                </span>
+                <code>{validateModal.presentation.reason}</code>
+              </p>
+            ) : null}
+            {validateModal.presentation.path ? (
+              <p
+                className="ext-plugin-result__path"
+                title={validateModal.presentation.path}
+              >
+                <span className="ext-plugin-result__label">
+                  {tr("ext.plugins.validate.path")}
+                </span>
+                <code>{validateModal.presentation.path}</code>
+              </p>
+            ) : null}
+          </div>
+        ) : null}
       </GlassModal>
 
       <GlassModal
@@ -1694,6 +2541,9 @@ export function ExtensionsPanel({
                   const guidanceKey = st
                     ? mcpAuthGuidanceKey(st.tone)
                     : null;
+                  const oauthAction = st
+                    ? classifyMcpOauthFromStatus(st)
+                    : null;
                   return (
                     <li
                       key={s.name}
@@ -1737,14 +2587,29 @@ export function ExtensionsPanel({
                           <button
                             type="button"
                             className="btn btn--ghost btn--sm"
-                            onClick={() =>
+                            onClick={() => {
+                              const plan = planMcpOauthOpen(oauthAction);
+                              if (plan?.mode === "open_url") {
+                                void api
+                                  .openExternalUrl(plan.url)
+                                  .catch((e) => {
+                                    console.error(
+                                      "[mcp] open auth url failed",
+                                      redactMcpOauthText(String(e)),
+                                    );
+                                  });
+                              }
                               setAuthHelpTarget({
                                 name: s.name,
                                 status: st,
-                              })
-                            }
+                              });
+                            }}
                           >
-                            {tr("ext.mcp.auth.howToRefresh")}
+                            {tr(
+                              (oauthAction
+                                ? mcpOauthActionLabelKey(oauthAction.kind)
+                                : "ext.mcp.auth.howToRefresh") as MessageKey,
+                            )}
                           </button>
                         </div>
                       ) : null}
@@ -1836,12 +2701,129 @@ export function ExtensionsPanel({
           </p>
         ) : null}
         <ol className="ext-mcp-auth-steps">
+          <li>{tr("mcpModal.oauth.stepTui")}</li>
+          <li>{tr("mcpModal.oauth.stepBrowser")}</li>
           <li>{tr("ext.mcp.auth.stepReauth")}</li>
           <li>{tr("ext.mcp.auth.stepReadd")}</li>
           <li>{tr("ext.mcp.auth.stepRemoteUrl")}</li>
           <li>{tr("ext.mcp.auth.stepDoctor")}</li>
         </ol>
-        <p className="ext-field-hint">{tr("ext.mcp.auth.noAutoRefresh")}</p>
+        <p className="ext-field-hint">{tr("mcpModal.oauth.noCliHelper")}</p>
+      </GlassModal>
+
+      <GlassModal
+        open={skillNewOpen}
+        onClose={() => {
+          if (actionBusy !== "skill:create") setSkillNewOpen(false);
+        }}
+        title={tr("ext.skills.newTitle")}
+        size="md"
+        closeLabel={tr("common.close")}
+        wrapBody
+        footer={
+          <>
+            <button
+              type="button"
+              className="btn btn--ghost"
+              disabled={actionBusy === "skill:create"}
+              onClick={() => setSkillNewOpen(false)}
+            >
+              {tr("common.cancel")}
+            </button>
+            <button
+              type="button"
+              className="btn btn--solid"
+              disabled={
+                actionBusy === "skill:create" || !skillNewSanitized
+              }
+              onClick={() => void submitSkillNew()}
+            >
+              {actionBusy === "skill:create"
+                ? tr("ext.skills.newWorking")
+                : tr("ext.skills.newSubmit")}
+            </button>
+          </>
+        }
+      >
+        <form
+          className="app-dialog__form"
+          onSubmit={(e) => {
+            e.preventDefault();
+            void submitSkillNew();
+          }}
+        >
+          <label className="field">
+            <span>{tr("ext.skills.newName")}</span>
+            <input
+              className="app-dialog__input"
+              value={skillNewName}
+              onChange={(e) => {
+                setSkillNewName(e.target.value);
+                setSkillNewError(null);
+              }}
+              placeholder={tr("ext.skills.newNamePlaceholder")}
+              autoComplete="off"
+              spellCheck={false}
+              disabled={actionBusy === "skill:create"}
+              autoFocus
+            />
+            <span className="ext-field-hint">
+              {skillNewSanitized
+                ? tr("ext.skills.newNameHintOk", { name: skillNewSanitized })
+                : tr("ext.skills.newNameHint")}
+            </span>
+          </label>
+          <label className="field">
+            <span>{tr("ext.skills.newDescription")}</span>
+            <textarea
+              className="app-dialog__input ext-env-textarea"
+              value={skillNewDesc}
+              onChange={(e) => {
+                setSkillNewDesc(e.target.value);
+                setSkillNewError(null);
+              }}
+              placeholder={tr("ext.skills.newDescriptionPlaceholder")}
+              rows={3}
+              spellCheck
+              disabled={actionBusy === "skill:create"}
+            />
+            <span className="ext-field-hint">
+              {tr("ext.skills.newDescriptionHint")}
+            </span>
+          </label>
+          <fieldset className="field" disabled={actionBusy === "skill:create"}>
+            <legend>{tr("ext.skills.newScope")}</legend>
+            <label className="ext-radio-row">
+              <input
+                type="radio"
+                name="skill-new-scope"
+                checked={skillNewScope === "user"}
+                onChange={() => setSkillNewScope("user")}
+              />
+              <span>{tr("ext.skills.newScopeUser")}</span>
+            </label>
+            <label className="ext-radio-row">
+              <input
+                type="radio"
+                name="skill-new-scope"
+                checked={skillNewScope === "project"}
+                onChange={() => setSkillNewScope("project")}
+                disabled={!projectPath?.trim()}
+              />
+              <span>
+                {projectPath?.trim()
+                  ? tr("ext.skills.newScopeProject")
+                  : tr("ext.skills.newScopeProjectDisabled")}
+              </span>
+            </label>
+            <span className="ext-field-hint">{tr("ext.skills.newScopeHint")}</span>
+          </fieldset>
+          {skillNewError ? (
+            <p className="ext-alert" role="alert">
+              <span className="ext-alert__body">{skillNewError}</span>
+            </p>
+          ) : null}
+        </form>
       </GlassModal>
 
       <GlassModal
@@ -1866,6 +2848,16 @@ export function ExtensionsPanel({
               onClick={requestCloseSkillEditor}
             >
               {tr("common.cancel")}
+            </button>
+            <button
+              type="button"
+              className="btn btn--ghost"
+              disabled={
+                !skillEditor || skillEditor.loading || skillEditor.saving
+              }
+              onClick={validateSkillEditor}
+            >
+              {tr("ext.skills.editValidate")}
             </button>
             <button
               type="button"
@@ -1931,14 +2923,170 @@ export function ExtensionsPanel({
             {skillEditor.error && skillEditor.baselineText ? (
               <p className="ext-skill-editor__error" role="alert">
                 {skillEditor.error}
+                {skillFeedback ? (
+                  <>
+                    {" "}
+                    <button
+                      type="button"
+                      className="btn btn--ghost btn--sm ext-skill-editor__details-btn"
+                      onClick={() => setSkillFeedbackOpen(true)}
+                    >
+                      {tr("ext.skills.feedback.viewDetails")}
+                    </button>
+                  </>
+                ) : null}
               </p>
             ) : null}
             {skillEditor.savedHint ? (
-              <p className="ext-skill-editor__saved" role="status">
+              <p
+                className={
+                  "ext-skill-editor__saved" +
+                  (skillFeedback && !skillFeedback.blocking
+                    ? skillFeedback.severity === "warn"
+                      ? " ext-skill-editor__status--warn"
+                      : skillFeedback.severity === "ok"
+                        ? " ext-skill-editor__status--ok"
+                        : ""
+                    : " ext-skill-editor__status--ok")
+                }
+                role="status"
+              >
                 {skillEditor.savedHint}
+                {skillFeedback && !skillFeedback.blocking ? (
+                  <>
+                    {" "}
+                    <button
+                      type="button"
+                      className="btn btn--ghost btn--sm ext-skill-editor__details-btn"
+                      onClick={() => setSkillFeedbackOpen(true)}
+                    >
+                      {tr("ext.skills.feedback.viewDetails")}
+                    </button>
+                  </>
+                ) : null}
               </p>
             ) : null}
           </>
+        ) : null}
+      </GlassModal>
+
+      <GlassModal
+        open={skillFeedbackOpen && !!skillFeedback}
+        onClose={() => setSkillFeedbackOpen(false)}
+        title={
+          skillFeedback?.phase === "validate"
+            ? tr("ext.skills.feedback.resultValidateTitle")
+            : skillFeedback?.phase === "load"
+              ? tr("ext.skills.feedback.resultLoadTitle")
+              : skillFeedback?.phase === "create"
+                ? tr("ext.skills.feedback.resultCreateTitle")
+                : tr("ext.skills.feedback.resultSaveTitle")
+        }
+        size="md"
+        closeLabel={tr("common.close")}
+        wrapBody
+        bodyClassName="ext-skill-feedback"
+        footer={
+          <>
+            <button
+              type="button"
+              className="btn btn--solid"
+              onClick={() => setSkillFeedbackOpen(false)}
+            >
+              {tr("common.close")}
+            </button>
+          </>
+        }
+      >
+        {skillFeedback ? (
+          <div className="ext-skill-feedback__body">
+            <div className="ext-skill-feedback__meta">
+              <span
+                className={
+                  "ext-badge ext-badge--" +
+                  skillEditBadgeTone(skillFeedback.severity)
+                }
+              >
+                {skillEditKindLabel(skillFeedback.kind, skillKindLabels)}
+              </span>
+              {skillFeedback.name ? (
+                <span className="ext-badge ext-badge--muted">
+                  /{skillFeedback.name}
+                </span>
+              ) : null}
+              {skillFeedback.sizeBytes != null ? (
+                <span className="ext-badge ext-badge--muted">
+                  {tr("ext.skills.feedback.sizeBytes", {
+                    n: String(skillFeedback.sizeBytes),
+                  })}
+                </span>
+              ) : null}
+            </div>
+            <p
+              className={
+                "ext-skill-feedback__summary" +
+                (skillFeedback.severity === "ok"
+                  ? " ext-skill-feedback__summary--ok"
+                  : skillFeedback.severity === "err"
+                    ? " ext-skill-feedback__summary--err"
+                    : skillFeedback.severity === "warn"
+                      ? " ext-skill-feedback__summary--warn"
+                      : "")
+              }
+            >
+              {skillFeedback.summary}
+            </p>
+            {skillEditHint(skillFeedback.kind, skillKindHints) ? (
+              <p className="ext-skill-feedback__hint">
+                {skillEditHint(skillFeedback.kind, skillKindHints)}
+              </p>
+            ) : null}
+            {skillFeedback.detail &&
+            skillFeedback.detail !== skillFeedback.summary ? (
+              <p className="ext-skill-feedback__detail">
+                {skillFeedback.detail}
+              </p>
+            ) : null}
+            {skillFeedback.issues.length > 1 ? (
+              <ul className="ext-skill-feedback__issues">
+                {skillFeedback.issues.map((issue, idx) => (
+                  <li key={`${issue.kind}-${idx}`}>
+                    <span
+                      className={
+                        "ext-badge ext-badge--" +
+                        skillEditBadgeTone(issue.severity)
+                      }
+                    >
+                      {skillEditKindLabel(issue.kind, skillKindLabels)}
+                    </span>
+                    {issue.detail ? (
+                      <span className="ext-skill-feedback__issue-detail">
+                        {issue.detail}
+                      </span>
+                    ) : null}
+                  </li>
+                ))}
+              </ul>
+            ) : null}
+            {skillFeedback.reason ? (
+              <p className="ext-skill-feedback__reason">
+                <span className="ext-skill-feedback__label">
+                  {tr("ext.skills.feedback.reason")}
+                </span>
+                <code>{skillFeedback.reason}</code>
+              </p>
+            ) : null}
+            {skillFeedback.path ? (
+              <p className="ext-skill-feedback__path" title={skillFeedback.path}>
+                <span className="ext-skill-feedback__label">
+                  {tr("ext.skills.feedback.path")}
+                </span>
+                <code>
+                  {shortPathLabel(skillFeedback.path, 64) || skillFeedback.path}
+                </code>
+              </p>
+            ) : null}
+          </div>
         ) : null}
       </GlassModal>
 

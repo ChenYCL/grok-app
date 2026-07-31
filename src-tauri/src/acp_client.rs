@@ -130,6 +130,21 @@ pub enum AcpEvent {
         /// Raw update object for richer client-side parsing (runs list, etc.).
         raw: Value,
     },
+    /// Goal orchestration progress (CLI 0.2.117+ `sessionUpdate: goal_updated`).
+    /// Forwarded as `session://goal` for Reliability “Goal orchestration”.
+    /// Soft-fail: older CLIs never emit this — UI shows honest empty state.
+    GoalUpdated {
+        goal_id: Option<String>,
+        /// `current_subagent_role` (classifier / planner / strategist / …).
+        role: Option<String>,
+        current_deliverable_title: Option<String>,
+        completed_deliverables: Option<u32>,
+        total_deliverables: Option<u32>,
+        verifying_completion: Option<bool>,
+        last_classifier_verdict: Option<String>,
+        /// Raw update for client-side phase projection.
+        raw: Value,
+    },
     ProcessExited {
         code: Option<i32>,
     },
@@ -259,7 +274,51 @@ pub struct SpawnOptions {
     /// Per-session max turns override → top-level `grok --max-turns N`.
     /// When set (after normalize), wins over `AppSettings.max_agent_turns`.
     pub max_agent_turns: Option<u32>,
+    /// Per-session system prompt override → top-level
+    /// `grok --system-prompt-override <TEXT>` (before `agent`).
+    /// Never log the full value (may contain secrets / PII).
+    pub system_prompt_override: Option<String>,
+    /// Per-session override for top-level `grok --no-ask-user` (CLI ≥ 0.2.117).
+    /// `Some(true|false)` wins over `AppSettings.no_ask_user`; `None` inherits.
+    pub no_ask_user: Option<bool>,
+    /// CLI `--fork-session` semantics: on open, fork the resume agent session
+    /// into a **new** agent id (ACP `session/fork`) instead of `session/load`.
+    /// Host sets this from `SessionMeta.fork_agent_session` for one-shot connect.
+    pub fork_session: bool,
 }
+
+
+/// Pure helper: top-level CLI args for `--fork-session`.
+///
+/// `["--fork-session"]` when enabled; empty otherwise. The TUI requires this
+/// with `--resume`/`--continue`. Host `agent stdio` uses ACP `session/fork`
+/// instead of bare CLI flags (CLI errors without resume).
+pub fn fork_session_spawn_flags(enabled: bool) -> Vec<&'static str> {
+    if enabled {
+        vec!["--fork-session"]
+    } else {
+        vec![]
+    }
+}
+
+/// Extract the forked agent session id from an ACP fork response.
+///
+/// Accepts standard `sessionId` or Grok extension `newSessionId`. Rejects empty
+/// and equal-to-source ids (fork must allocate a **new** id).
+pub fn parse_fork_session_id(result: &serde_json::Value, source_session_id: &str) -> Option<String> {
+    let raw = result
+        .get("sessionId")
+        .and_then(|v| v.as_str())
+        .or_else(|| result.get("newSessionId").and_then(|v| v.as_str()))
+        .map(str::trim)
+        .filter(|s| !s.is_empty())?;
+    // Fork semantics require a distinct id; reuse would mutate the source.
+    if raw == source_session_id.trim() {
+        return None;
+    }
+    Some(raw.to_string())
+}
+
 
 /// Pure helper: top-level CLI args for session extra rules (before `agent`).
 ///
@@ -268,6 +327,20 @@ pub fn extra_rules_spawn_flags(rules: Option<&str>) -> Vec<String> {
     let normalized = crate::store::sanitize_extra_rules(rules.map(|s| s.to_string()));
     match normalized {
         Some(text) => vec!["--rules".into(), text],
+        None => Vec::new(),
+    }
+}
+
+/// Pure helper: top-level CLI args for system prompt override (before `agent`).
+///
+/// `["--system-prompt-override", text]` — empty when none.
+/// Trims, strips NUL, drops empty, clamps length. Prefer the long flag name
+/// (CLI also accepts `--system-prompt`).
+pub fn system_prompt_override_spawn_flags(prompt: Option<&str>) -> Vec<String> {
+    let normalized =
+        crate::store::sanitize_system_prompt_override(prompt.map(|s| s.to_string()));
+    match normalized {
+        Some(text) => vec!["--system-prompt-override".into(), text],
         None => Vec::new(),
     }
 }
@@ -377,6 +450,102 @@ pub fn sandbox_spawn_flags(profile: &str) -> Option<(Vec<String>, (String, Strin
     Some((spec.cli_args().to_vec(), spec.env_pair()))
 }
 
+// ── Compaction mode / detail (CLI 0.2.117+) ────────────────────────────────
+//
+// Top-level: `--compaction-mode summary|transcript|segments` → GROK_COMPACTION_MODE
+//            `--compaction-detail none|minimal|balanced|verbose` → GROK_COMPACTION_DETAIL
+// Detail only affects `segments` (CLI default verbose). Host always sets env
+// (ignored by older CLIs); CLI flags pass only when version ≥ 0.2.117.
+
+/// First CLI version that accepts the compaction flags.
+pub const COMPACTION_CLI_FLAGS_MIN: (u64, u64, u64) = (0, 2, 117);
+
+pub const DEFAULT_COMPACTION_MODE: &str = "summary";
+pub const DEFAULT_COMPACTION_DETAIL: &str = "verbose";
+
+/// Normalize settings / UI value → known mode id.
+pub fn normalize_compaction_mode(raw: &str) -> &'static str {
+    match raw.trim().to_ascii_lowercase().as_str() {
+        "transcript" => "transcript",
+        "segments" => "segments",
+        "summary" | "" => DEFAULT_COMPACTION_MODE,
+        _ => DEFAULT_COMPACTION_MODE,
+    }
+}
+
+/// Normalize settings / UI value → known detail id.
+pub fn normalize_compaction_detail(raw: &str) -> &'static str {
+    match raw.trim().to_ascii_lowercase().as_str() {
+        "none" => "none",
+        "minimal" => "minimal",
+        "balanced" => "balanced",
+        "verbose" | "" => DEFAULT_COMPACTION_DETAIL,
+        _ => DEFAULT_COMPACTION_DETAIL,
+    }
+}
+
+/// Detail only applies when mode is `segments`.
+pub fn compaction_detail_applies(mode: &str) -> bool {
+    normalize_compaction_mode(mode) == "segments"
+}
+
+/// Top-level CLI argv for mode + optional detail (before `agent`).
+pub fn compaction_spawn_args(mode: &str, detail: &str) -> Vec<String> {
+    let m = normalize_compaction_mode(mode);
+    let mut args = vec!["--compaction-mode".into(), m.into()];
+    if compaction_detail_applies(m) {
+        let d = normalize_compaction_detail(detail);
+        args.push("--compaction-detail".into());
+        args.push(d.into());
+    }
+    args
+}
+
+/// Env pairs for the agent process (always safe on older CLIs).
+pub fn compaction_spawn_env(mode: &str, detail: &str) -> Vec<(String, String)> {
+    let m = normalize_compaction_mode(mode);
+    let mut out = vec![("GROK_COMPACTION_MODE".into(), m.into())];
+    if compaction_detail_applies(m) {
+        out.push((
+            "GROK_COMPACTION_DETAIL".into(),
+            normalize_compaction_detail(detail).into(),
+        ));
+    }
+    out
+}
+
+/// Whether CLI flags should be passed (not only env).
+/// Unknown / unparseable version → false (env-only soft-fail).
+pub fn cli_supports_compaction_flags(raw_version: Option<&str>) -> bool {
+    let Some(raw) = raw_version.map(str::trim).filter(|s| !s.is_empty()) else {
+        return false;
+    };
+    let Some(token) = crate::cli_probe::extract_version_token(raw) else {
+        return false;
+    };
+    let Some(parsed) = crate::app_update::parse_semver(&token) else {
+        return false;
+    };
+    parsed >= COMPACTION_CLI_FLAGS_MIN
+}
+
+/// Apply env always; CLI flags only when `pass_cli_flags` is true.
+pub fn apply_compaction_to_command(
+    cmd: &mut Command,
+    mode: &str,
+    detail: &str,
+    pass_cli_flags: bool,
+) {
+    for (k, v) in compaction_spawn_env(mode, detail) {
+        cmd.env(k, v);
+    }
+    if pass_cli_flags {
+        for a in compaction_spawn_args(mode, detail) {
+            cmd.arg(a);
+        }
+    }
+}
+
 pub const MAX_AGENT_TURNS_CAP: u32 = 200;
 pub const MIN_AGENT_TURNS: u32 = 1;
 
@@ -415,9 +584,235 @@ pub fn max_turns_cli_args(raw: Option<u32>) -> Option<Vec<String>> {
     Some(spec.cli_args().to_vec())
 }
 
+// ── Background wait policy (CLI 0.2.117+, headless-first) ──────────────────
+
+/// First CLI that accepts `--no-wait-for-background` / `--background-wait-timeout`.
+pub const BACKGROUND_WAIT_MIN_CLI: (u64, u64, u64) = (0, 2, 117);
+
+pub const MIN_BACKGROUND_WAIT_TIMEOUT_SEC: u32 = 1;
+pub const MAX_BACKGROUND_WAIT_TIMEOUT_SEC: u32 = 3600;
+pub const DEFAULT_BACKGROUND_WAIT_TIMEOUT_SEC: u32 = 600;
+
+/// `wait` (default) | `no_wait` | `timeout`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BackgroundWaitPolicy {
+    Wait,
+    NoWait,
+    Timeout,
+}
+
+impl BackgroundWaitPolicy {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Wait => "wait",
+            Self::NoWait => "no_wait",
+            Self::Timeout => "timeout",
+        }
+    }
+}
+
+/// Normalize a settings policy string. Unknown / empty → `wait`.
+pub fn normalize_background_wait_policy(raw: &str) -> BackgroundWaitPolicy {
+    let s = raw.trim().to_ascii_lowercase().replace('-', "_");
+    match s.as_str() {
+        "" | "wait" | "default" => BackgroundWaitPolicy::Wait,
+        "no_wait" | "nowait" | "no_wait_for_background" | "false" => {
+            BackgroundWaitPolicy::NoWait
+        }
+        "timeout" | "timed" | "secs" | "seconds" => BackgroundWaitPolicy::Timeout,
+        _ => BackgroundWaitPolicy::Wait,
+    }
+}
+
+/// Clamp timeout seconds for `--background-wait-timeout` (1–3600).
+pub fn normalize_background_wait_timeout_sec(raw: u32) -> u32 {
+    raw.clamp(
+        MIN_BACKGROUND_WAIT_TIMEOUT_SEC,
+        MAX_BACKGROUND_WAIT_TIMEOUT_SEC,
+    )
+}
+
+/// Top-level CLI argv for the policy. Empty for `wait` (CLI default).
+pub fn background_wait_spawn_flags(policy: &str, timeout_sec: u32) -> Vec<String> {
+    match normalize_background_wait_policy(policy) {
+        BackgroundWaitPolicy::Wait => Vec::new(),
+        BackgroundWaitPolicy::NoWait => vec!["--no-wait-for-background".into()],
+        BackgroundWaitPolicy::Timeout => {
+            let secs = normalize_background_wait_timeout_sec(timeout_sec);
+            vec![
+                "--background-wait-timeout".into(),
+                secs.to_string(),
+            ]
+        }
+    }
+}
+
+/// Whether two policy+timeout pairs are equivalent after normalize.
+pub fn background_wait_settings_equal(
+    a_policy: &str,
+    a_timeout: u32,
+    b_policy: &str,
+    b_timeout: u32,
+) -> bool {
+    let pa = normalize_background_wait_policy(a_policy);
+    let pb = normalize_background_wait_policy(b_policy);
+    if pa != pb {
+        return false;
+    }
+    if pa != BackgroundWaitPolicy::Timeout {
+        return true;
+    }
+    normalize_background_wait_timeout_sec(a_timeout)
+        == normalize_background_wait_timeout_sec(b_timeout)
+}
+
+/// `Some(true)` when CLI ≥ 0.2.117; `Some(false)` when older; `None` unparseable.
+pub fn cli_supports_background_wait(raw_version: &str) -> Option<bool> {
+    let token = crate::cli_probe::extract_version_token(raw_version)?;
+    let parsed = crate::app_update::parse_semver(&token)?;
+    Some(parsed >= BACKGROUND_WAIT_MIN_CLI)
+}
+
+/// Soft-fail gate: emit flags only when the CLI is known to support them.
+///
+/// - Known ≥ 0.2.117 → policy flags
+/// - Known older / unknown + non-default → omit (avoid clap crash)
+/// - Default `wait` → empty always
+pub fn background_wait_spawn_flags_soft(
+    policy: &str,
+    timeout_sec: u32,
+    raw_cli_version: Option<&str>,
+) -> Vec<String> {
+    let args = background_wait_spawn_flags(policy, timeout_sec);
+    if args.is_empty() {
+        return args;
+    }
+    match raw_cli_version {
+        Some(v) if cli_supports_background_wait(v) == Some(true) => args,
+        _ => Vec::new(),
+    }
+}
+
+// ── Include partial stream events (CLI 0.2.117+, headless) ─────────────────
+
+/// First CLI that accepts `--include-partial-messages`.
+pub const INCLUDE_PARTIAL_MESSAGES_MIN_CLI: (u64, u64, u64) = (0, 2, 117);
+
+/// Anthropic Messages API NDJSON wire format (pairs with partial stream events).
+pub const HEADLESS_FORMAT_STREAMING_MESSAGES_JSON: &str = "streaming-messages-json";
+
+/// ACP-native streaming NDJSON (Remote IM default; no partial stream events).
+pub const HEADLESS_FORMAT_STREAMING_JSON: &str = "streaming-json";
+
+/// True when format is `streaming-messages-json` (aliases normalized).
+pub fn is_streaming_messages_json_format(format: &str) -> bool {
+    let s = format.trim().to_ascii_lowercase().replace('_', "-");
+    matches!(
+        s.as_str(),
+        "streaming-messages-json" | "streaming-message-json" | "messages-json"
+    )
+}
+
+/// Top-level CLI flags for `--include-partial-messages`.
+/// Empty unless `enabled` **and** format is `streaming-messages-json`.
+pub fn include_partial_messages_spawn_flags(
+    enabled: bool,
+    output_format: &str,
+) -> Vec<&'static str> {
+    if enabled && is_streaming_messages_json_format(output_format) {
+        vec!["--include-partial-messages"]
+    } else {
+        vec![]
+    }
+}
+
+/// `Some(true)` when CLI ≥ 0.2.117; `Some(false)` when older; `None` unparseable.
+pub fn cli_supports_include_partial_messages(raw_version: &str) -> Option<bool> {
+    let token = crate::cli_probe::extract_version_token(raw_version)?;
+    let parsed = crate::app_update::parse_semver(&token)?;
+    Some(parsed >= INCLUDE_PARTIAL_MESSAGES_MIN_CLI)
+}
+
+/// Soft-fail gate: emit flag only when CLI is known to support it.
+///
+/// - Known ≥ 0.2.117 + enabled + streaming-messages-json → flag
+/// - Known older / unknown → omit (avoid clap crash)
+/// - Disabled or wrong format → empty always
+pub fn include_partial_messages_spawn_flags_soft(
+    enabled: bool,
+    output_format: &str,
+    raw_cli_version: Option<&str>,
+) -> Vec<&'static str> {
+    let args = include_partial_messages_spawn_flags(enabled, output_format);
+    if args.is_empty() {
+        return args;
+    }
+    match raw_cli_version {
+        Some(v) if cli_supports_include_partial_messages(v) == Some(true) => args,
+        _ => vec![],
+    }
+}
+
+/// Load AppSettings + soft-gate for spawn sites (headless / ACP).
+pub fn background_wait_spawn_flags_from_settings(
+    settings: &crate::store::AppSettings,
+    raw_cli_version: Option<&str>,
+) -> Vec<String> {
+    background_wait_spawn_flags_soft(
+        &settings.background_wait_policy,
+        settings.background_wait_timeout_sec,
+        raw_cli_version,
+    )
+}
+
+/// Resolve headless format + partial flag for Remote IM / diagnostics when the
+/// user enables partial stream events.
+///
+/// - Partial on + CLI ≥ 0.2.117 → `streaming-messages-json` + flag
+/// - Otherwise → `streaming-json` (no flag; soft-fail older CLI)
+pub fn resolve_headless_stream_for_partial(
+    include_partial: bool,
+    raw_cli_version: Option<&str>,
+) -> (&'static str, Vec<&'static str>) {
+    let can = raw_cli_version
+        .and_then(cli_supports_include_partial_messages)
+        == Some(true);
+    if include_partial && can {
+        (
+            HEADLESS_FORMAT_STREAMING_MESSAGES_JSON,
+            vec!["--include-partial-messages"],
+        )
+    } else {
+        (HEADLESS_FORMAT_STREAMING_JSON, vec![])
+    }
+}
+
+/// Load settings + CLI version soft-gate for Remote IM headless.
+pub fn resolve_headless_stream_from_settings(
+    settings: &crate::store::AppSettings,
+    raw_cli_version: Option<&str>,
+) -> (&'static str, Vec<&'static str>) {
+    resolve_headless_stream_for_partial(settings.include_partial_messages, raw_cli_version)
+}
+
 pub fn disable_web_search_spawn_flags(disable: bool) -> Vec<&'static str> {
     if disable {
         vec!["--disable-web-search"]
+    } else {
+        vec![]
+    }
+}
+
+/// Session override wins when `Some`; else global Settings.
+/// When effective true, spawn passes top-level `--no-ask-user` (CLI ≥ 0.2.117).
+pub fn resolve_no_ask_user(session: Option<bool>, global: bool) -> bool {
+    session.unwrap_or(global)
+}
+
+/// Top-level CLI flags for `--no-ask-user`. Empty when off (CLI default).
+pub fn no_ask_user_spawn_flags(enabled: bool) -> Vec<&'static str> {
+    if enabled {
+        vec!["--no-ask-user"]
     } else {
         vec![]
     }
@@ -469,6 +864,25 @@ pub fn disallowed_tools_equal(a: &[String], b: &[String]) -> bool {
     aa == bb
 }
 
+/// Normalize tool ids for `--tools` allowlist: same rules as denylist.
+pub fn normalize_allowed_tools(tools: &[String]) -> Vec<String> {
+    normalize_disallowed_tools(tools)
+}
+
+/// Spawn argv for allowlist: `["--tools", "a,b"]` or empty (CLI default = all).
+pub fn allowed_tools_spawn_flags(tools: &[String]) -> Vec<String> {
+    let cleaned = normalize_allowed_tools(tools);
+    if cleaned.is_empty() {
+        return Vec::new();
+    }
+    vec!["--tools".into(), cleaned.join(",")]
+}
+
+/// Order-independent, case-insensitive equality for soft-respawn flip checks.
+pub fn allowed_tools_equal(a: &[String], b: &[String]) -> bool {
+    disallowed_tools_equal(a, b)
+}
+
 pub fn no_plan_spawn_flags(plan_enabled: bool) -> Vec<&'static str> {
     if plan_enabled {
         vec![]
@@ -508,6 +922,11 @@ pub fn preferred_agent_spawn_flags(raw: &str) -> Option<Vec<String>> {
 /// Pure: agent-option `["--agent-profile", path]` when Settings path is set.
 pub fn agent_profile_spawn_flags(raw: &str) -> Option<Vec<String>> {
     crate::agents_catalog::agent_profile_spawn_cli_args(raw)
+}
+
+/// Pure: top-level `["--agents", json]` when Settings agents JSON is set.
+pub fn agents_json_spawn_flags(raw: &str) -> Option<Vec<String>> {
+    crate::agents_catalog::agents_json_spawn_cli_args(raw)
 }
 
 
@@ -630,14 +1049,36 @@ impl AcpClient {
         let preferred_agent = AgentSpawnSpec::from_setting(&settings.preferred_agent);
         let agent_profile =
             crate::agents_catalog::normalize_agent_profile_path(&settings.agent_profile_path);
+        let agents_json_args = agents_json_spawn_flags(&settings.agents_json);
         let subagents_enabled = settings.subagents_enabled;
+        let subagent_wt_snap = settings.subagent_worktree_snapshot_enabled;
+        let auto_wake_enabled = settings.auto_wake_enabled;
+        let two_pass_compaction = settings.two_pass_compaction_enabled;
         let memory_enabled = settings.experimental_memory;
         let use_leader = settings.use_leader;
         let plan_enabled = settings.plan_enabled;
         let disable_web = settings.disable_web_search;
+        // Session override wins when set; else global Settings.
+        let no_ask_user = resolve_no_ask_user(opts.no_ask_user, settings.no_ask_user);
         let disallowed_tools = settings.disallowed_tools.clone();
+        let allowed_tools = settings.allowed_tools.clone();
+        let todo_gate_enabled = settings.todo_gate_enabled;
+        let todo_gate_max_fires = crate::agent_todo_gate::normalize_todo_gate_max_fires(Some(
+            settings.todo_gate_max_fires_per_prompt,
+        ));
+        let compaction_mode = settings.compaction_mode.clone();
+        let compaction_detail = settings.compaction_detail.clone();
         let spawn_policy = opts.permission_policy.as_deref().unwrap_or("ask");
         let spawn_product_mode = opts.product_mode.as_deref();
+        // Headless-only in effect; still pass top-level when CLI ≥ 0.2.117 so
+        // automations / future ACP paths share one policy. Soft-fail older CLIs.
+        let cli_ver = crate::cli_probe::read_version_of(&cli_path);
+        let bg_wait_args = background_wait_spawn_flags_from_settings(
+            &settings,
+            cli_ver.as_deref(),
+        );
+        // Soft-fail older CLIs for GROK_SUBAGENT_WORKTREE_SNAPSHOT env.
+        let cli_ver = crate::cli_probe::read_version_of(&cli_path);
 
         if session_data_mode != "shared" {
             let _ = crate::agent_subagents::sync_subagents_to_agent_profile(
@@ -648,10 +1089,39 @@ impl AcpClient {
                 session_data_mode,
                 memory_enabled,
             );
+            let _ = crate::agent_todo_gate::sync_todo_gate_to_agent_profile(
+                session_data_mode,
+                todo_gate_enabled,
+                todo_gate_max_fires,
+            );
+            let _ = crate::agent_subagent_wt_snap::sync_subagent_wt_snap_to_agent_profile(
+                session_data_mode,
+                subagent_wt_snap,
+            );
+            let _ = crate::agent_auto_wake::sync_auto_wake_to_agent_profile(
+                session_data_mode,
+                auto_wake_enabled,
+            );
+            let _ = crate::agent_two_pass_compaction::sync_two_pass_compaction_to_agent_profile(
+                session_data_mode,
+                two_pass_compaction,
+            );
         }
 
         let mut cmd = Command::new(&cli_path);
         cmd.arg("--no-auto-update");
+        // Compaction mode/detail (CLI 0.2.117+): always set env; flags only when
+        // the probed binary is known to accept them (soft-fail on older CLIs).
+        let pass_compaction_flags = {
+            let ver = crate::cli_probe::read_version_of(&cli_path);
+            cli_supports_compaction_flags(ver.as_deref())
+        };
+        apply_compaction_to_command(
+            &mut cmd,
+            &compaction_mode,
+            &compaction_detail,
+            pass_compaction_flags,
+        );
         // Pin CLI permission mode so agent-side enforcement matches App policy / plan.
         for a in permission_mode_spawn_flags(spawn_policy, spawn_product_mode) {
             cmd.arg(a);
@@ -665,6 +1135,9 @@ impl AcpClient {
             for a in mt.cli_args() {
                 cmd.arg(a);
             }
+        }
+        for a in &bg_wait_args {
+            cmd.arg(a);
         }
         // Top-level `grok --json-schema <SCHEMA>` (before `agent`). Constrains
         // model output; headless docs mention --output-format json, but ACP
@@ -681,12 +1154,30 @@ impl AcpClient {
         for a in extra_rules_spawn_flags(opts.extra_rules.as_deref()) {
             cmd.arg(a);
         }
+        // Top-level `grok --system-prompt-override <PROMPT>` (before `agent`) —
+        // session-only full system prompt replacement (alias: --system-prompt).
+        // Do not log the prompt body (may contain secrets / PII).
+        for a in system_prompt_override_spawn_flags(opts.system_prompt_override.as_deref()) {
+            cmd.arg(a);
+        }
         for f in disable_web_search_spawn_flags(disable_web) {
             cmd.arg(f);
+        }
+        // Top-level `grok --no-ask-user` (before `agent`) — disables ask-user
+        // questionnaires for this process (CLI ≥ 0.2.117).
+        for f in no_ask_user_spawn_flags(no_ask_user) {
+            cmd.arg(f);
+        }
+        for a in allowed_tools_spawn_flags(&allowed_tools) {
+            cmd.arg(a);
         }
         for a in disallowed_tools_spawn_flags(&disallowed_tools) {
             cmd.arg(a);
         }
+        // Top-level `grok --todo-gate` (CLI 0.2.117+). Overrides remote
+        // todo_gate_enabled and the built-in default (false). Max fires is
+        // config-only (independent agent-home); no CLI flag.
+        crate::agent_todo_gate::apply_todo_gate_to_command(&mut cmd, todo_gate_enabled);
         for f in no_plan_spawn_flags(plan_enabled) {
             cmd.arg(f);
         }
@@ -695,8 +1186,27 @@ impl AcpClient {
                 cmd.arg(a);
             }
         }
+        // Top-level `grok --agents <JSON>` — inline subagent defs; empty omits.
+        // Does not write into shared ~/.grok (spawn argv only).
+        if let Some(ref aa) = agents_json_args {
+            for a in aa {
+                cmd.arg(a);
+            }
+        }
         crate::agent_subagents::apply_subagents_to_command(&mut cmd, subagents_enabled);
         crate::agent_memory::apply_memory_to_command(&mut cmd, memory_enabled);
+        // Config-only surface (CLI 0.2.117+): env + independent agent-home key.
+        crate::agent_subagent_wt_snap::apply_subagent_wt_snap_to_command(
+            &mut cmd,
+            subagent_wt_snap,
+            cli_ver.as_deref(),
+        );
+        // Two-pass prefire compaction (CLI 0.2.117+): env + independent agent-home.
+        crate::agent_two_pass_compaction::apply_two_pass_compaction_to_command(
+            &mut cmd,
+            two_pass_compaction,
+            cli_ver.as_deref(),
+        );
         cmd.arg("agent");
         cmd.arg(leader_spawn_flag(use_leader));
         // Agent option: `--agent-profile <PATH>` (before `stdio`). Path only —
@@ -741,15 +1251,25 @@ impl AcpClient {
             cmd.env(k, v);
         }
         tracing::info!(
-            "acp: spawn home={} mode={} sandbox={:?} max_turns={:?} leader={} subagents={} memory={} agent_profile={:?}",
+            "acp: spawn home={} mode={} sandbox={:?} max_turns={:?} fork_session={} no_ask_user={} leader={} subagents={} memory={} compaction_mode={} compaction_detail={} compaction_flags={} agent_profile={:?} agents_json={}",
             grok_home.display(),
             session_data_mode,
             sandbox.as_ref().map(|s| s.profile.as_str()),
             max_turns.as_ref().map(|m| m.turns),
+            opts.fork_session,
+            no_ask_user,
             use_leader,
             subagents_enabled,
             memory_enabled,
+            normalize_compaction_mode(&compaction_mode),
+            if compaction_detail_applies(&compaction_mode) {
+                normalize_compaction_detail(&compaction_detail)
+            } else {
+                "-"
+            },
+            pass_compaction_flags,
             agent_profile.as_deref(),
+            agents_json_args.is_some(),
         );
 
         let mut child = cmd.spawn().map_err(|e| {
@@ -1616,11 +2136,14 @@ impl AcpClient {
 
     /// Initialize + auth, then open a session.
     /// Prefer `session/load` when `resume_session_id` is set (Grok persists agent
-    /// sessions under GROK_HOME). Fall back to `session/new`.
+    /// sessions under GROK_HOME). When `fork_session` is true, use ACP
+    /// `session/fork` (CLI `--fork-session` semantics) for a **new** agent id
+    /// with the source context. Fall back to `session/new`.
     /// Returns `(session_id, resumed)`.
     pub async fn initialize_and_open_session(
         &self,
         resume_session_id: Option<&str>,
+        fork_session: bool,
     ) -> Result<(String, bool), AgentError> {
         // Do not advertise client fs methods we do not implement — avoids agent
         // hanging on fs/readTextFile while we never reply.
@@ -1634,11 +2157,12 @@ impl AcpClient {
             .map_err(|e| self.map_handshake_err("initialize", e))?;
 
         info!(
-            "acp initialized agentVersion={:?} loadSession={:?}",
+            "acp initialized agentVersion={:?} loadSession={:?} forkSession={}",
             init.pointer("/_meta/agentVersion")
                 .or_else(|| init.pointer("/agentVersion")),
             init.pointer("/agentCapabilities/loadSession")
-                .or_else(|| init.pointer("/capabilities/loadSession"))
+                .or_else(|| init.pointer("/capabilities/loadSession")),
+            fork_session
         );
 
         // Best-effort cached auth — short timeout so a hung auth cannot burn 120s.
@@ -1654,7 +2178,7 @@ impl AcpClient {
             Err(e) => warn!("acp authenticate soft-fail (continuing): {e}"),
         }
 
-        self.open_session(resume_session_id).await
+        self.open_session(resume_session_id, fork_session).await
     }
 
     /// Open or resume an ACP session on an already-initialized agent process.
@@ -1664,9 +2188,15 @@ impl AcpClient {
     ///
     /// Injects **enabled** MCP servers (App Extensions prefs + `grok mcp list`)
     /// into `mcpServers` so independent GROK_HOME and shared mode both see tools.
+    ///
+    /// When `fork_session` is true and `resume_session_id` is set, tries
+    /// `session/fork` (standard ACP) then `_x.ai/session/fork` (Grok extension)
+    /// before falling back to `session/new` — never `session/load` (would reuse
+    /// the source id and violate `--fork-session` semantics).
     pub async fn open_session(
         &self,
         resume_session_id: Option<&str>,
+        fork_session: bool,
     ) -> Result<(String, bool), AgentError> {
         let cwd = self.cwd.to_string_lossy().to_string();
         if !self.cwd.is_dir() {
@@ -1686,44 +2216,66 @@ impl AcpClient {
         let mcp_count = mcp_servers.as_array().map(|a| a.len()).unwrap_or(0);
         info!("acp session open injecting mcpServers count={mcp_count}");
 
-        // Prefer resuming the previous agent session for full native context.
-        // Note: session/load replays history as ACP notifications; Host must
-        // gate stream/tool side effects on `prompt_in_flight` (see session_manager).
         if let Some(rid) = resume_session_id.map(str::trim).filter(|s| !s.is_empty()) {
-            info!("acp session/load begin sessionId={rid} cwd={cwd}");
-            match self
-                .request_timeout(
-                    "session/load",
-                    json!({
-                        "sessionId": rid,
-                        "cwd": cwd,
-                        "mcpServers": mcp_servers.clone()
-                    }),
-                    HANDSHAKE_TIMEOUT_SECS,
-                )
-                .await
-            {
-                Ok(result) => {
-                    let sid = result
-                        .get("sessionId")
-                        .and_then(|v| v.as_str())
-                        .unwrap_or(rid)
-                        .to_string();
-                    info!("acp session/load ok sessionId={sid}");
+            // CLI `--fork-session`: new agent session id with parent context.
+            if fork_session {
+                if let Some((sid, model_id)) = self
+                    .try_fork_session(rid, &cwd, &mcp_servers)
+                    .await
+                {
                     *self.agent_session_id.lock() = Some(sid.clone());
-                    let model_id = result
-                        .pointer("/models/currentModelId")
-                        .and_then(|v| v.as_str())
-                        .map(|s| s.to_string());
                     let _ = self.event_tx.send(AcpEvent::State {
                         backend: "grok_agent_stdio".into(),
                         agent_session_id: Some(sid.clone()),
                         model_id,
                     });
+                    // Full parent context was forked — treat like a successful resume
+                    // for bootstrap purposes (no journal rewrite needed).
                     return Ok((sid, true));
                 }
-                Err(e) => {
-                    warn!("acp session/load fail ({e}); falling back to session/new");
+                warn!(
+                    "acp session/fork failed for source={rid}; falling back to session/new (will not reuse source id)"
+                );
+                // Fall through to session/new — do not session/load (would mutate source).
+            } else {
+                // Prefer resuming the previous agent session for full native context.
+                // Note: session/load replays history as ACP notifications; Host must
+                // gate stream/tool side effects on `prompt_in_flight` (see session_manager).
+                info!("acp session/load begin sessionId={rid} cwd={cwd}");
+                match self
+                    .request_timeout(
+                        "session/load",
+                        json!({
+                            "sessionId": rid,
+                            "cwd": cwd,
+                            "mcpServers": mcp_servers.clone()
+                        }),
+                        HANDSHAKE_TIMEOUT_SECS,
+                    )
+                    .await
+                {
+                    Ok(result) => {
+                        let sid = result
+                            .get("sessionId")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or(rid)
+                            .to_string();
+                        info!("acp session/load ok sessionId={sid}");
+                        *self.agent_session_id.lock() = Some(sid.clone());
+                        let model_id = result
+                            .pointer("/models/currentModelId")
+                            .and_then(|v| v.as_str())
+                            .map(|s| s.to_string());
+                        let _ = self.event_tx.send(AcpEvent::State {
+                            backend: "grok_agent_stdio".into(),
+                            agent_session_id: Some(sid.clone()),
+                            model_id,
+                        });
+                        return Ok((sid, true));
+                    }
+                    Err(e) => {
+                        warn!("acp session/load fail ({e}); falling back to session/new");
+                    }
                 }
             }
         }
@@ -1769,9 +2321,81 @@ impl AcpClient {
         Ok((sid, false))
     }
 
+    /// Try standard ACP `session/fork`, then Grok `_x.ai/session/fork`.
+    /// Returns `(new_session_id, model_id)` on success.
+    async fn try_fork_session(
+        &self,
+        source_session_id: &str,
+        cwd: &str,
+        mcp_servers: &serde_json::Value,
+    ) -> Option<(String, Option<String>)> {
+        info!(
+            "acp session/fork begin sourceSessionId={source_session_id} cwd={cwd}"
+        );
+        // Standard ACP ForkSessionRequest: sessionId + cwd + mcpServers.
+        match self
+            .request_timeout(
+                "session/fork",
+                json!({
+                    "sessionId": source_session_id,
+                    "cwd": cwd,
+                    "mcpServers": mcp_servers.clone()
+                }),
+                HANDSHAKE_TIMEOUT_SECS,
+            )
+            .await
+        {
+            Ok(result) => {
+                if let Some(sid) = parse_fork_session_id(&result, source_session_id) {
+                    info!("acp session/fork ok newSessionId={sid}");
+                    let model_id = result
+                        .pointer("/models/currentModelId")
+                        .and_then(|v| v.as_str())
+                        .map(|s| s.to_string());
+                    return Some((sid, model_id));
+                }
+                warn!("acp session/fork response missing sessionId");
+            }
+            Err(e) => {
+                warn!("acp session/fork fail ({e}); trying _x.ai/session/fork");
+            }
+        }
+
+        // Grok Build extension (vscode / older agents): sourceSessionId + sourceCwd + newCwd.
+        match self
+            .request_timeout(
+                "_x.ai/session/fork",
+                json!({
+                    "sourceSessionId": source_session_id,
+                    "sourceCwd": cwd,
+                    "newCwd": cwd,
+                }),
+                HANDSHAKE_TIMEOUT_SECS,
+            )
+            .await
+        {
+            Ok(result) => {
+                if let Some(sid) = parse_fork_session_id(&result, source_session_id) {
+                    info!("acp _x.ai/session/fork ok newSessionId={sid}");
+                    let model_id = result
+                        .pointer("/models/currentModelId")
+                        .and_then(|v| v.as_str())
+                        .or_else(|| result.get("newModelId").and_then(|v| v.as_str()))
+                        .map(|s| s.to_string());
+                    return Some((sid, model_id));
+                }
+                warn!("acp _x.ai/session/fork response missing sessionId");
+            }
+            Err(e) => {
+                warn!("acp _x.ai/session/fork fail ({e})");
+            }
+        }
+        None
+    }
+
     /// Back-compat: always create a new session.
     pub async fn initialize_and_new_session(&self) -> Result<String, AgentError> {
-        self.initialize_and_open_session(None)
+        self.initialize_and_open_session(None, false)
             .await
             .map(|(sid, _)| sid)
     }
@@ -2303,6 +2927,78 @@ pub fn parse_hook_activity_update(kind: &str, update: &Value) -> Option<AcpEvent
     })
 }
 
+/// Pure decode of CLI goal harness `goal_updated` (and soft goal_* variants).
+fn parse_goal_updated(update: &Value) -> Option<AcpEvent> {
+    let goal_id = update
+        .get("goalId")
+        .or_else(|| update.get("goal_id"))
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string());
+    let role = update
+        .get("currentSubagentRole")
+        .or_else(|| update.get("current_subagent_role"))
+        .or_else(|| update.get("role"))
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string());
+    let current_deliverable_title = update
+        .get("currentDeliverableTitle")
+        .or_else(|| update.get("current_deliverable_title"))
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string());
+    let completed_deliverables = update
+        .get("completedDeliverables")
+        .or_else(|| update.get("completed_deliverables"))
+        .and_then(|v| v.as_u64())
+        .map(|n| n as u32);
+    let total_deliverables = update
+        .get("totalDeliverables")
+        .or_else(|| update.get("total_deliverables"))
+        .and_then(|v| v.as_u64())
+        .map(|n| n as u32);
+    let verifying_completion = update
+        .get("verifyingCompletion")
+        .or_else(|| update.get("verifying_completion"))
+        .and_then(|v| v.as_bool());
+    let last_classifier_verdict = update
+        .get("lastClassifierVerdict")
+        .or_else(|| update.get("last_classifier_verdict"))
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string());
+
+    // Require at least one goal-shaped field so we never invent empty noise.
+    let has_shape = goal_id.is_some()
+        || role.is_some()
+        || current_deliverable_title.is_some()
+        || completed_deliverables.is_some()
+        || total_deliverables.is_some()
+        || verifying_completion.is_some()
+        || last_classifier_verdict.is_some()
+        || update.get("objective").is_some()
+        || update.get("deliverables").is_some();
+    if !has_shape {
+        // Still forward tagged goal_updated shells so the UI can note an empty pulse.
+        let kind = update
+            .get("sessionUpdate")
+            .or_else(|| update.get("session_update"))
+            .and_then(|v| v.as_str())
+            .unwrap_or("");
+        if kind != "goal_updated" && kind != "goalUpdated" {
+            return None;
+        }
+    }
+
+    Some(AcpEvent::GoalUpdated {
+        goal_id,
+        role,
+        current_deliverable_title,
+        completed_deliverables,
+        total_deliverables,
+        verifying_completion,
+        last_classifier_verdict,
+        raw: update.clone(),
+    })
+}
+
 /// Pure decode of `session/update` params → host events (no I/O).
 /// Used by the live client and golden fixture tests.
 pub fn decode_session_update(params: &Value) -> Vec<AcpEvent> {
@@ -2508,7 +3204,21 @@ pub fn decode_session_update(params: &Value) -> Vec<AcpEvent> {
                 out.push(ev);
             }
         }
+        // Goal harness (CLI 0.2.117+): classifier / planner / strategist / verifier.
+        "goal_updated" | "goalUpdated" => {
+            if let Some(ev) = parse_goal_updated(update) {
+                out.push(ev);
+            }
+        }
         _ => {
+            // Soft-recognize other goal_* sessionUpdate kinds without inventing state.
+            if kind.starts_with("goal_")
+                || (kind.starts_with("goal") && kind.contains("update"))
+            {
+                if let Some(ev) = parse_goal_updated(update) {
+                    out.push(ev);
+                }
+            }
             if let Some(ev) = parse_usage_update(kind, update) {
                 out.push(ev);
             }
@@ -2871,6 +3581,44 @@ mod session_update_decode_tests {
             }] if kind == "hook_annotation" && detail.contains("stop_failure")
         ));
     }
+
+    #[test]
+    fn goal_updated_decodes_classifier_role() {
+        let evs = decode_session_update(&json!({
+            "update": {
+                "sessionUpdate": "goal_updated",
+                "goal_id": "g-1",
+                "current_subagent_role": "goal classifier",
+                "current_deliverable_title": "Ship UI",
+                "completed_deliverables": 1,
+                "total_deliverables": 3,
+                "verifying_completion": true,
+                "last_classifier_verdict": "not_achieved"
+            }
+        }));
+        assert!(matches!(
+            &evs[..],
+            [AcpEvent::GoalUpdated {
+                goal_id: Some(gid),
+                role: Some(role),
+                completed_deliverables: Some(1),
+                total_deliverables: Some(3),
+                verifying_completion: Some(true),
+                last_classifier_verdict: Some(verdict),
+                ..
+            }] if gid == "g-1"
+                && role.contains("classifier")
+                && verdict == "not_achieved"
+        ));
+    }
+
+    #[test]
+    fn goal_updated_empty_shell_still_emits() {
+        let evs = decode_session_update(&json!({
+            "update": { "sessionUpdate": "goal_updated" }
+        }));
+        assert!(matches!(&evs[..], [AcpEvent::GoalUpdated { .. }]));
+    }
 }
 
 #[cfg(test)]
@@ -3157,6 +3905,155 @@ pub fn should_abort_provider_retry(attempt: u32, max_retries: u32, status: &str)
     attempt >= cap
 }
 
+/// Parsed ACP API-mode server address (`host:port`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ParsedAcpServerAddr {
+    pub host: String,
+    pub port: u16,
+}
+
+impl ParsedAcpServerAddr {
+    /// Target string for `TcpStream::connect` (brackets IPv6 hosts).
+    pub fn connect_target(&self) -> String {
+        if self.host.contains(':') {
+            format!("[{}]:{}", self.host, self.port)
+        } else {
+            format!("{}:{}", self.host, self.port)
+        }
+    }
+}
+
+/// Parse `host:port` for API-mode ACP. Optional `ws://` / `wss://` / `tcp://` /
+/// `http(s)://` scheme is stripped. Rejects empty host, invalid port, paths.
+pub fn parse_acp_server_addr(raw: &str) -> Result<ParsedAcpServerAddr, String> {
+    let mut s = raw.trim().to_string();
+    if s.is_empty() {
+        return Err("empty address".into());
+    }
+
+    // Optional scheme strip (paste-friendly).
+    for prefix in ["ws://", "wss://", "tcp://", "http://", "https://"] {
+        if let Some(rest) = s
+            .get(..prefix.len())
+            .filter(|p| p.eq_ignore_ascii_case(prefix))
+            .and_then(|_| s.get(prefix.len()..))
+        {
+            s = rest.to_string();
+            break;
+        }
+    }
+    if let Some(at) = s.rfind('@') {
+        s = s[at + 1..].to_string();
+    }
+    if s.contains('/') || s.contains('?') || s.contains('#') {
+        return Err("not a host:port address".into());
+    }
+    let s = s.trim();
+    if s.is_empty() {
+        return Err("empty address".into());
+    }
+
+    let (host, port_raw): (String, String) = if s.starts_with('[') {
+        let close = s.find(']').ok_or_else(|| "invalid host".to_string())?;
+        if close <= 1 {
+            return Err("empty host".into());
+        }
+        let host = s[1..close].to_string();
+        let rest = &s[close + 1..];
+        if !rest.starts_with(':') {
+            return Err("missing port".into());
+        }
+        (host, rest[1..].to_string())
+    } else {
+        let Some(colon) = s.rfind(':') else {
+            return Err("missing port".into());
+        };
+        // Bare IPv6 without brackets (multiple colons) — require [addr]:port.
+        if s.find(':') != Some(colon) {
+            return Err("not a host:port address".into());
+        }
+        (s[..colon].to_string(), s[colon + 1..].to_string())
+    };
+
+    let host = host.trim();
+    let port_raw = port_raw.trim();
+    if host.is_empty() {
+        return Err("empty host".into());
+    }
+    if port_raw.is_empty() {
+        return Err("missing port".into());
+    }
+    if host.chars().any(|c| c.is_whitespace() || c == '/' || c == '?' || c == '#') {
+        return Err("invalid host".into());
+    }
+    let host_ok = host
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '~' | '%' | '-'))
+        || host.chars().all(|c| c.is_ascii_hexdigit() || c == ':');
+    if !host_ok {
+        return Err("invalid host".into());
+    }
+    if !port_raw.chars().all(|c| c.is_ascii_digit()) || port_raw.len() > 5 {
+        return Err("invalid port".into());
+    }
+    let port: u16 = port_raw
+        .parse()
+        .map_err(|_| "invalid port".to_string())?;
+    if port == 0 {
+        return Err("invalid port".into());
+    }
+
+    Ok(ParsedAcpServerAddr {
+        host: host.to_string(),
+        port,
+    })
+}
+
+/// TCP-only reachability probe for Settings → ACP server (no secrets, no RPC).
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AcpServerProbeResult {
+    pub ok: bool,
+    pub latency_ms: Option<u64>,
+    pub error: Option<String>,
+}
+
+impl AcpServerProbeResult {
+    fn fail(error: impl Into<String>) -> Self {
+        Self {
+            ok: false,
+            latency_ms: None,
+            error: Some(error.into()),
+        }
+    }
+}
+
+/// TCP connect to `host:port` with a ~2s timeout. Network path only — no
+/// ACP handshake, no auth. Used by the Settings health check.
+pub async fn acp_server_probe(addr: &str) -> AcpServerProbeResult {
+    use tokio::time::{timeout, Duration};
+
+    let parsed = match parse_acp_server_addr(addr) {
+        Ok(p) => p,
+        Err(e) => return AcpServerProbeResult::fail(e),
+    };
+    let target = parsed.connect_target();
+    let started = Instant::now();
+    match timeout(Duration::from_secs(2), TcpStream::connect(&target)).await {
+        Ok(Ok(_stream)) => AcpServerProbeResult {
+            ok: true,
+            latency_ms: Some(started.elapsed().as_millis() as u64),
+            error: None,
+        },
+        Ok(Err(e)) => AcpServerProbeResult {
+            ok: false,
+            latency_ms: Some(started.elapsed().as_millis() as u64),
+            error: Some(format!("connect failed: {e}")),
+        },
+        Err(_) => AcpServerProbeResult::fail("connect timed out (2s)"),
+    }
+}
+
 /// Result of an API-mode connectivity probe (see [`probe_acp_server`]).
 #[derive(Debug, Clone, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -3180,7 +4077,7 @@ impl AcpProbeResult {
     }
 }
 
-/// Lightweight connectivity check for **API mode**: TCP-connect to an ACP
+/// Deeper connectivity check for **API mode**: TCP-connect to an ACP
 /// server (`host:port`), perform the `initialize` handshake, and report the
 /// agent version / current model. Creates no client and no session — just
 /// confirms the address is reachable and speaks ACP. Bounded by timeouts so
@@ -3188,7 +4085,12 @@ impl AcpProbeResult {
 pub async fn probe_acp_server(addr: &str) -> AcpProbeResult {
     use tokio::time::{timeout, Duration};
 
-    let stream = match timeout(Duration::from_secs(5), TcpStream::connect(addr)).await {
+    let target = match parse_acp_server_addr(addr) {
+        Ok(p) => p.connect_target(),
+        Err(e) => return AcpProbeResult::fail(e),
+    };
+
+    let stream = match timeout(Duration::from_secs(5), TcpStream::connect(&target)).await {
         Ok(Ok(s)) => s,
         Ok(Err(e)) => return AcpProbeResult::fail(format!("connect failed: {e}")),
         Err(_) => return AcpProbeResult::fail("connect timed out (5s)"),
@@ -3232,6 +4134,62 @@ pub async fn probe_acp_server(addr: &str) -> AcpProbeResult {
         }
         Ok(Err(e)) => AcpProbeResult::fail(format!("read failed: {e}")),
         Err(_) => AcpProbeResult::fail("connected, but no ACP response within 20s"),
+    }
+}
+
+#[cfg(test)]
+mod acp_server_addr_tests {
+    use super::*;
+
+    #[test]
+    fn parse_accepts_host_port() {
+        let p = parse_acp_server_addr("127.0.0.1:8799").unwrap();
+        assert_eq!(p.host, "127.0.0.1");
+        assert_eq!(p.port, 8799);
+        assert_eq!(p.connect_target(), "127.0.0.1:8799");
+    }
+
+    #[test]
+    fn parse_strips_ws_scheme() {
+        let p = parse_acp_server_addr("ws://localhost:2419").unwrap();
+        assert_eq!(p.host, "localhost");
+        assert_eq!(p.port, 2419);
+    }
+
+    #[test]
+    fn parse_ipv6_brackets() {
+        let p = parse_acp_server_addr("[::1]:8799").unwrap();
+        assert_eq!(p.host, "::1");
+        assert_eq!(p.port, 8799);
+        assert_eq!(p.connect_target(), "[::1]:8799");
+    }
+
+    #[test]
+    fn parse_rejects_empty_host_and_bad_port() {
+        assert!(parse_acp_server_addr("").is_err());
+        assert!(parse_acp_server_addr(":8799").is_err());
+        assert!(parse_acp_server_addr("localhost").is_err());
+        assert!(parse_acp_server_addr("localhost:0").is_err());
+        assert!(parse_acp_server_addr("localhost:65536").is_err());
+        assert!(parse_acp_server_addr("localhost:abc").is_err());
+        assert!(parse_acp_server_addr("127.0.0.1:8799/path").is_err());
+        assert!(parse_acp_server_addr("fe80::1").is_err());
+    }
+
+    #[tokio::test]
+    async fn probe_invalid_addr_fails_fast() {
+        let r = acp_server_probe("").await;
+        assert!(!r.ok);
+        assert!(r.error.is_some());
+        assert!(r.latency_ms.is_none());
+    }
+
+    #[tokio::test]
+    async fn probe_closed_port_reports_error() {
+        // Connect to a high port that almost certainly has no listener.
+        let r = acp_server_probe("127.0.0.1:1").await;
+        assert!(!r.ok);
+        assert!(r.error.is_some());
     }
 }
 
@@ -3356,6 +4314,107 @@ mod prompt_wait_timeout_tests {
 }
 
 #[cfg(test)]
+mod background_wait_policy_tests {
+    use super::*;
+
+    #[test]
+    fn normalize_policy_defaults_and_aliases() {
+        assert_eq!(
+            normalize_background_wait_policy(""),
+            BackgroundWaitPolicy::Wait
+        );
+        assert_eq!(
+            normalize_background_wait_policy("wait"),
+            BackgroundWaitPolicy::Wait
+        );
+        assert_eq!(
+            normalize_background_wait_policy("NO-WAIT"),
+            BackgroundWaitPolicy::NoWait
+        );
+        assert_eq!(
+            normalize_background_wait_policy("timeout"),
+            BackgroundWaitPolicy::Timeout
+        );
+        assert_eq!(
+            normalize_background_wait_policy("garbage"),
+            BackgroundWaitPolicy::Wait
+        );
+    }
+
+    #[test]
+    fn timeout_clamps_1_to_3600() {
+        assert_eq!(normalize_background_wait_timeout_sec(0), 1);
+        assert_eq!(normalize_background_wait_timeout_sec(1), 1);
+        assert_eq!(normalize_background_wait_timeout_sec(600), 600);
+        assert_eq!(normalize_background_wait_timeout_sec(3600), 3600);
+        assert_eq!(normalize_background_wait_timeout_sec(99999), 3600);
+    }
+
+    #[test]
+    fn spawn_flags_for_each_policy() {
+        assert!(background_wait_spawn_flags("wait", 600).is_empty());
+        assert_eq!(
+            background_wait_spawn_flags("no_wait", 600),
+            vec!["--no-wait-for-background".to_string()]
+        );
+        assert_eq!(
+            background_wait_spawn_flags("timeout", 90),
+            vec![
+                "--background-wait-timeout".to_string(),
+                "90".to_string()
+            ]
+        );
+        assert_eq!(
+            background_wait_spawn_flags("timeout", 0),
+            vec![
+                "--background-wait-timeout".to_string(),
+                "1".to_string()
+            ]
+        );
+    }
+
+    #[test]
+    fn soft_gate_omits_on_old_or_unknown() {
+        assert!(background_wait_spawn_flags_soft("no_wait", 600, Some("0.2.112")).is_empty());
+        assert!(background_wait_spawn_flags_soft("timeout", 30, Some("grok 0.2.100")).is_empty());
+        assert!(background_wait_spawn_flags_soft("no_wait", 600, None).is_empty());
+        assert!(background_wait_spawn_flags_soft("no_wait", 600, Some("nope")).is_empty());
+        assert!(background_wait_spawn_flags_soft("wait", 600, Some("0.2.112")).is_empty());
+    }
+
+    #[test]
+    fn soft_gate_emits_on_new_cli() {
+        assert_eq!(
+            background_wait_spawn_flags_soft("no_wait", 600, Some("grok 0.2.117")),
+            vec!["--no-wait-for-background".to_string()]
+        );
+        assert_eq!(
+            background_wait_spawn_flags_soft("timeout", 45, Some("0.2.120")),
+            vec![
+                "--background-wait-timeout".to_string(),
+                "45".to_string()
+            ]
+        );
+    }
+
+    #[test]
+    fn settings_equal_ignores_timeout_when_not_timeout_policy() {
+        assert!(background_wait_settings_equal("wait", 1, "wait", 999));
+        assert!(background_wait_settings_equal("no_wait", 1, "no_wait", 2));
+        assert!(!background_wait_settings_equal("wait", 1, "no_wait", 1));
+        assert!(background_wait_settings_equal("timeout", 60, "timeout", 60));
+        assert!(!background_wait_settings_equal("timeout", 60, "timeout", 120));
+    }
+
+    #[test]
+    fn cli_supports_background_wait_semver() {
+        assert_eq!(cli_supports_background_wait("grok 0.2.117"), Some(true));
+        assert_eq!(cli_supports_background_wait("0.2.116"), Some(false));
+        assert_eq!(cli_supports_background_wait(""), None);
+    }
+}
+
+#[cfg(test)]
 mod disallowed_tools_spawn_tests {
     use super::*;
 
@@ -3409,6 +4468,84 @@ mod disallowed_tools_spawn_tests {
 }
 
 #[cfg(test)]
+mod allowed_tools_spawn_tests {
+    use super::*;
+
+    #[test]
+    fn empty_yields_no_flags() {
+        assert!(allowed_tools_spawn_flags(&[]).is_empty());
+        assert!(allowed_tools_spawn_flags(&["".into(), "  ".into()]).is_empty());
+    }
+
+    #[test]
+    fn builds_comma_separated_flag() {
+        let args = allowed_tools_spawn_flags(&[
+            "  web_search  ".into(),
+            "write".into(),
+            "web_search".into(),
+        ]);
+        assert_eq!(
+            args,
+            vec!["--tools".to_string(), "web_search,write".to_string(),]
+        );
+    }
+
+    #[test]
+    fn splits_embedded_commas_and_dedupes_case_insensitively() {
+        let cleaned = normalize_allowed_tools(&[
+            "Web_Search,write".into(),
+            "WEB_SEARCH".into(),
+            "Agent".into(),
+        ]);
+        assert_eq!(
+            cleaned,
+            vec![
+                "Web_Search".to_string(),
+                "write".to_string(),
+                "Agent".to_string(),
+            ]
+        );
+    }
+
+    #[test]
+    fn equality_is_order_and_case_insensitive() {
+        assert!(allowed_tools_equal(
+            &["a".into(), "b".into()],
+            &["B".into(), "A".into()]
+        ));
+        assert!(!allowed_tools_equal(&["a".into()], &["a".into(), "b".into()]));
+    }
+}
+
+#[cfg(test)]
+mod fork_session_spawn_tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn spawn_flags_toggle() {
+        assert!(fork_session_spawn_flags(false).is_empty());
+        assert_eq!(fork_session_spawn_flags(true), vec!["--fork-session"]);
+    }
+
+    #[test]
+    fn parse_fork_id_standard_and_extension() {
+        assert_eq!(
+            parse_fork_session_id(&json!({ "sessionId": "child-1" }), "parent"),
+            Some("child-1".into())
+        );
+        assert_eq!(
+            parse_fork_session_id(&json!({ "newSessionId": "child-2" }), "parent"),
+            Some("child-2".into())
+        );
+        // Reject empty / same-as-source (would not be a real fork).
+        assert!(parse_fork_session_id(&json!({ "sessionId": "parent" }), "parent").is_none());
+        assert!(parse_fork_session_id(&json!({ "sessionId": "  " }), "parent").is_none());
+        assert!(parse_fork_session_id(&json!({}), "parent").is_none());
+    }
+}
+
+#[cfg(test)]
 mod agent_profile_spawn_tests {
     use super::*;
 
@@ -3426,6 +4563,30 @@ mod agent_profile_spawn_tests {
             Some(vec![
                 "--agent-profile".to_string(),
                 "/tmp/agent.md".to_string()
+            ])
+        );
+    }
+}
+
+#[cfg(test)]
+mod agents_json_spawn_tests {
+    use super::*;
+
+    #[test]
+    fn empty_or_invalid_omits_flag() {
+        assert!(agents_json_spawn_flags("").is_none());
+        assert!(agents_json_spawn_flags("  ").is_none());
+        assert!(agents_json_spawn_flags("[]").is_none());
+        assert!(agents_json_spawn_flags("{").is_none());
+    }
+
+    #[test]
+    fn builds_top_level_pair() {
+        assert_eq!(
+            agents_json_spawn_flags(r#"  {"x":{"prompt":"hi"}}  "#),
+            Some(vec![
+                "--agents".to_string(),
+                r#"{"x":{"prompt":"hi"}}"#.to_string()
             ])
         );
     }
@@ -3537,6 +4698,43 @@ mod extra_rules_spawn_tests {
 }
 
 #[cfg(test)]
+mod system_prompt_override_spawn_tests {
+    use super::*;
+
+    #[test]
+    fn empty_yields_no_flags() {
+        assert!(system_prompt_override_spawn_flags(None).is_empty());
+        assert!(system_prompt_override_spawn_flags(Some("")).is_empty());
+        assert!(system_prompt_override_spawn_flags(Some("   \n")).is_empty());
+        assert!(system_prompt_override_spawn_flags(Some("\0\0")).is_empty());
+    }
+
+    #[test]
+    fn builds_top_level_override_pair() {
+        let args = system_prompt_override_spawn_flags(Some("  You are helpful  "));
+        assert_eq!(
+            args,
+            vec![
+                "--system-prompt-override".to_string(),
+                "You are helpful".to_string()
+            ]
+        );
+    }
+
+    #[test]
+    fn strips_nul_before_spawn() {
+        let args = system_prompt_override_spawn_flags(Some("a\0b\0c"));
+        assert_eq!(
+            args,
+            vec![
+                "--system-prompt-override".to_string(),
+                "abc".to_string()
+            ]
+        );
+    }
+}
+
+#[cfg(test)]
 mod max_turns_spawn_tests {
     use super::*;
 
@@ -3574,6 +4772,109 @@ mod max_turns_spawn_tests {
         );
         assert!(max_turns_cli_args(None).is_none());
         assert!(max_turns_cli_args(Some(0)).is_none());
+    }
+}
+
+#[cfg(test)]
+mod no_ask_user_spawn_tests {
+    use super::*;
+
+    #[test]
+    fn flags_only_when_enabled() {
+        assert!(no_ask_user_spawn_flags(false).is_empty());
+        assert_eq!(no_ask_user_spawn_flags(true), vec!["--no-ask-user"]);
+    }
+
+    #[test]
+    fn session_override_wins_over_global() {
+        assert!(!resolve_no_ask_user(None, false));
+        assert!(resolve_no_ask_user(None, true));
+        assert!(resolve_no_ask_user(Some(true), false));
+        assert!(!resolve_no_ask_user(Some(false), true));
+    }
+}
+
+#[cfg(test)]
+mod include_partial_messages_tests {
+    use super::*;
+
+    #[test]
+    fn format_gate() {
+        assert!(is_streaming_messages_json_format(
+            "streaming-messages-json"
+        ));
+        assert!(is_streaming_messages_json_format(
+            "STREAMING_MESSAGES_JSON"
+        ));
+        assert!(!is_streaming_messages_json_format("streaming-json"));
+        assert!(!is_streaming_messages_json_format("json"));
+        assert!(!is_streaming_messages_json_format("plain"));
+    }
+
+    #[test]
+    fn spawn_flags_only_when_enabled_and_messages_format() {
+        assert_eq!(
+            include_partial_messages_spawn_flags(true, "streaming-messages-json"),
+            vec!["--include-partial-messages"]
+        );
+        assert!(include_partial_messages_spawn_flags(false, "streaming-messages-json").is_empty());
+        assert!(include_partial_messages_spawn_flags(true, "streaming-json").is_empty());
+        assert!(include_partial_messages_spawn_flags(true, "json").is_empty());
+    }
+
+    #[test]
+    fn soft_fail_older_and_unknown_cli() {
+        assert!(include_partial_messages_spawn_flags_soft(
+            true,
+            "streaming-messages-json",
+            Some("0.2.112")
+        )
+        .is_empty());
+        assert!(include_partial_messages_spawn_flags_soft(
+            true,
+            "streaming-messages-json",
+            None
+        )
+        .is_empty());
+        assert!(include_partial_messages_spawn_flags_soft(
+            true,
+            "streaming-messages-json",
+            Some("nope")
+        )
+        .is_empty());
+        assert_eq!(
+            include_partial_messages_spawn_flags_soft(
+                true,
+                "streaming-messages-json",
+                Some("grok 0.2.117")
+            ),
+            vec!["--include-partial-messages"]
+        );
+    }
+
+    #[test]
+    fn resolve_upgrades_format_when_partial_on() {
+        let (fmt, flags) = resolve_headless_stream_for_partial(true, Some("0.2.117"));
+        assert_eq!(fmt, HEADLESS_FORMAT_STREAMING_MESSAGES_JSON);
+        assert_eq!(flags, vec!["--include-partial-messages"]);
+
+        let (fmt2, flags2) = resolve_headless_stream_for_partial(true, Some("0.2.100"));
+        assert_eq!(fmt2, HEADLESS_FORMAT_STREAMING_JSON);
+        assert!(flags2.is_empty());
+
+        let (fmt3, flags3) = resolve_headless_stream_for_partial(false, Some("0.2.117"));
+        assert_eq!(fmt3, HEADLESS_FORMAT_STREAMING_JSON);
+        assert!(flags3.is_empty());
+    }
+
+    #[test]
+    fn cli_supports_semver() {
+        assert_eq!(
+            cli_supports_include_partial_messages("grok 0.2.117"),
+            Some(true)
+        );
+        assert_eq!(cli_supports_include_partial_messages("0.2.116"), Some(false));
+        assert_eq!(cli_supports_include_partial_messages(""), None);
     }
 }
 
@@ -3617,6 +4918,81 @@ mod sandbox_spawn_tests {
             spec.cli_args(),
             ["--sandbox".to_string(), "workspace".to_string()]
         );
+    }
+}
+
+#[cfg(test)]
+mod compaction_spawn_tests {
+    use super::*;
+
+    #[test]
+    fn normalize_mode_and_detail() {
+        assert_eq!(normalize_compaction_mode("summary"), "summary");
+        assert_eq!(normalize_compaction_mode(" Transcript "), "transcript");
+        assert_eq!(normalize_compaction_mode("SEGMENTS"), "segments");
+        assert_eq!(normalize_compaction_mode(""), "summary");
+        assert_eq!(normalize_compaction_mode("heavy"), "summary");
+        assert_eq!(normalize_compaction_detail("none"), "none");
+        assert_eq!(normalize_compaction_detail(" Minimal "), "minimal");
+        assert_eq!(normalize_compaction_detail("BALANCED"), "balanced");
+        assert_eq!(normalize_compaction_detail("verbose"), "verbose");
+        assert_eq!(normalize_compaction_detail(""), "verbose");
+        assert_eq!(normalize_compaction_detail("max"), "verbose");
+    }
+
+    #[test]
+    fn detail_only_for_segments() {
+        assert!(compaction_detail_applies("segments"));
+        assert!(!compaction_detail_applies("summary"));
+        assert!(!compaction_detail_applies("transcript"));
+    }
+
+    #[test]
+    fn spawn_args_mode_and_optional_detail() {
+        assert_eq!(
+            compaction_spawn_args("transcript", "none"),
+            vec!["--compaction-mode".to_string(), "transcript".to_string()]
+        );
+        assert_eq!(
+            compaction_spawn_args("segments", "minimal"),
+            vec![
+                "--compaction-mode".to_string(),
+                "segments".to_string(),
+                "--compaction-detail".to_string(),
+                "minimal".to_string(),
+            ]
+        );
+        assert_eq!(
+            compaction_spawn_args("bogus", "bogus"),
+            vec!["--compaction-mode".to_string(), "summary".to_string()]
+        );
+    }
+
+    #[test]
+    fn spawn_env_detail_only_for_segments() {
+        assert_eq!(
+            compaction_spawn_env("summary", "minimal"),
+            vec![("GROK_COMPACTION_MODE".into(), "summary".into())]
+        );
+        assert_eq!(
+            compaction_spawn_env("segments", "none"),
+            vec![
+                ("GROK_COMPACTION_MODE".into(), "segments".into()),
+                ("GROK_COMPACTION_DETAIL".into(), "none".into()),
+            ]
+        );
+    }
+
+    #[test]
+    fn flags_gated_at_0_2_117() {
+        assert!(cli_supports_compaction_flags(Some("grok 0.2.117")));
+        assert!(cli_supports_compaction_flags(Some("grok 0.2.200")));
+        assert!(cli_supports_compaction_flags(Some("0.3.0")));
+        assert!(!cli_supports_compaction_flags(Some("grok 0.2.116")));
+        assert!(!cli_supports_compaction_flags(Some("grok 0.2.112")));
+        assert!(!cli_supports_compaction_flags(None));
+        assert!(!cli_supports_compaction_flags(Some("")));
+        assert!(!cli_supports_compaction_flags(Some("unknown")));
     }
 }
 

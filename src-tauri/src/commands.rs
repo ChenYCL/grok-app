@@ -119,13 +119,41 @@ pub async fn session_rewind_execute(
 }
 
 /// Fork a session into a new chat (same project, messages up to optional cut).
+///
+/// When `fork_agent_session` is true and the source has an agent id, the new
+/// chat carries that id with a one-shot fork flag so the next connect uses
+/// CLI `--fork-session` semantics (ACP `session/fork` → new agent id).
 #[tauri::command]
 pub fn session_fork(
     source_id: String,
     through_user_prompt_index: Option<u32>,
     title: Option<String>,
+    fork_agent_session: Option<bool>,
 ) -> Result<store::SessionMeta, String> {
-    store::fork_session(&source_id, through_user_prompt_index, title)
+    store::fork_session(
+        &source_id,
+        through_user_prompt_index,
+        title,
+        fork_agent_session.unwrap_or(false),
+    )
+}
+
+/// Set the one-shot CLI `--fork-session` flag (new agent id on next connect).
+/// Soft-respawns the live agent for this chat when the flag is armed so the
+/// next connect can fork instead of reusing the warm process.
+#[tauri::command]
+pub async fn session_set_fork_agent_session(
+    app: tauri::AppHandle,
+    mgr: State<'_, Arc<SessionManager>>,
+    id: String,
+    fork_agent_session: bool,
+) -> Result<store::SessionMeta, String> {
+    let meta = store::set_session_fork_agent_session(&id, fork_agent_session)?;
+    let snap = mgr.snapshot();
+    if fork_agent_session && snap.session_id.as_deref() == Some(meta.id.as_str()) {
+        mgr.soft_respawn_with_reason(&app, "session_fork_agent").await;
+    }
+    Ok(meta)
 }
 
 #[tauri::command]
@@ -212,6 +240,18 @@ pub async fn acp_test_connection(
     Ok(crate::acp_client::probe_acp_server(addr).await)
 }
 
+/// Settings health check: TCP connect only (~2s). No secrets, no ACP RPC.
+#[tauri::command]
+pub async fn acp_server_probe(
+    addr: String,
+) -> Result<crate::acp_client::AcpServerProbeResult, String> {
+    let addr = addr.trim();
+    if addr.is_empty() {
+        return Err("empty address".into());
+    }
+    Ok(crate::acp_client::acp_server_probe(addr).await)
+}
+
 /// Download + install latest Grok Build (multi-mirror, progress via `setup://cli-install-progress`).
 ///
 /// `allow_unverified`: optional; when omitted, uses Settings
@@ -244,14 +284,20 @@ pub async fn cli_install_commands() -> Result<serde_json::Value, String> {
 #[tauri::command]
 pub async fn pick_cli_binary() -> Result<Option<String>, String> {
     let file = tauri::async_runtime::spawn_blocking(|| {
-        // `mut` required on Windows: we rebind after add_filter.
-        let mut dlg =
-            rfd::FileDialog::new().set_title("Select Grok Build binary / 选择 Grok Build 可执行文件");
+        // Windows rebinds after add_filter; other platforms keep the builder immutable.
         #[cfg(target_os = "windows")]
         {
-            dlg = dlg.add_filter("Executable", &["exe", "cmd", "bat"]);
+            let dlg = rfd::FileDialog::new()
+                .set_title("Select Grok Build binary / 选择 Grok Build 可执行文件")
+                .add_filter("Executable", &["exe", "cmd", "bat"]);
+            return dlg.pick_file();
         }
-        dlg.pick_file()
+        #[cfg(not(target_os = "windows"))]
+        {
+            rfd::FileDialog::new()
+                .set_title("Select Grok Build binary / 选择 Grok Build 可执行文件")
+                .pick_file()
+        }
     })
     .await
     .map_err(|e| e.to_string())?;
@@ -493,6 +539,29 @@ pub async fn cli_sessions_list() -> Result<Vec<crate::cli_sessions::CliSessionSu
     crate::cli_sessions::list_cli_sessions(&mode)
 }
 
+/// Search CLI sessions via `grok sessions search` (summaries + first prompts).
+/// Falls back to local disk filter (incl. first prompt) when CLI is unavailable.
+#[tauri::command]
+pub async fn cli_sessions_search(
+    query: String,
+    limit: Option<u32>,
+) -> Result<Vec<crate::cli_sessions::CliSessionSearchHit>, String> {
+    let settings = store::load_settings();
+    let mode = settings.session_data_mode.clone();
+    let probe = cli_probe::probe_cli(settings.manual_cli_path.as_deref());
+    let cli_path = probe.path.filter(|_| probe.found).map(std::path::PathBuf::from);
+    tauri::async_runtime::spawn_blocking(move || {
+        crate::cli_sessions::search_cli_sessions(
+            &query,
+            limit,
+            &mode,
+            cli_path.as_deref(),
+        )
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
 /// Import one CLI session (chat_history.jsonl) into the App journal.
 #[tauri::command]
 pub async fn cli_session_import(
@@ -507,6 +576,36 @@ pub async fn cli_session_import(
         project_id,
         &mode,
     )
+}
+
+/// Find the most recent CLI agent session for a project path (CLI `-c/--continue`).
+/// Returns `None` when no session exists (soft-fail).
+#[tauri::command]
+pub async fn cli_session_find_latest_for_cwd(
+    project_path: String,
+) -> Result<Option<crate::cli_sessions::CliSessionSummary>, String> {
+    let mode = store::load_settings().session_data_mode;
+    let path = project_path;
+    tauri::async_runtime::spawn_blocking(move || {
+        crate::cli_sessions::find_latest_cli_session_for_cwd(&path, &mode)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+/// CLI `-c/--continue`: find latest agent session for project path and
+/// open/import it as an App session. `None` when no agent session exists.
+#[tauri::command]
+pub async fn cli_session_continue_cwd(
+    project_path: String,
+    project_id: Option<String>,
+) -> Result<Option<SessionMeta>, String> {
+    let mode = store::load_settings().session_data_mode;
+    tauri::async_runtime::spawn_blocking(move || {
+        crate::cli_sessions::continue_cli_session_for_cwd(&project_path, project_id, &mode)
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 /// Import up to `limit` not-yet-linked CLI sessions (default 50).
@@ -559,6 +658,117 @@ pub async fn session_set_scheduled(
 #[tauri::command]
 pub fn app_force_quit(app: tauri::AppHandle) {
     app.exit(0);
+}
+
+/// Primary workbench window label (matches tauri.conf.json + frontend multiWindow).
+const MAIN_WINDOW_LABEL: &str = "main";
+
+/// Secondary session window label prefix (`session-<uuid>`). Matches frontend `multiWindow.ts`.
+const SESSION_WINDOW_LABEL_PREFIX: &str = "session-";
+
+/// Sanitize a session id for Tauri window labels (ASCII alnum / `-` / `_` only).
+fn sanitize_session_id_for_label(session_id: &str) -> Option<&str> {
+    let id = session_id.trim();
+    if id.is_empty() {
+        return None;
+    }
+    if !id
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+    {
+        return None;
+    }
+    Some(id)
+}
+
+fn session_window_label(session_id: &str) -> Option<String> {
+    sanitize_session_id_for_label(session_id)
+        .map(|id| format!("{SESSION_WINDOW_LABEL_PREFIX}{id}"))
+}
+
+/// Open (or focus) a secondary webview window for a chat (`#/session/<id>`).
+///
+/// Secondary windows are live-capable (send/stop via shared Host). The frontend
+/// still skips *passive* warm-connect on open so browsing does not demote main’s
+/// agent until the user acts. Re-opening the same session focuses the existing
+/// window instead of spawning a third copy.
+#[tauri::command]
+pub fn open_session_window(
+    app: tauri::AppHandle,
+    session_id: String,
+    title: Option<String>,
+) -> Result<(), String> {
+    use tauri::{Manager, WebviewUrl, WebviewWindowBuilder};
+
+    let sid = sanitize_session_id_for_label(&session_id)
+        .ok_or_else(|| "invalid session id for window label".to_string())?;
+    let label = session_window_label(sid).expect("sid already sanitized");
+
+    let win_title = title
+        .as_ref()
+        .map(|s| s.trim())
+        .filter(|s| !s.is_empty())
+        .map(|t| format!("Grok · {t}"))
+        .unwrap_or_else(|| "Grok".to_string());
+
+    if let Some(w) = app.get_webview_window(&label) {
+        let _ = w.set_title(&win_title);
+        let _ = w.show();
+        let _ = w.unminimize();
+        let _ = w.set_focus();
+        return Ok(());
+    }
+
+    // Deep link: frontend parses `#/session/<id>` on boot (secondary live mode).
+    let url = format!("index.html#/session/{sid}");
+    WebviewWindowBuilder::new(&app, &label, WebviewUrl::App(url.into()))
+        .title(win_title)
+        .inner_size(1000.0, 720.0)
+        .min_inner_size(720.0, 480.0)
+        .resizable(true)
+        .decorations(true)
+        .center()
+        .build()
+        .map_err(|e| format!("open session window: {e}"))?;
+    Ok(())
+}
+
+/// Focus (show / unminimize) the primary workbench window from a secondary pane.
+#[tauri::command]
+pub fn focus_main_window(app: tauri::AppHandle) -> Result<(), String> {
+    use tauri::Manager;
+
+    let w = app
+        .get_webview_window(MAIN_WINDOW_LABEL)
+        .ok_or_else(|| "main window not found".to_string())?;
+    let _ = w.show();
+    let _ = w.unminimize();
+    let _ = w.set_focus();
+    Ok(())
+}
+
+#[cfg(test)]
+mod multi_window_tests {
+    use super::*;
+
+    #[test]
+    fn sanitize_session_id_accepts_uuid() {
+        let id = "a1b2c3d4-e5f6-7890-abcd-ef1234567890";
+        assert_eq!(sanitize_session_id_for_label(id), Some(id));
+        assert_eq!(
+            session_window_label(id).as_deref(),
+            Some("session-a1b2c3d4-e5f6-7890-abcd-ef1234567890")
+        );
+    }
+
+    #[test]
+    fn sanitize_session_id_rejects_path_junk() {
+        assert!(sanitize_session_id_for_label("").is_none());
+        assert!(sanitize_session_id_for_label("bad id").is_none());
+        assert!(sanitize_session_id_for_label("../x").is_none());
+        assert!(sanitize_session_id_for_label("a/b").is_none());
+        assert!(session_window_label(" ").is_none());
+    }
 }
 
 #[tauri::command]
@@ -687,6 +897,43 @@ pub async fn session_set_max_agent_turns(
     Ok(meta)
 }
 
+/// Set or clear per-session system prompt override
+/// (`grok --system-prompt-override` at next spawn).
+/// Empty / whitespace clears. Soft-respawns the live agent for this chat.
+/// Never logs the prompt body (may contain secrets / PII).
+#[tauri::command]
+pub async fn session_set_system_prompt_override(
+    app: tauri::AppHandle,
+    mgr: State<'_, Arc<SessionManager>>,
+    id: String,
+    system_prompt_override: Option<String>,
+) -> Result<SessionMeta, String> {
+    let meta = store::set_session_system_prompt_override(&id, system_prompt_override)?;
+    let snap = mgr.snapshot();
+    if snap.session_id.as_deref() == Some(meta.id.as_str()) {
+        mgr.soft_respawn_with_reason(&app, "session_system_prompt_override")
+            .await;
+    }
+    Ok(meta)
+}
+
+/// Set or clear per-session `--no-ask-user` override (CLI ≥ 0.2.117).
+/// `None` inherits global Settings. Soft-respawns the live agent for this chat.
+#[tauri::command]
+pub async fn session_set_no_ask_user(
+    app: tauri::AppHandle,
+    mgr: State<'_, Arc<SessionManager>>,
+    id: String,
+    no_ask_user: Option<bool>,
+) -> Result<SessionMeta, String> {
+    let meta = store::set_session_no_ask_user(&id, no_ask_user)?;
+    let snap = mgr.snapshot();
+    if snap.session_id.as_deref() == Some(meta.id.as_str()) {
+        mgr.soft_respawn_with_reason(&app, "session_no_ask_user").await;
+    }
+    Ok(meta)
+}
+
 #[tauri::command]
 pub async fn session_messages(
     id: String,
@@ -702,6 +949,19 @@ pub async fn session_messages(
 #[tauri::command]
 pub async fn session_media_root(id: String) -> Result<Option<String>, String> {
     Ok(resolve_session_media_root(&id))
+}
+
+/// Loopback media HTTP endpoint (`baseUrl` + `token`) for local file previews.
+/// Frontend builds `http://127.0.0.1:{port}/v1/media?t=…&p=…` for absolute paths.
+#[tauri::command]
+pub async fn media_server_endpoint(
+    app: tauri::AppHandle,
+) -> Result<crate::media_server::MediaServerEndpoint, String> {
+    use tauri::Manager;
+    let handle = app
+        .try_state::<crate::media_server::MediaServerHandle>()
+        .ok_or_else(|| "media server not running".to_string())?;
+    Ok(handle.endpoint())
 }
 
 /// Resolve relative media refs to absolute paths that exist on disk.
@@ -731,6 +991,9 @@ pub async fn session_resolve_relative_media(
         let Some(full) = full else {
             continue;
         };
+        // Allow media:// previews for session/project skill outputs (including
+        // untrusted project roots that are not in the global path_scope list).
+        crate::path_scope::grant_path(&full);
         let path = full.to_string_lossy().to_string();
         if !seen.insert(path.clone()) {
             continue;
@@ -838,6 +1101,53 @@ pub async fn automation_delete(id: String) -> Result<(), String> {
     store::delete_automation(&id)
 }
 
+/// Host automation_runner snapshot (tray-only ok; not a separate daemon).
+#[tauri::command]
+pub async fn automation_runner_status(
+) -> Result<crate::automation_runner::AutomationRunnerStatus, String> {
+    Ok(crate::automation_runner::status())
+}
+
+/// macOS schedules LaunchAgent helper status (honest full-app restart only).
+#[tauri::command]
+pub async fn schedules_launch_agent_status(
+) -> Result<crate::schedules_launch_agent::SchedulesLaunchAgentStatus, String> {
+    let enabled = store::load_settings().schedules_launch_agent;
+    Ok(crate::schedules_launch_agent::status(enabled))
+}
+
+/// Enable/disable the optional schedules LaunchAgent helper and persist setting.
+#[tauri::command]
+pub async fn schedules_launch_agent_set_enabled(
+    enabled: bool,
+) -> Result<crate::schedules_launch_agent::SchedulesLaunchAgentStatus, String> {
+    let status = if enabled {
+        crate::schedules_launch_agent::enable()?
+    } else {
+        crate::schedules_launch_agent::disable()?
+    };
+    let mut settings = store::load_settings();
+    // Non-macOS never claims enabled; install is a no-op there.
+    settings.schedules_launch_agent = enabled && status.supported;
+    store::save_settings(&settings)?;
+    Ok(crate::schedules_launch_agent::status(
+        settings.schedules_launch_agent,
+    ))
+}
+
+/// Reveal the generated helper directory in Finder / Explorer (when present).
+#[tauri::command]
+pub async fn schedules_launch_agent_reveal_helper() -> Result<String, String> {
+    let dir = crate::schedules_launch_agent::helper_dir();
+    if !dir.is_dir() {
+        // Generate files so the user can inspect without enabling the agent.
+        crate::schedules_launch_agent::generate_helper_files()?;
+    }
+    let path = dir.display().to_string();
+    path_reveal(path.clone()).await?;
+    Ok(path)
+}
+
 #[tauri::command]
 pub async fn settings_get() -> Result<AppSettings, String> {
     Ok(store::load_settings())
@@ -853,38 +1163,130 @@ pub fn store_take_quarantine() -> Option<String> {
 pub async fn settings_set(
     app: tauri::AppHandle,
     mgr: State<'_, Arc<SessionManager>>,
-    mut settings: AppSettings,
+    settings: AppSettings,
 ) -> Result<AppSettings, String> {
     let prev = store::load_settings();
     let mut settings = settings;
-    // Normalize denylist so spawn / equality see a stable list.
+    // Normalize denylist / allowlist so spawn / equality see stable lists.
     settings.disallowed_tools =
         crate::acp_client::normalize_disallowed_tools(&settings.disallowed_tools);
+    settings.allowed_tools =
+        crate::acp_client::normalize_allowed_tools(&settings.allowed_tools);
     // Normalize optional agent profile path (trim / drop control chars).
     settings.agent_profile_path =
         crate::agents_catalog::normalize_agent_profile_path(&settings.agent_profile_path)
             .unwrap_or_default();
+    // Normalize / validate optional agents JSON (reject invalid non-empty).
+    settings.agents_json =
+        crate::agents_catalog::normalize_agents_json(&settings.agents_json)?;
+    // Headless background-wait policy (CLI 0.2.117+); clamp timeout 1–3600.
+    settings.background_wait_policy =
+        crate::acp_client::normalize_background_wait_policy(&settings.background_wait_policy)
+            .as_str()
+            .to_string();
+    settings.background_wait_timeout_sec =
+        crate::acp_client::normalize_background_wait_timeout_sec(
+            settings.background_wait_timeout_sec,
+        );
+    // Normalize compaction mode/detail enums (CLI 0.2.117+).
+    settings.compaction_mode =
+        crate::acp_client::normalize_compaction_mode(&settings.compaction_mode).to_string();
+    settings.compaction_detail =
+        crate::acp_client::normalize_compaction_detail(&settings.compaction_detail).to_string();
     let keychain_flip =
         prev.store_api_keys_in_keychain != settings.store_api_keys_in_keychain;
     let session_data_mode_changed =
         prev.session_data_mode != settings.session_data_mode;
     let memory_flip = prev.experimental_memory != settings.experimental_memory;
     let web_search_flip = prev.disable_web_search != settings.disable_web_search;
+    let no_ask_user_flip = prev.no_ask_user != settings.no_ask_user;
     let disallowed_tools_flip = !crate::acp_client::disallowed_tools_equal(
         &prev.disallowed_tools,
         &settings.disallowed_tools,
     );
+    let allowed_tools_flip = !crate::acp_client::allowed_tools_equal(
+        &prev.allowed_tools,
+        &settings.allowed_tools,
+    );
+    // Normalize TodoGate max fires (1–20; 0 → default 3).
+    settings.todo_gate_max_fires_per_prompt =
+        crate::agent_todo_gate::normalize_todo_gate_max_fires(Some(
+            settings.todo_gate_max_fires_per_prompt,
+        ));
+    let todo_gate_flip = prev.todo_gate_enabled != settings.todo_gate_enabled
+        || crate::agent_todo_gate::normalize_todo_gate_max_fires(Some(
+            prev.todo_gate_max_fires_per_prompt,
+        )) != settings.todo_gate_max_fires_per_prompt;
     let plan_enabled_flip = prev.plan_enabled != settings.plan_enabled;
     let use_leader_changed = prev.use_leader != settings.use_leader;
     let subagents_flip = prev.subagents_enabled != settings.subagents_enabled;
+    let subagent_wt_snap_flip = prev.subagent_worktree_snapshot_enabled
+        != settings.subagent_worktree_snapshot_enabled;
+    let auto_wake_flip = prev.auto_wake_enabled != settings.auto_wake_enabled;
+    let workflows_flip = prev.workflows_enabled != settings.workflows_enabled;
+    let two_pass_compaction_flip =
+        prev.two_pass_compaction_enabled != settings.two_pass_compaction_enabled;
     let preferred_agent_flip =
         prev.preferred_agent.trim() != settings.preferred_agent.trim();
     let agent_profile_flip = prev.agent_profile_path.trim() != settings.agent_profile_path.trim();
+    let agents_json_flip = prev.agents_json.trim() != settings.agents_json.trim();
     let max_turns_flip = prev.max_agent_turns != settings.max_agent_turns;
+    let bg_wait_flip = !crate::acp_client::background_wait_settings_equal(
+        &prev.background_wait_policy,
+        prev.background_wait_timeout_sec,
+        &settings.background_wait_policy,
+        settings.background_wait_timeout_sec,
+    );
     let sandbox_flip = prev.sandbox_profile.trim() != settings.sandbox_profile.trim();
+    let compaction_flip = {
+        let prev_m = crate::acp_client::normalize_compaction_mode(&prev.compaction_mode);
+        let next_m = settings.compaction_mode.as_str();
+        let prev_d = crate::acp_client::normalize_compaction_detail(&prev.compaction_detail);
+        let next_d = settings.compaction_detail.as_str();
+        prev_m != next_m || prev_d != next_d
+    };
+    // API-mode address is a spawn-path flip (local CLI ↔ TCP). Soft-respawn so
+    // the next connect uses the new target; mid-turn sessions stay skipped.
+    let acp_addr_flip = {
+        let a = prev
+            .acp_server_addr
+            .as_deref()
+            .map(str::trim)
+            .filter(|s| !s.is_empty());
+        let b = settings
+            .acp_server_addr
+            .as_deref()
+            .map(str::trim)
+            .filter(|s| !s.is_empty());
+        a != b
+    };
     let launch_at_login_flip = prev.launch_at_login != settings.launch_at_login;
+    let schedules_launch_agent_flip =
+        prev.schedules_launch_agent != settings.schedules_launch_agent;
 
     store::save_settings(&settings)?;
+
+    if schedules_launch_agent_flip {
+        let res = if settings.schedules_launch_agent {
+            crate::schedules_launch_agent::enable()
+        } else {
+            crate::schedules_launch_agent::disable()
+        };
+        if let Err(e) = res {
+            let mut rolled = settings.clone();
+            rolled.schedules_launch_agent = prev.schedules_launch_agent;
+            let _ = store::save_settings(&rolled);
+            return Err(format!("schedules LaunchAgent: {e}"));
+        }
+        // Non-macOS enable is unsupported — keep flag false.
+        #[cfg(not(target_os = "macos"))]
+        if settings.schedules_launch_agent {
+            let mut rolled = settings.clone();
+            rolled.schedules_launch_agent = false;
+            let _ = store::save_settings(&rolled);
+            settings.schedules_launch_agent = false;
+        }
+    }
 
     if keychain_flip {
         if let Err(e) =
@@ -914,6 +1316,9 @@ pub async fn settings_set(
     }
 
     if session_data_mode_changed {
+        // Rebuild media/fs roots so shared (`~/.grok`) vs independent agent-home
+        // switch takes effect for media:// previews immediately.
+        crate::path_scope::refresh_from_store();
         mgr.recycle_all_agents(&app, "session_data_mode").await;
     }
 
@@ -936,14 +1341,66 @@ pub async fn settings_set(
         }
         need_soft_respawn = true;
     }
+    if todo_gate_flip {
+        if let Err(e) = crate::agent_todo_gate::sync_todo_gate_to_agent_profile(
+            &settings.session_data_mode,
+            settings.todo_gate_enabled,
+            settings.todo_gate_max_fires_per_prompt,
+        ) {
+            tracing::warn!("settings_set sync todo_gate profile: {e}");
+        }
+        need_soft_respawn = true;
+    }
+    if subagent_wt_snap_flip {
+        if let Err(e) = crate::agent_subagent_wt_snap::sync_subagent_wt_snap_to_agent_profile(
+            &settings.session_data_mode,
+            settings.subagent_worktree_snapshot_enabled,
+        ) {
+            tracing::warn!("settings_set sync subagent_wt_snap profile: {e}");
+        }
+        need_soft_respawn = true;
+    }
+    if auto_wake_flip {
+        if let Err(e) = crate::agent_auto_wake::sync_auto_wake_to_agent_profile(
+            &settings.session_data_mode,
+            settings.auto_wake_enabled,
+        ) {
+            tracing::warn!("settings_set sync auto_wake profile: {e}");
+        }
+        need_soft_respawn = true;
+    }
+    if workflows_flip {
+        if let Err(e) = crate::agent_workflows::sync_workflows_to_agent_profile(
+            &settings.session_data_mode,
+            settings.workflows_enabled,
+        ) {
+            tracing::warn!("settings_set sync workflows profile: {e}");
+        }
+        need_soft_respawn = true;
+    }
+    if two_pass_compaction_flip {
+        if let Err(e) = crate::agent_two_pass_compaction::sync_two_pass_compaction_to_agent_profile(
+            &settings.session_data_mode,
+            settings.two_pass_compaction_enabled,
+        ) {
+            tracing::warn!("settings_set sync two_pass_compaction profile: {e}");
+        }
+        need_soft_respawn = true;
+    }
     if web_search_flip
+        || no_ask_user_flip
         || disallowed_tools_flip
+        || allowed_tools_flip
         || plan_enabled_flip
         || use_leader_changed
         || preferred_agent_flip
         || agent_profile_flip
+        || agents_json_flip
         || max_turns_flip
+        || bg_wait_flip
         || sandbox_flip
+        || compaction_flip
+        || acp_addr_flip
     {
         need_soft_respawn = true;
     }
@@ -1793,6 +2250,27 @@ pub async fn network_probe() -> Result<serde_json::Value, String> {
     Ok(serde_json::json!({ "allOk": all_ok, "targets": results }))
 }
 
+/// Headless probe: `grok -p … --output-format streaming-json` (CLI ≥ 0.2.117).
+/// Soft-gated — older CLIs get a structured "too old" result, not a hard crash.
+/// Returns redacted stdout NDJSON for the Diagnostics ACP-NDJSON panel.
+#[tauri::command]
+pub async fn probe_streaming_acp_ndjson(
+    prompt: Option<String>,
+    manual_path: Option<String>,
+    cwd: Option<String>,
+) -> Result<crate::streaming_acp_ndjson::StreamingAcpNdjsonProbeResult, String> {
+    // Blocking child wait — offload from the async runtime.
+    tokio::task::spawn_blocking(move || {
+        crate::streaming_acp_ndjson::run_streaming_acp_ndjson_probe(
+            prompt.as_deref(),
+            manual_path.as_deref(),
+            cwd.as_deref(),
+        )
+    })
+    .await
+    .map_err(|e| format!("probe task failed: {e}"))
+}
+
 /// Heuristic: stderr shapes an old CLI emits when it rejects a flag the app
 /// depends on (clap's `unexpected argument` / `unrecognized option` family).
 /// Used to translate raw CLI noise into a "CLI too old" diagnosis (NEW-03).
@@ -1814,11 +2292,14 @@ fn truncate_cli_err(s: &str, max: usize) -> String {
     format!("{head}…")
 }
 
-/// Write a redacted support zip (Doctor JSON + logs) and return its path.
+/// Write a redacted support zip (Doctor JSON + logs + optional stall timeline) and return its path.
 /// Optionally opens a save dialog so the user can pick the destination.
+///
+/// `stall_timeline_json` is optional Reliability-center snapshot JSON (structured only).
 #[tauri::command]
 pub async fn export_support_bundle(
     doctor_json: Option<String>,
+    stall_timeline_json: Option<String>,
 ) -> Result<serde_json::Value, String> {
     let doctor = if let Some(j) = doctor_json.filter(|s| !s.trim().is_empty()) {
         j
@@ -1828,9 +2309,13 @@ pub async fn export_support_bundle(
         serde_json::to_string_pretty(&report).map_err(|e| e.to_string())?
     };
 
+    let stall = stall_timeline_json
+        .filter(|s| !s.trim().is_empty())
+        .map(|s| s.to_string());
+
     // Zip + native save dialog must not block the async runtime (macOS rfd hangs).
     let tmp = tauri::async_runtime::spawn_blocking(move || {
-        crate::support_bundle::write_support_bundle(&doctor)
+        crate::support_bundle::write_support_bundle(&doctor, stall.as_deref())
     })
     .await
     .map_err(|e| e.to_string())??;
@@ -1874,11 +2359,22 @@ pub async fn export_session_bundle(
     .await
 }
 
-/// Export the Grok Build CLI session trace (`grok trace <agent_id> --local`).
+/// Export the Grok Build CLI session trace (`grok trace <agent_id>`).
+///
+/// - `local_only` (default **true** for safety): when true, pass `--local` so the
+///   CLI only writes a local archive. When false, omit `--local` so the CLI may
+///   also upload (network).
+/// - Resolves `agent_session_id` from live/parked runtime or session meta.
+/// - Opens a save dialog for the `.tar.gz` and reveals the file.
+/// - Returns `{ ok, path, sizeBytes?, uploaded?, localOnly }` — never secrets/URLs.
+/// Export a CLI-linked session transcript via `grok export <agentSessionId> [OUTPUT]`.
+///
 /// Resolves `agent_session_id` from live/parked runtime or session meta.
-/// Opens a save dialog for the `.tar.gz` and reveals the file.
+/// Returns markdown text for the frontend to download (blob). Callers should
+/// soft-fail to the local App journal when this errors (no agent, CLI missing,
+/// timeout, etc.).
 #[tauri::command]
-pub async fn session_trace_export(
+pub async fn session_cli_export(
     session_id: String,
     mgr: State<'_, Arc<SessionManager>>,
 ) -> Result<serde_json::Value, String> {
@@ -1886,6 +2382,150 @@ pub async fn session_trace_export(
     if sid.is_empty() {
         return Err("session id is empty".into());
     }
+
+    let live_agent = mgr.diagnostic_runtime_for(&sid).and_then(|rt| {
+        rt.get("agentSessionId")
+            .and_then(|v| v.as_str())
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .map(|s| s.to_string())
+    });
+
+    tauri::async_runtime::spawn_blocking(move || {
+        session_cli_export_blocking(&sid, live_agent.as_deref())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+const CLI_EXPORT_TIMEOUT_SECS: u64 = 60;
+
+fn session_cli_export_blocking(
+    session_id: &str,
+    live_agent_session_id: Option<&str>,
+) -> Result<serde_json::Value, String> {
+    let meta = store::load_sessions_index()
+        .into_iter()
+        .find(|s| s.id == session_id)
+        .ok_or_else(|| format!("session not found: {session_id}"))?;
+
+    let agent_sid = live_agent_session_id
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(|s| s.to_string())
+        .or_else(|| {
+            meta.agent_session_id
+                .as_deref()
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+                .map(|s| s.to_string())
+        })
+        .ok_or_else(|| {
+            "No agent session linked. Start a conversation first so the App has an agent session id."
+                .to_string()
+        })?;
+
+    let settings = store::load_settings();
+    let probe = cli_probe::probe_cli(settings.manual_cli_path.as_deref());
+    let Some(cli_path) = probe.path.filter(|_| probe.found) else {
+        return Err("Grok Build CLI not found".into());
+    };
+    let grok_home = crate::paths::resolve_agent_grok_home(&settings.session_data_mode);
+
+    let short: String = agent_sid.chars().take(8).collect();
+    let stamp = chrono::Utc::now().format("%Y%m%d-%H%M%S");
+    let tmp = std::env::temp_dir().join(format!("grok-export-{short}-{stamp}.md"));
+    let tmp_s = tmp.to_string_lossy().to_string();
+
+    // `grok export <SESSION_ID> [OUTPUT]` — positional output path (not -o).
+    let args = vec![
+        "export".to_string(),
+        agent_sid.clone(),
+        tmp_s.clone(),
+    ];
+
+    let (tx, rx) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        let mut cmd = std::process::Command::new(&cli_path);
+        cmd.args(&args);
+        cmd.env("GROK_HOME", &grok_home);
+        crate::process_util::apply_no_window_std(&mut cmd);
+        if let Some(path_env) = crate::process_util::enriched_path_env() {
+            cmd.env("PATH", path_env);
+        }
+        let _ = tx.send(cmd.output());
+    });
+
+    let output = match rx.recv_timeout(std::time::Duration::from_secs(CLI_EXPORT_TIMEOUT_SECS)) {
+        Ok(Ok(o)) => o,
+        Ok(Err(e)) => {
+            return Err(store::redact_text(&format!("Failed to run grok export: {e}")));
+        }
+        Err(_) => {
+            return Err(format!(
+                "grok export timed out after {CLI_EXPORT_TIMEOUT_SECS}s"
+            ));
+        }
+    };
+
+    let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+
+    if !output.status.success() {
+        let msg = if !stderr.is_empty() {
+            stderr
+        } else if !stdout.is_empty() {
+            stdout
+        } else {
+            "grok export failed".into()
+        };
+        return Err(store::redact_text(&msg)
+            .trim()
+            .chars()
+            .take(1200)
+            .collect());
+    }
+
+    // Prefer the file we asked for; fall back to stdout (CLI may print MD when path fails).
+    let markdown = if tmp.is_file() {
+        let body = std::fs::read_to_string(&tmp).map_err(|e| {
+            store::redact_text(&format!("Failed to read grok export output: {e}"))
+        })?;
+        let _ = std::fs::remove_file(&tmp);
+        body
+    } else if !stdout.is_empty() {
+        stdout
+    } else {
+        return Err("grok export succeeded but produced no markdown".into());
+    };
+
+    if markdown.trim().is_empty() {
+        return Err("grok export produced empty markdown".into());
+    }
+
+    Ok(serde_json::json!({
+        "ok": true,
+        "markdown": markdown,
+        "agentSessionId": agent_sid,
+        "source": "cli",
+    }))
+}
+
+/// Export the Grok Build CLI session trace (`grok trace <agent_id> --local`).
+/// Resolves `agent_session_id` from live/parked runtime or session meta.
+/// Opens a save dialog for the `.tar.gz` and reveals the file.
+#[tauri::command]
+pub async fn session_trace_export(
+    session_id: String,
+    local_only: Option<bool>,
+    mgr: State<'_, Arc<SessionManager>>,
+) -> Result<serde_json::Value, String> {
+    let sid = session_id.trim().to_string();
+    if sid.is_empty() {
+        return Err("session id is empty".into());
+    }
+    // Default true: local-only is the safe path; upload requires explicit false.
+    let local_only = local_only.unwrap_or(true);
 
     // Prefer live/parked agent id (may be newer than the index), then meta.
     let live_agent = mgr.diagnostic_runtime_for(&sid).and_then(|rt| {
@@ -1897,17 +2537,53 @@ pub async fn session_trace_export(
     });
 
     tauri::async_runtime::spawn_blocking(move || {
-        session_trace_export_blocking(&sid, live_agent.as_deref())
+        session_trace_export_blocking(&sid, live_agent.as_deref(), local_only)
     })
     .await
     .map_err(|e| e.to_string())?
 }
 
 const TRACE_EXPORT_TIMEOUT_SECS: u64 = 90;
+/// Upload may need extra time for network transfer of large archives.
+const TRACE_EXPORT_UPLOAD_TIMEOUT_SECS: u64 = 180;
+
+/// Detect whether CLI JSON indicates a remote upload completed.
+/// Presence-only: never returns or stores remote URLs / tokens.
+fn trace_cli_reports_uploaded(cli_json: Option<&serde_json::Value>) -> bool {
+    let Some(v) = cli_json else {
+        return false;
+    };
+    if v.get("uploaded").and_then(|x| x.as_bool()) == Some(true) {
+        return true;
+    }
+    let status = v
+        .get("status")
+        .and_then(|s| s.as_str())
+        .unwrap_or("")
+        .trim()
+        .to_ascii_lowercase();
+    if matches!(
+        status.as_str(),
+        "uploaded" | "upload_complete" | "upload-complete" | "ok_uploaded"
+    ) {
+        return true;
+    }
+    // Remote info keys — truthy non-empty string means upload path ran.
+    // Do not persist these values (may contain URLs).
+    for key in ["remote_url", "upload_url", "share_url", "object_path"] {
+        if let Some(s) = v.get(key).and_then(|x| x.as_str()) {
+            if !s.trim().is_empty() {
+                return true;
+            }
+        }
+    }
+    false
+}
 
 fn session_trace_export_blocking(
     session_id: &str,
     live_agent_session_id: Option<&str>,
+    local_only: bool,
 ) -> Result<serde_json::Value, String> {
     let meta = store::load_sessions_index()
         .into_iter()
@@ -1942,14 +2618,14 @@ fn session_trace_export_blocking(
     let tmp = std::env::temp_dir().join(format!("grok-trace-{short}-{stamp}.tar.gz"));
     let tmp_s = tmp.to_string_lossy().to_string();
 
-    let args = vec![
-        "trace".to_string(),
-        agent_sid.clone(),
-        "--local".to_string(),
-        "-o".to_string(),
-        tmp_s.clone(),
-        "--json".to_string(),
-    ];
+    // `grok trace <id>` uploads unless `--local`. Default App path keeps `--local`.
+    let mut args = vec!["trace".to_string(), agent_sid.clone()];
+    if local_only {
+        args.push("--local".to_string());
+    }
+    args.push("-o".to_string());
+    args.push(tmp_s.clone());
+    args.push("--json".to_string());
 
     let (tx, rx) = std::sync::mpsc::channel();
     std::thread::spawn(move || {
@@ -1963,15 +2639,18 @@ fn session_trace_export_blocking(
         let _ = tx.send(cmd.output());
     });
 
-    let output = match rx.recv_timeout(std::time::Duration::from_secs(TRACE_EXPORT_TIMEOUT_SECS)) {
+    let timeout_secs = if local_only {
+        TRACE_EXPORT_TIMEOUT_SECS
+    } else {
+        TRACE_EXPORT_UPLOAD_TIMEOUT_SECS
+    };
+    let output = match rx.recv_timeout(std::time::Duration::from_secs(timeout_secs)) {
         Ok(Ok(o)) => o,
         Ok(Err(e)) => {
             return Err(store::redact_text(&format!("Failed to run grok trace: {e}")));
         }
         Err(_) => {
-            return Err(format!(
-                "grok trace timed out after {TRACE_EXPORT_TIMEOUT_SECS}s"
-            ));
+            return Err(format!("grok trace timed out after {timeout_secs}s"));
         }
     };
 
@@ -1993,17 +2672,19 @@ fn session_trace_export_blocking(
             .collect());
     }
 
+    let cli_json = serde_json::from_str::<serde_json::Value>(&stdout).ok();
+    // Only claim uploaded when we intentionally allowed network upload.
+    let uploaded = !local_only && trace_cli_reports_uploaded(cli_json.as_ref());
+
     // Prefer the archive we asked for; fall back to JSON local_path from CLI.
     let archive = if tmp.is_file() {
         tmp
     } else {
-        let from_json = serde_json::from_str::<serde_json::Value>(&stdout)
-            .ok()
-            .and_then(|v| {
-                v.get("local_path")
-                    .and_then(|p| p.as_str())
-                    .map(|s| std::path::PathBuf::from(s))
-            });
+        let from_json = cli_json.as_ref().and_then(|v| {
+            v.get("local_path")
+                .and_then(|p| p.as_str())
+                .map(std::path::PathBuf::from)
+        });
         match from_json {
             Some(p) if p.is_file() => p,
             _ => {
@@ -2022,13 +2703,132 @@ fn session_trace_export_blocking(
 
     let suggested = format!("grok-trace-{short}.tar.gz");
     // Already on a blocking thread (session_trace_export spawns us).
-    save_and_reveal_file_blocking(
+    let mut result = save_and_reveal_file_blocking(
         archive,
         "Save session trace",
         &suggested,
         "Trace archive",
         &["tar.gz".into(), "gz".into(), "tgz".into()],
-    )
+    )?;
+    if let Some(obj) = result.as_object_mut() {
+        obj.insert("localOnly".into(), serde_json::json!(local_only));
+        // Paths-only history may note uploaded=true; never attach remote URLs.
+        if uploaded {
+            obj.insert("uploaded".into(), serde_json::json!(true));
+        }
+    }
+    Ok(result)
+}
+
+/// Save arbitrary bytes via native save dialog (share-card PNG, etc.).
+/// Returns `{ ok, path, cancelled }`. Cancel → `ok:false, cancelled:true` (not an error).
+#[tauri::command]
+pub async fn export_bytes_save(
+    bytes_base64: String,
+    default_name: String,
+    dialog_title: Option<String>,
+    filter_name: Option<String>,
+    extensions: Option<Vec<String>>,
+) -> Result<serde_json::Value, String> {
+    let raw = bytes_base64.trim();
+    if raw.is_empty() {
+        return Err("export payload is empty".into());
+    }
+    use base64::Engine;
+    let bytes = base64::engine::general_purpose::STANDARD
+        .decode(raw)
+        .map_err(|e| format!("invalid base64: {e}"))?;
+    if bytes.is_empty() {
+        return Err("export payload is empty".into());
+    }
+    // Soft cap ~40 MiB decoded — share cards stay well under this.
+    if bytes.len() > 40 * 1024 * 1024 {
+        return Err("export payload too large".into());
+    }
+
+    let name = default_name.trim();
+    let name = if name.is_empty() {
+        "export.bin".to_string()
+    } else {
+        // Keep basename only (no path separators).
+        name.replace(['/', '\\'], "_")
+    };
+    let title = dialog_title
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .unwrap_or("Save file")
+        .to_string();
+    let filter = filter_name
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .unwrap_or("File")
+        .to_string();
+    let exts: Vec<String> = extensions
+        .unwrap_or_else(|| vec!["bin".into()])
+        .into_iter()
+        .map(|s| s.trim().trim_start_matches('.').to_string())
+        .filter(|s| !s.is_empty())
+        .collect();
+    let exts = if exts.is_empty() {
+        vec!["bin".into()]
+    } else {
+        exts
+    };
+
+    tauri::async_runtime::spawn_blocking(move || {
+        let ext_refs: Vec<&str> = exts.iter().map(String::as_str).collect();
+        let dest = rfd::FileDialog::new()
+            .set_title(&title)
+            .set_file_name(&name)
+            .add_filter(&filter, &ext_refs)
+            .save_file();
+
+        let Some(path) = dest else {
+            return Ok(serde_json::json!({
+                "ok": false,
+                "cancelled": true,
+                "path": serde_json::Value::Null,
+            }));
+        };
+
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent)
+                .map_err(|e| format!("create parent dir: {e}"))?;
+        }
+        std::fs::write(&path, &bytes).map_err(|e| format!("write file: {e}"))?;
+
+        let path_s = path.display().to_string();
+        #[cfg(target_os = "macos")]
+        {
+            let _ = crate::process_util::command("open")
+                .args(["-R", &path_s])
+                .status();
+        }
+        #[cfg(target_os = "windows")]
+        {
+            let _ = crate::process_util::command("explorer")
+                .args(["/select,", &path_s])
+                .status();
+        }
+        #[cfg(all(unix, not(target_os = "macos")))]
+        {
+            if let Some(parent) = path.parent() {
+                let _ = crate::process_util::command("xdg-open")
+                    .arg(parent)
+                    .spawn();
+            }
+        }
+
+        Ok(serde_json::json!({
+            "ok": true,
+            "cancelled": false,
+            "path": path_s,
+        }))
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 /// Save dialog + reveal. Always runs rfd/copy on a blocking thread so async
@@ -2390,6 +3190,31 @@ pub async fn skill_roots(project_path: Option<String>) -> Result<Vec<String>, St
     Ok(crate::skill_edit::skill_roots_list(project_path.as_deref()))
 }
 
+/// Scaffold a new skill directory + SKILL.md under user (path-scoped GROK_HOME)
+/// or project skills root. Does not overwrite an existing SKILL.md.
+#[tauri::command]
+pub async fn skill_create(
+    name: String,
+    description: Option<String>,
+    project_path: Option<String>,
+    scope: Option<String>,
+) -> Result<crate::skill_edit::SkillCreateResult, String> {
+    let name = name.clone();
+    let description = description.unwrap_or_default();
+    let project_path = project_path.clone();
+    let scope = scope.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        crate::skill_edit::skill_create(
+            &name,
+            &description,
+            project_path.as_deref(),
+            scope.as_deref(),
+        )
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
 /// List MCP servers from `grok inspect --json`.
 /// Always returns Ok; on CLI missing / timeout, `servers` is empty and `error` is set.
 /// Each server includes `enabled` from App Extensions prefs (default true).
@@ -2503,9 +3328,11 @@ fn build_project_inspect_summary(
                 "userInvocable": 0,
                 "bySource": {},
                 "sample": [],
+                "names": [],
             },
             "mcp": [],
             "agents": [],
+            "hooks": [],
             "hooksCount": 0,
             "configLayers": [],
             "modelsHints": models_hints,
@@ -2513,6 +3340,8 @@ fn build_project_inspect_summary(
                 "loaded": 0,
                 "sourcesCount": 0,
                 "managedSettingsActive": false,
+                "managedSettingsExists": null,
+                "managedSettingsPath": null,
             },
             "error": error,
         });
@@ -2571,16 +3400,18 @@ fn build_project_inspect_summary(
         }
     }
 
-    // Skills — counts + short invocable sample (no descriptions).
+    // Skills — counts + all names + short invocable sample (no descriptions).
     let mut by_source: serde_json::Map<String, serde_json::Value> = serde_json::Map::new();
     let mut user_invocable: u64 = 0;
     let mut sample_names: Vec<String> = Vec::new();
+    let mut all_skill_names: Vec<String> = Vec::new();
     let skill_arr = v.get("skills").and_then(|x| x.as_array());
     let skill_total = skill_arr.map(|a| a.len()).unwrap_or(0);
     if let Some(arr) = skill_arr {
         for item in arr {
             let name = json_str(item.get("name"));
             let Some(name) = name else { continue };
+            all_skill_names.push(name.clone());
             let src = skill_source_label(
                 item.get("source").unwrap_or(&serde_json::Value::Null),
             );
@@ -2602,8 +3433,9 @@ fn build_project_inspect_summary(
     }
     sample_names.sort();
     sample_names.truncate(PROJECT_INSPECT_SKILL_SAMPLE);
+    all_skill_names.sort();
 
-    // MCP — name/transport/target only (never env/headers).
+    // MCP — name/transport/target/source type only (never env/headers).
     let mut mcp = Vec::new();
     let mcp_arr = v
         .get("mcpServers")
@@ -2613,10 +3445,15 @@ fn build_project_inspect_summary(
         for item in arr {
             let name = json_str(item.get("name"));
             let Some(name) = name else { continue };
+            let source = item
+                .get("source")
+                .map(|s| skill_source_label(s))
+                .filter(|s| s != "unknown");
             mcp.push(serde_json::json!({
                 "name": name,
                 "transport": json_str(item.get("transport")),
                 "target": json_str(item.get("target")),
+                "source": source,
             }));
         }
     }
@@ -2633,6 +3470,38 @@ fn build_project_inspect_summary(
             agents.push(serde_json::json!({
                 "name": name,
                 "source": source,
+            }));
+        }
+    }
+
+    // Hooks — event / type / target / source type only (no env / command bodies).
+    let mut hooks = Vec::new();
+    if let Some(arr) = v.get("hooks").and_then(|x| x.as_array()) {
+        for item in arr {
+            if let Some(s) = item.as_str().map(str::trim).filter(|s| !s.is_empty()) {
+                hooks.push(serde_json::json!({ "event": s }));
+                continue;
+            }
+            let Some(obj) = item.as_object() else { continue };
+            let event = json_str(obj.get("event")).or_else(|| json_str(obj.get("name")));
+            let hook_type = json_str(obj.get("hookType"))
+                .or_else(|| json_str(obj.get("hook_type")))
+                .or_else(|| json_str(obj.get("type")));
+            let target = json_str(obj.get("target")).or_else(|| json_str(obj.get("path")));
+            let source = obj
+                .get("source")
+                .map(skill_source_label)
+                .or_else(|| json_str(obj.get("plugin")));
+            let matcher = json_str(obj.get("matcher"));
+            if event.is_none() && hook_type.is_none() && target.is_none() {
+                continue;
+            }
+            hooks.push(serde_json::json!({
+                "event": event,
+                "hookType": hook_type,
+                "target": target,
+                "source": source,
+                "matcher": matcher,
             }));
         }
     }
@@ -2667,6 +3536,15 @@ fn build_project_inspect_summary(
         .and_then(|p| p.get("managedSettingsActive"))
         .and_then(|x| x.as_bool())
         .unwrap_or(false);
+    let managed_exists = perm
+        .and_then(|p| p.get("managedSettingsExists"))
+        .and_then(|x| x.as_bool());
+    let managed_path = perm
+        .and_then(|p| p.get("managedSettingsPath"))
+        .and_then(|x| x.as_str())
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(|s| store::redact_text(s).trim().chars().take(400).collect::<String>());
 
     // Models hints from inspect when present.
     if let Some(arr) = v.get("models").and_then(|x| x.as_array()) {
@@ -2692,11 +3570,14 @@ fn build_project_inspect_summary(
         push_model(dm);
     }
 
-    let hooks_count = v
-        .get("hooks")
-        .and_then(|x| x.as_array())
-        .map(|a| a.len())
-        .unwrap_or(0);
+    let hooks_count = if !hooks.is_empty() {
+        hooks.len()
+    } else {
+        v.get("hooks")
+            .and_then(|x| x.as_array())
+            .map(|a| a.len())
+            .unwrap_or(0)
+    };
 
     let mut out = serde_json::json!({
         "projectPath": project_path_out,
@@ -2715,9 +3596,11 @@ fn build_project_inspect_summary(
             "userInvocable": user_invocable,
             "bySource": by_source,
             "sample": sample_names,
+            "names": all_skill_names,
         },
         "mcp": mcp,
         "agents": agents,
+        "hooks": hooks,
         "hooksCount": hooks_count,
         "configLayers": config_layers,
         "modelsHints": models_hints,
@@ -2725,6 +3608,8 @@ fn build_project_inspect_summary(
             "loaded": loaded,
             "sourcesCount": sources_count,
             "managedSettingsActive": managed_active,
+            "managedSettingsExists": managed_exists,
+            "managedSettingsPath": managed_path,
         },
     });
     if let Some(err) = error {
@@ -3665,6 +4550,221 @@ pub async fn plugin_update(
     }))
 }
 
+// ── plugin validate (`grok plugin validate [path]`) ─────────────────────────
+
+/// Split stdout + stderr into non-empty lines (stderr first, de-duped).
+pub fn parse_plugin_validate_messages(stdout: &str, stderr: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut seen = std::collections::HashSet::new();
+    for part in [stderr, stdout] {
+        for line in part.lines() {
+            let t = line.trim();
+            if t.is_empty() || seen.contains(t) {
+                continue;
+            }
+            seen.insert(t.to_string());
+            out.push(t.to_string());
+        }
+    }
+    out
+}
+
+/// Old CLI rejects `plugin validate` as an unknown subcommand (clap-style).
+pub fn looks_like_unsupported_plugin_validate(stderr: &str, stdout: &str) -> bool {
+    let s = format!("{stderr}\n{stdout}").to_ascii_lowercase();
+    if s.trim().is_empty() {
+        return false;
+    }
+    if s.contains("unrecognized subcommand")
+        || s.contains("unknown subcommand")
+        || s.contains("unexpected subcommand")
+        || s.contains("invalid subcommand")
+    {
+        return true;
+    }
+    if s.contains("validate")
+        && (s.contains("unexpected argument")
+            || s.contains("unrecognized")
+            || s.contains("unknown command")
+            || s.contains("unknown argument"))
+    {
+        return true;
+    }
+    false
+}
+
+/// True when `s` looks like a filesystem path (not a bare plugin name / owner/repo).
+pub fn looks_like_plugin_validate_path(s: &str) -> bool {
+    let s = s.trim();
+    if s.is_empty() {
+        return false;
+    }
+    if s.starts_with("git@") || s.contains("://") {
+        return false;
+    }
+    if s.starts_with('/')
+        || s.starts_with('~')
+        || s.starts_with("./")
+        || s.starts_with("../")
+        || s.starts_with(".\\")
+        || s.starts_with("..\\")
+    {
+        return true;
+    }
+    // Windows drive: C:\… or D:/…
+    let bytes = s.as_bytes();
+    if bytes.len() >= 3
+        && bytes[0].is_ascii_alphabetic()
+        && bytes[1] == b':'
+        && (bytes[2] == b'\\' || bytes[2] == b'/')
+    {
+        return true;
+    }
+    // Relative path segments with separators
+    s.contains('/') || s.contains('\\')
+}
+
+/// Normalize optional path/name; empty → None (CLI defaults to `.`).
+pub fn normalize_plugin_validate_target(path_or_name: Option<&str>) -> Option<String> {
+    path_or_name
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(|s| s.to_string())
+}
+
+/// Resolve bare plugin name to installed path via `plugin list --json` (best-effort).
+fn resolve_installed_plugin_path(name: &str) -> Option<String> {
+    let name = name.trim();
+    if name.is_empty() {
+        return None;
+    }
+    let (stdout, _stderr, ok) =
+        run_grok_cli_args(&["plugin", "list", "--json"], PLUGIN_CMD_TIMEOUT_SECS).ok()?;
+    if !ok || stdout.is_empty() {
+        return None;
+    }
+    let value: serde_json::Value = serde_json::from_str(&stdout).ok()?;
+    let arr = value.as_array()?;
+    // Prefer exact name match with a path; if several, first with path.
+    let mut fallback: Option<String> = None;
+    for item in arr {
+        let n = item
+            .get("name")
+            .and_then(|x| x.as_str())
+            .unwrap_or("")
+            .trim();
+        if n != name {
+            continue;
+        }
+        let path = item
+            .get("path")
+            .and_then(|x| x.as_str())
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .map(|s| s.to_string());
+        if let Some(p) = path {
+            return Some(p);
+        }
+        if fallback.is_none() {
+            fallback = Some(name.to_string());
+        }
+    }
+    fallback
+}
+
+/// Resolve validate target: path as-is; bare name → installed path when known.
+pub fn resolve_plugin_validate_path(path_or_name: Option<&str>) -> Option<String> {
+    let raw = normalize_plugin_validate_target(path_or_name)?;
+    if looks_like_plugin_validate_path(&raw) {
+        return Some(raw);
+    }
+    // Bare name (or name@market) — strip @marketplace for list match
+    let name = raw.split_once('@').map(|(l, _)| l).unwrap_or(&raw).trim();
+    if name.is_empty() {
+        return Some(raw);
+    }
+    resolve_installed_plugin_path(name).or(Some(if name == raw {
+        raw
+    } else {
+        name.to_string()
+    }))
+}
+
+/// Validate a plugin manifest via `grok plugin validate [path]`.
+///
+/// - `path_or_name`: local path, installed plugin name, or omit (CLI default `.`)
+/// - Always returns an envelope `{ ok, messages[] }` (never hard-fails on CLI-too-old)
+/// - Soft-fail: older CLIs without `plugin validate` → `ok: false`, `reason: "cli_too_old"`
+#[tauri::command]
+pub async fn plugin_validate(
+    path_or_name: Option<String>,
+) -> Result<serde_json::Value, String> {
+    let path_or_name_owned = path_or_name.clone();
+    let result = tauri::async_runtime::spawn_blocking(move || {
+        let resolved = resolve_plugin_validate_path(path_or_name_owned.as_deref());
+        let run = match resolved.as_deref() {
+            Some(p) => run_grok_cli_args(
+                &["plugin", "validate", p],
+                PLUGIN_CMD_TIMEOUT_SECS,
+            ),
+            None => run_grok_cli_args(&["plugin", "validate"], PLUGIN_CMD_TIMEOUT_SECS),
+        };
+        (resolved, run)
+    })
+    .await
+    .map_err(|e| e.to_string())?;
+
+    let (resolved, run) = result;
+    match run {
+        Err(e) => {
+            // CLI missing / spawn failure — surface as envelope so UI can show in-panel.
+            let msg = e;
+            let reason = if msg.to_ascii_lowercase().contains("not found") {
+                Some("cli_missing")
+            } else {
+                None
+            };
+            Ok(serde_json::json!({
+                "ok": false,
+                "messages": [msg],
+                "path": resolved,
+                "reason": reason,
+            }))
+        }
+        Ok((stdout, stderr, exit_ok)) => {
+            if looks_like_unsupported_plugin_validate(&stderr, &stdout) {
+                return Ok(serde_json::json!({
+                    "ok": false,
+                    "messages": [
+                        format!(
+                            "This Grok CLI does not support `plugin validate`; version {} or newer is required. Run `grok update`, then fully restart the app.",
+                            crate::cli_probe::min_cli_version_str()
+                        )
+                    ],
+                    "path": resolved,
+                    "reason": "cli_too_old",
+                }));
+            }
+            let messages = parse_plugin_validate_messages(&stdout, &stderr);
+            let messages = if messages.is_empty() {
+                if exit_ok {
+                    vec!["Plugin manifest is valid.".to_string()]
+                } else {
+                    vec!["Plugin validation failed.".to_string()]
+                }
+            } else {
+                messages
+            };
+            Ok(serde_json::json!({
+                "ok": exit_ok,
+                "messages": messages,
+                "path": resolved,
+                "reason": serde_json::Value::Null,
+            }))
+        }
+    }
+}
+
 #[cfg(test)]
 mod plugin_config_tests {
     use super::*;
@@ -3835,6 +4935,64 @@ disabled = ["yes"]
         assert_eq!(normalize_plugin_update_name(Some("   ")), None);
         assert_eq!(normalize_plugin_update_name(None), None);
     }
+
+    #[test]
+    fn parse_validate_messages_stderr_first_dedupe() {
+        let msgs = parse_plugin_validate_messages(
+            "Plugin manifest is valid.\n  name: demo\n",
+            "  name: demo\n",
+        );
+        assert_eq!(
+            msgs,
+            vec![
+                "name: demo".to_string(),
+                "Plugin manifest is valid.".to_string()
+            ]
+        );
+    }
+
+    #[test]
+    fn looks_like_unsupported_validate_clap() {
+        assert!(looks_like_unsupported_plugin_validate(
+            "error: unrecognized subcommand 'validate'\n\nUsage: grok plugin …",
+            ""
+        ));
+        assert!(looks_like_unsupported_plugin_validate(
+            "error: unexpected argument 'validate' found",
+            ""
+        ));
+        assert!(!looks_like_unsupported_plugin_validate(
+            "Error: Not a directory: /nope",
+            ""
+        ));
+        assert!(!looks_like_unsupported_plugin_validate(
+            "Error: Failed to load manifest: missing field `name`",
+            ""
+        ));
+    }
+
+    #[test]
+    fn looks_like_validate_path_variants() {
+        assert!(looks_like_plugin_validate_path("/tmp/my-plugin"));
+        assert!(looks_like_plugin_validate_path("~/code/plugin"));
+        assert!(looks_like_plugin_validate_path("./plugin"));
+        assert!(looks_like_plugin_validate_path("C:\\Users\\a\\plugin"));
+        assert!(looks_like_plugin_validate_path("owner/repo")); // has slash → path-ish for CLI
+        assert!(!looks_like_plugin_validate_path("chrome-devtools-mcp"));
+        assert!(!looks_like_plugin_validate_path("https://github.com/a/b.git"));
+        assert!(!looks_like_plugin_validate_path("git@github.com:a/b.git"));
+    }
+
+    #[test]
+    fn normalize_validate_target_empty() {
+        assert_eq!(normalize_plugin_validate_target(None), None);
+        assert_eq!(normalize_plugin_validate_target(Some("")), None);
+        assert_eq!(normalize_plugin_validate_target(Some("  ")), None);
+        assert_eq!(
+            normalize_plugin_validate_target(Some("  /tmp/p  ")).as_deref(),
+            Some("/tmp/p")
+        );
+    }
 }
 
 #[tauri::command]
@@ -3956,6 +5114,52 @@ pub async fn clipboard_paste_image() -> Result<Option<PathEntry>, String> {
     tauri::async_runtime::spawn_blocking(|| clipboard_paste_image_sync())
         .await
         .map_err(|e| format!("clipboard task: {e}"))?
+}
+
+/// Write a PNG (base64, no data: prefix) to the OS clipboard as an image.
+/// WebView `navigator.clipboard.write(image/png)` is unreliable in Tauri.
+#[tauri::command]
+pub async fn clipboard_write_image(bytes_base64: String) -> Result<(), String> {
+    let raw = bytes_base64.trim().to_string();
+    if raw.is_empty() {
+        return Err("clipboard image payload is empty".into());
+    }
+    tauri::async_runtime::spawn_blocking(move || clipboard_write_image_sync(&raw))
+        .await
+        .map_err(|e| format!("clipboard write task: {e}"))?
+}
+
+fn clipboard_write_image_sync(bytes_base64: &str) -> Result<(), String> {
+    use arboard::{Clipboard, ImageData};
+    use base64::Engine;
+
+    let bytes = base64::engine::general_purpose::STANDARD
+        .decode(bytes_base64.trim())
+        .map_err(|e| format!("invalid base64: {e}"))?;
+    if bytes.is_empty() {
+        return Err("clipboard image payload is empty".into());
+    }
+    if bytes.len() > 40 * 1024 * 1024 {
+        return Err("clipboard image too large (max 40 MiB)".into());
+    }
+
+    let dyn_img = image::load_from_memory(&bytes)
+        .map_err(|e| format!("decode image: {e}"))?;
+    let rgba = dyn_img.to_rgba8();
+    let (w, h) = rgba.dimensions();
+    if w == 0 || h == 0 {
+        return Err("empty image".into());
+    }
+
+    let mut cb = Clipboard::new().map_err(|e| format!("clipboard open: {e}"))?;
+    let data = ImageData {
+        width: w as usize,
+        height: h as usize,
+        bytes: rgba.into_raw().into(),
+    };
+    cb.set_image(data)
+        .map_err(|e| format!("clipboard set image: {e}"))?;
+    Ok(())
 }
 
 fn clipboard_paste_image_sync() -> Result<Option<PathEntry>, String> {
@@ -4201,6 +5405,12 @@ pub fn paths_classify(paths: Vec<String>) -> Vec<PathEntry> {
             let meta = std::fs::metadata(&pb).ok();
             let exists = meta.is_some();
             let is_dir = meta.map(|m| m.is_dir()).unwrap_or(false);
+            // User-attached / chat-history paths often sit outside trusted project
+            // roots (Desktop, Downloads, Screenshots). Grant them so media://
+            // previews in the composer and thread can load.
+            if exists {
+                crate::path_scope::grant_path(&pb);
+            }
             PathEntry {
                 path: p,
                 name,
@@ -4909,6 +6119,395 @@ pub async fn git_show_file(
     })
 }
 
+// ── Diff accept / reject / restore (Changes panel) ──────────────────────────
+
+/// Resolve a project-relative or absolute path under the project root only.
+/// Returns (canonical_project_root, relative_posix, absolute_path).
+/// Pure lexical check against project; does not require the file to exist.
+fn resolve_path_under_project(
+    project_path: &str,
+    path: &str,
+) -> Result<(std::path::PathBuf, String, std::path::PathBuf), String> {
+    let project = normalize_fs_path(project_path);
+    let target = normalize_fs_path(path);
+    if project.is_empty() || target.is_empty() {
+        return Err("empty path".into());
+    }
+    let proj = std::path::PathBuf::from(&project);
+    if !proj.is_dir() {
+        return Err("project not a directory".into());
+    }
+    // Canonical project root when possible; always path-scoped below.
+    let root = proj.canonicalize().unwrap_or(proj);
+
+    let target_pb = std::path::PathBuf::from(&target);
+    let (rel, abs) = if target_pb.is_absolute() {
+        let abs_norm = target_pb.canonicalize().unwrap_or(target_pb.clone());
+        let rel = match abs_norm.strip_prefix(&root) {
+            Ok(r) => r.to_string_lossy().replace('\\', "/"),
+            Err(_) => {
+                let p = root.to_string_lossy().replace('\\', "/");
+                let a = abs_norm.to_string_lossy().replace('\\', "/");
+                let p = p.trim_end_matches('/').to_string();
+                if a.starts_with(&(p.clone() + "/")) {
+                    a[p.len() + 1..].to_string()
+                } else {
+                    return Err("path outside project root".into());
+                }
+            }
+        };
+        if rel.is_empty() || rel == "." {
+            return Err("not a file path".into());
+        }
+        if rel.contains("..") {
+            return Err("path escapes project root".into());
+        }
+        (rel, abs_norm)
+    } else {
+        // Relative under project — reject `..` components.
+        // On Windows, Path::is_absolute is false for Unix-style "/etc/passwd";
+        // do not strip a leading slash and treat it as project-relative.
+        if target.starts_with('/') || target.starts_with('\\') {
+            return Err("path outside project root".into());
+        }
+        let rel = target
+            .trim_start_matches("./")
+            .replace('\\', "/");
+        if rel.is_empty() || rel == "." {
+            return Err("not a file path".into());
+        }
+        for comp in std::path::Path::new(&rel).components() {
+            match comp {
+                std::path::Component::Normal(_) | std::path::Component::CurDir => {}
+                _ => return Err("path escapes project root".into()),
+            }
+        }
+        let abs = root.join(rel.replace('/', std::path::MAIN_SEPARATOR_STR));
+        (rel, abs)
+    };
+
+    // Final guard: abs must stay under root lexically
+    let abs_s = abs.to_string_lossy().replace('\\', "/");
+    let root_s = root.to_string_lossy().replace('\\', "/");
+    let root_prefix = root_s.trim_end_matches('/').to_string() + "/";
+    if abs_s != root_s.trim_end_matches('/') && !abs_s.starts_with(&root_prefix) {
+        return Err("path outside project root".into());
+    }
+    Ok((root, rel, abs))
+}
+
+/// Result of writing full file content under the project (accept / restore / reject-before).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ApplyFilePatchResult {
+    pub ok: bool,
+    pub absolute_path: Option<String>,
+    pub relative_path: Option<String>,
+    pub reason: Option<String>,
+}
+
+/// Write UTF-8 content to a path under the project only (create parents if needed).
+/// Used by Changes Accept / Restore and non-git reject (write before snapshot).
+#[tauri::command]
+pub async fn apply_file_patch(
+    project_path: String,
+    path: String,
+    content: String,
+) -> Result<ApplyFilePatchResult, String> {
+    let (root, rel, abs) = match resolve_path_under_project(&project_path, &path) {
+        Ok(v) => v,
+        Err(reason) => {
+            return Ok(ApplyFilePatchResult {
+                ok: false,
+                absolute_path: None,
+                relative_path: None,
+                reason: Some(reason),
+            });
+        }
+    };
+
+    // Cap size (same order as resource-pane text save)
+    const MAX_BYTES: usize = 2 * 1024 * 1024;
+    if content.len() > MAX_BYTES {
+        return Ok(ApplyFilePatchResult {
+            ok: false,
+            absolute_path: Some(abs.to_string_lossy().to_string()),
+            relative_path: Some(rel),
+            reason: Some(format!("content too large (max {MAX_BYTES} bytes)")),
+        });
+    }
+
+    if let Some(parent) = abs.parent() {
+        if let Err(e) = std::fs::create_dir_all(parent) {
+            return Ok(ApplyFilePatchResult {
+                ok: false,
+                absolute_path: Some(abs.to_string_lossy().to_string()),
+                relative_path: Some(rel),
+                reason: Some(format!("create parent: {e}")),
+            });
+        }
+    }
+
+    // Atomic-ish write via temp + rename in same directory
+    let parent = abs.parent().unwrap_or(root.as_path());
+    let tmp = parent.join(format!(
+        ".{}.grok-patch-{}",
+        abs.file_name()
+            .and_then(|s| s.to_str())
+            .unwrap_or("file"),
+        std::process::id()
+    ));
+    if let Err(e) = std::fs::write(&tmp, content.as_bytes()) {
+        return Ok(ApplyFilePatchResult {
+            ok: false,
+            absolute_path: Some(abs.to_string_lossy().to_string()),
+            relative_path: Some(rel),
+            reason: Some(format!("write temp: {e}")),
+        });
+    }
+    if let Err(e) = std::fs::rename(&tmp, &abs) {
+        let _ = std::fs::remove_file(&tmp);
+        return Ok(ApplyFilePatchResult {
+            ok: false,
+            absolute_path: Some(abs.to_string_lossy().to_string()),
+            relative_path: Some(rel),
+            reason: Some(format!("rename into place: {e}")),
+        });
+    }
+
+    // Grant for media/re-open
+    crate::path_scope::grant_path(&abs);
+
+    Ok(ApplyFilePatchResult {
+        ok: true,
+        absolute_path: Some(abs.to_string_lossy().to_string()),
+        relative_path: Some(rel),
+        reason: None,
+    })
+}
+
+/// Result of restoring a path to HEAD (or deleting untracked with confirm).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GitCheckoutFileResult {
+    pub ok: bool,
+    pub absolute_path: Option<String>,
+    pub relative_path: Option<String>,
+    /// When true, caller must re-invoke with confirm_untracked=true.
+    pub needs_untracked_confirm: bool,
+    pub reason: Option<String>,
+    /// Action taken: restored | deleted | none
+    pub action: Option<String>,
+}
+
+/// Restore path to HEAD via `git checkout -- path` (reject agent/workspace edits).
+/// Soft-fails when git is missing or project is not a repo.
+/// Never deletes untracked files unless `confirm_untracked` is true.
+#[tauri::command]
+pub async fn git_checkout_file(
+    project_path: String,
+    path: String,
+    confirm_untracked: bool,
+) -> Result<GitCheckoutFileResult, String> {
+    let (root, rel, abs) = match resolve_path_under_project(&project_path, &path) {
+        Ok(v) => v,
+        Err(reason) => {
+            return Ok(GitCheckoutFileResult {
+                ok: false,
+                absolute_path: None,
+                relative_path: None,
+                needs_untracked_confirm: false,
+                reason: Some(reason),
+                action: Some("none".into()),
+            });
+        }
+    };
+    let project = root.to_string_lossy().to_string();
+
+    if let Err(reason) = git_probe_work_tree(&project) {
+        return Ok(GitCheckoutFileResult {
+            ok: false,
+            absolute_path: Some(abs.to_string_lossy().to_string()),
+            relative_path: Some(rel),
+            needs_untracked_confirm: false,
+            reason: Some(reason),
+            action: Some("none".into()),
+        });
+    }
+
+    // Is path tracked?
+    let tracked = crate::process_util::command("git")
+        .args(["-C", &project, "ls-files", "--error-unmatch", "--", &rel])
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status()
+        .map(|s| s.success())
+        .unwrap_or(false);
+
+    if !tracked {
+        // Untracked: only wipe with explicit confirm
+        if !confirm_untracked {
+            return Ok(GitCheckoutFileResult {
+                ok: false,
+                absolute_path: Some(abs.to_string_lossy().to_string()),
+                relative_path: Some(rel),
+                needs_untracked_confirm: true,
+                reason: Some("untracked file requires confirm".into()),
+                action: Some("none".into()),
+            });
+        }
+        if abs.is_file() {
+            if let Err(e) = std::fs::remove_file(&abs) {
+                return Ok(GitCheckoutFileResult {
+                    ok: false,
+                    absolute_path: Some(abs.to_string_lossy().to_string()),
+                    relative_path: Some(rel),
+                    needs_untracked_confirm: false,
+                    reason: Some(format!("delete untracked: {e}")),
+                    action: Some("none".into()),
+                });
+            }
+        } else if abs.is_dir() {
+            // Refuse recursive dir wipe for safety
+            return Ok(GitCheckoutFileResult {
+                ok: false,
+                absolute_path: Some(abs.to_string_lossy().to_string()),
+                relative_path: Some(rel),
+                needs_untracked_confirm: false,
+                reason: Some("refusing to delete untracked directory".into()),
+                action: Some("none".into()),
+            });
+        }
+        // Already gone counts as success
+        return Ok(GitCheckoutFileResult {
+            ok: true,
+            absolute_path: Some(abs.to_string_lossy().to_string()),
+            relative_path: Some(rel),
+            needs_untracked_confirm: false,
+            reason: None,
+            action: Some("deleted".into()),
+        });
+    }
+
+    // Tracked: restore HEAD into index + worktree for this path only
+    let out = crate::process_util::command("git")
+        .args(["-C", &project, "checkout", "HEAD", "--", &rel])
+        .output()
+        .map_err(|e| e.to_string())?;
+
+    if !out.status.success() {
+        // Fallback: git restore (newer git)
+        let out2 = crate::process_util::command("git")
+            .args([
+                "-C",
+                &project,
+                "restore",
+                "--source=HEAD",
+                "--staged",
+                "--worktree",
+                "--",
+                &rel,
+            ])
+            .output();
+        if let Ok(o2) = out2 {
+            if o2.status.success() {
+                return Ok(GitCheckoutFileResult {
+                    ok: true,
+                    absolute_path: Some(abs.to_string_lossy().to_string()),
+                    relative_path: Some(rel),
+                    needs_untracked_confirm: false,
+                    reason: None,
+                    action: Some("restored".into()),
+                });
+            }
+        }
+        let err = String::from_utf8_lossy(&out.stderr).trim().to_string();
+        return Ok(GitCheckoutFileResult {
+            ok: false,
+            absolute_path: Some(abs.to_string_lossy().to_string()),
+            relative_path: Some(rel),
+            needs_untracked_confirm: false,
+            reason: Some(if err.is_empty() {
+                "git checkout failed".into()
+            } else {
+                err.chars().take(200).collect()
+            }),
+            action: Some("none".into()),
+        });
+    }
+
+    Ok(GitCheckoutFileResult {
+        ok: true,
+        absolute_path: Some(abs.to_string_lossy().to_string()),
+        relative_path: Some(rel),
+        needs_untracked_confirm: false,
+        reason: None,
+        action: Some("restored".into()),
+    })
+}
+
+/// Delete a path under the project only (non-git untracked reject after confirm).
+#[tauri::command]
+pub async fn delete_project_file(
+    project_path: String,
+    path: String,
+    confirm: bool,
+) -> Result<GitCheckoutFileResult, String> {
+    if !confirm {
+        return Ok(GitCheckoutFileResult {
+            ok: false,
+            absolute_path: None,
+            relative_path: None,
+            needs_untracked_confirm: true,
+            reason: Some("delete requires confirm".into()),
+            action: Some("none".into()),
+        });
+    }
+    let (_root, rel, abs) = match resolve_path_under_project(&project_path, &path) {
+        Ok(v) => v,
+        Err(reason) => {
+            return Ok(GitCheckoutFileResult {
+                ok: false,
+                absolute_path: None,
+                relative_path: None,
+                needs_untracked_confirm: false,
+                reason: Some(reason),
+                action: Some("none".into()),
+            });
+        }
+    };
+    if abs.is_dir() {
+        return Ok(GitCheckoutFileResult {
+            ok: false,
+            absolute_path: Some(abs.to_string_lossy().to_string()),
+            relative_path: Some(rel),
+            needs_untracked_confirm: false,
+            reason: Some("refusing to delete directory".into()),
+            action: Some("none".into()),
+        });
+    }
+    if abs.is_file() {
+        if let Err(e) = std::fs::remove_file(&abs) {
+            return Ok(GitCheckoutFileResult {
+                ok: false,
+                absolute_path: Some(abs.to_string_lossy().to_string()),
+                relative_path: Some(rel),
+                needs_untracked_confirm: false,
+                reason: Some(format!("delete: {e}")),
+                action: Some("none".into()),
+            });
+        }
+    }
+    Ok(GitCheckoutFileResult {
+        ok: true,
+        absolute_path: Some(abs.to_string_lossy().to_string()),
+        relative_path: Some(rel),
+        needs_untracked_confirm: false,
+        reason: None,
+        action: Some("deleted".into()),
+    })
+}
+
 #[cfg(test)]
 mod git_status_parse_tests {
     use super::*;
@@ -4964,6 +6563,46 @@ mod git_status_parse_tests {
         assert_eq!(git_status_kind(' ', 'M'), "modified");
         assert_eq!(git_status_kind('A', ' '), "added");
         assert_eq!(git_status_kind('D', ' '), "deleted");
+    }
+
+    #[test]
+    fn resolve_path_under_project_relative_ok() {
+        let tmp = std::env::temp_dir().join(format!(
+            "grok-diff-accept-{}",
+            std::process::id()
+        ));
+        let _ = std::fs::create_dir_all(&tmp);
+        let r = resolve_path_under_project(
+            &tmp.to_string_lossy(),
+            "src/hello.ts",
+        );
+        assert!(r.is_ok(), "{r:?}");
+        let (_root, rel, abs) = r.unwrap();
+        assert_eq!(rel, "src/hello.ts");
+        // Path separators differ on Windows — compare POSIX form.
+        let abs_posix = abs.to_string_lossy().replace('\\', "/");
+        assert!(
+            abs_posix.ends_with("src/hello.ts"),
+            "abs={abs_posix}"
+        );
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn resolve_path_under_project_rejects_escape() {
+        let tmp = std::env::temp_dir().join(format!(
+            "grok-diff-escape-{}",
+            std::process::id()
+        ));
+        let _ = std::fs::create_dir_all(&tmp);
+        let r = resolve_path_under_project(&tmp.to_string_lossy(), "../outside.txt");
+        assert!(r.is_err(), "parent escape should fail: {r:?}");
+        // Unix-style absolute must not become project-relative (Windows Path::is_absolute is false).
+        let r2 = resolve_path_under_project(&tmp.to_string_lossy(), "/etc/passwd");
+        assert!(r2.is_err(), "unix absolute should fail: {r2:?}");
+        let r3 = resolve_path_under_project(&tmp.to_string_lossy(), "\\\\server\\share\\x");
+        assert!(r3.is_err(), "unc-style should fail: {r3:?}");
+        let _ = std::fs::remove_dir_all(&tmp);
     }
 }
 
@@ -5379,67 +7018,87 @@ pub async fn providers_cc_switch_import(
 
 #[tauri::command]
 pub async fn providers_list() -> Result<crate::providers::ProvidersListResult, String> {
-    // One-time migration of legacy single relay secrets → multi-provider config.
-    let secrets = store::load_secrets();
-    let _ = crate::providers::maybe_migrate_legacy_relay(
-        secrets.relay_base_url.as_deref(),
-        secrets.relay_api_key.as_deref(),
-        secrets.default_model.as_deref(),
-    );
-    // Ensure agent transport retries are high enough for flaky custom relays.
-    let _ = crate::providers::ensure_models_retry_cap();
-    // Fix bases saved without /v1 (causes silent multi-minute inference retries).
-    let _ = crate::providers::repair_custom_base_urls();
-    crate::providers::list_custom_providers()
+    // Blocking file I/O off the async runtime (migrations / repairs / list).
+    tauri::async_runtime::spawn_blocking(|| {
+        // One-time migration of legacy single relay secrets → multi-provider config.
+        let secrets = store::load_secrets();
+        let _ = crate::providers::maybe_migrate_legacy_relay(
+            secrets.relay_base_url.as_deref(),
+            secrets.relay_api_key.as_deref(),
+            secrets.default_model.as_deref(),
+        );
+        // Ensure agent transport retries are high enough for flaky custom relays.
+        let _ = crate::providers::ensure_models_retry_cap();
+        // Fix bases saved without /v1 (causes silent multi-minute inference retries).
+        let _ = crate::providers::repair_custom_base_urls();
+        crate::providers::list_custom_providers()
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 /// Activate official Grok Build or a custom provider; returns updated list.
+///
+/// Recycles warm agents so the next send spawns with rebound auth / config
+/// (no full app restart).
 #[tauri::command]
 pub async fn providers_activate(
+    app: tauri::AppHandle,
+    mgr: State<'_, Arc<SessionManager>>,
     source: String,
     provider_id: Option<String>,
 ) -> Result<crate::providers::ProvidersListResult, String> {
-    let result =
-        crate::providers::activate_provider(&source, provider_id.as_deref())?;
-    // Composer model stays a catalog id (UI). Channel is `[models].default`.
-    // When leaving a custom route, drop stale provider ids from settings.
-    let mut settings = store::load_settings();
-    let cur = settings.model_id.clone().unwrap_or_default();
-    if result.active_source == "official" {
-        if cur.is_empty()
-            || crate::providers::is_custom_provider_id(&cur)
-            || cur == crate::providers::OFFICIAL_DEFAULT_MODEL
-        {
-            settings.model_id =
-                Some(crate::providers::OFFICIAL_CATALOG_MODEL.into());
-            let _ = store::save_settings(&settings);
-        }
-    } else if result.active_source == "custom" {
-        // Keep catalog model in settings for the model picker; spawn resolves route id.
-        if cur.is_empty() || crate::providers::is_custom_provider_id(&cur) {
-            if let Some(p) = result
-                .active_provider_id
-                .as_ref()
-                .and_then(|id| result.providers.iter().find(|x| x.id == *id))
+    let result = tauri::async_runtime::spawn_blocking(move || {
+        let result =
+            crate::providers::activate_provider(&source, provider_id.as_deref())?;
+        // Composer model stays a catalog id (UI). Channel is `[models].default`.
+        // When leaving a custom route, drop stale provider ids from settings.
+        let mut settings = store::load_settings();
+        let cur = settings.model_id.clone().unwrap_or_default();
+        if result.active_source == "official" {
+            if cur.is_empty()
+                || crate::providers::is_custom_provider_id(&cur)
+                || cur == crate::providers::OFFICIAL_DEFAULT_MODEL
             {
-                let upstream = p.model.trim();
-                settings.model_id = Some(if upstream.is_empty() {
-                    crate::providers::OFFICIAL_CATALOG_MODEL.into()
-                } else {
-                    upstream.to_string()
-                });
-            } else {
                 settings.model_id =
                     Some(crate::providers::OFFICIAL_CATALOG_MODEL.into());
+                let _ = store::save_settings(&settings);
             }
-            let _ = store::save_settings(&settings);
+        } else if result.active_source == "custom" {
+            // Keep catalog model in settings for the model picker; spawn resolves route id.
+            if cur.is_empty() || crate::providers::is_custom_provider_id(&cur) {
+                if let Some(p) = result
+                    .active_provider_id
+                    .as_ref()
+                    .and_then(|id| result.providers.iter().find(|x| x.id == *id))
+                {
+                    let upstream = p.model.trim();
+                    settings.model_id = Some(if upstream.is_empty() {
+                        crate::providers::OFFICIAL_CATALOG_MODEL.into()
+                    } else {
+                        upstream.to_string()
+                    });
+                } else {
+                    settings.model_id =
+                        Some(crate::providers::OFFICIAL_CATALOG_MODEL.into());
+                }
+                let _ = store::save_settings(&settings);
+            }
         }
-    }
+        Ok::<_, String>(result)
+    })
+    .await
+    .map_err(|e| e.to_string())??;
+
+    // Parked processes keep old GROK_HOME auth/config in memory — kill them.
+    mgr.recycle_all_agents(&app, "provider_route").await;
     Ok(result)
 }
 
 #[tauri::command]
 pub async fn providers_upsert(
+    app: tauri::AppHandle,
+    mgr: State<'_, Arc<SessionManager>>,
     id: String,
     model: String,
     base_url: String,
@@ -5449,74 +7108,117 @@ pub async fn providers_upsert(
     set_as_default: Option<bool>,
     create_only: Option<bool>,
 ) -> Result<crate::providers::ProvidersListResult, String> {
-    let result = crate::providers::upsert_custom_provider(crate::providers::UpsertProviderInput {
-        id,
-        model: model.clone(),
-        base_url,
-        name,
-        api_key,
-        api_backend,
-        set_as_default,
-        create_only,
-    })?;
-    // Keep legacy secrets in sync for Doctor / account channel display.
-    if let Some(p) = result.providers.iter().find(|p| p.is_default).or(result.providers.first())
-    {
-        let mut secrets = store::load_secrets();
-        secrets.relay_base_url = Some(p.base_url.clone());
-        secrets.default_model = result.default_model.clone();
-        // Do not copy api_key into secrets (stays only in config.toml).
-        let _ = store::save_secrets(&secrets);
-        if set_as_default.unwrap_or(false) {
-            let mut settings = store::load_settings();
-            // Composer shows upstream request model, not the route slug.
-            let upstream = p.model.trim();
-            settings.model_id = Some(if upstream.is_empty() {
-                crate::providers::OFFICIAL_CATALOG_MODEL.into()
-            } else {
-                upstream.to_string()
-            });
-            let _ = store::save_settings(&settings);
+    let set_default_flag = set_as_default.unwrap_or(false);
+    let mutated_id = id.clone();
+    let result = tauri::async_runtime::spawn_blocking(move || {
+        let result =
+            crate::providers::upsert_custom_provider(crate::providers::UpsertProviderInput {
+                id,
+                model: model.clone(),
+                base_url,
+                name,
+                api_key,
+                api_backend,
+                set_as_default,
+                create_only,
+            })?;
+        // Keep legacy secrets in sync for Doctor / account channel display.
+        if let Some(p) = result
+            .providers
+            .iter()
+            .find(|p| p.is_default)
+            .or(result.providers.first())
+        {
+            let mut secrets = store::load_secrets();
+            secrets.relay_base_url = Some(p.base_url.clone());
+            secrets.default_model = result.default_model.clone();
+            // Do not copy api_key into secrets (stays only in config.toml).
+            let _ = store::save_secrets(&secrets);
+            if set_as_default.unwrap_or(false) {
+                let mut settings = store::load_settings();
+                // Composer shows upstream request model, not the route slug.
+                let upstream = p.model.trim();
+                settings.model_id = Some(if upstream.is_empty() {
+                    crate::providers::OFFICIAL_CATALOG_MODEL.into()
+                } else {
+                    upstream.to_string()
+                });
+                let _ = store::save_settings(&settings);
+            }
         }
+        Ok::<_, String>(result)
+    })
+    .await
+    .map_err(|e| e.to_string())??;
+
+    // Apply active-route / active-provider edits without requiring app restart.
+    // Recycle (not mere park) so parked shells cannot reopen with stale OIDC.
+    if crate::providers::provider_mutation_needs_agent_reload(
+        set_default_flag,
+        &mutated_id,
+        &result,
+    ) {
+        mgr.recycle_all_agents(&app, "provider_route").await;
     }
     Ok(result)
 }
 
 #[tauri::command]
-pub async fn providers_remove(id: String) -> Result<crate::providers::ProvidersListResult, String> {
-    crate::providers::remove_custom_provider(&id)
+pub async fn providers_remove(
+    app: tauri::AppHandle,
+    mgr: State<'_, Arc<SessionManager>>,
+    id: String,
+) -> Result<crate::providers::ProvidersListResult, String> {
+    let result = tauri::async_runtime::spawn_blocking(move || {
+        crate::providers::remove_custom_provider(&id)
+    })
+    .await
+    .map_err(|e| e.to_string())??;
+    // Removing a provider (esp. the active one) must not leave warm agents on
+    // a deleted route id.
+    mgr.recycle_all_agents(&app, "provider_route").await;
+    Ok(result)
 }
 
 #[tauri::command]
 pub async fn providers_set_default(
+    app: tauri::AppHandle,
+    mgr: State<'_, Arc<SessionManager>>,
     model_id: String,
 ) -> Result<crate::providers::ProvidersListResult, String> {
     // Prefer activate_provider so auth material is rebound correctly.
-    let id = model_id.trim();
-    let list = crate::providers::list_custom_providers()?;
-    let result = if list.providers.iter().any(|p| p.id == id) {
-        crate::providers::activate_provider("custom", Some(id))?
-    } else {
-        crate::providers::activate_provider("official", None)?
-    };
-    let mut settings = store::load_settings();
-    if result.active_source == "custom" {
-        if let Some(p) = result
-            .active_provider_id
-            .as_ref()
-            .and_then(|pid| result.providers.iter().find(|x| x.id == *pid))
-        {
-            let upstream = p.model.trim();
-            settings.model_id = Some(if upstream.is_empty() {
-                crate::providers::OFFICIAL_CATALOG_MODEL.into()
-            } else {
-                upstream.to_string()
-            });
+    let result = tauri::async_runtime::spawn_blocking(move || {
+        let id = model_id.trim().to_string();
+        let list = crate::providers::list_custom_providers()?;
+        let result = if list.providers.iter().any(|p| p.id == id) {
+            crate::providers::activate_provider("custom", Some(&id))?
+        } else {
+            crate::providers::activate_provider("official", None)?
+        };
+        let mut settings = store::load_settings();
+        if result.active_source == "custom" {
+            if let Some(p) = result
+                .active_provider_id
+                .as_ref()
+                .and_then(|pid| result.providers.iter().find(|x| x.id == *pid))
+            {
+                let upstream = p.model.trim();
+                settings.model_id = Some(if upstream.is_empty() {
+                    crate::providers::OFFICIAL_CATALOG_MODEL.into()
+                } else {
+                    upstream.to_string()
+                });
+            }
+        } else {
+            settings.model_id = Some(crate::providers::OFFICIAL_CATALOG_MODEL.into());
         }
-    } else {
-        settings.model_id = Some(crate::providers::OFFICIAL_CATALOG_MODEL.into());
-    }
-    let _ = store::save_settings(&settings);
+        let _ = store::save_settings(&settings);
+        Ok::<_, String>(result)
+    })
+    .await
+    .map_err(|e| e.to_string())??;
+
+    mgr.recycle_all_agents(&app, "provider_route").await;
     Ok(result)
 }
 
@@ -5581,8 +7283,14 @@ mod project_inspect_tests {
                 "env": { "API_KEY": "sk-secretsecretsecret" }
             }],
             "plugins": [{ "name": "p1", "scope": "user", "enabled": true }],
+            "agents": [{ "name": "explore", "source": { "type": "builtin" } }],
             "projectInstructions": [{ "path": "/tmp/p/AGENTS.md", "scope": "project" }],
-            "hooks": [1],
+            "hooks": [{
+                "event": "stop",
+                "hookType": "file",
+                "target": "/tmp/p/.grok/hooks/stop.json",
+                "source": { "type": "project" }
+            }],
             "permissions": { "loaded": 0, "sources": [], "managedSettingsActive": false }
         });
         let out = build_project_inspect_summary(
@@ -5599,8 +7307,13 @@ mod project_inspect_tests {
         assert!(!s.contains("API_KEY"));
         assert!(!s.contains("sk-abcdefghijklmnopqrstuvwxyz"));
         assert_eq!(out["skills"]["total"], 1);
+        assert_eq!(out["skills"]["names"][0], "help");
         assert_eq!(out["mcp"][0]["name"], "ctx");
         assert!(out["mcp"][0].get("env").is_none());
+        assert_eq!(out["hooksCount"], 1);
+        assert_eq!(out["hooks"][0]["event"], "stop");
+        assert_eq!(out["hooks"][0]["source"], "project");
+        assert_eq!(out["agents"][0]["name"], "explore");
         assert!(out["modelsHints"]
             .as_array()
             .unwrap()
@@ -5705,9 +7418,30 @@ pub struct PersonaDefDto {
 
 // from PR #77
 
+/// Read-only soft-fail list of discovered Grok Build workflow scripts
+/// (`~/.grok/workflows` + project `.grok/workflows` + independent agent-home).
+/// Never invents runners; empty dirs return an empty list.
+#[tauri::command]
+pub async fn workflows_list(
+    project_path: Option<String>,
+) -> Result<crate::agent_workflows::DiscoverWorkflowsResult, String> {
+    let project = project_path
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(|s| s.to_string());
+    let mode = store::load_settings().session_data_mode.clone();
+    let result = tauri::async_runtime::spawn_blocking(move || {
+        crate::agent_workflows::discover_workflows(project.as_deref(), &mode)
+    })
+    .await
+    .map_err(|e| e.to_string())?;
+    Ok(result)
+}
+
 /// List agent + persona definition files from user / project / bundled scopes.
-/// Does not require the CLI binary (pure filesystem discovery under `~/.grok`
-/// and optional `{project}/.grok`). Always returns Ok.
+/// Does not require the CLI binary (pure filesystem discovery under `~/.grok`,
+/// active GROK_HOME / agent-home, and optional `{project}/.grok`). Always returns Ok.
 #[tauri::command]
 pub async fn agents_list(project_path: Option<String>) -> Result<serde_json::Value, String> {
     let project = project_path
@@ -5731,11 +7465,27 @@ pub async fn agents_list(project_path: Option<String>) -> Result<serde_json::Val
             std::path::PathBuf::from(p).join(".grok").join("personas")
         });
 
+        let settings = store::load_settings();
+        let active_home =
+            crate::paths::resolve_agent_grok_home(&settings.session_data_mode);
+        let active_user_agents = active_home.join("agents");
+
         let mut agents = Vec::new();
         if let Some(ref dir) = project_agents {
             agents.extend(scan_agent_dir(dir, "project"));
         }
         agents.extend(scan_agent_dir(&user_agents, "user"));
+        if active_user_agents != user_agents {
+            // Independent mode: defs under agent-home count as user scope.
+            for a in scan_agent_dir(&active_user_agents, "user") {
+                if !agents
+                    .iter()
+                    .any(|e| e.scope == "user" && e.name.eq_ignore_ascii_case(&a.name))
+                {
+                    agents.push(a);
+                }
+            }
+        }
         agents.extend(scan_agent_dir(&bundled_agents, "bundled"));
         let agents = sort_agent_defs(agents);
 
@@ -5747,10 +7497,16 @@ pub async fn agents_list(project_path: Option<String>) -> Result<serde_json::Val
         personas.extend(scan_persona_dir(&bundled_personas, "bundled"));
         let personas = sort_persona_defs(personas);
 
+        let user_agents_dir = if active_user_agents != user_agents {
+            active_user_agents.to_string_lossy().to_string()
+        } else {
+            user_agents.to_string_lossy().to_string()
+        };
+
         serde_json::json!({
             "agents": agents,
             "personas": personas,
-            "userAgentsDir": user_agents.to_string_lossy(),
+            "userAgentsDir": user_agents_dir,
             "projectAgentsDir": project_agents
                 .as_ref()
                 .map(|p| p.to_string_lossy().to_string()),
@@ -5766,6 +7522,31 @@ pub async fn agents_list(project_path: Option<String>) -> Result<serde_json::Val
     .map_err(|e| e.to_string())?;
 
     Ok(result)
+}
+
+/// Create a SKILL-like agent definition markdown under user GROK_HOME or
+/// project `.grok/agents`. Path-scoped; rejects overwrite unless `force`.
+#[tauri::command]
+pub async fn agents_scaffold(
+    name: String,
+    scope: Option<String>,
+    project_path: Option<String>,
+    force: Option<bool>,
+    description: Option<String>,
+) -> Result<crate::agents_catalog::AgentsScaffoldResult, String> {
+    let scope = scope.unwrap_or_else(|| "user".into());
+    let force = force.unwrap_or(false);
+    tauri::async_runtime::spawn_blocking(move || {
+        crate::agents_catalog::scaffold_agent(
+            &name,
+            &scope,
+            project_path.as_deref(),
+            force,
+            description.as_deref(),
+        )
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 // from PR #83
@@ -5981,14 +7762,26 @@ pub async fn cli_update_check() -> Result<crate::cli_update::CliUpdateCheck, Str
     .map_err(|e| e.to_string())?
 }
 
-// from PR #63
+// from PR #63 / channel UX (CLI ≥ 0.2.117)
 
-/// Install CLI update: prefer `grok update`, fall back to install trust-chain.
+/// Install CLI update / switch channel / pin version.
+///
+/// Optional `channel` (`stable`|`alpha`), `version` pin, and `force` reinstall.
+/// Channel switch and version pin are mutually exclusive; unknown channels error
+/// (never invented). Plain update still falls back to App install trust-chain.
 #[tauri::command]
 pub async fn cli_update_install(
     app: tauri::AppHandle,
+    channel: Option<String>,
+    version: Option<String>,
+    force: Option<bool>,
 ) -> Result<crate::cli_install::CliInstallResult, String> {
-    crate::cli_update::install_cli_update(app).await
+    let opts = crate::cli_update::CliUpdateInstallOpts {
+        channel,
+        version,
+        force: force.unwrap_or(false),
+    };
+    crate::cli_update::install_cli_update(app, opts).await
 }
 
 /// Recycle every warm agent process so the next send spawns fresh binaries.
@@ -6403,6 +8196,717 @@ pub async fn git_worktree_remove(
     })
 }
 
+// ── Worktree ship flow (push + gh pr create) ────────────────────────────────
+
+/// Soft-fail result of `git push -u origin HEAD` under a project path.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GitPushBranchResult {
+    pub available: bool,
+    pub ok: bool,
+    pub branch: Option<String>,
+    pub remote: Option<String>,
+    pub stdout: String,
+    pub stderr: String,
+    pub reason: Option<String>,
+}
+
+/// Soft-fail result of `gh pr create` under a project path.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GhPrCreateResult {
+    pub available: bool,
+    pub ok: bool,
+    pub url: Option<String>,
+    pub repo: Option<String>,
+    pub base: Option<String>,
+    pub head: Option<String>,
+    pub stdout: String,
+    pub stderr: String,
+    pub reason: Option<String>,
+}
+
+fn ship_redact_output(s: &str, max: usize) -> String {
+    let scrubbed = store::redact_text(s);
+    let t = scrubbed.trim();
+    if t.chars().count() <= max {
+        t.to_string()
+    } else {
+        t.chars().take(max).collect::<String>() + "…"
+    }
+}
+
+/// Parse `git@host:org/repo.git` / `https://host/org/repo.git` → `org/repo` (pure).
+pub fn parse_github_owner_repo(url: &str) -> Option<String> {
+    let s = url
+        .trim()
+        .trim_end_matches('/')
+        .trim_end_matches(".git")
+        .trim_end_matches(".GIT");
+    if s.is_empty() {
+        return None;
+    }
+    // SSH: git@github.com:org/repo
+    if let Some(idx) = s.find(':') {
+        let rest = &s[idx + 1..];
+        if !rest.contains("://") && rest.contains('/') {
+            let parts: Vec<&str> = rest
+                .trim_start_matches('/')
+                .split('/')
+                .filter(|p| !p.is_empty())
+                .collect();
+            if parts.len() >= 2 {
+                return Some(format!(
+                    "{}/{}",
+                    parts[parts.len() - 2],
+                    parts[parts.len() - 1]
+                ));
+            }
+        }
+    }
+    // HTTPS path: take last two segments
+    let parts: Vec<&str> = s.split('/').filter(|p| !p.is_empty()).collect();
+    if parts.len() >= 2 {
+        let org = parts[parts.len() - 2];
+        let repo = parts[parts.len() - 1];
+        if !org.is_empty() && !repo.is_empty() && !org.contains('@') {
+            return Some(format!("{org}/{repo}"));
+        }
+    }
+    None
+}
+
+fn github_owner_from_repo(owner_repo: &str) -> Option<&str> {
+    let (o, _) = owner_repo.split_once('/')?;
+    let o = o.trim();
+    if o.is_empty() {
+        None
+    } else {
+        Some(o)
+    }
+}
+
+/// Build `gh --head` value for forks (`owner:branch`) or same-repo bare branch.
+pub fn build_gh_head_ref(
+    branch: &str,
+    origin_owner_repo: Option<&str>,
+    base_owner_repo: Option<&str>,
+) -> String {
+    let b = branch.trim();
+    if b.is_empty() {
+        return String::new();
+    }
+    let origin_owner = origin_owner_repo.and_then(github_owner_from_repo);
+    let base_owner = base_owner_repo.and_then(github_owner_from_repo);
+    match (origin_owner, base_owner) {
+        (Some(o), Some(base)) if o != base => format!("{o}:{b}"),
+        _ => b.to_string(),
+    }
+}
+
+/// Extract first GitHub PR URL from gh stdout/stderr (pure).
+pub fn parse_gh_pr_url(output: &str) -> Option<String> {
+    // https://github.com/org/repo/pull/123
+    let bytes = output.as_bytes();
+    let needle = b"https://github.com/";
+    let mut i = 0;
+    while i + needle.len() < bytes.len() {
+        if bytes[i..].starts_with(needle) {
+            let start = i;
+            let mut end = i + needle.len();
+            while end < bytes.len() {
+                let c = bytes[end];
+                if c.is_ascii_alphanumeric()
+                    || c == b'/'
+                    || c == b'-'
+                    || c == b'_'
+                    || c == b'.'
+                {
+                    end += 1;
+                } else {
+                    break;
+                }
+            }
+            let candidate = &output[start..end];
+            if candidate.contains("/pull/") {
+                // Trim trailing punctuation
+                let cleaned = candidate
+                    .trim_end_matches(|c: char| !c.is_ascii_alphanumeric());
+                if cleaned.contains("/pull/") {
+                    return Some(cleaned.to_string());
+                }
+            }
+            i = end;
+        } else {
+            i += 1;
+        }
+    }
+    None
+}
+
+/// Sanitize PR title for argv (single line, required).
+pub fn sanitize_pr_title(raw: &str) -> Result<String, String> {
+    let s = raw
+        .replace(['\0', '\r', '\n'], " ")
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ");
+    if s.is_empty() {
+        return Err("PR title is required".into());
+    }
+    if s.chars().count() > 256 {
+        return Err("PR title too long (max 256)".into());
+    }
+    Ok(s)
+}
+
+/// Sanitize PR body (allow multiline; strip NUL).
+pub fn sanitize_pr_body(raw: Option<&str>) -> Result<String, String> {
+    let s = raw.unwrap_or("").replace('\0', "").replace("\r\n", "\n").replace('\r', "\n");
+    if s.chars().count() > 65_536 {
+        return Err("PR body too long".into());
+    }
+    Ok(s)
+}
+
+/// Sanitize `owner/repo` for `--repo`.
+pub fn sanitize_github_repo_arg(raw: Option<&str>) -> Result<Option<String>, String> {
+    let s = raw.map(str::trim).filter(|s| !s.is_empty());
+    let Some(s) = s else {
+        return Ok(None);
+    };
+    if s.starts_with('-') {
+        return Err("repo must not start with '-'".into());
+    }
+    if s.len() > 200 {
+        return Err("repo too long".into());
+    }
+    let mut parts = s.split('/');
+    let org = parts.next().unwrap_or("");
+    let name = parts.next().unwrap_or("");
+    if parts.next().is_some() || org.is_empty() || name.is_empty() {
+        return Err("repo must be owner/name".into());
+    }
+    if !org
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_' || c == '.')
+        || !name
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_' || c == '.')
+    {
+        return Err("repo must be owner/name".into());
+    }
+    Ok(Some(format!("{org}/{name}")))
+}
+
+fn sanitize_ship_branch(raw: Option<&str>) -> Result<Option<String>, String> {
+    let s = raw.map(str::trim).filter(|s| !s.is_empty());
+    let Some(s) = s else {
+        return Ok(None);
+    };
+    if s.starts_with('-') {
+        return Err("branch must not start with '-'".into());
+    }
+    if s.len() > 256 || s.contains('\0') || s.contains('\n') || s.contains('\r') {
+        return Err("invalid branch".into());
+    }
+    if s == "HEAD" || s == "@" {
+        return Ok(None);
+    }
+    if !s
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '/' | '-'))
+    {
+        return Err("branch contains invalid characters".into());
+    }
+    Ok(Some(s.to_string()))
+}
+
+/// Build argv for `git push -u origin HEAD` (no binary; pure).
+pub fn build_git_push_args(project: &str) -> Result<Vec<String>, String> {
+    let project = normalize_fs_path(project);
+    if project.is_empty() {
+        return Err("empty path".into());
+    }
+    if project.starts_with('-') {
+        return Err("invalid project path".into());
+    }
+    Ok(vec![
+        "-C".into(),
+        project,
+        "push".into(),
+        "-u".into(),
+        "origin".into(),
+        "HEAD".into(),
+    ])
+}
+
+/// Build argv for `gh pr create` (no binary; pure).
+pub fn build_gh_pr_create_args(
+    title: &str,
+    body: &str,
+    draft: bool,
+    base: &str,
+    head: Option<&str>,
+    repo: Option<&str>,
+) -> Result<Vec<String>, String> {
+    let title = sanitize_pr_title(title)?;
+    let body = sanitize_pr_body(Some(body))?;
+    let base = sanitize_ship_branch(Some(base))?
+        .unwrap_or_else(|| "main".into());
+    let repo = sanitize_github_repo_arg(repo)?;
+    let head = match head {
+        Some(h) if !h.trim().is_empty() => {
+            let h = h.trim();
+            if h.starts_with('-') || h.contains('\0') || h.contains('\n') {
+                return Err("invalid head".into());
+            }
+            Some(h.to_string())
+        }
+        _ => None,
+    };
+
+    let mut args = vec![
+        "pr".into(),
+        "create".into(),
+        "--title".into(),
+        title,
+        "--body".into(),
+        body,
+    ];
+    if let Some(r) = repo {
+        args.push("--repo".into());
+        args.push(r);
+    }
+    args.push("--base".into());
+    args.push(base);
+    if let Some(h) = head {
+        args.push("--head".into());
+        args.push(h);
+    }
+    if draft {
+        args.push("--draft".into());
+    }
+    Ok(args)
+}
+
+fn git_remote_url(project: &str, name: &str) -> Option<String> {
+    let out = crate::process_util::command("git")
+        .args(["-C", project, "remote", "get-url", name])
+        .output()
+        .ok()?;
+    if !out.status.success() {
+        return None;
+    }
+    let s = String::from_utf8_lossy(&out.stdout).trim().to_string();
+    if s.is_empty() {
+        None
+    } else {
+        Some(s)
+    }
+}
+
+fn git_current_branch(project: &str) -> Option<String> {
+    let out = crate::process_util::command("git")
+        .args(["-C", project, "rev-parse", "--abbrev-ref", "HEAD"])
+        .output()
+        .ok()?;
+    if !out.status.success() {
+        return None;
+    }
+    let b = String::from_utf8_lossy(&out.stdout).trim().to_string();
+    if b.is_empty() || b == "HEAD" {
+        None
+    } else {
+        Some(b)
+    }
+}
+
+fn probe_binary_on_path(bin: &str) -> bool {
+    let mut cmd = crate::process_util::command(bin);
+    if let Some(path_env) = crate::process_util::enriched_path_env() {
+        cmd.env("PATH", path_env);
+    }
+    cmd.arg("--version")
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status()
+        .map(|s| s.success())
+        .unwrap_or(false)
+}
+
+fn apply_ship_process_env(cmd: &mut std::process::Command) {
+    if let Some(path_env) = crate::process_util::enriched_path_env() {
+        cmd.env("PATH", path_env);
+    }
+    #[cfg(unix)]
+    {
+        if std::path::Path::new("/usr/bin/ssh").exists() {
+            cmd.env("GIT_SSH_COMMAND", "/usr/bin/ssh");
+        }
+    }
+}
+
+/// Push the current HEAD branch to `origin` (`git push -u origin HEAD`).
+/// Soft-fails when git / remote / non-repo are missing (available=false).
+#[tauri::command]
+pub async fn git_push_branch(project_path: String) -> Result<GitPushBranchResult, String> {
+    let project = normalize_fs_path(&project_path);
+    if project.is_empty() {
+        return Ok(GitPushBranchResult {
+            available: false,
+            ok: false,
+            branch: None,
+            remote: None,
+            stdout: String::new(),
+            stderr: String::new(),
+            reason: Some("empty path".into()),
+        });
+    }
+    let proj = std::path::PathBuf::from(&project);
+    if !proj.is_dir() {
+        return Ok(GitPushBranchResult {
+            available: false,
+            ok: false,
+            branch: None,
+            remote: None,
+            stdout: String::new(),
+            stderr: String::new(),
+            reason: Some("project not a directory".into()),
+        });
+    }
+    if let Err(reason) = git_probe_work_tree(&project) {
+        return Ok(GitPushBranchResult {
+            available: false,
+            ok: false,
+            branch: None,
+            remote: None,
+            stdout: String::new(),
+            stderr: String::new(),
+            reason: Some(reason),
+        });
+    }
+
+    let branch = git_current_branch(&project);
+    let remote = git_remote_url(&project, "origin");
+    if remote.is_none() {
+        return Ok(GitPushBranchResult {
+            available: false,
+            ok: false,
+            branch,
+            remote: None,
+            stdout: String::new(),
+            stderr: String::new(),
+            reason: Some("no origin remote".into()),
+        });
+    }
+
+    let args = build_git_push_args(&project)?;
+    let project_for_cmd = project.clone();
+    let out = tauri::async_runtime::spawn_blocking(move || {
+        let mut cmd = crate::process_util::command("git");
+        apply_ship_process_env(&mut cmd);
+        cmd.args(&args)
+            .current_dir(&project_for_cmd)
+            .output()
+    })
+    .await
+    .map_err(|e| e.to_string())?
+    .map_err(|e| e.to_string())?;
+
+    let stdout = ship_redact_output(&String::from_utf8_lossy(&out.stdout), 4000);
+    let stderr = ship_redact_output(&String::from_utf8_lossy(&out.stderr), 4000);
+    if out.status.success() {
+        Ok(GitPushBranchResult {
+            available: true,
+            ok: true,
+            branch,
+            remote,
+            stdout,
+            stderr,
+            reason: None,
+        })
+    } else {
+        let reason = if !stderr.is_empty() {
+            stderr.chars().take(400).collect()
+        } else if !stdout.is_empty() {
+            stdout.chars().take(400).collect()
+        } else {
+            "git push failed".into()
+        };
+        Ok(GitPushBranchResult {
+            available: true,
+            ok: false,
+            branch,
+            remote,
+            stdout,
+            stderr,
+            reason: Some(reason),
+        })
+    }
+}
+
+/// Create a GitHub pull request via `gh pr create` (argv only, no shell).
+/// Soft-fails when `gh` is missing. Never reports ok without a PR URL.
+#[tauri::command]
+pub async fn gh_pr_create(
+    project_path: String,
+    title: String,
+    body: Option<String>,
+    draft: Option<bool>,
+    base: Option<String>,
+    head: Option<String>,
+    repo: Option<String>,
+) -> Result<GhPrCreateResult, String> {
+    let project = normalize_fs_path(&project_path);
+    if project.is_empty() {
+        return Ok(GhPrCreateResult {
+            available: false,
+            ok: false,
+            url: None,
+            repo: None,
+            base: None,
+            head: None,
+            stdout: String::new(),
+            stderr: String::new(),
+            reason: Some("empty path".into()),
+        });
+    }
+    let proj = std::path::PathBuf::from(&project);
+    if !proj.is_dir() {
+        return Ok(GhPrCreateResult {
+            available: false,
+            ok: false,
+            url: None,
+            repo: None,
+            base: None,
+            head: None,
+            stdout: String::new(),
+            stderr: String::new(),
+            reason: Some("project not a directory".into()),
+        });
+    }
+    if let Err(reason) = git_probe_work_tree(&project) {
+        return Ok(GhPrCreateResult {
+            available: false,
+            ok: false,
+            url: None,
+            repo: None,
+            base: None,
+            head: None,
+            stdout: String::new(),
+            stderr: String::new(),
+            reason: Some(reason),
+        });
+    }
+
+    if !probe_binary_on_path("gh") {
+        return Ok(GhPrCreateResult {
+            available: false,
+            ok: false,
+            url: None,
+            repo: None,
+            base: None,
+            head: None,
+            stdout: String::new(),
+            stderr: String::new(),
+            reason: Some("gh not available".into()),
+        });
+    }
+
+    let branch = git_current_branch(&project);
+    let origin_url = git_remote_url(&project, "origin");
+    let upstream_url = git_remote_url(&project, "upstream");
+    let origin_or = origin_url.as_deref().and_then(parse_github_owner_repo);
+    let upstream_or = upstream_url.as_deref().and_then(parse_github_owner_repo);
+
+    let repo_arg = match sanitize_github_repo_arg(repo.as_deref())? {
+        Some(r) => Some(r),
+        None => upstream_or.clone().or_else(|| origin_or.clone()),
+    };
+    let base_branch = sanitize_ship_branch(base.as_deref())?
+        .unwrap_or_else(|| "main".into());
+    let head_ref = if let Some(h) = head.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
+        if h.starts_with('-') || h.contains('\0') || h.contains('\n') {
+            return Err("invalid head".into());
+        }
+        Some(h.to_string())
+    } else if let Some(ref b) = branch {
+        let h = build_gh_head_ref(
+            b,
+            origin_or.as_deref(),
+            repo_arg.as_deref(),
+        );
+        if h.is_empty() {
+            None
+        } else {
+            Some(h)
+        }
+    } else {
+        None
+    };
+
+    let title_s = sanitize_pr_title(&title)?;
+    let body_s = sanitize_pr_body(body.as_deref())?;
+    let draft_flag = draft.unwrap_or(false);
+    let args = build_gh_pr_create_args(
+        &title_s,
+        &body_s,
+        draft_flag,
+        &base_branch,
+        head_ref.as_deref(),
+        repo_arg.as_deref(),
+    )?;
+
+    let project_for_cmd = project.clone();
+    let out = tauri::async_runtime::spawn_blocking(move || {
+        let mut cmd = crate::process_util::command("gh");
+        apply_ship_process_env(&mut cmd);
+        cmd.args(&args)
+            .current_dir(&project_for_cmd)
+            .output()
+    })
+    .await
+    .map_err(|e| e.to_string())?
+    .map_err(|e| e.to_string())?;
+
+    let stdout = ship_redact_output(&String::from_utf8_lossy(&out.stdout), 4000);
+    let stderr = ship_redact_output(&String::from_utf8_lossy(&out.stderr), 4000);
+    let combined = format!("{stdout}\n{stderr}");
+    let url = parse_gh_pr_url(&combined);
+
+    if out.status.success() {
+        if let Some(u) = url {
+            Ok(GhPrCreateResult {
+                available: true,
+                ok: true,
+                url: Some(u),
+                repo: repo_arg,
+                base: Some(base_branch),
+                head: head_ref,
+                stdout,
+                stderr,
+                reason: None,
+            })
+        } else {
+            // Never fake success without a URL.
+            Ok(GhPrCreateResult {
+                available: true,
+                ok: false,
+                url: None,
+                repo: repo_arg,
+                base: Some(base_branch),
+                head: head_ref,
+                stdout,
+                stderr,
+                reason: Some("gh pr create succeeded but PR URL missing".into()),
+            })
+        }
+    } else {
+        let reason = if !stderr.is_empty() {
+            stderr.chars().take(400).collect()
+        } else if !stdout.is_empty() {
+            stdout.chars().take(400).collect()
+        } else {
+            "gh pr create failed".into()
+        };
+        Ok(GhPrCreateResult {
+            available: true,
+            ok: false,
+            url,
+            repo: repo_arg,
+            base: Some(base_branch),
+            head: head_ref,
+            stdout,
+            stderr,
+            reason: Some(reason),
+        })
+    }
+}
+
+#[cfg(test)]
+mod ship_flow_tests {
+    use super::*;
+
+    #[test]
+    fn parse_github_owner_repo_ssh_https() {
+        assert_eq!(
+            parse_github_owner_repo("git@github.com:RongleCat/grok-app.git").as_deref(),
+            Some("RongleCat/grok-app")
+        );
+        assert_eq!(
+            parse_github_owner_repo("https://github.com/sonnemusk/grok-app.git").as_deref(),
+            Some("sonnemusk/grok-app")
+        );
+    }
+
+    #[test]
+    fn build_gh_head_fork_vs_same() {
+        assert_eq!(
+            build_gh_head_ref(
+                "feat/wt-ship-flow",
+                Some("sonnemusk/grok-app"),
+                Some("RongleCat/grok-app"),
+            ),
+            "sonnemusk:feat/wt-ship-flow"
+        );
+        assert_eq!(
+            build_gh_head_ref(
+                "feat/x",
+                Some("RongleCat/grok-app"),
+                Some("RongleCat/grok-app"),
+            ),
+            "feat/x"
+        );
+    }
+
+    #[test]
+    fn parse_gh_pr_url_extracts() {
+        let out = "Creating pull request for feat/x into main in RongleCat/grok-app\n\nhttps://github.com/RongleCat/grok-app/pull/99\n";
+        assert_eq!(
+            parse_gh_pr_url(out).as_deref(),
+            Some("https://github.com/RongleCat/grok-app/pull/99")
+        );
+        assert!(parse_gh_pr_url("nope").is_none());
+    }
+
+    #[test]
+    fn build_git_push_args_ok() {
+        let a = build_git_push_args("/Users/me/repo").unwrap();
+        assert_eq!(
+            a,
+            vec!["-C", "/Users/me/repo", "push", "-u", "origin", "HEAD"]
+        );
+        assert!(build_git_push_args("").is_err());
+        assert!(build_git_push_args("-C").is_err());
+    }
+
+    #[test]
+    fn build_gh_pr_create_args_fork_shape() {
+        let a = build_gh_pr_create_args(
+            "feat: ship",
+            "body",
+            true,
+            "main",
+            Some("sonnemusk:feat/wt-ship-flow"),
+            Some("RongleCat/grok-app"),
+        )
+        .unwrap();
+        assert!(a.windows(2).any(|w| w == ["--repo", "RongleCat/grok-app"]));
+        assert!(a
+            .windows(2)
+            .any(|w| w == ["--head", "sonnemusk:feat/wt-ship-flow"]));
+        assert!(a.iter().any(|x| x == "--draft"));
+        assert!(a.windows(2).any(|w| w == ["--title", "feat: ship"]));
+    }
+
+    #[test]
+    fn sanitize_pr_title_required() {
+        assert!(sanitize_pr_title("  ").is_err());
+        assert_eq!(sanitize_pr_title("Hello\nworld").unwrap(), "Hello world");
+    }
+}
+
 // from PR #78
 
 /// Create the user or project hooks directory if missing. Returns the absolute path.
@@ -6501,6 +9005,35 @@ pub async fn hooks_open_dir(
 #[tauri::command]
 pub async fn hooks_reveal(path: String) -> Result<(), String> {
     path_reveal(path).await
+}
+
+/// Real try-run of a hook script (optional JSON stdin, timeout, path-scoped to hooks dirs).
+///
+/// Returns a structured result; `ok` is true only when the process exited 0 without
+/// timing out. Unsafe paths / invalid stdin are refused (`refused: true`) — never
+/// reported as success.
+#[tauri::command]
+pub async fn hooks_try_run(
+    path: String,
+    project_path: Option<String>,
+    stdin_json: Option<String>,
+    timeout_secs: Option<u64>,
+) -> Result<crate::hooks::HooksTryRunResult, String> {
+    let project = project_path
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(|s| s.to_string());
+    tauri::async_runtime::spawn_blocking(move || {
+        crate::hooks::try_run_hook_script(
+            &path,
+            project.as_deref(),
+            stdin_json.as_deref(),
+            timeout_secs,
+        )
+    })
+    .await
+    .map_err(|e| e.to_string())
 }
 
 // from PR #77
@@ -6821,6 +9354,10 @@ pub fn refuse_remove_main_worktree(
 // from PR #68
 
 /// Invoke CLI doctor with GROK_HOME matching session_data_mode.
+///
+/// Runs `grok mcp doctor --json [NAME]` with a hard timeout. Errors are
+/// redacted/truncated so secrets never leave the host. Returns a structured
+/// report (JSON-serializable) — never invents servers.
 fn run_mcp_doctor(name: Option<&str>) -> Result<crate::extensions::McpDoctorReport, String> {
     let settings = store::load_settings();
     let probe = cli_probe::probe_cli(settings.manual_cli_path.as_deref());
@@ -6831,7 +9368,15 @@ fn run_mcp_doctor(name: Option<&str>) -> Result<crate::extensions::McpDoctorRepo
 
     let mut args: Vec<String> = vec!["mcp".into(), "doctor".into(), "--json".into()];
     if let Some(n) = name {
-        args.push(n.to_string());
+        // Reject flag-like / path injection in the optional server name.
+        let n = n.trim();
+        if n.is_empty() {
+            // no-op
+        } else if n.starts_with('-') || n.contains('/') || n.contains('\\') || n.contains('\0') {
+            return Err("invalid MCP server name".into());
+        } else {
+            args.push(n.to_string());
+        }
     }
 
     let (tx, rx) = std::sync::mpsc::channel();
@@ -6858,14 +9403,18 @@ fn run_mcp_doctor(name: Option<&str>) -> Result<crate::extensions::McpDoctorRepo
             };
             if blob.is_empty() {
                 return Err(if !stderr.is_empty() {
-                    stderr.chars().take(400).collect()
+                    // Never surface raw secrets from CLI stderr.
+                    redact_doctor_fix_output(&stderr, 400)
                 } else {
                     "mcp doctor returned no output".into()
                 });
             }
             Ok(crate::extensions::parse_mcp_doctor_json(&blob))
         }
-        Ok(Err(e)) => Err(format!("Failed to run grok mcp doctor: {e}")),
+        Ok(Err(e)) => Err(format!(
+            "Failed to run grok mcp doctor: {}",
+            redact_doctor_fix_output(&e.to_string(), 240)
+        )),
         Err(_) => Err(format!(
             "grok mcp doctor timed out after {MCP_DOCTOR_TIMEOUT_SECS}s"
         )),
@@ -7150,6 +9699,17 @@ fn setup_error_kind(msg: &str) -> &'static str {
     {
         return "missing_auth";
     }
+    // Managed-config signature / envelope verification failures.
+    if m.contains("signature rejected")
+        || m.contains("signature was rejected")
+        || m.contains("did not verify")
+        || m.contains("could not be verified")
+        || m.contains("is-managed claim")
+        || m.contains("managed config signature")
+        || m.contains("server envelope rejected")
+    {
+        return "signature_rejected";
+    }
     if m.contains("deployment key was rejected")
         || m.contains("key was rejected")
         || m.contains("hasn't expired")
@@ -7161,6 +9721,17 @@ fn setup_error_kind(msg: &str) -> &'static str {
         return "parse";
     }
     "other"
+}
+
+// from MANAGED-SETUP-PRO
+
+/// Soft-fail local managed-config / signature artifact probe for Settings.
+/// Always returns Ok; see [`crate::managed_setup::ManagedSetupStatus`].
+#[tauri::command]
+pub async fn managed_setup_status() -> Result<crate::managed_setup::ManagedSetupStatus, String> {
+    tauri::async_runtime::spawn_blocking(crate::managed_setup::probe_managed_setup_status)
+        .await
+        .map_err(|e| format!("managed_setup_status: {e}"))
 }
 
 // from PR #79
@@ -7464,6 +10035,117 @@ pub async fn memory_delete_file(
     .map_err(|e| format!("memory delete task failed: {e}"))?
 }
 
+/// Read agent `config.toml` for the active session data mode (secrets redacted).
+///
+/// Independent → App agent-home; shared → `~/.grok/config.toml` (UI should warn).
+#[tauri::command]
+pub async fn agent_config_toml_read(
+) -> Result<crate::agent_config_view::AgentConfigTomlReadResult, String> {
+    let settings = store::load_settings();
+    let mode = settings.session_data_mode.clone();
+    tokio::task::spawn_blocking(move || crate::agent_config_view::read_agent_config_toml(&mode))
+        .await
+        .map_err(|e| format!("agent config.toml read task failed: {e}"))
+}
+
+/// Search path-scoped memory files (name + content) under agent GROK_HOME/memory.
+/// Snippets are redacted; hard caps on hits and bytes read per file.
+///
+/// Always keyword / file-body scan — never invents embeddings client-side.
+/// CLI `memory_search` hybrid (vector + full-text) is controlled by
+/// `[memory.embedding]` keys (see `memory_embed_config_get`).
+#[tauri::command]
+pub async fn memory_search(
+    query: String,
+    cwd: Option<String>,
+    limit: Option<usize>,
+) -> Result<crate::agent_memory::MemorySearchResult, String> {
+    let settings = store::load_settings();
+    let path = cwd
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(std::path::PathBuf::from);
+    let q = query;
+    tokio::task::spawn_blocking(move || {
+        Ok(crate::agent_memory::search_workspace_memory(
+            &q,
+            path.as_deref(),
+            &settings.session_data_mode,
+            limit,
+        ))
+    })
+    .await
+    .map_err(|e| format!("memory search task failed: {e}"))?
+}
+
+/// Read allowlisted Grok Build 0.2.117 memory embedding keys from active GROK_HOME.
+/// Soft-fails missing file/keys (null fields). Never invents embedding defaults.
+#[tauri::command]
+pub async fn memory_embed_config_get(
+) -> Result<crate::agent_memory_embed::MemoryEmbedConfigSnapshot, String> {
+    tauri::async_runtime::spawn_blocking(crate::agent_memory_embed::load_memory_embed_config)
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+/// Write allowlisted memory embedding keys into agent-home config.toml only
+/// (independent mode). Soft-respawns so the next turn reloads the agent profile.
+#[tauri::command]
+pub async fn memory_embed_config_set(
+    app: tauri::AppHandle,
+    mgr: State<'_, Arc<SessionManager>>,
+    embedding_model: Option<String>,
+    clear_embedding_model: Option<bool>,
+    embedding_dimensions: Option<u32>,
+    embedding_provider: Option<String>,
+    search_max_results: Option<u32>,
+    search_min_score: Option<f64>,
+    search_vector_weight: Option<f64>,
+    search_text_weight: Option<f64>,
+    mmr_enabled: Option<bool>,
+    mmr_lambda: Option<f64>,
+    temporal_decay_enabled: Option<bool>,
+    temporal_decay_half_life_days: Option<f64>,
+    dream_enabled: Option<bool>,
+    dream_min_hours: Option<f64>,
+    dream_min_sessions: Option<u32>,
+    dream_check_interval_secs: Option<u64>,
+    watcher_enabled: Option<bool>,
+    initial_injection_enabled: Option<bool>,
+    initial_injection_min_score: Option<f64>,
+) -> Result<crate::agent_memory_embed::MemoryEmbedConfigSnapshot, String> {
+    let patch = crate::agent_memory_embed::MemoryEmbedConfigPatch {
+        embedding_model,
+        clear_embedding_model,
+        embedding_dimensions,
+        embedding_provider,
+        search_max_results,
+        search_min_score,
+        search_vector_weight,
+        search_text_weight,
+        mmr_enabled,
+        mmr_lambda,
+        temporal_decay_enabled,
+        temporal_decay_half_life_days,
+        dream_enabled,
+        dream_min_hours,
+        dream_min_sessions,
+        dream_check_interval_secs,
+        watcher_enabled,
+        initial_injection_enabled,
+        initial_injection_min_score,
+    };
+    let result = tauri::async_runtime::spawn_blocking(move || {
+        crate::agent_memory_embed::save_memory_embed_config(&patch)
+    })
+    .await
+    .map_err(|e| e.to_string())??;
+
+    mgr.soft_respawn_with_reason(&app, "memory_embed_config").await;
+    Ok(result)
+}
+
 /// List agent definitions available for session agent selection.
 #[tauri::command]
 pub async fn agents_catalog(
@@ -7472,6 +10154,122 @@ pub async fn agents_catalog(
     Ok(crate::agents_catalog::list_agents_catalog(
         project_path.as_deref(),
     ))
+}
+
+/// Read allowlisted agent-home config.toml keys (redact-on-read preview).
+#[tauri::command]
+pub async fn agent_config_edit_get(
+) -> Result<crate::agent_config_edit::AgentConfigEditSnapshot, String> {
+    tauri::async_runtime::spawn_blocking(crate::agent_config_edit::load_agent_config_edit)
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+/// Write allowlisted keys into agent-home config.toml only (independent mode).
+/// Soft-respawns so the next turn reloads profile.
+#[tauri::command]
+pub async fn agent_config_edit_set(
+    app: tauri::AppHandle,
+    mgr: State<'_, Arc<SessionManager>>,
+    permission_mode: Option<String>,
+    yolo: Option<bool>,
+    subagents_enabled: Option<bool>,
+    memory_enabled: Option<bool>,
+    workflows_enabled: Option<bool>,
+    auto_wake_enabled: Option<bool>,
+    two_pass_compaction_enabled: Option<bool>,
+    lsp_tools_enabled: Option<bool>,
+    codebase_indexing: Option<bool>,
+    remote_fetch: Option<bool>,
+) -> Result<crate::agent_config_edit::AgentConfigEditSnapshot, String> {
+    let patch = crate::agent_config_edit::AgentConfigEditPatch {
+        permission_mode,
+        yolo,
+        subagents_enabled,
+        memory_enabled,
+        workflows_enabled,
+        auto_wake_enabled,
+        two_pass_compaction_enabled,
+        lsp_tools_enabled,
+        codebase_indexing,
+        remote_fetch,
+    };
+    let result = tauri::async_runtime::spawn_blocking(move || {
+        crate::agent_config_edit::save_agent_config_edit(&patch)
+    })
+    .await
+    .map_err(|e| e.to_string())??;
+
+    mgr.soft_respawn_with_reason(&app, "agent_config_edit").await;
+    Ok(result)
+}
+
+/// Read allowlisted privacy keys from active GROK_HOME config.toml (redacted).
+/// Soft-fails missing keys as null; never invents defaults.
+#[tauri::command]
+pub async fn privacy_config_get(
+) -> Result<crate::agent_privacy::PrivacyConfigSnapshot, String> {
+    tauri::async_runtime::spawn_blocking(crate::agent_privacy::load_privacy_config)
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+/// Write allowlisted privacy keys into agent-home config.toml only (independent mode).
+/// Soft-respawns so the next turn reloads the agent profile.
+#[tauri::command]
+pub async fn privacy_config_set(
+    app: tauri::AppHandle,
+    mgr: State<'_, Arc<SessionManager>>,
+    telemetry: Option<bool>,
+    trace_upload: Option<bool>,
+    mixpanel_enabled: Option<bool>,
+    disable_codebase_upload: Option<bool>,
+    disable_workspace_teleport: Option<bool>,
+) -> Result<crate::agent_privacy::PrivacyConfigSnapshot, String> {
+    let patch = crate::agent_privacy::PrivacyConfigPatch {
+        telemetry,
+        trace_upload,
+        mixpanel_enabled,
+        disable_codebase_upload,
+        disable_workspace_teleport,
+    };
+    let result = tauri::async_runtime::spawn_blocking(move || {
+        crate::agent_privacy::save_privacy_config(&patch)
+    })
+    .await
+    .map_err(|e| e.to_string())??;
+
+    mgr.soft_respawn_with_reason(&app, "privacy_config").await;
+    Ok(result)
+}
+
+/// Read `[features].codebase_indexing` from active GROK_HOME config.toml.
+/// Soft-fails missing key as unset; never invents embeddings.
+#[tauri::command]
+pub async fn codebase_indexing_get(
+) -> Result<crate::agent_codebase_indexing::CodebaseIndexingSnapshot, String> {
+    tauri::async_runtime::spawn_blocking(crate::agent_codebase_indexing::load_codebase_indexing)
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+/// Write `[features].codebase_indexing` bool into agent-home config.toml only
+/// (independent mode). Soft-respawns so the next turn reloads the agent profile.
+#[tauri::command]
+pub async fn codebase_indexing_set(
+    app: tauri::AppHandle,
+    mgr: State<'_, Arc<SessionManager>>,
+    enabled: Option<bool>,
+) -> Result<crate::agent_codebase_indexing::CodebaseIndexingSnapshot, String> {
+    let patch = crate::agent_codebase_indexing::CodebaseIndexingPatch { enabled };
+    let result = tauri::async_runtime::spawn_blocking(move || {
+        crate::agent_codebase_indexing::save_codebase_indexing(&patch)
+    })
+    .await
+    .map_err(|e| e.to_string())??;
+
+    mgr.soft_respawn_with_reason(&app, "codebase_indexing").await;
+    Ok(result)
 }
 
 // marketplace
@@ -8008,5 +10806,88 @@ pub async fn wallpaper_library_list(
     tauri::async_runtime::spawn_blocking(move || crate::wallpaper_source::library_list(limit))
         .await
         .map_err(|e| format!("wallpaper_library_list: {e}"))?
+}
+
+/// Headless probe: `grok -p … --output-format streaming-messages-json` (CLI 0.2.117+).
+/// Soft-fails older CLIs without spawning. Raw NDJSON returned to UI only — never logged.
+#[tauri::command]
+pub async fn streaming_messages_json_probe(
+    include_partial: Option<bool>,
+) -> Result<crate::streaming_messages_json::StreamingMessagesJsonProbeResult, String> {
+    let include_partial = include_partial.unwrap_or(false);
+    tauri::async_runtime::spawn_blocking(move || {
+        crate::streaming_messages_json::probe_streaming_messages_json(include_partial)
+    })
+    .await
+    .map_err(|e| format!("streaming_messages_json_probe: {e}"))
+}
+
+// ─── Tool / permission audit ledger ─────────────────────────────────────────
+
+/// Recent cross-session tool/permission audit rows (newest first). Soft-fail → [].
+#[tauri::command]
+pub async fn audit_ledger_list(
+    limit: Option<u32>,
+) -> Result<Vec<crate::audit_ledger::AuditLedgerEntry>, String> {
+    Ok(tauri::async_runtime::spawn_blocking(move || {
+        crate::audit_ledger::list_recent(limit)
+    })
+    .await
+    .map_err(|e| format!("audit_ledger_list: {e}"))?)
+}
+
+/// Clear the on-disk audit ledger (`{app_data}/audit/tool_ledger.jsonl`).
+#[tauri::command]
+pub async fn audit_ledger_clear() -> Result<serde_json::Value, String> {
+    tauri::async_runtime::spawn_blocking(|| crate::audit_ledger::clear_ledger())
+        .await
+        .map_err(|e| format!("audit_ledger_clear: {e}"))??;
+    Ok(serde_json::json!({ "ok": true }))
+}
+
+/// Export redacted JSONL via native save dialog.
+#[tauri::command]
+pub async fn audit_ledger_export() -> Result<serde_json::Value, String> {
+    let text = tauri::async_runtime::spawn_blocking(crate::audit_ledger::export_redacted_jsonl)
+        .await
+        .map_err(|e| format!("audit_ledger_export: {e}"))?;
+    if text.trim().is_empty() {
+        return Err("audit ledger is empty".into());
+    }
+    let stamp = chrono::Local::now().format("%Y%m%d-%H%M%S");
+    let name = format!("grok-app-audit-ledger-{stamp}.jsonl");
+    let tmp_dir = std::env::temp_dir();
+    let tmp = tmp_dir.join(&name);
+    tauri::async_runtime::spawn_blocking({
+        let tmp = tmp.clone();
+        let text = text.clone();
+        move || std::fs::write(&tmp, text).map_err(|e| format!("write temp: {e}"))
+    })
+    .await
+    .map_err(|e| format!("audit_ledger_export: {e}"))??;
+
+    save_and_reveal_file(
+        tmp,
+        "Export audit ledger",
+        &name,
+        "JSONL",
+        &["jsonl", "json", "txt"],
+    )
+    .await
+}
+
+/// One-shot headless batch turn for a project cwd (`grok -p`, soft-fail).
+/// Sequential multi-project dispatch lives in the FE; this runs a single project.
+#[tauri::command]
+pub async fn batch_agents_headless(
+    project_path: String,
+    prompt: String,
+    timeout_ms: Option<u64>,
+) -> Result<crate::batch_agents::BatchHeadlessResult, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        crate::batch_agents::run_batch_headless(&project_path, &prompt, timeout_ms)
+    })
+    .await
+    .map_err(|e| format!("batch_agents_headless: {e}"))
 }
 

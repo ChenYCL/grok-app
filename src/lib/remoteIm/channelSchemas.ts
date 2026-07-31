@@ -75,6 +75,7 @@ const FEISHU_FIELDS: ChannelSchema["fields"] = [
     control: "text",
     section: "bind",
     required: true,
+    helpKey: "settings.remoteIm.feishu.appIdHelp",
   },
   {
     key: "app_secret",
@@ -83,6 +84,7 @@ const FEISHU_FIELDS: ChannelSchema["fields"] = [
     section: "bind",
     required: true,
     secret: true,
+    helpKey: "settings.remoteIm.feishu.appSecretHelp",
   },
   {
     key: "domain",
@@ -90,6 +92,7 @@ const FEISHU_FIELDS: ChannelSchema["fields"] = [
     control: "select",
     section: "bind",
     defaultValue: "open.feishu.cn",
+    helpKey: "settings.remoteIm.feishu.domainHelp",
     choices: [
       {
         value: "open.feishu.cn",
@@ -108,6 +111,7 @@ const FEISHU_FIELDS: ChannelSchema["fields"] = [
     control: "text",
     section: "bind",
     when: { key: "domain", equals: "custom" },
+    helpKey: "settings.remoteIm.feishu.customDomainHelp",
   },
   {
     key: "port",
@@ -137,6 +141,7 @@ const FEISHU_FIELDS: ChannelSchema["fields"] = [
     control: "toggle",
     section: "options",
     defaultValue: true,
+    helpKey: "settings.remoteIm.feishu.enableCardHelp",
   },
   {
     key: "group_reply_all",
@@ -187,6 +192,7 @@ const DINGTALK_FIELDS: ChannelSchema["fields"] = [
     control: "text",
     section: "bind",
     required: true,
+    helpKey: "settings.remoteIm.dingtalk.clientIdHelp",
   },
   {
     key: "client_secret",
@@ -195,8 +201,12 @@ const DINGTALK_FIELDS: ChannelSchema["fields"] = [
     section: "bind",
     required: true,
     secret: true,
+    helpKey: "settings.remoteIm.dingtalk.clientSecretHelp",
   },
-  ACL_ALLOW_FROM,
+  {
+    ...ACL_ALLOW_FROM,
+    helpKey: "settings.remoteIm.dingtalk.allowFromHelp",
+  },
   SHARED_SESSION,
   { ...REACTION, defaultValue: "🤔Thinking" },
   DONE_EMOJI,
@@ -206,6 +216,7 @@ const DINGTALK_FIELDS: ChannelSchema["fields"] = [
     control: "toggle",
     section: "options",
     defaultValue: true,
+    helpKey: "settings.remoteIm.dingtalk.enableAiCardHelp",
   },
 ];
 
@@ -217,6 +228,7 @@ const WECOM_FIELDS: ChannelSchema["fields"] = [
     section: "bind",
     required: true,
     defaultValue: "websocket",
+    helpKey: "settings.remoteIm.wecom.modeHelp",
     choices: [
       {
         value: "websocket",
@@ -234,6 +246,7 @@ const WECOM_FIELDS: ChannelSchema["fields"] = [
     control: "text",
     section: "bind",
     required: true,
+    helpKey: "settings.remoteIm.wecom.botIdHelp",
     when: { key: "connect_mode", equals: "websocket" },
   },
   {
@@ -243,6 +256,7 @@ const WECOM_FIELDS: ChannelSchema["fields"] = [
     section: "bind",
     required: true,
     secret: true,
+    helpKey: "settings.remoteIm.wecom.botSecretHelp",
     when: { key: "connect_mode", equals: "websocket" },
   },
   {
@@ -250,6 +264,7 @@ const WECOM_FIELDS: ChannelSchema["fields"] = [
     labelKey: "settings.remoteIm.field.apiBaseUrl",
     control: "text",
     section: "advanced",
+    helpKey: "settings.remoteIm.wecom.apiBaseHelp",
     when: { key: "connect_mode", equals: "websocket" },
   },
   {
@@ -258,6 +273,7 @@ const WECOM_FIELDS: ChannelSchema["fields"] = [
     control: "text",
     section: "bind",
     required: true,
+    helpKey: "settings.remoteIm.wecom.corpIdHelp",
     when: { key: "connect_mode", equals: "webhook" },
   },
   {
@@ -275,6 +291,7 @@ const WECOM_FIELDS: ChannelSchema["fields"] = [
     control: "text",
     section: "bind",
     required: true,
+    helpKey: "settings.remoteIm.wecom.agentIdHelp",
     when: { key: "connect_mode", equals: "webhook" },
   },
   {
@@ -284,6 +301,7 @@ const WECOM_FIELDS: ChannelSchema["fields"] = [
     section: "bind",
     required: true,
     secret: true,
+    helpKey: "settings.remoteIm.wecom.callbackTokenHelp",
     when: { key: "connect_mode", equals: "webhook" },
   },
   {
@@ -292,6 +310,7 @@ const WECOM_FIELDS: ChannelSchema["fields"] = [
     control: "password",
     section: "bind",
     secret: true,
+    helpKey: "settings.remoteIm.wecom.encodingAesKeyHelp",
     when: { key: "connect_mode", equals: "webhook" },
   },
   {
@@ -300,6 +319,7 @@ const WECOM_FIELDS: ChannelSchema["fields"] = [
     control: "number",
     section: "advanced",
     defaultValue: 8081,
+    helpKey: "settings.remoteIm.wecom.portHelp",
     when: { key: "connect_mode", equals: "webhook" },
   },
   {
@@ -381,15 +401,21 @@ const TELEGRAM_FIELDS: ChannelSchema["fields"] = [
     section: "bind",
     required: true,
     secret: true,
-    helpKey: "settings.remoteIm.field.telegramTokenHelp",
+    helpKey: "settings.remoteIm.telegram.tokenHelp",
+    placeholderKey: "settings.remoteIm.telegram.tokenPlaceholder",
   },
   ACL_ALLOW_FROM,
-  PROXY,
+  {
+    ...PROXY,
+    helpKey: "settings.remoteIm.telegram.proxyHelp",
+    placeholderKey: "settings.remoteIm.telegram.proxyPlaceholder",
+  },
   {
     key: "proxy_username",
     labelKey: "settings.remoteIm.field.proxyUsername",
     control: "text",
     section: "advanced",
+    helpKey: "settings.remoteIm.telegram.proxyUserHelp",
   },
   {
     key: "proxy_password",
@@ -397,6 +423,7 @@ const TELEGRAM_FIELDS: ChannelSchema["fields"] = [
     control: "password",
     section: "advanced",
     secret: true,
+    helpKey: "settings.remoteIm.telegram.proxyPassHelp",
   },
   PROGRESS_STYLE,
   {
@@ -405,6 +432,7 @@ const TELEGRAM_FIELDS: ChannelSchema["fields"] = [
     control: "checkbox",
     section: "options",
     defaultValue: false,
+    helpKey: "settings.remoteIm.telegram.threadHelp",
   },
 ];
 
@@ -937,7 +965,16 @@ export function advancedPanelFields(
 export function validateBindFields(
   schema: ChannelSchema,
   values: Record<string, unknown>,
-  opts?: { hasCredentials?: boolean; secretKeysFilled?: Set<string> },
+  opts?: {
+    hasCredentials?: boolean;
+    secretKeysFilled?: Set<string>;
+    /**
+     * Last-saved options. When a secret field becomes visible only after a
+     * mode change (e.g. WeCom websocket→webhook), vault reuse is denied
+     * until the new secret keys are filled (honest soft-fail).
+     */
+    savedValues?: Record<string, unknown>;
+  },
 ): { ok: boolean; missing: string[] } {
   if (!schema.implemented) {
     return { ok: false, missing: ["_not_implemented"] };
@@ -951,11 +988,23 @@ export function validateBindFields(
       v === null ||
       (typeof v === "string" && v.trim() === "");
     if (empty) {
-      if (f.secret && opts?.hasCredentials && !opts.secretKeysFilled?.has(f.key)) {
-        // Keep existing secret
-        continue;
-      }
       if (f.secret && opts?.secretKeysFilled?.has(f.key)) continue;
+      if (
+        f.secret &&
+        opts?.hasCredentials &&
+        !opts.secretKeysFilled?.has(f.key)
+      ) {
+        // Reuse vault only if this secret was already required under saved values
+        if (opts.savedValues) {
+          const wasVisible =
+            !f.when || opts.savedValues[f.when.key] === f.when.equals;
+          if (wasVisible) continue;
+          // Mode switch → require re-entry
+        } else {
+          // Legacy callers without savedValues keep previous soft reuse
+          continue;
+        }
+      }
       missing.push(f.key);
     }
   }

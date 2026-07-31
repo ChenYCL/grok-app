@@ -22,7 +22,9 @@ import { MarkdownTiptapEditor } from "@/components/MarkdownTiptapEditor";
 import { OverlayScroll } from "@/components/OverlayScroll";
 import { FileMediaPlayer } from "@/components/FileMediaPlayer";
 import { ImageUi } from "@/components/ImageUi";
+import { detectAppPlatform, revealInOsLabel } from "@/lib/appPlatform";
 import {
+  IconCheck,
   IconChevronDown,
   IconChevronRight,
   IconClock,
@@ -36,7 +38,9 @@ import {
   IconListTree,
   IconPlan,
   IconRefresh,
+  IconRewind,
   IconSearch,
+  IconUpload,
 } from "@/components/icons";
 import { PlanReviewPanel } from "@/components/PlanReviewPanel";
 import type { PlanReviewState } from "@/lib/planBody";
@@ -58,6 +62,16 @@ import {
   sessionFileLineDelta,
   type SessionFileChange,
 } from "@/lib/sessionChanges";
+import {
+  applySelectedHunks,
+  needsUntrackedWipeConfirm,
+  parseUnifiedDiff,
+  planFileAccept,
+  planFileReject,
+  planFileRestore,
+  rejectSelectedHunks,
+  type UnifiedHunk,
+} from "@/lib/diffAccept";
 import {
   filterWorkspaceGitEntries,
   normalizeWorkspaceGitEntries,
@@ -147,6 +161,11 @@ export interface ResourceViewerProps {
   onDismissPlan?: () => void;
   /** Open local plan review history archive (session menu / Resources). */
   onOpenPlanHistory?: () => void;
+  /**
+   * Ship flow from Changes → Workspace (push branch + open PR).
+   * Parent opens in-app Ship dialog; never window.confirm.
+   */
+  onShip?: () => void;
   /**
    * Content-aware right-pane layout hint (preview kind, tree open, tabs).
    * App soft-grows aside width so chrome icons never collide with window controls.
@@ -293,6 +312,7 @@ export function ResourceViewer({
   onRequestPlanChanges,
   onDismissPlan,
   onOpenPlanHistory,
+  onShip,
   onAsideLayoutHint,
 }: ResourceViewerProps) {
   const tr = useMemo(() => createT(locale), [locale]);
@@ -334,6 +354,22 @@ export function ResourceViewer({
   const [workspaceReason, setWorkspaceReason] = useState<string | null>(null);
   const [workspaceBranch, setWorkspaceBranch] = useState<string | null>(null);
   const [pathCopyFlash, setPathCopyFlash] = useState(false);
+  /** Accept / reject / restore in flight. */
+  const [diffActionBusy, setDiffActionBusy] = useState(false);
+  /** Per-path decision badge after accept/reject. */
+  const [diffDecisionByPath, setDiffDecisionByPath] = useState<
+    Record<string, "accepted" | "rejected">
+  >({});
+  /** After-content snapshots kept for Restore after reject. */
+  const [restorableAfterByPath, setRestorableAfterByPath] = useState<
+    Record<string, string>
+  >({});
+  /** In-app confirm for destructive reject. */
+  const [rejectConfirm, setRejectConfirm] = useState<{
+    path: string;
+    name: string;
+    untracked: boolean;
+  } | null>(null);
   /** Open-with target for the location button (finder / editor id). */
   const [openWithTarget, setOpenWithTarget] = useState(() => {
     try {
@@ -787,6 +823,446 @@ export function ResourceViewer({
     }
     return tr("changes.workspace.unavailable");
   }, [tr, workspaceReason]);
+
+  /** Resolve workspace kind for a path (session-only → modified). */
+  const kindForPath = useCallback(
+    (path: string): string => {
+      const n = normalizePath(path);
+      if (!n) return "modified";
+      const w = workspaceFiles.find(
+        (f) =>
+          normalizePath(f.absolutePath) === n ||
+          normalizePath(f.path) === n ||
+          resolveWorkspaceAbsolutePath(projectPath, f.path) === n,
+      );
+      if (w) return w.kind;
+      return "modified";
+    },
+    [workspaceFiles, projectPath],
+  );
+
+  const rememberRestorable = useCallback((path: string, after: string | null | undefined) => {
+    if (typeof after !== "string") return;
+    const key = normalizePath(path);
+    if (!key) return;
+    setRestorableAfterByPath((prev) =>
+      prev[key] === after ? prev : { ...prev, [key]: after },
+    );
+  }, []);
+
+  const markDecision = useCallback(
+    (path: string, decision: "accepted" | "rejected") => {
+      const key = normalizePath(path);
+      if (!key) return;
+      setDiffDecisionByPath((prev) => ({ ...prev, [key]: decision }));
+    },
+    [],
+  );
+
+  const runAcceptFile = useCallback(
+    async (path: string, afterOverride?: string | null) => {
+      if (!projectPath || !api.isTauri()) {
+        setError(tr("changes.needProject"));
+        return;
+      }
+      const key = normalizePath(path);
+      const after =
+        afterOverride ??
+        (typeof diffView?.afterText === "string" ? diffView.afterText : null) ??
+        restorableAfterByPath[key] ??
+        null;
+      if (typeof after === "string") {
+        rememberRestorable(path, after);
+      }
+      const plan = planFileAccept({ after });
+      setDiffActionBusy(true);
+      setError(null);
+      try {
+        if (plan.mode === "write_after") {
+          const res = await api.applyFilePatch(projectPath, path, plan.content);
+          if (!res.ok) {
+            setError(
+              tr("changes.actionFailed", {
+                reason: res.reason || "write failed",
+              }),
+            );
+            return;
+          }
+        } else if (plan.mode === "unavailable") {
+          setError(tr("changes.actionUnavailable", { reason: plan.reason }));
+          return;
+        }
+        // keep_current: success with no disk write
+        markDecision(path, "accepted");
+        void refreshWorkspaceStatus();
+      } catch (e) {
+        setError(tr("changes.actionFailed", { reason: String(e) }));
+      } finally {
+        setDiffActionBusy(false);
+      }
+    },
+    [
+      projectPath,
+      diffView,
+      restorableAfterByPath,
+      rememberRestorable,
+      markDecision,
+      refreshWorkspaceStatus,
+      tr,
+    ],
+  );
+
+  const executeRejectFile = useCallback(
+    async (path: string, confirmed: boolean) => {
+      if (!projectPath || !api.isTauri()) {
+        setError(tr("changes.needProject"));
+        return;
+      }
+      const key = normalizePath(path);
+      const after =
+        (typeof diffView?.afterText === "string" ? diffView.afterText : null) ??
+        restorableAfterByPath[key] ??
+        null;
+      if (typeof after === "string") {
+        rememberRestorable(path, after);
+      }
+      const before =
+        typeof diffView?.beforeText === "string" &&
+        normalizePath(diffView.path) === key
+          ? diffView.beforeText
+          : null;
+      const kind = kindForPath(path);
+      const plan = planFileReject({
+        hasGitRepo: workspaceAvailable,
+        kind,
+        before,
+        fileExists: true,
+      });
+      setDiffActionBusy(true);
+      setError(null);
+      try {
+        if (plan.mode === "git") {
+          if (plan.confirmUntracked && !confirmed) {
+            setRejectConfirm({
+              path,
+              name: pathBaseName(path),
+              untracked: true,
+            });
+            return;
+          }
+          const res = await api.gitCheckoutFile(
+            projectPath,
+            path,
+            plan.confirmUntracked && confirmed,
+          );
+          if (res.needsUntrackedConfirm) {
+            setRejectConfirm({
+              path,
+              name: pathBaseName(path),
+              untracked: true,
+            });
+            return;
+          }
+          if (!res.ok) {
+            // Soft-fail non-git / checkout errors → try before write when available
+            const reason = (res.reason || "").toLowerCase();
+            const softGit =
+              reason.includes("not a git") ||
+              reason.includes("git not available") ||
+              reason.includes("not available");
+            if (softGit && typeof before === "string") {
+              const w = await api.applyFilePatch(projectPath, path, before);
+              if (!w.ok) {
+                setError(
+                  tr("changes.actionFailed", {
+                    reason: w.reason || res.reason || "reject failed",
+                  }),
+                );
+                return;
+              }
+            } else {
+              setError(
+                tr("changes.actionFailed", {
+                  reason: res.reason || "reject failed",
+                }),
+              );
+              return;
+            }
+          }
+        } else if (plan.mode === "write_before") {
+          if (!confirmed && needsUntrackedWipeConfirm(kind)) {
+            setRejectConfirm({
+              path,
+              name: pathBaseName(path),
+              untracked: true,
+            });
+            return;
+          }
+          const res = await api.applyFilePatch(
+            projectPath,
+            path,
+            plan.content,
+          );
+          if (!res.ok) {
+            setError(
+              tr("changes.actionFailed", {
+                reason: res.reason || "write failed",
+              }),
+            );
+            return;
+          }
+        } else if (plan.mode === "delete") {
+          if (!confirmed) {
+            setRejectConfirm({
+              path,
+              name: pathBaseName(path),
+              untracked: true,
+            });
+            return;
+          }
+          const res = await api.deleteProjectFile(projectPath, path, true);
+          if (!res.ok) {
+            setError(
+              tr("changes.actionFailed", {
+                reason: res.reason || "delete failed",
+              }),
+            );
+            return;
+          }
+        } else {
+          setError(
+            tr("changes.actionUnavailable", { reason: plan.reason }),
+          );
+          return;
+        }
+        markDecision(path, "rejected");
+        setRejectConfirm(null);
+        void refreshWorkspaceStatus();
+        // Refresh diff preview after reject
+        if (diffView && normalizePath(diffView.path) === key) {
+          setDiffView((prev) =>
+            prev
+              ? {
+                  ...prev,
+                  afterText:
+                    typeof before === "string" ? before : prev.afterText,
+                  unified: null,
+                  source: "after",
+                }
+              : prev,
+          );
+        }
+      } catch (e) {
+        setError(tr("changes.actionFailed", { reason: String(e) }));
+      } finally {
+        setDiffActionBusy(false);
+      }
+    },
+    [
+      projectPath,
+      diffView,
+      restorableAfterByPath,
+      kindForPath,
+      workspaceAvailable,
+      rememberRestorable,
+      markDecision,
+      refreshWorkspaceStatus,
+      tr,
+    ],
+  );
+
+  const requestRejectFile = useCallback(
+    (path: string) => {
+      const kind = kindForPath(path);
+      // Confirm all rejects; untracked wipe gets a stronger copy.
+      setRejectConfirm({
+        path,
+        name: pathBaseName(path),
+        untracked: needsUntrackedWipeConfirm(kind),
+      });
+    },
+    [kindForPath],
+  );
+
+  const runRestoreFile = useCallback(
+    async (path: string) => {
+      if (!projectPath || !api.isTauri()) {
+        setError(tr("changes.needProject"));
+        return;
+      }
+      const key = normalizePath(path);
+      const after =
+        restorableAfterByPath[key] ??
+        (typeof diffView?.afterText === "string" ? diffView.afterText : null);
+      const plan = planFileRestore({ after });
+      if (plan.mode !== "write_after") {
+        setError(
+          tr("changes.actionUnavailable", {
+            reason: plan.mode === "unavailable" ? plan.reason : "no snapshot",
+          }),
+        );
+        return;
+      }
+      setDiffActionBusy(true);
+      setError(null);
+      try {
+        const res = await api.applyFilePatch(projectPath, path, plan.content);
+        if (!res.ok) {
+          setError(
+            tr("changes.actionFailed", {
+              reason: res.reason || "restore failed",
+            }),
+          );
+          return;
+        }
+        markDecision(path, "accepted");
+        void refreshWorkspaceStatus();
+      } catch (e) {
+        setError(tr("changes.actionFailed", { reason: String(e) }));
+      } finally {
+        setDiffActionBusy(false);
+      }
+    },
+    [
+      projectPath,
+      restorableAfterByPath,
+      diffView,
+      markDecision,
+      refreshWorkspaceStatus,
+      tr,
+    ],
+  );
+
+  /** Parsed hunks when unified text is available (for per-hunk actions). */
+  const diffHunks: UnifiedHunk[] = useMemo(() => {
+    if (!diffView?.unified) return [];
+    return parseUnifiedDiff(diffView.unified).hunks;
+  }, [diffView?.unified]);
+
+  const runAcceptHunk = useCallback(
+    async (hunkIndex: number) => {
+      if (!projectPath || !api.isTauri() || !diffView) return;
+      const before =
+        typeof diffView.beforeText === "string" ? diffView.beforeText : null;
+      if (before == null || diffHunks.length === 0) {
+        setError(
+          tr("changes.actionUnavailable", {
+            reason: "hunk apply needs before snapshot",
+          }),
+        );
+        return;
+      }
+      const result = applySelectedHunks(before, diffHunks, [hunkIndex]);
+      if (!result.ok) {
+        setError(tr("changes.actionFailed", { reason: result.error }));
+        return;
+      }
+      // If other hunks should stay applied, start from full after and only
+      // re-apply is wrong — accept one hunk from original means original+hunk.
+      // When working tree already has all hunks, accepting one is keep_current
+      // for that hunk. Prefer: write original+selected only when rejecting rest
+      // is not desired. File-level accept is primary; hunk accept applies just
+      // that hunk onto before (partial accept).
+      setDiffActionBusy(true);
+      try {
+        const res = await api.applyFilePatch(
+          projectPath,
+          diffView.path,
+          result.content,
+        );
+        if (!res.ok) {
+          setError(
+            tr("changes.actionFailed", {
+              reason: res.reason || "hunk write failed",
+            }),
+          );
+          return;
+        }
+        rememberRestorable(diffView.path, result.content);
+        void refreshWorkspaceStatus();
+      } catch (e) {
+        setError(tr("changes.actionFailed", { reason: String(e) }));
+      } finally {
+        setDiffActionBusy(false);
+      }
+    },
+    [
+      projectPath,
+      diffView,
+      diffHunks,
+      rememberRestorable,
+      refreshWorkspaceStatus,
+      tr,
+    ],
+  );
+
+  const runRejectHunk = useCallback(
+    async (hunkIndex: number) => {
+      if (!projectPath || !api.isTauri() || !diffView) return;
+      const current =
+        typeof diffView.afterText === "string" ? diffView.afterText : null;
+      if (current == null || diffHunks.length === 0) {
+        setError(
+          tr("changes.actionUnavailable", {
+            reason: "hunk reject needs after snapshot",
+          }),
+        );
+        return;
+      }
+      rememberRestorable(diffView.path, current);
+      const result = rejectSelectedHunks(current, diffHunks, [hunkIndex]);
+      if (!result.ok) {
+        setError(tr("changes.actionFailed", { reason: result.error }));
+        return;
+      }
+      setDiffActionBusy(true);
+      try {
+        const res = await api.applyFilePatch(
+          projectPath,
+          diffView.path,
+          result.content,
+        );
+        if (!res.ok) {
+          setError(
+            tr("changes.actionFailed", {
+              reason: res.reason || "hunk write failed",
+            }),
+          );
+          return;
+        }
+        setDiffView((prev) =>
+          prev
+            ? {
+                ...prev,
+                afterText: result.content,
+                unified:
+                  typeof prev.beforeText === "string"
+                    ? buildUnifiedDiff(
+                        pathRelativeToProject(prev.path, projectPath) ||
+                          prev.name,
+                        prev.beforeText,
+                        result.content,
+                      )
+                    : prev.unified,
+              }
+            : prev,
+        );
+        void refreshWorkspaceStatus();
+      } catch (e) {
+        setError(tr("changes.actionFailed", { reason: String(e) }));
+      } finally {
+        setDiffActionBusy(false);
+      }
+    },
+    [
+      projectPath,
+      diffView,
+      diffHunks,
+      rememberRestorable,
+      refreshWorkspaceStatus,
+      tr,
+    ],
+  );
 
   const showSidePanel = (mode: SideMode) => {
     // Plan mode uses full-width review (no side tree).
@@ -1622,6 +2098,14 @@ export function ResourceViewer({
         typeof diffView.afterText === "string";
       const showSplit = diffLayout === "split" && hasSplitSides;
 
+      const pathKey = normalizePath(diffView.path);
+      const decision = pathKey ? diffDecisionByPath[pathKey] : undefined;
+      const canRestore =
+        !!pathKey &&
+        (typeof restorableAfterByPath[pathKey] === "string" ||
+          typeof diffView.afterText === "string");
+      const tauriReady = !!projectPath && api.isTauri();
+
       const toolbar = (
         <div className="rp-diff-toolbar" role="toolbar" aria-label={tr("changes.title")}>
           <span className="rp-diff-toolbar__name" title={diffView.path}>
@@ -1629,6 +2113,16 @@ export function ResourceViewer({
           </span>
           {srcLabel ? (
             <span className="rp-diff-toolbar__source">{srcLabel}</span>
+          ) : null}
+          {decision === "accepted" ? (
+            <span className="rp-diff-toolbar__decision is-accept">
+              {tr("changes.acceptDone")}
+            </span>
+          ) : null}
+          {decision === "rejected" ? (
+            <span className="rp-diff-toolbar__decision is-reject">
+              {tr("changes.rejectDone")}
+            </span>
           ) : null}
           <span className="rp-diff-toolbar__spacer" />
           {hasSplitSides ? (
@@ -1657,6 +2151,44 @@ export function ResourceViewer({
               </button>
             </div>
           ) : null}
+          <div className="rp-diff-toolbar__actions" role="group">
+            <Tip label={tr("changes.acceptTip")}>
+              <button
+                type="button"
+                className="chrome-btn rp-diff-action rp-diff-action--accept"
+                disabled={!tauriReady || diffActionBusy}
+                onClick={() => void runAcceptFile(diffView.path)}
+                aria-label={tr("changes.accept")}
+                data-testid="changes-accept"
+              >
+                <IconCheck size={14} />
+              </button>
+            </Tip>
+            <Tip label={tr("changes.rejectTip")}>
+              <button
+                type="button"
+                className="chrome-btn rp-diff-action rp-diff-action--reject"
+                disabled={!tauriReady || diffActionBusy}
+                onClick={() => requestRejectFile(diffView.path)}
+                aria-label={tr("changes.reject")}
+                data-testid="changes-reject"
+              >
+                <IconClose size={14} />
+              </button>
+            </Tip>
+            <Tip label={tr("changes.restoreTip")}>
+              <button
+                type="button"
+                className="chrome-btn rp-diff-action rp-diff-action--restore"
+                disabled={!tauriReady || diffActionBusy || !canRestore}
+                onClick={() => void runRestoreFile(diffView.path)}
+                aria-label={tr("changes.restore")}
+                data-testid="changes-restore"
+              >
+                <IconRewind size={14} />
+              </button>
+            </Tip>
+          </div>
           <Tip label={tr("changes.openFile")}>
             <button
               type="button"
@@ -1700,10 +2232,53 @@ export function ResourceViewer({
         </div>
       );
 
+      const hunkBar =
+        diffHunks.length > 0 &&
+        typeof diffView.beforeText === "string" &&
+        typeof diffView.afterText === "string" ? (
+          <div
+            className="rp-diff-hunks"
+            role="toolbar"
+            aria-label={tr("changes.hunks")}
+          >
+            <span className="rp-diff-hunks__label">{tr("changes.hunks")}</span>
+            {diffHunks.map((h, idx) => (
+              <div key={`${h.header}-${idx}`} className="rp-diff-hunks__row">
+                <span className="rp-diff-hunks__name" title={h.header}>
+                  {tr("changes.hunkLabel", { n: String(idx + 1) })}
+                </span>
+                <Tip label={tr("changes.acceptHunkTip")}>
+                  <button
+                    type="button"
+                    className="chrome-btn rp-diff-action rp-diff-action--accept"
+                    disabled={!tauriReady || diffActionBusy}
+                    onClick={() => void runAcceptHunk(idx)}
+                    aria-label={tr("changes.acceptHunk")}
+                  >
+                    <IconCheck size={12} />
+                  </button>
+                </Tip>
+                <Tip label={tr("changes.rejectHunkTip")}>
+                  <button
+                    type="button"
+                    className="chrome-btn rp-diff-action rp-diff-action--reject"
+                    disabled={!tauriReady || diffActionBusy}
+                    onClick={() => void runRejectHunk(idx)}
+                    aria-label={tr("changes.rejectHunk")}
+                  >
+                    <IconClose size={12} />
+                  </button>
+                </Tip>
+              </div>
+            ))}
+          </div>
+        ) : null;
+
       if (showSplit) {
         return (
           <div className="rp-diff-host">
             {toolbar}
+            {hunkBar}
             <div className="rp-diff-split">
               <div className="rp-diff-split__pane">
                 <div className="rp-diff-split__label">
@@ -1734,6 +2309,7 @@ export function ResourceViewer({
         return (
           <div className="rp-diff-host">
             {toolbar}
+            {hunkBar}
             <CodePreview
               code={diffView.unified}
               fileName={`${diffView.name}.diff`}
@@ -2028,7 +2604,7 @@ export function ResourceViewer({
             labels={{
               viewImage: tr("image.view"),
               copyImage: tr("image.copy"),
-              reveal: tr("attach.reveal"),
+              reveal: revealInOsLabel(tr),
               copyPath: tr("attach.copyPath"),
             }}
           />
@@ -2137,6 +2713,16 @@ export function ResourceViewer({
     saveActiveFile,
     revertActiveDraft,
     toggleActiveEditMode,
+    projectPath,
+    diffDecisionByPath,
+    restorableAfterByPath,
+    diffActionBusy,
+    diffHunks,
+    runAcceptFile,
+    requestRejectFile,
+    runRestoreFile,
+    runAcceptHunk,
+    runRejectHunk,
   ]);
 
   // No project and no open tabs → empty; allow absolute/url tabs without a project.
@@ -2274,11 +2860,12 @@ export function ResourceViewer({
               }}
               onOpenError={(e) => setError(e)}
               compact
+              platform={detectAppPlatform()}
               labels={{
                 openLocation: tr("main.openLocation"),
                 openHint: tr("main.openLocationHint"),
                 openMenu: tr("main.openLocationMenu"),
-                finder: tr("resources.revealFolder"),
+                finder: revealInOsLabel(tr),
                 systemDefault: tr("resources.openDefault"),
                 copyPath: tr("attach.copyPath"),
               }}
@@ -2705,6 +3292,51 @@ export function ResourceViewer({
                                 </span>
                               </button>
                               <div className="rp-changes-row__actions">
+                                <Tip label={tr("changes.acceptTip")}>
+                                  <button
+                                    type="button"
+                                    className="chrome-btn rp-diff-action rp-diff-action--accept"
+                                    disabled={
+                                      !projectPath ||
+                                      !api.isTauri() ||
+                                      diffActionBusy
+                                    }
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      void runAcceptFile(
+                                        c.path,
+                                        typeof c.after === "string"
+                                          ? c.after
+                                          : null,
+                                      );
+                                    }}
+                                    aria-label={tr("changes.accept")}
+                                  >
+                                    <IconCheck size={13} />
+                                  </button>
+                                </Tip>
+                                <Tip label={tr("changes.rejectTip")}>
+                                  <button
+                                    type="button"
+                                    className="chrome-btn rp-diff-action rp-diff-action--reject"
+                                    disabled={
+                                      !projectPath ||
+                                      !api.isTauri() ||
+                                      diffActionBusy
+                                    }
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      // Prefer session after snapshot for restore later
+                                      if (typeof c.after === "string") {
+                                        rememberRestorable(c.path, c.after);
+                                      }
+                                      requestRejectFile(c.path);
+                                    }}
+                                    aria-label={tr("changes.reject")}
+                                  >
+                                    <IconClose size={13} />
+                                  </button>
+                                </Tip>
                                 <Tip label={tr("changes.openFile")}>
                                   <button
                                     type="button"
@@ -2781,6 +3413,20 @@ export function ResourceViewer({
                             {workspaceBranch}
                           </span>
                         ) : null}
+                        {onShip && workspaceAvailable && workspaceBranch ? (
+                          <Tip label={tr("composer.worktreeShipTip")}>
+                            <button
+                              type="button"
+                              className="chrome-btn rp-changes-section__ship"
+                              onClick={() => onShip()}
+                              aria-label={tr("composer.worktreeShip")}
+                              data-testid="changes-workspace-ship"
+                            >
+                              <IconUpload size={13} />
+                              <span>{tr("composer.worktreeShip")}</span>
+                            </button>
+                          </Tip>
+                        ) : null}
                       </div>
                       {workspaceLoading && workspaceFiles.length === 0 ? (
                         <div className="rp-changes-section__empty">
@@ -2854,6 +3500,42 @@ export function ResourceViewer({
                                 </span>
                               </button>
                               <div className="rp-changes-row__actions">
+                                <Tip label={tr("changes.acceptTip")}>
+                                  <button
+                                    type="button"
+                                    className="chrome-btn rp-diff-action rp-diff-action--accept"
+                                    disabled={
+                                      !projectPath ||
+                                      !api.isTauri() ||
+                                      diffActionBusy
+                                    }
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      void runAcceptFile(abs || w.path);
+                                    }}
+                                    aria-label={tr("changes.accept")}
+                                  >
+                                    <IconCheck size={13} />
+                                  </button>
+                                </Tip>
+                                <Tip label={tr("changes.rejectTip")}>
+                                  <button
+                                    type="button"
+                                    className="chrome-btn rp-diff-action rp-diff-action--reject"
+                                    disabled={
+                                      !projectPath ||
+                                      !api.isTauri() ||
+                                      diffActionBusy
+                                    }
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      requestRejectFile(abs || w.path);
+                                    }}
+                                    aria-label={tr("changes.reject")}
+                                  >
+                                    <IconClose size={13} />
+                                  </button>
+                                </Tip>
                                 <Tip label={tr("changes.openFile")}>
                                   <button
                                     type="button"
@@ -3041,6 +3723,52 @@ export function ResourceViewer({
         }
       >
         <p className="rp-modal-copy">{tr("resources.discardBody")}</p>
+      </GlassModal>
+
+      <GlassModal
+        open={!!rejectConfirm}
+        onClose={() => setRejectConfirm(null)}
+        title={
+          rejectConfirm?.untracked
+            ? tr("changes.rejectConfirmUntrackedTitle")
+            : tr("changes.rejectConfirmTitle")
+        }
+        size="sm"
+        closeLabel={tr("common.close")}
+        footer={
+          <>
+            <button
+              type="button"
+              className="btn btn--ghost"
+              onClick={() => setRejectConfirm(null)}
+              disabled={diffActionBusy}
+            >
+              {tr("common.cancel")}
+            </button>
+            <button
+              type="button"
+              className="btn btn--solid btn--danger"
+              data-testid="changes-reject-confirm"
+              disabled={diffActionBusy}
+              onClick={() => {
+                const p = rejectConfirm?.path;
+                if (p) void executeRejectFile(p, true);
+              }}
+            >
+              {diffActionBusy
+                ? tr("changes.actionBusy")
+                : tr("changes.rejectConfirmAction")}
+            </button>
+          </>
+        }
+      >
+        <p className="rp-modal-copy">
+          {rejectConfirm?.untracked
+            ? tr("changes.rejectConfirmUntrackedBody", {
+                name: rejectConfirm.name,
+              })
+            : tr("changes.rejectConfirmBody")}
+        </p>
       </GlassModal>
     </div>
   );

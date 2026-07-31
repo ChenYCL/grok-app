@@ -513,6 +513,17 @@ fn run_grok_headless(
         .arg(schema)
         .arg("--output-format")
         .arg("json");
+    // Headless background-wait policy (CLI 0.2.117+); soft-fail older builds.
+    {
+        let settings = crate::store::load_settings();
+        let ver = crate::cli_probe::read_version_of(std::path::Path::new(cli_path));
+        for a in crate::acp_client::background_wait_spawn_flags_from_settings(
+            &settings,
+            ver.as_deref(),
+        ) {
+            cmd.arg(a);
+        }
+    }
     if let Some(dir) = cwd {
         cmd.current_dir(dir);
     }

@@ -22,6 +22,7 @@ const rows = [
     title: "CLI import polish",
     cwd: null,
     alreadyLinked: false,
+    firstPrompt: "please polish the import UX for sessions",
   },
 ];
 
@@ -47,6 +48,11 @@ describe("filterCliSessions", () => {
   it("matches cwd when present", () => {
     expect(filterCliSessions(rows, "grok-app")).toEqual([rows[1]]);
     expect(filterCliSessions(rows, "/users/me/code/app")).toEqual([rows[0]]);
+  });
+
+  it("matches first prompt when present", () => {
+    expect(filterCliSessions(rows, "polish the import")).toEqual([rows[2]]);
+    expect(filterCliSessions(rows, "IMPORT UX")).toEqual([rows[2]]);
   });
 
   it("returns empty array when nothing matches", () => {

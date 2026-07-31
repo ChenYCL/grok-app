@@ -176,6 +176,10 @@ export function resolveFileToken(
     if (opts?.pathMap) {
       const bare = pathBasename(norm);
       if (opts.pathMap[bare]) return opts.pathMap[bare]!;
+      // Never invent sibling paths for media. A lone agent `images/1.jpg`
+      // attachment must not imply `images/foo.png` exists — that produced
+      // broken ImageUi cards for workspace basenames after session reload.
+      if (isMediaPath(norm)) return null;
       const parent = uniqueParentDirFromPathMap(opts.pathMap);
       if (parent) return `${parent}/${bare}`;
     }

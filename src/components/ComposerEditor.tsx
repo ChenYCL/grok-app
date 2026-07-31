@@ -239,6 +239,8 @@ export type ComposerEditorProps = {
   onChange: (stored: string) => void;
   disabled?: boolean;
   placeholder?: string;
+  /** Accessible name for the contenteditable (screen readers). */
+  "aria-label"?: string;
   className?: string;
   /** Browser spellcheck on the contenteditable root. Default false. */
   spellCheck?: boolean;
@@ -263,6 +265,7 @@ export function ComposerEditor({
   onChange,
   disabled,
   placeholder,
+  "aria-label": ariaLabel,
   className,
   spellCheck,
   onKeyDown,
@@ -547,6 +550,7 @@ export function ComposerEditor({
         spellCheck={spellCheck ?? false}
         role="textbox"
         aria-multiline
+        aria-label={ariaLabel}
         aria-placeholder={placeholder}
         data-placeholder={placeholder}
         suppressContentEditableWarning

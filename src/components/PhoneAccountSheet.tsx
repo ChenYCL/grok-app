@@ -4,9 +4,10 @@
  * crowd the 390px top bar. Desktop never mounts this.
  */
 
-import { useEffect, useId } from "react";
+import { useEffect, useId, useRef } from "react";
 import { createPortal } from "react-dom";
 import { IconClose, IconPanelRight, IconUser } from "@/components/icons";
+import { installDialogFocus } from "@/lib/a11yFocus";
 
 export type PhoneAccountSheetProps = {
   open: boolean;
@@ -39,18 +40,19 @@ export function PhoneAccountSheet({
   onOpenFiles,
 }: PhoneAccountSheetProps) {
   const titleId = useId();
+  const panelRef = useRef<HTMLDivElement>(null);
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
 
   useEffect(() => {
     if (!open) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        e.preventDefault();
-        onClose();
-      }
-    };
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, [open, onClose]);
+    return installDialogFocus(() => panelRef.current, {
+      onEscape: () => onCloseRef.current(),
+      capture: true,
+      initialFocus: "first",
+      restoreFocus: true,
+    });
+  }, [open]);
 
   if (!open || typeof document === "undefined") return null;
 
@@ -63,6 +65,7 @@ export function PhoneAccountSheet({
         onClick={onClose}
       />
       <div
+        ref={panelRef}
         className="phone-sheet__panel phone-sheet__panel--account"
         role="dialog"
         aria-modal="true"

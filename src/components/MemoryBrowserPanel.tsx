@@ -1,13 +1,39 @@
 /**
  * Settings → Agent: browse on-disk Grok Build workspace memory files.
  * When experimental memory is off, shows an honest empty state.
+ * Client-side search + kind chips filter the host list (preview stays redacted).
+ * Host list + content search under GROK_HOME/memory (capped, path-scoped).
+ * Previews/snippets redact likely secrets. Open / reveal / delete per file.
  */
 import { useCallback, useEffect, useMemo, useState } from "react";
 import * as api from "@/lib/api";
-import type { MemoryFileEntry } from "@/lib/api";
+import type { MemoryFileEntry, MemorySearchHit } from "@/lib/api";
 import { createT, type Locale, type MessageKey } from "@/i18n";
 import { GlassModal } from "@/components/GlassModal";
-import { IconRefresh, IconTrash } from "@/components/icons";
+import {
+  IconExternalLink,
+  IconFolder,
+  IconRefresh,
+  IconTrash,
+} from "@/components/icons";
+import {
+  MEMORY_BROWSER_KIND_FILTERS,
+  countMemoryEntriesByKind,
+  filterMemoryEntries,
+  hasActiveMemoryBrowserFilters,
+  normalizeMemoryBrowserKind,
+  type MemoryBrowserKindFilter,
+} from "@/lib/memoryBrowserFilter";
+import {
+  MEMORY_SEARCH_DEBOUNCE_MS,
+  mergeMemoryBrowserRows,
+  shouldRunMemoryContentSearch,
+  type MemoryBrowserRow,
+} from "@/lib/memoryBrowserSearch";
+import {
+  describeSearchModes,
+  isEmbeddingConfigured,
+} from "@/lib/memoryEmbedConfig";
 
 function formatSize(n: number): string {
   if (!Number.isFinite(n) || n < 0) return "—";
@@ -29,7 +55,7 @@ function formatMtime(ms: number, locale: Locale): string {
 }
 
 function kindLabelKey(kind: string): MessageKey {
-  switch (kind) {
+  switch (normalizeMemoryBrowserKind(kind)) {
     case "global":
       return "settings.memoryBrowser.kind.global";
     case "workspace":
@@ -41,6 +67,11 @@ function kindLabelKey(kind: string): MessageKey {
     default:
       return "settings.memoryBrowser.kind.other";
   }
+}
+
+function kindFilterLabelKey(filter: MemoryBrowserKindFilter): MessageKey {
+  if (filter === "all") return "settings.memoryBrowser.kind.all";
+  return kindLabelKey(filter);
 }
 
 export function MemoryBrowserPanel({
@@ -64,10 +95,20 @@ export function MemoryBrowserPanel({
   const [memoryRoot, setMemoryRoot] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [filter, setFilter] = useState("");
+  const [query, setQuery] = useState("");
+  const [kindFilter, setKindFilter] = useState<MemoryBrowserKindFilter>("all");
+  const [debouncedFilter, setDebouncedFilter] = useState("");
+  const [searchHits, setSearchHits] = useState<MemorySearchHit[]>([]);
+  const [searching, setSearching] = useState(false);
+  const [searchTruncated, setSearchTruncated] = useState(false);
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set());
   const [deleteTarget, setDeleteTarget] = useState<MemoryFileEntry | null>(null);
   const [deleteBusy, setDeleteBusy] = useState(false);
+  const [actionBusyPath, setActionBusyPath] = useState<string | null>(null);
+  const [embedConfigured, setEmbedConfigured] = useState<boolean | null>(null);
+  const [cliSearchMode, setCliSearchMode] = useState<"hybrid" | "keyword">(
+    "keyword",
+  );
 
   const cwd = (projectPath || "").trim() || null;
 
@@ -76,6 +117,8 @@ export function MemoryBrowserPanel({
       setEntries([]);
       setError(null);
       setLoading(false);
+      setSearchHits([]);
+      setSearchTruncated(false);
       return;
     }
     if (!api.isTauri()) {
@@ -101,14 +144,101 @@ export function MemoryBrowserPanel({
     void load();
   }, [load]);
 
-  const filtered = useMemo(() => {
-    const q = filter.trim().toLowerCase();
-    if (!q) return entries;
-    return entries.filter((e) => {
-      const hay = `${e.name} ${e.relativePath} ${e.kind} ${e.preview}`.toLowerCase();
-      return hay.includes(q);
-    });
-  }, [entries, filter]);
+  // Soft-probe embedding status for honest search-mode badge (never invents vectors).
+  useEffect(() => {
+    if (!experimentalMemory || !api.isTauri()) {
+      setEmbedConfigured(null);
+      setCliSearchMode("keyword");
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      try {
+        const snap = await api.memoryEmbedConfigGet();
+        if (cancelled) return;
+        setEmbedConfigured(isEmbeddingConfigured(snap));
+        setCliSearchMode(describeSearchModes(snap).cli);
+      } catch {
+        if (cancelled) return;
+        setEmbedConfigured(null);
+        setCliSearchMode("keyword");
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [experimentalMemory]);
+
+  const filtered = useMemo(
+    () => filterMemoryEntries(entries, { query, kind: kindFilter }),
+    [entries, query, kindFilter],
+  );
+  const kindCounts = useMemo(() => countMemoryEntriesByKind(entries), [entries]);
+  const activeFilters = hasActiveMemoryBrowserFilters({
+    query,
+    kind: kindFilter,
+  });
+  const isEmptyCatalog = entries.length === 0;
+  const isEmptyFilter = !isEmptyCatalog && filtered.length === 0;
+
+  const clearFilters = () => {
+    setQuery("");
+    setKindFilter("all");
+    setDebouncedFilter("");
+  };
+  // Debounce free-text before host content search.
+  useEffect(() => {
+    const id = window.setTimeout(() => {
+      setDebouncedFilter(query);
+    }, MEMORY_SEARCH_DEBOUNCE_MS);
+    return () => window.clearTimeout(id);
+  }, [query]);
+
+  // Host content search (path-scoped, capped, redacted snippets).
+  useEffect(() => {
+    if (!experimentalMemory || !api.isTauri()) {
+      setSearchHits([]);
+      setSearchTruncated(false);
+      setSearching(false);
+      return;
+    }
+    if (!shouldRunMemoryContentSearch(debouncedFilter)) {
+      setSearchHits([]);
+      setSearchTruncated(false);
+      setSearching(false);
+      return;
+    }
+    let cancelled = false;
+    setSearching(true);
+    void (async () => {
+      try {
+        const res = await api.memorySearch({
+          query: debouncedFilter.trim(),
+          cwd,
+          limit: 50,
+        });
+        if (cancelled) return;
+        setSearchHits(res.hits ?? []);
+        setSearchTruncated(!!res.truncated);
+      } catch (e) {
+        if (cancelled) return;
+        // Keep list filter usable; surface error without wiping entries.
+        setSearchHits([]);
+        setSearchTruncated(false);
+        setError(String(e));
+      } finally {
+        if (!cancelled) setSearching(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [cwd, debouncedFilter, experimentalMemory]);
+
+  const rows: MemoryBrowserRow[] = useMemo(
+    () => mergeMemoryBrowserRows(entries, searchHits, query),
+    [entries, searchHits, query],
+  );
 
   const toggleExpand = (path: string) => {
     setExpanded((prev) => {
@@ -121,10 +251,12 @@ export function MemoryBrowserPanel({
 
   const runDelete = async () => {
     if (!deleteTarget || deleteBusy) return;
+    const deletedPath = deleteTarget.path;
     setDeleteBusy(true);
     try {
-      await api.memoryDeleteFile(deleteTarget.path);
+      await api.memoryDeleteFile(deletedPath);
       setDeleteTarget(null);
+      setSearchHits((prev) => prev.filter((h) => h.path !== deletedPath));
       await load();
     } catch (e) {
       setError(String(e));
@@ -132,6 +264,33 @@ export function MemoryBrowserPanel({
       setDeleteBusy(false);
     }
   };
+
+  const openFile = async (path: string) => {
+    if (!api.isTauri() || actionBusyPath) return;
+    setActionBusyPath(path);
+    try {
+      await api.pathOpen(path);
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setActionBusyPath(null);
+    }
+  };
+
+  const revealFile = async (path: string) => {
+    if (!api.isTauri() || actionBusyPath) return;
+    setActionBusyPath(path);
+    try {
+      await api.pathReveal(path);
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setActionBusyPath(null);
+    }
+  };
+
+  const queryActive = shouldRunMemoryContentSearch(query);
+  const showTruncated = queryActive && searchTruncated && rows.length > 0;
 
   return (
     <div
@@ -143,22 +302,103 @@ export function MemoryBrowserPanel({
         <div className="settings-row__desc">{t("settings.memoryBrowserDesc")}</div>
       </div>
 
+      {experimentalMemory ? (
+        <div
+          className="settings-memory-browser__embed-status"
+          style={{
+            display: "flex",
+            flexWrap: "wrap",
+            gap: 8,
+            alignItems: "center",
+            marginBottom: 8,
+          }}
+        >
+          <span className="ext-badge ext-badge--muted">
+            {t("settings.memoryBrowser.searchMode.appKeyword")}
+          </span>
+          {embedConfigured === true ? (
+            <span className="ext-badge">
+              {t("settings.memoryBrowser.searchMode.cliHybrid")}
+            </span>
+          ) : embedConfigured === false ? (
+            <span className="ext-badge ext-badge--muted">
+              {t("settings.memoryBrowser.searchMode.cliKeyword")}
+            </span>
+          ) : null}
+          {cliSearchMode === "keyword" && embedConfigured === false ? (
+            <span className="ext-field-hint" style={{ margin: 0 }}>
+              {t("settings.memoryBrowser.embedUnsetHint")}
+            </span>
+          ) : null}
+          <a
+            href="#settings-anchor-memoryEmbed"
+            className="btn btn--ghost btn--sm"
+            onClick={(e) => {
+              e.preventDefault();
+              const el = document.getElementById("settings-anchor-memoryEmbed");
+              el?.scrollIntoView({ behavior: "smooth", block: "start" });
+            }}
+          >
+            {t("settings.memoryBrowser.openEmbedSettings")}
+          </a>
+        </div>
+      ) : null}
+
       {!experimentalMemory ? (
         <p className="ext-field-hint settings-memory-browser__empty">
           {t("settings.memoryBrowser.off")}
         </p>
       ) : (
         <>
+          <div
+            className="settings-memory-browser__chips"
+            role="tablist"
+            aria-label={t("settings.memoryBrowser.kindFilterLabel")}
+          >
+            {MEMORY_BROWSER_KIND_FILTERS.map((id) => {
+              const n = kindCounts[id];
+              // Hide zero-count kind chips except "all" and the active selection.
+              if (id !== "all" && n === 0 && kindFilter !== id) return null;
+              return (
+                <button
+                  key={id}
+                  type="button"
+                  role="tab"
+                  aria-selected={kindFilter === id}
+                  className={
+                    "settings-memory-browser__chip" +
+                    (kindFilter === id ? " is-active" : "")
+                  }
+                  onClick={() => setKindFilter(id)}
+                >
+                  <span>{t(kindFilterLabelKey(id))}</span>
+                  <span className="settings-memory-browser__chip-count">{n}</span>
+                </button>
+              );
+            })}
+          </div>
+
           <div className="settings-memory-browser__toolbar">
             <input
               type="search"
               className="settings-input settings-memory-browser__search"
-              value={filter}
-              onChange={(e) => setFilter(e.target.value)}
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
               placeholder={t("settings.memoryBrowser.searchPlaceholder")}
               aria-label={t("settings.memoryBrowser.searchPlaceholder")}
+              autoComplete="off"
+              spellCheck={false}
             />
             <div className="settings-memory-browser__actions">
+              {activeFilters ? (
+                <button
+                  type="button"
+                  className="btn btn--ghost btn--sm"
+                  onClick={clearFilters}
+                >
+                  <span>{t("settings.memoryBrowser.clearFilters")}</span>
+                </button>
+              ) : null}
               <button
                 type="button"
                 className="btn btn--ghost btn--sm"
@@ -196,6 +436,18 @@ export function MemoryBrowserPanel({
             <p className="ext-field-hint">{t("settings.memoryBrowser.noProject")}</p>
           ) : null}
 
+          {queryActive && searching ? (
+            <p className="ext-field-hint" aria-live="polite">
+              {t("settings.memoryBrowser.searching")}
+            </p>
+          ) : null}
+
+          {showTruncated ? (
+            <p className="ext-field-hint" role="status">
+              {t("settings.memoryBrowser.searchTruncated")}
+            </p>
+          ) : null}
+
           {error ? (
             <div className="ext-alert ext-alert--error" role="alert">
               <div className="ext-alert__title">{t("settings.memoryBrowser.error")}</div>
@@ -205,27 +457,82 @@ export function MemoryBrowserPanel({
 
           {loading ? (
             <p className="ext-field-hint">{t("settings.memoryBrowser.loading")}</p>
-          ) : filtered.length === 0 ? (
-            <p className="ext-field-hint">{t("settings.memoryBrowser.empty")}</p>
+          ) : isEmptyCatalog ? (
+            <p className="ext-field-hint settings-memory-browser__empty">
+              {t("settings.memoryBrowser.empty")}
+            </p>
+          ) : isEmptyFilter ? (
+            <div className="settings-memory-browser__filter-empty">
+              <p className="ext-field-hint settings-memory-browser__empty">
+                {t("settings.memoryBrowser.filterEmpty")}
+              </p>
+              <p className="ext-field-hint">{t("settings.memoryBrowser.filterEmptyHint")}</p>
+              {activeFilters ? (
+                <button
+                  type="button"
+                  className="btn btn--ghost btn--sm settings-memory-browser__clear-filters"
+                  onClick={clearFilters}
+                >
+                  {t("settings.memoryBrowser.clearFilters")}
+                </button>
+              ) : null}
+            </div>
+          ) : rows.length === 0 ? (
+            <p className="ext-field-hint">
+              {queryActive
+                ? t("settings.memoryBrowser.searchEmpty")
+                : t("settings.memoryBrowser.empty")}
+            </p>
           ) : (
             <ul className="ext-list settings-memory-browser__list">
-              {filtered.map((e) => {
+              {rows.map((e) => {
                 const open = expanded.has(e.path);
                 const canPreview = !!e.preview;
+                const busy = actionBusyPath === e.path;
                 return (
                   <li key={e.path} className="ext-item">
                     <div className="ext-item__head">
                       <span className="ext-item__name" title={e.path}>
                         {e.relativePath || e.name}
                       </span>
-                      <span className="ext-badge ext-badge--muted">{t(kindLabelKey(e.kind))}</span>
+                      <span className="ext-badge ext-badge--muted">
+                        {t(kindLabelKey(e.kind))}
+                      </span>
+                      {e.contentMatch ? (
+                        <span className="ext-badge ext-badge--muted">
+                          {t("settings.memoryBrowser.contentHit")}
+                        </span>
+                      ) : null}
                     </div>
                     <div className="ext-item__meta">
                       {formatSize(e.size)}
                       {e.mtimeMs ? ` · ${formatMtime(e.mtimeMs, locale)}` : ""}
                       {e.workspaceSlug ? ` · ${e.workspaceSlug}` : ""}
                     </div>
+                    {e.snippet ? (
+                      <p className="settings-memory-browser__snippet" title={e.snippet}>
+                        {e.snippet}
+                      </p>
+                    ) : null}
                     <div className="ext-item__actions">
+                      <button
+                        type="button"
+                        className="btn btn--ghost btn--sm"
+                        disabled={busy}
+                        onClick={() => void openFile(e.path)}
+                      >
+                        <IconExternalLink size={13} />
+                        <span>{t("settings.memoryBrowser.open")}</span>
+                      </button>
+                      <button
+                        type="button"
+                        className="btn btn--ghost btn--sm"
+                        disabled={busy}
+                        onClick={() => void revealFile(e.path)}
+                      >
+                        <IconFolder size={13} />
+                        <span>{t("settings.memoryBrowser.reveal")}</span>
+                      </button>
                       {canPreview ? (
                         <button
                           type="button"
@@ -241,7 +548,19 @@ export function MemoryBrowserPanel({
                         type="button"
                         className="btn btn--ghost btn--sm btn--danger"
                         disabled={deleteBusy}
-                        onClick={() => setDeleteTarget(e)}
+                        onClick={() =>
+                          setDeleteTarget({
+                            path: e.path,
+                            name: e.name,
+                            relativePath: e.relativePath,
+                            size: e.size,
+                            mtimeMs: e.mtimeMs,
+                            preview: e.preview,
+                            kind: e.kind,
+                            workspaceSlug: e.workspaceSlug,
+                            matched: e.matched,
+                          })
+                        }
                       >
                         <IconTrash size={13} />
                         <span>{t("settings.memoryBrowser.delete")}</span>

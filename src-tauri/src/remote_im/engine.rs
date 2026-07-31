@@ -9,6 +9,9 @@ use super::control_plane::{
 use super::grok_agent;
 use super::outbound::{self, OutboundRouter};
 use super::projects::{self, load_trusted_projects};
+use super::resilience::{
+    agent_error_user_message, classify_rim_error, rate_limit_user_message, InboundRateLimiter,
+};
 use super::session::SessionStore;
 use super::slash::{self, BuiltinCommand};
 use super::types::{ChannelInstance, IncomingMessage};
@@ -51,6 +54,8 @@ pub struct Engine {
     instances: Arc<Mutex<HashMap<String, ChannelInstance>>>,
     pending: Arc<Mutex<HashMap<String, PendingPick>>>,
     aborts: Arc<Mutex<HashMap<String, bool>>>,
+    /// Soft inbound rate limit (agent turns only; slash/control exempt).
+    rate_limiter: Mutex<InboundRateLimiter>,
     lang: String,
     allow_remote_yolo: bool,
 }
@@ -63,6 +68,7 @@ impl Engine {
             instances: Arc::new(Mutex::new(HashMap::new())),
             pending: Arc::new(Mutex::new(HashMap::new())),
             aborts: Arc::new(Mutex::new(HashMap::new())),
+            rate_limiter: Mutex::new(InboundRateLimiter::default()),
             lang: "zh".into(),
             allow_remote_yolo,
         }
@@ -76,6 +82,7 @@ impl Engine {
             instances: Arc::new(Mutex::new(HashMap::new())),
             pending: Arc::new(Mutex::new(HashMap::new())),
             aborts: Arc::new(Mutex::new(HashMap::new())),
+            rate_limiter: Mutex::new(InboundRateLimiter::default()),
             lang: "zh".into(),
             allow_remote_yolo,
         }
@@ -211,6 +218,23 @@ impl Engine {
             return;
         }
 
+        // Soft inbound rate limit — honest reply, never silent drop.
+        // Drop parking_lot guard before any `.await` (Send + no hold across await).
+        let rate_block = {
+            let mut lim = self.rate_limiter.lock();
+            lim.prune_if_large(4096);
+            lim.try_acquire(&scope).err()
+        };
+        if let Some(retry_after) = rate_block {
+            let t = rate_limit_user_message(&self.lang, retry_after);
+            tracing::warn!(
+                scope = %scope,
+                retry_secs = retry_after.as_secs(),
+                "remote_im: inbound rate limited (honest reply)"
+            );
+            let _ = self.reply_msg(&msg, &t).await;
+            return;
+        }
         tracing::info!("remote_im: agent turn");
         self.run_agent_turn(&msg, &scope, &default_wd, &content).await;
         tracing::info!("remote_im: agent turn done");
@@ -1116,9 +1140,16 @@ impl Engine {
         let had_error = result.error.is_some();
         let text = if let Some(err) = result.error {
             if result.text.is_empty() {
-                format!("Error: {err}")
+                let kind = classify_rim_error(&err);
+                agent_error_user_message(&self.lang, kind, &err)
             } else {
-                result.text
+                // Prefer model text when present; still honest if it looks like a rate limit.
+                let kind = classify_rim_error(&err);
+                if matches!(kind, super::resilience::RimErrorKind::RateLimit) {
+                    agent_error_user_message(&self.lang, kind, &err)
+                } else {
+                    result.text
+                }
             }
         } else if result.text.is_empty() {
             if self.lang == "en" {

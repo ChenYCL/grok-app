@@ -25,7 +25,7 @@ type AccountPanel = "menu" | "key" | "relay";
 
 type Props = {
   tr: Tr;
-  platform: "mac" | "win" | "other";
+  platform: "mac" | "win" | "linux" | "other";
   useCustomWindowChrome: boolean;
   initialCli: SetupCliInfo;
   onComplete: (cli: SetupCliInfo) => void;
@@ -283,6 +283,8 @@ export function SetupWizard({
     setError(null);
     try {
       // Write agent-home config with chosen message format (default Responses).
+      // Host recycles warm agents on setAsDefault so the first workbench send
+      // spawns with the relay (no full app restart — issue #376).
       await api.providersUpsert({
         id: "relay",
         model: "default",
@@ -292,11 +294,22 @@ export function SetupWizard({
         apiBackend: relayBackend || "responses",
         setAsDefault: true,
       });
-      await api.secretsSet({ relayBaseUrl: base, relayApiKey: key });
-      const ping = await api.providersPing({ baseUrl: base, apiKey: key });
-      if (ping && (ping as { ok?: boolean }).ok === false) {
-        setStatusMsg(String((ping as { message?: string }).message || "ping failed"));
-      } else {
+      try {
+        await api.secretsSet({ relayBaseUrl: base, relayApiKey: key });
+      } catch {
+        /* soft-fail: config.toml already holds the key */
+      }
+      try {
+        const ping = await api.providersPing({ baseUrl: base, apiKey: key });
+        if (ping && (ping as { ok?: boolean }).ok === false) {
+          setStatusMsg(
+            String((ping as { message?: string }).message || "ping failed"),
+          );
+        } else {
+          setStatusMsg(tr("setup.account.ok"));
+        }
+      } catch {
+        // Soft-fail ping — still enter workbench; user can fix URL in Settings.
         setStatusMsg(tr("setup.account.ok"));
       }
       setAuthOk(true);

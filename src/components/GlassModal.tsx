@@ -23,7 +23,7 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 import { IconClose } from "@/components/icons";
-import { focusFirst, trapTabKey } from "@/lib/a11yFocus";
+import { installDialogFocus } from "@/lib/a11yFocus";
 
 export type GlassModalSize = "sm" | "md" | "lg";
 
@@ -74,40 +74,23 @@ export function GlassModal({
   const autoId = useId();
   const titleId = titleIdProp || autoId;
   const panelRef = useRef<HTMLDivElement>(null);
-  const prevFocusRef = useRef<HTMLElement | null>(null);
+  // Stable close handler — parent often passes inline onClose; re-running this
+  // effect on every parent render steals focus and makes modals flicker.
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
 
   useEffect(() => {
     if (!open) return;
-    prevFocusRef.current =
-      typeof document !== "undefined"
-        ? (document.activeElement as HTMLElement | null)
-        : null;
-    // After paint so options/inputs exist.
-    const t = window.setTimeout(() => {
-      focusFirst(panelRef.current);
-    }, 0);
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        e.preventDefault();
-        onClose();
-        return;
-      }
-      trapTabKey(e, panelRef.current);
-    };
-    document.addEventListener("keydown", onKey);
-    return () => {
-      window.clearTimeout(t);
-      document.removeEventListener("keydown", onKey);
-      const prev = prevFocusRef.current;
-      if (prev && typeof prev.focus === "function") {
-        try {
-          prev.focus();
-        } catch {
-          /* ignore */
-        }
-      }
-    };
-  }, [open, onClose]);
+    // Shared trap: Tab cycle + Escape + restore previous focus.
+    return installDialogFocus(() => panelRef.current, {
+      onEscape: () => onCloseRef.current(),
+      // Bubble phase so nested capture handlers (permission bar, appDialog)
+      // can still claim Escape first when stacked.
+      capture: false,
+      initialFocus: "first",
+      restoreFocus: true,
+    });
+  }, [open]);
 
   if (!open || typeof document === "undefined") return null;
 

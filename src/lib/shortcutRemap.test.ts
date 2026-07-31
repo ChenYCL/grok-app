@@ -1,8 +1,11 @@
 import { describe, expect, it, beforeEach } from "vitest";
+import { shortcutScope } from "./shortcuts";
 import {
   CHORD_CONFLICT_IGNORE_IDS,
+  DEFAULT_IGNORE_CROSS_SCOPE_CONFLICTS,
   DEFAULT_SHORTCUT_CHORDS,
   REMAPPABLE_SHORTCUT_IDS,
+  SHORTCUT_IGNORE_CROSS_SCOPE_STORAGE_KEY,
   SHORTCUT_REMAP_STORAGE_KEY,
   buildEffectiveChordMap,
   chordFromKeyboardEvent,
@@ -12,10 +15,13 @@ import {
   findChordConflict,
   findChordConflicts,
   formatChordDisplay,
+  loadIgnoreCrossScopeConflicts,
   loadShortcutRemaps,
   normalizeChordString,
   parseChord,
+  parseIgnoreCrossScopeConflicts,
   resetConflictingShortcutRemaps,
+  saveIgnoreCrossScopeConflicts,
   saveShortcutRemaps,
   serializeChord,
   setShortcutRemap,
@@ -313,6 +319,87 @@ describe("findChordConflicts", () => {
       },
     );
     expect(groups).toEqual([{ chord: "mod+x", ids: ["help", "search"] }]);
+  });
+
+  it("optionally ignores cross-scope collisions (global vs chat-focus)", () => {
+    // findInChat is chat-focus; search is global — same chord.
+    const remaps = { findInChat: "mod+k" as const };
+    // Default: still a conflict.
+    expect(findChordConflicts(remaps)).toEqual([
+      { chord: "mod+k", ids: ["findInChat", "search"] },
+    ]);
+    // With ignore + scopeOf: no same-scope multi-id group.
+    expect(
+      findChordConflicts(remaps, DEFAULT_SHORTCUT_CHORDS, {
+        ignoreCrossScope: true,
+        scopeOf: shortcutScope,
+      }),
+    ).toEqual([]);
+    // Same-scope still conflicts (search + help are both global).
+    expect(
+      findChordConflicts(
+        { help: "mod+k" },
+        DEFAULT_SHORTCUT_CHORDS,
+        { ignoreCrossScope: true, scopeOf: shortcutScope },
+      ),
+    ).toEqual([{ chord: "mod+k", ids: ["help", "search"] }]);
+  });
+
+  it("findChordConflict honors ignoreCrossScope with scopeOf", () => {
+    const effective = buildEffectiveChordMap({ findInChat: "mod+k" });
+    // Without opts: findInChat conflicts with search's default.
+    expect(findChordConflict("search", "mod+k", effective)).toBe("findInChat");
+    // With ignore: search (global) may keep mod+k while findInChat also has it.
+    expect(
+      findChordConflict("search", "mod+k", effective, {
+        ignoreCrossScope: true,
+        scopeOf: shortcutScope,
+      }),
+    ).toBeNull();
+    // Same-scope still blocked.
+    expect(
+      findChordConflict("help", "mod+k", effective, {
+        ignoreCrossScope: true,
+        scopeOf: shortcutScope,
+      }),
+    ).toBe("search");
+  });
+
+  it("ignoreCrossScope without scopeOf is a no-op", () => {
+    const groups = findChordConflicts(
+      { findInChat: "mod+k" },
+      DEFAULT_SHORTCUT_CHORDS,
+      { ignoreCrossScope: true },
+    );
+    expect(groups).toEqual([
+      { chord: "mod+k", ids: ["findInChat", "search"] },
+    ]);
+  });
+});
+
+describe("ignore cross-scope conflicts pref", () => {
+  let storage: Storage;
+
+  beforeEach(() => {
+    storage = memoryStorage();
+  });
+
+  it("defaults to false and round-trips", () => {
+    expect(DEFAULT_IGNORE_CROSS_SCOPE_CONFLICTS).toBe(false);
+    expect(loadIgnoreCrossScopeConflicts(storage)).toBe(false);
+    saveIgnoreCrossScopeConflicts(true, storage);
+    expect(storage.getItem(SHORTCUT_IGNORE_CROSS_SCOPE_STORAGE_KEY)).toBe("1");
+    expect(loadIgnoreCrossScopeConflicts(storage)).toBe(true);
+    saveIgnoreCrossScopeConflicts(false, storage);
+    expect(loadIgnoreCrossScopeConflicts(storage)).toBe(false);
+  });
+
+  it("parses known tokens and falls back on junk", () => {
+    expect(parseIgnoreCrossScopeConflicts("1")).toBe(true);
+    expect(parseIgnoreCrossScopeConflicts("true")).toBe(true);
+    expect(parseIgnoreCrossScopeConflicts("0")).toBe(false);
+    expect(parseIgnoreCrossScopeConflicts("nope")).toBe(false);
+    expect(parseIgnoreCrossScopeConflicts(null)).toBe(false);
   });
 });
 

@@ -76,21 +76,63 @@ Per-row trash icon on linked (non-main) entries in the branch menu:
 
 Menu action **Clean stale worktrees…** → GlassModal dry-run preview (`git worktree prune -v --dry-run`), then apply. Optional force → `--expire now`. Does **not** delete live worktrees. Host: `git_worktree_gc`.
 
+### Ship / Open PR
+
+From a worktree-bound session or the branch menu / Changes → Workspace:
+
+1. **Ship…** opens a GlassModal (title, body, draft checkbox, “open PR after push”). Never `window.confirm` / `prompt` / `alert`.
+2. Host runs `git push -u origin HEAD` (`git_push_branch`) with argv only, `GIT_SSH_COMMAND=/usr/bin/ssh` when present, soft-fail when git / origin / non-repo missing.
+3. Optional `gh pr create` (`gh_pr_create`) with `--repo` / `--base` / `--head` inferred from remotes (fork: `upstream` as PR target, `origin` owner as `--head owner:branch`). Soft-fail when `gh` missing. **Never** reports success without a PR URL.
+4. Pure helpers + tests: `src/lib/wtShipFlow.ts`. Output is redacted before UI/toasts.
+
+### CLI worktrees list (`grok worktree list`)
+
+The branch menu also shows a **CLI worktrees** section fed by the Grok Build index (not only `git worktree list`):
+
+```bash
+grok worktree list --json   # preferred
+grok worktree list          # text fallback when --json unsupported
+```
+
+- Host: `cli_worktrees_list` (`src-tauri/src/cli_worktrees.rs`) — soft-fail when CLI missing; optional `--all` / `--repo`.
+- Pure parsers: JSON + text table → `{ id, name, path, branch?, status?, kind?, pathOk, … }` (+ Rust/TS unit tests).
+- UI: section under create/GC actions — **Refresh**, per-row **Reveal**, click row to **open as session cwd** only when `pathOk` (folder exists). Does not replace App create/remove/GC for git-linked trees.
+- Rows are filtered to the active project when `source_repo` / `repo_name` / path slug match; otherwise the full (capped) list is shown.
+
+### CLI worktree DB (`grok worktree db`, 0.2.117+)
+
+Settings → **Runtime → CLI → CLI worktree DB** surfaces the Grok Build worktree index file:
+
+```bash
+grok worktree db path      # print DB path (often ~/.grok/worktrees.db)
+grok worktree db stats     # total / alive / dead / size (text; JSON parse ready)
+grok worktree db rebuild   # filesystem scan → rebuild index
+```
+
+- Host: `cli_worktree_db_path` · `cli_worktree_db_stats` · `cli_worktree_db_rebuild` in `cli_worktrees.rs` — timeout, soft-fail when CLI missing or pre-0.2.117 (unrecognized `db` subcommand).
+- Pure parsers: stats text + optional JSON; rebuild report (`Discovered` / `Registered` / `Already tracked`); Rust + TS unit tests.
+- UI: path (copy / reveal), stats summary, **Rebuild** with in-app confirm (`GlassModal` — never `window.confirm`). Rebuild does not delete worktree folders.
+
 ## Non-goals (MVP)
 
 - Full branch browser / remote fetch / same-directory `git checkout`
 - In-place checkout of an arbitrary local branch without a worktree
 - Apply / merge worktree branch back onto main from the session menu (open folder + remove only)
-- Registering App-created trees into the CLI `worktrees.db` index (git porcelain list is enough for switch/remove)
+- Registering App-created trees into the CLI `worktrees.db` index from create UI (use **CLI worktree DB → Rebuild** to rescan)
+- CLI `worktree rm` / `gc` / `show` from the App (list + open/reveal only; DB path/stats/rebuild are separate)
 
 ## Implementation
 
-- Host: `git_worktrees_list` (includes `cliGrokHome`), `git_worktree_add` (`layout`: `cli` \| `sibling`), `git_worktree_remove`, `git_worktree_gc`, `session_set_worktree` (`src-tauri/src/commands.rs`) — argv only, no shell
+- Host: `git_worktrees_list` (includes `cliGrokHome`), `git_worktree_add` (`layout`: `cli` \| `sibling`), `git_worktree_remove`, `git_worktree_gc`, `git_push_branch`, `gh_pr_create`, `session_set_worktree` (`src-tauri/src/commands.rs`) — argv only, no shell
+- Host: `cli_worktrees_list` (`src-tauri/src/cli_worktrees.rs`) — `grok worktree list [--json]` soft-fail envelope
 - Store: optional `SessionMeta.worktree_path` / `worktree_branch` / `is_worktree_session` (serde defaults; skip empty)
 - Pure path / name helpers: `sanitize_worktree_name`, `sanitize_worktree_ref`, `build_worktree_cli_path`, `build_worktree_sibling_path`, `build_worktree_path_for_layout` (+ unit tests)
 - Frontend pure helpers: `src/lib/gitWorktree.ts` — list/parse + path builders + `resolveSessionWorktreeBadge` / tooltip / layout detect (+ unit tests)
+- Frontend pure helpers: `src/lib/cliWorktrees.ts` — CLI JSON/text parse, project filter, open-as-cwd gate (+ unit tests)
+- Frontend pure helpers: `src/lib/wtShipFlow.ts` — push/PR argv builders, remote/fork head resolve, outcome combine (no fake success) (+ unit tests)
 - UI:
   - Project: `ComposerProjectMenu` (folder only)
-  - Branch / worktree: `ComposerWorktreeMenu` (context bar chip; per-row remove)
-  - Sidebar **CLI** / **WT** badge + session context menu manage actions
-  - Create (layout radios + ref validation) + remove confirm + GC dialogs in `App.tsx`
+  - Branch / worktree: `ComposerWorktreeMenu` (context bar chip; per-row remove; **Ship…**; **CLI worktrees** section)
+  - Sidebar **CLI** / **WT** badge + session context menu manage actions (**Ship…**)
+  - Changes → Workspace: **Ship…** when git branch known
+  - Create (layout radios + ref validation) + remove confirm + GC + Ship dialogs in `App.tsx`

@@ -50,16 +50,51 @@ Spawn：`--reasoning-effort <id>`。无模型级默认时 App 默认 **`medium`*
 2. 中途切换：优先 `set_mode`；失败则 soft-respawn。  
 3. 按 `composerPrefsScope` 记忆。
 
-## 禁用内置工具（disallowed tools）
+## 后台等待（headless，CLI 0.2.117+）
+
+首轮 agent turn 结束后，无头 `grok -p` 默认可等待后台 bash/monitor 与后台子代理完成。
+
+| App 设置 | Spawn | 说明 |
+|----------|-------|------|
+| `backgroundWaitPolicy: "wait"`（默认） | 省略 flag | CLI 默认等待（自带超时） |
+| `backgroundWaitPolicy: "no_wait"` | top-level `--no-wait-for-background` | 首轮结束即退出 |
+| `backgroundWaitPolicy: "timeout"` + `backgroundWaitTimeoutSec` | top-level `--background-wait-timeout N` | N 钳制 **1–3600**（默认 600） |
+
+- 纯 helper：`src/lib/backgroundWaitPolicy.ts`；Host：`acp_client::background_wait_spawn_flags*`。
+- **Soft-fail**：CLI &lt; 0.2.117 或版本不可解析时省略非默认 flag（避免 clap 拒识导致 AGENT_CRASHED）。
+- 生效路径：Remote IM headless、壁纸搜索 headless、ACP `agent stdio` 顶层（效果仍以 headless 语义为主；stdio 下 flag 可接受但主要无操作）。
+- 更改后 soft-respawn（`settings_spawn`）。设置：Settings → General → Agent。
+## 部分流式事件（headless，CLI 0.2.117+）
+
+`--include-partial-messages` 仅在 `--output-format streaming-messages-json` 时生效，输出增量 `stream_event`（text/thinking delta）。
+
+| App 设置 | Spawn | 说明 |
+|----------|-------|------|
+| `includePartialMessages: false`（默认） | 省略 flag；Remote IM 用 `streaming-json` | CLI 默认整消息 |
+| `includePartialMessages: true` | `--output-format streaming-messages-json` + `--include-partial-messages` | 仅 CLI ≥ 0.2.117；更旧 soft-fail（保持 streaming-json、省略 flag） |
+
+- 纯 helper：`src/lib/partialStream.ts`；Host：`acp_client::include_partial_messages_spawn_flags*` / `resolve_headless_stream_for_partial`。
+- **Soft-fail**：CLI &lt; 0.2.117 或版本不可解析时省略 flag，不切换 format。
+- 生效路径：Remote IM headless（`grok -p`）；壁纸等仍用 `json` 时不会发 flag（纯 helper 按 format 门控）。
+- 设置：Settings → Runtime → Pool。
+
+## 内置工具 allowlist / denylist
 
 | App 设置 | Spawn | 说明 |
 |----------|-------|------|
 | `disableWebSearch` | top-level `--disable-web-search` | 移除 `web_search` / `web_fetch` |
-| `disallowedTools: string[]` | top-level `--disallowed-tools a,b` | 逗号分隔 tool id denylist |
+| `allowedTools: string[]` | top-level `--tools a,b` | 逗号分隔 tool id **allowlist**；空 = 省略（CLI 默认全部） |
+| `disallowedTools: string[]` | top-level `--disallowed-tools a,b` | 逗号分隔 tool id **denylist** |
 
-两者**并存**：网页开关不写入 `disallowedTools` 数组，但 UI 把 web 工具视为已覆盖；纯 helper `effectiveDisallowedTools` 可合并展示。常见芯片：`web_search` · `web_fetch` · `run_terminal_command`（caution）· `search_replace` · `write` · `Agent` · `spawn_subagent`；另支持 freeform 逗号列表。
+**并存规则：**
 
-更改后 soft-respawn（`settings_spawn`）。源码：`src/lib/disallowedTools.ts`、Host `AppSettings.disallowed_tools`、`acp_client::disallowed_tools_spawn_flags`。
+- 两者皆空 + 未关网页搜索 → CLI 默认（全部工具）。
+- `allowedTools` 非空 → 仅允许列出的工具；`disallowedTools` 若也非空仍会从该集合中移除。
+- 网页开关不写入 `disallowedTools` 数组，但 UI 把 web 工具视为已覆盖；纯 helper `effectiveDisallowedTools` 可合并展示。
+
+常见芯片：`web_search` · `web_fetch` · `run_terminal_command`（caution）· `search_replace` · `write` · `Agent` · `spawn_subagent`；另支持 freeform 逗号列表。
+
+更改后 soft-respawn（`settings_spawn`）。源码：`src/lib/allowedTools.ts`、`src/lib/disallowedTools.ts`、Host `AppSettings.allowed_tools` / `disallowed_tools`、`acp_client::allowed_tools_spawn_flags` / `disallowed_tools_spawn_flags`。
 
 ## 权限（含 YOLO）与 CLI `--permission-mode`
 

@@ -1,18 +1,26 @@
 import { describe, expect, it } from "vitest";
 import {
   buildCompactSlashCommand,
+  COMPACT_PRESET_CLI_INTENSITY,
+  COMPACT_PRESET_IDS,
+  DEFAULT_COMPACT_PRESET,
+  estimateCompactAfterTokens,
   estimateContextBreakdown,
   estimateTokensFromMessages,
   estimateTokensFromText,
+  formatCompactBeforeAfterRange,
   formatContextChipLabel,
   formatTokenCount,
+  hasContextUsageData,
   hydrateContextUsageFromMessages,
   INITIAL_CONTEXT_USAGE,
+  isCompactPresetId,
   isSystemLikeMessage,
   isToolActivityMessage,
   mergeCompactTokensBefore,
   mergeKnownBucketsIntoBreakdown,
   reduceContextUsage,
+  resolveCompactNoteBody,
   resolveContextUsageDisplay,
 } from "./contextUsage";
 
@@ -358,6 +366,42 @@ describe("reduceContextUsage", () => {
   });
 });
 
+describe("hasContextUsageData", () => {
+  it("is false for empty new sessions (no — chip)", () => {
+    const d = resolveContextUsageDisplay(INITIAL_CONTEXT_USAGE, []);
+    expect(hasContextUsageData(d)).toBe(false);
+  });
+
+  it("is true once estimated or known tokens exist", () => {
+    const estimated = resolveContextUsageDisplay(INITIAL_CONTEXT_USAGE, [
+      { id: "u", role: "user", content: "a".repeat(40) },
+    ]);
+    expect(hasContextUsageData(estimated)).toBe(true);
+
+    const known = resolveContextUsageDisplay(
+      reduceContextUsage(INITIAL_CONTEXT_USAGE, {
+        type: "usage",
+        totalTokens: 1200,
+      }),
+      [],
+    );
+    expect(hasContextUsageData(known)).toBe(true);
+  });
+
+  it("is false when compact left tokens unknown", () => {
+    const state = reduceContextUsage(INITIAL_CONTEXT_USAGE, {
+      type: "compact",
+      trigger: "manual",
+      messageId: "c1",
+    });
+    const d = resolveContextUsageDisplay(state, [
+      { id: "c1", role: "tool", marker: "context_compact" },
+    ]);
+    expect(d.source).toBe("unknown");
+    expect(hasContextUsageData(d)).toBe(false);
+  });
+});
+
 describe("resolveContextUsageDisplay", () => {
   it("empty session is unknown", () => {
     const d = resolveContextUsageDisplay(INITIAL_CONTEXT_USAGE, []);
@@ -526,5 +570,76 @@ describe("buildCompactSlashCommand", () => {
     expect(buildCompactSlashCommand(" keep decisions ")).toBe(
       "/compact keep decisions",
     );
+  });
+
+  it("does not emit intensity flags while CLI support is off", () => {
+    expect(COMPACT_PRESET_CLI_INTENSITY).toBe(false);
+    expect(
+      buildCompactSlashCommand("keep auth", { preset: "aggressive" }),
+    ).toBe("/compact keep auth");
+    expect(buildCompactSlashCommand("", { preset: "light" })).toBe(
+      "/compact",
+    );
+  });
+});
+
+describe("compact presets", () => {
+  it("exposes light / standard / aggressive with standard default", () => {
+    expect(COMPACT_PRESET_IDS).toEqual(["light", "standard", "aggressive"]);
+    expect(DEFAULT_COMPACT_PRESET).toBe("standard");
+    expect(isCompactPresetId("light")).toBe(true);
+    expect(isCompactPresetId("standard")).toBe(true);
+    expect(isCompactPresetId("aggressive")).toBe(true);
+    expect(isCompactPresetId("heavy")).toBe(false);
+    expect(isCompactPresetId("")).toBe(false);
+  });
+
+  it("estimates after tokens with honest keep ratios (aggressive < standard < light)", () => {
+    expect(estimateCompactAfterTokens(null, "standard")).toBeNull();
+    expect(estimateCompactAfterTokens(0, "standard")).toBeNull();
+    expect(estimateCompactAfterTokens(-10, "light")).toBeNull();
+    const light = estimateCompactAfterTokens(100_000, "light")!;
+    const standard = estimateCompactAfterTokens(100_000, "standard")!;
+    const aggressive = estimateCompactAfterTokens(100_000, "aggressive")!;
+    expect(aggressive).toBeLessThan(standard);
+    expect(standard).toBeLessThan(light);
+    expect(light).toBe(55_000);
+    expect(standard).toBe(35_000);
+    expect(aggressive).toBe(15_000);
+    // Tiny contexts still yield at least 1 token estimate.
+    expect(estimateCompactAfterTokens(1, "aggressive")).toBe(1);
+  });
+
+  it("resolveCompactNoteBody prefers field text over preset template", () => {
+    expect(resolveCompactNoteBody("", "template keep")).toBe("template keep");
+    expect(resolveCompactNoteBody("  custom  ", "template keep")).toBe(
+      "custom",
+    );
+    expect(resolveCompactNoteBody("   ", "  ")).toBe("");
+    expect(resolveCompactNoteBody("", null)).toBe("");
+  });
+
+  it("formatCompactBeforeAfterRange fills template with ~ for estimates", () => {
+    expect(
+      formatCompactBeforeAfterRange(12_000, 4_000, {
+        beforeEstimated: true,
+        afterEstimated: true,
+        locale: "en",
+        template: "{before} → {after}",
+      }),
+    ).toBe("~1.2万 → ~4千");
+    expect(
+      formatCompactBeforeAfterRange(10_000, null, {
+        beforeEstimated: false,
+        afterEstimated: true,
+        locale: "zh",
+        template: "{before} → {after}",
+      }),
+    ).toBe("1万 → —");
+    expect(
+      formatCompactBeforeAfterRange(null, null, {
+        template: "{before} → {after}",
+      }),
+    ).toBeNull();
   });
 });

@@ -30,8 +30,11 @@ import {
   IconChevronRight as TbChevronRight,
   IconChevronUp as TbChevronUp,
   IconChevronsLeft as TbChevronsLeft,
+  IconBulb as TbBulb,
+  IconCircle as TbCircle,
   IconCircleDashed as TbCircleDashed,
   IconCopy as TbCopy,
+  IconGridDots as TbGridDots,
   IconDeviceDesktop as TbDeviceDesktop,
   IconDeviceMobile as TbDeviceMobile,
   IconDots as TbDots,
@@ -96,7 +99,9 @@ import {
   IconTrash as TbTrash,
   IconUpload as TbUpload,
   IconUser as TbUser,
+  IconPhoto as TbPhoto,
   IconWand as TbWand,
+  IconWorld as TbWorld,
   IconX as TbX,
 } from "@tabler/icons-react";
 
@@ -295,6 +300,8 @@ export const IconCopy = wrap(TbCopy);
 /** Connect phone / remote mirror. */
 export const IconDeviceMobile = wrap(TbDeviceMobile);
 export const IconExportMd = wrap(TbMarkdown);
+/** Conversation share-card / export as image. */
+export const IconExportImage = wrap(TbPhoto);
 export const IconArchive = wrap(TbArchive);
 export const IconChat = wrap(TbMessage);
 export const IconFileText = wrap(TbFileText);
@@ -387,6 +394,14 @@ export function IconArrowsVerticalCollapse({
   );
 }
 export const IconCircleDashed = wrap(TbCircleDashed);
+/** Hollow circle — Grok timeline intermediate tool steps. */
+export const IconCircle = wrap(TbCircle);
+/** Lightbulb — Grok timeline thinking rows. */
+export const IconBulb = wrap(TbBulb);
+/** Globe — Grok timeline "Browsed …" rows. */
+export const IconWorld = wrap(TbWorld);
+/** 6-dot grid — Grok "Working for Ns" live indicator. */
+export const IconGridDots = wrap(TbGridDots);
 export const IconPlug = wrap(TbPlug);
 export const IconActivity = wrap(TbActivity);
 export const IconSparkles = wrap(TbSparkles);

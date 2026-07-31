@@ -132,6 +132,33 @@ export function findWorktreeAt(
 }
 
 /**
+ * Resolve a path to a {@link GitWorktreeEntry} for session bind / switch.
+ *
+ * Prefers a porcelain list match (branch / main flags intact). When the path
+ * is absolute but not listed, returns a detached synthetic entry so callers
+ * can still `project_add` + bind without inventing a branch name.
+ * Empty / non-absolute-looking empty paths → `null`.
+ */
+export function worktreeEntryForPath(
+  path: string | null | undefined,
+  worktrees?: GitWorktreeEntry[] | null,
+): GitWorktreeEntry | null {
+  const p = normalizeWorktreePath(path);
+  if (!p) return null;
+  const hit = findWorktreeAt(worktrees ?? [], p);
+  if (hit) return hit;
+  return {
+    path: p,
+    head: null,
+    branch: null,
+    detached: true,
+    isMain: false,
+    locked: false,
+    prunable: false,
+  };
+}
+
+/**
  * Sanitize optional `--expire` / max-age for `git worktree prune`.
  * Mirrors host `sanitize_worktree_gc_max_age`.
  */

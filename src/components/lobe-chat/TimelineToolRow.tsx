@@ -1,7 +1,6 @@
 /**
- * Inline tool step on the assistant timeline (stream order).
- * Quiet red mark on failure; no bottom activity dump.
- * Finished rows honor `grok.toolStepsAutoCollapse` (default: start collapsed).
+ * Bare tool row (outside a Worked-for phase) — Grok icon + one-line label.
+ * Phase interior uses GrokActivitySteps inside TimelinePhaseBlock.
  */
 
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -13,19 +12,30 @@ import {
   parseToolStepContent,
   toolStepDisplayTitle,
 } from "@/lib/session";
-import { isContextToolKind, summarizeToolDisplay, toolDetailTail } from "@/lib/toolDisplay";
+import {
+  isBrowseToolKind,
+  isContextToolKind,
+  isSearchToolKind,
+  summarizeToolDisplay,
+  toolDetailTail,
+} from "@/lib/toolDisplay";
 import { normalizeTaskStatus } from "@/lib/sessionTasks";
 import {
   loadToolStepsAutoCollapsePref,
   toolStepDefaultOpen,
   TOOL_STEPS_AUTO_COLLAPSE_CHANGE_EVENT,
 } from "@/lib/toolStepsAutoCollapsePref";
-import { IconChevronRight } from "@/components/icons";
+import { extractBrowseUrl } from "@/lib/grokActivitySteps";
+import {
+  IconChevronRight,
+  IconCircle,
+  IconSearch,
+  IconWorld,
+} from "@/components/icons";
 
 export function toolSegmentIsRunning(seg: MessageToolSegment): boolean {
   if (seg.streaming) return true;
   const s = (seg.status || "").toLowerCase().trim();
-  // Empty + not streaming → finished (see timelinePhases.toolRunning).
   if (!s) return false;
   return s === "in_progress" || s === "pending" || s === "running";
 }
@@ -57,7 +67,6 @@ function toolExpandBody(seg: MessageToolSegment, failed: boolean): {
     : "";
   const failHintShort =
     failHint.length > 72 ? `${failHint.slice(0, 71)}…` : failHint;
-  // Prefer multi-line detail when richer than the one-line fail hint.
   const detailTail = toolDetailTail(seg.detail, 8);
   const hasBody =
     !!failHintShort ||
@@ -65,28 +74,45 @@ function toolExpandBody(seg: MessageToolSegment, failed: boolean): {
   return { failHint, failHintShort, detailTail, hasBody };
 }
 
-/** One timeline tool line (CodePilot ToolActionRow–style). */
+function ToolKindIcon({ tool }: { tool: MessageToolSegment }) {
+  const size = 16;
+  if (isBrowseToolKind(tool.toolKind, tool.title)) {
+    return <IconWorld size={size} stroke={1.5} />;
+  }
+  if (isSearchToolKind(tool.toolKind, tool.title)) {
+    return <IconSearch size={size} stroke={1.5} />;
+  }
+  return <IconCircle size={size} stroke={1.5} />;
+}
+
 export function TimelineToolRow({
   tool,
   autoCollapse: autoCollapseProp,
   defaultExpanded,
+  locale,
 }: {
   tool: MessageToolSegment;
-  /** Override stored auto-collapse pref (tests / parent). */
   autoCollapse?: boolean;
-  /** Explicit initial open; overrides pref helper when set. */
   defaultExpanded?: boolean;
+  locale?: Locale;
 }) {
+  const tr = useMemo(() => createT(locale ?? "en"), [locale]);
   const failed = toolSegmentFailed(tool);
   const running = toolSegmentIsRunning(tool);
-  const summary = toolSummary(tool);
+
+  let summary: string;
+  if (isBrowseToolKind(tool.toolKind, tool.title)) {
+    summary = tr("chat.browsed", { url: extractBrowseUrl(tool) });
+  } else if (isSearchToolKind(tool.toolKind, tool.title)) {
+    summary = tr("chat.ranSearch");
+  } else {
+    summary = toolSummary(tool);
+  }
+
   const { failHint, failHintShort, detailTail, hasBody } = toolExpandBody(
     tool,
     failed,
   );
-  const pathTail = tool.path
-    ? tool.path.replace(/\\/g, "/").split("/").filter(Boolean).pop()
-    : "";
 
   const [autoCollapse, setAutoCollapse] = useState(
     () => autoCollapseProp ?? loadToolStepsAutoCollapsePref(),
@@ -109,18 +135,13 @@ export function TimelineToolRow({
     };
     const onPref = (e: Event) => {
       const detail = (e as CustomEvent).detail;
-      apply(typeof detail === "boolean" ? detail : loadToolStepsAutoCollapsePref());
-    };
-    const onStorage = (e: StorageEvent) => {
-      if (e.key === "grok.toolStepsAutoCollapse") {
-        apply(loadToolStepsAutoCollapsePref());
-      }
+      apply(
+        typeof detail === "boolean" ? detail : loadToolStepsAutoCollapsePref(),
+      );
     };
     window.addEventListener(TOOL_STEPS_AUTO_COLLAPSE_CHANGE_EVENT, onPref);
-    window.addEventListener("storage", onStorage);
     return () => {
       window.removeEventListener(TOOL_STEPS_AUTO_COLLAPSE_CHANGE_EVENT, onPref);
-      window.removeEventListener("storage", onStorage);
     };
   }, [autoCollapseProp]);
 
@@ -148,48 +169,13 @@ export function TimelineToolRow({
 
   const showBody = hasBody && open;
 
-  const rowInner = (
-    <>
-      <span
-        className={
-          "lobe-timeline-tool__name" + (failed ? " is-error" : "")
-        }
-      >
-        {summary}
-      </span>
-      {pathTail && pathTail !== summary ? (
-        <span className="lobe-timeline-tool__path" title={tool.path}>
-          {pathTail}
-        </span>
-      ) : null}
-      {hasBody ? (
-        <span
-          className={
-            "lobe-timeline-tool__caret" + (open ? " is-open" : "")
-          }
-          aria-hidden
-        >
-          <IconChevronRight size={11} />
-        </span>
-      ) : null}
-      <span
-        className={
-          "lobe-timeline-tool__status" +
-          (failed ? " is-error" : "") +
-          (running ? " is-running" : "")
-        }
-        aria-hidden
-      />
-    </>
-  );
-
   return (
     <div
       className={
-        "lobe-timeline-tool" +
+        "grok-act__step lobe-timeline-tool" +
         (failed ? " is-error" : "") +
         (running ? " is-running" : "") +
-        (open && hasBody ? " is-open" : "")
+        " is-last"
       }
       role="status"
       data-tool-id={tool.toolCallId}
@@ -197,20 +183,31 @@ export function TimelineToolRow({
       data-expanded={hasBody ? (open ? "1" : "0") : undefined}
       title={tool.detail || tool.path || summary}
     >
+      <div className="grok-act__icon-col" aria-hidden>
+        <span className="grok-act__icon">
+          <ToolKindIcon tool={tool} />
+        </span>
+      </div>
       {hasBody ? (
         <button
           type="button"
-          className="lobe-timeline-tool__row lobe-timeline-tool__row--toggle"
+          className="grok-act__step-btn grok-act__step-btn--grow"
           aria-expanded={open}
           onClick={() => {
             userToggled.current = true;
             setOpen((v) => !v);
           }}
         >
-          {rowInner}
+          <span className="grok-act__label">{summary}</span>
+          <span
+            className={"grok-act__mini-caret" + (open ? " is-open" : "")}
+            aria-hidden
+          >
+            <IconChevronRight size={11} />
+          </span>
         </button>
       ) : (
-        <div className="lobe-timeline-tool__row">{rowInner}</div>
+        <span className="grok-act__label">{summary}</span>
       )}
       {showBody ? (
         <div className="lobe-timeline-tool__body">
@@ -230,7 +227,7 @@ export function TimelineToolRow({
   );
 }
 
-/** ≥3 consecutive context tools → collapsible group (CodePilot-style). */
+/** ≥3 consecutive context tools → collapsible group. */
 export function TimelineContextGroup({
   tools,
   locale,
@@ -264,7 +261,9 @@ export function TimelineContextGroup({
     };
     const onPref = (e: Event) => {
       const detail = (e as CustomEvent).detail;
-      apply(typeof detail === "boolean" ? detail : loadToolStepsAutoCollapsePref());
+      apply(
+        typeof detail === "boolean" ? detail : loadToolStepsAutoCollapsePref(),
+      );
     };
     window.addEventListener(TOOL_STEPS_AUTO_COLLAPSE_CHANGE_EVENT, onPref);
     return () => {
@@ -287,6 +286,17 @@ export function TimelineContextGroup({
     }
   }, [running, autoCollapse]);
 
+  const allSearch = tools.every((t) =>
+    isSearchToolKind(t.toolKind, t.title),
+  );
+  const groupLabel = allSearch
+    ? tools.length === 1
+      ? tr("chat.ranSearch")
+      : tr("chat.ranSearches", { n: String(tools.length) })
+    : running
+      ? tr("turnActivity.gathering", { n: tools.length })
+      : tr("turnActivity.gathered", { n: tools.length });
+
   return (
     <div
       className={
@@ -298,26 +308,23 @@ export function TimelineContextGroup({
     >
       <button
         type="button"
-        className="lobe-timeline-tool-group__trigger"
+        className="grok-act__step is-last grok-act__step-btn"
         aria-expanded={open}
         onClick={() => {
           userToggled.current = true;
           setOpen((v) => !v);
         }}
       >
-        <span className="lobe-timeline-tool-group__label">
-          {running
-            ? tr("turnActivity.gathering", { n: tools.length })
-            : tr("turnActivity.gathered", { n: tools.length })}
-        </span>
-        <span
-          className={
-            "lobe-timeline-tool__status" +
-            (hasErr ? " is-error" : "") +
-            (running ? " is-running" : "")
-          }
-          aria-hidden
-        />
+        <div className="grok-act__icon-col" aria-hidden>
+          <span className="grok-act__icon">
+            {allSearch ? (
+              <IconSearch size={16} stroke={1.5} />
+            ) : (
+              <IconCircle size={16} stroke={1.5} />
+            )}
+          </span>
+        </div>
+        <span className="grok-act__label">{groupLabel}</span>
       </button>
       {open ? (
         <div className="lobe-timeline-tool-group__list">
@@ -326,6 +333,7 @@ export function TimelineContextGroup({
               key={t.toolCallId}
               tool={t}
               autoCollapse={autoCollapse}
+              locale={locale}
             />
           ))}
         </div>
@@ -340,10 +348,6 @@ export type TimelineDisplayItem =
 
 const CONTEXT_GROUP_MIN = 3;
 
-/**
- * Walk message segments and collapse ≥3 consecutive context tools.
- * Thought / content / non-context tools stay as individual items.
- */
 export function buildTimelineDisplayItems(
   segs: MessageSegment[],
   minContext = CONTEXT_GROUP_MIN,
@@ -357,7 +361,6 @@ export function buildTimelineDisplayItems(
       i += 1;
       continue;
     }
-    // Peek consecutive context tools
     if (isContextToolKind(seg.toolKind, seg.title)) {
       const buf: MessageToolSegment[] = [seg];
       let j = i + 1;
@@ -380,7 +383,6 @@ export function buildTimelineDisplayItems(
   return items;
 }
 
-/** Map a tool_step ChatMessage to a MessageToolSegment for standalone rows. */
 export function toolSegmentFromMessage(
   m: ChatMessage,
 ): MessageToolSegment | null {
@@ -407,5 +409,6 @@ export function toolSegmentFromMessage(
     path: m.toolPath,
     streaming: !!m.streaming || status === "running",
     isError: !!m.isError || status === "failed",
+    createdAt: m.createdAt,
   };
 }

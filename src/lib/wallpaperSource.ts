@@ -126,10 +126,11 @@ function mimeFromName(name: string): string {
 }
 
 /**
- * media:// answers bare GETs of large files with **206 + first 2 MiB only**
- * (video Range streaming). A naive `fetch(url).blob()` therefore truncates
- * Imagine PNGs / large X downloads and `prepareWallpaperFromFile` fails with
- * a cryptic decode error. Always reassemble via Range (or accept a true 200).
+ * Loopback media HTTP (and legacy media://) answers bare GETs of large files
+ * with **206 + first 2 MiB only** (video Range streaming). A naive
+ * `fetch(url).blob()` therefore truncates Imagine PNGs / large X downloads and
+ * `prepareWallpaperFromFile` fails with a cryptic decode error. Always
+ * reassemble via Range (or accept a true 200).
  *
  * Exported for unit tests.
  */
@@ -145,7 +146,7 @@ export function parseContentRangeTotal(header: string | null): number | null {
 }
 
 /**
- * Fetch an entire media:// (or http) resource, reassembling Range chunks.
+ * Fetch an entire media HTTP (or legacy media://) resource, reassembling Range chunks.
  *
  * `opts.chunkSize` is for unit tests only (default = media protocol 2 MiB).
  */
@@ -220,7 +221,7 @@ export async function fetchEntireMediaBlob(
 
 /**
  * Load a local absolute path into a File for prepareWallpaperFromFile.
- * Uses Tauri media:// with **full Range reassembly** (not a single bare GET).
+ * Uses Host loopback media HTTP with **full Range reassembly** (not a single bare GET).
  */
 export async function fileFromAbsolutePath(
   absolutePath: string,
@@ -240,12 +241,10 @@ export async function fileFromAbsolutePath(
     throw new Error("desktop_only");
   }
 
-  const { convertFileSrc } = await import("@tauri-apps/api/core");
-  let url: string;
-  try {
-    url = convertFileSrc(absolutePath, "media");
-  } catch {
-    url = convertFileSrc(absolutePath);
+  const { resolveImageSrc } = await import("@/lib/imageSrc");
+  const url = await resolveImageSrc(absolutePath);
+  if (!url) {
+    throw new Error("read_failed: cannot resolve local media URL");
   }
 
   let blob: Blob;

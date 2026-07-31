@@ -3,12 +3,22 @@
 mod account;
 mod account_profiles;
 mod acp_client;
+mod agent_config_view;
+mod agent_config_edit;
+mod agent_privacy;
+mod agent_codebase_indexing;
 mod agent_memory;
+mod agent_memory_embed;
 mod agents_catalog;
 mod agent_prefs;
 mod app_update;
 mod updater;
 mod agent_subagents;
+mod agent_todo_gate;
+mod agent_subagent_wt_snap;
+mod agent_auto_wake;
+mod agent_workflows;
+mod agent_two_pass_compaction;
 mod extensions;
 mod hooks;
 mod supergrok_quota;
@@ -21,6 +31,7 @@ mod editors;
 mod error;
 mod fs_browser;
 mod media_protocol;
+mod media_server;
 mod video_poster;
 mod path_scope;
 mod mirror;
@@ -31,14 +42,20 @@ mod process_util;
 mod process_limits;
 mod proxy;
 mod journal_throttle;
+mod audit_ledger;
 mod logging;
 mod stream_emit;
 mod stream_stall;
+mod streaming_acp_ndjson;
 mod tool_heartbeat;
 mod cli_sessions;
+mod cli_worktrees;
+mod git_pr_hub;
+mod managed_setup;
 mod turn_complete;
 mod store_lock;
 mod automation_runner;
+mod schedules_launch_agent;
 mod permission;
 mod project_rules;
 mod skill_edit;
@@ -68,6 +85,8 @@ mod voice_stt;
 mod voice_tools;
 mod remote_im;
 mod wallpaper_source;
+mod streaming_messages_json;
+mod batch_agents;
 mod leader;
 mod serve;
 
@@ -137,13 +156,30 @@ pub fn run() {
             media_protocol::dispatch(request, responder);
         })
         // Close button / Alt+F4: hide to tray (default) or ask frontend to quit.
-        // When close-to-tray is off, prevent default so App can confirm if agents are busy.
+        // When close-to-tray is off, prevent default so App can confirm if agents are busy
+        // — unless keep_tray_for_schedules is on and any automation is enabled (still tray).
         // Tray "Quit Grok" emits the same event (see tray.rs). Force exit: `app_force_quit`.
+        // Close button / Alt+F4 on **main**: hide to tray (default) or ask frontend to quit.
+        // Secondary session windows (`session-*`) always close for real — they must not
+        // hide the whole app to tray or trigger busy-quit confirm for a view-only pane.
+        // Tray "Quit Grok" emits app://close-requested on main (see tray.rs).
+        // Force exit: `app_force_quit`.
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                 use tauri::{Emitter, Manager};
-                let close_to_tray = store::load_settings().close_to_tray;
-                if close_to_tray {
+                // Only the primary workbench owns tray-hide / quit-confirm.
+                // Secondary session windows (`session-*`) close for real.
+                if window.label() != "main" {
+                    return;
+                }
+                let settings = store::load_settings();
+                let any_enabled = store::load_automations().iter().any(|a| a.enabled);
+                let hide = automation_runner::should_hide_to_tray_on_close(
+                    settings.close_to_tray,
+                    settings.keep_tray_for_schedules,
+                    any_enabled,
+                );
+                if hide {
                     api.prevent_close();
                     tray::hide_to_tray(window.app_handle());
                 } else {
@@ -155,6 +191,24 @@ pub fn run() {
         .setup(|app| {
             crate::path_scope::refresh_from_store();
             use tauri::Manager;
+            // Editors / terminals / git GUIs: non-blocking background scan + cache.
+            // UI menus read cache immediately; never wait on icon extraction here.
+            editors::start_background_scan_on_launch(app.handle().clone());
+
+            // Loopback media HTTP (token-gated Range streaming). Primary path for
+            // local <img>/<video>/fetch — frontend no longer depends on media://.
+            match tauri::async_runtime::block_on(media_server::start()) {
+                Ok(handle) => {
+                    tracing::info!(
+                        base_url = %handle.endpoint.base_url,
+                        "media server ready"
+                    );
+                    app.manage(handle);
+                }
+                Err(e) => {
+                    tracing::error!(error = %e, "media server failed to start — local media previews may break");
+                }
+            }
             if let Some(window) = app.get_webview_window("main") {
                 #[cfg(target_os = "macos")]
                 {
@@ -192,8 +246,13 @@ pub fn run() {
                 let mgr = app.state::<Arc<SessionManager>>().inner().clone();
                 mgr.start_idle_watchdog(app.handle().clone());
                 mgr.start_stream_stall_watchdog(app.handle().clone());
-                // Scheduled automations: host tick works while window is in tray.
+                // Scheduled automations: host tick works while window is in tray
+                // (and with --start-in-tray / keep_tray_for_schedules). No daemon.
                 automation_runner::start(app.handle().clone(), mgr);
+            }
+            // LaunchAgent / helper: open into tray so schedules fire without focus steal.
+            if schedules_launch_agent::wants_start_in_tray() {
+                tray::hide_to_tray(app.handle());
             }
             // Remote IM: restore Feishu/Weixin connectors after App restart so
             // already-bound channels keep receiving messages without a manual Start.
@@ -251,6 +310,7 @@ pub fn run() {
             commands::session_resolve_ask_user,
             commands::probe_cli,
             commands::acp_test_connection,
+            commands::acp_server_probe,
             commands::cli_install_latest,
             commands::cli_install_commands,
             commands::cli_update_check,
@@ -284,10 +344,15 @@ pub fn run() {
             commands::sessions_list,
             commands::sessions_search,
             commands::cli_sessions_list,
+            commands::cli_sessions_search,
             commands::cli_session_import,
             commands::cli_sessions_import_all,
             commands::cli_sessions_delete,
+            commands::cli_session_find_latest_for_cwd,
+            commands::cli_session_continue_cwd,
             commands::session_create,
+            commands::open_session_window,
+            commands::focus_main_window,
             commands::session_delete,
             commands::session_rename,
             commands::session_set_archived,
@@ -298,16 +363,24 @@ pub fn run() {
             commands::session_set_plugin_dirs,
             commands::session_set_extra_rules,
             commands::session_set_max_agent_turns,
+            commands::session_set_system_prompt_override,
+            commands::session_set_no_ask_user,
+            commands::session_set_fork_agent_session,
             commands::session_set_scheduled,
             commands::session_messages,
             commands::session_media_root,
             commands::session_resolve_relative_media,
+            commands::media_server_endpoint,
             commands::settings_get,
             commands::store_take_quarantine,
             commands::settings_set,
             commands::memory_clear,
             commands::memory_list,
             commands::memory_delete_file,
+            commands::agent_config_toml_read,
+            commands::memory_search,
+            commands::memory_embed_config_get,
+            commands::memory_embed_config_set,
             commands::settings_remember_last_session,
             commands::models_list_available,
             commands::agents_catalog,
@@ -316,6 +389,12 @@ pub fn run() {
             commands::session_set_policy,
             commands::permission_rules_get,
             commands::permission_rules_set,
+            commands::agent_config_edit_get,
+            commands::agent_config_edit_set,
+            commands::privacy_config_get,
+            commands::privacy_config_set,
+            commands::codebase_indexing_get,
+            commands::codebase_indexing_set,
             commands::session_set_model,
             commands::session_rewind_drop_last_user,
             commands::session_rewind_points,
@@ -328,17 +407,26 @@ pub fn run() {
             commands::import_grok_go_config,
             commands::doctor_report,
             commands::network_probe,
+            commands::probe_streaming_acp_ndjson,
             commands::agents_recycle_all,
             commands::cli_doctor_fix,
             commands::export_support_bundle,
+            commands::audit_ledger_list,
+            commands::audit_ledger_clear,
+            commands::audit_ledger_export,
             commands::export_session_bundle,
+            commands::session_cli_export,
+            commands::export_bytes_save,
             commands::session_trace_export,
             commands::reset_app_data,
             commands::skills_list,
             commands::skill_read,
             commands::skill_write,
             commands::skill_roots,
+            commands::skill_create,
             commands::agents_list,
+            commands::workflows_list,
+            commands::agents_scaffold,
             commands::inspect_mcp,
             commands::project_inspect,
             commands::extensions_get,
@@ -356,12 +444,15 @@ pub fn run() {
             commands::plugin_details,
             commands::plugin_install,
             commands::plugin_update,
+            commands::plugin_validate,
             commands::hooks_list,
             commands::hooks_reveal,
             commands::hooks_open_dir,
             commands::hooks_ensure_dir,
+            commands::hooks_try_run,
             commands::setup_preview,
             commands::setup_install,
+            commands::managed_setup_status,
             commands::marketplace_list,
             commands::marketplace_available,
             commands::marketplace_add,
@@ -369,17 +460,20 @@ pub fn run() {
             commands::marketplace_update,
             leader::leader_status,
             leader::leader_list,
+            leader::leader_info,
             leader::leader_start,
             leader::leader_stop,
             leader::leader_kill_all,
             serve::serve_status,
             serve::serve_start,
             serve::serve_stop,
+            serve::serve_tcp_probe,
             commands::pick_directory,
             commands::pick_attach_files,
             commands::pick_attach_folder,
             commands::save_temp_attachment,
             commands::clipboard_paste_image,
+            commands::clipboard_write_image,
             commands::paths_classify,
             commands::path_open,
             commands::path_reveal,
@@ -391,7 +485,19 @@ pub fn run() {
             commands::git_worktree_add,
             commands::git_worktree_remove,
             commands::git_worktree_gc,
+            commands::git_push_branch,
+            commands::gh_pr_create,
+            git_pr_hub::git_pr_list,
+            git_pr_hub::git_pr_view,
+            git_pr_hub::git_pr_checks,
+            cli_worktrees::cli_worktrees_list,
+            cli_worktrees::cli_worktree_db_path,
+            cli_worktrees::cli_worktree_db_stats,
+            cli_worktrees::cli_worktree_db_rebuild,
             commands::git_show_file,
+            commands::apply_file_patch,
+            commands::git_checkout_file,
+            commands::delete_project_file,
             commands::fs_list_dir,
             commands::fs_read_file,
             commands::fs_write_file,
@@ -408,6 +514,10 @@ pub fn run() {
             commands::automation_set_enabled,
             commands::automation_mark_run,
             commands::automation_delete,
+            commands::automation_runner_status,
+            commands::schedules_launch_agent_status,
+            commands::schedules_launch_agent_set_enabled,
+            commands::schedules_launch_agent_reveal_helper,
             commands::account_status,
             commands::account_login,
             commands::account_login_cancel,
@@ -435,6 +545,7 @@ pub fn run() {
             mirror::mirror_status,
             mirror::mirror_rotate_token,
             mirror::mirror_set_read_only,
+            mirror::mirror_set_max_clients,
             mirror::mirror_start,
             mirror::mirror_stop,
             voice_host::voice_state,
@@ -459,6 +570,8 @@ pub fn run() {
             commands::wallpaper_fetch_media,
             commands::wallpaper_imagine,
             commands::wallpaper_library_list,
+            commands::streaming_messages_json_probe,
+            commands::batch_agents_headless,
         ])
         .build(tauri::generate_context!())
         .expect("error while building Grok App")

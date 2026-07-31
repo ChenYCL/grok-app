@@ -1,17 +1,21 @@
 /**
  * Resolve a previewable URL for local files.
- * Video / audio / large binary use the custom `media://` protocol (HTTP Range,
- * bounded chunks) so multi‑GB files never load fully into memory.
+ * Video / audio / PDF / large binary use the Host loopback media HTTP server
+ * (HTTP Range, bounded chunks) so multi‑GB files never load fully into memory.
  * HTML is rendered via HtmlBrowser (srcDoc) — not via this URL helper —
  * because `file://` is blocked inside Tauri's main webview iframes.
- * Small images may use asset protocol or data URLs.
  */
 
 import type { FsReadResult } from "@/lib/api";
 import { isTauri } from "@/lib/api";
+import {
+  ensureMediaEndpoint,
+  localPathToMediaHttpUrl,
+  resolveImageSrcSync,
+} from "@/lib/imageSrc";
 
-/** Prefer Range-capable media protocol for streaming kinds (not HTML). */
-function useMediaProtocol(kind: string): boolean {
+/** Prefer Range-capable media HTTP for streaming kinds (not HTML). */
+function useMediaHttp(kind: string): boolean {
   return (
     kind === "video" ||
     kind === "audio" ||
@@ -20,7 +24,7 @@ function useMediaProtocol(kind: string): boolean {
   );
 }
 
-/** Kinds that load binary via convertFileSrc for rich client-side render. */
+/** Kinds that load binary via media URL for rich client-side render. */
 export function isOfficeKind(kind: string): boolean {
   return (
     kind === "docx" ||
@@ -55,9 +59,7 @@ export function pathToFileUrl(absolutePath: string): string {
 
 /**
  * Convert absolute path → URL the webview can load.
- * `media` protocol: range streaming (video/audio/pdf/large image).
- * `file` protocol: local HTML.
- * `asset` protocol: fallback for everything else.
+ * Loopback media HTTP for range streaming kinds; image helper for the rest.
  */
 export async function pathToPreviewUrl(
   absolutePath: string,
@@ -69,15 +71,16 @@ export async function pathToPreviewUrl(
     if (kind === "html") return pathToFileUrl(absolutePath);
     return null;
   }
-  try {
-    const { convertFileSrc } = await import("@tauri-apps/api/core");
-    if (kind && useMediaProtocol(kind)) {
-      return convertFileSrc(absolutePath, "media");
-    }
-    return convertFileSrc(absolutePath);
-  } catch {
-    return null;
+
+  await ensureMediaEndpoint();
+
+  if (!kind || useMediaHttp(kind) || isOfficeKind(kind)) {
+    const http = localPathToMediaHttpUrl(absolutePath);
+    if (http) return http;
   }
+
+  // Shared path with chat images (HTTP or cold-start media:// fallback).
+  return resolveImageSrcSync(absolutePath);
 }
 
 export async function resolvePreviewSrc(
@@ -123,9 +126,67 @@ export async function fetchPreviewArrayBuffer(
   if (!url) {
     throw new Error("cannot resolve local file URL");
   }
-  const res = await fetch(url);
-  if (!res.ok) {
-    throw new Error(`failed to load file (${res.status})`);
+  // Large files: assemble Range chunks (server caps each response at 2 MiB).
+  return fetchViaRange(url);
+}
+
+/** Fetch full body, following Range windowing when the server returns 206. */
+async function fetchViaRange(url: string): Promise<ArrayBuffer> {
+  const first = await fetch(url);
+  if (!first.ok && first.status !== 206) {
+    throw new Error(`failed to load file (${first.status})`);
   }
-  return res.arrayBuffer();
+
+  // Full body available
+  if (first.status === 200) {
+    return first.arrayBuffer();
+  }
+
+  // 206: assemble remaining ranges
+  const contentRange = first.headers.get("content-range") || "";
+  // bytes start-end/total
+  const m = /bytes\s+(\d+)-(\d+)\/(\d+|\*)/i.exec(contentRange);
+  const firstBuf = new Uint8Array(await first.arrayBuffer());
+  if (!m) {
+    return firstBuf.buffer;
+  }
+  const end = Number(m[2]);
+  const total = m[3] === "*" ? NaN : Number(m[3]);
+  if (!Number.isFinite(total) || total <= end + 1) {
+    return firstBuf.buffer;
+  }
+
+  const chunks: Uint8Array[] = [firstBuf];
+  let next = end + 1;
+  while (next < total) {
+    const res = await fetch(url, {
+      headers: { Range: `bytes=${next}-` },
+    });
+    if (!res.ok && res.status !== 206) {
+      throw new Error(`failed to load file range (${res.status})`);
+    }
+    const buf = new Uint8Array(await res.arrayBuffer());
+    if (!buf.byteLength) break;
+    chunks.push(buf);
+    const cr = res.headers.get("content-range") || "";
+    const rm = /bytes\s+(\d+)-(\d+)\//i.exec(cr);
+    if (rm) {
+      next = Number(rm[2]) + 1;
+    } else {
+      next += buf.byteLength;
+    }
+    // Safety: prevent infinite loops
+    if (chunks.length > 10_000) {
+      throw new Error("file too large to reassemble");
+    }
+  }
+
+  const size = chunks.reduce((n, c) => n + c.byteLength, 0);
+  const out = new Uint8Array(size);
+  let off = 0;
+  for (const c of chunks) {
+    out.set(c, off);
+    off += c.byteLength;
+  }
+  return out.buffer;
 }

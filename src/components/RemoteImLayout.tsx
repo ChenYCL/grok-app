@@ -27,6 +27,7 @@ import {
   isRemoteChannelId,
   loadChannelInstances,
   loadBridgeConfig,
+  recordRimBridgeEvent,
   remoteImDeleteInstance,
   remoteImListInstances,
   saveBridgeConfig,
@@ -123,6 +124,28 @@ export function RemoteImLayout({
     void refreshBridge();
   }, [refreshBridge]);
 
+  // While recovering / backing off, poll status so nextRetrySecs + recovery card stay honest.
+  useEffect(() => {
+    const st = bridge?.state;
+    const recovering =
+      !!bridge?.enabled &&
+      st !== "listening" &&
+      st !== "running" &&
+      st !== "stopped";
+    const rateLimited = !!bridge?.rateLimited;
+    if (!recovering && !rateLimited) return;
+    const id = window.setInterval(() => {
+      void refreshBridge();
+    }, 3000);
+    return () => window.clearInterval(id);
+  }, [
+    bridge?.enabled,
+    bridge?.state,
+    bridge?.rateLimited,
+    bridge?.nextRetrySecs,
+    refreshBridge,
+  ]);
+
   // Prefer host-persisted instances when Tauri available; auto-start Bridge if
   // channels are bound but connectors are stopped (e.g. after tauri dev reload).
   useEffect(() => {
@@ -213,6 +236,21 @@ export function RemoteImLayout({
               st.state === "running" || st.state === "listening",
             ),
           };
+          recordRimBridgeEvent({
+            type:
+              saved.status === "connected"
+                ? "channel_connected"
+                : "channel_reloaded",
+            channel: inst.channel,
+            instanceId: inst.id,
+          });
+        } else {
+          recordRimBridgeEvent({
+            type: "channel_reloaded",
+            channel: inst.channel,
+            instanceId: inst.id,
+            note: inst.enabled ? undefined : "disabled",
+          });
         }
         persistInstances(upsertInstance(instances, saved));
         await refreshBridge();
@@ -227,11 +265,18 @@ export function RemoteImLayout({
     async (channel: RemoteChannelId, instanceId: string, hasCreds: boolean) => {
       setBusy("test");
       try {
-        return await bridgeTestConnection({
+        const result = await bridgeTestConnection({
           channel,
           instanceId,
           hasCredentials: hasCreds,
         });
+        recordRimBridgeEvent({
+          type: result.ok ? "test_ok" : "test_fail",
+          channel,
+          instanceId,
+          note: result.ok ? undefined : "failed",
+        });
+        return result;
       } finally {
         setBusy(null);
       }
@@ -247,6 +292,12 @@ export function RemoteImLayout({
       const result = await deleteChannelInstance({
         list: instances,
         instanceId: danger.instanceId,
+      });
+      recordRimBridgeEvent({
+        type: "channel_disconnected",
+        channel: danger.channel,
+        instanceId: danger.instanceId,
+        note: "deleted",
       });
       persistInstances(result.list);
       setDanger(null);
@@ -348,6 +399,7 @@ export function RemoteImLayout({
               setBusy("start");
               try {
                 setBridge(await bridgeStart());
+                recordRimBridgeEvent({ type: "bridge_started" });
               } finally {
                 setBusy(null);
               }
@@ -356,6 +408,7 @@ export function RemoteImLayout({
               setBusy("stop");
               try {
                 setBridge(await bridgeStop());
+                recordRimBridgeEvent({ type: "bridge_stopped" });
               } finally {
                 setBusy(null);
               }
@@ -364,6 +417,7 @@ export function RemoteImLayout({
               setBusy("restart");
               try {
                 setBridge(await bridgeRestart());
+                recordRimBridgeEvent({ type: "bridge_restarted" });
               } finally {
                 setBusy(null);
               }
@@ -372,6 +426,10 @@ export function RemoteImLayout({
               setBusy("cfg");
               try {
                 setBridge(await bridgeSetConfig({ enabled }));
+                recordRimBridgeEvent({
+                  type: "bridge_config",
+                  note: enabled ? "enabled" : "disabled",
+                });
               } finally {
                 setBusy(null);
               }
@@ -380,6 +438,10 @@ export function RemoteImLayout({
               setBusy("cfg");
               try {
                 setBridge(await bridgeSetConfig({ lifecycle }));
+                recordRimBridgeEvent({
+                  type: "bridge_config",
+                  note: lifecycle,
+                });
               } finally {
                 setBusy(null);
               }
@@ -388,6 +450,10 @@ export function RemoteImLayout({
               setBusy("cfg");
               try {
                 setBridge(await bridgeSetConfig({ allowRemoteYolo }));
+                recordRimBridgeEvent({
+                  type: "bridge_config",
+                  note: allowRemoteYolo ? "yolo_on" : "yolo_off",
+                });
               } finally {
                 setBusy(null);
               }
@@ -406,6 +472,15 @@ export function RemoteImLayout({
             instances={instancesForChannel(instances, selection.channelId)}
             trustedProjects={trustedProjects}
             busy={busy}
+            bridgeRunning={
+              bridge?.state === "running" || bridge?.state === "listening"
+            }
+            bridgeLinked={
+              !!activeInstance &&
+              (bridge?.connectedChannels ?? []).some(
+                (c) => c.instanceId === activeInstance.id,
+              )
+            }
             onSave={onSaveInstance}
             onTest={onTestConnection}
             onRequestDelete={(instanceId) =>

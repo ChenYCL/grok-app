@@ -189,6 +189,8 @@ export async function sessionFork(
   opts?: {
     throughUserPromptIndex?: number | null;
     title?: string | null;
+    /** CLI `--fork-session`: new agent id with parent context on next connect. */
+    forkAgentSession?: boolean | null;
   },
 ) {
   return invoke<{
@@ -199,10 +201,31 @@ export async function sessionFork(
     modelId: string | null;
     archived?: boolean;
     scheduled?: boolean;
+    agentSessionId?: string | null;
+    forkAgentSession?: boolean;
   }>("session_fork", {
     sourceId,
     throughUserPromptIndex: opts?.throughUserPromptIndex ?? null,
     title: opts?.title ?? null,
+    forkAgentSession: opts?.forkAgentSession ?? false,
+  });
+}
+
+/**
+ * Arm or clear the one-shot CLI `--fork-session` flag on a session.
+ * Soft-respawns the live agent when arming so the next connect can fork.
+ */
+export async function sessionSetForkAgentSession(
+  id: string,
+  forkAgentSession: boolean,
+) {
+  return invoke<{
+    id: string;
+    agentSessionId?: string | null;
+    forkAgentSession?: boolean;
+  }>("session_set_fork_agent_session", {
+    id,
+    forkAgentSession,
   });
 }
 
@@ -292,6 +315,39 @@ export async function networkProbe() {
   return invoke<NetworkProbeResult>("network_probe");
 }
 
+/**
+ * Headless probe for ACP-shaped NDJSON (`--output-format streaming-json`,
+ * CLI ≥ 0.2.117). Soft-gated on the Host — older CLIs return supported=false.
+ * Distinct from `streaming-messages-json`.
+ */
+export type StreamingAcpNdjsonProbeResult = {
+  ok: boolean;
+  supported: boolean | null;
+  version: string | null;
+  minVersion: string;
+  binary: string | null;
+  args: string[];
+  usedStreamingJson: boolean;
+  exitCode: number | null;
+  stdout: string;
+  stderr: string;
+  timedOut: boolean;
+  error: string | null;
+  durationMs: number;
+};
+
+export async function probeStreamingAcpNdjson(opts?: {
+  prompt?: string;
+  manualPath?: string;
+  cwd?: string;
+}): Promise<StreamingAcpNdjsonProbeResult> {
+  return invoke<StreamingAcpNdjsonProbeResult>("probe_streaming_acp_ndjson", {
+    prompt: opts?.prompt ?? null,
+    manualPath: opts?.manualPath ?? null,
+    cwd: opts?.cwd ?? null,
+  });
+}
+
 export async function probeCli(manualPath?: string) {
   return invoke<{
     found: boolean;
@@ -317,6 +373,17 @@ export interface AcpProbeResult {
 /** API mode: TCP-connect to an ACP server and run the initialize handshake. */
 export async function acpTestConnection(addr: string) {
   return invoke<AcpProbeResult>("acp_test_connection", { addr });
+}
+
+/** TCP-only ACP server health probe (~2s). No secrets / no RPC handshake. */
+export interface AcpServerProbeResult {
+  ok: boolean;
+  latencyMs?: number | null;
+  error?: string | null;
+}
+
+export async function acpServerProbe(addr: string) {
+  return invoke<AcpServerProbeResult>("acp_server_probe", { addr });
 }
 
 export interface CliInstallProgress {
@@ -471,6 +538,150 @@ export async function gitWorktreesList(projectPath: string) {
   return invoke<GitWorktreesResult>("git_worktrees_list", { projectPath });
 }
 
+// ── GitHub PR hub (`gh pr list|view|checks`) ────────────────────────────────
+
+export type {
+  GitPrHubEntry,
+  GitPrHubListResult,
+  GitPrHubViewResult,
+  GitPrCheckEntry,
+  GitPrChecksResult,
+  PrChecksSummary,
+  PrChecksOverall,
+} from "./gitPrHub";
+
+/** List PRs for a project folder via `gh pr list --json`. Soft-fails when gh/git missing. */
+export async function gitPrList(
+  projectPath: string,
+  opts?: { limit?: number | null; state?: string | null },
+) {
+  return invoke<import("./gitPrHub").GitPrHubListResult>("git_pr_list", {
+    projectPath,
+    limit: opts?.limit ?? null,
+    state: opts?.state?.trim() || null,
+  });
+}
+
+/** View one PR via `gh pr view <n> --json`. Soft-fails when gh/git missing. */
+export async function gitPrView(projectPath: string, number: number) {
+  return invoke<import("./gitPrHub").GitPrHubViewResult>("git_pr_view", {
+    projectPath,
+    number,
+  });
+}
+
+/** List CI checks for a PR via `gh pr checks <n> --json`. Soft-fails when gh/git missing. */
+export async function gitPrChecks(projectPath: string, number: number) {
+  return invoke<import("./gitPrHub").GitPrChecksResult>("git_pr_checks", {
+    projectPath,
+    number,
+  });
+}
+
+/** One CLI-tracked worktree from `grok worktree list` (JSON or text). */
+export interface CliWorktreeEntry {
+  id: string;
+  name: string;
+  path: string;
+  branch?: string | null;
+  status?: string | null;
+  kind?: string | null;
+  repoName?: string | null;
+  sourceRepo?: string | null;
+  /** True when path exists as a directory (safe to open as cwd). */
+  pathOk?: boolean;
+  head?: string | null;
+}
+
+export interface CliWorktreesResult {
+  available: boolean;
+  worktrees: CliWorktreeEntry[];
+  reason?: string | null;
+  cliFound: boolean;
+  /** `json` | `text` | `none` */
+  source?: string | null;
+}
+
+/**
+ * List Grok Build CLI-tracked worktrees (`grok worktree list --json`).
+ * Soft-fails when CLI is missing or the command is unsupported.
+ */
+export async function cliWorktreesList(opts?: {
+  all?: boolean | null;
+  repo?: string | null;
+}) {
+  return invoke<CliWorktreesResult>("cli_worktrees_list", {
+    all: opts?.all ?? null,
+    repo: opts?.repo?.trim() || null,
+  });
+}
+
+/** Parsed fields from `grok worktree db stats` (text or JSON). */
+export interface CliWorktreeDbStats {
+  total?: number | null;
+  alive?: number | null;
+  dead?: number | null;
+  dbSize?: string | null;
+  dbSizeBytes?: number | null;
+}
+
+export interface CliWorktreeDbPathResult {
+  available: boolean;
+  path?: string | null;
+  pathOk?: boolean;
+  reason?: string | null;
+  cliFound: boolean;
+  unsupported?: boolean;
+}
+
+export interface CliWorktreeDbStatsResult {
+  available: boolean;
+  stats?: CliWorktreeDbStats | null;
+  summary?: string | null;
+  raw?: string | null;
+  reason?: string | null;
+  cliFound: boolean;
+  unsupported?: boolean;
+  /** `json` | `text` | `none` */
+  source?: string | null;
+}
+
+export interface CliWorktreeDbRebuildResult {
+  ok: boolean;
+  available: boolean;
+  message?: string | null;
+  discovered?: number | null;
+  registered?: number | null;
+  alreadyTracked?: number | null;
+  reason?: string | null;
+  cliFound: boolean;
+  unsupported?: boolean;
+}
+
+/**
+ * CLI worktree DB path (`grok worktree db path`, Grok Build 0.2.117+).
+ * Soft-fails when CLI is missing or too old.
+ */
+export async function cliWorktreeDbPath() {
+  return invoke<CliWorktreeDbPathResult>("cli_worktree_db_path");
+}
+
+/**
+ * CLI worktree DB stats (`grok worktree db stats`, Grok Build 0.2.117+).
+ * Soft-fails when CLI is missing or too old.
+ */
+export async function cliWorktreeDbStats() {
+  return invoke<CliWorktreeDbStatsResult>("cli_worktree_db_stats");
+}
+
+/**
+ * Rebuild CLI worktree DB from a filesystem scan
+ * (`grok worktree db rebuild`, Grok Build 0.2.117+). Soft-fails on old CLIs.
+ */
+export async function cliWorktreeDbRebuild() {
+  return invoke<CliWorktreeDbRebuildResult>("cli_worktree_db_rebuild");
+}
+
 /** Result of creating a linked worktree (`git worktree add`). */
 export interface GitWorktreeAddResult {
   path: string;
@@ -622,6 +833,61 @@ export async function gitShowFile(projectPath: string, path: string) {
   return invoke<GitShowFileResult>("git_show_file", { projectPath, path });
 }
 
+/** Write full file content under project (Changes Accept / Restore / reject-before). */
+export interface ApplyFilePatchResult {
+  ok: boolean;
+  absolutePath?: string | null;
+  relativePath?: string | null;
+  reason?: string | null;
+}
+
+export async function applyFilePatch(
+  projectPath: string,
+  path: string,
+  content: string,
+) {
+  return invoke<ApplyFilePatchResult>("apply_file_patch", {
+    projectPath,
+    path,
+    content,
+  });
+}
+
+/** Restore path to HEAD or delete untracked (with confirm). */
+export interface GitCheckoutFileResult {
+  ok: boolean;
+  absolutePath?: string | null;
+  relativePath?: string | null;
+  needsUntrackedConfirm?: boolean;
+  reason?: string | null;
+  action?: string | null;
+}
+
+export async function gitCheckoutFile(
+  projectPath: string,
+  path: string,
+  confirmUntracked = false,
+) {
+  return invoke<GitCheckoutFileResult>("git_checkout_file", {
+    projectPath,
+    path,
+    confirmUntracked,
+  });
+}
+
+/** Delete a project file (non-git untracked reject after confirm). */
+export async function deleteProjectFile(
+  projectPath: string,
+  path: string,
+  confirm = false,
+) {
+  return invoke<GitCheckoutFileResult>("delete_project_file", {
+    projectPath,
+    path,
+    confirm,
+  });
+}
+
 export interface FsEntry {
   name: string;
   relativePath: string;
@@ -633,7 +899,7 @@ export interface FsEntry {
 export interface FsReadResult {
   relativePath: string;
   name: string;
-  /** Absolute path for convertFileSrc streaming (video/audio/large images). */
+  /** Absolute path for loopback media HTTP streaming (video/audio/large images). */
   absolutePath: string;
   size: number;
   kind: string;
@@ -862,6 +1128,10 @@ export async function sessionsList() {
       extraRules?: string | null;
       /** Per-session max agent turns (`--max-turns`); null/omit = inherit global */
       maxAgentTurns?: number | null;
+      /** Per-session system prompt override (`--system-prompt-override`); empty/omit = none */
+      systemPromptOverride?: string | null;
+      /** Per-session `--no-ask-user` override; null/omit = inherit global */
+      noAskUser?: boolean | null;
     }>
   >("sessions_list");
 }
@@ -900,6 +1170,45 @@ export async function sessionSetMaxAgentTurns(
   }>("session_set_max_agent_turns", {
     id,
     maxAgentTurns: n,
+  });
+}
+
+/**
+ * Set or clear per-session system prompt override (`grok --system-prompt-override`).
+ * Empty clears. Soft-respawns live agent. Do not log the prompt body.
+ */
+export async function sessionSetSystemPromptOverride(
+  id: string,
+  systemPromptOverride: string | null,
+) {
+  return invoke<{
+    id: string;
+    title: string;
+    systemPromptOverride?: string | null;
+  }>("session_set_system_prompt_override", {
+    id,
+    systemPromptOverride:
+      systemPromptOverride && systemPromptOverride.trim()
+        ? systemPromptOverride
+        : null,
+  });
+}
+
+/**
+ * Set or clear per-session `--no-ask-user` override (CLI ≥ 0.2.117).
+ * Pass `null` to inherit global Settings. Soft-respawns live agent.
+ */
+export async function sessionSetNoAskUser(
+  id: string,
+  noAskUser: boolean | null,
+) {
+  return invoke<{
+    id: string;
+    title: string;
+    noAskUser?: boolean | null;
+  }>("session_set_no_ask_user", {
+    id,
+    noAskUser: typeof noAskUser === "boolean" ? noAskUser : null,
   });
 }
 
@@ -955,10 +1264,31 @@ export type CliSessionSummary = {
   appSessionId?: string | null;
   /** GROK_HOME used for discovery (path clarity). */
   sourceHome?: string;
+  /** First user prompt when known (search / enriched). */
+  firstPrompt?: string | null;
+};
+
+/** Hit from `grok sessions search` (or local first-prompt fallback). */
+export type CliSessionSearchHit = CliSessionSummary & {
+  /** CLI status token: local | remote. */
+  status?: string | null;
+  /** `"cli"` from `grok sessions search`, `"local"` for disk fallback. */
+  source: "cli" | "local" | string;
 };
 
 export async function cliSessionsList() {
   return invoke<CliSessionSummary[]>("cli_sessions_list");
+}
+
+/**
+ * Search CLI sessions (summaries + first prompts) via host
+ * `grok sessions search`. Falls back to local disk filter when CLI fails.
+ */
+export async function cliSessionsSearch(query: string, limit?: number) {
+  return invoke<CliSessionSearchHit[]>("cli_sessions_search", {
+    query,
+    limit: limit ?? 40,
+  });
 }
 
 export async function cliSessionImport(
@@ -973,6 +1303,42 @@ export async function cliSessionImport(
   }>("cli_session_import", {
     agentSessionId,
     dir: opts?.dir ?? null,
+    projectId: opts?.projectId ?? null,
+  });
+}
+
+/**
+ * Find the most recent CLI agent session for a project path
+ * (CLI `grok -c/--continue`). Soft-fails → null when none exist.
+ */
+export async function cliSessionFindLatestForCwd(projectPath: string) {
+  if (!isTauri()) return null;
+  const path = projectPath.trim();
+  if (!path) return null;
+  return invoke<CliSessionSummary | null>("cli_session_find_latest_for_cwd", {
+    projectPath: path,
+  });
+}
+
+/**
+ * CLI `-c/--continue`: find latest agent session for project path and
+ * open/import it as an App session. Soft-fails → null when none exist.
+ */
+export async function cliSessionContinueCwd(
+  projectPath: string,
+  opts?: { projectId?: string | null },
+) {
+  if (!isTauri()) return null;
+  const path = projectPath.trim();
+  if (!path) return null;
+  return invoke<{
+    id: string;
+    title: string;
+    projectId: string | null;
+    updatedAt: string;
+    agentSessionId?: string | null;
+  } | null>("cli_session_continue_cwd", {
+    projectPath: path,
     projectId: opts?.projectId ?? null,
   });
 }
@@ -1112,6 +1478,11 @@ export async function sessionMediaRoot(id: string) {
   return invoke<string | null>("session_media_root", { id });
 }
 
+/** Loopback media HTTP base + token (token-gated Range streaming of local files). */
+export async function mediaServerEndpoint() {
+  return invoke<{ baseUrl: string; token: string }>("media_server_endpoint");
+}
+
 /**
  * Resolve short session-relative paths (`images/1.jpg`) to absolute files
  * that exist under the agent session directory.
@@ -1156,6 +1527,13 @@ export interface AppSettings {
   /** Pure stream silence before cancel prompt, seconds (default 120). */
   streamStallSeconds?: number;
   /**
+   * When true, headless paths that use `--output-format streaming-messages-json`
+   * also pass `--include-partial-messages` (CLI 0.2.117+) for incremental
+   * `stream_event` deltas. Default false. Soft-fails on older CLIs.
+   * Only valid with streaming-messages-json (Remote IM upgrades format when on).
+   */
+  includePartialMessages?: boolean;
+  /**
    * When true, App API keys go in the OS keychain.
    * Default false: keys stay in secrets.json (0600). Official login uses auth.json.
    */
@@ -1167,21 +1545,98 @@ export interface AppSettings {
   sandboxProfile?: string;
 
   maxAgentTurns?: number | null;
+  /**
+   * Headless background-wait after first turn: `wait` | `no_wait` | `timeout`.
+   * CLI 0.2.117+ (`--no-wait-for-background` / `--background-wait-timeout`).
+   * Default `wait` (omit flags). Soft-fails on older CLIs.
+   */
+  backgroundWaitPolicy?: string;
+  /**
+   * Seconds for `--background-wait-timeout` when policy is `timeout` (1–3600).
+   * Default 600.
+   */
+  backgroundWaitTimeoutSec?: number;
   preferredAgent?: string;
   /**
    * Optional path for `grok agent --agent-profile <PATH>`.
    * Empty = omit flag (CLI default). Soft-respawns on change.
    */
   agentProfilePath?: string;
+  /**
+   * Optional inline subagent definitions JSON for top-level `grok --agents <JSON>`.
+   * Empty = omit flag. Must be a JSON object map when set; invalid values reject save.
+   * Soft-respawns on change. Does not write into shared ~/.grok.
+   */
+  agentsJson?: string;
   experimentalMemory?: boolean;
+  /**
+   * Enable CLI TodoGate (turn-end nudge when todos still pending / in_progress).
+   * Default false. Spawns with top-level `--todo-gate` (CLI 0.2.117+). Soft-respawns.
+   */
+  todoGateEnabled?: boolean;
+  /**
+   * Max TodoGate fires per prompt (1–20, default 3). Independent agent-home
+   * writes `todo_gate_max_fires_per_prompt`. Soft-respawns on change.
+   */
+  todoGateMaxFiresPerPrompt?: number;
+  /**
+   * Compaction mode for spawned agents (CLI 0.2.117+):
+   * summary | transcript | segments. Maps to `--compaction-mode` /
+   * GROK_COMPACTION_MODE. Default "summary". Soft-respawns on change.
+   */
+  compactionMode?: string;
+  /**
+   * Segments detail (CLI 0.2.117+): none | minimal | balanced | verbose.
+   * Only affects segments mode (`--compaction-detail` / GROK_COMPACTION_DETAIL).
+   * Default "verbose". Soft-respawns on change.
+   */
+  compactionDetail?: string;
+  /**
+   * Prefire two-pass compaction (CLI 0.2.117+).
+   * Default false. Writes agent-home `two_pass_compaction_enabled` in
+   * independent mode; spawn sets `GROK_TWO_PASS_COMPACTION`. Soft-respawns.
+   */
+  twoPassCompactionEnabled?: boolean;
   disableWebSearch?: boolean;
+  /**
+   * When true, spawn with top-level `--no-ask-user` (CLI ≥ 0.2.117) so the
+   * agent does not emit ask-user questionnaires. Default false. Soft-respawns.
+   * Per-session override: `SessionMeta.noAskUser`.
+   */
+  noAskUser?: boolean;
   /**
    * Built-in tool ids denied via CLI `--disallowed-tools a,b`.
    * Default empty. Coexists with `disableWebSearch`; changes soft-respawn.
    */
   disallowedTools?: string[];
+  /**
+   * Built-in tool ids allowlisted via CLI `--tools a,b`.
+   * Default empty = omit flag (CLI default all tools). When non-empty,
+   * restricts the agent to listed tools. Coexists with `disallowedTools`
+   * (allowlist restricts; denylist still applies). Changes soft-respawn.
+   */
+  allowedTools?: string[];
   planEnabled?: boolean;
   subagentsEnabled?: boolean;
+  /**
+   * Enable CLI subagent worktree snapshot (CLI 0.2.117+).
+   * Default false. Writes agent-home `subagent_worktree_snapshot_enabled` in
+   * independent mode; spawn sets `GROK_SUBAGENT_WORKTREE_SNAPSHOT`. Soft-respawns.
+   */
+  subagentWorktreeSnapshotEnabled?: boolean;
+  /**
+   * Enable CLI auto-wake (config `auto_wake_enabled`). Default false (opt-in).
+   * When on, Grok Build may inject a synthetic turn after background work
+   * completes (CLI-side). Independent mode writes agent-home `auto_wake_enabled`
+   * only — no invented env override. Soft-respawns on change.
+   */
+  autoWakeEnabled?: boolean;
+  /**
+   * Enable Grok Build workflows (`workflows_enabled` in agent-home config).
+   * Default false. Independent mode writes the top-level key; soft-respawns.
+   * No in-app runner — scripts run via CLI / Rhai `workflow` tool.
+   */
+  workflowsEnabled?: boolean;
   useLeader?: boolean;
   /** Reopen last active chat once after launch (default false → draft new chat). */
   reopenLastSession?: boolean;
@@ -1196,6 +1651,17 @@ export interface AppSettings {
   voiceKeepAgentsOnEnd?: boolean;
   /** Window close hides to tray when true (default). */
   closeToTray?: boolean;
+  /**
+   * When true (default), closing the window still hides to tray if any
+   * scheduled task is enabled — so host automation_runner keeps ticking.
+   * Not a daemon; full quit still pauses schedules.
+   */
+  keepTrayForSchedules?: boolean;
+  /**
+   * macOS: optional LaunchAgent helper that starts the full app at login /
+   * after crash. Default false. Not a headless scheduler.
+   */
+  schedulesLaunchAgent?: boolean;
   /** Start the app when the user logs into the OS (default false). */
   launchAtLogin?: boolean;
   /** Desktop notification when an agent turn finishes (default true). */
@@ -1435,6 +1901,15 @@ export interface SkillWriteResult {
   mtimeMs: number;
 }
 
+/** Result of Host `skill_create` (scaffold folder + SKILL.md). */
+export interface SkillCreateResult {
+  path: string;
+  name: string;
+  root: string;
+  created: boolean;
+  alreadyExisted: boolean;
+}
+
 export interface InspectMcpResult {
   servers: McpDto[];
   error?: string;
@@ -1499,11 +1974,67 @@ export interface SupportBundleResult {
   sizeBytes?: number;
 }
 
-/** Build a redacted support zip (Doctor + logs) and save via native dialog. */
-export async function exportSupportBundle(doctorJson?: string | null) {
+/**
+ * Result of `session_trace_export`.
+ * History may record `uploaded` when the CLI reported a remote upload —
+ * never secrets or remote URLs.
+ */
+export interface SessionTraceExportResult extends SupportBundleResult {
+  /** Host default is true (`grok trace --local`). */
+  localOnly?: boolean;
+  /** True only when export allowed network upload and CLI reported remote info. */
+  uploaded?: boolean;
+}
+
+/**
+ * Build a redacted support zip (Doctor + logs + optional stall timeline)
+ * and save via native dialog.
+ *
+ * `stallTimelineJson` is optional Reliability-center snapshot JSON
+ * (structured stall signals only; host redacts secrets).
+ */
+export async function exportSupportBundle(
+  doctorJson?: string | null,
+  stallTimelineJson?: string | null,
+) {
   return invoke<SupportBundleResult>("export_support_bundle", {
     doctorJson: doctorJson ?? null,
+    stallTimelineJson: stallTimelineJson ?? null,
   });
+}
+
+/** One host audit ledger row (camelCase). */
+export type AuditLedgerHostEntry = {
+  ts: string;
+  sessionId?: string | null;
+  projectPath?: string | null;
+  toolName: string;
+  event: string;
+  permission?: string | null;
+  outcome?: string | null;
+  summary?: string | null;
+};
+
+/** Recent cross-session tool/permission audit rows (newest first). Soft-fail → []. */
+export async function auditLedgerList(limit?: number | null) {
+  if (!isTauri()) return [] as AuditLedgerHostEntry[];
+  try {
+    return await invoke<AuditLedgerHostEntry[]>("audit_ledger_list", {
+      limit: limit ?? null,
+    });
+  } catch {
+    return [];
+  }
+}
+
+/** Clear on-disk audit ledger. */
+export async function auditLedgerClear() {
+  return invoke<{ ok: boolean }>("audit_ledger_clear");
+}
+
+/** Export redacted JSONL via native save dialog. */
+export async function auditLedgerExport() {
+  return invoke<SupportBundleResult>("audit_ledger_export");
 }
 
 /**
@@ -1517,13 +2048,70 @@ export async function exportSessionBundle(sessionId: string) {
   });
 }
 
+export interface ExportBytesSaveResult {
+  ok: boolean;
+  cancelled?: boolean;
+  path?: string | null;
+}
+
+/**
+ * Save raw bytes (base64, no data: prefix) via native save dialog.
+ * Used for share-card PNG so Tauri WebView does not depend on `<a download>`.
+ */
+export async function exportBytesSave(opts: {
+  bytesBase64: string;
+  defaultName: string;
+  dialogTitle?: string;
+  filterName?: string;
+  extensions?: string[];
+}) {
+  return invoke<ExportBytesSaveResult>("export_bytes_save", {
+    bytesBase64: opts.bytesBase64,
+    defaultName: opts.defaultName,
+    dialogTitle: opts.dialogTitle ?? null,
+    filterName: opts.filterName ?? null,
+    extensions: opts.extensions ?? null,
+  });
+}
+
+/** Put a PNG (base64, no data: prefix) on the OS clipboard via arboard. */
+export async function clipboardWriteImage(bytesBase64: string) {
+  return invoke<void>("clipboard_write_image", { bytesBase64 });
+}
+
+/**
+ * Export Grok Build CLI session trace via `grok trace <agentSessionId>`.
+ * Export Grok Build CLI session transcript via `grok export <agentSessionId> [OUTPUT]`.
+ * Requires a linked agent session id. Returns markdown text for blob download.
+ * Callers should soft-fail to the local App journal when this rejects.
+ */
+export type SessionCliExportResult = {
+  ok: boolean;
+  markdown?: string;
+  agentSessionId?: string;
+  source?: string;
+};
+
+export async function sessionCliExport(sessionId: string) {
+  return invoke<SessionCliExportResult>("session_cli_export", {
+    sessionId,
+  });
+}
+
 /**
  * Export Grok Build CLI session trace via `grok trace <agentSessionId> --local`.
  * Requires a linked agent session id. Opens a native save dialog for the `.tar.gz`.
+ *
+ * @param localOnly default **true** (safe): pass `--local`. Set false to omit
+ *   `--local` so the CLI may upload over the network.
  */
-export async function sessionTraceExport(sessionId: string) {
-  return invoke<SupportBundleResult>("session_trace_export", {
+export async function sessionTraceExport(
+  sessionId: string,
+  opts?: { localOnly?: boolean },
+) {
+  return invoke<SessionTraceExportResult>("session_trace_export", {
     sessionId,
+    localOnly: opts?.localOnly ?? true,
   });
 }
 
@@ -1581,6 +2169,25 @@ export async function skillWrite(
   });
 }
 
+/**
+ * Scaffold a new skill (`{root}/{name}/SKILL.md`).
+ * @param scope `"user"` (path-scoped GROK_HOME skills) or `"project"` (requires projectPath).
+ * Does not overwrite an existing SKILL.md.
+ */
+export async function skillCreate(opts: {
+  name: string;
+  description?: string | null;
+  projectPath?: string | null;
+  scope?: "user" | "project" | null;
+}) {
+  return invoke<SkillCreateResult>("skill_create", {
+    name: opts.name,
+    description: opts.description ?? null,
+    projectPath: opts.projectPath ?? null,
+    scope: opts.scope ?? "user",
+  });
+}
+
 /** List MCP servers via `grok inspect --json` (optional project cwd). */
 export async function inspectMcp(projectPath?: string | null) {
   return invoke<InspectMcpResult>("inspect_mcp", {
@@ -1596,8 +2203,10 @@ export type {
   ProjectInspectMcp,
   ProjectInspectRule,
   ProjectInspectAgent,
+  ProjectInspectHook,
   ProjectInspectSkills,
   ProjectInspectPermissions,
+  InspectSectionId,
 } from "./projectInspect";
 
 /**
@@ -1693,6 +2302,27 @@ export async function pluginUpdate(name?: string | null) {
   const n = (name ?? "").trim();
   return invoke<PluginActionResult>("plugin_update", {
     name: n ? n : null,
+  });
+}
+
+/** Result of `grok plugin validate` (host always returns envelope; soft-fail when CLI too old). */
+export interface PluginValidateResult {
+  ok: boolean;
+  messages: string[];
+  path?: string | null;
+  /** e.g. `cli_too_old` when the probed CLI lacks `plugin validate`. */
+  reason?: string | null;
+}
+
+/**
+ * Validate a plugin manifest via `grok plugin validate [path|name]`.
+ * Pass an installed plugin path/name, or a local path before install.
+ * Soft-fails (ok:false + reason) when CLI is too old — does not throw for that case.
+ */
+export async function pluginValidate(pathOrName?: string | null) {
+  const raw = (pathOrName ?? "").trim();
+  return invoke<PluginValidateResult>("plugin_validate", {
+    pathOrName: raw ? raw : null,
   });
 }
 
@@ -1990,6 +2620,35 @@ export async function appForceQuit() {
   }
 }
 
+/**
+ * Open (or focus) a secondary webview window for a chat (`#/session/<id>`).
+ * Desktop Tauri only. Secondary is live-capable (send/stop via shared Host);
+ * passive warm-connect on open is still skipped in the frontend.
+ */
+export async function openSessionWindow(
+  sessionId: string,
+  title?: string | null,
+): Promise<void> {
+  if (!isDesktopHost()) {
+    throw new Error("openSessionWindow requires desktop Tauri");
+  }
+  await invoke<void>("open_session_window", {
+    sessionId,
+    title: title ?? null,
+  });
+}
+
+/**
+ * Focus (and show/unminimize) the primary workbench window.
+ * Desktop Tauri only — used from secondary session windows (MULTI-WIN-LITE).
+ */
+export async function focusMainWindow(): Promise<void> {
+  if (!isDesktopHost()) {
+    throw new Error("focusMainWindow requires desktop Tauri");
+  }
+  await invoke<void>("focus_main_window");
+}
+
 // ── Custom providers (agent-home config.toml) ───────────────────────────────
 
 export interface CustomProvider {
@@ -2159,6 +2818,8 @@ export interface EditorsListResult {
   editors: DetectedEditor[];
   finderIcon?: string | null;
   systemIcon?: string | null;
+  /** Host scan timestamp (ms), when present. */
+  scannedAt?: number | null;
 }
 
 export async function editorsList() {
@@ -2206,10 +2867,16 @@ export type MirrorStatus = {
   running: boolean;
   publicUrl: string | null;
   localPort: number | null;
+  /**
+   * Full token while host is running (QR / copy). Memory-only —
+   * never persist to localStorage, audit logs, or support bundles.
+   */
   token: string | null;
   /** Last 6 chars of token for safe display. */
   tokenTail?: string | null;
   clients: number;
+  /** Concurrent WebSocket client cap (1–16, default 4). */
+  maxClients?: number;
   phase: MirrorPhase;
   error: string | null;
   /** When true, phone cannot send / resolve permissions. Default true. */
@@ -2226,6 +2893,7 @@ export async function mirrorStatus(): Promise<MirrorStatus> {
       token: null,
       tokenTail: null,
       clients: 0,
+      maxClients: 4,
       phase: "stopped",
       error: null,
       readOnly: true,
@@ -2260,6 +2928,16 @@ export async function mirrorSetReadOnly(readOnly: boolean): Promise<MirrorStatus
     throw new Error("mirror host requires desktop app");
   }
   return invoke<MirrorStatus>("mirror_set_read_only", { readOnly });
+}
+
+/** Cap concurrent phone WebSocket clients (1–16). Host-only; no secrets. */
+export async function mirrorSetMaxClients(
+  maxClients: number,
+): Promise<MirrorStatus> {
+  if (!isDesktopHost()) {
+    throw new Error("mirror host requires desktop app");
+  }
+  return invoke<MirrorStatus>("mirror_set_max_clients", { maxClients });
 }
 
 // ── Automations (scheduled tasks) ───────────────────────────────────────────
@@ -2302,6 +2980,76 @@ export async function automationsList(): Promise<AutomationDto[]> {
     return loadAutomationsLocal() as AutomationDto[];
   }
   return invoke<AutomationDto[]>("automations_list");
+}
+
+export interface AutomationRunnerStatusDto {
+  running: boolean;
+  lastTickAt?: string | null;
+  tickIntervalSecs: number;
+  windowRequired: boolean;
+  processRequired: boolean;
+  enabledCount: number;
+  keepTrayForSchedules: boolean;
+  honesty: string;
+}
+
+export async function automationRunnerStatus(): Promise<AutomationRunnerStatusDto> {
+  if (!isTauri()) {
+    return {
+      running: false,
+      lastTickAt: null,
+      tickIntervalSecs: 30,
+      windowRequired: false,
+      processRequired: true,
+      enabledCount: 0,
+      keepTrayForSchedules: true,
+      honesty:
+        "Schedules tick only while this app process is alive (main window or tray). There is no separate background daemon.",
+    };
+  }
+  return invoke<AutomationRunnerStatusDto>("automation_runner_status");
+}
+
+export interface SchedulesLaunchAgentStatusDto {
+  supported: boolean;
+  enabled: boolean;
+  helperDir?: string | null;
+  installedPlist?: string | null;
+  installed: boolean;
+  appPath?: string | null;
+  honesty: string;
+}
+
+export async function schedulesLaunchAgentStatus(): Promise<SchedulesLaunchAgentStatusDto> {
+  if (!isTauri()) {
+    return {
+      supported: false,
+      enabled: false,
+      installed: false,
+      honesty:
+        "Not a headless daemon. The LaunchAgent only starts the full Grok App.",
+    };
+  }
+  return invoke<SchedulesLaunchAgentStatusDto>("schedules_launch_agent_status");
+}
+
+export async function schedulesLaunchAgentSetEnabled(
+  enabled: boolean,
+): Promise<SchedulesLaunchAgentStatusDto> {
+  if (!isTauri()) {
+    return schedulesLaunchAgentStatus();
+  }
+  return invoke<SchedulesLaunchAgentStatusDto>(
+    "schedules_launch_agent_set_enabled",
+    { enabled },
+  );
+}
+
+export async function schedulesLaunchAgentRevealHelper(): Promise<string> {
+  if (!isTauri()) {
+    throw new Error("Desktop only");
+  }
+  return invoke<string>("schedules_launch_agent_reveal_helper");
 }
 
 export async function automationCreate(
@@ -2468,6 +3216,93 @@ export async function agentsCatalog(projectPath?: string | null) {
   });
 }
 
+/** Agent definition row from host `agents_list` (filesystem discovery). */
+export type AgentDefDto = {
+  name: string;
+  path: string;
+  /** "project" | "user" | "bundled" */
+  scope: string;
+  description?: string | null;
+};
+
+export type PersonaDefDto = {
+  name: string;
+  path: string;
+  scope: string;
+};
+
+export type AgentsListResult = {
+  agents: AgentDefDto[];
+  personas: PersonaDefDto[];
+  userAgentsDir?: string;
+  projectAgentsDir?: string | null;
+  bundledAgentsDir?: string;
+  userPersonasDir?: string;
+  projectPersonasDir?: string | null;
+  bundledPersonasDir?: string;
+};
+
+/** List agent + persona definition files (no CLI required). */
+export async function agentsList(projectPath?: string | null) {
+  return invoke<AgentsListResult>("agents_list", {
+    projectPath: projectPath ?? null,
+  });
+}
+
+/** Discovered workflow script row from host `workflows_list`. */
+export type WorkflowDefDto = {
+  name: string;
+  path: string;
+  scope: string;
+};
+
+export type WorkflowsListResult = {
+  workflows: WorkflowDefDto[];
+  userDir?: string;
+  projectDir?: string | null;
+  agentHomeDir?: string | null;
+  /** Bundled create-workflow skill path (may be missing on disk). */
+  createWorkflowSkill?: string;
+};
+
+/**
+ * Read-only soft-fail discovery of Grok Build workflow `.rhai` files.
+ * No CLI required; missing dirs return an empty list.
+ */
+export async function workflowsList(projectPath?: string | null) {
+  return invoke<WorkflowsListResult>("workflows_list", {
+    projectPath: projectPath ?? null,
+  });
+}
+
+export type AgentsScaffoldResult = {
+  name: string;
+  path: string;
+  scope: string;
+  created: boolean;
+  overwritten: boolean;
+};
+
+/**
+ * Create `{name}.md` under user GROK_HOME agents or project `.grok/agents`.
+ * Rejects overwrite unless `force` is true.
+ */
+export async function agentsScaffold(opts: {
+  name: string;
+  scope?: "user" | "project" | string;
+  projectPath?: string | null;
+  force?: boolean;
+  description?: string | null;
+}) {
+  return invoke<AgentsScaffoldResult>("agents_scaffold", {
+    name: opts.name,
+    scope: opts.scope ?? "user",
+    projectPath: opts.projectPath ?? null,
+    force: opts.force ?? false,
+    description: opts.description ?? null,
+  });
+}
+
 export type GitWorktreeGcResult = {
   dryRun?: boolean;
   force?: boolean;
@@ -2524,6 +3359,64 @@ export async function gitWorktreeRemove(opts: {
     projectPath: opts.projectPath,
     worktreePath: opts.worktreePath,
     force: opts.force ?? false,
+  });
+}
+
+/** Soft-fail result of `git push -u origin HEAD` (worktree ship flow). */
+export type GitPushBranchResult = {
+  available: boolean;
+  ok: boolean;
+  branch?: string | null;
+  remote?: string | null;
+  stdout?: string | null;
+  stderr?: string | null;
+  reason?: string | null;
+};
+
+/**
+ * Push the current HEAD branch to origin for a project path.
+ * Soft-fails when git / origin / non-repo are missing (`available: false`).
+ */
+export async function gitPushBranch(
+  projectPath: string,
+): Promise<GitPushBranchResult> {
+  return invoke<GitPushBranchResult>("git_push_branch", { projectPath });
+}
+
+/** Soft-fail result of `gh pr create` (worktree ship flow). */
+export type GhPrCreateResult = {
+  available: boolean;
+  ok: boolean;
+  url?: string | null;
+  repo?: string | null;
+  base?: string | null;
+  head?: string | null;
+  stdout?: string | null;
+  stderr?: string | null;
+  reason?: string | null;
+};
+
+/**
+ * Create a GitHub PR via `gh pr create` (argv only). Soft-fails without `gh`.
+ * Never reports success without a PR URL.
+ */
+export async function ghPrCreate(opts: {
+  projectPath: string;
+  title: string;
+  body?: string | null;
+  draft?: boolean;
+  base?: string | null;
+  head?: string | null;
+  repo?: string | null;
+}): Promise<GhPrCreateResult> {
+  return invoke<GhPrCreateResult>("gh_pr_create", {
+    projectPath: opts.projectPath,
+    title: opts.title,
+    body: opts.body ?? null,
+    draft: opts.draft ?? false,
+    base: opts.base ?? null,
+    head: opts.head ?? null,
+    repo: opts.repo ?? null,
   });
 }
 
@@ -2590,6 +3483,159 @@ export async function memoryDeleteFile(path: string) {
   });
 }
 
+/** Redacted agent `config.toml` for the active session data mode. */
+export type AgentConfigTomlReadResult = {
+  path: string;
+  exists: boolean;
+  /** independent | shared */
+  mode: string;
+  grokHome: string;
+  /** Secrets redacted by host. */
+  text: string;
+  /** `[table]` headers in document order. */
+  sections: string[];
+  truncated: boolean;
+};
+
+/** Read agent config.toml (path + redacted text). View-only. */
+export async function agentConfigTomlRead() {
+  return invoke<AgentConfigTomlReadResult>("agent_config_toml_read");
+}
+
+/** Content/name hit under `{GROK_HOME}/memory` (host-capped, redacted snippet). */
+export type MemorySearchHit = {
+  path: string;
+  name: string;
+  relativePath: string;
+  kind: string;
+  workspaceSlug?: string | null;
+  size: number;
+  mtimeMs: number;
+  /** Redacted excerpt; empty for name-only matches. */
+  snippet: string;
+  contentMatch: boolean;
+  matched: boolean;
+};
+
+export type MemorySearchResult = {
+  hits: MemorySearchHit[];
+  memoryRoot: string;
+  memoryRootExists: boolean;
+  grokHome: string;
+  cwd?: string | null;
+  query: string;
+  limit: number;
+  truncated: boolean;
+};
+
+/**
+ * Search path-scoped memory files (name + body) under agent GROK_HOME/memory.
+ * Host enforces read/hit caps and redacts snippets.
+ * Always keyword / file-body scan — never invents embeddings client-side.
+ * CLI hybrid vector search is configured via memoryEmbedConfig* (`[memory.embedding]`).
+ */
+export async function memorySearch(opts: {
+  query: string;
+  cwd?: string | null;
+  limit?: number;
+}) {
+  return invoke<MemorySearchResult>("memory_search", {
+    query: opts.query,
+    cwd: opts.cwd ?? null,
+    limit: opts.limit ?? null,
+  });
+}
+
+/**
+ * Memory embedding config — allowlisted Grok Build 0.2.117 `[memory.*]` keys
+ * from active GROK_HOME config.toml. Missing keys are null (soft-fail).
+ * Writes only in independent agent-home mode.
+ */
+export type MemoryEmbedConfigSnapshot = {
+  path: string;
+  grokHome: string;
+  mode: string;
+  writable: boolean;
+  fileExists: boolean;
+  embeddingConfigured: boolean;
+  /** Always `"keyword"` for App host browser search. */
+  appSearchMode: string;
+  /** `"hybrid"` when embedding.model set; else `"keyword"`. */
+  cliSearchMode: string;
+  embeddingModel?: string | null;
+  embeddingDimensions?: number | null;
+  embeddingProvider?: string | null;
+  searchMaxResults?: number | null;
+  searchMinScore?: number | null;
+  searchVectorWeight?: number | null;
+  searchTextWeight?: number | null;
+  mmrEnabled?: boolean | null;
+  mmrLambda?: number | null;
+  temporalDecayEnabled?: boolean | null;
+  temporalDecayHalfLifeDays?: number | null;
+  dreamEnabled?: boolean | null;
+  dreamMinHours?: number | null;
+  dreamMinSessions?: number | null;
+  dreamCheckIntervalSecs?: number | null;
+  watcherEnabled?: boolean | null;
+  initialInjectionEnabled?: boolean | null;
+  initialInjectionMinScore?: number | null;
+  redactedPreview: string;
+};
+
+export type MemoryEmbedConfigPatch = {
+  embeddingModel?: string | null;
+  clearEmbeddingModel?: boolean | null;
+  embeddingDimensions?: number | null;
+  embeddingProvider?: string | null;
+  searchMaxResults?: number | null;
+  searchMinScore?: number | null;
+  searchVectorWeight?: number | null;
+  searchTextWeight?: number | null;
+  mmrEnabled?: boolean | null;
+  mmrLambda?: number | null;
+  temporalDecayEnabled?: boolean | null;
+  temporalDecayHalfLifeDays?: number | null;
+  dreamEnabled?: boolean | null;
+  dreamMinHours?: number | null;
+  dreamMinSessions?: number | null;
+  dreamCheckIntervalSecs?: number | null;
+  watcherEnabled?: boolean | null;
+  initialInjectionEnabled?: boolean | null;
+  initialInjectionMinScore?: number | null;
+};
+
+export async function memoryEmbedConfigGet(): Promise<MemoryEmbedConfigSnapshot> {
+  return invoke<MemoryEmbedConfigSnapshot>("memory_embed_config_get");
+}
+
+export async function memoryEmbedConfigSet(
+  patch: MemoryEmbedConfigPatch,
+): Promise<MemoryEmbedConfigSnapshot> {
+  // Tauri maps camelCase invoke keys → snake_case command args.
+  return invoke<MemoryEmbedConfigSnapshot>("memory_embed_config_set", {
+    embeddingModel: patch.embeddingModel ?? null,
+    clearEmbeddingModel: patch.clearEmbeddingModel ?? null,
+    embeddingDimensions: patch.embeddingDimensions ?? null,
+    embeddingProvider: patch.embeddingProvider ?? null,
+    searchMaxResults: patch.searchMaxResults ?? null,
+    searchMinScore: patch.searchMinScore ?? null,
+    searchVectorWeight: patch.searchVectorWeight ?? null,
+    searchTextWeight: patch.searchTextWeight ?? null,
+    mmrEnabled: patch.mmrEnabled ?? null,
+    mmrLambda: patch.mmrLambda ?? null,
+    temporalDecayEnabled: patch.temporalDecayEnabled ?? null,
+    temporalDecayHalfLifeDays: patch.temporalDecayHalfLifeDays ?? null,
+    dreamEnabled: patch.dreamEnabled ?? null,
+    dreamMinHours: patch.dreamMinHours ?? null,
+    dreamMinSessions: patch.dreamMinSessions ?? null,
+    dreamCheckIntervalSecs: patch.dreamCheckIntervalSecs ?? null,
+    watcherEnabled: patch.watcherEnabled ?? null,
+    initialInjectionEnabled: patch.initialInjectionEnabled ?? null,
+    initialInjectionMinScore: patch.initialInjectionMinScore ?? null,
+  });
+}
+
 export type HookDto = {
   name: string;
   path: string;
@@ -2641,6 +3687,40 @@ export async function hooksEnsureDir(opts?: {
   });
 }
 
+/** Result of host `hooks_try_run` — real process; never invents success. */
+export type HooksTryRunResult = {
+  ok: boolean;
+  refused: boolean;
+  timedOut: boolean;
+  exitCode?: number | null;
+  stdout: string;
+  stderr: string;
+  durationMs: number;
+  path: string;
+  scope: string;
+  timeoutSecs: number;
+  reason?: string | null;
+  message?: string | null;
+};
+
+/**
+ * Real try-run of a hook script under user/project hooks dirs only.
+ * Optional JSON stdin; host redacts stdout/stderr and enforces timeout.
+ */
+export async function hooksTryRun(opts: {
+  path: string;
+  projectPath?: string | null;
+  stdinJson?: string | null;
+  timeoutSecs?: number | null;
+}) {
+  return invoke<HooksTryRunResult>("hooks_try_run", {
+    path: opts.path,
+    projectPath: opts.projectPath ?? null,
+    stdinJson: opts.stdinJson ?? null,
+    timeoutSecs: opts.timeoutSecs ?? null,
+  });
+}
+
 
 export type SetupPreviewResult = {
   ok: boolean;
@@ -2657,12 +3737,33 @@ export type SetupInstallResult = {
   errorKind?: string | null;
 };
 
+/** Soft-fail local managed-config / signature artifact probe. */
+export type ManagedSetupStatusResult = {
+  ok: boolean;
+  cliFound: boolean;
+  grokHome?: string | null;
+  managedConfigPresent: boolean;
+  requirementsPresent: boolean;
+  configSignaturePresent: boolean;
+  identitySignaturePresent: boolean;
+  systemManagedConfigPresent: boolean;
+  managedSettingsActive?: boolean | null;
+  managedSettingsExists?: boolean | null;
+  managedSettingsPath?: string | null;
+  reason?: string | null;
+};
+
 export async function setupPreview() {
   return invoke<SetupPreviewResult>("setup_preview");
 }
 
 export async function setupInstall() {
   return invoke<SetupInstallResult>("setup_install");
+}
+
+/** Soft-fail: local managed files + optional inspect managed-settings flags. */
+export async function managedSetupStatus() {
+  return invoke<ManagedSetupStatusResult>("managed_setup_status");
 }
 
 export type MarketplaceListResult = {
@@ -2721,6 +3822,148 @@ export async function permissionRulesSet(rules: PermissionRules) {
   return invoke<PermissionRules>("permission_rules_set", { rules });
 }
 
+/** Allowlisted agent-home config.toml section edit (independent GROK_HOME only). */
+export type AgentConfigEditSnapshot = {
+  path: string;
+  grokHome: string;
+  mode: string;
+  writable: boolean;
+  fileExists: boolean;
+  permissionMode?: string | null;
+  yolo?: boolean | null;
+  subagentsEnabled?: boolean | null;
+  memoryEnabled?: boolean | null;
+  /** `[workflows].enabled` — background workflows / goal driver. */
+  workflowsEnabled?: boolean | null;
+  /** `[features].auto_wake` — wake after background tasks. */
+  autoWakeEnabled?: boolean | null;
+  /** `[features].two_pass_compaction` — opt-in prefire two-pass. */
+  twoPassCompactionEnabled?: boolean | null;
+  /** `[features].lsp_tools`. */
+  lspToolsEnabled?: boolean | null;
+  /** `[features].codebase_indexing`. */
+  codebaseIndexing?: boolean | null;
+  /** `[features].remote_fetch` — online model-catalog fetches. */
+  remoteFetch?: boolean | null;
+  redactedPreview: string;
+};
+
+export type AgentConfigEditPatch = {
+  permissionMode?: string | null;
+  yolo?: boolean | null;
+  subagentsEnabled?: boolean | null;
+  memoryEnabled?: boolean | null;
+  workflowsEnabled?: boolean | null;
+  autoWakeEnabled?: boolean | null;
+  twoPassCompactionEnabled?: boolean | null;
+  lspToolsEnabled?: boolean | null;
+  codebaseIndexing?: boolean | null;
+  remoteFetch?: boolean | null;
+};
+
+export async function agentConfigEditGet(): Promise<AgentConfigEditSnapshot> {
+  return invoke<AgentConfigEditSnapshot>("agent_config_edit_get");
+}
+
+export async function agentConfigEditSet(
+  patch: AgentConfigEditPatch,
+): Promise<AgentConfigEditSnapshot> {
+  return invoke<AgentConfigEditSnapshot>("agent_config_edit_set", {
+    permissionMode: patch.permissionMode ?? null,
+    yolo: patch.yolo ?? null,
+    subagentsEnabled: patch.subagentsEnabled ?? null,
+    memoryEnabled: patch.memoryEnabled ?? null,
+    workflowsEnabled: patch.workflowsEnabled ?? null,
+    autoWakeEnabled: patch.autoWakeEnabled ?? null,
+    twoPassCompactionEnabled: patch.twoPassCompactionEnabled ?? null,
+    lspToolsEnabled: patch.lspToolsEnabled ?? null,
+    codebaseIndexing: patch.codebaseIndexing ?? null,
+    remoteFetch: patch.remoteFetch ?? null,
+  });
+}
+
+/**
+ * Privacy center — allowlisted Grok Build 0.2.117 privacy keys from active
+ * GROK_HOME config.toml. Missing keys are null (soft-fail). Writes only in
+ * independent agent-home mode.
+ */
+export type PrivacyConfigSnapshot = {
+  path: string;
+  grokHome: string;
+  mode: string;
+  writable: boolean;
+  fileExists: boolean;
+  telemetry?: boolean | null;
+  traceUpload?: boolean | null;
+  mixpanelEnabled?: boolean | null;
+  disableCodebaseUpload?: boolean | null;
+  disableWorkspaceTeleport?: boolean | null;
+  redactedPreview: string;
+  cliPrivacyCommand: string;
+};
+
+export type PrivacyConfigPatch = {
+  telemetry?: boolean | null;
+  traceUpload?: boolean | null;
+  mixpanelEnabled?: boolean | null;
+  disableCodebaseUpload?: boolean | null;
+  disableWorkspaceTeleport?: boolean | null;
+};
+
+export async function privacyConfigGet(): Promise<PrivacyConfigSnapshot> {
+  return invoke<PrivacyConfigSnapshot>("privacy_config_get");
+}
+
+export async function privacyConfigSet(
+  patch: PrivacyConfigPatch,
+): Promise<PrivacyConfigSnapshot> {
+  // Tauri maps camelCase invoke keys → snake_case command args.
+  return invoke<PrivacyConfigSnapshot>("privacy_config_set", {
+    telemetry: patch.telemetry ?? null,
+    traceUpload: patch.traceUpload ?? null,
+    mixpanelEnabled: patch.mixpanelEnabled ?? null,
+    disableCodebaseUpload: patch.disableCodebaseUpload ?? null,
+    disableWorkspaceTeleport: patch.disableWorkspaceTeleport ?? null,
+  });
+}
+
+/**
+ * Codebase indexing — `[features].codebase_indexing` (code graph, not embeddings).
+ * Missing key is unset (CLI default on). Writes only in independent agent-home.
+ */
+export type CodebaseIndexingSnapshot = {
+  path: string;
+  grokHome: string;
+  mode: string;
+  writable: boolean;
+  fileExists: boolean;
+  /** `unset` | `bool` | `custom` */
+  kind: string;
+  enabled?: boolean | null;
+  customRaw?: string | null;
+  cliDefault: boolean;
+  effectiveEnabled: boolean;
+  redactedPreview: string;
+  /** Always false — App never invents embeddings for this surface. */
+  inventsEmbeddings: boolean;
+};
+
+export type CodebaseIndexingPatch = {
+  enabled?: boolean | null;
+};
+
+export async function codebaseIndexingGet(): Promise<CodebaseIndexingSnapshot> {
+  return invoke<CodebaseIndexingSnapshot>("codebase_indexing_get");
+}
+
+export async function codebaseIndexingSet(
+  patch: CodebaseIndexingPatch,
+): Promise<CodebaseIndexingSnapshot> {
+  return invoke<CodebaseIndexingSnapshot>("codebase_indexing_set", {
+    enabled: patch.enabled ?? null,
+  });
+}
+
 export interface VoiceSessionState {
   active: boolean;
   mode?: string;
@@ -2734,6 +3977,10 @@ export interface VoiceSessionState {
   mock?: boolean;
   listening?: boolean;
   speaking?: boolean;
+  /** Host: model / tool turn in progress (from voice://state). */
+  thinking?: boolean;
+  /** Host: in-flight Build tool name while voice → agent loop runs. */
+  activeTool?: string | null;
 }
 
 export async function voiceState(): Promise<VoiceSessionState> {
@@ -2764,13 +4011,77 @@ export async function voicePushPcm(pcmBase64: string): Promise<void> {
   return invoke<void>("voice_push_pcm", { pcmBase64 });
 }
 
+/**
+ * Invoke a Live Voice host tool (mock / debug / demo delegate).
+ * Host expects `argsJson` string; objects are serialized.
+ */
 export async function voiceInvokeTool(
   name: string,
-  args?: any,
+  args?: string | Record<string, unknown> | null,
 ): Promise<unknown> {
-  return invoke<unknown>("voice_invoke_tool", { name, args: args ?? {} });
+  const argsJson =
+    typeof args === "string"
+      ? args
+      : JSON.stringify(args ?? {});
+  return invoke<unknown>("voice_invoke_tool", { name, argsJson });
 }
 
+
+/** Headless `--output-format streaming-messages-json` probe (CLI 0.2.117+). */
+export type StreamingMessagesJsonProbeResult = {
+  ok: boolean;
+  reason: string;
+  cliPath?: string | null;
+  cliVersion?: string | null;
+  versionSupported?: boolean | null;
+  minVersion: string;
+  outputPath?: string | null;
+  rawNdjson?: string | null;
+  lineCount: number;
+  durationMs: number;
+  includePartial: boolean;
+  truncated: boolean;
+};
+
+/**
+ * Spawn a short headless probe with `--output-format streaming-messages-json`.
+ * Soft-fails when CLI is missing or older than 0.2.117 (no crash).
+ */
+export async function streamingMessagesJsonProbe(opts?: {
+  includePartial?: boolean;
+}): Promise<StreamingMessagesJsonProbeResult> {
+  return invoke<StreamingMessagesJsonProbeResult>(
+    "streaming_messages_json_probe",
+    { includePartial: opts?.includePartial ?? false },
+  );
+}
+
+/** One-shot headless batch turn result (Host soft-fail DTO). */
+export type BatchAgentsHeadlessResult = {
+  ok: boolean;
+  reason?: string | null;
+  text?: string | null;
+  durationMs?: number | null;
+  cliPath?: string | null;
+  cliVersion?: string | null;
+};
+
+/**
+ * Run one headless `grok -p` turn in a project cwd for multi-project batch.
+ * Soft-fails (ok=false + reason) on CLI missing / path / timeout — never throws
+ * for those cases. Invoke errors still reject.
+ */
+export async function batchAgentsHeadless(opts: {
+  projectPath: string;
+  prompt: string;
+  timeoutMs?: number | null;
+}): Promise<BatchAgentsHeadlessResult> {
+  return invoke<BatchAgentsHeadlessResult>("batch_agents_headless", {
+    projectPath: opts.projectPath,
+    prompt: opts.prompt,
+    timeoutMs: opts.timeoutMs ?? null,
+  });
+}
 
 export type VoiceStatusDto = {
   available: boolean;
@@ -2802,25 +4113,45 @@ export async function voiceTranscribe(opts: {
 }
 
 export type CliUpdateCheck = {
-  ok: boolean;
+  ok?: boolean;
   current?: string | null;
   latest?: string | null;
   currentVersion?: string | null;
   latestVersion?: string | null;
   version?: string | null;
+  /** Raw channel from CLI when known (`stable` / `alpha`); omit/null = unknown. */
   channel?: string | null;
   updateAvailable?: boolean;
   message?: string | null;
   error?: string | null;
+  cliPath?: string | null;
   [key: string]: unknown;
+};
+
+export type CliUpdateInstallOpts = {
+  /** Switch to `stable` or `alpha` (`grok update --stable|--alpha`). */
+  channel?: string | null;
+  /** Pin a specific version (`grok update --version <V>`). */
+  version?: string | null;
+  /** Pass `--force-reinstall`. */
+  force?: boolean | null;
 };
 
 export async function cliUpdateCheck() {
   return invoke<CliUpdateCheck>("cli_update_check");
 }
 
-export async function cliUpdateInstall() {
-  return invoke<CliUpdateCheck>("cli_update_install");
+/**
+ * Install / switch / pin CLI via host `cli_update_install`.
+ * Plain call = current-channel update (App trust-chain fallback).
+ * Channel/version soft-fail without inventing channels.
+ */
+export async function cliUpdateInstall(opts?: CliUpdateInstallOpts | null) {
+  return invoke<CliUpdateCheck>("cli_update_install", {
+    channel: opts?.channel ?? null,
+    version: opts?.version ?? null,
+    force: opts?.force ?? null,
+  });
 }
 
 /** Recycle all warm agent processes (e.g. after CLI upgrade). */
@@ -2828,12 +4159,22 @@ export async function agentsRecycleAll() {
   return invoke<void>("agents_recycle_all");
 }
 
+/**
+ * Host `mcp_doctor` report — `grok mcp doctor --json [NAME]`.
+ * Shape matches `extensions::McpDoctorReport` (camelCase). Pure TS helpers
+ * accept this loosely via `McpDoctorReportLike`.
+ */
 export type McpDoctorReport = {
   ok: boolean;
   servers?: Array<Record<string, any>>;
   sources?: Array<Record<string, any>>;
-  issues?: Array<Record<string, any>>;
-  summary?: any;
+  issues?: Array<Record<string, any> | string>;
+  summary?: {
+    total?: number;
+    healthy?: number;
+    unhealthy?: number;
+    [key: string]: unknown;
+  };
   rawText?: string | null;
   message?: string | null;
   error?: string | null;
@@ -2853,9 +4194,14 @@ export async function mcpRemove(name: string) {
   return invoke<{ ok: boolean; error?: string }>("mcp_remove", { name });
 }
 
-export async function mcpDoctor(projectPath?: string | null) {
+/**
+ * Run `grok mcp doctor --json [name]` under the active GROK_HOME.
+ * Optional `name` filters to one configured server — never invents servers.
+ */
+export async function mcpDoctor(name?: string | null) {
+  const trimmed = typeof name === "string" ? name.trim() : "";
   return invoke<McpDoctorReport>("mcp_doctor", {
-    projectPath: projectPath ?? null,
+    name: trimmed || null,
   });
 }
 
@@ -2894,6 +4240,8 @@ export type LeaderProcess = {
   socketPath?: string | null;
   version?: string | null;
   classification?: string | null;
+  lockPath?: string | null;
+  wsUrlSuffix?: string | null;
   raw?: unknown;
 };
 
@@ -2911,6 +4259,22 @@ export type LeaderStatus = {
   message?: string | null;
   leaders?: LeaderProcess[];
   serveHint?: string | null;
+};
+
+/** `grok leader info --json` DTO (soft-fail: unsupported/error without throw). */
+export type LeaderInfo = {
+  pid?: number | null;
+  socketPath?: string | null;
+  lockPath?: string | null;
+  version?: string | null;
+  protocolVersion?: string | null;
+  classification?: string | null;
+  uptimeMs?: number | null;
+  activeToolCalls?: number | null;
+  wsUrlSuffix?: string | null;
+  unsupported?: boolean;
+  error?: string | null;
+  raw?: unknown;
 };
 
 export async function leaderStatus(): Promise<LeaderStatus> {
@@ -2932,11 +4296,29 @@ export async function leaderList(): Promise<{
   return invoke("leader_list");
 }
 
+/** Details for a leader (`grok leader info --json`); optional pid from list. Soft-fails. */
+export async function leaderInfo(pid?: number | null): Promise<LeaderInfo> {
+  return invoke<LeaderInfo>("leader_info", {
+    pid: pid == null ? null : pid,
+  });
+}
+
+/** Alias for stop-all (`grok leader kill`); soft-respawns when useLeader. */
+export async function leaderKillAll(): Promise<{
+  ok: boolean;
+  state?: string;
+  message?: string | null;
+}> {
+  return invoke("leader_kill_all");
+}
+
 // ── Agent serve (Runtime WebSocket server) ──────────────────────────────────
 
 export type ServeStatus = {
   state: "stopped" | "running" | "error" | "unsupported" | string;
   bind: string;
+  /** Optional proxy-mode upstream URL when started with `--remote`. */
+  remote?: string | null;
   /** Masked secret (`••••` + last 4); never the full token. */
   secretMasked?: string | null;
   /** Last 4 chars of secret when known. */
@@ -2946,11 +4328,20 @@ export type ServeStatus = {
    * (one-time copy). Status polls omit this.
    */
   connectionUrl?: string | null;
+  /**
+   * Full client CLI string (`grok --remote ws://…/ws --secret …`) — only on start.
+   */
+  connectionCli?: string | null;
+  /** Masked CLI template for status polls (secret last-4 only). */
+  connectionCliMasked?: string | null;
   pid?: number | null;
   trackedPid?: number | null;
+  /** Local bind TCP probe only — does not check optional `--remote` upstream. */
   portOpen: boolean;
   cliFound: boolean;
   cliSupportsServe: boolean;
+  /** CLI exposes `agent serve --remote` (proxy mode). */
+  cliSupportsRemote?: boolean;
   message?: string | null;
 };
 
@@ -2958,13 +4349,38 @@ export async function serveStatus(): Promise<ServeStatus> {
   return invoke<ServeStatus>("serve_status");
 }
 
-/** Start serve; response may include one-time `connectionUrl` for clipboard copy. */
-export async function serveStart(bind?: string | null): Promise<ServeStatus> {
-  return invoke<ServeStatus>("serve_start", { bind: bind ?? null });
+/**
+ * Start serve; response may include one-time `connectionUrl` / `connectionCli`.
+ * Optional `remote` → `grok agent serve --remote <URL>` (proxy mode).
+ */
+export async function serveStart(
+  bind?: string | null,
+  remote?: string | null,
+): Promise<ServeStatus> {
+  return invoke<ServeStatus>("serve_start", {
+    bind: bind ?? null,
+    remote: remote ?? null,
+  });
 }
 
 export async function serveStop(): Promise<ServeStatus> {
   return invoke<ServeStatus>("serve_stop");
+}
+
+/**
+ * TCP-only health probe for agent serve / remote bind (`host:port`, ~2s).
+ * No secrets, no WebSocket handshake. Frontend must strip secrets from pasted URLs.
+ */
+export type ServeTcpProbeResult = {
+  ok: boolean;
+  latencyMs?: number | null;
+  error?: string | null;
+  /** Bare host:port that was probed. */
+  target: string;
+};
+
+export async function serveTcpProbe(addr: string): Promise<ServeTcpProbeResult> {
+  return invoke<ServeTcpProbeResult>("serve_tcp_probe", { addr });
 }
 
 // ── Wallpaper sources (X search + Imagine) ──────────────────────────────────

@@ -22,6 +22,12 @@ import {
   IconRefresh,
   IconTrash,
 } from "@/components/icons";
+import {
+  PROVIDER_SAVE_TIMEOUT_MS,
+  providerMutationNeedsAgentReload,
+  slugifyProviderId,
+  withProviderSaveTimeout,
+} from "@/lib/providerSave";
 
 export interface ProvidersPanelProps {
   locale: Locale;
@@ -53,15 +59,6 @@ const emptyForm = (): FormState => ({
   apiBackend: "responses",
   setAsDefault: true,
 });
-
-function slugify(raw: string): string {
-  return raw
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9._-]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .slice(0, 48);
-}
 
 function hostOf(url: string): string {
   try {
@@ -377,21 +374,28 @@ export function ProvidersPanel({
     setBusy(true);
     setHint(tr("prov.saving"));
     setHintTone("muted");
+    const id =
+      editingId ??
+      (slugifyProviderId(form.id || form.name || form.baseUrl) ||
+        `provider-${Date.now().toString(36)}`);
+    const setAsDefault = form.setAsDefault;
     try {
-      const id =
-        editingId ??
-        (slugify(form.id || form.name || form.baseUrl) ||
-          `provider-${Date.now().toString(36)}`);
-      const r = await api.providersUpsert({
-        id,
-        model: form.model.trim() || id,
-        baseUrl: form.baseUrl.trim(),
-        name: form.name.trim() || id,
-        apiKey: form.apiKey.trim() || undefined,
-        apiBackend: form.apiBackend,
-        setAsDefault: form.setAsDefault,
-        createOnly: !editingId,
-      });
+      // Wall-clock budget so a hung host IPC cannot leave the UI on “Saving…”.
+      // Disk write may still complete after a timeout (user can re-open panel).
+      const r = await withProviderSaveTimeout(
+        api.providersUpsert({
+          id,
+          model: form.model.trim() || id,
+          baseUrl: form.baseUrl.trim(),
+          name: form.name.trim() || id,
+          apiKey: form.apiKey.trim() || undefined,
+          apiBackend: form.apiBackend,
+          setAsDefault,
+          createOnly: !editingId,
+        }),
+        PROVIDER_SAVE_TIMEOUT_MS,
+        tr("prov.err.saveTimeout"),
+      );
       setList(r);
       const saved = r.providers.find((p) => p.id === id);
       if (saved) {
@@ -400,14 +404,32 @@ export function ProvidersPanel({
         setRightMode("empty");
         setSelection(null);
       }
-      setHint(null);
-      if (form.setAsDefault) {
-        onProviderActivated?.();
+      const needsReload = providerMutationNeedsAgentReload({
+        setAsDefault,
+        providerId: id,
+        activeSource: r.activeSource,
+        activeProviderId: r.activeProviderId,
+      });
+      if (needsReload) {
+        setHint(tr("prov.savedHotReload"));
+        setHintTone("ok");
+        try {
+          // Fire-and-forget UI refresh; host already recycled agents on upsert.
+          onProviderActivated?.();
+        } catch (e) {
+          // Soft-fail: config is on disk; next message / restart still works.
+          setHint(tr("prov.savedApplyFailed", { detail: String(e) }));
+          setHintTone("err");
+        }
+      } else {
+        setHint(tr("prov.saved"));
+        setHintTone("ok");
       }
     } catch (e) {
       setHint(String(e));
       setHintTone("err");
     } finally {
+      // Always leave “Saving…” — never leave busy latched on hung apply.
       setBusy(false);
     }
   };
@@ -796,7 +818,7 @@ export function ProvidersPanel({
                       setForm((f) => ({
                         ...f,
                         name,
-                        id: editingId ? f.id : slugify(name) || f.id,
+                        id: editingId ? f.id : slugifyProviderId(name) || f.id,
                       }));
                     }}
                     placeholder={tr("prov.namePh")}
@@ -815,7 +837,7 @@ export function ProvidersPanel({
                       onChange={(e) =>
                         setForm((f) => ({
                           ...f,
-                          id: slugify(e.target.value),
+                          id: slugifyProviderId(e.target.value),
                         }))
                       }
                       placeholder={tr("prov.idPh")}
@@ -974,7 +996,9 @@ export function ProvidersPanel({
                     onClick={() => void save()}
                     disabled={busy}
                   >
-                    {editingId ? (
+                    {busy ? (
+                      tr("prov.saving")
+                    ) : editingId ? (
                       <>
                         <IconEdit size={14} />
                         {tr("prov.save")}

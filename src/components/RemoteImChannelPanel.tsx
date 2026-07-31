@@ -16,13 +16,19 @@ import type {
 import {
   applySaveInstance,
   advancedPanelFields,
+  channelHasDeepHealth,
+  classifyChannelHealth,
   credentialsRefFor,
   defaultAcl,
   getChannelSchema,
+  isSecretControl,
   parseIdSecretPair,
   primaryBindFields,
   remoteImSecretsPut,
+  secretFormValue,
+  secretPlaceholderWhenStored,
   showsPublicUrlCallout,
+  toggleSecretReveal,
   validateBindFields,
 } from "@/lib/remoteIm";
 import type { TestConnectionResult } from "@/lib/remoteIm/bridgeClient";
@@ -35,8 +41,10 @@ import {
   RimBadge,
   RimCheck,
   RimChoiceRow,
+  RimSecretField,
   RimSeg,
   RimSelect,
+  RimStatusDot,
   RimSwitch,
 } from "@/components/remoteIm/RimControls";
 import { IconAlertTriangle, IconDoctor, IconPlus } from "@/components/icons";
@@ -48,6 +56,10 @@ export interface RemoteImChannelPanelProps {
   instances: ChannelInstance[];
   trustedProjects: TrustedProject[];
   busy: string | null;
+  /** Bridge running/listening — for health classification */
+  bridgeRunning?: boolean;
+  /** This instance appears in bridge.connectedChannels */
+  bridgeLinked?: boolean;
   onSave: (inst: ChannelInstance) => void | Promise<void>;
   onTest: (
     channel: RemoteChannelId,
@@ -68,6 +80,8 @@ export function RemoteImChannelPanel({
   instances,
   trustedProjects,
   busy,
+  bridgeRunning = false,
+  bridgeLinked = false,
   onSave,
   onTest,
   onRequestDelete,
@@ -111,6 +125,7 @@ export function RemoteImChannelPanel({
   );
   const [savedFlash, setSavedFlash] = useState(false);
   const [pairPaste, setPairPaste] = useState("");
+  const [pairPasteRevealed, setPairPasteRevealed] = useState(false);
   const [doctorOpen, setDoctorOpen] = useState(false);
   const [scanPhase, setScanPhase] = useState<"idle" | "waiting" | "done">(
     "idle",
@@ -145,6 +160,9 @@ export function RemoteImChannelPanel({
     setScanDeviceCode(null);
     setScanError(null);
     setAdvancedOpen(false);
+    setShowSecret({});
+    setPairPaste("");
+    setPairPasteRevealed(false);
   }, [instance.id, instance, channelId]);
 
   /**
@@ -177,6 +195,8 @@ export function RemoteImChannelPanel({
       const v = validateBindFields(sch, merged, {
         hasCredentials: instance.hasCredentials,
         secretKeysFilled: filled,
+        // Mode switch (WeCom ws↔webhook) must re-enter newly required secrets
+        savedValues: instance.options,
       });
       if (!v.ok) {
         setFormError(
@@ -481,23 +501,32 @@ export function RemoteImChannelPanel({
     }
   };
 
-  const statusTone =
-    instance.status === "connected"
-      ? "ok"
-      : instance.status === "error"
-        ? "err"
-        : instance.hasCredentials
-          ? "warn"
-          : "neutral";
+  const health = useMemo(() => {
+    const filled = new Set(
+      Object.entries(secrets)
+        .filter(([, v]) => v.trim().length > 0)
+        .map(([k]) => k),
+    );
+    return classifyChannelHealth({
+      instance,
+      bridgeRunning,
+      bridgeLinked,
+      secretKeysFilled: filled,
+      // Live form options (e.g. WeCom connect_mode) for honest soft status
+      draftOptions: values,
+    });
+  }, [instance, bridgeRunning, bridgeLinked, secrets, values]);
 
-  const statusLabel = instance.hasCredentials
-    ? t(`settings.remoteIm.status.${instance.status}`)
-    : t("settings.remoteIm.status.unconfigured");
+  const statusTone = health.badgeTone;
+  const statusLabel = t(health.statusKey);
 
   const renderField = (f: (typeof schema.fields)[0]) => {
-    const isSecret = !!f.secret || f.control === "password";
+    const isSecret = isSecretControl({
+      secret: f.secret,
+      control: f.control,
+    });
     const val = isSecret
-      ? (secrets[f.key] ?? "")
+      ? secretFormValue(f.key, secrets)
       : (values[f.key] ?? f.defaultValue ?? "");
 
     if (f.control === "toggle") {
@@ -565,6 +594,9 @@ export function RemoteImChannelPanel({
         <div key={f.key} className="settings-row settings-row--stack">
           <div className="settings-row__text">
             <div className="settings-row__label">{t(f.labelKey)}</div>
+            {f.helpKey ? (
+              <div className="settings-row__desc">{t(f.helpKey)}</div>
+            ) : null}
           </div>
           <RimChoiceRow
             value={String(val ?? f.defaultValue ?? "")}
@@ -578,12 +610,45 @@ export function RemoteImChannelPanel({
       );
     }
 
-    const inputType =
-      isSecret && !showSecret[f.key]
-        ? "password"
-        : f.control === "number"
-          ? "number"
-          : "text";
+    if (isSecret) {
+      const formVal = secretFormValue(f.key, secrets);
+      return (
+        <div key={f.key} className="settings-row settings-row--stack">
+          <div className="settings-row__text">
+            <div className="settings-row__label">
+              {t(f.labelKey)}
+              {f.required ? (
+                <span className="rim-required" aria-hidden>
+                  *
+                </span>
+              ) : null}
+            </div>
+            {f.helpKey ? (
+              <div className="settings-row__desc">{t(f.helpKey)}</div>
+            ) : null}
+          </div>
+          <RimSecretField
+            value={formVal}
+            revealed={!!showSecret[f.key]}
+            onToggleReveal={() =>
+              setShowSecret((s) => toggleSecretReveal(s, f.key))
+            }
+            onChange={(next) => setSecret(f.key, next)}
+            ariaLabel={t(f.labelKey)}
+            showLabel={t("settings.remoteIm.showSecret")}
+            hideLabel={t("settings.remoteIm.hideSecret")}
+            placeholder={
+              secretPlaceholderWhenStored(
+                instance.hasCredentials,
+                formVal,
+                t("settings.remoteIm.secretPlaceholder"),
+              ) ??
+              (f.placeholderKey ? t(f.placeholderKey) : undefined)
+            }
+          />
+        </div>
+      );
+    }
 
     return (
       <div key={f.key} className="settings-row settings-row--stack">
@@ -600,48 +665,22 @@ export function RemoteImChannelPanel({
             <div className="settings-row__desc">{t(f.helpKey)}</div>
           ) : null}
         </div>
-        <div className="rim-secret-row">
-          <input
-            className="settings-input"
-            type={inputType}
-            autoComplete="off"
-            spellCheck={false}
-            data-secret={isSecret ? "1" : undefined}
-            placeholder={
-              isSecret && instance.hasCredentials
-                ? t("settings.remoteIm.secretPlaceholder")
-                : f.placeholderKey
-                  ? t(f.placeholderKey)
-                  : undefined
-            }
-            value={
-              isSecret ? String(secrets[f.key] ?? "") : String(val ?? "")
-            }
-            onChange={(e) => {
-              if (isSecret) setSecret(f.key, e.target.value);
-              else
-                setValue(
-                  f.key,
-                  f.control === "number"
-                    ? Number(e.target.value)
-                    : e.target.value,
-                );
-            }}
-          />
-          {isSecret ? (
-            <button
-              type="button"
-              className="btn btn--ghost btn--sm"
-              onClick={() =>
-                setShowSecret((s) => ({ ...s, [f.key]: !s[f.key] }))
-              }
-            >
-              {showSecret[f.key]
-                ? t("settings.remoteIm.hideSecret")
-                : t("settings.remoteIm.showSecret")}
-            </button>
-          ) : null}
-        </div>
+        <input
+          className="settings-input"
+          type={f.control === "number" ? "number" : "text"}
+          autoComplete="off"
+          spellCheck={false}
+          placeholder={f.placeholderKey ? t(f.placeholderKey) : undefined}
+          value={String(val ?? "")}
+          onChange={(e) => {
+            setValue(
+              f.key,
+              f.control === "number"
+                ? Number(e.target.value)
+                : e.target.value,
+            );
+          }}
+        />
       </div>
     );
   };
@@ -660,8 +699,87 @@ export function RemoteImChannelPanel({
           <h2 className="rim-panel__title">{t(schema.nameKey)}</h2>
           <p className="rim-panel__lead">{t(schema.connectionKey)}</p>
         </div>
-        <RimBadge tone={statusTone}>{statusLabel}</RimBadge>
+        <RimBadge tone={statusTone}>
+          <span className="rim-badge__inner">
+            <RimStatusDot tone={health.tone} />
+            {statusLabel}
+          </span>
+        </RimBadge>
       </header>
+
+      {channelHasDeepHealth(channelId) ? (
+        <div
+          className={
+            "rim-health" +
+            (health.badgeTone === "err"
+              ? " rim-health--err"
+              : health.badgeTone === "ok"
+                ? " rim-health--ok"
+                : health.badgeTone === "warn"
+                  ? " rim-health--warn"
+                  : "")
+          }
+          data-rim-health={channelId}
+        >
+          <div className="rim-health__head">
+            <span className="rim-health__title">
+              {t("settings.remoteIm.health.title")}
+            </span>
+            <span className="rim-health__transport">
+              {t(health.transportKey)}
+              {health.modeLabel ? (
+                <span className="rim-health__mode"> · {health.modeLabel}</span>
+              ) : null}
+            </span>
+          </div>
+          <ul className="rim-health__facts">
+            <li>
+              <span className="rim-health__k">
+                {t("settings.remoteIm.health.credentials")}
+              </span>
+              <span className="rim-health__v">
+                {health.hasCredentials
+                  ? t("settings.remoteIm.health.credentialsSaved")
+                  : t("settings.remoteIm.health.credentialsMissing")}
+              </span>
+            </li>
+            <li>
+              <span className="rim-health__k">
+                {t("settings.remoteIm.health.bridge")}
+              </span>
+              <span className="rim-health__v">
+                {!bridgeRunning
+                  ? t("settings.remoteIm.health.bridgeStopped")
+                  : health.bridgeLinked
+                    ? t("settings.remoteIm.health.bridgeLinked")
+                    : t("settings.remoteIm.health.bridgeNotLinked")}
+              </span>
+            </li>
+            {health.openAcl && health.hasCredentials ? (
+              <li>
+                <span className="rim-health__k">
+                  {t("settings.remoteIm.health.acl")}
+                </span>
+                <span className="rim-health__v rim-health__v--warn">
+                  {t("settings.remoteIm.health.aclOpen")}
+                </span>
+              </li>
+            ) : null}
+          </ul>
+          {health.lastError ? (
+            <div className="rim-health__error" role="status">
+              <code>{health.lastError}</code>
+            </div>
+          ) : null}
+          {health.hintKeys.length > 0 ? (
+            <ul className="rim-health__hints">
+              {health.hintKeys.map((k) => (
+                <li key={k}>{t(k)}</li>
+              ))}
+            </ul>
+          ) : null}
+        </div>
+      ) : null}
 
       <div className="settings-card rim-instance-card">
         <div className="settings-row settings-row--stack">
@@ -695,6 +813,68 @@ export function RemoteImChannelPanel({
 
       {/* Bind */}
       <h3 className="settings-page__h2">{t("settings.remoteIm.bind")}</h3>
+      {channelId === "wecom" ? (
+        <div className="rim-callout" data-wecom-guide="1">
+          <div className="rim-callout__title">
+            {t("settings.remoteIm.wecom.guide.title")}
+          </div>
+          <ol className="rim-guide-steps">
+            <li>{t("settings.remoteIm.wecom.guide.step1")}</li>
+            <li>{t("settings.remoteIm.wecom.guide.step2")}</li>
+            <li>{t("settings.remoteIm.wecom.guide.step3")}</li>
+          </ol>
+          <p className="settings-row__hint">
+            {t("settings.remoteIm.wecom.guide.softFail")}
+          </p>
+        </div>
+      ) : null}
+{channelId === "dingtalk" ? (
+        <div className="rim-callout" data-dingtalk-guide="1">
+          <div className="rim-callout__title">
+            {t("settings.remoteIm.dingtalk.guide.title")}
+          </div>
+          <ol className="rim-guide-steps">
+            <li>{t("settings.remoteIm.dingtalk.guide.step1")}</li>
+            <li>{t("settings.remoteIm.dingtalk.guide.step2")}</li>
+            <li>{t("settings.remoteIm.dingtalk.guide.step3")}</li>
+            <li>{t("settings.remoteIm.dingtalk.guide.step4")}</li>
+          </ol>
+          <p className="settings-row__hint">
+            {t("settings.remoteIm.dingtalk.guide.softFail")}
+          </p>
+        </div>
+      ) : null}
+{channelId === "telegram" ? (
+        <div className="rim-callout" data-telegram-guide="1">
+          <div className="rim-callout__title">
+            {t("settings.remoteIm.telegram.guide.title")}
+          </div>
+          <ol className="rim-guide-steps">
+            <li>{t("settings.remoteIm.telegram.guide.step1")}</li>
+            <li>{t("settings.remoteIm.telegram.guide.step2")}</li>
+            <li>{t("settings.remoteIm.telegram.guide.step3")}</li>
+          </ol>
+          <p className="settings-row__hint">
+            {t("settings.remoteIm.telegram.guide.softFail")}
+          </p>
+        </div>
+      ) : null}
+{channelId === "lark" ? (
+        <div className="rim-callout" data-feishu-guide="1" data-validate="validateFeishuConfig">
+          <div className="rim-callout__title">
+            {t("settings.remoteIm.feishu.guide.title")}
+          </div>
+          <ol className="rim-guide-steps">
+            <li>{t("settings.remoteIm.feishu.guide.step1")}</li>
+            <li>{t("settings.remoteIm.feishu.guide.step2")}</li>
+            <li>{t("settings.remoteIm.feishu.guide.step3")}</li>
+            <li>{t("settings.remoteIm.feishu.guide.step4")}</li>
+          </ol>
+          <p className="settings-row__hint">
+            {t("settings.remoteIm.feishu.guide.softFail")}
+          </p>
+        </div>
+      ) : null}
       <div className="settings-card">
         {schema.scanSupport ? (
           <div className="settings-row settings-row--stack">
@@ -788,13 +968,17 @@ export function RemoteImChannelPanel({
                     {t("settings.remoteIm.pairPasteDesc")}
                   </div>
                 </div>
-                <div className="rim-secret-row">
-                  <input
-                    className="settings-input"
-                    type="password"
-                    autoComplete="off"
+                <div className="rim-pair-paste">
+                  <RimSecretField
                     value={pairPaste}
-                    onChange={(e) => setPairPaste(e.target.value)}
+                    revealed={pairPasteRevealed}
+                    onToggleReveal={() =>
+                      setPairPasteRevealed((v) => !v)
+                    }
+                    onChange={setPairPaste}
+                    ariaLabel={t("settings.remoteIm.pairPaste")}
+                    showLabel={t("settings.remoteIm.showSecret")}
+                    hideLabel={t("settings.remoteIm.hideSecret")}
                     placeholder={t("settings.remoteIm.pairPastePlaceholder")}
                   />
                   <button

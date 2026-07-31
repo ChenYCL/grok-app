@@ -10,6 +10,11 @@ import { createPortal } from "react-dom";
 import * as api from "@/lib/api";
 import { useFloatingMenu } from "@/lib/floatingMenu";
 import {
+  dirForGitProbe,
+  filterEditorsForGitContext,
+  isGitGuiEditorId,
+} from "@/lib/openApps";
+import {
   IconChevronDown,
   IconCopy,
   IconExternalLink,
@@ -67,6 +72,8 @@ export function OpenLocationButton({
   const [editors, setEditors] = useState<api.DetectedEditor[]>([]);
   const [finderIcon, setFinderIcon] = useState<string | null>(null);
   const [systemIcon, setSystemIcon] = useState<string | null>(null);
+  /** Path is inside a git work tree — gates Fork / SourceTree / GitHub Desktop. */
+  const [isGitRepo, setIsGitRepo] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
 
@@ -102,18 +109,95 @@ export function OpenLocationButton({
     loadIcons();
   }, [loadIcons]);
 
+  // Host finishes a background full scan (icons + new apps) → refresh menu.
+  useEffect(() => {
+    if (!api.isTauri()) return;
+    let unlisten: (() => void) | undefined;
+    void api
+      .listen<api.EditorsListResult>("editors://updated", (payload) => {
+        setEditors((payload.editors ?? []).filter((e) => e.available));
+        setFinderIcon(payload.finderIcon ?? null);
+        setSystemIcon(payload.systemIcon ?? null);
+      })
+      .then((fn) => {
+        unlisten = fn;
+      })
+      .catch(() => {
+        /* ignore */
+      });
+    return () => {
+      unlisten?.();
+    };
+  }, []);
+
+  // Probe whether `path` is a git work tree (Fork / SourceTree / GitHub Desktop).
+  useEffect(() => {
+    if (!api.isTauri() || !path) {
+      setIsGitRepo(false);
+      return;
+    }
+    const probeDir = dirForGitProbe(path);
+    if (!probeDir) {
+      setIsGitRepo(false);
+      return;
+    }
+    let cancelled = false;
+    void api
+      .gitStatus(probeDir)
+      .then((r) => {
+        if (!cancelled) setIsGitRepo(!!r.available);
+      })
+      .catch(() => {
+        if (!cancelled) setIsGitRepo(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [path]);
+
+  const visibleEditors = useMemo(
+    () => filterEditorsForGitContext(editors, isGitRepo),
+    [editors, isGitRepo],
+  );
+
+  const finderTarget = platform === "win" ? "explorer" : "finder";
+  // linux/other also use path_reveal; target id stays "finder" for persistence.
+
   const active = normalizeTarget(target);
+  // If last-used target was a git GUI but this project is not a repo, fall back.
+  const effectiveActive = useMemo(() => {
+    if (isGitGuiEditorId(active) && !isGitRepo) return finderTarget;
+    if (
+      active !== "finder" &&
+      active !== "explorer" &&
+      active !== "system" &&
+      active !== "default" &&
+      !visibleEditors.some((e) => e.id === active)
+    ) {
+      return finderTarget;
+    }
+    return active;
+  }, [active, isGitRepo, finderTarget, visibleEditors]);
 
   const currentIcon = useMemo(() => {
-    if (active === "finder" || active === "explorer") return finderIcon;
-    if (active === "system" || active === "default") return systemIcon;
-    return editors.find((e) => e.id === active)?.iconDataUrl ?? null;
-  }, [active, finderIcon, systemIcon, editors]);
+    if (effectiveActive === "finder" || effectiveActive === "explorer") {
+      return finderIcon;
+    }
+    if (effectiveActive === "system" || effectiveActive === "default") {
+      return systemIcon;
+    }
+    return (
+      visibleEditors.find((e) => e.id === effectiveActive)?.iconDataUrl ?? null
+    );
+  }, [effectiveActive, finderIcon, systemIcon, visibleEditors]);
 
   const openWith = useCallback(
     async (raw: string, remember: boolean) => {
       if (!path || disabled) return;
-      const t = normalizeTarget(raw);
+      let t = normalizeTarget(raw);
+      if (isGitGuiEditorId(t) && !isGitRepo) {
+        t = finderTarget;
+      }
       if (remember) onTargetChange(t);
       try {
         if (t === "finder" || t === "explorer") {
@@ -127,12 +211,10 @@ export function OpenLocationButton({
         onOpenError?.(String(e));
       }
     },
-    [path, disabled, onTargetChange, onOpenError],
+    [path, disabled, onTargetChange, onOpenError, isGitRepo, finderTarget],
   );
 
   if (!path) return null;
-
-  const finderTarget = platform === "win" ? "explorer" : "finder";
 
   const menu =
     open && pos && typeof document !== "undefined"
@@ -148,7 +230,7 @@ export function OpenLocationButton({
               role="menuitem"
               className={
                 "open-loc-menu__item" +
-                (active === "finder" || active === "explorer"
+                (effectiveActive === "finder" || effectiveActive === "explorer"
                   ? " is-active"
                   : "")
               }
@@ -171,7 +253,7 @@ export function OpenLocationButton({
               role="menuitem"
               className={
                 "open-loc-menu__item" +
-                (active === "system" || active === "default"
+                (effectiveActive === "system" || effectiveActive === "default"
                   ? " is-active"
                   : "")
               }
@@ -189,17 +271,17 @@ export function OpenLocationButton({
               </span>
               <span>{labels.systemDefault}</span>
             </button>
-            {editors.length > 0 && (
+            {visibleEditors.length > 0 && (
               <div className="open-loc-menu__sep" aria-hidden />
             )}
-            {editors.map((ed) => (
+            {visibleEditors.map((ed) => (
               <button
                 key={ed.id}
                 type="button"
                 role="menuitem"
                 className={
                   "open-loc-menu__item" +
-                  (active === ed.id ? " is-active" : "")
+                  (effectiveActive === ed.id ? " is-active" : "")
                 }
                 onClick={() => {
                   setOpen(false);
@@ -256,7 +338,7 @@ export function OpenLocationButton({
           type="button"
           className="open-loc__main"
           disabled={disabled}
-          onClick={() => void openWith(active, false)}
+          onClick={() => void openWith(effectiveActive, false)}
         >
           <span className="open-loc__app-ico" aria-hidden>
             {currentIcon ? (

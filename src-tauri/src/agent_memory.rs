@@ -812,6 +812,283 @@ pub struct MemoryDeleteResult {
     pub path: String,
 }
 
+// ── Content search (path-scoped under GROK_HOME/memory) ─────────────────────
+
+/// Max hits returned by `search_workspace_memory` (hard cap).
+pub const MEMORY_SEARCH_MAX_HITS: usize = 50;
+/// Max bytes read per file when searching content (hard cap).
+pub const MEMORY_SEARCH_READ_BYTES: usize = 256 * 1024;
+/// Snippet half-window around the first content match (chars).
+const MEMORY_SEARCH_SNIPPET_RADIUS: usize = 48;
+/// Max snippet length returned to the UI (chars, after collapse).
+const MEMORY_SEARCH_SNIPPET_MAX: usize = 160;
+
+/// One content/name hit under `{GROK_HOME}/memory`.
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct MemorySearchHit {
+    pub path: String,
+    pub name: String,
+    pub relative_path: String,
+    pub kind: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub workspace_slug: Option<String>,
+    pub size: u64,
+    pub mtime_ms: u64,
+    /// Redacted excerpt around the first content match. Empty for name-only hits.
+    pub snippet: String,
+    /// True when the query matched file body (not only name/path).
+    pub content_match: bool,
+    pub matched: bool,
+}
+
+/// Result of content search over path-scoped memory files.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MemorySearchResult {
+    pub hits: Vec<MemorySearchHit>,
+    pub memory_root: String,
+    pub memory_root_exists: bool,
+    pub grok_home: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cwd: Option<String>,
+    pub query: String,
+    /// Effective hit limit after clamp.
+    pub limit: usize,
+    /// True when more matches exist beyond the hit cap.
+    pub truncated: bool,
+}
+
+/// Clamp UI/host limit into the hard search cap range (pure).
+pub fn clamp_memory_search_limit(limit: Option<usize>) -> usize {
+    limit.unwrap_or(MEMORY_SEARCH_MAX_HITS).clamp(1, MEMORY_SEARCH_MAX_HITS)
+}
+
+/// Whether a memory kind/name is text-searchable (pure). Index/binary never scanned.
+pub fn is_memory_text_searchable(kind: &str, name: &str) -> bool {
+    if kind == "index" {
+        return false;
+    }
+    let n = name.to_ascii_lowercase();
+    if n.ends_with(".sqlite")
+        || n.ends_with(".sqlite-wal")
+        || n.ends_with(".sqlite-shm")
+        || n.ends_with(".db")
+        || n.ends_with(".bin")
+        || n.starts_with("index.sqlite")
+    {
+        return false;
+    }
+    true
+}
+
+/// Case-insensitive name / relative-path match (pure).
+pub fn memory_name_matches(name: &str, relative_path: &str, query_lower: &str) -> bool {
+    if query_lower.is_empty() {
+        return false;
+    }
+    name.to_ascii_lowercase().contains(query_lower)
+        || relative_path.to_ascii_lowercase().contains(query_lower)
+}
+
+/// Build a single-line snippet around a UTF-8 byte offset (pure).
+pub fn make_memory_search_snippet(
+    content: &str,
+    match_byte_idx: usize,
+    match_len: usize,
+) -> String {
+    let start_byte = floor_char_boundary_mem(content, match_byte_idx);
+    let end_byte = ceil_char_boundary_mem(
+        content,
+        match_byte_idx.saturating_add(match_len).min(content.len()),
+    );
+
+    let prefix = &content[..start_byte];
+    let matched = &content[start_byte..end_byte];
+    let suffix = &content[end_byte..];
+
+    let prefix_chars: Vec<char> = prefix.chars().collect();
+    let suffix_chars: Vec<char> = suffix.chars().collect();
+    let matched_chars: Vec<char> = matched.chars().collect();
+
+    let take_pre = MEMORY_SEARCH_SNIPPET_RADIUS.min(prefix_chars.len());
+    let pre_slice = &prefix_chars[prefix_chars.len().saturating_sub(take_pre)..];
+    let lead_ellipsis = prefix_chars.len() > take_pre;
+
+    let mut out = String::new();
+    if lead_ellipsis {
+        out.push('…');
+    }
+    out.extend(pre_slice.iter().copied());
+    out.extend(matched_chars.iter().copied());
+
+    let room = MEMORY_SEARCH_SNIPPET_MAX.saturating_sub(out.chars().count());
+    let take_suf = room
+        .min(suffix_chars.len())
+        .min(MEMORY_SEARCH_SNIPPET_RADIUS + 16);
+    out.extend(suffix_chars.iter().take(take_suf).copied());
+    if suffix_chars.len() > take_suf {
+        out.push('…');
+    }
+
+    let collapsed: String = out.split_whitespace().collect::<Vec<_>>().join(" ");
+    if collapsed.chars().count() > MEMORY_SEARCH_SNIPPET_MAX {
+        let trimmed: String = collapsed
+            .chars()
+            .take(MEMORY_SEARCH_SNIPPET_MAX.saturating_sub(1))
+            .collect();
+        format!("{trimmed}…")
+    } else {
+        collapsed
+    }
+}
+
+fn floor_char_boundary_mem(s: &str, i: usize) -> usize {
+    if i >= s.len() {
+        return s.len();
+    }
+    let mut i = i;
+    while i > 0 && !s.is_char_boundary(i) {
+        i -= 1;
+    }
+    i
+}
+
+fn ceil_char_boundary_mem(s: &str, i: usize) -> usize {
+    if i >= s.len() {
+        return s.len();
+    }
+    let mut i = i;
+    while i < s.len() && !s.is_char_boundary(i) {
+        i += 1;
+    }
+    i
+}
+
+/// Search file body for `query_lower` (case-insensitive). Caps read size.
+/// Returns redacted snippet on hit.
+fn search_file_content(path: &Path, query_lower: &str, query_len: usize) -> Option<String> {
+    if query_lower.is_empty() {
+        return None;
+    }
+    let Ok(meta) = fs::metadata(path) else {
+        return None;
+    };
+    if !meta.is_file() {
+        return None;
+    }
+    // Skip empty files.
+    if meta.len() == 0 {
+        return None;
+    }
+    let Ok(mut f) = fs::File::open(path) else {
+        return None;
+    };
+    use std::io::Read;
+    let to_read = (meta.len() as usize).min(MEMORY_SEARCH_READ_BYTES);
+    let mut buf = vec![0u8; to_read];
+    let n = f.read(&mut buf).ok()?;
+    buf.truncate(n);
+    if buf.iter().any(|&b| b == 0) {
+        return None;
+    }
+    let text = String::from_utf8_lossy(&buf);
+    let lower = text.to_ascii_lowercase();
+    let byte_idx = lower.find(query_lower)?;
+    let snip = make_memory_search_snippet(&text, byte_idx, query_len);
+    Some(redact_memory_preview(&snip))
+}
+
+/// Search path-scoped memory files for `query` (name + content), with hard caps.
+///
+/// Uses the same workspace matching as `list_workspace_memory`. Empty query →
+/// empty hits. Index/binary files are name-only. Snippets are redacted.
+pub fn search_workspace_memory(
+    query: &str,
+    cwd: Option<&Path>,
+    session_data_mode: &str,
+    limit: Option<usize>,
+) -> MemorySearchResult {
+    let q = query.trim();
+    let limit = clamp_memory_search_limit(limit);
+    let listed = list_workspace_memory(cwd, session_data_mode);
+
+    if q.is_empty() {
+        return MemorySearchResult {
+            hits: Vec::new(),
+            memory_root: listed.memory_root,
+            memory_root_exists: listed.memory_root_exists,
+            grok_home: listed.grok_home,
+            cwd: listed.cwd,
+            query: String::new(),
+            limit,
+            truncated: false,
+        };
+    }
+
+    let q_lower = q.to_ascii_lowercase();
+    let mut hits: Vec<MemorySearchHit> = Vec::new();
+    // Collect all matches first (file count is already workspace-scoped and small),
+    // then apply the hit cap so ranking is stable.
+    for entry in &listed.entries {
+        let name_hit = memory_name_matches(&entry.name, &entry.relative_path, &q_lower);
+        let mut content_match = false;
+        let mut snippet = String::new();
+
+        if is_memory_text_searchable(&entry.kind, &entry.name) {
+            if let Some(snip) =
+                search_file_content(Path::new(&entry.path), &q_lower, q.chars().count())
+            {
+                content_match = true;
+                snippet = snip;
+            }
+        }
+
+        if !name_hit && !content_match {
+            continue;
+        }
+
+        hits.push(MemorySearchHit {
+            path: entry.path.clone(),
+            name: entry.name.clone(),
+            relative_path: entry.relative_path.clone(),
+            kind: entry.kind.clone(),
+            workspace_slug: entry.workspace_slug.clone(),
+            size: entry.size,
+            mtime_ms: entry.mtime_ms,
+            snippet,
+            content_match,
+            matched: entry.matched,
+        });
+    }
+
+    // Prefer content matches first, then name-only; stable by relative path.
+    hits.sort_by(|a, b| {
+        b.content_match
+            .cmp(&a.content_match)
+            .then_with(|| {
+                a.relative_path
+                    .to_ascii_lowercase()
+                    .cmp(&b.relative_path.to_ascii_lowercase())
+            })
+    });
+    let truncated = hits.len() > limit;
+    if truncated {
+        hits.truncate(limit);
+    }
+
+    MemorySearchResult {
+        hits,
+        memory_root: listed.memory_root,
+        memory_root_exists: listed.memory_root_exists,
+        grok_home: listed.grok_home,
+        cwd: listed.cwd,
+        query: q.to_string(),
+        limit,
+        truncated,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1052,5 +1329,159 @@ mod tests {
         assert!(!is_safe_memory_file_path(&root, &root));
         let _ = fs::remove_dir_all(&tmp);
         let _ = PathBuf::new(); // silence unused in some rustc
+    }
+
+    #[test]
+    fn clamp_search_limit() {
+        assert_eq!(clamp_memory_search_limit(None), MEMORY_SEARCH_MAX_HITS);
+        assert_eq!(clamp_memory_search_limit(Some(0)), 1);
+        assert_eq!(clamp_memory_search_limit(Some(3)), 3);
+        assert_eq!(
+            clamp_memory_search_limit(Some(9999)),
+            MEMORY_SEARCH_MAX_HITS
+        );
+    }
+
+    #[test]
+    fn text_searchable_skips_index() {
+        assert!(is_memory_text_searchable("workspace", "MEMORY.md"));
+        assert!(is_memory_text_searchable("session", "2026-01-01.md"));
+        assert!(!is_memory_text_searchable("index", "index.sqlite"));
+        assert!(!is_memory_text_searchable("other", "index.sqlite-wal"));
+        assert!(!is_memory_text_searchable("other", "data.bin"));
+    }
+
+    #[test]
+    fn name_match_is_case_insensitive() {
+        assert!(memory_name_matches(
+            "MEMORY.md",
+            "proj/MEMORY.md",
+            "memory"
+        ));
+        assert!(memory_name_matches("log.md", "proj/sessions/log.md", "sessions"));
+        assert!(!memory_name_matches("MEMORY.md", "proj/MEMORY.md", "zzz"));
+        assert!(!memory_name_matches("a", "b", ""));
+    }
+
+    #[test]
+    fn search_snippet_around_match() {
+        let content = "prefix padding hello TARGET world suffix padding more text here";
+        let idx = content.find("TARGET").unwrap();
+        let snip = make_memory_search_snippet(content, idx, "TARGET".len());
+        assert!(snip.contains("TARGET"), "{snip}");
+        assert!(snip.chars().count() <= MEMORY_SEARCH_SNIPPET_MAX + 1, "{snip}");
+    }
+
+    #[test]
+    fn search_finds_content_and_redacts_snippet() {
+        let tmp = std::env::temp_dir().join(format!(
+            "grok-mem-search-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let _guard = crate::paths::APP_HOME_ENV_LOCK.lock().unwrap();
+        std::env::set_var("GROK_APP_HOME", &tmp);
+        let agent_mem = tmp.join("agent-home").join("memory");
+        let slug = "demo-search-cafe0123";
+        let proj_path = tmp.join("demo-search");
+        fs::create_dir_all(agent_mem.join(slug).join("sessions")).unwrap();
+        fs::create_dir_all(&proj_path).unwrap();
+        fs::write(agent_mem.join("MEMORY.md"), "# Global Memory\nunique-global-token\n").unwrap();
+        fs::write(
+            agent_mem.join(slug).join("MEMORY.md"),
+            format!(
+                "# Project Memory — {}\n\nunique-body-fact about widgets\napi_key=sk-abcdefghijklmnopqrstuvwx\n",
+                proj_path.display()
+            ),
+        )
+        .unwrap();
+        fs::write(
+            agent_mem
+                .join(slug)
+                .join("sessions")
+                .join("log.md"),
+            "session only name match here\n",
+        )
+        .unwrap();
+        fs::write(agent_mem.join(slug).join("index.sqlite"), b"SQLite\0bin").unwrap();
+
+        // Content match deep in body (not only in list preview head for large files is covered by read cap)
+        let found = search_workspace_memory("unique-body-fact", Some(&proj_path), "independent", Some(20));
+        assert!(
+            found.hits.iter().any(|h| h.content_match && h.relative_path.contains("MEMORY.md")),
+            "{:?}",
+            found.hits
+        );
+        let hit = found
+            .hits
+            .iter()
+            .find(|h| h.content_match)
+            .expect("content hit");
+        assert!(hit.snippet.to_ascii_lowercase().contains("unique-body-fact"), "{}", hit.snippet);
+        // Secrets redacted in snippet path when present near match
+        let secret_q = search_workspace_memory("api_key", Some(&proj_path), "independent", None);
+        if let Some(s) = secret_q.hits.iter().find(|h| h.content_match) {
+            assert!(
+                !s.snippet.contains("sk-abcdefghijklmnopqrstuvwx"),
+                "snippet leaked key: {}",
+                s.snippet
+            );
+            assert!(
+                s.snippet.contains("[REDACTED]") || s.snippet.contains("api_key"),
+                "{}",
+                s.snippet
+            );
+        }
+
+        // Name-only match (relative path contains sessions)
+        let name_hits =
+            search_workspace_memory("sessions", Some(&proj_path), "independent", Some(10));
+        assert!(
+            name_hits
+                .hits
+                .iter()
+                .any(|h| h.relative_path.contains("sessions")),
+            "{:?}",
+            name_hits.hits
+        );
+
+        // Index is not content-searched for binary body
+        let idx_hits =
+            search_workspace_memory("SQLite", Some(&proj_path), "independent", None);
+        assert!(
+            !idx_hits.hits.iter().any(|h| h.kind == "index" && h.content_match),
+            "{:?}",
+            idx_hits.hits
+        );
+
+        // Empty query → no hits
+        let empty = search_workspace_memory("  ", Some(&proj_path), "independent", None);
+        assert!(empty.hits.is_empty());
+
+        // Cap truncates
+        let capped =
+            search_workspace_memory("md", Some(&proj_path), "independent", Some(1));
+        assert!(capped.hits.len() <= 1);
+        // "md" matches several .md files → truncated when limit=1
+        if listed_match_count_md_like(&proj_path) > 1 {
+            assert!(capped.truncated, "{capped:?}");
+        }
+
+        std::env::remove_var("GROK_APP_HOME");
+        let _ = fs::remove_dir_all(&tmp);
+    }
+
+    fn listed_match_count_md_like(proj: &std::path::Path) -> usize {
+        list_workspace_memory(Some(proj), "independent")
+            .entries
+            .iter()
+            .filter(|e| {
+                e.name.to_ascii_lowercase().contains("md")
+                    || e.relative_path.to_ascii_lowercase().contains("md")
+            })
+            .count()
     }
 }

@@ -35,6 +35,10 @@ pub struct VoiceSessionState {
     pub mock: bool,
     pub listening: bool,
     pub speaking: bool,
+    /// Model / host-tool turn in progress (not listening, not speaking).
+    pub thinking: bool,
+    /// In-flight Build tool name when a host tool is running (honest loop status).
+    pub active_tool: Option<String>,
     pub error: Option<String>,
     pub delegated_session_ids: Vec<String>,
 }
@@ -50,6 +54,8 @@ impl Default for VoiceSessionState {
             mock: false,
             listening: false,
             speaking: false,
+            thinking: false,
+            active_tool: None,
             error: None,
             delegated_session_ids: vec![],
         }
@@ -128,6 +134,8 @@ impl VoiceHost {
                 mock,
                 listening: true,
                 speaking: false,
+                thinking: false,
+                active_tool: None,
                 error: None,
                 delegated_session_ids: vec![],
             };
@@ -204,6 +212,8 @@ impl VoiceHost {
             g.state.active = false;
             g.state.listening = false;
             g.state.speaking = false;
+            g.state.thinking = false;
+            g.state.active_tool = None;
             g.state.mode = "idle".into();
             g.stop.clone()
         };
@@ -256,7 +266,146 @@ impl VoiceHost {
     }
 }
 
+fn set_thinking(host: &VoiceHost, app: &AppHandle, thinking: bool) {
+    let mut st = host.snapshot();
+    st.thinking = thinking;
+    if thinking {
+        st.listening = false;
+        st.speaking = false;
+    } else if st.active && !st.speaking {
+        st.listening = true;
+        st.active_tool = None;
+    }
+    host.inner.lock().state = st;
+    host.emit_state(app);
+}
+
+fn set_active_tool(host: &VoiceHost, app: &AppHandle, tool: Option<&str>) {
+    let mut st = host.snapshot();
+    st.active_tool = tool.map(|s| s.to_string());
+    if tool.is_some() {
+        st.thinking = true;
+        st.listening = false;
+        st.speaking = false;
+    }
+    host.inner.lock().state = st;
+    host.emit_state(app);
+}
+
+fn emit_tool_event(app: &AppHandle, payload: Value) {
+    let _ = app.emit("voice://tool", payload);
+}
+
 async fn execute_tool(
+    app: &AppHandle,
+    mgr: &Arc<SessionManager>,
+    host: &VoiceHost,
+    snap: &VoiceSessionState,
+    name: &str,
+    args_json: &str,
+) -> Result<Value, String> {
+    set_thinking(host, app, true);
+    set_active_tool(host, app, Some(name));
+    emit_tool_event(
+        app,
+        json!({
+            "name": name,
+            "status": "running",
+            "args": args_json,
+        }),
+    );
+
+    let result = execute_tool_inner(app, mgr, host, snap, name, args_json).await;
+
+    set_active_tool(host, app, None);
+    set_thinking(host, app, false);
+
+    match result {
+        Ok(out) => {
+            let soft = voice_tools::soft_fail_reason(&out);
+            let status = if soft.is_some() { "soft_fail" } else { "ok" };
+            let mut payload = json!({
+                "name": name,
+                "status": status,
+                "args": args_json,
+                "result": out,
+            });
+            if let Some(reason) = soft {
+                payload
+                    .as_object_mut()
+                    .map(|o| o.insert("reason".into(), json!(reason)));
+            }
+            if let Some(sid) = out
+                .get("session_id")
+                .or_else(|| out.get("sessionId"))
+                .and_then(|x| x.as_str())
+            {
+                payload
+                    .as_object_mut()
+                    .map(|o| o.insert("sessionId".into(), json!(sid)));
+            }
+            emit_tool_event(app, payload);
+            let _ = app.emit(
+                "voice://tool_result",
+                json!({
+                    "name": name,
+                    "status": status,
+                    "result": out,
+                }),
+            );
+            Ok(out)
+        }
+        Err(e) => {
+            let class = voice_tools::classify_tool_error(&e);
+            // Soft-fail CLI missing (and similar): return structured result so
+            // the voice model can narrate honestly without killing the session.
+            if voice_tools::is_soft_tool_error(class) {
+                let out = voice_tools::soft_fail_result(class, &e);
+                emit_tool_event(
+                    app,
+                    json!({
+                        "name": name,
+                        "status": "soft_fail",
+                        "reason": class,
+                        "errorClass": class,
+                        "message": e,
+                        "result": out,
+                    }),
+                );
+                let _ = app.emit(
+                    "voice://tool_result",
+                    json!({
+                        "name": name,
+                        "status": "soft_fail",
+                        "reason": class,
+                        "result": out,
+                    }),
+                );
+                return Ok(out);
+            }
+            emit_tool_event(
+                app,
+                json!({
+                    "name": name,
+                    "status": "error",
+                    "reason": class,
+                    "errorClass": class,
+                    "message": e,
+                }),
+            );
+            let _ = app.emit(
+                "voice://error",
+                json!({
+                    "message": format!("tool {name}: {e}"),
+                    "errorClass": class,
+                }),
+            );
+            Err(e)
+        }
+    }
+}
+
+async fn execute_tool_inner(
     app: &AppHandle,
     mgr: &Arc<SessionManager>,
     host: &VoiceHost,
@@ -266,10 +415,6 @@ async fn execute_tool(
 ) -> Result<Value, String> {
     if VoiceHost::is_mock_env() {
         let out = voice_tools::mock_execute_tool(name, args_json)?;
-        let _ = app.emit(
-            "voice://tool",
-            json!({ "name": name, "args": args_json, "result": out }),
-        );
         if let Some(sid) = out.get("session_id").and_then(|x| x.as_str()) {
             host.push_delegated(sid);
             host.emit_state(app);
@@ -402,10 +547,6 @@ async fn execute_tool(
         }
     };
 
-    let _ = app.emit(
-        "voice://tool",
-        json!({ "name": name, "args": args_json, "result": out }),
-    );
     Ok(out)
 }
 
@@ -539,18 +680,37 @@ async fn handle_server_event(
     let ty = v.get("type").and_then(|x| x.as_str()).unwrap_or("");
 
     match ty {
+        "response.created" | "response.output_item.added" => {
+            let mut st = host.snapshot();
+            st.thinking = true;
+            st.listening = false;
+            st.speaking = false;
+            host.inner.lock().state = st;
+            host.emit_state(app);
+        }
+        "input_audio_buffer.speech_started" | "input_audio_buffer.speech_stopped" => {
+            let mut st = host.snapshot();
+            st.listening = true;
+            st.thinking = false;
+            st.speaking = false;
+            host.inner.lock().state = st;
+            host.emit_state(app);
+        }
         "response.output_audio.delta" | "response.audio.delta" => {
             if let Some(delta) = v.get("delta").and_then(|x| x.as_str()) {
                 let _ = app.emit("voice://audio", json!({ "delta": delta }));
             }
             let mut st = host.snapshot();
             st.speaking = true;
+            st.thinking = false;
+            st.listening = false;
             host.inner.lock().state = st;
             host.emit_state(app);
         }
         "response.output_audio.done" | "response.audio.done" | "response.done" => {
             let mut st = host.snapshot();
             st.speaking = false;
+            st.thinking = false;
             st.listening = true;
             host.inner.lock().state = st;
             host.emit_state(app);
@@ -602,25 +762,11 @@ async fn handle_server_event(
                 .unwrap_or("{}");
             if voice_tools::VoiceToolName::parse(name).is_some() {
                 let snap = host.snapshot();
-                match execute_tool(app, mgr, host, &snap, name, args).await {
-                    Ok(result) => {
-                        // Best-effort tool result injection for the model.
-                        let _ = app.emit(
-                            "voice://tool_result",
-                            json!({
-                                "callId": call_id,
-                                "name": name,
-                                "result": result
-                            }),
-                        );
-                    }
-                    Err(e) => {
-                        let _ = app.emit(
-                            "voice://error",
-                            json!({ "message": format!("tool {name}: {e}") }),
-                        );
-                    }
-                }
+                // execute_tool emits running → ok/soft_fail/error + tool_result.
+                // Soft-fail (e.g. CLI missing) returns Ok(structured) so the
+                // model can speak honestly without ending the voice session.
+                let _ = execute_tool(app, mgr, host, &snap, name, args).await;
+                let _ = call_id; // reserved for future realtime function_call_output
             }
         }
         "error" => {
@@ -629,7 +775,11 @@ async fn handle_server_event(
                 .or_else(|| v.get("message"))
                 .and_then(|x| x.as_str())
                 .unwrap_or("voice error");
-            let _ = app.emit("voice://error", json!({ "message": msg }));
+            let class = voice_tools::classify_tool_error(msg);
+            let _ = app.emit(
+                "voice://error",
+                json!({ "message": msg, "errorClass": class }),
+            );
         }
         _ => {}
     }
@@ -719,5 +869,6 @@ mod tests {
     fn default_inactive() {
         let h = VoiceHost::new();
         assert!(!h.snapshot().active);
+        assert!(h.snapshot().active_tool.is_none());
     }
 }

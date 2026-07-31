@@ -9,9 +9,11 @@ import {
   useMemo,
   useRef,
   useState,
+  type KeyboardEvent as ReactKeyboardEvent,
   type PointerEvent as ReactPointerEvent,
   type ReactNode,
 } from "react";
+import { nextIndex } from "@/lib/a11yFocus";
 import { Select } from "@/components/Select";
 import {
   IconArchive,
@@ -41,6 +43,14 @@ import {
   filterCliSessions,
 } from "@/lib/cliSessionsFilter";
 import { ARCHIVE_AGE_DAY_OPTIONS } from "@/lib/sessionArchiveAge";
+import { CostRollupPanel } from "@/components/CostRollupPanel";
+import { StreamingMessagesJsonPanel } from "@/components/StreamingMessagesJsonPanel";
+import { StreamingAcpNdjsonPanel } from "@/components/StreamingAcpNdjsonPanel";
+import { WorkflowsDiscoveryBlock } from "@/components/WorkflowsSettingsBlock";
+import type {
+  CostRollupProjectMeta,
+  CostRollupSessionMeta,
+} from "@/lib/costRollup";
 import {
   COMMON_DISALLOWED_TOOLS,
   isToolDisallowed,
@@ -49,15 +59,28 @@ import {
   parseDisallowedToolsInput,
   toggleDisallowedTool,
 } from "@/lib/disallowedTools";
+import { parseAgentsJson } from "@/lib/agentsJson";
+import {
+  COMMON_ALLOWED_TOOLS,
+  bothToolListsSet,
+  isToolAllowed,
+  normalizeAllowedTools,
+  parseAllowedToolsInput,
+  toggleAllowedTool,
+} from "@/lib/allowedTools";
 import {
   SHORTCUTS,
   detectShortcutPlatform,
   filterShortcutGroups,
+  shortcutScope,
   shortcutsByGroup,
   type ShortcutGroup,
   type ShortcutId,
+  type ShortcutScope,
 } from "@/lib/shortcuts";
 import {
+  SHORTCUT_IGNORE_CROSS_SCOPE_CHANGED_EVENT,
+  SHORTCUT_IGNORE_CROSS_SCOPE_STORAGE_KEY,
   SHORTCUT_REMAP_CHANGED_EVENT,
   SHORTCUT_REMAP_STORAGE_KEY,
   buildEffectiveChordMap,
@@ -68,10 +91,13 @@ import {
   formatChordDisplay,
   hasAnyShortcutRemaps,
   isRemappableShortcutId,
+  loadIgnoreCrossScopeConflicts,
   loadShortcutRemaps,
   resetConflictingShortcutRemaps,
+  saveIgnoreCrossScopeConflicts,
   setShortcutRecordingActive,
   setShortcutRemap,
+  type ChordConflictOpts,
   type ShortcutRemapMap,
 } from "@/lib/shortcutRemap";
 import type { Theme, ThemePreference } from "@/lib/theme";
@@ -117,6 +143,11 @@ import {
   dispatchChatWidthChange,
   type ChatWidth,
 } from "@/lib/chatWidthPref";
+import {
+  loadExportLogoPref,
+  readImageFileAsDataUrl,
+  saveExportLogoPref,
+} from "@/lib/exportLogoPref";
 import {
   COMPOSER_MIN_ROWS_OPTIONS,
   applyComposerMinRows,
@@ -175,14 +206,23 @@ import { AccountPanel } from "@/components/AccountPanel";
 import { ProvidersPanel } from "@/components/ProvidersPanel";
 import { ExtensionsPanel } from "@/components/ExtensionsPanel";
 import { ProjectInspectPanel } from "@/components/ProjectInspectPanel";
+import { GitPrHubPanel } from "@/components/GitPrHubPanel";
 import { PermissionRulesPanel } from "@/components/PermissionRulesPanel";
+import { AgentConfigEditPanel } from "@/components/AgentConfigEditPanel";
+import { PrivacyCenterPanel } from "@/components/PrivacyCenterPanel";
 import { ManagedSetupPanel } from "@/components/ManagedSetupPanel";
 import { TraceHistoryList } from "@/components/TraceHistoryList";
 import { GlassModal } from "@/components/GlassModal";
 import { MemoryBrowserPanel } from "@/components/MemoryBrowserPanel";
+import { MemoryEmbedPanel } from "@/components/MemoryEmbedPanel";
+import { CodebaseIndexingPanel } from "@/components/CodebaseIndexingPanel";
+import { AgentConfigTomlPanel } from "@/components/AgentConfigTomlPanel";
 import { RemoteImLayout } from "@/components/RemoteImLayout";
 import { MirrorConnectPanel } from "@/components/MirrorConnectPanel";
 import { LeaderServePanel } from "@/components/LeaderServePanel";
+import { CliWorktreeDbPanel } from "@/components/CliWorktreeDbPanel";
+import { SdkConnectWizard } from "@/components/SdkConnectWizard";
+import { CliUpdateRow } from "@/components/CliUpdateRow";
 import {
   createT,
   resolveLocale,
@@ -198,6 +238,11 @@ import {
   loadBackBottomAlwaysPref,
   saveBackBottomAlwaysPref,
 } from "@/lib/backBottomAlwaysPref";
+import {
+  loadSessionSearchRankPref,
+  saveSessionSearchRankPref,
+} from "@/lib/sessionSearchRankPref";
+import type { SessionSearchRankMode } from "@/lib/sessionSearch";
 import {
   loadToolStepsAutoCollapsePref,
   saveToolStepsAutoCollapsePref,
@@ -247,6 +292,10 @@ import {
   MESSAGE_TIME_FORMATS,
   type MessageTimeFormat,
 } from "@/lib/messageTimeFormatPref";
+import {
+  normalizeAcpServerAddrForSettings,
+  parseAcpServerAddr,
+} from "@/lib/acpServerAddr";
 import {
   SETTINGS_NAV,
   buildSettingsHash,
@@ -326,6 +375,13 @@ export interface SettingsPageProps {
    */
   showUsageEstimates?: boolean;
   onShowUsageEstimates?: (v: boolean) => void;
+  /**
+   * Show Goal orchestration section in Reliability center (display only;
+   * localStorage `goalOrchUiEnabled`, default on). Does not enable the CLI
+   * goal harness — only hides/shows observed `goal_updated` events.
+   */
+  goalOrchUiEnabled?: boolean;
+  onGoalOrchUiEnabled?: (v: boolean) => void;
   /** Absolute vs relative message time labels (localStorage). */
   messageTimeFormat?: MessageTimeFormat;
   onMessageTimeFormat?: (v: MessageTimeFormat) => void;
@@ -380,6 +436,8 @@ export interface SettingsPageProps {
   /** API mode: remote ACP server `host:port` (empty = local CLI spawn). */
   acpServerAddr: string;
   onAcpServerAddr: (v: string) => void;
+  /** Persist empty/valid address on blur (soft-respawn when it changes). */
+  onAcpServerBlur: (v: string) => void;
   /** Outbound proxy: system | manual | none. */
   proxyMode?: string;
   onProxyMode?: (v: string) => void;
@@ -396,9 +454,25 @@ export interface SettingsPageProps {
   /** Stream stall silence timeout seconds (I06). */
   streamStallSeconds?: number;
   onStreamStallSeconds?: (v: number) => void;
+  /**
+   * Headless partial stream events (CLI 0.2.117+): when on, Remote IM /
+   * diagnostics using streaming-messages-json also pass
+   * `--include-partial-messages`. Soft-fails on older CLIs.
+   */
+  includePartialMessages?: boolean;
+  onIncludePartialMessages?: (v: boolean) => void;
   /** Cap agent turns per process (`grok --max-turns`). 0/undefined = unlimited. */
   maxAgentTurns?: number;
   onMaxAgentTurns?: (v: number) => void;
+  /**
+   * Headless background-wait policy (CLI 0.2.117+): wait | no_wait | timeout.
+   * Affects headless `-p` / Remote IM; top-level flags also soft-gated on ACP.
+   */
+  backgroundWaitPolicy?: string;
+  onBackgroundWaitPolicy?: (v: string) => void;
+  /** Seconds for timeout policy (1–3600). */
+  backgroundWaitTimeoutSec?: number;
+  onBackgroundWaitTimeoutSec?: (v: number) => void;
   /** Preferred agent definition name for spawn (`""` = CLI default). */
   preferredAgent?: string;
   onPreferredAgent?: (v: string) => void;
@@ -410,20 +484,61 @@ export interface SettingsPageProps {
   agentProfilePath?: string;
   onAgentProfilePath?: (v: string) => void;
   onAgentProfilePathCommit?: (v: string) => void;
+  /**
+   * Optional inline agents JSON for top-level `grok --agents <JSON>`.
+   * Empty = omit flag. Local draft via `onAgentsJson`; persist via
+   * `onAgentsJsonCommit` after client-side validation (invalid blocks save).
+   */
+  agentsJson?: string;
+  onAgentsJson?: (v: string) => void;
+  onAgentsJsonCommit?: (v: string) => void | Promise<void>;
   /** Catalog rows for preferred-agent select. */
   agentCatalog?: Array<{ name: string; source: string }>;
   /** Cross-session memory toggle. */
   experimentalMemory?: boolean;
   onExperimentalMemory?: (v: boolean) => void;
+  /**
+   * Compaction mode (CLI 0.2.117+): summary | transcript | segments.
+   * Maps to --compaction-mode / GROK_COMPACTION_MODE.
+   */
+  compactionMode?: string;
+  onCompactionMode?: (v: string) => void;
+  /**
+   * Segments detail (CLI 0.2.117+): none | minimal | balanced | verbose.
+   * Only when mode is segments.
+   */
+  compactionDetail?: string;
+  onCompactionDetail?: (v: string) => void;
+  /**
+   * Prefire two-pass compaction (CLI 0.2.117+ config
+   * two_pass_compaction_enabled + GROK_TWO_PASS_COMPACTION).
+   */
+  twoPassCompactionEnabled?: boolean;
+  onTwoPassCompactionEnabled?: (v: boolean) => void;
   disableWebSearch?: boolean;
   onDisableWebSearch?: (v: boolean) => void;
+  /**
+   * Spawn with top-level `--no-ask-user` (CLI ≥ 0.2.117) to disable
+   * ask-user questionnaires. Soft-respawns on change.
+   */
+  noAskUser?: boolean;
+  onNoAskUser?: (v: boolean) => void;
   /** Built-in tool denylist (`--disallowed-tools`). */
   disallowedTools?: string[];
   onDisallowedTools?: (v: string[]) => void;
+  /** Built-in tool allowlist (`--tools`). Empty = CLI default (all tools). */
+  allowedTools?: string[];
+  onAllowedTools?: (v: string[]) => void;
   reopenLastSession?: boolean;
   onReopenLastSession?: (v: boolean) => void;
   closeToTray?: boolean;
   onCloseToTray?: (v: boolean) => void;
+  /**
+   * When any scheduled task is enabled, still hide to tray on close so
+   * automation_runner keeps ticking (default on). Not a daemon.
+   */
+  keepTrayForSchedules?: boolean;
+  onKeepTrayForSchedules?: (v: boolean) => void;
   /** Show busy session count on dock badge / tray tooltip (localStorage; default on). */
   trayBusyBadge?: boolean;
   onTrayBusyBadge?: (v: boolean) => void;
@@ -448,10 +563,34 @@ export interface SettingsPageProps {
    */
   permissionTimeoutSec?: number;
   onPermissionTimeoutSec?: (v: number) => void;
+  /**
+   * Auto-cancel Ask User Question modal after N seconds (localStorage; 0 = off).
+   * App-enforced; presets: 0 / 30 / 60 / 120 / 300.
+   */
+  askUserTimeoutSec?: number;
+  onAskUserTimeoutSec?: (v: number) => void;
   planEnabled?: boolean;
   onPlanEnabled?: (v: boolean) => void;
+  /** CLI TodoGate (turn-end nudge; `--todo-gate`, CLI 0.2.117+). */
+  todoGateEnabled?: boolean;
+  onTodoGateEnabled?: (v: boolean) => void;
+  /** Max TodoGate fires per prompt (1–20). */
+  todoGateMaxFiresPerPrompt?: number;
+  onTodoGateMaxFiresPerPrompt?: (v: number) => void;
   subagentsEnabled?: boolean;
   onSubagentsEnabled?: (v: boolean) => void;
+  /** CLI subagent worktree snapshot (config 0.2.117+). */
+  subagentWorktreeSnapshotEnabled?: boolean;
+  onSubagentWorktreeSnapshotEnabled?: (v: boolean) => void;
+  /** CLI auto-wake (config `auto_wake_enabled`; CLI-side when supported). */
+  autoWakeEnabled?: boolean;
+  onAutoWakeEnabled?: (v: boolean) => void;
+  /**
+   * Grok Build workflows (`workflows_enabled`). Independent agent-home write;
+   * no in-app runner — CLI / Rhai only.
+   */
+  workflowsEnabled?: boolean;
+  onWorkflowsEnabled?: (v: boolean) => void;
   useLeader?: boolean;
   onUseLeader?: (v: boolean) => void;
   /** Live voice speaker id (xAI realtime), e.g. eve. */
@@ -479,6 +618,12 @@ export interface SettingsPageProps {
   onDoctor: () => void;
   /** Open Reliability / Observability center (busy · stalls · error deck). */
   onOpenReliability?: () => void;
+  /** Open multi-project batch agents dispatch. */
+  onOpenBatchAgents?: () => void;
+  /** Session index for cost rollup unknown-session counts (Settings → Runtime). */
+  costRollupSessions?: readonly CostRollupSessionMeta[];
+  /** Project names for cost rollup labels. */
+  costRollupProjects?: readonly CostRollupProjectMeta[];
   versionFooter: string;
   /** Official Grok Build account (membership / usage). */
   account: AccountStatus | null;
@@ -630,31 +775,76 @@ function NetworkProbeField({ t }: { t: (k: string, vars?: Vars) => string }) {
 }
 
 /**
- * ACP API-mode field with Test + server-side setup one-liner (from PR #23).
- * Remote agents may run anywhere — verify reachability instead of auto-start.
+ * ACP API-mode field: validate on blur, TCP health probe, status chip.
+ * Empty = local CLI spawn; non-empty host:port = connect over TCP.
  */
 function AcpServerField({
   value,
   onChange,
+  onBlurCommit,
+  onOpenAgentServe,
   t,
 }: {
   value: string;
   onChange: (v: string) => void;
+  /** Persist after blur when empty or valid (normalized host:port). */
+  onBlurCommit: (v: string) => void;
+  /** Deep-link to Agent serve controls on the same Connection tab. */
+  onOpenAgentServe?: () => void;
   t: (k: string, vars?: Vars) => string;
 }) {
   const [testing, setTesting] = useState(false);
-  const [result, setResult] = useState<api.AcpProbeResult | null>(null);
+  const [result, setResult] = useState<api.AcpServerProbeResult | null>(null);
+  const [validationError, setValidationError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const addr = value.trim();
-  const port = (addr.split(":")[1] || "").replace(/[^0-9]/g, "") || "8799";
+  const parsed = parseAcpServerAddr(addr);
+  const port = parsed.ok ? String(parsed.port) : "8799";
   const setupCmd = `socat TCP-LISTEN:${port},reuseaddr,fork EXEC:'grok agent --no-leader stdio'`;
 
+  const errorLabel = (code: string): string => {
+    switch (code) {
+      case "empty_host":
+        return t("settings.acpErrEmptyHost");
+      case "missing_port":
+        return t("settings.acpErrMissingPort");
+      case "invalid_port":
+        return t("settings.acpErrInvalidPort");
+      case "invalid_host":
+        return t("settings.acpErrInvalidHost");
+      case "junk":
+        return t("settings.acpErrJunk");
+      default:
+        return t("settings.acpErrJunk");
+    }
+  };
+
+  const handleBlur = () => {
+    const normalized = normalizeAcpServerAddrForSettings(value);
+    if (!normalized.ok) {
+      setValidationError(errorLabel(normalized.error));
+      setResult(null);
+      return;
+    }
+    setValidationError(null);
+    const next = normalized.value ?? "";
+    if (next !== value) onChange(next);
+    onBlurCommit(next);
+  };
+
   const runTest = async () => {
-    if (!addr || !api.isTauri()) return;
+    if (!api.isTauri()) return;
+    const check = parseAcpServerAddr(addr);
+    if (!check.ok) {
+      setValidationError(errorLabel(check.error === "empty" ? "missing_port" : check.error));
+      setResult(null);
+      return;
+    }
+    setValidationError(null);
     setTesting(true);
     setResult(null);
     try {
-      setResult(await api.acpTestConnection(addr));
+      setResult(await api.acpServerProbe(check.normalized));
     } catch (e) {
       setResult({ ok: false, error: String(e) });
     } finally {
@@ -676,36 +866,74 @@ function AcpServerField({
         <div className="settings-row__label">{t("settings.acpServer")}</div>
         <div className="settings-row__desc">{t("settings.acpServerDesc")}</div>
       </div>
+      <div className="settings-row__hint">{t("settings.acpServerModeHelp")}</div>
       <div className="settings-acp-field">
         <input
-          className="settings-input"
+          className={
+            "settings-input" + (validationError ? " is-invalid" : "")
+          }
           value={value}
           placeholder="e.g. 127.0.0.1:8799"
-          onChange={(e) => onChange(e.target.value)}
+          aria-invalid={validationError ? true : undefined}
+          aria-describedby={
+            validationError ? "settings-acp-validation" : undefined
+          }
+          onChange={(e) => {
+            onChange(e.target.value);
+            setValidationError(null);
+            setResult(null);
+          }}
+          onBlur={handleBlur}
         />
         <button
           type="button"
           className="btn btn--ghost"
-          disabled={!addr || testing}
+          disabled={!addr || testing || !!validationError}
           onClick={() => void runTest()}
         >
           {testing ? t("settings.acpTesting") : t("settings.acpTest")}
         </button>
       </div>
+      {validationError ? (
+        <div
+          id="settings-acp-validation"
+          className="settings-row__hint is-danger"
+          role="alert"
+        >
+          {t("settings.acpInvalid", { error: validationError })}
+        </div>
+      ) : null}
       {result ? (
         <div
           className={
-            "settings-row__hint" + (result.ok ? "" : " is-danger")
+            "settings-acp-chip" + (result.ok ? " is-ok" : " is-fail")
           }
+          role="status"
         >
-          {result.ok
-            ? t("settings.acpTestOk", {
-                version: result.agentVersion || "?",
-                model: result.model || "?",
-              })
-            : t("settings.acpTestFail", {
-                error: result.error || "unknown",
-              })}
+          <span className="settings-acp-chip__dot" aria-hidden />
+          <span className="settings-acp-chip__label">
+            {result.ok ? t("settings.acpStatusOk") : t("settings.acpStatusFail")}
+          </span>
+          <span className="settings-acp-chip__meta">
+            {result.ok
+              ? t("settings.acpProbeOk", {
+                  ms: result.latencyMs ?? 0,
+                })
+              : t("settings.acpProbeFail", {
+                  error: result.error || "unknown",
+                })}
+          </span>
+        </div>
+      ) : null}
+      {onOpenAgentServe ? (
+        <div className="settings-row__hint">
+          <button
+            type="button"
+            className="btn btn--ghost btn--sm"
+            onClick={onOpenAgentServe}
+          >
+            {t("settings.acpServerServeLink")}
+          </button>
         </div>
       ) : null}
       {addr ? (
@@ -720,7 +948,9 @@ function AcpServerField({
             {copied ? t("message.copied") : t("message.copy")}
           </button>
         </div>
-      ) : null}
+      ) : (
+        <div className="settings-row__hint">{t("settings.acpServerLocalHint")}</div>
+      )}
     </div>
   );
 }
@@ -892,6 +1122,8 @@ export function SettingsPage({
   onShowReplyLength,
   showUsageEstimates = true,
   onShowUsageEstimates,
+  goalOrchUiEnabled = true,
+  onGoalOrchUiEnabled,
   messageTimeFormat = "absolute",
   onMessageTimeFormat,
   sidebarShowRelativeTime = true,
@@ -927,6 +1159,7 @@ export function SettingsPage({
   lastCliChecksumVerified = null,
   acpServerAddr,
   onAcpServerAddr,
+  onAcpServerBlur,
   proxyMode = "system",
   onProxyMode,
   proxyUrl = "",
@@ -939,28 +1172,57 @@ export function SettingsPage({
   onAgentIdleMinutes,
   streamStallSeconds = 180,
   onStreamStallSeconds,
+  includePartialMessages = false,
+  onIncludePartialMessages,
   storeApiKeysInKeychain = false,
   onStoreApiKeysInKeychain,
   sandboxProfile = "off",
   onSandboxProfile,
   maxAgentTurns = 0,
   onMaxAgentTurns,
+  backgroundWaitPolicy = "wait",
+  onBackgroundWaitPolicy,
+  backgroundWaitTimeoutSec = 600,
+  onBackgroundWaitTimeoutSec,
   preferredAgent = "",
   onPreferredAgent,
   agentProfilePath = "",
   onAgentProfilePath,
   onAgentProfilePathCommit,
+  agentsJson = "",
+  onAgentsJson,
+  onAgentsJsonCommit,
   agentCatalog = [],
   experimentalMemory = false,
   onExperimentalMemory,
+  compactionMode = "summary",
+  onCompactionMode,
+  compactionDetail = "verbose",
+  onCompactionDetail,
+  twoPassCompactionEnabled = false,
+  onTwoPassCompactionEnabled,
   subagentsEnabled = true,
   onSubagentsEnabled,
+  subagentWorktreeSnapshotEnabled = false,
+  onSubagentWorktreeSnapshotEnabled,
+  autoWakeEnabled = false,
+  onAutoWakeEnabled,
+  workflowsEnabled = false,
+  onWorkflowsEnabled,
   planEnabled = true,
   onPlanEnabled,
+  todoGateEnabled = false,
+  onTodoGateEnabled,
+  todoGateMaxFiresPerPrompt = 3,
+  onTodoGateMaxFiresPerPrompt,
   disableWebSearch = false,
   onDisableWebSearch,
+  noAskUser = false,
+  onNoAskUser,
   disallowedTools = [],
   onDisallowedTools,
+  allowedTools = [],
+  onAllowedTools,
   useLeader = false,
   onUseLeader,
   voiceId = "eve",
@@ -973,6 +1235,8 @@ export function SettingsPage({
   onReopenLastSession,
   closeToTray = true,
   onCloseToTray,
+  keepTrayForSchedules = true,
+  onKeepTrayForSchedules,
   trayBusyBadge = true,
   onTrayBusyBadge,
   launchAtLogin = false,
@@ -987,9 +1251,14 @@ export function SettingsPage({
   onNotifySound,
   permissionTimeoutSec = 0,
   onPermissionTimeoutSec,
+  askUserTimeoutSec = 0,
+  onAskUserTimeoutSec,
   cliInfo,
   onDoctor,
   onOpenReliability,
+  onOpenBatchAgents,
+  costRollupSessions = [],
+  costRollupProjects = [],
   versionFooter,
   account,
   accountLoading,
@@ -1023,6 +1292,9 @@ export function SettingsPage({
   trustedProjects = [],
 }: SettingsPageProps) {
   const [query, setQuery] = useState("");
+  /** Client-side validation error for Agents JSON (invalid blocks save). */
+  const [agentsJsonError, setAgentsJsonError] = useState<string | null>(null);
+  const [agentsJsonSaving, setAgentsJsonSaving] = useState(false);
   /** Composer empty min-height (rows) — localStorage only (no AppSettings). */
   const [composerMinRows, setComposerMinRowsState] = useState<ComposerMinRows>(
     () => loadComposerMinRows(),
@@ -1142,6 +1414,11 @@ export function SettingsPage({
     applyChatWidth(next);
     dispatchChatWidthChange(next);
   }, []);
+  /** Share-card export logo — localStorage data URL (no AppSettings). */
+  const [exportLogo, setExportLogo] = useState<string | null>(() =>
+    loadExportLogoPref(),
+  );
+  const exportLogoInputRef = useRef<HTMLInputElement | null>(null);
   /** Sidebar session list density — localStorage only (no AppSettings). */
   const [sidebarDensity, setSidebarDensityState] = useState<SidebarDensity>(
     () => loadSidebarDensity(),
@@ -1166,6 +1443,9 @@ export function SettingsPage({
   const [backBottomAlways, setBackBottomAlways] = useState(() =>
     loadBackBottomAlwaysPref(),
   );
+  /** Session search ranking (keyword vs local hybrid) — frontend-only. */
+  const [sessionSearchRank, setSessionSearchRank] =
+    useState<SessionSearchRankMode>(() => loadSessionSearchRankPref());
   /** Live Voice catalog hotkey on/off — frontend-only localStorage. */
   const [voiceHotkeyEnabled, setVoiceHotkeyEnabled] = useState(() =>
     loadVoiceHotkeyEnabled(),
@@ -1250,6 +1530,32 @@ export function SettingsPage({
     }
   }, [workspaceCwd, clearMemoryBusy, showSettingsToast, t]);
 
+  const onExportLogoFile = useCallback(
+    async (file: File | null) => {
+      if (!file) return;
+      try {
+        const dataUrl = await readImageFileAsDataUrl(file);
+        saveExportLogoPref(dataUrl);
+        setExportLogo(dataUrl);
+      } catch (e) {
+        const msg = String(e);
+        if (msg.includes("too-large")) {
+          showSettingsToast(t("settings.exportLogoTooLarge"), 4000);
+        } else {
+          showSettingsToast(t("settings.exportLogoInvalid"), 4000);
+        }
+      } finally {
+        if (exportLogoInputRef.current) exportLogoInputRef.current.value = "";
+      }
+    },
+    [showSettingsToast, t],
+  );
+  const onClearExportLogo = useCallback(() => {
+    saveExportLogoPref(null);
+    setExportLogo(null);
+    if (exportLogoInputRef.current) exportLogoInputRef.current.value = "";
+  }, []);
+
   const wallpaperErrorMessage = useCallback(
     (err: unknown): string => {
       if (err instanceof WallpaperPrepareError) {
@@ -1292,6 +1598,20 @@ export function SettingsPage({
   useEffect(() => {
     if (!api.isTauri()) return;
     void api.editorsList().then((r) => setEditors(r.editors ?? [])).catch(() => {});
+    let unlisten: (() => void) | undefined;
+    void api
+      .listen<api.EditorsListResult>("editors://updated", (payload) => {
+        setEditors(payload.editors ?? []);
+      })
+      .then((fn) => {
+        unlisten = fn;
+      })
+      .catch(() => {
+        /* ignore */
+      });
+    return () => {
+      unlisten?.();
+    };
   }, []);
 
   // Reset to index when leaving phone layout (e.g. rotate to desktop width).
@@ -1646,15 +1966,62 @@ export function SettingsPage({
     (phoneIndex ? " settings-page--phone-index" : "") +
     (phoneDetail ? " settings-page--phone-detail" : "");
 
+  const visibleNav = useMemo(
+    () => [...personalNav, ...systemNav],
+    [personalNav, systemNav],
+  );
+
+  const onNavKeyDown = useCallback(
+    (e: ReactKeyboardEvent<HTMLButtonElement>, id: string) => {
+      if (
+        e.key !== "ArrowDown" &&
+        e.key !== "ArrowUp" &&
+        e.key !== "Home" &&
+        e.key !== "End"
+      ) {
+        return;
+      }
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      const ids = visibleNav.map((n) => n.id);
+      if (ids.length === 0) return;
+      const idx = ids.indexOf(id as (typeof ids)[number]);
+      let nextIdx = idx;
+      if (e.key === "ArrowDown") {
+        nextIdx = nextIndex(ids.length, idx, "next");
+      } else if (e.key === "ArrowUp") {
+        nextIdx = nextIndex(ids.length, idx, "prev");
+      } else if (e.key === "Home") {
+        nextIdx = 0;
+      } else {
+        nextIdx = ids.length - 1;
+      }
+      if (nextIdx < 0 || nextIdx === idx) {
+        e.preventDefault();
+        return;
+      }
+      e.preventDefault();
+      const nextId = ids[nextIdx];
+      if (!nextId) return;
+      const el = document.querySelector<HTMLElement>(
+        `[data-settings-nav="${nextId}"]`,
+      );
+      el?.focus();
+    },
+    [visibleNav],
+  );
+
   const renderNavItem = (n: (typeof SETTINGS_NAV)[number]) => (
     <button
       key={n.id}
       type="button"
+      data-settings-nav={n.id}
       className={
         "settings-page__nav-item" +
         (section === n.id && !phoneIndex ? " is-active" : "")
       }
+      aria-current={section === n.id && !phoneIndex ? "page" : undefined}
       onClick={() => openSection(n.id)}
+      onKeyDown={(e) => onNavKeyDown(e, n.id)}
     >
       <NavIcon name={n.icon} />
       <span className="settings-page__nav-label">{t(n.labelKey)}</span>
@@ -1689,6 +2056,7 @@ export function SettingsPage({
         className="settings-page__nav"
         hidden={phoneDetail || undefined}
         aria-hidden={phoneDetail || undefined}
+        aria-label={t("a11y.settingsNav")}
       >
         <div className="settings-page__nav-inner">
         <button
@@ -2214,6 +2582,63 @@ export function SettingsPage({
                   />
                 </div>
               ) : null}
+              {onAskUserTimeoutSec ? (
+                <div
+                  className={
+                    "settings-row settings-row--stack" +
+                    rowHighlight("settings-anchor-askUserTimeout")
+                  }
+                  id="settings-anchor-askUserTimeout"
+                >
+                  <div className="settings-row__text">
+                    <div className="settings-row__label">
+                      {t("settings.askUserTimeout")}
+                    </div>
+                    <div className="settings-row__desc">
+                      {t("settings.askUserTimeoutDesc")}
+                    </div>
+                  </div>
+                  <Select
+                    value={String(askUserTimeoutSec ?? 0)}
+                    onChange={(v) => onAskUserTimeoutSec(Number(v))}
+                    options={(() => {
+                      const presets = [
+                        {
+                          value: "0",
+                          label: t("settings.askUserTimeout.off"),
+                        },
+                        {
+                          value: "30",
+                          label: t("settings.askUserTimeout.30"),
+                        },
+                        {
+                          value: "60",
+                          label: t("settings.askUserTimeout.60"),
+                        },
+                        {
+                          value: "120",
+                          label: t("settings.askUserTimeout.120"),
+                        },
+                        {
+                          value: "300",
+                          label: t("settings.askUserTimeout.300"),
+                        },
+                      ];
+                      const cur = Math.max(0, Math.round(askUserTimeoutSec ?? 0));
+                      if (
+                        cur > 0 &&
+                        !presets.some((o) => o.value === String(cur))
+                      ) {
+                        return [
+                          ...presets,
+                          { value: String(cur), label: `${cur}s` },
+                        ];
+                      }
+                      return presets;
+                    })()}
+                  />
+                </div>
+              ) : null}
               <PermissionRulesPanel t={t} />
             </div>
             </>
@@ -2255,6 +2680,82 @@ export function SettingsPage({
                       onMaxAgentTurns(Math.min(200, Math.max(0, Math.round(n))));
                     }}
                   />
+                </div>
+              ) : null}
+              {onBackgroundWaitPolicy ? (
+                <div
+                  className={
+                    "settings-row settings-row--stack" +
+                    rowHighlight("settings-anchor-backgroundWait")
+                  }
+                  id="settings-anchor-backgroundWait"
+                >
+                  <div className="settings-row__text">
+                    <div className="settings-row__label">
+                      {t("settings.backgroundWaitPolicy")}
+                    </div>
+                    <div className="settings-row__desc">
+                      {t("settings.backgroundWaitPolicyDesc")}
+                    </div>
+                  </div>
+                  <Select
+                    value={
+                      backgroundWaitPolicy === "no_wait" ||
+                      backgroundWaitPolicy === "timeout"
+                        ? backgroundWaitPolicy
+                        : "wait"
+                    }
+                    onChange={(v) => onBackgroundWaitPolicy(v)}
+                    options={[
+                      {
+                        value: "wait",
+                        label: t("settings.backgroundWait.wait"),
+                      },
+                      {
+                        value: "no_wait",
+                        label: t("settings.backgroundWait.noWait"),
+                      },
+                      {
+                        value: "timeout",
+                        label: t("settings.backgroundWait.timeout"),
+                      },
+                    ]}
+                    aria-label={t("settings.backgroundWaitPolicy")}
+                  />
+                  {backgroundWaitPolicy === "timeout" &&
+                  onBackgroundWaitTimeoutSec ? (
+                    <>
+                      <div className="settings-row__text">
+                        <div className="settings-row__label">
+                          {t("settings.backgroundWaitTimeout")}
+                        </div>
+                        <div className="settings-row__desc">
+                          {t("settings.backgroundWaitTimeoutDesc")}
+                        </div>
+                      </div>
+                      <input
+                        className="settings-input"
+                        type="number"
+                        min={1}
+                        max={3600}
+                        step={1}
+                        value={
+                          backgroundWaitTimeoutSec > 0
+                            ? backgroundWaitTimeoutSec
+                            : 600
+                        }
+                        onChange={(e) => {
+                          const raw = e.target.value.trim();
+                          const n = Number(raw);
+                          if (!Number.isFinite(n)) return;
+                          onBackgroundWaitTimeoutSec(
+                            Math.min(3600, Math.max(1, Math.round(n))),
+                          );
+                        }}
+                        aria-label={t("settings.backgroundWaitTimeout")}
+                      />
+                    </>
+                  ) : null}
                 </div>
               ) : null}
               {onPreferredAgent ? (
@@ -2359,6 +2860,107 @@ export function SettingsPage({
                   </div>
                 </div>
               ) : null}
+              <div
+                className={rowHighlight("settings-anchor-configTomlView")}
+              >
+                <AgentConfigTomlPanel locale={resolveLocale(locale)} />
+              </div>
+              {onAgentsJson ? (
+                <div
+                  className={
+                    "settings-row settings-row--stack" +
+                    rowHighlight("settings-anchor-agentsJson")
+                  }
+                  id="settings-anchor-agentsJson"
+                >
+                  <div className="settings-row__text">
+                    <div className="settings-row__label">
+                      {t("settings.agentsJson")}
+                    </div>
+                    <div className="settings-row__desc">
+                      {t("settings.agentsJsonDesc")}
+                    </div>
+                  </div>
+                  <textarea
+                    className="settings-input settings-agents-json__textarea"
+                    value={agentsJson || ""}
+                    placeholder={t("settings.agentsJsonPlaceholder")}
+                    onChange={(e) => {
+                      setAgentsJsonError(null);
+                      onAgentsJson(e.target.value);
+                    }}
+                    rows={6}
+                    spellCheck={false}
+                    autoComplete="off"
+                    autoCorrect="off"
+                    autoCapitalize="off"
+                    aria-label={t("settings.agentsJson")}
+                    aria-invalid={agentsJsonError ? true : undefined}
+                  />
+                  {agentsJsonError ? (
+                    <div
+                      className="settings-row__desc"
+                      role="alert"
+                      style={{ color: "var(--danger, #e35)" }}
+                    >
+                      {agentsJsonError}
+                    </div>
+                  ) : null}
+                  <div
+                    className="settings-row__actions"
+                    style={{ display: "flex", gap: 8, flexWrap: "wrap" }}
+                  >
+                    <button
+                      type="button"
+                      className="btn btn--ghost btn--sm"
+                      disabled={agentsJsonSaving}
+                      onClick={() => {
+                        const draft = agentsJson || "";
+                        const parsed = parseAgentsJson(draft);
+                        if (!parsed.ok) {
+                          setAgentsJsonError(
+                            t("settings.agentsJsonInvalid") +
+                              (parsed.message ? ` ${parsed.message}` : ""),
+                          );
+                          return;
+                        }
+                        setAgentsJsonError(null);
+                        const next = parsed.normalized;
+                        onAgentsJson(next);
+                        setAgentsJsonSaving(true);
+                        void Promise.resolve(onAgentsJsonCommit?.(next))
+                          .catch((e) => {
+                            setAgentsJsonError(
+                              String(e || t("settings.agentsJsonInvalid")),
+                            );
+                          })
+                          .finally(() => setAgentsJsonSaving(false));
+                      }}
+                    >
+                      {t("settings.agentsJsonApply")}
+                    </button>
+                    {agentsJson ? (
+                      <button
+                        type="button"
+                        className="btn btn--ghost btn--sm"
+                        disabled={agentsJsonSaving}
+                        onClick={() => {
+                          setAgentsJsonError(null);
+                          onAgentsJson("");
+                          setAgentsJsonSaving(true);
+                          void Promise.resolve(onAgentsJsonCommit?.(""))
+                            .catch((e) => {
+                              setAgentsJsonError(String(e));
+                            })
+                            .finally(() => setAgentsJsonSaving(false));
+                        }}
+                      >
+                        {t("settings.agentsJsonClear")}
+                      </button>
+                    ) : null}
+                  </div>
+                </div>
+              ) : null}
               {onExperimentalMemory ? (
                 <div
                   className={"settings-row" + rowHighlight("settings-anchor-experimentalMemory")}
@@ -2376,6 +2978,124 @@ export function SettingsPage({
                     checked={!!experimentalMemory}
                     onChange={() => onExperimentalMemory(!experimentalMemory)}
                     ariaLabel={t("settings.experimentalMemory")}
+                  />
+                </div>
+              ) : null}
+              {onCompactionMode ? (
+                <div
+                  className={
+                    "settings-row settings-row--stack" +
+                    rowHighlight("settings-anchor-compactionMode")
+                  }
+                  id="settings-anchor-compactionMode"
+                >
+                  <div className="settings-row__text">
+                    <div className="settings-row__label">
+                      {t("settings.compactionMode")}
+                    </div>
+                    <div className="settings-row__desc">
+                      {t("settings.compactionModeDesc")}
+                    </div>
+                  </div>
+                  <Select
+                    value={compactionMode || "summary"}
+                    onChange={(v) => onCompactionMode(v)}
+                    options={[
+                      {
+                        value: "summary",
+                        label: t("settings.compactionMode.summary"),
+                      },
+                      {
+                        value: "transcript",
+                        label: t("settings.compactionMode.transcript"),
+                      },
+                      {
+                        value: "segments",
+                        label: t("settings.compactionMode.segments"),
+                      },
+                    ]}
+                  />
+                  <div className="settings-row__desc" style={{ marginTop: 8 }}>
+                    {(() => {
+                      const helpByMode: Record<string, string> = {
+                        summary: "settings.compactionMode.summary.help",
+                        transcript: "settings.compactionMode.transcript.help",
+                        segments: "settings.compactionMode.segments.help",
+                      };
+                      return t(
+                        helpByMode[compactionMode || "summary"] ??
+                          "settings.compactionMode.summary.help",
+                      );
+                    })()}
+                  </div>
+                </div>
+              ) : null}
+              {onCompactionDetail ? (
+                <div
+                  className={
+                    "settings-row settings-row--stack" +
+                    rowHighlight("settings-anchor-compactionDetail")
+                  }
+                  id="settings-anchor-compactionDetail"
+                >
+                  <div className="settings-row__text">
+                    <div className="settings-row__label">
+                      {t("settings.compactionDetail")}
+                    </div>
+                    <div className="settings-row__desc">
+                      {t("settings.compactionDetailDesc")}
+                    </div>
+                  </div>
+                  <Select
+                    value={compactionDetail || "verbose"}
+                    onChange={(v) => onCompactionDetail(v)}
+                    disabled={(compactionMode || "summary") !== "segments"}
+                    options={[
+                      {
+                        value: "none",
+                        label: t("settings.compactionDetail.none"),
+                      },
+                      {
+                        value: "minimal",
+                        label: t("settings.compactionDetail.minimal"),
+                      },
+                      {
+                        value: "balanced",
+                        label: t("settings.compactionDetail.balanced"),
+                      },
+                      {
+                        value: "verbose",
+                        label: t("settings.compactionDetail.verbose"),
+                      },
+                    ]}
+                  />
+                  <div className="settings-row__desc" style={{ marginTop: 8 }}>
+                    {t("settings.compactionDetail.help")}
+                  </div>
+                </div>
+              ) : null}
+              {onTwoPassCompactionEnabled ? (
+                <div
+                  className={
+                    "settings-row" +
+                    rowHighlight("settings-anchor-twoPassCompaction")
+                  }
+                  id="settings-anchor-twoPassCompaction"
+                >
+                  <div className="settings-row__text">
+                    <div className="settings-row__label">
+                      {t("settings.twoPassCompaction")}
+                    </div>
+                    <div className="settings-row__desc">
+                      {t("settings.twoPassCompactionDesc")}
+                    </div>
+                  </div>
+                  <UiCheck
+                    checked={!!twoPassCompactionEnabled}
+                    onChange={() =>
+                      onTwoPassCompactionEnabled(!twoPassCompactionEnabled)
+                    }
+                    ariaLabel={t("settings.twoPassCompaction")}
                   />
                 </div>
               ) : null}
@@ -2400,6 +3120,38 @@ export function SettingsPage({
                   />
                 </div>
               ) : null}
+              <div
+                className={
+                  "settings-memory-embed-wrap" +
+                  rowHighlight("settings-anchor-memoryEmbed")
+                }
+              >
+                <MemoryEmbedPanel
+                  locale={resolveLocale(locale)}
+                  onSaved={() =>
+                    showSettingsToast(t("settings.memoryEmbed.saved"), 2200)
+                  }
+                  onError={(msg) => showSettingsToast(msg, 3200)}
+                />
+              </div>
+              <div
+                className={
+                  "settings-codebase-indexing-wrap" +
+                  rowHighlight("settings-anchor-codebaseIndexing")
+                }
+              >
+                <CodebaseIndexingPanel
+                  locale={resolveLocale(locale)}
+                  cliVersion={cliInfo.version}
+                  onSaved={() =>
+                    showSettingsToast(
+                      t("settings.codebaseIndexing.saved"),
+                      2200,
+                    )
+                  }
+                  onError={(msg) => showSettingsToast(msg, 3200)}
+                />
+              </div>
               {onSubagentsEnabled ? (
                 <div
                   className={"settings-row" + rowHighlight("settings-anchor-subagents")}
@@ -2417,6 +3169,55 @@ export function SettingsPage({
                     checked={!!subagentsEnabled}
                     onChange={() => onSubagentsEnabled(!subagentsEnabled)}
                     ariaLabel={t("settings.subagentsEnabled")}
+                  />
+                </div>
+              ) : null}
+              {onSubagentWorktreeSnapshotEnabled ? (
+                <div
+                  className={
+                    "settings-row" +
+                    rowHighlight("settings-anchor-subagentWtSnap")
+                  }
+                  id="settings-anchor-subagentWtSnap"
+                >
+                  <div className="settings-row__text">
+                    <div className="settings-row__label">
+                      {t("settings.subagentWorktreeSnapshot")}
+                    </div>
+                    <div className="settings-row__desc">
+                      {t("settings.subagentWorktreeSnapshotDesc")}
+                    </div>
+                  </div>
+                  <UiCheck
+                    checked={!!subagentWorktreeSnapshotEnabled}
+                    onChange={() =>
+                      onSubagentWorktreeSnapshotEnabled(
+                        !subagentWorktreeSnapshotEnabled,
+                      )
+                    }
+                    ariaLabel={t("settings.subagentWorktreeSnapshot")}
+                  />
+                </div>
+              ) : null}
+              {onAutoWakeEnabled ? (
+                <div
+                  className={
+                    "settings-row" + rowHighlight("settings-anchor-autoWake")
+                  }
+                  id="settings-anchor-autoWake"
+                >
+                  <div className="settings-row__text">
+                    <div className="settings-row__label">
+                      {t("settings.autoWake")}
+                    </div>
+                    <div className="settings-row__desc">
+                      {t("settings.autoWakeDesc")}
+                    </div>
+                  </div>
+                  <UiCheck
+                    checked={!!autoWakeEnabled}
+                    onChange={() => onAutoWakeEnabled(!autoWakeEnabled)}
+                    ariaLabel={t("settings.autoWake")}
                   />
                 </div>
               ) : null}
@@ -2440,6 +3241,66 @@ export function SettingsPage({
                   />
                 </div>
               ) : null}
+              {onTodoGateEnabled ? (
+                <div
+                  className={"settings-row" + rowHighlight("settings-anchor-todoGate")}
+                  id="settings-anchor-todoGate"
+                >
+                  <div className="settings-row__text">
+                    <div className="settings-row__label">
+                      {t("settings.todoGate")}
+                    </div>
+                    <div className="settings-row__desc">
+                      {t("settings.todoGateDesc")}
+                    </div>
+                  </div>
+                  <UiCheck
+                    checked={!!todoGateEnabled}
+                    onChange={() => onTodoGateEnabled(!todoGateEnabled)}
+                    ariaLabel={t("settings.todoGate")}
+                  />
+                </div>
+              ) : null}
+              {onTodoGateEnabled && onTodoGateMaxFiresPerPrompt ? (
+                <div
+                  className={
+                    "settings-row settings-row--stack" +
+                    rowHighlight("settings-anchor-todoGate")
+                  }
+                  id="settings-anchor-todoGateMaxFires"
+                >
+                  <div className="settings-row__text">
+                    <div className="settings-row__label">
+                      {t("settings.todoGateMaxFires")}
+                    </div>
+                    <div className="settings-row__desc">
+                      {t("settings.todoGateMaxFiresDesc")}
+                    </div>
+                  </div>
+                  <input
+                    className="settings-input"
+                    type="number"
+                    min={1}
+                    max={20}
+                    step={1}
+                    disabled={!todoGateEnabled}
+                    value={todoGateMaxFiresPerPrompt}
+                    onChange={(e) => {
+                      const raw = e.target.value.trim();
+                      if (!raw) {
+                        onTodoGateMaxFiresPerPrompt(3);
+                        return;
+                      }
+                      const n = Number(raw);
+                      if (!Number.isFinite(n)) return;
+                      onTodoGateMaxFiresPerPrompt(
+                        Math.min(20, Math.max(1, Math.round(n))),
+                      );
+                    }}
+                    aria-label={t("settings.todoGateMaxFires")}
+                  />
+                </div>
+              ) : null}
               {onDisableWebSearch ? (
                 <div
                   className={"settings-row" + rowHighlight("settings-anchor-disableWebSearch")}
@@ -2460,6 +3321,132 @@ export function SettingsPage({
                   />
                 </div>
               ) : null}
+              {onNoAskUser ? (
+                <div
+                  className={"settings-row" + rowHighlight("settings-anchor-noAskUser")}
+                  id="settings-anchor-noAskUser"
+                >
+                  <div className="settings-row__text">
+                    <div className="settings-row__label">
+                      {t("settings.noAskUser")}
+                    </div>
+                    <div className="settings-row__desc">
+                      {t("settings.noAskUserDesc")}
+                    </div>
+                  </div>
+                  <UiCheck
+                    checked={!!noAskUser}
+                    onChange={() => onNoAskUser(!noAskUser)}
+                    ariaLabel={t("settings.noAskUser")}
+                  />
+                </div>
+              ) : null}
+              {onAllowedTools ? (
+                <div
+                  className={
+                    "settings-row settings-row--stack" +
+                    rowHighlight("settings-anchor-allowedTools")
+                  }
+                  id="settings-anchor-allowedTools"
+                >
+                  <div className="settings-row__text">
+                    <div className="settings-row__label">
+                      {t("settings.allowedTools")}
+                    </div>
+                    <div className="settings-row__desc">
+                      {t("settings.allowedToolsDesc")}
+                    </div>
+                    {bothToolListsSet(allowedTools, disallowedTools) ? (
+                      <div className="settings-row__hint">
+                        {t("settings.allowedTools.bothSet")}
+                      </div>
+                    ) : null}
+                  </div>
+                  <div
+                    className="settings-tool-deny__chips"
+                    role="group"
+                    aria-label={t("settings.allowedTools")}
+                  >
+                    {COMMON_ALLOWED_TOOLS.map((tool) => {
+                      const selected = isToolAllowed(allowedTools, tool.id);
+                      return (
+                        <button
+                          key={tool.id}
+                          type="button"
+                          className={
+                            "settings-tool-deny__chip" +
+                            (selected ? " is-on" : "") +
+                            (tool.caution ? " is-caution" : "")
+                          }
+                          aria-pressed={selected}
+                          title={
+                            tool.caution
+                              ? t("settings.allowedTools.caution")
+                              : tool.id
+                          }
+                          onClick={() => {
+                            onAllowedTools(
+                              toggleAllowedTool(allowedTools, tool.id),
+                            );
+                          }}
+                        >
+                          {tool.id}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <div className="settings-tool-deny__row">
+                    <input
+                      type="text"
+                      className="settings-input settings-tool-deny__input"
+                      placeholder={t("settings.allowedToolsPlaceholder")}
+                      defaultValue={normalizeAllowedTools(allowedTools)
+                        .filter(
+                          (id) =>
+                            !COMMON_ALLOWED_TOOLS.some(
+                              (c) => c.id.toLowerCase() === id.toLowerCase(),
+                            ),
+                        )
+                        .join(", ")}
+                      key={normalizeAllowedTools(allowedTools)
+                        .filter(
+                          (id) =>
+                            !COMMON_ALLOWED_TOOLS.some(
+                              (c) => c.id.toLowerCase() === id.toLowerCase(),
+                            ),
+                        )
+                        .join(",")}
+                      onBlur={(e) => {
+                        const custom = parseAllowedToolsInput(e.target.value);
+                        const keptCommon = normalizeAllowedTools(
+                          allowedTools,
+                        ).filter((id) =>
+                          COMMON_ALLOWED_TOOLS.some(
+                            (c) => c.id.toLowerCase() === id.toLowerCase(),
+                          ),
+                        );
+                        onAllowedTools(
+                          normalizeAllowedTools([...keptCommon, ...custom]),
+                        );
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          (e.target as HTMLInputElement).blur();
+                        }
+                      }}
+                    />
+                    {normalizeAllowedTools(allowedTools).length > 0 ? (
+                      <button
+                        type="button"
+                        className="btn btn--sm settings-tool-deny__clear"
+                        onClick={() => onAllowedTools([])}
+                      >
+                        {t("settings.allowedTools.clear")}
+                      </button>
+                    ) : null}
+                  </div>
+                </div>
+              ) : null}
               {onDisallowedTools ? (
                 <div
                   className={
@@ -2478,6 +3465,11 @@ export function SettingsPage({
                     {disableWebSearch ? (
                       <div className="settings-row__hint">
                         {t("settings.disallowedTools.webCovered")}
+                      </div>
+                    ) : null}
+                    {bothToolListsSet(allowedTools, disallowedTools) ? (
+                      <div className="settings-row__hint">
+                        {t("settings.allowedTools.bothSet")}
                       </div>
                     ) : null}
                   </div>
@@ -2594,6 +3586,9 @@ export function SettingsPage({
                   />
                 </div>
               ) : null}
+              <div className={rowHighlight("settings-anchor-configTomlEdit")}>
+                <AgentConfigEditPanel locale={resolveLocale(locale)} />
+              </div>
             </div>
             </>
             )}
@@ -2861,6 +3856,31 @@ export function SettingsPage({
                     checked={!!closeToTray}
                     onChange={() => onCloseToTray(!closeToTray)}
                     ariaLabel={t("settings.closeToTray")}
+                  />
+                </div>
+              ) : null}
+              {onKeepTrayForSchedules ? (
+                <div
+                  className={
+                    "settings-row" +
+                    rowHighlight("settings-anchor-keepTrayForSchedules")
+                  }
+                  id="settings-anchor-keepTrayForSchedules"
+                >
+                  <div className="settings-row__text">
+                    <div className="settings-row__label">
+                      {t("settings.keepTrayForSchedules")}
+                    </div>
+                    <div className="settings-row__desc">
+                      {t("settings.keepTrayForSchedulesDesc")}
+                    </div>
+                  </div>
+                  <UiCheck
+                    checked={!!keepTrayForSchedules}
+                    onChange={() =>
+                      onKeepTrayForSchedules(!keepTrayForSchedules)
+                    }
+                    ariaLabel={t("settings.keepTrayForSchedules")}
                   />
                 </div>
               ) : null}
@@ -4051,6 +5071,42 @@ export function SettingsPage({
                 <div
                   className={
                     "settings-card" +
+                    rowHighlight("settings-anchor-sessionSearchRank")
+                  }
+                  id="settings-anchor-sessionSearchRank"
+                >
+                  <div className="settings-row">
+                    <div className="settings-row__text">
+                      <SettingsLabelWithTip
+                        label={t("settings.sessionSearchRank")}
+                        tip={t("settings.sessionSearchRankDesc")}
+                      />
+                    </div>
+                    <Select
+                      value={sessionSearchRank}
+                      aria-label={t("settings.sessionSearchRank")}
+                      onChange={(v) => {
+                        const next: SessionSearchRankMode =
+                          v === "hybrid" ? "hybrid" : "keyword";
+                        setSessionSearchRank(next);
+                        saveSessionSearchRankPref(next);
+                      }}
+                      options={[
+                        {
+                          value: "keyword",
+                          label: t("settings.sessionSearchRank.keyword"),
+                        },
+                        {
+                          value: "hybrid",
+                          label: t("settings.sessionSearchRank.hybrid"),
+                        },
+                      ]}
+                    />
+                  </div>
+                </div>
+                <div
+                  className={
+                    "settings-card" +
                     rowHighlight("settings-anchor-confirmExternalLinks")
                   }
                   id="settings-anchor-confirmExternalLinks"
@@ -4123,6 +5179,116 @@ export function SettingsPage({
                     </div>
                   </div>
                 ) : null}
+                {onGoalOrchUiEnabled ? (
+                  <div
+                    className={
+                      "settings-card" +
+                      rowHighlight("settings-anchor-goalOrchUi")
+                    }
+                    id="settings-anchor-goalOrchUi"
+                  >
+                    <div className="settings-row">
+                      <div className="settings-row__text">
+                        <SettingsLabelWithTip
+                          label={t("settings.goalOrchUi")}
+                          tip={t("settings.goalOrchUiDesc")}
+                        />
+                      </div>
+                      <UiCheck
+                        checked={!!goalOrchUiEnabled}
+                        onChange={() =>
+                          onGoalOrchUiEnabled(!goalOrchUiEnabled)
+                        }
+                        ariaLabel={t("settings.goalOrchUi")}
+                      />
+                    </div>
+                  </div>
+                ) : null}
+                <div
+                  className={
+                    "settings-card" +
+                    rowHighlight("settings-anchor-exportLogo")
+                  }
+                  id="settings-anchor-exportLogo"
+                >
+                  <div className="settings-row settings-row--stack">
+                    <div className="settings-row__text">
+                      <SettingsLabelWithTip
+                        label={t("settings.exportLogo")}
+                        tip={t("settings.exportLogoDesc")}
+                      />
+                    </div>
+                    <div
+                      className="settings-export-logo"
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 12,
+                        flexWrap: "wrap",
+                        marginTop: 8,
+                      }}
+                    >
+                      <div
+                        className="settings-export-logo__preview"
+                        aria-label={t("settings.exportLogoPreview")}
+                        style={{
+                          width: 40,
+                          height: 40,
+                          borderRadius: 10,
+                          overflow: "hidden",
+                          background: "var(--bg-elevated, #18181b)",
+                          border: "1px solid var(--border, #27272a)",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          fontWeight: 700,
+                          flexShrink: 0,
+                        }}
+                      >
+                        {exportLogo ? (
+                          <img
+                            src={exportLogo}
+                            alt=""
+                            width={40}
+                            height={40}
+                            style={{
+                              width: "100%",
+                              height: "100%",
+                              objectFit: "cover",
+                            }}
+                          />
+                        ) : (
+                          <span aria-hidden>G</span>
+                        )}
+                      </div>
+                      <input
+                        ref={exportLogoInputRef}
+                        type="file"
+                        accept="image/png,image/jpeg,image/webp,image/svg+xml"
+                        hidden
+                        onChange={(e) => {
+                          const f = e.target.files?.[0] ?? null;
+                          void onExportLogoFile(f);
+                        }}
+                      />
+                      <button
+                        type="button"
+                        className="btn btn--ghost"
+                        onClick={() => exportLogoInputRef.current?.click()}
+                      >
+                        {t("settings.exportLogoUpload")}
+                      </button>
+                      <button
+                        type="button"
+                        className="btn btn--ghost"
+                        disabled={!exportLogo}
+                        onClick={onClearExportLogo}
+                      >
+                        {t("settings.exportLogoClear")}
+                      </button>
+                    </div>
+                  </div>
+                </div>
                 {onShowReplyLength ? (
                   <div
                     className={
@@ -4605,6 +5771,7 @@ export function SettingsPage({
                 | "plugins"
                 | "skills"
                 | "mcp"
+                | "agents"
                 | "hooks"
                 | "market"
                 | null) ?? "plugins"
@@ -4671,6 +5838,12 @@ export function SettingsPage({
                       linkLabel: t("mirror.linkLabel"),
                       rotate: t("mirror.rotate"),
                       rotateDone: t("mirror.rotateDone"),
+                      rotateConfirmTitle: t("mirror.rotateConfirmTitle"),
+                      rotateConfirmMessage: t("mirror.rotateConfirmMessage"),
+                      rotateConfirmMessageClients: t(
+                        "mirror.rotateConfirmMessageClients",
+                      ),
+                      rotateConfirmOk: t("mirror.rotateConfirmOk"),
                       allowWrite: t("mirror.allowWrite"),
                       readOnlyOn: t("mirror.readOnlyOn"),
                       readOnlyHint: t("mirror.readOnlyHint"),
@@ -4678,6 +5851,26 @@ export function SettingsPage({
                       writeConfirmMessage: t("mirror.writeConfirmMessage"),
                       writeConfirmOk: t("mirror.writeConfirmOk"),
                       writeEnabledBanner: t("mirror.writeEnabledBanner"),
+                      writeCategoriesTitle: t("mirror.write.categoriesTitle"),
+                      writeCategoriesHint: t("mirror.write.categoriesHint"),
+                      writeBroadWarn: t("mirror.write.broadWarn"),
+                      writeCategorySend: t("mirror.write.category.send"),
+                      writeCategoryStop: t("mirror.write.category.stop"),
+                      writeCategorySessions: t(
+                        "mirror.write.category.sessions",
+                      ),
+                      writeCategoryPermissions: t(
+                        "mirror.write.category.permissions",
+                      ),
+                      writeCategoryAskUser: t(
+                        "mirror.write.category.askUser",
+                      ),
+                      writeCategoryPlan: t("mirror.write.category.plan"),
+                      writeCategoryDelete: t("mirror.write.category.delete"),
+                      writeCategoryRename: t("mirror.write.category.rename"),
+                      maxClientsLabel: t("mirror.maxClients"),
+                      maxClientsHint: t("mirror.maxClientsHint"),
+                      maxClientsValue: t("mirror.maxClientsValue"),
                       auditTitle: t("mirror.audit.title"),
                       auditEmpty: t("mirror.audit.empty"),
                       auditClear: t("mirror.audit.clear"),
@@ -4792,6 +5985,27 @@ export function SettingsPage({
                     />
                   </div>
                 ) : null}
+                <div
+                  className={
+                    "settings-row settings-row--stack" +
+                    rowHighlight("settings-anchor-cliUpdate")
+                  }
+                  id="settings-anchor-cliUpdate"
+                >
+                  <CliUpdateRow
+                    t={t}
+                    cliFound={cliInfo.found}
+                    autoCheck
+                  />
+                </div>
+              </div>
+            )}
+            {activeTab === "cli" && (
+              <div
+                className={rowHighlight("settings-anchor-cliWorktreeDb")}
+                style={{ marginTop: 12 }}
+              >
+                <CliWorktreeDbPanel t={t} />
               </div>
             )}
             {activeTab === "connection" && (
@@ -4803,6 +6017,14 @@ export function SettingsPage({
                   <AcpServerField
                     value={acpServerAddr}
                     onChange={onAcpServerAddr}
+                    onBlurCommit={onAcpServerBlur}
+                    onOpenAgentServe={() =>
+                      navigateTo(
+                        "runtime",
+                        "connection",
+                        "settings-anchor-agentServe",
+                      )
+                    }
                     t={t}
                   />
                 </div>
@@ -4810,10 +6032,21 @@ export function SettingsPage({
                 <div className={rowHighlight("settings-anchor-leaderServe")}>
                   <LeaderServePanel
                     t={t}
+                    useLeader={!!useLeader}
                     onOpenUseLeader={() =>
                       navigateTo("general", "agent", "settings-anchor-useLeader")
                     }
                   />
+                </div>
+                <h2 className="settings-page__h2">{t("settings.sdkConnect.title")}</h2>
+                <div
+                  className={
+                    rowHighlight("settings-anchor-sdkConnect") +
+                    " " +
+                    rowHighlight("settings-anchor-agentServe")
+                  }
+                >
+                  <SdkConnectWizard t={t} />
                 </div>
               </>
             )}
@@ -5006,10 +6239,72 @@ export function SettingsPage({
                     }}
                   />
                 </div>
+                {onIncludePartialMessages ? (
+                  <div
+                    className={
+                      "settings-row" +
+                      rowHighlight("settings-anchor-includePartialMessages")
+                    }
+                    id="settings-anchor-includePartialMessages"
+                  >
+                    <div className="settings-row__text">
+                      <div className="settings-row__label">
+                        {t("settings.includePartialMessages")}
+                      </div>
+                      <div className="settings-row__desc">
+                        {t("settings.includePartialMessagesDesc")}
+                      </div>
+                    </div>
+                    <UiCheck
+                      checked={!!includePartialMessages}
+                      onChange={() =>
+                        onIncludePartialMessages(!includePartialMessages)
+                      }
+                      ariaLabel={t("settings.includePartialMessages")}
+                    />
+                  </div>
+                ) : null}
               </div>
             )}
             {activeTab === "tools" && (
               <>
+                {onWorkflowsEnabled ? (
+                  <div
+                    className={
+                      "settings-card" +
+                      rowHighlight("settings-anchor-workflows")
+                    }
+                    id="settings-anchor-workflows"
+                  >
+                    <div className="settings-row">
+                      <div className="settings-row__text">
+                        <div className="settings-row__label">
+                          {t("settings.workflows")}
+                        </div>
+                        <div className="settings-row__desc">
+                          {t("settings.workflowsDesc")}
+                        </div>
+                      </div>
+                      <UiCheck
+                        checked={!!workflowsEnabled}
+                        onChange={() => onWorkflowsEnabled(!workflowsEnabled)}
+                        ariaLabel={t("settings.workflows")}
+                      />
+                    </div>
+                    <div className="settings-row settings-row--stack">
+                      <div className="settings-row__text">
+                        <div className="settings-row__desc">
+                          {t("settings.workflowsHonesty")}
+                        </div>
+                      </div>
+                      <WorkflowsDiscoveryBlock
+                        locale={resolveLocale(locale)}
+                        projectPath={projectPath}
+                        showToast={showSettingsToast}
+                      />
+                    </div>
+                  </div>
+                ) : null}
                 <div
                   className={"settings-card" + rowHighlight("settings-anchor-doctor")}
                   id="settings-anchor-doctor"
@@ -5070,6 +6365,7 @@ export function SettingsPage({
                         cancel: t("common.cancel"),
                         searchPlaceholder: t("session.tracesSearch"),
                         listAria: t("session.tracesTitle"),
+                        uploadedBadge: t("session.tracesUploadedBadge"),
                       }}
                       onCopied={() =>
                         showSettingsToast(t("session.tracesCopied"), 2000)
@@ -5102,6 +6398,104 @@ export function SettingsPage({
                       {t("reliability.openFromSettings")}
                     </button>
                   </div>
+                </div>
+                <div
+                  className={
+                    "settings-card" +
+                    rowHighlight("settings-anchor-batch-agents")
+                  }
+                  id="settings-anchor-batch-agents"
+                >
+                  <div className="settings-row">
+                    <div className="settings-row__text">
+                      <div className="settings-row__label">
+                        {t("batchAgents.title")}
+                      </div>
+                      <div className="settings-row__desc">
+                        {t("batchAgents.settingsDesc")}
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      className="btn btn--ghost settings-row__action"
+                      onClick={() => onOpenBatchAgents?.()}
+                      disabled={!onOpenBatchAgents}
+                    >
+                      {t("batchAgents.openFromSettings")}
+                    </button>
+                  </div>
+                </div>
+                <div
+                  className={
+                    "settings-card" +
+                    rowHighlight("settings-anchor-cost-rollup")
+                  }
+                  id="settings-anchor-cost-rollup"
+                >
+                  <div className="settings-row settings-row--stack">
+                    <div className="settings-row__text">
+                      <div className="settings-row__label">
+                        {t("costRollup.title")}
+                      </div>
+                      <div className="settings-row__desc">
+                        {t("costRollup.settingsDesc")}
+                      </div>
+                    </div>
+                  </div>
+                  <CostRollupPanel
+                    locale={resolveLocale(locale)}
+                    sessions={costRollupSessions}
+                    projects={costRollupProjects}
+                    embedded
+                    onToast={(msg, ms) => showSettingsToast(msg, ms ?? 2000)}
+                  />
+                </div>
+                <div
+                  className={
+                    "settings-card" +
+                    rowHighlight("settings-anchor-smj")
+                  }
+                  id="settings-anchor-smj"
+                >
+                  <div className="settings-row settings-row--stack">
+                    <div className="settings-row__text">
+                      <div className="settings-row__label">
+                        {t("smj.title")}
+                      </div>
+                      <div className="settings-row__desc">
+                        {t("smj.settingsDesc")}
+                      </div>
+                    </div>
+                  </div>
+                  <StreamingMessagesJsonPanel
+                    locale={resolveLocale(locale)}
+                    cliVersion={cliInfo.version}
+                    onToast={(msg, ms) => showSettingsToast(msg, ms ?? 2000)}
+                  />
+                </div>
+                <div
+                  className={
+                    "settings-card" +
+                    rowHighlight("settings-anchor-stream-acp-ndjson")
+                  }
+                  id="settings-anchor-stream-acp-ndjson"
+                >
+                  <div className="settings-row settings-row--stack">
+                    <div className="settings-row__text">
+                      <div className="settings-row__label">
+                        {t("streamAcpNdjson.title")}
+                      </div>
+                      <div className="settings-row__desc">
+                        {t("streamAcpNdjson.settingsDesc")}
+                      </div>
+                    </div>
+                  </div>
+                  <StreamingAcpNdjsonPanel
+                    locale={resolveLocale(locale)}
+                    manualCliPath={manualCliPath}
+                    projectPath={projectPath}
+                    showToast={showSettingsToast}
+                  />
                 </div>
                 <div
                   className={
@@ -5140,6 +6534,31 @@ export function SettingsPage({
                 <div
                   className={
                     "settings-card pi-settings-block" +
+                    rowHighlight("settings-anchor-prHub")
+                  }
+                  id="settings-anchor-prHub"
+                >
+                  <div className="settings-row settings-row--stack">
+                    <div className="settings-row__text">
+                      <div className="settings-row__label">
+                        {t("prHub.title")}
+                      </div>
+                      <div className="settings-row__desc">
+                        {t("prHub.desc")}
+                      </div>
+                    </div>
+                  </div>
+                  <div className="pi-settings-body">
+                    <GitPrHubPanel
+                      locale={resolveLocale(locale)}
+                      projectPath={projectPath}
+                      hideHeader
+                    />
+                  </div>
+                </div>
+                <div
+                  className={
+                    "settings-card pi-settings-block" +
                     rowHighlight("settings-anchor-managedSetup")
                   }
                   id="settings-anchor-managedSetup"
@@ -5151,6 +6570,22 @@ export function SettingsPage({
                   />
                 </div>
               </>
+            )}
+            {activeTab === "privacy" && (
+              <div
+                className={
+                  "settings-card" + rowHighlight("settings-anchor-privacy")
+                }
+                id="settings-anchor-privacy-card"
+              >
+                <PrivacyCenterPanel
+                  locale={resolveLocale(locale)}
+                  onError={(msg) => showSettingsToast(msg, 4000)}
+                  onSaved={() =>
+                    showSettingsToast(t("settings.privacy.saved"), 2200)
+                  }
+                />
+              </div>
             )}
           </>
         )}
@@ -5180,6 +6615,15 @@ export function SettingsPage({
                 </div>
               </div>
               <AboutUpdateRow t={t} />
+              <div
+                className={
+                  "settings-row settings-row--stack" +
+                  rowHighlight("settings-anchor-aboutCli")
+                }
+                id="settings-anchor-aboutCli"
+              >
+                <CliUpdateRow t={t} cliFound={cliInfo.found} autoCheck />
+              </div>
             </div>
             {onOpenProductTutorial ? (
               <div
@@ -5312,17 +6756,34 @@ function ShortcutsSettingsPanel({
   const [voiceHotkeyEnabled, setVoiceHotkeyEnabled] = useState(() =>
     loadVoiceHotkeyEnabled(),
   );
+  const [ignoreCrossScope, setIgnoreCrossScope] = useState(() =>
+    loadIgnoreCrossScopeConflicts(),
+  );
   const [recordingId, setRecordingId] = useState<ShortcutId | null>(null);
   const [recordError, setRecordError] = useState<string | null>(null);
+
+  const conflictOpts = useMemo<ChordConflictOpts>(
+    () => ({
+      ignoreCrossScope,
+      scopeOf: shortcutScope,
+    }),
+    [ignoreCrossScope],
+  );
 
   useEffect(() => {
     const reloadSend = () => setSendPref(loadComposerSendKeyPref());
     const reloadRemaps = () => setRemaps(loadShortcutRemaps());
     const reloadVoiceHotkey = () =>
       setVoiceHotkeyEnabled(loadVoiceHotkeyEnabled());
+    const reloadIgnoreCross = () =>
+      setIgnoreCrossScope(loadIgnoreCrossScopeConflicts());
     window.addEventListener(COMPOSER_SEND_KEY_CHANGED_EVENT, reloadSend);
     window.addEventListener(SHORTCUT_REMAP_CHANGED_EVENT, reloadRemaps);
     window.addEventListener(VOICE_HOTKEY_CHANGED_EVENT, reloadVoiceHotkey);
+    window.addEventListener(
+      SHORTCUT_IGNORE_CROSS_SCOPE_CHANGED_EVENT,
+      reloadIgnoreCross,
+    );
     const onStorage = (e: StorageEvent) => {
       if (e.key === "grok.composerSendKey" || e.key === null) reloadSend();
       if (e.key === SHORTCUT_REMAP_STORAGE_KEY || e.key === null) {
@@ -5331,12 +6792,22 @@ function ShortcutsSettingsPanel({
       if (e.key === VOICE_HOTKEY_STORAGE_KEY || e.key === null) {
         reloadVoiceHotkey();
       }
+      if (
+        e.key === SHORTCUT_IGNORE_CROSS_SCOPE_STORAGE_KEY ||
+        e.key === null
+      ) {
+        reloadIgnoreCross();
+      }
     };
     window.addEventListener("storage", onStorage);
     return () => {
       window.removeEventListener(COMPOSER_SEND_KEY_CHANGED_EVENT, reloadSend);
       window.removeEventListener(SHORTCUT_REMAP_CHANGED_EVENT, reloadRemaps);
       window.removeEventListener(VOICE_HOTKEY_CHANGED_EVENT, reloadVoiceHotkey);
+      window.removeEventListener(
+        SHORTCUT_IGNORE_CROSS_SCOPE_CHANGED_EVENT,
+        reloadIgnoreCross,
+      );
       window.removeEventListener("storage", onStorage);
     };
   }, []);
@@ -5362,7 +6833,12 @@ function ShortcutsSettingsPanel({
       const chord = chordFromKeyboardEvent(e);
       if (!chord) return;
       const effective = buildEffectiveChordMap(remaps);
-      const conflict = findChordConflict(recordingId, chord, effective);
+      const conflict = findChordConflict(
+        recordingId,
+        chord,
+        effective,
+        conflictOpts,
+      );
       if (conflict) {
         const conflictRow = SHORTCUTS.find((s) => s.id === conflict);
         const action = conflictRow
@@ -5385,7 +6861,7 @@ function ShortcutsSettingsPanel({
       window.removeEventListener("keydown", onKey, true);
       setShortcutRecordingActive(false);
     };
-  }, [recordingId, remaps, t]);
+  }, [recordingId, remaps, t, conflictOpts]);
 
   const groups = useMemo(
     () => shortcutsByGroup(sendPref, remaps, voiceHotkeyEnabled),
@@ -5400,8 +6876,8 @@ function ShortcutsSettingsPanel({
   );
 
   const conflictGroups = useMemo(
-    () => findChordConflicts(remaps),
-    [remaps],
+    () => findChordConflicts(remaps, undefined, conflictOpts),
+    [remaps, conflictOpts],
   );
   const conflictIdSet = useMemo(() => {
     const s = new Set<ShortcutId>();
@@ -5415,6 +6891,11 @@ function ShortcutsSettingsPanel({
     const row = SHORTCUTS.find((s) => s.id === id);
     return row ? t(row.labelKey as MessageKey) : id;
   };
+
+  const scopeLabel = (scope: ShortcutScope) =>
+    scope === "chat-focus"
+      ? t("settings.shortcuts.scope.chatFocus")
+      : t("settings.shortcuts.scope.global");
 
   const groupLabel = (g: ShortcutGroup) =>
     t(`settings.shortcuts.group.${g}` as MessageKey);
@@ -5441,7 +6922,7 @@ function ShortcutsSettingsPanel({
   };
 
   const resetConflicting = () => {
-    setRemaps(resetConflictingShortcutRemaps(remaps));
+    setRemaps(resetConflictingShortcutRemaps(remaps, localStorage, conflictOpts));
     setRecordingId(null);
     setRecordError(null);
   };
@@ -5475,6 +6956,25 @@ function ShortcutsSettingsPanel({
             {t("settings.shortcuts.resetAll")}
           </button>
         </div>
+      </div>
+      <div className="settings-row settings-shortcuts-scope-pref">
+        <div className="settings-row__text">
+          <div className="settings-row__label">
+            {t("settings.shortcuts.ignoreCrossScope")}
+          </div>
+          <div className="settings-row__desc">
+            {t("settings.shortcuts.ignoreCrossScopeDesc")}
+          </div>
+        </div>
+        <UiCheck
+          checked={ignoreCrossScope}
+          onChange={() => {
+            const next = !ignoreCrossScope;
+            setIgnoreCrossScope(next);
+            saveIgnoreCrossScopeConflicts(next);
+          }}
+          ariaLabel={t("settings.shortcuts.ignoreCrossScope")}
+        />
       </div>
       <div className="settings-shortcuts-filter">
         <IconSearch size={14} />
@@ -5513,7 +7013,10 @@ function ShortcutsSettingsPanel({
           </div>
           <ul className="settings-shortcuts-conflicts__list">
             {conflictGroups.map((group) => (
-              <li key={group.chord} className="settings-shortcuts-conflicts__item">
+              <li
+                key={`${group.chord}:${group.ids.join(",")}`}
+                className="settings-shortcuts-conflicts__item"
+              >
                 <kbd className="settings-shortcuts-kbd">
                   {formatChordDisplay(
                     group.chord,
@@ -5551,6 +7054,7 @@ function ShortcutsSettingsPanel({
               <thead>
                 <tr>
                   <th scope="col">{t("settings.shortcuts.colAction")}</th>
+                  <th scope="col">{t("settings.shortcuts.colScope")}</th>
                   <th
                     scope="col"
                     className={
@@ -5599,6 +7103,23 @@ function ShortcutsSettingsPanel({
                             ·
                           </span>
                         ) : null}
+                      </td>
+                      <td>
+                        <span
+                          className={
+                            "settings-shortcuts-scope" +
+                            (row.scope === "chat-focus"
+                              ? " settings-shortcuts-scope--chat"
+                              : " settings-shortcuts-scope--global")
+                          }
+                          title={
+                            row.scope === "chat-focus"
+                              ? t("settings.shortcuts.scope.chatFocusHint")
+                              : t("settings.shortcuts.scope.globalHint")
+                          }
+                        >
+                          {scopeLabel(row.scope)}
+                        </span>
                       </td>
                       <td>
                         <kbd
@@ -5693,12 +7214,21 @@ function CliSessionsPanel({
   const [error, setError] = useState<string | null>(null);
   const [status, setStatus] = useState<string | null>(null);
   const [filterQuery, setFilterQuery] = useState("");
+  /** Host CLI search results when query is non-empty; null = show local list/filter. */
+  const [searchHits, setSearchHits] = useState<api.CliSessionSearchHit[] | null>(
+    null,
+  );
+  const [searching, setSearching] = useState(false);
+  const [searchNote, setSearchNote] = useState<string | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<
     | null
     | { kind: "one"; row: api.CliSessionSummary }
     | { kind: "unlinked"; count: number }
   >(null);
+  const searchSeq = useRef(0);
+  /** Bumps after list refresh so active CLI search re-enriches linked state. */
+  const [listEpoch, setListEpoch] = useState(0);
   const isIndependent = sessionDataMode !== "shared";
 
   const refresh = useCallback(async () => {
@@ -5708,6 +7238,7 @@ function CliSessionsPanel({
     try {
       const list = await api.cliSessionsList();
       setRows(list);
+      setListEpoch((n) => n + 1);
     } catch (e) {
       setError(String(e));
       setRows([]);
@@ -5720,10 +7251,56 @@ function CliSessionsPanel({
     void refresh();
   }, [refresh, sessionDataMode]);
 
-  const filtered = useMemo(
-    () => filterCliSessions(rows, filterQuery),
-    [rows, filterQuery],
-  );
+  // When the search box is non-empty, call host `cli_sessions_search`
+  // (`grok sessions search` + local first-prompt fallback). Debounced.
+  useEffect(() => {
+    const q = filterQuery.trim();
+    if (!q) {
+      setSearchHits(null);
+      setSearching(false);
+      setSearchNote(null);
+      return;
+    }
+    if (!api.isTauri()) {
+      setSearchHits(null);
+      return;
+    }
+    const seq = ++searchSeq.current;
+    setSearching(true);
+    const timer = window.setTimeout(() => {
+      void (async () => {
+        try {
+          const hits = await api.cliSessionsSearch(q, 40);
+          if (searchSeq.current !== seq) return;
+          setSearchHits(hits);
+          const viaCli = hits.some((h) => h.source === "cli");
+          setSearchNote(
+            viaCli
+              ? t("settings.cliSessionsSearchViaCli")
+              : t("settings.cliSessionsSearchViaLocal"),
+          );
+        } catch {
+          if (searchSeq.current !== seq) return;
+          // Host failed — fall back to client-side title/id/cwd/firstPrompt filter.
+          setSearchHits(null);
+          setSearchNote(t("settings.cliSessionsSearchFallback"));
+        } finally {
+          if (searchSeq.current === seq) setSearching(false);
+        }
+      })();
+    }, 280);
+    return () => {
+      window.clearTimeout(timer);
+    };
+  }, [filterQuery, sessionDataMode, listEpoch, t]);
+
+  const filtered = useMemo(() => {
+    const q = filterQuery.trim();
+    if (!q) return rows;
+    if (searchHits) return searchHits;
+    // Host still loading or failed → local filter (incl. firstPrompt when present).
+    return filterCliSessions(rows, q);
+  }, [rows, filterQuery, searchHits]);
   /** Bulk import / delete unlinked always targets the full list (not the filter). */
   const pending = countUnlinkedCliSessions(rows);
   const sourceHome =
@@ -5897,16 +7474,29 @@ function CliSessionsPanel({
                 })}
           </button>
         </div>
-        {rows.length > 0 ? (
-          <div className="settings-cli-sessions__filter">
-            <IconSearch size={14} />
-            <input
-              type="search"
-              value={filterQuery}
-              onChange={(e) => setFilterQuery(e.target.value)}
-              placeholder={t("settings.cliSessionsFilterPlaceholder")}
-              aria-label={t("settings.cliSessionsFilterPlaceholder")}
-            />
+        <div className="settings-cli-sessions__filter">
+          <IconSearch size={14} />
+          <input
+            type="search"
+            value={filterQuery}
+            onChange={(e) => {
+              setFilterQuery(e.target.value);
+              // Clear stale host error when the user edits the query.
+              if (error) setError(null);
+            }}
+            placeholder={t("settings.cliSessionsFilterPlaceholder")}
+            aria-label={t("settings.cliSessionsFilterPlaceholder")}
+          />
+        </div>
+        {searchNote && filterQuery.trim() ? (
+          <div className="settings-cli-sessions__search-note" role="status">
+            {searching
+              ? t("settings.cliSessionsSearching")
+              : searchNote}
+          </div>
+        ) : searching && filterQuery.trim() ? (
+          <div className="settings-cli-sessions__search-note" role="status">
+            {t("settings.cliSessionsSearching")}
           </div>
         ) : null}
         {error ? (
@@ -5919,17 +7509,23 @@ function CliSessionsPanel({
             {status}
           </div>
         ) : null}
-        {loading && rows.length === 0 ? (
+        {loading && rows.length === 0 && !filterQuery.trim() ? (
           <div className="settings-cli-sessions__empty">
             {t("settings.cliSessionsLoading")}
           </div>
-        ) : rows.length === 0 ? (
+        ) : rows.length === 0 && !filterQuery.trim() ? (
           <div className="settings-cli-sessions__empty">
             {t("settings.cliSessionsEmpty")}
           </div>
+        ) : searching && filtered.length === 0 ? (
+          <div className="settings-cli-sessions__empty">
+            {t("settings.cliSessionsSearching")}
+          </div>
         ) : filtered.length === 0 ? (
           <div className="settings-cli-sessions__empty">
-            {t("settings.cliSessionsFilterEmpty")}
+            {filterQuery.trim()
+              ? t("settings.cliSessionsSearchEmpty")
+              : t("settings.cliSessionsFilterEmpty")}
           </div>
         ) : (
           <ul className="settings-cli-sessions__list">
@@ -5939,6 +7535,11 @@ function CliSessionsPanel({
                 r.agentSessionId.length > 14
                   ? `${r.agentSessionId.slice(0, 8)}…${r.agentSessionId.slice(-4)}`
                   : r.agentSessionId;
+              const firstPrompt =
+                "firstPrompt" in r
+                  ? (r as { firstPrompt?: string | null }).firstPrompt
+                  : undefined;
+              const remoteOnly = !r.dir;
               return (
                 <li
                   key={r.agentSessionId}
@@ -5960,6 +7561,14 @@ function CliSessionsPanel({
                         </span>
                       ) : null}
                     </div>
+                    {firstPrompt ? (
+                      <div
+                        className="settings-cli-sessions__prompt"
+                        title={firstPrompt}
+                      >
+                        {firstPrompt}
+                      </div>
+                    ) : null}
                     <div className="settings-cli-sessions__sub">
                       {r.cwd ? `${r.cwd} · ` : ""}
                       {r.numMessages
@@ -6018,10 +7627,14 @@ function CliSessionsPanel({
                     <button
                       type="button"
                       className="btn btn--ghost btn--sm btn--danger"
-                      disabled={!!busyId}
-                      title={t("settings.cliSessionsDeleteConfirmMsg", {
-                        title: r.title,
-                      })}
+                      disabled={!!busyId || remoteOnly}
+                      title={
+                        remoteOnly
+                          ? t("settings.cliSessionsDeleteRemoteOnly")
+                          : t("settings.cliSessionsDeleteConfirmMsg", {
+                              title: r.title,
+                            })
+                      }
                       aria-label={t("settings.cliSessionsDelete")}
                       onClick={() =>
                         setDeleteConfirm({ kind: "one", row: r })

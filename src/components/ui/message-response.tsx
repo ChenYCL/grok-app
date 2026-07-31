@@ -27,6 +27,7 @@ import {
 } from "@/lib/pathRefs";
 import type { ResourceOpenTarget } from "@/components/ResourceViewer";
 import { useSmoothStream } from "@/hooks/useSmoothStream";
+import { revealInOsLabel } from "@/lib/appPlatform";
 import { cn } from "@/lib/utils";
 
 export type MessageResponseProps = {
@@ -66,7 +67,7 @@ function MessageResponseImpl({
   const fileLabels = useMemo(
     () => ({
       open: tr("attach.open"),
-      reveal: tr("attach.reveal"),
+      reveal: revealInOsLabel(tr),
       copyPath: tr("attach.copyPath"),
       openInPanel: tr("resources.openInPanel"),
       openExternal: tr("resources.openExternal"),

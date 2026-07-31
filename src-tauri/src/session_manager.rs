@@ -56,7 +56,8 @@ use crate::stream_stall::{
     stall_tier_from_evidence, stream_stall_message, StallTier,
 };
 use crate::turn_complete::{
-    note_tool_open_status, release_tool_from_open, should_defer_prompt_complete,
+    is_terminal_tool_status, note_tool_open_status, release_tool_from_open,
+    should_defer_prompt_complete,
 };
 
 /// Outcome of one stall-watchdog pass on a single live/background session.
@@ -358,6 +359,8 @@ do NOT reprint the transcript in your reply; answer ONLY the new user message be
 const TOOL_CONTENT_SNIPPET_MAX: usize = 200_000;
 
 /// Extract human-visible path + detail from tool_call payload for activity UI.
+/// path includes file paths **and** web_fetch URLs (`rawInput.url`) so reload
+/// can show Grok-style “Browsed host/path” instead of bare “Tool”.
 fn extract_tool_ui_fields(raw: &serde_json::Value) -> (Option<String>, Option<String>) {
     let path = raw
         .pointer("/locations/0/path")
@@ -366,6 +369,10 @@ fn extract_tool_ui_fields(raw: &serde_json::Value) -> (Option<String>, Option<St
         .or_else(|| raw.pointer("/rawInput/filePath"))
         .or_else(|| raw.pointer("/rawInput/target_file"))
         .or_else(|| raw.pointer("/rawInput/targetFile"))
+        // web_fetch / browse / open_page
+        .or_else(|| raw.pointer("/rawInput/url"))
+        .or_else(|| raw.pointer("/rawInput/uri"))
+        .or_else(|| raw.pointer("/rawInput/href"))
         .and_then(|v| v.as_str())
         .map(|s| s.to_string());
     let command = raw
@@ -376,11 +383,88 @@ fn extract_tool_ui_fields(raw: &serde_json::Value) -> (Option<String>, Option<St
     let detail = command.or_else(|| {
         raw.pointer("/rawInput/query")
             .or_else(|| raw.pointer("/rawInput/pattern"))
+            .or_else(|| raw.pointer("/rawInput/search"))
+            .or_else(|| raw.pointer("/rawInput/q"))
             .or_else(|| raw.pointer("/rawInput/description"))
             .and_then(|v| v.as_str())
             .map(|s| s.chars().take(240).collect::<String>())
     });
     (detail, path)
+}
+
+/// Normalize ACP kind tokens so journal reload classifies correctly.
+fn normalize_tool_kind_for_journal(kind: &str, title: &str) -> String {
+    let k = kind.trim().to_ascii_lowercase();
+    let t = title.trim().to_ascii_lowercase();
+    if k == "fetch" || t.starts_with("fetch:") || t == "web_fetch" || t.contains("web_fetch") {
+        return "web_fetch".into();
+    }
+    if k == "search" || t.starts_with("web search") || t.contains("web_search") {
+        return "web_search".into();
+    }
+    if !kind.trim().is_empty() {
+        return kind.trim().to_string();
+    }
+    String::new()
+}
+
+/// Prefer human-readable journal labels (never bare “tool” when we have better).
+fn tool_journal_label(
+    title: &str,
+    kind: &str,
+    detail: &Option<String>,
+    path: &Option<String>,
+) -> String {
+    let t = title.trim();
+    if !t.is_empty() && !t.eq_ignore_ascii_case("tool") && t != "web_fetch" && t != "web_search"
+    {
+        return t.to_string();
+    }
+    // "Fetch: https://…" style titles from tool_call_update
+    if t.to_ascii_lowercase().starts_with("fetch:") {
+        return t.to_string();
+    }
+    if let Some(p) = path.as_ref().filter(|p| !p.is_empty()) {
+        return p.clone();
+    }
+    if let Some(d) = detail.as_ref().filter(|d| !d.is_empty()) {
+        return d.clone();
+    }
+    let k = kind.trim();
+    if !k.is_empty() && !k.eq_ignore_ascii_case("tool") {
+        return k.replace('_', " ");
+    }
+    if !t.is_empty() {
+        return t.to_string();
+    }
+    "tool".into()
+}
+
+/// True if `next` journal body is richer than `prev` (do not downgrade on upsert).
+fn tool_journal_richer(prev: &str, next: &str) -> bool {
+    if prev == next {
+        return false;
+    }
+    let prev_generic = prev.contains("|tool") || prev.ends_with("|tool");
+    let next_generic = next.contains("|tool\n") || next.ends_with("|tool");
+    if prev_generic && !next_generic {
+        return true;
+    }
+    if !prev_generic && next_generic {
+        return false;
+    }
+    // Prefer rows with URL / multi-line detail
+    let score = |s: &str| {
+        let mut n = s.len();
+        if s.contains("https://") || s.contains("http://") {
+            n += 500;
+        }
+        if s.contains('\n') {
+            n += 100;
+        }
+        n
+    };
+    score(next) > score(prev)
 }
 
 fn take_tool_content_str(v: Option<&serde_json::Value>) -> Option<String> {
@@ -731,7 +815,8 @@ impl SessionManager {
     }
 
     /// Apply tool_call status to open/terminal sets (live + background paths).
-    fn note_tool_status_on_session(s: &mut LiveSession, tool_call_id: &str, status: &str) {
+    /// Returns true when open-set membership changed (insert or remove).
+    fn note_tool_status_on_session(s: &mut LiveSession, tool_call_id: &str, status: &str) -> bool {
         note_tool_open_status(
             &mut s.open_tool_ids,
             &mut s.terminal_tool_ids,
@@ -739,7 +824,44 @@ impl SessionManager {
             tool_call_id,
             status,
             Instant::now(),
-        );
+        )
+    }
+
+    /// Soft-fail audit row for a tool_call start/end (never panics).
+    fn audit_tool_call(
+        session_id: &str,
+        project_path: Option<&str>,
+        tool_name: &str,
+        status: &str,
+        summary: Option<&str>,
+        open_changed: bool,
+        already_terminal: bool,
+    ) {
+        if tool_name.is_empty() && summary.is_none() {
+            // Still record with "unknown" when we have a real lifecycle edge.
+        }
+        let name = if tool_name.is_empty() { "tool" } else { tool_name };
+        if is_terminal_tool_status(status) {
+            if already_terminal {
+                return;
+            }
+            let outcome = crate::audit_ledger::outcome_from_tool_status(status)
+                .unwrap_or(crate::audit_ledger::OUTCOME_ERR);
+            crate::audit_ledger::record_tool_end(
+                Some(session_id),
+                project_path,
+                name,
+                outcome,
+                summary,
+            );
+        } else if open_changed {
+            crate::audit_ledger::record_tool_start(
+                Some(session_id),
+                project_path,
+                name,
+                summary,
+            );
+        }
     }
 
     /// Release open-tool accounting for background tasks (no journal write).
@@ -2494,11 +2616,70 @@ impl SessionManager {
         let policy = PermissionPolicy::parse(&prefs.permission_policy);
         let agent_model = crate::providers::agent_spawn_model_id(&prefs.model_id);
 
+        // Pending CLI --fork-session: must cold-spawn so open can call session/fork.
+        // Never no-op / unpark a warm process that still holds the source agent id.
+        let pending_fork = meta.fork_agent_session
+            && meta
+                .agent_session_id
+                .as_deref()
+                .map(str::trim)
+                .is_some_and(|s| !s.is_empty());
+        if pending_fork {
+            // Drop live/bg/parked shells for this App session so cold spawn can fork.
+            let acp_to_kill = {
+                let mut guard = self.inner.lock();
+                if let Some(s) = guard.as_mut() {
+                    if s.app_session_id == meta.id {
+                        if Self::live_session_is_busy(s) {
+                            tracing::warn!(
+                                "connect fork pending but live mid-turn; deferring fork sid={}",
+                                meta.id
+                            );
+                            return Ok(self.snapshot());
+                        }
+                        let acp = s.acp.take();
+                        s.needs_history_bootstrap = false;
+                        s.fsm.soft_disconnect();
+                        s.process_id = String::new();
+                        acp
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                }
+            };
+            let bg_acp = self
+                .background
+                .lock()
+                .remove(&meta.id)
+                .and_then(|mut bg| bg.acp.take());
+            let parked_acp = self
+                .parked
+                .lock()
+                .remove(&meta.id)
+                .map(|p| p.acp);
+            if let Some(acp) = acp_to_kill {
+                acp.kill().await;
+            }
+            if let Some(acp) = bg_acp {
+                acp.kill().await;
+            }
+            if let Some(acp) = parked_acp {
+                acp.kill().await;
+            }
+            tracing::info!(
+                target: "session",
+                session = %meta.id,
+                "connect pending fork_agent_session — forced cold spawn"
+            );
+        }
+
         // Already live on this App session with a healthy agent → no-op.
         // Includes mid-turn (streaming / open tools): never respawn or cancel.
         // Never no-op on Disconnected/Idle — leftover busy flags after fail_with
         // must not block reconnect (see `should_preserve_live_process`).
-        {
+        if !pending_fork {
             let mut guard = self.inner.lock();
             if let Some(s) = guard.as_mut() {
                 if s.app_session_id == meta.id
@@ -2525,7 +2706,7 @@ impl SessionManager {
         }
 
         // Target already streaming in background → promote to focus.
-        if self.background.lock().contains_key(&meta.id) {
+        if !pending_fork && self.background.lock().contains_key(&meta.id) {
             if let Err(e) = self.try_park_live_emit(&app) {
                 Self::emit_process_limit(&app, Some(&meta.id), max_concurrent);
                 return Err(format!("{}: {}", e.code.as_str(), e.message));
@@ -2540,7 +2721,7 @@ impl SessionManager {
         }
 
         // Target already parked (warm multi-session) → unpark.
-        if self.parked.lock().contains_key(&meta.id) {
+        if !pending_fork && self.parked.lock().contains_key(&meta.id) {
             // Park current live if needed (busy → demote to background / park).
             if let Err(e) = self.try_park_live_emit(&app) {
                 Self::emit_process_limit(&app, Some(&meta.id), max_concurrent);
@@ -2775,6 +2956,12 @@ impl SessionManager {
             &settings.sandbox_profile,
             project_sandbox.as_deref(),
         );
+        // One-shot CLI --fork-session: only when meta asks and we have a source id.
+        let fork_agent = meta.fork_agent_session
+            && resume_agent_sid
+                .as_deref()
+                .map(str::trim)
+                .is_some_and(|s| !s.is_empty());
         let spawn_opts = crate::acp_client::SpawnOptions {
             model_id: Some(agent_model.clone()),
             effort: Some(prefs.effort.clone()),
@@ -2793,6 +2980,13 @@ impl SessionManager {
                 .map(|s| s.trim().to_string())
                 .filter(|s| !s.is_empty()),
             max_agent_turns: meta.max_agent_turns,
+            system_prompt_override: meta
+                .system_prompt_override
+                .as_ref()
+                .map(|s| s.to_string())
+                .and_then(|s| crate::store::sanitize_system_prompt_override(Some(s))),
+            no_ask_user: meta.no_ask_user,
+            fork_session: fork_agent,
         };
 
         let (client, mut events) = match AcpClient::spawn_with_options(cli_path, cwd, spawn_opts)
@@ -2802,6 +2996,7 @@ impl SessionManager {
                     target: "session",
                     session = %meta.id,
                     process = %process_id,
+                    fork_session = fork_agent,
                     "connect spawn_ok"
                 );
                 v
@@ -2842,11 +3037,17 @@ impl SessionManager {
             target: "session",
             session = %meta.id,
             resume_agent = ?resume_agent_sid,
+            fork_session = fork_agent,
             "connect session_open_begin"
         );
         let open_result = client
-            .initialize_and_open_session(resume_agent_sid.as_deref())
+            .initialize_and_open_session(resume_agent_sid.as_deref(), fork_agent)
             .await;
+
+        // One-shot flag: clear whether fork succeeded or fell through to new/load.
+        if meta.fork_agent_session {
+            let _ = store::clear_session_fork_agent_session(&meta.id);
+        }
 
         match open_result {
             Ok((agent_sid, resumed)) => {
@@ -2857,14 +3058,15 @@ impl SessionManager {
                 if let Err(e) = client.set_mode(&prefs.mode).await {
                     tracing::warn!("acp set_mode after session open soft-fail: {e}");
                 }
-                // Native resume = full agent context. Fresh session + existing UI
-                // journal → bootstrap history into the next prompt.
+                // Native resume / successful fork = full agent context. Fresh
+                // session + existing UI journal → bootstrap history into the next prompt.
                 let need_bootstrap = !resumed && journal_has_history;
                 if resumed {
                     tracing::info!(
                         target: "session",
                         session = %meta.id,
                         agent = %agent_sid,
+                        forked = fork_agent,
                         "connect session_open_ok resumed=true (full context)"
                     );
                 } else if need_bootstrap {
@@ -2889,6 +3091,7 @@ impl SessionManager {
                         s.acp = Some(client);
                         s.process_id = process_id;
                         s.meta.agent_session_id = Some(agent_sid);
+                        s.meta.fork_agent_session = false;
                         s.meta.model_id = Some(prefs.model_id.clone());
                         s.meta.mode = Some(prefs.mode.clone());
                         s.meta.effort = Some(prefs.effort.clone());
@@ -3059,6 +3262,7 @@ impl SessionManager {
             AcpEvent::ProcessExited { .. } => "process_exited",
             AcpEvent::Stderr { .. } => "stderr",
             AcpEvent::HookActivity { .. } => "hook_activity",
+            AcpEvent::GoalUpdated { .. } => "goal_updated",
         }
     }
 
@@ -3338,7 +3542,6 @@ impl SessionManager {
                         return;
                     }
                 };
-                let _ = project_path; // reserved for future UI badge
                 if auto {
                     let acp = self.inner.lock().as_ref().and_then(|s| s.acp.clone());
                     if let Some(acp) = acp {
@@ -3357,6 +3560,13 @@ impl SessionManager {
                                 PermissionOutcome::Selected { option_id },
                             )
                             .await;
+                        crate::audit_ledger::record_permission(
+                            Some(&session_id),
+                            project_path.as_deref(),
+                            &tool_name,
+                            "auto_allow",
+                            Some(&title),
+                        );
                         let empty = {
                             let mut guard = self.inner.lock();
                             if let Some(s) = guard.as_mut() {
@@ -3384,6 +3594,13 @@ impl SessionManager {
                                 PermissionOutcome::Selected { option_id },
                             )
                             .await;
+                        crate::audit_ledger::record_permission(
+                            Some(&session_id),
+                            project_path.as_deref(),
+                            &tool_name,
+                            "auto_deny",
+                            Some(&title),
+                        );
                         let empty = {
                             let mut guard = self.inner.lock();
                             if let Some(s) = guard.as_mut() {
@@ -3398,6 +3615,12 @@ impl SessionManager {
                         Self::emit_empty_run_if_any(app, empty);
                     }
                 } else {
+                    crate::audit_ledger::remember_permission(
+                        &session_id,
+                        rpc_id,
+                        &tool_name,
+                        Some(&title),
+                    );
                     let req = UiPermissionRequest {
                         rpc_id,
                         session_id,
@@ -3478,27 +3701,53 @@ impl SessionManager {
                             "kind": if is_video_fs_path(path) { "video" } else { "image" },
                         }),
                     );
+                } else if let Some(path) = path_out
+                    .as_ref()
+                    .filter(|p| is_media_fs_path(p) && std::path::Path::new(p).is_file())
+                {
+                    // Write / read / copy of workspace media: persist as attachment so
+                    // history reload can render bare basenames after session switch.
+                    let att = attachment_from_path(path);
+                    let mut guard = self.inner.lock();
+                    if let Some(s) = guard.as_mut() {
+                        if !s.stream_attachments.iter().any(|a| a.path == att.path) {
+                            s.stream_attachments.push(att);
+                        }
+                    }
                 }
 
-                let (app_sid, empty_run) = {
+                let (app_sid, project_path, empty_run, open_changed, already_terminal) = {
                     let mut guard = self.inner.lock();
                     if let Some(s) = guard.as_mut() {
                         // Tool events count as progress so long tools never false-stall (I06).
                         Self::touch_stream_progress_locked(s);
-                        if !tool_call_id.is_empty() {
-                            Self::note_tool_status_on_session(s, &tool_call_id, &status);
-                        }
+                        let already_terminal = !tool_call_id.is_empty()
+                            && s.terminal_tool_ids.contains(&tool_call_id);
+                        let open_changed = if !tool_call_id.is_empty() {
+                            Self::note_tool_status_on_session(s, &tool_call_id, &status)
+                        } else {
+                            false
+                        };
                         s.tools_this_turn = s.tools_this_turn.saturating_add(1);
                         // Tools settled → apply deferred prompt_complete if any (#52).
                         let empty = Self::try_finish_deferred_prompt_complete(s).flatten();
-                        (s.app_session_id.clone(), empty)
+                        (
+                            s.app_session_id.clone(),
+                            s.project_path.clone(),
+                            empty,
+                            open_changed,
+                            already_terminal,
+                        )
                     } else {
-                        (String::new(), None)
+                        (String::new(), None, None, false, false)
                     }
                 };
                 Self::emit_empty_run_if_any(app, empty_run);
 
                 // Live tool activity for UI — prefer human call text over bare "tool".
+                let kind_j = normalize_tool_kind_for_journal(&kind, &title);
+                let live_title =
+                    tool_journal_label(&title, &kind_j, &detail, &path_out);
                 let live_title = if !title.is_empty() && title.to_ascii_lowercase() != "tool" {
                     title.clone()
                 } else if let Some(ref d) = detail {
@@ -3510,13 +3759,37 @@ impl SessionManager {
                 } else {
                     String::new()
                 };
+                // Cross-session tool audit (soft-fail; redacted summary).
+                if !app_sid.is_empty() {
+                    let audit_name = if !kind.is_empty() {
+                        kind.as_str()
+                    } else if !title.is_empty() {
+                        title.as_str()
+                    } else {
+                        "tool"
+                    };
+                    let audit_summary = if !live_title.is_empty() {
+                        Some(live_title.as_str())
+                    } else {
+                        detail.as_deref().or(path_out.as_deref())
+                    };
+                    Self::audit_tool_call(
+                        &app_sid,
+                        project_path.as_deref(),
+                        audit_name,
+                        &status,
+                        audit_summary,
+                        open_changed,
+                        already_terminal,
+                    );
+                }
                 let _ = app.emit(
                     "session://tool",
                     serde_json::json!({
                         "sessionId": app_sid,
                         "toolCallId": tool_call_id,
                         "title": live_title,
-                        "kind": kind,
+                        "kind": if kind_j.is_empty() { kind.clone() } else { kind_j.clone() },
                         "status": if status.is_empty() { "in_progress" } else { &status },
                         "path": path_out,
                         "detail": detail,
@@ -3536,29 +3809,32 @@ impl SessionManager {
                     && !app_sid.is_empty()
                     && !tool_call_id.is_empty()
                 {
-                    let label = if !title.is_empty() {
-                        title.clone()
-                    } else if !kind.is_empty() {
+                    let label = tool_journal_label(&title, &kind_j, &detail, &path_out);
+                    let kind_store = if kind_j.is_empty() {
                         kind.clone()
                     } else {
-                        "tool".into()
+                        kind_j
                     };
-                    let mut content = format!("tool_step|{st}|{kind}|{label}");
+                    let mut content = format!("tool_step|{st}|{kind_store}|{label}");
                     if let Some(ref d) = detail {
                         content.push('\n');
                         content.push_str(&d.chars().take(400).collect::<String>());
                     }
                     if let Some(ref p) = path_out {
+                        // Always persist path/url so reload can paint “Browsed …”.
                         content.push('\n');
                         content.push_str(p);
                     }
                     let mid = format!("tool-{tool_call_id}");
-                    // Upsert: replace prior journal row with same id if any.
+                    // Upsert: replace only when new content is richer (never downgrade
+                    // a Fetch:https://… row to bare "tool" on a sparse completed tick).
                     let mut msgs = store::load_messages(&app_sid);
                     if let Some(slot) = msgs.iter_mut().find(|m| m.id == mid) {
-                        slot.content = content.clone();
-                        slot.marker = Some("tool_step".into());
-                        let _ = store::save_messages(&app_sid, &msgs);
+                        if tool_journal_richer(&slot.content, &content) {
+                            slot.content = content.clone();
+                            slot.marker = Some("tool_step".into());
+                            let _ = store::save_messages(&app_sid, &msgs);
+                        }
                     } else {
                         let _ = store::append_message(
                             &app_sid,
@@ -3791,6 +4067,38 @@ impl SessionManager {
                         "toolName": tool_name,
                         "ok": ok,
                         "detail": detail,
+                        "update": raw,
+                    }),
+                );
+            }
+            AcpEvent::GoalUpdated {
+                goal_id,
+                role,
+                current_deliverable_title,
+                completed_deliverables,
+                total_deliverables,
+                verifying_completion,
+                last_classifier_verdict,
+                raw,
+            } => {
+                let app_sid = {
+                    let guard = self.inner.lock();
+                    guard
+                        .as_ref()
+                        .map(|s| s.app_session_id.clone())
+                        .unwrap_or_default()
+                };
+                let _ = app.emit(
+                    "session://goal",
+                    serde_json::json!({
+                        "sessionId": app_sid,
+                        "goalId": goal_id,
+                        "currentSubagentRole": role,
+                        "currentDeliverableTitle": current_deliverable_title,
+                        "completedDeliverables": completed_deliverables,
+                        "totalDeliverables": total_deliverables,
+                        "verifyingCompletion": verifying_completion,
+                        "lastClassifierVerdict": last_classifier_verdict,
                         "update": raw,
                     }),
                 );
@@ -4174,7 +4482,6 @@ impl SessionManager {
                         return;
                     }
                 };
-                let _ = project_path;
                 if auto {
                     if let Some(acp) = acp {
                         let option_id = pick_option_id(&options, "allow_once")
@@ -4186,6 +4493,13 @@ impl SessionManager {
                                 PermissionOutcome::Selected { option_id },
                             )
                             .await;
+                        crate::audit_ledger::record_permission(
+                            Some(&session_id),
+                            project_path.as_deref(),
+                            &tool_name,
+                            "auto_allow",
+                            Some(&title),
+                        );
                         let mut bg = self.background.lock();
                         if let Some(s) = bg.get_mut(app_session_id) {
                             if s.fsm.state() == SessionState::AwaitingPermission {
@@ -4204,6 +4518,13 @@ impl SessionManager {
                                 PermissionOutcome::Selected { option_id },
                             )
                             .await;
+                        crate::audit_ledger::record_permission(
+                            Some(&session_id),
+                            project_path.as_deref(),
+                            &tool_name,
+                            "auto_deny",
+                            Some(&title),
+                        );
                         let mut bg = self.background.lock();
                         if let Some(s) = bg.get_mut(app_session_id) {
                             if s.fsm.state() == SessionState::AwaitingPermission {
@@ -4212,6 +4533,12 @@ impl SessionManager {
                         }
                     }
                 } else {
+                    crate::audit_ledger::remember_permission(
+                        &session_id,
+                        rpc_id,
+                        &tool_name,
+                        Some(&title),
+                    );
                     let req = UiPermissionRequest {
                         rpc_id,
                         session_id: session_id.clone(),
@@ -4246,9 +4573,14 @@ impl SessionManager {
                 title,
                 kind,
                 status,
-                raw: _,
+                raw,
             } => {
-                let (app_sid, live_title, st, finished) = {
+                let (detail, path_hint) = extract_tool_ui_fields(&raw);
+                let path_out = path_hint.filter(|p| !p.is_empty());
+                let kind_j = normalize_tool_kind_for_journal(&kind, &title);
+                let live_title =
+                    tool_journal_label(&title, &kind_j, &detail, &path_out);
+                let (app_sid, project_path, live_title, st, finished, open_changed, already_terminal) = {
                     let mut bg = self.background.lock();
                     if let Some(s) = bg.get_mut(app_session_id) {
                         // Defensive: background turns never load-replay, but if
@@ -4261,19 +4593,16 @@ impl SessionManager {
                             return;
                         }
                         Self::touch_stream_progress_locked(s);
-                        if !tool_call_id.is_empty() {
-                            Self::note_tool_status_on_session(s, &tool_call_id, &status);
-                        }
+                        let already_terminal = !tool_call_id.is_empty()
+                            && s.terminal_tool_ids.contains(&tool_call_id);
+                        let open_changed = if !tool_call_id.is_empty() {
+                            Self::note_tool_status_on_session(s, &tool_call_id, &status)
+                        } else {
+                            false
+                        };
                         s.tools_this_turn = s.tools_this_turn.saturating_add(1);
                         let finished =
                             matches!(Self::try_finish_deferred_prompt_complete(s), Some(_));
-                        let live_title = if !title.is_empty() {
-                            title.clone()
-                        } else if !kind.is_empty() {
-                            kind.clone()
-                        } else {
-                            "tool".into()
-                        };
                         let st = if status.is_empty() {
                             "in_progress".to_string()
                         } else {
@@ -4285,14 +4614,29 @@ impl SessionManager {
                             "completed" | "failed" | "error" | "cancelled"
                         ) && !tool_call_id.is_empty()
                         {
-                            let content =
-                                format!("tool_step|{st}|{kind}|{live_title}");
+                            let kind_store = if kind_j.is_empty() {
+                                kind.clone()
+                            } else {
+                                kind_j.clone()
+                            };
+                            let mut content =
+                                format!("tool_step|{st}|{kind_store}|{live_title}");
+                            if let Some(ref d) = detail {
+                                content.push('\n');
+                                content.push_str(&d.chars().take(400).collect::<String>());
+                            }
+                            if let Some(ref p) = path_out {
+                                content.push('\n');
+                                content.push_str(p);
+                            }
                             let mid = format!("tool-{tool_call_id}");
                             let mut msgs = store::load_messages(&s.app_session_id);
                             if let Some(slot) = msgs.iter_mut().find(|m| m.id == mid) {
-                                slot.content = content.clone();
-                                slot.marker = Some("tool_step".into());
-                                let _ = store::save_messages(&s.app_session_id, &msgs);
+                                if tool_journal_richer(&slot.content, &content) {
+                                    slot.content = content.clone();
+                                    slot.marker = Some("tool_step".into());
+                                    let _ = store::save_messages(&s.app_session_id, &msgs);
+                                }
                             } else {
                                 let _ = store::append_message(
                                     &s.app_session_id,
@@ -4309,19 +4653,46 @@ impl SessionManager {
                                 );
                             }
                         }
-                        (s.app_session_id.clone(), live_title, st, finished)
+                        (
+                            s.app_session_id.clone(),
+                            s.project_path.clone(),
+                            live_title,
+                            st,
+                            finished,
+                            open_changed,
+                            already_terminal,
+                        )
                     } else {
                         return;
                     }
                 };
+                // Cross-session tool audit (background turn).
+                {
+                    let audit_name = if !kind.is_empty() {
+                        kind.as_str()
+                    } else {
+                        live_title.as_str()
+                    };
+                    Self::audit_tool_call(
+                        &app_sid,
+                        project_path.as_deref(),
+                        audit_name,
+                        &status,
+                        Some(live_title.as_str()),
+                        open_changed,
+                        already_terminal,
+                    );
+                }
                 let _ = app.emit(
                     "session://tool",
                     serde_json::json!({
                         "sessionId": app_sid,
                         "toolCallId": tool_call_id,
                         "title": live_title,
-                        "kind": kind,
+                        "kind": if kind_j.is_empty() { kind.clone() } else { kind_j },
                         "status": st,
+                        "path": path_out,
+                        "detail": detail,
                     }),
                 );
                 if finished {
@@ -4481,6 +4852,31 @@ impl SessionManager {
                         "toolName": tool_name,
                         "ok": ok,
                         "detail": detail,
+                        "update": raw,
+                    }),
+                );
+            }
+            AcpEvent::GoalUpdated {
+                goal_id,
+                role,
+                current_deliverable_title,
+                completed_deliverables,
+                total_deliverables,
+                verifying_completion,
+                last_classifier_verdict,
+                raw,
+            } => {
+                let _ = app.emit(
+                    "session://goal",
+                    serde_json::json!({
+                        "sessionId": app_session_id,
+                        "goalId": goal_id,
+                        "currentSubagentRole": role,
+                        "currentDeliverableTitle": current_deliverable_title,
+                        "completedDeliverables": completed_deliverables,
+                        "totalDeliverables": total_deliverables,
+                        "verifyingCompletion": verifying_completion,
+                        "lastClassifierVerdict": last_classifier_verdict,
                         "update": raw,
                     }),
                 );
@@ -5522,7 +5918,7 @@ impl SessionManager {
         session_id: Option<String>,
     ) -> Result<SessionSnapshot, String> {
         let target = self.resolve_target_session(session_id)?;
-        let (acp, empty_run) = self
+        let (acp, empty_run, project_path) = self
             .with_session_mut(&target, |s| {
                 Self::touch_activity_locked(s);
                 // "allow_session" decision caches scope_key for H05 (works under Ask chip too)
@@ -5536,7 +5932,7 @@ impl SessionManager {
                 }
                 // Permission cleared — may finish a deferred prompt_complete (#52).
                 let empty = Self::try_finish_deferred_prompt_complete(s).flatten();
-                (s.acp.clone(), empty)
+                (s.acp.clone(), empty, s.project_path.clone())
             })
             .ok_or("no session")?;
 
@@ -5553,6 +5949,13 @@ impl SessionManager {
             };
             acp.respond_permission(rpc_id, outcome).await?;
         }
+        // Cross-session permission audit (user decision). Soft-fail.
+        crate::audit_ledger::record_permission_resolve(
+            Some(&target),
+            project_path.as_deref(),
+            rpc_id,
+            &decision,
+        );
         self.emit_for_session(&app, &target);
         Self::emit_empty_run_if_any(&app, empty_run);
         Ok(self.snapshot())
@@ -5825,6 +6228,9 @@ mod connect_preserve_tests {
                 plugin_dirs: Vec::new(),
                 extra_rules: None,
                 max_agent_turns: None,
+                system_prompt_override: None,
+                fork_agent_session: false,
+                no_ask_user: None,
             },
             fsm,
             backend: "grok_agent_stdio".into(),
@@ -6010,6 +6416,9 @@ mod session_routing_tests {
                 plugin_dirs: Vec::new(),
                 extra_rules: None,
                 max_agent_turns: None,
+                system_prompt_override: None,
+                fork_agent_session: false,
+                no_ask_user: None,
             },
             fsm,
             backend: "mock_acp".into(),
@@ -6176,6 +6585,9 @@ mod session_routing_tests {
                 plugin_dirs: Vec::new(),
                 extra_rules: None,
                 max_agent_turns: None,
+                system_prompt_override: None,
+                fork_agent_session: false,
+                no_ask_user: None,
             },
             fsm,
             backend: "mock_acp".into(),
@@ -6279,6 +6691,9 @@ mod session_routing_tests {
                 plugin_dirs: Vec::new(),
                 extra_rules: None,
                 max_agent_turns: None,
+                system_prompt_override: None,
+                fork_agent_session: false,
+                no_ask_user: None,
             },
             fsm,
             backend: "mock_acp".into(),

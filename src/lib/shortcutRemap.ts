@@ -7,14 +7,43 @@
  *
  * Pure parse / conflict helpers live here; Settings + App load via
  * {@link loadShortcutRemaps} / {@link effectiveShortcutChord}.
+ *
+ * Scopes (`global` vs `chat-focus`) live on the shortcuts catalog. Optional
+ * ignore-cross-scope pref only affects conflict UI / capture checks — it does
+ * not change App key matching or stored remap maps.
  */
 
-import type { ShortcutId } from "@/lib/shortcuts";
+import type { ShortcutId, ShortcutScope } from "@/lib/shortcuts";
 
 export const SHORTCUT_REMAP_STORAGE_KEY = "grok.shortcutRemap";
 
 /** Fired on `window` after a same-tab remap save (storage events are cross-tab only). */
 export const SHORTCUT_REMAP_CHANGED_EVENT = "grok:shortcutRemap";
+
+/**
+ * When true, chords shared only across different scopes (global vs chat-focus)
+ * are not treated as conflicts in Settings capture / conflict panel.
+ * Default false preserves historical same-chord-is-conflict behavior.
+ */
+export const SHORTCUT_IGNORE_CROSS_SCOPE_STORAGE_KEY =
+  "grok.shortcutIgnoreCrossScopeConflicts";
+
+/** Fired on `window` after a same-tab ignore-cross-scope pref save. */
+export const SHORTCUT_IGNORE_CROSS_SCOPE_CHANGED_EVENT =
+  "grok:shortcutIgnoreCrossScopeConflicts";
+
+export const DEFAULT_IGNORE_CROSS_SCOPE_CONFLICTS = false;
+
+/** Options for chord conflict detection (scope-aware when requested). */
+export type ChordConflictOpts = {
+  /**
+   * When true and {@link scopeOf} is provided, only ids that share the same
+   * scope can form a conflict. Cross-scope shared chords are allowed.
+   */
+  ignoreCrossScope?: boolean;
+  /** Resolve catalog scope for an id (usually {@link shortcutScope} from shortcuts). */
+  scopeOf?: (id: ShortcutId) => ShortcutScope;
+};
 
 /** Unified chord string, tokens joined by `+` (order: mod|ctrl, alt, shift, key). */
 export type ChordString = string;
@@ -373,13 +402,19 @@ export type ChordConflictGroup = {
 /**
  * Group shortcut ids that share the same normalized effective chord.
  *
+ * When {@link ChordConflictOpts.ignoreCrossScope} is true and `scopeOf` is set,
+ * ids on a shared chord are split by scope: only same-scope multi-id sets are
+ * reported. Cross-scope sharing is allowed (optional Settings preference).
+ *
  * @param remaps user remaps (partial); defaults fill the rest
  * @param defaults catalog defaults (defaults to {@link DEFAULT_SHORTCUT_CHORDS})
+ * @param opts optional scope-aware filtering
  * @returns conflict groups (length ≥ 2 ids each), sorted by chord; empty when none
  */
 export function findChordConflicts(
   remaps?: ShortcutRemapMap | null,
   defaults: Readonly<Partial<Record<ShortcutId, ChordString>>> = DEFAULT_SHORTCUT_CHORDS,
+  opts?: ChordConflictOpts,
 ): ChordConflictGroup[] {
   const effective: Partial<Record<ShortcutId, ChordString>> = {};
 
@@ -418,13 +453,37 @@ export function findChordConflicts(
     else byChord.set(chord, [id]);
   }
 
+  const ignoreCross =
+    opts?.ignoreCrossScope === true && typeof opts.scopeOf === "function";
+  const scopeOf = opts?.scopeOf;
+
   const groups: ChordConflictGroup[] = [];
   for (const [chord, ids] of byChord) {
     if (ids.length < 2) continue;
+    if (ignoreCross && scopeOf) {
+      // Partition by scope; emit a group only when ≥2 ids share one scope.
+      const byScope = new Map<ShortcutScope, ShortcutId[]>();
+      for (const id of ids) {
+        const scope = scopeOf(id);
+        const list = byScope.get(scope);
+        if (list) list.push(id);
+        else byScope.set(scope, [id]);
+      }
+      for (const scoped of byScope.values()) {
+        if (scoped.length < 2) continue;
+        scoped.sort((a, b) => a.localeCompare(b));
+        groups.push({ chord, ids: scoped });
+      }
+      continue;
+    }
     ids.sort((a, b) => a.localeCompare(b));
     groups.push({ chord, ids });
   }
-  groups.sort((a, b) => a.chord.localeCompare(b.chord));
+  groups.sort((a, b) => {
+    const c = a.chord.localeCompare(b.chord);
+    if (c !== 0) return c;
+    return a.ids.join(",").localeCompare(b.ids.join(","));
+  });
   return groups;
 }
 
@@ -433,17 +492,24 @@ export function findChordConflicts(
  * return that id; otherwise null.
  *
  * Skips {@link CHORD_CONFLICT_IGNORE_IDS} (display-only / composer-owned rows).
+ * With {@link ChordConflictOpts.ignoreCrossScope}, skips other ids whose scope
+ * differs from the candidate's (requires `scopeOf`).
  */
 export function findChordConflict(
   candidateId: ShortcutId,
   candidateChord: ChordString,
   effectiveMap: Readonly<Partial<Record<ShortcutId, ChordString>>>,
+  opts?: ChordConflictOpts,
 ): ShortcutId | null {
   const norm = normalizeChordString(candidateChord);
   if (!norm) return null;
+  const ignoreCross =
+    opts?.ignoreCrossScope === true && typeof opts.scopeOf === "function";
+  const candidateScope = ignoreCross ? opts!.scopeOf!(candidateId) : null;
   for (const id of Object.keys(effectiveMap) as ShortcutId[]) {
     if (id === candidateId) continue;
     if (CHORD_CONFLICT_IGNORE_IDS.has(id)) continue;
+    if (ignoreCross && opts!.scopeOf!(id) !== candidateScope) continue;
     const other = effectiveMap[id];
     if (!other) continue;
     if (normalizeChordString(other) === norm) return id;
@@ -455,15 +521,19 @@ export function findChordConflict(
  * Drop custom remaps that participate in a chord conflict (restores those ids
  * to catalog defaults). Non-remappable / default-only rows are left as-is.
  * Returns the saved map after write.
+ *
+ * Pass the same {@link ChordConflictOpts} used by the Settings conflict panel
+ * so reset matches what the user sees (including ignore-cross-scope).
  */
 export function resetConflictingShortcutRemaps(
   remaps?: ShortcutRemapMap | null,
   storage: Storage = localStorage,
+  opts?: ChordConflictOpts,
 ): ShortcutRemapMap {
   const map: ShortcutRemapMap = {
     ...(remaps ?? loadShortcutRemaps(storage)),
   };
-  const groups = findChordConflicts(map);
+  const groups = findChordConflicts(map, DEFAULT_SHORTCUT_CHORDS, opts);
   if (groups.length === 0) {
     return loadShortcutRemaps(storage);
   }
@@ -480,6 +550,65 @@ export function resetConflictingShortcutRemaps(
     saveShortcutRemaps(map, storage);
   }
   return loadShortcutRemaps(storage);
+}
+
+/** Minimal storage surface so unit tests need no jsdom. */
+export interface ShortcutPrefStorage {
+  getItem(key: string): string | null;
+  setItem(key: string, value: string): void;
+  removeItem?(key: string): void;
+}
+
+function defaultPrefStorage(): ShortcutPrefStorage {
+  if (typeof localStorage !== "undefined") return localStorage;
+  return { getItem: () => null, setItem: () => {} };
+}
+
+/** Parse stored ignore-cross-scope flag; invalid / empty → default false. */
+export function parseIgnoreCrossScopeConflicts(raw: unknown): boolean {
+  if (raw === "1" || raw === "true" || raw === true) return true;
+  if (raw === "0" || raw === "false" || raw === false) return false;
+  return DEFAULT_IGNORE_CROSS_SCOPE_CONFLICTS;
+}
+
+export function loadIgnoreCrossScopeConflicts(
+  storage: ShortcutPrefStorage = defaultPrefStorage(),
+): boolean {
+  try {
+    return parseIgnoreCrossScopeConflicts(
+      storage.getItem(SHORTCUT_IGNORE_CROSS_SCOPE_STORAGE_KEY),
+    );
+  } catch {
+    return DEFAULT_IGNORE_CROSS_SCOPE_CONFLICTS;
+  }
+}
+
+export function saveIgnoreCrossScopeConflicts(
+  enabled: boolean,
+  storage: ShortcutPrefStorage = defaultPrefStorage(),
+): void {
+  try {
+    storage.setItem(
+      SHORTCUT_IGNORE_CROSS_SCOPE_STORAGE_KEY,
+      enabled ? "1" : "0",
+    );
+  } catch {
+    /* private mode / quota */
+  }
+  if (
+    typeof window !== "undefined" &&
+    typeof window.dispatchEvent === "function"
+  ) {
+    try {
+      window.dispatchEvent(
+        new CustomEvent(SHORTCUT_IGNORE_CROSS_SCOPE_CHANGED_EVENT, {
+          detail: enabled,
+        }),
+      );
+    } catch {
+      /* ignore */
+    }
+  }
 }
 
 export function loadShortcutRemaps(

@@ -2,7 +2,7 @@
  * Remote IM Bridge overview — settings-card rows + project chrome controls.
  */
 
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { createT, resolveLocale, type MessageKey } from "@/i18n";
 import type {
   BridgeLifecycle,
@@ -10,13 +10,24 @@ import type {
   ChannelInstance,
   RemoteChannelId,
 } from "@/lib/remoteIm";
-import { getChannelSchema } from "@/lib/remoteIm";
+import {
+  classifyRecoveryStatus,
+  clearRimEventTimeline,
+  formatRimEventAt,
+  getChannelSchema,
+  loadRimEventTimeline,
+  rimBridgeEventTypeKey,
+  RIM_EVENT_TIMELINE_CHANGE_EVENT,
+  RIM_EVENT_TIMELINE_STORAGE_KEY,
+  type RimBridgeEvent,
+} from "@/lib/remoteIm";
 import {
   RimBadge,
   RimChoiceRow,
   RimStatusDot,
   RimSwitch,
 } from "@/components/remoteIm/RimControls";
+import { GlassModal } from "@/components/GlassModal";
 import { IconActivity, IconPlug } from "@/components/icons";
 
 export interface RemoteImOverviewProps {
@@ -50,12 +61,47 @@ export function RemoteImOverview({
   const t = (k: string, vars?: Record<string, string | number>) =>
     tr(k as MessageKey, vars);
 
+  const [timelineOpen, setTimelineOpen] = useState(false);
+  const [timeline, setTimeline] = useState<RimBridgeEvent[]>(() =>
+    loadRimEventTimeline(),
+  );
+  const [clearConfirm, setClearConfirm] = useState(false);
+
+  useEffect(() => {
+    const refresh = () => setTimeline(loadRimEventTimeline());
+    refresh();
+    const onChange = () => refresh();
+    window.addEventListener(RIM_EVENT_TIMELINE_CHANGE_EVENT, onChange);
+    const onStorage = (e: StorageEvent) => {
+      if (e.key === null || e.key === RIM_EVENT_TIMELINE_STORAGE_KEY) refresh();
+    };
+    window.addEventListener("storage", onStorage);
+    return () => {
+      window.removeEventListener(RIM_EVENT_TIMELINE_CHANGE_EVENT, onChange);
+      window.removeEventListener("storage", onStorage);
+    };
+  }, []);
+
   const state = bridge?.state ?? "stopped";
   const enabled = bridge?.enabled ?? false;
   const lifecycle = bridge?.lifecycle ?? "attached";
   const yolo = bridge?.allowRemoteYolo ?? false;
   const connected = bridge?.connectedChannels ?? [];
   const configured = instances.filter((i) => i.hasCredentials);
+
+  const recovery = useMemo(
+    () =>
+      classifyRecoveryStatus({
+        state: bridge?.state,
+        enabled: bridge?.enabled ?? false,
+        restartAttempt: bridge?.restartAttempt,
+        nextRetrySecs: bridge?.nextRetrySecs,
+        lastError: bridge?.lastError,
+        errorKind: bridge?.errorKind,
+        rateLimited: bridge?.rateLimited,
+      }),
+    [bridge],
+  );
 
   const stateLabel =
     state === "running" || state === "listening"
@@ -71,9 +117,11 @@ export function RemoteImOverview({
   const badgeTone =
     state === "running" || state === "listening"
       ? "ok"
-      : state === "error" || state === "degraded"
+      : state === "error" || state === "degraded" || recovery.phase === "rate_limited"
         ? "err"
-        : "neutral";
+        : recovery.phase === "backing_off" || recovery.phase === "restarting"
+          ? "warn"
+          : "neutral";
 
   return (
     <div className="rim-overview">
@@ -259,7 +307,43 @@ export function RemoteImOverview({
         )}
       </div>
 
-      {bridge?.lastError ? (
+      {recovery.showCard ? (
+        <div
+          className={
+            recovery.severity === "err"
+              ? "rim-callout rim-callout--error"
+              : "rim-callout rim-callout--warn"
+          }
+          role="status"
+          data-rim-recovery={recovery.phase}
+        >
+          <div className="rim-callout__title">{t(recovery.titleKey)}</div>
+          {recovery.bodyKey ? (
+            <p className="rim-callout__body" style={{ margin: "0.35rem 0 0" }}>
+              {t(recovery.bodyKey)}
+            </p>
+          ) : null}
+          {recovery.errorKindKey ? (
+            <p className="settings-row__desc" style={{ margin: "0.35rem 0 0" }}>
+              {t("settings.remoteIm.resilience.errorKindLabel")}:{" "}
+              {t(recovery.errorKindKey)}
+            </p>
+          ) : null}
+          {recovery.showRetryMeta ? (
+            <p className="settings-row__desc" style={{ margin: "0.35rem 0 0" }}>
+              {t("settings.remoteIm.resilience.retryMeta", {
+                attempt: recovery.attempt,
+                secs: recovery.nextRetrySecs ?? 0,
+              })}
+            </p>
+          ) : null}
+          {bridge?.lastError ? (
+            <code className="rim-callout__code" style={{ marginTop: "0.5rem" }}>
+              {bridge.lastError}
+            </code>
+          ) : null}
+        </div>
+      ) : bridge?.lastError ? (
         <div className="rim-callout rim-callout--error" role="alert">
           <div className="rim-callout__title">
             {t("settings.remoteIm.bridge.lastError")}
@@ -273,6 +357,78 @@ export function RemoteImOverview({
           <p>{t("settings.remoteIm.bridge.remoteBridgeMissing")}</p>
         </div>
       ) : null}
+
+      <h3 className="settings-page__h2">
+        {t("settings.remoteIm.timeline.title")}
+      </h3>
+      <div className="settings-card rim-timeline">
+        <div className="rim-timeline__head">
+          <button
+            type="button"
+            className="rim-timeline__toggle"
+            aria-expanded={timelineOpen}
+            onClick={() => setTimelineOpen((v) => !v)}
+          >
+            <span className="rim-timeline__chevron" aria-hidden>
+              {timelineOpen ? "▾" : "▸"}
+            </span>
+            <span className="rim-timeline__title">
+              {t("settings.remoteIm.timeline.subtitle")}
+            </span>
+            {timeline.length > 0 ? (
+              <span className="rim-timeline__count">{timeline.length}</span>
+            ) : null}
+          </button>
+          {timelineOpen && timeline.length > 0 ? (
+            <button
+              type="button"
+              className="btn btn--ghost btn--sm"
+              onClick={() => setClearConfirm(true)}
+            >
+              {t("settings.remoteIm.timeline.clear")}
+            </button>
+          ) : null}
+        </div>
+        <p className="settings-row__desc rim-timeline__desc">
+          {t("settings.remoteIm.timeline.desc")}
+        </p>
+        {timelineOpen ? (
+          timeline.length === 0 ? (
+            <p className="rim-timeline__empty" role="status">
+              {t("settings.remoteIm.timeline.empty")}
+            </p>
+          ) : (
+            <ul
+              className="rim-timeline__list"
+              aria-label={t("settings.remoteIm.timeline.title")}
+            >
+              {timeline.map((e) => (
+                <li key={e.id} className="rim-timeline__row">
+                  <span className="rim-timeline__when" title={e.at}>
+                    {formatRimEventAt(e.at)}
+                  </span>
+                  <span className="rim-timeline__label">
+                    {t(rimBridgeEventTypeKey(e.type))}
+                    {e.channel ? (
+                      <span className="rim-timeline__meta">
+                        {" "}
+                        ·{" "}
+                        {t(
+                          getChannelSchema(e.channel as RemoteChannelId)
+                            ?.nameKey ?? "settings.remoteIm.unknownChannel",
+                        )}
+                      </span>
+                    ) : null}
+                    {e.note ? (
+                      <span className="rim-timeline__note"> — {e.note}</span>
+                    ) : null}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )
+        ) : null}
+      </div>
 
       <h3 className="settings-page__h2">
         {t("settings.remoteIm.bridge.commands")}
@@ -319,6 +475,38 @@ export function RemoteImOverview({
           </div>
         </div>
       </div>
+
+      <GlassModal
+        open={clearConfirm}
+        onClose={() => setClearConfirm(false)}
+        title={t("settings.remoteIm.timeline.clearTitle")}
+        wrapBody
+        footer={
+          <div className="rim-modal__actions">
+            <button
+              type="button"
+              className="btn btn--ghost"
+              onClick={() => setClearConfirm(false)}
+            >
+              {t("settings.remoteIm.cancel")}
+            </button>
+            <button
+              type="button"
+              className="btn btn--danger"
+              onClick={() => {
+                setTimeline(clearRimEventTimeline());
+                setClearConfirm(false);
+              }}
+            >
+              {t("settings.remoteIm.timeline.clearConfirm")}
+            </button>
+          </div>
+        }
+      >
+        <p className="rim-modal__body">
+          {t("settings.remoteIm.timeline.clearBody")}
+        </p>
+      </GlassModal>
     </div>
   );
 }

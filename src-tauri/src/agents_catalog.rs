@@ -2,14 +2,20 @@
 //!
 //! Sources mirror CLI `--agent <NAME>` resolution:
 //! - Built-ins: explore, plan, general-purpose
-//! - User: `~/.grok/agents/*.md`
+//! - User: `~/.grok/agents/*.md` (+ active GROK_HOME / agent-home agents)
 //! - Project: `<cwd>/.grok/agents/*.md`
 //! - Bundled reference: `~/.grok/bundled/agents/*.md` (same names as built-ins)
+//!
+//! Scaffold: create a SKILL-like `{Name}.md` under the active agent home or
+//! project `.grok/agents` (path-scoped; no overwrite unless `force`).
 
 use std::fs;
 use std::path::{Path, PathBuf};
 
 use serde::Serialize;
+
+use crate::paths::resolve_agent_grok_home;
+use crate::store;
 
 /// Well-known built-in agent names (always listed even if files are missing).
 pub const BUILTIN_AGENT_NAMES: &[&str] = &["explore", "general-purpose", "plan"];
@@ -86,6 +92,54 @@ pub fn normalize_agent_profile_path(raw: &str) -> Option<String> {
 pub fn agent_profile_spawn_cli_args(raw: &str) -> Option<Vec<String>> {
     let path = normalize_agent_profile_path(raw)?;
     Some(vec!["--agent-profile".into(), path])
+}
+
+/// Soft cap for Settings / spawn argv (~64 KiB).
+pub const AGENTS_JSON_MAX_CHARS: usize = 64 * 1024;
+
+/// Pure: validate + normalize inline agents JSON for Settings / spawn.
+///
+/// - Blank → `Ok("")` (omit `--agents`)
+/// - Valid JSON **object** map → `Ok(compact)` for storage / CLI
+/// - Invalid syntax, non-object, or too large → `Err(message)`
+///
+/// CLI currently expects a map (`--agents: … expected a map`); arrays and
+/// primitives are rejected so save fails honestly instead of at next spawn.
+pub fn normalize_agents_json(raw: &str) -> Result<String, String> {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return Ok(String::new());
+    }
+    if trimmed.len() > AGENTS_JSON_MAX_CHARS {
+        return Err(format!(
+            "Agents JSON is too large (max {AGENTS_JSON_MAX_CHARS} characters)."
+        ));
+    }
+    let value: serde_json::Value = serde_json::from_str(trimmed)
+        .map_err(|_| "Invalid JSON — fix syntax before saving.".to_string())?;
+    if !value.is_object() {
+        return Err(
+            "Agents JSON must be a JSON object map (e.g. {\"reviewer\":{…}})."
+                .into(),
+        );
+    }
+    let compact = serde_json::to_string(&value)
+        .map_err(|_| "Invalid JSON — fix syntax before saving.".to_string())?;
+    if compact.len() > AGENTS_JSON_MAX_CHARS {
+        return Err(format!(
+            "Agents JSON is too large (max {AGENTS_JSON_MAX_CHARS} characters)."
+        ));
+    }
+    Ok(compact)
+}
+
+/// Pure: top-level CLI args `["--agents", json]` when set.
+/// Empty / invalid → `None` (omit flag; invalid should not reach spawn).
+pub fn agents_json_spawn_cli_args(raw: &str) -> Option<Vec<String>> {
+    match normalize_agents_json(raw) {
+        Ok(s) if !s.is_empty() => Some(vec!["--agents".into(), s]),
+        _ => None,
+    }
 }
 
 /// File stem for agent def (`explore.md` → `explore`).
@@ -228,7 +282,18 @@ pub fn list_agents_catalog(project_path: Option<&str>) -> AgentsCatalogResult {
         .filter(|s| !s.is_empty())
         .map(|p| PathBuf::from(p).join(".grok").join("agents"));
 
-    let user = scan_agent_dir(&user_dir);
+    let mut user = scan_agent_dir(&user_dir);
+    // Independent mode GROK_HOME may differ from ~/.grok — include those defs.
+    let settings = store::load_settings();
+    let active_home = resolve_agent_grok_home(&settings.session_data_mode);
+    let active_agents = active_home.join("agents");
+    if active_agents != user_dir {
+        for entry in scan_agent_dir(&active_agents) {
+            if !user.iter().any(|(n, _)| n.eq_ignore_ascii_case(&entry.0)) {
+                user.push(entry);
+            }
+        }
+    }
     let bundled = scan_agent_dir(&bundled_dir);
     let project = project_dir
         .as_ref()
@@ -243,6 +308,224 @@ pub fn list_agents_catalog(project_path: Option<&str>) -> AgentsCatalogResult {
         project_dir: project_dir.map(|p| p.display().to_string()),
         bundled_dir: bundled_dir.display().to_string(),
     }
+}
+
+// ── Scaffold (create agent definition markdown) ─────────────────────────────
+
+const AGENT_STEM_NAME_MAX: usize = 64;
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AgentsScaffoldResult {
+    pub name: String,
+    pub path: String,
+    pub scope: String,
+    pub created: bool,
+    pub overwritten: bool,
+}
+
+/// Pure: sanitize agent file stem for filesystem + CLI `--agent`.
+/// Mirrors `src/lib/agentsDiscovery.ts` `sanitizeAgentFileStemName`.
+pub fn sanitize_agent_file_stem_name(raw: &str) -> Result<String, String> {
+    // Collapse whitespace runs to a single hyphen (no leading hyphen from spaces).
+    let mut name = {
+        let trimmed = raw.trim();
+        let mut out = String::with_capacity(trimmed.len());
+        let mut prev_hyphen = false;
+        for ch in trimmed.chars() {
+            if ch.is_whitespace() {
+                if !prev_hyphen && !out.is_empty() {
+                    out.push('-');
+                    prev_hyphen = true;
+                }
+            } else {
+                out.push(ch);
+                prev_hyphen = ch == '-';
+            }
+        }
+        // Drop a single trailing hyphen left by trailing spaces only.
+        if out.ends_with('-') {
+            let before = out.trim_end_matches('-');
+            // Keep intentional trailing hyphens that were not from whitespace collapse
+            // only when the raw ended with '-'; otherwise strip padding hyphens.
+            if !trimmed.ends_with('-') {
+                out = before.to_string();
+            }
+        }
+        out
+    };
+    if name.is_empty() {
+        return Err("agent name is required".into());
+    }
+    if name == "." || name == ".." {
+        return Err("invalid agent name".into());
+    }
+    if name.len() > AGENT_STEM_NAME_MAX {
+        return Err(format!(
+            "agent name too long (max {AGENT_STEM_NAME_MAX})"
+        ));
+    }
+    if name.contains('/')
+        || name.contains('\\')
+        || name.contains('\0')
+        || name.contains('\n')
+        || name.contains('\r')
+    {
+        return Err("agent name must not contain path separators".into());
+    }
+    let mut chars = name.chars();
+    let first = chars.next().unwrap();
+    if !first.is_ascii_alphanumeric() {
+        return Err(
+            "agent name may only contain letters, digits, '.', '_' and '-'"
+                .into(),
+        );
+    }
+    if !chars.all(|c| c.is_ascii_alphanumeric() || c == '.' || c == '_' || c == '-') {
+        return Err(
+            "agent name may only contain letters, digits, '.', '_' and '-'"
+                .into(),
+        );
+    }
+    if name.eq_ignore_ascii_case("readme") {
+        return Err("reserved agent name".into());
+    }
+    Ok(name)
+}
+
+/// Pure: default SKILL-like agent markdown body (no secrets).
+pub fn default_agent_markdown_template(name: &str, description: Option<&str>) -> Result<String, String> {
+    let stem = sanitize_agent_file_stem_name(name)?;
+    let desc = description
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(|s| s.split_whitespace().collect::<Vec<_>>().join(" "))
+        .unwrap_or_else(|| {
+            format!(
+                "Custom agent definition for `{stem}`. Edit when to use it and preferred tools — do not put secrets here."
+            )
+        });
+    Ok(format!(
+        r#"---
+name: {stem}
+description: >
+  {desc}
+prompt_mode: full
+agents_md: true
+---
+
+You are the **{stem}** agent.
+
+## Role
+
+Describe this agent's specialist role and when the parent session should delegate to it.
+
+## Strengths
+
+- Focused task execution within the declared scope
+- Prefer existing project conventions and patterns
+- Small, reviewable changes
+
+## Guidelines
+
+- Prefer read/search tools before editing.
+- Match existing style; avoid unrelated refactors.
+- Do not commit secrets, auth tokens, or local credentials.
+- Stay within the workspace unless the user asks otherwise.
+
+## Tools hints
+
+- Use list/search/read tools to orient before writes.
+- Prefer targeted edits over broad rewrites.
+- Report absolute paths and concise findings when returning to the parent.
+
+Workspace boundary:
+- Default scope is the active project workspace.
+- Do not expand search outside the workspace unless asked.
+"#
+    ))
+}
+
+/// Resolve writable agents directory for scaffold scope.
+///
+/// - `user` → `{resolve_agent_grok_home}/agents`
+/// - `project` → `{project}/.grok/agents` (requires project_path)
+fn resolve_scaffold_agents_dir(
+    scope: &str,
+    project_path: Option<&str>,
+) -> Result<(PathBuf, String), String> {
+    let scope = scope.trim().to_ascii_lowercase();
+    match scope.as_str() {
+        "user" | "" => {
+            let settings = store::load_settings();
+            let home = resolve_agent_grok_home(&settings.session_data_mode);
+            Ok((home.join("agents"), "user".into()))
+        }
+        "project" => {
+            let proj = project_path
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+                .ok_or_else(|| "project path required for project scope".to_string())?;
+            if proj.contains('\0') {
+                return Err("invalid project path".into());
+            }
+            let root = PathBuf::from(proj);
+            // Refuse path traversal noise in project path segments.
+            if root
+                .components()
+                .any(|c| matches!(c, std::path::Component::ParentDir))
+            {
+                return Err("invalid project path".into());
+            }
+            Ok((root.join(".grok").join("agents"), "project".into()))
+        }
+        other => Err(format!("unknown agent scope: {other}")),
+    }
+}
+
+/// Create `{name}.md` under the scoped agents dir. Path-scoped only.
+/// Rejects overwrite unless `force` is true.
+pub fn scaffold_agent(
+    name: &str,
+    scope: &str,
+    project_path: Option<&str>,
+    force: bool,
+    description: Option<&str>,
+) -> Result<AgentsScaffoldResult, String> {
+    let stem = sanitize_agent_file_stem_name(name)?;
+    let (dir, scope_label) = resolve_scaffold_agents_dir(scope, project_path)?;
+    let path = dir.join(format!("{stem}.md"));
+
+    // Ensure we never write outside the intended agents directory.
+    if path
+        .components()
+        .any(|c| matches!(c, std::path::Component::ParentDir))
+    {
+        return Err("path not allowed: traversal".into());
+    }
+    if path.parent() != Some(dir.as_path()) {
+        return Err("path not allowed: outside agents directory".into());
+    }
+
+    let exists = path.is_file();
+    if exists && !force {
+        return Err(format!(
+            "agent already exists: {} (pass force to overwrite)",
+            path.display()
+        ));
+    }
+
+    fs::create_dir_all(&dir).map_err(|e| format!("could not create agents dir: {e}"))?;
+    let body = default_agent_markdown_template(&stem, description)?;
+    fs::write(&path, body.as_bytes()).map_err(|e| format!("could not write agent file: {e}"))?;
+
+    Ok(AgentsScaffoldResult {
+        name: stem,
+        path: path.display().to_string(),
+        scope: scope_label,
+        created: !exists,
+        overwritten: exists && force,
+    })
 }
 
 #[cfg(test)]
@@ -321,6 +604,46 @@ mod tests {
     }
 
     #[test]
+    fn normalize_agents_json_empty() {
+        assert_eq!(normalize_agents_json("").as_deref(), Ok(""));
+        assert_eq!(normalize_agents_json("  \n").as_deref(), Ok(""));
+    }
+
+    #[test]
+    fn normalize_agents_json_object() {
+        assert_eq!(
+            normalize_agents_json(r#"  { "a": { "prompt": "x" } }  "#).as_deref(),
+            Ok(r#"{"a":{"prompt":"x"}}"#)
+        );
+        assert_eq!(normalize_agents_json("{}").as_deref(), Ok("{}"));
+    }
+
+    #[test]
+    fn normalize_agents_json_rejects_bad_shapes() {
+        assert!(normalize_agents_json("{").is_err());
+        assert!(normalize_agents_json("[]").is_err());
+        assert!(normalize_agents_json("null").is_err());
+        assert!(normalize_agents_json(r#""x""#).is_err());
+        assert!(normalize_agents_json("1").is_err());
+    }
+
+    #[test]
+    fn normalize_agents_json_size_cap() {
+        let big = format!(r#"{{"a":"{}"}}"#, "x".repeat(AGENTS_JSON_MAX_CHARS));
+        assert!(normalize_agents_json(&big).is_err());
+    }
+
+    #[test]
+    fn agents_json_spawn_args() {
+        assert!(agents_json_spawn_cli_args("").is_none());
+        assert!(agents_json_spawn_cli_args("[]").is_none());
+        assert_eq!(
+            agents_json_spawn_cli_args(r#"  {"x":1}  "#),
+            Some(vec!["--agents".into(), r#"{"x":1}"#.into()])
+        );
+    }
+
+    #[test]
     fn file_name_stems() {
         assert_eq!(
             agent_name_from_file_name("explore.md").as_deref(),
@@ -370,5 +693,98 @@ mod tests {
         assert_eq!(by["plan"].source, AgentCatalogSource::Bundled);
         assert_eq!(by["general-purpose"].source, AgentCatalogSource::Builtin);
         assert!(by["general-purpose"].path.is_none());
+    }
+
+    #[test]
+    fn sanitize_stem_ok() {
+        assert_eq!(
+            sanitize_agent_file_stem_name("  my agent  ").as_deref(),
+            Ok("my-agent")
+        );
+        assert_eq!(
+            sanitize_agent_file_stem_name("general-purpose").as_deref(),
+            Ok("general-purpose")
+        );
+        assert_eq!(
+            sanitize_agent_file_stem_name("My.Agent_1").as_deref(),
+            Ok("My.Agent_1")
+        );
+    }
+
+    #[test]
+    fn sanitize_stem_rejects() {
+        assert!(sanitize_agent_file_stem_name("").is_err());
+        assert!(sanitize_agent_file_stem_name("a/b").is_err());
+        assert!(sanitize_agent_file_stem_name("-sneaky").is_err());
+        assert!(sanitize_agent_file_stem_name("README").is_err());
+        assert!(sanitize_agent_file_stem_name("has!").is_err());
+        assert!(sanitize_agent_file_stem_name(&"x".repeat(65)).is_err());
+    }
+
+    #[test]
+    fn template_has_frontmatter_no_secrets() {
+        let md = default_agent_markdown_template("code-review", None).unwrap();
+        assert!(md.starts_with("---\n"));
+        assert!(md.contains("name: code-review"));
+        assert!(md.contains("prompt_mode: full"));
+        assert!(md.contains("You are the **code-review** agent."));
+        assert!(md.contains("Tools hints"));
+        let lower = md.to_ascii_lowercase();
+        assert!(!lower.contains("api_key"));
+        assert!(!lower.contains("sk-"));
+    }
+
+    #[test]
+    fn scaffold_creates_and_rejects_overwrite() {
+        let dir = std::env::temp_dir().join(format!(
+            "grok-app-agents-scaffold-{}",
+            std::process::id()
+        ));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        let project = dir.join("proj");
+        fs::create_dir_all(&project).unwrap();
+
+        let r1 = scaffold_agent(
+            "demo-agent",
+            "project",
+            Some(project.to_str().unwrap()),
+            false,
+            Some("Demo only"),
+        )
+        .unwrap();
+        assert!(r1.created);
+        assert!(!r1.overwritten);
+        assert_eq!(r1.name, "demo-agent");
+        assert_eq!(r1.scope, "project");
+        assert!(Path::new(&r1.path).is_file());
+        let body = fs::read_to_string(&r1.path).unwrap();
+        assert!(body.contains("name: demo-agent"));
+        assert!(body.contains("Demo only"));
+
+        let err = scaffold_agent(
+            "demo-agent",
+            "project",
+            Some(project.to_str().unwrap()),
+            false,
+            None,
+        )
+        .unwrap_err();
+        assert!(err.contains("already exists"), "{err}");
+
+        let r2 = scaffold_agent(
+            "demo-agent",
+            "project",
+            Some(project.to_str().unwrap()),
+            true,
+            Some("Overwritten"),
+        )
+        .unwrap();
+        assert!(!r2.created);
+        assert!(r2.overwritten);
+        let body2 = fs::read_to_string(&r2.path).unwrap();
+        assert!(body2.contains("Overwritten"));
+
+        let _ = fs::remove_dir_all(&dir);
     }
 }

@@ -25,6 +25,7 @@ import {
   sessionWorktreeBadgeLabel,
   sessionWorktreeTooltip,
   siblingWorktrees,
+  worktreeEntryForPath,
   worktreeLabel,
   worktreeRemoveErrorSuggestsForce,
   worktreeRepoSlug,
@@ -88,6 +89,32 @@ describe("path helpers", () => {
       "/Users/me/repo-detached",
     ]);
     expect(findWorktreeAt(list, "/Users/me/repo-feat")?.branch).toBe("feat/x");
+  });
+
+  it("worktreeEntryForPath prefers porcelain match, else synthetic", () => {
+    const list = parseWorktreePorcelain(SAMPLE);
+    const hit = worktreeEntryForPath("/Users/me/repo-feat/", list);
+    expect(hit?.path).toBe("/Users/me/repo-feat");
+    expect(hit?.branch).toBe("feat/x");
+    expect(hit?.isMain).toBe(false);
+
+    const synth = worktreeEntryForPath(
+      "/Users/me/.grok/worktrees/app/sub-a",
+      list,
+    );
+    expect(synth).toEqual({
+      path: "/Users/me/.grok/worktrees/app/sub-a",
+      head: null,
+      branch: null,
+      detached: true,
+      isMain: false,
+      locked: false,
+      prunable: false,
+    });
+
+    expect(worktreeEntryForPath("", list)).toBeNull();
+    expect(worktreeEntryForPath("   ")).toBeNull();
+    expect(worktreeEntryForPath(null)).toBeNull();
   });
 });
 

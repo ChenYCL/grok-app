@@ -2,8 +2,10 @@
  * User preference: filter chat transcript paint list.
  * localStorage-only — does not touch Host AppSettings.
  *
- * - all (default): show tool steps / activity chrome (existing paint filter only)
- * - conversation: hide tool_step rows (and callers hide inlined tool chrome)
+ * - all (default): full activity (Worked-for phases + any standalone tool rows)
+ * - conversation: drop standalone tool_step journal rows from the paint list.
+ *   Inlined Grok “Worked for …” activity rails on assistant messages stay visible
+ *   (they are the clean official summary, not raw tool dumps).
  */
 
 import type { ChatMessage } from "./session";
@@ -82,10 +84,8 @@ export function saveTranscriptFilterPref(
  * Always drops tool_step journal rows already woven into an assistant timeline
  * (virtualization hygiene — same as {@link filterTranscriptMessages}).
  *
- * When `mode === "conversation"`, also drops every remaining tool_step row so
- * the virtual list only keeps user / assistant / errors / non-tool chrome
- * (compact banners, end-of-turn markers, etc.). Inlined TimelineToolRow chrome
- * inside assistant bubbles is suppressed by the thread renderer, not here.
+ * When `mode === "conversation"`, also drops every remaining standalone
+ * tool_step row. Assistant Worked-for phases stay (tools live in segments).
  */
 export function filterMessagesForTranscript(
   messages: ChatMessage[],
@@ -96,7 +96,10 @@ export function filterMessagesForTranscript(
   return base.filter((m) => !isToolStepMessage(m));
 }
 
-/** True when the thread should paint tool steps / live tool chrome. */
+/**
+ * Standalone / live mid-stream tool chrome (tool_step rows, live tool line).
+ * Does **not** gate the assistant Worked-for activity rail — that always paints.
+ */
 export function shouldShowTranscriptToolChrome(
   mode: TranscriptFilterMode,
 ): boolean {

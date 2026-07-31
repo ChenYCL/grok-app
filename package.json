@@ -50,6 +50,7 @@
     "clsx": "^2.1.1",
     "docx-preview": "^0.4.0",
     "highlight.js": "^11.11.1",
+    "html-to-image": "^1.11.13",
     "pdfjs-dist": "^5.4.296",
     "plyr": "^3.8.4",
     "qrcode": "^1.5.4",
@@ -74,6 +75,7 @@
     "@types/react-dom": "^19.1.6",
     "@types/xlsx": "^0.0.36",
     "@vitejs/plugin-react": "^4.5.2",
+    "canvas": "^3.2.3",
     "tailwindcss": "^4.3.3",
     "typescript": "~5.8.3",
     "vite": "^6.3.5",
@@ -81,7 +83,8 @@
   },
   "pnpm": {
     "onlyBuiltDependencies": [
-      "esbuild"
+      "esbuild",
+      "canvas"
     ]
   }
 }

@@ -16,6 +16,7 @@ import {
   removeRule,
   rulePlaceholder,
   ruleRowKey,
+  simulatePermissionDecision,
   type PermissionRuleAction,
   type PermissionRulesLike,
 } from "@/lib/permissionRules";
@@ -47,6 +48,8 @@ export function PermissionRulesPanel({
   const [configPath, setConfigPath] = useState("");
   const [addAction, setAddAction] = useState<PermissionRuleAction>("allow");
   const [addText, setAddText] = useState("");
+  /** Local try-call input only — never written to config. */
+  const [simText, setSimText] = useState("");
   const [removeTarget, setRemoveTarget] = useState<{
     action: PermissionRuleAction;
     rule: string;
@@ -79,6 +82,11 @@ export function PermissionRulesPanel({
 
   const flat = useMemo(() => flattenRules(rules), [rules]);
 
+  const simResult = useMemo(
+    () => simulatePermissionDecision(rules, simText),
+    [rules, simText],
+  );
+
   const actionLabel = (action: PermissionRuleAction) =>
     t(
       (
@@ -89,6 +97,19 @@ export function PermissionRulesPanel({
         } as const
       )[action],
     );
+
+  const simDecisionLabel = () => {
+    switch (simResult.decision) {
+      case "allow":
+        return t("settings.permissionRulesSimResult.allow");
+      case "deny":
+        return t("settings.permissionRulesSimResult.deny");
+      case "ask":
+        return t("settings.permissionRulesSimResult.ask");
+      default:
+        return t("settings.permissionRulesSimResult.none");
+    }
+  };
 
   const persist = async (next: PermissionRulesLike) => {
     setBusy(true);
@@ -230,6 +251,48 @@ export function PermissionRulesPanel({
                   : t("settings.permissionRulesAdd")}
               </span>
             </button>
+          </div>
+
+          <div className="perm-rules__sim">
+            <div className="perm-rules__sim-head">
+              <div className="perm-rules__sim-label">
+                {t("settings.permissionRulesSim")}
+              </div>
+              <div className="perm-rules__sim-desc">
+                {t("settings.permissionRulesSimDesc")}
+              </div>
+            </div>
+            <div className="perm-rules__sim-row">
+              <input
+                className="perm-rules__input"
+                type="text"
+                value={simText}
+                placeholder={t("settings.permissionRulesSimPlaceholder")}
+                onChange={(e) => setSimText(e.target.value)}
+                aria-label={t("settings.permissionRulesSimPlaceholder")}
+              />
+              {simText.trim() ? (
+                <span
+                  className={`perm-rules__badge perm-rules__badge--${simResult.decision === "none" ? "none" : simResult.decision}`}
+                  title={
+                    simResult.matchedRule
+                      ? t("settings.permissionRulesSimMatched", {
+                          rule: simResult.matchedRule,
+                        })
+                      : undefined
+                  }
+                >
+                  {simDecisionLabel()}
+                </span>
+              ) : null}
+            </div>
+            {simText.trim() && simResult.matchedRule ? (
+              <div className="perm-rules__sim-match">
+                {t("settings.permissionRulesSimMatched", {
+                  rule: simResult.matchedRule,
+                })}
+              </div>
+            ) : null}
           </div>
         </>
       )}

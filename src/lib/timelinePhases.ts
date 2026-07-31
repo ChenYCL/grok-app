@@ -10,15 +10,26 @@
  *
  * While streaming, the trailing work buffer stays "live" (expanded) until a
  * boundary closes it — merge happens at phase end, not only at final answer.
+ *
+ * Items inside a phase keep **stream order** (thought ↔ tool interleaved) so
+ * the Grok-web activity rail can render the same cadence as the official UI.
  */
 
 import type { MessageSegment, MessageToolSegment } from "./session";
 import { extractThinkingSummary } from "./thinkingSummary";
 
+/** Ordered work unit inside a phase (Grok activity rail). */
+export type TimelinePhaseItem =
+  | { kind: "thought"; text: string }
+  | { kind: "tool"; tool: MessageToolSegment };
+
 export interface TimelinePhase {
   kind: "phase";
   /** Stable key for React: start–end segment indices. */
   id: string;
+  /** Stream-ordered thought/tool items (preferred for Grok rail). */
+  items: TimelinePhaseItem[];
+  /** Derived convenience lists (legacy callers / title gist). */
   thoughts: string[];
   tools: MessageToolSegment[];
   startSi: number;
@@ -34,6 +45,13 @@ export type TimelineUnit =
   | {
       kind: "thought";
       text: string;
+      si: number;
+      streaming: boolean;
+    }
+  /** Adjacent bare thoughts merged for one collapsible Thought chrome. */
+  | {
+      kind: "thought-group";
+      texts: string[];
       si: number;
       streaming: boolean;
     }
@@ -93,31 +111,41 @@ export function isPhaseWorthy(
 }
 
 type WorkBuf = {
-  thoughts: { text: string; si: number }[];
-  tools: { tool: MessageToolSegment; si: number }[];
+  items: { item: TimelinePhaseItem; si: number }[];
 };
 
 function emptyBuf(): WorkBuf {
-  return { thoughts: [], tools: [] };
+  return { items: [] };
+}
+
+function bufThoughts(buf: WorkBuf): string[] {
+  return buf.items
+    .filter((x) => x.item.kind === "thought")
+    .map((x) => (x.item as { kind: "thought"; text: string }).text);
+}
+
+function bufTools(buf: WorkBuf): MessageToolSegment[] {
+  return buf.items
+    .filter((x) => x.item.kind === "tool")
+    .map((x) => (x.item as { kind: "tool"; tool: MessageToolSegment }).tool);
 }
 
 function bufStartSi(buf: WorkBuf): number {
-  const a = buf.thoughts[0]?.si;
-  const b = buf.tools[0]?.si;
-  if (a == null) return b ?? 0;
-  if (b == null) return a;
-  return Math.min(a, b);
+  return buf.items[0]?.si ?? 0;
 }
 
 function bufEndSi(buf: WorkBuf): number {
   let end = 0;
-  for (const t of buf.thoughts) end = Math.max(end, t.si);
-  for (const t of buf.tools) end = Math.max(end, t.si);
+  for (const t of buf.items) end = Math.max(end, t.si);
   return end;
 }
 
 function bufEmpty(buf: WorkBuf): boolean {
-  return buf.thoughts.length === 0 && buf.tools.length === 0;
+  return buf.items.length === 0;
+}
+
+function bufHasTools(buf: WorkBuf): boolean {
+  return buf.items.some((x) => x.item.kind === "tool");
 }
 
 /**
@@ -132,31 +160,40 @@ export function buildTimelineUnits(
   let buf = emptyBuf();
 
   const emitBare = (b: WorkBuf, live: boolean) => {
-    for (const th of b.thoughts) {
-      if (!th.text.trim() && !(live && streaming)) continue;
-      out.push({
-        kind: "thought",
-        text: th.text,
-        si: th.si,
-        streaming: live && streaming && th === b.thoughts[b.thoughts.length - 1] && b.tools.length === 0,
-      });
-    }
-    for (const t of b.tools) {
-      out.push({ kind: "tool", tool: t.tool, si: t.si });
+    for (const entry of b.items) {
+      if (entry.item.kind === "thought") {
+        const text = entry.item.text;
+        if (!text.trim() && !(live && streaming)) continue;
+        const isLastThought =
+          entry ===
+          b.items.filter((x) => x.item.kind === "thought").slice(-1)[0];
+        const hasTools = bufHasTools(b);
+        out.push({
+          kind: "thought",
+          text,
+          si: entry.si,
+          streaming:
+            live && streaming && isLastThought && !hasTools,
+        });
+      } else {
+        out.push({ kind: "tool", tool: entry.item.tool, si: entry.si });
+      }
     }
   };
 
   const flush = (live: boolean) => {
     if (bufEmpty(buf)) return;
-    const thoughts = buf.thoughts.map((t) => t.text);
-    const tools = buf.tools.map((t) => t.tool);
+    const thoughts = bufThoughts(buf);
+    const tools = bufTools(buf);
     if (isPhaseWorthy(thoughts, tools)) {
       const startSi = bufStartSi(buf);
       const endSi = bufEndSi(buf);
       const stats = phaseStats(tools);
+      const items: TimelinePhaseItem[] = buf.items.map((x) => x.item);
       out.push({
         kind: "phase",
         id: `p-${startSi}-${endSi}`,
+        items,
         thoughts: thoughts.filter((t) => t.trim()),
         tools,
         startSi,
@@ -186,14 +223,14 @@ export function buildTimelineUnits(
     }
     if (seg.kind === "thought") {
       // New thought after tools → previous tool burst is a closed phase.
-      if (buf.tools.length > 0) {
+      if (bufHasTools(buf)) {
         flush(false);
       }
-      buf.thoughts.push({ text: seg.text, si });
+      buf.items.push({ item: { kind: "thought", text: seg.text }, si });
       continue;
     }
     // tool
-    buf.tools.push({ tool: seg, si });
+    buf.items.push({ item: { kind: "tool", tool: seg }, si });
   }
 
   // Trailing work: live while streaming, closed when turn finished.
@@ -202,15 +239,62 @@ export function buildTimelineUnits(
   // Fix streaming flag on trailing bare thought when live phase wasn't used.
   if (streaming && out.length) {
     const last = out[out.length - 1]!;
-    if (last.kind === "thought" && last === out[out.length - 1]) {
+    if (last.kind === "thought" || last.kind === "thought-group") {
       last.streaming = true;
-    }
-    if (last.kind === "phase" && last.live) {
-      // keep live
     }
   }
 
-  return out;
+  return coalesceAdjacentThoughts(out);
+}
+
+/**
+ * Merge consecutive bare `thought` units into one `thought-group` so the UI
+ * can show a single collapsible “Thought for Ns” instead of N separate rows.
+ * Phases already bundle their own thoughts — leave them alone.
+ */
+export function coalesceAdjacentThoughts(
+  units: TimelineUnit[],
+): TimelineUnit[] {
+  const out: TimelineUnit[] = [];
+  for (const u of units) {
+    if (u.kind !== "thought") {
+      out.push(u);
+      continue;
+    }
+    const prev = out[out.length - 1];
+    if (prev?.kind === "thought-group") {
+      if (u.text.trim() || u.streaming) {
+        prev.texts.push(u.text);
+      }
+      if (u.streaming) prev.streaming = true;
+      continue;
+    }
+    if (prev?.kind === "thought") {
+      const texts = [prev.text];
+      if (u.text.trim() || u.streaming) texts.push(u.text);
+      out[out.length - 1] = {
+        kind: "thought-group",
+        texts,
+        si: prev.si,
+        streaming: !!(prev.streaming || u.streaming),
+      };
+      continue;
+    }
+    out.push(u);
+  }
+  // Normalize single-item groups back? Keep as group for uniform render, or
+  // leave as thought when only one — single thought stays `thought`.
+  return out.map((u) => {
+    if (u.kind === "thought-group" && u.texts.length === 1) {
+      return {
+        kind: "thought" as const,
+        text: u.texts[0]!,
+        si: u.si,
+        streaming: u.streaming,
+      };
+    }
+    return u;
+  });
 }
 
 /** One-line title pieces for a phase trigger (caller localizes). */

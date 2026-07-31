@@ -1,6 +1,7 @@
 import type { Locale } from "../i18n";
 import { buildErrorDeck, deckCodeFromAgent, resolveErrorDeckCode } from "./errorDeck";
 import type { ErrorDeckAction, ErrorDeckCard } from "./errorDeck";
+import { inferKindFromToolCallId } from "./toolDisplay";
 
 export type SessionState =
   | "idle"
@@ -54,6 +55,8 @@ export interface MessageToolSegment {
   path?: string;
   streaming?: boolean;
   isError?: boolean;
+  /** ISO time when the tool row was created (history duration). */
+  createdAt?: string;
 }
 
 /** Ordered assistant turn pieces — thinking, tools, and body as they arrived. */
@@ -242,6 +245,7 @@ export function toolSegmentFromFields(fields: {
   path?: string;
   streaming?: boolean;
   isError?: boolean;
+  createdAt?: string;
 }): MessageToolSegment {
   return {
     kind: "tool",
@@ -253,6 +257,7 @@ export function toolSegmentFromFields(fields: {
     path: fields.path,
     streaming: !!fields.streaming,
     isError: !!fields.isError,
+    createdAt: fields.createdAt,
   };
 }
 
@@ -347,15 +352,19 @@ function toolSegmentFromMessageRow(row: ChatMessage): MessageToolSegment | null 
   const tcid = toolCallIdOf(row);
   if (!tcid) return null;
   const status = (row.toolStatus || "completed").toLowerCase();
+  // Journal often stores empty kind + title "tool"; recover from call-id prefix.
+  const toolKind =
+    (row.toolKind || "").trim() || inferKindFromToolCallId(tcid) || undefined;
   return toolSegmentFromFields({
     toolCallId: tcid,
     title: toolStepDisplayTitle(row) || row.content || tcid,
-    toolKind: row.toolKind,
+    toolKind,
     status,
     detail: row.toolDetail,
     path: row.toolPath,
     streaming: false,
     isError: !!row.isError || status === "failed" || status === "error",
+    createdAt: row.createdAt,
   });
 }
 
@@ -568,6 +577,7 @@ export function syncTurnToolsIntoAssistant(
       path: m.toolPath,
       streaming: !!m.streaming,
       isError: !!m.isError || status === "failed" || status === "error",
+      createdAt: m.createdAt,
     });
     have.add(tcid);
     if (i < aIdx) pre.push(toolSeg);
@@ -663,6 +673,7 @@ export function applyToolEvent(
     path: row.toolPath,
     streaming: running,
     isError: !!row.isError,
+    createdAt: row.createdAt || prev?.createdAt || now,
   });
   const segs = compactMessageSegments(
     upsertToolInSegments(ensureSegments(asst), toolSeg),
@@ -702,10 +713,14 @@ export function applyTurnMarker(
 
 /** True for journal / live tool_step activity rows. */
 export function isToolStepMessage(m: ChatMessage): boolean {
-  return (
-    m.marker === "tool_step" ||
-    (m.role === "tool" && !!m.content?.startsWith("tool_step|"))
-  );
+  if (m.marker === "tool_step") return true;
+  if (m.role !== "tool") return false;
+  const c = (m.content || "").trim();
+  if (c.startsWith("tool_step|") || c.startsWith("tool_step")) return true;
+  // Live rows often store the human title only; id / toolCallId still mark them.
+  if (m.toolCallId?.trim()) return true;
+  if (m.id.startsWith("tool-")) return true;
+  return false;
 }
 
 /** Failed / rejected tool_step that must stay visible in the transcript. */

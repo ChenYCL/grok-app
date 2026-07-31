@@ -17,7 +17,6 @@ import {
   loadThemePreference,
   saveThemePreference,
   subscribeSystemTheme,
-  toggleThemePreference,
   type Theme,
   type ThemePreference,
 } from "@/lib/theme";
@@ -65,6 +64,10 @@ import {
   USAGE_ESTIMATES_CHANGE_EVENT,
 } from "@/lib/usageEstimatesPref";
 import {
+  recordCostUsageSample,
+  sampleFromUsageEvent,
+} from "@/lib/costRollup";
+import {
   loadMessageTimeFormatPref,
   MESSAGE_TIME_FORMAT_CHANGE_EVENT,
   saveMessageTimeFormatPref,
@@ -81,6 +84,7 @@ import {
 } from "@/lib/accountUi";
 import { loadConfirmExternalLinksPref } from "@/lib/externalLinkPref";
 import { loadStopAllSkipConfirmPref } from "@/lib/stopAllSkipConfirmPref";
+import { detectAppPlatform, revealInOsLabel } from "@/lib/appPlatform";
 import {
   APP_CLOSE_REQUESTED_EVENT,
   loadAlwaysQuitWithoutAskingPref,
@@ -97,6 +101,14 @@ import {
   saveWindowAlwaysOnTopPref,
 } from "@/lib/windowAlwaysOnTop";
 import {
+  canLiveParticipate,
+  canOpenSessionInNewWindow,
+  isSessionWindowLabel,
+  parseSessionDeepLinkHash,
+  resolveSecondarySessionId,
+  shouldSkipWarmConnect,
+} from "@/lib/multiWindow";
+import {
   applyChatWidth,
   loadChatWidth,
 } from "@/lib/chatWidthPref";
@@ -106,6 +118,11 @@ import {
   permissionTimeoutRemainingSec,
   savePermissionTimeoutSec,
 } from "@/lib/permissionTimeout";
+import {
+  ASK_USER_TIMEOUT_CHANGE_EVENT,
+  loadAskUserTimeoutSec,
+  saveAskUserTimeoutSec,
+} from "@/lib/askUserTimeout";
 import { WallpaperMediaLayer } from "@/components/WallpaperMediaLayer";
 import {
   ASIDE_WIDTH_MIN,
@@ -191,12 +208,30 @@ import { StreamCoalescer } from "@/lib/streamCoalesce";
 import { UiErrorBoundary } from "@/components/UiErrorBoundary";
 import {
   buildCompactSlashCommand,
+  COMPACT_PRESET_IDS,
+  DEFAULT_COMPACT_PRESET,
+  estimateCompactAfterTokens,
+  formatCompactBeforeAfterRange,
+  formatTokenCount,
   INITIAL_CONTEXT_USAGE,
   mergeCompactTokensBefore,
   reduceContextUsage,
+  resolveCompactNoteBody,
   resolveContextUsageDisplay,
+  type CompactPresetId,
   type ContextUsageState,
 } from "@/lib/contextUsage";
+import {
+  COMPACTION_DETAILS,
+  COMPACTION_MODES,
+  DEFAULT_COMPACTION_DETAIL,
+  DEFAULT_COMPACTION_MODE,
+  compactionDetailApplies,
+  normalizeCompactionDetail,
+  normalizeCompactionMode,
+  type CompactionDetailId,
+  type CompactionModeId,
+} from "@/lib/compactionMode";
 import { ContextUsageChip } from "@/components/ContextUsageChip";
 import { PlanStatusBar } from "@/components/PlanStatusBar";
 import {
@@ -207,6 +242,7 @@ import {
 } from "@/lib/planSession";
 import { AgentTasksPanel } from "@/components/AgentTasksPanel";
 import { AgentDashboardModal } from "@/components/AgentDashboardModal";
+import { BatchAgentsModal } from "@/components/BatchAgentsModal";
 import { ReliabilityCenterModal } from "@/components/ReliabilityCenterModal";
 import {
   collectActivitySessions,
@@ -222,15 +258,38 @@ import {
   countBusyDashboardRows,
 } from "@/lib/agentDashboard";
 import {
+  BATCH_AGENTS_HEADLESS_TIMEOUT_MS,
+  buildBatchPromptBody,
+  buildBatchSessionTitle,
+  classifyBatchError,
+  mapHeadlessHostResult,
+  summarizeBatchResults,
+  upsertBatchResultItem,
+  type BatchDispatchItemResult,
+  type BatchDispatchMode,
+  type BatchDispatchSummary,
+  type BatchProjectInput,
+} from "@/lib/batchAgents";
+import {
   buildReliabilityCenter,
   DEFAULT_RELIABILITY_MAX_ERRORS,
   DEFAULT_RELIABILITY_MAX_STALLS,
   prependReliabilityRing,
+  recordStallHistoryFromSignal,
   reliabilityErrorFromDeck,
   reliabilityStallFromEvent,
   type ReliabilityErrorEntry,
   type ReliabilityStallSignal,
 } from "@/lib/reliabilityCenter";
+import {
+  GOAL_ORCH_EVENT_MAX,
+  goalEventFromHostPayload,
+  loadGoalOrchUiEnabled,
+  prependGoalOrchEvent,
+  saveGoalOrchUiEnabled,
+  type GoalOrchEvent,
+  type GoalOrchHostPayload,
+} from "@/lib/goalOrch";
 import * as api from "@/lib/api";
 import {
   SANDBOX_PROFILES,
@@ -336,23 +395,68 @@ import { PlanHistoryList } from "@/components/PlanHistoryList";
 import { MarkdownBody } from "@/components/MarkdownBody";
 import { VoiceOverlay } from "@/components/VoiceOverlay";
 import {
+  clearSessionSearchFilters,
   filterSessionSearch,
+  hasActiveSessionSearchFilters,
   mergeSessionSearchHits,
+  resolveSessionSearchEmptyState,
+  sessionSearchBadge,
+  sessionSearchBadgeLabelKey,
+  sessionSearchModeLabelKey,
+  sessionSearchRankModeLabelKey,
+  shouldScanSessionContent,
+  SESSION_SEARCH_RANK_MODES,
   type SessionContentHit,
+  type SessionSearchMode,
+  SESSION_SEARCH_MODES,
+  type SessionSearchRankMode,
 } from "@/lib/sessionSearch";
+import {
+  loadSessionSearchFilterPref,
+  saveSessionSearchFilterPref,
+  SESSION_SEARCH_FILTER_CHANGE_EVENT,
+} from "@/lib/sessionSearchFilterPref";
+import {
+  loadSessionSearchRankPref,
+  saveSessionSearchRankPref,
+  SESSION_SEARCH_RANK_CHANGE_EVENT,
+} from "@/lib/sessionSearchRankPref";
 import {
   defaultPaletteActions,
   filterPaletteActions,
   type PaletteActionDef,
 } from "@/lib/paletteActions";
+import { canOfferContinueCwd } from "@/lib/continueCwd";
 import {
   sessionExportFilename,
-  sessionExportHtmlFilename,
-  sessionExportJsonFilename,
+  sessionExportFilenameFor,
+  sessionExportMimeType,
   sessionToHtml,
   sessionToJson,
   sessionToMarkdown,
+  sessionToPlain,
+  shouldPreferCliMarkdownExport,
 } from "@/lib/sessionExport";
+import {
+  blobToBase64 as pngBlobToBase64,
+  buildExportImagePipeline,
+  copyPngBlob,
+  downloadPngBlob,
+  exportableToShareMessages,
+  sessionExportImageFilename,
+  type ShareCardMessage,
+} from "@/lib/sessionExportImage";
+import {
+  buildSessionFilePathMap,
+  mergePathMaps,
+} from "@/lib/sessionPathMap";
+import {
+  loadExportImageSkinPref,
+  saveExportImageSkinPref,
+  SHARE_CARD_SKIN_IDS,
+  type ShareCardSkinId,
+} from "@/lib/shareCardSkins";
+import { loadExportLogoPref } from "@/lib/exportLogoPref";
 import { recordTraceExport } from "@/lib/traceHistory";
 import { clearPlanHistory, recordPlanHistory } from "@/lib/planHistory";
 import type { PlanHistoryEntry } from "@/lib/planHistory";
@@ -419,6 +523,7 @@ import {
   shouldOfferCliUpdateNotice,
 } from "@/lib/cliUpdateNotice";
 import { GlassModal } from "@/components/GlassModal";
+import { Select } from "@/components/Select";
 import { ProductTutorial } from "@/components/ProductTutorial";
 import {
   loadDone as loadProductTutorialDone,
@@ -429,6 +534,7 @@ import { ChatFindBar } from "@/components/ChatFindBar";
 import {
   applyResolvedSessionMedia,
   buildAgentPrompt,
+  buildInlineMediaPathMap,
   collectSessionRelativeMediaRefs,
   isImagePath,
   mergeAttachments,
@@ -458,6 +564,10 @@ import {
   MAX_AGENT_TURNS_CAP,
   normalizeMaxAgentTurns,
 } from "@/lib/sessionMaxAgentTurns";
+import {
+  SESSION_SYSTEM_PROMPT_MAX_CHARS,
+  sanitizeSystemPromptOverride,
+} from "@/lib/sessionSystemPrompt";
 import {
   collectUserPromptHistory,
   filterPromptHistory,
@@ -531,10 +641,7 @@ import {
   sidebarSessionRowMetrics,
   type SidebarDensity,
 } from "@/lib/sidebarDensity";
-import {
-  groupSessionsByDate,
-  SIDEBAR_DATE_GROUP_I18N_KEYS,
-} from "@/lib/sidebarDateGroups";
+import { sortSessionsForSidebar } from "@/lib/sidebarDateGroups";
 import { GrokLogo } from "@/components/GrokLogo";
 import { SetupWizard, type SetupCliInfo } from "@/components/SetupWizard";
 import {
@@ -553,14 +660,27 @@ import {
   sanitizeWorktreeName,
   sanitizeWorktreeRef,
   sessionWorktreeTooltip,
+  worktreeEntryForPath,
   worktreeLabel,
   worktreeRemoveErrorSuggestsForce,
   type SessionWorktreeBadge,
   type WorktreeLayout,
 } from "@/lib/gitWorktree";
+import { filterCliWorktreesForProject } from "@/lib/cliWorktrees";
+import {
+  canShipWorktree,
+  combineShipOutcome,
+  defaultPrTitleFromBranch,
+  redactShipOutput,
+  sanitizePrBody,
+  sanitizePrTitle,
+  shipOutcomeSummary,
+} from "@/lib/wtShipFlow";
 import {
   buildForkWorktreeName,
+  canOfferForkAgentSession,
   canRestoreCodeOnFork,
+  resolveForkAgentSession,
 } from "@/lib/sessionFork";
 import {
   buildResumeWorktreeName,
@@ -599,6 +719,7 @@ import {
 import {
   ComposerPlusPanel,
   buildComposerPlusEntries,
+  jsonSchemaMatchesQuery,
   uploadMatchesQuery,
 } from "@/components/ComposerPlusPanel";
 import { StatusModal } from "@/components/StatusModal";
@@ -642,20 +763,24 @@ import {
   IconNotes,
   IconRename,
   IconCopy,
+  IconExportImage,
   IconFiles,
   IconTrash,
   IconExternalLink,
   IconFork,
   IconRewind,
+  IconHistory,
   IconDeviceMobile,
   IconShield,
   IconCheck,
   IconList,
   IconListNumbers,
+  IconRobot,
   IconPlan,
   IconActivity,
   IconFileDiff,
   IconGitBranch,
+  IconUpload,
   IconFileText,
   IconSettings,
   IconDoctor,
@@ -678,6 +803,7 @@ import {
   parseScheduledUserContent,
   type Automation,
 } from "@/lib/automations";
+import { automationsBackgroundStatus } from "@/lib/automationsBackgroundStatus";
 import {
   extractAutomationPayload,
   looksLikeScheduleIntent,
@@ -705,6 +831,8 @@ import {
 import { ConversationThread } from "@/components/lobe-chat";
 import { dispatchCollapseAllActivity } from "@/lib/collapseAllActivity";
 import {
+  installDialogFocus,
+  isTypingTarget,
   preferPermissionFocus,
   trapTabKey,
 } from "@/lib/a11yFocus";
@@ -758,6 +886,8 @@ function paletteActionIcon(id: string) {
       return <IconList size={size} />;
     case "open-agent-dashboard":
       return <IconActivity size={size} />;
+    case "open-batch-agents":
+      return <IconList size={size} />;
     case "doctor":
       return <IconDoctor size={size} />;
     case "traces":
@@ -771,6 +901,10 @@ function paletteActionIcon(id: string) {
       return <IconHelp size={size} />;
     case "copy-conversation-md":
       return <IconCopy size={size} />;
+    case "continue-cwd":
+      return <IconHistory size={size} />;
+    case "resume-with-code-restore":
+      return <IconRewind size={size} />;
     case "settings-appearance":
       return <IconAppearance size={size} />;
     case "settings-account":
@@ -778,6 +912,8 @@ function paletteActionIcon(id: string) {
     case "settings-extensions":
       return <IconPlug size={size} />;
     case "settings-runtime":
+    case "settings-workflows":
+    case "workflows-docs":
       return <IconDoctor size={size} />;
     case "settings-remote":
       return <IconDeviceMobile size={size} />;
@@ -870,6 +1006,10 @@ interface SessionRow {
   extraRules?: string | null;
   /** Per-session max agent turns (`--max-turns`); null = inherit global. */
   maxAgentTurns?: number | null;
+  /** Per-session system prompt override (`--system-prompt-override`). */
+  systemPromptOverride?: string | null;
+  /** Linked Grok agent session id (for CLI `--fork-session` / session/load). */
+  agentSessionId?: string | null;
 }
 
 /** Normalize sessions_list / create rows into sidebar SessionRow shape. */
@@ -879,11 +1019,13 @@ function normalizeSessionRow(
     title?: string;
     projectId?: string | null;
     updatedAt?: string;
+    agentSessionId?: string | null;
   },
 ): SessionRow {
   const worktreePath = (x.worktreePath || "").trim() || null;
   const worktreeBranch = (x.worktreeBranch || "").trim() || null;
   const isWorktreeSession = !!(x.isWorktreeSession || worktreePath);
+  const agentSessionId = (x.agentSessionId || "").trim() || null;
   return {
     id: x.id,
     title: x.title || "",
@@ -895,6 +1037,7 @@ function normalizeSessionRow(
     worktreePath,
     worktreeBranch,
     isWorktreeSession,
+    agentSessionId,
   };
 }
 
@@ -911,6 +1054,8 @@ function mapSessionListRow(
     pluginDirs?: string[] | null;
     extraRules?: string | null;
     maxAgentTurns?: number | null;
+    systemPromptOverride?: string | null;
+    agentSessionId?: string | null;
   },
 ): SessionRow {
   const schema =
@@ -926,6 +1071,9 @@ function mapSessionListRow(
   const maxAgentTurns = normalizeMaxAgentTurns(
     typeof x.maxAgentTurns === "number" ? x.maxAgentTurns : null,
   );
+  const systemPromptOverride = sanitizeSystemPromptOverride(
+    typeof x.systemPromptOverride === "string" ? x.systemPromptOverride : null,
+  );
   return {
     ...normalizeSessionRow(x),
     modelId: x.modelId ?? null,
@@ -934,6 +1082,7 @@ function mapSessionListRow(
     pluginDirs,
     extraRules: extraRules || null,
     maxAgentTurns,
+    systemPromptOverride: systemPromptOverride || null,
   };
 }
 
@@ -1013,6 +1162,12 @@ export default function App() {
   const [showUsageEstimates, setShowUsageEstimates] = useState(() =>
     loadShowUsageEstimatesPref(localStorage),
   );
+  /** Display-only: Reliability “Goal orchestration” section (default on). */
+  const [goalOrchUiEnabled, setGoalOrchUiEnabled] = useState(() =>
+    loadGoalOrchUiEnabled(localStorage),
+  );
+  /** In-memory ring of CLI goal_updated / goal phase events (never invented). */
+  const [goalOrchEvents, setGoalOrchEvents] = useState<GoalOrchEvent[]>([]);
   const [messageTimeFormat, setMessageTimeFormat] = useState<MessageTimeFormat>(
     () => loadMessageTimeFormatPref(localStorage),
   );
@@ -1021,6 +1176,15 @@ export default function App() {
   );
   /** Shared tick so relative session labels recompute ~once a minute. */
   const [sidebarRelativeTick, setSidebarRelativeTick] = useState(0);
+  // Warm loopback media HTTP endpoint ASAP so chat images resolve to
+  // http://127.0.0.1 (not media://) before the first history paint.
+  useEffect(() => {
+    void import("@/lib/imageSrc")
+      .then((m) => m.ensureMediaEndpoint())
+      .catch(() => {
+        /* non-Tauri / server down */
+      });
+  }, []);
   useEffect(() => {
     if (!sidebarShowRelativeTime) return;
     const id = window.setInterval(() => {
@@ -1088,6 +1252,12 @@ export default function App() {
   } | null>(null);
   /** Draft as string so empty input means inherit global. */
   const [sessionMaxTurnsDraft, setSessionMaxTurnsDraft] = useState("");
+  /** Per-session system prompt override editor (`--system-prompt-override`). */
+  const [sessionSysPromptTarget, setSessionSysPromptTarget] = useState<{
+    id: string;
+    title: string;
+  } | null>(null);
+  const [sessionSysPromptDraft, setSessionSysPromptDraft] = useState("");
   const [notifySound, setNotifySound] = useState(() =>
     loadNotifySoundPref(localStorage),
   );
@@ -1142,6 +1312,34 @@ export default function App() {
   const [session, setSession] = useState<SessionSnapshot>(IDLE_SNAPSHOT);
   /** Host live agent (may differ from the session currently viewed in the UI). */
   const [liveHost, setLiveHost] = useState<SessionSnapshot>(IDLE_SNAPSHOT);
+  /**
+   * Secondary session window (`session-*` label / `#/session/<id>` deep link).
+   * Live-capable (MULTI-WIN-LITE): send / stop / ensureConnected use the shared
+   * process Host. Passive warm-connect on open is still skipped so browsing a
+   * second pane does not demote main’s agent until the user acts.
+   */
+  // True only for real `session-*` windows (set after label detect). Hash alone
+  // on main must not change layout / chrome.
+  const [isSecondaryWindow, setIsSecondaryWindow] = useState(false);
+  const isSecondaryWindowRef = useRef(false);
+  isSecondaryWindowRef.current = isSecondaryWindow;
+  /** Session id this secondary window should open (from hash or label). */
+  const [secondaryFocusSessionId, setSecondaryFocusSessionId] = useState<
+    string | null
+  >(() =>
+    typeof window !== "undefined"
+      ? parseSessionDeepLinkHash(window.location.hash)
+      : null,
+  );
+  const secondaryFocusSessionIdRef = useRef<string | null>(
+    secondaryFocusSessionId,
+  );
+  secondaryFocusSessionIdRef.current = secondaryFocusSessionId;
+  /** False until desktop window label is resolved (or non-desktop path). */
+  const [windowRoleReady, setWindowRoleReady] = useState(
+    () => !api.isDesktopHost(),
+  );
+  const secondaryOpenedRef = useRef(false);
   /** Multi-session live projection (busy / permission badges). */
   const [liveMap, setLiveMap] = useState<SessionLiveMap>({});
   /** Latest live map for callbacks that must not close over a stale render. */
@@ -1269,6 +1467,15 @@ export default function App() {
   const [showMcpModal, setShowMcpModal] = useState(false);
   const [showCompactModal, setShowCompactModal] = useState(false);
   const [compactNote, setCompactNote] = useState("");
+  /** light / standard / aggressive — seeds note templates (CLI has no intensity flag). */
+  const [compactPreset, setCompactPreset] =
+    useState<CompactPresetId>(DEFAULT_COMPACT_PRESET);
+  /** CLI 0.2.117+ --compaction-mode / GROK_COMPACTION_MODE (global settings). */
+  const [compactionMode, setCompactionMode] =
+    useState<CompactionModeId>(DEFAULT_COMPACTION_MODE);
+  /** CLI 0.2.117+ --compaction-detail (segments only). */
+  const [compactionDetail, setCompactionDetail] =
+    useState<CompactionDetailId>(DEFAULT_COMPACTION_DETAIL);
   const compactNoteRef = useRef<HTMLInputElement>(null);
   /**
    * UI estimate of tokens-before captured when the user confirms manual compact.
@@ -1282,6 +1489,12 @@ export default function App() {
   const [mcpServers, setMcpServers] = useState<api.McpDto[]>([]);
   const [mcpError, setMcpError] = useState<string | null>(null);
   const [mcpLoading, setMcpLoading] = useState(false);
+  /** MCP doctor report (coexists with inspect list; host `mcp_doctor`). */
+  const [mcpDoctorReport, setMcpDoctorReport] =
+    useState<api.McpDoctorReport | null>(null);
+  const [mcpDoctorError, setMcpDoctorError] = useState<string | null>(null);
+  const [mcpDoctorLoading, setMcpDoctorLoading] = useState(false);
+  const [mcpDoctorFocus, setMcpDoctorFocus] = useState<string | null>(null);
   /** Rewind timeline picker (session menu / status). */
   const [rewindTimeline, setRewindTimeline] = useState<{
     sessionId: string;
@@ -1295,16 +1508,19 @@ export default function App() {
     preview?: string;
   } | null>(null);
   const [rewindRestoreFiles, setRewindRestoreFiles] = useState(false);
-  /** Fork chat confirm + optional restore-code (default off). */
+  /** Fork chat confirm + optional restore-code / CLI --fork-session (default off). */
   const [forkConfirm, setForkConfirm] = useState<{
     source: SessionRow;
     throughUserPromptIndex?: number | null;
   } | null>(null);
   const [forkRestoreCode, setForkRestoreCode] = useState(false);
+  /** CLI `--fork-session`: new agent session id with parent context. */
+  const [forkCliSession, setForkCliSession] = useState(false);
   const [forkBusy, setForkBusy] = useState(false);
   /** Resume existing chat on a clean worktree (restore-code). */
   const [resumeRestoreConfirm, setResumeRestoreConfirm] =
     useState<SessionRow | null>(null);
+  const [resumeForkCliSession, setResumeForkCliSession] = useState(false);
   const [resumeRestoreBusy, setResumeRestoreBusy] = useState(false);
   /** Last user message open in inline edit (not main composer). */
   const [editingUserMessageId, setEditingUserMessageId] = useState<
@@ -1316,6 +1532,8 @@ export default function App() {
   editingUserMessageIdRef.current = editingUserMessageId;
   const [editSubmitting, setEditSubmitting] = useState(false);
   const [projects, setProjects] = useState<Project[]>([]);
+  const projectsRef = useRef(projects);
+  projectsRef.current = projects;
   const [sessions, setSessions] = useState<SessionRow[]>([]);
   const sessionsRef = useRef(sessions);
   sessionsRef.current = sessions;
@@ -1372,11 +1590,26 @@ export default function App() {
   const [dialogInput, setDialogInput] = useState("");
   const dialogInputRef = useRef<HTMLInputElement>(null);
   const confirmBtnRef = useRef<HTMLButtonElement>(null);
+  const appDialogPanelRef = useRef<HTMLDivElement>(null);
+  const searchPanelRef = useRef<HTMLDivElement>(null);
+  const compactModalRef = useRef<HTMLFormElement>(null);
+  const rewindModalRef = useRef<HTMLDivElement>(null);
   /** Latest dialog for Enter/Escape handlers (avoids stale chained confirms). */
   const appDialogRef = useRef<AppDialog>(null);
   appDialogRef.current = appDialog;
   const [showSearch, setShowSearch] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+  /** Keyword hybrid scope: all | title | content (no embeddings). Persisted. */
+  const [searchMode, setSearchMode] = useState<SessionSearchMode>(
+    () => loadSessionSearchFilterPref().mode,
+  );
+  const [searchIncludeArchived, setSearchIncludeArchived] = useState(
+    () => loadSessionSearchFilterPref().includeArchived,
+  );
+  /** Keyword vs local hybrid ranking for palette session search. */
+  const [searchRankMode, setSearchRankMode] = useState<SessionSearchRankMode>(
+    () => loadSessionSearchRankPref(),
+  );
   /** Debounced journal content hits from `sessions_search`. */
   const [contentSearchHits, setContentSearchHits] = useState<
     SessionContentHit[]
@@ -1457,17 +1690,25 @@ export default function App() {
     }
   }, [appDialog]);
 
+  // appDialog: Tab focus trap + Escape dismiss + restore previous focus.
+  // Enter-confirm stays in a separate capture handler below.
+  useEffect(() => {
+    if (!appDialog) return;
+    return installDialogFocus(() => appDialogPanelRef.current, {
+      onEscape: () => setAppDialog(null),
+      capture: true,
+      // Initial focus handled by the prompt/confirm effect above.
+      initialFocus: "none",
+      restoreFocus: true,
+    });
+  }, [appDialog]);
+
   useEffect(() => {
     if (!appDialog) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        e.preventDefault();
-        setAppDialog(null);
-        return;
-      }
       // Confirm dialogs: Enter always accepts (including chained YOLO steps).
       // Capture phase + preventDefault so we don't double-fire with a focused
-      // submit button's native activation.
+      // submit button's native activation. Escape is handled by installDialogFocus.
       if (e.key !== "Enter" && e.key !== "NumpadEnter") return;
       if (e.isComposing || e.altKey || e.ctrlKey || e.metaKey) return;
       const dialog = appDialogRef.current;
@@ -1482,14 +1723,94 @@ export default function App() {
     return () => document.removeEventListener("keydown", onKey, true);
   }, [appDialog]);
 
+  // Command palette: Tab trap + Escape (autoFocus on input).
   useEffect(() => {
     if (!showSearch) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setShowSearch(false);
-    };
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
+    return installDialogFocus(() => searchPanelRef.current, {
+      onEscape: () => setShowSearch(false),
+      capture: true,
+      initialFocus: "none",
+      restoreFocus: true,
+    });
   }, [showSearch]);
+
+  // Compact slash dialog — focus trap + Escape.
+  useEffect(() => {
+    if (!showCompactModal) return;
+    return installDialogFocus(() => compactModalRef.current, {
+      onEscape: () => {
+        setShowCompactModal(false);
+        setCompactNote("");
+        setCompactPreset(DEFAULT_COMPACT_PRESET);
+      },
+      capture: true,
+      initialFocus: "first",
+      restoreFocus: true,
+    });
+  }, [showCompactModal]);
+
+  // Rewind timeline dialog — focus trap + Escape.
+  useEffect(() => {
+    if (!rewindTimeline) return;
+    return installDialogFocus(() => rewindModalRef.current, {
+      onEscape: () => {
+        if (!rewindBusy) setRewindTimeline(null);
+      },
+      capture: true,
+      initialFocus: "first",
+      restoreFocus: true,
+    });
+  }, [rewindTimeline, rewindBusy]);
+
+  // Settings (or other windows) may change hybrid rank pref via localStorage event.
+  // Settings (or other windows) may change hybrid rank / filter prefs.
+  useEffect(() => {
+    const syncRank = () => setSearchRankMode(loadSessionSearchRankPref());
+    const syncFilters = () => {
+      const f = loadSessionSearchFilterPref();
+      setSearchMode(f.mode);
+      setSearchIncludeArchived(f.includeArchived);
+    };
+    const syncAll = () => {
+      syncRank();
+      syncFilters();
+    };
+    const onRank = (e: Event) => {
+      const detail = (e as CustomEvent<SessionSearchRankMode>).detail;
+      if (detail === "hybrid" || detail === "keyword") {
+        setSearchRankMode(detail);
+      } else {
+        syncRank();
+      }
+    };
+    const onFilter = (e: Event) => {
+      const detail = (
+        e as CustomEvent<{ mode?: SessionSearchMode; includeArchived?: boolean }>
+      ).detail;
+      if (detail && typeof detail === "object") {
+        if (
+          detail.mode === "all" ||
+          detail.mode === "title" ||
+          detail.mode === "content"
+        ) {
+          setSearchMode(detail.mode);
+        }
+        if (typeof detail.includeArchived === "boolean") {
+          setSearchIncludeArchived(detail.includeArchived);
+        }
+      } else {
+        syncFilters();
+      }
+    };
+    window.addEventListener(SESSION_SEARCH_RANK_CHANGE_EVENT, onRank);
+    window.addEventListener(SESSION_SEARCH_FILTER_CHANGE_EVENT, onFilter);
+    window.addEventListener("storage", syncAll);
+    return () => {
+      window.removeEventListener(SESSION_SEARCH_RANK_CHANGE_EVENT, onRank);
+      window.removeEventListener(SESSION_SEARCH_FILTER_CHANGE_EVENT, onFilter);
+      window.removeEventListener("storage", syncAll);
+    };
+  }, []);
 
   useEffect(() => {
     if (!sessionSelectMode) return;
@@ -1505,6 +1826,7 @@ export default function App() {
   }, [sessionSelectMode]);
 
   // Debounced content search over App journals (title filter stays instant).
+  // Title-only mode skips the journal scan entirely.
   useEffect(() => {
     if (!showSearch) {
       setContentSearchHits([]);
@@ -1512,7 +1834,7 @@ export default function App() {
       return;
     }
     const q = searchQuery.trim();
-    if (!q) {
+    if (!shouldScanSessionContent(q, searchMode)) {
       setContentSearchHits([]);
       setContentSearchLoading(false);
       return;
@@ -1546,7 +1868,7 @@ export default function App() {
       })();
     }, 280);
     return () => window.clearTimeout(t);
-  }, [searchQuery, showSearch]);
+  }, [searchQuery, showSearch, searchMode]);
 
   // Global shortcuts: search, find-in-chat, help, doctor, copy last reply, toggle sidebar, new chat, settings, voice, Esc-stop.
   // Handlers go through refs so we don't re-bind every render.
@@ -1652,13 +1974,10 @@ export default function App() {
       // Mod-based catalog actions — single registry in lib/shortcuts.ts.
       // Esc-stop stays special-cased above (order vs voice cancel / overlays).
       const target = e.target as HTMLElement | null;
-      const tag = target?.tagName?.toLowerCase();
-      const typing =
-        tag === "input" ||
-        tag === "textarea" ||
-        !!target?.isContentEditable;
-      // Sidebar j/k: next/prev chat when focus is inside the open sidebar list.
-      // Never steals from inputs/textareas/contenteditable or when modifiers held.
+      const typing = isTypingTarget(target);
+      // Sidebar j/k and ArrowUp/Down: next/prev chat when focus is inside the
+      // open sidebar list. Never steals from inputs/textareas/contenteditable
+      // or when modifiers are held.
       if (
         !typing &&
         !e.metaKey &&
@@ -1667,10 +1986,14 @@ export default function App() {
         !e.shiftKey
       ) {
         const key = e.key.length === 1 ? e.key.toLowerCase() : e.key;
-        if (key === "j" || key === "k") {
+        const navNext =
+          key === "j" || key === "arrowdown" || e.key === "ArrowDown";
+        const navPrev =
+          key === "k" || key === "arrowup" || e.key === "ArrowUp";
+        if (navNext || navPrev) {
           const sidebar = querySidebarEl();
           if (sidebar && target && sidebar.contains(target)) {
-            const dir = key === "j" ? "next" : "prev";
+            const dir = navNext ? "next" : "prev";
             const nextId = nextSessionId(
               sidebarNavIdsRef.current,
               sidebarNavCurrentIdRef.current,
@@ -1835,6 +2158,9 @@ export default function App() {
   const [permissionTimeoutSec, setPermissionTimeoutSec] = useState(() =>
     loadPermissionTimeoutSec(localStorage),
   );
+  const [askUserTimeoutSec, setAskUserTimeoutSec] = useState(() =>
+    loadAskUserTimeoutSec(localStorage),
+  );
   const [askUser, setAskUser] = useState<AskUserPayload | null>(null);
   /**
    * Unanswered gates per session (`sessionId` → payload).
@@ -1972,18 +2298,28 @@ export default function App() {
   const [maxConcurrentAgents, setMaxConcurrentAgents] = useState(8);
   const [agentIdleMinutes, setAgentIdleMinutes] = useState(30);
   const [streamStallSeconds, setStreamStallSeconds] = useState(180);
+  /** Headless partial stream events (CLI 0.2.117+). */
+  const [includePartialMessages, setIncludePartialMessages] = useState(false);
   /** 0 = omit `--max-turns` (CLI default). */
   const [maxAgentTurns, setMaxAgentTurns] = useState(0);
+  /** Headless bg wait: wait | no_wait | timeout (CLI 0.2.117+). */
+  const [backgroundWaitPolicy, setBackgroundWaitPolicy] = useState("wait");
+  const [backgroundWaitTimeoutSec, setBackgroundWaitTimeoutSec] = useState(600);
   const [storeApiKeysInKeychain, setStoreApiKeysInKeychain] = useState(false);
   const [sandboxProfile, setSandboxProfile] = useState("off");
   /** Preferred CLI agent definition for spawn (`""` = CLI default). */
   const [preferredAgent, setPreferredAgent] = useState("");
   /** Optional `grok agent --agent-profile <PATH>` (empty = omit). */
   const [agentProfilePath, setAgentProfilePath] = useState("");
+  /** Optional top-level `grok --agents <JSON>` (empty = omit). */
+  const [agentsJson, setAgentsJson] = useState("");
   const [agentCatalog, setAgentCatalog] = useState<
     Array<{ name: string; source: string }>
   >([]);
   const [experimentalMemory, setExperimentalMemory] = useState(false);
+  // compactionMode / compactionDetail state lives near compact modal (shared with Settings).
+  const [twoPassCompactionEnabled, setTwoPassCompactionEnabled] =
+    useState(false);
   const [voiceId, setVoiceId] = useState("eve");
   const [voiceDictationAutoSend, setVoiceDictationAutoSend] = useState(false);
   const [voiceKeepAgentsOnEnd, setVoiceKeepAgentsOnEnd] = useState(true);
@@ -1995,13 +2331,23 @@ export default function App() {
   const voiceDictationAutoSendRef = useRef(false);
   const sendRef = useRef<(() => Promise<void>) | null>(null);
   const [subagentsEnabled, setSubagentsEnabled] = useState(true);
+  const [subagentWorktreeSnapshotEnabled, setSubagentWorktreeSnapshotEnabled] =
+    useState(false);
+  const [autoWakeEnabled, setAutoWakeEnabled] = useState(false);
+  const [workflowsEnabled, setWorkflowsEnabled] = useState(false);
   const [planEnabled, setPlanEnabled] = useState(true);
+  const [todoGateEnabled, setTodoGateEnabled] = useState(false);
+  const [todoGateMaxFiresPerPrompt, setTodoGateMaxFiresPerPrompt] =
+    useState(3);
   const [disableWebSearch, setDisableWebSearch] = useState(false);
+  const [noAskUser, setNoAskUser] = useState(false);
   const [disallowedTools, setDisallowedTools] = useState<string[]>([]);
+  const [allowedTools, setAllowedTools] = useState<string[]>([]);
   const [useLeader, setUseLeader] = useState(false);
   /** Default off → launch on draft new-chat page. */
   const [reopenLastSession, setReopenLastSession] = useState(false);
   const [closeToTray, setCloseToTray] = useState(true);
+  const [keepTrayForSchedules, setKeepTrayForSchedules] = useState(true);
   const [launchAtLogin, setLaunchAtLogin] = useState(false);
   /** Desktop notification prefs (default on). Refs keep event listeners fresh. */
   const [notifyOnTurnDone, setNotifyOnTurnDone] = useState(true);
@@ -2015,6 +2361,7 @@ export default function App() {
   const didRestoreLastRef = useRef(false);
   const [tasksPanelOpen, setTasksPanelOpen] = useState(false);
   const [agentDashboardOpen, setAgentDashboardOpen] = useState(false);
+  const [batchAgentsOpen, setBatchAgentsOpen] = useState(false);
   const [gitWorktrees, setGitWorktrees] = useState<api.GitWorktreeEntry[]>([]);
   /** null = unknown/loading; true = git work tree; false = not a git repo. */
   const [gitWorktreesAvailable, setGitWorktreesAvailable] = useState<
@@ -2039,6 +2386,15 @@ export default function App() {
   const [worktreeCreateStartChat, setWorktreeCreateStartChat] = useState(false);
   /** Absolute `~/.grok` from host list (CLI path preview + badge detection). */
   const [cliGrokHome, setCliGrokHome] = useState<string | null>(null);
+  /** CLI-tracked worktrees from `grok worktree list` (soft-fail). */
+  const [cliWorktrees, setCliWorktrees] = useState<api.CliWorktreeEntry[]>([]);
+  const [cliWorktreesAvailable, setCliWorktreesAvailable] = useState<
+    boolean | null
+  >(null);
+  const [cliWorktreesLoading, setCliWorktreesLoading] = useState(false);
+  const [cliWorktreesReason, setCliWorktreesReason] = useState<string | null>(
+    null,
+  );
   /** Clean stale worktrees (git worktree prune) dialog. */
   const [worktreeGcOpen, setWorktreeGcOpen] = useState(false);
   const [worktreeGcForce, setWorktreeGcForce] = useState(false);
@@ -2047,6 +2403,16 @@ export default function App() {
   const [worktreeGcError, setWorktreeGcError] = useState<string | null>(null);
   const [worktreeGcPreview, setWorktreeGcPreview] =
     useState<api.GitWorktreeGcResult | null>(null);
+  /** Worktree ship flow (push + Open PR) dialog. */
+  const [shipOpen, setShipOpen] = useState(false);
+  const [shipTitle, setShipTitle] = useState("");
+  const [shipBody, setShipBody] = useState("");
+  const [shipDraft, setShipDraft] = useState(false);
+  const [shipCreatePr, setShipCreatePr] = useState(true);
+  const [shipBusy, setShipBusy] = useState(false);
+  const [shipError, setShipError] = useState<string | null>(null);
+  const [shipBranch, setShipBranch] = useState<string | null>(null);
+  const [shipStatus, setShipStatus] = useState<string | null>(null);
   /** Host stream-stall prompt (I06); null when dismissed or not stalled. */
   const [streamStall, setStreamStall] = useState<{
     sessionId?: string;
@@ -2078,12 +2444,7 @@ export default function App() {
   const [accountLoading, setAccountLoading] = useState(false);
   const [accountBusy, setAccountBusy] = useState(false);
   const [loginHint, setLoginHint] = useState<string | null>(null);
-  const platform = useMemo(() => {
-    const ua = navigator.userAgent.toLowerCase();
-    if (ua.includes("mac")) return "mac" as const;
-    if (ua.includes("win")) return "win" as const;
-    return "other" as const;
-  }, []);
+  const platform = useMemo(() => detectAppPlatform(), []);
   /** Self-drawn chrome when OS title bar is disabled (Windows release config). */
   const useCustomWindowChrome = platform === "win" || platform === "other";
   /** Right inset so resource chrome icons clear min/max/close. */
@@ -2475,15 +2836,77 @@ export default function App() {
   useEffect(() => {
     applyChatWidth(loadChatWidth());
   }, []);
-  // Dock / tray busy-session badge from liveMap projection.
+
+  /**
+   * Detect secondary session window early (label + deep-link hash).
+   * Sets role before warm-connect / last-session restore can run.
+   */
   useEffect(() => {
+    if (!api.isDesktopHost()) {
+      // Browser / mirror: still honor `#/session/<id>` for manual testing.
+      const fromHash = parseSessionDeepLinkHash(
+        typeof window !== "undefined" ? window.location.hash : "",
+      );
+      if (fromHash) {
+        setSecondaryFocusSessionId(fromHash);
+        setIsSecondaryWindow(true);
+        isSecondaryWindowRef.current = true;
+      }
+      setWindowRoleReady(true);
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      try {
+        const { getCurrentWindow } = await import("@tauri-apps/api/window");
+        if (cancelled) return;
+        const label = getCurrentWindow().label;
+        const secondary = isSessionWindowLabel(label);
+        const focusId = resolveSecondarySessionId({
+          hash: window.location.hash,
+          windowLabel: label,
+        });
+        // Label wins for secondary role: only real session-* windows skip
+        // passive warm-connect and collapse chrome. Hash alone on main must
+        // not change layout (e.g. manual hash edit).
+        setIsSecondaryWindow(secondary);
+        isSecondaryWindowRef.current = secondary;
+        if (focusId) {
+          setSecondaryFocusSessionId(focusId);
+          secondaryFocusSessionIdRef.current = focusId;
+        }
+        // Collapse chrome in secondary so the chat is front-and-center.
+        if (secondary) {
+          setLayout((l) => {
+            if (l.sidebarCollapsed && l.asideCollapsed) return l;
+            // Do not persist secondary layout over the main window's prefs.
+            return { ...l, sidebarCollapsed: true, asideCollapsed: true };
+          });
+          setAppView("workbench");
+          setMainPane("chat");
+        }
+      } catch (e) {
+        console.warn("multi-window role detect failed", e);
+      } finally {
+        if (!cancelled) setWindowRoleReady(true);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // Dock / tray busy-session badge from liveMap projection.
+  // Secondary windows must not overwrite the dock badge (main owns chrome).
+  useEffect(() => {
+    if (isSecondaryWindow) return;
     if (!trayBusyBadge) {
       void api.traySetBusyCount(0);
       return;
     }
     const n = countBusyLiveMapSessions(liveMap);
     void api.traySetBusyCount(n);
-  }, [liveMap, trayBusyBadge]);
+  }, [liveMap, trayBusyBadge, isSecondaryWindow]);
 
   const applyComposerPrefs = useCallback(
     (prefs: api.ComposerPrefs, catalog: ModelOption[]) => {
@@ -2722,12 +3145,28 @@ export default function App() {
           ? Math.min(900, Math.round(settings.streamStallSeconds))
           : 120,
       );
+      setIncludePartialMessages(!!settings.includePartialMessages);
       {
         const raw = settings.maxAgentTurns;
         setMaxAgentTurns(
           typeof raw === "number" && raw > 0
             ? Math.min(200, Math.round(raw))
             : 0,
+        );
+      }
+      {
+        const p = (settings.backgroundWaitPolicy || "wait")
+          .trim()
+          .toLowerCase()
+          .replace(/-/g, "_");
+        setBackgroundWaitPolicy(
+          p === "no_wait" || p === "timeout" ? p : "wait",
+        );
+        const ts = settings.backgroundWaitTimeoutSec;
+        setBackgroundWaitTimeoutSec(
+          typeof ts === "number" && Number.isFinite(ts)
+            ? Math.min(3600, Math.max(1, Math.round(ts)))
+            : 600,
         );
       }
       setStoreApiKeysInKeychain(!!settings.storeApiKeysInKeychain);
@@ -2738,7 +3177,11 @@ export default function App() {
       }
       setPreferredAgent((settings.preferredAgent || "").trim());
       setAgentProfilePath((settings.agentProfilePath || "").trim());
+      setAgentsJson((settings.agentsJson || "").trim());
       setExperimentalMemory(!!settings.experimentalMemory);
+      setCompactionMode(normalizeCompactionMode(settings.compactionMode));
+      setCompactionDetail(normalizeCompactionDetail(settings.compactionDetail));
+      setTwoPassCompactionEnabled(!!settings.twoPassCompactionEnabled);
       setVoiceId((settings.voiceId || "eve").trim() || "eve");
       setVoiceDictationAutoSend(!!settings.voiceDictationAutoSend);
       setVoiceKeepAgentsOnEnd(
@@ -2751,11 +3194,33 @@ export default function App() {
           : null,
       );
       setSubagentsEnabled(settings.subagentsEnabled !== false);
+      setSubagentWorktreeSnapshotEnabled(
+        !!settings.subagentWorktreeSnapshotEnabled,
+      );
+      setAutoWakeEnabled(!!settings.autoWakeEnabled);
+      setWorkflowsEnabled(!!settings.workflowsEnabled);
       setPlanEnabled(settings.planEnabled !== false);
+      setTodoGateEnabled(!!settings.todoGateEnabled);
+      {
+        const raw = settings.todoGateMaxFiresPerPrompt;
+        setTodoGateMaxFiresPerPrompt(
+          typeof raw === "number" && raw > 0
+            ? Math.min(20, Math.max(1, Math.round(raw)))
+            : 3,
+        );
+      }
       setDisableWebSearch(!!settings.disableWebSearch);
+      setNoAskUser(!!settings.noAskUser);
       setDisallowedTools(
         Array.isArray(settings.disallowedTools)
           ? settings.disallowedTools.filter(
+              (x): x is string => typeof x === "string",
+            )
+          : [],
+      );
+      setAllowedTools(
+        Array.isArray(settings.allowedTools)
+          ? settings.allowedTools.filter(
               (x): x is string => typeof x === "string",
             )
           : [],
@@ -2764,6 +3229,7 @@ export default function App() {
       // Opt-in only (missing key / false → draft new chat on launch).
       setReopenLastSession(settings.reopenLastSession === true);
       setCloseToTray(settings.closeToTray !== false);
+      setKeepTrayForSchedules(settings.keepTrayForSchedules !== false);
       setLaunchAtLogin(settings.launchAtLogin === true);
       setNotifyOnTurnDone(settings.notifyOnTurnDone !== false);
       setNotifyOnPermission(settings.notifyOnPermission !== false);
@@ -3190,6 +3656,21 @@ export default function App() {
       window.removeEventListener(PERMISSION_TIMEOUT_CHANGE_EVENT, onChange);
   }, []);
 
+  // Ask User Question auto-cancel timeout (localStorage; Settings dispatches change).
+  useEffect(() => {
+    const onChange = (ev: Event) => {
+      const detail = (ev as CustomEvent<unknown>).detail;
+      if (typeof detail === "number" && Number.isFinite(detail)) {
+        setAskUserTimeoutSec(detail);
+        return;
+      }
+      setAskUserTimeoutSec(loadAskUserTimeoutSec(localStorage));
+    };
+    window.addEventListener(ASK_USER_TIMEOUT_CHANGE_EVENT, onChange);
+    return () =>
+      window.removeEventListener(ASK_USER_TIMEOUT_CHANGE_EVENT, onChange);
+  }, []);
+
   // Phone layout flag: mirror client + ≤820px only (desktop ≥821px unchanged).
   useEffect(() => {
     if (!isMirrorClient()) {
@@ -3338,13 +3819,13 @@ export default function App() {
         if (!cancelled) {
           setLiveHost(snap);
           liveHostRef.current = snap;
-          // Only bind the viewed session when Host already has a live row.
+          // Project Host live row into liveMap for sidebar busy badges.
+          // Secondary windows keep their deep-link focus — never adopt the
+          // Host live slot as the viewed session (that would fight main).
+          const secondary =
+            isSecondaryWindowRef.current ||
+            !!secondaryFocusSessionIdRef.current;
           if (snap.sessionId) {
-            setSession((prev) => ({
-              ...snap,
-              state: reconcileSessionState(snap.state, prev.state),
-            }));
-            viewingSessionIdRef.current = snap.sessionId;
             setLiveMap((prev) =>
               projectHostIntoLiveMap(prev, {
                 sessionId: snap.sessionId,
@@ -3352,6 +3833,24 @@ export default function App() {
                 streamingMessageId: snap.streamingMessageId,
               }),
             );
+            if (!secondary) {
+              setSession((prev) => ({
+                ...snap,
+                state: reconcileSessionState(snap.state, prev.state),
+              }));
+              viewingSessionIdRef.current = snap.sessionId;
+            } else if (
+              secondaryFocusSessionIdRef.current &&
+              snap.sessionId === secondaryFocusSessionIdRef.current
+            ) {
+              // Same chat is already live on Host — mirror state without
+              // passive warm-connect (secondary still follows streams by id).
+              setSession((prev) => ({
+                ...snap,
+                state: reconcileSessionState(snap.state, prev.state),
+              }));
+              viewingSessionIdRef.current = snap.sessionId;
+            }
           }
         }
 
@@ -3698,6 +4197,23 @@ export default function App() {
             patchSessionMessages(sid, (prev) =>
               applyContextCompact(prev, payload),
             );
+            // Cost rollup: compact tokensAfter is a known context snapshot (not spend).
+            if (p.tokensAfter != null) {
+              const row = sessionsRef.current.find((s) => s.id === sid);
+              const project = row?.projectId
+                ? projectsRef.current.find((pr) => pr.id === row.projectId)
+                : null;
+              recordCostUsageSample(
+                sampleFromUsageEvent({
+                  sessionId: sid,
+                  projectId: row?.projectId ?? null,
+                  projectName: project?.name ?? null,
+                  modelId: row?.modelId ?? null,
+                  totalTokens: p.tokensAfter,
+                  source: "journal_compact",
+                }),
+              );
+            }
             if (sid === viewingSessionIdRef.current) {
               setContextUsage((prev) =>
                 reduceContextUsage(prev, {
@@ -3733,7 +4249,25 @@ export default function App() {
           }>("session://usage", (p) => {
             if (cancelled || !p) return;
             const sid = p.sessionId;
-            if (!sid || sid !== viewingSessionIdRef.current) return;
+            if (!sid) return;
+            // Cost rollup: record known usage for any session (not only focused).
+            const row = sessionsRef.current.find((s) => s.id === sid);
+            const project = row?.projectId
+              ? projectsRef.current.find((pr) => pr.id === row.projectId)
+              : null;
+            recordCostUsageSample(
+              sampleFromUsageEvent({
+                sessionId: sid,
+                projectId: row?.projectId ?? null,
+                projectName: project?.name ?? null,
+                modelId: row?.modelId ?? null,
+                inputTokens: p.inputTokens,
+                outputTokens: p.outputTokens,
+                totalTokens: p.totalTokens,
+                source: p.source ?? "usage",
+              }),
+            );
+            if (sid !== viewingSessionIdRef.current) return;
             setContextUsage((prev) =>
               reduceContextUsage(prev, {
                 type: "usage",
@@ -3820,6 +4354,17 @@ export default function App() {
           }),
         );
         await track(
+          api.listen<GoalOrchHostPayload>("session://goal", (p) => {
+            if (cancelled || !p) return;
+            // CLI 0.2.117+ goal_updated — soft-fail when CLI never emits.
+            const ev = goalEventFromHostPayload(p);
+            if (!ev) return;
+            setGoalOrchEvents((prev) =>
+              prependGoalOrchEvent(prev, ev, GOAL_ORCH_EVENT_MAX),
+            );
+          }),
+        );
+        await track(
           api.listen<{ line?: string }>("session://stderr", (p) => {
             if (cancelled || !p?.line) return;
             // Fallback: agent log lines that mention hooks (fail-open, timeouts, …).
@@ -3886,7 +4431,12 @@ export default function App() {
             "session://agents_recycled",
             (p) => {
               if (cancelled || !p) return;
-              // session_data_mode flip (and any future full recycle).
+              // session_data_mode flip, custom provider route apply (#376), CLI upgrade, etc.
+              if (p.reason === "provider_route") {
+                setToast(tr("prov.switchedHotReload"));
+                window.setTimeout(() => setToast(null), 3600);
+                return;
+              }
               if (
                 p.reason === "session_data_mode" ||
                 (p.killed != null && p.killed > 0)
@@ -4017,19 +4567,22 @@ export default function App() {
               sawToolActivity: p.sawToolActivity,
             });
             // Reliability center ring — title resolved at view assembly time.
+            const activeStall = reliabilityStallFromEvent({
+              kind: "active",
+              sessionId: p.sessionId ?? null,
+              stallSeconds: secs,
+              tier: p.tier ?? null,
+              reason: "stall",
+            });
             setRecentStallSignals((prev) =>
               prependReliabilityRing(
                 prev,
-                reliabilityStallFromEvent({
-                  kind: "active",
-                  sessionId: p.sessionId ?? null,
-                  stallSeconds: secs,
-                  tier: p.tier ?? null,
-                  reason: "stall",
-                }),
+                activeStall,
                 DEFAULT_RELIABILITY_MAX_STALLS,
               ),
             );
+            // Persist stall timeline (localStorage ring; no secrets).
+            recordStallHistoryFromSignal(activeStall);
           }),
         );
         // Long-tool heartbeat: Host re-armed stall; clear soft banner for this chat.
@@ -4055,19 +4608,22 @@ export default function App() {
           }>("session://stream_stall_hard_end", (p) => {
             if (cancelled || !p) return;
             setStreamStall(null);
+            const hardEndStall = reliabilityStallFromEvent({
+              kind: "hard_end",
+              sessionId: p.sessionId ?? null,
+              stallSeconds:
+                typeof p.stallSeconds === "number" ? p.stallSeconds : null,
+              reason: "stall",
+            });
             setRecentStallSignals((prev) =>
               prependReliabilityRing(
                 prev,
-                reliabilityStallFromEvent({
-                  kind: "hard_end",
-                  sessionId: p.sessionId ?? null,
-                  stallSeconds:
-                    typeof p.stallSeconds === "number" ? p.stallSeconds : null,
-                  reason: "stall",
-                }),
+                hardEndStall,
                 DEFAULT_RELIABILITY_MAX_STALLS,
               ),
             );
+            // Persist stall timeline (localStorage ring; no secrets).
+            recordStallHistoryFromSignal(hardEndStall);
             // Host force-ended the turn (runtime Ready already emitted). Settle
             // client projection so the sidebar cannot stay spinning if a late
             // stream token races after this event (issue #225).
@@ -4402,18 +4958,59 @@ export default function App() {
                       m.role === "user"
                         ? hydrateDisplayContent(rawContent)
                         : rawContent;
+                    const rawMarker =
+                      (m as { marker?: string }).marker || undefined;
+                    const marker =
+                      rawMarker ||
+                      (m.role === "tool" && content.startsWith("context_compact")
+                        ? "context_compact"
+                        : m.role === "tool" && content.startsWith("tool_step|")
+                          ? "tool_step"
+                          : m.role === "tool" &&
+                              content.startsWith("turn_cancelled")
+                            ? "turn_cancelled"
+                            : undefined);
+                    const toolParsed =
+                      marker === "tool_step"
+                        ? parseToolStepContent(content)
+                        : null;
+                    const role = m.role as "user" | "assistant" | "tool";
+                    let displayContent = toolParsed?.title || content;
+                    if (role === "assistant" && displayContent) {
+                      displayContent =
+                        extractAutomationPayload(displayContent).cleanText;
+                    }
+                    const thoughtPhases = splitThoughtPhases(m.thought);
                     return {
                       id: m.id,
-                      role: m.role as "user" | "assistant" | "tool",
-                      content,
+                      role,
+                      content: displayContent,
                       thought: m.thought ?? undefined,
+                      thoughtPhases,
+                      segments:
+                        role === "assistant"
+                          ? buildSegmentsFromLegacy(
+                              displayContent,
+                              m.thought,
+                              thoughtPhases,
+                            )
+                          : undefined,
                       isError: m.isError || undefined,
                       createdAt: m.createdAt || undefined,
+                      marker,
+                      toolCallId: m.id.startsWith("tool-")
+                        ? m.id.slice(5)
+                        : undefined,
+                      toolKind: toolParsed?.kind,
+                      toolStatus: toolParsed?.status,
+                      toolDetail: toolParsed?.detail,
+                      toolPath: toolParsed?.path,
                       streaming: false,
                     };
                   });
-                  messagesBySessionRef.current.set(sid, mapped);
-                  setMessages(mapped);
+                  const woven = weaveToolsIntoAssistantSegments(mapped);
+                  messagesBySessionRef.current.set(sid, woven);
+                  setMessages(woven);
                 } catch {
                   /* ignore */
                 }
@@ -4431,17 +5028,6 @@ export default function App() {
       cleanups.forEach((u) => u());
     };
   }, [patchSessionMessages, tryApplyAutomationFromSession]);
-
-  const toggleThemeBtn = () => {
-    const nextPref = toggleThemePreference(themePreference, theme);
-    saveThemePreference(localStorage, nextPref);
-    setThemePreference(nextPref);
-    void applyThemePreference(nextPref, {
-      onResolved: (_resolved, system) => {
-        setSystemTheme(system);
-      },
-    });
-  };
 
   const applyThemeChoice = (next: ThemePreference) => {
     saveThemePreference(localStorage, next);
@@ -4849,12 +5435,39 @@ export default function App() {
       // Prefer in-memory cache (optimistic user msg + partial stream) over disk.
       // Weave journal tool_step rows into preceding assistant segments so reload
       // still shows tools on the message timeline (live already interleaves).
-      const chosen = weaveToolsIntoAssistantSegments(
+      let chosen = weaveToolsIntoAssistantSegments(
         preferSessionMessages(
           messagesBySessionRef.current.get(s.id),
           mapped,
         ),
       );
+      // Grant path_scope + refine isDir before first paint so history
+      // thumbnails (Desktop/Downloads drops, etc.) do not flash broken.
+      const allPaths = chosen.flatMap(
+        (m) => m.attachments?.map((a) => a.path) ?? [],
+      );
+      if (allPaths.length && api.isTauri()) {
+        try {
+          const list = await api.pathsClassify(allPaths);
+          if (list.length) {
+            const byPath = new Map(list.map((c) => [c.path, c]));
+            chosen = chosen.map((msg) => {
+              if (!msg.attachments?.length) return msg;
+              return {
+                ...msg,
+                attachments: msg.attachments.map((a) => {
+                  const c = byPath.get(a.path);
+                  return c
+                    ? { path: c.path, name: c.name, isDir: c.isDir }
+                    : a;
+                }),
+              };
+            });
+          }
+        } catch {
+          /* classify is best-effort */
+        }
+      }
       if (viewingSessionIdRef.current !== s.id) {
         // User switched again while we were loading — keep cache warm, skip UI write.
         messagesBySessionRef.current.set(s.id, chosen);
@@ -4918,28 +5531,6 @@ export default function App() {
         if (api.isTauri()) {
           void api.sessionSetScheduled(s.id, true).catch(() => {});
         }
-      }
-      // Refine isDir via classify when possible
-      const allPaths = chosen.flatMap((m) => m.attachments?.map((a) => a.path) ?? []);
-      if (allPaths.length && api.isTauri()) {
-        void api.pathsClassify(allPaths).then((list) => {
-          if (viewingSessionIdRef.current !== s.id) return;
-          const byPath = new Map(list.map((c) => [c.path, c]));
-          setMessages((prev) =>
-            prev.map((msg) => {
-              if (!msg.attachments?.length) return msg;
-              return {
-                ...msg,
-                attachments: msg.attachments.map((a) => {
-                  const c = byPath.get(a.path);
-                  return c
-                    ? { path: c.path, name: c.name, isDir: c.isDir }
-                    : a;
-                }),
-              };
-            }),
-          );
-        });
       }
     } catch {
       if (viewingSessionIdRef.current !== s.id) {
@@ -5005,7 +5596,8 @@ export default function App() {
       setRetryStatus(null);
     }
 
-    if (api.isTauri()) {
+    // Secondary windows must not rewrite "last session" for the main workbench.
+    if (api.isTauri() && !isSecondaryWindowRef.current) {
       setLastSessionId(s.id);
       void api
         .settingsRememberLastSession(s.id, proj?.id ?? null)
@@ -5020,6 +5612,13 @@ export default function App() {
     // deferring warm connect avoids demote/spawn churn while browsing other chats.
     // The next send on this chat will `ensureConnected` intentionally.
     // Skip when project folder is missing (D05) — user must relocate first.
+    //
+    // Secondary windows skip *passive* warm-connect — Host live slot is shared
+    // process-wide; auto-connect on open would demote main’s agent. Intentional
+    // send still runs ensureConnected (MULTI-WIN-LITE).
+    if (shouldSkipWarmConnect(isSecondaryWindowRef.current)) {
+      return;
+    }
     const foreignBusy =
       Object.entries(liveMap).some(
         ([id, snap]) =>
@@ -5043,6 +5642,7 @@ export default function App() {
       void (async () => {
         if (viewingSessionIdRef.current !== warmId) return;
         if (sendInFlightRef.current || connectingRef.current) return;
+        if (shouldSkipWarmConnect(isSecondaryWindowRef.current)) return;
         try {
           const snap = await api.sessionConnect({
             projectPath:
@@ -5147,6 +5747,32 @@ export default function App() {
   useEffect(() => {
     if (appGate !== "ready") return;
     if (didRestoreLastRef.current) return;
+    // Wait for window role so main does not restore last while a secondary
+    // deep-link is still resolving (or vice versa).
+    if (!windowRoleReady) return;
+    // Secondary / deep-link: open the focused session once list is ready.
+    // Prefer this over "reopen last session" so multi-window does not fight.
+    const deepFocus =
+      secondaryFocusSessionIdRef.current ||
+      parseSessionDeepLinkHash(
+        typeof window !== "undefined" ? window.location.hash : "",
+      );
+    // Secondary window or explicit deep-link hash → open that session first.
+    if (deepFocus && (isSecondaryWindowRef.current || secondaryFocusSessionId)) {
+      if (sessions.length === 0) {
+        // Wait until sessions load (another effect tick).
+        return;
+      }
+      didRestoreLastRef.current = true;
+      secondaryOpenedRef.current = true;
+      const row = sessions.find((s) => s.id === deepFocus);
+      if (row) {
+        void openSessionRef.current(row);
+      } else {
+        setLocalError(tr("session.openInNewWindowMissing"));
+      }
+      return;
+    }
     if (!api.isTauri()) {
       didRestoreLastRef.current = true;
       // Browser / non-host: still restore orphan new-chat draft if any.
@@ -5155,6 +5781,11 @@ export default function App() {
           loadComposerProjectDraft(projectDraftKey(activeProject?.id ?? null)),
         );
       }
+      return;
+    }
+    // Main window only: reopen last session.
+    if (isSecondaryWindowRef.current) {
+      didRestoreLastRef.current = true;
       return;
     }
     const id = shouldRestoreLastSession({
@@ -5180,13 +5811,44 @@ export default function App() {
     }
   }, [
     appGate,
+    windowRoleReady,
     reopenLastSession,
     lastSessionId,
     sessions,
     session.sessionId,
     activeProject?.id,
     applyComposerProjectDraft,
+    tr,
+    secondaryFocusSessionId,
+    isSecondaryWindow,
   ]);
+
+  /** Open (or focus) a chat in a secondary live-capable webview window. */
+  const openSessionInNewWindow = useCallback(
+    (s: SessionRow) => {
+      if (
+        !canOpenSessionInNewWindow({
+          isDesktopHost: api.isDesktopHost(),
+          isSecondaryWindow: isSecondaryWindowRef.current,
+          sessionId: s.id,
+        })
+      ) {
+        return;
+      }
+      void (async () => {
+        try {
+          await api.openSessionWindow(s.id, s.title || null);
+          showToast(tr("session.openInNewWindowOk"), 2200);
+        } catch (e) {
+          showToast(
+            tr("session.openInNewWindowFailed") + ": " + String(e),
+            4500,
+          );
+        }
+      })();
+    },
+    [tr],
+  );
 
   /**
    * Focus composer after React commit. Retries until the textarea is mounted
@@ -5367,7 +6029,6 @@ export default function App() {
    */
   const sidebarNavSessionIds = useMemo(() => {
     const ids: string[] = [];
-    const now = new Date();
     const projectIdSet = new Set(projects.map((p) => p.id));
     if (projectsOpen) {
       for (const proj of projects) {
@@ -5375,9 +6036,7 @@ export default function App() {
         const projSessions = sessions.filter(
           (s) => s.projectId === proj.id && !s.archived,
         );
-        for (const group of groupSessionsByDate(projSessions, now)) {
-          for (const s of group.sessions) ids.push(s.id);
-        }
+        for (const s of sortSessionsForSidebar(projSessions)) ids.push(s.id);
       }
     }
     if (historyOpen) {
@@ -5385,9 +6044,7 @@ export default function App() {
         (s) =>
           (!s.projectId || !projectIdSet.has(s.projectId)) && !s.archived,
       );
-      for (const group of groupSessionsByDate(orphans, now)) {
-        for (const s of group.sessions) ids.push(s.id);
-      }
+      for (const s of sortSessionsForSidebar(orphans)) ids.push(s.id);
     }
     return ids;
   }, [projectsOpen, projects, expandedProjects, sessions, historyOpen]);
@@ -5498,8 +6155,12 @@ export default function App() {
       }),
     [session.state, stopLatch],
   );
-  const effectiveCanSend = stopGate.sendable;
-  const effectiveCanStop = canStopWithStopLatch(session.state, stopLatch);
+  // MULTI-WIN-LITE: secondary shares Host — send/stop allowed (session-targeted).
+  const effectiveCanSend =
+    stopGate.sendable && canLiveParticipate(isSecondaryWindow);
+  const effectiveCanStop =
+    canLiveParticipate(isSecondaryWindow) &&
+    canStopWithStopLatch(session.state, stopLatch);
 
   const refreshSessions = async () => {
     try {
@@ -6480,6 +7141,85 @@ export default function App() {
     }
   };
 
+  /** Open GlassModal to edit per-session system prompt override. */
+  const openSessionSysPrompt = (s: SessionRow) => {
+    setCtxMenu(null);
+    setSessionSysPromptDraft(
+      typeof s.systemPromptOverride === "string" ? s.systemPromptOverride : "",
+    );
+    setSessionSysPromptTarget({
+      id: s.id,
+      title: s.title || tr("session.untitled"),
+    });
+  };
+
+  const closeSessionSysPromptModal = () => {
+    setSessionSysPromptTarget(null);
+    setSessionSysPromptDraft("");
+  };
+
+  const saveSessionSysPromptModal = async () => {
+    const target = sessionSysPromptTarget;
+    if (!target) return;
+    const next = sanitizeSystemPromptOverride(sessionSysPromptDraft);
+    try {
+      if (!api.isTauri()) {
+        setLocalError(tr("error.needTauri"));
+        return;
+      }
+      const saved = await api.sessionSetSystemPromptOverride(
+        target.id,
+        next || null,
+      );
+      const stored =
+        typeof saved.systemPromptOverride === "string" &&
+        saved.systemPromptOverride.trim()
+          ? saved.systemPromptOverride
+          : next || null;
+      setSessions((list) =>
+        list.map((row) =>
+          row.id === target.id
+            ? { ...row, systemPromptOverride: stored }
+            : row,
+        ),
+      );
+      closeSessionSysPromptModal();
+      setToast(
+        stored
+          ? tr("session.sysPromptSaved")
+          : tr("session.sysPromptCleared"),
+      );
+      window.setTimeout(() => setToast(null), 3200);
+    } catch (e) {
+      setLocalError(String(e));
+    }
+  };
+
+  const clearSessionSysPromptModal = async () => {
+    const target = sessionSysPromptTarget;
+    if (!target) return;
+    try {
+      if (!api.isTauri()) {
+        setLocalError(tr("error.needTauri"));
+        return;
+      }
+      await api.sessionSetSystemPromptOverride(target.id, null);
+      setSessions((list) =>
+        list.map((row) =>
+          row.id === target.id
+            ? { ...row, systemPromptOverride: null }
+            : row,
+        ),
+      );
+      setSessionSysPromptDraft("");
+      closeSessionSysPromptModal();
+      setToast(tr("session.sysPromptCleared"));
+      window.setTimeout(() => setToast(null), 3200);
+    } catch (e) {
+      setLocalError(String(e));
+    }
+  };
+
   /** Permanent delete — confirm first; leave workbench if viewing that chat. */
   const deleteSessionConfirm = (s: SessionRow) => {
     deleteSessionsConfirm([s]);
@@ -6739,6 +7479,56 @@ export default function App() {
     }
   };
 
+  /**
+   * CLI `grok -c/--continue` for a project folder: find newest agent session
+   * under active GROK_HOME for that path, import if needed, open App chat.
+   * Soft-fails with a toast when no agent session exists.
+   */
+  const continueLastAgentForProject = async (proj: Project) => {
+    setCtxMenu(null);
+    if (!canOfferContinueCwd(proj.path)) {
+      showToast(tr("project.continueCwdNoProject"), 3500);
+      return;
+    }
+    if (!api.isTauri()) {
+      setLocalError(tr("error.needTauri"));
+      return;
+    }
+    showToast(tr("project.continueCwdWorking"), 2000);
+    try {
+      const meta = await api.cliSessionContinueCwd(proj.path, {
+        projectId: proj.id,
+      });
+      if (!meta?.id) {
+        showToast(tr("project.continueCwdNone"), 4200);
+        return;
+      }
+      await refreshSessions();
+      const list = (await api.sessionsList()) as SessionRow[];
+      const row =
+        list.map((s) => normalizeSessionRow(s)).find((s) => s.id === meta.id) ??
+        normalizeSessionRow({
+          id: meta.id,
+          title: meta.title || tr("session.untitled"),
+          projectId: meta.projectId ?? proj.id,
+          updatedAt: meta.updatedAt || new Date().toISOString(),
+          agentSessionId: meta.agentSessionId ?? null,
+        });
+      const openProj =
+        (row.projectId && projects.find((p) => p.id === row.projectId)) || proj;
+      setExpandedProjects((e) => ({ ...e, [openProj.id]: true }));
+      await openSession(row, openProj);
+      showToast(
+        tr("project.continueCwdOk", {
+          title: row.title || meta.title || tr("session.untitled"),
+        }),
+        2800,
+      );
+    } catch (e) {
+      showToast(tr("project.continueCwdFailed") + ": " + String(e), 4500);
+    }
+  };
+
   /** One-line muted relative updated time for sidebar session rows. */
   const renderSessionRelativeTime = (updatedAt: string | undefined) => {
     // Keep tick in the render graph so the shared 60s interval refreshes labels.
@@ -6798,8 +7588,13 @@ export default function App() {
           archived: s.archived,
         })),
         projects.map((p) => ({ id: p.id, name: p.name, path: p.path })),
+        {
+          includeArchived: searchIncludeArchived,
+          mode: searchMode,
+          rankMode: searchRankMode,
+        },
       ),
-    [searchQuery, sessions, projects],
+    [searchQuery, sessions, projects, searchIncludeArchived, searchMode, searchRankMode],
   );
 
   const mergedSessionHits = useMemo(
@@ -6808,14 +7603,72 @@ export default function App() {
         searchQuery,
         searchHits.matchedSessions,
         contentSearchHits,
+        {
+          includeArchived: searchIncludeArchived,
+          mode: searchMode,
+          rankMode: searchRankMode,
+        },
       ),
-    [searchQuery, searchHits.matchedSessions, contentSearchHits],
+    [
+      searchQuery,
+      searchHits.matchedSessions,
+      contentSearchHits,
+      searchIncludeArchived,
+      searchMode,
+      searchRankMode,
+    ],
   );
 
   const paletteActionHits = useMemo(
     () => filterPaletteActions(searchQuery, defaultPaletteActions(), tr),
     [searchQuery, tr],
   );
+
+  const searchEmptyState = useMemo(
+    () =>
+      resolveSessionSearchEmptyState({
+        query: searchQuery,
+        sessionHitCount: mergedSessionHits.length,
+        contentLoading: contentSearchLoading,
+        mode: searchMode,
+        includeArchived: searchIncludeArchived,
+        rankMode: searchRankMode,
+      }),
+    [
+      searchQuery,
+      mergedSessionHits.length,
+      contentSearchLoading,
+      searchMode,
+      searchIncludeArchived,
+      searchRankMode,
+    ],
+  );
+
+  const searchFiltersActive = useMemo(
+    () =>
+      hasActiveSessionSearchFilters({
+        mode: searchMode,
+        includeArchived: searchIncludeArchived,
+      }),
+    [searchMode, searchIncludeArchived],
+  );
+
+  const applySearchMode = useCallback((mode: SessionSearchMode) => {
+    setSearchMode(mode);
+    saveSessionSearchFilterPref({ mode });
+  }, []);
+
+  const applySearchIncludeArchived = useCallback((includeArchived: boolean) => {
+    setSearchIncludeArchived(includeArchived);
+    saveSessionSearchFilterPref({ includeArchived });
+  }, []);
+
+  const clearSearchFilters = useCallback(() => {
+    const next = clearSessionSearchFilters();
+    setSearchMode(next.mode);
+    setSearchIncludeArchived(next.includeArchived);
+    saveSessionSearchFilterPref(next);
+  }, []);
 
   const agentDashboardRows = useMemo(
     () =>
@@ -6893,6 +7746,10 @@ export default function App() {
       | boolean
       | { force?: boolean; sessionId?: string | null } = false,
   ): Promise<string | null> => {
+    // MULTI-WIN-LITE: secondary may connect when the user sends (shared Host).
+    if (!canLiveParticipate(isSecondaryWindowRef.current)) {
+      return null;
+    }
     const opts =
       typeof forceOrOpts === "boolean"
         ? { force: forceOrOpts, sessionId: undefined as string | null | undefined }
@@ -7106,26 +7963,40 @@ export default function App() {
   };
 
   /**
-   * `/compact [note]` — richer compact dialog (current usage + optional keep-note).
+   * `/compact [note]` — richer compact dialog:
+   * presets (light/standard/aggressive as note templates; CLI has no intensity flag),
+   * optional keep-note, current usage + honest after estimate when tokens known.
    * Empty note → `/compact`; non-empty → `/compact {note}`.
    * Never uses window.prompt (unreliable in Tauri WebView).
    */
   const openCompactWithNote = () => {
-    setCompactNote("");
+    setCompactPreset(DEFAULT_COMPACT_PRESET);
+    setCompactNote(tr("slash.compactPresetNote.standard"));
     setShowCompactModal(true);
+  };
+
+  const compactPresetNote = (id: CompactPresetId): string => {
+    if (id === "light") return tr("slash.compactPresetNote.light");
+    if (id === "aggressive") return tr("slash.compactPresetNote.aggressive");
+    return tr("slash.compactPresetNote.standard");
+  };
+
+  const selectCompactPreset = (id: CompactPresetId) => {
+    setCompactPreset(id);
+    setCompactNote(compactPresetNote(id));
   };
 
   const attachLabels = useMemo(
     () => ({
       open: tr("attach.open"),
-      reveal: tr("attach.reveal"),
+      reveal: revealInOsLabel(tr, platform),
       copyPath: tr("attach.copyPath"),
       copyImage: tr("attach.copyImage"),
       addToComposer: tr("attach.addToComposer"),
       remove: tr("composer.attachRemove"),
       viewImage: tr("image.view"),
     }),
-    [tr],
+    [tr, platform],
   );
 
   const lastUserMessageId = useMemo(() => {
@@ -7161,6 +8032,11 @@ export default function App() {
     fromQueue?: boolean;
     targetSessionId?: string | null;
   }): Promise<boolean> => {
+    // MULTI-WIN-LITE: secondary may send via shared Host (session-targeted).
+    if (!canLiveParticipate(isSecondaryWindowRef.current)) {
+      setLocalError(tr("session.secondaryLiveBanner"));
+      return false;
+    }
     if (sendInFlightRef.current) return false;
     sendInFlightRef.current = true;
     const { storedDisplay, att, goalMode: useGoal, fromQueue } = opts;
@@ -7487,6 +8363,10 @@ export default function App() {
 
   /** Enqueue when agent is busy; otherwise send immediately. */
   const send = async () => {
+    if (!canLiveParticipate(isSecondaryWindowRef.current)) {
+      showToast(tr("session.secondaryLiveBanner"), 4000);
+      return;
+    }
     const segments = parseStoredContent(draft);
     const storedDisplay = draft;
     const att = attachments;
@@ -7502,10 +8382,12 @@ export default function App() {
     // Existing-session follow-ups must not wipe a half-typed new-task draft.
     const fromNewChatPage = session.sessionId == null;
 
-    // Enqueue only when *this viewed chat* is busy/connecting (follow-ups).
+    // Enqueue only when *this viewed chat* FSM is busy (streaming/connecting).
     // Host mid-turn on another session → executeSend demotes + spawns concurrent
     // work. Never park a new-chat / other-session send into a fake local queue
     // (that showed “本会话队列” on empty welcome while the real turn ran elsewhere).
+    // Also ignore the process-global `connecting` flag — foreign ensureConnected
+    // must not make SuperGrok welcome enqueue (see shouldEnqueueSend).
     if (shouldEnqueueSend(session.state, connecting)) {
       sendQueue.enqueue({
         storedDisplay,
@@ -8133,14 +9015,28 @@ export default function App() {
       }),
     [slashFilterQuery, tr],
   );
+  const showJsonSchemaInMenu = useMemo(
+    () =>
+      jsonSchemaMatchesQuery(slashFilterQuery, {
+        title: tr("composer.jsonSchema"),
+        hint: tr("composer.jsonSchemaHint"),
+      }),
+    [slashFilterQuery, tr],
+  );
   const composerMenuEntries = useMemo(
     () =>
       buildComposerPlusEntries({
         showUpload: showUploadInMenu,
+        showJsonSchema: showJsonSchemaInMenu,
         commands: slashFiltered.commands,
         skills: slashFiltered.skills,
       }),
-    [showUploadInMenu, slashFiltered.commands, slashFiltered.skills],
+    [
+      showUploadInMenu,
+      showJsonSchemaInMenu,
+      slashFiltered.commands,
+      slashFiltered.skills,
+    ],
   );
   const composerMenuEntriesRef = useRef(composerMenuEntries);
   composerMenuEntriesRef.current = composerMenuEntries;
@@ -8350,12 +9246,13 @@ export default function App() {
     });
   }, [composerMenuEntries.length]);
 
-  const openMcpModal = useCallback(async () => {
-    setShowMcpModal(true);
+  /** Re-run inspect list only — does not clear doctor findings. */
+  const refreshMcpModal = useCallback(async () => {
     setMcpLoading(true);
     setMcpError(null);
     try {
       const res = await api.inspectMcp(activeProject?.path ?? null);
+      // Host list only — never invent placeholder servers.
       setMcpServers(res.servers ?? []);
       if (res.error) setMcpError(res.error);
     } catch (e) {
@@ -8365,6 +9262,39 @@ export default function App() {
       setMcpLoading(false);
     }
   }, [activeProject?.path]);
+
+  const openMcpModal = useCallback(async () => {
+    setShowMcpModal(true);
+    // Keep prior doctor results when re-opening; only refresh inspect list.
+    await refreshMcpModal();
+  }, [refreshMcpModal]);
+
+  /**
+   * Run `grok mcp doctor --json [name]`. Optional name focuses one server
+   * (must already exist in CLI config — host does not invent servers).
+   */
+  const runMcpDoctor = useCallback(
+    async (name?: string | null) => {
+      if (!api.isTauri()) {
+        setMcpDoctorError(tr("ext.needTauri"));
+        return;
+      }
+      const focus = name?.trim() || null;
+      setMcpDoctorFocus(focus);
+      setMcpDoctorLoading(true);
+      setMcpDoctorError(null);
+      try {
+        const report = await api.mcpDoctor(focus);
+        setMcpDoctorReport(report);
+      } catch (e) {
+        setMcpDoctorReport(null);
+        setMcpDoctorError(String(e));
+      } finally {
+        setMcpDoctorLoading(false);
+      }
+    },
+    [tr],
+  );
 
   const showToast = useCallback((msg: string, ms = 3200) => {
     setToast(msg);
@@ -8421,6 +9351,68 @@ export default function App() {
     showToast(tr("session.noteCleared"), 2000);
   }, [sessionNoteTarget, closeSessionNoteModal, tr, showToast]);
 
+  /** Confirm then stop the given session ids (dashboard / multi-select). */
+  const stopBusySessionsByIds = useCallback(
+    (
+      idsIn: string[],
+      labels?: {
+        title?: string;
+        message?: string;
+        confirmLabel?: string;
+      },
+    ) => {
+      const ids = [...new Set(idsIn.filter(Boolean))];
+      if (!ids.length) return;
+      const n = ids.length;
+      const runStop = async () => {
+        const results = await Promise.allSettled(
+          ids.map((id) => api.sessionStop(id)),
+        );
+        let ok = 0;
+        let fail = 0;
+        for (let i = 0; i < results.length; i++) {
+          const r = results[i]!;
+          const id = ids[i]!;
+          if (r.status === "fulfilled") {
+            ok += 1;
+            settleStoppedSessionUi(id);
+          } else {
+            fail += 1;
+          }
+        }
+        if (fail === 0) {
+          showToast(tr("tasks.activity.stopAllDone", { n: String(ok) }), 3200);
+        } else {
+          showToast(
+            tr("tasks.activity.stopAllPartial", {
+              ok: String(ok),
+              fail: String(fail),
+            }),
+            4000,
+          );
+        }
+      };
+      if (loadStopAllSkipConfirmPref()) {
+        void runStop();
+        return;
+      }
+      setAppDialog({
+        kind: "confirm",
+        title: labels?.title ?? tr("tasks.activity.stopAllTitle"),
+        message:
+          labels?.message ??
+          tr("tasks.activity.stopAllConfirm", { n: String(n) }),
+        confirmLabel:
+          labels?.confirmLabel ?? tr("tasks.activity.stopAll"),
+        danger: true,
+        onConfirm: () => {
+          void runStop();
+        },
+      });
+    },
+    [settleStoppedSessionUi, showToast, tr],
+  );
+
   /** Confirm then stop every stoppable busy session from the Tasks panel. */
   const stopAllBusySessions = useCallback(() => {
     const rows = stoppableActivitySessions(
@@ -8432,55 +9424,11 @@ export default function App() {
       }),
     );
     if (!rows.length) return;
-    const n = rows.length;
-    const ids = rows.map((r) => r.sessionId);
-    const runStopAll = async () => {
-      const results = await Promise.allSettled(
-        ids.map((id) => api.sessionStop(id)),
-      );
-      let ok = 0;
-      let fail = 0;
-      for (let i = 0; i < results.length; i++) {
-        const r = results[i]!;
-        const id = ids[i]!;
-        if (r.status === "fulfilled") {
-          ok += 1;
-          settleStoppedSessionUi(id);
-        } else {
-          fail += 1;
-        }
-      }
-      if (fail === 0) {
-        showToast(tr("tasks.activity.stopAllDone", { n: String(ok) }), 3200);
-      } else {
-        showToast(
-          tr("tasks.activity.stopAllPartial", {
-            ok: String(ok),
-            fail: String(fail),
-          }),
-          4000,
-        );
-      }
-    };
-    if (loadStopAllSkipConfirmPref()) {
-      void runStopAll();
-      return;
-    }
-    setAppDialog({
-      kind: "confirm",
-      title: tr("tasks.activity.stopAllTitle"),
-      message: tr("tasks.activity.stopAllConfirm", { n: String(n) }),
-      confirmLabel: tr("tasks.activity.stopAll"),
-      danger: true,
-      onConfirm: () => {
-        void runStopAll();
-      },
-    });
+    stopBusySessionsByIds(rows.map((r) => r.sessionId));
   }, [
     sessions,
     session.sessionId,
-    settleStoppedSessionUi,
-    showToast,
+    stopBusySessionsByIds,
     tr,
   ]);
 
@@ -9206,6 +10154,7 @@ export default function App() {
    * Fork a session (full history or through a user-prompt index) and open it.
    * Optional restore-code: when clean git work tree, create a sibling worktree
    * at HEAD and bind the forked session to that path (never force on dirty).
+   * Optional CLI `--fork-session`: new agent session id with parent context.
    */
   const runForkSession = useCallback(
     async (
@@ -9213,6 +10162,7 @@ export default function App() {
       opts?: {
         throughUserPromptIndex?: number | null;
         restoreCode?: boolean;
+        forkCliSession?: boolean;
       },
     ) => {
       if (!api.isTauri()) {
@@ -9220,6 +10170,10 @@ export default function App() {
         return;
       }
       const restoreCode = !!opts?.restoreCode;
+      const forkResolved = resolveForkAgentSession({
+        wantFork: !!opts?.forkCliSession,
+        agentSessionId: source.agentSessionId,
+      });
       setForkBusy(true);
       try {
         const sourceProjectId = normalizeProjectId(source.projectId);
@@ -9323,6 +10277,7 @@ export default function App() {
         const meta = await api.sessionFork(source.id, {
           throughUserPromptIndex: opts?.throughUserPromptIndex ?? null,
           title,
+          forkAgentSession: forkResolved.fork,
         });
 
         // Rebind fork to the worktree project when restore-code succeeded.
@@ -9348,6 +10303,7 @@ export default function App() {
 
         setForkConfirm(null);
         setForkRestoreCode(false);
+        setForkCliSession(false);
         await refreshSessions();
         const row = normalizeSessionRow({
           ...source,
@@ -9361,6 +10317,9 @@ export default function App() {
           archived: meta.archived,
           pinned: !!(meta as SessionRow).pinned,
           scheduled: meta.scheduled,
+          agentSessionId:
+            (meta as SessionRow).agentSessionId ??
+            (forkResolved.fork ? forkResolved.sourceAgentId : null),
         });
         const proj =
           (projectId
@@ -9380,8 +10339,12 @@ export default function App() {
         await openSession(row, openProj);
         showToast(
           restoredWorktree
-            ? tr("session.forkOkRestore")
-            : tr("session.forkOk"),
+            ? forkResolved.fork
+              ? tr("session.forkOkRestoreCli")
+              : tr("session.forkOkRestore")
+            : forkResolved.fork
+              ? tr("session.forkOkCli")
+              : tr("session.forkOk"),
           2800,
         );
       } catch (e) {
@@ -9399,20 +10362,31 @@ export default function App() {
     (source: SessionRow, throughUserPromptIndex?: number | null) => {
       setCtxMenu(null);
       setForkRestoreCode(false);
+      // Prefer live snapshot agent id when forking the open chat.
+      const agentId =
+        source.agentSessionId ||
+        (session.sessionId === source.id ? session.agentSessionId : null);
+      const enriched = { ...source, agentSessionId: agentId ?? null };
+      // Default on when the source has an agent session to fork (full context).
+      setForkCliSession(canOfferForkAgentSession(enriched.agentSessionId));
       setForkConfirm({
-        source,
+        source: enriched,
         throughUserPromptIndex: throughUserPromptIndex ?? null,
       });
     },
-    [],
+    [session.sessionId, session.agentSessionId],
   );
 
   /**
    * Resume an existing session on a clean sibling worktree at current HEAD.
    * Reuses the fork restore-code dirty gate; does not clone the journal.
+   * Optional CLI `--fork-session`: new agent session id (source agent left intact).
    */
   const runResumeWithCodeRestore = useCallback(
-    async (source: SessionRow) => {
+    async (
+      source: SessionRow,
+      opts?: { forkCliSession?: boolean },
+    ) => {
       if (!api.isTauri()) {
         showToast(tr("error.needTauri"));
         return;
@@ -9427,6 +10401,10 @@ export default function App() {
         showToast(tr("session.resumeRestoreBusy"), 3500);
         return;
       }
+      const forkResolved = resolveForkAgentSession({
+        wantFork: !!opts?.forkCliSession,
+        agentSessionId: source.agentSessionId,
+      });
       setResumeRestoreBusy(true);
       try {
         const sourceProjectId = normalizeProjectId(source.projectId);
@@ -9532,7 +10510,20 @@ export default function App() {
           /* soft-fail badge meta */
         }
 
+        if (forkResolved.fork) {
+          try {
+            await api.sessionSetForkAgentSession(source.id, true);
+          } catch (e) {
+            showToast(
+              tr("session.forkCliFailed") + ": " + String(e),
+              4500,
+            );
+            // Worktree rebind still succeeded — continue without agent fork.
+          }
+        }
+
         setResumeRestoreConfirm(null);
+        setResumeForkCliSession(false);
         await refreshSessions();
         await refreshGitWorktrees();
         const row = normalizeSessionRow({
@@ -9545,7 +10536,12 @@ export default function App() {
         });
         setExpandedProjects((e) => ({ ...e, [bindProject!.id]: true }));
         await openSession(row, bindProject);
-        showToast(tr("session.resumeRestoreOk"), 2800);
+        showToast(
+          forkResolved.fork
+            ? tr("session.resumeRestoreOkCli")
+            : tr("session.resumeRestoreOk"),
+          2800,
+        );
       } catch (e) {
         showToast(
           tr("session.resumeRestoreFailed") + ": " + String(e),
@@ -9560,10 +10556,21 @@ export default function App() {
     [projects, showToast, tr, session.sessionId],
   );
 
-  const confirmResumeWithCodeRestore = useCallback((source: SessionRow) => {
-    setCtxMenu(null);
-    setResumeRestoreConfirm(source);
-  }, []);
+  const confirmResumeWithCodeRestore = useCallback(
+    (source: SessionRow) => {
+      setCtxMenu(null);
+      const agentId =
+        source.agentSessionId ||
+        (session.sessionId === source.id ? session.agentSessionId : null);
+      // Default off (reuse agent id); user can opt into CLI --fork-session.
+      setResumeForkCliSession(false);
+      setResumeRestoreConfirm({
+        ...source,
+        agentSessionId: agentId ?? null,
+      });
+    },
+    [session.sessionId, session.agentSessionId],
+  );
 
   /**
    * Duplicate a session: full journal clone via sessionFork (no cut, no restore-code).
@@ -9681,29 +10688,67 @@ export default function App() {
         // Refresh UI from truncated journal.
         if (viewingSessionIdRef.current === sessionId) {
           const stored = await api.sessionMessages(sessionId);
-          const mapped: ChatMessage[] = stored.map((m) => ({
-            id: m.id,
-            role: m.role as "user" | "assistant" | "tool",
-            content: m.content,
-            thought: m.thought ?? undefined,
-            thoughtPhases: splitThoughtPhases(m.thought),
-            isError: m.isError || undefined,
-            marker: m.marker || undefined,
-            createdAt: m.createdAt || undefined,
-            attachments: (m.attachments ?? []).map((a) => ({
-              path: a.path,
-              name: a.name || a.path.split(/[/\\]/).pop() || a.path,
-              isDir: !!a.isDir,
-            })),
-            streaming: false,
-          }));
-          const kept = truncateThroughUserPrompt(mapped, targetPromptIndex);
+          const mapped: ChatMessage[] = stored.map((m) => {
+            const content = m.content || "";
+            const rawMarker = m.marker || undefined;
+            const marker =
+              rawMarker ||
+              (m.role === "tool" && content.startsWith("tool_step|")
+                ? "tool_step"
+                : m.role === "tool" && content.startsWith("context_compact")
+                  ? "context_compact"
+                  : m.role === "tool" && content.startsWith("turn_cancelled")
+                    ? "turn_cancelled"
+                    : undefined);
+            const toolParsed =
+              marker === "tool_step" ? parseToolStepContent(content) : null;
+            const role = m.role as "user" | "assistant" | "tool";
+            let displayContent = toolParsed?.title || content;
+            if (role === "assistant" && displayContent) {
+              displayContent =
+                extractAutomationPayload(displayContent).cleanText;
+            }
+            const thoughtPhases = splitThoughtPhases(m.thought);
+            return {
+              id: m.id,
+              role,
+              content: displayContent,
+              thought: m.thought ?? undefined,
+              thoughtPhases,
+              segments:
+                role === "assistant"
+                  ? buildSegmentsFromLegacy(
+                      displayContent,
+                      m.thought,
+                      thoughtPhases,
+                    )
+                  : undefined,
+              isError: m.isError || undefined,
+              marker,
+              createdAt: m.createdAt || undefined,
+              toolCallId: m.id.startsWith("tool-")
+                ? m.id.slice(5)
+                : undefined,
+              toolKind: toolParsed?.kind,
+              toolStatus: toolParsed?.status,
+              toolDetail: toolParsed?.detail,
+              toolPath: toolParsed?.path,
+              attachments: (m.attachments ?? []).map((a) => ({
+                path: a.path,
+                name: a.name || a.path.split(/[/\\]/).pop() || a.path,
+                isDir: !!a.isDir,
+              })),
+              streaming: false,
+            };
+          });
+          const woven = weaveToolsIntoAssistantSegments(mapped);
+          const kept = truncateThroughUserPrompt(woven, targetPromptIndex);
           const finalMsgs =
-            kept.length || mapped.length <= result.keptCount
+            kept.length || woven.length <= result.keptCount
               ? kept.length
                 ? kept
-                : mapped
-              : mapped.slice(0, result.keptCount);
+                : woven
+              : woven.slice(0, result.keptCount);
           messagesBySessionRef.current.set(sessionId, finalMsgs);
           setMessages(finalMsgs);
         } else {
@@ -10530,6 +11575,71 @@ export default function App() {
     void refreshGitWorktrees();
   }, [refreshGitWorktrees]);
 
+  const cliWorktreesReqRef = useRef(0);
+  const refreshCliWorktrees = useCallback(async () => {
+    if (!api.isTauri()) {
+      cliWorktreesReqRef.current += 1;
+      setCliWorktrees([]);
+      setCliWorktreesAvailable(null);
+      setCliWorktreesReason(null);
+      setCliWorktreesLoading(false);
+      return;
+    }
+    const reqId = ++cliWorktreesReqRef.current;
+    setCliWorktreesLoading(true);
+    try {
+      const projectPath = activeProject?.path?.trim() || null;
+      const repoSlug = projectPath
+        ? projectPath.replace(/\\/g, "/").split("/").filter(Boolean).pop() ||
+          null
+        : null;
+      const res = await api.cliWorktreesList({
+        all: false,
+        // CLI --repo matches repo_name (e.g. grok-app), not folder basename.
+        // Leave unfiltered; UI filters by source path / worktrees slug.
+        repo: null,
+      });
+      if (reqId !== cliWorktreesReqRef.current) return;
+      if (!res.available) {
+        setCliWorktrees([]);
+        setCliWorktreesAvailable(false);
+        setCliWorktreesReason(res.reason?.trim() || "unavailable");
+      } else {
+        // Prefer rows for the active project when we can match source/repo.
+        const filtered = filterCliWorktreesForProject(
+          res.worktrees ?? [],
+          projectPath,
+          repoSlug,
+        );
+        setCliWorktrees(filtered);
+        setCliWorktreesAvailable(true);
+        setCliWorktreesReason(null);
+      }
+    } catch (e) {
+      if (reqId !== cliWorktreesReqRef.current) return;
+      setCliWorktrees([]);
+      setCliWorktreesAvailable(false);
+      setCliWorktreesReason(String(e));
+    } finally {
+      if (reqId === cliWorktreesReqRef.current) {
+        setCliWorktreesLoading(false);
+      }
+    }
+  }, [activeProject?.path]);
+
+  useEffect(() => {
+    // Load CLI list when the branch menu can appear (git work tree confirmed).
+    if (gitWorktreesAvailable === true) {
+      void refreshCliWorktrees();
+    } else if (gitWorktreesAvailable === false) {
+      cliWorktreesReqRef.current += 1;
+      setCliWorktrees([]);
+      setCliWorktreesAvailable(null);
+      setCliWorktreesReason(null);
+      setCliWorktreesLoading(false);
+    }
+  }, [gitWorktreesAvailable, refreshCliWorktrees]);
+
   /**
    * Poll workspace git status for the active project so the composer dirty chip
    * stays current (hide when clean / not a repo). Soft-fail; no toast spam.
@@ -10634,6 +11744,132 @@ export default function App() {
     setWorktreeGcPreview(null);
     setWorktreeGcOpen(true);
   }, []);
+
+  /** Open Ship… dialog for the active project / worktree cwd. */
+  const openShipFlow = useCallback(() => {
+    if (!api.isTauri() || !activeProject?.path) {
+      showToast(tr("composer.worktreeShipNeedProject"), 3500);
+      return;
+    }
+    const current =
+      gitWorktrees.find((w) => pathsEqual(w.path, activeProject.path)) ?? null;
+    const branch =
+      current?.branch?.trim() ||
+      (session.sessionId
+        ? sessions.find((s) => s.id === session.sessionId)?.worktreeBranch
+        : null) ||
+      null;
+    if (
+      !canShipWorktree({
+        branch,
+        detached: current?.detached ?? !branch,
+        available: gitWorktreesAvailable,
+      })
+    ) {
+      // Still allow open with empty title if branch unknown — host resolves HEAD.
+      // But refuse detached when we know it.
+      if (current?.detached) {
+        showToast(tr("composer.worktreeShipDetached"), 4000);
+        return;
+      }
+    }
+    setShipBranch(branch);
+    setShipTitle(defaultPrTitleFromBranch(branch));
+    setShipBody("");
+    setShipDraft(false);
+    setShipCreatePr(true);
+    setShipError(null);
+    setShipStatus(null);
+    setShipBusy(false);
+    setShipOpen(true);
+  }, [
+    activeProject?.path,
+    gitWorktrees,
+    gitWorktreesAvailable,
+    session.sessionId,
+    sessions,
+    showToast,
+    tr,
+  ]);
+
+  const submitShipFlow = useCallback(async () => {
+    if (!api.isTauri() || !activeProject?.path) return;
+    let title: string;
+    let body: string;
+    try {
+      title = sanitizePrTitle(shipTitle);
+      body = sanitizePrBody(shipBody);
+    } catch (e) {
+      setShipError(String(e));
+      return;
+    }
+    setShipBusy(true);
+    setShipError(null);
+    setShipStatus(tr("composer.worktreeShipPushing"));
+    try {
+      const push = await api.gitPushBranch(activeProject.path);
+      let pr: api.GhPrCreateResult | null = null;
+      if (shipCreatePr) {
+        setShipStatus(tr("composer.worktreeShipCreatingPr"));
+        pr = await api.ghPrCreate({
+          projectPath: activeProject.path,
+          title,
+          body,
+          draft: shipDraft,
+          base: "main",
+        });
+      }
+      const outcome = combineShipOutcome(push, pr, {
+        createPr: shipCreatePr,
+      });
+      const summary = shipOutcomeSummary(outcome);
+      if (outcome.ok) {
+        setShipOpen(false);
+        setShipStatus(null);
+        if (outcome.prUrl) {
+          showToast(tr("composer.worktreeShipDonePr", { url: outcome.prUrl }), 6000);
+          void api.openExternalUrl(outcome.prUrl).catch(() => {
+            /* toast already shows URL */
+          });
+        } else {
+          showToast(tr("composer.worktreeShipDonePush"), 4000);
+        }
+      } else {
+        const detail = redactShipOutput(
+          outcome.failReason ||
+            pr?.reason ||
+            push.reason ||
+            summary ||
+            "ship failed",
+          600,
+        );
+        setShipError(detail);
+        setShipStatus(null);
+        // Honest toast — never claim PR opened when gh failed.
+        showToast(
+          shipCreatePr
+            ? tr("composer.worktreeShipFailed", { reason: detail })
+            : tr("composer.worktreeShipPushFailed", { reason: detail }),
+          6000,
+        );
+      }
+    } catch (e) {
+      const msg = redactShipOutput(String(e), 600);
+      setShipError(msg);
+      setShipStatus(null);
+      showToast(tr("composer.worktreeShipFailed", { reason: msg }), 6000);
+    } finally {
+      setShipBusy(false);
+    }
+  }, [
+    activeProject?.path,
+    shipBody,
+    shipCreatePr,
+    shipDraft,
+    shipTitle,
+    showToast,
+    tr,
+  ]);
 
   /** Dry-run `git worktree prune` for the modal preview. */
   const refreshWorktreeGcPreview = useCallback(async () => {
@@ -11148,6 +12384,236 @@ export default function App() {
     setShowReliability(true);
   };
 
+  const openBatchAgents = useCallback(() => {
+    setBatchAgentsOpen(true);
+  }, []);
+
+  /**
+   * Multi-project batch dispatch: sessions (create+connect+send) or headless
+   * one-shots. Soft-fails per project; never uses window.confirm.
+   */
+  const runBatchAgentsDispatch = useCallback(
+    async (opts: {
+      mode: BatchDispatchMode;
+      prompt: string;
+      projects: BatchProjectInput[];
+      onProgress: (items: BatchDispatchItemResult[]) => void;
+    }): Promise<BatchDispatchSummary> => {
+      let items: BatchDispatchItemResult[] = opts.projects.map((p) => ({
+        projectId: p.id,
+        projectName: p.name || p.id,
+        projectPath: p.path || "",
+        status: "pending" as const,
+        reason: null,
+        sessionId: null,
+        summary: null,
+      }));
+      opts.onProgress(items);
+
+      const title = buildBatchSessionTitle(opts.prompt);
+      let firstSessionId: string | null = null;
+      let firstProjectId: string | null = null;
+
+      for (const proj of opts.projects) {
+        const t0 = Date.now();
+        if (opts.mode === "headless") {
+          try {
+            if (!api.isTauri()) {
+              items = upsertBatchResultItem(items, {
+                projectId: proj.id,
+                projectName: proj.name || proj.id,
+                projectPath: proj.path || "",
+                status: "soft_fail",
+                reason: "not_desktop",
+                summary: "Desktop host required",
+                durationMs: Date.now() - t0,
+              });
+              opts.onProgress(items);
+              continue;
+            }
+            const host = await api.batchAgentsHeadless({
+              projectPath: proj.path,
+              prompt: opts.prompt,
+              timeoutMs: BATCH_AGENTS_HEADLESS_TIMEOUT_MS,
+            });
+            items = upsertBatchResultItem(
+              items,
+              mapHeadlessHostResult(proj, host),
+            );
+          } catch (e) {
+            const c = classifyBatchError(e);
+            items = upsertBatchResultItem(items, {
+              projectId: proj.id,
+              projectName: proj.name || proj.id,
+              projectPath: proj.path || "",
+              status: c.status,
+              reason: c.reason,
+              summary: c.summary,
+              durationMs: Date.now() - t0,
+            });
+          }
+          opts.onProgress(items);
+          continue;
+        }
+
+        // ── sessions mode ──
+        let createdId: string | null = null;
+        try {
+          if (!api.isTauri()) {
+            items = upsertBatchResultItem(items, {
+              projectId: proj.id,
+              projectName: proj.name || proj.id,
+              projectPath: proj.path || "",
+              status: "soft_fail",
+              reason: "not_desktop",
+              summary: "Desktop host required",
+              durationMs: Date.now() - t0,
+            });
+            opts.onProgress(items);
+            continue;
+          }
+          const meta = (await api.sessionCreate(proj.id, title)) as {
+            id: string;
+            title?: string;
+          };
+          createdId = meta.id;
+          const promptBody = buildBatchPromptBody(opts.prompt, {
+            projectName: proj.name,
+          });
+          const snap = await api.sessionConnect({
+            projectPath: proj.path || undefined,
+            sessionId: createdId,
+            mode: "agent",
+          });
+          if (
+            snap.lastError ||
+            (snap.state !== "ready" && snap.state !== "streaming")
+          ) {
+            const code = snap.lastError?.code ?? "CONNECT_FAILED";
+            const msg = snap.lastError?.message ?? "connect failed";
+            items = upsertBatchResultItem(items, {
+              projectId: proj.id,
+              projectName: proj.name || proj.id,
+              projectPath: proj.path || "",
+              status: "soft_fail",
+              reason: String(code).toLowerCase(),
+              summary: `${code}: ${msg}`,
+              sessionId: createdId,
+              durationMs: Date.now() - t0,
+            });
+            try {
+              await api.sessionDelete(createdId);
+              createdId = null;
+            } catch {
+              /* soft-fail cleanup */
+            }
+            opts.onProgress(items);
+            continue;
+          }
+          const autoMsgs: ChatMessage[] = [
+            {
+              id: `u-batch-${createdId}-${Date.now()}`,
+              role: "user",
+              content: promptBody,
+              createdAt: new Date().toISOString(),
+            },
+          ];
+          messagesBySessionRef.current.set(createdId, autoMsgs);
+          try {
+            await api.sessionSend(promptBody, null, createdId);
+          } catch (sendErr) {
+            const c = classifyBatchError(sendErr);
+            items = upsertBatchResultItem(items, {
+              projectId: proj.id,
+              projectName: proj.name || proj.id,
+              projectPath: proj.path || "",
+              status: c.status,
+              reason: c.reason,
+              summary: c.summary,
+              sessionId: createdId,
+              durationMs: Date.now() - t0,
+            });
+            opts.onProgress(items);
+            continue;
+          }
+          if (!firstSessionId) {
+            firstSessionId = createdId;
+            firstProjectId = proj.id;
+          }
+          items = upsertBatchResultItem(items, {
+            projectId: proj.id,
+            projectName: proj.name || proj.id,
+            projectPath: proj.path || "",
+            status: "ok",
+            reason: null,
+            sessionId: createdId,
+            summary: title,
+            durationMs: Date.now() - t0,
+          });
+        } catch (e) {
+          const c = classifyBatchError(e);
+          if (createdId) {
+            try {
+              await api.sessionDelete(createdId);
+            } catch {
+              /* soft-fail cleanup */
+            }
+          }
+          items = upsertBatchResultItem(items, {
+            projectId: proj.id,
+            projectName: proj.name || proj.id,
+            projectPath: proj.path || "",
+            status: c.status,
+            reason: c.reason,
+            summary: c.summary,
+            durationMs: Date.now() - t0,
+          });
+        }
+        opts.onProgress(items);
+      }
+
+      try {
+        await refreshSessionsRef.current();
+      } catch {
+        /* soft-fail list refresh */
+      }
+
+      // Focus first successful session without interrupting others.
+      if (opts.mode === "sessions" && firstSessionId) {
+        try {
+          const list = (await api.sessionsList()) as SessionRow[];
+          const row = list.find((s) => s.id === firstSessionId);
+          if (row) {
+            const p =
+              projects.find(
+                (x) => x.id === (row.projectId || firstProjectId || ""),
+              ) || null;
+            void openSessionRef.current(row, p);
+          }
+        } catch {
+          /* soft-fail focus */
+        }
+      }
+
+      const summary = summarizeBatchResults({
+        mode: opts.mode,
+        prompt: opts.prompt,
+        items,
+      });
+      setToast(
+        tr("batchAgents.toastDone", {
+          ok: summary.ok,
+          soft: summary.softFail,
+          err: summary.error,
+          skip: summary.skipped,
+        }),
+      );
+      window.setTimeout(() => setToast(null), 4200);
+      return summary;
+    },
+    [projects, tr],
+  );
+
   const runPaletteAction = (action: PaletteActionDef) => {
     setShowSearch(false);
     setSearchQuery("");
@@ -11181,6 +12647,9 @@ export default function App() {
         ) {
           window.location.hash = "#/workbench";
         }
+        break;
+      case "open-batch-agents":
+        openBatchAgents();
         break;
       case "doctor":
         setShowDoctor(true);
@@ -11253,6 +12722,15 @@ export default function App() {
         });
         break;
       }
+      case "continue-cwd": {
+        const proj = activeProject;
+        if (!proj || !canOfferContinueCwd(proj.path)) {
+          showToast(tr("project.continueCwdNoProject"), 3500);
+          break;
+        }
+        void continueLastAgentForProject(proj);
+        break;
+      }
       case "settings-general":
         navigateSettings("general");
         break;
@@ -11267,6 +12745,38 @@ export default function App() {
         break;
       case "settings-runtime":
         navigateSettings("runtime");
+        break;
+      case "settings-workflows":
+        navigateSettings("runtime", "tools");
+        // Scroll to workflows card after settings mounts.
+        if (typeof window !== "undefined") {
+          window.setTimeout(() => {
+            document
+              .getElementById("settings-anchor-workflows")
+              ?.scrollIntoView({ block: "center", behavior: "smooth" });
+          }, 120);
+        }
+        break;
+      case "workflows-docs":
+        navigateSettings("runtime", "tools");
+        if (typeof window !== "undefined") {
+          window.setTimeout(() => {
+            document
+              .getElementById("settings-anchor-workflows")
+              ?.scrollIntoView({ block: "center", behavior: "smooth" });
+          }, 120);
+        }
+        // Best-effort: reveal bundled create-workflow skill when present.
+        void api
+          .workflowsList(activeProject?.path)
+          .then((res) => {
+            const p = res.createWorkflowSkill?.trim();
+            if (p) return api.pathReveal(p);
+            showToast(tr("settings.workflows.docsMissing"), 3200);
+          })
+          .catch(() => {
+            showToast(tr("settings.workflows.docsMissing"), 3200);
+          });
         break;
       case "settings-remote":
         navigateSettings("remote_im");
@@ -11392,8 +12902,10 @@ export default function App() {
   }, []);
 
   // System tray / menu-bar (Codex-style): Recent · More · Usage · New Chat · Open · Quit
+  // Secondary windows ignore tray navigation — main owns app chrome.
   useEffect(() => {
     if (!api.isTauri()) return;
+    if (isSecondaryWindow) return;
     let cancelled = false;
     const unsubs: Array<() => void> = [];
     void (async () => {
@@ -11439,13 +12951,17 @@ export default function App() {
       cancelled = true;
       for (const u of unsubs) u();
     };
-  }, []);
+  }, [isSecondaryWindow]);
 
   /**
    * Real app exit (window close when not close-to-tray, or tray Quit).
    * Host always prevent_close + emits app://close-requested; we confirm if busy.
+   * When confirming, optionally append an honest automations-after-quit note
+   * (no fake detached daemon — schedules pause until the app is reopened).
+   * Secondary windows never quit the process from their chrome.
    */
   const requestAppQuit = useCallback(() => {
+    if (isSecondaryWindowRef.current) return;
     let busyCount = countBusyLiveMapSessions(liveMapRef.current);
     // liveHost may be streaming before liveMap has the row (same as sidebar busyIds).
     const host = liveHostRef.current;
@@ -11462,17 +12978,36 @@ export default function App() {
       void api.appForceQuit();
       return;
     }
-    setAppDialog({
-      kind: "confirm",
-      title: tr("app.quitBusy.title"),
-      message: tr("app.quitBusy.message", { n: String(busyCount) }),
-      confirmLabel: tr("app.quitBusy.confirm"),
-      danger: true,
-      onConfirm: () => {
-        void api.appForceQuit();
-      },
-    });
-  }, [tr]);
+    const busyMessage = tr("app.quitBusy.message", { n: String(busyCount) });
+    // Enrich with automations note when list is available; fail soft.
+    void (async () => {
+      let message = busyMessage;
+      try {
+        const rows = await api.automationsList();
+        const enabledCount = rows.filter((r) => r.enabled).length;
+        const bg = automationsBackgroundStatus({
+          openAtLogin: launchAtLogin,
+          enabledCount,
+          runnerKnown: api.isTauri(),
+        });
+        if (bg.quitNoteKey) {
+          message = `${busyMessage}\n\n${tr(bg.quitNoteKey)}`;
+        }
+      } catch {
+        /* ignore — busy confirm still works without the note */
+      }
+      setAppDialog({
+        kind: "confirm",
+        title: tr("app.quitBusy.title"),
+        message,
+        confirmLabel: tr("app.quitBusy.confirm"),
+        danger: true,
+        onConfirm: () => {
+          void api.appForceQuit();
+        },
+      });
+    })();
+  }, [tr, launchAtLogin]);
 
   useEffect(() => {
     if (!api.isTauri()) return;
@@ -11842,6 +13377,35 @@ export default function App() {
   const [exportMdIncludeTools, setExportMdIncludeTools] = useState(true);
   const [exportMdBusy, setExportMdBusy] = useState(false);
 
+  type ExportImageTarget = {
+    id: string;
+    title: string;
+    projectId?: string | null;
+  };
+  const [exportImageTarget, setExportImageTarget] =
+    useState<ExportImageTarget | null>(null);
+  /** Smart summary poster vs full transcript card. */
+  const [exportImageSmart, setExportImageSmart] = useState(true);
+  /** Curated visual skin for smart + full export cards. */
+  const [exportImageSkin, setExportImageSkin] = useState<ShareCardSkinId>(() =>
+    loadExportImageSkinPref(),
+  );
+  const [exportImageBusy, setExportImageBusy] = useState(false);
+  /** Object URL for share-card preview (revoked on close / re-render). */
+  const [exportImagePreviewUrl, setExportImagePreviewUrl] = useState<
+    string | null
+  >(null);
+  const [exportImagePreviewError, setExportImagePreviewError] = useState<
+    string | null
+  >(null);
+  const exportImagePreviewBlobRef = useRef<Blob | null>(null);
+  /**
+   * Freeze chat rows when the export dialog opens so live streaming does not
+   * re-trigger rasterization (modal flicker).
+   */
+  const exportImageMsgsSnapRef = useRef<ChatMessage[] | null>(null);
+  const exportImageGenRef = useRef(0);
+
   /** Build markdown for a session; used by download + copy. */
   const buildSessionMarkdown = useCallback(
     async (
@@ -11930,15 +13494,48 @@ export default function App() {
       if (!exportMdTarget) return;
       setExportMdBusy(true);
       try {
-        const { id, title, md } = await buildSessionMarkdown(exportMdTarget, {
+        const exportOpts = {
           includeThoughts: exportMdIncludeThoughts,
           includeToolSummary: exportMdIncludeTools,
-        });
+        };
+        // Prefer CLI `grok export` for full-transcript download when linked;
+        // soft-fail to local journal (thoughts/tools options always apply locally).
+        if (
+          mode === "download" &&
+          shouldPreferCliMarkdownExport(exportOpts)
+        ) {
+          try {
+            const cli = await api.sessionCliExport(exportMdTarget.id);
+            const md = typeof cli?.markdown === "string" ? cli.markdown : "";
+            if (cli?.ok && md.trim()) {
+              const blob = new Blob([md], {
+                type: sessionExportMimeType("markdown"),
+              });
+              const url = URL.createObjectURL(blob);
+              const a = document.createElement("a");
+              a.href = url;
+              a.download = sessionExportFilename(
+                exportMdTarget.title,
+                exportMdTarget.id,
+              );
+              a.click();
+              URL.revokeObjectURL(url);
+              showToast(tr("session.exportDoneCli"), 4200);
+              setExportMdTarget(null);
+              return;
+            }
+          } catch {
+            // Soft-fail: local journal below.
+          }
+        }
+        const { id, title, md } = await buildSessionMarkdown(exportMdTarget, exportOpts);
         if (mode === "copy") {
           await navigator.clipboard.writeText(md);
           showToast(tr("session.exportCopied"));
         } else {
-          const blob = new Blob([md], { type: "text/markdown;charset=utf-8" });
+          const blob = new Blob([md], {
+            type: sessionExportMimeType("markdown"),
+          });
           const url = URL.createObjectURL(blob);
           const a = document.createElement("a");
           a.href = url;
@@ -12069,12 +13666,12 @@ export default function App() {
           })),
         });
         const blob = new Blob([json], {
-          type: "application/json;charset=utf-8",
+          type: sessionExportMimeType("json"),
         });
         const url = URL.createObjectURL(blob);
         const a = document.createElement("a");
         a.href = url;
-        a.download = sessionExportJsonFilename(title, id);
+        a.download = sessionExportFilenameFor("json", title, id);
         a.click();
         URL.revokeObjectURL(url);
         showToast(tr("session.exportDone"));
@@ -12087,6 +13684,419 @@ export default function App() {
       session.title,
       sessions,
       messages,
+      showToast,
+      tr,
+    ],
+  );
+
+  const revokeExportImagePreview = useCallback(() => {
+    setExportImagePreviewUrl((prev) => {
+      if (prev) URL.revokeObjectURL(prev);
+      return null;
+    });
+    exportImagePreviewBlobRef.current = null;
+    setExportImagePreviewError(null);
+  }, []);
+
+  const closeExportSessionImage = useCallback(() => {
+    if (exportImageBusy) return;
+    revokeExportImagePreview();
+    exportImageMsgsSnapRef.current = null;
+    setExportImageTarget(null);
+  }, [exportImageBusy, revokeExportImagePreview]);
+
+  /** Open share-card export (PNG) options dialog. */
+  const openExportSessionImage = useCallback(
+    (sessionMeta?: {
+      id: string;
+      title: string;
+      projectId?: string | null;
+    }) => {
+      const id = sessionMeta?.id ?? session.sessionId;
+      if (!id) {
+        showToast(tr("session.exportImageFail"));
+        return;
+      }
+      // Invalidate any prior session's preview immediately so session B never
+      // shows/saves session A's blob while B is still rendering (AC cross-session).
+      exportImageGenRef.current += 1;
+      revokeExportImagePreview();
+      setExportImagePreviewError(null);
+      setExportImageBusy(true);
+
+      // Snapshot live transcript once — do not follow streaming updates.
+      // Other sessions: null → builder loads via sessionMessages(id).
+      const snap =
+        id === session.sessionId
+          ? (messages as ChatMessage[]).map((m) => ({ ...m }))
+          : null;
+      exportImageMsgsSnapRef.current = snap;
+      setExportImageSmart(true);
+      setExportImageSkin(loadExportImageSkinPref());
+      setExportImageTarget({
+        id,
+        title:
+          sessionMeta?.title ||
+          sessions.find((s) => s.id === id)?.title ||
+          session.title ||
+          tr("session.untitled"),
+        projectId:
+          sessionMeta?.projectId ??
+          sessions.find((s) => s.id === id)?.projectId ??
+          null,
+      });
+    },
+    [
+      session.sessionId,
+      session.title,
+      sessions,
+      messages,
+      showToast,
+      tr,
+      revokeExportImagePreview,
+    ],
+  );
+
+  /** Build share-card model + PNG blob for the open export dialog. */
+  const buildExportImageBlob = useCallback(async () => {
+    if (!exportImageTarget) throw new Error("no target");
+    const id = exportImageTarget.id;
+    const title =
+      exportImageTarget.title ||
+      sessions.find((s) => s.id === id)?.title ||
+      session.title ||
+      tr("session.untitled");
+    const projectId =
+      exportImageTarget.projectId ??
+      sessions.find((s) => s.id === id)?.projectId ??
+      null;
+    const proj =
+      projects.find((p) => p.id === projectId) || activeProject || null;
+
+    let msgs = exportImageMsgsSnapRef.current;
+    if (!msgs) {
+      if (id !== session.sessionId) {
+        msgs = (await api.sessionMessages(id)) as ChatMessage[];
+      } else {
+        msgs = messages as ChatMessage[];
+      }
+      exportImageMsgsSnapRef.current = msgs.map((m) => ({ ...m }));
+    }
+
+    // Resolve session-relative media (`images/1.jpg`) into message attachments —
+    // same path chat uses before MarkdownChat / ImageUi render.
+    let msgsForExport = msgs;
+    if (api.isTauri() && !exportImageSmart) {
+      try {
+        const rels = collectSessionRelativeMediaRefs(msgs);
+        if (rels.length) {
+          const list = await api.sessionResolveRelativeMedia(id, rels);
+          if (list.length) {
+            msgsForExport = applyResolvedSessionMedia(
+              msgs.map((m) => ({
+                ...m,
+                attachments: m.attachments?.map((a) => ({ ...a })),
+              })),
+              list.map((a) => ({
+                path: a.path,
+                name: a.name || a.path.split(/[/\\]/).pop() || a.path,
+                isDir: !!a.isDir,
+              })),
+            ) as typeof msgs;
+          }
+        }
+      } catch {
+        /* best-effort */
+      }
+    }
+
+    const projectPath = proj?.path ?? activeProject?.path ?? null;
+    let shareMsgs: ShareCardMessage[];
+    if (exportImageSmart) {
+      shareMsgs = exportableToShareMessages(
+        msgsForExport.map((m) => ({
+          role: m.role,
+          content: m.content,
+          thought: m.thought,
+          createdAt: m.createdAt,
+          marker: m.marker,
+        })),
+      );
+    } else {
+      // Mirror lobe ConversationThread path map construction.
+      const sessionPathMap = buildSessionFilePathMap(
+        msgsForExport as ChatMessage[],
+        projectPath,
+      );
+      shareMsgs = [];
+      for (const m of msgsForExport) {
+        if (m.role === "tool" || m.marker === "tool_step") continue;
+        const atts = (m.attachments ?? []).map((a) => ({
+          path: a.path,
+          name: a.name || a.path.split(/[/\\]/).pop() || a.path,
+          isDir: !!a.isDir,
+        }));
+        const imagePathMap = mergePathMaps(
+          buildInlineMediaPathMap(atts),
+          sessionPathMap,
+        );
+        shareMsgs.push({
+          role: m.role,
+          content: m.content || "",
+          thought: m.thought,
+          createdAt: m.createdAt,
+          attachments: atts.length ? atts : undefined,
+          imagePathMap:
+            Object.keys(imagePathMap).length > 0 ? imagePathMap : undefined,
+        });
+      }
+    }
+
+    const logoDataUrl = loadExportLogoPref();
+    const result = await buildExportImagePipeline({
+      title,
+      projectName: proj?.name,
+      projectPath,
+      sessionId: id,
+      messages: shareMsgs,
+      smart: exportImageSmart,
+      skinId: exportImageSkin,
+      logoDataUrl,
+      pixelRatio: 2,
+      locale,
+    });
+    return { blob: result.blob, title, id, skinId: result.skinId };
+  }, [
+    exportImageTarget,
+    exportImageSmart,
+    exportImageSkin,
+    session.sessionId,
+    session.title,
+    sessions,
+    messages,
+    projects,
+    activeProject,
+    locale,
+    tr,
+  ]);
+
+  // Keep latest builder without re-firing the preview effect on every stream tick.
+  const buildExportImageBlobRef = useRef(buildExportImageBlob);
+  buildExportImageBlobRef.current = buildExportImageBlob;
+
+  /** Preview refresh: dialog target, smart toggle, or skin change. */
+  useEffect(() => {
+    if (!exportImageTarget) {
+      revokeExportImagePreview();
+      exportImageMsgsSnapRef.current = null;
+      return;
+    }
+    const gen = ++exportImageGenRef.current;
+    let cancelled = false;
+    // Always invalidate prior preview when rebuilding (session / smart / skin).
+    // Leaving the old blob makes Save/Copy export the wrong mode or skin.
+    revokeExportImagePreview();
+    setExportImageBusy(true);
+    setExportImagePreviewError(null);
+    void (async () => {
+      try {
+        const built = await buildExportImageBlobRef.current();
+        if (cancelled || gen !== exportImageGenRef.current) return;
+        // Guard: never attach a blob built for another session id.
+        const targetId = exportImageTarget?.id;
+        if (targetId && built.id !== targetId) return;
+        const { blob } = built;
+        const url = URL.createObjectURL(blob);
+        setExportImagePreviewUrl((prev) => {
+          if (prev) URL.revokeObjectURL(prev);
+          return url;
+        });
+        exportImagePreviewBlobRef.current = blob;
+        setExportImagePreviewError(null);
+      } catch (e) {
+        if (cancelled || gen !== exportImageGenRef.current) return;
+        const code = (e as { code?: string } | null)?.code;
+        if (code === "empty" || String(e).includes("empty")) {
+          revokeExportImagePreview();
+          setExportImagePreviewError(tr("session.exportImageEmpty"));
+        } else {
+          setExportImagePreviewError(
+            `${tr("session.exportImageFail")}: ${String(e)}`,
+          );
+        }
+      } finally {
+        if (!cancelled && gen === exportImageGenRef.current) {
+          setExportImageBusy(false);
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    exportImageTarget?.id,
+    exportImageTarget?.title,
+    exportImageTarget?.projectId,
+    exportImageSmart,
+    exportImageSkin,
+    revokeExportImagePreview,
+    tr,
+  ]);
+
+  const runExportSessionImage = useCallback(
+    async (mode: "download" | "copy") => {
+      if (!exportImageTarget) return;
+      // Never save a mid-rebuild preview (smart toggle / session switch).
+      if (exportImageBusy && !exportImagePreviewBlobRef.current) return;
+      setExportImageBusy(true);
+      try {
+        let blob = exportImagePreviewBlobRef.current;
+        let title = exportImageTarget.title;
+        let id = exportImageTarget.id;
+        // Always rebuild when no ready blob (cleared on smart toggle / open).
+        if (!blob) {
+          const built = await buildExportImageBlob();
+          blob = built.blob;
+          title = built.title;
+          id = built.id;
+          exportImagePreviewBlobRef.current = blob;
+        } else {
+          title =
+            exportImageTarget.title ||
+            sessions.find((s) => s.id === id)?.title ||
+            session.title ||
+            tr("session.untitled");
+        }
+        const filename = sessionExportImageFilename(title, id);
+        if (mode === "copy") {
+          // Prefer native OS clipboard (arboard). WebView ClipboardItem often fails.
+          if (api.isTauri()) {
+            const b64 = await pngBlobToBase64(blob);
+            await api.clipboardWriteImage(b64);
+          } else {
+            const ok = await copyPngBlob(blob);
+            if (!ok) throw new Error(tr("session.exportImageClipboardFail"));
+          }
+          showToast(tr("session.exportImageCopied"));
+        } else if (api.isTauri()) {
+          const b64 = await pngBlobToBase64(blob);
+          const result = await api.exportBytesSave({
+            bytesBase64: b64,
+            defaultName: filename,
+            dialogTitle: tr("session.exportImageSaveTitle"),
+            filterName: "PNG",
+            extensions: ["png"],
+          });
+          if (result.cancelled) {
+            // User dismissed the native save dialog — keep modal open.
+            return;
+          }
+          if (!result.ok) {
+            throw new Error(result.path || "save failed");
+          }
+          showToast(
+            result.path
+              ? `${tr("session.exportImageDone")}: ${result.path}`
+              : tr("session.exportImageDone"),
+          );
+        } else {
+          // Browser / non-Tauri fallback.
+          downloadPngBlob(blob, filename);
+          showToast(tr("session.exportImageDone"));
+        }
+        revokeExportImagePreview();
+        exportImageMsgsSnapRef.current = null;
+        setExportImageTarget(null);
+      } catch (e) {
+        const code = (e as { code?: string } | null)?.code;
+        if (code === "empty" || String(e).includes("empty")) {
+          showToast(tr("session.exportImageEmpty"));
+        } else {
+          showToast(`${tr("session.exportImageFail")}: ${String(e)}`);
+        }
+      } finally {
+        setExportImageBusy(false);
+      }
+    },
+    [
+      exportImageBusy,
+      exportImageTarget,
+      buildExportImageBlob,
+      session.sessionId,
+      session.title,
+      sessions,
+      showToast,
+      tr,
+      revokeExportImagePreview,
+    ],
+  );
+
+  /**
+   * Download session as plain text (headless `--output-format plain` style).
+   * Local journal only; no modal. Thoughts + tool summaries on by default.
+   */
+  const exportSessionPlain = useCallback(
+    async (sessionMeta?: {
+      id: string;
+      title: string;
+      projectId?: string | null;
+    }) => {
+      const id = sessionMeta?.id ?? session.sessionId;
+      if (!id) {
+        showToast(tr("session.exportFail"));
+        return;
+      }
+      const title =
+        sessionMeta?.title ||
+        sessions.find((s) => s.id === id)?.title ||
+        session.title ||
+        tr("session.untitled");
+      const projectId =
+        sessionMeta?.projectId ??
+        sessions.find((s) => s.id === id)?.projectId ??
+        null;
+      const proj =
+        projects.find((p) => p.id === projectId) || activeProject || null;
+      try {
+        let msgs = messages;
+        if (id !== session.sessionId) {
+          msgs = (await api.sessionMessages(id)) as ChatMessage[];
+        }
+        const text = sessionToPlain({
+          title,
+          projectName: proj?.name,
+          projectPath: proj?.path,
+          sessionId: id,
+          options: { includeThoughts: true, includeToolSummary: true },
+          messages: msgs.map((m) => ({
+            role: m.role,
+            content: m.content,
+            thought: m.thought,
+            createdAt: m.createdAt,
+            marker: m.marker,
+          })),
+        });
+        const blob = new Blob([text], {
+          type: sessionExportMimeType("plain"),
+        });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = sessionExportFilenameFor("plain", title, id);
+        a.click();
+        URL.revokeObjectURL(url);
+        showToast(tr("session.exportDone"));
+      } catch (e) {
+        showToast(`${tr("session.exportFail")}: ${String(e)}`);
+      }
+    },
+    [
+      session.sessionId,
+      session.title,
+      sessions,
+      messages,
+      projects,
+      activeProject,
       showToast,
       tr,
     ],
@@ -12137,11 +14147,13 @@ export default function App() {
             marker: m.marker,
           })),
         });
-        const blob = new Blob([html], { type: "text/html;charset=utf-8" });
+        const blob = new Blob([html], {
+          type: sessionExportMimeType("html"),
+        });
         const url = URL.createObjectURL(blob);
         const a = document.createElement("a");
         a.href = url;
-        a.download = sessionExportHtmlFilename(title, id);
+        a.download = sessionExportFilenameFor("html", title, id);
         a.click();
         URL.revokeObjectURL(url);
         showToast(tr("session.exportDone"));
@@ -12183,26 +14195,42 @@ export default function App() {
     [session.sessionId, showToast, tr],
   );
 
-  /** Export Grok Build CLI session trace (`grok trace --local`). */
+  /**
+   * Export Grok Build CLI session trace.
+   * `localOnly` default true → `grok trace --local`. False omits `--local` (may upload).
+   */
   const exportSessionTrace = useCallback(
-    async (sessionId?: string | null) => {
+    async (
+      sessionId?: string | null,
+      opts?: { localOnly?: boolean },
+    ) => {
       const id = sessionId || session.sessionId;
+      const localOnly = opts?.localOnly !== false;
       if (!id) {
         showToast(tr("session.exportTraceFail"));
         return;
       }
       try {
-        const res = await api.sessionTraceExport(id);
+        const res = await api.sessionTraceExport(id, { localOnly });
         if (res?.ok && res.path) {
           const row = sessions.find((s) => s.id === id);
+          const uploaded = res.uploaded === true;
           recordTraceExport({
             sessionId: id,
             path: res.path,
             title: row?.title ?? null,
             sizeBytes:
               typeof res.sizeBytes === "number" ? res.sizeBytes : null,
+            uploaded: uploaded || null,
           });
-          showToast(tr("session.exportTraceDone"), 4200);
+          if (uploaded) {
+            showToast(tr("session.exportTraceUploaded"), 4200);
+          } else if (!localOnly) {
+            // Network allowed but CLI only wrote local (upload disabled / fallback).
+            showToast(tr("session.exportTraceDoneLocalFallback"), 5000);
+          } else {
+            showToast(tr("session.exportTraceDone"), 4200);
+          }
         } else {
           showToast(tr("session.exportTraceFail"));
         }
@@ -12210,12 +14238,46 @@ export default function App() {
         const msg = String(e);
         if (/no agent session/i.test(msg)) {
           showToast(tr("session.exportTraceNoAgent"), 5000);
+        } else if (/cli not found|grok build cli not found/i.test(msg)) {
+          showToast(`${tr("session.exportTraceFail")}: ${tr("session.exportTraceNoCli")}`, 5500);
+        } else if (/timed out/i.test(msg)) {
+          showToast(
+            `${tr("session.exportTraceFail")}: ${tr("session.exportTraceTimeout")}`,
+            5500,
+          );
+        } else if (!localOnly && /upload|network|telemetry|403|401|forbidden/i.test(msg)) {
+          showToast(
+            `${tr("session.exportTraceUploadFail")}: ${msg}`,
+            6000,
+          );
         } else {
-          showToast(`${tr("session.exportTraceFail")}: ${msg}`, 5000);
+          // Actionable: surface host/CLI reason (already redacted server-side).
+          showToast(`${tr("session.exportTraceFail")}: ${msg}`, 5500);
         }
       }
     },
     [session.sessionId, sessions, showToast, tr],
+  );
+
+  /** Confirm network upload before `grok trace` without `--local`. */
+  const confirmExportSessionTraceUpload = useCallback(
+    (sessionId?: string | null) => {
+      const id = sessionId || session.sessionId;
+      if (!id) {
+        showToast(tr("session.exportTraceFail"));
+        return;
+      }
+      setAppDialog({
+        kind: "confirm",
+        title: tr("session.exportTraceUploadTitle"),
+        message: tr("session.exportTraceUploadMessage"),
+        confirmLabel: tr("session.exportTraceUploadConfirm"),
+        onConfirm: () => {
+          void exportSessionTrace(id, { localOnly: false });
+        },
+      });
+    },
+    [exportSessionTrace, session.sessionId, showToast, tr],
   );
 
   const beginEditLastUser = useCallback(
@@ -12802,6 +14864,12 @@ export default function App() {
       "settings.agentProfilePathBrowse",
       "settings.agentProfilePathClear",
       "settings.agentProfilePathPlaceholder",
+      "settings.agentsJson",
+      "settings.agentsJsonDesc",
+      "settings.agentsJsonPlaceholder",
+      "settings.agentsJsonInvalid",
+      "settings.agentsJsonApply",
+      "settings.agentsJsonClear",
       "settings.prefsScope",
       "settings.prefsScopeDesc",
       "settings.prefsScope.global",
@@ -12948,10 +15016,13 @@ export default function App() {
         showMcpModal ||
         showCompactModal ||
         exportMdTarget ||
+        exportImageTarget ||
         rewindConfirm ||
         forkConfirm ||
         resumeRestoreConfirm ||
         worktreeCreateOpen ||
+        worktreeGcOpen ||
+        shipOpen ||
         projectRulesTarget ||
         agentDashboardOpen,
     ),
@@ -13097,6 +15168,11 @@ export default function App() {
             saveShowUsageEstimatesPref(v, localStorage);
             setShowUsageEstimates(v);
           }}
+          goalOrchUiEnabled={goalOrchUiEnabled}
+          onGoalOrchUiEnabled={(v) => {
+            saveGoalOrchUiEnabled(v, localStorage);
+            setGoalOrchUiEnabled(v);
+          }}
           messageTimeFormat={messageTimeFormat}
           onMessageTimeFormat={(v) => {
             saveMessageTimeFormatPref(v, localStorage);
@@ -13206,7 +15282,8 @@ export default function App() {
             );
           }}
           acpServerAddr={acpServerAddr}
-          onAcpServerAddr={(v) => {
+          onAcpServerAddr={setAcpServerAddr}
+          onAcpServerBlur={(v) => {
             setAcpServerAddr(v);
             void api.settingsGet().then((s) =>
               api.settingsSet({ ...s, acpServerAddr: v.trim() || null }),
@@ -13254,6 +15331,13 @@ export default function App() {
               api.settingsSet({ ...s, streamStallSeconds: v }),
             );
           }}
+          includePartialMessages={includePartialMessages}
+          onIncludePartialMessages={(v) => {
+            setIncludePartialMessages(v);
+            void api.settingsGet().then((s) =>
+              api.settingsSet({ ...s, includePartialMessages: v }),
+            );
+          }}
           maxAgentTurns={maxAgentTurns}
           onMaxAgentTurns={(v) => {
             const n = v > 0 ? Math.min(200, Math.round(v)) : 0;
@@ -13264,6 +15348,23 @@ export default function App() {
                 // null clears the optional field; 0 would also omit on spawn.
                 maxAgentTurns: n > 0 ? n : null,
               }),
+            );
+          }}
+          backgroundWaitPolicy={backgroundWaitPolicy}
+          onBackgroundWaitPolicy={(v) => {
+            const next =
+              v === "no_wait" || v === "timeout" ? v : "wait";
+            setBackgroundWaitPolicy(next);
+            void api.settingsGet().then((s) =>
+              api.settingsSet({ ...s, backgroundWaitPolicy: next }),
+            );
+          }}
+          backgroundWaitTimeoutSec={backgroundWaitTimeoutSec}
+          onBackgroundWaitTimeoutSec={(v) => {
+            const n = Math.min(3600, Math.max(1, Math.round(v)));
+            setBackgroundWaitTimeoutSec(n);
+            void api.settingsGet().then((s) =>
+              api.settingsSet({ ...s, backgroundWaitTimeoutSec: n }),
             );
           }}
           storeApiKeysInKeychain={storeApiKeysInKeychain}
@@ -13300,12 +15401,43 @@ export default function App() {
               api.settingsSet({ ...s, agentProfilePath: next }),
             );
           }}
+          agentsJson={agentsJson}
+          onAgentsJson={setAgentsJson}
+          onAgentsJsonCommit={async (v) => {
+            const next = (v || "").trim();
+            setAgentsJson(next);
+            const s = await api.settingsGet();
+            await api.settingsSet({ ...s, agentsJson: next });
+          }}
           agentCatalog={agentCatalog}
           experimentalMemory={experimentalMemory}
           onExperimentalMemory={(v) => {
             setExperimentalMemory(v);
             void api.settingsGet().then((s) =>
               api.settingsSet({ ...s, experimentalMemory: v }),
+            );
+          }}
+          compactionMode={compactionMode}
+          onCompactionMode={(v) => {
+            const next = normalizeCompactionMode(v);
+            setCompactionMode(next);
+            void api.settingsGet().then((s) =>
+              api.settingsSet({ ...s, compactionMode: next }),
+            );
+          }}
+          compactionDetail={compactionDetail}
+          onCompactionDetail={(v) => {
+            const next = normalizeCompactionDetail(v);
+            setCompactionDetail(next);
+            void api.settingsGet().then((s) =>
+              api.settingsSet({ ...s, compactionDetail: next }),
+            );
+          }}
+          twoPassCompactionEnabled={twoPassCompactionEnabled}
+          onTwoPassCompactionEnabled={(v) => {
+            setTwoPassCompactionEnabled(v);
+            void api.settingsGet().then((s) =>
+              api.settingsSet({ ...s, twoPassCompactionEnabled: v }),
             );
           }}
           voiceId={voiceId}
@@ -13337,11 +15469,50 @@ export default function App() {
               api.settingsSet({ ...s, subagentsEnabled: v }),
             );
           }}
+          subagentWorktreeSnapshotEnabled={subagentWorktreeSnapshotEnabled}
+          onSubagentWorktreeSnapshotEnabled={(v) => {
+            setSubagentWorktreeSnapshotEnabled(v);
+            void api.settingsGet().then((s) =>
+              api.settingsSet({ ...s, subagentWorktreeSnapshotEnabled: v }),
+            );
+          }}
+          autoWakeEnabled={autoWakeEnabled}
+          onAutoWakeEnabled={(v) => {
+            setAutoWakeEnabled(v);
+            void api.settingsGet().then((s) =>
+              api.settingsSet({ ...s, autoWakeEnabled: v }),
+            );
+          }}
+          workflowsEnabled={workflowsEnabled}
+          onWorkflowsEnabled={(v) => {
+            setWorkflowsEnabled(v);
+            void api.settingsGet().then((s) =>
+              api.settingsSet({ ...s, workflowsEnabled: v }),
+            );
+          }}
           planEnabled={planEnabled}
           onPlanEnabled={(v) => {
             setPlanEnabled(v);
             void api.settingsGet().then((s) =>
               api.settingsSet({ ...s, planEnabled: v }),
+            );
+          }}
+          todoGateEnabled={todoGateEnabled}
+          onTodoGateEnabled={(v) => {
+            setTodoGateEnabled(v);
+            void api.settingsGet().then((s) =>
+              api.settingsSet({ ...s, todoGateEnabled: v }),
+            );
+          }}
+          todoGateMaxFiresPerPrompt={todoGateMaxFiresPerPrompt}
+          onTodoGateMaxFiresPerPrompt={(v) => {
+            const n =
+              typeof v === "number" && v > 0
+                ? Math.min(20, Math.max(1, Math.round(v)))
+                : 3;
+            setTodoGateMaxFiresPerPrompt(n);
+            void api.settingsGet().then((s) =>
+              api.settingsSet({ ...s, todoGateMaxFiresPerPrompt: n }),
             );
           }}
           disableWebSearch={disableWebSearch}
@@ -13351,11 +15522,25 @@ export default function App() {
               api.settingsSet({ ...s, disableWebSearch: v }),
             );
           }}
+          noAskUser={noAskUser}
+          onNoAskUser={(v) => {
+            setNoAskUser(v);
+            void api.settingsGet().then((s) =>
+              api.settingsSet({ ...s, noAskUser: v }),
+            );
+          }}
           disallowedTools={disallowedTools}
           onDisallowedTools={(v) => {
             setDisallowedTools(v);
             void api.settingsGet().then((s) =>
               api.settingsSet({ ...s, disallowedTools: v }),
+            );
+          }}
+          allowedTools={allowedTools}
+          onAllowedTools={(v) => {
+            setAllowedTools(v);
+            void api.settingsGet().then((s) =>
+              api.settingsSet({ ...s, allowedTools: v }),
             );
           }}
           useLeader={useLeader}
@@ -13377,6 +15562,13 @@ export default function App() {
             setCloseToTray(v);
             void api.settingsGet().then((s) =>
               api.settingsSet({ ...s, closeToTray: v }),
+            );
+          }}
+          keepTrayForSchedules={keepTrayForSchedules}
+          onKeepTrayForSchedules={(v) => {
+            setKeepTrayForSchedules(v);
+            void api.settingsGet().then((s) =>
+              api.settingsSet({ ...s, keepTrayForSchedules: v }),
             );
           }}
           trayBusyBadge={trayBusyBadge}
@@ -13423,9 +15615,26 @@ export default function App() {
             savePermissionTimeoutSec(v, localStorage);
             setPermissionTimeoutSec(v);
           }}
+          askUserTimeoutSec={askUserTimeoutSec}
+          onAskUserTimeoutSec={(v) => {
+            saveAskUserTimeoutSec(v, localStorage);
+            setAskUserTimeoutSec(v);
+          }}
           cliInfo={cliInfo}
           onDoctor={() => void openDoctor()}
           onOpenReliability={() => openReliability()}
+          onOpenBatchAgents={() => openBatchAgents()}
+          costRollupSessions={sessions.map((s) => ({
+            id: s.id,
+            projectId: s.projectId,
+            title: s.title,
+            modelId: s.modelId,
+            updatedAt: s.updatedAt,
+          }))}
+          costRollupProjects={projects.map((p) => ({
+            id: p.id,
+            name: p.name,
+          }))}
           onOpenShortcutsHelp={() => setShowShortcuts(true)}
           onOpenProductTutorial={() => setShowProductTutorial(true)}
           versionFooter={tr("app.versionFooter")}
@@ -13478,20 +15687,29 @@ export default function App() {
             .filter((p) => p.trusted)
             .map((p) => ({ id: p.id, name: p.name, path: p.path }))}
           onProviderActivated={() => {
-            // Hot-reload Grok Build: drop live ACP so next send re-spawns with new GROK_HOME config.
+            // Host already recycled warm agents on upsert/activate. Refresh UI
+            // chrome only — never park (sessionDisconnect) a live process: that
+            // kept stale OIDC/config in memory and required a full app restart
+            // (issue #376). Soft-fail so save UI never sticks on “Saving…”.
             void (async () => {
               try {
                 if (api.isTauri()) {
-                  await api.sessionDisconnect();
                   setSession({ ...IDLE_SNAPSHOT });
                 }
                 await refreshProviderRoute();
-                await refreshAccount({ refreshBilling: false });
-                await refreshVoiceGate();
+                await refreshAccount({ refreshBilling: false }).catch(() => {
+                  /* soft-fail billing refresh */
+                });
+                await refreshVoiceGate().catch(() => {
+                  /* soft-fail voice gate */
+                });
                 setToast(tr("prov.switchedHotReload"));
                 window.setTimeout(() => setToast(null), 3200);
               } catch (e) {
-                setToast(String(e));
+                setToast(
+                  tr("prov.savedApplyFailed", { detail: String(e) }),
+                );
+                window.setTimeout(() => setToast(null), 4800);
               }
             })();
           }}
@@ -13516,6 +15734,7 @@ export default function App() {
             (dragZone === "main" ? " is-drop-idle" : "") +
             (phoneLayout ? " sidebar--phone-drawer" : "")
           }
+          aria-label={tr("a11y.sidebar")}
           aria-hidden={layout.sidebarCollapsed}
         >
           {dragZone === "sidebar" && (
@@ -13541,6 +15760,7 @@ export default function App() {
               <button
                 type="button"
                 className="chrome-btn chrome-btn--traffic main__pane-toggle is-on"
+                aria-label={tr("main.leftPaneHide")}
                 onClick={() =>
                   setLayout((l) => {
                     const n = { ...l, sidebarCollapsed: true };
@@ -13565,6 +15785,7 @@ export default function App() {
               <button
                 type="button"
                 className="chrome-btn"
+                aria-label={tr("sidebar.search")}
                 onClick={() => {
                   setShowSearch(true);
                   setSearchQuery("");
@@ -13853,30 +16074,19 @@ export default function App() {
                           </button>
                         )}
                         {projSessions.length > 0
-                          ? groupSessionsByDate(
-                              projSessions,
-                              // Rebucket around midnight via relative-time tick.
-                              new Date(),
-                            ).map((group) => (
-                              <div
-                                key={group.id}
-                                className="tree-date-group"
-                              >
-                                <div
-                                  className="tree-date-group__head"
-                                  role="presentation"
-                                >
-                                  {tr(SIDEBAR_DATE_GROUP_I18N_KEYS[group.id])}
-                                </div>
+                          ? (() => {
+                              const sortedSessions =
+                                sortSessionsForSidebar(projSessions);
+                              return (
                                 <VirtualList
                                   className="tree-l3-list"
-                                  items={group.sessions}
+                                  items={sortedSessions}
                                   getKey={(s) => s.id}
                                   rowHeight={sidebarRowMetrics.rowHeight}
                                   gap={sidebarRowMetrics.gap}
                                   scrollToKey={
                                     session.sessionId &&
-                                    group.sessions.some(
+                                    sortedSessions.some(
                                       (x) => x.id === session.sessionId,
                                     )
                                       ? session.sessionId
@@ -14142,8 +16352,8 @@ export default function App() {
                                     );
                                   }}
                                 />
-                              </div>
-                            ))
+                              );
+                            })()
                           : null}
                         {projSessions.length === 0 && proj.trusted && (
                           <div className="sidebar-empty" style={{ padding: "4px 10px" }}>
@@ -14174,27 +16384,18 @@ export default function App() {
               </button>
             </div>
             {historyOpen && orphanSessions.length > 0
-              ? groupSessionsByDate(orphanSessions, new Date()).map(
-                  (group) => (
-                    <div
-                      key={group.id}
-                      className="tree-date-group tree-date-group--orphan"
-                    >
-                      <div
-                        className="tree-date-group__head"
-                        role="presentation"
-                      >
-                        {tr(SIDEBAR_DATE_GROUP_I18N_KEYS[group.id])}
-                      </div>
+              ? (() => {
+                  const sortedOrphans = sortSessionsForSidebar(orphanSessions);
+                  return (
                       <VirtualList
                         className="tree-orphan-list"
-                        items={group.sessions}
+                        items={sortedOrphans}
                         getKey={(s) => s.id}
                         rowHeight={sidebarRowMetrics.rowHeight}
                         gap={sidebarRowMetrics.gap}
                         scrollToKey={
                           session.sessionId &&
-                          group.sessions.some(
+                          sortedOrphans.some(
                             (x) => x.id === session.sessionId,
                           )
                             ? session.sessionId
@@ -14413,9 +16614,8 @@ export default function App() {
                           );
                         }}
                       />
-                    </div>
-                  ),
-                )
+                  );
+                })()
               : null}
           </OverlayScroll>
 
@@ -14467,6 +16667,7 @@ export default function App() {
             open={showUserMenu}
             onClose={() => setShowUserMenu(false)}
             theme={theme}
+            themePreference={themePreference}
             account={account}
             activeProvider={activeCustomProvider}
             accountBusy={accountBusy}
@@ -14474,8 +16675,9 @@ export default function App() {
               settings: tr("sidebar.settings"),
               tutorial: tr("tutorial.menu"),
               theme: tr("user.theme"),
-              themeLight: tr("user.themeLight"),
-              themeDark: tr("user.themeDark"),
+              themeSystem: tr("settings.themeSystem"),
+              themeLight: tr("settings.themeLight"),
+              themeDark: tr("settings.themeDark"),
               local: tr("common.local"),
               signedIn: tr("account.signedIn"),
               signedOut: tr("account.signedOut"),
@@ -14488,7 +16690,7 @@ export default function App() {
             onSettings={() => navigateSettings()}
             onAccountSettings={() => navigateSettings("account")}
             onTutorial={() => setShowProductTutorial(true)}
-            onToggleTheme={toggleThemeBtn}
+            onTheme={applyThemeChoice}
             onLogin={() => void runAccountLogin("oauth")}
             onLogout={() => void runAccountLogout()}
           >
@@ -14593,6 +16795,7 @@ export default function App() {
                     <button
                       type="button"
                       className="chrome-btn chrome-btn--traffic main__pane-toggle"
+                      aria-label={tr("main.leftPaneShow")}
                       onClick={() => openSidebarPane()}
                     >
                       <IconPanel size={16} />
@@ -14741,21 +16944,12 @@ export default function App() {
                         setToast(tr("attach.copyPath") + " ✓");
                         window.setTimeout(() => setToast(null), 1600);
                       }}
-                      platform={
-                        platform === "win"
-                          ? "win"
-                          : platform === "mac"
-                            ? "mac"
-                            : "other"
-                      }
+                      platform={platform}
                       labels={{
                         openLocation: tr("main.openLocation"),
                         openHint: tr("main.openLocationHint"),
                         openMenu: tr("main.openLocationMenu"),
-                        finder:
-                          platform === "win"
-                            ? tr("main.openInExplorer")
-                            : tr("main.openInFinder"),
+                        finder: revealInOsLabel(tr, platform),
                         systemDefault: tr("main.openSystemDefault"),
                         copyPath: tr("attach.copyPath"),
                       }}
@@ -14888,6 +17082,12 @@ export default function App() {
                         "chrome-btn main__pane-toggle" +
                         (!layout.asideCollapsed ? " is-on" : "")
                       }
+                      aria-label={
+                        layout.asideCollapsed
+                          ? tr("main.rightPaneShow")
+                          : tr("main.rightPaneHide")
+                      }
+                      aria-pressed={!layout.asideCollapsed}
                       onClick={() => {
                         if (layout.asideCollapsed) {
                           openAsidePane();
@@ -14917,6 +17117,48 @@ export default function App() {
               defaultModelId={modelId}
               defaultEffort={effort}
               models={availableModels}
+              openAtLogin={launchAtLogin}
+              onOpenLaunchAtLogin={() => {
+                navigateSettings("general", "app");
+                // Scroll/highlight Launch at login after Settings mounts.
+                window.setTimeout(() => {
+                  const el = document.getElementById(
+                    "settings-anchor-launchAtLogin",
+                  );
+                  if (el) {
+                    el.scrollIntoView({ block: "center", behavior: "smooth" });
+                    el.classList.add("is-search-hit");
+                    window.setTimeout(
+                      () => el.classList.remove("is-search-hit"),
+                      1600,
+                    );
+                  }
+                }, 120);
+              }}
+              closeToTray={closeToTray}
+              keepTrayForSchedules={keepTrayForSchedules}
+              onKeepTrayForSchedules={(v) => {
+                setKeepTrayForSchedules(v);
+                void api.settingsGet().then((s) =>
+                  api.settingsSet({ ...s, keepTrayForSchedules: v }),
+                );
+              }}
+              onOpenKeepTraySetting={() => {
+                navigateSettings("general", "app");
+                window.setTimeout(() => {
+                  const el = document.getElementById(
+                    "settings-anchor-keepTrayForSchedules",
+                  );
+                  if (el) {
+                    el.scrollIntoView({ block: "center", behavior: "smooth" });
+                    el.classList.add("is-search-hit");
+                    window.setTimeout(
+                      () => el.classList.remove("is-search-hit"),
+                      1600,
+                    );
+                  }
+                }, 120);
+              }}
               onAiCreate={() => {
                 void newChat(null, {
                   seedDraft: aiCreateSeedPrompt("Grok"),
@@ -15037,6 +17279,44 @@ export default function App() {
               >
                 {tr("cliUpdate.later")}
               </button>
+            </div>
+          )}
+
+          {/* Secondary multi-window: live-capable tip + focus main (MULTI-WIN-LITE). */}
+          {isSecondaryWindow && mainPane === "chat" && (
+            <div
+              className="view-only-banner"
+              role="status"
+              aria-label={tr("session.secondaryLiveTitle")}
+            >
+              <div className="view-only-banner__row">
+                <div className="view-only-banner__copy">
+                  <div className="view-only-banner__title">
+                    {tr("session.secondaryLiveTitle")}
+                  </div>
+                  <div className="view-only-banner__body">
+                    {tr("session.secondaryLiveBanner")}
+                  </div>
+                </div>
+                {api.isDesktopHost() ? (
+                  <button
+                    type="button"
+                    className="btn btn--ghost view-only-banner__action"
+                    onClick={() => {
+                      void api.focusMainWindow().catch((e) => {
+                        showToast(
+                          tr("session.focusMainWindowFailed") +
+                            ": " +
+                            String(e),
+                          3200,
+                        );
+                      });
+                    }}
+                  >
+                    {tr("session.focusMainWindow")}
+                  </button>
+                ) : null}
+              </div>
             </div>
           )}
 
@@ -15187,6 +17467,9 @@ export default function App() {
               messages={messages}
               t={(k, vars) => tr(k, vars)}
               onClose={() => setTasksPanelOpen(false)}
+              subagentWorktreeSnapshotEnabled={
+                subagentWorktreeSnapshotEnabled
+              }
               activitySessions={collectActivitySessions({
                 liveMap,
                 sessions,
@@ -15214,6 +17497,19 @@ export default function App() {
               }}
               onStopAllSessions={stopAllBusySessions}
               onOpenDashboard={() => setAgentDashboardOpen(true)}
+              activeCwd={activeProject?.path ?? null}
+              onOpenCwd={(cwd) => {
+                const wt = worktreeEntryForPath(cwd, gitWorktrees);
+                if (!wt) return;
+                void (async () => {
+                  await switchToWorktree(wt);
+                  const liveId =
+                    viewingSessionIdRef.current || session.sessionId || null;
+                  if (liveId) {
+                    await markSessionWorktree(liveId, wt.path, wt.branch);
+                  }
+                })();
+              }}
             />
           ) : null}
 
@@ -15377,6 +17673,15 @@ export default function App() {
             showReplyLength={showReplyLength}
             structuredOutputActive={!!sessionJsonSchema}
             structuredOutputSchema={sessionJsonSchema}
+            structuredOutputUsage={
+              contextUsage.knownUsage
+                ? {
+                    inputTokens: contextUsage.knownUsage.inputTokens,
+                    outputTokens: contextUsage.knownUsage.outputTokens,
+                    totalTokens: contextUsage.knownUsage.totalTokens,
+                  }
+                : null
+            }
             structuredOutputLabels={{
               title: tr("message.structuredJson"),
               badge: tr("message.structuredJsonBadge"),
@@ -15388,6 +17693,13 @@ export default function App() {
               valid: tr("message.structuredJsonValid"),
               schemaMismatch: tr("message.structuredJsonSchemaMismatch"),
               missingRequired: tr("message.structuredJsonMissingRequired"),
+              streaming: tr("message.structuredJsonStreaming"),
+              partial: tr("message.structuredJsonPartial"),
+              partialKeys: tr("message.structuredJsonPartialKeys"),
+              timeline: tr("message.structuredJsonTimeline"),
+              usage: tr("message.structuredJsonUsage"),
+              usageIo: tr("message.structuredJsonUsageIo"),
+              usageTotal: tr("message.structuredJsonUsageTotal"),
             }}
           />
           </UiErrorBoundary>
@@ -15543,6 +17855,10 @@ export default function App() {
                     worktreesAvailable={gitWorktreesAvailable}
                     worktreesLoading={gitWorktreesLoading}
                     worktreesReason={gitWorktreesReason}
+                    cliWorktrees={cliWorktrees}
+                    cliWorktreesAvailable={cliWorktreesAvailable}
+                    cliWorktreesLoading={cliWorktreesLoading}
+                    cliWorktreesReason={cliWorktreesReason}
                     disabled={
                       session.state === "streaming" ||
                       session.state === "awaiting_permission"
@@ -15561,8 +17877,25 @@ export default function App() {
                       worktreeNew: tr("composer.worktreeNew"),
                       worktreeNewChat: tr("composer.worktreeNewChat"),
                       worktreeGc: tr("composer.worktreeGc"),
+                      worktreeShip: tr("composer.worktreeShip"),
+                      worktreeShipTip: tr("composer.worktreeShipTip"),
                       worktreeRemove: tr("composer.worktreeRemove"),
                       worktreeRemoveTip: tr("composer.worktreeRemoveTip"),
+                      cliWorktrees: tr("composer.cliWorktrees"),
+                      cliWorktreesEmpty: tr("composer.cliWorktreesEmpty"),
+                      cliWorktreesUnavailable: tr(
+                        "composer.cliWorktreesUnavailable",
+                      ),
+                      cliWorktreesLoading: tr("composer.cliWorktreesLoading"),
+                      cliWorktreeRefresh: tr("composer.cliWorktreeRefresh"),
+                      cliWorktreeReveal: tr("composer.cliWorktreeReveal"),
+                      cliWorktreeOpen: tr("composer.cliWorktreeOpen"),
+                      cliWorktreeOpenUnavailable: tr(
+                        "composer.cliWorktreeOpenUnavailable",
+                      ),
+                      cliWorktreeMissingPath: tr(
+                        "composer.cliWorktreeMissingPath",
+                      ),
                     }}
                     onSwitch={(wt) => {
                       void switchToWorktree(wt);
@@ -15572,8 +17905,40 @@ export default function App() {
                       openWorktreeCreate({ startNewChat: true })
                     }
                     onGc={openWorktreeGc}
+                    onShip={openShipFlow}
                     onRemove={confirmRemoveWorktree}
-                    onOpen={refreshGitWorktrees}
+                    onOpen={() => {
+                      void refreshGitWorktrees();
+                      void refreshCliWorktrees();
+                    }}
+                    onCliRefresh={() => {
+                      void refreshCliWorktrees();
+                    }}
+                    onCliReveal={(wt) => {
+                      const p = wt.path?.trim();
+                      if (!p) return;
+                      void api
+                        .pathReveal(p)
+                        .catch((e) => showToast(String(e), 3500));
+                    }}
+                    onCliOpen={(wt) => {
+                      if (!wt.pathOk || !wt.path?.trim()) {
+                        showToast(
+                          tr("composer.cliWorktreeOpenUnavailable"),
+                          3500,
+                        );
+                        return;
+                      }
+                      void switchToWorktree({
+                        path: wt.path,
+                        branch: wt.branch ?? null,
+                        detached: !wt.branch || wt.branch === "HEAD",
+                        isMain: false,
+                        locked: false,
+                        prunable: false,
+                        head: wt.head ?? null,
+                      });
+                    }}
                   />
                 ) : null}
               </div>
@@ -15779,6 +18144,11 @@ export default function App() {
                     onSelectUpload={() => {
                       void pickComposerFiles();
                     }}
+                    onSelectJsonSchema={() => {
+                      closeComposerMenu();
+                      setJsonSchemaDraft(sessionJsonSchema ?? "");
+                      setShowJsonSchemaModal(true);
+                    }}
                     onSelectSlash={applySlashItem}
                     resolveTitle={resolveSlashTitle}
                     resolveDescription={resolveSlashDescription}
@@ -15856,6 +18226,7 @@ export default function App() {
                 value={draft}
                 disabled={!canType(session.state)}
                 spellCheck={composerSpellcheck}
+                aria-label={tr("a11y.composerInput")}
                 placeholder={
                   goalMode
                     ? tr("composer.goalPlaceholder")
@@ -15915,7 +18286,11 @@ export default function App() {
                         ];
                       if (!entry) return;
                       if (entry.kind === "upload") void pickComposerFiles();
-                      else applySlashItem(entry.item);
+                      else if (entry.kind === "json-schema") {
+                        closeComposerMenu();
+                        setJsonSchemaDraft(sessionJsonSchema ?? "");
+                        setShowJsonSchemaModal(true);
+                      } else applySlashItem(entry.item);
                       return;
                     }
                     if (e.key === "Escape") {
@@ -15933,7 +18308,11 @@ export default function App() {
                           )
                         ]!;
                       if (entry.kind === "upload") void pickComposerFiles();
-                      else applySlashItem(entry.item);
+                      else if (entry.kind === "json-schema") {
+                        closeComposerMenu();
+                        setJsonSchemaDraft(sessionJsonSchema ?? "");
+                        setShowJsonSchemaModal(true);
+                      } else applySlashItem(entry.item);
                       return;
                     }
                   }
@@ -16120,28 +18499,24 @@ export default function App() {
                         </button>
                       </Tip>
                     ) : null}
-                    <Tip label={tr("composer.jsonSchemaHint")}>
-                      <button
-                        type="button"
-                        className={
-                          "chip chip--json-schema" +
-                          (sessionJsonSchema ? " is-active" : "")
-                        }
-                        onClick={() => {
-                          setJsonSchemaDraft(sessionJsonSchema ?? "");
-                          setShowJsonSchemaModal(true);
-                        }}
-                        aria-label={tr("composer.jsonSchema")}
+                    {sessionJsonSchema ? (
+                      <Tip
+                        label={sessionJsonSchema}
+                        className="ui-tip--wrap ui-tip--mono"
                       >
-                        <IconCode size={14} />
-                        <span className="chip__label">
-                          {sessionJsonSchema
-                            ? tr("composer.jsonSchemaActive")
-                            : tr("composer.jsonSchema")}
-                        </span>
-                        {sessionJsonSchema ? <IconClose size={12} /> : null}
-                      </button>
-                    </Tip>
+                        <button
+                          type="button"
+                          className="icon-btn chip--json-schema is-active"
+                          onClick={() => {
+                            setJsonSchemaDraft(sessionJsonSchema);
+                            setShowJsonSchemaModal(true);
+                          }}
+                          aria-label={tr("composer.jsonSchemaActive")}
+                        >
+                          <IconCode size={16} />
+                        </button>
+                      </Tip>
+                    ) : null}
                     <ComposerModelMenu
                       modelId={modelId}
                       effort={effort}
@@ -16525,6 +18900,7 @@ export default function App() {
             (resizingAside ? " is-resizing" : "") +
             (phoneLayout ? " aside--phone-overlay" : "")
           }
+          aria-label={tr("a11y.resourcesPane")}
           aria-hidden={layout.asideCollapsed}
           style={
             !layout.asideCollapsed && !phoneLayout
@@ -16570,6 +18946,7 @@ export default function App() {
               onRequestPlanChanges={() => openRequestPlanChanges()}
               onDismissPlan={() => void dismissPlan()}
               onOpenPlanHistory={() => setShowPlanHistory(true)}
+              onShip={openShipFlow}
               onAsideLayoutHint={applyAsideLayoutHint}
               onClose={() => {
                 // Manual close — do not treat as plan-owned pane on later dismiss.
@@ -16734,6 +19111,8 @@ export default function App() {
         onClose={() => setShowReliability(false)}
         locale={locale}
         view={reliabilityView}
+        goalOrchUiEnabled={goalOrchUiEnabled}
+        goalOrchEvents={goalOrchEvents}
         onOpenDoctor={() => void openDoctor()}
         onSelectSession={(id) => {
           setShowReliability(false);
@@ -16980,6 +19359,133 @@ export default function App() {
         </div>
       </GlassModal>
       <GlassModal
+        open={shipOpen}
+        onClose={() => {
+          if (shipBusy) return;
+          setShipOpen(false);
+          setShipError(null);
+          setShipStatus(null);
+        }}
+        title={tr("composer.worktreeShipTitle")}
+        size="md"
+        closeLabel={tr("common.close")}
+        closeOnOverlay={!shipBusy}
+        showClose={!shipBusy}
+        wrapBody
+        footer={
+          <>
+            <button
+              type="button"
+              className="btn btn--ghost"
+              disabled={shipBusy}
+              onClick={() => {
+                setShipOpen(false);
+                setShipError(null);
+                setShipStatus(null);
+              }}
+            >
+              {tr("common.cancel")}
+            </button>
+            <button
+              type="button"
+              className="btn btn--solid"
+              disabled={shipBusy || !shipTitle.trim()}
+              onClick={() => {
+                void submitShipFlow();
+              }}
+              data-testid="ship-submit"
+            >
+              {shipBusy
+                ? shipStatus || tr("composer.worktreeShipRunning")
+                : shipCreatePr
+                  ? tr("composer.worktreeShipConfirmPr")
+                  : tr("composer.worktreeShipConfirmPush")}
+            </button>
+          </>
+        }
+      >
+        <form
+          className="wt-ship"
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (shipBusy || !shipTitle.trim()) return;
+            void submitShipFlow();
+          }}
+        >
+          <p className="wt-ship__hint">{tr("composer.worktreeShipHint")}</p>
+          {shipBranch ? (
+            <p className="wt-ship__branch">
+              {tr("composer.worktreeShipBranch", { branch: shipBranch })}
+            </p>
+          ) : null}
+          <label className="wt-ship__field">
+            <span className="wt-ship__label">
+              {tr("composer.worktreeShipTitleField")}
+            </span>
+            <input
+              className="settings-input"
+              value={shipTitle}
+              onChange={(e) => {
+                setShipTitle(e.target.value);
+                setShipError(null);
+              }}
+              placeholder={tr("composer.worktreeShipTitlePlaceholder")}
+              autoComplete="off"
+              autoFocus
+              disabled={shipBusy}
+              spellCheck={true}
+              data-testid="ship-title"
+            />
+          </label>
+          <label className="wt-ship__field">
+            <span className="wt-ship__label">
+              {tr("composer.worktreeShipBodyField")}
+            </span>
+            <textarea
+              className="settings-input wt-ship__body"
+              value={shipBody}
+              onChange={(e) => {
+                setShipBody(e.target.value);
+                setShipError(null);
+              }}
+              placeholder={tr("composer.worktreeShipBodyPlaceholder")}
+              rows={5}
+              disabled={shipBusy}
+              spellCheck={true}
+              data-testid="ship-body"
+            />
+          </label>
+          <label className="wt-ship__check">
+            <input
+              type="checkbox"
+              checked={shipCreatePr}
+              disabled={shipBusy}
+              onChange={(e) => setShipCreatePr(e.target.checked)}
+            />
+            <span>{tr("composer.worktreeShipCreatePr")}</span>
+          </label>
+          <label className="wt-ship__check">
+            <input
+              type="checkbox"
+              checked={shipDraft}
+              disabled={shipBusy || !shipCreatePr}
+              onChange={(e) => setShipDraft(e.target.checked)}
+            />
+            <span>{tr("composer.worktreeShipDraft")}</span>
+          </label>
+          {shipStatus ? (
+            <p className="wt-ship__status" aria-live="polite">
+              {shipStatus}
+            </p>
+          ) : null}
+          {shipError ? (
+            <p className="wt-ship__error" role="alert">
+              {shipError}
+            </p>
+          ) : null}
+        </form>
+      </GlassModal>
+      <GlassModal
         open={showShortcuts}
         onClose={() => setShowShortcuts(false)}
         title={tr("shortcuts.title")}
@@ -17043,7 +19549,23 @@ export default function App() {
         }
         voiceId={voiceId}
         keepAgentsOnEnd={voiceKeepAgentsOnEnd}
+        hasActiveSession={Boolean(session.sessionId)}
         onClose={() => setLiveVoiceOpen(false)}
+        onSendTranscriptAsPrompt={
+          session.sessionId
+            ? async (prompt) => {
+                const ok = await executeSend({
+                  storedDisplay: prompt,
+                  att: [],
+                  goalMode: false,
+                  targetSessionId: session.sessionId,
+                });
+                if (ok) {
+                  showToast(tr("voice.transcriptSent"), 2800);
+                }
+              }
+            : undefined
+        }
         onOpenSession={(id) => {
           setLiveVoiceOpen(false);
           void (async () => {
@@ -17075,6 +19597,7 @@ export default function App() {
       />
       <AskUserModal
         payload={askUser}
+        timeoutSec={askUserTimeoutSec}
         labels={{
           title: tr("askUser.title"),
           submit: tr("askUser.submit"),
@@ -17083,6 +19606,7 @@ export default function App() {
           freeTextHint: tr("askUser.freeTextHint"),
           multiHint: tr("askUser.multiHint"),
           close: tr("common.close"),
+          autoCancelCountdown: tr("askUser.autoCancelCountdown"),
         }}
         onSubmit={async (answers) => {
           if (!askUser) return;
@@ -17139,6 +19663,34 @@ export default function App() {
           void openSession(row, proj);
         }}
         onStopAllBusy={stopAllBusySessions}
+        onStopSessions={(ids) => {
+          const n = ids.length;
+          stopBusySessionsByIds(ids, {
+            title: tr("dashboard.stopSelectedTitle", { n }),
+            message: tr("dashboard.stopSelectedConfirm", { n: String(n) }),
+            confirmLabel: tr("dashboard.stopSelected", { n }),
+          });
+        }}
+        onOpenBatchAgents={() => {
+          setAgentDashboardOpen(false);
+          openBatchAgents();
+        }}
+      />
+      <BatchAgentsModal
+        open={batchAgentsOpen}
+        locale={locale}
+        projects={projects.map(
+          (p): BatchProjectInput => ({
+            id: p.id,
+            name: p.name,
+            path: p.path,
+            trusted: p.trusted,
+            pathOk: p.pathOk,
+            system: p.system,
+          }),
+        )}
+        onClose={() => setBatchAgentsOpen(false)}
+        onDispatch={runBatchAgentsDispatch}
       />
       <McpStatusModal
         open={showMcpModal}
@@ -17148,6 +19700,12 @@ export default function App() {
         loading={mcpLoading}
         onClose={() => setShowMcpModal(false)}
         onManage={() => navigateSettings("extensions")}
+        onRefresh={() => void refreshMcpModal()}
+        doctorReport={mcpDoctorReport}
+        doctorError={mcpDoctorError}
+        doctorLoading={mcpDoctorLoading}
+        doctorFocus={mcpDoctorFocus}
+        onRunDoctor={(name) => void runMcpDoctor(name)}
       />
       {rewindTimeline && (
         <div
@@ -17158,6 +19716,7 @@ export default function App() {
           }}
         >
           <div
+            ref={rewindModalRef}
             className="modal rewind-modal"
             role="dialog"
             aria-modal="true"
@@ -17306,6 +19865,7 @@ export default function App() {
           if (forkBusy) return;
           setForkConfirm(null);
           setForkRestoreCode(false);
+          setForkCliSession(false);
         }}
         title={tr("session.forkTitle")}
         size="sm"
@@ -17323,6 +19883,7 @@ export default function App() {
               onClick={() => {
                 setForkConfirm(null);
                 setForkRestoreCode(false);
+                setForkCliSession(false);
               }}
             >
               {tr("common.cancel")}
@@ -17337,6 +19898,7 @@ export default function App() {
                   throughUserPromptIndex:
                     forkConfirm.throughUserPromptIndex ?? null,
                   restoreCode: forkRestoreCode,
+                  forkCliSession,
                 });
               }}
             >
@@ -17364,6 +19926,22 @@ export default function App() {
           <p className="fork-confirm__hint">
             {tr("session.forkRestoreCodeHint")}
           </p>
+          {canOfferForkAgentSession(forkConfirm?.source.agentSessionId) ? (
+            <>
+              <label className="fork-confirm__restore">
+                <input
+                  type="checkbox"
+                  checked={forkCliSession}
+                  disabled={forkBusy}
+                  onChange={(e) => setForkCliSession(e.target.checked)}
+                />
+                <span>{tr("session.forkCliSession")}</span>
+              </label>
+              <p className="fork-confirm__hint">
+                {tr("session.forkCliSessionHint")}
+              </p>
+            </>
+          ) : null}
         </div>
       </GlassModal>
 
@@ -17372,6 +19950,7 @@ export default function App() {
         onClose={() => {
           if (resumeRestoreBusy) return;
           setResumeRestoreConfirm(null);
+          setResumeForkCliSession(false);
         }}
         title={tr("session.resumeRestoreTitle")}
         size="sm"
@@ -17386,7 +19965,10 @@ export default function App() {
               type="button"
               className="btn btn--ghost"
               disabled={resumeRestoreBusy}
-              onClick={() => setResumeRestoreConfirm(null)}
+              onClick={() => {
+                setResumeRestoreConfirm(null);
+                setResumeForkCliSession(false);
+              }}
             >
               {tr("common.cancel")}
             </button>
@@ -17396,7 +19978,9 @@ export default function App() {
               disabled={resumeRestoreBusy || !resumeRestoreConfirm}
               onClick={() => {
                 if (!resumeRestoreConfirm) return;
-                void runResumeWithCodeRestore(resumeRestoreConfirm);
+                void runResumeWithCodeRestore(resumeRestoreConfirm, {
+                  forkCliSession: resumeForkCliSession,
+                });
               }}
             >
               {resumeRestoreBusy
@@ -17413,6 +19997,26 @@ export default function App() {
           <p className="fork-confirm__hint">
             {tr("session.resumeRestoreHint")}
           </p>
+          {canOfferForkAgentSession(
+            resumeRestoreConfirm?.agentSessionId,
+          ) ? (
+            <>
+              <label className="fork-confirm__restore">
+                <input
+                  type="checkbox"
+                  checked={resumeForkCliSession}
+                  disabled={resumeRestoreBusy}
+                  onChange={(e) =>
+                    setResumeForkCliSession(e.target.checked)
+                  }
+                />
+                <span>{tr("session.forkCliSession")}</span>
+              </label>
+              <p className="fork-confirm__hint">
+                {tr("session.resumeForkCliSessionHint")}
+              </p>
+            </>
+          ) : null}
         </div>
       </GlassModal>
 
@@ -17450,6 +20054,7 @@ export default function App() {
             cancel: tr("common.cancel"),
             searchPlaceholder: tr("session.tracesSearch"),
             listAria: tr("session.tracesTitle"),
+            uploadedBadge: tr("session.tracesUploadedBadge"),
           }}
           onCopied={() => showToast(tr("session.tracesCopied"), 2000)}
           onError={(msg) => showToast(msg, 4000)}
@@ -17973,6 +20578,86 @@ export default function App() {
       </GlassModal>
 
       <GlassModal
+        open={!!sessionSysPromptTarget}
+        onClose={closeSessionSysPromptModal}
+        title={tr("session.sysPromptTitle")}
+        size="md"
+        closeLabel={tr("common.close")}
+        wrapBody
+        className="session-sys-prompt-modal"
+        footer={
+          <div className="session-sys-prompt-modal__actions">
+            {sessionSysPromptTarget &&
+            (sessionSysPromptDraft.trim() ||
+              sessions.some(
+                (row) =>
+                  row.id === sessionSysPromptTarget.id &&
+                  !!sanitizeSystemPromptOverride(row.systemPromptOverride),
+              )) ? (
+              <button
+                type="button"
+                className="btn btn--ghost"
+                onClick={() => {
+                  void clearSessionSysPromptModal();
+                }}
+              >
+                {tr("session.sysPromptClear")}
+              </button>
+            ) : null}
+            <button
+              type="button"
+              className="btn btn--ghost"
+              onClick={closeSessionSysPromptModal}
+            >
+              {tr("common.cancel")}
+            </button>
+            <button
+              type="button"
+              className="btn btn--primary"
+              onClick={() => {
+                void saveSessionSysPromptModal();
+              }}
+            >
+              {tr("common.save")}
+            </button>
+          </div>
+        }
+      >
+        <p className="session-sys-prompt-modal__hint">
+          {tr("session.sysPromptHint", {
+            n: String(SESSION_SYSTEM_PROMPT_MAX_CHARS),
+          })}
+        </p>
+        {sessionSysPromptTarget ? (
+          <p
+            className="session-sys-prompt-modal__session"
+            title={sessionSysPromptTarget.title}
+          >
+            {sessionSysPromptTarget.title}
+          </p>
+        ) : null}
+        <textarea
+          className="session-sys-prompt-modal__textarea"
+          value={sessionSysPromptDraft}
+          onChange={(e) =>
+            setSessionSysPromptDraft(
+              e.target.value.slice(0, SESSION_SYSTEM_PROMPT_MAX_CHARS),
+            )
+          }
+          placeholder={tr("session.sysPromptPlaceholder")}
+          maxLength={SESSION_SYSTEM_PROMPT_MAX_CHARS}
+          spellCheck={false}
+          aria-label={tr("session.sysPromptTitle")}
+        />
+        <p className="session-sys-prompt-modal__count" aria-live="polite">
+          {tr("session.sysPromptChars", {
+            n: String(sessionSysPromptDraft.length),
+            max: String(SESSION_SYSTEM_PROMPT_MAX_CHARS),
+          })}
+        </p>
+      </GlassModal>
+
+      <GlassModal
         open={!!exportMdTarget}
         onClose={() => {
           if (exportMdBusy) return;
@@ -18041,6 +20726,135 @@ export default function App() {
         </div>
       </GlassModal>
 
+      <GlassModal
+        open={!!exportImageTarget}
+        onClose={closeExportSessionImage}
+        title={tr("session.exportImageTitle")}
+        size="md"
+        closeLabel={tr("common.close")}
+        closeOnOverlay={!exportImageBusy}
+        showClose={!exportImageBusy}
+        wrapBody
+        className="export-md-modal export-image-modal"
+      >
+        <div className="export-md-options">
+          <div
+            className="export-image-skins"
+            role="radiogroup"
+            aria-label={tr("session.exportImageTheme")}
+          >
+            {SHARE_CARD_SKIN_IDS.map((skinId) => (
+              <button
+                key={skinId}
+                type="button"
+                role="radio"
+                aria-checked={exportImageSkin === skinId}
+                className={
+                  "export-image-skin" +
+                  (exportImageSkin === skinId
+                    ? " export-image-skin--active"
+                    : "")
+                }
+                disabled={exportImageBusy}
+                data-skin={skinId}
+                onClick={() => {
+                  setExportImageSkin(skinId);
+                  saveExportImageSkinPref(skinId);
+                }}
+              >
+                <span
+                  className="export-image-skin__swatch"
+                  aria-hidden
+                  data-skin={skinId}
+                />
+                <span className="export-image-skin__label">
+                  {tr(
+                    (
+                      {
+                        noir: "session.exportImageSkin.noir",
+                        paper: "session.exportImageSkin.paper",
+                        terminal: "session.exportImageSkin.terminal",
+                        stone: "session.exportImageSkin.stone",
+                        rose: "session.exportImageSkin.rose",
+                      } as const
+                    )[skinId],
+                  )}
+                </span>
+              </button>
+            ))}
+          </div>
+          <div
+            key={exportImagePreviewUrl || "export-image-preview-empty"}
+            className="export-image-preview"
+            aria-busy={exportImageBusy}
+            aria-live="polite"
+          >
+            {exportImagePreviewUrl ? (
+              <img
+                src={exportImagePreviewUrl}
+                alt={tr("session.exportImagePreview")}
+                className="export-image-preview__img"
+              />
+            ) : exportImagePreviewError ? (
+              <p className="export-image-preview__err">
+                {exportImagePreviewError}
+              </p>
+            ) : (
+              <p className="export-image-preview__placeholder">
+                {exportImageBusy
+                  ? tr("session.exportImageWorking")
+                  : tr("session.exportImagePreview")}
+              </p>
+            )}
+          </div>
+          <label className="export-md-options__row">
+            <input
+              type="checkbox"
+              checked={exportImageSmart}
+              disabled={exportImageBusy}
+              onChange={(e) => setExportImageSmart(e.target.checked)}
+            />
+            <span>{tr("session.exportImageSmart")}</span>
+          </label>
+          <div className="export-md-options__actions" role="group">
+            <button
+              type="button"
+              className="btn btn--ghost"
+              disabled={exportImageBusy}
+              onClick={closeExportSessionImage}
+            >
+              {tr("common.cancel")}
+            </button>
+            <button
+              type="button"
+              className="btn btn--ghost"
+              disabled={
+                exportImageBusy ||
+                !exportImageTarget ||
+                !!exportImagePreviewError
+              }
+              onClick={() => void runExportSessionImage("copy")}
+            >
+              {tr("session.exportImageCopy")}
+            </button>
+            <button
+              type="button"
+              className="btn btn--solid"
+              disabled={
+                exportImageBusy ||
+                !exportImageTarget ||
+                !!exportImagePreviewError
+              }
+              onClick={() => void runExportSessionImage("download")}
+            >
+              {exportImageBusy
+                ? tr("session.exportImageWorking")
+                : tr("session.exportImageDownload")}
+            </button>
+          </div>
+        </div>
+      </GlassModal>
+
       {showCompactModal && (
         <div
           className="overlay"
@@ -18048,9 +20862,11 @@ export default function App() {
           onClick={() => {
             setShowCompactModal(false);
             setCompactNote("");
+            setCompactPreset(DEFAULT_COMPACT_PRESET);
           }}
         >
           <form
+            ref={compactModalRef}
             className="modal compact-modal"
             onClick={(e) => e.stopPropagation()}
             role="dialog"
@@ -18064,12 +20880,17 @@ export default function App() {
               ) {
                 return;
               }
-              const note = compactNote;
+              const note = resolveCompactNoteBody(
+                compactNote,
+                compactPresetNote(compactPreset),
+              );
               const uiBefore = contextUsageDisplay.tokens;
+              const preset = compactPreset;
               setShowCompactModal(false);
               setCompactNote("");
+              setCompactPreset(DEFAULT_COMPACT_PRESET);
               void (async () => {
-                const cmd = buildCompactSlashCommand(note);
+                const cmd = buildCompactSlashCommand(note, { preset });
                 try {
                   const sid = await ensureConnected();
                   if (!sid) return;
@@ -18099,6 +20920,7 @@ export default function App() {
                 onClick={() => {
                   setShowCompactModal(false);
                   setCompactNote("");
+                  setCompactPreset(DEFAULT_COMPACT_PRESET);
                 }}
                 aria-label={tr("common.close")}
               >
@@ -18108,29 +20930,190 @@ export default function App() {
             <p className="compact-modal__msg">
               {tr("slash.compactExplain")}
             </p>
+            <div
+              className="compact-modal__presets"
+              role="radiogroup"
+              aria-label={tr("slash.compactPresets")}
+            >
+              {COMPACT_PRESET_IDS.map((id) => {
+                const labelKey =
+                  id === "light"
+                    ? "slash.compactPreset.light"
+                    : id === "aggressive"
+                      ? "slash.compactPreset.aggressive"
+                      : "slash.compactPreset.standard";
+                const hintKey =
+                  id === "light"
+                    ? "slash.compactPresetHint.light"
+                    : id === "aggressive"
+                      ? "slash.compactPresetHint.aggressive"
+                      : "slash.compactPresetHint.standard";
+                const active = compactPreset === id;
+                return (
+                  <button
+                    key={id}
+                    type="button"
+                    role="radio"
+                    aria-checked={active}
+                    className={
+                      "compact-modal__preset" + (active ? " is-active" : "")
+                    }
+                    title={tr(hintKey)}
+                    onClick={() => selectCompactPreset(id)}
+                  >
+                    <span className="compact-modal__preset-label">
+                      {tr(labelKey)}
+                    </span>
+                    <span className="compact-modal__preset-hint">
+                      {tr(hintKey)}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+            <p className="compact-modal__hint compact-modal__hint--presets">
+              {tr("slash.compactPresetCliNote")}
+            </p>
+            <div className="compact-modal__cli-fields">
+              <div className="compact-modal__field-label">
+                {tr("slash.compactMode")}
+              </div>
+              <Select
+                value={compactionMode}
+                aria-label={tr("slash.compactMode")}
+                title={tr("slash.compactModeHint")}
+                onChange={(v) => {
+                  const next = normalizeCompactionMode(v);
+                  setCompactionMode(next);
+                  void api.settingsGet().then((s) =>
+                    api.settingsSet({ ...s, compactionMode: next }),
+                  );
+                }}
+                options={COMPACTION_MODES.map((id) => ({
+                  value: id,
+                  label: tr(
+                    id === "transcript"
+                      ? "settings.compactionMode.transcript"
+                      : id === "segments"
+                        ? "settings.compactionMode.segments"
+                        : "settings.compactionMode.summary",
+                  ),
+                }))}
+              />
+              <p className="compact-modal__hint">{tr("slash.compactModeHint")}</p>
+              <div className="compact-modal__field-label">
+                {tr("slash.compactDetail")}
+              </div>
+              <Select
+                value={compactionDetail}
+                aria-label={tr("slash.compactDetail")}
+                title={tr("slash.compactDetailHint")}
+                disabled={!compactionDetailApplies(compactionMode)}
+                onChange={(v) => {
+                  const next = normalizeCompactionDetail(v);
+                  setCompactionDetail(next);
+                  void api.settingsGet().then((s) =>
+                    api.settingsSet({ ...s, compactionDetail: next }),
+                  );
+                }}
+                options={COMPACTION_DETAILS.map((id) => ({
+                  value: id,
+                  label: tr(
+                    id === "none"
+                      ? "settings.compactionDetail.none"
+                      : id === "minimal"
+                        ? "settings.compactionDetail.minimal"
+                        : id === "balanced"
+                          ? "settings.compactionDetail.balanced"
+                          : "settings.compactionDetail.verbose",
+                  ),
+                }))}
+              />
+              <p className="compact-modal__hint">
+                {tr("slash.compactDetailHint")}
+              </p>
+            </div>
             <div className="compact-modal__usage" aria-live="polite">
-              <span className="compact-modal__usage-k">
-                {tr("slash.compactCurrent")}
-              </span>
-              <span className="compact-modal__usage-v">
-                <span className="compact-modal__usage-tokens">
-                  {contextUsageDisplay.tokens != null
-                    ? contextUsageDisplay.label
-                    : tr("slash.compactCurrentUnknown")}
+              <div className="compact-modal__usage-row">
+                <span className="compact-modal__usage-k">
+                  {tr("slash.compactBefore")}
                 </span>
-                {contextUsageDisplay.tokens != null ? (
-                  <span className="compact-modal__usage-src">
-                    {contextUsageDisplay.source === "known"
-                      ? tr("context.sourceKnown")
-                      : contextUsageDisplay.source === "estimated"
-                        ? tr("context.sourceEstimated")
-                        : tr("context.sourceUnknown")}
+                <span className="compact-modal__usage-v">
+                  <span className="compact-modal__usage-tokens">
+                    {contextUsageDisplay.tokens != null
+                      ? contextUsageDisplay.label
+                      : tr("slash.compactCurrentUnknown")}
                   </span>
-                ) : null}
-              </span>
+                  {contextUsageDisplay.tokens != null ? (
+                    <span className="compact-modal__usage-src">
+                      {contextUsageDisplay.source === "known"
+                        ? tr("context.sourceKnown")
+                        : contextUsageDisplay.source === "estimated"
+                          ? tr("context.sourceEstimated")
+                          : tr("context.sourceUnknown")}
+                    </span>
+                  ) : null}
+                </span>
+              </div>
+              {(() => {
+                const afterEst = estimateCompactAfterTokens(
+                  contextUsageDisplay.tokens,
+                  compactPreset,
+                );
+                if (afterEst == null) {
+                  return (
+                    <div className="compact-modal__usage-row">
+                      <span className="compact-modal__usage-k">
+                        {tr("slash.compactAfterEst")}
+                      </span>
+                      <span className="compact-modal__usage-v">
+                        <span className="compact-modal__usage-tokens">
+                          {tr("slash.compactAfterUnknown")}
+                        </span>
+                      </span>
+                    </div>
+                  );
+                }
+                return (
+                  <div className="compact-modal__usage-row">
+                    <span className="compact-modal__usage-k">
+                      {tr("slash.compactAfterEst")}
+                    </span>
+                    <span className="compact-modal__usage-v">
+                      <span className="compact-modal__usage-tokens">
+                        ~{formatTokenCount(afterEst, locale)}
+                      </span>
+                      <span className="compact-modal__usage-src">
+                        {tr("context.sourceEstimated")}
+                      </span>
+                    </span>
+                  </div>
+                );
+              })()}
+              {contextUsageDisplay.lastCompact &&
+              (contextUsageDisplay.lastCompact.tokensBefore != null ||
+                contextUsageDisplay.lastCompact.tokensAfter != null) ? (
+                <div className="compact-modal__usage-row compact-modal__usage-row--last">
+                  <span className="compact-modal__usage-k">
+                    {tr("context.lastCompact")}
+                  </span>
+                  <span className="compact-modal__usage-v">
+                    <span className="compact-modal__usage-tokens">
+                      {formatCompactBeforeAfterRange(
+                        contextUsageDisplay.lastCompact.tokensBefore,
+                        contextUsageDisplay.lastCompact.tokensAfter,
+                        {
+                          locale,
+                          template: tr("compact.tokensRange"),
+                        },
+                      ) ?? tr("context.lastCompactNone")}
+                    </span>
+                  </span>
+                </div>
+              ) : null}
             </div>
             <p className="compact-modal__hint">
-              {tr("slash.compactNoteHint")}
+              {tr("slash.compactEstimateHint")}
             </p>
             <label className="compact-modal__field-label" htmlFor="compact-note">
               {tr("slash.compactNote")}
@@ -18192,6 +21175,7 @@ export default function App() {
                 onClick={() => {
                   setShowCompactModal(false);
                   setCompactNote("");
+                  setCompactPreset(DEFAULT_COMPACT_PRESET);
                 }}
               >
                 {tr("slash.compactConfirmCancel")}
@@ -18215,13 +21199,16 @@ export default function App() {
       {showSearch && (
         <div
           className="overlay"
+          role="presentation"
           onClick={() => setShowSearch(false)}
         >
           <div
+            ref={searchPanelRef}
             className="search-panel"
             onClick={(e) => e.stopPropagation()}
             role="dialog"
-            aria-label={tr("sidebar.search")}
+            aria-modal="true"
+            aria-label={tr("search.title")}
           >
             <div className="search-panel__head">
               <IconSearch size={16} />
@@ -18242,6 +21229,79 @@ export default function App() {
               >
                 <IconClose size={16} />
               </button>
+            </div>
+            <div className="search-panel__filters">
+              <div
+                className="search-panel__modes"
+                role="tablist"
+                aria-label={tr("search.modeLabel")}
+              >
+                {SESSION_SEARCH_MODES.map((mode) => (
+                  <button
+                    key={mode}
+                    type="button"
+                    role="tab"
+                    aria-selected={searchMode === mode}
+                    className={
+                      "search-panel__mode" +
+                      (searchMode === mode ? " is-active" : "")
+                    }
+                    onClick={() => applySearchMode(mode)}
+                  >
+                    {tr(sessionSearchModeLabelKey(mode))}
+                  </button>
+                ))}
+              </div>
+              <label className="search-panel__archived">
+                <input
+                  type="checkbox"
+                  checked={searchIncludeArchived}
+                  onChange={(e) =>
+                    applySearchIncludeArchived(e.target.checked)
+                  }
+                />
+                <span>{tr("search.includeArchived")}</span>
+              </label>
+              {searchFiltersActive ? (
+                <button
+                  type="button"
+                  className="search-panel__clear-filters"
+                  onClick={clearSearchFilters}
+                >
+                  {tr("search.clearFilters")}
+                </button>
+              ) : null}
+            </div>
+            <div className="search-panel__filters">
+              <div
+                className="search-panel__modes"
+                role="tablist"
+                aria-label={tr("search.rankModeLabel")}
+              >
+                {SESSION_SEARCH_RANK_MODES.map((mode) => (
+                  <button
+                    key={mode}
+                    type="button"
+                    role="tab"
+                    aria-selected={searchRankMode === mode}
+                    className={
+                      "search-panel__mode" +
+                      (searchRankMode === mode ? " is-active" : "")
+                    }
+                    onClick={() => {
+                      setSearchRankMode(mode);
+                      saveSessionSearchRankPref(mode);
+                    }}
+                  >
+                    {tr(sessionSearchRankModeLabelKey(mode))}
+                  </button>
+                ))}
+              </div>
+              <span className="search-panel__rank-hint">
+                {searchRankMode === "hybrid"
+                  ? tr("search.rankHybridHint")
+                  : tr("search.rankKeywordHint")}
+              </span>
             </div>
             {paletteActionHits.length > 0 && (
               <>
@@ -18289,15 +21349,34 @@ export default function App() {
             )}
             <div className="search-panel__section">
               {tr("search.chats")}
-              {contentSearchLoading && searchQuery.trim()
+              {contentSearchLoading &&
+              shouldScanSessionContent(searchQuery, searchMode)
                 ? ` · ${tr("search.searchingContent")}`
                 : null}
             </div>
-            {mergedSessionHits.length === 0 && !contentSearchLoading && (
-              <div className="sidebar-empty" style={{ padding: 12 }}>
-                {tr("search.noMatches")}
+            {searchEmptyState ? (
+              <div
+                className="search-panel__empty"
+                role="status"
+                data-kind={searchEmptyState.kind}
+              >
+                <p className="search-panel__empty-title">
+                  {tr(searchEmptyState.titleKey)}
+                </p>
+                <p className="search-panel__empty-hint">
+                  {tr(searchEmptyState.hintKey)}
+                </p>
+                {searchEmptyState.showClearFilters ? (
+                  <button
+                    type="button"
+                    className="btn btn--ghost btn--sm search-panel__empty-clear"
+                    onClick={clearSearchFilters}
+                  >
+                    {tr("search.clearFilters")}
+                  </button>
+                ) : null}
               </div>
-            )}
+            ) : null}
             {mergedSessionHits.map((hit, i) => {
               const s = sessions.find((x) => x.id === hit.id);
               // Content-only hits may lack a live row if the list is stale; still open by id.
@@ -18306,10 +21385,12 @@ export default function App() {
                 title: hit.title,
                 projectId: hit.projectId ?? null,
                 updatedAt: "",
+                archived: hit.archived,
               });
               const proj = projects.find(
                 (p) => p.id === (row.projectId ?? hit.projectId),
               );
+              const badge = sessionSearchBadge(hit);
               const metaParts: string[] = [];
               if (proj?.name) metaParts.push(proj.name);
               if (hit.contentMatch && hit.matchCount && hit.matchCount > 0) {
@@ -18331,7 +21412,23 @@ export default function App() {
                   <IconSquarePen size={15} />
                   <span className="search-panel__body">
                     <span className="search-panel__title">
-                      {hit.title || s?.title || "Untitled"}
+                      <span className="search-panel__title-text">
+                        {hit.title || s?.title || "Untitled"}
+                      </span>
+                      {badge ? (
+                        <span
+                          className={
+                            "search-panel__badge" +
+                            (badge === "content"
+                              ? " search-panel__badge--content"
+                              : badge === "both"
+                                ? " search-panel__badge--both"
+                                : "")
+                          }
+                        >
+                          {tr(sessionSearchBadgeLabelKey(badge))}
+                        </span>
+                      ) : null}
                     </span>
                     {hit.snippet ? (
                       <span className="search-panel__snippet">
@@ -18417,6 +21514,7 @@ export default function App() {
             }}
           >
             <div
+              ref={appDialogPanelRef}
               className="modal app-dialog"
               role="dialog"
               aria-modal="true"
@@ -18567,7 +21665,7 @@ export default function App() {
               },
               {
                 id: "reveal",
-                label: tr("project.reveal"),
+                label: revealInOsLabel(tr, platform),
                 icon: <IconExternalLink size={16} />,
                 onClick: () => {
                   void api
@@ -18604,6 +21702,18 @@ export default function App() {
                   });
                 },
               },
+              ...(canOfferContinueCwd(proj.path)
+                ? [
+                    {
+                      id: "continue-cwd",
+                      label: tr("project.continueCwd"),
+                      icon: <IconHistory size={16} />,
+                      onClick: () => {
+                        void continueLastAgentForProject(proj);
+                      },
+                    } satisfies ContextMenuItem,
+                  ]
+                : []),
               ...(proj.trusted
                 ? [
                     {
@@ -18756,90 +21866,14 @@ export default function App() {
               session.sessionId === s.id ||
               viewingSessionIdRef.current === s.id;
             const wtBadge = sessionWorktreeBadgeFor(s);
-            const wtItems: ContextMenuItem[] = wtBadge
-              ? [
-                  {
-                    id: "wt-reveal",
-                    label: tr("session.worktreeReveal"),
-                    icon: <IconExternalLink size={16} />,
-                    onClick: () => {
-                      void (async () => {
-                        try {
-                          await api.fsOpenPath(wtBadge.path);
-                        } catch (e) {
-                          showToast(String(e), 4000);
-                        }
-                      })();
-                    },
-                  },
-                  {
-                    id: "wt-copy-path",
-                    label: tr("session.worktreeCopyPath"),
-                    icon: <IconCopy size={16} />,
-                    onClick: () => {
-                      void (async () => {
-                        try {
-                          await navigator.clipboard.writeText(wtBadge.path);
-                          showToast(tr("session.worktreePathCopied"), 2200);
-                        } catch {
-                          setLocalError(wtBadge.path);
-                        }
-                      })();
-                    },
-                  },
-                  {
-                    id: "wt-remove",
-                    label: tr("composer.worktreeRemove"),
-                    icon: <IconTrash size={16} />,
-                    danger: true,
-                    onClick: () => {
-                      const fromList =
-                        gitWorktrees.find((w) =>
-                          pathsEqual(w.path, wtBadge.path),
-                        ) ?? null;
-                      const wt: api.GitWorktreeEntry = fromList ?? {
-                        path: wtBadge.path,
-                        branch: wtBadge.branch,
-                        detached: !wtBadge.branch,
-                        isMain: false,
-                        locked: false,
-                        prunable: false,
-                      };
-                      if (!canRemoveWorktree(wt) && fromList?.isMain) {
-                        showToast(tr("composer.worktreeRemoveFailed"), 3500);
-                        return;
-                      }
-                      confirmRemoveWorktree({ ...wt, isMain: false });
-                    },
-                  },
-                ]
-              : [];
             const sessionMuted = mutedSessionIds.has(s.id);
-            items = [
-              {
-                id: "pin",
-                label: s.pinned ? tr("session.unpin") : tr("session.pin"),
-                icon: s.pinned ? (
-                  <IconPinOff size={16} />
-                ) : (
-                  <IconPin size={16} />
-                ),
-                onClick: () => {
-                  void pinSession(s, !s.pinned);
-                },
-              },
-              {
-                id: "mute",
-                label: sessionMuted
-                  ? tr("session.unmute")
-                  : tr("session.mute"),
-                icon: sessionMuted ? (
-                  <IconBell size={16} />
-                ) : (
-                  <IconBellOff size={16} />
-                ),
-                onClick: () => handleToggleSessionMute(s.id),
-              },
+            const canPopOut = canOpenSessionInNewWindow({
+              isDesktopHost: api.isDesktopHost(),
+              isSecondaryWindow,
+              sessionId: s.id,
+            });
+
+            const settingsChildren: ContextMenuItem[] = [
               {
                 id: "session-note",
                 label: tr("session.note"),
@@ -18853,6 +21887,14 @@ export default function App() {
                 onClick: () => openSessionRules(s),
               },
               {
+                id: "session-sys-prompt",
+                label: sanitizeSystemPromptOverride(s.systemPromptOverride)
+                  ? tr("session.sysPromptActive")
+                  : tr("session.sysPrompt"),
+                icon: <IconRobot size={16} />,
+                onClick: () => openSessionSysPrompt(s),
+              },
+              {
                 id: "session-max-turns",
                 label:
                   normalizeMaxAgentTurns(s.maxAgentTurns) != null
@@ -18863,62 +21905,6 @@ export default function App() {
                 icon: <IconListNumbers size={16} />,
                 onClick: () => openSessionMaxTurns(s),
               },
-              {
-                id: "rename",
-                label: tr("session.rename"),
-                icon: <IconRename size={16} />,
-                onClick: () => renameSession(s),
-              },
-              {
-                id: "fork",
-                label: tr("session.fork"),
-                icon: <IconFork size={16} />,
-                onClick: () => confirmForkSession(s),
-              },
-              {
-                id: "duplicate",
-                label: tr("session.duplicate"),
-                icon: <IconFiles size={16} />,
-                disabled:
-                  forkBusy ||
-                  busyIds.has(s.id) ||
-                  (isOpen && !canRewindSession),
-                onClick: () => {
-                  void runDuplicateSession(s);
-                },
-              },
-              ...(() => {
-                const proj = s.projectId
-                  ? projects.find((p) => p.id === s.projectId) ?? null
-                  : null;
-                const path = proj?.path?.trim() || "";
-                const gitKnown =
-                  activeProject &&
-                  path &&
-                  pathsEqual(activeProject.path, path)
-                    ? gitWorktreesAvailable
-                    : null;
-                if (
-                  !canOfferResumeWithCodeRestore(path, {
-                    gitAvailable: gitKnown,
-                  })
-                ) {
-                  return [];
-                }
-                return [
-                  {
-                    id: "resume-restore",
-                    label: tr("session.resumeRestore"),
-                    icon: <IconGitBranch size={16} />,
-                    disabled:
-                      resumeRestoreBusy ||
-                      forkBusy ||
-                      busyIds.has(s.id) ||
-                      (isOpen && !canRewindSession),
-                    onClick: () => confirmResumeWithCodeRestore(s),
-                  } satisfies ContextMenuItem,
-                ];
-              })(),
               {
                 id: "session-plugin-add",
                 label:
@@ -18944,6 +21930,9 @@ export default function App() {
                     } satisfies ContextMenuItem,
                   ]
                 : []),
+            ];
+
+            const conversationChildren: ContextMenuItem[] = [
               {
                 id: "rewind",
                 label: tr("session.rewind"),
@@ -18974,8 +21963,17 @@ export default function App() {
                   toggleTranscriptFilter();
                 },
               },
-              ...wtItems,
-              // Export group — not at top of menu (after edit/rename-style actions)
+              {
+                id: "plan-history",
+                label: tr("plan.history"),
+                icon: <IconPlan size={16} />,
+                onClick: () => {
+                  setShowPlanHistory(true);
+                },
+              },
+            ];
+
+            const copyChildren: ContextMenuItem[] = [
               {
                 id: "copy-md",
                 label: tr("session.copyMd"),
@@ -18989,11 +21987,65 @@ export default function App() {
                 },
               },
               {
+                id: "copy-id",
+                label: tr("session.copyId"),
+                icon: <IconCopy size={16} />,
+                onClick: () => {
+                  void copySessionId(s);
+                },
+              },
+              ...(wtBadge
+                ? [
+                    {
+                      id: "wt-copy-path",
+                      label: tr("session.worktreeCopyPath"),
+                      icon: <IconCopy size={16} />,
+                      onClick: () => {
+                        void (async () => {
+                          try {
+                            await navigator.clipboard.writeText(wtBadge.path);
+                            showToast(tr("session.worktreePathCopied"), 2200);
+                          } catch {
+                            setLocalError(wtBadge.path);
+                          }
+                        })();
+                      },
+                    } satisfies ContextMenuItem,
+                  ]
+                : []),
+            ];
+
+            const exportChildren: ContextMenuItem[] = [
+              {
+                id: "export-image",
+                label: tr("session.exportImage"),
+                icon: <IconExportImage size={16} />,
+                onClick: () => {
+                  openExportSessionImage({
+                    id: s.id,
+                    title: s.title,
+                    projectId: s.projectId,
+                  });
+                },
+              },
+              {
                 id: "export-md",
                 label: tr("session.exportMd"),
                 icon: <IconCopy size={16} />,
                 onClick: () => {
                   openExportSessionMd({
+                    id: s.id,
+                    title: s.title,
+                    projectId: s.projectId,
+                  });
+                },
+              },
+              {
+                id: "export-plain",
+                label: tr("session.exportPlain"),
+                icon: <IconCopy size={16} />,
+                onClick: () => {
+                  void exportSessionPlain({
                     id: s.id,
                     title: s.title,
                     projectId: s.projectId,
@@ -19025,27 +22077,19 @@ export default function App() {
                 },
               },
               {
-                id: "export-trace",
-                label: tr("session.exportTrace"),
+                id: "export-trace-local",
+                label: tr("session.exportTraceLocal"),
                 icon: <IconArchive size={16} />,
                 onClick: () => {
-                  void exportSessionTrace(s.id);
+                  void exportSessionTrace(s.id, { localOnly: true });
                 },
               },
               {
-                id: "traces",
-                label: tr("session.traces"),
-                icon: <IconFolder size={16} />,
+                id: "export-trace-upload",
+                label: tr("session.exportTraceUpload"),
+                icon: <IconArchive size={16} />,
                 onClick: () => {
-                  setShowTraces(true);
-                },
-              },
-              {
-                id: "plan-history",
-                label: tr("plan.history"),
-                icon: <IconPlan size={16} />,
-                onClick: () => {
-                  setShowPlanHistory(true);
+                  confirmExportSessionTraceUpload(s.id);
                 },
               },
               {
@@ -19057,12 +22101,206 @@ export default function App() {
                 },
               },
               {
-                id: "copy-id",
-                label: tr("session.copyId"),
-                icon: <IconCopy size={16} />,
+                id: "traces",
+                label: tr("session.traces"),
+                icon: <IconFolder size={16} />,
                 onClick: () => {
-                  void copySessionId(s);
+                  setShowTraces(true);
                 },
+              },
+            ];
+
+            const worktreeChildren: ContextMenuItem[] = wtBadge
+              ? [
+                  {
+                    id: "wt-reveal",
+                    label: tr("session.worktreeReveal"),
+                    icon: <IconExternalLink size={16} />,
+                    onClick: () => {
+                      void (async () => {
+                        try {
+                          await api.fsOpenPath(wtBadge.path);
+                        } catch (e) {
+                          showToast(String(e), 4000);
+                        }
+                      })();
+                    },
+                  },
+                  {
+                    id: "wt-copy-path-sub",
+                    label: tr("session.worktreeCopyPath"),
+                    icon: <IconCopy size={16} />,
+                    onClick: () => {
+                      void (async () => {
+                        try {
+                          await navigator.clipboard.writeText(wtBadge.path);
+                          showToast(tr("session.worktreePathCopied"), 2200);
+                        } catch {
+                          setLocalError(wtBadge.path);
+                        }
+                      })();
+                    },
+                  },
+                  {
+                    id: "wt-ship",
+                    label: tr("composer.worktreeShip"),
+                    icon: <IconUpload size={16} />,
+                    onClick: () => {
+                      openShipFlow();
+                    },
+                  },
+                  {
+                    id: "wt-remove",
+                    label: tr("composer.worktreeRemove"),
+                    icon: <IconTrash size={16} />,
+                    danger: true,
+                    onClick: () => {
+                      const fromList =
+                        gitWorktrees.find((w) =>
+                          pathsEqual(w.path, wtBadge.path),
+                        ) ?? null;
+                      const wt: api.GitWorktreeEntry = fromList ?? {
+                        path: wtBadge.path,
+                        branch: wtBadge.branch,
+                        detached: !wtBadge.branch,
+                        isMain: false,
+                        locked: false,
+                        prunable: false,
+                      };
+                      if (!canRemoveWorktree(wt) && fromList?.isMain) {
+                        showToast(tr("composer.worktreeRemoveFailed"), 3500);
+                        return;
+                      }
+                      confirmRemoveWorktree({ ...wt, isMain: false });
+                    },
+                  },
+                ]
+              : [];
+
+            const resumeRestoreItem = (() => {
+              const proj = s.projectId
+                ? projects.find((p) => p.id === s.projectId) ?? null
+                : null;
+              const path = proj?.path?.trim() || "";
+              const gitKnown =
+                activeProject &&
+                path &&
+                pathsEqual(activeProject.path, path)
+                  ? gitWorktreesAvailable
+                  : null;
+              if (
+                !canOfferResumeWithCodeRestore(path, {
+                  gitAvailable: gitKnown,
+                })
+              ) {
+                return null;
+              }
+              return {
+                id: "resume-restore",
+                label: tr("session.resumeRestore"),
+                icon: <IconGitBranch size={16} />,
+                disabled:
+                  resumeRestoreBusy ||
+                  forkBusy ||
+                  busyIds.has(s.id) ||
+                  (isOpen && !canRewindSession),
+                onClick: () => confirmResumeWithCodeRestore(s),
+              } satisfies ContextMenuItem;
+            })();
+
+            items = [
+              {
+                id: "pin",
+                label: s.pinned ? tr("session.unpin") : tr("session.pin"),
+                icon: s.pinned ? (
+                  <IconPinOff size={16} />
+                ) : (
+                  <IconPin size={16} />
+                ),
+                onClick: () => {
+                  void pinSession(s, !s.pinned);
+                },
+              },
+              ...(canPopOut
+                ? [
+                    {
+                      id: "open-new-window",
+                      label: tr("session.openInNewWindow"),
+                      icon: <IconExternalLink size={16} />,
+                      onClick: () => openSessionInNewWindow(s),
+                    } satisfies ContextMenuItem,
+                  ]
+                : []),
+              {
+                id: "mute",
+                label: sessionMuted
+                  ? tr("session.unmute")
+                  : tr("session.mute"),
+                icon: sessionMuted ? (
+                  <IconBell size={16} />
+                ) : (
+                  <IconBellOff size={16} />
+                ),
+                onClick: () => handleToggleSessionMute(s.id),
+              },
+              {
+                id: "rename",
+                label: tr("session.rename"),
+                icon: <IconRename size={16} />,
+                onClick: () => renameSession(s),
+              },
+              {
+                id: "session-settings",
+                label: tr("session.menuSettings"),
+                icon: <IconSettings size={16} />,
+                children: settingsChildren,
+              },
+              {
+                id: "fork",
+                label: tr("session.fork"),
+                icon: <IconFork size={16} />,
+                onClick: () => confirmForkSession(s),
+              },
+              {
+                id: "duplicate",
+                label: tr("session.duplicate"),
+                icon: <IconFiles size={16} />,
+                disabled:
+                  forkBusy ||
+                  busyIds.has(s.id) ||
+                  (isOpen && !canRewindSession),
+                onClick: () => {
+                  void runDuplicateSession(s);
+                },
+              },
+              ...(resumeRestoreItem ? [resumeRestoreItem] : []),
+              {
+                id: "conversation",
+                label: tr("session.menuConversation"),
+                icon: <IconChat size={16} />,
+                children: conversationChildren,
+              },
+              ...(worktreeChildren.length > 0
+                ? [
+                    {
+                      id: "worktree",
+                      label: tr("session.menuWorktree"),
+                      icon: <IconGitBranch size={16} />,
+                      children: worktreeChildren,
+                    } satisfies ContextMenuItem,
+                  ]
+                : []),
+              {
+                id: "copy",
+                label: tr("session.menuCopy"),
+                icon: <IconCopy size={16} />,
+                children: copyChildren,
+              },
+              {
+                id: "export",
+                label: tr("session.menuExport"),
+                icon: <IconExportImage size={16} />,
+                children: exportChildren,
               },
               {
                 id: "archive",
@@ -19092,7 +22330,11 @@ export default function App() {
             onClose={() => setCtxMenu(null)}
             items={items}
             estimatedHeight={
-              ctxMenu?.kind === "project-policy" ? 280 : 240
+              ctxMenu?.kind === "session"
+                ? 360
+                : ctxMenu?.kind === "project-policy"
+                  ? 280
+                  : 240
             }
           />
         );

@@ -17,16 +17,22 @@ import {
 } from "react";
 import * as api from "@/lib/api";
 import { copyImageFromSrc } from "@/lib/copyImage";
-import { resolveImageSrcSync, isViewableSrc } from "@/lib/imageSrc";
+import {
+  ensureMediaEndpoint,
+  isViewableSrc,
+  resolveImageSrc,
+  resolveImageSrcSync,
+} from "@/lib/imageSrc";
 import { useImageViewerOptional } from "@/components/ImageViewer";
 import { IconCopy, IconExternalLink, IconFolder } from "@/components/icons";
 import { ContextMenu, type ContextMenuItem } from "@/components/ContextMenu";
 import { createT, type Locale } from "@/i18n";
+import { revealInOsLabel } from "@/lib/appPlatform";
 
 export interface ImageUiLabels {
   viewImage: string;
   copyImage: string;
-  /** Reveal in Finder — same copy as attach.reveal */
+  /** Reveal in OS file manager (Finder / Explorer / Files). */
   reveal: string;
   /** Copy path — same copy as attach.copyPath */
   copyPath: string;
@@ -197,6 +203,7 @@ export function ImageUi({
   );
 
   useEffect(() => {
+    let cancelled = false;
     const next = initialResolvedSrc(src);
     setResolvedSrc(next);
     setLoadFailed(false);
@@ -208,6 +215,24 @@ export function ImageUi({
       setAspectRatio(DEFAULT_AR);
       setRatioKnown(false);
     }
+    // Ensure loopback media HTTP is ready, then re-resolve (cold-start may have
+    // used media:// fallback or null before the endpoint arrived).
+    if (!isViewableSrc(src) || !next?.startsWith("http://127.0.0.1")) {
+      void ensureMediaEndpoint()
+        .then(() => resolveImageSrc(src))
+        .then((url) => {
+          if (!cancelled && url && url !== next) {
+            setResolvedSrc(url);
+            setLoadFailed(false);
+          }
+        })
+        .catch(() => {
+          /* keep sync resolve */
+        });
+    }
+    return () => {
+      cancelled = true;
+    };
   }, [src, path]);
 
   // Recover size if decode finished before onLoad bound (disk cache).
@@ -400,13 +425,13 @@ export function ImageUi({
   );
 }
 
-/** Build image UI labels from locale (aligned with attach.* keys). */
+/** Build image UI labels from locale (OS-aware reveal label). */
 export function imageUiLabels(locale: Locale): ImageUiLabels {
   const tr = createT(locale);
   return {
     viewImage: tr("image.view"),
     copyImage: tr("image.copy"),
-    reveal: tr("attach.reveal"),
+    reveal: revealInOsLabel(tr),
     copyPath: tr("attach.copyPath"),
   };
 }

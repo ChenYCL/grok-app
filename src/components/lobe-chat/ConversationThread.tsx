@@ -1,6 +1,9 @@
 /**
  * LobeHub-aligned chat thread (pure CSS 1:1).
  * Replaces AI Elements / previous ConversationThread.
+ *
+ * Activity chrome: Grok.com Worked-for / tool rail (TimelinePhaseBlock + lobe-chat.css .grok-act).
+ * Hard-reload the webview if CSS HMR misses a bulk style rewrite.
  */
 
 import {
@@ -21,16 +24,14 @@ import {
   lastRegenerableAssistantId,
   messageSegments,
   isTurnPromptMessage,
+  weaveToolsIntoAssistantSegments,
   type ChatMessage,
   type SessionState,
 } from "@/lib/session";
 import {
   adjacentNode,
   buildSessionMessageNodes,
-  estimateMessageIndexAtY,
   estimateStartScrollTop,
-  nearestNodeForMessageIndex,
-  pickActiveNodeIdFromRects,
   type SessionMessageNode,
 } from "@/lib/sessionMessageNodes";
 import { MessageNodeRail } from "./MessageNodeRail";
@@ -50,6 +51,7 @@ import { AttachmentCard } from "@/components/AttachmentCard";
 import type { ResourceOpenTarget } from "@/components/ResourceViewer";
 import {
   IconArrowsMinimize,
+  IconBulb,
   IconChat,
   IconClock,
   IconExportMd,
@@ -465,12 +467,22 @@ export interface ConversationThreadProps {
    */
   showReplyLength?: boolean;
   /**
-   * When true, completed assistant replies get a structured-output panel
-   * (session JSON Schema mode): parse + light schema check, copy/export.
+   * When true, assistant replies get a structured-output panel
+   * (session JSON Schema mode): progressive parse + light schema check while
+   * streaming, copy/export when complete.
    */
   structuredOutputActive?: boolean;
   /** Active session schema text for required-field validation. */
   structuredOutputSchema?: string | null;
+  /**
+   * Optional known token usage from agent events (session-level).
+   * Shown only on the latest assistant turn — never invents zeros.
+   */
+  structuredOutputUsage?: {
+    inputTokens?: number | null;
+    outputTokens?: number | null;
+    totalTokens?: number | null;
+  } | null;
   structuredOutputLabels?: {
     title: string;
     badge: string;
@@ -482,6 +494,13 @@ export interface ConversationThreadProps {
     valid: string;
     schemaMismatch: string;
     missingRequired: string;
+    streaming?: string;
+    partial?: string;
+    partialKeys?: string;
+    timeline?: string;
+    usage?: string;
+    usageIo?: string;
+    usageTotal?: string;
   };
 }
 
@@ -522,6 +541,7 @@ export function ConversationThread({
   showReplyLength = false,
   structuredOutputActive = false,
   structuredOutputSchema = null,
+  structuredOutputUsage = null,
   structuredOutputLabels,
 }: ConversationThreadProps) {
   const tr = useMemo(() => createT(locale), [locale]);
@@ -575,6 +595,20 @@ export function ConversationThread({
     () => lastRegenerableAssistantId(messages),
     [messages],
   );
+
+  /**
+   * Latest assistant body message — only this turn shows known usage on the
+   * structured panel (session-level usage is not attributed to older turns).
+   */
+  const structuredUsageMessageId = useMemo(() => {
+    for (let i = messages.length - 1; i >= 0; i--) {
+      const m = messages[i];
+      if (!m || m.role !== "assistant") continue;
+      if (m.marker) continue;
+      return m.id;
+    }
+    return null;
+  }, [messages]);
 
   const {
     viewportRef: scrollRef,
@@ -653,50 +687,23 @@ export function ConversationThread({
   /** Authoritative cursor for prev/next — survives brief active-id flicker. */
   const railCursorRef = useRef<string | null>(null);
 
-  const syncActiveNodeFromScroll = useCallback(() => {
-    const el = scrollRef.current;
-    if (!el || messageNodes.length === 0) return;
-    // Programmatic next/prev owns the highlight until the jump settles.
+  /**
+   * Free-scroll rail highlight lives in MessageNodeRail (rAF + no parent
+   * setState). This only updates railCursorRef after programmatic jumps settle
+   * so prev/next keep a stable cursor without re-rendering the transcript.
+   */
+  const syncRailCursorAfterNav = useCallback(() => {
     if (performance.now() < navLockUntilRef.current) return;
-
-    const viewportRect = el.getBoundingClientRect();
-    const focusY = viewportRect.top + el.clientHeight * 0.28;
-
-    const rects: { id: string; top: number; bottom: number }[] = [];
-    for (const node of messageNodes) {
-      const row = el.querySelector(
-        `[data-message-id="${CSS.escape(node.id)}"]`,
-      ) as HTMLElement | null;
-      if (!row) continue;
-      const r = row.getBoundingClientRect();
-      rects.push({ id: node.id, top: r.top, bottom: r.bottom });
-    }
-
-    let bestId = pickActiveNodeIdFromRects(rects, focusY);
-
-    if (!bestId) {
-      const y = el.scrollTop + el.clientHeight * 0.28;
-      const msgIdx = estimateMessageIndexAtY(messages, y);
-      bestId = nearestNodeForMessageIndex(messageNodes, msgIdx)?.id ?? null;
-    }
-
-    if (bestId) railCursorRef.current = bestId;
-    setActiveNodeId((prev) => (prev === bestId ? prev : bestId));
-  }, [messageNodes, messages, scrollRef]);
+    // Cursor already set by scrollToMessageNode / select; nothing else needed.
+  }, []);
 
   const onScroll = useCallback(
     (e: UIEvent<HTMLDivElement>) => {
       onStickScroll(e);
-      syncActiveNodeFromScroll();
+      // Do NOT setActiveNodeId here — MessageNodeRail owns free-scroll highlight (#280).
     },
-    [onStickScroll, syncActiveNodeFromScroll],
+    [onStickScroll],
   );
-
-  // Keep rail highlight in sync on mount / message growth / session switch.
-  useEffect(() => {
-    const t = window.requestAnimationFrame(() => syncActiveNodeFromScroll());
-    return () => window.cancelAnimationFrame(t);
-  }, [syncActiveNodeFromScroll, sessionKey, messages.length]);
 
   const applyScrollToNodeDom = useCallback(
     (node: SessionMessageNode, attempt = 0) => {
@@ -737,10 +744,10 @@ export function ConversationThread({
         locateClearTimerRef.current = null;
         // Release nav lock shortly after so free scroll can update the rail.
         navLockUntilRef.current = performance.now() + 120;
-        syncActiveNodeFromScroll();
+        syncRailCursorAfterNav();
       }, 700);
     },
-    [scrollRef, syncActiveNodeFromScroll],
+    [scrollRef, syncRailCursorAfterNav],
   );
 
   const scrollToMessageNode = useCallback(
@@ -909,19 +916,30 @@ export function ConversationThread({
     !turnBusy;
 
   /**
+   * Display-layer weave: journal reload / cache races can leave tool_step rows
+   * outside assistant.segments. Always stitch before paint so history shows the
+   * same Worked-for phase as live (thought ↔ tools interleaved).
+   */
+  const wovenMessages = useMemo(
+    () => weaveToolsIntoAssistantSegments(messages),
+    [messages],
+  );
+
+  /**
    * Paint list: drop inlined tool_step journal rows; when filter is
    * `conversation`, also drop every tool_step row. Full `messages` stays for
    * path maps / live tools / nodes — only the virtual list + render loop use this.
    * (64 woven tools otherwise force virtualization and thrash near-bottom stick.)
    */
   const transcriptMessages = useMemo(
-    () => filterMessagesForTranscript(messages, transcriptFilter),
-    [messages, transcriptFilter],
+    () => filterMessagesForTranscript(wovenMessages, transcriptFilter),
+    [wovenMessages, transcriptFilter],
   );
 
-  // Force-mount only what must stay in DOM. Do NOT always force the last N
-  // rows while reading history — that expanded every window to the tail and
-  // remounted huge answers (org charts) mid-scroll → bounce.
+  // Force-mount only what must stay in DOM. The virtualizer applies force
+  // freely while pinned (blank-pin defense) but only expands nearby while
+  // escaped — listing the last user/assistant here no longer mounts the
+  // whole tail mid-history (see CHAT_FORCE_EXPAND_MAX_GAP).
   const forceVirtualIndices = useMemo(() => {
     const out: number[] = [];
     const pushId = (id: string | null | undefined) => {
@@ -942,15 +960,17 @@ export function ConversationThread({
       const n = transcriptMessages.length;
       if (n > 0) out.push(n - 1);
     }
-    // Even when idle, pin-window must include the last user + last assistant
-    // (not only trailing tool_step zeros), or reopening a long tool-heavy
-    // thread can paint an empty viewport at the bottom.
-    if (!turnBusy && messages.length > 0) {
+    // While pinned, last user + last assistant keep the pin window from
+    // landing only on trailing tool_step zeros. Escaped history browse
+    // ignores distant force (virtualizer max-gap) so long chats stay windowed.
+    // Always resolve via pushId (transcript indices) — never push messages[]
+    // offsets into the virtual list (idle path used to force wrong rows / thrash).
+    if (!turnBusy && transcriptMessages.length > 0) {
       pushId(lastUserMessageId);
-      for (let i = messages.length - 1; i >= 0; i--) {
-        const row = messages[i]!;
+      for (let i = transcriptMessages.length - 1; i >= 0; i--) {
+        const row = transcriptMessages[i]!;
         if (row.role === "assistant" && !row.isError) {
-          out.push(i);
+          pushId(row.id);
           break;
         }
       }
@@ -981,7 +1001,8 @@ export function ConversationThread({
         m.role === "assistant" &&
         (/\.(mp4|webm|mov|mkv)(\b|$)/i.test(body) ||
           body.includes("media.localhost") ||
-          body.includes("media://"));
+          body.includes("media://") ||
+          body.includes("127.0.0.1"));
       // Tool steps already woven into an assistant timeline render as 0-height
       // spacers — estimate 0 so virtualization does not invent a blank pin tail.
       const toolInlined =
@@ -990,7 +1011,7 @@ export function ConversationThread({
           const tcid =
             (m.toolCallId || "").trim() ||
             (m.id.startsWith("tool-") ? m.id.slice(5) : "");
-          return !!tcid && isToolInlinedInAssistants(messages, tcid);
+          return !!tcid && isToolInlinedInAssistants(wovenMessages, tcid);
         })();
       const collapsedTool =
         toolInlined ||
@@ -1107,7 +1128,8 @@ export function ConversationThread({
               const tcid =
                 (m.toolCallId || "").trim() ||
                 (m.id.startsWith("tool-") ? m.id.slice(5) : "");
-              if (tcid && isToolInlinedInAssistants(messages, tcid)) {
+              // Use woven list — parent `messages` may lag display-layer weave.
+              if (tcid && isToolInlinedInAssistants(wovenMessages, tcid)) {
                 return virtualized ? (
                   <div
                     key={m.id}
@@ -1136,6 +1158,7 @@ export function ConversationThread({
                     <TimelineToolRow
                       tool={toolSeg}
                       autoCollapse={toolStepsAutoCollapse}
+                      locale={locale}
                     />
                   </div>
                 </div>,
@@ -1491,7 +1514,7 @@ export function ConversationThread({
                       <Thinking
                         locale={locale}
                         thinking
-                        streamingLabel={tr("chat.thinking")}
+                        streamingLabel={tr("chat.thinkingLabel")}
                         doneLabel={tr("chat.thoughtDone")}
                         thoughtForLabel={(n) => tr("chat.thoughtFor", { n })}
                       />
@@ -1502,30 +1525,9 @@ export function ConversationThread({
                       let contentOccBase = 0;
                       return timelineUnits.map((unit) => {
                         if (unit.kind === "phase") {
-                          // Conversation filter: keep thoughts, drop tool chrome.
-                          if (!showToolChrome) {
-                            const thoughts = unit.thoughts.filter((t) =>
-                              t.trim(),
-                            );
-                            if (!thoughts.length) return null;
-                            return (
-                              <div key={`${m.id}-${unit.id}`}>
-                                {thoughts.map((text, ti) => (
-                                  <Thinking
-                                    key={`${m.id}-${unit.id}-th-${ti}`}
-                                    locale={locale}
-                                    content={text}
-                                    thinking={false}
-                                    streamingLabel={tr("chat.thinking")}
-                                    doneLabel={tr("chat.thoughtDone")}
-                                    thoughtForLabel={(n) =>
-                                      tr("chat.thoughtFor", { n })
-                                    }
-                                  />
-                                ))}
-                              </div>
-                            );
-                          }
+                          // Always paint Grok Worked-for rail (tools + thought steps).
+                          // “Conversation only” only hides standalone tool_step rows,
+                          // not this official activity summary.
                           return (
                             <TimelinePhaseBlock
                               key={`${m.id}-${unit.id}`}
@@ -1533,10 +1535,15 @@ export function ConversationThread({
                               locale={locale}
                               messageStreaming={!!m.streaming}
                               autoCollapse={toolStepsAutoCollapse}
+                              historyTimestamps={[
+                                m.createdAt,
+                                ...unit.tools.map((t) => t.createdAt),
+                              ]}
                             />
                           );
                         }
                         if (unit.kind === "tool") {
+                          // Bare tool outside a phase — respect hide-tools filter.
                           if (!showToolChrome) return null;
                           return (
                             <div
@@ -1546,14 +1553,28 @@ export function ConversationThread({
                               <TimelineToolRow
                                 tool={unit.tool}
                                 autoCollapse={toolStepsAutoCollapse}
+                                locale={locale}
                               />
                             </div>
                           );
                         }
-                        if (unit.kind === "thought") {
+                        // Adjacent bare thoughts are coalesced into thought-group.
+                        if (
+                          unit.kind === "thought" ||
+                          unit.kind === "thought-group"
+                        ) {
+                          const texts =
+                            unit.kind === "thought-group"
+                              ? unit.texts
+                              : [unit.text];
+                          const joined = texts
+                            .map((t) => t.trim())
+                            .filter(Boolean)
+                            .join("\n\n");
+                          const streaming = unit.streaming;
                           if (
-                            !unit.text.trim() &&
-                            !(m.streaming && unit.streaming)
+                            !joined &&
+                            !(m.streaming && streaming)
                           ) {
                             return null;
                           }
@@ -1564,9 +1585,9 @@ export function ConversationThread({
                             >
                               <Thinking
                                 locale={locale}
-                                thinking={unit.streaming}
-                                content={unit.text}
-                                streamingLabel={tr("chat.thinking")}
+                                thinking={streaming}
+                                content={joined}
+                                streamingLabel={tr("chat.thinkingLabel")}
                                 doneLabel={tr("chat.thoughtDone")}
                                 thoughtForLabel={(n) =>
                                   tr("chat.thoughtFor", { n })
@@ -1639,13 +1660,18 @@ export function ConversationThread({
                       />
                     ) : null}
                     {structuredOutputActive &&
-                    !m.streaming &&
-                    !!m.content.trim() &&
-                    structuredOutputLabels ? (
+                    structuredOutputLabels &&
+                    (m.streaming || !!m.content.trim()) ? (
                       <StructuredJsonPanel
                         content={m.content}
                         schemaText={structuredOutputSchema}
                         labels={structuredOutputLabels}
+                        streaming={!!m.streaming}
+                        usage={
+                          m.id === structuredUsageMessageId
+                            ? structuredOutputUsage
+                            : null
+                        }
                       />
                     ) : null}
                     {(() => {
@@ -1756,12 +1782,18 @@ export function ConversationThread({
           ) : null}
 
           {showQuietThinking ? (
-            <div className="lobe-chat-live-tool is-running" role="status">
-              <span className="lobe-chat-live-tool__mark" aria-hidden>
-                <span className="lobe-chat-thinking__dot lobe-chat-thinking__dot--live" />
-              </span>
-              <span className="lobe-chat-live-tool__title lobe-chat-live-tool__title--pulse">
-                {tr("chat.thinking")}
+            <div
+              className="grok-act__step is-running is-last"
+              role="status"
+              data-testid="quiet-thinking"
+            >
+              <div className="grok-act__icon-col" aria-hidden>
+                <span className="grok-act__icon">
+                  <IconBulb size={16} stroke={1.5} />
+                </span>
+              </div>
+              <span className="grok-act__label grok-act__label--live">
+                {tr("chat.thinkingLabel")}
               </span>
             </div>
           ) : null}
@@ -1777,6 +1809,9 @@ export function ConversationThread({
         onPrev={onNodePrev}
         onNext={onNodeNext}
         labels={railLabels}
+        scrollParentRef={scrollRef}
+        messages={messages}
+        navLockUntilRef={navLockUntilRef}
       />
 
       <BackBottom

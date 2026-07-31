@@ -14,7 +14,7 @@ Pure assembly: `src/lib/reliabilityCenter.ts` (`buildReliabilityCenter` / `assem
 | Stall signals | Active soft stall, liveMap `terminalReason: stall`, in-memory hard_end ring |
 | Recent errors | Current error-deck banner + in-memory ring of prior cards |
 
-Actions reuse Host APIs: `exportSupportBundle`, open Doctor. Does **not** scrape secrets from logs into the UI. Empty states are explicit when no signals are present.
+Actions reuse Host APIs: `exportSupportBundle`, open Doctor. Export from Reliability center also attaches a redacted **stall timeline** snapshot (`stall-timeline.json`: structured kinds/seconds/session ids only; Host runs `redact_text`). Does **not** scrape secrets from logs into the UI. Empty states are explicit when no signals are present.
 
 ## Host file logs
 

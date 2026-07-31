@@ -6,11 +6,13 @@ export type CliSessionFilterRow = {
   agentSessionId: string;
   title: string;
   cwd?: string | null;
+  /** First user prompt when known (local fallback / enriched list). */
+  firstPrompt?: string | null;
 };
 
 /**
  * Filter CLI session rows by free-text query.
- * Case-insensitive match on title, agent session id, and cwd.
+ * Case-insensitive match on title, agent session id, cwd, and first prompt.
  * Empty/whitespace query → all rows (preserves order).
  */
 export function filterCliSessions<T extends CliSessionFilterRow>(
@@ -24,6 +26,8 @@ export function filterCliSessions<T extends CliSessionFilterRow>(
     if (r.agentSessionId.toLowerCase().includes(q)) return true;
     const cwd = r.cwd?.toLowerCase() ?? "";
     if (cwd && cwd.includes(q)) return true;
+    const prompt = r.firstPrompt?.toLowerCase() ?? "";
+    if (prompt && prompt.includes(q)) return true;
     return false;
   });
 }

@@ -8,6 +8,7 @@ export type ToolDisplayKind =
   | "read"
   | "edit"
   | "search"
+  | "browse"
   | "subagent"
   | "fallback";
 
@@ -17,7 +18,7 @@ export interface ToolDisplayInfo {
   shortLabel: string;
   /** One-line summary for lists. */
   summary: string;
-  /** True when this kind is "gathering context" (read/list/search). */
+  /** True when this kind is "gathering context" (read/list/search/browse). */
   isContext: boolean;
 }
 
@@ -37,14 +38,72 @@ function clip(s: string, max = 56): string {
   return `${t.slice(0, max - 1).trimEnd()}…`;
 }
 
+/**
+ * Recover kind when Host journal left kind empty (common for completed tools).
+ * Grok CLI call ids often encode the tool: `ws_…` web search, `…web_fetch…`, etc.
+ */
+export function inferKindFromToolCallId(
+  toolCallId: string | null | undefined,
+): string | null {
+  const s = (toolCallId || "").toLowerCase();
+  if (!s) return null;
+  if (
+    s.startsWith("ws_") ||
+    s.includes("_ws_") ||
+    /web_search|websearch|web_keyword|web_semantic|x_search|x_keyword/.test(s)
+  ) {
+    return "web_search";
+  }
+  if (
+    /web_fetch|webfetch|open_page|browse_page|web_browse|open_url|fetch_url/.test(
+      s,
+    )
+  ) {
+    return "web_fetch";
+  }
+  if (/run_terminal|bash|shell/.test(s)) return "run_terminal_command";
+  if (/read_file|read_/.test(s)) return "read_file";
+  if (/search_replace|str_replace|write|edit/.test(s)) return "search_replace";
+  if (/spawn_subagent|subagent/.test(s)) return "spawn_subagent";
+  return null;
+}
+
+/** Web page open / fetch — Grok shows "Browsed host/path" with a globe. */
+export function isBrowseToolKind(
+  kind: string | null | undefined,
+  title?: string | null,
+  toolCallId?: string | null,
+): boolean {
+  const inferred = inferKindFromToolCallId(toolCallId);
+  const k = lower(kind || inferred);
+  const t = lower(title);
+  const blob = `${k} ${t}`;
+  // ACP uses kind "fetch" / title "Fetch: https://…" / "web_fetch"
+  return /web_fetch|webfetch|open_page|browse_page|browse|web_open|open_url|fetch_url|web_browse|\bfetch\b|^fetch:/.test(
+    blob,
+  );
+}
+
+/** Pure search tools (not browse) — Grok collapses consecutive into "Ran N searches". */
+export function isSearchToolKind(
+  kind: string | null | undefined,
+  title?: string | null,
+  toolCallId?: string | null,
+): boolean {
+  if (isBrowseToolKind(kind, title, toolCallId)) return false;
+  return classifyToolKind(kind, title, toolCallId) === "search";
+}
+
 /** Classify a raw tool kind / title into a display bucket. */
 export function classifyToolKind(
   kind: string | null | undefined,
   title?: string | null,
+  toolCallId?: string | null,
 ): ToolDisplayKind {
-  const k = lower(kind);
+  const inferred = inferKindFromToolCallId(toolCallId);
+  const k = lower(kind || inferred);
   const t = lower(title);
-  const blob = `${k} ${t}`;
+  const blob = `${k} ${t} ${lower(toolCallId)}`;
   if (
     /bash|shell|terminal|execute|run_terminal|command/.test(blob) ||
     k === "run" ||
@@ -63,7 +122,17 @@ export function classifyToolKind(
   ) {
     return "edit";
   }
-  if (/grep|glob|search|find_files|web_search|webfetch/.test(blob)) {
+  // Browse before generic search (web_fetch must not become "search").
+  if (isBrowseToolKind(kind || inferred, title, toolCallId)) {
+    return "browse";
+  }
+  // Host often persists titles like "Web search:" / "X search:" with empty kind.
+  // Call ids `ws_…` also mark web search when kind/title were lost on journal.
+  if (
+    /grep|glob|search|find_files|web_search|web_keyword|web_semantic|x_search|x_keyword|x_semantic|\bweb search\b|\bx search\b|^ws_/.test(
+      blob,
+    )
+  ) {
     return "search";
   }
   if (/^read\b|read_file|list_dir|list_directory|ls\b|glob/.test(blob)) {
@@ -76,9 +145,10 @@ export function classifyToolKind(
 export function isContextToolKind(
   kind: string | null | undefined,
   title?: string | null,
+  toolCallId?: string | null,
 ): boolean {
-  const c = classifyToolKind(kind, title);
-  return c === "read" || c === "search";
+  const c = classifyToolKind(kind, title, toolCallId);
+  return c === "read" || c === "search" || c === "browse";
 }
 
 export function toolShortLabel(kind: ToolDisplayKind): string {
@@ -91,6 +161,8 @@ export function toolShortLabel(kind: ToolDisplayKind): string {
       return "Edit";
     case "search":
       return "Search";
+    case "browse":
+      return "Browse";
     case "subagent":
       return "Agent";
     default:
@@ -107,23 +179,39 @@ export function summarizeToolDisplay(input: {
   title?: string | null;
   detail?: string | null;
   path?: string | null;
+  toolCallId?: string | null;
 }): ToolDisplayInfo {
-  const bucket = classifyToolKind(input.kind, input.title);
+  const kind =
+    input.kind || inferKindFromToolCallId(input.toolCallId) || input.kind;
+  const bucket = classifyToolKind(kind, input.title, input.toolCallId);
   const path = (input.path || "").trim();
   const detail = (input.detail || "").trim();
   const title = (input.title || "").trim();
   let summary = "";
-  if (path) {
+  // Strip trailing colon noise from Host titles ("Web search:", "X search:").
+  const cleanTitle = title.replace(/:+\s*$/, "").trim();
+  // Prefer detail first-line when title is empty/generic ("tool").
+  const detailFirst = detail
+    ? (detail.split("\n")[0] || detail).trim()
+    : "";
+  if (bucket === "bash" && detailFirst) {
+    summary = clip(detailFirst);
+  } else if (path && !/^tool$/i.test(cleanTitle || "tool")) {
     summary = basename(path);
-    if (bucket === "bash" && detail) {
-      summary = clip(detail.split("\n")[0] || detail);
-    }
-  } else if (detail) {
-    summary = clip(detail.split("\n")[0] || detail);
-  } else if (title && !/^tool$/i.test(title)) {
-    summary = clip(title);
-  } else if (input.kind) {
+  } else if (path && /^tool$/i.test(cleanTitle || "tool")) {
+    summary = basename(path);
+  } else if (detailFirst && !/^tool$/i.test(detailFirst)) {
+    summary = clip(detailFirst);
+  } else if (cleanTitle && !/^tool$/i.test(cleanTitle)) {
+    summary = clip(cleanTitle);
+  } else if (path) {
+    summary = basename(path);
+  } else if (input.kind && !/^tool$/i.test(input.kind)) {
     summary = clip(input.kind.replace(/[_./]+/g, " "));
+  } else if (bucket === "browse") {
+    summary = "Browse";
+  } else if (bucket === "search") {
+    summary = "Search";
   } else {
     summary = toolShortLabel(bucket);
   }
@@ -131,7 +219,8 @@ export function summarizeToolDisplay(input: {
     kind: bucket,
     shortLabel: toolShortLabel(bucket),
     summary,
-    isContext: bucket === "read" || bucket === "search",
+    isContext:
+      bucket === "read" || bucket === "search" || bucket === "browse",
   };
 }
 

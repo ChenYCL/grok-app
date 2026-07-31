@@ -49,19 +49,7 @@ pub async fn test_connection(
                 mock: false,
             })
         }
-        "wecom" => {
-            let ok = (creds.contains_key("bot_id") && creds.contains_key("bot_secret"))
-                || (creds.contains_key("corp_id") && creds.contains_key("corp_secret"));
-            Ok(TestConnectionDto {
-                ok,
-                message: if ok {
-                    "credentials_present".into()
-                } else {
-                    "missing_wecom_credentials".into()
-                },
-                mock: false,
-            })
-        }
+        "wecom" => test_wecom(&creds),
         "weixin" => {
             let ok = creds.contains_key("token")
                 || creds.contains_key("bot_token")
@@ -211,6 +199,66 @@ async fn test_feishu(
     Ok(TestConnectionDto {
         ok: false,
         message: last,
+        mock: false,
+    })
+}
+
+/// WeCom mode-aware credential posture (no live WS). Soft-fail messages only.
+fn test_wecom(creds: &HashMap<String, String>) -> Result<TestConnectionDto, String> {
+    let mode = creds
+        .get("connect_mode")
+        .map(|s| s.as_str().trim())
+        .filter(|s| !s.is_empty())
+        .or_else(|| {
+            creds
+                .get("mode")
+                .map(|s| s.as_str().trim())
+                .filter(|s| !s.is_empty())
+        })
+        .unwrap_or("websocket");
+
+    if mode == "webhook" {
+        let mut missing: Vec<&str> = Vec::new();
+        for k in ["corp_id", "corp_secret", "agent_id", "callback_token"] {
+            if cred_get(creds, &[k]).is_empty() {
+                missing.push(k);
+            }
+        }
+        if missing.is_empty() {
+            return Ok(TestConnectionDto {
+                ok: true,
+                // Honest: presence only — no claim that callback is reachable
+                message: "wecom_webhook_credentials_present".into(),
+                mock: false,
+            });
+        }
+        return Ok(TestConnectionDto {
+            ok: false,
+            message: format!("missing_wecom_webhook:{}", missing.join(",")),
+            mock: false,
+        });
+    }
+
+    // Default / websocket (aibot long connection)
+    let bot_id = cred_get(creds, &["bot_id"]);
+    let bot_secret = cred_get(creds, &["bot_secret"]);
+    if !bot_id.is_empty() && !bot_secret.is_empty() {
+        return Ok(TestConnectionDto {
+            ok: true,
+            message: "wecom_ws_credentials_present".into(),
+            mock: false,
+        });
+    }
+    let mut missing: Vec<&str> = Vec::new();
+    if bot_id.is_empty() {
+        missing.push("bot_id");
+    }
+    if bot_secret.is_empty() {
+        missing.push("bot_secret");
+    }
+    Ok(TestConnectionDto {
+        ok: false,
+        message: format!("missing_wecom_ws:{}", missing.join(",")),
         mock: false,
     })
 }
@@ -373,5 +421,52 @@ mod tests {
         secrets2.insert("app_id".into(), "from_secret".into());
         let m2 = merge_creds(&secrets2, &options);
         assert_eq!(m2.get("app_id").map(|s| s.as_str()), Some("from_secret"));
+    }
+
+    #[test]
+    fn wecom_ws_requires_bot_id_and_secret() {
+        let mut c = HashMap::new();
+        c.insert("connect_mode".into(), "websocket".into());
+        let r = test_wecom(&c).unwrap();
+        assert!(!r.ok);
+        assert!(r.message.contains("missing_wecom_ws"));
+        assert!(r.message.contains("bot_id"));
+
+        c.insert("bot_id".into(), "b1".into());
+        c.insert("bot_secret".into(), "s1".into());
+        let r2 = test_wecom(&c).unwrap();
+        assert!(r2.ok);
+        assert_eq!(r2.message, "wecom_ws_credentials_present");
+        assert!(!r2.mock);
+    }
+
+    #[test]
+    fn wecom_webhook_requires_corp_agent_and_callback() {
+        let mut c = HashMap::new();
+        c.insert("connect_mode".into(), "webhook".into());
+        c.insert("corp_id".into(), "ww".into());
+        c.insert("corp_secret".into(), "sec".into());
+        // missing agent_id + callback_token
+        let r = test_wecom(&c).unwrap();
+        assert!(!r.ok);
+        assert!(r.message.contains("missing_wecom_webhook"));
+        assert!(r.message.contains("agent_id"));
+        assert!(r.message.contains("callback_token"));
+
+        c.insert("agent_id".into(), "1000002".into());
+        c.insert("callback_token".into(), "tok".into());
+        let r2 = test_wecom(&c).unwrap();
+        assert!(r2.ok);
+        assert_eq!(r2.message, "wecom_webhook_credentials_present");
+    }
+
+    #[test]
+    fn wecom_defaults_to_websocket_when_mode_missing() {
+        let mut c = HashMap::new();
+        c.insert("bot_id".into(), "b".into());
+        c.insert("bot_secret".into(), "s".into());
+        let r = test_wecom(&c).unwrap();
+        assert!(r.ok);
+        assert_eq!(r.message, "wecom_ws_credentials_present");
     }
 }

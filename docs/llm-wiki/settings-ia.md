@@ -21,11 +21,11 @@ Agent / 贡献者维护设置 UI 时**必读**。目标：层次清晰、可搜�
 
 | Section | Tabs |
 |---------|------|
-| general | `composer` · `permissions` · `agent` · `app` |
+| general | `composer` · `permissions` · `agent`（含 experimental memory、memory browser、**memory embedding 0.2.117**） · `app` |
 | appearance | `theme`（主题：浅深色 / 皮肤 / 背景）· `interface`（界面：聊天展示） |
 | account | `official` · `providers` |
 | extensions | `plugins` · `skills` · `mcp` · `hooks` · `market` |
-| runtime | `cli` · `connection` · `pool` · `tools` |
+| runtime | `cli` · `connection` · `network` · `pool` · `tools` · `privacy` |
 | remote_im（远程控制） | `im`（IM 通信）· `mirror`（手机镜像） |
 | 其余 | 无 tab（单页） |
 
@@ -37,6 +37,7 @@ Agent / 贡献者维护设置 UI 时**必读**。目标：层次清晰、可搜�
 #/settings/general                  → general/composer
 #/settings/extensions/mcp           → 扩展 · MCP
 #/settings/runtime/tools            → CLI · 诊断
+#/settings/runtime/privacy          → CLI · 隐私中心
 #/settings/account/providers        → 自定义提供商
 #/settings/remote_im                → 远程控制 · IM 通信
 #/settings/remote_im/mirror         → 远程控制 · 手机镜像
@@ -60,7 +61,7 @@ Agent / 贡献者维护设置 UI 时**必读**。目标：层次清晰、可搜�
 |----|------|------|
 | 管理 Skills/MCP/Plugins/Hooks/Market | **扩展** | 可写开关、安装、移除 |
 | 只读 project inspect 摘要 | **运行时 · 诊断** | 保留；文案链到扩展 |
-| CLI 路径 / ACP / 进程池 / Doctor / Managed setup | **运行时** | 不进扩展 |
+| CLI 路径 / ACP / 进程池 / Doctor / Managed setup / Privacy center | **运行时** | 不进扩展 |
 
 ## 新增设置 — 强制清单
 

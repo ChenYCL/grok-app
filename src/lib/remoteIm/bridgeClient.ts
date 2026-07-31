@@ -70,6 +70,14 @@ async function invokeSafe<T>(
 }
 
 function mapStatus(raw: Record<string, unknown>): BridgeStatus {
+  const nextRetry =
+    raw.nextRetrySecs != null && Number.isFinite(Number(raw.nextRetrySecs))
+      ? Math.max(0, Math.floor(Number(raw.nextRetrySecs)))
+      : null;
+  const attempt =
+    raw.restartAttempt != null && Number.isFinite(Number(raw.restartAttempt))
+      ? Math.max(0, Math.floor(Number(raw.restartAttempt)))
+      : 0;
   return {
     state: String(raw.state || "stopped") as BridgeStatus["state"],
     enabled: !!raw.enabled,
@@ -85,6 +93,11 @@ function mapStatus(raw: Record<string, unknown>): BridgeStatus {
       (raw.agentConnectPath as string) ||
       null,
     backend: (raw.backend as string) || "rust",
+    restartAttempt: attempt,
+    nextRetrySecs: nextRetry != null && nextRetry > 0 ? nextRetry : null,
+    recoveryPhase: (raw.recoveryPhase as string) || null,
+    errorKind: (raw.errorKind as string) || null,
+    rateLimited: !!raw.rateLimited,
   };
 }
 
@@ -102,6 +115,11 @@ export async function bridgeGetStatus(): Promise<BridgeStatus> {
     connectedChannels: mockRunning ? mockConnected : [],
     lastError: mockLastError,
     mock: true,
+    restartAttempt: 0,
+    nextRetrySecs: null,
+    recoveryPhase: mockRunning && cfg.enabled ? "listening" : "stopped",
+    errorKind: null,
+    rateLimited: false,
   };
 }
 

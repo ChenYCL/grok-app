@@ -12,6 +12,7 @@ permission option mapping). Exercised by `src/acp_golden_test.rs` via
 | `permission_request.json` | `session/request_permission` + `pick_option_id` |
 | `ask_user_question.json` | `_x.ai/ask_user_question` parse + replies |
 | `exit_plan_mode.json` | `_x.ai/exit_plan_mode` + plan sessionUpdate |
+| `goal_updated.json` | CLI 0.2.117+ `sessionUpdate: goal_updated` (goal orch phases) |
 | `mock_stream.json` | In-process mock token stream for prompt `hi` |
 
 ## When to update

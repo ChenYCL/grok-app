@@ -3,9 +3,10 @@
  * GlassModal shell — no window.confirm / prompt / alert.
  */
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { GlassModal } from "@/components/GlassModal";
 import type { AskUserPayload, AskUserQuestionItem } from "@/lib/session";
+import { askUserTimeoutRemainingSec } from "@/lib/askUserTimeout";
 
 export type AskUserLabels = {
   title: string;
@@ -15,6 +16,8 @@ export type AskUserLabels = {
   freeTextHint: string;
   multiHint: string;
   close: string;
+  /** e.g. "Auto-dismiss in {seconds}s" — `{seconds}` replaced. */
+  autoCancelCountdown?: string;
 };
 
 type Props = {
@@ -22,13 +25,28 @@ type Props = {
   labels: AskUserLabels;
   onSubmit: (answers: Record<string, string>) => void | Promise<void>;
   onCancel: () => void | Promise<void>;
+  /**
+   * App-enforced auto-cancel after N seconds (0 / missing = off).
+   * Same cancel path as Dismiss; independent of CLI toolset timeout.
+   */
+  timeoutSec?: number;
 };
 
 function questionKey(q: AskUserQuestionItem, index: number): string {
   return q.question?.trim() || q.id || String(index);
 }
 
-export function AskUserModal({ payload, labels, onSubmit, onCancel }: Props) {
+function formatCountdown(template: string, seconds: number): string {
+  return template.replace(/\{seconds\}/g, String(seconds));
+}
+
+export function AskUserModal({
+  payload,
+  labels,
+  onSubmit,
+  onCancel,
+  timeoutSec = 0,
+}: Props) {
   const questions = payload?.questions ?? [];
   const open = Boolean(payload && questions.length > 0);
 
@@ -37,6 +55,13 @@ export function AskUserModal({ payload, labels, onSubmit, onCancel }: Props) {
   // Per-question free-text override / free-text-only answer.
   const [freeText, setFreeText] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
+  const [countdownSec, setCountdownSec] = useState<number | null>(null);
+  const timedOutRef = useRef(false);
+  const busyRef = useRef(false);
+  busyRef.current = busy;
+  // Stable cancel handle so parent re-renders do not reset the countdown.
+  const onCancelRef = useRef(onCancel);
+  onCancelRef.current = onCancel;
 
   // Reset when a new questionnaire arrives.
   useEffect(() => {
@@ -44,12 +69,41 @@ export function AskUserModal({ payload, labels, onSubmit, onCancel }: Props) {
       setSelected({});
       setFreeText({});
       setBusy(false);
+      setCountdownSec(null);
+      timedOutRef.current = false;
       return;
     }
     setSelected({});
     setFreeText({});
     setBusy(false);
+    timedOutRef.current = false;
   }, [payload?.rpcId]);
+
+  // Optional auto-cancel after N seconds (Settings → Permissions; 0 = off).
+  useEffect(() => {
+    if (!open || !payload || !(timeoutSec > 0)) {
+      setCountdownSec(null);
+      return;
+    }
+    const startedAt = Date.now();
+    timedOutRef.current = false;
+    setCountdownSec(askUserTimeoutRemainingSec(startedAt, timeoutSec, startedAt));
+    const tick = window.setInterval(() => {
+      setCountdownSec(
+        askUserTimeoutRemainingSec(startedAt, timeoutSec, Date.now()),
+      );
+    }, 250);
+    const t = window.setTimeout(() => {
+      if (timedOutRef.current || busyRef.current) return;
+      timedOutRef.current = true;
+      void onCancelRef.current();
+    }, timeoutSec * 1000);
+    return () => {
+      window.clearTimeout(t);
+      window.clearInterval(tick);
+      setCountdownSec(null);
+    };
+  }, [open, payload?.rpcId, timeoutSec]);
 
   const canSubmit = useMemo(() => {
     if (!questions.length) return false;
@@ -130,6 +184,13 @@ export function AskUserModal({ payload, labels, onSubmit, onCancel }: Props) {
     !questions[0]?.multiSelect &&
     (questions[0]?.options?.length ?? 0) > 0;
 
+  const countdownLabel =
+    countdownSec != null &&
+    countdownSec > 0 &&
+    labels.autoCancelCountdown
+      ? formatCountdown(labels.autoCancelCountdown, countdownSec)
+      : null;
+
   return (
     <GlassModal
       open={open}
@@ -141,6 +202,11 @@ export function AskUserModal({ payload, labels, onSubmit, onCancel }: Props) {
       wrapBody
       footer={
         <>
+          {countdownLabel ? (
+            <span className="ask-user__countdown" aria-live="polite">
+              {countdownLabel}
+            </span>
+          ) : null}
           <button
             type="button"
             className="btn btn--ghost"

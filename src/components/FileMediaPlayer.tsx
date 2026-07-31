@@ -1,5 +1,5 @@
 /**
- * Local media preview via Plyr + Tauri media:// URL (Range streaming).
+ * Local media preview via Plyr + Host loopback media HTTP (Range streaming).
  * Creates the media element imperatively so Plyr does not fight React DOM.
  * On load failure: show error + open with system player.
  */
@@ -11,7 +11,7 @@ import * as api from "@/lib/api";
 import { Tip } from "@/components/ui/tooltip";
 
 export interface FileMediaPlayerProps {
-  /** media:// / asset:// / http(s) / data: URL */
+  /** loopback media HTTP / asset:// / http(s) / data: URL */
   src: string;
   kind: "video" | "audio";
   mime?: string;
@@ -153,7 +153,7 @@ export function FileMediaPlayer({
       }
     }, 12_000);
 
-    // Background the window → pause, so WebKit tears down fewer media://
+    // Background the window → pause, so WebKit tears down fewer media Range
     // Range scheme tasks while the OS window is not visible.
     const onVis = () => {
       if (document.visibilityState !== "hidden") return;

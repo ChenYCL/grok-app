@@ -9,6 +9,7 @@ import { redact } from "./redact";
 export type ManagedSetupErrorKind =
   | "missing_auth"
   | "rejected"
+  | "signature_rejected"
   | "cli_missing"
   | "timeout"
   | "parse"
@@ -35,6 +36,70 @@ export type ManagedSetupResult = {
   summary?: ManagedSetupSummary | null;
   error?: string | null;
   errorKind?: ManagedSetupErrorKind | null;
+};
+
+/**
+ * Local disk / inspect snapshot from host `managed_setup_status` (soft-fail).
+ * Paths are shown; signature *contents* are never loaded.
+ */
+export type ManagedLocalStatus = {
+  /** Host always returns an envelope; false only on unexpected invoke failures. */
+  ok: boolean;
+  cliFound: boolean;
+  /** Active GROK_HOME probed for user managed files. */
+  grokHome?: string | null;
+  managedConfigPresent: boolean;
+  requirementsPresent: boolean;
+  /** `managed_config.sig.json` exists (content not read). */
+  configSignaturePresent: boolean;
+  /** `managed_identity.sig.json` exists (content not read). */
+  identitySignaturePresent: boolean;
+  /** System `/etc/grok/managed_config.toml` (Unix) when probeable. */
+  systemManagedConfigPresent: boolean;
+  /** From `grok inspect` when available; null = not probed / soft-fail. */
+  managedSettingsActive?: boolean | null;
+  managedSettingsExists?: boolean | null;
+  managedSettingsPath?: string | null;
+  /** Soft-fail reason (CLI missing for inspect, etc.). */
+  reason?: string | null;
+};
+
+/**
+ * Honest signature / managed-policy status for the UI.
+ * Never claims cryptographic verification unless the CLI/inspect said so.
+ */
+export type ManagedSignatureStatus =
+  | "none"
+  | "artifacts"
+  | "sig_files"
+  | "active"
+  | "rejected"
+  | "unknown";
+
+/** Guided setup step ids (order is stable). */
+export type ManagedSetupStepId =
+  | "cli"
+  | "auth"
+  | "preview"
+  | "install"
+  | "verify";
+
+export type ManagedSetupStepState = "done" | "current" | "todo" | "blocked" | "soft";
+
+export type ManagedSetupStep = {
+  id: ManagedSetupStepId;
+  state: ManagedSetupStepState;
+};
+
+/** Safe meta extracted from a redacted preview payload (no secrets). */
+export type ManagedPreviewMeta = {
+  deploymentId: string | null;
+  teamId: string | null;
+  failClosed: boolean | null;
+  /** True when a signatures / managed_identity_signatures key was present (value redacted). */
+  hasSignatureBlock: boolean;
+  /** True when requirements section present. */
+  hasRequirements: boolean;
 };
 
 const SENSITIVE_KEY_RE =
@@ -131,6 +196,18 @@ export function classifySetupError(message: string | null | undefined): ManagedS
   ) {
     return "missing_auth";
   }
+  // Signature / managed-policy verification failures (CLI managed_config path).
+  if (
+    m.includes("signature rejected") ||
+    m.includes("signature was rejected") ||
+    m.includes("did not verify") ||
+    m.includes("could not be verified") ||
+    m.includes("is-managed claim") ||
+    m.includes("managed config signature") ||
+    m.includes("server envelope rejected")
+  ) {
+    return "signature_rejected";
+  }
   if (
     m.includes("deployment key was rejected") ||
     m.includes("key was rejected") ||
@@ -143,6 +220,241 @@ export function classifySetupError(message: string | null | undefined): ManagedS
     return "parse";
   }
   return "other";
+}
+
+/**
+ * Extract safe meta from a (possibly redacted) `grok setup --json` payload.
+ * Never returns secret material — only ids and flags.
+ */
+export function extractPreviewMeta(raw: unknown): ManagedPreviewMeta {
+  let root: unknown = raw;
+  if (typeof raw === "string") {
+    const trimmed = raw.trim();
+    if (!trimmed) {
+      return {
+        deploymentId: null,
+        teamId: null,
+        failClosed: null,
+        hasSignatureBlock: false,
+        hasRequirements: false,
+      };
+    }
+    try {
+      root = JSON.parse(trimmed);
+    } catch {
+      return {
+        deploymentId: null,
+        teamId: null,
+        failClosed: null,
+        hasSignatureBlock: false,
+        hasRequirements: false,
+      };
+    }
+  }
+  const obj = asRecord(root);
+  if (!obj) {
+    return {
+      deploymentId: null,
+      teamId: null,
+      failClosed: null,
+      hasSignatureBlock: false,
+      hasRequirements: false,
+    };
+  }
+
+  const pickStr = (...keys: string[]): string | null => {
+    for (const k of keys) {
+      const v = obj[k];
+      if (typeof v === "string" && v.trim()) {
+        const s = redact(v.trim());
+        if (s && s.length <= 120 && !s.includes("\n")) return s;
+      }
+    }
+    return null;
+  };
+
+  const failClosedRaw =
+    obj.failClosed ?? obj.fail_closed ?? obj["fail-closed"];
+  const failClosed =
+    typeof failClosedRaw === "boolean"
+      ? failClosedRaw
+      : failClosedRaw == null
+        ? null
+        : null;
+
+  const hasSignatureBlock =
+    "signatures" in obj ||
+    "managed_identity_signatures" in obj ||
+    "managedIdentitySignatures" in obj ||
+    "managed_identity_signature" in obj;
+
+  const hasRequirements =
+    "requirements" in obj ||
+    "managedConfig" in obj ||
+    "managed_config" in obj;
+
+  return {
+    deploymentId: pickStr("deploymentId", "deployment_id", "deployment-id"),
+    teamId: pickStr("teamId", "team_id", "team-id"),
+    failClosed,
+    hasSignatureBlock,
+    hasRequirements,
+  };
+}
+
+/**
+ * Derive an honest signature / managed-policy status chip.
+ * Prefers CLI error / inspect active over mere file presence.
+ */
+export function deriveSignatureStatus(input: {
+  local?: ManagedLocalStatus | null;
+  previewMeta?: ManagedPreviewMeta | null;
+  errorKind?: ManagedSetupErrorKind | null;
+  /** True after a successful install in this session. */
+  installOk?: boolean;
+}): ManagedSignatureStatus {
+  if (input.errorKind === "signature_rejected") return "rejected";
+  const local = input.local;
+  if (local?.managedSettingsActive === true) return "active";
+  if (input.installOk) {
+    // Install wrote files; verify chip uses local artifacts when known.
+    if (
+      local?.configSignaturePresent ||
+      local?.identitySignaturePresent ||
+      input.previewMeta?.hasSignatureBlock
+    ) {
+      return "sig_files";
+    }
+    if (local?.managedConfigPresent || local?.systemManagedConfigPresent) {
+      return "artifacts";
+    }
+    return "artifacts";
+  }
+  if (
+    local?.configSignaturePresent ||
+    local?.identitySignaturePresent ||
+    input.previewMeta?.hasSignatureBlock
+  ) {
+    return "sig_files";
+  }
+  if (
+    local?.managedConfigPresent ||
+    local?.systemManagedConfigPresent ||
+    local?.requirementsPresent ||
+    local?.managedSettingsExists === true
+  ) {
+    return "artifacts";
+  }
+  if (local == null) return "unknown";
+  if (local.ok === false) return "unknown";
+  return "none";
+}
+
+/**
+ * Build ordered guided steps for first-run / managed setup UX.
+ * Soft states never block install (enterprise path is optional).
+ */
+export function buildManagedSetupSteps(input: {
+  cliFound: boolean;
+  /** True when preview returned ok this session. */
+  previewDone?: boolean;
+  /** True when install returned ok this session. */
+  installDone?: boolean;
+  errorKind?: ManagedSetupErrorKind | null;
+  local?: ManagedLocalStatus | null;
+  signatureStatus?: ManagedSignatureStatus | null;
+}): ManagedSetupStep[] {
+  const cliFound = input.cliFound;
+  const authBlocked =
+    input.errorKind === "missing_auth" || input.errorKind === "rejected";
+  const sigRejected = input.errorKind === "signature_rejected";
+  const hasArtifacts =
+    !!input.local?.managedConfigPresent ||
+    !!input.local?.systemManagedConfigPresent ||
+    !!input.local?.requirementsPresent ||
+    input.local?.managedSettingsActive === true ||
+    input.installDone === true;
+  const sigStatus = input.signatureStatus ?? "unknown";
+  const verified =
+    sigStatus === "active" ||
+    (hasArtifacts &&
+      (sigStatus === "sig_files" || sigStatus === "artifacts") &&
+      input.installDone === true);
+
+  const cliState: ManagedSetupStepState = !cliFound
+    ? "blocked"
+    : "done";
+
+  let authState: ManagedSetupStepState;
+  if (!cliFound) authState = "todo";
+  else if (authBlocked) authState = "blocked";
+  else if (hasArtifacts || input.previewDone || input.installDone) authState = "done";
+  else authState = "current";
+
+  let previewState: ManagedSetupStepState;
+  if (!cliFound || authBlocked) previewState = "todo";
+  else if (input.previewDone) previewState = "done";
+  else if (authState === "current") previewState = "todo";
+  else previewState = "current";
+
+  let installState: ManagedSetupStepState;
+  if (!cliFound || authBlocked || sigRejected) {
+    installState = sigRejected ? "blocked" : "todo";
+  } else if (input.installDone || hasArtifacts) {
+    installState = "done";
+  } else if (previewState === "current" || authState === "current") {
+    installState = "todo";
+  } else {
+    installState = "current";
+  }
+
+  let verifyState: ManagedSetupStepState;
+  if (sigRejected) verifyState = "blocked";
+  else if (verified) verifyState = "done";
+  else if (hasArtifacts || sigStatus === "sig_files" || sigStatus === "artifacts") {
+    verifyState = "soft";
+  } else if (installState === "done") verifyState = "current";
+  else verifyState = "todo";
+
+  // Ensure exactly one "current" when possible (prefer earliest incomplete).
+  const steps: ManagedSetupStep[] = [
+    { id: "cli", state: cliState },
+    { id: "auth", state: authState },
+    { id: "preview", state: previewState },
+    { id: "install", state: installState },
+    { id: "verify", state: verifyState },
+  ];
+
+  const hasCurrent = steps.some((s) => s.state === "current");
+  if (!hasCurrent) {
+    const firstTodo = steps.find((s) => s.state === "todo" || s.state === "soft");
+    if (firstTodo && firstTodo.state !== "blocked") {
+      firstTodo.state = "current";
+    }
+  }
+
+  return steps;
+}
+
+/** Empty local status for tests / soft-fail defaults. */
+export function emptyManagedLocalStatus(
+  partial?: Partial<ManagedLocalStatus>,
+): ManagedLocalStatus {
+  return {
+    ok: true,
+    cliFound: false,
+    grokHome: null,
+    managedConfigPresent: false,
+    requirementsPresent: false,
+    configSignaturePresent: false,
+    identitySignaturePresent: false,
+    systemManagedConfigPresent: false,
+    managedSettingsActive: null,
+    managedSettingsExists: null,
+    managedSettingsPath: null,
+    reason: null,
+    ...partial,
+  };
 }
 
 /** Pretty-print redacted JSON, capped for UI. */

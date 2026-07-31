@@ -1,7 +1,7 @@
 /**
  * Unified right-click / context menu (chat att-menu visual baseline).
  *
- * Solid surface, compact padding, optional leading icon.
+ * Solid surface, compact padding, optional leading icon, optional flyout submenus.
  * Always portaled to document.body; closes on outside mousedown + Escape.
  *
  * Usage:
@@ -10,19 +10,25 @@
  *     x={menu.x}
  *     y={menu.y}
  *     onClose={() => setMenu(null)}
- *     items={[{ label: "…", icon: <Icon… />, onClick: () => { … } }]}
+ *     items={[
+ *       { label: "…", icon: <Icon… />, onClick: () => { … } },
+ *       { label: "Export", children: [{ label: "PNG", onClick: () => { … } }] },
+ *     ]}
  *   />
  */
 
 import {
+  useCallback,
   useEffect,
   useId,
   useLayoutEffect,
   useRef,
   useState,
+  type CSSProperties,
   type ReactNode,
 } from "react";
 import { createPortal } from "react-dom";
+import { IconChevronRight } from "@/components/icons";
 
 export type ContextMenuItem = {
   id?: string;
@@ -30,7 +36,10 @@ export type ContextMenuItem = {
   icon?: ReactNode;
   danger?: boolean;
   disabled?: boolean;
-  onClick: () => void;
+  /** Leaf action. Optional when `children` is set (submenu parent). */
+  onClick?: () => void;
+  /** Flyout submenu items. When set, row acts as a parent (no close on click). */
+  children?: ContextMenuItem[];
 };
 
 export type ContextMenuProps = {
@@ -59,10 +68,138 @@ export function clampContextMenuPos(
   height = 220,
 ): { left: number; top: number } {
   if (typeof window === "undefined") return { left: x, top: y };
+  // Cap height to the same budget as CSS max-height so tall session menus
+  // still open fully on-screen (with overflow scroll) instead of clipping.
+  const maxH = Math.min(height, window.innerHeight - 16);
   return {
     left: Math.max(8, Math.min(x, window.innerWidth - width - 8)),
-    top: Math.max(8, Math.min(y, window.innerHeight - height - 8)),
+    top: Math.max(8, Math.min(y, window.innerHeight - maxH - 8)),
   };
+}
+
+const FLYOUT_GAP = 4;
+const FLYOUT_MIN_W = 160;
+const FLYOUT_EST_H = 200;
+
+function computeFlyoutStyle(
+  anchor: DOMRect,
+  panelW: number,
+  panelH: number,
+): CSSProperties {
+  const vw =
+    typeof window.innerWidth === "number" ? window.innerWidth : 1024;
+  const vh =
+    typeof window.innerHeight === "number" ? window.innerHeight : 768;
+  const margin = 8;
+
+  let left = anchor.right + FLYOUT_GAP;
+  if (left + panelW > vw - margin) {
+    left = anchor.left - panelW - FLYOUT_GAP;
+  }
+  left = Math.max(margin, Math.min(left, vw - panelW - margin));
+
+  let top = anchor.top;
+  if (top + panelH > vh - margin) {
+    top = vh - panelH - margin;
+  }
+  top = Math.max(margin, top);
+
+  return {
+    position: "fixed",
+    left,
+    top,
+    minWidth: FLYOUT_MIN_W,
+    zIndex: 13001,
+  };
+}
+
+function ContextMenuFlyout({
+  items,
+  anchorEl,
+  onClose,
+  onItemClick,
+  onMouseEnter,
+  onMouseLeave,
+}: {
+  items: ContextMenuItem[];
+  anchorEl: HTMLElement;
+  onClose: () => void;
+  onItemClick: (item: ContextMenuItem) => void;
+  onMouseEnter: () => void;
+  onMouseLeave: () => void;
+}) {
+  const flyoutRef = useRef<HTMLDivElement>(null);
+  const [style, setStyle] = useState<CSSProperties>(() => {
+    const rect = anchorEl.getBoundingClientRect();
+    return computeFlyoutStyle(rect, FLYOUT_MIN_W, FLYOUT_EST_H);
+  });
+
+  const updatePos = useCallback(() => {
+    if (!flyoutRef.current) return;
+    const rect = anchorEl.getBoundingClientRect();
+    const fr = flyoutRef.current.getBoundingClientRect();
+    setStyle(
+      computeFlyoutStyle(
+        rect,
+        Math.ceil(fr.width) || FLYOUT_MIN_W,
+        Math.ceil(fr.height) || FLYOUT_EST_H,
+      ),
+    );
+  }, [anchorEl]);
+
+  useLayoutEffect(() => {
+    updatePos();
+  }, [updatePos, items.length]);
+
+  useEffect(() => {
+    window.addEventListener("resize", updatePos);
+    return () => window.removeEventListener("resize", updatePos);
+  }, [updatePos]);
+
+  const visible = items.filter(Boolean);
+
+  return createPortal(
+    <div
+      ref={flyoutRef}
+      className="menu-panel context-menu context-menu--flyout att-menu"
+      style={style}
+      role="menu"
+      onMouseDown={(e) => e.stopPropagation()}
+      onMouseEnter={onMouseEnter}
+      onMouseLeave={onMouseLeave}
+      onContextMenu={(e) => {
+        e.preventDefault();
+        e.stopPropagation();
+      }}
+    >
+      {visible.map((item, i) => (
+        <button
+          key={item.id ?? `ctx-flyout-${i}`}
+          type="button"
+          className={cx(
+            "context-menu__item",
+            "att-menu__item",
+            item.danger && "is-danger",
+          )}
+          role="menuitem"
+          disabled={item.disabled}
+          onClick={() => {
+            if (item.disabled) return;
+            onItemClick(item);
+            onClose();
+          }}
+        >
+          {item.icon != null ? (
+            <span className="context-menu__ico att-menu__ico" aria-hidden>
+              {item.icon}
+            </span>
+          ) : null}
+          <span className="context-menu__label">{item.label}</span>
+        </button>
+      ))}
+    </div>,
+    document.body,
+  );
 }
 
 export function ContextMenu({
@@ -81,10 +218,39 @@ export function ContextMenu({
   const [pos, setPos] = useState(() =>
     clampContextMenuPos(x, y, estimatedWidth, estimatedHeight),
   );
+  const [openSubId, setOpenSubId] = useState<string | null>(null);
+  const [subAnchor, setSubAnchor] = useState<HTMLElement | null>(null);
+  const closeSubTimer = useRef<number | null>(null);
+
+  const clearCloseSubTimer = useCallback(() => {
+    if (closeSubTimer.current != null) {
+      window.clearTimeout(closeSubTimer.current);
+      closeSubTimer.current = null;
+    }
+  }, []);
+
+  const scheduleCloseSub = useCallback(() => {
+    clearCloseSubTimer();
+    closeSubTimer.current = window.setTimeout(() => {
+      setOpenSubId(null);
+      setSubAnchor(null);
+    }, 180);
+  }, [clearCloseSubTimer]);
+
+  const openSub = useCallback(
+    (id: string, el: HTMLElement) => {
+      clearCloseSubTimer();
+      setOpenSubId(id);
+      setSubAnchor(el);
+    },
+    [clearCloseSubTimer],
+  );
 
   useLayoutEffect(() => {
     if (!open) return;
     setPos(clampContextMenuPos(x, y, estimatedWidth, estimatedHeight));
+    setOpenSubId(null);
+    setSubAnchor(null);
   }, [open, x, y, estimatedWidth, estimatedHeight]);
 
   // After paint, re-clamp using real menu size if available.
@@ -123,50 +289,139 @@ export function ContextMenu({
     };
   }, [open, onClose]);
 
+  useEffect(() => {
+    if (!open) {
+      setOpenSubId(null);
+      setSubAnchor(null);
+      clearCloseSubTimer();
+    }
+  }, [open, clearCloseSubTimer]);
+
   if (!open || typeof document === "undefined") return null;
 
   const visibleItems = items.filter(Boolean);
+  const openSubItem =
+    openSubId != null
+      ? visibleItems.find(
+          (it, i) => (it.id ?? `ctx-item-${i}`) === openSubId,
+        )
+      : null;
+  const openSubChildren = openSubItem?.children?.filter(Boolean) ?? [];
 
   return createPortal(
-    <div
-      ref={rootRef}
-      id={menuId}
-      className={cx("menu-panel context-menu att-menu", className)}
-      style={{ left: pos.left, top: pos.top }}
-      role="menu"
-      onMouseDown={(e) => e.stopPropagation()}
-      onContextMenu={(e) => {
-        e.preventDefault();
-        e.stopPropagation();
-      }}
-    >
-      {visibleItems.map((item, i) => (
-        <button
-          key={item.id ?? `ctx-item-${i}`}
-          type="button"
-          className={cx(
-            "context-menu__item",
-            "att-menu__item",
-            item.danger && "is-danger",
-          )}
-          role="menuitem"
-          disabled={item.disabled}
-          onClick={() => {
-            if (item.disabled) return;
-            onClose();
-            item.onClick();
+    <>
+      <div
+        ref={rootRef}
+        id={menuId}
+        className={cx("menu-panel context-menu att-menu", className)}
+        style={{ left: pos.left, top: pos.top }}
+        role="menu"
+        onMouseDown={(e) => e.stopPropagation()}
+        onContextMenu={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+        }}
+      >
+        {visibleItems.map((item, i) => {
+          const id = item.id ?? `ctx-item-${i}`;
+          const hasChildren = (item.children?.length ?? 0) > 0;
+          const isSubOpen = openSubId === id;
+
+          if (hasChildren) {
+            return (
+              <button
+                key={id}
+                type="button"
+                className={cx(
+                  "context-menu__item",
+                  "context-menu__item--submenu",
+                  "att-menu__item",
+                  isSubOpen && "is-open",
+                  item.danger && "is-danger",
+                )}
+                role="menuitem"
+                aria-haspopup="menu"
+                aria-expanded={isSubOpen}
+                disabled={item.disabled}
+                onClick={(e) => {
+                  if (item.disabled) return;
+                  if (isSubOpen) {
+                    setOpenSubId(null);
+                    setSubAnchor(null);
+                  } else {
+                    openSub(id, e.currentTarget);
+                  }
+                }}
+                onMouseEnter={(e) => {
+                  if (item.disabled) return;
+                  openSub(id, e.currentTarget);
+                }}
+                onMouseLeave={scheduleCloseSub}
+              >
+                {item.icon != null ? (
+                  <span className="context-menu__ico att-menu__ico" aria-hidden>
+                    {item.icon}
+                  </span>
+                ) : null}
+                <span className="context-menu__label">{item.label}</span>
+                <IconChevronRight
+                  size={14}
+                  className="context-menu__sub-chev"
+                  aria-hidden
+                />
+              </button>
+            );
+          }
+
+          return (
+            <button
+              key={id}
+              type="button"
+              className={cx(
+                "context-menu__item",
+                "att-menu__item",
+                item.danger && "is-danger",
+              )}
+              role="menuitem"
+              disabled={item.disabled}
+              onClick={() => {
+                if (item.disabled) return;
+                onClose();
+                item.onClick?.();
+              }}
+              onMouseEnter={() => {
+                // Close flyout when hovering a leaf sibling.
+                if (openSubId != null) {
+                  clearCloseSubTimer();
+                  setOpenSubId(null);
+                  setSubAnchor(null);
+                }
+              }}
+            >
+              {item.icon != null ? (
+                <span className="context-menu__ico att-menu__ico" aria-hidden>
+                  {item.icon}
+                </span>
+              ) : null}
+              <span className="context-menu__label">{item.label}</span>
+            </button>
+          );
+        })}
+        {extra}
+      </div>
+      {openSubId && subAnchor && openSubChildren.length > 0 ? (
+        <ContextMenuFlyout
+          items={openSubChildren}
+          anchorEl={subAnchor}
+          onClose={onClose}
+          onItemClick={(item) => {
+            item.onClick?.();
           }}
-        >
-          {item.icon != null ? (
-            <span className="context-menu__ico att-menu__ico" aria-hidden>
-              {item.icon}
-            </span>
-          ) : null}
-          {item.label}
-        </button>
-      ))}
-      {extra}
-    </div>,
+          onMouseEnter={clearCloseSubTimer}
+          onMouseLeave={scheduleCloseSub}
+        />
+      ) : null}
+    </>,
     document.body,
   );
 }

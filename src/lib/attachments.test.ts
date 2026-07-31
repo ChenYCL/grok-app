@@ -133,6 +133,24 @@ also /tmp/other.png and /tmp/clip.mp4 and not a file.`;
     ).toEqual([
       "outputs/xhx-media-gen/kitten-drinking-water-cartoon-grotesque.png",
     ]);
+    // Bare basenames in ticks (workspace copies) — needed after session reload
+    expect(
+      extractSessionRelativeMediaRefs(
+        "1. 数据准确版\n`shenzhen-weather-card.png`\n2. 插画\n`images/1.jpg`（副本：`shenzhen-weather-anime.jpg`）\n",
+      ),
+    ).toEqual([
+      "images/1.jpg",
+      "shenzhen-weather-card.png",
+      "shenzhen-weather-anime.jpg",
+    ]);
+    // Bare prose without ticks must not match (false positives)
+    expect(
+      extractSessionRelativeMediaRefs("see logo.png in the folder"),
+    ).toEqual([]);
+    // Markdown link bare basename
+    expect(
+      extractSessionRelativeMediaRefs("[card](weather-card.png)"),
+    ).toEqual(["weather-card.png"]);
   });
 
   it("resolveMediaHref maps link href to absolute via path map", () => {

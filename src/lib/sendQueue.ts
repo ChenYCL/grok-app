@@ -72,22 +72,28 @@ export function queuePreviewText(
 /**
  * Whether the composer should enqueue instead of calling the agent now.
  *
- * Same “busy” surface as {@link isSessionBusy}, plus the UI `connecting`
- * flag — except `awaiting_permission`, where the user must decide first
- * (and `canType` is false). Keeps the busy set from drifting.
+ * **Only the viewed session’s own busy state** enqueues (streaming /
+ * connecting FSM). `awaiting_permission` does not enqueue — the user must
+ * decide first (`canType` is false).
  *
- * **Only the viewed session’s own busy state** enqueues. Host busy on a
- * *different* chat must **not** enqueue — that path is multi-session
- * concurrent send (`executeSend` demotes the foreign turn and spawns).
- * Enqueuing on foreign busy caused empty “new chat” queues (cross-session
- * anomaly) and serialised all work behind one turn.
+ * The UI `connecting` flag is **process-global** (any `ensureConnected`,
+ * including reconnect / compact / another chat’s spawn). It must **not**
+ * gate enqueue: treating it as busy re-created the empty “new chat →
+ * 本会话队列” anomaly while a foreign connect was in flight (R7 class).
+ * Same-session follow-ups already flip `session.state` to `streaming`
+ * optimistically in `executeSend` before that flag is set.
+ *
+ * Host busy on a *different* chat must **not** enqueue either — that path
+ * is multi-session concurrent send (`executeSend` demotes + spawns).
+ *
+ * @param _connecting Kept for call-site compatibility; ignored for gating.
  */
 export function shouldEnqueueSend(
   state: SessionState,
-  connecting: boolean,
+  _connecting: boolean,
 ): boolean {
   if (state === "awaiting_permission") return false;
-  return connecting || isSessionBusy(state);
+  return isSessionBusy(state);
 }
 
 /**
@@ -374,7 +380,7 @@ export function requeueAfterFlushFail(
 /**
  * Whether the busy-state Queue button should render (not permission wait).
  * Enter/send still use {@link shouldEnqueueSend} alone for the enqueue path.
- * Same-session busy only — never for foreign live turns.
+ * Same-session FSM busy only — never for foreign live turns or global connect.
  */
 export function canShowQueueButton(
   state: SessionState,

@@ -166,6 +166,23 @@ pub struct SessionMeta {
     /// `None` / 0 → inherit global `AppSettings.max_agent_turns`. Soft-respawn on change.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub max_agent_turns: Option<u32>,
+    /// Optional per-session system prompt override via top-level
+    /// `grok --system-prompt-override` (alias `--system-prompt`).
+    /// Empty / unset → no flag. Soft-respawn reloads on change.
+    /// Never log the full value (may contain secrets / PII).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub system_prompt_override: Option<String>,
+    /// One-shot CLI `--fork-session` semantics: on next connect, fork the agent
+    /// session (ACP `session/fork`) so the chat gets a **new** agent session id
+    /// with the source’s context instead of reusing via `session/load`.
+    /// Requires `agent_session_id` as the source; cleared after connect attempt.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub fork_agent_session: bool,
+    /// Optional per-session override for CLI top-level `--no-ask-user`
+    /// (disables `ask_user_question` for the agent process; CLI ≥ 0.2.117).
+    /// `None` → inherit global `AppSettings.no_ask_user`. Soft-respawn on change.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub no_ask_user: Option<bool>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -227,19 +244,76 @@ pub struct AppSettings {
     /// `--no-memory` + `GROK_MEMORY=0` for isolation (esp. independent mode).
     #[serde(default)]
     pub experimental_memory: bool,
+    /// Grok Build compaction mode (CLI 0.2.117+): `summary` | `transcript` | `segments`.
+    /// Passed as top-level `--compaction-mode` / `GROK_COMPACTION_MODE` at spawn.
+    /// Default `summary` (CLI default). Soft-respawns on change.
+    #[serde(default = "default_compaction_mode")]
+    pub compaction_mode: String,
+    /// Segments verbatim detail (CLI 0.2.117+): `none` | `minimal` | `balanced` | `verbose`.
+    /// Only affects `--compaction-mode segments`. Passed as `--compaction-detail` /
+    /// `GROK_COMPACTION_DETAIL`. Default `verbose` (CLI default). Soft-respawns on change.
+    #[serde(default = "default_compaction_detail")]
+    pub compaction_detail: String,
+    /// Prefire two-pass compaction (CLI **0.2.117+** config
+    /// `two_pass_compaction_enabled` + env `GROK_TWO_PASS_COMPACTION`).
+    /// Default **false** (opt-in). Independent mode writes the top-level agent-home
+    /// key; spawn sets env (soft-fail when CLI is known older). Soft-respawns.
+    #[serde(default)]
+    pub two_pass_compaction_enabled: bool,
     /// Cap agent turns per process via top-level `grok --max-turns N`.
     /// `None` or `0` = omit the flag (CLI default / unlimited).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub max_agent_turns: Option<u32>,
+    /// Headless background-wait policy after the first agent turn
+    /// (`wait` | `no_wait` | `timeout`). CLI 0.2.117+; default `wait`
+    /// (omit flags). Affects headless `-p` / automations-like paths;
+    /// top-level flags are also passed on ACP spawn when the CLI is new
+    /// enough (soft-fail older builds).
+    #[serde(default = "default_background_wait_policy")]
+    pub background_wait_policy: String,
+    /// Seconds for `--background-wait-timeout` when policy is `timeout`.
+    /// Clamped 1–3600; default 600 (CLI default when waiting).
+    #[serde(default = "default_background_wait_timeout_sec")]
+    pub background_wait_timeout_sec: u32,
+    /// When true, headless paths that use `--output-format streaming-messages-json`
+    /// also pass `--include-partial-messages` (CLI 0.2.117+) so incremental
+    /// `stream_event` deltas are emitted. Default false. Soft-fails on older
+    /// CLIs (flag omitted). Only valid with streaming-messages-json.
+    #[serde(default)]
+    pub include_partial_messages: bool,
     /// When true, spawn agents with top-level `--disable-web-search` so
     /// `web_search` / `web_fetch` tools are removed. Default false (CLI default).
     #[serde(default)]
     pub disable_web_search: bool,
+    /// When true, spawn agents with top-level `--no-ask-user` so the agent
+    /// does not emit `ask_user_question` questionnaires (CLI ≥ 0.2.117).
+    /// Default false (CLI default — agent may still ask). Soft-respawn on change.
+    /// Per-session override: [`SessionMeta::no_ask_user`].
+    #[serde(default)]
+    pub no_ask_user: bool,
     /// Built-in tool ids to deny via top-level `grok --disallowed-tools a,b`.
     /// Default empty (CLI default — all tools available). Coexists with
     /// [`Self::disable_web_search`]; changing the list soft-respawns agents.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub disallowed_tools: Vec<String>,
+    /// Built-in tool ids to allow via top-level `grok --tools a,b`.
+    /// Default empty = omit flag (CLI default — all tools). When non-empty,
+    /// restricts the agent to the listed tools. Coexists with
+    /// [`Self::disallowed_tools`] (allowlist restricts; denylist still applies).
+    /// Changing the list soft-respawns agents.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub allowed_tools: Vec<String>,
+    /// Enable CLI TodoGate (turn-end nudge when todos are still pending /
+    /// in_progress). Default **false** (CLI built-in default). When true, spawn
+    /// passes top-level `--todo-gate` (CLI 0.2.117+; overrides remote
+    /// `todo_gate_enabled`). Independent mode also writes agent-home
+    /// `todo_gate_enabled` / `todo_gate_max_fires_per_prompt`. Soft-respawns.
+    #[serde(default)]
+    pub todo_gate_enabled: bool,
+    /// Cap TodoGate fires per prompt (1–20). Default 3. Written to independent
+    /// agent-home config as `todo_gate_max_fires_per_prompt`. Soft-respawns.
+    #[serde(default = "default_todo_gate_max_fires")]
+    pub todo_gate_max_fires_per_prompt: u32,
     /// Reopen the last active chat once after launch (default **false** —
     /// start on a draft new-chat page; opt-in via Settings).
     #[serde(default = "default_reopen_last_session")]
@@ -266,6 +340,27 @@ pub struct AppSettings {
     /// and independent mode writes `[subagents] enabled = false`.
     #[serde(default = "default_true")]
     pub subagents_enabled: bool,
+    /// Enable CLI subagent worktree snapshot (CLI **0.2.117+** config
+    /// `subagent_worktree_snapshot_enabled` + env `GROK_SUBAGENT_WORKTREE_SNAPSHOT`).
+    /// Default **false** (opt-in). Independent mode writes the top-level agent-home
+    /// key; spawn sets env (soft-fail when CLI is known older). Soft-respawns.
+    #[serde(default)]
+    pub subagent_worktree_snapshot_enabled: bool,
+    /// Enable CLI auto-wake (config `auto_wake_enabled`): when on, Grok Build may
+    /// inject a synthetic turn after background work completes (bash / monitor /
+    /// task / loop). Default **false** (opt-in; CLI default not documented).
+    /// Independent mode writes the top-level agent-home key only (no invented env
+    /// override — `GROK_AUTO_WAKE` is pattern-shaped). Soft-respawns so the next
+    /// agent process reloads config. Older CLIs that ignore the key soft-fail.
+    #[serde(default)]
+    pub auto_wake_enabled: bool,
+    /// Enable Grok Build workflows (`workflows_enabled` in agent-home config.toml).
+    /// Default **false** (opt-in). Workflows are Rhai scripts under
+    /// `~/.grok/workflows` / project `.grok/workflows` run by the CLI `workflow`
+    /// tool — the App only surfaces this toggle + read-only discovery (no in-app
+    /// runner). Independent mode writes the top-level key; soft-respawns.
+    #[serde(default)]
+    pub workflows_enabled: bool,
     /// Preferred Grok Build agent definition for new agent processes
     /// (`explore` / `plan` / `general-purpose` / custom name under `~/.grok/agents`).
     /// Empty / `default` / `none` → omit top-level `--agent` (CLI default).
@@ -277,6 +372,12 @@ pub struct AppSettings {
     /// Spawn-time only; does not rewrite shared `~/.grok`. Soft-respawns on change.
     #[serde(default)]
     pub agent_profile_path: String,
+    /// Optional inline subagent definitions JSON for top-level
+    /// `grok --agents <JSON>`. Empty → omit the flag. Must be a JSON object map
+    /// when set; invalid values are rejected on save. Spawn-time only — does
+    /// not write into shared `~/.grok`. Soft-respawns on change.
+    #[serde(default)]
+    pub agents_json: String,
     /// Connect local ACP agents to a shared Grok Build leader process
     /// (`grok agent --leader`). Default **false** — each agent is a standalone
     /// process (`--no-leader`). Advanced; multiple clients can share one backend.
@@ -288,6 +389,15 @@ pub struct AppSettings {
     /// When true, window close hides to tray. When false, close quits the app.
     #[serde(default = "default_close_to_tray")]
     pub close_to_tray: bool,
+    /// When true (default), if any scheduled automation is **enabled**, window
+    /// close still hides to tray even when [`Self::close_to_tray`] is off — so
+    /// `automation_runner` keeps ticking. Not a daemon: full quit still pauses.
+    #[serde(default = "default_true")]
+    pub keep_tray_for_schedules: bool,
+    /// macOS only: user opted into the schedules LaunchAgent helper (login +
+    /// crash restart of the **full app**). Default false. Not a headless daemon.
+    #[serde(default)]
+    pub schedules_launch_agent: bool,
     /// Register an OS login item so the app starts at user login (default off).
     /// Synced to the OS via tauri-plugin-autostart on change / setup.
     #[serde(default)]
@@ -352,12 +462,28 @@ fn default_sandbox_profile() -> String {
     "off".into()
 }
 
+fn default_compaction_mode() -> String {
+    crate::acp_client::DEFAULT_COMPACTION_MODE.into()
+}
+
+fn default_compaction_detail() -> String {
+    crate::acp_client::DEFAULT_COMPACTION_DETAIL.into()
+}
+
 fn default_reopen_last_session() -> bool {
     false
 }
 
 fn default_plan_enabled() -> bool {
     true
+}
+
+fn default_background_wait_policy() -> String {
+    "wait".into()
+}
+
+fn default_background_wait_timeout_sec() -> u32 {
+    crate::acp_client::DEFAULT_BACKGROUND_WAIT_TIMEOUT_SEC
 }
 
 fn default_voice_id() -> String {
@@ -370,6 +496,10 @@ fn default_close_to_tray() -> bool {
 
 fn default_proxy_mode() -> String {
     "system".into()
+}
+
+fn default_todo_gate_max_fires() -> u32 {
+    crate::agent_todo_gate::DEFAULT_TODO_GATE_MAX_FIRES
 }
 
 impl Default for AppSettings {
@@ -399,9 +529,19 @@ impl Default for AppSettings {
             store_api_keys_in_keychain: false,
             sandbox_profile: default_sandbox_profile(),
             experimental_memory: false,
+            compaction_mode: default_compaction_mode(),
+            compaction_detail: default_compaction_detail(),
+            two_pass_compaction_enabled: false,
             max_agent_turns: None,
+            background_wait_policy: default_background_wait_policy(),
+            background_wait_timeout_sec: default_background_wait_timeout_sec(),
+            include_partial_messages: false,
             disable_web_search: false,
+            no_ask_user: false,
             disallowed_tools: Vec::new(),
+            allowed_tools: Vec::new(),
+            todo_gate_enabled: false,
+            todo_gate_max_fires_per_prompt: default_todo_gate_max_fires(),
             reopen_last_session: default_reopen_last_session(),
             last_session_id: None,
             last_project_id: None,
@@ -410,13 +550,19 @@ impl Default for AppSettings {
             startup_new_chat_default_migrated: true,
             plan_enabled: default_plan_enabled(),
             subagents_enabled: true,
+            subagent_worktree_snapshot_enabled: false,
+            auto_wake_enabled: false,
+            workflows_enabled: false,
             preferred_agent: String::new(),
             agent_profile_path: String::new(),
+            agents_json: String::new(),
             use_leader: false,
             voice_id: default_voice_id(),
             voice_dictation_auto_send: false,
             voice_keep_agents_on_end: true,
             close_to_tray: default_close_to_tray(),
+            keep_tray_for_schedules: true,
+            schedules_launch_agent: false,
             launch_at_login: false,
             notify_on_turn_done: true,
             notify_on_permission: true,
@@ -1020,6 +1166,9 @@ pub fn create_session(
         plugin_dirs: Vec::new(),
         extra_rules: None,
         max_agent_turns: None,
+        system_prompt_override: None,
+        fork_agent_session: false,
+        no_ask_user: None,
     };
     let mut list = load_sessions_index();
     list.insert(0, meta.clone());
@@ -1218,6 +1367,9 @@ pub fn set_session_plugin_dirs(
 /// Soft cap aligned with the frontend helper (~32 KiB).
 const EXTRA_RULES_MAX_CHARS: usize = 32 * 1024;
 
+/// Soft cap for system prompt override (~32 KiB), aligned with the frontend helper.
+const SYSTEM_PROMPT_OVERRIDE_MAX_CHARS: usize = 32 * 1024;
+
 /// Trim + clamp session extra rules. Empty after trim → `None` (clear).
 pub fn sanitize_extra_rules(raw: Option<String>) -> Option<String> {
     match raw {
@@ -1228,6 +1380,26 @@ pub fn sanitize_extra_rules(raw: Option<String>) -> Option<String> {
                 None
             } else if t.len() > EXTRA_RULES_MAX_CHARS {
                 Some(t.chars().take(EXTRA_RULES_MAX_CHARS).collect())
+            } else {
+                Some(t.to_string())
+            }
+        }
+    }
+}
+
+/// Trim, strip NUL bytes, and clamp session system prompt override.
+/// Empty after sanitize → `None` (clear). Never log the returned value.
+pub fn sanitize_system_prompt_override(raw: Option<String>) -> Option<String> {
+    match raw {
+        None => None,
+        Some(s) => {
+            // Strip NULs so the value cannot break argv / TOML / log lines.
+            let cleaned: String = s.chars().filter(|c| *c != '\0').collect();
+            let t = cleaned.trim();
+            if t.is_empty() {
+                None
+            } else if t.chars().count() > SYSTEM_PROMPT_OVERRIDE_MAX_CHARS {
+                Some(t.chars().take(SYSTEM_PROMPT_OVERRIDE_MAX_CHARS).collect())
             } else {
                 Some(t.to_string())
             }
@@ -1269,6 +1441,44 @@ pub fn set_session_max_agent_turns(
         .find(|s| s.id == id)
         .ok_or_else(|| "session not found".to_string())?;
     s.max_agent_turns = normalized;
+    s.updated_at = Utc::now();
+    let clone = s.clone();
+    save_sessions_index(&list)?;
+    Ok(clone)
+}
+
+/// Set or clear per-session system prompt override
+/// (`grok --system-prompt-override` on next spawn).
+/// Pass `None` or empty/whitespace to clear. Soft-respawn is handled by the command.
+/// Set or clear per-session `--no-ask-user` override.
+/// `None` inherits global `AppSettings.no_ask_user`.
+pub fn set_session_no_ask_user(
+    id: &str,
+    no_ask_user: Option<bool>,
+) -> Result<SessionMeta, String> {
+    let mut list = load_sessions_index();
+    let s = list
+        .iter_mut()
+        .find(|s| s.id == id)
+        .ok_or_else(|| "session not found".to_string())?;
+    s.no_ask_user = no_ask_user;
+    s.updated_at = Utc::now();
+    let clone = s.clone();
+    save_sessions_index(&list)?;
+    Ok(clone)
+}
+
+pub fn set_session_system_prompt_override(
+    id: &str,
+    system_prompt_override: Option<String>,
+) -> Result<SessionMeta, String> {
+    let normalized = sanitize_system_prompt_override(system_prompt_override);
+    let mut list = load_sessions_index();
+    let s = list
+        .iter_mut()
+        .find(|s| s.id == id)
+        .ok_or_else(|| "session not found".to_string())?;
+    s.system_prompt_override = normalized;
     s.updated_at = Utc::now();
     let clone = s.clone();
     save_sessions_index(&list)?;
@@ -1379,12 +1589,20 @@ pub fn truncate_through_user_prompt(
     Ok(messages[..end].to_vec())
 }
 
-/// Fork a session: new journal + meta, same project, no agent session id.
+/// Fork a session: new journal + meta, same project.
+///
+/// By default the fork has **no** `agent_session_id` (next connect → `session/new`
+/// + journal bootstrap). When `fork_agent_session` is true and the source has an
+/// agent id, the fork carries that id with `fork_agent_session=true` so the next
+/// connect uses CLI `--fork-session` semantics (ACP `session/fork` → new agent id,
+/// full parent context, source agent session left untouched).
+///
 /// `through_user_prompt_index`: when set, copy only through that user turn (inclusive).
 pub fn fork_session(
     source_id: &str,
     through_user_prompt_index: Option<u32>,
     title: Option<String>,
+    fork_agent_session: bool,
 ) -> Result<SessionMeta, String> {
     let list = load_sessions_index();
     let source = list
@@ -1424,6 +1642,21 @@ pub fn fork_session(
     meta.plugin_dirs = source.plugin_dirs.clone();
     meta.extra_rules = source.extra_rules.clone();
     meta.max_agent_turns = source.max_agent_turns;
+    meta.system_prompt_override = source.system_prompt_override.clone();
+    meta.no_ask_user = source.no_ask_user;
+    // CLI --fork-session: resume parent agent context under a new agent id.
+    let source_agent = source
+        .agent_session_id
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(|s| s.to_string());
+    if fork_agent_session {
+        if let Some(aid) = source_agent {
+            meta.agent_session_id = Some(aid);
+            meta.fork_agent_session = true;
+        }
+    }
     meta.updated_at = Utc::now();
     update_session_meta(&meta)?;
 
@@ -1439,6 +1672,36 @@ pub fn fork_session(
         .collect();
     save_messages(&meta.id, &forked)?;
     Ok(meta)
+}
+
+/// Set or clear the one-shot CLI `--fork-session` flag on a session.
+///
+/// When `true`, next connect forks `agent_session_id` into a new agent id.
+/// Requires a non-empty `agent_session_id` to enable; otherwise stores `false`.
+pub fn set_session_fork_agent_session(
+    id: &str,
+    fork_agent_session: bool,
+) -> Result<SessionMeta, String> {
+    let mut list = load_sessions_index();
+    let s = list
+        .iter_mut()
+        .find(|s| s.id == id)
+        .ok_or_else(|| "session not found".to_string())?;
+    let has_agent = s
+        .agent_session_id
+        .as_deref()
+        .map(str::trim)
+        .is_some_and(|a| !a.is_empty());
+    s.fork_agent_session = fork_agent_session && has_agent;
+    s.updated_at = Utc::now();
+    let clone = s.clone();
+    save_sessions_index(&list)?;
+    Ok(clone)
+}
+
+/// Clear the one-shot fork flag after a connect attempt (success or fallthrough).
+pub fn clear_session_fork_agent_session(id: &str) -> Result<SessionMeta, String> {
+    set_session_fork_agent_session(id, false)
 }
 
 // ─── Automations (scheduled tasks shell) ───────────────────────────────────
@@ -2074,13 +2337,24 @@ mod tests {
         assert_eq!(s.stream_stall_seconds, 180);
         assert_eq!(s.sandbox_profile, "off");
         assert!(!s.experimental_memory);
+        assert_eq!(s.compaction_mode, "summary");
+        assert_eq!(s.compaction_detail, "verbose");
+        assert!(!s.two_pass_compaction_enabled);
         assert_eq!(s.max_agent_turns, None);
+        assert_eq!(s.background_wait_policy, "wait");
+        assert_eq!(s.background_wait_timeout_sec, 600);
+        assert!(!s.include_partial_messages);
         assert!(!s.disable_web_search);
+        assert!(!s.no_ask_user);
         assert!(s.disallowed_tools.is_empty());
+        assert!(s.allowed_tools.is_empty());
         assert!(s.plan_enabled);
         assert!(s.subagents_enabled);
+        assert!(!s.subagent_worktree_snapshot_enabled);
+        assert!(!s.workflows_enabled);
         assert_eq!(s.preferred_agent, "");
         assert_eq!(s.agent_profile_path, "");
+        assert_eq!(s.agents_json, "");
         assert!(!s.use_leader);
     }
 
@@ -2153,6 +2427,22 @@ mod tests {
     }
 
     #[test]
+    fn agents_json_defaults_when_missing_from_json() {
+        let s: AppSettings = serde_json::from_str(legacy_settings_json()).expect("deserialize");
+        assert_eq!(s.agents_json, "");
+    }
+
+    #[test]
+    fn agents_json_round_trips_camel_case() {
+        let mut s = AppSettings::default();
+        s.agents_json = r#"{"reviewer":{"prompt":"x"}}"#.into();
+        let json = serde_json::to_string(&s).expect("serialize");
+        assert!(json.contains("\"agentsJson\""));
+        let back: AppSettings = serde_json::from_str(&json).expect("deserialize");
+        assert_eq!(back.agents_json, r#"{"reviewer":{"prompt":"x"}}"#);
+    }
+
+    #[test]
     fn use_leader_defaults_when_missing_from_json() {
         let s: AppSettings = serde_json::from_str(legacy_settings_json()).expect("deserialize");
         assert!(!s.use_leader);
@@ -2162,6 +2452,19 @@ mod tests {
     fn disable_web_search_defaults_when_missing_from_json() {
         let s: AppSettings = serde_json::from_str(legacy_settings_json()).expect("deserialize");
         assert!(!s.disable_web_search);
+    }
+
+    #[test]
+    fn no_ask_user_defaults_when_missing_from_json() {
+        let s: AppSettings = serde_json::from_str(legacy_settings_json()).expect("deserialize");
+        assert!(!s.no_ask_user);
+    }
+
+    #[test]
+    fn session_no_ask_user_defaults_none_when_missing() {
+        let raw = r#"{"id":"s1","projectId":null,"title":"t","agentSessionId":null,"createdAt":"2020-01-01T00:00:00Z","updatedAt":"2020-01-01T00:00:00Z"}"#;
+        let m: SessionMeta = serde_json::from_str(raw).expect("legacy session without noAskUser");
+        assert!(m.no_ask_user.is_none());
     }
 
     #[test]
@@ -2184,6 +2487,31 @@ mod tests {
     }
 
     #[test]
+    fn allowed_tools_defaults_empty_when_missing_from_json() {
+        let s: AppSettings = serde_json::from_str(legacy_settings_json()).expect("deserialize");
+        assert!(s.allowed_tools.is_empty());
+    }
+
+    #[test]
+    fn allowed_tools_round_trips_camel_case() {
+        let mut s = AppSettings::default();
+        s.allowed_tools = vec!["web_search".into(), "write".into()];
+        let json = serde_json::to_string(&s).expect("serialize");
+        assert!(json.contains("\"allowedTools\""));
+        let back: AppSettings = serde_json::from_str(&json).expect("deserialize");
+        assert_eq!(
+            back.allowed_tools,
+            vec!["web_search".to_string(), "write".to_string()]
+        );
+    }
+
+    #[test]
+    fn include_partial_messages_defaults_false_when_missing_from_json() {
+        let s: AppSettings = serde_json::from_str(legacy_settings_json()).expect("deserialize");
+        assert!(!s.include_partial_messages);
+    }
+
+    #[test]
     fn plan_enabled_defaults_true_when_missing_from_json() {
         let s: AppSettings = serde_json::from_str(legacy_settings_json()).expect("deserialize");
         assert!(s.plan_enabled);
@@ -2193,6 +2521,27 @@ mod tests {
     fn subagents_enabled_defaults_true_when_missing_from_json() {
         let s: AppSettings = serde_json::from_str(legacy_settings_json()).expect("deserialize");
         assert!(s.subagents_enabled);
+    }
+
+    #[test]
+    fn subagent_worktree_snapshot_defaults_false_when_missing_from_json() {
+        let s: AppSettings = serde_json::from_str(legacy_settings_json()).expect("deserialize");
+        assert!(!s.subagent_worktree_snapshot_enabled);
+        assert!(!AppSettings::default().subagent_worktree_snapshot_enabled);
+    }
+
+    #[test]
+    fn auto_wake_defaults_false_when_missing_from_json() {
+        let s: AppSettings = serde_json::from_str(legacy_settings_json()).expect("deserialize");
+        assert!(!s.auto_wake_enabled);
+        assert!(!AppSettings::default().auto_wake_enabled);
+    }
+
+    #[test]
+    fn workflows_enabled_defaults_false_when_missing_from_json() {
+        let s: AppSettings = serde_json::from_str(legacy_settings_json()).expect("deserialize");
+        assert!(!s.workflows_enabled);
+        assert!(!AppSettings::default().workflows_enabled);
     }
 
     #[test]
@@ -2210,6 +2559,32 @@ mod tests {
         let s: AppSettings = serde_json::from_str(legacy_settings_json()).expect("deserialize");
         assert!(!s.launch_at_login);
         assert!(!AppSettings::default().launch_at_login);
+    }
+
+    #[test]
+    fn keep_tray_for_schedules_defaults_true_when_missing() {
+        let s: AppSettings = serde_json::from_str(legacy_settings_json()).expect("deserialize");
+        assert!(s.keep_tray_for_schedules);
+        assert!(AppSettings::default().keep_tray_for_schedules);
+        assert!(!s.schedules_launch_agent);
+        assert!(!AppSettings::default().schedules_launch_agent);
+    }
+
+    #[test]
+    fn compaction_mode_detail_defaults_when_missing_from_json() {
+        let s: AppSettings = serde_json::from_str(legacy_settings_json()).expect("deserialize");
+        assert_eq!(s.compaction_mode, "summary");
+        assert_eq!(s.compaction_detail, "verbose");
+        let d = AppSettings::default();
+        assert_eq!(d.compaction_mode, "summary");
+        assert_eq!(d.compaction_detail, "verbose");
+    }
+
+    #[test]
+    fn two_pass_compaction_defaults_false_when_missing_from_json() {
+        let s: AppSettings = serde_json::from_str(legacy_settings_json()).expect("deserialize");
+        assert!(!s.two_pass_compaction_enabled);
+        assert!(!AppSettings::default().two_pass_compaction_enabled);
     }
 
     #[test]
@@ -2256,6 +2631,9 @@ mod tests {
             plugin_dirs: Vec::new(),
             extra_rules: None,
             max_agent_turns: None,
+            system_prompt_override: None,
+            fork_agent_session: false,
+            no_ask_user: None,
         }
     }
 
@@ -2299,6 +2677,29 @@ mod tests {
             crate::acp_client::normalize_max_agent_turns(Some(999)),
             Some(200)
         );
+    }
+
+    #[test]
+    fn session_system_prompt_override_default_none_and_sanitize() {
+        let raw = r#"{"id":"s1","projectId":null,"title":"t","agentSessionId":null,"createdAt":"2020-01-01T00:00:00Z","updatedAt":"2020-01-01T00:00:00Z"}"#;
+        let m: SessionMeta =
+            serde_json::from_str(raw).expect("legacy session without systemPromptOverride");
+        assert!(m.system_prompt_override.is_none());
+        assert_eq!(sanitize_system_prompt_override(None), None);
+        assert_eq!(sanitize_system_prompt_override(Some("  ".into())), None);
+        assert_eq!(
+            sanitize_system_prompt_override(Some("  You are helpful  ".into())).as_deref(),
+            Some("You are helpful")
+        );
+        // Strip NUL bytes.
+        assert_eq!(
+            sanitize_system_prompt_override(Some("a\0b\0c".into())).as_deref(),
+            Some("abc")
+        );
+        assert_eq!(sanitize_system_prompt_override(Some("\0\0".into())), None);
+        let long = "x".repeat(SYSTEM_PROMPT_OVERRIDE_MAX_CHARS + 10);
+        let capped = sanitize_system_prompt_override(Some(long)).expect("capped");
+        assert_eq!(capped.chars().count(), SYSTEM_PROMPT_OVERRIDE_MAX_CHARS);
     }
 
     #[test]
@@ -2441,6 +2842,9 @@ mod tests {
                 plugin_dirs: Vec::new(),
                 extra_rules: None,
                 max_agent_turns: None,
+                system_prompt_override: None,
+                fork_agent_session: false,
+                no_ask_user: None,
             },
         );
         write_json(&sessions_index_file(), &sessions).expect("seed sessions");
