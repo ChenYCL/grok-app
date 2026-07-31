@@ -5,10 +5,12 @@ import {
 } from "./hooksDebug";
 import {
   HOOK_OVERRIDE_JSON_MAX,
+  countHookActivityOutcomes,
   filterHookActivitiesByOutcome,
   formatHookOverridePreview,
   hookOverrideValidationMessage,
   recordHookDryRun,
+  resolveHookActivityEmptyState,
   validateHookOverrideJson,
 } from "./hookOverride";
 
@@ -156,5 +158,29 @@ describe("filterHookActivitiesByOutcome", () => {
     expect(filterHookActivitiesByOutcome(rows, "skip").map((r) => r.id)).toEqual([
       "3",
     ]);
+  });
+});
+
+describe("countHookActivityOutcomes / resolveHookActivityEmptyState", () => {
+  it("counts chips (info only in all)", () => {
+    const rows = [
+      { outcome: "ok" as const },
+      { outcome: "ok" as const },
+      { outcome: "fail" as const },
+      { outcome: "skip" as const },
+      { outcome: "info" as const },
+    ];
+    expect(countHookActivityOutcomes(rows)).toEqual({
+      all: 5,
+      ok: 2,
+      fail: 1,
+      skip: 1,
+    });
+  });
+
+  it("resolves empty vs filtered vs list honesty", () => {
+    expect(resolveHookActivityEmptyState(0, 0)).toBe("empty");
+    expect(resolveHookActivityEmptyState(3, 0)).toBe("filtered");
+    expect(resolveHookActivityEmptyState(3, 2)).toBe("list");
   });
 });

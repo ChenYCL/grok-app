@@ -202,3 +202,36 @@ export function filterHookActivitiesByOutcome<
   if (filter === "all") return records.slice();
   return records.filter((r) => r.outcome === filter);
 }
+
+/** Counts per outcome chip (info rolls into all only). */
+export function countHookActivityOutcomes(
+  records: readonly { outcome: HookActivityOutcome }[],
+): Record<HookActivityOutcomeFilter, number> {
+  const counts: Record<HookActivityOutcomeFilter, number> = {
+    all: records.length,
+    ok: 0,
+    fail: 0,
+    skip: 0,
+  };
+  for (const r of records) {
+    if (r.outcome === "ok") counts.ok += 1;
+    else if (r.outcome === "fail") counts.fail += 1;
+    else if (r.outcome === "skip") counts.skip += 1;
+  }
+  return counts;
+}
+
+/**
+ * Honest empty-state kind for the activity list.
+ * - `empty` — no rows stored (soft-fail empty; never invent history)
+ * - `filtered` — rows exist but none match the chip
+ * - `list` — show rows
+ */
+export function resolveHookActivityEmptyState(
+  totalCount: number,
+  filteredCount: number,
+): "empty" | "filtered" | "list" {
+  if (totalCount <= 0) return "empty";
+  if (filteredCount <= 0) return "filtered";
+  return "list";
+}

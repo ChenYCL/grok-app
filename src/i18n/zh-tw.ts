@@ -3810,8 +3810,8 @@ export const zhTW: Record<MessageKey, string> = {
   "ext.hooks.docs": "Hooks 指南",
   "ext.hooks.activity.title": "最近活動",
   "ext.hooks.activity.desc":
-    "本應用程式工作階段內觀察到的最近 hook 執行（ACP 通知、工具失敗與 agent 日誌）。密鑰已脫敏。",
-  "ext.hooks.activity.empty": "本工作階段尚未記錄 hook 活動",
+    "本應用程式觀察到的最近 hook 結果（ACP 通知、工具失敗、agent 日誌與試跑）。保存在本機本地；密鑰已脫敏。空列表表示尚未記錄，不代表 hooks 從未在離線時執行。",
+  "ext.hooks.activity.empty": "尚未記錄 hook 活動",
   "ext.hooks.activity.emptyFilter": "沒有符合此篩選的活動",
   "ext.hooks.activity.ok": "成功",
   "ext.hooks.activity.fail": "失敗",
@@ -3822,7 +3822,7 @@ export const zhTW: Record<MessageKey, string> = {
   "ext.hooks.activity.clear": "清空活動",
   "ext.hooks.activity.clearConfirmTitle": "清空 hook 活動？",
   "ext.hooks.activity.clearConfirmMessage":
-    "將移除此應用程式工作階段內全部最近 hook 活動記錄，此操作無法復原。",
+    "將移除本機保存的 {count} 條最近 hook 活動記錄，此操作無法復原。",
   "ext.hooks.activity.clearConfirmOk": "清空",
   "ext.hooks.activity.sourceDebug": "試跑",
   "ext.hooks.try.hookName": "Hook 名稱",

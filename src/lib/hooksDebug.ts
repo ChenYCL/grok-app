@@ -6,9 +6,11 @@
  * 1. Host `session://hook` payloads (ACP `hook_execution` / `hook_annotation`)
  * 2. Agent stderr lines that mention hooks
  * 3. Tool events / stream snippets with `hookSpecificOutput` or hook failures
+ * 4. Real try-run / synthetic dry-run from Extensions → Hooks
  *
- * Session-scoped in-memory only (cleared when the app process restarts).
- * All detail strings are redacted before storage / UI.
+ * **Storage:** localStorage ring (newest first). Soft-fails private mode /
+ * quota; never invents rows. Empty means nothing recorded yet — not that
+ * hooks never ran offline. All detail strings are redacted before storage / UI.
  */
 
 import { redact } from "./redact";
@@ -18,6 +20,23 @@ export const HOOK_ACTIVITY_MAX = 30;
 
 /** Max characters kept in a detail line after redaction. */
 export const HOOK_DETAIL_MAX = 160;
+
+/** localStorage key for the activity ring. */
+export const HOOK_ACTIVITY_STORAGE_KEY = "grok.hookActivity";
+
+/** Fired on `window` after load/save/clear (detail = entries). */
+export const HOOK_ACTIVITY_CHANGE_EVENT = "grok-hook-activity-change";
+
+/** Minimal storage surface so unit tests need no jsdom. */
+export interface HookActivityStorage {
+  getItem(key: string): string | null;
+  setItem(key: string, value: string): void;
+}
+
+function defaultStorage(): HookActivityStorage {
+  if (typeof localStorage !== "undefined") return localStorage;
+  return { getItem: () => null, setItem: () => {} };
+}
 
 export type HookActivityOutcome = "ok" | "fail" | "skip" | "info";
 
@@ -554,13 +573,227 @@ export function parseToolHookSignal(
   };
 }
 
-// ── Ring buffer store ───────────────────────────────────────────────────────
+// ── Pure ring helpers (localStorage-friendly) ───────────────────────────────
+
+const OUTCOMES = new Set<string>(["ok", "fail", "skip", "info"]);
+const SOURCES = new Set<string>([
+  "host",
+  "stderr",
+  "tool",
+  "stream",
+  "debug",
+  "try",
+]);
+
+function scrubField(raw: unknown, max: number): string {
+  if (typeof raw !== "string") return "";
+  let s = raw.replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/g, "").trim();
+  if (!s) return "";
+  if (s.length > max) s = s.slice(0, max);
+  return s;
+}
+
+/** New id for an activity row (crypto when available). */
+export function newHookActivityId(now = Date.now()): string {
+  try {
+    if (
+      typeof crypto !== "undefined" &&
+      typeof crypto.randomUUID === "function"
+    ) {
+      return `ha-${crypto.randomUUID()}`;
+    }
+  } catch {
+    /* fall through */
+  }
+  const rand = Math.floor(Math.random() * 1e9).toString(36);
+  return `ha-${now.toString(36)}-${rand}`;
+}
+
+/**
+ * Normalize one raw object into a HookActivityRecord, or null if invalid.
+ * Soft-fails corrupt / partial data (never invents outcomes).
+ */
+export function parseHookActivityRecord(
+  raw: unknown,
+): HookActivityRecord | null {
+  if (!raw || typeof raw !== "object") return null;
+  const o = raw as Record<string, unknown>;
+
+  const outcomeRaw = scrubField(o.outcome, 32).toLowerCase();
+  if (!OUTCOMES.has(outcomeRaw)) return null;
+  const outcome = outcomeRaw as HookActivityOutcome;
+
+  const type =
+    scrubField(o.type ?? o.eventType ?? o.event_name, 80) || "Hook";
+  const id = scrubField(o.id, 80) || newHookActivityId();
+
+  let atMs = 0;
+  if (typeof o.atMs === "number" && Number.isFinite(o.atMs) && o.atMs > 0) {
+    atMs = Math.floor(o.atMs);
+  } else if (typeof o.at === "string" && o.at.trim()) {
+    const t = Date.parse(o.at);
+    if (Number.isFinite(t) && t > 0) atMs = t;
+  } else if (typeof o.ts === "number" && Number.isFinite(o.ts) && o.ts > 0) {
+    atMs = Math.floor(o.ts);
+  }
+  if (atMs <= 0) atMs = Date.now();
+
+  const sourceRaw = scrubField(o.source, 32).toLowerCase();
+  const source: HookActivitySource = SOURCES.has(sourceRaw)
+    ? (sourceRaw as HookActivitySource)
+    : "host";
+
+  const detail = redactHookDetail(
+    typeof o.detail === "string"
+      ? o.detail
+      : typeof o.message === "string"
+        ? o.message
+        : "",
+  );
+
+  const toolName = scrubField(o.toolName ?? o.tool_name, 120) || undefined;
+  const hookName = scrubField(o.hookName ?? o.hook_name, 160) || undefined;
+
+  return {
+    id,
+    type,
+    outcome,
+    atMs,
+    detail,
+    source,
+    ...(toolName ? { toolName } : {}),
+    ...(hookName ? { hookName } : {}),
+  };
+}
+
+/**
+ * Parse stored JSON into a clean, newest-first list (capped).
+ * Soft-fails corrupt / partial data to [].
+ */
+export function parseHookActivityList(
+  raw: unknown,
+  max = HOOK_ACTIVITY_MAX,
+): HookActivityRecord[] {
+  const lim =
+    typeof max === "number" && Number.isFinite(max) && max > 0
+      ? Math.min(500, Math.floor(max))
+      : HOOK_ACTIVITY_MAX;
+
+  let list: unknown[] = [];
+  if (typeof raw === "string") {
+    const t = raw.trim();
+    if (!t) return [];
+    try {
+      const parsed = JSON.parse(t) as unknown;
+      if (Array.isArray(parsed)) list = parsed;
+      else return [];
+    } catch {
+      return [];
+    }
+  } else if (Array.isArray(raw)) {
+    list = raw;
+  } else {
+    return [];
+  }
+
+  const out: HookActivityRecord[] = [];
+  for (const item of list) {
+    const e = parseHookActivityRecord(item);
+    if (!e) continue;
+    out.push(e);
+    if (out.length >= lim) break;
+  }
+  return out;
+}
+
+/** Pure ring-buffer push: newest first, max length. Does not touch storage. */
+export function pushHookActivityList(
+  existing: readonly HookActivityRecord[],
+  entry: HookActivityRecord | Record<string, unknown>,
+  max = HOOK_ACTIVITY_MAX,
+): HookActivityRecord[] {
+  const next = parseHookActivityRecord(entry);
+  if (!next) return parseHookActivityList(existing, max);
+  const cleaned = parseHookActivityList(existing, max);
+  const without = cleaned.filter((e) => e.id !== next.id);
+  // Cheap de-dupe: same type + detail + outcome within 1s of newest
+  const head = without[0];
+  if (
+    head &&
+    head.type === next.type &&
+    head.detail === next.detail &&
+    head.outcome === next.outcome &&
+    Math.abs(head.atMs - next.atMs) < 1000
+  ) {
+    return without;
+  }
+  return parseHookActivityList([next, ...without], max);
+}
+
+export function loadHookActivities(
+  storage: HookActivityStorage = defaultStorage(),
+  max = HOOK_ACTIVITY_MAX,
+): HookActivityRecord[] {
+  try {
+    return parseHookActivityList(
+      storage.getItem(HOOK_ACTIVITY_STORAGE_KEY),
+      max,
+    );
+  } catch {
+    return [];
+  }
+}
+
+export function saveHookActivities(
+  entries: readonly HookActivityRecord[],
+  storage: HookActivityStorage = defaultStorage(),
+  max = HOOK_ACTIVITY_MAX,
+): void {
+  const clean = parseHookActivityList(entries, max);
+  try {
+    storage.setItem(HOOK_ACTIVITY_STORAGE_KEY, JSON.stringify(clean));
+  } catch {
+    /* private mode / quota */
+  }
+}
+
+function notifyHookActivityChange(
+  next: readonly HookActivityRecord[],
+): void {
+  if (
+    typeof window !== "undefined" &&
+    typeof window.dispatchEvent === "function"
+  ) {
+    try {
+      window.dispatchEvent(
+        new CustomEvent(HOOK_ACTIVITY_CHANGE_EVENT, {
+          detail: next,
+        }),
+      );
+    } catch {
+      /* ignore */
+    }
+  }
+}
+
+// ── Ring buffer store (hydrates from localStorage once) ─────────────────────
 
 type Listener = (records: readonly HookActivityRecord[]) => void;
 
 let _records: HookActivityRecord[] = [];
 const _listeners = new Set<Listener>();
 let _max = HOOK_ACTIVITY_MAX;
+let _hydrated = false;
+
+function ensureHydrated(): void {
+  if (_hydrated) return;
+  _hydrated = true;
+  try {
+    _records = loadHookActivities(defaultStorage(), _max);
+  } catch {
+    _records = [];
+  }
+}
 
 function notify(): void {
   const snap = _records.slice();
@@ -571,24 +804,41 @@ function notify(): void {
       // listener errors must not break the store
     }
   }
+  notifyHookActivityChange(snap);
+}
+
+function persist(): void {
+  saveHookActivities(_records, defaultStorage(), _max);
 }
 
 /** Test / advanced: change ring capacity (clamped). */
 export function setHookActivityMax(n: number): void {
+  ensureHydrated();
   _max = Math.max(1, Math.min(200, Math.floor(n) || HOOK_ACTIVITY_MAX));
   if (_records.length > _max) {
     _records = _records.slice(0, _max);
+    persist();
     notify();
   }
 }
 
 export function listHookActivities(): readonly HookActivityRecord[] {
+  ensureHydrated();
   return _records.slice();
 }
 
+/**
+ * Wipe the local ring (empty list + persist + notify). Soft no-op on storage
+ * failure. Empty after clear is honest — not a claim that hooks never ran.
+ */
 export function clearHookActivities(): void {
-  if (_records.length === 0) return;
+  ensureHydrated();
+  if (_records.length === 0) {
+    persist();
+    return;
+  }
   _records = [];
+  persist();
   notify();
 }
 
@@ -597,34 +847,33 @@ export function pushHookActivity(
   input: HookActivityRecord | HookActivityRecord[] | null | undefined,
 ): void {
   if (input == null) return;
+  ensureHydrated();
   const list = Array.isArray(input) ? input : [input];
   if (!list.length) return;
 
-  let changed = false;
+  const beforeLen = _records.length;
+  const beforeHeadId = _records[0]?.id;
+  let next = _records;
   for (const rec of list) {
     if (!rec || !rec.type) continue;
-    const detail = redactHookDetail(rec.detail);
-    const next: HookActivityRecord = {
-      ...rec,
-      detail,
-      type: rec.type.trim() || "Hook",
-      atMs: rec.atMs > 0 ? rec.atMs : Date.now(),
-    };
-    // Cheap de-dupe: same type + detail within 1s of newest
-    const head = _records[0];
-    if (
-      head &&
-      head.type === next.type &&
-      head.detail === next.detail &&
-      head.outcome === next.outcome &&
-      Math.abs(head.atMs - next.atMs) < 1000
-    ) {
-      continue;
-    }
-    _records = [next, ..._records].slice(0, _max);
-    changed = true;
+    next = pushHookActivityList(
+      next,
+      {
+        ...rec,
+        detail: redactHookDetail(rec.detail),
+        type: String(rec.type).trim() || "Hook",
+        atMs: rec.atMs > 0 ? rec.atMs : Date.now(),
+        id: rec.id || newHookActivityId(),
+      },
+      _max,
+    );
   }
-  if (changed) notify();
+  if (next.length === beforeLen && next[0]?.id === beforeHeadId) {
+    return;
+  }
+  _records = next;
+  persist();
+  notify();
 }
 
 /**
@@ -659,6 +908,7 @@ export function ingestToolHookSignal(
 }
 
 export function subscribeHookActivities(listener: Listener): () => void {
+  ensureHydrated();
   _listeners.add(listener);
   return () => {
     _listeners.delete(listener);
@@ -696,10 +946,22 @@ export function hookOutcomeLabel(outcome: HookActivityOutcome): string {
   }
 }
 
-/** Reset module state (tests). */
+/**
+ * Plan a clear action: count of rows that would be removed.
+ * Empty plan → UI can hide confirm (nothing to clear).
+ */
+export function planClearHookActivities(
+  records: readonly HookActivityRecord[] | null | undefined = listHookActivities(),
+): { count: number; empty: boolean } {
+  const n = Array.isArray(records) ? records.length : 0;
+  return { count: n, empty: n === 0 };
+}
+
+/** Reset module state (tests). Does not touch real localStorage. */
 export function __resetHookActivityStoreForTests(): void {
   _records = [];
   _listeners.clear();
   _max = HOOK_ACTIVITY_MAX;
   _seq = 0;
+  _hydrated = true; // skip re-hydrate from ambient localStorage in unit tests
 }
