@@ -433,8 +433,6 @@ import {
 } from "@/lib/paletteActions";
 import { canOfferContinueCwd } from "@/lib/continueCwd";
 import {
-  sessionExportFilename,
-  sessionExportFilenameFor,
   sessionExportMimeType,
   sessionToHtml,
   sessionToJson,
@@ -442,6 +440,16 @@ import {
   sessionToPlain,
   shouldPreferCliMarkdownExport,
 } from "@/lib/sessionExport";
+import {
+  canSessionExportActions,
+  estimateSessionExportSizeClass,
+  formatSessionExportBytes,
+  isSessionExportJournalEmpty,
+  resolveSessionExportSoftFail,
+  sessionExportFormatNameKey,
+  sessionExportSafeFilename,
+  sessionExportSizeClassLabelKey,
+} from "@/lib/sessionExportPro";
 import {
   blobToBase64 as pngBlobToBase64,
   buildExportImagePipeline,
@@ -13649,7 +13657,11 @@ export default function App() {
       options: { includeThoughts: boolean; includeToolSummary: boolean },
     ) => {
       const id = sessionMeta?.id ?? session.sessionId;
-      if (!id) throw new Error(tr("session.exportFail"));
+      if (!id) {
+        const err = new Error("no target");
+        (err as Error & { code?: string }).code = "no_target";
+        throw err;
+      }
       const title =
         sessionMeta?.title ||
         sessions.find((s) => s.id === id)?.title ||
@@ -13663,8 +13675,25 @@ export default function App() {
         projects.find((p) => p.id === projectId) || activeProject || null;
       let msgs = messages;
       if (id !== session.sessionId) {
-        msgs = (await api.sessionMessages(id)) as ChatMessage[];
+        try {
+          msgs = (await api.sessionMessages(id)) as ChatMessage[];
+        } catch (e) {
+          const err = e instanceof Error ? e : new Error(String(e));
+          (err as Error & { code?: string }).code = "load_failed";
+          throw err;
+        }
       }
+      const exportable = msgs.map((m) => ({
+        role: m.role,
+        content: m.content,
+        thought: m.thought,
+        createdAt: m.createdAt,
+        marker: m.marker,
+      }));
+      const journalEmpty = isSessionExportJournalEmpty(exportable, {
+        format: "markdown",
+        options,
+      });
       const md = sessionToMarkdown({
         title,
         projectName: proj?.name,
@@ -13674,15 +13703,9 @@ export default function App() {
           includeThoughts: options.includeThoughts,
           includeToolSummary: options.includeToolSummary,
         },
-        messages: msgs.map((m) => ({
-          role: m.role,
-          content: m.content,
-          thought: m.thought,
-          createdAt: m.createdAt,
-          marker: m.marker,
-        })),
+        messages: exportable,
       });
-      return { id, title, md };
+      return { id, title, md, journalEmpty, exportable };
     },
     [
       session.sessionId,
@@ -13695,6 +13718,17 @@ export default function App() {
     ],
   );
 
+  /** Toast classified soft-fail for text-format export (silent on cancel). */
+  const toastSessionExportSoftFail = useCallback(
+    (err: unknown) => {
+      const r = resolveSessionExportSoftFail(err);
+      if (r.silent) return;
+      const base = tr(r.messageKey as Parameters<typeof tr>[0]);
+      showToast(r.detail ? `${base}: ${r.detail}` : base);
+    },
+    [showToast, tr],
+  );
+
   /** Open export options (thoughts / tools / download / copy). */
   const openExportSessionMd = useCallback(
     (sessionMeta?: {
@@ -13704,7 +13738,7 @@ export default function App() {
     }) => {
       const id = sessionMeta?.id ?? session.sessionId;
       if (!id) {
-        showToast(tr("session.exportFail"));
+        showToast(tr("session.exportNoTarget"));
         return;
       }
       setExportMdIncludeThoughts(true);
@@ -13724,6 +13758,73 @@ export default function App() {
     },
     [session.sessionId, session.title, sessions, showToast, tr],
   );
+
+  /**
+   * Honest empty + size estimate for the open Markdown export dialog when the
+   * target is the live session (options toggle updates emptiness).
+   */
+  const exportMdHonesty = useMemo(() => {
+    if (!exportMdTarget) {
+      return {
+        journalEmpty: null as boolean | null,
+        sizeClassKey: null as string | null,
+        sizeBytesLabel: null as string | null,
+        canAct: false,
+      };
+    }
+    if (exportMdTarget.id !== session.sessionId) {
+      return {
+        journalEmpty: null as boolean | null,
+        sizeClassKey: null as string | null,
+        sizeBytesLabel: null as string | null,
+        canAct: canSessionExportActions({
+          hasTarget: true,
+          journalEmpty: null,
+          busy: exportMdBusy,
+        }),
+      };
+    }
+    const exportable = messages.map((m) => ({
+      role: m.role,
+      content: m.content,
+      thought: m.thought,
+      createdAt: m.createdAt,
+      marker: m.marker,
+    }));
+    const options = {
+      includeThoughts: exportMdIncludeThoughts,
+      includeToolSummary: exportMdIncludeTools,
+    };
+    const journalEmpty = isSessionExportJournalEmpty(exportable, {
+      format: "markdown",
+      options,
+    });
+    const md = sessionToMarkdown({
+      title: exportMdTarget.title || tr("session.untitled"),
+      sessionId: exportMdTarget.id,
+      options,
+      messages: exportable,
+    });
+    const est = estimateSessionExportSizeClass(journalEmpty ? "" : md);
+    return {
+      journalEmpty,
+      sizeClassKey: sessionExportSizeClassLabelKey(est.sizeClass),
+      sizeBytesLabel: formatSessionExportBytes(est.byteLength),
+      canAct: canSessionExportActions({
+        hasTarget: true,
+        journalEmpty,
+        busy: exportMdBusy,
+      }),
+    };
+  }, [
+    exportMdTarget,
+    exportMdIncludeThoughts,
+    exportMdIncludeTools,
+    exportMdBusy,
+    session.sessionId,
+    messages,
+    tr,
+  ]);
 
   const runExportSessionMd = useCallback(
     async (mode: "download" | "copy") => {
@@ -13750,7 +13851,8 @@ export default function App() {
               const url = URL.createObjectURL(blob);
               const a = document.createElement("a");
               a.href = url;
-              a.download = sessionExportFilename(
+              a.download = sessionExportSafeFilename(
+                "markdown",
                 exportMdTarget.title,
                 exportMdTarget.id,
               );
@@ -13764,25 +13866,46 @@ export default function App() {
             // Soft-fail: local journal below.
           }
         }
-        const { id, title, md } = await buildSessionMarkdown(exportMdTarget, exportOpts);
+        const { id, title, md, journalEmpty } = await buildSessionMarkdown(
+          exportMdTarget,
+          exportOpts,
+        );
+        if (journalEmpty) {
+          showToast(tr("session.exportEmpty"));
+          return;
+        }
         if (mode === "copy") {
-          await navigator.clipboard.writeText(md);
-          showToast(tr("session.exportCopied"));
+          try {
+            await navigator.clipboard.writeText(md);
+            showToast(tr("session.exportCopied"));
+          } catch (e) {
+            const err = e instanceof Error ? e : new Error(String(e));
+            (err as Error & { code?: string }).code = "clipboard";
+            toastSessionExportSoftFail(err);
+            return;
+          }
         } else {
-          const blob = new Blob([md], {
-            type: sessionExportMimeType("markdown"),
-          });
-          const url = URL.createObjectURL(blob);
-          const a = document.createElement("a");
-          a.href = url;
-          a.download = sessionExportFilename(title, id);
-          a.click();
-          URL.revokeObjectURL(url);
-          showToast(tr("session.exportDone"));
+          try {
+            const blob = new Blob([md], {
+              type: sessionExportMimeType("markdown"),
+            });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement("a");
+            a.href = url;
+            a.download = sessionExportSafeFilename("markdown", title, id);
+            a.click();
+            URL.revokeObjectURL(url);
+            showToast(tr("session.exportDone"));
+          } catch (e) {
+            const err = e instanceof Error ? e : new Error(String(e));
+            (err as Error & { code?: string }).code = "write_failed";
+            toastSessionExportSoftFail(err);
+            return;
+          }
         }
         setExportMdTarget(null);
       } catch (e) {
-        showToast(`${tr("session.exportFail")}: ${String(e)}`);
+        toastSessionExportSoftFail(e);
       } finally {
         setExportMdBusy(false);
       }
@@ -13793,6 +13916,7 @@ export default function App() {
       exportMdIncludeTools,
       buildSessionMarkdown,
       showToast,
+      toastSessionExportSoftFail,
       tr,
     ],
   );
@@ -13809,11 +13933,11 @@ export default function App() {
     }) => {
       const id = sessionMeta?.id ?? session.sessionId;
       if (!id) {
-        showToast(tr("session.copyMdFail"));
+        showToast(tr("session.exportNoTarget"));
         return;
       }
       try {
-        const { md } = await buildSessionMarkdown(
+        const { md, journalEmpty } = await buildSessionMarkdown(
           {
             id,
             title:
@@ -13831,14 +13955,14 @@ export default function App() {
             includeToolSummary: false,
           },
         );
-        if (!md.trim()) {
+        if (journalEmpty || !md.trim()) {
           showToast(tr("session.copyMdEmpty"));
           return;
         }
         await navigator.clipboard.writeText(md);
         showToast(tr("session.copyMdDone"));
       } catch (e) {
-        showToast(`${tr("session.copyMdFail")}: ${String(e)}`);
+        toastSessionExportSoftFail(e);
       }
     },
     [
@@ -13847,6 +13971,7 @@ export default function App() {
       sessions,
       buildSessionMarkdown,
       showToast,
+      toastSessionExportSoftFail,
       tr,
     ],
   );
@@ -13875,7 +14000,7 @@ export default function App() {
     }) => {
       const id = sessionMeta?.id ?? session.sessionId;
       if (!id) {
-        showToast(tr("session.exportFail"));
+        showToast(tr("session.exportNoTarget"));
         return;
       }
       const title =
@@ -13886,20 +14011,37 @@ export default function App() {
       try {
         let msgs = messages;
         if (id !== session.sessionId) {
-          msgs = (await api.sessionMessages(id)) as ChatMessage[];
+          try {
+            msgs = (await api.sessionMessages(id)) as ChatMessage[];
+          } catch (e) {
+            const err = e instanceof Error ? e : new Error(String(e));
+            (err as Error & { code?: string }).code = "load_failed";
+            toastSessionExportSoftFail(err);
+            return;
+          }
+        }
+        const exportable = msgs.map((m) => ({
+          role: m.role,
+          content: m.content,
+          thought: m.thought,
+          createdAt: m.createdAt,
+          marker: m.marker,
+        }));
+        if (
+          isSessionExportJournalEmpty(exportable, {
+            format: "json",
+            options: { includeThoughts: false, includeToolSummary: false },
+          })
+        ) {
+          showToast(tr("session.exportEmpty"));
+          return;
         }
         const json = sessionToJson({
           title,
           sessionId: id,
           // Clean re-import: omit thoughts/tools by default.
           options: { includeThoughts: false, includeToolSummary: false },
-          messages: msgs.map((m) => ({
-            role: m.role,
-            content: m.content,
-            thought: m.thought,
-            createdAt: m.createdAt,
-            marker: m.marker,
-          })),
+          messages: exportable,
         });
         const blob = new Blob([json], {
           type: sessionExportMimeType("json"),
@@ -13907,12 +14049,12 @@ export default function App() {
         const url = URL.createObjectURL(blob);
         const a = document.createElement("a");
         a.href = url;
-        a.download = sessionExportFilenameFor("json", title, id);
+        a.download = sessionExportSafeFilename("json", title, id);
         a.click();
         URL.revokeObjectURL(url);
         showToast(tr("session.exportDone"));
       } catch (e) {
-        showToast(`${tr("session.exportFail")}: ${String(e)}`);
+        toastSessionExportSoftFail(e);
       }
     },
     [
@@ -13921,6 +14063,7 @@ export default function App() {
       sessions,
       messages,
       showToast,
+      toastSessionExportSoftFail,
       tr,
     ],
   );
@@ -14357,7 +14500,7 @@ export default function App() {
     }) => {
       const id = sessionMeta?.id ?? session.sessionId;
       if (!id) {
-        showToast(tr("session.exportFail"));
+        showToast(tr("session.exportNoTarget"));
         return;
       }
       const title =
@@ -14374,7 +14517,30 @@ export default function App() {
       try {
         let msgs = messages;
         if (id !== session.sessionId) {
-          msgs = (await api.sessionMessages(id)) as ChatMessage[];
+          try {
+            msgs = (await api.sessionMessages(id)) as ChatMessage[];
+          } catch (e) {
+            const err = e instanceof Error ? e : new Error(String(e));
+            (err as Error & { code?: string }).code = "load_failed";
+            toastSessionExportSoftFail(err);
+            return;
+          }
+        }
+        const exportable = msgs.map((m) => ({
+          role: m.role,
+          content: m.content,
+          thought: m.thought,
+          createdAt: m.createdAt,
+          marker: m.marker,
+        }));
+        if (
+          isSessionExportJournalEmpty(exportable, {
+            format: "plain",
+            options: { includeThoughts: true, includeToolSummary: true },
+          })
+        ) {
+          showToast(tr("session.exportEmpty"));
+          return;
         }
         const text = sessionToPlain({
           title,
@@ -14382,13 +14548,7 @@ export default function App() {
           projectPath: proj?.path,
           sessionId: id,
           options: { includeThoughts: true, includeToolSummary: true },
-          messages: msgs.map((m) => ({
-            role: m.role,
-            content: m.content,
-            thought: m.thought,
-            createdAt: m.createdAt,
-            marker: m.marker,
-          })),
+          messages: exportable,
         });
         const blob = new Blob([text], {
           type: sessionExportMimeType("plain"),
@@ -14396,12 +14556,12 @@ export default function App() {
         const url = URL.createObjectURL(blob);
         const a = document.createElement("a");
         a.href = url;
-        a.download = sessionExportFilenameFor("plain", title, id);
+        a.download = sessionExportSafeFilename("plain", title, id);
         a.click();
         URL.revokeObjectURL(url);
         showToast(tr("session.exportDone"));
       } catch (e) {
-        showToast(`${tr("session.exportFail")}: ${String(e)}`);
+        toastSessionExportSoftFail(e);
       }
     },
     [
@@ -14412,6 +14572,7 @@ export default function App() {
       projects,
       activeProject,
       showToast,
+      toastSessionExportSoftFail,
       tr,
     ],
   );
@@ -14428,7 +14589,7 @@ export default function App() {
     }) => {
       const id = sessionMeta?.id ?? session.sessionId;
       if (!id) {
-        showToast(tr("session.exportFail"));
+        showToast(tr("session.exportNoTarget"));
         return;
       }
       const title =
@@ -14445,7 +14606,30 @@ export default function App() {
       try {
         let msgs = messages;
         if (id !== session.sessionId) {
-          msgs = (await api.sessionMessages(id)) as ChatMessage[];
+          try {
+            msgs = (await api.sessionMessages(id)) as ChatMessage[];
+          } catch (e) {
+            const err = e instanceof Error ? e : new Error(String(e));
+            (err as Error & { code?: string }).code = "load_failed";
+            toastSessionExportSoftFail(err);
+            return;
+          }
+        }
+        const exportable = msgs.map((m) => ({
+          role: m.role,
+          content: m.content,
+          thought: m.thought,
+          createdAt: m.createdAt,
+          marker: m.marker,
+        }));
+        if (
+          isSessionExportJournalEmpty(exportable, {
+            format: "html",
+            options: { includeThoughts: true, includeToolSummary: true },
+          })
+        ) {
+          showToast(tr("session.exportEmpty"));
+          return;
         }
         const html = sessionToHtml({
           title,
@@ -14453,13 +14637,7 @@ export default function App() {
           projectPath: proj?.path,
           sessionId: id,
           options: { includeThoughts: true, includeToolSummary: true },
-          messages: msgs.map((m) => ({
-            role: m.role,
-            content: m.content,
-            thought: m.thought,
-            createdAt: m.createdAt,
-            marker: m.marker,
-          })),
+          messages: exportable,
         });
         const blob = new Blob([html], {
           type: sessionExportMimeType("html"),
@@ -14467,12 +14645,12 @@ export default function App() {
         const url = URL.createObjectURL(blob);
         const a = document.createElement("a");
         a.href = url;
-        a.download = sessionExportFilenameFor("html", title, id);
+        a.download = sessionExportSafeFilename("html", title, id);
         a.click();
         URL.revokeObjectURL(url);
         showToast(tr("session.exportDone"));
       } catch (e) {
-        showToast(`${tr("session.exportFail")}: ${String(e)}`);
+        toastSessionExportSoftFail(e);
       }
     },
     [
@@ -14483,6 +14661,7 @@ export default function App() {
       projects,
       activeProject,
       showToast,
+      toastSessionExportSoftFail,
       tr,
     ],
   );
@@ -21223,6 +21402,37 @@ export default function App() {
         */}
         <div className="export-md-options">
           <p className="export-md-options__msg">{tr("session.exportMdHint")}</p>
+          <div
+            className="export-md-options__meta"
+            role="status"
+            aria-live="polite"
+          >
+            <span className="export-md-options__chip">
+              {tr(
+                sessionExportFormatNameKey(
+                  "markdown",
+                ) as Parameters<typeof tr>[0],
+              )}
+            </span>
+            {exportMdHonesty.sizeClassKey ? (
+              <span className="export-md-options__chip">
+                {tr("session.exportSizeHint", {
+                  size: exportMdHonesty.sizeBytesLabel
+                    ? `${tr(exportMdHonesty.sizeClassKey as Parameters<typeof tr>[0])} · ${exportMdHonesty.sizeBytesLabel}`
+                    : tr(
+                        exportMdHonesty.sizeClassKey as Parameters<
+                          typeof tr
+                        >[0],
+                      ),
+                })}
+              </span>
+            ) : null}
+          </div>
+          {exportMdHonesty.journalEmpty === true ? (
+            <p className="export-md-options__empty" role="status">
+              {tr("session.exportEmpty")}
+            </p>
+          ) : null}
           <label className="export-md-options__row">
             <input
               type="checkbox"
@@ -21253,7 +21463,11 @@ export default function App() {
             <button
               type="button"
               className="btn btn--ghost"
-              disabled={exportMdBusy || !exportMdTarget}
+              disabled={
+                exportMdBusy ||
+                !exportMdTarget ||
+                !exportMdHonesty.canAct
+              }
               onClick={() => void runExportSessionMd("copy")}
             >
               {tr("session.exportMdCopy")}
@@ -21261,7 +21475,11 @@ export default function App() {
             <button
               type="button"
               className="btn btn--solid"
-              disabled={exportMdBusy || !exportMdTarget}
+              disabled={
+                exportMdBusy ||
+                !exportMdTarget ||
+                !exportMdHonesty.canAct
+              }
               onClick={() => void runExportSessionMd("download")}
             >
               {exportMdBusy
@@ -22597,6 +22815,44 @@ export default function App() {
                 : []),
             ];
 
+            // Soft-empty honesty for the live session only (other sessions load on demand).
+            const liveExportable =
+              s.id === session.sessionId
+                ? messages.map((m) => ({
+                    role: m.role,
+                    content: m.content,
+                    thought: m.thought,
+                    createdAt: m.createdAt,
+                    marker: m.marker,
+                  }))
+                : null;
+            const liveJournalEmptyMd =
+              liveExportable != null
+                ? isSessionExportJournalEmpty(liveExportable, {
+                    format: "markdown",
+                  })
+                : null;
+            const liveJournalEmptyJson =
+              liveExportable != null
+                ? isSessionExportJournalEmpty(liveExportable, {
+                    format: "json",
+                  })
+                : null;
+            const liveJournalEmptyPlain =
+              liveExportable != null
+                ? isSessionExportJournalEmpty(liveExportable, {
+                    format: "plain",
+                  })
+                : null;
+            const liveJournalEmptyHtml =
+              liveExportable != null
+                ? isSessionExportJournalEmpty(liveExportable, {
+                    format: "html",
+                  })
+                : null;
+            const emptySuffix = (empty: boolean | null) =>
+              empty === true ? ` · ${tr("session.exportEmptyShort")}` : "";
+
             const exportChildren: ContextMenuItem[] = [
               {
                 id: "export-image",
@@ -22612,9 +22868,14 @@ export default function App() {
               },
               {
                 id: "export-md",
-                label: tr("session.exportMd"),
+                label: `${tr("session.exportMd")}${emptySuffix(liveJournalEmptyMd)}`,
                 icon: <IconCopy size={16} />,
+                disabled: liveJournalEmptyMd === true,
                 onClick: () => {
+                  if (liveJournalEmptyMd === true) {
+                    showToast(tr("session.exportEmpty"));
+                    return;
+                  }
                   openExportSessionMd({
                     id: s.id,
                     title: s.title,
@@ -22624,8 +22885,9 @@ export default function App() {
               },
               {
                 id: "export-plain",
-                label: tr("session.exportPlain"),
+                label: `${tr("session.exportPlain")}${emptySuffix(liveJournalEmptyPlain)}`,
                 icon: <IconCopy size={16} />,
+                disabled: liveJournalEmptyPlain === true,
                 onClick: () => {
                   void exportSessionPlain({
                     id: s.id,
@@ -22636,8 +22898,9 @@ export default function App() {
               },
               {
                 id: "export-json",
-                label: tr("session.exportJson"),
+                label: `${tr("session.exportJson")}${emptySuffix(liveJournalEmptyJson)}`,
                 icon: <IconCopy size={16} />,
+                disabled: liveJournalEmptyJson === true,
                 onClick: () => {
                   void exportSessionJson({
                     id: s.id,
@@ -22648,8 +22911,9 @@ export default function App() {
               },
               {
                 id: "export-html",
-                label: tr("session.exportHtml"),
+                label: `${tr("session.exportHtml")}${emptySuffix(liveJournalEmptyHtml)}`,
                 icon: <IconCopy size={16} />,
+                disabled: liveJournalEmptyHtml === true,
                 onClick: () => {
                   void exportSessionHtml({
                     id: s.id,
