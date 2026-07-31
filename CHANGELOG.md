@@ -14,6 +14,7 @@ See `docs/llm-wiki/release.md`.
 ### Added
 
 #### Runtime / connection
+- **CLI update channels** (CLI ≥ **0.2.117**): Settings → Runtime → CLI and About show current version + channel (`stable` / `alpha` / unknown from `grok update --check --json` only — never invented). Switch via `grok update --alpha|--stable`, optional version pin (`--version <V>`) with in-app confirm; soft-fail on older CLIs / unknown channels. Host `cli_update_install` accepts optional channel/version/force; pure helpers + tests.
 - **SDK Connect wizard** (Settings → Runtime → Connection): start local `agent serve`, show masked secret + ws URL, TCP health probe, copy curl / websocat / `grok --remote` examples for external clients, and optional paste remote serve URL + probe. Secrets never logged; full token only via one-time clipboard after start.
 - **Todo gate** (Settings → General → Agent; CLI **0.2.117+**): toggle enable TodoGate + max fires per prompt (1–20, default 3). When on, spawn passes top-level `--todo-gate` (overrides remote `todo_gate_enabled`; built-in default off). Independent mode also writes agent-home `todo_gate_enabled` / `todo_gate_max_fires_per_prompt`. Soft-respawn on change.
 

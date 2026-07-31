@@ -1274,7 +1274,7 @@ const en = {
   "settings.cliWorktreeDb.rebuildFailed": "Could not rebuild worktree DB",
   "settings.cliUpdate": "CLI updates",
   "settings.cliUpdateDesc":
-    "Check the Grok Build CLI channel for a newer binary (same as `grok update --check`).",
+    "Check for CLI updates (`grok update --check --json`), switch stable/alpha channels (CLI 0.2.117+), or pin a version.",
   "settings.cliUpdateCheck": "Check for CLI updates",
   "settings.cliUpdateChecking": "Checking…",
   "settings.cliUpdateLatest": "CLI is up to date ({version}).",
@@ -1294,6 +1294,32 @@ const en = {
   "settings.cliUpdateFailed": "Could not check: {error}",
   "settings.cliUpdateInstallFailed": "Update failed: {error}",
   "settings.cliUpdateNeedCli": "Install or locate the CLI first.",
+  "settings.cliChannel.label": "Channel: {channel}",
+  "settings.cliChannel.stable": "stable",
+  "settings.cliChannel.alpha": "alpha",
+  "settings.cliChannel.unknown": "unknown",
+  "settings.cliChannel.versionLabel": "CLI {version}",
+  "settings.cliChannel.switchHint":
+    "Switch release channel (CLI 0.2.117+: `grok update --alpha|--stable`). Never invents channels.",
+  "settings.cliChannel.switchToAlpha": "Switch to alpha",
+  "settings.cliChannel.switchToStable": "Switch to stable",
+  "settings.cliChannel.switchConfirmTitle": "Switch CLI to {channel}?",
+  "settings.cliChannel.switchConfirmMsg":
+    "Runs `grok update --{channel}` and may download a different binary. Restart sessions afterward so they use the new CLI.",
+  "settings.cliChannel.switched":
+    "CLI channel is now {channel} ({version}).",
+  "settings.cliChannel.pinLabel": "Install specific version",
+  "settings.cliChannel.pinPlaceholder": "e.g. 0.2.117",
+  "settings.cliChannel.pinHint":
+    "Pins with `grok update --version <V>` (optional alpha tags like 0.1.151-alpha.2).",
+  "settings.cliChannel.pinAction": "Install version",
+  "settings.cliChannel.pinConfirmTitle": "Install CLI {version}?",
+  "settings.cliChannel.pinConfirmMsg":
+    "Runs `grok update --version {version}`. Soft-fails if the CLI rejects the pin; no invented versions.",
+  "settings.cliChannel.pinned": "CLI pinned to {version}.",
+  "settings.cliChannel.invalidVersion":
+    "Enter a valid version (e.g. 0.2.117), not a flag or path.",
+  "settings.cliChannel.confirmAction": "Continue",
   "settings.acpServer": "ACP server (API mode)",
   "settings.acpServerDesc":
     "Connect to a remote ACP agent over TCP (host:port) instead of spawning the local CLI — e.g. an agent in WSL, a container, or another host. Leave empty for local spawn.",
@@ -2271,7 +2297,8 @@ const en = {
   "doctor.check.logs": "Logs",
   "doctor.rawToggle": "Show raw report",
   "doctor.cliUpdate": "CLI updates",
-  "doctor.cliUpdateHint": "Same check as Settings → Runtime (`grok update --check`).",
+  "doctor.cliUpdateHint":
+    "Same check as Settings → Runtime / About (`grok update --check`; channel switch in Settings).",
   "doctor.supportZip": "Support zip",
   "doctor.supportZipHint": "Redacted Doctor report + recent logs (no secrets).",
   "doctor.supportZipDone": "Support zip saved",
@@ -5021,7 +5048,7 @@ const zh: Record<MessageKey, string> = {
   "settings.cliWorktreeDb.rebuildFailed": "无法重建 worktree DB",
   "settings.cliUpdate": "CLI 更新",
   "settings.cliUpdateDesc":
-    "检查 Grok Build CLI 通道是否有新版本（等同 `grok update --check`）。",
+    "检查 CLI 更新（`grok update --check --json`），切换 stable/alpha 通道（CLI 0.2.117+），或固定版本。",
   "settings.cliUpdateCheck": "检查 CLI 更新",
   "settings.cliUpdateChecking": "检查中…",
   "settings.cliUpdateLatest": "CLI 已是最新（{version}）。",
@@ -5040,6 +5067,32 @@ const zh: Record<MessageKey, string> = {
   "settings.cliUpdateFailed": "检查失败：{error}",
   "settings.cliUpdateInstallFailed": "更新失败：{error}",
   "settings.cliUpdateNeedCli": "请先安装或指定 CLI 路径。",
+  "settings.cliChannel.label": "通道：{channel}",
+  "settings.cliChannel.stable": "stable",
+  "settings.cliChannel.alpha": "alpha",
+  "settings.cliChannel.unknown": "未知",
+  "settings.cliChannel.versionLabel": "CLI {version}",
+  "settings.cliChannel.switchHint":
+    "切换发布通道（CLI 0.2.117+：`grok update --alpha|--stable`）。不会虚构通道。",
+  "settings.cliChannel.switchToAlpha": "切换到 alpha",
+  "settings.cliChannel.switchToStable": "切换到 stable",
+  "settings.cliChannel.switchConfirmTitle": "将 CLI 切换到 {channel}？",
+  "settings.cliChannel.switchConfirmMsg":
+    "将执行 `grok update --{channel}`，可能下载另一二进制。完成后请重启会话以使用新 CLI。",
+  "settings.cliChannel.switched":
+    "CLI 通道已为 {channel}（{version}）。",
+  "settings.cliChannel.pinLabel": "安装指定版本",
+  "settings.cliChannel.pinPlaceholder": "例如 0.2.117",
+  "settings.cliChannel.pinHint":
+    "使用 `grok update --version <V>` 固定版本（可含 alpha 标签，如 0.1.151-alpha.2）。",
+  "settings.cliChannel.pinAction": "安装该版本",
+  "settings.cliChannel.pinConfirmTitle": "安装 CLI {version}？",
+  "settings.cliChannel.pinConfirmMsg":
+    "将执行 `grok update --version {version}`。CLI 拒绝时软失败；不会虚构版本。",
+  "settings.cliChannel.pinned": "CLI 已固定为 {version}。",
+  "settings.cliChannel.invalidVersion":
+    "请输入有效版本（如 0.2.117），不要填标志或路径。",
+  "settings.cliChannel.confirmAction": "继续",
   "settings.acpServer": "ACP 服务器（API 模式）",
   "settings.acpServerDesc":
     "通过 TCP（host:port）连接远程 ACP Agent，替代启动本地 CLI —— 例如运行在 WSL、容器或另一台主机上的 Agent。留空则使用本地启动。",
@@ -5997,7 +6050,8 @@ const zh: Record<MessageKey, string> = {
   "doctor.check.logs": "日志",
   "doctor.rawToggle": "显示原始报告",
   "doctor.cliUpdate": "CLI 更新",
-  "doctor.cliUpdateHint": "与设置 → 运行环境相同（`grok update --check`）。",
+  "doctor.cliUpdateHint":
+    "与设置 → 运行环境 / 关于相同（`grok update --check`；通道切换在设置中）。",
   "doctor.supportZip": "支持包",
   "doctor.supportZipHint": "脱敏后的 Doctor 报告与近期日志（不含密钥）。",
   "doctor.supportZipDone": "支持包已保存",
