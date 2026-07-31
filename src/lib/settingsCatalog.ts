@@ -2579,9 +2579,12 @@ export const SETTINGS_ENTRIES: readonly SettingsEntry[] = [
     descKeys: [
       "settings.workflowsDesc",
       "settings.workflowsHonesty",
+      "settings.workflows.runHonesty",
       "settings.workflows.openDocs",
       "settings.workflows.discovered",
       "settings.workflows.noneFound",
+      "settings.workflows.run.smoke",
+      "settings.workflows.run.launch",
     ],
     keywords: [
       "workflows",
@@ -2593,8 +2596,14 @@ export const SETTINGS_ENTRIES: readonly SettingsEntry[] = [
       "/workflow",
       "orchestration",
       "multi-agent pipeline",
+      "validate_only",
+      "smoke",
+      "headless",
+      "workflow tool",
       "工作流",
       "工作流程",
+      "冒烟",
+      "冒煙",
     ],
   },
   {

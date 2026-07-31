@@ -1,15 +1,25 @@
 import { describe, expect, it } from "vitest";
 import {
   WORKFLOWS_ENABLED_CONFIG_KEY,
+  WORKFLOW_RUN_LOG_MAX_CHARS,
+  buildWorkflowRunPrompt,
   collectWorkflowDefs,
   formatDiscoveredWorkflowNames,
+  formatWorkflowRunStatusLine,
   grokHomeFromUserHome,
+  isValidWorkflowName,
   isWorkflowDefinitionFileName,
+  isWorkflowRunOk,
+  normalizeWorkflowRunMode,
   normalizeWorkflowsEnabled,
+  prepareWorkflowRunLogForDisplay,
+  redactWorkflowRunLog,
   resolveWorkflowDirs,
+  truncateWorkflowRunLog,
   workflowMetaLine,
   workflowNameFromFileName,
   workflowNamesFromFileList,
+  workflowRunReasonKey,
   workflowsEnabledEqual,
 } from "./workflows";
 
@@ -107,5 +117,72 @@ describe("display helpers", () => {
 
   it("exports config key constant", () => {
     expect(WORKFLOWS_ENABLED_CONFIG_KEY).toBe("workflows_enabled");
+  });
+});
+
+describe("workflow run helpers", () => {
+  it("validates names", () => {
+    expect(isValidWorkflowName("review-changes")).toBe(true);
+    expect(isValidWorkflowName("Foo_Bar1")).toBe(true);
+    expect(isValidWorkflowName("")).toBe(false);
+    expect(isValidWorkflowName("../evil")).toBe(false);
+    expect(isValidWorkflowName("a/b")).toBe(false);
+    expect(isValidWorkflowName("has space")).toBe(false);
+    expect(isValidWorkflowName("a".repeat(100))).toBe(false);
+  });
+
+  it("normalizes run mode", () => {
+    expect(normalizeWorkflowRunMode(undefined)).toBe("validate");
+    expect(normalizeWorkflowRunMode("validate")).toBe("validate");
+    expect(normalizeWorkflowRunMode("launch")).toBe("launch");
+    expect(normalizeWorkflowRunMode("run")).toBe("launch");
+    expect(normalizeWorkflowRunMode("weird")).toBe("validate");
+  });
+
+  it("builds validate vs launch prompts", () => {
+    const v = buildWorkflowRunPrompt("review-changes", "validate");
+    expect(v).toContain('name: "review-changes"');
+    expect(v).toContain("validate_only: true");
+    expect(v).toContain("workflow tool");
+    expect(v).not.toContain("agent_budget: 8");
+
+    const l = buildWorkflowRunPrompt("review-changes", "launch");
+    expect(l).toContain('name: "review-changes"');
+    expect(l).toContain("agent_budget: 8");
+    expect(l).not.toContain("validate_only");
+  });
+
+  it("redacts and truncates logs", () => {
+    const red = redactWorkflowRunLog("token Bearer abcdefghijklmnop and sk-abcdefghijklmnopqrstuv");
+    expect(red).toContain("[REDACTED]");
+    expect(red).not.toContain("sk-abcdefghijklmnopqrstuv");
+
+    const long = "x".repeat(WORKFLOW_RUN_LOG_MAX_CHARS + 50);
+    const t = truncateWorkflowRunLog(long, 20);
+    expect(t.truncated).toBe(true);
+    expect(t.text.endsWith("…")).toBe(true);
+    expect(t.text.length).toBeLessThanOrEqual(20);
+
+    const prep = prepareWorkflowRunLogForDisplay(
+      `ok Bearer ${"z".repeat(40)}\n` + "y".repeat(10),
+      80,
+    );
+    expect(prep.text).toContain("[REDACTED]");
+  });
+
+  it("status line and reason keys", () => {
+    expect(workflowRunReasonKey("timeout")).toBe("timeout");
+    expect(workflowRunReasonKey("nope")).toBe("soft_fail");
+    expect(isWorkflowRunOk({ ok: true, reason: "ok" })).toBe(true);
+    expect(isWorkflowRunOk({ ok: false, reason: "timeout" })).toBe(false);
+    expect(
+      formatWorkflowRunStatusLine(
+        { ok: false, reason: "timeout", durationMs: 1500 },
+        { softFail: "soft-fail", reason: "timeout" },
+      ),
+    ).toContain("soft-fail: timeout");
+    expect(
+      formatWorkflowRunStatusLine({ ok: true, reason: "ok", durationMs: 200 }),
+    ).toMatch(/ok/);
   });
 });
