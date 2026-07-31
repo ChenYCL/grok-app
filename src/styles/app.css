@@ -21350,6 +21350,117 @@ div.composer__input:empty::before {
   padding-top: 4px;
 }
 
+.managed-setup__steps {
+  list-style: none;
+  margin: 10px 0 4px;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+}
+
+.managed-setup__step {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  font-size: 12px;
+  line-height: 1.35;
+  color: var(--text-secondary);
+}
+
+.managed-setup__step.is-done {
+  color: var(--text-secondary);
+}
+
+.managed-setup__step.is-current {
+  color: var(--text-primary);
+  font-weight: 550;
+}
+
+.managed-setup__step.is-blocked {
+  color: var(--danger, #e05);
+}
+
+.managed-setup__step.is-soft {
+  color: var(--text-tertiary);
+}
+
+.managed-setup__step-idx {
+  flex: 0 0 auto;
+  width: 1.35rem;
+  height: 1.35rem;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 600;
+  background: var(--bg-elevated, var(--bg-hover));
+  border: 1px solid var(--border-subtle);
+  color: var(--text-tertiary);
+}
+
+.managed-setup__step.is-done .managed-setup__step-idx {
+  background: color-mix(in srgb, var(--accent, #6cf) 18%, transparent);
+  border-color: transparent;
+  color: var(--text-primary);
+}
+
+.managed-setup__step.is-current .managed-setup__step-idx {
+  background: var(--accent, #6cf);
+  border-color: transparent;
+  color: var(--on-accent, #0b0d10);
+}
+
+.managed-setup__step.is-blocked .managed-setup__step-idx {
+  border-color: var(--danger, #e05);
+  color: var(--danger, #e05);
+}
+
+.managed-setup__step-label {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.managed-setup__step-state {
+  flex: 0 0 auto;
+  font-size: 11px;
+  color: var(--text-tertiary);
+}
+
+.managed-setup__steps-hint {
+  margin: 2px 0 8px;
+}
+
+.managed-setup__status {
+  margin: 4px 0 10px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-elevated, var(--bg-hover));
+}
+
+.managed-setup__status-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.managed-setup__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+
+.managed-setup__path {
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 11px;
+  word-break: break-all;
+}
+
 .managed-setup__preview {
   margin-top: 8px;
   padding: 10px 12px;

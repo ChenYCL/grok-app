@@ -2146,9 +2146,41 @@ const en = {
   // Managed configuration (`grok setup`)
   "managedSetup.title": "Managed setup",
   "managedSetup.desc":
-    "Fetch and install organization-managed configuration (`grok setup`). Preview shows a sanitized summary; Install writes into ~/.grok.",
+    "Fetch and install organization-managed configuration (`grok setup`). Follow the steps below: CLI → team auth → optional preview → install → verify local signature artifacts. Soft-fails when the CLI or inspect is unavailable.",
   "managedSetup.authHint":
     "Requires a team sign-in (`grok login`) or GROK_DEPLOYMENT_KEY (env or [endpoints] deployment_key in ~/.grok/config.toml).",
+  "managedSetup.stepsHint":
+    "Enterprise path is optional. Personal config.toml is never deleted. Signature file contents are never shown in the App.",
+  "managedSetup.step.cli": "CLI ready",
+  "managedSetup.step.auth": "Team login or deployment key",
+  "managedSetup.step.preview": "Preview managed config (optional)",
+  "managedSetup.step.install": "Install into GROK_HOME",
+  "managedSetup.step.verify": "Verify local status / signatures",
+  "managedSetup.stepState.done": "Done",
+  "managedSetup.stepState.current": "Current",
+  "managedSetup.stepState.todo": "Next",
+  "managedSetup.stepState.blocked": "Blocked",
+  "managedSetup.stepState.soft": "Partial",
+  "managedSetup.statusTitle": "Local managed status",
+  "managedSetup.refreshStatus": "Refresh status",
+  "managedSetup.refreshing": "Refreshing…",
+  "managedSetup.sig.none": "No managed artifacts",
+  "managedSetup.sig.artifacts": "Managed files present",
+  "managedSetup.sig.sigFiles": "Signature files present",
+  "managedSetup.sig.active": "Managed settings active",
+  "managedSetup.sig.rejected": "Signature rejected",
+  "managedSetup.sig.unknown": "Status unknown",
+  "managedSetup.sigHint":
+    "Status reflects local files and inspect flags only — the App does not re-verify cryptographic signatures. CLI rejects bad signatures before writing.",
+  "managedSetup.chip.managedActive": "Inspect: managed active",
+  "managedSetup.chip.configToml": "managed_config.toml",
+  "managedSetup.chip.configSig": "managed_config.sig.json",
+  "managedSetup.chip.identitySig": "managed_identity.sig.json",
+  "managedSetup.chip.requirements": "requirements.toml",
+  "managedSetup.chip.systemConfig": "system managed_config",
+  "managedSetup.grokHome": "GROK_HOME: {path}",
+  "managedSetup.managedSettingsPath": "Managed settings path: {path}",
+  "managedSetup.preview.sigBlock": "present (redacted)",
   "managedSetup.preview": "Preview",
   "managedSetup.previewing": "Fetching preview…",
   "managedSetup.previewOk": "Preview ready (nothing written).",
@@ -2158,7 +2190,7 @@ const en = {
   "managedSetup.installOk": "Managed configuration applied.",
   "managedSetup.confirmTitle": "Install managed configuration?",
   "managedSetup.confirmBody":
-    "This runs `grok setup` and may overwrite managed files under ~/.grok (for example managed_config.toml). Your personal config.toml is not deleted. Continue?",
+    "This runs `grok setup` and may overwrite managed files under ~/.grok (for example managed_config.toml and signature sidecars). Your personal config.toml is not deleted. Continue?",
   "managedSetup.openAccount": "Open Account",
   "managedSetup.needTauri": "Managed setup requires the desktop app.",
   "managedSetup.sections": "Sections: {list}",
@@ -2175,6 +2207,9 @@ const en = {
   "managedSetup.error.rejectedTitle": "Deployment key rejected",
   "managedSetup.error.rejected":
     "The deployment key was rejected or expired. Confirm it with your administrator.",
+  "managedSetup.error.signatureRejectedTitle": "Managed signature rejected",
+  "managedSetup.error.signatureRejected":
+    "The CLI rejected the managed config signature or envelope. Contact your administrator; the App will not write unverified policy.",
   "settings.aboutApp": "About Grok App",
   "settings.checkUpdate": "Check for updates",
   "settings.checkUpdateDesc":
@@ -6188,9 +6223,41 @@ const zh: Record<MessageKey, string> = {
   // Managed configuration (`grok setup`)
   "managedSetup.title": "托管配置安装",
   "managedSetup.desc":
-    "拉取并安装组织托管配置（`grok setup`）。预览显示脱敏摘要；安装会写入 ~/.grok。",
+    "拉取并安装组织托管配置（`grok setup`）。按步骤：CLI → 团队鉴权 → 可选预览 → 安装 → 校验本地签名产物。CLI 或 inspect 不可用时 soft-fail。",
   "managedSetup.authHint":
     "需要团队登录（`grok login`）或部署密钥 GROK_DEPLOYMENT_KEY（环境变量，或 ~/.grok/config.toml 中 [endpoints] deployment_key）。",
+  "managedSetup.stepsHint":
+    "企业路径为可选。不会删除个人 config.toml。App 从不展示签名文件内容。",
+  "managedSetup.step.cli": "CLI 就绪",
+  "managedSetup.step.auth": "团队登录或部署密钥",
+  "managedSetup.step.preview": "预览托管配置（可选）",
+  "managedSetup.step.install": "安装到 GROK_HOME",
+  "managedSetup.step.verify": "校验本地状态 / 签名",
+  "managedSetup.stepState.done": "完成",
+  "managedSetup.stepState.current": "当前",
+  "managedSetup.stepState.todo": "待办",
+  "managedSetup.stepState.blocked": "受阻",
+  "managedSetup.stepState.soft": "部分",
+  "managedSetup.statusTitle": "本地托管状态",
+  "managedSetup.refreshStatus": "刷新状态",
+  "managedSetup.refreshing": "刷新中…",
+  "managedSetup.sig.none": "无托管产物",
+  "managedSetup.sig.artifacts": "已有托管文件",
+  "managedSetup.sig.sigFiles": "签名文件存在",
+  "managedSetup.sig.active": "托管设置已生效",
+  "managedSetup.sig.rejected": "签名被拒绝",
+  "managedSetup.sig.unknown": "状态未知",
+  "managedSetup.sigHint":
+    "状态仅反映本地文件与 inspect 标志——App 不会重新做密码学验签。CLI 会在写入前拒绝错误签名。",
+  "managedSetup.chip.managedActive": "Inspect：托管已生效",
+  "managedSetup.chip.configToml": "managed_config.toml",
+  "managedSetup.chip.configSig": "managed_config.sig.json",
+  "managedSetup.chip.identitySig": "managed_identity.sig.json",
+  "managedSetup.chip.requirements": "requirements.toml",
+  "managedSetup.chip.systemConfig": "系统 managed_config",
+  "managedSetup.grokHome": "GROK_HOME：{path}",
+  "managedSetup.managedSettingsPath": "托管设置路径：{path}",
+  "managedSetup.preview.sigBlock": "存在（已脱敏）",
   "managedSetup.preview": "预览",
   "managedSetup.previewing": "正在获取预览…",
   "managedSetup.previewOk": "预览已就绪（未写入任何文件）。",
@@ -6200,7 +6267,7 @@ const zh: Record<MessageKey, string> = {
   "managedSetup.installOk": "已应用托管配置。",
   "managedSetup.confirmTitle": "安装托管配置？",
   "managedSetup.confirmBody":
-    "将运行 `grok setup`，可能覆盖 ~/.grok 下的托管文件（例如 managed_config.toml）。不会删除你的个人 config.toml。是否继续？",
+    "将运行 `grok setup`，可能覆盖 ~/.grok 下的托管文件（例如 managed_config.toml 与签名 sidecar）。不会删除你的个人 config.toml。是否继续？",
   "managedSetup.openAccount": "打开账户",
   "managedSetup.needTauri": "托管配置安装需要桌面应用。",
   "managedSetup.sections": "分区：{list}",
@@ -6216,6 +6283,9 @@ const zh: Record<MessageKey, string> = {
   "managedSetup.error.rejectedTitle": "部署密钥被拒绝",
   "managedSetup.error.rejected":
     "部署密钥无效或已过期，请与管理员确认。",
+  "managedSetup.error.signatureRejectedTitle": "托管签名被拒绝",
+  "managedSetup.error.signatureRejected":
+    "CLI 拒绝了托管配置签名或信封。请联系管理员；App 不会写入未验证策略。",
   "settings.aboutApp": "关于 Grok App",
   "settings.checkUpdate": "检查更新",
   "settings.checkUpdateDesc":

@@ -71,6 +71,9 @@ export type ProjectInspectPermissions = {
   loaded: number;
   sourcesCount: number;
   managedSettingsActive: boolean;
+  /** From `grok inspect` when present (host soft-passes through). */
+  managedSettingsExists?: boolean | null;
+  managedSettingsPath?: string | null;
 };
 
 /** Sanitized summary returned by `project_inspect` and built client-side for tests. */
@@ -454,6 +457,13 @@ export function summarizeInspectJson(
     loaded: num(perm?.loaded) ?? 0,
     sourcesCount: sources.length,
     managedSettingsActive: Boolean(perm?.managedSettingsActive),
+    managedSettingsExists:
+      typeof perm?.managedSettingsExists === "boolean"
+        ? perm.managedSettingsExists
+        : perm?.managedSettingsExists == null
+          ? null
+          : null,
+    managedSettingsPath: str(perm?.managedSettingsPath),
   };
 
   // Models hints: explicit array on inspect if ever present, plus opts.

@@ -3548,12 +3548,33 @@ export type SetupInstallResult = {
   errorKind?: string | null;
 };
 
+/** Soft-fail local managed-config / signature artifact probe. */
+export type ManagedSetupStatusResult = {
+  ok: boolean;
+  cliFound: boolean;
+  grokHome?: string | null;
+  managedConfigPresent: boolean;
+  requirementsPresent: boolean;
+  configSignaturePresent: boolean;
+  identitySignaturePresent: boolean;
+  systemManagedConfigPresent: boolean;
+  managedSettingsActive?: boolean | null;
+  managedSettingsExists?: boolean | null;
+  managedSettingsPath?: string | null;
+  reason?: string | null;
+};
+
 export async function setupPreview() {
   return invoke<SetupPreviewResult>("setup_preview");
 }
 
 export async function setupInstall() {
   return invoke<SetupInstallResult>("setup_install");
+}
+
+/** Soft-fail: local managed files + optional inspect managed-settings flags. */
+export async function managedSetupStatus() {
+  return invoke<ManagedSetupStatusResult>("managed_setup_status");
 }
 
 export type MarketplaceListResult = {
