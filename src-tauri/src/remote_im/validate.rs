@@ -316,14 +316,46 @@ async fn test_telegram(
     }
 }
 
+/// Discord bot token shape: three base64url-ish segments (optional "Bot " prefix).
+/// Soft-fail only — never logs the token.
+fn is_discord_bot_token_format(raw: &str) -> bool {
+    let t = raw.trim();
+    if t.is_empty() {
+        return false;
+    }
+    let body = t
+        .strip_prefix("Bot ")
+        .or_else(|| t.strip_prefix("bot "))
+        .unwrap_or(t)
+        .trim();
+    let parts: Vec<&str> = body.split('.').collect();
+    if parts.len() != 3 {
+        return false;
+    }
+    parts.iter().enumerate().all(|(i, p)| {
+        let min = if i == 1 { 4 } else { 20 };
+        p.len() >= min
+            && p.chars()
+                .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
+    })
+}
+
 async fn test_discord(
     secrets: &HashMap<String, String>,
 ) -> Result<TestConnectionDto, String> {
-    let token = cred_get(secrets, &["token"]);
+    let token = cred_get(secrets, &["token", "bot_token"]);
     if token.is_empty() {
         return Ok(TestConnectionDto {
             ok: false,
-            message: "missing_token".into(),
+            message: "missing_discord_token".into(),
+            mock: false,
+        });
+    }
+    // Soft-fail bad paste before network (honest; never claims Gateway live).
+    if !is_discord_bot_token_format(token) {
+        return Ok(TestConnectionDto {
+            ok: false,
+            message: "invalid_discord_token_format".into(),
             mock: false,
         });
     }
@@ -335,20 +367,32 @@ async fn test_discord(
         .await
     {
         Ok(res) => {
-            let ok = res.status().is_success();
-            Ok(TestConnectionDto {
-                ok,
-                message: if ok {
-                    "discord_bot_ok".into()
-                } else {
-                    format!("http_{}", res.status().as_u16())
-                },
-                mock: false,
-            })
+            let status = res.status();
+            if status.is_success() {
+                // REST identity only — Gateway requires Bridge link + Message Content Intent.
+                Ok(TestConnectionDto {
+                    ok: true,
+                    message: "discord_bot_identity_ok".into(),
+                    mock: false,
+                })
+            } else if status.as_u16() == 401 || status.as_u16() == 403 {
+                Ok(TestConnectionDto {
+                    ok: false,
+                    message: format!("discord_auth_http_{}", status.as_u16()),
+                    mock: false,
+                })
+            } else {
+                Ok(TestConnectionDto {
+                    ok: false,
+                    message: format!("discord_http_{}", status.as_u16()),
+                    mock: false,
+                })
+            }
         }
         Err(e) => Ok(TestConnectionDto {
             ok: false,
-            message: e.to_string(),
+            // Network soft-fail — credentials may still be fine; Gateway not verified.
+            message: format!("discord_network:{}", e),
             mock: false,
         }),
     }
@@ -468,5 +512,35 @@ mod tests {
         let r = test_wecom(&c).unwrap();
         assert!(r.ok);
         assert_eq!(r.message, "wecom_ws_credentials_present");
+    }
+
+    #[test]
+    fn discord_token_format_accepts_three_segments() {
+        // Synthetic shape only — not a real Discord credential.
+        let ok = "TESTTOKEN_NOT_A_SECRET_xx.TEST.TESTTOKEN_NOT_A_SECRET_TAIL_xx";
+        assert!(is_discord_bot_token_format(ok));
+        assert!(is_discord_bot_token_format(&format!("Bot {ok}")));
+        assert!(!is_discord_bot_token_format(""));
+        assert!(!is_discord_bot_token_format("not-a-token"));
+        assert!(!is_discord_bot_token_format("only.two"));
+        assert!(!is_discord_bot_token_format(
+            "123456789:AAHdqTcvCH1vGWJxfSeofSAs0K5PALDsaw"
+        ));
+    }
+
+    #[tokio::test]
+    async fn discord_soft_fails_missing_and_bad_format() {
+        let empty = HashMap::new();
+        let r = test_discord(&empty).await.unwrap();
+        assert!(!r.ok);
+        assert_eq!(r.message, "missing_discord_token");
+        assert!(!r.mock);
+
+        let mut bad = HashMap::new();
+        bad.insert("token".into(), "garbage".into());
+        let r2 = test_discord(&bad).await.unwrap();
+        assert!(!r2.ok);
+        assert_eq!(r2.message, "invalid_discord_token_format");
+        assert!(!r2.mock);
     }
 }

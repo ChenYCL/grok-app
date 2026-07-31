@@ -260,4 +260,63 @@ describe("classifyChannelHealth", () => {
     expect(r.ready).toBe(true);
     expect(r.missingKeys).not.toContain("corp_secret");
   });
+
+  it("discord: gateway deep health with intent + ACL hints", () => {
+    expect(channelHasDeepHealth("discord")).toBe(true);
+    const bare = inst("discord", {
+      hasCredentials: false,
+      enabled: false,
+      options: {},
+    });
+    const h0 = classifyChannelHealth({
+      instance: bare,
+      bridgeRunning: false,
+    });
+    expect(h0.tone).toBe("unconfigured");
+    expect(h0.transport).toBe("gateway");
+    expect(h0.credentialsReady).toBe(false);
+    expect(h0.hintKeys.some((k) => k.includes("discordGateway"))).toBe(true);
+    expect(h0.hintKeys.some((k) => k.includes("discordIntent"))).toBe(true);
+    expect(h0.hintKeys.some((k) => k.includes("discordNoWebhook"))).toBe(true);
+
+    const ready = inst("discord", {
+      hasCredentials: true,
+      enabled: true,
+      options: {
+        progress_style: "compact",
+        thread_isolation: true,
+      },
+      acl: {
+        allowFrom: "*",
+        requireMention: true,
+        groupOnly: false,
+        shareSessionInChannel: false,
+      },
+    });
+    const h1 = classifyChannelHealth({
+      instance: ready,
+      bridgeRunning: true,
+      bridgeLinked: true,
+    });
+    expect(h1.credentialsReady).toBe(true);
+    expect(h1.tone).toBe("connected");
+    expect(h1.transport).toBe("gateway");
+    expect(h1.modeLabel).toContain("thread_iso");
+    expect(h1.hintKeys.some((k) => k.includes("discordGateway"))).toBe(true);
+    expect(h1.hintKeys.some((k) => k.includes("discordIntent"))).toBe(true);
+    expect(h1.hintKeys.some((k) => k.includes("discordThreadIso"))).toBe(true);
+    expect(h1.openAcl).toBe(true);
+
+    // Invalid form token shape → not ready
+    const h2 = classifyChannelHealth({
+      instance: bare,
+      bridgeRunning: false,
+      secretKeysFilled: new Set(["token"]),
+      tokenValue: "not-a-token",
+    });
+    expect(h2.credentialsReady).toBe(false);
+    expect(h2.hintKeys.some((k) => k.includes("discordTokenFormat"))).toBe(
+      true,
+    );
+  });
 });
