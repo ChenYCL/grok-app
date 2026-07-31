@@ -1551,6 +1551,9 @@ const en = {
   "settings.streamStallSeconds": "Stream stall timeout (seconds)",
   "settings.streamStallSecondsDesc":
     "If a turn has no stream chunks or tool activity for this long, the app first tries a silent heal, then may show Keep waiting / End turn (default 180). Long-running tools that still emit events do not count as stalled. After a longer hard silence the turn ends automatically and content is kept.",
+  "settings.includePartialMessages": "Include partial stream events",
+  "settings.includePartialMessagesDesc":
+    "Headless paths that use `--output-format streaming-messages-json` also pass `--include-partial-messages` (CLI 0.2.117+) so incremental `stream_event` text/thinking deltas are emitted. Off = whole messages only (CLI default). Remote IM upgrades to streaming-messages-json when this is on and the CLI is new enough; older CLIs soft-fail (flag omitted).",
   "settings.maxAgentTurns": "Max agent turns",
   "settings.maxAgentTurnsDesc":
     "Pass `grok --max-turns N` when starting the agent (1–200). Leave empty or 0 for the CLI default. Applies on the next agent start — reconnect the session after changing.",
@@ -5604,6 +5607,9 @@ const zh: Record<MessageKey, string> = {
   "settings.streamStallSeconds": "流式卡顿超时（秒）",
   "settings.streamStallSecondsDesc":
     "若一轮对话在该时间内无任何流式片段或工具活动，应用会先尝试静默收尾，再提示「继续等待 / 结束本轮」（默认 180）。仍有工具事件的长任务不会误判为卡顿。更长静默后会自动结束本轮并保留已生成内容。",
+  "settings.includePartialMessages": "包含部分流式事件",
+  "settings.includePartialMessagesDesc":
+    "使用 `--output-format streaming-messages-json` 的无头路径会额外传入 `--include-partial-messages`（CLI 0.2.117+），输出增量 `stream_event` 文本/思考 delta。关闭 = 仅完整消息（CLI 默认）。开启且 CLI 足够新时，远程 IM 会升级为 streaming-messages-json；更旧 CLI soft-fail（省略 flag）。",
   "settings.maxAgentTurns": "最大 Agent 轮次",
   "settings.maxAgentTurnsDesc":
     "启动 Agent 时传入 `grok --max-turns N`（1–200）。留空或 0 表示使用 CLI 默认。下次启动 Agent 时生效——更改后请重连会话。",

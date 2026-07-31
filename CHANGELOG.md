@@ -95,6 +95,7 @@ See `docs/llm-wiki/release.md`.
 #### Permissions / CLI
 - **CLI `--no-ask-user`** (Settings → General → Agent; **CLI ≥ 0.2.117**): toggle spawns with top-level `--no-ask-user` so the agent does not emit `ask_user_question` questionnaires; optional per-session override (`SessionMeta.noAskUser` / `session_set_no_ask_user`, `null` inherits global); soft-respawn on change; pure resolve/spawn helpers + tests
 - **Background wait policy** (CLI **0.2.117+**, Settings → General → Agent): `wait` (default) · `no_wait` (`--no-wait-for-background`) · `timeout` (`--background-wait-timeout` 1–3600s). Headless first-turn wait for background bash/monitor/subagents; wired on Remote IM / wallpaper headless and soft-gated on ACP top-level spawn (older CLI omits flags — no crash). Pure helpers + tests (`backgroundWaitPolicy`)
+- **Include partial stream events** (CLI **0.2.117+**, Settings → Runtime → Pool): toggle `includePartialMessages` → headless paths using `--output-format streaming-messages-json` also pass `--include-partial-messages` for incremental `stream_event` text/thinking deltas. Remote IM upgrades format when on and CLI is new enough; older CLI soft-fails (flag omitted). Pure helpers + tests (`partialStream`)
 - **CLI `--permission-mode` alignment**: pure App policy / YOLO / plan-mode map (`default` · `acceptEdits` · `auto` · `dontAsk` · `bypassPermissions` · `plan`); spawn pins top-level `--permission-mode` (+ agent `--always-approve` for YOLO); Settings shows CLI label + advanced mode selector; product **Auto** policy
 - **Doctor fix depth**: plan banner (“N automatic fixes available (M need confirm)”), **Apply safe fixes** for non-destructive CLI remediations (sequential host `cli_doctor_fix`, then re-run doctor); destructive fixes stay per-row with in-app confirm; clearer fix-id + host errors
 - **CLI worktree list**: host runs `grok worktree list --json` (text fallback); branch menu **CLI worktrees** section with refresh, reveal path, open as session cwd when the folder exists; soft-fail when CLI missing; pure JSON/text parsers + tests
@@ -169,6 +170,7 @@ See `docs/llm-wiki/release.md`.
 - **扩展/市场**：目录插件详情面板（描述/版本/组件徽章 + 安装/重装）；安装失败行内重试；已安装 provides 结构化摘要；**MCP doctor** 诊断结果列表（`mcp_doctor` + 扁平 findings；斜杠 MCP 弹窗可运行/筛选；与 inspect 刷新共存）
 - **扩展/市场**：目录插件详情面板（描述/版本/组件徽章 + 安装/重装）；安装失败行内重试；已安装 provides 结构化摘要；**Hooks 试跑**（仅 hooks 目录内脚本、可选 JSON stdin、超时、脱敏输出；目录外拒绝；仅 exit 0 成功）
 - **权限/CLI**：**`--no-ask-user`**（设置 → 通用 → Agent；**CLI ≥ 0.2.117**）：顶层 flag 禁用 ask_user 问卷；可选会话覆盖（`null` 继承全局）；soft-respawn；纯 resolve/spawn 助手与测试
+- **权限/CLI**：**包含部分流式事件**（CLI 0.2.117+：`--include-partial-messages`；仅 `streaming-messages-json`；设置 → 运行时 → 进程池；远程 IM 升级 format；旧 CLI soft-fail）
 - **权限/CLI**：`--permission-mode` 映射与 spawn；设置页 CLI 标签与高级选择；**Auto** 策略；Doctor 安全批量修复；**删除磁盘 CLI 会话**（单条/全部未关联；限定 `GROK_HOME/sessions`）
 - **权限/CLI**：**后台等待策略**（CLI 0.2.117+：`wait` / `no_wait` / `timeout`；设置 → Agent；无头与 ACP 顶层 soft-fail 旧 CLI）
 - **扩展/市场**：目录插件详情面板（描述/版本/组件徽章 + 安装/重装）；安装失败行内重试；已安装 provides 结构化摘要

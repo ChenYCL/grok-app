@@ -269,6 +269,12 @@ pub struct AppSettings {
     /// Clamped 1–3600; default 600 (CLI default when waiting).
     #[serde(default = "default_background_wait_timeout_sec")]
     pub background_wait_timeout_sec: u32,
+    /// When true, headless paths that use `--output-format streaming-messages-json`
+    /// also pass `--include-partial-messages` (CLI 0.2.117+) so incremental
+    /// `stream_event` deltas are emitted. Default false. Soft-fails on older
+    /// CLIs (flag omitted). Only valid with streaming-messages-json.
+    #[serde(default)]
+    pub include_partial_messages: bool,
     /// When true, spawn agents with top-level `--disable-web-search` so
     /// `web_search` / `web_fetch` tools are removed. Default false (CLI default).
     #[serde(default)]
@@ -507,6 +513,7 @@ impl Default for AppSettings {
             max_agent_turns: None,
             background_wait_policy: default_background_wait_policy(),
             background_wait_timeout_sec: default_background_wait_timeout_sec(),
+            include_partial_messages: false,
             disable_web_search: false,
             no_ask_user: false,
             disallowed_tools: Vec::new(),
@@ -2311,6 +2318,7 @@ mod tests {
         assert_eq!(s.max_agent_turns, None);
         assert_eq!(s.background_wait_policy, "wait");
         assert_eq!(s.background_wait_timeout_sec, 600);
+        assert!(!s.include_partial_messages);
         assert!(!s.disable_web_search);
         assert!(!s.no_ask_user);
         assert!(s.disallowed_tools.is_empty());
@@ -2469,6 +2477,12 @@ mod tests {
             back.allowed_tools,
             vec!["web_search".to_string(), "write".to_string()]
         );
+    }
+
+    #[test]
+    fn include_partial_messages_defaults_false_when_missing_from_json() {
+        let s: AppSettings = serde_json::from_str(legacy_settings_json()).expect("deserialize");
+        assert!(!s.include_partial_messages);
     }
 
     #[test]

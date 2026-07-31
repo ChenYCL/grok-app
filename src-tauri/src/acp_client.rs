@@ -669,6 +669,57 @@ pub fn background_wait_spawn_flags_soft(
     raw_cli_version: Option<&str>,
 ) -> Vec<String> {
     let args = background_wait_spawn_flags(policy, timeout_sec);
+// ── Include partial stream events (CLI 0.2.117+, headless) ─────────────────
+
+/// First CLI that accepts `--include-partial-messages`.
+pub const INCLUDE_PARTIAL_MESSAGES_MIN_CLI: (u64, u64, u64) = (0, 2, 117);
+
+/// Anthropic Messages API NDJSON wire format (pairs with partial stream events).
+pub const HEADLESS_FORMAT_STREAMING_MESSAGES_JSON: &str = "streaming-messages-json";
+
+/// ACP-native streaming NDJSON (Remote IM default; no partial stream events).
+pub const HEADLESS_FORMAT_STREAMING_JSON: &str = "streaming-json";
+
+/// True when format is `streaming-messages-json` (aliases normalized).
+pub fn is_streaming_messages_json_format(format: &str) -> bool {
+    let s = format.trim().to_ascii_lowercase().replace('_', "-");
+    matches!(
+        s.as_str(),
+        "streaming-messages-json" | "streaming-message-json" | "messages-json"
+    )
+}
+
+/// Top-level CLI flags for `--include-partial-messages`.
+/// Empty unless `enabled` **and** format is `streaming-messages-json`.
+pub fn include_partial_messages_spawn_flags(
+    enabled: bool,
+    output_format: &str,
+) -> Vec<&'static str> {
+    if enabled && is_streaming_messages_json_format(output_format) {
+        vec!["--include-partial-messages"]
+    } else {
+        vec![]
+    }
+}
+
+/// `Some(true)` when CLI ≥ 0.2.117; `Some(false)` when older; `None` unparseable.
+pub fn cli_supports_include_partial_messages(raw_version: &str) -> Option<bool> {
+    let token = crate::cli_probe::extract_version_token(raw_version)?;
+    let parsed = crate::app_update::parse_semver(&token)?;
+    Some(parsed >= INCLUDE_PARTIAL_MESSAGES_MIN_CLI)
+}
+
+/// Soft-fail gate: emit flag only when CLI is known to support it.
+///
+/// - Known ≥ 0.2.117 + enabled + streaming-messages-json → flag
+/// - Known older / unknown → omit (avoid clap crash)
+/// - Disabled or wrong format → empty always
+pub fn include_partial_messages_spawn_flags_soft(
+    enabled: bool,
+    output_format: &str,
+    raw_cli_version: Option<&str>,
+) -> Vec<&'static str> {
+    let args = include_partial_messages_spawn_flags(enabled, output_format);
     if args.is_empty() {
         return args;
     }
@@ -688,6 +739,39 @@ pub fn background_wait_spawn_flags_from_settings(
         settings.background_wait_timeout_sec,
         raw_cli_version,
     )
+        Some(v) if cli_supports_include_partial_messages(v) == Some(true) => args,
+        _ => vec![],
+    }
+}
+
+/// Resolve headless format + partial flag for Remote IM / diagnostics when the
+/// user enables partial stream events.
+///
+/// - Partial on + CLI ≥ 0.2.117 → `streaming-messages-json` + flag
+/// - Otherwise → `streaming-json` (no flag; soft-fail older CLI)
+pub fn resolve_headless_stream_for_partial(
+    include_partial: bool,
+    raw_cli_version: Option<&str>,
+) -> (&'static str, Vec<&'static str>) {
+    let can = raw_cli_version
+        .and_then(cli_supports_include_partial_messages)
+        == Some(true);
+    if include_partial && can {
+        (
+            HEADLESS_FORMAT_STREAMING_MESSAGES_JSON,
+            vec!["--include-partial-messages"],
+        )
+    } else {
+        (HEADLESS_FORMAT_STREAMING_JSON, vec![])
+    }
+}
+
+/// Load settings + CLI version soft-gate for Remote IM headless.
+pub fn resolve_headless_stream_from_settings(
+    settings: &crate::store::AppSettings,
+    raw_cli_version: Option<&str>,
+) -> (&'static str, Vec<&'static str>) {
+    resolve_headless_stream_for_partial(settings.include_partial_messages, raw_cli_version)
 }
 
 pub fn disable_web_search_spawn_flags(disable: bool) -> Vec<&'static str> {
@@ -4546,6 +4630,86 @@ mod no_ask_user_spawn_tests {
         assert!(resolve_no_ask_user(None, true));
         assert!(resolve_no_ask_user(Some(true), false));
         assert!(!resolve_no_ask_user(Some(false), true));
+mod include_partial_messages_tests {
+    use super::*;
+
+    #[test]
+    fn format_gate() {
+        assert!(is_streaming_messages_json_format(
+            "streaming-messages-json"
+        ));
+        assert!(is_streaming_messages_json_format(
+            "STREAMING_MESSAGES_JSON"
+        ));
+        assert!(!is_streaming_messages_json_format("streaming-json"));
+        assert!(!is_streaming_messages_json_format("json"));
+        assert!(!is_streaming_messages_json_format("plain"));
+    }
+
+    #[test]
+    fn spawn_flags_only_when_enabled_and_messages_format() {
+        assert_eq!(
+            include_partial_messages_spawn_flags(true, "streaming-messages-json"),
+            vec!["--include-partial-messages"]
+        );
+        assert!(include_partial_messages_spawn_flags(false, "streaming-messages-json").is_empty());
+        assert!(include_partial_messages_spawn_flags(true, "streaming-json").is_empty());
+        assert!(include_partial_messages_spawn_flags(true, "json").is_empty());
+    }
+
+    #[test]
+    fn soft_fail_older_and_unknown_cli() {
+        assert!(include_partial_messages_spawn_flags_soft(
+            true,
+            "streaming-messages-json",
+            Some("0.2.112")
+        )
+        .is_empty());
+        assert!(include_partial_messages_spawn_flags_soft(
+            true,
+            "streaming-messages-json",
+            None
+        )
+        .is_empty());
+        assert!(include_partial_messages_spawn_flags_soft(
+            true,
+            "streaming-messages-json",
+            Some("nope")
+        )
+        .is_empty());
+        assert_eq!(
+            include_partial_messages_spawn_flags_soft(
+                true,
+                "streaming-messages-json",
+                Some("grok 0.2.117")
+            ),
+            vec!["--include-partial-messages"]
+        );
+    }
+
+    #[test]
+    fn resolve_upgrades_format_when_partial_on() {
+        let (fmt, flags) = resolve_headless_stream_for_partial(true, Some("0.2.117"));
+        assert_eq!(fmt, HEADLESS_FORMAT_STREAMING_MESSAGES_JSON);
+        assert_eq!(flags, vec!["--include-partial-messages"]);
+
+        let (fmt2, flags2) = resolve_headless_stream_for_partial(true, Some("0.2.100"));
+        assert_eq!(fmt2, HEADLESS_FORMAT_STREAMING_JSON);
+        assert!(flags2.is_empty());
+
+        let (fmt3, flags3) = resolve_headless_stream_for_partial(false, Some("0.2.117"));
+        assert_eq!(fmt3, HEADLESS_FORMAT_STREAMING_JSON);
+        assert!(flags3.is_empty());
+    }
+
+    #[test]
+    fn cli_supports_semver() {
+        assert_eq!(
+            cli_supports_include_partial_messages("grok 0.2.117"),
+            Some(true)
+        );
+        assert_eq!(cli_supports_include_partial_messages("0.2.116"), Some(false));
+        assert_eq!(cli_supports_include_partial_messages(""), None);
     }
 }
 

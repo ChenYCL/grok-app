@@ -64,6 +64,19 @@ Spawn：`--reasoning-effort <id>`。无模型级默认时 App 默认 **`medium`*
 - **Soft-fail**：CLI &lt; 0.2.117 或版本不可解析时省略非默认 flag（避免 clap 拒识导致 AGENT_CRASHED）。
 - 生效路径：Remote IM headless、壁纸搜索 headless、ACP `agent stdio` 顶层（效果仍以 headless 语义为主；stdio 下 flag 可接受但主要无操作）。
 - 更改后 soft-respawn（`settings_spawn`）。设置：Settings → General → Agent。
+## 部分流式事件（headless，CLI 0.2.117+）
+
+`--include-partial-messages` 仅在 `--output-format streaming-messages-json` 时生效，输出增量 `stream_event`（text/thinking delta）。
+
+| App 设置 | Spawn | 说明 |
+|----------|-------|------|
+| `includePartialMessages: false`（默认） | 省略 flag；Remote IM 用 `streaming-json` | CLI 默认整消息 |
+| `includePartialMessages: true` | `--output-format streaming-messages-json` + `--include-partial-messages` | 仅 CLI ≥ 0.2.117；更旧 soft-fail（保持 streaming-json、省略 flag） |
+
+- 纯 helper：`src/lib/partialStream.ts`；Host：`acp_client::include_partial_messages_spawn_flags*` / `resolve_headless_stream_for_partial`。
+- **Soft-fail**：CLI &lt; 0.2.117 或版本不可解析时省略 flag，不切换 format。
+- 生效路径：Remote IM headless（`grok -p`）；壁纸等仍用 `json` 时不会发 flag（纯 helper 按 format 门控）。
+- 设置：Settings → Runtime → Pool。
 
 ## 内置工具 allowlist / denylist
 

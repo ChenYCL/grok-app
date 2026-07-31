@@ -442,6 +442,13 @@ export interface SettingsPageProps {
   /** Stream stall silence timeout seconds (I06). */
   streamStallSeconds?: number;
   onStreamStallSeconds?: (v: number) => void;
+  /**
+   * Headless partial stream events (CLI 0.2.117+): when on, Remote IM /
+   * diagnostics using streaming-messages-json also pass
+   * `--include-partial-messages`. Soft-fails on older CLIs.
+   */
+  includePartialMessages?: boolean;
+  onIncludePartialMessages?: (v: boolean) => void;
   /** Cap agent turns per process (`grok --max-turns`). 0/undefined = unlimited. */
   maxAgentTurns?: number;
   onMaxAgentTurns?: (v: number) => void;
@@ -1134,6 +1141,8 @@ export function SettingsPage({
   onAgentIdleMinutes,
   streamStallSeconds = 180,
   onStreamStallSeconds,
+  includePartialMessages = false,
+  onIncludePartialMessages,
   storeApiKeysInKeychain = false,
   onStoreApiKeysInKeychain,
   sandboxProfile = "off",
@@ -6053,6 +6062,31 @@ export function SettingsPage({
                     }}
                   />
                 </div>
+                {onIncludePartialMessages ? (
+                  <div
+                    className={
+                      "settings-row" +
+                      rowHighlight("settings-anchor-includePartialMessages")
+                    }
+                    id="settings-anchor-includePartialMessages"
+                  >
+                    <div className="settings-row__text">
+                      <div className="settings-row__label">
+                        {t("settings.includePartialMessages")}
+                      </div>
+                      <div className="settings-row__desc">
+                        {t("settings.includePartialMessagesDesc")}
+                      </div>
+                    </div>
+                    <UiCheck
+                      checked={!!includePartialMessages}
+                      onChange={() =>
+                        onIncludePartialMessages(!includePartialMessages)
+                      }
+                      ariaLabel={t("settings.includePartialMessages")}
+                    />
+                  </div>
+                ) : null}
               </div>
             )}
             {activeTab === "tools" && (
