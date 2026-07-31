@@ -250,6 +250,11 @@ import {
   stoppableActivitySessions,
 } from "@/lib/agentActivity";
 import {
+  classifyTasksBindCwdError,
+  classifyTasksStopError,
+  type TasksBindCwdResult,
+} from "@/lib/tasksPanelPro";
+import {
   loadTrayBusyBadgePref,
   saveTrayBusyBadgePref,
 } from "@/lib/trayBusyBadgePref";
@@ -17798,32 +17803,55 @@ export default function App() {
                   projects.find((p) => p.id === row.projectId) || null;
                 void openSession(row, proj);
               }}
-              onStopSession={(id) => {
-                void (async () => {
-                  try {
-                    await api.sessionStop(id);
-                    setLiveMap((lm) =>
-                      settleStoppedSessionInLiveMap(lm, id),
-                    );
-                  } catch (e) {
-                    showToast(String(e), 4000);
-                  }
-                })();
+              onStopSession={async (id) => {
+                try {
+                  await api.sessionStop(id);
+                  setLiveMap((lm) => settleStoppedSessionInLiveMap(lm, id));
+                } catch (e) {
+                  const view = classifyTasksStopError(e);
+                  showToast(tr(view.titleKey as MessageKey), 4000);
+                  // Re-throw so the panel can also show an inline soft-fail hint.
+                  throw e;
+                }
               }}
               onStopAllSessions={stopAllBusySessions}
               onOpenDashboard={() => setAgentDashboardOpen(true)}
               activeCwd={activeProject?.path ?? null}
-              onOpenCwd={(cwd) => {
-                const wt = worktreeEntryForPath(cwd, gitWorktrees);
-                if (!wt) return;
-                void (async () => {
+              onOpenCwd={async (cwd): Promise<TasksBindCwdResult> => {
+                const path = (cwd || "").trim();
+                if (!path) {
+                  return { ok: false, kind: "empty_path" };
+                }
+                if (!api.isTauri()) {
+                  return { ok: false, kind: "host_only" };
+                }
+                if (
+                  activeProject?.path &&
+                  pathsEqual(path, activeProject.path)
+                ) {
+                  return { ok: false, kind: "already_active" };
+                }
+                const wt = worktreeEntryForPath(path, gitWorktrees);
+                if (!wt) {
+                  return { ok: false, kind: "not_worktree" };
+                }
+                try {
                   await switchToWorktree(wt);
                   const liveId =
                     viewingSessionIdRef.current || session.sessionId || null;
                   if (liveId) {
                     await markSessionWorktree(liveId, wt.path, wt.branch);
                   }
-                })();
+                  return { ok: true };
+                } catch (e) {
+                  const view = classifyTasksBindCwdError(e);
+                  showToast(tr(view.titleKey as MessageKey), 4000);
+                  return {
+                    ok: false,
+                    kind: view.kind,
+                    detail: view.detail || undefined,
+                  };
+                }
               }}
             />
           ) : null}
