@@ -202,7 +202,7 @@ export const zhTW: Record<MessageKey, string> = {
   "session.openInNewWindowMissing": "找不到該對話 — 可能已被刪除。",
   "session.secondaryLiveTitle": "副視窗",
   "session.secondaryLiveBanner":
-    "可在此傳送與停止。為此對話連線時，可能會把主視窗的 live Agent 移走，直到該回合結束。",
+    "可在此傳送、停止與連線。連線本對話時，其他對話的 Agent 會繼續串流輸出（依工作階段槽位，不會被靜默中斷）。輸入框停止僅結束目前對話；任務面板「全部停止」結束所有忙碌對話。",
   "session.focusMainWindow": "聚焦主視窗",
   "session.focusMainWindowFailed": "無法聚焦主視窗",
   "session.collapseAllActivity": "收合全部活動",

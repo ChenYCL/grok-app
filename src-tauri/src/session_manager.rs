@@ -2124,10 +2124,14 @@ impl SessionManager {
     /// Returns `false` when the target has no warm process — the caller must
     /// `connect` (cold spawn) instead.
     ///
-    /// `send` calls this under `connect_lock` so a concurrent warm connect
-    /// cannot swap the live slot between the caller's connect and its send
-    /// (that delivered prompts into a foreign chat and left empty-journal
-    /// zombie sessions behind).
+    /// `send` prefers [`Self::ensure_promptable_session`] so a mid-turn live
+    /// chat is not demoted when the target already has a warm background /
+    /// parked agent (multi-window concurrent pool). This helper remains for
+    /// callers that need the UI focus slot itself.
+    ///
+    /// Under `connect_lock` so a concurrent warm connect cannot swap the live
+    /// slot between the caller's connect and its send (that delivered prompts
+    /// into a foreign chat and left empty-journal zombie sessions behind).
     fn focus_session(&self, app: &AppHandle, target_sid: &str) -> Result<bool, AgentError> {
         if self
             .inner
@@ -2173,6 +2177,76 @@ impl SessionManager {
         }
         // Parked process died between the check and the promote → cold spawn.
         Ok(false)
+    }
+
+    /// Ensure `target_sid` can accept a prompt **without** demoting a different
+    /// mid-turn live agent when the target is already warm in the pool.
+    ///
+    /// Multi-window concurrent slots:
+    /// - Already live → ok
+    /// - Already background (busy or idle shell) → prompt in place (no promote)
+    /// - Parked while live is busy on another chat → unpark into **background**
+    ///   so the streaming focus is not stolen
+    /// - Parked while live is free / same chat → normal focus promote
+    /// - No warm process → `Ok(false)` (caller cold-connects)
+    ///
+    /// Must run under `connect_lock`.
+    fn ensure_promptable_session(
+        &self,
+        app: &AppHandle,
+        target_sid: &str,
+    ) -> Result<bool, AgentError> {
+        // Live focus already on target with a living ACP.
+        if self
+            .inner
+            .lock()
+            .as_ref()
+            .is_some_and(|s| {
+                s.app_session_id == target_sid && s.acp.as_ref().is_some_and(|c| c.is_alive())
+            })
+        {
+            return Ok(true);
+        }
+
+        // Background: keep in place — do not demote the current live focus.
+        if self
+            .background
+            .lock()
+            .get(target_sid)
+            .is_some_and(|s| s.acp.as_ref().is_some_and(|c| c.is_alive()))
+        {
+            tracing::info!(
+                "acp promptable: background in-place sid={target_sid} (no live demote)"
+            );
+            return Ok(true);
+        }
+
+        // Parked warm: if live is mid-turn on another chat, unpark into
+        // background so concurrent multi-window send does not steal focus.
+        let live_busy_other = self.inner.lock().as_ref().is_some_and(|s| {
+            s.app_session_id != target_sid
+                && s.acp.as_ref().is_some_and(|c| c.is_alive())
+                && Self::live_session_is_busy(s)
+        });
+        if live_busy_other && self.parked.lock().contains_key(target_sid) {
+            if let Some(live) = self.unpark_to_live(target_sid) {
+                // unpark_to_live builds a LiveSession; place it into background
+                // so the busy live focus is not demoted.
+                let sid = live.app_session_id.clone();
+                let snap = Self::snapshot_from_live(&live);
+                self.background.lock().insert(sid.clone(), live);
+                tracing::info!(
+                    "acp promptable: parked → background sid={sid} (live busy preserved)"
+                );
+                Self::emit_runtime(app, &snap);
+                return Ok(true);
+            }
+            // Parked process died — fall through to focus / cold path.
+        }
+
+        // Default: promote into live focus (may demote Ready live → parked,
+        // or busy live → background — never kills a busy turn).
+        self.focus_session(app, target_sid)
     }
 
     /// Kill oldest parked agents until `need_slots` are freed (or none left).
@@ -5164,10 +5238,14 @@ impl SessionManager {
     /// in practice: without it the prompt lands on whatever happens to hold the
     /// live slot, and a concurrent connect (warm prefetch, sidebar switch,
     /// automation) between the caller's connect and this call routed turns into
-    /// a foreign chat. When given, the target is focused first (promoted from
-    /// `background` / unparked) under `connect_lock`; if it has no warm process
-    /// the call fails with `CONNECT_FAILED` so the UI can reconnect and retry
-    /// instead of silently writing into another session's journal.
+    /// a foreign chat.
+    ///
+    /// When given, the target is made promptable under `connect_lock` via
+    /// [`Self::ensure_promptable_session`]: already-background / parked agents
+    /// can accept a prompt **without** demoting a different mid-turn live chat
+    /// (multi-window concurrent slot pool). If it has no warm process the call
+    /// fails with `CONNECT_FAILED` so the UI can reconnect and retry instead of
+    /// silently writing into another session's journal.
     pub async fn send_message(
         self: &Arc<Self>,
         app: AppHandle,
@@ -5189,24 +5267,32 @@ impl SessionManager {
         // the slot cannot move between the target check and `begin_stream`.
         let _focus_guard = self.connect_lock.lock().await;
         if let Some(target) = session_id.as_deref() {
-            if !self.is_live_session(target) {
-                match self.focus_session(&app, target) {
-                    Ok(true) => {}
-                    Ok(false) => {
-                        return Err(format!(
-                            "{}: chat {target} has no live agent process — reconnect and retry",
-                            AgentErrorCode::ConnectFailed.as_str()
-                        ));
-                    }
-                    Err(e) => return Err(format!("{}: {}", e.code.as_str(), e.message)),
+            match self.ensure_promptable_session(&app, target) {
+                Ok(true) => {}
+                Ok(false) => {
+                    return Err(format!(
+                        "{}: chat {target} has no live agent process — reconnect and retry",
+                        AgentErrorCode::ConnectFailed.as_str()
+                    ));
                 }
+                Err(e) => return Err(format!("{}: {}", e.code.as_str(), e.message)),
             }
         }
 
-        // If agent is a fresh session/new, wrap recent journal into the prompt once.
-        let (backend, app_sid, acp, agent_prompt) = {
-            let mut guard = self.inner.lock();
-            let s = guard.as_mut().ok_or("no active session")?;
+        // Open the turn on the target wherever it sits (live **or** background).
+        // Multi-window: a secondary send must not require stealing the live focus
+        // from a main-window mid-turn when the target already has a warm agent.
+        let target_sid = session_id.clone().or_else(|| {
+            self.inner
+                .lock()
+                .as_ref()
+                .map(|s| s.app_session_id.clone())
+        });
+        let Some(app_sid) = target_sid else {
+            return Err("no active session".into());
+        };
+
+        let open = self.with_session_mut(&app_sid, |s| {
             if let Some(target) = session_id.as_deref() {
                 if s.app_session_id != target {
                     return Err(format!(
@@ -5281,26 +5367,33 @@ impl SessionManager {
                     marker: None,
                 },
             );
-            (
+            Ok((
                 s.backend.clone(),
                 s.app_session_id.clone(),
                 s.acp.clone(),
                 agent_prompt,
-            )
+                mid,
+            ))
+        });
+        let (backend, app_sid, acp, agent_prompt, message_id) = match open {
+            Some(Ok(v)) => v,
+            Some(Err(e)) => return Err(e),
+            None => {
+                return Err(format!(
+                    "{}: chat {app_sid} has no live agent process — reconnect and retry",
+                    AgentErrorCode::ConnectFailed.as_str()
+                ));
+            }
         };
-        Self::emit_state(&app, &self.snapshot());
+        // Emit runtime for background targets; state for live focus.
+        self.emit_for_session(&app, &app_sid);
 
         if backend == "mock_acp" || AcpClient::use_mock() {
-            let message_id = self
-                .inner
-                .lock()
-                .as_ref()
-                .and_then(|s| s.streaming_message_id.clone())
-                .unwrap_or_else(|| Uuid::new_v4().to_string());
             let mgr = Arc::clone(self);
             let app_done = app.clone();
+            let turn_sid = app_sid.clone();
             let handle = mock_acp::spawn_fake_stream(
-                app_sid,
+                app_sid.clone(),
                 message_id,
                 agent_prompt,
                 Duration::from_millis(25),
@@ -5315,8 +5408,7 @@ impl SessionManager {
                             "kind": "assistant"
                         }),
                     );
-                    let mut guard = mgr.inner.lock();
-                    if let Some(s) = guard.as_mut() {
+                    mgr.with_session_mut(&turn_sid, |s| {
                         SessionManager::touch_stream_progress_locked(s);
                         s.stream_buf.push_str(&chunk.text);
                         // I04: throttle mid-stream; force on terminal done.
@@ -5336,15 +5428,26 @@ impl SessionManager {
                                 s.stream_message_id_locked = false;
                             }
                         }
-                    }
-                    drop(guard);
+                    });
                     if chunk.done {
-                        SessionManager::emit_state(&app_done, &mgr.snapshot());
+                        mgr.emit_for_session(&app_done, &turn_sid);
                     }
                 },
             );
-            if let Some(s) = self.inner.lock().as_mut() {
+            self.with_session_mut(&app_sid, |s| {
                 s.mock_stream = Some(handle);
+            });
+            // Return the target's snapshot when possible (background path).
+            if self.is_live_session(&app_sid) {
+                return Ok(self.snapshot());
+            }
+            if let Some(snap) = self
+                .background
+                .lock()
+                .get(&app_sid)
+                .map(Self::snapshot_from_live)
+            {
+                return Ok(snap);
             }
             return Ok(self.snapshot());
         }
@@ -5361,7 +5464,7 @@ impl SessionManager {
                     let _ = s.fsm.end_stream();
                 }
             });
-            Self::emit_state(&app, &self.snapshot());
+            self.emit_for_session(&app, &app_sid);
             return Err("ACP client missing".into());
         };
         let mgr = Arc::clone(self);
@@ -5389,6 +5492,17 @@ impl SessionManager {
             }
         });
 
+        if self.is_live_session(&app_sid) {
+            return Ok(self.snapshot());
+        }
+        if let Some(snap) = self
+            .background
+            .lock()
+            .get(&app_sid)
+            .map(Self::snapshot_from_live)
+        {
+            return Ok(snap);
+        }
         Ok(self.snapshot())
     }
 
@@ -6344,6 +6458,14 @@ mod session_routing_tests {
         let mgr = SessionManager::new();
         assert!(mgr.with_session_mut("chat-a", |_| ()).is_none());
         assert!(!mgr.is_live_session("chat-a"));
+    }
+
+    #[test]
+    fn with_session_mut_does_not_invent_sessions() {
+        // Multi-window routing: unknown ids never fall back to another chat.
+        let mgr = SessionManager::new();
+        assert!(mgr.with_session_mut("bg-only", |_| 1u8).is_none());
+        assert!(!mgr.is_live_session("bg-only"));
     }
 
     #[test]
