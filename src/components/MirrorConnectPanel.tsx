@@ -8,14 +8,23 @@
  * token rotate, and optional host start/stop — never stores secrets.
  *
  * Harden: write categories + broad warning, max clients, rotate confirm.
+ * MIRROR-PRO: honest status pill, soft-fail tunnel diagnostics, error chips.
  */
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import QRCode from "qrcode";
 import { GlassModal } from "@/components/GlassModal";
 import { IconCopy, IconDeviceMobile } from "@/components/icons";
-import type { MirrorPhase, MirrorStatus } from "@/lib/api";
+import type { MirrorStatus } from "@/lib/api";
 import * as api from "@/lib/api";
+import {
+  deriveMirrorHostStatus,
+  mirrorDiagnosticDisplay,
+  mirrorHostPhaseClass,
+  mirrorHostPhaseLabelField,
+  type MirrorErrorKind,
+  type MirrorHostConnectStatus,
+} from "@/lib/mirrorStatus";
 import {
   MIRROR_WRITE_AUDIT_CHANGE_EVENT,
   MIRROR_WRITE_AUDIT_STORAGE_KEY,
@@ -54,12 +63,16 @@ export type MirrorConnectLabels = {
   phaseLive: string;
   phaseTunnelDead: string;
   phaseError: string;
+  /** Soft-fail: local host still up after tunnel failure. */
+  phaseSoftLocal: string;
   hint: string;
   warningToken: string;
   missingCloudflared: string;
   errorGeneric: string;
   qrAlt: string;
   linkLabel: string;
+  /** Loopback / soft-fail link label (never claim public tunnel). */
+  linkLabelLocal: string;
   rotate: string;
   rotateDone: string;
   /** Confirm before regenerating the link (invalidates old QR). */
@@ -76,6 +89,10 @@ export type MirrorConnectLabels = {
   writeConfirmOk: string;
   /** Persistent banner while phone write is enabled. */
   writeEnabledBanner: string;
+  /** Soft-fail banner: tunnel failed but local host still serves. */
+  softLocalBanner: string;
+  /** Tunnel-dead continuity note (local still up). */
+  softTunnelDeadBanner: string;
   /** Write-category section while write is on. */
   writeCategoriesTitle: string;
   writeCategoriesHint: string;
@@ -104,6 +121,36 @@ export type MirrorConnectLabels = {
   auditTypeTokenRotated: string;
   auditTypeHostStarted: string;
   auditTypeHostStopped: string;
+  /** MIRROR-PRO error kind chip labels. */
+  errCloudflaredMissing: string;
+  errTunnelTimeout: string;
+  errTunnelSpawn: string;
+  errTunnelNotRegistered: string;
+  errTunnelDead: string;
+  errPortBind: string;
+  errDesktopOnly: string;
+  errWsClosed: string;
+  errWsTimeout: string;
+  errRpcTimeout: string;
+  errRpcUnsupported: string;
+  errNotConnected: string;
+  errClientsFull: string;
+  errOther: string;
+  /** Actionable hints under the diagnostic. */
+  hintCloudflaredMissing: string;
+  hintTunnelTimeout: string;
+  hintTunnelSpawn: string;
+  hintTunnelNotRegistered: string;
+  hintTunnelDead: string;
+  hintPortBind: string;
+  hintDesktopOnly: string;
+  hintWsClosed: string;
+  hintWsTimeout: string;
+  hintRpcTimeout: string;
+  hintRpcUnsupported: string;
+  hintNotConnected: string;
+  hintClientsFull: string;
+  hintOther: string;
 };
 
 export type MirrorConfirmRequest = {
@@ -139,27 +186,6 @@ export type MirrorConnectPanelProps = {
   autoStart?: boolean;
 };
 
-function phaseLabel(phase: MirrorPhase, labels: MirrorConnectLabels): string {
-  switch (phase) {
-    case "stopped":
-      return labels.phaseStopped;
-    case "starting":
-      return labels.phaseStarting;
-    case "local":
-      return labels.phaseLocal;
-    case "waiting_tunnel":
-      return labels.phaseWaitingTunnel;
-    case "live":
-      return labels.phaseLive;
-    case "tunnel_dead":
-      return labels.phaseTunnelDead;
-    case "error":
-      return labels.phaseError;
-    default:
-      return phase;
-  }
-}
-
 function emptyStatus(): MirrorStatus {
   return {
     running: false,
@@ -173,6 +199,86 @@ function emptyStatus(): MirrorStatus {
     error: null,
     readOnly: true,
   };
+}
+
+function hostPhaseLabel(
+  connect: MirrorHostConnectStatus,
+  labels: MirrorConnectLabels,
+): string {
+  const field = mirrorHostPhaseLabelField(connect.phase);
+  return labels[field];
+}
+
+function errorKindChipLabel(
+  kind: MirrorErrorKind,
+  labels: MirrorConnectLabels,
+): string {
+  switch (kind) {
+    case "cloudflared_missing":
+      return labels.errCloudflaredMissing;
+    case "tunnel_timeout":
+      return labels.errTunnelTimeout;
+    case "tunnel_spawn":
+      return labels.errTunnelSpawn;
+    case "tunnel_not_registered":
+      return labels.errTunnelNotRegistered;
+    case "tunnel_dead":
+      return labels.errTunnelDead;
+    case "port_bind":
+      return labels.errPortBind;
+    case "desktop_only":
+      return labels.errDesktopOnly;
+    case "ws_closed":
+      return labels.errWsClosed;
+    case "ws_timeout":
+      return labels.errWsTimeout;
+    case "rpc_timeout":
+      return labels.errRpcTimeout;
+    case "rpc_unsupported":
+      return labels.errRpcUnsupported;
+    case "not_connected":
+      return labels.errNotConnected;
+    case "clients_full":
+      return labels.errClientsFull;
+    default:
+      return labels.errOther;
+  }
+}
+
+function errorKindHintLabel(
+  kind: MirrorErrorKind,
+  labels: MirrorConnectLabels,
+): string {
+  switch (kind) {
+    case "cloudflared_missing":
+      return labels.hintCloudflaredMissing;
+    case "tunnel_timeout":
+      return labels.hintTunnelTimeout;
+    case "tunnel_spawn":
+      return labels.hintTunnelSpawn;
+    case "tunnel_not_registered":
+      return labels.hintTunnelNotRegistered;
+    case "tunnel_dead":
+      return labels.hintTunnelDead;
+    case "port_bind":
+      return labels.hintPortBind;
+    case "desktop_only":
+      return labels.hintDesktopOnly;
+    case "ws_closed":
+      return labels.hintWsClosed;
+    case "ws_timeout":
+      return labels.hintWsTimeout;
+    case "rpc_timeout":
+      return labels.hintRpcTimeout;
+    case "rpc_unsupported":
+      return labels.hintRpcUnsupported;
+    case "not_connected":
+      return labels.hintNotConnected;
+    case "clients_full":
+      return labels.hintClientsFull;
+    default:
+      return labels.hintOther;
+  }
 }
 
 function categoryLabel(
@@ -355,6 +461,7 @@ function MirrorWriteCategories({ labels }: { labels: MirrorConnectLabels }) {
 function MirrorConnectBody({
   labels,
   status,
+  connect,
   busy,
   err,
   qrDataUrl,
@@ -370,6 +477,7 @@ function MirrorConnectBody({
 }: {
   labels: MirrorConnectLabels;
   status: MirrorStatus;
+  connect: MirrorHostConnectStatus;
   busy: boolean;
   err: string | null;
   qrDataUrl: string | null;
@@ -383,41 +491,89 @@ function MirrorConnectBody({
   onToggleReadOnly: () => void;
   onRequestConfirm: (opts: MirrorConfirmRequest) => void;
 }) {
-  const phase = status.phase;
-  const showQr = !!status.publicUrl && (phase === "live" || phase === "local");
+  const phaseMod = mirrorHostPhaseClass(connect.tone);
+  // QR only for intentional public/live or local — not soft-fail tunnel errors
+  // (loopback QR is rarely useful on a phone; still allow copy of URL).
+  const showQr =
+    !!status.publicUrl &&
+    (connect.phase === "live" || connect.phase === "local") &&
+    !connect.showSoftLocal;
   const writeOn = status.running && status.readOnly === false;
+  const linkIsLocalSoft =
+    connect.showSoftLocal ||
+    connect.phase === "local" ||
+    connect.phase === "soft_local" ||
+    connect.phase === "tunnel_dead";
+  const diagnosticText =
+    connect.showDiagnostic || err || status.error
+      ? mirrorDiagnosticDisplay({
+          errorKind: connect.errorKind,
+          safeMessage: connect.safeMessage,
+          missingCloudflaredLabel: labels.missingCloudflared,
+          genericLabel: labels.errorGeneric,
+        })
+      : null;
 
   return (
     <>
       <p className="mirror-connect__hint">{labels.hint}</p>
 
       <div
-        className={
-          "mirror-connect__phase" +
-          (phase === "live" || phase === "local"
-            ? " mirror-connect__phase--ok"
-            : phase === "error" || phase === "tunnel_dead"
-              ? " mirror-connect__phase--err"
-              : "")
-        }
+        className={"mirror-connect__phase" + (phaseMod ? ` ${phaseMod}` : "")}
         role="status"
       >
         <span className="mirror-connect__phase-dot" aria-hidden />
-        {phaseLabel(phase, labels)}
+        {hostPhaseLabel(connect, labels)}
         {status.running && status.clients > 0 ? (
           <span className="mirror-connect__clients">
             · {labels.clients.replace("{n}", String(status.clients))}
           </span>
         ) : null}
+        {connect.errorKind && connect.tone !== "ok" ? (
+          <span
+            className={
+              "mirror-connect__err-chip" +
+              (connect.tone === "err"
+                ? " mirror-connect__err-chip--err"
+                : " mirror-connect__err-chip--warn")
+            }
+            title={errorKindHintLabel(connect.errorKind, labels)}
+          >
+            {errorKindChipLabel(connect.errorKind, labels)}
+          </span>
+        ) : null}
       </div>
 
-      {(err || status.error) && (
-        <div className="mirror-connect__error" role="alert">
-          {(err || status.error || "").includes("cloudflared")
-            ? labels.missingCloudflared
-            : err || status.error}
+      {connect.showSoftLocal ? (
+        <div
+          className="mirror-connect__soft-banner"
+          role="status"
+          aria-live="polite"
+        >
+          {connect.phase === "tunnel_dead"
+            ? labels.softTunnelDeadBanner
+            : labels.softLocalBanner}
         </div>
-      )}
+      ) : null}
+
+      {diagnosticText ? (
+        <div
+          className={
+            "mirror-connect__error" +
+            (connect.showSoftLocal || connect.tone === "warn"
+              ? " mirror-connect__error--soft"
+              : "")
+          }
+          role={connect.showSoftLocal ? "status" : "alert"}
+        >
+          <div className="mirror-connect__error-msg">{diagnosticText}</div>
+          {connect.errorKind ? (
+            <div className="mirror-connect__error-hint">
+              {errorKindHintLabel(connect.errorKind, labels)}
+            </div>
+          ) : null}
+        </div>
+      ) : null}
 
       {showQr && qrDataUrl ? (
         <div className="mirror-connect__qr-wrap">
@@ -431,7 +587,9 @@ function MirrorConnectBody({
         </div>
       ) : (
         <div className="mirror-connect__qr-placeholder" aria-hidden>
-          {busy || phase === "starting" || phase === "waiting_tunnel"
+          {busy ||
+          connect.phase === "starting" ||
+          connect.phase === "waiting_tunnel"
             ? "…"
             : null}
         </div>
@@ -439,7 +597,9 @@ function MirrorConnectBody({
 
       {status.publicUrl ? (
         <div className="mirror-connect__link-row">
-          <label className="mirror-connect__link-label">{labels.linkLabel}</label>
+          <label className="mirror-connect__link-label">
+            {linkIsLocalSoft ? labels.linkLabelLocal : labels.linkLabel}
+          </label>
           <div className="mirror-connect__link-box">
             <code className="mirror-connect__url" title={status.publicUrl}>
               {status.publicUrl}
@@ -803,10 +963,27 @@ export function MirrorConnectPanel({
     });
   };
 
+  const connect = useMemo(
+    () =>
+      deriveMirrorHostStatus({
+        phase: status.phase,
+        running: status.running,
+        publicUrl: status.publicUrl,
+        localPort: status.localPort,
+        clients: status.clients,
+        maxClients: status.maxClients,
+        error: status.error,
+        uiError: err,
+        readOnly: status.readOnly,
+      }),
+    [status, err],
+  );
+
   const body = (
     <MirrorConnectBody
       labels={labels}
       status={status}
+      connect={connect}
       busy={busy}
       err={err}
       qrDataUrl={qrDataUrl}
@@ -844,25 +1021,6 @@ export function MirrorConnectPanel({
       bodyClassName="mirror-connect"
       footer={
         <div className="mirror-connect__footer">
-          {status.running ? (
-            <button
-              type="button"
-              className="btn btn--danger"
-              disabled={busy}
-              onClick={handleStop}
-            >
-              {labels.stop}
-            </button>
-          ) : (
-            <button
-              type="button"
-              className="btn btn--primary"
-              disabled={busy}
-              onClick={handleStart}
-            >
-              {labels.start}
-            </button>
-          )}
           <button
             type="button"
             className="btn btn--ghost"
@@ -873,79 +1031,8 @@ export function MirrorConnectPanel({
         </div>
       }
     >
-      {/* Footer owns actions in modal; body omits duplicate footer via split — reuse hint block only */}
-      <p className="mirror-connect__hint">{labels.hint}</p>
-
-      <div
-        className={
-          "mirror-connect__phase" +
-          (status.phase === "live" || status.phase === "local"
-            ? " mirror-connect__phase--ok"
-            : status.phase === "error" || status.phase === "tunnel_dead"
-              ? " mirror-connect__phase--err"
-              : "")
-        }
-        role="status"
-      >
-        <span className="mirror-connect__phase-dot" aria-hidden />
-        {phaseLabel(status.phase, labels)}
-        {status.running && status.clients > 0 ? (
-          <span className="mirror-connect__clients">
-            · {labels.clients.replace("{n}", String(status.clients))}
-          </span>
-        ) : null}
-      </div>
-
-      {(err || status.error) && (
-        <div className="mirror-connect__error" role="alert">
-          {(err || status.error || "").includes("cloudflared")
-            ? labels.missingCloudflared
-            : err || status.error}
-        </div>
-      )}
-
-      {!!status.publicUrl &&
-      (status.phase === "live" || status.phase === "local") &&
-      qrDataUrl ? (
-        <div className="mirror-connect__qr-wrap">
-          <img
-            className="mirror-connect__qr"
-            src={qrDataUrl}
-            width={220}
-            height={220}
-            alt={labels.qrAlt}
-          />
-        </div>
-      ) : (
-        <div className="mirror-connect__qr-placeholder" aria-hidden>
-          {busy ||
-          status.phase === "starting" ||
-          status.phase === "waiting_tunnel"
-            ? "…"
-            : null}
-        </div>
-      )}
-
-      {status.publicUrl ? (
-        <div className="mirror-connect__link-row">
-          <label className="mirror-connect__link-label">{labels.linkLabel}</label>
-          <div className="mirror-connect__link-box">
-            <code className="mirror-connect__url" title={status.publicUrl}>
-              {status.publicUrl}
-            </code>
-            <button
-              type="button"
-              className="btn btn--ghost mirror-connect__copy"
-              onClick={() => void handleCopy()}
-              title={labels.copyLink}
-            >
-              <IconCopy size={16} />
-              {labels.copyLink}
-            </button>
-          </div>
-          <p className="mirror-connect__warn">{labels.warningToken}</p>
-        </div>
-      ) : null}
+      {/* Shared body with inline (MIRROR-PRO status / soft-fail / actions). */}
+      {body}
     </GlassModal>
   );
 }

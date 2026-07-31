@@ -331,8 +331,10 @@ import {
   isMirrorClient,
   mirrorEnsureTransport,
   mirrorHello,
+  mirrorToken,
   mirrorWsConnected,
 } from "@/lib/mirrorTransport";
+import { deriveMirrorClientLinkStatus } from "@/lib/mirrorStatus";
 
 import {
   createT,
@@ -16149,31 +16151,31 @@ export default function App() {
                 </button>
               ) : (
                 <>
-                  {isMirrorClient() && (
+                  {isMirrorClient() && (() => {
+                    const link = deriveMirrorClientLinkStatus({
+                      wsConnected: mirrorLinkOk,
+                      hasToken: !!mirrorToken(),
+                    });
+                    const linkLabel = tr(link.labelKey as MessageKey);
+                    return (
                     <span
                       className={
-                        "status-pill status-pill--" +
-                        (mirrorLinkOk ? "ok" : "warn")
+                        "status-pill status-pill--" + link.tone
                       }
                       role="status"
                       title={
                         mirrorHostLabel
-                          ? `${mirrorHostLabel} · ${
-                              mirrorLinkOk
-                                ? tr("mirror.chrome.connected")
-                                : tr("mirror.chrome.reconnecting")
-                            }`
-                          : mirrorLinkOk
-                            ? tr("mirror.chrome.connected")
-                            : tr("mirror.chrome.reconnecting")
+                          ? `${mirrorHostLabel} · ${linkLabel}`
+                          : linkLabel
                       }
                     >
                       <span className="status-pill__dot" aria-hidden />
                       {mirrorLinkOk
-                        ? mirrorHostLabel || tr("mirror.chrome.connected")
-                        : tr("mirror.chrome.reconnecting")}
+                        ? mirrorHostLabel || linkLabel
+                        : linkLabel}
                     </span>
-                  )}
+                    );
+                  })()}
                   {mainPane === "chat" && (
                     <span
                       className={`status-pill status-pill--${connPill.tone}`}
@@ -18313,9 +18315,21 @@ export default function App() {
               openFiles: tr("phone.openFiles"),
               connected: tr("mirror.chrome.connected"),
               reconnecting: tr("mirror.chrome.reconnecting"),
+              disconnected: tr("mirror.chrome.disconnected"),
+              tokenMissing: tr("mirror.chrome.tokenMissing"),
             }}
             hostLabel={mirrorHostLabel}
             linkOk={mirrorLinkOk}
+            {...(() => {
+              const link = deriveMirrorClientLinkStatus({
+                wsConnected: mirrorLinkOk,
+                hasToken: !!mirrorToken(),
+              });
+              return {
+                linkTone: link.tone,
+                linkStatusLabel: tr(link.labelKey as MessageKey),
+              };
+            })()}
             agentStatusLabel={tr(connPill.labelKey as MessageKey)}
             agentTone={connPill.tone}
             onOpenFiles={() => openAsidePane()}
