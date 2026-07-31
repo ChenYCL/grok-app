@@ -23500,3 +23500,275 @@ html[data-theme="light"] .rim-sidebar {
 .stream-acp-ndjson__footnote {
   margin: 0;
 }
+
+/* ── GitHub PR hub (Settings → Runtime → Tools) ─────────────────────────── */
+.pr-hub-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  min-width: 0;
+}
+
+.pr-hub__toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin: 8px 0 10px;
+  min-width: 0;
+}
+
+.pr-hub__toolbar-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.pr-hub__count {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.pr-hub__muted {
+  font-size: 12.5px;
+  color: var(--text-tertiary);
+}
+
+.pr-hub__error {
+  font-size: 12.5px;
+  color: var(--danger, #e55);
+  line-height: 1.4;
+}
+
+.pr-hub__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.pr-hub__row {
+  border: 1px solid var(--border-subtle);
+  border-radius: 10px;
+  background: var(--bg-hover);
+  padding: 8px 10px;
+  min-width: 0;
+}
+
+.pr-hub__row-main {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  min-width: 0;
+}
+
+.pr-hub__expand {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  margin-top: 1px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.pr-hub__expand:hover {
+  background: var(--bg-input, rgba(127, 127, 127, 0.12));
+  color: var(--text-primary);
+}
+
+.pr-hub__meta {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.pr-hub__title-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px 8px;
+  min-width: 0;
+}
+
+.pr-hub__number {
+  font-size: 12px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-tertiary);
+  flex-shrink: 0;
+}
+
+.pr-hub__title {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--text-primary);
+  line-height: 1.35;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.pr-hub__sub {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  min-width: 0;
+}
+
+.pr-hub__branch {
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 11.5px;
+  color: var(--text-tertiary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
+}
+
+.pr-hub__badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 2px;
+}
+
+.pr-hub__badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 7px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.5;
+  border: 1px solid transparent;
+}
+
+.pr-hub__badge--pass {
+  color: #1a7f4b;
+  background: rgba(62, 207, 142, 0.14);
+  border-color: rgba(62, 207, 142, 0.28);
+}
+
+.pr-hub__badge--fail {
+  color: #c43c3c;
+  background: rgba(220, 60, 60, 0.12);
+  border-color: rgba(220, 60, 60, 0.25);
+}
+
+.pr-hub__badge--pending {
+  color: #9a6b12;
+  background: rgba(230, 180, 40, 0.14);
+  border-color: rgba(230, 180, 40, 0.3);
+}
+
+.pr-hub__badge--muted {
+  color: var(--text-tertiary);
+  background: rgba(127, 127, 127, 0.1);
+  border-color: var(--border-subtle);
+}
+
+.pr-hub__actions {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.pr-hub__checks-detail {
+  margin: 8px 0 0 34px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: var(--bg-input, rgba(0, 0, 0, 0.04));
+  border: 1px solid var(--border-subtle);
+}
+
+.pr-hub__checks-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.pr-hub__check-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  font-size: 12px;
+}
+
+.pr-hub__check-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  background: var(--text-tertiary);
+}
+
+.pr-hub__check-dot--pass {
+  background: #3ecf8e;
+}
+
+.pr-hub__check-dot--fail {
+  background: #e55;
+}
+
+.pr-hub__check-dot--pending {
+  background: #e6b428;
+}
+
+.pr-hub__check-dot--cancel,
+.pr-hub__check-dot--skipping,
+.pr-hub__check-dot--muted {
+  background: var(--text-tertiary);
+}
+
+.pr-hub__check-name {
+  font-weight: 500;
+  color: var(--text-primary);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pr-hub__check-workflow {
+  color: var(--text-tertiary);
+  font-size: 11px;
+  flex-shrink: 0;
+}
+
+.pr-hub__check-state {
+  margin-left: auto;
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  flex-shrink: 0;
+}
+
+.pr-hub__check-link {
+  flex-shrink: 0;
+  padding: 2px 4px !important;
+}
+
+.pr-hub__empty {
+  margin-top: 8px;
+}

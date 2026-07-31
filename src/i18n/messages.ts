@@ -4193,6 +4193,45 @@ const en = {
   "ui.errorBoundary.body":
     "The chat surface failed to render. Your session on disk is kept — retry or switch chats.",
   "ui.errorBoundary.retry": "Retry",
+
+  // GitHub PR hub (Settings → Runtime → Tools)
+  "prHub.title": "Pull requests",
+  "prHub.desc":
+    "Open PRs for the active project via GitHub CLI (`gh pr list`). Soft-fails when gh or git is missing, or the folder is not a repository.",
+  "prHub.refresh": "Refresh",
+  "prHub.refreshing": "Refreshing…",
+  "prHub.loading": "Loading pull requests…",
+  "prHub.count": "{n} open",
+  "prHub.empty": "No open pull requests",
+  "prHub.emptyBody": "This repository has no open PRs (or none match the default filter).",
+  "prHub.needProject": "No active project",
+  "prHub.needProjectBody":
+    "Select a project folder in the workbench to list its GitHub pull requests.",
+  "prHub.needTauri": "PR hub requires the Grok desktop window.",
+  "prHub.needGh": "GitHub CLI not found",
+  "prHub.needGhBody":
+    "Install GitHub CLI (`gh`) and sign in (`gh auth login`). PATH should include `gh` (GUI apps also search `~/.grok/bin` and common install locations).",
+  "prHub.needGit": "Git not available",
+  "prHub.needGitBody": "Install git and ensure it is on PATH for the desktop app.",
+  "prHub.notGit": "Not a git repository",
+  "prHub.notGitBody": "The active project folder is not inside a git work tree.",
+  "prHub.unavailable": "Could not list pull requests",
+  "prHub.unavailableBody": "gh pr list failed. Check auth, remote, and network.",
+  "prHub.error": "PR hub error",
+  "prHub.open": "Open",
+  "prHub.openInBrowser": "Open pull request in browser",
+  "prHub.openCheck": "Open check details",
+  "prHub.draft": "Draft",
+  "prHub.mergeable": "Mergeable",
+  "prHub.conflicting": "Conflicts",
+  "prHub.mergeableUnknown": "Merge status unknown",
+  "prHub.author": "by {name}",
+  "prHub.untitled": "(no title)",
+  "prHub.expandChecks": "Show CI checks",
+  "prHub.collapseChecks": "Hide CI checks",
+  "prHub.checks.none": "No checks",
+  "prHub.checks.loading": "Loading checks…",
+  "prHub.checks.failed": "Could not load checks",
 } as const;
 
 const zh: Record<MessageKey, string> = {
@@ -8241,7 +8280,46 @@ const zh: Record<MessageKey, string> = {
   "ui.errorBoundary.title": "此视图渲染出错",
   "ui.errorBoundary.body":
     "聊天区域无法显示。磁盘上的会话仍保留 — 可重试或切换会话。",
-  "ui.errorBoundary.retry": "重试",};
+  "ui.errorBoundary.retry": "重试",
+
+  // GitHub PR hub
+  "prHub.title": "Pull requests",
+  "prHub.desc":
+    "通过 GitHub CLI（`gh pr list`）列出当前项目的打开 PR。若缺少 gh/git 或非仓库，则软失败提示。",
+  "prHub.refresh": "刷新",
+  "prHub.refreshing": "刷新中…",
+  "prHub.loading": "正在加载 Pull requests…",
+  "prHub.count": "{n} 个打开",
+  "prHub.empty": "没有打开的 Pull request",
+  "prHub.emptyBody": "该仓库当前没有打开的 PR（或不符合默认筛选）。",
+  "prHub.needProject": "未选择项目",
+  "prHub.needProjectBody": "在工作台选择项目文件夹后，可列出其 GitHub Pull requests。",
+  "prHub.needTauri": "PR 中心需要 Grok 桌面窗口。",
+  "prHub.needGh": "未找到 GitHub CLI",
+  "prHub.needGhBody":
+    "请安装 GitHub CLI（`gh`）并登录（`gh auth login`）。PATH 需包含 `gh`（桌面应用也会搜索 `~/.grok/bin` 与常见安装路径）。",
+  "prHub.needGit": "未找到 git",
+  "prHub.needGitBody": "请安装 git，并确保桌面应用的 PATH 可找到它。",
+  "prHub.notGit": "不是 git 仓库",
+  "prHub.notGitBody": "当前项目文件夹不在 git 工作树内。",
+  "prHub.unavailable": "无法列出 Pull requests",
+  "prHub.unavailableBody": "gh pr list 失败。请检查登录、远程仓库与网络。",
+  "prHub.error": "PR 中心错误",
+  "prHub.open": "打开",
+  "prHub.openInBrowser": "在浏览器中打开 Pull request",
+  "prHub.openCheck": "打开检查详情",
+  "prHub.draft": "草稿",
+  "prHub.mergeable": "可合并",
+  "prHub.conflicting": "有冲突",
+  "prHub.mergeableUnknown": "合并状态未知",
+  "prHub.author": "作者 {name}",
+  "prHub.untitled": "（无标题）",
+  "prHub.expandChecks": "显示 CI 检查",
+  "prHub.collapseChecks": "隐藏 CI 检查",
+  "prHub.checks.none": "无检查",
+  "prHub.checks.loading": "正在加载检查…",
+  "prHub.checks.failed": "无法加载检查",
+};
 
 export const messages: Record<Locale, Record<MessageKey, string>> = {
   en: en as Record<MessageKey, string>,
