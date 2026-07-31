@@ -113,6 +113,12 @@ describe("detectAuthToneFromText", () => {
       "auth_required",
     );
     expect(detectAuthToneFromText("invalid token")).toBe("auth_required");
+    expect(
+      detectAuthToneFromText("OAuth authorization required"),
+    ).toBe("auth_required");
+    expect(detectAuthToneFromText("AuthorizationRequired")).toBe(
+      "auth_required",
+    );
   });
 
   it("returns null when no auth keywords", () => {

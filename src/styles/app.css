@@ -17482,6 +17482,32 @@ div.composer__input:empty::before {
   line-height: 1.4;
   word-break: break-word;
 }
+.mcp-modal__oauth-row {
+  margin-top: 4px;
+}
+.mcp-modal__auth-reason {
+  margin: 4px 0 0;
+  font-size: 11px;
+  color: var(--text-secondary);
+  line-height: 1.4;
+  word-break: break-word;
+}
+.mcp-modal__oauth-url {
+  margin: 8px 0 0;
+  font-size: 12px;
+  line-height: 1.4;
+  word-break: break-all;
+  color: var(--text-secondary);
+}
+.mcp-modal__oauth-url-label {
+  color: var(--text-tertiary);
+  font-weight: 500;
+}
+.mcp-modal__oauth-url-value {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 11px;
+  color: var(--text-primary);
+}
 
 /* Rewind timeline picker */
 .rewind-modal {
