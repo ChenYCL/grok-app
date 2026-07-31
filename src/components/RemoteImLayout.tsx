@@ -124,6 +124,28 @@ export function RemoteImLayout({
     void refreshBridge();
   }, [refreshBridge]);
 
+  // While recovering / backing off, poll status so nextRetrySecs + recovery card stay honest.
+  useEffect(() => {
+    const st = bridge?.state;
+    const recovering =
+      !!bridge?.enabled &&
+      st !== "listening" &&
+      st !== "running" &&
+      st !== "stopped";
+    const rateLimited = !!bridge?.rateLimited;
+    if (!recovering && !rateLimited) return;
+    const id = window.setInterval(() => {
+      void refreshBridge();
+    }, 3000);
+    return () => window.clearInterval(id);
+  }, [
+    bridge?.enabled,
+    bridge?.state,
+    bridge?.rateLimited,
+    bridge?.nextRetrySecs,
+    refreshBridge,
+  ]);
+
   // Prefer host-persisted instances when Tauri available; auto-start Bridge if
   // channels are bound but connectors are stopped (e.g. after tauri dev reload).
   useEffect(() => {

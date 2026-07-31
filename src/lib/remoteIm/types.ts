@@ -78,6 +78,26 @@ export type BridgeGlobalConfig = {
   allowRemoteYolo: boolean;
 };
 
+/** Crash-recovery / rate-limit posture from Host (RIM-RESILIENCE). */
+export type BridgeRecoveryPhase =
+  | "idle"
+  | "listening"
+  | "starting"
+  | "restarting"
+  | "backing_off"
+  | "degraded"
+  | "rate_limited"
+  | "error"
+  | "stopped";
+
+export type BridgeErrorKind =
+  | "rate_limit"
+  | "auth"
+  | "network"
+  | "crash"
+  | "config"
+  | "unknown";
+
 export type BridgeStatus = {
   state: BridgeRunState;
   enabled: boolean;
@@ -94,6 +114,16 @@ export type BridgeStatus = {
   remoteBridgePath?: string | null;
   /** `rust` when Host runs connectors in-process. */
   backend?: string | null;
+  /** Restart attempts since last successful listen (crash recovery). */
+  restartAttempt?: number;
+  /** Seconds until next automatic restart (backoff). */
+  nextRetrySecs?: number | null;
+  /** Host recovery phase for UI honesty. */
+  recoveryPhase?: BridgeRecoveryPhase | string | null;
+  /** Classified last error kind. */
+  errorKind?: BridgeErrorKind | string | null;
+  /** True when last error is a rate/quota limit (honest banner). */
+  rateLimited?: boolean;
 };
 
 export type FieldControl =

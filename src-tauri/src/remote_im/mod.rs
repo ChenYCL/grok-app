@@ -13,6 +13,7 @@ mod grok_agent;
 mod outbound;
 mod pb_frame;
 mod projects;
+mod resilience;
 #[cfg(test)]
 mod catalog_ac4_tests;
 #[cfg(test)]
@@ -51,6 +52,21 @@ pub struct BridgeStatusDto {
     /// `rust` | historical
     #[serde(default)]
     pub backend: Option<String>,
+    /// Crash-recovery restart attempts since last successful listen (0 = healthy / first try).
+    #[serde(default)]
+    pub restart_attempt: u32,
+    /// Seconds until next automatic restart attempt (0 / omit when not backing off).
+    #[serde(default)]
+    pub next_retry_secs: Option<u32>,
+    /// idle | listening | starting | restarting | backing_off | degraded | rate_limited | error | stopped
+    #[serde(default)]
+    pub recovery_phase: Option<String>,
+    /// rate_limit | auth | network | crash | config | unknown
+    #[serde(default)]
+    pub error_kind: Option<String>,
+    /// True when last error / bridge is in a rate-limit posture (honest UI).
+    #[serde(default)]
+    pub rate_limited: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

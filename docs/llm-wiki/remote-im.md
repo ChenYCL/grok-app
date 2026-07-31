@@ -667,7 +667,7 @@ IPC（localhost + token）：status / start / stop / reload channel / test conne
 | 项 | 现状 | 待决 |
 |----|------|------|
 | Detached 默认 | GUI 可选；默认 Attached | 是否默认后台常驻 |
-| 速率限制 / 崩溃恢复 | 未实现 | 策略与默认值 |
+| 速率限制 / 崩溃恢复 | **RIM-RESILIENCE**：看门狗指数退避重连（上限 60s）；入站回合软限速（每会话 8 / 全局 40 / 60s）诚实回复；总览 recovery 卡 + status 字段 | 可调默认值 / 出站 API 429 细粒度 |
 | agent-connect 配置迁移 | CLI：`grok-remote-bridge migrate from-agent-connect` | GUI 一键导入可选 |
 | 钉钉扫码 | 首版粘贴；扫码 Tab 无官方能力时保持降级 | 官方 API 可用后再开 |
 | 真机 Bridge | **Rust in-process**（`remote_im/channels/*`） | 长尾渠道协议深化；`remote-bridge/` Node 仅作历史参考 |
@@ -682,6 +682,7 @@ IPC（localhost + token）：status / start / stop / reload channel / test conne
 | 2026-07-25 | App 落地：Settings 二级布局 + schema 全渠道表单 + mock Bridge + `/p` `/r` 控制平面；§14 待决 |
 | 2026-07-25 | **agent-connect 迁入**：`remote-bridge/` 内置；Host **永不** PATH 查找外部 agent-connect；数据目录 `~/.grok-app/remote/bridge-data` |
 | 2026-07-25 | **全渠道 Rust 重写**：Host 进程内 Tokio 运行时；飞书长连接 / Telegram 长轮询 / Discord Gateway / Slack Socket Mode；无 Node 子进程 |
+| 2026-07-31 | **RIM-RESILIENCE**：Bridge 崩溃恢复退避、入站软限速诚实文案、总览 recovery 状态（`resilience.ts` + Host `resilience.rs`） |
 
 ---
 
