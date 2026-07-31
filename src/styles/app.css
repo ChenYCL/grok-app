@@ -11131,6 +11131,14 @@ html[data-composer-min-rows="8"] .composer__input {
   color: var(--text-tertiary);
   background: var(--bg-hover);
   border: 1px solid transparent;
+  cursor: pointer;
+  font-family: inherit;
+  line-height: inherit;
+}
+
+.doctor-summary-pill.is-selected {
+  outline: 2px solid var(--accent, var(--focus-ring, #6b8afd));
+  outline-offset: 1px;
 }
 
 .doctor-summary-pill--ok.is-active {
@@ -11309,6 +11317,185 @@ html[data-composer-min-rows="8"] .composer__input {
 .doctor-check__fix-id {
   font-size: 11px;
   font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  color: var(--text-tertiary, var(--text-secondary));
+}
+
+/* Doctor findings triage (DOCTOR-PRO) */
+.doctor-findings {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border-subtle);
+}
+
+.doctor-findings__head {
+  margin-bottom: 8px;
+}
+
+.doctor-findings__title {
+  margin: 0;
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.doctor-findings__hint {
+  margin: 2px 0 0;
+  font-size: 11px;
+  color: var(--text-tertiary, var(--text-secondary));
+}
+
+.doctor-findings__toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.doctor-findings__search {
+  flex: 1 1 160px;
+  min-width: 140px;
+}
+
+.doctor-findings__chips {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.doctor-findings__chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 26px;
+  padding: 0 8px;
+  border-radius: var(--radius-full);
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-hover);
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-weight: 500;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.doctor-findings__chip.is-active {
+  color: var(--text-primary);
+  border-color: color-mix(in srgb, var(--accent, #6b8afd) 40%, transparent);
+  background: color-mix(in srgb, var(--accent, #6b8afd) 12%, transparent);
+}
+
+.doctor-findings__chip-n {
+  font-variant-numeric: tabular-nums;
+  opacity: 0.75;
+}
+
+.doctor-findings__category {
+  display: inline-flex;
+  align-items: center;
+}
+
+.doctor-findings__select {
+  min-width: 120px;
+  height: 28px;
+  padding: 0 8px;
+  font-size: 12px;
+}
+
+.doctor-findings__issues {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  user-select: none;
+}
+
+.doctor-findings__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 4px;
+}
+
+.doctor-findings__tag {
+  display: inline-flex;
+  align-items: center;
+  height: 18px;
+  padding: 0 6px;
+  border-radius: var(--radius-full);
+  font-size: 10px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  background: var(--bg-hover);
+  border: 1px solid var(--border-subtle);
+}
+
+.doctor-findings__tag--muted {
+  color: var(--text-tertiary, var(--text-secondary));
+  opacity: 0.9;
+}
+
+.doctor-findings__tag--mono {
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  max-width: 140px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.doctor-findings__list {
+  margin-top: 4px;
+}
+
+.doctor-finding-detail__body {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.doctor-finding-detail__meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.doctor-finding-detail__id {
+  margin: 0;
+  font-size: 12px;
+  color: var(--text-secondary);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: baseline;
+}
+
+.doctor-finding-detail__label {
+  font-weight: 600;
+  color: var(--text-tertiary, var(--text-secondary));
+  min-width: 72px;
+}
+
+.doctor-finding-detail__id code {
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 11px;
+  word-break: break-all;
+}
+
+.doctor-finding-detail__detail {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text-primary);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.doctor-finding-detail__empty {
+  margin: 0;
+  font-size: 12px;
   color: var(--text-tertiary, var(--text-secondary));
 }
 
