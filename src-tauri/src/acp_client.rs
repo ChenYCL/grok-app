@@ -416,10 +416,17 @@ pub fn should_pass_always_approve(policy: &str, product_mode: Option<&str>) -> b
 /// `--sandbox` is a **top-level** `grok` flag (not under `agent` / `stdio`),
 /// and the CLI also reads `GROK_SANDBOX`. When the profile is off/empty we
 /// apply neither so the agent stays unrestricted (CLI default).
+///
+/// Soft-fail: known-old CLIs (&lt; 0.2.112) omit the flag/env so clap does not
+/// reject unknown `--sandbox` (AGENT_CRASHED). Unknown versions still emit
+/// (forward-compatible with current Grok Build).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SandboxSpawnSpec {
     pub profile: String,
 }
+
+/// First App-aligned floor where `--sandbox` / `GROK_SANDBOX` is expected.
+pub const SANDBOX_MIN_CLI: (u64, u64, u64) = (0, 2, 112);
 
 impl SandboxSpawnSpec {
     /// Build from a settings value. `None` means do not pass sandbox flags/env.
@@ -444,10 +451,40 @@ impl SandboxSpawnSpec {
     }
 }
 
+/// `Some(true)` when CLI ≥ sandbox min; `Some(false)` when older; `None` unparseable.
+pub fn cli_supports_sandbox(raw_version: &str) -> Option<bool> {
+    let token = crate::cli_probe::extract_version_token(raw_version)?;
+    let parsed = crate::app_update::parse_semver(&token)?;
+    Some(parsed >= SANDBOX_MIN_CLI)
+}
+
+/// Soft-fail: whether to apply sandbox flags/env for this CLI version.
+///
+/// - Known ≥ 0.2.112 → apply
+/// - Known older → omit
+/// - Unknown / missing → apply (forward-compatible; modern CLI accepts the flag)
+pub fn should_apply_sandbox(raw_cli_version: Option<&str>) -> bool {
+    match raw_cli_version {
+        Some(v) => cli_supports_sandbox(v) != Some(false),
+        None => true,
+    }
+}
+
 /// Pure helper used by spawn + unit tests: args + env when sandbox is on.
 pub fn sandbox_spawn_flags(profile: &str) -> Option<(Vec<String>, (String, String))> {
     let spec = SandboxSpawnSpec::from_setting(profile)?;
     Some((spec.cli_args().to_vec(), spec.env_pair()))
+}
+
+/// Soft-fail variant: omit when CLI is known older than {@link SANDBOX_MIN_CLI}.
+pub fn sandbox_spawn_flags_soft(
+    profile: &str,
+    raw_cli_version: Option<&str>,
+) -> Option<(Vec<String>, (String, String))> {
+    if !should_apply_sandbox(raw_cli_version) {
+        return None;
+    }
+    sandbox_spawn_flags(profile)
 }
 
 // ── Compaction mode / detail (CLI 0.2.117+) ────────────────────────────────
@@ -1040,7 +1077,10 @@ impl AcpClient {
             .map(str::trim)
             .filter(|s| !s.is_empty())
             .unwrap_or(settings.sandbox_profile.as_str());
-        let sandbox = SandboxSpawnSpec::from_setting(sandbox_raw);
+        // Soft-fail known-old CLIs (omit --sandbox / GROK_SANDBOX) so clap
+        // does not reject the flag. cli_ver is probed just below — compute
+        // after version read.
+        let sandbox_raw_owned = sandbox_raw.to_string();
         // Session override if set (1–200); else global Settings. 0 / None = inherit.
         let max_turns = MaxTurnsSpawnSpec::from_setting(resolve_max_agent_turns(
             opts.max_agent_turns,
@@ -1077,6 +1117,12 @@ impl AcpClient {
             &settings,
             cli_ver.as_deref(),
         );
+        // Soft-fail known-old CLIs: omit --sandbox / GROK_SANDBOX.
+        let sandbox = if should_apply_sandbox(cli_ver.as_deref()) {
+            SandboxSpawnSpec::from_setting(&sandbox_raw_owned)
+        } else {
+            None
+        };
         // Soft-fail older CLIs for GROK_SUBAGENT_WORKTREE_SNAPSHOT env.
         let cli_ver = crate::cli_probe::read_version_of(&cli_path);
 
@@ -4918,6 +4964,31 @@ mod sandbox_spawn_tests {
             spec.cli_args(),
             ["--sandbox".to_string(), "workspace".to_string()]
         );
+    }
+
+    #[test]
+    fn cli_supports_sandbox_semver() {
+        assert_eq!(cli_supports_sandbox("grok 0.2.112"), Some(true));
+        assert_eq!(cli_supports_sandbox("0.2.117"), Some(true));
+        assert_eq!(cli_supports_sandbox("0.2.111"), Some(false));
+        assert_eq!(cli_supports_sandbox("0.2.100"), Some(false));
+        assert_eq!(cli_supports_sandbox(""), None);
+        assert_eq!(cli_supports_sandbox("nope"), None);
+    }
+
+    #[test]
+    fn sandbox_spawn_flags_soft_omits_on_old_cli() {
+        assert!(sandbox_spawn_flags_soft("workspace", Some("0.2.100")).is_none());
+        assert!(sandbox_spawn_flags_soft("strict", Some("grok 0.2.111")).is_none());
+        let (args, env) =
+            sandbox_spawn_flags_soft("workspace", Some("0.2.112")).expect("supported");
+        assert_eq!(args, vec!["--sandbox".to_string(), "workspace".to_string()]);
+        assert_eq!(env, ("GROK_SANDBOX".to_string(), "workspace".to_string()));
+        // Unknown version still applies (forward-compat).
+        assert!(sandbox_spawn_flags_soft("workspace", None).is_some());
+        assert!(sandbox_spawn_flags_soft("workspace", Some("dev")).is_some());
+        // off always none
+        assert!(sandbox_spawn_flags_soft("off", Some("0.2.117")).is_none());
     }
 }
 

@@ -68,6 +68,17 @@ import {
   parseAllowedToolsInput,
   toggleAllowedTool,
 } from "@/lib/allowedTools";
+import { detectAppPlatform } from "@/lib/appPlatform";
+import {
+  RECOMMENDED_SANDBOX_PROFILE,
+  SANDBOX_MIN_CLI,
+  childNetworkRestrictApplies,
+  sandboxIsolationActive,
+  sandboxProfileSelectOptions,
+  sandboxProfileHelpKey,
+  sandboxSoftFailKind,
+  sandboxSoftFailMessageKey,
+} from "@/lib/sandboxProfile";
 import {
   SHORTCUTS,
   detectShortcutPlatform,
@@ -2549,44 +2560,60 @@ export function SettingsPage({
                   <Select
                     value={sandboxProfile || "off"}
                     onChange={(v) => onSandboxProfile(v)}
-                    options={[
-                      {
-                        value: "off",
-                        label: t("settings.sandbox.off"),
-                      },
-                      {
-                        value: "workspace",
-                        label: t("settings.sandbox.workspace"),
-                      },
-                      {
-                        value: "read-only",
-                        label: t("settings.sandbox.readOnly"),
-                      },
-                      {
-                        value: "strict",
-                        label: t("settings.sandbox.strict"),
-                      },
-                      {
-                        value: "devbox",
-                        label: t("settings.sandbox.devbox"),
-                      },
-                    ]}
+                    options={sandboxProfileSelectOptions().map((o) => ({
+                      value: o.value,
+                      label: t(o.labelKey),
+                    }))}
                   />
                   <div className="settings-row__desc" style={{ marginTop: 8 }}>
-                    {(() => {
-                      const helpByProfile: Record<string, string> = {
-                        off: "settings.sandbox.off.help",
-                        workspace: "settings.sandbox.workspace.help",
-                        "read-only": "settings.sandbox.readOnly.help",
-                        strict: "settings.sandbox.strict.help",
-                        devbox: "settings.sandbox.devbox.help",
-                      };
-                      return t(
-                        helpByProfile[sandboxProfile || "off"] ??
-                          "settings.sandbox.off.help",
-                      );
-                    })()}
+                    {t(sandboxProfileHelpKey(sandboxProfile || "off"))}
                   </div>
+                  {sandboxProfile === RECOMMENDED_SANDBOX_PROFILE ||
+                  (sandboxProfile || "off") === "off" ? (
+                    <div className="settings-row__hint" style={{ marginTop: 6 }}>
+                      {t("settings.sandbox.recommendedNote")}
+                    </div>
+                  ) : null}
+                  {(() => {
+                    const platform = detectAppPlatform();
+                    const soft = sandboxSoftFailKind({
+                      profile: sandboxProfile,
+                      cliFound: cliInfo.found,
+                      cliVersion: cliInfo.version,
+                      platform,
+                    });
+                    if (!soft) {
+                      // Linux-only network note when isolation is on but soft-fail is clear.
+                      if (
+                        sandboxIsolationActive(sandboxProfile) &&
+                        !childNetworkRestrictApplies(sandboxProfile, platform) &&
+                        (sandboxProfile === "read-only" ||
+                          sandboxProfile === "strict") &&
+                        (platform === "mac" || platform === "other")
+                      ) {
+                        return (
+                          <div
+                            className="settings-row__hint"
+                            style={{ marginTop: 6 }}
+                          >
+                            {t("settings.sandbox.networkLinuxOnly")}
+                          </div>
+                        );
+                      }
+                      return null;
+                    }
+                    return (
+                      <div
+                        className="settings-row__hint is-danger"
+                        role="status"
+                        style={{ marginTop: 6 }}
+                      >
+                        {t(sandboxSoftFailMessageKey(soft), {
+                          min: SANDBOX_MIN_CLI,
+                        })}
+                      </div>
+                    );
+                  })()}
                 </div>
               ) : null}
               {onPermissionTimeoutSec ? (

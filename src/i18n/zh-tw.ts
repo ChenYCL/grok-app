@@ -1685,11 +1685,11 @@ export const zhTW: Record<MessageKey, string> = {
   "settings.sandbox.off.help":
     "不啟用 OS 沙箱旗標。Agent 行程可自由讀寫檔案系統與使用網路（仍受應用內權限彈窗約束）。僅建議在可信機器與程式庫使用。",
   "settings.sandbox.workspace.help":
-    "寫入範圍限制為工作階段工作目錄與系統暫存目錄；讀取與網路通常仍可用。日常程式設計推薦預設。",
+    "日常程式設計推薦。可讀任意路徑；寫入限制為工作階段工作目錄、~/.grok/ 與系統暫存目錄。網路允許。變更後 soft-respawn。",
   "settings.sandbox.readOnly.help":
-    "禁止寫入專案/工作區。適合唯讀審查或不可信儲存庫。暫存目錄是否可寫取決於平台。",
+    "可讀任意路徑；僅可寫 ~/.grok/ 與暫存目錄（不可寫專案）。子行程網路僅在 Linux 攔截（macOS 為 no-op）。適合唯讀審查或不可信儲存庫。",
   "settings.sandbox.strict.help":
-    "本機隔離最嚴格：更緊地限制在目前工作目錄，並在系統支援時封鎖子行程網路存取。",
+    "內建最嚴格：讀 CWD 與系統路徑；寫 CWD、~/.grok/ 與暫存目錄。子行程網路僅在 Linux 攔截（macOS 為 no-op）。",
   "settings.sandbox.devbox.help":
     "一次性開發機配置，隔離較鬆（接近可丟棄的虛擬機設定）。視為高信任情境，不是硬性安全邊界。",
   "settings.sandbox.dangerConfirmOff":
@@ -1697,6 +1697,16 @@ export const zhTW: Record<MessageKey, string> = {
   "settings.sandbox.dangerConfirmDevbox":
     "啟用 Devbox 沙箱？這是隔離較弱的一次性配置。僅在信任目前環境時繼續。",
   "settings.sandbox.dangerConfirmTitle": "確認沙箱變更",
+  "settings.sandbox.softFail.cliMissing":
+    "找不到 Grok Build CLI — 在安裝受支援的 CLI 之前不會套用沙箱 flag。",
+  "settings.sandbox.softFail.cliUnsupported":
+    "目前 CLI 過舊，不支援 --sandbox。設定已儲存，但會 soft-fail（省略 flag）以免行程崩潰。請升級 Grok Build 以真正啟用隔離。",
+  "settings.sandbox.softFail.platform":
+    "OS 沙箱核心強制目前僅文件支援 macOS Seatbelt 與 Linux Landlock。在此平台上 CLI 可能接受設定但 soft-fail 且無強制執行 — 請勿當作硬性安全邊界。",
+  "settings.sandbox.networkLinuxOnly":
+    "此設定檔的子行程網路攔截僅在 Linux 生效；macOS 為 no-op（行程內工具仍可連網）。",
+  "settings.sandbox.recommendedNote":
+    "提示：日常使用推薦「工作區」設定檔。",
   "settings.disableWebSearch": "停用網頁搜尋與抓取",
   "settings.disableWebSearchDesc":
     "啟動 Agent 時加上 --disable-web-search，移除 web_search / web_fetch 工具。變更後會 soft-respawn 已連線的 Agent。",
