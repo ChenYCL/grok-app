@@ -88,10 +88,17 @@ turn-affecting command carries the chat it belongs to:
 
 | Command | Target rule |
 |---------|-------------|
-| `session_send` | `sessionId` required in multi-session flows. Host re-focuses that chat (`background` / `parked` → live) under `connect_lock`, then prompts. No warm process → `CONNECT_FAILED` (UI cold-connects and retries the turn **once**). |
-| `session_stop` | `sessionId` = the chat on screen; resolves via live **or** background. |
+| `session_send` | `sessionId` required in multi-session flows. Host makes that chat **promptable** under `connect_lock` (`ensure_promptable_session`): already-`background` keeps the process in place; `parked` while another chat is mid-turn unparks into **background** so the streaming focus is not stolen; otherwise promotes via demote+focus. No warm process → `CONNECT_FAILED` (UI cold-connects and retries the turn **once**). |
+| `session_stop` | `sessionId` = the chat on screen; resolves via live **or** background. UI: composer Stop = **current** session only; Tasks/dashboard Stop all = **all busy**. |
 | `session_rewind_drop_last_user` | `sessionId` must match the live slot, else error — truncating the wrong journal is unrecoverable. |
 | `session_resolve_permission` / `_plan` / `_ask_user` | `sessionId` from the event payload. The pending rpc id belongs to the requesting chat's own ACP child. |
+
+**Multi-window live slots:** secondary webviews share the process Host. Connecting
+or sending on session B while A is streaming demotes A to `background` (stream
+continues) or parks Ready A warm — never a silent kill. Secondary may passive
+warm-connect; main still defers warm-connect while browsing a foreign mid-turn.
+Pure policy: `src/lib/multiWindow.ts` (`planConnectToSession`,
+`resolveStopTargets`, `concurrentConnectPreservesOther`).
 
 **Why:** a warm `sessionConnect` (session open prefetch), a sidebar switch, or an
 automation firing between the caller's `ensureConnected` and its `sessionSend`

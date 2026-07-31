@@ -2705,8 +2705,8 @@ export async function appForceQuit() {
 
 /**
  * Open (or focus) a secondary webview window for a chat (`#/session/<id>`).
- * Desktop Tauri only. Secondary is live-capable (send/stop via shared Host);
- * passive warm-connect on open is still skipped in the frontend.
+ * Desktop Tauri only. Secondary is live-capable (send/stop/warm-connect via
+ * the shared Host session-keyed agent pool).
  */
 export async function openSessionWindow(
   sessionId: string,
@@ -2723,7 +2723,7 @@ export async function openSessionWindow(
 
 /**
  * Focus (and show/unminimize) the primary workbench window.
- * Desktop Tauri only — used from secondary session windows (MULTI-WIN-LITE).
+ * Desktop Tauri only — used from secondary session windows.
  */
 export async function focusMainWindow(): Promise<void> {
   if (!isDesktopHost()) {

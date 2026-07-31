@@ -688,10 +688,10 @@ fn session_window_label(session_id: &str) -> Option<String> {
 
 /// Open (or focus) a secondary webview window for a chat (`#/session/<id>`).
 ///
-/// Secondary windows are live-capable (send/stop via shared Host). The frontend
-/// still skips *passive* warm-connect on open so browsing does not demote main’s
-/// agent until the user acts. Re-opening the same session focuses the existing
-/// window instead of spawning a third copy.
+/// Secondary windows are live-capable (send/stop/warm-connect via the shared
+/// Host session-keyed agent pool). Concurrent connect demotes busy peers to
+/// background (stream continues) rather than killing them. Re-opening the same
+/// session focuses the existing window instead of spawning a third copy.
 #[tauri::command]
 pub fn open_session_window(
     app: tauri::AppHandle,

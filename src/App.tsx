@@ -106,6 +106,8 @@ import {
   isSessionWindowLabel,
   parseSessionDeepLinkHash,
   resolveSecondarySessionId,
+  resolveStopTargets,
+  shouldDeferWarmConnectForForeignBusy,
   shouldSkipWarmConnect,
 } from "@/lib/multiWindow";
 import {
@@ -1383,9 +1385,9 @@ export default function App() {
   const [liveHost, setLiveHost] = useState<SessionSnapshot>(IDLE_SNAPSHOT);
   /**
    * Secondary session window (`session-*` label / `#/session/<id>` deep link).
-   * Live-capable (MULTI-WIN-LITE): send / stop / ensureConnected use the shared
-   * process Host. Passive warm-connect on open is still skipped so browsing a
-   * second pane does not demote main’s agent until the user acts.
+   * Live-capable (session-keyed Host pool): send / stop / warm-connect use the
+   * shared process Host (session-targeted). Connecting/sending on this chat
+   * demotes other busy agents to background (stream continues) — never kills.
    */
   // True only for real `session-*` windows (set after label detect). Hash alone
   // on main must not change layout / chrome.
@@ -5716,15 +5718,12 @@ export default function App() {
     // Warm ACP: connect while the user reads history (trusted project or orphan).
     // Host serializes connect; first send no-ops if already ready.
     //
-    // Multi-session: if *another* session is mid-turn, do NOT warm-connect here.
-    // Spawning demotes the busy process; capacity reclaim must never kill it, but
-    // deferring warm connect avoids demote/spawn churn while browsing other chats.
-    // The next send on this chat will `ensureConnected` intentionally.
+    // Multi-session (main): if *another* session is mid-turn, defer warm-connect
+    // so browsing does not thrash demote/spawn. Secondary windows exist for
+    // concurrent work — Host session-keyed pool keeps foreign busy turns in
+    // background (never kills), so secondary may warm-connect immediately.
+    // The next send still runs ensureConnected if warm was deferred.
     // Skip when project folder is missing (D05) — user must relocate first.
-    //
-    // Secondary windows skip *passive* warm-connect — Host live slot is shared
-    // process-wide; auto-connect on open would demote main’s agent. Intentional
-    // send still runs ensureConnected (MULTI-WIN-LITE).
     if (shouldSkipWarmConnect(isSecondaryWindowRef.current)) {
       return;
     }
@@ -5737,11 +5736,15 @@ export default function App() {
       (!!live.sessionId &&
         live.sessionId !== s.id &&
         isSessionLiveStreaming(live.state));
+    const deferForeign = shouldDeferWarmConnectForForeignBusy({
+      isSecondaryWindow: isSecondaryWindowRef.current,
+      foreignBusy,
+    });
     // Also defer while a send / connect is in flight: warm-connecting mid-send
     // used to steal the live slot from the turn being dispatched.
     if (
       api.isTauri() &&
-      !foreignBusy &&
+      !deferForeign &&
       !sendInFlightRef.current &&
       !connectingRef.current &&
       (!proj || (proj.trusted && !isProjectPathMissing(proj.pathOk))) &&
@@ -6264,7 +6267,8 @@ export default function App() {
       }),
     [session.state, stopLatch],
   );
-  // MULTI-WIN-LITE: secondary shares Host — send/stop allowed (session-targeted).
+  // Session-keyed pool: secondary shares Host — send/stop allowed (session-targeted).
+  // Composer Stop = current viewed session only (see resolveStopTargets "current").
   const effectiveCanSend =
     stopGate.sendable && canLiveParticipate(isSecondaryWindow);
   const effectiveCanStop =
@@ -7919,7 +7923,7 @@ export default function App() {
       | boolean
       | { force?: boolean; sessionId?: string | null } = false,
   ): Promise<string | null> => {
-    // MULTI-WIN-LITE: secondary may connect when the user sends (shared Host).
+    // Session-keyed pool: secondary may connect when the user sends (shared Host).
     if (!canLiveParticipate(isSecondaryWindowRef.current)) {
       return null;
     }
@@ -8208,7 +8212,7 @@ export default function App() {
     fromQueue?: boolean;
     targetSessionId?: string | null;
   }): Promise<boolean> => {
-    // MULTI-WIN-LITE: secondary may send via shared Host (session-targeted).
+    // Session-keyed pool: secondary may send via shared Host (session-targeted).
     if (!canLiveParticipate(isSecondaryWindowRef.current)) {
       setLocalError(tr("session.secondaryLiveBanner"));
       return false;
@@ -9673,7 +9677,11 @@ export default function App() {
     [settleStoppedSessionUi, showToast, tr],
   );
 
-  /** Confirm then stop every stoppable busy session from the Tasks panel. */
+  /**
+   * Global Stop-all (Tasks / dashboard): every stoppable busy session.
+   * Distinct from composer Stop, which targets only the viewed chat
+   * (`resolveStopTargets({ scope: "current" })`).
+   */
   const stopAllBusySessions = useCallback(() => {
     const rows = stoppableActivitySessions(
       collectActivitySessions({
@@ -9683,8 +9691,13 @@ export default function App() {
         untitledLabel: tr("session.untitled"),
       }),
     );
-    if (!rows.length) return;
-    stopBusySessionsByIds(rows.map((r) => r.sessionId));
+    const ids = resolveStopTargets({
+      scope: "all_busy",
+      currentSessionId: session.sessionId,
+      busySessionIds: rows.map((r) => r.sessionId),
+    });
+    if (!ids.length) return;
+    stopBusySessionsByIds(ids);
   }, [
     sessions,
     session.sessionId,
@@ -11771,10 +11784,16 @@ export default function App() {
 
   const stop = async () => {
     const now = Date.now();
-    // Stop belongs to the chat on screen. Preferring the live slot cancelled a
-    // foreign turn whenever the viewed chat had been demoted to background.
+    // Composer Stop scope = current viewed chat only (not global Stop-all).
+    // Preferring the Host live slot cancelled a foreign turn whenever the
+    // viewed chat had been demoted to background.
     const sid =
-      viewingSessionIdRef.current || liveHostRef.current.sessionId || null;
+      resolveStopTargets({
+        scope: "current",
+        currentSessionId:
+          viewingSessionIdRef.current || liveHostRef.current.sessionId || null,
+        busySessionIds: [],
+      })[0] ?? null;
     const armed = armStopLatch(stopLatchRef.current, sid, now);
     stopLatchRef.current = armed;
     setStopLatch(armed);
@@ -17834,7 +17853,7 @@ export default function App() {
             </div>
           )}
 
-          {/* Secondary multi-window: live-capable tip + focus main (MULTI-WIN-LITE). */}
+          {/* Secondary multi-window: concurrent live tip + focus main. */}
           {isSecondaryWindow && mainPane === "chat" && (
             <div
               className="view-only-banner"

@@ -223,7 +223,7 @@ const en = {
     "That chat was not found — it may have been deleted.",
   "session.secondaryLiveTitle": "Secondary window",
   "session.secondaryLiveBanner":
-    "Send and stop work here. Connecting for this chat may move the live agent from the main window until that turn finishes.",
+    "Send, stop, and connect work here. Another chat keeps streaming when you connect — agents are session-keyed, not stolen. Composer Stop ends this chat only; Tasks → Stop all ends every busy session.",
   "session.focusMainWindow": "Focus main window",
   "session.focusMainWindowFailed": "Could not focus main window",
   "session.collapseAllActivity": "Collapse all activity",
@@ -5553,7 +5553,7 @@ const zh: Record<MessageKey, string> = {
   "session.openInNewWindowMissing": "未找到该会话 — 可能已被删除。",
   "session.secondaryLiveTitle": "副窗口",
   "session.secondaryLiveBanner":
-    "可在此发送与停止。为此会话连接时，可能会把主窗口的 live Agent 移走，直到该回合结束。",
+    "可在此发送、停止与连接。连接本会话时，其他会话的 Agent 会继续流式输出（按会话槽位，不会被静默掐断）。输入框停止仅结束当前会话；任务面板「全部停止」结束所有忙碌会话。",
   "session.focusMainWindow": "聚焦主窗口",
   "session.focusMainWindowFailed": "无法聚焦主窗口",
   "session.collapseAllActivity": "收起全部活动",
