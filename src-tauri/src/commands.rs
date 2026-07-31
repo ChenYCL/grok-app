@@ -7058,14 +7058,26 @@ pub async fn cli_update_check() -> Result<crate::cli_update::CliUpdateCheck, Str
     .map_err(|e| e.to_string())?
 }
 
-// from PR #63
+// from PR #63 / channel UX (CLI ≥ 0.2.117)
 
-/// Install CLI update: prefer `grok update`, fall back to install trust-chain.
+/// Install CLI update / switch channel / pin version.
+///
+/// Optional `channel` (`stable`|`alpha`), `version` pin, and `force` reinstall.
+/// Channel switch and version pin are mutually exclusive; unknown channels error
+/// (never invented). Plain update still falls back to App install trust-chain.
 #[tauri::command]
 pub async fn cli_update_install(
     app: tauri::AppHandle,
+    channel: Option<String>,
+    version: Option<String>,
+    force: Option<bool>,
 ) -> Result<crate::cli_install::CliInstallResult, String> {
-    crate::cli_update::install_cli_update(app).await
+    let opts = crate::cli_update::CliUpdateInstallOpts {
+        channel,
+        version,
+        force: force.unwrap_or(false),
+    };
+    crate::cli_update::install_cli_update(app, opts).await
 }
 
 /// Recycle every warm agent process so the next send spawns fresh binaries.

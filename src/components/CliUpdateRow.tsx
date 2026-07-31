@@ -1,32 +1,70 @@
 /**
  * Check / install Grok Build CLI updates (`grok update --check --json`).
- * Used in Settings → Runtime and Doctor → Advanced.
+ * Channel switch (`--alpha` / `--stable`) and version pin (`--version`) for CLI ≥ 0.2.117.
+ * Used in Settings → Runtime / About and Doctor → Advanced.
  */
 
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import type { MessageKey } from "@/i18n";
 import * as api from "@/lib/api";
+import {
+  canSwitchCliChannel,
+  cliChannelLabelKey,
+  formatCliUpdateStatus,
+  isValidCliVersionPin,
+  normalizeCliChannel,
+  type CliSwitchableChannel,
+} from "@/lib/cliUpdateChannel";
+import { GlassModal } from "@/components/GlassModal";
+
+type BusyKind =
+  | "check"
+  | "install"
+  | "switch-stable"
+  | "switch-alpha"
+  | "pin"
+  | null;
+
+type ConfirmAction =
+  | { kind: "switch"; channel: CliSwitchableChannel }
+  | { kind: "pin"; version: string };
 
 export function CliUpdateRow({
   t,
   cliFound,
   onAfterInstall,
   compact,
+  /** Auto-run check once when CLI is available (About / Runtime). */
+  autoCheck = false,
 }: {
   t: (key: MessageKey, vars?: Record<string, string | number>) => string;
   cliFound?: boolean;
   onAfterInstall?: () => void;
   /** Tighter layout for Doctor advanced section. */
   compact?: boolean;
+  autoCheck?: boolean;
 }) {
-  const [busy, setBusy] = useState<"check" | "install" | null>(null);
+  const [busy, setBusy] = useState<BusyKind>(null);
   const [error, setError] = useState<string | null>(null);
-  const [result, setResult] = useState<any | null>(null);
+  const [result, setResult] = useState<api.CliUpdateCheck | null>(null);
   const [installMsg, setInstallMsg] = useState<string | null>(null);
   const [needsRestart, setNeedsRestart] = useState(false);
   const [restarting, setRestarting] = useState(false);
+  const [pinInput, setPinInput] = useState("");
+  const [confirm, setConfirm] = useState<ConfirmAction | null>(null);
 
-  const check = async () => {
+  const status = result
+    ? formatCliUpdateStatus({
+        currentVersion: result.currentVersion ?? result.current,
+        latestVersion: result.latestVersion ?? result.latest,
+        channel: result.channel,
+        updateAvailable: result.updateAvailable,
+      })
+    : null;
+
+  const channel = status?.channel ?? "unknown";
+
+  const check = useCallback(async () => {
     if (!api.isTauri()) {
       setError("not in Tauri");
       return;
@@ -39,7 +77,6 @@ export function CliUpdateRow({
     setBusy("check");
     setError(null);
     setInstallMsg(null);
-    setResult(null);
     try {
       const r = await api.cliUpdateCheck();
       setResult(r);
@@ -51,29 +88,62 @@ export function CliUpdateRow({
     } finally {
       setBusy(null);
     }
-  };
+  }, [cliFound, t]);
 
-  const install = async () => {
+  useEffect(() => {
+    if (!autoCheck || compact) return;
+    if (cliFound === false) return;
+    void check();
+    // mount / cliFound / autoCheck only
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional one-shot refresh
+  }, [autoCheck, compact, cliFound]);
+
+  const runInstall = async (
+    opts?: api.CliUpdateInstallOpts | null,
+    busyKind: BusyKind = "install",
+  ) => {
     if (!api.isTauri()) {
       setError("not in Tauri");
       return;
     }
-    setBusy("install");
+    setBusy(busyKind);
     setError(null);
     setInstallMsg(null);
+    setConfirm(null);
     try {
-      const r = await api.cliUpdateInstall();
-      if (!r.ok) {
-        setError(r.message || "update failed");
+      const r = await api.cliUpdateInstall(opts ?? null);
+      if (r.ok === false) {
+        setError(r.message || r.error || "update failed");
         return;
       }
-      setInstallMsg(
-        t("settings.cliUpdateDone", {
-          version: r.version || result?.latestVersion || "—",
-        }),
-      );
+      const version =
+        r.version ||
+        opts?.version ||
+        result?.latestVersion ||
+        result?.latest ||
+        "—";
+      if (opts?.channel) {
+        const ch = normalizeCliChannel(opts.channel);
+        setInstallMsg(
+          t("settings.cliChannel.switched", {
+            channel: t(cliChannelLabelKey(ch)),
+            version: String(version),
+          }),
+        );
+      } else if (opts?.version) {
+        setInstallMsg(
+          t("settings.cliChannel.pinned", {
+            version: String(opts.version),
+          }),
+        );
+      } else {
+        setInstallMsg(
+          t("settings.cliUpdateDone", {
+            version: String(version),
+          }),
+        );
+      }
       setNeedsRestart(true);
-      // Refresh check status after install.
       try {
         const next = await api.cliUpdateCheck();
         setResult(next);
@@ -81,8 +151,11 @@ export function CliUpdateRow({
         if (result) {
           setResult({
             ...result,
-            currentVersion: r.version || result.latestVersion,
+            currentVersion: String(version),
             updateAvailable: false,
+            channel: opts?.channel
+              ? normalizeCliChannel(opts.channel)
+              : result.channel,
           });
         }
       }
@@ -106,6 +179,43 @@ export function CliUpdateRow({
     }
   };
 
+  const requestSwitch = (target: CliSwitchableChannel) => {
+    if (!canSwitchCliChannel(channel, target)) return;
+    setConfirm({ kind: "switch", channel: target });
+  };
+
+  const requestPin = () => {
+    const v = pinInput.trim();
+    if (!isValidCliVersionPin(v)) {
+      setError(t("settings.cliChannel.invalidVersion"));
+      return;
+    }
+    setError(null);
+    setConfirm({ kind: "pin", version: v });
+  };
+
+  const confirmTitle =
+    confirm?.kind === "switch"
+      ? t("settings.cliChannel.switchConfirmTitle", {
+          channel: t(cliChannelLabelKey(confirm.channel)),
+        })
+      : confirm?.kind === "pin"
+        ? t("settings.cliChannel.pinConfirmTitle", {
+            version: confirm.version,
+          })
+        : t("settings.cliUpdate");
+
+  const confirmBody =
+    confirm?.kind === "switch"
+      ? t("settings.cliChannel.switchConfirmMsg", {
+          channel: t(cliChannelLabelKey(confirm.channel)),
+        })
+      : confirm?.kind === "pin"
+        ? t("settings.cliChannel.pinConfirmMsg", {
+            version: confirm.version,
+          })
+        : "";
+
   return (
     <div
       className={
@@ -119,6 +229,30 @@ export function CliUpdateRow({
         <div className="settings-row__desc">{t("settings.cliUpdateDesc")}</div>
       </div>
       <div className="settings-cli-update">
+        {status ? (
+          <div className="settings-cli-update__meta" role="status">
+            <span className="settings-cli-update__meta-item">
+              {t("settings.cliChannel.versionLabel", {
+                version: status.current,
+              })}
+            </span>
+            <span
+              className={
+                "settings-cli-update__channel" +
+                (channel === "alpha"
+                  ? " is-alpha"
+                  : channel === "stable"
+                    ? " is-stable"
+                    : " is-unknown")
+              }
+            >
+              {t("settings.cliChannel.label", {
+                channel: t(cliChannelLabelKey(channel)),
+              })}
+            </span>
+          </div>
+        ) : null}
+
         <div className="settings-cli-update__actions">
           <button
             type="button"
@@ -135,7 +269,7 @@ export function CliUpdateRow({
               type="button"
               className="btn btn--ghost"
               disabled={busy !== null}
-              onClick={() => void install()}
+              onClick={() => void runInstall(null, "install")}
             >
               {busy === "install"
                 ? t("settings.cliUpdateInstalling")
@@ -143,9 +277,87 @@ export function CliUpdateRow({
             </button>
           ) : null}
         </div>
+
+        {!compact ? (
+          <>
+            <div className="settings-cli-update__channel-actions">
+              <span className="settings-cli-update__channel-hint">
+                {t("settings.cliChannel.switchHint")}
+              </span>
+              <div className="settings-cli-update__actions">
+                <button
+                  type="button"
+                  className="btn btn--ghost btn--sm"
+                  disabled={
+                    busy !== null || !canSwitchCliChannel(channel, "alpha")
+                  }
+                  onClick={() => requestSwitch("alpha")}
+                  title={t("settings.cliChannel.switchToAlpha")}
+                >
+                  {busy === "switch-alpha"
+                    ? t("settings.cliUpdateInstalling")
+                    : t("settings.cliChannel.switchToAlpha")}
+                </button>
+                <button
+                  type="button"
+                  className="btn btn--ghost btn--sm"
+                  disabled={
+                    busy !== null || !canSwitchCliChannel(channel, "stable")
+                  }
+                  onClick={() => requestSwitch("stable")}
+                  title={t("settings.cliChannel.switchToStable")}
+                >
+                  {busy === "switch-stable"
+                    ? t("settings.cliUpdateInstalling")
+                    : t("settings.cliChannel.switchToStable")}
+                </button>
+              </div>
+            </div>
+
+            <div className="settings-cli-update__pin">
+              <label className="settings-cli-update__pin-label" htmlFor="cli-version-pin">
+                {t("settings.cliChannel.pinLabel")}
+              </label>
+              <div className="settings-cli-update__pin-row">
+                <input
+                  id="cli-version-pin"
+                  className="settings-input settings-cli-update__pin-input"
+                  value={pinInput}
+                  placeholder={t("settings.cliChannel.pinPlaceholder")}
+                  disabled={busy !== null}
+                  onChange={(e) => setPinInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      requestPin();
+                    }
+                  }}
+                  autoComplete="off"
+                  spellCheck={false}
+                />
+                <button
+                  type="button"
+                  className="btn btn--ghost btn--sm"
+                  disabled={
+                    busy !== null || !isValidCliVersionPin(pinInput)
+                  }
+                  onClick={() => requestPin()}
+                >
+                  {busy === "pin"
+                    ? t("settings.cliUpdateInstalling")
+                    : t("settings.cliChannel.pinAction")}
+                </button>
+              </div>
+              <div className="settings-cli-update__pin-hint">
+                {t("settings.cliChannel.pinHint")}
+              </div>
+            </div>
+          </>
+        ) : null}
+
         {error ? (
           <div className="settings-cli-update__err" role="alert">
-            {result?.updateAvailable
+            {result?.updateAvailable || busy === "install"
               ? t("settings.cliUpdateInstallFailed", { error })
               : t("settings.cliUpdateFailed", { error })}
           </div>
@@ -182,16 +394,65 @@ export function CliUpdateRow({
           >
             {result.updateAvailable
               ? t("settings.cliUpdateAvailable", {
-                  latest: result.latestVersion,
-                  current: result.currentVersion,
+                  latest: status?.latest ?? "—",
+                  current: status?.current ?? "—",
                 })
               : t("settings.cliUpdateLatest", {
-                  version: result.currentVersion,
+                  version: status?.current ?? "—",
                 })}
-            {result.channel ? ` · ${result.channel}` : ""}
           </div>
         ) : null}
       </div>
+
+      <GlassModal
+        open={!!confirm}
+        onClose={() => {
+          if (busy === null) setConfirm(null);
+        }}
+        title={confirmTitle}
+        size="sm"
+        closeLabel={t("common.close")}
+        closeOnOverlay={busy === null}
+        footer={
+          <>
+            <button
+              type="button"
+              className="btn btn--ghost"
+              disabled={busy !== null}
+              onClick={() => setConfirm(null)}
+            >
+              {t("common.cancel")}
+            </button>
+            <button
+              type="button"
+              className="btn btn--solid"
+              disabled={busy !== null}
+              onClick={() => {
+                if (!confirm) return;
+                if (confirm.kind === "switch") {
+                  void runInstall(
+                    { channel: confirm.channel },
+                    confirm.channel === "alpha"
+                      ? "switch-alpha"
+                      : "switch-stable",
+                  );
+                } else {
+                  void runInstall(
+                    { version: confirm.version },
+                    "pin",
+                  );
+                }
+              }}
+            >
+              {t("settings.cliChannel.confirmAction")}
+            </button>
+          </>
+        }
+      >
+        <p className="settings-row__desc" style={{ margin: 0 }}>
+          {confirmBody}
+        </p>
+      </GlassModal>
     </div>
   );
 }

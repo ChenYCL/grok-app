@@ -1171,7 +1171,7 @@ export const zhTW: Record<MessageKey, string> = {
   "settings.cliNotFound": "（未找到）",
   "settings.cliUpdate": "CLI 更新",
   "settings.cliUpdateDesc":
-    "檢查 Grok Build CLI 通道是否有新版本（等同 `grok update --check`）。",
+    "檢查 CLI 更新（`grok update --check --json`），切換 stable/alpha 通道（CLI 0.2.117+），或固定版本。",
   "settings.cliUpdateCheck": "檢查 CLI 更新",
   "settings.cliUpdateChecking": "檢查中…",
   "settings.cliUpdateLatest": "CLI 已是最新（{version}）。",
@@ -1190,6 +1190,32 @@ export const zhTW: Record<MessageKey, string> = {
   "settings.cliUpdateFailed": "檢查失敗：{error}",
   "settings.cliUpdateInstallFailed": "更新失敗：{error}",
   "settings.cliUpdateNeedCli": "請先安裝或指定 CLI 路徑。",
+  "settings.cliChannel.label": "通道：{channel}",
+  "settings.cliChannel.stable": "stable",
+  "settings.cliChannel.alpha": "alpha",
+  "settings.cliChannel.unknown": "未知",
+  "settings.cliChannel.versionLabel": "CLI {version}",
+  "settings.cliChannel.switchHint":
+    "切換發布通道（CLI 0.2.117+：`grok update --alpha|--stable`）。不會虛構通道。",
+  "settings.cliChannel.switchToAlpha": "切換到 alpha",
+  "settings.cliChannel.switchToStable": "切換到 stable",
+  "settings.cliChannel.switchConfirmTitle": "將 CLI 切換到 {channel}？",
+  "settings.cliChannel.switchConfirmMsg":
+    "將執行 `grok update --{channel}`，可能下載另一二進位。完成後請重新啟動對話以使用新 CLI。",
+  "settings.cliChannel.switched":
+    "CLI 通道已為 {channel}（{version}）。",
+  "settings.cliChannel.pinLabel": "安裝指定版本",
+  "settings.cliChannel.pinPlaceholder": "例如 0.2.117",
+  "settings.cliChannel.pinHint":
+    "使用 `grok update --version <V>` 固定版本（可含 alpha 標籤，如 0.1.151-alpha.2）。",
+  "settings.cliChannel.pinAction": "安裝該版本",
+  "settings.cliChannel.pinConfirmTitle": "安裝 CLI {version}？",
+  "settings.cliChannel.pinConfirmMsg":
+    "將執行 `grok update --version {version}`。CLI 拒絕時軟失敗；不會虛構版本。",
+  "settings.cliChannel.pinned": "CLI 已固定為 {version}。",
+  "settings.cliChannel.invalidVersion":
+    "請輸入有效版本（如 0.2.117），不要填旗標或路徑。",
+  "settings.cliChannel.confirmAction": "繼續",
   "settings.acpServer": "ACP 伺服器（API 模式）",
   "settings.acpServerDesc":
     "透過 TCP（host:port）連線遠端 ACP Agent，取代啟動本機 CLI —— 例如執行在 WSL、容器或另一台主機上的 Agent。留空則使用本機啟動。",
@@ -2121,7 +2147,8 @@ export const zhTW: Record<MessageKey, string> = {
   "doctor.check.logs": "日誌",
   "doctor.rawToggle": "顯示原始報告",
   "doctor.cliUpdate": "CLI 更新",
-  "doctor.cliUpdateHint": "與設定 → 執行環境相同（`grok update --check`）。",
+  "doctor.cliUpdateHint":
+    "與設定 → 執行環境 / 關於相同（`grok update --check`；通道切換在設定中）。",
   "doctor.supportZip": "支援包",
   "doctor.supportZipHint": "脫敏後的 Doctor 報告與近期日誌（不含金鑰）。",
   "doctor.supportZipDone": "支援包已儲存",

@@ -212,6 +212,7 @@ import { RemoteImLayout } from "@/components/RemoteImLayout";
 import { MirrorConnectPanel } from "@/components/MirrorConnectPanel";
 import { LeaderServePanel } from "@/components/LeaderServePanel";
 import { SdkConnectWizard } from "@/components/SdkConnectWizard";
+import { CliUpdateRow } from "@/components/CliUpdateRow";
 import {
   createT,
   resolveLocale,
@@ -5387,6 +5388,19 @@ export function SettingsPage({
                     />
                   </div>
                 ) : null}
+                <div
+                  className={
+                    "settings-row settings-row--stack" +
+                    rowHighlight("settings-anchor-cliUpdate")
+                  }
+                  id="settings-anchor-cliUpdate"
+                >
+                  <CliUpdateRow
+                    t={t}
+                    cliFound={cliInfo.found}
+                    autoCheck
+                  />
+                </div>
               </div>
             )}
             {activeTab === "connection" && (
@@ -5818,6 +5832,15 @@ export function SettingsPage({
                 </div>
               </div>
               <AboutUpdateRow t={t} />
+              <div
+                className={
+                  "settings-row settings-row--stack" +
+                  rowHighlight("settings-anchor-aboutCli")
+                }
+                id="settings-anchor-aboutCli"
+              >
+                <CliUpdateRow t={t} cliFound={cliInfo.found} autoCheck />
+              </div>
             </div>
             {onOpenProductTutorial ? (
               <div

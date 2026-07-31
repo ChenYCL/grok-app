@@ -3377,25 +3377,45 @@ export async function voiceTranscribe(opts: {
 }
 
 export type CliUpdateCheck = {
-  ok: boolean;
+  ok?: boolean;
   current?: string | null;
   latest?: string | null;
   currentVersion?: string | null;
   latestVersion?: string | null;
   version?: string | null;
+  /** Raw channel from CLI when known (`stable` / `alpha`); omit/null = unknown. */
   channel?: string | null;
   updateAvailable?: boolean;
   message?: string | null;
   error?: string | null;
+  cliPath?: string | null;
   [key: string]: unknown;
+};
+
+export type CliUpdateInstallOpts = {
+  /** Switch to `stable` or `alpha` (`grok update --stable|--alpha`). */
+  channel?: string | null;
+  /** Pin a specific version (`grok update --version <V>`). */
+  version?: string | null;
+  /** Pass `--force-reinstall`. */
+  force?: boolean | null;
 };
 
 export async function cliUpdateCheck() {
   return invoke<CliUpdateCheck>("cli_update_check");
 }
 
-export async function cliUpdateInstall() {
-  return invoke<CliUpdateCheck>("cli_update_install");
+/**
+ * Install / switch / pin CLI via host `cli_update_install`.
+ * Plain call = current-channel update (App trust-chain fallback).
+ * Channel/version soft-fail without inventing channels.
+ */
+export async function cliUpdateInstall(opts?: CliUpdateInstallOpts | null) {
+  return invoke<CliUpdateCheck>("cli_update_install", {
+    channel: opts?.channel ?? null,
+    version: opts?.version ?? null,
+    force: opts?.force ?? null,
+  });
 }
 
 /** Recycle all warm agent processes (e.g. after CLI upgrade). */

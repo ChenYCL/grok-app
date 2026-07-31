@@ -1783,6 +1783,27 @@ export const SETTINGS_ENTRIES: readonly SettingsEntry[] = [
     keywords: ["checksum", "sha256", "unverified", "cli install", "trust"],
   },
   {
+    id: "runtime.cliUpdate",
+    section: "runtime",
+    tab: "cli",
+    anchorId: "settings-anchor-cliUpdate",
+    labelKey: "settings.cliUpdate",
+    descKeys: [
+      "settings.cliUpdateDesc",
+      "settings.cliChannel.switchHint",
+      "settings.cliChannel.pinHint",
+    ],
+    keywords: [
+      "cli update",
+      "grok update",
+      "channel",
+      "alpha",
+      "stable",
+      "version pin",
+      "0.2.117",
+    ],
+  },
+  {
     id: "runtime.acp",
     section: "runtime",
     tab: "connection",
@@ -2148,6 +2169,25 @@ export const SETTINGS_ENTRIES: readonly SettingsEntry[] = [
     anchorId: "settings-anchor-about",
     labelKey: "settings.aboutApp",
     keywords: ["about", "version", "update"],
+  },
+  {
+    id: "about.cli",
+    section: "about",
+    anchorId: "settings-anchor-aboutCli",
+    labelKey: "settings.cliUpdate",
+    descKeys: [
+      "settings.cliUpdateDesc",
+      "settings.cliChannel.switchHint",
+      "settings.cliChannel.pinLabel",
+    ],
+    keywords: [
+      "cli",
+      "grok update",
+      "channel",
+      "alpha",
+      "stable",
+      "cli version",
+    ],
   },
   {
     id: "about.tutorial",

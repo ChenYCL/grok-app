@@ -6,6 +6,11 @@
 //! or `grok update` fails, we fall back to [`crate::cli_install::install_cli_latest`]
 //! (multi-mirror + checksum trust chain + progress events) — safer for first-time
 //! installs and when self-update is broken.
+//!
+//! ## Channels (CLI ≥ 0.2.117)
+//! `grok update --check --json` may report `channel` (`stable` / `alpha`).
+//! Switch with `grok update --alpha` / `--stable`; pin with `--version <V>`.
+//! App never invents channels — unknown/missing values surface as unknown.
 
 use std::path::Path;
 use std::process::Command;
@@ -22,6 +27,125 @@ use crate::process_util;
 const CHECK_TIMEOUT: Duration = Duration::from_secs(45);
 const UPDATE_TIMEOUT: Duration = Duration::from_secs(600);
 
+/// Known Grok Build CLI release channels from `grok update --check --json`.
+/// Do **not** invent extra channels — only map what the CLI documents.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CliReleaseChannel {
+    Stable,
+    Alpha,
+    /// Missing, empty, or unrecognized — UI shows unknown; no switch flag.
+    Unknown,
+}
+
+impl CliReleaseChannel {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Stable => "stable",
+            Self::Alpha => "alpha",
+            Self::Unknown => "unknown",
+        }
+    }
+
+    /// CLI flag for channel switch (`--stable` / `--alpha`), if any.
+    pub fn switch_flag(self) -> Option<&'static str> {
+        match self {
+            Self::Stable => Some("--stable"),
+            Self::Alpha => Some("--alpha"),
+            Self::Unknown => None,
+        }
+    }
+}
+
+/// Parse a channel string from CLI JSON or user input.
+/// Only `stable` / `alpha` (case-insensitive) are recognized — never invent.
+pub fn parse_cli_channel(raw: Option<&str>) -> CliReleaseChannel {
+    let Some(s) = raw.map(str::trim).filter(|s| !s.is_empty()) else {
+        return CliReleaseChannel::Unknown;
+    };
+    match s.to_ascii_lowercase().as_str() {
+        "stable" => CliReleaseChannel::Stable,
+        "alpha" => CliReleaseChannel::Alpha,
+        _ => CliReleaseChannel::Unknown,
+    }
+}
+
+/// Options for `grok update` install / channel switch / version pin.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct CliUpdateInstallOpts {
+    /// Switch release channel (`stable` / `alpha`). Mutually exclusive with pin.
+    pub channel: Option<String>,
+    /// Install a specific version (`--version`). Mutually exclusive with channel.
+    pub version: Option<String>,
+    /// Pass `--force-reinstall` when true.
+    pub force: bool,
+}
+
+/// Validate version pin text for `--version` (semver-ish; no flags/path tricks).
+pub fn is_valid_cli_version_pin(raw: &str) -> bool {
+    let t = raw.trim();
+    if t.is_empty() || t.len() > 64 {
+        return false;
+    }
+    // Reject anything that looks like a CLI flag or path.
+    if t.starts_with('-') || t.contains('/') || t.contains('\\') || t.contains(' ') {
+        return false;
+    }
+    // Require at least one digit and only version-ish chars.
+    let mut has_digit = false;
+    for c in t.chars() {
+        if c.is_ascii_digit() {
+            has_digit = true;
+            continue;
+        }
+        if c.is_ascii_alphanumeric() || c == '.' || c == '-' || c == '+' || c == '_' {
+            continue;
+        }
+        return false;
+    }
+    has_digit
+}
+
+/// Build argv after the binary for `grok update …` (without the program name).
+/// Pure helper — soft-fails with Err when opts are invalid or invent a channel.
+pub fn build_update_args(opts: &CliUpdateInstallOpts) -> Result<Vec<String>, String> {
+    let channel_raw = opts
+        .channel
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty());
+    let version_raw = opts
+        .version
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty());
+
+    if channel_raw.is_some() && version_raw.is_some() {
+        return Err("channel switch and version pin are mutually exclusive".into());
+    }
+
+    let mut args: Vec<String> = vec!["update".into()];
+
+    if let Some(ch) = channel_raw {
+        let parsed = parse_cli_channel(Some(ch));
+        let flag = parsed.switch_flag().ok_or_else(|| {
+            format!("unknown CLI channel `{ch}` — only stable and alpha are supported")
+        })?;
+        args.push(flag.into());
+    } else if let Some(ver) = version_raw {
+        if !is_valid_cli_version_pin(ver) {
+            return Err(format!("invalid CLI version pin: {ver}"));
+        }
+        args.push("--version".into());
+        args.push(ver.to_string());
+    }
+
+    if opts.force {
+        args.push("--force-reinstall".into());
+    }
+
+    Ok(args)
+}
+
 /// Parsed `grok update --check --json` payload (camelCase).
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
@@ -29,6 +153,7 @@ pub struct CliUpdateCheck {
     pub current_version: String,
     pub latest_version: String,
     pub update_available: bool,
+    /// Raw channel from CLI JSON when present (`stable` / `alpha`); never invented.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub channel: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -86,7 +211,13 @@ fn parse_update_check_value(v: &Value) -> Result<CliUpdateCheck, String> {
         .ok_or_else(|| "missing latestVersion".to_string())?;
     let update_available = bool_field(v, &["updateAvailable", "update_available"])
         .unwrap_or_else(|| versions_differ(&current, &latest));
-    let channel = string_field(v, &["channel"]);
+    // Keep only recognized channel labels from CLI JSON — never invent.
+    let channel = string_field(v, &["channel"]).and_then(|c| {
+        match parse_cli_channel(Some(&c)) {
+            CliReleaseChannel::Unknown => None,
+            known => Some(known.as_str().to_string()),
+        }
+    });
     let installer = string_field(v, &["installer"]);
     let auto_update = bool_field(v, &["autoUpdate", "auto_update"]);
     let error = string_field(v, &["error"]).filter(|s| !s.is_empty());
@@ -169,47 +300,83 @@ fn strip_grok_prefix(v: &str) -> String {
     t.to_string()
 }
 
-/// Install latest CLI: prefer `grok update`, else App install trust-chain.
-pub async fn install_cli_update(app: tauri::AppHandle) -> Result<CliInstallResult, String> {
+/// Install / switch CLI: prefer `grok update` (with optional channel/version),
+/// else App install trust-chain for plain latest only.
+///
+/// Channel switch and version pin never fall back to the App trust-chain
+/// (which always pulls stable latest). Soft-fail with Err instead.
+pub async fn install_cli_update(
+    app: tauri::AppHandle,
+    opts: CliUpdateInstallOpts,
+) -> Result<CliInstallResult, String> {
     let settings = crate::store::load_settings();
     let manual = settings.manual_cli_path.clone();
     let probe = cli_probe::probe_cli(manual.as_deref());
 
+    let args = build_update_args(&opts)?;
+    let specialized = opts.channel.is_some() || opts.version.is_some();
+    let args_label = args.join(" ");
+
     if probe.found {
         if let Some(path) = probe.path.clone() {
-            info!("cli_update_install: running `{path} update`");
+            info!("cli_update_install: running `{path} {args_label}`");
+            let args_owned = args.clone();
             match tauri::async_runtime::spawn_blocking({
                 let path = path.clone();
-                move || run_cli_with_timeout(Path::new(&path), &["update"], UPDATE_TIMEOUT)
+                move || {
+                    let arg_refs: Vec<&str> = args_owned.iter().map(|s| s.as_str()).collect();
+                    run_cli_with_timeout(Path::new(&path), &arg_refs, UPDATE_TIMEOUT)
+                }
             })
             .await
             {
                 Ok(Ok(stdout)) => {
                     // Re-probe after update.
                     let after = cli_probe::probe_cli(manual.as_deref());
-                    let version = after.version.or_else(|| extract_version_hint(&stdout));
+                    let version = after
+                        .version
+                        .map(|v| strip_grok_prefix(&v))
+                        .or_else(|| extract_version_hint(&stdout));
+                    let message = if let Some(ch) = opts.channel.as_deref() {
+                        format!("Switched CLI channel via `grok update --{ch}`")
+                    } else if let Some(ver) = opts.version.as_deref() {
+                        format!("Installed CLI {ver} via `grok update --version`")
+                    } else {
+                        "Updated via `grok update`".into()
+                    };
                     return Ok(CliInstallResult {
                         ok: true,
                         path: after.path.or(Some(path)),
                         version,
                         mirror_used: Some("grok-update".into()),
-                        message: "Updated via `grok update`".into(),
+                        message,
                         sha256: None,
                         checksum_verified: None,
                     });
                 }
                 Ok(Err(e)) => {
+                    if specialized {
+                        // Soft-fail: do not pull stable latest when user asked for channel/version.
+                        return Err(format!("grok {args_label} failed: {e}"));
+                    }
                     warn!(
                         "cli_update_install: grok update failed ({e}); falling back to install_cli_latest"
                     );
                 }
                 Err(e) => {
+                    if specialized {
+                        return Err(format!("grok {args_label} join error: {e}"));
+                    }
                     warn!(
                         "cli_update_install: join error ({e}); falling back to install_cli_latest"
                     );
                 }
             }
         }
+    } else if specialized {
+        return Err(
+            "Grok Build CLI not found — install or set the path under Runtime".into(),
+        );
     }
 
     info!("cli_update_install: using cli_install trust-chain");
@@ -360,6 +527,130 @@ mod tests {
     #[test]
     fn extract_json_object_from_mixed() {
         let s = "info: start\n{\"a\":1}\n";
-        assert_eq!(extract_json_object(s), Some(r#"{"a":1}"#));
+        assert_eq!(extract_json_object(s), Some("{\"a\":1}"));
+    }
+
+    #[test]
+    fn parse_cli_channel_known_and_unknown() {
+        assert_eq!(parse_cli_channel(Some("stable")), CliReleaseChannel::Stable);
+        assert_eq!(parse_cli_channel(Some("ALPHA")), CliReleaseChannel::Alpha);
+        assert_eq!(parse_cli_channel(Some("  alpha  ")), CliReleaseChannel::Alpha);
+        assert_eq!(parse_cli_channel(None), CliReleaseChannel::Unknown);
+        assert_eq!(parse_cli_channel(Some("")), CliReleaseChannel::Unknown);
+        assert_eq!(parse_cli_channel(Some("beta")), CliReleaseChannel::Unknown);
+        assert_eq!(parse_cli_channel(Some("nightly")), CliReleaseChannel::Unknown);
+    }
+
+    #[test]
+    fn parse_drops_unknown_channel_field() {
+        let raw = r#"{"currentVersion":"0.2.117","latestVersion":"0.2.117","updateAvailable":false,"channel":"nightly"}"#;
+        let d = parse_update_check_json(raw).unwrap();
+        assert!(d.channel.is_none());
+    }
+
+    #[test]
+    fn parse_normalizes_alpha_channel() {
+        let raw = r#"{"currentVersion":"0.2.117","latestVersion":"0.2.118-alpha.1","updateAvailable":true,"channel":"Alpha"}"#;
+        let d = parse_update_check_json(raw).unwrap();
+        assert_eq!(d.channel.as_deref(), Some("alpha"));
+    }
+
+    #[test]
+    fn build_update_args_plain_and_force() {
+        assert_eq!(
+            build_update_args(&CliUpdateInstallOpts::default()).unwrap(),
+            vec!["update"]
+        );
+        assert_eq!(
+            build_update_args(&CliUpdateInstallOpts {
+                force: true,
+                ..Default::default()
+            })
+            .unwrap(),
+            vec!["update", "--force-reinstall"]
+        );
+    }
+
+    #[test]
+    fn build_update_args_channel_switch() {
+        assert_eq!(
+            build_update_args(&CliUpdateInstallOpts {
+                channel: Some("alpha".into()),
+                ..Default::default()
+            })
+            .unwrap(),
+            vec!["update", "--alpha"]
+        );
+        assert_eq!(
+            build_update_args(&CliUpdateInstallOpts {
+                channel: Some("STABLE".into()),
+                force: true,
+                ..Default::default()
+            })
+            .unwrap(),
+            vec!["update", "--stable", "--force-reinstall"]
+        );
+        assert!(build_update_args(&CliUpdateInstallOpts {
+            channel: Some("beta".into()),
+            ..Default::default()
+        })
+        .is_err());
+    }
+
+    #[test]
+    fn build_update_args_version_pin() {
+        assert_eq!(
+            build_update_args(&CliUpdateInstallOpts {
+                version: Some("0.2.117".into()),
+                ..Default::default()
+            })
+            .unwrap(),
+            vec!["update", "--version", "0.2.117"]
+        );
+        assert_eq!(
+            build_update_args(&CliUpdateInstallOpts {
+                version: Some("0.1.151-alpha.2".into()),
+                force: true,
+                ..Default::default()
+            })
+            .unwrap(),
+            vec![
+                "update",
+                "--version",
+                "0.1.151-alpha.2",
+                "--force-reinstall"
+            ]
+        );
+        assert!(build_update_args(&CliUpdateInstallOpts {
+            version: Some("--help".into()),
+            ..Default::default()
+        })
+        .is_err());
+        assert!(build_update_args(&CliUpdateInstallOpts {
+            version: Some("../etc/passwd".into()),
+            ..Default::default()
+        })
+        .is_err());
+    }
+
+    #[test]
+    fn build_update_args_rejects_channel_and_version() {
+        assert!(build_update_args(&CliUpdateInstallOpts {
+            channel: Some("alpha".into()),
+            version: Some("0.2.117".into()),
+            ..Default::default()
+        })
+        .is_err());
+    }
+
+    #[test]
+    fn is_valid_cli_version_pin_samples() {
+        assert!(is_valid_cli_version_pin("0.2.117"));
+        assert!(is_valid_cli_version_pin("0.1.151-alpha.2"));
+        assert!(!is_valid_cli_version_pin(""));
+        assert!(!is_valid_cli_version_pin("  "));
+        assert!(!is_valid_cli_version_pin("-alpha"));
+        assert!(!is_valid_cli_version_pin("a b"));
+        assert!(!is_valid_cli_version_pin("no-digits"));
     }
 }

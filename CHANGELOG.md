@@ -14,6 +14,7 @@ See `docs/llm-wiki/release.md`.
 ### Added
 
 #### Runtime / connection
+- **CLI update channels** (CLI ≥ **0.2.117**): Settings → Runtime → CLI and About show current version + channel (`stable` / `alpha` / unknown from `grok update --check --json` only — never invented). Switch via `grok update --alpha|--stable`, optional version pin (`--version <V>`) with in-app confirm; soft-fail on older CLIs / unknown channels. Host `cli_update_install` accepts optional channel/version/force; pure helpers + tests.
 - **SDK Connect wizard** (Settings → Runtime → Connection): start local `agent serve`, show masked secret + ws URL, TCP health probe, copy curl / websocat / `grok --remote` examples for external clients, and optional paste remote serve URL + probe. Secrets never logged; full token only via one-time clipboard after start.
 
 #### Composer & chat
