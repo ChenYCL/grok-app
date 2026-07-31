@@ -32,8 +32,13 @@ import {
   PROVIDER_PRESETS,
   defaultCustomChannelEfforts,
   resolveProviderApiKeyUrl,
+  resolveProviderBrandId,
   type ProviderPreset,
 } from "@/lib/providerPresets";
+import {
+  ProviderBrandIcon,
+  providerAvatarLetter,
+} from "@/components/ProviderBrandIcon";
 
 export interface ProvidersPanelProps {
   locale: Locale;
@@ -845,6 +850,10 @@ export function ProvidersPanel({
               const active =
                 activeSource === "custom" && activeProviderId === p.id;
               const selected = selection === p.id;
+              const brandId = resolveProviderBrandId({
+                providerId: p.id,
+                baseUrl: p.baseUrl,
+              });
               return (
                 <div
                   key={p.id}
@@ -860,8 +869,18 @@ export function ProvidersPanel({
                     className="prov-item__main"
                     onClick={() => openEdit(p)}
                   >
-                    <span className="prov-item__avatar" aria-hidden>
-                      {(p.name || p.id).slice(0, 1).toUpperCase()}
+                    <span
+                      className={
+                        "prov-item__avatar" +
+                        (brandId ? " prov-item__avatar--logo" : "")
+                      }
+                      aria-hidden
+                    >
+                      {brandId ? (
+                        <ProviderBrandIcon brand={brandId} size={18} />
+                      ) : (
+                        providerAvatarLetter(p.name || p.id)
+                      )}
                     </span>
                     <span className="prov-item__text">
                       <span className="prov-item__name">{p.name || p.id}</span>
@@ -944,8 +963,18 @@ export function ProvidersPanel({
                         : preset.name
                     }
                   >
-                    <span className="prov-presets__avatar" aria-hidden>
-                      {preset.name.slice(0, 1)}
+                    <span
+                      className={
+                        "prov-presets__avatar" +
+                        (preset.brandId ? " prov-presets__avatar--logo" : "")
+                      }
+                      aria-hidden
+                    >
+                      {preset.brandId ? (
+                        <ProviderBrandIcon brand={preset.brandId} size={16} />
+                      ) : (
+                        providerAvatarLetter(preset.name)
+                      )}
                     </span>
                     <span className="prov-presets__name">{preset.name}</span>
                   </button>

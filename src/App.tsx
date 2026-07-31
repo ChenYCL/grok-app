@@ -854,6 +854,11 @@ import {
   ComposerModelMenu,
 } from "@/components/ComposerModelMenu";
 import type { ComposerModelPick } from "@/lib/composerModelGroups";
+import { resolveProviderBrandId } from "@/lib/providerPresets";
+import {
+  ProviderBrandIcon,
+  providerAvatarLetter,
+} from "@/components/ProviderBrandIcon";
 import {
   ResourceViewer,
   type ResourceOpenTarget,
@@ -17138,14 +17143,40 @@ export default function App() {
                 }
               }}
             >
-              <div className="user-avatar" aria-hidden>
-                {activeCustomProvider
-                  ? Array.from(
-                      activeCustomProvider.name.trim() || activeCustomProvider.id,
-                    )[0]?.toUpperCase() || "P"
-                  : account?.profile
-                    ? accountInitials(account.profile)
-                    : "G"}
+              <div
+                className={
+                  "user-avatar" +
+                  (activeCustomProvider &&
+                  resolveProviderBrandId({
+                    providerId: activeCustomProvider.id,
+                    baseUrl: activeCustomProvider.baseUrl,
+                  })
+                    ? " user-avatar--logo"
+                    : "")
+                }
+                aria-hidden
+              >
+                {activeCustomProvider ? (
+                  resolveProviderBrandId({
+                    providerId: activeCustomProvider.id,
+                    baseUrl: activeCustomProvider.baseUrl,
+                  }) ? (
+                    <ProviderBrandIcon
+                      providerId={activeCustomProvider.id}
+                      baseUrl={activeCustomProvider.baseUrl}
+                      size={20}
+                    />
+                  ) : (
+                    providerAvatarLetter(
+                      activeCustomProvider.name.trim() ||
+                        activeCustomProvider.id,
+                    )
+                  )
+                ) : account?.profile ? (
+                  accountInitials(account.profile)
+                ) : (
+                  "G"
+                )}
               </div>
               <div className="user-meta">
                 <span className="user-meta__name">

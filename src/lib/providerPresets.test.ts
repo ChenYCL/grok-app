@@ -8,6 +8,7 @@ import {
   defaultCustomChannelEfforts,
   findProviderPreset,
   resolveProviderApiKeyUrl,
+  resolveProviderBrandId,
 } from "./providerPresets";
 
 describe("providerPresets", () => {
@@ -63,6 +64,16 @@ describe("providerPresets", () => {
     expect(resolveProviderApiKeyUrl({ baseUrl: "https://example.com" })).toBe(
       null,
     );
+  });
+
+  it("resolves brand logos for DeepSeek/Amux only", () => {
+    expect(resolveProviderBrandId({ providerId: "deepseek" })).toBe(
+      "deepseek",
+    );
+    expect(resolveProviderBrandId({ baseUrl: "https://api.amux.ai/v1" })).toBe(
+      "amux",
+    );
+    expect(resolveProviderBrandId({ providerId: "yun-api" })).toBe(null);
   });
 
   it("defaults blank custom channels to Grok low/medium/high (ladder order)", () => {

@@ -6,6 +6,9 @@
 import type { ProviderEffortEntry, ProviderModelEntry } from "@/lib/api";
 import { GROK_BUILD_EFFORTS } from "@/lib/grokCatalog";
 
+/** Known brand marks with dedicated logos (see ProviderBrandIcon). */
+export type ProviderBrandId = "deepseek" | "amux";
+
 export type ProviderPreset = {
   id: string;
   /** Channel display name (provider card / group). */
@@ -20,6 +23,8 @@ export type ProviderPreset = {
   blurbKey?: string;
   /** Where to obtain an API key (opened from the form). */
   apiKeyUrl?: string;
+  /** Brand logo key when available (Yun API has none yet). */
+  brandId?: ProviderBrandId;
 };
 
 /** Grok / official default reasoning tiers (low · medium · high). */
@@ -69,6 +74,7 @@ export const PROVIDER_PRESETS: ProviderPreset[] = [
     efforts: DEEPSEEK_EFFORTS,
     blurbKey: "prov.preset.deepseek.blurb",
     apiKeyUrl: "https://platform.deepseek.com/",
+    brandId: "deepseek",
   },
   {
     id: "amux",
@@ -80,6 +86,7 @@ export const PROVIDER_PRESETS: ProviderPreset[] = [
     efforts: GROK_CHANNEL_EFFORTS.map((e) => ({ ...e })),
     blurbKey: "prov.preset.amux.blurb",
     apiKeyUrl: "https://api.amux.ai/register?aff=Vccp",
+    brandId: "amux",
   },
   {
     id: "yun-api",
@@ -91,6 +98,7 @@ export const PROVIDER_PRESETS: ProviderPreset[] = [
     efforts: GROK_CHANNEL_EFFORTS.map((e) => ({ ...e })),
     blurbKey: "prov.preset.yunApi.blurb",
     apiKeyUrl: "https://api.yunyi.ai/register/?aff_code=W0iw",
+    // No logo yet
   },
 ];
 
@@ -98,17 +106,16 @@ export function findProviderPreset(id: string): ProviderPreset | undefined {
   return PROVIDER_PRESETS.find((p) => p.id === id);
 }
 
-/** Resolve API-key signup URL for a form (by preset id or base URL host). */
-export function resolveProviderApiKeyUrl(opts: {
+function matchPreset(opts: {
   providerId?: string | null;
   baseUrl?: string | null;
-}): string | null {
+}): ProviderPreset | undefined {
   const pid = opts.providerId?.trim().toLowerCase() ?? "";
   if (pid) {
     const byId = PROVIDER_PRESETS.find(
       (p) => p.id === pid || p.suggestedId === pid,
     );
-    if (byId?.apiKeyUrl) return byId.apiKeyUrl;
+    if (byId) return byId;
   }
   let host = "";
   try {
@@ -116,28 +123,41 @@ export function resolveProviderApiKeyUrl(opts: {
   } catch {
     host = "";
   }
-  if (!host) return null;
+  if (!host) return undefined;
   for (const p of PROVIDER_PRESETS) {
-    if (!p.apiKeyUrl) continue;
     try {
-      if (new URL(p.baseUrl).host.toLowerCase() === host) return p.apiKeyUrl;
+      if (new URL(p.baseUrl).host.toLowerCase() === host) return p;
     } catch {
       /* skip */
     }
   }
-  // Loose host match (subdomains / without www).
   for (const p of PROVIDER_PRESETS) {
-    if (!p.apiKeyUrl) continue;
     try {
       const ph = new URL(p.baseUrl).host.toLowerCase();
       if (host === ph || host.endsWith(`.${ph}`) || ph.endsWith(`.${host}`)) {
-        return p.apiKeyUrl;
+        return p;
       }
     } catch {
       /* skip */
     }
   }
-  return null;
+  return undefined;
+}
+
+/** Resolve API-key signup URL for a form (by preset id or base URL host). */
+export function resolveProviderApiKeyUrl(opts: {
+  providerId?: string | null;
+  baseUrl?: string | null;
+}): string | null {
+  return matchPreset(opts)?.apiKeyUrl ?? null;
+}
+
+/** Resolve brand logo key for UI avatars (null when no mark). */
+export function resolveProviderBrandId(opts: {
+  providerId?: string | null;
+  baseUrl?: string | null;
+}): ProviderBrandId | null {
+  return matchPreset(opts)?.brandId ?? null;
 }
 
 /** Default efforts when creating a blank custom channel (Grok-compatible). */
