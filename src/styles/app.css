@@ -15314,6 +15314,88 @@ textarea::-webkit-scrollbar-thumb:active,
   flex-shrink: 0;
 }
 
+.rp-diff-toolbar__actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  margin-right: 4px;
+}
+
+.rp-diff-toolbar__decision {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 7px;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+.rp-diff-toolbar__decision.is-accept {
+  color: color-mix(in srgb, #3d9a5f 90%, var(--text-primary));
+  background: color-mix(in srgb, #3d9a5f 14%, transparent);
+}
+
+.rp-diff-toolbar__decision.is-reject {
+  color: color-mix(in srgb, #d14b4b 90%, var(--text-primary));
+  background: color-mix(in srgb, #d14b4b 12%, transparent);
+}
+
+.rp-diff-action--accept:hover:not(:disabled) {
+  color: color-mix(in srgb, #3d9a5f 95%, var(--text-primary));
+}
+
+.rp-diff-action--reject:hover:not(:disabled) {
+  color: color-mix(in srgb, #d14b4b 95%, var(--text-primary));
+}
+
+.rp-diff-action--restore:hover:not(:disabled) {
+  color: color-mix(in srgb, var(--accent, #6c8cff) 90%, var(--text-primary));
+}
+
+.rp-diff-action:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.rp-diff-hunks {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+  flex: 0 0 auto;
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--border-subtle);
+  background: color-mix(in srgb, var(--bg-hover) 35%, transparent);
+}
+
+.rp-diff-hunks__label {
+  font-size: 10.5px;
+  font-weight: 650;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+  margin-right: 2px;
+}
+
+.rp-diff-hunks__row {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 1px 4px;
+  border-radius: 6px;
+  border: 1px solid var(--border-subtle);
+  background: color-mix(in srgb, var(--bg-card) 80%, transparent);
+}
+
+.rp-diff-hunks__name {
+  font-size: 11px;
+  color: var(--text-secondary);
+  padding: 0 4px;
+  max-width: 8rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .rp-diff-host > .rp-code {
   flex: 1 1 auto;
   min-height: 0;

@@ -760,6 +760,61 @@ export async function gitShowFile(projectPath: string, path: string) {
   return invoke<GitShowFileResult>("git_show_file", { projectPath, path });
 }
 
+/** Write full file content under project (Changes Accept / Restore / reject-before). */
+export interface ApplyFilePatchResult {
+  ok: boolean;
+  absolutePath?: string | null;
+  relativePath?: string | null;
+  reason?: string | null;
+}
+
+export async function applyFilePatch(
+  projectPath: string,
+  path: string,
+  content: string,
+) {
+  return invoke<ApplyFilePatchResult>("apply_file_patch", {
+    projectPath,
+    path,
+    content,
+  });
+}
+
+/** Restore path to HEAD or delete untracked (with confirm). */
+export interface GitCheckoutFileResult {
+  ok: boolean;
+  absolutePath?: string | null;
+  relativePath?: string | null;
+  needsUntrackedConfirm?: boolean;
+  reason?: string | null;
+  action?: string | null;
+}
+
+export async function gitCheckoutFile(
+  projectPath: string,
+  path: string,
+  confirmUntracked = false,
+) {
+  return invoke<GitCheckoutFileResult>("git_checkout_file", {
+    projectPath,
+    path,
+    confirmUntracked,
+  });
+}
+
+/** Delete a project file (non-git untracked reject after confirm). */
+export async function deleteProjectFile(
+  projectPath: string,
+  path: string,
+  confirm = false,
+) {
+  return invoke<GitCheckoutFileResult>("delete_project_file", {
+    projectPath,
+    path,
+    confirm,
+  });
+}
+
 export interface FsEntry {
   name: string;
   relativePath: string;
