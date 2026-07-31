@@ -7,6 +7,10 @@ pub enum BuiltinCommand {
     New,
     Whoami,
     Status,
+    /// Compact the currently bound agent session; optional text guides the summary.
+    Compact { note: Option<String> },
+    /// Show current/last-reported context usage for the bound session.
+    Context,
     Stop,
     /// List saved Grok accounts + quota; optional query picks/switches by number or label.
     Account { query: Option<String> },
@@ -66,6 +70,16 @@ pub fn native_bot_commands() -> &'static [NativeBotCommand] {
             command: "status",
             description_en: "Binding & runtime snapshot",
             description_zh: "绑定与运行状态",
+        },
+        NativeBotCommand {
+            command: "context",
+            description_en: "Show current context usage",
+            description_zh: "查看当前会话上下文用量",
+        },
+        NativeBotCommand {
+            command: "compact",
+            description_en: "Compact the current session",
+            description_zh: "压缩当前会话上下文",
         },
         NativeBotCommand {
             command: "whoami",
@@ -136,6 +150,8 @@ pub fn parse_slash(text: &str) -> Option<BuiltinCommand> {
         "new" | "reset" => BuiltinCommand::New,
         "whoami" | "id" => BuiltinCommand::Whoami,
         "status" => BuiltinCommand::Status,
+        "context" | "ctx" => BuiltinCommand::Context,
+        "compact" => BuiltinCommand::Compact { note: query },
         "stop" | "cancel" => BuiltinCommand::Stop,
         // Multi-account: list quota + switch (Telegram native menu + aliases).
         "account" | "accounts" | "quota" | "usage" | "switch" => {
@@ -165,6 +181,8 @@ pub fn help_text(lang: &str) -> String {
             "- `/account <n|label>` · `/switch <n>` — switch Grok account",
             "- `/whoami` — show your sender id",
             "- `/status` — snapshot",
+            "- `/context` — current context usage (agent-reported or clearly marked estimate)",
+            "- `/compact [note]` — compact the current session context",
             "- `/stop` — cancel in-flight turn",
             "- `0` — cancel number-pick mode",
         ]
@@ -184,6 +202,8 @@ pub fn help_text(lang: &str) -> String {
             "- `/account <序号|标签>` · `/switch <序号>` — 切换 Grok 账号",
             "- `/whoami` — 查看发送者 id",
             "- `/status` — 状态快照",
+            "- `/context` — 当前会话上下文用量（上报值或明确标注的估算值）",
+            "- `/compact [备注]` — 压缩当前会话上下文",
             "- `/stop` — 中断当前任务",
             "- `0` — 取消序号选择",
         ]
@@ -212,6 +232,18 @@ mod tests {
             Some(BuiltinCommand::Resume { query: None })
         );
         assert!(matches!(parse_slash("hi"), None));
+    }
+
+    #[test]
+    fn parses_context_and_compact() {
+        assert_eq!(parse_slash("/context"), Some(BuiltinCommand::Context));
+        assert_eq!(parse_slash("/ctx"), Some(BuiltinCommand::Context));
+        assert_eq!(
+            parse_slash("/compact keep decisions"),
+            Some(BuiltinCommand::Compact {
+                note: Some("keep decisions".into())
+            })
+        );
     }
 
     #[test]

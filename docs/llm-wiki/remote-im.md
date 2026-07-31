@@ -7,6 +7,15 @@
 > **产品：** Grok App 设置 → **远程控制** 内可视化配置；本机 Bridge × **仅 Grok Build（ACP）**  
 > **IA：** 设置一级导航展示名为「远程控制」（section id 仍为 `remote_im`）；页内 tab：`im`（IM 通信，本文）· `mirror`（手机镜像，见 PR #95 / `MirrorConnectPanel`）  
 > **原则：** **零 CLI 主路径** — 绑定、扫码、启停、ACL、Doctor 全部 GUI；禁止要求用户手写 TOML
+
+### 手机镜像公网隧道
+
+- 启动手机镜像时优先使用宿主机 `PATH` 中的 `cloudflared`。
+- 若宿主机未安装 `cloudflared`，自动检测 Docker daemon，并通过官方 `cloudflare/cloudflared:latest` 镜像创建 Quick Tunnel；无需挂载 Cloudflare 凭证。
+- macOS / Windows 容器通过 `host.docker.internal:<动态端口>` 访问仅监听本机的镜像主机；Linux 使用 host network，继续保持回环地址。
+- App 负责容器命名、日志就绪检测和停止清理；“停止主机”或正常退出时会强制移除本次容器，异常终止产生的同前缀残留会在下次启动隧道前清理。
+- 可用 `GROK_MIRROR_CLOUDFLARED_IMAGE` 覆盖镜像；`GROK_MIRROR_NO_TUNNEL=1` 仍用于仅本机测试。
+
 ---
 
 ## 目录
@@ -178,7 +187,7 @@
 
 | 能力 | 首版 | GUI 位置 |
 |------|------|----------|
-| `/p` `/r` `/new` `/status` `/help` `/stop` `/whoami` `/account` `/quota` `/switch` | ✅ | 总览说明 + 帮助文案；账号列表含剩余额度 |
+| `/p` `/r` `/new` `/status` `/context` `/compact` `/help` `/stop` `/whoami` `/account` `/quota` `/switch` | ✅ | 总览说明 + 帮助文案；上下文用量与压缩；账号列表含剩余额度 |
 | `/model` `/mode` 远程改模型 | 二期 | 总览高级 |
 | `/shell` `/cron` | 默认关 | 总览高级 + admin_from |
 
@@ -195,6 +204,8 @@
 | `/r <序号>` | 绑定会话 → **mode=resume** |
 | `/new` | 清 session 绑定，保持项目，mode=new |
 | `/status` | 项目、cwd、mode、session、chatKey |
+| `/context` | 当前会话上下文用量；优先 agent 上报值，否则明确标记为 `~` 估算值 |
+| `/compact [备注]` | 在当前 agent session 执行上下文压缩；结果与压缩标记同步回 App 会话 |
 | `/account` `/accounts` `/quota` | 列出已保存 Grok 账号 + SuperGrok 剩余额度（`★` 为当前） |
 | `/account <序号\|标签>` `/switch <n>` | 切换活动账号（写 `~/.grok/auth.json` + agent-home，软断桌面 ACP） |
 | `/stop` | 中断 turn |
@@ -390,6 +401,8 @@ Bridge **启动**与 **测试连接成功** 时自动调用 `setMyCommands`，�
 | `/r` · `/resume` | 列/恢复会话 |
 | `/new` | 新会话（保持项目） |
 | `/status` | 状态快照 |
+| `/context` | 当前会话上下文用量 |
+| `/compact [备注]` | 压缩当前会话上下文 |
 | `/account` · `/accounts` · `/quota` · `/switch` | 账号列表与额度 / 切换账号 |
 | `/whoami` | 发送者 id |
 | `/stop` | 中断当前 turn |
