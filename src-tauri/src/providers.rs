@@ -133,13 +133,24 @@ struct Section {
     fields: std::collections::HashMap<String, String>,
 }
 
+/// Unquote a TOML basic string written by [`quote`].
+///
+/// Must reverse `serde_json::to_string` escapes (`\"`, `\\`, …). A naive
+/// strip of the outer quotes leaves `\"` in `app_models` / `app_efforts` JSON
+/// so `serde_json::from_str` fails and the UI falls back to Grok defaults.
 fn unquote(v: &str) -> String {
     let t = v.trim();
-    if (t.starts_with('"') && t.ends_with('"')) || (t.starts_with('\'') && t.ends_with('\'')) {
-        t[1..t.len().saturating_sub(1)].to_string()
-    } else {
-        t.to_string()
+    if t.starts_with('"') && t.ends_with('"') && t.len() >= 2 {
+        if let Ok(s) = serde_json::from_str::<String>(t) {
+            return s;
+        }
+        // Fallback: strip quotes only (legacy / malformed values).
+        return t[1..t.len() - 1].to_string();
     }
+    if t.starts_with('\'') && t.ends_with('\'') && t.len() >= 2 {
+        return t[1..t.len() - 1].to_string();
+    }
+    t.to_string()
 }
 
 fn quote(v: &str) -> String {
@@ -1344,6 +1355,87 @@ mod tests {
         assert_eq!(
             resolve_active_model(&list, "missing"),
             "deepseek-v4-flash"
+        );
+    }
+
+    #[test]
+    fn quote_unquote_roundtrip_json_payload() {
+        let models = vec![
+            ProviderModelEntry {
+                id: "deepseek-v4-flash".into(),
+                name: "DeepSeek V4 Flash".into(),
+            },
+            ProviderModelEntry {
+                id: "deepseek-v4-pro".into(),
+                name: "DeepSeek V4 Pro".into(),
+            },
+        ];
+        let efforts = vec![
+            ProviderEffortEntry {
+                id: "low".into(),
+                name: "low".into(),
+                is_default: false,
+            },
+            ProviderEffortEntry {
+                id: "high".into(),
+                name: "high".into(),
+                is_default: true,
+            },
+            ProviderEffortEntry {
+                id: "xhigh".into(),
+                name: "xhigh".into(),
+                is_default: false,
+            },
+            ProviderEffortEntry {
+                id: "max".into(),
+                name: "max".into(),
+                is_default: false,
+            },
+        ];
+        let models_json = encode_app_models(&models);
+        let efforts_json = encode_app_efforts(&efforts);
+        // Simulate TOML field write + read (quote → line value → unquote).
+        let models_field = format!("app_models = {}", quote(&models_json));
+        let efforts_field = format!("app_efforts = {}", quote(&efforts_json));
+        let models_raw = models_field.split_once('=').unwrap().1.trim();
+        let efforts_raw = efforts_field.split_once('=').unwrap().1.trim();
+        let models_back = unquote(models_raw);
+        let efforts_back = unquote(efforts_raw);
+        assert_eq!(
+            decode_app_models(Some(&models_back), "fallback", "fallback"),
+            models
+        );
+        assert_eq!(decode_app_efforts(Some(&efforts_back)), efforts);
+
+        // Full section round-trip through append + parse
+        let text = append_section(
+            "",
+            "deepseek",
+            &[
+                ("model".into(), "deepseek-v4-flash".into()),
+                ("base_url".into(), "https://api.deepseek.com/v1".into()),
+                ("name".into(), "DeepSeek".into()),
+                ("api_key".into(), "sk-test".into()),
+                ("api_backend".into(), "chat_completions".into()),
+                (APP_MODELS_KEY.into(), models_json),
+                (APP_EFFORTS_KEY.into(), efforts_json),
+            ],
+        );
+        let sections = parse_model_sections(&text);
+        assert_eq!(sections.len(), 1);
+        let s = &sections[0];
+        let got_models = decode_app_models(
+            s.fields.get(APP_MODELS_KEY).map(|x| x.as_str()),
+            "x",
+            "x",
+        );
+        let got_efforts = decode_app_efforts(s.fields.get(APP_EFFORTS_KEY).map(|x| x.as_str()));
+        assert_eq!(got_models, models);
+        assert_eq!(got_efforts, efforts);
+        assert_eq!(got_models[0].name, "DeepSeek V4 Flash");
+        assert_eq!(
+            got_efforts.iter().map(|e| e.id.as_str()).collect::<Vec<_>>(),
+            vec!["low", "high", "xhigh", "max"]
         );
     }
 
