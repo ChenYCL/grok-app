@@ -285,8 +285,10 @@ import {
 import {
   GOAL_ORCH_EVENT_MAX,
   goalEventFromHostPayload,
+  goalOrchPhaseLabelKey,
   loadGoalOrchUiEnabled,
   prependGoalOrchEvent,
+  resolveGoalOrchSessionIndicator,
   saveGoalOrchUiEnabled,
   type GoalOrchEvent,
   type GoalOrchHostPayload,
@@ -13352,6 +13354,17 @@ export default function App() {
     tr,
   ]);
 
+  /** Soft chip: latest observed goal_updated for this session (never invented). */
+  const goalOrchSessionChip = useMemo(
+    () =>
+      resolveGoalOrchSessionIndicator({
+        uiEnabled: goalOrchUiEnabled,
+        events: goalOrchEvents,
+        sessionId: session.sessionId ?? null,
+      }),
+    [goalOrchUiEnabled, goalOrchEvents, session.sessionId],
+  );
+
   // T15: announce stream start/end once (avoid token-level noise).
   useEffect(() => {
     const streaming =
@@ -17752,6 +17765,38 @@ export default function App() {
               onOpenDetails={() => openPlanInResource()}
             />
           )}
+
+          {mainPane === "chat" && goalOrchSessionChip ? (
+            <button
+              type="button"
+              className="goal-orch-session-chip"
+              data-testid="goal-orch-session-chip"
+              title={[
+                tr(goalOrchPhaseLabelKey(goalOrchSessionChip.phase)),
+                goalOrchSessionChip.label,
+                goalOrchSessionChip.progress,
+                goalOrchSessionChip.detail,
+              ]
+                .filter(Boolean)
+                .join(" · ")}
+              aria-label={tr("reliability.goal.sessionChipAria", {
+                phase: tr(goalOrchPhaseLabelKey(goalOrchSessionChip.phase)),
+              })}
+              onClick={() => openReliability()}
+            >
+              <span className="goal-orch-session-chip__dot" aria-hidden />
+              <span className="goal-orch-session-chip__label">
+                {tr("reliability.goal.sessionChip", {
+                  phase: tr(goalOrchPhaseLabelKey(goalOrchSessionChip.phase)),
+                })}
+              </span>
+              {goalOrchSessionChip.progress ? (
+                <span className="goal-orch-session-chip__meta">
+                  {goalOrchSessionChip.progress}
+                </span>
+              ) : null}
+            </button>
+          ) : null}
 
           {mainPane === "chat" && showChatFind && (
             <ChatFindBar

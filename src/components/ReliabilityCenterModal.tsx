@@ -25,6 +25,16 @@ import {
   type AuditLedgerEvent,
 } from "@/lib/auditLedger";
 import {
+  assembleGoalOrchView,
+  filterGoalOrchEvents,
+  formatGoalOrchSummaryText,
+  goalOrchPhaseLabelKey,
+  phasesPresentInEvents,
+  resolveGoalOrchEmptyState,
+  type GoalOrchEvent,
+  type GoalOrchPhaseFilter,
+} from "@/lib/goalOrch";
+import {
   buildStallTimelineSnapshot,
   clearStallHistory,
   filterStallHistory,
@@ -48,16 +58,13 @@ export type ReliabilityCenterModalProps = {
   onOpenDoctor: () => void;
   /** Jump to a busy session (optional). */
   onSelectSession?: (sessionId: string) => void;
-  /** Display-only: show Goal orchestration section (CLI goal_updated events). */
+  /**
+   * Display-only: show Goal orchestration section (CLI goal_updated events).
+   * Default true when omitted.
+   */
   goalOrchUiEnabled?: boolean;
   /** In-memory ring of observed goal phase events (never invented). */
-  goalOrchEvents?: Array<{
-    id: string;
-    phase?: string;
-    progress?: number | string;
-    at?: number | string;
-    summary?: string;
-  }>;
+  goalOrchEvents?: GoalOrchEvent[];
 };
 
 type StallKindFilter = "all" | ReliabilityStallKind;
@@ -101,6 +108,49 @@ function stallKindKey(kind: ReliabilityStallSignal["kind"]): MessageKey {
     default:
       return "reliability.stall.kind.terminal";
   }
+}
+
+function GoalOrchRow({
+  event,
+  t,
+  locale,
+}: {
+  event: GoalOrchEvent;
+  t: ReturnType<typeof createT>;
+  locale: Locale;
+}) {
+  const when = formatWhen(event.at, locale);
+  return (
+    <li className="reliab-card__row" data-testid="reliab-goal-row">
+      <div className="reliab-card__row-main">
+        <span className="reliab-card__dot reliab-card__dot--busy" aria-hidden />
+        <span className="reliab-card__name" title={event.label}>
+          {t(goalOrchPhaseLabelKey(event.phase))}
+        </span>
+        <span className="reliab-card__meta">{event.label}</span>
+      </div>
+      {event.detail ? (
+        <div className="reliab-card__sub" title={event.detail}>
+          {event.detail}
+        </div>
+      ) : null}
+      <div className="reliab-card__sub reliab-card__sub--muted">
+        {[
+          event.deliverableProgress
+            ? t("reliability.goal.progress", {
+                progress: event.deliverableProgress,
+              })
+            : null,
+          event.goalId
+            ? t("reliability.goal.id", { id: event.goalId })
+            : null,
+          when,
+        ]
+          .filter(Boolean)
+          .join(" · ")}
+      </div>
+    </li>
+  );
 }
 
 function BusyRow({
@@ -287,11 +337,13 @@ export function ReliabilityCenterModal({
   view,
   onOpenDoctor,
   onSelectSession,
+  goalOrchUiEnabled = true,
+  goalOrchEvents = [],
 }: ReliabilityCenterModalProps) {
   const t = useMemo(() => createT(locale), [locale]);
-  const [busy, setBusy] = useState<"zip" | "audit-export" | "audit-clear" | null>(
-    null,
-  );
+  const [busy, setBusy] = useState<
+    "zip" | "audit-export" | "audit-clear" | "goal-copy" | null
+  >(null);
   const [statusMsg, setStatusMsg] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
@@ -307,6 +359,9 @@ export function ReliabilityCenterModal({
   const [auditEvent, setAuditEvent] = useState<AuditEventFilter>("all");
   const [confirmClearAudit, setConfirmClearAudit] = useState(false);
   const [auditLoading, setAuditLoading] = useState(false);
+
+  const [goalPhaseFilter, setGoalPhaseFilter] =
+    useState<GoalOrchPhaseFilter>("all");
 
   const loadAudit = useCallback(async () => {
     setAuditLoading(true);
@@ -333,6 +388,7 @@ export function ReliabilityCenterModal({
     setAuditQuery("");
     setAuditEvent("all");
     setConfirmClearAudit(false);
+    setGoalPhaseFilter("all");
     void loadAudit();
   }, [open, loadAudit]);
 
@@ -387,6 +443,61 @@ export function ReliabilityCenterModal({
       }),
     [auditEntries, auditQuery, auditEvent],
   );
+
+  /** Session-unfiltered ring (Reliability shows all observed sessions). */
+  const goalSessionEvents = useMemo(
+    () => filterGoalOrchEvents(goalOrchEvents),
+    [goalOrchEvents],
+  );
+
+  const goalOrchView = useMemo(
+    () =>
+      assembleGoalOrchView({
+        events: goalOrchEvents,
+        phase: goalPhaseFilter,
+      }),
+    [goalOrchEvents, goalPhaseFilter],
+  );
+
+  const goalEmpty = useMemo(
+    () =>
+      resolveGoalOrchEmptyState({
+        uiEnabled: goalOrchUiEnabled,
+        totalCount: goalSessionEvents.length,
+        filteredCount: goalOrchView.count,
+        phaseFilter: goalPhaseFilter,
+      }),
+    [
+      goalOrchUiEnabled,
+      goalSessionEvents.length,
+      goalOrchView.count,
+      goalPhaseFilter,
+    ],
+  );
+
+  /** Phase chips: only observed phases (plus "all" in the render). */
+  const goalPhaseChips = useMemo(
+    () => phasesPresentInEvents(goalSessionEvents),
+    [goalSessionEvents],
+  );
+
+  const onCopyGoalSummary = useCallback(async () => {
+    setBusy("goal-copy");
+    setStatusMsg(null);
+    setErrorMsg(null);
+    try {
+      const text = formatGoalOrchSummaryText(goalOrchView.events, {
+        title: t("reliability.goal.title"),
+        generatedAt: new Date().toISOString(),
+      });
+      await navigator.clipboard.writeText(text);
+      setStatusMsg(t("reliability.goal.copied"));
+    } catch (e) {
+      setErrorMsg(`${t("reliability.goal.copyFail")}: ${String(e)}`);
+    } finally {
+      setBusy(null);
+    }
+  }, [goalOrchView.events, t]);
 
   const onSupportZip = useCallback(async () => {
     setBusy("zip");
@@ -474,6 +585,14 @@ export function ReliabilityCenterModal({
       id: "tool_end",
       label: t("reliability.audit.event.toolEnd"),
     },
+  ];
+
+  const goalChips: { id: GoalOrchPhaseFilter; label: string }[] = [
+    { id: "all", label: t("reliability.goal.filterAll") },
+    ...goalPhaseChips.map((p) => ({
+      id: p as GoalOrchPhaseFilter,
+      label: t(goalOrchPhaseLabelKey(p)),
+    })),
   ];
 
   const clearConfirmPortal =
@@ -643,12 +762,117 @@ export function ReliabilityCenterModal({
         <div className="doctor-modal__body reliab-modal__body">
           {view.empty &&
           stallHistory.length === 0 &&
-          auditEntries.length === 0 ? (
+          auditEntries.length === 0 &&
+          goalSessionEvents.length === 0 ? (
             <div className="reliab-empty" role="status">
               <IconAlertTriangle size={20} className="reliab-empty__icon" />
               <p className="reliab-empty__title">{t("reliability.empty.title")}</p>
               <p className="reliab-empty__body">{t("reliability.empty.body")}</p>
             </div>
+          ) : null}
+
+          {goalOrchUiEnabled ? (
+            <section
+              className="reliab-card"
+              aria-labelledby="reliab-goal-title"
+              data-testid="reliab-goal-orch"
+            >
+              <header className="reliab-card__head">
+                <h3 id="reliab-goal-title" className="reliab-card__title">
+                  {t("reliability.goal.title")}
+                </h3>
+                <span className="reliab-card__count">
+                  {t("reliability.goal.count", {
+                    count: goalOrchView.count,
+                  })}
+                </span>
+              </header>
+              <p className="reliab-card__empty" style={{ marginBottom: 8 }}>
+                {t("reliability.goal.lead")}
+              </p>
+
+              {goalSessionEvents.length > 0 ? (
+                <>
+                  <div className="reliab-timeline__toolbar">
+                    <button
+                      type="button"
+                      className="btn btn--ghost btn--sm"
+                      disabled={!!busy || goalOrchView.count === 0}
+                      onClick={() => void onCopyGoalSummary()}
+                      data-testid="reliab-goal-copy"
+                    >
+                      {busy === "goal-copy"
+                        ? "…"
+                        : t("reliability.goal.copySummary")}
+                    </button>
+                    {goalPhaseFilter !== "all" ? (
+                      <button
+                        type="button"
+                        className="btn btn--ghost btn--sm"
+                        onClick={() => setGoalPhaseFilter("all")}
+                        data-testid="reliab-goal-clear-filter"
+                      >
+                        {t("reliability.goal.clearFilter")}
+                      </button>
+                    ) : null}
+                  </div>
+
+                  {goalPhaseChips.length > 0 ? (
+                    <div
+                      className="reliab-timeline__chips settings-seg"
+                      role="tablist"
+                      aria-label={t("reliability.goal.filterAria")}
+                    >
+                      {goalChips.map((c) => (
+                        <button
+                          key={c.id}
+                          type="button"
+                          role="tab"
+                          className={
+                            "settings-seg__btn reliab-timeline__chip" +
+                            (goalPhaseFilter === c.id ? " is-on" : "")
+                          }
+                          aria-selected={goalPhaseFilter === c.id}
+                          data-testid={`reliab-goal-filter-${c.id}`}
+                          onClick={() => setGoalPhaseFilter(c.id)}
+                        >
+                          {c.label}
+                        </button>
+                      ))}
+                    </div>
+                  ) : null}
+                </>
+              ) : null}
+
+              {goalEmpty ? (
+                <div className="reliab-card__empty" role="status">
+                  <p>{t(goalEmpty.titleKey)}</p>
+                  <p className="reliab-card__sub--muted">{t(goalEmpty.hintKey)}</p>
+                  {goalEmpty.showClearFilters ? (
+                    <button
+                      type="button"
+                      className="btn btn--ghost btn--sm"
+                      style={{ marginTop: 8 }}
+                      onClick={() => setGoalPhaseFilter("all")}
+                      data-testid="reliab-goal-clear-filter-empty"
+                    >
+                      {t("reliability.goal.clearFilter")}
+                    </button>
+                  ) : null}
+                </div>
+              ) : (
+                <ul className="reliab-card__list">
+                  {goalOrchView.events.map((ev) => (
+                    <GoalOrchRow
+                      key={ev.id}
+                      event={ev}
+                      t={t}
+                      locale={locale}
+                    />
+                  ))}
+                </ul>
+              )}
+            </section>
           ) : null}
 
           <section className="reliab-card" aria-labelledby="reliab-busy-title">

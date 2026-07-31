@@ -3014,9 +3014,24 @@ const en = {
   "reliability.goal.lead":
     "Shows phases only when the CLI emits goal_updated (classifier / planner / strategist / verifier). Never invents goal progress.",
   "reliability.goal.empty":
-    "No goal events this session. Use /goal in a chat when the CLI goal harness is available — this panel stays empty until real events arrive.",
+    "No goal events observed. Use /goal in a chat when the CLI goal harness is available — this panel stays empty until real events arrive.",
+  "reliability.goal.emptyFilter": "No goal events match this phase filter.",
+  "reliability.goal.emptyFilterHint":
+    "Clear the phase chip to show all observed goal_updated events again.",
+  "reliability.goal.uiOff": "Goal orchestration panel is hidden",
+  "reliability.goal.uiOffHint":
+    "Turn on Settings → Goal orchestration panel to show observed CLI goal events here.",
   "reliability.goal.progress": "Deliverables {progress}",
   "reliability.goal.id": "id {id}",
+  "reliability.goal.filterAll": "All",
+  "reliability.goal.filterAria": "Filter goal events by phase",
+  "reliability.goal.clearFilter": "Clear filter",
+  "reliability.goal.copySummary": "Copy summary",
+  "reliability.goal.copied": "Goal summary copied",
+  "reliability.goal.copyFail": "Could not copy goal summary",
+  "reliability.goal.sessionChip": "Goal · {phase}",
+  "reliability.goal.sessionChipAria":
+    "Latest goal phase {phase}. Open reliability center.",
   "reliability.goal.phase.planner": "Planner",
   "reliability.goal.phase.strategist": "Strategist",
   "reliability.goal.phase.classifier": "Classifier",
@@ -8015,9 +8030,22 @@ const zh: Record<MessageKey, string> = {
   "reliability.goal.lead":
     "仅在 CLI 发出 goal_updated（classifier / planner / strategist / verifier）时展示阶段，绝不虚构进度。",
   "reliability.goal.empty":
-    "本会话尚无目标事件。CLI 目标系统可用时在对话中使用 /goal — 在真实事件到达前此处保持为空。",
+    "尚未观察到目标事件。CLI 目标系统可用时在对话中使用 /goal — 在真实事件到达前此处保持为空。",
+  "reliability.goal.emptyFilter": "没有符合此阶段筛选的目标事件。",
+  "reliability.goal.emptyFilterHint": "清除阶段筛选即可重新显示全部已观察的 goal_updated 事件。",
+  "reliability.goal.uiOff": "目标编排面板已隐藏",
+  "reliability.goal.uiOffHint":
+    "在设置中开启「目标编排面板」后，此处会显示 CLI 发出的目标事件。",
   "reliability.goal.progress": "交付 {progress}",
   "reliability.goal.id": "id {id}",
+  "reliability.goal.filterAll": "全部",
+  "reliability.goal.filterAria": "按阶段筛选目标事件",
+  "reliability.goal.clearFilter": "清除筛选",
+  "reliability.goal.copySummary": "复制摘要",
+  "reliability.goal.copied": "已复制目标摘要",
+  "reliability.goal.copyFail": "无法复制目标摘要",
+  "reliability.goal.sessionChip": "目标 · {phase}",
+  "reliability.goal.sessionChipAria": "最近目标阶段 {phase}。打开可靠性中心。",
   "reliability.goal.phase.planner": "规划",
   "reliability.goal.phase.strategist": "策略",
   "reliability.goal.phase.classifier": "分类器",
