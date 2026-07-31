@@ -8,6 +8,8 @@ pub enum BuiltinCommand {
     Whoami,
     Status,
     Stop,
+    /// List saved Grok accounts + quota; optional query picks/switches by number or label.
+    Account { query: Option<String> },
     Project { query: Option<String> },
     Resume { query: Option<String> },
     Unknown { raw: String },
@@ -75,6 +77,26 @@ pub fn native_bot_commands() -> &'static [NativeBotCommand] {
             description_en: "Cancel in-flight turn",
             description_zh: "中断当前任务",
         },
+        NativeBotCommand {
+            command: "account",
+            description_en: "List accounts & quota; /account n to switch",
+            description_zh: "查看账号与额度；/account n 切换",
+        },
+        NativeBotCommand {
+            command: "accounts",
+            description_en: "Same as /account",
+            description_zh: "同 /account",
+        },
+        NativeBotCommand {
+            command: "switch",
+            description_en: "Switch Grok account by number",
+            description_zh: "按序号切换 Grok 账号",
+        },
+        NativeBotCommand {
+            command: "quota",
+            description_en: "Show SuperGrok remaining quota",
+            description_zh: "查看 SuperGrok 剩余额度",
+        },
     ]
 }
 
@@ -115,6 +137,10 @@ pub fn parse_slash(text: &str) -> Option<BuiltinCommand> {
         "whoami" | "id" => BuiltinCommand::Whoami,
         "status" => BuiltinCommand::Status,
         "stop" | "cancel" => BuiltinCommand::Stop,
+        // Multi-account: list quota + switch (Telegram native menu + aliases).
+        "account" | "accounts" | "quota" | "usage" | "switch" => {
+            BuiltinCommand::Account { query }
+        }
         "p" | "project" => BuiltinCommand::Project { query },
         "r" | "resume" => BuiltinCommand::Resume { query },
         other => BuiltinCommand::Unknown {
@@ -135,6 +161,8 @@ pub fn help_text(lang: &str) -> String {
             "- `/r` · `/resume` — list / resume a prior session",
             "- `/r <n>` — resume by number",
             "- `/new` — fresh session (keep project)",
+            "- `/account` · `/quota` — list accounts & remaining SuperGrok quota",
+            "- `/account <n|label>` · `/switch <n>` — switch Grok account",
             "- `/whoami` — show your sender id",
             "- `/status` — snapshot",
             "- `/stop` — cancel in-flight turn",
@@ -152,6 +180,8 @@ pub fn help_text(lang: &str) -> String {
             "- `/r` · `/resume` — 列出 / 恢复历史会话",
             "- `/r <序号>` — 按序号恢复",
             "- `/new` — 保持项目，开启新会话",
+            "- `/account` · `/quota` — 查看已保存账号与剩余额度",
+            "- `/account <序号|标签>` · `/switch <序号>` — 切换 Grok 账号",
             "- `/whoami` — 查看发送者 id",
             "- `/status` — 状态快照",
             "- `/stop` — 中断当前任务",
@@ -209,6 +239,58 @@ mod tests {
             parse_slash("/start payload"),
             Some(BuiltinCommand::Help)
         );
+    }
+
+    #[test]
+    fn parses_account_and_aliases() {
+        assert_eq!(
+            parse_slash("/account"),
+            Some(BuiltinCommand::Account { query: None })
+        );
+        assert_eq!(
+            parse_slash("/accounts"),
+            Some(BuiltinCommand::Account { query: None })
+        );
+        assert_eq!(
+            parse_slash("/quota"),
+            Some(BuiltinCommand::Account { query: None })
+        );
+        assert_eq!(
+            parse_slash("/switch 2"),
+            Some(BuiltinCommand::Account {
+                query: Some("2".into())
+            })
+        );
+        assert_eq!(
+            parse_slash("/account@MyBot 1"),
+            Some(BuiltinCommand::Account {
+                query: Some("1".into())
+            })
+        );
+        assert_eq!(
+            parse_slash("/accounts@MyBot work"),
+            Some(BuiltinCommand::Account {
+                query: Some("work".into())
+            })
+        );
+    }
+
+    #[test]
+    fn native_catalog_has_account_once() {
+        let names: Vec<&str> = native_bot_commands().iter().map(|c| c.command).collect();
+        assert_eq!(names.iter().filter(|n| **n == "account").count(), 1);
+        assert!(names.contains(&"switch"));
+        assert!(names.contains(&"quota"));
+    }
+
+    #[test]
+    fn help_mentions_account() {
+        let zh = help_text("zh");
+        assert!(zh.contains("/account"));
+        assert!(zh.contains("额度") || zh.contains("账号"));
+        let en = help_text("en");
+        assert!(en.contains("/account"));
+        assert!(en.contains("quota") || en.contains("account"));
     }
 
     #[test]

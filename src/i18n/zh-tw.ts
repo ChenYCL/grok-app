@@ -2932,10 +2932,12 @@ export const zhTW: Record<MessageKey, string> = {
   "settings.remoteIm.cmd.help": "歡迎與命令說明",
   "settings.remoteIm.cmd.whoami": "查看發送者 id",
   "settings.remoteIm.cmd.stop": "中斷目前任務",
+  "settings.remoteIm.cmd.account": "查看已儲存帳號與 SuperGrok 剩餘額度",
+  "settings.remoteIm.cmd.switch": "按序號或標籤切換目前 Grok 帳號",
   "settings.remoteIm.bridge.telegramNativeCommands":
-    "Telegram：測試連線或 Bridge 啟動後，在聊天輸入 / 即可喚起原生命令選單（setMyCommands）。",
+    "Telegram：Bridge 啟動後會註冊原生 / 命令選單；/p、/r、/account 的結果可透過可翻頁的行內按鈕選擇。",
   "settings.remoteIm.field.telegramTokenHelp":
-    "從 @BotFather 取得。連線時會自動註冊 /start /help /p /r /new /status /whoami /stop 到 Telegram 原生 / 選單。",
+    "從 @BotFather 取得。連線時會自動註冊 /start /help /p /r /new /status /account /quota /switch /whoami /stop 到 Telegram 原生 / 選單。",
   "settings.remoteIm.channel.feishu": "飛書",
   "settings.remoteIm.channel.lark": "Lark",
   "settings.remoteIm.channel.dingtalk": "釘釘",

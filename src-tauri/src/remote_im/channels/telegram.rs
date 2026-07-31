@@ -1,6 +1,6 @@
 //! Telegram Bot API long-polling (getUpdates) + native bot commands menu.
 
-use super::super::outbound::{http_client, secret_or_opt};
+use super::super::outbound::{http_client, secret_or_opt, sender_allowed};
 use super::super::slash::{self, native_bot_commands};
 use super::super::types::{ChannelInstance, IncomingMessage};
 use serde_json::{json, Value};
@@ -69,6 +69,10 @@ pub async fn run(
         for upd in arr {
             if let Some(id) = upd.get("update_id").and_then(|x| x.as_i64()) {
                 offset = id + 1;
+            }
+            if let Some(callback) = upd.get("callback_query") {
+                handle_callback_query(&client, &token, &inst, &tx, callback).await;
+                continue;
             }
             let msg = upd.get("message").or_else(|| upd.get("edited_message"));
             let Some(msg) = msg else { continue };
@@ -147,6 +151,110 @@ pub async fn run(
                 })
                 .await;
         }
+    }
+}
+
+async fn handle_callback_query(
+    client: &reqwest::Client,
+    token: &str,
+    inst: &ChannelInstance,
+    tx: &mpsc::Sender<IncomingMessage>,
+    callback: &Value,
+) {
+    let is_pagination = callback
+        .get("data")
+        .and_then(|x| x.as_str())
+        .map(|data| data.starts_with("page:"))
+        .unwrap_or(false);
+    let parsed = callback_query_to_incoming(inst, callback);
+    let allowed = parsed
+        .as_ref()
+        .map(|(incoming, _)| sender_allowed(&inst.acl, &incoming.sender_id))
+        .unwrap_or(false);
+    // Telegram keeps a spinner visible until answerCallbackQuery is called; acknowledge first,
+    // before any account switch or session lookup can perform slower I/O.
+    if let Some(callback_id) = callback.get("id").and_then(|x| x.as_str()) {
+        let answer = if parsed.is_some() && !allowed {
+            json!({
+                "callback_query_id": callback_id,
+                "text": "Not allowed.",
+                "show_alert": true,
+            })
+        } else {
+            json!({ "callback_query_id": callback_id })
+        };
+        let _ = post_bot_api(client, token, "answerCallbackQuery", &answer).await;
+    }
+
+    let Some((incoming, message_id)) = parsed else {
+        return;
+    };
+    if !allowed {
+        return;
+    }
+    let chat_id = incoming.chat_id.clone();
+    if tx.send(incoming).await.is_ok() && !is_pagination {
+        // Best-effort consume the keyboard so a stale project/session/account action
+        // cannot be clicked repeatedly after the selection has been accepted.
+        let _ = post_bot_api(
+            client,
+            token,
+            "editMessageReplyMarkup",
+            &json!({
+                "chat_id": chat_id,
+                "message_id": message_id,
+                "reply_markup": { "inline_keyboard": [] },
+            }),
+        )
+        .await;
+    }
+}
+
+fn callback_query_to_incoming(
+    inst: &ChannelInstance,
+    callback: &Value,
+) -> Option<(IncomingMessage, i64)> {
+    let data = callback.get("data").and_then(|x| x.as_str())?.trim();
+    if data.is_empty() {
+        return None;
+    }
+    let message = callback.get("message")?;
+    let message_id = message.get("message_id").and_then(|x| x.as_i64())?;
+    let chat_id = message.pointer("/chat/id").map(json_id_to_string)?;
+    if chat_id.is_empty() {
+        return None;
+    }
+    let chat_type = message
+        .pointer("/chat/type")
+        .and_then(|x| x.as_str())
+        .map(|kind| if kind == "private" { "p2p" } else { "group" })
+        .unwrap_or("p2p")
+        .to_string();
+    let sender_id = callback.pointer("/from/id").map(json_id_to_string)?;
+    if sender_id.is_empty() {
+        return None;
+    }
+
+    Some((
+        IncomingMessage {
+            channel: inst.channel.clone(),
+            instance_id: inst.id.clone(),
+            message_id: message_id.to_string(),
+            chat_id,
+            chat_type,
+            sender_id,
+            content: format!("__card_action__:{data}"),
+            mentioned_bot: true,
+        },
+        message_id,
+    ))
+}
+
+fn json_id_to_string(value: &Value) -> String {
+    match value {
+        Value::Number(number) => number.to_string(),
+        Value::String(value) => value.clone(),
+        _ => String::new(),
     }
 }
 
@@ -266,42 +374,131 @@ fn strip_at_in_leading_slash(text: &str) -> String {
     }
 }
 
+fn bot_token(secrets: &std::collections::HashMap<String, String>) -> Result<&str, String> {
+    secrets
+        .get("bot_token")
+        .or_else(|| secrets.get("token"))
+        .map(|s| s.as_str())
+        .filter(|s| !s.is_empty())
+        .ok_or_else(|| "missing bot_token".to_string())
+}
+
+async fn post_bot_api(
+    client: &reqwest::Client,
+    token: &str,
+    method: &str,
+    body: &Value,
+) -> Result<Value, String> {
+    let res = client
+        .post(format!("https://api.telegram.org/bot{token}/{method}"))
+        .json(body)
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+    let status = res.status();
+    let value: Value = res.json().await.map_err(|e| e.to_string())?;
+    if !status.is_success() || value.get("ok").and_then(|x| x.as_bool()) != Some(true) {
+        let description = value
+            .get("description")
+            .and_then(|x| x.as_str())
+            .unwrap_or("Telegram Bot API request failed");
+        return Err(format!("telegram {method} {status}: {description}"));
+    }
+    Ok(value)
+}
+
+async fn post_with_markdown_fallback(
+    token: &str,
+    method: &str,
+    mut body: Value,
+) -> Result<(), String> {
+    let client = http_client()?;
+    body["parse_mode"] = json!("Markdown");
+    if post_bot_api(&client, token, method, &body).await.is_ok() {
+        return Ok(());
+    }
+    // User/project/session labels may contain Markdown punctuation; preserve buttons
+    // and retry as plain text rather than dropping the whole native selection result.
+    if let Some(object) = body.as_object_mut() {
+        object.remove("parse_mode");
+    }
+    post_bot_api(&client, token, method, &body)
+        .await
+        .map(|_| ())
+}
+
 pub async fn send_text(
     secrets: &std::collections::HashMap<String, String>,
     chat_id: &str,
     text: &str,
 ) -> Result<(), String> {
-    let token = secrets
-        .get("bot_token")
-        .or_else(|| secrets.get("token"))
-        .map(|s| s.as_str())
-        .filter(|s| !s.is_empty())
-        .ok_or_else(|| "missing bot_token".to_string())?;
-    let client = http_client()?;
-    let url = format!("https://api.telegram.org/bot{token}/sendMessage");
-    let res = client
-        .post(url)
-        .json(&json!({
+    let token = bot_token(secrets)?;
+    post_with_markdown_fallback(
+        token,
+        "sendMessage",
+        json!({
             "chat_id": chat_id,
             "text": text,
-            "parse_mode": "Markdown",
-        }))
-        .send()
-        .await
-        .map_err(|e| e.to_string())?;
-    if !res.status().is_success() {
-        // retry without markdown
-        let res2 = client
-            .post(format!("https://api.telegram.org/bot{token}/sendMessage"))
-            .json(&json!({ "chat_id": chat_id, "text": text }))
-            .send()
-            .await
-            .map_err(|e| e.to_string())?;
-        if !res2.status().is_success() {
-            return Err(format!("telegram send: {}", res2.status()));
-        }
-    }
-    Ok(())
+        }),
+    )
+    .await
+}
+
+pub async fn send_card(
+    secrets: &std::collections::HashMap<String, String>,
+    chat_id: &str,
+    card: &Value,
+) -> Result<(), String> {
+    let token = bot_token(secrets)?;
+    let text = card
+        .get("text")
+        .and_then(|x| x.as_str())
+        .unwrap_or("Select:");
+    let reply_markup = card
+        .get("reply_markup")
+        .cloned()
+        .unwrap_or_else(|| json!({ "inline_keyboard": [] }));
+    post_with_markdown_fallback(
+        token,
+        "sendMessage",
+        json!({
+            "chat_id": chat_id,
+            "text": text,
+            "reply_markup": reply_markup,
+        }),
+    )
+    .await
+}
+
+pub async fn edit_card(
+    secrets: &std::collections::HashMap<String, String>,
+    chat_id: &str,
+    message_id: &str,
+    card: &Value,
+) -> Result<(), String> {
+    let token = bot_token(secrets)?;
+    let message_id = message_id
+        .parse::<i64>()
+        .map_err(|_| "invalid Telegram message_id".to_string())?;
+    let text = card
+        .get("text")
+        .and_then(|x| x.as_str())
+        .unwrap_or("Select:");
+    let reply_markup = card
+        .get("reply_markup")
+        .cloned()
+        .unwrap_or_else(|| json!({ "inline_keyboard": [] }));
+    post_with_markdown_fallback(
+        token,
+        "editMessageText",
+        json!({
+            "chat_id": chat_id,
+            "message_id": message_id,
+            "text": text,
+            "reply_markup": reply_markup,
+        }),
+    )
+    .await
 }
 
 #[cfg(test)]
@@ -348,5 +545,36 @@ mod tests {
             normalize_bot_command_text("/r@Bot 3", None),
             "/r 3"
         );
+    }
+
+    #[test]
+    fn callback_query_maps_to_card_action_message() {
+        let inst = ChannelInstance {
+            id: "tg-1".into(),
+            channel: "telegram".into(),
+            name: "Bot".into(),
+            enabled: true,
+            secrets: std::collections::HashMap::new(),
+            options: json!({}),
+            acl: json!({}),
+            project_scope: json!({}),
+        };
+        let callback = json!({
+            "id": "cb-1",
+            "from": { "id": 42 },
+            "data": "project:project-1",
+            "message": {
+                "message_id": 99,
+                "chat": { "id": -1001, "type": "supergroup" }
+            }
+        });
+
+        let (incoming, message_id) = callback_query_to_incoming(&inst, &callback).unwrap();
+        assert_eq!(message_id, 99);
+        assert_eq!(incoming.sender_id, "42");
+        assert_eq!(incoming.chat_id, "-1001");
+        assert_eq!(incoming.chat_type, "group");
+        assert_eq!(incoming.content, "__card_action__:project:project-1");
+        assert!(incoming.mentioned_bot);
     }
 }

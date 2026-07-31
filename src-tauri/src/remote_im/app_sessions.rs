@@ -13,6 +13,11 @@ pub fn set_app_handle(app: AppHandle) {
     let _ = APP_HANDLE.set(app);
 }
 
+/// Host AppHandle when the desktop shell is running (None in pure unit tests).
+pub fn try_app_handle() -> Option<AppHandle> {
+    APP_HANDLE.get().cloned()
+}
+
 fn emit_index_changed(session_id: &str) {
     if let Some(app) = APP_HANDLE.get() {
         let _ = app.emit(

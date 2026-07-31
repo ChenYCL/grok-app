@@ -420,7 +420,13 @@ pub fn read_auth_profile() -> AccountProfile {
 }
 
 fn read_access_token() -> Option<String> {
-    let raw = fs::read_to_string(auth_json_path()).ok()?;
+    read_access_token_from_path(&auth_json_path())
+}
+
+/// Read OAuth access token from any `auth.json` (current CLI or multi-account snapshot).
+/// Never log the return value.
+pub fn read_access_token_from_path(path: &std::path::Path) -> Option<String> {
+    let raw = fs::read_to_string(path).ok()?;
     let v: Value = serde_json::from_str(&raw).ok()?;
     let entry = v.as_object()?.values().next()?;
     entry

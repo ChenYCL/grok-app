@@ -314,7 +314,7 @@ pub fn format_session_menu(sessions: &[AppSessionEntry], lang: &str) -> String {
 
 /// Whether this channel should use interactive cards for /p /r.
 pub fn channel_uses_cards(channel: &str) -> bool {
-    matches!(channel, "feishu" | "lark" | "dingtalk")
+    matches!(channel, "feishu" | "lark" | "dingtalk" | "telegram")
 }
 
 /// Card action payload values (encoded in button value).
@@ -325,12 +325,28 @@ pub enum CardAction {
     Project { id: String },
     #[serde(rename = "session")]
     Session { id: String },
+    #[serde(rename = "account")]
+    Account { id: String },
+    #[serde(rename = "page")]
+    Page { menu: String, page: usize },
     #[serde(rename = "cancel")]
     Cancel,
 }
 
 pub fn encode_card_action(action: &CardAction) -> String {
     serde_json::to_string(action).unwrap_or_else(|_| r#"{"kind":"cancel"}"#.into())
+}
+
+/// Compact action value for Telegram's 64-byte `callback_data` limit.
+/// Project/session/account ids are UUIDs in the App store, so the prefixed form fits.
+pub fn encode_compact_card_action(action: &CardAction) -> String {
+    match action {
+        CardAction::Project { id } => format!("project:{id}"),
+        CardAction::Session { id } => format!("session:{id}"),
+        CardAction::Account { id } => format!("account:{id}"),
+        CardAction::Page { menu, page } => format!("page:{menu}:{page}"),
+        CardAction::Cancel => "cancel".into(),
+    }
 }
 
 pub fn parse_card_action(raw: &str) -> Option<CardAction> {
@@ -354,6 +370,21 @@ pub fn parse_card_action(raw: &str) -> Option<CardAction> {
     if let Some(rest) = t.strip_prefix("session:") {
         return Some(CardAction::Session {
             id: rest.to_string(),
+        });
+    }
+    if let Some(rest) = t.strip_prefix("account:") {
+        return Some(CardAction::Account {
+            id: rest.to_string(),
+        });
+    }
+    if let Some(rest) = t.strip_prefix("page:") {
+        let (menu, page) = rest.split_once(':')?;
+        if !matches!(menu, "project" | "session" | "account") {
+            return None;
+        }
+        return Some(CardAction::Page {
+            menu: menu.to_string(),
+            page: page.parse().ok()?,
         });
     }
     if t == "cancel" || t == "0" {
@@ -399,6 +430,9 @@ pub fn parse_card_action_value(v: &serde_json::Value) -> Option<CardAction> {
     if kind == "session" && !id.is_empty() {
         return Some(CardAction::Session { id });
     }
+    if kind == "account" && !id.is_empty() {
+        return Some(CardAction::Account { id });
+    }
     if kind == "cancel" || kind == "0" {
         return Some(CardAction::Cancel);
     }
@@ -412,6 +446,14 @@ pub fn parse_card_action_value(v: &serde_json::Value) -> Option<CardAction> {
         return Some(CardAction::Session {
             id: rest.to_string(),
         });
+    }
+    if let Some(rest) = kind.strip_prefix("account:") {
+        return Some(CardAction::Account {
+            id: rest.to_string(),
+        });
+    }
+    if kind.starts_with("page:") {
+        return parse_card_action(kind);
     }
     None
 }
@@ -542,6 +584,154 @@ pub fn build_feishu_session_card(sessions: &[AppSessionEntry], lang: &str) -> se
         },
         "elements": elements
     })
+}
+
+const TELEGRAM_SELECTION_LIMIT: usize = 20;
+
+fn truncate_chars(value: &str, max: usize) -> String {
+    let mut out: String = value.chars().take(max).collect();
+    if value.chars().count() > max {
+        out.push('…');
+    }
+    out
+}
+
+/// Telegram-native selection payload consumed by `telegram::send_card`.
+/// One button per row keeps long project/session/account labels readable on mobile.
+fn build_telegram_selection_card(
+    text: String,
+    choices: Vec<(String, CardAction)>,
+    lang: &str,
+    menu: &str,
+    requested_page: usize,
+) -> serde_json::Value {
+    let page_count = choices.len().max(1).div_ceil(TELEGRAM_SELECTION_LIMIT);
+    let page = requested_page.min(page_count.saturating_sub(1));
+    let mut rows: Vec<serde_json::Value> = choices
+        .into_iter()
+        .skip(page * TELEGRAM_SELECTION_LIMIT)
+        .take(TELEGRAM_SELECTION_LIMIT)
+        .filter_map(|(label, action)| {
+            let callback_data = encode_compact_card_action(&action);
+            // Telegram rejects the whole message if any callback_data exceeds 64 bytes.
+            if callback_data.as_bytes().len() > 64 {
+                return None;
+            }
+            Some(serde_json::json!([{
+                "text": truncate_chars(&label, 52),
+                "callback_data": callback_data,
+            }]))
+        })
+        .collect();
+    if page_count > 1 {
+        let mut navigation = Vec::new();
+        if page > 0 {
+            navigation.push(serde_json::json!({
+                "text": if lang == "en" { "← Previous" } else { "← 上一页" },
+                "callback_data": encode_compact_card_action(&CardAction::Page {
+                    menu: menu.to_string(),
+                    page: page - 1,
+                }),
+            }));
+        }
+        if page + 1 < page_count {
+            navigation.push(serde_json::json!({
+                "text": if lang == "en" { "Next →" } else { "下一页 →" },
+                "callback_data": encode_compact_card_action(&CardAction::Page {
+                    menu: menu.to_string(),
+                    page: page + 1,
+                }),
+            }));
+        }
+        if !navigation.is_empty() {
+            rows.push(serde_json::Value::Array(navigation));
+        }
+    }
+    rows.push(serde_json::json!([{
+        "text": if lang == "en" { "Cancel" } else { "取消" },
+        "callback_data": encode_compact_card_action(&CardAction::Cancel),
+    }]));
+
+    let page_label = if lang == "en" {
+        format!("Page {} / {}", page + 1, page_count)
+    } else {
+        format!("第 {} / {} 页", page + 1, page_count)
+    };
+
+    serde_json::json!({
+        "text": truncate_chars(&format!("{text}\n\n_{page_label}_"), 3500),
+        "reply_markup": { "inline_keyboard": rows },
+    })
+}
+
+pub fn build_telegram_project_card(
+    projects: &[TrustedProject],
+    lang: &str,
+    page: usize,
+) -> serde_json::Value {
+    let text = if lang == "en" {
+        "**Trusted projects**\nChoose below, or send `/p <name>`."
+    } else {
+        "**已信任项目**\n点击下方按钮选择，也可发送 `/p <名称>`。"
+    };
+    let choices = projects
+        .iter()
+        .enumerate()
+        .map(|(i, project)| {
+            (
+                format!("{}. {}", i + 1, project.name),
+                CardAction::Project {
+                    id: project.id.clone(),
+                },
+            )
+        })
+        .collect();
+    build_telegram_selection_card(text.into(), choices, lang, "project", page)
+}
+
+pub fn build_telegram_session_card(
+    sessions: &[AppSessionEntry],
+    lang: &str,
+    page: usize,
+) -> serde_json::Value {
+    let text = if lang == "en" {
+        "**Sessions**\nChoose a session to resume, or send `/r <number>`."
+    } else {
+        "**会话**\n点击下方按钮恢复，也可发送 `/r <序号>`。"
+    };
+    let choices = sessions
+        .iter()
+        .enumerate()
+        .map(|(i, session)| {
+            (
+                format!("{}. {}", i + 1, session.title),
+                CardAction::Session {
+                    id: session.id.clone(),
+                },
+            )
+        })
+        .collect();
+    build_telegram_selection_card(text.into(), choices, lang, "session", page)
+}
+
+/// `accounts` entries are `(id, display label)`; quota details stay in `text`.
+pub fn build_telegram_account_card(
+    text: &str,
+    accounts: &[(String, String)],
+    lang: &str,
+    page: usize,
+) -> serde_json::Value {
+    let choices = accounts
+        .iter()
+        .enumerate()
+        .map(|(i, (id, label))| {
+            (
+                format!("{}. {}", i + 1, label),
+                CardAction::Account { id: id.clone() },
+            )
+        })
+        .collect();
+    build_telegram_selection_card(text.to_string(), choices, lang, "account", page)
 }
 
 /// DingTalk interactive card content (markdown + action buttons payload for Stream).
@@ -738,7 +928,7 @@ mod tests {
     }
 
     #[test]
-    fn card_action_roundtrip_project_and_session() {
+    fn card_action_roundtrip_project_session_and_account() {
         let a = CardAction::Project { id: "p1".into() };
         let enc = encode_card_action(&a);
         assert_eq!(parse_card_action(&enc), Some(a));
@@ -755,15 +945,28 @@ mod tests {
             parse_card_action("project:abc"),
             Some(CardAction::Project { id: "abc".into() })
         );
+        assert_eq!(
+            parse_card_action("account:user-1"),
+            Some(CardAction::Account {
+                id: "user-1".into()
+            })
+        );
+        assert_eq!(
+            parse_card_action("page:session:3"),
+            Some(CardAction::Page {
+                menu: "session".into(),
+                page: 3,
+            })
+        );
     }
 
     #[test]
-    fn feishu_and_dingtalk_use_cards_weixin_does_not() {
+    fn interactive_channels_use_cards_weixin_does_not() {
         assert!(channel_uses_cards("feishu"));
         assert!(channel_uses_cards("lark"));
         assert!(channel_uses_cards("dingtalk"));
+        assert!(channel_uses_cards("telegram"));
         assert!(!channel_uses_cards("weixin"));
-        assert!(!channel_uses_cards("telegram"));
     }
 
     #[test]
@@ -811,6 +1014,35 @@ mod tests {
             parse_card_action(aid),
             Some(CardAction::Project { id: "p1".into() })
         );
+
+        let tc = build_telegram_project_card(&projects, "zh", 0);
+        let callback = tc["reply_markup"]["inline_keyboard"][0][0]["callback_data"]
+            .as_str()
+            .unwrap();
+        assert_eq!(callback, "project:p1");
+        assert!(callback.as_bytes().len() <= 64);
+    }
+
+    #[test]
+    fn telegram_project_card_paginates_and_keeps_global_actions() {
+        let projects: Vec<TrustedProject> = (1..=25)
+            .map(|i| proj(&format!("p{i}"), &format!("Project {i}"), "/tmp"))
+            .collect();
+        let card = build_telegram_project_card(&projects, "en", 1);
+        let keyboard = card["reply_markup"]["inline_keyboard"]
+            .as_array()
+            .unwrap();
+        assert_eq!(
+            keyboard[0][0]["callback_data"].as_str(),
+            Some("project:p21")
+        );
+        assert!(keyboard.iter().any(|row| {
+            row[0]["callback_data"]
+                .as_str()
+                .map(|value| value == "page:project:0")
+                .unwrap_or(false)
+        }));
+        assert!(card["text"].as_str().unwrap().contains("Page 2 / 2"));
     }
 
     #[test]

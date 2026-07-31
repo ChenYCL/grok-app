@@ -3035,10 +3035,12 @@ const en = {
   "settings.remoteIm.cmd.help": "Welcome & command help",
   "settings.remoteIm.cmd.whoami": "Show your sender id",
   "settings.remoteIm.cmd.stop": "Cancel the current turn",
+  "settings.remoteIm.cmd.account": "List saved Grok accounts & remaining SuperGrok quota",
+  "settings.remoteIm.cmd.switch": "Switch the active Grok account by number or label",
   "settings.remoteIm.bridge.telegramNativeCommands":
-    "Telegram: after Test connection or Bridge start, type / in chat to open the native bot command menu (setMyCommands).",
+    "Telegram: Bridge start registers the native / menu; /p, /r, and /account results use paginated inline buttons.",
   "settings.remoteIm.field.telegramTokenHelp":
-    "From @BotFather. On connect we register /start /help /p /r /new /status /whoami /stop in Telegram’s native / menu.",
+    "From @BotFather. On connect we register /start /help /p /r /new /status /account /quota /switch /whoami /stop in Telegram’s native / menu.",
   "settings.remoteIm.channel.feishu": "Feishu",
   "settings.remoteIm.channel.lark": "Lark",
   "settings.remoteIm.channel.dingtalk": "DingTalk",
@@ -5993,10 +5995,12 @@ const zh: Record<MessageKey, string> = {
   "settings.remoteIm.cmd.help": "欢迎与命令帮助",
   "settings.remoteIm.cmd.whoami": "查看发送者 id",
   "settings.remoteIm.cmd.stop": "中断当前任务",
+  "settings.remoteIm.cmd.account": "查看已保存账号与 SuperGrok 剩余额度",
+  "settings.remoteIm.cmd.switch": "按序号或标签切换当前 Grok 账号",
   "settings.remoteIm.bridge.telegramNativeCommands":
-    "Telegram：测试连接或 Bridge 启动后，在聊天输入 / 即可唤起原生命令菜单（setMyCommands）。",
+    "Telegram：Bridge 启动后会注册原生 / 命令菜单；/p、/r、/account 的结果可通过可翻页的行内按钮选择。",
   "settings.remoteIm.field.telegramTokenHelp":
-    "从 @BotFather 获取。连接时会自动注册 /start /help /p /r /new /status /whoami /stop 到 Telegram 原生 / 菜单。",
+    "从 @BotFather 获取。连接时会自动注册 /start /help /p /r /new /status /account /quota /switch /whoami /stop 到 Telegram 原生 / 菜单。",
   "settings.remoteIm.channel.feishu": "飞书",
   "settings.remoteIm.channel.lark": "Lark",
   "settings.remoteIm.channel.dingtalk": "钉钉",

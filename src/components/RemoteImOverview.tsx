@@ -300,6 +300,14 @@ export function RemoteImOverview({
               <code>/status</code> — {t("settings.remoteIm.cmd.status")}
             </li>
             <li>
+              <code>/account</code> · <code>/quota</code> —{" "}
+              {t("settings.remoteIm.cmd.account")}
+            </li>
+            <li>
+              <code>/account n</code> · <code>/switch n</code> —{" "}
+              {t("settings.remoteIm.cmd.switch")}
+            </li>
+            <li>
               <code>/whoami</code> — {t("settings.remoteIm.cmd.whoami")}
             </li>
             <li>
