@@ -347,6 +347,7 @@ pub fn run() {
             commands::session_set_extra_rules,
             commands::session_set_max_agent_turns,
             commands::session_set_system_prompt_override,
+            commands::session_set_no_ask_user,
             commands::session_set_fork_agent_session,
             commands::session_set_scheduled,
             commands::session_messages,

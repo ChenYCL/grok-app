@@ -2863,6 +2863,7 @@ impl SessionManager {
                 .as_ref()
                 .map(|s| s.to_string())
                 .and_then(|s| crate::store::sanitize_system_prompt_override(Some(s))),
+            no_ask_user: meta.no_ask_user,
             fork_session: fork_agent,
         };
 
@@ -5920,6 +5921,7 @@ mod connect_preserve_tests {
                 max_agent_turns: None,
                 system_prompt_override: None,
                 fork_agent_session: false,
+                no_ask_user: None,
             },
             fsm,
             backend: "grok_agent_stdio".into(),
@@ -6107,6 +6109,7 @@ mod session_routing_tests {
                 max_agent_turns: None,
                 system_prompt_override: None,
                 fork_agent_session: false,
+                no_ask_user: None,
             },
             fsm,
             backend: "mock_acp".into(),
@@ -6275,6 +6278,7 @@ mod session_routing_tests {
                 max_agent_turns: None,
                 system_prompt_override: None,
                 fork_agent_session: false,
+                no_ask_user: None,
             },
             fsm,
             backend: "mock_acp".into(),
@@ -6380,6 +6384,7 @@ mod session_routing_tests {
                 max_agent_turns: None,
                 system_prompt_override: None,
                 fork_agent_session: false,
+                no_ask_user: None,
             },
             fsm,
             backend: "mock_acp".into(),

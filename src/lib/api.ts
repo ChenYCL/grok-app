@@ -936,6 +936,8 @@ export async function sessionsList() {
       maxAgentTurns?: number | null;
       /** Per-session system prompt override (`--system-prompt-override`); empty/omit = none */
       systemPromptOverride?: string | null;
+      /** Per-session `--no-ask-user` override; null/omit = inherit global */
+      noAskUser?: boolean | null;
     }>
   >("sessions_list");
 }
@@ -995,6 +997,24 @@ export async function sessionSetSystemPromptOverride(
       systemPromptOverride && systemPromptOverride.trim()
         ? systemPromptOverride
         : null,
+  });
+}
+
+/**
+ * Set or clear per-session `--no-ask-user` override (CLI ≥ 0.2.117).
+ * Pass `null` to inherit global Settings. Soft-respawns live agent.
+ */
+export async function sessionSetNoAskUser(
+  id: string,
+  noAskUser: boolean | null,
+) {
+  return invoke<{
+    id: string;
+    title: string;
+    noAskUser?: boolean | null;
+  }>("session_set_no_ask_user", {
+    id,
+    noAskUser: typeof noAskUser === "boolean" ? noAskUser : null,
   });
 }
 
@@ -1302,6 +1322,12 @@ export interface AppSettings {
   agentsJson?: string;
   experimentalMemory?: boolean;
   disableWebSearch?: boolean;
+  /**
+   * When true, spawn with top-level `--no-ask-user` (CLI ≥ 0.2.117) so the
+   * agent does not emit ask-user questionnaires. Default false. Soft-respawns.
+   * Per-session override: `SessionMeta.noAskUser`.
+   */
+  noAskUser?: boolean;
   /**
    * Built-in tool ids denied via CLI `--disallowed-tools a,b`.
    * Default empty. Coexists with `disableWebSearch`; changes soft-respawn.

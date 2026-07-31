@@ -215,6 +215,7 @@ mod tests {
             max_agent_turns: None,
             system_prompt_override: None,
             fork_agent_session: false,
+            no_ask_user: None,
         }
     }
 

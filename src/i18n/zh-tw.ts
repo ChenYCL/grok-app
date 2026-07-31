@@ -1320,6 +1320,9 @@ export const zhTW: Record<MessageKey, string> = {
   "settings.subagentsEnabledDesc": "關閉時啟動加上 --no-subagents，無法拉起巢狀 Agent / 任務。變更後 soft-respawn。",
   "settings.planEnabled": "允許計畫模式",
   "settings.planEnabledDesc": "關閉時啟動加上 --no-plan，Agent 無法進入計畫模式。變更後 soft-respawn。",
+  "settings.noAskUser": "停用向使用者提問",
+  "settings.noAskUserDesc":
+    "啟動時加上頂層 --no-ask-user（CLI ≥ 0.2.117），Agent 不再彈出 ask_user_question 問卷。關閉 = CLI 預設（仍可能提問）。變更後 soft-respawn。支援工作階段級覆蓋（session API）。",
   "settings.useLeader": "共用 Agent 後端（leader）",
   "settings.useLeaderDesc": "使用 --leader 讓多個用戶端共用一個後端行程；關閉則 --no-leader（預設）。變更後 soft-respawn。",
   "settings.leader.title": "Agent leader / serve",
