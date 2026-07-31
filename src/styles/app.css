@@ -18975,6 +18975,71 @@ div.composer__input:empty::before {
   border: 1px solid var(--border-subtle, rgba(127, 127, 127, 0.18));
 }
 
+.ext-hooks-try__msg--warn {
+  color: var(--warn, var(--text-secondary));
+}
+
+.ext-hooks-result {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.ext-hooks-result__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+
+.ext-hooks-result__summary {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.4;
+}
+
+.ext-hooks-result__hint {
+  margin: 0;
+  font-size: 12px;
+  color: var(--text-secondary);
+  line-height: 1.45;
+}
+
+.ext-hooks-result__detail {
+  margin: 0;
+  font-size: 12px;
+  color: var(--text-secondary);
+  line-height: 1.4;
+  word-break: break-word;
+}
+
+.ext-hooks-result__reason,
+.ext-hooks-result__path {
+  margin: 0;
+  font-size: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.ext-hooks-result__label {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-secondary);
+}
+
+.ext-hooks-result__reason code,
+.ext-hooks-result__path code {
+  font-size: 11px;
+  word-break: break-all;
+}
+
+.ext-hooks-result__output {
+  max-height: 280px;
+}
+
 .ext-list {
   list-style: none;
   margin: 0;

@@ -144,6 +144,7 @@ See `docs/llm-wiki/release.md`.
 - **MCP doctor findings** (slash MCP modal + Extensions): host `mcp_doctor(name?)` runs `grok mcp doctor --json` with timeout and redacted errors; pure helpers flatten checks/issues into `{ id, level, title, detail, server? }` rows (no invented servers); **Run MCP doctor** shows findings with server filter + search; inspect refresh coexists with doctor results
 - **MCP OAuth GUI** (slash MCP modal): when doctor marks a server / finding as OAuth required or expired, show **Authorize…** / **Retry OAuth**; open sanitized auth URLs from doctor text (secrets stripped) via system browser; GlassModal instructions for TUI `/mcps` → `i` when no URL (CLI has no headless `mcp oauth`); pure classifiers + tests; never logs client secrets
 - **Hooks try-run**: Settings → Extensions → Hooks can **real-run** a script under `~/.grok/hooks` or project `.grok/hooks` only (host `hooks_try_run`, optional JSON stdin, timeout, redacted stdout/stderr); paths outside hooks dirs are refused; `ok` only on exit 0
+- **Hooks validate pro**: try-run / stdin **Validate** show classified outcomes (path refused, timeout, non-zero exit, invalid JSON, …) with actionable hints in a **GlassModal** result (no `window.confirm`); pure `hooksValidate` helpers + tests; en/zh/zh-TW
 
 ### Fixed
 
