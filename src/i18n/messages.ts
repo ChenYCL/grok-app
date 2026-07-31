@@ -1326,6 +1326,14 @@ const en = {
   "settings.permissionTimeout.60": "1 minute",
   "settings.permissionTimeout.120": "2 minutes",
   "settings.permissionTimeout.300": "5 minutes",
+  "settings.askUserTimeout": "Ask-question timeout",
+  "settings.askUserTimeoutDesc":
+    "If you don't answer an agent questionnaire, auto-dismiss (cancel) after this time. App-enforced; off by default. Aligns with CLI 0.2.117 [toolset.ask_user_question] (independent of the CLI's longer default budget).",
+  "settings.askUserTimeout.off": "Off",
+  "settings.askUserTimeout.30": "30 seconds",
+  "settings.askUserTimeout.60": "1 minute",
+  "settings.askUserTimeout.120": "2 minutes",
+  "settings.askUserTimeout.300": "5 minutes",
   "settings.sandboxProfile": "Sandbox profile",
   "settings.sandboxProfileDesc":
     "OS-level filesystem/network isolation for the agent process (Landlock/Seatbelt). Applied when a new agent starts — reconnect the session after changing. Projects can override this from the project menu.",
@@ -3060,6 +3068,7 @@ const en = {
   "askUser.otherPlaceholder": "Type your answer…",
   "askUser.freeTextHint": "Or type a custom answer",
   "askUser.multiHint": "Select one or more options",
+  "askUser.autoCancelCountdown": "Auto-dismiss in {seconds}s",
 
   "message.interjectionTag": "Steer",
   "message.copy": "Copy",
@@ -5004,6 +5013,14 @@ const zh: Record<MessageKey, string> = {
   "settings.permissionTimeout.60": "1 分钟",
   "settings.permissionTimeout.120": "2 分钟",
   "settings.permissionTimeout.300": "5 分钟",
+  "settings.askUserTimeout": "提问超时",
+  "settings.askUserTimeoutDesc":
+    "若在时限内未回答 Agent 问卷，将自动忽略（取消）。由应用强制执行，默认关闭。与 CLI 0.2.117 [toolset.ask_user_question] 概念对齐（独立于 CLI 更长的默认超时）。",
+  "settings.askUserTimeout.off": "关闭",
+  "settings.askUserTimeout.30": "30 秒",
+  "settings.askUserTimeout.60": "1 分钟",
+  "settings.askUserTimeout.120": "2 分钟",
+  "settings.askUserTimeout.300": "5 分钟",
   "settings.sandboxProfile": "沙箱配置",
   "settings.sandboxProfileDesc":
     "对 Agent 进程施加操作系统级文件系统/网络隔离（Linux Landlock / macOS Seatbelt）。在新启动 Agent 时生效——更改后请重连会话。可在项目菜单中为单个项目覆盖。",
@@ -6695,6 +6712,7 @@ const zh: Record<MessageKey, string> = {
   "askUser.otherPlaceholder": "输入你的回答…",
   "askUser.freeTextHint": "或输入自定义回答",
   "askUser.multiHint": "可多选",
+  "askUser.autoCancelCountdown": "{seconds} 秒后自动忽略",
 
   "message.interjectionTag": "引导",
   "message.copy": "复制",
