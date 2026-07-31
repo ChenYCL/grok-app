@@ -28,6 +28,7 @@ See `docs/llm-wiki/release.md`.
 - **Compact dialog presets** (light / standard / aggressive): note templates for `/compact` (CLI has no intensity flag yet); optional keep-note + chips; before → after estimate when tokens known; last compact range when available
 
 #### Sessions & sidebar
+- **Continue last agent for this project** (CLI `grok -c/--continue`): project menu + command palette finds the newest agent session under active `GROK_HOME` for the project path, then opens the linked App chat or imports history; soft-fails with a toast when none exist
 - **Duplicate chat** (vs **Fork…** + optional worktree) · **session notes** · **mute** · **unread dot**
 - **Open session in new window** — session menu opens a second Tauri webview with `#/session/<id>` deep link; secondary is **view-only** (no warm-connect / send) so it cannot steal the Host live slot; re-open focuses the existing window; close secondary for real (main still tray/confirm)
 - **Resume with code restore** — open an existing chat on a clean sibling git worktree at HEAD (session menu + command palette; dirty tree refused; same safety as Fork → restore code)

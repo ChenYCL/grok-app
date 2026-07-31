@@ -106,6 +106,13 @@ export const zhTW: Record<MessageKey, string> = {
   "project.colorSet": "「{name}」顏色：{color}",
   "project.colorCleared": "「{name}」已清除顏色",
   "project.rules": "專案規則",
+  "project.continueCwd": "繼續此專案最近的 Agent 工作階段",
+  "project.continueCwdWorking": "正在繼續最近的 Agent…",
+  "project.continueCwdNone":
+    "此專案下沒有 Agent 工作階段（等同 CLI grok -c/--continue）。",
+  "project.continueCwdOk": "已繼續「{title}」",
+  "project.continueCwdFailed": "無法繼續最近的 Agent",
+  "project.continueCwdNoProject": "請先選擇一個專案。",
 
   "session.pin": "置頂對話",
   "session.unpin": "取消置頂",

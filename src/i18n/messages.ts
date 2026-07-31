@@ -116,6 +116,14 @@ const en = {
   "project.colorSet": '"{name}" color: {color}',
   "project.colorCleared": '"{name}" color cleared',
   "project.rules": "Project rules",
+  /** CLI `grok -c/--continue` — most recent agent session for this project path. */
+  "project.continueCwd": "Continue last agent for this project",
+  "project.continueCwdWorking": "Continuing last agent…",
+  "project.continueCwdNone":
+    "No agent session found for this project (same as CLI grok -c/--continue).",
+  "project.continueCwdOk": "Continued “{title}”",
+  "project.continueCwdFailed": "Could not continue last agent",
+  "project.continueCwdNoProject": "Select a project first.",
 
   "session.pin": "Pin chat",
   "session.unpin": "Unpin chat",
@@ -3847,6 +3855,13 @@ const zh: Record<MessageKey, string> = {
   "project.sandboxSet": "「{name}」沙箱：{profile}",
   "project.sandboxCleared": "「{name}」已恢复应用默认沙箱",
   "project.rules": "项目规则",
+  "project.continueCwd": "继续此项目最近的 Agent 会话",
+  "project.continueCwdWorking": "正在继续最近的 Agent…",
+  "project.continueCwdNone":
+    "此项目下没有 Agent 会话（等同 CLI grok -c/--continue）。",
+  "project.continueCwdOk": "已继续「{title}」",
+  "project.continueCwdFailed": "无法继续最近的 Agent",
+  "project.continueCwdNoProject": "请先选择一个项目。",
 
   "session.pin": "置顶会话",
   "session.unpin": "取消置顶",

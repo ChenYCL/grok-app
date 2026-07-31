@@ -23,6 +23,7 @@ describe("defaultPaletteActions", () => {
       "product-tutorial",
       "copy-conversation-md",
       "resume-with-code-restore",
+      "continue-cwd",
       "settings-general",
       "settings-appearance",
       "settings-account",
@@ -87,6 +88,13 @@ describe("filterPaletteActions", () => {
 
     const auto = filterPaletteActions("cron", catalog);
     expect(auto.map((h) => h.id)).toEqual(["open-automations"]);
+
+    // CLI -c/--continue for project path
+    const cont = filterPaletteActions("continue last agent", catalog);
+    expect(cont.map((h) => h.id)).toContain("continue-cwd");
+    expect(
+      filterPaletteActions("--continue", catalog).map((h) => h.id),
+    ).toContain("continue-cwd");
   });
 
   it("matches translated label when t is provided", () => {

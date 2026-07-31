@@ -166,6 +166,222 @@ pub fn list_cli_sessions(session_data_mode: &str) -> Result<Vec<CliSessionSummar
     Ok(out)
 }
 
+/// Normalize a project / cwd path for equality (pure).
+///
+/// Matches CLI session folder identity loosely: trim, unify slashes, drop a
+/// trailing separator, lowercase. Aligns with `agent_memory::normalize_path_key`.
+pub fn normalize_cwd_path(path: &str) -> String {
+    let mut s = path.trim().replace('\\', "/");
+    while s.ends_with('/') && s.len() > 1 {
+        s.pop();
+    }
+    s.to_ascii_lowercase()
+}
+
+/// True when two cwd strings refer to the same project folder (pure).
+pub fn cwd_paths_match(a: &str, b: &str) -> bool {
+    let na = normalize_cwd_path(a);
+    let nb = normalize_cwd_path(b);
+    !na.is_empty() && na == nb
+}
+
+/// Pick the newest session among rows whose `cwd` matches `project_path` (pure).
+///
+/// Compares `updated_at` lexicographically (RFC3339-friendly).
+pub fn pick_latest_session_for_cwd<'a, T>(
+    rows: &'a [T],
+    project_path: &str,
+    cwd_of: impl Fn(&T) -> Option<&str>,
+    updated_of: impl Fn(&T) -> Option<&str>,
+) -> Option<&'a T> {
+    let target = normalize_cwd_path(project_path);
+    if target.is_empty() {
+        return None;
+    }
+    let mut best: Option<(&T, &str)> = None;
+    for row in rows {
+        let Some(cwd) = cwd_of(row) else { continue };
+        if !cwd_paths_match(cwd, project_path) {
+            continue;
+        }
+        let updated = updated_of(row).unwrap_or("");
+        match best {
+            None => best = Some((row, updated)),
+            Some((_, prev)) if updated > prev => best = Some((row, updated)),
+            _ => {}
+        }
+    }
+    best.map(|(r, _)| r)
+}
+
+/// Find the most recent CLI agent session for a project path (CLI `-c/--continue`).
+///
+/// Strategy:
+/// 1. Prefer the on-disk folder `{GROK_HOME}/sessions/{percent-encoded-cwd}/`
+///    and pick the newest `summary.json` / history under it.
+/// 2. Fall back to a full list scan matching decoded folder name or summary
+///    `cwd` (handles path variants and folders encoded slightly differently).
+///
+/// Soft-fails with `Ok(None)` when the path is empty or no session exists.
+pub fn find_latest_cli_session_for_cwd(
+    project_path: &str,
+    session_data_mode: &str,
+) -> Result<Option<CliSessionSummary>, String> {
+    let path = project_path.trim();
+    if path.is_empty() {
+        return Ok(None);
+    }
+
+    let home = resolve_agent_grok_home(session_data_mode);
+    let source_home = home.display().to_string();
+    let sessions = home.join("sessions");
+    if !sessions.is_dir() {
+        return Ok(None);
+    }
+
+    // agent_session_id → app session id (first match wins).
+    let linked: std::collections::HashMap<String, String> = store::load_sessions_index()
+        .into_iter()
+        .filter_map(|s| {
+            let aid = s.agent_session_id.filter(|id| !id.is_empty())?;
+            Some((aid, s.id))
+        })
+        .collect();
+
+    let mut candidates: Vec<CliSessionSummary> = Vec::new();
+
+    // Fast path: exact encoded cwd directory (CLI layout).
+    let encoded = crate::paths::percent_encode_path_component(path);
+    let encoded_norm =
+        crate::paths::percent_encode_path_component(&normalize_cwd_path(path));
+    for enc in [encoded.as_str(), encoded_norm.as_str()] {
+        let cwd_dir = sessions.join(enc);
+        if !cwd_dir.is_dir() {
+            continue;
+        }
+        collect_sessions_under_cwd_dir(
+            &cwd_dir,
+            path,
+            &source_home,
+            &linked,
+            &mut candidates,
+        );
+        if !candidates.is_empty() {
+            break;
+        }
+    }
+
+    // Fallback: scan all cwd folders; match by decoded name or summary cwd.
+    if candidates.is_empty() {
+        let cwd_dirs = fs::read_dir(&sessions).map_err(|e| e.to_string())?;
+        for cwd_ent in cwd_dirs.flatten() {
+            let cwd_path = cwd_ent.path();
+            if !cwd_path.is_dir() {
+                continue;
+            }
+            let cwd_decoded = percent_decode_component(
+                cwd_path
+                    .file_name()
+                    .and_then(|s| s.to_str())
+                    .unwrap_or(""),
+            );
+            let folder_matches = cwd_paths_match(&cwd_decoded, path);
+            let mut under = Vec::new();
+            collect_sessions_under_cwd_dir(
+                &cwd_path,
+                &cwd_decoded,
+                &source_home,
+                &linked,
+                &mut under,
+            );
+            for row in under {
+                if folder_matches {
+                    candidates.push(row);
+                    continue;
+                }
+                let cwd_ok = row
+                    .cwd
+                    .as_deref()
+                    .map(|c| cwd_paths_match(c, path))
+                    .unwrap_or(false);
+                if cwd_ok {
+                    candidates.push(row);
+                }
+            }
+        }
+    }
+
+    candidates.sort_by(|a, b| b.updated_at.cmp(&a.updated_at));
+    Ok(candidates.into_iter().next())
+}
+
+fn collect_sessions_under_cwd_dir(
+    cwd_dir: &Path,
+    cwd_fallback: &str,
+    source_home: &str,
+    linked: &std::collections::HashMap<String, String>,
+    out: &mut Vec<CliSessionSummary>,
+) {
+    let Ok(sid_dirs) = fs::read_dir(cwd_dir) else {
+        return;
+    };
+    for sid_ent in sid_dirs.flatten() {
+        let dir = sid_ent.path();
+        if !dir.is_dir() {
+            continue;
+        }
+        let agent_id = dir
+            .file_name()
+            .and_then(|s| s.to_str())
+            .unwrap_or("")
+            .to_string();
+        if agent_id.is_empty() || agent_id.starts_with('.') {
+            continue;
+        }
+        let summary_path = dir.join("summary.json");
+        if !summary_path.is_file() && !dir.join("chat_history.jsonl").is_file() {
+            continue;
+        }
+        let (title, cwd, updated, n) =
+            read_summary_bits(&summary_path, cwd_fallback, &agent_id);
+        let app_session_id = linked.get(&agent_id).cloned();
+        out.push(CliSessionSummary {
+            already_linked: app_session_id.is_some(),
+            app_session_id,
+            agent_session_id: agent_id,
+            title,
+            cwd,
+            updated_at: updated,
+            dir: dir.display().to_string(),
+            num_messages: n,
+            source_home: source_home.to_string(),
+            first_prompt: None,
+        });
+    }
+}
+
+/// CLI `-c/--continue` for the App: find latest agent session for a project
+/// path and open/import it as an App session row.
+///
+/// Returns `Ok(None)` when no agent session exists (soft-fail). When found,
+/// reuses an already-linked App session or imports history + links the agent id.
+pub fn continue_cli_session_for_cwd(
+    project_path: &str,
+    project_id: Option<String>,
+    session_data_mode: &str,
+) -> Result<Option<SessionMeta>, String> {
+    let Some(hit) = find_latest_cli_session_for_cwd(project_path, session_data_mode)? else {
+        return Ok(None);
+    };
+    let meta = import_cli_session(
+        &hit.agent_session_id,
+        Some(&hit.dir),
+        project_id,
+        session_data_mode,
+    )?;
+    Ok(Some(meta))
+}
+
 /// Clamp search limit (1–100). Default 40.
 pub fn clamp_search_limit(limit: Option<u32>) -> u32 {
     limit.unwrap_or(40).clamp(1, 100)
@@ -1447,6 +1663,164 @@ mod tests {
         // sibling under home must remain
         assert!(sessions.is_dir() || !home.join("sessions").exists() || home.exists());
         let _ = fs::remove_dir_all(&home);
+    }
+
+    #[test]
+    fn normalize_cwd_path_trims_and_lowercases() {
+        assert_eq!(
+            normalize_cwd_path("/Users/Me/Proj/"),
+            normalize_cwd_path("/users/me/proj")
+        );
+        assert_eq!(normalize_cwd_path("  /a/b  "), "/a/b");
+        assert!(normalize_cwd_path("   ").is_empty());
+    }
+
+    #[test]
+    fn cwd_paths_match_ignores_trailing_slash_and_case() {
+        assert!(cwd_paths_match("/Users/me/Code", "/Users/me/Code/"));
+        assert!(cwd_paths_match(r"C:\Work\App", "c:/work/app"));
+        assert!(!cwd_paths_match("/a/b", "/a/c"));
+        assert!(!cwd_paths_match("", "/a"));
+    }
+
+    #[test]
+    fn pick_latest_session_for_cwd_picks_newest() {
+        #[derive(Debug)]
+        struct Row {
+            id: &'static str,
+            cwd: Option<&'static str>,
+            updated: &'static str,
+        }
+        let rows = [
+            Row {
+                id: "old",
+                cwd: Some("/Users/me/proj"),
+                updated: "2024-01-01T00:00:00Z",
+            },
+            Row {
+                id: "other",
+                cwd: Some("/Users/me/other"),
+                updated: "2026-01-01T00:00:00Z",
+            },
+            Row {
+                id: "new",
+                cwd: Some("/Users/me/proj/"),
+                updated: "2025-06-01T12:00:00Z",
+            },
+        ];
+        let best = pick_latest_session_for_cwd(
+            &rows,
+            "/Users/me/proj",
+            |r| r.cwd,
+            |r| Some(r.updated),
+        )
+        .unwrap();
+        assert_eq!(best.id, "new");
+        assert!(pick_latest_session_for_cwd(
+            &rows,
+            "/missing",
+            |r| r.cwd,
+            |r| Some(r.updated),
+        )
+        .is_none());
+        assert!(pick_latest_session_for_cwd(
+            &rows,
+            "",
+            |r| r.cwd,
+            |r| Some(r.updated),
+        )
+        .is_none());
+    }
+
+    #[test]
+    fn find_latest_prefers_newest_under_encoded_cwd() {
+        use crate::paths::{APP_HOME_ENV_LOCK, percent_encode_path_component};
+
+        let _guard = APP_HOME_ENV_LOCK.lock().unwrap();
+        let app_home = std::env::temp_dir().join(format!("cli-cont-{}", Uuid::new_v4()));
+        let agent_home = app_home.join("agent-home");
+        let proj = "/Users/me/continue-proj";
+        let cwd_enc = percent_encode_path_component(proj);
+        let sessions = agent_home.join("sessions").join(&cwd_enc);
+
+        let old_id = "agent-old-1111";
+        let new_id = "agent-new-2222";
+        let old_dir = sessions.join(old_id);
+        let new_dir = sessions.join(new_id);
+        fs::create_dir_all(&old_dir).unwrap();
+        fs::create_dir_all(&new_dir).unwrap();
+        fs::write(
+            old_dir.join("summary.json"),
+            r#"{"generated_title":"old","updated_at":"2024-01-01T00:00:00Z","info":{"cwd":"/Users/me/continue-proj"}}"#,
+        )
+        .unwrap();
+        fs::write(old_dir.join("chat_history.jsonl"), "").unwrap();
+        fs::write(
+            new_dir.join("summary.json"),
+            r#"{"generated_title":"new","updated_at":"2025-06-01T00:00:00Z","info":{"cwd":"/Users/me/continue-proj"}}"#,
+        )
+        .unwrap();
+        fs::write(new_dir.join("chat_history.jsonl"), "").unwrap();
+
+        // Unrelated project must not win.
+        let other = agent_home
+            .join("sessions")
+            .join(percent_encode_path_component("/Users/me/other"))
+            .join("agent-other");
+        fs::create_dir_all(&other).unwrap();
+        fs::write(
+            other.join("summary.json"),
+            r#"{"generated_title":"other","updated_at":"2026-01-01T00:00:00Z"}"#,
+        )
+        .unwrap();
+        fs::write(other.join("chat_history.jsonl"), "").unwrap();
+
+        std::env::set_var("GROK_APP_HOME", &app_home);
+        let hit = find_latest_cli_session_for_cwd(proj, "independent")
+            .unwrap()
+            .expect("should find session");
+        assert_eq!(hit.agent_session_id, new_id);
+        assert_eq!(hit.title, "new");
+
+        // Soft-fail empty / missing path
+        assert!(find_latest_cli_session_for_cwd("", "independent")
+            .unwrap()
+            .is_none());
+        assert!(find_latest_cli_session_for_cwd("/no/such/path", "independent")
+            .unwrap()
+            .is_none());
+
+        std::env::remove_var("GROK_APP_HOME");
+        let _ = fs::remove_dir_all(&app_home);
+    }
+
+    #[test]
+    fn find_latest_matches_trailing_slash_variant() {
+        use crate::paths::{APP_HOME_ENV_LOCK, percent_encode_path_component};
+
+        let _guard = APP_HOME_ENV_LOCK.lock().unwrap();
+        let app_home = std::env::temp_dir().join(format!("cli-cont2-{}", Uuid::new_v4()));
+        let agent_home = app_home.join("agent-home");
+        let proj = "/Users/me/slash-proj";
+        let dir = agent_home
+            .join("sessions")
+            .join(percent_encode_path_component(proj))
+            .join("agent-slash");
+        fs::create_dir_all(&dir).unwrap();
+        fs::write(
+            dir.join("summary.json"),
+            r#"{"generated_title":"slash","updated_at":"2025-01-01T00:00:00Z","info":{"cwd":"/Users/me/slash-proj"}}"#,
+        )
+        .unwrap();
+        fs::write(dir.join("chat_history.jsonl"), "").unwrap();
+
+        std::env::set_var("GROK_APP_HOME", &app_home);
+        let hit = find_latest_cli_session_for_cwd("/Users/me/slash-proj/", "independent")
+            .unwrap()
+            .expect("trailing slash should still match");
+        assert_eq!(hit.agent_session_id, "agent-slash");
+        std::env::remove_var("GROK_APP_HOME");
+        let _ = fs::remove_dir_all(&app_home);
     }
 
     #[test]
