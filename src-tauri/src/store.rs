@@ -340,6 +340,14 @@ pub struct AppSettings {
     /// key; spawn sets env (soft-fail when CLI is known older). Soft-respawns.
     #[serde(default)]
     pub subagent_worktree_snapshot_enabled: bool,
+    /// Enable CLI auto-wake (config `auto_wake_enabled`): when on, Grok Build may
+    /// inject a synthetic turn after background work completes (bash / monitor /
+    /// task / loop). Default **false** (opt-in; CLI default not documented).
+    /// Independent mode writes the top-level agent-home key only (no invented env
+    /// override — `GROK_AUTO_WAKE` is pattern-shaped). Soft-respawns so the next
+    /// agent process reloads config. Older CLIs that ignore the key soft-fail.
+    #[serde(default)]
+    pub auto_wake_enabled: bool,
     /// Preferred Grok Build agent definition for new agent processes
     /// (`explore` / `plan` / `general-purpose` / custom name under `~/.grok/agents`).
     /// Empty / `default` / `none` → omit top-level `--agent` (CLI default).
@@ -529,6 +537,7 @@ impl Default for AppSettings {
             plan_enabled: default_plan_enabled(),
             subagents_enabled: true,
             subagent_worktree_snapshot_enabled: false,
+            auto_wake_enabled: false,
             preferred_agent: String::new(),
             agent_profile_path: String::new(),
             agents_json: String::new(),
@@ -2502,6 +2511,13 @@ mod tests {
         let s: AppSettings = serde_json::from_str(legacy_settings_json()).expect("deserialize");
         assert!(!s.subagent_worktree_snapshot_enabled);
         assert!(!AppSettings::default().subagent_worktree_snapshot_enabled);
+    }
+
+    #[test]
+    fn auto_wake_defaults_false_when_missing_from_json() {
+        let s: AppSettings = serde_json::from_str(legacy_settings_json()).expect("deserialize");
+        assert!(!s.auto_wake_enabled);
+        assert!(!AppSettings::default().auto_wake_enabled);
     }
 
     #[test]

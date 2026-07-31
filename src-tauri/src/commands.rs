@@ -1204,6 +1204,7 @@ pub async fn settings_set(
     let subagents_flip = prev.subagents_enabled != settings.subagents_enabled;
     let subagent_wt_snap_flip = prev.subagent_worktree_snapshot_enabled
         != settings.subagent_worktree_snapshot_enabled;
+    let auto_wake_flip = prev.auto_wake_enabled != settings.auto_wake_enabled;
     let preferred_agent_flip =
         prev.preferred_agent.trim() != settings.preferred_agent.trim();
     let agent_profile_flip = prev.agent_profile_path.trim() != settings.agent_profile_path.trim();
@@ -1335,6 +1336,15 @@ pub async fn settings_set(
             settings.subagent_worktree_snapshot_enabled,
         ) {
             tracing::warn!("settings_set sync subagent_wt_snap profile: {e}");
+        }
+        need_soft_respawn = true;
+    }
+    if auto_wake_flip {
+        if let Err(e) = crate::agent_auto_wake::sync_auto_wake_to_agent_profile(
+            &settings.session_data_mode,
+            settings.auto_wake_enabled,
+        ) {
+            tracing::warn!("settings_set sync auto_wake profile: {e}");
         }
         need_soft_respawn = true;
     }

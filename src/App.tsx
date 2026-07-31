@@ -2196,6 +2196,7 @@ export default function App() {
   const [subagentsEnabled, setSubagentsEnabled] = useState(true);
   const [subagentWorktreeSnapshotEnabled, setSubagentWorktreeSnapshotEnabled] =
     useState(false);
+  const [autoWakeEnabled, setAutoWakeEnabled] = useState(false);
   const [planEnabled, setPlanEnabled] = useState(true);
   const [todoGateEnabled, setTodoGateEnabled] = useState(false);
   const [todoGateMaxFiresPerPrompt, setTodoGateMaxFiresPerPrompt] =
@@ -3045,6 +3046,7 @@ export default function App() {
       setSubagentWorktreeSnapshotEnabled(
         !!settings.subagentWorktreeSnapshotEnabled,
       );
+      setAutoWakeEnabled(!!settings.autoWakeEnabled);
       setPlanEnabled(settings.planEnabled !== false);
       setTodoGateEnabled(!!settings.todoGateEnabled);
       {
@@ -14772,6 +14774,13 @@ export default function App() {
             setSubagentWorktreeSnapshotEnabled(v);
             void api.settingsGet().then((s) =>
               api.settingsSet({ ...s, subagentWorktreeSnapshotEnabled: v }),
+            );
+          }}
+          autoWakeEnabled={autoWakeEnabled}
+          onAutoWakeEnabled={(v) => {
+            setAutoWakeEnabled(v);
+            void api.settingsGet().then((s) =>
+              api.settingsSet({ ...s, autoWakeEnabled: v }),
             );
           }}
           planEnabled={planEnabled}
