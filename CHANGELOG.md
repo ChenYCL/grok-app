@@ -11,6 +11,10 @@ See `docs/llm-wiki/release.md`.
 
 ## [Unreleased]
 
+### Changed
+
+- **Agent-home config write layer**: shared Host helpers in `agent_home_config` for independent-only `config.toml` path resolve (shared mode refuses), pure top-level / table bool+string upserts, and soft-skip sync. Migrated TodoGate, workflows, auto-wake, two-pass compaction, and subagent worktree snapshot writers off duplicated TOML edit/write paths. Product defaults and independent-only write behavior unchanged.
+
 ### Fixed
 
 - **Long chat virtualizer (PERF-A11Y-PACK / perf)**: history browse no longer expands the continuous window to the tail just because idle force-mount lists the last user/assistant (that mounted hundreds of rows mid-scroll). Force expand is nearby-only while escaped; pin still expands for blank-pin defense. Adaptive viewport-scaled overscan, binary-search range find, rAF-coalesced scroll recompute, and cached cumulative offsets keep long transcripts snappy. Pure helpers + tests in `chatVirtualList`.
