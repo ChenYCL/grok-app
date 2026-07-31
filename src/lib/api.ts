@@ -3275,6 +3275,41 @@ export async function workflowsList(projectPath?: string | null) {
   });
 }
 
+/** Soft-fail headless workflow invoke result from host `workflows_run`. */
+export type WorkflowRunResultDto = {
+  ok: boolean;
+  reason: string;
+  workflowName: string;
+  mode: string;
+  log?: string | null;
+  truncated?: boolean;
+  durationMs?: number;
+  cliPath?: string | null;
+  cliVersion?: string | null;
+  /** Always `headless_workflow_tool` — no top-level `grok workflow` subcommand. */
+  invokePath?: string;
+};
+
+/**
+ * Soft-fail headless run of a registered workflow by name.
+ *
+ * Host spawns short `grok -p` that must call the agent `workflow` tool
+ * (no CLI `workflow` subcommand). Default mode `validate` = validate_only smoke.
+ */
+export async function workflowsRun(opts: {
+  name: string;
+  projectPath?: string | null;
+  mode?: "validate" | "launch" | string | null;
+  timeoutMs?: number | null;
+}) {
+  return invoke<WorkflowRunResultDto>("workflows_run", {
+    name: opts.name,
+    projectPath: opts.projectPath ?? null,
+    mode: opts.mode ?? "validate",
+    timeoutMs: opts.timeoutMs ?? null,
+  });
+}
+
 export type AgentsScaffoldResult = {
   name: string;
   path: string;

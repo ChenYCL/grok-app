@@ -612,7 +612,7 @@ export interface SettingsPageProps {
   onAutoWakeEnabled?: (v: boolean) => void;
   /**
    * Grok Build workflows (`workflows_enabled`). Independent agent-home write;
-   * no in-app runner — CLI / Rhai only.
+   * list + soft-fail headless smoke/run via workflow tool (no visual editor).
    */
   workflowsEnabled?: boolean;
   onWorkflowsEnabled?: (v: boolean) => void;

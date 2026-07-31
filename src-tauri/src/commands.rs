@@ -7439,6 +7439,41 @@ pub async fn workflows_list(
     Ok(result)
 }
 
+/// Soft-fail headless run of a discovered Grok Build workflow by name.
+///
+/// There is no top-level `grok workflow` CLI subcommand; the host spawns a
+/// short `grok -p` that must call the agent `workflow` tool. Default mode is
+/// `validate` (`validate_only: true` smoke). Returns structured ok / reason /
+/// redacted truncated log — never panics on CLI missing / timeout.
+#[tauri::command]
+pub async fn workflows_run(
+    name: String,
+    project_path: Option<String>,
+    mode: Option<String>,
+    timeout_ms: Option<u64>,
+) -> Result<crate::agent_workflows::WorkflowRunResult, String> {
+    let project = project_path
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(|s| s.to_string());
+    let mode_owned = mode
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(|s| s.to_string());
+    tauri::async_runtime::spawn_blocking(move || {
+        crate::agent_workflows::run_workflow(
+            &name,
+            project.as_deref(),
+            mode_owned.as_deref(),
+            timeout_ms,
+        )
+    })
+    .await
+    .map_err(|e| format!("workflows_run: {e}"))
+}
+
 /// List agent + persona definition files from user / project / bundled scopes.
 /// Does not require the CLI binary (pure filesystem discovery under `~/.grok`,
 /// active GROK_HOME / agent-home, and optional `{project}/.grok`). Always returns Ok.
