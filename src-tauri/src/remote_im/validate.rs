@@ -69,6 +69,7 @@ pub async fn test_connection(
         "line" => test_line(&creds),
         "qq" => test_qq(&creds),
         "matrix" => test_matrix(&creds),
+        "qqbot" => test_qqbot(&creds).await,
         _ => {
             let ok = !creds.is_empty() || !secrets.is_empty();
             Ok(TestConnectionDto {
@@ -733,6 +734,108 @@ fn slack_credential_posture(creds: &HashMap<String, String>) -> TestConnectionDt
 
 /// Slack Socket Mode: soft posture first, then optional live auth.test on bot token.
 /// Success never claims Socket Mode WS is open (needs Bridge + apps.connections.open).
+/// QQ official bot App ID shape (numeric / open-platform id). Soft-fail only.
+fn is_qqbot_app_id_format(raw: &str) -> bool {
+    let t = raw.trim();
+    if t.is_empty() || t.len() < 3 || t.len() > 64 {
+        return false;
+    }
+    if t.chars().any(|c| c.is_whitespace()) {
+        return false;
+    }
+    t.chars()
+        .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
+        && t
+            .chars()
+            .next()
+            .map(|c| c.is_ascii_alphanumeric())
+            .unwrap_or(false)
+}
+
+/// QQ official bot: soft posture + optional access-token probe.
+/// Never claims Gateway is linked — only app credentials / token mint.
+async fn test_qqbot(creds: &HashMap<String, String>) -> Result<TestConnectionDto, String> {
+    let app_id = cred_get(creds, &["app_id", "appId"]);
+    let app_secret = cred_get(creds, &["app_secret", "appSecret", "client_secret"]);
+    if app_id.is_empty() && app_secret.is_empty() {
+        return Ok(TestConnectionDto {
+            ok: false,
+            message: "missing_qqbot_credentials".into(),
+            mock: false,
+        });
+    }
+    if app_id.is_empty() {
+        return Ok(TestConnectionDto {
+            ok: false,
+            message: "missing_qqbot_app_id".into(),
+            mock: false,
+        });
+    }
+    if !is_qqbot_app_id_format(app_id) {
+        return Ok(TestConnectionDto {
+            ok: false,
+            message: "invalid_qqbot_app_id_format".into(),
+            mock: false,
+        });
+    }
+    if app_secret.is_empty() {
+        return Ok(TestConnectionDto {
+            ok: false,
+            message: "missing_qqbot_app_secret".into(),
+            mock: false,
+        });
+    }
+
+    // Live soft: mint access token only — does not open Gateway WebSocket.
+    let client = crate::proxy::apply_to_reqwest(reqwest::Client::builder())
+        .timeout(std::time::Duration::from_secs(20))
+        .build()
+        .map_err(|e| e.to_string())?;
+
+    match client
+        .post("https://bots.qq.com/app/getAppAccessToken")
+        .json(&serde_json::json!({
+            "appId": app_id,
+            "clientSecret": app_secret,
+        }))
+        .send()
+        .await
+    {
+        Ok(res) => {
+            let status = res.status();
+            let body: serde_json::Value = res.json().await.unwrap_or_default();
+            if body.get("access_token").and_then(|x| x.as_str()).is_some() {
+                // Honest: token mint ok — Gateway still needs Bridge link.
+                return Ok(TestConnectionDto {
+                    ok: true,
+                    message: "qqbot_access_token_ok".into(),
+                    mock: false,
+                });
+            }
+            let err = body
+                .get("message")
+                .or_else(|| body.get("msg"))
+                .or_else(|| body.get("error"))
+                .and_then(|m| m.as_str())
+                .map(|s| s.to_string())
+                .unwrap_or_else(|| format!("qqbot_token_http_{}", status.as_u16()));
+            Ok(TestConnectionDto {
+                ok: false,
+                message: err,
+                mock: false,
+            })
+        }
+        Err(e) => {
+            // Soft-fail network — never panics; does not claim Gateway live.
+            Ok(TestConnectionDto {
+                ok: false,
+                message: format!("qqbot_token_network: {e}"),
+                mock: false,
+            })
+        }
+    }
+}
+
 async fn test_slack(
     secrets: &HashMap<String, String>,
 ) -> Result<TestConnectionDto, String> {
@@ -1301,5 +1404,41 @@ mod tests {
         let r2 = test_weibo(&c);
         assert!(!r2.ok);
         assert_eq!(r2.message, "invalid_weibo_ws_endpoint");
+    fn qqbot_app_id_accepts_numeric_and_alphanumeric() {
+        assert!(is_qqbot_app_id_format("102012345"));
+        assert!(is_qqbot_app_id_format("cli_abc123"));
+        assert!(!is_qqbot_app_id_format(""));
+        assert!(!is_qqbot_app_id_format("ab"));
+        assert!(!is_qqbot_app_id_format("has space"));
+        assert!(!is_qqbot_app_id_format("bad!id"));
+    }
+
+    #[tokio::test]
+    async fn qqbot_soft_fails_missing_and_invalid_app_id() {
+        let empty = HashMap::new();
+        let r = test_qqbot(&empty).await.unwrap();
+        assert!(!r.ok);
+        assert_eq!(r.message, "missing_qqbot_credentials");
+        assert!(!r.mock);
+
+        let mut no_id = HashMap::new();
+        no_id.insert("app_secret".into(), "sec".into());
+        let r2 = test_qqbot(&no_id).await.unwrap();
+        assert!(!r2.ok);
+        assert_eq!(r2.message, "missing_qqbot_app_id");
+
+        let mut no_sec = HashMap::new();
+        no_sec.insert("app_id".into(), "102012345".into());
+        let r3 = test_qqbot(&no_sec).await.unwrap();
+        assert!(!r3.ok);
+        assert_eq!(r3.message, "missing_qqbot_app_secret");
+
+        let mut bad = HashMap::new();
+        bad.insert("app_id".into(), "x".into());
+        bad.insert("app_secret".into(), "sec".into());
+        let r4 = test_qqbot(&bad).await.unwrap();
+        assert!(!r4.ok);
+        assert_eq!(r4.message, "invalid_qqbot_app_id_format");
+        assert!(!r4.mock);
     }
 }

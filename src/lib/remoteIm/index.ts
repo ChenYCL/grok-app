@@ -19,3 +19,4 @@ export * from "./slackConfig";
 export * from "./qqConfig";
 export * from "./matrixConfig";
 export * from "./weiboConfig";
+export * from "./qqbotConfig";

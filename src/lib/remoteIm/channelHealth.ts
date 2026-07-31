@@ -40,6 +40,9 @@ import {
   validateWeiboConfig,
   weiboHealthHintKeys,
 } from "./weiboConfig";
+  qqbotHealthHintKeys,
+  validateQqbotConfig,
+} from "./qqbotConfig";
 
 
 /** Health tone for badges / callouts (maps to RimBadge). */
@@ -140,6 +143,7 @@ const SLACK_LIKE: RemoteChannelId[] = ["slack"];
 const QQ_LIKE: RemoteChannelId[] = ["qq"];
 const MATRIX_LIKE: RemoteChannelId[] = ["matrix"];
 const WEIBO_LIKE: RemoteChannelId[] = ["weibo"];
+const QQBOT_LIKE: RemoteChannelId[] = ["qqbot"];
 
 /** Required secret bind keys per channel (for readiness, not values). */
 const SECRET_KEYS: Partial<Record<RemoteChannelId, string[]>> = {
@@ -157,6 +161,8 @@ const SECRET_KEYS: Partial<Record<RemoteChannelId, string[]>> = {
   // Weixin secrets validated via weixinConfig
   weixin: ["token"],
   // QQ OneBot: token optional; readiness via qqConfig (ws_url required)
+  // QQ official bot: readiness via qqbotConfig (app_id + app_secret)
+  qqbot: ["app_secret"],
   matrix: ["access_token"],
   // LINE secrets validated via lineConfig (access_token alias)
   line: ["channel_secret", "channel_access_token"],
@@ -172,6 +178,7 @@ const NON_SECRET_REQUIRED: Partial<Record<RemoteChannelId, string[]>> = {
   slack: [],
   // QQ validated via qqConfig (ws_url / url alias)
   weibo: ["app_id"],
+  // QQ official bot validated via qqbotConfig (app_id + app_secret)
 };
 
 
@@ -361,6 +368,11 @@ export function channelModeLabel(
       parts.push("ws=custom");
     }
     return parts.join(" · ");
+  if (QQBOT_LIKE.includes(channel)) {
+    const intents = optionString(options, "intents");
+    return intents
+      ? "gateway · intents=custom"
+      : "gateway · intents=default";
   }
   return null;
 }
@@ -485,6 +497,8 @@ export function credentialReadiness(
       hasCredentials: instance.hasCredentials,
   if (WEIBO_LIKE.includes(channel)) {
     const v = validateWeiboConfig({
+  if (QQBOT_LIKE.includes(channel)) {
+    const v = validateQqbotConfig({
       options: opts,
       secretKeysFilled,
       hasCredentials: instance.hasCredentials,
@@ -726,6 +740,8 @@ export function classifyChannelHealth(
       tokenInForm,
   if (WEIBO_LIKE.includes(channel)) {
     const weiboV = validateWeiboConfig({
+  if (QQBOT_LIKE.includes(channel)) {
+    const qqbotV = validateQqbotConfig({
       options: opts,
       secretKeysFilled: input.secretKeysFilled,
       hasCredentials: instance.hasCredentials,
@@ -733,6 +749,8 @@ export function classifyChannelHealth(
     });
     for (const k of weiboHealthHintKeys(weiboV, {
       openAcl: openAcl && instance.hasCredentials,
+    for (const k of qqbotHealthHintKeys(qqbotV, {
+      openAcl: openAcl && (instance.hasCredentials || qqbotV.ok),
     })) {
       hintKeys.push(k);
     }
@@ -779,5 +797,6 @@ export function channelHasDeepHealth(channel: RemoteChannelId): boolean {
     QQ_LIKE.includes(channel)
     MATRIX_LIKE.includes(channel)
     WEIBO_LIKE.includes(channel)
+    QQBOT_LIKE.includes(channel)
   );
 }

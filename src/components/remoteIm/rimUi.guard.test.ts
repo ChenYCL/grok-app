@@ -102,6 +102,11 @@ describe("Remote IM UI chrome guard", () => {
     expect(src).toContain("data-weibo-guide");
     expect(src).toContain("validateWeiboConfig");
     expect(src).toContain('channelId === "weibo"');
+  it("ChannelPanel QQ official bot guide + intents callout without window.confirm", () => {
+    const src = readFileSync(join(ROOT, "RemoteImChannelPanel.tsx"), "utf8");
+    expect(src).toContain("data-qqbot-guide");
+    expect(src).toContain("data-qqbot-intents");
+    expect(src).toContain('channelId === "qqbot"');
     expect(src).not.toMatch(/window\.confirm/);
   });
 
