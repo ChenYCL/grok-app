@@ -3,8 +3,12 @@ import {
   assembleGoalOrchView,
   configHasGoalKeys,
   DEFAULT_GOAL_ORCH_UI_ENABLED,
+  filterGoalOrchByPhaseAndRole,
   filterGoalOrchEvents,
+  formatGoalOrchSummaryText,
   goalEventFromHostPayload,
+  goalOrchPhaseLabelKey,
+  hasActiveGoalOrchFilters,
   isGoalRelatedSessionUpdate,
   isGoalRelatedTool,
   loadGoalOrchUiEnabled,
@@ -12,7 +16,11 @@ import {
   parseGoalConfigKeys,
   parseGoalOrchUiEnabled,
   parseGoalUpdatedUpdate,
+  phasesPresentInEvents,
+  pickLatestGoalOrchEvent,
   prependGoalOrchEvent,
+  resolveGoalOrchEmptyState,
+  resolveGoalOrchSessionIndicator,
   saveGoalOrchUiEnabled,
   type GoalOrchEvent,
   type GoalOrchUiStorage,
@@ -272,5 +280,223 @@ describe("goalOrchUiEnabled pref", () => {
     expect(loadGoalOrchUiEnabled(s)).toBe(false);
     saveGoalOrchUiEnabled(true, s);
     expect(loadGoalOrchUiEnabled(s)).toBe(true);
+  });
+});
+
+describe("filterGoalOrchByPhaseAndRole", () => {
+  const events = [
+    sampleEvent({
+      id: "1",
+      phase: "planner",
+      role: "goal planner",
+      label: "planner",
+      sessionId: "s1",
+    }),
+    sampleEvent({
+      id: "2",
+      phase: "classifier",
+      role: "goal classifier",
+      label: "classifier",
+      sessionId: "s1",
+    }),
+    sampleEvent({
+      id: "3",
+      phase: "planner",
+      role: "planner",
+      label: "planner",
+      sessionId: "s2",
+    }),
+  ];
+
+  it("filters by phase", () => {
+    const out = filterGoalOrchByPhaseAndRole(events, { phase: "planner" });
+    expect(out.map((e) => e.id)).toEqual(["1", "3"]);
+  });
+
+  it("filters by role substring", () => {
+    const out = filterGoalOrchByPhaseAndRole(events, { role: "classif" });
+    expect(out).toHaveLength(1);
+    expect(out[0]!.id).toBe("2");
+  });
+
+  it("combines session + phase", () => {
+    const out = filterGoalOrchByPhaseAndRole(events, {
+      sessionId: "s1",
+      phase: "planner",
+    });
+    expect(out).toHaveLength(1);
+    expect(out[0]!.id).toBe("1");
+  });
+
+  it("phase all leaves list intact (session still applies)", () => {
+    expect(
+      filterGoalOrchByPhaseAndRole(events, { phase: "all", sessionId: "s1" }),
+    ).toHaveLength(2);
+  });
+});
+
+describe("hasActiveGoalOrchFilters / phasesPresentInEvents", () => {
+  it("detects active filters", () => {
+    expect(hasActiveGoalOrchFilters({ phase: "all" })).toBe(false);
+    expect(hasActiveGoalOrchFilters({ phase: "planner" })).toBe(true);
+    expect(hasActiveGoalOrchFilters({ role: "  " })).toBe(false);
+    expect(hasActiveGoalOrchFilters({ role: "plan" })).toBe(true);
+  });
+
+  it("lists present phases in pipeline order", () => {
+    const events = [
+      sampleEvent({ id: "a", phase: "verifier" }),
+      sampleEvent({ id: "b", phase: "planner" }),
+      sampleEvent({ id: "c", phase: "classifier" }),
+      sampleEvent({ id: "d", phase: "planner" }),
+    ];
+    expect(phasesPresentInEvents(events)).toEqual([
+      "planner",
+      "classifier",
+      "verifier",
+    ]);
+  });
+});
+
+describe("resolveGoalOrchEmptyState", () => {
+  it("ui_off when panel disabled", () => {
+    const e = resolveGoalOrchEmptyState({
+      uiEnabled: false,
+      totalCount: 3,
+      filteredCount: 0,
+    });
+    expect(e?.kind).toBe("ui_off");
+    expect(e?.showClearFilters).toBe(false);
+  });
+
+  it("no_events when ring is empty", () => {
+    const e = resolveGoalOrchEmptyState({
+      uiEnabled: true,
+      totalCount: 0,
+      filteredCount: 0,
+    });
+    expect(e?.kind).toBe("no_events");
+    expect(e?.titleKey).toBe("reliability.goal.empty");
+  });
+
+  it("filtered when phase chip hides all rows", () => {
+    const e = resolveGoalOrchEmptyState({
+      uiEnabled: true,
+      totalCount: 2,
+      filteredCount: 0,
+      phaseFilter: "verifier",
+    });
+    expect(e?.kind).toBe("filtered");
+    expect(e?.showClearFilters).toBe(true);
+  });
+
+  it("null when filtered rows exist", () => {
+    expect(
+      resolveGoalOrchEmptyState({
+        uiEnabled: true,
+        totalCount: 2,
+        filteredCount: 1,
+      }),
+    ).toBeNull();
+  });
+});
+
+describe("formatGoalOrchSummaryText", () => {
+  it("formats redacted summary lines without inventing events", () => {
+    const events = [
+      sampleEvent({
+        id: "1",
+        phase: "classifier",
+        label: "goal classifier",
+        detail: "Ship · 1/3 · sk-abcdefghijklmnopqrstuvwxyz",
+        deliverableProgress: "1/3",
+        goalId: "g-abc",
+        at: Date.UTC(2026, 0, 2, 12, 0, 0),
+      }),
+    ];
+    const text = formatGoalOrchSummaryText(events, {
+      title: "Goal orchestration",
+      generatedAt: "2026-01-02T12:00:00.000Z",
+    });
+    expect(text).toContain("Goal orchestration");
+    expect(text).toContain("events: 1");
+    expect(text).toContain("classifier");
+    expect(text).toContain("progress=1/3");
+    expect(text).toContain("goal=g-abc");
+    expect(text).toContain("[REDACTED]");
+    expect(text).not.toContain("sk-abcdefghijklmnopqrstuvwxyz");
+  });
+
+  it("honest empty summary when no events", () => {
+    const text = formatGoalOrchSummaryText([]);
+    expect(text).toContain("events: 0");
+    expect(text).toContain("(no goal_updated events observed)");
+  });
+});
+
+describe("pickLatestGoalOrchEvent / session indicator", () => {
+  it("picks newest (ring order) and never invents", () => {
+    const events = [
+      sampleEvent({ id: "new", phase: "worker", sessionId: "s1", at: 3 }),
+      sampleEvent({ id: "old", phase: "planner", sessionId: "s1", at: 1 }),
+    ];
+    expect(pickLatestGoalOrchEvent(events, "s1")?.id).toBe("new");
+    expect(pickLatestGoalOrchEvent([], "s1")).toBeNull();
+  });
+
+  it("session indicator only when ui on + real event", () => {
+    const events = [
+      sampleEvent({
+        id: "1",
+        phase: "strategist",
+        label: "strategist",
+        detail: "Plan steps",
+        deliverableProgress: "0/2",
+        sessionId: "s1",
+      }),
+    ];
+    expect(
+      resolveGoalOrchSessionIndicator({
+        uiEnabled: false,
+        events,
+        sessionId: "s1",
+      }),
+    ).toBeNull();
+    expect(
+      resolveGoalOrchSessionIndicator({
+        uiEnabled: true,
+        events: [],
+        sessionId: "s1",
+      }),
+    ).toBeNull();
+    const ind = resolveGoalOrchSessionIndicator({
+      uiEnabled: true,
+      events,
+      sessionId: "s1",
+    });
+    expect(ind?.show).toBe(true);
+    expect(ind?.phase).toBe("strategist");
+    expect(ind?.progress).toBe("0/2");
+  });
+
+  it("maps phase to i18n key", () => {
+    expect(goalOrchPhaseLabelKey("planner")).toBe(
+      "reliability.goal.phase.planner",
+    );
+    expect(goalOrchPhaseLabelKey("unknown")).toBe(
+      "reliability.goal.phase.unknown",
+    );
+  });
+});
+
+describe("assembleGoalOrchView phase filter", () => {
+  it("applies phase filter in view assembly", () => {
+    const events = [
+      sampleEvent({ id: "1", phase: "planner" }),
+      sampleEvent({ id: "2", phase: "classifier" }),
+    ];
+    const view = assembleGoalOrchView({ events, phase: "classifier" });
+    expect(view.count).toBe(1);
+    expect(view.events[0]!.phase).toBe("classifier");
   });
 });

@@ -492,17 +492,231 @@ export function filterGoalOrchEvents(
   return list.filter((e) => e.sessionId === sessionId);
 }
 
+/** Phase chip filter: `"all"` or a concrete {@link GoalOrchPhase}. */
+export type GoalOrchPhaseFilter = GoalOrchPhase | "all";
+
+/**
+ * Filter observed goal events by session, phase, and/or role substring.
+ * Never invents events — only projects the ring.
+ */
+export function filterGoalOrchByPhaseAndRole(
+  list: readonly GoalOrchEvent[],
+  opts?: {
+    sessionId?: string | null;
+    phase?: GoalOrchPhaseFilter | null;
+    role?: string | null;
+  },
+): GoalOrchEvent[] {
+  let out = filterGoalOrchEvents(list, opts?.sessionId);
+  const phase = opts?.phase;
+  if (phase && phase !== "all") {
+    out = out.filter((e) => e.phase === phase);
+  }
+  const roleQ = (opts?.role ?? "").trim().toLowerCase();
+  if (roleQ) {
+    out = out.filter((e) => {
+      const role = (e.role ?? "").toLowerCase();
+      const label = (e.label ?? "").toLowerCase();
+      return role.includes(roleQ) || label.includes(roleQ);
+    });
+  }
+  return out;
+}
+
+/** True when phase chip or role query narrows the list. */
+export function hasActiveGoalOrchFilters(opts?: {
+  phase?: GoalOrchPhaseFilter | null;
+  role?: string | null;
+}): boolean {
+  const phase = opts?.phase;
+  if (phase && phase !== "all") return true;
+  if ((opts?.role ?? "").trim()) return true;
+  return false;
+}
+
+/**
+ * Phases that appear in the event list, ordered by pipeline order.
+ * Used for phase chips (never invent phases with zero observed events
+ * beyond the always-present "all" chip in UI).
+ */
+export function phasesPresentInEvents(
+  list: readonly GoalOrchEvent[],
+): GoalOrchPhase[] {
+  const seen = new Set<GoalOrchPhase>();
+  for (const e of list) seen.add(e.phase);
+  return GOAL_ORCH_PHASE_ORDER.filter((p) => seen.has(p));
+}
+
+/** Empty-state kinds for Reliability Goal section. */
+export type GoalOrchEmptyKind = "ui_off" | "no_events" | "filtered";
+
+export type GoalOrchEmptyPresentation = {
+  kind: GoalOrchEmptyKind;
+  /** i18n key — callers pass through `t()`. */
+  titleKey:
+    | "reliability.goal.empty"
+    | "reliability.goal.emptyFilter"
+    | "reliability.goal.uiOff";
+  hintKey:
+    | "reliability.goal.lead"
+    | "reliability.goal.emptyFilterHint"
+    | "reliability.goal.uiOffHint";
+  showClearFilters: boolean;
+};
+
+/**
+ * Resolve empty-state presentation for the Goal orchestration section.
+ * Returns `null` when there are filtered events to list.
+ * Honest: never claims progress when the CLI emitted nothing.
+ */
+export function resolveGoalOrchEmptyState(input: {
+  uiEnabled: boolean;
+  /** Count after session filter, before phase/role filter. */
+  totalCount: number;
+  /** Count after phase/role filter. */
+  filteredCount: number;
+  phaseFilter?: GoalOrchPhaseFilter | null;
+  role?: string | null;
+}): GoalOrchEmptyPresentation | null {
+  if (!input.uiEnabled) {
+    return {
+      kind: "ui_off",
+      titleKey: "reliability.goal.uiOff",
+      hintKey: "reliability.goal.uiOffHint",
+      showClearFilters: false,
+    };
+  }
+  if (input.filteredCount > 0) return null;
+  if (input.totalCount === 0) {
+    return {
+      kind: "no_events",
+      titleKey: "reliability.goal.empty",
+      hintKey: "reliability.goal.lead",
+      showClearFilters: false,
+    };
+  }
+  // Had events, but filters hid them all.
+  return {
+    kind: "filtered",
+    titleKey: "reliability.goal.emptyFilter",
+    hintKey: "reliability.goal.emptyFilterHint",
+    showClearFilters: hasActiveGoalOrchFilters({
+      phase: input.phaseFilter,
+      role: input.role,
+    }),
+  };
+}
+
+/**
+ * Plain-text, redacted summary for clipboard export.
+ * Uses already-redacted event detail fields; re-runs redact for safety.
+ * Never invents events — empty list → short honest header only.
+ */
+export function formatGoalOrchSummaryText(
+  events: readonly GoalOrchEvent[],
+  opts?: {
+    title?: string;
+    maxEvents?: number;
+    /** ISO or locale string for "generated at"; omit to skip. */
+    generatedAt?: string | null;
+  },
+): string {
+  const title = (opts?.title ?? "Goal orchestration").trim() || "Goal orchestration";
+  const max = Math.max(0, Math.floor(opts?.maxEvents ?? GOAL_ORCH_EVENT_MAX));
+  const slice = events.slice(0, max);
+  const lines: string[] = [
+    title,
+    `events: ${slice.length}` +
+      (events.length > slice.length ? ` (of ${events.length})` : ""),
+  ];
+  if (opts?.generatedAt) {
+    lines.push(`generated: ${opts.generatedAt}`);
+  }
+  lines.push("");
+  if (slice.length === 0) {
+    lines.push("(no goal_updated events observed)");
+    return lines.join("\n");
+  }
+  for (const e of slice) {
+    const when = Number.isFinite(e.at)
+      ? new Date(e.at).toISOString()
+      : String(e.at);
+    const parts = [
+      when,
+      e.phase,
+      e.label ? clipDetail(e.label) : null,
+      e.deliverableProgress ? `progress=${e.deliverableProgress}` : null,
+      e.goalId ? `goal=${clipDetail(e.goalId)}` : null,
+      e.sessionId ? `session=${clipDetail(e.sessionId.slice(0, 12))}` : null,
+    ].filter(Boolean);
+    lines.push(`- ${parts.join(" · ")}`);
+    if (e.detail) {
+      lines.push(`  ${clipDetail(e.detail)}`);
+    }
+  }
+  return lines.join("\n");
+}
+
+/**
+ * Newest observed event (ring is newest-first). Optional session filter.
+ * Returns null when nothing observed — never invents a synthetic event.
+ */
+export function pickLatestGoalOrchEvent(
+  list: readonly GoalOrchEvent[],
+  sessionId?: string | null,
+): GoalOrchEvent | null {
+  const filtered = filterGoalOrchEvents(list, sessionId);
+  return filtered[0] ?? null;
+}
+
+/** Compact session-chrome indicator (soft; no fake progress meter). */
+export type GoalOrchSessionIndicator = {
+  show: true;
+  phase: GoalOrchPhase;
+  label: string;
+  detail: string | null;
+  progress: string | null;
+  goalId: string | null;
+  at: number;
+};
+
+/**
+ * Soft session indicator when a real goal_updated event exists.
+ * Hidden when UI is off or no events — never invents progress.
+ */
+export function resolveGoalOrchSessionIndicator(input: {
+  uiEnabled: boolean;
+  events: readonly GoalOrchEvent[];
+  sessionId?: string | null;
+}): GoalOrchSessionIndicator | null {
+  if (!input.uiEnabled) return null;
+  const latest = pickLatestGoalOrchEvent(input.events, input.sessionId);
+  if (!latest) return null;
+  return {
+    show: true,
+    phase: latest.phase,
+    label: latest.label || latest.phase,
+    detail: latest.detail || null,
+    progress: latest.deliverableProgress,
+    goalId: latest.goalId,
+    at: latest.at,
+  };
+}
+
 export function assembleGoalOrchView(opts: {
   events: readonly GoalOrchEvent[];
   sessionId?: string | null;
+  phase?: GoalOrchPhaseFilter | null;
+  role?: string | null;
   configKeys?: GoalConfigKeyPresence[];
   max?: number;
 }): GoalOrchView {
   const max = opts.max ?? GOAL_ORCH_EVENT_MAX;
-  const filtered = filterGoalOrchEvents(opts.events, opts.sessionId).slice(
-    0,
-    max,
-  );
+  const filtered = filterGoalOrchByPhaseAndRole(opts.events, {
+    sessionId: opts.sessionId,
+    phase: opts.phase,
+    role: opts.role,
+  }).slice(0, max);
   const latestByPhase: Partial<Record<GoalOrchPhase, GoalOrchEvent>> = {};
   for (const e of filtered) {
     if (!latestByPhase[e.phase]) latestByPhase[e.phase] = e;
@@ -613,4 +827,36 @@ export const GOAL_ORCH_PHASE_ORDER: readonly GoalOrchPhase[] = [
 export function phaseSortIndex(phase: GoalOrchPhase): number {
   const i = GOAL_ORCH_PHASE_ORDER.indexOf(phase);
   return i < 0 ? GOAL_ORCH_PHASE_ORDER.length : i;
+}
+
+/** i18n message key for a phase chip / row label. */
+export function goalOrchPhaseLabelKey(
+  phase: GoalOrchPhase,
+):
+  | "reliability.goal.phase.planner"
+  | "reliability.goal.phase.strategist"
+  | "reliability.goal.phase.classifier"
+  | "reliability.goal.phase.verifier"
+  | "reliability.goal.phase.summarizer"
+  | "reliability.goal.phase.worker"
+  | "reliability.goal.phase.status"
+  | "reliability.goal.phase.unknown" {
+  switch (phase) {
+    case "planner":
+      return "reliability.goal.phase.planner";
+    case "strategist":
+      return "reliability.goal.phase.strategist";
+    case "classifier":
+      return "reliability.goal.phase.classifier";
+    case "verifier":
+      return "reliability.goal.phase.verifier";
+    case "summarizer":
+      return "reliability.goal.phase.summarizer";
+    case "worker":
+      return "reliability.goal.phase.worker";
+    case "status":
+      return "reliability.goal.phase.status";
+    default:
+      return "reliability.goal.phase.unknown";
+  }
 }

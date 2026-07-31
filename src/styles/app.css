@@ -8083,6 +8083,47 @@ button.settings-wallpaper__preview:hover:not(:disabled) {
   outline-offset: 2px;
 }
 
+/* Soft goal-orch session chip (only when CLI emitted goal_updated). */
+.goal-orch-session-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 var(--space-5) 8px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--accent) 28%, var(--border-subtle));
+  background: color-mix(in srgb, var(--accent) 8%, var(--bg-card, var(--bg-elevated)));
+  color: var(--text-secondary, var(--text));
+  font-size: 12px;
+  line-height: 1.2;
+  cursor: pointer;
+  max-width: min(100%, 420px);
+  min-width: 0;
+}
+.goal-orch-session-chip:hover {
+  border-color: color-mix(in srgb, var(--accent) 48%, var(--border-subtle));
+  background: color-mix(in srgb, var(--accent) 14%, var(--bg-card, var(--bg-elevated)));
+}
+.goal-orch-session-chip__dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex: 0 0 auto;
+  background: var(--accent);
+  opacity: 0.85;
+}
+.goal-orch-session-chip__label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.goal-orch-session-chip__meta {
+  flex: 0 0 auto;
+  opacity: 0.75;
+  font-variant-numeric: tabular-nums;
+}
+
 /* Sticky plan/goal bar above the chat stage — accent blue-violet, theme-aware */
 .plan-bar {
   display: flex;

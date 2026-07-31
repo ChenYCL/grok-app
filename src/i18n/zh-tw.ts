@@ -3082,9 +3082,22 @@ export const zhTW: Record<MessageKey, string> = {
   "reliability.goal.lead":
     "僅在 CLI 發出 goal_updated（classifier / planner / strategist / verifier）時展示階段，絕不虛構進度。",
   "reliability.goal.empty":
-    "本工作階段尚無目標事件。CLI 目標系統可用時在對話中使用 /goal — 在真實事件到達前此處保持為空。",
+    "尚未觀察到目標事件。CLI 目標系統可用時在對話中使用 /goal — 在真實事件到達前此處保持為空。",
+  "reliability.goal.emptyFilter": "沒有符合此階段篩選的目標事件。",
+  "reliability.goal.emptyFilterHint": "清除階段篩選即可重新顯示全部已觀察的 goal_updated 事件。",
+  "reliability.goal.uiOff": "目標編排面板已隱藏",
+  "reliability.goal.uiOffHint":
+    "在設定中開啟「目標編排面板」後，此處會顯示 CLI 發出的目標事件。",
   "reliability.goal.progress": "交付 {progress}",
   "reliability.goal.id": "id {id}",
+  "reliability.goal.filterAll": "全部",
+  "reliability.goal.filterAria": "依階段篩選目標事件",
+  "reliability.goal.clearFilter": "清除篩選",
+  "reliability.goal.copySummary": "複製摘要",
+  "reliability.goal.copied": "已複製目標摘要",
+  "reliability.goal.copyFail": "無法複製目標摘要",
+  "reliability.goal.sessionChip": "目標 · {phase}",
+  "reliability.goal.sessionChipAria": "最近目標階段 {phase}。開啟可靠性中心。",
   "reliability.goal.phase.planner": "規劃",
   "reliability.goal.phase.strategist": "策略",
   "reliability.goal.phase.classifier": "分類器",
