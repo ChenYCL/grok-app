@@ -16191,6 +16191,17 @@ export default function App() {
             confirmArchiveOlderThan(days);
           }}
           projectPath={effectiveProjectPath}
+          onOpenProjectFileInResources={({ path, relativePath }) => {
+            const targetPath = (path || relativePath || "").trim();
+            if (!targetPath) return;
+            navigateWorkbench();
+            openAsidePane();
+            setResourceOpenTarget({
+              type: "file",
+              path: targetPath,
+              title: relativePath || targetPath,
+            });
+          }}
           onSkillsPrefsChanged={() =>
             setSkillsReloadToken((n) => n + 1)
           }
