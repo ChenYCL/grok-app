@@ -211,6 +211,7 @@ import { AgentConfigTomlPanel } from "@/components/AgentConfigTomlPanel";
 import { RemoteImLayout } from "@/components/RemoteImLayout";
 import { MirrorConnectPanel } from "@/components/MirrorConnectPanel";
 import { LeaderServePanel } from "@/components/LeaderServePanel";
+import { CliWorktreeDbPanel } from "@/components/CliWorktreeDbPanel";
 import { SdkConnectWizard } from "@/components/SdkConnectWizard";
 import {
   createT,
@@ -5387,6 +5388,14 @@ export function SettingsPage({
                     />
                   </div>
                 ) : null}
+              </div>
+            )}
+            {activeTab === "cli" && (
+              <div
+                className={rowHighlight("settings-anchor-cliWorktreeDb")}
+                style={{ marginTop: 12 }}
+              >
+                <CliWorktreeDbPanel t={t} />
               </div>
             )}
             {activeTab === "connection" && (

@@ -543,6 +543,72 @@ export async function cliWorktreesList(opts?: {
   });
 }
 
+/** Parsed fields from `grok worktree db stats` (text or JSON). */
+export interface CliWorktreeDbStats {
+  total?: number | null;
+  alive?: number | null;
+  dead?: number | null;
+  dbSize?: string | null;
+  dbSizeBytes?: number | null;
+}
+
+export interface CliWorktreeDbPathResult {
+  available: boolean;
+  path?: string | null;
+  pathOk?: boolean;
+  reason?: string | null;
+  cliFound: boolean;
+  unsupported?: boolean;
+}
+
+export interface CliWorktreeDbStatsResult {
+  available: boolean;
+  stats?: CliWorktreeDbStats | null;
+  summary?: string | null;
+  raw?: string | null;
+  reason?: string | null;
+  cliFound: boolean;
+  unsupported?: boolean;
+  /** `json` | `text` | `none` */
+  source?: string | null;
+}
+
+export interface CliWorktreeDbRebuildResult {
+  ok: boolean;
+  available: boolean;
+  message?: string | null;
+  discovered?: number | null;
+  registered?: number | null;
+  alreadyTracked?: number | null;
+  reason?: string | null;
+  cliFound: boolean;
+  unsupported?: boolean;
+}
+
+/**
+ * CLI worktree DB path (`grok worktree db path`, Grok Build 0.2.117+).
+ * Soft-fails when CLI is missing or too old.
+ */
+export async function cliWorktreeDbPath() {
+  return invoke<CliWorktreeDbPathResult>("cli_worktree_db_path");
+}
+
+/**
+ * CLI worktree DB stats (`grok worktree db stats`, Grok Build 0.2.117+).
+ * Soft-fails when CLI is missing or too old.
+ */
+export async function cliWorktreeDbStats() {
+  return invoke<CliWorktreeDbStatsResult>("cli_worktree_db_stats");
+}
+
+/**
+ * Rebuild CLI worktree DB from a filesystem scan
+ * (`grok worktree db rebuild`, Grok Build 0.2.117+). Soft-fails on old CLIs.
+ */
+export async function cliWorktreeDbRebuild() {
+  return invoke<CliWorktreeDbRebuildResult>("cli_worktree_db_rebuild");
+}
+
 /** Result of creating a linked worktree (`git worktree add`). */
 export interface GitWorktreeAddResult {
   path: string;

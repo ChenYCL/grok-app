@@ -13,6 +13,8 @@ use crate::process_util;
 use crate::store;
 
 const CLI_WORKTREE_LIST_TIMEOUT_SECS: u64 = 15;
+/// Path / stats are quick; rebuild scans the filesystem (CLI 0.2.117+).
+const CLI_WORKTREE_DB_TIMEOUT_SECS: u64 = 45;
 /// Cap rows returned to the UI (CLI index can grow large with subagents).
 const CLI_WORKTREE_LIST_CAP: usize = 200;
 
@@ -401,6 +403,433 @@ pub fn looks_like_unsupported_json_flag(stderr: &str, stdout: &str) -> bool {
                 || blob.contains("unexpected")))
 }
 
+/// Whether stderr/stdout indicates the CLI lacks `worktree db` (pre-0.2.117).
+pub fn looks_like_unsupported_worktree_db(stderr: &str, stdout: &str) -> bool {
+    let blob = format!("{stderr}\n{stdout}").to_ascii_lowercase();
+    if blob.contains("unrecognized subcommand")
+        || blob.contains("unknown subcommand")
+        || blob.contains("unexpected subcommand")
+    {
+        // Subcommand may be quoted: 'db' / "db" / `db`
+        if blob.contains("'db'")
+            || blob.contains("\"db\"")
+            || blob.contains("`db`")
+            || blob.contains(" subcommand 'db'")
+            || blob.contains(" subcommand \"db\"")
+            || blob.contains(" subcommand db")
+        {
+            return true;
+        }
+        // Parent surface missing entirely: unrecognized subcommand 'worktree'
+        if blob.contains("'worktree'")
+            || blob.contains("\"worktree\"")
+            || blob.contains(" subcommand worktree")
+        {
+            return true;
+        }
+    }
+    // Help-style "error: the subcommand wasn't recognized"
+    if (blob.contains("wasn't recognized") || blob.contains("was not recognized"))
+        && (blob.contains("db") || blob.contains("worktree"))
+    {
+        return true;
+    }
+    false
+}
+
+// ── CLI worktree DB (path / stats / rebuild) — Grok Build 0.2.117+ ───────────
+
+/// Parsed fields from `grok worktree db stats` (text or JSON).
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct CliWorktreeDbStats {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub total: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub alive: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub dead: Option<u64>,
+    /// Human size from CLI, e.g. `48.0 KB`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub db_size: Option<String>,
+    /// Best-effort byte size when parseable from the human string.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub db_size_bytes: Option<u64>,
+}
+
+/// Envelope for `cli_worktree_db_path`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CliWorktreeDbPathResult {
+    pub available: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub path: Option<String>,
+    /// True when the reported path exists on disk.
+    #[serde(default)]
+    pub path_ok: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reason: Option<String>,
+    pub cli_found: bool,
+    /// True when the CLI is present but lacks `worktree db` (pre-0.2.117).
+    #[serde(default)]
+    pub unsupported: bool,
+}
+
+/// Envelope for `cli_worktree_db_stats`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CliWorktreeDbStatsResult {
+    pub available: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub stats: Option<CliWorktreeDbStats>,
+    /// Compact one-line summary for the UI.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub summary: Option<String>,
+    /// Raw CLI stdout (truncated) when useful for debug / fallback display.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub raw: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reason: Option<String>,
+    pub cli_found: bool,
+    #[serde(default)]
+    pub unsupported: bool,
+    /// How stats were parsed: `json` | `text` | `none`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source: Option<String>,
+}
+
+/// Envelope for `cli_worktree_db_rebuild`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CliWorktreeDbRebuildResult {
+    /// Command ran successfully.
+    pub ok: bool,
+    /// CLI + `worktree db rebuild` surface available.
+    pub available: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub message: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub discovered: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub registered: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub already_tracked: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reason: Option<String>,
+    pub cli_found: bool,
+    #[serde(default)]
+    pub unsupported: bool,
+}
+
+/// Parse a single `Label: value` line into (normalized_label, value).
+fn split_stats_kv(line: &str) -> Option<(String, String)> {
+    let t = line.trim();
+    if t.is_empty() {
+        return None;
+    }
+    let (left, right) = t.split_once(':')?;
+    let key = left
+        .trim()
+        .trim_start_matches(|c: char| c == '-' || c == '•' || c == '*')
+        .trim()
+        .to_ascii_lowercase()
+        .replace('_', " ")
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ");
+    let val = right.trim().to_string();
+    if key.is_empty() || val.is_empty() {
+        return None;
+    }
+    Some((key, val))
+}
+
+/// Extract the first integer from a value string (`20`, `20 records`, …).
+pub fn parse_first_u64(s: &str) -> Option<u64> {
+    let t = s.trim();
+    if t.is_empty() {
+        return None;
+    }
+    // Direct integer or leading integer token.
+    let token = t
+        .split(|c: char| !(c.is_ascii_digit()))
+        .find(|p| !p.is_empty())?;
+    token.parse::<u64>().ok()
+}
+
+/// Best-effort parse of human size (`48.0 KB`, `1.2 MB`, `512 B`, `49152`).
+pub fn parse_human_size_bytes(s: &str) -> Option<u64> {
+    let t = s.trim();
+    if t.is_empty() {
+        return None;
+    }
+    // Bare integer bytes
+    if let Ok(n) = t.parse::<u64>() {
+        return Some(n);
+    }
+    let lower = t.to_ascii_lowercase().replace(',', "");
+    let mut num_str = String::new();
+    let mut unit = String::new();
+    let mut seen_dot = false;
+    for ch in lower.chars() {
+        if ch.is_ascii_digit() {
+            num_str.push(ch);
+        } else if ch == '.' && !seen_dot {
+            num_str.push(ch);
+            seen_dot = true;
+        } else if ch.is_ascii_whitespace() {
+            continue;
+        } else if ch.is_ascii_alphabetic() {
+            unit.push(ch);
+        }
+    }
+    if num_str.is_empty() {
+        return None;
+    }
+    let n: f64 = num_str.parse().ok()?;
+    if !n.is_finite() || n < 0.0 {
+        return None;
+    }
+    let mult: f64 = match unit.as_str() {
+        "" | "b" | "byte" | "bytes" => 1.0,
+        "k" | "kb" | "kib" => 1024.0,
+        "m" | "mb" | "mib" => 1024.0 * 1024.0,
+        "g" | "gb" | "gib" => 1024.0 * 1024.0 * 1024.0,
+        _ => return None,
+    };
+    let bytes = (n * mult).round();
+    if bytes > u64::MAX as f64 {
+        return None;
+    }
+    Some(bytes as u64)
+}
+
+fn apply_stats_kv(stats: &mut CliWorktreeDbStats, key: &str, val: &str) {
+    match key {
+        "total" | "total records" | "records" | "count" | "total count" => {
+            if stats.total.is_none() {
+                stats.total = parse_first_u64(val);
+            }
+        }
+        "alive" | "alive records" | "live" | "active" => {
+            if stats.alive.is_none() {
+                stats.alive = parse_first_u64(val);
+            }
+        }
+        "dead" | "dead records" | "stale" | "gone" | "missing" => {
+            if stats.dead.is_none() {
+                stats.dead = parse_first_u64(val);
+            }
+        }
+        "db size" | "size" | "database size" | "file size" => {
+            if stats.db_size.is_none() {
+                let cleaned = val.trim().to_string();
+                if !cleaned.is_empty() {
+                    stats.db_size = Some(cleaned.clone());
+                    stats.db_size_bytes = parse_human_size_bytes(&cleaned);
+                }
+            }
+        }
+        _ => {}
+    }
+}
+
+/// Pure parse helper for human `grok worktree db stats` output.
+///
+/// Observed shape (Grok Build 0.2.117):
+/// ```text
+/// Worktree DB Statistics
+/// ======================
+///   Total records:  20
+///   Alive:          20
+///   Dead:           0
+///   DB size:        48.0 KB
+/// ```
+pub fn parse_cli_worktree_db_stats_text(stdout: &str) -> CliWorktreeDbStats {
+    let mut stats = CliWorktreeDbStats::default();
+    for line in stdout.replace("\r\n", "\n").lines() {
+        if let Some((key, val)) = split_stats_kv(line) {
+            apply_stats_kv(&mut stats, &key, &val);
+        }
+    }
+    stats
+}
+
+/// Pure parse helper for possible future `grok worktree db stats --json`.
+///
+/// Accepts a top-level object or `{ stats: {...} }` with snake/camel keys.
+pub fn parse_cli_worktree_db_stats_json(stdout: &str) -> Result<CliWorktreeDbStats, String> {
+    let trimmed = stdout.trim();
+    if trimmed.is_empty() {
+        return Ok(CliWorktreeDbStats::default());
+    }
+    let json_start = trimmed
+        .find('{')
+        .ok_or_else(|| "cli worktree db stats: no JSON object".to_string())?;
+    let slice = &trimmed[json_start..];
+    let value: serde_json::Value = serde_json::from_str(slice)
+        .map_err(|e| format!("invalid cli worktree db stats JSON: {e}"))?;
+    let obj = value
+        .get("stats")
+        .or_else(|| value.get("statistics"))
+        .or_else(|| value.get("data"))
+        .unwrap_or(&value);
+    let mut stats = CliWorktreeDbStats::default();
+    if let Some(map) = obj.as_object() {
+        for (k, v) in map {
+            let key = k
+                .trim()
+                .to_ascii_lowercase()
+                .replace('_', " ")
+                .replace('-', " ");
+            let val = if let Some(s) = v.as_str() {
+                s.to_string()
+            } else if let Some(n) = v.as_u64() {
+                n.to_string()
+            } else if let Some(n) = v.as_i64() {
+                n.to_string()
+            } else if let Some(n) = v.as_f64() {
+                // Prefer integer when whole.
+                if (n - n.floor()).abs() < f64::EPSILON && n >= 0.0 && n <= u64::MAX as f64 {
+                    (n as u64).to_string()
+                } else {
+                    n.to_string()
+                }
+            } else {
+                continue;
+            };
+            apply_stats_kv(&mut stats, &key, &val);
+            // Direct camelCase / snake aliases for size fields
+            if key == "dbsize" || key == "db size bytes" || key == "size bytes" {
+                if stats.db_size_bytes.is_none() {
+                    stats.db_size_bytes = parse_first_u64(&val);
+                }
+            }
+        }
+    }
+    Ok(stats)
+}
+
+/// Build a compact one-line summary for the UI.
+pub fn format_cli_worktree_db_stats_summary(stats: &CliWorktreeDbStats) -> Option<String> {
+    let mut parts: Vec<String> = Vec::new();
+    if let Some(n) = stats.total {
+        parts.push(format!("{n} total"));
+    }
+    if let Some(n) = stats.alive {
+        parts.push(format!("{n} alive"));
+    }
+    if let Some(n) = stats.dead {
+        parts.push(format!("{n} dead"));
+    }
+    if let Some(ref s) = stats.db_size {
+        parts.push(s.clone());
+    } else if let Some(b) = stats.db_size_bytes {
+        parts.push(format!("{b} B"));
+    }
+    if parts.is_empty() {
+        None
+    } else {
+        Some(parts.join(" · "))
+    }
+}
+
+/// True when at least one stats field was parsed.
+pub fn cli_worktree_db_stats_has_data(stats: &CliWorktreeDbStats) -> bool {
+    stats.total.is_some()
+        || stats.alive.is_some()
+        || stats.dead.is_some()
+        || stats.db_size.is_some()
+        || stats.db_size_bytes.is_some()
+}
+
+/// Pure parse helper for `grok worktree db rebuild` report text.
+///
+/// Observed:
+/// ```text
+/// Rebuild report:
+///   Discovered:      20
+///   Registered:      0
+///   Already tracked: 20
+/// ```
+pub fn parse_cli_worktree_db_rebuild_text(stdout: &str) -> (Option<u64>, Option<u64>, Option<u64>) {
+    let mut discovered = None;
+    let mut registered = None;
+    let mut already = None;
+    for line in stdout.replace("\r\n", "\n").lines() {
+        if let Some((key, val)) = split_stats_kv(line) {
+            match key.as_str() {
+                "discovered" | "found" => {
+                    if discovered.is_none() {
+                        discovered = parse_first_u64(&val);
+                    }
+                }
+                "registered" | "added" | "new" => {
+                    if registered.is_none() {
+                        registered = parse_first_u64(&val);
+                    }
+                }
+                "already tracked" | "already" | "tracked" | "unchanged" => {
+                    if already.is_none() {
+                        already = parse_first_u64(&val);
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+    (discovered, registered, already)
+}
+
+/// Extract a single filesystem path from `grok worktree db path` stdout.
+pub fn parse_cli_worktree_db_path_stdout(stdout: &str, home: &Path) -> Option<String> {
+    let text = stdout.replace("\r\n", "\n");
+    for line in text.lines() {
+        let t = line.trim();
+        if t.is_empty() {
+            continue;
+        }
+        // Skip labels / headers
+        let lower = t.to_ascii_lowercase();
+        if lower.starts_with("usage:")
+            || lower.starts_with("error:")
+            || lower.contains("worktree db")
+            || lower == "path"
+        {
+            continue;
+        }
+        // Prefer path-like tokens
+        let candidate = if looks_like_path(t) {
+            t
+        } else if let Some((_, right)) = t.split_once(':') {
+            let r = right.trim();
+            if looks_like_path(r) {
+                r
+            } else {
+                continue;
+            }
+        } else {
+            continue;
+        };
+        let expanded = expand_tilde_path(candidate, home);
+        if !expanded.is_empty() {
+            return Some(expanded);
+        }
+    }
+    // Fallback: first non-empty line expanded
+    for line in text.lines() {
+        let t = line.trim();
+        if t.is_empty() {
+            continue;
+        }
+        let expanded = expand_tilde_path(t, home);
+        if !expanded.is_empty() && (expanded.contains('/') || expanded.contains('\\')) {
+            return Some(expanded);
+        }
+    }
+    None
+}
+
 // ── CLI runner ──────────────────────────────────────────────────────────────
 
 fn run_grok_cli_args(args: &[&str], timeout_secs: u64) -> Result<(String, String, bool), String> {
@@ -603,6 +1032,309 @@ fn list_cli_worktrees_blocking(
     }
 }
 
+// ── Host commands: worktree db path / stats / rebuild ────────────────────────
+
+fn soft_db_path_err(
+    cli_found: bool,
+    unsupported: bool,
+    reason: impl Into<String>,
+) -> CliWorktreeDbPathResult {
+    CliWorktreeDbPathResult {
+        available: false,
+        path: None,
+        path_ok: false,
+        reason: Some(reason.into()),
+        cli_found,
+        unsupported,
+    }
+}
+
+fn soft_db_stats_err(
+    cli_found: bool,
+    unsupported: bool,
+    reason: impl Into<String>,
+) -> CliWorktreeDbStatsResult {
+    CliWorktreeDbStatsResult {
+        available: false,
+        stats: None,
+        summary: None,
+        raw: None,
+        reason: Some(reason.into()),
+        cli_found,
+        unsupported,
+        source: Some("none".into()),
+    }
+}
+
+fn soft_db_rebuild_err(
+    cli_found: bool,
+    unsupported: bool,
+    reason: impl Into<String>,
+) -> CliWorktreeDbRebuildResult {
+    CliWorktreeDbRebuildResult {
+        ok: false,
+        available: false,
+        message: None,
+        discovered: None,
+        registered: None,
+        already_tracked: None,
+        reason: Some(reason.into()),
+        cli_found,
+        unsupported,
+    }
+}
+
+fn db_cli_probe() -> (bool, Option<String>) {
+    let settings = store::load_settings();
+    let probe = cli_probe::probe_cli(settings.manual_cli_path.as_deref());
+    if !probe.found {
+        return (false, None);
+    }
+    (true, probe.path)
+}
+
+/// Print CLI worktree DB path (`grok worktree db path`). Soft-fails on old CLIs.
+#[tauri::command]
+pub async fn cli_worktree_db_path() -> Result<CliWorktreeDbPathResult, String> {
+    let home = user_home();
+    let result = tauri::async_runtime::spawn_blocking(move || cli_worktree_db_path_blocking(home))
+        .await
+        .map_err(|e| format!("cli worktree db path worker panicked: {e}"))?;
+    Ok(result)
+}
+
+fn cli_worktree_db_path_blocking(home: PathBuf) -> CliWorktreeDbPathResult {
+    let (cli_found, _) = db_cli_probe();
+    if !cli_found {
+        return soft_db_path_err(false, false, "Grok Build CLI not found");
+    }
+    match run_grok_cli_args(&["worktree", "db", "path"], CLI_WORKTREE_DB_TIMEOUT_SECS) {
+        Ok((stdout, stderr, ok)) => {
+            if looks_like_unsupported_worktree_db(&stderr, &stdout) {
+                return soft_db_path_err(
+                    true,
+                    true,
+                    "CLI worktree DB requires Grok Build CLI 0.2.117+",
+                );
+            }
+            if let Some(path) = parse_cli_worktree_db_path_stdout(&stdout, &home) {
+                let path_ok = PathBuf::from(&path).exists();
+                return CliWorktreeDbPathResult {
+                    available: true,
+                    path: Some(path),
+                    path_ok,
+                    reason: None,
+                    cli_found: true,
+                    unsupported: false,
+                };
+            }
+            if !ok {
+                let detail = if stderr.trim().is_empty() {
+                    "grok worktree db path failed".to_string()
+                } else {
+                    stderr.chars().take(240).collect()
+                };
+                return soft_db_path_err(true, false, detail);
+            }
+            soft_db_path_err(true, false, "could not parse worktree DB path")
+        }
+        Err(e) => {
+            let lower = e.to_ascii_lowercase();
+            soft_db_path_err(
+                !lower.contains("not found"),
+                false,
+                e.chars().take(240).collect::<String>(),
+            )
+        }
+    }
+}
+
+/// Show CLI worktree DB stats (`grok worktree db stats`). Soft-fails on old CLIs.
+///
+/// Prefers text parse (current CLI); attempts JSON parse when stdout looks like
+/// an object (future `--json` or accidental structured output).
+#[tauri::command]
+pub async fn cli_worktree_db_stats() -> Result<CliWorktreeDbStatsResult, String> {
+    let result = tauri::async_runtime::spawn_blocking(cli_worktree_db_stats_blocking)
+        .await
+        .map_err(|e| format!("cli worktree db stats worker panicked: {e}"))?;
+    Ok(result)
+}
+
+fn cli_worktree_db_stats_blocking() -> CliWorktreeDbStatsResult {
+    let (cli_found, _) = db_cli_probe();
+    if !cli_found {
+        return soft_db_stats_err(false, false, "Grok Build CLI not found");
+    }
+    match run_grok_cli_args(&["worktree", "db", "stats"], CLI_WORKTREE_DB_TIMEOUT_SECS) {
+        Ok((stdout, stderr, ok)) => {
+            if looks_like_unsupported_worktree_db(&stderr, &stdout) {
+                return soft_db_stats_err(
+                    true,
+                    true,
+                    "CLI worktree DB requires Grok Build CLI 0.2.117+",
+                );
+            }
+            let raw_trim = stdout.trim();
+            let raw = if raw_trim.is_empty() {
+                None
+            } else {
+                Some(raw_trim.chars().take(800).collect::<String>())
+            };
+
+            // Prefer JSON when the body looks like an object.
+            if raw_trim.starts_with('{') {
+                if let Ok(stats) = parse_cli_worktree_db_stats_json(&stdout) {
+                    if cli_worktree_db_stats_has_data(&stats) {
+                        let summary = format_cli_worktree_db_stats_summary(&stats);
+                        return CliWorktreeDbStatsResult {
+                            available: true,
+                            stats: Some(stats),
+                            summary,
+                            raw,
+                            reason: None,
+                            cli_found: true,
+                            unsupported: false,
+                            source: Some("json".into()),
+                        };
+                    }
+                }
+            }
+
+            let stats = parse_cli_worktree_db_stats_text(&stdout);
+            if cli_worktree_db_stats_has_data(&stats) {
+                let summary = format_cli_worktree_db_stats_summary(&stats);
+                return CliWorktreeDbStatsResult {
+                    available: true,
+                    stats: Some(stats),
+                    summary,
+                    raw,
+                    reason: None,
+                    cli_found: true,
+                    unsupported: false,
+                    source: Some("text".into()),
+                };
+            }
+
+            if !ok {
+                let detail = if stderr.trim().is_empty() {
+                    "grok worktree db stats failed".to_string()
+                } else {
+                    stderr.chars().take(240).collect()
+                };
+                return soft_db_stats_err(true, false, detail);
+            }
+            // Succeeded but empty/unparseable — still available with raw body.
+            CliWorktreeDbStatsResult {
+                available: true,
+                stats: None,
+                summary: raw.clone(),
+                raw,
+                reason: Some("could not parse worktree DB stats".into()),
+                cli_found: true,
+                unsupported: false,
+                source: Some("none".into()),
+            }
+        }
+        Err(e) => {
+            let lower = e.to_ascii_lowercase();
+            soft_db_stats_err(
+                !lower.contains("not found"),
+                false,
+                e.chars().take(240).collect::<String>(),
+            )
+        }
+    }
+}
+
+/// Rebuild CLI worktree DB from a filesystem scan (`grok worktree db rebuild`).
+/// Soft-fails when the CLI is missing or too old.
+#[tauri::command]
+pub async fn cli_worktree_db_rebuild() -> Result<CliWorktreeDbRebuildResult, String> {
+    let result = tauri::async_runtime::spawn_blocking(cli_worktree_db_rebuild_blocking)
+        .await
+        .map_err(|e| format!("cli worktree db rebuild worker panicked: {e}"))?;
+    Ok(result)
+}
+
+fn cli_worktree_db_rebuild_blocking() -> CliWorktreeDbRebuildResult {
+    let (cli_found, _) = db_cli_probe();
+    if !cli_found {
+        return soft_db_rebuild_err(false, false, "Grok Build CLI not found");
+    }
+    match run_grok_cli_args(
+        &["worktree", "db", "rebuild"],
+        CLI_WORKTREE_DB_TIMEOUT_SECS,
+    ) {
+        Ok((stdout, stderr, ok)) => {
+            if looks_like_unsupported_worktree_db(&stderr, &stdout) {
+                return soft_db_rebuild_err(
+                    true,
+                    true,
+                    "CLI worktree DB requires Grok Build CLI 0.2.117+",
+                );
+            }
+            let (discovered, registered, already) =
+                parse_cli_worktree_db_rebuild_text(&stdout);
+            let msg = {
+                let body = stdout.trim();
+                if body.is_empty() {
+                    if !stderr.trim().is_empty() {
+                        Some(stderr.chars().take(400).collect::<String>())
+                    } else {
+                        None
+                    }
+                } else {
+                    Some(body.chars().take(400).collect::<String>())
+                }
+            };
+            if ok {
+                CliWorktreeDbRebuildResult {
+                    ok: true,
+                    available: true,
+                    message: msg,
+                    discovered,
+                    registered,
+                    already_tracked: already,
+                    reason: None,
+                    cli_found: true,
+                    unsupported: false,
+                }
+            } else {
+                let detail = msg
+                    .clone()
+                    .or_else(|| {
+                        if stderr.trim().is_empty() {
+                            Some("grok worktree db rebuild failed".into())
+                        } else {
+                            Some(stderr.chars().take(240).collect())
+                        }
+                    })
+                    .unwrap_or_else(|| "grok worktree db rebuild failed".into());
+                CliWorktreeDbRebuildResult {
+                    ok: false,
+                    available: true,
+                    message: msg,
+                    discovered,
+                    registered,
+                    already_tracked: already,
+                    reason: Some(detail),
+                    cli_found: true,
+                    unsupported: false,
+                }
+            }
+        }
+        Err(e) => {
+            let lower = e.to_ascii_lowercase();
+            soft_db_rebuild_err(
+                !lower.contains("not found"),
+                false,
+                e.chars().take(240).collect::<String>(),
+            )
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -715,5 +1447,107 @@ mod tests {
         assert!(is_age_token("12h"));
         assert!(!is_age_token("HEAD"));
         assert!(!is_age_token("feat/login"));
+    }
+
+    #[test]
+    fn unsupported_worktree_db_detect() {
+        assert!(looks_like_unsupported_worktree_db(
+            "error: unrecognized subcommand 'db'",
+            ""
+        ));
+        assert!(looks_like_unsupported_worktree_db(
+            "error: unrecognized subcommand 'worktree'",
+            ""
+        ));
+        assert!(!looks_like_unsupported_worktree_db(
+            "",
+            "Worktree DB Statistics\n  Total records: 1"
+        ));
+        assert!(!looks_like_unsupported_worktree_db(
+            "error: something else failed",
+            ""
+        ));
+    }
+
+    #[test]
+    fn parse_stats_text_fixture() {
+        let raw = "\
+Worktree DB Statistics
+======================
+  Total records:  20
+  Alive:          20
+  Dead:           0
+  DB size:        48.0 KB
+";
+        let s = parse_cli_worktree_db_stats_text(raw);
+        assert_eq!(s.total, Some(20));
+        assert_eq!(s.alive, Some(20));
+        assert_eq!(s.dead, Some(0));
+        assert_eq!(s.db_size.as_deref(), Some("48.0 KB"));
+        assert_eq!(s.db_size_bytes, Some(49152));
+        let summary = format_cli_worktree_db_stats_summary(&s).expect("summary");
+        assert!(summary.contains("20 total"));
+        assert!(summary.contains("48.0 KB"));
+    }
+
+    #[test]
+    fn parse_stats_json_object() {
+        let raw = r#"{
+          "total": 5,
+          "alive": 4,
+          "dead": 1,
+          "db_size": "1.5 KB"
+        }"#;
+        let s = parse_cli_worktree_db_stats_json(raw).expect("parse");
+        assert_eq!(s.total, Some(5));
+        assert_eq!(s.alive, Some(4));
+        assert_eq!(s.dead, Some(1));
+        assert_eq!(s.db_size.as_deref(), Some("1.5 KB"));
+        assert_eq!(s.db_size_bytes, Some(1536));
+    }
+
+    #[test]
+    fn parse_stats_json_wrapped() {
+        let raw = r#"{"stats":{"total_records":3,"alive":3,"dead":0,"size":"512 B"}}"#;
+        let s = parse_cli_worktree_db_stats_json(raw).expect("parse");
+        assert_eq!(s.total, Some(3));
+        assert_eq!(s.alive, Some(3));
+        assert_eq!(s.db_size.as_deref(), Some("512 B"));
+        assert_eq!(s.db_size_bytes, Some(512));
+    }
+
+    #[test]
+    fn parse_human_size() {
+        assert_eq!(parse_human_size_bytes("48.0 KB"), Some(49152));
+        assert_eq!(parse_human_size_bytes("1 MB"), Some(1024 * 1024));
+        assert_eq!(parse_human_size_bytes("100"), Some(100));
+        assert_eq!(parse_human_size_bytes("512 B"), Some(512));
+        assert!(parse_human_size_bytes("").is_none());
+    }
+
+    #[test]
+    fn parse_db_path_stdout() {
+        assert_eq!(
+            parse_cli_worktree_db_path_stdout("/Users/me/.grok/worktrees.db\n", &home()),
+            Some("/Users/me/.grok/worktrees.db".into())
+        );
+        assert_eq!(
+            parse_cli_worktree_db_path_stdout("~/.grok/worktrees.db", &home()),
+            Some("/Users/me/.grok/worktrees.db".into())
+        );
+    }
+
+    #[test]
+    fn parse_rebuild_report() {
+        let raw = "\
+Rebuild report:
+  Discovered:      20
+  Registered:      0
+  Already tracked: 20
+";
+        let (d, r, a) = parse_cli_worktree_db_rebuild_text(raw);
+        assert_eq!(d, Some(20));
+        assert_eq!(r, Some(0));
+        assert_eq!(a, Some(20));
     }
 }
