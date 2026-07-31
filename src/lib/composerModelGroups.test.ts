@@ -17,6 +17,10 @@ const providers = [
     id: "yunyi",
     name: "云驿",
     model: "deepseek-chat",
+    models: [
+      { id: "deepseek-chat", name: "DeepSeek Chat" },
+      { id: "deepseek-reasoner", name: "Reasoner" },
+    ],
   },
   {
     id: "local",
@@ -26,7 +30,7 @@ const providers = [
 ];
 
 describe("buildComposerModelGroups", () => {
-  it("builds official group plus one group per provider", () => {
+  it("builds official group plus multi-model provider groups", () => {
     const groups = buildComposerModelGroups({
       officialModels: official,
       providers,
@@ -47,13 +51,28 @@ describe("buildComposerModelGroups", () => {
         },
       ],
     });
+    expect(groups[1].title).toBe("云驿");
+    expect(groups[1].entries).toHaveLength(2);
     expect(groups[1].entries[0]).toMatchObject({
-      pick: { kind: "custom", providerId: "yunyi" },
-      title: "云驿",
+      pick: {
+        kind: "custom",
+        providerId: "yunyi",
+        modelId: "deepseek-chat",
+      },
+      title: "DeepSeek Chat",
       subtitle: "deepseek-chat",
     });
+    expect(groups[1].entries[1]).toMatchObject({
+      pick: {
+        kind: "custom",
+        providerId: "yunyi",
+        modelId: "deepseek-reasoner",
+      },
+      title: "Reasoner",
+      subtitle: "deepseek-reasoner",
+    });
     expect(groups[2].entries[0]).toMatchObject({
-      pick: { kind: "custom", providerId: "local" },
+      pick: { kind: "custom", providerId: "local", modelId: "llama3" },
       title: "llama3",
       subtitle: undefined,
     });
@@ -69,7 +88,7 @@ describe("buildComposerModelGroups", () => {
     expect(groups[0].key).toBe("official");
   });
 
-  it("skips providers with empty model", () => {
+  it("skips providers with empty model catalog", () => {
     const groups = buildComposerModelGroups({
       officialModels: [],
       providers: [{ id: "x", name: "X", model: "  " }],
@@ -86,11 +105,12 @@ describe("filterComposerModelGroups", () => {
       providers,
       officialGroupTitle: "Official",
     });
-    const filtered = filterComposerModelGroups(groups, "deep");
+    const filtered = filterComposerModelGroups(groups, "reason");
     expect(filtered).toHaveLength(1);
     expect(filtered[0].entries[0].pick).toEqual({
       kind: "custom",
       providerId: "yunyi",
+      modelId: "deepseek-reasoner",
     });
   });
 });
@@ -102,9 +122,13 @@ describe("isComposerModelEntryActive", () => {
     title: "Grok 4.5",
   };
   const customEntry: ComposerModelEntry = {
-    key: "custom:yunyi",
-    pick: { kind: "custom", providerId: "yunyi" },
-    title: "云驿",
+    key: "custom:yunyi:deepseek-chat",
+    pick: {
+      kind: "custom",
+      providerId: "yunyi",
+      modelId: "deepseek-chat",
+    },
+    title: "DeepSeek Chat",
   };
 
   it("matches official when route is official and model id equals", () => {
@@ -117,14 +141,26 @@ describe("isComposerModelEntryActive", () => {
     ).toBe(true);
   });
 
-  it("matches custom when route and provider id equal", () => {
+  it("matches custom when route, provider, and request model equal", () => {
     expect(
       isComposerModelEntryActive(customEntry, {
         activeSource: "custom",
         activeProviderId: "yunyi",
+        activeRequestModel: "deepseek-chat",
         modelId: "grok-4.5",
       }),
     ).toBe(true);
+  });
+
+  it("does not match a different request model on same provider", () => {
+    expect(
+      isComposerModelEntryActive(customEntry, {
+        activeSource: "custom",
+        activeProviderId: "yunyi",
+        activeRequestModel: "deepseek-reasoner",
+        modelId: "grok-4.5",
+      }),
+    ).toBe(false);
   });
 
   it("does not match official while custom route is active", () => {
@@ -132,16 +168,7 @@ describe("isComposerModelEntryActive", () => {
       isComposerModelEntryActive(officialEntry, {
         activeSource: "custom",
         activeProviderId: "yunyi",
-        modelId: "grok-4.5",
-      }),
-    ).toBe(false);
-  });
-
-  it("does not match a different custom provider", () => {
-    expect(
-      isComposerModelEntryActive(customEntry, {
-        activeSource: "custom",
-        activeProviderId: "other",
+        activeRequestModel: "deepseek-chat",
         modelId: "grok-4.5",
       }),
     ).toBe(false);

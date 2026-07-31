@@ -11466,6 +11466,12 @@ export default function App() {
         id: p.id,
         name: p.name,
         model: p.model,
+        models: (p.models?.length
+          ? p.models
+          : p.model
+            ? [{ id: p.model, name: p.model }]
+            : []
+        ).map((m) => ({ id: m.id, name: m.name || m.id })),
       })),
     [customProviders],
   );
@@ -11520,7 +11526,41 @@ export default function App() {
             .catch((e) => showToast(String(e), 4000));
         } else {
           if (!api.isTauri()) return;
-          await api.providersActivate("custom", pick.providerId);
+          const provider = customProviders.find(
+            (p) => p.id === pick.providerId,
+          );
+          if (!provider) {
+            showToast(tr("prov.err.unknownProvider"), 4000);
+            return;
+          }
+          // Switch request model on the channel when needed (keeps multi-model catalog).
+          if (provider.model.trim() !== pick.modelId.trim()) {
+            const models =
+              provider.models?.length
+                ? provider.models
+                : [{ id: provider.model, name: provider.model }];
+            const catalog = models.some((m) => m.id === pick.modelId)
+              ? models
+              : [
+                  ...models,
+                  { id: pick.modelId, name: pick.modelId },
+                ];
+            await api.providersUpsert({
+              id: provider.id,
+              model: pick.modelId,
+              baseUrl: provider.baseUrl,
+              name: provider.name,
+              apiBackend: provider.apiBackend,
+              models: catalog,
+              setAsDefault: false,
+            });
+          }
+          if (
+            providerActiveSource !== "custom" ||
+            providerActiveId !== pick.providerId
+          ) {
+            await api.providersActivate("custom", pick.providerId);
+          }
           await refreshProviderRoute();
         }
       } catch (e) {
@@ -11532,11 +11572,14 @@ export default function App() {
     [
       modelPickBusy,
       providerActiveSource,
+      providerActiveId,
       availableModels,
+      customProviders,
       activeProject?.id,
       session.sessionId,
       refreshProviderRoute,
       showToast,
+      tr,
     ],
   );
   const liveBrandKind = useMemo(

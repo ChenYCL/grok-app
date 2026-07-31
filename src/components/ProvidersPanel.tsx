@@ -37,14 +37,20 @@ export interface ProvidersPanelProps {
   onProviderActivated?: () => void;
 }
 
+type FormModel = {
+  /** Upstream request body model id. */
+  id: string;
+  /** Display name shown on composer chip / menu. */
+  name: string;
+};
+
 type FormState = {
   id: string;
   name: string;
   baseUrl: string;
-  model: string;
   apiKey: string;
   apiBackend: string;
-  setAsDefault: boolean;
+  models: FormModel[];
 };
 
 type RightMode = "empty" | "create" | "edit" | "official";
@@ -54,11 +60,22 @@ const emptyForm = (): FormState => ({
   id: "",
   name: "",
   baseUrl: "",
-  model: "",
   apiKey: "",
   apiBackend: "responses",
-  setAsDefault: true,
+  models: [],
 });
+
+function modelsFromProvider(p: api.CustomProvider): FormModel[] {
+  if (p.models?.length) {
+    return p.models.map((m) => ({
+      id: m.id,
+      name: m.name?.trim() || m.id,
+    }));
+  }
+  const id = p.model?.trim() ?? "";
+  if (!id) return [];
+  return [{ id, name: id }];
+}
 
 function hostOf(url: string): string {
   try {
@@ -102,6 +119,9 @@ export function ProvidersPanel({
   const [busy, setBusy] = useState(false);
   const [showKey, setShowKey] = useState(false);
   const [remoteModels, setRemoteModels] = useState<string[]>([]);
+  /** Draft row for manually adding a model. */
+  const [draftModelId, setDraftModelId] = useState("");
+  const [draftModelName, setDraftModelName] = useState("");
   const [hint, setHint] = useState<string | null>(null);
   const [hintTone, setHintTone] = useState<"ok" | "err" | "muted">("muted");
   const [deleteTarget, setDeleteTarget] = useState<{
@@ -178,6 +198,8 @@ export function ProvidersPanel({
     setSelection(null);
     setEditingId(null);
     setForm(emptyForm());
+    setDraftModelId("");
+    setDraftModelName("");
     setRemoteModels([]);
     setHint(null);
     setShowKey(false);
@@ -341,11 +363,12 @@ export function ProvidersPanel({
       id: p.id,
       name: p.name,
       baseUrl: p.baseUrl,
-      model: p.model,
       apiKey: "",
       apiBackend: p.apiBackend || "responses",
-      setAsDefault: p.isDefault,
+      models: modelsFromProvider(p),
     });
+    setDraftModelId("");
+    setDraftModelName("");
     setRemoteModels([]);
     setHint(null);
     setShowKey(false);
@@ -358,6 +381,20 @@ export function ProvidersPanel({
     setEditingId(null);
     setHint(null);
     setRemoteModels([]);
+    setDraftModelId("");
+    setDraftModelName("");
+  };
+
+  const addModelToForm = (modelId: string, displayName?: string) => {
+    const id = modelId.trim();
+    if (!id) return;
+    const name = (displayName ?? draftModelName).trim() || id;
+    setForm((f) => {
+      if (f.models.some((m) => m.id === id)) return f;
+      return { ...f, models: [...f.models, { id, name }] };
+    });
+    setDraftModelId("");
+    setDraftModelName("");
   };
 
   const save = async () => {
@@ -371,6 +408,17 @@ export function ProvidersPanel({
       setHintTone("err");
       return;
     }
+    const models = form.models
+      .map((m) => ({
+        id: m.id.trim(),
+        name: m.name.trim() || m.id.trim(),
+      }))
+      .filter((m) => m.id);
+    if (models.length === 0) {
+      setHint(tr("prov.err.needModel"));
+      setHintTone("err");
+      return;
+    }
     setBusy(true);
     setHint(tr("prov.saving"));
     setHintTone("muted");
@@ -378,20 +426,27 @@ export function ProvidersPanel({
       editingId ??
       (slugifyProviderId(form.id || form.name || form.baseUrl) ||
         `provider-${Date.now().toString(36)}`);
-    const setAsDefault = form.setAsDefault;
+    // Keep active request model if still in catalog; else first entry.
+    const existing = list?.providers.find((p) => p.id === id);
+    const preferred =
+      existing?.model && models.some((m) => m.id === existing.model)
+        ? existing.model
+        : models[0].id;
     try {
       // Wall-clock budget so a hung host IPC cannot leave the UI on “Saving…”.
       // Disk write may still complete after a timeout (user can re-open panel).
+      // Do not auto-set default — user activates via Use / composer pick.
       const r = await withProviderSaveTimeout(
         api.providersUpsert({
           id,
-          model: form.model.trim() || id,
+          model: preferred,
           baseUrl: form.baseUrl.trim(),
           name: form.name.trim() || id,
           apiKey: form.apiKey.trim() || undefined,
           apiBackend: form.apiBackend,
-          setAsDefault,
+          setAsDefault: false,
           createOnly: !editingId,
+          models,
         }),
         PROVIDER_SAVE_TIMEOUT_MS,
         tr("prov.err.saveTimeout"),
@@ -405,7 +460,7 @@ export function ProvidersPanel({
         setSelection(null);
       }
       const needsReload = providerMutationNeedsAgentReload({
-        setAsDefault,
+        setAsDefault: false,
         providerId: id,
         activeSource: r.activeSource,
         activeProviderId: r.activeProviderId,
@@ -498,19 +553,6 @@ export function ProvidersPanel({
       if (r.models.length) {
         setHint(tr("prov.loaded", { n: r.models.length }));
         setHintTone("ok");
-        if (!form.model && r.models[0]?.id) {
-          const nextModel = r.models[0].id;
-          setForm((f) => {
-            const prevModel = f.model;
-            const nameWasAuto =
-              !f.name.trim() || f.name.trim() === prevModel.trim();
-            return {
-              ...f,
-              model: nextModel,
-              name: nameWasAuto ? nextModel.trim() : f.name,
-            };
-          });
-        }
       } else {
         setHint(tr("prov.emptyList"));
         setHintTone("muted");
@@ -910,7 +952,7 @@ export function ProvidersPanel({
                   </div>
                 </label>
 
-                <label className="prov-field prov-field--full">
+                <div className="prov-field prov-field--full">
                   <span className="prov-field__label-row">
                     <span className="prov-field__label">
                       {tr("prov.requestModel")}
@@ -925,51 +967,171 @@ export function ProvidersPanel({
                       {tr("prov.fetchModels")}
                     </button>
                   </span>
-                  <input
-                    className="settings-input"
-                    value={form.model}
-                    onChange={(e) => {
-                      const nextModel = e.target.value;
-                      setForm((f) => {
-                        const prevModel = f.model;
-                        const nameWasAuto =
-                          !f.name.trim() ||
-                          f.name.trim() === prevModel.trim();
-                        return {
-                          ...f,
-                          model: nextModel,
-                          name: nameWasAuto ? nextModel.trim() : f.name,
-                        };
-                      });
-                    }}
-                    placeholder={tr("prov.modelPh")}
-                    list="prov-model-suggestions"
-                    autoComplete="off"
-                    spellCheck={false}
-                  />
-                  <datalist id="prov-model-suggestions">
-                    {remoteModels.map((m) => (
-                      <option key={m} value={m} />
-                    ))}
-                  </datalist>
-                </label>
-              </div>
+                  <p className="prov-field__hint">{tr("prov.modelsHint")}</p>
 
-              <label className="prov-check">
-                <input
-                  type="checkbox"
-                  checked={form.setAsDefault}
-                  onChange={(e) =>
-                    setForm((f) => ({
-                      ...f,
-                      setAsDefault: e.target.checked,
-                    }))
-                  }
-                />
-                <span className="prov-check__title">
-                  {tr("prov.setDefault")}
-                </span>
-              </label>
+                  {form.models.length > 0 ? (
+                    <ul className="prov-models" aria-label={tr("prov.requestModel")}>
+                      {form.models.map((m, index) => (
+                        <li key={index} className="prov-models__row">
+                          <label className="prov-models__field">
+                            <span className="prov-models__field-label">
+                              {tr("prov.modelDisplayName")}
+                            </span>
+                            <input
+                              className="settings-input"
+                              value={m.name}
+                              onChange={(e) => {
+                                const name = e.target.value;
+                                setForm((f) => ({
+                                  ...f,
+                                  models: f.models.map((row, i) =>
+                                    i === index ? { ...row, name } : row,
+                                  ),
+                                }));
+                              }}
+                              placeholder={tr("prov.modelDisplayNamePh")}
+                              autoComplete="off"
+                            />
+                          </label>
+                          <label className="prov-models__field">
+                            <span className="prov-models__field-label">
+                              {tr("prov.modelId")}
+                            </span>
+                            <input
+                              className="settings-input"
+                              value={m.id}
+                              onChange={(e) => {
+                                const next = e.target.value;
+                                setForm((f) => ({
+                                  ...f,
+                                  models: f.models.map((row, i) =>
+                                    i === index
+                                      ? {
+                                          ...row,
+                                          id: next,
+                                          name:
+                                            !row.name.trim() ||
+                                            row.name.trim() === row.id
+                                              ? next
+                                              : row.name,
+                                        }
+                                      : row,
+                                  ),
+                                }));
+                              }}
+                              placeholder={tr("prov.modelPh")}
+                              autoComplete="off"
+                              spellCheck={false}
+                            />
+                          </label>
+                          <button
+                            type="button"
+                            className="btn btn--ghost btn--sm prov-models__remove"
+                            onClick={() =>
+                              setForm((f) => ({
+                                ...f,
+                                models: f.models.filter((_, i) => i !== index),
+                              }))
+                            }
+                            aria-label={tr("prov.removeModel")}
+                            disabled={busy}
+                          >
+                            <IconTrash size={14} />
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className="prov-field__hint prov-field__hint--empty">
+                      {tr("prov.modelsEmpty")}
+                    </p>
+                  )}
+
+                  <div className="prov-models__add">
+                    <label className="prov-models__field">
+                      <span className="prov-models__field-label">
+                        {tr("prov.modelDisplayName")}
+                      </span>
+                      <input
+                        className="settings-input"
+                        value={draftModelName}
+                        onChange={(e) => {
+                          const name = e.target.value;
+                          setDraftModelName(name);
+                        }}
+                        placeholder={tr("prov.modelDisplayNamePh")}
+                        autoComplete="off"
+                      />
+                    </label>
+                    <label className="prov-models__field">
+                      <span className="prov-models__field-label">
+                        {tr("prov.modelId")}
+                      </span>
+                      <input
+                        className="settings-input"
+                        value={draftModelId}
+                        onChange={(e) => {
+                          const id = e.target.value;
+                          setDraftModelId(id);
+                          setDraftModelName((n) =>
+                            !n.trim() || n.trim() === draftModelId.trim()
+                              ? id
+                              : n,
+                          );
+                        }}
+                        placeholder={tr("prov.modelPh")}
+                        autoComplete="off"
+                        spellCheck={false}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") {
+                            e.preventDefault();
+                            addModelToForm(draftModelId, draftModelName);
+                          }
+                        }}
+                      />
+                    </label>
+                    <button
+                      type="button"
+                      className="btn btn--ghost btn--sm"
+                      disabled={busy || !draftModelId.trim()}
+                      onClick={() =>
+                        addModelToForm(draftModelId, draftModelName)
+                      }
+                    >
+                      <IconPlus size={14} />
+                      {tr("prov.addModel")}
+                    </button>
+                  </div>
+
+                  {remoteModels.length > 0 ? (
+                    <div className="prov-models__remote">
+                      <span className="prov-models__field-label">
+                        {tr("prov.remoteModels")}
+                      </span>
+                      <div className="prov-models__chips">
+                        {remoteModels.map((mid) => {
+                          const added = form.models.some((m) => m.id === mid);
+                          return (
+                            <button
+                              key={mid}
+                              type="button"
+                              className={
+                                "prov-models__chip" +
+                                (added ? " is-added" : "")
+                              }
+                              disabled={busy || added}
+                              onClick={() => addModelToForm(mid, mid)}
+                              title={mid}
+                            >
+                              {mid}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ) : null}
+                </div>
+              </div>
 
               {hint && (
                 <div

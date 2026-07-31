@@ -9,16 +9,30 @@ use serde::{Deserialize, Serialize};
 
 use crate::paths::{agent_config_toml, agent_home_dir, ensure_app_dirs};
 
+/// One selectable request model under a custom provider channel.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ProviderModelEntry {
+    /// Upstream request body model id.
+    pub id: String,
+    /// Composer chip / menu display label.
+    pub name: String,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CustomProvider {
     pub id: String,
+    /// Active request model (written to config `model = …`).
     pub model: String,
     pub base_url: String,
     pub name: String,
     pub has_api_key: bool,
     pub api_backend: String,
     pub is_default: bool,
+    /// Catalog of selectable models for this channel (App-managed).
+    #[serde(default)]
+    pub models: Vec<ProviderModelEntry>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -33,7 +47,12 @@ pub struct UpsertProviderInput {
     pub api_backend: Option<String>,
     pub set_as_default: Option<bool>,
     pub create_only: Option<bool>,
+    /// Optional multi-model catalog; when omitted on edit, keep previous `app_models`.
+    pub models: Option<Vec<ProviderModelEntry>>,
 }
+
+/// TOML field (ignored by Grok Build) storing JSON array of `{id,name}`.
+const APP_MODELS_KEY: &str = "app_models";
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -191,18 +210,23 @@ pub fn repair_custom_base_urls() -> Result<bool, String> {
                 .unwrap_or_else(|| s.id.clone());
             let name = s.fields.get("name").cloned().unwrap_or_else(|| s.id.clone());
             let key = s.fields.get("api_key").cloned().unwrap_or_default();
+            let app_models = s
+                .fields
+                .get(APP_MODELS_KEY)
+                .cloned()
+                .unwrap_or_default();
             out = remove_section(&out, &s.id);
-            out = append_section(
-                &out,
-                &s.id,
-                &[
-                    ("model".into(), model),
-                    ("base_url".into(), new),
-                    ("name".into(), name),
-                    ("api_key".into(), key),
-                    ("api_backend".into(), backend),
-                ],
-            );
+            let mut fields = vec![
+                ("model".into(), model),
+                ("base_url".into(), new),
+                ("name".into(), name),
+                ("api_key".into(), key),
+                ("api_backend".into(), backend),
+            ];
+            if !app_models.trim().is_empty() {
+                fields.push((APP_MODELS_KEY.into(), app_models));
+            }
+            out = append_section(&out, &s.id, &fields);
             changed = true;
             tracing::info!(
                 target: "providers",
@@ -393,6 +417,72 @@ fn is_custom(fields: &std::collections::HashMap<String, String>) -> bool {
         .unwrap_or(false)
 }
 
+fn encode_app_models(models: &[ProviderModelEntry]) -> String {
+    serde_json::to_string(models).unwrap_or_else(|_| "[]".into())
+}
+
+/// Normalize a models catalog; drop empty ids; default blank names to id.
+pub fn normalize_provider_models(models: &[ProviderModelEntry]) -> Vec<ProviderModelEntry> {
+    let mut out = Vec::new();
+    let mut seen = std::collections::HashSet::new();
+    for m in models {
+        let id = m.id.trim().to_string();
+        if id.is_empty() || !seen.insert(id.clone()) {
+            continue;
+        }
+        let name = m.name.trim();
+        out.push(ProviderModelEntry {
+            name: if name.is_empty() {
+                id.clone()
+            } else {
+                name.to_string()
+            },
+            id,
+        });
+    }
+    out
+}
+
+fn decode_app_models(
+    raw: Option<&str>,
+    fallback_model: &str,
+    fallback_display: &str,
+) -> Vec<ProviderModelEntry> {
+    if let Some(s) = raw.map(str::trim).filter(|s| !s.is_empty()) {
+        if let Ok(list) = serde_json::from_str::<Vec<ProviderModelEntry>>(s) {
+            let cleaned = normalize_provider_models(&list);
+            if !cleaned.is_empty() {
+                return cleaned;
+            }
+        }
+    }
+    let id = fallback_model.trim();
+    if id.is_empty() {
+        return Vec::new();
+    }
+    let name = fallback_display.trim();
+    vec![ProviderModelEntry {
+        id: id.to_string(),
+        name: if name.is_empty() {
+            id.to_string()
+        } else {
+            name.to_string()
+        },
+    }]
+}
+
+/// Ensure `active_model` is in `models`; pick first when missing.
+fn resolve_active_model(models: &[ProviderModelEntry], preferred: &str) -> String {
+    let pref = preferred.trim();
+    if !pref.is_empty() && models.iter().any(|m| m.id == pref) {
+        return pref.to_string();
+    }
+    models
+        .first()
+        .map(|m| m.id.clone())
+        .unwrap_or_else(|| pref.to_string())
+}
+
 fn ensure_agent_home() -> Result<PathBuf, String> {
     ensure_app_dirs().map_err(|e| e.to_string())?;
     let home = agent_home_dir();
@@ -428,6 +518,7 @@ pub fn maybe_migrate_legacy_relay(
         api_backend: Some("responses".into()),
         set_as_default: Some(true),
         create_only: Some(true),
+        models: None,
     })?;
     Ok(())
 }
@@ -549,6 +640,13 @@ fn build_list_result(home: PathBuf, path: PathBuf, text: &str) -> ProvidersListR
             .unwrap_or(false);
         let api_backend = normalize_backend(s.fields.get("api_backend").map(|s| s.as_str()));
         let is_default = def.as_deref() == Some(s.id.as_str());
+        // Prefer model display names from catalog; fall back to request id (not
+        // channel name) so multi-model rows stay distinct from the provider card.
+        let models = decode_app_models(
+            s.fields.get(APP_MODELS_KEY).map(|x| x.as_str()),
+            &model,
+            &model,
+        );
         providers.push(CustomProvider {
             id: s.id,
             model,
@@ -557,6 +655,7 @@ fn build_list_result(home: PathBuf, path: PathBuf, text: &str) -> ProvidersListR
             has_api_key,
             api_backend,
             is_default,
+            models,
         });
     }
     let (active_source, active_provider_id) =
@@ -765,6 +864,21 @@ pub fn upsert_custom_provider(input: UpsertProviderInput) -> Result<ProvidersLis
         .unwrap_or(id.as_str())
         .to_string();
 
+    let prev_app_models = existing
+        .and_then(|s| s.fields.get(APP_MODELS_KEY))
+        .cloned();
+    let models = if let Some(ref list) = input.models {
+        let mut cleaned = normalize_provider_models(list);
+        if cleaned.is_empty() {
+            cleaned = decode_app_models(None, &model, &model);
+        }
+        cleaned
+    } else {
+        decode_app_models(prev_app_models.as_deref(), &model, &model)
+    };
+    let model = resolve_active_model(&models, &model);
+    let app_models_json = encode_app_models(&models);
+
     text = remove_section(&text, &id);
     text = append_section(
         &text,
@@ -775,6 +889,7 @@ pub fn upsert_custom_provider(input: UpsertProviderInput) -> Result<ProvidersLis
             ("name".into(), name),
             ("api_key".into(), next_key),
             ("api_backend".into(), api_backend),
+            (APP_MODELS_KEY.into(), app_models_json),
         ],
     );
 
@@ -1015,6 +1130,10 @@ mod tests {
                 has_api_key: true,
                 api_backend: "responses".into(),
                 is_default: true,
+                models: vec![ProviderModelEntry {
+                    id: "m".into(),
+                    name: "m".into(),
+                }],
             }],
             default_model: Some("relay".into()),
             active_source: "custom".into(),
@@ -1056,5 +1175,51 @@ mod tests {
         assert_eq!(sections.len(), 1);
         assert_eq!(get_models_default(&text).as_deref(), Some("demo"));
         assert!(is_custom(&sections[0].fields));
+    }
+
+    #[test]
+    fn app_models_roundtrip_and_normalize() {
+        let list = normalize_provider_models(&[
+            ProviderModelEntry {
+                id: " deepseek-v4-flash ".into(),
+                name: "DeepSeek V4".into(),
+            },
+            ProviderModelEntry {
+                id: "deepseek-v4-flash".into(),
+                name: "dup".into(),
+            },
+            ProviderModelEntry {
+                id: "".into(),
+                name: "skip".into(),
+            },
+            ProviderModelEntry {
+                id: "other".into(),
+                name: "  ".into(),
+            },
+        ]);
+        assert_eq!(
+            list,
+            vec![
+                ProviderModelEntry {
+                    id: "deepseek-v4-flash".into(),
+                    name: "DeepSeek V4".into(),
+                },
+                ProviderModelEntry {
+                    id: "other".into(),
+                    name: "other".into(),
+                },
+            ]
+        );
+        let json = encode_app_models(&list);
+        let decoded = decode_app_models(Some(&json), "fallback", "Fallback");
+        assert_eq!(decoded, list);
+        assert_eq!(
+            resolve_active_model(&list, "other"),
+            "other"
+        );
+        assert_eq!(
+            resolve_active_model(&list, "missing"),
+            "deepseek-v4-flash"
+        );
     }
 }

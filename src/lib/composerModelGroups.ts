@@ -2,7 +2,7 @@ import type { ModelOption } from "@/lib/grokCatalog";
 
 export type ComposerModelPick =
   | { kind: "official"; modelId: string }
-  | { kind: "custom"; providerId: string };
+  | { kind: "custom"; providerId: string; modelId: string };
 
 export type ComposerModelEntry = {
   pick: ComposerModelPick;
@@ -19,11 +19,35 @@ export type ComposerModelGroup = {
   entries: ComposerModelEntry[];
 };
 
+export type ComposerProviderModelInput = {
+  id: string;
+  name: string;
+};
+
 export type ComposerProviderInput = {
   id: string;
   name: string;
+  /** Active request model for this channel. */
   model: string;
+  /** Catalog of selectable models; falls back to single `model` when empty. */
+  models?: ComposerProviderModelInput[];
 };
+
+function modelsForProvider(
+  p: ComposerProviderInput,
+): ComposerProviderModelInput[] {
+  if (p.models && p.models.length > 0) {
+    return p.models
+      .map((m) => ({
+        id: m.id?.trim() ?? "",
+        name: (m.name?.trim() || m.id?.trim()) ?? "",
+      }))
+      .filter((m) => m.id);
+  }
+  const id = p.model?.trim() ?? "";
+  if (!id) return [];
+  return [{ id, name: id }];
+}
 
 export function buildComposerModelGroups(opts: {
   officialModels: ModelOption[];
@@ -46,22 +70,26 @@ export function buildComposerModelGroups(opts: {
     });
   }
   for (const p of opts.providers) {
-    const model = p.model?.trim() ?? "";
-    if (!model) continue;
-    const name = p.name?.trim() ?? "";
-    const title = name || model;
-    const subtitle = name && name !== model ? model : undefined;
+    const models = modelsForProvider(p);
+    if (models.length === 0) continue;
+    const groupTitle = p.name?.trim() || p.id;
     groups.push({
       key: `provider:${p.id}`,
-      title: name || p.id,
-      entries: [
-        {
-          key: `custom:${p.id}`,
-          pick: { kind: "custom", providerId: p.id },
+      title: groupTitle,
+      entries: models.map((m) => {
+        const title = m.name || m.id;
+        const subtitle = title !== m.id ? m.id : undefined;
+        return {
+          key: `custom:${p.id}:${m.id}`,
+          pick: {
+            kind: "custom" as const,
+            providerId: p.id,
+            modelId: m.id,
+          },
           title,
           subtitle,
-        },
-      ],
+        };
+      }),
     });
   }
   return groups;
@@ -83,7 +111,8 @@ export function filterComposerModelGroups(
           g.title.toLowerCase().includes(q) ||
           (e.pick.kind === "official"
             ? e.pick.modelId.toLowerCase().includes(q)
-            : e.pick.providerId.toLowerCase().includes(q)),
+            : e.pick.providerId.toLowerCase().includes(q) ||
+              e.pick.modelId.toLowerCase().includes(q)),
       ),
     }))
     .filter((g) => g.entries.length > 0);
@@ -95,6 +124,8 @@ export function isComposerModelEntryActive(
   opts: {
     activeSource: "official" | "custom" | string;
     activeProviderId: string | null | undefined;
+    /** Active custom request model (provider.model). */
+    activeRequestModel?: string | null;
     modelId: string;
   },
 ): boolean {
@@ -103,8 +134,12 @@ export function isComposerModelEntryActive(
       opts.activeSource !== "custom" && entry.pick.modelId === opts.modelId
     );
   }
+  const requestOk =
+    !opts.activeRequestModel ||
+    opts.activeRequestModel === entry.pick.modelId;
   return (
     opts.activeSource === "custom" &&
-    opts.activeProviderId === entry.pick.providerId
+    opts.activeProviderId === entry.pick.providerId &&
+    requestOk
   );
 }

@@ -29,12 +29,13 @@ Custom providers are written to **`$GROK_HOME/config.toml`** as `[model.<id>]` s
 | Field | Role |
 |-------|------|
 | `id` | Config section slug (`[model.<id>]`) |
-| `name` | Display label |
+| `name` | Channel display label (provider card / menu group) |
 | `baseUrl` | OpenAI-compatible root, usually ends with `/v1` |
 | `apiKey` | Required for custom relay; never returned plaintext to UI |
-| `model` | Request body model id |
+| `model` | **Active** request body model id (written to config `model = …`) |
+| `models` | Multi-model catalog (`[{id, name}]`); App field `app_models` JSON in TOML (ignored by Grok Build). Each entry has request id + **display name** for composer chip |
 | `apiBackend` | Message format: `responses` (default) \| `chat_completions` \| `messages` |
-| `isDefault` | Maps to `[models].default` |
+| `isDefault` | Maps to `[models].default` (set only via **Use** / composer pick activate, not a form checkbox) |
 
 CPA / sub2api / grok-go are **not special-cased** — any compatible base URL works.
 No bundled third-party presets (e.g. yunyi) ship with the app; users add relays themselves.

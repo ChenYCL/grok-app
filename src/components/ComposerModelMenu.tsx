@@ -326,10 +326,19 @@ export function ComposerModelMenu({
     activeSource === "custom" && activeProviderId
       ? (() => {
           const p = providers.find((x) => x.id === activeProviderId);
-          return p
-            ? { name: p.name, model: p.model }
-            : null;
+          if (!p) return null;
+          const activeId = p.model?.trim() ?? "";
+          const entry =
+            p.models?.find((m) => m.id === activeId) ??
+            (activeId ? { id: activeId, name: activeId } : null);
+          return entry
+            ? { name: entry.name || entry.id, model: entry.id }
+            : { name: p.name, model: p.model };
         })()
+      : null;
+  const activeRequestModel =
+    activeSource === "custom"
+      ? providers.find((x) => x.id === activeProviderId)?.model ?? null
       : null;
   const officialLabel = activeModel?.label ?? modelId;
   const modelLabel = composerModelChipLabel({
@@ -434,6 +443,7 @@ export function ComposerModelMenu({
                         const active = isComposerModelEntryActive(entry, {
                           activeSource,
                           activeProviderId,
+                          activeRequestModel,
                           modelId,
                         });
                         return (
