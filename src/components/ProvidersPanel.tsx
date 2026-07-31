@@ -38,6 +38,11 @@ export interface ProvidersPanelProps {
   locale: Locale;
   /** Official OAuth / CLI auth / official API key present. */
   officialAvailable?: boolean;
+  /**
+   * Provider list mutated (create / update / delete / import).
+   * Parent should refresh composer model groups — lightweight, no route recycle toast.
+   */
+  onProvidersChanged?: () => void;
   /** Called after switching official/custom so host can reconnect Grok Build. */
   onProviderActivated?: () => void;
   /** Ephemeral feedback (e.g. fetch models result). */
@@ -159,6 +164,7 @@ function ccSwitchStatusKey(status: string): MessageKey {
 export function ProvidersPanel({
   locale,
   officialAvailable = false,
+  onProvidersChanged,
   onProviderActivated,
   onToast,
 }: ProvidersPanelProps) {
@@ -368,6 +374,7 @@ export function ProvidersPanel({
       const failN = r.failed?.length ?? 0;
       if (r.imported > 0) {
         await reload();
+        onProvidersChanged?.();
       }
       // Success with at least one imported → close dialog (toast-style summary optional).
       if (r.imported > 0 && failN === 0) {
@@ -571,6 +578,8 @@ export function ProvidersPanel({
         setRightMode("empty");
         setSelection(null);
       }
+      // Always refresh composer model groups (list may have new models/names).
+      onProvidersChanged?.();
       const needsReload = providerMutationNeedsAgentReload({
         setAsDefault: false,
         providerId: id,
@@ -604,6 +613,8 @@ export function ProvidersPanel({
   const confirmRemove = async () => {
     if (!deleteTarget) return;
     const { id } = deleteTarget;
+    const wasActive =
+      activeSource === "custom" && activeProviderId === id;
     setBusy(true);
     setDeleteTarget(null);
     try {
@@ -611,6 +622,11 @@ export function ProvidersPanel({
       setList(r);
       if (editingId === id || selection === id) {
         closeRight();
+      }
+      onProvidersChanged?.();
+      // Deleting the live route falls back to official — recycle chrome like activate.
+      if (wasActive) {
+        onProviderActivated?.();
       }
     } catch (e) {
       setError(String(e));

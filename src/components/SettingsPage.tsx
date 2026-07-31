@@ -663,6 +663,8 @@ export interface SettingsPageProps {
   defaultOpenTarget?: string;
   onDefaultOpenTarget?: (v: string) => void;
   /** After switching official/custom provider — reconnect Grok Build agent. */
+  /** Provider catalog CRUD — refresh composer model groups. */
+  onProvidersChanged?: () => void;
   onProviderActivated?: () => void;
   /** Archived chats grouped by project (settings → archived). */
   archivedGroups?: ArchivedProjectGroup[];
@@ -1295,6 +1297,7 @@ export function SettingsPage({
   onImportChat,
   defaultOpenTarget = "finder",
   onDefaultOpenTarget,
+  onProvidersChanged,
   onProviderActivated,
   archivedGroups = [],
   onRestoreArchivedSessions,
@@ -5599,6 +5602,7 @@ export function SettingsPage({
                     account?.hasOfficialKey
                   )
                 }
+                onProvidersChanged={onProvidersChanged}
                 onProviderActivated={onProviderActivated}
                 onToast={(msg, ms) => showSettingsToast(msg, ms ?? 2800)}
               />

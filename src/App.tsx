@@ -16081,6 +16081,10 @@ export default function App() {
           trustedProjects={projects
             .filter((p) => p.trusted)
             .map((p) => ({ id: p.id, name: p.name, path: p.path }))}
+          onProvidersChanged={() => {
+            // CRUD on provider list / models / efforts — keep composer menu in sync.
+            void refreshProviderRoute();
+          }}
           onProviderActivated={() => {
             // Host already recycled warm agents on upsert/activate. Refresh UI
             // chrome only — never park (sessionDisconnect) a live process: that
