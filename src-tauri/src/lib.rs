@@ -576,6 +576,7 @@ pub fn run() {
             commands::x_evidence_search,
             commands::x_evidence_list,
             commands::x_evidence_get,
+            commands::x_evidence_stats,
             commands::x_quote_pack,
         ])
         .build(tauri::generate_context!())

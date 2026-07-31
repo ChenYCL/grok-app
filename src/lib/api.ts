@@ -4495,3 +4495,13 @@ export async function xQuotePack(
 ): Promise<XQuotePack> {
   return invoke<XQuotePack>("x_quote_pack", { ids, title: title ?? null });
 }
+
+export interface XEvidenceStats {
+  total: number;
+  todayNew: number;
+  weekPacks: number;
+}
+
+export async function xEvidenceStats(): Promise<XEvidenceStats> {
+  return invoke<XEvidenceStats>("x_evidence_stats");
+}

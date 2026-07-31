@@ -648,6 +648,12 @@ export const zhTW: Record<MessageKey, string> = {
   "dashboard.tool": "工具：{name}",
   "dashboard.toolLabel": "工具",
   "dashboard.open": "Agent 儀表板",
+  "dashboard.evidence.title": "X 證據",
+  "dashboard.evidence.hint":
+    "X 證據軌 — x_evidence_search 落庫的本地證據（docs/features/x-search.md）",
+  "dashboard.evidence.todayNew": "今日新證 {n}",
+  "dashboard.evidence.weekPacks": "本週引用包 {n}",
+  "dashboard.evidence.total": "共 {n} 條",
   "dashboard.batchAgents": "批量 Agent…",
   "dashboard.batchAgentsTitle":
     "將同一提示詞派發到多個專案（工作階段或無頭摘要）",

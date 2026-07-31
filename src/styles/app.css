@@ -24061,6 +24061,29 @@ html[data-theme="light"] .rim-sidebar {
 .agent-dash__chip.is-active .agent-dash__chip-count {
   opacity: 0.9;
 }
+.agent-dash__evidence {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  flex-shrink: 0;
+  padding: 6px 10px;
+  border-radius: 8px;
+  font-size: 11px;
+  background: var(--bg-hover, rgba(127, 127, 127, 0.06));
+  border: 1px solid color-mix(in srgb, var(--accent, #5b8def) 18%, transparent);
+}
+.agent-dash__evidence-title {
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+.agent-dash__evidence-stat {
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+.agent-dash__evidence-stat--dim {
+  color: var(--text-tertiary);
+}
 .agent-dash__toolbar {
   display: flex;
   align-items: center;
