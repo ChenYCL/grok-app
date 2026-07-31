@@ -10,6 +10,7 @@ import {
 import type { Attachment } from "@/lib/attachments";
 import type { SessionSnapshot, SessionState } from "@/lib/session";
 import {
+  applyClearSendQueuePlan,
   claimQueueHead,
   dropQueuesForSessions,
   enqueueSend,
@@ -17,14 +18,17 @@ import {
   makeQueuedSend,
   migrateDraftQueue,
   moveQueuedSend,
+  planClearSendQueue,
   queueSessionKey,
   removeQueuedSend,
+  reorderQueuedSend,
   requeueAfterFlushFail,
   SEND_QUEUE_MAX,
   setQueueForKey,
   shouldEnqueueSend,
   shouldHoldFlushForLive,
   updateQueuedSend,
+  type ClearSendQueuePlan,
   type QueueMoveDirection,
   type QueuedSend,
   type QueuedSendPatch,
@@ -172,11 +176,38 @@ export function useSendQueue({
     [sessionId, writeMap],
   );
 
-  const clearQueue = useCallback(() => {
+  /** Reorder by index (clamp via pure helper); same flush semantics as moveItem. */
+  const reorderItem = useCallback(
+    (fromIndex: number, toIndex: number) => {
+      const key = queueSessionKey(sessionId);
+      const prev = getQueueForKey(sendQueueByKeyRef.current, key);
+      const updated = reorderQueuedSend(prev, fromIndex, toIndex);
+      if (updated === prev) return false;
+      writeMap(setQueueForKey(sendQueueByKeyRef.current, key, updated));
+      return true;
+    },
+    [sessionId, writeMap],
+  );
+
+  /**
+   * Clear the viewed session queue.
+   * Prefer planning with {@link planClearQueue} + GlassModal confirm when
+   * `confirmNeeded` before calling this (never window.confirm).
+   */
+  const clearQueue = useCallback((): ClearSendQueuePlan => {
     const key = queueSessionKey(sessionId);
+    const prev = getQueueForKey(sendQueueByKeyRef.current, key);
+    const plan = planClearSendQueue(prev);
     cancelFlushTimer();
-    writeMap(setQueueForKey(sendQueueByKeyRef.current, key, []));
+    writeMap(applyClearSendQueuePlan(sendQueueByKeyRef.current, key, plan));
+    return plan;
   }, [sessionId, writeMap, cancelFlushTimer]);
+
+  /** Pure clear plan for the viewed queue (does not mutate). */
+  const planClearQueue = useCallback((): ClearSendQueuePlan => {
+    const key = queueSessionKey(sessionId);
+    return planClearSendQueue(getQueueForKey(sendQueueByKeyRef.current, key));
+  }, [sessionId]);
 
   const clearDraftQueue = useCallback(() => {
     writeMap(setQueueForKey(sendQueueByKeyRef.current, "__draft__", []));
@@ -320,7 +351,9 @@ export function useSendQueue({
     removeItem,
     updateItem,
     moveItem,
+    reorderItem,
     clearQueue,
+    planClearQueue,
     clearDraftQueue,
     dropSessions,
     migrateDraft,
