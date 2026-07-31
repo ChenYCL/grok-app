@@ -4,6 +4,10 @@
 //! paths when applicable) plus optional `grok inspect` managed-settings flags.
 //! Never reads signature *contents* — only file existence.
 //! Soft-fails when CLI / inspect is unavailable.
+//!
+//! **Signature honesty:** the App never re-verifies crypto. When inspect (or
+//! future doctor fields) explicitly report signature verification, we surface
+//! that; otherwise `presence_only = true` and `signature_verified = None`.
 
 use std::path::{Path, PathBuf};
 use std::time::Duration;
@@ -42,6 +46,15 @@ pub struct ManagedSetupStatus {
     pub managed_settings_exists: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub managed_settings_path: Option<String>,
+    /// Explicit CLI/inspect/doctor signature verification when reported.
+    /// `None` = not reported (App never invents verified).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub signature_verified: Option<bool>,
+    /// Source of verification claim (`inspect` | `doctor`); null when presence-only.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub signature_verify_source: Option<String>,
+    /// True when status is path/inspect presence only (App did not crypto-verify).
+    pub presence_only: bool,
     /// Soft-fail note (inspect skipped / CLI missing, etc.).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub reason: Option<String>,
@@ -103,6 +116,69 @@ pub fn extract_managed_settings_from_inspect(
     (active, exists, path)
 }
 
+/// Explicit signature verification claim from inspect (or nested doctor-like) JSON.
+///
+/// Looks for known boolean fields only — never invents `true` from path presence
+/// or `managedSettingsActive`. Returns `(verified, source)` when found.
+pub fn extract_signature_verification(
+    root: &serde_json::Value,
+) -> (Option<bool>, Option<String>) {
+    // Candidate objects that may carry an explicit verification flag.
+    let candidates: Vec<(&str, Option<&serde_json::Value>)> = vec![
+        ("inspect", Some(root)),
+        ("inspect.permissions", root.get("permissions")),
+        ("inspect.managedConfig", root.get("managedConfig")),
+        ("inspect.managed_config", root.get("managed_config")),
+        ("inspect.signatures", root.get("signatures")),
+        (
+            "inspect.managedConfigSignatures",
+            root.get("managedConfigSignatures"),
+        ),
+        (
+            "inspect.managed_config_signatures",
+            root.get("managed_config_signatures"),
+        ),
+        ("inspect.doctor", root.get("doctor")),
+    ];
+
+    const KEYS: &[&str] = &[
+        "signatureVerified",
+        "signature_verified",
+        "managedConfigSignatureVerified",
+        "managed_config_signature_verified",
+        "managedSignatureVerified",
+        "managed_signature_verified",
+        "configSignatureVerified",
+        "config_signature_verified",
+        "verified",
+    ];
+
+    for (source, node) in candidates {
+        let Some(obj) = node.and_then(|v| v.as_object()) else {
+            continue;
+        };
+        for key in KEYS {
+            // Skip bare `verified` outside signature-ish containers to avoid
+            // treating unrelated flags as crypto verification.
+            if *key == "verified" {
+                let src_l = source.to_ascii_lowercase();
+                if !src_l.contains("signature") && !src_l.contains("managed_config") {
+                    continue;
+                }
+            }
+            if let Some(b) = obj.get(*key).and_then(|v| v.as_bool()) {
+                let src = if source.starts_with("inspect.doctor") {
+                    "doctor"
+                } else {
+                    "inspect"
+                };
+                return (Some(b), Some(src.to_string()));
+            }
+        }
+    }
+    (None, None)
+}
+
 /// Build a status DTO from pure inputs (tests do not need disk / CLI).
 pub fn build_managed_setup_status(
     cli_found: bool,
@@ -117,6 +193,23 @@ pub fn build_managed_setup_status(
         Some(v) => extract_managed_settings_from_inspect(v),
         None => (None, None, None),
     };
+    let (sig_verified, sig_source) = match inspect {
+        Some(v) => extract_signature_verification(v),
+        None => (None, None),
+    };
+    // Presence only when CLI did not report an explicit verification claim.
+    let presence_only = sig_verified.is_none();
+    // Soft-fail honesty note when we only have path presence.
+    let reason = match (&reason, presence_only, cfg || req || cfg_sig || id_sig || system_managed) {
+        (Some(r), _, _) => Some(r.clone()),
+        (None, true, true) => {
+            Some("presence only — App does not re-verify cryptographic signatures".into())
+        }
+        (None, true, false) if !cli_found => {
+            Some("Grok Build CLI not found; local files only".into())
+        }
+        _ => reason,
+    };
     ManagedSetupStatus {
         ok: true,
         cli_found,
@@ -129,6 +222,9 @@ pub fn build_managed_setup_status(
         managed_settings_active: active,
         managed_settings_exists: exists,
         managed_settings_path: path,
+        signature_verified: sig_verified,
+        signature_verify_source: sig_source,
+        presence_only,
         reason,
     }
 }
@@ -259,5 +355,88 @@ mod tests {
         assert!(!st.cli_found);
         assert_eq!(st.reason.as_deref(), Some("CLI missing"));
         assert!(st.managed_settings_active.is_none());
+        assert!(st.presence_only);
+        assert!(st.signature_verified.is_none());
+    }
+
+    #[test]
+    fn extract_signature_verification_explicit_only() {
+        // No invent from managedSettingsActive alone.
+        let active_only = serde_json::json!({
+            "permissions": {
+                "managedSettingsActive": true,
+                "managedSettingsExists": true
+            }
+        });
+        let (v, src) = extract_signature_verification(&active_only);
+        assert!(v.is_none());
+        assert!(src.is_none());
+
+        let verified = serde_json::json!({
+            "permissions": {
+                "managedSettingsActive": true,
+                "signatureVerified": true
+            }
+        });
+        let (v, src) = extract_signature_verification(&verified);
+        assert_eq!(v, Some(true));
+        assert_eq!(src.as_deref(), Some("inspect"));
+
+        let failed = serde_json::json!({
+            "managedConfig": { "signature_verified": false }
+        });
+        let (v, src) = extract_signature_verification(&failed);
+        assert_eq!(v, Some(false));
+        assert_eq!(src.as_deref(), Some("inspect"));
+    }
+
+    #[test]
+    fn build_status_presence_only_without_verify_claim() {
+        let st = build_managed_setup_status(
+            true,
+            Some(Path::new("/tmp/fake-grok")),
+            (true, false, true, false),
+            false,
+            Some(&serde_json::json!({
+                "permissions": {
+                    "managedSettingsActive": true,
+                    "managedSettingsExists": true,
+                    "managedSettingsPath": "/tmp/managed-settings.json"
+                }
+            })),
+            None,
+        );
+        assert!(st.ok);
+        assert!(st.managed_config_present);
+        assert!(st.config_signature_present);
+        assert_eq!(st.managed_settings_active, Some(true));
+        // Never invent verify_ok from active + files.
+        assert!(st.presence_only);
+        assert!(st.signature_verified.is_none());
+        assert!(st
+            .reason
+            .as_deref()
+            .unwrap_or("")
+            .contains("presence only"));
+    }
+
+    #[test]
+    fn build_status_surfaces_cli_signature_verified() {
+        let st = build_managed_setup_status(
+            true,
+            Some(Path::new("/tmp/fake-grok")),
+            (true, false, true, false),
+            false,
+            Some(&serde_json::json!({
+                "permissions": {
+                    "managedSettingsActive": true,
+                    "signatureVerified": true
+                }
+            })),
+            None,
+        );
+        assert_eq!(st.signature_verified, Some(true));
+        assert_eq!(st.signature_verify_source.as_deref(), Some("inspect"));
+        assert!(!st.presence_only);
     }
 }

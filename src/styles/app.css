@@ -23358,6 +23358,18 @@ div.composer__input:empty::before {
   margin-bottom: 8px;
 }
 
+.managed-setup__status-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.managed-setup__recovery {
+  margin: 4px 0 2px;
+  color: var(--text-secondary);
+}
+
 .managed-setup__chips {
   display: flex;
   flex-wrap: wrap;

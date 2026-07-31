@@ -1,6 +1,6 @@
 /**
  * Settings → Runtime: managed configuration via `grok setup` / `grok setup --json`.
- * Guided steps, soft-fail local signature/artifact status, secret-safe preview.
+ * Guided steps, honest signature status (never invent verified), secret-safe preview.
  * Install confirms with GlassModal (never window.confirm).
  */
 
@@ -9,10 +9,11 @@ import * as api from "@/lib/api";
 import { createT, type Locale, type MessageKey } from "@/i18n";
 import {
   buildManagedSetupSteps,
+  buildSignatureView,
   classifySetupError,
-  deriveSignatureStatus,
   emptyManagedLocalStatus,
   extractPreviewMeta,
+  signatureRecoveryId,
   summarizeSetupJson,
   type ManagedLocalStatus,
   type ManagedPreviewMeta,
@@ -20,7 +21,9 @@ import {
   type ManagedSetupStep,
   type ManagedSetupStepId,
   type ManagedSetupSummary,
+  type ManagedSignatureRecoveryId,
   type ManagedSignatureStatus,
+  type ManagedSignatureView,
 } from "@/lib/managedSetup";
 import { isCliMissingError } from "@/lib/extensionsUi";
 import { GlassModal } from "@/components/GlassModal";
@@ -48,6 +51,9 @@ function mapApiStatus(
     managedSettingsActive: res.managedSettingsActive ?? null,
     managedSettingsExists: res.managedSettingsExists ?? null,
     managedSettingsPath: res.managedSettingsPath ?? null,
+    signatureVerified: res.signatureVerified ?? null,
+    signatureVerifySource: res.signatureVerifySource ?? null,
+    presenceOnly: res.presenceOnly ?? res.signatureVerified == null,
     reason: res.reason ?? null,
   };
 }
@@ -85,19 +91,73 @@ function stepStateKey(state: ManagedSetupStep["state"]): MessageKey {
 
 function signatureLabelKey(status: ManagedSignatureStatus): MessageKey {
   switch (status) {
-    case "none":
-      return "managedSetup.sig.none";
-    case "artifacts":
-      return "managedSetup.sig.artifacts";
-    case "sig_files":
-      return "managedSetup.sig.sigFiles";
-    case "active":
-      return "managedSetup.sig.active";
-    case "rejected":
-      return "managedSetup.sig.rejected";
-    case "unknown":
+    case "absent":
+      return "managedSetup.sig.absent";
+    case "present_unverified":
+      return "managedSetup.sig.presentUnverified";
+    case "verify_ok":
+      return "managedSetup.sig.verifyOk";
+    case "verify_failed":
+      return "managedSetup.sig.verifyFailed";
+    case "soft_fail":
     default:
-      return "managedSetup.sig.unknown";
+      return "managedSetup.sig.softFail";
+  }
+}
+
+function recoveryKey(id: ManagedSignatureRecoveryId): MessageKey {
+  switch (id) {
+    case "absent":
+      return "managedSetup.recovery.absent";
+    case "present_unverified":
+      return "managedSetup.recovery.presentUnverified";
+    case "verify_ok":
+      return "managedSetup.recovery.verifyOk";
+    case "verify_failed":
+      return "managedSetup.recovery.verifyFailed";
+    case "cli_missing":
+      return "managedSetup.recovery.cliMissing";
+    case "inspect_soft":
+      return "managedSetup.recovery.inspectSoft";
+    case "soft_fail":
+    default:
+      return "managedSetup.recovery.softFail";
+  }
+}
+
+function chipClassForStatus(status: ManagedSignatureStatus): string {
+  switch (status) {
+    case "verify_ok":
+      return "ext-badge ext-badge--ok";
+    case "verify_failed":
+      return "ext-badge ext-badge--fail";
+    case "present_unverified":
+      return "ext-badge ext-badge--warn";
+    case "soft_fail":
+    case "absent":
+    default:
+      return "ext-badge ext-badge--muted";
+  }
+}
+
+function factLabelKey(id: string): MessageKey | null {
+  switch (id) {
+    case "managed_config.toml":
+      return "managedSetup.chip.configToml";
+    case "managed_config.sig.json":
+      return "managedSetup.chip.configSig";
+    case "managed_identity.sig.json":
+      return "managedSetup.chip.identitySig";
+    case "requirements.toml":
+      return "managedSetup.chip.requirements";
+    case "system_managed_config":
+      return "managedSetup.chip.systemConfig";
+    case "managed_settings_active":
+      return "managedSetup.chip.managedActive";
+    case "signature_verified":
+      return "managedSetup.detail.signatureVerified";
+    default:
+      return null;
   }
 }
 
@@ -121,6 +181,7 @@ export function ManagedSetupPanel({
   const [errorKind, setErrorKind] = useState<ManagedSetupErrorKind | null>(null);
   const [status, setStatus] = useState<string | null>(null);
   const [confirmOpen, setConfirmOpen] = useState(false);
+  const [detailOpen, setDetailOpen] = useState(false);
 
   const refreshLocal = useCallback(async () => {
     if (!api.isTauri()) {
@@ -157,15 +218,27 @@ export function ManagedSetupPanel({
 
   const effectiveCliFound = local?.cliFound ?? cliFound;
 
-  const signatureStatus = useMemo(
+  const signatureView: ManagedSignatureView = useMemo(
     () =>
-      deriveSignatureStatus({
+      buildSignatureView({
         local,
         previewMeta,
         errorKind,
         installOk: installDone,
       }),
     [local, previewMeta, errorKind, installDone],
+  );
+
+  const signatureStatus = signatureView.status;
+
+  const recoveryId = useMemo(
+    () =>
+      signatureRecoveryId({
+        status: signatureStatus,
+        local,
+        errorKind,
+      }),
+    [signatureStatus, local, errorKind],
   );
 
   const steps = useMemo(
@@ -288,11 +361,7 @@ export function ManagedSetupPanel({
             : null;
 
   const hasLocalArtifacts =
-    !!local?.managedConfigPresent ||
-    !!local?.systemManagedConfigPresent ||
-    !!local?.requirementsPresent ||
-    !!local?.configSignaturePresent ||
-    !!local?.identitySignaturePresent;
+    signatureView.hasArtifacts || signatureView.hasSigFiles;
 
   return (
     <div className="managed-setup" data-testid="managed-setup-panel">
@@ -334,46 +403,69 @@ export function ManagedSetupPanel({
           {tr("managedSetup.stepsHint")}
         </p>
 
-        {/* Signature / local status */}
+        {/* Signature / local status card */}
         <div
           className="managed-setup__status"
           data-testid="managed-setup-status"
+          data-sig={signatureStatus}
           role="status"
         >
           <div className="managed-setup__status-row">
             <span className="settings-row__label">
-              {tr("managedSetup.statusTitle")}
+              {tr("managedSetup.sig.cardTitle")}
             </span>
-            <button
-              type="button"
-              className="btn btn--ghost btn--sm"
-              disabled={busy}
-              onClick={() => void refreshLocal()}
-              title={tr("managedSetup.refreshStatus")}
-              aria-label={tr("managedSetup.refreshStatus")}
-            >
-              <IconRefresh size={14} />
-              <span>
-                {loadingStatus
-                  ? tr("managedSetup.refreshing")
-                  : tr("managedSetup.refreshStatus")}
-              </span>
-            </button>
+            <div className="managed-setup__status-actions">
+              <button
+                type="button"
+                className="btn btn--ghost btn--sm"
+                disabled={busy}
+                onClick={() => setDetailOpen(true)}
+                title={tr("managedSetup.sig.detail")}
+                aria-label={tr("managedSetup.sig.detail")}
+              >
+                {tr("managedSetup.sig.detail")}
+              </button>
+              <button
+                type="button"
+                className="btn btn--ghost btn--sm"
+                disabled={busy}
+                onClick={() => void refreshLocal()}
+                title={tr("managedSetup.refreshStatus")}
+                aria-label={tr("managedSetup.refreshStatus")}
+              >
+                <IconRefresh size={14} />
+                <span>
+                  {loadingStatus
+                    ? tr("managedSetup.refreshing")
+                    : tr("managedSetup.refreshStatus")}
+                </span>
+              </button>
+            </div>
           </div>
+
           <div className="managed-setup__chips">
             <span
-              className={
-                "ext-badge" +
-                (signatureStatus === "active"
-                  ? ""
-                  : signatureStatus === "rejected"
-                    ? " ext-badge--error"
-                    : " ext-badge--muted")
-              }
+              className={chipClassForStatus(signatureStatus)}
               data-sig={signatureStatus}
+              data-testid="managed-setup-sig-chip"
             >
               {tr(signatureLabelKey(signatureStatus))}
             </span>
+            {signatureView.presenceOnly && (
+              <span
+                className="ext-badge ext-badge--muted"
+                data-testid="managed-setup-presence-only"
+              >
+                {tr("managedSetup.sig.presenceOnly")}
+              </span>
+            )}
+            {signatureView.verifySource && (
+              <span className="ext-badge ext-badge--muted">
+                {tr("managedSetup.sig.verifySource", {
+                  source: signatureView.verifySource,
+                })}
+              </span>
+            )}
             {local?.managedSettingsActive === true && (
               <span className="ext-badge">
                 {tr("managedSetup.chip.managedActive")}
@@ -405,9 +497,11 @@ export function ManagedSetupPanel({
               </span>
             )}
           </div>
-          <p className="settings-row__hint">
-            {tr("managedSetup.sigHint")}
+
+          <p className="settings-row__hint managed-setup__recovery" data-testid="managed-setup-recovery">
+            {tr(recoveryKey(recoveryId))}
           </p>
+          <p className="settings-row__hint">{tr("managedSetup.sigHint")}</p>
           {local?.grokHome && (
             <p className="settings-row__hint managed-setup__path">
               {tr("managedSetup.grokHome", { path: local.grokHome })}
@@ -605,6 +699,79 @@ export function ManagedSetupPanel({
         }
       >
         <p className="app-dialog__msg">{tr("managedSetup.confirmBody")}</p>
+      </GlassModal>
+
+      <GlassModal
+        open={detailOpen}
+        onClose={() => setDetailOpen(false)}
+        title={tr("managedSetup.sig.detailTitle")}
+        size="md"
+        closeLabel={tr("common.close")}
+        footer={
+          <button
+            type="button"
+            className="btn btn--solid"
+            onClick={() => setDetailOpen(false)}
+          >
+            {tr("common.close")}
+          </button>
+        }
+      >
+        <div className="managed-setup__detail" data-testid="managed-setup-sig-detail">
+          <p className="app-dialog__msg">
+            <span className={chipClassForStatus(signatureStatus)}>
+              {tr(signatureLabelKey(signatureStatus))}
+            </span>
+          </p>
+          <p className="settings-row__hint">{tr(recoveryKey(recoveryId))}</p>
+          <p className="settings-row__hint">{tr("managedSetup.sigHint")}</p>
+          {signatureView.presenceOnly && (
+            <p className="settings-row__hint">
+              {tr("managedSetup.sig.presenceOnlyDetail")}
+            </p>
+          )}
+          {signatureView.verifySource && (
+            <p className="settings-row__hint">
+              {tr("managedSetup.sig.verifySource", {
+                source: signatureView.verifySource,
+              })}
+            </p>
+          )}
+          <ul className="managed-setup__facts">
+            {signatureView.facts.map((f) => {
+              const label = factLabelKey(f.id);
+              return (
+                <li key={f.id}>
+                  <span className="managed-setup__fact-key">
+                    {label ? tr(label) : f.id}
+                  </span>
+                  <span className="managed-setup__fact-val">
+                    {f.detail
+                      ? f.detail
+                      : f.present
+                        ? tr("managedSetup.detail.present")
+                        : tr("managedSetup.detail.absent")}
+                  </span>
+                </li>
+              );
+            })}
+          </ul>
+          {local?.grokHome && (
+            <p className="settings-row__hint managed-setup__path">
+              {tr("managedSetup.grokHome", { path: local.grokHome })}
+            </p>
+          )}
+          {local?.managedSettingsPath && (
+            <p className="settings-row__hint managed-setup__path">
+              {tr("managedSetup.managedSettingsPath", {
+                path: local.managedSettingsPath,
+              })}
+            </p>
+          )}
+          {local?.reason && (
+            <p className="settings-row__hint">{local.reason}</p>
+          )}
+        </div>
       </GlassModal>
     </div>
   );
