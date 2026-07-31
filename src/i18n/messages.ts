@@ -3779,10 +3779,40 @@ const en = {
   "automations.runner.quitPauses":
     "{n} scheduled task(s) are enabled. Schedules only fire while this app process is running — there is no separate background daemon.",
   "automations.runner.openSettings": "Open tray setting",
+  "automations.runner.reason.none": "Schedules can fire while this process is alive.",
+  "automations.runner.reason.noEnabled":
+    "No enabled scheduled tasks — runner is idle until you enable one.",
+  "automations.runner.reason.unknown":
+    "Scheduler state unknown in this environment. Schedules only fire while the desktop app process is running — there is no separate background daemon.",
+  "automations.runner.reason.closeExits":
+    "Closing the window will quit the app and pause schedules. Turn on “Keep tray for schedules” or “Close window to tray” so the process stays alive. Full Quit still pauses them.",
+  "automations.runner.reason.processBound":
+    "Active while this app process is alive (window or tray). Full Quit pauses schedules until you reopen the app — not a detached daemon.",
+  "automations.runner.reason.awaitingTick":
+    "Scheduler started; waiting for the first host tick (boot delay, then about every 30s).",
+  "automations.honesty.legend": "How schedules run (honest limits)",
+  "automations.honesty.trayTitle": "Tray / window open",
+  "automations.honesty.trayBody":
+    "Host runner ticks while the process is alive — main window or tray-only is fine.",
+  "automations.honesty.quitTitle": "Full Quit",
+  "automations.honesty.quitBody":
+    "Schedules pause until you open Grok again (or login item / LaunchAgent restarts the full app).",
+  "automations.honesty.launchAgentTitle": "macOS LaunchAgent helper",
+  "automations.honesty.launchAgentBody":
+    "Optional: starts the full app at login and after a crash only — not a headless schedule daemon.",
   "automations.launchAgent.title": "macOS LaunchAgent helper",
   "automations.launchAgent.desc":
     "Optional: generate a helper under app data and install a user LaunchAgent that starts the full Grok App at login and restarts it after a crash only. Not a headless schedule daemon — tasks still tick inside the app (window or tray).",
   "automations.launchAgent.reveal": "Show helper files",
+  "automations.launchAgent.failTitle": "LaunchAgent helper could not be updated",
+  "automations.launchAgent.failEnable":
+    "Could not install or load the user LaunchAgent. Your toggle was left unchanged. Schedules still run only while Grok App is open or in the tray.",
+  "automations.launchAgent.failDisable":
+    "Could not remove or unload the user LaunchAgent. Your toggle was left unchanged. You can remove the plist manually from ~/Library/LaunchAgents if needed.",
+  "automations.launchAgent.failReveal":
+    "Could not open the helper files folder. Generate/enable the helper once, or check app data permissions.",
+  "automations.launchAgent.failHonesty":
+    "This helper is not a background schedule daemon. Even when installed, tasks tick only inside the full Grok App process (window or tray). A normal Quit still pauses schedules.",
   "automations.aiComposerHint":
     "Describe what to run and how often — Grok will schedule it for you when ready.",
   "automations.createdToast": "Scheduled: {title}",
@@ -8122,10 +8152,40 @@ const zh: Record<MessageKey, string> = {
   "automations.runner.quitPauses":
     "有 {n} 个已开启的已安排任务。调度仅在本应用进程运行时触发——没有独立的后台守护进程。",
   "automations.runner.openSettings": "打开托盘相关设置",
+  "automations.runner.reason.none": "本进程存活期间可以触发已安排任务。",
+  "automations.runner.reason.noEnabled":
+    "当前没有已启用的已安排任务——启用后才会调度。",
+  "automations.runner.reason.unknown":
+    "当前环境无法确认调度器状态。调度仅在桌面应用进程运行时触发——没有独立的后台守护进程。",
+  "automations.runner.reason.closeExits":
+    "关闭窗口会退出应用并暂停调度。请开启「为已安排任务保留托盘」或「关闭到托盘」以保留进程。完全退出仍会暂停。",
+  "automations.runner.reason.processBound":
+    "应用进程存活期间（窗口或托盘）会继续调度。完全退出后暂停，直到再次打开——不是独立守护进程。",
+  "automations.runner.reason.awaitingTick":
+    "调度器已启动；等待首次 Host 检查（启动延迟后约每 30 秒一次）。",
+  "automations.honesty.legend": "调度如何运行（诚实边界）",
+  "automations.honesty.trayTitle": "托盘 / 窗口打开",
+  "automations.honesty.trayBody":
+    "Host 调度器在进程存活时运转——主窗口或仅托盘均可。",
+  "automations.honesty.quitTitle": "完全退出",
+  "automations.honesty.quitBody":
+    "调度会暂停，直到你再次打开 Grok（或由登录项 / LaunchAgent 重新启动完整应用）。",
+  "automations.honesty.launchAgentTitle": "macOS LaunchAgent 助手",
+  "automations.honesty.launchAgentBody":
+    "可选：仅在登录与崩溃后启动完整应用——不是无界面调度守护进程。",
   "automations.launchAgent.title": "macOS LaunchAgent 助手",
   "automations.launchAgent.desc":
     "可选：在应用数据目录生成助手脚本，并安装用户级 LaunchAgent，在登录时启动完整 Grok 应用，并在崩溃后重启。不是无界面调度守护进程——任务仍在应用进程内（窗口或托盘）触发。",
   "automations.launchAgent.reveal": "显示助手文件",
+  "automations.launchAgent.failTitle": "无法更新 LaunchAgent 助手",
+  "automations.launchAgent.failEnable":
+    "无法安装或加载用户级 LaunchAgent，开关未改动。已安排任务仍仅在 Grok 应用打开或收起到托盘时运行。",
+  "automations.launchAgent.failDisable":
+    "无法移除或卸载用户级 LaunchAgent，开关未改动。如需可手动删除 ~/Library/LaunchAgents 下对应 plist。",
+  "automations.launchAgent.failReveal":
+    "无法打开助手文件目录。可先生成/启用一次助手，或检查应用数据目录权限。",
+  "automations.launchAgent.failHonesty":
+    "此助手不是后台调度守护进程。即便安装成功，任务仍只在完整 Grok 应用进程内（窗口或托盘）触发。正常退出仍会暂停调度。",
   "automations.aiComposerHint":
     "用自然语言描述要做什么、多久一次——准备好后 Grok 会自动创建已安排任务。",
   "automations.createdToast": "已安排：{title}",

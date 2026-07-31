@@ -3642,10 +3642,40 @@ export const zhTW: Record<MessageKey, string> = {
   "automations.runner.quitPauses":
     "有 {n} 個已開啟的已排程任務。排程僅在本應用行程執行時觸發——沒有獨立的背景守護行程。",
   "automations.runner.openSettings": "開啟系統匣相關設定",
+  "automations.runner.reason.none": "本行程存活期間可以觸發已排程任務。",
+  "automations.runner.reason.noEnabled":
+    "目前沒有已啟用的已排程任務——啟用後才會調度。",
+  "automations.runner.reason.unknown":
+    "目前環境無法確認排程器狀態。排程僅在桌面應用行程執行時觸發——沒有獨立的背景守護行程。",
+  "automations.runner.reason.closeExits":
+    "關閉視窗會結束應用並暫停排程。請開啟「為已排程任務保留系統匣」或「關閉到系統匣」以保留行程。完全結束仍會暫停。",
+  "automations.runner.reason.processBound":
+    "應用行程存活期間（視窗或系統匣）會繼續排程。完全結束後暫停，直到再次開啟——不是獨立守護行程。",
+  "automations.runner.reason.awaitingTick":
+    "排程器已啟動；等待首次 Host 檢查（啟動延遲後約每 30 秒一次）。",
+  "automations.honesty.legend": "排程如何執行（誠實界線）",
+  "automations.honesty.trayTitle": "系統匣 / 視窗開啟",
+  "automations.honesty.trayBody":
+    "Host 排程器在行程存活時運轉——主視窗或僅系統匣均可。",
+  "automations.honesty.quitTitle": "完全結束",
+  "automations.honesty.quitBody":
+    "排程會暫停，直到你再次開啟 Grok（或由登入項目 / LaunchAgent 重新啟動完整應用）。",
+  "automations.honesty.launchAgentTitle": "macOS LaunchAgent 助手",
+  "automations.honesty.launchAgentBody":
+    "可選：僅在登入與崩潰後啟動完整應用——不是無介面排程守護行程。",
   "automations.launchAgent.title": "macOS LaunchAgent 助手",
   "automations.launchAgent.desc":
     "可選：在應用資料目錄產生助手腳本，並安裝使用者級 LaunchAgent，在登入時啟動完整 Grok 應用，並在崩潰後重新啟動。不是無介面排程守護行程——任務仍在應用行程內（視窗或系統匣）觸發。",
   "automations.launchAgent.reveal": "顯示助手檔案",
+  "automations.launchAgent.failTitle": "無法更新 LaunchAgent 助手",
+  "automations.launchAgent.failEnable":
+    "無法安裝或載入使用者級 LaunchAgent，開關未變更。已排程任務仍僅在 Grok 應用開啟或收進系統匣時執行。",
+  "automations.launchAgent.failDisable":
+    "無法移除或卸載使用者級 LaunchAgent，開關未變更。如需可手動刪除 ~/Library/LaunchAgents 下對應 plist。",
+  "automations.launchAgent.failReveal":
+    "無法開啟助手檔案目錄。可先產生/啟用一次助手，或檢查應用資料目錄權限。",
+  "automations.launchAgent.failHonesty":
+    "此助手不是背景排程守護行程。即便安裝成功，任務仍只在完整 Grok 應用行程內（視窗或系統匣）觸發。正常結束仍會暫停排程。",
   "automations.aiComposerHint":
     "用自然語言描述要做什麼、多久一次——準備好後 Grok 會自動建立已排程任務。",
   "automations.createdToast": "已排程：{title}",

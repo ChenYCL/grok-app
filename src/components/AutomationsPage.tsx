@@ -13,7 +13,14 @@ import {
   type Automation,
 } from "@/lib/automations";
 import { automationsRunnerBanner } from "@/lib/automationsRunnerPolicy";
+import {
+  automationsHonestyMatrix,
+  deriveAutomationsRunnerSurface,
+  launchAgentSoftFail,
+  type LaunchAgentSoftFail,
+} from "@/lib/automationsHeadlessHonesty";
 import { Select } from "@/components/Select";
+import { GlassModal } from "@/components/GlassModal";
 import {
   IconAutomations,
   IconClose,
@@ -120,6 +127,9 @@ export function AutomationsPage({
   const [launchAgent, setLaunchAgent] =
     useState<api.SchedulesLaunchAgentStatusDto | null>(null);
   const [launchAgentBusy, setLaunchAgentBusy] = useState(false);
+  /** Soft-fail modal when LaunchAgent install/remove/reveal fails (no fake daemon). */
+  const [launchAgentFail, setLaunchAgentFail] =
+    useState<LaunchAgentSoftFail | null>(null);
   const createBtnRef = useRef<HTMLButtonElement>(null);
   const createMenuRef = useRef<HTMLDivElement>(null);
   const deleteConfirmBtnRef = useRef<HTMLButtonElement>(null);
@@ -190,15 +200,65 @@ export function AutomationsPage({
     ],
   );
 
+  /** Host runner status surface: last tick + honest pause reason. */
+  const runnerSurface = useMemo(
+    () =>
+      deriveAutomationsRunnerSurface({
+        runnerKnown: api.isTauri(),
+        running: !!runnerStatus?.running,
+        lastTickAt: runnerStatus?.lastTickAt ?? null,
+        tickIntervalSecs: runnerStatus?.tickIntervalSecs ?? 30,
+        enabledCount,
+        closeToTray,
+        keepTrayForSchedules,
+        launchAgentEnabled: !!launchAgent?.enabled,
+      }),
+    [
+      runnerStatus?.running,
+      runnerStatus?.lastTickAt,
+      runnerStatus?.tickIntervalSecs,
+      enabledCount,
+      closeToTray,
+      keepTrayForSchedules,
+      launchAgent?.enabled,
+    ],
+  );
+
+  const honestyRows = useMemo(
+    () =>
+      automationsHonestyMatrix({
+        // Always show LaunchAgent row on macOS status; on other platforms hide
+        // unless we already know support (desktop macOS = true from host).
+        launchAgentSupported:
+          launchAgent == null ? true : !!launchAgent.supported,
+      }),
+    [launchAgent],
+  );
+
   const onToggleLaunchAgent = async (next: boolean) => {
     setLaunchAgentBusy(true);
     try {
       const st = await api.schedulesLaunchAgentSetEnabled(next);
       setLaunchAgent(st);
     } catch (e) {
-      setError(String(e));
+      // Soft-fail: do not flip toggle; GlassModal explains limits.
+      setLaunchAgentFail(launchAgentSoftFail(e, next ? "enable" : "disable"));
+      try {
+        const st = await api.schedulesLaunchAgentStatus();
+        setLaunchAgent(st);
+      } catch {
+        /* keep prior */
+      }
     } finally {
       setLaunchAgentBusy(false);
+    }
+  };
+
+  const onRevealLaunchAgent = async () => {
+    try {
+      await api.schedulesLaunchAgentRevealHelper();
+    } catch (e) {
+      setLaunchAgentFail(launchAgentSoftFail(e, "reveal"));
     }
   };
 
@@ -573,6 +633,29 @@ export function AutomationsPage({
           </div>
         ) : null}
 
+        {/* AUTO-HEADLESS-LITE: tray vs quit vs LaunchAgent product truth */}
+        <div
+          className="auto-page__honesty"
+          role="group"
+          aria-label={t("automations.honesty.legend")}
+        >
+          <div className="auto-page__honesty-title">
+            {t("automations.honesty.legend")}
+          </div>
+          <ul className="auto-page__honesty-list">
+            {honestyRows.map((row) => (
+              <li key={row.id} className="auto-page__honesty-item">
+                <strong className="auto-page__honesty-item-title">
+                  {t(row.titleKey)}
+                </strong>
+                <span className="auto-page__honesty-item-body">
+                  {t(row.bodyKey)}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+
         <div className="auto-page__bg-rows">
           <div className="auto-page__bg-row">
             <div className="auto-page__bg-row-text">
@@ -580,17 +663,37 @@ export function AutomationsPage({
                 {t("automations.runner.statusLabel")}
               </div>
               <div className="auto-page__bg-row-desc">
-                {runnerStatus?.running
+                {runnerSurface.phase === "running"
                   ? t("automations.runner.statusRunning", {
-                      secs: runnerStatus.tickIntervalSecs,
+                      secs: runnerSurface.tickIntervalSecs,
                     })
-                  : t("automations.runner.statusIdle")}
-                {runnerStatus?.lastTickAt
+                  : runnerSurface.phase === "unknown"
+                    ? t("automations.runner.statusIdle")
+                    : t("automations.runner.statusIdle")}
+                {runnerSurface.lastTickAt
                   ? ` · ${t("automations.runner.lastTick", {
-                      time: new Date(runnerStatus.lastTickAt).toLocaleTimeString(),
+                      time: new Date(
+                        runnerSurface.lastTickAt,
+                      ).toLocaleTimeString(),
                     })}`
                   : ""}
               </div>
+              {runnerSurface.severity !== "none" ||
+              runnerSurface.pausedReason === "no_enabled" ? (
+                <div
+                  className={
+                    "auto-page__runner-reason" +
+                    (runnerSurface.severity === "warn"
+                      ? " auto-page__runner-reason--warn"
+                      : runnerSurface.severity === "info"
+                        ? " auto-page__runner-reason--info"
+                        : "")
+                  }
+                  role="status"
+                >
+                  {t(runnerSurface.pausedReasonKey)}
+                </div>
+              ) : null}
             </div>
           </div>
 
@@ -631,11 +734,7 @@ export function AutomationsPage({
                   <button
                     type="button"
                     className="auto-page__bg-banner-link"
-                    onClick={() => {
-                      void api
-                        .schedulesLaunchAgentRevealHelper()
-                        .catch((e) => setError(String(e)));
-                    }}
+                    onClick={() => void onRevealLaunchAgent()}
                   >
                     {t("automations.launchAgent.reveal")}
                   </button>
@@ -838,6 +937,41 @@ export function AutomationsPage({
           </ul>
         )}
       </div>
+
+      <GlassModal
+        open={!!launchAgentFail}
+        onClose={() => setLaunchAgentFail(null)}
+        title={
+          launchAgentFail
+            ? t(launchAgentFail.titleKey)
+            : t("automations.launchAgent.failTitle")
+        }
+        size="sm"
+        closeLabel={t("common.close")}
+        footer={
+          <button
+            type="button"
+            className="btn btn--solid"
+            onClick={() => setLaunchAgentFail(null)}
+          >
+            {t("common.close")}
+          </button>
+        }
+      >
+        {launchAgentFail ? (
+          <>
+            <p className="app-dialog__msg">{t(launchAgentFail.bodyKey)}</p>
+            <p className="app-dialog__msg app-dialog__msg--muted">
+              {t(launchAgentFail.honestyKey)}
+            </p>
+            {launchAgentFail.detail ? (
+              <pre className="auto-page__fail-detail" tabIndex={0}>
+                {launchAgentFail.detail}
+              </pre>
+            ) : null}
+          </>
+        ) : null}
+      </GlassModal>
 
       {deleteTarget &&
         typeof document !== "undefined" &&
