@@ -4310,6 +4310,28 @@ const en = {
     "Could not open the helper files folder. Generate/enable the helper once, or check app data permissions.",
   "automations.launchAgent.failHonesty":
     "This helper is not a background schedule daemon. Even when installed, tasks tick only inside the full Grok App process (window or tray). A normal Quit still pauses schedules.",
+  "automations.history.section": "Run history",
+  "automations.history.honesty":
+    "Only fires observed while this app process is alive (host runner or Run now). Full Quit does not invent offline runs — empty history is normal after relaunch if nothing has fired yet.",
+  "automations.history.empty":
+    "No observed runs yet. History fills when a schedule fires in this process or you use Run now.",
+  "automations.history.emptyFiltered": "No runs match this filter.",
+  "automations.history.filterAria": "Filter run history by outcome",
+  "automations.history.filter.all": "All",
+  "automations.history.filter.ok": "Ok",
+  "automations.history.filter.error": "Error",
+  "automations.history.filter.skipped": "Skipped",
+  "automations.history.outcome.ok": "Ok",
+  "automations.history.outcome.error": "Error",
+  "automations.history.outcome.skipped": "Skipped",
+  "automations.history.source.host": "Host runner",
+  "automations.history.source.runNow": "Run now",
+  "automations.history.source.unknown": "Unknown",
+  "automations.history.clear": "Clear history",
+  "automations.history.clearTitle": "Clear run history?",
+  "automations.history.clearBody":
+    "Removes the local observed run list on this device. This cannot be undone. Schedules themselves are unchanged.",
+  "automations.history.clearConfirm": "Clear",
   "automations.aiComposerHint":
     "Describe what to run and how often — Grok will schedule it for you when ready.",
   "automations.createdToast": "Scheduled: {title}",
@@ -9259,6 +9281,28 @@ const zh: Record<MessageKey, string> = {
     "无法打开助手文件目录。可先生成/启用一次助手，或检查应用数据目录权限。",
   "automations.launchAgent.failHonesty":
     "此助手不是后台调度守护进程。即便安装成功，任务仍只在完整 Grok 应用进程内（窗口或托盘）触发。正常退出仍会暂停调度。",
+  "automations.history.section": "运行历史",
+  "automations.history.honesty":
+    "仅记录本应用进程存活期间观察到的触发（Host 调度器或「立即运行」）。完全退出后不会虚构离线运行——重新打开后若尚未触发，列表为空是正常的。",
+  "automations.history.empty":
+    "暂无观察到的运行。当本进程内调度触发或你使用「立即运行」时会写入历史。",
+  "automations.history.emptyFiltered": "没有匹配该筛选的运行记录。",
+  "automations.history.filterAria": "按结果筛选运行历史",
+  "automations.history.filter.all": "全部",
+  "automations.history.filter.ok": "成功",
+  "automations.history.filter.error": "失败",
+  "automations.history.filter.skipped": "跳过",
+  "automations.history.outcome.ok": "成功",
+  "automations.history.outcome.error": "失败",
+  "automations.history.outcome.skipped": "跳过",
+  "automations.history.source.host": "Host 调度",
+  "automations.history.source.runNow": "立即运行",
+  "automations.history.source.unknown": "未知",
+  "automations.history.clear": "清空历史",
+  "automations.history.clearTitle": "清空运行历史？",
+  "automations.history.clearBody":
+    "将删除本机已观察到的运行列表，且无法撤销。已安排任务本身不受影响。",
+  "automations.history.clearConfirm": "清空",
   "automations.aiComposerHint":
     "用自然语言描述要做什么、多久一次——准备好后 Grok 会自动创建已安排任务。",
   "automations.createdToast": "已安排：{title}",

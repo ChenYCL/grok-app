@@ -42,8 +42,16 @@
 2. 任一会话 mid-turn（streaming / permission / connecting / open tools）时不抢跑；空闲后下一 tick 补跑。
 3. 触发：Host `session_create(scheduled)` → `connect` → `send_message`；成功 `mark_run`；`once` 后 `enabled=false`。
 4. **connect 失败**：删除空壳 session；发 `automation://error`。
-5. UI 监听 `automation://ran` / `automation://error` 做 toast；**不再**用 WebView `setInterval` 双触发。
-6. 手动「立即执行」仍走前端 `runAutomation`。
+5. UI 监听 `automation://ran` / `automation://error` 做 toast，并写入**本地运行历史** ring；**不再**用 WebView `setInterval` 双触发。
+6. 手动「立即执行」仍走前端 `runAutomation`（同样记录 ok / error / skipped）。
+
+### 运行历史（observable，非假 daemon 日志）
+
+- **SoT**：前端 `localStorage` ring（`grok.automationRunHistory`，max ~50），纯 helpers：`src/lib/automationRunHistory.ts`。
+- **写入时机**：Host 事件 `automation://ran` / `automation://error`（进程存活期间观察到的触发）；以及 UI「立即执行」返回 ok / error / skipped。
+- **字段**：`id` · `scheduleId` · `name` · `at` · `outcome`（`ok|error|skipped`）· 脱敏 `error` · `source`（`host|run_now|unknown`）。
+- **诚实**：完全退出后**不会**虚构离线触发；空列表是 soft-fail 空态，不是「后台什么都没发生过」的宣称。
+- **UI**：`AutomationsPage` 历史面板 + outcome 筛选 chips + GlassModal 清空（禁止 `window.confirm`）。
 
 ### 托盘与「退出后」诚实模型（AUTO-RUNNER + AUTO-HEADLESS-LITE）
 
@@ -97,5 +105,6 @@
 - [x] `automation_runner_status` + 已安排页背景面板（诚实文案；无假 daemon 宣称）
 - [x] 可选 macOS LaunchAgent **助手**（app data 生成；登录/崩溃拉起完整 App；非 headless）
 - [x] **AUTO-HEADLESS-LITE**：诚实矩阵（托盘 vs 退出 vs LaunchAgent）+ runner 状态面（last tick / paused reason）+ LaunchAgent 安装失败 GlassModal soft-fail；纯 helpers + 单测
+- [x] **运行历史**：本地 ring（max ~50）观察 host 触发 + Run now；outcome 筛选 / GlassModal 清空；不发明退出后后台 fire；纯 helpers + 单测
 - [ ] 与 CLI scheduler 双向同步（可选 P2）
 - [ ] 无 UI 进程的真正 headless runner（可选 P2；当前明确不做假宣称）
