@@ -5856,6 +5856,7 @@ export function SettingsPage({
                 <div className={rowHighlight("settings-anchor-leaderServe")}>
                   <LeaderServePanel
                     t={t}
+                    useLeader={!!useLeader}
                     onOpenUseLeader={() =>
                       navigateTo("general", "agent", "settings-anchor-useLeader")
                     }
