@@ -5,6 +5,9 @@ import {
   parseLayout,
   saveLayout,
   clampAsideWidth,
+  clampSidebarDragWidth,
+  clampSidebarWidth,
+  resolveSidebarDragEnd,
   asideChromeSafeMin,
   asideSurfaceFromPreviewKind,
   suggestAsideWidth,
@@ -13,7 +16,10 @@ import {
   ASIDE_WIDTH_MIN,
   ASIDE_WIDTH_MAX,
   MAIN_CHAT_MIN_WIDTH,
+  SIDEBAR_COLLAPSE_THRESHOLD,
   SIDEBAR_DEFAULT_WIDTH,
+  SIDEBAR_WIDTH_MAX,
+  SIDEBAR_WIDTH_MIN,
   WINDOW_CONTROLS_INSET,
   LAYOUT_STORAGE_KEY,
   withMirrorPhoneDrawerDefault,
@@ -59,6 +65,60 @@ describe("layout prefs", () => {
     expect(clampAsideWidth(100)).toBe(ASIDE_WIDTH_MIN);
     expect(clampAsideWidth(9999)).toBe(ASIDE_WIDTH_MAX);
     expect(clampAsideWidth(400)).toBe(400);
+  });
+
+  it("clamps sidebar width to min / max and viewport room", () => {
+    // Collapse before deformation: threshold == open min.
+    expect(SIDEBAR_COLLAPSE_THRESHOLD).toBe(SIDEBAR_WIDTH_MIN);
+    expect(clampSidebarWidth(100)).toBe(SIDEBAR_WIDTH_MIN);
+    expect(clampSidebarWidth(9999)).toBe(SIDEBAR_WIDTH_MAX);
+    expect(clampSidebarWidth(280)).toBe(280);
+    // 900 viewport, 400 chat, 320 aside → sidebar max 180 → raised to MIN
+    const capped = clampSidebarWidth(400, {
+      viewportWidth: 900,
+      asideOccupiedWidth: 320,
+    });
+    expect(capped).toBe(SIDEBAR_WIDTH_MIN);
+    // 1400 viewport, no aside → room plenty, still cap at SIDEBAR_WIDTH_MAX
+    expect(
+      clampSidebarWidth(500, { viewportWidth: 1400, asideOccupiedWidth: 0 }),
+    ).toBe(SIDEBAR_WIDTH_MAX);
+  });
+
+  it("drag width never paints below open min", () => {
+    expect(clampSidebarDragWidth(50)).toBe(SIDEBAR_WIDTH_MIN);
+    expect(clampSidebarDragWidth(160)).toBe(SIDEBAR_WIDTH_MIN);
+    expect(clampSidebarDragWidth(280)).toBe(280);
+    expect(clampSidebarDragWidth(9999)).toBe(SIDEBAR_WIDTH_MAX);
+  });
+
+  it("resolveSidebarDragEnd collapses below min, else keeps/clamps", () => {
+    expect(resolveSidebarDragEnd(100)).toEqual({
+      action: "collapse",
+      sidebarWidth: SIDEBAR_WIDTH_MIN,
+    });
+    expect(resolveSidebarDragEnd(SIDEBAR_WIDTH_MIN - 1)).toEqual({
+      action: "collapse",
+      sidebarWidth: SIDEBAR_WIDTH_MIN,
+    });
+    // At open min → stay open
+    expect(resolveSidebarDragEnd(SIDEBAR_WIDTH_MIN)).toEqual({
+      action: "open",
+      sidebarWidth: SIDEBAR_WIDTH_MIN,
+    });
+    expect(resolveSidebarDragEnd(280)).toEqual({
+      action: "open",
+      sidebarWidth: 280,
+    });
+  });
+
+  it("parseLayout clamps stored sidebarWidth", () => {
+    expect(parseLayout({ sidebarWidth: 50 }).sidebarWidth).toBe(
+      SIDEBAR_WIDTH_MIN,
+    );
+    expect(parseLayout({ sidebarWidth: 800 }).sidebarWidth).toBe(
+      SIDEBAR_WIDTH_MAX,
+    );
   });
 
   it("raises chrome-safe min when window controls are present", () => {

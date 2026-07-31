@@ -131,7 +131,11 @@ import {
   DEFAULT_LAYOUT,
   WINDOW_CONTROLS_INSET,
   clampAsideWidth,
+  clampSidebarDragWidth,
+  clampSidebarWidth,
+  resolveSidebarDragEnd,
   SIDEBAR_DEFAULT_WIDTH,
+  SIDEBAR_WIDTH_MIN,
   isMirrorPhoneLayout,
   loadLayout,
   mergeAsideWidth,
@@ -729,6 +733,7 @@ import { AttachmentCard } from "@/components/AttachmentCard";
 import { ImageViewerProvider } from "@/components/ImageViewer";
 import { OverlayScroll } from "@/components/OverlayScroll";
 import { VirtualList } from "@/components/VirtualList";
+import { SidebarSessionName } from "@/components/SidebarSessionName";
 import {
   SIDEBAR_DENSITY_EVENT,
   loadSidebarDensity,
@@ -2625,6 +2630,11 @@ export default function App() {
   /** Epoch ms when the current agent turn became busy (for elapsed UI). */
   const [turnStartedAt, setTurnStartedAt] = useState<number | null>(null);
   const [resizingAside, setResizingAside] = useState(false);
+  const [resizingSidebar, setResizingSidebar] = useState(false);
+  /** Pointer-drag origin for left-rail resize (clientX + width at down). */
+  const sidebarResizeStartRef = useRef<{ x: number; width: number } | null>(
+    null,
+  );
   const [account, setAccount] = useState<api.AccountStatus | null>(null);
   const [accountLoading, setAccountLoading] = useState(false);
   const [accountBusy, setAccountBusy] = useState(false);
@@ -2773,9 +2783,19 @@ export default function App() {
       return;
     }
     const cur = layoutRef.current;
+    // After auto-collapse (drag below threshold) width is stored as MIN;
+    // always open at least SIDEBAR_WIDTH_MIN.
+    const openWidth = clampSidebarWidth(
+      cur.sidebarWidth || SIDEBAR_WIDTH_MIN,
+      {
+        viewportWidth:
+          typeof window !== "undefined" ? window.innerWidth : undefined,
+        asideOccupiedWidth: cur.asideCollapsed ? 0 : cur.asideWidth || 0,
+      },
+    );
     const projected = {
       sidebarCollapsed: false as const,
-      sidebarWidth: cur.sidebarWidth || SIDEBAR_DEFAULT_WIDTH,
+      sidebarWidth: openWidth,
       asideCollapsed: cur.asideCollapsed,
       asideWidth: cur.asideCollapsed
         ? cur.asideWidth
@@ -2783,7 +2803,11 @@ export default function App() {
     };
     void fitWindowThenClampAside(projected).then((width) => {
       setLayout((l) => {
-        let n = { ...l, sidebarCollapsed: false };
+        let n = {
+          ...l,
+          sidebarCollapsed: false,
+          sidebarWidth: openWidth,
+        };
         if (!projected.asideCollapsed) {
           n = { ...n, asideWidth: width };
         }
@@ -9397,6 +9421,95 @@ export default function App() {
       window.removeEventListener("pointerup", onUp);
     };
   }, [asideClampOpts, fitWindowThenClampAside, resizingAside]);
+
+  // Drag-resize left session rail.
+  // Collapse as soon as desired width crosses below the open min — never paint
+  // a crushed rail, and do not wait for pointer-up.
+  useEffect(() => {
+    if (!resizingSidebar) return;
+    const clampOpts = () => {
+      const cur = layoutRef.current;
+      return {
+        viewportWidth: window.innerWidth,
+        asideOccupiedWidth: cur.asideCollapsed ? 0 : cur.asideWidth || 0,
+      };
+    };
+    const endResizeChrome = () => {
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+    };
+    const applyCollapseLive = () => {
+      const cur = layoutRef.current;
+      const n = {
+        ...cur,
+        sidebarCollapsed: true,
+        sidebarWidth: SIDEBAR_WIDTH_MIN,
+      };
+      setLayout(n);
+      saveLayout(localStorage, n);
+      sidebarResizeStartRef.current = null;
+      setResizingSidebar(false);
+      endResizeChrome();
+    };
+    const onMove = (e: PointerEvent) => {
+      if (isWindowFitSuppressed()) return;
+      const start = sidebarResizeStartRef.current;
+      if (!start) return;
+      const desired = Math.round(start.width + (e.clientX - start.x));
+      // Live collapse before any compressed layout is shown.
+      if (desired < SIDEBAR_WIDTH_MIN) {
+        applyCollapseLive();
+        return;
+      }
+      const next = clampSidebarDragWidth(desired, clampOpts());
+      setLayout((l) => {
+        if (l.sidebarWidth === next && !l.sidebarCollapsed) return l;
+        return { ...l, sidebarWidth: next, sidebarCollapsed: false };
+      });
+    };
+    const onUp = () => {
+      // If we already live-collapsed, effect teardown cleared state — still safe.
+      if (!sidebarResizeStartRef.current && layoutRef.current.sidebarCollapsed) {
+        setResizingSidebar(false);
+        endResizeChrome();
+        return;
+      }
+      setResizingSidebar(false);
+      sidebarResizeStartRef.current = null;
+      const cur = layoutRef.current;
+      if (cur.sidebarCollapsed) {
+        endResizeChrome();
+        return;
+      }
+      const resolved = resolveSidebarDragEnd(
+        cur.sidebarWidth || SIDEBAR_DEFAULT_WIDTH,
+        clampOpts(),
+      );
+      const n =
+        resolved.action === "collapse"
+          ? {
+              ...cur,
+              sidebarCollapsed: true,
+              sidebarWidth: resolved.sidebarWidth,
+            }
+          : {
+              ...cur,
+              sidebarCollapsed: false,
+              sidebarWidth: resolved.sidebarWidth,
+            };
+      setLayout(n);
+      saveLayout(localStorage, n);
+      endResizeChrome();
+    };
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+    return () => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+    };
+  }, [resizingSidebar]);
 
   const resizeComposer = (el: HTMLElement) => {
     const line = 22; // ~line-height
@@ -17089,12 +17202,22 @@ export default function App() {
           className={
             "sidebar" +
             (layout.sidebarCollapsed ? " sidebar--hidden" : "") +
+            (resizingSidebar ? " is-resizing" : "") +
             (dragZone === "sidebar" ? " is-drop-target" : "") +
             (dragZone === "main" ? " is-drop-idle" : "") +
             (phoneLayout ? " sidebar--phone-drawer" : "")
           }
           aria-label={tr("a11y.sidebar")}
           aria-hidden={layout.sidebarCollapsed}
+          style={
+            !layout.sidebarCollapsed && !phoneLayout
+              ? {
+                  width: layout.sidebarWidth || SIDEBAR_DEFAULT_WIDTH,
+                  minWidth: layout.sidebarWidth || SIDEBAR_DEFAULT_WIDTH,
+                  maxWidth: layout.sidebarWidth || SIDEBAR_DEFAULT_WIDTH,
+                }
+              : undefined
+          }
         >
           {dragZone === "sidebar" && (
             <div className="drop-overlay drop-overlay--project" aria-hidden>
@@ -17107,6 +17230,26 @@ export default function App() {
               </div>
             </div>
           )}
+          {/* Right-edge drag handle — desktop only (phone is overlay drawer) */}
+          {!layout.sidebarCollapsed && !phoneLayout ? (
+            <div
+              className="sidebar-resizer"
+              role="separator"
+              aria-orientation="vertical"
+              aria-label={tr("sidebar.resize")}
+              aria-valuenow={layout.sidebarWidth || SIDEBAR_DEFAULT_WIDTH}
+              aria-valuemin={SIDEBAR_WIDTH_MIN}
+              onPointerDown={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                sidebarResizeStartRef.current = {
+                  x: e.clientX,
+                  width: layout.sidebarWidth || SIDEBAR_DEFAULT_WIDTH,
+                };
+                setResizingSidebar(true);
+              }}
+            />
+          ) : null}
           {/* Row 1: traffic-light height — panel toggle sits just right of traffic lights */}
           <div
             className="sidebar-chrome"
@@ -17640,9 +17783,9 @@ export default function App() {
                                               </span>
                                             );
                                           })()}
-                                          <span className="tree-l3__name">
-                                            {s.title || "Untitled"}
-                                          </span>
+                                          <SidebarSessionName
+                                            title={s.title || "Untitled"}
+                                          />
                                         </span>
                                         {renderSessionRelativeTime(s.updatedAt)}
                                         {sessionSelectMode ? null : working ? (
@@ -17922,9 +18065,9 @@ export default function App() {
                                     </span>
                                   );
                                 })()}
-                                <span className="tree-l3__name">
-                                  {s.title || "Untitled"}
-                                </span>
+                                <SidebarSessionName
+                                  title={s.title || "Untitled"}
+                                />
                               </span>
                               {renderSessionRelativeTime(s.updatedAt)}
                               {sessionSelectMode ? null : working ? (

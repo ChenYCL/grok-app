@@ -21,6 +21,7 @@ const en = {
   // Sidebar chrome
   "sidebar.expand": "Expand sidebar",
   "sidebar.collapse": "Collapse sidebar",
+  "sidebar.resize": "Resize sidebar",
   "sidebar.search": "Search",
   "sidebar.projects": "Projects",
   "sidebar.addProject": "Add project",
@@ -6160,6 +6161,7 @@ const zh: Record<MessageKey, string> = {
 
   "sidebar.expand": "展开侧栏",
   "sidebar.collapse": "收起侧栏",
+  "sidebar.resize": "调整侧栏宽度",
   "sidebar.search": "搜索",
   "sidebar.projects": "项目",
   "sidebar.addProject": "添加项目",

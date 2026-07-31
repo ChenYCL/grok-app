@@ -13,6 +13,7 @@ export const zhTW: Record<MessageKey, string> = {
 
   "sidebar.expand": "展開側邊欄",
   "sidebar.collapse": "收合側邊欄",
+  "sidebar.resize": "調整側邊欄寬度",
   "sidebar.search": "搜尋",
   "sidebar.projects": "專案",
   "sidebar.addProject": "新增專案",

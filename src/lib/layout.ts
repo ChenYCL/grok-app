@@ -62,6 +62,79 @@ export const ASIDE_MAIN_RESERVE = MAIN_CHAT_MIN_WIDTH;
  */
 export const SIDEBAR_DEFAULT_WIDTH = 268;
 
+/**
+ * Narrowest *open* left rail (session titles + chrome still usable).
+ * The rail never paints narrower than this — dragging past it collapses live.
+ */
+export const SIDEBAR_WIDTH_MIN = 200;
+
+/** Widest left rail before chat / aside become cramped. */
+export const SIDEBAR_WIDTH_MAX = 420;
+
+/**
+ * Desired width below this (during drag or on release) → auto-collapse.
+ * Equal to open min so the rail never enters a crushed / deformed layout.
+ * Reopen via the top-left icon uses {@link SIDEBAR_WIDTH_MIN}.
+ */
+export const SIDEBAR_COLLAPSE_THRESHOLD = SIDEBAR_WIDTH_MIN;
+
+export type SidebarClampOpts = {
+  /** `window.innerWidth` — caps max so chat (+ open aside) stay usable. */
+  viewportWidth?: number;
+  /** Horizontal space taken by the open right pane (0 when collapsed). */
+  asideOccupiedWidth?: number;
+};
+
+/**
+ * Clamp left-rail width to [min, max], optionally leaving room for chat + aside.
+ */
+export function clampSidebarWidth(
+  w: number,
+  opts?: SidebarClampOpts,
+): number {
+  if (!Number.isFinite(w)) return SIDEBAR_DEFAULT_WIDTH;
+  let max = SIDEBAR_WIDTH_MAX;
+  const vw = opts?.viewportWidth;
+  if (typeof vw === "number" && Number.isFinite(vw) && vw > 0) {
+    const aside = Math.max(0, opts?.asideOccupiedWidth ?? 0);
+    const room = Math.floor(vw - MAIN_CHAT_MIN_WIDTH - aside);
+    max = Math.min(max, Math.max(SIDEBAR_WIDTH_MIN, room));
+  }
+  return Math.min(max, Math.max(SIDEBAR_WIDTH_MIN, Math.round(w)));
+}
+
+/**
+ * Live width while dragging — stays within open [min, max] only.
+ * Callers should collapse as soon as the *desired* width is below
+ * {@link SIDEBAR_COLLAPSE_THRESHOLD} (before applying this clamp).
+ */
+export function clampSidebarDragWidth(
+  w: number,
+  opts?: SidebarClampOpts,
+): number {
+  return clampSidebarWidth(w, opts);
+}
+
+export type SidebarDragEndResult =
+  | { action: "collapse"; sidebarWidth: number }
+  | { action: "open"; sidebarWidth: number };
+
+/**
+ * Resolve a drag sample (move or pointer-up).
+ * - desired &lt; collapse threshold → close; store min for next open
+ * - otherwise → clamp to open [min, max]
+ */
+export function resolveSidebarDragEnd(
+  w: number,
+  opts?: SidebarClampOpts,
+): SidebarDragEndResult {
+  const raw = Number.isFinite(w) ? Math.round(w) : SIDEBAR_DEFAULT_WIDTH;
+  if (raw < SIDEBAR_COLLAPSE_THRESHOLD) {
+    return { action: "collapse", sidebarWidth: SIDEBAR_WIDTH_MIN };
+  }
+  return { action: "open", sidebarWidth: clampSidebarWidth(raw, opts) };
+}
+
 export const DEFAULT_LAYOUT: LayoutPrefs = {
   sidebarWidth: SIDEBAR_DEFAULT_WIDTH,
   /** Comfortable default: tabs + actions + light preview. */
@@ -326,7 +399,10 @@ export function parseLayout(
   return {
     sidebarWidth:
       typeof o.sidebarWidth === "number"
-        ? o.sidebarWidth
+        ? clampSidebarWidth(o.sidebarWidth, {
+            viewportWidth: opts?.viewportWidth,
+            asideOccupiedWidth: 0,
+          })
         : DEFAULT_LAYOUT.sidebarWidth,
     asideWidth:
       typeof o.asideWidth === "number"
