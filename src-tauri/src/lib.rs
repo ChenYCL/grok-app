@@ -89,6 +89,7 @@ mod remote_im;
 mod wallpaper_source;
 mod streaming_messages_json;
 mod batch_agents;
+mod x_evidence;
 mod leader;
 mod serve;
 
@@ -579,6 +580,11 @@ pub fn run() {
             commands::wallpaper_library_list,
             commands::streaming_messages_json_probe,
             commands::batch_agents_headless,
+            commands::x_evidence_search,
+            commands::x_evidence_list,
+            commands::x_evidence_get,
+            commands::x_evidence_stats,
+            commands::x_quote_pack,
         ])
         .build(tauri::generate_context!())
         .expect("error while building Grok App")

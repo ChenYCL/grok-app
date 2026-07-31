@@ -4615,3 +4615,86 @@ export async function wallpaperLibraryList(
     limit: limit ?? null,
   });
 }
+
+// ── X Evidence Rail (search → local evidence store → quote pack) ────────────
+// Design: docs/features/x-search.md — every X search result becomes a local
+// evidence row with a stable id; later turns list / re-read / quote it.
+
+export interface XEvidenceItem {
+  evidenceId: string;
+  statusId?: string;
+  url?: string;
+  author?: string;
+  text?: string;
+  createdAt?: string;
+  likes?: number;
+  query?: string;
+  sessionTag?: string;
+  source: string;
+  verified: boolean;
+  fetchedAtMs: number;
+}
+
+export interface XSearchEnvelope {
+  ok: boolean;
+  errorCode?: string;
+  message?: string;
+  query: string;
+  evidence: XEvidenceItem[];
+  newCount: number;
+  unverifiedCount: number;
+}
+
+export interface XEvidenceFilter {
+  sessionTag?: string;
+  queryContains?: string;
+  author?: string;
+  limit?: number;
+}
+
+export interface XQuotePack {
+  markdown: string;
+  path?: string;
+  count: number;
+}
+
+export async function xEvidenceSearch(
+  query: string,
+  limit?: number,
+  sessionTag?: string,
+): Promise<XSearchEnvelope> {
+  return invoke<XSearchEnvelope>("x_evidence_search", {
+    query,
+    limit: limit ?? null,
+    sessionTag: sessionTag ?? null,
+  });
+}
+
+export async function xEvidenceList(
+  filter?: XEvidenceFilter,
+): Promise<XEvidenceItem[]> {
+  return invoke<XEvidenceItem[]>("x_evidence_list", {
+    filter: filter ?? null,
+  });
+}
+
+export async function xEvidenceGet(ids: string[]): Promise<XEvidenceItem[]> {
+  return invoke<XEvidenceItem[]>("x_evidence_get", { ids });
+}
+
+export async function xQuotePack(
+  ids: string[],
+  title?: string,
+): Promise<XQuotePack> {
+  return invoke<XQuotePack>("x_quote_pack", { ids, title: title ?? null });
+}
+
+export interface XEvidenceStats {
+  total: number;
+  todayNew: number;
+  weekPacks: number;
+}
+
+export async function xEvidenceStats(): Promise<XEvidenceStats> {
+  return invoke<XEvidenceStats>("x_evidence_stats");
+}

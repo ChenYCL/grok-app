@@ -741,6 +741,12 @@ const en = {
   "dashboard.tool": "Tool: {name}",
   "dashboard.toolLabel": "Tool",
   "dashboard.open": "Agent dashboard",
+  "dashboard.evidence.title": "X Evidence",
+  "dashboard.evidence.hint":
+    "X Evidence Rail — local evidence rows saved by x_evidence_search (docs/features/x-search.md)",
+  "dashboard.evidence.todayNew": "{n} new today",
+  "dashboard.evidence.weekPacks": "{n} quote packs this week",
+  "dashboard.evidence.total": "{n} total",
   "dashboard.batchAgents": "Batch agents…",
   "dashboard.batchAgentsTitle":
     "Dispatch the same prompt to multiple projects (sessions or headless)",
@@ -6191,6 +6197,12 @@ const zh: Record<MessageKey, string> = {
   "dashboard.tool": "工具：{name}",
   "dashboard.toolLabel": "工具",
   "dashboard.open": "Agent 仪表盘",
+  "dashboard.evidence.title": "X 证据",
+  "dashboard.evidence.hint":
+    "X 证据轨 — x_evidence_search 落库的本地证据（docs/features/x-search.md）",
+  "dashboard.evidence.todayNew": "今日新证 {n}",
+  "dashboard.evidence.weekPacks": "本周引用包 {n}",
+  "dashboard.evidence.total": "共 {n} 条",
   "dashboard.batchAgents": "批量 Agent…",
   "dashboard.batchAgentsTitle":
     "将同一提示词派发到多个项目（会话或无头摘要）",
