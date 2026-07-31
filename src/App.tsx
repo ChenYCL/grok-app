@@ -873,6 +873,7 @@ import {
   type Automation,
 } from "@/lib/automations";
 import { automationsBackgroundStatus } from "@/lib/automationsBackgroundStatus";
+import { recordAutomationRun } from "@/lib/automationRunHistory";
 import {
   extractAutomationPayload,
   looksLikeScheduleIntent,
@@ -6360,8 +6361,25 @@ export default function App() {
       auto: Automation,
       opts?: { fromScheduler?: boolean },
     ): Promise<boolean> => {
-      if (automationRunLock.current) return false;
+      if (automationRunLock.current) {
+        // Soft skip — do not invent a fire; only note busy contention.
+        recordAutomationRun({
+          scheduleId: auto.id,
+          name: auto.title,
+          outcome: "skipped",
+          source: "run_now",
+          error: "busy",
+        });
+        return false;
+      }
       if (opts?.fromScheduler && (session.state === "streaming" || connecting)) {
+        recordAutomationRun({
+          scheduleId: auto.id,
+          name: auto.title,
+          outcome: "skipped",
+          source: "run_now",
+          error: "session_busy",
+        });
         return false;
       }
       automationRunLock.current = true;
@@ -6371,11 +6389,27 @@ export default function App() {
           ? projects.find((p) => p.id === auto.projectId) ?? null
           : null;
         if (proj && !proj.trusted) {
-          setLocalError(tr("project.trustFirst", { name: proj.name }));
+          const detail = tr("project.trustFirst", { name: proj.name });
+          setLocalError(detail);
+          recordAutomationRun({
+            scheduleId: auto.id,
+            name: auto.title,
+            outcome: "error",
+            source: "run_now",
+            error: detail,
+          });
           return false;
         }
         if (proj && isProjectPathMissing(proj.pathOk)) {
-          setLocalError(tr("project.pathMissing", { name: proj.name }));
+          const detail = tr("project.pathMissing", { name: proj.name });
+          setLocalError(detail);
+          recordAutomationRun({
+            scheduleId: auto.id,
+            name: auto.title,
+            outcome: "error",
+            source: "run_now",
+            error: detail,
+          });
           return false;
         }
         setMainPane("chat");
@@ -6470,6 +6504,13 @@ export default function App() {
           setLocalError(
             tr("automations.connectFailed", { detail }),
           );
+          recordAutomationRun({
+            scheduleId: auto.id,
+            name: auto.title,
+            outcome: "error",
+            source: "run_now",
+            error: detail,
+          });
           // Drop empty shell sessions so sidebar does not show SuperGrok ghosts.
           if (createdSessionId && api.isTauri()) {
             try {
@@ -6543,6 +6584,13 @@ export default function App() {
               ? { ...prev, state: "ready" }
               : prev,
           );
+          recordAutomationRun({
+            scheduleId: auto.id,
+            name: auto.title,
+            outcome: "error",
+            source: "run_now",
+            error: errText,
+          });
           return false;
         }
 
@@ -6558,11 +6606,25 @@ export default function App() {
         if (auto.frequency === "once") {
           await api.automationSetEnabled(auto.id, false);
         }
+        recordAutomationRun({
+          scheduleId: auto.id,
+          name: auto.title,
+          outcome: "ok",
+          source: "run_now",
+          at: lastRunAt,
+        });
         setToast(tr("automations.runningToast", { title: auto.title }));
         window.setTimeout(() => setToast(null), 3200);
         return true;
       } catch (e) {
         setLocalError(String(e));
+        recordAutomationRun({
+          scheduleId: auto.id,
+          name: auto.title,
+          outcome: "error",
+          source: "run_now",
+          error: e,
+        });
         return false;
       } finally {
         automationRunLock.current = false;
@@ -6587,29 +6649,45 @@ export default function App() {
       }
     };
     void track(
-      api.listen<{ title?: string; sessionId?: string }>(
-        "automation://ran",
-        (p) => {
-          if (cancelled) return;
-          const title = (p?.title || "").trim() || "automation";
-          setToast(tr("automations.runningToast", { title }));
-          window.setTimeout(() => setToast(null), 3200);
-          void refreshSessions();
-        },
-      ),
+      api.listen<{
+        title?: string;
+        sessionId?: string;
+        automationId?: string;
+      }>("automation://ran", (p) => {
+        if (cancelled) return;
+        const title = (p?.title || "").trim() || "automation";
+        // Observe host fire while process is alive — never invent offline runs.
+        recordAutomationRun({
+          scheduleId: p?.automationId ?? "",
+          name: title,
+          outcome: "ok",
+          source: "host",
+        });
+        setToast(tr("automations.runningToast", { title }));
+        window.setTimeout(() => setToast(null), 3200);
+        void refreshSessions();
+      }),
     );
     void track(
-      api.listen<{ title?: string; error?: string }>(
-        "automation://error",
-        (p) => {
-          if (cancelled) return;
-          const title = (p?.title || "").trim() || "automation";
-          const err = (p?.error || "").trim() || "failed";
-          setLocalError(
-            tr("automations.hostRunFailed", { title, detail: err }),
-          );
-        },
-      ),
+      api.listen<{
+        title?: string;
+        error?: string;
+        automationId?: string;
+      }>("automation://error", (p) => {
+        if (cancelled) return;
+        const title = (p?.title || "").trim() || "automation";
+        const err = (p?.error || "").trim() || "failed";
+        recordAutomationRun({
+          scheduleId: p?.automationId ?? "",
+          name: title,
+          outcome: "error",
+          source: "host",
+          error: err,
+        });
+        setLocalError(
+          tr("automations.hostRunFailed", { title, detail: err }),
+        );
+      }),
     );
     return () => {
       cancelled = true;

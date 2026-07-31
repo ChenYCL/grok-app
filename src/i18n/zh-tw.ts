@@ -4463,6 +4463,28 @@ export const zhTW: Record<MessageKey, string> = {
     "無法開啟助手檔案目錄。可先產生/啟用一次助手，或檢查應用資料目錄權限。",
   "automations.launchAgent.failHonesty":
     "此助手不是背景排程守護行程。即便安裝成功，任務仍只在完整 Grok 應用行程內（視窗或系統匣）觸發。正常結束仍會暫停排程。",
+  "automations.history.section": "執行歷史",
+  "automations.history.honesty":
+    "僅記錄本應用行程存活期間觀察到的觸發（Host 排程器或「立即執行」）。完全結束後不會虛構離線執行——重新開啟後若尚未觸發，列表為空是正常的。",
+  "automations.history.empty":
+    "尚無觀察到的執行。當本行程內排程觸發或你使用「立即執行」時會寫入歷史。",
+  "automations.history.emptyFiltered": "沒有符合此篩選的執行紀錄。",
+  "automations.history.filterAria": "依結果篩選執行歷史",
+  "automations.history.filter.all": "全部",
+  "automations.history.filter.ok": "成功",
+  "automations.history.filter.error": "失敗",
+  "automations.history.filter.skipped": "略過",
+  "automations.history.outcome.ok": "成功",
+  "automations.history.outcome.error": "失敗",
+  "automations.history.outcome.skipped": "略過",
+  "automations.history.source.host": "Host 排程",
+  "automations.history.source.runNow": "立即執行",
+  "automations.history.source.unknown": "未知",
+  "automations.history.clear": "清除歷史",
+  "automations.history.clearTitle": "清除執行歷史？",
+  "automations.history.clearBody":
+    "將刪除本機已觀察到的執行列表，且無法復原。已排程任務本身不受影響。",
+  "automations.history.clearConfirm": "清除",
   "automations.aiComposerHint":
     "用自然語言描述要做什麼、多久一次——準備好後 Grok 會自動建立已排程任務。",
   "automations.createdToast": "已排程：{title}",
