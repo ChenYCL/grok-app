@@ -977,6 +977,17 @@ const en = {
   "plan.ready": "Plan ready for review",
   "plan.context": "Context",
   "plan.empty": "(empty plan)",
+  /** PLAN-MODE-PRO — Resources → Plan empty states */
+  "plan.emptyDisabledTitle": "Plan mode is off",
+  "plan.emptyDisabledHint":
+    "Allow plan mode in Settings → Agent so the agent can draft plans. You can still browse archived plans from history.",
+  "plan.emptyClosedTitle": "Plan closed for this chat",
+  "plan.emptyClosedHint":
+    "You dismissed the plan for this cycle. It stays hidden until the agent starts a new plan task (or a new exit_plan_mode gate).",
+  "plan.emptyPlanModeHint":
+    "Plan mode is on. Send a message and the agent will draft a plan here — approve or request changes when it is ready.",
+  "plan.emptyIdleHint":
+    "No live plan in this chat. Turn on Plan mode from Access, or open Plan history for archived reviews.",
   "plan.approve": "Approve & build",
   "plan.changes": "Request changes",
   "plan.dismiss": "Dismiss",
@@ -5059,6 +5070,17 @@ const zh: Record<MessageKey, string> = {
   "plan.ready": "计划待审阅",
   "plan.context": "上下文",
   "plan.empty": "（空 plan）",
+  /** PLAN-MODE-PRO — Resources → Plan 空状态 */
+  "plan.emptyDisabledTitle": "计划模式已关闭",
+  "plan.emptyDisabledHint":
+    "请在 设置 → Agent 中开启「允许计划模式」，Agent 才能起草计划。仍可从历史查看已归档的计划。",
+  "plan.emptyClosedTitle": "本会话计划已关闭",
+  "plan.emptyClosedHint":
+    "你已关闭本轮计划。在 Agent 再次发起计划任务（或新的 exit_plan_mode 审阅）之前不会再显示。",
+  "plan.emptyPlanModeHint":
+    "已开启计划模式。发送消息后 Agent 会在此起草计划，就绪后可批准或请求修改。",
+  "plan.emptyIdleHint":
+    "当前会话没有进行中的计划。可在 Access 中打开计划模式，或从计划历史查看已归档审阅。",
   "plan.approve": "批准并构建",
   "plan.changes": "请求修改",
   "plan.dismiss": "关闭",

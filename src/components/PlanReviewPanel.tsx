@@ -17,6 +17,11 @@ import {
   type PlanReviewState,
 } from "@/lib/planBody";
 import {
+  planHasExpandableContent,
+  planPanelInnerEmptyLabelKey,
+  resolvePlanPanelInnerEmpty,
+} from "@/lib/planModePro";
+import {
   computePlanProgress,
   formatPlanFraction,
   parsePlanEntries,
@@ -123,7 +128,19 @@ export function PlanReviewPanel({
   }, [forceExpandKey]);
 
   const hasExpandableContent =
-    entries.length > 0 || !!detailMarkdown || !!planDisplayMarkdown(plan.body, plan.entries);
+    planHasExpandableContent({ body: detailMarkdown || plan.body, entries }) ||
+    !!planDisplayMarkdown(plan.body, plan.entries);
+
+  const innerEmptyKind = resolvePlanPanelInnerEmpty({
+    waiting: plan.waiting && !canAct,
+    hasExpandableContent,
+  });
+  const innerEmptyLabel =
+    innerEmptyKind != null
+      ? planPanelInnerEmptyLabelKey(innerEmptyKind) === "plan.waiting"
+        ? labels.waiting
+        : labels.empty
+      : null;
 
   const toggleExpand = () => {
     if (!hasExpandableContent) return;
@@ -272,8 +289,18 @@ export function PlanReviewPanel({
               >
                 <MarkdownBody>{detailMarkdown}</MarkdownBody>
               </div>
-            ) : !entries.length ? (
-              <p className="plan-review__empty">{labels.empty}</p>
+            ) : !entries.length && innerEmptyLabel ? (
+              <p
+                className={
+                  "plan-review__empty" +
+                  (innerEmptyKind === "waiting"
+                    ? " plan-review__empty--waiting"
+                    : "")
+                }
+                data-empty-kind={innerEmptyKind ?? undefined}
+              >
+                {innerEmptyLabel}
+              </p>
             ) : null}
           </div>
         </OverlayScroll>
