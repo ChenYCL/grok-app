@@ -7,6 +7,9 @@ use serde_json::{json, Value};
 use std::time::Duration;
 use tokio::sync::{mpsc, watch};
 
+/// Telegram accepts two-letter ISO 639-1 language codes for command menus.
+const COMMAND_LANGUAGE_CODES_ZH: &[&str] = &["zh"];
+
 pub async fn run(
     inst: ChannelInstance,
     tx: mpsc::Sender<IncomingMessage>,
@@ -50,7 +53,10 @@ pub async fn run(
         let res = match res {
             Ok(r) => r,
             Err(e) => {
-                tracing::warn!(instance = %inst.id, "telegram poll error: {e}");
+                // reqwest errors include the request URL by default; Telegram
+                // embeds the bot token in that URL, so always strip it first.
+                let safe_error = e.without_url();
+                tracing::warn!(instance = %inst.id, "telegram poll error: {safe_error}");
                 tokio::time::sleep(Duration::from_secs(3)).await;
                 continue;
             }
@@ -286,10 +292,9 @@ pub async fn register_native_commands(
 
     // Default language (fallback for all clients)
     post_set_my_commands(client, &base, &en_cmds, None).await?;
-    // Simplified Chinese clients
-    post_set_my_commands(client, &base, &zh_cmds, Some("zh-hans")).await?;
-    // Also zh as broader Chinese tag used by some clients
-    let _ = post_set_my_commands(client, &base, &zh_cmds, Some("zh")).await;
+    for language_code in COMMAND_LANGUAGE_CODES_ZH {
+        post_set_my_commands(client, &base, &zh_cmds, Some(language_code)).await?;
+    }
 
     Ok(())
 }
@@ -309,7 +314,7 @@ async fn post_set_my_commands(
         .json(&body)
         .send()
         .await
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| e.without_url().to_string())?;
     if !res.status().is_success() {
         let status = res.status();
         let text = res.text().await.unwrap_or_default();
@@ -394,7 +399,7 @@ async fn post_bot_api(
         .json(body)
         .send()
         .await
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| e.without_url().to_string())?;
     let status = res.status();
     let value: Value = res.json().await.map_err(|e| e.to_string())?;
     if !status.is_success() || value.get("ok").and_then(|x| x.as_bool()) != Some(true) {
@@ -505,6 +510,14 @@ pub async fn edit_card(
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn command_menu_language_codes_are_telegram_compatible() {
+        assert_eq!(COMMAND_LANGUAGE_CODES_ZH, &["zh"]);
+        assert!(COMMAND_LANGUAGE_CODES_ZH.iter().all(|code| {
+            code.len() == 2 && code.bytes().all(|byte| byte.is_ascii_lowercase())
+        }));
+    }
 
     #[test]
     fn normalizes_bot_command_with_entity() {

@@ -4167,7 +4167,7 @@ export const zhTW: Record<MessageKey, string> = {
   "mirror.warningToken":
     "持有此連結的人可以控制本機上的 Agent。用完後請停止主機。",
   "mirror.missingCloudflared":
-    "找不到 cloudflared。請安裝並確保在 PATH 中，或在測試時使用僅本機模式。",
+    "找不到本機 cloudflared，且 Docker 目前不可用。請安裝 cloudflared，或啟動 Docker Desktop 後重試；測試時也可使用僅本機模式。",
   "mirror.errorGeneric": "出了點問題",
   "mirror.qrAlt": "手機鏡像網址的 QR 碼",
   "mirror.linkLabel": "公開網址",
@@ -4176,7 +4176,7 @@ export const zhTW: Record<MessageKey, string> = {
     "通道啟動失敗，但本機主機仍在執行。公網手機無法存取此連結——修復通道前僅本機/區域網路除錯可用。",
   "mirror.softTunnelDeadBanner":
     "公網通道行程已結束，但本機主機仍在執行。已連線手機可能掉線；cloudflared 恢復後請重新啟動主機。",
-  "mirror.err.cloudflaredMissing": "缺少 cloudflared",
+  "mirror.err.cloudflaredMissing": "通道執行環境不可用",
   "mirror.err.tunnelTimeout": "通道逾時",
   "mirror.err.tunnelSpawn": "通道啟動失敗",
   "mirror.err.tunnelNotRegistered": "通道未註冊",
@@ -4191,7 +4191,7 @@ export const zhTW: Record<MessageKey, string> = {
   "mirror.err.clientsFull": "連線數已滿",
   "mirror.err.other": "錯誤",
   "mirror.hint.cloudflaredMissing":
-    "請安裝 cloudflared 並加入 PATH，或設定 GROK_MIRROR_NO_TUNNEL=1 做僅本機測試。",
+    "請安裝 cloudflared 並加入 PATH，或啟動 Docker Desktop；也可設定 GROK_MIRROR_NO_TUNNEL=1 做僅本機測試。",
   "mirror.hint.tunnelTimeout":
     "cloudflared 未在時限內就緒。請檢查網路/防火牆後重新啟動主機。",
   "mirror.hint.tunnelSpawn":
@@ -4763,7 +4763,7 @@ export const zhTW: Record<MessageKey, string> = {
   "settings.remoteIm.dingtalk.guide.step4": "將 Client ID（AppKey）與 Client Secret 貼到此處，設定允許使用者，再點「儲存並連線」。",
   "settings.remoteIm.dingtalk.guide.softFail": "「測試連線」僅校驗 Client ID 與 Client Secret 是否齊全，不代表 Stream 閘道 WebSocket 已在線。",
   "settings.remoteIm.telegram.tokenHelp":
-    "從 @BotFather 取得。預設遮罩儲存且不寫入日誌；連線時還會自動註冊 /start /help /p /r /new /status /account /quota /switch /whoami /stop 到 Telegram 原生 / 選單。",
+    "從 @BotFather 取得。預設遮罩儲存且不寫入日誌；連線時還會自動註冊 /start /help /p /r /new /status /context /compact /account /quota /switch /whoami /stop 到 Telegram 原生 / 選單。",
   "settings.remoteIm.telegram.tokenPlaceholder": "123456789:AAH…",
   "settings.remoteIm.telegram.proxyHelp": "可選 HTTP/SOCKS5 代理，用於 Telegram API（getUpdates / 傳送）。留空則使用應用代理或直連。",
   "settings.remoteIm.telegram.proxyPlaceholder": "socks5://127.0.0.1:1080",
@@ -4846,6 +4846,8 @@ export const zhTW: Record<MessageKey, string> = {
   "settings.remoteIm.cmd.resume": "列出 / 恢復 App 歷史會話",
   "settings.remoteIm.cmd.new": "新會話，保持專案",
   "settings.remoteIm.cmd.status": "查看綁定狀態",
+  "settings.remoteIm.cmd.context": "查看目前會話上下文用量",
+  "settings.remoteIm.cmd.compact": "壓縮目前 agent 會話上下文",
   "settings.remoteIm.cmd.help": "歡迎與命令說明",
   "settings.remoteIm.cmd.whoami": "查看發送者 id",
   "settings.remoteIm.cmd.stop": "中斷目前任務",

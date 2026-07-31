@@ -1,5 +1,6 @@
 //! Load App sessions_index for Remote IM /r + sync IM turns into App journal.
 
+use super::context::ContextCompactSnapshot;
 use super::control_plane::{AppSessionEntry, PendingMode, ScopeBinding};
 use crate::store::{self, ChatMessageStored, SessionMeta};
 use chrono::Utc;
@@ -25,6 +26,78 @@ fn emit_index_changed(session_id: &str) {
             serde_json::json!({ "sessionId": session_id, "source": "remote_im" }),
         );
     }
+}
+
+/// Persist a Remote IM compaction marker in the same App journal used by ACP.
+/// This keeps the desktop context indicator aligned with Telegram commands.
+pub fn sync_compact_to_app(
+    binding: &ScopeBinding,
+    compact: &ContextCompactSnapshot,
+) -> Option<String> {
+    let agent_id = binding
+        .agent_session_id
+        .as_deref()
+        .map(str::trim)
+        .filter(|id| !id.is_empty());
+    let session_id = find_app_session_id(&binding.local_session_id, agent_id)?;
+    let mut parts = vec![if compact.trigger == "manual" {
+        "manual".to_string()
+    } else {
+        "auto".to_string()
+    }];
+    match (compact.tokens_before, compact.tokens_after) {
+        (Some(before), Some(after)) => parts.push(format!("tokens:{before}->{after}")),
+        (Some(before), None) => parts.push(format!("tokens_before:{before}")),
+        (None, Some(after)) => parts.push(format!("tokens_after:{after}")),
+        (None, None) => {}
+    }
+    if let Some(note) = compact.note.as_deref().map(str::trim).filter(|n| !n.is_empty()) {
+        parts.push(format!("note:{note}"));
+    }
+    let mut content = format!("context_compact|{}", parts.join("|"));
+    if let Some(summary) = compact
+        .summary_preview
+        .as_deref()
+        .map(str::trim)
+        .filter(|summary| !summary.is_empty())
+    {
+        content.push('\n');
+        content.push_str(summary);
+    }
+    let message_id = uuid::Uuid::new_v4().to_string();
+    if let Err(error) = store::append_message(
+        &session_id,
+        ChatMessageStored {
+            id: message_id.clone(),
+            role: "tool".into(),
+            content: content.clone(),
+            thought: None,
+            created_at: Utc::now(),
+            is_error: false,
+            attachments: None,
+            marker: Some("context_compact".into()),
+        },
+    ) {
+        tracing::warn!(%error, session = %session_id, "remote_im: append compact marker failed");
+        return None;
+    }
+    if let Some(app) = APP_HANDLE.get() {
+        let _ = app.emit(
+            "session://context_compact",
+            serde_json::json!({
+                "sessionId": session_id,
+                "messageId": message_id,
+                "trigger": compact.trigger,
+                "tokensBefore": compact.tokens_before,
+                "tokensAfter": compact.tokens_after,
+                "summaryPreview": compact.summary_preview,
+                "note": compact.note,
+                "content": content,
+            }),
+        );
+    }
+    emit_index_changed(&session_id);
+    Some(message_id)
 }
 
 pub fn sessions_for_project(project_id: Option<&str>) -> Vec<AppSessionEntry> {

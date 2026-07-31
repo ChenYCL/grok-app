@@ -1,6 +1,7 @@
 //! Pure control-plane transitions for Remote IM (/p /r / bind / resume).
 //! Network-free and unit-tested against production functions.
 
+use super::context::{ContextCompactSnapshot, ContextUsageSnapshot};
 use super::types::TrustedProject;
 use serde::{Deserialize, Serialize};
 
@@ -27,6 +28,12 @@ pub struct ScopeBinding {
     pub agent_session_id: Option<String>,
     pub pending_mode: PendingMode,
     pub turn_count: u32,
+    /// Last agent-reported context usage. Older persisted bindings omit it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub context_usage: Option<ContextUsageSnapshot>,
+    /// Last manual/automatic compaction observed for this agent session.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_compact: Option<ContextCompactSnapshot>,
 }
 
 impl ScopeBinding {
@@ -38,6 +45,8 @@ impl ScopeBinding {
             agent_session_id: None,
             pending_mode: PendingMode::New,
             turn_count: 0,
+            context_usage: None,
+            last_compact: None,
         }
     }
 }
@@ -72,6 +81,8 @@ pub fn binding_after_project_select(_prev: &ScopeBinding, project: &TrustedProje
         agent_session_id: None,
         pending_mode: PendingMode::New,
         turn_count: 0,
+        context_usage: None,
+        last_compact: None,
     }
 }
 
@@ -87,6 +98,10 @@ pub fn binding_after_session_resume(
     next.agent_session_id = Some(effective_agent_session_id(session));
     next.pending_mode = PendingMode::Resume;
     next.local_session_id = session.id.clone();
+    // Usage belongs to the previously bound agent session. `/context` can
+    // hydrate compact markers or estimate the newly selected App journal.
+    next.context_usage = None;
+    next.last_compact = None;
     next
 }
 
@@ -934,6 +949,8 @@ mod tests {
             agent_session_id: None,
             pending_mode: PendingMode::New,
             turn_count: 0,
+            context_usage: None,
+            last_compact: None,
         };
         let s = sess("app-sess-1", "p1", "Prior chat", Some("grok-agent-99"));
         let next = binding_after_session_resume(&b, &s);
@@ -1197,6 +1214,8 @@ mod tests {
             agent_session_id: None,
             pending_mode: PendingMode::New,
             turn_count: 0,
+            context_usage: None,
+            last_compact: None,
         };
         let s = sess("app1", "p1", "Chat", Some("agent-xyz"));
         let b1 = binding_after_session_resume(&b0, &s);
@@ -1219,5 +1238,20 @@ mod tests {
         // CLI path for turn 2
         let args = grok_turn_cli_args("follow up", Some("agent-xyz"), false);
         assert!(args.contains(&"--resume".into()));
+    }
+
+    #[test]
+    fn old_scope_binding_json_defaults_context_fields() {
+        let binding: ScopeBinding = serde_json::from_value(serde_json::json!({
+            "projectId": "p1",
+            "workDir": "/tmp/project",
+            "localSessionId": "local-1",
+            "agentSessionId": "agent-1",
+            "pendingMode": "continue",
+            "turnCount": 2
+        }))
+        .expect("old persisted binding should still deserialize");
+        assert!(binding.context_usage.is_none());
+        assert!(binding.last_compact.is_none());
     }
 }

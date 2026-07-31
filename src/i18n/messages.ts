@@ -4336,7 +4336,7 @@ const en = {
   "mirror.warningToken":
     "Anyone with this link can control the agent on this machine. Stop the host when finished.",
   "mirror.missingCloudflared":
-    "cloudflared not found. Install it and ensure it is on PATH, or use local-only mode for tests.",
+    "No local cloudflared binary was found and Docker is unavailable. Install cloudflared, or start Docker Desktop and retry; local-only mode remains available for tests.",
   "mirror.errorGeneric": "Something went wrong",
   "mirror.qrAlt": "QR code for phone mirror URL",
   "mirror.linkLabel": "Public URL",
@@ -4345,7 +4345,7 @@ const en = {
     "Tunnel failed, but the local host is still running. Phones on the public internet cannot reach this link — only loopback/LAN debug works until the tunnel is fixed.",
   "mirror.softTunnelDeadBanner":
     "The public tunnel exited, but the local host is still running. Connected phones may drop; restart the host after cloudflared is healthy.",
-  "mirror.err.cloudflaredMissing": "cloudflared missing",
+  "mirror.err.cloudflaredMissing": "Tunnel runtime unavailable",
   "mirror.err.tunnelTimeout": "Tunnel timeout",
   "mirror.err.tunnelSpawn": "Tunnel start failed",
   "mirror.err.tunnelNotRegistered": "Tunnel not registered",
@@ -4360,7 +4360,7 @@ const en = {
   "mirror.err.clientsFull": "Client limit",
   "mirror.err.other": "Error",
   "mirror.hint.cloudflaredMissing":
-    "Install cloudflared on PATH, or set GROK_MIRROR_NO_TUNNEL=1 for local-only tests.",
+    "Install cloudflared on PATH, or start Docker Desktop; alternatively set GROK_MIRROR_NO_TUNNEL=1 for local-only tests.",
   "mirror.hint.tunnelTimeout":
     "cloudflared did not become ready in time. Check network / firewall, then restart the host.",
   "mirror.hint.tunnelSpawn":
@@ -4943,7 +4943,7 @@ const en = {
   "settings.remoteIm.dingtalk.guide.step4": "Copy Client ID (AppKey) + Client Secret here, set allow-from, then Save & connect.",
   "settings.remoteIm.dingtalk.guide.softFail": "Test connection only checks that Client ID and Client Secret are present — it does not prove the Stream gateway WebSocket is online.",
   "settings.remoteIm.telegram.tokenHelp":
-    "Token from @BotFather. Stored masked and never logged. Connecting also registers /start /help /p /r /new /status /account /quota /switch /whoami /stop in Telegram’s native / menu.",
+    "Token from @BotFather. Stored masked and never logged. Connecting also registers /start /help /p /r /new /status /context /compact /account /quota /switch /whoami /stop in Telegram’s native / menu.",
   "settings.remoteIm.telegram.tokenPlaceholder": "123456789:AAH…",
   "settings.remoteIm.telegram.proxyHelp": "Optional HTTP or SOCKS5 proxy for Telegram API (getUpdates / send). Leave empty to use the app proxy or direct.",
   "settings.remoteIm.telegram.proxyPlaceholder": "socks5://127.0.0.1:1080",
@@ -5026,6 +5026,8 @@ const en = {
   "settings.remoteIm.cmd.resume": "List / resume an App history session",
   "settings.remoteIm.cmd.new": "New session, keep project",
   "settings.remoteIm.cmd.status": "Show binding status",
+  "settings.remoteIm.cmd.context": "Show current session context usage",
+  "settings.remoteIm.cmd.compact": "Compact the current agent session context",
   "settings.remoteIm.cmd.help": "Welcome & command help",
   "settings.remoteIm.cmd.whoami": "Show your sender id",
   "settings.remoteIm.cmd.stop": "Cancel the current turn",
@@ -9259,7 +9261,7 @@ const zh: Record<MessageKey, string> = {
   "mirror.warningToken":
     "持有此链接的人可以控制本机上的 Agent。用完后请停止主机。",
   "mirror.missingCloudflared":
-    "未找到 cloudflared。请安装并确保在 PATH 中，或在测试时使用仅本机模式。",
+    "未找到本机 cloudflared，且 Docker 当前不可用。请安装 cloudflared，或启动 Docker Desktop 后重试；测试时也可使用仅本机模式。",
   "mirror.errorGeneric": "出了点问题",
   "mirror.qrAlt": "手机镜像地址的二维码",
   "mirror.linkLabel": "公开地址",
@@ -9268,7 +9270,7 @@ const zh: Record<MessageKey, string> = {
     "隧道启动失败，但本机主机仍在运行。公网手机无法访问此链接——修复隧道前仅本机/局域网调试可用。",
   "mirror.softTunnelDeadBanner":
     "公网隧道进程已退出，但本机主机仍在运行。已连接手机可能掉线；cloudflared 恢复后请重启主机。",
-  "mirror.err.cloudflaredMissing": "缺少 cloudflared",
+  "mirror.err.cloudflaredMissing": "隧道运行环境不可用",
   "mirror.err.tunnelTimeout": "隧道超时",
   "mirror.err.tunnelSpawn": "隧道启动失败",
   "mirror.err.tunnelNotRegistered": "隧道未注册",
@@ -9283,7 +9285,7 @@ const zh: Record<MessageKey, string> = {
   "mirror.err.clientsFull": "连接数已满",
   "mirror.err.other": "错误",
   "mirror.hint.cloudflaredMissing":
-    "请安装 cloudflared 并加入 PATH，或设置 GROK_MIRROR_NO_TUNNEL=1 做仅本机测试。",
+    "请安装 cloudflared 并加入 PATH，或启动 Docker Desktop；也可设置 GROK_MIRROR_NO_TUNNEL=1 做仅本机测试。",
   "mirror.hint.tunnelTimeout":
     "cloudflared 未在时限内就绪。请检查网络/防火墙后重启主机。",
   "mirror.hint.tunnelSpawn":
@@ -9855,7 +9857,7 @@ const zh: Record<MessageKey, string> = {
   "settings.remoteIm.dingtalk.guide.step4": "将 Client ID（AppKey）与 Client Secret 粘贴到此处，设置允许用户，再点「保存并连接」。",
   "settings.remoteIm.dingtalk.guide.softFail": "「测试连接」仅校验 Client ID 与 Client Secret 是否齐全，不代表 Stream 网关 WebSocket 已在线。",
   "settings.remoteIm.telegram.tokenHelp":
-    "从 @BotFather 获取。默认遮罩存储且不写入日志；连接时还会自动注册 /start /help /p /r /new /status /account /quota /switch /whoami /stop 到 Telegram 原生 / 菜单。",
+    "从 @BotFather 获取。默认遮罩存储且不写入日志；连接时还会自动注册 /start /help /p /r /new /status /context /compact /account /quota /switch /whoami /stop 到 Telegram 原生 / 菜单。",
   "settings.remoteIm.telegram.tokenPlaceholder": "123456789:AAH…",
   "settings.remoteIm.telegram.proxyHelp": "可选 HTTP/SOCKS5 代理，用于 Telegram API（getUpdates / 发送）。留空则使用应用代理或直连。",
   "settings.remoteIm.telegram.proxyPlaceholder": "socks5://127.0.0.1:1080",
@@ -9938,6 +9940,8 @@ const zh: Record<MessageKey, string> = {
   "settings.remoteIm.cmd.resume": "列出 / 恢复 App 历史会话",
   "settings.remoteIm.cmd.new": "新会话，保持项目",
   "settings.remoteIm.cmd.status": "查看绑定状态",
+  "settings.remoteIm.cmd.context": "查看当前会话上下文用量",
+  "settings.remoteIm.cmd.compact": "压缩当前 agent 会话上下文",
   "settings.remoteIm.cmd.help": "欢迎与命令帮助",
   "settings.remoteIm.cmd.whoami": "查看发送者 id",
   "settings.remoteIm.cmd.stop": "中断当前任务",

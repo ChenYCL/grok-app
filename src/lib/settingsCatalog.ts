@@ -2821,6 +2821,8 @@ export const SETTINGS_ENTRIES: readonly SettingsEntry[] = [
       "connect device",
       "qr",
       "cloudflared",
+      "docker",
+      "docker desktop",
       "max clients",
       "rotate token",
       "write allowlist",

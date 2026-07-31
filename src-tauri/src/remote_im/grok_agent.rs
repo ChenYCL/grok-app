@@ -5,10 +5,16 @@ use std::process::Stdio;
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::Command;
 
+use super::context::{
+    extract_context_signals, ContextCompactSnapshot, ContextUsageSnapshot,
+};
+
 pub struct GrokTurnResult {
     pub text: String,
     pub session_id: Option<String>,
     pub error: Option<String>,
+    pub usage: Option<ContextUsageSnapshot>,
+    pub compact: Option<ContextCompactSnapshot>,
 }
 
 pub fn resolve_grok_binary() -> PathBuf {
@@ -123,6 +129,8 @@ pub async fn run_turn(
                 text: String::new(),
                 session_id: None,
                 error: Some(format!("spawn grok failed: {e}")),
+                usage: None,
+                compact: None,
             };
         }
     };
@@ -132,6 +140,8 @@ pub async fn run_turn(
     let mut acc = String::new();
     let mut out_sid: Option<String> = None;
     let mut err_msg: Option<String> = None;
+    let mut context_usage: Option<ContextUsageSnapshot> = None;
+    let mut context_compact: Option<ContextCompactSnapshot> = None;
 
     // Drain stderr concurrently so the child cannot block on a full pipe.
     let stderr_task = tokio::spawn(async move {
@@ -155,6 +165,13 @@ pub async fn run_turn(
                 continue;
             }
             if let Ok(v) = serde_json::from_str::<serde_json::Value>(&line) {
+                let signals = extract_context_signals(&v);
+                if signals.usage.is_some() {
+                    context_usage = signals.usage;
+                }
+                if signals.compact.is_some() {
+                    context_compact = signals.compact;
+                }
                 if let Some(sid) = v
                     .get("session_id")
                     .or_else(|| v.get("sessionId"))
@@ -255,6 +272,8 @@ pub async fn run_turn(
 
     // If streaming-json path yields nothing useful, retry simple -p but KEEP resume.
     if acc.trim().is_empty()
+        && context_usage.is_none()
+        && context_compact.is_none()
         && err_msg
             .as_ref()
             .map(|e| e.contains("exit") || e.contains("spawn"))
@@ -268,6 +287,12 @@ pub async fn run_turn(
                 .filter(|s| !s.is_empty())
                 .or(out_sid);
         }
+        if simple.usage.is_none() {
+            simple.usage = context_usage;
+        }
+        if simple.compact.is_none() {
+            simple.compact = context_compact;
+        }
         return simple;
     }
 
@@ -279,6 +304,8 @@ pub async fn run_turn(
                 .filter(|s| !s.is_empty())
         }),
         error: err_msg,
+        usage: context_usage,
+        compact: context_compact,
     }
 }
 
@@ -331,6 +358,8 @@ async fn run_turn_simple(
                     .map(|s| s.trim().to_string())
                     .filter(|s| !s.is_empty()),
                 error: err,
+                usage: None,
+                compact: None,
             }
         }
         Err(e) => GrokTurnResult {
@@ -339,6 +368,8 @@ async fn run_turn_simple(
                 .map(|s| s.trim().to_string())
                 .filter(|s| !s.is_empty()),
             error: Some(e.to_string()),
+            usage: None,
+            compact: None,
         },
     }
 }

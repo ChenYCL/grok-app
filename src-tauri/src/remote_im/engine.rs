@@ -6,6 +6,10 @@ use super::control_plane::{
     format_project_menu, format_session_menu, list_sessions_for_project, parse_card_action,
     resolve_turn_intent, AppSessionEntry, CardAction, PendingMode, ScopeBinding, TurnIntent,
 };
+use super::context::{
+    estimate_visible_tokens, format_tokens, latest_compact_from_messages, ContextCompactSnapshot,
+    ContextUsageSnapshot,
+};
 use super::grok_agent;
 use super::outbound::{self, OutboundRouter};
 use super::projects::{self, load_trusted_projects};
@@ -855,6 +859,13 @@ impl Engine {
                 );
                 let _ = self.reply_msg(msg, &text).await;
             }
+            BuiltinCommand::Context => {
+                self.handle_context(scope, msg, default_wd).await;
+            }
+            BuiltinCommand::Compact { note } => {
+                self.handle_compact(note.as_deref(), scope, msg, default_wd)
+                    .await;
+            }
             BuiltinCommand::Stop => {
                 self.aborts.lock().insert(scope.to_string(), true);
                 let t = if self.lang == "en" {
@@ -884,6 +895,118 @@ impl Engine {
                 let _ = self.reply_msg(msg, &t).await;
             }
         }
+    }
+
+    async fn handle_context(&self, scope: &str, msg: &IncomingMessage, default_wd: &str) {
+        let binding = self.store.get_or_create(scope, default_wd);
+        let messages = crate::store::load_messages(&binding.local_session_id);
+        let text = format_context_report(&binding, &messages, &self.lang);
+        let _ = self.reply_msg(msg, &text).await;
+    }
+
+    async fn handle_compact(
+        &self,
+        note: Option<&str>,
+        scope: &str,
+        msg: &IncomingMessage,
+        default_wd: &str,
+    ) {
+        let binding = self.store.get_or_create(scope, default_wd);
+        let Some(agent_session_id) = binding
+            .agent_session_id
+            .as_deref()
+            .map(str::trim)
+            .filter(|id| !id.is_empty())
+            .map(str::to_string)
+        else {
+            let text = if self.lang == "en" {
+                "No active agent session. Send a message or use /r first."
+            } else {
+                "当前没有可压缩的 agent 会话。请先发送一条消息，或使用 /r 恢复会话。"
+            };
+            let _ = self.reply_msg(msg, text).await;
+            return;
+        };
+        let compact_prompt = match note.map(str::trim).filter(|note| !note.is_empty()) {
+            Some(note) => format!("/compact {note}"),
+            None => "/compact".to_string(),
+        };
+        let working = if self.lang == "en" {
+            "Compacting current session…"
+        } else {
+            "正在压缩当前会话…"
+        };
+        let _ = self.reply_msg(msg, working).await;
+
+        let before = binding
+            .context_usage
+            .as_ref()
+            .and_then(|usage| usage.total_tokens)
+            .or_else(|| binding.last_compact.as_ref().and_then(|item| item.tokens_after));
+        let result = grok_agent::run_turn(
+            &PathBuf::from(&binding.work_dir),
+            &compact_prompt,
+            Some(&agent_session_id),
+            self.allow_remote_yolo,
+            None,
+        )
+        .await;
+        if let Some(error) = result.error.as_deref() {
+            let text = agent_error_user_message(&self.lang, classify_rim_error(error), error);
+            let _ = self.reply_msg(msg, &text).await;
+            return;
+        }
+
+        let event_confirmed = result.compact.is_some();
+        let mut compact = result.compact.unwrap_or_else(|| ContextCompactSnapshot {
+            trigger: "manual".into(),
+            tokens_before: before,
+            tokens_after: result.usage.as_ref().and_then(|usage| usage.total_tokens),
+            summary_preview: None,
+            note: note.map(str::trim).filter(|note| !note.is_empty()).map(str::to_string),
+        });
+        if compact.tokens_before.is_none() {
+            compact.tokens_before = before;
+        }
+        if compact.tokens_after.is_none() {
+            compact.tokens_after = result.usage.as_ref().and_then(|usage| usage.total_tokens);
+        }
+        if compact.note.is_none() {
+            compact.note = note.map(str::trim).filter(|note| !note.is_empty()).map(str::to_string);
+        }
+
+        let mut next = binding_after_agent_turn(
+            &binding,
+            result.session_id.as_deref().or(Some(agent_session_id.as_str())),
+        );
+        next.last_compact = Some(compact.clone());
+        next.context_usage = result.usage.or_else(|| {
+            compact.tokens_after.map(|tokens| ContextUsageSnapshot {
+                total_tokens: Some(tokens),
+                input_tokens: None,
+                output_tokens: None,
+                system_tokens: None,
+                tools_tokens: None,
+                history_tokens: None,
+                source: "compact".into(),
+            })
+        });
+        self.store.set(scope, next.clone());
+        app_sessions::sync_compact_to_app(&next, &compact);
+
+        let span = format_compact_span(compact.tokens_before, compact.tokens_after);
+        let text = if self.lang == "en" {
+            if event_confirmed {
+                format!("Compaction completed.{span}\nUse /context to inspect the current size.")
+            } else {
+                format!("/compact was sent.{span}\nThis CLI did not emit a compaction event; use /context to inspect the latest available size.")
+            }
+        } else if event_confirmed {
+            format!("会话压缩完成。{span}\n可发送 /context 查看当前大小。")
+        } else {
+            format!("已发送 /compact。{span}\n当前 CLI 未返回压缩事件，可发送 /context 查看最新可用大小。")
+        };
+        let _ = self.reply_msg(msg, &text).await;
     }
 
     async fn handle_project(
@@ -1123,6 +1246,9 @@ impl Engine {
         )
         .await;
 
+        let usage = result.usage.clone();
+        let compact = result.compact.clone();
+
         let mut next = binding_after_agent_turn(
             &binding,
             result.session_id.as_deref().or(resume_id.as_deref()),
@@ -1135,6 +1261,27 @@ impl Engine {
         }
         if next.pending_mode == PendingMode::New {
             next.pending_mode = PendingMode::Continue;
+        }
+        // Do not carry a previous turn's count forward as if it were current.
+        // `/context` can still estimate growth from the last compact baseline.
+        next.context_usage = usage;
+        if let Some(compact) = compact.as_ref() {
+            next.last_compact = Some(compact.clone());
+            // A compact event invalidates stale pre-compact usage. Keep a known
+            // post-compact base only when the agent actually reported one.
+            if compact.tokens_after.is_some() && next.context_usage.is_none() {
+                next.context_usage = compact.tokens_after.map(|tokens| ContextUsageSnapshot {
+                    total_tokens: Some(tokens),
+                    input_tokens: None,
+                    output_tokens: None,
+                    system_tokens: None,
+                    tools_tokens: None,
+                    history_tokens: None,
+                    source: "compact".into(),
+                });
+            } else if compact.tokens_after.is_none() {
+                next.context_usage = None;
+            }
         }
 
         let had_error = result.error.is_some();
@@ -1170,6 +1317,9 @@ impl Engine {
             is_error,
             &msg.channel,
         );
+        if let Some(compact) = compact.as_ref() {
+            app_sessions::sync_compact_to_app(&next, compact);
+        }
         self.store.set(scope, next);
 
         for chunk in chunk_text(&text, 3500) {
@@ -1402,6 +1552,150 @@ Add more accounts in Grok App → Settings → Account to enable `/account n` sw
         out.push("回复序号切换 · `0` 取消 · 或 `/account <序号>`".into());
     }
     out.join("\n")
+}
+
+fn format_compact_span(before: Option<u64>, after: Option<u64>) -> String {
+    match (before, after) {
+        (Some(before), Some(after)) => format!(
+            "\n- context: {} → {} tokens",
+            format_tokens(before),
+            format_tokens(after)
+        ),
+        (Some(before), None) => format!("\n- before: {} tokens", format_tokens(before)),
+        (None, Some(after)) => format!("\n- after: {} tokens", format_tokens(after)),
+        (None, None) => String::new(),
+    }
+}
+
+fn format_context_report(
+    binding: &ScopeBinding,
+    messages: &[crate::store::ChatMessageStored],
+    lang: &str,
+) -> String {
+    let journal_compact = latest_compact_from_messages(messages);
+    let last_compact = binding
+        .last_compact
+        .clone()
+        .or_else(|| journal_compact.as_ref().map(|(_, compact)| compact.clone()));
+    let mut lines = if lang == "en" {
+        vec!["**Current session context**".to_string()]
+    } else {
+        vec!["**当前会话上下文**".to_string()]
+    };
+    if binding.agent_session_id.is_none() && messages.is_empty() {
+        lines.push(if lang == "en" {
+            "- size: unavailable (no active agent session)".into()
+        } else {
+            "- 大小：暂无（当前没有 agent 会话）".into()
+        });
+    } else if let Some(usage) = binding.context_usage.as_ref() {
+        if let Some(total) = usage.total_tokens {
+            lines.push(if lang == "en" {
+                format!("- used: **{} tokens** (agent-reported)", format_tokens(total))
+            } else {
+                format!("- 已用：**{} tokens**（agent 上报）", format_tokens(total))
+            });
+        } else {
+            lines.push(if lang == "en" {
+                "- used: total unavailable (partial agent report)".into()
+            } else {
+                "- 已用：总量暂无（agent 仅上报了部分指标）".into()
+            });
+        }
+        if usage.input_tokens.is_some() || usage.output_tokens.is_some() {
+            lines.push(format!(
+                "- input / output: {} / {}",
+                usage.input_tokens.map(format_tokens).unwrap_or_else(|| "-".into()),
+                usage.output_tokens.map(format_tokens).unwrap_or_else(|| "-".into())
+            ));
+        }
+    } else if last_compact
+        .as_ref()
+        .is_some_and(|compact| compact.tokens_after.is_none())
+    {
+        lines.push(if lang == "en" {
+            "- used: unavailable — the last compact event did not report token counts".into()
+        } else {
+            "- 已用：暂无——最近一次压缩事件没有上报 token 数".into()
+        });
+    } else if let Some((marker_index, compact)) = journal_compact
+        .as_ref()
+        .filter(|(_, compact)| compact.tokens_after.is_some())
+    {
+        let base = compact.tokens_after.unwrap_or(0);
+        let delta = estimate_visible_tokens(&messages[marker_index + 1..]);
+        let estimate = base.saturating_add(delta);
+        lines.push(if lang == "en" {
+            format!(
+                "- used: **~{} tokens** (reported post-compact base + visible-message estimate)",
+                format_tokens(estimate)
+            )
+        } else {
+            format!(
+                "- 已用：**~{} tokens**（压缩后上报基线 + 后续可见消息估算）",
+                format_tokens(estimate)
+            )
+        });
+    } else if let Some(after) = last_compact
+        .as_ref()
+        .and_then(|compact| compact.tokens_after)
+    {
+        lines.push(if lang == "en" {
+            format!(
+                "- last known: **{} tokens** after compact (current growth unavailable)",
+                format_tokens(after)
+            )
+        } else {
+            format!(
+                "- 最近已知：压缩后 **{} tokens**（当前增量暂无）",
+                format_tokens(after)
+            )
+        });
+    } else if messages.is_empty() {
+        lines.push(if lang == "en" {
+            "- used: unavailable (send a message, then retry)".into()
+        } else {
+            "- 已用：暂无（发送一条消息后再试）".into()
+        });
+    } else {
+        let estimate = estimate_visible_tokens(messages);
+        lines.push(if lang == "en" {
+            format!(
+                "- used: **~{} tokens** (visible-message estimate, not model tokenizer output)",
+                format_tokens(estimate)
+            )
+        } else {
+            format!(
+                "- 已用：**~{} tokens**（按可见消息估算，并非模型 tokenizer 精确值）",
+                format_tokens(estimate)
+            )
+        });
+    }
+
+    if let Some(compact) = last_compact.as_ref() {
+        let span = match (compact.tokens_before, compact.tokens_after) {
+            (Some(before), Some(after)) => {
+                format!("{} → {} tokens", format_tokens(before), format_tokens(after))
+            }
+            (Some(before), None) => format!("before {} tokens", format_tokens(before)),
+            (None, Some(after)) => format!("after {} tokens", format_tokens(after)),
+            (None, None) => if lang == "en" {
+                "counts unavailable"
+            } else {
+                "未上报数值"
+            }
+            .into(),
+        };
+        lines.push(if lang == "en" {
+            format!("- last compact: {} ({span})", compact.trigger)
+        } else {
+            format!("- 最近压缩：{}（{span}）", compact.trigger)
+        });
+    }
+    if let Some(session_id) = binding.agent_session_id.as_deref() {
+        lines.push(format!("- agent session: `{session_id}`"));
+    }
+    lines.join("\n")
 }
 
 /// After Remote IM switches auth.json, soft-drop desktop ACP + notify UI.
