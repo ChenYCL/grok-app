@@ -108,7 +108,7 @@ impl OutboundRouter {
         }
     }
 
-    /// Interactive card (Feishu interactive / DingTalk action card).
+    /// Interactive card (Feishu / DingTalk action card / Telegram inline keyboard).
     pub async fn reply_card(
         &self,
         instance_id: &str,
@@ -137,6 +137,7 @@ impl OutboundRouter {
             "dingtalk" => {
                 super::channels::dingtalk::send_card(&cred.secrets, chat_id, card).await
             }
+            "telegram" => super::channels::telegram::send_card(&cred.secrets, chat_id, card).await,
             _ => {
                 // Fallback: dump card as text menu summary
                 let text = format!(
@@ -149,6 +150,34 @@ impl OutboundRouter {
                 self.reply(instance_id, chat_id, reply_to, &text.chars().take(2000).collect::<String>())
                     .await
             }
+        }
+    }
+
+    /// Replace an existing interactive result in-place where the channel supports it.
+    pub async fn edit_card(
+        &self,
+        instance_id: &str,
+        chat_id: &str,
+        message_id: &str,
+        card: &serde_json::Value,
+    ) -> Result<(), String> {
+        let cred = self
+            .creds
+            .read()
+            .get(instance_id)
+            .cloned()
+            .ok_or_else(|| format!("no outbound creds for {instance_id}"))?;
+        match cred.channel.as_str() {
+            "telegram" => {
+                super::channels::telegram::edit_card(
+                    &cred.secrets,
+                    chat_id,
+                    message_id,
+                    card,
+                )
+                .await
+            }
+            _ => self.reply_card(instance_id, chat_id, None, card).await,
         }
     }
 }

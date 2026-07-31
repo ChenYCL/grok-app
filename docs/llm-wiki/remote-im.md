@@ -178,7 +178,7 @@
 
 | 能力 | 首版 | GUI 位置 |
 |------|------|----------|
-| `/p` `/r` `/new` `/status` `/help` `/stop` `/whoami` | ✅ | 总览说明 + 帮助文案 |
+| `/p` `/r` `/new` `/status` `/help` `/stop` `/whoami` `/account` `/quota` `/switch` | ✅ | 总览说明 + 帮助文案；账号列表含剩余额度 |
 | `/model` `/mode` 远程改模型 | 二期 | 总览高级 |
 | `/shell` `/cron` | 默认关 | 总览高级 + admin_from |
 
@@ -188,15 +188,20 @@
 
 | 命令 | 行为 |
 |------|------|
-| `/p` `/project` | 项目列表：A 档卡片 / C 档编号菜单 |
+| `/start` `/help` | 欢迎与命令帮助（Telegram 首开默认发 `/start`） |
+| `/p` `/project` | 项目列表：A 档卡片 / Telegram Inline Keyboard / C 档编号菜单 |
 | `/p <名\|序号>` | 直接绑定项目 → **mode=new** |
-| `/r` `/resume` | 当前项目历史会话列表（App sessions_index） |
+| `/r` `/resume` | 当前项目历史会话列表（App sessions_index；Telegram 可点按钮恢复） |
 | `/r <序号>` | 绑定会话 → **mode=resume** |
 | `/new` | 清 session 绑定，保持项目，mode=new |
 | `/status` | 项目、cwd、mode、session、chatKey |
+| `/account` `/accounts` `/quota` | 列出已保存 Grok 账号 + SuperGrok 剩余额度（`★` 为当前） |
+| `/account <序号\|标签>` `/switch <n>` | 切换活动账号（写 `~/.grok/auth.json` + agent-home，软断桌面 ACP） |
 | `/stop` | 中断 turn |
 | `/whoami` | 平台 user id |
 | `0` / 取消 | 退出编号选择模式 |
+
+Telegram：启动 / 测试连接时 `setMyCommands` 注册上表到原生 **`/` 菜单**；`/p`、`/r`、`/account` 的结果使用 Inline Keyboard 原生展示与选择（见 §6.5）。
 
 规则：
 
@@ -373,6 +378,32 @@ Doctor 折叠区可提供「复制调试命令」给高级用户。
 | 群话题隔离 | （thread 行为说明 + 可选配置） | Cb/Help | | 按 cc 默认 |
 
 引导：@BotFather `/newbot` → 复制 token。可选「打开 BotFather 说明」外链。
+
+#### 原生命令菜单与结果选择（Bot API）
+
+Bridge **启动**与 **测试连接成功** 时自动调用 `setMyCommands`，在 Telegram 输入框的 **`/` 菜单** 中展示控制平面命令（与 §4 对齐）：
+
+| 命令 | 说明 |
+|------|------|
+| `/start` · `/help` | 欢迎 / 帮助 |
+| `/p` · `/project` | 列/绑已信任项目 |
+| `/r` · `/resume` | 列/恢复会话 |
+| `/new` | 新会话（保持项目） |
+| `/status` | 状态快照 |
+| `/account` · `/accounts` · `/quota` · `/switch` | 账号列表与额度 / 切换账号 |
+| `/whoami` | 发送者 id |
+| `/stop` | 中断当前 turn |
+
+`/p`、`/r`、`/account` 返回 Telegram 原生 Inline Keyboard：项目、会话、账号各一行按钮，每页 20 项；超过一页时提供「上一页 / 下一页」，通过 `editMessageText` 在同一条消息中刷新。文本序号输入仍可选择完整列表。选择按钮点击通过 `callback_query` 回到统一 `CardAction`，立即 `answerCallbackQuery` 结束加载状态，受理后收起键盘，避免重复执行。
+
+实现要点：
+
+- 默认语言（英文描述）+ `zh-hans` / `zh`（中文描述）各注册一份
+- 入站解析兼容群聊形态 **`/cmd@BotUsername`** 与 `bot_command` entity
+- 群聊中带 `bot_command` entity 的消息视为已 @ 机器人（满足「群聊需要 @」策略时的原生命令路径）
+- Inline Keyboard callback 与普通消息使用同一 `allow_from` ACL；账号 id 必须重新从已保存账号索引校验后才允许切换
+- Telegram `callback_data` 上限 64 bytes：使用 `project:<uuid>` / `session:<uuid>` / `account:<uuid>` 紧凑 action
+- 分页 action 使用 `page:<project|session|account>:<0-based page>`；翻页不清空 pending，文本序号仍按完整列表解析
 
 ---
 

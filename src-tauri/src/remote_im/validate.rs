@@ -280,20 +280,31 @@ async fn test_telegram(
         Ok(res) => {
             let v: serde_json::Value = res.json().await.unwrap_or_default();
             let ok = v.get("ok").and_then(|o| o.as_bool()).unwrap_or(false);
+            let mut message = if ok {
+                v.get("result")
+                    .and_then(|r| r.get("username"))
+                    .and_then(|u| u.as_str())
+                    .unwrap_or("ok")
+                    .to_string()
+            } else {
+                v.get("description")
+                    .and_then(|d| d.as_str())
+                    .unwrap_or("getMe_failed")
+                    .to_string()
+            };
+            // On successful getMe, push native BotFather-style command menu.
+            if ok {
+                if let Err(e) =
+                    super::channels::telegram::register_native_commands(&client, &token).await
+                {
+                    message = format!("{message} (commands_menu: {e})");
+                } else {
+                    message = format!("{message} · commands_menu=ok");
+                }
+            }
             Ok(TestConnectionDto {
                 ok,
-                message: if ok {
-                    v.get("result")
-                        .and_then(|r| r.get("username"))
-                        .and_then(|u| u.as_str())
-                        .unwrap_or("ok")
-                        .to_string()
-                } else {
-                    v.get("description")
-                        .and_then(|d| d.as_str())
-                        .unwrap_or("getMe_failed")
-                        .to_string()
-                },
+                message,
                 mock: false,
             })
         }

@@ -90,6 +90,75 @@ pub fn list_accounts() -> AccountsListResult {
     }
 }
 
+/// Path to a saved account's auth.json snapshot (if any).
+pub fn auth_path_for_account(id: &str) -> PathBuf {
+    profile_auth_path(id.trim())
+}
+
+/// OAuth token for a saved multi-account snapshot. Never log the return value.
+pub fn access_token_for_account(id: &str) -> Option<String> {
+    account::read_access_token_from_path(&auth_path_for_account(id))
+}
+
+/// Resolve a menu pick (`1`, `2`, … or exact id / label / email) to a saved account id.
+pub fn resolve_account_pick(query: &str, profiles: &[SavedAccount]) -> Result<String, String> {
+    let q = query.trim();
+    if q.is_empty() {
+        return Err("empty pick".into());
+    }
+    if profiles.is_empty() {
+        return Err("no saved accounts".into());
+    }
+    // 1-based index
+    if let Ok(n) = q.parse::<usize>() {
+        if n >= 1 && n <= profiles.len() {
+            return Ok(profiles[n - 1].id.clone());
+        }
+        return Err(format!("index out of range (1–{})", profiles.len()));
+    }
+    // Exact id
+    if let Some(p) = profiles.iter().find(|p| p.id == q) {
+        return Ok(p.id.clone());
+    }
+    // Label / email (case-insensitive, unique match preferred)
+    let lower = q.to_ascii_lowercase();
+    let matches: Vec<&SavedAccount> = profiles
+        .iter()
+        .filter(|p| {
+            p.label.to_ascii_lowercase() == lower
+                || p.email
+                    .as_ref()
+                    .map(|e| e.to_ascii_lowercase() == lower)
+                    .unwrap_or(false)
+                || p.display_name
+                    .as_ref()
+                    .map(|d| d.to_ascii_lowercase() == lower)
+                    .unwrap_or(false)
+        })
+        .collect();
+    if matches.len() == 1 {
+        return Ok(matches[0].id.clone());
+    }
+    if matches.len() > 1 {
+        return Err("ambiguous account name".into());
+    }
+    // Substring label match
+    let soft: Vec<&SavedAccount> = profiles
+        .iter()
+        .filter(|p| {
+            p.label.to_ascii_lowercase().contains(&lower)
+                || p.email
+                    .as_ref()
+                    .map(|e| e.to_ascii_lowercase().contains(&lower))
+                    .unwrap_or(false)
+        })
+        .collect();
+    if soft.len() == 1 {
+        return Ok(soft[0].id.clone());
+    }
+    Err(format!("account not found: {q}"))
+}
+
 /// Snapshot current official CLI auth into the multi-account store.
 /// If already signed in as a known email, update that slot; else create new.
 pub fn save_current_account(label: Option<String>) -> Result<SavedAccount, String> {
@@ -274,5 +343,30 @@ mod tests {
             oidc_issuer: None,
         };
         assert_eq!(label_from_profile(&p), "a@b.com");
+    }
+
+    #[test]
+    fn resolve_pick_index_and_label() {
+        let profiles = vec![
+            SavedAccount {
+                id: "u1".into(),
+                email: Some("one@x.ai".into()),
+                display_name: None,
+                label: "Work".into(),
+                updated_at: "t".into(),
+            },
+            SavedAccount {
+                id: "u2".into(),
+                email: Some("two@x.ai".into()),
+                display_name: None,
+                label: "Home".into(),
+                updated_at: "t".into(),
+            },
+        ];
+        assert_eq!(resolve_account_pick("1", &profiles).unwrap(), "u1");
+        assert_eq!(resolve_account_pick("home", &profiles).unwrap(), "u2");
+        assert_eq!(resolve_account_pick("one@x.ai", &profiles).unwrap(), "u1");
+        assert!(resolve_account_pick("0", &profiles).is_err());
+        assert!(resolve_account_pick("missing", &profiles).is_err());
     }
 }

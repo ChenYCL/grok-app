@@ -15,22 +15,37 @@ use super::resilience::{
 use super::session::SessionStore;
 use super::slash::{self, BuiltinCommand};
 use super::types::{ChannelInstance, IncomingMessage};
+use crate::account_profiles::{self, SavedAccount};
 use parking_lot::Mutex;
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
+use tauri::{Emitter, Manager};
 
 #[derive(Clone)]
 struct PendingPick {
     kind: PickKind,
     /// For session pick: listed App sessions at menu time.
     sessions: Vec<AppSessionEntry>,
+    /// For account pick: saved multi-account snapshots at menu time (order = menu numbers).
+    accounts: Vec<SavedAccount>,
 }
 
 #[derive(Clone, Copy)]
 enum PickKind {
     Project,
     Session,
+    Account,
+}
+
+#[derive(Clone)]
+struct AccountQuotaLine {
+    account: SavedAccount,
+    is_active: bool,
+    remaining_percent: Option<f64>,
+    used_percent: Option<f64>,
+    subscription_tier: Option<String>,
+    quota_note: Option<String>,
 }
 
 pub struct Engine {
@@ -170,6 +185,19 @@ impl Engine {
                 .cloned()
                 .or_else(|| g.get(&alt_scope).cloned())
         };
+        // Slash commands always win over number-pick mode (e.g. `/account 2` while listing).
+        if let Some(cmd) = slash::parse_slash(&content) {
+            if pending.is_some() {
+                let mut g = self.pending.lock();
+                g.remove(&scope);
+                g.remove(&alt_scope);
+            }
+            tracing::info!(?cmd, "remote_im: slash command");
+            self.handle_slash(cmd, &msg, &scope, &default_wd).await;
+            tracing::info!("remote_im: slash done");
+            return;
+        }
+
         if let Some(pending) = pending {
             if content == "0" || content.eq_ignore_ascii_case("cancel") {
                 {
@@ -190,13 +218,6 @@ impl Engine {
             return;
         }
 
-        if let Some(cmd) = slash::parse_slash(&content) {
-            tracing::info!(?cmd, "remote_im: slash command");
-            self.handle_slash(cmd, &msg, &scope, &default_wd).await;
-            tracing::info!("remote_im: slash done");
-            return;
-        }
-
         // Soft inbound rate limit — honest reply, never silent drop.
         // Drop parking_lot guard before any `.await` (Send + no hold across await).
         let rate_block = {
@@ -214,13 +235,30 @@ impl Engine {
             let _ = self.reply_msg(&msg, &t).await;
             return;
         }
-
         tracing::info!("remote_im: agent turn");
         self.run_agent_turn(&msg, &scope, &default_wd, &content).await;
         tracing::info!("remote_im: agent turn done");
     }
 
     async fn handle_card_action(&self, action: CardAction, msg: &IncomingMessage) {
+        let inst = {
+            let instances = self.instances.lock();
+            match instances.get(&msg.instance_id) {
+                Some(instance) => instance.clone(),
+                None => return,
+            }
+        };
+        // Interactive callback payloads are user-controlled too. Apply the same ACL
+        // gate as ordinary messages before binding projects/sessions or switching auth.
+        if !outbound::sender_allowed(&inst.acl, &msg.sender_id) {
+            let text = if self.lang == "en" {
+                "You are not on the allow_from list."
+            } else {
+                "你不在 allow_from 白名单中。"
+            };
+            let _ = self.reply_msg(msg, text).await;
+            return;
+        }
         let scope = SessionStore::scope_key(
             &msg.channel,
             &msg.instance_id,
@@ -234,20 +272,18 @@ impl Engine {
             &msg.sender_id,
             &msg.sender_id,
         );
-        let default_wd = {
-            let g = self.instances.lock();
-            g.get(&msg.instance_id)
-                .map(|i| projects::default_work_dir(&i.project_scope))
-                .unwrap_or_else(|| ".".into())
-        };
+        let default_wd = projects::default_work_dir(&inst.project_scope);
         // Prefer existing binding from either scope key
         let binding = self
             .store
             .get(&scope)
             .or_else(|| self.store.get(&alt_scope))
             .unwrap_or_else(|| self.store.get_or_create(&scope, &default_wd));
-        self.pending.lock().remove(&scope);
-        self.pending.lock().remove(&alt_scope);
+        let keep_pending = matches!(&action, CardAction::Page { .. });
+        if !keep_pending {
+            self.pending.lock().remove(&scope);
+            self.pending.lock().remove(&alt_scope);
+        }
 
         match action {
             CardAction::Cancel => {
@@ -316,6 +352,119 @@ impl Engine {
                     }
                 }
             }
+            CardAction::Account { id } => {
+                // Callback data is user-controlled. Resolve only ids present in the
+                // persisted account index before any auth snapshot path is touched.
+                let listed = account_profiles::list_accounts();
+                if listed.profiles.iter().any(|account| account.id == id) {
+                    self.do_switch_account(&id, msg).await;
+                } else {
+                    let t = if self.lang == "en" {
+                        "Account not found. Send /account again."
+                    } else {
+                        "未找到账号。请重新发送 /account。"
+                    };
+                    let _ = self.reply_msg(msg, t).await;
+                }
+            }
+            CardAction::Page { menu, page } => {
+                self.handle_telegram_page(&menu, page, &binding, &scope, msg)
+                    .await;
+            }
+        }
+    }
+
+    async fn handle_telegram_page(
+        &self,
+        menu: &str,
+        page: usize,
+        binding: &ScopeBinding,
+        scope: &str,
+        msg: &IncomingMessage,
+    ) {
+        if msg.channel != "telegram" {
+            return;
+        }
+        let card = match menu {
+            "project" => {
+                let projects = load_trusted_projects();
+                if projects.is_empty() {
+                    let _ = self.reply_msg(msg, &format_project_menu(&projects, &self.lang)).await;
+                    return;
+                }
+                self.insert_pending(
+                    scope,
+                    msg,
+                    PendingPick {
+                        kind: PickKind::Project,
+                        sessions: vec![],
+                        accounts: vec![],
+                    },
+                );
+                control_plane::build_telegram_project_card(&projects, &self.lang, page)
+            }
+            "session" => {
+                let sessions = app_sessions::sessions_for_project(binding.project_id.as_deref());
+                if sessions.is_empty() {
+                    let _ = self.reply_msg(msg, &format_session_menu(&sessions, &self.lang)).await;
+                    return;
+                }
+                self.insert_pending(
+                    scope,
+                    msg,
+                    PendingPick {
+                        kind: PickKind::Session,
+                        sessions: sessions.clone(),
+                        accounts: vec![],
+                    },
+                );
+                control_plane::build_telegram_session_card(&sessions, &self.lang, page)
+            }
+            "account" => {
+                let listed = account_profiles::list_accounts();
+                let active_id = listed.active_id;
+                let profiles = listed.profiles;
+                if profiles.is_empty() {
+                    let t = if self.lang == "en" {
+                        "No saved accounts yet. Add accounts in Grok App first."
+                    } else {
+                        "尚无已保存账号。请先在 Grok App 中添加账号。"
+                    };
+                    let _ = self.reply_msg(msg, t).await;
+                    return;
+                }
+                let lines = self
+                    .load_account_quota_lines(&profiles, active_id.as_deref())
+                    .await;
+                let text = format_account_menu(&lines, &self.lang);
+                let choices: Vec<(String, String)> = profiles
+                    .iter()
+                    .map(|account| (account.id.clone(), account.label.clone()))
+                    .collect();
+                self.insert_pending(
+                    scope,
+                    msg,
+                    PendingPick {
+                        kind: PickKind::Account,
+                        sessions: vec![],
+                        accounts: profiles,
+                    },
+                );
+                control_plane::build_telegram_account_card(&text, &choices, &self.lang, page)
+            }
+            _ => return,
+        };
+
+        if self
+            .outbound
+            .edit_card(&msg.instance_id, &msg.chat_id, &msg.message_id, &card)
+            .await
+            .is_err()
+        {
+            let _ = self
+                .outbound
+                .reply_card(&msg.instance_id, &msg.chat_id, None, &card)
+                .await;
         }
     }
 
@@ -410,6 +559,251 @@ impl Engine {
                     }
                 }
             }
+            PickKind::Account => {
+                match account_profiles::resolve_account_pick(content, &pending.accounts) {
+                    Ok(id) => {
+                        self.clear_pending(scope, msg);
+                        self.do_switch_account(&id, msg).await;
+                    }
+                    Err(_) => {
+                        let t = if self.lang == "en" {
+                            format!(
+                                "Invalid pick `{content}`. Send number (1–{}) or label, or 0 to cancel.",
+                                pending.accounts.len()
+                            )
+                        } else {
+                            format!(
+                                "无效选择 `{}`。请发送序号（1–{}）或标签，或 0 取消。",
+                                content.chars().take(40).collect::<String>(),
+                                pending.accounts.len()
+                            )
+                        };
+                        let _ = self.reply_msg(msg, &t).await;
+                    }
+                }
+            }
+        }
+    }
+
+    fn clear_pending(&self, scope: &str, msg: &IncomingMessage) {
+        let alt = SessionStore::scope_key(
+            &msg.channel,
+            &msg.instance_id,
+            &msg.sender_id,
+            &msg.sender_id,
+        );
+        let mut g = self.pending.lock();
+        g.remove(scope);
+        g.remove(&alt);
+    }
+
+    async fn handle_account(&self, query: Option<&str>, scope: &str, msg: &IncomingMessage) {
+        let listed = account_profiles::list_accounts();
+        let profiles = listed.profiles.clone();
+
+        if let Some(q) = query {
+            if profiles.is_empty() {
+                let t = if self.lang == "en" {
+                    "No saved accounts yet. Sign in / add accounts in Grok App → Settings → Account, then try again."
+                } else {
+                    "尚无已保存账号。请先在 Grok App「设置 → 账号」登录或添加账号后再试。"
+                };
+                let _ = self.reply_msg(msg, t).await;
+                return;
+            }
+            match account_profiles::resolve_account_pick(q, &profiles) {
+                Ok(id) => {
+                    self.clear_pending(scope, msg);
+                    self.do_switch_account(&id, msg).await;
+                }
+                Err(_) => {
+                    let t = if self.lang == "en" {
+                        format!("Account not found: `{q}`. Send `/account` to list.")
+                    } else {
+                        format!("未找到账号：`{q}`。发送 `/account` 查看列表。")
+                    };
+                    let _ = self.reply_msg(msg, &t).await;
+                }
+            }
+            return;
+        }
+
+        // List + quota (best-effort network per snapshot).
+        let thinking = if self.lang == "en" {
+            "Loading accounts & quota…"
+        } else {
+            "正在拉取账号与额度…"
+        };
+        let _ = self.reply_msg(msg, thinking).await;
+
+        let lines = self
+            .load_account_quota_lines(&profiles, listed.active_id.as_deref())
+            .await;
+        let text = format_account_menu(&lines, &self.lang);
+        if !profiles.is_empty() {
+            self.insert_pending(
+                scope,
+                msg,
+                PendingPick {
+                    kind: PickKind::Account,
+                    sessions: vec![],
+                    accounts: profiles.clone(),
+                },
+            );
+        }
+        if msg.channel == "telegram" && !profiles.is_empty() {
+            let choices: Vec<(String, String)> = profiles
+                .iter()
+                .map(|account| (account.id.clone(), account.label.clone()))
+                .collect();
+            let card =
+                control_plane::build_telegram_account_card(&text, &choices, &self.lang, 0);
+            let _ = self
+                .outbound
+                .reply_card(&msg.instance_id, &msg.chat_id, Some(&msg.message_id), &card)
+                .await;
+        } else {
+            let _ = self.reply_msg(msg, &text).await;
+        }
+    }
+
+    async fn load_account_quota_lines(
+        &self,
+        profiles: &[SavedAccount],
+        active_id: Option<&str>,
+    ) -> Vec<AccountQuotaLine> {
+        if profiles.is_empty() {
+            // Fall back to current CLI auth only (no multi-account snapshots).
+            let profile = crate::account::read_auth_profile();
+            if !profile.signed_in {
+                return Vec::new();
+            }
+            let mut line = AccountQuotaLine {
+                account: SavedAccount {
+                    id: "_current".into(),
+                    email: profile.email.clone(),
+                    display_name: profile.display_name.clone(),
+                    label: profile
+                        .email
+                        .clone()
+                        .or(profile.display_name.clone())
+                        .unwrap_or_else(|| "Current".into()),
+                    updated_at: String::new(),
+                },
+                is_active: true,
+                remaining_percent: None,
+                used_percent: None,
+                subscription_tier: None,
+                quota_note: None,
+            };
+            if let Some(token) = crate::account::speech_access_token() {
+                let snap = crate::supergrok_quota::fetch_quota_best_effort(&token).await;
+                if snap.source != "error" {
+                    line.used_percent = Some(f64::from(snap.used_percent));
+                    line.remaining_percent = Some(f64::from(snap.remaining_percent));
+                } else {
+                    line.quota_note = snap.last_error.or_else(|| Some("quota unavailable".into()));
+                }
+                let status = crate::account::account_status(None, true).await;
+                line.subscription_tier = status.billing.subscription_tier;
+                if line.remaining_percent.is_none() {
+                    line.remaining_percent = status.billing.remaining_percent;
+                    line.used_percent = status.billing.credit_usage_percent;
+                }
+            } else {
+                line.quota_note = Some(
+                    if self.lang == "en" {
+                        "not signed in / no token"
+                    } else {
+                        "未登录或无 token"
+                    }
+                    .into(),
+                );
+            }
+            return vec![line];
+        }
+
+        // Parallel quota fetch — each snapshot uses its own token (order preserved).
+        let lang_en = self.lang == "en";
+        let futs: Vec<_> = profiles
+            .iter()
+            .map(|p| {
+                let p = p.clone();
+                let is_active = active_id == Some(p.id.as_str());
+                async move {
+                    let mut line = AccountQuotaLine {
+                        account: p.clone(),
+                        is_active,
+                        remaining_percent: None,
+                        used_percent: None,
+                        subscription_tier: None,
+                        quota_note: None,
+                    };
+                    match account_profiles::access_token_for_account(&p.id) {
+                        Some(token) => {
+                            let snap =
+                                crate::supergrok_quota::fetch_quota_best_effort(&token).await;
+                            if snap.source != "error" {
+                                line.used_percent = Some(f64::from(snap.used_percent));
+                                line.remaining_percent = Some(f64::from(snap.remaining_percent));
+                            } else {
+                                line.quota_note = snap
+                                    .last_error
+                                    .or_else(|| Some("quota unavailable".into()));
+                            }
+                        }
+                        None => {
+                            line.quota_note = Some(
+                                if lang_en {
+                                    "snapshot missing token"
+                                } else {
+                                    "快照无 token"
+                                }
+                                .into(),
+                            );
+                        }
+                    }
+                    line
+                }
+            })
+            .collect();
+        futures_util::future::join_all(futs).await
+    }
+
+    async fn do_switch_account(&self, id: &str, msg: &IncomingMessage) {
+        match account_profiles::switch_account(id) {
+            Ok(profile) => {
+                // Soft-drop desktop ACP so next App chat uses new credentials too.
+                soft_disconnect_desktop_after_account_switch().await;
+
+                let label = profile
+                    .email
+                    .clone()
+                    .or(profile.display_name.clone())
+                    .unwrap_or_else(|| id.to_string());
+
+                // Refresh quota for the newly active account (also warms billing cache).
+                let status = crate::account::account_status(None, true).await;
+                let quota_line = format_quota_brief(&status.billing, &self.lang);
+                let t = if self.lang == "en" {
+                    format!(
+                        "Switched to **{label}**\n{quota_line}\nNext Remote IM / App turns use this account."
+                    )
+                } else {
+                    format!(
+                        "已切换到 **{label}**\n{quota_line}\n后续 Remote IM / App 对话将使用此账号。"
+                    )
+                };
+                let _ = self.reply_msg(msg, &t).await;
+            }
+            Err(e) => {
+                let t = if self.lang == "en" {
+                    format!("Switch failed: {e}")
+                } else {
+                    format!("切换失败：{e}")
+                };
+                let _ = self.reply_msg(msg, &t).await;
+            }
         }
     }
 
@@ -478,6 +872,9 @@ impl Engine {
                 self.handle_resume(query.as_deref(), scope, msg, default_wd)
                     .await;
             }
+            BuiltinCommand::Account { query } => {
+                self.handle_account(query.as_deref(), scope, msg).await;
+            }
             BuiltinCommand::Unknown { raw } => {
                 let t = if self.lang == "en" {
                     format!("Unknown command `/{raw}`. Send `/help`.")
@@ -539,26 +936,25 @@ impl Engine {
             return;
         }
 
-        // Menu: cards for feishu/lark/dingtalk, text otherwise
+        // Menu: native cards/buttons where supported, text otherwise.
         if channel_uses_cards(&msg.channel) {
-            let card = control_plane::build_feishu_project_card(&projects, &self.lang);
-            if msg.channel == "dingtalk" {
-                let card = control_plane::build_dingtalk_project_card(&projects, &self.lang);
-                let _ = self
-                    .outbound
-                    .reply_card(&msg.instance_id, &msg.chat_id, Some(&msg.message_id), &card)
-                    .await;
-            } else {
-                let _ = self
-                    .outbound
-                    .reply_card(&msg.instance_id, &msg.chat_id, Some(&msg.message_id), &card)
-                    .await;
-            }
+            let card = match msg.channel.as_str() {
+                "dingtalk" => control_plane::build_dingtalk_project_card(&projects, &self.lang),
+                "telegram" => {
+                    control_plane::build_telegram_project_card(&projects, &self.lang, 0)
+                }
+                _ => control_plane::build_feishu_project_card(&projects, &self.lang),
+            };
+            let _ = self
+                .outbound
+                .reply_card(&msg.instance_id, &msg.chat_id, Some(&msg.message_id), &card)
+                .await;
             // Still allow text pick as fallback (number / name). Mirror under sender scope
             // so card callbacks with different chat_id still clear the same pending.
             let pick = PendingPick {
                 kind: PickKind::Project,
                 sessions: vec![],
+                accounts: vec![],
             };
             self.insert_pending(scope, msg, pick);
         } else {
@@ -569,6 +965,7 @@ impl Engine {
                 PendingPick {
                     kind: PickKind::Project,
                     sessions: vec![],
+                    accounts: vec![],
                 },
             );
             let _ = self.reply_msg(msg, &text).await;
@@ -646,10 +1043,12 @@ impl Engine {
         }
 
         if channel_uses_cards(&msg.channel) {
-            let card = if msg.channel == "dingtalk" {
-                control_plane::build_dingtalk_session_card(&sessions, &self.lang)
-            } else {
-                control_plane::build_feishu_session_card(&sessions, &self.lang)
+            let card = match msg.channel.as_str() {
+                "dingtalk" => control_plane::build_dingtalk_session_card(&sessions, &self.lang),
+                "telegram" => {
+                    control_plane::build_telegram_session_card(&sessions, &self.lang, 0)
+                }
+                _ => control_plane::build_feishu_session_card(&sessions, &self.lang),
             };
             let _ = self
                 .outbound
@@ -661,6 +1060,7 @@ impl Engine {
                 PendingPick {
                     kind: PickKind::Session,
                     sessions: sessions.clone(),
+                    accounts: vec![],
                 },
             );
         } else {
@@ -671,6 +1071,7 @@ impl Engine {
                 PendingPick {
                     kind: PickKind::Session,
                     sessions,
+                    accounts: vec![],
                 },
             );
             let _ = self.reply_msg(msg, &text).await;
@@ -850,7 +1251,11 @@ fn extract_card_action(msg: &IncomingMessage) -> Option<CardAction> {
         return parse_card_action(rest);
     }
     // Structured payloads only (never steal normal chat)
-    if c.starts_with('{') || c.starts_with("project:") || c.starts_with("session:") || c == "cancel"
+    if c.starts_with('{')
+        || c.starts_with("project:")
+        || c.starts_with("session:")
+        || c.starts_with("account:")
+        || c == "cancel"
     {
         return parse_card_action(c);
     }
@@ -875,6 +1280,147 @@ fn chunk_text(s: &str, max: usize) -> Vec<String> {
     out
 }
 
+fn format_quota_brief(billing: &crate::account::BillingSnapshot, lang: &str) -> String {
+    let rem = billing.remaining_percent.map(|p| format!("{p:.0}%"));
+    let used = billing.credit_usage_percent.map(|p| format!("{p:.0}%"));
+    let tier = billing
+        .subscription_tier
+        .as_deref()
+        .filter(|s| !s.is_empty())
+        .unwrap_or("-");
+    if lang == "en" {
+        match (rem.as_deref(), used.as_deref()) {
+            (Some(r), Some(u)) => format!("Quota: **{r} remaining** · used {u} · plan {tier}"),
+            (Some(r), None) => format!("Quota: **{r} remaining** · plan {tier}"),
+            _ if billing.available => format!("Quota loaded · plan {tier}"),
+            _ => format!(
+                "Quota: unavailable ({})",
+                billing.message.as_deref().unwrap_or("no data")
+            ),
+        }
+    } else {
+        match (rem.as_deref(), used.as_deref()) {
+            (Some(r), Some(u)) => format!("额度：**剩余 {r}** · 已用 {u} · 套餐 {tier}"),
+            (Some(r), None) => format!("额度：**剩余 {r}** · 套餐 {tier}"),
+            _ if billing.available => format!("额度已加载 · 套餐 {tier}"),
+            _ => format!(
+                "额度：暂不可用（{}）",
+                billing.message.as_deref().unwrap_or("无数据")
+            ),
+        }
+    }
+}
+
+fn format_account_menu(lines: &[AccountQuotaLine], lang: &str) -> String {
+    if lines.is_empty() {
+        return if lang == "en" {
+            "No Grok account signed in, and no saved multi-account snapshots.\n\
+Sign in in Grok App → Settings → Account, then use **Add account** to save snapshots for switching."
+                .into()
+        } else {
+            "当前未登录，且没有已保存的多账号快照。\n\
+请先在 Grok App「设置 → 账号」登录，并用「添加账号」保存快照后再切换。"
+                .into()
+        };
+    }
+
+    let only_current = lines.len() == 1 && lines[0].account.id == "_current";
+    let mut out: Vec<String> = Vec::new();
+    if lang == "en" {
+        out.push("**Grok accounts & SuperGrok quota**".into());
+        out.push("".into());
+    } else {
+        out.push("**Grok 账号与 SuperGrok 额度**".into());
+        out.push("".into());
+    }
+
+    for (i, line) in lines.iter().enumerate() {
+        let n = i + 1;
+        let star = if line.is_active { "★ " } else { "" };
+        let label = line.account.label.trim();
+        let email = line
+            .account
+            .email
+            .as_deref()
+            .filter(|e| !e.is_empty() && *e != label)
+            .unwrap_or("");
+        let who = if email.is_empty() {
+            label.to_string()
+        } else {
+            format!("{label} · {email}")
+        };
+        let quota = if let Some(r) = line.remaining_percent {
+            let used = line
+                .used_percent
+                .map(|u| {
+                    if lang == "en" {
+                        format!(" · used {u:.0}%")
+                    } else {
+                        format!(" · 已用 {u:.0}%")
+                    }
+                })
+                .unwrap_or_default();
+            if lang == "en" {
+                format!("remaining **{r:.0}%**{used}")
+            } else {
+                format!("剩余 **{r:.0}%**{used}")
+            }
+        } else if let Some(note) = &line.quota_note {
+            note.clone()
+        } else if lang == "en" {
+            "quota unknown".into()
+        } else {
+            "额度未知".into()
+        };
+        let tier = line
+            .subscription_tier
+            .as_deref()
+            .filter(|s| !s.is_empty())
+            .map(|s| format!(" · {s}"))
+            .unwrap_or_default();
+        out.push(format!("{n}. {star}{who} — {quota}{tier}"));
+    }
+
+    out.push("".into());
+    if only_current {
+        if lang == "en" {
+            out.push(
+                "Only the current CLI session is shown (no multi-account snapshots).\n\
+Add more accounts in Grok App → Settings → Account to enable `/account n` switching."
+                    .into(),
+            );
+        } else {
+            out.push(
+                "当前仅显示 CLI 登录账号（尚无多账号快照）。\n\
+在 Grok App「设置 → 账号」添加账号后，可用 `/account 序号` 切换。"
+                    .into(),
+            );
+        }
+    } else if lang == "en" {
+        out.push("Reply with a number to switch · `0` cancel · or `/account <n>`".into());
+    } else {
+        out.push("回复序号切换 · `0` 取消 · 或 `/account <序号>`".into());
+    }
+    out.join("\n")
+}
+
+/// After Remote IM switches auth.json, soft-drop desktop ACP + notify UI.
+async fn soft_disconnect_desktop_after_account_switch() {
+    let Some(app) = app_sessions::try_app_handle() else {
+        return;
+    };
+    if let Some(mgr) = app.try_state::<Arc<crate::session_manager::SessionManager>>() {
+        let mgr = mgr.inner().clone();
+        if let Err(e) = mgr.disconnect(app.clone()).await {
+            tracing::warn!("remote_im: disconnect after account switch: {e}");
+        }
+    }
+    let _ = app.emit(
+        "account://changed",
+        serde_json::json!({ "source": "remote_im" }),
+    );
+}
+
 // silence unused import warning for list_sessions_for_project in non-test
 #[allow(dead_code)]
 fn _use_list() {
@@ -886,6 +1432,64 @@ mod tests {
     use super::*;
     use serde_json::json;
     use std::time::Duration;
+
+    #[test]
+    fn format_account_menu_empty_zh() {
+        let t = format_account_menu(&[], "zh");
+        assert!(t.contains("未登录") || t.contains("账号"));
+    }
+
+    #[test]
+    fn format_account_menu_lists_remaining() {
+        let lines = vec![AccountQuotaLine {
+            account: SavedAccount {
+                id: "a1".into(),
+                email: Some("a@x.ai".into()),
+                display_name: None,
+                label: "work".into(),
+                updated_at: String::new(),
+            },
+            is_active: true,
+            remaining_percent: Some(62.0),
+            used_percent: Some(38.0),
+            subscription_tier: Some("SuperGrok".into()),
+            quota_note: None,
+        }];
+        let t = format_account_menu(&lines, "zh");
+        assert!(t.contains("work"));
+        assert!(t.contains("62%"));
+        assert!(t.contains("★"));
+        assert!(t.contains("序号") || t.contains("/account"));
+    }
+
+    #[test]
+    fn resolve_account_pick_by_index_and_label() {
+        let profiles = vec![
+            SavedAccount {
+                id: "id-1".into(),
+                email: Some("a@x.ai".into()),
+                display_name: None,
+                label: "work".into(),
+                updated_at: String::new(),
+            },
+            SavedAccount {
+                id: "id-2".into(),
+                email: Some("b@x.ai".into()),
+                display_name: None,
+                label: "home".into(),
+                updated_at: String::new(),
+            },
+        ];
+        assert_eq!(
+            account_profiles::resolve_account_pick("2", &profiles).unwrap(),
+            "id-2"
+        );
+        assert_eq!(
+            account_profiles::resolve_account_pick("work", &profiles).unwrap(),
+            "id-1"
+        );
+        assert!(account_profiles::resolve_account_pick("9", &profiles).is_err());
+    }
 
     #[tokio::test]
     async fn handle_slash_p_does_not_deadlock_on_pending_lookup() {
