@@ -239,6 +239,35 @@ export function defaultPaletteActions(): PaletteActionDef[] {
       group: "settings",
     },
     {
+      id: "settings-workflows",
+      labelKey: "settings.workflows",
+      keywords: [
+        "workflows",
+        "workflow",
+        "rhai",
+        "workflows_enabled",
+        "create-workflow",
+        "/workflows",
+        "/workflow",
+        "orchestration",
+        "工作流",
+      ],
+      group: "settings",
+    },
+    {
+      id: "workflows-docs",
+      labelKey: "settings.workflows.openDocs",
+      keywords: [
+        "workflows docs",
+        "workflow docs",
+        "create-workflow",
+        "rhai docs",
+        "open workflows",
+        "工作流文档",
+      ],
+      group: "help",
+    },
+    {
       id: "settings-remote",
       labelKey: "settings.nav.remoteIm",
       keywords: [

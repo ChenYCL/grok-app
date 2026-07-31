@@ -1596,6 +1596,25 @@ export const zhTW: Record<MessageKey, string> = {
   "settings.todoGateMaxFires": "Todo 門控最大觸發次數",
   "settings.todoGateMaxFiresDesc":
     "每個 prompt 最多觸發 TodoGate 次數（1–20，預設 3）。獨立模式寫入 agent-home config.toml 的 todo_gate_max_fires_per_prompt。變更後 soft-respawn。",
+  "settings.workflows": "Grok Build 工作流程",
+  "settings.workflowsDesc":
+    "開啟後，獨立模式將頂層 workflows_enabled 寫入 agent-home config.toml，以便 Grok Build 執行 Rhai 工作流程腳本。預設關閉。變更後 soft-respawn。共享模式不會改寫 ~/.grok。",
+  "settings.workflowsHonesty":
+    "工作流程由 Grok Build CLI / Rhai 執行（workflow 工具、/workflow、/workflows 儀表板）——本應用不提供應用內工作流程編輯器或執行器。請用 /create-workflow 編寫；腳本位於 ~/.grok/workflows 或專案 .grok/workflows。",
+  "settings.workflows.openDocs": "開啟工作流程文件",
+  "settings.workflows.openUserDir": "開啟使用者工作流程資料夾",
+  "settings.workflows.refresh": "重新整理列表",
+  "settings.workflows.scanning": "正在掃描工作流程資料夾…",
+  "settings.workflows.discovered": "已發現：{names}",
+  "settings.workflows.noneFound":
+    "在 ~/.grok/workflows 或目前專案的 .grok/workflows 下找不到 .rhai 工作流程。",
+  "settings.workflows.scanSoftFail": "掃描不可用（soft-fail）",
+  "settings.workflows.docsMissing":
+    "磁碟上找不到內建 create-workflow 技能。請在 Grok Build 工作階段執行 /create-workflow，或開啟 ~/.grok/bundled/skills/create-workflow/SKILL.md。",
+  "settings.workflows.dirMissing": "無法開啟該路徑。",
+  "settings.workflows.scope.project": "專案",
+  "settings.workflows.scope.user": "使用者",
+  "settings.workflows.scope.agentHome": "agent-home",
   "settings.useLeader": "共用 Agent 後端（leader）",
   "settings.useLeaderDesc": "使用 --leader 讓多個用戶端共用一個後端行程；關閉則 --no-leader（預設）。變更後 soft-respawn。",
   "settings.leader.title": "Agent leader / serve",

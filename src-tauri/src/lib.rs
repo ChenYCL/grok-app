@@ -16,6 +16,7 @@ mod agent_subagents;
 mod agent_todo_gate;
 mod agent_subagent_wt_snap;
 mod agent_auto_wake;
+mod agent_workflows;
 mod extensions;
 mod hooks;
 mod supergrok_quota;
@@ -413,6 +414,7 @@ pub fn run() {
             commands::skill_roots,
             commands::skill_create,
             commands::agents_list,
+            commands::workflows_list,
             commands::agents_scaffold,
             commands::inspect_mcp,
             commands::project_inspect,

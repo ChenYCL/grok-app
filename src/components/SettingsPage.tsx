@@ -44,6 +44,7 @@ import { ARCHIVE_AGE_DAY_OPTIONS } from "@/lib/sessionArchiveAge";
 import { CostRollupPanel } from "@/components/CostRollupPanel";
 import { StreamingMessagesJsonPanel } from "@/components/StreamingMessagesJsonPanel";
 import { StreamingAcpNdjsonPanel } from "@/components/StreamingAcpNdjsonPanel";
+import { WorkflowsDiscoveryBlock } from "@/components/WorkflowsSettingsBlock";
 import type {
   CostRollupProjectMeta,
   CostRollupSessionMeta,
@@ -568,6 +569,12 @@ export interface SettingsPageProps {
   /** CLI auto-wake (config `auto_wake_enabled`; CLI-side when supported). */
   autoWakeEnabled?: boolean;
   onAutoWakeEnabled?: (v: boolean) => void;
+  /**
+   * Grok Build workflows (`workflows_enabled`). Independent agent-home write;
+   * no in-app runner — CLI / Rhai only.
+   */
+  workflowsEnabled?: boolean;
+  onWorkflowsEnabled?: (v: boolean) => void;
   useLeader?: boolean;
   onUseLeader?: (v: boolean) => void;
   /** Live voice speaker id (xAI realtime), e.g. eve. */
@@ -1178,6 +1185,8 @@ export function SettingsPage({
   onSubagentWorktreeSnapshotEnabled,
   autoWakeEnabled = false,
   onAutoWakeEnabled,
+  workflowsEnabled = false,
+  onWorkflowsEnabled,
   planEnabled = true,
   onPlanEnabled,
   todoGateEnabled = false,
@@ -6119,6 +6128,43 @@ export function SettingsPage({
             )}
             {activeTab === "tools" && (
               <>
+                {onWorkflowsEnabled ? (
+                  <div
+                    className={
+                      "settings-card" +
+                      rowHighlight("settings-anchor-workflows")
+                    }
+                    id="settings-anchor-workflows"
+                  >
+                    <div className="settings-row">
+                      <div className="settings-row__text">
+                        <div className="settings-row__label">
+                          {t("settings.workflows")}
+                        </div>
+                        <div className="settings-row__desc">
+                          {t("settings.workflowsDesc")}
+                        </div>
+                      </div>
+                      <UiCheck
+                        checked={!!workflowsEnabled}
+                        onChange={() => onWorkflowsEnabled(!workflowsEnabled)}
+                        ariaLabel={t("settings.workflows")}
+                      />
+                    </div>
+                    <div className="settings-row settings-row--stack">
+                      <div className="settings-row__text">
+                        <div className="settings-row__desc">
+                          {t("settings.workflowsHonesty")}
+                        </div>
+                      </div>
+                      <WorkflowsDiscoveryBlock
+                        locale={resolveLocale(locale)}
+                        projectPath={projectPath}
+                        showToast={showSettingsToast}
+                      />
+                    </div>
+                  </div>
+                ) : null}
                 <div
                   className={"settings-card" + rowHighlight("settings-anchor-doctor")}
                   id="settings-anchor-doctor"

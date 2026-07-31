@@ -29,6 +29,8 @@ describe("defaultPaletteActions", () => {
       "settings-account",
       "settings-extensions",
       "settings-runtime",
+      "settings-workflows",
+      "workflows-docs",
       "settings-remote",
       "settings-shortcuts",
       "settings-about",

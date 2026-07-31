@@ -13,6 +13,9 @@ See `docs/llm-wiki/release.md`.
 
 ### Added
 
+#### Runtime / workflows
+- **Grok Build workflows** (Settings → Runtime → Tools): opt-in `workflowsEnabled` AppSettings toggle writes top-level `workflows_enabled` into independent agent-home `config.toml` (shared mode never rewrites `~/.grok`); honest copy that workflows run via CLI / Rhai (`workflow` tool, `/workflow`, `/workflows`) — **no in-app runner/editor**; read-only soft-fail discovery of `~/.grok/workflows` + project `.grok/workflows` names; command palette **Open workflows docs** / jump to settings; pure helpers + tests; `settingsCatalog` + en/zh/zh-TW
+
 #### Agent / memory
 - **Auto-wake** (Settings → General → Agent; CLI config `auto_wake_enabled`): opt-in toggle so Grok Build may inject a synthetic turn after background work completes (bash / monitor / task / loop). Behavior is CLI-side when supported. Default off. Independent mode writes top-level agent-home `auto_wake_enabled` only (no invented env override — `GROK_AUTO_WAKE` is pattern-shaped). Soft-respawn on change; older CLIs that ignore the key soft-fail. Pure helpers + tests; `settingsCatalog` + en/zh/zh-TW.
 - **Memory embedding (CLI 0.2.117)** (Settings → Agent): host reads allowlisted `[memory.*]` keys from active GROK_HOME `config.toml` (`embedding.model` / `dimensions`, `search.*`, `search.mmr`, `search.temporal_decay`, `dream.*`, `watcher`, `initial_injection`) with soft-fail when missing; independent agent-home can write safe keys + soft-respawn (shared mode read-only). Memory browser shows honest **App keyword** vs **CLI hybrid/keyword** status and links to the panel. App `memory_search` stays path-scoped keyword scan — never invents embeddings client-side.
