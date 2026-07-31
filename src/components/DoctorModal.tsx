@@ -1,6 +1,6 @@
 /**
- * Structured Doctor health UI — checks with ok/warn/fail, re-run, copy,
- * support zip, reset app data, and Grok Build CLI `doctor --json` section.
+ * Structured Doctor health UI — triage findings (classify / filter / copy),
+ * GlassModal detail, re-run, support zip, reset app data, CLI doctor fixes.
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -12,9 +12,10 @@ import {
   IconDoctor,
   IconRefresh,
 } from "@/components/icons";
+import { GlassModal } from "@/components/GlassModal";
 import { createT, type Locale, type MessageKey } from "@/i18n";
 import * as api from "@/lib/api";
-import type { DoctorCheck, DoctorLevel, DoctorReport } from "@/lib/api";
+import type { DoctorLevel, DoctorReport } from "@/lib/api";
 import {
   CLI_DOCTOR_FACT_KEYS,
   extractFixIds,
@@ -23,11 +24,24 @@ import {
   listSafeAutoFixes,
   parseCliDoctorEnvelope,
   summarizeFixPlan,
-  type CliDoctorCheck,
   type CliDoctorSafeFacts,
   type CliDoctorView,
   type DoctorFixHandle,
 } from "@/lib/cliDoctor";
+import {
+  categoriesPresent,
+  collectDoctorFindings,
+  countDoctorFindings,
+  doctorFindingCopyText,
+  doctorFindingsCopyText,
+  filterDoctorFindings,
+  presentDoctorFindingDetail,
+  type DoctorFindingCategory,
+  type DoctorFindingCategoryFilter,
+  type DoctorFindingLevelFilter,
+  type DoctorFindingRow,
+  type DoctorFindingSourceFilter,
+} from "@/lib/doctorFindings";
 import { CliUpdateRow } from "@/components/CliUpdateRow";
 import { installDialogFocus } from "@/lib/a11yFocus";
 import { redact } from "@/lib/redact";
@@ -61,18 +75,34 @@ const CHECK_TITLE_KEYS: Record<string, MessageKey> = {
   logs: "doctor.check.logs",
 };
 
+const CATEGORY_LABEL_KEYS: Record<DoctorFindingCategory, MessageKey> = {
+  cli: "doctor.category.cli",
+  auth: "doctor.category.auth",
+  workspace: "doctor.category.workspace",
+  backend: "doctor.category.backend",
+  logs: "doctor.category.logs",
+  terminal: "doctor.category.terminal",
+  clipboard: "doctor.category.clipboard",
+  color: "doctor.category.color",
+  multiplexer: "doctor.category.multiplexer",
+  ssh: "doctor.category.ssh",
+  voice: "doctor.category.voice",
+  other: "doctor.category.other",
+};
+
 function levelLabelKey(level: DoctorLevel): MessageKey {
   if (level === "warn") return "doctor.level.warn";
   if (level === "fail") return "doctor.level.fail";
   return "doctor.level.ok";
 }
 
-function checkTitle(
-  check: DoctorCheck,
-  t: ReturnType<typeof createT>,
-): string {
-  const key = CHECK_TITLE_KEYS[check.id];
-  return key ? t(key) : check.title;
+function findingTitle(row: DoctorFindingRow, t: ReturnType<typeof createT>): string {
+  if (row.source === "app") {
+    const key = CHECK_TITLE_KEYS[row.rawId];
+    if (key) return t(key);
+  }
+  if (row.rawId === "cli-doctor-clean") return t("doctor.cliDoctorEmpty");
+  return row.title;
 }
 
 function formatGeneratedAt(iso: string, locale: Locale): string {
@@ -138,11 +168,23 @@ export function DoctorModal({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const [copiedFindingKey, setCopiedFindingKey] = useState<string | null>(null);
   const [busy, setBusy] = useState<"zip" | "reset" | "fix" | null>(null);
   /** Which fix id is currently running (for per-row spinner). */
   const [fixingId, setFixingId] = useState<string | null>(null);
   const [keepSecrets, setKeepSecrets] = useState(true);
   const [statusMsg, setStatusMsg] = useState<string | null>(null);
+
+  // Triage filters
+  const [levelFilter, setLevelFilter] =
+    useState<DoctorFindingLevelFilter>("all");
+  const [categoryFilter, setCategoryFilter] =
+    useState<DoctorFindingCategoryFilter>("all");
+  const [sourceFilter, setSourceFilter] =
+    useState<DoctorFindingSourceFilter>("all");
+  const [query, setQuery] = useState("");
+  const [issuesOnly, setIssuesOnly] = useState(false);
+  const [detailKey, setDetailKey] = useState<string | null>(null);
 
   const run = useCallback(async () => {
     setLoading(true);
@@ -177,8 +219,27 @@ export function DoctorModal({
       restoreFocus: true,
     });
   }, [open]);
+    const onKey = (e: KeyboardEvent) => {
+      // Don't close the main modal when detail GlassModal is open (it traps Escape).
+      if (e.key === "Escape" && !detailKey) onClose();
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [open, onClose, detailKey]);
 
-  const onCopy = async () => {
+  // Reset triage UI when modal closes.
+  useEffect(() => {
+    if (open) return;
+    setLevelFilter("all");
+    setCategoryFilter("all");
+    setSourceFilter("all");
+    setQuery("");
+    setIssuesOnly(false);
+    setDetailKey(null);
+    setCopiedFindingKey(null);
+  }, [open]);
+
+  const onCopyReport = async () => {
     if (!report) return;
     const payload = report.raw ?? report;
     const text = redact(JSON.stringify(payload, null, 2));
@@ -270,6 +331,56 @@ export function DoctorModal({
   const safeAutoFixes = useMemo(
     () => listSafeAutoFixes(cliDoctor),
     [cliDoctor],
+  );
+
+  const allFindings = useMemo(
+    () => collectDoctorFindings(report?.checks ?? [], cliDoctor),
+    [report, cliDoctor],
+  );
+
+  const visibleFindings = useMemo(
+    () =>
+      filterDoctorFindings(allFindings, {
+        level: levelFilter,
+        category: categoryFilter,
+        source: sourceFilter,
+        query,
+        issuesOnly,
+      }),
+    [
+      allFindings,
+      levelFilter,
+      categoryFilter,
+      sourceFilter,
+      query,
+      issuesOnly,
+    ],
+  );
+
+  const findingCounts = useMemo(
+    () => countDoctorFindings(allFindings),
+    [allFindings],
+  );
+
+  const presentCategories = useMemo(
+    () => categoriesPresent(allFindings),
+    [allFindings],
+  );
+
+  const hasActiveFilters =
+    levelFilter !== "all" ||
+    categoryFilter !== "all" ||
+    sourceFilter !== "all" ||
+    issuesOnly ||
+    query.trim().length > 0;
+
+  const detailRow = useMemo(
+    () => allFindings.find((r) => r.key === detailKey) ?? null,
+    [allFindings, detailKey],
+  );
+  const detailPresentation = useMemo(
+    () => presentDoctorFindingDetail(detailRow),
+    [detailRow],
   );
 
   /** Host/stdout/stderr detail for a failed fix (no fix id prefix). */
@@ -436,24 +547,67 @@ export function DoctorModal({
     [applyFix, onConfirm, t],
   );
 
-  const fixForCheck = useCallback(
-    (c: CliDoctorCheck): DoctorFixHandle | null => {
-      if (c.fixId) {
+  const fixHandleForRow = useCallback(
+    (row: DoctorFindingRow): DoctorFixHandle | null => {
+      if (row.fixId) {
         return {
-          fixId: c.fixId,
-          findingId: c.id,
-          message: c.title,
-          destructive: c.destructive !== false,
+          fixId: row.fixId,
+          findingId: row.rawId,
+          message: row.title,
+          destructive: row.destructive !== false,
         };
       }
       return (
         cliFixes.find(
-          (f) => f.findingId === c.id || f.fixId === c.id,
+          (f) => f.findingId === row.rawId || f.fixId === row.rawId,
         ) ?? null
       );
     },
     [cliFixes],
   );
+
+  const copyFinding = useCallback(
+    async (row: DoctorFindingRow) => {
+      const text = doctorFindingCopyText(row);
+      if (!text) return;
+      try {
+        await navigator.clipboard.writeText(text);
+        setCopiedFindingKey(row.key);
+        setStatusMsg(t("doctor.finding.copied"));
+        window.setTimeout(() => {
+          setCopiedFindingKey((cur) => (cur === row.key ? null : cur));
+          setStatusMsg((cur) =>
+            cur === t("doctor.finding.copied") ? null : cur,
+          );
+        }, 1600);
+      } catch {
+        setError(t("doctor.error"));
+      }
+    },
+    [t],
+  );
+
+  const copyVisibleFindings = useCallback(async () => {
+    const text = doctorFindingsCopyText(visibleFindings);
+    if (!text) return;
+    try {
+      await navigator.clipboard.writeText(text);
+      setStatusMsg(
+        t("doctor.finding.copiedN", { count: visibleFindings.length }),
+      );
+      window.setTimeout(() => setStatusMsg(null), 1600);
+    } catch {
+      setError(t("doctor.error"));
+    }
+  }, [t, visibleFindings]);
+
+  const clearFilters = useCallback(() => {
+    setLevelFilter("all");
+    setCategoryFilter("all");
+    setSourceFilter("all");
+    setQuery("");
+    setIssuesOnly(false);
+  }, []);
 
   /** App-resolved CLI path/version/source (probe), separate from `grok doctor` JSON. */
   // Hooks must run unconditionally — do not place below `if (!open) return null`
@@ -494,9 +648,11 @@ export function DoctorModal({
 
   if (!open) return null;
 
-  const summary = report?.summary;
-  const checks = report?.checks ?? [];
   const cliFacts = cliDoctor ? factEntries(cliDoctor.facts) : [];
+
+  const toggleLevel = (level: DoctorFindingLevelFilter) => {
+    setLevelFilter((cur) => (cur === level ? "all" : level));
+  };
 
   return (
     <div
@@ -527,29 +683,41 @@ export function DoctorModal({
           </button>
         </header>
 
-        {summary && !loading && (
+        {allFindings.length > 0 && !loading && (
           <div className="doctor-modal__summary" aria-live="polite">
-            <span
+            <button
+              type="button"
               className={`doctor-summary-pill doctor-summary-pill--ok${
-                summary.ok ? " is-active" : ""
-              }`}
+                findingCounts.ok ? " is-active" : ""
+              }${levelFilter === "ok" ? " is-selected" : ""}`}
+              onClick={() => toggleLevel("ok")}
+              aria-pressed={levelFilter === "ok"}
+              title={t("doctor.filter.levelOk")}
             >
-              {summary.ok} {t("doctor.level.ok")}
-            </span>
-            <span
+              {findingCounts.ok} {t("doctor.level.ok")}
+            </button>
+            <button
+              type="button"
               className={`doctor-summary-pill doctor-summary-pill--warn${
-                summary.warn ? " is-active" : ""
-              }`}
+                findingCounts.warn ? " is-active" : ""
+              }${levelFilter === "warn" ? " is-selected" : ""}`}
+              onClick={() => toggleLevel("warn")}
+              aria-pressed={levelFilter === "warn"}
+              title={t("doctor.filter.levelWarn")}
             >
-              {summary.warn} {t("doctor.level.warn")}
-            </span>
-            <span
+              {findingCounts.warn} {t("doctor.level.warn")}
+            </button>
+            <button
+              type="button"
               className={`doctor-summary-pill doctor-summary-pill--fail${
-                summary.fail ? " is-active" : ""
-              }`}
+                findingCounts.fail ? " is-active" : ""
+              }${levelFilter === "fail" ? " is-selected" : ""}`}
+              onClick={() => toggleLevel("fail")}
+              aria-pressed={levelFilter === "fail"}
+              title={t("doctor.filter.levelFail")}
             >
-              {summary.fail} {t("doctor.level.fail")}
-            </span>
+              {findingCounts.fail} {t("doctor.level.fail")}
+            </button>
             {report?.generatedAt && (
               <span className="doctor-modal__ts">
                 {t("doctor.generatedAt", {
@@ -617,35 +785,219 @@ export function DoctorModal({
               </dl>
             </div>
           )}
-          {!loading && !error && checks.length === 0 && (
+
+          {!loading && allFindings.length === 0 && (
             <p className="doctor-modal__status">{t("doctor.empty")}</p>
           )}
-          {!loading && checks.length > 0 && (
-            <ul className="doctor-checks">
-              {checks.map((c) => (
-                <li
-                  key={c.id}
-                  className={`doctor-check doctor-check--${c.level}`}
+
+          {!loading && allFindings.length > 0 && (
+            <section
+              className="doctor-findings"
+              aria-label={t("doctor.findings.title")}
+            >
+              <div className="doctor-findings__head">
+                <h3 className="doctor-findings__title">
+                  {t("doctor.findings.title")}
+                </h3>
+                <p className="doctor-findings__hint">
+                  {t("doctor.findings.hint", {
+                    shown: visibleFindings.length,
+                    total: allFindings.length,
+                  })}
+                </p>
+              </div>
+
+              <div className="doctor-findings__toolbar">
+                <input
+                  type="search"
+                  className="settings-input doctor-findings__search"
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                  placeholder={t("doctor.filter.searchPlaceholder")}
+                  autoComplete="off"
+                  spellCheck={false}
+                  aria-label={t("doctor.filter.searchPlaceholder")}
+                />
+                <div
+                  className="doctor-findings__chips"
+                  role="group"
+                  aria-label={t("doctor.filter.sourceAria")}
                 >
-                  <div className="doctor-check__badge" aria-hidden>
-                    <LevelIcon level={c.level} />
-                  </div>
-                  <div className="doctor-check__main">
-                    <div className="doctor-check__row">
-                      <span className="doctor-check__title">
-                        {checkTitle(c, t)}
-                      </span>
-                      <span
-                        className={`doctor-check__level doctor-check__level--${c.level}`}
+                  {(
+                    [
+                      ["all", "doctor.filter.sourceAll"],
+                      ["app", "doctor.filter.sourceApp"],
+                      ["cli", "doctor.filter.sourceCli"],
+                    ] as const
+                  ).map(([id, key]) => (
+                    <button
+                      key={id}
+                      type="button"
+                      className={
+                        "doctor-findings__chip" +
+                        (sourceFilter === id ? " is-active" : "")
+                      }
+                      aria-pressed={sourceFilter === id}
+                      onClick={() => setSourceFilter(id)}
+                    >
+                      {t(key)}
+                      {id !== "all" ? (
+                        <span className="doctor-findings__chip-n">
+                          {id === "app"
+                            ? findingCounts.bySource.app
+                            : findingCounts.bySource.cli}
+                        </span>
+                      ) : null}
+                    </button>
+                  ))}
+                </div>
+                <label className="doctor-findings__category">
+                  <span className="sr-only">{t("doctor.filter.categoryAria")}</span>
+                  <select
+                    className="settings-input doctor-findings__select"
+                    value={categoryFilter}
+                    onChange={(e) =>
+                      setCategoryFilter(
+                        e.target.value as DoctorFindingCategoryFilter,
+                      )
+                    }
+                    aria-label={t("doctor.filter.categoryAria")}
+                  >
+                    <option value="all">{t("doctor.filter.categoryAll")}</option>
+                    {presentCategories.map((c) => (
+                      <option key={c} value={c}>
+                        {t(CATEGORY_LABEL_KEYS[c])}
+                        {findingCounts.byCategory[c]
+                          ? ` (${findingCounts.byCategory[c]})`
+                          : ""}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="doctor-findings__issues">
+                  <input
+                    type="checkbox"
+                    checked={issuesOnly}
+                    onChange={(e) => setIssuesOnly(e.target.checked)}
+                  />
+                  <span>{t("doctor.filter.issuesOnly")}</span>
+                </label>
+                {hasActiveFilters ? (
+                  <button
+                    type="button"
+                    className="btn btn--ghost btn--sm"
+                    onClick={clearFilters}
+                  >
+                    {t("doctor.filter.clear")}
+                  </button>
+                ) : null}
+                <button
+                  type="button"
+                  className="btn btn--ghost btn--sm"
+                  disabled={visibleFindings.length === 0}
+                  onClick={() => void copyVisibleFindings()}
+                  title={t("doctor.finding.copyVisibleHint")}
+                >
+                  <IconCopy size={14} />
+                  {t("doctor.finding.copyVisible")}
+                </button>
+              </div>
+
+              {visibleFindings.length === 0 ? (
+                <p className="doctor-modal__status">
+                  {t("doctor.filter.empty")}
+                </p>
+              ) : (
+                <ul className="doctor-checks doctor-findings__list">
+                  {visibleFindings.map((row) => {
+                    const fix = fixHandleForRow(row);
+                    const isThisFixing =
+                      busy === "fix" && fixingId === fix?.fixId;
+                    const title = findingTitle(row, t);
+                    return (
+                      <li
+                        key={row.key}
+                        className={`doctor-check doctor-check--${row.level}`}
                       >
-                        {t(levelLabelKey(c.level))}
-                      </span>
-                    </div>
-                    <p className="doctor-check__detail">{c.detail}</p>
-                  </div>
-                </li>
-              ))}
-            </ul>
+                        <div className="doctor-check__badge" aria-hidden>
+                          <LevelIcon level={row.level} />
+                        </div>
+                        <div className="doctor-check__main">
+                          <div className="doctor-check__row">
+                            <span className="doctor-check__title">{title}</span>
+                            <span
+                              className={`doctor-check__level doctor-check__level--${row.level}`}
+                            >
+                              {t(levelLabelKey(row.level))}
+                            </span>
+                          </div>
+                          <div className="doctor-findings__meta">
+                            <span className="doctor-findings__tag">
+                              {t(CATEGORY_LABEL_KEYS[row.category])}
+                            </span>
+                            <span className="doctor-findings__tag doctor-findings__tag--muted">
+                              {row.source === "app"
+                                ? t("doctor.filter.sourceApp")
+                                : t("doctor.filter.sourceCli")}
+                            </span>
+                            {row.fixId ? (
+                              <span
+                                className="doctor-findings__tag doctor-findings__tag--mono"
+                                title={row.fixId}
+                              >
+                                {row.fixId}
+                              </span>
+                            ) : null}
+                          </div>
+                          {row.detail && row.rawId !== "cli-doctor-clean" ? (
+                            <p className="doctor-check__detail">{row.detail}</p>
+                          ) : null}
+                          <div className="doctor-check__actions">
+                            <button
+                              type="button"
+                              className="btn btn--ghost btn--sm"
+                              onClick={() => setDetailKey(row.key)}
+                            >
+                              {t("doctor.finding.detail")}
+                            </button>
+                            <button
+                              type="button"
+                              className="btn btn--ghost btn--sm"
+                              onClick={() => void copyFinding(row)}
+                              title={t("doctor.finding.copyOne")}
+                            >
+                              {copiedFindingKey === row.key ? (
+                                <IconCheck size={14} />
+                              ) : (
+                                <IconCopy size={14} />
+                              )}
+                              {copiedFindingKey === row.key
+                                ? t("doctor.finding.copied")
+                                : t("doctor.finding.copyOne")}
+                            </button>
+                            {fix ? (
+                              <button
+                                type="button"
+                                className="btn btn--ghost btn--sm"
+                                disabled={!!busy || loading}
+                                onClick={() => onApplyFix(fix)}
+                                title={t("doctor.cliDoctorFixHint", {
+                                  id: fix.fixId,
+                                })}
+                              >
+                                {isThisFixing
+                                  ? "…"
+                                  : t("doctor.cliDoctorFix")}
+                              </button>
+                            ) : null}
+                          </div>
+                        </div>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+            </section>
           )}
 
           {!loading && cliDoctor && (
@@ -700,63 +1052,6 @@ export function DoctorModal({
                     </button>
                   ) : null}
                 </div>
-              )}
-
-              {cliDoctor.available && cliDoctor.checks.length > 0 && (
-                <ul className="doctor-checks">
-                  {cliDoctor.checks.map((c) => {
-                    const fix = fixForCheck(c);
-                    const isThisFixing =
-                      busy === "fix" && fixingId === fix?.fixId;
-                    return (
-                      <li
-                        key={c.id}
-                        className={`doctor-check doctor-check--${c.level}`}
-                      >
-                        <div className="doctor-check__badge" aria-hidden>
-                          <LevelIcon level={c.level} />
-                        </div>
-                        <div className="doctor-check__main">
-                          <div className="doctor-check__row">
-                            <span className="doctor-check__title">
-                              {c.id === "cli-doctor-clean"
-                                ? t("doctor.cliDoctorEmpty")
-                                : c.title}
-                            </span>
-                            <span
-                              className={`doctor-check__level doctor-check__level--${c.level}`}
-                            >
-                              {t(levelLabelKey(c.level))}
-                            </span>
-                          </div>
-                          {c.detail && c.id !== "cli-doctor-clean" ? (
-                            <p className="doctor-check__detail">{c.detail}</p>
-                          ) : null}
-                          {fix ? (
-                            <div className="doctor-check__actions">
-                              <button
-                                type="button"
-                                className="btn btn--ghost btn--sm"
-                                disabled={!!busy || loading}
-                                onClick={() => onApplyFix(fix)}
-                                title={t("doctor.cliDoctorFixHint", {
-                                  id: fix.fixId,
-                                })}
-                              >
-                                {isThisFixing
-                                  ? "…"
-                                  : t("doctor.cliDoctorFix")}
-                              </button>
-                              <span className="doctor-check__fix-id">
-                                {fix.fixId}
-                              </span>
-                            </div>
-                          ) : null}
-                        </div>
-                      </li>
-                    );
-                  })}
-                </ul>
               )}
 
               {/* Fallback strip when findings carry automaticRemediation but
@@ -933,7 +1228,7 @@ export function DoctorModal({
           <button
             type="button"
             className="btn btn--ghost btn--sm"
-            onClick={() => void onCopy()}
+            onClick={() => void onCopyReport()}
             disabled={!report || loading || !!busy}
           >
             {copied ? <IconCheck size={14} /> : <IconCopy size={14} />}
@@ -950,6 +1245,119 @@ export function DoctorModal({
           </button>
         </footer>
       </div>
+
+      <GlassModal
+        open={!!detailPresentation}
+        onClose={() => setDetailKey(null)}
+        title={
+          detailPresentation
+            ? findingTitle(detailPresentation.row, t)
+            : t("doctor.finding.detailTitle")
+        }
+        size="md"
+        closeLabel={t("common.close")}
+        wrapBody
+        bodyClassName="doctor-finding-detail"
+        className="doctor-finding-detail-modal"
+        footer={
+          detailPresentation ? (
+            <>
+              <button
+                type="button"
+                className="btn btn--ghost"
+                onClick={() => void copyFinding(detailPresentation.row)}
+              >
+                <IconCopy size={14} />
+                {copiedFindingKey === detailPresentation.row.key
+                  ? t("doctor.finding.copied")
+                  : t("doctor.finding.copyOne")}
+              </button>
+              {fixHandleForRow(detailPresentation.row) ? (
+                <button
+                  type="button"
+                  className="btn btn--ghost"
+                  disabled={!!busy || loading}
+                  onClick={() => {
+                    const h = fixHandleForRow(detailPresentation.row);
+                    if (h) onApplyFix(h);
+                  }}
+                >
+                  {busy === "fix" &&
+                  fixingId === fixHandleForRow(detailPresentation.row)?.fixId
+                    ? "…"
+                    : t("doctor.cliDoctorFix")}
+                </button>
+              ) : null}
+              <button
+                type="button"
+                className="btn btn--solid"
+                onClick={() => setDetailKey(null)}
+              >
+                {t("common.close")}
+              </button>
+            </>
+          ) : null
+        }
+      >
+        {detailPresentation ? (
+          <div className="doctor-finding-detail__body">
+            <div className="doctor-finding-detail__meta">
+              <span
+                className={
+                  "doctor-check__level doctor-check__level--" +
+                  detailPresentation.row.level
+                }
+              >
+                {t(levelLabelKey(detailPresentation.row.level))}
+              </span>
+              <span className="doctor-findings__tag">
+                {t(CATEGORY_LABEL_KEYS[detailPresentation.row.category])}
+              </span>
+              <span className="doctor-findings__tag doctor-findings__tag--muted">
+                {detailPresentation.row.source === "app"
+                  ? t("doctor.filter.sourceApp")
+                  : t("doctor.filter.sourceCli")}
+              </span>
+            </div>
+            <p className="doctor-finding-detail__id">
+              <span className="doctor-finding-detail__label">
+                {t("doctor.finding.id")}
+              </span>
+              <code>{detailPresentation.row.rawId}</code>
+            </p>
+            {detailPresentation.row.disposition ? (
+              <p className="doctor-finding-detail__id">
+                <span className="doctor-finding-detail__label">
+                  {t("doctor.finding.disposition")}
+                </span>
+                <code>{detailPresentation.row.disposition}</code>
+              </p>
+            ) : null}
+            {detailPresentation.fixId ? (
+              <p className="doctor-finding-detail__id">
+                <span className="doctor-finding-detail__label">
+                  {t("doctor.finding.fixId")}
+                </span>
+                <code>
+                  {detailPresentation.fixId}
+                  {detailPresentation.destructive
+                    ? ` · ${t("doctor.finding.destructive")}`
+                    : ""}
+                </code>
+              </p>
+            ) : null}
+            {detailPresentation.detail ? (
+              <p className="doctor-finding-detail__detail">
+                {detailPresentation.detail}
+              </p>
+            ) : (
+              <p className="doctor-field-hint doctor-finding-detail__empty">
+                {t("doctor.finding.noDetail")}
+              </p>
+            )}
+          </div>
+        ) : null}
+      </GlassModal>
     </div>
   );
 }
