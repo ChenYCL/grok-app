@@ -3429,6 +3429,52 @@ const en = {
     "Validate before install works on a local folder path (not git URL or owner/repo).",
   "ext.plugins.validateHint":
     "Run `grok plugin validate` on a local path before install",
+  "ext.plugins.validate.viewResult": "View result",
+  "ext.plugins.validate.resultTitle": "Plugin validation",
+  "ext.plugins.validate.resultTitleNamed": "Validate · {name}",
+  "ext.plugins.validate.softFail": "Soft-fail",
+  "ext.plugins.validate.reason": "Reason",
+  "ext.plugins.validate.path": "Path",
+  "ext.plugins.validate.kind.ok": "Valid",
+  "ext.plugins.validate.kind.cliTooOld": "CLI too old",
+  "ext.plugins.validate.kind.cliMissing": "CLI missing",
+  "ext.plugins.validate.kind.emptySource": "Empty source",
+  "ext.plugins.validate.kind.pathOnly": "Local path only",
+  "ext.plugins.validate.kind.notFound": "Not found",
+  "ext.plugins.validate.kind.notADirectory": "Not a directory",
+  "ext.plugins.validate.kind.noManifest": "No plugin.json",
+  "ext.plugins.validate.kind.parseError": "Parse error",
+  "ext.plugins.validate.kind.missingField": "Missing field",
+  "ext.plugins.validate.kind.invalidManifest": "Invalid manifest",
+  "ext.plugins.validate.kind.hostOnly": "Desktop host required",
+  "ext.plugins.validate.kind.hostError": "Host error",
+  "ext.plugins.validate.kind.other": "Error",
+  "ext.plugins.validate.hint.ok":
+    "Manifest checks passed. Review messages if the CLI printed notes.",
+  "ext.plugins.validate.hint.noManifest":
+    "No plugin.json is required when skills/agents/hooks use standard folders.",
+  "ext.plugins.validate.hint.cliTooOld":
+    "Update Grok CLI (`grok update`) and fully restart the app to enable validate.",
+  "ext.plugins.validate.hint.cliMissing":
+    "Install or path the Grok CLI, then retry validate.",
+  "ext.plugins.validate.hint.emptySource":
+    "Enter a local folder path to validate before install.",
+  "ext.plugins.validate.hint.pathOnly":
+    "Pre-install validate works on a local folder path (not git URL or owner/repo).",
+  "ext.plugins.validate.hint.notFound":
+    "Path or plugin name was not found — check install location.",
+  "ext.plugins.validate.hint.notADirectory":
+    "Point validate at a plugin folder, not a file.",
+  "ext.plugins.validate.hint.parseError":
+    "Fix plugin.json JSON syntax, then validate again.",
+  "ext.plugins.validate.hint.missingField":
+    "Add required fields in plugin.json (e.g. name), then retry.",
+  "ext.plugins.validate.hint.invalidManifest":
+    "Fix the plugin manifest and re-run validate.",
+  "ext.plugins.validate.hint.hostOnly":
+    "Open the desktop app (Tauri) to run plugin validate.",
+  "ext.plugins.validate.hint.hostError": "Host invoke failed — see detail.",
+  "ext.plugins.validate.hint.other": "Unexpected outcome — see CLI messages.",
   "ext.skills.title": "Skills",
   "ext.skills.loading": "Loading skills…",
   "ext.skills.empty": "No skills discovered",
@@ -7987,6 +8033,44 @@ const zh: Record<MessageKey, string> = {
   "ext.plugins.validatePathOnly":
     "安装前校验仅支持本地文件夹路径（不支持 git URL 或 owner/repo）。",
   "ext.plugins.validateHint": "对本地路径运行 `grok plugin validate` 后再安装",
+  "ext.plugins.validate.viewResult": "查看结果",
+  "ext.plugins.validate.resultTitle": "插件校验",
+  "ext.plugins.validate.resultTitleNamed": "校验 · {name}",
+  "ext.plugins.validate.softFail": "软失败",
+  "ext.plugins.validate.reason": "原因",
+  "ext.plugins.validate.path": "路径",
+  "ext.plugins.validate.kind.ok": "有效",
+  "ext.plugins.validate.kind.cliTooOld": "CLI 过旧",
+  "ext.plugins.validate.kind.cliMissing": "未找到 CLI",
+  "ext.plugins.validate.kind.emptySource": "来源为空",
+  "ext.plugins.validate.kind.pathOnly": "仅本地路径",
+  "ext.plugins.validate.kind.notFound": "未找到",
+  "ext.plugins.validate.kind.notADirectory": "不是目录",
+  "ext.plugins.validate.kind.noManifest": "无 plugin.json",
+  "ext.plugins.validate.kind.parseError": "解析错误",
+  "ext.plugins.validate.kind.missingField": "缺少字段",
+  "ext.plugins.validate.kind.invalidManifest": "清单无效",
+  "ext.plugins.validate.kind.hostOnly": "需要桌面 Host",
+  "ext.plugins.validate.kind.hostError": "Host 错误",
+  "ext.plugins.validate.kind.other": "错误",
+  "ext.plugins.validate.hint.ok": "清单检查通过。如 CLI 有备注可再查看消息。",
+  "ext.plugins.validate.hint.noManifest":
+    "使用标准目录放置 skills/agents/hooks 时可不需要 plugin.json。",
+  "ext.plugins.validate.hint.cliTooOld":
+    "请更新 Grok CLI（`grok update`）并完全重启应用以启用校验。",
+  "ext.plugins.validate.hint.cliMissing": "请安装或配置 Grok CLI 路径后再试校验。",
+  "ext.plugins.validate.hint.emptySource": "请输入本地文件夹路径以在安装前校验。",
+  "ext.plugins.validate.hint.pathOnly":
+    "安装前校验仅支持本地文件夹路径（不支持 git URL 或 owner/repo）。",
+  "ext.plugins.validate.hint.notFound": "路径或插件名未找到 — 请检查安装位置。",
+  "ext.plugins.validate.hint.notADirectory": "请对插件文件夹校验，而不是文件。",
+  "ext.plugins.validate.hint.parseError": "请修正 plugin.json 的 JSON 语法后重试。",
+  "ext.plugins.validate.hint.missingField":
+    "请在 plugin.json 中补全必填字段（如 name）后重试。",
+  "ext.plugins.validate.hint.invalidManifest": "请修复插件清单后重新校验。",
+  "ext.plugins.validate.hint.hostOnly": "请在桌面应用（Tauri）中运行插件校验。",
+  "ext.plugins.validate.hint.hostError": "Host 调用失败 — 见详情。",
+  "ext.plugins.validate.hint.other": "意外结果 — 见 CLI 消息。",
   "ext.skills.title": "技能",
   "ext.skills.loading": "正在加载技能…",
   "ext.skills.empty": "未发现技能",
