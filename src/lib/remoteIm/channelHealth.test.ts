@@ -278,6 +278,12 @@ describe("classifyChannelHealth", () => {
     expect(transportForChannel("line")).toBe("webhook");
 
     const bare = inst("line", { hasCredentials: false, enabled: false });
+  it("slack: socket_mode deep health with dual-token readiness", () => {
+    expect(channelHasDeepHealth("slack")).toBe(true);
+    expect(transportForChannel("slack")).toBe("socket_mode");
+    expect(channelModeLabel("slack", {})).toBe("mode=socket");
+
+    const bare = inst("slack", { hasCredentials: false, enabled: false });
     const h0 = classifyChannelHealth({
       instance: bare,
       bridgeRunning: false,
@@ -322,6 +328,17 @@ describe("classifyChannelHealth", () => {
       hasCredentials: true,
       enabled: true,
       options: { port: 9443, callback_path: "/hooks/line" },
+    expect(h0.transport).toBe("socket_mode");
+    expect(h0.credentialsReady).toBe(false);
+    expect(h0.hintKeys.some((k) => k.includes("slackSocketMode"))).toBe(true);
+    expect(h0.hintKeys.some((k) => k.includes("slackNoPublicUrl"))).toBe(true);
+    expect(h0.hintKeys.some((k) => k.includes("slackMissingTokens"))).toBe(
+      true,
+    );
+
+    const ready = inst("slack", {
+      hasCredentials: true,
+      enabled: true,
       acl: {
         allowFrom: "*",
         requireMention: true,
@@ -382,5 +399,25 @@ describe("classifyChannelHealth", () => {
       new Set(["channel_secret", "access_token"]),
     );
     expect(rForm.ready).toBe(true);
+    expect(h1.modeLabel).toBe("mode=socket");
+    expect(h1.hintKeys.some((k) => k.includes("slackDualToken"))).toBe(true);
+    expect(h1.openAcl).toBe(true);
+    expect(h1.hintKeys.some((k) => k.includes("slackAcl"))).toBe(true);
+
+    // Only bot_token in form without vault → not ready
+    const partial = credentialReadiness(
+      "slack",
+      bare,
+      new Set(["bot_token"]),
+    );
+    expect(partial.ready).toBe(false);
+    expect(partial.missingKeys).toContain("app_token");
+
+    const both = credentialReadiness(
+      "slack",
+      bare,
+      new Set(["bot_token", "app_token"]),
+    );
+    expect(both.ready).toBe(true);
   });
 });

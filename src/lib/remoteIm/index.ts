@@ -15,3 +15,4 @@ export * from "./feishuConfig";
 export * from "./weixinConfig";
 export * from "./discordConfig";
 export * from "./lineConfig";
+export * from "./slackConfig";

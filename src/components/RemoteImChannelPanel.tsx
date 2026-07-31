@@ -998,6 +998,20 @@ export function RemoteImChannelPanel({
           </ol>
           <p className="settings-row__hint">
             {t("settings.remoteIm.line.guide.softFail")}
+      {channelId === "slack" ? (
+        <div className="rim-callout" data-slack-guide="1">
+          <div className="rim-callout__title">
+            {t("settings.remoteIm.slack.guide.title")}
+          </div>
+          <ol className="rim-guide-steps">
+            <li>{t("settings.remoteIm.slack.guide.step1")}</li>
+            <li>{t("settings.remoteIm.slack.guide.step2")}</li>
+            <li>{t("settings.remoteIm.slack.guide.step3")}</li>
+            <li>{t("settings.remoteIm.slack.guide.step4")}</li>
+            <li>{t("settings.remoteIm.slack.guide.step5")}</li>
+          </ol>
+          <p className="settings-row__hint">
+            {t("settings.remoteIm.slack.guide.softFail")}
           </p>
         </div>
       ) : null}
