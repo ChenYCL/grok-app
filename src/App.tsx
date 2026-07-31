@@ -864,6 +864,8 @@ function paletteActionIcon(id: string) {
     case "settings-extensions":
       return <IconPlug size={size} />;
     case "settings-runtime":
+    case "settings-workflows":
+    case "workflows-docs":
       return <IconDoctor size={size} />;
     case "settings-remote":
       return <IconDeviceMobile size={size} />;
@@ -2196,6 +2198,7 @@ export default function App() {
   const [subagentsEnabled, setSubagentsEnabled] = useState(true);
   const [subagentWorktreeSnapshotEnabled, setSubagentWorktreeSnapshotEnabled] =
     useState(false);
+  const [workflowsEnabled, setWorkflowsEnabled] = useState(false);
   const [planEnabled, setPlanEnabled] = useState(true);
   const [todoGateEnabled, setTodoGateEnabled] = useState(false);
   const [todoGateMaxFiresPerPrompt, setTodoGateMaxFiresPerPrompt] =
@@ -3045,6 +3048,7 @@ export default function App() {
       setSubagentWorktreeSnapshotEnabled(
         !!settings.subagentWorktreeSnapshotEnabled,
       );
+      setWorkflowsEnabled(!!settings.workflowsEnabled);
       setPlanEnabled(settings.planEnabled !== false);
       setTodoGateEnabled(!!settings.todoGateEnabled);
       {
@@ -12090,6 +12094,38 @@ export default function App() {
       case "settings-runtime":
         navigateSettings("runtime");
         break;
+      case "settings-workflows":
+        navigateSettings("runtime", "tools");
+        // Scroll to workflows card after settings mounts.
+        if (typeof window !== "undefined") {
+          window.setTimeout(() => {
+            document
+              .getElementById("settings-anchor-workflows")
+              ?.scrollIntoView({ block: "center", behavior: "smooth" });
+          }, 120);
+        }
+        break;
+      case "workflows-docs":
+        navigateSettings("runtime", "tools");
+        if (typeof window !== "undefined") {
+          window.setTimeout(() => {
+            document
+              .getElementById("settings-anchor-workflows")
+              ?.scrollIntoView({ block: "center", behavior: "smooth" });
+          }, 120);
+        }
+        // Best-effort: reveal bundled create-workflow skill when present.
+        void api
+          .workflowsList(activeProject?.path)
+          .then((res) => {
+            const p = res.createWorkflowSkill?.trim();
+            if (p) return api.pathReveal(p);
+            showToast(tr("settings.workflows.docsMissing"), 3200);
+          })
+          .catch(() => {
+            showToast(tr("settings.workflows.docsMissing"), 3200);
+          });
+        break;
       case "settings-remote":
         navigateSettings("remote_im");
         break;
@@ -14772,6 +14808,13 @@ export default function App() {
             setSubagentWorktreeSnapshotEnabled(v);
             void api.settingsGet().then((s) =>
               api.settingsSet({ ...s, subagentWorktreeSnapshotEnabled: v }),
+            );
+          }}
+          workflowsEnabled={workflowsEnabled}
+          onWorkflowsEnabled={(v) => {
+            setWorkflowsEnabled(v);
+            void api.settingsGet().then((s) =>
+              api.settingsSet({ ...s, workflowsEnabled: v }),
             );
           }}
           planEnabled={planEnabled}

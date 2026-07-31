@@ -340,6 +340,13 @@ pub struct AppSettings {
     /// key; spawn sets env (soft-fail when CLI is known older). Soft-respawns.
     #[serde(default)]
     pub subagent_worktree_snapshot_enabled: bool,
+    /// Enable Grok Build workflows (`workflows_enabled` in agent-home config.toml).
+    /// Default **false** (opt-in). Workflows are Rhai scripts under
+    /// `~/.grok/workflows` / project `.grok/workflows` run by the CLI `workflow`
+    /// tool — the App only surfaces this toggle + read-only discovery (no in-app
+    /// runner). Independent mode writes the top-level key; soft-respawns.
+    #[serde(default)]
+    pub workflows_enabled: bool,
     /// Preferred Grok Build agent definition for new agent processes
     /// (`explore` / `plan` / `general-purpose` / custom name under `~/.grok/agents`).
     /// Empty / `default` / `none` → omit top-level `--agent` (CLI default).
@@ -529,6 +536,7 @@ impl Default for AppSettings {
             plan_enabled: default_plan_enabled(),
             subagents_enabled: true,
             subagent_worktree_snapshot_enabled: false,
+            workflows_enabled: false,
             preferred_agent: String::new(),
             agent_profile_path: String::new(),
             agents_json: String::new(),
@@ -2326,6 +2334,7 @@ mod tests {
         assert!(s.plan_enabled);
         assert!(s.subagents_enabled);
         assert!(!s.subagent_worktree_snapshot_enabled);
+        assert!(!s.workflows_enabled);
         assert_eq!(s.preferred_agent, "");
         assert_eq!(s.agent_profile_path, "");
         assert_eq!(s.agents_json, "");
@@ -2502,6 +2511,13 @@ mod tests {
         let s: AppSettings = serde_json::from_str(legacy_settings_json()).expect("deserialize");
         assert!(!s.subagent_worktree_snapshot_enabled);
         assert!(!AppSettings::default().subagent_worktree_snapshot_enabled);
+    }
+
+    #[test]
+    fn workflows_enabled_defaults_false_when_missing_from_json() {
+        let s: AppSettings = serde_json::from_str(legacy_settings_json()).expect("deserialize");
+        assert!(!s.workflows_enabled);
+        assert!(!AppSettings::default().workflows_enabled);
     }
 
     #[test]

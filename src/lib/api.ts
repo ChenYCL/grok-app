@@ -1578,6 +1578,12 @@ export interface AppSettings {
    * independent mode; spawn sets `GROK_SUBAGENT_WORKTREE_SNAPSHOT`. Soft-respawns.
    */
   subagentWorktreeSnapshotEnabled?: boolean;
+  /**
+   * Enable Grok Build workflows (`workflows_enabled` in agent-home config).
+   * Default false. Independent mode writes the top-level key; soft-respawns.
+   * No in-app runner — scripts run via CLI / Rhai `workflow` tool.
+   */
+  workflowsEnabled?: boolean;
   useLeader?: boolean;
   /** Reopen last active chat once after launch (default false → draft new chat). */
   reopenLastSession?: boolean;
@@ -3140,6 +3146,32 @@ export type AgentsListResult = {
 /** List agent + persona definition files (no CLI required). */
 export async function agentsList(projectPath?: string | null) {
   return invoke<AgentsListResult>("agents_list", {
+    projectPath: projectPath ?? null,
+  });
+}
+
+/** Discovered workflow script row from host `workflows_list`. */
+export type WorkflowDefDto = {
+  name: string;
+  path: string;
+  scope: string;
+};
+
+export type WorkflowsListResult = {
+  workflows: WorkflowDefDto[];
+  userDir?: string;
+  projectDir?: string | null;
+  agentHomeDir?: string | null;
+  /** Bundled create-workflow skill path (may be missing on disk). */
+  createWorkflowSkill?: string;
+};
+
+/**
+ * Read-only soft-fail discovery of Grok Build workflow `.rhai` files.
+ * No CLI required; missing dirs return an empty list.
+ */
+export async function workflowsList(projectPath?: string | null) {
+  return invoke<WorkflowsListResult>("workflows_list", {
     projectPath: projectPath ?? null,
   });
 }

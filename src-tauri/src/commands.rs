@@ -1204,6 +1204,7 @@ pub async fn settings_set(
     let subagents_flip = prev.subagents_enabled != settings.subagents_enabled;
     let subagent_wt_snap_flip = prev.subagent_worktree_snapshot_enabled
         != settings.subagent_worktree_snapshot_enabled;
+    let workflows_flip = prev.workflows_enabled != settings.workflows_enabled;
     let preferred_agent_flip =
         prev.preferred_agent.trim() != settings.preferred_agent.trim();
     let agent_profile_flip = prev.agent_profile_path.trim() != settings.agent_profile_path.trim();
@@ -1335,6 +1336,15 @@ pub async fn settings_set(
             settings.subagent_worktree_snapshot_enabled,
         ) {
             tracing::warn!("settings_set sync subagent_wt_snap profile: {e}");
+        }
+        need_soft_respawn = true;
+    }
+    if workflows_flip {
+        if let Err(e) = crate::agent_workflows::sync_workflows_to_agent_profile(
+            &settings.session_data_mode,
+            settings.workflows_enabled,
+        ) {
+            tracing::warn!("settings_set sync workflows profile: {e}");
         }
         need_soft_respawn = true;
     }
@@ -7292,6 +7302,27 @@ pub struct PersonaDefDto {
 }
 
 // from PR #77
+
+/// Read-only soft-fail list of discovered Grok Build workflow scripts
+/// (`~/.grok/workflows` + project `.grok/workflows` + independent agent-home).
+/// Never invents runners; empty dirs return an empty list.
+#[tauri::command]
+pub async fn workflows_list(
+    project_path: Option<String>,
+) -> Result<crate::agent_workflows::DiscoverWorkflowsResult, String> {
+    let project = project_path
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(|s| s.to_string());
+    let mode = store::load_settings().session_data_mode.clone();
+    let result = tauri::async_runtime::spawn_blocking(move || {
+        crate::agent_workflows::discover_workflows(project.as_deref(), &mode)
+    })
+    .await
+    .map_err(|e| e.to_string())?;
+    Ok(result)
+}
 
 /// List agent + persona definition files from user / project / bundled scopes.
 /// Does not require the CLI binary (pure filesystem discovery under `~/.grok`,

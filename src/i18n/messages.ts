@@ -1673,6 +1673,25 @@ const en = {
   "settings.todoGateMaxFires": "Todo gate max fires",
   "settings.todoGateMaxFiresDesc":
     "Max TodoGate nudges per prompt (1–20, default 3). Written as todo_gate_max_fires_per_prompt in independent agent-home config.toml. Soft-respawns after change.",
+  "settings.workflows": "Grok Build workflows",
+  "settings.workflowsDesc":
+    "When on, writes top-level workflows_enabled into independent agent-home config.toml so Grok Build can run Rhai workflow scripts. Default off. Soft-respawns after change. Shared mode does not rewrite ~/.grok.",
+  "settings.workflowsHonesty":
+    "Workflows run via the Grok Build CLI / Rhai (workflow tool, /workflow, /workflows dashboard) — this App does not provide an in-app workflow editor or runner. Author with /create-workflow; scripts live in ~/.grok/workflows or project .grok/workflows.",
+  "settings.workflows.openDocs": "Open workflows docs",
+  "settings.workflows.openUserDir": "Open user workflows folder",
+  "settings.workflows.refresh": "Refresh list",
+  "settings.workflows.scanning": "Scanning workflow folders…",
+  "settings.workflows.discovered": "Discovered: {names}",
+  "settings.workflows.noneFound":
+    "No .rhai workflows found under ~/.grok/workflows or this project’s .grok/workflows.",
+  "settings.workflows.scanSoftFail": "scan unavailable (soft-fail)",
+  "settings.workflows.docsMissing":
+    "Bundled create-workflow skill not found on disk. In a Grok Build session, run /create-workflow or open ~/.grok/bundled/skills/create-workflow/SKILL.md.",
+  "settings.workflows.dirMissing": "Could not open that path.",
+  "settings.workflows.scope.project": "project",
+  "settings.workflows.scope.user": "user",
+  "settings.workflows.scope.agentHome": "agent-home",
   "settings.useLeader": "Share agent backend (leader)",
   "settings.useLeaderDesc": "Connect with --leader so multiple clients can share one backend process. Off uses --no-leader (default). Soft-respawns after change.",
   "settings.leader.title": "Agent leader / serve",
@@ -5727,6 +5746,25 @@ const zh: Record<MessageKey, string> = {
   "settings.todoGateMaxFires": "Todo 门控最大触发次数",
   "settings.todoGateMaxFiresDesc":
     "每个 prompt 最多触发 TodoGate 次数（1–20，默认 3）。独立模式写入 agent-home config.toml 的 todo_gate_max_fires_per_prompt。更改后 soft-respawn。",
+  "settings.workflows": "Grok Build 工作流",
+  "settings.workflowsDesc":
+    "开启后，独立模式将顶层 workflows_enabled 写入 agent-home config.toml，以便 Grok Build 运行 Rhai 工作流脚本。默认关闭。更改后 soft-respawn。共享模式不会改写 ~/.grok。",
+  "settings.workflowsHonesty":
+    "工作流由 Grok Build CLI / Rhai 执行（workflow 工具、/workflow、/workflows 仪表盘）——本应用不提供应用内工作流编辑器或运行器。请用 /create-workflow 编写；脚本位于 ~/.grok/workflows 或项目 .grok/workflows。",
+  "settings.workflows.openDocs": "打开工作流文档",
+  "settings.workflows.openUserDir": "打开用户工作流目录",
+  "settings.workflows.refresh": "刷新列表",
+  "settings.workflows.scanning": "正在扫描工作流目录…",
+  "settings.workflows.discovered": "已发现：{names}",
+  "settings.workflows.noneFound":
+    "在 ~/.grok/workflows 或当前项目的 .grok/workflows 下未找到 .rhai 工作流。",
+  "settings.workflows.scanSoftFail": "扫描不可用（soft-fail）",
+  "settings.workflows.docsMissing":
+    "磁盘上未找到内置 create-workflow 技能。请在 Grok Build 会话中运行 /create-workflow，或打开 ~/.grok/bundled/skills/create-workflow/SKILL.md。",
+  "settings.workflows.dirMissing": "无法打开该路径。",
+  "settings.workflows.scope.project": "项目",
+  "settings.workflows.scope.user": "用户",
+  "settings.workflows.scope.agentHome": "agent-home",
   "settings.useLeader": "共享 Agent 后端（leader）",
   "settings.useLeaderDesc": "使用 --leader 让多个客户端共用一个后端进程；关闭则 --no-leader（默认）。更改后 soft-respawn。",
   "settings.leader.title": "Agent leader / serve",
