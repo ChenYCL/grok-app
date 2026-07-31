@@ -243,6 +243,12 @@ pub struct AppSettings {
     /// `None` or `0` = omit the flag (CLI default / unlimited).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub max_agent_turns: Option<u32>,
+    /// When true, headless paths that use `--output-format streaming-messages-json`
+    /// also pass `--include-partial-messages` (CLI 0.2.117+) so incremental
+    /// `stream_event` deltas are emitted. Default false. Soft-fails on older
+    /// CLIs (flag omitted). Only valid with streaming-messages-json.
+    #[serde(default)]
+    pub include_partial_messages: bool,
     /// When true, spawn agents with top-level `--disable-web-search` so
     /// `web_search` / `web_fetch` tools are removed. Default false (CLI default).
     #[serde(default)]
@@ -434,6 +440,7 @@ impl Default for AppSettings {
             sandbox_profile: default_sandbox_profile(),
             experimental_memory: false,
             max_agent_turns: None,
+            include_partial_messages: false,
             disable_web_search: false,
             disallowed_tools: Vec::new(),
             allowed_tools: Vec::new(),
@@ -2210,6 +2217,7 @@ mod tests {
         assert_eq!(s.sandbox_profile, "off");
         assert!(!s.experimental_memory);
         assert_eq!(s.max_agent_turns, None);
+        assert!(!s.include_partial_messages);
         assert!(!s.disable_web_search);
         assert!(s.disallowed_tools.is_empty());
         assert!(s.allowed_tools.is_empty());
@@ -2353,6 +2361,12 @@ mod tests {
             back.allowed_tools,
             vec!["web_search".to_string(), "write".to_string()]
         );
+    }
+
+    #[test]
+    fn include_partial_messages_defaults_false_when_missing_from_json() {
+        let s: AppSettings = serde_json::from_str(legacy_settings_json()).expect("deserialize");
+        assert!(!s.include_partial_messages);
     }
 
     #[test]

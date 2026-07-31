@@ -1222,6 +1222,9 @@ export const zhTW: Record<MessageKey, string> = {
   "settings.streamStallSeconds": "串流停滯逾時（秒）",
   "settings.streamStallSecondsDesc":
     "若一輪對話在該時間內無任何串流片段或工具活動，應用會先嘗試靜默收尾，再提示「繼續等待 / 結束本輪」（預設 180）。仍有工具事件的長任務不會誤判為停滯。更長靜默後會自動結束本輪並保留已生成內容。",
+  "settings.includePartialMessages": "包含部分串流事件",
+  "settings.includePartialMessagesDesc":
+    "使用 `--output-format streaming-messages-json` 的無頭路徑會額外傳入 `--include-partial-messages`（CLI 0.2.117+），輸出增量 `stream_event` 文字/思考 delta。關閉 = 僅完整訊息（CLI 預設）。開啟且 CLI 足夠新時，遠端 IM 會升級為 streaming-messages-json；更舊 CLI soft-fail（省略 flag）。",
   "settings.maxAgentTurns": "最大 Agent 輪次",
   "settings.maxAgentTurnsDesc":
     "啟動 Agent 時傳入 `grok --max-turns N`（1–200）。留空或 0 表示使用 CLI 預設。下次啟動 Agent 時生效——變更後請重新連線工作階段。",

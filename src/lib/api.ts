@@ -1272,6 +1272,13 @@ export interface AppSettings {
   /** Pure stream silence before cancel prompt, seconds (default 120). */
   streamStallSeconds?: number;
   /**
+   * When true, headless paths that use `--output-format streaming-messages-json`
+   * also pass `--include-partial-messages` (CLI 0.2.117+) for incremental
+   * `stream_event` deltas. Default false. Soft-fails on older CLIs.
+   * Only valid with streaming-messages-json (Remote IM upgrades format when on).
+   */
+  includePartialMessages?: boolean;
+  /**
    * When true, App API keys go in the OS keychain.
    * Default false: keys stay in secrets.json (0600). Official login uses auth.json.
    */

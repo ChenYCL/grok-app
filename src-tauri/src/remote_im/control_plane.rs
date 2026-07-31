@@ -608,18 +608,45 @@ pub fn build_dingtalk_session_card(sessions: &[AppSessionEntry], lang: &str) -> 
 }
 
 /// CLI args for resume-capable grok turn (shipped helper used by grok_agent + tests).
+/// Default format is `streaming-json` (no partial stream events).
 pub fn grok_turn_cli_args(
     prompt: &str,
     session_id: Option<&str>,
     always_approve: bool,
 ) -> Vec<String> {
+    grok_turn_cli_args_with_stream(prompt, session_id, always_approve, "streaming-json", &[])
+}
+
+/// Headless `-p` argv with explicit output format + optional partial-stream flags
+/// (`--include-partial-messages` only when format is `streaming-messages-json`).
+pub fn grok_turn_cli_args_with_stream(
+    prompt: &str,
+    session_id: Option<&str>,
+    always_approve: bool,
+    output_format: &str,
+    partial_flags: &[&str],
+) -> Vec<String> {
     let mut args = vec!["-p".into(), prompt.to_string()];
     if always_approve {
         args.push("--always-approve".into());
     }
-    // Grok Build CLI accepts plain | json | streaming-json (not "stream-json").
+    // Grok Build CLI: plain | json | streaming-json | streaming-messages-json.
+    let fmt = output_format.trim();
+    let fmt = if fmt.is_empty() {
+        "streaming-json"
+    } else {
+        fmt
+    };
     args.push("--output-format".into());
-    args.push("streaming-json".into());
+    args.push(fmt.into());
+    // Soft-gated partial stream events (CLI 0.2.117+; only valid with
+    // streaming-messages-json — pure helper already enforces that).
+    for f in partial_flags {
+        let t = f.trim();
+        if !t.is_empty() {
+            args.push(t.into());
+        }
+    }
     if let Some(sid) = session_id.map(|s| s.trim()).filter(|s| !s.is_empty()) {
         args.push("--resume".into());
         args.push(sid.to_string());
@@ -862,6 +889,30 @@ mod tests {
         assert!(with.windows(2).any(|w| w[0] == "--resume" && w[1] == "sess-1"));
         let without = grok_turn_cli_args("hi", None, false);
         assert!(!without.iter().any(|a| a == "--resume"));
+    }
+
+    #[test]
+    fn grok_cli_args_default_streaming_json() {
+        let args = grok_turn_cli_args("hi", None, false);
+        assert!(args.windows(2).any(|w| {
+            w[0] == "--output-format" && w[1] == "streaming-json"
+        }));
+        assert!(!args.iter().any(|a| a == "--include-partial-messages"));
+    }
+
+    #[test]
+    fn grok_cli_args_partial_with_messages_format() {
+        let args = grok_turn_cli_args_with_stream(
+            "hi",
+            None,
+            false,
+            "streaming-messages-json",
+            &["--include-partial-messages"],
+        );
+        assert!(args.windows(2).any(|w| {
+            w[0] == "--output-format" && w[1] == "streaming-messages-json"
+        }));
+        assert!(args.iter().any(|a| a == "--include-partial-messages"));
     }
 
     #[test]

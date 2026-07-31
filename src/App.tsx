@@ -2121,6 +2121,8 @@ export default function App() {
   const [maxConcurrentAgents, setMaxConcurrentAgents] = useState(8);
   const [agentIdleMinutes, setAgentIdleMinutes] = useState(30);
   const [streamStallSeconds, setStreamStallSeconds] = useState(180);
+  /** Headless partial stream events (CLI 0.2.117+). */
+  const [includePartialMessages, setIncludePartialMessages] = useState(false);
   /** 0 = omit `--max-turns` (CLI default). */
   const [maxAgentTurns, setMaxAgentTurns] = useState(0);
   const [storeApiKeysInKeychain, setStoreApiKeysInKeychain] = useState(false);
@@ -2945,6 +2947,7 @@ export default function App() {
           ? Math.min(900, Math.round(settings.streamStallSeconds))
           : 120,
       );
+      setIncludePartialMessages(!!settings.includePartialMessages);
       {
         const raw = settings.maxAgentTurns;
         setMaxAgentTurns(
@@ -14478,6 +14481,13 @@ export default function App() {
             setStreamStallSeconds(v);
             void api.settingsGet().then((s) =>
               api.settingsSet({ ...s, streamStallSeconds: v }),
+            );
+          }}
+          includePartialMessages={includePartialMessages}
+          onIncludePartialMessages={(v) => {
+            setIncludePartialMessages(v);
+            void api.settingsGet().then((s) =>
+              api.settingsSet({ ...s, includePartialMessages: v }),
             );
           }}
           maxAgentTurns={maxAgentTurns}
