@@ -187,6 +187,7 @@ const DINGTALK_FIELDS: ChannelSchema["fields"] = [
     control: "text",
     section: "bind",
     required: true,
+    helpKey: "settings.remoteIm.dingtalk.clientIdHelp",
   },
   {
     key: "client_secret",
@@ -195,8 +196,12 @@ const DINGTALK_FIELDS: ChannelSchema["fields"] = [
     section: "bind",
     required: true,
     secret: true,
+    helpKey: "settings.remoteIm.dingtalk.clientSecretHelp",
   },
-  ACL_ALLOW_FROM,
+  {
+    ...ACL_ALLOW_FROM,
+    helpKey: "settings.remoteIm.dingtalk.allowFromHelp",
+  },
   SHARED_SESSION,
   { ...REACTION, defaultValue: "🤔Thinking" },
   DONE_EMOJI,
@@ -206,6 +211,7 @@ const DINGTALK_FIELDS: ChannelSchema["fields"] = [
     control: "toggle",
     section: "options",
     defaultValue: true,
+    helpKey: "settings.remoteIm.dingtalk.enableAiCardHelp",
   },
 ];
 

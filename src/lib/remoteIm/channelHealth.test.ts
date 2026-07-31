@@ -190,4 +190,71 @@ describe("classifyChannelHealth", () => {
     expect(h.tone).toBe("error");
     expect(h.badgeTone).toBe("err");
   });
+
+  it("dingtalk: deep health for Stream mode", () => {
+    expect(channelHasDeepHealth("dingtalk")).toBe(true);
+
+    const bare = inst("dingtalk", {
+      hasCredentials: false,
+      enabled: false,
+      options: {},
+    });
+    const h0 = classifyChannelHealth({
+      instance: bare,
+      bridgeRunning: false,
+    });
+    expect(h0.tone).toBe("unconfigured");
+    expect(h0.transport).toBe("stream");
+    expect(h0.modeLabel).toBe("mode=stream");
+    expect(h0.credentialsReady).toBe(false);
+    expect(h0.hintKeys.some((k) => k.includes("dingtalkStream"))).toBe(true);
+    expect(h0.hintKeys.some((k) => k.includes("dingtalkMissingKeys"))).toBe(
+      true,
+    );
+
+    const ready = inst("dingtalk", {
+      hasCredentials: true,
+      enabled: true,
+      options: { client_id: "dingxxx", enable_ai_card: true },
+      acl: {
+        allowFrom: "*",
+        requireMention: true,
+        groupOnly: false,
+        shareSessionInChannel: false,
+      },
+    });
+    const h1 = classifyChannelHealth({
+      instance: ready,
+      bridgeRunning: true,
+      bridgeLinked: true,
+    });
+    expect(h1.credentialsReady).toBe(true);
+    expect(h1.tone).toBe("connected");
+    expect(h1.transport).toBe("stream");
+    expect(h1.openAcl).toBe(true);
+    expect(h1.hintKeys.some((k) => k.includes("dingtalkStream"))).toBe(true);
+    expect(h1.hintKeys.some((k) => k.includes("dingtalkAiCard"))).toBe(true);
+
+    // Draft clears client_id → not ready, not "connected"
+    const h2 = classifyChannelHealth({
+      instance: ready,
+      bridgeRunning: true,
+      bridgeLinked: true,
+      draftOptions: { client_id: "" },
+    });
+    expect(h2.credentialsReady).toBe(false);
+    expect(h2.tone).not.toBe("connected");
+    expect(h2.missingKeys).toContain("client_id");
+  });
+
+  it("dingtalk credentialReadiness uses form secret keys", () => {
+    const i = inst("dingtalk", {
+      hasCredentials: false,
+      options: { client_id: "c" },
+    });
+    expect(credentialReadiness("dingtalk", i).ready).toBe(false);
+    expect(
+      credentialReadiness("dingtalk", i, new Set(["client_secret"])).ready,
+    ).toBe(true);
+  });
 });

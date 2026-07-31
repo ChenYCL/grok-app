@@ -15,6 +15,10 @@ import type {
   RemoteChannelId,
 } from "./types";
 import { maskSecretValue } from "./secretsApi";
+import {
+  dingtalkHealthHintKeys,
+  validateDingtalkConfig,
+} from "./dingtalkConfig";
 
 /** Health tone for badges / callouts (maps to RimBadge). */
 export type RimChannelHealthTone = "ok" | "warn" | "err" | "neutral";
@@ -74,17 +78,23 @@ export type ClassifyChannelHealthInput = {
    * Used only for incomplete-form hints — never stores values.
    */
   secretKeysFilled?: ReadonlySet<string>;
+  /**
+   * Draft options from the open form (e.g. cleared client_id).
+   * Merged over instance.options for readiness / transport — never secrets.
+   */
+  draftOptions?: Record<string, unknown>;
 };
 
 const FEISHU_LIKE: RemoteChannelId[] = ["feishu", "lark"];
 const TELEGRAM_LIKE: RemoteChannelId[] = ["telegram"];
+const DINGTALK_LIKE: RemoteChannelId[] = ["dingtalk"];
 
 /** Required secret bind keys per channel (for readiness, not values). */
 const SECRET_KEYS: Partial<Record<RemoteChannelId, string[]>> = {
   feishu: ["app_secret"],
   lark: ["app_secret"],
   telegram: ["token"],
-  dingtalk: ["client_secret"],
+  // DingTalk secrets are validated via dingtalkConfig
   discord: ["token"],
   slack: ["bot_token", "app_token"],
   wecom: ["bot_secret", "corp_secret", "callback_token"],
@@ -97,7 +107,6 @@ const NON_SECRET_REQUIRED: Partial<Record<RemoteChannelId, string[]>> = {
   feishu: ["app_id"],
   lark: ["app_id"],
   telegram: [],
-  dingtalk: ["client_id"],
 };
 
 function isRecord(v: unknown): v is Record<string, unknown> {
@@ -224,14 +233,26 @@ function optionString(
  * Check non-secret required bind fields + optional in-form secret keys.
  * Does not read secret values — only presence of keys in secretKeysFilled
  * or hasCredentials flag.
+ *
+ * DingTalk is Stream-mode-aware via {@link validateDingtalkConfig}.
  */
 export function credentialReadiness(
   channel: RemoteChannelId,
   instance: ChannelInstance,
   secretKeysFilled?: ReadonlySet<string>,
 ): { ready: boolean; missingKeys: string[] } {
-  const missing: string[] = [];
   const opts = isRecord(instance.options) ? instance.options : {};
+
+  if (channel === "dingtalk") {
+    const v = validateDingtalkConfig({
+      options: opts,
+      secretKeysFilled,
+      hasCredentials: instance.hasCredentials,
+    });
+    return { ready: v.ok, missingKeys: [...v.missing] };
+  }
+
+  const missing: string[] = [];
 
   for (const k of NON_SECRET_REQUIRED[channel] ?? []) {
     if (!optionString(opts, k)) missing.push(k);
@@ -289,7 +310,16 @@ export function classifyChannelHealth(
 ): RimChannelHealthDetail {
   const { instance, bridgeRunning } = input;
   const channel = instance.channel;
-  const opts = isRecord(instance.options) ? instance.options : {};
+  const savedOpts = isRecord(instance.options) ? instance.options : {};
+  const opts = {
+    ...savedOpts,
+    ...(isRecord(input.draftOptions) ? input.draftOptions : {}),
+  };
+  // Readiness evaluates against draft-merged options for honest form edits.
+  const readinessInstance: ChannelInstance = {
+    ...instance,
+    options: opts,
+  };
   const bridgeLinked = !!input.bridgeLinked;
   const openAcl =
     !instance.acl?.allowFrom ||
@@ -298,42 +328,45 @@ export function classifyChannelHealth(
 
   const { ready: credentialsReady, missingKeys } = credentialReadiness(
     channel,
-    instance,
+    readinessInstance,
     input.secretKeysFilled,
   );
+
+  // Honest status: incomplete bind (e.g. DingTalk missing client_id) cannot look "connected".
+  const credsUsable =
+    !!instance.hasCredentials &&
+    (credentialsReady || channel !== "dingtalk");
 
   let tone: ChannelStatusTone = "unconfigured";
   if (instance.lastError) {
     tone = "error";
   } else if (
-    instance.hasCredentials &&
+    credsUsable &&
     instance.enabled &&
     bridgeRunning &&
     bridgeLinked
   ) {
     tone = "connected";
-  } else if (
-    instance.hasCredentials &&
-    instance.enabled &&
-    bridgeRunning
-  ) {
-    // Enabled + bridge up but not yet linked — still "connected" intent
-    // or "configured" if bridge not reporting this id
+  } else if (credsUsable && instance.enabled && bridgeRunning) {
+    // Enabled + bridge up but not yet linked — "configured" until linked
     tone = bridgeLinked ? "connected" : "configured";
-  } else if (instance.hasCredentials) {
+  } else if (credsUsable) {
+    tone = "configured";
+  } else if (instance.hasCredentials && !credentialsReady) {
+    // Vault present but current form incomplete (cleared client_id, etc.)
     tone = "configured";
   }
 
   const transport = transportForChannel(channel, opts);
   const hintKeys: string[] = [];
 
-  if (!instance.hasCredentials) {
+  if (!instance.hasCredentials && !credentialsReady) {
     hintKeys.push("settings.remoteIm.health.hint.needCredentials");
   } else if (!instance.enabled) {
     hintKeys.push("settings.remoteIm.health.hint.disabled");
   } else if (!bridgeRunning) {
     hintKeys.push("settings.remoteIm.health.hint.bridgeStopped");
-  } else if (!bridgeLinked && instance.enabled) {
+  } else if (!bridgeLinked && instance.enabled && credentialsReady) {
     hintKeys.push("settings.remoteIm.health.hint.notLinked");
   }
 
@@ -341,7 +374,7 @@ export function classifyChannelHealth(
     hintKeys.push("settings.remoteIm.health.hint.openAcl");
   }
 
-  // Channel-specific depth (shippable for ≥2 types in UI)
+  // Channel-specific depth (shippable for Feishu / Telegram / DingTalk)
   if (FEISHU_LIKE.includes(channel)) {
     if (!optionString(opts, "app_id") && !instance.hasCredentials) {
       hintKeys.push("settings.remoteIm.health.hint.feishuAppId");
@@ -361,6 +394,24 @@ export function classifyChannelHealth(
     if (openAcl && instance.hasCredentials) {
       // Telegram open ACL is especially risky
       hintKeys.push("settings.remoteIm.health.hint.telegramAcl");
+    }
+  }
+
+  if (DINGTALK_LIKE.includes(channel)) {
+    const dingV = validateDingtalkConfig({
+      options: opts,
+      secretKeysFilled: input.secretKeysFilled,
+      hasCredentials: instance.hasCredentials,
+    });
+    const enableAiCard =
+      opts.enable_ai_card === undefined
+        ? true
+        : opts.enable_ai_card === true || opts.enable_ai_card === "true";
+    for (const k of dingtalkHealthHintKeys(dingV, {
+      openAcl: openAcl && instance.hasCredentials,
+      enableAiCard,
+    })) {
+      hintKeys.push(k);
     }
   }
 
@@ -393,5 +444,9 @@ export function classifyChannelHealth(
 
 /** True when this channel gets the deeper health card (not just badge). */
 export function channelHasDeepHealth(channel: RemoteChannelId): boolean {
-  return FEISHU_LIKE.includes(channel) || TELEGRAM_LIKE.includes(channel);
+  return (
+    FEISHU_LIKE.includes(channel) ||
+    TELEGRAM_LIKE.includes(channel) ||
+    DINGTALK_LIKE.includes(channel)
+  );
 }

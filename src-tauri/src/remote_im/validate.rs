@@ -37,18 +37,7 @@ pub async fn test_connection(
         "telegram" => test_telegram(&creds).await,
         "discord" => test_discord(&creds).await,
         "slack" => test_slack(&creds).await,
-        "dingtalk" => {
-            let ok = creds.contains_key("client_id") && creds.contains_key("client_secret");
-            Ok(TestConnectionDto {
-                ok,
-                message: if ok {
-                    "credentials_present_stream".into()
-                } else {
-                    "missing_client_id_or_secret".into()
-                },
-                mock: false,
-            })
-        }
+        "dingtalk" => test_dingtalk(&creds),
         "wecom" => {
             let ok = (creds.contains_key("bot_id") && creds.contains_key("bot_secret"))
                 || (creds.contains_key("corp_id") && creds.contains_key("corp_secret"));
@@ -121,6 +110,32 @@ fn cred_get<'a>(creds: &'a HashMap<String, String>, keys: &[&str]) -> &'a str {
         }
     }
     ""
+}
+
+/// DingTalk Stream credential posture (no live gateway open). Soft-fail messages only.
+fn test_dingtalk(creds: &HashMap<String, String>) -> Result<TestConnectionDto, String> {
+    let client_id = cred_get(creds, &["client_id", "app_key"]);
+    let client_secret = cred_get(creds, &["client_secret", "app_secret"]);
+    let mut missing: Vec<&str> = Vec::new();
+    if client_id.is_empty() {
+        missing.push("client_id");
+    }
+    if client_secret.is_empty() {
+        missing.push("client_secret");
+    }
+    if missing.is_empty() {
+        return Ok(TestConnectionDto {
+            ok: true,
+            // Honest: presence only — does not prove Stream gateway is online
+            message: "dingtalk_stream_credentials_present".into(),
+            mock: false,
+        });
+    }
+    Ok(TestConnectionDto {
+        ok: false,
+        message: format!("missing_dingtalk_fields:{}", missing.join(",")),
+        mock: false,
+    })
 }
 
 async fn test_feishu(
@@ -362,5 +377,36 @@ mod tests {
         secrets2.insert("app_id".into(), "from_secret".into());
         let m2 = merge_creds(&secrets2, &options);
         assert_eq!(m2.get("app_id").map(|s| s.as_str()), Some("from_secret"));
+    }
+
+    #[test]
+    fn dingtalk_stream_requires_client_id_and_secret() {
+        let mut c = HashMap::new();
+        let r = test_dingtalk(&c).unwrap();
+        assert!(!r.ok);
+        assert!(r.message.contains("missing_dingtalk_fields"));
+        assert!(r.message.contains("client_id"));
+        assert!(r.message.contains("client_secret"));
+
+        c.insert("client_id".into(), "dingxxx".into());
+        let r2 = test_dingtalk(&c).unwrap();
+        assert!(!r2.ok);
+        assert!(r2.message.contains("client_secret"));
+
+        c.insert("client_secret".into(), "sec".into());
+        let r3 = test_dingtalk(&c).unwrap();
+        assert!(r3.ok);
+        assert_eq!(r3.message, "dingtalk_stream_credentials_present");
+        assert!(!r3.mock);
+    }
+
+    #[test]
+    fn dingtalk_accepts_app_key_secret_aliases() {
+        let mut c = HashMap::new();
+        c.insert("app_key".into(), "ak".into());
+        c.insert("app_secret".into(), "as".into());
+        let r = test_dingtalk(&c).unwrap();
+        assert!(r.ok);
+        assert_eq!(r.message, "dingtalk_stream_credentials_present");
     }
 }
