@@ -1476,12 +1476,23 @@ const en = {
   "settings.memoryBrowser.kind.session": "session",
   "settings.memoryBrowser.kind.index": "index",
   "settings.memoryBrowser.kind.other": "other",
+  "settings.memoryBrowser.searchModeLabel": "Memory search mode",
   "settings.memoryBrowser.searchMode.appKeyword": "App search: keyword",
-  "settings.memoryBrowser.searchMode.cliHybrid": "CLI memory_search: hybrid",
+  "settings.memoryBrowser.searchMode.cliHybrid": "CLI agent memory_search: hybrid",
   "settings.memoryBrowser.searchMode.cliKeyword":
-    "CLI memory_search: keyword (no embedding model)",
+    "CLI agent memory_search: keyword (no embedding model)",
+  "settings.memoryBrowser.searchMode.hybridUnavailable":
+    "Browser hybrid: unavailable",
+  "settings.memoryBrowser.searchKind.keyword": "Mode: App keyword scan",
+  "settings.memoryBrowser.searchKind.hybridUnavailable":
+    "Mode: keyword (CLI hybrid unavailable for browser)",
+  "settings.memoryBrowser.searchKind.hybrid": "Mode: hybrid (vector + full-text)",
   "settings.memoryBrowser.embedUnsetHint":
     "Embedding model is unset — CLI vector search is off. App browser never invents embeddings.",
+  "settings.memoryBrowser.hybridUnavailableHint":
+    "Embedding model is set for the agent tool, but the App browser has no host hybrid CLI (grok memory search) — keyword scan only. Never invents embeddings.",
+  "settings.memoryBrowser.searchEmptyHintHybridUnavailable":
+    "No keyword matches. Embedding is configured for the agent, but App browser hybrid is unavailable (no host CLI path). Never invents embeddings client-side.",
   "settings.memoryBrowser.openEmbedSettings": "Memory embedding settings",
   "settings.memoryEmbed": "Memory embedding (CLI 0.2.117)",
   "settings.memoryEmbedDesc":
@@ -6788,12 +6799,22 @@ const zh: Record<MessageKey, string> = {
   "settings.memoryBrowser.kind.session": "会话",
   "settings.memoryBrowser.kind.index": "索引",
   "settings.memoryBrowser.kind.other": "其他",
+  "settings.memoryBrowser.searchModeLabel": "记忆搜索模式",
   "settings.memoryBrowser.searchMode.appKeyword": "应用内搜索：关键词",
-  "settings.memoryBrowser.searchMode.cliHybrid": "CLI memory_search：混合检索",
+  "settings.memoryBrowser.searchMode.cliHybrid": "CLI agent memory_search：混合检索",
   "settings.memoryBrowser.searchMode.cliKeyword":
-    "CLI memory_search：关键词（未配置 embedding 模型）",
+    "CLI agent memory_search：关键词（未配置 embedding 模型）",
+  "settings.memoryBrowser.searchMode.hybridUnavailable": "浏览器混合检索：不可用",
+  "settings.memoryBrowser.searchKind.keyword": "模式：应用内关键词扫描",
+  "settings.memoryBrowser.searchKind.hybridUnavailable":
+    "模式：关键词（浏览器侧 CLI 混合检索不可用）",
+  "settings.memoryBrowser.searchKind.hybrid": "模式：混合（向量 + 全文）",
   "settings.memoryBrowser.embedUnsetHint":
     "未设置 embedding 模型 — CLI 向量检索关闭。应用内浏览器不会在客户端伪造 embedding。",
+  "settings.memoryBrowser.hybridUnavailableHint":
+    "已为 agent 工具设置 embedding 模型，但应用内浏览器没有 host 混合检索 CLI（grok memory search）— 仅关键词扫描。不会伪造 embedding。",
+  "settings.memoryBrowser.searchEmptyHintHybridUnavailable":
+    "没有关键词匹配。Agent 已配置 embedding，但应用内浏览器混合检索不可用（无 host CLI 路径）。不会在客户端伪造 embedding。",
   "settings.memoryBrowser.openEmbedSettings": "记忆 embedding 设置",
   "settings.memoryEmbed": "记忆 embedding（CLI 0.2.117）",
   "settings.memoryEmbedDesc":

@@ -3696,13 +3696,20 @@ export type MemorySearchResult = {
   query: string;
   limit: number;
   truncated: boolean;
+  /**
+   * App search path honesty: `keyword` | `hybrid_unavailable` | `hybrid`.
+   * Always keyword-family today (no host-invocable hybrid CLI as of 0.2.117).
+   * Soft-fail missing → treat as keyword.
+   */
+  searchKind?: string;
 };
 
 /**
  * Search path-scoped memory files (name + body) under agent GROK_HOME/memory.
  * Host enforces read/hit caps and redacts snippets.
  * Always keyword / file-body scan — never invents embeddings client-side.
- * CLI hybrid vector search is configured via memoryEmbedConfig* (`[memory.embedding]`).
+ * When embedding.model is set but no host hybrid CLI exists, `searchKind` is
+ * `hybrid_unavailable`. Agent-tool hybrid is configured via memoryEmbedConfig*.
  */
 export async function memorySearch(opts: {
   query: string;

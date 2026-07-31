@@ -366,12 +366,25 @@ describe("resolveMemoryBrowserEmptyState", () => {
     expect(r?.showClearFilters).toBe(true);
   });
 
-  it("no matches neutral keyword hint when embed on/unknown", () => {
+  it("no matches hybrid_unavailable honesty when embed on", () => {
+    const r = resolveMemoryBrowserEmptyState({
+      ...base,
+      query: "nope",
+      embedConfigured: true,
+    });
+    expect(r?.kind).toBe("no_matches");
+    expect(r?.hintKey).toBe(
+      "settings.memoryBrowser.searchEmptyHintHybridUnavailable",
+    );
+    expect(r?.showEmbedLink).toBe(true);
+  });
+
+  it("no matches neutral keyword hint when embed unknown", () => {
     expect(
       resolveMemoryBrowserEmptyState({
         ...base,
         query: "nope",
-        embedConfigured: true,
+        embedConfigured: null,
       })?.hintKey,
     ).toBe("settings.memoryBrowser.searchEmptyHint");
     expect(

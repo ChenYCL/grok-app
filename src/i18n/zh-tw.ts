@@ -1405,12 +1405,22 @@ export const zhTW: Record<MessageKey, string> = {
   "settings.memoryBrowser.kind.session": "工作階段",
   "settings.memoryBrowser.kind.index": "索引",
   "settings.memoryBrowser.kind.other": "其他",
+  "settings.memoryBrowser.searchModeLabel": "記憶搜尋模式",
   "settings.memoryBrowser.searchMode.appKeyword": "應用內搜尋：關鍵字",
-  "settings.memoryBrowser.searchMode.cliHybrid": "CLI memory_search：混合檢索",
+  "settings.memoryBrowser.searchMode.cliHybrid": "CLI agent memory_search：混合檢索",
   "settings.memoryBrowser.searchMode.cliKeyword":
-    "CLI memory_search：關鍵字（未設定 embedding 模型）",
+    "CLI agent memory_search：關鍵字（未設定 embedding 模型）",
+  "settings.memoryBrowser.searchMode.hybridUnavailable": "瀏覽器混合檢索：不可用",
+  "settings.memoryBrowser.searchKind.keyword": "模式：應用內關鍵字掃描",
+  "settings.memoryBrowser.searchKind.hybridUnavailable":
+    "模式：關鍵字（瀏覽器側 CLI 混合檢索不可用）",
+  "settings.memoryBrowser.searchKind.hybrid": "模式：混合（向量 + 全文）",
   "settings.memoryBrowser.embedUnsetHint":
     "未設定 embedding 模型 — CLI 向量檢索關閉。應用內瀏覽器不會在用戶端偽造 embedding。",
+  "settings.memoryBrowser.hybridUnavailableHint":
+    "已為 agent 工具設定 embedding 模型，但應用內瀏覽器沒有 host 混合檢索 CLI（grok memory search）— 僅關鍵字掃描。不會偽造 embedding。",
+  "settings.memoryBrowser.searchEmptyHintHybridUnavailable":
+    "沒有關鍵字相符。Agent 已設定 embedding，但應用內瀏覽器混合檢索不可用（無 host CLI 路徑）。不會在用戶端偽造 embedding。",
   "settings.memoryBrowser.openEmbedSettings": "記憶 embedding 設定",
   "settings.memoryEmbed": "記憶 embedding（CLI 0.2.117）",
   "settings.memoryEmbedDesc":

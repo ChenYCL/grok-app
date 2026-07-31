@@ -857,6 +857,29 @@ pub struct MemorySearchResult {
     pub limit: usize,
     /// True when more matches exist beyond the hit cap.
     pub truncated: bool,
+    /// App search path honesty: `keyword` | `hybrid_unavailable` | `hybrid`.
+    /// Always keyword-family today — no host-invocable hybrid CLI (see
+    /// `resolve_app_memory_search_kind`). Never invents embedding vectors.
+    pub search_kind: String,
+}
+
+/// Whether Grok Build exposes a host-invocable hybrid memory search CLI.
+/// Documented `false` as of CLI 0.2.117 (`grok memory` → only `clear`).
+pub const CLI_MEMORY_HYBRID_SEARCH_AVAILABLE: bool = false;
+
+/// Resolve App browser `search_kind` (pure).
+///
+/// - `hybrid` — only if a host hybrid CLI exists **and** embedding.model is set
+/// - `hybrid_unavailable` — embedding.model set but no host hybrid CLI/API
+/// - `keyword` — model unset / default (path-scoped file-body scan)
+pub fn resolve_app_memory_search_kind(embedding_configured: bool) -> &'static str {
+    if CLI_MEMORY_HYBRID_SEARCH_AVAILABLE && embedding_configured {
+        "hybrid"
+    } else if embedding_configured {
+        "hybrid_unavailable"
+    } else {
+        "keyword"
+    }
 }
 
 /// Clamp UI/host limit into the hard search cap range (pure).
@@ -1003,15 +1026,32 @@ fn search_file_content(path: &Path, query_lower: &str, query_len: usize) -> Opti
 ///
 /// Uses the same workspace matching as `list_workspace_memory`. Empty query →
 /// empty hits. Index/binary files are name-only. Snippets are redacted.
+///
+/// Always a keyword / file-body scan — never invents embeddings. When
+/// `embedding_configured` is true but no host hybrid CLI exists, `search_kind`
+/// is `hybrid_unavailable` (honest soft-fail).
 pub fn search_workspace_memory(
     query: &str,
     cwd: Option<&Path>,
     session_data_mode: &str,
     limit: Option<usize>,
 ) -> MemorySearchResult {
+    search_workspace_memory_with_kind(query, cwd, session_data_mode, limit, false)
+}
+
+/// Like [`search_workspace_memory`], with explicit embedding-configured flag
+/// for `search_kind` honesty (pure flag — does not run vectors).
+pub fn search_workspace_memory_with_kind(
+    query: &str,
+    cwd: Option<&Path>,
+    session_data_mode: &str,
+    limit: Option<usize>,
+    embedding_configured: bool,
+) -> MemorySearchResult {
     let q = query.trim();
     let limit = clamp_memory_search_limit(limit);
     let listed = list_workspace_memory(cwd, session_data_mode);
+    let search_kind = resolve_app_memory_search_kind(embedding_configured).to_string();
 
     if q.is_empty() {
         return MemorySearchResult {
@@ -1023,6 +1063,7 @@ pub fn search_workspace_memory(
             query: String::new(),
             limit,
             truncated: false,
+            search_kind,
         };
     }
 
@@ -1086,6 +1127,7 @@ pub fn search_workspace_memory(
         query: q.to_string(),
         limit,
         truncated,
+        search_kind,
     }
 }
 
@@ -1339,6 +1381,17 @@ mod tests {
         assert_eq!(
             clamp_memory_search_limit(Some(9999)),
             MEMORY_SEARCH_MAX_HITS
+        );
+    }
+
+    #[test]
+    fn app_search_kind_honesty_no_cli_hybrid() {
+        // CLI 0.2.117: no host hybrid path — never invent hybrid for App browser.
+        assert!(!CLI_MEMORY_HYBRID_SEARCH_AVAILABLE);
+        assert_eq!(resolve_app_memory_search_kind(false), "keyword");
+        assert_eq!(
+            resolve_app_memory_search_kind(true),
+            "hybrid_unavailable"
         );
     }
 

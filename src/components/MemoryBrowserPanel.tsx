@@ -33,10 +33,16 @@ import {
   shouldRunMemoryContentSearch,
   type MemoryBrowserRow,
 } from "@/lib/memoryBrowserSearch";
+import { isEmbeddingConfigured } from "@/lib/memoryEmbedConfig";
 import {
-  describeSearchModes,
-  isEmbeddingConfigured,
-} from "@/lib/memoryEmbedConfig";
+  CLI_MEMORY_HYBRID_SEARCH_AVAILABLE,
+  effectiveMemorySearchKind,
+  memoryHybridUnavailableHintKey,
+  memorySearchKindStatusKey,
+  memorySearchModeChipLabelKey,
+  memorySearchModeChips,
+  type MemorySearchKind,
+} from "@/lib/memoryHybridSearch";
 
 function formatSize(n: number): string {
   if (!Number.isFinite(n) || n < 0) return "—";
@@ -109,11 +115,29 @@ export function MemoryBrowserPanel({
   const [deleteBusy, setDeleteBusy] = useState(false);
   const [actionBusyPath, setActionBusyPath] = useState<string | null>(null);
   const [embedConfigured, setEmbedConfigured] = useState<boolean | null>(null);
-  const [cliSearchMode, setCliSearchMode] = useState<"hybrid" | "keyword">(
-    "keyword",
-  );
+  /** Host-reported search kind from last content search (soft-fail missing). */
+  const [hostSearchKind, setHostSearchKind] = useState<string | null>(null);
 
   const cwd = (projectPath || "").trim() || null;
+
+  const searchKind: MemorySearchKind = useMemo(
+    () =>
+      effectiveMemorySearchKind({
+        hostSearchKind,
+        embeddingConfigured: embedConfigured,
+        cliHybridAvailable: CLI_MEMORY_HYBRID_SEARCH_AVAILABLE,
+      }),
+    [hostSearchKind, embedConfigured],
+  );
+
+  const modeChips = useMemo(
+    () =>
+      memorySearchModeChips({
+        embeddingConfigured: embedConfigured,
+        cliHybridAvailable: CLI_MEMORY_HYBRID_SEARCH_AVAILABLE,
+      }),
+    [embedConfigured],
+  );
 
   const load = useCallback(async () => {
     if (!experimentalMemory) {
@@ -147,11 +171,11 @@ export function MemoryBrowserPanel({
     void load();
   }, [load]);
 
-  // Soft-probe embedding status for honest search-mode badge (never invents vectors).
+  // Soft-probe embedding status for honest search-mode chips (never invents vectors).
   useEffect(() => {
     if (!experimentalMemory || !api.isTauri()) {
       setEmbedConfigured(null);
-      setCliSearchMode("keyword");
+      setHostSearchKind(null);
       return;
     }
     let cancelled = false;
@@ -160,11 +184,9 @@ export function MemoryBrowserPanel({
         const snap = await api.memoryEmbedConfigGet();
         if (cancelled) return;
         setEmbedConfigured(isEmbeddingConfigured(snap));
-        setCliSearchMode(describeSearchModes(snap).cli);
       } catch {
         if (cancelled) return;
         setEmbedConfigured(null);
-        setCliSearchMode("keyword");
       }
     })();
     return () => {
@@ -209,6 +231,7 @@ export function MemoryBrowserPanel({
       setSearchHits([]);
       setSearchTruncated(false);
       setSearching(false);
+      setHostSearchKind(null);
       return;
     }
     let cancelled = false;
@@ -223,11 +246,13 @@ export function MemoryBrowserPanel({
         if (cancelled) return;
         setSearchHits(res.hits ?? []);
         setSearchTruncated(!!res.truncated);
+        setHostSearchKind(res.searchKind ?? null);
       } catch (e) {
         if (cancelled) return;
         // Keep list filter usable; surface error without wiping entries.
         setSearchHits([]);
         setSearchTruncated(false);
+        setHostSearchKind(null);
         setError(String(e));
       } finally {
         if (!cancelled) setSearching(false);
@@ -339,22 +364,30 @@ export function MemoryBrowserPanel({
       </div>
 
       {experimentalMemory ? (
-        <div className="settings-memory-browser__embed-status">
-          <span className="ext-badge ext-badge--muted">
-            {t("settings.memoryBrowser.searchMode.appKeyword")}
-          </span>
-          {embedConfigured === true ? (
-            <span className="ext-badge">
-              {t("settings.memoryBrowser.searchMode.cliHybrid")}
+        <div
+          className="settings-memory-browser__embed-status"
+          role="status"
+          aria-label={t("settings.memoryBrowser.searchModeLabel")}
+        >
+          {modeChips.map((chip) => (
+            <span
+              key={chip}
+              className={
+                chip === "cli_hybrid"
+                  ? "ext-badge"
+                  : "ext-badge ext-badge--muted"
+              }
+            >
+              {t(memorySearchModeChipLabelKey(chip))}
             </span>
-          ) : embedConfigured === false ? (
-            <span className="ext-badge ext-badge--muted">
-              {t("settings.memoryBrowser.searchMode.cliKeyword")}
-            </span>
-          ) : null}
-          {cliSearchMode === "keyword" && embedConfigured === false ? (
+          ))}
+          {embedConfigured === false ? (
             <span className="ext-field-hint settings-memory-browser__embed-hint">
               {t("settings.memoryBrowser.embedUnsetHint")}
+            </span>
+          ) : searchKind === "hybrid_unavailable" ? (
+            <span className="ext-field-hint settings-memory-browser__embed-hint">
+              {t(memoryHybridUnavailableHintKey())}
             </span>
           ) : null}
           <button
@@ -471,6 +504,13 @@ export function MemoryBrowserPanel({
                 : t("settings.memoryBrowser.matchSummary", {
                     count: matchSummary.total,
                   })}
+              {matchSummary.queryActive
+                ? ` · ${t(memorySearchKindStatusKey(searchKind))}`
+                : ""}
+            </p>
+          ) : queryActive && !searching && !emptyState ? (
+            <p className="ext-field-hint settings-memory-browser__match-summary" role="status">
+              {t(memorySearchKindStatusKey(searchKind))}
             </p>
           ) : null}
 
