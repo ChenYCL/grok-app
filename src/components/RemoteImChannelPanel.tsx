@@ -74,6 +74,16 @@ export interface RemoteImChannelPanelProps {
 
 type BindTab = "scan" | "paste";
 
+/** Coerce bind form `port` for LINE cloudflared helper (values is Record unknown). */
+function lineWebhookPortArg(
+  values: Record<string, unknown>,
+  secrets: Record<string, string>,
+): string | number | null {
+  const raw = values.port ?? secrets.port;
+  if (typeof raw === "string" || typeof raw === "number") return raw;
+  return null;
+}
+
 export function RemoteImChannelPanel({
   locale,
   channelId,
@@ -1035,9 +1045,7 @@ export function RemoteImChannelPanel({
             </p>
             <code className="rim-callout__code">
               {channelId === "line"
-                ? lineCloudflaredSnippet(
-                    values.port ?? (secrets as Record<string, string>).port,
-                  )
+                ? lineCloudflaredSnippet(lineWebhookPortArg(values, secrets))
                 : `cloudflared tunnel --url http://127.0.0.1:${
                     String(values.port ?? secrets.port ?? "").trim() || "8081"
                   }`}
@@ -1049,8 +1057,7 @@ export function RemoteImChannelPanel({
                   className="btn btn--ghost btn--sm"
                   onClick={() => {
                     const snippet = lineCloudflaredSnippet(
-                      values.port ??
-                        (secrets as Record<string, string>).port,
+                      lineWebhookPortArg(values, secrets),
                     );
                     void navigator.clipboard?.writeText(snippet).catch(() => {
                       /* clipboard optional — snippet still visible */
