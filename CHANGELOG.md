@@ -14,6 +14,7 @@ See `docs/llm-wiki/release.md`.
 ### Added
 
 #### Agent / memory
+- **Batch agents (multi-project dispatch)**: select multiple trusted projects, one shared prompt — **Open sessions** (create + connect + send per project, multi-session concurrency) or **Headless summary** (`grok -p` one-shot per project with soft timeout). Soft-fails untrusted / missing path / CLI / timeout per project; progressive results + copy summary. Entry: Agent dashboard footer, Settings → Runtime → Tools, command palette. Pure `batchAgents` helpers + tests; host `batch_agents_headless`; en/zh/zh-TW; no `window.confirm`.
 - **Memory embedding (CLI 0.2.117)** (Settings → Agent): host reads allowlisted `[memory.*]` keys from active GROK_HOME `config.toml` (`embedding.model` / `dimensions`, `search.*`, `search.mmr`, `search.temporal_decay`, `dream.*`, `watcher`, `initial_injection`) with soft-fail when missing; independent agent-home can write safe keys + soft-respawn (shared mode read-only). Memory browser shows honest **App keyword** vs **CLI hybrid/keyword** status and links to the panel. App `memory_search` stays path-scoped keyword scan — never invents embeddings client-side.
 
 #### Runtime / connection

@@ -211,6 +211,8 @@ export type AgentDashboardModalProps = {
    * Confirm / toast lives in App.
    */
   onStopSessions?: (sessionIds: string[]) => void;
+  /** Open multi-project batch agents dispatch. */
+  onOpenBatchAgents?: () => void;
 };
 
 export function AgentDashboardModal({
@@ -221,6 +223,7 @@ export function AgentDashboardModal({
   onSelectSession,
   onStopAllBusy,
   onStopSessions,
+  onOpenBatchAgents,
 }: AgentDashboardModalProps) {
   const tr = useMemo(() => createT(locale), [locale]);
   const [query, setQuery] = useState("");
@@ -329,6 +332,16 @@ export function AgentDashboardModal({
       footer={
         <div className="agent-dash-modal__footer">
           <div className="agent-dash-modal__footer-actions">
+            {onOpenBatchAgents ? (
+              <button
+                type="button"
+                className="btn btn--ghost"
+                onClick={onOpenBatchAgents}
+                title={tr("dashboard.batchAgentsTitle")}
+              >
+                {tr("dashboard.batchAgents")}
+              </button>
+            ) : null}
             {showStopSelected ? (
               <button
                 type="button"

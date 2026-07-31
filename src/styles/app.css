@@ -23100,6 +23100,293 @@ html[data-theme="light"] .rim-sidebar {
   line-height: 1.45;
 }
 
+/* ── Batch agents (multi-project dispatch) ──────────────────────────── */
+.batch-agents-modal {
+  width: min(640px, 100%);
+  max-height: min(82vh, 720px);
+}
+.batch-agents-modal__body {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 0;
+  max-height: min(62vh, 560px);
+}
+.batch-agents-modal__footer {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+  align-items: center;
+  width: 100%;
+}
+.batch-agents-modal__footer-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  margin-right: auto;
+}
+.batch-agents__hint,
+.batch-agents__mode-hint {
+  margin: 0;
+  font-size: 12px;
+  color: var(--text-tertiary);
+  line-height: 1.45;
+  flex-shrink: 0;
+}
+.batch-agents__modes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  flex-shrink: 0;
+}
+.batch-agents__mode {
+  display: inline-flex;
+  align-items: center;
+  margin: 0;
+  padding: 4px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--border-subtle);
+  background: transparent;
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+.batch-agents__mode:hover {
+  border-color: var(--border-strong, var(--border-subtle));
+  color: var(--text-primary);
+}
+.batch-agents__mode.is-active {
+  background: var(--accent-soft, color-mix(in srgb, var(--accent) 16%, transparent));
+  border-color: var(--accent);
+  color: var(--text-primary);
+}
+.batch-agents__label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  flex-shrink: 0;
+}
+.batch-agents__prompt {
+  width: 100%;
+  min-height: 72px;
+  resize: vertical;
+  font: inherit;
+  line-height: 1.4;
+  flex-shrink: 0;
+}
+.batch-agents__toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  flex-shrink: 0;
+}
+.batch-agents__search {
+  flex: 1 1 160px;
+  min-width: 0;
+}
+.batch-agents__sel-count {
+  font-size: 11px;
+  color: var(--text-tertiary);
+  white-space: nowrap;
+}
+.batch-agents__select-bar {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+}
+.batch-agents__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  overflow: auto;
+  min-height: 0;
+  max-height: min(28vh, 220px);
+  border: 1px solid var(--border-subtle);
+  border-radius: 10px;
+  flex: 1 1 auto;
+}
+.batch-agents__row {
+  margin: 0;
+  border-bottom: 1px solid var(--border-subtle);
+}
+.batch-agents__row:last-child {
+  border-bottom: none;
+}
+.batch-agents__row.is-selected {
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+}
+.batch-agents__row-btn {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  width: 100%;
+  margin: 0;
+  padding: 8px 10px;
+  border: none;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.batch-agents__row-btn:disabled {
+  opacity: 0.65;
+  cursor: default;
+}
+.batch-agents__check {
+  flex: 0 0 auto;
+  width: 18px;
+  height: 18px;
+  margin-top: 2px;
+  border-radius: 4px;
+  border: 1px solid var(--border-subtle);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  line-height: 1;
+  color: var(--accent);
+}
+.batch-agents__check.is-on {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+}
+.batch-agents__row-body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+.batch-agents__name {
+  font-size: 13px;
+  font-weight: 600;
+}
+.batch-agents__path {
+  font-size: 11px;
+  color: var(--text-tertiary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.batch-agents__skip {
+  font-size: 11px;
+  color: var(--warning, #c9892e);
+}
+.batch-agents__ok-tag {
+  font-size: 11px;
+  color: var(--success, #2f9e6b);
+}
+.batch-agents__empty {
+  padding: 12px 4px;
+}
+.batch-agents__empty-title {
+  margin: 0 0 4px;
+  font-size: 13px;
+  font-weight: 600;
+}
+.batch-agents__empty-hint {
+  margin: 0;
+  font-size: 12px;
+  opacity: 0.7;
+  line-height: 1.45;
+}
+.batch-agents__warn {
+  margin: 0;
+  font-size: 12px;
+  color: var(--warning, #c9892e);
+  flex-shrink: 0;
+}
+.batch-agents__results {
+  border-top: 1px solid var(--border-subtle);
+  padding-top: 10px;
+  flex-shrink: 0;
+  min-height: 0;
+  max-height: min(22vh, 180px);
+  overflow: auto;
+}
+.batch-agents__results-title {
+  margin: 0 0 8px;
+  font-size: 13px;
+  font-weight: 600;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: baseline;
+}
+.batch-agents__results-meta {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-tertiary);
+}
+.batch-agents__result-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.batch-agents__result-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 2px 8px;
+  font-size: 12px;
+  align-items: start;
+}
+.batch-agents__status {
+  grid-row: 1 / span 2;
+  align-self: center;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  padding: 2px 6px;
+  border-radius: 999px;
+  border: 1px solid var(--border-subtle);
+  white-space: nowrap;
+}
+.batch-agents__status--ok {
+  color: var(--success, #2f9e6b);
+  border-color: color-mix(in srgb, var(--success, #2f9e6b) 40%, transparent);
+}
+.batch-agents__status--soft {
+  color: var(--warning, #c9892e);
+}
+.batch-agents__status--error {
+  color: var(--danger, #d14);
+}
+.batch-agents__status--skip,
+.batch-agents__status--pending {
+  color: var(--text-tertiary);
+}
+.batch-agents__status--queued {
+  color: var(--accent);
+}
+.batch-agents__result-name {
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.batch-agents__result-reason {
+  font-size: 11px;
+  color: var(--text-tertiary);
+  grid-column: 2;
+}
+.batch-agents__result-summary {
+  grid-column: 2;
+  font-size: 11px;
+  color: var(--text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 /* ── Cost rollup (Settings → Runtime → Tools) ───────────────────────── */
 .cost-rollup {
   padding: 0 12px 12px;

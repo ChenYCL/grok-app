@@ -9902,3 +9902,18 @@ pub async fn streaming_messages_json_probe(
     .map_err(|e| format!("streaming_messages_json_probe: {e}"))
 }
 
+/// One-shot headless batch turn for a project cwd (`grok -p`, soft-fail).
+/// Sequential multi-project dispatch lives in the FE; this runs a single project.
+#[tauri::command]
+pub async fn batch_agents_headless(
+    project_path: String,
+    prompt: String,
+    timeout_ms: Option<u64>,
+) -> Result<crate::batch_agents::BatchHeadlessResult, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        crate::batch_agents::run_batch_headless(&project_path, &prompt, timeout_ms)
+    })
+    .await
+    .map_err(|e| format!("batch_agents_headless: {e}"))
+}
+

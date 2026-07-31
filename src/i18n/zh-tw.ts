@@ -631,6 +631,58 @@ export const zhTW: Record<MessageKey, string> = {
   "dashboard.tool": "工具：{name}",
   "dashboard.toolLabel": "工具",
   "dashboard.open": "Agent 儀表板",
+  "dashboard.batchAgents": "批量 Agent…",
+  "dashboard.batchAgentsTitle":
+    "將同一提示詞派發到多個專案（工作階段或無頭摘要）",
+
+  "batchAgents.title": "批量 Agent",
+  "batchAgents.hint":
+    "勾選已信任專案、填寫同一提示詞，然後為每個專案開啟工作階段，或跑無頭一輪並彙總 soft-fail 結果。單專案失敗不會清空其它工作。",
+  "batchAgents.modeLabel": "派發模式",
+  "batchAgents.mode.sessions": "開啟工作階段",
+  "batchAgents.mode.headless": "無頭摘要",
+  "batchAgents.mode.sessionsHint":
+    "為每個專案建立 App 工作階段、連線 Agent 並送出提示詞（走多工作階段並發）。未信任或路徑失效的專案會 soft-fail 略過。",
+  "batchAgents.mode.headlessHint":
+    "對每個專案跑一次 `grok -p`（軟逾時）。結果進摘要表，不建立 App 工作階段。CLI 缺失 / 逾時 / 空輸出 soft-fail。",
+  "batchAgents.promptLabel": "共用提示詞",
+  "batchAgents.promptPlaceholder":
+    "例如：檢查本倉庫未完成 TODO 並總結風險…",
+  "batchAgents.searchPlaceholder": "篩選專案…",
+  "batchAgents.selectedCount": "已選 {n} · 上限 {max}",
+  "batchAgents.selectAll": "全選目前列表",
+  "batchAgents.deselectAll": "取消全選目前列表",
+  "batchAgents.emptyProjects": "暫無專案",
+  "batchAgents.emptyProjectsHint": "新增已信任的專案資料夾，或清空搜尋。",
+  "batchAgents.eligible": "可執行",
+  "batchAgents.overLimit": "僅前 {max} 個合格專案會執行，其餘略過。",
+  "batchAgents.dispatch": "執行批量（{n}）",
+  "batchAgents.running": "執行中…",
+  "batchAgents.dispatchFailed": "派發失敗",
+  "batchAgents.resultsTitle": "結果",
+  "batchAgents.resultsMeta":
+    "成功 {ok} · soft-fail {soft} · 錯誤 {err} · 略過 {skip}",
+  "batchAgents.copySummary": "複製摘要",
+  "batchAgents.copied": "已複製",
+  "batchAgents.status.ok": "成功",
+  "batchAgents.status.softFail": "Soft-fail",
+  "batchAgents.status.error": "錯誤",
+  "batchAgents.status.skipped": "略過",
+  "batchAgents.status.queued": "已入佇列",
+  "batchAgents.status.pending": "…",
+  "batchAgents.skip.empty_id": "缺少 id",
+  "batchAgents.skip.empty_path": "缺少路徑",
+  "batchAgents.skip.untrusted": "未信任",
+  "batchAgents.skip.path_missing": "路徑不存在",
+  "batchAgents.skip.system_project": "系統工作區",
+  "batchAgents.skip.over_limit": "超出批量上限",
+  "batchAgents.open": "批量 Agent",
+  "batchAgents.settingsDesc":
+    "將同一提示詞派發到多個已信任專案 — 開啟工作階段或無頭 soft-fail 摘要。",
+  "batchAgents.openFromSettings": "開啟批量 Agent…",
+  "batchAgents.toastDone":
+    "批量完成：成功 {ok} · soft-fail {soft} · 錯誤 {err} · 略過 {skip}",
+
   "media.loadError": "應用程式內無法載入此媒體。",
   "media.openExternal": "以系統播放器開啟",
   "media.loading": "正在載入媒體…",
