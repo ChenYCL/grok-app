@@ -21,7 +21,7 @@ Agent / 贡献者维护设置 UI 时**必读**。目标：层次清晰、可搜�
 
 | Section | Tabs |
 |---------|------|
-| general | `composer` · `permissions` · `agent` · `app` |
+| general | `composer` · `permissions` · `agent`（含 experimental memory、memory browser、**memory embedding 0.2.117**） · `app` |
 | appearance | `theme`（主题：浅深色 / 皮肤 / 背景）· `interface`（界面：聊天展示） |
 | account | `official` · `providers` |
 | extensions | `plugins` · `skills` · `mcp` · `hooks` · `market` |

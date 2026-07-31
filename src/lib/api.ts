@@ -3210,6 +3210,8 @@ export type MemorySearchResult = {
 /**
  * Search path-scoped memory files (name + body) under agent GROK_HOME/memory.
  * Host enforces read/hit caps and redacts snippets.
+ * Always keyword / file-body scan — never invents embeddings client-side.
+ * CLI hybrid vector search is configured via memoryEmbedConfig* (`[memory.embedding]`).
  */
 export async function memorySearch(opts: {
   query: string;
@@ -3220,6 +3222,96 @@ export async function memorySearch(opts: {
     query: opts.query,
     cwd: opts.cwd ?? null,
     limit: opts.limit ?? null,
+  });
+}
+
+/**
+ * Memory embedding config — allowlisted Grok Build 0.2.117 `[memory.*]` keys
+ * from active GROK_HOME config.toml. Missing keys are null (soft-fail).
+ * Writes only in independent agent-home mode.
+ */
+export type MemoryEmbedConfigSnapshot = {
+  path: string;
+  grokHome: string;
+  mode: string;
+  writable: boolean;
+  fileExists: boolean;
+  embeddingConfigured: boolean;
+  /** Always `"keyword"` for App host browser search. */
+  appSearchMode: string;
+  /** `"hybrid"` when embedding.model set; else `"keyword"`. */
+  cliSearchMode: string;
+  embeddingModel?: string | null;
+  embeddingDimensions?: number | null;
+  embeddingProvider?: string | null;
+  searchMaxResults?: number | null;
+  searchMinScore?: number | null;
+  searchVectorWeight?: number | null;
+  searchTextWeight?: number | null;
+  mmrEnabled?: boolean | null;
+  mmrLambda?: number | null;
+  temporalDecayEnabled?: boolean | null;
+  temporalDecayHalfLifeDays?: number | null;
+  dreamEnabled?: boolean | null;
+  dreamMinHours?: number | null;
+  dreamMinSessions?: number | null;
+  dreamCheckIntervalSecs?: number | null;
+  watcherEnabled?: boolean | null;
+  initialInjectionEnabled?: boolean | null;
+  initialInjectionMinScore?: number | null;
+  redactedPreview: string;
+};
+
+export type MemoryEmbedConfigPatch = {
+  embeddingModel?: string | null;
+  clearEmbeddingModel?: boolean | null;
+  embeddingDimensions?: number | null;
+  embeddingProvider?: string | null;
+  searchMaxResults?: number | null;
+  searchMinScore?: number | null;
+  searchVectorWeight?: number | null;
+  searchTextWeight?: number | null;
+  mmrEnabled?: boolean | null;
+  mmrLambda?: number | null;
+  temporalDecayEnabled?: boolean | null;
+  temporalDecayHalfLifeDays?: number | null;
+  dreamEnabled?: boolean | null;
+  dreamMinHours?: number | null;
+  dreamMinSessions?: number | null;
+  dreamCheckIntervalSecs?: number | null;
+  watcherEnabled?: boolean | null;
+  initialInjectionEnabled?: boolean | null;
+  initialInjectionMinScore?: number | null;
+};
+
+export async function memoryEmbedConfigGet(): Promise<MemoryEmbedConfigSnapshot> {
+  return invoke<MemoryEmbedConfigSnapshot>("memory_embed_config_get");
+}
+
+export async function memoryEmbedConfigSet(
+  patch: MemoryEmbedConfigPatch,
+): Promise<MemoryEmbedConfigSnapshot> {
+  // Tauri maps camelCase invoke keys → snake_case command args.
+  return invoke<MemoryEmbedConfigSnapshot>("memory_embed_config_set", {
+    embeddingModel: patch.embeddingModel ?? null,
+    clearEmbeddingModel: patch.clearEmbeddingModel ?? null,
+    embeddingDimensions: patch.embeddingDimensions ?? null,
+    embeddingProvider: patch.embeddingProvider ?? null,
+    searchMaxResults: patch.searchMaxResults ?? null,
+    searchMinScore: patch.searchMinScore ?? null,
+    searchVectorWeight: patch.searchVectorWeight ?? null,
+    searchTextWeight: patch.searchTextWeight ?? null,
+    mmrEnabled: patch.mmrEnabled ?? null,
+    mmrLambda: patch.mmrLambda ?? null,
+    temporalDecayEnabled: patch.temporalDecayEnabled ?? null,
+    temporalDecayHalfLifeDays: patch.temporalDecayHalfLifeDays ?? null,
+    dreamEnabled: patch.dreamEnabled ?? null,
+    dreamMinHours: patch.dreamMinHours ?? null,
+    dreamMinSessions: patch.dreamMinSessions ?? null,
+    dreamCheckIntervalSecs: patch.dreamCheckIntervalSecs ?? null,
+    watcherEnabled: patch.watcherEnabled ?? null,
+    initialInjectionEnabled: patch.initialInjectionEnabled ?? null,
+    initialInjectionMinScore: patch.initialInjectionMinScore ?? null,
   });
 }
 

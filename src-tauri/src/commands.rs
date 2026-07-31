@@ -8688,6 +8688,10 @@ pub async fn agent_config_toml_read(
 
 /// Search path-scoped memory files (name + content) under agent GROK_HOME/memory.
 /// Snippets are redacted; hard caps on hits and bytes read per file.
+///
+/// Always keyword / file-body scan — never invents embeddings client-side.
+/// CLI `memory_search` hybrid (vector + full-text) is controlled by
+/// `[memory.embedding]` keys (see `memory_embed_config_get`).
 #[tauri::command]
 pub async fn memory_search(
     query: String,
@@ -8711,6 +8715,73 @@ pub async fn memory_search(
     })
     .await
     .map_err(|e| format!("memory search task failed: {e}"))?
+}
+
+/// Read allowlisted Grok Build 0.2.117 memory embedding keys from active GROK_HOME.
+/// Soft-fails missing file/keys (null fields). Never invents embedding defaults.
+#[tauri::command]
+pub async fn memory_embed_config_get(
+) -> Result<crate::agent_memory_embed::MemoryEmbedConfigSnapshot, String> {
+    tauri::async_runtime::spawn_blocking(crate::agent_memory_embed::load_memory_embed_config)
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+/// Write allowlisted memory embedding keys into agent-home config.toml only
+/// (independent mode). Soft-respawns so the next turn reloads the agent profile.
+#[tauri::command]
+pub async fn memory_embed_config_set(
+    app: tauri::AppHandle,
+    mgr: State<'_, Arc<SessionManager>>,
+    embedding_model: Option<String>,
+    clear_embedding_model: Option<bool>,
+    embedding_dimensions: Option<u32>,
+    embedding_provider: Option<String>,
+    search_max_results: Option<u32>,
+    search_min_score: Option<f64>,
+    search_vector_weight: Option<f64>,
+    search_text_weight: Option<f64>,
+    mmr_enabled: Option<bool>,
+    mmr_lambda: Option<f64>,
+    temporal_decay_enabled: Option<bool>,
+    temporal_decay_half_life_days: Option<f64>,
+    dream_enabled: Option<bool>,
+    dream_min_hours: Option<f64>,
+    dream_min_sessions: Option<u32>,
+    dream_check_interval_secs: Option<u64>,
+    watcher_enabled: Option<bool>,
+    initial_injection_enabled: Option<bool>,
+    initial_injection_min_score: Option<f64>,
+) -> Result<crate::agent_memory_embed::MemoryEmbedConfigSnapshot, String> {
+    let patch = crate::agent_memory_embed::MemoryEmbedConfigPatch {
+        embedding_model,
+        clear_embedding_model,
+        embedding_dimensions,
+        embedding_provider,
+        search_max_results,
+        search_min_score,
+        search_vector_weight,
+        search_text_weight,
+        mmr_enabled,
+        mmr_lambda,
+        temporal_decay_enabled,
+        temporal_decay_half_life_days,
+        dream_enabled,
+        dream_min_hours,
+        dream_min_sessions,
+        dream_check_interval_secs,
+        watcher_enabled,
+        initial_injection_enabled,
+        initial_injection_min_score,
+    };
+    let result = tauri::async_runtime::spawn_blocking(move || {
+        crate::agent_memory_embed::save_memory_embed_config(&patch)
+    })
+    .await
+    .map_err(|e| e.to_string())??;
+
+    mgr.soft_respawn_with_reason(&app, "memory_embed_config").await;
+    Ok(result)
 }
 
 /// List agent definitions available for session agent selection.

@@ -209,6 +209,7 @@ import { ManagedSetupPanel } from "@/components/ManagedSetupPanel";
 import { TraceHistoryList } from "@/components/TraceHistoryList";
 import { GlassModal } from "@/components/GlassModal";
 import { MemoryBrowserPanel } from "@/components/MemoryBrowserPanel";
+import { MemoryEmbedPanel } from "@/components/MemoryEmbedPanel";
 import { AgentConfigTomlPanel } from "@/components/AgentConfigTomlPanel";
 import { RemoteImLayout } from "@/components/RemoteImLayout";
 import { MirrorConnectPanel } from "@/components/MirrorConnectPanel";
@@ -2998,6 +2999,20 @@ export function SettingsPage({
                   />
                 </div>
               ) : null}
+              <div
+                className={
+                  "settings-memory-embed-wrap" +
+                  rowHighlight("settings-anchor-memoryEmbed")
+                }
+              >
+                <MemoryEmbedPanel
+                  locale={resolveLocale(locale)}
+                  onSaved={() =>
+                    showSettingsToast(t("settings.memoryEmbed.saved"), 2200)
+                  }
+                  onError={(msg) => showSettingsToast(msg, 3200)}
+                />
+              </div>
               {onSubagentsEnabled ? (
                 <div
                   className={"settings-row" + rowHighlight("settings-anchor-subagents")}
