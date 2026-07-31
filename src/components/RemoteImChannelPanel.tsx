@@ -30,6 +30,7 @@ import {
   showsPublicUrlCallout,
   toggleSecretReveal,
   validateBindFields,
+  validateFeishuConfig,
 } from "@/lib/remoteIm";
 import type { TestConnectionResult } from "@/lib/remoteIm/bridgeClient";
 import {
@@ -203,6 +204,35 @@ export function RemoteImChannelPanel({
           }),
         );
         return false;
+      }
+
+      // Feishu/Lark: honest format / domain soft-fail before write (pure, no I/O)
+      if (channelId === "feishu" || channelId === "lark") {
+        const appId =
+          String(nextValues.app_id ?? merged.app_id ?? "").trim() || "";
+        const fe = validateFeishuConfig({
+          options: nextValues,
+          secretKeysFilled: filled,
+          hasCredentials: instance.hasCredentials,
+          appIdValue: appId || null,
+          channel: channelId,
+        });
+        if (!fe.ok) {
+          if (fe.softStatus === "invalid_app_id_format") {
+            setFormError(t("settings.remoteIm.feishu.err.appIdFormat"));
+            return false;
+          }
+          if (fe.softStatus === "missing_custom_domain") {
+            setFormError(t("settings.remoteIm.feishu.err.customDomain"));
+            return false;
+          }
+          setFormError(
+            t("settings.remoteIm.err.missingFields", {
+              fields: fe.missing.join(", "),
+            }),
+          );
+          return false;
+        }
       }
 
       const scope: ProjectScope =
@@ -505,13 +535,18 @@ export function RemoteImChannelPanel({
         .filter(([, v]) => v.trim().length > 0)
         .map(([k]) => k),
     );
+    const appIdValue =
+      String(values.app_id ?? "").trim() || null;
     return classifyChannelHealth({
       instance,
       bridgeRunning,
       bridgeLinked,
       secretKeysFilled: filled,
+      // Live form options (e.g. domain / cleared app_id) for honest soft status
+      draftOptions: values,
+      appIdValue,
     });
-  }, [instance, bridgeRunning, bridgeLinked, secrets]);
+  }, [instance, bridgeRunning, bridgeLinked, secrets, values]);
 
   const statusTone = health.badgeTone;
   const statusLabel = t(health.statusKey);
@@ -590,6 +625,9 @@ export function RemoteImChannelPanel({
         <div key={f.key} className="settings-row settings-row--stack">
           <div className="settings-row__text">
             <div className="settings-row__label">{t(f.labelKey)}</div>
+            {f.helpKey ? (
+              <div className="settings-row__desc">{t(f.helpKey)}</div>
+            ) : null}
           </div>
           <RimChoiceRow
             value={String(val ?? f.defaultValue ?? "")}
@@ -806,6 +844,22 @@ export function RemoteImChannelPanel({
 
       {/* Bind */}
       <h3 className="settings-page__h2">{t("settings.remoteIm.bind")}</h3>
+      {channelId === "feishu" || channelId === "lark" ? (
+        <div className="rim-callout" data-feishu-guide="1">
+          <div className="rim-callout__title">
+            {t("settings.remoteIm.feishu.guide.title")}
+          </div>
+          <ol className="rim-guide-steps">
+            <li>{t("settings.remoteIm.feishu.guide.step1")}</li>
+            <li>{t("settings.remoteIm.feishu.guide.step2")}</li>
+            <li>{t("settings.remoteIm.feishu.guide.step3")}</li>
+            <li>{t("settings.remoteIm.feishu.guide.step4")}</li>
+          </ol>
+          <p className="settings-row__hint">
+            {t("settings.remoteIm.feishu.guide.softFail")}
+          </p>
+        </div>
+      ) : null}
       <div className="settings-card">
         {schema.scanSupport ? (
           <div className="settings-row settings-row--stack">

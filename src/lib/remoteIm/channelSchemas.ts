@@ -75,6 +75,7 @@ const FEISHU_FIELDS: ChannelSchema["fields"] = [
     control: "text",
     section: "bind",
     required: true,
+    helpKey: "settings.remoteIm.feishu.appIdHelp",
   },
   {
     key: "app_secret",
@@ -83,6 +84,7 @@ const FEISHU_FIELDS: ChannelSchema["fields"] = [
     section: "bind",
     required: true,
     secret: true,
+    helpKey: "settings.remoteIm.feishu.appSecretHelp",
   },
   {
     key: "domain",
@@ -90,6 +92,7 @@ const FEISHU_FIELDS: ChannelSchema["fields"] = [
     control: "select",
     section: "bind",
     defaultValue: "open.feishu.cn",
+    helpKey: "settings.remoteIm.feishu.domainHelp",
     choices: [
       {
         value: "open.feishu.cn",
@@ -108,6 +111,7 @@ const FEISHU_FIELDS: ChannelSchema["fields"] = [
     control: "text",
     section: "bind",
     when: { key: "domain", equals: "custom" },
+    helpKey: "settings.remoteIm.feishu.customDomainHelp",
   },
   {
     key: "port",
@@ -137,6 +141,7 @@ const FEISHU_FIELDS: ChannelSchema["fields"] = [
     control: "toggle",
     section: "options",
     defaultValue: true,
+    helpKey: "settings.remoteIm.feishu.enableCardHelp",
   },
   {
     key: "group_reply_all",

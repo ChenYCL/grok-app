@@ -7,3 +7,4 @@ export * from "./store";
 export * from "./bridgeClient";
 export * from "./eventTimeline";
 export * from "./channelHealth";
+export * from "./feishuConfig";

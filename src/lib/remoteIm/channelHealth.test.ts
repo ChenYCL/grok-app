@@ -67,9 +67,9 @@ describe("transportForChannel", () => {
 describe("channelModeLabel", () => {
   it("feishu domain + telegram proxy", () => {
     expect(channelModeLabel("feishu", { domain: "feishu" })).toBe(
-      "domain=feishu",
+      "ws;domain=feishu",
     );
-    expect(channelModeLabel("lark", { domain: "lark" })).toBe("domain=lark");
+    expect(channelModeLabel("lark", { domain: "lark" })).toBe("ws;domain=lark");
     expect(channelModeLabel("telegram", {})).toBe("proxy=none");
     expect(channelModeLabel("telegram", { proxy: "socks5://x" })).toBe(
       "proxy=set",
@@ -95,6 +95,31 @@ describe("credentialReadiness", () => {
     expect(credentialReadiness("feishu", saved).ready).toBe(true);
   });
 
+  it("feishu rejects invalid app_id format when value provided", () => {
+    const bare = inst("feishu", {
+      hasCredentials: false,
+      options: { app_id: "bad id" },
+    });
+    const r = credentialReadiness(
+      "feishu",
+      bare,
+      new Set(["app_secret"]),
+      "bad id",
+    );
+    expect(r.ready).toBe(false);
+    expect(r.missingKeys).toContain("app_id");
+  });
+
+  it("feishu requires custom_domain when domain=custom", () => {
+    const i = inst("feishu", {
+      hasCredentials: true,
+      options: { app_id: "cli_x", domain: "custom" },
+    });
+    const r = credentialReadiness("feishu", i);
+    expect(r.ready).toBe(false);
+    expect(r.missingKeys).toContain("custom_domain");
+  });
+
   it("telegram ready with token in form set", () => {
     const bare = inst("telegram", { hasCredentials: false });
     expect(credentialReadiness("telegram", bare).ready).toBe(false);
@@ -116,11 +141,12 @@ describe("classifyChannelHealth", () => {
     expect(channelHasDeepHealth("feishu")).toBe(true);
     expect(h0.hintKeys.some((k) => k.includes("needCredentials"))).toBe(true);
     expect(h0.hintKeys.some((k) => k.includes("feishuWs"))).toBe(true);
+    expect(h0.hintKeys.some((k) => k.includes("feishuNoWebhook"))).toBe(true);
 
     const cfg = inst("feishu", {
       hasCredentials: true,
       enabled: true,
-      options: { app_id: "cli_x", domain: "feishu" },
+      options: { app_id: "cli_x", domain: "open.feishu.cn" },
       acl: {
         allowFrom: "*",
         requireMention: true,
@@ -135,8 +161,9 @@ describe("classifyChannelHealth", () => {
     });
     expect(h1.tone).toBe("configured");
     expect(h1.openAcl).toBe(true);
-    expect(h1.modeLabel).toBe("domain=feishu");
+    expect(h1.modeLabel).toBe("ws;domain=feishu");
     expect(h1.hintKeys.some((k) => k.includes("openAcl"))).toBe(true);
+    expect(h1.hintKeys.some((k) => k.includes("feishuCardEvents"))).toBe(true);
 
     const h2 = classifyChannelHealth({
       instance: cfg,
@@ -146,6 +173,42 @@ describe("classifyChannelHealth", () => {
     expect(h2.tone).toBe("connected");
     expect(h2.badgeTone).toBe("ok");
     expect(h2.bridgeLinked).toBe(true);
+  });
+
+  it("feishu: draft invalid app_id cannot look connected", () => {
+    const fs = inst("feishu", {
+      hasCredentials: true,
+      enabled: true,
+      options: { app_id: "cli_ok" },
+    });
+    const h = classifyChannelHealth({
+      instance: fs,
+      bridgeRunning: true,
+      bridgeLinked: true,
+      draftOptions: { app_id: "bad id", domain: "custom" },
+      appIdValue: "bad id",
+    });
+    expect(h.credentialsReady).toBe(false);
+    expect(h.tone).not.toBe("connected");
+    expect(h.hintKeys.some((k) => k.includes("feishuAppIdFormat"))).toBe(true);
+  });
+
+  it("feishu: lark domain hint + ready ws", () => {
+    const lk = inst("lark", {
+      hasCredentials: true,
+      enabled: true,
+      options: { app_id: "cli_x", domain: "open.larksuite.com" },
+    });
+    const h = classifyChannelHealth({
+      instance: lk,
+      bridgeRunning: true,
+      bridgeLinked: true,
+    });
+    expect(h.credentialsReady).toBe(true);
+    expect(h.tone).toBe("connected");
+    expect(h.modeLabel).toBe("ws;domain=lark");
+    expect(h.hintKeys.some((k) => k.includes("feishuLarkDomain"))).toBe(true);
+    expect(h.hintKeys.some((k) => k.includes("feishuWs"))).toBe(true);
   });
 
   it("telegram: long_poll health with proxy and ACL hints", () => {
@@ -180,6 +243,7 @@ describe("classifyChannelHealth", () => {
     const i = inst("feishu", {
       hasCredentials: true,
       enabled: true,
+      options: { app_id: "cli_x" },
       lastError: "ws closed",
     });
     const h = classifyChannelHealth({
