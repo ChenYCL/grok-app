@@ -364,6 +364,12 @@ const en = {
   "error.action.upgradeCli": "Upgrade CLI",
   "error.action.openNetwork": "Network settings",
   "error.action.dismiss": "Dismiss",
+  "error.action.trustProject": "Trust project",
+  "error.action.relocateProject": "Relocate folder",
+  "error.action.addProject": "Add project",
+  "error.action.openPermissions": "Permissions",
+  "error.action.openMcp": "Open MCP",
+  "error.action.openExtensions": "Extensions",
   "error.deck.cli.problem": "Grok Build CLI not found",
   "error.deck.cli.cause":
     "The desktop app needs the local CLI binary. Install it, or point Settings at an existing path.",
@@ -397,6 +403,21 @@ const en = {
   "error.deck.stall.problem": "Stream looks quiet",
   "error.deck.stall.cause":
     "No tokens or tool progress for about {seconds}s. Keep waiting or end this turn.",
+  "error.deck.untrusted.problem": "Project is not trusted",
+  "error.deck.untrusted.cause":
+    "Trust the folder so the agent may read and write there (Ask remains the default).",
+  "error.deck.projectMissing.problem": "Project folder unavailable",
+  "error.deck.projectMissing.cause":
+    "The path is missing, moved, or no project is selected. Relocate the folder or add a project.",
+  "error.deck.permission.problem": "Permission denied",
+  "error.deck.permission.cause":
+    "A tool or file access was rejected. Adjust permission policy or allow the next prompt.",
+  "error.deck.mcpAuth.problem": "MCP authentication required",
+  "error.deck.mcpAuth.cause":
+    "An MCP server needs OAuth or re-authorization. Open MCP doctor and complete the provider sign-in.",
+  "error.deck.oauthExpired.problem": "OAuth credentials expired",
+  "error.deck.oauthExpired.cause":
+    "Token or grant is no longer valid. Refresh MCP OAuth or re-login under Account.",
   "error.deck.generic.problem": "Something went wrong",
   "error.deck.generic.cause":
     "Check Doctor for CLI/auth status, then retry the last action.",
@@ -5448,6 +5469,12 @@ const zh: Record<MessageKey, string> = {
   "error.action.upgradeCli": "升级 CLI",
   "error.action.openNetwork": "网络设置",
   "error.action.dismiss": "关闭",
+  "error.action.trustProject": "信任项目",
+  "error.action.relocateProject": "重新定位",
+  "error.action.addProject": "添加项目",
+  "error.action.openPermissions": "权限设置",
+  "error.action.openMcp": "打开 MCP",
+  "error.action.openExtensions": "扩展",
   "error.deck.cli.problem": "未找到 Grok Build CLI",
   "error.deck.cli.cause":
     "桌面端需要本机 CLI 可执行文件。请安装，或在设置中指定已有路径。",
@@ -5481,6 +5508,21 @@ const zh: Record<MessageKey, string> = {
   "error.deck.stall.problem": "输出暂时停住了",
   "error.deck.stall.cause":
     "约 {seconds} 秒没有新的内容或工具进度。可继续等待或结束本轮。",
+  "error.deck.untrusted.problem": "项目尚未信任",
+  "error.deck.untrusted.cause":
+    "信任该文件夹后 Agent 才可读写（默认仍为 Ask 审批）。",
+  "error.deck.projectMissing.problem": "项目文件夹不可用",
+  "error.deck.projectMissing.cause":
+    "路径丢失、已移动，或尚未选择项目。请重新定位文件夹，或添加项目。",
+  "error.deck.permission.problem": "权限被拒绝",
+  "error.deck.permission.cause":
+    "工具或文件访问被拒绝。可调整权限策略，或在下次提示时允许。",
+  "error.deck.mcpAuth.problem": "需要 MCP 鉴权",
+  "error.deck.mcpAuth.cause":
+    "某 MCP 服务需要 OAuth 或重新授权。请打开 MCP Doctor 完成登录。",
+  "error.deck.oauthExpired.problem": "OAuth 凭证已过期",
+  "error.deck.oauthExpired.cause":
+    "令牌或授权已失效。请刷新 MCP OAuth，或在账号设置中重新登录。",
   "error.deck.generic.problem": "出了点问题",
   "error.deck.generic.cause": "可在 Doctor 查看 CLI/鉴权状态，然后重试上一步操作。",
   "main.startTitle": "开始对话",

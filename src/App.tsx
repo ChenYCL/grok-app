@@ -13468,7 +13468,7 @@ export default function App() {
     };
   }, [perm, permissionTimeoutSec, denyActivePermission]);
 
-  /** T04 deck buttons: reconnect / Doctor / Settings sections / dismiss. */
+  /** T04 deck buttons: reconnect / Doctor / Settings sections / project / MCP / dismiss. */
   const runErrorBannerAction = useCallback(
     (action: NonNullable<ErrorBannerView["primary"]>) => {
       setErrorDetailOpen(false);
@@ -13505,6 +13505,30 @@ export default function App() {
           // login+key surface; extensions holds MCP. Prefer account for keys.
           navigateSettings("account");
           break;
+        case "open_permissions":
+          setLocalError(null);
+          navigateSettings("general", "permissions");
+          break;
+        case "open_extensions":
+          setLocalError(null);
+          navigateSettings("extensions");
+          break;
+        case "open_mcp":
+          setLocalError(null);
+          void openMcpModal();
+          break;
+        case "trust_project":
+          setLocalError(null);
+          void trustProject(activeProject);
+          break;
+        case "relocate_project":
+          setLocalError(null);
+          if (activeProject) void relocateProject(activeProject);
+          break;
+        case "add_project":
+          setLocalError(null);
+          void addProject(false);
+          break;
         case "dismiss":
         case "keep_waiting":
           // keep_waiting is for the stream-stall banner (clears prompt only).
@@ -13518,7 +13542,17 @@ export default function App() {
           break;
       }
     },
-    [ensureConnected, navigateSettings, openDoctor, stop],
+    [
+      activeProject,
+      addProject,
+      ensureConnected,
+      navigateSettings,
+      openDoctor,
+      openMcpModal,
+      relocateProject,
+      stop,
+      trustProject,
+    ],
   );
 
   const refreshAccount = useCallback(
