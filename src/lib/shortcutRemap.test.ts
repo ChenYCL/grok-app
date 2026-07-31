@@ -15,16 +15,19 @@ import {
   findChordConflict,
   findChordConflicts,
   formatChordDisplay,
+  hasAnyShortcutRemaps,
   loadIgnoreCrossScopeConflicts,
   loadShortcutRemaps,
   normalizeChordString,
   parseChord,
   parseIgnoreCrossScopeConflicts,
+  planResetAllShortcutRemaps,
   resetConflictingShortcutRemaps,
   saveIgnoreCrossScopeConflicts,
   saveShortcutRemaps,
   serializeChord,
   setShortcutRemap,
+  summarizeChordConflicts,
 } from "./shortcutRemap";
 
 function memoryStorage(seed: Record<string, string> = {}): Storage {
@@ -448,6 +451,91 @@ describe("formatChordDisplay", () => {
     expect(formatChordDisplay("mod+shift+c", "win")).toBe("Ctrl Shift C");
     expect(formatChordDisplay("mod+,", "mac")).toBe("⌘ ,");
     expect(formatChordDisplay("ctrl+space", "mac")).toBe("Ctrl Space");
+  });
+});
+
+describe("summarizeChordConflicts", () => {
+  it("returns zeros for empty groups", () => {
+    expect(summarizeChordConflicts([])).toEqual({
+      groupCount: 0,
+      chordCount: 0,
+      idCount: 0,
+      bindingCount: 0,
+      remappedCount: 0,
+    });
+  });
+
+  it("counts groups, unique chords/ids, and remapped participants", () => {
+    const groups = findChordConflicts({
+      help: "mod+k",
+      doctor: "mod+f",
+    });
+    // help steals search's mod+k; doctor steals findInChat's mod+f
+    expect(groups.length).toBe(2);
+    const summary = summarizeChordConflicts(groups, {
+      help: "mod+k",
+      doctor: "mod+f",
+    });
+    expect(summary.groupCount).toBe(2);
+    expect(summary.chordCount).toBe(2);
+    expect(summary.idCount).toBe(4); // help+search, doctor+findInChat
+    expect(summary.bindingCount).toBe(4);
+    // only the remapped ids among conflict participants
+    expect(summary.remappedCount).toBe(2);
+  });
+
+  it("treats remappedCount as 0 when remaps omitted", () => {
+    const groups = findChordConflicts({ help: "mod+k" });
+    expect(summarizeChordConflicts(groups).remappedCount).toBe(0);
+  });
+});
+
+describe("planResetAllShortcutRemaps", () => {
+  it("plans empty map as no-op", () => {
+    expect(planResetAllShortcutRemaps({})).toEqual({
+      ids: [],
+      count: 0,
+      hasAny: false,
+    });
+    expect(planResetAllShortcutRemaps(null)).toEqual({
+      ids: [],
+      count: 0,
+      hasAny: false,
+    });
+    expect(planResetAllShortcutRemaps(undefined)).toEqual({
+      ids: [],
+      count: 0,
+      hasAny: false,
+    });
+  });
+
+  it("lists sorted remappable ids without writing storage", () => {
+    const remaps = {
+      doctor: "mod+shift+x",
+      search: "mod+p",
+    } as const;
+    const plan = planResetAllShortcutRemaps(remaps);
+    expect(plan).toEqual({
+      ids: ["doctor", "search"],
+      count: 2,
+      hasAny: true,
+    });
+    expect(hasAnyShortcutRemaps(remaps)).toBe(true);
+    // Pure: original map unchanged
+    expect(remaps).toEqual({
+      doctor: "mod+shift+x",
+      search: "mod+p",
+    });
+  });
+
+  it("ignores non-remappable keys if present", () => {
+    // `send` is a catalog id but not remappable — plan must not list it.
+    const plan = planResetAllShortcutRemaps({
+      search: "mod+p",
+      send: "mod+enter",
+    });
+    expect(plan.ids).toEqual(["search"]);
+    expect(plan.count).toBe(1);
   });
 });
 
