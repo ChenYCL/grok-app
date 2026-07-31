@@ -18,6 +18,10 @@ import {
   feishuHealthHintKeys,
   validateFeishuConfig,
 } from "./feishuConfig";
+import {
+  lineHealthHintKeys,
+  validateLineConfig,
+} from "./lineConfig";
 
 
 /** Health tone for badges / callouts (maps to RimBadge). */
@@ -98,6 +102,7 @@ const FEISHU_LIKE: RemoteChannelId[] = ["feishu", "lark"];
 const TELEGRAM_LIKE: RemoteChannelId[] = ["telegram"];
 const WECOM_LIKE: RemoteChannelId[] = ["wecom"];
 const DINGTALK_LIKE: RemoteChannelId[] = ["dingtalk"];
+const LINE_LIKE: RemoteChannelId[] = ["line"];
 
 /** Required secret bind keys per channel (for readiness, not values). */
 const SECRET_KEYS: Partial<Record<RemoteChannelId, string[]>> = {
@@ -111,6 +116,7 @@ const SECRET_KEYS: Partial<Record<RemoteChannelId, string[]>> = {
   // WeCom secrets are mode-aware — see credentialReadiness / wecomConfig
   weixin: ["token"],
   matrix: ["access_token"],
+  // LINE secrets validated via lineConfig (access_token alias)
   line: ["channel_secret", "channel_access_token"],
 };
 
@@ -119,6 +125,7 @@ const NON_SECRET_REQUIRED: Partial<Record<RemoteChannelId, string[]>> = {
   lark: ["app_id"],
   telegram: [],
   dingtalk: ["client_id"],
+  line: [],
 };
 
 
@@ -252,6 +259,14 @@ export function channelModeLabel(
   if (channel === "dingtalk") {
     return "mode=stream";
   }
+  if (channel === "line") {
+    const parts: string[] = ["mode=webhook"];
+    const port = optionString(options, "port");
+    if (port) parts.push(`port=${port}`);
+    const path = optionString(options, "callback_path");
+    if (path) parts.push("path=custom");
+    return parts.join(",");
+  }
   return null;
 }
 
@@ -332,6 +347,15 @@ export function credentialReadiness(
     return { ready: v.ok, missingKeys: [...v.missing] };
   }
 
+  if (LINE_LIKE.includes(channel)) {
+    const v = validateLineConfig({
+      options: opts,
+      secretKeysFilled,
+      hasCredentials: instance.hasCredentials,
+    });
+    return { ready: v.ok, missingKeys: [...v.missing] };
+  }
+
   const missing: string[] = [];
 
   for (const k of NON_SECRET_REQUIRED[channel] ?? []) {
@@ -386,9 +410,13 @@ export function classifyChannelHealth(
     savedOpts,
   );
 
-  // Honest status: incomplete mode-switch / missing keys cannot look "connected".
+  // Honest status: incomplete mode-switch / missing keys / bad LINE port-path
+  // cannot look "connected".
+  const requireReadyForConnect =
+    channel === "wecom" || channel === "line";
   const credsUsable =
-    !!instance.hasCredentials && (credentialsReady || channel !== "wecom");
+    !!instance.hasCredentials &&
+    (credentialsReady || !requireReadyForConnect);
 
   let tone: ChannelStatusTone = "unconfigured";
   if (instance.lastError) {
@@ -499,6 +527,19 @@ export function classifyChannelHealth(
     }
   }
 
+  if (LINE_LIKE.includes(channel)) {
+    const lineV = validateLineConfig({
+      options: opts,
+      secretKeysFilled: input.secretKeysFilled,
+      hasCredentials: instance.hasCredentials,
+    });
+    for (const k of lineHealthHintKeys(lineV, {
+      openAcl: openAcl && instance.hasCredentials,
+    })) {
+      hintKeys.push(k);
+    }
+  }
+
   // Dedup preserve order
   const seen = new Set<string>();
   const uniqueHints = hintKeys.filter((k) => {
@@ -532,6 +573,7 @@ export function channelHasDeepHealth(channel: RemoteChannelId): boolean {
     FEISHU_LIKE.includes(channel) ||
     TELEGRAM_LIKE.includes(channel) ||
     WECOM_LIKE.includes(channel) ||
-    DINGTALK_LIKE.includes(channel)
+    DINGTALK_LIKE.includes(channel) ||
+    LINE_LIKE.includes(channel)
   );
 }

@@ -22,6 +22,7 @@ import {
   defaultAcl,
   getChannelSchema,
   isSecretControl,
+  lineCloudflaredSnippet,
   parseIdSecretPair,
   primaryBindFields,
   remoteImSecretsPut,
@@ -859,6 +860,22 @@ export function RemoteImChannelPanel({
           </p>
         </div>
       ) : null}
+      {channelId === "line" ? (
+        <div className="rim-callout" data-line-guide="1">
+          <div className="rim-callout__title">
+            {t("settings.remoteIm.line.guide.title")}
+          </div>
+          <ol className="rim-guide-steps">
+            <li>{t("settings.remoteIm.line.guide.step1")}</li>
+            <li>{t("settings.remoteIm.line.guide.step2")}</li>
+            <li>{t("settings.remoteIm.line.guide.step3")}</li>
+            <li>{t("settings.remoteIm.line.guide.step4")}</li>
+          </ol>
+          <p className="settings-row__hint">
+            {t("settings.remoteIm.line.guide.softFail")}
+          </p>
+        </div>
+      ) : null}
 {channelId === "lark" ? (
         <div className="rim-callout" data-feishu-guide="1" data-validate="validateFeishuConfig">
           <div className="rim-callout__title">
@@ -999,17 +1016,56 @@ export function RemoteImChannelPanel({
           <div
             className="rim-callout rim-callout--warn"
             data-public-url-callout="1"
+            data-channel-public-url={channelId}
           >
             <div className="rim-callout__title">
               <IconAlertTriangle size={14} />
-              {t("settings.remoteIm.publicUrl.title")}
+              {t(
+                channelId === "line"
+                  ? "settings.remoteIm.line.publicUrl.title"
+                  : "settings.remoteIm.publicUrl.title",
+              )}
             </div>
-            <p>{t("settings.remoteIm.publicUrl.body")}</p>
+            <p>
+              {t(
+                channelId === "line"
+                  ? "settings.remoteIm.line.publicUrl.body"
+                  : "settings.remoteIm.publicUrl.body",
+              )}
+            </p>
             <code className="rim-callout__code">
-              {`cloudflared tunnel --url http://127.0.0.1:${
-                String(values.port ?? secrets.port ?? "").trim() || "8081"
-              }`}
+              {channelId === "line"
+                ? lineCloudflaredSnippet(
+                    values.port ?? (secrets as Record<string, string>).port,
+                  )
+                : `cloudflared tunnel --url http://127.0.0.1:${
+                    String(values.port ?? secrets.port ?? "").trim() || "8081"
+                  }`}
             </code>
+            {channelId === "line" ? (
+              <div className="rim-btn-row" style={{ marginTop: 8 }}>
+                <button
+                  type="button"
+                  className="btn btn--ghost btn--sm"
+                  onClick={() => {
+                    const snippet = lineCloudflaredSnippet(
+                      values.port ??
+                        (secrets as Record<string, string>).port,
+                    );
+                    void navigator.clipboard?.writeText(snippet).catch(() => {
+                      /* clipboard optional — snippet still visible */
+                    });
+                  }}
+                >
+                  {t("settings.remoteIm.line.publicUrl.copy")}
+                </button>
+              </div>
+            ) : null}
+            {channelId === "line" ? (
+              <p className="settings-row__hint">
+                {t("settings.remoteIm.line.publicUrl.helper")}
+              </p>
+            ) : null}
           </div>
         ) : null}
 

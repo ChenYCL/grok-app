@@ -260,4 +260,56 @@ describe("classifyChannelHealth", () => {
     expect(r.ready).toBe(true);
     expect(r.missingKeys).not.toContain("corp_secret");
   });
+
+  it("line: webhook deep health + public-URL honesty", () => {
+    expect(channelHasDeepHealth("line")).toBe(true);
+    expect(transportForChannel("line")).toBe("webhook");
+
+    const bare = inst("line", { hasCredentials: false, enabled: false });
+    const h0 = classifyChannelHealth({
+      instance: bare,
+      bridgeRunning: false,
+    });
+    expect(h0.tone).toBe("unconfigured");
+    expect(h0.transport).toBe("webhook");
+    // Schema defaults include port 8081 + /line/callback when instance is created
+    expect(h0.modeLabel).toContain("mode=webhook");
+    expect(h0.credentialsReady).toBe(false);
+    expect(h0.hintKeys.some((k) => k.includes("lineWebhook"))).toBe(true);
+    expect(h0.hintKeys.some((k) => k.includes("linePublicUrl"))).toBe(true);
+    expect(h0.hintKeys.some((k) => k.includes("lineTunnel"))).toBe(true);
+    expect(h0.hintKeys.some((k) => k.includes("lineNoLiveClaim"))).toBe(true);
+    expect(h0.hintKeys.some((k) => k.includes("lineMissingKeys"))).toBe(true);
+
+    const ready = inst("line", {
+      hasCredentials: true,
+      enabled: true,
+      options: { port: 9443, callback_path: "/hooks/line" },
+      acl: {
+        allowFrom: "*",
+        requireMention: true,
+        groupOnly: false,
+        shareSessionInChannel: false,
+      },
+    });
+    const h1 = classifyChannelHealth({
+      instance: ready,
+      bridgeRunning: true,
+      bridgeLinked: true,
+    });
+    expect(h1.credentialsReady).toBe(true);
+    expect(h1.tone).toBe("connected");
+    expect(h1.modeLabel).toContain("port=9443");
+    expect(h1.modeLabel).toContain("path=custom");
+    expect(h1.openAcl).toBe(true);
+    // Never claims public callback live — only credential / tunnel hints
+    expect(h1.hintKeys.some((k) => k.includes("lineNoLiveClaim"))).toBe(true);
+
+    const rForm = credentialReadiness(
+      "line",
+      inst("line", { hasCredentials: false }),
+      new Set(["channel_secret", "access_token"]),
+    );
+    expect(rForm.ready).toBe(true);
+  });
 });
