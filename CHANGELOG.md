@@ -11,10 +11,21 @@ See `docs/llm-wiki/release.md`.
 
 ## [Unreleased]
 
+## [0.2.3] - 2026-07-31
+
+> **Highlight:** Composer model picker with custom multi-model providers (DeepSeek / Amux / Yun presets); large pro-honesty batch across settings, Remote IM, MCP, and sessions.
+>
+> **中文 · 亮点：** 输入框按提供商分组的模型选择 + 自定义多模型目录（DeepSeek / Amux / 云 API 预设）；设置 / 远程 IM / MCP / 会话等大范围 pro 诚实体验合入。
+
 ### Changed
 
 - **Agent-home config write layer**: shared Host helpers in `agent_home_config` for independent-only `config.toml` path resolve (shared mode refuses), pure top-level / table bool+string upserts, and soft-skip sync. Migrated TodoGate, workflows, auto-wake, two-pass compaction, and subagent worktree snapshot writers off duplicated TOML edit/write paths. Product defaults and independent-only write behavior unchanged.
 ### Added
+
+#### Composer / custom providers
+- **Provider-grouped model picker**: composer chip + menus list models by official / custom provider; selecting a custom model activates that route (`providers_activate`) so the next send uses independent `GROK_HOME` + `config.toml`
+- **Multi-model catalog per provider**: Settings → Account → Providers form supports multiple models with display names (`app_models` JSON in agent-home `config.toml`); fetch-models chips; create-only / overwrite for preset re-add; composer menu refreshes after CRUD
+- **Configurable reasoning efforts**: per-provider effort ladder (DeepSeek 低/中/高/极高 UI mapped to spawn catalog); presets DeepSeek / Amux / Yun API with API-key signup links and brand logos
 
 #### Sessions & diagnostics
 - **Session / diagnostics NDJSON export** (`streaming-json` · `streaming-messages-json`): pure `streamSessionExport` helpers synthesize redacted ACP session/update or Anthropic Messages wire NDJSON from the App journal, or re-export diagnostics paste/probe with secrets scrubbed; soft-empty when no rows. Session Export menu adds both formats; Streaming ACP NDJSON panel gains **Save / Copy NDJSON**; SMJ export uses the same redacted path. Never writes unredacted tokens to disk. en/zh/zh-TW + tests
@@ -23,6 +34,8 @@ See `docs/llm-wiki/release.md`.
 - **Cost usage hub pro** (Settings → Runtime → Tools → Cost rollup): project/session filter chips + day window, contextual empty states (no samples / empty window / no matches), clear-sample plan with GlassModal confirm (count honesty, no `window.confirm`), classified export soft-fail toasts (empty · clipboard · download · other). Pure `costRollup` helpers + tests; en/zh/zh-TW; `settingsCatalog`.
 
 ### Fixed
+
+- **Custom providers dual-pane scroll**: Account → Providers no longer whole-page scrolls — left rail and right detail scroll independently (`settings-page__content--pane-fill`)
 
 - **Long chat virtualizer (PERF-A11Y-PACK / perf)**: history browse no longer expands the continuous window to the tail just because idle force-mount lists the last user/assistant (that mounted hundreds of rows mid-scroll). Force expand is nearby-only while escaped; pin still expands for blank-pin defense. Adaptive viewport-scaled overscan, binary-search range find, rAF-coalesced scroll recompute, and cached cumulative offsets keep long transcripts snappy. Pure helpers + tests in `chatVirtualList`.
 - **Custom provider save stuck on “Saving…” / requires restart** (#376): `providers_upsert` / activate / remove / set-default run file I/O on a blocking pool and recycle warm agents (`provider_route`) so the next message reloads `config.toml` + auth without a full app restart. Settings save uses a wall-clock timeout, always clears busy in `finally`, shows success / soft-fail apply toasts (en/zh/zh-TW), and no longer parks live agents via `sessionDisconnect` (which kept stale OIDC in memory). Pure `providerSave` helpers + tests.
@@ -265,6 +278,8 @@ See `docs/llm-wiki/release.md`.
 
 **中文 · 新增（按域）**
 
+- **输入/自定义提供商**：按提供商分组的模型选择（切换即 `providers_activate`）；每提供商多模型展示名目录；可配置推理力度阶梯；DeepSeek / Amux / 云 API 预设、申请 Key 链接与品牌 Logo
+
 - **Agent**：**代码库索引 UX**（设置 → Agent；`[features].codebase_indexing`）：如实展示代码**图**索引开关与状态（非记忆 embedding）；缺失键保持未设置并标注 CLI 默认开启；独立 agent-home 写 bool + soft-respawn；共享只读；glob 自定义只读；旧 CLI soft-fail；纯助手与测试；en/zh/zh-TW + settingsCatalog
 - **输入/对话**：队列、高度、提示历史、宽度字号、工具折叠/过滤、重生选模型、字数、变更芯片、工作区 dirty 芯片、会话变更审阅（+/− · 并排 diff · j/k）、结构化 JSON 回复面板（校验/复制/导出）、上下文用量/费用粗估
 - **会话/侧栏**：复制 vs 分叉、恢复对话并还原代码（干净 worktree）、便签、会话规则（`--rules`）、会话最大轮次（`--max-turns` 覆盖；空/0 继承全局）、静音、未读点、HTML 导出、按天归档、日期分组、项目色、j/k 导航、CLI 对齐 worktree（默认 `~/.grok/worktrees`、侧栏 CLI/WT 标记）；**混合会话搜索**（全部/标题/内容芯片、含已归档、关键词片段与徽章，无向量）
@@ -327,6 +342,8 @@ See `docs/llm-wiki/release.md`.
 
 
 **中文 · 修复**
+
+- **自定义提供商双栏滚动**：账户 → 自定义提供商页不再整页滚动，左右列表/详情各自内部滚动
 
 - CLI SHA-256（#227）；CSS（#259）；多轮对话滚动卡顿（#280）
 - **MCP config.toml 解析**：多行 `args = [` 漏闭合不再吞掉下一个 `[mcp_servers.*]` 表头（整个 server 曾被静默丢弃）；数组结尾判定改为字符串感知，引号内的 `]` 不再截断参数
