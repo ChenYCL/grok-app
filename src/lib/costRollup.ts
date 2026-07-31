@@ -1,5 +1,5 @@
 /**
- * Cost rollup — aggregate **known** token usage by project / day.
+ * Cost rollup — aggregate **known** token usage by project/day or session/day.
  *
  * Sources (honest, never invent):
  * - Live `session://usage` samples (client ring)
@@ -8,6 +8,7 @@
  *
  * Missing usage → explicit **unknown**, not $0.
  * Dollar figures use crude `estimateCostUsd` rates — **never invoice-grade**.
+ * Export text is optional plain-text summary (clipboard / download).
  */
 
 import {
@@ -24,6 +25,16 @@ export type CostRollupSource =
   | "journal_compact"
   | "live"
   | "unknown";
+
+/**
+ * Rollup grain:
+ * - `project` — project × day (default; sessions collapse into project totals)
+ * - `session` — session × day (inspect per-chat known usage)
+ */
+export type CostRollupGroupBy = "project" | "session";
+
+/** Dollar quality for a bucket or the whole view. */
+export type CostRollupPrecision = "estimate" | "partial" | "none";
 
 /**
  * One known usage observation for a session on a calendar day.
@@ -62,12 +73,18 @@ export type CostRollupProjectMeta = {
 export type CostRollupBucket = {
   projectId: string | null;
   projectName: string | null;
+  /**
+   * Session id when `groupBy === "session"`; always `null` for project grain.
+   */
+  sessionId: string | null;
+  /** Session title when known (session grain only). */
+  sessionTitle: string | null;
   day: string;
   /** Distinct sessions that contributed known token figures. */
   sessionsKnown: number;
   /**
-   * Sessions on this project/day with no known sample.
-   * Honest gap — do not treat as zero tokens.
+   * Sessions on this project/day (or this session row when unknown) with no
+   * known sample. Honest gap — do not treat as zero tokens.
    */
   sessionsUnknown: number;
   inputTokens: number | null;
@@ -80,7 +97,7 @@ export type CostRollupBucket = {
    * `partial` — some tokens known but rates or sessions missing;
    * `none` — no dollars.
    */
-  precision: "estimate" | "partial" | "none";
+  precision: CostRollupPrecision;
   sampleCount: number;
 };
 
@@ -93,8 +110,17 @@ export type CostRollupView = {
   sessionsUnknown: number;
   /** True when there is nothing known and nothing unknown to report. */
   empty: boolean;
-  /** Always true in product copy — never invoice-grade. */
+  /** Always false in product copy — never invoice-grade. */
   invoiceGrade: false;
+  /** Grain used to build buckets. */
+  groupBy: CostRollupGroupBy;
+  /**
+   * Aggregate dollar quality across buckets:
+   * estimate if every $ bucket is estimate and no unknown sessions;
+   * partial if any partial / unknown / rate gap;
+   * none when no dollar figure at all.
+   */
+  precision: CostRollupPrecision;
 };
 
 export type LiveUsageMap = Record<
@@ -203,6 +229,49 @@ export function formatRollupTokens(
 }
 
 export { formatCostUsd };
+
+/**
+ * Honest dollar label for rollup UI.
+ * - `none` or missing/invalid → "—"
+ * - otherwise always `~$…` (never invoice-grade exact dollars)
+ */
+export function formatRollupEstimatedCost(
+  usd: number | null | undefined,
+  precision: CostRollupPrecision = "estimate",
+): string {
+  if (
+    precision === "none" ||
+    usd == null ||
+    !Number.isFinite(usd) ||
+    usd < 0
+  ) {
+    return "—";
+  }
+  return formatCostUsd(usd, true);
+}
+
+/** Merge bucket dollar qualities into a single view-level precision. */
+export function mergeCostRollupPrecision(
+  parts: readonly CostRollupPrecision[],
+  opts?: { hasUnknownSessions?: boolean },
+): CostRollupPrecision {
+  let sawEstimate = false;
+  let sawPartial = false;
+  let sawNone = false;
+  for (const p of parts) {
+    if (p === "partial") sawPartial = true;
+    else if (p === "estimate") sawEstimate = true;
+    else sawNone = true;
+  }
+  const anyUsd = sawEstimate || sawPartial;
+  // Unknown sessions, mixed rate coverage, or any partial bucket → incomplete $.
+  if (anyUsd && (opts?.hasUnknownSessions || sawPartial || sawNone)) {
+    return "partial";
+  }
+  if (sawEstimate) return "estimate";
+  if (sawPartial) return "partial";
+  return "none";
+}
 
 /**
  * Normalize a usage event / map entry into a sample, or null when no usable tokens.
@@ -451,7 +520,7 @@ function estimateSampleUsd(sample: CostUsageSample): CostEstimateResult {
 }
 
 /**
- * Aggregate known samples by project × day.
+ * Aggregate known samples by project × day or session × day.
  * Optional `sessions` list marks sessions without samples as **unknown**.
  */
 export function aggregateCostRollup(opts: {
@@ -463,10 +532,20 @@ export function aggregateCostRollup(opts: {
   /** Cap number of buckets returned (newest days first). */
   maxBuckets?: number;
   utc?: boolean;
+  /**
+   * `project` (default) — collapse sessions into project × day.
+   * `session` — one row per session × day.
+   */
+  groupBy?: CostRollupGroupBy;
 }): CostRollupView {
+  const groupBy: CostRollupGroupBy =
+    opts.groupBy === "session" ? "session" : "project";
   const projects = opts.projects ?? [];
   const projectNameById = new Map(
     projects.map((p) => [p.id, (p.name || "").trim() || p.id]),
+  );
+  const sessionById = new Map(
+    (opts.sessions ?? []).map((s) => [s.id, s]),
   );
 
   const samples = dedupeUsageSamples(opts.samples).filter((s) => {
@@ -477,6 +556,8 @@ export function aggregateCostRollup(opts: {
   type Acc = {
     projectId: string | null;
     projectName: string | null;
+    sessionId: string | null;
+    sessionTitle: string | null;
     day: string;
     sessionIds: Set<string>;
     inputTokens: number | null;
@@ -488,20 +569,44 @@ export function aggregateCostRollup(opts: {
     sampleCount: number;
   };
 
-  const bucketKey = (projectId: string | null, day: string) =>
-    `${projectId ?? ""}\0${day}`;
+  const bucketKeyForSample = (s: CostUsageSample): string => {
+    if (groupBy === "session") {
+      return `s\0${s.sessionId}\0${s.day}`;
+    }
+    return `p\0${s.projectId ?? ""}\0${s.day}`;
+  };
+
+  const bucketKeyForUnknown = (
+    projectId: string | null,
+    sessionId: string,
+    day: string,
+  ): string => {
+    if (groupBy === "session") {
+      return `s\0${sessionId}\0${day}`;
+    }
+    return `p\0${projectId ?? ""}\0${day}`;
+  };
+
   const buckets = new Map<string, Acc>();
 
-  for (const s of samples) {
-    const key = bucketKey(s.projectId, s.day);
+  const ensureAcc = (
+    key: string,
+    seed: {
+      projectId: string | null;
+      projectName: string | null;
+      sessionId: string | null;
+      sessionTitle: string | null;
+      day: string;
+    },
+  ): Acc => {
     let acc = buckets.get(key);
     if (!acc) {
       acc = {
-        projectId: s.projectId,
-        projectName:
-          s.projectName ??
-          (s.projectId ? projectNameById.get(s.projectId) ?? null : null),
-        day: s.day,
+        projectId: seed.projectId,
+        projectName: seed.projectName,
+        sessionId: seed.sessionId,
+        sessionTitle: seed.sessionTitle,
+        day: seed.day,
         sessionIds: new Set(),
         inputTokens: null,
         outputTokens: null,
@@ -513,12 +618,36 @@ export function aggregateCostRollup(opts: {
       };
       buckets.set(key, acc);
     }
+    return acc;
+  };
+
+  for (const s of samples) {
+    const key = bucketKeyForSample(s);
+    const meta = sessionById.get(s.sessionId);
+    const projectId = s.projectId;
+    const projectName =
+      s.projectName ??
+      (projectId ? projectNameById.get(projectId) ?? null : null);
+    const sessionTitle =
+      groupBy === "session"
+        ? (meta?.title?.trim() || null)
+        : null;
+    const acc = ensureAcc(key, {
+      projectId,
+      projectName,
+      sessionId: groupBy === "session" ? s.sessionId : null,
+      sessionTitle,
+      day: s.day,
+    });
     if (
       !acc.projectName &&
-      s.projectId &&
-      projectNameById.has(s.projectId)
+      projectId &&
+      projectNameById.has(projectId)
     ) {
-      acc.projectName = projectNameById.get(s.projectId)!;
+      acc.projectName = projectNameById.get(projectId)!;
+    }
+    if (groupBy === "session" && !acc.sessionTitle && sessionTitle) {
+      acc.sessionTitle = sessionTitle;
     }
     acc.sessionIds.add(s.sessionId);
     acc.sampleCount += 1;
@@ -555,9 +684,7 @@ export function aggregateCostRollup(opts: {
 
   for (const sess of opts.sessions ?? []) {
     if (!sess?.id) continue;
-    const day =
-      dayKeyFromIso(sess.updatedAt, opts.utc) ??
-      null;
+    const day = dayKeyFromIso(sess.updatedAt, opts.utc) ?? null;
     if (!day) continue;
     if (opts.sinceDay && day < opts.sinceDay) continue;
     if (knownSessionDays.has(`${sess.id}\0${day}`)) continue;
@@ -565,38 +692,36 @@ export function aggregateCostRollup(opts: {
       sess.projectId == null || sess.projectId === ""
         ? null
         : String(sess.projectId);
-    const key = bucketKey(projectId, day);
+    const key = bucketKeyForUnknown(projectId, sess.id, day);
     let set = unknownByBucket.get(key);
     if (!set) {
       set = new Set();
       unknownByBucket.set(key, set);
     }
     set.add(sess.id);
-    // Ensure bucket exists for pure-unknown project/days.
-    if (!buckets.has(key)) {
-      buckets.set(key, {
-        projectId,
-        projectName: projectId
-          ? projectNameById.get(projectId) ?? null
+    // Ensure bucket exists for pure-unknown rows.
+    ensureAcc(key, {
+      projectId,
+      projectName: projectId
+        ? projectNameById.get(projectId) ?? null
+        : null,
+      sessionId: groupBy === "session" ? sess.id : null,
+      sessionTitle:
+        groupBy === "session"
+          ? sess.title?.trim() || null
           : null,
-        day,
-        sessionIds: new Set(),
-        inputTokens: null,
-        outputTokens: null,
-        totalTokens: null,
-        estimatedUsd: null,
-        rateKnown: 0,
-        rateMissing: 0,
-        sampleCount: 0,
-      });
-    }
+      day,
+    });
   }
 
   let list: CostRollupBucket[] = [...buckets.values()].map((acc) => {
-    const unk =
-      unknownByBucket.get(bucketKey(acc.projectId, acc.day))?.size ?? 0;
+    const key =
+      groupBy === "session"
+        ? `s\0${acc.sessionId ?? ""}\0${acc.day}`
+        : `p\0${acc.projectId ?? ""}\0${acc.day}`;
+    const unk = unknownByBucket.get(key)?.size ?? 0;
     // precision describes **dollar** quality only (tokens may still be known).
-    let precision: CostRollupBucket["precision"] = "none";
+    let precision: CostRollupPrecision = "none";
     if (acc.estimatedUsd != null) {
       precision =
         acc.rateMissing > 0 || unk > 0 || acc.rateKnown < acc.sampleCount
@@ -605,10 +730,19 @@ export function aggregateCostRollup(opts: {
     } else if (unk > 0 && acc.totalTokens != null) {
       // Tokens known for some sessions, unknown for others — still no $ figure.
       precision = "partial";
+    } else if (
+      acc.totalTokens != null &&
+      acc.rateMissing > 0 &&
+      acc.estimatedUsd == null
+    ) {
+      // Tokens known, rates missing entirely.
+      precision = "none";
     }
     return {
       projectId: acc.projectId,
       projectName: acc.projectName,
+      sessionId: acc.sessionId,
+      sessionTitle: acc.sessionTitle,
       day: acc.day,
       sessionsKnown: acc.sessionIds.size,
       sessionsUnknown: unk,
@@ -621,11 +755,17 @@ export function aggregateCostRollup(opts: {
     };
   });
 
-  // Newest day first, then project name.
+  // Newest day first, then label (project or session title).
   list.sort((a, b) => {
     if (a.day !== b.day) return a.day < b.day ? 1 : -1;
-    const an = a.projectName || a.projectId || "";
-    const bn = b.projectName || b.projectId || "";
+    const an =
+      groupBy === "session"
+        ? a.sessionTitle || a.sessionId || a.projectName || ""
+        : a.projectName || a.projectId || "";
+    const bn =
+      groupBy === "session"
+        ? b.sessionTitle || b.sessionId || b.projectName || ""
+        : b.projectName || b.projectId || "";
     return an.localeCompare(bn);
   });
 
@@ -638,11 +778,13 @@ export function aggregateCostRollup(opts: {
   let totalEstimatedUsd: number | null = null;
   let sessionsKnown = 0;
   let sessionsUnknown = 0;
+  const precisions: CostRollupPrecision[] = [];
   for (const b of list) {
     totalTokensKnown = addNullable(totalTokensKnown, b.totalTokens);
     totalEstimatedUsd = addNullable(totalEstimatedUsd, b.estimatedUsd);
     sessionsKnown += b.sessionsKnown;
     sessionsUnknown += b.sessionsUnknown;
+    precisions.push(b.precision);
   }
 
   const empty =
@@ -659,6 +801,10 @@ export function aggregateCostRollup(opts: {
     sessionsUnknown,
     empty,
     invoiceGrade: false,
+    groupBy,
+    precision: mergeCostRollupPrecision(precisions, {
+      hasUnknownSessions: sessionsUnknown > 0,
+    }),
   };
 }
 
@@ -675,6 +821,7 @@ export function buildCostRollupView(opts: {
   maxBuckets?: number;
   nowMs?: number;
   utc?: boolean;
+  groupBy?: CostRollupGroupBy;
 }): CostRollupView {
   const fromLive = samplesFromLiveUsageMap(opts.liveMap, {
     sessionMeta: opts.sessions,
@@ -694,6 +841,7 @@ export function buildCostRollupView(opts: {
     sinceDay: opts.sinceDay,
     maxBuckets: opts.maxBuckets,
     utc: opts.utc,
+    groupBy: opts.groupBy,
   });
 }
 
@@ -713,6 +861,166 @@ export function sinceDayDaysAgo(
     d.setDate(d.getDate() - (n > 0 ? n - 1 : 0));
   }
   return dayKeyFromMs(d.getTime(), utc) ?? "1970-01-01";
+}
+
+// ── Optional plain-text export summary ─────────────────────────────────
+
+/**
+ * Labels for `formatCostRollupExport`. English defaults keep the helper pure
+ * and unit-testable without the i18n runtime; UI passes localized strings.
+ */
+export type CostRollupExportLabels = {
+  title: string;
+  disclaimer: string;
+  groupByProject: string;
+  groupBySession: string;
+  /** Include `{days}` placeholder when a window is provided. */
+  windowDays: string;
+  knownTokens: string;
+  estCost: string;
+  sessionsKnown: string;
+  sessionsUnknown: string;
+  tokens: string;
+  noProject: string;
+  untitledSession: string;
+  costUnknown: string;
+  precisionEstimate: string;
+  precisionPartial: string;
+  precisionNone: string;
+  /** Include `{count}` for unknown session note on a row. */
+  unknownCount: string;
+  empty: string;
+  invoiceNote: string;
+};
+
+export const DEFAULT_COST_ROLLUP_EXPORT_LABELS: CostRollupExportLabels = {
+  title: "Cost rollup summary",
+  disclaimer:
+    "Rough estimate from a static rates table — never invoice-grade. Missing usage is Unknown, not $0.",
+  groupByProject: "Group by: project × day",
+  groupBySession: "Group by: session × day",
+  windowDays: "Window: last {days} day(s)",
+  knownTokens: "Known tokens",
+  estCost: "Est. cost",
+  sessionsKnown: "Sessions known",
+  sessionsUnknown: "Sessions unknown",
+  tokens: "Tokens",
+  noProject: "No project",
+  untitledSession: "Untitled session",
+  costUnknown: "—",
+  precisionEstimate: "estimate",
+  precisionPartial: "partial",
+  precisionNone: "none",
+  unknownCount: "{count} unknown",
+  empty: "No known usage in this window.",
+  invoiceNote: "Not invoice-grade.",
+};
+
+function applyTemplate(
+  template: string,
+  vars: Record<string, string | number>,
+): string {
+  return template.replace(/\{(\w+)\}/g, (_, key: string) => {
+    const v = vars[key];
+    return v == null ? "" : String(v);
+  });
+}
+
+function precisionLabel(
+  precision: CostRollupPrecision,
+  labels: CostRollupExportLabels,
+): string {
+  if (precision === "partial") return labels.precisionPartial;
+  if (precision === "estimate") return labels.precisionEstimate;
+  return labels.precisionNone;
+}
+
+/**
+ * Format a cost rollup view as plain text (clipboard / download).
+ * Pure — no DOM. Always states that figures are estimates.
+ */
+export function formatCostRollupExport(
+  view: CostRollupView,
+  opts?: {
+    days?: number | null;
+    labels?: Partial<CostRollupExportLabels> | null;
+    generatedAt?: string | null;
+  },
+): string {
+  const labels: CostRollupExportLabels = {
+    ...DEFAULT_COST_ROLLUP_EXPORT_LABELS,
+    ...(opts?.labels ?? {}),
+  };
+  const lines: string[] = [];
+  lines.push(labels.title);
+  if (opts?.generatedAt) {
+    lines.push(`Generated: ${opts.generatedAt}`);
+  }
+  lines.push(
+    view.groupBy === "session"
+      ? labels.groupBySession
+      : labels.groupByProject,
+  );
+  if (opts?.days != null && Number.isFinite(opts.days) && opts.days > 0) {
+    lines.push(
+      applyTemplate(labels.windowDays, { days: Math.floor(opts.days) }),
+    );
+  }
+  lines.push(labels.disclaimer);
+  lines.push(labels.invoiceNote);
+  lines.push("");
+
+  if (view.empty) {
+    lines.push(labels.empty);
+    return lines.join("\n").trimEnd() + "\n";
+  }
+
+  const totalCost =
+    view.totalEstimatedUsd != null
+      ? formatRollupEstimatedCost(view.totalEstimatedUsd, view.precision)
+      : labels.costUnknown;
+  lines.push(
+    `${labels.knownTokens}: ${formatRollupTokens(view.totalTokensKnown)}`,
+  );
+  lines.push(
+    `${labels.estCost}: ${totalCost} (${precisionLabel(view.precision, labels)})`,
+  );
+  lines.push(`${labels.sessionsKnown}: ${view.sessionsKnown}`);
+  lines.push(`${labels.sessionsUnknown}: ${view.sessionsUnknown}`);
+  lines.push("");
+
+  for (const b of view.buckets) {
+    const projectLabel =
+      b.projectName || b.projectId || labels.noProject;
+    const head =
+      view.groupBy === "session"
+        ? [
+            b.day,
+            b.sessionTitle || b.sessionId || labels.untitledSession,
+            projectLabel,
+          ].join(" · ")
+        : `${b.day} · ${projectLabel}`;
+    const cost =
+      b.estimatedUsd != null
+        ? formatRollupEstimatedCost(b.estimatedUsd, b.precision)
+        : labels.costUnknown;
+    const parts = [
+      head,
+      `${labels.tokens}: ${formatRollupTokens(b.totalTokens)}`,
+      `${labels.estCost}: ${cost} (${precisionLabel(b.precision, labels)})`,
+    ];
+    if (b.sessionsKnown > 0 && view.groupBy === "project") {
+      parts.push(`${labels.sessionsKnown}: ${b.sessionsKnown}`);
+    }
+    if (b.sessionsUnknown > 0) {
+      parts.push(
+        applyTemplate(labels.unknownCount, { count: b.sessionsUnknown }),
+      );
+    }
+    lines.push(parts.join(" | "));
+  }
+
+  return lines.join("\n").trimEnd() + "\n";
 }
 
 // ── Parse / load / save ring ───────────────────────────────────────────

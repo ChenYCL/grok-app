@@ -6207,6 +6207,7 @@ export function SettingsPage({
                     sessions={costRollupSessions}
                     projects={costRollupProjects}
                     embedded
+                    onToast={(msg, ms) => showSettingsToast(msg, ms ?? 2000)}
                   />
                 </div>
                 <div

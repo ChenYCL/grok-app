@@ -2464,13 +2464,17 @@ export const zhTW: Record<MessageKey, string> = {
 
   "costRollup.title": "費用彙總",
   "costRollup.settingsDesc":
-    "依專案與日期彙總已知 token 用量（來自即時 usage 與工作階段 journal，若有）。僅為估算 — 非帳單。",
+    "依專案或工作階段與日期彙總已知 token 用量（來自即時 usage 與工作階段 journal，若有）。僅為估算 — 非帳單。可匯出摘要。",
   "costRollup.lead":
-    "近 {days} 天依專案分組的 agent 回報 token。無已知用量的工作階段記為「未知」。",
+    "近 {days} 天 agent 回報 token。下方可切換依專案 / 依工作階段。無已知用量的工作階段記為「未知」。",
   "costRollup.disclaimer":
-    "基於靜態費率表的粗估 — 絕非帳單級精度。缺失用量顯示為未知，而非 $0。",
+    "基於靜態費率表的粗估 — 絕非帳單級精度。缺失用量顯示為未知，而非 $0。金額一律以 ~ 估算展示。",
   "costRollup.refresh": "重新整理",
   "costRollup.clear": "清除本機樣本",
+  "costRollup.clearConfirmTitle": "清除本機費用樣本？",
+  "costRollup.clearConfirmBody":
+    "將刪除用於本彙總的本機樣本環。不影響聊天、journal 或服務商帳單。",
+  "costRollup.clearConfirmAction": "清除樣本",
   "costRollup.emptyTitle": "尚無已知用量",
   "costRollup.emptyBody":
     "當 agent 回報 usage（或 journal 的 compact 含 tokensAfter）時會出現數字。此前保持「未知」。",
@@ -2481,7 +2485,30 @@ export const zhTW: Record<MessageKey, string> = {
   "costRollup.tokens": "Token",
   "costRollup.costUnknown": "—",
   "costRollup.noProject": "無專案",
+  "costRollup.untitledSession": "未命名工作階段",
   "costRollup.unknownCount": "{count} 未知",
+  "costRollup.groupByAria": "彙總分組方式",
+  "costRollup.groupProject": "依專案",
+  "costRollup.groupSession": "依工作階段",
+  "costRollup.daysAria": "時間視窗",
+  "costRollup.daysN": "{days} 天",
+  "costRollup.listProjectAria": "依專案與日期的用量",
+  "costRollup.listSessionAria": "依工作階段與日期的用量",
+  "costRollup.ioSplit": "入 {input} · 出 {output}",
+  "costRollup.precisionEstimate": "~ 估算",
+  "costRollup.precisionPartial": "部分",
+  "costRollup.precisionNone": "無費率",
+  "costRollup.exportCopy": "複製摘要",
+  "costRollup.exportDownload": "下載 .txt",
+  "costRollup.exportCopied": "費用摘要已複製",
+  "costRollup.exportCopyFailed": "無法複製摘要",
+  "costRollup.exportDownloaded": "費用摘要已下載",
+  "costRollup.exportTitle": "費用彙總摘要",
+  "costRollup.exportGroupProject": "分組：專案 × 日",
+  "costRollup.exportGroupSession": "分組：工作階段 × 日",
+  "costRollup.exportWindow": "視窗：近 {days} 天",
+  "costRollup.exportEmpty": "該視窗內尚無已知用量。",
+  "costRollup.invoiceNote": "非帳單級精度。",
 
   "smj.title": "串流 Messages JSON",
   "smj.settingsDesc":

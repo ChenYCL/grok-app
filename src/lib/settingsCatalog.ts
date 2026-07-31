@@ -2402,7 +2402,11 @@ export const SETTINGS_ENTRIES: readonly SettingsEntry[] = [
     tab: "tools",
     anchorId: "settings-anchor-cost-rollup",
     labelKey: "costRollup.title",
-    descKeys: ["costRollup.settingsDesc", "costRollup.disclaimer"],
+    descKeys: [
+      "costRollup.settingsDesc",
+      "costRollup.disclaimer",
+      "costRollup.exportCopy",
+    ],
     keywords: [
       "cost",
       "rollup",
@@ -2410,9 +2414,14 @@ export const SETTINGS_ENTRIES: readonly SettingsEntry[] = [
       "estimate",
       "billing",
       "project cost",
+      "session cost",
+      "export summary",
       "费用",
+      "费用汇总",
       "用量",
       "token",
+      "会话费用",
+      "匯出",
     ],
   },
   {
