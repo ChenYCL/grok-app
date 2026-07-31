@@ -67,6 +67,7 @@ pub async fn test_connection(
         }
         "line" => test_line(&creds),
         "qq" => test_qq(&creds),
+        "matrix" => test_matrix(&creds),
         _ => {
             let ok = !creds.is_empty() || !secrets.is_empty();
             Ok(TestConnectionDto {
@@ -434,6 +435,8 @@ fn is_discord_bot_token_format(raw: &str) -> bool {
 /// QQ OneBot forward-WS URL: ws:// or wss:// with a non-empty host.
 /// Soft-fail only — never opens a WebSocket and never logs the URL.
 fn is_qq_ws_url(raw: &str) -> bool {
+/// Matrix homeserver: http(s):// with non-empty host. Soft-fail only.
+fn is_matrix_homeserver_url(raw: &str) -> bool {
     let t = raw.trim();
     if t.is_empty() {
         return false;
@@ -492,6 +495,130 @@ fn test_qq(creds: &HashMap<String, String>) -> Result<TestConnectionDto, String>
             "qq_forward_ws_url_present".into()
         } else {
             "qq_forward_ws_credentials_present".into()
+    let Ok(u) = url::Url::parse(t) else {
+        return false;
+    };
+    let scheme = u.scheme().to_ascii_lowercase();
+    if scheme != "http" && scheme != "https" {
+        return false;
+    }
+    u.host_str().map(|h| !h.is_empty()).unwrap_or(false)
+}
+
+/// Soft access-token shape: long enough, no whitespace / URL paste. Never logs value.
+fn is_matrix_access_token_format(raw: &str) -> bool {
+    let t = raw.trim();
+    if t.is_empty() || t.len() < 16 {
+        return false;
+    }
+    if t.chars().any(|c| c.is_whitespace()) {
+        return false;
+    }
+    if t.to_ascii_lowercase().starts_with("http://")
+        || t.to_ascii_lowercase().starts_with("https://")
+    {
+        return false;
+    }
+    true
+}
+
+/// Optional MXID: @localpart:domain. Empty is ok.
+fn is_matrix_user_id_format(raw: &str) -> bool {
+    let t = raw.trim();
+    if t.is_empty() {
+        return true;
+    }
+    // Soft MXID shape — not a full Matrix grammar.
+    let bytes = t.as_bytes();
+    if !t.starts_with('@') {
+        return false;
+    }
+    let Some(colon) = t[1..].find(':') else {
+        return false;
+    };
+    let local = &t[1..1 + colon];
+    let domain = &t[2 + colon..];
+    if local.is_empty() || domain.is_empty() {
+        return false;
+    }
+    local.chars().all(|c| {
+        c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '=' | '/' | '-')
+    }) && domain
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '-'))
+        && !bytes.is_empty()
+}
+
+/// Credential-shape soft-fail for Matrix. Never claims /sync is live.
+fn test_matrix(creds: &HashMap<String, String>) -> Result<TestConnectionDto, String> {
+    let homeserver = cred_get(creds, &["homeserver"]);
+    let access_token = cred_get(creds, &["access_token", "token"]);
+    let user_id = cred_get(creds, &["user_id"]);
+    let proxy = cred_get(creds, &["proxy"]);
+
+    if homeserver.is_empty() && access_token.is_empty() {
+        return Ok(TestConnectionDto {
+            ok: false,
+            message: "missing_matrix_credentials".into(),
+            mock: false,
+        });
+    }
+    if homeserver.is_empty() {
+        return Ok(TestConnectionDto {
+            ok: false,
+            message: "missing_matrix_homeserver".into(),
+            mock: false,
+        });
+    }
+    if !is_matrix_homeserver_url(homeserver) {
+        return Ok(TestConnectionDto {
+            ok: false,
+            message: "invalid_matrix_homeserver".into(),
+            mock: false,
+        });
+    }
+    if access_token.is_empty() {
+        return Ok(TestConnectionDto {
+            ok: false,
+            message: "missing_matrix_access_token".into(),
+            mock: false,
+        });
+    }
+    if !is_matrix_access_token_format(access_token) {
+        return Ok(TestConnectionDto {
+            ok: false,
+            message: "invalid_matrix_access_token_format".into(),
+            mock: false,
+        });
+    }
+    if !is_matrix_user_id_format(user_id) {
+        return Ok(TestConnectionDto {
+            ok: false,
+            message: "invalid_matrix_user_id".into(),
+            mock: false,
+        });
+    }
+    if !proxy.is_empty() {
+        let proxy_ok = proxy.starts_with("http://")
+            || proxy.starts_with("https://")
+            || proxy.starts_with("socks5://")
+            || proxy.starts_with("socks5h://");
+        if !proxy_ok {
+            return Ok(TestConnectionDto {
+                ok: false,
+                message: "invalid_matrix_proxy".into(),
+                mock: false,
+            });
+        }
+    }
+
+    // Shape-only success — never claim /sync long-poll is connected.
+    Ok(TestConnectionDto {
+        ok: true,
+        message: if proxy.is_empty() {
+            "matrix_sync_credentials_present".into()
+        } else {
+            "matrix_sync_credentials_present_proxy".into()
         },
         mock: false,
     })
@@ -941,5 +1068,64 @@ mod tests {
         let r2 = test_qq(&c).unwrap();
         assert!(r2.ok);
         assert_eq!(r2.message, "qq_forward_ws_credentials_present");
+    fn matrix_homeserver_and_token_format() {
+        assert!(is_matrix_homeserver_url("https://matrix.example.com"));
+        assert!(is_matrix_homeserver_url("http://127.0.0.1:8008"));
+        assert!(!is_matrix_homeserver_url(""));
+        assert!(!is_matrix_homeserver_url("matrix.org"));
+        assert!(is_matrix_access_token_format(
+            "syt_TEST_NOT_A_REAL_MATRIX_ACCESS_TOKEN_xx"
+        ));
+        assert!(!is_matrix_access_token_format("short"));
+        assert!(!is_matrix_access_token_format("https://evil.example"));
+        assert!(is_matrix_user_id_format(""));
+        assert!(is_matrix_user_id_format("@bot:matrix.org"));
+        assert!(!is_matrix_user_id_format("bot:matrix.org"));
+    }
+
+    #[test]
+    fn matrix_soft_fails_missing_and_bad_shape() {
+        let empty = HashMap::new();
+        let r = test_matrix(&empty).unwrap();
+        assert!(!r.ok);
+        assert_eq!(r.message, "missing_matrix_credentials");
+        assert!(!r.mock);
+
+        let mut only_hs = HashMap::new();
+        only_hs.insert("homeserver".into(), "https://matrix.example.com".into());
+        let r2 = test_matrix(&only_hs).unwrap();
+        assert!(!r2.ok);
+        assert_eq!(r2.message, "missing_matrix_access_token");
+
+        let mut bad_hs = HashMap::new();
+        bad_hs.insert("homeserver".into(), "matrix.org".into());
+        bad_hs.insert(
+            "access_token".into(),
+            "syt_TEST_NOT_A_REAL_MATRIX_ACCESS_TOKEN_xx".into(),
+        );
+        let r3 = test_matrix(&bad_hs).unwrap();
+        assert!(!r3.ok);
+        assert_eq!(r3.message, "invalid_matrix_homeserver");
+
+        let mut bad_tok = HashMap::new();
+        bad_tok.insert("homeserver".into(), "https://matrix.example.com".into());
+        bad_tok.insert("access_token".into(), "short".into());
+        let r4 = test_matrix(&bad_tok).unwrap();
+        assert!(!r4.ok);
+        assert_eq!(r4.message, "invalid_matrix_access_token_format");
+
+        let mut ok = HashMap::new();
+        ok.insert("homeserver".into(), "https://matrix.example.com".into());
+        ok.insert(
+            "access_token".into(),
+            "syt_TEST_NOT_A_REAL_MATRIX_ACCESS_TOKEN_xx".into(),
+        );
+        let r5 = test_matrix(&ok).unwrap();
+        assert!(r5.ok);
+        assert_eq!(r5.message, "matrix_sync_credentials_present");
+        assert!(!r5.mock);
+        // Honest: never claims /sync live
+        assert!(!r5.message.contains("sync_live"));
+        assert!(!r5.message.contains("connected"));
     }
 }

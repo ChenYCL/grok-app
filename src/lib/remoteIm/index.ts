@@ -17,3 +17,4 @@ export * from "./discordConfig";
 export * from "./lineConfig";
 export * from "./slackConfig";
 export * from "./qqConfig";
+export * from "./matrixConfig";

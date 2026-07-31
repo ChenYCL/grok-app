@@ -92,6 +92,11 @@ describe("Remote IM UI chrome guard", () => {
     expect(src).toContain("data-qq-risk");
     expect(src).toContain('channelId === "qq"');
     expect(src).toContain("validateQqConfig");
+  it("ChannelPanel Matrix guide without window.confirm", () => {
+    const src = readFileSync(join(ROOT, "RemoteImChannelPanel.tsx"), "utf8");
+    expect(src).toContain("data-matrix-guide");
+    expect(src).toContain('channelId === "matrix"');
+    expect(src).toContain("accessTokenValue");
     expect(src).not.toMatch(/window\.confirm/);
   });
 

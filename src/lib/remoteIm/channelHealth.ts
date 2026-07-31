@@ -34,6 +34,9 @@ import {
   qqHealthHintKeys,
   validateQqConfig,
 } from "./qqConfig";
+  matrixHealthHintKeys,
+  validateMatrixConfig,
+} from "./matrixConfig";
 
 
 /** Health tone for badges / callouts (maps to RimBadge). */
@@ -100,8 +103,8 @@ export type ClassifyChannelHealthInput = {
    */
   draftOptions?: Record<string, unknown>;
   /**
-   * When the form has a non-empty Telegram token, pass for format checks only
-   * (never stored by health helpers).
+   * When the form has a non-empty Telegram (or Matrix access) token, pass for
+   * format checks only (never stored by health helpers).
    */
   tokenValue?: string | null;
   /**
@@ -117,6 +120,10 @@ export type ClassifyChannelHealthInput = {
    * When the form has a non-empty Slack app_token, pass for format checks only.
    */
   appTokenValue?: string | null;
+   * When the form has a non-empty Matrix access_token, pass for format checks
+   * only (never stored). Prefer this over reusing tokenValue for Matrix.
+   */
+  accessTokenValue?: string | null;
 };
 
 const FEISHU_LIKE: RemoteChannelId[] = ["feishu", "lark"];
@@ -128,6 +135,7 @@ const DISCORD_LIKE: RemoteChannelId[] = ["discord"];
 const LINE_LIKE: RemoteChannelId[] = ["line"];
 const SLACK_LIKE: RemoteChannelId[] = ["slack"];
 const QQ_LIKE: RemoteChannelId[] = ["qq"];
+const MATRIX_LIKE: RemoteChannelId[] = ["matrix"];
 
 /** Required secret bind keys per channel (for readiness, not values). */
 const SECRET_KEYS: Partial<Record<RemoteChannelId, string[]>> = {
@@ -289,6 +297,21 @@ export function channelModeLabel(
       options.thread_isolation === "true";
     const style = String(options.progress_style ?? "compact").trim() || "compact";
     return thread ? `thread_iso · style=${style}` : `style=${style}`;
+  if (MATRIX_LIKE.includes(channel)) {
+    const hs = String(options.homeserver ?? "").trim().replace(/\/+$/, "");
+    const proxy = String(options.proxy ?? "").trim();
+    const parts: string[] = [];
+    if (hs) {
+      try {
+        parts.push(`hs=${new URL(hs).hostname}`);
+      } catch {
+        parts.push("hs=set");
+      }
+    } else {
+      parts.push("hs=none");
+    }
+    parts.push(proxy ? "proxy=set" : "proxy=none");
+    return parts.join(" · ");
   }
   if (channel === "wecom") {
     const mode = String(options.connect_mode ?? options.mode ?? "websocket");
@@ -358,6 +381,8 @@ export function credentialReadiness(
   botTokenValue?: string | null,
   /** Optional raw Slack app_token for format checks (never stored). */
   appTokenValue?: string | null,
+  /** Optional raw Matrix access_token for format checks (never stored). */
+  accessTokenValue?: string | null,
 ): { ready: boolean; missingKeys: string[] } {
   const opts = isRecord(instance.options) ? instance.options : {};
 
@@ -401,6 +426,12 @@ export function credentialReadiness(
       secretKeysFilled,
       hasCredentials: instance.hasCredentials,
       tokenValue,
+  if (MATRIX_LIKE.includes(channel)) {
+    const v = validateMatrixConfig({
+      options: opts,
+      secretKeysFilled,
+      hasCredentials: instance.hasCredentials,
+      accessTokenValue: accessTokenValue ?? tokenValue,
     });
     return { ready: v.ok, missingKeys: [...v.missing] };
   }
@@ -496,6 +527,7 @@ export function classifyChannelHealth(
 
     input.botTokenValue,
     input.appTokenValue,
+    input.accessTokenValue,
   );
 
   // Honest status: incomplete mode-switch / missing keys / bad LINE port-path
@@ -592,6 +624,14 @@ export function classifyChannelHealth(
       tokenValue: input.tokenValue,
     });
     for (const k of discordHealthHintKeys(discV, {
+  if (MATRIX_LIKE.includes(channel)) {
+    const mxV = validateMatrixConfig({
+      options: opts,
+      secretKeysFilled: input.secretKeysFilled,
+      hasCredentials: instance.hasCredentials,
+      accessTokenValue: input.accessTokenValue ?? input.tokenValue,
+    });
+    for (const k of matrixHealthHintKeys(mxV, {
       openAcl: openAcl && instance.hasCredentials,
     })) {
       hintKeys.push(k);
@@ -704,5 +744,6 @@ export function channelHasDeepHealth(channel: RemoteChannelId): boolean {
     LINE_LIKE.includes(channel)
     SLACK_LIKE.includes(channel)
     QQ_LIKE.includes(channel)
+    MATRIX_LIKE.includes(channel)
   );
 }

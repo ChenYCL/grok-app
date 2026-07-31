@@ -274,6 +274,9 @@ describe("classifyChannelHealth", () => {
     expect(transportForChannel("qq")).toBe("forward_ws");
 
     const bare = inst("qq", {
+  it("matrix: long-poll deep health with homeserver + ACL hints", () => {
+    expect(channelHasDeepHealth("matrix")).toBe(true);
+    const bare = inst("matrix", {
       hasCredentials: false,
       enabled: false,
       options: {},
@@ -289,6 +292,7 @@ describe("classifyChannelHealth", () => {
     expect(channelModeLabel("slack", {})).toBe("mode=socket");
 
     const bare = inst("slack", { hasCredentials: false, enabled: false });
+
 
     const h0 = classifyChannelHealth({
       instance: bare,
@@ -356,6 +360,16 @@ describe("classifyChannelHealth", () => {
       hasCredentials: true,
       enabled: true,
       options: { ws_url: "ws://127.0.0.1:3001" },
+    expect(h0.hintKeys.some((k) => k.includes("matrixSync"))).toBe(true);
+    expect(h0.hintKeys.some((k) => k.includes("matrixNoWebhook"))).toBe(true);
+
+    const ready = inst("matrix", {
+      hasCredentials: true,
+      enabled: true,
+      options: {
+        homeserver: "https://matrix.example.com",
+        auto_join: true,
+      },
       acl: {
         allowFrom: "*",
         requireMention: true,
@@ -391,6 +405,10 @@ describe("classifyChannelHealth", () => {
     expect(h1.hintKeys.some((k) => k.includes("discordGateway"))).toBe(true);
     expect(h1.hintKeys.some((k) => k.includes("discordIntent"))).toBe(true);
     expect(h1.hintKeys.some((k) => k.includes("discordThreadIso"))).toBe(true);
+    expect(h1.transport).toBe("long_poll");
+    expect(h1.modeLabel).toContain("hs=matrix.example.com");
+    expect(h1.hintKeys.some((k) => k.includes("matrixSync"))).toBe(true);
+    expect(h1.hintKeys.some((k) => k.includes("matrixAutoJoin"))).toBe(true);
     expect(h1.openAcl).toBe(true);
 
     // Invalid form token shape → not ready
@@ -468,5 +486,28 @@ describe("classifyChannelHealth", () => {
     const r = credentialReadiness("qq", alias, new Set(["token"]));
     expect(r.ready).toBe(true);
     expect(r.missingKeys).not.toContain("token");
+      instance: inst("matrix", {
+        hasCredentials: false,
+        options: { homeserver: "https://matrix.example.com" },
+      }),
+      bridgeRunning: false,
+      secretKeysFilled: new Set(["access_token"]),
+      accessTokenValue: "short",
+    });
+    expect(h2.credentialsReady).toBe(false);
+    expect(h2.hintKeys.some((k) => k.includes("matrixTokenFormat"))).toBe(
+      true,
+    );
+
+    // Missing homeserver with vault token → not ready
+    const h3 = classifyChannelHealth({
+      instance: inst("matrix", {
+        hasCredentials: true,
+        options: {},
+      }),
+      bridgeRunning: false,
+    });
+    expect(h3.credentialsReady).toBe(false);
+    expect(h3.missingKeys).toContain("homeserver");
   });
 });
