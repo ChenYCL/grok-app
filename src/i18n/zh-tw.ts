@@ -1941,6 +1941,12 @@ export const zhTW: Record<MessageKey, string> = {
   "settings.trayBusyBadge": "在 Dock/系統匣顯示忙碌數",
   "settings.trayBusyBadgeDesc":
     "有 Agent 忙碌時，在 macOS Dock 角標（或其他平台系統匣提示）顯示忙碌工作階段數。關閉則清除角標。",
+  "settings.trayBusyBadge.status.off": "角標已關閉 — Dock/系統匣計數已清除。",
+  "settings.trayBusyBadge.status.idle": "目前無忙碌工作階段 — 角標保持空白。",
+  "settings.trayBusyBadge.status.busy":
+    "Dock/系統匣顯示 {n} 個忙碌工作階段。",
+  "settings.trayBusyBadge.status.capped":
+    "Dock/系統匣顯示 {n}+（已達顯示上限）。",
   "settings.launchAtLogin": "登入時啟動",
   "settings.launchAtLoginDesc":
     "在你登入此電腦時自動啟動 Grok（系統登入項目 / macOS 為 Launch Agent）。已排程任務僅在應用開啟或收進選單列時執行——開啟登入啟動有助於重啟後恢復排程。沒有獨立的背景守護行程。",
@@ -1958,11 +1964,33 @@ export const zhTW: Record<MessageKey, string> = {
   "settings.notifySound": "通知時播放提示音",
   "settings.notifySoundDesc":
     "顯示桌面通知時播放一聲輕柔短音。預設關閉。",
+  "settings.notify.honesty.title": "桌面通知",
+  "settings.notify.honesty.desc":
+    "系統通知需要作業系統授權。桌面通知被攔截時，應用程式內提示仍可用。依工作階段靜音與應用程式前台也會抑制系統通知。",
+  "settings.notify.honesty.ok": "應用程式在背景時可以發送桌面通知。",
+  "settings.notify.honesty.osDenied":
+    "作業系統已拒絕通知權限 — 請在系統設定中為 Grok 開啟通知。應用程式內提示不受影響。",
+  "settings.notify.honesty.osDefault":
+    "尚未授予通知權限 — 可點擊申請，或在系統設定中為 Grok 開啟通知。",
+  "settings.notify.honesty.osUnsupported":
+    "目前環境不支援系統通知（桌面通知不可用）。",
+  "settings.notify.honesty.prefsOff":
+    "兩類桌面通知均已關閉 — 不會在應用程式外發出提醒。",
+  "settings.notify.honesty.quietHours":
+    "目前處於免打擾時段 — 桌面通知會抑制，直到時段結束。",
+  "settings.notify.honesty.request": "申請權限",
+  "settings.notify.honesty.requesting": "申請中…",
+  "settings.notify.permission.granted": "已授權",
+  "settings.notify.permission.denied": "已拒絕",
+  "settings.notify.permission.default": "尚未決定",
+  "settings.notify.permission.unsupported": "不支援",
   "settings.notifyQuietHours": "免打擾時段",
   "settings.notifyQuietHoursDesc":
     "在本地時間窗口內不發送桌面通知（例如夜間）。應用程式內提示不受影響。",
   "settings.notifyQuietHoursStart": "開始",
   "settings.notifyQuietHoursEnd": "結束",
+  "settings.notifyQuietHours.activeNow":
+    "目前處於免打擾時段 — 桌面通知已抑制。",
   "settings.stopAllSkipConfirm": "全部停止時跳過確認",
   "settings.stopAllSkipConfirmDesc":
     "開啟後，任務面板 / Agent 總覽中的「全部停止」不再彈出確認對話框，立即執行。預設關閉。",

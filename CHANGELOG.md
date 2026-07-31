@@ -95,6 +95,7 @@ See `docs/llm-wiki/release.md`.
 #### Appearance / app shell
 - **Theme schedule** (System + clock) · **follow system language**
 - **Confirm quit while busy** (in-app dialog; optional skip) · **dock/tray busy badge**
+- **Tray / notify pro** (TRAY-NOTIFY-PRO): pure `trayNotifyPro` helpers + tests — clamp dock busy badge (cap 99), secondary-window no-op, clear when pref off; Settings honesty for OS notification permission (request / denied / unsupported), quiet-hours “active now”, live busy-count status under the tray badge toggle; en/zh/zh-TW + `settingsCatalog`
 - **Shortcut conflicts** (Settings → Keyboard): panel lists chords shared by multiple actions; capture warns in-app before save; optional **Reset conflicting to default** (pure `findChordConflicts` + tests)
 - **Shortcut scopes** (Settings → Keyboard): each catalog row is tagged **Global** vs **Chat**; optional **Allow same chord across scopes** ignores cross-scope conflicts in capture/panel only (stored remaps + App matching unchanged)
 - **Share-card logo** (Settings → Appearance → Interface): upload custom PNG/JPEG/WebP for conversation image export

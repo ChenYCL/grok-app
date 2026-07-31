@@ -2033,6 +2033,14 @@ const en = {
   "settings.trayBusyBadge": "Show busy count on dock/tray",
   "settings.trayBusyBadgeDesc":
     "When agents are busy, show the session count on the macOS Dock badge (or tray tooltip on other platforms). Off clears the badge.",
+  "settings.trayBusyBadge.status.off":
+    "Badge off — dock/tray count is cleared.",
+  "settings.trayBusyBadge.status.idle":
+    "No busy sessions right now — badge stays clear.",
+  "settings.trayBusyBadge.status.busy":
+    "{n} busy session(s) shown on dock/tray.",
+  "settings.trayBusyBadge.status.capped":
+    "Showing {n}+ on dock/tray (display cap).",
   "settings.launchAtLogin": "Launch at login",
   "settings.launchAtLoginDesc":
     "Start Grok automatically when you log into this computer (OS login items / Launch Agent on macOS). Scheduled tasks only run while the app is open or in the tray — launch at login helps them resume after reboot. There is no separate background daemon.",
@@ -2050,11 +2058,34 @@ const en = {
   "settings.notifySound": "Play a sound with notifications",
   "settings.notifySoundDesc":
     "Play a short soft beep when a desktop notification is shown. Off by default.",
+  "settings.notify.honesty.title": "Desktop notifications",
+  "settings.notify.honesty.desc":
+    "System notifications need OS permission. In-app toasts still work when desktop alerts are blocked. Per-session mute and app focus also suppress alerts.",
+  "settings.notify.honesty.ok":
+    "Desktop notifications can fire when the app is in the background.",
+  "settings.notify.honesty.osDenied":
+    "OS permission denied — enable notifications for Grok in system settings. In-app toasts are unchanged.",
+  "settings.notify.honesty.osDefault":
+    "OS permission not granted yet — request access, or enable notifications for Grok in system settings.",
+  "settings.notify.honesty.osUnsupported":
+    "This environment does not support system notifications (desktop alerts unavailable).",
+  "settings.notify.honesty.prefsOff":
+    "Both desktop notification toggles are off — nothing will alert outside the app.",
+  "settings.notify.honesty.quietHours":
+    "Quiet hours are active now — desktop notifications are suppressed until the window ends.",
+  "settings.notify.honesty.request": "Request permission",
+  "settings.notify.honesty.requesting": "Requesting…",
+  "settings.notify.permission.granted": "Permission granted",
+  "settings.notify.permission.denied": "Permission denied",
+  "settings.notify.permission.default": "Permission not decided",
+  "settings.notify.permission.unsupported": "Not supported",
   "settings.notifyQuietHours": "Quiet hours",
   "settings.notifyQuietHoursDesc":
     "Suppress desktop notifications during this local time window (for example overnight). In-app toasts are unchanged.",
   "settings.notifyQuietHoursStart": "Start",
   "settings.notifyQuietHoursEnd": "End",
+  "settings.notifyQuietHours.activeNow":
+    "Quiet hours active now — desktop notifications suppressed.",
   "settings.stopAllSkipConfirm": "Skip confirm when stopping all",
   "settings.stopAllSkipConfirmDesc":
     "When on, Stop all on Tasks / Agent dashboard runs immediately without a confirmation dialog. Off by default.",
@@ -6963,6 +6994,12 @@ const zh: Record<MessageKey, string> = {
   "settings.trayBusyBadge": "在程序坞/托盘显示忙碌数",
   "settings.trayBusyBadgeDesc":
     "有 Agent 忙碌时，在 macOS 程序坞角标（或其他平台托盘提示）显示忙碌会话数。关闭则清除角标。",
+  "settings.trayBusyBadge.status.off": "角标已关闭 — 程序坞/托盘计数已清除。",
+  "settings.trayBusyBadge.status.idle": "当前无忙碌会话 — 角标保持空白。",
+  "settings.trayBusyBadge.status.busy":
+    "程序坞/托盘显示 {n} 个忙碌会话。",
+  "settings.trayBusyBadge.status.capped":
+    "程序坞/托盘显示 {n}+（已达显示上限）。",
   "settings.launchAtLogin": "登录时启动",
   "settings.launchAtLoginDesc":
     "在你登录此电脑时自动启动 Grok（系统登录项 / macOS 为 Launch Agent）。已安排任务仅在应用打开或收起到托盘时运行——开启登录启动有助于重启后恢复调度。没有独立的后台守护进程。",
@@ -6980,11 +7017,33 @@ const zh: Record<MessageKey, string> = {
   "settings.notifySound": "通知时播放提示音",
   "settings.notifySoundDesc":
     "显示桌面通知时播放一声轻柔短音。默认关闭。",
+  "settings.notify.honesty.title": "桌面通知",
+  "settings.notify.honesty.desc":
+    "系统通知需要操作系统授权。桌面通知被拦截时，应用内提示仍可用。按会话静音与应用前台也会抑制系统通知。",
+  "settings.notify.honesty.ok": "应用在后台时可以发送桌面通知。",
+  "settings.notify.honesty.osDenied":
+    "操作系统已拒绝通知权限 — 请在系统设置中为 Grok 开启通知。应用内提示不受影响。",
+  "settings.notify.honesty.osDefault":
+    "尚未授予通知权限 — 可点击申请，或在系统设置中为 Grok 开启通知。",
+  "settings.notify.honesty.osUnsupported":
+    "当前环境不支持系统通知（桌面通知不可用）。",
+  "settings.notify.honesty.prefsOff":
+    "两类桌面通知均已关闭 — 不会在应用外发出提醒。",
+  "settings.notify.honesty.quietHours":
+    "当前处于免打扰时段 — 桌面通知会抑制，直到时段结束。",
+  "settings.notify.honesty.request": "申请权限",
+  "settings.notify.honesty.requesting": "申请中…",
+  "settings.notify.permission.granted": "已授权",
+  "settings.notify.permission.denied": "已拒绝",
+  "settings.notify.permission.default": "尚未决定",
+  "settings.notify.permission.unsupported": "不支持",
   "settings.notifyQuietHours": "免打扰时段",
   "settings.notifyQuietHoursDesc":
     "在本地时间窗口内不发送桌面通知（例如夜间）。应用内提示不受影响。",
   "settings.notifyQuietHoursStart": "开始",
   "settings.notifyQuietHoursEnd": "结束",
+  "settings.notifyQuietHours.activeNow":
+    "当前处于免打扰时段 — 桌面通知已抑制。",
   "settings.stopAllSkipConfirm": "全部停止时跳过确认",
   "settings.stopAllSkipConfirmDesc":
     "开启后，任务面板 / Agent 总览中的「全部停止」不再弹出确认对话框，立即执行。默认关闭。",
