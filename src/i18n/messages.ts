@@ -668,6 +668,60 @@ const en = {
   "dashboard.tool": "Tool: {name}",
   "dashboard.toolLabel": "Tool",
   "dashboard.open": "Agent dashboard",
+  "dashboard.batchAgents": "Batch agents…",
+  "dashboard.batchAgentsTitle":
+    "Dispatch the same prompt to multiple projects (sessions or headless)",
+
+  "batchAgents.title": "Batch agents",
+  "batchAgents.hint":
+    "Select trusted projects, enter one prompt, then open a session per project or run headless one-shots. Failures soft-fail per project and never wipe other work.",
+  "batchAgents.modeLabel": "Dispatch mode",
+  "batchAgents.mode.sessions": "Open sessions",
+  "batchAgents.mode.headless": "Headless summary",
+  "batchAgents.mode.sessionsHint":
+    "Creates an App chat per project, connects the agent, and sends the prompt (queued into multi-session concurrency). Soft-fails untrusted / missing paths.",
+  "batchAgents.mode.headlessHint":
+    "Runs one-shot `grok -p` per project with a soft timeout. Results appear as a summary table — no App sessions. Soft-fails CLI missing / timeout / empty output.",
+  "batchAgents.promptLabel": "Shared prompt",
+  "batchAgents.promptPlaceholder":
+    "e.g. Review open TODOs and summarize risk in this repo…",
+  "batchAgents.searchPlaceholder": "Filter projects…",
+  "batchAgents.selectedCount": "{n} selected · max {max}",
+  "batchAgents.selectAll": "Select all visible",
+  "batchAgents.deselectAll": "Deselect all visible",
+  "batchAgents.emptyProjects": "No projects to show",
+  "batchAgents.emptyProjectsHint":
+    "Add a trusted project folder, or clear the search filter.",
+  "batchAgents.eligible": "Ready",
+  "batchAgents.overLimit":
+    "Only the first {max} eligible projects will run; the rest are skipped.",
+  "batchAgents.dispatch": "Run batch ({n})",
+  "batchAgents.running": "Running…",
+  "batchAgents.dispatchFailed": "Dispatch failed",
+  "batchAgents.resultsTitle": "Results",
+  "batchAgents.resultsMeta":
+    "ok {ok} · soft-fail {soft} · error {err} · skipped {skip}",
+  "batchAgents.copySummary": "Copy summary",
+  "batchAgents.copied": "Copied",
+  "batchAgents.status.ok": "OK",
+  "batchAgents.status.softFail": "Soft-fail",
+  "batchAgents.status.error": "Error",
+  "batchAgents.status.skipped": "Skipped",
+  "batchAgents.status.queued": "Queued",
+  "batchAgents.status.pending": "…",
+  "batchAgents.skip.empty_id": "Missing id",
+  "batchAgents.skip.empty_path": "Missing path",
+  "batchAgents.skip.untrusted": "Not trusted",
+  "batchAgents.skip.path_missing": "Path missing",
+  "batchAgents.skip.system_project": "System workspace",
+  "batchAgents.skip.over_limit": "Over batch limit",
+  "batchAgents.open": "Batch agents",
+  "batchAgents.settingsDesc":
+    "Dispatch one prompt across multiple trusted projects — open sessions or headless soft-fail summary.",
+  "batchAgents.openFromSettings": "Open batch agents…",
+  "batchAgents.toastDone":
+    "Batch done: {ok} ok · {soft} soft-fail · {err} error · {skip} skipped",
+
   "media.loadError": "Could not load this media in the app preview.",
   "media.openExternal": "Open with system player",
   "media.loading": "Loading media…",
@@ -5041,6 +5095,58 @@ const zh: Record<MessageKey, string> = {
   "dashboard.tool": "工具：{name}",
   "dashboard.toolLabel": "工具",
   "dashboard.open": "Agent 仪表盘",
+  "dashboard.batchAgents": "批量 Agent…",
+  "dashboard.batchAgentsTitle":
+    "将同一提示词派发到多个项目（会话或无头摘要）",
+
+  "batchAgents.title": "批量 Agent",
+  "batchAgents.hint":
+    "勾选已信任项目、填写同一提示词，然后为每个项目打开会话，或跑无头一轮并汇总 soft-fail 结果。单项目失败不会清空其它工作。",
+  "batchAgents.modeLabel": "派发模式",
+  "batchAgents.mode.sessions": "打开会话",
+  "batchAgents.mode.headless": "无头摘要",
+  "batchAgents.mode.sessionsHint":
+    "为每个项目创建 App 会话、连接 Agent 并发送提示词（走多会话并发）。未信任或路径失效的项目会 soft-fail 跳过。",
+  "batchAgents.mode.headlessHint":
+    "对每个项目跑一次 `grok -p`（软超时）。结果进摘要表，不创建 App 会话。CLI 缺失 / 超时 / 空输出 soft-fail。",
+  "batchAgents.promptLabel": "共享提示词",
+  "batchAgents.promptPlaceholder":
+    "例如：检查本仓库未完成 TODO 并总结风险…",
+  "batchAgents.searchPlaceholder": "筛选项目…",
+  "batchAgents.selectedCount": "已选 {n} · 上限 {max}",
+  "batchAgents.selectAll": "全选当前列表",
+  "batchAgents.deselectAll": "取消全选当前列表",
+  "batchAgents.emptyProjects": "暂无项目",
+  "batchAgents.emptyProjectsHint": "添加已信任的项目文件夹，或清空搜索。",
+  "batchAgents.eligible": "可运行",
+  "batchAgents.overLimit": "仅前 {max} 个合格项目会运行，其余跳过。",
+  "batchAgents.dispatch": "运行批量（{n}）",
+  "batchAgents.running": "运行中…",
+  "batchAgents.dispatchFailed": "派发失败",
+  "batchAgents.resultsTitle": "结果",
+  "batchAgents.resultsMeta":
+    "成功 {ok} · soft-fail {soft} · 错误 {err} · 跳过 {skip}",
+  "batchAgents.copySummary": "复制摘要",
+  "batchAgents.copied": "已复制",
+  "batchAgents.status.ok": "成功",
+  "batchAgents.status.softFail": "Soft-fail",
+  "batchAgents.status.error": "错误",
+  "batchAgents.status.skipped": "跳过",
+  "batchAgents.status.queued": "已入队",
+  "batchAgents.status.pending": "…",
+  "batchAgents.skip.empty_id": "缺少 id",
+  "batchAgents.skip.empty_path": "缺少路径",
+  "batchAgents.skip.untrusted": "未信任",
+  "batchAgents.skip.path_missing": "路径不存在",
+  "batchAgents.skip.system_project": "系统工作区",
+  "batchAgents.skip.over_limit": "超出批量上限",
+  "batchAgents.open": "批量 Agent",
+  "batchAgents.settingsDesc":
+    "将同一提示词派发到多个已信任项目 — 打开会话或无头 soft-fail 摘要。",
+  "batchAgents.openFromSettings": "打开批量 Agent…",
+  "batchAgents.toastDone":
+    "批量完成：成功 {ok} · soft-fail {soft} · 错误 {err} · 跳过 {skip}",
+
   "media.loadError": "应用内无法加载此媒体。",
   "media.openExternal": "用系统播放器打开",
   "media.loading": "正在加载媒体…",

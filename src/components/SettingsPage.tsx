@@ -617,6 +617,8 @@ export interface SettingsPageProps {
   onDoctor: () => void;
   /** Open Reliability / Observability center (busy · stalls · error deck). */
   onOpenReliability?: () => void;
+  /** Open multi-project batch agents dispatch. */
+  onOpenBatchAgents?: () => void;
   /** Session index for cost rollup unknown-session counts (Settings → Runtime). */
   costRollupSessions?: readonly CostRollupSessionMeta[];
   /** Project names for cost rollup labels. */
@@ -1253,6 +1255,7 @@ export function SettingsPage({
   cliInfo,
   onDoctor,
   onOpenReliability,
+  onOpenBatchAgents,
   costRollupSessions = [],
   costRollupProjects = [],
   versionFooter,
@@ -6373,6 +6376,32 @@ export function SettingsPage({
                       disabled={!onOpenReliability}
                     >
                       {t("reliability.openFromSettings")}
+                    </button>
+                  </div>
+                </div>
+                <div
+                  className={
+                    "settings-card" +
+                    rowHighlight("settings-anchor-batch-agents")
+                  }
+                  id="settings-anchor-batch-agents"
+                >
+                  <div className="settings-row">
+                    <div className="settings-row__text">
+                      <div className="settings-row__label">
+                        {t("batchAgents.title")}
+                      </div>
+                      <div className="settings-row__desc">
+                        {t("batchAgents.settingsDesc")}
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      className="btn btn--ghost settings-row__action"
+                      onClick={() => onOpenBatchAgents?.()}
+                      disabled={!onOpenBatchAgents}
+                    >
+                      {t("batchAgents.openFromSettings")}
                     </button>
                   </div>
                 </div>

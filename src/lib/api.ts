@@ -3982,6 +3982,33 @@ export async function streamingMessagesJsonProbe(opts?: {
   );
 }
 
+/** One-shot headless batch turn result (Host soft-fail DTO). */
+export type BatchAgentsHeadlessResult = {
+  ok: boolean;
+  reason?: string | null;
+  text?: string | null;
+  durationMs?: number | null;
+  cliPath?: string | null;
+  cliVersion?: string | null;
+};
+
+/**
+ * Run one headless `grok -p` turn in a project cwd for multi-project batch.
+ * Soft-fails (ok=false + reason) on CLI missing / path / timeout — never throws
+ * for those cases. Invoke errors still reject.
+ */
+export async function batchAgentsHeadless(opts: {
+  projectPath: string;
+  prompt: string;
+  timeoutMs?: number | null;
+}): Promise<BatchAgentsHeadlessResult> {
+  return invoke<BatchAgentsHeadlessResult>("batch_agents_headless", {
+    projectPath: opts.projectPath,
+    prompt: opts.prompt,
+    timeoutMs: opts.timeoutMs ?? null,
+  });
+}
+
 export type VoiceStatusDto = {
   available: boolean;
   reason?: string | null;

@@ -16,6 +16,7 @@ describe("defaultPaletteActions", () => {
       "open-automations",
       "open-tasks",
       "open-agent-dashboard",
+      "open-batch-agents",
       "doctor",
       "traces",
       "reliability",

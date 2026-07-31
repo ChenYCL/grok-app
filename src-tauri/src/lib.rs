@@ -85,6 +85,7 @@ mod voice_tools;
 mod remote_im;
 mod wallpaper_source;
 mod streaming_messages_json;
+mod batch_agents;
 mod leader;
 mod serve;
 
@@ -566,6 +567,7 @@ pub fn run() {
             commands::wallpaper_imagine,
             commands::wallpaper_library_list,
             commands::streaming_messages_json_probe,
+            commands::batch_agents_headless,
         ])
         .build(tauri::generate_context!())
         .expect("error while building Grok App")

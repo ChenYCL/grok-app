@@ -241,6 +241,7 @@ import {
 } from "@/lib/planSession";
 import { AgentTasksPanel } from "@/components/AgentTasksPanel";
 import { AgentDashboardModal } from "@/components/AgentDashboardModal";
+import { BatchAgentsModal } from "@/components/BatchAgentsModal";
 import { ReliabilityCenterModal } from "@/components/ReliabilityCenterModal";
 import {
   collectActivitySessions,
@@ -255,6 +256,19 @@ import {
   collectAgentDashboardRows,
   countBusyDashboardRows,
 } from "@/lib/agentDashboard";
+import {
+  BATCH_AGENTS_HEADLESS_TIMEOUT_MS,
+  buildBatchPromptBody,
+  buildBatchSessionTitle,
+  classifyBatchError,
+  mapHeadlessHostResult,
+  summarizeBatchResults,
+  upsertBatchResultItem,
+  type BatchDispatchItemResult,
+  type BatchDispatchMode,
+  type BatchDispatchSummary,
+  type BatchProjectInput,
+} from "@/lib/batchAgents";
 import {
   buildReliabilityCenter,
   DEFAULT_RELIABILITY_MAX_ERRORS,
@@ -861,6 +875,8 @@ function paletteActionIcon(id: string) {
       return <IconList size={size} />;
     case "open-agent-dashboard":
       return <IconActivity size={size} />;
+    case "open-batch-agents":
+      return <IconList size={size} />;
     case "doctor":
       return <IconDoctor size={size} />;
     case "traces":
@@ -2298,6 +2314,7 @@ export default function App() {
   const didRestoreLastRef = useRef(false);
   const [tasksPanelOpen, setTasksPanelOpen] = useState(false);
   const [agentDashboardOpen, setAgentDashboardOpen] = useState(false);
+  const [batchAgentsOpen, setBatchAgentsOpen] = useState(false);
   const [gitWorktrees, setGitWorktrees] = useState<api.GitWorktreeEntry[]>([]);
   /** null = unknown/loading; true = git work tree; false = not a git repo. */
   const [gitWorktreesAvailable, setGitWorktreesAvailable] = useState<
@@ -12266,6 +12283,236 @@ export default function App() {
     setShowReliability(true);
   };
 
+  const openBatchAgents = useCallback(() => {
+    setBatchAgentsOpen(true);
+  }, []);
+
+  /**
+   * Multi-project batch dispatch: sessions (create+connect+send) or headless
+   * one-shots. Soft-fails per project; never uses window.confirm.
+   */
+  const runBatchAgentsDispatch = useCallback(
+    async (opts: {
+      mode: BatchDispatchMode;
+      prompt: string;
+      projects: BatchProjectInput[];
+      onProgress: (items: BatchDispatchItemResult[]) => void;
+    }): Promise<BatchDispatchSummary> => {
+      let items: BatchDispatchItemResult[] = opts.projects.map((p) => ({
+        projectId: p.id,
+        projectName: p.name || p.id,
+        projectPath: p.path || "",
+        status: "pending" as const,
+        reason: null,
+        sessionId: null,
+        summary: null,
+      }));
+      opts.onProgress(items);
+
+      const title = buildBatchSessionTitle(opts.prompt);
+      let firstSessionId: string | null = null;
+      let firstProjectId: string | null = null;
+
+      for (const proj of opts.projects) {
+        const t0 = Date.now();
+        if (opts.mode === "headless") {
+          try {
+            if (!api.isTauri()) {
+              items = upsertBatchResultItem(items, {
+                projectId: proj.id,
+                projectName: proj.name || proj.id,
+                projectPath: proj.path || "",
+                status: "soft_fail",
+                reason: "not_desktop",
+                summary: "Desktop host required",
+                durationMs: Date.now() - t0,
+              });
+              opts.onProgress(items);
+              continue;
+            }
+            const host = await api.batchAgentsHeadless({
+              projectPath: proj.path,
+              prompt: opts.prompt,
+              timeoutMs: BATCH_AGENTS_HEADLESS_TIMEOUT_MS,
+            });
+            items = upsertBatchResultItem(
+              items,
+              mapHeadlessHostResult(proj, host),
+            );
+          } catch (e) {
+            const c = classifyBatchError(e);
+            items = upsertBatchResultItem(items, {
+              projectId: proj.id,
+              projectName: proj.name || proj.id,
+              projectPath: proj.path || "",
+              status: c.status,
+              reason: c.reason,
+              summary: c.summary,
+              durationMs: Date.now() - t0,
+            });
+          }
+          opts.onProgress(items);
+          continue;
+        }
+
+        // ── sessions mode ──
+        let createdId: string | null = null;
+        try {
+          if (!api.isTauri()) {
+            items = upsertBatchResultItem(items, {
+              projectId: proj.id,
+              projectName: proj.name || proj.id,
+              projectPath: proj.path || "",
+              status: "soft_fail",
+              reason: "not_desktop",
+              summary: "Desktop host required",
+              durationMs: Date.now() - t0,
+            });
+            opts.onProgress(items);
+            continue;
+          }
+          const meta = (await api.sessionCreate(proj.id, title)) as {
+            id: string;
+            title?: string;
+          };
+          createdId = meta.id;
+          const promptBody = buildBatchPromptBody(opts.prompt, {
+            projectName: proj.name,
+          });
+          const snap = await api.sessionConnect({
+            projectPath: proj.path || undefined,
+            sessionId: createdId,
+            mode: "agent",
+          });
+          if (
+            snap.lastError ||
+            (snap.state !== "ready" && snap.state !== "streaming")
+          ) {
+            const code = snap.lastError?.code ?? "CONNECT_FAILED";
+            const msg = snap.lastError?.message ?? "connect failed";
+            items = upsertBatchResultItem(items, {
+              projectId: proj.id,
+              projectName: proj.name || proj.id,
+              projectPath: proj.path || "",
+              status: "soft_fail",
+              reason: String(code).toLowerCase(),
+              summary: `${code}: ${msg}`,
+              sessionId: createdId,
+              durationMs: Date.now() - t0,
+            });
+            try {
+              await api.sessionDelete(createdId);
+              createdId = null;
+            } catch {
+              /* soft-fail cleanup */
+            }
+            opts.onProgress(items);
+            continue;
+          }
+          const autoMsgs: ChatMessage[] = [
+            {
+              id: `u-batch-${createdId}-${Date.now()}`,
+              role: "user",
+              content: promptBody,
+              createdAt: new Date().toISOString(),
+            },
+          ];
+          messagesBySessionRef.current.set(createdId, autoMsgs);
+          try {
+            await api.sessionSend(promptBody, null, createdId);
+          } catch (sendErr) {
+            const c = classifyBatchError(sendErr);
+            items = upsertBatchResultItem(items, {
+              projectId: proj.id,
+              projectName: proj.name || proj.id,
+              projectPath: proj.path || "",
+              status: c.status,
+              reason: c.reason,
+              summary: c.summary,
+              sessionId: createdId,
+              durationMs: Date.now() - t0,
+            });
+            opts.onProgress(items);
+            continue;
+          }
+          if (!firstSessionId) {
+            firstSessionId = createdId;
+            firstProjectId = proj.id;
+          }
+          items = upsertBatchResultItem(items, {
+            projectId: proj.id,
+            projectName: proj.name || proj.id,
+            projectPath: proj.path || "",
+            status: "ok",
+            reason: null,
+            sessionId: createdId,
+            summary: title,
+            durationMs: Date.now() - t0,
+          });
+        } catch (e) {
+          const c = classifyBatchError(e);
+          if (createdId) {
+            try {
+              await api.sessionDelete(createdId);
+            } catch {
+              /* soft-fail cleanup */
+            }
+          }
+          items = upsertBatchResultItem(items, {
+            projectId: proj.id,
+            projectName: proj.name || proj.id,
+            projectPath: proj.path || "",
+            status: c.status,
+            reason: c.reason,
+            summary: c.summary,
+            durationMs: Date.now() - t0,
+          });
+        }
+        opts.onProgress(items);
+      }
+
+      try {
+        await refreshSessionsRef.current();
+      } catch {
+        /* soft-fail list refresh */
+      }
+
+      // Focus first successful session without interrupting others.
+      if (opts.mode === "sessions" && firstSessionId) {
+        try {
+          const list = (await api.sessionsList()) as SessionRow[];
+          const row = list.find((s) => s.id === firstSessionId);
+          if (row) {
+            const p =
+              projects.find(
+                (x) => x.id === (row.projectId || firstProjectId || ""),
+              ) || null;
+            void openSessionRef.current(row, p);
+          }
+        } catch {
+          /* soft-fail focus */
+        }
+      }
+
+      const summary = summarizeBatchResults({
+        mode: opts.mode,
+        prompt: opts.prompt,
+        items,
+      });
+      setToast(
+        tr("batchAgents.toastDone", {
+          ok: summary.ok,
+          soft: summary.softFail,
+          err: summary.error,
+          skip: summary.skipped,
+        }),
+      );
+      window.setTimeout(() => setToast(null), 4200);
+      return summary;
+    },
+    [projects, tr],
+  );
+
   const runPaletteAction = (action: PaletteActionDef) => {
     setShowSearch(false);
     setSearchQuery("");
@@ -12299,6 +12546,9 @@ export default function App() {
         ) {
           window.location.hash = "#/workbench";
         }
+        break;
+      case "open-batch-agents":
+        openBatchAgents();
         break;
       case "doctor":
         setShowDoctor(true);
@@ -15270,6 +15520,7 @@ export default function App() {
           cliInfo={cliInfo}
           onDoctor={() => void openDoctor()}
           onOpenReliability={() => openReliability()}
+          onOpenBatchAgents={() => openBatchAgents()}
           costRollupSessions={sessions.map((s) => ({
             id: s.id,
             projectId: s.projectId,
@@ -19286,6 +19537,26 @@ export default function App() {
             confirmLabel: tr("dashboard.stopSelected", { n }),
           });
         }}
+        onOpenBatchAgents={() => {
+          setAgentDashboardOpen(false);
+          openBatchAgents();
+        }}
+      />
+      <BatchAgentsModal
+        open={batchAgentsOpen}
+        locale={locale}
+        projects={projects.map(
+          (p): BatchProjectInput => ({
+            id: p.id,
+            name: p.name,
+            path: p.path,
+            trusted: p.trusted,
+            pathOk: p.pathOk,
+            system: p.system,
+          }),
+        )}
+        onClose={() => setBatchAgentsOpen(false)}
+        onDispatch={runBatchAgentsDispatch}
       />
       <McpStatusModal
         open={showMcpModal}

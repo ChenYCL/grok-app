@@ -72,6 +72,23 @@ export function defaultPaletteActions(): PaletteActionDef[] {
       group: "navigate",
     },
     {
+      id: "open-batch-agents",
+      labelKey: "batchAgents.open",
+      keywords: [
+        "batch",
+        "batch agents",
+        "multi project",
+        "multi-project",
+        "dispatch",
+        "fan out",
+        "headless",
+        "same prompt",
+        "批量",
+        "多项目",
+      ],
+      group: "navigate",
+    },
+    {
       id: "doctor",
       labelKey: "doctor.title",
       keywords: ["doctor", "diagnostics", "health", "cli check", "troubleshoot"],
