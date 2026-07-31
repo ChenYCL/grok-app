@@ -30,6 +30,10 @@ import {
   shouldRunMemoryContentSearch,
   type MemoryBrowserRow,
 } from "@/lib/memoryBrowserSearch";
+import {
+  describeSearchModes,
+  isEmbeddingConfigured,
+} from "@/lib/memoryEmbedConfig";
 
 function formatSize(n: number): string {
   if (!Number.isFinite(n) || n < 0) return "—";
@@ -101,6 +105,10 @@ export function MemoryBrowserPanel({
   const [deleteTarget, setDeleteTarget] = useState<MemoryFileEntry | null>(null);
   const [deleteBusy, setDeleteBusy] = useState(false);
   const [actionBusyPath, setActionBusyPath] = useState<string | null>(null);
+  const [embedConfigured, setEmbedConfigured] = useState<boolean | null>(null);
+  const [cliSearchMode, setCliSearchMode] = useState<"hybrid" | "keyword">(
+    "keyword",
+  );
 
   const cwd = (projectPath || "").trim() || null;
 
@@ -135,6 +143,31 @@ export function MemoryBrowserPanel({
   useEffect(() => {
     void load();
   }, [load]);
+
+  // Soft-probe embedding status for honest search-mode badge (never invents vectors).
+  useEffect(() => {
+    if (!experimentalMemory || !api.isTauri()) {
+      setEmbedConfigured(null);
+      setCliSearchMode("keyword");
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      try {
+        const snap = await api.memoryEmbedConfigGet();
+        if (cancelled) return;
+        setEmbedConfigured(isEmbeddingConfigured(snap));
+        setCliSearchMode(describeSearchModes(snap).cli);
+      } catch {
+        if (cancelled) return;
+        setEmbedConfigured(null);
+        setCliSearchMode("keyword");
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [experimentalMemory]);
 
   const filtered = useMemo(
     () => filterMemoryEntries(entries, { query, kind: kindFilter }),
@@ -268,6 +301,48 @@ export function MemoryBrowserPanel({
         <div className="settings-row__label">{t("settings.memoryBrowser")}</div>
         <div className="settings-row__desc">{t("settings.memoryBrowserDesc")}</div>
       </div>
+
+      {experimentalMemory ? (
+        <div
+          className="settings-memory-browser__embed-status"
+          style={{
+            display: "flex",
+            flexWrap: "wrap",
+            gap: 8,
+            alignItems: "center",
+            marginBottom: 8,
+          }}
+        >
+          <span className="ext-badge ext-badge--muted">
+            {t("settings.memoryBrowser.searchMode.appKeyword")}
+          </span>
+          {embedConfigured === true ? (
+            <span className="ext-badge">
+              {t("settings.memoryBrowser.searchMode.cliHybrid")}
+            </span>
+          ) : embedConfigured === false ? (
+            <span className="ext-badge ext-badge--muted">
+              {t("settings.memoryBrowser.searchMode.cliKeyword")}
+            </span>
+          ) : null}
+          {cliSearchMode === "keyword" && embedConfigured === false ? (
+            <span className="ext-field-hint" style={{ margin: 0 }}>
+              {t("settings.memoryBrowser.embedUnsetHint")}
+            </span>
+          ) : null}
+          <a
+            href="#settings-anchor-memoryEmbed"
+            className="btn btn--ghost btn--sm"
+            onClick={(e) => {
+              e.preventDefault();
+              const el = document.getElementById("settings-anchor-memoryEmbed");
+              el?.scrollIntoView({ behavior: "smooth", block: "start" });
+            }}
+          >
+            {t("settings.memoryBrowser.openEmbedSettings")}
+          </a>
+        </div>
+      ) : null}
 
       {!experimentalMemory ? (
         <p className="ext-field-hint settings-memory-browser__empty">

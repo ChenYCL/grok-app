@@ -6,6 +6,7 @@ mod acp_client;
 mod agent_config_view;
 mod agent_config_edit;
 mod agent_memory;
+mod agent_memory_embed;
 mod agents_catalog;
 mod agent_prefs;
 mod app_update;
@@ -341,6 +342,8 @@ pub fn run() {
             commands::memory_delete_file,
             commands::agent_config_toml_read,
             commands::memory_search,
+            commands::memory_embed_config_get,
+            commands::memory_embed_config_set,
             commands::settings_remember_last_session,
             commands::models_list_available,
             commands::agents_catalog,

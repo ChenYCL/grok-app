@@ -1221,6 +1221,91 @@ const en = {
   "settings.memoryBrowser.kind.session": "session",
   "settings.memoryBrowser.kind.index": "index",
   "settings.memoryBrowser.kind.other": "other",
+  "settings.memoryBrowser.searchMode.appKeyword": "App search: keyword",
+  "settings.memoryBrowser.searchMode.cliHybrid": "CLI memory_search: hybrid",
+  "settings.memoryBrowser.searchMode.cliKeyword":
+    "CLI memory_search: keyword (no embedding model)",
+  "settings.memoryBrowser.embedUnsetHint":
+    "Embedding model is unset — CLI vector search is off. App browser never invents embeddings.",
+  "settings.memoryBrowser.openEmbedSettings": "Memory embedding settings",
+  "settings.memoryEmbed": "Memory embedding (CLI 0.2.117)",
+  "settings.memoryEmbedDesc":
+    "Read allowlisted `[memory.*]` keys from the active GROK_HOME config.toml (embedding, search, MMR, dream, watcher). Missing keys stay unset. Independent agent-home can write safe keys + soft-respawn; shared mode is read-only. App browser search is always keyword — never invents embeddings client-side.",
+  "settings.memoryEmbed.path": "Config: {path}",
+  "settings.memoryEmbed.loading": "Loading memory embedding config…",
+  "settings.memoryEmbed.error": "Could not load or update memory embedding config",
+  "settings.memoryEmbed.saved": "Memory embedding config saved (agent soft-respawned)",
+  "settings.memoryEmbed.sharedWarning":
+    "Shared session mode probes ~/.grok/config.toml as read-only. Switch to Independent session data mode to write agent-home memory keys.",
+  "settings.memoryEmbed.mode.independent": "Independent (agent-home)",
+  "settings.memoryEmbed.mode.shared": "Shared (~/.grok)",
+  "settings.memoryEmbed.missing": "File not found yet",
+  "settings.memoryEmbed.writable": "Editable",
+  "settings.memoryEmbed.readOnly": "Read-only",
+  "settings.memoryEmbed.presence.unset": "unset",
+  "settings.memoryEmbed.presence.on": "on",
+  "settings.memoryEmbed.presence.off": "off",
+  "settings.memoryEmbed.presence.set": "set",
+  "settings.memoryEmbed.status.configured": "Embedding model set",
+  "settings.memoryEmbed.status.unset": "Embedding model unset",
+  "settings.memoryEmbed.searchModes":
+    "App browser search: {app}. CLI agent memory_search: {cli}.",
+  "settings.memoryEmbed.searchMode.keyword": "keyword",
+  "settings.memoryEmbed.searchMode.hybrid": "hybrid (vector + full-text)",
+  "settings.memoryEmbed.embeddingEmpty":
+    "No embedding model in config — CLI hybrid/vector search is unavailable. Set `[memory.embedding] model` below (independent mode) or in config.toml.",
+  "settings.memoryEmbed.model": "Embedding model",
+  "settings.memoryEmbed.modelDesc":
+    "CLI embedding model name. Unset disables vector search (keyword/full-text only).",
+  "settings.memoryEmbed.modelPlaceholder": "e.g. text-embedding-3-small (empty = unset)",
+  "settings.memoryEmbed.dimensions": "Embedding dimensions",
+  "settings.memoryEmbed.dimensionsDesc":
+    "Vector dimensions for the embedding index (must match the model).",
+  "settings.memoryEmbed.maxResults": "Search max results",
+  "settings.memoryEmbed.maxResultsDesc":
+    "Default number of results returned by CLI memory_search.",
+  "settings.memoryEmbed.minScore": "Search min score",
+  "settings.memoryEmbed.minScoreDesc":
+    "Minimum relevance score for explicit CLI memory search.",
+  "settings.memoryEmbed.mmr": "MMR re-ranking",
+  "settings.memoryEmbed.mmrDesc":
+    "Maximal Marginal Relevance — diversify CLI search results (opt-in).",
+  "settings.memoryEmbed.mmrLambda": "MMR lambda",
+  "settings.memoryEmbed.mmrLambdaDesc":
+    "0.0 = max diversity, 1.0 = pure relevance.",
+  "settings.memoryEmbed.temporalDecay": "Temporal decay",
+  "settings.memoryEmbed.temporalDecayDesc":
+    "Prefer recent session memories in CLI search scoring.",
+  "settings.memoryEmbed.halfLife": "Temporal decay half-life (days)",
+  "settings.memoryEmbed.halfLifeDesc":
+    "Half-life for session memory recency decay.",
+  "settings.memoryEmbed.dream": "Auto-Dream consolidation",
+  "settings.memoryEmbed.dreamDesc":
+    "Automatically consolidate session memories into MEMORY.md when gates pass.",
+  "settings.memoryEmbed.dreamMinHours": "Dream min hours",
+  "settings.memoryEmbed.dreamMinHoursDesc":
+    "Minimum hours between automatic Dream consolidations.",
+  "settings.memoryEmbed.dreamMinSessions": "Dream min sessions",
+  "settings.memoryEmbed.dreamMinSessionsDesc":
+    "Minimum sessions since the last consolidation.",
+  "settings.memoryEmbed.watcher": "Memory file watcher",
+  "settings.memoryEmbed.watcherDesc":
+    "Watch GROK_HOME/memory for external edits and reindex on search.",
+  "settings.memoryEmbed.injection": "First-turn injection",
+  "settings.memoryEmbed.injectionDesc":
+    "Auto-inject relevant memory on the first agent turn.",
+  "settings.memoryEmbed.unsetPlaceholder": "unset",
+  "settings.memoryEmbed.preview": "Memory sections (redacted)",
+  "settings.memoryEmbed.previewEmpty":
+    "No `[memory.*]` tables found in config yet.",
+  "settings.memoryEmbed.redactNote":
+    "Preview includes only memory tables; secrets elsewhere are not shown.",
+  "settings.memoryEmbed.refresh": "Refresh",
+  "settings.memoryEmbed.reset": "Reset",
+  "settings.memoryEmbed.save": "Save memory embedding keys",
+  "settings.memoryEmbed.saving": "Saving…",
+  "settings.memoryEmbed.needTauri":
+    "Memory embedding settings require the desktop app.",
   "settings.allowUnverifiedCli": "Allow unverified CLI install",
   "settings.allowUnverifiedCliDesc":
     "Official mirrors often omit SHA-256 sidecars; missing checksums are allowed by default (HTTPS allowlist + binary probe). Turn this on to install even when GROK_CLI_REQUIRE_CHECKSUM=1. A mismatched checksum always fails.",
@@ -4900,6 +4985,76 @@ const zh: Record<MessageKey, string> = {
   "settings.memoryBrowser.kind.session": "会话",
   "settings.memoryBrowser.kind.index": "索引",
   "settings.memoryBrowser.kind.other": "其他",
+  "settings.memoryBrowser.searchMode.appKeyword": "应用内搜索：关键词",
+  "settings.memoryBrowser.searchMode.cliHybrid": "CLI memory_search：混合检索",
+  "settings.memoryBrowser.searchMode.cliKeyword":
+    "CLI memory_search：关键词（未配置 embedding 模型）",
+  "settings.memoryBrowser.embedUnsetHint":
+    "未设置 embedding 模型 — CLI 向量检索关闭。应用内浏览器不会在客户端伪造 embedding。",
+  "settings.memoryBrowser.openEmbedSettings": "记忆 embedding 设置",
+  "settings.memoryEmbed": "记忆 embedding（CLI 0.2.117）",
+  "settings.memoryEmbedDesc":
+    "从当前 GROK_HOME 的 config.toml 读取白名单 `[memory.*]` 键（embedding、search、MMR、dream、watcher）。缺失键保持未设置。独立 agent-home 可写入安全键并 soft-respawn；共享模式只读。应用内浏览器搜索始终为关键词，不会在客户端发明 embedding。",
+  "settings.memoryEmbed.path": "配置：{path}",
+  "settings.memoryEmbed.loading": "正在加载记忆 embedding 配置…",
+  "settings.memoryEmbed.error": "无法加载或更新记忆 embedding 配置",
+  "settings.memoryEmbed.saved": "记忆 embedding 配置已保存（agent 已 soft-respawn）",
+  "settings.memoryEmbed.sharedWarning":
+    "共享会话模式只读探测 ~/.grok/config.toml。请切换到「独立」会话数据模式以写入 agent-home 记忆键。",
+  "settings.memoryEmbed.mode.independent": "独立（agent-home）",
+  "settings.memoryEmbed.mode.shared": "共享（~/.grok）",
+  "settings.memoryEmbed.missing": "文件尚不存在",
+  "settings.memoryEmbed.writable": "可编辑",
+  "settings.memoryEmbed.readOnly": "只读",
+  "settings.memoryEmbed.presence.unset": "未设置",
+  "settings.memoryEmbed.presence.on": "开",
+  "settings.memoryEmbed.presence.off": "关",
+  "settings.memoryEmbed.presence.set": "已设置",
+  "settings.memoryEmbed.status.configured": "已设置 embedding 模型",
+  "settings.memoryEmbed.status.unset": "未设置 embedding 模型",
+  "settings.memoryEmbed.searchModes":
+    "应用内浏览器搜索：{app}。CLI agent memory_search：{cli}。",
+  "settings.memoryEmbed.searchMode.keyword": "关键词",
+  "settings.memoryEmbed.searchMode.hybrid": "混合（向量 + 全文）",
+  "settings.memoryEmbed.embeddingEmpty":
+    "配置中无 embedding 模型 — CLI 混合/向量检索不可用。请在下方（独立模式）或 config.toml 中设置 `[memory.embedding] model`。",
+  "settings.memoryEmbed.model": "Embedding 模型",
+  "settings.memoryEmbed.modelDesc":
+    "CLI embedding 模型名。未设置则关闭向量检索（仅关键词/全文）。",
+  "settings.memoryEmbed.modelPlaceholder": "例如 text-embedding-3-small（空 = 未设置）",
+  "settings.memoryEmbed.dimensions": "Embedding 维度",
+  "settings.memoryEmbed.dimensionsDesc": "embedding 索引的向量维度（须与模型匹配）。",
+  "settings.memoryEmbed.maxResults": "搜索结果上限",
+  "settings.memoryEmbed.maxResultsDesc": "CLI memory_search 默认返回条数。",
+  "settings.memoryEmbed.minScore": "搜索最低分",
+  "settings.memoryEmbed.minScoreDesc": "CLI 显式记忆搜索的最低相关度分数。",
+  "settings.memoryEmbed.mmr": "MMR 重排",
+  "settings.memoryEmbed.mmrDesc": "最大边际相关 — 提升 CLI 搜索结果多样性（可选）。",
+  "settings.memoryEmbed.mmrLambda": "MMR lambda",
+  "settings.memoryEmbed.mmrLambdaDesc": "0.0 = 最大多样性，1.0 = 纯相关度。",
+  "settings.memoryEmbed.temporalDecay": "时间衰减",
+  "settings.memoryEmbed.temporalDecayDesc": "CLI 搜索打分时偏好较新的会话记忆。",
+  "settings.memoryEmbed.halfLife": "时间衰减半衰期（天）",
+  "settings.memoryEmbed.halfLifeDesc": "会话记忆新近度衰减的半衰期。",
+  "settings.memoryEmbed.dream": "自动 Dream 合并",
+  "settings.memoryEmbed.dreamDesc": "在门槛满足时自动将会话记忆合并进 MEMORY.md。",
+  "settings.memoryEmbed.dreamMinHours": "Dream 最小间隔（小时）",
+  "settings.memoryEmbed.dreamMinHoursDesc": "两次自动 Dream 合并之间的最小小时数。",
+  "settings.memoryEmbed.dreamMinSessions": "Dream 最小会话数",
+  "settings.memoryEmbed.dreamMinSessionsDesc": "距上次合并以来的最少会话数。",
+  "settings.memoryEmbed.watcher": "记忆文件监视",
+  "settings.memoryEmbed.watcherDesc": "监视 GROK_HOME/memory 外部编辑，搜索时重建索引。",
+  "settings.memoryEmbed.injection": "首轮注入",
+  "settings.memoryEmbed.injectionDesc": "在 agent 首轮自动注入相关记忆。",
+  "settings.memoryEmbed.unsetPlaceholder": "未设置",
+  "settings.memoryEmbed.preview": "记忆相关分区（已脱敏）",
+  "settings.memoryEmbed.previewEmpty": "配置中尚未找到 `[memory.*]` 表。",
+  "settings.memoryEmbed.redactNote": "预览仅含记忆相关表；其他处的密钥不会显示。",
+  "settings.memoryEmbed.refresh": "刷新",
+  "settings.memoryEmbed.reset": "重置",
+  "settings.memoryEmbed.save": "保存记忆 embedding 键",
+  "settings.memoryEmbed.saving": "保存中…",
+  "settings.memoryEmbed.needTauri": "记忆 embedding 设置需要桌面应用。",
   "settings.allowUnverifiedCli": "允许未校验的 CLI 安装",
   "settings.allowUnverifiedCliDesc":
     "官方镜像通常不发布 SHA-256 校验文件；缺少校验时默认仍可安装（HTTPS 白名单 + 二进制探测）。开启此项可在设置了 GROK_CLI_REQUIRE_CHECKSUM=1 时仍允许安装。校验和不一致始终拒绝。",
