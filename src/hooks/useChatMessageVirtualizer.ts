@@ -11,6 +11,12 @@
  * - Per-row ResizeObserver so image/video decode updates height cache (callback
  *   refs alone only fire on mount).
  * - Debounced recompute so measure storms cannot oscillate the window.
+ *
+ * Long-session perf:
+ * - rAF-coalesce scroll recomputes (one window update per frame while flinging).
+ * - Cache cumulative offsets until a height commit or itemCount change.
+ * - Adaptive overscan via {@link resolveChatOverscanPx}.
+ * - Force-index expand capped while escaped (see chatVirtualList).
  */
 
 import {
@@ -23,11 +29,10 @@ import {
 } from "react";
 import {
   CHAT_DEFAULT_ROW_ESTIMATE_PX,
-  CHAT_PIN_OVERSCAN_PX,
-  CHAT_OVERSCAN_PX,
   CHAT_VIRTUALIZE_THRESHOLD,
   computeChatVirtualWindow,
   cumulativeOffsets,
+  resolveChatOverscanPx,
   scrollTopAfterHeightChange,
   shouldCommitRowHeight,
   type ChatVirtualWindow,
@@ -99,12 +104,26 @@ export function useChatMessageVirtualizer(
   const ignoreScrollAdjustRef = useRef(false);
   /** Per-index ResizeObserver so media decode updates height after mount. */
   const rowObserversRef = useRef<Map<number, ResizeObserver>>(new Map());
+  /** Coalesce scroll-driven recomputes to one per animation frame. */
+  const scrollRafRef = useRef<number | null>(null);
+  /**
+   * Bump when any committed height changes so the offset cache invalidates.
+   * Avoids O(n) cumulative rebuild on every scroll when heights are stable.
+   */
+  const heightsVersionRef = useRef(0);
+  const offsetsCacheRef = useRef<{
+    version: number;
+    count: number;
+    offsets: number[];
+  } | null>(null);
 
   const [win, setWin] = useState<ChatVirtualWindow>(() => full(itemCount));
 
   // Drop height cache on conversation change.
   useEffect(() => {
     heightsRef.current.clear();
+    heightsVersionRef.current = 0;
+    offsetsCacheRef.current = null;
     for (const ro of rowObserversRef.current.values()) ro.disconnect();
     rowObserversRef.current.clear();
     setWin(full(itemCount));
@@ -123,6 +142,21 @@ export function useChatMessageVirtualizer(
     if (est != null && Number.isFinite(est) && est >= 0) return est;
     return CHAT_DEFAULT_ROW_ESTIMATE_PX;
   }, []);
+
+  const getOffsets = useCallback(() => {
+    const version = heightsVersionRef.current;
+    const cached = offsetsCacheRef.current;
+    if (
+      cached &&
+      cached.version === version &&
+      cached.count === itemCount
+    ) {
+      return cached.offsets;
+    }
+    const offsets = cumulativeOffsets(itemCount, getHeight);
+    offsetsCacheRef.current = { version, count: itemCount, offsets };
+    return offsets;
+  }, [itemCount, getHeight]);
 
   const recomputeNow = useCallback(() => {
     if (!virtualized) {
@@ -143,14 +177,19 @@ export function useChatMessageVirtualizer(
       return;
     }
     const pin = !!isPinnedRef.current;
+    const offsets = getOffsets();
     const next = computeChatVirtualWindow({
       count: itemCount,
       getHeight,
       scrollTop: el.scrollTop,
       viewportHeight: el.clientHeight,
-      overscanPx: pin ? CHAT_PIN_OVERSCAN_PX : CHAT_OVERSCAN_PX,
+      overscanPx: resolveChatOverscanPx({
+        viewportHeight: el.clientHeight,
+        pinToBottom: pin,
+      }),
       pinToBottom: pin,
       forceIndices: forceRef.current,
+      offsets,
     });
     setWin((prev) => {
       if (
@@ -176,7 +215,7 @@ export function useChatMessageVirtualizer(
       }
       return next;
     });
-  }, [virtualized, itemCount, viewportRef, isPinnedRef, getHeight]);
+  }, [virtualized, itemCount, viewportRef, isPinnedRef, getHeight, getOffsets]);
 
   const recompute = useCallback(() => {
     // Coalesce measure storms (tall markdown + table reflow) into one window update.
@@ -191,7 +230,7 @@ export function useChatMessageVirtualizer(
     }, delay);
   }, [recomputeNow, isPinnedRef]);
 
-  // Scroll → recompute (immediate so window tracks the gesture).
+  // Scroll → recompute (rAF-coalesced so flings don't rebuild every event).
   useEffect(() => {
     if (!virtualized) {
       setWin(full(itemCount));
@@ -204,7 +243,12 @@ export function useChatMessageVirtualizer(
         ignoreScrollAdjustRef.current = false;
         return;
       }
-      recomputeNow();
+      // One window update per frame while the user is flinging through history.
+      if (scrollRafRef.current != null) return;
+      scrollRafRef.current = requestAnimationFrame(() => {
+        scrollRafRef.current = null;
+        recomputeNow();
+      });
     };
     el.addEventListener("scroll", onScroll, { passive: true });
     const ro = new ResizeObserver(() => recompute());
@@ -213,6 +257,10 @@ export function useChatMessageVirtualizer(
     return () => {
       el.removeEventListener("scroll", onScroll);
       ro.disconnect();
+      if (scrollRafRef.current != null) {
+        cancelAnimationFrame(scrollRafRef.current);
+        scrollRafRef.current = null;
+      }
       if (recomputeTimerRef.current != null) {
         clearTimeout(recomputeTimerRef.current);
         recomputeTimerRef.current = null;
@@ -247,10 +295,9 @@ export function useChatMessageVirtualizer(
       // not on first measure from estimate — large first deltas at the viewport
       // edge were a primary bounce source for diagram rows.
       if (viewport && prevH != null && !pin) {
-        const offsets = cumulativeOffsets(itemCount, (i) => {
-          if (i === index) return prevH;
-          return getHeight(i);
-        });
+        const offsets = getOffsets();
+        // Use prev height for this row when computing rowOffset (cache may
+        // still hold the old value until we write nextH below).
         const rowOffset = offsets[index] ?? 0;
         const delta = nextH - prevH;
         const adjusted = scrollTopAfterHeightChange({
@@ -267,6 +314,8 @@ export function useChatMessageVirtualizer(
       }
 
       heightsRef.current.set(key, nextH);
+      heightsVersionRef.current += 1;
+      offsetsCacheRef.current = null;
       recompute();
       // Stay glued to the true bottom after a height commit while pinned —
       // avoids one-frame empty play at the tail then snap-back flash.
@@ -282,7 +331,7 @@ export function useChatMessageVirtualizer(
         });
       }
     },
-    [virtualized, itemCount, getHeight, isPinnedRef, viewportRef, recompute],
+    [virtualized, getOffsets, isPinnedRef, viewportRef, recompute],
   );
 
   /**

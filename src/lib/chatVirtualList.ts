@@ -5,6 +5,12 @@
  * - When `pinToBottom`, always include the last row and build the window upward
  *   so streaming tail stays mounted.
  * - Spacers keep total scrollHeight stable so pin/escape math stays valid.
+ *
+ * Perf (long sessions):
+ * - Binary search over cumulative offsets (O(log n) range find).
+ * - Adaptive overscan scales with viewport (not fixed multi-screen mounts).
+ * - Force-indices expand only nearby when escaped — distant tail force must
+ *   not mount the entire remainder of a long chat (history-browse jank).
  */
 
 /** Only virtualize long threads — short chats keep full DOM (identical UX). */
@@ -16,11 +22,25 @@ export const CHAT_DEFAULT_ROW_ESTIMATE_PX = 120;
 /** Cap a single estimated row so one mega-answer cannot dominate scroll math. */
 export const CHAT_MAX_ROW_ESTIMATE_PX = 8000;
 
-/** Extra px above/below the viewport when browsing history. */
+/** Baseline extra px above/below the viewport when browsing history. */
 export const CHAT_OVERSCAN_PX = 1200;
 
-/** When pinned, pull in more history above the tail so pin feels continuous. */
+/** Baseline when pinned: more history above the tail so pin feels continuous. */
 export const CHAT_PIN_OVERSCAN_PX = 1600;
+
+/** Floor / ceiling for adaptive overscan (px). */
+export const CHAT_OVERSCAN_MIN_PX = 700;
+export const CHAT_OVERSCAN_MAX_PX = 1800;
+export const CHAT_PIN_OVERSCAN_MIN_PX = 1000;
+export const CHAT_PIN_OVERSCAN_MAX_PX = 2400;
+
+/**
+ * Max index gap when expanding the window for `forceIndices` while **escaped**.
+ * Beyond this, locate/find must scroll the target into the natural window first
+ * (ConversationThread already coarse-jumps `scrollTop`). Expanding across the
+ * whole list defeated virtualization on multi-hundred-message threads.
+ */
+export const CHAT_FORCE_EXPAND_MAX_GAP = 12;
 
 /**
  * Content-aware row estimate so tall assistant answers (diagrams, tables)
@@ -97,6 +117,134 @@ export function cumulativeOffsets(
 }
 
 /**
+ * Adaptive overscan in px.
+ * Scales with viewport so large monitors do not mount multi-screen markdown
+ * windows, while short viewports still get enough runway for fling.
+ */
+export function resolveChatOverscanPx(input: {
+  viewportHeight: number;
+  pinToBottom?: boolean;
+  /** Explicit override (tests / callers). */
+  overscanPx?: number;
+}): number {
+  if (input.overscanPx != null && Number.isFinite(input.overscanPx)) {
+    return Math.max(0, input.overscanPx);
+  }
+  const vh = Math.max(0, input.viewportHeight);
+  if (input.pinToBottom) {
+    // ~1.5 viewports above the tail + small baseline, clamped.
+    const raw = vh * 1.5 + 200;
+    return Math.round(
+      Math.min(
+        CHAT_PIN_OVERSCAN_MAX_PX,
+        Math.max(CHAT_PIN_OVERSCAN_MIN_PX, raw, CHAT_PIN_OVERSCAN_PX * 0.75),
+      ),
+    );
+  }
+  // History browse: ~1 viewport of runway.
+  const raw = vh * 1.1 + 100;
+  return Math.round(
+    Math.min(
+      CHAT_OVERSCAN_MAX_PX,
+      Math.max(CHAT_OVERSCAN_MIN_PX, raw, CHAT_OVERSCAN_PX * 0.6),
+    ),
+  );
+}
+
+/**
+ * First index whose bottom edge is past `y` (row intersects or sits below y).
+ * `offsets` length = count + 1. O(log n).
+ */
+export function findStartIndex(offsets: number[], y: number): number {
+  const count = offsets.length - 1;
+  if (count <= 0) return 0;
+  if (y <= 0) return 0;
+  // First i with offsets[i+1] > y.
+  let lo = 0;
+  let hi = count - 1;
+  let ans = count - 1;
+  while (lo <= hi) {
+    const mid = (lo + hi) >> 1;
+    const bottom = offsets[mid + 1] ?? 0;
+    if (bottom > y) {
+      ans = mid;
+      hi = mid - 1;
+    } else {
+      lo = mid + 1;
+    }
+  }
+  return ans;
+}
+
+/**
+ * First index whose top is ≥ `y` (exclusive end candidate). O(log n).
+ */
+export function findEndIndex(offsets: number[], y: number): number {
+  const count = offsets.length - 1;
+  if (count <= 0) return 0;
+  // First i with offsets[i] >= y; if none, count.
+  let lo = 0;
+  let hi = count;
+  let ans = count;
+  while (lo <= hi) {
+    const mid = (lo + hi) >> 1;
+    if (mid >= count) {
+      ans = count;
+      break;
+    }
+    const top = offsets[mid] ?? 0;
+    if (top >= y) {
+      ans = mid;
+      hi = mid - 1;
+    } else {
+      lo = mid + 1;
+    }
+  }
+  return Math.min(count, ans);
+}
+
+/**
+ * Expand [start, end) to include force indices.
+ * - When pinned: always expand (blank-pin defense for tool-heavy tails).
+ * - When escaped: only expand if within {@link CHAT_FORCE_EXPAND_MAX_GAP}
+ *   of the natural window so history browse does not mount the whole tail.
+ */
+export function applyForceIndices(input: {
+  start: number;
+  end: number;
+  count: number;
+  forceIndices?: readonly number[];
+  pinToBottom?: boolean;
+  maxGap?: number;
+}): { start: number; end: number } {
+  let { start, end } = input;
+  const count = input.count;
+  const pin = !!input.pinToBottom;
+  const maxGap = input.maxGap ?? CHAT_FORCE_EXPAND_MAX_GAP;
+  if (!input.forceIndices?.length || count <= 0) {
+    return { start, end };
+  }
+  for (const raw of input.forceIndices) {
+    const i = Math.floor(raw);
+    if (i < 0 || i >= count) continue;
+    if (pin) {
+      if (i < start) start = i;
+      if (i >= end) end = i + 1;
+      continue;
+    }
+    // Escaped: nearby expand only.
+    if (i < start) {
+      if (start - i <= maxGap) start = i;
+    }
+    if (i >= end) {
+      // Distance from last included index (end - 1) to i.
+      if (i - (end - 1) <= maxGap) end = i + 1;
+    }
+  }
+  return { start, end };
+}
+
+/**
  * Compute the visible index range + spacers for a variable-height list.
  */
 export function computeChatVirtualWindow(input: {
@@ -109,20 +257,29 @@ export function computeChatVirtualWindow(input: {
   pinToBottom?: boolean;
   /** Indices that must stay mounted (find hit, streaming assistant, …). */
   forceIndices?: readonly number[];
+  /**
+   * Optional precomputed cumulative offsets (length count+1).
+   * Callers that recompute on every scroll can cache these until heights change.
+   */
+  offsets?: readonly number[];
 }): ChatVirtualWindow {
   const count = Math.max(0, Math.floor(input.count));
   if (count === 0) {
     return { start: 0, end: 0, paddingTop: 0, paddingBottom: 0, totalHeight: 0 };
   }
 
-  const offsets = cumulativeOffsets(count, input.getHeight);
+  const offsets: number[] =
+    input.offsets && input.offsets.length === count + 1
+      ? (input.offsets as number[])
+      : cumulativeOffsets(count, input.getHeight);
   const totalHeight = offsets[count] ?? 0;
   const viewportHeight = Math.max(0, input.viewportHeight);
   const pin = !!input.pinToBottom;
-  const overscan = Math.max(
-    0,
-    input.overscanPx ?? (pin ? CHAT_PIN_OVERSCAN_PX : CHAT_OVERSCAN_PX),
-  );
+  const overscan = resolveChatOverscanPx({
+    viewportHeight,
+    pinToBottom: pin,
+    overscanPx: input.overscanPx,
+  });
 
   // When pinned, treat the viewport as parked on the absolute bottom so the
   // window always covers the streaming tail even if scrollTop lags one frame.
@@ -136,41 +293,21 @@ export function computeChatVirtualWindow(input: {
   const rangeTop = Math.max(0, viewTop - overscan);
   const rangeBottom = Math.min(totalHeight, viewBottom + overscan);
 
-  // First index whose bottom edge is past rangeTop.
-  let start = 0;
-  for (let i = 0; i < count; i++) {
-    const bottom = offsets[i + 1] ?? 0;
-    if (bottom > rangeTop) {
-      start = i;
-      break;
-    }
-    start = i;
-  }
-
-  // First index whose top is >= rangeBottom (exclusive end).
-  let end = count;
-  for (let i = start; i < count; i++) {
-    const top = offsets[i] ?? 0;
-    if (top >= rangeBottom) {
-      end = i;
-      break;
-    }
-  }
+  let start = findStartIndex(offsets, rangeTop);
+  let end = findEndIndex(offsets, rangeBottom);
   if (end <= start) end = Math.min(count, start + 1);
 
   if (pin) {
     end = count;
   }
 
-  // Force-include indices (find match, live assistant, last user, …).
-  if (input.forceIndices?.length) {
-    for (const raw of input.forceIndices) {
-      const i = Math.floor(raw);
-      if (i < 0 || i >= count) continue;
-      if (i < start) start = i;
-      if (i >= end) end = i + 1;
-    }
-  }
+  ({ start, end } = applyForceIndices({
+    start,
+    end,
+    count,
+    forceIndices: input.forceIndices,
+    pinToBottom: pin,
+  }));
 
   start = Math.max(0, Math.min(start, count - 1));
   end = Math.max(start + 1, Math.min(end, count));

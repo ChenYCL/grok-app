@@ -921,9 +921,10 @@ export function ConversationThread({
     [messages, transcriptFilter],
   );
 
-  // Force-mount only what must stay in DOM. Do NOT always force the last N
-  // rows while reading history — that expanded every window to the tail and
-  // remounted huge answers (org charts) mid-scroll → bounce.
+  // Force-mount only what must stay in DOM. The virtualizer applies force
+  // freely while pinned (blank-pin defense) but only expands nearby while
+  // escaped — listing the last user/assistant here no longer mounts the
+  // whole tail mid-history (see CHAT_FORCE_EXPAND_MAX_GAP).
   const forceVirtualIndices = useMemo(() => {
     const out: number[] = [];
     const pushId = (id: string | null | undefined) => {
@@ -944,9 +945,9 @@ export function ConversationThread({
       const n = transcriptMessages.length;
       if (n > 0) out.push(n - 1);
     }
-    // Even when idle, pin-window must include the last user + last assistant
-    // (not only trailing tool_step zeros), or reopening a long tool-heavy
-    // thread can paint an empty viewport at the bottom.
+    // While pinned, last user + last assistant keep the pin window from
+    // landing only on trailing tool_step zeros. Escaped history browse
+    // ignores distant force (virtualizer max-gap) so long chats stay windowed.
     // Always resolve via pushId (transcript indices) — never push messages[]
     // offsets into the virtual list (idle path used to force wrong rows / thrash).
     if (!turnBusy && transcriptMessages.length > 0) {
