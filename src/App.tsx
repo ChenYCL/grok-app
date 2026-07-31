@@ -15986,9 +15986,11 @@ export default function App() {
             );
           }}
           todoGateMaxFiresPerPrompt={todoGateMaxFiresPerPrompt}
+          {/* Host has no fire-activity channel yet — Settings shows honest N/A. */}
+          todoGateFireSignal={null}
           onTodoGateMaxFiresPerPrompt={(v) => {
             const n =
-              typeof v === "number" && v > 0
+              typeof v === "number" && Number.isFinite(v) && v > 0
                 ? Math.min(20, Math.max(1, Math.round(v)))
                 : 3;
             setTodoGateMaxFiresPerPrompt(n);

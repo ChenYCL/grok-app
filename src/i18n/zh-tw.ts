@@ -1774,9 +1774,31 @@ export const zhTW: Record<MessageKey, string> = {
   "settings.todoGate": "Todo 門控",
   "settings.todoGateDesc":
     "當 Agent 在待辦仍為 pending / in_progress 時嘗試結束回合，Grok Build 可先催促再交還控制（CLI --todo-gate，0.2.117+）。會覆蓋遠端 todo_gate_enabled；預設關閉。獨立模式同時寫入 agent-home 的 todo_gate_enabled。變更後 soft-respawn。",
+  "settings.todoGate.softRespawnNote":
+    "變更 Todo 門控或最大觸發次數會 soft-respawn 已連線的 Agent，以便下一行程重新載入 flag 與獨立 agent-home 設定。",
+  "settings.todoGate.cliTooOld":
+    "目前 CLI 看起來低於 {min}（TodoGate）。啟用仍會保存在應用設定中；若 --todo-gate 未知，啟動可能 soft-fail。",
+  "settings.todoGate.activity.na":
+    "門控活動：N/A — 應用未從 host/CLI 接收 TodoGate 觸發訊號（不會編造次數）。",
+  "settings.todoGate.activity.unavailable":
+    "門控活動：不可用（host soft-fail）— 不等於 0 次觸發。",
+  "settings.todoGate.activity.idle":
+    "門控活動：本 prompt 0 次觸發（上限 {max}）。",
+  "settings.todoGate.activity.fired":
+    "門控活動：本 prompt 已觸發 {n} / {max} 次。",
   "settings.todoGateMaxFires": "Todo 門控最大觸發次數",
   "settings.todoGateMaxFiresDesc":
-    "每個 prompt 最多觸發 TodoGate 次數（1–20，預設 3）。獨立模式寫入 agent-home config.toml 的 todo_gate_max_fires_per_prompt。變更後 soft-respawn。",
+    "每個 prompt 最多觸發 TodoGate 次數（1–20，預設 3）。僅設定鍵 todo_gate_max_fires_per_prompt — 無 CLI flag。獨立 agent-home 寫入生效；變更後 soft-respawn。",
+  "settings.todoGateMaxFires.effective":
+    "有效最大觸發次數：{n}（限制 {min}–{max}，預設 {default}）。",
+  "settings.todoGateMaxFires.clamped":
+    "值已調整到允許範圍（{min}–{max}；空/無效 → 預設 {default}）。",
+  "settings.todoGateMaxFires.inactive":
+    "Todo 門控關閉時不生效。該值仍會儲存，開啟後門控時生效（獨立模式寫入設定）。",
+  "settings.todoGateMaxFires.independent":
+    "獨立模式：應用將 todo_gate_max_fires_per_prompt 寫入 agent-home config.toml。沒有 --todo-gate-max-fires CLI flag。",
+  "settings.todoGateMaxFires.shared":
+    "共用模式：應用會儲存最大觸發次數，但不會改寫 ~/.grok。啟用仍透過 --todo-gate 生效；最大次數跟隨 CLI / 你的 ~/.grok 設定 — 應用設定不會寫入共用設定。",
   "settings.workflows": "Grok Build 工作流程",
   "settings.workflowsDesc":
     "開啟後，獨立模式將頂層 workflows_enabled 寫入 agent-home config.toml，以便 Grok Build 執行 Rhai 工作流程腳本。預設關閉。變更後 soft-respawn。共享模式不會改寫 ~/.grok。",
