@@ -705,7 +705,7 @@ export interface FsEntry {
 export interface FsReadResult {
   relativePath: string;
   name: string;
-  /** Absolute path for convertFileSrc streaming (video/audio/large images). */
+  /** Absolute path for loopback media HTTP streaming (video/audio/large images). */
   absolutePath: string;
   size: number;
   kind: string;
@@ -1226,6 +1226,11 @@ export async function sessionMessages(id: string) {
 /** Agent session folder under GROK_HOME (contains images/, etc.). */
 export async function sessionMediaRoot(id: string) {
   return invoke<string | null>("session_media_root", { id });
+}
+
+/** Loopback media HTTP base + token (token-gated Range streaming of local files). */
+export async function mediaServerEndpoint() {
+  return invoke<{ baseUrl: string; token: string }>("media_server_endpoint");
 }
 
 /**
@@ -2446,6 +2451,8 @@ export interface EditorsListResult {
   editors: DetectedEditor[];
   finderIcon?: string | null;
   systemIcon?: string | null;
+  /** Host scan timestamp (ms), when present. */
+  scannedAt?: number | null;
 }
 
 export async function editorsList() {

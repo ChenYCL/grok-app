@@ -1,6 +1,7 @@
 //! Unified path allowlist for absolute filesystem access.
 //!
-//! Used by `media://` (SEC-01) and `fs_read_absolute` / `fs_write_absolute` (SEC-09).
+//! Used by loopback media HTTP / legacy `media://` (SEC-01) and
+//! `fs_read_absolute` / `fs_write_absolute` (SEC-09).
 //! Only trusted project roots, the App data root, system temp, and explicitly
 //! granted one-off paths may be read/written.
 
@@ -43,7 +44,7 @@ pub fn refresh_from_store() {
 
     // Agent session media (`images/`, `videos/`) lives under GROK_HOME.
     // Independent mode is already under app_data; shared mode is `~/.grok` and
-    // must be listed so chat image/video cards can load via media://.
+    // must be listed so chat image/video cards can load via media HTTP.
     let settings = crate::store::load_settings();
     let agent_home =
         crate::paths::resolve_agent_grok_home(&settings.session_data_mode);

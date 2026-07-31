@@ -84,6 +84,7 @@ import {
 } from "@/lib/accountUi";
 import { loadConfirmExternalLinksPref } from "@/lib/externalLinkPref";
 import { loadStopAllSkipConfirmPref } from "@/lib/stopAllSkipConfirmPref";
+import { detectAppPlatform, revealInOsLabel } from "@/lib/appPlatform";
 import {
   APP_CLOSE_REQUESTED_EVENT,
   loadAlwaysQuitWithoutAskingPref,
@@ -1096,6 +1097,15 @@ export default function App() {
   );
   /** Shared tick so relative session labels recompute ~once a minute. */
   const [sidebarRelativeTick, setSidebarRelativeTick] = useState(0);
+  // Warm loopback media HTTP endpoint ASAP so chat images resolve to
+  // http://127.0.0.1 (not media://) before the first history paint.
+  useEffect(() => {
+    void import("@/lib/imageSrc")
+      .then((m) => m.ensureMediaEndpoint())
+      .catch(() => {
+        /* non-Tauri / server down */
+      });
+  }, []);
   useEffect(() => {
     if (!sidebarShowRelativeTime) return;
     const id = window.setInterval(() => {
@@ -2240,12 +2250,7 @@ export default function App() {
   const [accountLoading, setAccountLoading] = useState(false);
   const [accountBusy, setAccountBusy] = useState(false);
   const [loginHint, setLoginHint] = useState<string | null>(null);
-  const platform = useMemo(() => {
-    const ua = navigator.userAgent.toLowerCase();
-    if (ua.includes("mac")) return "mac" as const;
-    if (ua.includes("win")) return "win" as const;
-    return "other" as const;
-  }, []);
+  const platform = useMemo(() => detectAppPlatform(), []);
   /** Self-drawn chrome when OS title bar is disabled (Windows release config). */
   const useCustomWindowChrome = platform === "win" || platform === "other";
   /** Right inset so resource chrome icons clear min/max/close. */
@@ -5135,7 +5140,7 @@ export default function App() {
           mapped,
         ),
       );
-      // Grant media:// access + refine isDir before first paint so history
+      // Grant path_scope + refine isDir before first paint so history
       // thumbnails (Desktop/Downloads drops, etc.) do not flash broken.
       const allPaths = chosen.flatMap(
         (m) => m.attachments?.map((a) => a.path) ?? [],
@@ -7585,14 +7590,14 @@ export default function App() {
   const attachLabels = useMemo(
     () => ({
       open: tr("attach.open"),
-      reveal: tr("attach.reveal"),
+      reveal: revealInOsLabel(tr, platform),
       copyPath: tr("attach.copyPath"),
       copyImage: tr("attach.copyImage"),
       addToComposer: tr("attach.addToComposer"),
       remove: tr("composer.attachRemove"),
       viewImage: tr("image.view"),
     }),
-    [tr],
+    [tr, platform],
   );
 
   const lastUserMessageId = useMemo(() => {
@@ -15981,21 +15986,12 @@ export default function App() {
                         setToast(tr("attach.copyPath") + " ✓");
                         window.setTimeout(() => setToast(null), 1600);
                       }}
-                      platform={
-                        platform === "win"
-                          ? "win"
-                          : platform === "mac"
-                            ? "mac"
-                            : "other"
-                      }
+                      platform={platform}
                       labels={{
                         openLocation: tr("main.openLocation"),
                         openHint: tr("main.openLocationHint"),
                         openMenu: tr("main.openLocationMenu"),
-                        finder:
-                          platform === "win"
-                            ? tr("main.openInExplorer")
-                            : tr("main.openInFinder"),
+                        finder: revealInOsLabel(tr, platform),
                         systemDefault: tr("main.openSystemDefault"),
                         copyPath: tr("attach.copyPath"),
                       }}
@@ -20427,7 +20423,7 @@ export default function App() {
               },
               {
                 id: "reveal",
-                label: tr("project.reveal"),
+                label: revealInOsLabel(tr, platform),
                 icon: <IconExternalLink size={16} />,
                 onClick: () => {
                   void api

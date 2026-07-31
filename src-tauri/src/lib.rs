@@ -23,6 +23,7 @@ mod editors;
 mod error;
 mod fs_browser;
 mod media_protocol;
+mod media_server;
 mod video_poster;
 mod path_scope;
 mod mirror;
@@ -176,6 +177,24 @@ pub fn run() {
         .setup(|app| {
             crate::path_scope::refresh_from_store();
             use tauri::Manager;
+            // Editors / terminals / git GUIs: non-blocking background scan + cache.
+            // UI menus read cache immediately; never wait on icon extraction here.
+            editors::start_background_scan_on_launch(app.handle().clone());
+
+            // Loopback media HTTP (token-gated Range streaming). Primary path for
+            // local <img>/<video>/fetch — frontend no longer depends on media://.
+            match tauri::async_runtime::block_on(media_server::start()) {
+                Ok(handle) => {
+                    tracing::info!(
+                        base_url = %handle.endpoint.base_url,
+                        "media server ready"
+                    );
+                    app.manage(handle);
+                }
+                Err(e) => {
+                    tracing::error!(error = %e, "media server failed to start — local media previews may break");
+                }
+            }
             if let Some(window) = app.get_webview_window("main") {
                 #[cfg(target_os = "macos")]
                 {
@@ -333,6 +352,7 @@ pub fn run() {
             commands::session_messages,
             commands::session_media_root,
             commands::session_resolve_relative_media,
+            commands::media_server_endpoint,
             commands::settings_get,
             commands::store_take_quarantine,
             commands::settings_set,

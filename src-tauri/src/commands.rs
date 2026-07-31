@@ -886,6 +886,19 @@ pub async fn session_media_root(id: String) -> Result<Option<String>, String> {
     Ok(resolve_session_media_root(&id))
 }
 
+/// Loopback media HTTP endpoint (`baseUrl` + `token`) for local file previews.
+/// Frontend builds `http://127.0.0.1:{port}/v1/media?t=…&p=…` for absolute paths.
+#[tauri::command]
+pub async fn media_server_endpoint(
+    app: tauri::AppHandle,
+) -> Result<crate::media_server::MediaServerEndpoint, String> {
+    use tauri::Manager;
+    let handle = app
+        .try_state::<crate::media_server::MediaServerHandle>()
+        .ok_or_else(|| "media server not running".to_string())?;
+    Ok(handle.endpoint())
+}
+
 /// Resolve relative media refs to absolute paths that exist on disk.
 /// Tries (1) agent session dir under GROK_HOME (`images/1.jpg`),
 /// then (2) project cwd (skill outputs like `outputs/xhx-media-gen/foo.png`).

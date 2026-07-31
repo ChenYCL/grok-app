@@ -34,6 +34,7 @@ import {
   stepSoftBuffer,
   type SoftBufferState,
 } from "@/lib/softStreamBuffer";
+import { revealInOsLabel } from "@/lib/appPlatform";
 import { cn } from "@/lib/utils";
 import { CodeBlock } from "./CodeBlock";
 
@@ -151,7 +152,7 @@ export const MarkdownChat = memo(function MarkdownChat({
   const fileLabels = useMemo(
     () => ({
       open: tr("attach.open"),
-      reveal: tr("attach.reveal"),
+      reveal: revealInOsLabel(tr),
       copyPath: tr("attach.copyPath"),
       openInPanel: tr("resources.openInPanel"),
       openExternal: tr("resources.openExternal"),

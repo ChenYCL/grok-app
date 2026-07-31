@@ -22,6 +22,7 @@ import { MarkdownTiptapEditor } from "@/components/MarkdownTiptapEditor";
 import { OverlayScroll } from "@/components/OverlayScroll";
 import { FileMediaPlayer } from "@/components/FileMediaPlayer";
 import { ImageUi } from "@/components/ImageUi";
+import { detectAppPlatform, revealInOsLabel } from "@/lib/appPlatform";
 import {
   IconChevronDown,
   IconChevronRight,
@@ -2028,7 +2029,7 @@ export function ResourceViewer({
             labels={{
               viewImage: tr("image.view"),
               copyImage: tr("image.copy"),
-              reveal: tr("attach.reveal"),
+              reveal: revealInOsLabel(tr),
               copyPath: tr("attach.copyPath"),
             }}
           />
@@ -2274,11 +2275,12 @@ export function ResourceViewer({
               }}
               onOpenError={(e) => setError(e)}
               compact
+              platform={detectAppPlatform()}
               labels={{
                 openLocation: tr("main.openLocation"),
                 openHint: tr("main.openLocationHint"),
                 openMenu: tr("main.openLocationMenu"),
-                finder: tr("resources.revealFolder"),
+                finder: revealInOsLabel(tr),
                 systemDefault: tr("resources.openDefault"),
                 copyPath: tr("attach.copyPath"),
               }}

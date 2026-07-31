@@ -8,7 +8,7 @@ import { useEffect, useRef, useState } from "react";
 import type { Attachment } from "@/lib/attachments";
 import { isImagePath } from "@/lib/attachments";
 import * as api from "@/lib/api";
-import { resolveImageSrcSync } from "@/lib/imageSrc";
+import { ensureMediaEndpoint, resolveImageSrc, resolveImageSrcSync } from "@/lib/imageSrc";
 import { copyImageFromPath } from "@/lib/copyImage";
 import { useImageViewerOptional } from "@/components/ImageViewer";
 import {
@@ -69,6 +69,18 @@ export function AttachmentCard({
     }
     // Sync resolve + cache: avoid empty→thumb height flash in the thread.
     setThumbSrc(resolveImageSrcSync(attachment.path));
+    let cancelled = false;
+    void ensureMediaEndpoint()
+      .then(() => resolveImageSrc(attachment.path))
+      .then((url) => {
+        if (!cancelled && url) setThumbSrc(url);
+      })
+      .catch(() => {
+        /* keep sync */
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [attachment.path, isImg]);
 
   const openPath = async () => {

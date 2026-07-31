@@ -1,12 +1,12 @@
 /**
  * Inline video card for chat: session-relative / local paths.
- * Plays via Tauri media:// (Range); right-click: open / reveal / copy path.
+ * Plays via Host loopback media HTTP (Range); right-click: open / reveal / copy path.
  *
  * Frame always reserves a non-zero size (default 16:9, then natural ratio)
  * so streaming remounts / metadata decode never collapse scrollHeight —
  * that thrash + stick-to-bottom follow was the chat flicker with video output.
  *
- * **Click-to-play**: do not attach `src` / fire media:// Range until the user
+ * **Click-to-play**: do not attach `src` / fire media Range until the user
  * starts playback. Opening a long agent session with a large mp4 previously
  * auto-mounted the player and fan-out concurrent protocol workers, which
  * contributed to host SIGABRT crashes on WKURLSchemeTask respond paths.
@@ -33,6 +33,7 @@ import { Tip } from "@/components/ui/tooltip";
 import { ContextMenu, type ContextMenuItem } from "@/components/ContextMenu";
 import { createT, type Locale } from "@/i18n";
 import { pathBasename } from "@/lib/attachments";
+import { revealInOsLabel } from "@/lib/appPlatform";
 
 export interface VideoUiLabels {
   open: string;
@@ -196,7 +197,7 @@ export const VideoUi = memo(function VideoUi({
       ? src
       : undefined;
 
-  /** User has asked to play — only then resolve media:// and mount <video>. */
+  /** User has asked to play — only then resolve media HTTP and mount <video>. */
   const [started, setStarted] = useState(false);
   const [resolvedSrc, setResolvedSrc] = useState<string | null>(null);
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
@@ -281,7 +282,7 @@ export const VideoUi = memo(function VideoUi({
   }, [started, src]);
 
   // Pause when the window is backgrounded so WebKit cancels fewer in-flight
-  // media:// Range tasks (focus-away → focus-back used to race WKURLSchemeTask
+  // media Range tasks (focus-away → focus-back used to race WKURLSchemeTask
   // respond and SIGABRT the host on older builds).
   useEffect(() => {
     if (!started || !resolvedSrc) return;
@@ -548,7 +549,7 @@ export function videoUiLabels(locale: Locale): VideoUiLabels {
   const tr = createT(locale);
   return {
     open: tr("attach.open"),
-    reveal: tr("attach.reveal"),
+    reveal: revealInOsLabel(tr),
     copyPath: tr("attach.copyPath"),
     loadError: tr("video.loadError"),
     play: tr("video.play"),

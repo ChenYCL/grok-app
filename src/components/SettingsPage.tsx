@@ -1485,6 +1485,20 @@ export function SettingsPage({
   useEffect(() => {
     if (!api.isTauri()) return;
     void api.editorsList().then((r) => setEditors(r.editors ?? [])).catch(() => {});
+    let unlisten: (() => void) | undefined;
+    void api
+      .listen<api.EditorsListResult>("editors://updated", (payload) => {
+        setEditors(payload.editors ?? []);
+      })
+      .then((fn) => {
+        unlisten = fn;
+      })
+      .catch(() => {
+        /* ignore */
+      });
+    return () => {
+      unlisten?.();
+    };
   }, []);
 
   // Reset to index when leaving phone layout (e.g. rotate to desktop width).

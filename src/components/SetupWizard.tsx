@@ -25,7 +25,7 @@ type AccountPanel = "menu" | "key" | "relay";
 
 type Props = {
   tr: Tr;
-  platform: "mac" | "win" | "other";
+  platform: "mac" | "win" | "linux" | "other";
   useCustomWindowChrome: boolean;
   initialCli: SetupCliInfo;
   onComplete: (cli: SetupCliInfo) => void;

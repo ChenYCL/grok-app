@@ -1,11 +1,12 @@
-//! Streaming media protocol with HTTP Range support.
+//! Legacy `media://` streaming protocol (HTTP Range support).
+//!
+//! **Primary delivery is the loopback HTTP server** (`media_server.rs`).
+//! This custom scheme remains registered only as a cold-start fallback for
+//! `convertFileSrc(..., "media")` before the frontend has fetched the token.
 //!
 //! Tauri's built-in `asset` protocol loads the **entire** file into memory when the
-//! client omits a Range header. Multi‑GB video/audio then fails (or OOMs) and the
-//! HTML5 player stuck at `-00:00`.
-//!
-//! This `media://` handler always streams in bounded chunks and answers Range
-//! requests with `206 Partial Content`, which is what video/audio elements need.
+//! client omits a Range header. Multi‑GB video/audio then fails (or OOMs).
+//! This handler streams in bounded chunks and answers Range with `206`.
 //!
 //! ## Crash hardening
 //!

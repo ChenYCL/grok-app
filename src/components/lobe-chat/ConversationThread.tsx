@@ -953,7 +953,8 @@ export function ConversationThread({
         m.role === "assistant" &&
         (/\.(mp4|webm|mov|mkv)(\b|$)/i.test(body) ||
           body.includes("media.localhost") ||
-          body.includes("media://"));
+          body.includes("media://") ||
+          body.includes("127.0.0.1"));
       // Tool steps already woven into an assistant timeline render as 0-height
       // spacers — estimate 0 so virtualization does not invent a blank pin tail.
       const toolInlined =

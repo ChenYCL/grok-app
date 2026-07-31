@@ -19,6 +19,7 @@ import {
 } from "@/lib/attachments";
 import { mergePathMaps } from "@/lib/sessionPathMap";
 import { createT, type Locale, isLocale } from "@/i18n";
+import { revealInOsLabel } from "@/lib/appPlatform";
 import {
   getShareCardSkin,
   skinBodyFont,
@@ -59,7 +60,7 @@ function ShareMessageBody({
   const attachLabels = useMemo(
     () => ({
       open: tr("attach.open"),
-      reveal: tr("attach.reveal"),
+      reveal: revealInOsLabel(tr),
       copyPath: tr("attach.copyPath"),
       copyImage: tr("attach.copyImage"),
       addToComposer: tr("attach.addToComposer"),
