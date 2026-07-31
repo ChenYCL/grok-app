@@ -2461,6 +2461,8 @@ export const zhTW: Record<MessageKey, string> = {
   "prov.presetCustom": "自訂設定",
   "prov.preset.deepseek.blurb":
     "DeepSeek 官方 API — V4 Flash + Pro，思考 low/high/xhigh/max",
+  "prov.preset.amux.blurb":
+    "Amux 中轉 — Grok 4.5，推理 low/medium/high",
   "prov.efforts": "思考深度",
   "prov.effortsHint":
     "出現在輸入框推理強度選單中；取值作為 reasoning_effort 傳給上游。",

@@ -44,10 +44,12 @@ Add flow opens a **preset gallery** (`providerPresets.ts`):
 
 | Preset | Models | Default efforts |
 |--------|--------|-----------------|
-| **Custom** | empty (user fills) | Grok `medium`/`low`/`high` |
+| **Custom** | empty (user fills) | Grok `low`/`medium`/`high` |
 | **DeepSeek** | `deepseek-v4-flash`, `deepseek-v4-pro` | `low` / `high` / `xhigh` / `max` (docs mapping table; default `high`) |
+| **Amux** | `grok-4.5` (display **Grok 4.5**) | Grok `low`/`medium`/`high` |
 
-DeepSeek base: `https://api.deepseek.com/v1`, `chat_completions`. User still pastes API key. More presets can be registered without Host schema changes.
+DeepSeek base: `https://api.deepseek.com/v1`, `chat_completions`.  
+Amux base: `https://api.amux.ai/v1`, `responses`. User still pastes API key. More presets can be registered without Host schema changes.
 
 CPA / sub2api / grok-go remain generic OpenAI-compatible relays.
 

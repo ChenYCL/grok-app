@@ -46,6 +46,11 @@ export const DEEPSEEK_MODELS: ProviderModelEntry[] = [
   { id: "deepseek-v4-pro", name: "DeepSeek V4 Pro" },
 ];
 
+/** Amux OpenAI-compatible relay (grok-4.5). */
+export const AMUX_MODELS: ProviderModelEntry[] = [
+  { id: "grok-4.5", name: "Grok 4.5" },
+];
+
 export const PROVIDER_PRESETS: ProviderPreset[] = [
   {
     id: "deepseek",
@@ -56,6 +61,16 @@ export const PROVIDER_PRESETS: ProviderPreset[] = [
     models: DEEPSEEK_MODELS,
     efforts: DEEPSEEK_EFFORTS,
     blurbKey: "prov.preset.deepseek.blurb",
+  },
+  {
+    id: "amux",
+    name: "Amux",
+    suggestedId: "amux",
+    baseUrl: "https://api.amux.ai/v1",
+    apiBackend: "responses",
+    models: AMUX_MODELS,
+    efforts: GROK_CHANNEL_EFFORTS.map((e) => ({ ...e })),
+    blurbKey: "prov.preset.amux.blurb",
   },
 ];
 
