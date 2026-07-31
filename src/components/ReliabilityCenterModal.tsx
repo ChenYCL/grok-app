@@ -3,32 +3,51 @@
  * busy sessions, stall / end-of-turn stalls, recent error-deck cards,
  * a persisted stall timeline (localStorage ring), and the cross-session
  * tool/permission audit ledger (host JSONL).
- * Actions: export support bundle, open Doctor, clear stall/audit, export audit.
+ * Actions: export support bundle, open Doctor, clear stall/audit, export audit,
+ * export redacted stall history JSON.
  * No secrets from logs.
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
+import { GlassModal } from "@/components/GlassModal";
 import {
   IconActivity,
   IconAlertTriangle,
   IconClose,
   IconDoctor,
 } from "@/components/icons";
+import { ProcessBudgetPanel } from "@/components/ProcessBudgetPanel";
 import { createT, type Locale, type MessageKey } from "@/i18n";
 import * as api from "@/lib/api";
 import {
   auditLedgerEventKey,
   filterAuditLedger,
   parseAuditLedgerList,
+  serializeAuditLedgerJsonl,
+  toAuditLedgerExportFilter,
   type AuditLedgerEntry,
   type AuditLedgerEvent,
 } from "@/lib/auditLedger";
+import type { ProcessLimitEvent } from "@/lib/processBudget";
 import {
+  assembleGoalOrchView,
+  filterGoalOrchEvents,
+  formatGoalOrchSummaryText,
+  goalOrchPhaseLabelKey,
+  phasesPresentInEvents,
+  resolveGoalOrchEmptyState,
+  type GoalOrchEvent,
+  type GoalOrchPhaseFilter,
+} from "@/lib/goalOrch";
+import {
+  applyClearStallHistoryPlan,
+  buildStallHistoryExport,
   buildStallTimelineSnapshot,
-  clearStallHistory,
   filterStallHistory,
   loadStallHistory,
+  planClearStallHistory,
+  serializeStallHistoryExport,
   serializeStallTimelineSnapshot,
   STALL_HISTORY_CHANGE_EVENT,
   STALL_HISTORY_STORAGE_KEY,
@@ -48,16 +67,15 @@ export type ReliabilityCenterModalProps = {
   onOpenDoctor: () => void;
   /** Jump to a busy session (optional). */
   onSelectSession?: (sessionId: string) => void;
-  /** Display-only: show Goal orchestration section (CLI goal_updated events). */
+  /**
+   * Display-only: show Goal orchestration section (CLI goal_updated events).
+   * Default true when omitted.
+   */
   goalOrchUiEnabled?: boolean;
   /** In-memory ring of observed goal phase events (never invented). */
-  goalOrchEvents?: Array<{
-    id: string;
-    phase?: string;
-    progress?: number | string;
-    at?: number | string;
-    summary?: string;
-  }>;
+  goalOrchEvents?: GoalOrchEvent[];
+  /** Last process_limit toast context for process-budget honesty. */
+  lastProcessLimit?: ProcessLimitEvent | null;
 };
 
 type StallKindFilter = "all" | ReliabilityStallKind;
@@ -101,6 +119,49 @@ function stallKindKey(kind: ReliabilityStallSignal["kind"]): MessageKey {
     default:
       return "reliability.stall.kind.terminal";
   }
+}
+
+function GoalOrchRow({
+  event,
+  t,
+  locale,
+}: {
+  event: GoalOrchEvent;
+  t: ReturnType<typeof createT>;
+  locale: Locale;
+}) {
+  const when = formatWhen(event.at, locale);
+  return (
+    <li className="reliab-card__row" data-testid="reliab-goal-row">
+      <div className="reliab-card__row-main">
+        <span className="reliab-card__dot reliab-card__dot--busy" aria-hidden />
+        <span className="reliab-card__name" title={event.label}>
+          {t(goalOrchPhaseLabelKey(event.phase))}
+        </span>
+        <span className="reliab-card__meta">{event.label}</span>
+      </div>
+      {event.detail ? (
+        <div className="reliab-card__sub" title={event.detail}>
+          {event.detail}
+        </div>
+      ) : null}
+      <div className="reliab-card__sub reliab-card__sub--muted">
+        {[
+          event.deliverableProgress
+            ? t("reliability.goal.progress", {
+                progress: event.deliverableProgress,
+              })
+            : null,
+          event.goalId
+            ? t("reliability.goal.id", { id: event.goalId })
+            : null,
+          when,
+        ]
+          .filter(Boolean)
+          .join(" · ")}
+      </div>
+    </li>
+  );
 }
 
 function BusyRow({
@@ -232,6 +293,28 @@ function auditDotClass(event: AuditLedgerEvent): string {
   return "";
 }
 
+async function copyAuditText(text: string): Promise<boolean> {
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function downloadAuditText(filename: string, body: string) {
+  const blob = new Blob([body], { type: "application/x-ndjson;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.rel = "noopener";
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
 function AuditRow({
   entry,
   t,
@@ -280,6 +363,19 @@ function AuditRow({
   );
 }
 
+function downloadStallHistoryJson(filename: string, body: string) {
+  const blob = new Blob([body], { type: "application/json;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.rel = "noopener";
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
 export function ReliabilityCenterModal({
   open,
   onClose,
@@ -287,11 +383,20 @@ export function ReliabilityCenterModal({
   view,
   onOpenDoctor,
   onSelectSession,
+  goalOrchUiEnabled = true,
+  goalOrchEvents = [],
+  lastProcessLimit = null,
 }: ReliabilityCenterModalProps) {
   const t = useMemo(() => createT(locale), [locale]);
-  const [busy, setBusy] = useState<"zip" | "audit-export" | "audit-clear" | null>(
-    null,
-  );
+  const [busy, setBusy] = useState<
+    | "zip"
+    | "audit-export"
+    | "audit-clear"
+    | "audit-copy"
+    | "goal-copy"
+    | "stall-export"
+    | null
+  >(null);
   const [statusMsg, setStatusMsg] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
@@ -305,8 +410,14 @@ export function ReliabilityCenterModal({
   const [auditEntries, setAuditEntries] = useState<AuditLedgerEntry[]>([]);
   const [auditQuery, setAuditQuery] = useState("");
   const [auditEvent, setAuditEvent] = useState<AuditEventFilter>("all");
+  const [auditSession, setAuditSession] = useState("");
+  const [auditFrom, setAuditFrom] = useState("");
+  const [auditTo, setAuditTo] = useState("");
   const [confirmClearAudit, setConfirmClearAudit] = useState(false);
   const [auditLoading, setAuditLoading] = useState(false);
+
+  const [goalPhaseFilter, setGoalPhaseFilter] =
+    useState<GoalOrchPhaseFilter>("all");
 
   const loadAudit = useCallback(async () => {
     setAuditLoading(true);
@@ -332,7 +443,11 @@ export function ReliabilityCenterModal({
     setStallHistory(loadStallHistory());
     setAuditQuery("");
     setAuditEvent("all");
+    setAuditSession("");
+    setAuditFrom("");
+    setAuditTo("");
     setConfirmClearAudit(false);
+    setGoalPhaseFilter("all");
     void loadAudit();
   }, [open, loadAudit]);
 
@@ -379,14 +494,77 @@ export function ReliabilityCenterModal({
     [stallHistory, historyQuery, historyKind],
   );
 
+  const clearHistoryPlan = useMemo(
+    () => planClearStallHistory(stallHistory),
+    [stallHistory],
+  );
+
   const filteredAudit = useMemo(
     () =>
       filterAuditLedger(auditEntries, {
         query: auditQuery,
         event: auditEvent,
+        sessionId: auditSession,
+        fromTs: auditFrom || null,
+        toTs: auditTo || null,
       }),
-    [auditEntries, auditQuery, auditEvent],
+    [auditEntries, auditQuery, auditEvent, auditSession, auditFrom, auditTo],
   );
+
+  /** Session-unfiltered ring (Reliability shows all observed sessions). */
+  const goalSessionEvents = useMemo(
+    () => filterGoalOrchEvents(goalOrchEvents),
+    [goalOrchEvents],
+  );
+
+  const goalOrchView = useMemo(
+    () =>
+      assembleGoalOrchView({
+        events: goalOrchEvents,
+        phase: goalPhaseFilter,
+      }),
+    [goalOrchEvents, goalPhaseFilter],
+  );
+
+  const goalEmpty = useMemo(
+    () =>
+      resolveGoalOrchEmptyState({
+        uiEnabled: goalOrchUiEnabled,
+        totalCount: goalSessionEvents.length,
+        filteredCount: goalOrchView.count,
+        phaseFilter: goalPhaseFilter,
+      }),
+    [
+      goalOrchUiEnabled,
+      goalSessionEvents.length,
+      goalOrchView.count,
+      goalPhaseFilter,
+    ],
+  );
+
+  /** Phase chips: only observed phases (plus "all" in the render). */
+  const goalPhaseChips = useMemo(
+    () => phasesPresentInEvents(goalSessionEvents),
+    [goalSessionEvents],
+  );
+
+  const onCopyGoalSummary = useCallback(async () => {
+    setBusy("goal-copy");
+    setStatusMsg(null);
+    setErrorMsg(null);
+    try {
+      const text = formatGoalOrchSummaryText(goalOrchView.events, {
+        title: t("reliability.goal.title"),
+        generatedAt: new Date().toISOString(),
+      });
+      await navigator.clipboard.writeText(text);
+      setStatusMsg(t("reliability.goal.copied"));
+    } catch (e) {
+      setErrorMsg(`${t("reliability.goal.copyFail")}: ${String(e)}`);
+    } finally {
+      setBusy(null);
+    }
+  }, [goalOrchView.events, t]);
 
   const onSupportZip = useCallback(async () => {
     setBusy("zip");
@@ -405,11 +583,44 @@ export function ReliabilityCenterModal({
     }
   }, [t, view.stalls.signals]);
 
+  const onExportStallHistory = useCallback(() => {
+    setBusy("stall-export");
+    setStatusMsg(null);
+    setErrorMsg(null);
+    try {
+      if (filteredHistory.length === 0) {
+        setErrorMsg(t("reliability.timeline.exportEmpty"));
+        return;
+      }
+      const snap = buildStallHistoryExport(filteredHistory, {
+        query: historyQuery,
+        kind: historyKind,
+      });
+      const body = serializeStallHistoryExport(snap);
+      const stamp = new Date()
+        .toISOString()
+        .slice(0, 19)
+        .replace(/[:T]/g, "-");
+      downloadStallHistoryJson(`grok-app-stall-timeline-${stamp}.json`, body);
+      setStatusMsg(
+        t("reliability.timeline.exportDone", { count: snap.count }),
+      );
+    } catch (e) {
+      setErrorMsg(`${t("reliability.timeline.exportFail")}: ${String(e)}`);
+    } finally {
+      setBusy(null);
+    }
+  }, [t, filteredHistory, historyQuery, historyKind]);
+
   const doClearHistory = useCallback(() => {
-    clearStallHistory();
+    const plan = planClearStallHistory(loadStallHistory());
+    applyClearStallHistoryPlan(plan);
     setStallHistory([]);
     setConfirmClearHistory(false);
-  }, []);
+    setStatusMsg(
+      t("reliability.timeline.clearDone", { count: plan.count }),
+    );
+  }, [t]);
 
   const doClearAudit = useCallback(async () => {
     setBusy("audit-clear");
@@ -427,12 +638,23 @@ export function ReliabilityCenterModal({
     }
   }, [t]);
 
+  const auditExportFilter = useMemo(
+    () =>
+      toAuditLedgerExportFilter({
+        event: auditEvent,
+        sessionId: auditSession,
+        fromTs: auditFrom || null,
+        toTs: auditTo || null,
+      }),
+    [auditEvent, auditSession, auditFrom, auditTo],
+  );
+
   const onExportAudit = useCallback(async () => {
     setBusy("audit-export");
     setStatusMsg(null);
     setErrorMsg(null);
     try {
-      const res = await api.auditLedgerExport();
+      const res = await api.auditLedgerExport(auditExportFilter);
       setStatusMsg(
         t("reliability.audit.exportDone", {
           path: res.path ?? "",
@@ -443,7 +665,42 @@ export function ReliabilityCenterModal({
     } finally {
       setBusy(null);
     }
-  }, [t]);
+  }, [t, auditExportFilter]);
+
+  const onCopyAudit = useCallback(async () => {
+    setBusy("audit-copy");
+    setStatusMsg(null);
+    setErrorMsg(null);
+    try {
+      const body = serializeAuditLedgerJsonl(filteredAudit);
+      if (!body.trim()) {
+        setErrorMsg(t("reliability.audit.exportEmpty"));
+        return;
+      }
+      const ok = await copyAuditText(body);
+      setStatusMsg(
+        ok ? t("reliability.audit.copyDone") : t("reliability.audit.copyFail"),
+      );
+      if (!ok) setErrorMsg(t("reliability.audit.copyFail"));
+    } catch (e) {
+      setErrorMsg(`${t("reliability.audit.copyFail")}: ${String(e)}`);
+    } finally {
+      setBusy(null);
+    }
+  }, [t, filteredAudit]);
+
+  const onDownloadAudit = useCallback(() => {
+    setStatusMsg(null);
+    setErrorMsg(null);
+    const body = serializeAuditLedgerJsonl(filteredAudit);
+    if (!body.trim()) {
+      setErrorMsg(t("reliability.audit.exportEmpty"));
+      return;
+    }
+    const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-");
+    downloadAuditText(`grok-app-audit-ledger-${stamp}.jsonl`, body);
+    setStatusMsg(t("reliability.audit.downloadDone"));
+  }, [t, filteredAudit]);
 
   const openDoctor = () => {
     onClose();
@@ -476,65 +733,15 @@ export function ReliabilityCenterModal({
     },
   ];
 
-  const clearConfirmPortal =
-    confirmClearHistory &&
-    typeof document !== "undefined" &&
-    createPortal(
-      <div
-        className="overlay app-dialog-overlay"
-        role="presentation"
-        onMouseDown={(e) => {
-          if (e.target === e.currentTarget) setConfirmClearHistory(false);
-        }}
-      >
-        <div
-          className="modal app-dialog"
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="reliab-stall-history-clear-title"
-          onMouseDown={(e) => e.stopPropagation()}
-        >
-          <header className="modal-head">
-            <h2
-              id="reliab-stall-history-clear-title"
-              className="modal-title"
-            >
-              {t("reliability.timeline.clearConfirmTitle")}
-            </h2>
-            <button
-              type="button"
-              className="icon-btn modal-close"
-              onClick={() => setConfirmClearHistory(false)}
-              aria-label={t("common.cancel")}
-            >
-              <IconClose size={16} />
-            </button>
-          </header>
-          <div className="app-dialog__form">
-            <p className="app-dialog__msg">
-              {t("reliability.timeline.clearConfirmMessage")}
-            </p>
-            <div className="app-dialog__actions modal-actions">
-              <button
-                type="button"
-                className="btn btn--ghost"
-                onClick={() => setConfirmClearHistory(false)}
-              >
-                {t("common.cancel")}
-              </button>
-              <button
-                type="button"
-                className="btn btn--danger"
-                onClick={doClearHistory}
-              >
-                {t("reliability.timeline.clearConfirmAction")}
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>,
-      document.body,
-    );
+  const goalChips: { id: GoalOrchPhaseFilter; label: string }[] = [
+    { id: "all", label: t("reliability.goal.filterAll") },
+    ...goalPhaseChips.map((p) => ({
+      id: p as GoalOrchPhaseFilter,
+      label: t(goalOrchPhaseLabelKey(p)),
+    })),
+  ];
+
+
 
   const clearAuditPortal =
     confirmClearAudit &&
@@ -643,12 +850,124 @@ export function ReliabilityCenterModal({
         <div className="doctor-modal__body reliab-modal__body">
           {view.empty &&
           stallHistory.length === 0 &&
-          auditEntries.length === 0 ? (
+          auditEntries.length === 0 &&
+          goalSessionEvents.length === 0 ? (
             <div className="reliab-empty" role="status">
               <IconAlertTriangle size={20} className="reliab-empty__icon" />
               <p className="reliab-empty__title">{t("reliability.empty.title")}</p>
               <p className="reliab-empty__body">{t("reliability.empty.body")}</p>
             </div>
+          ) : null}
+
+          <ProcessBudgetPanel
+            locale={locale}
+            active={open}
+            variant="card"
+            lastProcessLimit={lastProcessLimit}
+            id="reliab-process-budget"
+          />
+          {goalOrchUiEnabled ? (
+            <section
+              className="reliab-card"
+              aria-labelledby="reliab-goal-title"
+              data-testid="reliab-goal-orch"
+            >
+              <header className="reliab-card__head">
+                <h3 id="reliab-goal-title" className="reliab-card__title">
+                  {t("reliability.goal.title")}
+                </h3>
+                <span className="reliab-card__count">
+                  {t("reliability.goal.count", {
+                    count: goalOrchView.count,
+                  })}
+                </span>
+              </header>
+              <p className="reliab-card__empty" style={{ marginBottom: 8 }}>
+                {t("reliability.goal.lead")}
+              </p>
+
+              {goalSessionEvents.length > 0 ? (
+                <>
+                  <div className="reliab-timeline__toolbar">
+                    <button
+                      type="button"
+                      className="btn btn--ghost btn--sm"
+                      disabled={!!busy || goalOrchView.count === 0}
+                      onClick={() => void onCopyGoalSummary()}
+                      data-testid="reliab-goal-copy"
+                    >
+                      {busy === "goal-copy"
+                        ? "…"
+                        : t("reliability.goal.copySummary")}
+                    </button>
+                    {goalPhaseFilter !== "all" ? (
+                      <button
+                        type="button"
+                        className="btn btn--ghost btn--sm"
+                        onClick={() => setGoalPhaseFilter("all")}
+                        data-testid="reliab-goal-clear-filter"
+                      >
+                        {t("reliability.goal.clearFilter")}
+                      </button>
+                    ) : null}
+                  </div>
+
+                  {goalPhaseChips.length > 0 ? (
+                    <div
+                      className="reliab-timeline__chips settings-seg"
+                      role="tablist"
+                      aria-label={t("reliability.goal.filterAria")}
+                    >
+                      {goalChips.map((c) => (
+                        <button
+                          key={c.id}
+                          type="button"
+                          role="tab"
+                          className={
+                            "settings-seg__btn reliab-timeline__chip" +
+                            (goalPhaseFilter === c.id ? " is-on" : "")
+                          }
+                          aria-selected={goalPhaseFilter === c.id}
+                          data-testid={`reliab-goal-filter-${c.id}`}
+                          onClick={() => setGoalPhaseFilter(c.id)}
+                        >
+                          {c.label}
+                        </button>
+                      ))}
+                    </div>
+                  ) : null}
+                </>
+              ) : null}
+
+              {goalEmpty ? (
+                <div className="reliab-card__empty" role="status">
+                  <p>{t(goalEmpty.titleKey)}</p>
+                  <p className="reliab-card__sub--muted">{t(goalEmpty.hintKey)}</p>
+                  {goalEmpty.showClearFilters ? (
+                    <button
+                      type="button"
+                      className="btn btn--ghost btn--sm"
+                      style={{ marginTop: 8 }}
+                      onClick={() => setGoalPhaseFilter("all")}
+                      data-testid="reliab-goal-clear-filter-empty"
+                    >
+                      {t("reliability.goal.clearFilter")}
+                    </button>
+                  ) : null}
+                </div>
+              ) : (
+                <ul className="reliab-card__list">
+                  {goalOrchView.events.map((ev) => (
+                    <GoalOrchRow
+                      key={ev.id}
+                      event={ev}
+                      t={t}
+                      locale={locale}
+                    />
+                  ))}
+                </ul>
+              )}
+            </section>
           ) : null}
 
           <section className="reliab-card" aria-labelledby="reliab-busy-title">
@@ -735,6 +1054,19 @@ export function ReliabilityCenterModal({
                   <button
                     type="button"
                     className="btn btn--ghost btn--sm"
+                    disabled={!!busy || filteredHistory.length === 0}
+                    onClick={onExportStallHistory}
+                    data-testid="reliab-timeline-export"
+                    title={t("reliability.timeline.export")}
+                  >
+                    {busy === "stall-export"
+                      ? "…"
+                      : t("reliability.timeline.export")}
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn--ghost btn--sm"
+                    disabled={!!busy || stallHistory.length === 0}
                     onClick={() => setConfirmClearHistory(true)}
                     data-testid="reliab-timeline-clear"
                   >
@@ -846,9 +1178,30 @@ export function ReliabilityCenterModal({
               <button
                 type="button"
                 className="btn btn--ghost btn--sm"
-                disabled={!!busy || auditEntries.length === 0}
+                disabled={!!busy || filteredAudit.length === 0}
+                onClick={() => void onCopyAudit()}
+                data-testid="reliab-audit-copy"
+                title={t("reliability.audit.copy")}
+              >
+                {busy === "audit-copy" ? "…" : t("reliability.audit.copy")}
+              </button>
+              <button
+                type="button"
+                className="btn btn--ghost btn--sm"
+                disabled={!!busy || filteredAudit.length === 0}
+                onClick={onDownloadAudit}
+                data-testid="reliab-audit-download"
+                title={t("reliability.audit.download")}
+              >
+                {t("reliability.audit.download")}
+              </button>
+              <button
+                type="button"
+                className="btn btn--ghost btn--sm"
+                disabled={!!busy || filteredAudit.length === 0}
                 onClick={() => void onExportAudit()}
                 data-testid="reliab-audit-export"
+                title={t("reliability.audit.export")}
               >
                 {busy === "audit-export" ? "…" : t("reliability.audit.export")}
               </button>
@@ -884,6 +1237,48 @@ export function ReliabilityCenterModal({
                   {c.label}
                 </button>
               ))}
+            </div>
+
+            <div
+              className="reliab-timeline__toolbar"
+              style={{ marginTop: 8, flexWrap: "wrap", gap: 8 }}
+            >
+              <label className="reliab-timeline__search" style={{ minWidth: 120 }}>
+                <span className="sr-only">
+                  {t("reliability.audit.sessionPlaceholder")}
+                </span>
+                <input
+                  type="search"
+                  className="reliab-timeline__search-input"
+                  value={auditSession}
+                  onChange={(e) => setAuditSession(e.target.value)}
+                  placeholder={t("reliability.audit.sessionPlaceholder")}
+                  autoComplete="off"
+                  data-testid="reliab-audit-session"
+                />
+              </label>
+              <label className="reliab-audit__date">
+                <span className="sr-only">{t("reliability.audit.fromDate")}</span>
+                <input
+                  type="date"
+                  className="reliab-timeline__search-input"
+                  value={auditFrom}
+                  onChange={(e) => setAuditFrom(e.target.value)}
+                  aria-label={t("reliability.audit.fromDate")}
+                  data-testid="reliab-audit-from"
+                />
+              </label>
+              <label className="reliab-audit__date">
+                <span className="sr-only">{t("reliability.audit.toDate")}</span>
+                <input
+                  type="date"
+                  className="reliab-timeline__search-input"
+                  value={auditTo}
+                  onChange={(e) => setAuditTo(e.target.value)}
+                  aria-label={t("reliability.audit.toDate")}
+                  data-testid="reliab-audit-to"
+                />
+              </label>
             </div>
 
             {auditEntries.length === 0 ? (
@@ -937,7 +1332,39 @@ export function ReliabilityCenterModal({
           </button>
         </footer>
       </div>
-      {clearConfirmPortal}
+      <GlassModal
+        open={confirmClearHistory}
+        onClose={() => setConfirmClearHistory(false)}
+        title={t("reliability.timeline.clearConfirmTitle")}
+        size="sm"
+        closeLabel={t("common.cancel")}
+        titleId="reliab-stall-history-clear-title"
+        footer={
+          <>
+            <button
+              type="button"
+              className="btn btn--ghost"
+              onClick={() => setConfirmClearHistory(false)}
+            >
+              {t("common.cancel")}
+            </button>
+            <button
+              type="button"
+              className="btn btn--danger"
+              onClick={doClearHistory}
+              data-testid="reliab-timeline-clear-confirm"
+            >
+              {t("reliability.timeline.clearConfirmAction")}
+            </button>
+          </>
+        }
+      >
+        <p className="app-dialog__msg" style={{ margin: 0, padding: "12px 16px" }}>
+          {t("reliability.timeline.clearConfirmMessage", {
+            count: clearHistoryPlan.count,
+          })}
+        </p>
+      </GlassModal>
       {clearAuditPortal}
     </div>
   );

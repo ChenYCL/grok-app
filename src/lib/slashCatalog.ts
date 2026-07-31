@@ -223,20 +223,108 @@ export type SlashSearchText = {
   description?: string;
 };
 
+/** Kind chip filter (includes `all`). */
+export type SlashKindFilter = "all" | SlashKind;
+
+/** Ordered kind chips for the slash / + palette. */
+export const SLASH_KIND_FILTERS: readonly SlashKindFilter[] = [
+  "all",
+  "mode",
+  "action",
+  "prompt",
+  "skill",
+] as const;
+
+/** Per-kind counts plus total under `all`. */
+export type SlashKindCounts = Record<SlashKindFilter, number>;
+
+/** Combined free-text + kind-chip filter. */
+export type SlashItemFilter = {
+  query?: string;
+  kind?: SlashKindFilter;
+};
+
+/** Count items per slash kind (and total under `all`). */
+export function countSlashByKind(
+  items: readonly SlashItem[],
+): SlashKindCounts {
+  const counts: SlashKindCounts = {
+    all: items.length,
+    mode: 0,
+    skill: 0,
+    action: 0,
+    prompt: 0,
+  };
+  for (const item of items) {
+    const k = item.kind;
+    if (k === "mode" || k === "skill" || k === "action" || k === "prompt") {
+      counts[k] += 1;
+    }
+  }
+  return counts;
+}
+
+/** True when query and/or a non-all kind chip is active. */
+export function hasActiveSlashFilters(filter: SlashItemFilter = {}): boolean {
+  const q = (filter.query ?? "").trim();
+  const kind = filter.kind ?? "all";
+  return Boolean(q) || kind !== "all";
+}
+
+/** i18n key for a kind chip / badge label. */
+export function slashKindLabelKey(kind: SlashKindFilter): string {
+  switch (kind) {
+    case "all":
+      return "slash.kind.all";
+    case "mode":
+      return "slash.kind.mode";
+    case "action":
+      return "slash.kind.action";
+    case "prompt":
+      return "slash.kind.prompt";
+    case "skill":
+      return "slash.kind.skill";
+    default:
+      return "slash.kind.all";
+  }
+}
+
 /**
- * Filter items by query (case-insensitive substring).
- * Prefer name/title hits; descriptions only when query is longer (4+ chars)
- * so short tokens don't light up half the catalog via English blurbs.
- * Empty query returns all items.
+ * Filter items by kind chip only.
+ * `all` (default) returns the same array reference when possible.
+ */
+export function filterSlashItemsByKind(
+  items: readonly SlashItem[],
+  kind: SlashKindFilter = "all",
+): SlashItem[] {
+  if (kind === "all") return items as SlashItem[];
+  return items.filter((item) => item.kind === kind);
+}
+
+/**
+ * Filter items by query (case-insensitive substring) and optional kind chip.
+ *
+ * Prefer name/title hits; descriptions only when query is longer (4+ chars
+ * for ASCII, 2+ for CJK) so short tokens don't light up half the catalog.
+ * Empty query returns kind-filtered items (or all when kind is `all`).
+ *
+ * Second arg accepts a plain query string (backward compatible) or
+ * `{ query, kind }`.
  */
 export function filterSlashItems(
   items: SlashItem[],
-  query: string,
+  queryOrFilter: string | SlashItemFilter = "",
   resolveSearchText?: (item: SlashItem) => SlashSearchText | null | undefined,
 ): SlashItem[] {
-  const q = query.trim().toLowerCase();
-  if (!q) return items;
-  return items.filter((item) => {
+  const opts: SlashItemFilter =
+    typeof queryOrFilter === "string"
+      ? { query: queryOrFilter }
+      : (queryOrFilter ?? {});
+  const kind = opts.kind ?? "all";
+  const byKind = filterSlashItemsByKind(items, kind);
+  const q = (opts.query ?? "").trim().toLowerCase();
+  if (!q) return byKind;
+  return byKind.filter((item) => {
     const resolved = resolveSearchText?.(item);
     // Name / title only for short queries (strict).
     const nameFields = [
@@ -270,10 +358,122 @@ export function buildSlashCatalog(skills: SkillInfo[]): {
 /** Flat list for keyboard nav: filtered commands then skills. */
 export function flattenFilteredCatalog(
   catalog: { commands: SlashItem[]; skills: SlashItem[] },
-  query: string,
+  queryOrFilter: string | SlashItemFilter = "",
   resolveSearchText?: (item: SlashItem) => SlashSearchText | null | undefined,
 ): { commands: SlashItem[]; skills: SlashItem[]; flat: SlashItem[] } {
-  const commands = filterSlashItems(catalog.commands, query, resolveSearchText);
-  const skills = filterSlashItems(catalog.skills, query, resolveSearchText);
+  const commands = filterSlashItems(
+    catalog.commands,
+    queryOrFilter,
+    resolveSearchText,
+  );
+  const skills = filterSlashItems(
+    catalog.skills,
+    queryOrFilter,
+    resolveSearchText,
+  );
   return { commands, skills, flat: [...commands, ...skills] };
+}
+
+// ── Empty honesty ────────────────────────────────────────────────────────────
+
+/**
+ * Contextual empty surfaces for the slash / + palette list.
+ * `null` from the resolver means there are visible rows — no empty UI.
+ */
+export type SlashMenuEmptyKind =
+  | "loading"
+  | "empty_catalog"
+  | "no_matches"
+  | "filtered"
+  | "no_query";
+
+export type SlashMenuEmptyPresentation = {
+  kind: SlashMenuEmptyKind;
+  /** Primary title i18n key under slash.*. */
+  titleKey: string;
+  /** Optional hint i18n key. */
+  hintKey: string | null;
+  /** Offer clear-filters CTA (query and/or kind chip). */
+  showClearFilters: boolean;
+};
+
+export type SlashMenuEmptyInput = {
+  loading?: boolean;
+  /** Pre-filter catalog size (commands + skills, before query/kind). */
+  catalogCount: number;
+  /** Visible slash items after filter (not including upload / json-schema). */
+  filteredCount: number;
+  query?: string;
+  kind?: SlashKindFilter;
+};
+
+/**
+ * Resolve empty-state presentation for the slash palette list.
+ * Returns `null` when filtered rows exist (list should render).
+ *
+ * Priority: loading (empty only) → empty catalog → kind-filtered empty →
+ * query no-match → defensive no-query empty.
+ *
+ * Honest: never invents catalog rows; no-match vs empty-catalog vs kind-filter
+ * are distinct so the UI can show the right copy + clear-filters CTA.
+ */
+export function resolveSlashMenuEmptyState(
+  input: SlashMenuEmptyInput,
+): SlashMenuEmptyPresentation | null {
+  const catalogCount = Math.max(0, Number(input.catalogCount) || 0);
+  const filteredCount = Math.max(0, Number(input.filteredCount) || 0);
+  const loading = Boolean(input.loading);
+  const q = (input.query ?? "").trim();
+  const kind = input.kind ?? "all";
+  const filtersActive = hasActiveSlashFilters({ query: q, kind });
+
+  if (filteredCount > 0) return null;
+
+  if (loading && catalogCount === 0) {
+    return {
+      kind: "loading",
+      titleKey: "slash.loading",
+      hintKey: null,
+      showClearFilters: false,
+    };
+  }
+
+  if (catalogCount === 0) {
+    return {
+      kind: "empty_catalog",
+      titleKey: "slash.emptyCatalog",
+      hintKey: "slash.emptyCatalogHint",
+      showClearFilters: false,
+    };
+  }
+
+  // Kind chip (alone or with query) → filtered empty.
+  if (kind !== "all") {
+    return {
+      kind: "filtered",
+      titleKey: "slash.filteredEmpty",
+      hintKey: q
+        ? "slash.filteredEmptyHintQuery"
+        : "slash.filteredEmptyHint",
+      showClearFilters: true,
+    };
+  }
+
+  if (q) {
+    return {
+      kind: "no_matches",
+      titleKey: "slash.noMatches",
+      hintKey: "slash.noMatchesHint",
+      showClearFilters: filtersActive,
+    };
+  }
+
+  // Catalog has items but none visible without query/kind (should not happen).
+  // Surface as no-query empty so UI stays honest rather than blank.
+  return {
+    kind: "no_query",
+    titleKey: "slash.noQueryEmpty",
+    hintKey: "slash.noQueryEmptyHint",
+    showClearFilters: false,
+  };
 }

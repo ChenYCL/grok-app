@@ -1,6 +1,6 @@
 /**
  * GitHub PR hub helpers for a project folder.
- * Pure parsers for `gh pr list|view|checks --json` (no network).
+ * Pure parsers for `gh pr list|view|checks --json` and conversation comments/reviews (no network).
  */
 
 /** Coarse checks rollup used in list rows and detail. */
@@ -77,8 +77,38 @@ export type GitPrChecksResult = {
   prNumber?: number | null;
 };
 
+/** Issue comment or review body on a PR conversation. */
+export type GitPrCommentKind = "comment" | "review";
+
+export type GitPrCommentEntry = {
+  id: string;
+  author: string;
+  authorLogin?: string | null;
+  /** Full body (capped). */
+  body: string;
+  /** Single-line excerpt for list rows. */
+  excerpt: string;
+  url?: string | null;
+  createdAt?: string | null;
+  kind: GitPrCommentKind;
+  /** Review state when kind is review (APPROVED | CHANGES_REQUESTED | COMMENTED | …). */
+  state?: string | null;
+};
+
+export type GitPrCommentsResult = {
+  available: boolean;
+  comments: GitPrCommentEntry[];
+  reason?: string | null;
+  ghFound: boolean;
+  prNumber?: number | null;
+  /** PR conversation URL (`gh pr view` url). */
+  url?: string | null;
+};
+
 const LIST_CAP = 100;
 const BODY_CAP = 20_000;
+const COMMENTS_CAP = 50;
+const EXCERPT_CAP = 200;
 
 function emptySummary(): PrChecksSummary {
   return {
@@ -461,6 +491,191 @@ export function parseGhPrChecksJson(raw: string): GitPrCheckEntry[] {
     if (out.length >= 200) break;
   }
   return out;
+}
+
+/** Collapse body to a single-line excerpt for list rows. */
+export function excerptCommentBody(
+  body: string | null | undefined,
+  max = EXCERPT_CAP,
+): string {
+  const flat = (body ?? "")
+    .replace(/\r\n/g, "\n")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!flat) return "";
+  if (flat.length <= max) return flat;
+  return flat.slice(0, Math.max(1, max - 1)).trimEnd() + "…";
+}
+
+function idFromField(raw: unknown): string | null {
+  if (typeof raw === "string" && raw.trim()) return raw.trim();
+  if (typeof raw === "number" && Number.isFinite(raw)) {
+    return String(Math.trunc(raw));
+  }
+  return null;
+}
+
+/** Parse one issue comment from `gh pr view --json comments`. */
+export function parseGhPrCommentObject(raw: unknown): GitPrCommentEntry | null {
+  if (!raw || typeof raw !== "object") return null;
+  const o = raw as Record<string, unknown>;
+  const bodyRaw = strField(o, ["body", "Body", "bodyText"]) ?? "";
+  const { author, authorLogin } = authorFromField(o.author ?? o.user);
+  // Skip empty minimized shells with no body and no author.
+  if (!bodyRaw.trim() && !author) return null;
+  const id =
+    idFromField(o.id) ??
+    idFromField(o.databaseId) ??
+    idFromField(o.node_id) ??
+    `comment:${author}:${strField(o, ["createdAt", "created_at"]) ?? ""}`;
+  let body = bodyRaw;
+  if (body.length > BODY_CAP) body = body.slice(0, BODY_CAP);
+  const url = strField(o, ["url", "URL", "htmlUrl", "html_url", "permalink"]);
+  const createdAt = strField(o, ["createdAt", "created_at", "publishedAt"]);
+  return {
+    id,
+    author,
+    authorLogin,
+    body,
+    excerpt: excerptCommentBody(body),
+    url,
+    createdAt,
+    kind: "comment",
+    state: null,
+  };
+}
+
+/** Parse one review from `gh pr view --json reviews`. */
+export function parseGhPrReviewObject(raw: unknown): GitPrCommentEntry | null {
+  if (!raw || typeof raw !== "object") return null;
+  const o = raw as Record<string, unknown>;
+  const bodyRaw = strField(o, ["body", "Body", "bodyText"]) ?? "";
+  const state = strField(o, ["state", "State"]);
+  const { author, authorLogin } = authorFromField(o.author ?? o.user);
+  // Pending empty reviews without state are noise.
+  if (!bodyRaw.trim() && !state && !author) return null;
+  // Skip pure PENDING reviews with no body (not yet submitted).
+  if (
+    !bodyRaw.trim() &&
+    state &&
+    state.trim().toUpperCase() === "PENDING"
+  ) {
+    return null;
+  }
+  const id =
+    idFromField(o.id) ??
+    idFromField(o.databaseId) ??
+    idFromField(o.node_id) ??
+    `review:${author}:${strField(o, ["submittedAt", "submitted_at", "createdAt"]) ?? ""}`;
+  let body = bodyRaw;
+  if (body.length > BODY_CAP) body = body.slice(0, BODY_CAP);
+  const url = strField(o, ["url", "URL", "htmlUrl", "html_url", "permalink"]);
+  const createdAt = strField(o, [
+    "submittedAt",
+    "submitted_at",
+    "createdAt",
+    "created_at",
+    "publishedAt",
+  ]);
+  const excerpt =
+    excerptCommentBody(body) ||
+    (state ? state.trim() : "");
+  return {
+    id,
+    author,
+    authorLogin,
+    body,
+    excerpt,
+    url,
+    createdAt,
+    kind: "review",
+    state,
+  };
+}
+
+function timeMs(iso: string | null | undefined): number {
+  if (!iso) return 0;
+  const t = Date.parse(iso);
+  return Number.isFinite(t) ? t : 0;
+}
+
+/**
+ * Merge issue comments + reviews, newest first, capped.
+ * Dedupes by id when both sources share the same node.
+ */
+export function mergePrComments(
+  comments: GitPrCommentEntry[],
+  reviews: GitPrCommentEntry[],
+  cap = COMMENTS_CAP,
+): GitPrCommentEntry[] {
+  const seen = new Set<string>();
+  const merged: GitPrCommentEntry[] = [];
+  for (const c of [...comments, ...reviews]) {
+    if (!c || !c.id) continue;
+    if (seen.has(c.id)) continue;
+    seen.add(c.id);
+    merged.push(c);
+  }
+  merged.sort((a, b) => timeMs(b.createdAt) - timeMs(a.createdAt));
+  return merged.slice(0, Math.max(0, cap));
+}
+
+/**
+ * Parse `gh pr view <n> --json comments,reviews,url,number` stdout.
+ * Also accepts a bare comments array or `{ comments, reviews }`.
+ */
+export function parseGhPrCommentsJson(raw: string): {
+  comments: GitPrCommentEntry[];
+  url: string | null;
+  number: number | null;
+} {
+  const empty = { comments: [] as GitPrCommentEntry[], url: null as string | null, number: null as number | null };
+  const value = parseJsonSlice(raw);
+  if (value == null) return empty;
+
+  if (Array.isArray(value)) {
+    // Bare comments array
+    const comments: GitPrCommentEntry[] = [];
+    for (const row of value) {
+      const c = parseGhPrCommentObject(row);
+      if (c) comments.push(c);
+      if (comments.length >= COMMENTS_CAP) break;
+    }
+    return { comments, url: null, number: null };
+  }
+
+  if (typeof value !== "object") return empty;
+  const o = value as Record<string, unknown>;
+  const url = strField(o, ["url", "URL", "htmlUrl", "html_url"]);
+  const number = numField(o, ["number", "Number"]);
+
+  const commentRows: unknown[] = Array.isArray(o.comments)
+    ? o.comments
+    : Array.isArray((o as { issueComments?: unknown }).issueComments)
+      ? ((o as { issueComments: unknown[] }).issueComments)
+      : [];
+  const reviewRows: unknown[] = Array.isArray(o.reviews)
+    ? o.reviews
+    : Array.isArray(o.latestReviews)
+      ? (o.latestReviews as unknown[])
+      : [];
+
+  const comments: GitPrCommentEntry[] = [];
+  for (const row of commentRows) {
+    const c = parseGhPrCommentObject(row);
+    if (c) comments.push(c);
+  }
+  const reviews: GitPrCommentEntry[] = [];
+  for (const row of reviewRows) {
+    const r = parseGhPrReviewObject(row);
+    if (r) reviews.push(r);
+  }
+
+  return {
+    comments: mergePrComments(comments, reviews, COMMENTS_CAP),
+    url,
+    number,
+  };
 }
 
 /** Soft reason keys the UI can map (host may also return free text). */

@@ -104,15 +104,20 @@ import {
   isRemappableShortcutId,
   loadIgnoreCrossScopeConflicts,
   loadShortcutRemaps,
+  planResetAllShortcutRemaps,
   resetConflictingShortcutRemaps,
   saveIgnoreCrossScopeConflicts,
   setShortcutRecordingActive,
   setShortcutRemap,
+  summarizeChordConflicts,
   type ChordConflictOpts,
   type ShortcutRemapMap,
 } from "@/lib/shortcutRemap";
 import type { Theme, ThemePreference } from "@/lib/theme";
-import type { ThemeScheduleConfig } from "@/lib/themeSchedule";
+import {
+  deriveThemeScheduleHonesty,
+  type ThemeScheduleConfig,
+} from "@/lib/themeSchedule";
 import {
   DEFAULT_WALLPAPER_FOCUS,
   THEME_SKINS,
@@ -213,6 +218,19 @@ import {
 } from "@/lib/composerSpellcheck";
 import type { AccountStatus, DetectedEditor } from "@/lib/api";
 import * as api from "@/lib/api";
+import {
+  classifyProbeResult,
+  isValidProxyUrl,
+  manualProxyUrlSoftFail,
+  normalizeProxyMode,
+  probeOutcomeMessageKey,
+  probeTargetClassMessageKey,
+  probeToneClass,
+  proxyApplyHonestyScopes,
+  proxyApplyMessageKey,
+  proxySoftFailMessageKey,
+  type ClassifiedProbeResult,
+} from "@/lib/networkProxy";
 import { AccountPanel } from "@/components/AccountPanel";
 import { ProvidersPanel } from "@/components/ProvidersPanel";
 import { ExtensionsPanel } from "@/components/ExtensionsPanel";
@@ -227,7 +245,9 @@ import { GlassModal } from "@/components/GlassModal";
 import { MemoryBrowserPanel } from "@/components/MemoryBrowserPanel";
 import { MemoryEmbedPanel } from "@/components/MemoryEmbedPanel";
 import { CodebaseIndexingPanel } from "@/components/CodebaseIndexingPanel";
+import { CodebaseSearchPanel } from "@/components/CodebaseSearchPanel";
 import { AgentConfigTomlPanel } from "@/components/AgentConfigTomlPanel";
+import { ProcessBudgetPanel } from "@/components/ProcessBudgetPanel";
 import { RemoteImLayout } from "@/components/RemoteImLayout";
 import { MirrorConnectPanel } from "@/components/MirrorConnectPanel";
 import { LeaderServePanel } from "@/components/LeaderServePanel";
@@ -408,6 +428,15 @@ export interface SettingsPageProps {
   /** Sidebar session-row relative updated time (localStorage). */
   sidebarShowRelativeTime?: boolean;
   onSidebarShowRelativeTime?: (v: boolean) => void;
+  /**
+   * Count of sessions muted for desktop notifications (localStorage).
+   * Unread dots stay independent of mute.
+   */
+  mutedSessionCount?: number;
+  onClearAllSessionMutes?: () => void;
+  /** Count of sessions with unread markers (localStorage). */
+  unreadSessionCount?: number;
+  onClearAllSessionUnread?: () => void;
   /** Zen mode — hide left + right panes (localStorage `grok.zenMode`). */
   zenMode?: boolean;
   onZenMode?: (v: boolean) => void;
@@ -468,12 +497,23 @@ export interface SettingsPageProps {
   /** Max warm/live agent processes (I02). */
   maxConcurrentAgents?: number;
   onMaxConcurrentAgents?: (v: number) => void;
+  /**
+   * Last `session://process_limit` event (ids/message only) for process-budget
+   * honesty callout near the pool settings. Optional.
+   */
+  lastProcessLimit?: import("@/lib/processBudget").ProcessLimitEvent | null;
   /** Idle recycle minutes (I03). */
   agentIdleMinutes?: number;
   onAgentIdleMinutes?: (v: number) => void;
   /** Stream stall silence timeout seconds (I06). */
   streamStallSeconds?: number;
   onStreamStallSeconds?: (v: number) => void;
+  /**
+   * Tool audit ledger retention days: 7 | 30 | 90 | 0 (unlimited).
+   * Host prunes on write/rotate and when this changes.
+   */
+  auditLedgerRetentionDays?: number;
+  onAuditLedgerRetentionDays?: (v: number) => void;
   /**
    * Headless partial stream events (CLI 0.2.117+): when on, Remote IM /
    * diagnostics using streaming-messages-json also pass
@@ -612,7 +652,7 @@ export interface SettingsPageProps {
   onAutoWakeEnabled?: (v: boolean) => void;
   /**
    * Grok Build workflows (`workflows_enabled`). Independent agent-home write;
-   * no in-app runner — CLI / Rhai only.
+   * list + soft-fail headless smoke/run via workflow tool (no visual editor).
    */
   workflowsEnabled?: boolean;
   onWorkflowsEnabled?: (v: boolean) => void;
@@ -687,6 +727,21 @@ export interface SettingsPageProps {
   onArchiveOlderThan?: (days: number) => void;
   /** Active project path for Skills/MCP inspect cwd. */
   projectPath?: string | null;
+  /** Open a project file in Resources from codebase search results. */
+  onOpenProjectFileInResources?: (opts: {
+    path: string;
+    relativePath: string;
+    line?: number | null;
+  }) => void;
+  /**
+   * Scroll + brief highlight target when opening Settings from outside
+   * (e.g. ship → PR hub deep link). Cleared after apply via onFocusAnchorConsumed.
+   */
+  focusAnchorId?: string | null;
+  /** Optional PR number to highlight in Git PR hub (`?pr=` / ship success). */
+  prHubHighlightPr?: number | null;
+  /** Called once after focusAnchorId is applied (parent can clear). */
+  onFocusAnchorConsumed?: () => void;
   /** After skill enable toggle — refresh slash palette in App. */
   onSkillsPrefsChanged?: () => void;
   /** Open the same shortcuts help modal as ⌘/ / Ctrl+/. */
@@ -734,22 +789,30 @@ function formatSessionWhen(iso: string, locale: string): string {
 /** Probe Grok endpoints through the effective proxy (path only, not auth). */
 function NetworkProbeField({ t }: { t: (k: string, vars?: Vars) => string }) {
   const [testing, setTesting] = useState(false);
-  const [result, setResult] = useState<api.NetworkProbeResult | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [classified, setClassified] = useState<ClassifiedProbeResult | null>(
+    null,
+  );
 
   const runTest = async () => {
-    if (!api.isTauri()) return;
+    if (!api.isTauri()) {
+      setClassified(classifyProbeResult(null, { available: false }));
+      return;
+    }
     setTesting(true);
-    setResult(null);
-    setError(null);
+    setClassified(null);
     try {
-      setResult(await api.networkProbe());
+      const raw = await api.networkProbe();
+      setClassified(classifyProbeResult(raw));
     } catch (e) {
-      setError(String(e));
+      setClassified(
+        classifyProbeResult(null, { invokeError: String(e) }),
+      );
     } finally {
       setTesting(false);
     }
   };
+
+  const summaryTone = classified ? probeToneClass(classified.tone) : "";
 
   return (
     <div className="settings-row settings-row--stack">
@@ -757,6 +820,7 @@ function NetworkProbeField({ t }: { t: (k: string, vars?: Vars) => string }) {
         <div className="settings-row__label">{t("settings.netProbe")}</div>
         <div className="settings-row__desc">{t("settings.netProbeDesc")}</div>
       </div>
+      <div className="settings-row__hint">{t("settings.netProbeHonesty")}</div>
       <div className="settings-netprobe">
         <div className="settings-netprobe__actions">
           <button
@@ -767,15 +831,34 @@ function NetworkProbeField({ t }: { t: (k: string, vars?: Vars) => string }) {
           >
             {testing ? t("settings.netProbeTesting") : t("settings.netProbeRun")}
           </button>
+          {classified ? (
+            <div
+              className={"settings-acp-chip settings-netprobe__chip " + summaryTone}
+              role="status"
+            >
+              <span className="settings-acp-chip__dot" aria-hidden />
+              <span className="settings-acp-chip__label">
+                {t(probeOutcomeMessageKey(classified.outcome) as MessageKey)}
+              </span>
+              {classified.targets.length > 0 ? (
+                <span className="settings-acp-chip__meta">
+                  {t("settings.netProbe.summaryCounts", {
+                    ok: classified.okCount,
+                    fail: classified.failCount,
+                  })}
+                </span>
+              ) : null}
+            </div>
+          ) : null}
         </div>
-        {error ? (
+        {classified?.invokeError ? (
           <div className="settings-row__hint is-danger" role="alert">
-            {error}
+            {classified.invokeError}
           </div>
         ) : null}
-        {result ? (
+        {classified && classified.targets.length > 0 ? (
           <ul className="settings-netprobe__list" role="list">
-            {result.targets.map((tg) => (
+            {classified.targets.map((tg) => (
               <li
                 key={tg.key}
                 className={
@@ -787,10 +870,21 @@ function NetworkProbeField({ t }: { t: (k: string, vars?: Vars) => string }) {
                 </span>
                 <span className="settings-netprobe__key">{tg.key}</span>
                 <span className="settings-netprobe__url">{tg.url}</span>
-                <span className="settings-netprobe__meta">
-                  {tg.ok
-                    ? `${tg.status ?? ""} · ${tg.millis}ms`
-                    : tg.error || t("settings.netProbeFailed")}
+                <span
+                  className={
+                    "settings-acp-chip settings-netprobe__target-chip " +
+                    (tg.ok ? "is-ok" : "is-fail")
+                  }
+                >
+                  <span className="settings-acp-chip__dot" aria-hidden />
+                  <span className="settings-acp-chip__label">
+                    {t(probeTargetClassMessageKey(tg.klass) as MessageKey)}
+                  </span>
+                  <span className="settings-acp-chip__meta">
+                    {tg.ok
+                      ? `${tg.status ?? ""} · ${tg.millis}ms`
+                      : tg.error || t("settings.netProbeFailed")}
+                  </span>
                 </span>
               </li>
             ))}
@@ -1155,6 +1249,10 @@ export function SettingsPage({
   onMessageTimeFormat,
   sidebarShowRelativeTime = true,
   onSidebarShowRelativeTime,
+  mutedSessionCount = 0,
+  onClearAllSessionMutes,
+  unreadSessionCount = 0,
+  onClearAllSessionUnread,
   zenMode = false,
   onZenMode,
   skin = "default",
@@ -1195,10 +1293,13 @@ export function SettingsPage({
   onProxyNoProxy,
   maxConcurrentAgents = 8,
   onMaxConcurrentAgents,
+  lastProcessLimit = null,
   agentIdleMinutes = 30,
   onAgentIdleMinutes,
   streamStallSeconds = 180,
   onStreamStallSeconds,
+  auditLedgerRetentionDays = 0,
+  onAuditLedgerRetentionDays,
   includePartialMessages = false,
   onIncludePartialMessages,
   storeApiKeysInKeychain = false,
@@ -1315,6 +1416,10 @@ export function SettingsPage({
   onDeleteArchivedSessions,
   onArchiveOlderThan,
   projectPath = null,
+  onOpenProjectFileInResources,
+  focusAnchorId = null,
+  prHubHighlightPr = null,
+  onFocusAnchorConsumed,
   onSkillsPrefsChanged,
   onOpenShortcutsHelp,
   onOpenProductTutorial,
@@ -1350,6 +1455,15 @@ export function SettingsPage({
   /** Pending scroll target after search jump / deep link. */
   const pendingAnchorRef = useRef<string | null>(null);
   const [highlightAnchor, setHighlightAnchor] = useState<string | null>(null);
+
+  // External focus (ship → PR hub): queue scroll when prop arrives.
+  // Same-tab re-entry still works because the scroll effect also depends on
+  // focusAnchorId (not only section/tab).
+  useEffect(() => {
+    const a = (focusAnchorId ?? "").trim();
+    if (!a) return;
+    pendingAnchorRef.current = a;
+  }, [focusAnchorId]);
   /**
    * Phone drill-down: "index" = section list only; "detail" = one section full-width.
    * Always start on the index so opening 設定 never lands on a squeezed two-column pane.
@@ -1587,6 +1701,25 @@ export function SettingsPage({
     lightFrom: "07:00",
     darkFrom: "19:00",
   };
+  /** Clock honesty for schedule soft-fail / next-switch preview (local wall clock). */
+  const [themeScheduleClock, setThemeScheduleClock] = useState(
+    () => new Date(),
+  );
+  useEffect(() => {
+    if (!themeSchedule.enabled) return;
+    setThemeScheduleClock(new Date());
+    const id = window.setInterval(() => setThemeScheduleClock(new Date()), 30_000);
+    return () => window.clearInterval(id);
+  }, [themeSchedule.enabled, themeSchedule.lightFrom, themeSchedule.darkFrom]);
+  const themeScheduleHonesty = useMemo(
+    () =>
+      deriveThemeScheduleHonesty({
+        preference: themePreference,
+        schedule: themeSchedule,
+        now: themeScheduleClock,
+      }),
+    [themePreference, themeSchedule, themeScheduleClock],
+  );
 
   const workspaceCwd = (projectPath || "").trim() || null;
   const showSettingsToast = useCallback((msg: string, ms = 3500) => {
@@ -1778,20 +1911,25 @@ export function SettingsPage({
     [navigateTo, section],
   );
 
-  // Scroll + brief highlight after tab/section paint.
+  // Scroll + brief highlight after tab/section paint or external focus.
   useEffect(() => {
     const anchor = pendingAnchorRef.current;
     if (!anchor) return;
-    pendingAnchorRef.current = null;
     const timer = window.setTimeout(() => {
       const el = document.getElementById(anchor);
-      if (!el) return;
+      if (!el) {
+        // Content not painted yet — keep pending for the next section/tab paint.
+        return;
+      }
+      pendingAnchorRef.current = null;
       el.scrollIntoView({ block: "center", behavior: "smooth" });
       setHighlightAnchor(anchor);
       window.setTimeout(() => setHighlightAnchor(null), 1600);
+      onFocusAnchorConsumed?.();
     }, 60);
     return () => window.clearTimeout(timer);
-  }, [section, activeTab]);
+    // focusAnchorId: re-run when ship deep-link re-focuses the same tab.
+  }, [section, activeTab, focusAnchorId, onFocusAnchorConsumed]);
 
   const backToPhoneIndex = useCallback(() => {
     if (!phoneLayout) return;
@@ -3246,6 +3384,18 @@ export function SettingsPage({
                   onError={(msg) => showSettingsToast(msg, 3200)}
                 />
               </div>
+              <div
+                className={
+                  "settings-codebase-search-wrap" +
+                  rowHighlight("settings-anchor-codebaseSearch")
+                }
+              >
+                <CodebaseSearchPanel
+                  locale={resolveLocale(locale)}
+                  projectPath={workspaceCwd}
+                  onOpenInResources={onOpenProjectFileInResources}
+                />
+              </div>
               {onSubagentsEnabled ? (
                 <div
                   className={"settings-row" + rowHighlight("settings-anchor-subagents")}
@@ -4503,6 +4653,34 @@ export function SettingsPage({
                               />
                             </label>
                           </div>
+                          {themeScheduleHonesty.statusKey ? (
+                            <div
+                              className={
+                                "settings-tray-notify__status" +
+                                (themeScheduleHonesty.severity === "warn"
+                                  ? " is-warn"
+                                  : themeScheduleHonesty.severity === "info"
+                                    ? " is-info"
+                                    : "")
+                              }
+                              role="status"
+                            >
+                              {themeScheduleHonesty.next &&
+                              (themeScheduleHonesty.statusKey ===
+                                "settings.themeSchedule.nextSwitch" ||
+                                themeScheduleHonesty.statusKey ===
+                                  "settings.themeSchedule.nextSwitchTomorrow")
+                                ? t(themeScheduleHonesty.statusKey, {
+                                    time: themeScheduleHonesty.next.atHHmm,
+                                    theme:
+                                      themeScheduleHonesty.next.toTheme ===
+                                      "light"
+                                        ? t("settings.themeLight")
+                                        : t("settings.themeDark"),
+                                  })
+                                : t(themeScheduleHonesty.statusKey)}
+                            </div>
+                          ) : null}
                         </div>
                       ) : null}
                     </>
@@ -5557,6 +5735,72 @@ export function SettingsPage({
                     </div>
                   </div>
                 ) : null}
+                {onClearAllSessionMutes ? (
+                  <div
+                    className={
+                      "settings-card" +
+                      rowHighlight("settings-anchor-sessionMuteSummary")
+                    }
+                    id="settings-anchor-sessionMuteSummary"
+                  >
+                    <div className="settings-row">
+                      <div className="settings-row__text">
+                        <SettingsLabelWithTip
+                          label={t("settings.sessionMuteSummary")}
+                          tip={t("settings.sessionMuteSummaryDesc")}
+                        />
+                        <div className="settings-row__desc" style={{ marginTop: 6 }}>
+                          {mutedSessionCount > 0
+                            ? t("settings.sessionMuteCount", {
+                                n: String(mutedSessionCount),
+                              })
+                            : t("settings.sessionMuteCountZero")}
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        className="btn btn--ghost btn--sm"
+                        disabled={mutedSessionCount <= 0}
+                        onClick={() => onClearAllSessionMutes()}
+                      >
+                        {t("settings.sessionMuteClear")}
+                      </button>
+                    </div>
+                  </div>
+                ) : null}
+                {onClearAllSessionUnread ? (
+                  <div
+                    className={
+                      "settings-card" +
+                      rowHighlight("settings-anchor-sessionUnreadSummary")
+                    }
+                    id="settings-anchor-sessionUnreadSummary"
+                  >
+                    <div className="settings-row">
+                      <div className="settings-row__text">
+                        <SettingsLabelWithTip
+                          label={t("settings.sessionUnreadSummary")}
+                          tip={t("settings.sessionUnreadSummaryDesc")}
+                        />
+                        <div className="settings-row__desc" style={{ marginTop: 6 }}>
+                          {unreadSessionCount > 0
+                            ? t("settings.sessionUnreadCount", {
+                                n: String(unreadSessionCount),
+                              })
+                            : t("settings.sessionUnreadCountZero")}
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        className="btn btn--ghost btn--sm"
+                        disabled={unreadSessionCount <= 0}
+                        onClick={() => onClearAllSessionUnread()}
+                      >
+                        {t("settings.sessionUnreadClear")}
+                      </button>
+                    </div>
+                  </div>
+                ) : null}
               </>
             )}
           </>
@@ -6284,8 +6528,8 @@ export function SettingsPage({
                   <Select
                     className="settings-select"
                     aria-label={t("settings.proxyMode")}
-                    value={proxyMode}
-                    onChange={(v) => onProxyMode?.(v)}
+                    value={normalizeProxyMode(proxyMode)}
+                    onChange={(v) => onProxyMode?.(normalizeProxyMode(v))}
                     options={[
                       {
                         value: "system",
@@ -6301,11 +6545,25 @@ export function SettingsPage({
                       },
                     ]}
                   />
-                  <div className="settings-row__hint">
-                    {t("settings.proxyRestartHint")}
-                  </div>
+                  <ul className="settings-proxy-apply" role="list">
+                    {proxyApplyHonestyScopes(proxyMode, proxyUrl).map(
+                      (scope) => (
+                        <li
+                          key={scope}
+                          className={
+                            "settings-row__hint" +
+                            (scope === "manual_invalid_inherit"
+                              ? " is-danger"
+                              : "")
+                          }
+                        >
+                          {t(proxyApplyMessageKey(scope) as MessageKey)}
+                        </li>
+                      ),
+                    )}
+                  </ul>
                 </div>
-                {proxyMode === "manual" && (
+                {normalizeProxyMode(proxyMode) === "manual" && (
                   <>
                     <div className="settings-row settings-row--stack">
                       <div className="settings-row__text">
@@ -6316,25 +6574,56 @@ export function SettingsPage({
                           {t("settings.proxyUrlDesc")}
                         </div>
                       </div>
-                      <input
-                        className="settings-input"
-                        value={proxyUrl}
-                        placeholder="http://127.0.0.1:7890"
-                        autoComplete="off"
-                        spellCheck={false}
-                        onChange={(e) => onProxyUrl?.(e.target.value)}
-                      />
-                      {proxyUrl.trim() !== "" &&
-                        !/^(https?|socks5h?):\/\/[^\s]+$/i.test(
-                          proxyUrl.trim(),
-                        ) && (
-                          <div
-                            className="settings-row__hint is-danger"
-                            role="alert"
-                          >
-                            {t("settings.proxyUrlInvalid")}
-                          </div>
-                        )}
+                      {(() => {
+                        const urlSoft = manualProxyUrlSoftFail(
+                          proxyMode,
+                          proxyUrl,
+                        );
+                        const softKey = proxySoftFailMessageKey(
+                          proxyMode,
+                          proxyUrl,
+                        );
+                        const showInvalid =
+                          proxyUrl.trim() !== "" && !isValidProxyUrl(proxyUrl);
+                        const showEmptyManual =
+                          proxyUrl.trim() === "" && urlSoft === "empty";
+                        return (
+                          <>
+                            <input
+                              className={
+                                "settings-input" +
+                                (showInvalid || showEmptyManual
+                                  ? " is-invalid"
+                                  : "")
+                              }
+                              value={proxyUrl}
+                              placeholder="http://127.0.0.1:7890"
+                              autoComplete="off"
+                              spellCheck={false}
+                              aria-invalid={
+                                showInvalid || showEmptyManual
+                                  ? true
+                                  : undefined
+                              }
+                              aria-describedby={
+                                softKey
+                                  ? "settings-proxy-url-softfail"
+                                  : undefined
+                              }
+                              onChange={(e) => onProxyUrl?.(e.target.value)}
+                            />
+                            {softKey ? (
+                              <div
+                                id="settings-proxy-url-softfail"
+                                className="settings-row__hint is-danger"
+                                role="alert"
+                              >
+                                {t(softKey as MessageKey)}
+                              </div>
+                            ) : null}
+                          </>
+                        );
+                      })()}
                     </div>
                     <div className="settings-row settings-row--stack">
                       <div className="settings-row__text">
@@ -6390,6 +6679,21 @@ export function SettingsPage({
                         Math.min(32, Math.max(1, Math.round(n))),
                       );
                     }}
+                  />
+                </div>
+                <div
+                  className={
+                    "settings-row settings-row--stack" +
+                    rowHighlight("settings-anchor-processBudget")
+                  }
+                  id="settings-anchor-processBudget"
+                >
+                  <ProcessBudgetPanel
+                    locale={resolveLocale(locale)}
+                    active={activeTab === "pool"}
+                    variant="settings"
+                    lastProcessLimit={lastProcessLimit}
+                    id="settings-process-budget"
                   />
                 </div>
                 <div
@@ -6614,6 +6918,71 @@ export function SettingsPage({
                     </button>
                   </div>
                 </div>
+                {onAuditLedgerRetentionDays ? (
+                  <div
+                    className={
+                      "settings-card" +
+                      rowHighlight("settings-anchor-auditRetention")
+                    }
+                    id="settings-anchor-auditRetention"
+                  >
+                    <div className="settings-row settings-row--stack">
+                      <div className="settings-row__text">
+                        <div className="settings-row__label">
+                          {t("reliability.audit.retention")}
+                        </div>
+                        <div className="settings-row__desc">
+                          {t("reliability.audit.retentionDesc")}
+                        </div>
+                      </div>
+                      <div
+                        className="settings-seg"
+                        role="radiogroup"
+                        aria-label={t("reliability.audit.retentionAria")}
+                        data-testid="settings-audit-retention"
+                      >
+                        {(
+                          [
+                            { days: 7, key: "reliability.audit.retention.7" as const },
+                            { days: 30, key: "reliability.audit.retention.30" as const },
+                            { days: 90, key: "reliability.audit.retention.90" as const },
+                            {
+                              days: 0,
+                              key: "reliability.audit.retention.unlimited" as const,
+                            },
+                          ] as const
+                        ).map((opt) => (
+                          <button
+                            key={opt.days}
+                            type="button"
+                            role="radio"
+                            aria-checked={
+                              (auditLedgerRetentionDays === 7 ||
+                              auditLedgerRetentionDays === 30 ||
+                              auditLedgerRetentionDays === 90
+                                ? auditLedgerRetentionDays
+                                : 0) === opt.days
+                            }
+                            className={
+                              "settings-seg__btn" +
+                              ((auditLedgerRetentionDays === 7 ||
+                              auditLedgerRetentionDays === 30 ||
+                              auditLedgerRetentionDays === 90
+                                ? auditLedgerRetentionDays
+                                : 0) === opt.days
+                                ? " is-on"
+                                : "")
+                            }
+                            data-testid={`settings-audit-retention-${opt.days}`}
+                            onClick={() => onAuditLedgerRetentionDays(opt.days)}
+                          >
+                            {t(opt.key)}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                ) : null}
                 <div
                   className={
                     "settings-card" +
@@ -6768,6 +7137,7 @@ export function SettingsPage({
                       locale={resolveLocale(locale)}
                       projectPath={projectPath}
                       hideHeader
+                      highlightPrNumber={prHubHighlightPr}
                     />
                   </div>
                 </div>
@@ -6976,6 +7346,8 @@ function ShortcutsSettingsPanel({
   );
   const [recordingId, setRecordingId] = useState<ShortcutId | null>(null);
   const [recordError, setRecordError] = useState<string | null>(null);
+  /** GlassModal confirm for Reset all remaps (never window.confirm). */
+  const [resetAllOpen, setResetAllOpen] = useState(false);
 
   const conflictOpts = useMemo<ChordConflictOpts>(
     () => ({
@@ -7094,6 +7466,10 @@ function ShortcutsSettingsPanel({
     () => findChordConflicts(remaps, undefined, conflictOpts),
     [remaps, conflictOpts],
   );
+  const conflictSummary = useMemo(
+    () => summarizeChordConflicts(conflictGroups, remaps),
+    [conflictGroups, remaps],
+  );
   const conflictIdSet = useMemo(() => {
     const s = new Set<ShortcutId>();
     for (const g of conflictGroups) {
@@ -7101,6 +7477,11 @@ function ShortcutsSettingsPanel({
     }
     return s;
   }, [conflictGroups]);
+
+  const resetAllPlan = useMemo(
+    () => planResetAllShortcutRemaps(remaps),
+    [remaps],
+  );
 
   const shortcutLabel = (id: ShortcutId): string => {
     const row = SHORTCUTS.find((s) => s.id === id);
@@ -7115,7 +7496,7 @@ function ShortcutsSettingsPanel({
   const groupLabel = (g: ShortcutGroup) =>
     t(`settings.shortcuts.group.${g}` as MessageKey);
 
-  const canResetAll = hasAnyShortcutRemaps(remaps);
+  const canResetAll = hasAnyShortcutRemaps(remaps) && resetAllPlan.hasAny;
 
   const startRecord = (id: ShortcutId) => {
     if (!isRemappableShortcutId(id)) return;
@@ -7130,10 +7511,11 @@ function ShortcutsSettingsPanel({
     setRecordError(null);
   };
 
-  const resetAll = () => {
+  const confirmResetAll = () => {
     setRemaps(clearAllShortcutRemaps());
     setRecordingId(null);
     setRecordError(null);
+    setResetAllOpen(false);
   };
 
   const resetConflicting = () => {
@@ -7165,10 +7547,17 @@ function ShortcutsSettingsPanel({
           <button
             type="button"
             className="btn btn--ghost"
-            disabled={!canResetAll}
-            onClick={() => resetAll()}
+            disabled={!canResetAll || !!recordingId}
+            onClick={() => setResetAllOpen(true)}
           >
             {t("settings.shortcuts.resetAll")}
+            {canResetAll ? (
+              <span className="settings-shortcuts-reset-count">
+                {t("settings.shortcuts.customCount", {
+                  n: resetAllPlan.count,
+                })}
+              </span>
+            ) : null}
           </button>
         </div>
       </div>
@@ -7212,15 +7601,26 @@ function ShortcutsSettingsPanel({
             <div className="settings-shortcuts-conflicts__text">
               <div className="settings-shortcuts-conflicts__title">
                 {t("settings.shortcuts.conflictsTitle")}
+                <span className="settings-shortcuts-conflicts__badge">
+                  {t("settings.shortcuts.conflictsSummary", {
+                    groups: conflictSummary.groupCount,
+                    actions: conflictSummary.idCount,
+                  })}
+                </span>
               </div>
               <div className="settings-shortcuts-conflicts__desc">
                 {t("settings.shortcuts.conflictsDesc")}
+                {conflictSummary.remappedCount > 0
+                  ? ` ${t("settings.shortcuts.conflictsRemappedHint", {
+                      n: conflictSummary.remappedCount,
+                    })}`
+                  : null}
               </div>
             </div>
             <button
               type="button"
               className="btn btn--ghost btn--sm"
-              disabled={!!recordingId}
+              disabled={!!recordingId || conflictSummary.remappedCount === 0}
               onClick={() => resetConflicting()}
             >
               {t("settings.shortcuts.conflictsReset")}
@@ -7232,7 +7632,7 @@ function ShortcutsSettingsPanel({
                 key={`${group.chord}:${group.ids.join(",")}`}
                 className="settings-shortcuts-conflicts__item"
               >
-                <kbd className="settings-shortcuts-kbd">
+                <kbd className="settings-shortcuts-kbd is-conflict">
                   {formatChordDisplay(
                     group.chord,
                     platform === "mac" ? "mac" : "win",
@@ -7240,6 +7640,11 @@ function ShortcutsSettingsPanel({
                 </kbd>
                 <span className="settings-shortcuts-conflicts__actions">
                   {group.ids.map((id) => shortcutLabel(id)).join(" · ")}
+                </span>
+                <span className="settings-shortcuts-conflicts__meta">
+                  {t("settings.shortcuts.conflictsGroupMeta", {
+                    n: group.ids.length,
+                  })}
                 </span>
               </li>
             ))}
@@ -7407,6 +7812,37 @@ function ShortcutsSettingsPanel({
         ))
       )}
       <p className="settings-shortcuts-note">{t("settings.shortcuts.note")}</p>
+
+      <GlassModal
+        open={resetAllOpen}
+        onClose={() => setResetAllOpen(false)}
+        title={t("settings.shortcuts.resetAllTitle")}
+        size="sm"
+        closeLabel={t("common.close")}
+        footer={
+          <>
+            <button
+              type="button"
+              className="btn btn--ghost"
+              onClick={() => setResetAllOpen(false)}
+            >
+              {t("common.cancel")}
+            </button>
+            <button
+              type="button"
+              className="btn btn--danger"
+              disabled={!resetAllPlan.hasAny}
+              onClick={() => confirmResetAll()}
+            >
+              {t("settings.shortcuts.resetAllConfirm")}
+            </button>
+          </>
+        }
+      >
+        <p className="settings-row__desc" style={{ margin: 0 }}>
+          {t("settings.shortcuts.resetAllMsg", { n: resetAllPlan.count })}
+        </p>
+      </GlassModal>
     </div>
   );
 }

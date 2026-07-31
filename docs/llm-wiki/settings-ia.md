@@ -37,6 +37,7 @@ Agent / 贡献者维护设置 UI 时**必读**。目标：层次清晰、可搜�
 #/settings/general                  → general/composer
 #/settings/extensions/mcp           → 扩展 · MCP
 #/settings/runtime/tools            → CLI · 诊断
+#/settings/runtime/tools?pr=42      → 诊断 · PR hub（可选高亮 PR #42；ship 成功「在 PR 中心打开」）
 #/settings/runtime/privacy          → CLI · 隐私中心
 #/settings/account/providers        → 自定义提供商
 #/settings/remote_im                → 远程控制 · IM 通信

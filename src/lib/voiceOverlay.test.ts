@@ -8,13 +8,22 @@ import {
   initialToolLoopState,
   isConversationalRole,
   isFatalLiveVoiceError,
+  isPermissionDenyDecision,
+  isPermissionForDelegatedSession,
+  isPermissionPending,
   isSoftMicFailure,
   isToolLoopBusy,
   liveVoiceErrorMessageKey,
   mergeTranscriptLine,
   nextAwaitingResponse,
+  normalizeToolLoopStatus,
   parseToolLoopEvent,
+  parseVoicePermissionPrompt,
+  permissionPendingToolLoopState,
   reduceToolLoopState,
+  shouldCancelDelegatedAgentsOnVoiceStop,
+  softFailFromPermissionBlocked,
+  softFailFromToolCancelled,
   softFailReasonFromToolResult,
   toolEventName,
   toolLoopStatusMessageKey,
@@ -173,12 +182,24 @@ describe("classifyLiveVoiceError / soft mic", () => {
   });
 });
 
-describe("voice → Build tool loop", () => {
-  it("parses running / ok / soft_fail / error events", () => {
+describe("voice → Build tool loop (VOX-BUILD-FULL)", () => {
+  it("normalizes status aliases to tool_running / completed", () => {
+    expect(normalizeToolLoopStatus("running")).toBe("tool_running");
+    expect(normalizeToolLoopStatus("tool_running")).toBe("tool_running");
+    expect(normalizeToolLoopStatus("ok")).toBe("completed");
+    expect(normalizeToolLoopStatus("completed")).toBe("completed");
+    expect(normalizeToolLoopStatus("permission_pending")).toBe(
+      "permission_pending",
+    );
+    expect(normalizeToolLoopStatus("cancelled")).toBe("soft_fail");
+    expect(normalizeToolLoopStatus("nope")).toBeNull();
+  });
+
+  it("parses tool_running / completed / soft_fail / error events", () => {
     expect(
       parseToolLoopEvent({ name: "create_agent_session", status: "running" }),
-    ).toEqual({
-      status: "running",
+    ).toMatchObject({
+      status: "tool_running",
       name: "create_agent_session",
       reason: null,
       sessionId: null,
@@ -189,8 +210,8 @@ describe("voice → Build tool loop", () => {
         status: "ok",
         result: { session_id: "abc", state: "streaming" },
       }),
-    ).toEqual({
-      status: "ok",
+    ).toMatchObject({
+      status: "completed",
       name: "prompt_agent",
       reason: null,
       sessionId: "abc",
@@ -211,6 +232,13 @@ describe("voice → Build tool loop", () => {
         errorClass: "tool_failed",
       })?.reason,
     ).toBe("tool_failed");
+    expect(
+      parseToolLoopEvent({
+        name: "prompt_agent",
+        status: "cancelled",
+        reason: "cancelled",
+      }),
+    ).toMatchObject({ status: "soft_fail", reason: "cancelled" });
   });
 
   it("never invents a tool name", () => {
@@ -218,13 +246,13 @@ describe("voice → Build tool loop", () => {
     expect(parseToolLoopEvent(null)).toBeNull();
   });
 
-  it("treats legacy finish-with-result as ok (or soft_fail)", () => {
+  it("treats legacy finish-with-result as completed (or soft_fail)", () => {
     expect(
       parseToolLoopEvent({
         name: "list_sessions",
         result: { sessions: [] },
       })?.status,
-    ).toBe("ok");
+    ).toBe("completed");
     expect(
       parseToolLoopEvent({
         name: "create_agent_session",
@@ -253,6 +281,82 @@ describe("voice → Build tool loop", () => {
     expect(isToolLoopBusy(loop)).toBe(false);
     expect(toolLoopStatusMessageKey(loop)).toBe("voice.toolRan");
     expect(toolLoopStatusMessageKey(initialToolLoopState())).toBeNull();
+  });
+
+  it("tracks permission_pending status honestly", () => {
+    const prompt = parseVoicePermissionPrompt({
+      rpcId: 42,
+      sessionId: "sess-a",
+      toolName: "bash",
+      title: "Run npm test",
+      preview: "npm test",
+      scopeKey: "bash",
+      options: [],
+    });
+    expect(prompt).not.toBeNull();
+    const pending = permissionPendingToolLoopState(prompt!);
+    expect(pending.status).toBe("permission_pending");
+    expect(isPermissionPending(pending)).toBe(true);
+    expect(isToolLoopBusy(pending)).toBe(true);
+    expect(toolLoopStatusMessageKey(pending)).toBe("voice.permissionPending");
+    expect(pending.sessionId).toBe("sess-a");
+    expect(pending.permissionTitle).toBe("Run npm test");
+  });
+
+  it("soft-fails permission denied and tool cancelled", () => {
+    expect(
+      softFailFromPermissionBlocked({
+        toolName: "bash",
+        sessionId: "s1",
+      }),
+    ).toMatchObject({
+      status: "soft_fail",
+      reason: "permission_denied",
+      name: "bash",
+    });
+    expect(softFailFromToolCancelled({ toolName: "prompt_agent" })).toMatchObject({
+      status: "soft_fail",
+      reason: "cancelled",
+    });
+    expect(isPermissionDenyDecision("deny")).toBe(true);
+    expect(isPermissionDenyDecision("allow_once")).toBe(false);
+    expect(isPermissionDenyDecision("reject_once")).toBe(true);
+  });
+
+  it("only matches real delegated session ids for permissions", () => {
+    expect(isPermissionForDelegatedSession("a", ["a", "b"])).toBe(true);
+    expect(isPermissionForDelegatedSession("c", ["a", "b"])).toBe(false);
+    expect(isPermissionForDelegatedSession("", ["a"])).toBe(false);
+    expect(isPermissionForDelegatedSession("a", [])).toBe(false);
+    expect(isPermissionForDelegatedSession(null, ["a"])).toBe(false);
+  });
+
+  it("never invents a permission prompt without rpc + session", () => {
+    expect(parseVoicePermissionPrompt({ rpcId: 1 })).toBeNull();
+    expect(parseVoicePermissionPrompt({ sessionId: "x" })).toBeNull();
+    expect(parseVoicePermissionPrompt(null)).toBeNull();
+  });
+
+  it("cancels delegated agents only when keepAgentsOnEnd is false", () => {
+    expect(shouldCancelDelegatedAgentsOnVoiceStop(true)).toBe(false);
+    expect(shouldCancelDelegatedAgentsOnVoiceStop(undefined)).toBe(false);
+    expect(shouldCancelDelegatedAgentsOnVoiceStop(false)).toBe(true);
+  });
+
+  it("classifies permission_denied and cancelled separately from mic", () => {
+    expect(classifyLiveVoiceError("permission denied by user")).toBe(
+      "permission_denied",
+    );
+    expect(classifyLiveVoiceError("tool cancelled on voice_stop")).toBe(
+      "cancelled",
+    );
+    expect(classifyLiveVoiceError("NotAllowedError: Permission denied")).toBe(
+      "mic_denied",
+    );
+    expect(liveVoiceErrorMessageKey("permission_denied")).toBe(
+      "voice.err.permission_denied",
+    );
+    expect(liveVoiceErrorMessageKey("cancelled")).toBe("voice.err.cancelled");
   });
 
   it("reads soft-fail reason only when ok:false", () => {

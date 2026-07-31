@@ -157,6 +157,14 @@ export type ChannelSchema = {
   group: ChannelGroup;
   /** GUI bind + save available (not comingSoon) */
   implemented: boolean;
+  /**
+   * Soft-retired / unsupported channel.
+   * Hidden from default sidebar + new-bind picker; existing instances
+   * keep a soft-retired banner (no crash, no setup guide pack).
+   */
+  retired?: boolean;
+  /** Alias of product language; prefer `retired` in code. */
+  unsupported?: boolean;
   scanSupport: boolean;
   pasteSupport: boolean;
   /** Needs public webhook URL callout */

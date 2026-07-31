@@ -1,11 +1,13 @@
 //! cloudflared quick tunnel lifecycle (DESIGN §9).
 //!
-//! Spawn in a **process group**, parse public URL from logs, wait for
-//! `Registered tunnel connection` before declaring ready. Stop kills the
-//! whole group so no orphans hold ports (REQUIREMENT known pitfall).
+//! Select a host-binary or Docker adapter, parse the public URL from logs,
+//! and wait for `Registered tunnel connection` before declaring ready.
+//! Stop tears down the process group and any managed container so no orphan
+//! tunnel keeps the mirror reachable (REQUIREMENT known pitfall).
 
+use std::path::{Path, PathBuf};
 use std::process::Stdio;
-use std::time::Duration;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::{Child, Command};
@@ -19,12 +21,113 @@ use std::os::windows::process::CommandExt;
 
 /// How long to wait for URL + registered connection.
 const TUNNEL_READY_TIMEOUT: Duration = Duration::from_secs(90);
+/// First Docker run can pull the official image before cloudflared starts.
+const DOCKER_TUNNEL_READY_TIMEOUT: Duration = Duration::from_secs(180);
+const DOCKER_DAEMON_TIMEOUT: Duration = Duration::from_secs(8);
+const DEFAULT_CLOUDFLARED_IMAGE: &str = "cloudflare/cloudflared:latest";
+const DOCKER_CONTAINER_PREFIX: &str = "grok-mirror-cloudflared-";
+const DOCKER_MIRROR_LABEL: &str = "com.grokapp.mirror=1";
+
+/// Internal adapter seam: host binary remains the preferred path; Docker is
+/// selected only when cloudflared is absent from the desktop app's PATH.
+#[derive(Debug, Clone)]
+enum TunnelAdapter {
+    HostBinary {
+        bin: PathBuf,
+    },
+    Docker {
+        bin: PathBuf,
+        image: String,
+        container_name: String,
+    },
+}
+
+#[derive(Debug, Clone)]
+struct DockerCleanup {
+    bin: PathBuf,
+    container_name: String,
+}
+
+struct TunnelCommandSpec {
+    program: PathBuf,
+    args: Vec<String>,
+    adapter_name: &'static str,
+    ready_timeout: Duration,
+    docker_cleanup: Option<DockerCleanup>,
+}
+
+impl TunnelAdapter {
+    fn command_spec(&self, local_port: u16) -> TunnelCommandSpec {
+        match self {
+            Self::HostBinary { bin } => TunnelCommandSpec {
+                program: bin.clone(),
+                args: vec![
+                    "tunnel".into(),
+                    "--url".into(),
+                    format!("http://127.0.0.1:{local_port}"),
+                    "--no-autoupdate".into(),
+                ],
+                adapter_name: "host_binary",
+                ready_timeout: TUNNEL_READY_TIMEOUT,
+                docker_cleanup: None,
+            },
+            Self::Docker {
+                bin,
+                image,
+                container_name,
+            } => {
+                let mut args = vec![
+                    "run".into(),
+                    "--rm".into(),
+                    "--name".into(),
+                    container_name.clone(),
+                    "--label".into(),
+                    DOCKER_MIRROR_LABEL.into(),
+                ];
+                #[cfg(target_os = "linux")]
+                args.extend(["--network".into(), "host".into()]);
+                args.extend([
+                    image.clone(),
+                    "tunnel".into(),
+                    "--url".into(),
+                    docker_tunnel_origin(local_port),
+                    "--no-autoupdate".into(),
+                ]);
+                TunnelCommandSpec {
+                    program: bin.clone(),
+                    args,
+                    adapter_name: "docker",
+                    ready_timeout: DOCKER_TUNNEL_READY_TIMEOUT,
+                    docker_cleanup: Some(DockerCleanup {
+                        bin: bin.clone(),
+                        container_name: container_name.clone(),
+                    }),
+                }
+            }
+        }
+    }
+}
+
+#[cfg(target_os = "linux")]
+fn docker_tunnel_origin(local_port: u16) -> String {
+    // Host networking preserves the loopback-only security posture on Linux.
+    format!("http://127.0.0.1:{local_port}")
+}
+
+#[cfg(not(target_os = "linux"))]
+fn docker_tunnel_origin(local_port: u16) -> String {
+    // Docker Desktop exposes the macOS/Windows host through this stable name;
+    // container-local 127.0.0.1 would point at cloudflared itself.
+    format!("http://host.docker.internal:{local_port}")
+}
 
 /// Live tunnel process (own process group on Unix).
 pub struct TunnelHandle {
     child: Child,
     /// Process group / leader pid for group kill (Unix).
     pgid: Option<i32>,
+    adapter_name: &'static str,
+    docker_cleanup: Option<DockerCleanup>,
     pub public_url: String,
 }
 
@@ -37,19 +140,29 @@ impl TunnelHandle {
     pub fn poll_exited(&mut self) -> bool {
         match self.child.try_wait() {
             Ok(Some(status)) => {
-                tracing::warn!(?status, "mirror cloudflared process exited");
+                // status() holds the mirror runtime mutex while polling; never
+                // block that path on a Docker daemon round-trip.
+                cleanup_docker_container_in_background(self.docker_cleanup.clone());
+                tracing::warn!(
+                    ?status,
+                    adapter = self.adapter_name,
+                    "mirror cloudflared process exited"
+                );
                 true
             }
             Ok(None) => false,
             Err(e) => {
+                cleanup_docker_container_in_background(self.docker_cleanup.clone());
                 tracing::warn!(error = %e, "mirror cloudflared try_wait failed");
                 true
             }
         }
     }
 
-    /// Kill the tunnel process group (no orphans).
-    pub fn kill_group(mut self) {
+    /// Stop the selected adapter and remove Docker containers before reaping
+    /// the attached client process. This keeps stop/quit free of tunnel orphans.
+    pub fn stop(mut self) {
+        cleanup_docker_container(self.docker_cleanup.take());
         kill_process_group(self.child.id(), self.pgid.take());
         // Best-effort reaping so we don't leave zombies.
         let _ = self.child.start_kill();
@@ -65,22 +178,16 @@ pub struct TunnelStart {
     pub public_url: String,
 }
 
-/// Spawn `cloudflared tunnel --url http://127.0.0.1:<port>`.
+/// Spawn a quick tunnel through the host cloudflared binary, or through the
+/// official Docker image when the host binary is not available.
 ///
 /// Returns only after logs show a public URL **and**
 /// `Registered tunnel connection` (or errors out).
 pub async fn start_quick_tunnel(local_port: u16) -> Result<TunnelStart, String> {
-    let bin = which::which("cloudflared").map_err(|_| {
-        "cloudflared not found on PATH — install cloudflared or set GROK_MIRROR_NO_TUNNEL=1"
-            .to_string()
-    })?;
-
-    let url_arg = format!("http://127.0.0.1:{local_port}");
-    let mut cmd = Command::new(&bin);
-    cmd.arg("tunnel")
-        .arg("--url")
-        .arg(&url_arg)
-        .arg("--no-autoupdate")
+    let adapter = select_tunnel_adapter(local_port).await?;
+    let spec = adapter.command_spec(local_port);
+    let mut cmd = Command::new(&spec.program);
+    cmd.args(&spec.args)
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -106,20 +213,29 @@ pub async fn start_quick_tunnel(local_port: u16) -> Result<TunnelStart, String> 
         cmd.creation_flags(CREATE_NEW_PROCESS_GROUP | CREATE_NO_WINDOW);
     }
 
-    let mut child = cmd
-        .spawn()
-        .map_err(|e| format!("failed to spawn cloudflared: {e}"))?;
+    let mut child = cmd.spawn().map_err(|e| {
+        format!(
+            "failed to spawn {} cloudflared adapter: {e}",
+            spec.adapter_name
+        )
+    })?;
     let pid = child.id();
     let pgid = pid.map(|p| p as i32);
 
-    let stdout = child
-        .stdout
-        .take()
-        .ok_or_else(|| "cloudflared stdout missing".to_string())?;
-    let stderr = child
-        .stderr
-        .take()
-        .ok_or_else(|| "cloudflared stderr missing".to_string())?;
+    let stdout = match child.stdout.take() {
+        Some(stdout) => stdout,
+        None => {
+            terminate_failed_tunnel(&mut child, pid, pgid, spec.docker_cleanup.clone());
+            return Err("cloudflared stdout missing".into());
+        }
+    };
+    let stderr = match child.stderr.take() {
+        Some(stderr) => stderr,
+        None => {
+            terminate_failed_tunnel(&mut child, pid, pgid, spec.docker_cleanup.clone());
+            return Err("cloudflared stderr missing".into());
+        }
+    };
 
     let (tx, rx) = oneshot::channel::<Result<(String, bool), String>>();
     tauri::async_runtime::spawn(async move {
@@ -127,49 +243,241 @@ pub async fn start_quick_tunnel(local_port: u16) -> Result<TunnelStart, String> 
         let _ = tx.send(result);
     });
 
-    let ready = timeout(TUNNEL_READY_TIMEOUT, rx).await;
+    let ready = timeout(spec.ready_timeout, rx).await;
     let (public_url, registered) = match ready {
         Ok(Ok(Ok(pair))) => pair,
         Ok(Ok(Err(e))) => {
-            kill_process_group(pid, pgid);
-            let _ = child.start_kill();
+            terminate_failed_tunnel(&mut child, pid, pgid, spec.docker_cleanup.clone());
             return Err(e);
         }
         Ok(Err(_)) => {
-            kill_process_group(pid, pgid);
-            let _ = child.start_kill();
+            terminate_failed_tunnel(&mut child, pid, pgid, spec.docker_cleanup.clone());
             return Err("cloudflared log pump closed without ready signal".into());
         }
         Err(_) => {
-            kill_process_group(pid, pgid);
-            let _ = child.start_kill();
+            terminate_failed_tunnel(&mut child, pid, pgid, spec.docker_cleanup.clone());
             return Err(format!(
                 "cloudflared did not become ready within {}s",
-                TUNNEL_READY_TIMEOUT.as_secs()
+                spec.ready_timeout.as_secs()
             ));
         }
     };
 
     if !registered {
-        kill_process_group(pid, pgid);
-        let _ = child.start_kill();
-        return Err(
-            "cloudflared printed URL but never 'Registered tunnel connection'".into(),
-        );
+        terminate_failed_tunnel(&mut child, pid, pgid, spec.docker_cleanup.clone());
+        return Err("cloudflared printed URL but never 'Registered tunnel connection'".into());
     }
 
     let public_url = public_url.trim_end_matches('/').to_string();
 
-    tracing::info!(%public_url, ?pid, "mirror cloudflared tunnel registered");
+    tracing::info!(%public_url, ?pid, adapter = spec.adapter_name, "mirror cloudflared tunnel registered");
 
     Ok(TunnelStart {
         handle: TunnelHandle {
             child,
             pgid,
+            adapter_name: spec.adapter_name,
+            docker_cleanup: spec.docker_cleanup,
             public_url: public_url.clone(),
         },
         public_url,
     })
+}
+
+async fn select_tunnel_adapter(local_port: u16) -> Result<TunnelAdapter, String> {
+    if let Ok(bin) = which::which("cloudflared") {
+        return Ok(TunnelAdapter::HostBinary { bin });
+    }
+
+    let docker = find_docker_binary().ok_or_else(|| {
+        "cloudflared not found on PATH and Docker CLI is unavailable — install cloudflared, or install/start Docker Desktop, or set GROK_MIRROR_NO_TUNNEL=1"
+            .to_string()
+    })?;
+    ensure_docker_daemon(&docker).await?;
+    cleanup_stale_docker_containers(&docker).await?;
+
+    let image = std::env::var("GROK_MIRROR_CLOUDFLARED_IMAGE")
+        .ok()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+        .unwrap_or_else(|| DEFAULT_CLOUDFLARED_IMAGE.to_string());
+
+    Ok(TunnelAdapter::Docker {
+        bin: docker,
+        image,
+        container_name: docker_container_name(local_port),
+    })
+}
+
+fn find_docker_binary() -> Option<PathBuf> {
+    if let Ok(bin) = which::which("docker") {
+        return Some(bin);
+    }
+
+    #[cfg(target_os = "windows")]
+    if let Some(program_files) = std::env::var_os("ProgramFiles") {
+        let candidate = PathBuf::from(program_files)
+            .join("Docker")
+            .join("Docker")
+            .join("resources")
+            .join("bin")
+            .join("docker.exe");
+        if candidate.is_file() {
+            return Some(candidate);
+        }
+    }
+
+    // Finder/LaunchServices apps often inherit a minimal PATH. Check official
+    // Docker Desktop and common package-manager locations before declaring the
+    // Docker adapter unavailable.
+    #[cfg(target_os = "macos")]
+    const CANDIDATES: &[&str] = &[
+        "/Applications/Docker.app/Contents/Resources/bin/docker",
+        "/opt/homebrew/bin/docker",
+        "/usr/local/bin/docker",
+        "/usr/bin/docker",
+    ];
+    #[cfg(target_os = "linux")]
+    const CANDIDATES: &[&str] = &["/usr/bin/docker", "/usr/local/bin/docker"];
+    #[cfg(not(any(target_os = "macos", target_os = "linux")))]
+    const CANDIDATES: &[&str] = &[];
+
+    CANDIDATES
+        .iter()
+        .map(PathBuf::from)
+        .find(|path| path.is_file())
+}
+
+async fn ensure_docker_daemon(docker: &Path) -> Result<(), String> {
+    let mut probe = Command::new(docker);
+    probe
+        .arg("info")
+        .arg("--format")
+        .arg("{{.ServerVersion}}")
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .kill_on_drop(true);
+
+    match timeout(DOCKER_DAEMON_TIMEOUT, probe.status()).await {
+        Ok(Ok(status)) if status.success() => Ok(()),
+        Ok(_) => Err(
+            "cloudflared not found on PATH and Docker daemon is unavailable — start Docker Desktop and retry, or set GROK_MIRROR_NO_TUNNEL=1"
+                .into(),
+        ),
+        Err(_) => Err(
+            "cloudflared not found on PATH and Docker daemon check timed out — start Docker Desktop and retry, or set GROK_MIRROR_NO_TUNNEL=1"
+                .into(),
+        ),
+    }
+}
+
+async fn cleanup_stale_docker_containers(docker: &Path) -> Result<(), String> {
+    // A force-killed desktop process cannot run its normal stop hook. Since
+    // Grok is single-instance, any container with our private name prefix is
+    // stale when a new mirror adapter is being selected.
+    let mut list = Command::new(docker);
+    list.args([
+        "ps",
+        "--all",
+        "--quiet",
+        "--filter",
+        &format!("name={DOCKER_CONTAINER_PREFIX}"),
+    ])
+    .stdin(Stdio::null())
+    .stderr(Stdio::null())
+    .kill_on_drop(true);
+    let output = match timeout(DOCKER_DAEMON_TIMEOUT, list.output()).await {
+        Ok(Ok(output)) if output.status.success() => output,
+        _ => {
+            return Err(
+                "cloudflared not found on PATH and stale Docker mirror cleanup could not be checked — restart Docker Desktop and retry"
+                    .into(),
+            )
+        }
+    };
+
+    let ids: Vec<String> = String::from_utf8_lossy(&output.stdout)
+        .lines()
+        .map(str::trim)
+        .filter(|id| !id.is_empty() && id.len() <= 64 && id.chars().all(|c| c.is_ascii_hexdigit()))
+        .take(32)
+        .map(str::to_string)
+        .collect();
+    if ids.is_empty() {
+        return Ok(());
+    }
+
+    let mut remove = Command::new(docker);
+    remove
+        .args(["rm", "--force"])
+        .args(&ids)
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .kill_on_drop(true);
+    match timeout(DOCKER_DAEMON_TIMEOUT, remove.status()).await {
+        Ok(Ok(status)) if status.success() => {
+            tracing::info!(count = ids.len(), "mirror stale Docker tunnels removed");
+            Ok(())
+        }
+        _ => Err(
+            "cloudflared not found on PATH and stale Docker mirror containers could not be removed — restart Docker Desktop and retry"
+                .into(),
+        ),
+    }
+}
+
+fn docker_container_name(local_port: u16) -> String {
+    let nonce = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis();
+    format!(
+        "{DOCKER_CONTAINER_PREFIX}{}-{local_port}-{nonce}",
+        std::process::id()
+    )
+}
+
+fn terminate_failed_tunnel(
+    child: &mut Child,
+    pid: Option<u32>,
+    pgid: Option<i32>,
+    docker_cleanup: Option<DockerCleanup>,
+) {
+    cleanup_docker_container(docker_cleanup);
+    kill_process_group(pid, pgid);
+    let _ = child.start_kill();
+}
+
+fn cleanup_docker_container(cleanup: Option<DockerCleanup>) {
+    let Some(cleanup) = cleanup else {
+        return;
+    };
+    let status = std::process::Command::new(&cleanup.bin)
+        .args(["rm", "--force", &cleanup.container_name])
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status();
+    match status {
+        Ok(status) if status.success() => {
+            tracing::info!(container = %cleanup.container_name, "mirror Docker tunnel removed");
+        }
+        Ok(status) => {
+            tracing::debug!(?status, container = %cleanup.container_name, "mirror Docker tunnel already absent or could not be removed");
+        }
+        Err(error) => {
+            tracing::warn!(%error, container = %cleanup.container_name, "mirror Docker tunnel cleanup failed");
+        }
+    }
+}
+
+fn cleanup_docker_container_in_background(cleanup: Option<DockerCleanup>) {
+    if cleanup.is_none() {
+        return;
+    }
+    std::thread::spawn(move || cleanup_docker_container(cleanup));
 }
 
 /// Read stdout+stderr until we have URL and Registered, or process dies.
@@ -326,5 +634,57 @@ mod tests {
     #[test]
     fn no_url_returns_none() {
         assert!(extract_trycloudflare_url("Registered tunnel connection").is_none());
+    }
+
+    #[test]
+    fn host_adapter_keeps_loopback_origin() {
+        let adapter = TunnelAdapter::HostBinary {
+            bin: PathBuf::from("/usr/local/bin/cloudflared"),
+        };
+        let spec = adapter.command_spec(52770);
+        assert_eq!(spec.adapter_name, "host_binary");
+        assert_eq!(spec.program, PathBuf::from("/usr/local/bin/cloudflared"));
+        assert!(spec.args.iter().any(|arg| arg == "http://127.0.0.1:52770"));
+        assert!(spec.docker_cleanup.is_none());
+    }
+
+    #[test]
+    fn docker_adapter_uses_official_image_and_managed_container() {
+        let adapter = TunnelAdapter::Docker {
+            bin: PathBuf::from("/usr/local/bin/docker"),
+            image: DEFAULT_CLOUDFLARED_IMAGE.into(),
+            container_name: "grok-mirror-test".into(),
+        };
+        let spec = adapter.command_spec(52770);
+        assert_eq!(spec.adapter_name, "docker");
+        assert!(spec.args.iter().any(|arg| arg == DEFAULT_CLOUDFLARED_IMAGE));
+        assert!(spec
+            .args
+            .windows(2)
+            .any(|pair| pair[0] == "--name" && pair[1] == "grok-mirror-test"));
+        assert!(spec
+            .args
+            .windows(2)
+            .any(|pair| pair[0] == "--label" && pair[1] == DOCKER_MIRROR_LABEL));
+        assert_eq!(
+            spec.docker_cleanup
+                .as_ref()
+                .map(|cleanup| cleanup.container_name.as_str()),
+            Some("grok-mirror-test")
+        );
+
+        #[cfg(target_os = "linux")]
+        {
+            assert!(spec
+                .args
+                .windows(2)
+                .any(|pair| pair[0] == "--network" && pair[1] == "host"));
+            assert!(spec.args.iter().any(|arg| arg == "http://127.0.0.1:52770"));
+        }
+        #[cfg(not(target_os = "linux"))]
+        assert!(spec
+            .args
+            .iter()
+            .any(|arg| arg == "http://host.docker.internal:52770"));
     }
 }

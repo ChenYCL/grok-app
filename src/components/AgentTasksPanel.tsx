@@ -8,6 +8,9 @@
  * linkage (explicit or inferred) is available.
  * Subagent cwd / worktree paths surface as a compact WT badge when present
  * in tool_step data — open as chat cwd, reveal, or copy (UI-only).
+ *
+ * Pro: running / done / all chips, honest empty (no tasks · filter empty),
+ * snapshot-mode banner, soft-fail stop / bind-cwd classification.
  */
 
 import { useCallback, useMemo, useState, type MouseEvent } from "react";
@@ -19,8 +22,6 @@ import {
   buildTaskTree,
   collectSessionTasks,
   countRunningTasks,
-  filterSessionTasks,
-  filterTaskTree,
   formatTaskCwdLabel,
   taskStatusMessageKey,
   taskTreeHasNesting,
@@ -36,6 +37,21 @@ import {
   stoppableActivitySessions,
   type ActivitySessionRow,
 } from "@/lib/agentActivity";
+import {
+  TASKS_PANEL_STATUS_FILTERS,
+  classifyTasksBindCwdError,
+  classifyTasksStopError,
+  countTasksByStatusFilter,
+  filterTaskTreePanel,
+  filterTasksPanelList,
+  normalizeTasksBindCwdResult,
+  resolveTasksPanelEmptyState,
+  tasksPanelHasActiveFilters,
+  tasksPanelSnapshotBannerKey,
+  tasksPanelStatusFilterLabelKey,
+  type TasksBindCwdResult,
+  type TasksPanelStatusFilter,
+} from "@/lib/tasksPanelPro";
 import {
   IconChevronDown,
   IconChevronRight,
@@ -57,7 +73,11 @@ export type AgentTasksPanelProps = {
   /** Other sessions that are busy / waiting (from liveMap). */
   activitySessions?: ActivitySessionRow[];
   onSelectSession?: (sessionId: string) => void;
-  onStopSession?: (sessionId: string) => void;
+  /**
+   * Stop a busy session. May throw or return a rejected promise — panel
+   * classifies soft-fail and surfaces an inline hint (no window.confirm).
+   */
+  onStopSession?: (sessionId: string) => void | Promise<void>;
   /** Stop every stoppable busy session (confirm lives in App). */
   onStopAllSessions?: () => void;
   /** Open the cross-session Agent dashboard (distinct from this tools panel). */
@@ -65,8 +85,11 @@ export type AgentTasksPanelProps = {
   /**
    * Bind this chat to a subagent cwd / worktree path (agent project cwd).
    * Parent owns project_add / session bind / toast.
+   * May return {@link TasksBindCwdResult} for soft-fail honesty.
    */
-  onOpenCwd?: (cwd: string) => void;
+  onOpenCwd?: (
+    cwd: string,
+  ) => void | TasksBindCwdResult | Promise<void | TasksBindCwdResult>;
   /** Current chat project path — used to mark cwd as already active. */
   activeCwd?: string | null;
   /**
@@ -108,7 +131,7 @@ function TaskRow({
   onToggleChildren?: () => void;
   /** When false, omit tree toggle/spacer so flat lists match pre-tree layout. */
   showTreeChrome?: boolean;
-  onOpenCwd?: (cwd: string) => void;
+  onOpenCwd?: AgentTasksPanelProps["onOpenCwd"];
   activeCwd?: string | null;
 }) {
   const [open, setOpen] = useState(false);
@@ -164,11 +187,40 @@ function TaskRow({
       e.preventDefault();
       if (!task.cwd || !onOpenCwd) return;
       if (cwdIsActive) {
-        setCwdActionHint(t("tasks.cwdAlreadyActive"));
+        const view = classifyTasksBindCwdError(null, { alreadyActive: true });
+        setCwdActionHint(t(view.titleKey as MessageKey));
         return;
       }
-      onOpenCwd(task.cwd);
-      setCwdActionHint(t("tasks.cwdOpened"));
+      if (!task.cwd.trim()) {
+        const view = classifyTasksBindCwdError(null, { emptyPath: true });
+        setCwdActionHint(t(view.titleKey as MessageKey));
+        return;
+      }
+      void (async () => {
+        try {
+          const raw = await onOpenCwd(task.cwd!);
+          const result = normalizeTasksBindCwdResult(raw);
+          if (result.ok) {
+            setCwdActionHint(t("tasks.cwdOpened"));
+            return;
+          }
+          const view = classifyTasksBindCwdError(result.detail ?? result.kind, {
+            alreadyActive: result.kind === "already_active",
+            emptyPath: result.kind === "empty_path",
+          });
+          // Prefer classified kind from result when detail is just a token.
+          if (result.kind && result.kind !== "other") {
+            setCwdActionHint(
+              t(`tasks.cwdBindErr.${result.kind}` as MessageKey),
+            );
+            return;
+          }
+          setCwdActionHint(t(view.titleKey as MessageKey));
+        } catch (err) {
+          const view = classifyTasksBindCwdError(err);
+          setCwdActionHint(t(view.titleKey as MessageKey));
+        }
+      })();
     },
     [cwdIsActive, onOpenCwd, t, task.cwd],
   );
@@ -377,7 +429,7 @@ function TaskTreeItem({
   t: TFn;
   depth?: number;
   showTreeChrome?: boolean;
-  onOpenCwd?: (cwd: string) => void;
+  onOpenCwd?: AgentTasksPanelProps["onOpenCwd"];
   activeCwd?: string | null;
 }) {
   const hasChildren = node.children.length > 0;
@@ -430,12 +482,30 @@ function ActivityRow({
   t,
   onSelect,
   onStop,
+  stopHint,
 }: {
   row: ActivitySessionRow;
   t: TFn;
   onSelect?: (sessionId: string) => void;
-  onStop?: (sessionId: string) => void;
+  onStop?: (sessionId: string) => void | Promise<void>;
+  stopHint?: string | null;
 }) {
+  const [localHint, setLocalHint] = useState<string | null>(null);
+  const hint = localHint ?? stopHint ?? null;
+
+  const handleStop = useCallback(() => {
+    if (!onStop) return;
+    setLocalHint(null);
+    void (async () => {
+      try {
+        await onStop(row.sessionId);
+      } catch (err) {
+        const view = classifyTasksStopError(err);
+        setLocalHint(t(view.titleKey as MessageKey));
+      }
+    })();
+  }, [onStop, row.sessionId, t]);
+
   return (
     <li
       className={
@@ -485,12 +555,13 @@ function ActivityRow({
           <button
             type="button"
             className="btn btn--ghost btn--sm"
-            onClick={() => onStop(row.sessionId)}
+            onClick={handleStop}
           >
             {t("tasks.activity.stop")}
           </button>
         ) : null}
       </div>
+      {hint ? <p className="agent-tasks__hint agent-tasks__hint--soft">{hint}</p> : null}
     </li>
   );
 }
@@ -509,6 +580,9 @@ export function AgentTasksPanel({
   subagentWorktreeSnapshotEnabled = false,
 }: AgentTasksPanelProps) {
   const [query, setQuery] = useState("");
+  const [statusFilter, setStatusFilter] =
+    useState<TasksPanelStatusFilter>("all");
+
   const tasks = useMemo(() => {
     const act = buildTurnActivity(messages);
     const fromTurn = tasksFromTurnActivity(act);
@@ -518,16 +592,34 @@ export function AgentTasksPanel({
     );
     return [...extraRunning, ...fromTurn];
   }, [messages]);
-  const filtered = useMemo(
-    () => filterSessionTasks(tasks, query),
-    [tasks, query],
+
+  const statusCounts = useMemo(
+    () => countTasksByStatusFilter(tasks),
+    [tasks],
   );
+
+  const listFilter = useMemo(
+    () => ({ query, status: statusFilter }),
+    [query, statusFilter],
+  );
+
+  const hasFilters = tasksPanelHasActiveFilters(listFilter);
+
+  const filteredFlat = useMemo(
+    () => filterTasksPanelList(tasks, listFilter),
+    [tasks, listFilter],
+  );
+
   const tree = useMemo(() => {
     // Build from full list so parent linkage survives filter, then filter tree.
     const full = buildTaskTree(tasks);
-    return filterTaskTree(full, query);
-  }, [tasks, query]);
-  const running = useMemo(() => countRunningTasks(filtered), [filtered]);
+    return filterTaskTreePanel(full, listFilter);
+  }, [tasks, listFilter]);
+
+  const running = useMemo(
+    () => countRunningTasks(filteredFlat),
+    [filteredFlat],
+  );
   const activeTree = useMemo(
     () => tree.filter((n) => taskTreeHasRunning(n)),
     [tree],
@@ -549,6 +641,34 @@ export function AgentTasksPanel({
     !!onStopAllSessions && stoppableSessions.length > 0;
   const hasTaskRows = activeTree.length > 0 || recentTree.length > 0;
   const showTreeChrome = taskTreeHasNesting(tree);
+
+  const emptyState = useMemo(
+    () =>
+      resolveTasksPanelEmptyState({
+        totalTasks: tasks.length,
+        filteredTasks: filteredFlat.length,
+        otherSessions: otherSessions.length,
+        hasFilters,
+      }),
+    [tasks.length, filteredFlat.length, otherSessions.length, hasFilters],
+  );
+
+  const snapshotNoteKey = tasksPanelSnapshotBannerKey(
+    subagentWorktreeSnapshotEnabled,
+  );
+
+  const clearFilters = useCallback(() => {
+    setQuery("");
+    setStatusFilter("all");
+  }, []);
+
+  const showFullEmpty =
+    !!emptyState && otherSessions.length === 0 && !hasTaskRows;
+  const showFilterEmptyInBody =
+    !!emptyState &&
+    emptyState.kind === "filter_empty" &&
+    !hasTaskRows &&
+    otherSessions.length > 0;
 
   return (
     <section className="agent-tasks" aria-label={t("tasks.title")}>
@@ -597,28 +717,79 @@ export function AgentTasksPanel({
         </div>
       </header>
 
-      {subagentWorktreeSnapshotEnabled ? (
+      {snapshotNoteKey ? (
         <p className="agent-tasks__snap-note" role="note">
-          {t("tasks.subagentWtSnapNote")}
+          {t(snapshotNoteKey)}
         </p>
       ) : null}
 
-      <div className="agent-tasks__search">
-        <input
-          type="search"
-          className="settings-input agent-tasks__search-input"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder={t("tasks.searchPlaceholder")}
-          autoComplete="off"
-          spellCheck={false}
-        />
+      <div className="agent-tasks__filters">
+        <div
+          className="agent-tasks__chips"
+          role="toolbar"
+          aria-label={t("tasks.filter.statusLabel")}
+        >
+          {TASKS_PANEL_STATUS_FILTERS.map((id) => {
+            const n = statusCounts[id];
+            // Hide zero-count chips except "all" and the active selection.
+            if (id !== "all" && n === 0 && statusFilter !== id) return null;
+            return (
+              <button
+                key={id}
+                type="button"
+                className={
+                  "agent-tasks__chip" + (statusFilter === id ? " is-active" : "")
+                }
+                aria-pressed={statusFilter === id}
+                onClick={() => setStatusFilter(id)}
+              >
+                <span>
+                  {t(tasksPanelStatusFilterLabelKey(id) as MessageKey)}
+                </span>
+                <span className="agent-tasks__chip-count">{n}</span>
+              </button>
+            );
+          })}
+        </div>
+        <div className="agent-tasks__search">
+          <input
+            type="search"
+            className="settings-input agent-tasks__search-input"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder={t("tasks.searchPlaceholder")}
+            autoComplete="off"
+            spellCheck={false}
+          />
+        </div>
       </div>
 
-      {!hasTaskRows && otherSessions.length === 0 ? (
-        <div className="agent-tasks__empty">
-          <p className="agent-tasks__empty-title">{t("tasks.empty")}</p>
-          <p className="agent-tasks__empty-hint">{t("tasks.emptyHint")}</p>
+      {showFullEmpty && emptyState ? (
+        <div
+          className={
+            "agent-tasks__empty" +
+            (emptyState.kind === "filter_empty"
+              ? " agent-tasks__empty--filter"
+              : "")
+          }
+        >
+          <p className="agent-tasks__empty-title">
+            {t(emptyState.titleKey as MessageKey)}
+          </p>
+          {emptyState.hintKey ? (
+            <p className="agent-tasks__empty-hint">
+              {t(emptyState.hintKey as MessageKey)}
+            </p>
+          ) : null}
+          {emptyState.showClearFilters ? (
+            <button
+              type="button"
+              className="btn btn--ghost btn--sm"
+              onClick={clearFilters}
+            >
+              {t("tasks.clearFilters")}
+            </button>
+          ) : null}
         </div>
       ) : (
         <div className="agent-tasks__body">
@@ -638,6 +809,27 @@ export function AgentTasksPanel({
                   />
                 ))}
               </ul>
+            </div>
+          ) : null}
+          {showFilterEmptyInBody && emptyState ? (
+            <div className="agent-tasks__empty agent-tasks__empty--filter">
+              <p className="agent-tasks__empty-title">
+                {t(emptyState.titleKey as MessageKey)}
+              </p>
+              {emptyState.hintKey ? (
+                <p className="agent-tasks__empty-hint">
+                  {t(emptyState.hintKey as MessageKey)}
+                </p>
+              ) : null}
+              {emptyState.showClearFilters ? (
+                <button
+                  type="button"
+                  className="btn btn--ghost btn--sm"
+                  onClick={clearFilters}
+                >
+                  {t("tasks.clearFilters")}
+                </button>
+              ) : null}
             </div>
           ) : null}
           {activeTree.length > 0 ? (

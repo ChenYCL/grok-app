@@ -1,17 +1,22 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  CLEAR_ALL_UNREAD_CONFIRM_THRESHOLD,
   SESSION_UNREAD_CHANGE_EVENT,
   SESSION_UNREAD_STORAGE_KEY,
+  clearAllUnread,
   clearUnread,
   isTurnDoneReadyTransition,
   isUnread,
+  listUnreadSessionIds,
   load,
   loadUnreadSessionIds,
   markUnread,
   parseUnreadSessionIds,
   save,
   saveUnreadSessionIds,
+  shouldConfirmClearAllUnread,
   shouldMarkUnreadOnTurnDone,
+  toggleUnread,
   type SessionUnreadStorage,
 } from "./sessionUnread";
 
@@ -160,6 +165,51 @@ describe("isUnread / markUnread / clearUnread", () => {
     const storage = memoryStorage();
     saveUnreadSessionIds(["sess-x"], storage);
     expect(isUnread("  sess-x  ", storage)).toBe(true);
+  });
+});
+
+describe("listUnreadSessionIds / toggleUnread / clearAllUnread", () => {
+  it("list returns sorted ids", () => {
+    const storage = memoryStorage();
+    markUnread("z", storage);
+    markUnread("a", storage);
+    markUnread("m", storage);
+    expect(listUnreadSessionIds(storage)).toEqual(["a", "m", "z"]);
+  });
+
+  it("toggleUnread marks then clears", () => {
+    const storage = memoryStorage();
+    expect(toggleUnread("sess-1", storage)).toBe(true);
+    expect(isUnread("sess-1", storage)).toBe(true);
+    expect(toggleUnread("sess-1", storage)).toBe(false);
+    expect(isUnread("sess-1", storage)).toBe(false);
+  });
+
+  it("toggleUnread ignores blank ids", () => {
+    const storage = memoryStorage();
+    expect(toggleUnread("", storage)).toBe(false);
+    expect(toggleUnread("   ", storage)).toBe(false);
+    expect(loadUnreadSessionIds(storage).size).toBe(0);
+  });
+
+  it("clearAllUnread empties the set and reports count", () => {
+    const storage = memoryStorage();
+    markUnread("a", storage);
+    markUnread("b", storage);
+    expect(clearAllUnread(storage)).toBe(2);
+    expect(listUnreadSessionIds(storage)).toEqual([]);
+    expect(clearAllUnread(storage)).toBe(0);
+  });
+
+  it("shouldConfirmClearAllUnread uses exclusive threshold", () => {
+    expect(CLEAR_ALL_UNREAD_CONFIRM_THRESHOLD).toBe(3);
+    expect(shouldConfirmClearAllUnread(0)).toBe(false);
+    expect(shouldConfirmClearAllUnread(1)).toBe(false);
+    expect(shouldConfirmClearAllUnread(3)).toBe(false);
+    expect(shouldConfirmClearAllUnread(4)).toBe(true);
+    expect(shouldConfirmClearAllUnread(2, 1)).toBe(true);
+    expect(shouldConfirmClearAllUnread(1, 1)).toBe(false);
+    expect(shouldConfirmClearAllUnread(-1)).toBe(false);
   });
 });
 

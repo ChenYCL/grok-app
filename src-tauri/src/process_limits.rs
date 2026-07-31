@@ -1,7 +1,9 @@
 //! Agent process concurrency + idle recycle policy (I02 / I03).
 //!
 //! Pure helpers are unit-tested; SessionManager applies them at runtime.
+//! Process budget snapshots expose live / background / parked occupancy for UI.
 
+use serde::{Deserialize, Serialize};
 use std::time::{Duration, Instant};
 
 /// Spec default: warm agent processes kept for open chats.
@@ -91,6 +93,89 @@ pub fn process_limit_message(max_concurrent: u32) -> String {
     format!(
         "Agent process limit reached (max {max} concurrent). Idle parked chats were already reclaimed; stop a running turn or raise the limit in Settings → Runtime → Process pool."
     )
+}
+
+/// Live process-budget occupancy snapshot for UI honesty (ids only, no secrets).
+///
+/// Soft-fail: when the session manager is unavailable the UI receives
+/// [`ProcessBudgetSnapshot::empty`] (`available: false`).
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ProcessBudgetSnapshot {
+    /// Focused live shell with a living ACP child (0 or 1).
+    pub live: u32,
+    /// Mid-turn background agents (busy; not reclaimable for focus).
+    pub background: u32,
+    /// Idle Ready parked warm shells (reclaimable for capacity).
+    pub parked: u32,
+    /// `live + background + parked` warm processes counting toward the cap.
+    pub total_warm: u32,
+    /// Non-reclaimable busy count: `live + background`.
+    pub busy: u32,
+    /// Normalized `maxConcurrentAgents` setting.
+    pub max_concurrent: u32,
+    /// Normalized idle recycle window (minutes).
+    pub idle_minutes: u32,
+    /// Session ids currently in the live slot (ids only).
+    #[serde(default)]
+    pub live_session_ids: Vec<String>,
+    /// Session ids in background map (ids only).
+    #[serde(default)]
+    pub background_session_ids: Vec<String>,
+    /// Session ids in parked map (ids only).
+    #[serde(default)]
+    pub parked_session_ids: Vec<String>,
+    /// False when manager/host path soft-failed (counts are empty defaults).
+    pub available: bool,
+}
+
+impl ProcessBudgetSnapshot {
+    /// Soft-fail empty snapshot (settings defaults, zero occupancy).
+    pub fn empty() -> Self {
+        Self {
+            live: 0,
+            background: 0,
+            parked: 0,
+            total_warm: 0,
+            busy: 0,
+            max_concurrent: DEFAULT_MAX_CONCURRENT_AGENTS,
+            idle_minutes: DEFAULT_AGENT_IDLE_MINUTES,
+            live_session_ids: Vec::new(),
+            background_session_ids: Vec::new(),
+            parked_session_ids: Vec::new(),
+            available: false,
+        }
+    }
+
+    /// Build from raw bucket counts + optional id lists (ids clamped to counts).
+    pub fn from_counts(
+        live: u32,
+        background: u32,
+        parked: u32,
+        max_concurrent: u32,
+        idle_minutes: u32,
+        live_session_ids: Vec<String>,
+        background_session_ids: Vec<String>,
+        parked_session_ids: Vec<String>,
+    ) -> Self {
+        let max_concurrent = normalize_max_concurrent(max_concurrent);
+        let idle_minutes = normalize_idle_minutes(idle_minutes);
+        let total_warm = live.saturating_add(background).saturating_add(parked);
+        let busy = live.saturating_add(background);
+        Self {
+            live,
+            background,
+            parked,
+            total_warm,
+            busy,
+            max_concurrent,
+            idle_minutes,
+            live_session_ids,
+            background_session_ids,
+            parked_session_ids,
+            available: true,
+        }
+    }
 }
 
 #[cfg(test)]
@@ -203,5 +288,56 @@ mod tests {
     fn normalize_allows_workstation_caps() {
         assert_eq!(normalize_max_concurrent(16), 16);
         assert_eq!(normalize_max_concurrent(99), MAX_CONCURRENT_AGENTS_CAP);
+    }
+
+    #[test]
+    fn process_budget_snapshot_from_counts() {
+        let snap = ProcessBudgetSnapshot::from_counts(
+            1,
+            2,
+            3,
+            8,
+            30,
+            vec!["live-1".into()],
+            vec!["bg-1".into(), "bg-2".into()],
+            vec!["p1".into(), "p2".into(), "p3".into()],
+        );
+        assert!(snap.available);
+        assert_eq!(snap.live, 1);
+        assert_eq!(snap.background, 2);
+        assert_eq!(snap.parked, 3);
+        assert_eq!(snap.total_warm, 6);
+        assert_eq!(snap.busy, 3);
+        assert_eq!(snap.max_concurrent, 8);
+        assert_eq!(snap.idle_minutes, 30);
+        assert_eq!(snap.live_session_ids.len(), 1);
+        assert_eq!(snap.background_session_ids.len(), 2);
+        assert_eq!(snap.parked_session_ids.len(), 3);
+    }
+
+    #[test]
+    fn process_budget_snapshot_empty_soft_fail() {
+        let snap = ProcessBudgetSnapshot::empty();
+        assert!(!snap.available);
+        assert_eq!(snap.total_warm, 0);
+        assert_eq!(snap.max_concurrent, DEFAULT_MAX_CONCURRENT_AGENTS);
+        assert_eq!(snap.idle_minutes, DEFAULT_AGENT_IDLE_MINUTES);
+        assert!(snap.live_session_ids.is_empty());
+    }
+
+    #[test]
+    fn process_budget_snapshot_normalizes_caps() {
+        let snap = ProcessBudgetSnapshot::from_counts(
+            0,
+            0,
+            0,
+            0,
+            0,
+            vec![],
+            vec![],
+            vec![],
+        );
+        assert_eq!(snap.max_concurrent, MIN_CONCURRENT_AGENTS);
+        assert_eq!(snap.idle_minutes, MIN_IDLE_MINUTES);
     }
 }

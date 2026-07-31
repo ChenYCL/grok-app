@@ -18,6 +18,38 @@ import {
   feishuHealthHintKeys,
   validateFeishuConfig,
 } from "./feishuConfig";
+import {
+  weixinHealthHintKeys,
+  validateWeixinConfig,
+} from "./weixinConfig";
+import {
+  discordHealthHintKeys,
+  validateDiscordConfig,
+} from "./discordConfig";
+import {
+  lineHealthHintKeys,
+  validateLineConfig,
+} from "./lineConfig";
+import {
+  slackHealthHintKeys,
+  validateSlackConfig,
+} from "./slackConfig";
+import {
+  qqHealthHintKeys,
+  validateQqConfig,
+} from "./qqConfig";
+import {
+  matrixHealthHintKeys,
+  validateMatrixConfig,
+} from "./matrixConfig";
+import {
+  validateWeiboConfig,
+  weiboHealthHintKeys,
+} from "./weiboConfig";
+import {
+  qqbotHealthHintKeys,
+  validateQqbotConfig,
+} from "./qqbotConfig";
 
 
 /** Health tone for badges / callouts (maps to RimBadge). */
@@ -84,20 +116,34 @@ export type ClassifyChannelHealthInput = {
    */
   draftOptions?: Record<string, unknown>;
   /**
-   * When the form has a non-empty Telegram token, pass for format checks only
+   * When the form has a non-empty Telegram/Discord token, pass for format checks only
    * (never stored by health helpers).
    */
   tokenValue?: string | null;
   /**
-   * When the form has a non-empty Feishu app_id, pass for format check only.
+   * When the form has a non-empty Feishu/Weibo/QQBot app_id, pass for format check only.
    */
   appIdValue?: string | null;
+  /** Slack bot token draft (format checks only; never stored). */
+  botTokenValue?: string | null;
+  /** Slack app-level token draft (format checks only; never stored). */
+  appTokenValue?: string | null;
+  /** Matrix access token draft (format checks only; never stored). */
+  accessTokenValue?: string | null;
 };
 
 const FEISHU_LIKE: RemoteChannelId[] = ["feishu", "lark"];
 const TELEGRAM_LIKE: RemoteChannelId[] = ["telegram"];
 const WECOM_LIKE: RemoteChannelId[] = ["wecom"];
 const DINGTALK_LIKE: RemoteChannelId[] = ["dingtalk"];
+const WEIXIN_LIKE: RemoteChannelId[] = ["weixin"];
+const DISCORD_LIKE: RemoteChannelId[] = ["discord"];
+const LINE_LIKE: RemoteChannelId[] = ["line"];
+const SLACK_LIKE: RemoteChannelId[] = ["slack"];
+const QQ_LIKE: RemoteChannelId[] = ["qq"];
+const MATRIX_LIKE: RemoteChannelId[] = ["matrix"];
+const WEIBO_LIKE: RemoteChannelId[] = ["weibo"];
+const QQBOT_LIKE: RemoteChannelId[] = ["qqbot"];
 
 /** Required secret bind keys per channel (for readiness, not values). */
 const SECRET_KEYS: Partial<Record<RemoteChannelId, string[]>> = {
@@ -109,6 +155,7 @@ const SECRET_KEYS: Partial<Record<RemoteChannelId, string[]>> = {
   discord: ["token"],
   slack: ["bot_token", "app_token"],
   // WeCom secrets are mode-aware — see credentialReadiness / wecomConfig
+  // Weixin secrets validated via weixinConfig
   weixin: ["token"],
   matrix: ["access_token"],
   line: ["channel_secret", "channel_access_token"],
@@ -119,6 +166,7 @@ const NON_SECRET_REQUIRED: Partial<Record<RemoteChannelId, string[]>> = {
   lark: ["app_id"],
   telegram: [],
   dingtalk: ["client_id"],
+  weixin: [],
 };
 
 
@@ -252,6 +300,75 @@ export function channelModeLabel(
   if (channel === "dingtalk") {
     return "mode=stream";
   }
+  if (channel === "weixin") {
+    const parts: string[] = ["mode=ilink"];
+    if (optionString(options, "proxy")) parts.push("proxy=set");
+    if (optionString(options, "base_url")) parts.push("base=custom");
+    if (optionString(options, "chat_id")) parts.push("chat=bound");
+    return parts.join(",");
+  }
+  if (DISCORD_LIKE.includes(channel)) {
+    const thread =
+      options.thread_isolation === true ||
+      options.thread_isolation === "true";
+    const style = String(options.progress_style ?? "compact").trim() || "compact";
+    return thread ? `thread_iso · style=${style}` : `style=${style}`;
+  }
+  if (QQ_LIKE.includes(channel)) {
+    const ws =
+      optionString(options, "ws_url") || optionString(options, "url");
+    if (!ws) return "ws=missing";
+    const scheme = /^wss?:/i.test(ws)
+      ? ws.toLowerCase().startsWith("wss")
+        ? "wss"
+        : "ws"
+      : "bad";
+    return `forward_ws · ${scheme}`;
+  }
+  if (MATRIX_LIKE.includes(channel)) {
+    const hs = String(options.homeserver ?? "").trim().replace(/\/+$/, "");
+    const proxy = String(options.proxy ?? "").trim();
+    const parts: string[] = [];
+    if (hs) {
+      try {
+        parts.push(`hs=${new URL(hs).hostname}`);
+      } catch {
+        parts.push("hs=set");
+      }
+    } else {
+      parts.push("hs=none");
+    }
+    parts.push(proxy ? "proxy=set" : "proxy=none");
+    return parts.join(" · ");
+  }
+  if (QQBOT_LIKE.includes(channel)) {
+    const intents = optionString(options, "intents");
+    return intents
+      ? "gateway · intents=custom"
+      : "gateway · intents=default";
+  }
+  if (channel === "slack") {
+    return "mode=socket";
+  }
+  if (channel === "line") {
+    const parts: string[] = ["mode=webhook"];
+    const port = optionString(options, "port");
+    if (port) parts.push(`port=${port}`);
+    const path = optionString(options, "callback_path");
+    if (path) parts.push("path=custom");
+    return parts.join(",");
+  }
+  if (channel === "weibo") {
+    const parts: string[] = ["mode=ws"];
+    if (optionString(options, "token_endpoint")) parts.push("token=custom");
+    if (
+      optionString(options, "ws_endpoint") ||
+      optionString(options, "ws_url")
+    ) {
+      parts.push("ws=custom");
+    }
+    return parts.join(" · ");
+  }
   return null;
 }
 
@@ -280,10 +397,16 @@ export function credentialReadiness(
    * (mode switch must re-supply secrets).
    */
   savedOptions?: Record<string, unknown>,
-  /** Optional raw Telegram token for format checks (never stored). */
+  /** Optional raw Telegram/Discord token for format checks (never stored). */
   tokenValue?: string | null,
-  /** Optional Feishu app_id for format checks (never stored). */
+  /** Optional Feishu/Weibo/QQBot app_id for format checks (never stored). */
   appIdValue?: string | null,
+  /** Optional Slack bot token for format checks (never stored). */
+  botTokenValue?: string | null,
+  /** Optional Slack app token for format checks (never stored). */
+  appTokenValue?: string | null,
+  /** Optional Matrix access token for format checks (never stored). */
+  accessTokenValue?: string | null,
 ): { ready: boolean; missingKeys: string[] } {
   const opts = isRecord(instance.options) ? instance.options : {};
 
@@ -328,6 +451,84 @@ export function credentialReadiness(
       hasCredentials: instance.hasCredentials,
       appIdValue,
       channel,
+    });
+    return { ready: v.ok, missingKeys: [...v.missing] };
+  }
+
+  if (WEIXIN_LIKE.includes(channel)) {
+    const v = validateWeixinConfig({
+      options: opts,
+      secretKeysFilled,
+      hasCredentials: instance.hasCredentials,
+    });
+    return { ready: v.ok, missingKeys: [...v.missing] };
+  }
+
+  if (DISCORD_LIKE.includes(channel)) {
+    const v = validateDiscordConfig({
+      options: opts,
+      secretKeysFilled,
+      hasCredentials: instance.hasCredentials,
+      tokenValue,
+    });
+    return { ready: v.ok, missingKeys: [...v.missing] };
+  }
+
+  if (LINE_LIKE.includes(channel)) {
+    const v = validateLineConfig({
+      options: opts,
+      secretKeysFilled,
+      hasCredentials: instance.hasCredentials,
+    });
+    return { ready: v.ok, missingKeys: [...v.missing] };
+  }
+
+  if (SLACK_LIKE.includes(channel)) {
+    const v = validateSlackConfig({
+      options: opts,
+      secretKeysFilled,
+      hasCredentials: instance.hasCredentials,
+      botTokenValue,
+      appTokenValue,
+    });
+    return { ready: v.ok, missingKeys: [...v.missing] };
+  }
+
+  if (QQ_LIKE.includes(channel)) {
+    const v = validateQqConfig({
+      options: opts,
+      secretKeysFilled,
+      hasCredentials: instance.hasCredentials,
+    });
+    return { ready: v.ok, missingKeys: [...v.missing] };
+  }
+
+  if (MATRIX_LIKE.includes(channel)) {
+    const v = validateMatrixConfig({
+      options: opts,
+      secretKeysFilled,
+      hasCredentials: instance.hasCredentials,
+      accessTokenValue: accessTokenValue ?? tokenValue,
+    });
+    return { ready: v.ok, missingKeys: [...v.missing] };
+  }
+
+  if (WEIBO_LIKE.includes(channel)) {
+    const v = validateWeiboConfig({
+      options: opts,
+      secretKeysFilled,
+      hasCredentials: instance.hasCredentials,
+      appIdValue,
+    });
+    return { ready: v.ok, missingKeys: [...v.missing] };
+  }
+
+  if (QQBOT_LIKE.includes(channel)) {
+    const v = validateQqbotConfig({
+      options: opts,
+      secretKeysFilled,
+      hasCredentials: instance.hasCredentials,
+      appIdValue,
     });
     return { ready: v.ok, missingKeys: [...v.missing] };
   }
@@ -384,6 +585,11 @@ export function classifyChannelHealth(
     readinessInstance,
     input.secretKeysFilled,
     savedOpts,
+    input.tokenValue,
+    input.appIdValue,
+    input.botTokenValue,
+    input.appTokenValue,
+    input.accessTokenValue,
   );
 
   // Honest status: incomplete mode-switch / missing keys cannot look "connected".
@@ -499,6 +705,121 @@ export function classifyChannelHealth(
     }
   }
 
+  if (WEIXIN_LIKE.includes(channel)) {
+    const wxV = validateWeixinConfig({
+      options: opts,
+      secretKeysFilled: input.secretKeysFilled,
+      hasCredentials: instance.hasCredentials,
+    });
+    for (const k of weixinHealthHintKeys(wxV, {
+      openAcl: openAcl && instance.hasCredentials,
+    })) {
+      hintKeys.push(k);
+    }
+  }
+
+  if (DISCORD_LIKE.includes(channel)) {
+    const discV = validateDiscordConfig({
+      options: opts,
+      secretKeysFilled: input.secretKeysFilled,
+      hasCredentials: instance.hasCredentials,
+      tokenValue: input.tokenValue,
+    });
+    for (const k of discordHealthHintKeys(discV, {
+      openAcl: openAcl && instance.hasCredentials,
+    })) {
+      hintKeys.push(k);
+    }
+  }
+
+  if (LINE_LIKE.includes(channel)) {
+    const lineV = validateLineConfig({
+      options: opts,
+      secretKeysFilled: input.secretKeysFilled,
+      hasCredentials: instance.hasCredentials,
+    });
+    for (const k of lineHealthHintKeys(lineV, {
+      openAcl: openAcl && instance.hasCredentials,
+    })) {
+      hintKeys.push(k);
+    }
+  }
+
+  if (SLACK_LIKE.includes(channel)) {
+    const slackV = validateSlackConfig({
+      options: opts,
+      secretKeysFilled: input.secretKeysFilled,
+      hasCredentials: instance.hasCredentials,
+      botTokenValue: input.botTokenValue,
+      appTokenValue: input.appTokenValue,
+    });
+    for (const k of slackHealthHintKeys(slackV, {
+      openAcl: openAcl && instance.hasCredentials,
+    })) {
+      hintKeys.push(k);
+    }
+  }
+
+  if (QQ_LIKE.includes(channel)) {
+    const qqV = validateQqConfig({
+      options: opts,
+      secretKeysFilled: input.secretKeysFilled,
+      hasCredentials: instance.hasCredentials,
+    });
+    const tokenInForm =
+      !!input.secretKeysFilled &&
+      (input.secretKeysFilled.has("token") ||
+        input.secretKeysFilled.has("access_token"));
+    for (const k of qqHealthHintKeys(qqV, {
+      openAcl: openAcl && (instance.hasCredentials || qqV.ok),
+      tokenInForm,
+    })) {
+      hintKeys.push(k);
+    }
+  }
+
+  if (MATRIX_LIKE.includes(channel)) {
+    const mxV = validateMatrixConfig({
+      options: opts,
+      secretKeysFilled: input.secretKeysFilled,
+      hasCredentials: instance.hasCredentials,
+      accessTokenValue: input.accessTokenValue ?? input.tokenValue,
+    });
+    for (const k of matrixHealthHintKeys(mxV, {
+      openAcl: openAcl && instance.hasCredentials,
+    })) {
+      hintKeys.push(k);
+    }
+  }
+
+  if (WEIBO_LIKE.includes(channel)) {
+    const weiboV = validateWeiboConfig({
+      options: opts,
+      secretKeysFilled: input.secretKeysFilled,
+      hasCredentials: instance.hasCredentials,
+      appIdValue: input.appIdValue,
+    });
+    for (const k of weiboHealthHintKeys(weiboV, {
+      openAcl: openAcl && instance.hasCredentials,
+    })) {
+      hintKeys.push(k);
+    }
+  }
+
+  if (QQBOT_LIKE.includes(channel)) {
+    const qqbotV = validateQqbotConfig({
+      options: opts,
+      secretKeysFilled: input.secretKeysFilled,
+      hasCredentials: instance.hasCredentials,
+      appIdValue: input.appIdValue,
+    });
+    for (const k of qqbotHealthHintKeys(qqbotV, {
+      openAcl: openAcl && (instance.hasCredentials || qqbotV.ok),
+    })) {
+      hintKeys.push(k);
+    }
+  }
+
   // Dedup preserve order
   const seen = new Set<string>();
   const uniqueHints = hintKeys.filter((k) => {
@@ -532,6 +853,14 @@ export function channelHasDeepHealth(channel: RemoteChannelId): boolean {
     FEISHU_LIKE.includes(channel) ||
     TELEGRAM_LIKE.includes(channel) ||
     WECOM_LIKE.includes(channel) ||
-    DINGTALK_LIKE.includes(channel)
+    DINGTALK_LIKE.includes(channel) ||
+    WEIXIN_LIKE.includes(channel) ||
+    DISCORD_LIKE.includes(channel) ||
+    LINE_LIKE.includes(channel) ||
+    SLACK_LIKE.includes(channel) ||
+    QQ_LIKE.includes(channel) ||
+    MATRIX_LIKE.includes(channel) ||
+    WEIBO_LIKE.includes(channel) ||
+    QQBOT_LIKE.includes(channel)
   );
 }

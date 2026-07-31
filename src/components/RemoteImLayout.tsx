@@ -23,8 +23,10 @@ import {
   createDefaultInstance,
   deleteChannelInstance,
   deriveStatus,
+  filterActiveChannels,
   instancesForChannel,
   isRemoteChannelId,
+  isRetiredChannel,
   loadChannelInstances,
   loadBridgeConfig,
   recordRimBridgeEvent,
@@ -219,6 +221,8 @@ export function RemoteImLayout({
 
   const onSaveInstance = useCallback(
     async (inst: ChannelInstance) => {
+      // Soft-retired channels: no new bind / save-connect
+      if (isRetiredChannel(inst.channel)) return;
       setBusy("save");
       try {
         let saved = { ...inst };
@@ -347,7 +351,11 @@ export function RemoteImLayout({
         </button>
 
         {groups.map((g) => {
-          const channels = CHANNEL_SCHEMAS.filter((c) => c.group === g.key);
+          // Hide soft-retired WPS channels by default; re-show when legacy instances exist.
+          const channels = filterActiveChannels(
+            CHANNEL_SCHEMAS.filter((c) => c.group === g.key),
+            { includeRetiredWithInstances: true, instances },
+          );
           if (channels.length === 0) return null;
           return (
             <div key={g.key} className="rim-sidebar__group">
@@ -494,6 +502,8 @@ export function RemoteImLayout({
               })
             }
             onAddInstance={() => {
+              // Soft-retired channels: no new binds / instances
+              if (isRetiredChannel(selection.channelId)) return;
               const n = instancesForChannel(instances, selection.channelId)
                 .length;
               const inst = createDefaultInstance(

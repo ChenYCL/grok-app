@@ -60,21 +60,61 @@ export type ManagedLocalStatus = {
   managedSettingsActive?: boolean | null;
   managedSettingsExists?: boolean | null;
   managedSettingsPath?: string | null;
+  /**
+   * Explicit signature verification from CLI inspect/doctor when present.
+   * `null`/`undefined` = not reported (App never invents verified).
+   */
+  signatureVerified?: boolean | null;
+  /**
+   * Where `signatureVerified` came from (`inspect` | `doctor` | …).
+   * Null when presence-only (App path probe).
+   */
+  signatureVerifySource?: string | null;
+  /**
+   * Host honesty: true when status is path/inspect presence only and the App
+   * did not receive an explicit CLI signature verification claim.
+   */
+  presenceOnly?: boolean | null;
   /** Soft-fail reason (CLI missing for inspect, etc.). */
   reason?: string | null;
 };
 
 /**
  * Honest signature / managed-policy status for the UI.
- * Never claims cryptographic verification unless the CLI/inspect said so.
+ *
+ * - `absent` — no local managed artifacts
+ * - `present_unverified` — files / inspect flags present; App did **not** verify crypto
+ * - `verify_ok` — **only** when host/CLI/doctor explicitly reported verification success
+ * - `verify_failed` — CLI rejected signature / envelope (or host reported verified=false)
+ * - `soft_fail` — probe/inspect unavailable or status unknown (never invents verified)
  */
 export type ManagedSignatureStatus =
-  | "none"
-  | "artifacts"
-  | "sig_files"
-  | "active"
-  | "rejected"
-  | "unknown";
+  | "absent"
+  | "present_unverified"
+  | "verify_ok"
+  | "verify_failed"
+  | "soft_fail";
+
+/** Chip severity for signature status. */
+export type ManagedSignatureSeverity = "none" | "ok" | "warn" | "error" | "muted";
+
+/** Rich view for the Managed setup signature card (pure; UI translates keys). */
+export type ManagedSignatureView = {
+  status: ManagedSignatureStatus;
+  severity: ManagedSignatureSeverity;
+  /** True when UI must not claim cryptographic verification. */
+  presenceOnly: boolean;
+  /** inspect | doctor | null */
+  verifySource: string | null;
+  /** Whether any local managed artifact path exists. */
+  hasArtifacts: boolean;
+  /** Whether signature sidecar files exist (content never read). */
+  hasSigFiles: boolean;
+  /** Inspect reported managed settings active (not the same as crypto verify). */
+  managedActive: boolean;
+  /** Machine fact rows for detail modal (already non-secret). */
+  facts: Array<{ id: string; present: boolean; detail?: string | null }>;
+};
 
 /** Guided setup step ids (order is stable). */
 export type ManagedSetupStepId =
@@ -302,57 +342,218 @@ export function extractPreviewMeta(raw: unknown): ManagedPreviewMeta {
   };
 }
 
+/** True when any managed path artifact is present (not crypto). */
+export function hasManagedArtifacts(
+  local?: ManagedLocalStatus | null,
+  previewMeta?: ManagedPreviewMeta | null,
+): boolean {
+  if (!local && !previewMeta) return false;
+  return (
+    !!local?.managedConfigPresent ||
+    !!local?.systemManagedConfigPresent ||
+    !!local?.requirementsPresent ||
+    !!local?.configSignaturePresent ||
+    !!local?.identitySignaturePresent ||
+    local?.managedSettingsExists === true ||
+    local?.managedSettingsActive === true ||
+    !!previewMeta?.hasSignatureBlock ||
+    !!previewMeta?.hasRequirements
+  );
+}
+
+/** True when signature sidecars or preview signature block are present. */
+export function hasManagedSigFiles(
+  local?: ManagedLocalStatus | null,
+  previewMeta?: ManagedPreviewMeta | null,
+): boolean {
+  return (
+    !!local?.configSignaturePresent ||
+    !!local?.identitySignaturePresent ||
+    !!previewMeta?.hasSignatureBlock
+  );
+}
+
 /**
- * Derive an honest signature / managed-policy status chip.
- * Prefers CLI error / inspect active over mere file presence.
+ * Map probe / CLI outcomes → honest UI signature status.
+ *
+ * **Never** claims `verify_ok` from mere file presence or `managedSettingsActive`.
+ * Only `signatureVerified === true` from host/CLI/doctor (or explicit host field)
+ * yields `verify_ok`.
  */
 export function deriveSignatureStatus(input: {
   local?: ManagedLocalStatus | null;
   previewMeta?: ManagedPreviewMeta | null;
   errorKind?: ManagedSetupErrorKind | null;
-  /** True after a successful install in this session. */
+  /** True after a successful install in this session (still not crypto verify). */
   installOk?: boolean;
 }): ManagedSignatureStatus {
-  if (input.errorKind === "signature_rejected") return "rejected";
+  if (input.errorKind === "signature_rejected") return "verify_failed";
+
   const local = input.local;
-  if (local?.managedSettingsActive === true) return "active";
-  if (input.installOk) {
-    // Install wrote files; verify chip uses local artifacts when known.
-    if (
-      local?.configSignaturePresent ||
-      local?.identitySignaturePresent ||
-      input.previewMeta?.hasSignatureBlock
-    ) {
-      return "sig_files";
-    }
-    if (local?.managedConfigPresent || local?.systemManagedConfigPresent) {
-      return "artifacts";
-    }
-    return "artifacts";
+
+  // Explicit host/CLI verification claim — only path to verify_ok / verify_failed.
+  if (local?.signatureVerified === true) return "verify_ok";
+  if (local?.signatureVerified === false) return "verify_failed";
+
+  // Soft-fail probe / missing local snapshot.
+  if (local == null) return "soft_fail";
+  if (local.ok === false) return "soft_fail";
+
+  const artifacts = hasManagedArtifacts(local, input.previewMeta);
+  const sigFiles = hasManagedSigFiles(local, input.previewMeta);
+  const present =
+    artifacts || sigFiles || input.installOk === true;
+
+  // Files or install this session → presence only (unverified by App).
+  if (present) return "present_unverified";
+
+  // No artifacts; inspect soft-failed or CLI missing → soft_fail if reason.
+  if (local.reason && !local.cliFound) return "soft_fail";
+  if (local.reason && local.reason.toLowerCase().includes("soft-fail")) {
+    return "soft_fail";
   }
+
+  return "absent";
+}
+
+/** Chip severity for a derived signature status. */
+export function signatureStatusSeverity(
+  status: ManagedSignatureStatus,
+): ManagedSignatureSeverity {
+  switch (status) {
+    case "verify_ok":
+      return "ok";
+    case "verify_failed":
+      return "error";
+    case "present_unverified":
+      return "warn";
+    case "soft_fail":
+      return "muted";
+    case "absent":
+    default:
+      return "none";
+  }
+}
+
+/**
+ * Build the signature card view model (status + honesty facts).
+ * Pure — never loads signature contents.
+ */
+export function buildSignatureView(input: {
+  local?: ManagedLocalStatus | null;
+  previewMeta?: ManagedPreviewMeta | null;
+  errorKind?: ManagedSetupErrorKind | null;
+  installOk?: boolean;
+}): ManagedSignatureView {
+  const status = deriveSignatureStatus(input);
+  const local = input.local;
+  const hasArtifacts = hasManagedArtifacts(local, input.previewMeta);
+  const hasSigFiles = hasManagedSigFiles(local, input.previewMeta);
+  const managedActive = local?.managedSettingsActive === true;
+  const verifySource =
+    typeof local?.signatureVerifySource === "string" &&
+    local.signatureVerifySource.trim()
+      ? local.signatureVerifySource.trim()
+      : null;
+
+  // presenceOnly: true unless CLI/doctor actually performed verification.
+  const presenceOnly =
+    status !== "verify_ok" && status !== "verify_failed";
+
+  const facts: ManagedSignatureView["facts"] = [
+    {
+      id: "managed_config.toml",
+      present: !!local?.managedConfigPresent,
+    },
+    {
+      id: "managed_config.sig.json",
+      present: !!local?.configSignaturePresent,
+    },
+    {
+      id: "managed_identity.sig.json",
+      present: !!local?.identitySignaturePresent,
+    },
+    {
+      id: "requirements.toml",
+      present: !!local?.requirementsPresent,
+    },
+    {
+      id: "system_managed_config",
+      present: !!local?.systemManagedConfigPresent,
+    },
+    {
+      id: "managed_settings_active",
+      present: managedActive,
+      detail:
+        local?.managedSettingsActive == null
+          ? "unknown"
+          : local.managedSettingsActive
+            ? "true"
+            : "false",
+    },
+    {
+      id: "signature_verified",
+      present: local?.signatureVerified === true,
+      detail:
+        local?.signatureVerified == null
+          ? "not_reported"
+          : local.signatureVerified
+            ? "true"
+            : "false",
+    },
+  ];
+
+  return {
+    status,
+    severity: signatureStatusSeverity(status),
+    presenceOnly,
+    verifySource,
+    hasArtifacts,
+    hasSigFiles,
+    managedActive,
+    facts,
+  };
+}
+
+/**
+ * Recovery hint message key suffix / stable id for UI i18n.
+ * Returns a managedSetup.* key fragment consumed by the panel.
+ */
+export type ManagedSignatureRecoveryId =
+  | "absent"
+  | "present_unverified"
+  | "verify_ok"
+  | "verify_failed"
+  | "soft_fail"
+  | "cli_missing"
+  | "inspect_soft";
+
+export function signatureRecoveryId(input: {
+  status: ManagedSignatureStatus;
+  local?: ManagedLocalStatus | null;
+  errorKind?: ManagedSetupErrorKind | null;
+}): ManagedSignatureRecoveryId {
+  if (input.errorKind === "signature_rejected" || input.status === "verify_failed") {
+    return "verify_failed";
+  }
+  if (input.status === "verify_ok") return "verify_ok";
+  if (input.status === "absent") return "absent";
+  if (input.status === "present_unverified") return "present_unverified";
+  // soft_fail variants
+  if (input.local?.cliFound === false) return "cli_missing";
   if (
-    local?.configSignaturePresent ||
-    local?.identitySignaturePresent ||
-    input.previewMeta?.hasSignatureBlock
+    input.local?.reason &&
+    /inspect|soft-fail/i.test(input.local.reason)
   ) {
-    return "sig_files";
+    return "inspect_soft";
   }
-  if (
-    local?.managedConfigPresent ||
-    local?.systemManagedConfigPresent ||
-    local?.requirementsPresent ||
-    local?.managedSettingsExists === true
-  ) {
-    return "artifacts";
-  }
-  if (local == null) return "unknown";
-  if (local.ok === false) return "unknown";
-  return "none";
+  return "soft_fail";
 }
 
 /**
  * Build ordered guided steps for first-run / managed setup UX.
  * Soft states never block install (enterprise path is optional).
+ * Verify step is **done** only on `verify_ok` — never from mere presence.
  */
 export function buildManagedSetupSteps(input: {
   cliFound: boolean;
@@ -367,19 +568,23 @@ export function buildManagedSetupSteps(input: {
   const cliFound = input.cliFound;
   const authBlocked =
     input.errorKind === "missing_auth" || input.errorKind === "rejected";
-  const sigRejected = input.errorKind === "signature_rejected";
+  const sigRejected =
+    input.errorKind === "signature_rejected" ||
+    input.signatureStatus === "verify_failed";
   const hasArtifacts =
-    !!input.local?.managedConfigPresent ||
-    !!input.local?.systemManagedConfigPresent ||
-    !!input.local?.requirementsPresent ||
-    input.local?.managedSettingsActive === true ||
-    input.installDone === true;
-  const sigStatus = input.signatureStatus ?? "unknown";
-  const verified =
-    sigStatus === "active" ||
-    (hasArtifacts &&
-      (sigStatus === "sig_files" || sigStatus === "artifacts") &&
-      input.installDone === true);
+    hasManagedArtifacts(input.local) || input.installDone === true;
+  const sigStatus =
+    input.signatureStatus ??
+    deriveSignatureStatus({
+      local: input.local,
+      errorKind: input.errorKind,
+      installOk: input.installDone,
+    });
+  // Only claim verify done when CLI actually verified — never invent from install.
+  const verified = sigStatus === "verify_ok";
+  const verifySoft =
+    sigStatus === "present_unverified" ||
+    (sigStatus === "soft_fail" && hasArtifacts);
 
   const cliState: ManagedSetupStepState = !cliFound
     ? "blocked"
@@ -409,11 +614,10 @@ export function buildManagedSetupSteps(input: {
   }
 
   let verifyState: ManagedSetupStepState;
-  if (sigRejected) verifyState = "blocked";
+  if (sigRejected || sigStatus === "verify_failed") verifyState = "blocked";
   else if (verified) verifyState = "done";
-  else if (hasArtifacts || sigStatus === "sig_files" || sigStatus === "artifacts") {
-    verifyState = "soft";
-  } else if (installState === "done") verifyState = "current";
+  else if (verifySoft || hasArtifacts) verifyState = "soft";
+  else if (installState === "done") verifyState = "current";
   else verifyState = "todo";
 
   // Ensure exactly one "current" when possible (prefer earliest incomplete).
@@ -452,6 +656,9 @@ export function emptyManagedLocalStatus(
     managedSettingsActive: null,
     managedSettingsExists: null,
     managedSettingsPath: null,
+    signatureVerified: null,
+    signatureVerifySource: null,
+    presenceOnly: true,
     reason: null,
     ...partial,
   };

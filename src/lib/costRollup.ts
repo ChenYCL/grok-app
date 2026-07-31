@@ -529,6 +529,17 @@ export function aggregateCostRollup(opts: {
   projects?: readonly CostRollupProjectMeta[];
   /** Only include days on/after this YYYY-MM-DD (inclusive). */
   sinceDay?: string | null;
+  /** Only include days on/before this YYYY-MM-DD (inclusive). */
+  untilDay?: string | null;
+  /** Restrict to one project id (`""` / null = no filter). */
+  projectId?: string | null;
+  /**
+   * When true with no `projectId`, keep only samples with `projectId == null`
+   * (orphan / no project).
+   */
+  noProject?: boolean;
+  /** Restrict to one session id. */
+  sessionId?: string | null;
   /** Cap number of buckets returned (newest days first). */
   maxBuckets?: number;
   utc?: boolean;
@@ -548,9 +559,12 @@ export function aggregateCostRollup(opts: {
     (opts.sessions ?? []).map((s) => [s.id, s]),
   );
 
-  const samples = dedupeUsageSamples(opts.samples).filter((s) => {
-    if (!opts.sinceDay) return true;
-    return s.day >= opts.sinceDay;
+  const samples = filterCostUsageSamples(dedupeUsageSamples(opts.samples), {
+    sinceDay: opts.sinceDay,
+    untilDay: opts.untilDay,
+    projectId: opts.projectId,
+    noProject: opts.noProject,
+    sessionId: opts.sessionId,
   });
 
   type Acc = {
@@ -687,11 +701,27 @@ export function aggregateCostRollup(opts: {
     const day = dayKeyFromIso(sess.updatedAt, opts.utc) ?? null;
     if (!day) continue;
     if (opts.sinceDay && day < opts.sinceDay) continue;
-    if (knownSessionDays.has(`${sess.id}\0${day}`)) continue;
+    if (opts.untilDay && day > opts.untilDay) continue;
+    if (
+      opts.sessionId != null &&
+      String(opts.sessionId).trim() !== "" &&
+      sess.id !== String(opts.sessionId).trim()
+    ) {
+      continue;
+    }
     const projectId =
       sess.projectId == null || sess.projectId === ""
         ? null
         : String(sess.projectId);
+    if (opts.noProject) {
+      if (projectId != null) continue;
+    } else if (
+      opts.projectId != null &&
+      String(opts.projectId).trim() !== ""
+    ) {
+      if (projectId !== String(opts.projectId).trim()) continue;
+    }
+    if (knownSessionDays.has(`${sess.id}\0${day}`)) continue;
     const key = bucketKeyForUnknown(projectId, sess.id, day);
     let set = unknownByBucket.get(key);
     if (!set) {
@@ -818,6 +848,10 @@ export function buildCostRollupView(opts: {
   sessions?: readonly CostRollupSessionMeta[];
   projects?: readonly CostRollupProjectMeta[];
   sinceDay?: string | null;
+  untilDay?: string | null;
+  projectId?: string | null;
+  noProject?: boolean;
+  sessionId?: string | null;
   maxBuckets?: number;
   nowMs?: number;
   utc?: boolean;
@@ -839,6 +873,10 @@ export function buildCostRollupView(opts: {
     sessions: opts.sessions,
     projects: opts.projects,
     sinceDay: opts.sinceDay,
+    untilDay: opts.untilDay,
+    projectId: opts.projectId,
+    noProject: opts.noProject,
+    sessionId: opts.sessionId,
     maxBuckets: opts.maxBuckets,
     utc: opts.utc,
     groupBy: opts.groupBy,
@@ -1108,10 +1146,519 @@ export function recordCostUsageSample(
 export function clearCostUsageSamples(
   storage: CostUsageSamplesStorage = defaultStorage(),
 ): void {
+  const plan = planClearCostUsageSamples(loadCostUsageSamples(storage));
+  applyClearCostUsageSamplesPlan(plan, storage);
+}
+
+// ── COST-USAGE-PRO — filters · empty honesty · clear plan · export soft-fail ─
+
+/**
+ * Sample filter for project / session / calendar window.
+ * Empty / null fields are no-ops. `noProject` keeps only orphan samples.
+ */
+export type CostRollupSampleFilter = {
+  sessionId?: string | null;
+  projectId?: string | null;
+  /** When true, keep samples with null/empty projectId (orphans). */
+  noProject?: boolean;
+  /** Inclusive lower day bound YYYY-MM-DD. */
+  sinceDay?: string | null;
+  /** Inclusive upper day bound YYYY-MM-DD. */
+  untilDay?: string | null;
+};
+
+/**
+ * Pure filter of known samples by session / project / day window.
+ * Does not invent samples; preserves order of input after filter.
+ */
+export function filterCostUsageSamples(
+  samples: readonly CostUsageSample[],
+  filter?: CostRollupSampleFilter | null,
+): CostUsageSample[] {
+  if (!samples?.length) return [];
+  if (!filter) return [...samples];
+  const sessionId =
+    typeof filter.sessionId === "string" && filter.sessionId.trim()
+      ? filter.sessionId.trim()
+      : null;
+  const projectId =
+    !filter.noProject &&
+    typeof filter.projectId === "string" &&
+    filter.projectId.trim()
+      ? filter.projectId.trim()
+      : null;
+  const noProject = Boolean(filter.noProject);
+  const sinceDay =
+    typeof filter.sinceDay === "string" && filter.sinceDay.trim()
+      ? filter.sinceDay.trim()
+      : null;
+  const untilDay =
+    typeof filter.untilDay === "string" && filter.untilDay.trim()
+      ? filter.untilDay.trim()
+      : null;
+
+  return samples.filter((s) => {
+    if (!s?.sessionId || !s.day) return false;
+    if (sessionId && s.sessionId !== sessionId) return false;
+    if (noProject) {
+      if (s.projectId != null && s.projectId !== "") return false;
+    } else if (projectId) {
+      if (s.projectId !== projectId) return false;
+    }
+    if (sinceDay && s.day < sinceDay) return false;
+    if (untilDay && s.day > untilDay) return false;
+    return true;
+  });
+}
+
+/** True when project or session filter would narrow the list (not time alone). */
+export function hasActiveCostRollupScopeFilter(opts?: {
+  projectId?: string | null;
+  noProject?: boolean;
+  sessionId?: string | null;
+}): boolean {
+  if (opts?.noProject) return true;
+  if (typeof opts?.projectId === "string" && opts.projectId.trim()) return true;
+  if (typeof opts?.sessionId === "string" && opts.sessionId.trim()) return true;
+  return false;
+}
+
+/** One chip for project (or all / no-project) filter UIs. */
+export type CostRollupProjectChip = {
+  /** Stable id: `"all"` | `"noproject"` | project id. */
+  id: string;
+  /** Display label (caller may localize `"all"` / `"noproject"`). */
+  label: string;
+  projectId: string | null;
+  noProject: boolean;
+  /** Sample count in the (time-windowed) set that feed this chip. */
+  count: number;
+};
+
+/** One chip for session filter UIs. */
+export type CostRollupSessionChip = {
+  id: string;
+  label: string;
+  sessionId: string;
+  projectId: string | null;
+  count: number;
+};
+
+/**
+ * Build project filter chips from samples (optional time window already applied).
+ * Always includes an `"all"` chip first. Includes `"noproject"` when orphans exist.
+ */
+export function listCostRollupProjectChips(
+  samples: readonly CostUsageSample[],
+  projects?: readonly CostRollupProjectMeta[] | null,
+): CostRollupProjectChip[] {
+  const projectNameById = new Map(
+    (projects ?? []).map((p) => [p.id, (p.name || "").trim() || p.id]),
+  );
+  const counts = new Map<string, { projectId: string | null; count: number; name: string | null }>();
+  let orphanCount = 0;
+  for (const s of samples) {
+    if (!s?.sessionId) continue;
+    if (s.projectId == null || s.projectId === "") {
+      orphanCount += 1;
+      continue;
+    }
+    const prev = counts.get(s.projectId);
+    if (prev) {
+      prev.count += 1;
+      if (!prev.name && s.projectName) prev.name = s.projectName;
+    } else {
+      counts.set(s.projectId, {
+        projectId: s.projectId,
+        count: 1,
+        name: s.projectName ?? projectNameById.get(s.projectId) ?? null,
+      });
+    }
+  }
+  const chips: CostRollupProjectChip[] = [
+    {
+      id: "all",
+      label: "all",
+      projectId: null,
+      noProject: false,
+      count: samples.length,
+    },
+  ];
+  const rows = [...counts.values()].sort((a, b) => {
+    const an = a.name || a.projectId || "";
+    const bn = b.name || b.projectId || "";
+    return an.localeCompare(bn);
+  });
+  for (const r of rows) {
+    chips.push({
+      id: r.projectId!,
+      label: r.name || r.projectId || "project",
+      projectId: r.projectId,
+      noProject: false,
+      count: r.count,
+    });
+  }
+  if (orphanCount > 0) {
+    chips.push({
+      id: "noproject",
+      label: "noproject",
+      projectId: null,
+      noProject: true,
+      count: orphanCount,
+    });
+  }
+  return chips;
+}
+
+/**
+ * Build session filter chips from samples. Always includes `"all"` first.
+ * Labels prefer session title meta, then id.
+ */
+export function listCostRollupSessionChips(
+  samples: readonly CostUsageSample[],
+  sessions?: readonly CostRollupSessionMeta[] | null,
+  max = 24,
+): CostRollupSessionChip[] {
+  const sessionById = new Map((sessions ?? []).map((s) => [s.id, s]));
+  const counts = new Map<
+    string,
+    { sessionId: string; projectId: string | null; count: number }
+  >();
+  for (const s of samples) {
+    if (!s?.sessionId) continue;
+    const prev = counts.get(s.sessionId);
+    if (prev) {
+      prev.count += 1;
+      if (prev.projectId == null && s.projectId != null) {
+        prev.projectId = s.projectId;
+      }
+    } else {
+      counts.set(s.sessionId, {
+        sessionId: s.sessionId,
+        projectId: s.projectId ?? null,
+        count: 1,
+      });
+    }
+  }
+  const rows = [...counts.values()].sort((a, b) => {
+    const at = sessionById.get(a.sessionId)?.title?.trim() || a.sessionId;
+    const bt = sessionById.get(b.sessionId)?.title?.trim() || b.sessionId;
+    return at.localeCompare(bt);
+  });
+  const cap = Math.max(0, Math.floor(max));
+  const chips: CostRollupSessionChip[] = [
+    {
+      id: "all",
+      label: "all",
+      sessionId: "",
+      projectId: null,
+      count: samples.length,
+    },
+  ];
+  for (const r of rows.slice(0, cap)) {
+    const meta = sessionById.get(r.sessionId);
+    chips.push({
+      id: r.sessionId,
+      label: meta?.title?.trim() || r.sessionId,
+      sessionId: r.sessionId,
+      projectId: r.projectId ?? meta?.projectId ?? null,
+      count: r.count,
+    });
+  }
+  return chips;
+}
+
+/** Honest empty-state kinds for the cost rollup hub. */
+export type CostRollupEmptyKind =
+  | "no_samples"
+  | "empty_window"
+  | "no_matches";
+
+export type CostRollupEmptyState = {
+  kind: CostRollupEmptyKind;
+  /** i18n key for the empty title. */
+  titleKey:
+    | "costRollup.emptyTitle"
+    | "costRollup.emptyWindowTitle"
+    | "costRollup.emptyFilterTitle";
+  /** i18n key for the empty body. */
+  bodyKey:
+    | "costRollup.emptyBody"
+    | "costRollup.emptyWindowBody"
+    | "costRollup.emptyFilterBody";
+};
+
+/**
+ * Resolve contextual empty copy.
+ * - `no_samples` — ring/live/journal produced zero known samples at all
+ * - `empty_window` — samples exist outside the day window (or only unknown sessions)
+ * - `no_matches` — project/session scope filter excluded everything in-window
+ * Returns null when the view is not empty.
+ */
+export function resolveCostRollupEmptyState(opts: {
+  viewEmpty: boolean;
+  /** Total known samples before time/scope filters (ring + live + journal). */
+  rawSampleCount: number;
+  /** Known samples after time window only. */
+  windowSampleCount: number;
+  /** Known samples after time + project/session filters. */
+  filteredSampleCount: number;
+  hasScopeFilter?: boolean;
+}): CostRollupEmptyState | null {
+  if (!opts.viewEmpty) return null;
+  const raw = Math.max(0, Math.floor(opts.rawSampleCount || 0));
+  const win = Math.max(0, Math.floor(opts.windowSampleCount || 0));
+  const filtered = Math.max(0, Math.floor(opts.filteredSampleCount || 0));
+  if (raw === 0) {
+    return {
+      kind: "no_samples",
+      titleKey: "costRollup.emptyTitle",
+      bodyKey: "costRollup.emptyBody",
+    };
+  }
+  if (opts.hasScopeFilter && win > 0 && filtered === 0) {
+    return {
+      kind: "no_matches",
+      titleKey: "costRollup.emptyFilterTitle",
+      bodyKey: "costRollup.emptyFilterBody",
+    };
+  }
+  if (win === 0 || filtered === 0) {
+    return {
+      kind: "empty_window",
+      titleKey: "costRollup.emptyWindowTitle",
+      bodyKey: "costRollup.emptyWindowBody",
+    };
+  }
+  // View empty but samples present (e.g. only unknown session markers with no tokens)
+  return {
+    kind: "empty_window",
+    titleKey: "costRollup.emptyWindowTitle",
+    bodyKey: "costRollup.emptyWindowBody",
+  };
+}
+
+/**
+ * Pure clear-all plan for the local sample ring.
+ * Never mutates storage; never includes token totals in logMeta.
+ */
+export type ClearCostUsageSamplesPlan = {
+  ok: true;
+  /** Samples that would be removed. */
+  count: number;
+  /** Distinct session ids present (sorted). */
+  sessionIds: string[];
+  /** Distinct project ids present (sorted; orphans omitted). */
+  projectIds: string[];
+  /** Next list after clear (always empty). */
+  next: CostUsageSample[];
+  /** True when UI should confirm before applying. */
+  confirmNeeded: boolean;
+  /** Safe meta for logs — count only. */
+  logMeta: { clearedCount: number } | null;
+};
+
+/**
+ * Plan wiping the local cost usage sample ring (pure).
+ * Use {@link applyClearCostUsageSamplesPlan} / {@link clearCostUsageSamples} to commit.
+ */
+export function planClearCostUsageSamples(
+  samples: readonly CostUsageSample[] | null | undefined,
+): ClearCostUsageSamplesPlan {
+  const list = Array.isArray(samples) ? dedupeUsageSamples(samples) : [];
+  const sessionSet = new Set<string>();
+  const projectSet = new Set<string>();
+  for (const s of list) {
+    if (s.sessionId) sessionSet.add(s.sessionId);
+    if (s.projectId) projectSet.add(s.projectId);
+  }
+  const count = list.length;
+  return {
+    ok: true,
+    count,
+    sessionIds: [...sessionSet].sort(),
+    projectIds: [...projectSet].sort(),
+    next: [],
+    confirmNeeded: count > 0,
+    logMeta: count > 0 ? { clearedCount: count } : null,
+  };
+}
+
+/**
+ * Apply a clear-all plan to storage and notify listeners.
+ * Returns the empty list.
+ */
+export function applyClearCostUsageSamplesPlan(
+  plan: ClearCostUsageSamplesPlan,
+  storage: CostUsageSamplesStorage = defaultStorage(),
+): CostUsageSample[] {
   try {
     storage.setItem(COST_USAGE_SAMPLES_STORAGE_KEY, "[]");
   } catch {
-    /* ignore */
+    /* private mode / quota */
   }
   notifySamplesChange([]);
+  return plan.next;
+}
+
+/* ── Export soft-fail honesty ─────────────────────────────────────────── */
+
+/** Export channel for cost rollup summary. */
+export type CostRollupExportChannel = "copy" | "download";
+
+/**
+ * Soft-fail kinds for copy / download of the plain-text summary.
+ * Never invents success from empty views.
+ */
+export type CostRollupExportSoftFailKind =
+  | "empty"
+  | "clipboard"
+  | "download_failed"
+  | "other";
+
+export type CostRollupExportOutcome =
+  | { ok: true; channel: CostRollupExportChannel }
+  | {
+      ok: false;
+      kind: CostRollupExportSoftFailKind;
+      channel: CostRollupExportChannel;
+    };
+
+function costRollupExportErrText(err: unknown): string {
+  if (err == null) return "";
+  if (typeof err === "string") return err;
+  if (err instanceof Error) {
+    const code =
+      typeof (err as Error & { code?: unknown }).code === "string"
+        ? String((err as Error & { code?: string }).code)
+        : "";
+    return `${code} ${err.message} ${err.name}`.trim();
+  }
+  if (typeof err === "object") {
+    const o = err as { code?: unknown; message?: unknown; reason?: unknown };
+    const parts = [o.code, o.message, o.reason]
+      .filter((x) => x != null && String(x).trim())
+      .map(String);
+    if (parts.length) return parts.join(" ");
+  }
+  return String(err);
+}
+
+/**
+ * Classify a thrown value into a stable export soft-fail kind.
+ * Prefer explicit `code` over free-form text.
+ */
+export function classifyCostRollupExportError(
+  err: unknown,
+): CostRollupExportSoftFailKind {
+  if (err == null || err === "") return "other";
+  const code =
+    typeof err === "object" &&
+    err != null &&
+    typeof (err as { code?: unknown }).code === "string"
+      ? String((err as { code: string }).code).trim().toLowerCase()
+      : "";
+  if (code === "empty" || code === "empty_view" || code === "nothing") {
+    return "empty";
+  }
+  if (code === "clipboard" || code === "clipboard_failed") return "clipboard";
+  if (
+    code === "download_failed" ||
+    code === "download-failed" ||
+    code === "write_failed" ||
+    code === "save_failed"
+  ) {
+    return "download_failed";
+  }
+
+  const s = costRollupExportErrText(err).toLowerCase();
+  if (!s.trim()) return "other";
+  if (
+    s.includes("nothing to export") ||
+    s.includes("no known usage") ||
+    s.includes("empty view") ||
+    /^empty(\s+error)?$/.test(s.trim()) ||
+    s.trim() === "error: empty"
+  ) {
+    return "empty";
+  }
+  if (
+    s.includes("clipboard") ||
+    s.includes("write text") ||
+    s.includes("copy failed") ||
+    s.includes("notallowed") ||
+    s.includes("permission denied")
+  ) {
+    return "clipboard";
+  }
+  if (
+    s.includes("download") ||
+    s.includes("save failed") ||
+    s.includes("write failed") ||
+    s.includes("createobjecturl") ||
+    s.includes("blob")
+  ) {
+    return "download_failed";
+  }
+  return "other";
+}
+
+/**
+ * Resolve copy/download outcome for toast honesty.
+ * Empty views always soft-fail as `empty` (never claim success).
+ */
+export function resolveCostRollupExportOutcome(opts: {
+  channel: CostRollupExportChannel;
+  /** True when the rollup view has nothing known to export. */
+  empty: boolean;
+  /** For copy: false when clipboard API failed without throwing. */
+  copyOk?: boolean;
+  /** Thrown error from clipboard / download path. */
+  error?: unknown;
+}): CostRollupExportOutcome {
+  const channel = opts.channel === "download" ? "download" : "copy";
+  if (opts.empty) {
+    return { ok: false, kind: "empty", channel };
+  }
+  if (opts.error != null) {
+    return {
+      ok: false,
+      kind: classifyCostRollupExportError(opts.error),
+      channel,
+    };
+  }
+  if (channel === "copy" && opts.copyOk === false) {
+    return { ok: false, kind: "clipboard", channel };
+  }
+  return { ok: true, channel };
+}
+
+/**
+ * i18n message key for an export outcome (success or soft-fail).
+ * Keys must exist under `costRollup.*` in messages.
+ */
+export function costRollupExportOutcomeMessageKey(
+  outcome: CostRollupExportOutcome,
+):
+  | "costRollup.exportCopied"
+  | "costRollup.exportDownloaded"
+  | "costRollup.exportEmpty"
+  | "costRollup.exportCopyFailed"
+  | "costRollup.exportDownloadFailed"
+  | "costRollup.exportFailed" {
+  if (outcome.ok) {
+    return outcome.channel === "download"
+      ? "costRollup.exportDownloaded"
+      : "costRollup.exportCopied";
+  }
+  switch (outcome.kind) {
+    case "empty":
+      return "costRollup.exportEmpty";
+    case "clipboard":
+      return "costRollup.exportCopyFailed";
+    case "download_failed":
+      return "costRollup.exportDownloadFailed";
+    default:
+      return "costRollup.exportFailed";
+  }
 }

@@ -51,6 +51,11 @@ describe("settingsCatalog", () => {
       section: "runtime",
       tab: "tools",
     });
+    // Query (PR hub deep link) must not break section/tab parse.
+    expect(parseSettingsHash("#/settings/runtime/tools?pr=42")).toEqual({
+      section: "runtime",
+      tab: "tools",
+    });
     expect(parseSettingsHash("settings/bogus/x")).toEqual({
       section: "general",
       tab: "composer",
@@ -113,6 +118,8 @@ describe("settingsCatalog", () => {
     expect(appearance).toContain("settings.showUsageEstimates");
     expect(appearance).toContain("settings.messageTimeFormat");
     expect(appearance).toContain("settings.sidebarShowRelativeTime");
+    expect(appearance).toContain("settings.sessionMuteSummary");
+    expect(appearance).toContain("settings.sessionUnreadSummary");
     expect(appearance).toContain("settings.backBottomAlways");
     const rim = keywordKeysForSection("remote_im");
     expect(rim).toContain("settings.nav.remoteIm");

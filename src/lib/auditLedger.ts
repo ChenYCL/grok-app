@@ -36,6 +36,45 @@ export const AUDIT_LEDGER_MAX_LIMIT = 1000;
 export const AUDIT_LEDGER_SUMMARY_MAX = 240;
 export const AUDIT_LEDGER_FIELD_MAX = 120;
 
+/**
+ * Retention presets (days). `0` = unlimited (keep until size rotate / clear).
+ * Host applies on write/rotate and explicit prune.
+ */
+export const AUDIT_LEDGER_RETENTION_UNLIMITED = 0;
+export const AUDIT_LEDGER_RETENTION_PRESETS = [7, 30, 90, 0] as const;
+export type AuditLedgerRetentionDays =
+  (typeof AUDIT_LEDGER_RETENTION_PRESETS)[number];
+
+/** Normalize retention to a known preset; unknown → unlimited. */
+export function normalizeAuditRetentionDays(
+  raw: unknown,
+): AuditLedgerRetentionDays {
+  const n =
+    typeof raw === "number"
+      ? Math.floor(raw)
+      : typeof raw === "string" && raw.trim()
+        ? Math.floor(Number(raw))
+        : NaN;
+  if (n === 7 || n === 30 || n === 90) return n;
+  return AUDIT_LEDGER_RETENTION_UNLIMITED;
+}
+
+/** Pure: drop entries older than retention window (unparseable ts kept). */
+export function pruneAuditLedgerEntries(
+  entries: readonly AuditLedgerEntry[],
+  retentionDays: unknown,
+  nowMs: number = Date.now(),
+): AuditLedgerEntry[] {
+  const days = normalizeAuditRetentionDays(retentionDays);
+  if (days === AUDIT_LEDGER_RETENTION_UNLIMITED) return [...entries];
+  const cutoff = nowMs - days * 86_400_000;
+  return entries.filter((e) => {
+    const ms = auditLedgerTsMs(e);
+    if (ms === 0 && !Number.isFinite(Date.parse(e.ts))) return true;
+    return ms >= cutoff;
+  });
+}
+
 const EVENT_SET = new Set<string>(AUDIT_LEDGER_EVENTS);
 
 /** Soft clamp for list limits (mirrors host). */
@@ -177,11 +216,45 @@ export type AuditLedgerFilter = {
   event?: AuditLedgerEvent | "all";
   sessionId?: string | null;
   toolName?: string | null;
+  /**
+   * Inclusive lower bound epoch ms, or date-only `YYYY-MM-DD` / RFC3339 string.
+   * Date-only → start of that UTC day.
+   */
+  fromMs?: number | null;
+  fromTs?: string | null;
+  /**
+   * Inclusive upper bound epoch ms, or date-only / RFC3339 string.
+   * Date-only → end of that UTC day.
+   */
+  toMs?: number | null;
+  toTs?: string | null;
 };
+
+/** Parse a filter bound into epoch ms. Date-only uses start-of-day UTC. */
+export function parseAuditLedgerBoundMs(
+  raw: string | number | null | undefined,
+  endOfDay = false,
+): number | null {
+  if (raw == null) return null;
+  if (typeof raw === "number") {
+    return Number.isFinite(raw) ? raw : null;
+  }
+  const s = raw.trim();
+  if (!s) return null;
+  // Date-only YYYY-MM-DD
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) {
+    const base = Date.parse(`${s}T00:00:00.000Z`);
+    if (!Number.isFinite(base)) return null;
+    return endOfDay ? base + 86_400_000 - 1 : base;
+  }
+  const t = Date.parse(s);
+  return Number.isFinite(t) ? t : null;
+}
 
 /**
  * Filter entries (already newest-first). Case-insensitive substring match on
- * toolName, summary, permission, sessionId, projectPath.
+ * toolName, summary, permission, sessionId, projectPath. Optional exact
+ * sessionId, event kind, and inclusive date range.
  */
 export function filterAuditLedger(
   entries: readonly AuditLedgerEntry[],
@@ -191,11 +264,25 @@ export function filterAuditLedger(
   const q = (filter.query ?? "").trim().toLowerCase();
   const sid = (filter.sessionId ?? "").trim().toLowerCase();
   const tool = (filter.toolName ?? "").trim().toLowerCase();
+  const fromMs =
+    filter.fromMs != null && Number.isFinite(filter.fromMs)
+      ? filter.fromMs
+      : parseAuditLedgerBoundMs(filter.fromTs, false);
+  const toMs =
+    filter.toMs != null && Number.isFinite(filter.toMs)
+      ? filter.toMs
+      : parseAuditLedgerBoundMs(filter.toTs, true);
 
   return entries.filter((e) => {
     if (event && e.event !== event) return false;
     if (sid && (e.sessionId ?? "").toLowerCase() !== sid) return false;
     if (tool && !e.toolName.toLowerCase().includes(tool)) return false;
+    if (fromMs != null || toMs != null) {
+      const ms = auditLedgerTsMs(e);
+      if (ms === 0 && !Number.isFinite(Date.parse(e.ts))) return false;
+      if (fromMs != null && ms < fromMs) return false;
+      if (toMs != null && ms > toMs) return false;
+    }
     if (!q) return true;
     const hay = [
       e.toolName,
@@ -210,6 +297,49 @@ export function filterAuditLedger(
       .toLowerCase();
     return hay.includes(q);
   });
+}
+
+/** Host export filter payload (camelCase). */
+export type AuditLedgerExportFilter = {
+  event?: string | null;
+  sessionId?: string | null;
+  fromTs?: string | null;
+  toTs?: string | null;
+};
+
+/** Build host filter from UI filter (omits empty / all). */
+export function toAuditLedgerExportFilter(
+  filter: AuditLedgerFilter = {},
+): AuditLedgerExportFilter {
+  const out: AuditLedgerExportFilter = {};
+  if (filter.event && filter.event !== "all") out.event = filter.event;
+  const sid = (filter.sessionId ?? "").trim();
+  if (sid) out.sessionId = sid;
+  const from =
+    (filter.fromTs ?? "").trim() ||
+    (filter.fromMs != null && Number.isFinite(filter.fromMs)
+      ? new Date(filter.fromMs).toISOString()
+      : "");
+  const to =
+    (filter.toTs ?? "").trim() ||
+    (filter.toMs != null && Number.isFinite(filter.toMs)
+      ? new Date(filter.toMs).toISOString()
+      : "");
+  if (from) out.fromTs = from;
+  if (to) out.toTs = to;
+  return out;
+}
+
+/** True when export filter has any constraint. */
+export function auditLedgerExportFilterActive(
+  filter: AuditLedgerExportFilter,
+): boolean {
+  return !!(
+    (filter.event && filter.event !== "all") ||
+    (filter.sessionId && filter.sessionId.trim()) ||
+    (filter.fromTs && filter.fromTs.trim()) ||
+    (filter.toTs && filter.toTs.trim())
+  );
 }
 
 /** Stable sort key: epoch ms from ts (0 on parse fail). */

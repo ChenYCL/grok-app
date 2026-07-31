@@ -14,6 +14,7 @@ import type {
   TrustedProject,
 } from "@/lib/remoteIm";
 import {
+  lineCloudflaredSnippet,
   applySaveInstance,
   advancedPanelFields,
   channelHasDeepHealth,
@@ -21,6 +22,7 @@ import {
   credentialsRefFor,
   defaultAcl,
   getChannelSchema,
+  isRetiredChannel,
   isSecretControl,
   parseIdSecretPair,
   primaryBindFields,
@@ -72,6 +74,16 @@ export interface RemoteImChannelPanelProps {
 }
 
 type BindTab = "scan" | "paste";
+
+/** Coerce bind form `port` for LINE cloudflared helper (values is Record unknown). */
+function lineWebhookPortArg(
+  values: Record<string, unknown>,
+  secrets: Record<string, string>,
+): string | number | null {
+  const raw = values.port ?? secrets.port;
+  if (typeof raw === "string" || typeof raw === "number") return raw;
+  return null;
+}
 
 export function RemoteImChannelPanel({
   locale,
@@ -177,7 +189,7 @@ export function RemoteImChannelPanel({
       keepSecretsVisible?: boolean;
     }): Promise<boolean> => {
       const sch = getChannelSchema(channelId);
-      if (!sch?.implemented) return false;
+      if (!sch || isRetiredChannel(sch) || !sch.implemented) return false;
 
       setFormError(null);
       const nextValues = { ...values, ...override?.values };
@@ -399,6 +411,85 @@ export function RemoteImChannelPanel({
     );
   }
 
+  // Soft-retired (WPS xiezuo / agentspace): honest banner, no setup pack, allow cleanup
+  if (isRetiredChannel(schema) || schema.retired || schema.unsupported) {
+    const hasLegacy =
+      instance.hasCredentials ||
+      instances.some((i) => i.channel === channelId);
+    return (
+      <div
+        className="rim-retired"
+        data-channel={channelId}
+        data-retired="1"
+      >
+        <header className="rim-panel__header">
+          <div>
+            <h2 className="rim-panel__title">{t(schema.nameKey)}</h2>
+            <p className="rim-panel__lead">{t(schema.connectionKey)}</p>
+          </div>
+          <RimBadge>{t("settings.remoteIm.retired")}</RimBadge>
+        </header>
+        <div
+          className="rim-callout rim-callout--warn"
+          role="status"
+          data-rim-retired-banner="1"
+        >
+          <div className="rim-callout__title">
+            {t("settings.remoteIm.retiredTitle")}
+          </div>
+          <p className="rim-callout__body" style={{ margin: "0.35rem 0 0" }}>
+            {t("settings.remoteIm.retiredBody")}
+          </p>
+          <p className="settings-row__hint" style={{ margin: "0.35rem 0 0" }}>
+            {t("settings.remoteIm.retiredHint")}
+          </p>
+        </div>
+        {hasLegacy ? (
+          <div className="settings-card">
+            <div className="settings-row settings-row--stack">
+              <div className="settings-row__label">
+                {t("settings.remoteIm.instance")}
+              </div>
+              <div className="settings-row__desc">
+                {name || instance.name || instance.id}
+                {instance.hasCredentials
+                  ? ` · ${t("settings.remoteIm.retired.hasCredentials")}`
+                  : ""}
+              </div>
+            </div>
+            <div className="settings-row settings-row--stack">
+              <div className="settings-row__label">
+                {t("settings.remoteIm.danger")}
+              </div>
+              <div className="settings-row__desc">
+                {t("settings.remoteIm.danger.desc")}
+              </div>
+              <button
+                type="button"
+                className="btn btn--danger btn--sm"
+                disabled={!!busy}
+                onClick={() => onRequestDelete(instance.id)}
+              >
+                {t("settings.remoteIm.danger.delete")}
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div className="settings-card rim-disabled-form" aria-disabled>
+            <p className="settings-page__lead" style={{ margin: 0 }}>
+              {t("settings.remoteIm.retiredNoInstance")}
+            </p>
+            <div className="settings-row">
+              <button type="button" className="btn btn--primary" disabled>
+                {t("settings.remoteIm.saveConnect")}
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  }
+
   if (!schema.implemented) {
     return (
       <div className="rim-coming-soon" data-channel={channelId}>
@@ -515,7 +606,7 @@ export function RemoteImChannelPanel({
       // Live form options (e.g. WeCom connect_mode) for honest soft status
       draftOptions: values,
     });
-  }, [instance, bridgeRunning, bridgeLinked, secrets, values]);
+  }, [instance, bridgeRunning, bridgeLinked, secrets, values, channelId]);
 
   const statusTone = health.badgeTone;
   const statusLabel = t(health.statusKey);
@@ -844,6 +935,22 @@ export function RemoteImChannelPanel({
           </p>
         </div>
       ) : null}
+      {channelId === "weixin" ? (
+        <div className="rim-callout" data-weixin-guide="1">
+          <div className="rim-callout__title">
+            {t("settings.remoteIm.weixin.guide.title")}
+          </div>
+          <ol className="rim-guide-steps">
+            <li>{t("settings.remoteIm.weixin.guide.step1")}</li>
+            <li>{t("settings.remoteIm.weixin.guide.step2")}</li>
+            <li>{t("settings.remoteIm.weixin.guide.step3")}</li>
+            <li>{t("settings.remoteIm.weixin.guide.step4")}</li>
+          </ol>
+          <p className="settings-row__hint">
+            {t("settings.remoteIm.weixin.guide.softFail")}
+          </p>
+        </div>
+      ) : null}
 {channelId === "telegram" ? (
         <div className="rim-callout" data-telegram-guide="1">
           <div className="rim-callout__title">
@@ -918,12 +1025,20 @@ export function RemoteImChannelPanel({
                 <span>
                   {scanPhase === "done"
                     ? t("settings.remoteIm.scan.done")
-                    : t("settings.remoteIm.scan.placeholder")}
+                    : t(
+                        channelId === "weixin"
+                          ? "settings.remoteIm.weixin.scan.placeholder"
+                          : "settings.remoteIm.scan.placeholder",
+                      )}
                 </span>
               )}
             </div>
             <div className="settings-row__hint">
-              {t("settings.remoteIm.scan.hint")}
+              {t(
+                channelId === "weixin"
+                  ? "settings.remoteIm.weixin.scan.hint"
+                  : "settings.remoteIm.scan.hint",
+              )}
             </div>
             {scanError ? (
               <div className="rim-callout rim-callout--error">{scanError}</div>
@@ -1173,6 +1288,186 @@ export function RemoteImChannelPanel({
                   {t("settings.remoteIm.weixin.presenterHint")}
                 </div>
               ) : null}
+          {channelId === "qqbot" ? (
+          <div
+            className="rim-callout"
+            data-qqbot-intents="1"
+          >
+            <div className="rim-callout__title">
+              {t("settings.remoteIm.qqbot.intentsTitle")}
+            </div>
+            <p>{t("settings.remoteIm.qqbot.intentsHint")}</p>
+          </div>
+        ) : null}
+          {channelId === "qqbot" ? (
+        <div className="rim-callout" data-qqbot-guide="1">
+          <div className="rim-callout__title">
+            {t("settings.remoteIm.qqbot.guide.title")}
+          </div>
+          <ol className="rim-guide-steps">
+            <li>{t("settings.remoteIm.qqbot.guide.step1")}</li>
+            <li>{t("settings.remoteIm.qqbot.guide.step2")}</li>
+            <li>{t("settings.remoteIm.qqbot.guide.step3")}</li>
+            <li>{t("settings.remoteIm.qqbot.guide.step4")}</li>
+          </ol>
+          <p className="settings-row__hint">
+            {t("settings.remoteIm.qqbot.guide.softFail")}
+          </p>
+        </div>
+      ) : null}
+          {channelId === "weibo" ? (
+        <div
+          className="rim-callout"
+          data-weibo-guide="1"
+          data-validate="validateWeiboConfig"
+        >
+          <div className="rim-callout__title">
+            {t("settings.remoteIm.weibo.guide.title")}
+          </div>
+          <ol className="rim-guide-steps">
+            <li>{t("settings.remoteIm.weibo.guide.step1")}</li>
+            <li>{t("settings.remoteIm.weibo.guide.step2")}</li>
+            <li>{t("settings.remoteIm.weibo.guide.step3")}</li>
+            <li>{t("settings.remoteIm.weibo.guide.step4")}</li>
+          </ol>
+          <p className="settings-row__hint">
+            {t("settings.remoteIm.weibo.guide.softFail")}
+          </p>
+        </div>
+      ) : null}
+          {channelId === "matrix" ? (
+        <div className="rim-callout" data-matrix-guide="1">
+          <div className="rim-callout__title">
+            {t("settings.remoteIm.matrix.guide.title")}
+          </div>
+          <ol className="rim-guide-steps">
+            <li>{t("settings.remoteIm.matrix.guide.step1")}</li>
+            <li>{t("settings.remoteIm.matrix.guide.step2")}</li>
+            <li>{t("settings.remoteIm.matrix.guide.step3")}</li>
+            <li>{t("settings.remoteIm.matrix.guide.step4")}</li>
+          </ol>
+          <p className="settings-row__hint">
+            {t("settings.remoteIm.matrix.guide.softFail")}
+          </p>
+        </div>
+      ) : null}
+          {channelId === "qq" ? (
+          <div
+            className="rim-callout rim-callout--warn"
+            data-qq-risk="1"
+          >
+            <div className="rim-callout__title">
+              <IconAlertTriangle size={14} />
+              {t("settings.remoteIm.qq.riskTitle")}
+            </div>
+            <p>{t("settings.remoteIm.qq.riskHint")}</p>
+          </div>
+        ) : null}
+          {channelId === "qq" ? (
+        <div className="rim-callout" data-qq-guide="1">
+          <div className="rim-callout__title">
+            {t("settings.remoteIm.qq.guide.title")}
+          </div>
+          <ol className="rim-guide-steps">
+            <li>{t("settings.remoteIm.qq.guide.step1")}</li>
+            <li>{t("settings.remoteIm.qq.guide.step2")}</li>
+            <li>{t("settings.remoteIm.qq.guide.step3")}</li>
+            <li>{t("settings.remoteIm.qq.guide.step4")}</li>
+          </ol>
+          <p className="settings-row__hint">
+            {t("settings.remoteIm.qq.guide.softFail")}
+          </p>
+        </div>
+      ) : null}
+          {channelId === "slack" ? (
+        <div className="rim-callout" data-slack-guide="1">
+          <div className="rim-callout__title">
+            {t("settings.remoteIm.slack.guide.title")}
+          </div>
+          <ol className="rim-guide-steps">
+            <li>{t("settings.remoteIm.slack.guide.step1")}</li>
+            <li>{t("settings.remoteIm.slack.guide.step2")}</li>
+            <li>{t("settings.remoteIm.slack.guide.step3")}</li>
+            <li>{t("settings.remoteIm.slack.guide.step4")}</li>
+            <li>{t("settings.remoteIm.slack.guide.step5")}</li>
+          </ol>
+          <p className="settings-row__hint">
+            {t("settings.remoteIm.slack.guide.softFail")}
+          </p>
+        </div>
+      ) : null}
+          {channelId === "line" ? (
+              <p className="settings-row__hint">
+                {t("settings.remoteIm.line.publicUrl.helper")}
+              </p>
+            ) : null}
+          {channelId === "line" ? (
+              <div className="rim-btn-row" style={{ marginTop: 8 }}>
+                <button
+                  type="button"
+                  className="btn btn--ghost btn--sm"
+                  onClick={() => {
+                    const snippet = lineCloudflaredSnippet(
+                      lineWebhookPortArg(values, secrets),
+                    );
+                    void navigator.clipboard?.writeText(snippet).catch(() => {
+                      /* clipboard optional — snippet still visible */
+                    });
+                  }}
+                >
+                  {t("settings.remoteIm.line.publicUrl.copy")}
+                </button>
+              </div>
+            ) : null}
+          {channelId === "line"
+                ? lineCloudflaredSnippet(lineWebhookPortArg(values, secrets))
+                : `cloudflared tunnel --url http://127.0.0.1:${
+                    String(values.port ?? secrets.port ?? "").trim() || "8081"
+                  }`}
+          {channelId === "line" ? (
+        <div className="rim-callout" data-line-guide="1">
+          <div className="rim-callout__title">
+            {t("settings.remoteIm.line.guide.title")}
+          </div>
+          <ol className="rim-guide-steps">
+            <li>{t("settings.remoteIm.line.guide.step1")}</li>
+            <li>{t("settings.remoteIm.line.guide.step2")}</li>
+            <li>{t("settings.remoteIm.line.guide.step3")}</li>
+            <li>{t("settings.remoteIm.line.guide.step4")}</li>
+          </ol>
+          <p className="settings-row__hint">
+            {t("settings.remoteIm.line.guide.softFail")}
+          </p>
+        </div>
+      ) : null}
+          {channelId === "discord" ? (
+          <div
+            className="rim-callout rim-callout--warn"
+            data-discord-intent="1"
+          >
+            <div className="rim-callout__title">
+              <IconAlertTriangle size={14} />
+              {t("settings.remoteIm.discord.intentTitle")}
+            </div>
+            <p>{t("settings.remoteIm.discord.intentHint")}</p>
+          </div>
+        ) : null}
+          {channelId === "discord" ? (
+        <div className="rim-callout" data-discord-guide="1">
+          <div className="rim-callout__title">
+            {t("settings.remoteIm.discord.guide.title")}
+          </div>
+          <ol className="rim-guide-steps">
+            <li>{t("settings.remoteIm.discord.guide.step1")}</li>
+            <li>{t("settings.remoteIm.discord.guide.step2")}</li>
+            <li>{t("settings.remoteIm.discord.guide.step3")}</li>
+            <li>{t("settings.remoteIm.discord.guide.step4")}</li>
+          </ol>
+          <p className="settings-row__hint">
+            {t("settings.remoteIm.discord.guide.softFail")}
+          </p>
+        </div>
+      ) : null}
               <RimSelect
                 value={presenter}
                 ariaLabel={t("settings.remoteIm.field.presenter")}

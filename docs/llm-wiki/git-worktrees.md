@@ -83,7 +83,8 @@ From a worktree-bound session or the branch menu / Changes → Workspace:
 1. **Ship…** opens a GlassModal (title, body, draft checkbox, “open PR after push”). Never `window.confirm` / `prompt` / `alert`.
 2. Host runs `git push -u origin HEAD` (`git_push_branch`) with argv only, `GIT_SSH_COMMAND=/usr/bin/ssh` when present, soft-fail when git / origin / non-repo missing.
 3. Optional `gh pr create` (`gh_pr_create`) with `--repo` / `--base` / `--head` inferred from remotes (fork: `upstream` as PR target, `origin` owner as `--head owner:branch`). Soft-fail when `gh` missing. **Never** reports success without a PR URL.
-4. Pure helpers + tests: `src/lib/wtShipFlow.ts`. Output is redacted before UI/toasts.
+4. On success with a PR URL: success panel shows the URL + **Open in browser** + **Open in PR hub** (deep link `#/settings/runtime/tools?pr=N` → Runtime → Tools hub card, optional row highlight). Soft-fail toast if project/hub unavailable.
+5. Pure helpers + tests: `src/lib/wtShipFlow.ts` (push/PR argv) · `src/lib/prHubDeepLink.ts` (hash parse/build). Output is redacted before UI/toasts.
 
 ### CLI worktrees list (`grok worktree list`)
 
@@ -130,6 +131,7 @@ grok worktree db rebuild   # filesystem scan → rebuild index
 - Frontend pure helpers: `src/lib/gitWorktree.ts` — list/parse + path builders + `resolveSessionWorktreeBadge` / tooltip / layout detect (+ unit tests)
 - Frontend pure helpers: `src/lib/cliWorktrees.ts` — CLI JSON/text parse, project filter, open-as-cwd gate (+ unit tests)
 - Frontend pure helpers: `src/lib/wtShipFlow.ts` — push/PR argv builders, remote/fork head resolve, outcome combine (no fake success) (+ unit tests)
+- Frontend pure helpers: `src/lib/prHubDeepLink.ts` — ship → PR hub hash `#/settings/runtime/tools?pr=N` parse/build + PR number from URL (+ unit tests)
 - UI:
   - Project: `ComposerProjectMenu` (folder only)
   - Branch / worktree: `ComposerWorktreeMenu` (context bar chip; per-row remove; **Ship…**; **CLI worktrees** section)

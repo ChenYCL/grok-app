@@ -106,6 +106,8 @@ import {
   isSessionWindowLabel,
   parseSessionDeepLinkHash,
   resolveSecondarySessionId,
+  resolveStopTargets,
+  shouldDeferWarmConnectForForeignBusy,
   shouldSkipWarmConnect,
 } from "@/lib/multiWindow";
 import {
@@ -250,6 +252,11 @@ import {
   stoppableActivitySessions,
 } from "@/lib/agentActivity";
 import {
+  classifyTasksBindCwdError,
+  classifyTasksStopError,
+  type TasksBindCwdResult,
+} from "@/lib/tasksPanelPro";
+import {
   loadTrayBusyBadgePref,
   saveTrayBusyBadgePref,
 } from "@/lib/trayBusyBadgePref";
@@ -272,6 +279,10 @@ import {
   type BatchProjectInput,
 } from "@/lib/batchAgents";
 import {
+  parseProcessLimitEvent,
+  type ProcessLimitEvent,
+} from "@/lib/processBudget";
+import {
   buildReliabilityCenter,
   DEFAULT_RELIABILITY_MAX_ERRORS,
   DEFAULT_RELIABILITY_MAX_STALLS,
@@ -285,8 +296,10 @@ import {
 import {
   GOAL_ORCH_EVENT_MAX,
   goalEventFromHostPayload,
+  goalOrchPhaseLabelKey,
   loadGoalOrchUiEnabled,
   prependGoalOrchEvent,
+  resolveGoalOrchSessionIndicator,
   saveGoalOrchUiEnabled,
   type GoalOrchEvent,
   type GoalOrchHostPayload,
@@ -436,8 +449,6 @@ import {
 } from "@/lib/paletteActions";
 import { canOfferContinueCwd } from "@/lib/continueCwd";
 import {
-  sessionExportFilename,
-  sessionExportFilenameFor,
   sessionExportMimeType,
   sessionToHtml,
   sessionToJson,
@@ -445,6 +456,22 @@ import {
   sessionToPlain,
   shouldPreferCliMarkdownExport,
 } from "@/lib/sessionExport";
+import {
+  buildStreamSessionNdjson,
+  streamSessionExportFilename,
+  streamSessionExportMimeType,
+  type StreamSessionExportFormat,
+} from "@/lib/streamSessionExport";
+import {
+  canSessionExportActions,
+  estimateSessionExportSizeClass,
+  formatSessionExportBytes,
+  isSessionExportJournalEmpty,
+  resolveSessionExportSoftFail,
+  sessionExportFormatNameKey,
+  sessionExportSafeFilename,
+  sessionExportSizeClassLabelKey,
+} from "@/lib/sessionExportPro";
 import {
   blobToBase64 as pngBlobToBase64,
   buildExportImagePipeline,
@@ -522,26 +549,35 @@ import {
   showDesktopNotification,
 } from "@/lib/desktopNotify";
 import {
+  clearAllMutes as clearAllSessionMutes,
   loadMutedSessionIds,
   SESSION_MUTE_CHANGE_EVENT,
+  shouldConfirmClearAllMutes,
   toggle as toggleSessionMute,
 } from "@/lib/sessionMute";
 import {
+  clearAllUnread as clearAllSessionUnread,
   clearUnread as clearSessionUnread,
   isTurnDoneReadyTransition,
   loadUnreadSessionIds,
   markUnread as markSessionUnread,
   SESSION_UNREAD_CHANGE_EVENT,
+  shouldConfirmClearAllUnread,
   shouldMarkUnreadOnTurnDone,
 } from "@/lib/sessionUnread";
 import {
   SESSION_NOTE_MAX_LENGTH,
   SESSION_NOTES_CHANGE_EVENT,
+  clampSessionNoteInput,
   clearNote as clearSessionNote,
   getNote as getSessionNote,
   loadSessionNotes,
   notePreview,
+  sessionNoteSaveOutcome,
   setNote as setSessionNote,
+  shouldConfirmSessionNoteClear,
+  shouldConfirmSessionNoteDiscard,
+  validateSessionNote,
 } from "@/lib/sessionNotes";
 import {
   dismissCliUpdateNotice,
@@ -660,7 +696,9 @@ import {
   type PromptHistoryScope,
 } from "@/components/PromptHistoryPanel";
 import {
+  planClearSendQueue,
   queuePreviewText,
+  resolveSendQueueStripState,
   shouldEnqueueSend,
   type QueuedSend,
 } from "@/lib/sendQueue";
@@ -670,8 +708,10 @@ import {
 } from "@/hooks/useSendQueue";
 import {
   buildSlashCatalog,
+  countSlashByKind,
   flattenFilteredCatalog,
   type SlashItem,
+  type SlashKindFilter,
   type SkillInfo,
 } from "@/lib/slashCatalog";
 import type { MessageKey } from "@/i18n";
@@ -726,6 +766,12 @@ import {
   sanitizePrTitle,
   shipOutcomeSummary,
 } from "@/lib/wtShipFlow";
+import {
+  PR_HUB_ANCHOR_ID,
+  buildPrHubDeepLink,
+  parseGithubPrNumber,
+  parsePrHubDeepLink,
+} from "@/lib/prHubDeepLink";
 import {
   buildForkWorktreeName,
   canOfferForkAgentSession,
@@ -854,6 +900,7 @@ import {
   type Automation,
 } from "@/lib/automations";
 import { automationsBackgroundStatus } from "@/lib/automationsBackgroundStatus";
+import { recordAutomationRun } from "@/lib/automationRunHistory";
 import {
   extractAutomationPayload,
   looksLikeScheduleIntent,
@@ -1295,6 +1342,9 @@ export default function App() {
     title: string;
   } | null>(null);
   const [sessionNoteDraft, setSessionNoteDraft] = useState("");
+  const [sessionNoteBaseline, setSessionNoteBaseline] = useState("");
+  const [sessionNoteDiscardOpen, setSessionNoteDiscardOpen] = useState(false);
+  const [sessionNoteClearOpen, setSessionNoteClearOpen] = useState(false);
   /** Per-session extra rules editor (`--rules`). */
   const [sessionRulesTarget, setSessionRulesTarget] = useState<{
     id: string;
@@ -1383,9 +1433,9 @@ export default function App() {
   const [liveHost, setLiveHost] = useState<SessionSnapshot>(IDLE_SNAPSHOT);
   /**
    * Secondary session window (`session-*` label / `#/session/<id>` deep link).
-   * Live-capable (MULTI-WIN-LITE): send / stop / ensureConnected use the shared
-   * process Host. Passive warm-connect on open is still skipped so browsing a
-   * second pane does not demote main’s agent until the user acts.
+   * Live-capable (session-keyed Host pool): send / stop / warm-connect use the
+   * shared process Host (session-targeted). Connecting/sending on this chat
+   * demotes other busy agents to background (stream continues) — never kills.
    */
   // True only for real `session-*` windows (set after label detect). Hash alone
   // on main must not change layout / chrome.
@@ -1534,6 +1584,9 @@ export default function App() {
   const slashDismissedSigRef = useRef<string | null>(null);
   const showComposerPlusRef = useRef(false);
   const [slashActiveIndex, setSlashActiveIndex] = useState(0);
+  /** Kind chip for slash / + palette (`all` | mode | action | prompt | skill). */
+  const [slashKindFilter, setSlashKindFilter] =
+    useState<SlashKindFilter>("all");
   const [showStatusModal, setShowStatusModal] = useState(false);
   const [showMcpModal, setShowMcpModal] = useState(false);
   const [showCompactModal, setShowCompactModal] = useState(false);
@@ -2387,8 +2440,13 @@ export default function App() {
   const [proxyUrl, setProxyUrl] = useState("");
   const [proxyNoProxy, setProxyNoProxy] = useState("");
   const [maxConcurrentAgents, setMaxConcurrentAgents] = useState(8);
+  /** Last process_limit event for Settings / Reliability honesty (ids only). */
+  const [lastProcessLimit, setLastProcessLimit] =
+    useState<ProcessLimitEvent | null>(null);
   const [agentIdleMinutes, setAgentIdleMinutes] = useState(30);
   const [streamStallSeconds, setStreamStallSeconds] = useState(180);
+  /** Tool audit ledger retention days: 7 | 30 | 90 | 0 = unlimited. */
+  const [auditLedgerRetentionDays, setAuditLedgerRetentionDays] = useState(0);
   /** Headless partial stream events (CLI 0.2.117+). */
   const [includePartialMessages, setIncludePartialMessages] = useState(false);
   /** 0 = omit `--max-turns` (CLI default). */
@@ -2504,6 +2562,17 @@ export default function App() {
   const [shipError, setShipError] = useState<string | null>(null);
   const [shipBranch, setShipBranch] = useState<string | null>(null);
   const [shipStatus, setShipStatus] = useState<string | null>(null);
+  /** After successful `gh pr create` — success panel with URL + Open in PR hub. */
+  const [shipSuccess, setShipSuccess] = useState<{
+    prUrl: string;
+    prNumber: number | null;
+  } | null>(null);
+  /** PR hub row highlight from ship deep link / `?pr=`. */
+  const [prHubHighlightPr, setPrHubHighlightPr] = useState<number | null>(null);
+  /** One-shot Settings scroll target (e.g. settings-anchor-prHub). */
+  const [settingsFocusAnchor, setSettingsFocusAnchor] = useState<string | null>(
+    null,
+  );
   /** Host stream-stall prompt (I06); null when dismissed or not stalled. */
   const [streamStall, setStreamStall] = useState<{
     sessionId?: string;
@@ -2518,6 +2587,8 @@ export default function App() {
   const [queueEditItemId, setQueueEditItemId] = useState<string | null>(null);
   const [queueEditText, setQueueEditText] = useState("");
   const queueEditTextareaRef = useRef<HTMLTextAreaElement>(null);
+  /** Clear-all send queue — App-level GlassModal (never window.confirm). */
+  const [sendQueueClearOpen, setSendQueueClearOpen] = useState(false);
 
   const [connecting, setConnecting] = useState(false);
   /** Sync gate for ensureConnected (React state alone races two rapid sends). */
@@ -3239,6 +3310,14 @@ export default function App() {
           ? Math.min(900, Math.round(settings.streamStallSeconds))
           : 120,
       );
+      {
+        const raw = settings.auditLedgerRetentionDays;
+        const n =
+          typeof raw === "number" && Number.isFinite(raw) ? Math.floor(raw) : 0;
+        setAuditLedgerRetentionDays(
+          n === 7 || n === 30 || n === 90 ? n : 0,
+        );
+      }
       setIncludePartialMessages(!!settings.includePartialMessages);
       {
         const raw = settings.maxAgentTurns;
@@ -4607,6 +4686,9 @@ export default function App() {
             maxConcurrentAgents?: number;
           }>("session://process_limit", (p) => {
             if (cancelled || !p) return;
+            // Remember for process-budget UI (Settings pool / Reliability).
+            const ev = parseProcessLimitEvent(p, Date.now());
+            if (ev) setLastProcessLimit(ev);
             setToast(tr("agent.processLimitToast"));
             window.setTimeout(() => setToast(null), 5200);
             if (
@@ -5338,15 +5420,16 @@ export default function App() {
     [],
   );
 
-  // Hash route: #/settings[/section[/tab]] | #/automations | #/workbench
+  // Hash route: #/settings[/section[/tab]][?pr=N] | #/automations | #/workbench
   // Explicit #/settings/{section}… deep links always win; bare #/settings uses last.
   useEffect(() => {
     const syncFromHash = () => {
-      const raw = (window.location.hash || "").replace(/^#\/?/, "");
+      const fullHash = window.location.hash || "";
+      const raw = fullHash.replace(/^#\/?/, "");
       if (raw.startsWith("settings")) {
         const parts = raw.split("/").filter(Boolean);
-        // parts[0] === "settings"; parts[1] may be section
-        const sectionPart = parts[1];
+        // parts[0] === "settings"; parts[1] may be section (ignore ?query)
+        const sectionPart = (parts[1] ?? "").split("?")[0];
         const hasExplicitSection = isSettingsSectionId(sectionPart);
         if (hasExplicitSection) {
           const loc = parseSettingsHash(raw);
@@ -5354,6 +5437,13 @@ export default function App() {
             setSettingsSection(loc.section);
             setSettingsTab(loc.tab ?? null);
             saveSettingsLastRoute(loc);
+          }
+          // PR hub deep link with explicit ?pr=N: highlight row + scroll to hub.
+          // Bare runtime/tools (no query) must not steal focus to the PR hub card.
+          const prHub = parsePrHubDeepLink(fullHash);
+          if (prHub && prHub.prNumber != null) {
+            setPrHubHighlightPr(prHub.prNumber);
+            setSettingsFocusAnchor(PR_HUB_ANCHOR_ID);
           }
         } else {
           // Bare #/settings or unknown first segment → last route if valid.
@@ -5706,15 +5796,12 @@ export default function App() {
     // Warm ACP: connect while the user reads history (trusted project or orphan).
     // Host serializes connect; first send no-ops if already ready.
     //
-    // Multi-session: if *another* session is mid-turn, do NOT warm-connect here.
-    // Spawning demotes the busy process; capacity reclaim must never kill it, but
-    // deferring warm connect avoids demote/spawn churn while browsing other chats.
-    // The next send on this chat will `ensureConnected` intentionally.
+    // Multi-session (main): if *another* session is mid-turn, defer warm-connect
+    // so browsing does not thrash demote/spawn. Secondary windows exist for
+    // concurrent work — Host session-keyed pool keeps foreign busy turns in
+    // background (never kills), so secondary may warm-connect immediately.
+    // The next send still runs ensureConnected if warm was deferred.
     // Skip when project folder is missing (D05) — user must relocate first.
-    //
-    // Secondary windows skip *passive* warm-connect — Host live slot is shared
-    // process-wide; auto-connect on open would demote main’s agent. Intentional
-    // send still runs ensureConnected (MULTI-WIN-LITE).
     if (shouldSkipWarmConnect(isSecondaryWindowRef.current)) {
       return;
     }
@@ -5727,11 +5814,15 @@ export default function App() {
       (!!live.sessionId &&
         live.sessionId !== s.id &&
         isSessionLiveStreaming(live.state));
+    const deferForeign = shouldDeferWarmConnectForForeignBusy({
+      isSecondaryWindow: isSecondaryWindowRef.current,
+      foreignBusy,
+    });
     // Also defer while a send / connect is in flight: warm-connecting mid-send
     // used to steal the live slot from the turn being dispatched.
     if (
       api.isTauri() &&
-      !foreignBusy &&
+      !deferForeign &&
       !sendInFlightRef.current &&
       !connectingRef.current &&
       (!proj || (proj.trusted && !isProjectPathMissing(proj.pathOk))) &&
@@ -6254,7 +6345,8 @@ export default function App() {
       }),
     [session.state, stopLatch],
   );
-  // MULTI-WIN-LITE: secondary shares Host — send/stop allowed (session-targeted).
+  // Session-keyed pool: secondary shares Host — send/stop allowed (session-targeted).
+  // Composer Stop = current viewed session only (see resolveStopTargets "current").
   const effectiveCanSend =
     stopGate.sendable && canLiveParticipate(isSecondaryWindow);
   const effectiveCanStop =
@@ -6320,8 +6412,25 @@ export default function App() {
       auto: Automation,
       opts?: { fromScheduler?: boolean },
     ): Promise<boolean> => {
-      if (automationRunLock.current) return false;
+      if (automationRunLock.current) {
+        // Soft skip — do not invent a fire; only note busy contention.
+        recordAutomationRun({
+          scheduleId: auto.id,
+          name: auto.title,
+          outcome: "skipped",
+          source: "run_now",
+          error: "busy",
+        });
+        return false;
+      }
       if (opts?.fromScheduler && (session.state === "streaming" || connecting)) {
+        recordAutomationRun({
+          scheduleId: auto.id,
+          name: auto.title,
+          outcome: "skipped",
+          source: "run_now",
+          error: "session_busy",
+        });
         return false;
       }
       automationRunLock.current = true;
@@ -6331,11 +6440,27 @@ export default function App() {
           ? projects.find((p) => p.id === auto.projectId) ?? null
           : null;
         if (proj && !proj.trusted) {
-          setLocalError(tr("project.trustFirst", { name: proj.name }));
+          const detail = tr("project.trustFirst", { name: proj.name });
+          setLocalError(detail);
+          recordAutomationRun({
+            scheduleId: auto.id,
+            name: auto.title,
+            outcome: "error",
+            source: "run_now",
+            error: detail,
+          });
           return false;
         }
         if (proj && isProjectPathMissing(proj.pathOk)) {
-          setLocalError(tr("project.pathMissing", { name: proj.name }));
+          const detail = tr("project.pathMissing", { name: proj.name });
+          setLocalError(detail);
+          recordAutomationRun({
+            scheduleId: auto.id,
+            name: auto.title,
+            outcome: "error",
+            source: "run_now",
+            error: detail,
+          });
           return false;
         }
         setMainPane("chat");
@@ -6430,6 +6555,13 @@ export default function App() {
           setLocalError(
             tr("automations.connectFailed", { detail }),
           );
+          recordAutomationRun({
+            scheduleId: auto.id,
+            name: auto.title,
+            outcome: "error",
+            source: "run_now",
+            error: detail,
+          });
           // Drop empty shell sessions so sidebar does not show SuperGrok ghosts.
           if (createdSessionId && api.isTauri()) {
             try {
@@ -6503,6 +6635,13 @@ export default function App() {
               ? { ...prev, state: "ready" }
               : prev,
           );
+          recordAutomationRun({
+            scheduleId: auto.id,
+            name: auto.title,
+            outcome: "error",
+            source: "run_now",
+            error: errText,
+          });
           return false;
         }
 
@@ -6518,11 +6657,25 @@ export default function App() {
         if (auto.frequency === "once") {
           await api.automationSetEnabled(auto.id, false);
         }
+        recordAutomationRun({
+          scheduleId: auto.id,
+          name: auto.title,
+          outcome: "ok",
+          source: "run_now",
+          at: lastRunAt,
+        });
         setToast(tr("automations.runningToast", { title: auto.title }));
         window.setTimeout(() => setToast(null), 3200);
         return true;
       } catch (e) {
         setLocalError(String(e));
+        recordAutomationRun({
+          scheduleId: auto.id,
+          name: auto.title,
+          outcome: "error",
+          source: "run_now",
+          error: e,
+        });
         return false;
       } finally {
         automationRunLock.current = false;
@@ -6547,29 +6700,45 @@ export default function App() {
       }
     };
     void track(
-      api.listen<{ title?: string; sessionId?: string }>(
-        "automation://ran",
-        (p) => {
-          if (cancelled) return;
-          const title = (p?.title || "").trim() || "automation";
-          setToast(tr("automations.runningToast", { title }));
-          window.setTimeout(() => setToast(null), 3200);
-          void refreshSessions();
-        },
-      ),
+      api.listen<{
+        title?: string;
+        sessionId?: string;
+        automationId?: string;
+      }>("automation://ran", (p) => {
+        if (cancelled) return;
+        const title = (p?.title || "").trim() || "automation";
+        // Observe host fire while process is alive — never invent offline runs.
+        recordAutomationRun({
+          scheduleId: p?.automationId ?? "",
+          name: title,
+          outcome: "ok",
+          source: "host",
+        });
+        setToast(tr("automations.runningToast", { title }));
+        window.setTimeout(() => setToast(null), 3200);
+        void refreshSessions();
+      }),
     );
     void track(
-      api.listen<{ title?: string; error?: string }>(
-        "automation://error",
-        (p) => {
-          if (cancelled) return;
-          const title = (p?.title || "").trim() || "automation";
-          const err = (p?.error || "").trim() || "failed";
-          setLocalError(
-            tr("automations.hostRunFailed", { title, detail: err }),
-          );
-        },
-      ),
+      api.listen<{
+        title?: string;
+        error?: string;
+        automationId?: string;
+      }>("automation://error", (p) => {
+        if (cancelled) return;
+        const title = (p?.title || "").trim() || "automation";
+        const err = (p?.error || "").trim() || "failed";
+        recordAutomationRun({
+          scheduleId: p?.automationId ?? "",
+          name: title,
+          outcome: "error",
+          source: "host",
+          error: err,
+        });
+        setLocalError(
+          tr("automations.hostRunFailed", { title, detail: err }),
+        );
+      }),
     );
     return () => {
       cancelled = true;
@@ -7727,6 +7896,79 @@ export default function App() {
     setMutedSessionIds(loadMutedSessionIds());
   }, []);
 
+  const applyClearAllSessionUnread = useCallback(() => {
+    const n = clearAllSessionUnread();
+    setUnreadSessionIds(loadUnreadSessionIds());
+    if (n > 0) {
+      setToast(tr("session.clearAllUnreadToast", { n: String(n) }));
+      window.setTimeout(() => setToast(null), 2200);
+    } else {
+      setToast(tr("session.clearAllUnreadEmpty"));
+      window.setTimeout(() => setToast(null), 1800);
+    }
+  }, [tr]);
+
+  const handleClearAllSessionUnread = useCallback(() => {
+    const n = unreadSessionIds.size;
+    if (n <= 0) {
+      setToast(tr("session.clearAllUnreadEmpty"));
+      window.setTimeout(() => setToast(null), 1800);
+      return;
+    }
+    if (shouldConfirmClearAllUnread(n)) {
+      setAppDialog({
+        kind: "confirm",
+        title: tr("session.clearAllUnreadTitle"),
+        message: tr("session.clearAllUnreadBody", { n: String(n) }),
+        confirmLabel: tr("session.clearAllUnreadAction"),
+        onConfirm: () => {
+          applyClearAllSessionUnread();
+        },
+      });
+      return;
+    }
+    applyClearAllSessionUnread();
+  }, [unreadSessionIds.size, tr, applyClearAllSessionUnread]);
+
+  const applyClearAllSessionMutes = useCallback(() => {
+    const n = clearAllSessionMutes();
+    setMutedSessionIds(loadMutedSessionIds());
+    if (n > 0) {
+      setToast(tr("session.clearAllMutesToast", { n: String(n) }));
+      window.setTimeout(() => setToast(null), 2200);
+    } else {
+      setToast(tr("session.clearAllMutesEmpty"));
+      window.setTimeout(() => setToast(null), 1800);
+    }
+  }, [tr]);
+
+  const handleClearAllSessionMutes = useCallback(() => {
+    const n = mutedSessionIds.size;
+    if (n <= 0) {
+      setToast(tr("session.clearAllMutesEmpty"));
+      window.setTimeout(() => setToast(null), 1800);
+      return;
+    }
+    if (shouldConfirmClearAllMutes(n)) {
+      setAppDialog({
+        kind: "confirm",
+        title: tr("session.clearAllMutesTitle"),
+        message: tr("session.clearAllMutesBody", { n: String(n) }),
+        confirmLabel: tr("session.clearAllMutesAction"),
+        onConfirm: () => {
+          applyClearAllSessionMutes();
+        },
+      });
+      return;
+    }
+    applyClearAllSessionMutes();
+  }, [mutedSessionIds.size, tr, applyClearAllSessionMutes]);
+
+  const handleClearSessionUnread = useCallback((sessionId: string) => {
+    clearSessionUnread(sessionId);
+    setUnreadSessionIds(loadUnreadSessionIds());
+  }, []);
+
   // Any path that binds the workbench to a session clears its unread marker.
   useEffect(() => {
     if (session.sessionId) {
@@ -7909,7 +8151,7 @@ export default function App() {
       | boolean
       | { force?: boolean; sessionId?: string | null } = false,
   ): Promise<string | null> => {
-    // MULTI-WIN-LITE: secondary may connect when the user sends (shared Host).
+    // Session-keyed pool: secondary may connect when the user sends (shared Host).
     if (!canLiveParticipate(isSecondaryWindowRef.current)) {
       return null;
     }
@@ -8198,7 +8440,7 @@ export default function App() {
     fromQueue?: boolean;
     targetSessionId?: string | null;
   }): Promise<boolean> => {
-    // MULTI-WIN-LITE: secondary may send via shared Host (session-targeted).
+    // Session-keyed pool: secondary may send via shared Host (session-targeted).
     if (!canLiveParticipate(isSecondaryWindowRef.current)) {
       setLocalError(tr("session.secondaryLiveBanner"));
       return false;
@@ -8797,9 +9039,24 @@ export default function App() {
     }
     setShowComposerPlus(false);
     setSlashQuery(null);
+    setSlashKindFilter("all");
     const cleared = { present: false, query: "", start: 0, end: 0 };
     setLiveSlash(cleared);
     liveSlashRef.current = cleared;
+  }, []);
+
+  /**
+   * Clear kind chip + typed slash query (keeps bare `/` so the palette stays
+   * open). Never uses window.confirm.
+   */
+  const clearSlashFilters = useCallback(() => {
+    setSlashKindFilter("all");
+    const live = liveSlashRef.current;
+    if (live.present && live.query) {
+      // Keep `/` at live.start; drop the query so filter shows full catalog.
+      setDraft((d) => d.slice(0, live.start + 1) + d.slice(live.end));
+    }
+    setSlashActiveIndex(0);
   }, []);
 
   /** Stable slash-query setter: skip no-op updates so filter effects don't thrash. */
@@ -9212,35 +9469,53 @@ export default function App() {
   /** Filter query from live editor poll only. */
   const slashFilterQuery = liveSlash.present ? liveSlash.query : "";
 
-  /** Shared filter for + menu and `/` slash — empty query = full catalog. */
+  /** Shared filter for + menu and `/` slash — empty query + all kind = full catalog. */
   const slashFiltered = useMemo(
     () =>
-      flattenFilteredCatalog(slashCatalog, slashFilterQuery, (item) => ({
-        title: resolveSlashTitle(item),
-        description: resolveSlashDescription(item),
-      })),
+      flattenFilteredCatalog(
+        slashCatalog,
+        { query: slashFilterQuery, kind: slashKindFilter },
+        (item) => ({
+          title: resolveSlashTitle(item),
+          description: resolveSlashDescription(item),
+        }),
+      ),
     [
       slashCatalog,
       slashFilterQuery,
+      slashKindFilter,
       resolveSlashTitle,
       resolveSlashDescription,
     ],
   );
+  const slashCatalogCount =
+    slashCatalog.commands.length + slashCatalog.skills.length;
+  const slashKindCounts = useMemo(
+    () =>
+      countSlashByKind([
+        ...slashCatalog.commands,
+        ...slashCatalog.skills,
+      ]),
+    [slashCatalog],
+  );
+  // Upload / JSON Schema live under the Add section — only when kind is All.
   const showUploadInMenu = useMemo(
     () =>
+      slashKindFilter === "all" &&
       uploadMatchesQuery(slashFilterQuery, {
         title: tr("composer.addFiles"),
         hint: tr("composer.addFilesHint"),
       }),
-    [slashFilterQuery, tr],
+    [slashFilterQuery, slashKindFilter, tr],
   );
   const showJsonSchemaInMenu = useMemo(
     () =>
+      slashKindFilter === "all" &&
       jsonSchemaMatchesQuery(slashFilterQuery, {
         title: tr("composer.jsonSchema"),
         hint: tr("composer.jsonSchemaHint"),
       }),
-    [slashFilterQuery, tr],
+    [slashFilterQuery, slashKindFilter, tr],
   );
   const composerMenuEntries = useMemo(
     () =>
@@ -9515,10 +9790,17 @@ export default function App() {
    * (must already exist in CLI config — host does not invent servers).
    */
   const runMcpDoctor = useCallback(
-    async (name?: string | null) => {
+    async (
+      name?: string | null,
+    ): Promise<{
+      report: api.McpDoctorReport | null;
+      error: string | null;
+    }> => {
       if (!api.isTauri()) {
-        setMcpDoctorError(tr("ext.needTauri"));
-        return;
+        const error = tr("ext.needTauri");
+        setMcpDoctorError(error);
+        // Soft-fail: modal classifies host_only; no window.alert.
+        return { report: null, error };
       }
       const focus = name?.trim() || null;
       setMcpDoctorFocus(focus);
@@ -9527,14 +9809,18 @@ export default function App() {
       try {
         const report = await api.mcpDoctor(focus);
         setMcpDoctorReport(report);
+        return { report, error: null };
       } catch (e) {
+        const error = String(e);
+        // Soft-fail CLI missing / too old / timeout is classified in the modal.
         setMcpDoctorReport(null);
-        setMcpDoctorError(String(e));
+        setMcpDoctorError(error);
+        return { report: null, error };
       } finally {
         setMcpDoctorLoading(false);
       }
     },
-    [tr],
+    [],
   );
 
   const showToast = useCallback((msg: string, ms = 3200) => {
@@ -9544,11 +9830,15 @@ export default function App() {
     }, ms);
   }, []);
 
-  /** Confirm (unless pref) then stop every stoppable busy session from the Tasks panel. */
+  /** Open GlassModal to edit per-session sticky note (local only; never sent to agent). */
   const openSessionNote = useCallback(
     (s: SessionRow) => {
       setCtxMenu(null);
-      setSessionNoteDraft(getSessionNote(s.id));
+      const initial = getSessionNote(s.id);
+      setSessionNoteDraft(initial);
+      setSessionNoteBaseline(initial);
+      setSessionNoteDiscardOpen(false);
+      setSessionNoteClearOpen(false);
       setSessionNoteTarget({
         id: s.id,
         title: s.title || tr("session.untitled"),
@@ -9557,40 +9847,65 @@ export default function App() {
     [tr],
   );
 
-  const closeSessionNoteModal = useCallback(() => {
+  const forceCloseSessionNoteModal = useCallback(() => {
     setSessionNoteTarget(null);
     setSessionNoteDraft("");
+    setSessionNoteBaseline("");
+    setSessionNoteDiscardOpen(false);
+    setSessionNoteClearOpen(false);
   }, []);
+
+  const closeSessionNoteModal = useCallback(() => {
+    const v = validateSessionNote({
+      draft: sessionNoteDraft,
+      baseline: sessionNoteBaseline,
+    });
+    if (shouldConfirmSessionNoteDiscard(v)) {
+      setSessionNoteDiscardOpen(true);
+      return;
+    }
+    forceCloseSessionNoteModal();
+  }, [sessionNoteDraft, sessionNoteBaseline, forceCloseSessionNoteModal]);
 
   const saveSessionNoteModal = useCallback(() => {
     const target = sessionNoteTarget;
     if (!target) return;
-    setSessionNote(target.id, sessionNoteDraft);
+    const stored = setSessionNote(target.id, sessionNoteDraft);
     setSessionNotesMap(loadSessionNotes());
-    closeSessionNoteModal();
-    showToast(
-      sessionNoteDraft.trim()
-        ? tr("session.noteSaved")
-        : tr("session.noteCleared"),
-      2000,
-    );
+    const outcome = sessionNoteSaveOutcome(target.id, stored);
+    forceCloseSessionNoteModal();
+    showToast(tr(outcome.toastKey), 2000);
   }, [
     sessionNoteTarget,
     sessionNoteDraft,
-    closeSessionNoteModal,
+    forceCloseSessionNoteModal,
     tr,
     showToast,
   ]);
 
-  const clearSessionNoteModal = useCallback(() => {
+  const requestClearSessionNoteModal = useCallback(() => {
+    const target = sessionNoteTarget;
+    if (!target) return;
+    const hadStored = Boolean(sessionNotesMap[target.id]?.trim());
+    if (
+      !shouldConfirmSessionNoteClear({
+        draft: sessionNoteDraft,
+        hadStored,
+      })
+    ) {
+      return;
+    }
+    setSessionNoteClearOpen(true);
+  }, [sessionNoteTarget, sessionNoteDraft, sessionNotesMap]);
+
+  const confirmClearSessionNoteModal = useCallback(() => {
     const target = sessionNoteTarget;
     if (!target) return;
     clearSessionNote(target.id);
     setSessionNotesMap(loadSessionNotes());
-    setSessionNoteDraft("");
-    closeSessionNoteModal();
+    forceCloseSessionNoteModal();
     showToast(tr("session.noteCleared"), 2000);
-  }, [sessionNoteTarget, closeSessionNoteModal, tr, showToast]);
+  }, [sessionNoteTarget, forceCloseSessionNoteModal, tr, showToast]);
 
   /** Confirm then stop the given session ids (dashboard / multi-select). */
   const stopBusySessionsByIds = useCallback(
@@ -9654,7 +9969,11 @@ export default function App() {
     [settleStoppedSessionUi, showToast, tr],
   );
 
-  /** Confirm then stop every stoppable busy session from the Tasks panel. */
+  /**
+   * Global Stop-all (Tasks / dashboard): every stoppable busy session.
+   * Distinct from composer Stop, which targets only the viewed chat
+   * (`resolveStopTargets({ scope: "current" })`).
+   */
   const stopAllBusySessions = useCallback(() => {
     const rows = stoppableActivitySessions(
       collectActivitySessions({
@@ -9664,8 +9983,13 @@ export default function App() {
         untitledLabel: tr("session.untitled"),
       }),
     );
-    if (!rows.length) return;
-    stopBusySessionsByIds(rows.map((r) => r.sessionId));
+    const ids = resolveStopTargets({
+      scope: "all_busy",
+      currentSessionId: session.sessionId,
+      busySessionIds: rows.map((r) => r.sessionId),
+    });
+    if (!ids.length) return;
+    stopBusySessionsByIds(ids);
   }, [
     sessions,
     session.sessionId,
@@ -10309,6 +10633,44 @@ export default function App() {
     },
     [sendQueue.pauseFlush],
   );
+
+  const sendQueueStrip = useMemo(
+    () =>
+      resolveSendQueueStripState({
+        queue: sendQueue.activeQueue,
+        flushHold: sendQueue.flushHold,
+      }),
+    [sendQueue.activeQueue, sendQueue.flushHold],
+  );
+
+  const sendQueueClearPlan = useMemo(
+    () => planClearSendQueue(sendQueue.activeQueue),
+    [sendQueue.activeQueue],
+  );
+
+  /** Open clear confirm when there is something to clear; no-op when empty. */
+  const requestClearSendQueue = useCallback(() => {
+    const plan = planClearSendQueue(sendQueue.activeQueue);
+    if (!plan.confirmNeeded) {
+      // Empty honesty: nothing to clear (strip should already be hidden).
+      showToast(tr("composer.queueClearEmpty"), 2000);
+      return;
+    }
+    setSendQueueClearOpen(true);
+  }, [sendQueue.activeQueue, showToast, tr]);
+
+  const confirmClearSendQueue = useCallback(() => {
+    const plan = sendQueue.clearQueue();
+    setSendQueueClearOpen(false);
+    if (plan.count > 0) {
+      showToast(
+        tr("composer.queueClearedToast", { n: String(plan.count) }),
+        2200,
+      );
+    } else {
+      showToast(tr("composer.queueClearEmpty"), 2000);
+    }
+  }, [sendQueue.clearQueue, showToast, tr]);
 
   const saveQueueEdit = useCallback(() => {
     if (!queueEditItemId) return;
@@ -11752,10 +12114,16 @@ export default function App() {
 
   const stop = async () => {
     const now = Date.now();
-    // Stop belongs to the chat on screen. Preferring the live slot cancelled a
-    // foreign turn whenever the viewed chat had been demoted to background.
+    // Composer Stop scope = current viewed chat only (not global Stop-all).
+    // Preferring the Host live slot cancelled a foreign turn whenever the
+    // viewed chat had been demoted to background.
     const sid =
-      viewingSessionIdRef.current || liveHostRef.current.sessionId || null;
+      resolveStopTargets({
+        scope: "current",
+        currentSessionId:
+          viewingSessionIdRef.current || liveHostRef.current.sessionId || null,
+        busySessionIds: [],
+      })[0] ?? null;
     const armed = armStopLatch(stopLatchRef.current, sid, now);
     stopLatchRef.current = armed;
     setStopLatch(armed);
@@ -12179,6 +12547,7 @@ export default function App() {
     setShipCreatePr(true);
     setShipError(null);
     setShipStatus(null);
+    setShipSuccess(null);
     setShipBusy(false);
     setShipOpen(true);
   }, [
@@ -12190,6 +12559,46 @@ export default function App() {
     showToast,
     tr,
   ]);
+
+  /** Close ship dialog and clear transient success state. */
+  const closeShipFlow = useCallback(() => {
+    if (shipBusy) return;
+    setShipOpen(false);
+    setShipError(null);
+    setShipStatus(null);
+    setShipSuccess(null);
+  }, [shipBusy]);
+
+  /**
+   * Navigate to Settings → Runtime → Tools PR hub for the active project,
+   * optionally highlighting a PR number. Soft-fails with a toast (never throws).
+   */
+  const openPrHubFromShip = useCallback(
+    (prNumber: number | null) => {
+      try {
+        if (!activeProject?.path?.trim()) {
+          showToast(tr("composer.worktreeShipOpenHubFailed"), 4000);
+          return;
+        }
+        setPrHubHighlightPr(prNumber);
+        setSettingsFocusAnchor(PR_HUB_ANCHOR_ID);
+        navigateSettings("runtime", "tools");
+        if (typeof window !== "undefined") {
+          const hash = buildPrHubDeepLink({ prNumber });
+          if (window.location.hash !== hash) {
+            window.location.hash = hash;
+          }
+        }
+        setShipOpen(false);
+        setShipSuccess(null);
+        setShipError(null);
+        setShipStatus(null);
+      } catch {
+        showToast(tr("composer.worktreeShipOpenHubFailed"), 4000);
+      }
+    },
+    [activeProject?.path, navigateSettings, showToast, tr],
+  );
 
   const submitShipFlow = useCallback(async () => {
     if (!api.isTauri() || !activeProject?.path) return;
@@ -12204,6 +12613,7 @@ export default function App() {
     }
     setShipBusy(true);
     setShipError(null);
+    setShipSuccess(null);
     setShipStatus(tr("composer.worktreeShipPushing"));
     try {
       const push = await api.gitPushBranch(activeProject.path);
@@ -12223,14 +12633,18 @@ export default function App() {
       });
       const summary = shipOutcomeSummary(outcome);
       if (outcome.ok) {
-        setShipOpen(false);
         setShipStatus(null);
         if (outcome.prUrl) {
-          showToast(tr("composer.worktreeShipDonePr", { url: outcome.prUrl }), 6000);
-          void api.openExternalUrl(outcome.prUrl).catch(() => {
-            /* toast already shows URL */
-          });
+          // Success panel: PR URL + Open in PR hub (do not force-close).
+          const prNumber = parseGithubPrNumber(outcome.prUrl);
+          setShipSuccess({ prUrl: outcome.prUrl, prNumber });
+          showToast(
+            tr("composer.worktreeShipDonePr", { url: outcome.prUrl }),
+            5000,
+          );
         } else {
+          setShipOpen(false);
+          setShipSuccess(null);
           showToast(tr("composer.worktreeShipDonePush"), 4000);
         }
       } else {
@@ -13519,6 +13933,17 @@ export default function App() {
     tr,
   ]);
 
+  /** Soft chip: latest observed goal_updated for this session (never invented). */
+  const goalOrchSessionChip = useMemo(
+    () =>
+      resolveGoalOrchSessionIndicator({
+        uiEnabled: goalOrchUiEnabled,
+        events: goalOrchEvents,
+        sessionId: session.sessionId ?? null,
+      }),
+    [goalOrchUiEnabled, goalOrchEvents, session.sessionId],
+  );
+
   // T15: announce stream start/end once (avoid token-level noise).
   useEffect(() => {
     const streaming =
@@ -13635,7 +14060,7 @@ export default function App() {
     };
   }, [perm, permissionTimeoutSec, denyActivePermission]);
 
-  /** T04 deck buttons: reconnect / Doctor / Settings sections / dismiss. */
+  /** T04 deck buttons: reconnect / Doctor / Settings sections / project / MCP / dismiss. */
   const runErrorBannerAction = useCallback(
     (action: NonNullable<ErrorBannerView["primary"]>) => {
       setErrorDetailOpen(false);
@@ -13672,6 +14097,30 @@ export default function App() {
           // login+key surface; extensions holds MCP. Prefer account for keys.
           navigateSettings("account");
           break;
+        case "open_permissions":
+          setLocalError(null);
+          navigateSettings("general", "permissions");
+          break;
+        case "open_extensions":
+          setLocalError(null);
+          navigateSettings("extensions");
+          break;
+        case "open_mcp":
+          setLocalError(null);
+          void openMcpModal();
+          break;
+        case "trust_project":
+          setLocalError(null);
+          void trustProject(activeProject);
+          break;
+        case "relocate_project":
+          setLocalError(null);
+          if (activeProject) void relocateProject(activeProject);
+          break;
+        case "add_project":
+          setLocalError(null);
+          void addProject(false);
+          break;
         case "dismiss":
         case "keep_waiting":
           // keep_waiting is for the stream-stall banner (clears prompt only).
@@ -13685,7 +14134,17 @@ export default function App() {
           break;
       }
     },
-    [ensureConnected, navigateSettings, openDoctor, stop],
+    [
+      activeProject,
+      addProject,
+      ensureConnected,
+      navigateSettings,
+      openDoctor,
+      openMcpModal,
+      relocateProject,
+      stop,
+      trustProject,
+    ],
   );
 
   const refreshAccount = useCallback(
@@ -13816,7 +14275,11 @@ export default function App() {
       options: { includeThoughts: boolean; includeToolSummary: boolean },
     ) => {
       const id = sessionMeta?.id ?? session.sessionId;
-      if (!id) throw new Error(tr("session.exportFail"));
+      if (!id) {
+        const err = new Error("no target");
+        (err as Error & { code?: string }).code = "no_target";
+        throw err;
+      }
       const title =
         sessionMeta?.title ||
         sessions.find((s) => s.id === id)?.title ||
@@ -13830,8 +14293,25 @@ export default function App() {
         projects.find((p) => p.id === projectId) || activeProject || null;
       let msgs = messages;
       if (id !== session.sessionId) {
-        msgs = (await api.sessionMessages(id)) as ChatMessage[];
+        try {
+          msgs = (await api.sessionMessages(id)) as ChatMessage[];
+        } catch (e) {
+          const err = e instanceof Error ? e : new Error(String(e));
+          (err as Error & { code?: string }).code = "load_failed";
+          throw err;
+        }
       }
+      const exportable = msgs.map((m) => ({
+        role: m.role,
+        content: m.content,
+        thought: m.thought,
+        createdAt: m.createdAt,
+        marker: m.marker,
+      }));
+      const journalEmpty = isSessionExportJournalEmpty(exportable, {
+        format: "markdown",
+        options,
+      });
       const md = sessionToMarkdown({
         title,
         projectName: proj?.name,
@@ -13841,15 +14321,9 @@ export default function App() {
           includeThoughts: options.includeThoughts,
           includeToolSummary: options.includeToolSummary,
         },
-        messages: msgs.map((m) => ({
-          role: m.role,
-          content: m.content,
-          thought: m.thought,
-          createdAt: m.createdAt,
-          marker: m.marker,
-        })),
+        messages: exportable,
       });
-      return { id, title, md };
+      return { id, title, md, journalEmpty, exportable };
     },
     [
       session.sessionId,
@@ -13862,6 +14336,17 @@ export default function App() {
     ],
   );
 
+  /** Toast classified soft-fail for text-format export (silent on cancel). */
+  const toastSessionExportSoftFail = useCallback(
+    (err: unknown) => {
+      const r = resolveSessionExportSoftFail(err);
+      if (r.silent) return;
+      const base = tr(r.messageKey as Parameters<typeof tr>[0]);
+      showToast(r.detail ? `${base}: ${r.detail}` : base);
+    },
+    [showToast, tr],
+  );
+
   /** Open export options (thoughts / tools / download / copy). */
   const openExportSessionMd = useCallback(
     (sessionMeta?: {
@@ -13871,7 +14356,7 @@ export default function App() {
     }) => {
       const id = sessionMeta?.id ?? session.sessionId;
       if (!id) {
-        showToast(tr("session.exportFail"));
+        showToast(tr("session.exportNoTarget"));
         return;
       }
       setExportMdIncludeThoughts(true);
@@ -13891,6 +14376,73 @@ export default function App() {
     },
     [session.sessionId, session.title, sessions, showToast, tr],
   );
+
+  /**
+   * Honest empty + size estimate for the open Markdown export dialog when the
+   * target is the live session (options toggle updates emptiness).
+   */
+  const exportMdHonesty = useMemo(() => {
+    if (!exportMdTarget) {
+      return {
+        journalEmpty: null as boolean | null,
+        sizeClassKey: null as string | null,
+        sizeBytesLabel: null as string | null,
+        canAct: false,
+      };
+    }
+    if (exportMdTarget.id !== session.sessionId) {
+      return {
+        journalEmpty: null as boolean | null,
+        sizeClassKey: null as string | null,
+        sizeBytesLabel: null as string | null,
+        canAct: canSessionExportActions({
+          hasTarget: true,
+          journalEmpty: null,
+          busy: exportMdBusy,
+        }),
+      };
+    }
+    const exportable = messages.map((m) => ({
+      role: m.role,
+      content: m.content,
+      thought: m.thought,
+      createdAt: m.createdAt,
+      marker: m.marker,
+    }));
+    const options = {
+      includeThoughts: exportMdIncludeThoughts,
+      includeToolSummary: exportMdIncludeTools,
+    };
+    const journalEmpty = isSessionExportJournalEmpty(exportable, {
+      format: "markdown",
+      options,
+    });
+    const md = sessionToMarkdown({
+      title: exportMdTarget.title || tr("session.untitled"),
+      sessionId: exportMdTarget.id,
+      options,
+      messages: exportable,
+    });
+    const est = estimateSessionExportSizeClass(journalEmpty ? "" : md);
+    return {
+      journalEmpty,
+      sizeClassKey: sessionExportSizeClassLabelKey(est.sizeClass),
+      sizeBytesLabel: formatSessionExportBytes(est.byteLength),
+      canAct: canSessionExportActions({
+        hasTarget: true,
+        journalEmpty,
+        busy: exportMdBusy,
+      }),
+    };
+  }, [
+    exportMdTarget,
+    exportMdIncludeThoughts,
+    exportMdIncludeTools,
+    exportMdBusy,
+    session.sessionId,
+    messages,
+    tr,
+  ]);
 
   const runExportSessionMd = useCallback(
     async (mode: "download" | "copy") => {
@@ -13917,7 +14469,8 @@ export default function App() {
               const url = URL.createObjectURL(blob);
               const a = document.createElement("a");
               a.href = url;
-              a.download = sessionExportFilename(
+              a.download = sessionExportSafeFilename(
+                "markdown",
                 exportMdTarget.title,
                 exportMdTarget.id,
               );
@@ -13931,25 +14484,46 @@ export default function App() {
             // Soft-fail: local journal below.
           }
         }
-        const { id, title, md } = await buildSessionMarkdown(exportMdTarget, exportOpts);
+        const { id, title, md, journalEmpty } = await buildSessionMarkdown(
+          exportMdTarget,
+          exportOpts,
+        );
+        if (journalEmpty) {
+          showToast(tr("session.exportEmpty"));
+          return;
+        }
         if (mode === "copy") {
-          await navigator.clipboard.writeText(md);
-          showToast(tr("session.exportCopied"));
+          try {
+            await navigator.clipboard.writeText(md);
+            showToast(tr("session.exportCopied"));
+          } catch (e) {
+            const err = e instanceof Error ? e : new Error(String(e));
+            (err as Error & { code?: string }).code = "clipboard";
+            toastSessionExportSoftFail(err);
+            return;
+          }
         } else {
-          const blob = new Blob([md], {
-            type: sessionExportMimeType("markdown"),
-          });
-          const url = URL.createObjectURL(blob);
-          const a = document.createElement("a");
-          a.href = url;
-          a.download = sessionExportFilename(title, id);
-          a.click();
-          URL.revokeObjectURL(url);
-          showToast(tr("session.exportDone"));
+          try {
+            const blob = new Blob([md], {
+              type: sessionExportMimeType("markdown"),
+            });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement("a");
+            a.href = url;
+            a.download = sessionExportSafeFilename("markdown", title, id);
+            a.click();
+            URL.revokeObjectURL(url);
+            showToast(tr("session.exportDone"));
+          } catch (e) {
+            const err = e instanceof Error ? e : new Error(String(e));
+            (err as Error & { code?: string }).code = "write_failed";
+            toastSessionExportSoftFail(err);
+            return;
+          }
         }
         setExportMdTarget(null);
       } catch (e) {
-        showToast(`${tr("session.exportFail")}: ${String(e)}`);
+        toastSessionExportSoftFail(e);
       } finally {
         setExportMdBusy(false);
       }
@@ -13960,6 +14534,7 @@ export default function App() {
       exportMdIncludeTools,
       buildSessionMarkdown,
       showToast,
+      toastSessionExportSoftFail,
       tr,
     ],
   );
@@ -13976,11 +14551,11 @@ export default function App() {
     }) => {
       const id = sessionMeta?.id ?? session.sessionId;
       if (!id) {
-        showToast(tr("session.copyMdFail"));
+        showToast(tr("session.exportNoTarget"));
         return;
       }
       try {
-        const { md } = await buildSessionMarkdown(
+        const { md, journalEmpty } = await buildSessionMarkdown(
           {
             id,
             title:
@@ -13998,14 +14573,14 @@ export default function App() {
             includeToolSummary: false,
           },
         );
-        if (!md.trim()) {
+        if (journalEmpty || !md.trim()) {
           showToast(tr("session.copyMdEmpty"));
           return;
         }
         await navigator.clipboard.writeText(md);
         showToast(tr("session.copyMdDone"));
       } catch (e) {
-        showToast(`${tr("session.copyMdFail")}: ${String(e)}`);
+        toastSessionExportSoftFail(e);
       }
     },
     [
@@ -14014,6 +14589,7 @@ export default function App() {
       sessions,
       buildSessionMarkdown,
       showToast,
+      toastSessionExportSoftFail,
       tr,
     ],
   );
@@ -14042,7 +14618,7 @@ export default function App() {
     }) => {
       const id = sessionMeta?.id ?? session.sessionId;
       if (!id) {
-        showToast(tr("session.exportFail"));
+        showToast(tr("session.exportNoTarget"));
         return;
       }
       const title =
@@ -14053,20 +14629,37 @@ export default function App() {
       try {
         let msgs = messages;
         if (id !== session.sessionId) {
-          msgs = (await api.sessionMessages(id)) as ChatMessage[];
+          try {
+            msgs = (await api.sessionMessages(id)) as ChatMessage[];
+          } catch (e) {
+            const err = e instanceof Error ? e : new Error(String(e));
+            (err as Error & { code?: string }).code = "load_failed";
+            toastSessionExportSoftFail(err);
+            return;
+          }
+        }
+        const exportable = msgs.map((m) => ({
+          role: m.role,
+          content: m.content,
+          thought: m.thought,
+          createdAt: m.createdAt,
+          marker: m.marker,
+        }));
+        if (
+          isSessionExportJournalEmpty(exportable, {
+            format: "json",
+            options: { includeThoughts: false, includeToolSummary: false },
+          })
+        ) {
+          showToast(tr("session.exportEmpty"));
+          return;
         }
         const json = sessionToJson({
           title,
           sessionId: id,
           // Clean re-import: omit thoughts/tools by default.
           options: { includeThoughts: false, includeToolSummary: false },
-          messages: msgs.map((m) => ({
-            role: m.role,
-            content: m.content,
-            thought: m.thought,
-            createdAt: m.createdAt,
-            marker: m.marker,
-          })),
+          messages: exportable,
         });
         const blob = new Blob([json], {
           type: sessionExportMimeType("json"),
@@ -14074,12 +14667,12 @@ export default function App() {
         const url = URL.createObjectURL(blob);
         const a = document.createElement("a");
         a.href = url;
-        a.download = sessionExportFilenameFor("json", title, id);
+        a.download = sessionExportSafeFilename("json", title, id);
         a.click();
         URL.revokeObjectURL(url);
         showToast(tr("session.exportDone"));
       } catch (e) {
-        showToast(`${tr("session.exportFail")}: ${String(e)}`);
+        toastSessionExportSoftFail(e);
       }
     },
     [
@@ -14088,6 +14681,7 @@ export default function App() {
       sessions,
       messages,
       showToast,
+      toastSessionExportSoftFail,
       tr,
     ],
   );
@@ -14524,7 +15118,7 @@ export default function App() {
     }) => {
       const id = sessionMeta?.id ?? session.sessionId;
       if (!id) {
-        showToast(tr("session.exportFail"));
+        showToast(tr("session.exportNoTarget"));
         return;
       }
       const title =
@@ -14541,7 +15135,30 @@ export default function App() {
       try {
         let msgs = messages;
         if (id !== session.sessionId) {
-          msgs = (await api.sessionMessages(id)) as ChatMessage[];
+          try {
+            msgs = (await api.sessionMessages(id)) as ChatMessage[];
+          } catch (e) {
+            const err = e instanceof Error ? e : new Error(String(e));
+            (err as Error & { code?: string }).code = "load_failed";
+            toastSessionExportSoftFail(err);
+            return;
+          }
+        }
+        const exportable = msgs.map((m) => ({
+          role: m.role,
+          content: m.content,
+          thought: m.thought,
+          createdAt: m.createdAt,
+          marker: m.marker,
+        }));
+        if (
+          isSessionExportJournalEmpty(exportable, {
+            format: "plain",
+            options: { includeThoughts: true, includeToolSummary: true },
+          })
+        ) {
+          showToast(tr("session.exportEmpty"));
+          return;
         }
         const text = sessionToPlain({
           title,
@@ -14549,13 +15166,7 @@ export default function App() {
           projectPath: proj?.path,
           sessionId: id,
           options: { includeThoughts: true, includeToolSummary: true },
-          messages: msgs.map((m) => ({
-            role: m.role,
-            content: m.content,
-            thought: m.thought,
-            createdAt: m.createdAt,
-            marker: m.marker,
-          })),
+          messages: exportable,
         });
         const blob = new Blob([text], {
           type: sessionExportMimeType("plain"),
@@ -14563,12 +15174,12 @@ export default function App() {
         const url = URL.createObjectURL(blob);
         const a = document.createElement("a");
         a.href = url;
-        a.download = sessionExportFilenameFor("plain", title, id);
+        a.download = sessionExportSafeFilename("plain", title, id);
         a.click();
         URL.revokeObjectURL(url);
         showToast(tr("session.exportDone"));
       } catch (e) {
-        showToast(`${tr("session.exportFail")}: ${String(e)}`);
+        toastSessionExportSoftFail(e);
       }
     },
     [
@@ -14579,6 +15190,7 @@ export default function App() {
       projects,
       activeProject,
       showToast,
+      toastSessionExportSoftFail,
       tr,
     ],
   );
@@ -14593,6 +15205,99 @@ export default function App() {
       title: string;
       projectId?: string | null;
     }) => {
+      const id = sessionMeta?.id ?? session.sessionId;
+      if (!id) {
+        showToast(tr("session.exportNoTarget"));
+        return;
+      }
+      const title =
+        sessionMeta?.title ||
+        sessions.find((s) => s.id === id)?.title ||
+        session.title ||
+        tr("session.untitled");
+      const projectId =
+        sessionMeta?.projectId ??
+        sessions.find((s) => s.id === id)?.projectId ??
+        null;
+      const proj =
+        projects.find((p) => p.id === projectId) || activeProject || null;
+      try {
+        let msgs = messages;
+        if (id !== session.sessionId) {
+          try {
+            msgs = (await api.sessionMessages(id)) as ChatMessage[];
+          } catch (e) {
+            const err = e instanceof Error ? e : new Error(String(e));
+            (err as Error & { code?: string }).code = "load_failed";
+            toastSessionExportSoftFail(err);
+            return;
+          }
+        }
+        const exportable = msgs.map((m) => ({
+          role: m.role,
+          content: m.content,
+          thought: m.thought,
+          createdAt: m.createdAt,
+          marker: m.marker,
+        }));
+        if (
+          isSessionExportJournalEmpty(exportable, {
+            format: "html",
+            options: { includeThoughts: true, includeToolSummary: true },
+          })
+        ) {
+          showToast(tr("session.exportEmpty"));
+          return;
+        }
+        const html = sessionToHtml({
+          title,
+          projectName: proj?.name,
+          projectPath: proj?.path,
+          sessionId: id,
+          options: { includeThoughts: true, includeToolSummary: true },
+          messages: exportable,
+        });
+        const blob = new Blob([html], {
+          type: sessionExportMimeType("html"),
+        });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = sessionExportSafeFilename("html", title, id);
+        a.click();
+        URL.revokeObjectURL(url);
+        showToast(tr("session.exportDone"));
+      } catch (e) {
+        toastSessionExportSoftFail(e);
+      }
+    },
+    [
+      session.sessionId,
+      session.title,
+      sessions,
+      messages,
+      projects,
+      activeProject,
+      showToast,
+      toastSessionExportSoftFail,
+      tr,
+    ],
+  );
+
+  /**
+   * Download session journal as redacted ACP streaming NDJSON
+   * (`streaming-json` or `streaming-messages-json`). Soft-empty toast when
+   * the journal has no exportable rows.
+   */
+  const exportSessionStreamNdjson = useCallback(
+    async (
+      format: StreamSessionExportFormat,
+      sessionMeta?: {
+        id: string;
+        title: string;
+        projectId?: string | null;
+      },
+    ) => {
       const id = sessionMeta?.id ?? session.sessionId;
       if (!id) {
         showToast(tr("session.exportFail"));
@@ -14614,7 +15319,7 @@ export default function App() {
         if (id !== session.sessionId) {
           msgs = (await api.sessionMessages(id)) as ChatMessage[];
         }
-        const html = sessionToHtml({
+        const result = buildStreamSessionNdjson(format, {
           title,
           projectName: proj?.name,
           projectPath: proj?.path,
@@ -14628,16 +15333,20 @@ export default function App() {
             marker: m.marker,
           })),
         });
-        const blob = new Blob([html], {
-          type: sessionExportMimeType("html"),
+        if (result.empty || !result.body) {
+          showToast(tr("session.exportStreamEmpty"));
+          return;
+        }
+        const blob = new Blob([result.body], {
+          type: streamSessionExportMimeType(format),
         });
         const url = URL.createObjectURL(blob);
         const a = document.createElement("a");
         a.href = url;
-        a.download = sessionExportFilenameFor("html", title, id);
+        a.download = streamSessionExportFilename(format, title, id);
         a.click();
         URL.revokeObjectURL(url);
-        showToast(tr("session.exportDone"));
+        showToast(tr("session.exportStreamDone", { format, n: result.lineCount }));
       } catch (e) {
         showToast(`${tr("session.exportFail")}: ${String(e)}`);
       }
@@ -15614,6 +16323,9 @@ export default function App() {
           }}
           onBack={navigateWorkbench}
           phoneLayout={phoneLayout}
+          focusAnchorId={settingsFocusAnchor}
+          prHubHighlightPr={prHubHighlightPr}
+          onFocusAnchorConsumed={() => setSettingsFocusAnchor(null)}
           labels={settingsLabels}
           locale={locale}
           localePreference={localePreference}
@@ -15664,6 +16376,10 @@ export default function App() {
             saveSidebarShowRelativeTimePref(v, localStorage);
             setSidebarShowRelativeTime(v);
           }}
+          mutedSessionCount={mutedSessionIds.size}
+          onClearAllSessionMutes={handleClearAllSessionMutes}
+          unreadSessionCount={unreadSessionIds.size}
+          onClearAllSessionUnread={handleClearAllSessionUnread}
           zenMode={zenMode}
           onZenMode={setZenModeEnabled}
           skin={skin}
@@ -15798,6 +16514,7 @@ export default function App() {
               api.settingsSet({ ...s, maxConcurrentAgents: v }),
             );
           }}
+          lastProcessLimit={lastProcessLimit}
           agentIdleMinutes={agentIdleMinutes}
           onAgentIdleMinutes={(v) => {
             setAgentIdleMinutes(v);
@@ -15811,6 +16528,16 @@ export default function App() {
             void api.settingsGet().then((s) =>
               api.settingsSet({ ...s, streamStallSeconds: v }),
             );
+          }}
+          auditLedgerRetentionDays={auditLedgerRetentionDays}
+          onAuditLedgerRetentionDays={(v) => {
+            const n = v === 7 || v === 30 || v === 90 ? v : 0;
+            setAuditLedgerRetentionDays(n);
+            void api
+              .settingsGet()
+              .then((s) =>
+                api.settingsSet({ ...s, auditLedgerRetentionDays: n }),
+              );
           }}
           includePartialMessages={includePartialMessages}
           onIncludePartialMessages={(v) => {
@@ -16162,6 +16889,17 @@ export default function App() {
             confirmArchiveOlderThan(days);
           }}
           projectPath={effectiveProjectPath}
+          onOpenProjectFileInResources={({ path, relativePath }) => {
+            const targetPath = (path || relativePath || "").trim();
+            if (!targetPath) return;
+            navigateWorkbench();
+            openAsidePane();
+            setResourceOpenTarget({
+              type: "file",
+              path: targetPath,
+              title: relativePath || targetPath,
+            });
+          }}
           onSkillsPrefsChanged={() =>
             setSkillsReloadToken((n) => n + 1)
           }
@@ -16369,6 +17107,21 @@ export default function App() {
                         <IconListCheck size={15} />
                       </button>
                     </Tip>
+                    {unreadSessionIds.size > 0 ? (
+                      <Tip label={tr("session.clearAllUnread")}>
+                        <button
+                          type="button"
+                          className="tree-l1__action"
+                          aria-label={tr("session.clearAllUnread")}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleClearAllSessionUnread();
+                          }}
+                        >
+                          <IconCheck size={15} />
+                        </button>
+                      </Tip>
+                    ) : null}
                     <Tip label={tr("sidebar.archiveOlder")}>
                       <button
                         type="button"
@@ -16672,7 +17425,7 @@ export default function App() {
                                           ) : null}
                                           {mutedSessionIds.has(s.id) ? (
                                             <span
-                                              className="tree-l3__kind"
+                                              className="tree-l3__kind tree-l3__muted"
                                               title={tr("session.muted")}
                                               aria-label={tr("session.muted")}
                                             >
@@ -16964,7 +17717,7 @@ export default function App() {
                                 ) : null}
                                 {mutedSessionIds.has(s.id) ? (
                                   <span
-                                    className="tree-l3__kind"
+                                    className="tree-l3__kind tree-l3__muted"
                                     title={tr("session.muted")}
                                     aria-label={tr("session.muted")}
                                   >
@@ -17794,7 +18547,7 @@ export default function App() {
             </div>
           )}
 
-          {/* Secondary multi-window: live-capable tip + focus main (MULTI-WIN-LITE). */}
+          {/* Secondary multi-window: concurrent live tip + focus main. */}
           {isSecondaryWindow && mainPane === "chat" && (
             <div
               className="view-only-banner"
@@ -17950,6 +18703,38 @@ export default function App() {
             />
           )}
 
+          {mainPane === "chat" && goalOrchSessionChip ? (
+            <button
+              type="button"
+              className="goal-orch-session-chip"
+              data-testid="goal-orch-session-chip"
+              title={[
+                tr(goalOrchPhaseLabelKey(goalOrchSessionChip.phase)),
+                goalOrchSessionChip.label,
+                goalOrchSessionChip.progress,
+                goalOrchSessionChip.detail,
+              ]
+                .filter(Boolean)
+                .join(" · ")}
+              aria-label={tr("reliability.goal.sessionChipAria", {
+                phase: tr(goalOrchPhaseLabelKey(goalOrchSessionChip.phase)),
+              })}
+              onClick={() => openReliability()}
+            >
+              <span className="goal-orch-session-chip__dot" aria-hidden />
+              <span className="goal-orch-session-chip__label">
+                {tr("reliability.goal.sessionChip", {
+                  phase: tr(goalOrchPhaseLabelKey(goalOrchSessionChip.phase)),
+                })}
+              </span>
+              {goalOrchSessionChip.progress ? (
+                <span className="goal-orch-session-chip__meta">
+                  {goalOrchSessionChip.progress}
+                </span>
+              ) : null}
+            </button>
+          ) : null}
+
           {mainPane === "chat" && showChatFind && (
             <ChatFindBar
               key={chatFindFocusKey}
@@ -17995,32 +18780,55 @@ export default function App() {
                   projects.find((p) => p.id === row.projectId) || null;
                 void openSession(row, proj);
               }}
-              onStopSession={(id) => {
-                void (async () => {
-                  try {
-                    await api.sessionStop(id);
-                    setLiveMap((lm) =>
-                      settleStoppedSessionInLiveMap(lm, id),
-                    );
-                  } catch (e) {
-                    showToast(String(e), 4000);
-                  }
-                })();
+              onStopSession={async (id) => {
+                try {
+                  await api.sessionStop(id);
+                  setLiveMap((lm) => settleStoppedSessionInLiveMap(lm, id));
+                } catch (e) {
+                  const view = classifyTasksStopError(e);
+                  showToast(tr(view.titleKey as MessageKey), 4000);
+                  // Re-throw so the panel can also show an inline soft-fail hint.
+                  throw e;
+                }
               }}
               onStopAllSessions={stopAllBusySessions}
               onOpenDashboard={() => setAgentDashboardOpen(true)}
               activeCwd={activeProject?.path ?? null}
-              onOpenCwd={(cwd) => {
-                const wt = worktreeEntryForPath(cwd, gitWorktrees);
-                if (!wt) return;
-                void (async () => {
+              onOpenCwd={async (cwd): Promise<TasksBindCwdResult> => {
+                const path = (cwd || "").trim();
+                if (!path) {
+                  return { ok: false, kind: "empty_path" };
+                }
+                if (!api.isTauri()) {
+                  return { ok: false, kind: "host_only" };
+                }
+                if (
+                  activeProject?.path &&
+                  pathsEqual(path, activeProject.path)
+                ) {
+                  return { ok: false, kind: "already_active" };
+                }
+                const wt = worktreeEntryForPath(path, gitWorktrees);
+                if (!wt) {
+                  return { ok: false, kind: "not_worktree" };
+                }
+                try {
                   await switchToWorktree(wt);
                   const liveId =
                     viewingSessionIdRef.current || session.sessionId || null;
                   if (liveId) {
                     await markSessionWorktree(liveId, wt.path, wt.branch);
                   }
-                })();
+                  return { ok: true };
+                } catch (e) {
+                  const view = classifyTasksBindCwdError(e);
+                  showToast(tr(view.titleKey as MessageKey), 4000);
+                  return {
+                    ok: false,
+                    kind: view.kind,
+                    detail: view.detail || undefined,
+                  };
+                }
               }}
             />
           ) : null}
@@ -18462,29 +19270,31 @@ export default function App() {
                 (dragZone === "main" ? " composer--drop-ready" : "")
               }
             >
-              {sendQueue.activeQueue.length > 0 && (
+              {sendQueueStrip.visible && (
                 <div
                   className="composer__queue"
                   aria-label={tr("composer.queueCount", {
-                    n: String(sendQueue.activeQueue.length),
+                    n: String(sendQueueStrip.count),
                   })}
                 >
                   <div className="composer__queue-head">
                     <IconClock size={14} aria-hidden />
                     <span className="composer__queue-title">
                       {tr("composer.queueCount", {
-                        n: String(sendQueue.activeQueue.length),
+                        n: String(sendQueueStrip.count),
                       })}
                     </span>
                     <button
                       type="button"
                       className="composer__queue-clear"
-                      onClick={sendQueue.clearQueue}
+                      data-testid="queue-clear"
+                      disabled={!sendQueueStrip.canClear}
+                      onClick={requestClearSendQueue}
                     >
                       {tr("composer.queueClear")}
                     </button>
                   </div>
-                  {sendQueue.flushHold ? (
+                  {sendQueueStrip.showHold ? (
                     <div className="composer__queue-hold" role="status">
                       <span className="composer__queue-hold-text">
                         {tr("composer.queueHold")}
@@ -18648,6 +19458,13 @@ export default function App() {
                     filterQuery={
                       liveSlash.present ? slashFilterQuery : undefined
                     }
+                    kindFilter={slashKindFilter}
+                    onKindFilterChange={(k) => {
+                      setSlashKindFilter(k);
+                      setSlashActiveIndex(0);
+                    }}
+                    catalogCount={slashCatalogCount}
+                    kindCounts={slashKindCounts}
                     skillsLoading={skillsLoading}
                     skillsError={skillsLoadError}
                     skillCount={slashCatalog.skills.length}
@@ -18662,6 +19479,7 @@ export default function App() {
                       setShowJsonSchemaModal(true);
                     }}
                     onSelectSlash={applySlashItem}
+                    onClearFilters={clearSlashFilters}
                     resolveTitle={resolveSlashTitle}
                     resolveDescription={resolveSlashDescription}
                     style={{
@@ -19145,6 +19963,7 @@ export default function App() {
                         heuristicNote: tr("context.heuristicNote"),
                         auto: tr("context.triggerAuto"),
                         manual: tr("context.triggerManual"),
+                        breakdownSection: tr("context.breakdownSection"),
                         breakdownUser: tr("context.breakdownUser"),
                         breakdownAssistant: tr("context.breakdownAssistant"),
                         breakdownThought: tr("context.breakdownThought"),
@@ -19154,6 +19973,9 @@ export default function App() {
                         breakdownEstimatedNote: tr(
                           "context.breakdownEstimatedNote",
                         ),
+                        breakdownEmpty: tr("context.breakdownEmpty"),
+                        softFailUnknownNote: tr("context.softFailUnknownNote"),
+                        partialAgentNote: tr("context.partialAgentNote"),
                         knownInput: tr("context.knownInput"),
                         knownOutput: tr("context.knownOutput"),
                         knownTotal: tr("context.knownTotal"),
@@ -19525,6 +20347,15 @@ export default function App() {
               sourceKnown: tr("context.sourceKnown"),
               sourceEstimated: tr("context.sourceEstimated"),
               sourceUnknown: tr("context.sourceUnknown"),
+              breakdownSection: tr("context.breakdownSection"),
+              breakdownUser: tr("context.breakdownUser"),
+              breakdownAssistant: tr("context.breakdownAssistant"),
+              breakdownThought: tr("context.breakdownThought"),
+              breakdownSystem: tr("context.breakdownSystem"),
+              breakdownTools: tr("context.breakdownTools"),
+              breakdownHistory: tr("context.breakdownHistory"),
+              breakdownEmpty: tr("context.breakdownEmpty"),
+              softFailUnknownNote: tr("context.softFailUnknownNote"),
               back: tr("phone.toolsBack"),
             }}
             activeProject={activeProject}
@@ -19650,6 +20481,7 @@ export default function App() {
         view={reliabilityView}
         goalOrchUiEnabled={goalOrchUiEnabled}
         goalOrchEvents={goalOrchEvents}
+        lastProcessLimit={lastProcessLimit}
         onOpenDoctor={() => void openDoctor()}
         onSelectSession={(id) => {
           setShowReliability(false);
@@ -19932,130 +20764,181 @@ export default function App() {
       </GlassModal>
       <GlassModal
         open={shipOpen}
-        onClose={() => {
-          if (shipBusy) return;
-          setShipOpen(false);
-          setShipError(null);
-          setShipStatus(null);
-        }}
-        title={tr("composer.worktreeShipTitle")}
+        onClose={closeShipFlow}
+        title={
+          shipSuccess
+            ? tr("composer.worktreeShipSuccessTitle")
+            : tr("composer.worktreeShipTitle")
+        }
         size="md"
         closeLabel={tr("common.close")}
         closeOnOverlay={!shipBusy}
         showClose={!shipBusy}
         wrapBody
         footer={
-          <>
-            <button
-              type="button"
-              className="btn btn--ghost"
-              disabled={shipBusy}
-              onClick={() => {
-                setShipOpen(false);
-                setShipError(null);
-                setShipStatus(null);
-              }}
-            >
-              {tr("common.cancel")}
-            </button>
-            <button
-              type="button"
-              className="btn btn--solid"
-              disabled={shipBusy || !shipTitle.trim()}
-              onClick={() => {
-                void submitShipFlow();
-              }}
-              data-testid="ship-submit"
-            >
-              {shipBusy
-                ? shipStatus || tr("composer.worktreeShipRunning")
-                : shipCreatePr
-                  ? tr("composer.worktreeShipConfirmPr")
-                  : tr("composer.worktreeShipConfirmPush")}
-            </button>
-          </>
+          shipSuccess ? (
+            <>
+              <button
+                type="button"
+                className="btn btn--ghost"
+                onClick={closeShipFlow}
+                data-testid="ship-success-done"
+              >
+                {tr("composer.worktreeShipDone")}
+              </button>
+              <button
+                type="button"
+                className="btn btn--solid"
+                onClick={() => openPrHubFromShip(shipSuccess.prNumber)}
+                data-testid="ship-open-pr-hub"
+              >
+                {tr("composer.worktreeShipOpenInHub")}
+              </button>
+            </>
+          ) : (
+            <>
+              <button
+                type="button"
+                className="btn btn--ghost"
+                disabled={shipBusy}
+                onClick={closeShipFlow}
+              >
+                {tr("common.cancel")}
+              </button>
+              <button
+                type="button"
+                className="btn btn--solid"
+                disabled={shipBusy || !shipTitle.trim()}
+                onClick={() => {
+                  void submitShipFlow();
+                }}
+                data-testid="ship-submit"
+              >
+                {shipBusy
+                  ? shipStatus || tr("composer.worktreeShipRunning")
+                  : shipCreatePr
+                    ? tr("composer.worktreeShipConfirmPr")
+                    : tr("composer.worktreeShipConfirmPush")}
+              </button>
+            </>
+          )
         }
       >
-        <form
-          className="wt-ship"
-          onSubmit={(e) => {
-            e.preventDefault();
-            if (shipBusy || !shipTitle.trim()) return;
-            void submitShipFlow();
-          }}
-        >
-          <p className="wt-ship__hint">{tr("composer.worktreeShipHint")}</p>
-          {shipBranch ? (
-            <p className="wt-ship__branch">
-              {tr("composer.worktreeShipBranch", { branch: shipBranch })}
+        {shipSuccess ? (
+          <div
+            className="wt-ship wt-ship--success"
+            data-testid="ship-success"
+          >
+            <p className="wt-ship__hint">
+              {tr("composer.worktreeShipDonePr", { url: shipSuccess.prUrl })}
             </p>
-          ) : null}
-          <label className="wt-ship__field">
-            <span className="wt-ship__label">
-              {tr("composer.worktreeShipTitleField")}
-            </span>
-            <input
-              className="settings-input"
-              value={shipTitle}
-              onChange={(e) => {
-                setShipTitle(e.target.value);
-                setShipError(null);
-              }}
-              placeholder={tr("composer.worktreeShipTitlePlaceholder")}
-              autoComplete="off"
-              autoFocus
-              disabled={shipBusy}
-              spellCheck={true}
-              data-testid="ship-title"
-            />
-          </label>
-          <label className="wt-ship__field">
-            <span className="wt-ship__label">
-              {tr("composer.worktreeShipBodyField")}
-            </span>
-            <textarea
-              className="settings-input wt-ship__body"
-              value={shipBody}
-              onChange={(e) => {
-                setShipBody(e.target.value);
-                setShipError(null);
-              }}
-              placeholder={tr("composer.worktreeShipBodyPlaceholder")}
-              rows={5}
-              disabled={shipBusy}
-              spellCheck={true}
-              data-testid="ship-body"
-            />
-          </label>
-          <label className="wt-ship__check">
-            <input
-              type="checkbox"
-              checked={shipCreatePr}
-              disabled={shipBusy}
-              onChange={(e) => setShipCreatePr(e.target.checked)}
-            />
-            <span>{tr("composer.worktreeShipCreatePr")}</span>
-          </label>
-          <label className="wt-ship__check">
-            <input
-              type="checkbox"
-              checked={shipDraft}
-              disabled={shipBusy || !shipCreatePr}
-              onChange={(e) => setShipDraft(e.target.checked)}
-            />
-            <span>{tr("composer.worktreeShipDraft")}</span>
-          </label>
-          {shipStatus ? (
-            <p className="wt-ship__status" aria-live="polite">
-              {shipStatus}
+            <p className="wt-ship__success-url" title={shipSuccess.prUrl}>
+              {shipSuccess.prUrl}
             </p>
-          ) : null}
-          {shipError ? (
-            <p className="wt-ship__error" role="alert">
-              {shipError}
-            </p>
-          ) : null}
-        </form>
+            <div className="wt-ship__success-actions">
+              <button
+                type="button"
+                className="btn btn--ghost btn--sm"
+                onClick={() => {
+                  void api.openExternalUrl(shipSuccess.prUrl).catch(() => {
+                    showToast(tr("composer.worktreeShipOpenBrowserFailed"), 3500);
+                  });
+                }}
+                data-testid="ship-open-browser"
+              >
+                {tr("composer.worktreeShipOpenInBrowser")}
+              </button>
+              <button
+                type="button"
+                className="btn btn--ghost btn--sm"
+                onClick={() => openPrHubFromShip(shipSuccess.prNumber)}
+              >
+                {tr("composer.worktreeShipOpenInHub")}
+              </button>
+            </div>
+          </div>
+        ) : (
+          <form
+            className="wt-ship"
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (shipBusy || !shipTitle.trim()) return;
+              void submitShipFlow();
+            }}
+          >
+            <p className="wt-ship__hint">{tr("composer.worktreeShipHint")}</p>
+            {shipBranch ? (
+              <p className="wt-ship__branch">
+                {tr("composer.worktreeShipBranch", { branch: shipBranch })}
+              </p>
+            ) : null}
+            <label className="wt-ship__field">
+              <span className="wt-ship__label">
+                {tr("composer.worktreeShipTitleField")}
+              </span>
+              <input
+                className="settings-input"
+                value={shipTitle}
+                onChange={(e) => {
+                  setShipTitle(e.target.value);
+                  setShipError(null);
+                }}
+                placeholder={tr("composer.worktreeShipTitlePlaceholder")}
+                autoComplete="off"
+                autoFocus
+                disabled={shipBusy}
+                spellCheck={true}
+                data-testid="ship-title"
+              />
+            </label>
+            <label className="wt-ship__field">
+              <span className="wt-ship__label">
+                {tr("composer.worktreeShipBodyField")}
+              </span>
+              <textarea
+                className="settings-input wt-ship__body"
+                value={shipBody}
+                onChange={(e) => {
+                  setShipBody(e.target.value);
+                  setShipError(null);
+                }}
+                placeholder={tr("composer.worktreeShipBodyPlaceholder")}
+                rows={5}
+                disabled={shipBusy}
+                spellCheck={true}
+                data-testid="ship-body"
+              />
+            </label>
+            <label className="wt-ship__check">
+              <input
+                type="checkbox"
+                checked={shipCreatePr}
+                disabled={shipBusy}
+                onChange={(e) => setShipCreatePr(e.target.checked)}
+              />
+              <span>{tr("composer.worktreeShipCreatePr")}</span>
+            </label>
+            <label className="wt-ship__check">
+              <input
+                type="checkbox"
+                checked={shipDraft}
+                disabled={shipBusy || !shipCreatePr}
+                onChange={(e) => setShipDraft(e.target.checked)}
+              />
+              <span>{tr("composer.worktreeShipDraft")}</span>
+            </label>
+            {shipStatus ? (
+              <p className="wt-ship__status" aria-live="polite">
+                {shipStatus}
+              </p>
+            ) : null}
+            {shipError ? (
+              <p className="wt-ship__error" role="alert">
+                {shipError}
+              </p>
+            ) : null}
+          </form>
+        )}
       </GlassModal>
       <GlassModal
         open={showShortcuts}
@@ -20278,6 +21161,7 @@ export default function App() {
         doctorLoading={mcpDoctorLoading}
         doctorFocus={mcpDoctorFocus}
         onRunDoctor={(name) => void runMcpDoctor(name)}
+        onRefreshDoctor={(name) => runMcpDoctor(name)}
       />
       {rewindTimeline && (
         <div
@@ -20926,7 +21810,7 @@ export default function App() {
               <button
                 type="button"
                 className="btn btn--ghost"
-                onClick={clearSessionNoteModal}
+                onClick={requestClearSessionNoteModal}
               >
                 {tr("session.noteClear")}
               </button>
@@ -20959,25 +21843,131 @@ export default function App() {
             {sessionNoteTarget.title}
           </p>
         ) : null}
-        <textarea
-          className="session-note-modal__textarea"
-          value={sessionNoteDraft}
-          onChange={(e) =>
-            setSessionNoteDraft(
-              e.target.value.slice(0, SESSION_NOTE_MAX_LENGTH),
-            )
-          }
-          placeholder={tr("session.notePlaceholder")}
-          maxLength={SESSION_NOTE_MAX_LENGTH}
-          spellCheck
-          aria-label={tr("session.noteTitle")}
-        />
-        <p className="session-note-modal__count" aria-live="polite">
-          {tr("session.noteChars", {
-            n: String(sessionNoteDraft.length),
-            max: String(SESSION_NOTE_MAX_LENGTH),
-          })}
-        </p>
+        {(() => {
+          const v = validateSessionNote({
+            draft: sessionNoteDraft,
+            baseline: sessionNoteBaseline,
+            hadStored: Boolean(
+              sessionNoteTarget &&
+                sessionNotesMap[sessionNoteTarget.id]?.trim(),
+            ),
+          });
+          return (
+            <>
+              {v.statusKey ? (
+                <p
+                  className={
+                    "session-prompt-status" +
+                    (v.severity === "warn"
+                      ? " session-prompt-status--warn"
+                      : v.severity === "info"
+                        ? " session-prompt-status--info"
+                        : "")
+                  }
+                  role="status"
+                >
+                  {tr(v.statusKey)}
+                </p>
+              ) : null}
+              <textarea
+                className={
+                  "session-note-modal__textarea" +
+                  (v.severity === "warn"
+                    ? " session-prompt-textarea--warn"
+                    : "")
+                }
+                value={sessionNoteDraft}
+                onChange={(e) => {
+                  const next = clampSessionNoteInput(
+                    e.target.value,
+                    SESSION_NOTE_MAX_LENGTH,
+                  );
+                  setSessionNoteDraft(next.value);
+                }}
+                placeholder={tr("session.notePlaceholder")}
+                maxLength={SESSION_NOTE_MAX_LENGTH}
+                spellCheck
+                aria-label={tr("session.noteTitle")}
+              />
+              <p
+                className={
+                  "session-note-modal__count" +
+                  (v.severity === "warn"
+                    ? " session-prompt-count--warn"
+                    : "")
+                }
+                aria-live="polite"
+              >
+                {tr("session.noteChars", {
+                  n: String(v.budget.rawLen),
+                  max: String(v.budget.max),
+                })}
+              </p>
+            </>
+          );
+        })()}
+      </GlassModal>
+
+      <GlassModal
+        open={sessionNoteDiscardOpen}
+        onClose={() => setSessionNoteDiscardOpen(false)}
+        title={tr("resources.discardTitle")}
+        size="sm"
+        closeLabel={tr("common.close")}
+        footer={
+          <>
+            <button
+              type="button"
+              className="btn btn--ghost"
+              onClick={() => setSessionNoteDiscardOpen(false)}
+            >
+              {tr("common.cancel")}
+            </button>
+            <button
+              type="button"
+              className="btn btn--solid"
+              onClick={() => {
+                setSessionNoteDiscardOpen(false);
+                forceCloseSessionNoteModal();
+              }}
+            >
+              {tr("resources.discardConfirm")}
+            </button>
+          </>
+        }
+      >
+        <p className="rp-modal-copy">{tr("session.noteDiscardBody")}</p>
+      </GlassModal>
+
+      <GlassModal
+        open={sessionNoteClearOpen}
+        onClose={() => setSessionNoteClearOpen(false)}
+        title={tr("session.noteClearTitle")}
+        size="sm"
+        closeLabel={tr("common.close")}
+        footer={
+          <>
+            <button
+              type="button"
+              className="btn btn--ghost"
+              onClick={() => setSessionNoteClearOpen(false)}
+            >
+              {tr("common.cancel")}
+            </button>
+            <button
+              type="button"
+              className="btn btn--solid btn--danger"
+              onClick={() => {
+                setSessionNoteClearOpen(false);
+                confirmClearSessionNoteModal();
+              }}
+            >
+              {tr("session.noteClearConfirm")}
+            </button>
+          </>
+        }
+      >
+        <p className="rp-modal-copy">{tr("session.noteClearBody")}</p>
       </GlassModal>
 
       <GlassModal
@@ -21429,6 +22419,37 @@ export default function App() {
         */}
         <div className="export-md-options">
           <p className="export-md-options__msg">{tr("session.exportMdHint")}</p>
+          <div
+            className="export-md-options__meta"
+            role="status"
+            aria-live="polite"
+          >
+            <span className="export-md-options__chip">
+              {tr(
+                sessionExportFormatNameKey(
+                  "markdown",
+                ) as Parameters<typeof tr>[0],
+              )}
+            </span>
+            {exportMdHonesty.sizeClassKey ? (
+              <span className="export-md-options__chip">
+                {tr("session.exportSizeHint", {
+                  size: exportMdHonesty.sizeBytesLabel
+                    ? `${tr(exportMdHonesty.sizeClassKey as Parameters<typeof tr>[0])} · ${exportMdHonesty.sizeBytesLabel}`
+                    : tr(
+                        exportMdHonesty.sizeClassKey as Parameters<
+                          typeof tr
+                        >[0],
+                      ),
+                })}
+              </span>
+            ) : null}
+          </div>
+          {exportMdHonesty.journalEmpty === true ? (
+            <p className="export-md-options__empty" role="status">
+              {tr("session.exportEmpty")}
+            </p>
+          ) : null}
           <label className="export-md-options__row">
             <input
               type="checkbox"
@@ -21459,7 +22480,11 @@ export default function App() {
             <button
               type="button"
               className="btn btn--ghost"
-              disabled={exportMdBusy || !exportMdTarget}
+              disabled={
+                exportMdBusy ||
+                !exportMdTarget ||
+                !exportMdHonesty.canAct
+              }
               onClick={() => void runExportSessionMd("copy")}
             >
               {tr("session.exportMdCopy")}
@@ -21467,7 +22492,11 @@ export default function App() {
             <button
               type="button"
               className="btn btn--solid"
-              disabled={exportMdBusy || !exportMdTarget}
+              disabled={
+                exportMdBusy ||
+                !exportMdTarget ||
+                !exportMdHonesty.canAct
+              }
               onClick={() => void runExportSessionMd("download")}
             >
               {exportMdBusy
@@ -22290,6 +23319,43 @@ export default function App() {
         </label>
       </GlassModal>
 
+      {/* Clear all queued follow-ups (GlassModal; never window.confirm) */}
+      <GlassModal
+        open={sendQueueClearOpen}
+        onClose={() => setSendQueueClearOpen(false)}
+        title={tr("composer.queueClearConfirmTitle")}
+        size="sm"
+        closeLabel={tr("common.close")}
+        footer={
+          <>
+            <button
+              type="button"
+              className="btn btn--ghost"
+              onClick={() => setSendQueueClearOpen(false)}
+            >
+              {tr("common.cancel")}
+            </button>
+            <button
+              type="button"
+              className="btn btn--danger"
+              data-testid="queue-clear-confirm"
+              disabled={!sendQueueClearPlan.confirmNeeded}
+              onClick={confirmClearSendQueue}
+            >
+              {tr("composer.queueClearConfirmAction")}
+            </button>
+          </>
+        }
+      >
+        <p style={{ margin: 0, whiteSpace: "pre-wrap" }}>
+          {sendQueueClearPlan.confirmNeeded
+            ? tr("composer.queueClearConfirmMessage", {
+                n: String(sendQueueClearPlan.count),
+              })
+            : tr("composer.queueClearEmpty")}
+        </p>
+      </GlassModal>
+
       {/* In-app confirm / prompt (Tauri WebView has no reliable window.prompt/confirm) */}
       {appDialog &&
         typeof document !== "undefined" &&
@@ -22655,6 +23721,7 @@ export default function App() {
               viewingSessionIdRef.current === s.id;
             const wtBadge = sessionWorktreeBadgeFor(s);
             const sessionMuted = mutedSessionIds.has(s.id);
+            const sessionUnread = unreadSessionIds.has(s.id);
             const canPopOut = canOpenSessionInNewWindow({
               isDesktopHost: api.isDesktopHost(),
               isSecondaryWindow,
@@ -22803,6 +23870,44 @@ export default function App() {
                 : []),
             ];
 
+            // Soft-empty honesty for the live session only (other sessions load on demand).
+            const liveExportable =
+              s.id === session.sessionId
+                ? messages.map((m) => ({
+                    role: m.role,
+                    content: m.content,
+                    thought: m.thought,
+                    createdAt: m.createdAt,
+                    marker: m.marker,
+                  }))
+                : null;
+            const liveJournalEmptyMd =
+              liveExportable != null
+                ? isSessionExportJournalEmpty(liveExportable, {
+                    format: "markdown",
+                  })
+                : null;
+            const liveJournalEmptyJson =
+              liveExportable != null
+                ? isSessionExportJournalEmpty(liveExportable, {
+                    format: "json",
+                  })
+                : null;
+            const liveJournalEmptyPlain =
+              liveExportable != null
+                ? isSessionExportJournalEmpty(liveExportable, {
+                    format: "plain",
+                  })
+                : null;
+            const liveJournalEmptyHtml =
+              liveExportable != null
+                ? isSessionExportJournalEmpty(liveExportable, {
+                    format: "html",
+                  })
+                : null;
+            const emptySuffix = (empty: boolean | null) =>
+              empty === true ? ` · ${tr("session.exportEmptyShort")}` : "";
+
             const exportChildren: ContextMenuItem[] = [
               {
                 id: "export-image",
@@ -22818,9 +23923,14 @@ export default function App() {
               },
               {
                 id: "export-md",
-                label: tr("session.exportMd"),
+                label: `${tr("session.exportMd")}${emptySuffix(liveJournalEmptyMd)}`,
                 icon: <IconCopy size={16} />,
+                disabled: liveJournalEmptyMd === true,
                 onClick: () => {
+                  if (liveJournalEmptyMd === true) {
+                    showToast(tr("session.exportEmpty"));
+                    return;
+                  }
                   openExportSessionMd({
                     id: s.id,
                     title: s.title,
@@ -22830,8 +23940,9 @@ export default function App() {
               },
               {
                 id: "export-plain",
-                label: tr("session.exportPlain"),
+                label: `${tr("session.exportPlain")}${emptySuffix(liveJournalEmptyPlain)}`,
                 icon: <IconCopy size={16} />,
+                disabled: liveJournalEmptyPlain === true,
                 onClick: () => {
                   void exportSessionPlain({
                     id: s.id,
@@ -22842,8 +23953,9 @@ export default function App() {
               },
               {
                 id: "export-json",
-                label: tr("session.exportJson"),
+                label: `${tr("session.exportJson")}${emptySuffix(liveJournalEmptyJson)}`,
                 icon: <IconCopy size={16} />,
+                disabled: liveJournalEmptyJson === true,
                 onClick: () => {
                   void exportSessionJson({
                     id: s.id,
@@ -22854,10 +23966,35 @@ export default function App() {
               },
               {
                 id: "export-html",
-                label: tr("session.exportHtml"),
+                label: `${tr("session.exportHtml")}${emptySuffix(liveJournalEmptyHtml)}`,
                 icon: <IconCopy size={16} />,
+                disabled: liveJournalEmptyHtml === true,
                 onClick: () => {
                   void exportSessionHtml({
+                    id: s.id,
+                    title: s.title,
+                    projectId: s.projectId,
+                  });
+                },
+              },
+              {
+                id: "export-stream-json",
+                label: tr("session.exportStreamJson"),
+                icon: <IconCopy size={16} />,
+                onClick: () => {
+                  void exportSessionStreamNdjson("streaming-json", {
+                    id: s.id,
+                    title: s.title,
+                    projectId: s.projectId,
+                  });
+                },
+              },
+              {
+                id: "export-stream-messages-json",
+                label: tr("session.exportStreamMessagesJson"),
+                icon: <IconCopy size={16} />,
+                onClick: () => {
+                  void exportSessionStreamNdjson("streaming-messages-json", {
                     id: s.id,
                     title: s.title,
                     projectId: s.projectId,
@@ -23031,6 +24168,26 @@ export default function App() {
                 ),
                 onClick: () => handleToggleSessionMute(s.id),
               },
+              ...(sessionUnread
+                ? [
+                    {
+                      id: "clear-unread",
+                      label: tr("session.clearUnread"),
+                      icon: <IconCheck size={16} />,
+                      onClick: () => handleClearSessionUnread(s.id),
+                    } satisfies ContextMenuItem,
+                  ]
+                : []),
+              ...(unreadSessionIds.size > 0
+                ? [
+                    {
+                      id: "clear-all-unread",
+                      label: tr("session.clearAllUnread"),
+                      icon: <IconCheck size={16} />,
+                      onClick: () => handleClearAllSessionUnread(),
+                    } satisfies ContextMenuItem,
+                  ]
+                : []),
               {
                 id: "rename",
                 label: tr("session.rename"),

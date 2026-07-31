@@ -436,6 +436,10 @@ pub struct AppSettings {
     /// Result of the last App-managed CLI install (`Some(true)` = sidecar matched).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub last_cli_checksum_verified: Option<bool>,
+    /// Tool audit ledger retention in days (`7` | `30` | `90` | `0` = unlimited).
+    /// Applied on write/rotate and via explicit prune. Default **0** (unlimited).
+    #[serde(default)]
+    pub audit_ledger_retention_days: u32,
 }
 
 fn default_composer_prefs_scope() -> String {
@@ -571,6 +575,7 @@ impl Default for AppSettings {
             proxy_no_proxy: None,
             allow_unverified_cli_install: false,
             last_cli_checksum_verified: None,
+            audit_ledger_retention_days: 0,
         }
     }
 }
@@ -2591,6 +2596,13 @@ mod tests {
     fn experimental_memory_defaults_false_when_missing_from_json() {
         let s: AppSettings = serde_json::from_str(legacy_settings_json()).expect("deserialize");
         assert!(!s.experimental_memory);
+    }
+
+    #[test]
+    fn audit_ledger_retention_defaults_unlimited_when_missing() {
+        let s: AppSettings = serde_json::from_str(legacy_settings_json()).expect("deserialize");
+        assert_eq!(s.audit_ledger_retention_days, 0);
+        assert_eq!(AppSettings::default().audit_ledger_retention_days, 0);
     }
 
     #[test]

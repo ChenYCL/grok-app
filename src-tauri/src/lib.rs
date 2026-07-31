@@ -4,6 +4,7 @@ mod account;
 mod account_profiles;
 mod acp_client;
 mod agent_config_view;
+mod agent_home_config;
 mod agent_config_edit;
 mod agent_privacy;
 mod agent_codebase_indexing;
@@ -30,6 +31,7 @@ mod support_bundle;
 mod editors;
 mod error;
 mod fs_browser;
+mod project_codebase_search;
 mod media_protocol;
 mod media_server;
 mod video_poster;
@@ -87,6 +89,7 @@ mod remote_im;
 mod wallpaper_source;
 mod streaming_messages_json;
 mod batch_agents;
+mod x_evidence;
 mod leader;
 mod serve;
 
@@ -411,8 +414,10 @@ pub fn run() {
             commands::agents_recycle_all,
             commands::cli_doctor_fix,
             commands::export_support_bundle,
+            commands::process_budget_snapshot,
             commands::audit_ledger_list,
             commands::audit_ledger_clear,
+            commands::audit_ledger_prune,
             commands::audit_ledger_export,
             commands::export_session_bundle,
             commands::session_cli_export,
@@ -426,6 +431,7 @@ pub fn run() {
             commands::skill_create,
             commands::agents_list,
             commands::workflows_list,
+            commands::workflows_run,
             commands::agents_scaffold,
             commands::inspect_mcp,
             commands::project_inspect,
@@ -490,6 +496,7 @@ pub fn run() {
             git_pr_hub::git_pr_list,
             git_pr_hub::git_pr_view,
             git_pr_hub::git_pr_checks,
+            git_pr_hub::git_pr_comments,
             cli_worktrees::cli_worktrees_list,
             cli_worktrees::cli_worktree_db_path,
             cli_worktrees::cli_worktree_db_stats,
@@ -499,6 +506,7 @@ pub fn run() {
             commands::git_checkout_file,
             commands::delete_project_file,
             commands::fs_list_dir,
+            commands::project_codebase_search,
             commands::fs_read_file,
             commands::fs_write_file,
             commands::fs_write_absolute,
@@ -572,6 +580,11 @@ pub fn run() {
             commands::wallpaper_library_list,
             commands::streaming_messages_json_probe,
             commands::batch_agents_headless,
+            commands::x_evidence_search,
+            commands::x_evidence_list,
+            commands::x_evidence_get,
+            commands::x_evidence_stats,
+            commands::x_quote_pack,
         ])
         .build(tauri::generate_context!())
         .expect("error while building Grok App")

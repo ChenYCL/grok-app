@@ -389,3 +389,177 @@ export function canShowQueueButton(
 ): boolean {
   return hasBody && shouldEnqueueSend(state, connecting);
 }
+
+// ---------------------------------------------------------------------------
+// SEND-QUEUE-PRO — clear plan · empty honesty · strip state · reorder
+// ---------------------------------------------------------------------------
+// Pure helpers for the composer queue strip. Clear always goes through an
+// in-app confirm (GlassModal) when count > 0 — never window.confirm.
+// Log meta and summaries never include message bodies.
+
+/** Counts for clear dialog / toast honesty (no message bodies). */
+export type SendQueueSummary = {
+  count: number;
+  /** Items that carry at least one attachment. */
+  withAttachments: number;
+  /** Items with goalMode enabled. */
+  goalModeCount: number;
+  max: number;
+  isEmpty: boolean;
+  isFull: boolean;
+  /** True when up/down reorder is meaningful (≥ 2 items). */
+  canReorder: boolean;
+};
+
+/** Summarize a queue without reading message bodies into log meta. */
+export function summarizeSendQueue(
+  queue: readonly QueuedSend[] | null | undefined,
+  max: number = SEND_QUEUE_MAX,
+): SendQueueSummary {
+  const list = Array.isArray(queue) ? queue : [];
+  const count = list.length;
+  let withAttachments = 0;
+  let goalModeCount = 0;
+  for (const item of list) {
+    if (item.attachments?.length) withAttachments += 1;
+    if (item.goalMode) goalModeCount += 1;
+  }
+  const cap = max > 0 ? max : 0;
+  return {
+    count,
+    withAttachments,
+    goalModeCount,
+    max: cap,
+    isEmpty: count === 0,
+    isFull: cap > 0 && count >= cap,
+    canReorder: count >= 2,
+  };
+}
+
+/** True when move up/down / index reorder can change order. */
+export function canReorderSendQueue(
+  queue: readonly QueuedSend[] | null | undefined,
+): boolean {
+  return Array.isArray(queue) && queue.length >= 2;
+}
+
+/**
+ * Pure clear-all plan for the viewed session queue.
+ * Never mutates; never includes message bodies in logMeta.
+ */
+export type ClearSendQueuePlan = {
+  ok: true;
+  count: number;
+  /** True when the UI should open a confirm (count > 0). */
+  confirmNeeded: boolean;
+  /** Next list after clear (always empty). */
+  next: QueuedSend[];
+  /** Safe meta for logs / toasts — count only. */
+  logMeta: { clearedCount: number } | null;
+  summary: SendQueueSummary;
+};
+
+/**
+ * Plan a clear-all of the session queue.
+ * Callers open GlassModal when `confirmNeeded`, then apply via
+ * {@link applyClearSendQueuePlan} / hook `clearQueue`.
+ */
+export function planClearSendQueue(
+  queue: readonly QueuedSend[] | null | undefined,
+  max: number = SEND_QUEUE_MAX,
+): ClearSendQueuePlan {
+  const summary = summarizeSendQueue(queue, max);
+  const count = summary.count;
+  return {
+    ok: true,
+    count,
+    confirmNeeded: count > 0,
+    next: [],
+    logMeta: count > 0 ? { clearedCount: count } : null,
+    summary,
+  };
+}
+
+/**
+ * Apply a clear plan to a session key in the by-key map.
+ * No-op (same ref) when the key is already absent and the plan is empty.
+ */
+export function applyClearSendQueuePlan(
+  byKey: Record<string, QueuedSend[]>,
+  key: string,
+  plan: ClearSendQueuePlan,
+): Record<string, QueuedSend[]> {
+  return setQueueForKey(byKey, key, plan.next);
+}
+
+/** Composer strip presentation kinds. */
+export type SendQueueStripKind = "empty" | "queued" | "hold";
+
+export type SendQueueStripState = {
+  kind: SendQueueStripKind;
+  /** Whether the strip should render above the composer. */
+  visible: boolean;
+  count: number;
+  canClear: boolean;
+  canReorder: boolean;
+  showHold: boolean;
+};
+
+/**
+ * Resolve strip chrome for the active session queue.
+ * Empty queues are not visible (strip hidden) — use
+ * {@link resolveSendQueueEmptyState} for empty-honesty copy when needed.
+ */
+export function resolveSendQueueStripState(opts: {
+  queue: readonly QueuedSend[] | null | undefined;
+  flushHold?: boolean;
+  max?: number;
+}): SendQueueStripState {
+  const summary = summarizeSendQueue(opts.queue, opts.max ?? SEND_QUEUE_MAX);
+  const hold = Boolean(opts.flushHold) && summary.count > 0;
+  if (summary.isEmpty) {
+    return {
+      kind: "empty",
+      visible: false,
+      count: 0,
+      canClear: false,
+      canReorder: false,
+      showHold: false,
+    };
+  }
+  return {
+    kind: hold ? "hold" : "queued",
+    visible: true,
+    count: summary.count,
+    canClear: true,
+    canReorder: summary.canReorder,
+    showHold: hold,
+  };
+}
+
+/** Honest empty kinds when the strip has nothing to show. */
+export type SendQueueEmptyKind = "empty";
+
+export type SendQueueEmptyState = {
+  kind: SendQueueEmptyKind;
+  /** i18n key for empty title. */
+  titleKey: "composer.queueEmptyTitle";
+  /** i18n key for empty body. */
+  bodyKey: "composer.queueEmptyBody";
+};
+
+/**
+ * Resolve empty-state presentation for the queue strip region.
+ * Returns `null` when there is at least one queued item (no empty UI).
+ */
+export function resolveSendQueueEmptyState(opts: {
+  count: number;
+}): SendQueueEmptyState | null {
+  const n = Math.max(0, Math.floor(opts.count || 0));
+  if (n > 0) return null;
+  return {
+    kind: "empty",
+    titleKey: "composer.queueEmptyTitle",
+    bodyKey: "composer.queueEmptyBody",
+  };
+}

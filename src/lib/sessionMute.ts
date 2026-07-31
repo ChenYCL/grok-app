@@ -139,6 +139,52 @@ export function setMuted(
   return muted;
 }
 
+/**
+ * Sorted list of muted session ids (stable order for Settings / tests).
+ * Mute only suppresses desktop notifications — unread dots still apply
+ * (see `sessionUnread.shouldMarkUnreadOnTurnDone`).
+ */
+export function listMutedSessionIds(
+  storage: SessionMuteStorage = defaultStorage(),
+): string[] {
+  return Array.from(loadMutedSessionIds(storage)).sort();
+}
+
+/**
+ * Clear every session mute. Returns how many ids were unmuted.
+ * Does not clear unread markers.
+ */
+export function clearAllMutes(
+  storage: SessionMuteStorage = defaultStorage(),
+): number {
+  const ids = loadMutedSessionIds(storage);
+  const n = ids.size;
+  if (n === 0) return 0;
+  saveMutedSessionIds([], storage);
+  return n;
+}
+
+/** Default: confirm bulk unmute when more than this many muted sessions. */
+export const CLEAR_ALL_MUTES_CONFIRM_THRESHOLD = 3;
+
+/**
+ * Whether bulk "clear all mutes" should show an in-app confirm dialog.
+ * Threshold is exclusive lower bound: count > threshold → confirm.
+ */
+export function shouldConfirmClearAllMutes(
+  count: number,
+  threshold: number = CLEAR_ALL_MUTES_CONFIRM_THRESHOLD,
+): boolean {
+  if (!Number.isFinite(count) || count <= 0) return false;
+  const t =
+    Number.isFinite(threshold) && threshold >= 0
+      ? Math.floor(threshold)
+      : CLEAR_ALL_MUTES_CONFIRM_THRESHOLD;
+  return count > t;
+}
+
 /** Aliases matching DoD naming. */
 export const load = loadMutedSessionIds;
 export const save = saveMutedSessionIds;
+export const listMuted = listMutedSessionIds;
+export const clearAll = clearAllMutes;

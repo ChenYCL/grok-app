@@ -279,6 +279,7 @@ export type MemoryBrowserEmptyHintKey =
   | "settings.memoryBrowser.searchingHint"
   | "settings.memoryBrowser.searchEmptyHint"
   | "settings.memoryBrowser.searchEmptyHintKeyword"
+  | "settings.memoryBrowser.searchEmptyHintHybridUnavailable"
   | "settings.memoryBrowser.filterEmptyHint"
   | "settings.memoryBrowser.filterEmptyHintKind";
 
@@ -380,16 +381,22 @@ export function resolveMemoryBrowserEmptyState(
   }
 
   if (q) {
-    // Keyword-only honesty; soft-link embed settings when model unset.
+    // Keyword-only honesty:
+    // - model unset → soft-link embed settings (CLI hybrid needs model)
+    // - model set → hybrid unavailable for App browser (no host CLI path)
+    // - unknown → generic keyword hint
     const embedUnset = input.embedConfigured === false;
+    const embedOn = input.embedConfigured === true;
     return {
       kind: "no_matches",
       titleKey: "settings.memoryBrowser.searchEmpty",
       hintKey: embedUnset
         ? "settings.memoryBrowser.searchEmptyHintKeyword"
-        : "settings.memoryBrowser.searchEmptyHint",
+        : embedOn
+          ? "settings.memoryBrowser.searchEmptyHintHybridUnavailable"
+          : "settings.memoryBrowser.searchEmptyHint",
       showClearFilters: filtersActive,
-      showEmbedLink: embedUnset,
+      showEmbedLink: embedUnset || embedOn,
     };
   }
 

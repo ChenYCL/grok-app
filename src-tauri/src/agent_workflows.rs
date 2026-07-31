@@ -1,18 +1,35 @@
-//! Grok Build workflows (`workflows_enabled`) — agent-home config sync + discovery.
+//! Grok Build workflows (`workflows_enabled`) — agent-home config sync +
+//! discovery + soft-fail headless run.
 //!
 //! Config key (top-level, independent agent-home only):
 //! - `workflows_enabled` (bool)
 //!
-//! Workflows are Rhai orchestration scripts run by the Grok Build CLI `workflow`
-//! tool (`~/.grok/workflows/*.rhai`, project `.grok/workflows/*.rhai`). The App
-//! only surfaces enable + read-only discovery — no in-app runner/editor.
+//! Workflows are Rhai orchestration scripts run by the Grok Build **`workflow`
+//! tool** (agent tool). There is **no** top-level `grok workflow` CLI
+//! subcommand (probed against Grok Build 0.2.117). Scripts live under
+//! `~/.grok/workflows/*.rhai` and project `.grok/workflows/*.rhai`.
 //!
-//! Shared mode never rewrites `~/.grok/config.toml`.
+//! App surfaces:
+//! - enable toggle → independent agent-home `config.toml`
+//! - read-only discovery of definition names
+//! - soft-fail **headless** invoke via short `grok -p` that must call the
+//!   `workflow` tool by registered name (`validate_only` smoke by default)
+//!
+//! No visual workflow editor. Shared mode never rewrites `~/.grok/config.toml`.
 
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::process::{Command, Stdio};
+use std::time::{Duration, Instant};
 
+use crate::agent_home_config::{set_top_level_bool, update_config_toml_if_independent};
+use serde::Serialize;
+
+use crate::cli_probe;
 use crate::paths::{agent_config_toml, ensure_app_dirs};
+use crate::process_util;
+use crate::proxy;
+use crate::store;
 
 pub const CONFIG_KEY: &str = "workflows_enabled";
 
@@ -21,55 +38,9 @@ pub fn normalize_enabled(raw: bool) -> bool {
     raw
 }
 
-/// Upsert a bare top-level `key = value` assignment (not inside a `[table]`).
-pub fn set_top_level_assignment(text: &str, key: &str, value: &str) -> String {
-    let line_val = format!("{key} = {value}");
-    let mut lines: Vec<String> = text.lines().map(|s| s.to_string()).collect();
-    let mut in_table = false;
-    let mut first_table_idx: Option<usize> = None;
-
-    for i in 0..lines.len() {
-        let trimmed = lines[i].trim().to_string();
-        if trimmed.starts_with('[') && trimmed.ends_with(']') {
-            if first_table_idx.is_none() {
-                first_table_idx = Some(i);
-            }
-            in_table = true;
-            continue;
-        }
-        if in_table {
-            continue;
-        }
-        // Root-level assignment.
-        let key_part = trimmed.split('=').next().map(str::trim).unwrap_or("");
-        if key_part == key {
-            lines[i] = line_val;
-            return lines.join("\n")
-                + if text.ends_with('\n') || text.is_empty() {
-                    "\n"
-                } else {
-                    ""
-                };
-        }
-    }
-
-    // Insert before the first table, or append at end.
-    if let Some(idx) = first_table_idx {
-        lines.insert(idx, line_val);
-        return lines.join("\n") + "\n";
-    }
-
-    let base = text.trim_end();
-    if base.is_empty() {
-        format!("{line_val}\n")
-    } else {
-        format!("{base}\n{line_val}\n")
-    }
-}
-
 /// Upsert `workflows_enabled` into a TOML-ish text blob.
 pub fn set_workflows_enabled_in_toml(text: &str, enabled: bool) -> String {
-    set_top_level_assignment(text, CONFIG_KEY, &enabled.to_string())
+    set_top_level_bool(text, CONFIG_KEY, enabled)
 }
 
 /// Write the config key into App agent-home (independent GROK_HOME only).
@@ -77,24 +48,17 @@ pub fn sync_workflows_to_agent_profile(
     session_data_mode: &str,
     enabled: bool,
 ) -> Result<(), String> {
-    if session_data_mode == "shared" {
-        // Never rewrite the user's personal ~/.grok/config.toml from the App.
-        return Ok(());
+    let path = update_config_toml_if_independent(session_data_mode, |existing| {
+        set_workflows_enabled_in_toml(existing, enabled)
+    })?;
+    if let Some(path) = path {
+        tracing::info!(
+            "agent_workflows: synced {}={} → {}",
+            CONFIG_KEY,
+            enabled,
+            path.display()
+        );
     }
-    let _ = ensure_app_dirs();
-    let path = agent_config_toml();
-    let existing = fs::read_to_string(&path).unwrap_or_default();
-    let next = set_workflows_enabled_in_toml(&existing, enabled);
-    if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent).map_err(|e| e.to_string())?;
-    }
-    fs::write(&path, next).map_err(|e| e.to_string())?;
-    tracing::info!(
-        "agent_workflows: synced {}={} → {}",
-        CONFIG_KEY,
-        enabled,
-        path.display()
-    );
     Ok(())
 }
 
@@ -260,6 +224,389 @@ pub struct DiscoverWorkflowsResult {
     pub create_workflow_skill: String,
 }
 
+// ── Soft-fail headless run (workflow tool via grok -p) ────────────────────
+
+/// Soft cap on captured log characters returned to the FE (after redaction).
+pub const MAX_RUN_LOG_CHARS: usize = 4_000;
+/// Default soft timeout for validate_only smoke (ms).
+pub const DEFAULT_VALIDATE_TIMEOUT_MS: u64 = 90_000;
+/// Default soft timeout for a real launch attempt (ms).
+pub const DEFAULT_LAUNCH_TIMEOUT_MS: u64 = 180_000;
+/// Hard clamp so a stuck CLI cannot hang the host forever.
+pub const MAX_RUN_TIMEOUT_MS: u64 = 300_000;
+pub const WORKFLOW_NAME_MAX_LEN: usize = 96;
+
+/// Soft-fail result for Settings run UI.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WorkflowRunResult {
+    pub ok: bool,
+    /// `ok` | `invalid_name` | `cli_missing` | `timeout` | `spawn_failed` |
+    /// `empty` | `nonzero_exit` | `soft_fail`
+    pub reason: String,
+    pub workflow_name: String,
+    /// `validate` | `launch`
+    pub mode: String,
+    /// Truncated + redacted stdout/stderr snip for the result panel.
+    pub log: Option<String>,
+    pub truncated: bool,
+    pub duration_ms: u64,
+    pub cli_path: Option<String>,
+    pub cli_version: Option<String>,
+    /// Honesty note: no top-level `grok workflow` subcommand; headless path used.
+    pub invoke_path: String,
+}
+
+fn run_soft_fail(
+    reason: &str,
+    workflow_name: &str,
+    mode: &str,
+    log: Option<String>,
+    truncated: bool,
+    duration_ms: u64,
+    cli_path: Option<String>,
+    cli_version: Option<String>,
+) -> WorkflowRunResult {
+    WorkflowRunResult {
+        ok: false,
+        reason: reason.to_string(),
+        workflow_name: workflow_name.to_string(),
+        mode: mode.to_string(),
+        log,
+        truncated,
+        duration_ms,
+        cli_path,
+        cli_version,
+        invoke_path: "headless_workflow_tool".into(),
+    }
+}
+
+/// Safe registered workflow name (letters, digits, `_`, `-`; no path seps).
+pub fn is_valid_workflow_name(name: &str) -> bool {
+    let n = name.trim();
+    if n.is_empty() || n.len() > WORKFLOW_NAME_MAX_LEN {
+        return false;
+    }
+    if n.contains("..") || n.contains('/') || n.contains('\\') {
+        return false;
+    }
+    let mut chars = n.chars();
+    let Some(first) = chars.next() else {
+        return false;
+    };
+    if !first.is_ascii_alphanumeric() {
+        return false;
+    }
+    chars.all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
+}
+
+/// Normalize run mode; unknown → `validate` (safest Settings path).
+pub fn normalize_run_mode(raw: &str) -> &'static str {
+    match raw.trim().to_ascii_lowercase().as_str() {
+        "launch" | "run" | "start" => "launch",
+        _ => "validate",
+    }
+}
+
+/// Headless prompt that forces a single `workflow` tool call (pure for tests).
+pub fn build_workflow_run_prompt(name: &str, mode: &str) -> String {
+    let safe = name.trim();
+    if normalize_run_mode(mode) == "launch" {
+        format!(
+            "Call the workflow tool exactly once with these parameters, then stop:\n\
+             - name: \"{safe}\"\n\
+             - agent_budget: 8\n\
+             Do not invent script or script_path. Do not call other tools first.\n\
+             After the tool returns, reply with only a short summary of success or error (no secrets, no full script)."
+        )
+    } else {
+        format!(
+            "Call the workflow tool exactly once with these parameters, then stop:\n\
+             - name: \"{safe}\"\n\
+             - validate_only: true\n\
+             - agent_budget: 1\n\
+             Do not invent script or script_path. Do not call other tools first.\n\
+             This is a path-specific smoke check only — not a live multi-agent run.\n\
+             After the tool returns, reply with only a short summary of success or error (no secrets, no full script)."
+        )
+    }
+}
+
+/// Build headless argv (without binary path). Pure for tests.
+pub fn workflow_run_args(prompt: &str, mode: &str) -> Vec<String> {
+    let max_turns = if normalize_run_mode(mode) == "launch" {
+        "8"
+    } else {
+        "4"
+    };
+    vec![
+        "-p".into(),
+        prompt.to_string(),
+        "--always-approve".into(),
+        "--max-turns".into(),
+        max_turns.into(),
+        "--effort".into(),
+        "low".into(),
+        "--output-format".into(),
+        "plain".into(),
+    ]
+}
+
+fn clamp_timeout_ms(ms: Option<u64>, mode: &str) -> u64 {
+    let default = if normalize_run_mode(mode) == "launch" {
+        DEFAULT_LAUNCH_TIMEOUT_MS
+    } else {
+        DEFAULT_VALIDATE_TIMEOUT_MS
+    };
+    let v = ms.unwrap_or(default);
+    v.clamp(5_000, MAX_RUN_TIMEOUT_MS)
+}
+
+fn truncate_chars(s: &str, max: usize) -> (String, bool) {
+    let t = s.trim();
+    if t.is_empty() {
+        return (String::new(), false);
+    }
+    if t.chars().count() <= max {
+        return (t.to_string(), false);
+    }
+    let clipped: String = t.chars().take(max.saturating_sub(1)).collect();
+    (format!("{clipped}…"), true)
+}
+
+fn prepare_log(stdout: &str, stderr: &str) -> (Option<String>, bool) {
+    let mut combined = String::new();
+    let out = stdout.trim();
+    let err = stderr.trim();
+    if !out.is_empty() {
+        combined.push_str(out);
+    }
+    if !err.is_empty() {
+        if !combined.is_empty() {
+            combined.push_str("\n--- stderr ---\n");
+        }
+        combined.push_str(err);
+    }
+    if combined.is_empty() {
+        return (None, false);
+    }
+    let redacted = crate::agent_memory::redact_memory_preview(&combined);
+    let (text, truncated) = truncate_chars(&redacted, MAX_RUN_LOG_CHARS);
+    if text.is_empty() {
+        (None, false)
+    } else {
+        (Some(text), truncated)
+    }
+}
+
+enum ThreadWait<T> {
+    Done(T),
+    TimedOut,
+    JoinErr,
+}
+
+fn wait_thread<T: Send + 'static>(
+    handle: std::thread::JoinHandle<T>,
+    timeout: Duration,
+) -> ThreadWait<T> {
+    let deadline = Instant::now() + timeout;
+    loop {
+        if handle.is_finished() {
+            return match handle.join() {
+                Ok(v) => ThreadWait::Done(v),
+                Err(_) => ThreadWait::JoinErr,
+            };
+        }
+        if Instant::now() >= deadline {
+            return ThreadWait::TimedOut;
+        }
+        std::thread::sleep(Duration::from_millis(40));
+    }
+}
+
+/// Soft-fail headless invoke of a registered workflow by name.
+///
+/// Probe note: Grok Build has no `workflow` subcommand; the App uses short
+/// headless `grok -p` and asks the agent to call the `workflow` tool once.
+/// Default mode is `validate` (`validate_only: true` smoke). Never panics.
+pub fn run_workflow(
+    name: &str,
+    project_path: Option<&str>,
+    mode: Option<&str>,
+    timeout_ms: Option<u64>,
+) -> WorkflowRunResult {
+    let started = Instant::now();
+    let mode_s = normalize_run_mode(mode.unwrap_or("validate"));
+    let name_trim = name.trim();
+
+    if !is_valid_workflow_name(name_trim) {
+        return run_soft_fail(
+            "invalid_name",
+            name_trim,
+            mode_s,
+            None,
+            false,
+            started.elapsed().as_millis() as u64,
+            None,
+            None,
+        );
+    }
+
+    let settings = store::load_settings();
+    let probe = cli_probe::probe_cli(settings.manual_cli_path.as_deref());
+    if !probe.found {
+        return run_soft_fail(
+            "cli_missing",
+            name_trim,
+            mode_s,
+            None,
+            false,
+            started.elapsed().as_millis() as u64,
+            None,
+            probe.version.clone(),
+        );
+    }
+    let cli_path = match probe.path.clone() {
+        Some(p) => p,
+        None => {
+            return run_soft_fail(
+                "cli_missing",
+                name_trim,
+                mode_s,
+                None,
+                false,
+                started.elapsed().as_millis() as u64,
+                None,
+                probe.version.clone(),
+            );
+        }
+    };
+    let cli_version = probe.version.clone();
+
+    let prompt = build_workflow_run_prompt(name_trim, mode_s);
+    let args = workflow_run_args(&prompt, mode_s);
+    let timeout = Duration::from_millis(clamp_timeout_ms(timeout_ms, mode_s));
+
+    let cwd = project_path
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(PathBuf::from)
+        .filter(|p| p.is_dir())
+        .unwrap_or_else(std::env::temp_dir);
+
+    let cli_path_clone = cli_path.clone();
+    let mode_home = settings.session_data_mode.clone();
+    let handle = std::thread::spawn(move || {
+        let mut cmd = Command::new(&cli_path_clone);
+        cmd.args(&args)
+            .current_dir(&cwd)
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped());
+        process_util::apply_no_window_std(&mut cmd);
+        if let Some(path_env) = process_util::enriched_path_env() {
+            cmd.env("PATH", path_env);
+        }
+        let grok_home = crate::paths::resolve_agent_grok_home(&mode_home);
+        let _ = std::fs::create_dir_all(&grok_home);
+        cmd.env("GROK_HOME", &grok_home);
+        if mode_home != "shared" {
+            crate::providers::prepare_route_auth_for_agent();
+        }
+        proxy::apply_to_std_command(&mut cmd);
+        cmd.output()
+    });
+
+    let joined = wait_thread(handle, timeout);
+    let duration_ms = started.elapsed().as_millis() as u64;
+
+    match joined {
+        ThreadWait::TimedOut => run_soft_fail(
+            "timeout",
+            name_trim,
+            mode_s,
+            None,
+            false,
+            duration_ms,
+            Some(cli_path),
+            cli_version,
+        ),
+        ThreadWait::JoinErr => run_soft_fail(
+            "spawn_failed",
+            name_trim,
+            mode_s,
+            None,
+            false,
+            duration_ms,
+            Some(cli_path),
+            cli_version,
+        ),
+        ThreadWait::Done(Err(e)) => {
+            tracing::warn!(
+                target: "agent_workflows",
+                error = %e,
+                name = %name_trim,
+                "workflow run spawn failed"
+            );
+            run_soft_fail(
+                "spawn_failed",
+                name_trim,
+                mode_s,
+                None,
+                false,
+                duration_ms,
+                Some(cli_path),
+                cli_version,
+            )
+        }
+        ThreadWait::Done(Ok(output)) => {
+            let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+            let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+            let (log, truncated) = prepare_log(&stdout, &stderr);
+            let status_ok = output.status.success();
+            if log.is_none() {
+                return run_soft_fail(
+                    if status_ok { "empty" } else { "spawn_failed" },
+                    name_trim,
+                    mode_s,
+                    None,
+                    false,
+                    duration_ms,
+                    Some(cli_path),
+                    cli_version,
+                );
+            }
+            if status_ok {
+                WorkflowRunResult {
+                    ok: true,
+                    reason: "ok".into(),
+                    workflow_name: name_trim.to_string(),
+                    mode: mode_s.to_string(),
+                    log,
+                    truncated,
+                    duration_ms,
+                    cli_path: Some(cli_path),
+                    cli_version,
+                    invoke_path: "headless_workflow_tool".into(),
+                }
+            } else {
+                // Non-zero with text: still surface the log as soft-fail.
+                WorkflowRunResult {
+                    ok: false,
+                    reason: "nonzero_exit".into(),
+                    workflow_name: name_trim.to_string(),
+                    mode: mode_s.to_string(),
+                    log,
+                    truncated,
+                    duration_ms,
+                    cli_path: Some(cli_path),
+                    cli_version,
+                    invoke_path: "headless_workflow_tool".into(),
+                }
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -305,5 +652,51 @@ mod tests {
     fn shared_mode_skips_write() {
         // Should not error and must not require a real agent-home path.
         assert!(sync_workflows_to_agent_profile("shared", true).is_ok());
+    }
+
+    #[test]
+    fn validates_workflow_names() {
+        assert!(is_valid_workflow_name("review-changes"));
+        assert!(is_valid_workflow_name("Foo_Bar1"));
+        assert!(!is_valid_workflow_name(""));
+        assert!(!is_valid_workflow_name("../evil"));
+        assert!(!is_valid_workflow_name("a/b"));
+        assert!(!is_valid_workflow_name("has space"));
+        assert!(!is_valid_workflow_name(&"a".repeat(100)));
+    }
+
+    #[test]
+    fn run_mode_and_prompt() {
+        assert_eq!(normalize_run_mode("validate"), "validate");
+        assert_eq!(normalize_run_mode("launch"), "launch");
+        assert_eq!(normalize_run_mode("run"), "launch");
+        assert_eq!(normalize_run_mode("nope"), "validate");
+
+        let v = build_workflow_run_prompt("review-changes", "validate");
+        assert!(v.contains("validate_only: true"));
+        assert!(v.contains("review-changes"));
+        let l = build_workflow_run_prompt("review-changes", "launch");
+        assert!(l.contains("agent_budget: 8"));
+        assert!(!l.contains("validate_only"));
+    }
+
+    #[test]
+    fn run_args_include_plain_and_approve() {
+        let a = workflow_run_args("hello", "validate");
+        assert!(a.contains(&"-p".into()));
+        assert!(a.contains(&"hello".into()));
+        assert!(a.contains(&"--always-approve".into()));
+        assert!(a.contains(&"plain".into()));
+        assert!(a.contains(&"4".into()));
+        let b = workflow_run_args("hello", "launch");
+        assert!(b.contains(&"8".into()));
+    }
+
+    #[test]
+    fn invalid_name_soft_fails_without_spawn() {
+        let r = run_workflow("../evil", None, Some("validate"), Some(5_000));
+        assert!(!r.ok);
+        assert_eq!(r.reason, "invalid_name");
+        assert_eq!(r.invoke_path, "headless_workflow_tool");
     }
 }

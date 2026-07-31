@@ -1,6 +1,7 @@
 /**
- * Structured Doctor health UI — triage findings (classify / filter / copy),
- * GlassModal detail, re-run, support zip, reset app data, CLI doctor fixes.
+ * Structured Doctor health UI — triage findings (classify / filter / copy /
+ * redacted export), GlassModal detail, re-run, support zip, reset app data,
+ * CLI doctor fixes.
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -29,13 +30,17 @@ import {
   type DoctorFixHandle,
 } from "@/lib/cliDoctor";
 import {
+  buildDoctorFindingsExport,
   categoriesPresent,
   collectDoctorFindings,
   countDoctorFindings,
   doctorFindingCopyText,
-  doctorFindingsCopyText,
+  doctorFindingsExportIsEmpty,
+  doctorFindingsExportJsonFilename,
   filterDoctorFindings,
+  formatDoctorFindingsExportText,
   presentDoctorFindingDetail,
+  serializeDoctorFindingsExport,
   type DoctorFindingCategory,
   type DoctorFindingCategoryFilter,
   type DoctorFindingLevelFilter,
@@ -44,6 +49,20 @@ import {
 } from "@/lib/doctorFindings";
 import { CliUpdateRow } from "@/components/CliUpdateRow";
 import { redact } from "@/lib/redact";
+
+/** Client download for redacted findings JSON (no host round-trip). */
+function downloadDoctorFindingsJson(filename: string, body: string) {
+  const blob = new Blob([body], { type: "application/json;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.rel = "noopener";
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
 
 export type DoctorModalProps = {
   open: boolean;
@@ -168,7 +187,9 @@ export function DoctorModal({
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [copiedFindingKey, setCopiedFindingKey] = useState<string | null>(null);
-  const [busy, setBusy] = useState<"zip" | "reset" | "fix" | null>(null);
+  const [busy, setBusy] = useState<
+    "zip" | "reset" | "fix" | "findings-export" | null
+  >(null);
   /** Which fix id is currently running (for per-row spinner). */
   const [fixingId, setFixingId] = useState<string | null>(null);
   const [keepSecrets, setKeepSecrets] = useState(true);
@@ -575,19 +596,76 @@ export function DoctorModal({
     [t],
   );
 
+  const findingsExportFilter = useMemo(
+    () => ({
+      level: levelFilter,
+      category: categoryFilter,
+      source: sourceFilter,
+      query,
+      issuesOnly,
+    }),
+    [levelFilter, categoryFilter, sourceFilter, query, issuesOnly],
+  );
+
+  /** Redacted export snapshot for the currently visible (filtered) set. */
+  const visibleFindingsExport = useMemo(
+    () =>
+      buildDoctorFindingsExport(visibleFindings, {
+        filter: findingsExportFilter,
+      }),
+    [visibleFindings, findingsExportFilter],
+  );
+
   const copyVisibleFindings = useCallback(async () => {
-    const text = doctorFindingsCopyText(visibleFindings);
-    if (!text) return;
+    if (doctorFindingsExportIsEmpty(visibleFindingsExport)) {
+      setStatusMsg(null);
+      setError(t("doctor.finding.exportEmpty"));
+      return;
+    }
+    const text = formatDoctorFindingsExportText(visibleFindingsExport);
+    if (!text) {
+      setError(t("doctor.finding.exportEmpty"));
+      return;
+    }
     try {
       await navigator.clipboard.writeText(text);
+      setError(null);
       setStatusMsg(
-        t("doctor.finding.copiedN", { count: visibleFindings.length }),
+        t("doctor.finding.copiedN", {
+          count: visibleFindingsExport.count,
+        }),
       );
       window.setTimeout(() => setStatusMsg(null), 1600);
     } catch {
-      setError(t("doctor.error"));
+      setError(t("doctor.finding.exportFail"));
     }
-  }, [t, visibleFindings]);
+  }, [t, visibleFindingsExport]);
+
+  const onExportFindings = useCallback(() => {
+    setBusy("findings-export");
+    setStatusMsg(null);
+    setError(null);
+    try {
+      if (doctorFindingsExportIsEmpty(visibleFindingsExport)) {
+        setError(t("doctor.finding.exportEmpty"));
+        return;
+      }
+      const body = serializeDoctorFindingsExport(visibleFindingsExport);
+      const filename = doctorFindingsExportJsonFilename(
+        visibleFindingsExport.generatedAt,
+      );
+      downloadDoctorFindingsJson(filename, body);
+      setStatusMsg(
+        t("doctor.finding.exportDone", {
+          count: visibleFindingsExport.count,
+        }),
+      );
+    } catch (e) {
+      setError(`${t("doctor.finding.exportFail")}: ${String(e)}`);
+    } finally {
+      setBusy(null);
+    }
+  }, [t, visibleFindingsExport]);
 
   const clearFilters = useCallback(() => {
     setLevelFilter("all");
@@ -881,12 +959,31 @@ export function DoctorModal({
                 <button
                   type="button"
                   className="btn btn--ghost btn--sm"
-                  disabled={visibleFindings.length === 0}
+                  disabled={
+                    visibleFindings.length === 0 || busy === "findings-export"
+                  }
                   onClick={() => void copyVisibleFindings()}
-                  title={t("doctor.finding.copyVisibleHint")}
+                  title={t("doctor.finding.copyAllHint")}
+                  data-testid="doctor-findings-copy-all"
                 >
                   <IconCopy size={14} />
-                  {t("doctor.finding.copyVisible")}
+                  {t("doctor.finding.copyAll")}
+                </button>
+                <button
+                  type="button"
+                  className="btn btn--ghost btn--sm"
+                  disabled={
+                    visibleFindings.length === 0 ||
+                    !!busy ||
+                    loading
+                  }
+                  onClick={onExportFindings}
+                  title={t("doctor.finding.exportHint")}
+                  data-testid="doctor-findings-export"
+                >
+                  {busy === "findings-export"
+                    ? "…"
+                    : t("doctor.finding.export")}
                 </button>
               </div>
 

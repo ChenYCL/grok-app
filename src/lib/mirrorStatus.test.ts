@@ -44,6 +44,11 @@ describe("classifyMirrorError", () => {
       ),
     ).toBe("cloudflared_missing");
     expect(
+      classifyMirrorError(
+        "cloudflared not found on PATH and Docker daemon is unavailable — start Docker Desktop",
+      ),
+    ).toBe("cloudflared_missing");
+    expect(
       classifyMirrorError("cloudflared did not become ready within 90s"),
     ).toBe("tunnel_timeout");
     expect(classifyMirrorError("failed to spawn cloudflared: ENOENT")).toBe(

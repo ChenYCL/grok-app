@@ -108,8 +108,19 @@ Settings → Runtime → **Managed setup** (`ManagedSetupPanel`):
    - `managed_config.toml` / `requirements.toml` / `managed_config.sig.json` / `managed_identity.sig.json` under active `GROK_HOME`
    - system `/etc/grok/managed_config.toml` when present (Unix)
    - `grok inspect` flags `managedSettingsActive` / `Exists` / `Path` when CLI works
+   - **explicit** inspect/doctor signature verification fields when present (`signatureVerified` etc.) → `signatureVerified` + `signatureVerifySource`; otherwise `presenceOnly: true`
 
-The App **does not re-verify cryptographic signatures**; it only shows artifact presence + inspect flags. CLI rejects bad signatures before writing. Soft-fail when CLI/inspect is missing.
+Signature UI status (pure `deriveSignatureStatus` / `buildSignatureView`):
+
+| Status | Meaning |
+|--------|---------|
+| `absent` | No managed artifacts |
+| `present_unverified` | Files / inspect flags present; App did **not** crypto-verify |
+| `verify_ok` | **Only** when host/CLI/doctor explicitly reported verification success |
+| `verify_failed` | CLI rejected signature / envelope, or host reported verified=false |
+| `soft_fail` | Probe/inspect unavailable or status unknown |
+
+The App **does not re-verify cryptographic signatures**; path presence and `managedSettingsActive` never invent `verify_ok`. CLI rejects bad signatures before writing. Soft-fail when CLI/inspect is missing.
 
 ## Non-goals
 

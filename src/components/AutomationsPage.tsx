@@ -19,6 +19,15 @@ import {
   launchAgentSoftFail,
   type LaunchAgentSoftFail,
 } from "@/lib/automationsHeadlessHonesty";
+import {
+  AUTOMATION_RUN_HISTORY_CHANGE_EVENT,
+  clearAutomationRunHistory,
+  countAutomationRunOutcomes,
+  filterAutomationRunHistory,
+  loadAutomationRunHistory,
+  type AutomationRunOutcomeFilter,
+  type AutomationRunRecord,
+} from "@/lib/automationRunHistory";
 import { Select } from "@/components/Select";
 import { GlassModal } from "@/components/GlassModal";
 import {
@@ -130,6 +139,13 @@ export function AutomationsPage({
   /** Soft-fail modal when LaunchAgent install/remove/reveal fails (no fake daemon). */
   const [launchAgentFail, setLaunchAgentFail] =
     useState<LaunchAgentSoftFail | null>(null);
+  /** Observed schedule run history (local ring; process-bound honesty). */
+  const [runHistory, setRunHistory] = useState<AutomationRunRecord[]>(() =>
+    loadAutomationRunHistory(),
+  );
+  const [runHistoryFilter, setRunHistoryFilter] =
+    useState<AutomationRunOutcomeFilter>("all");
+  const [clearHistoryOpen, setClearHistoryOpen] = useState(false);
   const createBtnRef = useRef<HTMLButtonElement>(null);
   const createMenuRef = useRef<HTMLDivElement>(null);
   const deleteConfirmBtnRef = useRef<HTMLButtonElement>(null);
@@ -176,10 +192,42 @@ export function AutomationsPage({
     return () => window.clearInterval(id);
   }, [refreshRunner]);
 
+  // Live ring buffer updates from host fires + Run now (App records).
+  useEffect(() => {
+    const onChange = (ev: Event) => {
+      const detail = (ev as CustomEvent<AutomationRunRecord[]>).detail;
+      if (Array.isArray(detail)) {
+        setRunHistory(detail);
+      } else {
+        setRunHistory(loadAutomationRunHistory());
+      }
+    };
+    window.addEventListener(AUTOMATION_RUN_HISTORY_CHANGE_EVENT, onChange);
+    // Soft reload on mount in case another surface wrote while we were away.
+    setRunHistory(loadAutomationRunHistory());
+    return () =>
+      window.removeEventListener(AUTOMATION_RUN_HISTORY_CHANGE_EVENT, onChange);
+  }, []);
+
   const enabledCount = useMemo(
     () => list.filter((a) => a.enabled).length,
     [list],
   );
+
+  const filteredRunHistory = useMemo(
+    () => filterAutomationRunHistory(runHistory, runHistoryFilter),
+    [runHistory, runHistoryFilter],
+  );
+
+  const runHistoryCounts = useMemo(
+    () => countAutomationRunOutcomes(runHistory),
+    [runHistory],
+  );
+
+  const confirmClearHistory = () => {
+    setRunHistory(clearAutomationRunHistory());
+    setClearHistoryOpen(false);
+  };
 
   const banner = useMemo(
     () =>
@@ -757,6 +805,129 @@ export function AutomationsPage({
         </div>
       </div>
 
+      {/* Observed fires only — empty is soft-fail, never invents offline runs */}
+      <div
+        className="auto-page__history"
+        role="region"
+        aria-label={t("automations.history.section")}
+      >
+        <div className="auto-page__history-head">
+          <div className="auto-page__history-titles">
+            <div className="auto-page__history-title">
+              {t("automations.history.section")}
+            </div>
+            <p className="auto-page__history-desc">
+              {t("automations.history.honesty")}
+            </p>
+          </div>
+          {runHistory.length > 0 ? (
+            <button
+              type="button"
+              className="auto-page__bg-banner-link"
+              onClick={() => setClearHistoryOpen(true)}
+            >
+              {t("automations.history.clear")}
+            </button>
+          ) : null}
+        </div>
+        <div
+          className="auto-page__history-filters"
+          role="tablist"
+          aria-label={t("automations.history.filterAria")}
+        >
+          {(
+            [
+              ["all", "automations.history.filter.all"],
+              ["ok", "automations.history.filter.ok"],
+              ["error", "automations.history.filter.error"],
+              ["skipped", "automations.history.filter.skipped"],
+            ] as const
+          ).map(([id, key]) => (
+            <button
+              key={id}
+              type="button"
+              role="tab"
+              aria-selected={runHistoryFilter === id}
+              className={
+                "auto-page__filter" +
+                (runHistoryFilter === id ? " is-active" : "")
+              }
+              onClick={() => setRunHistoryFilter(id)}
+            >
+              {t(key)}
+              <span className="auto-page__history-count" aria-hidden>
+                {runHistoryCounts[id]}
+              </span>
+            </button>
+          ))}
+        </div>
+        {filteredRunHistory.length === 0 ? (
+          <div className="auto-page__history-empty" role="status">
+            {runHistory.length === 0
+              ? t("automations.history.empty")
+              : t("automations.history.emptyFiltered")}
+          </div>
+        ) : (
+          <ul className="auto-page__history-list">
+            {filteredRunHistory.map((row) => {
+              let when = row.at;
+              try {
+                when = new Date(row.at).toLocaleString();
+              } catch {
+                /* keep raw */
+              }
+              const outcomeKey =
+                row.outcome === "ok"
+                  ? "automations.history.outcome.ok"
+                  : row.outcome === "error"
+                    ? "automations.history.outcome.error"
+                    : "automations.history.outcome.skipped";
+              const sourceKey =
+                row.source === "host"
+                  ? "automations.history.source.host"
+                  : row.source === "run_now"
+                    ? "automations.history.source.runNow"
+                    : "automations.history.source.unknown";
+              return (
+                <li
+                  key={row.id}
+                  className={
+                    "auto-page__history-row" +
+                    (row.outcome === "error"
+                      ? " auto-page__history-row--error"
+                      : row.outcome === "skipped"
+                        ? " auto-page__history-row--skipped"
+                        : "")
+                  }
+                >
+                  <span
+                    className={
+                      "auto-page__history-outcome" +
+                      ` auto-page__history-outcome--${row.outcome}`
+                    }
+                  >
+                    {t(outcomeKey)}
+                  </span>
+                  <div className="auto-page__history-main">
+                    <span className="auto-page__history-name">{row.name}</span>
+                    <span className="auto-page__history-meta">
+                      {when}
+                      {" · "}
+                      {t(sourceKey)}
+                    </span>
+                    {row.outcome === "error" && row.error ? (
+                      <span className="auto-page__history-error" title={row.error}>
+                        {row.error}
+                      </span>
+                    ) : null}
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </div>
+
       <div className="auto-page__toolbar">
         <div className="auto-page__search">
           <IconSearch size={15} />
@@ -971,6 +1142,37 @@ export function AutomationsPage({
             ) : null}
           </>
         ) : null}
+      </GlassModal>
+
+      <GlassModal
+        open={clearHistoryOpen}
+        onClose={() => setClearHistoryOpen(false)}
+        title={t("automations.history.clearTitle")}
+        size="sm"
+        closeLabel={t("common.close")}
+        footer={
+          <>
+            <button
+              type="button"
+              className="btn btn--ghost"
+              onClick={() => setClearHistoryOpen(false)}
+            >
+              {t("common.cancel")}
+            </button>
+            <button
+              type="button"
+              className="btn btn--danger"
+              onClick={confirmClearHistory}
+            >
+              {t("automations.history.clearConfirm")}
+            </button>
+          </>
+        }
+      >
+        <p className="app-dialog__msg">{t("automations.history.clearBody")}</p>
+        <p className="app-dialog__msg app-dialog__msg--muted">
+          {t("automations.history.honesty")}
+        </p>
       </GlassModal>
 
       {deleteTarget &&

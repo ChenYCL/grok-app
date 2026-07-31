@@ -4,6 +4,7 @@ mod app_sessions;
 mod bridge;
 mod channels;
 mod config;
+mod context;
 mod control_plane;
 mod engine;
 mod feishu_reg;

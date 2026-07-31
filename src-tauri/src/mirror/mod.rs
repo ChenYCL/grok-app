@@ -135,7 +135,7 @@ struct Runtime {
     public_url: Option<String>,
     error: Option<String>,
     shutdown_tx: Option<oneshot::Sender<()>>,
-    /// cloudflared child (process group); killed on stop.
+    /// cloudflared adapter handle (host process or Docker container); stopped on teardown.
     tunnel: Option<tunnel::TunnelHandle>,
     #[allow(dead_code)] // kept for future media/static re-resolve
     dist_dir: PathBuf,
@@ -438,7 +438,7 @@ impl MirrorHost {
         Ok(self.status())
     }
 
-    /// Full teardown; invalidates token immediately; kills tunnel process group.
+    /// Full teardown; invalidates token immediately; stops the active tunnel adapter.
     pub async fn stop(&self) -> Result<MirrorStatus, String> {
         self.stop_inner();
         // Brief yield so server task can observe shutdown.
@@ -461,8 +461,8 @@ impl MirrorHost {
             (tx, tun)
         };
         if let Some(t) = tunnel {
-            t.kill_group();
-            tracing::info!("mirror tunnel process group killed");
+            t.stop();
+            tracing::info!("mirror tunnel adapter stopped");
         }
         if let Some(tx) = shutdown {
             let _ = tx.send(());

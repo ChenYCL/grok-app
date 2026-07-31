@@ -16,13 +16,20 @@ import {
   type ReactNode,
 } from "react";
 import * as api from "@/lib/api";
+import { isTauri } from "@/lib/api";
 import { copyImageFromSrc } from "@/lib/copyImage";
 import {
   ensureMediaEndpoint,
+  isMediaEndpointReady,
   isViewableSrc,
   resolveImageSrc,
   resolveImageSrcSync,
 } from "@/lib/imageSrc";
+import {
+  mediaLoadErrorLabelMap,
+  resolveMediaSrcFailure,
+  type MediaLoadErrorKind,
+} from "@/lib/mediaLoadPro";
 import { useImageViewerOptional } from "@/components/ImageViewer";
 import { IconCopy, IconExternalLink, IconFolder } from "@/components/icons";
 import { ContextMenu, type ContextMenuItem } from "@/components/ContextMenu";
@@ -37,6 +44,13 @@ export interface ImageUiLabels {
   /** Copy path — same copy as attach.copyPath */
   copyPath: string;
   open?: string;
+  /**
+   * Honest copy when image fails to resolve/load (generic fallback).
+   * Prefer `loadFailedByKind` when available.
+   */
+  loadFailed?: string;
+  /** Classified media.err.* labels keyed by MediaLoadErrorKind. */
+  loadFailedByKind?: Partial<Record<MediaLoadErrorKind, string>>;
 }
 
 /**
@@ -172,6 +186,8 @@ export function ImageUi({
   );
   /** Once load fails, keep a stable broken state — never re-fetch on re-render. */
   const [loadFailed, setLoadFailed] = useState(false);
+  /** Classified reason when resolve or decode fails (MEDIA-LOAD-PRO). */
+  const [failKind, setFailKind] = useState<MediaLoadErrorKind | null>(null);
   /**
    * Natural width/height ratio. Seeded from cache so remounts keep the right
    * box; defaults to 4:3 until the bitmap reports size.
@@ -207,6 +223,7 @@ export function ImageUi({
     const next = initialResolvedSrc(src);
     setResolvedSrc(next);
     setLoadFailed(false);
+    setFailKind(null);
     const cached = readCachedAr(src, path);
     if (cached != null) {
       setAspectRatio(cached);
@@ -217,18 +234,47 @@ export function ImageUi({
     }
     // Ensure loopback media HTTP is ready, then re-resolve (cold-start may have
     // used media:// fallback or null before the endpoint arrived).
+    // Soft-fail: only classify after resolve settles — never invent a working image.
     if (!isViewableSrc(src) || !next?.startsWith("http://127.0.0.1")) {
       void ensureMediaEndpoint()
         .then(() => resolveImageSrc(src))
         .then((url) => {
-          if (!cancelled && url && url !== next) {
-            setResolvedSrc(url);
+          if (cancelled) return;
+          if (url) {
+            if (url !== next) setResolvedSrc(url);
             setLoadFailed(false);
+            setFailKind(null);
+          } else {
+            setResolvedSrc(null);
+            const r = resolveMediaSrcFailure({
+              pathOrUrl: path || src,
+              resolvedSrc: null,
+              isTauri: isTauri(),
+              mediaEndpointReady: isMediaEndpointReady(),
+            });
+            setFailKind(r.kind);
           }
         })
         .catch(() => {
-          /* keep sync resolve */
+          /* keep sync resolve — soft-fail, never crash */
+          if (cancelled || next) return;
+          const r = resolveMediaSrcFailure({
+            pathOrUrl: path || src,
+            resolvedSrc: null,
+            isTauri: isTauri(),
+            mediaEndpointReady: isMediaEndpointReady(),
+          });
+          setFailKind(r.kind);
         });
+    } else if (!next) {
+      // Already-viewable check failed and no async path — classify once.
+      const r = resolveMediaSrcFailure({
+        pathOrUrl: path || src,
+        resolvedSrc: null,
+        isTauri: isTauri(),
+        mediaEndpointReady: isMediaEndpointReady(),
+      });
+      setFailKind(r.kind);
     }
     return () => {
       cancelled = true;
@@ -331,11 +377,19 @@ export function ImageUi({
     });
   }
 
-  const state: "pending" | "ready" | "broken" = loadFailed
+  const state: "pending" | "ready" | "broken" = loadFailed || (!resolvedSrc && failKind)
     ? "broken"
     : resolvedSrc && ratioKnown
       ? "ready"
       : "pending";
+
+  const brokenLabel = (() => {
+    if (failKind && labels.loadFailedByKind?.[failKind]) {
+      return labels.loadFailedByKind[failKind]!;
+    }
+    if (labels.loadFailed) return labels.loadFailed;
+    return alt || "image";
+  })();
 
   const ar =
     aspectRatio > 0 && Number.isFinite(aspectRatio)
@@ -370,18 +424,22 @@ export function ImageUi({
       <span
         className={frameClassName(className, state, layout)}
         style={frameStyle}
-        role={loadFailed ? "img" : undefined}
-        aria-label={loadFailed ? alt || "image" : undefined}
-        title={loadFailed ? localPath || src : undefined}
+        role={state === "broken" ? "img" : undefined}
+        aria-label={state === "broken" ? brokenLabel : undefined}
+        title={
+          state === "broken"
+            ? brokenLabel
+            : undefined
+        }
         onContextMenu={(e) => {
           e.preventDefault();
           e.stopPropagation();
           setMenu({ x: e.clientX, y: e.clientY });
         }}
       >
-        {loadFailed ? (
+        {loadFailed || (!resolvedSrc && failKind) ? (
           <span className="md-body__img-frame__fallback">
-            {alt || "image"}
+            {brokenLabel}
           </span>
         ) : resolvedSrc ? (
           <img
@@ -400,6 +458,14 @@ export function ImageUi({
             }}
             onError={() => {
               setLoadFailed(true);
+              const r = resolveMediaSrcFailure({
+                pathOrUrl: path || src,
+                resolvedSrc,
+                loadFailed: true,
+                isTauri: isTauri(),
+                mediaEndpointReady: isMediaEndpointReady(),
+              });
+              setFailKind(r.kind);
             }}
             onClick={(e) => {
               e.preventDefault();
@@ -433,5 +499,7 @@ export function imageUiLabels(locale: Locale): ImageUiLabels {
     copyImage: tr("image.copy"),
     reveal: revealInOsLabel(tr),
     copyPath: tr("attach.copyPath"),
+    loadFailed: tr("media.err.other"),
+    loadFailedByKind: mediaLoadErrorLabelMap(tr),
   };
 }

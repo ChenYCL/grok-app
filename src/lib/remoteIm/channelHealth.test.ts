@@ -260,4 +260,536 @@ describe("classifyChannelHealth", () => {
     expect(r.ready).toBe(true);
     expect(r.missingKeys).not.toContain("corp_secret");
   });
+
+  it("weixin: deep health is long-poll / ilink honest", () => {
+    expect(channelHasDeepHealth("weixin")).toBe(true);
+    expect(transportForChannel("weixin")).toBe("long_poll");
+
+    const bare = inst("weixin", {
+      hasCredentials: false,
+      enabled: false,
+      options: {},
+    });
+    const h0 = classifyChannelHealth({
+      instance: bare,
+      bridgeRunning: false,
+    });
+    expect(h0.tone).toBe("unconfigured");
+    expect(h0.transport).toBe("long_poll");
+    expect(h0.credentialsReady).toBe(false);
+    expect(h0.hintKeys.some((k) => k.includes("weixinPoll"))).toBe(true);
+    expect(h0.hintKeys.some((k) => k.includes("weixinNoPublicUrl"))).toBe(true);
+    expect(h0.hintKeys.some((k) => k.includes("weixinMissingToken"))).toBe(
+      true,
+    );
+
+    const ready = inst("weixin", {
+      hasCredentials: true,
+      enabled: true,
+      options: { account_id: "default", proxy: "socks5://127.0.0.1:1" },
+      acl: {
+        allowFrom: "*",
+        requireMention: true,
+        groupOnly: false,
+        shareSessionInChannel: false,
+      },
+    });
+    const h1 = classifyChannelHealth({
+      instance: ready,
+      bridgeRunning: true,
+      bridgeLinked: true,
+    });
+    expect(h1.credentialsReady).toBe(true);
+    expect(h1.tone).toBe("connected");
+    expect(h1.modeLabel).toContain("mode=ilink");
+    expect(h1.modeLabel).toContain("proxy=set");
+    expect(h1.hintKeys.some((k) => k.includes("weixinTextMenu"))).toBe(true);
+    expect(h1.openAcl).toBe(true);
+  });
+
+  it("weixin credentialReadiness needs token or vault", () => {
+    const bare = inst("weixin", { hasCredentials: false });
+    expect(credentialReadiness("weixin", bare).ready).toBe(false);
+    expect(
+      credentialReadiness("weixin", bare, new Set(["token"])).ready,
+    ).toBe(true);
+    expect(
+      credentialReadiness("weixin", inst("weixin", { hasCredentials: true }))
+        .ready,
+    ).toBe(true);
+  });
+
+  it("discord: gateway deep health with intent + ACL hints", () => {
+    expect(channelHasDeepHealth("discord")).toBe(true);
+    const bare = inst("discord", {
+      hasCredentials: false,
+      enabled: false,
+      options: {},
+    });
+    const h0 = classifyChannelHealth({
+      instance: bare,
+      bridgeRunning: false,
+    });
+    expect(h0.tone).toBe("unconfigured");
+    expect(h0.transport).toBe("gateway");
+    expect(h0.credentialsReady).toBe(false);
+    expect(h0.hintKeys.some((k) => k.includes("discordGateway"))).toBe(true);
+    expect(h0.hintKeys.some((k) => k.includes("discordIntent"))).toBe(true);
+    expect(h0.hintKeys.some((k) => k.includes("discordNoWebhook"))).toBe(true);
+
+    const ready = inst("discord", {
+      hasCredentials: true,
+      enabled: true,
+      options: {
+        progress_style: "compact",
+        thread_isolation: true,
+      },
+      acl: {
+        allowFrom: "*",
+        requireMention: true,
+        groupOnly: false,
+        shareSessionInChannel: false,
+      },
+    });
+    const h1 = classifyChannelHealth({
+      instance: ready,
+      bridgeRunning: true,
+      bridgeLinked: true,
+    });
+    expect(h1.credentialsReady).toBe(true);
+    expect(h1.tone).toBe("connected");
+    expect(h1.transport).toBe("gateway");
+    expect(h1.modeLabel).toContain("thread_iso");
+    expect(h1.hintKeys.some((k) => k.includes("discordGateway"))).toBe(true);
+    expect(h1.hintKeys.some((k) => k.includes("discordIntent"))).toBe(true);
+    expect(h1.hintKeys.some((k) => k.includes("discordThreadIso"))).toBe(true);
+    expect(h1.openAcl).toBe(true);
+
+    // Invalid form token shape → not ready
+    const h2 = classifyChannelHealth({
+      instance: bare,
+      bridgeRunning: false,
+      secretKeysFilled: new Set(["token"]),
+      tokenValue: "not-a-token",
+    });
+    expect(h2.credentialsReady).toBe(false);
+    expect(h2.hintKeys.some((k) => k.includes("discordTokenFormat"))).toBe(
+      true,
+    );
+  });
+
+  it("line: webhook deep health + public-URL honesty", () => {
+    expect(channelHasDeepHealth("line")).toBe(true);
+    expect(transportForChannel("line")).toBe("webhook");
+
+    const bare = inst("line", { hasCredentials: false, enabled: false });
+    const h0 = classifyChannelHealth({
+      instance: bare,
+      bridgeRunning: false,
+    });
+    expect(h0.tone).toBe("unconfigured");
+    expect(h0.transport).toBe("webhook");
+    // Schema defaults include port 8081 + /line/callback when instance is created
+    expect(h0.modeLabel).toContain("mode=webhook");
+    expect(h0.credentialsReady).toBe(false);
+    expect(h0.hintKeys.some((k) => k.includes("lineWebhook"))).toBe(true);
+    expect(h0.hintKeys.some((k) => k.includes("linePublicUrl"))).toBe(true);
+    expect(h0.hintKeys.some((k) => k.includes("lineTunnel"))).toBe(true);
+    expect(h0.hintKeys.some((k) => k.includes("lineNoLiveClaim"))).toBe(true);
+    expect(h0.hintKeys.some((k) => k.includes("lineMissingKeys"))).toBe(true);
+
+    const ready = inst("line", {
+      hasCredentials: true,
+      enabled: true,
+      options: { port: 9443, callback_path: "/hooks/line" },
+      acl: {
+        allowFrom: "*",
+        requireMention: true,
+        groupOnly: false,
+        shareSessionInChannel: false,
+      },
+    });
+    const h1 = classifyChannelHealth({
+      instance: ready,
+      bridgeRunning: true,
+      bridgeLinked: true,
+    });
+    expect(h1.credentialsReady).toBe(true);
+    expect(h1.tone).toBe("connected");
+    expect(h1.modeLabel).toContain("port=9443");
+    expect(h1.modeLabel).toContain("path=custom");
+    expect(h1.openAcl).toBe(true);
+    // Never claims public callback live — only credential / tunnel hints
+    expect(h1.hintKeys.some((k) => k.includes("lineNoLiveClaim"))).toBe(true);
+
+    const rForm = credentialReadiness(
+      "line",
+      inst("line", { hasCredentials: false }),
+      new Set(["channel_secret", "access_token"]),
+    );
+    expect(rForm.ready).toBe(true);
+  });
+
+  it("slack: socket_mode deep health with dual-token readiness", () => {
+    expect(channelHasDeepHealth("slack")).toBe(true);
+    expect(transportForChannel("slack")).toBe("socket_mode");
+    expect(channelModeLabel("slack", {})).toBe("mode=socket");
+
+    const bare = inst("slack", { hasCredentials: false, enabled: false });
+    const h0 = classifyChannelHealth({
+      instance: bare,
+      bridgeRunning: false,
+    });
+    expect(h0.tone).toBe("unconfigured");
+    expect(h0.transport).toBe("socket_mode");
+    expect(h0.credentialsReady).toBe(false);
+    expect(h0.hintKeys.some((k) => k.includes("slackSocketMode"))).toBe(true);
+    expect(h0.hintKeys.some((k) => k.includes("slackNoPublicUrl"))).toBe(true);
+    expect(h0.hintKeys.some((k) => k.includes("slackMissingTokens"))).toBe(
+      true,
+    );
+
+    const ready = inst("slack", {
+      hasCredentials: true,
+      enabled: true,
+      acl: {
+        allowFrom: "*",
+        requireMention: true,
+        groupOnly: false,
+        shareSessionInChannel: false,
+      },
+    });
+    const h1 = classifyChannelHealth({
+      instance: ready,
+      bridgeRunning: true,
+      bridgeLinked: true,
+    });
+    expect(h1.credentialsReady).toBe(true);
+    expect(h1.tone).toBe("connected");
+    expect(h1.modeLabel).toBe("mode=socket");
+    expect(h1.hintKeys.some((k) => k.includes("slackDualToken"))).toBe(true);
+    expect(h1.openAcl).toBe(true);
+    expect(h1.hintKeys.some((k) => k.includes("slackAcl"))).toBe(true);
+
+    // Only bot_token in form without vault → not ready
+    const partial = credentialReadiness(
+      "slack",
+      bare,
+      new Set(["bot_token"]),
+    );
+    expect(partial.ready).toBe(false);
+    expect(partial.missingKeys).toContain("app_token");
+
+    const both = credentialReadiness(
+      "slack",
+      bare,
+      new Set(["bot_token", "app_token"]),
+    );
+    expect(both.ready).toBe(true);
+  });
+
+  it("qq: forward_ws deep health with community risk · never live without Bridge", () => {
+    expect(channelHasDeepHealth("qq")).toBe(true);
+    expect(transportForChannel("qq")).toBe("forward_ws");
+
+    const bare = inst("qq", {
+      hasCredentials: false,
+      enabled: false,
+      options: {},
+    });
+    const h0 = classifyChannelHealth({
+      instance: bare,
+      bridgeRunning: false,
+    });
+    expect(h0.tone).toBe("unconfigured");
+    expect(h0.transport).toBe("forward_ws");
+    expect(h0.credentialsReady).toBe(false);
+    expect(h0.hintKeys.some((k) => k.includes("qqForwardWs"))).toBe(true);
+    expect(h0.hintKeys.some((k) => k.includes("qqSelfHosted"))).toBe(true);
+    expect(h0.hintKeys.some((k) => k.includes("qqCommunityRisk"))).toBe(true);
+    expect(h0.hintKeys.some((k) => k.includes("qqMissingWsUrl"))).toBe(true);
+
+    const ready = inst("qq", {
+      hasCredentials: true,
+      enabled: true,
+      options: { ws_url: "ws://127.0.0.1:3001" },
+      acl: {
+        allowFrom: "*",
+        requireMention: true,
+        groupOnly: false,
+        shareSessionInChannel: false,
+      },
+    });
+    const h1 = classifyChannelHealth({
+      instance: ready,
+      bridgeRunning: true,
+      bridgeLinked: true,
+    });
+    expect(h1.credentialsReady).toBe(true);
+    expect(h1.tone).toBe("connected");
+    expect(h1.transport).toBe("forward_ws");
+    expect(h1.modeLabel).toContain("forward_ws");
+    expect(h1.modeLabel).toContain("ws");
+    expect(h1.hintKeys.some((k) => k.includes("qqForwardWs"))).toBe(true);
+    expect(h1.hintKeys.some((k) => k.includes("qqCommunityRisk"))).toBe(true);
+    expect(h1.hintKeys.some((k) => k.includes("qqTokenOptional"))).toBe(true);
+    expect(h1.openAcl).toBe(true);
+
+    // Invalid URL soft-fail — not ready; never claims WS live
+    const bad = inst("qq", {
+      hasCredentials: true,
+      enabled: true,
+      options: { ws_url: "http://127.0.0.1:3001" },
+    });
+    const h2 = classifyChannelHealth({
+      instance: bad,
+      bridgeRunning: true,
+      bridgeLinked: false,
+    });
+    expect(h2.credentialsReady).toBe(false);
+    expect(h2.tone).not.toBe("connected");
+    expect(h2.hintKeys.some((k) => k.includes("qqWsUrlInvalid"))).toBe(true);
+    expect(h2.hintKeys.some((k) => k.includes("qqHttpNotWs"))).toBe(true);
+
+    // url alias + optional token in form
+    const alias = inst("qq", {
+      hasCredentials: false,
+      options: { url: "wss://bridge.local/onebot" },
+    });
+    const r = credentialReadiness("qq", alias, new Set(["token"]));
+    expect(r.ready).toBe(true);
+    expect(r.missingKeys).not.toContain("token");
+  });
+
+  it("matrix: long-poll deep health with homeserver + ACL hints", () => {
+    expect(channelHasDeepHealth("matrix")).toBe(true);
+    const bare = inst("matrix", {
+      hasCredentials: false,
+      enabled: false,
+      options: {},
+    });
+    const h0 = classifyChannelHealth({
+      instance: bare,
+      bridgeRunning: false,
+    });
+    expect(h0.tone).toBe("unconfigured");
+    expect(h0.transport).toBe("long_poll");
+    expect(h0.credentialsReady).toBe(false);
+    expect(h0.hintKeys.some((k) => k.includes("matrixSync"))).toBe(true);
+    expect(h0.hintKeys.some((k) => k.includes("matrixNoWebhook"))).toBe(true);
+
+    const ready = inst("matrix", {
+      hasCredentials: true,
+      enabled: true,
+      options: {
+        homeserver: "https://matrix.example.com",
+        auto_join: true,
+      },
+      acl: {
+        allowFrom: "*",
+        requireMention: true,
+        groupOnly: false,
+        shareSessionInChannel: false,
+      },
+    });
+    const h1 = classifyChannelHealth({
+      instance: ready,
+      bridgeRunning: true,
+      bridgeLinked: true,
+    });
+    expect(h1.credentialsReady).toBe(true);
+    expect(h1.tone).toBe("connected");
+    expect(h1.transport).toBe("long_poll");
+    expect(h1.modeLabel).toContain("hs=matrix.example.com");
+    expect(h1.hintKeys.some((k) => k.includes("matrixSync"))).toBe(true);
+    expect(h1.hintKeys.some((k) => k.includes("matrixAutoJoin"))).toBe(true);
+    expect(h1.openAcl).toBe(true);
+
+    // Invalid form token shape → not ready
+    const h2 = classifyChannelHealth({
+      instance: inst("matrix", {
+        hasCredentials: false,
+        options: { homeserver: "https://matrix.example.com" },
+      }),
+      bridgeRunning: false,
+      secretKeysFilled: new Set(["access_token"]),
+      accessTokenValue: "short",
+    });
+    expect(h2.credentialsReady).toBe(false);
+    expect(h2.hintKeys.some((k) => k.includes("matrixTokenFormat"))).toBe(
+      true,
+    );
+
+    // Missing homeserver with vault token → not ready
+    const h3 = classifyChannelHealth({
+      instance: inst("matrix", {
+        hasCredentials: true,
+        options: {},
+      }),
+      bridgeRunning: false,
+    });
+    expect(h3.credentialsReady).toBe(false);
+    expect(h3.missingKeys).toContain("homeserver");
+  });
+
+  it("weibo: websocket deep health with paste-first + endpoint hints", () => {
+    expect(channelHasDeepHealth("weibo")).toBe(true);
+    const bare = inst("weibo", {
+      hasCredentials: false,
+      enabled: false,
+      options: {},
+    });
+    const h0 = classifyChannelHealth({
+      instance: bare,
+      bridgeRunning: false,
+    });
+    expect(h0.tone).toBe("unconfigured");
+    expect(h0.transport).toBe("websocket");
+    expect(h0.credentialsReady).toBe(false);
+    expect(h0.hintKeys.some((k) => k.includes("weiboWs"))).toBe(true);
+    expect(h0.hintKeys.some((k) => k.includes("weiboNoPublicUrl"))).toBe(true);
+    expect(h0.hintKeys.some((k) => k.includes("weiboPasteFirst"))).toBe(true);
+    expect(h0.hintKeys.some((k) => k.includes("weiboMissingKeys"))).toBe(true);
+
+    const ready = inst("weibo", {
+      hasCredentials: true,
+      enabled: true,
+      options: {
+        app_id: "1234567890",
+        token_endpoint: "https://api.weibo.com/oauth2/access_token",
+        ws_endpoint: "wss://api.weibo.com/chat",
+      },
+      acl: {
+        allowFrom: "*",
+        requireMention: true,
+        groupOnly: false,
+        shareSessionInChannel: false,
+      },
+    });
+    const h1 = classifyChannelHealth({
+      instance: ready,
+      bridgeRunning: true,
+      bridgeLinked: true,
+    });
+    expect(h1.credentialsReady).toBe(true);
+    expect(h1.tone).toBe("connected");
+    expect(h1.transport).toBe("websocket");
+    expect(h1.modeLabel).toContain("mode=ws");
+    expect(h1.modeLabel).toContain("token=custom");
+    expect(h1.modeLabel).toContain("ws=custom");
+    expect(h1.hintKeys.some((k) => k.includes("weiboWs"))).toBe(true);
+    expect(h1.hintKeys.some((k) => k.includes("weiboTokenEndpoint"))).toBe(
+      true,
+    );
+    expect(h1.openAcl).toBe(true);
+
+    // Invalid form app_id shape → not ready (never claims WS live)
+    const h2 = classifyChannelHealth({
+      instance: bare,
+      bridgeRunning: false,
+      secretKeysFilled: new Set(["app_secret"]),
+      draftOptions: { app_id: "x" },
+      appIdValue: "x",
+    });
+    expect(h2.credentialsReady).toBe(false);
+    expect(h2.hintKeys.some((k) => k.includes("weiboAppIdFormat"))).toBe(true);
+
+    // Bridge not linked → never "connected" even with credentials
+    const h3 = classifyChannelHealth({
+      instance: ready,
+      bridgeRunning: true,
+      bridgeLinked: false,
+    });
+    expect(h3.credentialsReady).toBe(true);
+    expect(h3.tone).toBe("configured");
+    expect(h3.tone).not.toBe("connected");
+  });
+
+  it("qqbot: official gateway deep health · default INTERACTION · never live without Bridge", () => {
+    expect(channelHasDeepHealth("qqbot")).toBe(true);
+    expect(transportForChannel("qqbot")).toBe("gateway");
+
+    const bare = inst("qqbot", {
+      hasCredentials: false,
+      enabled: false,
+      options: {},
+    });
+    const h0 = classifyChannelHealth({
+      instance: bare,
+      bridgeRunning: false,
+    });
+    expect(h0.tone).toBe("unconfigured");
+    expect(h0.transport).toBe("gateway");
+    expect(h0.credentialsReady).toBe(false);
+    expect(h0.hintKeys.some((k) => k.includes("qqbotGateway"))).toBe(true);
+    expect(h0.hintKeys.some((k) => k.includes("qqbotNoWebhook"))).toBe(true);
+    expect(h0.hintKeys.some((k) => k.includes("qqbotNotOneBot"))).toBe(true);
+    expect(h0.hintKeys.some((k) => k.includes("qqbotMissingAppId"))).toBe(
+      true,
+    );
+    expect(h0.hintKeys.some((k) => k.includes("qqbotIntentsDefault"))).toBe(
+      true,
+    );
+
+    const ready = inst("qqbot", {
+      hasCredentials: true,
+      enabled: true,
+      options: { app_id: "102012345" },
+      acl: {
+        allowFrom: "*",
+        requireMention: true,
+        groupOnly: false,
+        shareSessionInChannel: false,
+      },
+    });
+    const h1 = classifyChannelHealth({
+      instance: ready,
+      bridgeRunning: true,
+      bridgeLinked: true,
+    });
+    expect(h1.credentialsReady).toBe(true);
+    expect(h1.tone).toBe("connected");
+    expect(h1.transport).toBe("gateway");
+    expect(h1.modeLabel).toContain("gateway");
+    expect(h1.modeLabel).toContain("intents=default");
+    expect(h1.hintKeys.some((k) => k.includes("qqbotGateway"))).toBe(true);
+    expect(h1.hintKeys.some((k) => k.includes("qqbotIntentsDefault"))).toBe(
+      true,
+    );
+    expect(h1.openAcl).toBe(true);
+
+    // Invalid app_id soft-fail — not ready; never claims Gateway live
+    const bad = inst("qqbot", {
+      hasCredentials: true,
+      enabled: true,
+      options: { app_id: "x" },
+    });
+    const h2 = classifyChannelHealth({
+      instance: bad,
+      bridgeRunning: true,
+      bridgeLinked: false,
+    });
+    expect(h2.credentialsReady).toBe(false);
+    expect(h2.tone).not.toBe("connected");
+    expect(h2.hintKeys.some((k) => k.includes("qqbotAppIdFormat"))).toBe(true);
+
+    // Custom intents mode label + form secret readiness
+    const custom = inst("qqbot", {
+      hasCredentials: false,
+      options: { app_id: "1020999", intents: "INTERACTION" },
+    });
+    const r = credentialReadiness("qqbot", custom, new Set(["app_secret"]));
+    expect(r.ready).toBe(true);
+    expect(r.missingKeys).not.toContain("app_secret");
+    const h3 = classifyChannelHealth({
+      instance: custom,
+      bridgeRunning: false,
+      secretKeysFilled: new Set(["app_secret"]),
+      draftOptions: { intents: "INTERACTION" },
+    });
+    expect(h3.modeLabel).toContain("intents=custom");
+    expect(h3.hintKeys.some((k) => k.includes("qqbotIntentsCustom"))).toBe(
+      true,
+    );
+  });
 });

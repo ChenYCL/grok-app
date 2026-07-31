@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   GLOBAL_MOD_SHORTCUT_IDS,
+  SHORTCUT_SCOPE_ORDER,
   filterShortcutGroups,
   filterShortcutRows,
   matchGlobalShortcut,
@@ -9,6 +10,7 @@ import {
   SHORTCUTS,
   shortcutScope,
   shortcutsByGroup,
+  shortcutsByScope,
   shortcutsForPlatform,
   type GlobalModShortcutId,
   type ShortcutChordContext,
@@ -386,5 +388,31 @@ describe("filterShortcutGroups", () => {
   it("returns all groups for empty query", () => {
     const groups = shortcutsByGroup();
     expect(filterShortcutGroups("", groups, tStub)).toEqual(groups);
+  });
+});
+
+describe("shortcutsByScope", () => {
+  it("covers every catalog row exactly once in scope order", () => {
+    const grouped = shortcutsByScope();
+    expect(grouped.map((g) => g.scope)).toEqual([...SHORTCUT_SCOPE_ORDER]);
+    const flat = grouped.flatMap((g) => g.rows.map((r) => r.id));
+    expect(flat.sort()).toEqual([...SHORTCUTS.map((s) => s.id)].sort());
+    for (const g of grouped) {
+      expect(g.rows.every((r) => r.scope === g.scope)).toBe(true);
+      expect(g.rows.length).toBeGreaterThan(0);
+    }
+  });
+
+  it("groups a filtered subset without inventing scopes", () => {
+    const chatOnly = SHORTCUTS.filter((s) => s.scope === "chat-focus");
+    const grouped = shortcutsByScope(chatOnly);
+    expect(grouped.map((g) => g.scope)).toEqual(["chat-focus"]);
+    expect(grouped[0]!.rows.map((r) => r.id).sort()).toEqual(
+      chatOnly.map((r) => r.id).sort(),
+    );
+  });
+
+  it("returns empty for empty input", () => {
+    expect(shortcutsByScope([])).toEqual([]);
   });
 });

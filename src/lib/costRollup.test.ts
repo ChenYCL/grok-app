@@ -1,20 +1,30 @@
 import { describe, expect, it } from "vitest";
 import {
   aggregateCostRollup,
+  applyClearCostUsageSamplesPlan,
   buildCostRollupView,
+  classifyCostRollupExportError,
   clearCostUsageSamples,
+  costRollupExportOutcomeMessageKey,
   dayKeyFromIso,
   dayKeyFromMs,
   dedupeUsageSamples,
   extractKnownUsageFromJournalMessages,
+  filterCostUsageSamples,
   finiteTokenCount,
   formatCostRollupExport,
   formatRollupEstimatedCost,
   formatRollupTokens,
+  hasActiveCostRollupScopeFilter,
+  listCostRollupProjectChips,
+  listCostRollupSessionChips,
   loadCostUsageSamples,
   mergeCostRollupPrecision,
   parseCostUsageSample,
+  planClearCostUsageSamples,
   recordCostUsageSample,
+  resolveCostRollupEmptyState,
+  resolveCostRollupExportOutcome,
   sampleFromUsageEvent,
   samplesFromLiveUsageMap,
   sinceDayDaysAgo,
@@ -508,5 +518,255 @@ describe("formatCostRollupExport", () => {
     expect(text).toContain("Alpha");
     // unknown rates → no $ invent
     expect(text).toMatch(/Est\. cost: —/);
+  });
+});
+
+describe("filterCostUsageSamples / chips / empty honesty", () => {
+  const samples: CostUsageSample[] = [
+    {
+      sessionId: "s1",
+      projectId: "p1",
+      projectName: "Alpha",
+      day: "2026-04-06",
+      totalTokens: 100,
+      source: "usage",
+    },
+    {
+      sessionId: "s2",
+      projectId: "p2",
+      projectName: "Beta",
+      day: "2026-04-05",
+      totalTokens: 50,
+      source: "usage",
+    },
+    {
+      sessionId: "s3",
+      projectId: null,
+      day: "2026-04-06",
+      totalTokens: 10,
+      source: "usage",
+    },
+  ];
+
+  it("filters by session, project, noProject, and day window", () => {
+    expect(
+      filterCostUsageSamples(samples, { sessionId: "s1" }).map((s) => s.sessionId),
+    ).toEqual(["s1"]);
+    expect(
+      filterCostUsageSamples(samples, { projectId: "p2" }).map((s) => s.sessionId),
+    ).toEqual(["s2"]);
+    expect(
+      filterCostUsageSamples(samples, { noProject: true }).map((s) => s.sessionId),
+    ).toEqual(["s3"]);
+    expect(
+      filterCostUsageSamples(samples, {
+        sinceDay: "2026-04-06",
+        untilDay: "2026-04-06",
+      }),
+    ).toHaveLength(2);
+    expect(filterCostUsageSamples(samples, null)).toHaveLength(3);
+  });
+
+  it("hasActiveCostRollupScopeFilter ignores empty ids", () => {
+    expect(hasActiveCostRollupScopeFilter({})).toBe(false);
+    expect(hasActiveCostRollupScopeFilter({ projectId: "  " })).toBe(false);
+    expect(hasActiveCostRollupScopeFilter({ projectId: "p1" })).toBe(true);
+    expect(hasActiveCostRollupScopeFilter({ noProject: true })).toBe(true);
+    expect(hasActiveCostRollupScopeFilter({ sessionId: "s1" })).toBe(true);
+  });
+
+  it("lists project and session chips with all + orphan", () => {
+    const projectChips = listCostRollupProjectChips(samples, [
+      { id: "p1", name: "Alpha" },
+      { id: "p2", name: "Beta" },
+    ]);
+    expect(projectChips[0]!.id).toBe("all");
+    expect(projectChips[0]!.count).toBe(3);
+    expect(projectChips.some((c) => c.id === "p1" && c.count === 1)).toBe(true);
+    expect(projectChips.some((c) => c.id === "noproject" && c.count === 1)).toBe(
+      true,
+    );
+
+    const sessionChips = listCostRollupSessionChips(
+      samples,
+      [{ id: "s1", title: "Chat A" }],
+      10,
+    );
+    expect(sessionChips[0]!.id).toBe("all");
+    expect(sessionChips.some((c) => c.id === "s1" && c.label === "Chat A")).toBe(
+      true,
+    );
+  });
+
+  it("aggregateCostRollup respects projectId / sessionId / untilDay", () => {
+    const byProject = aggregateCostRollup({
+      samples,
+      projectId: "p1",
+      projects: [{ id: "p1", name: "Alpha" }],
+    });
+    expect(byProject.buckets).toHaveLength(1);
+    expect(byProject.totalTokensKnown).toBe(100);
+
+    const bySession = aggregateCostRollup({
+      samples,
+      sessionId: "s2",
+      groupBy: "session",
+    });
+    expect(bySession.buckets).toHaveLength(1);
+    expect(bySession.buckets[0]!.sessionId).toBe("s2");
+
+    const until = aggregateCostRollup({
+      samples,
+      untilDay: "2026-04-05",
+    });
+    expect(until.totalTokensKnown).toBe(50);
+  });
+
+  it("resolveCostRollupEmptyState distinguishes no samples / window / filter", () => {
+    expect(
+      resolveCostRollupEmptyState({
+        viewEmpty: false,
+        rawSampleCount: 3,
+        windowSampleCount: 2,
+        filteredSampleCount: 1,
+      }),
+    ).toBe(null);
+
+    expect(
+      resolveCostRollupEmptyState({
+        viewEmpty: true,
+        rawSampleCount: 0,
+        windowSampleCount: 0,
+        filteredSampleCount: 0,
+      })?.kind,
+    ).toBe("no_samples");
+
+    expect(
+      resolveCostRollupEmptyState({
+        viewEmpty: true,
+        rawSampleCount: 5,
+        windowSampleCount: 0,
+        filteredSampleCount: 0,
+      })?.kind,
+    ).toBe("empty_window");
+
+    expect(
+      resolveCostRollupEmptyState({
+        viewEmpty: true,
+        rawSampleCount: 5,
+        windowSampleCount: 3,
+        filteredSampleCount: 0,
+        hasScopeFilter: true,
+      })?.kind,
+    ).toBe("no_matches");
+  });
+});
+
+describe("clear plan + export soft-fail", () => {
+  it("planClearCostUsageSamples requires confirm only when non-empty", () => {
+    const empty = planClearCostUsageSamples([]);
+    expect(empty.count).toBe(0);
+    expect(empty.confirmNeeded).toBe(false);
+    expect(empty.logMeta).toBe(null);
+
+    const plan = planClearCostUsageSamples([
+      {
+        sessionId: "s1",
+        projectId: "p1",
+        day: "2026-04-06",
+        totalTokens: 1,
+        source: "usage",
+      },
+      {
+        sessionId: "s2",
+        projectId: null,
+        day: "2026-04-06",
+        totalTokens: 2,
+        source: "usage",
+      },
+    ]);
+    expect(plan.count).toBe(2);
+    expect(plan.confirmNeeded).toBe(true);
+    expect(plan.sessionIds).toEqual(["s1", "s2"]);
+    expect(plan.projectIds).toEqual(["p1"]);
+    expect(plan.next).toEqual([]);
+  });
+
+  it("applyClearCostUsageSamplesPlan wipes storage", () => {
+    const storage = memStorage();
+    recordCostUsageSample(
+      sampleFromUsageEvent({
+        sessionId: "s1",
+        totalTokens: 9,
+        at: "2026-04-06T00:00:00.000Z",
+        utc: true,
+      }),
+      storage,
+    );
+    const plan = planClearCostUsageSamples(loadCostUsageSamples(storage));
+    expect(plan.count).toBe(1);
+    applyClearCostUsageSamplesPlan(plan, storage);
+    expect(loadCostUsageSamples(storage)).toEqual([]);
+  });
+
+  it("classifies export errors and resolves outcomes honestly", () => {
+    expect(classifyCostRollupExportError(new Error("clipboard blocked"))).toBe(
+      "clipboard",
+    );
+    expect(classifyCostRollupExportError(new Error("download failed"))).toBe(
+      "download_failed",
+    );
+    expect(classifyCostRollupExportError(new Error("nothing to export"))).toBe(
+      "empty",
+    );
+    expect(classifyCostRollupExportError(new Error("weird boom"))).toBe("other");
+
+    expect(
+      resolveCostRollupExportOutcome({
+        channel: "copy",
+        empty: true,
+        copyOk: true,
+      }),
+    ).toEqual({ ok: false, kind: "empty", channel: "copy" });
+
+    expect(
+      resolveCostRollupExportOutcome({
+        channel: "copy",
+        empty: false,
+        copyOk: false,
+      }),
+    ).toEqual({ ok: false, kind: "clipboard", channel: "copy" });
+
+    expect(
+      resolveCostRollupExportOutcome({
+        channel: "download",
+        empty: false,
+        error: new Error("blob save failed"),
+      }).ok,
+    ).toBe(false);
+
+    const okCopy = resolveCostRollupExportOutcome({
+      channel: "copy",
+      empty: false,
+      copyOk: true,
+    });
+    expect(okCopy).toEqual({ ok: true, channel: "copy" });
+    expect(costRollupExportOutcomeMessageKey(okCopy)).toBe(
+      "costRollup.exportCopied",
+    );
+    expect(
+      costRollupExportOutcomeMessageKey({
+        ok: false,
+        kind: "empty",
+        channel: "download",
+      }),
+    ).toBe("costRollup.exportEmpty");
+    expect(
+      costRollupExportOutcomeMessageKey({
+        ok: false,
+        kind: "download_failed",
+        channel: "download",
+      }),
+    ).toBe("costRollup.exportDownloadFailed");
   });
 });

@@ -14,16 +14,12 @@ import {
   classifyMcpOauthFinding,
   classifyMcpOauthFromStatus,
   mcpOauthActionLabelKey,
-  planMcpOauthOpen,
-  redactMcpOauthText,
   type McpOauthAction,
 } from "@/lib/mcpOauth";
+import { McpOauthWizard } from "@/components/McpOauthWizard";
 import {
-  classifyMcpRowHealth,
   countMcpDoctorFindings,
-  countMcpRowsByHealth,
   filterMcpDoctorFindings,
-  filterMcpRows,
   indexDoctorServerStatuses,
   lookupServerStatus,
   mcpAuthGuidanceKey,
@@ -33,14 +29,24 @@ import {
   mcpStatusLabelKey,
   normalizeMcpDoctorFindings,
   redactMcpText,
-  MCP_ROW_STATUS_FILTERS,
   type McpDoctorFindingLevel,
   type McpDoctorFindingRow,
   type McpDoctorReportLike,
-  type McpRowHealth,
-  type McpRowStatusFilter,
   type McpServerStatus,
 } from "@/lib/mcpStatus";
+import {
+  buildMcpProCopySummary,
+  classifyMcpDoctorOpError,
+  classifyMcpProStatus,
+  countMcpProByStatus,
+  filterMcpProRows,
+  mcpProStatusBadgeMod,
+  mcpProStatusLabelKey,
+  MCP_PRO_STATUS_FILTERS,
+  resolveMcpProEmptyState,
+  type McpProStatus,
+  type McpProStatusFilter,
+} from "@/lib/mcpStatusPro";
 
 export type McpServerRow = {
   name: string;
@@ -48,29 +54,34 @@ export type McpServerRow = {
   target?: string | null;
   vendor?: string | null;
   compatibilityStatus?: string | null;
+  /** App Extensions enable flag (default true when omitted). */
+  enabled?: boolean;
 };
 
 type TFn = (key: MessageKey, vars?: Record<string, string | number>) => string;
 
-type OauthHelpTarget = {
+type OauthWizardTarget = {
   action: McpOauthAction;
   status?: McpServerStatus | null;
+  /** Extra redacted reason (e.g. finding detail). */
+  reason?: string | null;
 };
 
-function healthFilterLabel(filter: McpRowStatusFilter, t: TFn): string {
+function proFilterLabel(filter: McpProStatusFilter, t: TFn): string {
   if (filter === "all") return t("mcpModal.filter.all");
-  // Reuse Extensions status labels (ok / warn / error / unknown).
-  return t(mcpStatusLabelKey(filter) as MessageKey);
+  return t(mcpProStatusLabelKey(filter) as MessageKey);
 }
 
-function healthDotClass(health: McpRowHealth): string {
-  switch (health) {
+function proDotClass(status: McpProStatus): string {
+  switch (status) {
     case "ok":
       return "mcp-modal__dot--ok";
-    case "warn":
-      return "mcp-modal__dot--warn";
     case "error":
       return "mcp-modal__dot--error";
+    case "oauth":
+      return "mcp-modal__dot--oauth";
+    case "disabled":
+      return "mcp-modal__dot--disabled";
     default:
       return "mcp-modal__dot--unknown";
   }
@@ -163,6 +174,7 @@ export function McpStatusModal({
   doctorFocus,
   onRunDoctor,
   onOpenExternalUrl,
+  onRefreshDoctor,
 }: {
   open: boolean;
   locale: Locale;
@@ -187,26 +199,26 @@ export function McpStatusModal({
    * Never pass secrets — callers only receive sanitized http(s).
    */
   onOpenExternalUrl?: (url: string) => void | Promise<void>;
+  /**
+   * Optional doctor runner that returns the report so the OAuth wizard can
+   * evaluate success/soft-fail after “I’ve authorized”.
+   */
+  onRefreshDoctor?: (
+    name?: string | null,
+  ) => Promise<{
+    report?: McpDoctorReportLike | null;
+    error?: string | null;
+  }>;
 }) {
   const tr = useMemo(() => createT(locale), [locale]);
   const [query, setQuery] = useState("");
-  const [statusFilter, setStatusFilter] = useState<McpRowStatusFilter>("all");
+  const [statusFilter, setStatusFilter] = useState<McpProStatusFilter>("all");
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
-  const [oauthHelp, setOauthHelp] = useState<OauthHelpTarget | null>(null);
-  const [oauthBusy, setOauthBusy] = useState(false);
-  const [oauthOpenError, setOauthOpenError] = useState<string | null>(null);
-
-  const statusCounts = useMemo(() => countMcpRowsByHealth(servers), [servers]);
-  const filtered = useMemo(
-    () => filterMcpRows(servers, { query, status: statusFilter }),
-    [servers, query, statusFilter],
+  const [oauthWizard, setOauthWizard] = useState<OauthWizardTarget | null>(
+    null,
   );
-
-  const hasActiveFilters =
-    statusFilter !== "all" || query.trim().length > 0;
-  const isEmptyCatalog = !loading && servers.length === 0 && !error;
-  const isEmptyFilter =
-    !loading && servers.length > 0 && filtered.length === 0;
+  const [summaryCopied, setSummaryCopied] = useState(false);
+  const [oauthBusy, setOauthBusy] = useState(false);
 
   const [findingQuery, setFindingQuery] = useState("");
   const [serverFilter, setServerFilter] = useState<string>("");
@@ -214,6 +226,41 @@ export function McpStatusModal({
   const doctorStatusIndex = useMemo(
     () => indexDoctorServerStatuses(doctorReport ?? null),
     [doctorReport],
+  );
+
+  const statusCounts = useMemo(
+    () => countMcpProByStatus(servers, doctorStatusIndex),
+    [servers, doctorStatusIndex],
+  );
+  const filtered = useMemo(
+    () =>
+      filterMcpProRows(
+        servers,
+        { query, status: statusFilter },
+        doctorStatusIndex,
+      ),
+    [servers, query, statusFilter, doctorStatusIndex],
+  );
+
+  const hasActiveFilters =
+    statusFilter !== "all" || query.trim().length > 0;
+
+  const emptyState = useMemo(
+    () =>
+      resolveMcpProEmptyState({
+        loading: !!loading,
+        error: error ?? null,
+        total: servers.length,
+        filtered: filtered.length,
+        hasFilters: hasActiveFilters,
+      }),
+    [loading, error, servers.length, filtered.length, hasActiveFilters],
+  );
+
+  const doctorOpError = useMemo(
+    () =>
+      doctorError?.trim() ? classifyMcpDoctorOpError(doctorError) : null,
+    [doctorError],
   );
 
   const findingRows = useMemo(() => {
@@ -273,35 +320,51 @@ export function McpStatusModal({
   );
 
   const handleOauth = useCallback(
-    async (action: McpOauthAction, status?: McpServerStatus | null) => {
-      setOauthOpenError(null);
-      const plan = planMcpOauthOpen(action);
-      if (!plan) return;
-
-      if (plan.mode === "open_url") {
-        setOauthBusy(true);
-        try {
-          await openExternal(plan.url);
-          // Still show brief instructions so the user re-runs doctor after auth.
-          setOauthHelp({ action, status: status ?? null });
-        } catch (e) {
-          setOauthOpenError(redactMcpOauthText(String(e)).slice(0, 240));
-          setOauthHelp({ action, status: status ?? null });
-        } finally {
-          setOauthBusy(false);
-        }
-        return;
-      }
-
-      // No URL / no CLI helper — instructions only (GlassModal, never confirm()).
-      setOauthHelp({ action, status: status ?? null });
+    (
+      action: McpOauthAction,
+      status?: McpServerStatus | null,
+      reason?: string | null,
+    ) => {
+      // Open multi-step OAuth recovery wizard (never window.confirm).
+      setOauthWizard({
+        action,
+        status: status ?? null,
+        reason: reason ?? status?.reason ?? null,
+      });
     },
-    [openExternal],
+    [],
+  );
+
+  const refreshDoctorForWizard = useCallback(
+    async (serverName: string | null) => {
+      if (onRefreshDoctor) {
+        return onRefreshDoctor(serverName);
+      }
+      // Fallback: run host doctor and also notify parent (fire-and-forget).
+      setOauthBusy(true);
+      try {
+        if (!api.isTauri()) {
+          return { report: null, error: tr("ext.needTauri") };
+        }
+        try {
+          const report = await api.mcpDoctor(serverName);
+          onRunDoctor?.(serverName);
+          return { report, error: null };
+        } catch (e) {
+          const msg = String(e);
+          onRunDoctor?.(serverName);
+          return { report: null, error: msg };
+        }
+      } finally {
+        setOauthBusy(false);
+      }
+    },
+    [onRefreshDoctor, onRunDoctor, tr],
   );
 
   const copyField = useCallback(
     async (row: McpServerRow, field: "name" | "target") => {
-      const text = mcpRowCopyText(row, field);
+      const text = redactMcpText(mcpRowCopyText(row, field));
       if (!text) return;
       try {
         await navigator.clipboard.writeText(text);
@@ -317,10 +380,28 @@ export function McpStatusModal({
     [],
   );
 
-  const oauthHelpName =
-    oauthHelp?.action.server ||
-    oauthHelp?.status?.name ||
-    tr("mcpModal.oauth.unknownServer");
+
+  const copySummary = useCallback(async () => {
+    const text = buildMcpProCopySummary(filtered, doctorStatusIndex, {
+      header: tr("mcpModal.summary", { n: filtered.length }),
+      statusLabels: {
+        ok: tr("ext.mcp.status.ok"),
+        error: tr("ext.mcp.status.error"),
+        oauth: tr("ext.mcp.status.oauth"),
+        disabled: tr("ext.mcp.status.disabled"),
+        unknown: tr("ext.mcp.status.unknown"),
+      },
+    });
+    if (!text.trim()) return;
+    try {
+      await navigator.clipboard.writeText(text);
+      setSummaryCopied(true);
+      window.setTimeout(() => setSummaryCopied(false), 1600);
+    } catch {
+      // Clipboard may be denied; leave UI unchanged.
+    }
+  }, [filtered, doctorStatusIndex, tr]);
+
 
   return (
     <>
@@ -403,6 +484,22 @@ export function McpStatusModal({
             </span>
           </button>
         ) : null}
+        {servers.length > 0 ? (
+          <button
+            type="button"
+            className="btn btn--ghost btn--sm mcp-modal__copy"
+            onClick={() => void copySummary()}
+            title={tr("mcpModal.copySummary")}
+            aria-label={tr("mcpModal.copySummary")}
+          >
+            <IconCopy size={13} />
+            <span>
+              {summaryCopied
+                ? tr("mcpModal.copied")
+                : tr("mcpModal.copySummary")}
+            </span>
+          </button>
+        ) : null}
       </div>
 
       {servers.length > 0 || hasActiveFilters ? (
@@ -411,7 +508,7 @@ export function McpStatusModal({
           role="tablist"
           aria-label={tr("mcpModal.filter.statusLabel")}
         >
-          {MCP_ROW_STATUS_FILTERS.map((id) => {
+          {MCP_PRO_STATUS_FILTERS.map((id) => {
             const n = statusCounts[id];
             // Hide zero-count chips except "all" and the active selection.
             if (id !== "all" && n === 0 && statusFilter !== id) return null;
@@ -426,7 +523,7 @@ export function McpStatusModal({
                 }
                 onClick={() => setStatusFilter(id)}
               >
-                <span>{healthFilterLabel(id, (k, vars) => tr(k, vars))}</span>
+                <span>{proFilterLabel(id, (k, vars) => tr(k, vars))}</span>
                 <span className="mcp-modal__chip-count">{n}</span>
               </button>
             );
@@ -445,29 +542,56 @@ export function McpStatusModal({
         </p>
       ) : null}
 
-      {loading && servers.length === 0 && (
-        <p className="modal-status">{tr("mcpModal.loading")}</p>
-      )}
-      {error && (
-        <p className="modal-status modal-status--error">{error}</p>
-      )}
-      {isEmptyCatalog && (
-        <p className="modal-status">{tr("mcpModal.empty")}</p>
-      )}
-      {isEmptyFilter ? (
-        <div className="mcp-modal__empty-filter">
-          <p className="modal-status">{tr("mcpModal.filterEmpty")}</p>
-          <button
-            type="button"
-            className="btn btn--ghost btn--sm"
-            onClick={() => {
-              setQuery("");
-              setStatusFilter("all");
-            }}
+      {emptyState ? (
+        <div
+          className={
+            "mcp-modal__empty" +
+            (emptyState.kind === "error" && !emptyState.softFail
+              ? " mcp-modal__empty--error"
+              : "") +
+            (emptyState.softFail ? " mcp-modal__empty--soft" : "")
+          }
+        >
+          <p
+            className={
+              "modal-status" +
+              (emptyState.kind === "error" && !emptyState.softFail
+                ? " modal-status--error"
+                : "")
+            }
           >
-            {tr("mcpModal.clearFilters")}
-          </button>
+            {tr(emptyState.titleKey as MessageKey)}
+          </p>
+          {emptyState.hintKey ? (
+            <p className="ext-field-hint">
+              {tr(emptyState.hintKey as MessageKey)}
+            </p>
+          ) : null}
+          {emptyState.kind === "error" && error ? (
+            <p className="mcp-modal__error-detail">
+              {redactMcpText(error).slice(0, 240)}
+            </p>
+          ) : null}
+          {emptyState.showClearFilters ? (
+            <button
+              type="button"
+              className="btn btn--ghost btn--sm"
+              onClick={() => {
+                setQuery("");
+                setStatusFilter("all");
+              }}
+            >
+              {tr("mcpModal.clearFilters")}
+            </button>
+          ) : null}
         </div>
+      ) : null}
+
+      {/* Non-empty list still shows a soft error banner when inspect partially failed. */}
+      {!emptyState && error ? (
+        <p className="modal-status modal-status--error">
+          {redactMcpText(error).slice(0, 240)}
+        </p>
       ) : null}
 
       {filtered.length > 0 ? (
@@ -476,39 +600,37 @@ export function McpStatusModal({
             const meta = mcpMetaLine(s);
             const doctorSt = lookupServerStatus(doctorStatusIndex, s.name);
             const oauthAction = classifyMcpOauthFromStatus(doctorSt);
-            // Prefer doctor tone when available (auth lamps); else inspect health.
-            const health = doctorSt
-              ? doctorSt.tone === "auth_expired" ||
-                doctorSt.tone === "auth_required"
-                ? "error"
-                : doctorSt.tone === "ok"
-                  ? "ok"
-                  : doctorSt.tone === "warn"
-                    ? "warn"
-                    : doctorSt.tone === "error"
-                      ? "error"
-                      : classifyMcpRowHealth(s)
-              : classifyMcpRowHealth(s);
-            const badgeTone = doctorSt?.tone
-              ? doctorSt.tone
-              : health === "error"
-                ? "error"
-                : health === "warn"
-                  ? "warn"
-                  : health === "ok"
-                    ? "ok"
-                    : "unknown";
-            const badgeMod = mcpStatusBadgeMod(badgeTone);
+            const proStatus = classifyMcpProStatus(s, doctorSt);
+            // Prefer fine-grained doctor tone for badge when present (auth expired
+            // vs required); otherwise map pro chip status.
+            const badgeMod =
+              doctorSt &&
+              (doctorSt.tone === "auth_expired" ||
+                doctorSt.tone === "auth_required" ||
+                doctorSt.tone === "ok" ||
+                doctorSt.tone === "warn" ||
+                doctorSt.tone === "error")
+                ? mcpStatusBadgeMod(doctorSt.tone)
+                : mcpProStatusBadgeMod(proStatus);
+            const badgeLabelKey = doctorSt
+              ? mcpStatusLabelKey(doctorSt.tone)
+              : mcpProStatusLabelKey(proStatus);
             const nameCopied = copiedKey === `${s.name}:name`;
             const targetCopied = copiedKey === `${s.name}:target`;
             const guidanceKey = doctorSt
               ? mcpAuthGuidanceKey(doctorSt.tone)
               : null;
             return (
-              <li key={s.name} className="mcp-modal__item">
+              <li
+                key={s.name}
+                className={
+                  "mcp-modal__item" +
+                  (proStatus === "disabled" ? " mcp-modal__item--disabled" : "")
+                }
+              >
                 <div className="mcp-modal__item-head">
                   <span
-                    className={`mcp-modal__dot ${healthDotClass(health)}`}
+                    className={`mcp-modal__dot ${proDotClass(proStatus)}`}
                     aria-hidden
                   />
                   <strong className="mcp-modal__name" title={s.name}>
@@ -517,12 +639,14 @@ export function McpStatusModal({
                   <span
                     className={"ext-badge ext-badge--" + badgeMod}
                     title={
-                      doctorSt?.reason ??
-                      s.compatibilityStatus ??
-                      undefined
+                      doctorSt?.reason
+                        ? redactMcpText(doctorSt.reason)
+                        : s.compatibilityStatus
+                          ? redactMcpText(s.compatibilityStatus)
+                          : undefined
                     }
                   >
-                    {tr(mcpStatusLabelKey(badgeTone) as MessageKey)}
+                    {tr(badgeLabelKey as MessageKey)}
                   </span>
                   <span className="mcp-modal__item-actions">
                     {oauthAction ? (
@@ -603,10 +727,17 @@ export function McpStatusModal({
                     ) : null}
                   </span>
                 </div>
-                {meta ? <span className="mcp-modal__meta">{meta}</span> : null}
+                {meta ? (
+                  <span className="mcp-modal__meta">
+                    {redactMcpText(meta)}
+                  </span>
+                ) : null}
                 {s.target ? (
-                  <em className="mcp-modal__target" title={s.target}>
-                    {s.target}
+                  <em
+                    className="mcp-modal__target"
+                    title={redactMcpText(s.target)}
+                  >
+                    {redactMcpText(s.target)}
                   </em>
                 ) : null}
                 {doctorSt?.reason && doctorSt.tone !== "ok" ? (
@@ -644,9 +775,33 @@ export function McpStatusModal({
           {doctorLoading && (
             <p className="modal-status">{tr("mcpModal.doctor.running")}</p>
           )}
-          {!doctorLoading && doctorError && (
-            <p className="modal-status modal-status--error">{doctorError}</p>
-          )}
+          {!doctorLoading && doctorOpError ? (
+            <div
+              className={
+                "mcp-modal__doctor-error" +
+                (doctorOpError.softFail
+                  ? " mcp-modal__doctor-error--soft"
+                  : "")
+              }
+            >
+              <p
+                className={
+                  "modal-status" +
+                  (doctorOpError.softFail ? "" : " modal-status--error")
+                }
+              >
+                {tr(doctorOpError.titleKey as MessageKey)}
+              </p>
+              <p className="ext-field-hint">
+                {tr(doctorOpError.hintKey as MessageKey)}
+              </p>
+              {doctorOpError.detail ? (
+                <p className="mcp-modal__error-detail">
+                  {doctorOpError.detail}
+                </p>
+              ) : null}
+            </div>
+          ) : null}
 
           {!doctorLoading && doctorReport && (
             <>
@@ -725,7 +880,11 @@ export function McpStatusModal({
                               action.server,
                             )
                           : null;
-                        void handleOauth(action, st);
+                        handleOauth(
+                          action,
+                          st,
+                          st?.reason ?? null,
+                        );
                       }}
                       oauthBusy={oauthBusy}
                     />
@@ -744,105 +903,17 @@ export function McpStatusModal({
       ) : null}
     </GlassModal>
 
-    <GlassModal
-      open={!!oauthHelp}
-      onClose={() => {
-        setOauthHelp(null);
-        setOauthOpenError(null);
-      }}
-      title={tr(
-        oauthHelp?.action.isRetry
-          ? "mcpModal.oauth.retryTitle"
-          : "mcpModal.oauth.authorizeTitle",
-        { name: oauthHelpName },
-      )}
-      size="md"
-      closeLabel={tr("common.close")}
-      wrapBody
-      footer={
-        <>
-          {oauthHelp?.action.preferredUrl ? (
-            <button
-              type="button"
-              className="btn btn--ghost"
-              disabled={oauthBusy}
-              onClick={() => {
-                const url = oauthHelp.action.preferredUrl;
-                if (!url) return;
-                setOauthBusy(true);
-                void openExternal(url)
-                  .catch((e) => {
-                    setOauthOpenError(
-                      redactMcpOauthText(String(e)).slice(0, 240),
-                    );
-                  })
-                  .finally(() => setOauthBusy(false));
-              }}
-            >
-              <IconExternalLink size={14} />
-              <span>{tr("mcpModal.oauth.openUrl")}</span>
-            </button>
-          ) : null}
-          {canDoctor && oauthHelp?.action.server ? (
-            <button
-              type="button"
-              className="btn btn--ghost"
-              disabled={!!doctorLoading}
-              onClick={() => {
-                const name = oauthHelp.action.server;
-                setOauthHelp(null);
-                setOauthOpenError(null);
-                if (name) onRunDoctor?.(name);
-              }}
-            >
-              <IconDoctor size={14} />
-              <span>{tr("mcpModal.doctor.rerun")}</span>
-            </button>
-          ) : null}
-          <button
-            type="button"
-            className="btn btn--solid"
-            onClick={() => {
-              setOauthHelp(null);
-              setOauthOpenError(null);
-            }}
-          >
-            {tr("common.close")}
-          </button>
-        </>
+    <McpOauthWizard
+      open={!!oauthWizard}
+      locale={locale}
+      action={oauthWizard?.action ?? null}
+      statusReason={
+        oauthWizard?.reason ?? oauthWizard?.status?.reason ?? null
       }
-    >
-      <p className="app-dialog__msg">
-        {oauthHelp?.action.isRetry
-          ? tr("mcpModal.oauth.retryLead")
-          : tr("mcpModal.oauth.authorizeLead")}
-      </p>
-      {oauthHelp?.status?.reason ? (
-        <p className="ext-mcp-status-reason">
-          {redactMcpText(oauthHelp.status.reason)}
-        </p>
-      ) : null}
-      {oauthOpenError ? (
-        <p className="modal-status modal-status--error">{oauthOpenError}</p>
-      ) : null}
-      {oauthHelp?.action.preferredUrl ? (
-        <p className="mcp-modal__oauth-url" title={oauthHelp.action.preferredUrl}>
-          <span className="mcp-modal__oauth-url-label">
-            {tr("mcpModal.oauth.urlLabel")}
-          </span>{" "}
-          <code className="mcp-modal__oauth-url-value">
-            {oauthHelp.action.preferredUrl}
-          </code>
-        </p>
-      ) : null}
-      <ol className="ext-mcp-auth-steps">
-        <li>{tr("mcpModal.oauth.stepTui")}</li>
-        <li>{tr("mcpModal.oauth.stepBrowser")}</li>
-        <li>{tr("mcpModal.oauth.stepDoctor")}</li>
-        <li>{tr("ext.mcp.auth.stepReadd")}</li>
-      </ol>
-      <p className="ext-field-hint">{tr("mcpModal.oauth.noCliHelper")}</p>
-    </GlassModal>
+      onClose={() => setOauthWizard(null)}
+      onOpenExternalUrl={openExternal}
+      onRefreshDoctor={refreshDoctorForWizard}
+    />
     </>
   );
 }

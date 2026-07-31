@@ -2,6 +2,9 @@
  * Persistent context usage chip in the composer row.
  * Click opens a compact summary menu + action to run `/compact`.
  * Optional honest $ cost estimates when rates exist + Settings toggle is on.
+ *
+ * CONTEXT-USAGE-PRO: empty/no-data honesty, labelled breakdown rows,
+ * soft-fail "—" when tokens unknown after compact (still opens the menu).
  */
 
 import { useMemo, useRef, useState, type CSSProperties } from "react";
@@ -10,9 +13,12 @@ import { IconActivity, IconArrowsMinimize } from "@/components/icons";
 import { Tip } from "@/components/ui/tooltip";
 import { useFloatingMenu } from "@/lib/floatingMenu";
 import {
+  buildContextBreakdownRows,
   formatTokenCount,
   hasContextUsageData,
-  type ContextUsageBreakdown,
+  resolveContextUsageEmptyState,
+  resolveContextUsageSurface,
+  type ContextBreakdownRowId,
   type ContextUsageDisplay,
   type LastCompactSummary,
 } from "@/lib/contextUsage";
@@ -39,6 +45,8 @@ export type ContextUsageChipLabels = {
   heuristicNote: string;
   auto: string;
   manual: string;
+  /** Section header above role / system / tools rows. */
+  breakdownSection: string;
   breakdownUser: string;
   breakdownAssistant: string;
   breakdownThought: string;
@@ -47,6 +55,12 @@ export type ContextUsageChipLabels = {
   breakdownHistory: string;
   /** Shown under role rows when breakdown is estimated-only. */
   breakdownEstimatedNote: string;
+  /** When no role/system/tools signal is available. */
+  breakdownEmpty: string;
+  /** Soft-fail note when total tokens are unknown (e.g. after compact). */
+  softFailUnknownNote: string;
+  /** Partial agent I/O without a total. */
+  partialAgentNote: string;
   /** Agent-reported input / output rows. */
   knownInput: string;
   knownOutput: string;
@@ -116,100 +130,78 @@ function formatLastCompactDetail(
   return last.trigger === "manual" ? labels.manual : labels.auto;
 }
 
-/** Heuristic role rows always use ~ (not a model tokenizer). */
-function formatEstimatedValue(n: number, locale: string): string {
-  return `~${formatTokenCount(n, locale)}`;
-}
-
-/**
- * system / tools / history: known → exact; estimated > 0 → ~n; else —.
- * Do not fake precision for empty/unknown buckets.
- */
-function formatOptionalBucket(
-  n: number | null | undefined,
-  known: boolean | undefined,
-  locale: string,
+function breakdownRowLabel(
+  id: ContextBreakdownRowId,
+  labels: ContextUsageChipLabels,
 ): string {
-  if (n == null) return "—";
-  if (known) return formatTokenCount(n, locale);
-  if (n <= 0) return "—";
-  return `~${formatTokenCount(n, locale)}`;
+  switch (id) {
+    case "system":
+      return labels.breakdownSystem;
+    case "tools":
+      return labels.breakdownTools;
+    case "history":
+      return labels.breakdownHistory;
+    case "user":
+      return labels.breakdownUser;
+    case "assistant":
+      return labels.breakdownAssistant;
+    case "thought":
+      return labels.breakdownThought;
+  }
 }
 
 function BreakdownRows({
-  breakdown,
+  display,
   labels,
   locale,
 }: {
-  breakdown: ContextUsageBreakdown;
+  display: ContextUsageDisplay;
   labels: ContextUsageChipLabels;
   locale: string;
 }) {
-  const known = breakdown.knownBuckets;
+  const rows = buildContextBreakdownRows(display.breakdown, locale);
+  const empty = resolveContextUsageEmptyState(display);
+  const showEmptyNote =
+    empty.kind === "no_breakdown" ||
+    empty.kind === "unknown_after_compact" ||
+    empty.kind === "partial_agent";
+  const emptyCopy =
+    empty.kind === "unknown_after_compact"
+      ? labels.softFailUnknownNote
+      : empty.kind === "partial_agent"
+        ? labels.partialAgentNote
+        : empty.kind === "no_breakdown"
+          ? labels.breakdownEmpty
+          : null;
+
   return (
     <>
-      <div className="ctx-chip__row">
-        <span className="ctx-chip__k">{labels.breakdownSystem}</span>
-        <span className="ctx-chip__v">
-          <span className="ctx-chip__tokens">
-            {formatOptionalBucket(
-              breakdown.systemTokens,
-              known?.system,
-              locale,
-            )}
-          </span>
-        </span>
+      <div className="ctx-chip__head ctx-chip__head--sub">
+        {labels.breakdownSection}
       </div>
-      <div className="ctx-chip__row">
-        <span className="ctx-chip__k">{labels.breakdownTools}</span>
-        <span className="ctx-chip__v">
-          <span className="ctx-chip__tokens">
-            {formatOptionalBucket(
-              breakdown.toolsTokens,
-              known?.tools,
-              locale,
-            )}
-          </span>
-        </span>
-      </div>
-      <div className="ctx-chip__row">
-        <span className="ctx-chip__k">{labels.breakdownHistory}</span>
-        <span className="ctx-chip__v">
-          <span className="ctx-chip__tokens">
-            {formatOptionalBucket(
-              breakdown.historyTokens,
-              known?.history,
-              locale,
-            )}
-          </span>
-        </span>
-      </div>
-      <div className="ctx-chip__row">
-        <span className="ctx-chip__k">{labels.breakdownUser}</span>
-        <span className="ctx-chip__v">
-          <span className="ctx-chip__tokens">
-            {formatEstimatedValue(breakdown.userTokens, locale)}
-          </span>
-        </span>
-      </div>
-      <div className="ctx-chip__row">
-        <span className="ctx-chip__k">{labels.breakdownAssistant}</span>
-        <span className="ctx-chip__v">
-          <span className="ctx-chip__tokens">
-            {formatEstimatedValue(breakdown.assistantTokens, locale)}
-          </span>
-        </span>
-      </div>
-      <div className="ctx-chip__row">
-        <span className="ctx-chip__k">{labels.breakdownThought}</span>
-        <span className="ctx-chip__v">
-          <span className="ctx-chip__tokens">
-            {formatEstimatedValue(breakdown.thoughtTokens, locale)}
-          </span>
-        </span>
-      </div>
-      {breakdown.estimated ? (
+      {showEmptyNote && emptyCopy && !display.breakdown ? (
+        <p className="ctx-chip__note ctx-chip__note--empty" role="status">
+          {emptyCopy}
+        </p>
+      ) : (
+        rows.map((row) => (
+          <div key={row.id} className="ctx-chip__row">
+            <span className="ctx-chip__k">
+              {breakdownRowLabel(row.id, labels)}
+            </span>
+            <span className="ctx-chip__v">
+              <span className="ctx-chip__tokens">{row.value}</span>
+            </span>
+          </div>
+        ))
+      )}
+      {display.breakdown?.estimated ? (
         <p className="ctx-chip__note">{labels.breakdownEstimatedNote}</p>
+      ) : null}
+      {empty.kind === "unknown_after_compact" && display.breakdown ? (
+        <p className="ctx-chip__note ctx-chip__note--empty" role="status">
+          {labels.softFailUnknownNote}
+        </p>
       ) : null}
     </>
   );
@@ -360,8 +352,10 @@ export function ContextUsageChip({
   const lastDetail = display.lastCompact
     ? formatLastCompactDetail(display.lastCompact, labels, locale)
     : null;
+  const surface = resolveContextUsageSurface(display);
+  const softUnknown = surface === "soft_unknown";
 
-  // New sessions: no empty "—" chip until agent/transcript has usage data.
+  // New sessions: no empty "—" chip. Soft-unknown after compact still shows.
   if (!hasContextUsageData(display)) return null;
 
   return (
@@ -373,12 +367,15 @@ export function ContextUsageChip({
           className={
             "chip chip--context" +
             (open ? " is-open" : "") +
-            (display.source === "unknown" ? " chip--muted" : "")
+            (display.source === "unknown" || softUnknown
+              ? " chip--muted"
+              : "")
           }
           disabled={disabled}
           aria-haspopup="menu"
           aria-expanded={open}
           aria-label={`${labels.aria}: ${display.label}`}
+          data-context-surface={surface}
           onClick={() => setOpen((v) => !v)}
         >
           <IconActivity size={14} />
@@ -453,13 +450,11 @@ export function ContextUsageChip({
                 ) : null}
               </>
             ) : null}
-            {display.breakdown ? (
-              <BreakdownRows
-                breakdown={display.breakdown}
-                labels={labels}
-                locale={locale}
-              />
-            ) : null}
+            <BreakdownRows
+              display={display}
+              labels={labels}
+              locale={locale}
+            />
             {showUsageEstimates && cost ? (
               <CostEstimateRows
                 cost={cost}

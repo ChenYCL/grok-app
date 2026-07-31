@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
+  applyClearSendQueuePlan,
+  canReorderSendQueue,
   canShowQueueButton,
   claimQueueHead,
   dequeueSend,
@@ -10,15 +12,19 @@ import {
   makeQueuedSend,
   migrateDraftQueue,
   moveQueuedSend,
+  planClearSendQueue,
   queuePreviewText,
   queueSessionKey,
   removeQueuedSend,
   reorderQueuedSend,
   requeueAfterFlushFail,
   requeueAtFront,
+  resolveSendQueueEmptyState,
+  resolveSendQueueStripState,
   setQueueForKey,
   shouldEnqueueSend,
   shouldHoldFlushForLive,
+  summarizeSendQueue,
   updateQueuedSend,
   SEND_QUEUE_MAX,
 } from "./sendQueue";
@@ -505,6 +511,165 @@ describe("sendQueue", () => {
       const next = dropQueuesForSessions(map, ["a", "missing"]);
       expect(next).not.toHaveProperty("a");
       expect(getQueueForKey(next, "b")).toHaveLength(1);
+    });
+  });
+
+  describe("send-queue-pro: clear · empty honesty · strip · reorder", () => {
+    it("summarizeSendQueue counts attachments and goalMode without bodies", () => {
+      const q = [
+        makeQueuedSend({
+          storedDisplay: "secret body",
+          attachments: [{ path: "/a", name: "a.png", isDir: false }],
+          goalMode: true,
+          now: 1,
+        }),
+        makeQueuedSend({
+          storedDisplay: "plain",
+          attachments: [],
+          goalMode: false,
+          now: 2,
+        }),
+      ];
+      const s = summarizeSendQueue(q);
+      expect(s.count).toBe(2);
+      expect(s.withAttachments).toBe(1);
+      expect(s.goalModeCount).toBe(1);
+      expect(s.isEmpty).toBe(false);
+      expect(s.canReorder).toBe(true);
+      expect(s.max).toBe(SEND_QUEUE_MAX);
+      // Summary must not embed bodies (shape check only — plain numbers/flags).
+      expect(Object.keys(s).sort()).toEqual(
+        [
+          "canReorder",
+          "count",
+          "goalModeCount",
+          "isEmpty",
+          "isFull",
+          "max",
+          "withAttachments",
+        ].sort(),
+      );
+    });
+
+    it("summarizeSendQueue empty and full honesty", () => {
+      expect(summarizeSendQueue([])).toMatchObject({
+        count: 0,
+        isEmpty: true,
+        isFull: false,
+        canReorder: false,
+      });
+      expect(summarizeSendQueue(null)).toMatchObject({ count: 0, isEmpty: true });
+      const full = Array.from({ length: 3 }, (_, i) =>
+        makeQueuedSend({
+          storedDisplay: `m${i}`,
+          attachments: [],
+          goalMode: false,
+          now: i,
+        }),
+      );
+      expect(summarizeSendQueue(full, 3).isFull).toBe(true);
+      expect(canReorderSendQueue(full)).toBe(true);
+      expect(canReorderSendQueue([])).toBe(false);
+      expect(canReorderSendQueue([full[0]!])).toBe(false);
+    });
+
+    it("planClearSendQueue requires confirm only when non-empty", () => {
+      const empty = planClearSendQueue([]);
+      expect(empty.confirmNeeded).toBe(false);
+      expect(empty.count).toBe(0);
+      expect(empty.next).toEqual([]);
+      expect(empty.logMeta).toBeNull();
+
+      const a = makeQueuedSend({
+        storedDisplay: "x",
+        attachments: [],
+        goalMode: false,
+      });
+      const b = makeQueuedSend({
+        storedDisplay: "y",
+        attachments: [],
+        goalMode: true,
+      });
+      const plan = planClearSendQueue([a, b]);
+      expect(plan.confirmNeeded).toBe(true);
+      expect(plan.count).toBe(2);
+      expect(plan.next).toEqual([]);
+      expect(plan.logMeta).toEqual({ clearedCount: 2 });
+      expect(plan.summary.goalModeCount).toBe(1);
+    });
+
+    it("applyClearSendQueuePlan drops the session key", () => {
+      const a = makeQueuedSend({
+        storedDisplay: "x",
+        attachments: [],
+        goalMode: false,
+      });
+      const map = setQueueForKey({}, "s1", [a]);
+      const plan = planClearSendQueue(getQueueForKey(map, "s1"));
+      const next = applyClearSendQueuePlan(map, "s1", plan);
+      expect(next).not.toHaveProperty("s1");
+      expect(getQueueForKey(next, "s1")).toEqual([]);
+      // Empty plan on missing key → same ref
+      const emptyPlan = planClearSendQueue([]);
+      const bare: Record<string, never> = {};
+      expect(applyClearSendQueuePlan(bare, "missing", emptyPlan)).toBe(bare);
+    });
+
+    it("resolveSendQueueStripState hides empty and shows hold when paused", () => {
+      expect(
+        resolveSendQueueStripState({ queue: [], flushHold: true }),
+      ).toMatchObject({
+        kind: "empty",
+        visible: false,
+        canClear: false,
+        showHold: false,
+      });
+      const item = makeQueuedSend({
+        storedDisplay: "q",
+        attachments: [],
+        goalMode: false,
+      });
+      expect(
+        resolveSendQueueStripState({ queue: [item], flushHold: false }),
+      ).toMatchObject({
+        kind: "queued",
+        visible: true,
+        count: 1,
+        canClear: true,
+        canReorder: false,
+        showHold: false,
+      });
+      const two = [
+        item,
+        makeQueuedSend({
+          storedDisplay: "r",
+          attachments: [],
+          goalMode: false,
+        }),
+      ];
+      expect(
+        resolveSendQueueStripState({ queue: two, flushHold: true }),
+      ).toMatchObject({
+        kind: "hold",
+        visible: true,
+        count: 2,
+        canReorder: true,
+        showHold: true,
+      });
+    });
+
+    it("resolveSendQueueEmptyState is null when items exist", () => {
+      expect(resolveSendQueueEmptyState({ count: 0 })).toEqual({
+        kind: "empty",
+        titleKey: "composer.queueEmptyTitle",
+        bodyKey: "composer.queueEmptyBody",
+      });
+      expect(resolveSendQueueEmptyState({ count: 2 })).toBeNull();
+      expect(resolveSendQueueEmptyState({ count: -1 })).toEqual({
+        kind: "empty",
+        titleKey: "composer.queueEmptyTitle",
+        bodyKey: "composer.queueEmptyBody",
+      });
     });
   });
 });

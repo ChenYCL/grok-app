@@ -15,6 +15,11 @@ import {
 import * as api from "@/lib/api";
 import { createT, type Locale } from "@/i18n";
 import { resolvePreviewSrc } from "@/lib/filePreviewSrc";
+import {
+  formatMediaLoadErrorMessage,
+  mediaLoadErrorLabelMap,
+  resolveMediaLoadError,
+} from "@/lib/mediaLoadPro";
 import { HtmlBrowser } from "@/components/HtmlBrowser";
 import { EmbeddedBrowser } from "@/components/EmbeddedBrowser";
 import { MarkdownBody } from "@/components/MarkdownBody";
@@ -69,12 +74,21 @@ import {
 } from "@/lib/sessionChanges";
 import {
   applySelectedHunks,
+  batchSummaryVars,
   needsUntrackedWipeConfirm,
   parseUnifiedDiff,
+  planBatchAccept,
+  planBatchReject,
+  planBatchRemainingHunks,
   planFileAccept,
   planFileReject,
   planFileRestore,
   rejectSelectedHunks,
+  remainingHunkIndices,
+  summarizeBatchResults,
+  type BatchDiffPlan,
+  type BatchDiffResultItem,
+  type BatchFileInput,
   type UnifiedHunk,
 } from "@/lib/diffAccept";
 import {
@@ -396,6 +410,14 @@ export function ResourceViewer({
   const [pathCopyFlash, setPathCopyFlash] = useState(false);
   /** Accept / reject / restore in flight. */
   const [diffActionBusy, setDiffActionBusy] = useState(false);
+  /** Batch accept/reject progress (null when idle). */
+  const [batchProgress, setBatchProgress] = useState<{
+    action: "accept" | "reject";
+    current: number;
+    total: number;
+  } | null>(null);
+  /** Soft success / partial summary (dismissible; not a hard error). */
+  const [batchStatus, setBatchStatus] = useState<string | null>(null);
   /** Per-path decision badge after accept/reject. */
   const [diffDecisionByPath, setDiffDecisionByPath] = useState<
     Record<string, "accepted" | "rejected">
@@ -410,6 +432,13 @@ export function ResourceViewer({
     name: string;
     untracked: boolean;
   } | null>(null);
+  /** In-app confirm for batch reject (session / remaining hunks). */
+  const [batchRejectConfirm, setBatchRejectConfirm] = useState<{
+    plan: BatchDiffPlan;
+    untracked: boolean;
+  } | null>(null);
+  /** In-app confirm for file-scoped reject-all-remaining hunks. */
+  const [batchHunkRejectConfirm, setBatchHunkRejectConfirm] = useState(false);
   /** Open-with target for the location button (finder / editor id). */
   const [openWithTarget, setOpenWithTarget] = useState(() => {
     try {
@@ -1303,6 +1332,455 @@ export function ResourceViewer({
       tr,
     ],
   );
+
+  /** Build BatchFileInput list for session (or single-file) remaining. */
+  const buildSessionBatchInputs = useCallback((): BatchFileInput[] => {
+    return sessionChanges.map((c) => {
+      const key = normalizePath(c.path);
+      return {
+        path: c.path,
+        name: c.name,
+        kind: kindForPath(c.path),
+        after: typeof c.after === "string" ? c.after : null,
+        before: typeof c.before === "string" ? c.before : null,
+        decision: key ? (diffDecisionByPath[key] ?? null) : null,
+        fileExists: true,
+      };
+    });
+  }, [sessionChanges, kindForPath, diffDecisionByPath]);
+
+  /** Host write for one accept plan entry (no busy flag). */
+  const hostAcceptOne = useCallback(
+    async (
+      path: string,
+      after: string | null | undefined,
+    ): Promise<BatchDiffResultItem> => {
+      const name = pathBaseName(path);
+      try {
+        const plan = planFileAccept({ after });
+        if (plan.mode === "write_after") {
+          const res = await api.applyFilePatch(projectPath!, path, plan.content);
+          if (!res.ok) {
+            return {
+              path,
+              name,
+              status: "soft_fail",
+              reason: res.reason || "write failed",
+            };
+          }
+          rememberRestorable(path, plan.content);
+        } else if (plan.mode === "unavailable") {
+          return { path, name, status: "skipped", reason: plan.reason };
+        }
+        markDecision(path, "accepted");
+        return { path, name, status: "ok" };
+      } catch (e) {
+        return { path, name, status: "error", reason: String(e) };
+      }
+    },
+    [projectPath, rememberRestorable, markDecision],
+  );
+
+  /** Host reject for one file (confirmed when wipe already approved). */
+  const hostRejectOne = useCallback(
+    async (
+      path: string,
+      opts: {
+        confirmed: boolean;
+        kind?: string | null;
+        before?: string | null;
+        after?: string | null;
+      },
+    ): Promise<BatchDiffResultItem> => {
+      const name = pathBaseName(path);
+      try {
+        if (typeof opts.after === "string") {
+          rememberRestorable(path, opts.after);
+        }
+        const plan = planFileReject({
+          hasGitRepo: workspaceAvailable,
+          kind: opts.kind,
+          before: opts.before,
+          fileExists: true,
+        });
+        if (plan.mode === "git") {
+          if (plan.confirmUntracked && !opts.confirmed) {
+            return {
+              path,
+              name,
+              status: "skipped",
+              reason: "needs untracked confirm",
+            };
+          }
+          const res = await api.gitCheckoutFile(
+            projectPath!,
+            path,
+            plan.confirmUntracked && opts.confirmed,
+          );
+          if (res.needsUntrackedConfirm) {
+            return {
+              path,
+              name,
+              status: "skipped",
+              reason: "needs untracked confirm",
+            };
+          }
+          if (!res.ok) {
+            const reason = (res.reason || "").toLowerCase();
+            const softGit =
+              reason.includes("not a git") ||
+              reason.includes("git not available") ||
+              reason.includes("not available");
+            if (softGit && typeof opts.before === "string") {
+              const w = await api.applyFilePatch(
+                projectPath!,
+                path,
+                opts.before,
+              );
+              if (!w.ok) {
+                return {
+                  path,
+                  name,
+                  status: "soft_fail",
+                  reason: w.reason || res.reason || "reject failed",
+                };
+              }
+            } else {
+              return {
+                path,
+                name,
+                status: "soft_fail",
+                reason: res.reason || "reject failed",
+              };
+            }
+          }
+        } else if (plan.mode === "write_before") {
+          const res = await api.applyFilePatch(
+            projectPath!,
+            path,
+            plan.content,
+          );
+          if (!res.ok) {
+            return {
+              path,
+              name,
+              status: "soft_fail",
+              reason: res.reason || "write failed",
+            };
+          }
+        } else if (plan.mode === "delete") {
+          if (!opts.confirmed) {
+            return {
+              path,
+              name,
+              status: "skipped",
+              reason: "needs untracked confirm",
+            };
+          }
+          const res = await api.deleteProjectFile(projectPath!, path, true);
+          if (!res.ok) {
+            return {
+              path,
+              name,
+              status: "soft_fail",
+              reason: res.reason || "delete failed",
+            };
+          }
+        } else {
+          return { path, name, status: "skipped", reason: plan.reason };
+        }
+        markDecision(path, "rejected");
+        return { path, name, status: "ok" };
+      } catch (e) {
+        return { path, name, status: "error", reason: String(e) };
+      }
+    },
+    [projectPath, workspaceAvailable, rememberRestorable, markDecision],
+  );
+
+  const publishBatchSummary = useCallback(
+    (action: "accept" | "reject", items: BatchDiffResultItem[]) => {
+      const summary = summarizeBatchResults(action, items);
+      const vars = batchSummaryVars(summary);
+      if (summary.error + summary.softFail > 0) {
+        setError(
+          tr(
+            action === "accept"
+              ? "changes.batchAcceptSummary"
+              : "changes.batchRejectSummary",
+            vars,
+          ),
+        );
+        setBatchStatus(null);
+      } else {
+        setError(null);
+        setBatchStatus(
+          tr(
+            action === "accept"
+              ? "changes.batchAcceptSummary"
+              : "changes.batchRejectSummary",
+            vars,
+          ),
+        );
+      }
+    },
+    [tr],
+  );
+
+  const executeBatchAccept = useCallback(
+    async (plan: BatchDiffPlan) => {
+      if (!projectPath || !api.isTauri() || !plan.canRun) return;
+      setDiffActionBusy(true);
+      setBatchStatus(null);
+      setError(null);
+      const results: BatchDiffResultItem[] = plan.skipped.map((e) => ({
+        path: e.path,
+        name: e.name,
+        status: "skipped" as const,
+        reason:
+          e.outcome.kind === "skip"
+            ? e.outcome.reason
+            : undefined,
+      }));
+      const total = plan.run.length;
+      let current = 0;
+      setBatchProgress({ action: "accept", current: 0, total });
+      try {
+        for (const entry of plan.run) {
+          current += 1;
+          setBatchProgress({ action: "accept", current, total });
+          const after =
+            entry.outcome.kind === "run" &&
+            entry.outcome.run.action === "accept" &&
+            entry.outcome.run.plan.mode === "write_after"
+              ? entry.outcome.run.plan.content
+              : sessionChanges.find(
+                  (c) => normalizePath(c.path) === normalizePath(entry.path),
+                )?.after ?? null;
+          const r = await hostAcceptOne(entry.path, after);
+          results.push(r);
+        }
+        publishBatchSummary("accept", results);
+        void refreshWorkspaceStatus();
+      } finally {
+        setBatchProgress(null);
+        setDiffActionBusy(false);
+      }
+    },
+    [
+      projectPath,
+      hostAcceptOne,
+      publishBatchSummary,
+      refreshWorkspaceStatus,
+      sessionChanges,
+    ],
+  );
+
+  const executeBatchReject = useCallback(
+    async (plan: BatchDiffPlan, confirmed: boolean) => {
+      if (!projectPath || !api.isTauri() || !plan.canRun) return;
+      setBatchRejectConfirm(null);
+      setDiffActionBusy(true);
+      setBatchStatus(null);
+      setError(null);
+      const results: BatchDiffResultItem[] = plan.skipped.map((e) => ({
+        path: e.path,
+        name: e.name,
+        status: "skipped" as const,
+        reason:
+          e.outcome.kind === "skip" ? e.outcome.reason : undefined,
+      }));
+      const total = plan.run.length;
+      let current = 0;
+      setBatchProgress({ action: "reject", current: 0, total });
+      try {
+        for (const entry of plan.run) {
+          current += 1;
+          setBatchProgress({ action: "reject", current, total });
+          const sc = sessionChanges.find(
+            (c) => normalizePath(c.path) === normalizePath(entry.path),
+          );
+          const needsWipe =
+            entry.outcome.kind === "run" &&
+            entry.outcome.run.action === "reject" &&
+            entry.outcome.run.needsUntrackedConfirm;
+          const r = await hostRejectOne(entry.path, {
+            confirmed: confirmed || !needsWipe,
+            kind: entry.kind,
+            before: typeof sc?.before === "string" ? sc.before : null,
+            after: typeof sc?.after === "string" ? sc.after : null,
+          });
+          results.push(r);
+        }
+        publishBatchSummary("reject", results);
+        void refreshWorkspaceStatus();
+      } finally {
+        setBatchProgress(null);
+        setDiffActionBusy(false);
+      }
+    },
+    [
+      projectPath,
+      hostRejectOne,
+      publishBatchSummary,
+      refreshWorkspaceStatus,
+      sessionChanges,
+    ],
+  );
+
+  const requestBatchAcceptSession = useCallback(() => {
+    if (!projectPath || !api.isTauri() || diffActionBusy) return;
+    const plan = planBatchAccept(buildSessionBatchInputs(), {
+      scope: "session",
+    });
+    if (!plan.canRun) {
+      setBatchStatus(tr("changes.batchNothingRemaining"));
+      return;
+    }
+    void executeBatchAccept(plan);
+  }, [
+    projectPath,
+    diffActionBusy,
+    buildSessionBatchInputs,
+    executeBatchAccept,
+    tr,
+  ]);
+
+  const requestBatchRejectSession = useCallback(() => {
+    if (!projectPath || !api.isTauri() || diffActionBusy) return;
+    const plan = planBatchReject(buildSessionBatchInputs(), {
+      hasGitRepo: workspaceAvailable,
+      scope: "session",
+    });
+    if (!plan.canRun) {
+      setBatchStatus(tr("changes.batchNothingRemaining"));
+      return;
+    }
+    // Always confirm batch reject; stronger copy when untracked wipes included.
+    setBatchRejectConfirm({
+      plan,
+      untracked: plan.untrackedConfirmCount > 0,
+    });
+  }, [
+    projectPath,
+    diffActionBusy,
+    buildSessionBatchInputs,
+    workspaceAvailable,
+    tr,
+  ]);
+
+  const remainingHunkCount = useMemo(
+    () => remainingHunkIndices(diffHunks.length, []).length,
+    [diffHunks.length],
+  );
+
+  const runBatchRemainingHunks = useCallback(
+    async (action: "accept" | "reject") => {
+      if (!projectPath || !api.isTauri() || !diffView || diffActionBusy) return;
+      const plan = planBatchRemainingHunks({
+        action,
+        hunks: diffHunks,
+        before:
+          typeof diffView.beforeText === "string" ? diffView.beforeText : null,
+        after:
+          typeof diffView.afterText === "string" ? diffView.afterText : null,
+      });
+      if (!plan.ok) {
+        setError(
+          tr("changes.actionUnavailable", {
+            reason: plan.detail || plan.reason,
+          }),
+        );
+        return;
+      }
+      setDiffActionBusy(true);
+      setBatchStatus(null);
+      setError(null);
+      setBatchProgress({
+        action,
+        current: 0,
+        total: plan.indices.length,
+      });
+      try {
+        if (action === "reject") {
+          rememberRestorable(diffView.path, diffView.afterText);
+        }
+        const res = await api.applyFilePatch(
+          projectPath,
+          diffView.path,
+          plan.content,
+        );
+        setBatchProgress({
+          action,
+          current: plan.indices.length,
+          total: plan.indices.length,
+        });
+        if (!res.ok) {
+          setError(
+            tr("changes.actionFailed", {
+              reason: res.reason || "hunk batch write failed",
+            }),
+          );
+          return;
+        }
+        if (action === "accept") {
+          rememberRestorable(diffView.path, plan.content);
+          markDecision(diffView.path, "accepted");
+        } else {
+          markDecision(diffView.path, "rejected");
+        }
+        setDiffView((prev) => {
+          if (!prev) return prev;
+          const before =
+            typeof prev.beforeText === "string" ? prev.beforeText : null;
+          const rel =
+            pathRelativeToProject(prev.path, projectPath) || prev.name;
+          return {
+            ...prev,
+            afterText: plan.content,
+            unified:
+              before != null
+                ? buildUnifiedDiff(rel, before, plan.content)
+                : prev.unified,
+          };
+        });
+        setBatchStatus(
+          tr(
+            action === "accept"
+              ? "changes.batchHunksAcceptDone"
+              : "changes.batchHunksRejectDone",
+            { n: String(plan.indices.length) },
+          ),
+        );
+        void refreshWorkspaceStatus();
+      } catch (e) {
+        setError(tr("changes.actionFailed", { reason: String(e) }));
+      } finally {
+        setBatchProgress(null);
+        setDiffActionBusy(false);
+        setBatchHunkRejectConfirm(false);
+      }
+    },
+    [
+      projectPath,
+      diffView,
+      diffHunks,
+      diffActionBusy,
+      rememberRestorable,
+      markDecision,
+      refreshWorkspaceStatus,
+      tr,
+    ],
+  );
+
+  const requestBatchAcceptHunks = useCallback(() => {
+    void runBatchRemainingHunks("accept");
+  }, [runBatchRemainingHunks]);
+
+  const requestBatchRejectHunks = useCallback(() => {
+    if (!diffView || remainingHunkCount === 0 || diffActionBusy) return;
+    setBatchHunkRejectConfirm(true);
+  }, [diffView, remainingHunkCount, diffActionBusy]);
 
   const showSidePanel = (mode: SideMode) => {
     // Plan mode uses full-width review (no side tree).
@@ -2293,6 +2771,36 @@ export function ResourceViewer({
             aria-label={tr("changes.hunks")}
           >
             <span className="rp-diff-hunks__label">{tr("changes.hunks")}</span>
+            {remainingHunkCount > 1 ? (
+              <div className="rp-diff-hunks__batch" role="group">
+                <Tip label={tr("changes.acceptAllHunksTip")}>
+                  <button
+                    type="button"
+                    className="chrome-btn rp-diff-action rp-diff-action--accept rp-changes-batch-btn"
+                    disabled={!tauriReady || diffActionBusy}
+                    data-testid="changes-accept-all-hunks"
+                    onClick={() => requestBatchAcceptHunks()}
+                    aria-label={tr("changes.acceptAllHunks")}
+                  >
+                    <IconCheck size={12} />
+                    <span>{tr("changes.acceptAllRemainingShort")}</span>
+                  </button>
+                </Tip>
+                <Tip label={tr("changes.rejectAllHunksTip")}>
+                  <button
+                    type="button"
+                    className="chrome-btn rp-diff-action rp-diff-action--reject rp-changes-batch-btn"
+                    disabled={!tauriReady || diffActionBusy}
+                    data-testid="changes-reject-all-hunks"
+                    onClick={() => requestBatchRejectHunks()}
+                    aria-label={tr("changes.rejectAllHunks")}
+                  >
+                    <IconClose size={12} />
+                    <span>{tr("changes.rejectAllRemainingShort")}</span>
+                  </button>
+                </Tip>
+              </div>
+            ) : null}
             {diffHunks.map((h, idx) => (
               <div key={`${h.header}-${idx}`} className="rp-diff-hunks__row">
                 <span className="rp-diff-hunks__name" title={h.header}>
@@ -2445,7 +2953,13 @@ export function ResourceViewer({
       return null;
     }
     if (preview.error && !preview.text && !preview.base64 && !preview.stream) {
-      return <div className="rp-preview__msg">{preview.error}</div>;
+      // Soft-fail: classified media.err.* copy instead of raw host dumps.
+      const resolved = resolveMediaLoadError(preview.error, "preview");
+      return (
+        <div className="rp-preview__msg">
+          {formatMediaLoadErrorMessage(resolved, tr)}
+        </div>
+      );
     }
     const mediaSrc = activeTab?.mediaSrc ?? null;
     const dataUrl =
@@ -2657,10 +3171,19 @@ export function ResourceViewer({
               copyImage: tr("image.copy"),
               reveal: revealInOsLabel(tr),
               copyPath: tr("attach.copyPath"),
+              loadFailed: tr("media.err.other"),
+              loadFailedByKind: mediaLoadErrorLabelMap(tr),
             }}
           />
         ) : (
-          <div className="rp-preview__msg">{tr("resources.binary")}</div>
+          <div className="rp-preview__msg">
+            {preview.error
+              ? formatMediaLoadErrorMessage(
+                  resolveMediaLoadError(preview.error, "preview"),
+                  tr,
+                )
+              : tr("media.err.mediaServerUnavailable")}
+          </div>
         );
       case "pdf":
         // Handled above via OfficeDocumentPreview; keep iframe fallback
@@ -2686,6 +3209,7 @@ export function ResourceViewer({
               loadError: tr("media.loadError"),
               openExternal: tr("media.openExternal"),
               loading: tr("resources.loading"),
+              t: tr,
             }}
           />
         ) : (
@@ -2741,7 +3265,12 @@ export function ResourceViewer({
         }
         return (
           <div className="rp-preview__msg">
-            {preview.error || tr("resources.binary")}
+            {preview.error
+              ? formatMediaLoadErrorMessage(
+                  resolveMediaLoadError(preview.error, "preview"),
+                  tr,
+                )
+              : tr("resources.binary")}
             <div className="rp-preview__meta">
               {preview.name} · {formatSize(preview.size)}
             </div>
@@ -2774,6 +3303,9 @@ export function ResourceViewer({
     runRestoreFile,
     runAcceptHunk,
     runRejectHunk,
+    remainingHunkCount,
+    requestBatchAcceptHunks,
+    requestBatchRejectHunks,
   ]);
 
   // No project and no open tabs → empty; allow absolute/url tabs without a project.
@@ -3027,6 +3559,36 @@ export function ResourceViewer({
           </Tip>
         </div>
       )}
+      {batchProgress ? (
+        <div
+          className="rp__status"
+          role="status"
+          aria-live="polite"
+          data-testid="changes-batch-progress"
+        >
+          {tr("changes.batchProgress", {
+            action:
+              batchProgress.action === "accept"
+                ? tr("changes.accept")
+                : tr("changes.reject"),
+            current: String(batchProgress.current),
+            total: String(batchProgress.total),
+          })}
+        </div>
+      ) : batchStatus && !error ? (
+        <div className="rp__status" role="status" data-testid="changes-batch-status">
+          {batchStatus}
+          <Tip label={tr("common.dismiss")}>
+            <button
+              type="button"
+              className="chrome-btn"
+              onClick={() => setBatchStatus(null)}
+            >
+              <IconClose size={12} />
+            </button>
+          </Tip>
+        </div>
+      ) : null}
       {activeTab?.error && (
         <div className="rp__error" role="alert">
           {activeTab.error}
@@ -3293,7 +3855,50 @@ export function ResourceViewer({
                             {changeCount}
                           </span>
                         ) : null}
+                        {changeCount > 0 ? (
+                          <div
+                            className="rp-changes-section__batch"
+                            role="group"
+                            aria-label={tr("changes.batchGroup")}
+                          >
+                            <Tip label={tr("changes.acceptAllRemainingTip")}>
+                              <button
+                                type="button"
+                                className="chrome-btn rp-diff-action rp-diff-action--accept rp-changes-batch-btn"
+                                disabled={
+                                  !projectPath ||
+                                  !api.isTauri() ||
+                                  diffActionBusy
+                                }
+                                data-testid="changes-accept-all"
+                                onClick={() => requestBatchAcceptSession()}
+                                aria-label={tr("changes.acceptAllRemaining")}
+                              >
+                                <IconCheck size={12} />
+                                <span>{tr("changes.acceptAllRemainingShort")}</span>
+                              </button>
+                            </Tip>
+                            <Tip label={tr("changes.rejectAllRemainingTip")}>
+                              <button
+                                type="button"
+                                className="chrome-btn rp-diff-action rp-diff-action--reject rp-changes-batch-btn"
+                                disabled={
+                                  !projectPath ||
+                                  !api.isTauri() ||
+                                  diffActionBusy
+                                }
+                                data-testid="changes-reject-all"
+                                onClick={() => requestBatchRejectSession()}
+                                aria-label={tr("changes.rejectAllRemaining")}
+                              >
+                                <IconClose size={12} />
+                                <span>{tr("changes.rejectAllRemainingShort")}</span>
+                              </button>
+                            </Tip>
+                          </div>
+                        ) : null}
                       </div>
+
                       {filteredChanges.length === 0 ? (
                         <div className="rp-changes-section__empty">
                           {query.trim()
@@ -3838,6 +4443,93 @@ export function ResourceViewer({
                 name: rejectConfirm.name,
               })
             : tr("changes.rejectConfirmBody")}
+        </p>
+      </GlassModal>
+
+      <GlassModal
+        open={!!batchRejectConfirm}
+        onClose={() => setBatchRejectConfirm(null)}
+        title={
+          batchRejectConfirm?.untracked
+            ? tr("changes.batchRejectConfirmUntrackedTitle")
+            : tr("changes.batchRejectConfirmTitle")
+        }
+        size="sm"
+        closeLabel={tr("common.close")}
+        footer={
+          <>
+            <button
+              type="button"
+              className="btn btn--ghost"
+              onClick={() => setBatchRejectConfirm(null)}
+              disabled={diffActionBusy}
+            >
+              {tr("common.cancel")}
+            </button>
+            <button
+              type="button"
+              className="btn btn--solid btn--danger"
+              data-testid="changes-batch-reject-confirm"
+              disabled={diffActionBusy}
+              onClick={() => {
+                const p = batchRejectConfirm?.plan;
+                if (p) void executeBatchReject(p, true);
+              }}
+            >
+              {diffActionBusy
+                ? tr("changes.actionBusy")
+                : tr("changes.rejectAllRemaining")}
+            </button>
+          </>
+        }
+      >
+        <p className="rp-modal-copy">
+          {batchRejectConfirm?.untracked
+            ? tr("changes.batchRejectConfirmUntrackedBody", {
+                n: String(batchRejectConfirm.plan.runCount),
+                u: String(batchRejectConfirm.plan.untrackedConfirmCount),
+              })
+            : tr("changes.batchRejectConfirmBody", {
+                n: String(batchRejectConfirm?.plan.runCount ?? 0),
+              })}
+        </p>
+      </GlassModal>
+
+      <GlassModal
+        open={batchHunkRejectConfirm}
+        onClose={() => setBatchHunkRejectConfirm(false)}
+        title={tr("changes.batchHunksRejectConfirmTitle")}
+        size="sm"
+        closeLabel={tr("common.close")}
+        footer={
+          <>
+            <button
+              type="button"
+              className="btn btn--ghost"
+              onClick={() => setBatchHunkRejectConfirm(false)}
+              disabled={diffActionBusy}
+            >
+              {tr("common.cancel")}
+            </button>
+            <button
+              type="button"
+              className="btn btn--solid btn--danger"
+              data-testid="changes-batch-hunks-reject-confirm"
+              disabled={diffActionBusy}
+              onClick={() => void runBatchRemainingHunks("reject")}
+            >
+              {diffActionBusy
+                ? tr("changes.actionBusy")
+                : tr("changes.rejectAllHunks")}
+            </button>
+          </>
+        }
+      >
+        <p className="rp-modal-copy">
+          {tr("changes.batchHunksRejectConfirmBody", {
+            n: String(remainingHunkCount),
+            name: diffView?.name ?? "",
+          })}
         </p>
       </GlassModal>
     </div>

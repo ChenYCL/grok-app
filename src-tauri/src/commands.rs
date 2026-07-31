@@ -688,10 +688,10 @@ fn session_window_label(session_id: &str) -> Option<String> {
 
 /// Open (or focus) a secondary webview window for a chat (`#/session/<id>`).
 ///
-/// Secondary windows are live-capable (send/stop via shared Host). The frontend
-/// still skips *passive* warm-connect on open so browsing does not demote main’s
-/// agent until the user acts. Re-opening the same session focuses the existing
-/// window instead of spawning a third copy.
+/// Secondary windows are live-capable (send/stop/warm-connect via the shared
+/// Host session-keyed agent pool). Concurrent connect demotes busy peers to
+/// background (stream continues) rather than killing them. Re-opening the same
+/// session focuses the existing window instead of spawning a third copy.
 #[tauri::command]
 pub fn open_session_window(
     app: tauri::AppHandle,
@@ -1193,6 +1193,12 @@ pub async fn settings_set(
         crate::acp_client::normalize_compaction_mode(&settings.compaction_mode).to_string();
     settings.compaction_detail =
         crate::acp_client::normalize_compaction_detail(&settings.compaction_detail).to_string();
+    // Audit ledger retention presets: 7 / 30 / 90 / 0 (unlimited).
+    settings.audit_ledger_retention_days =
+        crate::audit_ledger::normalize_retention_days(settings.audit_ledger_retention_days);
+    let audit_retention_flip = crate::audit_ledger::normalize_retention_days(
+        prev.audit_ledger_retention_days,
+    ) != settings.audit_ledger_retention_days;
     let keychain_flip =
         prev.store_api_keys_in_keychain != settings.store_api_keys_in_keychain;
     let session_data_mode_changed =
@@ -1417,6 +1423,16 @@ pub async fn settings_set(
     if let Err(e) = crate::tray::refresh_menu(&app) {
         tracing::warn!("settings_set tray refresh: {e}");
     }
+    // Apply audit ledger retention when the preset changes (soft-fail I/O).
+    if audit_retention_flip {
+        let days = settings.audit_ledger_retention_days;
+        let _ = tauri::async_runtime::spawn_blocking(move || {
+            if let Err(e) = crate::audit_ledger::prune_ledger(Some(days)) {
+                tracing::warn!(target: "grok_app::audit_ledger", "settings prune: {e}");
+            }
+        })
+        .await;
+    }
     Ok(settings)
 }
 
@@ -1535,6 +1551,31 @@ pub async fn fs_list_dir(
     relative: Option<String>,
 ) -> Result<Vec<crate::fs_browser::FsEntry>, String> {
     crate::fs_browser::list_dir(&project_path, relative.as_deref().unwrap_or(""))
+}
+
+/// Project-scoped file name/path + content search (keyword / `rg` or walk).
+/// Soft-fails when path missing / not a dir / untrusted. Never invents
+/// embeddings or CLI code-graph results (`search_kind` is always `"keyword"`).
+#[tauri::command]
+pub async fn project_codebase_search(
+    project_path: String,
+    query: String,
+    mode: Option<String>,
+    limit: Option<usize>,
+) -> Result<crate::project_codebase_search::CodebaseSearchResult, String> {
+    let path = project_path;
+    let q = query;
+    let m = mode;
+    tokio::task::spawn_blocking(move || {
+        Ok(crate::project_codebase_search::search_project_codebase(
+            &path,
+            &q,
+            m.as_deref(),
+            limit,
+        ))
+    })
+    .await
+    .map_err(|e| format!("project codebase search task failed: {e}"))?
 }
 
 #[tauri::command]
@@ -7443,6 +7484,41 @@ pub async fn workflows_list(
     Ok(result)
 }
 
+/// Soft-fail headless run of a discovered Grok Build workflow by name.
+///
+/// There is no top-level `grok workflow` CLI subcommand; the host spawns a
+/// short `grok -p` that must call the agent `workflow` tool. Default mode is
+/// `validate` (`validate_only: true` smoke). Returns structured ok / reason /
+/// redacted truncated log — never panics on CLI missing / timeout.
+#[tauri::command]
+pub async fn workflows_run(
+    name: String,
+    project_path: Option<String>,
+    mode: Option<String>,
+    timeout_ms: Option<u64>,
+) -> Result<crate::agent_workflows::WorkflowRunResult, String> {
+    let project = project_path
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(|s| s.to_string());
+    let mode_owned = mode
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(|s| s.to_string());
+    tauri::async_runtime::spawn_blocking(move || {
+        crate::agent_workflows::run_workflow(
+            &name,
+            project.as_deref(),
+            mode_owned.as_deref(),
+            timeout_ms,
+        )
+    })
+    .await
+    .map_err(|e| format!("workflows_run: {e}"))
+}
+
 /// List agent + persona definition files from user / project / bundled scopes.
 /// Does not require the CLI binary (pure filesystem discovery under `~/.grok`,
 /// active GROK_HOME / agent-home, and optional `{project}/.grok`). Always returns Ok.
@@ -10056,8 +10132,9 @@ pub async fn agent_config_toml_read(
 /// Snippets are redacted; hard caps on hits and bytes read per file.
 ///
 /// Always keyword / file-body scan — never invents embeddings client-side.
-/// CLI `memory_search` hybrid (vector + full-text) is controlled by
-/// `[memory.embedding]` keys (see `memory_embed_config_get`).
+/// Agent-tool hybrid (vector + full-text) needs `[memory.embedding].model`
+/// (see `memory_embed_config_get`). No host-invocable `grok memory search` CLI
+/// as of 0.2.117 — when model is set, `search_kind` is `hybrid_unavailable`.
 #[tauri::command]
 pub async fn memory_search(
     query: String,
@@ -10072,11 +10149,17 @@ pub async fn memory_search(
         .map(std::path::PathBuf::from);
     let q = query;
     tokio::task::spawn_blocking(move || {
-        Ok(crate::agent_memory::search_workspace_memory(
+        // Soft-probe embedding.model for search_kind honesty (never runs vectors).
+        let embedding_configured =
+            crate::agent_memory_embed::load_memory_embed_config()
+                .map(|s| s.embedding_configured)
+                .unwrap_or(false);
+        Ok(crate::agent_memory::search_workspace_memory_with_kind(
             &q,
             path.as_deref(),
             &settings.session_data_mode,
             limit,
+            embedding_configured,
         ))
     })
     .await
@@ -10826,6 +10909,17 @@ pub async fn streaming_messages_json_probe(
     .map_err(|e| format!("streaming_messages_json_probe: {e}"))
 }
 
+// ─── Process budget occupancy (live / background / parked) ──────────────────
+
+/// Snapshot of warm agent process counts vs `maxConcurrentAgents`.
+/// Soft-fail: returns an empty `available: false` snapshot when the manager path errors.
+#[tauri::command]
+pub async fn process_budget_snapshot(
+    mgr: State<'_, Arc<SessionManager>>,
+) -> Result<crate::process_limits::ProcessBudgetSnapshot, String> {
+    Ok(mgr.process_budget_snapshot())
+}
+
 // ─── Tool / permission audit ledger ─────────────────────────────────────────
 
 /// Recent cross-session tool/permission audit rows (newest first). Soft-fail → [].
@@ -10849,12 +10943,32 @@ pub async fn audit_ledger_clear() -> Result<serde_json::Value, String> {
     Ok(serde_json::json!({ "ok": true }))
 }
 
-/// Export redacted JSONL via native save dialog.
+/// Prune audit ledger by retention days (`None` → current AppSettings value).
+/// Soft-fail I/O → error string for UI toast. Returns `{ ok, dropped }`.
 #[tauri::command]
-pub async fn audit_ledger_export() -> Result<serde_json::Value, String> {
-    let text = tauri::async_runtime::spawn_blocking(crate::audit_ledger::export_redacted_jsonl)
-        .await
-        .map_err(|e| format!("audit_ledger_export: {e}"))?;
+pub async fn audit_ledger_prune(
+    retention_days: Option<u32>,
+) -> Result<serde_json::Value, String> {
+    let dropped = tauri::async_runtime::spawn_blocking(move || {
+        crate::audit_ledger::prune_ledger(retention_days)
+    })
+    .await
+    .map_err(|e| format!("audit_ledger_prune: {e}"))??;
+    Ok(serde_json::json!({ "ok": true, "dropped": dropped }))
+}
+
+/// Export redacted JSONL via native save dialog.
+/// Optional filter: `event`, `sessionId`, `fromTs`, `toTs` (camelCase).
+#[tauri::command]
+pub async fn audit_ledger_export(
+    filter: Option<crate::audit_ledger::AuditLedgerFilter>,
+) -> Result<serde_json::Value, String> {
+    let filter = filter.unwrap_or_default();
+    let text = tauri::async_runtime::spawn_blocking(move || {
+        crate::audit_ledger::export_redacted_jsonl_filtered(&filter)
+    })
+    .await
+    .map_err(|e| format!("audit_ledger_export: {e}"))?;
     if text.trim().is_empty() {
         return Err("audit ledger is empty".into());
     }
@@ -10893,5 +11007,62 @@ pub async fn batch_agents_headless(
     })
     .await
     .map_err(|e| format!("batch_agents_headless: {e}"))
+}
+
+// ── X Evidence Rail (search → local evidence store → quote pack) ────────────
+// Design: docs/features/x-search.md — every X search result becomes a local
+// evidence row with a stable id; later turns list / re-read / quote without
+// re-searching. Write path (publishing to X) intentionally absent.
+
+#[tauri::command]
+pub async fn x_evidence_search(
+    query: String,
+    limit: Option<u32>,
+    session_tag: Option<String>,
+) -> Result<crate::x_evidence::XSearchEnvelope, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        crate::x_evidence::x_search(&query, limit, session_tag.as_deref())
+    })
+    .await
+    .map_err(|e| format!("x_evidence_search: {e}"))
+}
+
+#[tauri::command]
+pub async fn x_evidence_list(
+    filter: Option<crate::x_evidence::EvidenceFilter>,
+) -> Result<Vec<crate::x_evidence::EvidenceItem>, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        crate::x_evidence::evidence_list(&filter.unwrap_or_default())
+    })
+    .await
+    .map_err(|e| format!("x_evidence_list: {e}"))?
+}
+
+#[tauri::command]
+pub async fn x_evidence_get(
+    ids: Vec<String>,
+) -> Result<Vec<crate::x_evidence::EvidenceItem>, String> {
+    tauri::async_runtime::spawn_blocking(move || crate::x_evidence::evidence_get(&ids))
+        .await
+        .map_err(|e| format!("x_evidence_get: {e}"))?
+}
+
+#[tauri::command]
+pub async fn x_evidence_stats() -> Result<crate::x_evidence::EvidenceStats, String> {
+    tauri::async_runtime::spawn_blocking(crate::x_evidence::evidence_stats)
+        .await
+        .map_err(|e| format!("x_evidence_stats: {e}"))?
+}
+
+#[tauri::command]
+pub async fn x_quote_pack(
+    ids: Vec<String>,
+    title: Option<String>,
+) -> Result<crate::x_evidence::QuotePack, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        crate::x_evidence::quote_pack(&ids, title.as_deref())
+    })
+    .await
+    .map_err(|e| format!("x_quote_pack: {e}"))?
 }
 

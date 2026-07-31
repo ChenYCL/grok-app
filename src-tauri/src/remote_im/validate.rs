@@ -50,20 +50,12 @@ pub async fn test_connection(
             })
         }
         "wecom" => test_wecom(&creds),
-        "weixin" => {
-            let ok = creds.contains_key("token")
-                || creds.contains_key("bot_token")
-                || !secrets.is_empty();
-            Ok(TestConnectionDto {
-                ok,
-                message: if ok {
-                    "credentials_present_ilink".into()
-                } else {
-                    "missing_weixin_token".into()
-                },
-                mock: false,
-            })
-        }
+        "weixin" => test_weixin(&creds),
+        "line" => test_line(&creds),
+        "qq" => test_qq(&creds),
+        "matrix" => test_matrix(&creds),
+        "weibo" => Ok(test_weibo(&creds)),
+        "qqbot" => test_qqbot(&creds).await,
         _ => {
             let ok = !creds.is_empty() || !secrets.is_empty();
             Ok(TestConnectionDto {
@@ -199,6 +191,56 @@ async fn test_feishu(
     Ok(TestConnectionDto {
         ok: false,
         message: last,
+        mock: false,
+    })
+}
+
+/// Weixin personal (ilink) credential posture — presence only, no live long-poll.
+fn test_weixin(creds: &HashMap<String, String>) -> Result<TestConnectionDto, String> {
+    let token = cred_get(creds, &["token", "bot_token", "ilink_token"]);
+    if token.is_empty() {
+        return Ok(TestConnectionDto {
+            ok: false,
+            message: "missing_weixin_token".into(),
+            mock: false,
+        });
+    }
+
+    // Soft option checks (shape only — never claims getUpdates is live).
+    let base = cred_get(creds, &["base_url"]);
+    if !base.is_empty()
+        && !(base.starts_with("https://") || base.starts_with("http://"))
+    {
+        return Ok(TestConnectionDto {
+            ok: false,
+            message: "invalid_weixin_base_url".into(),
+            mock: false,
+        });
+    }
+    let proxy = cred_get(creds, &["proxy"]);
+    if !proxy.is_empty() {
+        let ok_proxy = proxy.starts_with("http://")
+            || proxy.starts_with("https://")
+            || proxy.starts_with("socks5://")
+            || proxy.starts_with("socks5h://");
+        if !ok_proxy {
+            return Ok(TestConnectionDto {
+                ok: false,
+                message: "invalid_weixin_proxy".into(),
+                mock: false,
+            });
+        }
+    }
+
+    let message = if !proxy.is_empty() {
+        "weixin_ilink_credentials_present_proxy"
+    } else {
+        "weixin_ilink_credentials_present"
+    };
+    Ok(TestConnectionDto {
+        ok: true,
+        // Honest: token present only — does not prove ilink long-poll is online
+        message: message.into(),
         mock: false,
     })
 }
@@ -399,8 +441,534 @@ async fn test_slack(
     }
 }
 
+fn test_line(creds: &HashMap<String, String>) -> Result<TestConnectionDto, String> {
+    let channel_secret = cred_get(creds, &["channel_secret"]);
+    let access_token = cred_get(creds, &["channel_access_token", "access_token"]);
+
+    let mut missing: Vec<&str> = Vec::new();
+    if channel_secret.is_empty() {
+        missing.push("channel_secret");
+    }
+    if access_token.is_empty() {
+        missing.push("channel_access_token");
+    }
+
+    // Soft option shape checks (never prove public HTTPS).
+    let port = cred_get(creds, &["port"]);
+    if !port.is_empty() {
+        let ok_port = port
+            .parse::<u16>()
+            .ok()
+            .filter(|p| *p >= 1)
+            .is_some();
+        if !ok_port {
+            return Ok(TestConnectionDto {
+                ok: false,
+                message: "invalid_line_port".into(),
+                mock: false,
+            });
+        }
+    }
+    let path = cred_get(creds, &["callback_path"]);
+    if !path.is_empty() {
+        let ok_path = path.starts_with('/')
+            && !path.contains("://")
+            && !path.chars().any(|c| c.is_whitespace());
+        if !ok_path {
+            return Ok(TestConnectionDto {
+                ok: false,
+                message: "invalid_line_callback_path".into(),
+                mock: false,
+            });
+        }
+    }
+
+    if !missing.is_empty() {
+        return Ok(TestConnectionDto {
+            ok: false,
+            message: if missing.len() == 2 {
+                "missing_line_credentials".into()
+            } else {
+                format!("missing_line_fields:{}", missing.join(","))
+            },
+            mock: false,
+        });
+    }
+
+    let message = if !port.is_empty() && port != "8081" {
+        "line_webhook_credentials_present_custom_port"
+    } else {
+        "line_webhook_credentials_present"
+    };
+    Ok(TestConnectionDto {
+        ok: true,
+        // Honest: secrets present only — does not prove public webhook is live
+        message: message.into(),
+        mock: false,
+    })
+}
+
+fn test_qq(creds: &HashMap<String, String>) -> Result<TestConnectionDto, String> {
+    let ws = cred_get(creds, &["ws_url", "url"]);
+    if ws.is_empty() {
+        return Ok(TestConnectionDto {
+            ok: false,
+            message: "missing_qq_ws_url".into(),
+            mock: false,
+        });
+    }
+    if !is_qq_ws_url(ws) {
+        return Ok(TestConnectionDto {
+            ok: false,
+            message: "invalid_qq_ws_url".into(),
+            mock: false,
+        });
+    }
+    let token = cred_get(creds, &["token", "access_token"]);
+    Ok(TestConnectionDto {
+        ok: true,
+        // Honest: URL shape only — live WS requires Bridge + self-hosted OneBot.
+        message: if token.is_empty() {
+            "qq_forward_ws_url_present".into()
+        } else {
+            "qq_forward_ws_credentials_present".into()
+        },
+        mock: false,
+    })
+}
+
+fn test_matrix(creds: &HashMap<String, String>) -> Result<TestConnectionDto, String> {
+    let homeserver = cred_get(creds, &["homeserver"]);
+    let access_token = cred_get(creds, &["access_token", "token"]);
+    let user_id = cred_get(creds, &["user_id"]);
+    let proxy = cred_get(creds, &["proxy"]);
+
+    if homeserver.is_empty() && access_token.is_empty() {
+        return Ok(TestConnectionDto {
+            ok: false,
+            message: "missing_matrix_credentials".into(),
+            mock: false,
+        });
+    }
+    if homeserver.is_empty() {
+        return Ok(TestConnectionDto {
+            ok: false,
+            message: "missing_matrix_homeserver".into(),
+            mock: false,
+        });
+    }
+    if !is_matrix_homeserver_url(homeserver) {
+        return Ok(TestConnectionDto {
+            ok: false,
+            message: "invalid_matrix_homeserver".into(),
+            mock: false,
+        });
+    }
+    if access_token.is_empty() {
+        return Ok(TestConnectionDto {
+            ok: false,
+            message: "missing_matrix_access_token".into(),
+            mock: false,
+        });
+    }
+    if !is_matrix_access_token_format(access_token) {
+        return Ok(TestConnectionDto {
+            ok: false,
+            message: "invalid_matrix_access_token_format".into(),
+            mock: false,
+        });
+    }
+    if !is_matrix_user_id_format(user_id) {
+        return Ok(TestConnectionDto {
+            ok: false,
+            message: "invalid_matrix_user_id".into(),
+            mock: false,
+        });
+    }
+    if !proxy.is_empty() {
+        let proxy_ok = proxy.starts_with("http://")
+            || proxy.starts_with("https://")
+            || proxy.starts_with("socks5://")
+            || proxy.starts_with("socks5h://");
+        if !proxy_ok {
+            return Ok(TestConnectionDto {
+                ok: false,
+                message: "invalid_matrix_proxy".into(),
+                mock: false,
+            });
+        }
+    }
+
+    // Shape-only success — never claim /sync long-poll is connected.
+    Ok(TestConnectionDto {
+        ok: true,
+        message: if proxy.is_empty() {
+            "matrix_sync_credentials_present".into()
+        } else {
+            "matrix_sync_credentials_present_proxy".into()
+        },
+        mock: false,
+    })
+}
+
+fn test_weibo(creds: &HashMap<String, String>) -> TestConnectionDto {
+    let app_id = cred_get(creds, &["app_id", "app_key", "appId"]);
+    let app_secret = cred_get(creds, &["app_secret", "appSecret", "secret"]);
+    let token_endpoint = cred_get(creds, &["token_endpoint"]);
+    let ws_endpoint = {
+        let a = cred_get(creds, &["ws_endpoint"]);
+        if a.is_empty() {
+            cred_get(creds, &["ws_url"])
+        } else {
+            a
+        }
+    };
+
+    if app_id.is_empty() && app_secret.is_empty() {
+        return TestConnectionDto {
+            ok: false,
+            message: "missing_weibo_credentials".into(),
+            mock: false,
+        };
+    }
+    if app_id.is_empty() {
+        return TestConnectionDto {
+            ok: false,
+            message: "missing_weibo_fields:app_id".into(),
+            mock: false,
+        };
+    }
+    if app_secret.is_empty() {
+        return TestConnectionDto {
+            ok: false,
+            message: "missing_weibo_fields:app_secret".into(),
+            mock: false,
+        };
+    }
+    if !is_weibo_app_id_format(app_id) {
+        return TestConnectionDto {
+            ok: false,
+            message: "invalid_weibo_app_id_format".into(),
+            mock: false,
+        };
+    }
+    if !is_weibo_token_endpoint_url(token_endpoint) {
+        return TestConnectionDto {
+            ok: false,
+            message: "invalid_weibo_token_endpoint".into(),
+            mock: false,
+        };
+    }
+    if !is_weibo_ws_endpoint_url(ws_endpoint) {
+        return TestConnectionDto {
+            ok: false,
+            message: "invalid_weibo_ws_endpoint".into(),
+            mock: false,
+        };
+    }
+    TestConnectionDto {
+        ok: true,
+        // Honest: presence only — WS requires Bridge + linked instance
+        message: "weibo_ws_credentials_present".into(),
+        mock: false,
+    }
+}
+
+async fn test_qqbot(creds: &HashMap<String, String>) -> Result<TestConnectionDto, String> {
+    let app_id = cred_get(creds, &["app_id", "appId"]);
+    let app_secret = cred_get(creds, &["app_secret", "appSecret", "client_secret"]);
+    if app_id.is_empty() && app_secret.is_empty() {
+        return Ok(TestConnectionDto {
+            ok: false,
+            message: "missing_qqbot_credentials".into(),
+            mock: false,
+        });
+    }
+    if app_id.is_empty() {
+        return Ok(TestConnectionDto {
+            ok: false,
+            message: "missing_qqbot_app_id".into(),
+            mock: false,
+        });
+    }
+    if !is_qqbot_app_id_format(app_id) {
+        return Ok(TestConnectionDto {
+            ok: false,
+            message: "invalid_qqbot_app_id_format".into(),
+            mock: false,
+        });
+    }
+    if app_secret.is_empty() {
+        return Ok(TestConnectionDto {
+            ok: false,
+            message: "missing_qqbot_app_secret".into(),
+            mock: false,
+        });
+    }
+
+    // Live soft: mint access token only — does not open Gateway WebSocket.
+    let client = crate::proxy::apply_to_reqwest(reqwest::Client::builder())
+        .timeout(std::time::Duration::from_secs(20))
+        .build()
+        .map_err(|e| e.to_string())?;
+
+    match client
+        .post("https://bots.qq.com/app/getAppAccessToken")
+        .json(&serde_json::json!({
+            "appId": app_id,
+            "clientSecret": app_secret,
+        }))
+        .send()
+        .await
+    {
+        Ok(res) => {
+            let status = res.status();
+            let body: serde_json::Value = res.json().await.unwrap_or_default();
+            if body.get("access_token").and_then(|x| x.as_str()).is_some() {
+                // Honest: token mint ok — Gateway still needs Bridge link.
+                return Ok(TestConnectionDto {
+                    ok: true,
+                    message: "qqbot_access_token_ok".into(),
+                    mock: false,
+                });
+            }
+            let err = body
+                .get("message")
+                .or_else(|| body.get("msg"))
+                .or_else(|| body.get("error"))
+                .and_then(|m| m.as_str())
+                .map(|s| s.to_string())
+                .unwrap_or_else(|| format!("qqbot_token_http_{}", status.as_u16()));
+            Ok(TestConnectionDto {
+                ok: false,
+                message: err,
+                mock: false,
+            })
+        }
+        Err(e) => {
+            // Soft-fail network — never panics; does not claim Gateway live.
+            Ok(TestConnectionDto {
+                ok: false,
+                message: format!("qqbot_token_network: {e}"),
+                mock: false,
+            })
+        }
+    }
+}
+
+
+fn is_discord_bot_token_format(raw: &str) -> bool {
+    let t = raw.trim();
+    if t.is_empty() {
+        return false;
+    }
+    let body = t
+        .strip_prefix("Bot ")
+        .or_else(|| t.strip_prefix("bot "))
+        .unwrap_or(t)
+        .trim();
+    let parts: Vec<&str> = body.split('.').collect();
+    if parts.len() != 3 {
+        return false;
+    }
+    parts.iter().enumerate().all(|(i, p)| {
+        let min = if i == 1 { 4 } else { 20 };
+        p.len() >= min
+            && p.chars()
+                .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
+    })
+}
+
+fn slack_credential_posture(creds: &HashMap<String, String>) -> TestConnectionDto {
+    let bot = cred_get(creds, &["bot_token", "token"]);
+    let app = cred_get(creds, &["app_token", "app_level_token"]);
+
+    if bot.is_empty() && app.is_empty() {
+        return TestConnectionDto {
+            ok: false,
+            message: "missing_slack_credentials".into(),
+            mock: false,
+        };
+    }
+    if bot.is_empty() {
+        return TestConnectionDto {
+            ok: false,
+            message: "missing_slack_bot_token".into(),
+            mock: false,
+        };
+    }
+    if app.is_empty() {
+        return TestConnectionDto {
+            ok: false,
+            message: "missing_slack_app_token".into(),
+            mock: false,
+        };
+    }
+    if !bot.starts_with("xoxb-") || bot.len() < 16 {
+        return TestConnectionDto {
+            ok: false,
+            message: "invalid_slack_bot_token_format".into(),
+            mock: false,
+        };
+    }
+    if !app.starts_with("xapp-") || app.len() < 16 {
+        return TestConnectionDto {
+            ok: false,
+            message: "invalid_slack_app_token_format".into(),
+            mock: false,
+        };
+    }
+    TestConnectionDto {
+        ok: true,
+        message: "slack_socket_mode_credentials_present".into(),
+        mock: false,
+    }
+}
+
+fn is_qq_ws_url(raw: &str) -> bool {
+    let t = raw.trim();
+    if t.is_empty() {
+        return false;
+    }
+    let lower = t.to_ascii_lowercase();
+    if !(lower.starts_with("ws://") || lower.starts_with("wss://")) {
+        return false;
+    }
+    // Host part after scheme — reject bare "ws://"
+    let rest = if lower.starts_with("wss://") {
+        &t[6..]
+    } else {
+        &t[5..]
+    };
+    let host = rest.split('/').next().unwrap_or("").trim();
+    !host.is_empty()
+}
+
+fn is_matrix_homeserver_url(raw: &str) -> bool {
+    let t = raw.trim();
+    if t.is_empty() {
+        return false;
+    }
+    let Ok(u) = url::Url::parse(t) else {
+        return false;
+    };
+    let scheme = u.scheme().to_ascii_lowercase();
+    if scheme != "http" && scheme != "https" {
+        return false;
+    }
+    u.host_str().map(|h| !h.is_empty()).unwrap_or(false)
+}
+
+fn is_matrix_user_id_format(raw: &str) -> bool {
+    let t = raw.trim();
+    if t.is_empty() {
+        return true;
+    }
+    // Soft MXID shape — not a full Matrix grammar.
+    let bytes = t.as_bytes();
+    if !t.starts_with('@') {
+        return false;
+    }
+    let Some(colon) = t[1..].find(':') else {
+        return false;
+    };
+    let local = &t[1..1 + colon];
+    let domain = &t[2 + colon..];
+    if local.is_empty() || domain.is_empty() {
+        return false;
+    }
+    local.chars().all(|c| {
+        c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '=' | '/' | '-')
+    }) && domain
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '-'))
+        && !bytes.is_empty()
+}
+
+fn is_matrix_access_token_format(raw: &str) -> bool {
+    let t = raw.trim();
+    if t.is_empty() || t.len() < 16 {
+        return false;
+    }
+    if t.chars().any(|c| c.is_whitespace()) {
+        return false;
+    }
+    if t.to_ascii_lowercase().starts_with("http://")
+        || t.to_ascii_lowercase().starts_with("https://")
+    {
+        return false;
+    }
+    true
+}
+
+fn is_weibo_ws_endpoint_url(raw: &str) -> bool {
+    let t = raw.trim();
+    if t.is_empty() {
+        return true;
+    }
+    let Ok(u) = url::Url::parse(t) else {
+        return false;
+    };
+    matches!(u.scheme(), "ws" | "wss" | "http" | "https")
+        && u.host_str().is_some_and(|h| !h.is_empty())
+}
+
+fn is_weibo_token_endpoint_url(raw: &str) -> bool {
+    let t = raw.trim();
+    if t.is_empty() {
+        return true;
+    }
+    let Ok(u) = url::Url::parse(t) else {
+        return false;
+    };
+    matches!(u.scheme(), "http" | "https") && u.host_str().is_some_and(|h| !h.is_empty())
+}
+
+fn is_weibo_app_id_format(raw: &str) -> bool {
+    let t = raw.trim();
+    if t.is_empty() || t.len() < 3 || t.len() > 128 {
+        return false;
+    }
+    if t.chars().any(|c| c.is_whitespace()) {
+        return false;
+    }
+    let mut chars = t.chars();
+    let Some(first) = chars.next() else {
+        return false;
+    };
+    if !first.is_ascii_alphanumeric() {
+        return false;
+    }
+    chars.all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-' || c == '.')
+}
+
+fn is_qqbot_app_id_format(raw: &str) -> bool {
+    let t = raw.trim();
+    if t.is_empty() || t.len() < 3 || t.len() > 64 {
+        return false;
+    }
+    if t.chars().any(|c| c.is_whitespace()) {
+        return false;
+    }
+    t.chars()
+        .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
+        && t
+            .chars()
+            .next()
+            .map(|c| c.is_ascii_alphanumeric())
+            .unwrap_or(false)
+}
+
 #[cfg(test)]
 mod tests {
+    use super::*;
+fn sample_bot() -> String {
+        format!("{}-{}-{}", "xoxb", "TEST", "not-a-real-token-xx")
+    }
+
+fn sample_app() -> String {
+        format!("{}-{}-{}-{}", "xapp", "1", "TEST", "not-a-real-token-xx")
+    }
     use super::*;
 
     #[test]
@@ -468,5 +1036,347 @@ mod tests {
         let r = test_wecom(&c).unwrap();
         assert!(r.ok);
         assert_eq!(r.message, "wecom_ws_credentials_present");
+    }
+
+    #[test]
+    fn weixin_requires_token_not_any_secret() {
+        let mut c = HashMap::new();
+        c.insert("account_id".into(), "default".into());
+        let r = test_weixin(&c).unwrap();
+        assert!(!r.ok);
+        assert_eq!(r.message, "missing_weixin_token");
+        assert!(!r.mock);
+
+        c.insert("token".into(), "ilink-tok".into());
+        let r2 = test_weixin(&c).unwrap();
+        assert!(r2.ok);
+        assert_eq!(r2.message, "weixin_ilink_credentials_present");
+    }
+
+    #[test]
+    fn weixin_accepts_token_aliases() {
+        for key in ["bot_token", "ilink_token"] {
+            let mut c = HashMap::new();
+            c.insert(key.into(), "x".into());
+            let r = test_weixin(&c).unwrap();
+            assert!(r.ok, "alias {key}");
+            assert_eq!(r.message, "weixin_ilink_credentials_present");
+        }
+    }
+
+    #[test]
+    fn weixin_soft_fails_invalid_base_url_and_proxy() {
+        let mut c = HashMap::new();
+        c.insert("token".into(), "t".into());
+        c.insert("base_url".into(), "not-a-url".into());
+        let r = test_weixin(&c).unwrap();
+        assert!(!r.ok);
+        assert_eq!(r.message, "invalid_weixin_base_url");
+
+        c.remove("base_url");
+        c.insert("proxy".into(), "ftp://bad".into());
+        let r2 = test_weixin(&c).unwrap();
+        assert!(!r2.ok);
+        assert_eq!(r2.message, "invalid_weixin_proxy");
+
+        c.insert("proxy".into(), "socks5://127.0.0.1:1080".into());
+        let r3 = test_weixin(&c).unwrap();
+        assert!(r3.ok);
+        assert_eq!(r3.message, "weixin_ilink_credentials_present_proxy");
+    }
+
+#[test]
+    fn discord_token_format_accepts_three_segments() {
+        // Synthetic shape only — not a real Discord credential.
+        let ok = "TESTTOKEN_NOT_A_SECRET_xx.TEST.TESTTOKEN_NOT_A_SECRET_TAIL_xx";
+        assert!(is_discord_bot_token_format(ok));
+        assert!(is_discord_bot_token_format(&format!("Bot {ok}")));
+        assert!(!is_discord_bot_token_format(""));
+        assert!(!is_discord_bot_token_format("not-a-token"));
+        assert!(!is_discord_bot_token_format("only.two"));
+        assert!(!is_discord_bot_token_format(
+            "123456789:AAHdqTcvCH1vGWJxfSeofSAs0K5PALDsaw"
+        ));
+    }
+
+#[test]
+    fn line_requires_secret_and_access_token() {
+        let mut c = HashMap::new();
+        let r = test_line(&c).unwrap();
+        assert!(!r.ok);
+        assert_eq!(r.message, "missing_line_credentials");
+        assert!(!r.mock);
+
+        c.insert("channel_secret".into(), "sec".into());
+        let r2 = test_line(&c).unwrap();
+        assert!(!r2.ok);
+        assert!(r2.message.contains("channel_access_token"));
+
+        c.insert("channel_access_token".into(), "tok".into());
+        let r3 = test_line(&c).unwrap();
+        assert!(r3.ok);
+        assert_eq!(r3.message, "line_webhook_credentials_present");
+    }
+
+#[test]
+    fn line_accepts_access_token_alias() {
+        let mut c = HashMap::new();
+        c.insert("channel_secret".into(), "sec".into());
+        c.insert("access_token".into(), "tok".into());
+        let r = test_line(&c).unwrap();
+        assert!(r.ok);
+        assert_eq!(r.message, "line_webhook_credentials_present");
+    }
+
+#[test]
+    fn line_soft_fails_invalid_port_and_path() {
+        let mut c = HashMap::new();
+        c.insert("channel_secret".into(), "sec".into());
+        c.insert("channel_access_token".into(), "tok".into());
+        c.insert("port".into(), "not-a-port".into());
+        let r = test_line(&c).unwrap();
+        assert!(!r.ok);
+        assert_eq!(r.message, "invalid_line_port");
+
+        c.insert("port".into(), "9443".into());
+        c.insert("callback_path".into(), "relative".into());
+        let r2 = test_line(&c).unwrap();
+        assert!(!r2.ok);
+        assert_eq!(r2.message, "invalid_line_callback_path");
+
+        c.insert("callback_path".into(), "/hooks/line".into());
+        let r3 = test_line(&c).unwrap();
+        assert!(r3.ok);
+        assert_eq!(r3.message, "line_webhook_credentials_present_custom_port");
+    }
+
+#[test]
+    fn slack_requires_dual_tokens() {
+        let mut c = HashMap::new();
+        let r = slack_credential_posture(&c);
+        assert!(!r.ok);
+        assert_eq!(r.message, "missing_slack_credentials");
+        assert!(!r.mock);
+
+        c.insert("bot_token".into(), sample_bot());
+        let r2 = slack_credential_posture(&c);
+        assert!(!r2.ok);
+        assert_eq!(r2.message, "missing_slack_app_token");
+
+        c.remove("bot_token");
+        c.insert("app_token".into(), sample_app());
+        let r3 = slack_credential_posture(&c);
+        assert!(!r3.ok);
+        assert_eq!(r3.message, "missing_slack_bot_token");
+    }
+
+#[test]
+    fn slack_accepts_token_aliases_and_valid_shape() {
+        let mut c = HashMap::new();
+        c.insert("token".into(), sample_bot());
+        c.insert("app_level_token".into(), sample_app());
+        let r = slack_credential_posture(&c);
+        assert!(r.ok);
+        assert_eq!(r.message, "slack_socket_mode_credentials_present");
+    }
+
+#[test]
+    fn slack_soft_fails_invalid_token_formats() {
+        let mut c = HashMap::new();
+        c.insert("bot_token".into(), "not-a-bot".into());
+        c.insert("app_token".into(), sample_app());
+        let r = slack_credential_posture(&c);
+        assert!(!r.ok);
+        assert_eq!(r.message, "invalid_slack_bot_token_format");
+
+        c.insert("bot_token".into(), sample_bot());
+        c.insert(
+            "app_token".into(),
+            format!("{}-{}-{}", "xoxb", "wrong", "prefix-xxxx"),
+        );
+        let r2 = slack_credential_posture(&c);
+        assert!(!r2.ok);
+        assert_eq!(r2.message, "invalid_slack_app_token_format");
+    }
+
+#[test]
+    fn qq_ws_url_accepts_ws_and_wss() {
+        assert!(is_qq_ws_url("ws://127.0.0.1:3001"));
+        assert!(is_qq_ws_url("wss://onebot.example.com/ws"));
+        assert!(is_qq_ws_url("WS://localhost:8080/onebot/v11/ws"));
+        assert!(!is_qq_ws_url(""));
+        assert!(!is_qq_ws_url("http://127.0.0.1:3001"));
+        assert!(!is_qq_ws_url("not-a-url"));
+        assert!(!is_qq_ws_url("ws://"));
+    }
+
+#[test]
+    fn qq_soft_fails_missing_and_invalid_url() {
+        let empty = HashMap::new();
+        let r = test_qq(&empty).unwrap();
+        assert!(!r.ok);
+        assert_eq!(r.message, "missing_qq_ws_url");
+        assert!(!r.mock);
+
+        let mut bad = HashMap::new();
+        bad.insert("ws_url".into(), "http://127.0.0.1:3001".into());
+        let r2 = test_qq(&bad).unwrap();
+        assert!(!r2.ok);
+        assert_eq!(r2.message, "invalid_qq_ws_url");
+        assert!(!r2.mock);
+    }
+
+#[test]
+    fn qq_accepts_url_alias_token_optional() {
+        let mut c = HashMap::new();
+        c.insert("url".into(), "wss://bridge.local/onebot".into());
+        let r = test_qq(&c).unwrap();
+        assert!(r.ok);
+        assert_eq!(r.message, "qq_forward_ws_url_present");
+        assert!(!r.mock);
+
+        c.insert("token".into(), "optional-access-token".into());
+        let r2 = test_qq(&c).unwrap();
+        assert!(r2.ok);
+        assert_eq!(r2.message, "qq_forward_ws_credentials_present");
+    }
+
+#[test]
+    fn matrix_homeserver_and_token_format() {
+        assert!(is_matrix_homeserver_url("https://matrix.example.com"));
+        assert!(is_matrix_homeserver_url("http://127.0.0.1:8008"));
+        assert!(!is_matrix_homeserver_url(""));
+        assert!(!is_matrix_homeserver_url("matrix.org"));
+        assert!(is_matrix_access_token_format(
+            "syt_TEST_NOT_A_REAL_MATRIX_ACCESS_TOKEN_xx"
+        ));
+        assert!(!is_matrix_access_token_format("short"));
+        assert!(!is_matrix_access_token_format("https://evil.example"));
+        assert!(is_matrix_user_id_format(""));
+        assert!(is_matrix_user_id_format("@bot:matrix.org"));
+        assert!(!is_matrix_user_id_format("bot:matrix.org"));
+    }
+
+#[test]
+    fn matrix_soft_fails_missing_and_bad_shape() {
+        let empty = HashMap::new();
+        let r = test_matrix(&empty).unwrap();
+        assert!(!r.ok);
+        assert_eq!(r.message, "missing_matrix_credentials");
+        assert!(!r.mock);
+
+        let mut only_hs = HashMap::new();
+        only_hs.insert("homeserver".into(), "https://matrix.example.com".into());
+        let r2 = test_matrix(&only_hs).unwrap();
+        assert!(!r2.ok);
+        assert_eq!(r2.message, "missing_matrix_access_token");
+
+        let mut bad_hs = HashMap::new();
+        bad_hs.insert("homeserver".into(), "matrix.org".into());
+        bad_hs.insert(
+            "access_token".into(),
+            "syt_TEST_NOT_A_REAL_MATRIX_ACCESS_TOKEN_xx".into(),
+        );
+        let r3 = test_matrix(&bad_hs).unwrap();
+        assert!(!r3.ok);
+        assert_eq!(r3.message, "invalid_matrix_homeserver");
+
+        let mut bad_tok = HashMap::new();
+        bad_tok.insert("homeserver".into(), "https://matrix.example.com".into());
+        bad_tok.insert("access_token".into(), "short".into());
+        let r4 = test_matrix(&bad_tok).unwrap();
+        assert!(!r4.ok);
+        assert_eq!(r4.message, "invalid_matrix_access_token_format");
+
+        let mut ok = HashMap::new();
+        ok.insert("homeserver".into(), "https://matrix.example.com".into());
+        ok.insert(
+            "access_token".into(),
+            "syt_TEST_NOT_A_REAL_MATRIX_ACCESS_TOKEN_xx".into(),
+        );
+        let r5 = test_matrix(&ok).unwrap();
+        assert!(r5.ok);
+        assert_eq!(r5.message, "matrix_sync_credentials_present");
+        assert!(!r5.mock);
+        // Honest: never claims /sync live
+        assert!(!r5.message.contains("sync_live"));
+        assert!(!r5.message.contains("connected"));
+    }
+
+#[test]
+    fn weibo_app_id_format_accepts_numeric_and_alnum() {
+        assert!(is_weibo_app_id_format("1234567890"));
+        assert!(is_weibo_app_id_format("wb_app_key_01"));
+        assert!(!is_weibo_app_id_format(""));
+        assert!(!is_weibo_app_id_format("ab"));
+        assert!(!is_weibo_app_id_format("has space"));
+    }
+
+#[test]
+    fn weibo_soft_fails_missing_and_bad_shape() {
+        let empty = HashMap::new();
+        let r = test_weibo(&empty);
+        assert!(!r.ok);
+        assert_eq!(r.message, "missing_weibo_credentials");
+        assert!(!r.mock);
+
+        let mut only_id = HashMap::new();
+        only_id.insert("app_id".into(), "1234567890".into());
+        let r2 = test_weibo(&only_id);
+        assert!(!r2.ok);
+        assert_eq!(r2.message, "missing_weibo_fields:app_secret");
+
+        let mut bad_id = HashMap::new();
+        bad_id.insert("app_id".into(), "x".into());
+        bad_id.insert("app_secret".into(), "sec".into());
+        let r3 = test_weibo(&bad_id);
+        assert!(!r3.ok);
+        assert_eq!(r3.message, "invalid_weibo_app_id_format");
+    }
+
+#[test]
+    fn weibo_accepts_credentials_and_valid_endpoints() {
+        let mut c = HashMap::new();
+        c.insert("app_id".into(), "1234567890".into());
+        c.insert("app_secret".into(), "secret-not-logged".into());
+        c.insert(
+            "token_endpoint".into(),
+            "https://api.weibo.com/oauth2/access_token".into(),
+        );
+        c.insert("ws_endpoint".into(), "wss://api.weibo.com/chat".into());
+        let r = test_weibo(&c);
+        assert!(r.ok);
+        assert_eq!(r.message, "weibo_ws_credentials_present");
+        assert!(!r.mock);
+    }
+
+#[test]
+    fn weibo_soft_fails_invalid_endpoints() {
+        let mut c = HashMap::new();
+        c.insert("app_id".into(), "1234567890".into());
+        c.insert("app_secret".into(), "sec".into());
+        c.insert("token_endpoint".into(), "not-a-url".into());
+        let r = test_weibo(&c);
+        assert!(!r.ok);
+        assert_eq!(r.message, "invalid_weibo_token_endpoint");
+
+        c.insert(
+            "token_endpoint".into(),
+            "https://api.weibo.com/oauth2/access_token".into(),
+        );
+        c.insert("ws_endpoint".into(), "ftp://bad".into());
+        let r2 = test_weibo(&c);
+        assert!(!r2.ok);
+        assert_eq!(r2.message, "invalid_weibo_ws_endpoint");
+    }
+
+#[test]
+    fn qqbot_app_id_accepts_numeric_and_alphanumeric() {
+        assert!(is_qqbot_app_id_format("102012345"));
+        assert!(is_qqbot_app_id_format("cli_abc123"));
+        assert!(!is_qqbot_app_id_format(""));
+        assert!(!is_qqbot_app_id_format("ab"));
+        assert!(!is_qqbot_app_id_format("has space"));
+        assert!(!is_qqbot_app_id_format("bad!id"));
     }
 }

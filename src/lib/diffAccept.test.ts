@@ -3,18 +3,28 @@ import {
   applyHunks,
   applySelectedHunks,
   applyUnifiedPatch,
+  batchSummaryVars,
   canAcceptWithContent,
   canRejectWithBefore,
   canRestoreAfter,
+  isAlreadyDecided,
+  isConflictKind,
   needsUntrackedWipeConfirm,
   parseUnifiedDiff,
+  planBatchAccept,
+  planBatchFileAccept,
+  planBatchFileReject,
+  planBatchReject,
+  planBatchRemainingHunks,
   planFileAccept,
   planFileReject,
   planFileRestore,
   preferGitCheckoutReject,
   rejectSelectedHunks,
+  remainingHunkIndices,
   reverseHunks,
   splitPatchLines,
+  summarizeBatchResults,
 } from "./diffAccept";
 
 const SAMPLE_DIFF = `--- a/hello.txt
@@ -224,5 +234,179 @@ describe("safety / plans", () => {
     expect(planFileAccept({})).toEqual({ mode: "keep_current" });
     expect(planFileRestore({ after: "x" }).mode).toBe("write_after");
     expect(planFileRestore({}).mode).toBe("unavailable");
+  });
+});
+
+describe("batch plan", () => {
+  it("isConflictKind / isAlreadyDecided", () => {
+    expect(isConflictKind("conflict")).toBe(true);
+    expect(isConflictKind("Conflict")).toBe(true);
+    expect(isConflictKind("modified")).toBe(false);
+    expect(isAlreadyDecided("accepted", "accept")).toBe(true);
+    expect(isAlreadyDecided("accepted", "reject")).toBe(false);
+    expect(isAlreadyDecided("rejected", "reject")).toBe(true);
+    expect(isAlreadyDecided(null, "accept")).toBe(false);
+  });
+
+  it("planBatchFileAccept skips conflict and already decided", () => {
+    expect(
+      planBatchFileAccept({ path: "a.ts", kind: "conflict" }).outcome.kind,
+    ).toBe("skip");
+    expect(
+      planBatchFileAccept({
+        path: "a.ts",
+        decision: "accepted",
+        after: "x",
+      }).outcome.kind,
+    ).toBe("skip");
+    const ok = planBatchFileAccept({ path: "a.ts", after: "new" });
+    expect(ok.outcome.kind).toBe("run");
+    if (ok.outcome.kind === "run") {
+      expect(ok.outcome.run.action).toBe("accept");
+      expect(ok.outcome.run.plan.mode).toBe("write_after");
+    }
+  });
+
+  it("planBatchFileAccept keep_current without after still runs", () => {
+    const p = planBatchFileAccept({ path: "a.ts", kind: "modified" });
+    expect(p.outcome.kind).toBe("run");
+    if (p.outcome.kind === "run") {
+      expect(p.outcome.run.plan.mode).toBe("keep_current");
+    }
+  });
+
+  it("planBatchFileReject flags untracked wipe confirm", () => {
+    const p = planBatchFileReject(
+      { path: "new.ts", kind: "untracked", name: "new.ts" },
+      { hasGitRepo: true },
+    );
+    expect(p.outcome.kind).toBe("run");
+    if (p.outcome.kind === "run" && p.outcome.run.action === "reject") {
+      expect(p.outcome.run.needsUntrackedConfirm).toBe(true);
+    }
+  });
+
+  it("planBatchFileReject skips conflict", () => {
+    const p = planBatchFileReject(
+      { path: "c.ts", kind: "conflict" },
+      { hasGitRepo: true },
+    );
+    expect(p.outcome).toMatchObject({ kind: "skip", reason: "conflict" });
+  });
+
+  it("planBatchAccept aggregates session remaining", () => {
+    const plan = planBatchAccept(
+      [
+        { path: "ok.ts", after: "a", kind: "modified" },
+        { path: "done.ts", after: "b", decision: "accepted" },
+        { path: "bad.ts", kind: "conflict" },
+        { path: "", name: "empty" },
+      ],
+      { scope: "session" },
+    );
+    expect(plan.canRun).toBe(true);
+    expect(plan.runCount).toBe(1);
+    expect(plan.skipCount).toBe(3);
+    expect(plan.run[0]!.path).toBe("ok.ts");
+  });
+
+  it("planBatchReject separates untracked confirm", () => {
+    const plan = planBatchReject(
+      [
+        { path: "m.ts", kind: "modified", before: "old" },
+        { path: "u.ts", kind: "untracked" },
+        { path: "c.ts", kind: "conflict" },
+      ],
+      { hasGitRepo: true, scope: "session" },
+    );
+    expect(plan.runCount).toBe(2);
+    expect(plan.untrackedConfirmCount).toBe(1);
+    expect(plan.needsUntrackedConfirm[0]!.path).toBe("u.ts");
+    expect(plan.skipped).toHaveLength(1);
+  });
+
+  it("remainingHunkIndices excludes resolved", () => {
+    expect(remainingHunkIndices(3, [])).toEqual([0, 1, 2]);
+    expect(remainingHunkIndices(3, [1])).toEqual([0, 2]);
+    expect(remainingHunkIndices(3, [0, 1, 2])).toEqual([]);
+    expect(remainingHunkIndices(0)).toEqual([]);
+  });
+
+  it("planBatchRemainingHunks accept applies selected", () => {
+    const original = "a\nb\nc\nd\n";
+    const diff = `--- a/f
++++ b/f
+@@ -1,2 +1,2 @@
+-a
++A
+ b
+@@ -3,2 +3,2 @@
+-c
++C
+ d
+`;
+    const hunks = parseUnifiedDiff(diff).hunks;
+    const all = applyHunks(original, hunks);
+    expect(all.ok).toBe(true);
+    if (!all.ok) return;
+    const plan = planBatchRemainingHunks({
+      action: "accept",
+      hunks,
+      before: original,
+      resolvedIndices: [0], // only second remaining
+    });
+    expect(plan.ok).toBe(true);
+    if (plan.ok) {
+      expect(plan.indices).toEqual([1]);
+      expect(plan.content).toBe("a\nb\nC\nd\n");
+    }
+    const rej = planBatchRemainingHunks({
+      action: "reject",
+      hunks,
+      after: all.content,
+      resolvedIndices: [],
+    });
+    expect(rej.ok).toBe(true);
+    if (rej.ok) expect(rej.content).toBe(original);
+  });
+
+  it("planBatchRemainingHunks no remaining / missing snapshot", () => {
+    expect(
+      planBatchRemainingHunks({
+        action: "accept",
+        hunks: parseUnifiedDiff(SAMPLE_DIFF).hunks,
+        resolvedIndices: [0],
+        before: "x",
+      }).ok,
+    ).toBe(false);
+    expect(
+      planBatchRemainingHunks({
+        action: "accept",
+        hunks: parseUnifiedDiff(SAMPLE_DIFF).hunks,
+        before: null,
+      }),
+    ).toMatchObject({ ok: false, reason: "unavailable" });
+  });
+
+  it("summarizeBatchResults + batchSummaryVars", () => {
+    const s = summarizeBatchResults("accept", [
+      { path: "a", name: "a", status: "ok" },
+      { path: "b", name: "b", status: "soft_fail", reason: "write" },
+      { path: "c", name: "c", status: "skipped", reason: "conflict" },
+      { path: "d", name: "d", status: "error" },
+    ]);
+    expect(s).toMatchObject({
+      ok: 1,
+      softFail: 1,
+      skipped: 1,
+      error: 1,
+      total: 4,
+    });
+    expect(batchSummaryVars(s)).toEqual({
+      ok: "1",
+      fail: "2",
+      skipped: "1",
+      total: "4",
+    });
   });
 });

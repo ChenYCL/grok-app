@@ -1013,7 +1013,36 @@ describe("session projection", () => {
     const short = presentErrorBanner(null, "Select a project first", "en");
     expect(short?.summary).toBe("Select a project first");
     expect(short?.detail).toBeNull();
-    expect(short?.primary?.id).toBe("dismiss");
+    expect(short?.code).toBe("PROJECT_MISSING");
+    expect(short?.primary?.id).toBe("relocate_project");
+    expect(short?.secondary?.id).toBe("add_project");
+  });
+
+  it("presentErrorBanner decks trust / permission / MCP recoveries", () => {
+    const trust = presentErrorBanner(
+      null,
+      'Trust project "Demo" first.',
+      "en",
+    );
+    expect(trust?.code).toBe("WORKSPACE_UNTRUSTED");
+    expect(trust?.primary?.id).toBe("trust_project");
+    expect(trust?.summary).toContain("Demo");
+
+    const perm = presentErrorBanner(
+      null,
+      "permission denied writing file",
+      "en",
+    );
+    expect(perm?.code).toBe("PERMISSION_DENIED");
+    expect(perm?.primary?.id).toBe("open_permissions");
+
+    const mcp = presentErrorBanner(
+      null,
+      "MCP oauth authorization required",
+      "en",
+    );
+    expect(mcp?.code).toBe("MCP_AUTH_FAILED");
+    expect(mcp?.primary?.id).toBe("open_mcp");
   });
 
   it("presentErrorBanner decks the four product classes", () => {

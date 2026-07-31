@@ -396,6 +396,272 @@ export function doctorFindingsCopyText(rows: DoctorFindingRow[]): string {
   ).trim();
 }
 
+/* ── Doctor findings export pro (redacted text / JSON download) ─────────── */
+
+/** Cap rows in a single export file (UI filter already shrinks the set). */
+export const DOCTOR_FINDINGS_EXPORT_MAX = 200;
+/** Cap free-form title / detail fields so exports never carry multi-kb dumps. */
+export const DOCTOR_FINDINGS_EXPORT_FIELD_MAX = 400;
+
+/** One row in a findings export file (known fields only; re-redacted). */
+export type DoctorFindingsExportRow = {
+  id: string;
+  source: DoctorFindingSource;
+  category: DoctorFindingCategory;
+  level: DoctorFindingLevel;
+  title: string;
+  detail: string;
+  disposition: string | null;
+  fixId: string | null;
+  destructive: boolean | null;
+};
+
+/** Echo of filters used to select rows (never free-form secrets). */
+export type DoctorFindingsExportFilter = {
+  level: DoctorFindingLevelFilter;
+  category: DoctorFindingCategoryFilter;
+  source: DoctorFindingSourceFilter;
+  query: string | null;
+  issuesOnly: boolean;
+};
+
+/**
+ * Redacted doctor findings export (download / clipboard).
+ * Structured fields only — titles/details re-run through {@link redact}.
+ */
+export type DoctorFindingsExport = {
+  kind: "doctor_findings";
+  generatedAt: string;
+  source: "doctor";
+  count: number;
+  /** Level / source summary for the exported set (filter-aware). */
+  summary: {
+    ok: number;
+    warn: number;
+    fail: number;
+    total: number;
+    bySource: { app: number; cli: number };
+  };
+  filter: DoctorFindingsExportFilter;
+  findings: DoctorFindingsExportRow[];
+};
+
+function capExportField(
+  raw: string | null | undefined,
+  max: number = DOCTOR_FINDINGS_EXPORT_FIELD_MAX,
+): string {
+  if (typeof raw !== "string") return "";
+  const t = redact(raw).replace(/\u0000/g, "").trim();
+  if (!t) return "";
+  return t.slice(0, Math.max(0, max));
+}
+
+function normalizeExportFilter(
+  filter?: Partial<DoctorFindingsExportFilter> | DoctorFindingsFilter | null,
+): DoctorFindingsExportFilter {
+  const f = filter ?? {};
+  const level =
+    f.level === "ok" || f.level === "warn" || f.level === "fail"
+      ? f.level
+      : "all";
+  const category =
+    f.category && f.category !== "all" && KNOWN_CATEGORIES.has(f.category)
+      ? (f.category as DoctorFindingCategory)
+      : "all";
+  const source =
+    f.source === "app" || f.source === "cli" ? f.source : "all";
+  const queryRaw = typeof f.query === "string" ? f.query.trim() : "";
+  return {
+    level,
+    category,
+    source,
+    query: queryRaw
+      ? capExportField(queryRaw, DOCTOR_FINDINGS_EXPORT_FIELD_MAX)
+      : null,
+    issuesOnly: !!(f as { issuesOnly?: boolean }).issuesOnly,
+  };
+}
+
+/**
+ * Build a download/clipboard-ready redacted export from finding rows.
+ * Prefer filtered rows from {@link filterDoctorFindings}. Never invents data.
+ * Empty input → count 0 snapshot (caller soft-fails UI; no throw).
+ */
+export function buildDoctorFindingsExport(
+  rows: readonly DoctorFindingRow[],
+  opts?: {
+    nowMs?: number;
+    max?: number;
+    generatedAt?: string;
+    filter?: Partial<DoctorFindingsExportFilter> | DoctorFindingsFilter | null;
+  },
+): DoctorFindingsExport {
+  const max = Math.max(
+    0,
+    Math.floor(opts?.max ?? DOCTOR_FINDINGS_EXPORT_MAX),
+  );
+  const generatedAt =
+    opts?.generatedAt ??
+    new Date(opts?.nowMs ?? Date.now()).toISOString();
+  const filter = normalizeExportFilter(opts?.filter);
+
+  const out: DoctorFindingsExportRow[] = [];
+  const seen = new Set<string>();
+  for (const r of rows) {
+    if (!r || typeof r !== "object") continue;
+    const rawId = String(r.rawId ?? "").trim();
+    if (!rawId) continue;
+    const key = String(r.key ?? makeKey(r.source, rawId)).trim() || rawId;
+    if (seen.has(key)) continue;
+    seen.add(key);
+
+    const source: DoctorFindingSource =
+      r.source === "cli" ? "cli" : "app";
+    const level = asLevel(r.level);
+    const category = KNOWN_CATEGORIES.has(r.category)
+      ? r.category
+      : classifyDoctorFindingCategory(rawId, r.title);
+
+    const fixIdRaw =
+      typeof r.fixId === "string" && r.fixId.trim() ? r.fixId.trim() : null;
+    out.push({
+      id: capExportField(rawId, 120) || rawId.slice(0, 120),
+      source,
+      category,
+      level,
+      title: capExportField(r.title) || rawId,
+      detail: capExportField(r.detail),
+      disposition: (() => {
+        const d = capExportField(r.disposition, 120);
+        return d || null;
+      })(),
+      fixId: fixIdRaw ? capExportField(fixIdRaw, 120) || null : null,
+      destructive: fixIdRaw ? r.destructive === true : null,
+    });
+    if (out.length >= max) break;
+  }
+
+  let ok = 0;
+  let warn = 0;
+  let fail = 0;
+  const bySource = { app: 0, cli: 0 };
+  for (const row of out) {
+    if (row.level === "ok") ok += 1;
+    else if (row.level === "warn") warn += 1;
+    else fail += 1;
+    bySource[row.source] += 1;
+  }
+
+  return {
+    kind: "doctor_findings",
+    generatedAt,
+    source: "doctor",
+    count: out.length,
+    summary: {
+      ok,
+      warn,
+      fail,
+      total: out.length,
+      bySource,
+    },
+    filter,
+    findings: out,
+  };
+}
+
+/** Pretty JSON for client download (known fields only; already redacted). */
+export function serializeDoctorFindingsExport(
+  snapshot: DoctorFindingsExport,
+): string {
+  return JSON.stringify(snapshot, null, 2);
+}
+
+/**
+ * Plain-text export body (clipboard / .txt). Empty snapshot → empty string
+ * so UI can soft-fail without inventing findings.
+ */
+export function formatDoctorFindingsExportText(
+  snapshot: DoctorFindingsExport,
+): string {
+  if (!snapshot || snapshot.count === 0 || snapshot.findings.length === 0) {
+    return "";
+  }
+  const f = snapshot.filter;
+  const s = snapshot.summary;
+  const filterLine = [
+    `level=${f.level}`,
+    `category=${f.category}`,
+    `source=${f.source}`,
+    `issuesOnly=${f.issuesOnly ? "true" : "false"}`,
+    f.query ? `query=${f.query}` : "query=",
+  ].join(" ");
+  const summaryLine =
+    `total=${s.total} ok=${s.ok} warn=${s.warn} fail=${s.fail}` +
+    ` · app=${s.bySource.app} cli=${s.bySource.cli}`;
+
+  const blocks = snapshot.findings.map((row, i) => {
+    const lines = [
+      `### ${i + 1}/${snapshot.count}`,
+      `[${row.level.toUpperCase()}] ${row.title}`,
+      `id: ${row.id}`,
+      `source: ${row.source}`,
+      `category: ${row.category}`,
+    ];
+    if (row.disposition) lines.push(`disposition: ${row.disposition}`);
+    if (row.fixId) {
+      lines.push(
+        `fixId: ${row.fixId}${row.destructive ? " (destructive)" : ""}`,
+      );
+    }
+    if (row.detail) {
+      lines.push("");
+      lines.push(row.detail);
+    }
+    return lines.join("\n");
+  });
+
+  const body = [
+    "# Doctor findings export (redacted)",
+    `generatedAt: ${snapshot.generatedAt}`,
+    `filter: ${filterLine}`,
+    `summary: ${summaryLine}`,
+    "",
+    blocks.join("\n\n"),
+  ].join("\n");
+
+  return redact(body).trim();
+}
+
+/** Soft-empty: nothing honest to export for this filter. */
+export function doctorFindingsExportIsEmpty(
+  snapshot: DoctorFindingsExport | null | undefined,
+): boolean {
+  return !snapshot || snapshot.count === 0 || snapshot.findings.length === 0;
+}
+
+/** Filesystem-safe download basename (no extension). */
+export function doctorFindingsExportBasename(
+  generatedAt?: string | null,
+): string {
+  const stamp = (generatedAt ?? new Date().toISOString())
+    .slice(0, 19)
+    .replace(/[:T]/g, "-")
+    .replace(/[^0-9A-Za-z._-]/g, "");
+  return `grok-app-doctor-findings-${stamp || "export"}`;
+}
+
+export function doctorFindingsExportJsonFilename(
+  generatedAt?: string | null,
+): string {
+  return `${doctorFindingsExportBasename(generatedAt)}.json`;
+}
+
+export function doctorFindingsExportTextFilename(
+  generatedAt?: string | null,
+): string {
+  return `${doctorFindingsExportBasename(generatedAt)}.txt`;
+}
+
 /** Detail payload for GlassModal (already redacted strings). */
 export type DoctorFindingDetail = {
   row: DoctorFindingRow;

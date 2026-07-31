@@ -78,4 +78,45 @@ describe("Remote IM UI chrome guard", () => {
     expect(src).toContain("export function RimSecretField");
     expect(src).toContain('type={revealed ? "text" : "password"}');
   });
+
+  it("ChannelPanel Discord guide + intent callout without window.confirm", () => {
+    const src = readFileSync(join(ROOT, "RemoteImChannelPanel.tsx"), "utf8");
+    expect(src).toContain("data-discord-guide");
+    expect(src).toContain("data-discord-intent");
+    expect(src).toContain('channelId === "discord"');
+    expect(src).not.toMatch(/window\.confirm/);
+  });
+
+  it("ChannelPanel QQ OneBot guide + risk callout without window.confirm", () => {
+    const src = readFileSync(join(ROOT, "RemoteImChannelPanel.tsx"), "utf8");
+    expect(src).toContain("data-qq-guide");
+    expect(src).toContain("data-qq-risk");
+    expect(src).toContain('channelId === "qq"');
+    expect(src).toContain("validateQqConfig");
+    expect(src).not.toMatch(/window\.confirm/);
+  });
+
+  it("ChannelPanel Matrix guide without window.confirm", () => {
+    const src = readFileSync(join(ROOT, "RemoteImChannelPanel.tsx"), "utf8");
+    expect(src).toContain("data-matrix-guide");
+    expect(src).toContain('channelId === "matrix"');
+    expect(src).toContain("accessTokenValue");
+    expect(src).not.toMatch(/window\.confirm/);
+  });
+
+  it("ChannelPanel Weibo guide + paste-first bind without window.confirm", () => {
+    const src = readFileSync(join(ROOT, "RemoteImChannelPanel.tsx"), "utf8");
+    expect(src).toContain("data-weibo-guide");
+    expect(src).toContain("validateWeiboConfig");
+    expect(src).toContain('channelId === "weibo"');
+    expect(src).not.toMatch(/window\.confirm/);
+  });
+
+  it("ChannelPanel QQ official bot guide + intents callout without window.confirm", () => {
+    const src = readFileSync(join(ROOT, "RemoteImChannelPanel.tsx"), "utf8");
+    expect(src).toContain("data-qqbot-guide");
+    expect(src).toContain("data-qqbot-intents");
+    expect(src).toContain('channelId === "qqbot"');
+    expect(src).not.toMatch(/window\.confirm/);
+  });
 });

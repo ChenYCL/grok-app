@@ -546,6 +546,8 @@ export type {
   GitPrHubViewResult,
   GitPrCheckEntry,
   GitPrChecksResult,
+  GitPrCommentEntry,
+  GitPrCommentsResult,
   PrChecksSummary,
   PrChecksOverall,
 } from "./gitPrHub";
@@ -573,6 +575,17 @@ export async function gitPrView(projectPath: string, number: number) {
 /** List CI checks for a PR via `gh pr checks <n> --json`. Soft-fails when gh/git missing. */
 export async function gitPrChecks(projectPath: string, number: number) {
   return invoke<import("./gitPrHub").GitPrChecksResult>("git_pr_checks", {
+    projectPath,
+    number,
+  });
+}
+
+/**
+ * Recent conversation comments + reviews for a PR via
+ * `gh pr view <n> --json comments,reviews,url,number`. Soft-fails when gh/git missing.
+ */
+export async function gitPrComments(projectPath: string, number: number) {
+  return invoke<import("./gitPrHub").GitPrCommentsResult>("git_pr_comments", {
     projectPath,
     number,
   });
@@ -926,6 +939,54 @@ export async function fsListDir(projectPath: string, relative = "") {
   return invoke<FsEntry[]>("fs_list_dir", {
     projectPath,
     relative: relative || null,
+  });
+}
+
+/**
+ * Project-scoped keyword file/name + content search.
+ * Host uses `rg` when available, else walk with caps. Soft-fails when path
+ * missing / not a dir / untrusted. `searchKind` is always `"keyword"` —
+ * never invents embeddings or CLI code-graph results.
+ */
+export type CodebaseSearchHit = {
+  path: string;
+  name: string;
+  relativePath: string;
+  size: number;
+  mtimeMs: number;
+  snippet: string;
+  contentMatch: boolean;
+  line?: number | null;
+};
+
+export type CodebaseSearchResult = {
+  hits: CodebaseSearchHit[];
+  projectPath: string;
+  projectPathExists: boolean;
+  projectIsDir: boolean;
+  query: string;
+  /** name | content | all */
+  mode: string;
+  limit: number;
+  truncated: boolean;
+  /** rg | walk | none */
+  engine: string;
+  /** Always `"keyword"`. */
+  searchKind: string;
+  softFail?: string | null;
+};
+
+export async function projectCodebaseSearch(opts: {
+  projectPath: string;
+  query: string;
+  mode?: "name" | "content" | "all" | string | null;
+  limit?: number | null;
+}) {
+  return invoke<CodebaseSearchResult>("project_codebase_search", {
+    projectPath: opts.projectPath,
+    query: opts.query,
+    mode: opts.mode ?? null,
+    limit: opts.limit ?? null,
   });
 }
 
@@ -1675,6 +1736,11 @@ export interface AppSettings {
   allowUnverifiedCliInstall?: boolean;
   /** Last App-managed CLI install checksum result (`true` = verified). */
   lastCliChecksumVerified?: boolean | null;
+  /**
+   * Tool audit ledger retention days: `7` | `30` | `90` | `0` (unlimited).
+   * Applied on write/rotate and explicit prune. Default 0.
+   */
+  auditLedgerRetentionDays?: number;
 }
 
 export interface ReasoningEffort {
@@ -2015,6 +2081,35 @@ export type AuditLedgerHostEntry = {
   summary?: string | null;
 };
 
+/** Host process-budget occupancy (live / background / parked). Soft-fail → null. */
+export type ProcessBudgetHostSnapshot = {
+  live?: number;
+  background?: number;
+  parked?: number;
+  totalWarm?: number;
+  busy?: number;
+  maxConcurrent?: number;
+  idleMinutes?: number;
+  liveSessionIds?: string[];
+  backgroundSessionIds?: string[];
+  parkedSessionIds?: string[];
+  available?: boolean;
+};
+
+/**
+ * Live agent process occupancy vs `maxConcurrentAgents`.
+ * Soft-fail: returns null when not in Tauri or the command errors
+ * (UI maps null → unavailable empty snapshot).
+ */
+export async function processBudgetSnapshot(): Promise<ProcessBudgetHostSnapshot | null> {
+  if (!isTauri()) return null;
+  try {
+    return await invoke<ProcessBudgetHostSnapshot>("process_budget_snapshot");
+  } catch {
+    return null;
+  }
+}
+
 /** Recent cross-session tool/permission audit rows (newest first). Soft-fail → []. */
 export async function auditLedgerList(limit?: number | null) {
   if (!isTauri()) return [] as AuditLedgerHostEntry[];
@@ -2032,9 +2127,26 @@ export async function auditLedgerClear() {
   return invoke<{ ok: boolean }>("audit_ledger_clear");
 }
 
-/** Export redacted JSONL via native save dialog. */
-export async function auditLedgerExport() {
-  return invoke<SupportBundleResult>("audit_ledger_export");
+/** Prune ledger by retention days (`null` → current AppSettings). Soft-fail. */
+export async function auditLedgerPrune(retentionDays?: number | null) {
+  return invoke<{ ok: boolean; dropped: number }>("audit_ledger_prune", {
+    retentionDays: retentionDays ?? null,
+  });
+}
+
+/** Export filter for host redacted JSONL (camelCase). */
+export type AuditLedgerExportFilterArg = {
+  event?: string | null;
+  sessionId?: string | null;
+  fromTs?: string | null;
+  toTs?: string | null;
+};
+
+/** Export redacted JSONL via native save dialog (optional event/session/range). */
+export async function auditLedgerExport(filter?: AuditLedgerExportFilterArg | null) {
+  return invoke<SupportBundleResult>("audit_ledger_export", {
+    filter: filter ?? null,
+  });
 }
 
 /**
@@ -2622,8 +2734,8 @@ export async function appForceQuit() {
 
 /**
  * Open (or focus) a secondary webview window for a chat (`#/session/<id>`).
- * Desktop Tauri only. Secondary is live-capable (send/stop via shared Host);
- * passive warm-connect on open is still skipped in the frontend.
+ * Desktop Tauri only. Secondary is live-capable (send/stop/warm-connect via
+ * the shared Host session-keyed agent pool).
  */
 export async function openSessionWindow(
   sessionId: string,
@@ -2640,7 +2752,7 @@ export async function openSessionWindow(
 
 /**
  * Focus (and show/unminimize) the primary workbench window.
- * Desktop Tauri only — used from secondary session windows (MULTI-WIN-LITE).
+ * Desktop Tauri only — used from secondary session windows.
  */
 export async function focusMainWindow(): Promise<void> {
   if (!isDesktopHost()) {
@@ -3298,6 +3410,41 @@ export async function workflowsList(projectPath?: string | null) {
   });
 }
 
+/** Soft-fail headless workflow invoke result from host `workflows_run`. */
+export type WorkflowRunResultDto = {
+  ok: boolean;
+  reason: string;
+  workflowName: string;
+  mode: string;
+  log?: string | null;
+  truncated?: boolean;
+  durationMs?: number;
+  cliPath?: string | null;
+  cliVersion?: string | null;
+  /** Always `headless_workflow_tool` — no top-level `grok workflow` subcommand. */
+  invokePath?: string;
+};
+
+/**
+ * Soft-fail headless run of a registered workflow by name.
+ *
+ * Host spawns short `grok -p` that must call the agent `workflow` tool
+ * (no CLI `workflow` subcommand). Default mode `validate` = validate_only smoke.
+ */
+export async function workflowsRun(opts: {
+  name: string;
+  projectPath?: string | null;
+  mode?: "validate" | "launch" | string | null;
+  timeoutMs?: number | null;
+}) {
+  return invoke<WorkflowRunResultDto>("workflows_run", {
+    name: opts.name,
+    projectPath: opts.projectPath ?? null,
+    mode: opts.mode ?? "validate",
+    timeoutMs: opts.timeoutMs ?? null,
+  });
+}
+
 export type AgentsScaffoldResult = {
   name: string;
   path: string;
@@ -3549,13 +3696,20 @@ export type MemorySearchResult = {
   query: string;
   limit: number;
   truncated: boolean;
+  /**
+   * App search path honesty: `keyword` | `hybrid_unavailable` | `hybrid`.
+   * Always keyword-family today (no host-invocable hybrid CLI as of 0.2.117).
+   * Soft-fail missing → treat as keyword.
+   */
+  searchKind?: string;
 };
 
 /**
  * Search path-scoped memory files (name + body) under agent GROK_HOME/memory.
  * Host enforces read/hit caps and redacts snippets.
  * Always keyword / file-body scan — never invents embeddings client-side.
- * CLI hybrid vector search is configured via memoryEmbedConfig* (`[memory.embedding]`).
+ * When embedding.model is set but no host hybrid CLI exists, `searchKind` is
+ * `hybrid_unavailable`. Agent-tool hybrid is configured via memoryEmbedConfig*.
  */
 export async function memorySearch(opts: {
   query: string;
@@ -3773,6 +3927,15 @@ export type ManagedSetupStatusResult = {
   managedSettingsActive?: boolean | null;
   managedSettingsExists?: boolean | null;
   managedSettingsPath?: string | null;
+  /**
+   * Explicit CLI/inspect/doctor signature verification when reported.
+   * Null/undefined = not reported (App never invents verified).
+   */
+  signatureVerified?: boolean | null;
+  /** `inspect` | `doctor` when verification claim is present. */
+  signatureVerifySource?: string | null;
+  /** True when status is path/inspect presence only (App did not crypto-verify). */
+  presenceOnly?: boolean;
   reason?: string | null;
 };
 
@@ -4004,6 +4167,13 @@ export interface VoiceSessionState {
   thinking?: boolean;
   /** Host: in-flight Build tool name while voice → agent loop runs. */
   activeTool?: string | null;
+  /**
+   * Host tool-loop status token:
+   * tool_running | permission_pending | completed | soft_fail | error.
+   */
+  toolStatus?: string | null;
+  /** When true (default), ending voice does not stop delegated Build agents. */
+  keepAgentsOnEnd?: boolean;
 }
 
 export async function voiceState(): Promise<VoiceSessionState> {
@@ -4444,4 +4614,87 @@ export async function wallpaperLibraryList(
   return invoke<WallpaperLibraryEntry[]>("wallpaper_library_list", {
     limit: limit ?? null,
   });
+}
+
+// ── X Evidence Rail (search → local evidence store → quote pack) ────────────
+// Design: docs/features/x-search.md — every X search result becomes a local
+// evidence row with a stable id; later turns list / re-read / quote it.
+
+export interface XEvidenceItem {
+  evidenceId: string;
+  statusId?: string;
+  url?: string;
+  author?: string;
+  text?: string;
+  createdAt?: string;
+  likes?: number;
+  query?: string;
+  sessionTag?: string;
+  source: string;
+  verified: boolean;
+  fetchedAtMs: number;
+}
+
+export interface XSearchEnvelope {
+  ok: boolean;
+  errorCode?: string;
+  message?: string;
+  query: string;
+  evidence: XEvidenceItem[];
+  newCount: number;
+  unverifiedCount: number;
+}
+
+export interface XEvidenceFilter {
+  sessionTag?: string;
+  queryContains?: string;
+  author?: string;
+  limit?: number;
+}
+
+export interface XQuotePack {
+  markdown: string;
+  path?: string;
+  count: number;
+}
+
+export async function xEvidenceSearch(
+  query: string,
+  limit?: number,
+  sessionTag?: string,
+): Promise<XSearchEnvelope> {
+  return invoke<XSearchEnvelope>("x_evidence_search", {
+    query,
+    limit: limit ?? null,
+    sessionTag: sessionTag ?? null,
+  });
+}
+
+export async function xEvidenceList(
+  filter?: XEvidenceFilter,
+): Promise<XEvidenceItem[]> {
+  return invoke<XEvidenceItem[]>("x_evidence_list", {
+    filter: filter ?? null,
+  });
+}
+
+export async function xEvidenceGet(ids: string[]): Promise<XEvidenceItem[]> {
+  return invoke<XEvidenceItem[]>("x_evidence_get", { ids });
+}
+
+export async function xQuotePack(
+  ids: string[],
+  title?: string,
+): Promise<XQuotePack> {
+  return invoke<XQuotePack>("x_quote_pack", { ids, title: title ?? null });
+}
+
+export interface XEvidenceStats {
+  total: number;
+  todayNew: number;
+  weekPacks: number;
+}
+
+export async function xEvidenceStats(): Promise<XEvidenceStats> {
+  return invoke<XEvidenceStats>("x_evidence_stats");
 }

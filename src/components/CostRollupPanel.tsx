@@ -1,20 +1,31 @@
 /**
  * Cost rollup panel — known token usage by project/day or session/day.
  * Estimates only (never invoice-grade). Honest "unknown" when missing.
- * Optional plain-text export; clear uses in-app GlassModal (no window.confirm).
+ * Pro: project/session filter chips, contextual empty states, clear plan +
+ * GlassModal (no window.confirm), export soft-fail toast honesty.
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { GlassModal } from "@/components/GlassModal";
 import { createT, type Locale } from "@/i18n";
 import {
+  applyClearCostUsageSamplesPlan,
   buildCostRollupView,
-  clearCostUsageSamples,
   COST_USAGE_SAMPLES_CHANGE_EVENT,
+  costRollupExportOutcomeMessageKey,
+  dedupeUsageSamples,
+  filterCostUsageSamples,
   formatCostRollupExport,
   formatRollupEstimatedCost,
   formatRollupTokens,
+  hasActiveCostRollupScopeFilter,
+  listCostRollupProjectChips,
+  listCostRollupSessionChips,
   loadCostUsageSamples,
+  planClearCostUsageSamples,
+  resolveCostRollupEmptyState,
+  resolveCostRollupExportOutcome,
+  samplesFromLiveUsageMap,
   sinceDayDaysAgo,
   type CostRollupGroupBy,
   type CostRollupPrecision,
@@ -55,11 +66,14 @@ async function copyText(text: string): Promise<boolean> {
 function downloadText(filename: string, body: string) {
   const blob = new Blob([body], { type: "text/plain;charset=utf-8" });
   const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = filename;
-  a.click();
-  URL.revokeObjectURL(url);
+  try {
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    a.click();
+  } finally {
+    URL.revokeObjectURL(url);
+  }
 }
 
 export function CostRollupPanel({
@@ -79,6 +93,10 @@ export function CostRollupPanel({
   const [tick, setTick] = useState(0);
   const [groupBy, setGroupBy] = useState<CostRollupGroupBy>("project");
   const [days, setDays] = useState(daysProp);
+  /** Selected project chip id: `"all"` | `"noproject"` | project id. */
+  const [projectChip, setProjectChip] = useState("all");
+  /** Selected session chip id: `"all"` | session id. */
+  const [sessionChip, setSessionChip] = useState("all");
   const [confirmClear, setConfirmClear] = useState(false);
 
   useEffect(() => {
@@ -104,6 +122,83 @@ export function CostRollupPanel({
       window.removeEventListener(COST_USAGE_SAMPLES_CHANGE_EVENT, onChange);
   }, []);
 
+  const sinceDay = useMemo(() => sinceDayDaysAgo(days), [days]);
+
+  const scopeFilter = useMemo(() => {
+    const noProject = projectChip === "noproject";
+    const projectId =
+      !noProject && projectChip !== "all" ? projectChip : null;
+    const sessionId = sessionChip !== "all" ? sessionChip : null;
+    return {
+      noProject,
+      projectId,
+      sessionId,
+      hasScope: hasActiveCostRollupScopeFilter({
+        noProject,
+        projectId,
+        sessionId,
+      }),
+    };
+  }, [projectChip, sessionChip]);
+
+  /** Merged known samples before time/scope filters (ring + live + journal). */
+  const rawMerged = useMemo(() => {
+    void tick;
+    const fromLive = samplesFromLiveUsageMap(liveUsage, {
+      sessionMeta: sessions,
+      projectMeta: projects,
+    });
+    return dedupeUsageSamples([
+      ...samples,
+      ...fromLive,
+      ...journalSamples,
+    ]);
+  }, [samples, liveUsage, journalSamples, sessions, projects, tick]);
+
+  const windowSamples = useMemo(
+    () => filterCostUsageSamples(rawMerged, { sinceDay }),
+    [rawMerged, sinceDay],
+  );
+
+  const filteredSamples = useMemo(
+    () =>
+      filterCostUsageSamples(windowSamples, {
+        projectId: scopeFilter.projectId,
+        noProject: scopeFilter.noProject,
+        sessionId: scopeFilter.sessionId,
+      }),
+    [windowSamples, scopeFilter],
+  );
+
+  const projectChips = useMemo(
+    () => listCostRollupProjectChips(windowSamples, projects),
+    [windowSamples, projects],
+  );
+
+  const sessionChips = useMemo(
+    () => listCostRollupSessionChips(windowSamples, sessions, 24),
+    [windowSamples, sessions],
+  );
+
+  // Drop stale chip selections when data no longer contains them.
+  useEffect(() => {
+    if (
+      projectChip !== "all" &&
+      !projectChips.some((c) => c.id === projectChip)
+    ) {
+      setProjectChip("all");
+    }
+  }, [projectChips, projectChip]);
+
+  useEffect(() => {
+    if (
+      sessionChip !== "all" &&
+      !sessionChips.some((c) => c.id === sessionChip)
+    ) {
+      setSessionChip("all");
+    }
+  }, [sessionChips, sessionChip]);
+
   const view = useMemo(() => {
     void tick;
     return buildCostRollupView({
@@ -112,7 +207,10 @@ export function CostRollupPanel({
       journalSamples,
       sessions,
       projects,
-      sinceDay: sinceDayDaysAgo(days),
+      sinceDay,
+      projectId: scopeFilter.projectId,
+      noProject: scopeFilter.noProject,
+      sessionId: scopeFilter.sessionId,
       maxBuckets: groupBy === "session" ? 80 : 40,
       groupBy,
     });
@@ -122,10 +220,36 @@ export function CostRollupPanel({
     journalSamples,
     sessions,
     projects,
-    days,
+    sinceDay,
     tick,
     groupBy,
+    scopeFilter.projectId,
+    scopeFilter.noProject,
+    scopeFilter.sessionId,
   ]);
+
+  const emptyState = useMemo(
+    () =>
+      resolveCostRollupEmptyState({
+        viewEmpty: view.empty,
+        rawSampleCount: rawMerged.length,
+        windowSampleCount: windowSamples.length,
+        filteredSampleCount: filteredSamples.length,
+        hasScopeFilter: scopeFilter.hasScope,
+      }),
+    [
+      view.empty,
+      rawMerged.length,
+      windowSamples.length,
+      filteredSamples.length,
+      scopeFilter.hasScope,
+    ],
+  );
+
+  const clearPlan = useMemo(
+    () => planClearCostUsageSamples(samples),
+    [samples],
+  );
 
   const exportLabels = useMemo(
     () => ({
@@ -152,24 +276,47 @@ export function CostRollupPanel({
     [t],
   );
 
+  const onClearRequest = () => {
+    if (!clearPlan.confirmNeeded) {
+      applyClearCostUsageSamplesPlan(clearPlan);
+      refresh();
+      return;
+    }
+    setConfirmClear(true);
+  };
+
   const onClearConfirm = () => {
-    clearCostUsageSamples();
+    applyClearCostUsageSamplesPlan(clearPlan);
     setConfirmClear(false);
+    setProjectChip("all");
+    setSessionChip("all");
     refresh();
+    onToast?.(
+      t("costRollup.clearDone", { count: clearPlan.count }),
+      2000,
+    );
   };
 
   const onCopyExport = async () => {
-    // Fresh timestamp on copy.
     const text = formatCostRollupExport(view, {
       days,
       labels: exportLabels,
       generatedAt: new Date().toISOString(),
     });
-    const ok = await copyText(text);
-    onToast?.(
-      ok ? t("costRollup.exportCopied") : t("costRollup.exportCopyFailed"),
-      2000,
-    );
+    let copyOk = false;
+    let error: unknown;
+    try {
+      copyOk = await copyText(text);
+    } catch (e) {
+      error = e;
+    }
+    const outcome = resolveCostRollupExportOutcome({
+      channel: "copy",
+      empty: view.empty,
+      copyOk,
+      error,
+    });
+    onToast?.(t(costRollupExportOutcomeMessageKey(outcome)), 2000);
   };
 
   const onDownloadExport = () => {
@@ -178,9 +325,26 @@ export function CostRollupPanel({
       labels: exportLabels,
       generatedAt: new Date().toISOString(),
     });
-    const stamp = new Date().toISOString().slice(0, 10);
-    downloadText(`cost-rollup-${stamp}.txt`, text);
-    onToast?.(t("costRollup.exportDownloaded"), 2000);
+    let error: unknown;
+    if (!view.empty) {
+      try {
+        const stamp = new Date().toISOString().slice(0, 10);
+        downloadText(`cost-rollup-${stamp}.txt`, text);
+      } catch (e) {
+        error = e;
+      }
+    }
+    const outcome = resolveCostRollupExportOutcome({
+      channel: "download",
+      empty: view.empty,
+      error,
+    });
+    onToast?.(t(costRollupExportOutcomeMessageKey(outcome)), 2000);
+  };
+
+  const clearScopeFilters = () => {
+    setProjectChip("all");
+    setSessionChip("all");
   };
 
   const precisionBadge = (precision: CostRollupPrecision) => {
@@ -209,6 +373,17 @@ export function CostRollupPanel({
       ? "none"
       : view.precision,
   );
+
+  const projectChipLabel = (id: string, fallback: string) => {
+    if (id === "all") return t("costRollup.filterAllProjects");
+    if (id === "noproject") return t("costRollup.noProject");
+    return fallback;
+  };
+
+  const sessionChipLabel = (id: string, fallback: string) => {
+    if (id === "all") return t("costRollup.filterAllSessions");
+    return fallback;
+  };
 
   const body = (
     <div className="cost-rollup">
@@ -268,6 +443,72 @@ export function CostRollupPanel({
         ))}
       </div>
 
+      {projectChips.length > 1 ? (
+        <div
+          className="cost-rollup__filters"
+          role="group"
+          aria-label={t("costRollup.filterProjectAria")}
+        >
+          {projectChips.map((chip) => (
+            <button
+              key={chip.id}
+              type="button"
+              className={
+                "btn btn--ghost btn--sm" +
+                (projectChip === chip.id ? " is-active" : "")
+              }
+              aria-pressed={projectChip === chip.id}
+              onClick={() => setProjectChip(chip.id)}
+              title={`${projectChipLabel(chip.id, chip.label)} (${chip.count})`}
+            >
+              {projectChipLabel(chip.id, chip.label)}
+              {chip.id !== "all" ? (
+                <span className="cost-rollup__chip-count">{chip.count}</span>
+              ) : null}
+            </button>
+          ))}
+        </div>
+      ) : null}
+
+      {sessionChips.length > 1 ? (
+        <div
+          className="cost-rollup__filters"
+          role="group"
+          aria-label={t("costRollup.filterSessionAria")}
+        >
+          {sessionChips.map((chip) => (
+            <button
+              key={chip.id}
+              type="button"
+              className={
+                "btn btn--ghost btn--sm" +
+                (sessionChip === chip.id ? " is-active" : "")
+              }
+              aria-pressed={sessionChip === chip.id}
+              onClick={() => setSessionChip(chip.id)}
+              title={`${sessionChipLabel(chip.id, chip.label)} (${chip.count})`}
+            >
+              {sessionChipLabel(chip.id, chip.label)}
+              {chip.id !== "all" ? (
+                <span className="cost-rollup__chip-count">{chip.count}</span>
+              ) : null}
+            </button>
+          ))}
+        </div>
+      ) : null}
+
+      {scopeFilter.hasScope ? (
+        <div className="cost-rollup__filter-clear">
+          <button
+            type="button"
+            className="btn btn--ghost btn--sm"
+            onClick={clearScopeFilters}
+          >
+            {t("costRollup.clearFilters")}
+          </button>
+        </div>
+      ) : null}
+
       <div className="cost-rollup__toolbar">
         <button
           type="button"
@@ -280,7 +521,6 @@ export function CostRollupPanel({
           type="button"
           className="btn btn--ghost btn--sm"
           onClick={() => void onCopyExport()}
-          disabled={view.empty}
           title={t("costRollup.exportCopy")}
         >
           {t("costRollup.exportCopy")}
@@ -289,7 +529,6 @@ export function CostRollupPanel({
           type="button"
           className="btn btn--ghost btn--sm"
           onClick={onDownloadExport}
-          disabled={view.empty}
           title={t("costRollup.exportDownload")}
         >
           {t("costRollup.exportDownload")}
@@ -297,14 +536,31 @@ export function CostRollupPanel({
         <button
           type="button"
           className="btn btn--ghost btn--sm"
-          onClick={() => setConfirmClear(true)}
-          disabled={samples.length === 0}
+          onClick={onClearRequest}
+          disabled={clearPlan.count === 0}
         >
           {t("costRollup.clear")}
         </button>
       </div>
 
-      {view.empty ? (
+      {view.empty && emptyState ? (
+        <div className="cost-rollup__empty" role="status">
+          <div className="cost-rollup__empty-title">
+            {t(emptyState.titleKey)}
+          </div>
+          <div className="settings-row__desc">{t(emptyState.bodyKey)}</div>
+          {emptyState.kind === "no_matches" ? (
+            <button
+              type="button"
+              className="btn btn--ghost btn--sm"
+              style={{ marginTop: 8 }}
+              onClick={clearScopeFilters}
+            >
+              {t("costRollup.clearFilters")}
+            </button>
+          ) : null}
+        </div>
+      ) : view.empty ? (
         <div className="cost-rollup__empty" role="status">
           <div className="cost-rollup__empty-title">
             {t("costRollup.emptyTitle")}
@@ -475,7 +731,7 @@ export function CostRollupPanel({
         }
       >
         <p style={{ margin: 0, whiteSpace: "pre-wrap" }}>
-          {t("costRollup.clearConfirmBody")}
+          {t("costRollup.clearConfirmBody", { count: clearPlan.count })}
         </p>
       </GlassModal>
     </div>

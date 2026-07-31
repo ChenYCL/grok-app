@@ -456,6 +456,12 @@ export function RemoteImOverview({
               <code>/status</code> — {t("settings.remoteIm.cmd.status")}
             </li>
             <li>
+              <code>/context</code> — {t("settings.remoteIm.cmd.context")}
+            </li>
+            <li>
+              <code>/compact [note]</code> — {t("settings.remoteIm.cmd.compact")}
+            </li>
+            <li>
               <code>/account</code> · <code>/quota</code> —{" "}
               {t("settings.remoteIm.cmd.account")}
             </li>

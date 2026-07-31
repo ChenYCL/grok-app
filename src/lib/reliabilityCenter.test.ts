@@ -1,22 +1,27 @@
 import { describe, expect, it } from "vitest";
 import {
+  applyClearStallHistoryPlan,
   assembleReliabilityCenter,
   buildReliabilityCenter,
+  buildStallHistoryExport,
   clearStallHistory,
   buildStallTimelineSnapshot,
   collectLiveStallSignals,
   collectReliabilityBusySessions,
   filterStallHistory,
+  hasActiveStallHistoryFilters,
   loadStallHistory,
   mergeErrorEntries,
   mergeStallSignals,
   parseStallHistory,
   parseStallHistoryEntry,
+  planClearStallHistory,
   prependReliabilityRing,
   recordStallHistory,
   recordStallHistoryFromSignal,
   reliabilityErrorFromDeck,
   reliabilityStallFromEvent,
+  serializeStallHistoryExport,
   STALL_HISTORY_MAX,
   serializeStallTimelineSnapshot,
   STALL_TIMELINE_FIELD_MAX,
@@ -451,7 +456,7 @@ describe("stall history (localStorage ring)", () => {
         title: "Terminal",
         kind: "terminal",
         stallSeconds: null,
-        reason: "stall",
+        reason: "stream_idle",
         at: 1,
       },
     ];
@@ -464,6 +469,9 @@ describe("stall history (localStorage ring)", () => {
       filterStallHistory(rows, { query: "S-UI" }).map((e) => e.id),
     ).toEqual(["2"]);
     expect(
+      filterStallHistory(rows, { query: "stream_idle" }).map((e) => e.id),
+    ).toEqual(["3"]);
+    expect(
       filterStallHistory(rows, { kind: "hard_end" }).map((e) => e.kind),
     ).toEqual(["hard_end"]);
     expect(
@@ -473,9 +481,61 @@ describe("stall history (localStorage ring)", () => {
     ).toEqual(["2"]);
     expect(filterStallHistory(rows, { query: "xyz" })).toEqual([]);
     expect(filterStallHistory(rows, { kind: "all" })).toHaveLength(3);
+    expect(hasActiveStallHistoryFilters({ query: "  " })).toBe(false);
+    expect(hasActiveStallHistoryFilters({ kind: "all" })).toBe(false);
+    expect(hasActiveStallHistoryFilters({ kind: "active" })).toBe(true);
+    expect(hasActiveStallHistoryFilters({ query: "oauth" })).toBe(true);
   });
 
-  it("clearStallHistory wipes storage", () => {
+  it("planClearStallHistory is pure and omits secrets from logMeta", () => {
+    const rows: StallHistoryEntry[] = [
+      {
+        id: "1",
+        sessionId: "s-a",
+        title: "secret-title-sk-abc1234567890",
+        kind: "hard_end",
+        stallSeconds: 10,
+        reason: "stall",
+        at: 2,
+      },
+      {
+        id: "2",
+        sessionId: "s-b",
+        title: "Other",
+        kind: "active",
+        stallSeconds: 5,
+        reason: "stall",
+        at: 1,
+      },
+      {
+        id: "3",
+        sessionId: "s-a",
+        title: "Again",
+        kind: "hard_end",
+        stallSeconds: null,
+        reason: "stall",
+        at: 0,
+      },
+    ];
+    const plan = planClearStallHistory(rows);
+    expect(plan.ok).toBe(true);
+    expect(plan.count).toBe(3);
+    expect(plan.next).toEqual([]);
+    expect(plan.sessionIds).toEqual(["s-a", "s-b"]);
+    expect(plan.kindCounts).toEqual({ hard_end: 2, active: 1 });
+    expect(plan.logMeta).toEqual({ clearedCount: 3 });
+    expect(JSON.stringify(plan.logMeta)).not.toContain("secret");
+    expect(JSON.stringify(plan.logMeta)).not.toContain("sk-");
+    // Pure: input unchanged.
+    expect(rows).toHaveLength(3);
+
+    const empty = planClearStallHistory([]);
+    expect(empty.count).toBe(0);
+    expect(empty.logMeta).toBeNull();
+    expect(empty.sessionIds).toEqual([]);
+  });
+
+  it("clearStallHistory / applyClearStallHistoryPlan wipe storage", () => {
     const storage = memStorage();
     recordStallHistory(
       { kind: "hard_end", sessionId: "a", at: 1 },
@@ -485,6 +545,87 @@ describe("stall history (localStorage ring)", () => {
     const next = clearStallHistory(storage);
     expect(next).toEqual([]);
     expect(loadStallHistory(storage)).toEqual([]);
+
+    recordStallHistory(
+      { kind: "active", sessionId: "b", at: 2 },
+      storage,
+    );
+    const plan = planClearStallHistory(loadStallHistory(storage));
+    expect(plan.count).toBe(1);
+    const applied = applyClearStallHistoryPlan(plan, storage);
+    expect(applied).toEqual([]);
+    expect(loadStallHistory(storage)).toEqual([]);
+  });
+
+  it("buildStallHistoryExport redacts secrets and keeps known fields", () => {
+    const rows: StallHistoryEntry[] = [
+      {
+        id: "1",
+        sessionId: "s1",
+        title: "Fix with Bearer sk-abcdefghijklmnopqrstuv",
+        kind: "hard_end",
+        stallSeconds: 90,
+        reason: "token sk-abcdefghijklmnopqrstuv leaked",
+        at: 1000,
+      },
+      {
+        id: "2",
+        sessionId: "s2",
+        title: "Soft quiet",
+        kind: "active",
+        stallSeconds: 45,
+        reason: "stall",
+        at: 2000,
+      },
+    ];
+    const snap = buildStallHistoryExport(rows, {
+      generatedAt: "2026-07-31T00:00:00.000Z",
+      query: "quiet",
+      kind: "active",
+    });
+    expect(snap.kind).toBe("stall_history");
+    expect(snap.source).toBe("stall_timeline");
+    expect(snap.generatedAt).toBe("2026-07-31T00:00:00.000Z");
+    expect(snap.count).toBe(2);
+    expect(snap.filter).toEqual({ query: "quiet", kind: "active" });
+    expect(snap.signals[0]!.title).toContain("[REDACTED]");
+    expect(snap.signals[0]!.reason).toContain("[REDACTED]");
+    expect(snap.signals[0]!.title).not.toContain("sk-");
+    expect(snap.signals[0]!.reason).not.toContain("sk-");
+    for (const row of snap.signals) {
+      expect(Object.keys(row).sort()).toEqual(
+        [
+          "at",
+          "id",
+          "kind",
+          "reason",
+          "sessionId",
+          "stallSeconds",
+          "title",
+        ].sort(),
+      );
+    }
+    const json = serializeStallHistoryExport(snap);
+    expect(json).toContain('"kind": "stall_history"');
+    expect(json).not.toMatch(/sk-[A-Za-z0-9]{10,}/);
+    expect(json).not.toContain("Bearer sk-");
+  });
+
+  it("buildStallHistoryExport honors max and empty", () => {
+    expect(buildStallHistoryExport([], { max: 5 }).count).toBe(0);
+    const many = Array.from({ length: 6 }, (_, i) => ({
+      id: `h${i}`,
+      sessionId: `s${i}`,
+      title: `T${i}`,
+      kind: "hard_end" as const,
+      stallSeconds: i + 1,
+      reason: "stall",
+      at: i + 1,
+    }));
+    expect(buildStallHistoryExport(many, { max: 3 }).signals).toHaveLength(3);
+    expect(buildStallHistoryExport(many, { kind: "all" }).filter.kind).toBe(
+      "all",
+    );
   });
 
   it("never stores free-form secret-like extra fields", () => {
