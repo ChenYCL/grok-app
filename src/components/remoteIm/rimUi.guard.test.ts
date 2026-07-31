@@ -65,6 +65,22 @@ describe("Remote IM UI chrome guard", () => {
     expect(src).not.toMatch(/window\.prompt/);
   });
 
+  it("ChannelPanel soft-retires WPS without setup guide packs", () => {
+    const src = readFileSync(join(ROOT, "RemoteImChannelPanel.tsx"), "utf8");
+    expect(src).toContain("data-rim-retired-banner");
+    expect(src).toContain("isRetiredChannel");
+    expect(src).not.toMatch(/data-wps-guide/);
+    expect(src).not.toMatch(/wps\.guide/);
+    expect(src).not.toMatch(/window\.confirm/);
+  });
+
+  it("Layout hides retired channels from default sidebar filter", () => {
+    const src = readFileSync(join(ROOT, "RemoteImLayout.tsx"), "utf8");
+    expect(src).toContain("filterActiveChannels");
+    expect(src).toContain("includeRetiredWithInstances");
+    expect(src).toContain("isRetiredChannel");
+  });
+
   it("Overview has local event timeline without window.confirm", () => {
     const src = readFileSync(join(ROOT, "RemoteImOverview.tsx"), "utf8");
     expect(src).toContain("loadRimEventTimeline");

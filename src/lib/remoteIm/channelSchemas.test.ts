@@ -2,7 +2,10 @@ import { describe, expect, it } from "vitest";
 import {
   CHANNEL_SCHEMAS,
   REQUIRED_CHANNEL_IDS,
+  RETIRED_CHANNEL_IDS,
+  filterActiveChannels,
   getChannelSchema,
+  isRetiredChannel,
   parseIdSecretPair,
   showsPublicUrlCallout,
   validateBindFields,
@@ -15,6 +18,47 @@ describe("remoteIm channelSchemas", () => {
     for (const id of REQUIRED_CHANNEL_IDS) {
       expect(ids.has(id), `missing channel ${id}`).toBe(true);
     }
+  });
+
+  it("excludes retired WPS channels from REQUIRED_CHANNEL_IDS", () => {
+    for (const id of RETIRED_CHANNEL_IDS) {
+      expect(REQUIRED_CHANNEL_IDS).not.toContain(id);
+    }
+    expect(isRetiredChannel("wps-xiezuo")).toBe(true);
+    expect(isRetiredChannel("wps-agentspace")).toBe(true);
+    expect(isRetiredChannel("feishu")).toBe(false);
+    expect(isRetiredChannel(getChannelSchema("wps-xiezuo"))).toBe(true);
+    expect(isRetiredChannel(null)).toBe(false);
+  });
+
+  it("marks WPS schemas retired/unsupported and not bindable", () => {
+    for (const id of RETIRED_CHANNEL_IDS) {
+      const s = getChannelSchema(id)!;
+      expect(s.retired).toBe(true);
+      expect(s.unsupported).toBe(true);
+      expect(s.implemented).toBe(false);
+      expect(validateBindFields(s, { app_id: "x", app_secret: "y" }).ok).toBe(
+        false,
+      );
+      expect(validateBindFields(s, { app_id: "x", app_secret: "y" }).missing).toContain(
+        "_retired",
+      );
+    }
+  });
+
+  it("filterActiveChannels hides retired unless legacy instances exist", () => {
+    const active = filterActiveChannels();
+    expect(active.some((c) => c.id === "wps-xiezuo")).toBe(false);
+    expect(active.some((c) => c.id === "wps-agentspace")).toBe(false);
+    expect(active.some((c) => c.id === "feishu")).toBe(true);
+    expect(active.every((c) => !isRetiredChannel(c))).toBe(true);
+
+    const withLegacy = filterActiveChannels(CHANNEL_SCHEMAS, {
+      includeRetiredWithInstances: true,
+      instances: [{ channel: "wps-xiezuo" }],
+    });
+    expect(withLegacy.some((c) => c.id === "wps-xiezuo")).toBe(true);
+    expect(withLegacy.some((c) => c.id === "wps-agentspace")).toBe(false);
   });
 
   it("orders domestic then overseas then other groups", () => {
