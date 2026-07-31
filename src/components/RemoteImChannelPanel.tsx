@@ -30,6 +30,7 @@ import {
   showsPublicUrlCallout,
   toggleSecretReveal,
   validateBindFields,
+  validateTelegramConfig,
 } from "@/lib/remoteIm";
 import type { TestConnectionResult } from "@/lib/remoteIm/bridgeClient";
 import {
@@ -205,6 +206,36 @@ export function RemoteImChannelPanel({
           }),
         );
         return false;
+      }
+
+      // Telegram: honest format / proxy soft-fail before write (pure, no I/O)
+      if (channelId === "telegram") {
+        const tok =
+          nextSecrets.token?.trim() ||
+          nextSecrets.bot_token?.trim() ||
+          "";
+        const tg = validateTelegramConfig({
+          options: nextValues,
+          secretKeysFilled: filled,
+          hasCredentials: instance.hasCredentials,
+          tokenValue: tok || null,
+        });
+        if (!tg.ok) {
+          if (tg.softStatus === "invalid_token_format") {
+            setFormError(t("settings.remoteIm.telegram.err.tokenFormat"));
+            return false;
+          }
+          if (tg.softStatus === "invalid_proxy") {
+            setFormError(t("settings.remoteIm.telegram.err.proxy"));
+            return false;
+          }
+          setFormError(
+            t("settings.remoteIm.err.missingFields", {
+              fields: tg.missing.join(", "),
+            }),
+          );
+          return false;
+        }
       }
 
       const scope: ProjectScope =
@@ -507,6 +538,8 @@ export function RemoteImChannelPanel({
         .filter(([, v]) => v.trim().length > 0)
         .map(([k]) => k),
     );
+    const tokenValue =
+      secrets.token?.trim() || secrets.bot_token?.trim() || null;
     return classifyChannelHealth({
       instance,
       bridgeRunning,
@@ -515,6 +548,9 @@ export function RemoteImChannelPanel({
       // Live form options (e.g. WeCom connect_mode) for honest soft status
       // Live form options for honest soft status (e.g. cleared client_id)
       draftOptions: values,
+      // Live form options (e.g. Telegram proxy) for honest soft status
+      draftOptions: values,
+      tokenValue,
     });
   }, [instance, bridgeRunning, bridgeLinked, secrets, values]);
 
@@ -839,6 +875,18 @@ export function RemoteImChannelPanel({
           </ol>
           <p className="settings-row__hint">
             {t("settings.remoteIm.dingtalk.guide.softFail")}
+      {channelId === "telegram" ? (
+        <div className="rim-callout" data-telegram-guide="1">
+          <div className="rim-callout__title">
+            {t("settings.remoteIm.telegram.guide.title")}
+          </div>
+          <ol className="rim-guide-steps">
+            <li>{t("settings.remoteIm.telegram.guide.step1")}</li>
+            <li>{t("settings.remoteIm.telegram.guide.step2")}</li>
+            <li>{t("settings.remoteIm.telegram.guide.step3")}</li>
+          </ol>
+          <p className="settings-row__hint">
+            {t("settings.remoteIm.telegram.guide.softFail")}
           </p>
         </div>
       ) : null}

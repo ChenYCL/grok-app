@@ -303,14 +303,85 @@ async fn test_telegram(
     secrets: &HashMap<String, String>,
 ) -> Result<TestConnectionDto, String> {
     let token = cred_get(secrets, &["token", "bot_token"]);
+/// BotFather-shaped token: digits `:` base64-ish body (optional leading `bot`).
+fn is_telegram_bot_token_format(raw: &str) -> bool {
+    let t = raw.trim();
+    if t.is_empty() {
+        return false;
+    }
+    let body = t
+        .strip_prefix("bot")
+        .or_else(|| t.strip_prefix("Bot"))
+        .unwrap_or(t);
+    let mut parts = body.splitn(2, ':');
+    let Some(id) = parts.next() else {
+        return false;
+    };
+    let Some(secret) = parts.next() else {
+        return false;
+    };
+    id.len() >= 5
+        && id.chars().all(|c| c.is_ascii_digit())
+        && secret.len() >= 20
+        && secret
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
+}
+
+fn is_telegram_proxy_url(raw: &str) -> bool {
+    let t = raw.trim();
+    if t.is_empty() {
+        return true;
+    }
+    let lower = t.to_ascii_lowercase();
+    (lower.starts_with("http://")
+        || lower.starts_with("https://")
+        || lower.starts_with("socks5://")
+        || lower.starts_with("socks5h://"))
+        && t.len() > 10
+}
+
+/// Soft pre-checks for Telegram (shape only). Live getMe is separate.
+fn telegram_credential_posture(creds: &HashMap<String, String>) -> Option<TestConnectionDto> {
+    let token = cred_get(creds, &["token", "bot_token"]);
     if token.is_empty() {
-        return Ok(TestConnectionDto {
+        return Some(TestConnectionDto {
             ok: false,
-            message: "missing_token".into(),
+            message: "missing_telegram_token".into(),
             mock: false,
         });
     }
-    let client = reqwest::Client::new();
+    if !is_telegram_bot_token_format(token) {
+        return Some(TestConnectionDto {
+            ok: false,
+            message: "invalid_telegram_token_format".into(),
+            mock: false,
+        });
+    }
+    let proxy = cred_get(creds, &["proxy"]);
+    if !proxy.is_empty() && !is_telegram_proxy_url(proxy) {
+        return Some(TestConnectionDto {
+            ok: false,
+            message: "invalid_telegram_proxy".into(),
+            mock: false,
+        });
+    }
+    None
+}
+
+async fn test_telegram(
+    secrets: &HashMap<String, String>,
+) -> Result<TestConnectionDto, String> {
+    if let Some(soft) = telegram_credential_posture(secrets) {
+        return Ok(soft);
+    }
+    let token = cred_get(secrets, &["token", "bot_token"]);
+    // Honor app-level proxy; channel proxy is options-only and may not apply here.
+    // Soft-fail: network errors report honestly (never claim long-poll is live without getMe).
+    let client = crate::proxy::apply_to_reqwest(reqwest::Client::builder())
+        .timeout(std::time::Duration::from_secs(20))
+        .build()
+        .map_err(|e| e.to_string())?;
     let url = format!("https://api.telegram.org/bot{token}/getMe");
     match client.get(&url).send().await {
         Ok(res) => {
@@ -319,11 +390,13 @@ async fn test_telegram(
             Ok(TestConnectionDto {
                 ok,
                 message: if ok {
-                    v.get("result")
+                    // Live getMe only — username for UI; not a claim about getUpdates
+                    let user = v
+                        .get("result")
                         .and_then(|r| r.get("username"))
                         .and_then(|u| u.as_str())
-                        .unwrap_or("ok")
-                        .to_string()
+                        .unwrap_or("ok");
+                    format!("telegram_getMe_ok:{user}")
                 } else {
                     v.get("description")
                         .and_then(|d| d.as_str())
@@ -333,11 +406,20 @@ async fn test_telegram(
                 mock: false,
             })
         }
-        Err(e) => Ok(TestConnectionDto {
-            ok: false,
-            message: e.to_string(),
-            mock: false,
-        }),
+        Err(e) => {
+            let msg = e.to_string();
+            // Soft-fail codes without leaking token
+            let soft = if msg.to_ascii_lowercase().contains("proxy") {
+                "telegram_proxy_or_network_error".to_string()
+            } else {
+                "telegram_network_error".to_string()
+            };
+            Ok(TestConnectionDto {
+                ok: false,
+                message: soft,
+                mock: false,
+            })
+        }
     }
 }
 
@@ -521,5 +603,45 @@ mod tests {
         let r = test_dingtalk(&c).unwrap();
         assert!(r.ok);
         assert_eq!(r.message, "dingtalk_stream_credentials_present");
+    fn telegram_token_format_soft_fail() {
+        assert!(!is_telegram_bot_token_format(""));
+        assert!(!is_telegram_bot_token_format("not-a-token"));
+        assert!(is_telegram_bot_token_format(
+            "123456789:AAHdqTcvCH1vGWJxfSeofSAs0K5PALDsaw"
+        ));
+        assert!(is_telegram_bot_token_format(
+            "bot123456789:AAHdqTcvCH1vGWJxfSeofSAs0K5PALDsaw"
+        ));
+
+        let mut c = HashMap::new();
+        let r = telegram_credential_posture(&c).unwrap();
+        assert!(!r.ok);
+        assert_eq!(r.message, "missing_telegram_token");
+
+        c.insert("token".into(), "bad".into());
+        let r2 = telegram_credential_posture(&c).unwrap();
+        assert!(!r2.ok);
+        assert_eq!(r2.message, "invalid_telegram_token_format");
+
+        c.insert(
+            "token".into(),
+            "123456789:AAHdqTcvCH1vGWJxfSeofSAs0K5PALDsaw".into(),
+        );
+        c.insert("proxy".into(), "not-a-url".into());
+        let r3 = telegram_credential_posture(&c).unwrap();
+        assert!(!r3.ok);
+        assert_eq!(r3.message, "invalid_telegram_proxy");
+
+        c.insert("proxy".into(), "socks5://127.0.0.1:1080".into());
+        assert!(telegram_credential_posture(&c).is_none());
+    }
+
+    #[test]
+    fn telegram_proxy_url_schemes() {
+        assert!(is_telegram_proxy_url(""));
+        assert!(is_telegram_proxy_url("http://127.0.0.1:7890"));
+        assert!(is_telegram_proxy_url("socks5://127.0.0.1:1080"));
+        assert!(!is_telegram_proxy_url("ftp://x"));
+        assert!(!is_telegram_proxy_url("garbage"));
     }
 }

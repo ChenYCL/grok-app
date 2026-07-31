@@ -25,6 +25,9 @@ import {
   dingtalkHealthHintKeys,
   validateDingtalkConfig,
 } from "./dingtalkConfig";
+  telegramHealthHintKeys,
+  validateTelegramConfig,
+} from "./telegramConfig";
 
 /** Health tone for badges / callouts (maps to RimBadge). */
 export type RimChannelHealthTone = "ok" | "warn" | "err" | "neutral";
@@ -90,6 +93,15 @@ export type ClassifyChannelHealthInput = {
    * Merged over instance.options for readiness / transport — never secrets.
    */
   draftOptions?: Record<string, unknown>;
+   * Live form options (e.g. proxy URL) merged over saved instance.options
+   * for honest soft status while editing.
+   */
+  draftOptions?: Record<string, unknown>;
+  /**
+   * When the form has a non-empty Telegram token, pass it for format checks
+   * only (never stored by health helpers).
+   */
+  tokenValue?: string | null;
 };
 
 const FEISHU_LIKE: RemoteChannelId[] = ["feishu", "lark"];
@@ -216,7 +228,11 @@ export function channelModeLabel(
   }
   if (TELEGRAM_LIKE.includes(channel)) {
     const proxy = String(options.proxy ?? "").trim();
-    return proxy ? "proxy=set" : "proxy=none";
+    if (!proxy) return "long_poll;proxy=none";
+    const scheme = proxy.match(/^(https?|socks5h?):\/\//i)?.[1]?.toLowerCase();
+    return scheme
+      ? `long_poll;proxy=${scheme}`
+      : "long_poll;proxy=set";
   }
   if (channel === "wecom") {
     const mode = String(options.connect_mode ?? options.mode ?? "websocket");
@@ -275,6 +291,18 @@ export function credentialReadiness(
       options: opts,
       secretKeysFilled,
       hasCredentials: instance.hasCredentials,
+   * Optional raw token for Telegram format checks (never stored).
+   */
+  tokenValue?: string | null,
+): { ready: boolean; missingKeys: string[] } {
+  const opts = isRecord(instance.options) ? instance.options : {};
+
+  if (channel === "telegram") {
+    const v = validateTelegramConfig({
+      options: opts,
+      secretKeysFilled,
+      hasCredentials: instance.hasCredentials,
+      tokenValue,
     });
     return { ready: v.ok, missingKeys: [...v.missing] };
   }
@@ -344,6 +372,7 @@ export function classifyChannelHealth(
   };
   // Readiness evaluates against draft-merged options for honest mode switches.
   // Readiness evaluates against draft-merged options for honest form edits.
+  // Readiness evaluates against draft-merged options for honest soft status.
   const readinessInstance: ChannelInstance = {
     ...instance,
     options: opts,
@@ -368,6 +397,13 @@ export function classifyChannelHealth(
   const credsUsable =
     !!instance.hasCredentials &&
     (credentialsReady || channel !== "dingtalk");
+    input.tokenValue,
+  );
+
+  // Honest status: invalid token/proxy posture cannot look "connected".
+  const credsUsable =
+    !!instance.hasCredentials &&
+    (credentialsReady || channel !== "telegram");
 
   let tone: ChannelStatusTone = "unconfigured";
   if (instance.lastError) {
@@ -387,6 +423,7 @@ export function classifyChannelHealth(
   } else if (instance.hasCredentials && !credentialsReady) {
     // Saved vault but current mode incomplete (e.g. WeCom mode switch)
     // Vault present but current form incomplete (cleared client_id, etc.)
+    // Saved vault but current form incomplete / invalid
     tone = "configured";
   }
 
@@ -409,6 +446,7 @@ export function classifyChannelHealth(
 
   // Channel-specific depth (shippable for Feishu / Telegram / WeCom)
   // Channel-specific depth (shippable for Feishu / Telegram / DingTalk)
+  // Channel-specific depth (Feishu / Telegram)
   if (FEISHU_LIKE.includes(channel)) {
     if (!optionString(opts, "app_id") && !instance.hasCredentials) {
       hintKeys.push("settings.remoteIm.health.hint.feishuAppId");
@@ -421,13 +459,16 @@ export function classifyChannelHealth(
   }
 
   if (TELEGRAM_LIKE.includes(channel)) {
-    hintKeys.push("settings.remoteIm.health.hint.telegramPoll");
-    if (optionString(opts, "proxy")) {
-      hintKeys.push("settings.remoteIm.health.hint.telegramProxy");
-    }
-    if (openAcl && instance.hasCredentials) {
-      // Telegram open ACL is especially risky
-      hintKeys.push("settings.remoteIm.health.hint.telegramAcl");
+    const tgV = validateTelegramConfig({
+      options: opts,
+      secretKeysFilled: input.secretKeysFilled,
+      hasCredentials: instance.hasCredentials,
+      tokenValue: input.tokenValue,
+    });
+    for (const k of telegramHealthHintKeys(tgV, {
+      openAcl: openAcl && instance.hasCredentials,
+    })) {
+      hintKeys.push(k);
     }
   }
 
