@@ -11,6 +11,10 @@ import { Document, Page, pdfjs } from "react-pdf";
 import { renderAsync } from "docx-preview";
 import * as XLSX from "xlsx";
 import { fetchPreviewArrayBuffer } from "@/lib/filePreviewSrc";
+import {
+  formatMediaLoadErrorMessage,
+  resolveMediaLoadError,
+} from "@/lib/mediaLoadPro";
 import { createT, type Locale } from "@/i18n";
 import { openInEditor, pathOpen, pathReveal } from "@/lib/api";
 import { Tip } from "@/components/ui/tooltip";
@@ -93,7 +97,11 @@ export function OfficeDocumentPreview({
     setSheetHtml("");
 
     if (errorFromHost && !absolutePath) {
-      setLoad({ status: "error", message: errorFromHost });
+      const resolved = resolveMediaLoadError(errorFromHost, "office");
+      setLoad({
+        status: "error",
+        message: formatMediaLoadErrorMessage(resolved, tr),
+      });
       return;
     }
 
@@ -113,9 +121,11 @@ export function OfficeDocumentPreview({
         setLoad({ status: "ready", buffer: buf });
       } catch (e) {
         if (cancelled) return;
+        // Soft-fail: classified media.err.* copy, never crash the pane.
+        const resolved = resolveMediaLoadError(e, "office");
         setLoad({
           status: "error",
-          message: e instanceof Error ? e.message : String(e),
+          message: formatMediaLoadErrorMessage(resolved, tr),
         });
       }
     })();
