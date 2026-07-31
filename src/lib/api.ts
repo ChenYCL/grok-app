@@ -538,6 +538,46 @@ export async function gitWorktreesList(projectPath: string) {
   return invoke<GitWorktreesResult>("git_worktrees_list", { projectPath });
 }
 
+// ── GitHub PR hub (`gh pr list|view|checks`) ────────────────────────────────
+
+export type {
+  GitPrHubEntry,
+  GitPrHubListResult,
+  GitPrHubViewResult,
+  GitPrCheckEntry,
+  GitPrChecksResult,
+  PrChecksSummary,
+  PrChecksOverall,
+} from "./gitPrHub";
+
+/** List PRs for a project folder via `gh pr list --json`. Soft-fails when gh/git missing. */
+export async function gitPrList(
+  projectPath: string,
+  opts?: { limit?: number | null; state?: string | null },
+) {
+  return invoke<import("./gitPrHub").GitPrHubListResult>("git_pr_list", {
+    projectPath,
+    limit: opts?.limit ?? null,
+    state: opts?.state?.trim() || null,
+  });
+}
+
+/** View one PR via `gh pr view <n> --json`. Soft-fails when gh/git missing. */
+export async function gitPrView(projectPath: string, number: number) {
+  return invoke<import("./gitPrHub").GitPrHubViewResult>("git_pr_view", {
+    projectPath,
+    number,
+  });
+}
+
+/** List CI checks for a PR via `gh pr checks <n> --json`. Soft-fails when gh/git missing. */
+export async function gitPrChecks(projectPath: string, number: number) {
+  return invoke<import("./gitPrHub").GitPrChecksResult>("git_pr_checks", {
+    projectPath,
+    number,
+  });
+}
+
 /** One CLI-tracked worktree from `grok worktree list` (JSON or text). */
 export interface CliWorktreeEntry {
   id: string;

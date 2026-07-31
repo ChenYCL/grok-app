@@ -203,6 +203,7 @@ import { AccountPanel } from "@/components/AccountPanel";
 import { ProvidersPanel } from "@/components/ProvidersPanel";
 import { ExtensionsPanel } from "@/components/ExtensionsPanel";
 import { ProjectInspectPanel } from "@/components/ProjectInspectPanel";
+import { GitPrHubPanel } from "@/components/GitPrHubPanel";
 import { PermissionRulesPanel } from "@/components/PermissionRulesPanel";
 import { AgentConfigEditPanel } from "@/components/AgentConfigEditPanel";
 import { PrivacyCenterPanel } from "@/components/PrivacyCenterPanel";
@@ -6286,6 +6287,31 @@ export function SettingsPage({
                       locale={resolveLocale(locale)}
                       projectPath={projectPath}
                       cliFound={cliInfo.found}
+                      hideHeader
+                    />
+                  </div>
+                </div>
+                <div
+                  className={
+                    "settings-card pi-settings-block" +
+                    rowHighlight("settings-anchor-prHub")
+                  }
+                  id="settings-anchor-prHub"
+                >
+                  <div className="settings-row settings-row--stack">
+                    <div className="settings-row__text">
+                      <div className="settings-row__label">
+                        {t("prHub.title")}
+                      </div>
+                      <div className="settings-row__desc">
+                        {t("prHub.desc")}
+                      </div>
+                    </div>
+                  </div>
+                  <div className="pi-settings-body">
+                    <GitPrHubPanel
+                      locale={resolveLocale(locale)}
+                      projectPath={projectPath}
                       hideHeader
                     />
                   </div>

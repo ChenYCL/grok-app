@@ -45,6 +45,7 @@ mod streaming_acp_ndjson;
 mod tool_heartbeat;
 mod cli_sessions;
 mod cli_worktrees;
+mod git_pr_hub;
 mod turn_complete;
 mod store_lock;
 mod automation_runner;
@@ -469,6 +470,9 @@ pub fn run() {
             commands::git_worktree_add,
             commands::git_worktree_remove,
             commands::git_worktree_gc,
+            git_pr_hub::git_pr_list,
+            git_pr_hub::git_pr_view,
+            git_pr_hub::git_pr_checks,
             cli_worktrees::cli_worktrees_list,
             cli_worktrees::cli_worktree_db_path,
             cli_worktrees::cli_worktree_db_stats,
