@@ -969,64 +969,70 @@ export function ProvidersPanel({
                   </span>
                   <p className="prov-field__hint">{tr("prov.modelsHint")}</p>
 
-                  {form.models.length > 0 ? (
-                    <ul className="prov-models" aria-label={tr("prov.requestModel")}>
-                      {form.models.map((m, index) => (
-                        <li key={index} className="prov-models__row">
-                          <label className="prov-models__field">
-                            <span className="prov-models__field-label">
-                              {tr("prov.modelDisplayName")}
-                            </span>
-                            <input
-                              className="settings-input"
-                              value={m.name}
-                              onChange={(e) => {
-                                const name = e.target.value;
-                                setForm((f) => ({
-                                  ...f,
-                                  models: f.models.map((row, i) =>
-                                    i === index ? { ...row, name } : row,
-                                  ),
-                                }));
-                              }}
-                              placeholder={tr("prov.modelDisplayNamePh")}
-                              autoComplete="off"
-                            />
-                          </label>
-                          <label className="prov-models__field">
-                            <span className="prov-models__field-label">
-                              {tr("prov.modelId")}
-                            </span>
-                            <input
-                              className="settings-input"
-                              value={m.id}
-                              onChange={(e) => {
-                                const next = e.target.value;
-                                setForm((f) => ({
-                                  ...f,
-                                  models: f.models.map((row, i) =>
-                                    i === index
-                                      ? {
-                                          ...row,
-                                          id: next,
-                                          name:
-                                            !row.name.trim() ||
-                                            row.name.trim() === row.id
-                                              ? next
-                                              : row.name,
-                                        }
-                                      : row,
-                                  ),
-                                }));
-                              }}
-                              placeholder={tr("prov.modelPh")}
-                              autoComplete="off"
-                              spellCheck={false}
-                            />
-                          </label>
+                  <div
+                    className="prov-models"
+                    role="group"
+                    aria-label={tr("prov.requestModel")}
+                  >
+                    <div className="prov-models__head" aria-hidden>
+                      <span>{tr("prov.modelDisplayName")}</span>
+                      <span>{tr("prov.modelId")}</span>
+                      <span />
+                    </div>
+
+                    {form.models.length === 0 ? (
+                      <p className="prov-models__empty">
+                        {tr("prov.modelsEmpty")}
+                      </p>
+                    ) : (
+                      form.models.map((m, index) => (
+                        <div key={index} className="prov-models__row">
+                          <input
+                            className="settings-input"
+                            value={m.name}
+                            onChange={(e) => {
+                              const name = e.target.value;
+                              setForm((f) => ({
+                                ...f,
+                                models: f.models.map((row, i) =>
+                                  i === index ? { ...row, name } : row,
+                                ),
+                              }));
+                            }}
+                            placeholder={tr("prov.modelDisplayNamePh")}
+                            aria-label={tr("prov.modelDisplayName")}
+                            autoComplete="off"
+                          />
+                          <input
+                            className="settings-input"
+                            value={m.id}
+                            onChange={(e) => {
+                              const next = e.target.value;
+                              setForm((f) => ({
+                                ...f,
+                                models: f.models.map((row, i) =>
+                                  i === index
+                                    ? {
+                                        ...row,
+                                        id: next,
+                                        name:
+                                          !row.name.trim() ||
+                                          row.name.trim() === row.id
+                                            ? next
+                                            : row.name,
+                                      }
+                                    : row,
+                                ),
+                              }));
+                            }}
+                            placeholder={tr("prov.modelPh")}
+                            aria-label={tr("prov.modelId")}
+                            autoComplete="off"
+                            spellCheck={false}
+                          />
                           <button
                             type="button"
-                            className="btn btn--ghost btn--sm prov-models__remove"
+                            className="icon-btn prov-models__remove"
                             onClick={() =>
                               setForm((f) => ({
                                 ...f,
@@ -1036,37 +1042,21 @@ export function ProvidersPanel({
                             aria-label={tr("prov.removeModel")}
                             disabled={busy}
                           >
-                            <IconTrash size={14} />
+                            <IconTrash size={15} />
                           </button>
-                        </li>
-                      ))}
-                    </ul>
-                  ) : (
-                    <p className="prov-field__hint prov-field__hint--empty">
-                      {tr("prov.modelsEmpty")}
-                    </p>
-                  )}
+                        </div>
+                      ))
+                    )}
 
-                  <div className="prov-models__add">
-                    <label className="prov-models__field">
-                      <span className="prov-models__field-label">
-                        {tr("prov.modelDisplayName")}
-                      </span>
+                    <div className="prov-models__add-row">
                       <input
                         className="settings-input"
                         value={draftModelName}
-                        onChange={(e) => {
-                          const name = e.target.value;
-                          setDraftModelName(name);
-                        }}
+                        onChange={(e) => setDraftModelName(e.target.value)}
                         placeholder={tr("prov.modelDisplayNamePh")}
+                        aria-label={tr("prov.modelDisplayName")}
                         autoComplete="off"
                       />
-                    </label>
-                    <label className="prov-models__field">
-                      <span className="prov-models__field-label">
-                        {tr("prov.modelId")}
-                      </span>
                       <input
                         className="settings-input"
                         value={draftModelId}
@@ -1080,6 +1070,7 @@ export function ProvidersPanel({
                           );
                         }}
                         placeholder={tr("prov.modelPh")}
+                        aria-label={tr("prov.modelId")}
                         autoComplete="off"
                         spellCheck={false}
                         onKeyDown={(e) => {
@@ -1089,25 +1080,25 @@ export function ProvidersPanel({
                           }
                         }}
                       />
-                    </label>
-                    <button
-                      type="button"
-                      className="btn btn--ghost btn--sm"
-                      disabled={busy || !draftModelId.trim()}
-                      onClick={() =>
-                        addModelToForm(draftModelId, draftModelName)
-                      }
-                    >
-                      <IconPlus size={14} />
-                      {tr("prov.addModel")}
-                    </button>
+                      <button
+                        type="button"
+                        className="btn btn--ghost btn--sm prov-models__add-btn"
+                        disabled={busy || !draftModelId.trim()}
+                        onClick={() =>
+                          addModelToForm(draftModelId, draftModelName)
+                        }
+                      >
+                        <IconPlus size={14} />
+                        {tr("prov.addModel")}
+                      </button>
+                    </div>
                   </div>
 
                   {remoteModels.length > 0 ? (
                     <div className="prov-models__remote">
-                      <span className="prov-models__field-label">
+                      <div className="prov-models__remote-label">
                         {tr("prov.remoteModels")}
-                      </span>
+                      </div>
                       <div className="prov-models__chips">
                         {remoteModels.map((mid) => {
                           const added = form.models.some((m) => m.id === mid);

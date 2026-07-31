@@ -49,7 +49,11 @@ import { useFloatingMenu, type FloatingPos } from "@/lib/floatingMenu";
 
 type Nested = "model" | "effort" | null;
 
-function usePortalMenu(estHeight = 220, _width = 300, nestedKey?: string) {
+function usePortalMenu(
+  estHeight = 220,
+  minWidth = 200,
+  nestedKey?: string,
+) {
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
@@ -64,7 +68,7 @@ function usePortalMenu(estHeight = 220, _width = 300, nestedKey?: string) {
     onClose: () => setOpen(false),
     placement: "auto",
     fitContent: true,
-    minWidth: 200,
+    minWidth,
     estHeight,
     gap: 8,
     deps: [nestedKey],
@@ -247,7 +251,8 @@ export function ComposerModelMenu({
   const [nested, setNested] = useState<Nested>(null);
   const [modelQuery, setModelQuery] = useState("");
   const modelSearchRef = useRef<HTMLInputElement>(null);
-  const menu = usePortalMenu(240, 280, nested ?? "root");
+  /* Wider min so long custom model ids render fully in the root rows. */
+  const menu = usePortalMenu(240, 300, nested ?? "root");
   const modelList = models.length > 0 ? models : GROK_BUILD_MODELS;
   const groups = buildComposerModelGroups({
     officialModels: modelList,
@@ -376,7 +381,9 @@ export function ComposerModelMenu({
           >
             <span>{labels.model}</span>
             <span className="cmm__row-val">
-              {modelLabel}
+              <span className="cmm__row-val-text" title={modelLabel}>
+                {modelLabel}
+              </span>
               <IconChevronRight size={14} />
             </span>
           </button>
@@ -387,7 +394,7 @@ export function ComposerModelMenu({
           >
             <span>{labels.effort}</span>
             <span className="cmm__row-val">
-              {eLabel}
+              <span className="cmm__row-val-text">{eLabel}</span>
               <IconChevronRight size={14} />
             </span>
           </button>
