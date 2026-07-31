@@ -137,13 +137,28 @@ describe("effortDisplayLabel", () => {
     );
   });
 
+  it("localizes DeepSeek-style xhigh/max over stored English names", () => {
+    expect(
+      effortDisplayLabel(
+        { id: "xhigh", label: "xhigh" },
+        { xhigh: "极高", max: "最大" },
+      ),
+    ).toBe("极高");
+    expect(
+      effortDisplayLabel(
+        { id: "max", label: "Max" },
+        { xhigh: "极高", max: "最大" },
+      ),
+    ).toBe("最大");
+  });
+
   it("strips shared Effort suffix on non-standard catalog labels", () => {
     expect(
-      effortDisplayLabel({ id: "max", label: "Max Effort" }),
+      effortDisplayLabel({ id: "custom-tier", label: "Max Effort" }),
     ).toBe("Max");
   });
 
   it("falls back to raw id", () => {
-    expect(effortDisplayLabel("max")).toBe("max");
+    expect(effortDisplayLabel("custom-tier")).toBe("custom-tier");
   });
 });

@@ -178,6 +178,16 @@ export function stripCommonEffortSuffix(label: string): string {
  * - DeepSeek-style ids (`xhigh` / `max` / `none`): prefer i18n when provided.
  * - Other catalog labels: strip a shared " Effort" suffix, then raw id / label.
  */
+/** Known effort ids that have dedicated i18n keys (`effort.<id>`). */
+const I18N_EFFORT_IDS = new Set([
+  "high",
+  "medium",
+  "low",
+  "xhigh",
+  "max",
+  "none",
+]);
+
 export function effortDisplayLabel(
   effort: EffortOption | string,
   i18nLabels?: {
@@ -189,7 +199,11 @@ export function effortDisplayLabel(
     none?: string;
   },
 ): string {
-  const id = typeof effort === "string" ? effort : effort.id;
+  const id = (typeof effort === "string" ? effort : effort.id)
+    .trim()
+    .toLowerCase();
+  // Prefer locale labels for known ids even when the catalog stored an
+  // English `name`/`label` (e.g. channel efforts saved as "xhigh"/"max").
   if (id === "high" && i18nLabels?.high) return i18nLabels.high;
   if (id === "medium" && i18nLabels?.medium) return i18nLabels.medium;
   if (id === "low" && i18nLabels?.low) return i18nLabels.low;
@@ -199,8 +213,14 @@ export function effortDisplayLabel(
 
   if (typeof effort !== "string") {
     const raw = effort.label?.trim();
-    if (raw) return stripCommonEffortSuffix(raw);
-    return effortDisplayLabel(effort.id, i18nLabels);
+    // Skip label when it is just the raw id (would re-show English "xhigh").
+    if (raw && raw.toLowerCase() !== id && !I18N_EFFORT_IDS.has(raw.toLowerCase())) {
+      return stripCommonEffortSuffix(raw);
+    }
+    if (raw && !I18N_EFFORT_IDS.has(id)) {
+      return stripCommonEffortSuffix(raw);
+    }
+    return effort.id;
   }
   return effort;
 }
