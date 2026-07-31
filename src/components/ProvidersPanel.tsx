@@ -1135,7 +1135,7 @@ export function ProvidersPanel({
                   />
                 </label>
 
-                <div className="prov-field">
+                <div className="prov-field prov-field--full">
                   <span className="prov-field__label">{tr("prov.protocol")}</span>
                   <Select
                     value={form.apiBackend}
@@ -1147,8 +1147,25 @@ export function ProvidersPanel({
                   />
                 </div>
 
-                <div className="prov-field">
-                  <span className="prov-field__label">{tr("prov.apiKey")}</span>
+                <div className="prov-field prov-field--full">
+                  <span className="prov-field__label-row">
+                    <span className="prov-field__label">{tr("prov.apiKey")}</span>
+                    {form.apiKeyUrl ? (
+                      <button
+                        type="button"
+                        className="prov-field__text-link"
+                        onClick={() => {
+                          const url = form.apiKeyUrl;
+                          if (!url) return;
+                          void api.openExternalUrl(url).catch((e) => {
+                            onToast?.(String(e), 4000);
+                          });
+                        }}
+                      >
+                        {tr("prov.getApiKey")}
+                      </button>
+                    ) : null}
+                  </span>
                   <div className="prov-key-row">
                     <input
                       className="settings-input"
@@ -1171,21 +1188,6 @@ export function ProvidersPanel({
                       {showKey ? tr("prov.keyHide") : tr("prov.keyShow")}
                     </button>
                   </div>
-                  {form.apiKeyUrl ? (
-                    <button
-                      type="button"
-                      className="prov-field__text-link"
-                      onClick={() => {
-                        const url = form.apiKeyUrl;
-                        if (!url) return;
-                        void api.openExternalUrl(url).catch((e) => {
-                          onToast?.(String(e), 4000);
-                        });
-                      }}
-                    >
-                      {tr("prov.getApiKey")}
-                    </button>
-                  ) : null}
                 </div>
 
                 <div className="prov-field prov-field--full">

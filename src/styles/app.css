@@ -14001,15 +14001,28 @@ textarea::-webkit-scrollbar-thumb:active,
   line-height: 1.35;
 }
 
+/* Label row: title left, optional text action (e.g. Get API Key) right */
+.prov-field__label-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+}
+
+.prov-field__label-row .prov-field__label {
+  margin: 0;
+}
+
 .prov-field__text-link {
-  align-self: flex-start;
-  margin-top: 6px;
+  flex-shrink: 0;
   padding: 0;
   border: none;
   background: none;
   color: var(--accent, #6b8cff);
   font-size: 12.5px;
   font-weight: 500;
+  line-height: 1.2;
   cursor: pointer;
   text-decoration: none;
 }
