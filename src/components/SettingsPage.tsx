@@ -2220,6 +2220,9 @@ export function SettingsPage({
 
   const phoneIndex = phoneLayout && phonePane === "index";
   const phoneDetail = phoneLayout && phonePane === "detail";
+  /** Providers dual-pane: fill viewport; rail + detail scroll, page does not. */
+  const providersPaneFill =
+    section === "account" && activeTab === "providers";
   const pageClass =
     "settings-page" +
     (phoneIndex ? " settings-page--phone-index" : "") +
@@ -2404,7 +2407,10 @@ export function SettingsPage({
       </aside>
 
       <div
-        className="settings-page__content"
+        className={
+          "settings-page__content" +
+          (providersPaneFill ? " settings-page__content--pane-fill" : "")
+        }
         hidden={phoneIndex || undefined}
         aria-hidden={phoneIndex || undefined}
       >
@@ -2421,7 +2427,12 @@ export function SettingsPage({
           <h1 className="settings-page__phone-title">{title}</h1>
         </div>
       ) : null}
-      <main className="settings-page__main">
+      <main
+        className={
+          "settings-page__main" +
+          (providersPaneFill ? " settings-page__main--pane-fill" : "")
+        }
+      >
         {!phoneDetail ? (
           <h1 className="settings-page__title">{title}</h1>
         ) : null}

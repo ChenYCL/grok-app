@@ -4400,6 +4400,45 @@ html[data-sidebar-density="compact"] .session-row__meta {
   app-region: no-drag;
 }
 
+/*
+ * Providers dual-pane: lock outer scroll; title/tabs stay put; .prov-panel
+ * fills remaining height so left rail + right detail scroll independently.
+ * Safe to use flex here — content is overflow:hidden (not a scrollport).
+ */
+.settings-page__content--pane-fill {
+  display: flex;
+  flex-direction: column;
+  overflow-y: hidden;
+}
+
+.settings-page__content--pane-fill > .settings-page__phone-bar {
+  flex-shrink: 0;
+}
+
+.settings-page__content--pane-fill > .settings-page__main {
+  flex: 1 1 auto;
+  min-height: 0;
+  width: 100%;
+}
+
+.settings-page__main--pane-fill {
+  display: flex;
+  flex-direction: column;
+  /* Bottom padding lives inside scrolling panes, not the page */
+  padding-bottom: 16px;
+  max-width: min(1100px, 100%);
+}
+
+.settings-page__main--pane-fill > .settings-page__title,
+.settings-page__main--pane-fill > .settings-account-tabs {
+  flex-shrink: 0;
+}
+
+.settings-page__main--pane-fill > .prov-panel {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
 .platform-mac .settings-page__main {
   padding-top: 16px;
 }
@@ -14103,7 +14142,16 @@ textarea::-webkit-scrollbar-thumb:active,
   display: flex;
   flex-direction: column;
   gap: 12px;
+  /* Floor when not height-constrained; pane-fill overrides to 0 */
   min-height: 360px;
+}
+
+.settings-page__main--pane-fill > .prov-panel {
+  min-height: 0;
+}
+
+.prov-panel > .prov-alert {
+  flex-shrink: 0;
 }
 
 .prov-loading {
@@ -14129,7 +14177,14 @@ textarea::-webkit-scrollbar-thumb:active,
   grid-template-columns: minmax(220px, 280px) minmax(0, 1fr);
   gap: 16px;
   align-items: stretch;
+  flex: 1 1 auto;
+  /* Floor when not height-constrained; pane-fill overrides to 0 */
   min-height: 420px;
+  overflow: hidden;
+}
+
+.settings-page__main--pane-fill .prov-split {
+  min-height: 0;
 }
 
 .prov-split__list {
@@ -14137,12 +14192,15 @@ textarea::-webkit-scrollbar-thumb:active,
   flex-direction: column;
   gap: 10px;
   min-width: 0;
+  min-height: 0;
+  overflow: hidden;
 }
 
 .prov-list-actions {
   display: flex;
   flex-direction: column;
   gap: 6px;
+  flex-shrink: 0;
 }
 
 .prov-add-btn {
@@ -14289,10 +14347,12 @@ textarea::-webkit-scrollbar-thumb:active,
   display: flex;
   flex-direction: column;
   gap: 6px;
-  flex: 1;
+  flex: 1 1 auto;
   min-height: 0;
-  overflow: auto;
+  overflow-x: hidden;
+  overflow-y: auto;
   padding-right: 2px;
+  -webkit-overflow-scrolling: touch;
 }
 
 .prov-rail-empty {
@@ -14417,11 +14477,15 @@ textarea::-webkit-scrollbar-thumb:active,
 .prov-split__detail {
   min-width: 0;
   min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  /* Independent scrollport for form / official detail */
+  -webkit-overflow-scrolling: touch;
 }
 
 .prov-detail-empty {
-  height: 100%;
-  min-height: 280px;
+  min-height: 100%;
+  box-sizing: border-box;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -14434,7 +14498,10 @@ textarea::-webkit-scrollbar-thumb:active,
 }
 
 .prov-detail {
-  height: 100%;
+  /* Grow with content so parent .prov-split__detail scrolls; fill when short */
+  min-height: 100%;
+  height: auto;
+  box-sizing: border-box;
   padding: 16px 18px;
 }
 
@@ -14941,10 +15008,16 @@ textarea::-webkit-scrollbar-thumb:active,
 @media (max-width: 860px) {
   .prov-split {
     grid-template-columns: 1fr;
+    grid-template-rows: minmax(0, 40%) minmax(0, 1fr);
     min-height: 0;
   }
   .prov-split__list {
-    max-height: 280px;
+    max-height: none;
+    min-height: 160px;
+  }
+  .settings-page__main--pane-fill .prov-split__list {
+    /* Cap list so detail still gets room when stacked */
+    max-height: 40vh;
   }
   .prov-form__grid {
     grid-template-columns: 1fr;
