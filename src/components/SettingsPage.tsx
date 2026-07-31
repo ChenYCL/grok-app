@@ -565,6 +565,9 @@ export interface SettingsPageProps {
   /** CLI subagent worktree snapshot (config 0.2.117+). */
   subagentWorktreeSnapshotEnabled?: boolean;
   onSubagentWorktreeSnapshotEnabled?: (v: boolean) => void;
+  /** CLI auto-wake (config `auto_wake_enabled`; CLI-side when supported). */
+  autoWakeEnabled?: boolean;
+  onAutoWakeEnabled?: (v: boolean) => void;
   useLeader?: boolean;
   onUseLeader?: (v: boolean) => void;
   /** Live voice speaker id (xAI realtime), e.g. eve. */
@@ -1173,6 +1176,8 @@ export function SettingsPage({
   onSubagentsEnabled,
   subagentWorktreeSnapshotEnabled = false,
   onSubagentWorktreeSnapshotEnabled,
+  autoWakeEnabled = false,
+  onAutoWakeEnabled,
   planEnabled = true,
   onPlanEnabled,
   todoGateEnabled = false,
@@ -3068,6 +3073,28 @@ export function SettingsPage({
                       )
                     }
                     ariaLabel={t("settings.subagentWorktreeSnapshot")}
+                  />
+                </div>
+              ) : null}
+              {onAutoWakeEnabled ? (
+                <div
+                  className={
+                    "settings-row" + rowHighlight("settings-anchor-autoWake")
+                  }
+                  id="settings-anchor-autoWake"
+                >
+                  <div className="settings-row__text">
+                    <div className="settings-row__label">
+                      {t("settings.autoWake")}
+                    </div>
+                    <div className="settings-row__desc">
+                      {t("settings.autoWakeDesc")}
+                    </div>
+                  </div>
+                  <UiCheck
+                    checked={!!autoWakeEnabled}
+                    onChange={() => onAutoWakeEnabled(!autoWakeEnabled)}
+                    ariaLabel={t("settings.autoWake")}
                   />
                 </div>
               ) : null}

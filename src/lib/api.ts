@@ -1618,6 +1618,13 @@ export interface AppSettings {
    * independent mode; spawn sets `GROK_SUBAGENT_WORKTREE_SNAPSHOT`. Soft-respawns.
    */
   subagentWorktreeSnapshotEnabled?: boolean;
+  /**
+   * Enable CLI auto-wake (config `auto_wake_enabled`). Default false (opt-in).
+   * When on, Grok Build may inject a synthetic turn after background work
+   * completes (CLI-side). Independent mode writes agent-home `auto_wake_enabled`
+   * only — no invented env override. Soft-respawns on change.
+   */
+  autoWakeEnabled?: boolean;
   useLeader?: boolean;
   /** Reopen last active chat once after launch (default false → draft new chat). */
   reopenLastSession?: boolean;

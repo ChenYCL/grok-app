@@ -1582,6 +1582,9 @@ export const zhTW: Record<MessageKey, string> = {
   "settings.subagentWorktreeSnapshot": "子代理 worktree 快照",
   "settings.subagentWorktreeSnapshotDesc":
     "開啟後，Grok Build 可為巢狀子代理快照 / 還原隔離 worktree（CLI 0.2.117+ 設定 subagent_worktree_snapshot_enabled 與 GROK_SUBAGENT_WORKTREE_SNAPSHOT）。預設關閉。獨立模式寫入 agent-home config.toml。變更後 soft-respawn；舊版 CLI soft-fail（省略 env）。",
+  "settings.autoWake": "背景完成時自動喚醒",
+  "settings.autoWakeDesc":
+    "開啟後，背景工作完成時（bash / monitor / 任務 / loop）Grok Build 可注入合成回合，無需使用者再發訊息即可繼續處理。行為在 CLI 側生效（設定 auto_wake_enabled，受支援時）。預設關閉。獨立模式僅寫入 agent-home config.toml——不編造 env 覆寫。變更後 soft-respawn；舊版 CLI 忽略該鍵時 soft-fail。",
   "settings.planEnabled": "允許計畫模式",
   "settings.planEnabledDesc": "關閉時啟動加上 --no-plan，Agent 無法進入計畫模式。變更後 soft-respawn。",
   "settings.noAskUser": "停用向使用者提問",

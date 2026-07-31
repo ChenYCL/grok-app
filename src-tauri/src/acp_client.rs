@@ -1037,6 +1037,7 @@ impl AcpClient {
         let agents_json_args = agents_json_spawn_flags(&settings.agents_json);
         let subagents_enabled = settings.subagents_enabled;
         let subagent_wt_snap = settings.subagent_worktree_snapshot_enabled;
+        let auto_wake_enabled = settings.auto_wake_enabled;
         let memory_enabled = settings.experimental_memory;
         let use_leader = settings.use_leader;
         let plan_enabled = settings.plan_enabled;
@@ -1080,6 +1081,10 @@ impl AcpClient {
             let _ = crate::agent_subagent_wt_snap::sync_subagent_wt_snap_to_agent_profile(
                 session_data_mode,
                 subagent_wt_snap,
+            );
+            let _ = crate::agent_auto_wake::sync_auto_wake_to_agent_profile(
+                session_data_mode,
+                auto_wake_enabled,
             );
         }
 

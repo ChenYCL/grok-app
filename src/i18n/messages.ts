@@ -1662,6 +1662,9 @@ const en = {
   "settings.subagentWorktreeSnapshot": "Subagent worktree snapshot",
   "settings.subagentWorktreeSnapshotDesc":
     "When on, Grok Build may snapshot / rehydrate isolated worktrees for nested subagents (CLI 0.2.117+ config subagent_worktree_snapshot_enabled + GROK_SUBAGENT_WORKTREE_SNAPSHOT). Default off. Independent mode writes agent-home config.toml. Soft-respawns after change; older CLIs soft-fail (env omitted).",
+  "settings.autoWake": "Auto-wake on background completion",
+  "settings.autoWakeDesc":
+    "When on, Grok Build may inject a synthetic turn after background work completes (bash / monitor / task / loop) so the agent can react without a new user prompt. Behavior is CLI-side when supported (config auto_wake_enabled). Default off. Independent mode writes agent-home config.toml only — no invented env override. Soft-respawns after change; older CLIs that ignore the key soft-fail.",
   "settings.planEnabled": "Allow plan mode",
   "settings.planEnabledDesc": "When off, spawn with --no-plan so the agent cannot enter plan mode. Soft-respawns after change.",
   "settings.noAskUser": "Disable ask-user questions",
@@ -5814,6 +5817,9 @@ const zh: Record<MessageKey, string> = {
   "settings.subagentWorktreeSnapshot": "子代理 worktree 快照",
   "settings.subagentWorktreeSnapshotDesc":
     "开启后，Grok Build 可为嵌套子代理快照 / 还原隔离 worktree（CLI 0.2.117+ 配置 subagent_worktree_snapshot_enabled 与 GROK_SUBAGENT_WORKTREE_SNAPSHOT）。默认关闭。独立模式写入 agent-home config.toml。更改后 soft-respawn；旧版 CLI soft-fail（省略 env）。",
+  "settings.autoWake": "后台完成时自动唤醒",
+  "settings.autoWakeDesc":
+    "开启后，后台工作完成时（bash / monitor / 任务 / loop）Grok Build 可注入合成回合，无需用户再发消息即可继续处理。行为在 CLI 侧生效（配置 auto_wake_enabled，受支持时）。默认关闭。独立模式仅写入 agent-home config.toml——不编造 env 覆盖。更改后 soft-respawn；旧版 CLI 忽略该键时 soft-fail。",
   "settings.planEnabled": "允许计划模式",
   "settings.planEnabledDesc": "关闭时启动加上 --no-plan，Agent 无法进入计划模式。更改后 soft-respawn。",
   "settings.noAskUser": "禁用向用户提问",
