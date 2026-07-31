@@ -19,6 +19,7 @@ See `docs/llm-wiki/release.md`.
 ### Added
 
 #### Runtime / workflows
+- **Sandbox profile pro** (Settings → General → Permissions): polish OS sandbox presets (`off` / `workspace` / `read-only` / `strict` / `devbox`) with pure `sandboxProfile` helpers (spawn args/env, project resolve, danger confirm keys), **honest soft-fail** when CLI is missing/too old for `--sandbox` (flag omitted) or when the platform has no kernel enforcement (Windows honesty; Linux-only child-network note on macOS), Settings banners + recommended-workspace tip; Host soft-gates spawn flags on known-old CLI; i18n en/zh/zh-TW; `settingsCatalog`; tests
 - **Grok Build workflows** (Settings → Runtime → Tools): opt-in `workflowsEnabled` AppSettings toggle writes top-level `workflows_enabled` into independent agent-home `config.toml` (shared mode never rewrites `~/.grok`); honest copy that workflows run via CLI / Rhai (`workflow` tool, `/workflow`, `/workflows`) — **no in-app runner/editor**; read-only soft-fail discovery of `~/.grok/workflows` + project `.grok/workflows` names; command palette **Open workflows docs** / jump to settings; pure helpers + tests; `settingsCatalog` + en/zh/zh-TW
 #### Composer & chat / reliability
 - **Attachments pro (ATTACHMENTS-PRO)**: classified paste/drop/pick errors (empty · too large · clipboard · host-only · write) with en/zh/zh-TW copy instead of raw `Error:` dumps; cancelled pick stays silent; image chips/cards keep honest pending/broken/missing preview phases (never re-claim ready after load failure); pure `attachmentsPro` helpers + tests

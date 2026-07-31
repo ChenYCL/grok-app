@@ -1791,7 +1791,7 @@ const en = {
   "settings.askUserTimeout.300": "5 minutes",
   "settings.sandboxProfile": "Sandbox profile",
   "settings.sandboxProfileDesc":
-    "OS-level filesystem/network isolation for the agent process (Landlock/Seatbelt). Applied when a new agent starts — reconnect the session after changing. Projects can override this from the project menu.",
+    "OS-level filesystem/network isolation for the agent process (Linux Landlock / macOS Seatbelt). Applied when a new agent starts — reconnect the session after changing. Projects can override this from the project menu.",
   "settings.sandbox.off": "Off — unrestricted",
   "settings.sandbox.workspace": "Workspace — write CWD + temp only",
   "settings.sandbox.readOnly": "Read-only — no project writes",
@@ -1800,11 +1800,11 @@ const en = {
   "settings.sandbox.off.help":
     "No OS sandbox flags. The agent process can read/write the filesystem and use the network freely (still subject to in-app permission prompts). Use only on trusted machines and codebases.",
   "settings.sandbox.workspace.help":
-    "Write access limited to the session working directory and system temp. Broader reads and network are typically allowed. Recommended default for day-to-day coding.",
+    "Recommended for day-to-day coding. Read everywhere; write limited to the session working directory, ~/.grok/, and system temp. Network allowed. Soft-respawn after change.",
   "settings.sandbox.readOnly.help":
-    "Blocks writes into the project/workspace. Useful for review-only sessions or untrusted trees. Temp may still be writable depending on the platform.",
+    "Read everywhere; write only ~/.grok/ + temp (no project writes). Child-process network blocked on Linux only (macOS no-op). Good for review-only or untrusted trees.",
   "settings.sandbox.strict.help":
-    "Tightest local isolation: agent is confined to the current working directory more strictly, and child-process network is blocked where the OS supports it.",
+    "Tightest built-in isolation: read CWD + system paths; write CWD + ~/.grok/ + temp. Child-process network blocked on Linux only (macOS no-op).",
   "settings.sandbox.devbox.help":
     "Disposable development-box layout with relaxed isolation (closer to a throwaway VM profile). Treat as elevated trust — not a hard security boundary.",
   "settings.sandbox.dangerConfirmOff":
@@ -1812,6 +1812,16 @@ const en = {
   "settings.sandbox.dangerConfirmDevbox":
     "Enable Devbox sandbox? This is a relaxed disposable layout with reduced isolation. Continue only if you trust this environment.",
   "settings.sandbox.dangerConfirmTitle": "Confirm sandbox change",
+  "settings.sandbox.softFail.cliMissing":
+    "Grok Build CLI not found — sandbox flags will not be applied until a supported CLI is installed.",
+  "settings.sandbox.softFail.cliUnsupported":
+    "This CLI is too old for --sandbox. The setting is saved, but the flag is omitted (soft-fail) so the agent still starts. Upgrade Grok Build to enforce isolation.",
+  "settings.sandbox.softFail.platform":
+    "OS sandbox kernel enforcement is documented for macOS Seatbelt and Linux Landlock only. On this platform the CLI may accept the profile but soft-fail and continue without enforcement — do not treat this as a hard security boundary.",
+  "settings.sandbox.networkLinuxOnly":
+    "Child-process network blocking for this profile is enforced on Linux only; on macOS it is a no-op (in-process tools still have network).",
+  "settings.sandbox.recommendedNote":
+    "Tip: Workspace is the recommended everyday profile.",
   "settings.disableWebSearch": "Disable web search & fetch",
   "settings.disableWebSearchDesc":
     "Spawn agents with --disable-web-search so web_search and web_fetch tools are unavailable. Live agents soft-respawn when this changes.",
@@ -6817,11 +6827,11 @@ const zh: Record<MessageKey, string> = {
   "settings.sandbox.off.help":
     "不启用 OS 沙箱标志。Agent 进程可自由读写文件系统与使用网络（仍受应用内权限弹窗约束）。仅建议在可信机器与代码库使用。",
   "settings.sandbox.workspace.help":
-    "写入范围限制为会话工作目录与系统临时目录；读取与网络通常仍可用。日常编程推荐默认。",
+    "日常编程推荐。可读任意路径；写入限制为会话工作目录、~/.grok/ 与系统临时目录。网络允许。更改后 soft-respawn。",
   "settings.sandbox.readOnly.help":
-    "禁止写入项目/工作区。适合只读审查或不可信仓库。临时目录是否可写取决于平台。",
+    "可读任意路径；仅可写 ~/.grok/ 与临时目录（不可写项目）。子进程网络仅在 Linux 拦截（macOS 为 no-op）。适合只读审查或不可信仓库。",
   "settings.sandbox.strict.help":
-    "本地隔离最严格：更紧地限制在当前工作目录，并在系统支持时阻止子进程网络访问。",
+    "内置最严格：读 CWD 与系统路径；写 CWD、~/.grok/ 与临时目录。子进程网络仅在 Linux 拦截（macOS 为 no-op）。",
   "settings.sandbox.devbox.help":
     "一次性开发机布局，隔离较松（接近可丢弃的虚拟机配置）。视为高信任场景，不是硬安全边界。",
   "settings.sandbox.dangerConfirmOff":
@@ -6829,6 +6839,16 @@ const zh: Record<MessageKey, string> = {
   "settings.sandbox.dangerConfirmDevbox":
     "启用 Devbox 沙箱？这是隔离较弱的一次性布局。仅在信任当前环境时继续。",
   "settings.sandbox.dangerConfirmTitle": "确认沙箱变更",
+  "settings.sandbox.softFail.cliMissing":
+    "未找到 Grok Build CLI — 在安装受支持的 CLI 之前不会应用沙箱 flag。",
+  "settings.sandbox.softFail.cliUnsupported":
+    "当前 CLI 过旧，不支持 --sandbox。设置已保存，但会 soft-fail（省略 flag）以免进程崩溃。请升级 Grok Build 以真正启用隔离。",
+  "settings.sandbox.softFail.platform":
+    "OS 沙箱内核强制目前仅文档支持 macOS Seatbelt 与 Linux Landlock。在此平台上 CLI 可能接受配置但 soft-fail 并无强制执行 — 请勿当作硬安全边界。",
+  "settings.sandbox.networkLinuxOnly":
+    "此配置的子进程网络拦截仅在 Linux 生效；macOS 为 no-op（进程内工具仍可联网）。",
+  "settings.sandbox.recommendedNote":
+    "提示：日常使用推荐「工作区」配置。",
   "settings.disableWebSearch": "禁用网页搜索与抓取",
   "settings.disableWebSearchDesc":
     "启动 Agent 时加上 --disable-web-search，移除 web_search / web_fetch 工具。更改后会 soft-respawn 已连接的 Agent。",

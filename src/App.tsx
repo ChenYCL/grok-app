@@ -296,6 +296,8 @@ import {
   SANDBOX_PROFILES,
   isDangerousSandboxProfile,
   normalizeSandboxProfile,
+  sandboxDangerConfirmKey,
+  sandboxProfileLabelKey,
   type SandboxProfileId,
 } from "@/lib/sandboxProfile";
 import { shouldRestoreLastSession } from "@/lib/sessionRestore";
@@ -6791,17 +6793,7 @@ export default function App() {
   };
 
   const sandboxProfileLabel = (id: SandboxProfileId) =>
-    tr(
-      (
-        {
-          off: "settings.sandbox.off",
-          workspace: "settings.sandbox.workspace",
-          "read-only": "settings.sandbox.readOnly",
-          strict: "settings.sandbox.strict",
-          devbox: "settings.sandbox.devbox",
-        } as const
-      )[id],
-    );
+    tr(sandboxProfileLabelKey(id));
 
   /**
    * Apply a project-level OS sandbox profile.
@@ -6845,13 +6837,11 @@ export default function App() {
     };
 
     if (next && isDangerousSandboxProfile(next)) {
+      const bodyKey = sandboxDangerConfirmKey(next);
       setAppDialog({
         kind: "confirm",
         title: tr("settings.sandbox.dangerConfirmTitle"),
-        message:
-          next === "devbox"
-            ? tr("settings.sandbox.dangerConfirmDevbox")
-            : tr("settings.sandbox.dangerConfirmOff"),
+        message: bodyKey ? tr(bodyKey) : tr("settings.sandbox.dangerConfirmOff"),
         confirmLabel: tr("common.confirm"),
         danger: true,
         onConfirm: () => {
@@ -6935,13 +6925,11 @@ export default function App() {
     };
 
     if (isDangerousSandboxProfile(next) && next !== prev) {
+      const bodyKey = sandboxDangerConfirmKey(next);
       setAppDialog({
         kind: "confirm",
         title: tr("settings.sandbox.dangerConfirmTitle"),
-        message:
-          next === "devbox"
-            ? tr("settings.sandbox.dangerConfirmDevbox")
-            : tr("settings.sandbox.dangerConfirmOff"),
+        message: bodyKey ? tr(bodyKey) : tr("settings.sandbox.dangerConfirmOff"),
         confirmLabel: tr("common.confirm"),
         danger: true,
         onConfirm: () => {
