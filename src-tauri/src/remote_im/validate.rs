@@ -50,20 +50,7 @@ pub async fn test_connection(
             })
         }
         "wecom" => test_wecom(&creds),
-        "weixin" => {
-            let ok = creds.contains_key("token")
-                || creds.contains_key("bot_token")
-                || !secrets.is_empty();
-            Ok(TestConnectionDto {
-                ok,
-                message: if ok {
-                    "credentials_present_ilink".into()
-                } else {
-                    "missing_weixin_token".into()
-                },
-                mock: false,
-            })
-        }
+        "weixin" => test_weixin(&creds),
         _ => {
             let ok = !creds.is_empty() || !secrets.is_empty();
             Ok(TestConnectionDto {
@@ -199,6 +186,56 @@ async fn test_feishu(
     Ok(TestConnectionDto {
         ok: false,
         message: last,
+        mock: false,
+    })
+}
+
+/// Weixin personal (ilink) credential posture — presence only, no live long-poll.
+fn test_weixin(creds: &HashMap<String, String>) -> Result<TestConnectionDto, String> {
+    let token = cred_get(creds, &["token", "bot_token", "ilink_token"]);
+    if token.is_empty() {
+        return Ok(TestConnectionDto {
+            ok: false,
+            message: "missing_weixin_token".into(),
+            mock: false,
+        });
+    }
+
+    // Soft option checks (shape only — never claims getUpdates is live).
+    let base = cred_get(creds, &["base_url"]);
+    if !base.is_empty()
+        && !(base.starts_with("https://") || base.starts_with("http://"))
+    {
+        return Ok(TestConnectionDto {
+            ok: false,
+            message: "invalid_weixin_base_url".into(),
+            mock: false,
+        });
+    }
+    let proxy = cred_get(creds, &["proxy"]);
+    if !proxy.is_empty() {
+        let ok_proxy = proxy.starts_with("http://")
+            || proxy.starts_with("https://")
+            || proxy.starts_with("socks5://")
+            || proxy.starts_with("socks5h://");
+        if !ok_proxy {
+            return Ok(TestConnectionDto {
+                ok: false,
+                message: "invalid_weixin_proxy".into(),
+                mock: false,
+            });
+        }
+    }
+
+    let message = if !proxy.is_empty() {
+        "weixin_ilink_credentials_present_proxy"
+    } else {
+        "weixin_ilink_credentials_present"
+    };
+    Ok(TestConnectionDto {
+        ok: true,
+        // Honest: token present only — does not prove ilink long-poll is online
+        message: message.into(),
         mock: false,
     })
 }
@@ -468,5 +505,52 @@ mod tests {
         let r = test_wecom(&c).unwrap();
         assert!(r.ok);
         assert_eq!(r.message, "wecom_ws_credentials_present");
+    }
+
+    #[test]
+    fn weixin_requires_token_not_any_secret() {
+        let mut c = HashMap::new();
+        c.insert("account_id".into(), "default".into());
+        let r = test_weixin(&c).unwrap();
+        assert!(!r.ok);
+        assert_eq!(r.message, "missing_weixin_token");
+        assert!(!r.mock);
+
+        c.insert("token".into(), "ilink-tok".into());
+        let r2 = test_weixin(&c).unwrap();
+        assert!(r2.ok);
+        assert_eq!(r2.message, "weixin_ilink_credentials_present");
+    }
+
+    #[test]
+    fn weixin_accepts_token_aliases() {
+        for key in ["bot_token", "ilink_token"] {
+            let mut c = HashMap::new();
+            c.insert(key.into(), "x".into());
+            let r = test_weixin(&c).unwrap();
+            assert!(r.ok, "alias {key}");
+            assert_eq!(r.message, "weixin_ilink_credentials_present");
+        }
+    }
+
+    #[test]
+    fn weixin_soft_fails_invalid_base_url_and_proxy() {
+        let mut c = HashMap::new();
+        c.insert("token".into(), "t".into());
+        c.insert("base_url".into(), "not-a-url".into());
+        let r = test_weixin(&c).unwrap();
+        assert!(!r.ok);
+        assert_eq!(r.message, "invalid_weixin_base_url");
+
+        c.remove("base_url");
+        c.insert("proxy".into(), "ftp://bad".into());
+        let r2 = test_weixin(&c).unwrap();
+        assert!(!r2.ok);
+        assert_eq!(r2.message, "invalid_weixin_proxy");
+
+        c.insert("proxy".into(), "socks5://127.0.0.1:1080".into());
+        let r3 = test_weixin(&c).unwrap();
+        assert!(r3.ok);
+        assert_eq!(r3.message, "weixin_ilink_credentials_present_proxy");
     }
 }

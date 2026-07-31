@@ -60,6 +60,29 @@ describe("remoteIm channelSchemas", () => {
     ).toBe(true);
   });
 
+  it("weixin §6.9: long-poll, scan+paste, token bind field help", () => {
+    const wx = getChannelSchema("weixin")!;
+    expect(wx.implemented).toBe(true);
+    expect(wx.scanSupport).toBe(true);
+    expect(wx.pasteSupport).toBe(true);
+    expect(wx.connectionKey).toContain("longPoll");
+    expect(wx.needsPublicUrl).toBeFalsy();
+    expect(showsPublicUrlCallout(wx, {})).toBe(false);
+    const token = wx.fields.find((f) => f.key === "token");
+    expect(token?.secret).toBe(true);
+    expect(token?.helpKey).toBe("settings.remoteIm.weixin.tokenHelp");
+    expect(wx.fields.some((f) => f.key === "long_poll_timeout_ms")).toBe(true);
+    expect(
+      validateBindFields(wx, {}, { hasCredentials: false }).ok,
+    ).toBe(false);
+    expect(
+      validateBindFields(wx, {}, {
+        hasCredentials: false,
+        secretKeysFilled: new Set(["token"]),
+      }).ok,
+    ).toBe(true);
+  });
+
   it("wecom validateBindFields is mode-aware and honest on mode switch", () => {
     const wecom = getChannelSchema("wecom")!;
     expect(
