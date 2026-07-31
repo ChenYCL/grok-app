@@ -38,7 +38,11 @@ describe("sendQueue", () => {
     // Permission modal: decide first — do not queue.
     expect(shouldEnqueueSend("awaiting_permission", false)).toBe(false);
     expect(shouldEnqueueSend("connecting", false)).toBe(true);
-    expect(shouldEnqueueSend("ready", true)).toBe(true);
+    // Global UI `connecting` must NOT enqueue idle/ready/new-chat (foreign
+    // ensureConnected / reconnect in flight). Only this chat's FSM busy.
+    expect(shouldEnqueueSend("ready", true)).toBe(false);
+    expect(shouldEnqueueSend("idle", true)).toBe(false);
+    expect(shouldEnqueueSend("disconnected", true)).toBe(false);
     // Idle/ready viewed chat never enqueues — even if Host is busy elsewhere
     // (that is concurrent demote+send, not a local queue).
     expect(shouldEnqueueSend("idle", false)).toBe(false);
@@ -443,7 +447,9 @@ describe("sendQueue", () => {
       expect(canShowQueueButton("streaming", false, true)).toBe(true);
       expect(canShowQueueButton("streaming", false, false)).toBe(false);
       expect(canShowQueueButton("ready", false, true)).toBe(false);
-      expect(canShowQueueButton("ready", true, true)).toBe(true);
+      // Global connecting alone does not show the Queue button on idle/ready.
+      expect(canShowQueueButton("ready", true, true)).toBe(false);
+      expect(canShowQueueButton("idle", true, true)).toBe(false);
     });
 
     it("SEND_QUEUE_MAX: overflow drops oldest and reports count", () => {

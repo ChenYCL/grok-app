@@ -79,7 +79,7 @@ When Settings flips `session_data_mode` independent↔shared, Host calls `recycl
 
 **New chat / disconnect:** `newChat` must **not** call `sessionDisconnect` (that killed the live ACP and aborted turns when users hit 新建会话 right after send). Host `disconnect` demotes busy → background and parks Ready instead of killing. In-flight `executeSend` still runs `sessionSend` after `ensureConnected` even if the user already switched the draft UI.
 
-**Send queue (per viewed session):** Follow-up enqueue only when *this* chat is busy/connecting. Host mid-turn on another chat must **not** put a new-chat/other-session send into “本会话队列” — that send demotes the foreign turn and spawns concurrent work. Flush claims only the *viewed* session key (never fall back to live host id). Hold flush only when the claimed session is the busy live one.
+**Send queue (per viewed session):** Follow-up enqueue only when *this* chat’s FSM is busy (`streaming` / `connecting` state). The process-global UI `connecting` flag (any `ensureConnected`) must **not** gate enqueue — that re-parked SuperGrok new-chat sends into “本会话队列” while another connect was in flight. Host mid-turn on another chat must **not** enqueue either — that send demotes the foreign turn and spawns concurrent work. Flush claims only the *viewed* session key (never fall back to live host id). Hold flush only when the claimed session is the busy live one.
 
 ### 4b. Session-scoped Host commands (no live-slot guessing)
 

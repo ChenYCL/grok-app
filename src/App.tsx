@@ -7983,10 +7983,12 @@ export default function App() {
     // Existing-session follow-ups must not wipe a half-typed new-task draft.
     const fromNewChatPage = session.sessionId == null;
 
-    // Enqueue only when *this viewed chat* is busy/connecting (follow-ups).
+    // Enqueue only when *this viewed chat* FSM is busy (streaming/connecting).
     // Host mid-turn on another session → executeSend demotes + spawns concurrent
     // work. Never park a new-chat / other-session send into a fake local queue
     // (that showed “本会话队列” on empty welcome while the real turn ran elsewhere).
+    // Also ignore the process-global `connecting` flag — foreign ensureConnected
+    // must not make SuperGrok welcome enqueue (see shouldEnqueueSend).
     if (shouldEnqueueSend(session.state, connecting)) {
       sendQueue.enqueue({
         storedDisplay,
