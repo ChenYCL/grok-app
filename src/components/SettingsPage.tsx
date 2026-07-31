@@ -277,6 +277,15 @@ import {
   type NotifyQuietHoursPref,
 } from "@/lib/notifyQuietHours";
 import {
+  ensureNotifyPermission,
+  notificationSupport,
+} from "@/lib/desktopNotify";
+import {
+  deriveNotifyHonestySurface,
+  deriveTrayBusyBadgeSurface,
+  type NotifyOsPermission,
+} from "@/lib/trayNotifyPro";
+import {
   MESSAGE_ACTIONS_VISIBILITIES,
   applyMessageActionsVisibility,
   loadMessageActionsVisibility,
@@ -524,6 +533,11 @@ export interface SettingsPageProps {
   /** Show busy session count on dock badge / tray tooltip (localStorage; default on). */
   trayBusyBadge?: boolean;
   onTrayBusyBadge?: (v: boolean) => void;
+  /**
+   * Live busy session count for the tray badge status line (from liveMap).
+   * Optional — when omitted, Settings shows idle/off only.
+   */
+  trayBusyCount?: number;
   /** Start app at OS login (default off). */
   launchAtLogin?: boolean;
   onLaunchAtLogin?: (v: boolean) => void;
@@ -1202,6 +1216,7 @@ export function SettingsPage({
   onKeepTrayForSchedules,
   trayBusyBadge = true,
   onTrayBusyBadge,
+  trayBusyCount = 0,
   launchAtLogin = false,
   onLaunchAtLogin,
   windowAlwaysOnTop = false,
@@ -1426,6 +1441,55 @@ export function SettingsPage({
   /** Desktop notification quiet hours — localStorage only. */
   const [notifyQuietHours, setNotifyQuietHours] =
     useState<NotifyQuietHoursPref>(() => loadNotifyQuietHoursPref());
+  /** OS Notification.permission — refreshed after Request permission. */
+  const [notifyOsPermission, setNotifyOsPermission] =
+    useState<NotifyOsPermission>(() => notificationSupport());
+  const [notifyPermBusy, setNotifyPermBusy] = useState(false);
+  // Re-check quiet-hours "active now" about once a minute while Settings is open.
+  const [notifyClockMs, setNotifyClockMs] = useState(() => Date.now());
+  useEffect(() => {
+    const id = window.setInterval(() => setNotifyClockMs(Date.now()), 60_000);
+    return () => window.clearInterval(id);
+  }, []);
+  const trayBusySurface = useMemo(
+    () =>
+      deriveTrayBusyBadgeSurface({
+        enabled: !!trayBusyBadge,
+        busyCount: trayBusyCount,
+      }),
+    [trayBusyBadge, trayBusyCount],
+  );
+  const notifyHonesty = useMemo(
+    () =>
+      deriveNotifyHonestySurface({
+        permission: notifyOsPermission,
+        prefs: {
+          notifyOnTurnDone,
+          notifyOnPermission,
+        },
+        soundEnabled: !!notifySound,
+        quietHours: notifyQuietHours,
+        now: new Date(notifyClockMs),
+      }),
+    [
+      notifyOsPermission,
+      notifyOnTurnDone,
+      notifyOnPermission,
+      notifySound,
+      notifyQuietHours,
+      notifyClockMs,
+    ],
+  );
+  const requestNotifyPermission = useCallback(async () => {
+    if (notifyPermBusy) return;
+    setNotifyPermBusy(true);
+    try {
+      const next = await ensureNotifyPermission();
+      setNotifyOsPermission(next);
+    } finally {
+      setNotifyPermBusy(false);
+    }
+  }, [notifyPermBusy]);
   const onNotifyQuietHours = useCallback((next: NotifyQuietHoursPref) => {
     setNotifyQuietHours(next);
     saveNotifyQuietHoursPref(next);
@@ -3736,24 +3800,40 @@ export function SettingsPage({
               {onTrayBusyBadge ? (
                 <div
                   className={
-                    "settings-row" +
+                    "settings-row settings-row--stack" +
                     rowHighlight("settings-anchor-trayBusyBadge")
                   }
                   id="settings-anchor-trayBusyBadge"
                 >
-                  <div className="settings-row__text">
-                    <div className="settings-row__label">
-                      {t("settings.trayBusyBadge")}
+                  <div className="settings-tray-notify__row-main">
+                    <div className="settings-row__text">
+                      <div className="settings-row__label">
+                        {t("settings.trayBusyBadge")}
+                      </div>
+                      <div className="settings-row__desc">
+                        {t("settings.trayBusyBadgeDesc")}
+                      </div>
                     </div>
-                    <div className="settings-row__desc">
-                      {t("settings.trayBusyBadgeDesc")}
-                    </div>
+                    <UiCheck
+                      checked={!!trayBusyBadge}
+                      onChange={() => onTrayBusyBadge(!trayBusyBadge)}
+                      ariaLabel={t("settings.trayBusyBadge")}
+                    />
                   </div>
-                  <UiCheck
-                    checked={!!trayBusyBadge}
-                    onChange={() => onTrayBusyBadge(!trayBusyBadge)}
-                    ariaLabel={t("settings.trayBusyBadge")}
-                  />
+                  <div
+                    className={
+                      "settings-tray-notify__status" +
+                      (trayBusySurface.severity === "info"
+                        ? " is-info"
+                        : "")
+                    }
+                    role="status"
+                  >
+                    {t(trayBusySurface.statusKey, {
+                      n: trayBusySurface.displayCount,
+                      cap: trayBusySurface.displayCount,
+                    })}
+                  </div>
                 </div>
               ) : null}
               {onLaunchAtLogin ? (
@@ -3800,6 +3880,69 @@ export function SettingsPage({
                     onChange={() => onWindowAlwaysOnTop(!windowAlwaysOnTop)}
                     ariaLabel={t("settings.windowAlwaysOnTop")}
                   />
+                </div>
+              ) : null}
+              {onNotifyOnTurnDone || onNotifyOnPermission || onNotifySound ? (
+                <div
+                  className={
+                    "settings-row settings-row--stack settings-tray-notify__honesty" +
+                    rowHighlight("settings-anchor-notifyHonesty")
+                  }
+                  id="settings-anchor-notifyHonesty"
+                >
+                  <div className="settings-tray-notify__honesty-head">
+                    <div className="settings-row__text">
+                      <div className="settings-row__label">
+                        {t("settings.notify.honesty.title")}
+                      </div>
+                      <div className="settings-row__desc">
+                        {t("settings.notify.honesty.desc")}
+                      </div>
+                    </div>
+                  </div>
+                  <div className="settings-tray-notify__honesty-body">
+                    <span
+                      className={
+                        "settings-acp-chip settings-tray-notify__perm-chip" +
+                        (notifyHonesty.severity === "warn"
+                          ? " is-fail"
+                          : notifyHonesty.canFireDesktop
+                            ? " is-ok"
+                            : "")
+                      }
+                      role="status"
+                    >
+                      <span className="settings-acp-chip__dot" aria-hidden />
+                      <span className="settings-acp-chip__label">
+                        {t(notifyHonesty.permissionLabelKey)}
+                      </span>
+                    </span>
+                    {notifyHonesty.canRequestPermission ? (
+                      <button
+                        type="button"
+                        className="btn btn--ghost btn--sm"
+                        disabled={notifyPermBusy}
+                        onClick={() => void requestNotifyPermission()}
+                      >
+                        {notifyPermBusy
+                          ? t("settings.notify.honesty.requesting")
+                          : t("settings.notify.honesty.request")}
+                      </button>
+                    ) : null}
+                  </div>
+                  <div
+                    className={
+                      "settings-tray-notify__status" +
+                      (notifyHonesty.severity === "warn"
+                        ? " is-warn"
+                        : notifyHonesty.severity === "info"
+                          ? " is-info"
+                          : "")
+                    }
+                    role="status"
+                  >
+                    {t(notifyHonesty.blockReasonKey)}
+                  </div>
                 </div>
               ) : null}
               {onNotifyOnTurnDone ? (
@@ -3899,6 +4042,14 @@ export function SettingsPage({
               </div>
               {notifyQuietHours.enabled ? (
                 <div className="settings-row settings-row--stack settings-quiet-hours">
+                  {notifyHonesty.quietHoursActive ? (
+                    <div
+                      className="settings-tray-notify__status is-info"
+                      role="status"
+                    >
+                      {t("settings.notifyQuietHours.activeNow")}
+                    </div>
+                  ) : null}
                   <div className="settings-quiet-hours__times">
                     <label className="settings-quiet-hours__field">
                       <span className="settings-quiet-hours__label">

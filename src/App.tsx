@@ -251,6 +251,7 @@ import {
   loadTrayBusyBadgePref,
   saveTrayBusyBadgePref,
 } from "@/lib/trayBusyBadgePref";
+import { resolveTrayBusyBadgeCount } from "@/lib/trayNotifyPro";
 import {
   collectAgentDashboardRows,
   countBusyDashboardRows,
@@ -2747,14 +2748,15 @@ export default function App() {
 
   // Dock / tray busy-session badge from liveMap projection.
   // Secondary windows must not overwrite the dock badge from a view-only pane.
+  // Count is clamped for display (TRAY-NOTIFY-PRO); pref off clears to 0.
   useEffect(() => {
-    if (isSecondaryWindow) return;
-    if (!trayBusyBadge) {
-      void api.traySetBusyCount(0);
-      return;
-    }
-    const n = countBusyLiveMapSessions(liveMap);
-    void api.traySetBusyCount(n);
+    const resolved = resolveTrayBusyBadgeCount({
+      enabled: trayBusyBadge,
+      busyCount: countBusyLiveMapSessions(liveMap),
+      isSecondaryWindow,
+    });
+    if (!resolved.apply) return;
+    void api.traySetBusyCount(resolved.count);
   }, [liveMap, trayBusyBadge, isSecondaryWindow]);
 
   const applyComposerPrefs = useCallback(
@@ -14856,6 +14858,7 @@ export default function App() {
             );
           }}
           trayBusyBadge={trayBusyBadge}
+          trayBusyCount={countBusyLiveMapSessions(liveMap)}
           onTrayBusyBadge={(v) => {
             saveTrayBusyBadgePref(v, localStorage);
             setTrayBusyBadge(v);

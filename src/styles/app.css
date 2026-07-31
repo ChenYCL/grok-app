@@ -5571,6 +5571,51 @@ textarea.settings-input.settings-agents-json__textarea {
 }
 
 /* Settings → General → App · quiet hours start/end (nested under toggle row) */
+/* TRAY-NOTIFY-PRO — busy badge status + desktop notify honesty */
+.settings-tray-notify__row-main {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+}
+
+.settings-tray-notify__status {
+  width: 100%;
+  margin-top: 2px;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--text-tertiary);
+}
+
+.settings-tray-notify__status.is-info {
+  color: var(--text-secondary);
+}
+
+.settings-tray-notify__status.is-warn {
+  color: var(--danger, #d33);
+}
+
+.settings-tray-notify__honesty {
+  align-items: stretch;
+}
+
+.settings-tray-notify__honesty-head {
+  width: 100%;
+}
+
+.settings-tray-notify__honesty-body {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  width: 100%;
+}
+
+.settings-tray-notify__perm-chip {
+  max-width: 100%;
+}
+
 .settings-quiet-hours {
   /* settings-row already provides padding/border; keep times full width */
   align-items: stretch;
