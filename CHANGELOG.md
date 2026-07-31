@@ -43,9 +43,18 @@ See `docs/llm-wiki/release.md`.
 #### Permissions / CLI
 - **CLI `--permission-mode` alignment**: pure App policy / YOLO / plan-mode map (`default` · `acceptEdits` · `auto` · `dontAsk` · `bypassPermissions` · `plan`); spawn pins top-level `--permission-mode` (+ agent `--always-approve` for YOLO); Settings shows CLI label + advanced mode selector; product **Auto** policy
 
+#### X Evidence Rail (MVP)
+- **X 证据轨** backend (`x_evidence.rs`, design: `docs/features/x-search.md`): `x_evidence_search` searches X via headless Grok CLI and persists every post as a local **evidence row** (sqlite `{app_data}/x-evidence/evidence.db`) with a stable `evidence_id`; posts without a canonical `x.com/…/status/…` URL are stored but flagged `verified=false` — hallucinated links never pass as evidence
+- **Local evidence bus**: `x_evidence_list` (filter by session tag / query / author) + `x_evidence_get` (by ids) so later agent turns re-read evidence without re-searching or losing citations
+- **Quote pack**: `x_quote_pack` renders evidence ids into a paste-ready markdown pack saved under `{app_data}/x-evidence/packs/*.md` (unverified items clearly marked); write-to-X path intentionally absent
+- Frontend API wrappers in `src/lib/api.ts` (`xEvidenceSearch` / `xEvidenceList` / `xEvidenceGet` / `xQuotePack`)
+
 ### Fixed
 
 - CLI install missing SHA-256 (#227) · app.css rewind/fork selectors (#259)
+- **MCP config.toml parser**: an unclosed multi-line `args = [` no longer silently swallows the next `[mcp_servers.*]` table (whole server used to disappear); array end detection is now string-literal-aware, so `]` inside a quoted arg (e.g. `"some]thing"`) no longer truncates the array
+- **Wallpaper gallery**: `is_gallery_media_url` now accepts all download-allowlisted hosts (`abs.twimg.com`, `filesystem.site`) — legit Imagine/CDN images were silently filtered out before display
+- **Wallpaper URL normalize**: legacy twimg `:thumb/:small/:medium/:large` suffixes are normalized to `:orig` again (the replacement branch was unreachable dead code after `Url::parse` succeeded)
 
 **中文 · 新增（按域）**
 
@@ -55,10 +64,14 @@ See `docs/llm-wiki/release.md`.
 - **Agent**：禁用内置工具（芯片 + 自由列表 → `--disallowed-tools`；与禁用网页搜索并存；更改 soft-respawn）；可选 profile 路径（`--agent-profile`）
 - **系统**：**Agent serve** 在设置 → 运行时 → 连接启停（掩码密钥 + 启动时复制连接 URL）
 - **权限/CLI**：对齐 `--permission-mode` 映射与 spawn；设置页展示 CLI 标签与高级选择；新增 **Auto** 策略
+- **X 证据轨（MVP）**：`x_evidence_search` 经 headless Grok CLI 搜 X 并逐条落库为本地证据行（sqlite，稳定 `evidence_id`，无合法 status 链接标 `verified=false`）；`x_evidence_list` / `x_evidence_get` 本地证据总线跨回合复用；`x_quote_pack` 生成可粘贴 markdown 引用包（设计文档 `docs/features/x-search.md`；不含发帖写路径）
 
 **中文 · 修复**
 
 - CLI SHA-256（#227）；CSS（#259）
+- **MCP config.toml 解析**：多行 `args = [` 漏闭合不再吞掉下一个 `[mcp_servers.*]` 表头（整个 server 曾被静默丢弃）；数组结尾判定改为字符串感知，引号内的 `]` 不再截断参数
+- **壁纸画廊**：`is_gallery_media_url` 补齐下载白名单主机（`abs.twimg.com`、`filesystem.site`），合法 Imagine/CDN 图不再被静默过滤
+- **壁纸 URL 归一**：twimg 老式 `:thumb/:small/:medium/:large` 后缀恢复归一为 `:orig`（原替换分支在 `Url::parse` 成功后不可达）
 
 
 ## [0.2.2] - 2026-07-30

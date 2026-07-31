@@ -103,6 +103,14 @@ pub fn normalize_media_url(url: &str) -> String {
     }
     // pbs.twimg.com/media/XXX?format=jpg&name=small → name=orig
     if trimmed.contains("pbs.twimg.com/media/") {
+        // Legacy `:small` / `:large` suffix — must be handled before
+        // Url::parse, which accepts the suffix as part of the path and
+        // would return the URL unchanged.
+        for suffix in [":thumb", ":small", ":medium", ":large"] {
+            if let Some(base) = trimmed.strip_suffix(suffix) {
+                return format!("{base}:orig");
+            }
+        }
         if let Ok(mut u) = url::Url::parse(trimmed) {
             let mut pairs: Vec<(String, String)> = u
                 .query_pairs()
@@ -123,17 +131,6 @@ pub fn normalize_media_url(url: &str) -> String {
                 u.query_pairs_mut().append_pair(&k, &v);
             }
             return u.to_string();
-        }
-        // Legacy :small / :large suffix
-        for suffix in [":thumb", ":small", ":medium", ":large"] {
-            if let Some(base) = trimmed.strip_suffix(suffix) {
-                return format!("{base}:orig");
-            }
-        }
-        if !trimmed.contains(':') || trimmed.matches(':').count() == 1 {
-            // scheme only — leave as-is
-        } else if !trimmed.ends_with(":orig") {
-            return format!("{trimmed}:orig");
         }
     }
     trimmed.to_string()
@@ -184,13 +181,16 @@ pub fn is_gallery_media_url(url: &str) -> bool {
     {
         return false;
     }
-    // Prefer photo media CDN paths
+    // Prefer photo media CDN paths. Keep in sync with is_allowed_media_url —
+    // a host allowed for download must not be silently dropped from the gallery.
     lower.contains("pbs.twimg.com/media/")
         || lower.contains("video.twimg.com/")
         || lower.contains("ton.twimg.com/")
+        || lower.contains("abs.twimg.com/")
         || lower.contains(".x.ai/")
         || lower.contains("cdn.grok.com")
         || lower.contains("assets.grok.com")
+        || lower.contains("filesystem.site/")
 }
 
 fn mime_from_ext(ext: &str) -> &'static str {
@@ -248,7 +248,7 @@ fn kind_from_mime(mime: &str) -> &'static str {
 
 // ── Auth / CLI ──────────────────────────────────────────────────────────────
 
-fn require_cli_ready() -> Result<String, String> {
+pub(crate) fn require_cli_ready() -> Result<String, String> {
     let settings = store::load_settings();
     let probe = cli_probe::probe_cli(settings.manual_cli_path.as_deref());
     if !probe.found {
@@ -493,7 +493,7 @@ fn extract_json_object(raw: &str) -> Option<serde_json::Value> {
     parse_grok_wallpaper_payload(raw)
 }
 
-fn run_grok_headless(
+pub(crate) fn run_grok_headless(
     cli_path: &str,
     prompt: &str,
     schema: &str,
@@ -1331,6 +1331,25 @@ mod tests {
             "https://pbs.twimg.com/media/HOUbJsYaEAAaEQ6.jpg?format=jpg&name=small",
         );
         assert!(u.contains("name=orig"), "{u}");
+    }
+
+    #[test]
+    fn normalize_twimg_legacy_colon_suffix() {
+        assert_eq!(
+            normalize_media_url("https://pbs.twimg.com/media/abc.jpg:small"),
+            "https://pbs.twimg.com/media/abc.jpg:orig"
+        );
+        assert_eq!(
+            normalize_media_url("https://pbs.twimg.com/media/abc.jpg:large"),
+            "https://pbs.twimg.com/media/abc.jpg:orig"
+        );
+    }
+
+    #[test]
+    fn gallery_accepts_all_allowlisted_hosts() {
+        // 下载白名单里的主机不能被画廊判定静默丢弃。
+        assert!(is_gallery_media_url("https://filesystem.site/cdn/xyz.png"));
+        assert!(is_gallery_media_url("https://abs.twimg.com/media/foo.jpg"));
     }
 
     #[test]

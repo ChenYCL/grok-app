@@ -68,6 +68,7 @@ mod voice_stt;
 mod voice_tools;
 mod remote_im;
 mod wallpaper_source;
+mod x_evidence;
 mod leader;
 mod serve;
 
@@ -457,6 +458,10 @@ pub fn run() {
             commands::wallpaper_fetch_media,
             commands::wallpaper_imagine,
             commands::wallpaper_library_list,
+            commands::x_evidence_search,
+            commands::x_evidence_list,
+            commands::x_evidence_get,
+            commands::x_quote_pack,
         ])
         .build(tauri::generate_context!())
         .expect("error while building Grok App")
