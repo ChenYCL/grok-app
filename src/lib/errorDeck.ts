@@ -1,6 +1,6 @@
 /**
- * T04 error deck — structured copy for the four product error classes
- * (plus a few host-side codes): problem / cause / primary / secondary.
+ * T04 error deck — structured copy for product error classes
+ * (host AgentErrorCode + App/local recoveries): problem / cause / primary / secondary.
  *
  * Labels come from i18n; action ids are stable for App handlers.
  */
@@ -22,9 +22,24 @@ export type ErrorDeckActionId =
   /** Stream-stall banner: clear the stall prompt and keep the turn running. */
   | "keep_waiting"
   /** Stream-stall banner: cancel the in-flight turn. */
-  | "cancel_turn";
+  | "cancel_turn"
+  /** Trust the active project (WORKSPACE_UNTRUSTED). */
+  | "trust_project"
+  /** Relocate a missing project folder (PROJECT_MISSING path). */
+  | "relocate_project"
+  /** Open the add-project picker (PROJECT_MISSING / no selection). */
+  | "add_project"
+  /** Settings → General → Permissions. */
+  | "open_permissions"
+  /** Open the MCP status / doctor modal. */
+  | "open_mcp"
+  /** Settings → Extensions (MCP list). */
+  | "open_extensions";
 
-/** Host / product error classes (aligned with AgentErrorCode + specials). */
+/**
+ * Host / product error classes (aligned with AgentErrorCode + App-side specials
+ * that surface as free-form localError or turn text).
+ */
 export type ErrorDeckCode =
   | "CLI_NOT_FOUND"
   | "AUTH_FAILED"
@@ -37,6 +52,16 @@ export type ErrorDeckCode =
   | "TURN_TIMEOUT"
   | "AGENT_DISCONNECTED"
   | "STREAM_STALL"
+  /** Active project is not trusted yet (App setLocalError trustFirst). */
+  | "WORKSPACE_UNTRUSTED"
+  /** Project folder missing / not selected (pathMissing, selectFirst). */
+  | "PROJECT_MISSING"
+  /** Tool / OS / user denied a permission (not account 401). */
+  | "PERMISSION_DENIED"
+  /** MCP server needs OAuth / auth handshake. */
+  | "MCP_AUTH_FAILED"
+  /** MCP or provider OAuth token expired / invalid_grant. */
+  | "OAUTH_EXPIRED"
   | "GENERIC";
 
 export type ErrorDeckAction = {
@@ -154,6 +179,46 @@ const DECK: Record<ErrorDeckCode, DeckSpec> = {
     secondaryId: "cancel_turn",
     secondaryLabel: "agent.streamStallCancel",
   },
+  WORKSPACE_UNTRUSTED: {
+    problem: "error.deck.untrusted.problem",
+    cause: "error.deck.untrusted.cause",
+    primaryId: "trust_project",
+    primaryLabel: "error.action.trustProject",
+    secondaryId: "dismiss",
+    secondaryLabel: "error.action.dismiss",
+  },
+  PROJECT_MISSING: {
+    problem: "error.deck.projectMissing.problem",
+    cause: "error.deck.projectMissing.cause",
+    primaryId: "relocate_project",
+    primaryLabel: "error.action.relocateProject",
+    secondaryId: "add_project",
+    secondaryLabel: "error.action.addProject",
+  },
+  PERMISSION_DENIED: {
+    problem: "error.deck.permission.problem",
+    cause: "error.deck.permission.cause",
+    primaryId: "open_permissions",
+    primaryLabel: "error.action.openPermissions",
+    secondaryId: "dismiss",
+    secondaryLabel: "error.action.dismiss",
+  },
+  MCP_AUTH_FAILED: {
+    problem: "error.deck.mcpAuth.problem",
+    cause: "error.deck.mcpAuth.cause",
+    primaryId: "open_mcp",
+    primaryLabel: "error.action.openMcp",
+    secondaryId: "open_extensions",
+    secondaryLabel: "error.action.openExtensions",
+  },
+  OAUTH_EXPIRED: {
+    problem: "error.deck.oauthExpired.problem",
+    cause: "error.deck.oauthExpired.cause",
+    primaryId: "open_mcp",
+    primaryLabel: "error.action.openMcp",
+    secondaryId: "open_account",
+    secondaryLabel: "error.action.openAccount",
+  },
   GENERIC: {
     problem: "error.deck.generic.problem",
     cause: "error.deck.generic.cause",
@@ -182,6 +247,7 @@ export function buildErrorDeck(
   };
 }
 
+/** Codes the host may emit as stable SCREAMING_SNAKE (or App may prefix). */
 const AGENT_DECK_CODES: ErrorDeckCode[] = [
   "CLI_NOT_FOUND",
   "AUTH_FAILED",
@@ -191,6 +257,12 @@ const AGENT_DECK_CODES: ErrorDeckCode[] = [
   "CONNECT_FAILED",
   "PROCESS_LIMIT",
   "CLI_TOO_OLD",
+  "WORKSPACE_UNTRUSTED",
+  "PROJECT_MISSING",
+  "PERMISSION_DENIED",
+  "MCP_AUTH_FAILED",
+  "OAUTH_EXPIRED",
+  "STREAM_STALL",
 ];
 
 /** Map a classified agent code (or special timeout/disconnect) to a deck code. */
@@ -208,11 +280,107 @@ export function deckCodeFromAgent(
 
 /**
  * Map free-form error text to a deck code when the host did not emit a stable code.
- * Keeps the four product classes (CLI / auth / network / crash) from collapsing to GENERIC.
+ * Order: App project gates → MCP OAuth → tool permission → classic four classes.
  */
 export function classifyErrorMessage(raw: string | null | undefined): ErrorDeckCode {
   const s = (raw ?? "").toLowerCase();
   if (!s.trim()) return "GENERIC";
+
+  // ── App project gates (setLocalError from trust / path / select) ──
+  if (
+    s.includes("workspace_untrusted") ||
+    s.includes("trust project") ||
+    s.includes("project not trusted") ||
+    s.includes("untrusted project") ||
+    s.includes("workspace untrusted") ||
+    s.includes("请先信任") ||
+    s.includes("請先信任")
+  ) {
+    return "WORKSPACE_UNTRUSTED";
+  }
+  if (
+    s.includes("project_missing") ||
+    s.includes("path missing") ||
+    s.includes("folder missing") ||
+    s.includes("is missing or not a directory") ||
+    (s.includes("folder for") && s.includes("missing")) ||
+    s.includes("select a project") ||
+    s.includes("add and select a project") ||
+    s.includes("no project") ||
+    s.includes("project missing") ||
+    s.includes("请先选择") ||
+    s.includes("請先選擇") ||
+    s.includes("文件夹已丢失") ||
+    s.includes("資料夾已遺失") ||
+    s.includes("資料夾遺失") ||
+    s.includes("不是目录") ||
+    s.includes("不是目錄") ||
+    s.includes("重新定位")
+  ) {
+    return "PROJECT_MISSING";
+  }
+
+  // ── MCP / OAuth (more specific than generic AUTH_FAILED) ──
+  const mcpish =
+    s.includes("mcp") ||
+    s.includes("oauth") ||
+    s.includes("resource_metadata") ||
+    s.includes("protected-resource") ||
+    s.includes("protected_resource") ||
+    s.includes("www-authenticate") ||
+    s.includes("authorization required") ||
+    s.includes("auth required");
+  const expiredish =
+    s.includes("expired") ||
+    s.includes("invalid_token") ||
+    s.includes("invalid_grant") ||
+    s.includes("token expir") ||
+    (s.includes("credential") && s.includes("expir")) ||
+    s.includes("refresh_token");
+  if (mcpish && expiredish) {
+    return "OAUTH_EXPIRED";
+  }
+  if (
+    s.includes("oauth_expired") ||
+    (expiredish &&
+      (s.includes("oauth") || s.includes("mcp") || s.includes("access_token")))
+  ) {
+    return "OAUTH_EXPIRED";
+  }
+  if (
+    s.includes("mcp_auth_failed") ||
+    s.includes("mcp auth") ||
+    s.includes("oauth failed") ||
+    s.includes("oauth error") ||
+    s.includes("authorization failed") ||
+    s.includes("authorization required") ||
+    s.includes("auth required") ||
+    s.includes("resource_metadata") ||
+    (s.includes("mcp") &&
+      (s.includes("auth") || s.includes("oauth") || s.includes("unauthorized")))
+  ) {
+    return "MCP_AUTH_FAILED";
+  }
+
+  // ── Tool / FS permission (not account 401) ──
+  if (
+    s.includes("permission_denied") ||
+    s.includes("permission denied") ||
+    s.includes("eacces") ||
+    s.includes("operation not permitted") ||
+    s.includes("user rejected") ||
+    s.includes("user denied") ||
+    s.includes("tool denied") ||
+    s.includes("tool call denied") ||
+    s.includes("rejected by user") ||
+    s.includes("权限被拒绝") ||
+    s.includes("權限被拒絕") ||
+    s.includes("无权访问") ||
+    s.includes("無權存取")
+  ) {
+    return "PERMISSION_DENIED";
+  }
+
   if (
     s.includes("cli_not_found") ||
     s.includes("command not found") ||

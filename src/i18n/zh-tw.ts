@@ -330,6 +330,12 @@ export const zhTW: Record<MessageKey, string> = {
   "error.action.upgradeCli": "升級 CLI",
   "error.action.openNetwork": "網路設定",
   "error.action.dismiss": "關閉",
+  "error.action.trustProject": "信任專案",
+  "error.action.relocateProject": "重新定位",
+  "error.action.addProject": "新增專案",
+  "error.action.openPermissions": "權限設定",
+  "error.action.openMcp": "開啟 MCP",
+  "error.action.openExtensions": "擴充功能",
   "error.deck.cli.problem": "找不到 Grok Build CLI",
   "error.deck.cli.cause":
     "桌面端需要本機 CLI 可執行檔。請安裝，或在設定中指定既有路徑。",
@@ -363,6 +369,21 @@ export const zhTW: Record<MessageKey, string> = {
     "約 {seconds} 秒沒有新的內容或工具進度。可取消本輪或繼續等待。",
   "error.deck.disconnect.cause":
     "傳輸通道在回合中關閉。請重新連線後再傳送。",
+  "error.deck.untrusted.problem": "專案尚未信任",
+  "error.deck.untrusted.cause":
+    "信任該資料夾後 Agent 才可讀寫（預設仍為 Ask 審批）。",
+  "error.deck.projectMissing.problem": "專案資料夾不可用",
+  "error.deck.projectMissing.cause":
+    "路徑遺失、已移動，或尚未選擇專案。請重新定位資料夾，或新增專案。",
+  "error.deck.permission.problem": "權限被拒絕",
+  "error.deck.permission.cause":
+    "工具或檔案存取被拒絕。可調整權限策略，或在下次提示時允許。",
+  "error.deck.mcpAuth.problem": "需要 MCP 驗證",
+  "error.deck.mcpAuth.cause":
+    "某 MCP 服務需要 OAuth 或重新授權。請開啟 MCP Doctor 完成登入。",
+  "error.deck.oauthExpired.problem": "OAuth 憑證已過期",
+  "error.deck.oauthExpired.cause":
+    "權杖或授權已失效。請重新整理 MCP OAuth，或在帳號設定中重新登入。",
   "error.deck.generic.problem": "出了點問題",
   "error.deck.generic.cause": "可在 Doctor 查看 CLI/驗證狀態，然後重試上一步操作。",
   "main.startTitle": "開始對話",

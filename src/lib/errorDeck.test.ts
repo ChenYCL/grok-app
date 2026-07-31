@@ -58,12 +58,35 @@ describe("buildErrorDeck", () => {
   it("STREAM_STALL uses keep_waiting / cancel_turn (not dual dismiss)", () => {
     const stall = buildErrorDeck("STREAM_STALL", "en");
     expect(stall.code).toBe("STREAM_STALL");
-    expect(stall.problem.toLowerCase()).toMatch(/stuck|stream/);
+    expect(stall.problem.toLowerCase()).toMatch(/stuck|stream|quiet/);
     expect(stall.primary.id).toBe("keep_waiting");
     expect(stall.secondary?.id).toBe("cancel_turn");
     expect(stall.primary.label.toLowerCase()).toMatch(/wait/);
     // Copy changed from "Cancel" to "End turn"; assert intent, not wording.
     expect(stall.secondary?.label.toLowerCase()).toMatch(/cancel|end/);
+  });
+
+  it("new recovery decks expose primary/secondary actions", () => {
+    const untrusted = buildErrorDeck("WORKSPACE_UNTRUSTED", "en");
+    expect(untrusted.primary.id).toBe("trust_project");
+    expect(untrusted.secondary?.id).toBe("dismiss");
+    expect(untrusted.problem.toLowerCase()).toMatch(/trust/);
+
+    const missing = buildErrorDeck("PROJECT_MISSING", "en");
+    expect(missing.primary.id).toBe("relocate_project");
+    expect(missing.secondary?.id).toBe("add_project");
+
+    const perm = buildErrorDeck("PERMISSION_DENIED", "en");
+    expect(perm.primary.id).toBe("open_permissions");
+    expect(perm.problem.toLowerCase()).toMatch(/permission|denied|access/);
+
+    const mcp = buildErrorDeck("MCP_AUTH_FAILED", "en");
+    expect(mcp.primary.id).toBe("open_mcp");
+    expect(mcp.secondary?.id).toBe("open_extensions");
+
+    const oauth = buildErrorDeck("OAUTH_EXPIRED", "en");
+    expect(oauth.primary.id).toBe("open_mcp");
+    expect(oauth.secondary?.id).toBe("open_account");
   });
 
   it("classifies free-form messages into product classes", () => {
@@ -77,6 +100,57 @@ describe("buildErrorDeck", () => {
     expect(classifyErrorMessage("agent process exited")).toBe("AGENT_CRASHED");
   });
 
+  it("classifies App project-gate and MCP/permission strings", () => {
+    expect(classifyErrorMessage('Trust project "Demo" first.')).toBe(
+      "WORKSPACE_UNTRUSTED",
+    );
+    expect(classifyErrorMessage("请先信任项目「演示」。")).toBe(
+      "WORKSPACE_UNTRUSTED",
+    );
+    expect(classifyErrorMessage("請先信任專案「演示」。")).toBe(
+      "WORKSPACE_UNTRUSTED",
+    );
+    expect(
+      classifyErrorMessage(
+        'Folder for "Demo" is missing or not a directory. Relocate it to continue.',
+      ),
+    ).toBe("PROJECT_MISSING");
+    expect(classifyErrorMessage("Select a project first.")).toBe(
+      "PROJECT_MISSING",
+    );
+    expect(classifyErrorMessage("请先选择一个项目。")).toBe("PROJECT_MISSING");
+    expect(classifyErrorMessage("「演示」的文件夹已丢失或不是目录。")).toBe(
+      "PROJECT_MISSING",
+    );
+    expect(
+      classifyErrorMessage("「演示」的資料夾已遺失或不是目錄。請重新定位後繼續。"),
+    ).toBe("PROJECT_MISSING");
+    expect(classifyErrorMessage("permission denied writing file")).toBe(
+      "PERMISSION_DENIED",
+    );
+    expect(classifyErrorMessage("permission_denied")).toBe("PERMISSION_DENIED");
+    expect(classifyErrorMessage("EACCES: operation not permitted")).toBe(
+      "PERMISSION_DENIED",
+    );
+    expect(
+      classifyErrorMessage("MCP oauth authorization required for server"),
+    ).toBe("MCP_AUTH_FAILED");
+    expect(
+      classifyErrorMessage("invalid_token — MCP access token expired"),
+    ).toBe("OAUTH_EXPIRED");
+    expect(classifyErrorMessage("oauth failed during MCP handshake")).toBe(
+      "MCP_AUTH_FAILED",
+    );
+  });
+
+  it("deckCodeFromAgent accepts new App-side codes", () => {
+    expect(deckCodeFromAgent("WORKSPACE_UNTRUSTED")).toBe("WORKSPACE_UNTRUSTED");
+    expect(deckCodeFromAgent("PROJECT_MISSING")).toBe("PROJECT_MISSING");
+    expect(deckCodeFromAgent("PERMISSION_DENIED")).toBe("PERMISSION_DENIED");
+    expect(deckCodeFromAgent("MCP_AUTH_FAILED")).toBe("MCP_AUTH_FAILED");
+    expect(deckCodeFromAgent("OAUTH_EXPIRED")).toBe("OAUTH_EXPIRED");
+  });
+
   it("resolveErrorDeckCode prefers host code then message", () => {
     expect(resolveErrorDeckCode("AUTH_FAILED", "something else")).toBe(
       "AUTH_FAILED",
@@ -84,5 +158,11 @@ describe("buildErrorDeck", () => {
     expect(resolveErrorDeckCode(null, "command not found: grok")).toBe(
       "CLI_NOT_FOUND",
     );
+    expect(
+      resolveErrorDeckCode(null, 'Trust project "x" first.'),
+    ).toBe("WORKSPACE_UNTRUSTED");
+    expect(
+      resolveErrorDeckCode("GENERIC", "MCP oauth authorization required"),
+    ).toBe("MCP_AUTH_FAILED");
   });
 });

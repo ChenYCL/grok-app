@@ -1972,6 +1972,15 @@ export function errorCopy(code: AgentErrorCode, locale: Locale = "en"): string {
   return `${card.problem} ${card.cause}`.trim();
 }
 
+/** Friendly bubble body from any deck code (including App-only recoveries). */
+function errorCopyFromDeck(
+  code: Parameters<typeof buildErrorDeck>[0],
+  locale: Locale = "en",
+): string {
+  const card = buildErrorDeck(code, locale);
+  return `${card.problem} ${card.cause}`.trim();
+}
+
 /** Turn took too long (Host session/prompt timeout) — more specific than generic network. */
 export function turnTimeoutCopy(locale: Locale = "en"): string {
   const card = buildErrorDeck("TURN_TIMEOUT", locale);
@@ -2064,8 +2073,31 @@ export function formatTurnErrorBody(
   }
 
   // Infer codes from common agent/host phrases when payload lacks a code.
+  // Prefer resolveErrorDeckCode for App/MCP/permission recoveries; map only
+  // host AgentErrorCode values into the typed bubble path below.
   if (!code) {
+    const deckish = resolveErrorDeckCode(null, lower);
     if (
+      deckish === "CONNECT_FAILED" ||
+      deckish === "QUOTA_EXCEEDED" ||
+      deckish === "AUTH_FAILED" ||
+      deckish === "CLI_NOT_FOUND" ||
+      deckish === "NETWORK_PROVIDER" ||
+      deckish === "AGENT_CRASHED" ||
+      deckish === "PROCESS_LIMIT" ||
+      deckish === "CLI_TOO_OLD"
+    ) {
+      code = deckish;
+    } else if (
+      deckish === "PERMISSION_DENIED" ||
+      deckish === "MCP_AUTH_FAILED" ||
+      deckish === "OAUTH_EXPIRED" ||
+      deckish === "WORKSPACE_UNTRUSTED" ||
+      deckish === "PROJECT_MISSING"
+    ) {
+      // Deck-only codes: friendly bubble from the card (not AgentErrorCode).
+      return errorCopyFromDeck(deckish, locale);
+    } else if (
       /could not connect the agent|edit aborted|no active session|acp client missing|connect failed/i.test(
         lower,
       )
@@ -2201,7 +2233,28 @@ export function presentErrorBanner(
     return bannerFromDeck(deck, null, null);
   }
 
-  // Local UX strings (e.g. "select a project") — show as-is, soft dismiss.
+  // Classify free-form localError (trust / path / permission / MCP …).
+  // Keep the original short UX string as summary when present so project names
+  // from i18n stay visible; deck supplies cause + recovery actions.
+  const classified = resolveErrorDeckCode(null, cleaned);
+  if (classified !== "GENERIC") {
+    const deck = buildErrorDeck(classified, locale);
+    const short =
+      cleaned.length > 200 ? `${cleaned.slice(0, 200)}…` : cleaned;
+    return {
+      code: classified,
+      summary: short,
+      cause: deck.cause,
+      detail: null,
+      reconnectHint:
+        deck.primary.id === "reconnect" || deck.secondary?.id === "reconnect",
+      primary: deck.primary,
+      secondary: deck.secondary,
+      deck,
+    };
+  }
+
+  // Unknown local UX strings — show as-is, soft dismiss.
   const deck = buildErrorDeck("GENERIC", locale);
   return {
     code: null,
