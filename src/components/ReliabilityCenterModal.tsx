@@ -3,12 +3,14 @@
  * busy sessions, stall / end-of-turn stalls, recent error-deck cards,
  * a persisted stall timeline (localStorage ring), and the cross-session
  * tool/permission audit ledger (host JSONL).
- * Actions: export support bundle, open Doctor, clear stall/audit, export audit.
+ * Actions: export support bundle, open Doctor, clear stall/audit, export audit,
+ * export redacted stall history JSON.
  * No secrets from logs.
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
+import { GlassModal } from "@/components/GlassModal";
 import {
   IconActivity,
   IconAlertTriangle,
@@ -25,10 +27,13 @@ import {
   type AuditLedgerEvent,
 } from "@/lib/auditLedger";
 import {
+  applyClearStallHistoryPlan,
+  buildStallHistoryExport,
   buildStallTimelineSnapshot,
-  clearStallHistory,
   filterStallHistory,
   loadStallHistory,
+  planClearStallHistory,
+  serializeStallHistoryExport,
   serializeStallTimelineSnapshot,
   STALL_HISTORY_CHANGE_EVENT,
   STALL_HISTORY_STORAGE_KEY,
@@ -280,6 +285,19 @@ function AuditRow({
   );
 }
 
+function downloadStallHistoryJson(filename: string, body: string) {
+  const blob = new Blob([body], { type: "application/json;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.rel = "noopener";
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
 export function ReliabilityCenterModal({
   open,
   onClose,
@@ -289,9 +307,9 @@ export function ReliabilityCenterModal({
   onSelectSession,
 }: ReliabilityCenterModalProps) {
   const t = useMemo(() => createT(locale), [locale]);
-  const [busy, setBusy] = useState<"zip" | "audit-export" | "audit-clear" | null>(
-    null,
-  );
+  const [busy, setBusy] = useState<
+    "zip" | "audit-export" | "audit-clear" | "stall-export" | null
+  >(null);
   const [statusMsg, setStatusMsg] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
@@ -379,6 +397,11 @@ export function ReliabilityCenterModal({
     [stallHistory, historyQuery, historyKind],
   );
 
+  const clearHistoryPlan = useMemo(
+    () => planClearStallHistory(stallHistory),
+    [stallHistory],
+  );
+
   const filteredAudit = useMemo(
     () =>
       filterAuditLedger(auditEntries, {
@@ -405,11 +428,44 @@ export function ReliabilityCenterModal({
     }
   }, [t, view.stalls.signals]);
 
+  const onExportStallHistory = useCallback(() => {
+    setBusy("stall-export");
+    setStatusMsg(null);
+    setErrorMsg(null);
+    try {
+      if (filteredHistory.length === 0) {
+        setErrorMsg(t("reliability.timeline.exportEmpty"));
+        return;
+      }
+      const snap = buildStallHistoryExport(filteredHistory, {
+        query: historyQuery,
+        kind: historyKind,
+      });
+      const body = serializeStallHistoryExport(snap);
+      const stamp = new Date()
+        .toISOString()
+        .slice(0, 19)
+        .replace(/[:T]/g, "-");
+      downloadStallHistoryJson(`grok-app-stall-timeline-${stamp}.json`, body);
+      setStatusMsg(
+        t("reliability.timeline.exportDone", { count: snap.count }),
+      );
+    } catch (e) {
+      setErrorMsg(`${t("reliability.timeline.exportFail")}: ${String(e)}`);
+    } finally {
+      setBusy(null);
+    }
+  }, [t, filteredHistory, historyQuery, historyKind]);
+
   const doClearHistory = useCallback(() => {
-    clearStallHistory();
+    const plan = planClearStallHistory(loadStallHistory());
+    applyClearStallHistoryPlan(plan);
     setStallHistory([]);
     setConfirmClearHistory(false);
-  }, []);
+    setStatusMsg(
+      t("reliability.timeline.clearDone", { count: plan.count }),
+    );
+  }, [t]);
 
   const doClearAudit = useCallback(async () => {
     setBusy("audit-clear");
@@ -475,66 +531,6 @@ export function ReliabilityCenterModal({
       label: t("reliability.audit.event.toolEnd"),
     },
   ];
-
-  const clearConfirmPortal =
-    confirmClearHistory &&
-    typeof document !== "undefined" &&
-    createPortal(
-      <div
-        className="overlay app-dialog-overlay"
-        role="presentation"
-        onMouseDown={(e) => {
-          if (e.target === e.currentTarget) setConfirmClearHistory(false);
-        }}
-      >
-        <div
-          className="modal app-dialog"
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="reliab-stall-history-clear-title"
-          onMouseDown={(e) => e.stopPropagation()}
-        >
-          <header className="modal-head">
-            <h2
-              id="reliab-stall-history-clear-title"
-              className="modal-title"
-            >
-              {t("reliability.timeline.clearConfirmTitle")}
-            </h2>
-            <button
-              type="button"
-              className="icon-btn modal-close"
-              onClick={() => setConfirmClearHistory(false)}
-              aria-label={t("common.cancel")}
-            >
-              <IconClose size={16} />
-            </button>
-          </header>
-          <div className="app-dialog__form">
-            <p className="app-dialog__msg">
-              {t("reliability.timeline.clearConfirmMessage")}
-            </p>
-            <div className="app-dialog__actions modal-actions">
-              <button
-                type="button"
-                className="btn btn--ghost"
-                onClick={() => setConfirmClearHistory(false)}
-              >
-                {t("common.cancel")}
-              </button>
-              <button
-                type="button"
-                className="btn btn--danger"
-                onClick={doClearHistory}
-              >
-                {t("reliability.timeline.clearConfirmAction")}
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>,
-      document.body,
-    );
 
   const clearAuditPortal =
     confirmClearAudit &&
@@ -735,6 +731,19 @@ export function ReliabilityCenterModal({
                   <button
                     type="button"
                     className="btn btn--ghost btn--sm"
+                    disabled={!!busy || filteredHistory.length === 0}
+                    onClick={onExportStallHistory}
+                    data-testid="reliab-timeline-export"
+                    title={t("reliability.timeline.export")}
+                  >
+                    {busy === "stall-export"
+                      ? "…"
+                      : t("reliability.timeline.export")}
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn--ghost btn--sm"
+                    disabled={!!busy || stallHistory.length === 0}
                     onClick={() => setConfirmClearHistory(true)}
                     data-testid="reliab-timeline-clear"
                   >
@@ -937,7 +946,39 @@ export function ReliabilityCenterModal({
           </button>
         </footer>
       </div>
-      {clearConfirmPortal}
+      <GlassModal
+        open={confirmClearHistory}
+        onClose={() => setConfirmClearHistory(false)}
+        title={t("reliability.timeline.clearConfirmTitle")}
+        size="sm"
+        closeLabel={t("common.cancel")}
+        titleId="reliab-stall-history-clear-title"
+        footer={
+          <>
+            <button
+              type="button"
+              className="btn btn--ghost"
+              onClick={() => setConfirmClearHistory(false)}
+            >
+              {t("common.cancel")}
+            </button>
+            <button
+              type="button"
+              className="btn btn--danger"
+              onClick={doClearHistory}
+              data-testid="reliab-timeline-clear-confirm"
+            >
+              {t("reliability.timeline.clearConfirmAction")}
+            </button>
+          </>
+        }
+      >
+        <p className="app-dialog__msg" style={{ margin: 0, padding: "12px 16px" }}>
+          {t("reliability.timeline.clearConfirmMessage", {
+            count: clearHistoryPlan.count,
+          })}
+        </p>
+      </GlassModal>
       {clearAuditPortal}
     </div>
   );
