@@ -51,6 +51,11 @@ describe("settingsCatalog", () => {
       section: "runtime",
       tab: "tools",
     });
+    // Query (PR hub deep link) must not break section/tab parse.
+    expect(parseSettingsHash("#/settings/runtime/tools?pr=42")).toEqual({
+      section: "runtime",
+      tab: "tools",
+    });
     expect(parseSettingsHash("settings/bogus/x")).toEqual({
       section: "general",
       tab: "composer",

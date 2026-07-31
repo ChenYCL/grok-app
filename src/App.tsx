@@ -766,6 +766,12 @@ import {
   shipOutcomeSummary,
 } from "@/lib/wtShipFlow";
 import {
+  PR_HUB_ANCHOR_ID,
+  buildPrHubDeepLink,
+  parseGithubPrNumber,
+  parsePrHubDeepLink,
+} from "@/lib/prHubDeepLink";
+import {
   buildForkWorktreeName,
   canOfferForkAgentSession,
   canRestoreCodeOnFork,
@@ -2555,6 +2561,17 @@ export default function App() {
   const [shipError, setShipError] = useState<string | null>(null);
   const [shipBranch, setShipBranch] = useState<string | null>(null);
   const [shipStatus, setShipStatus] = useState<string | null>(null);
+  /** After successful `gh pr create` — success panel with URL + Open in PR hub. */
+  const [shipSuccess, setShipSuccess] = useState<{
+    prUrl: string;
+    prNumber: number | null;
+  } | null>(null);
+  /** PR hub row highlight from ship deep link / `?pr=`. */
+  const [prHubHighlightPr, setPrHubHighlightPr] = useState<number | null>(null);
+  /** One-shot Settings scroll target (e.g. settings-anchor-prHub). */
+  const [settingsFocusAnchor, setSettingsFocusAnchor] = useState<string | null>(
+    null,
+  );
   /** Host stream-stall prompt (I06); null when dismissed or not stalled. */
   const [streamStall, setStreamStall] = useState<{
     sessionId?: string;
@@ -5402,15 +5419,16 @@ export default function App() {
     [],
   );
 
-  // Hash route: #/settings[/section[/tab]] | #/automations | #/workbench
+  // Hash route: #/settings[/section[/tab]][?pr=N] | #/automations | #/workbench
   // Explicit #/settings/{section}… deep links always win; bare #/settings uses last.
   useEffect(() => {
     const syncFromHash = () => {
-      const raw = (window.location.hash || "").replace(/^#\/?/, "");
+      const fullHash = window.location.hash || "";
+      const raw = fullHash.replace(/^#\/?/, "");
       if (raw.startsWith("settings")) {
         const parts = raw.split("/").filter(Boolean);
-        // parts[0] === "settings"; parts[1] may be section
-        const sectionPart = parts[1];
+        // parts[0] === "settings"; parts[1] may be section (ignore ?query)
+        const sectionPart = (parts[1] ?? "").split("?")[0];
         const hasExplicitSection = isSettingsSectionId(sectionPart);
         if (hasExplicitSection) {
           const loc = parseSettingsHash(raw);
@@ -5418,6 +5436,13 @@ export default function App() {
             setSettingsSection(loc.section);
             setSettingsTab(loc.tab ?? null);
             saveSettingsLastRoute(loc);
+          }
+          // PR hub deep link with explicit ?pr=N: highlight row + scroll to hub.
+          // Bare runtime/tools (no query) must not steal focus to the PR hub card.
+          const prHub = parsePrHubDeepLink(fullHash);
+          if (prHub && prHub.prNumber != null) {
+            setPrHubHighlightPr(prHub.prNumber);
+            setSettingsFocusAnchor(PR_HUB_ANCHOR_ID);
           }
         } else {
           // Bare #/settings or unknown first segment → last route if valid.
@@ -12519,6 +12544,7 @@ export default function App() {
     setShipCreatePr(true);
     setShipError(null);
     setShipStatus(null);
+    setShipSuccess(null);
     setShipBusy(false);
     setShipOpen(true);
   }, [
@@ -12530,6 +12556,46 @@ export default function App() {
     showToast,
     tr,
   ]);
+
+  /** Close ship dialog and clear transient success state. */
+  const closeShipFlow = useCallback(() => {
+    if (shipBusy) return;
+    setShipOpen(false);
+    setShipError(null);
+    setShipStatus(null);
+    setShipSuccess(null);
+  }, [shipBusy]);
+
+  /**
+   * Navigate to Settings → Runtime → Tools PR hub for the active project,
+   * optionally highlighting a PR number. Soft-fails with a toast (never throws).
+   */
+  const openPrHubFromShip = useCallback(
+    (prNumber: number | null) => {
+      try {
+        if (!activeProject?.path?.trim()) {
+          showToast(tr("composer.worktreeShipOpenHubFailed"), 4000);
+          return;
+        }
+        setPrHubHighlightPr(prNumber);
+        setSettingsFocusAnchor(PR_HUB_ANCHOR_ID);
+        navigateSettings("runtime", "tools");
+        if (typeof window !== "undefined") {
+          const hash = buildPrHubDeepLink({ prNumber });
+          if (window.location.hash !== hash) {
+            window.location.hash = hash;
+          }
+        }
+        setShipOpen(false);
+        setShipSuccess(null);
+        setShipError(null);
+        setShipStatus(null);
+      } catch {
+        showToast(tr("composer.worktreeShipOpenHubFailed"), 4000);
+      }
+    },
+    [activeProject?.path, navigateSettings, showToast, tr],
+  );
 
   const submitShipFlow = useCallback(async () => {
     if (!api.isTauri() || !activeProject?.path) return;
@@ -12544,6 +12610,7 @@ export default function App() {
     }
     setShipBusy(true);
     setShipError(null);
+    setShipSuccess(null);
     setShipStatus(tr("composer.worktreeShipPushing"));
     try {
       const push = await api.gitPushBranch(activeProject.path);
@@ -12563,14 +12630,18 @@ export default function App() {
       });
       const summary = shipOutcomeSummary(outcome);
       if (outcome.ok) {
-        setShipOpen(false);
         setShipStatus(null);
         if (outcome.prUrl) {
-          showToast(tr("composer.worktreeShipDonePr", { url: outcome.prUrl }), 6000);
-          void api.openExternalUrl(outcome.prUrl).catch(() => {
-            /* toast already shows URL */
-          });
+          // Success panel: PR URL + Open in PR hub (do not force-close).
+          const prNumber = parseGithubPrNumber(outcome.prUrl);
+          setShipSuccess({ prUrl: outcome.prUrl, prNumber });
+          showToast(
+            tr("composer.worktreeShipDonePr", { url: outcome.prUrl }),
+            5000,
+          );
         } else {
+          setShipOpen(false);
+          setShipSuccess(null);
           showToast(tr("composer.worktreeShipDonePush"), 4000);
         }
       } else {
@@ -16249,6 +16320,9 @@ export default function App() {
           }}
           onBack={navigateWorkbench}
           phoneLayout={phoneLayout}
+          focusAnchorId={settingsFocusAnchor}
+          prHubHighlightPr={prHubHighlightPr}
+          onFocusAnchorConsumed={() => setSettingsFocusAnchor(null)}
           labels={settingsLabels}
           locale={locale}
           localePreference={localePreference}
@@ -20687,130 +20761,181 @@ export default function App() {
       </GlassModal>
       <GlassModal
         open={shipOpen}
-        onClose={() => {
-          if (shipBusy) return;
-          setShipOpen(false);
-          setShipError(null);
-          setShipStatus(null);
-        }}
-        title={tr("composer.worktreeShipTitle")}
+        onClose={closeShipFlow}
+        title={
+          shipSuccess
+            ? tr("composer.worktreeShipSuccessTitle")
+            : tr("composer.worktreeShipTitle")
+        }
         size="md"
         closeLabel={tr("common.close")}
         closeOnOverlay={!shipBusy}
         showClose={!shipBusy}
         wrapBody
         footer={
-          <>
-            <button
-              type="button"
-              className="btn btn--ghost"
-              disabled={shipBusy}
-              onClick={() => {
-                setShipOpen(false);
-                setShipError(null);
-                setShipStatus(null);
-              }}
-            >
-              {tr("common.cancel")}
-            </button>
-            <button
-              type="button"
-              className="btn btn--solid"
-              disabled={shipBusy || !shipTitle.trim()}
-              onClick={() => {
-                void submitShipFlow();
-              }}
-              data-testid="ship-submit"
-            >
-              {shipBusy
-                ? shipStatus || tr("composer.worktreeShipRunning")
-                : shipCreatePr
-                  ? tr("composer.worktreeShipConfirmPr")
-                  : tr("composer.worktreeShipConfirmPush")}
-            </button>
-          </>
+          shipSuccess ? (
+            <>
+              <button
+                type="button"
+                className="btn btn--ghost"
+                onClick={closeShipFlow}
+                data-testid="ship-success-done"
+              >
+                {tr("composer.worktreeShipDone")}
+              </button>
+              <button
+                type="button"
+                className="btn btn--solid"
+                onClick={() => openPrHubFromShip(shipSuccess.prNumber)}
+                data-testid="ship-open-pr-hub"
+              >
+                {tr("composer.worktreeShipOpenInHub")}
+              </button>
+            </>
+          ) : (
+            <>
+              <button
+                type="button"
+                className="btn btn--ghost"
+                disabled={shipBusy}
+                onClick={closeShipFlow}
+              >
+                {tr("common.cancel")}
+              </button>
+              <button
+                type="button"
+                className="btn btn--solid"
+                disabled={shipBusy || !shipTitle.trim()}
+                onClick={() => {
+                  void submitShipFlow();
+                }}
+                data-testid="ship-submit"
+              >
+                {shipBusy
+                  ? shipStatus || tr("composer.worktreeShipRunning")
+                  : shipCreatePr
+                    ? tr("composer.worktreeShipConfirmPr")
+                    : tr("composer.worktreeShipConfirmPush")}
+              </button>
+            </>
+          )
         }
       >
-        <form
-          className="wt-ship"
-          onSubmit={(e) => {
-            e.preventDefault();
-            if (shipBusy || !shipTitle.trim()) return;
-            void submitShipFlow();
-          }}
-        >
-          <p className="wt-ship__hint">{tr("composer.worktreeShipHint")}</p>
-          {shipBranch ? (
-            <p className="wt-ship__branch">
-              {tr("composer.worktreeShipBranch", { branch: shipBranch })}
+        {shipSuccess ? (
+          <div
+            className="wt-ship wt-ship--success"
+            data-testid="ship-success"
+          >
+            <p className="wt-ship__hint">
+              {tr("composer.worktreeShipDonePr", { url: shipSuccess.prUrl })}
             </p>
-          ) : null}
-          <label className="wt-ship__field">
-            <span className="wt-ship__label">
-              {tr("composer.worktreeShipTitleField")}
-            </span>
-            <input
-              className="settings-input"
-              value={shipTitle}
-              onChange={(e) => {
-                setShipTitle(e.target.value);
-                setShipError(null);
-              }}
-              placeholder={tr("composer.worktreeShipTitlePlaceholder")}
-              autoComplete="off"
-              autoFocus
-              disabled={shipBusy}
-              spellCheck={true}
-              data-testid="ship-title"
-            />
-          </label>
-          <label className="wt-ship__field">
-            <span className="wt-ship__label">
-              {tr("composer.worktreeShipBodyField")}
-            </span>
-            <textarea
-              className="settings-input wt-ship__body"
-              value={shipBody}
-              onChange={(e) => {
-                setShipBody(e.target.value);
-                setShipError(null);
-              }}
-              placeholder={tr("composer.worktreeShipBodyPlaceholder")}
-              rows={5}
-              disabled={shipBusy}
-              spellCheck={true}
-              data-testid="ship-body"
-            />
-          </label>
-          <label className="wt-ship__check">
-            <input
-              type="checkbox"
-              checked={shipCreatePr}
-              disabled={shipBusy}
-              onChange={(e) => setShipCreatePr(e.target.checked)}
-            />
-            <span>{tr("composer.worktreeShipCreatePr")}</span>
-          </label>
-          <label className="wt-ship__check">
-            <input
-              type="checkbox"
-              checked={shipDraft}
-              disabled={shipBusy || !shipCreatePr}
-              onChange={(e) => setShipDraft(e.target.checked)}
-            />
-            <span>{tr("composer.worktreeShipDraft")}</span>
-          </label>
-          {shipStatus ? (
-            <p className="wt-ship__status" aria-live="polite">
-              {shipStatus}
+            <p className="wt-ship__success-url" title={shipSuccess.prUrl}>
+              {shipSuccess.prUrl}
             </p>
-          ) : null}
-          {shipError ? (
-            <p className="wt-ship__error" role="alert">
-              {shipError}
-            </p>
-          ) : null}
-        </form>
+            <div className="wt-ship__success-actions">
+              <button
+                type="button"
+                className="btn btn--ghost btn--sm"
+                onClick={() => {
+                  void api.openExternalUrl(shipSuccess.prUrl).catch(() => {
+                    showToast(tr("composer.worktreeShipOpenBrowserFailed"), 3500);
+                  });
+                }}
+                data-testid="ship-open-browser"
+              >
+                {tr("composer.worktreeShipOpenInBrowser")}
+              </button>
+              <button
+                type="button"
+                className="btn btn--ghost btn--sm"
+                onClick={() => openPrHubFromShip(shipSuccess.prNumber)}
+              >
+                {tr("composer.worktreeShipOpenInHub")}
+              </button>
+            </div>
+          </div>
+        ) : (
+          <form
+            className="wt-ship"
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (shipBusy || !shipTitle.trim()) return;
+              void submitShipFlow();
+            }}
+          >
+            <p className="wt-ship__hint">{tr("composer.worktreeShipHint")}</p>
+            {shipBranch ? (
+              <p className="wt-ship__branch">
+                {tr("composer.worktreeShipBranch", { branch: shipBranch })}
+              </p>
+            ) : null}
+            <label className="wt-ship__field">
+              <span className="wt-ship__label">
+                {tr("composer.worktreeShipTitleField")}
+              </span>
+              <input
+                className="settings-input"
+                value={shipTitle}
+                onChange={(e) => {
+                  setShipTitle(e.target.value);
+                  setShipError(null);
+                }}
+                placeholder={tr("composer.worktreeShipTitlePlaceholder")}
+                autoComplete="off"
+                autoFocus
+                disabled={shipBusy}
+                spellCheck={true}
+                data-testid="ship-title"
+              />
+            </label>
+            <label className="wt-ship__field">
+              <span className="wt-ship__label">
+                {tr("composer.worktreeShipBodyField")}
+              </span>
+              <textarea
+                className="settings-input wt-ship__body"
+                value={shipBody}
+                onChange={(e) => {
+                  setShipBody(e.target.value);
+                  setShipError(null);
+                }}
+                placeholder={tr("composer.worktreeShipBodyPlaceholder")}
+                rows={5}
+                disabled={shipBusy}
+                spellCheck={true}
+                data-testid="ship-body"
+              />
+            </label>
+            <label className="wt-ship__check">
+              <input
+                type="checkbox"
+                checked={shipCreatePr}
+                disabled={shipBusy}
+                onChange={(e) => setShipCreatePr(e.target.checked)}
+              />
+              <span>{tr("composer.worktreeShipCreatePr")}</span>
+            </label>
+            <label className="wt-ship__check">
+              <input
+                type="checkbox"
+                checked={shipDraft}
+                disabled={shipBusy || !shipCreatePr}
+                onChange={(e) => setShipDraft(e.target.checked)}
+              />
+              <span>{tr("composer.worktreeShipDraft")}</span>
+            </label>
+            {shipStatus ? (
+              <p className="wt-ship__status" aria-live="polite">
+                {shipStatus}
+              </p>
+            ) : null}
+            {shipError ? (
+              <p className="wt-ship__error" role="alert">
+                {shipError}
+              </p>
+            ) : null}
+          </form>
+        )}
       </GlassModal>
       <GlassModal
         open={showShortcuts}

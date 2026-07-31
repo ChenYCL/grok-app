@@ -733,6 +733,15 @@ export interface SettingsPageProps {
     relativePath: string;
     line?: number | null;
   }) => void;
+  /**
+   * Scroll + brief highlight target when opening Settings from outside
+   * (e.g. ship → PR hub deep link). Cleared after apply via onFocusAnchorConsumed.
+   */
+  focusAnchorId?: string | null;
+  /** Optional PR number to highlight in Git PR hub (`?pr=` / ship success). */
+  prHubHighlightPr?: number | null;
+  /** Called once after focusAnchorId is applied (parent can clear). */
+  onFocusAnchorConsumed?: () => void;
   /** After skill enable toggle — refresh slash palette in App. */
   onSkillsPrefsChanged?: () => void;
   /** Open the same shortcuts help modal as ⌘/ / Ctrl+/. */
@@ -1408,6 +1417,9 @@ export function SettingsPage({
   onArchiveOlderThan,
   projectPath = null,
   onOpenProjectFileInResources,
+  focusAnchorId = null,
+  prHubHighlightPr = null,
+  onFocusAnchorConsumed,
   onSkillsPrefsChanged,
   onOpenShortcutsHelp,
   onOpenProductTutorial,
@@ -1443,6 +1455,15 @@ export function SettingsPage({
   /** Pending scroll target after search jump / deep link. */
   const pendingAnchorRef = useRef<string | null>(null);
   const [highlightAnchor, setHighlightAnchor] = useState<string | null>(null);
+
+  // External focus (ship → PR hub): queue scroll when prop arrives.
+  // Same-tab re-entry still works because the scroll effect also depends on
+  // focusAnchorId (not only section/tab).
+  useEffect(() => {
+    const a = (focusAnchorId ?? "").trim();
+    if (!a) return;
+    pendingAnchorRef.current = a;
+  }, [focusAnchorId]);
   /**
    * Phone drill-down: "index" = section list only; "detail" = one section full-width.
    * Always start on the index so opening 設定 never lands on a squeezed two-column pane.
@@ -1890,20 +1911,25 @@ export function SettingsPage({
     [navigateTo, section],
   );
 
-  // Scroll + brief highlight after tab/section paint.
+  // Scroll + brief highlight after tab/section paint or external focus.
   useEffect(() => {
     const anchor = pendingAnchorRef.current;
     if (!anchor) return;
-    pendingAnchorRef.current = null;
     const timer = window.setTimeout(() => {
       const el = document.getElementById(anchor);
-      if (!el) return;
+      if (!el) {
+        // Content not painted yet — keep pending for the next section/tab paint.
+        return;
+      }
+      pendingAnchorRef.current = null;
       el.scrollIntoView({ block: "center", behavior: "smooth" });
       setHighlightAnchor(anchor);
       window.setTimeout(() => setHighlightAnchor(null), 1600);
+      onFocusAnchorConsumed?.();
     }, 60);
     return () => window.clearTimeout(timer);
-  }, [section, activeTab]);
+    // focusAnchorId: re-run when ship deep-link re-focuses the same tab.
+  }, [section, activeTab, focusAnchorId, onFocusAnchorConsumed]);
 
   const backToPhoneIndex = useCallback(() => {
     if (!phoneLayout) return;
@@ -7111,6 +7137,7 @@ export function SettingsPage({
                       locale={resolveLocale(locale)}
                       projectPath={projectPath}
                       hideHeader
+                      highlightPrNumber={prHubHighlightPr}
                     />
                   </div>
                 </div>

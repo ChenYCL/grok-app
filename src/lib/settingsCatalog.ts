@@ -3243,9 +3243,13 @@ export function resolveTab(
 /**
  * Parse hash path after leading #/  e.g. "settings/extensions/mcp"
  * Also accepts "settings" alone.
+ * Query strings (`?pr=42`) are ignored for section/tab resolution —
+ * see `prHubDeepLink` for PR-hub query parsing.
  */
 export function parseSettingsHash(raw: string): SettingsLocation | null {
-  const path = raw.replace(/^#\/?/, "").replace(/\/+$/, "");
+  // Strip query so `#/settings/runtime/tools?pr=1` still resolves tools.
+  const withoutQuery = raw.replace(/\?.*$/, "");
+  const path = withoutQuery.replace(/^#\/?/, "").replace(/\/+$/, "");
   if (!path.startsWith("settings")) return null;
   const parts = path.split("/").filter(Boolean);
   // parts[0] === "settings"
