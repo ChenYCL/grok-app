@@ -551,11 +551,16 @@ import {
 import {
   SESSION_NOTE_MAX_LENGTH,
   SESSION_NOTES_CHANGE_EVENT,
+  clampSessionNoteInput,
   clearNote as clearSessionNote,
   getNote as getSessionNote,
   loadSessionNotes,
   notePreview,
+  sessionNoteSaveOutcome,
   setNote as setSessionNote,
+  shouldConfirmSessionNoteClear,
+  shouldConfirmSessionNoteDiscard,
+  validateSessionNote,
 } from "@/lib/sessionNotes";
 import {
   dismissCliUpdateNotice,
@@ -1309,6 +1314,9 @@ export default function App() {
     title: string;
   } | null>(null);
   const [sessionNoteDraft, setSessionNoteDraft] = useState("");
+  const [sessionNoteBaseline, setSessionNoteBaseline] = useState("");
+  const [sessionNoteDiscardOpen, setSessionNoteDiscardOpen] = useState(false);
+  const [sessionNoteClearOpen, setSessionNoteClearOpen] = useState(false);
   /** Per-session extra rules editor (`--rules`). */
   const [sessionRulesTarget, setSessionRulesTarget] = useState<{
     id: string;
@@ -9585,11 +9593,15 @@ export default function App() {
     }, ms);
   }, []);
 
-  /** Confirm (unless pref) then stop every stoppable busy session from the Tasks panel. */
+  /** Open GlassModal to edit per-session sticky note (local only; never sent to agent). */
   const openSessionNote = useCallback(
     (s: SessionRow) => {
       setCtxMenu(null);
-      setSessionNoteDraft(getSessionNote(s.id));
+      const initial = getSessionNote(s.id);
+      setSessionNoteDraft(initial);
+      setSessionNoteBaseline(initial);
+      setSessionNoteDiscardOpen(false);
+      setSessionNoteClearOpen(false);
       setSessionNoteTarget({
         id: s.id,
         title: s.title || tr("session.untitled"),
@@ -9598,40 +9610,65 @@ export default function App() {
     [tr],
   );
 
-  const closeSessionNoteModal = useCallback(() => {
+  const forceCloseSessionNoteModal = useCallback(() => {
     setSessionNoteTarget(null);
     setSessionNoteDraft("");
+    setSessionNoteBaseline("");
+    setSessionNoteDiscardOpen(false);
+    setSessionNoteClearOpen(false);
   }, []);
+
+  const closeSessionNoteModal = useCallback(() => {
+    const v = validateSessionNote({
+      draft: sessionNoteDraft,
+      baseline: sessionNoteBaseline,
+    });
+    if (shouldConfirmSessionNoteDiscard(v)) {
+      setSessionNoteDiscardOpen(true);
+      return;
+    }
+    forceCloseSessionNoteModal();
+  }, [sessionNoteDraft, sessionNoteBaseline, forceCloseSessionNoteModal]);
 
   const saveSessionNoteModal = useCallback(() => {
     const target = sessionNoteTarget;
     if (!target) return;
-    setSessionNote(target.id, sessionNoteDraft);
+    const stored = setSessionNote(target.id, sessionNoteDraft);
     setSessionNotesMap(loadSessionNotes());
-    closeSessionNoteModal();
-    showToast(
-      sessionNoteDraft.trim()
-        ? tr("session.noteSaved")
-        : tr("session.noteCleared"),
-      2000,
-    );
+    const outcome = sessionNoteSaveOutcome(target.id, stored);
+    forceCloseSessionNoteModal();
+    showToast(tr(outcome.toastKey), 2000);
   }, [
     sessionNoteTarget,
     sessionNoteDraft,
-    closeSessionNoteModal,
+    forceCloseSessionNoteModal,
     tr,
     showToast,
   ]);
 
-  const clearSessionNoteModal = useCallback(() => {
+  const requestClearSessionNoteModal = useCallback(() => {
+    const target = sessionNoteTarget;
+    if (!target) return;
+    const hadStored = Boolean(sessionNotesMap[target.id]?.trim());
+    if (
+      !shouldConfirmSessionNoteClear({
+        draft: sessionNoteDraft,
+        hadStored,
+      })
+    ) {
+      return;
+    }
+    setSessionNoteClearOpen(true);
+  }, [sessionNoteTarget, sessionNoteDraft, sessionNotesMap]);
+
+  const confirmClearSessionNoteModal = useCallback(() => {
     const target = sessionNoteTarget;
     if (!target) return;
     clearSessionNote(target.id);
     setSessionNotesMap(loadSessionNotes());
-    setSessionNoteDraft("");
-    closeSessionNoteModal();
+    forceCloseSessionNoteModal();
     showToast(tr("session.noteCleared"), 2000);
-  }, [sessionNoteTarget, closeSessionNoteModal, tr, showToast]);
+  }, [sessionNoteTarget, forceCloseSessionNoteModal, tr, showToast]);
 
   /** Confirm then stop the given session ids (dashboard / multi-select). */
   const stopBusySessionsByIds = useCallback(
@@ -21162,7 +21199,7 @@ export default function App() {
               <button
                 type="button"
                 className="btn btn--ghost"
-                onClick={clearSessionNoteModal}
+                onClick={requestClearSessionNoteModal}
               >
                 {tr("session.noteClear")}
               </button>
@@ -21195,25 +21232,131 @@ export default function App() {
             {sessionNoteTarget.title}
           </p>
         ) : null}
-        <textarea
-          className="session-note-modal__textarea"
-          value={sessionNoteDraft}
-          onChange={(e) =>
-            setSessionNoteDraft(
-              e.target.value.slice(0, SESSION_NOTE_MAX_LENGTH),
-            )
-          }
-          placeholder={tr("session.notePlaceholder")}
-          maxLength={SESSION_NOTE_MAX_LENGTH}
-          spellCheck
-          aria-label={tr("session.noteTitle")}
-        />
-        <p className="session-note-modal__count" aria-live="polite">
-          {tr("session.noteChars", {
-            n: String(sessionNoteDraft.length),
-            max: String(SESSION_NOTE_MAX_LENGTH),
-          })}
-        </p>
+        {(() => {
+          const v = validateSessionNote({
+            draft: sessionNoteDraft,
+            baseline: sessionNoteBaseline,
+            hadStored: Boolean(
+              sessionNoteTarget &&
+                sessionNotesMap[sessionNoteTarget.id]?.trim(),
+            ),
+          });
+          return (
+            <>
+              {v.statusKey ? (
+                <p
+                  className={
+                    "session-prompt-status" +
+                    (v.severity === "warn"
+                      ? " session-prompt-status--warn"
+                      : v.severity === "info"
+                        ? " session-prompt-status--info"
+                        : "")
+                  }
+                  role="status"
+                >
+                  {tr(v.statusKey)}
+                </p>
+              ) : null}
+              <textarea
+                className={
+                  "session-note-modal__textarea" +
+                  (v.severity === "warn"
+                    ? " session-prompt-textarea--warn"
+                    : "")
+                }
+                value={sessionNoteDraft}
+                onChange={(e) => {
+                  const next = clampSessionNoteInput(
+                    e.target.value,
+                    SESSION_NOTE_MAX_LENGTH,
+                  );
+                  setSessionNoteDraft(next.value);
+                }}
+                placeholder={tr("session.notePlaceholder")}
+                maxLength={SESSION_NOTE_MAX_LENGTH}
+                spellCheck
+                aria-label={tr("session.noteTitle")}
+              />
+              <p
+                className={
+                  "session-note-modal__count" +
+                  (v.severity === "warn"
+                    ? " session-prompt-count--warn"
+                    : "")
+                }
+                aria-live="polite"
+              >
+                {tr("session.noteChars", {
+                  n: String(v.budget.rawLen),
+                  max: String(v.budget.max),
+                })}
+              </p>
+            </>
+          );
+        })()}
+      </GlassModal>
+
+      <GlassModal
+        open={sessionNoteDiscardOpen}
+        onClose={() => setSessionNoteDiscardOpen(false)}
+        title={tr("resources.discardTitle")}
+        size="sm"
+        closeLabel={tr("common.close")}
+        footer={
+          <>
+            <button
+              type="button"
+              className="btn btn--ghost"
+              onClick={() => setSessionNoteDiscardOpen(false)}
+            >
+              {tr("common.cancel")}
+            </button>
+            <button
+              type="button"
+              className="btn btn--solid"
+              onClick={() => {
+                setSessionNoteDiscardOpen(false);
+                forceCloseSessionNoteModal();
+              }}
+            >
+              {tr("resources.discardConfirm")}
+            </button>
+          </>
+        }
+      >
+        <p className="rp-modal-copy">{tr("session.noteDiscardBody")}</p>
+      </GlassModal>
+
+      <GlassModal
+        open={sessionNoteClearOpen}
+        onClose={() => setSessionNoteClearOpen(false)}
+        title={tr("session.noteClearTitle")}
+        size="sm"
+        closeLabel={tr("common.close")}
+        footer={
+          <>
+            <button
+              type="button"
+              className="btn btn--ghost"
+              onClick={() => setSessionNoteClearOpen(false)}
+            >
+              {tr("common.cancel")}
+            </button>
+            <button
+              type="button"
+              className="btn btn--solid btn--danger"
+              onClick={() => {
+                setSessionNoteClearOpen(false);
+                confirmClearSessionNoteModal();
+              }}
+            >
+              {tr("session.noteClearConfirm")}
+            </button>
+          </>
+        }
+      >
+        <p className="rp-modal-copy">{tr("session.noteClearBody")}</p>
       </GlassModal>
 
       <GlassModal
